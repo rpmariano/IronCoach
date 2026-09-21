@@ -1102,7 +1102,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
        lista, o indexOf devolvia -1 e punha-a à frente de "objetivo batido" e
        do recorde pessoal — o contrário da regra (revisão pré-deploy). */
     const prioridade = ['objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia', 'acima_do_treino', 'prova_concluida'];
-    const novas = achievementsForRace({ raceEvents: store.raceEvents, runs: store.runs, profile }, raceId)
+    const novas = achievementsForRace({ raceEvents: store.raceEvents, runs: store.runs, profile, today: todayISO() }, raceId)
       .filter((a) => a.isNew)
       .sort((a, b) => prioridade.indexOf(a.key) - prioridade.indexOf(b.key));
     if (!novas.length) return null;

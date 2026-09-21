@@ -1,12 +1,18 @@
 import { describe, it, expect } from 'vitest';
-import { computeAchievements, achievementsForRace, missedInRace, describeMissedInRace, completedRaces } from './achievements';
+import { achievementsForRace, missedInRace, describeMissedInRace, ACHIEVEMENT_KEYS } from './achievements';
+import { completedRaces } from './premios';
 
-/* O Palmarés (specs/gamificacao-provas.md). O que estes testes guardam é
-   sobretudo a régua: uma prova só conta quando está concluída E tem corrida
-   ligada, e "objetivo batido"/"recorde pessoal" saem do raceOutcome — não de
-   uma comparação escrita outra vez aqui. */
+/* As conquistas de uma prova (specs/gamificacao-provas.md). O que estes
+   testes guardam é sobretudo a régua: uma prova só conta quando está
+   concluída, tem corrida ligada E o dia dela já passou, e "objetivo
+   batido"/"recorde pessoal" saem do raceOutcome — não de uma comparação
+   escrita outra vez aqui.
 
-const AGORA = new Date('2026-09-12T10:00:00');
+   Desde a fusão dos motores (utils/premios.js) já não há palmarés GLOBAL de
+   conquistas: o Palmarés são os medalhões (utils/medalhoes.test.js). Cada
+   prova avalia-se nela própria, que é a única leitura que a app mostra. */
+
+const HOJE = '2026-09-12';
 const PROFILE = { id: 'atleta', experience_level: 'medio' };
 
 // Treino suficiente para a previsão de Riegel ter de onde sair.
@@ -26,34 +32,22 @@ const corrida = (over) => ({
 
 const byKey = (list) => Object.fromEntries(list.map((a) => [a.key, a]));
 
-describe('computeAchievements — sem provas', () => {
-  const lista = computeAchievements({ raceEvents: [], runs: [], profile: PROFILE, now: AGORA });
-
-  it('devolve sempre as seis, pela mesma ordem', () => {
-    expect(lista.map((a) => a.key)).toEqual([
+describe('a ordem das conquistas é o contrato com o coach-chat', () => {
+  it('as seis chaves, sempre as mesmas', () => {
+    expect(ACHIEVEMENT_KEYS).toEqual([
       'prova_concluida', 'objetivo_batido', 'acima_do_treino', 'recorde_pessoal', 'primeira_trail', 'sequencia',
     ]);
-    expect(lista.every((a) => a.unlocked === false)).toBe(true);
-  });
-
-  it('bloqueada diz o que falta, não o que falhou', () => {
-    const a = byKey(lista);
-    expect(a.prova_concluida.detail).toBe('Regista a tua primeira prova');
-    expect(a.objetivo_batido.detail).toBe('Marca um objetivo e bate-o');
-    expect(a.recorde_pessoal.detail).toBe('Precisa de duas provas na mesma distância');
-    expect(a.primeira_trail.detail).toBe('Ainda sem trail concluído');
-    expect(a.sequencia.detail).toBe('Duas provas seguidas registadas');
   });
 });
 
-describe('computeAchievements — uma prova concluída', () => {
+describe('uma prova concluída', () => {
   const race = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10', target_time_seconds: 6900 });
   const run = corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 6822, details: { official_time_seconds: 6822 } });
-  const lista = computeAchievements({ raceEvents: [race], runs: [...TREINOS, run], profile: PROFILE, now: AGORA });
-  const a = byKey(lista);
+  const dados = { raceEvents: [race], runs: [...TREINOS, run], profile: PROFILE, today: HOJE };
+  const a = byKey(achievementsForRace(dados, 'r1'));
 
-  it('conta a prova e diz o ordinal', () => {
-    expect(a.prova_concluida.unlocked).toBe(true);
+  it('conta a prova, diz o ordinal e aponta para ela', () => {
+    expect(Object.keys(a)).toEqual(['prova_concluida', 'objetivo_batido']);
     expect(a.prova_concluida.detail).toBe('1.ª prova');
     expect(a.prova_concluida.raceId).toBe('r1');
     expect(a.prova_concluida.raceName).toBe('Meia de Lisboa');
@@ -65,63 +59,38 @@ describe('computeAchievements — uma prova concluída', () => {
   });
 
   it('dá o objetivo batido com o tempo e o objetivo', () => {
-    expect(a.objetivo_batido.unlocked).toBe(true);
     expect(a.objetivo_batido.detail).toBe('Meia de Lisboa, 1:53:42 (objetivo 1:55:00)');
   });
 
   it('não inventa recorde pessoal sem prova anterior na mesma distância', () => {
-    expect(a.recorde_pessoal.unlocked).toBe(false);
-    expect(a.recorde_pessoal.detail).toBe('Precisa de duas provas na mesma distância');
+    expect(missedInRace(dados, 'r1').map((x) => x.key)).toEqual(['recorde_pessoal']);
   });
 
   it('uma prova só não faz sequência', () => {
-    expect(a.sequencia.unlocked).toBe(false);
+    expect(a.sequencia).toBeUndefined();
   });
 
-  const dados = { raceEvents: [race], runs: [...TREINOS, run], profile: PROFILE, now: AGORA };
-
-  it('achievementsForRace devolve só as desta prova', () => {
-    const desta = achievementsForRace(dados, 'r1');
-    expect(desta.map((x) => x.key)).toEqual(['prova_concluida', 'objetivo_batido']);
-    expect(desta[0].detail).toBe('1.ª prova');
-    expect(desta.every((x) => x.unlocked && x.isNew && x.raceId === 'r1')).toBe(true);
+  it('uma prova que não existe, ou sem id, não dá nada', () => {
     expect(achievementsForRace(dados, 'outra')).toEqual([]);
     expect(achievementsForRace(dados, null)).toEqual([]);
   });
-
-  it('missedInRace devolve o que esta prova ainda podia ter dado', () => {
-    expect(missedInRace(dados, 'r1').map((x) => x.key)).toEqual(['recorde_pessoal']);
-  });
 });
 
-describe('computeAchievements — "nova" pela data do registo', () => {
+describe('"nova" pela data do registo', () => {
   const race = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-08-20', target_time_seconds: 6900 });
   it('uma prova de há três semanas registada ontem ainda é nova; registada há dez dias já não', () => {
     const ontem = corrida({ id: 'run1', race_id: 'r1', date: '2026-08-20', duration_seconds: 6822, details: { official_time_seconds: 6822 }, created_at: '2026-09-11T20:15:00Z' });
-    const dados = { raceEvents: [race], runs: [...TREINOS, ontem], profile: PROFILE, now: AGORA };
-    expect(byKey(computeAchievements(dados)).prova_concluida.isNew).toBe(true);
+    const dados = { raceEvents: [race], runs: [...TREINOS, ontem], profile: PROFILE, today: HOJE };
     expect(achievementsForRace(dados, 'r1').every((a) => a.isNew)).toBe(true);
     const antiga = { ...ontem, created_at: '2026-09-01T10:00:00Z' };
-    expect(byKey(computeAchievements({ ...dados, runs: [...TREINOS, antiga] })).prova_concluida.isNew).toBe(false);
+    expect(achievementsForRace({ ...dados, runs: [...TREINOS, antiga] }, 'r1').every((a) => a.isNew)).toBe(false);
     // sem created_at vale a data da prova (há mais de 7 dias → não é nova)
     const semData = { ...ontem, created_at: undefined };
-    expect(byKey(computeAchievements({ ...dados, runs: [...TREINOS, semData] })).prova_concluida.isNew).toBe(false);
+    expect(achievementsForRace({ ...dados, runs: [...TREINOS, semData] }, 'r1').every((a) => a.isNew)).toBe(false);
   });
 });
 
-describe('computeAchievements — o objetivo que ficou por bater', () => {
-  const race = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10', target_time_seconds: 6900 });
-  // 6900 + 102 = 7002 → ficou a 1:42 do objetivo.
-  const run = corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 7002, details: { official_time_seconds: 7002 } });
-  const a = byKey(computeAchievements({ raceEvents: [race], runs: [...TREINOS, run], profile: PROFILE, now: AGORA }));
-
-  it('a frase bloqueada diz de quanto foi, e em que prova', () => {
-    expect(a.objetivo_batido.unlocked).toBe(false);
-    expect(a.objetivo_batido.detail).toBe('Ficaste a 1:42 na Meia de Lisboa');
-  });
-});
-
-describe('computeAchievements — recorde pessoal', () => {
+describe('recorde pessoal e sequência', () => {
   const antiga = meia({ id: 'r0', name: 'Meia do Estoril', date: '2026-05-10' });
   const nova = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10' });
   const runs = [
@@ -129,41 +98,28 @@ describe('computeAchievements — recorde pessoal', () => {
     corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 7066, details: { official_time_seconds: 7066 } }),
     corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 6822, details: { official_time_seconds: 6822 } }),
   ];
-  const lista = computeAchievements({ raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA });
-  const a = byKey(lista);
+  const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, today: HOJE };
 
-  it('desbloqueia com a categoria, o tempo e a diferença', () => {
-    expect(a.recorde_pessoal.unlocked).toBe(true);
-    expect(a.recorde_pessoal.raceId).toBe('r1');
+  it('a mais recente dá o recorde, com a categoria, o tempo e a diferença', () => {
+    const a = byKey(achievementsForRace(dados, 'r1'));
     expect(a.recorde_pessoal.detail).toBe('Meia: 1:53:42, 4:04 abaixo do anterior');
   });
 
-  it('a contagem de provas conta as duas', () => {
-    expect(a.prova_concluida.detail).toBe('2.ª prova');
-  });
-
-  it('duas provas seguidas registadas fazem sequência', () => {
-    expect(a.sequencia.unlocked).toBe(true);
-    expect(a.sequencia.detail).toBe('2 provas seguidas');
-    expect(a.sequencia.raceId).toBe('r1');
-  });
-
-  it('completedRaces devolve da mais recente para a mais antiga', () => {
-    const feitas = completedRaces({ raceEvents: [antiga, nova], runs, profile: PROFILE });
-    expect(feitas.map((f) => f.race.id)).toEqual(['r1', 'r0']);
-    expect(feitas[0].outcome.officialSeconds).toBe(6822);
-  });
-
   it('cada prova avalia-se nela própria: a antiga é a 1.ª e não faz sequência, a nova é a 2.ª, com recorde e sequência', () => {
-    const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA };
     expect(achievementsForRace(dados, 'r0').map((x) => `${x.key}:${x.detail}`)).toEqual(['prova_concluida:1.ª prova']);
     expect(achievementsForRace(dados, 'r0')[0].isNew).toBe(false);
     expect(achievementsForRace(dados, 'r1').map((x) => x.key)).toEqual(['prova_concluida', 'recorde_pessoal', 'sequencia']);
-    expect(achievementsForRace(dados, 'r1').find((x) => x.key === 'sequencia').detail).toBe('2 provas seguidas');
+    expect(byKey(achievementsForRace(dados, 'r1')).sequencia.detail).toBe('2 provas seguidas');
+  });
+
+  it('completedRaces devolve da mais recente para a mais antiga', () => {
+    const feitas = completedRaces({ raceEvents: [antiga, nova], runs, profile: PROFILE, today: HOJE });
+    expect(feitas.map((f) => f.race.id)).toEqual(['r1', 'r0']);
+    expect(feitas[0].outcome.officialSeconds).toBe(6822);
   });
 });
 
-describe('achievementsForRace — duas provas com objetivo batido têm-no as duas', () => {
+describe('duas provas com objetivo batido têm-no as duas', () => {
   const antiga = meia({ id: 'r0', name: 'Meia do Estoril', date: '2026-05-10', target_time_seconds: 7200 });
   const nova = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10', target_time_seconds: 6900 });
   const runs = [
@@ -171,7 +127,7 @@ describe('achievementsForRace — duas provas com objetivo batido têm-no as dua
     corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 7066, details: { official_time_seconds: 7066 } }),
     corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 6822, details: { official_time_seconds: 6822 } }),
   ];
-  const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA };
+  const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, today: HOJE };
 
   it('a antiga não perde o objetivo por a nova também o ter batido', () => {
     expect(achievementsForRace(dados, 'r0').map((x) => x.key)).toEqual(['prova_concluida', 'objetivo_batido']);
@@ -179,34 +135,40 @@ describe('achievementsForRace — duas provas com objetivo batido têm-no as dua
     expect(achievementsForRace(dados, 'r1').map((x) => x.key)).toEqual(['prova_concluida', 'objetivo_batido', 'recorde_pessoal', 'sequencia']);
     expect(missedInRace(dados, 'r1')).toEqual([]);
   });
-
-  it('o palmarés global continua a apontar para a mais recente', () => {
-    expect(byKey(computeAchievements(dados)).objetivo_batido.raceId).toBe('r1');
-  });
 });
 
-describe('computeAchievements — a sequência corta-se numa prova por registar', () => {
+/* A sequência é a mesma lei da medalha d'A Sequência: o que se ganhou não se
+   perde. Antes, o elo de cada prova saía da sequência que chega a HOJE — e
+   uma prova antiga perdia o "2 provas seguidas" por causa de uma prova
+   posterior que ficou por registar. */
+describe('a sequência quebra-se para a frente, não para trás', () => {
   const r0 = meia({ id: 'r0', name: 'Meia do Estoril', date: '2026-05-10' });
-  // Passou, não foi registada: corta a sequência, mesmo estando as outras duas.
-  const r1 = { id: 'r1', name: 'Corrida do Tejo', date: '2026-06-20', distance_km: 10, race_type: 'estrada', status: 'agendada' };
-  const r2 = meia({ id: 'r2', name: 'Meia de Lisboa', date: '2026-09-10' });
+  const r1 = meia({ id: 'r1', name: 'Meia do Tejo', date: '2026-06-20' });
+  // Passou, não foi registada: corta a sequência a partir daqui.
+  const r2 = { id: 'r2', name: 'Corrida da Serra', date: '2026-07-20', distance_km: 10, race_type: 'estrada', status: 'agendada' };
+  const r3 = meia({ id: 'r3', name: 'Meia de Lisboa', date: '2026-09-10' });
   const runs = [
     ...TREINOS,
-    corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 7066, details: { official_time_seconds: 7066 } }),
-    corrida({ id: 'run2', race_id: 'r2', date: '2026-09-10', duration_seconds: 6822, details: { official_time_seconds: 6822 } }),
+    corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 7400, details: { official_time_seconds: 7400 } }),
+    corrida({ id: 'run1', race_id: 'r1', date: '2026-06-20', duration_seconds: 7200, details: { official_time_seconds: 7200 } }),
+    corrida({ id: 'run3', race_id: 'r3', date: '2026-09-10', duration_seconds: 6822, details: { official_time_seconds: 6822 } }),
   ];
-  const a = byKey(computeAchievements({ raceEvents: [r0, r1, r2], runs, profile: PROFILE, now: AGORA }));
+  const dados = { raceEvents: [r0, r1, r2, r3], runs, profile: PROFILE, today: HOJE };
 
-  it('só a última conta, e uma não chega', () => {
-    expect(a.sequencia.unlocked).toBe(false);
+  it('a prova que foi a 2.ª seguida guarda o seu elo', () => {
+    expect(byKey(achievementsForRace(dados, 'r1')).sequencia.detail).toBe('2 provas seguidas');
+  });
+
+  it('a prova depois do corte recomeça do primeiro elo, e um elo só não é conquista', () => {
+    expect(byKey(achievementsForRace(dados, 'r3')).sequencia).toBeUndefined();
   });
 
   it('mas as provas registadas continuam a contar para o total', () => {
-    expect(a.prova_concluida.detail).toBe('2.ª prova');
+    expect(byKey(achievementsForRace(dados, 'r3')).prova_concluida.detail).toBe('3.ª prova');
   });
 });
 
-describe('computeAchievements — trail e provas antigas', () => {
+describe('trail', () => {
   const trailAntigo = { id: 't-old', name: 'Trail dos Moinhos', date: '2026-03-08', distance_km: 15, race_type: 'trail', status: 'concluida' };
   const trailNovo = { id: 't-new', name: 'Trail da Serra', date: '2026-09-10', distance_km: 18, race_type: 'trail', status: 'concluida' };
   const runs = [
@@ -214,27 +176,39 @@ describe('computeAchievements — trail e provas antigas', () => {
     { id: 'run-old', kind: 'competicao', race_id: 't-old', date: '2026-03-08', distance_km: 15, duration_seconds: 6600, details: { official_time_seconds: 6600 } },
     { id: 'run-new', kind: 'competicao', race_id: 't-new', date: '2026-09-10', distance_km: 18, duration_seconds: 7800, details: { official_time_seconds: 7800 } },
   ];
-  const a = byKey(computeAchievements({ raceEvents: [trailAntigo, trailNovo], runs, profile: PROFILE, now: AGORA }));
+  const dados = { raceEvents: [trailAntigo, trailNovo], runs, profile: PROFILE, today: HOJE };
 
   it('a "primeira de trail" é a primeira por data, não a mais recente', () => {
-    expect(a.primeira_trail.unlocked).toBe(true);
-    expect(a.primeira_trail.raceId).toBe('t-old');
+    const a = byKey(achievementsForRace(dados, 't-old'));
     expect(a.primeira_trail.detail).toBe('Trail dos Moinhos, 1:50:00');
-  });
-
-  it('e já não é nova — foi há mais de 7 dias', () => {
+    // e já não é nova — foi há mais de 7 dias
     expect(a.primeira_trail.isNew).toBe(false);
+    expect(byKey(achievementsForRace(dados, 't-new')).primeira_trail).toBeUndefined();
   });
 });
 
-describe('computeAchievements — concluída sem corrida ligada não conta', () => {
+describe('o que não conta como prova feita', () => {
   const race = meia({ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-10', target_time_seconds: 6900 });
-  const a = byKey(computeAchievements({ raceEvents: [race], runs: TREINOS, profile: PROFILE, now: AGORA }));
 
-  it('marcar "concluída" na agenda não dá conquista nenhuma', () => {
-    expect(a.prova_concluida.unlocked).toBe(false);
-    expect(a.objetivo_batido.unlocked).toBe(false);
-    expect(completedRaces({ raceEvents: [race], runs: TREINOS, profile: PROFILE })).toEqual([]);
+  it('marcar "concluída" na agenda sem registo não dá conquista nenhuma', () => {
+    expect(achievementsForRace({ raceEvents: [race], runs: TREINOS, profile: PROFILE, today: HOJE }, 'r1')).toEqual([]);
+    expect(completedRaces({ raceEvents: [race], runs: TREINOS, profile: PROFILE, today: HOJE })).toEqual([]);
+  });
+
+  /* A divergência que a fusão dos motores veio fechar: `completedRaces` não
+     filtrava datas futuras e `computeMedalhoes` filtrava — uma prova marcada
+     concluída com data à frente contava num motor e não no outro. */
+  it('uma prova concluída com data no futuro ainda não aconteceu', () => {
+    const futura = meia({ id: 'r9', name: 'Meia de Outubro', date: '2026-10-04' });
+    const run = corrida({ id: 'run9', race_id: 'r9', date: '2026-10-04', duration_seconds: 6822, details: { official_time_seconds: 6822 } });
+    const dados = { raceEvents: [race, futura], runs: [...TREINOS, run], profile: PROFILE, today: HOJE };
+    expect(completedRaces(dados).map((f) => f.race.id)).toEqual([]);
+    expect(achievementsForRace(dados, 'r9')).toEqual([]);
+  });
+
+  it('sem o dia de hoje injetado, o motor recusa-se a adivinhar', () => {
+    expect(() => achievementsForRace({ raceEvents: [race], runs: TREINOS, profile: PROFILE }, 'r1')).toThrow(/today/);
+    expect(() => completedRaces({ raceEvents: [race], runs: TREINOS, profile: PROFILE })).toThrow(/today/);
   });
 });
 
@@ -247,18 +221,16 @@ describe('missedInRace / describeMissedInRace — o que ficou para a próxima', 
     corrida({ id: 'run0', race_id: 'r0', date: '2026-05-10', duration_seconds: 6938, details: { official_time_seconds: 6938 } }),
     corrida({ id: 'run1', race_id: 'r1', date: '2026-09-10', duration_seconds: 7002, details: { official_time_seconds: 7002 } }),
   ];
-  const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, now: AGORA };
-  const lista = computeAchievements(dados);
+  const dados = { raceEvents: [antiga, nova], runs, profile: PROFILE, today: HOJE };
 
   it('uma conquista dada por OUTRA prova conta como não dada nesta', () => {
     // O objetivo foi batido na do Estoril (6938 < 7200), não em Lisboa.
-    expect(byKey(lista).objetivo_batido.raceId).toBe('r0');
     expect(missedInRace(dados, 'r1').map((x) => x.key)).toEqual(['objetivo_batido', 'recorde_pessoal']);
     expect(missedInRace(dados, 'r0').map((x) => x.key)).toEqual(['recorde_pessoal']);
   });
 
   it('a linha diz de quanto foi, com o número', () => {
-    const outcome = completedRaces({ raceEvents: [antiga, nova], runs, profile: PROFILE })[0].outcome;
+    const outcome = completedRaces({ raceEvents: [antiga, nova], runs, profile: PROFILE, today: HOJE })[0].outcome;
     const [objetivo, recorde] = missedInRace(dados, 'r1');
     expect(describeMissedInRace(objetivo, outcome)).toBe('Objetivo batido fica para a próxima: ficaste a 1:42');
     expect(describeMissedInRace(recorde, outcome)).toBe('Recorde pessoal fica para a próxima: 1:04 acima do teu melhor na meia');
@@ -267,63 +239,46 @@ describe('missedInRace / describeMissedInRace — o que ficou para a próxima', 
   it('sem objetivo marcado e sem histórico, diz o que falta em vez de um número', () => {
     const semNada = meia({ id: 'r9', name: 'Meia Solta', date: '2026-09-10' });
     const run = corrida({ id: 'run9', race_id: 'r9', date: '2026-09-10', duration_seconds: 7002, details: { official_time_seconds: 7002 } });
-    const outcome = completedRaces({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE })[0].outcome;
-    const perdidas = missedInRace({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE, now: AGORA }, 'r9');
+    const soltos = { raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE, today: HOJE };
+    const outcome = completedRaces(soltos)[0].outcome;
+    const perdidas = missedInRace(soltos, 'r9');
     expect(describeMissedInRace(perdidas[0], outcome)).toBe('Objetivo batido fica para a próxima: esta prova não tinha objetivo marcado');
     expect(describeMissedInRace(perdidas[1], outcome)).toBe('Recorde pessoal fica para a próxima: precisa de duas provas na mesma distância');
   });
 });
 
 /* "Acima do treino" (pedido 2026-09-20: os tempos objetivo/previsão/real
-   "poderão ser tema interessante para prémios"). É a conquista que não
-   precisa de objetivo marcado nem de histórico na distância — só de ter
-   corrido além do que as corridas anteriores faziam esperar. */
-describe('computeAchievements — acima do que o treino previa', () => {
+   "poderão ser tema interessante para prémios"). É a única conquista sem par
+   nos medalhões: não precisa de objetivo marcado nem de histórico na
+   distância — só de ter corrido além do que as corridas anteriores faziam
+   esperar. A fusão dos motores preservou-a tal e qual. */
+describe('acima do que o treino previa', () => {
   const TREINO_LENTO = [
     { id: 'l1', date: '2026-08-01', distance_km: 10, duration_seconds: 3600, kind: 'treino' },
     { id: 'l2', date: '2026-08-20', distance_km: 14, duration_seconds: 5100, kind: 'treino' },
   ];
 
-  it('desbloqueia quando a prova fica bem abaixo da previsão, sem objetivo marcado', () => {
+  it('a prova que a deu mostra-a no seu próprio palmarés, com os dois tempos e sem objetivo marcado', () => {
     // Treino a 6:00/km numa 10 km; a meia corrida em 1:40 está muito
     // abaixo do que Riegel extrapolava desse treino.
     const race = meia({ id: 'r1', name: 'Meia Rápida', date: '2026-09-06', target_time: null, target_time_seconds: null });
     const run = corrida({ id: 'c1', race_id: 'r1', date: '2026-09-06', duration_seconds: 6000, created_at: '2026-09-06T12:00:00Z' });
-    const conquistas = byKey(computeAchievements({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }));
-
-    expect(conquistas.acima_do_treino.unlocked).toBe(true);
-    expect(conquistas.acima_do_treino.raceId).toBe('r1');
-    expect(conquistas.acima_do_treino.detail).toContain('abaixo da previsão do treino');
-    // O objetivo não existe — e mesmo assim a prova foi premiada.
-    expect(conquistas.objetivo_batido.unlocked).toBe(false);
-  });
-
-  it('não desbloqueia quando a prova fica dentro do que o treino previa', () => {
-    const race = meia({ id: 'r2', name: 'Meia Certinha', date: '2026-09-06' });
-    // 2:15:00 — na banda do que este treino lento perspetivava.
-    const run = corrida({ id: 'c2', race_id: 'r2', date: '2026-09-06', duration_seconds: 8100, created_at: '2026-09-06T12:00:00Z' });
-    const conquistas = byKey(computeAchievements({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }));
-
-    expect(conquistas.acima_do_treino.unlocked).toBe(false);
-    // Bloqueada, diz quanto faltou — não fica um traço mudo.
-    expect(conquistas.acima_do_treino.detail).toContain('Meia Certinha');
-  });
-
-  it('a prova que a deu mostra-a no seu próprio palmarés, com os dois tempos', () => {
-    const race = meia({ id: 'r1', name: 'Meia Rápida', date: '2026-09-06', target_time: null, target_time_seconds: null });
-    const run = corrida({ id: 'c1', race_id: 'r1', date: '2026-09-06', duration_seconds: 6000, created_at: '2026-09-06T12:00:00Z' });
-    const daProva = byKey(achievementsForRace({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }, 'r1'));
+    const daProva = byKey(achievementsForRace({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, today: HOJE }, 'r1'));
 
     expect(daProva.acima_do_treino).toBeTruthy();
     expect(daProva.acima_do_treino.detail).toContain('1:40:00');
     expect(daProva.acima_do_treino.detail).toMatch(/do que o treino previa \(\d/);
+    // O objetivo não existe — e mesmo assim a prova foi premiada.
+    expect(daProva.objetivo_batido).toBeUndefined();
   });
 
-  it('não entra nas conquistas perdidas — a diferença já está no bloco dos tempos', () => {
+  it('não desbloqueia quando a prova fica dentro do que o treino previa, e não entra nas perdidas', () => {
     const race = meia({ id: 'r2', name: 'Meia Certinha', date: '2026-09-06' });
+    // 2:15:00 — na banda do que este treino lento perspetivava.
     const run = corrida({ id: 'c2', race_id: 'r2', date: '2026-09-06', duration_seconds: 8100, created_at: '2026-09-06T12:00:00Z' });
-    const perdidas = missedInRace({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }, 'r2');
+    const dados = { raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, today: HOJE };
 
-    expect(perdidas.map((a) => a.key)).not.toContain('acima_do_treino');
+    expect(byKey(achievementsForRace(dados, 'r2')).acima_do_treino).toBeUndefined();
+    expect(missedInRace(dados, 'r2').map((a) => a.key)).not.toContain('acima_do_treino');
   });
 });

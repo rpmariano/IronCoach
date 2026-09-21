@@ -14,26 +14,39 @@ Nunca compete com "o que faço hoje".
 
 ## As conquistas (calculadas dos dados, sem tabelas novas)
 
+**Desde 2026-09-21** as regras não vivem aqui: vivem no motor único dos
+prémios, `src/utils/premios.js`, e são as mesmas que os medalhões do Palmarés
+usam (`palmares-medalhoes.md` §"O que acontece às conquistas"). Eram dois
+motores a decidir as mesmas coisas de maneiras ligeiramente diferentes —
+a sequência contava-se de duas formas, a primeira de trail decidia-se duas
+vezes, e uma prova concluída com data no futuro contava num e não no outro.
+`src/utils/achievements.js` é hoje só a vista de UMA prova.
+
 | Chave | Nome | Regra | Cor |
 |---|---|---|---|
-| `prova_concluida` | Prova concluída | contagem de `race_events` com `status = 'concluida'` e corrida ligada | âmbar `--race` |
+| `prova_concluida` | Prova concluída | contagem de `race_events` com `status = 'concluida'`, corrida ligada e data já passada (`completedRaces`) | âmbar `--race` |
 | `objetivo_batido` | Objetivo batido | `details.official_time_seconds` (ou `duration_seconds`) ≤ `target_time_seconds` da prova | verde `--ok` |
-| `acima_do_treino` | Acima do treino | `raceOutcome.vsTraining === 'acima'`: o tempo oficial ficou pelo menos `TRAINING_BAND_RATIO` (2%) abaixo do que a previsão de Riegel sobre as corridas ANTERIORES à prova fazia esperar. A única que não exige objetivo marcado nem histórico na distância | ciano `--coach` |
-| `recorde_pessoal` | Recorde pessoal | melhor tempo do atleta na categoria de distância da prova (`categorizeDistance` das fórmulas partilhadas), entre corridas `kind = 'competicao'` | ciano `--run` |
+| `acima_do_treino` | Acima do treino | `raceOutcome.vsTraining === 'acima'`: o tempo oficial ficou pelo menos `TRAINING_BAND_RATIO` (2%) abaixo do que a previsão de Riegel sobre as corridas ANTERIORES à prova fazia esperar. A única que não exige objetivo marcado nem histórico na distância | `--gym` (não `--coach`: essa é a cor da Carol e só dela, e era quase o mesmo ciano do recorde pessoal) |
+| `recorde_pessoal` | Recorde pessoal | melhor tempo do atleta na categoria de distância da prova (`categorizeDistance` das fórmulas partilhadas), entre corridas `kind = 'competicao'`. **Regra própria**: não é o medalhão Os Níveis, que é uma escala de aptidão (VDOT) e se sobe sem bater tempo próprio nenhum | ciano `--run` |
 | `primeira_trail` | Primeira de trail | primeira prova concluída com `race_type = 'trail'` | âmbar `--race` |
-| `sequencia` | Sequência de provas | N provas seguidas concluídas com corrida ligada, sem nenhuma agendada que tenha passado por correr; N ≥ 2 | âmbar `--race` |
+| `sequencia` | Sequência de provas | o elo desta prova na sua sequência: N provas seguidas concluídas com corrida ligada, sem nenhuma agendada que tenha passado por correr; N ≥ 2. O elo é o que foi e fica — uma prova posterior que passe sem registo já não o apaga (`varrerSequencia`) | âmbar `--race` |
 
-`acima_do_treino` não entra nas conquistas PERDIDAS de uma prova
-(`PERDIDAS_NA_PROVA`): a diferença face à previsão já está no bloco dos
-tempos do hub, e três linhas de "fica para a próxima" na mesma prova passavam
-de leitura a repreensão.
+`acima_do_treino` não entra nas conquistas PERDIDAS de uma prova (só
+`objetivo_batido` e `recorde_pessoal` entram — `LOCKED_SHAPE`, em
+`achievements.js`): a diferença face à previsão já está no bloco dos tempos
+do hub, e três linhas de "fica para a próxima" na mesma prova passavam de
+leitura a repreensão.
 
 Bloqueada = vidro neutro com cadeado, sem cor, e uma frase que diz o que
-falta ("Ficaste a 1:42 na Meia de Lisboa"). Desbloqueada = cor do
-significado, data e a prova que a deu. Uma função pura
-`src/utils/achievements.js` (`computeAchievements({ raceEvents, runs })`)
-devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
-`isNew` = desbloqueada pela prova registada há menos de 7 dias.
+falta ("Objetivo batido fica para a próxima: ficaste a 1:42"). Desbloqueada =
+cor do significado, data e a prova que a deu.
+`achievementsForRace({ raceEvents, runs, profile, today }, raceId)` devolve as
+conquistas DESTA prova com `{ key, unlocked, date, raceId, detail, isNew }`;
+`isNew` = registada há menos de 7 dias. O `today` é **obrigatório** — o motor
+não usa o relógio real, para o hub, o Início e a Carol não poderem discordar
+sobre que dia é hoje. O palmarés global de conquistas
+(`computeAchievements`) deixou de existir em 2026-09-21: o palmarés são os
+medalhões.
 
 ## Onde aparece
 

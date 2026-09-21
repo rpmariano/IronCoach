@@ -45,7 +45,7 @@ export function makeMedalhoes() {
       slot('21k', '21,1 km', 'empty'),
       slot('42k', '42,2 km', 'empty'),
     ]),
-    medalhao('recordes', 'Os Recordes', [
+    medalhao('niveis', 'Os Níveis', [
       slot('5k', '5 km', 'empty'), slot('10k', '10 km', 'empty'), slot('21k', '21,1 km', 'empty'), slot('42k', '42,2 km', 'empty'),
     ]),
     medalhao('terreno', 'O Terreno', [

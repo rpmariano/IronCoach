@@ -47,6 +47,7 @@ import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../
 import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
+import { todayISO } from '../../lib/utils';
 import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
@@ -303,10 +304,11 @@ export default function RaceHubView({
   /* ── Conquistas desta prova (specs/gamificacao-provas.md §2) ────────────
      Entre as memórias e o balanço: o que esta prova deu, e numa linha
      discreta o que ficou para a próxima. A lista sai do mesmo
-     computeAchievements do Início e do Perfil — o hub não tem régua
-     própria. O palmarés precisa de TODAS as provas para contar; o store é a
-     fonte, mas a prova aberta entra sempre, mesmo que o store esteja vazio
-     (é o caso dos testes que montam o hub à mão). */
+     `achievementsForRace` do Início e do Perfil, e esse do motor único dos
+     prémios (utils/premios.js) — o hub não tem régua própria. O palmarés
+     precisa de TODAS as provas para contar; o store é a fonte, mas a prova
+     aberta entra sempre, mesmo que o store esteja vazio (é o caso dos testes
+     que montam o hub à mão). */
   const storeRaceEvents = useAppStore((s) => s.raceEvents);
   const palmaresRaces = useMemo(() => {
     const all = storeRaceEvents || [];
@@ -318,13 +320,17 @@ export default function RaceHubView({
     () => (raceRun ? classifyRaceOutcome({ race, run: raceRun, runs, profile }) : null),
     [race, raceRun, runs, profile],
   );
+  // O motor dos prémios exige o dia injetado (utils/premios.js): o hub lê-o
+  // aqui uma vez, para as conquistas desta prova e o Palmarés não poderem
+  // discordar sobre que dia é hoje.
+  const hoje = todayISO();
   const raceAchievements = useMemo(
-    () => (raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile }, race.id) : []),
-    [raceRun, palmaresRaces, runs, profile, race?.id],
+    () => (raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
+    [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
   const raceMissed = useMemo(
-    () => (raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile }, race.id) : []),
-    [raceRun, palmaresRaces, runs, profile, race?.id],
+    () => (raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
+    [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
 
   // Resumo do ciclo: só o que se calcula dos registos reais (volume e VDOT).

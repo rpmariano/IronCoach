@@ -211,7 +211,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
        `acima_do_treino` do palmarés, com a mesma condição — e a prova passou
        a mostrar os dois, "Acima do treino" e "Previsão batida", para o mesmo
        facto (apanhado na revisão pré-deploy). Fica só a conquista. */
-    const conquistas = achievementsForRace({ raceEvents, runs, profile }, concluida.id);
+    const conquistas = achievementsForRace({ raceEvents, runs, profile, today }, concluida.id);
     const ordem = (raceEvents || []).filter((e) => e?.date && e.status === 'concluida'
       && e.date <= concluida.date && estaRegistada(e.id)).length;
     return { run, outcome, conquistas, ordem, dias: diasEntre(today, concluida.date) };

@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
-import { achievementsForRace, completedRaces } from '../../utils/achievements';
+import { achievementsForRace } from '../../utils/achievements';
+import { completedRaces } from '../../utils/premios';
 import { computeMedalhoes } from '../../utils/medalhoes';
 import { formatDuration } from '../../utils/run';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
@@ -69,8 +70,8 @@ export default function PalmaresCard({ onOpenRace }) {
     [runs, raceEvents, profile, today],
   );
   const provas = useMemo(
-    () => (provasOpen ? completedRaces({ raceEvents, runs, profile }) : []),
-    [provasOpen, raceEvents, runs, profile],
+    () => (provasOpen ? completedRaces({ raceEvents, runs, profile, today }) : []),
+    [provasOpen, raceEvents, runs, profile, today],
   );
 
   const list = medalhoes || [];
@@ -238,7 +239,7 @@ export default function PalmaresCard({ onOpenRace }) {
           ) : (
             <div className="flex flex-col gap-2 mt-2 pb-1">
               {provas.map(({ race, outcome }) => {
-                const daProva = achievementsForRace({ raceEvents, runs, profile }, race.id);
+                const daProva = achievementsForRace({ raceEvents, runs, profile, today }, race.id);
                 return (
                   <button
                     key={race.id}

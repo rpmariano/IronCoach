@@ -14,7 +14,7 @@ vi.mock('../../utils/medalAwards', () => ({
   // useMedalMoment lê isto ao nível do módulo (a ordem de significância das
   // medalhas) — sem o mock exportar o nome, o import fica undefined e a
   // app rebenta ao montar, muito antes de qualquer teste correr.
-  MEDALHAO_SIGNIFICANCE: ['recordes', 'distancias', 'superacao', 'terreno', 'sequencia', 'ano_km'],
+  MEDALHAO_SIGNIFICANCE: ['niveis', 'distancias', 'superacao', 'terreno', 'sequencia', 'ano_km'],
 }));
 
 /* O Início chama pela Carol quando o plano precisa de um ajuste

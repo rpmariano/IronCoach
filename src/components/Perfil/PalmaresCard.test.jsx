@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 
 vi.mock('../../utils/medalhoes', async () => {
   const { makeMedalhoes } = await import('../../test/medalhoesFixture');
-  return { computeMedalhoes: vi.fn(() => makeMedalhoes()), MEDALHAO_KEYS: ['ano_km', 'distancias', 'recordes', 'terreno', 'sequencia', 'superacao'] };
+  return { computeMedalhoes: vi.fn(() => makeMedalhoes()), MEDALHAO_KEYS: ['ano_km', 'distancias', 'niveis', 'terreno', 'sequencia', 'superacao'] };
 });
 
 import PalmaresCard from './PalmaresCard';
@@ -48,8 +48,8 @@ describe('PalmaresCard — os medalhões', () => {
     fireEvent.click(progresso);
     expect(screen.getByTestId('medalhao-sheet-ano_km')).toHaveTextContent('O Ano em Km · 2026');
 
-    fireEvent.click(screen.getByTestId('palmares-medalhao-recordes'));
-    expect(screen.getByTestId('medalhao-sheet-recordes')).toHaveTextContent('Os Recordes · 2026');
+    fireEvent.click(screen.getByTestId('palmares-medalhao-niveis'));
+    expect(screen.getByTestId('medalhao-sheet-niveis')).toHaveTextContent('Os Níveis · 2026');
   });
 
   it('um encaixe da legenda abre os registos que o fazem; a prova leva ao hub', () => {

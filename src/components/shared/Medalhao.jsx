@@ -73,7 +73,7 @@ export function slotPosition(index, count, size = 'lg') {
    valor a tinta do número gravado. Quem não estiver aqui (silver, ou um
    nome novo por engano) cai na prata sem esmalte. O verde é --ok-ink de
    tokens/colors.css, a mesma tinta do "objetivo batido". */
-/* Os três da escala d'Os Recordes (utils/medalhoes.js, NIVEIS) juntaram-se
+/* Os três da escala d'Os Níveis (utils/medalhoes.js, NIVEIS) juntaram-se
    aos de sempre. São metais, não cores de módulo: a lei da app continua a
    valer para os outros medalhões (ciano é a corrida, âmbar é a prova, verde
    é o objetivo batido), e aqui a cor diz o NÍVEL, que é o que este medalhão
@@ -136,7 +136,7 @@ export function MedalhaoDefs() {
           <stop offset="30%" stopColor="#34d399" />
           <stop offset="100%" stopColor="#052e22" />
         </radialGradient>
-        {/* Bronze, prata e ouro — os três níveis d'Os Recordes. Mesma forma
+        {/* Bronze, prata e ouro — os três níveis desta escala. Mesma forma
             radial dos outros esmaltes (luz a 30% do topo), com os metais
             reais: o bronze puxa ao cobre, a prata ao aço frio, o ouro ao
             âmbar mas mais claro e mais amarelo, para não se confundir com o
@@ -204,7 +204,7 @@ export function MedalhaoDefs() {
           <stop offset="55%" stopColor="#34d399" />
           <stop offset="100%" stopColor="#052e22" />
         </radialGradient>
-        {/* Os três da escala d'Os Recordes. Têm de existir nesta família
+        {/* Os três da escala d'Os Níveis. Têm de existir nesta família
             `dt-*` e não só na `enam-*`: ENAMELS vem de TEXT_FILL, e é ele
             que MedalSlotIcon percorre — sem estes, cada encaixe ganho na
             persiana do Palmarés pedia um gradiente inexistente e o browser

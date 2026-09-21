@@ -53,13 +53,24 @@ jan–mar/abr–jun/jul–set/out–dez; semestre jan–jun/jul–dez; ano.
 ### 2. As Distâncias
 
 Encaixes: **5 · 10 · 21,1 · 42,2 km**. Uma prova concluída com corrida ligada
-(`completedRaces` de `utils/achievements.js`) na distância **oficial**:
+(`completedRaces` de `utils/premios.js`) na distância **oficial**:
 4,8–5,5 · 9,5–11 · 20,5–22,5 · 41,5–43,5 km. Não a categoria de
 `categorizeDistance`, que é de treino e larga (a "meia" vai de 11 a 22,5 km;
 uma prova de 15 km dava a medalha dos 21,1). Uma vez ganha, fica. Esmalte
 âmbar — é a prova.
 
-### 3. Os Recordes
+### 3. Os Níveis
+
+**Renomeado a 2026-09-21** (era "Os Recordes"). O nome mentia e colidia com a
+conquista `recorde_pessoal`: isto não é o recorde de ninguém, é uma **escala
+de aptidão** — sobe-se de degrau sem bater tempo próprio nenhum, e um 10 km
+de ouro e uma maratona de ouro valem o mesmo. O recorde pessoal (o melhor
+tempo do atleta naquela categoria de distância) é outra regra e ficou onde
+estava, na conquista do hub — ver "O que acontece às conquistas". A chave
+passou de `'recordes'` para `'niveis'`; as linhas antigas de `medal_awards`
+ficam como histórico (migração `20260921140000_medal_awards_niveis.sql`,
+**escrita, por aplicar**) e o servidor lê as duas chaves
+(`supabase/functions/_shared/carolMemory.ts`).
 
 **Revisto a 2026-09-20** (pedido do utilizador na app: "criar badges bronze,
 prata e ouro para melhor corrida de 5k, 10km, 21km e 42km, passe mais rápido
@@ -121,9 +132,12 @@ Encaixes: **1.ª estrada · 1.ª trail · 5 estrada · 5 trail**. Banda por
 É um eixo diferente do d'As Distâncias — 21 km em trail não é a mesma prova
 que 21 km em estrada.
 
-Estende a conquista `primeira_trail` de `utils/achievements.js`, que só vivia
-no hub, aos dois terrenos, e acrescenta o marco de veterano: a 5.ª. A régua da
-prova é a mesma de sempre (`completedRaces`: concluída E com corrida ligada).
+É a **casa da regra** do terreno desde a fusão dos motores (2026-09-21): a
+conquista `primeira_trail` do hub é hoje a mesma pergunta (`provasDoTerreno`,
+em `utils/premios.js`) feita a uma prova só, e não uma segunda contagem que
+podia discordar desta. O medalhão estende-a aos dois terrenos e acrescenta o
+marco de veterano: a 5.ª. A régua da prova é a mesma de sempre
+(`completedRaces`: concluída, com corrida ligada e com o dia já passado).
 
 **Sem esmalte** — prata. Conta ocorrências, não um tempo nem um objetivo
 batido: não há cor que queira dizer "quantas".
@@ -136,15 +150,18 @@ Encaixes: **2 · 3 · 5 · 8** provas seguidas com a corrida registada.
 
 - Um elo conta quando a prova está `concluida` **e** tem corrida ligada; uma
   prova que já passou sem registo **quebra** a sequência. Provas ainda por
-  correr não entram nem quebram. É a mesma régua do `currentStreak` da
-  conquista `sequencia` (`utils/achievements.js`).
-- Mas o medalhão não conta a sequência que chega a hoje (o que o
-  `currentStreak` faz): conta a **maior de sempre**. O varrimento é do
-  princípio para o fim com um máximo corrente, como O Ano em Km faz com o
-  melhor período; de cada vez que a sequência em curso passa o recorde
-  anterior e cai num marco, esse encaixe cunha-se **no dia da prova que o
-  confirmou**. Como o máximo só cresce de um em um, cada marco cunha-se uma
-  vez só.
+  correr não entram nem quebram.
+- O medalhão conta a **maior sequência de sempre**. O varrimento é um só
+  (`varrerSequencia`, em `utils/premios.js`), do princípio para o fim com um
+  máximo corrente, como O Ano em Km faz com o melhor período; de cada vez que
+  a sequência em curso passa o recorde anterior e cai num marco, esse encaixe
+  cunha-se **no dia da prova que o confirmou**. Como o máximo só cresce de um
+  em um, cada marco cunha-se uma vez só.
+- Do mesmo varrimento sai o **elo de cada prova** — o "N provas seguidas" que
+  o hub mostra nessa prova (a conquista `sequencia`). Até 2026-09-21 esse
+  número saía da sequência que chega a hoje, e uma prova antiga perdia-o
+  quando uma prova posterior ficava por registar; hoje o elo é o que foi e
+  fica, pela mesma lei da medalha.
 - Quebrar a sequência nunca tira uma medalha já ganha — só a frase de
   progresso volta atrás.
 
@@ -174,7 +191,7 @@ momento. Tabela nova:
 create table medal_awards (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  medalhao text not null,     -- 'ano_km' | 'distancias' | 'recordes' | 'terreno' | 'sequencia' | 'superacao'
+  medalhao text not null,     -- 'ano_km' | 'distancias' | 'niveis' | 'terreno' | 'sequencia' | 'superacao'
   slot text not null,         -- 'mes' | 'trimestre' | '5k' | '42k' | 'estrada1' | 'seq3' | 'o1' ...
   period_key text not null,   -- '2026-08' | '2026-Q3' | '2026-H2' | '2026' | race_id | ''
   value numeric,              -- 182 (km), 3107 (s), 12 (semanas)
@@ -189,17 +206,18 @@ RLS por `user_id` (select/insert/update do próprio). A migração é produção
 **só se aplica com pedido explícito**.
 
 A restrição do `medalhao` continua a aceitar `'epoca'` e `'consistencia'`
-(migração `20260915180000_medal_awards_terreno_sequencia.sql`): a app já não
-os calcula, mas as linhas gravadas antes de 2026-09-15 ficam como histórico e
-não se apagam.
+(migração `20260915180000_medal_awards_terreno_sequencia.sql`) e `'recordes'`
+(migração `20260921140000_medal_awards_niveis.sql`, por aplicar): a app já não
+os calcula, mas as linhas gravadas antes ficam como histórico e não se
+apagam.
 
 Fluxo:
 
 1. `src/utils/medalhoes.js` — função pura
    `computeMedalhoes({ runs, raceEvents, coachPlans, coachPlanItems, profile, today })`
    devolve os 6 medalhões com os encaixes (`won`, `value`, `periodKey`,
-   `progress`) e a lista de prémios **devidos**. Sem rede, testável como
-   `achievements.js`.
+   `progress`) e a lista de prémios **devidos**. Sem rede e sem relógio
+   escondido: `today` é obrigatório (ver `utils/premios.js`).
 2. Sempre que muda o número de medalhas devidas (gravar uma corrida, fechar
    uma prova com uma corrida que já existia, corrigir uma distância) ou muda
    o dia (O Ano em Km ganha-se no fecho de um período, e a PWA fica aberta
@@ -259,7 +277,7 @@ Ecrã inteiro quando há `medal_awards` com `seen_at is null`.
      o teu melhor mês de sempre."); botão "Ver no Palmarés".
 - Toque em qualquer sítio salta para o estado final; segundo toque fecha.
 - `prefers-reduced-motion`: estado final parado, sem clarão nem fagulhas.
-- Várias por ver: mostra a mais significativa (Recordes > Distâncias >
+- Várias por ver: mostra a mais significativa (Níveis > Distâncias >
   Superação > Terreno > Sequência > Ano em Km — as das provas antes das do
   volume) e acrescenta "e mais 2 medalhas" ao botão. Marca `seen_at` em todas ao fechar.
 - Tempos e curvas nos tokens de `tokens/motion.css` (acrescentar
@@ -270,25 +288,31 @@ Ecrã inteiro quando há `medal_awards` com `seen_at is null`.
 ### Hub da prova
 
 A secção "Conquistas" mantém-se e passa a mostrar também as medalhas que esta
-prova deu (Distâncias, Recordes, Superação, Terreno, Sequência), com o
+prova deu (Distâncias, Níveis, Superação, Terreno, Sequência), com o
 medalhão pequeno.
 
-Ressalva desde a revisão d'Os Recordes: aí o `raceId` aponta para a **melhor**
+Ressalva desde a revisão d'Os Níveis: aí o `raceId` aponta para a **melhor**
 prova da distância, que pode não ser a que se acabou de registar, e os
 encaixes do passo e do VO2 vão sem prova nenhuma (`raceId: null`).
 
 ## O que acontece às conquistas
 
 `utils/achievements.js` fica — o hub, a `RecordConfirmation`, o cartão do dia
-seguinte no Início e o balanço da Carol dependem dele. Saem só do Palmarés:
+seguinte no Início e o balanço da Carol dependem dele. Saem do Palmarés (que
+são os medalhões), mas continuam a ser a leitura DE CADA PROVA.
 
-| Conquista | Passa a viver em |
+Desde a fusão dos motores (2026-09-21) a regra de cada uma vive uma vez só,
+em `utils/premios.js`, e o medalhão e a conquista são duas perguntas à mesma
+regra:
+
+| Conquista | A mesma regra, no Palmarés |
 |---|---|
-| `prova_concluida` | As Distâncias e O Terreno |
-| `objetivo_batido` | A Superação |
-| `recorde_pessoal` | Os Recordes |
-| `primeira_trail` | O Terreno |
-| `sequencia` | A Sequência |
+| `prova_concluida` | As Distâncias e O Terreno contam por balde; a contagem bruta só existe na conquista |
+| `objetivo_batido` | A Superação (`bateuObjetivo`) |
+| `recorde_pessoal` | **nenhum** — regra própria (`bateuRecordePessoal`: o melhor tempo do atleta na categoria). Esta spec dizia "Os Recordes" e nunca foi verdade: aquilo é uma escala de aptidão (VDOT) e hoje chama-se Os Níveis |
+| `primeira_trail` | O Terreno, encaixe `trail1` (`provasDoTerreno`) |
+| `sequencia` | A Sequência (`varrerSequencia`): a conquista mostra o elo desta prova, o medalhão o máximo de sempre |
+| `acima_do_treino` | **nenhum** — não tem par: mede a prova contra o que os treinos faziam esperar |
 
 ## O artwork
 
@@ -336,7 +360,7 @@ seguinte no Início e o balanço da Carol dependem dele. Saem só do Palmarés:
 - Fronteiras de trimestre/semestre/ano, e datas ISO no último dia do mês.
 - Corridas sem `distance_km` ignoradas.
 - Distâncias: 21,1 concluída enche o encaixe; prova sem corrida ligada não.
-- Recordes: primeira prova na distância não enche; a segunda mais rápida enche.
+- Níveis: primeira prova na distância não enche; a segunda mais rápida enche.
 - Terreno: a 1.ª e a 5.ª de cada terreno; prova sem `race_type` conta como
   estrada; prova sem corrida ligada não conta.
 - Sequência: guarda a maior de sempre (quebrar não tira o que está ganho);

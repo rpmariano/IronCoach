@@ -19,7 +19,7 @@
 /** Quando há várias por ver, mostra-se a mais significativa primeiro: as das
  *  provas antes das do volume — um recorde numa prova pesa mais do que o mês
  *  em quilómetros, que se ganha só por acumular. */
-export const MEDALHAO_SIGNIFICANCE = ['recordes', 'distancias', 'superacao', 'terreno', 'sequencia', 'ano_km'];
+export const MEDALHAO_SIGNIFICANCE = ['niveis', 'distancias', 'superacao', 'terreno', 'sequencia', 'ano_km'];
 
 const COLUMNS = 'id, medalhao, slot, period_key, value, race_id, awarded_at, seen_at';
 const HISTORICO_DIAS = 7;
@@ -111,7 +111,7 @@ export async function syncMedalAwards({ userId, due = [] } = {}) {
        A guarda era `firstSync && ehHistorico(d)`, e isso só protegia a
        primeiríssima sincronização. Quando uma regra nova passa a cunhar
        medalhas com data antiga — foi o que a escala bronze/prata/ouro
-       d'Os Recordes fez, até 18 de uma vez por corridas de há meses —,
+       d'Os Níveis fez, até 18 de uma vez por corridas de há meses —,
        toda a gente que já tinha UMA linha na tabela caía fora da guarda e
        abria a app com a tempestade de animações que este código existe
        precisamente para evitar. A data do feito é que decide, não o estado

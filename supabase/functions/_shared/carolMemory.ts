@@ -202,9 +202,14 @@ export function buildPalmaresContext(medals: any[] | null | undefined, pastRaces
   const lines: string[] = [];
   const list = (medals || []).filter((m) => m && typeof m.medalhao === "string");
 
-  // Recordes: o valor mais recente de cada distância é o recorde em vigor.
+  /* Recordes: o valor mais recente de cada distância é o recorde em vigor.
+     O medalhão chamou-se 'recordes' até 2026-09-21 e passou a 'niveis'
+     (src/utils/medalhoes.js) — os dois valores são lidos porque as linhas
+     antigas ficam em `medal_awards` como histórico e a restrição da tabela
+     continua a aceitar ambos (migração 20260921140000_medal_awards_niveis).
+     O `value` é o mesmo nos dois: os segundos da melhor prova da distância. */
   const records = new Map<string, any>();
-  for (const m of list.filter((x) => x.medalhao === "recordes")) {
+  for (const m of list.filter((x) => x.medalhao === "niveis" || x.medalhao === "recordes")) {
     const prev = records.get(m.slot);
     if (!prev || String(m.awarded_at) > String(prev.awarded_at)) records.set(m.slot, m);
   }

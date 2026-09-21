@@ -21,7 +21,14 @@ describe('computeMedalhoes — forma', () => {
 
   it('devolve os seis medalhões pela ordem fixa, sem O Trail', () => {
     expect(r.medalhoes.map((m) => m.key)).toEqual(MEDALHAO_KEYS);
-    expect(MEDALHAO_KEYS).toEqual(['ano_km', 'distancias', 'recordes', 'terreno', 'sequencia', 'superacao']);
+    expect(MEDALHAO_KEYS).toEqual(['ano_km', 'distancias', 'niveis', 'terreno', 'sequencia', 'superacao']);
+  });
+
+  /* O relógio é injetado, sempre: o motor dos prémios (utils/premios.js) não
+     olha para o relógio real, para o Palmarés e o momento da medalha nunca
+     discordarem sobre que dia é hoje. */
+  it('sem o dia de hoje, recusa-se a adivinhar', () => {
+    expect(() => computeMedalhoes({ runs: [], raceEvents: [], profile: PROFILE })).toThrow(/today/);
   });
 
   it('sem dados: tudo por ganhar, nada devido, herói O Ano em Km', () => {
@@ -42,10 +49,10 @@ describe('computeMedalhoes — forma', () => {
     const enamelOf = (key) => [...new Set(med(r, key).slots.map((s) => s.enamel))];
     expect(enamelOf('ano_km')).toEqual(['cyan']);
     expect(enamelOf('distancias')).toEqual(['amber']);
-    /* Os Recordes deixaram de ter uma cor só: a cor É o nível (bronze,
-       prata, ouro), e um encaixe ainda por ganhar mostra-se em bronze — o
-       degrau que vem a seguir. */
-    expect(enamelOf('recordes').every((e) => ['bronze', 'prata', 'ouro'].includes(e))).toBe(true);
+    /* Os Níveis não têm uma cor só: a cor É o nível (bronze, prata,
+       ouro), e um encaixe ainda por ganhar mostra-se em bronze — o degrau
+       que vem a seguir. */
+    expect(enamelOf('niveis').every((e) => ['bronze', 'prata', 'ouro'].includes(e))).toBe(true);
     expect(enamelOf('terreno')).toEqual(['silver']);
     expect(enamelOf('sequencia')).toEqual(['silver']);
     expect(enamelOf('superacao')).toEqual(['ok']);
@@ -208,7 +215,7 @@ describe('As Distâncias', () => {
   });
 });
 
-describe('Os Recordes', () => {
+describe('Os Níveis', () => {
   const dez = (id, date, seconds) => ({
     race: prova({ id, name: `Dez ${id}`, date, distance_km: 10 }),
     run: competicao({ id: `run-${id}`, race_id: id, date, distance_km: 10, duration_seconds: seconds }),
@@ -220,7 +227,7 @@ describe('Os Recordes', () => {
   it('uma prova só já vale o nível que o seu VDOT merecer', () => {
     const a = dez('a', '2026-05-01', 3200); // 53:20 aos 10 km = VDOT 37,1
     const r1 = compute({ runs: [...TREINOS, a.run], raceEvents: [a.race], today: '2026-09-15' });
-    const s = slotOf(r1, 'recordes', '10k');
+    const s = slotOf(r1, 'niveis', '10k');
     expect(s.state).toBe('won');
     expect(s.enamel).toBe('bronze');
     expect(s.valueLabel).toBe('53:20');
@@ -230,7 +237,7 @@ describe('Os Recordes', () => {
 
   it('sem nenhuma prova da distância, o encaixe diz o que falta', () => {
     const r = compute({ runs: TREINOS, raceEvents: [], today: '2026-09-15' });
-    const s = slotOf(r, 'recordes', '42k');
+    const s = slotOf(r, 'niveis', '42k');
     expect(s.state).toBe('empty');
     expect(s.enamel).toBe('bronze');
     expect(s.detail).toBe('precisa de uma prova de 42,2 km com tempo oficial');
@@ -239,7 +246,7 @@ describe('Os Recordes', () => {
   it('uma prova lenta de mais não chega ao bronze, e o encaixe diz o tempo a bater', () => {
     const lenta = dez('lento', '2026-05-01', 4200); // 1:10:00 aos 10 km
     const r = compute({ runs: [...TREINOS, lenta.run], raceEvents: [lenta.race], today: '2026-09-15' });
-    const s = slotOf(r, 'recordes', '10k');
+    const s = slotOf(r, 'niveis', '10k');
     expect(s.state).toBe('empty');
     expect(s.detail).toBe('para ganhar bronze: abaixo de 56:06 numa prova de 10 km');
     // E a primeira vez na distância continua a contar, noutro medalhão.
@@ -250,7 +257,7 @@ describe('Os Recordes', () => {
     const a = dez('a', '2026-05-01', 3050); // a mais rápida
     const b = dez('b', '2026-06-01', 3200); // mais recente, mas mais lenta
     const r = compute({ runs: [...TREINOS, a.run, b.run], raceEvents: [a.race, b.race], today: '2026-09-15' });
-    const s = slotOf(r, 'recordes', '10k');
+    const s = slotOf(r, 'niveis', '10k');
     expect(s.valueLabel).toBe('50:50');
     expect(s.raceId).toBe('a');
   });
@@ -260,12 +267,12 @@ describe('Os Recordes', () => {
   it('cunha todos os níveis até ao atingido, uma entrada por nível', () => {
     const rapida = dez('r', '2026-05-01', 2700); // 45:00 aos 10 km = prata
     const r = compute({ runs: [...TREINOS, rapida.run], raceEvents: [rapida.race], today: '2026-09-15' });
-    expect(dueOf(r, 'recordes', '10k').map((x) => x.periodKey)).toEqual(['bronze', 'prata']);
-    expect(dueOf(r, 'recordes', '10k')[1]).toEqual(expect.objectContaining({
+    expect(dueOf(r, 'niveis', '10k').map((x) => x.periodKey)).toEqual(['bronze', 'prata']);
+    expect(dueOf(r, 'niveis', '10k')[1]).toEqual(expect.objectContaining({
       title: 'Recorde nos 10 km · Prata',
       valueLabel: '45:00',
     }));
-    expect(slotOf(r, 'recordes', '10k').enamel).toBe('prata');
+    expect(slotOf(r, 'niveis', '10k').enamel).toBe('prata');
   });
 
   it('um 15 km rápido não conta para o nível da meia', () => {
@@ -281,8 +288,8 @@ describe('Os Recordes', () => {
     const b = meia('b', '2026-06-01', 6800);
     const r = compute({ runs: [...TREINOS, quinze.run, a.run, b.run], raceEvents: [quinze.race, a.race, b.race], today: '2026-09-15' });
     // A melhor meia é a b (1:53:20), não o 15 km — que é mais rápido em VDOT.
-    expect(slotOf(r, 'recordes', '21k').valueLabel).toBe('1:53:20');
-    expect(slotOf(r, 'recordes', '21k').raceId).toBe('b');
+    expect(slotOf(r, 'niveis', '21k').valueLabel).toBe('1:53:20');
+    expect(slotOf(r, 'niveis', '21k').raceId).toBe('b');
   });
 
   /* Os dois encaixes novos que o medalhão passou a ter, a pedido do
@@ -290,7 +297,7 @@ describe('Os Recordes', () => {
   it('o passo mede o esforço mais rápido de sempre, de prova ou de treino', () => {
     const rapido = run('2026-05-02', 10, { id: 'veloz', duration_seconds: 2900 }); // 4:50/km
     const r = compute({ runs: [...TREINOS, rapido], raceEvents: [], today: '2026-09-15' });
-    const s = slotOf(r, 'recordes', 'ritmo');
+    const s = slotOf(r, 'niveis', 'ritmo');
     expect(s.state).toBe('won');
     expect(['bronze', 'prata', 'ouro']).toContain(s.enamel);
     expect(s.valueLabel).toMatch(/\/km$/);
@@ -302,7 +309,7 @@ describe('Os Recordes', () => {
   it('o VO2 mede o melhor VO2 máximo medido pelo relógio', () => {
     const comVo2 = run('2026-05-03', 10, { id: 'forte', details: { vo2_max: 46.2 } });
     const r = compute({ runs: [...TREINOS, comVo2], raceEvents: [], today: '2026-09-15' });
-    const s = slotOf(r, 'recordes', 'vo2');
+    const s = slotOf(r, 'niveis', 'vo2');
     expect(s.state).toBe('won');
     // Vírgula decimal, como o resto dos números da app.
     expect(s.valueLabel).toBe('46,2');
@@ -311,7 +318,7 @@ describe('Os Recordes', () => {
 
   it('sem VO2 em corrida nenhuma, o encaixe diz o que falta', () => {
     const r = compute({ runs: TREINOS, raceEvents: [], today: '2026-09-15' });
-    const s = slotOf(r, 'recordes', 'vo2');
+    const s = slotOf(r, 'niveis', 'vo2');
     expect(s.state).toBe('empty');
     expect(s.detail).toBe('precisa de uma corrida com VO2 máximo registado');
     expect(s.contributions).toEqual([]);
@@ -324,13 +331,13 @@ describe('Os Recordes', () => {
     const comVo2 = run('2026-05-03', 10, { id: 'forte', duration_seconds: 2700, details: { vo2_max: 46.2 } });
     const r = compute({ runs: [...TREINOS, comVo2], raceEvents: [], today: '2026-09-15' });
 
-    const passo = slotOf(r, 'recordes', 'ritmo');
+    const passo = slotOf(r, 'niveis', 'ritmo');
     expect(passo.contributions.length).toBeGreaterThan(0);
     expect(passo.contributionsSummary).toMatch(/corridas? medidas?/);
     // A corrida que deu o melhor passo vem assinalada.
     expect(passo.contributions.some((c) => /o teu melhor/.test(c.meta))).toBe(true);
 
-    const vo2 = slotOf(r, 'recordes', 'vo2');
+    const vo2 = slotOf(r, 'niveis', 'vo2');
     expect(vo2.contributions.map((c) => c.runId)).toEqual(['forte']);
     expect(vo2.contributions[0].meta).toContain('VO2 46,2');
     expect(vo2.contributionsSummary).toBe('1 corrida com VO2');
@@ -639,8 +646,8 @@ describe('contributions — provas', () => {
     expect(slotOf(r, 'distancias', '21k').contributions).toEqual([]);
   });
 
-  it('Os Recordes: as provas da distância, cada uma com o seu nível', () => {
-    const s = slotOf(r, 'recordes', '10k');
+  it('Os Níveis: as provas da distância, cada uma com o seu nível', () => {
+    const s = slotOf(r, 'niveis', '10k');
     expect(s.contributions.map((x) => x.raceId)).toEqual(['c', 'b', 'a']);
     // A meta de cada prova diz o VDOT, e o nível quando o há.
     expect(s.contributions.every((x) => /VDOT/.test(x.meta))).toBe(true);

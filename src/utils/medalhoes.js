@@ -6,18 +6,18 @@
    sem rede e sem relógio escondido: `today` entra como argumento, para os
    testes e para o momento da medalha nunca discordarem sobre o dia.
 
-   A régua das provas continua a ser uma só: "concluída" é `completedRaces`
-   de `utils/achievements.js` (concluída E com corrida ligada), "objetivo
-   batido" e "recorde pessoal" saem de `utils/raceOutcome.js`. Este ficheiro
-   não compara tempos — só conta, data e escreve a frase.
+   Este ficheiro é UMA das duas vistas do motor dos prémios: as regras (que
+   provas contam, o que é objetivo batido, o que é um elo de sequência, o que
+   é trail) vivem em `utils/premios.js` e são as mesmas que `utils/
+   achievements.js` usa para as conquistas de cada prova. Aqui só se conta,
+   se data e se escreve a frase — nada se decide duas vezes.
 
    O que NÃO se recalcula (quando o atleta viu o momento, as re-cunhagens já
    guardadas) vive em `medal_awards`, sincronizado por `utils/medalAwards.js`
    a partir da lista `due` que esta função devolve.
 
-   Datas: as colunas `date` são ISO `YYYY-MM-DD` (dia local). Tudo aqui é
-   aritmética de calendário em UTC sobre essas strings — nunca `new Date(iso)`
-   sem fixar a hora, que à meia-noite em Lisboa ainda é o dia anterior em UTC.
+   Datas: ver `utils/premios.js` — tudo é aritmética de calendário em UTC
+   sobre strings `YYYY-MM-DD`.
 
    Quando se fecha um período: um mês (semana, trimestre...) só está fechado
    no dia a SEGUIR ao último dia — no próprio último dia ainda se pode correr.
@@ -26,41 +26,35 @@
    primeiro dia em que os dados o provam.
 
    As cores seguem a lei da app, uma cor um significado: ciano é o módulo da
-   corrida (O Ano em Km, o volume; Os Recordes, o tempo), âmbar é a prova em
+   corrida (O Ano em Km, o volume; Os Níveis, o tempo), âmbar é a prova em
    si (As Distâncias), verde é o objetivo batido (A Superação, o mesmo tom
    da conquista `objetivo_batido`). O que só conta ocorrências — O Terreno e
    A Sequência — fica em prata, sem esmalte: não há cor para "quantas". */
 
-import { completedRaces } from './achievements';
+import {
+  TERRENOS,
+  addDays,
+  bateuObjetivo,
+  capitalize,
+  completedRaces,
+  dayOf,
+  daysBetween,
+  plural,
+  provasDoTerreno,
+  requireToday,
+  varrerSequencia,
+} from './premios';
 import { findRaceRun, formatDuration, formatPace, raceDistanceLabel } from './run';
 import { formatDelta } from './raceOutcome';
 import { calculateVDOT } from '@formulas/racePrediction.ts';
 import { computeBestPace } from '@formulas/bestPace.ts';
 
-export const MEDALHAO_KEYS = ['ano_km', 'distancias', 'recordes', 'terreno', 'sequencia', 'superacao'];
-
-const DAY_MS = 86400000;
+export const MEDALHAO_KEYS = ['ano_km', 'distancias', 'niveis', 'terreno', 'sequencia', 'superacao'];
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 // ── Datas ────────────────────────────────────────────────────────────────
-
-function dayOf(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(value) ? value.slice(0, 10) : null;
-}
-
-function utc(iso) {
-  return Date.parse(`${iso}T00:00:00Z`);
-}
-
-function addDays(iso, n) {
-  return new Date(utc(iso) + n * DAY_MS).toISOString().slice(0, 10);
-}
-
-function daysBetween(fromIso, toIso) {
-  return Math.round((utc(toIso) - utc(fromIso)) / DAY_MS);
-}
 
 function isoOf(y, m, d) {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
@@ -109,17 +103,11 @@ function fmtKmRemaining(value) {
 
 const round2 = (v) => Math.round(v * 100) / 100;
 
-function capitalize(text) {
-  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
-}
-
 /** "a", "a e b", "a, b e c". */
 function juntar(list) {
   if (list.length <= 1) return list.join('');
   return `${list.slice(0, -1).join(', ')} e ${list[list.length - 1]}`;
 }
-
-const plural = (n, um, varios) => (n === 1 ? um : varios);
 
 // ── Blocos comuns ────────────────────────────────────────────────────────
 
@@ -459,7 +447,7 @@ function anoKm({ runs, raceByRun, today, todayYear }) {
   };
 }
 
-// ── Provas: 2. As Distâncias, 3. Os Recordes, 6. A Superação ────────────
+// ── Provas: 2. As Distâncias, 3. Os Níveis, 6. A Superação ──────────────
 
 /* A medalha de uma distância pede a distância OFICIAL, não a categoria de
    treino de categorizeDistance: aí a "meia" vai de 11 a 22,5 km e a
@@ -555,13 +543,23 @@ function distancias({ completed, raceEvents, today, todayYear }) {
   };
 }
 
-/* ── A escala d'Os Recordes: bronze, prata, ouro ───────────────────────────
+/* ── A escala d'Os Níveis: bronze, prata, ouro ─────────────────────────────
 
    Pedido do utilizador ("criar badges bronze, prata e ouro para: melhor
    corrida de 5k/10km/21km/42km, passe mais rápido, melhor nível VO2").
    Antes, cada encaixe deste medalhão era binário: ou tinhas batido o teu
    tempo anterior naquela distância, ou não tinhas. Passa a ter três níveis,
    e os dois encaixes novos — o ritmo e o VO2 — completam a lista pedida.
+
+   Chamou-se "Os Recordes" até 2026-09-21 e o nome mentia: isto não é o
+   recorde de ninguém, é uma ESCALA DE APTIDÃO — sobe-se de bronze para prata
+   sem bater tempo próprio nenhum, e um 10 km de ouro e uma maratona de ouro
+   valem o mesmo. O recorde pessoal (o melhor tempo do atleta naquela
+   categoria) é outra regra, vive na conquista `recorde_pessoal` de
+   utils/achievements.js e continua a ser dela — ter os dois com o mesmo nome
+   era a confusão que a fusão dos motores veio desfazer. A chave mudou de
+   'recordes' para 'niveis': ver a migração
+   supabase/migrations/20260921140000_medal_awards_niveis.sql.
 
    A RÉGUA É O VDOT (Daniels-Gilbert, @formulas/racePrediction.ts), que a app
    já calcula e já mostra na tendência do dashboard de corrida. Escolheu-se
@@ -590,7 +588,7 @@ export const NIVEIS = [
 ];
 
 /** O nível de um VDOT, ou null se ainda não chega ao bronze. */
-export function nivelPorVdot(vdot) {
+function nivelPorVdot(vdot) {
   if (!Number.isFinite(vdot) || vdot <= 0) return null;
   let atingido = null;
   for (const n of NIVEIS) if (vdot >= n.vdot) atingido = n;
@@ -598,7 +596,7 @@ export function nivelPorVdot(vdot) {
 }
 
 /** O nível de um ritmo em s/km (mais baixo é melhor), ou null. */
-export function nivelPorRitmo(secPerKm) {
+function nivelPorRitmo(secPerKm) {
   if (!Number.isFinite(secPerKm) || secPerKm <= 0) return null;
   let atingido = null;
   for (const n of NIVEIS) if (secPerKm <= n.paceSeconds) atingido = n;
@@ -635,7 +633,7 @@ function vo2DaCorrida(run) {
   return vo2 > VDOT_MAXIMO_PLAUSIVEL ? 0 : vo2;
 }
 
-function recordes({ completed, todayYear, runs, raceByRun }) {
+function niveis({ completed, todayYear, runs, raceByRun }) {
   const due = [];
 
   /* Um encaixe de escala: o nível já atingido dá a cor e a gravação; o que
@@ -723,7 +721,7 @@ function recordes({ completed, todayYear, runs, raceByRun }) {
 
     if (nivel) {
       cunharAte(nivel, {
-        medalhao: 'recordes',
+        medalhao: 'niveis',
         slot: dist.key,
         raceId: melhor.race.id ?? null,
         awardedOn: dayOf(melhor.race.date),
@@ -779,7 +777,7 @@ function recordes({ completed, todayYear, runs, raceByRun }) {
     : null;
   if (nivelRitmo) {
     cunharAte(nivelRitmo, {
-      medalhao: 'recordes',
+      medalhao: 'niveis',
       slot: 'ritmo',
       raceId: null,
       awardedOn: dayOf(melhorRitmo.date),
@@ -830,7 +828,7 @@ function recordes({ completed, todayYear, runs, raceByRun }) {
 
   if (nivelVo2) {
     cunharAte(nivelVo2, {
-      medalhao: 'recordes',
+      medalhao: 'niveis',
       slot: 'vo2',
       raceId: null,
       awardedOn: dayOf(melhorVo2Run?.date),
@@ -857,9 +855,9 @@ function recordes({ completed, todayYear, runs, raceByRun }) {
 
   return {
     medalhao: medalhao({
-      key: 'recordes',
-      name: 'Os Recordes',
-      engraving: 'OS RECORDES',
+      key: 'niveis',
+      name: 'Os Níveis',
+      engraving: 'OS NÍVEIS',
       rule: 'Três níveis — bronze, prata e ouro — em cada uma das quatro distâncias, no passo mais rápido e no nível de VO2. A régua é o VDOT, que compara distâncias diferentes pela aptidão que exigem.',
       slots: [...slotsDistancia, slotRitmo, slotVo2],
     }),
@@ -870,7 +868,7 @@ function recordes({ completed, todayYear, runs, raceByRun }) {
 const OBJETIVOS = [1, 3, 5, 10];
 
 function superacao({ completed, todayYear }) {
-  const batidos = completed.filter(({ outcome }) => outcome?.verdict === 'superado' && outcome?.basis === 'objetivo');
+  const batidos = completed.filter(({ outcome }) => bateuObjetivo(outcome));
   const count = batidos.length;
   const due = [];
   const slots = OBJETIVOS.map((n) => {
@@ -951,30 +949,19 @@ function superacao({ completed, todayYear }) {
 
 /* Estrada e trail são os dois únicos terrenos (RACE_TERRAIN_TYPES em
    utils/run.js) e são um eixo diferente da distância: 21 km em trail não é
-   a mesma prova que 21 km em estrada. Este medalhão traz para o Palmarés a
-   conquista `primeira_trail` de utils/achievements.js, que até aqui só
-   vivia no hub, e dá-lhe o par que lhe faltava — a primeira de estrada —
-   mais o marco de veterano em cada terreno, a 5.ª.
-
-   A régua do terreno é a mesma de `achievements.js`: `race_type === 'trail'`
-   é trail, tudo o resto é estrada (a coluna só admite os dois valores e o
-   formulário guarda 'estrada' por omissão; uma prova antiga sem terreno
-   conta como estrada, que é o que era).
+   a mesma prova que 21 km em estrada. Este medalhão é a casa da regra: a
+   conquista `primeira_trail` do hub é hoje a mesma pergunta feita a uma
+   prova só (`provasDoTerreno` em utils/premios.js), e não uma segunda
+   contagem que podia discordar desta. O par que faltava à conquista — a
+   primeira de estrada — e o marco de veterano, a 5.ª, só existem aqui.
 
    Sem esmalte: isto conta ocorrências, não um tempo nem um objetivo batido
    — não há cor que queira dizer "quantas". */
 
-const TERRENOS = [
-  { key: 'estrada', nome: 'estrada', em: 'em estrada' },
-  { key: 'trail', nome: 'trail', em: 'em trail' },
-];
-
 const TERRENO_MARCOS = [1, 5];
 
-const terrenoDe = (race) => (race?.race_type === 'trail' ? 'trail' : 'estrada');
-
 function terreno({ completed, todayYear }) {
-  const porTerreno = new Map(TERRENOS.map((t) => [t.key, completed.filter(({ race }) => terrenoDe(race) === t.key)]));
+  const porTerreno = new Map(TERRENOS.map((t) => [t.key, provasDoTerreno(completed, t.key)]));
   const due = [];
   const slots = [];
 
@@ -1068,46 +1055,22 @@ function terreno({ completed, todayYear }) {
 
 const SEQUENCIAS = [2, 3, 5, 8];
 
-/* A conquista `sequencia` de utils/achievements.js conta a sequência que
-   chega a HOJE (`currentStreak`: das provas passadas para trás, até uma que
-   ficou por registar). Aqui é preciso a outra metade da história — a MAIOR
-   sequência de sempre — porque uma medalha ganha não se perde no dia em que
-   a sequência seguinte quebra.
-
-   Por isso o varrimento é ao contrário: do princípio para o fim, com um
-   máximo corrente, como `anoKm` faz com o melhor período. Cada vez que a
-   sequência em curso passa o recorde anterior E cai num marco (2, 3, 5, 8),
+/* O varrimento é um só e vive em `utils/premios.js` (`varrerSequencia`): do
+   princípio para o fim, com um máximo corrente, como `anoKm` faz com o
+   melhor período. Aqui fica-se com a MAIOR sequência de sempre — porque uma
+   medalha ganha não se perde no dia em que a sequência seguinte quebra — e
+   com os marcos: cada vez que o máximo cresce E cai num marco (2, 3, 5, 8),
    esse encaixe cunha-se no dia da prova que o confirmou. É a re-cunhagem
-   d'Os Recordes vista do outro lado: como o máximo só cresce de um em um,
+   d'Os Níveis vista do outro lado: como o máximo só cresce de um em um,
    um recorde novo enche sempre um encaixe novo — nunca o mesmo duas vezes.
 
-   A régua do elo é a de `currentStreak`: uma prova que já passou só conta
-   se estiver concluída E com corrida ligada; se passou sem registo, quebra.
-   Provas ainda por correr não entram nem quebram. */
-
-function melhorSequencia({ raceEvents, runs, today }) {
-  const passadas = (raceEvents || [])
-    .filter((race) => race && dayOf(race.date) && dayOf(race.date) <= today)
-    .sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
-  const wins = [];
-  let atual = [];
-  let best = 0;
-  for (const race of passadas) {
-    if (race.status !== 'concluida' || !findRaceRun(runs || [], race)) {
-      atual = [];
-      continue;
-    }
-    atual = [...atual, race];
-    if (atual.length > best) {
-      best = atual.length;
-      if (SEQUENCIAS.includes(best)) wins.push({ n: best, race, awardedOn: dayOf(race.date), races: [...atual] });
-    }
-  }
-  return { wins, best, atual };
-}
+   A outra metade da história — em que elo ficou CADA prova, que é o "N
+   provas seguidas" do hub — sai do mesmo varrimento (`posicaoDe`), em
+   utils/achievements.js. Eram dois cálculos e passaram a um. */
 
 function sequencia({ completed, raceEvents, runs, today, todayYear }) {
-  const { wins, best, atual } = melhorSequencia({ raceEvents, runs, today });
+  const { recordes, best, atual } = varrerSequencia({ raceEvents, runs, today });
+  const wins = recordes.filter((w) => SEQUENCIAS.includes(w.n));
   const entryByRace = new Map(completed.map((entry) => [entry.race.id, entry]));
   const contribsOf = (races) => newestFirst(races
     .map((race) => entryByRace.get(race.id))
@@ -1209,12 +1172,12 @@ function pickHero(medalhoes) {
 }
 
 export function computeMedalhoes({ runs = [], raceEvents = [], profile = {}, today } = {}) {
-  const hoje = dayOf(today) || new Date().toISOString().slice(0, 10);
+  const hoje = requireToday(today, 'computeMedalhoes');
   const todayYear = hoje.slice(0, 4);
-  // Da mais antiga para a mais recente: "a primeira", "o 3.º objetivo".
-  const completed = completedRaces({ raceEvents, runs, profile: profile || {} })
-    .filter(({ race }) => dayOf(race.date) <= hoje)
-    .reverse();
+  // Da mais antiga para a mais recente: "a primeira", "o 3.º objetivo". O
+  // filtro das provas com data futura é da régua (`completedRaces`), não
+  // daqui — era a divergência que os dois motores tinham entre si.
+  const completed = completedRaces({ raceEvents, runs, profile: profile || {}, today: hoje }).reverse();
 
   // Que prova é de cada corrida — a mesma ligação do hub (findRaceRun), para
   // uma corrida de prova na lista abrir o hub e não o registo solto.
@@ -1228,7 +1191,7 @@ export function computeMedalhoes({ runs = [], raceEvents = [], profile = {}, tod
   const parts = {
     ano_km: anoKm(ctx),
     distancias: distancias(ctx),
-    recordes: recordes(ctx),
+    niveis: niveis(ctx),
     terreno: terreno(ctx),
     sequencia: sequencia(ctx),
     superacao: superacao(ctx),

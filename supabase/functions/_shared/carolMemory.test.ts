@@ -87,11 +87,14 @@ Deno.test("cartão diário: hoje e ontem, com a prontidão e o conceito", () => 
   assertEquals(buildDailyCardContext([{ date: "2026-09-18" }], "2026-09-18"), null);
 });
 
+/* O medalhão chamou-se 'recordes' até 2026-09-21 e passou a 'niveis': as
+   linhas antigas continuam em medal_awards e as duas chaves têm de contar
+   para o mesmo recorde em vigor. */
 Deno.test("palmarés: o recorde em vigor é o mais recente; terreno agrupa encaixes numerados", () => {
   const text = buildPalmaresContext(
     [
       { medalhao: "recordes", slot: "10k", value: 2900, awarded_at: "2026-03-01T10:00:00Z" },
-      { medalhao: "recordes", slot: "10k", value: 2712, awarded_at: "2026-09-01T10:00:00Z" },
+      { medalhao: "niveis", slot: "10k", value: 2712, awarded_at: "2026-09-01T10:00:00Z" },
       { medalhao: "distancias", slot: "21k", value: null, awarded_at: "2026-05-01" },
       { medalhao: "distancias", slot: "10k", value: null, awarded_at: "2026-03-01" },
       { medalhao: "superacao", slot: "o1", value: 1, awarded_at: "2026-03-01" },

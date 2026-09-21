@@ -58,7 +58,7 @@ const TONES = {
 };
 
 /* A conquista nova (specs/gamificacao-provas.md §1): entra 300 ms depois do
-   check. `achievement` é uma conquista do computeAchievements (name, detail,
+   check. `achievement` é uma conquista de `achievementsForRace` (name, detail,
    tone, Icon), com um `extra` opcional para o "+1 conquista" quando a prova
    deu mais do que uma. */
 const DUR_ACHIEVEMENT_IN = 300;
