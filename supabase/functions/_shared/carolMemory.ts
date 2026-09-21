@@ -23,6 +23,9 @@
 import { buildCheckinContext, type DailyCheckin } from "./formulas/checkinAlarms.ts";
 import { normalizeGender } from "./formulas/vocabulary.ts";
 import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, ADHERENCE_WINDOW_DAYS } from "./formulas/prescriptionAdherence.ts";
+import { computeBestPace, type BestPaceBucket } from "./formulas/bestPace.ts";
+import { computeVdotTrend } from "./formulas/vdotTrend.ts";
+import { formatPaceMinKm } from "./formulas/paceFormat.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
 // Quota por tipo: as refeições são várias por dia e, com um teto só,
@@ -334,7 +337,17 @@ export function buildBodyGoalsContext(profile: any, latestBody: any): string | n
 const MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 export interface PortraitInput {
-  runs: Array<{ date: string; distance_km: number | string | null }>;
+  runs: Array<{
+    date: string;
+    distance_km: number | string | null;
+    duration_seconds?: number | string | null;
+    kind?: string | null;
+    training_type?: string | null;
+    effort_rpe?: number | string | null;
+    // Projeção details->splits (nunca details inteiro) — computeBestPace só
+    // lê splits; computeVdotTrend nem isso.
+    details?: { splits?: Array<{ distance_km?: number | null; time_seconds?: number | null }> | null } | null;
+  }>;
   gymDates: string[];
   body: Array<{ date: string; weight_kg: number | string | null; body_fat_pct: number | string | null }>;
   racesCompleted: number;
@@ -358,6 +371,7 @@ export function buildAthletePortrait(input: PortraitInput, todayISO: string): st
   if (!runs.length && !gym.length && !body.length) return null;
 
   const lines: string[] = [];
+  let hasMeasureLine = false; // melhores ritmos e/ou forma — só então o rodapé sobre eles faz sentido.
   if (runs.length) {
     const total = sumKm(runs, from, todayISO);
     lines.push(`- Corrida: ${Math.round(total)} km em ${runs.length} corridas nos últimos 12 meses`);
@@ -386,6 +400,33 @@ export function buildAthletePortrait(input: PortraitInput, todayISO: string): st
 
     const longest = runs.reduce((best: any, r) => ((Number(r.distance_km) || 0) > (Number(best?.distance_km) || 0) ? r : best), null);
     if (longest && Number(longest.distance_km) > 0) lines.push(`- Corrida mais longa: ${km(longest.distance_km)} a ${longest.date}`);
+
+    // Melhores ritmos por escalão (ação 5.3) — a mesma fórmula do KPI do
+    // RunDashboard e do painel do chat (buildRunAnalyticsPanel), agora numa
+    // janela de 12 meses em vez de 30 dias.
+    const buckets: BestPaceBucket[] = [5, 10, 21];
+    const paceParts: string[] = [];
+    for (const bucket of buckets) {
+      const best = computeBestPace(runs as any, bucket);
+      if (best) paceParts.push(`${bucket}k ${formatPaceMinKm(best.pace)} (${best.date})`);
+    }
+    if (paceParts.length) { lines.push(`- Melhores ritmos da época: ${paceParts.join(" · ")}`); hasMeasureLine = true; }
+
+    // Forma aeróbica (ação 5.3) — mesmo critério e o mesmo padrão de resumo
+    // do painel do chat (último valor vs média dos anteriores). Precisa de
+    // pelo menos dois pontos para dizer alguma coisa. A direção vai em
+    // palavras e o VDOT entre parêntesis: o chat não deixa "VDOT" chegar a
+    // um iniciante (PROIBIDO em coach-chat), e as análises não têm esse
+    // gating por nível — aqui a palavra fica secundária à frase.
+    const vdot = computeVdotTrend(runs as any);
+    if (vdot.length >= 2) {
+      const last = vdot[vdot.length - 1];
+      const prevAvg = vdot.slice(0, -1).reduce((s, p) => s + p.vdot, 0) / (vdot.length - 1);
+      const trend = last.vdot > prevAvg ? "a subir" : last.vdot < prevAvg ? "a descer" : "estável";
+      const mes = MONTHS[Number(last.date.slice(5, 7)) - 1];
+      lines.push(`- Forma aeróbica: ${trend} (VDOT ${last.vdot} em ${mes}).`);
+      hasMeasureLine = true;
+    }
   }
 
   if (gym.length) {
@@ -411,7 +452,8 @@ export function buildAthletePortrait(input: PortraitInput, todayISO: string): st
   if (!lines.length) return null;
   return `RETRATO DA ÉPOCA (últimos 12 meses — o contexto largo; os blocos de 7 e 30 dias acima são o detalhe):\n` +
     lines.join("\n") +
-    `\nUsa-o para medir o presente contra a história dele: "é a tua semana mais alta desde março" vale mais do que um número solto.`;
+    `\nUsa-o para medir o presente contra a história dele: "é a tua semana mais alta desde março" vale mais do que um número solto.` +
+    (hasMeasureLine ? ` Os melhores ritmos e a forma são para dar medida, não para elogiar por rotina.` : "");
 }
 
 // ── 1.3 — A memória partilhada pelas análises e pelo cartão ──────────────
@@ -610,9 +652,69 @@ export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: str
   }
 }
 
-/** Memória durável + conversa recente, para as análises e o cartão diário. */
-export async function fetchSharedMemoryBlock(sb: any, userId: string): Promise<string | null> {
+const PORTRAIT_ROW_LIMIT = 1000; // config.toml max_rows — o PostgREST corta em silêncio acima disto.
+
+/**
+ * O retrato da época (ação 5.3): doze meses de corrida, ginásio, provas e
+ * peso, com os melhores ritmos por escalão e a forma aeróbica. Extraído de
+ * fetchChatMemoryBlocks, onde só o chat o lia, para servir também
+ * fetchSharedMemoryBlock (cartão diário e analyze-run) sem duplicar as
+ * quatro consultas. `todayISO` é o dia do CHAMADOR, não hoje por omissão: o
+ * analyze-run passa a data da própria corrida, para uma corrida registada
+ * com atraso não ver meses que ainda não tinham acontecido nessa altura.
+ */
+export async function fetchPortraitBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
   try {
+    const yearFrom = addDaysISO(todayISO, -364);
+    const [runsR, gymR, bodyR, racesR] = await Promise.all([
+      // Projeção details->splits, nunca details inteiro — computeBestPace só
+      // lê os splits.
+      sb.from("runs").select("date, distance_km, duration_seconds, kind, training_type, effort_rpe, details:details->splits")
+        .eq("user_id", userId).gte("date", yearFrom).lte("date", todayISO)
+        .order("date", { ascending: false }).limit(PORTRAIT_ROW_LIMIT),
+      sb.from("workout_sessions").select("date")
+        .eq("user_id", userId).eq("status", "concluido").gte("date", yearFrom).lte("date", todayISO)
+        .order("date", { ascending: false }).limit(PORTRAIT_ROW_LIMIT),
+      sb.from("body_assessments").select("date, weight_kg, body_fat_pct")
+        .eq("user_id", userId).gte("date", yearFrom).lte("date", todayISO)
+        .order("date", { ascending: false }).limit(PORTRAIT_ROW_LIMIT),
+      sb.from("race_events").select("id", { count: "exact", head: true })
+        .eq("user_id", userId).eq("status", "concluida").gte("date", yearFrom).lte("date", todayISO),
+    ]);
+    warn("runs(retrato)", runsR.error);
+    warn("workout_sessions(retrato)", gymR.error);
+    warn("body_assessments(retrato)", bodyR.error);
+    warn("race_events(retrato)", racesR.error);
+    // O teto é silencioso: um atleta com mais de 1000 corridas, sessões ou
+    // avaliações num ano perdia as mais antigas da janela sem aviso nenhum.
+    if ((runsR.data || []).length >= PORTRAIT_ROW_LIMIT) console.warn("carolMemory: runs(retrato) atingiu o limite de linhas");
+    if ((gymR.data || []).length >= PORTRAIT_ROW_LIMIT) console.warn("carolMemory: workout_sessions(retrato) atingiu o limite de linhas");
+    if ((bodyR.data || []).length >= PORTRAIT_ROW_LIMIT) console.warn("carolMemory: body_assessments(retrato) atingiu o limite de linhas");
+    return buildAthletePortrait({
+      runs: runsR.data || [],
+      gymDates: (gymR.data || []).map((g: any) => g.date),
+      body: bodyR.data || [],
+      racesCompleted: Number(racesR.count) || 0,
+    }, todayISO);
+  } catch (e) {
+    console.warn("carolMemory: fetchPortraitBlock falhou:", e);
+    return null;
+  }
+}
+
+/**
+ * Memória durável + conversa recente, para as análises e o cartão diário.
+ * `portrait: true` (5.3) junta também o retrato da época — só o cartão
+ * diário e o analyze-run o pedem; uma refeição ou uma avaliação corporal não
+ * precisam da época de corrida.
+ */
+export async function fetchSharedMemoryBlock(
+  sb: any,
+  userId: string,
+  opts: { portrait?: boolean; todayISO?: string } = {},
+): Promise<string | null> {
+  try {
+    const today = lisbonTodayISO();
     const [{ data: notes, error: e1 }, { data: messages, error: e2 }] = await Promise.all([
       sb.from("coach_notes").select("category, note").eq("user_id", userId)
         .order("category", { ascending: true }).order("updated_at", { ascending: false }),
@@ -624,8 +726,9 @@ export async function fetchSharedMemoryBlock(sb: any, userId: string): Promise<s
     const shared = buildSharedMemoryBlock(notes, messages);
     // Como o atleta se sente hoje (Fase 2): a análise de uma corrida com dor
     // no check-in não pode ser igual à de uma corrida sem ela.
-    const checkin = await fetchCheckinBlock(sb, userId, lisbonTodayISO());
-    return [checkin, shared].filter(Boolean).join("\n\n") || null;
+    const checkin = await fetchCheckinBlock(sb, userId, today);
+    const portrait = opts.portrait ? await fetchPortraitBlock(sb, userId, opts.todayISO || today) : null;
+    return [checkin, portrait, shared].filter(Boolean).join("\n\n") || null;
   } catch (e) {
     console.warn("carolMemory: fetchSharedMemoryBlock falhou:", e);
     return null;
@@ -652,14 +755,16 @@ export interface ChatMemoryBlocks {
  */
 export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: string, profile?: any): Promise<ChatMemoryBlocks> {
   const recordsFrom = addDaysISO(todayISO, -(RECORD_MEMORY_DAYS - 1));
-  const yearFrom = addDaysISO(todayISO, -364);
   const hasText = "notes.not.is.null,coach_notes.not.is.null";
   try {
     // O check-in e as impressões usam o dia de Lisboa, como o cliente as grava.
     const checkinPromise = fetchCheckinBlock(sb, userId, lisbonTodayISO(), profile);
     const impressionsPromise = fetchImpressionsBlock(sb, userId, lisbonTodayISO());
     const adherencePromise = fetchAdherenceBlock(sb, userId, todayISO);
-    const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, pastRacesR, yearRunsR, yearGymR, yearBodyR, yearRacesR, bodyNotesR, goalsR] = await Promise.all([
+    // O retrato da época (5.3) — extraído para fetchPortraitBlock, que o
+    // cartão diário e o analyze-run também chamam via fetchSharedMemoryBlock.
+    const portraitPromise = fetchPortraitBlock(sb, userId, todayISO);
+    const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, pastRacesR, bodyNotesR, goalsR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
         .eq("user_id", userId).gte("date", recordsFrom).lte("date", todayISO).or(hasText)
         .order("date", { ascending: false }).limit(RECORD_QUOTA.runs),
@@ -679,14 +784,6 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       sb.from("race_events").select("id, date, name, distance_km, race_priority, target_time_seconds, notes, race_type, elevation_gain_m, location, coach_balance")
         .eq("user_id", userId).eq("status", "concluida").lt("date", todayISO)
         .order("date", { ascending: false }).limit(5),
-      sb.from("runs").select("date, distance_km")
-        .eq("user_id", userId).gte("date", yearFrom).lte("date", todayISO),
-      sb.from("workout_sessions").select("date")
-        .eq("user_id", userId).eq("status", "concluido").gte("date", yearFrom).lte("date", todayISO),
-      sb.from("body_assessments").select("date, weight_kg, body_fat_pct")
-        .eq("user_id", userId).gte("date", yearFrom).lte("date", todayISO),
-      sb.from("race_events").select("id", { count: "exact", head: true })
-        .eq("user_id", userId).eq("status", "concluida").gte("date", yearFrom).lte("date", todayISO),
       // 5.2: as avaliações comentadas (o comentário dela é `ai_summary`) e a
       // proposta de objetivos por decidir.
       sb.from("body_assessments").select("date, weight_kg, notes, ai_summary")
@@ -704,10 +801,6 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     warn("coach_daily_summary", cardR.error);
     warn("medal_awards", medalsR.error);
     warn("race_events(concluídas)", pastRacesR.error);
-    warn("runs(12 meses)", yearRunsR.error);
-    warn("workout_sessions(12 meses)", yearGymR.error);
-    warn("body_assessments(12 meses)", yearBodyR.error);
-    warn("race_events(12 meses)", yearRacesR.error);
     warn("body_assessments(notas)", bodyNotesR.error);
     warn("coach_goal_proposals", goalsR.error);
 
@@ -740,12 +833,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       records: [recordsBlock, upcomingBlock].filter(Boolean).join("\n\n") || null,
       dailyCard: buildDailyCardContext(cardR.data, todayISO),
       palmares: buildPalmaresContext(medalsR.data, pastRaces, raceRuns),
-      portrait: buildAthletePortrait({
-        runs: yearRunsR.data || [],
-        gymDates: (yearGymR.data || []).map((g: any) => g.date),
-        body: yearBodyR.data || [],
-        racesCompleted: Number(yearRacesR.count) || 0,
-      }, todayISO),
+      portrait: await portraitPromise,
       checkin: await checkinPromise,
       impressions: await impressionsPromise,
       adherence: await adherencePromise,

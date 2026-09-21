@@ -20,6 +20,8 @@ import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
+import { ageFromBirthDate } from "../_shared/formulas/age.ts";
+import { resolveMaxHR, resolveHrZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
@@ -289,6 +291,19 @@ export function buildDailySummaryContext(params: {
       weight_kg: profile?.weight_kg ?? null,
       height_cm: profile?.height_cm ?? null,
       gender: profile?.gender ?? null,
+      idade: ageFromBirthDate(profile?.birth_date ?? null),
+      fc_repouso_bpm: profile?.resting_hr_bpm ?? null,
+      // A mesma FCmáx (observada nos prints de 30 dias, senão Tanaka) e a
+      // mesma régua de zonas do chat e do analyze-run (ação 5.4) — nunca
+      // uma quarta conta diferente.
+      zonas_fc: (() => {
+        const idade = ageFromBirthDate(profile?.birth_date ?? null);
+        const observados: ObservedHrReading[] = (recentRuns || [])
+          .map((r: any) => ({ bpm: Number((r.details as Record<string, unknown> | null)?.max_heart_rate_bpm), date: r.date }))
+          .filter((r: ObservedHrReading) => Number.isFinite(r.bpm));
+        const maxHr = resolveMaxHR(idade, observados);
+        return maxHr ? resolveHrZones(maxHr.bpm, profile?.resting_hr_bpm ?? null).zones : null;
+      })(),
     },
     objetivos_diarios_tdee_kcal: tdee ?? null,
     corridas_ultimos_30_dias: recentRuns || [],
@@ -540,9 +555,11 @@ export function computeBodyMetrics(bodyAssessments: any[], gender: string | null
 export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null): number | null {
   const { weight_kg, height_cm, gender, birth_date } = profile || {};
   if (!weight_kg || !height_cm || !gender || !birth_date) return null;
-  const ageMs = new Date().getTime() - new Date(birth_date + "T00:00:00Z").getTime();
-  const age   = Math.floor(ageMs / (365.25 * 86400 * 1000));
-  const bmr   = sharedComputeBMR(Number(weight_kg), Number(height_cm), age, isFemale(gender));
+  // ageFromBirthDate (calendário, ação 5.4) em vez do ms/365,25 desta linha:
+  // era a terceira cópia da conta da idade no servidor.
+  const age = ageFromBirthDate(birth_date);
+  if (age === null) return null;
+  const bmr = sharedComputeBMR(Number(weight_kg), Number(height_cm), age, isFemale(gender));
   return sharedComputeTDEE(bmr, weeklyVolumeKm, Number(weight_kg));
 }
 
@@ -703,8 +720,9 @@ Deno.serve(async (req) => {
     }
 
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): o
-    // cartão não pode contradizer o que a Carol combinou ontem no chat.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
+    // cartão não pode contradizer o que a Carol combinou ontem no chat. Com
+    // o retrato da época (5.3): o cartão via só 30 dias de tendência.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today });
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
     const [

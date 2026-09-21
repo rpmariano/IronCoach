@@ -16,6 +16,8 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
+import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -522,6 +524,9 @@ async function generateGymCoachNotes(
   sameDayRuns: any[],
   geminiKey: string,
   memoryBlock: string | null = null,
+  // "FC média X bpm = ZY (Karvonen; FCmáx Z observada)" (ação 5.4) — só em
+  // aulas; substitui a linha simples "FC média: X bpm" quando existe.
+  hrZoneLine: string | null = null,
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
 
@@ -542,7 +547,7 @@ async function generateGymCoachNotes(
     session.categories.length ? `Grupos/modalidade: ${session.categories.join(", ")}` : null,
     m.duration_seconds ? `Duração: ${Math.round(m.duration_seconds / 60)} min` : null,
     m.calories_kcal ? `Calorias: ${m.calories_kcal} kcal` : null,
-    m.avg_hr ? `FC média: ${m.avg_hr} bpm` : null,
+    hrZoneLine ? hrZoneLine : m.avg_hr ? `FC média: ${m.avg_hr} bpm` : null,
     m.max_hr ? `FC máxima: ${m.max_hr} bpm` : null,
     m.exertion ? `Esforço percebido: ${m.exertion}/10` : null,
     m.volume_kg ? `Volume total: ${m.volume_kg} kg` : null,
@@ -698,6 +703,26 @@ async function attachGymCoachNotes(
       .eq("user_id", userId)
       .eq("date", ctx.date);
 
+    // Em que zona foi a FC média (ação 5.4) — só para aulas: numa força a
+    // FC não diz nada sobre a carga. A mesma régua do analyze-run e do chat.
+    let hrZoneLine: string | null = null;
+    if (ctx.kind === "aula") {
+      const { data: hrProfile } = await sb.from("profiles").select("birth_date, resting_hr_bpm").eq("id", userId).maybeSingle();
+      const observedMaxHr = [
+        ...(previous || []).map((p: any) => ({ bpm: Number(p.max_hr), date: p.date })),
+        ctx.metrics.max_hr != null ? { bpm: Number(ctx.metrics.max_hr), date: ctx.date } : null,
+      ].filter((r): r is { bpm: number; date: string } => !!r && Number.isFinite(r.bpm));
+      const maxHr = resolveMaxHR(ageFromBirthDate(hrProfile?.birth_date ?? null), observedMaxHr);
+      if (maxHr && ctx.metrics.avg_hr != null) {
+        const { zones, method } = resolveHrZones(maxHr.bpm, hrProfile?.resting_hr_bpm ?? null);
+        const zone = zoneOf(Number(ctx.metrics.avg_hr), zones);
+        if (zone) {
+          const origem = maxHr.source === "observada" ? `FCmáx ${maxHr.bpm} observada` : `FCmáx ${maxHr.bpm} por Tanaka`;
+          hrZoneLine = `FC média ${ctx.metrics.avg_hr} bpm = ${zone} (${method === "karvonen" ? "Karvonen" : "%FCmáx"}; ${origem})`;
+        }
+      }
+    }
+
     const result = await generateGymCoachNotes(
       { date: ctx.date, kind: ctx.kind, categories: ctx.categories, metrics: ctx.metrics, notes: ctx.notes },
       previous || [],
@@ -706,6 +731,7 @@ async function attachGymCoachNotes(
       sameDayRuns || [],
       geminiKey,
       await memoryPromise,
+      hrZoneLine,
     );
 
     if (result.text) {

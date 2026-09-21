@@ -12,7 +12,8 @@ import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeek
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
-import { computeMaxHR, computeKarvonenZones, computePctMaxZones } from "../_shared/formulas/heartRateZones.ts";
+import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
+import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { computeTrainingDistribution } from "../_shared/formulas/trainingDistribution.ts";
 import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
@@ -104,8 +105,10 @@ const RUNNING_TOOL = {
   name: "get_running_history",
   description:
     "Obtém as corridas do utilizador (data, tipo — simples/treino/competição —, distância, " +
-    "duração, pace) para um intervalo de datas específico. Usa esta função sempre que a " +
-    "pergunta envolva corridas fora dos últimos 30 dias já fornecidos no contexto.",
+    "duração, pace, e o que o relógio tiver gravado: cadência, FC média e máxima, VO2 " +
+    "estimado, limiares e zonas de FC) para um intervalo de datas específico. Usa esta " +
+    "função sempre que a pergunta envolva corridas fora dos últimos 30 dias já fornecidos " +
+    "no contexto.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -1674,7 +1677,24 @@ export function summariseRuns(runs: any[]): string[] {
     const hrStr = details.avg_heart_rate_bpm != null
       ? `FC média ${Math.round(details.avg_heart_rate_bpm)} bpm`
       : null;
-    const parts = [distance, duration, pace, cadStr, hrStr].filter(Boolean);
+    // O que mais o relógio grava (ação 5.4) — só quando existe; a doutrina
+    // não inventa números que o relógio não deu.
+    const maxHrStr = details.max_heart_rate_bpm != null ? `FC máx ${Math.round(details.max_heart_rate_bpm)} bpm` : null;
+    const vo2Str = details.vo2_max != null ? `VO2 est. relógio ${details.vo2_max}` : null;
+    const thresholdParts = [
+      details.aerobic_threshold_bpm != null ? `aeróbio ${Math.round(details.aerobic_threshold_bpm)}` : null,
+      details.anaerobic_threshold_bpm != null ? `anaeróbio ${Math.round(details.anaerobic_threshold_bpm)}` : null,
+    ].filter(Boolean);
+    const thresholdStr = thresholdParts.length ? `limiares ${thresholdParts.join("/")} bpm` : null;
+    const recoveryStr = details.hr_recovery_bpm != null ? `recuperação 1min ${Math.round(details.hr_recovery_bpm)} bpm` : null;
+    const zonesStr = Array.isArray(details.hr_zones) && details.hr_zones.length
+      ? `zonas ${details.hr_zones
+          .filter((z: any) => z?.zone && z?.minutes)
+          .sort((a: any, b: any) => Number(a.zone) - Number(b.zone))
+          .map((z: any) => `Z${z.zone} ${z.minutes}'`)
+          .join(" · ")}`
+      : null;
+    const parts = [distance, duration, pace, cadStr, hrStr, maxHrStr, vo2Str, thresholdStr, recoveryStr, zonesStr].filter(Boolean);
     return `- ${r.date}${r.start_time ? ` às ${hhmm(r.start_time)}` : ""}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
   });
 }
@@ -3633,20 +3653,10 @@ export function buildPlanContext(
   return sections.length > 0 ? sections.join("\n\n") : null;
 }
 
-// Espelha ageFromBirthDate() em src/utils/body.js — duplicado porque o cliente
-// e as Edge Functions correm em runtimes diferentes. Se um mudar, mudar o outro.
-function ageFromBirthDate(birthDate: string | null): number | null {
-  if (!birthDate) return null;
-  const born = new Date(birthDate);
-  if (isNaN(born.getTime())) return null;
-
-  const today = new Date();
-  let age = today.getFullYear() - born.getFullYear();
-  const monthDiff = today.getMonth() - born.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < born.getDate())) age--;
-
-  return age >= 0 && age < 130 ? age : null;
-}
+// ageFromBirthDate vive agora em ../_shared/formulas/age.ts (ação 5.4) — era a
+// terceira cópia no servidor (esta e mais duas inline, uma delas logo abaixo
+// em buildNutritionTargets). Espelha src/utils/body.js, que o cliente mantém
+// à parte (runtime diferente); se um mudar, mudar o outro.
 
 // ─── Bloco 4 — Targets nutricionais calculados ────────────────────────────────
 // Computa valores de referência a partir dos dados do perfil, para que o modelo
@@ -3911,6 +3921,9 @@ export function buildSystemInstruction(
     carol_push_start_hour?: number | null;
     carol_push_end_hour?: number | null;
     water_reminder_enabled?: boolean | null;
+    /* A FCmáx dos prints do relógio, 12 meses (ação 5.4) — resolveMaxHR
+       escolhe entre isto e Tanaka. */
+    observedMaxHr?: ObservedHrReading[] | null;
   },
   nutritionTargetsLine: string | null,
   bodyMetricsLine: string | null,
@@ -4789,28 +4802,22 @@ export function buildSystemInstruction(
   if (biometrics.resting_hr_bpm) {
     bio.push(`FC em repouso: ${biometrics.resting_hr_bpm} bpm`);
   }
-  if (idade !== null) {
-    // Delega em ../_shared/formulas/heartRateZones.ts (T1) — já era sítio
-    // único, movido por consistência arquitetural (specs/formulas-checklist.md
-    // Fase C/E), não por bug.
-    const fcMax = computeMaxHR(idade);
-    if (biometrics.resting_hr_bpm) {
-      const zones = computeKarvonenZones(fcMax, biometrics.resting_hr_bpm);
-      bio.push(
-        `Zonas de FC (Karvonen, FCmáx estimada ${fcMax} bpm por Tanaka): ` +
-        `Z1 ${zones.z1[0]}-${zones.z1[1]} · Z2 ${zones.z2[0]}-${zones.z2[1]} · Z3 ${zones.z3[0]}-${zones.z3[1]} · ` +
-        `Z4 ${zones.z4[0]}-${zones.z4[1]} · Z5 ${zones.z5[0]}-${zones.z5[1]} bpm`,
-      );
-    } else {
-      const zones = computePctMaxZones(fcMax);
-      bio.push(
-        `Zonas de FC (%FCmáx, FCmáx estimada ${fcMax} bpm por Tanaka — menos ` +
-        `precisas por falta de FC em repouso no perfil): Z1 ${zones.z1[0]}-` +
-        `${zones.z1[1]} · Z2 ${zones.z2[0]}-${zones.z2[1]} · ` +
-        `Z3 ${zones.z3[0]}-${zones.z3[1]} · Z4 ${zones.z4[0]}-` +
-        `${zones.z4[1]} · Z5 ${zones.z5[0]}-${zones.z5[1]} bpm`,
-      );
-    }
+  // FCmáx: a maior repetida nos prints do relógio (12 meses) quando existir,
+  // senão Tanaka a partir da idade (ação 5.4) — resolveMaxHR escolhe; sem
+  // idade E sem prints não há zona nenhuma (antes desta ação, sem idade não
+  // saía zona nenhuma mesmo com o relógio a dar a FCmáx de bandeja).
+  const maxHr = resolveMaxHR(idade, biometrics.observedMaxHr);
+  if (maxHr) {
+    const { zones, method } = resolveHrZones(maxHr.bpm, biometrics.resting_hr_bpm);
+    const origem = maxHr.source === "observada"
+      ? `${maxHr.bpm} bpm, a maior repetida nos prints, ${maxHr.date}`
+      : `${maxHr.bpm} bpm, estimada por Tanaka`;
+    const precisao = method === "karvonen" ? "Karvonen" : "%FCmáx — menos precisas por falta de FC em repouso no perfil";
+    bio.push(
+      `Zonas de FC (${precisao}, FCmáx ${origem}): ` +
+      `Z1 ${zones.z1[0]}-${zones.z1[1]} · Z2 ${zones.z2[0]}-${zones.z2[1]} · Z3 ${zones.z3[0]}-${zones.z3[1]} · ` +
+      `Z4 ${zones.z4[0]}-${zones.z4[1]} · Z5 ${zones.z5[0]}-${zones.z5[1]} bpm`,
+    );
   }
   if (bio.length) {
     sys += `\n\nDados biométricos do utilizador:\n${bio.join("\n")}`;
@@ -5213,6 +5220,22 @@ async function handler(req: Request): Promise<Response> {
       .gte("date", runStartISO)
       .lte("date", todayISO)
       .order("date", { ascending: false });
+    // FCmáx observada (ação 5.4) — os prints do relógio, 12 meses, só o
+    // essencial (não é o `details` inteiro de recentRuns, que só cobre 30
+    // dias). resolveMaxHR (mais abaixo) escolhe entre isto e Tanaka.
+    const hrHistoryFromISO = new Date(new Date(todayISO).getTime() - 365 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const { data: maxHrRows, error: err_maxHrRows } = await sb
+      .from("runs")
+      .select("date, details->max_heart_rate_bpm")
+      .eq("user_id", userId)
+      .not("details->max_heart_rate_bpm", "is", null)
+      .gte("date", hrHistoryFromISO)
+      .lte("date", todayISO);
+    warnIfQueryFailed("runs(FCmáx)", err_maxHrRows);
+    const observedMaxHr: ObservedHrReading[] = (maxHrRows || [])
+      .map((r: any) => ({ bpm: Number(r.max_heart_rate_bpm), date: r.date }))
+      .filter((r: ObservedHrReading) => Number.isFinite(r.bpm));
+
     const runningSummary = buildRunningSummary(recentRuns || [], RUNNING_WINDOW_DAYS);
     // 30 dias cobre sempre a semana atual + a semana passada inteiras
     // (pior caso: hoje é segunda, precisa de 8 dias) — não precisa de query extra.
@@ -5425,9 +5448,9 @@ async function handler(req: Request): Promise<Response> {
     const racePhasesPanel = buildRacePhasesPanel(recentRuns || [], nextUpcomingRace, profile, todayISO);
 
     // ── Bloco 4 — Targets nutricionais calculados (Mifflin-St Jeor) ──────
-    const ageFromBirth = profile?.birth_date
-      ? Math.floor((Date.now() - new Date(profile.birth_date as string).getTime()) / (365.25 * 24 * 3600 * 1000))
-      : null;
+    // ageFromBirthDate (calendário) em vez do ms/365,25 desta linha antes da
+    // 5.4 — a mesma idade que o resto do prompt já usa (bio.push acima).
+    const ageFromBirth = ageFromBirthDate((profile?.birth_date as string | null) ?? null);
     const nutritionTargetsLine = buildNutritionTargets({
       weightKg:      (profile?.weight_kg as number | null) ?? null,
       heightCm:      (profile?.height_cm as number | null) ?? null,
@@ -5681,6 +5704,7 @@ async function handler(req: Request): Promise<Response> {
         carol_push_start_hour: (profile?.carol_push_start_hour as number | null) ?? null,
         carol_push_end_hour: (profile?.carol_push_end_hour as number | null) ?? null,
         water_reminder_enabled: (profile?.water_reminder_enabled as boolean | null) ?? null,
+        observedMaxHr,
       },
       nutritionTargetsLine,
       bodyMetricsLine,

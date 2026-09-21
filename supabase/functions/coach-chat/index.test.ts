@@ -3813,6 +3813,29 @@ Deno.test("bio: sem notificações ligadas, ela não promete avisar fora da app"
   assertEquals(unknown.includes("Notificações tuas"), false);
 });
 
+// Ação 5.4: a FCmáx observada nos prints do relógio passa a valer mesmo sem
+// idade no perfil — antes, sem birth_date, não saía zona nenhuma mesmo com o
+// relógio a dar a FCmáx de bandeja (o `if (idade !== null)` de antes).
+Deno.test("bio: FCmáx observada nos prints substitui Tanaka, mesmo sem idade no perfil", () => {
+  const withObserved = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, resting_hr_bpm: 60, observedMaxHr: [{ bpm: 185, date: "2026-03-01" }, { bpm: 183, date: "2026-05-01" }] },
+    null, null, "N", "A", null, null, null, null, null, null,
+  );
+  assertStringIncludes(withObserved, "Zonas de FC (Karvonen, FCmáx 185 bpm, a maior repetida nos prints, 2026-03-01):");
+  assertStringIncludes(withObserved, "Z1 123-135");
+
+  const withoutRestingHr = buildSystemInstruction(
+    null,
+    { ...BIO_BASE, observedMaxHr: [{ bpm: 185, date: "2026-03-01" }, { bpm: 183, date: "2026-05-01" }] },
+    null, null, "N", "A", null, null, null, null, null, null,
+  );
+  assertStringIncludes(withoutRestingHr, "%FCmáx — menos precisas por falta de FC em repouso no perfil");
+
+  const withNeither = buildSystemInstruction(null, { ...BIO_BASE, resting_hr_bpm: 60 }, null, null, "N", "A", null, null, null, null, null, null);
+  assertEquals(withNeither.includes("Zonas de FC"), false);
+});
+
 Deno.test("buildRaceEventsContext: o conflito já reconhecido não volta a ser levantado", () => {
   const text = buildRaceEventsContext([
     { id: "r1", date: "2026-11-08", name: "Maratona", race_type: "estrada", distance_km: 42.2, race_priority: "a", conflict_acknowledged_at: "2026-09-19T12:00:00Z" },
