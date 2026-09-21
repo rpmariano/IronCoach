@@ -632,6 +632,12 @@ describe('RaceHubView — o objetivo do rascunho da agenda', () => {
     const corrompida = [{ id: 'mau', kind: 'normal', date: pastDateISO(5), distance_km: 8, duration_seconds: null }, ...TREINO];
     render(<RaceHubView race={DRAFT} runs={corrompida} profile={PROFILE} />);
 
-    expect(screen.getByTestId('race-forecast').textContent).toContain('1:52:00');
+    const bloco = screen.getByTestId('race-forecast');
+    expect(bloco.textContent).toContain('1:52:00');
+    /* O objetivo sozinho não chega como prova: passava na mesma com a
+       previsão perdida. A diferença só existe se as duas sobreviverem —
+       e não pode dizer "Regista corridas" a quem tem corridas. */
+    expect(screen.getByTestId('race-forecast-delta')).toBeInTheDocument();
+    expect(bloco.textContent).not.toContain('Regista corridas');
   });
 });

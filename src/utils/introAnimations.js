@@ -38,7 +38,7 @@ export const DUR_BARS = 550;        // --dur-bars
 export const STAGGER_BARS = 60;     // --stagger-bars
 export const DUR_TRAIL = 1600;      // --dur-trail
 export const DUR_CONFIRM = 420;     // --dur-confirm
-export const DUR_CONFIRM_EXIT = 900; // --dur-confirm-exit
+export const DUR_CONFIRM_EXIT = 900; // --dur-confirm-exit (o halo; já não temporiza saída nenhuma)
 export const DUR_TAP = 120;         // --dur-tap (também o "tudo a 120ms" do movimento reduzido)
 
 /** Lê o conjunto de chaves já tocadas nesta sessão. Tolerante a um

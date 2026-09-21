@@ -2534,7 +2534,10 @@ Deno.test("buildRaceEventsContext: a previsão do treino entra com tempo e ritmo
     [makeRaceEvent({ date: "2026-11-15" })],
     TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
   );
-  assertStringIncludes(ctx!, "PREVISÃO DE TEMPO: o treino aponta para 1:46:10 (10.37/km)");
+  // Em duas partes de propósito: o número é o que interessa proteger, a
+  // frase à volta pode mudar sem partir o teste — e já partiu uma vez.
+  assertStringIncludes(ctx!, "PREVISÃO DE TEMPO:");
+  assertStringIncludes(ctx!, "o treino aponta para 1:46:10 (10.37/km)");
   assertStringIncludes(ctx!, "ainda não fixou tempo-alvo");
 });
 

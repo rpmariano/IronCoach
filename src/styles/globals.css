@@ -415,9 +415,9 @@ a[href]:not(.no-tap-scale):active {
 
 /* ===== Registo confirmado (animação 6) =====
    Check com impulso elástico (--ease-spring, --dur-confirm, overshoot 1.12),
-   halo a dissipar-se e a etiqueta a subir ao sair. O ecrã volta ao seu
-   caminho normal aos --dur-confirm-exit (900ms) — quem conta esse tempo é o
-   RecordConfirmation.jsx, não o CSS. */
+   halo a dissipar-se e a etiqueta a subir ao sair. --dur-confirm-exit (900ms)
+   é a duração do halo; desde 2026-09-21 já não é o tempo até o ecrã sair —
+   a confirmação espera pela dispensa do atleta. */
 .record-confirm-check { animation: recordConfirmPop var(--dur-confirm) var(--ease-spring) both; }
 @keyframes recordConfirmPop {
   0%   { transform: scale(.2); opacity: 0; }
@@ -472,8 +472,6 @@ a[href]:not(.no-tap-scale):active {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: none; }
 }
-.welcome-drain { transform-origin: left; animation: welcomeDrain 6000ms linear 1800ms both; }
-@keyframes welcomeDrain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 .welcome-halo { animation: welcomeHalo var(--dur-breathe) ease-in-out 3 both; }
 @keyframes welcomeHalo {
   0%, 100% { transform: scale(.92); opacity: .55; }

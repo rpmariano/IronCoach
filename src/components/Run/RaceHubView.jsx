@@ -117,9 +117,22 @@ export default function RaceHubView({
   // Dashboard: getRacePrediction é o ponto único que resolve nível de
   // experiência e distância equivalente ITRA, para não voltar a divergir
   // entre ecrãs (ver nota em utils/biEngine.js).
+  /* As corridas que servem para prever: o fastestRun do motor só exige
+     distance_km > 0, por isso uma corrida com distância e sem duração entrava
+     como acumulador do reduce e devolvia NaN — o que apagava a previsão do
+     ecrã e punha o bloco a dizer "Regista corridas" a quem tem corridas
+     registadas. O filtro estava dentro do raceForecast, mas o hub passa-lhe a
+     previsão já feita, por isso nunca corria no único caminho real (2.ª
+     revisão pré-deploy). Fica aqui, onde a previsão nasce, e serve também o
+     plano do dia e a distância equivalente. É o mesmo critério do
+     classifyRaceOutcome. */
+  const runsComTempo = useMemo(() =>
+    (runs || []).filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0),
+  [runs]);
+
   const prediction = useMemo(() =>
-    getRacePrediction(race, profile, runs),
-  [race, profile, runs]);
+    getRacePrediction(race, profile, runsComTempo),
+  [race, profile, runsComTempo]);
 
   /* O objetivo e a previsão prontos a ler, com ritmo, diferença e leitura
      (utils/raceTimes.js) — o mesmo sítio de onde saem o bloco pós-prova e o

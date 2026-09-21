@@ -7,6 +7,17 @@ const ToastContext = createContext({
 
 export const useToast = () => useContext(ToastContext);
 
+/* Quantos avisos ficam à vista ao mesmo tempo. Cada um ocupa ~52 px (44 de
+   altura mínima + 8 de intervalo): num telemóvel de 667 px, uma dúzia enchia
+   o ecrã de cima a baixo e empurrava o próprio "Limpar tudo" para fora — a
+   saída desaparecia justamente quando passava a ser precisa (2.ª revisão
+   pré-deploy). Com a pilha a não sair sozinha, isto acontecia num dia normal:
+   são 8 copos de água até à meta, cada um com o seu aviso.
+
+   O que passa deste número não se perde em silêncio — conta-se na linha de
+   baixo, e o mais antigo sai quando um dos visíveis for dispensado. */
+export const TOASTS_VISIVEIS = 4;
+
 /* Os avisos curtos da app — "+250 ml de água", "Guardado", "Não consegui
    registar". São 84 sítios a chamar `showToast`.
 
@@ -32,36 +43,58 @@ export const ToastProvider = ({ children }) => {
     setToasts((prev) => [...prev, { id, message, type }]);
   }, []);
 
+  const visiveis = toasts.slice(-TOASTS_VISIVEIS);
+  const escondidos = toasts.length - visiveis.length;
+
   return (
     <ToastContext.Provider value={{ showToast }}>
-      {children}
+      {/* Antes de {children} de propósito: o contentor é `position: fixed`,
+          por isso a ordem no DOM não mexe com o sítio onde aparece, mas mexe
+          com a ordem de tabulação. Depois da app, quem navega por teclado
+          tinha de percorrer o ecrã inteiro para chegar a um aviso que já não
+          sai sozinho (2.ª revisão pré-deploy). */}
       <div className="toast-container">
-        {/* O anúncio ao leitor de ecrã continua a ser do contentor: o que
-            muda é quem fecha, não como se lê. */}
-        <div className="toast-live" role="status" aria-live="polite">
-          {toasts.map((t) => (
+        {toasts.length > 2 && (
+          /* Acima da pilha, não abaixo: em baixo era o primeiro a sair do
+             ecrã quando os avisos se acumulavam. */
+          <button
+            type="button"
+            className="toast-clear-all"
+            data-testid="toast-clear-all"
+            onClick={() => setToasts([])}
+          >
+            Limpar tudo ({toasts.length})
+          </button>
+        )}
+        {/* A região viva existe desde o primeiro render e é sempre a mesma,
+            para os avisos continuarem a ser anunciados. `aria-atomic=false`
+            porque `role="status"` o assume verdadeiro: sem isto, cada aviso
+            novo — e cada aviso DISPENSADO — mandava o leitor de ecrã reler a
+            pilha inteira, o que com os 3 s era invisível e agora não é. */}
+        <div className="toast-live" role="status" aria-live="polite" aria-atomic="false">
+          {escondidos > 0 && (
+            <span className="toast-more" data-testid="toast-more">
+              +{escondidos} {escondidos === 1 ? 'aviso mais antigo' : 'avisos mais antigos'}
+            </span>
+          )}
+          {visiveis.map((t) => (
             <button
               key={t.id}
               type="button"
               className={`toast toast-${t.type}`}
+              data-testid="toast"
               onClick={() => dismiss(t.id)}
-              aria-label={`Dispensar aviso: ${t.message}`}
             >
               <span className="toast-text">{t.message}</span>
-              <span className="toast-x" aria-hidden="true">×</span>
+              {/* O rótulo vai no ×, não no botão: um aria-label no botão
+                  substituía a mensagem no anúncio, e o atleta ouvia
+                  "Dispensar aviso:" antes de saber do que se tratava. */}
+              <span className="toast-x" aria-label="Dispensar">×</span>
             </button>
           ))}
         </div>
-        {toasts.length > 2 && (
-          <button
-            type="button"
-            className="toast-clear-all"
-            onClick={() => setToasts([])}
-          >
-            Limpar tudo
-          </button>
-        )}
       </div>
+      {children}
     </ToastContext.Provider>
   );
 };

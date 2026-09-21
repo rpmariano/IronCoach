@@ -20,7 +20,6 @@ import { normalizeGender } from '@formulas/vocabulary.ts';
 import { planItemTitle, raceNameForDate } from './homeModels';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
-export const WELCOME_AUTO_CLOSE_MS = 6000;
 
 /** Data e hora de Lisboa de um instante: { date: 'YYYY-MM-DD', hour, minute, weekday }. */
 export function lisbonParts(now = new Date()) {

@@ -21,6 +21,13 @@ export interface RaceRun {
   date?: string;
 }
 
+/** Abaixo disto a previsão é uma extrapolação longa: a corrida que a sustenta
+ *  é bem mais curta do que a prova. O `confidence` devolvido aqui é 0,8 quando
+ *  a referência tem mais de metade da distância e 0,4 quando não tem, por isso
+ *  0,5 separa os dois casos. Vive aqui para o hub e a Carol não terem duas
+ *  definições da mesma ressalva (specs/formulas-centralizacao.md). */
+export const LOW_CONFIDENCE = 0.5;
+
 export interface RiegelPrediction {
   predictedSeconds: number;
   predictedPace: number;

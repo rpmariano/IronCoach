@@ -35,11 +35,11 @@ import { AMBITIOUS_RATIO } from '@formulas/racePacing.ts';
 
 export { AMBITIOUS_RATIO };
 
-/* Abaixo disto a previsão é uma extrapolação longa — a corrida que a
-   sustenta é bem mais curta do que a prova. O valor vem do `confidence` do
-   próprio motor (0,8 quando a referência tem mais de metade da distância,
-   0,4 quando não tem). Mostra-se como ressalva, nunca se esconde o número. */
-export const LOW_CONFIDENCE = 0.5;
+/* A ressalva de extrapolação longa — do mesmo sítio que calcula o
+   `confidence`, não redeclarada aqui (specs/formulas-centralizacao.md). */
+import { LOW_CONFIDENCE } from '@formulas/racePrediction.ts';
+
+export { LOW_CONFIDENCE };
 
 const num = (v) => {
   const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v);

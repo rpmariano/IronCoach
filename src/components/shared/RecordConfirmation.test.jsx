@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 import RecordConfirmation, { DUR_FIRST_IN, DUR_CONFIRM_EXIT_FIRST } from './RecordConfirmation';
-import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
 
 /* "Registo confirmado" — animação 6 de `IronCoach - Animacoes.dc.html`:
    impulso elástico de 420 ms, sai aos 900 ms e devolve o atleta ao seu
@@ -196,7 +195,7 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
     const onDone = vi.fn();
     render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
 
-    act(() => { vi.advanceTimersByTime(DUR_TAP); });
+    // Com movimento reduzido a conquista já lá está no primeiro render.
     expect(screen.getByTestId('record-confirmation-achievement')).toBeInTheDocument();
     // O movimento reduzido tira a animação, não o tempo de leitura.
     expect(onDone).not.toHaveBeenCalled();

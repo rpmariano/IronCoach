@@ -36,6 +36,7 @@ import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
 import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
+import { LOW_CONFIDENCE } from "../_shared/formulas/racePrediction.ts";
 import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume } from "../_shared/formulas/raceViability.ts";
 import { assessRaceLevelTriage } from "../_shared/formulas/raceLevelTriage.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
@@ -926,7 +927,7 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
     /* O ritmo deste sai da distância DELE. Dividi-lo pela distância desta
        prova dava ritmos impossíveis (1:00:00 em 12 km lidos como 2:51/km
        numa meia) — e a Carol repetia-os em voz alta. */
-    lines.push(`Melhor anterior na ${cat || "distância"}: ${hmsPace(o.previous_best_seconds, o.previous_best_distance_km)}${o.previous_best_distance_km && o.previous_best_distance_km !== o.distance_km ? ` em ${o.previous_best_distance_km} km` : ""}${o.previous_best_date ? ` · ${o.previous_best_date}` : ""} → ` + (o.is_personal_record
+    lines.push(`Melhor anterior na ${cat || "distância"}: ${hmsPace(o.previous_best_seconds, o.previous_best_distance_km)}${o.previous_best_distance_km && o.distance_km && Math.abs(o.previous_best_distance_km - o.distance_km) > 0.5 ? ` em ${Math.round(o.previous_best_distance_km * 10) / 10} km` : ""}${o.previous_best_date ? ` · ${o.previous_best_date}` : ""} → ` + (o.is_personal_record
       ? `RECORDE PESSOAL por ${absHms(d)}.`
       : `${absHms(d)} mais lento; sem recorde.`));
   } else {
@@ -3495,7 +3496,7 @@ export function buildRaceEventsContext(
         // onde a previsão corre sobre a distância equivalente em plano.
         const predPace = formatPaceMinKm(Math.round(predSeconds / e.distance_km));
         const targetSeconds = Number(e.target_time_seconds) > 0 ? Math.round(Number(e.target_time_seconds)) : 0;
-        const parts = [`pelas corridas das últimas 4 semanas, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        const parts = [`pelas corridas dos últimos 30 dias, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
         if (targetSeconds > 0) {
           /* Exatamente a comparação do plano do dia da prova
              (buildRacePacingPlan) e a do hub (raceTimes.js, stanceOf): o
@@ -3514,7 +3515,7 @@ export function buildRaceEventsContext(
           parts.push("o atleta ainda não fixou tempo-alvo — propõe-lhe um a partir deste número");
         }
         // Referência curta para uma prova longa: o número é extrapolação.
-        if (prediction.confidence != null && prediction.confidence < 0.5) {
+        if (prediction.confidence != null && prediction.confidence < LOW_CONFIDENCE) {
           parts.push("previsão de baixa confiança (a corrida de referência é bem mais curta do que a prova) — apresenta-a como estimativa e pede-lhe um treino longo");
         }
         forecastSuffix = `\n  PREVISÃO DE TEMPO: ${parts.join("; ")}`;

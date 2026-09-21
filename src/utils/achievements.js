@@ -18,6 +18,7 @@
 import { Flag, Target, Zap, Mountain, Repeat, Rocket } from 'lucide-react';
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, formatDelta, raceCategoryLabel } from './raceOutcome';
+import { describeDelta } from './raceTimes';
 
 /** Uma conquista é "nova" enquanto a prova que a deu tiver menos de 7 dias —
  *  é a janela do dia a seguir à prova (a mesma do cartão do Início e do
@@ -147,20 +148,24 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
         treino. A régua é a mesma do balanço (`vsTraining === 'acima'`, a
         banda TRAINING_BAND_RATIO de 2% do raceOutcome — não os 3% do
         NEAR_TARGET_RATIO, que é outra coisa) — o palmarés não pode
-        discordar do que a Carol diz sobre a mesma prova. */
+        discordar do que a Carol diz sobre a mesma prova.
+
+        O tom é `gym` e não `coach`: --coach é a cor da Carol e só dela
+        (colors.css, "uma cor, um sentido"), e era praticamente o mesmo
+        ciano de --run, o tom do recorde pessoal — numa prova que desse as
+        duas, as pílulas ficavam indistinguíveis no Início. */
   const comAcimaDoTreino = completed.find(({ outcome }) => outcome?.vsTraining === 'acima');
   const ultimaComPrevisao = completed.find(({ outcome }) => !!outcome?.predictedSeconds && !!outcome?.officialSeconds);
   let treinoLocked = 'Precisa de treinos registados antes da prova';
   if (ultimaComPrevisao) {
     /* `formatDelta` é absoluto, por isso a frase tem de dizer de que lado
-       ficou: quem correu mais rápido mas dentro da banda de 2% lia um
-       "ficaste a 12s da previsão" que sugeria o contrário do que aconteceu. */
-    const d = ultimaComPrevisao.outcome.deltaPredictionSeconds;
-    const lado = d > 0 ? 'acima' : 'abaixo';
-    treinoLocked = `Na ${ultimaComPrevisao.race.name} ficaste a ${formatDelta(d)} ${lado} da previsão`;
+       ficou. E não pode dizer "acima": a conquista chama-se "Acima do
+       treino" e aí "acima" quer dizer MELHOR — no mesmo cartão, a mesma
+       palavra com dois sentidos opostos (2.ª revisão pré-deploy). */
+    treinoLocked = `Na ${ultimaComPrevisao.race.name} ficaste a ${describeDelta(ultimaComPrevisao.outcome.deltaPredictionSeconds)} do que o treino previa`;
   }
   const acimaDoTreino = build(
-    'acima_do_treino', 'Acima do treino', 'Treino', 'coach', Rocket,
+    'acima_do_treino', 'Acima do treino', 'Treino', 'gym', Rocket,
     comAcimaDoTreino?.race || null,
     comAcimaDoTreino
       ? `${comAcimaDoTreino.race.name}, ${formatDuration(comAcimaDoTreino.outcome.officialSeconds)} — ${formatDelta(comAcimaDoTreino.outcome.deltaPredictionSeconds)} abaixo da previsão do treino`
@@ -253,7 +258,7 @@ export function evaluateRace({ raceEvents = [], runs = [], profile = {}, now = n
   // dos tempos do hub, e três linhas de "fica para a próxima" na mesma prova
   // passavam de leitura a repreensão.
   if (outcome?.vsTraining === 'acima') {
-    earned.push(item('acima_do_treino', 'Acima do treino', 'Treino', 'coach', Rocket,
+    earned.push(item('acima_do_treino', 'Acima do treino', 'Treino', 'gym', Rocket,
       `${formatDuration(outcome.officialSeconds)} — ${formatDelta(outcome.deltaPredictionSeconds)} abaixo do que o treino previa (${formatDuration(outcome.predictedSeconds)})`));
   }
 
