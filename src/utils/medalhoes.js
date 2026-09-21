@@ -172,7 +172,7 @@ const TIPOS_TREINO = {
 };
 
 function runKindLabel(run) {
-  if (run?.kind === 'competicao') return 'Competição';
+  if (run?.kind === 'competicao') return 'Prova';
   if (run?.kind === 'treino' && run.training_type) return TIPOS_TREINO[run.training_type] || capitalize(run.training_type);
   return 'Corrida';
 }

@@ -60,9 +60,12 @@ const REPEAT_TRAINING_TYPES = new Set(["intervalos", "subidas"]);
 // Nome sugerido quando o cliente marcou o nome como "ainda é a sugestão
 // automática" (name_is_auto) — só kind + período do dia (sem tipo/disciplina,
 // para não duplicar o que já aparece nos badges/detalhes da corrida).
+// "Prova" e não "Competição" (2026-09-21): este nome, se ficar por editar,
+// é também o que vai para race_events.name quando a competição não estava
+// na agenda (RunRegistration.jsx, autoCreateRaceForCompetition).
 function buildAutoName(kind: string, period: string): string {
   const p = period || "";
-  return (kind === "competicao" ? `Competição ${p}` : `Treino ${p}`).trim();
+  return (kind === "competicao" ? `Prova ${p}` : `Treino ${p}`).trim();
 }
 
 const RESPONSE_SCHEMA = {
@@ -624,7 +627,7 @@ async function generateCoachNotes(
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala isso.\n` +
     `- Termina com uma sugestão concreta e acionável para o próximo treino (mas se marcarem intervention_needed=true, sugere apenas que cliquem no botão "Falar com a Coach" para falar contigo sobre adaptar o plano).\n\n` +
     `Corrida de hoje:\n` +
-    `- Tipo: ${run.kind === "competicao" ? "Competição" : `Treino (${trainingTypeLabel})`}\n` +
+    `- Tipo: ${run.kind === "competicao" ? "Prova" : `Treino (${trainingTypeLabel})`}\n` +
     `- Data: ${run.date}\n` +
     `- Distância: ${run.distance_km?.toFixed(2) || "?"} km\n` +
     `- Pace: ${paceStr}/km\n` +
