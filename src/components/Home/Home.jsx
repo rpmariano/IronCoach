@@ -45,7 +45,7 @@ export default function Home() {
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments, insightStates, shoes,
     setActiveTab, setPlanItemPrefill, setEditingRaceId, setProfile, setCoachIntent, setOpenCreationMode,
-    dailySummary, logImpression, logImpressionDismissed,
+    dailySummary, logImpression, logImpressionDismissed, impressionDismissed,
   } = useAppStore();
   const pendingTopics = useAppStore(selectCoachPendingTopics);
 
@@ -130,11 +130,12 @@ export default function Home() {
      ver o coachIntent 'race_balance' mais abaixo. */
   const raceBalance = useMemo(() => {
     if (pendingTopics > 0 || raceConflict) return null;
-    const candidate = pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile });
+    // impressionDismissed: o que foi dispensado noutro dispositivo (ação 5.1).
+    const candidate = pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, impressionDismissed });
     if (!candidate) return null;
     const race = (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
     return race ? { race, candidate } : null;
-  }, [pendingTopics, raceConflict, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, balanceDismissals]);
+  }, [pendingTopics, raceConflict, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, impressionDismissed, balanceDismissals]);
 
   /* O plano precisa de um ajuste (specs/plano-de-prova.md, "O plano tem de
      saber da prova"): a app deteta sozinha quando a realidade se afastou do
@@ -225,7 +226,11 @@ export default function Home() {
       onDismiss: () => {
         dismissProactiveAlert(profile?.id, raceBalance.candidate);
         setBalanceDismissals((n) => n + 1);
+        // Duas chaves na dispensa (ação 5.1): 'balanco', que o chat já lê,
+        // e a do candidato (race_after:<raceId>:<runId>), que é a que serve
+        // para o outro dispositivo saber que este balanço foi dispensado.
         logImpressionDismissed({ kind: 'alert', key: 'balanco', title: 'O balanço da prova' });
+        logImpressionDismissed({ kind: 'alert', key: raceBalance.candidate.key, title: 'O balanço da prova' });
       },
     });
   }

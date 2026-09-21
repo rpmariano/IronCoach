@@ -231,6 +231,60 @@ Deno.test("impressões: por dia, o mais recente primeiro, sem repetidos, com o q
   assertEquals(buildImpressionsContext([], "2026-09-18"), null);
 });
 
+Deno.test("impressões (5.1): as boas-vindas entram inteiras até 200 e trazem a instrução; um momento sem título fica de fora", () => {
+  // 200 caracteres exatos, sem espaços repetidos nem fim em espaço, para o clip não mexer.
+  const said = ("Não vi o treino de hoje registado. Aconteceu alguma coisa? " + "x".repeat(200)).slice(0, 200);
+  assertEquals(said.length, 200);
+  const text = buildImpressionsContext([
+    { date: "2026-09-17", kind: "welcome", key: "noite", title: said, shown_at: "2026-09-17T21:00:00Z" },
+    { date: "2026-09-18", kind: "moment", key: "weekdone:2026-09-14", title: null, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "insights", key: "acwr", title: "Carga a subir depressa", shown_at: "2026-09-18T07:01:00Z", dismissed_at: "2026-09-18T07:02:00Z" },
+  ], "2026-09-18")!;
+  assertStringIncludes(text, `- Ontem: as boas-vindas, em que lhe disseste "${said}".`);
+  assert(!text.includes("…"));
+  assertStringIncludes(text, "Não repitas nem contradigas o que já lhe disseste ao abrir a app, salvo dados novos; se lhe perguntaste algo, retoma.");
+  assert(!text.includes("disseste hoje"));
+  assertStringIncludes(text, "o que lhe disseste ao abrir a app");
+  assert(!text.includes("um momento no Início"));
+  assertStringIncludes(text, `- Hoje: os alertas do motor de regras "Carga a subir depressa" (dispensado por ele).`);
+});
+
+Deno.test("impressões (5.1): sem boas-vindas não há instrução; os outros kinds cortam a 120; só momentos sem título dá null", () => {
+  const long = "x".repeat(200);
+  const text = buildImpressionsContext([
+    { date: "2026-09-18", kind: "alert", key: "plano", title: long, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "moment", key: "daydone:2026-09-18", title: null, shown_at: "2026-09-18T07:01:00Z" },
+    { date: "2026-09-18", kind: "moment", key: "milestone:r1:7", title: "Faltam 7 dias para a prova", shown_at: "2026-09-18T07:02:00Z" },
+  ], "2026-09-18")!;
+  assert(!text.includes("se lhe perguntaste algo"));
+  assertStringIncludes(text, `o aviso "${"x".repeat(119)}…"`);
+  assertStringIncludes(text, `um momento no Início "Faltam 7 dias para a prova"`);
+  assertEquals(text.split("\n").filter((l) => l.startsWith("- ")).length, 1);
+  assertEquals(buildImpressionsContext([
+    { date: "2026-09-18", kind: "moment", key: "daydone:2026-09-18", title: null, shown_at: "2026-09-18T07:01:00Z" },
+  ], "2026-09-18"), null);
+});
+
+Deno.test("impressões (5.1): boas-vindas sem frases ficam de fora; as de anteontem entram na lista mas não trazem a instrução", () => {
+  // A variante sem nada a dizer (manhã com sono 3 e sem plano, por exemplo)
+  // grava title null: o rótulo sozinho não pode chegar ao prompt.
+  assertEquals(buildImpressionsContext([
+    { date: "2026-09-18", kind: "welcome", key: "2026-09-18:manha", title: null, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "welcome", key: "2026-09-18:tarde", title: "   ", shown_at: "2026-09-18T13:00:00Z" },
+  ], "2026-09-18"), null);
+  const pergunta = "Não vi o treino de hoje registado. Aconteceu alguma coisa?";
+  const text = buildImpressionsContext([
+    { date: "2026-09-16", kind: "welcome", key: "2026-09-16:noite", title: pergunta, shown_at: "2026-09-16T21:00:00Z" },
+    { date: "2026-09-18", kind: "welcome", key: "2026-09-18:manha", title: null, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "daily_card", key: "2026-09-18", title: null, shown_at: "2026-09-18T07:01:00Z" },
+  ], "2026-09-18")!;
+  assertStringIncludes(text, `- 2026-09-16: as boas-vindas, em que lhe disseste "${pergunta}".`);
+  assertStringIncludes(text, "- Hoje: o teu cartão diário.");
+  assert(!text.includes("em que lhe disseste."));
+  // A pergunta de anteontem já teve o cartão dela: a linha fica, a instrução não.
+  assert(!text.includes("se lhe perguntaste algo"));
+});
+
 Deno.test("fetchCheckinBlock: sem consentimento, o ciclo é apagado antes de chegar à Carol", async () => {
   const rows = [{ date: "2026-09-18", sleep: 4, energy: 4, stress: 2, pain: 0, period_today: true }];
   const without = await fetchCheckinBlock(fakeSb({ daily_checkins: { data: rows } }), "u1", "2026-09-18", { gender: "F", cycle_tracking_consent_at: null });

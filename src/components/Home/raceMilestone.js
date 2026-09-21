@@ -27,7 +27,14 @@ export function raceMilestoneLine(daysToRace) {
 
 const key = (userId, raceId, days) => `ironcoach_race_milestone_${userId || 'anon'}_${raceId}_${days}`;
 
-export function wasMilestoneSeen(userId, raceId, days, storage = globalThis.localStorage) {
+/** A chave deste momento em coach_impressions (kind 'moment', ação 5.1) — a
+ *  mesma na escrita (RaceCard) e na leitura (wasMilestoneSeen). */
+export const milestoneMomentKey = (raceId, days) => `milestone:${raceId}:${days}`;
+
+/* Visto neste telemóvel (localStorage) ou em qualquer outro: `shown` é o
+   impressionShown do store (chaves `kind:key`), opcional. */
+export function wasMilestoneSeen(userId, raceId, days, shown = null, storage = globalThis.localStorage) {
+  if (shown?.has(`moment:${milestoneMomentKey(raceId, days)}`)) return true;
   try { return storage?.getItem(key(userId, raceId, days)) === '1'; } catch { return true; }
 }
 

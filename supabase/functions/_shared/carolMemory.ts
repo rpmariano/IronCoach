@@ -493,19 +493,48 @@ export async function fetchCheckinBlock(sb: any, userId: string, todayISO: strin
 
 // ── 2.4 — O que o atleta viu na app ──────────────────────────────────────
 
+/* O bloco fala com a Carol na segunda pessoa ("Não repitas..."), por isso o
+   rótulo das boas-vindas lê-se antes do título entre aspas: as boas-vindas,
+   em que lhe disseste "...". O `push` (P.9) entra quando essa ação o gravar. */
 const IMPRESSION_KIND_LABELS: Record<string, string> = {
   daily_card: "o teu cartão diário",
   alert: "o aviso",
   insights: "os alertas do motor de regras",
+  welcome: "as boas-vindas, em que lhe disseste",
+  moment: "um momento no Início",
 };
 
+/* As boas-vindas guardam as frases inteiras (até 200 caracteres, o teto da
+   coluna); cortá-las a 120 deixava a pergunta da noite a meio. Sem título,
+   estes dois kinds ficam fora do prompt (ver buildImpressionsContext). */
+const LONG_TITLE_KINDS = new Set(["welcome", "moment"]);
+const IMPRESSION_TITLE_MAX = 120;
+const LONG_IMPRESSION_TITLE_MAX = 200;
+
+/* Só entra quando há boas-vindas com frases de hoje ou de ontem: a pergunta
+   da noite ("Aconteceu alguma coisa?") é de ontem quando o cartão da manhã
+   nasce, e retoma-se; a de anteontem já teve o cartão dela. As linhas levam
+   a data, por isso a instrução não diz "hoje". */
+const WELCOME_FOLLOW_UP =
+  "Não repitas nem contradigas o que já lhe disseste ao abrir a app, salvo dados novos; se lhe perguntaste algo, retoma.";
+
 export function buildImpressionsContext(rows: any[] | null | undefined, todayISO: string): string | null {
-  const list = (rows || []).filter((r) => r && typeof r.date === "string" && r.kind);
+  const list = (rows || []).filter((r) =>
+    r && typeof r.date === "string" && r.kind &&
+    // Um momento sem título, ou umas boas-vindas sem frases (a variante sem
+    // nada a dizer fica pela saudação e grava title null), existem só para a
+    // sincronização entre dispositivos: o servidor já tem os factos por trás
+    // deles, e o rótulo das boas-vindas sozinho ficava a meio. Não entram.
+    !(LONG_TITLE_KINDS.has(r.kind) && clip(r.title, LONG_IMPRESSION_TITLE_MAX) === null)
+  );
   if (!list.length) return null;
   const byDate = new Map<string, string[]>();
+  const yesterdayISO = addDaysISO(todayISO, -1);
+  let saidAtWelcome = false;
   for (const r of list.slice().sort((a, b) => String(a.shown_at ?? "").localeCompare(String(b.shown_at ?? "")))) {
     const label = IMPRESSION_KIND_LABELS[r.kind] ?? r.kind;
-    const title = clip(r.title, 120);
+    const title = clip(r.title, LONG_TITLE_KINDS.has(r.kind) ? LONG_IMPRESSION_TITLE_MAX : IMPRESSION_TITLE_MAX);
+    if (r.kind === "welcome" && title && (r.date === todayISO || r.date === yesterdayISO)) saidAtWelcome = true;
     const text = `${label}${title ? ` "${title.replace(/"/g, "'")}"` : ""}${r.dismissed_at ? " (dispensado por ele)" : ""}`;
     const day = byDate.get(r.date) ?? [];
     if (!day.includes(text)) day.push(text);
@@ -513,12 +542,20 @@ export function buildImpressionsContext(rows: any[] | null | undefined, todayISO
   }
   const lines = [...byDate.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([date, items]) => `- ${date === todayISO ? "Hoje" : date === addDaysISO(todayISO, -1) ? "Ontem" : date}: ${items.join("; ")}.`);
-  return `O QUE O ATLETA VIU NA APP (últimos 3 dias — o que a Home lhe mostrou):\n${lines.join("\n")}\n` +
-    `Não repitas como novidade o que ele já viu; se dispensou um aviso, não insistas sem motivo novo.`;
+    .map(([date, items]) => `- ${date === todayISO ? "Hoje" : date === yesterdayISO ? "Ontem" : date}: ${items.join("; ")}.`);
+  return `O QUE O ATLETA VIU NA APP (últimos 3 dias — o que o Início lhe mostrou e o que lhe disseste ao abrir a app):\n${lines.join("\n")}\n` +
+    `Não repitas como novidade o que ele já viu; se dispensou um aviso, não insistas sem motivo novo.` +
+    (saidAtWelcome ? ` ${WELCOME_FOLLOW_UP}` : "");
 }
 
-async function fetchImpressionsBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
+/**
+ * O que o atleta viu na app nos últimos 3 dias. Lido pelo chat (via
+ * fetchChatMemoryBlocks) e pelo cartão diário (5.1, chamada direta ao lado
+ * de fetchAdherenceBlock). As quatro análises não o recebem: por isso não
+ * está em fetchSharedMemoryBlock. `todayISO` é o dia de Lisboa, como o
+ * cliente grava.
+ */
+export async function fetchImpressionsBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
   try {
     const { data, error } = await sb.from("coach_impressions")
       .select("date, kind, key, title, shown_at, dismissed_at")

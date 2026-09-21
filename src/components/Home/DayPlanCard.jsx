@@ -6,7 +6,7 @@ import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, ra
 import GlassCard from '../shared/GlassCard';
 import WeekDoneRibbon from './WeekDoneRibbon';
 import { useAppStore } from '../../store';
-import { doneLine, wasDayDoneSeen, markDayDoneSeen } from './dayDone';
+import { doneLine, dayDoneMomentKey, wasDayDoneSeen, markDayDoneSeen } from './dayDone';
 import useMomentOnce from '../../utils/useMomentOnce';
 import { weekDone } from './weekDone';
 
@@ -55,6 +55,8 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   const runs = useAppStore((s) => s.runs);
   const gymSessions = useAppStore((s) => s.gymSessions);
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
+  const logImpression = useAppStore((s) => s.logImpression);
+  const impressionShown = useAppStore((s) => s.impressionShown);
 
   const pendingCount = useMemo(() => (plans || []).filter((p) => p.status === 'proposto').length, [plans]);
   const planWindow = useMemo(() => computeAcceptedWindow(plans, planItems, today), [plans, planItems, today]);
@@ -96,8 +98,19 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
     const t = trainingItems(day?.items || []).filter((i) => !i.isRace && !isRacePlanItem(i));
     return t.length > 0 && t.every((i) => i.status === 'concluido');
   }, [day]);
+  // A chave deste momento em coach_impressions (kind 'moment', ação 5.1),
+  // sem título: o servidor já tem os treinos do dia. Na leitura, visto no
+  // outro telemóvel conta como visto aqui.
+  const momentKey = dayDoneMomentKey(today);
   // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
-  const doneMoment = useMomentOnce(todayDone, () => wasDayDoneSeen(userId, today), () => markDayDoneSeen(userId, today));
+  const doneMoment = useMomentOnce(
+    todayDone,
+    () => wasDayDoneSeen(userId, today, impressionShown),
+    () => {
+      markDayDoneSeen(userId, today);
+      logImpression({ kind: 'moment', key: momentKey, title: null });
+    },
+  );
 
   if (!planWindow || !day) {
     return (

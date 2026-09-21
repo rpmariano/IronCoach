@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { todayISO, addDaysISO } from '../../lib/utils';
+import { useAppStore } from '../../store';
 import DayPlanCard from './DayPlanCard';
 
 const today = todayISO();
@@ -178,5 +179,38 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
 
     render(<DayPlanCard plans={[plan, { id: 'p2', status: 'proposto' }, { id: 'p3', status: 'proposto' }]} planItems={[{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', status: 'pendente' }]} raceEvents={[]} onNav={onNav} />);
     expect(screen.getByText('Tens 2 propostas da Carol por rever')).toBeInTheDocument();
+  });
+});
+
+/* O dia fechado (dayDone.js) fica em coach_impressions como um momento
+   (ação 5.1): a chave do dia, sem título, uma vez — para o outro telemóvel
+   não o repetir. Como nos outros momentos, só com a cancela das boas-vindas
+   aberta (utils/useMomentOnce). */
+describe('DayPlanCard — o dia fechado fica registado', () => {
+  let logImpression;
+  beforeEach(() => {
+    window.localStorage.clear();
+    logImpression = vi.fn();
+    useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' }, welcomeGate: 'clear', logImpression, impressionShown: new Set() });
+  });
+
+  const treinoFeito = { id: 'i2', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'rodagem', target_distance_km: 8, status: 'concluido' };
+  const renderDone = () => render(<DayPlanCard plans={[plan]} planItems={[treinoFeito]} raceEvents={[]} />);
+
+  it('na primeira vez é o momento e grava a chave do dia; na segunda, nada', () => {
+    const first = renderDone();
+    expect(first.container.querySelector('.day-done-check')).not.toBeNull();
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: `daydone:${today}`, title: null });
+    first.unmount();
+    const second = renderDone();
+    expect(second.container.querySelector('.day-done-check')).toBeNull();
+    expect(logImpression).toHaveBeenCalledTimes(1);
+  });
+
+  it('dia fechado visto noutro dispositivo: fica só lá, sem momento nem nova impressão', () => {
+    useAppStore.setState({ impressionShown: new Set([`moment:daydone:${today}`]) });
+    const { container } = renderDone();
+    expect(container.querySelector('.day-done-check')).toBeNull();
+    expect(logImpression).not.toHaveBeenCalled();
   });
 });

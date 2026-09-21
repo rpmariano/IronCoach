@@ -2,7 +2,7 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
-import { weekDoneLine, wasWeekCelebrated, markWeekCelebrated } from './weekDone';
+import { weekDoneLine, weekDoneMomentKey, wasWeekCelebrated, markWeekCelebrated } from './weekDone';
 import useMomentOnce from '../../utils/useMomentOnce';
 
 /* A semana cumprida (weekDone.js), por cima de "O que faço hoje": a frase
@@ -14,8 +14,22 @@ import useMomentOnce from '../../utils/useMomentOnce';
    CAROL.md pede uma frase, não uma festa por cada visita à Home. */
 export default function WeekDoneRibbon({ done }) {
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
+  const logImpression = useAppStore((s) => s.logImpression);
+  const impressionShown = useAppStore((s) => s.impressionShown);
+  // A chave deste momento em coach_impressions (kind 'moment', ação 5.1):
+  // sem título, porque o servidor já tem os treinos; serve para o outro
+  // telemóvel saber que esta semana já foi celebrada — e, na leitura, para
+  // este saber se foi o outro que a celebrou primeiro.
+  const momentKey = weekDoneMomentKey(done.weekStart);
   // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
-  const celebrate = useMomentOnce(true, () => wasWeekCelebrated(userId, done.weekStart), () => markWeekCelebrated(userId, done.weekStart));
+  const celebrate = useMomentOnce(
+    true,
+    () => wasWeekCelebrated(userId, done.weekStart, impressionShown),
+    () => {
+      markWeekCelebrated(userId, done.weekStart);
+      logImpression({ kind: 'moment', key: momentKey, title: null });
+    },
+  );
 
   const line = weekDoneLine(done);
   return (

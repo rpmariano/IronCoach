@@ -43,6 +43,9 @@ const baseState = {
   coachPlans: [],
   coachPlanItems: [],
   coachGoalProposals: [],
+  // As impressões lidas do servidor (ação 5.1): vazias, como num primeiro acesso.
+  impressionShown: new Set(),
+  impressionDismissed: new Set(),
 };
 
 const renderHome = () => render(
