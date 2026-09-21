@@ -61,8 +61,8 @@ const TONES = {
 const DUR_ACHIEVEMENT_IN = 300;
 
 /* O primeiro registo de um tipo (utils/firstRecord.js), ou um recorde de
-   treino (utils/runRecord.js): a Carol entra por baixo do visto e diz o que
-   ele quer dizer. */
+   treino (@formulas/runRecord.ts): a Carol entra por baixo do visto e diz o
+   que ele quer dizer. */
 export const DUR_FIRST_IN = 350;
 
 /* Já não temporiza a saída de nada — estas confirmações esperam pela dispensa

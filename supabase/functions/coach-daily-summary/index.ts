@@ -703,8 +703,9 @@ Deno.serve(async (req) => {
     }
 
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): o
-    // cartão não pode contradizer o que a Carol combinou ontem no chat.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
+    // cartão não pode contradizer o que a Carol combinou ontem no chat. Com
+    // o retrato da época (5.3): o cartão via só 30 dias de tendência.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today });
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
     const [

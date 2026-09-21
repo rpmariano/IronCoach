@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { runRecordMoment } from './runRecord';
+import { runRecordMoment } from '@formulas/runRecord.ts';
 
 /* O recorde num treino: bate algo que já existia, com margem. A primeira
-   corrida de 10 km é a primeira, não um recorde. */
+   corrida de 10 km é a primeira, não um recorde.
+
+   Delega em @formulas/runRecord.ts (ação 5.3) — única implementação,
+   partilhada com o analyze-run: o comentário da corrida e a confirmação do
+   registo passam a usar a mesma régua. */
 
 const run = (id, distance_km, duration_seconds, o = {}) => ({ id, date: '2026-09-10', distance_km, duration_seconds, ...o });
 

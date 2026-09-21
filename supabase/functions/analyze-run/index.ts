@@ -19,6 +19,9 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
+import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
+import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -388,6 +391,30 @@ export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean)
     `nem objetivo declarado não há nada a renegociar.\n`;
 }
 
+/**
+ * O contexto de recorde (ação 5.3), puro e testável sem rede: os melhores
+ * ritmos por escalão (5/10/21 km) num conjunto de corridas, e se `run` bate
+ * a régua partilhada do recorde (@formulas/runRecord.ts — a mesma do
+ * cliente, com margem e tolerância por escalão). `candidates` NÃO deve
+ * incluir a própria `run` (o chamador já filtra por id na consulta); passar
+ * o `id` de `run` é só para runRecordMoment se conseguir excluí-la também se,
+ * por acaso, aparecer em `candidates`.
+ */
+export function computeRunRecordContext(
+  run: { id: string; date: string; distance_km: number | null; duration_seconds: number | null; details: Record<string, unknown> | null },
+  candidates: Array<{ date: string; distance_km: number | null; duration_seconds: number | null; details?: { splits?: Array<{ distance_km?: number | null; time_seconds?: number | null }> | null } | null }>,
+): { bestPacesLine: string | null; personalRecordKind: "pace" | "distance" | null } {
+  const bestPacesByBucket: string[] = [];
+  for (const bucket of [5, 10, 21] as BestPaceBucket[]) {
+    const best = computeBestPace(candidates, bucket);
+    if (best) bestPacesByBucket.push(`${bucket}k ${formatPaceMinKm(best.pace)} (${best.date})`);
+  }
+  const bestPacesLine = bestPacesByBucket.length ? bestPacesByBucket.join(" · ") : null;
+  // deno-lint-ignore no-explicit-any
+  const personalRecord = runRecordMoment({ ...run, details: run.details as any }, candidates as any);
+  return { bestPacesLine, personalRecordKind: personalRecord?.kind ?? null };
+}
+
 // Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
 // baseado na corrida acabada de ser criada e no contexto das últimas corridas.
 async function generateCoachNotes(
@@ -414,6 +441,15 @@ async function generateCoachNotes(
   sameDayRuns: any[],
   geminiKey: string,
   memoryBlock: string | null = null,
+  // Melhores ritmos por escalão (5/10/21 km) neste grupo, já formatados —
+  // "5k 4.51 (2026-08-02) · 10k ...". null quando não há nenhum. Substitui o
+  // antigo bestPaceStr/trendStr (mín. pace de qualquer distância, sem
+  // escalão nem margem — ação 5.3).
+  bestPacesLine: string | null = null,
+  // Esta corrida bate a régua partilhada do recorde (@formulas/runRecord.ts
+  // — a mesma do cliente): 'pace' ou 'distance', ou null. A régua decide, o
+  // texto não compara os números sozinho.
+  personalRecordKind: "pace" | "distance" | null = null,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
 
@@ -475,9 +511,6 @@ async function generateCoachNotes(
   }
 
   let weeklyVolumeStr = "";
-  let bestPaceStr = "";
-  let isNewPersonalBest = false;
-  let trendStr = "";
 
   if (previousRuns.length > 0) {
     const sevenDaysAgo = new Date(run.date);
@@ -485,46 +518,17 @@ async function generateCoachNotes(
     const recentWeekRuns = previousRuns.filter((r) => new Date(r.date) >= sevenDaysAgo);
     const weeklyVol = recentWeekRuns.reduce((acc, r) => acc + (r.distance_km || 0), 0) + (run.distance_km || 0);
     weeklyVolumeStr = `${weeklyVol.toFixed(1)} km (nos 7 dias terminados hoje)`;
-
-    const validPaces = previousRuns
-      .filter((r) => r.distance_km && r.distance_km > 0 && r.duration_seconds)
-      .map((r) => r.duration_seconds! / r.distance_km!);
-    if (validPaces.length > 0) {
-      const bestOldPace = Math.min(...validPaces);
-      if (paceSec && paceSec <= bestOldPace) {
-        isNewPersonalBest = true;
-        bestPaceStr = paceStr;
-      } else {
-        bestPaceStr = `${Math.floor(bestOldPace / 60)}'${Math.round(bestOldPace % 60)}"/km`;
-      }
-    }
-
-    if (previousRuns.length >= 10) {
-      const half = Math.floor(previousRuns.length / 2);
-      const newerHalf = previousRuns.slice(0, half);
-      const olderHalf = previousRuns.slice(half);
-
-      const avgPace = (arr: typeof previousRuns) => {
-        const valid = arr.filter((r) => r.distance_km && r.distance_km > 0 && r.duration_seconds);
-        if (!valid.length) return null;
-        const sumD = valid.reduce((acc, r) => acc + r.distance_km!, 0);
-        const sumT = valid.reduce((acc, r) => acc + r.duration_seconds!, 0);
-        return sumT / sumD;
-      };
-
-      const avgNewer = avgPace(newerHalf);
-      const avgOlder = avgPace(olderHalf);
-
-      if (avgNewer && avgOlder) {
-        const diff = Math.round(avgOlder - avgNewer);
-        trendStr = diff === 0
-          ? "pace estável ao longo do histórico disponível"
-          : diff > 0
-            ? `tendência de melhoria de pace: ~${diff}s/km mais rápido agora do que no início do histórico disponível`
-            : `tendência de abrandamento de pace: ~${Math.abs(diff)}s/km mais lento agora do que no início do histórico disponível`;
-      }
-    }
   }
+
+  // bestPacesLine e personalRecordKind (ação 5.3): substituem o antigo
+  // min(pace) de qualquer distância e a tendência crua por metade do
+  // histórico — vêm de attachCoachNotes, com a mesma régua do cliente
+  // (@formulas/runRecord.ts), não somados aqui.
+  const recordLine = personalRecordKind === "pace"
+    ? "Esta corrida é um novo recorde pessoal de ritmo, no escalão que bate (5, 10 ou 21 km — vê os \"melhores por escalão\" acima e a distância de hoje)."
+    : personalRecordKind === "distance"
+      ? "Esta corrida é a mais longa de sempre do atleta."
+      : null;
 
   const contextSection = previousContext.trim()
     ? `\nBase de comparação usada: ${historyLabel}.\n` +
@@ -533,8 +537,8 @@ async function generateCoachNotes(
       (paceDeltaStr ? `Pace desta corrida vs. média: ${paceDeltaStr}\n` : "") +
       (daysSinceLastRun !== null ? `Dias desde a corrida anterior deste grupo: ${daysSinceLastRun}\n` : "") +
       (weeklyVolumeStr ? `- Volume semanal: ${weeklyVolumeStr}\n` : "") +
-      (bestPaceStr ? `- Melhor pace já registado neste grupo: ${bestPaceStr}${isNewPersonalBest ? " (novo recorde pessoal)\n" : "\n"}` : "") +
-      (trendStr ? `- Tendência: ${trendStr}\n` : "")
+      (bestPacesLine ? `- Melhores por escalão (histórico, antes desta corrida): ${bestPacesLine}\n` : "") +
+      (recordLine ? `- ${recordLine}\n` : "")
     : `\nBase de comparação usada: ${historyLabel}.\nNota: não há nenhuma corrida anterior neste grupo para comparação.\n`;
 
   const planSection = planItems.length > 0 
@@ -581,7 +585,7 @@ async function generateCoachNotes(
     `- NUNCA inventes ou estimes números que não te foram dados explicitamente.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo.\n` +
     `- Compara esta corrida com a média recente E com a tendência de médio prazo quando disponível (pace, volume, recorde pessoal) e diz explicitamente se está melhor, pior ou igual, com a diferença aproximada.\n` +
-    `- Se a corrida de hoje é um novo recorde pessoal de pace, é a PRIMEIRA frase — com o número e a diferença para o recorde anterior. É o momento de reconhecer; noutro dia qualquer, não se elogia por rotina.\n` +
+    `- Se o contexto abaixo diz que esta corrida é um novo recorde pessoal (ritmo ou distância), é a PRIMEIRA frase — com o número e a diferença para o recorde anterior, usando os "melhores por escalão" dados. É o momento de reconhecer; noutro dia qualquer, não se elogia por rotina.\n` +
     `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada.\n` +
     `- CARGA ACUMULADA DOS DIAS RECENTES: Se o atleta fez múltiplas corridas ou ginásio no dia anterior, menciona SEMPRE o volume total somado de ontem e todas as atividades feitas.\n` +
     `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas).\n` +
@@ -689,8 +693,11 @@ async function attachCoachNotes(
 ): Promise<void> {
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
-    // Carol que comenta este registo é a mesma que falou com ele ontem.
-    const memoryPromise = fetchSharedMemoryBlock(sb, userId);
+    // Carol que comenta este registo é a mesma que falou com ele ontem. Com
+    // o retrato da época (5.3), na data da PRÓPRIA corrida (ctx.date) — uma
+    // corrida registada com atraso não pode ver meses que ainda não tinham
+    // acontecido nessa altura.
+    const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: ctx.date });
     // Segmentação do histórico usado na comparação:
     // - Competição: só compara com outras competições (não treinos) — e,
     //   dentro das competições, Trail só compara com Trail (terreno/esforço
@@ -774,6 +781,24 @@ async function attachCoachNotes(
         .neq("id", run.id),
     ]);
 
+    // Régua única do recorde (ação 5.3): TODAS as corridas (sem filtro de
+    // kind — é o que o cliente compara em @formulas/runRecord.ts, e
+    // previousRuns acima está segmentado por tipo e limitado a 100, não
+    // serve). Projeção details->splits, nunca details inteiro.
+    const { data: recordCandidates } = await sb
+      .from("runs")
+      .select("date, distance_km, duration_seconds, details:details->splits")
+      .eq("user_id", userId)
+      .neq("id", run.id)
+      .limit(1000);
+    if ((recordCandidates || []).length >= 1000) {
+      console.warn("analyze-run: consulta de recordes atingiu o limite de 1000 linhas");
+    }
+    const { bestPacesLine, personalRecordKind } = computeRunRecordContext(
+      { id: run.id, date: ctx.date, distance_km: ctx.distance_km, duration_seconds: ctx.duration_seconds, details: ctx.details },
+      recordCandidates || [],
+    );
+
     const coachResult = await generateCoachNotes(
       {
         date: ctx.date,
@@ -792,6 +817,8 @@ async function attachCoachNotes(
       sameDayRuns || [],
       geminiKey,
       await memoryPromise,
+      bestPacesLine,
+      personalRecordKind,
     );
 
     if (coachResult.text) {

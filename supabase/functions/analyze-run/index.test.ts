@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
+import { computeRunRecordContext, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -28,6 +28,41 @@ Deno.test("resolvePhotoPaths: sem keep_paths fica tudo; com keep_paths só o que
   assertEquals(resolvePhotoPaths(["u/a.jpg", "u/b.jpg"], ["u/b.jpg", "u/inventado.jpg"]), { kept: ["u/b.jpg"], dropped: ["u/a.jpg"] });
   assertEquals(resolvePhotoPaths(["u/a.jpg"], []), { kept: [], dropped: ["u/a.jpg"] });
   assertEquals(resolvePhotoPaths(null, ["u/a.jpg"]), { kept: [], dropped: [] });
+});
+
+// Régua única do recorde (ação 5.3): computeRunRecordContext substitui o
+// antigo min(pace) de qualquer distância — com escalão e margem, a mesma
+// régua que @formulas/runRecord.ts usa no cliente (RecordConfirmation), para
+// o comentário da corrida e o cartão de confirmação não poderem discordar.
+Deno.test("computeRunRecordContext: sem candidatos, tudo null", () => {
+  const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 2880, details: null };
+  assertEquals(computeRunRecordContext(run, []), { bestPacesLine: null, personalRecordKind: null });
+});
+
+Deno.test("computeRunRecordContext: bate o ritmo no escalão dos 10 km — recorde de pace", () => {
+  const candidates = [{ date: "2026-08-01", distance_km: 10, duration_seconds: 3000 }]; // 5.00/km
+  const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 2880, details: null }; // 4.48/km
+  const { bestPacesLine, personalRecordKind } = computeRunRecordContext(run, candidates);
+  assertEquals(personalRecordKind, "pace");
+  assertStringIncludes(bestPacesLine!, "10k 5.00 (2026-08-01)");
+});
+
+Deno.test("computeRunRecordContext: mais longa do que sempre, com pelo menos três corridas antes — recorde de distância", () => {
+  const candidates = [
+    { date: "2026-07-01", distance_km: 8, duration_seconds: 2400 },
+    { date: "2026-07-08", distance_km: 9, duration_seconds: 2700 },
+    { date: "2026-07-15", distance_km: 7, duration_seconds: 2100 },
+  ];
+  const run = { id: "n", date: "2026-09-20", distance_km: 12.5, duration_seconds: 4500, details: null };
+  assertEquals(computeRunRecordContext(run, candidates).personalRecordKind, "distance");
+});
+
+Deno.test("computeRunRecordContext: mais lenta do que o melhor não é recorde, mas os melhores por escalão aparecem na mesma", () => {
+  const candidates = [{ date: "2026-08-01", distance_km: 10, duration_seconds: 2800 }]; // 4.40/km
+  const run = { id: "n", date: "2026-09-20", distance_km: 10, duration_seconds: 3000, details: null }; // 5.00/km
+  const { bestPacesLine, personalRecordKind } = computeRunRecordContext(run, candidates);
+  assertEquals(personalRecordKind, null);
+  assertStringIncludes(bestPacesLine!, "10k 4.40 (2026-08-01)");
 });
 
 Deno.test("resolveReanalysisTypes: o corpo válido ganha; inválido ou ausente fica o gravado; tipo de outro kind nunca passa", () => {

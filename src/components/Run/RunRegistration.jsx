@@ -27,7 +27,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
-import { runRecordMoment } from '../../utils/runRecord';
+import { runRecordMoment } from '@formulas/runRecord.ts';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import DurationInput from '../shared/DurationInput';
@@ -394,7 +394,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const hadPendingNav = !!pendingNavTarget.current;
     // O primeiro registo deste tipo, ou um recorde de treino (ritmo aos
     // 5/10/21 km, a corrida mais longa): a Carol diz o que ele quer dizer
-    // (utils/firstRecord.js, utils/runRecord.js). Só ao criar — editar a
+    // (utils/firstRecord.js, @formulas/runRecord.ts). Só ao criar — editar a
     // única corrida não é "a primeira", nem um recorde novo.
     const first = !runIdToEdit && (firstRecordMoment('run', useAppStore.getState(), createdRecord)
       || runRecordMoment(createdRecord, useAppStore.getState().runs));

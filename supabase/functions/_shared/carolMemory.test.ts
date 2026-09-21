@@ -11,6 +11,7 @@ import {
   buildSharedMemoryBlock,
   clip,
   fetchChatMemoryBlocks,
+  fetchPortraitBlock,
   fetchSharedMemoryBlock,
   formatSeconds,
   gymLabel,
@@ -154,6 +155,69 @@ Deno.test("retrato da época: meses, tendência de 12 semanas, a mais longa, gin
   assertStringIncludes(text, "- Peso: 77.5 kg a 2026-01-05 → 74 kg a 2026-09-10 (-3.5 kg); massa gorda -3 pontos");
   assert(!text.includes("50 km"));
   assertEquals(buildAthletePortrait({ runs: [], gymDates: [], body: [], racesCompleted: 0 }, "2026-09-18"), null);
+});
+
+// Ação 5.3: melhores ritmos por escalão e forma aeróbica (VDOT) no retrato.
+Deno.test("retrato da época: melhores ritmos por escalão e forma aeróbica, com o rodapé só quando há alguma das duas", () => {
+  const runs = [
+    { date: "2026-03-10", distance_km: 10, duration_seconds: 3000, kind: "competicao" }, // 5.00/km
+    { date: "2026-08-10", distance_km: 10, duration_seconds: 2700, kind: "competicao" }, // 4.30/km, mais rápida
+    { date: "2026-09-01", distance_km: 5, duration_seconds: 1200, kind: "treino", training_type: "tempo" }, // 4.00/km
+  ];
+  const text = buildAthletePortrait({ runs, gymDates: [], body: [], racesCompleted: 0 }, "2026-09-18")!;
+  assertStringIncludes(text, "- Melhores ritmos da época: 5k 4.00 (2026-09-01) · 10k 4.30 (2026-08-10)");
+  assertStringIncludes(text, "- Forma aeróbica: ");
+  assertStringIncludes(text, "em set).");
+  assertStringIncludes(text, "Os melhores ritmos e a forma são para dar medida, não para elogiar por rotina.");
+});
+
+Deno.test("retrato da época: menos de dois pontos de forma, ou nenhuma corrida no escalão, omitem essa linha (e o rodapé, se nenhuma das duas aparecer)", () => {
+  // Só uma corrida-teste (menos de 2 pontos de VDOT) e nenhuma no escalão 5/10/21.
+  const runs = [{ date: "2026-06-01", distance_km: 15, duration_seconds: 5400, kind: "competicao" }];
+  const text = buildAthletePortrait({ runs, gymDates: [], body: [], racesCompleted: 0 }, "2026-09-18")!;
+  assert(!text.includes("- Melhores ritmos da época"));
+  assert(!text.includes("- Forma aeróbica"));
+  assert(!text.includes("são para dar medida"));
+  // Mas a corrida continua a contar para o resto do retrato.
+  assertStringIncludes(text, "- Corrida: 15 km em 1 corridas nos últimos 12 meses");
+});
+
+Deno.test("fetchPortraitBlock: as quatro consultas (com projeção details->splits) montam o mesmo retrato", async () => {
+  const sb = fakeSb({
+    runs: {
+      data: [
+        { date: "2026-03-10", distance_km: 10, duration_seconds: 3000, kind: "competicao", details: null },
+        { date: "2026-08-10", distance_km: 10, duration_seconds: 2700, kind: "competicao", details: null },
+      ],
+    },
+    workout_sessions: { data: [{ date: "2026-09-01" }] },
+    body_assessments: { data: [{ date: "2026-01-05", weight_kg: 77.5, body_fat_pct: 20 }, { date: "2026-09-10", weight_kg: 74, body_fat_pct: 17 }] },
+    race_events: { count: 1 },
+  });
+  const text = await fetchPortraitBlock(sb, "u1", "2026-09-18");
+  assertStringIncludes(text!, "- Corrida: 20 km em 2 corridas nos últimos 12 meses");
+  assertStringIncludes(text!, "- Melhores ritmos da época: 10k 4.30 (2026-08-10)");
+  assertStringIncludes(text!, "- Ginásio: 1 sessões em 12 meses");
+  assertStringIncludes(text!, "- Provas concluídas em 12 meses: 1");
+  assertStringIncludes(text!, "- Peso: 77.5 kg a 2026-01-05 → 74 kg a 2026-09-10 (-3.5 kg); massa gorda -3 pontos");
+  assertEquals(sb.calls.filter((t: string) => t === "runs").length, 1);
+});
+
+Deno.test("fetchPortraitBlock: uma tabela em erro devolve null nessa parte, sem rebentar", async () => {
+  const sb = fakeSb({ runs: { error: { message: "boom" } } });
+  const text = await fetchPortraitBlock(sb, "u1", "2026-09-18");
+  assertEquals(text, null);
+});
+
+Deno.test("fetchSharedMemoryBlock: portrait:true junta o retrato; omitido, fica como antes", async () => {
+  const sb = fakeSb({
+    runs: { data: [{ date: "2026-08-10", distance_km: 10, duration_seconds: 2700, kind: "competicao", details: null }] },
+    coach_notes: { data: [{ category: "geral", note: "Gosta de trilhos." }] },
+  });
+  const withPortrait = await fetchSharedMemoryBlock(sb, "u1", { portrait: true, todayISO: "2026-09-18" });
+  assertStringIncludes(withPortrait!, "RETRATO DA ÉPOCA");
+  const withoutPortrait = await fetchSharedMemoryBlock(sb, "u1", {});
+  assert(!withoutPortrait!.includes("RETRATO DA ÉPOCA"));
 });
 
 Deno.test("memória partilhada: notas por categoria e só a conversa dos últimos 7 dias", () => {
