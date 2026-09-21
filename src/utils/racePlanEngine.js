@@ -382,9 +382,9 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
         stars: daysToRace <= 0 ? 5 : 0,
         gradeLabel: daysToRace <= 0 ? 'Concluída' : 'Objetivo Final',
         statusColor: 'emerald',
-        summary: daysToRace <= 0 
-          ? `Prova terminada! Respeita os ${recoveryDays} dias de regeneração fisiológica ativa (só Z1/caminhadas).` 
-          : `O grande dia! Estratégia de nutrição: 30-60g carbo/h se prova > 75 minutos.`,
+        summary: daysToRace <= 0
+          ? `Prova terminada. Respeita os ${recoveryDays} dias de regeneração fisiológica ativa (só Z1/caminhadas).`
+          : `É dia de prova. 30-60g de hidratos por hora se passar de 75 minutos.`,
         metrics: { totalKm: distanceKm, runsCount: daysToRace <= 0 ? 1 : 0, polarizedZ1Z2Pct: 100, avgPace: null },
       },
     },
@@ -401,7 +401,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   } else if (daysToStart > 0) {
     carolOverviewText = `Faltam ${daysToStart} dias para o início oficial do macrociclo de ${totalWeeks} semanas. Nesta fase prévia, mantém uma rotina regular de corrida fácil (Z1/Z2) e trabalho de força no ginásio para entrar na Fase de Base com boa tolerância muscular.`;
   } else if (daysToRace <= 7) {
-    carolOverviewText = `Estamos na semana decisiva da prova (${daysToRace} dias restantes)! O trabalho duro está feito. Prioriza sono reparador, hidratação constante (1.5-2L/dia) e recarga equilibrada de hidratos de carbono. Mantém apenas 1 ou 2 corridas curtas com algumas acelerações para ativação neuromuscular.`;
+    carolOverviewText = `Estamos na semana decisiva da prova (${daysToRace} dias restantes). O trabalho duro está feito. Prioriza sono reparador, a hidratação e uma recarga equilibrada de hidratos de carbono. Mantém apenas 1 ou 2 corridas curtas com algumas acelerações para ativação neuromuscular.`;
   } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
     carolOverviewText = `Encontras-te na ${currentPhase.name} (Semana ${currentWeek} de ${totalWeeks}). O teu volume médio recente é de ${weeklyVol} km/semana. Continua a proteger o rácio 80/20 polarizado e respeita a semana de descarga a cada 3-4 semanas para garantir que a tua fadiga aguda (ACWR) se mantém em faixa segura.`;
   } else {

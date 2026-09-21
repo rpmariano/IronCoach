@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeMedalhoes, MEDALHAO_KEYS } from './medalhoes';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* Os medalhões (specs/palmares-medalhoes.md §"Testes"). O que estes testes
    guardam é sobretudo o calendário: quando é que uma medalha se ganha (no
@@ -112,7 +113,7 @@ describe('O Ano em Km — o mês', () => {
     const ago = dueOf(r, 'ano_km', 'mes').find((d) => d.periodKey === '2026-08');
     expect(ago.line).toBe('182 km em agosto — o teu melhor mês de sempre.');
     expect(ago.awardedOn).toBe('2026-08-28');
-    expect(r.due.every((d) => !d.line.includes('!'))).toBe(true);
+    r.due.forEach((d) => expectCarolVoice(d.line));
     expect(slotOf(r, 'ano_km', 'mes').remainingLabel).toBe('a 182 km de voltares a ganhar a medalha do mês');
     expect(med(r, 'ano_km').footer).toBe('282 KM CORRIDOS');
     expect(med(r, 'ano_km').year).toBe('2026');

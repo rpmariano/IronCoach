@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { goalFromNotes, knownFacts, firstDayAsk } from './firstDay';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* A Home no primeiro dia lembra-se do arranque: as notas que o Onboarding
    grava (objetivo_pessoal, disponibilidade) e o perfil. */
@@ -48,7 +49,7 @@ describe('firstDayAsk', () => {
   it('a voz dela: sem exclamações', () => {
     for (const g of ['prova', 'ritmo', 'saude', 'regresso', null]) {
       const a = firstDayAsk(g, 'Rui');
-      expect(`${a.title} ${a.body}`).not.toMatch(/!/);
+      expectCarolVoice(`${a.title} ${a.body}`);
     }
   });
 });

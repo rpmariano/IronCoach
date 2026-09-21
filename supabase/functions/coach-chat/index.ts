@@ -24,7 +24,7 @@ import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
-import { CAROL_TONE_RULES } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES, upstreamErrorText } from "../_shared/carolTone.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
@@ -5935,19 +5935,19 @@ async function handler(req: Request): Promise<Response> {
       try {
         geminiRes = await callGemini(!isFinalRound);
       } catch (e) {
-        return jsonResponse({ error: e instanceof Error ? e.message : "Falha ao contactar o coach." }, 504);
+        return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 504);
       }
 
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
         console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes }));
         if (geminiRes.status === 429) {
-          return jsonResponse({
-            error: "O coach atingiu o limite de pedidos da API neste momento. Tenta novamente dentro de alguns minutos.",
-          }, 503);
+          // Voz dela, não a de upstreamErrorText: é uma conversa em curso,
+          // não uma análise avulsa — "dá-me uns minutos", não "tenta outra vez".
+          return jsonResponse({ error: "Estou com muitos pedidos. Dá-me uns minutos." }, 503);
         }
         return jsonResponse({
-          error: `Falha na resposta do coach (${geminiRes.status}). Tenta novamente.`,
+          error: upstreamErrorText(geminiRes.status),
           detail: errText.slice(0, 500),
         }, 502);
       }
@@ -6037,7 +6037,7 @@ async function handler(req: Request): Promise<Response> {
 
     if (!rawText) {
       console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
-      return jsonResponse({ error: "O coach não conseguiu gerar uma resposta. Tenta novamente." }, 502);
+      return jsonResponse({ error: "Não consegui gerar uma resposta. Tenta outra vez." }, 502);
     }
 
     let replyText: string;
@@ -6078,7 +6078,7 @@ async function handler(req: Request): Promise<Response> {
       // pedir para tentar de novo do que guardar/mostrar lixo no histórico.
       console.error("Gemini devolveu JSON inválido/incompleto:", rawText);
       return jsonResponse({
-        error: "O coach teve um problema a gerar a resposta. Tenta novamente.",
+        error: "Tive um problema a gerar a resposta. Tenta outra vez.",
       }, 502);
     }
 

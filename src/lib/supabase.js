@@ -109,8 +109,19 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, error);
       logAppEvent('error', fnName, detailedMsg || 'Erro na execução', { fnName });
       // O servidor respondeu (mesmo que com erro) — não há timeout nem
-      // processamento em curso a aguardar.
-      return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.', isTimeout: false, isBusy };
+      // processamento em curso a aguardar. `status` e `isNetwork` (ação
+      // P.12) deixam quem chama distinguir "o servidor respondeu com um
+      // erro" (mostra detailedMsg, já na voz dela) de "nunca chegou lá"
+      // (FunctionsFetchError — classe fixa de @supabase/functions-js, nunca
+      // navigator.onLine nem procurar "Failed to fetch" pelo texto).
+      return {
+        data: null,
+        error: detailedMsg || 'Erro ao processar o pedido no servidor.',
+        isTimeout: false,
+        isBusy,
+        status: error.context?.status ?? null,
+        isNetwork: error?.name === 'FunctionsFetchError',
+      };
     }
 
     if (data?.usage) {
@@ -133,6 +144,6 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     // chegou a ser processado, por isso NÃO é um timeout.
     console.error(`[EdgeFunction:${fnName}] Exceção não tratada:`, err);
     logAppEvent('error', fnName, err.message || 'Exceção não tratada', { error: String(err) });
-    return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.', isTimeout: false };
+    return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.', isTimeout: false, status: null, isNetwork: true };
   }
 }

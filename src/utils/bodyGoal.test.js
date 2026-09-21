@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { bodyGoalMoment } from './bodyGoal';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* A meta do Corpo alcançada: só a travessia conta, a composição primeiro. */
 
@@ -35,6 +36,6 @@ describe('bodyGoalMoment', () => {
     const nova = av('n', '2026-09-19', { muscle_mass_kg: 36.1 });
     const m = bodyGoalMoment(nova, [av('a', '2026-09-01'), nova, av('z', '2026-09-25', { muscle_mass_kg: 40 })], { goal_muscle_mass_kg: 36 });
     expect(m?.field).toBe('muscle_mass_kg');
-    expect(`${m.title} ${m.sub}`).not.toMatch(/!/);
+    expectCarolVoice(`${m.title} ${m.sub}`);
   });
 });

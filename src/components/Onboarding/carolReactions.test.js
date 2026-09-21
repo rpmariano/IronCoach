@@ -1,14 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { firstName, reactToGoal, reactToRunning, reactToFood, reactToRace } from './carolReactions';
+import { expectCarolVoice } from '../../test/carolVoice';
 
 /* A Carol responde às respostas do arranque. O que se testa: que responde
    ao que foi escolhido, que o que preocupa vem primeiro, e que a voz dela
    (CAROL.md) se mantém — sem exclamações, sem emojis. */
 
-const semEmojiNemExclamacao = (r) => {
-  expect(r.text).not.toMatch(/!/);
-  expect(r.text).not.toMatch(/\p{Extended_Pictographic}/u);
-};
+const semEmojiNemExclamacao = (r) => expectCarolVoice(r.text);
 
 describe('firstName', () => {
   it('fica com o primeiro nome', () => {

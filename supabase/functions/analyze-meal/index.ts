@@ -8,7 +8,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 
 const MAX_PHOTOS = 6;
@@ -173,9 +173,7 @@ async function fetchGeminiWithTimeout(
     } catch (e) {
       clearTimeout(timer);
       if (attempt < retries) continue;
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
+      throw new Error(upstreamErrorText(null));
     }
   }
 }
@@ -244,12 +242,7 @@ async function runGeminiItemsRequest(
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
     console.error("Gemini error:", geminiRes.status, errText);
-    if (geminiRes.status === 429) {
-      throw new Error(
-        "O Gemini atingiu o limite de pedidos gratuitos neste momento. Espera um pouco e tenta novamente.",
-      );
-    }
-    throw new Error(`Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.`);
+    throw new Error(upstreamErrorText(geminiRes.status));
   }
 
   const geminiJson = await geminiRes.json();

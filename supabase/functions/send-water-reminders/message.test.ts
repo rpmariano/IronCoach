@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { formatWater, waterReminderMessage, windowProgress } from "./message.ts";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, assertCarolVoice } from "../_shared/carolTone.ts";
 
 Deno.test("formatWater: ml abaixo do litro, litros com vírgula acima", () => {
   assertEquals(formatWater(900), "900 ml");
@@ -38,8 +38,7 @@ Deno.test("waterReminderMessage: nunca emojis nem pontos de exclamação (carolT
     for (let hour = 0; hour < 24; hour++) {
       const { title, body } = waterReminderMessage({ totalMl, goalMl: 2500, hour, startHour: 8, endHour: 22 });
       const text = `${title} ${body}`;
-      assert(!/\p{Extended_Pictographic}/u.test(text), text);
-      assert(!text.includes("!"), text);
+      assertCarolVoice(text);
     }
   }
 });

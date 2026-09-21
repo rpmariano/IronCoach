@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runRecordMoment } from '@formulas/runRecord.ts';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* O recorde num treino: bate algo que já existia, com margem. A primeira
    corrida de 10 km é a primeira, não um recorde.
@@ -45,7 +46,7 @@ describe('runRecordMoment', () => {
     const nova = run('n', 10, 2900);
     const m = runRecordMoment(nova, [run('a', 10, 3000), nova]);
     expect(m.kind).toBe('pace');
-    expect(`${m.title} ${m.sub}`).not.toMatch(/!/);
+    expectCarolVoice(`${m.title} ${m.sub}`);
   });
 });
 

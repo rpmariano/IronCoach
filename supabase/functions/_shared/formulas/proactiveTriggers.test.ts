@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer } from "./proactiveTriggers.ts";
+import { assertCarolVoice } from "../carolTone.ts";
 
 const TODAY = "2026-09-18";
 const race = (over: Record<string, unknown> = {}) => ({ id: "r1", name: "Meia de Lisboa", date: TODAY, status: "agendada", ...over });
@@ -55,10 +56,7 @@ Deno.test("o texto da notificação: com e sem nome, sem emoji nem exclamação"
     "Como correu a prova? Conta-me, e regista a corrida.",
     "Não vejo nada teu há 8 dias. Estás bem?",
   ]);
-  for (const b of bodies) {
-    assert(!/\p{Extended_Pictographic}/u.test(b), b);
-    assert(!b.includes("!"), b);
-  }
+  for (const b of bodies) assertCarolVoice(b);
   assertEquals(proactivePushMessage(all[0]).title, "Carol");
 });
 
@@ -137,8 +135,7 @@ Deno.test("P.5: fim de bloco — plano de treino sem prova a acabar, sem outro a
 Deno.test("P.5: os textos novos, sem emoji nem exclamação", () => {
   for (const trigger of ["intervention", "race_conflict", "block_end"] as const) {
     const body = proactivePushMessage({ trigger, key: "k", raceId: null, raceName: null, hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null }).body;
-    assert(!/\p{Extended_Pictographic}/u.test(body), body);
-    assert(!body.includes("!"), body);
+    assertCarolVoice(body);
   }
 });
 

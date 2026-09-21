@@ -390,7 +390,12 @@ function formatWorkoutItemName(i: any): string {
   return "Descanso";
 }
 
-function buildWarningsMessage(
+// Texto determinístico (nunca passa pelo modelo — CAROL_TONE_RULES é só
+// para o que ele escreve) — ação P.12: sem "⚠️", sem "Certifica-te", sem
+// "Considera" (frases de manual/suavizadas). As duas de água mantêm a
+// palavra "água" de propósito: CarolCard.jsx:169 usa-a para não duplicar
+// a frase local do cartão.
+export function buildWarningsMessage(
   todayPlanItems: any[],
   waterTotal: number,
   waterGoal: number | null,
@@ -406,18 +411,18 @@ function buildWarningsMessage(
 
   if (waterGoal && waterTotal === 0) {
     // Nunca registou água hoje
-    const waterRem = ` Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+    const waterRem = ` Ainda não registaste água hoje.`;
     msg = msg ? `${msg}${waterRem}` : waterRem.trim();
   } else if (waterGoal && waterTotal < waterGoal / 2) {
     // Registou, mas ainda abaixo de metade da meta
-    const waterRem = ` Só registaste ${waterTotal} ml. Continua a hidratar-te para atingir a tua meta.`;
+    const waterRem = ` Registaste ${waterTotal} ml de água — ainda não é metade da tua meta.`;
     msg = msg ? `${msg}${waterRem}` : waterRem.trim();
   }
 
   // Alerta RED-S: gordura corporal abaixo do limiar de segurança (ACSM)
   if (bodyMetrics?.hasRedSRisk && bodyMetrics.latestBodyFat !== null) {
     const threshold = isFemale(bodyMetrics.gender) ? "16%" : "8%";
-    const redSMsg = ` ⚠️ Percentagem de gordura corporal (${bodyMetrics.latestBodyFat}%) abaixo do limiar de segurança (${threshold}). Risco RED-S — consulta um profissional de saúde.`;
+    const redSMsg = ` A tua gordura corporal (${bodyMetrics.latestBodyFat}%) está abaixo do limiar de segurança (${threshold}). É risco de RED-S — fala com um profissional de saúde.`;
     msg = msg ? `${msg}${redSMsg}` : redSMsg.trim();
   }
 
@@ -426,13 +431,13 @@ function buildWarningsMessage(
   // (0,9 kg/semana para toda a gente); a doutrina é sempre relativa à
   // massa corporal e ao nível (ver specs/formulas-checklist.md Fase C).
   if (bodyMetrics?.weightLossTooFast && bodyMetrics.weightLossPct != null) {
-    const wlMsg = ` Perda de peso rápida detetada (${Math.abs(bodyMetrics.weeklyWeightChange ?? 0)} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Certifica-te que estás a comer o suficiente para suportar o treino.`;
+    const wlMsg = ` Perda de peso rápida (${Math.abs(bodyMetrics.weeklyWeightChange ?? 0)} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Não estás a comer o suficiente para o treino que fazes.`;
     msg = msg ? `${msg}${wlMsg}` : wlMsg.trim();
   }
 
   // Alerta ACWR elevado: carga aguda muito acima da crónica → risco de lesão
   if (acwr?.ratio !== null && acwr?.ratio !== undefined && acwr.ratio > 1.5) {
-    const acwrMsg = ` Carga de treino desta semana muito elevada face às últimas 4 semanas (ACWR ${acwr.ratio.toFixed(2)}). Considera um dia de recuperação ativa.`;
+    const acwrMsg = ` Carga de treino desta semana muito elevada face às últimas 4 semanas (ACWR ${acwr.ratio.toFixed(2)}). Precisas de um dia de recuperação ativa.`;
     msg = msg ? `${msg}${acwrMsg}` : acwrMsg.trim();
   }
 

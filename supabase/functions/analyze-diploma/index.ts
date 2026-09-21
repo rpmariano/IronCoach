@@ -10,6 +10,7 @@
 // A chave Gemini vive só aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { upstreamErrorText } from "../_shared/carolTone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -155,7 +156,7 @@ async function fetchGeminiWithTimeout(url: string, options: RequestInit, timeout
     } catch (_e) {
       clearTimeout(timer);
       if (attempt < retries) continue;
-      throw new Error("O Gemini demorou demasiado tempo a responder. Tenta outra vez daqui a pouco.");
+      throw new Error(upstreamErrorText(null));
     }
   }
 }
@@ -179,8 +180,7 @@ async function readDiplomaWithGemini(imageB64: string, mime: string, geminiKey: 
   if (!res.ok) {
     const errText = await res.text();
     console.error("Gemini error:", res.status, errText);
-    if (res.status === 429) throw new Error("O Gemini atingiu o limite de pedidos neste momento. Espera um pouco e tenta de novo.");
-    throw new Error(`Leitura falhou (Gemini ${res.status}). Tenta de novo.`);
+    throw new Error(upstreamErrorText(res.status));
   }
   const json = await res.json();
   const usage = {

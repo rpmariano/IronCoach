@@ -47,6 +47,13 @@ function getFirstName(displayName) {
   return trimmed ? trimmed.split(/\s+/)[0] : null;
 }
 
+// As frases fixas de falha, na voz dela (ação P.12) — exportadas para o
+// teste de voz (src/utils/carolVoice.test.js) as verificar sem ter de
+// montar o componente inteiro e simular cada caminho de erro.
+export const COACH_ASYNC_FALLBACK_TEXT = 'Não consegui responder. Tenta outra vez.';
+export const COACH_IMMEDIATE_FAILURE_TEXT = 'Não consegui responder: falha de rede ou de ligação ao servidor. Tenta outra vez.';
+export const COACH_EMPTY_REPLY_TEXT = 'Não consegui responder agora. Tenta outra vez.';
+
 // Variantes do aviso de demora (handleAsyncFallback) — mesmo espírito do
 // "Banco de Humor" do system prompt da Carol: leve, situacional, nunca
 // sempre a mesma frase (antes era só a dos agachamentos, repetida em toda
@@ -121,7 +128,7 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const { data, error, isTimeout, isBusy } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isNetwork } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -131,7 +138,10 @@ export default function Coach() {
         } else if (silent) {
           setCoachLoading(false);
         } else {
-          handleImmediateFailure(isBusy ? error : undefined);
+          // O servidor respondeu, mesmo que com erro (ação P.12): mostra o
+          // que ELA disse (409 busy, 429, 5xx…), não só o caso 409. Só uma
+          // falha de rede genuína cai no aviso genérico.
+          handleImmediateFailure(isNetwork ? undefined : error);
         }
         return null;
       }
@@ -645,7 +655,7 @@ export default function Coach() {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Não foi possível obter uma resposta do Coach. Tenta outra vez.'
+        content: COACH_ASYNC_FALLBACK_TEXT
       });
     }
     setCoachLoading(false);
@@ -659,14 +669,20 @@ export default function Coach() {
   // nunca vai chegar, e o aviso de "demora" (pensado para pedidos lentos mas
   // em curso) seria enganador aqui. Informa já e liberta o campo para o
   // atleta poder tentar de novo de imediato.
-  // `message` opcional: o texto do servidor quando ele recusou de propósito
-  // (409 `busy` — "Calma Rui, ainda estou a preparar a resposta…"), que é
-  // dela e para mostrar tal e qual; sem isso, o aviso genérico de rede.
+  // `message` opcional: o texto QUE ELA disse quando o servidor respondeu
+  // (mesmo com erro — 409 `busy`, 502, 503...), para mostrar tal e qual em
+  // vez de o esconder atrás de um aviso genérico (ação P.12: antes só o 409
+  // `busy` mostrava o texto do servidor; qualquer outra resposta HTTP, por
+  // exemplo "Estou com muitos pedidos. Dá-me uns minutos.", ficava presa
+  // atrás deste aviso). Sem `message` (pedido que nunca chegou ao
+  // servidor — rede, DNS) fica o genérico: nem sempre há "uma mensagem" —
+  // um pedido por iniciativa dela (balanço, plano) não é escrito pelo
+  // atleta, por isso o texto não presume isso.
   const handleImmediateFailure = (message) => {
     addCoachMessage({
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: message || 'A tua mensagem não saiu: falha de rede ou de ligação ao servidor. Verifica a ligação e envia outra vez.'
+      content: message || COACH_IMMEDIATE_FAILURE_TEXT
     });
     setCoachLoading(false);
   };
@@ -712,7 +728,7 @@ export default function Coach() {
         activeInsights: insightsContext
       };
 
-      const { data, error, isTimeout, isBusy } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isNetwork } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -720,7 +736,10 @@ export default function Coach() {
         if (isTimeout) {
           await handleAsyncFallback(requestStartedAt);
         } else {
-          handleImmediateFailure(isBusy ? error : undefined);
+          // O servidor respondeu, mesmo que com erro (ação P.12): mostra o
+          // que ELA disse, não só o caso 409 busy. Só a falha de rede
+          // genuína cai no aviso genérico.
+          handleImmediateFailure(isNetwork ? undefined : error);
         }
         return;
       }
@@ -731,7 +750,7 @@ export default function Coach() {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data?.model_message?.content || 'Não consegui responder agora. Tenta outra vez.',
+        content: data?.model_message?.content || COACH_EMPTY_REPLY_TEXT,
         live: true,
       });
       if (Array.isArray(data?.suggestions)) {

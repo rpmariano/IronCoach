@@ -235,7 +235,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     });
 
     expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
-    expect(screen.getByText(/Não foi possível obter uma resposta do Coach/i)).toBeInTheDocument();
+    expect(screen.getByText(/Não consegui responder/i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
     expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).not.toBeDisabled();
@@ -374,6 +374,9 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
       data: null,
       error: 'Failed to send a request to the Edge Function',
       isTimeout: false,
+      // O pedido nunca chegou ao servidor (ação P.12) — isNetwork:true é o
+      // que faz o Coach mostrar o aviso genérico em vez deste texto bruto.
+      isNetwork: true,
     });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });

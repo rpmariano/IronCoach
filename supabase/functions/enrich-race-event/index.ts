@@ -32,6 +32,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { upstreamErrorText } from "../_shared/carolTone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,9 +85,7 @@ async function fetchGeminiWithTimeout(
     } catch (e) {
       clearTimeout(timer);
       if (attempt < retries) continue;
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
+      throw new Error(upstreamErrorText(null));
     }
   }
 }
@@ -473,16 +472,13 @@ Deno.serve(async (req) => {
         },
       );
     } catch (e) {
-      return jsonResponse({ error: e instanceof Error ? e.message : "Falha a contactar o Gemini." }, 502);
+      return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 502);
     }
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
       console.error("Gemini error:", geminiRes.status, errText);
-      if (geminiRes.status === 429) {
-        return jsonResponse({ error: "O Gemini atingiu o limite de pedidos gratuitos neste momento. Tenta novamente daqui a pouco." }, 502);
-      }
-      return jsonResponse({ error: `Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.` }, 502);
+      return jsonResponse({ error: upstreamErrorText(geminiRes.status) }, 502);
     }
 
     const geminiJson = await geminiRes.json();

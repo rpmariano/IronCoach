@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { firstRecordMoment } from './firstRecord';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* O primeiro registo de cada tipo é o único que a Carol reconhece à parte
    (CAROL.md: não aplaude tudo). O registo acabado de criar pode ou não já
@@ -25,7 +26,7 @@ describe('firstRecordMoment', () => {
   it('na voz dela: sem exclamações; e tipos desconhecidos não dão nada', () => {
     for (const k of ['run', 'meal', 'gym', 'body']) {
       const m = firstRecordMoment(k, {}, null);
-      expect(`${m.title} ${m.sub}`).not.toMatch(/!/);
+      expectCarolVoice(`${m.title} ${m.sub}`);
     }
     expect(firstRecordMoment('agua', {}, null)).toBeNull();
   });

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen } from './carolWelcome';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* As boas-vindas da Carol: aparecem na primeira abertura de cada faixa do
    dia (hora de Lisboa); no dia da prova, a da prova aparece uma vez e ocupa
@@ -133,7 +134,7 @@ describe('buildWelcome — o que ela diz', () => {
     for (const v of ['manha', 'tarde', 'noite', 'madrugada']) {
       const w = buildWelcome(v, { ...base, profile: {} }, at(`${hoje}T10:00:00`));
       expect(w.lines.length).toBeLessThanOrEqual(2);
-      expect([w.greeting, ...w.lines].join(' ')).not.toMatch(/!/);
+      expectCarolVoice([w.greeting, ...w.lines].join(' '));
       expect(w.greeting).not.toMatch(/, \./);
     }
   });
