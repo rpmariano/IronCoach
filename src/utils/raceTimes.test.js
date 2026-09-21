@@ -151,3 +151,63 @@ describe('describeDelta', () => {
     expect(describeDelta(null)).toBe('');
   });
 });
+
+/* O ritmo do melhor anterior. As categorias são largas ("meia" vai de 11,1 a
+   22,5 km), por isso dividir o tempo dele pela distância DESTA prova dava
+   números impossíveis — apanhado na revisão pré-deploy. */
+describe('raceTimesBreakdown — o ritmo do melhor anterior', () => {
+  it('usa a distância a que o recorde foi feito, não a desta prova', () => {
+    const outcome = {
+      distanceKm: 21.0975,
+      category: 'meia',
+      officialSeconds: 6822,
+      targetSeconds: 6720,
+      predictedSeconds: null,
+      previousBestSeconds: 3600,
+      previousBestDistanceKm: 12,
+    };
+    const { rows } = raceTimesBreakdown(outcome, { distance_km: 21.0975 });
+    const melhor = rows.find((r) => r.key === 'melhor');
+    // 1:00:00 em 12 km = 5.00/km. Pela distância da prova dariam 2.51/km.
+    expect(melhor.paceLabel).toBe('5.00/km');
+  });
+
+  it('sem a distância do recorde, mostra o tempo sem ritmo em vez de um ritmo falso', () => {
+    const outcome = {
+      distanceKm: 21.0975,
+      category: 'meia',
+      officialSeconds: 6822,
+      previousBestSeconds: 7066,
+      previousBestDistanceKm: null,
+    };
+    const { rows } = raceTimesBreakdown(outcome, { distance_km: 21.0975 });
+    const melhor = rows.find((r) => r.key === 'melhor');
+    expect(melhor.timeLabel).toBe('1:57:46');
+    expect(melhor.paceLabel).toBeNull();
+  });
+});
+
+/* O objetivo das provas criadas antes das colunas numéricas, e o do rascunho
+   da agenda: `targetLine` tem de ler o texto livre. */
+describe('targetLine — a cascata do objetivo', () => {
+  it('a coluna numérica manda', () => {
+    const l = targetLine({ distance_km: 21.1, target_time_seconds: 6720, target_pace_seconds_per_km: 318, target_time: '2:00:00' });
+    expect(l.timeLabel).toBe('1:52:00');
+    expect(l.paceLabel).toBe('5.18/km');
+  });
+
+  it('sem coluna numérica, lê o texto livre do rascunho', () => {
+    const l = targetLine({ distance_km: 21.1, target_time: '1:52:00', target_pace: '5.18' });
+    expect(l.timeLabel).toBe('1:52:00');
+    expect(l.paceLabel).toBe('5.18/km');
+  });
+
+  it('com o tempo em texto e sem ritmo, deriva o ritmo da distância', () => {
+    const l = targetLine({ distance_km: 21.1, target_time: '1:52:00' });
+    expect(l.paceLabel).toBe('5.18/km');
+  });
+
+  it('sem objetivo nenhum, null', () => {
+    expect(targetLine({ distance_km: 21.1 })).toBeNull();
+  });
+});

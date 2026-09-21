@@ -2971,6 +2971,7 @@ function outcome(overrides: Partial<RaceOutcome> = {}): RaceOutcome {
   return {
     race_id: "r1", name: "Meia de Lisboa", date: "2027-03-08", race_type: "estrada", distance_km: 21.1, category: "meia",
     official_seconds: 6822, target_seconds: 6720, predicted_seconds: 7282, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
+    previous_best_distance_km: 21.1,
     position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true, splits: [], achievements_new: [],
     ...overrides,
   };
@@ -2980,6 +2981,7 @@ Deno.test("parseRaceOutcome: aceita o payload do cliente e normaliza campo a cam
   const parsed = parseRaceOutcome({
     race_id: "r1", name: "  Meia de Lisboa ", date: "2027-03-08", race_type: "estrada", distance_km: "21.1", category: "meia",
     official_seconds: 6822.4, target_seconds: 6720, predicted_seconds: 7281.6, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
+    previous_best_distance_km: "21.1",
     position: "412", effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true,
   });
   assertEquals(parsed?.name, "Meia de Lisboa");
@@ -2989,6 +2991,7 @@ Deno.test("parseRaceOutcome: aceita o payload do cliente e normaliza campo a cam
   assertEquals(parsed?.position, 412);
   assertEquals(parsed?.verdict, "perto");
   assertEquals(parsed?.is_personal_record, true);
+  assertEquals(parsed?.previous_best_distance_km, 21.1);
 });
 
 Deno.test("parseRaceOutcome: lixo cai para null, não para erro", () => {
@@ -3017,6 +3020,21 @@ Deno.test("buildRaceOutcomeContext: os números e o veredicto, em maiúsculas on
   assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 (5.45/km) → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
   assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (5.35/km) · 2026-10-11 → RECORDE PESSOAL por 4:04.");
   assertStringIncludes(ctx, "Veredicto: PERTO DO OBJETIVO.");
+});
+
+/* O ritmo do melhor anterior sai da distância DELE. A categoria é larga
+   ("meia" vai de 11,1 a 22,5 km): dividir 1:00:00 pela distância desta prova
+   dava 2.51/km, fisicamente impossível, e a Carol repetia-o em voz alta
+   (revisão pré-deploy de 2026-09-21). */
+Deno.test("buildRaceOutcomeContext: o melhor anterior noutra distância leva o ritmo dele e diz a distância", () => {
+  const ctx = buildRaceOutcomeContext(outcome({ previous_best_seconds: 3600, previous_best_distance_km: 12, is_personal_record: false }));
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:00:00 (5.00/km) em 12 km");
+  assertEquals(ctx.includes("2.51/km"), false);
+});
+
+Deno.test("buildRaceOutcomeContext: sem a distância do recorde, o tempo vai sem ritmo em vez de um ritmo falso", () => {
+  const ctx = buildRaceOutcomeContext(outcome({ previous_best_distance_km: null }));
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 · 2026-10-11");
 });
 
 Deno.test("buildRaceOutcomeContext: objetivo batido, sem previsão nem histórico", () => {

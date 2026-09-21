@@ -23,14 +23,17 @@
    resto vem do `classifyRaceOutcome`. */
 
 import { getRacePrediction } from '@formulas/racePlanning.ts';
-import { formatDuration, formatPace } from './run';
+import { formatDuration, formatPace, parseDurationToSeconds, parsePaceToSeconds } from './run';
 import { formatDelta, raceCategoryLabel } from './raceOutcome';
 
-/* A margem a partir da qual o objetivo deixa de estar "alinhado" com o que
-   o treino aponta. É a mesma que o plano do dia da prova já usa para
-   chamar "ambicioso" a um objetivo (coach-chat, buildRacePacingPlan), para
-   a app não ter duas definições da mesma palavra. */
-export const AMBITIOUS_RATIO = 0.03;
+/* A margem a partir da qual o objetivo deixa de estar "alinhado" com o que o
+   treino aponta — reexportada do motor partilhado, não redeclarada aqui
+   (specs/formulas-centralizacao.md). É a mesma que o plano do dia da prova
+   usa para chamar "ambicioso" a um objetivo, e agora também a que o
+   coach-chat usa: a app tem uma só definição da palavra. */
+import { AMBITIOUS_RATIO } from '@formulas/racePacing.ts';
+
+export { AMBITIOUS_RATIO };
 
 /* Abaixo disto a previsão é uma extrapolação longa — a corrida que a
    sustenta é bem mais curta do que a prova. O valor vem do `confidence` do
@@ -60,11 +63,23 @@ export function timeLine(seconds, distanceKm, { paceSeconds = null, ...extra } =
   };
 }
 
-/** O objetivo da prova. A coluna numérica manda; o texto livre é o legado. */
+/* O objetivo da prova. A coluna numérica manda; o texto livre é o recurso —
+   e não é só legado, é o caso NORMAL no hub.
+
+   O único caminho para o hub é a RunAgenda (RunAgenda.jsx:976), que passa o
+   `draft` do formulário. Esse draft NUNCA tem target_time_seconds nem
+   target_pace_seconds_per_km: a agenda só converte o texto em colunas
+   numéricas no payload de gravação. Ler apenas a coluna numérica apagava o
+   objetivo do ecrã de toda a gente — e a app pedia ao atleta que marcasse um
+   objetivo que ele acabara de escrever (apanhado na revisão pré-deploy; foi
+   o defeito que esta entrega introduziu ao corrigir o inverso).
+
+   É a mesma cascata que classifyRaceOutcome já faz para o tempo. */
 export function targetLine(race) {
-  const seconds = num(race?.target_time_seconds);
+  const seconds = num(race?.target_time_seconds) ?? num(parseDurationToSeconds(race?.target_time));
   if (!seconds) return null;
-  return timeLine(seconds, race?.distance_km, { paceSeconds: num(race?.target_pace_seconds_per_km) });
+  const pace = num(race?.target_pace_seconds_per_km) ?? num(parsePaceToSeconds(race?.target_pace));
+  return timeLine(seconds, race?.distance_km, { paceSeconds: pace });
 }
 
 /* Como o objetivo se compara com o que o treino aponta. Positivo em
@@ -89,17 +104,41 @@ function forecastLine({ stance, deltaSeconds, target, predicted }) {
     : `O objetivo e o treino dizem quase o mesmo — ${d} entre eles.`;
 }
 
-/** ANTES da prova: o objetivo, o que o treino aponta, e a leitura.
- *  Devolve null quando não há previsão possível (sem corridas registadas). */
-export function raceForecast({ race, runs = [], profile = {} } = {}) {
+/* ANTES da prova: o objetivo, o que o treino aponta, e a leitura.
+
+   Devolve null só quando não há NEM objetivo NEM previsão. Antes bastava
+   não haver previsão para o bloco inteiro desaparecer — e quem não tem
+   corridas registadas é uma conta acabada de criar, exatamente quem mais
+   precisa de ver o alvo que marcou (revisão pré-deploy).
+
+   As corridas vão filtradas pelo mesmo critério do classifyRaceOutcome: o
+   fastestRun do motor só exige distance_km > 0, por isso uma corrida com
+   distância e sem duração entrava como acumulador do reduce e devolvia NaN,
+   o que apagava o bloco todo. */
+export function raceForecast({ race, runs = [], profile = {}, prediction: dada = null } = {}) {
   if (!race) return null;
-  const prediction = getRacePrediction(race, profile, runs);
+  const utilizaveis = (runs || []).filter((r) => num(r?.distance_km) && num(r?.duration_seconds));
+  // Quem já tem a previsão em memória (o hub calcula-a para o plano do dia)
+  // passa-a: senão o motor corria duas vezes a cada render.
+  const prediction = dada || getRacePrediction(race, profile, utilizaveis);
   const predicted = timeLine(prediction.predictedSeconds, race.distance_km, {
     paceSeconds: prediction.predictedPaceReal,
   });
-  if (!predicted) return null;
 
   const target = targetLine(race);
+  if (!predicted && !target) return null;
+  if (!predicted) {
+    return {
+      target,
+      predicted: null,
+      deltaSeconds: null,
+      stance: null,
+      lowConfidence: false,
+      effectiveDistanceKm: prediction.effectiveDistanceKm,
+      realDistanceKm: prediction.realDistanceKm,
+      line: `O teu objetivo é ${target.timeLabel}${target.paceLabel ? `, a ${target.paceLabel}` : ''}. Regista corridas e digo-te o que o treino aponta.`,
+    };
+  }
   const deltaSeconds = target ? target.seconds - predicted.seconds : null;
   const stance = stanceOf(target?.seconds, predicted.seconds);
 
@@ -129,7 +168,11 @@ export function raceTimesBreakdown(outcome, race) {
     paceSeconds: num(race?.target_pace_seconds_per_km),
   });
   const predicted = timeLine(outcome.predictedSeconds, km);
-  const best = timeLine(outcome.previousBestSeconds, km);
+  /* O ritmo do melhor anterior é sobre a distância DELE, não sobre a desta
+     prova: a categoria é larga e a divisão errada dava ritmos impossíveis.
+     Sem essa distância (registos antigos), fica o tempo sem ritmo — melhor
+     um número a menos do que um número falso. */
+  const best = timeLine(outcome.previousBestSeconds, num(outcome.previousBestDistanceKm));
 
   /* `delta` é sempre REAL menos o outro: negativo = o atleta foi mais
      rápido do que aquele número. É a leitura que o atleta faz de cabeça

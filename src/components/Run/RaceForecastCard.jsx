@@ -33,7 +33,10 @@ function Coluna({ label, line, cor }) {
 
 export default function RaceForecastCard({ forecast, raceType, elevationGainM }) {
   const [showHelp, setShowHelp] = useState(false);
-  if (!forecast?.predicted) return null;
+  /* Basta haver UM dos dois. Exigir a previsão apagava o bloco inteiro a
+     quem ainda não tem corridas registadas — uma conta acabada de criar,
+     que é quem mais precisa de ver o alvo que marcou. */
+  if (!forecast || (!forecast.predicted && !forecast.target)) return null;
 
   const { target, predicted, deltaSeconds, stance, lowConfidence, effectiveDistanceKm } = forecast;
   const equiv = Math.round((effectiveDistanceKm || 0) * 10) / 10;
@@ -42,7 +45,8 @@ export default function RaceForecastCard({ forecast, raceType, elevationGainM })
   return (
     <div className="rh-spec-card rh-spec-card-wide" data-testid="race-forecast" data-stance={stance || 'sem-objetivo'} style={{ padding: '10px 12px 12px' }}>
       <div className="w-full flex items-center justify-center relative">
-        <span className="rh-spec-lbl">{target ? 'Objetivo e previsão' : 'Previsão'}</span>
+        <span className="rh-spec-lbl">{target && predicted ? 'Objetivo e previsão' : (target ? 'Objetivo' : 'Previsão')}</span>
+        {predicted && (
         <button
           type="button"
           onClick={() => setShowHelp((p) => !p)}
@@ -51,19 +55,21 @@ export default function RaceForecastCard({ forecast, raceType, elevationGainM })
           }`}
           aria-label="Como é calculada a previsão"
           aria-expanded={showHelp}
+          aria-controls="race-forecast-help"
         >
           <Info size={14} />
         </button>
+        )}
       </div>
 
       <div className="w-full flex items-start gap-3 mt-2 text-left">
         {target && <Coluna label="O teu objetivo" line={target} cor="var(--race)" />}
-        <Coluna label="O treino aponta" line={predicted} cor="var(--run)" />
+        {predicted && <Coluna label="O treino aponta" line={predicted} cor="var(--run)" />}
       </div>
 
       {/* A diferença é o que ele quer mesmo saber: quanto falta, ou quanta
           margem tem. Em número, não dentro de uma frase. */}
-      {target && (
+      {target && predicted && (
         <div
           data-testid="race-forecast-delta"
           className="w-full mt-2.5 pt-2.5 text-left"
@@ -75,7 +81,7 @@ export default function RaceForecastCard({ forecast, raceType, elevationGainM })
           <p className="text-[12px] leading-[1.45] mt-1 m-0" style={{ color: 'var(--text-3)' }}>{forecast.line}</p>
         </div>
       )}
-      {!target && (
+      {!(target && predicted) && (
         <p className="w-full text-[12px] leading-[1.45] mt-2 mb-0 text-left" style={{ color: 'var(--text-3)' }}>{forecast.line}</p>
       )}
 
@@ -85,8 +91,8 @@ export default function RaceForecastCard({ forecast, raceType, elevationGainM })
         </p>
       )}
 
-      {showHelp && (
-        <div className="w-full mt-2.5 pt-2.5 border-t border-[var(--border-glass)] text-left fade-in">
+      {showHelp && predicted && (
+        <div id="race-forecast-help" className="w-full mt-2.5 pt-2.5 border-t border-[var(--border-glass)] text-left fade-in">
           <div className="bg-[var(--tint-coach-bg)] border border-[var(--tint-coach-bd)] text-[var(--coach-soft)] text-[11px] leading-relaxed p-3 rounded-xl flex items-start gap-2.5 shadow-lg">
             <Info className="w-4 h-4 mt-0.5 shrink-0 text-[var(--coach)]" />
             <p className="flex-1 font-medium m-0">

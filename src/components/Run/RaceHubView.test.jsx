@@ -589,3 +589,49 @@ describe('RaceHubView — objetivo, previsão e real', () => {
     expect(screen.getByTestId('race-times-target-only').textContent).toContain('1:52:00');
   });
 });
+
+/* Os dois defeitos que a revisão pré-deploy apanhou na entrega dos tempos.
+   Nenhum dos testes acima os via, porque todos injetavam
+   `target_time_seconds` à mão — um campo que o hub NUNCA recebe em
+   produção. Estes usam a forma real do que a RunAgenda lhe passa. */
+describe('RaceHubView — o objetivo do rascunho da agenda', () => {
+  const futura = (d) => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+
+  // Exatamente o `draft` de RunAgenda: só texto livre, sem colunas numéricas.
+  const DRAFT = {
+    id: 'race-1', name: 'Meia', date: futura(60), distance_km: '21.1',
+    race_type: 'estrada', race_priority: 'a', status: 'planeada',
+    target_time: '1:52:00', target_pace: '5.18',
+  };
+  const TREINO = [{ id: 'r1', kind: 'normal', date: pastDateISO(20), distance_km: 10, duration_seconds: 2880 }];
+
+  it('mostra o objetivo do rascunho, com tempo e ritmo, e compara-o com a previsão', () => {
+    render(<RaceHubView race={DRAFT} runs={TREINO} profile={PROFILE} />);
+
+    const bloco = screen.getByTestId('race-forecast');
+    expect(bloco.textContent).toContain('1:52:00');
+    expect(bloco.textContent).toContain('5.18/km');
+    // E deixa de mandar marcar um objetivo que ele acabou de escrever.
+    expect(bloco.textContent).not.toContain('Marca um objetivo');
+    expect(screen.getByTestId('race-forecast-delta')).toBeInTheDocument();
+  });
+
+  it('sem corridas nenhumas o objetivo continua à vista — conta nova é quem mais precisa dele', () => {
+    render(<RaceHubView race={DRAFT} runs={[]} profile={PROFILE} />);
+
+    const bloco = screen.getByTestId('race-forecast');
+    expect(bloco.textContent).toContain('1:52:00');
+    expect(bloco.textContent).toContain('Regista corridas');
+    // Sem previsão não há diferença para mostrar.
+    expect(screen.queryByTestId('race-forecast-delta')).not.toBeInTheDocument();
+  });
+
+  it('uma corrida com distância e sem duração não apaga o bloco', () => {
+    // fastestRun só exige distance_km > 0: em primeiro no reduce, esta
+    // corrida devolvia NaN e levava o bloco inteiro com ela.
+    const corrompida = [{ id: 'mau', kind: 'normal', date: pastDateISO(5), distance_km: 8, duration_seconds: null }, ...TREINO];
+    render(<RaceHubView race={DRAFT} runs={corrompida} profile={PROFILE} />);
+
+    expect(screen.getByTestId('race-forecast').textContent).toContain('1:52:00');
+  });
+});

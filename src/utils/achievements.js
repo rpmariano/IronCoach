@@ -145,13 +145,19 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
         não depende de ter marcado objetivo nem de ter histórico na
         distância: premeia quem apareceu no dia e foi além do seu próprio
         treino. A régua é a mesma do balanço (`vsTraining === 'acima'`, a
-        banda de 3% do raceOutcome) — o palmarés não pode discordar do que a
-        Carol diz sobre a mesma prova. */
+        banda TRAINING_BAND_RATIO de 2% do raceOutcome — não os 3% do
+        NEAR_TARGET_RATIO, que é outra coisa) — o palmarés não pode
+        discordar do que a Carol diz sobre a mesma prova. */
   const comAcimaDoTreino = completed.find(({ outcome }) => outcome?.vsTraining === 'acima');
   const ultimaComPrevisao = completed.find(({ outcome }) => !!outcome?.predictedSeconds && !!outcome?.officialSeconds);
   let treinoLocked = 'Precisa de treinos registados antes da prova';
   if (ultimaComPrevisao) {
-    treinoLocked = `Na ${ultimaComPrevisao.race.name} ficaste a ${formatDelta(ultimaComPrevisao.outcome.deltaPredictionSeconds)} da previsão`;
+    /* `formatDelta` é absoluto, por isso a frase tem de dizer de que lado
+       ficou: quem correu mais rápido mas dentro da banda de 2% lia um
+       "ficaste a 12s da previsão" que sugeria o contrário do que aconteceu. */
+    const d = ultimaComPrevisao.outcome.deltaPredictionSeconds;
+    const lado = d > 0 ? 'acima' : 'abaixo';
+    treinoLocked = `Na ${ultimaComPrevisao.race.name} ficaste a ${formatDelta(d)} ${lado} da previsão`;
   }
   const acimaDoTreino = build(
     'acima_do_treino', 'Acima do treino', 'Treino', 'coach', Rocket,

@@ -166,7 +166,10 @@ describe('Home/RaceCard — o dia a seguir à prova', () => {
     expect(screen.queryByTestId('race-card-chip-previsao_batida')).not.toBeInTheDocument();
   });
 
-  it('com o treino a apontar para bem mais, acrescenta "Previsão batida"', () => {
+  /* Era "Previsão batida", um pseudo-chip do próprio RaceCard. Desde
+     2026-09-21 quem o diz é a conquista `acima_do_treino` do palmarés, com a
+     mesma condição — tinham passado a aparecer os dois para o mesmo facto. */
+  it('com o treino a apontar para bem mais, a prova mostra "Acima do treino" — e uma só vez', () => {
     render(
       <RaceCard
         raceEvents={[{ ...CONCLUIDA, date: emDias(-1) }]}
@@ -178,7 +181,8 @@ describe('Home/RaceCard — o dia a seguir à prova', () => {
         profile={PROFILE}
       />
     );
-    expect(screen.getByTestId('race-card-chip-previsao_batida')).toHaveTextContent('Previsão batida');
+    expect(screen.getByTestId('race-card-chip-acima_do_treino')).toHaveTextContent('Acima do treino');
+    expect(screen.queryByTestId('race-card-chip-previsao_batida')).not.toBeInTheDocument();
   });
 
   it('"Ver memórias" abre o hub e "Próxima prova" marca a seguinte', () => {

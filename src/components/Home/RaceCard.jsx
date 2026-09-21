@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Flag, Medal, Plus, Target, Trophy } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flag, Medal, Plus, Trophy } from 'lucide-react';
 import { todayISO } from '../../lib/utils';
 import { findRaceRun, formatDuration, formatPace } from '../../utils/run';
 import { classifyRaceOutcome } from '../../utils/raceOutcome';
@@ -206,12 +206,12 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     if (!concluida) return null;
     const run = findRaceRun(runs, concluida);
     const outcome = classifyRaceOutcome({ race: concluida, run, runs, profile });
+    /* "Previsão batida" era um pseudo-chip acrescentado aqui, com a condição
+       `vsTraining === 'acima'`. Desde 2026-09-20 isso é a conquista
+       `acima_do_treino` do palmarés, com a mesma condição — e a prova passou
+       a mostrar os dois, "Acima do treino" e "Previsão batida", para o mesmo
+       facto (apanhado na revisão pré-deploy). Fica só a conquista. */
     const conquistas = achievementsForRace({ raceEvents, runs, profile }, concluida.id);
-    // "Previsão batida" não é uma conquista do palmarés — é a leitura do
-    // treino (raceOutcome.vsTraining) e lê-se ao lado delas.
-    if (outcome?.vsTraining === 'acima') {
-      conquistas.push({ key: 'previsao_batida', name: 'Previsão batida', tone: 'ok', Icon: Target });
-    }
     const ordem = (raceEvents || []).filter((e) => e?.date && e.status === 'concluida'
       && e.date <= concluida.date && estaRegistada(e.id)).length;
     return { run, outcome, conquistas, ordem, dias: diasEntre(today, concluida.date) };

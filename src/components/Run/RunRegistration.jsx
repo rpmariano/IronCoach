@@ -1096,7 +1096,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const store = useAppStore.getState();
     // A que se mostra é a mais rara: "Prova concluída" toda a prova dá — se
     // esta também deu o objetivo ou um recorde, é isso que vai à frente.
-    const prioridade = ['objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia', 'prova_concluida'];
+    /* "Acima do treino" entra antes de "Prova concluída" e depois de tudo o
+       resto: é a menos rara das que dizem alguma coisa (basta 2% abaixo de
+       uma extrapolação sobre treinos, que quase toda a prova bate). Fora da
+       lista, o indexOf devolvia -1 e punha-a à frente de "objetivo batido" e
+       do recorde pessoal — o contrário da regra (revisão pré-deploy). */
+    const prioridade = ['objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia', 'acima_do_treino', 'prova_concluida'];
     const novas = achievementsForRace({ raceEvents: store.raceEvents, runs: store.runs, profile }, raceId)
       .filter((a) => a.isNew)
       .sort((a, b) => prioridade.indexOf(a.key) - prioridade.indexOf(b.key));

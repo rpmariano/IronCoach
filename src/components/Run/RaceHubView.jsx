@@ -125,8 +125,8 @@ export default function RaceHubView({
      (utils/raceTimes.js) — o mesmo sítio de onde saem o bloco pós-prova e o
      contexto da Carol, para os três nunca discordarem. */
   const forecast = useMemo(() =>
-    raceForecast({ race, runs, profile }),
-  [race, runs, profile]);
+    raceForecast({ race, runs, profile, prediction }),
+  [race, runs, profile, prediction]);
 
   /* ── Plano para o dia (specs/plano-de-prova.md) ─────────────────────────
      Só nos últimos 7 dias e no próprio dia: antes disso o que interessa é o

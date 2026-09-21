@@ -18,9 +18,15 @@ Nunca compete com "o que faço hoje".
 |---|---|---|---|
 | `prova_concluida` | Prova concluída | contagem de `race_events` com `status = 'concluida'` e corrida ligada | âmbar `--race` |
 | `objetivo_batido` | Objetivo batido | `details.official_time_seconds` (ou `duration_seconds`) ≤ `target_time_seconds` da prova | verde `--ok` |
+| `acima_do_treino` | Acima do treino | `raceOutcome.vsTraining === 'acima'`: o tempo oficial ficou pelo menos `TRAINING_BAND_RATIO` (2%) abaixo do que a previsão de Riegel sobre as corridas ANTERIORES à prova fazia esperar. A única que não exige objetivo marcado nem histórico na distância | ciano `--coach` |
 | `recorde_pessoal` | Recorde pessoal | melhor tempo do atleta na categoria de distância da prova (`categorizeDistance` das fórmulas partilhadas), entre corridas `kind = 'competicao'` | ciano `--run` |
 | `primeira_trail` | Primeira de trail | primeira prova concluída com `race_type = 'trail'` | âmbar `--race` |
 | `sequencia` | Sequência de provas | N provas seguidas concluídas com corrida ligada, sem nenhuma agendada que tenha passado por correr; N ≥ 2 | âmbar `--race` |
+
+`acima_do_treino` não entra nas conquistas PERDIDAS de uma prova
+(`PERDIDAS_NA_PROVA`): a diferença face à previsão já está no bloco dos
+tempos do hub, e três linhas de "fica para a próxima" na mesma prova passavam
+de leitura a repreensão.
 
 Bloqueada = vidro neutro com cadeado, sem cor, e uma frase que diz o que
 falta ("Ficaste a 1:42 na Meia de Lisboa"). Desbloqueada = cor do
@@ -42,7 +48,7 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    1:42").
 3. **Início, o dia a seguir** — o cartão "Para onde vou" passa a "Prova
    concluída · ontem" com tempo, pace, objetivo, a ordem da prova em grande
-   (26px), as conquistas em chips (`Recorde pessoal`, `Previsão batida`) e
+   (26px), as conquistas em chips (`Recorde pessoal`, `Acima do treino`) e
    dois botões: "Ver memórias" (hub) e "Próxima prova" (`RunAgenda`). Fica
    até marcares a próxima prova ou 7 dias, o que vier primeiro; depois o
    Início volta a olhar para a frente. A Carol chama pelo balanço no botão

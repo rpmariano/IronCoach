@@ -96,6 +96,7 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
     targetSeconds,
     predictedSeconds: null,
     previousBestSeconds: null,
+    previousBestDistanceKm: null,
     previousBestDate: null,
     deltaTargetSeconds: null,
     deltaPredictionSeconds: null,
@@ -134,6 +135,13 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
     predictedSeconds,
     previousBestSeconds: best?.seconds ?? null,
     previousBestDate: best?.date ?? null,
+    /* A distância a que esse melhor foi feito. `previousBestSeconds` já a
+       calculava e o outcome deitava-a fora — e as categorias são largas
+       ("meia" vai de 11,1 a 22,5 km). Sem ela, quem quisesse mostrar o ritmo
+       desse tempo dividia-o pela distância da prova ATUAL e escrevia um
+       número impossível: 1:00:00 feitos em 12 km apareciam como 2:51/km numa
+       meia (apanhado na revisão pré-deploy). */
+    previousBestDistanceKm: best?.distanceKm ?? null,
     deltaTargetSeconds: targetSeconds ? officialSeconds - targetSeconds : null,
     deltaPredictionSeconds: predictedSeconds ? officialSeconds - predictedSeconds : null,
     deltaBestSeconds: best ? officialSeconds - best.seconds : null,
@@ -194,6 +202,7 @@ export function buildRaceOutcomePayload(outcome, race, run) {
     predicted_seconds: outcome.predictedSeconds,
     previous_best_seconds: outcome.previousBestSeconds,
     previous_best_date: outcome.previousBestDate,
+    previous_best_distance_km: outcome.previousBestDistanceKm,
     position: num(run?.details?.position) ? Math.round(num(run.details.position)) : null,
     effort_rpe: num(run?.effort_rpe) ?? null,
     verdict: outcome.verdict,

@@ -29,7 +29,7 @@ export default function RaceTimesBreakdown({ breakdown }) {
     <div
       data-testid="race-times-breakdown"
       className="mt-4"
-      style={{ borderRadius: 16, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)', padding: '12px 14px 14px' }}
+      style={{ borderRadius: 16, background: 'var(--surface-dim)', border: '1px solid var(--border-glass)', padding: '12px 14px 14px' }}
     >
       <div className="text-[11px] font-extrabold uppercase" style={{ color: 'var(--text-4)', letterSpacing: '.06em' }}>
         Ao lado do que pedias
@@ -45,7 +45,9 @@ export default function RaceTimesBreakdown({ breakdown }) {
       <div className="flex flex-col gap-1.5 mt-2.5 pt-2.5" style={{ borderTop: '1px solid var(--border-glass)' }}>
         {rows.map((r) => (
           <div key={r.key} data-testid={`race-times-${r.key}`} className="flex items-baseline gap-2 flex-wrap">
-            <span className="text-[11px] font-bold" style={{ color: 'var(--text-4)', minWidth: 96 }}>{r.label}</span>
+            {/* Sem o minWidth fixo: "Melhor maratona anterior" quebrava a
+                linha e o ml-auto do delta subia para o topo. */}
+            <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-4)' }}>{r.label}</span>
             <span className="text-[13.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{r.timeLabel}</span>
             {r.paceLabel && <span className="text-[12px]" style={{ color: 'var(--text-3)' }}>{r.paceLabel}</span>}
             <span className="text-[12px] font-extrabold ml-auto" style={{ color: TOM(r.delta) }}>

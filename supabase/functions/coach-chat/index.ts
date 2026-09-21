@@ -42,7 +42,7 @@ import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
-import { buildRacePacingPlan, compareSplitsToPlan, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
+import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
@@ -718,6 +718,10 @@ export interface RaceOutcome {
   predicted_seconds: number | null;
   previous_best_seconds: number | null;
   previous_best_date: string | null;
+  /** A distância a que esse melhor foi feito — a categoria é larga ("meia"
+   *  vai de 11,1 a 22,5 km), por isso o ritmo dele NÃO se tira da distância
+   *  desta prova. Sem ela, a linha vai sem ritmo. */
+  previous_best_distance_km: number | null;
   position: number | null;
   effort_rpe: number | null;
   verdict: RaceVerdict;
@@ -776,6 +780,7 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
     predicted_seconds: posNum(r.predicted_seconds) ? Math.round(posNum(r.predicted_seconds)!) : null,
     previous_best_seconds: posNum(r.previous_best_seconds) ? Math.round(posNum(r.previous_best_seconds)!) : null,
     previous_best_date: (() => { const d = shortStr(r.previous_best_date, 10); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null; })(),
+    previous_best_distance_km: posNum(r.previous_best_distance_km),
     position: posNum(r.position) ? Math.round(posNum(r.position)!) : null,
     effort_rpe: posNum(r.effort_rpe),
     verdict,
@@ -897,7 +902,8 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
      tempo total e o pace". Sem isto a Carol tinha o ritmo da realidade e
      tinha de inventar o do objetivo para os comparar em s/km, que é como o
      atleta pensa a corrida. O ritmo é sempre sobre a distância REAL. */
-  const hmsPace = (seconds: number) => `${formatHms(seconds)}${o.distance_km ? ` (${sharedFormatPaceMinKm(Math.round(seconds / o.distance_km))}/km)` : ""}`;
+  const hmsPace = (seconds: number, km: number | null = o.distance_km) =>
+    `${formatHms(seconds)}${km ? ` (${sharedFormatPaceMinKm(Math.round(seconds / km))}/km)` : ""}`;
   const pace = o.distance_km ? ` (${sharedFormatPaceMinKm(Math.round(o.official_seconds / o.distance_km))}/km)` : "";
   lines.push(`Tempo oficial: ${formatHms(o.official_seconds)}${pace}${o.position ? ` · posição ${o.position}` : ""}${o.effort_rpe ? ` · RPE ${o.effort_rpe}` : ""}.`);
   if (o.target_seconds) {
@@ -917,7 +923,10 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   }
   if (o.previous_best_seconds) {
     const d = o.official_seconds - o.previous_best_seconds;
-    lines.push(`Melhor anterior na ${cat || "distância"}: ${hmsPace(o.previous_best_seconds)}${o.previous_best_date ? ` · ${o.previous_best_date}` : ""} → ` + (o.is_personal_record
+    /* O ritmo deste sai da distância DELE. Dividi-lo pela distância desta
+       prova dava ritmos impossíveis (1:00:00 em 12 km lidos como 2:51/km
+       numa meia) — e a Carol repetia-os em voz alta. */
+    lines.push(`Melhor anterior na ${cat || "distância"}: ${hmsPace(o.previous_best_seconds, o.previous_best_distance_km)}${o.previous_best_distance_km && o.previous_best_distance_km !== o.distance_km ? ` em ${o.previous_best_distance_km} km` : ""}${o.previous_best_date ? ` · ${o.previous_best_date}` : ""} → ` + (o.is_personal_record
       ? `RECORDE PESSOAL por ${absHms(d)}.`
       : `${absHms(d)} mais lento; sem recorde.`));
   } else {
@@ -3464,8 +3473,13 @@ export function buildRaceEventsContext(
        preparação como quando se conclui a prova (...) sempre com o tempo
        total e o pace".
 
-       É o mesmo número que o hub mostra ao atleta (utils/raceTimes.js sobre
-       este mesmo getRacePrediction) — a Carol não pode discordar do ecrã. */
+       Sai do mesmo getRacePrediction que o hub usa, mas NÃO é forçosamente o
+       mesmo número: aqui as corridas vêm de uma janela de 30 dias (ver o
+       comentário de `flattenedRuns` acima) e o hub lê o histórico todo. Num
+       atleta com um recorde antigo fora da janela, os dois divergem — e a
+       partir desta entrega o atleta vê ambos, um dito por ela e outro
+       impresso no ecrã. Por isso o próprio bloco diz sobre que período foi
+       calculado, em vez de se apresentar como a verdade única. */
     let forecastSuffix = "";
     if (e.distance_km) {
       const raceForPrediction = {
@@ -3481,17 +3495,20 @@ export function buildRaceEventsContext(
         // onde a previsão corre sobre a distância equivalente em plano.
         const predPace = formatPaceMinKm(Math.round(predSeconds / e.distance_km));
         const targetSeconds = Number(e.target_time_seconds) > 0 ? Math.round(Number(e.target_time_seconds)) : 0;
-        const parts = [`o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        const parts = [`pelas corridas das últimas 4 semanas, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
         if (targetSeconds > 0) {
-          // Margem igual à do plano do dia da prova (buildRacePacingPlan) e
-          // à do hub: 3%. Uma só definição de "ambicioso" na app inteira.
+          /* Exatamente a comparação do plano do dia da prova
+             (buildRacePacingPlan) e a do hub (raceTimes.js, stanceOf): o
+             denominador é a PREVISÃO, não o objetivo. Com o denominador
+             trocado havia uma banda estreita em que o ecrã dizia "alinhado"
+             e a Carol dizia "ambicioso" — no ponto exato em que esta
+             entrega existe para os pôr de acordo (revisão pré-deploy). */
           const delta = predSeconds - targetSeconds;
-          const ratio = Math.abs(delta) / targetSeconds;
-          const leitura = ratio <= 0.03
-            ? "o objetivo está alinhado com o que o treino aponta"
-            : (delta > 0
-              ? `o objetivo está ${formatHms(Math.abs(delta))} ABAIXO do que o treino aponta — é ambicioso, diz-lho e ajusta o plano ou o objetivo`
-              : `o objetivo está ${formatHms(Math.abs(delta))} ACIMA do que o treino aponta — há margem, propõe-lhe puxar o objetivo`);
+          const leitura = targetSeconds < predSeconds * (1 - AMBITIOUS_RATIO)
+            ? `o objetivo está ${formatHms(Math.abs(delta))} ABAIXO do que o treino aponta — é ambicioso, diz-lho e ajusta o plano ou o objetivo`
+            : (targetSeconds > predSeconds * (1 + AMBITIOUS_RATIO)
+              ? `o objetivo está ${formatHms(Math.abs(delta))} ACIMA do que o treino aponta — há margem, propõe-lhe puxar o objetivo`
+              : "o objetivo está alinhado com o que o treino aponta");
           parts.push(leitura);
         } else {
           parts.push("o atleta ainda não fixou tempo-alvo — propõe-lhe um a partir deste número");
