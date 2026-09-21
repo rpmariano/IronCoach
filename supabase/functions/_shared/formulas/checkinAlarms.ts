@@ -152,10 +152,64 @@ export function evaluateCheckinAlarms(checkins: DailyCheckin[] | null | undefine
   return alarms;
 }
 
-function avg(list: DailyCheckin[], field: "sleep" | "energy" | "stress"): string | null {
+function avgNum(list: DailyCheckin[], field: "sleep" | "energy" | "stress"): number | null {
   const vals = list.map((c) => num(c[field])).filter((v): v is number => v !== null);
   if (!vals.length) return null;
-  return String(Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10).replace(".", ",");
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+function fmt1(n: number): string {
+  return String(Math.round(n * 10) / 10).replace(".", ",");
+}
+
+function avg(list: DailyCheckin[], field: "sleep" | "energy" | "stress"): string | null {
+  const n = avgNum(list, field);
+  return n === null ? null : fmt1(n);
+}
+
+const CHECKIN_FIELDS: Array<["sleep" | "energy" | "stress", string]> = [
+  ["sleep", "sono"], ["energy", "energia"], ["stress", "stress"],
+];
+/** A partir de que diferença entre as duas janelas se diz "a subir"/"a
+ *  descer" — sem adjetivo, só a direção; a Carol julga se é bom ou mau. */
+const TREND_THRESHOLD = 0.7;
+const MIN_TREND_CHECKINS = 3;
+
+/* Ciclo (ação 5.4): a duração normal ronda os 21–35 dias; a margem (18–45)
+   absorve o erro de quem esquece um dia de check-in sem inventar um ciclo de
+   3 dias nem de 4 meses a partir de um início mal detetado. */
+const MIN_CYCLE_LENGTH_DAYS = 18;
+const MAX_CYCLE_LENGTH_DAYS = 45;
+
+/** "2026-09-09" → "09-09" (dia-mês, sem ano — a Carol já sabe o ano). */
+function ddmm(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${d}-${m}`;
+}
+
+/** Os primeiros dias de cada episódio de menstruação: `period_today` true
+ *  sem nenhum true nos 5 dias antes — um período de vários dias seguidos não
+ *  conta como vários inícios. Ordenado por data ascendente. Sem consentimento
+ *  ou perfil feminino, `checkins` já chega sem nenhum `period_today` true
+ *  (fetchCheckinBlock apaga-o antes), por isso não repete aqui o corte. */
+function cycleStarts(checkins: DailyCheckin[] | null | undefined): string[] {
+  const trueDates = new Set(byDate(checkins).filter((c) => c.period_today === true).map((c) => c.date));
+  const starts: string[] = [];
+  for (const date of trueDates) {
+    const hasRecentTrue = [1, 2, 3, 4, 5].some((d) => trueDates.has(addDays(date, -d)));
+    if (!hasRecentTrue) starts.push(date);
+  }
+  return starts.sort();
+}
+
+/** A duração de cada ciclo entre inícios consecutivos, só as plausíveis. */
+function cycleLengths(starts: string[]): number[] {
+  const lengths: number[] = [];
+  for (let i = 1; i < starts.length; i++) {
+    const len = dayDiff(starts[i - 1], starts[i]);
+    if (len >= MIN_CYCLE_LENGTH_DAYS && len <= MAX_CYCLE_LENGTH_DAYS) lengths.push(len);
+  }
+  return lengths;
 }
 
 function describeDay(c: DailyCheckin): string {
@@ -179,18 +233,54 @@ export function buildCheckinContext(checkins: DailyCheckin[] | null | undefined,
   const today = week.find((c) => c.date === todayISO);
   lines.push(today ? `- Hoje: ${describeDay(today) || "check-in sem valores"}.` : "- Hoje: ainda sem check-in.");
   if (week.length) {
-    const means = [["sono", avg(week, "sleep")], ["energia", avg(week, "energy")], ["stress", avg(week, "stress")]]
-      .filter(([, v]) => v !== null).map(([k, v]) => `${k} ${v}`);
-    if (means.length) lines.push(`- Média dos últimos 7 dias: ${means.join(", ")} (${week.length} check-in${week.length === 1 ? "" : "s"}).`);
+    // Esta semana vs as 3 semanas antes (ação 5.4) — só com pelo menos 3
+    // check-ins em cada janela: com menos, uma tendência é uma afirmação a
+    // mais a partir de pouco. Sem isso, a média simples de sempre.
+    const before = byDate(checkins).filter((c) => c.date >= addDays(todayISO, -27) && c.date <= addDays(todayISO, -7));
+    if (week.length >= MIN_TREND_CHECKINS && before.length >= MIN_TREND_CHECKINS) {
+      const weekParts = CHECKIN_FIELDS.map(([field, label]) => {
+        const wAvg = avgNum(week, field);
+        if (wAvg === null) return null;
+        const bAvg = avgNum(before, field);
+        const diff = bAvg === null ? 0 : wAvg - bAvg;
+        const marker = diff >= TREND_THRESHOLD ? " a subir" : diff <= -TREND_THRESHOLD ? " a descer" : "";
+        return `${label} ${fmt1(wAvg)}${marker}`;
+      }).filter((v): v is string => v !== null);
+      const beforeParts = CHECKIN_FIELDS
+        .map(([field, label]) => { const v = avg(before, field); return v === null ? null : `${label} ${v}`; })
+        .filter((v): v is string => v !== null);
+      if (weekParts.length) {
+        lines.push(`- Esta semana: ${weekParts.join(", ")} (${week.length} check-ins); as 3 semanas antes: ${beforeParts.join(", ")} (${before.length} check-ins).`);
+      }
+    } else {
+      const means = CHECKIN_FIELDS.map(([field, label]) => { const v = avg(week, field); return v === null ? null : `${label} ${v}`; })
+        .filter((v): v is string => v !== null);
+      if (means.length) lines.push(`- Média dos últimos 7 dias: ${means.join(", ")} (${week.length} check-in${week.length === 1 ? "" : "s"}).`);
+    }
     const painDays = week.filter((c) => (num(c.pain) ?? 0) > 0 && c.date !== todayISO);
     if (painDays.length) lines.push(`- Dias com dor esta semana: ${painDays.map((c) => `${c.date} ${describeDay(c)}`).join("; ")}.`);
   }
   if (cycle) {
-    lines.push(cycle.lastPeriod
-      ? `- Ciclo: último dia de menstruação registado a ${cycle.lastPeriod} (há ${cycle.days} dias).`
-      : cycle.days < CHECKIN_WINDOW_DAYS
-        ? `- Ciclo: registo ativo, ainda sem nenhum dia de menstruação marcado (${cycle.days} dias desde o consentimento).`
-        : `- Ciclo: registo ativo, sem nenhum dia de menstruação marcado nos últimos ${CHECKIN_WINDOW_DAYS} dias.`);
+    // Duração do ciclo (ação 5.4) — nunca "hoje é o dia D": os inícios detetados
+    // e uma previsão em "por volta de", nunca uma data como certeza.
+    const starts = cycleStarts(checkins);
+    const lengths = cycleLengths(starts);
+    const avgLen = lengths.length ? Math.round(lengths.reduce((a, b) => a + b, 0) / lengths.length) : null;
+    if (avgLen !== null && starts.length >= 3) {
+      const [a, b] = starts.slice(-2);
+      const next = addDays(b, avgLen);
+      lines.push(`- Ciclo: inícios a ${ddmm(a)} e ${ddmm(b)} (ciclo de ~${avgLen} dias); o próximo é esperado por volta de ${ddmm(next)}.`);
+    } else if (avgLen !== null && starts.length === 2) {
+      const [a, b] = starts;
+      const next = addDays(b, avgLen);
+      lines.push(`- Ciclo: inícios a ${ddmm(a)} e ${ddmm(b)} (último ciclo: ${avgLen} dias); o próximo é esperado por volta de ${ddmm(next)}.`);
+    } else {
+      lines.push(cycle.lastPeriod
+        ? `- Ciclo: último dia de menstruação registado a ${cycle.lastPeriod} (há ${cycle.days} dias).`
+        : cycle.days < CHECKIN_WINDOW_DAYS
+          ? `- Ciclo: registo ativo, ainda sem nenhum dia de menstruação marcado (${cycle.days} dias desde o consentimento).`
+          : `- Ciclo: registo ativo, sem nenhum dia de menstruação marcado nos últimos ${CHECKIN_WINDOW_DAYS} dias.`);
+    }
   }
 
   const alarms = evaluateCheckinAlarms(checkins, todayISO, opts);

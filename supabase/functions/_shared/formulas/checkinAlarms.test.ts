@@ -99,3 +99,67 @@ Deno.test("buildCheckinContext: sem check-in hoje diz-o; sem nada na semana nem 
   const cycle = buildCheckinContext([], TODAY, { female: true, cycleConsentAt: "2026-09-01" })!;
   assertStringIncludes(cycle, "registo ativo, ainda sem nenhum dia de menstruação marcado (17 dias desde o consentimento)");
 });
+
+// Ação 5.4: esta semana vs as 3 semanas antes, e a duração do ciclo.
+Deno.test("buildCheckinContext: com 3+ check-ins nas duas janelas, a tendência substitui a média simples", () => {
+  const checkins = [
+    // As 3 semanas antes (2026-08-22 a 2026-09-11).
+    { date: "2026-08-25", sleep: 4, energy: 4, stress: 2 },
+    { date: "2026-09-01", sleep: 3, energy: 4, stress: 3 },
+    { date: "2026-09-08", sleep: 4, energy: 3, stress: 2 },
+    // Esta semana (2026-09-12 a 2026-09-18).
+    { date: "2026-09-14", sleep: 2, energy: 2, stress: 4 },
+    { date: "2026-09-16", sleep: 3, energy: 3, stress: 4 },
+    { date: TODAY, sleep: 2, energy: 2, stress: 5 },
+  ];
+  const text = buildCheckinContext(checkins, TODAY, NO_CYCLE)!;
+  assertStringIncludes(
+    text,
+    "- Esta semana: sono 2,3 a descer, energia 2,3 a descer, stress 4,3 a subir (3 check-ins); " +
+      "as 3 semanas antes: sono 3,7, energia 3,7, stress 2,3 (3 check-ins).",
+  );
+  assert(!text.includes("Média dos últimos 7 dias"));
+});
+
+Deno.test("buildCheckinContext: com menos de 3 numa das janelas, fica a média simples de sempre", () => {
+  const checkins = [
+    { date: "2026-09-01", sleep: 4, energy: 4, stress: 2 }, // só 1 na janela de antes
+    { date: "2026-09-14", sleep: 2, energy: 2, stress: 4 },
+    { date: "2026-09-16", sleep: 3, energy: 3, stress: 4 },
+    { date: TODAY, sleep: 2, energy: 2, stress: 5 },
+  ];
+  const text = buildCheckinContext(checkins, TODAY, NO_CYCLE)!;
+  assertStringIncludes(text, "- Média dos últimos 7 dias: sono 2,3, energia 2,3, stress 4,3 (3 check-ins).");
+  assert(!text.includes("Esta semana:"));
+});
+
+Deno.test("buildCheckinContext: ciclo com dois inícios plausíveis diz 'último ciclo'", () => {
+  const checkins = [
+    { date: "2026-07-10", period_today: true },
+    { date: "2026-07-11", period_today: true }, // continuação, não é um segundo início
+    { date: "2026-08-07", period_today: true }, // 28 dias depois — plausível
+  ];
+  const text = buildCheckinContext(checkins, TODAY, { female: true, cycleConsentAt: "2026-06-01" })!;
+  assertStringIncludes(text, "- Ciclo: inícios a 10-07 e 07-08 (último ciclo: 28 dias); o próximo é esperado por volta de 04-09.");
+});
+
+Deno.test("buildCheckinContext: ciclo com três ou mais inícios diz 'ciclo de ~N dias', pela média", () => {
+  const checkins = [
+    { date: "2026-06-01", period_today: true },
+    { date: "2026-06-29", period_today: true }, // 28 dias
+    { date: "2026-07-27", period_today: true }, // 28 dias
+  ];
+  const text = buildCheckinContext(checkins, TODAY, { female: true, cycleConsentAt: "2026-05-01" })!;
+  assertStringIncludes(text, "- Ciclo: inícios a 29-06 e 27-07 (ciclo de ~28 dias); o próximo é esperado por volta de 24-08.");
+});
+
+Deno.test("buildCheckinContext: um único intervalo fora de 18-45 dias não inventa uma duração — fica o último dia registado", () => {
+  const checkins = [
+    { date: "2026-06-01", period_today: true },
+    { date: "2026-07-21", period_today: true }, // 50 dias — fora da margem plausível
+  ];
+  const text = buildCheckinContext(checkins, TODAY, { female: true, cycleConsentAt: "2026-05-01" })!;
+  assertStringIncludes(text, "- Ciclo: último dia de menstruação registado a 2026-07-21 (há 59 dias).");
+  assert(!text.includes("ciclo de ~"));
+  assert(!text.includes("último ciclo:"));
+});
