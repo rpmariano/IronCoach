@@ -922,6 +922,70 @@ export const useAppStore = create((set, get) => ({
     return true;
   },
 
+  /* Os consentimentos de privacidade da comparação por percentil
+     (gamificação, Fase 5). Dois âmbitos INDEPENDENTES:
+       'stats_pool'  — entrar no denominador das distribuições, sem nome;
+       'leaderboard' — aparecer com nome abreviado nas tabelas.
+     Conceder um nunca implica o outro.
+
+     A ordem das duas escritas não é indiferente: PRIMEIRO o livro
+     (privacy_consents), só DEPOIS a cache no perfil. O livro é o que o art.
+     7.º/1 do RGPD obriga a poder demonstrar; se a segunda escrita falhar,
+     fica um livro certo e uma cache atrasada — o contrário deixava um estado
+     ativo que ninguém consegue provar ter sido consentido.
+
+     RETIRAR 'stats_pool' RETIRA TAMBÉM 'leaderboard', e é a única cascata
+     que existe: a tabela com nomes mostra a métrica, e a métrica vem do
+     denominador. Sair do denominador e continuar numa tabela era impossível
+     de cumprir. Cascata só a retirar, nunca a conceder — e o ecrã diz-lo
+     antes de acontecer. */
+  setPrivacyConsent: async (kind, on, { policyVersion = 'v1', source = 'app' } = {}) => {
+    const profile = get().profile;
+    if (!profile?.id) return false;
+    if (kind !== 'stats_pool' && kind !== 'leaderboard') return false;
+
+    const agora = new Date().toISOString();
+    const retiraTambemTabelas = kind === 'stats_pool' && !on && !!profile.leaderboard_consent_at;
+    const kinds = retiraTambemTabelas ? [kind, 'leaderboard'] : [kind];
+
+    const { error: erroLivro } = await supabase.from('privacy_consents').insert(
+      kinds.map((k) => ({
+        user_id: profile.id,
+        kind: k,
+        granted_at: on ? agora : null,
+        revoked_at: on ? null : agora,
+        policy_version: policyVersion,
+        source,
+      })),
+    );
+    if (erroLivro) { console.error('Erro a registar o consentimento:', erroLivro); return false; }
+
+    const patch = {};
+    for (const k of kinds) patch[`${k === 'stats_pool' ? 'stats_pool' : 'leaderboard'}_consent_at`] = on ? agora : null;
+    /* O nome abreviado só existe com o consentimento das tabelas. A retirar,
+       é o trigger clear_pool_data_on_consent_revoked que o limpa no servidor
+       — aqui espelha-se, para a UI não ficar a mostrar um nome que já não há. */
+    if (kind === 'leaderboard' && on) patch.leaderboard_display_name = profile.leaderboard_display_name || null;
+    if (kinds.includes('leaderboard') && !on) patch.leaderboard_display_name = null;
+
+    const { error } = await supabase.from('profiles').update(patch).eq('id', profile.id);
+    if (error) { console.error('Erro a gravar o consentimento no perfil:', error); return false; }
+    set((s) => ({ profile: { ...s.profile, ...patch } }));
+    return true;
+  },
+
+  /* O nome abreviado das tabelas. Só se grava com o consentimento
+     'leaderboard' ativo — sem ele não há nome para mostrar em lado nenhum. */
+  setLeaderboardDisplayName: async (nome) => {
+    const profile = get().profile;
+    if (!profile?.id || !profile.leaderboard_consent_at) return false;
+    const valor = (nome || '').trim() || null;
+    const { error } = await supabase.from('profiles').update({ leaderboard_display_name: valor }).eq('id', profile.id);
+    if (error) { console.error('Erro a gravar o nome das tabelas:', error); return false; }
+    set((s) => ({ profile: { ...s.profile, leaderboard_display_name: valor } }));
+    return true;
+  },
+
   /* Apagar todos os check-ins do atleta (privacidade, pendente da Fase 2).
      O RLS "own daily_checkins" é FOR ALL: só apaga as linhas dele. */
   deleteAllCheckins: async () => {

@@ -12,6 +12,8 @@ import SectionLabel from '../shared/SectionLabel';
 import { Sheet } from '../shared/Sheet';
 import MedalhaoSheet from './MedalhaoSheet';
 import MedalhaoContribSheet from './MedalhaoContribSheet';
+import OndeEstasScreen from './OndeEstasScreen';
+import TabelasConsentScreen from './TabelasConsentScreen';
 
 /* O Palmarés, no separador Provas — os medalhões (specs/palmares-medalhoes.md
    §"Onde aparece", mock "Palmarés — os medalhões"). Substituiu a linha das
@@ -55,6 +57,11 @@ export default function PalmaresCard({ onOpenRace }) {
   // Os registos de um encaixe: { medalhaoKey, slotKey }. Guarda chaves, não o
   // encaixe, para a lista acompanhar os dados se mudarem com a persiana aberta.
   const [contrib, setContrib] = useState(null);
+  /* "Onde estás" (gamificação, Fase 5) e o consentimento que lhe dá entrada.
+     Dois ecrãs inteiros, como os registos de um encaixe — o segundo abre por
+     cima do primeiro sem o desmontar, e fechá-lo volta ao percentil. */
+  const [ondeEstasOpen, setOndeEstasOpen] = useState(false);
+  const [tabelasOpen, setTabelasOpen] = useState(false);
   const today = todayISO();
 
   const { medalhoes, heroKey } = useMemo(
@@ -172,6 +179,17 @@ export default function PalmaresCard({ onOpenRace }) {
 
       <button
         type="button"
+        data-testid="palmares-onde-estas"
+        onClick={() => setOndeEstasOpen(true)}
+        className="w-full flex items-center justify-between text-left text-[12px] font-bold"
+        style={{ ...COLLECTION_CARD, padding: '4px 16px', minHeight: 52, color: 'var(--text-3)' }}
+      >
+        Onde estás — o teu percentil no escalão
+        <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+      </button>
+
+      <button
+        type="button"
         data-testid="palmares-provas"
         onClick={() => setProvasOpen(true)}
         className="w-full flex items-center justify-between text-left text-[12px] font-bold"
@@ -202,6 +220,15 @@ export default function PalmaresCard({ onOpenRace }) {
           onNavigate={() => { setContrib(null); setOpenKey(null); }}
         />
       )}
+
+      {ondeEstasOpen && (
+        <OndeEstasScreen
+          onClose={() => setOndeEstasOpen(false)}
+          onOpenTabelas={() => setTabelasOpen(true)}
+        />
+      )}
+
+      {tabelasOpen && <TabelasConsentScreen onClose={() => setTabelasOpen(false)} />}
 
       {provasOpen && (
         <Sheet eyebrow="Palmarés" eyebrowTone="race" onClose={() => setProvasOpen(false)} testId="palmares-sheet">

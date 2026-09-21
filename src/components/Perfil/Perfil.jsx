@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, ChevronRight, Utensils, Footprints, Plus } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -11,6 +11,7 @@ import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '
 import { useToast } from '../shared/ToastProvider';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
+import TabelasConsentScreen from './TabelasConsentScreen';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -107,6 +108,9 @@ const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 export default function Perfil() {
   const { profile, setProfile, session, setNavGuard, setOnboardingOpen } = useAppStore();
   const [tab, setTab] = useState('perfil');
+  // O ecrã do consentimento das tabelas (Fase 5) — ecrã inteiro por portal,
+  // como o onboarding: não é um separador nem um formulário deste ecrã.
+  const [tabelasOpen, setTabelasOpen] = useState(false);
 
   // Local state form (draft)
   const [draft, setDraft] = useState({});
@@ -600,6 +604,40 @@ export default function Perfil() {
             </div>
           </div>
           
+          {/* Privacidade — os dois consentimentos da comparação por percentil
+              (gamificação, Fase 5). Vive aqui, no Pessoal, ao lado do género
+              e da data de nascimento: são esses dois campos que fazem o
+              escalão, e é o escalão que se compara. O ecrã é o mesmo a que se
+              chega do "Onde estás", no Palmarés. */}
+          <button
+            type="button"
+            data-testid="perfil-privacidade-tabelas"
+            onClick={() => setTabelasOpen(true)}
+            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
+            style={{
+              minHeight: 'var(--tap)',
+              padding: 15,
+              borderRadius: 'var(--radius-xl)',
+              background: 'var(--surface-glass)',
+              border: '1px solid var(--border-glass)',
+            }}
+          >
+            <ShieldCheck size={18} className="shrink-0" style={{ color: profile?.stats_pool_consent_at ? 'var(--ok)' : 'var(--text-4)' }} />
+            <span className="flex-1 min-w-0">
+              <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)' }}>
+                Comparar-me com o meu escalão
+              </span>
+              <span className="block" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
+                {profile?.leaderboard_consent_at
+                  ? 'Na média e nas tabelas com o nome abreviado'
+                  : profile?.stats_pool_consent_at
+                    ? 'Na média do escalão, sem nome nenhum'
+                    : 'Fora da média — duas decisões, ambas tuas'}
+              </span>
+            </span>
+            <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+          </button>
+
           <div className="module-card-contrast">
             <p className="text-[11px] text-[var(--text-3)] mb-3">Sessão iniciada como <b className="text-[var(--text-3)]">{session?.user?.email}</b></p>
             <button onClick={handleSignOut} className="w-full min-h-[44px] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-[var(--tint-danger-bg)] transition">
@@ -1005,6 +1043,8 @@ export default function Perfil() {
           Chat (pedido do utilizador). Sobe acima da barra de ação: a 100px
           o botão caía em cima do "Guardar alterações". */}
       <CoachInsightsDock bottom={168} />
+
+      {tabelasOpen && <TabelasConsentScreen onClose={() => setTabelasOpen(false)} />}
     </div>
   );
 }

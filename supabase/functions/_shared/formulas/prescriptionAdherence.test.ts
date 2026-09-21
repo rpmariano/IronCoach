@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildPrescriptionAdherenceContext, evaluatePrescriptions, evaluateTrainingItem, mealTotalsByDate } from "./prescriptionAdherence.ts";
+import { buildPrescriptionAdherenceContext, evaluatePrescriptions, evaluateTrainingItem, executionBase, executionScore, mealTotalsByDate } from "./prescriptionAdherence.ts";
 
 const TODAY = "2026-09-18";
 
@@ -110,3 +110,46 @@ Deno.test("revisão: marcado como feito conta; a data real conta; uma corrida li
   assertEquals(summary.training.map((t) => t.outcome), ["cumprido", "falhado"]);
 });
 
+
+/* ── executionScore ───────────────────────────────────────────────────────
+   Tabela golden como as outras fórmulas puras da pasta: o mapa counts →
+   número é exatamente o tipo de coisa que se lê melhor em JSON do que em
+   asserções espalhadas. */
+const golden = JSON.parse(await Deno.readTextFile(new URL("./prescriptionAdherence.golden.json", import.meta.url)));
+
+for (const { name, counts, expect } of golden) {
+  Deno.test(`executionScore — ${name}`, () => {
+    assertEquals(executionScore(counts), expect.score);
+    assertEquals(executionBase(counts), expect.base);
+  });
+}
+
+Deno.test("executionScore: o índice entra no resumo, e é null quando não houve plano nenhum", () => {
+  const comPlano = evaluatePrescriptions({
+    items: [
+      { planned_date: "2026-09-14", kind: "corrida", target_distance_km: 10 },
+      { planned_date: "2026-09-15", kind: "corrida", target_distance_km: 10 },
+      { planned_date: "2026-09-16", kind: "descanso" },
+    ],
+    runs: [{ date: "2026-09-14", distance_km: 10 }],
+    gym: [],
+    mealsByDate: {},
+  }, TODAY);
+  // cumprido + falhado + descanso respeitado: (1 + 0 + 0,5) / (2 + 0,5) = 60.
+  assertEquals(comPlano.counts, { cumprido: 1, a_menos: 0, a_mais: 0, falhado: 1, descanso_respeitado: 1, descanso_nao_respeitado: 0 });
+  assertEquals(comPlano.executionScore, 60);
+  // Sem itens de treino na janela não há índice — 0 diria "cumpriu nada".
+  assertEquals(evaluatePrescriptions({ items: [], runs: [], gym: [], mealsByDate: {} }, TODAY).executionScore, null);
+});
+
+Deno.test("executionScore: o texto do prompt não mudou por causa do índice", () => {
+  const summary = evaluatePrescriptions({
+    items: [{ planned_date: "2026-09-14", kind: "corrida", training_type: "longo", target_distance_km: 18 }],
+    runs: [{ date: "2026-09-14", distance_km: 18 }],
+    gym: [],
+    mealsByDate: {},
+  }, TODAY);
+  const texto = buildPrescriptionAdherenceContext(summary)!;
+  assertStringIncludes(texto, "1 treinos prescritos: 1 cumpridos, 0 a menos, 0 a mais, 0 não feitos");
+  assert(!texto.includes("índice"));
+});

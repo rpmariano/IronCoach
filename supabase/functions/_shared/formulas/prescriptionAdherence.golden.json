@@ -1,0 +1,42 @@
+[
+  {
+    "name": "cumpriu tudo e descansou quando devia — 100",
+    "counts": { "cumprido": 8, "a_menos": 0, "a_mais": 0, "falhado": 0, "descanso_respeitado": 6, "descanso_nao_respeitado": 0 },
+    "expect": { "score": 100, "base": 11 }
+  },
+  {
+    "name": "nada prescrito na janela — base 0, e quem pergunta tem de distinguir isto de zero",
+    "counts": { "cumprido": 0, "a_menos": 0, "a_mais": 0, "falhado": 0, "descanso_respeitado": 0, "descanso_nao_respeitado": 0 },
+    "expect": { "score": 0, "base": 0 }
+  },
+  {
+    "name": "metade dos treinos ficou a menos — meio peso cada",
+    "counts": { "cumprido": 4, "a_menos": 4, "a_mais": 0, "falhado": 0, "descanso_respeitado": 0, "descanso_nao_respeitado": 0 },
+    "expect": { "score": 75, "base": 8 }
+  },
+  {
+    "name": "a mais vale exatamente o mesmo que a menos — 22 km num longo de 18 é outra coisa, não é melhor",
+    "counts": { "cumprido": 4, "a_menos": 0, "a_mais": 4, "falhado": 0, "descanso_respeitado": 0, "descanso_nao_respeitado": 0 },
+    "expect": { "score": 75, "base": 8 }
+  },
+  {
+    "name": "falhou os treinos todos mas respeitou os descansos — o descanso sozinho não salva o índice",
+    "counts": { "cumprido": 0, "a_menos": 0, "a_mais": 0, "falhado": 8, "descanso_respeitado": 6, "descanso_nao_respeitado": 0 },
+    "expect": { "score": 27.3, "base": 11 }
+  },
+  {
+    "name": "treinou tudo mas não parou nos dias de descanso — desviar-se do plano custa, a meio peso",
+    "counts": { "cumprido": 6, "a_menos": 0, "a_mais": 0, "falhado": 0, "descanso_respeitado": 0, "descanso_nao_respeitado": 4 },
+    "expect": { "score": 75, "base": 8 }
+  },
+  {
+    "name": "duas semanas só de descanso, todas respeitadas — 100 sem ter corrido, e é por isso que o descanso vale meio",
+    "counts": { "cumprido": 0, "a_menos": 0, "a_mais": 0, "falhado": 0, "descanso_respeitado": 10, "descanso_nao_respeitado": 0 },
+    "expect": { "score": 100, "base": 5 }
+  },
+  {
+    "name": "uma quinzena normal, com de tudo",
+    "counts": { "cumprido": 5, "a_menos": 2, "a_mais": 1, "falhado": 2, "descanso_respeitado": 3, "descanso_nao_respeitado": 1 },
+    "expect": { "score": 66.7, "base": 12 }
+  }
+]
