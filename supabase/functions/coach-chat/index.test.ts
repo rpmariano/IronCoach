@@ -2523,6 +2523,47 @@ Deno.test("buildRaceEventsContext: em estrada, o eixo de D+ fica desligado (D+ d
   assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Médio — diverge do declarado (Básico)");
 });
 
+/* Bloco 8b — a previsão de tempo. Antes era calculada aqui só para aferir
+   o nível e deitada fora: a Carol via o objetivo e não via o que o treino
+   dela própria apontava, e só comentava a diferença DEPOIS da prova.
+   1:46:10 / 10.37 por km são o getRacePrediction real para estes 4 runs
+   contra esta prova (10 km trail, 500 m D+, iniciante) — confirmados a
+   correr o motor, como o resto deste bloco. */
+Deno.test("buildRaceEventsContext: a previsão do treino entra com tempo e ritmo", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15" })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "PREVISÃO DE TEMPO: o treino aponta para 1:46:10 (10.37/km)");
+  assertStringIncludes(ctx!, "ainda não fixou tempo-alvo");
+});
+
+Deno.test("buildRaceEventsContext: objetivo mais rápido do que a previsão sai marcado como ambicioso", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", target_time_seconds: 6000 })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "o objetivo está 6:10 ABAIXO do que o treino aponta — é ambicioso");
+});
+
+Deno.test("buildRaceEventsContext: objetivo a menos de 3% da previsão fica alinhado", () => {
+  // 6370 previsto vs 6300 de objetivo = 70 s, 1,1% — dentro da margem que o
+  // plano do dia da prova (buildRacePacingPlan) já usa para o mesmo juízo.
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", target_time_seconds: 6300 })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "o objetivo está alinhado com o que o treino aponta");
+});
+
+Deno.test("buildRaceEventsContext: objetivo mais lento do que a previsão convida a puxar", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", target_time_seconds: 7200 })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "o objetivo está 13:50 ACIMA do que o treino aponta — há margem");
+});
+
 Deno.test("buildRaceEventsContext: menos de 3 semanas com dados — sem linha de nível medido", () => {
   // deno-lint-ignore no-explicit-any
   const runs: any[] = [
@@ -2972,15 +3013,15 @@ Deno.test("buildRaceOutcomeContext: os números e o veredicto, em maiúsculas on
   const ctx = buildRaceOutcomeContext(outcome());
   assertStringIncludes(ctx, "Prova: Meia de Lisboa, 2027-03-08, Estrada, 21.1 km (meia).");
   assertStringIncludes(ctx, "Tempo oficial: 1:53:42 (5.23/km) · posição 412 · RPE 8.");
-  assertStringIncludes(ctx, "Objetivo: 1:52:00 → 1:42 ACIMA do objetivo (1,5%).");
-  assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
-  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (2026-10-11) → RECORDE PESSOAL por 4:04.");
+  assertStringIncludes(ctx, "Objetivo: 1:52:00 (5.18/km) → 1:42 ACIMA do objetivo (1,5%).");
+  assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 (5.45/km) → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (5.35/km) · 2026-10-11 → RECORDE PESSOAL por 4:04.");
   assertStringIncludes(ctx, "Veredicto: PERTO DO OBJETIVO.");
 });
 
 Deno.test("buildRaceOutcomeContext: objetivo batido, sem previsão nem histórico", () => {
   const ctx = buildRaceOutcomeContext(outcome({ verdict: "superado", target_seconds: 6900, predicted_seconds: null, vs_training: null, previous_best_seconds: null, previous_best_date: null, is_personal_record: false }));
-  assertStringIncludes(ctx, "Objetivo: 1:55:00 → 1:18 ABAIXO do objetivo (batido).");
+  assertStringIncludes(ctx, "Objetivo: 1:55:00 (5.27/km) → 1:18 ABAIXO do objetivo (batido).");
   assertStringIncludes(ctx, "Previsão pelo treino: sem corridas anteriores que a sustentem.");
   assertStringIncludes(ctx, "Melhor anterior na meia: nenhum — primeira prova nesta distância.");
   assertStringIncludes(ctx, "Veredicto: OBJETIVO SUPERADO.");

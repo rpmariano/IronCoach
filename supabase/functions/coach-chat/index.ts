@@ -730,6 +730,7 @@ export interface RaceOutcome {
 const ACHIEVEMENT_LABELS: Record<string, string> = {
   prova_concluida: "Prova concluída",
   objetivo_batido: "Objetivo batido",
+  acima_do_treino: "Acima do treino (foi além do que as corridas anteriores faziam esperar)",
   recorde_pessoal: "Recorde pessoal",
   primeira_trail: "Primeira de trail",
   sequencia: "Sequência de provas",
@@ -787,7 +788,7 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
         .slice(0, 60)
       : [],
     achievements_new: Array.isArray(r.achievements_new)
-      ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 5)
+      ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 6)
       : [],
   };
 }
@@ -887,11 +888,17 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
     lines.push("Corrida da prova: ainda não registada.");
     return lines.join("\n");
   }
+  /* Cada tempo com o seu ritmo, não só o oficial — pedido do utilizador
+     (2026-09-20): "em todos os casos os objetivos devem sempre surgir com o
+     tempo total e o pace". Sem isto a Carol tinha o ritmo da realidade e
+     tinha de inventar o do objetivo para os comparar em s/km, que é como o
+     atleta pensa a corrida. O ritmo é sempre sobre a distância REAL. */
+  const hmsPace = (seconds: number) => `${formatHms(seconds)}${o.distance_km ? ` (${sharedFormatPaceMinKm(Math.round(seconds / o.distance_km))}/km)` : ""}`;
   const pace = o.distance_km ? ` (${sharedFormatPaceMinKm(Math.round(o.official_seconds / o.distance_km))}/km)` : "";
   lines.push(`Tempo oficial: ${formatHms(o.official_seconds)}${pace}${o.position ? ` · posição ${o.position}` : ""}${o.effort_rpe ? ` · RPE ${o.effort_rpe}` : ""}.`);
   if (o.target_seconds) {
     const d = o.official_seconds - o.target_seconds;
-    lines.push(`Objetivo: ${formatHms(o.target_seconds)} → ` + (d <= 0
+    lines.push(`Objetivo: ${hmsPace(o.target_seconds)} → ` + (d <= 0
       ? `${absHms(d)} ABAIXO do objetivo (batido${d === 0 ? " em cima da hora" : ""}).`
       : `${absHms(d)} ACIMA do objetivo (${pctOf(d, o.target_seconds)}).`));
   } else {
@@ -900,13 +907,13 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   if (o.predicted_seconds) {
     const d = o.official_seconds - o.predicted_seconds;
     const band = o.vs_training === "acima" ? "ACIMA do que o treino perspetivava" : o.vs_training === "dentro" ? "DENTRO do que o treino perspetivava" : "ABAIXO do que o treino perspetivava";
-    lines.push(`Previsão pelo treino (Riegel, só corridas anteriores à prova): ${formatHms(o.predicted_seconds)} → ${absHms(d)} ${d <= 0 ? "mais rápido" : "mais lento"} do que a previsão — ${band}.`);
+    lines.push(`Previsão pelo treino (Riegel, só corridas anteriores à prova): ${hmsPace(o.predicted_seconds)} → ${absHms(d)} ${d <= 0 ? "mais rápido" : "mais lento"} do que a previsão — ${band}.`);
   } else {
     lines.push("Previsão pelo treino: sem corridas anteriores que a sustentem.");
   }
   if (o.previous_best_seconds) {
     const d = o.official_seconds - o.previous_best_seconds;
-    lines.push(`Melhor anterior na ${cat || "distância"}: ${formatHms(o.previous_best_seconds)}${o.previous_best_date ? ` (${o.previous_best_date})` : ""} → ` + (o.is_personal_record
+    lines.push(`Melhor anterior na ${cat || "distância"}: ${hmsPace(o.previous_best_seconds)}${o.previous_best_date ? ` · ${o.previous_best_date}` : ""} → ` + (o.is_personal_record
       ? `RECORDE PESSOAL por ${absHms(d)}.`
       : `${absHms(d)} mais lento; sem recorde.`));
   } else {
@@ -3387,6 +3394,21 @@ export function buildRaceEventsContext(
     // semanas com registo, não força cálculo nenhum: propor "sub_iniciante"
     // com dados quase nulos daria um alarme falso, pior que ficar calado.
     let triageSuffix = "";
+    /* Bloco 8b — O tempo que o TREINO aponta para esta prova, e como ele se
+       compara com o objetivo que o atleta pediu.
+
+       A previsão já era calculada aqui, para aferir o nível, e depois
+       deitada fora: a Carol via o objetivo e não via o que o treino dela
+       própria estava a produzir, e só o comentava DEPOIS da prova, quando
+       já não dava para corrigir nada. Pedido do utilizador (2026-09-20):
+       "dar mais relevância aos tempos que o atleta tem como objetivo e qual
+       o tempo esperado com os treinos que tem feito, tanto durante a
+       preparação como quando se conclui a prova (...) sempre com o tempo
+       total e o pace".
+
+       É o mesmo número que o hub mostra ao atleta (utils/raceTimes.js sobre
+       este mesmo getRacePrediction) — a Carol não pode discordar do ecrã. */
+    let forecastSuffix = "";
     if (e.distance_km) {
       const raceForPrediction = {
         distance_km: e.distance_km,
@@ -3396,6 +3418,32 @@ export function buildRaceEventsContext(
       };
       const prediction = sharedGetRacePrediction(raceForPrediction, { experience_level: profileLevel }, flattenedRuns);
       if (prediction.predictedSeconds > 0) {
+        const predSeconds = Math.round(prediction.predictedSeconds);
+        // O ritmo é sempre sobre a distância REAL da prova, mesmo no trail,
+        // onde a previsão corre sobre a distância equivalente em plano.
+        const predPace = formatPaceMinKm(Math.round(predSeconds / e.distance_km));
+        const targetSeconds = Number(e.target_time_seconds) > 0 ? Math.round(Number(e.target_time_seconds)) : 0;
+        const parts = [`o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        if (targetSeconds > 0) {
+          // Margem igual à do plano do dia da prova (buildRacePacingPlan) e
+          // à do hub: 3%. Uma só definição de "ambicioso" na app inteira.
+          const delta = predSeconds - targetSeconds;
+          const ratio = Math.abs(delta) / targetSeconds;
+          const leitura = ratio <= 0.03
+            ? "o objetivo está alinhado com o que o treino aponta"
+            : (delta > 0
+              ? `o objetivo está ${formatHms(Math.abs(delta))} ABAIXO do que o treino aponta — é ambicioso, diz-lho e ajusta o plano ou o objetivo`
+              : `o objetivo está ${formatHms(Math.abs(delta))} ACIMA do que o treino aponta — há margem, propõe-lhe puxar o objetivo`);
+          parts.push(leitura);
+        } else {
+          parts.push("o atleta ainda não fixou tempo-alvo — propõe-lhe um a partir deste número");
+        }
+        // Referência curta para uma prova longa: o número é extrapolação.
+        if (prediction.confidence != null && prediction.confidence < 0.5) {
+          parts.push("previsão de baixa confiança (a corrida de referência é bem mais curta do que a prova) — apresenta-a como estimativa e pede-lhe um treino longo");
+        }
+        forecastSuffix = `\n  PREVISÃO DE TEMPO: ${parts.join("; ")}`;
+
         const raceElevationM = e.race_type === "trail" && e.elevation_gain_m > 0 ? e.elevation_gain_m : 0;
         const triage = assessRaceLevelTriage({
           runs: flattenedRuns,
@@ -3416,7 +3464,7 @@ export function buildRaceEventsContext(
       }
     }
 
-    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${triageSuffix}`;
+    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${forecastSuffix}${triageSuffix}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
 }

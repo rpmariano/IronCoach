@@ -29,9 +29,9 @@ const byKey = (list) => Object.fromEntries(list.map((a) => [a.key, a]));
 describe('computeAchievements — sem provas', () => {
   const lista = computeAchievements({ raceEvents: [], runs: [], profile: PROFILE, now: AGORA });
 
-  it('devolve sempre as cinco, pela mesma ordem', () => {
+  it('devolve sempre as seis, pela mesma ordem', () => {
     expect(lista.map((a) => a.key)).toEqual([
-      'prova_concluida', 'objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia',
+      'prova_concluida', 'objetivo_batido', 'acima_do_treino', 'recorde_pessoal', 'primeira_trail', 'sequencia',
     ]);
     expect(lista.every((a) => a.unlocked === false)).toBe(true);
   });
@@ -271,5 +271,59 @@ describe('missedInRace / describeMissedInRace — o que ficou para a próxima', 
     const perdidas = missedInRace({ raceEvents: [semNada], runs: [...TREINOS, run], profile: PROFILE, now: AGORA }, 'r9');
     expect(describeMissedInRace(perdidas[0], outcome)).toBe('Objetivo batido fica para a próxima: esta prova não tinha objetivo marcado');
     expect(describeMissedInRace(perdidas[1], outcome)).toBe('Recorde pessoal fica para a próxima: precisa de duas provas na mesma distância');
+  });
+});
+
+/* "Acima do treino" (pedido 2026-09-20: os tempos objetivo/previsão/real
+   "poderão ser tema interessante para prémios"). É a conquista que não
+   precisa de objetivo marcado nem de histórico na distância — só de ter
+   corrido além do que as corridas anteriores faziam esperar. */
+describe('computeAchievements — acima do que o treino previa', () => {
+  const TREINO_LENTO = [
+    { id: 'l1', date: '2026-08-01', distance_km: 10, duration_seconds: 3600, kind: 'treino' },
+    { id: 'l2', date: '2026-08-20', distance_km: 14, duration_seconds: 5100, kind: 'treino' },
+  ];
+
+  it('desbloqueia quando a prova fica bem abaixo da previsão, sem objetivo marcado', () => {
+    // Treino a 6:00/km numa 10 km; a meia corrida em 1:40 está muito
+    // abaixo do que Riegel extrapolava desse treino.
+    const race = meia({ id: 'r1', name: 'Meia Rápida', date: '2026-09-06', target_time: null, target_time_seconds: null });
+    const run = corrida({ id: 'c1', race_id: 'r1', date: '2026-09-06', duration_seconds: 6000, created_at: '2026-09-06T12:00:00Z' });
+    const conquistas = byKey(computeAchievements({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }));
+
+    expect(conquistas.acima_do_treino.unlocked).toBe(true);
+    expect(conquistas.acima_do_treino.raceId).toBe('r1');
+    expect(conquistas.acima_do_treino.detail).toContain('abaixo da previsão do treino');
+    // O objetivo não existe — e mesmo assim a prova foi premiada.
+    expect(conquistas.objetivo_batido.unlocked).toBe(false);
+  });
+
+  it('não desbloqueia quando a prova fica dentro do que o treino previa', () => {
+    const race = meia({ id: 'r2', name: 'Meia Certinha', date: '2026-09-06' });
+    // 2:15:00 — na banda do que este treino lento perspetivava.
+    const run = corrida({ id: 'c2', race_id: 'r2', date: '2026-09-06', duration_seconds: 8100, created_at: '2026-09-06T12:00:00Z' });
+    const conquistas = byKey(computeAchievements({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }));
+
+    expect(conquistas.acima_do_treino.unlocked).toBe(false);
+    // Bloqueada, diz quanto faltou — não fica um traço mudo.
+    expect(conquistas.acima_do_treino.detail).toContain('Meia Certinha');
+  });
+
+  it('a prova que a deu mostra-a no seu próprio palmarés, com os dois tempos', () => {
+    const race = meia({ id: 'r1', name: 'Meia Rápida', date: '2026-09-06', target_time: null, target_time_seconds: null });
+    const run = corrida({ id: 'c1', race_id: 'r1', date: '2026-09-06', duration_seconds: 6000, created_at: '2026-09-06T12:00:00Z' });
+    const daProva = byKey(achievementsForRace({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }, 'r1'));
+
+    expect(daProva.acima_do_treino).toBeTruthy();
+    expect(daProva.acima_do_treino.detail).toContain('1:40:00');
+    expect(daProva.acima_do_treino.detail).toMatch(/do que o treino previa \(\d/);
+  });
+
+  it('não entra nas conquistas perdidas — a diferença já está no bloco dos tempos', () => {
+    const race = meia({ id: 'r2', name: 'Meia Certinha', date: '2026-09-06' });
+    const run = corrida({ id: 'c2', race_id: 'r2', date: '2026-09-06', duration_seconds: 8100, created_at: '2026-09-06T12:00:00Z' });
+    const perdidas = missedInRace({ raceEvents: [race], runs: [...TREINO_LENTO, run], profile: PROFILE, now: AGORA }, 'r2');
+
+    expect(perdidas.map((a) => a.key)).not.toContain('acima_do_treino');
   });
 });

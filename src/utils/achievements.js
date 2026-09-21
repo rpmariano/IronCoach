@@ -1,6 +1,6 @@
 /* O Palmarés — as conquistas das provas (specs/gamificacao-provas.md).
 
-   Cinco conquistas, sempre pela mesma ordem, calculadas dos dados que já
+   Seis conquistas, sempre pela mesma ordem, calculadas dos dados que já
    existem: nenhuma tabela nova, nenhuma data de desbloqueio guardada. Se um
    dia houver conquistas que não se recalculem (ex.: "10 provas seguidas com
    objetivo batido"), aí sim uma tabela — não agora.
@@ -15,7 +15,7 @@
    corrida ligada (findRaceRun): marcar "concluída" na agenda sem registar
    nada não dá conquista nenhuma — não há números para as sustentar. */
 
-import { Flag, Target, Zap, Mountain, Repeat } from 'lucide-react';
+import { Flag, Target, Zap, Mountain, Repeat, Rocket } from 'lucide-react';
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, formatDelta, raceCategoryLabel } from './raceOutcome';
 
@@ -25,7 +25,7 @@ import { classifyRaceOutcome, formatDelta, raceCategoryLabel } from './raceOutco
 export const NOVA_ATE_DIAS = 7;
 
 /** A ordem é fixa: o Palmarés é sempre a mesma linha, desbloqueada ou não. */
-export const ACHIEVEMENT_KEYS = ['prova_concluida', 'objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia'];
+export const ACHIEVEMENT_KEYS = ['prova_concluida', 'objetivo_batido', 'acima_do_treino', 'recorde_pessoal', 'primeira_trail', 'sequencia'];
 
 const DAY_MS = 86400000;
 
@@ -140,7 +140,29 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
     objetivoLocked,
   );
 
-  // 3. Recorde pessoal — precisa de duas provas na mesma categoria.
+  /* 3. Acima do que o treino previa — a prova em que ele correu mais do que
+        o que as corridas ANTERIORES faziam esperar. É a única conquista que
+        não depende de ter marcado objetivo nem de ter histórico na
+        distância: premeia quem apareceu no dia e foi além do seu próprio
+        treino. A régua é a mesma do balanço (`vsTraining === 'acima'`, a
+        banda de 3% do raceOutcome) — o palmarés não pode discordar do que a
+        Carol diz sobre a mesma prova. */
+  const comAcimaDoTreino = completed.find(({ outcome }) => outcome?.vsTraining === 'acima');
+  const ultimaComPrevisao = completed.find(({ outcome }) => !!outcome?.predictedSeconds && !!outcome?.officialSeconds);
+  let treinoLocked = 'Precisa de treinos registados antes da prova';
+  if (ultimaComPrevisao) {
+    treinoLocked = `Na ${ultimaComPrevisao.race.name} ficaste a ${formatDelta(ultimaComPrevisao.outcome.deltaPredictionSeconds)} da previsão`;
+  }
+  const acimaDoTreino = build(
+    'acima_do_treino', 'Acima do treino', 'Treino', 'coach', Rocket,
+    comAcimaDoTreino?.race || null,
+    comAcimaDoTreino
+      ? `${comAcimaDoTreino.race.name}, ${formatDuration(comAcimaDoTreino.outcome.officialSeconds)} — ${formatDelta(comAcimaDoTreino.outcome.deltaPredictionSeconds)} abaixo da previsão do treino`
+      : null,
+    treinoLocked,
+  );
+
+  // 4. Recorde pessoal — precisa de duas provas na mesma categoria.
   const comRecorde = completed.find(({ outcome }) => outcome?.isPersonalRecord);
   const recordePessoal = build(
     'recorde_pessoal', 'Recorde pessoal', 'Recorde', 'run', Zap,
@@ -151,7 +173,7 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
     'Precisa de duas provas na mesma distância',
   );
 
-  // 4. Primeira de trail — a PRIMEIRA, por data, não a mais recente.
+  // 5. Primeira de trail — a PRIMEIRA, por data, não a mais recente.
   const trails = completed.filter(({ race }) => race.race_type === 'trail');
   const primeiroTrail = trails.length ? trails[trails.length - 1] : null;
   const primeiraTrail = build(
@@ -163,7 +185,7 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
     'Ainda sem trail concluído',
   );
 
-  // 5. Sequência — provas seguidas, sem nenhuma por registar pelo meio.
+  // 6. Sequência — provas seguidas, sem nenhuma por registar pelo meio.
   const streak = currentStreak(raceEvents, runs, today);
   const temSequencia = streak.length >= 2;
   const sequencia = build(
@@ -173,7 +195,7 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
     'Duas provas seguidas registadas',
   );
 
-  return [provaConcluida, objetivoBatido, recordePessoal, primeiraTrail, sequencia];
+  return [provaConcluida, objetivoBatido, acimaDoTreino, recordePessoal, primeiraTrail, sequencia];
 }
 
 /* As conquistas de UMA prova avaliam-se NA PRÓPRIA prova, não por "foi a
@@ -218,6 +240,15 @@ export function evaluateRace({ raceEvents = [], runs = [], profile = {}, now = n
       `${race.name}, ${formatDuration(outcome.officialSeconds)} (objetivo ${formatDuration(outcome.targetSeconds)})`));
   } else {
     missed.push(locked('objetivo_batido'));
+  }
+
+  // Acima do que o treino previa — ver o comentário em computeAchievements.
+  // Não entra nas "perdidas": a diferença face à previsão já está no bloco
+  // dos tempos do hub, e três linhas de "fica para a próxima" na mesma prova
+  // passavam de leitura a repreensão.
+  if (outcome?.vsTraining === 'acima') {
+    earned.push(item('acima_do_treino', 'Acima do treino', 'Treino', 'coach', Rocket,
+      `${formatDuration(outcome.officialSeconds)} — ${formatDelta(outcome.deltaPredictionSeconds)} abaixo do que o treino previa (${formatDuration(outcome.predictedSeconds)})`));
   }
 
   if (outcome?.isPersonalRecord) {
