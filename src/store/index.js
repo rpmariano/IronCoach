@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from '../utils/planAcceptance';
-import { todayISO } from '../lib/utils';
+import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin } from '../utils/checkin';
 
@@ -20,6 +20,47 @@ const getInitialDashboardTab = () => {
 // O pedido do resumo diário em curso, se houver — ver loadDailySummary.
 // Fora do estado do store porque não é coisa que a UI leia; é só a trava.
 let dailySummaryInFlight = null;
+
+// ── As impressões que já contam como vistas ou dispensadas (ação 5.1) ────
+/* Os últimos 14 dias de coach_impressions, pela data de Lisboa que
+   logImpression grava. Devolve a consulta por correr: loadInitialData põe-na
+   no Promise.all e refreshImpressionKeys corre-a sozinha. */
+const IMPRESSION_KEYS_DAYS = 14;
+function queryImpressionKeys(userId) {
+  return supabase.from('coach_impressions')
+    .select('kind, key, dismissed_at')
+    .eq('user_id', userId)
+    .gte('date', addDaysISO(lisbonTodayISO(), -IMPRESSION_KEYS_DAYS));
+}
+
+/* Das linhas aos dois conjuntos. A chave é composta, kind + ':' + key, para
+   um 'alert' e um 'insights' com a mesma chave não se confundirem. O que foi
+   dispensado também foi mostrado, por isso entra nos dois. Pura, exportada
+   para os testes. */
+export function impressionKeySets(rows) {
+  const shown = new Set();
+  const dismissed = new Set();
+  for (const r of rows || []) {
+    if (!r?.kind || !r?.key) continue;
+    const k = `${r.kind}:${r.key}`;
+    shown.add(k);
+    if (r.dismissed_at) dismissed.add(k);
+  }
+  return { shown, dismissed };
+}
+
+/* Aplica as linhas ao store: os dois conjuntos e, para os insights
+   dispensados noutro dispositivo, o estado 'ignored' pelo mesmo caminho do
+   "Ignorar" (setInsightState) — sem isto a leitura era só de escrita. Nunca
+   por cima de um estado que já exista. */
+function applyImpressionRows(set, get, rows) {
+  const { shown, dismissed } = impressionKeySets(rows);
+  set({ impressionShown: shown, impressionDismissed: dismissed });
+  for (const r of rows || []) {
+    if (r?.kind !== 'insights' || !r.dismissed_at || !r.key) continue;
+    if (!(r.key in (get().insightStates || {}))) get().setInsightState(r.key, 'ignored');
+  }
+}
 
 export const useAppStore = create((set, get) => ({
   // Auth & Profile State
@@ -114,7 +155,17 @@ export const useAppStore = create((set, get) => ({
   navGuard: null,
   
   // Actions
-  setSession: (session) => set({ session }),
+  setSession: (session) => {
+    if (session) { set({ session }); return; }
+    // Sem sessão não há de quem ler impressões (ação 5.1): os conjuntos
+    // voltam a vazios, para quem entrar a seguir neste telemóvel não herdar
+    // os de quem saiu. O mesmo para a cache dos insights, que a sementeira
+    // das impressões passou a escrever com o que outro dispositivo
+    // dispensou: sem a limpar, esse 'ignored' ficava para o utilizador
+    // seguinte. Os 'ignored' do próprio voltam do servidor ao entrar.
+    try { localStorage.removeItem('ironcoach_insight_states'); } catch { /* sem storage */ }
+    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), insightStates: {} });
+  },
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
 
   /* Relê o perfil da BD. Serve para quando é o SERVIDOR a mexer no perfil e
@@ -875,16 +926,32 @@ export const useAppStore = create((set, get) => ({
   // ── O que o Início mostrou (ação 2.4) ───────────────────────────────────
   /* Uma linha por dia, tipo e chave em coach_impressions — a Carol lê-as
      para saber o que o atleta já viu. Best-effort e silencioso: uma falha
-     aqui nunca pode estragar o Início. */
+     aqui nunca pode estragar o Início.
+
+     A data é a de Lisboa (lisbonTodayISO), a mesma que o servidor usa ao
+     ler as impressões do dia (fetchImpressionsBlock em carolMemory.ts). Com
+     a data local do telemóvel, uma abertura à meia-noite e meia noutro fuso
+     caía no dia errado e o cartão não a via.
+
+     Os dois conjuntos (ação 5.1) são o que já foi mostrado e o que já foi
+     dispensado nos últimos 14 dias, em qualquer dispositivo: chaves
+     compostas kind + ':' + key. Vazios até loadInitialData os encher; os
+     decisores (boas-vindas, momentos, balanço) recebem-nos por parâmetro. */
+  impressionShown: new Set(),
+  impressionDismissed: new Set(),
+
   logImpression: async ({ kind, key, title = null }) => {
     const userId = get().session?.user?.id || get().profile?.id;
     if (!userId || !kind || !key) return;
+    const k = String(key).slice(0, 200);
     try {
       const { error } = await supabase.from('coach_impressions').upsert(
-        { user_id: userId, date: todayISO(), kind, key: String(key).slice(0, 200), title: title ? String(title).slice(0, 200) : null },
+        { user_id: userId, date: lisbonTodayISO(), kind, key: k, title: title ? String(title).slice(0, 200) : null },
         { onConflict: 'user_id,date,kind,key', ignoreDuplicates: true },
       );
-      if (error) console.warn('coach_impressions:', error.message);
+      if (error) { console.warn('coach_impressions:', error.message); return; }
+      // Gravou: este telemóvel fica coerente sem reler (ação 5.1).
+      set((s) => ({ impressionShown: new Set(s.impressionShown).add(`${kind}:${k}`) }));
     } catch (e) {
       console.warn('coach_impressions:', e);
     }
@@ -893,12 +960,35 @@ export const useAppStore = create((set, get) => ({
   logImpressionDismissed: async ({ kind, key, title = null }) => {
     const userId = get().session?.user?.id || get().profile?.id;
     if (!userId || !kind || !key) return;
+    const k = String(key).slice(0, 200);
     try {
       const { error } = await supabase.from('coach_impressions').upsert(
-        { user_id: userId, date: todayISO(), kind, key: String(key).slice(0, 200), title: title ? String(title).slice(0, 200) : null, dismissed_at: new Date().toISOString() },
+        { user_id: userId, date: lisbonTodayISO(), kind, key: k, title: title ? String(title).slice(0, 200) : null, dismissed_at: new Date().toISOString() },
         { onConflict: 'user_id,date,kind,key' },
       );
-      if (error) console.warn('coach_impressions:', error.message);
+      if (error) { console.warn('coach_impressions:', error.message); return; }
+      // Dispensado também foi mostrado: entra nos dois conjuntos (ação 5.1).
+      set((s) => ({
+        impressionShown: new Set(s.impressionShown).add(`${kind}:${k}`),
+        impressionDismissed: new Set(s.impressionDismissed).add(`${kind}:${k}`),
+      }));
+    } catch (e) {
+      console.warn('coach_impressions:', e);
+    }
+  },
+
+  /* Volta a ler só as impressões (ação 5.1): ao regressar à app, antes de
+     decidir as boas-vindas, porque o outro telemóvel pode ter saudado esta
+     faixa entretanto e loadInitialData corre no máximo uma vez por minuto.
+     Sem sessão não há nada a ler. Nunca rejeita: quem chama segue em frente,
+     e em erro os conjuntos ficam como estavam. */
+  refreshImpressionKeys: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return;
+    try {
+      const { data, error } = await queryImpressionKeys(userId);
+      if (error) { console.warn('coach_impressions:', error.message); return; }
+      applyImpressionRows(set, get, data);
     } catch (e) {
       console.warn('coach_impressions:', e);
     }
@@ -936,6 +1026,7 @@ export const useAppStore = create((set, get) => ({
         { data: shoes },
         { data: dailySummary },
         { data: dailyCheckins },
+        impressionsRes,
       ] = await Promise.all([
         supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
         supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
@@ -952,6 +1043,8 @@ export const useAppStore = create((set, get) => ({
         supabase.from('daily_checkins').select('*').eq('user_id', userId)
           .gte('date', new Date(Date.now() - 119 * 86400000).toISOString().slice(0, 10))
           .order('date', { ascending: true }),
+        // O que já foi mostrado e dispensado, em qualquer dispositivo (ação 5.1).
+        queryImpressionKeys(userId),
       ]);
 
       set({
@@ -968,6 +1061,10 @@ export const useAppStore = create((set, get) => ({
         dailyCheckins: dailyCheckins || [],
         ...(dailySummary && { dailySummary })
       });
+      // Em erro ficam os conjuntos que já havia: um falhanço passageiro numa
+      // recarga não pode fazer a app esquecer o que já saudou.
+      if (impressionsRes?.error) console.warn('coach_impressions:', impressionsRes.error.message);
+      else applyImpressionRows(set, get, impressionsRes?.data);
 
     } catch (err) {
       console.error('Error loading initial data:', err);

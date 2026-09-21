@@ -145,6 +145,17 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       // "Dispensar" reutilizava markProactiveSent e calava também os dois.
       expect(wasProactiveSent('u1', c)).toBe(false);
     });
+
+    it('dispensado noutro dispositivo (a impressão alert com a chave do candidato) cala o aviso; outra chave não', () => {
+      window.localStorage.clear();
+      const dispensado = new Set(['alert:race_after:r1:run-race']);
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile, impressionDismissed: dispensado }), NOW)).toBeNull();
+      // Outra corrida, ou a chave 'balanco' que o chat lê: não é este candidato.
+      const outra = new Set(['alert:race_after:r1:sem-registo', 'alert:balanco']);
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile, impressionDismissed: outra }), NOW)?.raceId).toBe('r1');
+      // Sem o conjunto, nada muda.
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)?.raceId).toBe('r1');
+    });
   });
 
   it('uma prova já concluída não volta a ter véspera nem manhã', () => {

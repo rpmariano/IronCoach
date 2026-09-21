@@ -437,11 +437,30 @@ export default function App() {
        medalha, um campo com o foco (a mesma regra da atualização automática,
        lib/appUpdate.js). Fica para a próxima vez que se voltar à app. */
     if (isBusy(document)) { clear(); return; }
-    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid) });
+    /* O que já foi saudado em qualquer dispositivo (ação 5.1): às chaves
+       deste telemóvel (readSeen) juntam-se as impressões 'welcome', sem o
+       prefixo. O merge fica aqui, porque readSeen e decideWelcome são puras
+       e testadas tal como estão. */
+    const seenElsewhere = [...(s.impressionShown || [])]
+      .filter((k) => k.startsWith('welcome:'))
+      .map((k) => k.slice('welcome:'.length));
+    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: [...readSeen(uid), ...seenElsewhere] });
     if (!decision) { clear(); return; }
     markSeen(uid, decision.markKeys);
+    const text = buildWelcome(decision.variant, s);
+    /* O que ela disse fica em coach_impressions (kind 'welcome', ação 5.1):
+       o cartão diário e o chat leem-no para não repetir nem contradizer o
+       que ela já disse hoje, e o outro telemóvel fica a saber que esta faixa
+       já foi saudada. Uma linha por chave de `markKeys` — a variante da
+       prova ocupa também a da faixa, senão noutro dispositivo a saudação da
+       faixa aparecia logo a seguir à da prova. No título vão só as frases:
+       sem a saudação nem o CTA. Fica aqui, depois da decisão, porque
+       tryWelcome corre a cada regresso à app e sem decisão não há nada a
+       registar. */
+    const title = text.lines.join(' ').slice(0, 200) || null;
+    for (const key of decision.markKeys) s.logImpression({ kind: 'welcome', key, title });
     s.setWelcomeGate('open');
-    setWelcome({ ...buildWelcome(decision.variant, s), key: decision.key, at: new Date() });
+    setWelcome({ ...text, key: decision.key, at: new Date() });
   }, []);
   const closeWelcome = useCallback(() => {
     setWelcome(null);
@@ -474,13 +493,38 @@ export default function App() {
   formOpenRef.current = isCreatingOrEditing || !!editingRunId;
   const lastVisibleReloadRef = useRef(Date.now());
   useEffect(() => {
+    // Voltar à app numa faixa nova também é "abrir a app" — com nada a
+    // meio (um registo aberto passa à frente de uma saudação).
+    const canWelcomeNow = () => document.visibilityState === 'visible' && welcomeReadyRef.current
+      && !formOpenRef.current && !useAppStore.getState().navGuard;
     const onVisibilityChange = () => {
       const userId = loadedUserIdRef.current;
-      // Voltar à app numa faixa nova também é "abrir a app" — com nada a
-      // meio (um registo aberto passa à frente de uma saudação).
-      if (document.visibilityState === 'visible' && welcomeReadyRef.current
-        && !formOpenRef.current && !useAppStore.getState().navGuard) {
-        tryWelcome();
+      if (canWelcomeNow()) {
+        /* Antes de decidir, as impressões voltam a ler-se (ação 5.1): o
+           outro telemóvel pode ter saudado esta faixa entretanto, e a
+           recarga abaixo, limitada a uma vez por minuto, não chega a tempo.
+           Só quando este telemóvel ainda não saudou a faixa: o que o
+           servidor acrescenta só pode tirar uma saudação, nunca dá-la, e a
+           consulta a cada desbloqueio era em vão. E só com um utilizador
+           carregado (em demo não há de quem ler). Enquanto a leitura
+           decorre, a cancela dos momentos fecha: com ela em 'clear', um
+           momento que a recarga ativasse entretanto arrancava por baixo das
+           boas-vindas e ficava gasto (antes da leitura existir, tryWelcome
+           corria aqui de forma síncrona). tryWelcome repõe 'open' ou
+           'clear'; se ao voltar já não se pode saudar (um registo aberto
+           entretanto), a cancela abre-se aqui. */
+        const s = useAppStore.getState();
+        const uid = s.session?.user?.id;
+        const localDecision = uid ? decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid) }) : null;
+        if (!userId || !localDecision) {
+          tryWelcome();
+        } else {
+          if (s.welcomeGate === 'clear') s.setWelcomeGate('pending');
+          s.refreshImpressionKeys().then(() => {
+            if (canWelcomeNow()) tryWelcome();
+            else if (useAppStore.getState().welcomeGate === 'pending') useAppStore.getState().setWelcomeGate('clear');
+          });
+        }
       }
       // Formulário aberto: os ecrãs de topo (registo, prova, onboarding) e,
       // para os que abrem por dentro de outro ecrã (editar uma corrida a

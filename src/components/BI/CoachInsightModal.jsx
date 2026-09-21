@@ -68,7 +68,7 @@ function AlertCard({ alert, onClose }) {
 }
 
 export default function CoachInsightModal({ insights = [], alerts = [], onClose }) {
-  const { setInsightState, setActiveTab, setCoachIntent } = useAppStore();
+  const { setInsightState, setActiveTab, setCoachIntent, logImpressionDismissed } = useAppStore();
   const [handled, setHandled] = useState(() => new Set());
 
   const list = insights || [];
@@ -84,8 +84,14 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
     if (carolAlerts.length === 0 && list.every((i) => next.has(i.id))) onClose();
   };
 
+  // "Ignorar" é a dispensa real, e fica em coach_impressions com dismissed_at
+  // (ação 5.1) para a Carol e o outro telemóvel saberem que estes insights
+  // foram postos de lado. O "Entendi" não é dispensar, por isso não grava.
   const ignoreAll = () => {
-    list.forEach((i) => setInsightState(i.id, 'ignored'));
+    list.forEach((i) => {
+      setInsightState(i.id, 'ignored');
+      logImpressionDismissed({ kind: 'insights', key: i.id, title: i.title });
+    });
     onClose();
   };
 

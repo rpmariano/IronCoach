@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { doneLine } from './dayDone';
+import { doneLine, wasDayDoneSeen } from './dayDone';
 
 /* O dia fechado: o que foi feito contra o que estava pedido, sem aplauso. */
 
@@ -29,5 +29,17 @@ describe('doneLine', () => {
 
   it('por fazer: nada', () => {
     expect(doneLine(corrida({ status: 'pendente' }), { runs: [run(8, 2600)] })).toBeNull();
+  });
+});
+
+/* Visto noutro dispositivo (ação 5.1): a impressão 'moment:daydone:<dia>'
+   lida do servidor conta como visto, mesmo sem a marca local. */
+describe('wasDayDoneSeen', () => {
+  const semStorage = { getItem: () => null, setItem: () => {} };
+
+  it('a impressão deste dia conta como visto; outro dia ou nenhuma, não', () => {
+    expect(wasDayDoneSeen('u1', '2026-09-21', new Set(['moment:daydone:2026-09-21']), semStorage)).toBe(true);
+    expect(wasDayDoneSeen('u1', '2026-09-21', new Set(['moment:daydone:2026-09-20']), semStorage)).toBe(false);
+    expect(wasDayDoneSeen('u1', '2026-09-21', new Set(), semStorage)).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formu
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
+import { estimate1RM } from "../_shared/formulas/epley.ts";
 import { computeMaxHR, computeKarvonenZones, computePctMaxZones } from "../_shared/formulas/heartRateZones.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { computeTrainingDistribution } from "../_shared/formulas/trainingDistribution.ts";
@@ -1464,14 +1465,42 @@ export function formatSessionLine(r: GymSessionSummary): string {
   return `- ${r.date}${r.startTime ? ` às ${hhmm(r.startTime)}` : ""}: ${r.name}${kindLabel}${cats}${detail}`;
 }
 
+/* A melhor carga por exercício na janela — o que ela precisa para dizer "o
+   teu agachamento subiu" (5.2 de specs/carol-omnisciencia-omnipresenca.md).
+   Até aqui o chat não lia um único nome de exercício. Uma linha só, com
+   teto, em vez de listar exercícios sessão a sessão: 15 sessões × 6
+   exercícios eram 90 linhas de prompt. O 1RM vem da coluna quando existe,
+   senão da fórmula partilhada (Epley), a mesma do ginásio. */
+// deno-lint-ignore no-explicit-any
+export function bestLoadsLine(sessions: any[], max = 6): string | null {
+  const best = new Map<string, { name: string; weight: number; reps: number; oneRm: number | null }>();
+  for (const s of sessions || []) {
+    for (const st of (s?.workout_session_sets || [])) {
+      const name = typeof st?.exercise_name === "string" ? st.exercise_name.trim() : "";
+      const w = Number(st?.weight);
+      const r = Number(st?.reps);
+      if (!name || !(w > 0) || !(r > 0)) continue;
+      const oneRm = Number(st?.one_rep_max_est) > 0 ? Number(st.one_rep_max_est) : estimate1RM(w, r);
+      const key = name.toLowerCase();
+      const prev = best.get(key);
+      if (!prev || w > prev.weight || (w === prev.weight && r > prev.reps)) best.set(key, { name, weight: w, reps: r, oneRm });
+    }
+  }
+  if (!best.size) return null;
+  const top = [...best.values()].sort((a, b) => (b.oneRm ?? 0) - (a.oneRm ?? 0)).slice(0, max);
+  return "Melhores cargas por exercício na janela: " +
+    top.map((e) => `${e.name} ${e.weight} kg×${e.reps}${e.oneRm ? ` (1RM est. ${Math.round(e.oneRm)} kg)` : ""}`).join(" · ");
+}
+
 // deno-lint-ignore no-explicit-any
 function buildGymSummary(sessions: any[], windowDays: number): string {
   const rows = summariseSessions(sessions);
   if (rows.length === 0) {
     return `Treinos de ginásio (últimos ${windowDays} dias): sem treinos concluídos.`;
   }
+  const loads = bestLoadsLine(sessions);
   return `Treinos de ginásio (últimos ${windowDays} dias, ${rows.length} concluído(s)):\n` +
-    rows.map(formatSessionLine).join("\n");
+    rows.map(formatSessionLine).join("\n") + (loads ? `\n${loads}` : "");
 }
 
 // ─── Bloco 3 — Métricas de ginásio computadas ────────────────────────────────
@@ -1575,7 +1604,7 @@ export async function runGetGymHistory(sb: any, userId: string, args: { start_da
 
   const { data, error } = await sb
     .from("workout_sessions")
-    .select("date, name, status, workout_session_sets(reps, weight)")
+    .select("date, name, status, workout_session_sets(exercise_name, reps, weight, one_rep_max_est)")
     .eq("user_id", userId)
     .eq("status", "concluido")
     .gte("date", start_date)
@@ -1585,13 +1614,19 @@ export async function runGetGymHistory(sb: any, userId: string, args: { start_da
   if (error) return `Erro ao consultar dados: ${error.message}`;
   const rows = summariseSessions(data || []);
   if (rows.length === 0) return `Sem treinos concluídos entre ${start_date} e ${end_date}.`;
+  const loads = bestLoadsLine(data || []);
   return `Treinos de ${start_date} a ${end_date} (${rows.length}):\n` +
-    rows.map(formatSessionLine).join("\n");
+    rows.map(formatSessionLine).join("\n") + (loads ? `\n${loads}` : "");
 }
 
 // ── Corrida ──────────────────────────────────────────────────────────────
 const RUN_KIND_LABELS: Record<string, string> = {
   simples: "Simples", treino: "Treino", competicao: "Competição",
+};
+// Os momentos em que ela pode notificar (P.5/P.6), como se leem na bio.
+const PUSH_TYPE_LABELS: Record<string, string> = {
+  intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
 };
 const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", tempo: "Tempo", recuperacao: "Recuperação",
@@ -3352,6 +3387,9 @@ export function buildRaceEventsContext(
          [id: ...] das notas do atleta (buildCoachNotesContext). */
       `id: ${e.id}`,
       e.location ? `local: ${e.location}` : null,
+      // Escrito pelo próprio chat (update_race_event) e nunca lido de volta:
+      // num turno normal ela podia voltar a levantar um conflito já decidido.
+      e.conflict_acknowledged_at ? `conflito de provas já reconhecido por ele a ${String(e.conflict_acknowledged_at).slice(0, 10)}: não voltes a levantá-lo` : null,
       // A hora de partida decide a véspera e a manhã (ver buildRaceEveContext);
       // sem ela a Carol pergunta-a em vez de aconselhar em abstrato.
       e.start_time ? `partida às ${hhmm(e.start_time)}` : `partida: hora por marcar (pergunta-lha)`,
@@ -3530,6 +3568,12 @@ export function buildPlanContext(
      comportamento de sempre — só o chamador real, que sabe contar, é que o
      passa. Ver a secção do PRIMEIRO PLANO mais abaixo. */
   everHadPlan = true,
+  /* Os planos aceites, com o que são e o que lhes aconteceu (5.2): o início
+     e o fim do bloco, o resumo com que foram propostos, e as marcas de
+     "a prova foi apagada" e "foi encurtado" — que o servidor escrevia e o
+     chat não lia. */
+  // deno-lint-ignore no-explicit-any
+  activeMeta: any[] = [],
 ): string | null {
   const sections: string[] = [];
 
@@ -3573,9 +3617,16 @@ export function buildPlanContext(
     const vinculo = boundPlan?.race_id
       ? `\n  ESTE PLANO PREPARA UMA PROVA: ao ajustá-lo (replace_active_plan=true) passa race_id="${boundPlan.race_id}" e period_end=${boundPlan.period_end} — o bloco continua a acabar no dia da prova; muda-se o que está lá dentro, não o objetivo.`
       : "";
+    const meta = (activeMeta || []).filter((p) => p && (p.period_start || p.period_end)).map((p) => {
+      const bits = [`bloco de ${String(p.period_start ?? "?").slice(0, 10)} a ${String(p.period_end ?? "?").slice(0, 10)}`];
+      if (typeof p.summary === "string" && p.summary.trim()) bits.push(`resumo: ${p.summary.trim().slice(0, 160)}`);
+      if (p.race_lost_at) bits.push(`a prova a que estava ligado foi apagada a ${String(p.race_lost_at).slice(0, 10)} — o bloco ficou sem objetivo; fala disso com ele antes de propor seja o que for`);
+      if (p.trimmed_at) bits.push(`foi encurtado a ${String(p.trimmed_at).slice(0, 10)}`);
+      return `  ${bits.join("; ")}`;
+    });
     sections.push(
       `PLANO ACEITE EM CURSO (microciclo ativo — NÃO propões plano novo a não ser que o atleta ` +
-      `refira explicitamente um dos sinais de interrupção abaixo):\n${lines.join("\n")}${vinculo}`
+      `refira explicitamente um dos sinais de interrupção abaixo):\n${meta.length ? `${meta.join("\n")}\n` : ""}${lines.join("\n")}${vinculo}`
     );
   }
 
@@ -3853,6 +3904,13 @@ export function buildSystemInstruction(
     dietary_restrictions: string[] | null;
     dietary_notes: string | null;
     coach_can_set_nutrition_goals: boolean | null;
+    /* O que ela pode prometer fora da app (5.2): sem isto dizia "aviso-te
+       amanhã" a quem tem as notificações desligadas. */
+    carol_push_enabled?: boolean | null;
+    carol_push_types?: string[] | null;
+    carol_push_start_hour?: number | null;
+    carol_push_end_hour?: number | null;
+    water_reminder_enabled?: boolean | null;
   },
   nutritionTargetsLine: string | null,
   bodyMetricsLine: string | null,
@@ -4706,6 +4764,13 @@ export function buildSystemInstruction(
     bio.push(`Nível geral como corredor: ${EXPERIENCE_LEVEL_LABELS[biometrics.experience_level] || biometrics.experience_level}`);
   }
   if (biometrics.gender) bio.push(`Género: ${normalizeGender(biometrics.gender) === "F" ? "feminino" : "masculino"}`);
+  if (biometrics.carol_push_enabled === true) {
+    const types = (biometrics.carol_push_types || []).map((t) => PUSH_TYPE_LABELS[t] ?? t);
+    bio.push(`Notificações tuas fora da app: ligadas, das ${biometrics.carol_push_start_hour ?? 9}h às ${biometrics.carol_push_end_hour ?? 21}h${types.length ? ` (momentos: ${types.join(", ")})` : ""}`);
+  } else if (biometrics.carol_push_enabled === false) {
+    bio.push(`Notificações tuas fora da app: desligadas — não prometas avisá-lo fora da app; se vier a propósito, diz-lhe que pode ligá-las no Perfil`);
+  }
+  if (typeof biometrics.water_reminder_enabled === "boolean") bio.push(`Lembretes de água: ${biometrics.water_reminder_enabled ? "ligados" : "desligados"}`);
   // Idade derivada da data de nascimento — o modelo recebe o número já feito
   // para não ter de o calcular (e enganar-se) a partir da data.
   const idade = ageFromBirthDate(biometrics.birth_date);
@@ -5025,7 +5090,7 @@ async function handler(req: Request): Promise<Response> {
       .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason, " +
         "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, " +
         "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach, " +
-        "cycle_tracking_consent_at")
+        "cycle_tracking_consent_at, carol_push_enabled, carol_push_types, carol_push_start_hour, carol_push_end_hour, water_reminder_enabled")
       .eq("id", userId)
       .maybeSingle();
 
@@ -5124,7 +5189,7 @@ async function handler(req: Request): Promise<Response> {
       .from("workout_sessions")
       .select(
         "date, start_time, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
-          "workout_session_sets(reps, weight)",
+          "workout_session_sets(exercise_name, reps, weight, one_rep_max_est)",
       )
       .eq("user_id", userId)
       .eq("status", "concluido")
@@ -5221,7 +5286,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces, error: err_upcomingRaces } = await sb
       .from("race_events")
-      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info, start_time")
+      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info, start_time, conflict_acknowledged_at")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
@@ -5403,7 +5468,7 @@ async function handler(req: Request): Promise<Response> {
     // O modelo precisa de saber que existe para não propor outro sem sinal claro.
     const { data: activePlans } = await sb
       .from("coach_plans")
-      .select("id, period_end, race_id")
+      .select("id, period_start, period_end, race_id, summary, race_lost_at, trimmed_at")
       .eq("user_id", userId)
       .eq("status", "aceite")
       .gte("period_end", todayISO);
@@ -5445,7 +5510,7 @@ async function handler(req: Request): Promise<Response> {
     if (erroContagem) console.warn("coach-chat: falha a contar planos aceites:", erroContagem);
     const everHadPlan = erroContagem ? true : (planosAceitesDeSempre ?? 0) > 0;
 
-    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan, everHadPlan);
+    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan, everHadPlan, activePlans || []);
 
     // ── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ────
     // Uma janela mais larga do que a de 7 dias usada acima (nutritionSummary/
@@ -5611,6 +5676,11 @@ async function handler(req: Request): Promise<Response> {
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
         coach_can_set_nutrition_goals: (profile?.coach_can_set_nutrition_goals as boolean | null) ?? null,
+        carol_push_enabled: (profile?.carol_push_enabled as boolean | null) ?? null,
+        carol_push_types: (profile?.carol_push_types as string[] | null) ?? null,
+        carol_push_start_hour: (profile?.carol_push_start_hour as number | null) ?? null,
+        carol_push_end_hour: (profile?.carol_push_end_hour as number | null) ?? null,
+        water_reminder_enabled: (profile?.water_reminder_enabled as boolean | null) ?? null,
       },
       nutritionTargetsLine,
       bodyMetricsLine,
@@ -5659,6 +5729,7 @@ async function handler(req: Request): Promise<Response> {
       await raceWeatherPromise,
       memoryBlocks.portrait,
       memoryBlocks.palmares,
+      memoryBlocks.proposals,
       buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
       memoryBlocks.records,
       // O que ela prescreveu e o que aconteceu (Fase 3).

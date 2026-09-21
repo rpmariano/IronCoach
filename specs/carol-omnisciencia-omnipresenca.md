@@ -10,6 +10,8 @@
 | **Omnisciência** | **7,7 / 10** (3,7 no início; 7,0 depois da Fase 2; 7,5 depois da Fase 3) | 6,0 / 10 | 8,6 / 10 |
 | **Omnipresença** | **7,6 / 10** (2,8 no início; 6,1 depois da P.3; 7,0 depois da P.4) | — | 9,0 / 10 |
 
+> **Reavaliação a 2026-09-20:** as notas acima pontuavam o que estava implementado, não o que a Carol lê quando decide. Verificadas por dimensão: omnisciência **6,2**, omnipresença **7,2**. Ver [Estado verificado a 2026-09-20](#estado-verificado-a-2026-09-20), no fim, com a Fase 5 e as ações P.9 a P.13.
+
 O 10 absoluto não é atingível, e não deve ser o alvo. Mesmo com tudo feito, a omnisciência fica perto de 8,6. O que falta até 10 é o que o atleta nunca regista nem diz, e o que nenhum relógio mede.
 
 As notas por fase assumem estas subidas: O1 passa a 8 na Fase 1 e a 9 com a ação 1.3, O2 a 9, O5 a 8, O3 e O7 a 8, O4 a 9, O6 a 8 e O8 a 9.
@@ -330,3 +332,108 @@ Com a P.5, P3 passa de 6 para 9. A omnipresença sobe para **7,6**.
 **Ficou por fazer, e porquê:**
 - **A água à meia-noite.** Entre as 00:00 e a 01:00, a notificação da água pode usar o total do dia anterior. Isto só acontece a quem tem a janela dos lembretes a atravessar a meia-noite. A correção obriga a mudar em que dia se grava a água, e isso mexe em registos existentes. Não compensa para uma hora por dia de um caso raro.
 - **O relógio**, adiado por decisão do produto.
+
+---
+
+# Estado verificado a 2026-09-20
+
+> Base: `dev` em `b22ad24` (a P.7 em `987f51b` e a 5.2 em `10e9c05`, ambas em `dev` e em produção desde 2026-09-21). Auditoria feita por dimensão, lendo o que cada Edge Function seleciona e o que cada prompt recebe, não o que o repositório tem implementado.
+
+## As notas anteriores estavam inflacionadas
+
+O spec pontuava o que estava implementado, não o que a Carol lê de facto quando decide. A diferença é grande em cinco dimensões:
+
+- **O1 · 9 no spec, 6 verificada.** A memória partilhada existe, mas o cartão diário não lê as impressões, o chat não lia o comentário do analyze-body, e nada do que as boas-vindas ou os momentos do Início dizem chega ao servidor. A Carol contradiz-se a si própria entre o ecrã de entrada e o cartão do mesmo dia.
+- **O7 · 7 no spec, 5 verificada.** As impressões só cobrem o cartão, os avisos e os insights. O que as boas-vindas disseram, o que a semana cumprida mostrou e a dispensa dos insights ficam no `localStorage` de um telemóvel.
+- **O5 · 8 no spec, 6 verificada.** O retrato da época só vai ao chat. O cartão e as análises continuam a ver 30 dias, e o "novo recorde pessoal" do analyze-run é o mínimo de qualquer distância, sem escalão, enquanto o cartão de confirmação usa outra régua.
+- **O4 · 9 no spec, 7 verificada.** A adesão ao plano existe, mas as recomendações soltas do chat não ficam gravadas e o desfecho de cada intervenção é apagado ao resolver.
+- **P4 · 8 no spec, 6,5 verificada.** A deduplicação dos gatilhos está no servidor, mas as boas-vindas, os momentos do Início e as dispensas continuam por dispositivo.
+
+A 5.2 foi feita depois da auditoria e já sobe O2 de 7,5 para 8,5; está em `dev` desde `b22ad24`.
+
+## Quadro
+
+| # | Dimensão | Peso | Spec | Verificada | Depois da Fase 5 e P.9 a P.13 |
+|---|---|---|---|---|---|
+| O1 | Memória unificada | 20 | 9 | 6 | 7,5 |
+| O2 | Cobertura dos dados | 15 | 9 | 7,5 | 8,5 |
+| O3 | Estado subjetivo | 15 | 7 | 7,5 | 8,5 |
+| O4 | Ciclo de feedback | 15 | 9 | 7 | 8 |
+| O5 | Profundidade temporal | 10 | 8 | 6 | 8 |
+| O6 | Dados fisiológicos | 10 | 2 | 2,5 | 4 |
+| O7 | O que o atleta viu | 10 | 7 | 5 | 7,5 |
+| O8 | Contexto externo | 5 | 7 | 6 | 8 |
+| | **Omnisciência** | 100 | 7,7 | **6,2** | **7,6** |
+| P1 | Iniciativa sem a app | 25 | 7 | 8 | 8,5 |
+| P2 | Canal fora da app | 20 | 8 | 7 | 8,5 |
+| P3 | Momentos-chave | 20 | 9 | 8,5 | 9 |
+| P4 | Entre dispositivos | 10 | 8 | 6,5 | 8 |
+| P5 | Voz única | 10 | 7 | 6,5 | 8 |
+| P6 | Não intrusiva | 10 | 9 | 7,5 | 8,5 |
+| P7 | Presença no treino | 5 | 0 | 1,5 | 2 |
+| | **Omnipresença** | 100 | 7,6 | **7,2** | **8,2** |
+
+Sem relógio, O6 e P7 não passam de 4. O 10 não é o alvo.
+
+## Regras que este plano respeita
+
+- Uma migration nunca é aplicada pelo deploy: aplica-se à mão em produção, testada numa transação revertida, **antes** do push a `dev`.
+- Um push a `dev` que toque `supabase/functions/**` é produção nesse instante; `dev` e `master` não podem divergir num ficheiro de Edge Function.
+- Nenhuma Edge Function passa a agir em nome de um atleta por segredo. Tudo o que é novo corre com o JWT do atleta e a RLS de linhas próprias; a conversa a sério continua a ser escrita pelo `coach-chat` quando o atleta abre.
+- Sem emoji, sem exclamações, sem aplausos por rotina (CAROL.md).
+- Antes de tocar em `Coach.jsx` ou `biEngine.js`: confirmar que `dev-claude` está sincronizado com `origin/dev`, onde outra sessão altera esses ficheiros em paralelo.
+
+## Fase 5 — o que a Carol diz e o que ela lê (O1, O3, O4, O5, O6, O7, O8, P4)
+
+| Ação | Dimensão | Esforço | Onde |
+|---|---|---|---|
+| **5.1** O que a Carol diz no cliente fica registado, e o cartão e o chat leem-no | O1, O7, P4, P6 | M | Migration `coach_impressions.kind`; `App.jsx`, `weekDone/dayDone/raceMilestone`, `CoachInsightModal`, `Home.jsx`, store; `carolMemory.ts`, `coach-daily-summary` |
+| **5.2** O que a app já tem e o chat não lê | O2, O1 | P | Feita em `10e9c05`, em `dev` desde `b22ad24` |
+| **5.3** O retrato da época chega ao cartão e ao analyze-run, com recordes por escalão e forma | O5, O1 | M | `carolMemory.ts`, `analyze-run`, `coach-daily-summary`, `_shared/formulas/runRecord.ts` |
+| **5.4** Check-in com tendência e ciclo; a FC que os prints já trazem | O3, O6 | M | `checkinAlarms.ts`, `heartRateZones.ts`, `coach-chat`, `analyze-run`, `coach-daily-summary` |
+| **5.5** Ciclo de feedback: recomendações soltas e desfecho das intervenções | O4 | G | Migration (2 tabelas, trigger em `profiles`); `coach-chat`, `prescriptionAdherence.ts`, `analyze-*`, `analyze-meal` |
+| **5.6** Contexto externo: local de treino, o que esteve na prova, temperatura do relógio, D+ do site | O8 | M | Migration `profiles.training_*`; `Perfil.jsx`, `raceWeatherFetch.ts`, `coach-chat`, `coach-daily-summary`, `analyze-run`, `enrich-race-event` |
+
+**5.1.** As boas-vindas gravam uma impressão `welcome` por cada chave de `markKeys`, com as frases (sem saudação nem CTA) no título; os três momentos do Início gravam `moment` sem título; a dispensa dos insights é o `ignoreAll`, não o "Entendi"; o balanço grava as duas chaves ('balanco' para o chat, a do candidato para o cross-device). Na leitura, `loadInitialData` traz as impressões dos últimos 14 dias para dois conjuntos no store, que os decisores puros recebem por parâmetro (o merge com o `localStorage` faz-se nos chamadores; `readSeen` não muda), e `visibilitychange` refresca-os antes de `tryWelcome`. No servidor, `fetchImpressionsBlock` passa a ser exportada e o cartão diário chama-a ao lado de `fetchAdherenceBlock`; as análises não a recebem. Os rótulos novos falam à Carol na segunda pessoa, como o resto do bloco ("as boas-vindas, em que lhe disseste"; "um momento no Início"); as boas-vindas sem frases e os momentos sem título não entram no prompt (existem só para a sincronização entre dispositivos), e a instrução "não repitas nem contradigas o que já lhe disseste ao abrir a app, salvo dados novos; se lhe perguntaste algo, retoma" só entra quando há boas-vindas com frases de hoje ou de ontem. As datas das impressões passam a Lisboa. O momento do check-in fica de fora: o servidor já tem os `daily_checkins`.
+
+**5.3.** As quatro consultas de 12 meses saem de `fetchChatMemoryBlocks` para um `fetchPortraitBlock` exportado, com projeção `details->splits`, ordem e limite (o teto de 1 000 linhas do PostgREST é silencioso). `fetchSharedMemoryBlock` aceita `{ portrait }` e só o cartão e o analyze-run o pedem. O retrato ganha os melhores ritmos 5/10/21 km por escalão e uma linha de forma (VDOT em palavras, número entre parêntesis), em 12 linhas no máximo, com a nota "para dar medida, não para elogiar por rotina". A régua do recorde (`runRecord.js`) passa a `_shared/formulas` e serve o cliente, o retrato e o analyze-run, que faz uma consulta própria sem filtro de tipo em vez do `previousRuns` segmentado; o retrato substitui `trendStr` e o `bestPaceStr` antigo, não os soma.
+
+**5.4.** Em dois pushes. O check-in troca a linha dos 7 dias por "esta semana vs as 3 anteriores", só com 3 check-ins de cada lado, e o ciclo ganha os inícios, a duração (média só com 3 inícios, durações fora de 18-45 dias descartadas) e o próximo início esperado "por volta de", sempre atrás do consentimento. A FC: `resolveMaxHR` escolhe entre Tanaka e a maior FCmáx repetida nos prints de 12 meses (picos isolados e valores fora de 120-220 ignorados) e diz de onde vem; o chat, o analyze-run e o cartão usam a mesma; `summariseRuns` passa a levar FC máx, VO2 do relógio, limiares, recuperação e zonas; a análise da corrida diz em que zona foi a FC média, para poder dizer que o Z2 do plano foi feito em Z4. A tool de check-ins fica adiada até haver mais de 120 dias de dados.
+
+**5.5.** Em três pushes. As intervenções: `profiles` ganha duas colunas transitórias (origem e desfecho), escritas por quem abre (analyze-run/gym/meal e o check-in) e por quem resolve (`runResolveIntervention`), e um trigger `security definer` copia a abertura e o desfecho para `coach_interventions`; o bloco de adesão passa a ter "avisos: N abertos, M ignorados, K falsos positivos" nos últimos 60 dias — para calibrar, nunca como abertura. As recomendações: o `RESPONSE_SCHEMA` ganha um array opcional simples (sem restrições aninhadas, a lição de 2026-09-05), validado no servidor e gravado depois da mensagem com RLS de inserção própria; `evaluatePrescriptions` cruza cada uma com o registo do dia por tipo, e o descanso com a dor e o sono do dia seguinte. O analyze-meal lê as outras refeições de hoje e a meta do dia: "sugeri 125 g para o dia; com esta vais em 60 g". O cartão diário já lê o bloco de adesão — a nota da Fase 3 que dizia o contrário está errada.
+
+**5.6.** O perfil ganha a cidade de treino, geocodificada uma vez no Perfil (o atleta confirma "Encontrei: Lisboa, Portugal") com coordenadas e altitude guardadas, para o servidor fazer um só pedido. O tempo para o treino entra no chat e no cartão só quando há treino no plano hoje ou amanhã, à hora mediana das corridas recentes ou em duas janelas; o balanço da prova recebe "o tempo que esteve", com o rodapé trocado para não dizer "previsão"; o analyze-run extrai a temperatura do relógio e o resumo das corridas mostra-a; o `enrich-race-event` guarda o D+ segundo o site em `web_info` e o bloco da prova no chat passa a incluir o `route_summary` que já existia. A tabela km a km não muda com o calor: é a régua única com o hub; a Carol diz o ajuste em palavras, como já faz.
+
+## Omnipresença — P.9 a P.13
+
+| Ação | Dimensão | Esforço | Onde |
+|---|---|---|---|
+| **P.9** A notificação abre a conversa que prometeu, e a Carol sabe que a enviou, o que disse e se foi tocada | P2, O7 | M | Migration `coach_proactive_pushes.body/generated`; `coach-proactive-tick`, `public/sw.js`, `App.jsx`, `Coach.jsx`, `coachProactive.js`, `carolMemory.ts` |
+| **P.10** O servidor pergunta pelo treino não registado, respeita a hora da partida e não repete o que a app já mostrou | P1, P3, P6 | G | Migration dos 8 momentos; `proactiveTriggers.ts`, `decide.ts`, `coach-proactive-tick`, `coach-chat`, `send-water-reminders`, `coachProactive.js`, `Perfil.jsx` |
+| **P.11** A medalha espera pelas boas-vindas, a véspera e o fim de bloco à vista, e o interruptor das boas-vindas | P3, P6 | M | Migration `profiles.carol_welcome_enabled`; `useMedalMoment.js`, `carolWelcome.js`, `Home.jsx`, `Coach.jsx`, `Perfil.jsx`, uma linha no `coach-chat` |
+| **P.12** Voz única: tudo o que se assina Carol fala como ela | P5 | M | `coach-daily-summary`, `_shared/carolTone.ts`, oito funções que dizem "Gemini", `Coach.jsx`, `supabase.js`, `racePlanEngine.js`, `racePhaseEvaluation.ts`, `biEngine.js` |
+| **P.13** O plano de ritmos como imagem, para a manhã da prova sem rede | P7 | P | `RacePacingPlanCard.jsx`, `racePlanImage.js`, `raceMural.js` |
+
+**P.9.** O payload leva a chave do momento; o `sw.js` guarda-a e abre `?tab=…&carol=<chave>`; o App regista a impressão `push`, limpa a URL e só consome a chave depois dos dados chegarem: uma intervenção ainda aberta abre o Coach com o intent, um conflito ainda existente idem, e os outros momentos ficam num pedido que o efeito passivo do Coach honra percorrendo a lista de candidatos (nova `listProactiveTriggers`, paridade com o servidor), passando ao seguinte em `already_sent`. O tick grava o texto enviado depois de sair, e um bloco novo no chat diz "notificaste-o: …, tocou / não abriu", com a regra de continuar o assunto em vez de o repetir. O `proactiveTab` do servidor não muda; o `trigger` não vai na URL porque é o prefixo da chave. Fica por decidir, antes de começar, se o toque numa notificação fura as quiet hours como o balanço já faz.
+
+**P.10.** Duas entregas. Primeiro, sem migration: o tick não notifica um momento cujo aviso o Início já mostrou ou o atleta dispensou hoje ("ja_visto", por candidato); a manhã da prova não sai depois da partida e pode adiantar-se até 2 h antes dela, nunca antes das 6 h (restringe o comportamento atual; confirmar com o produto); a água não sai nos 30 min a seguir a uma notificação dela; o tick grava a decisão em `app_logs` (o primeiro escritor server-side, com o usage no topo do meta para o painel Custos o contar, e só quando houve candidato). Depois, com a migration: o momento `missed_workout` avalia o treino de ontem ainda pendente, dentro da janela normal e fora do dia de uma prova, com a frase fixa "Não vi o treino de ontem registado. Aconteceu alguma coisa?" e uma instrução no chat que pergunta e ouve sem reagendar; paridade no cliente e no Perfil. O silêncio ganha uma segunda data, a do último check-in, para dizer "não vejo nenhum treino teu há N dias" em vez de "não registas nada", nos três textos ao mesmo tempo. O "silenciar hoje" fica de fora: a P.6 já cobre.
+
+**P.11.** A medalha espera que a cancela das boas-vindas fique livre. As boas-vindas ganham a variante da véspera, com o nome da prova, a hora de partida e o plano de hoje em vez de uma frase de manual, e um intervalo mínimo de 2 h entre saudações de faixa (a prova e a véspera passam sempre), sem gastar a faixa adiada. O Início ganha o aviso "O bloco está a acabar", com a mesma chave do servidor, cujo "Falar com a Carol" abre o Coach com um intent e `proactive_force`; para isso o `coach-chat` passa a honrar o force também no `block_end` (uma linha, a agrupar com o push da P.9). O Perfil ganha "Boas-vindas ao abrir a app", sempre visível, e o App respeita-o com `=== false`. A marca "um momento de cada vez" fica de fora: são animações de meio segundo em cartões distintos.
+
+**P.12.** As cinco frases do aviso do cartão diário (texto determinístico, não passa pelo modelo) reescritas à mão, mantendo a palavra "água" para o CarolCard não duplicar; um helper `upstreamErrorText` em `carolTone.ts` para as oito funções que hoje dizem "Gemini" ao atleta e para as cinco frases do `coach-chat` em terceira pessoa; o cliente distingue rede de servidor pela classe de erro da supabase-js e mostra a frase do servidor sempre que há resposta; o parecer da prova e os resumos de fase reescritos na voz dela (aparecem sob o avatar no hub, por isso não chega rotulá-los como cálculo); no biEngine só os "!" que sobraram. Um helper `expectCarolVoice` nos testes de cliente e `assertCarolVoice` nos Deno, mais um teste para o que não tinha. Os nomes de módulo ("Coach", "Memória do Coach") e os toasts do sistema não são a voz dela e ficam.
+
+**P.13.** Reduzida ao botão "Guardar o plano" no cartão de ritmos: uma imagem vertical com as passagens por troço e o abastecimento, partilhada ou descarregada como o mural. Sem modo "em prova", sem cache no service worker, sem cronómetro no ginásio: contrariam o `plano-de-prova.md`, a decisão do `sw.js` e a natureza do formulário de ginásio, e nenhum deles é a Carol a aparecer. P7 continua a valer perto de 2 até haver relógio.
+
+## Ordem recomendada
+
+1. **5.1** (migration das impressões). 2. **5.3** e **5.4** (sem migration). 3. **P.9** (migration do texto das notificações; decidir as quiet hours antes). 4. **P.12** (só strings) e **P.11** (migration do interruptor; a linha do coach-chat vai com a P.9). 5. **P.13**. 6. **P.10** em duas entregas. 7. **5.5** em três pushes. 8. **5.6**.
+
+O merge de `dev-claude` (P.7 e 5.2) para `dev` foi feito a 2026-09-21 (`b22ad24`).
+
+## Riscos a vigiar
+
+- **Migrations e ordem.** Cinco migrations neste plano; nenhuma é aplicada pelo deploy. Se a função chegar antes da coluna ou do check, o erro é silencioso (`console.warn` no cliente, `tally` mal etiquetado no tick) e a funcionalidade parece feita sem o estar.
+- **Custo.** O cartão diário está em ~7 000 tokens; 5.1, 5.3 e 5.4 acrescentam-lhe blocos. Medir no `app_logs` uma semana depois de cada uma, e o tick passa a estar lá também.
+- **RESPONSE_SCHEMA.** A 5.5 mexe na superfície que deitou o chat abaixo a 2026-09-05. Teste estrutural e validação contra a API real antes do push.
+- **Voz.** Cada bloco novo dá à Carol mais razões para elogiar ou cobrar. As instruções dizem "para dar medida" e "para calibrar, não cobrar"; vigiar as primeiras análises depois de cada entrega.
+- **Datas locais e dia de Lisboa.** A 5.1 alinhou `coach_impressions` com o dia de Lisboa que o servidor lê; `daily_checkins` continua a gravar com `todayISO()` local (`saveDailyCheckin` no store; `CheckinCard.jsx` lê pelo mesmo dia). Um check-in às 00:30 de Lisboa num telemóvel noutro fuso cai no dia anterior e o cartão não o vê. Fica por alinhar, fora da 5.1: ao mudar, contar com a chave `user_id,date` e com os check-ins já gravados pelo dia local.

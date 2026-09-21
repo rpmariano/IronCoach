@@ -14,7 +14,7 @@ import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import { useCountUpText } from '../../utils/useCountUp';
 import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
-import { raceMilestoneLine, wasMilestoneSeen, markMilestoneSeen } from './raceMilestone';
+import { raceMilestoneLine, milestoneMomentKey, wasMilestoneSeen, markMilestoneSeen } from './raceMilestone';
 import useMomentOnce from '../../utils/useMomentOnce';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
@@ -142,8 +142,21 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
 function RaceMilestoneLine({ raceId, days }) {
   const line = raceMilestoneLine(days);
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
+  const logImpression = useAppStore((s) => s.logImpression);
+  const impressionShown = useAppStore((s) => s.impressionShown);
+  // A chave deste momento em coach_impressions (kind 'moment', ação 5.1),
+  // sem título: o servidor já sabe quantos dias faltam para a prova. Na
+  // leitura, visto no outro telemóvel conta como visto aqui.
+  const momentKey = milestoneMomentKey(raceId, days);
   // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
-  const moment = useMomentOnce(!!line, () => wasMilestoneSeen(userId, raceId, days), () => markMilestoneSeen(userId, raceId, days));
+  const moment = useMomentOnce(
+    !!line,
+    () => wasMilestoneSeen(userId, raceId, days, impressionShown),
+    () => {
+      markMilestoneSeen(userId, raceId, days);
+      logImpression({ kind: 'moment', key: momentKey, title: null });
+    },
+  );
   if (!line) return null;
   return (
     <div data-testid="race-milestone" className="flex items-start gap-2.5 mt-3 pt-3" style={{ borderTop: '1px solid rgba(251,191,36,.18)' }}>

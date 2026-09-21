@@ -198,11 +198,16 @@ function pickRaceAfter({ races, runs, profile, today }) {
  *  efeito não força, e se a Carol tiver falado por qualquer outro motivo há
  *  menos de 6h (PROACTIVE_QUIET_HOURS no coach-chat) o pedido é recusado em
  *  silêncio e o botão não faz nada visível (bug reportado 2026-09-14). */
-export function pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now = new Date()) {
+export function pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, impressionDismissed = null }, now = new Date()) {
   const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile }, now);
   if (!candidate || candidate.trigger !== 'race_after' || !candidate.raceOutcome) return null;
   if (wasProactiveSent(profile?.id, candidate)) return null;
   if (wasProactiveDismissed(profile?.id, candidate)) return null;
+  // Dispensado noutro dispositivo (ação 5.1): a impressão 'alert' com a
+  // chave do candidato, que o Início grava ao dispensar e o store lê
+  // (impressionDismissed, chaves `kind:key`). dismissProactiveAlert continua
+  // a escrever só a marca local.
+  if (impressionDismissed?.has(`alert:${candidate.key}`)) return null;
   // A marca acima é só deste dispositivo e só se grava quando a resposta
   // chega ao ecrã que a pediu. O balanço já feito é a prova de que a
   // conversa aconteceu — venha do hub ou do chat, deste dispositivo ou de

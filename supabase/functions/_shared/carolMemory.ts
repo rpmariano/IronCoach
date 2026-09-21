@@ -28,8 +28,10 @@ export const RECORD_MEMORY_DAYS = 14;
 // Quota por tipo: as refeições são várias por dia e, com um teto só,
 // empurravam as corridas da semana para fora do bloco (medido em produção:
 // 41 registos comentados em 14 dias no atleta mais ativo).
-const RECORD_QUOTA = { runs: 6, gym: 4, meals: 4 };
-const MAX_RECORD_ENTRIES = RECORD_QUOTA.runs + RECORD_QUOTA.gym + RECORD_QUOTA.meals;
+// As avaliações corporais entraram a 2026-09-20 (5.2): eram a única análise
+// cujo comentário o chat não conhecia.
+const RECORD_QUOTA = { runs: 6, gym: 4, meals: 4, body: 2 };
+const MAX_RECORD_ENTRIES = RECORD_QUOTA.runs + RECORD_QUOTA.gym + RECORD_QUOTA.meals + RECORD_QUOTA.body;
 const MAX_COACH_COMMENT_CHARS = 320;
 const MAX_ATHLETE_NOTE_CHARS = 240;
 const MAX_CONVERSATION_MESSAGES = 6;
@@ -114,14 +116,22 @@ export function mealLabel(m: any): string {
   return t ? `Refeição (${t})` : "Refeição";
 }
 
-/** Converte as linhas de runs/workout_sessions/meals em entradas, sem as vazias. */
-export function toRecordEntries(rows: any[] | null | undefined, labelOf: (r: any) => string): RecordEntry[] {
+/** A avaliação corporal, com o peso — o comentário dela vive em `ai_summary`. */
+export function bodyLabel(a: any): string {
+  const w = a?.weight_kg != null && Number.isFinite(Number(a.weight_kg))
+    ? `${String(Math.round(Number(a.weight_kg) * 10) / 10).replace(".", ",")} kg` : null;
+  return w ? `Avaliação corporal (${w})` : "Avaliação corporal";
+}
+
+/** Converte as linhas de runs/workout_sessions/meals/body_assessments em entradas, sem as vazias.
+ *  `commentField`: a coluna com o comentário dela (`coach_notes`; `ai_summary` nas avaliações). */
+export function toRecordEntries(rows: any[] | null | undefined, labelOf: (r: any) => string, commentField = "coach_notes"): RecordEntry[] {
   return (rows || [])
     .map((r) => ({
       date: typeof r?.date === "string" ? r.date.slice(0, 10) : "",
       label: labelOf(r),
       athleteNote: clip(r?.notes, MAX_ATHLETE_NOTE_CHARS),
-      coachComment: clip(r?.coach_notes, MAX_COACH_COMMENT_CHARS),
+      coachComment: clip(r?.[commentField], MAX_COACH_COMMENT_CHARS),
     }))
     .filter((e) => e.date && (e.athleteNote || e.coachComment));
 }
@@ -232,6 +242,12 @@ export function buildPalmaresContext(medals: any[] | null | undefined, pastRaces
     const d = km(race.distance_km);
     if (d) parts.push(d);
     if (race.race_priority === "a") parts.push("principal");
+    // O terreno (com o D+ só em trail) e o local: o que faz uma prova ser
+    // comparável com outra.
+    if (race.race_type === "trail") parts.push(`trail${Number(race.elevation_gain_m) > 0 ? `, ${Math.round(Number(race.elevation_gain_m))} m D+` : ""}`);
+    else if (race.race_type === "estrada") parts.push("estrada");
+    const place = clip(race.location, 40);
+    if (place) parts.push(place);
     const secs = Number(run?.duration_seconds);
     const target = Number(race.target_time_seconds);
     if (secs > 0) {
@@ -245,13 +261,45 @@ export function buildPalmaresContext(medals: any[] | null | undefined, pastRaces
       parts.push("sem corrida ligada");
     }
     const note = clip(race.notes, 160);
-    return `  - ${race.date} · ${clip(race.name, 80) ?? "Prova"}: ${parts.join(", ")}${note ? ` — nota do atleta: "${note.replace(/"/g, "'")}"` : ""}`;
+    // O balanço que ela própria escreveu no dia seguinte (race_events.coach_balance):
+    // escrevia-o o chat e nunca ninguém o lia de volta.
+    const balance = clip(race.coach_balance, 200);
+    return `  - ${race.date} · ${clip(race.name, 80) ?? "Prova"}: ${parts.join(", ")}` +
+      `${note ? ` — nota do atleta: "${note.replace(/"/g, "'")}"` : ""}` +
+      `${balance ? ` — o teu balanço: "${balance.replace(/"/g, "'")}"` : ""}`;
   });
   if (raceLines.length) lines.push(`- Últimas provas concluídas:\n${raceLines.join("\n")}`);
 
   if (!lines.length) return null;
   return `PALMARÉS E PROVAS PASSADAS (o que o atleta já conquistou — é a história dele, usa-a para dar contexto e medida, ` +
     `não para elogiar por rotina):\n${lines.join("\n")}`;
+}
+
+// ── 5.2 — A proposta de objetivos por decidir ────────────────────────────
+
+const GOAL_LABELS: Record<string, [string, string]> = {
+  calorie_goal: ["calorias", " kcal/dia"], protein_goal: ["proteína", " g/dia"], carbs_goal: ["hidratos", " g/dia"],
+  fat_goal: ["gordura", " g/dia"], water_goal_ml: ["água", " ml/dia"], goal_weight_kg: ["peso-alvo", " kg"],
+  goal_body_fat_pct: ["massa gorda alvo", "%"], goal_muscle_mass_kg: ["massa muscular alvo", " kg"],
+  goal_lean_body_mass_kg: ["massa magra alvo", " kg"],
+};
+
+/** A proposta de objetivos (coach_goal_proposals) que o atleta ainda não
+ *  decidiu. Há no máximo uma: uma nova substitui a anterior. Sem isto, ela
+ *  escrevia propostas e nunca as lia de volta — podia propor os mesmos
+ *  números outra vez, sem saber que já estavam à espera dele. */
+export function buildGoalProposalContext(row: any): string | null {
+  if (!row || row.status !== "proposto") return null;
+  const goals = row.goals && typeof row.goals === "object" ? row.goals : {};
+  const parts = Object.entries(goals)
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => { const l = GOAL_LABELS[k]; return l ? `${l[0]} ${v}${l[1]}` : `${k} ${v}`; });
+  if (!parts.length) return null;
+  const since = typeof row.created_at === "string" ? row.created_at.slice(0, 10) : null;
+  const why = clip(row.rationale, 160);
+  return `PROPOSTA DE OBJETIVOS POR DECIDIR${since ? ` (feita a ${since})` : ""}: ${parts.join(", ")}` +
+    `${why ? ` — motivo: "${why.replace(/"/g, "'")}"` : ""}.\n` +
+    `O atleta ainda não a aceitou nem recusou. Não proponhas outra nem repitas os mesmos números; se vier a propósito, pergunta o que o faz hesitar.`;
 }
 
 // ── 1.6 — Metas corporais ────────────────────────────────────────────────
@@ -445,19 +493,48 @@ export async function fetchCheckinBlock(sb: any, userId: string, todayISO: strin
 
 // ── 2.4 — O que o atleta viu na app ──────────────────────────────────────
 
+/* O bloco fala com a Carol na segunda pessoa ("Não repitas..."), por isso o
+   rótulo das boas-vindas lê-se antes do título entre aspas: as boas-vindas,
+   em que lhe disseste "...". O `push` (P.9) entra quando essa ação o gravar. */
 const IMPRESSION_KIND_LABELS: Record<string, string> = {
   daily_card: "o teu cartão diário",
   alert: "o aviso",
   insights: "os alertas do motor de regras",
+  welcome: "as boas-vindas, em que lhe disseste",
+  moment: "um momento no Início",
 };
 
+/* As boas-vindas guardam as frases inteiras (até 200 caracteres, o teto da
+   coluna); cortá-las a 120 deixava a pergunta da noite a meio. Sem título,
+   estes dois kinds ficam fora do prompt (ver buildImpressionsContext). */
+const LONG_TITLE_KINDS = new Set(["welcome", "moment"]);
+const IMPRESSION_TITLE_MAX = 120;
+const LONG_IMPRESSION_TITLE_MAX = 200;
+
+/* Só entra quando há boas-vindas com frases de hoje ou de ontem: a pergunta
+   da noite ("Aconteceu alguma coisa?") é de ontem quando o cartão da manhã
+   nasce, e retoma-se; a de anteontem já teve o cartão dela. As linhas levam
+   a data, por isso a instrução não diz "hoje". */
+const WELCOME_FOLLOW_UP =
+  "Não repitas nem contradigas o que já lhe disseste ao abrir a app, salvo dados novos; se lhe perguntaste algo, retoma.";
+
 export function buildImpressionsContext(rows: any[] | null | undefined, todayISO: string): string | null {
-  const list = (rows || []).filter((r) => r && typeof r.date === "string" && r.kind);
+  const list = (rows || []).filter((r) =>
+    r && typeof r.date === "string" && r.kind &&
+    // Um momento sem título, ou umas boas-vindas sem frases (a variante sem
+    // nada a dizer fica pela saudação e grava title null), existem só para a
+    // sincronização entre dispositivos: o servidor já tem os factos por trás
+    // deles, e o rótulo das boas-vindas sozinho ficava a meio. Não entram.
+    !(LONG_TITLE_KINDS.has(r.kind) && clip(r.title, LONG_IMPRESSION_TITLE_MAX) === null)
+  );
   if (!list.length) return null;
   const byDate = new Map<string, string[]>();
+  const yesterdayISO = addDaysISO(todayISO, -1);
+  let saidAtWelcome = false;
   for (const r of list.slice().sort((a, b) => String(a.shown_at ?? "").localeCompare(String(b.shown_at ?? "")))) {
     const label = IMPRESSION_KIND_LABELS[r.kind] ?? r.kind;
-    const title = clip(r.title, 120);
+    const title = clip(r.title, LONG_TITLE_KINDS.has(r.kind) ? LONG_IMPRESSION_TITLE_MAX : IMPRESSION_TITLE_MAX);
+    if (r.kind === "welcome" && title && (r.date === todayISO || r.date === yesterdayISO)) saidAtWelcome = true;
     const text = `${label}${title ? ` "${title.replace(/"/g, "'")}"` : ""}${r.dismissed_at ? " (dispensado por ele)" : ""}`;
     const day = byDate.get(r.date) ?? [];
     if (!day.includes(text)) day.push(text);
@@ -465,12 +542,20 @@ export function buildImpressionsContext(rows: any[] | null | undefined, todayISO
   }
   const lines = [...byDate.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([date, items]) => `- ${date === todayISO ? "Hoje" : date === addDaysISO(todayISO, -1) ? "Ontem" : date}: ${items.join("; ")}.`);
-  return `O QUE O ATLETA VIU NA APP (últimos 3 dias — o que a Home lhe mostrou):\n${lines.join("\n")}\n` +
-    `Não repitas como novidade o que ele já viu; se dispensou um aviso, não insistas sem motivo novo.`;
+    .map(([date, items]) => `- ${date === todayISO ? "Hoje" : date === yesterdayISO ? "Ontem" : date}: ${items.join("; ")}.`);
+  return `O QUE O ATLETA VIU NA APP (últimos 3 dias — o que o Início lhe mostrou e o que lhe disseste ao abrir a app):\n${lines.join("\n")}\n` +
+    `Não repitas como novidade o que ele já viu; se dispensou um aviso, não insistas sem motivo novo.` +
+    (saidAtWelcome ? ` ${WELCOME_FOLLOW_UP}` : "");
 }
 
-async function fetchImpressionsBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
+/**
+ * O que o atleta viu na app nos últimos 3 dias. Lido pelo chat (via
+ * fetchChatMemoryBlocks) e pelo cartão diário (5.1, chamada direta ao lado
+ * de fetchAdherenceBlock). As quatro análises não o recebem: por isso não
+ * está em fetchSharedMemoryBlock. `todayISO` é o dia de Lisboa, como o
+ * cliente grava.
+ */
+export async function fetchImpressionsBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
   try {
     const { data, error } = await sb.from("coach_impressions")
       .select("date, kind, key, title, shown_at, dismissed_at")
@@ -557,6 +642,8 @@ export interface ChatMemoryBlocks {
   checkin: string | null;
   impressions: string | null;
   adherence: string | null;
+  /** A proposta de objetivos por decidir (5.2). */
+  proposals: string | null;
 }
 
 /**
@@ -572,7 +659,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     const checkinPromise = fetchCheckinBlock(sb, userId, lisbonTodayISO(), profile);
     const impressionsPromise = fetchImpressionsBlock(sb, userId, lisbonTodayISO());
     const adherencePromise = fetchAdherenceBlock(sb, userId, todayISO);
-    const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, pastRacesR, yearRunsR, yearGymR, yearBodyR, yearRacesR] = await Promise.all([
+    const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, pastRacesR, yearRunsR, yearGymR, yearBodyR, yearRacesR, bodyNotesR, goalsR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
         .eq("user_id", userId).gte("date", recordsFrom).lte("date", todayISO).or(hasText)
         .order("date", { ascending: false }).limit(RECORD_QUOTA.runs),
@@ -589,7 +676,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
         .eq("user_id", userId).gte("date", addDaysISO(todayISO, -1)).lte("date", todayISO),
       sb.from("medal_awards").select("medalhao, slot, period_key, value, awarded_at")
         .eq("user_id", userId).order("awarded_at", { ascending: false }).limit(200),
-      sb.from("race_events").select("id, date, name, distance_km, race_priority, target_time_seconds, notes")
+      sb.from("race_events").select("id, date, name, distance_km, race_priority, target_time_seconds, notes, race_type, elevation_gain_m, location, coach_balance")
         .eq("user_id", userId).eq("status", "concluida").lt("date", todayISO)
         .order("date", { ascending: false }).limit(5),
       sb.from("runs").select("date, distance_km")
@@ -600,6 +687,15 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
         .eq("user_id", userId).gte("date", yearFrom).lte("date", todayISO),
       sb.from("race_events").select("id", { count: "exact", head: true })
         .eq("user_id", userId).eq("status", "concluida").gte("date", yearFrom).lte("date", todayISO),
+      // 5.2: as avaliações comentadas (o comentário dela é `ai_summary`) e a
+      // proposta de objetivos por decidir.
+      sb.from("body_assessments").select("date, weight_kg, notes, ai_summary")
+        .eq("user_id", userId).eq("status", "ready").gte("date", recordsFrom).lte("date", todayISO)
+        .or("notes.not.is.null,ai_summary.not.is.null")
+        .order("date", { ascending: false }).limit(RECORD_QUOTA.body),
+      sb.from("coach_goal_proposals").select("status, goals, rationale, created_at")
+        .eq("user_id", userId).eq("status", "proposto")
+        .order("created_at", { ascending: false }).limit(1),
     ]);
     warn("runs(notas)", runsR.error);
     warn("workout_sessions(notas)", gymR.error);
@@ -612,11 +708,14 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     warn("workout_sessions(12 meses)", yearGymR.error);
     warn("body_assessments(12 meses)", yearBodyR.error);
     warn("race_events(12 meses)", yearRacesR.error);
+    warn("body_assessments(notas)", bodyNotesR.error);
+    warn("coach_goal_proposals", goalsR.error);
 
     const entries = [
       ...toRecordEntries(runsR.data, runLabel),
       ...toRecordEntries(gymR.data, gymLabel),
       ...toRecordEntries(mealsR.data, mealLabel),
+      ...toRecordEntries(bodyNotesR.data, bodyLabel, "ai_summary"),
     ];
     const recordsBlock = buildRecordMemoryContext(entries);
     const upcomingNotes = (upcomingNotesR.data || [])
@@ -650,9 +749,10 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       checkin: await checkinPromise,
       impressions: await impressionsPromise,
       adherence: await adherencePromise,
+      proposals: buildGoalProposalContext((goalsR.data || [])[0] ?? null),
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null, adherence: null };
+    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null, adherence: null, proposals: null };
   }
 }

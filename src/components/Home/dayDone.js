@@ -46,7 +46,14 @@ export function doneLine(item, { runs = [], gymSessions = [] } = {}) {
 
 const seenKey = (userId, dateISO) => `ironcoach_day_done_seen_${userId || 'anon'}_${dateISO}`;
 
-export function wasDayDoneSeen(userId, dateISO, storage = globalThis.localStorage) {
+/** A chave deste momento em coach_impressions (kind 'moment', ação 5.1) — a
+ *  mesma na escrita (DayPlanCard) e na leitura (wasDayDoneSeen). */
+export const dayDoneMomentKey = (dateISO) => `daydone:${dateISO}`;
+
+/* Visto neste telemóvel (localStorage) ou em qualquer outro: `shown` é o
+   impressionShown do store (chaves `kind:key`), opcional. */
+export function wasDayDoneSeen(userId, dateISO, shown = null, storage = globalThis.localStorage) {
+  if (shown?.has(`moment:${dayDoneMomentKey(dateISO)}`)) return true;
   try { return storage?.getItem(seenKey(userId, dateISO)) === '1'; } catch { return true; }
 }
 

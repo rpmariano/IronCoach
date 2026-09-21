@@ -12,6 +12,7 @@ describe('CoachInsightModal', () => {
   const mockSetInsightState = vi.fn();
   const mockSetActiveTab = vi.fn();
   const mockSetCoachIntent = vi.fn();
+  const mockLogImpressionDismissed = vi.fn();
   const mockOnClose = vi.fn();
 
   const sampleInsights = [
@@ -32,6 +33,7 @@ describe('CoachInsightModal', () => {
       setInsightState: mockSetInsightState,
       setActiveTab: mockSetActiveTab,
       setCoachIntent: mockSetCoachIntent,
+      logImpressionDismissed: mockLogImpressionDismissed,
     });
   });
 
@@ -57,23 +59,30 @@ describe('CoachInsightModal', () => {
     }));
     expect(mockSetActiveTab).toHaveBeenCalledWith('coach');
     expect(mockOnClose).toHaveBeenCalled();
+    // Falar com ela não é dispensar.
+    expect(mockLogImpressionDismissed).not.toHaveBeenCalled();
   });
 
-  it('ao clicar em "Ignorar", marca como ignorado e fecha', () => {
+  /* "Ignorar" é a dispensa real (ação 5.1): fica em coach_impressions com a
+     chave e o título do insight, para a Carol e o outro telemóvel saberem. */
+  it('ao clicar em "Ignorar", marca como ignorado, regista a dispensa e fecha', () => {
     render(<CoachInsightModal insights={sampleInsights} onClose={mockOnClose} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Ignorar/i }));
 
     expect(mockSetInsightState).toHaveBeenCalledWith('insight-1', 'ignored');
+    expect(mockLogImpressionDismissed).toHaveBeenCalledTimes(1);
+    expect(mockLogImpressionDismissed).toHaveBeenCalledWith({ kind: 'insights', key: 'insight-1', title: 'Carga de Treino Excessiva (ACWR)' });
     expect(mockOnClose).toHaveBeenCalled();
   });
 
-  it('ao clicar em "Entendido", marca como entendido e fecha', () => {
+  it('ao clicar em "Entendido", marca como entendido e fecha — sem registar dispensa', () => {
     render(<CoachInsightModal insights={sampleInsights} onClose={mockOnClose} />);
 
     fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
 
     expect(mockSetInsightState).toHaveBeenCalledWith('insight-1', 'understood');
+    expect(mockLogImpressionDismissed).not.toHaveBeenCalled();
     expect(mockOnClose).toHaveBeenCalled();
   });
 

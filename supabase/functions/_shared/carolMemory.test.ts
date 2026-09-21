@@ -16,8 +16,7 @@ import {
   gymLabel,
   mealLabel,
   runLabel,
-  toRecordEntries,
-} from "./carolMemory.ts";
+  toRecordEntries, bodyLabel, buildGoalProposalContext } from "./carolMemory.ts";
 
 Deno.test("clip: uma linha só, cortada com reticências; vazio é null", () => {
   assertEquals(clip("  dor   no\njoelho  ", 50), "dor no joelho");
@@ -54,14 +53,14 @@ Deno.test("registos comentados: o comentário dela e a nota do atleta, o mais re
   assertEquals(buildRecordMemoryContext([]), null);
 });
 
-Deno.test("registos comentados: aspas do texto não partem as aspas do bloco; teto de 14 entradas", () => {
+Deno.test("registos comentados: aspas do texto não partem as aspas do bloco; teto de 16 entradas", () => {
   const many = Array.from({ length: 20 }, (_, i) => ({
     date: `2026-09-${String(i + 1).padStart(2, "0")}`, label: "Corrida", athleteNote: null, coachComment: `disse "isto" ${i}`,
   }));
   const text = buildRecordMemoryContext(many)!;
   assertStringIncludes(text, `"disse 'isto' 19"`);
-  assertEquals(text.split("\n").filter((l) => l.startsWith("- ")).length, 14);
-  assert(!text.includes("2026-09-06"));
+  assertEquals(text.split("\n").filter((l) => l.startsWith("- ")).length, 16);
+  assert(!text.includes("2026-09-04"));
   assertStringIncludes(text, "2026-09-07");
 });
 
@@ -209,6 +208,7 @@ Deno.test("fetchChatMemoryBlocks: monta os blocos; uma tabela em erro tira só o
   });
   const blocks = await fetchChatMemoryBlocks(sb, "u1", "2026-09-18");
   assertStringIncludes(blocks.records!, `nota do atleta: "cansado"`);
+  assertEquals(blocks.proposals, null);
   assertEquals(blocks.dailyCard, null);
   assertStringIncludes(blocks.palmares!, "Distâncias já concluídas em prova: 10 km");
   assertStringIncludes(blocks.portrait!, "Corrida: 16 km em 1 corridas");
@@ -229,6 +229,60 @@ Deno.test("impressões: por dia, o mais recente primeiro, sem repetidos, com o q
   assertStringIncludes(text, `- Ontem: os alertas do motor de regras "Carga a subir depressa".`);
   assert(text.indexOf("Hoje") < text.indexOf("Ontem"));
   assertEquals(buildImpressionsContext([], "2026-09-18"), null);
+});
+
+Deno.test("impressões (5.1): as boas-vindas entram inteiras até 200 e trazem a instrução; um momento sem título fica de fora", () => {
+  // 200 caracteres exatos, sem espaços repetidos nem fim em espaço, para o clip não mexer.
+  const said = ("Não vi o treino de hoje registado. Aconteceu alguma coisa? " + "x".repeat(200)).slice(0, 200);
+  assertEquals(said.length, 200);
+  const text = buildImpressionsContext([
+    { date: "2026-09-17", kind: "welcome", key: "noite", title: said, shown_at: "2026-09-17T21:00:00Z" },
+    { date: "2026-09-18", kind: "moment", key: "weekdone:2026-09-14", title: null, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "insights", key: "acwr", title: "Carga a subir depressa", shown_at: "2026-09-18T07:01:00Z", dismissed_at: "2026-09-18T07:02:00Z" },
+  ], "2026-09-18")!;
+  assertStringIncludes(text, `- Ontem: as boas-vindas, em que lhe disseste "${said}".`);
+  assert(!text.includes("…"));
+  assertStringIncludes(text, "Não repitas nem contradigas o que já lhe disseste ao abrir a app, salvo dados novos; se lhe perguntaste algo, retoma.");
+  assert(!text.includes("disseste hoje"));
+  assertStringIncludes(text, "o que lhe disseste ao abrir a app");
+  assert(!text.includes("um momento no Início"));
+  assertStringIncludes(text, `- Hoje: os alertas do motor de regras "Carga a subir depressa" (dispensado por ele).`);
+});
+
+Deno.test("impressões (5.1): sem boas-vindas não há instrução; os outros kinds cortam a 120; só momentos sem título dá null", () => {
+  const long = "x".repeat(200);
+  const text = buildImpressionsContext([
+    { date: "2026-09-18", kind: "alert", key: "plano", title: long, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "moment", key: "daydone:2026-09-18", title: null, shown_at: "2026-09-18T07:01:00Z" },
+    { date: "2026-09-18", kind: "moment", key: "milestone:r1:7", title: "Faltam 7 dias para a prova", shown_at: "2026-09-18T07:02:00Z" },
+  ], "2026-09-18")!;
+  assert(!text.includes("se lhe perguntaste algo"));
+  assertStringIncludes(text, `o aviso "${"x".repeat(119)}…"`);
+  assertStringIncludes(text, `um momento no Início "Faltam 7 dias para a prova"`);
+  assertEquals(text.split("\n").filter((l) => l.startsWith("- ")).length, 1);
+  assertEquals(buildImpressionsContext([
+    { date: "2026-09-18", kind: "moment", key: "daydone:2026-09-18", title: null, shown_at: "2026-09-18T07:01:00Z" },
+  ], "2026-09-18"), null);
+});
+
+Deno.test("impressões (5.1): boas-vindas sem frases ficam de fora; as de anteontem entram na lista mas não trazem a instrução", () => {
+  // A variante sem nada a dizer (manhã com sono 3 e sem plano, por exemplo)
+  // grava title null: o rótulo sozinho não pode chegar ao prompt.
+  assertEquals(buildImpressionsContext([
+    { date: "2026-09-18", kind: "welcome", key: "2026-09-18:manha", title: null, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "welcome", key: "2026-09-18:tarde", title: "   ", shown_at: "2026-09-18T13:00:00Z" },
+  ], "2026-09-18"), null);
+  const pergunta = "Não vi o treino de hoje registado. Aconteceu alguma coisa?";
+  const text = buildImpressionsContext([
+    { date: "2026-09-16", kind: "welcome", key: "2026-09-16:noite", title: pergunta, shown_at: "2026-09-16T21:00:00Z" },
+    { date: "2026-09-18", kind: "welcome", key: "2026-09-18:manha", title: null, shown_at: "2026-09-18T07:00:00Z" },
+    { date: "2026-09-18", kind: "daily_card", key: "2026-09-18", title: null, shown_at: "2026-09-18T07:01:00Z" },
+  ], "2026-09-18")!;
+  assertStringIncludes(text, `- 2026-09-16: as boas-vindas, em que lhe disseste "${pergunta}".`);
+  assertStringIncludes(text, "- Hoje: o teu cartão diário.");
+  assert(!text.includes("em que lhe disseste."));
+  // A pergunta de anteontem já teve o cartão dela: a linha fica, a instrução não.
+  assert(!text.includes("se lhe perguntaste algo"));
 });
 
 Deno.test("fetchCheckinBlock: sem consentimento, o ciclo é apagado antes de chegar à Carol", async () => {
@@ -261,5 +315,32 @@ Deno.test("fetchCheckinBlock: sem perfil passado, lê o género e o consentiment
   const text = await fetchCheckinBlock(sb, "u1", "2026-09-18");
   assertStringIncludes(text!, "- G3: Nenhum dia de menstruação nos últimos 90 dias");
   assert(sb.calls.includes("profiles"));
+});
+
+/* 5.2 — o que a app já tinha e o chat não lia. */
+Deno.test("palmarés: a prova concluída leva o terreno, o local e o balanço que ela escreveu", () => {
+  const text = buildPalmaresContext([], [
+    { id: "r1", date: "2026-09-06", name: "Trail de Sintra", distance_km: 21, race_type: "trail", elevation_gain_m: 640, location: "Sintra", target_time_seconds: 7200, coach_balance: 'Foi uma prova de gestão: começaste "a medo" e acabaste forte.' },
+  ], [{ race_id: "r1", duration_seconds: 7000 }])!;
+  assertStringIncludes(text, "Trail de Sintra: 21 km, trail, 640 m D+, Sintra, tempo 1:56:40 (objetivo 2:00:00, −3:20)");
+  assertStringIncludes(text, `o teu balanço: "Foi uma prova de gestão: começaste 'a medo' e acabaste forte."`);
+});
+
+Deno.test("registos comentados: a avaliação corporal entra com o peso e o comentário de ai_summary", () => {
+  const entries = toRecordEntries([{ date: "2026-09-17", weight_kg: 72.4, notes: null, ai_summary: "Massa gorda a descer, músculo estável." }], bodyLabel, "ai_summary");
+  assertEquals(entries.length, 1);
+  assertEquals(entries[0].label, "Avaliação corporal (72,4 kg)");
+  assertEquals(entries[0].coachComment, "Massa gorda a descer, músculo estável.");
+  assertEquals(bodyLabel({}), "Avaliação corporal");
+});
+
+Deno.test("proposta de objetivos por decidir: só a que está 'proposto', com os números e o motivo", () => {
+  const text = buildGoalProposalContext({ status: "proposto", goals: { calorie_goal: 2300, protein_goal: 140, goal_weight_kg: 72 }, rationale: "Preparação da meia.", created_at: "2026-09-15T10:00:00Z" })!;
+  assertStringIncludes(text, "PROPOSTA DE OBJETIVOS POR DECIDIR (feita a 2026-09-15): calorias 2300 kcal/dia, proteína 140 g/dia, peso-alvo 72 kg");
+  assertStringIncludes(text, `motivo: "Preparação da meia."`);
+  assertStringIncludes(text, "Não proponhas outra");
+  assertEquals(buildGoalProposalContext({ status: "recusado", goals: { calorie_goal: 2300 } }), null);
+  assertEquals(buildGoalProposalContext({ status: "proposto", goals: {} }), null);
+  assertEquals(buildGoalProposalContext(null), null);
 });
 

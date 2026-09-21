@@ -1,8 +1,8 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
-import { weekDone, weekDoneLine } from './weekDone';
+import { weekDone, weekDoneLine, wasWeekCelebrated } from './weekDone';
 import WeekDoneRibbon from './WeekDoneRibbon';
 
 /* A semana cumprida: a semana do PLANO (a do "semana N de M"), todos os
@@ -50,11 +50,33 @@ describe('weekDoneLine', () => {
   });
 });
 
+/* Visto noutro dispositivo (ação 5.1): a impressão 'moment:weekdone:<semana>'
+   lida do servidor conta como visto, mesmo sem a marca local. */
+describe('wasWeekCelebrated', () => {
+  const semStorage = { getItem: () => null, setItem: () => {} };
+
+  it('a impressão desta semana conta como visto; outra semana ou nenhuma, não', () => {
+    expect(wasWeekCelebrated('u1', '2026-09-14', new Set(['moment:weekdone:2026-09-14']), semStorage)).toBe(true);
+    expect(wasWeekCelebrated('u1', '2026-09-14', new Set(['moment:weekdone:2026-09-07']), semStorage)).toBe(false);
+    expect(wasWeekCelebrated('u1', '2026-09-14', null, semStorage)).toBe(false);
+  });
+});
+
 describe('WeekDoneRibbon', () => {
   const done = weekDone({ plans: [plan], planItems: [item('a', '2026-09-14'), item('b', '2026-09-16')], today: '2026-09-19' });
+  let logImpression;
   beforeEach(() => {
     window.localStorage.clear();
-    useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' }, welcomeGate: 'clear' });
+    logImpression = vi.fn();
+    useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' }, welcomeGate: 'clear', logImpression, impressionShown: new Set() });
+  });
+
+  it('celebrada noutro dispositivo: fica só lá, sem momento nem nova impressão', () => {
+    useAppStore.setState({ impressionShown: new Set(['moment:weekdone:2026-09-14']) });
+    render(<WeekDoneRibbon done={done} />);
+    expect(screen.getByTestId('week-done')).not.toHaveAttribute('data-celebrate');
+    expect(screen.getByText('Semana 1 cumprida. Dois treinos, dois feitos.')).toBeInTheDocument();
+    expect(logImpression).not.toHaveBeenCalled();
   });
 
   it('a primeira vez é o momento; da segunda, fica só lá', () => {
@@ -62,8 +84,11 @@ describe('WeekDoneRibbon', () => {
     expect(screen.getByTestId('week-done')).toHaveAttribute('data-celebrate', 'true');
     expect(screen.getByText('Semana 1 cumprida. Dois treinos, dois feitos.')).toBeInTheDocument();
     expect(screen.getByRole('list', { name: 'Os sete dias da semana 1' }).querySelectorAll('li')).toHaveLength(7);
+    // O momento fica em coach_impressions (ação 5.1): a chave da semana, sem título.
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: 'weekdone:2026-09-14', title: null });
     unmount();
     render(<WeekDoneRibbon done={done} />);
     expect(screen.getByTestId('week-done')).not.toHaveAttribute('data-celebrate');
+    expect(logImpression).toHaveBeenCalledTimes(1);
   });
 });

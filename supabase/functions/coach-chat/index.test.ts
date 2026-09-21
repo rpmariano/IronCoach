@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3780,3 +3780,43 @@ Deno.test("recordProactiveDelivered: grava a chave sem duplicar, e um erro não 
   await recordProactiveDelivered(makeProactiveLogSb({ writeError: { message: "boom" } }).sb, "u1", "silence", "k");
   await recordProactiveDelivered(makeProactiveLogSb({ throws: true }).sb, "u1", "silence", "k");
 });
+
+/* 5.2 — o que a app já tinha e o chat não lia. */
+Deno.test("bestLoadsLine: a melhor carga por exercício, ordenada pelo 1RM, com teto", () => {
+  const sessions = [
+    { workout_session_sets: [{ exercise_name: "Agachamento", reps: 5, weight: 80 }, { exercise_name: "agachamento", reps: 8, weight: 70 }, { exercise_name: "Supino", reps: 8, weight: 60, one_rep_max_est: 75 }] },
+    { workout_session_sets: [{ exercise_name: "Agachamento", reps: 3, weight: 80 }, { exercise_name: "", reps: 10, weight: 20 }, { exercise_name: "Remada", reps: 10, weight: null }] },
+  ];
+  const line = bestLoadsLine(sessions)!;
+  assertStringIncludes(line, "Melhores cargas por exercício na janela: Agachamento 80 kg×5 (1RM est. 93 kg) · Supino 60 kg×8 (1RM est. 75 kg)");
+  assertEquals(bestLoadsLine([{ workout_session_sets: [] }]), null);
+  assertEquals(bestLoadsLine(Array.from({ length: 9 }, (_, i) => ({ workout_session_sets: [{ exercise_name: `E${i}`, reps: 5, weight: 10 + i }] })))!.split(" · ").length, 6);
+});
+
+Deno.test("buildPlanContext: o bloco aceite diz o que é e o que lhe aconteceu", () => {
+  const items = [{ planned_date: "2026-09-21", kind: "corrida", training_type: "longo", target_distance_km: 14, status: "pendente" }];
+  const text = buildPlanContext([], items, "2026-09-20", null, true, [
+    { id: "p1", period_start: "2026-09-07", period_end: "2026-10-04", summary: "Base para a meia.", race_lost_at: "2026-09-18T10:00:00Z", trimmed_at: null },
+  ])!;
+  assertStringIncludes(text, "bloco de 2026-09-07 a 2026-10-04; resumo: Base para a meia.; a prova a que estava ligado foi apagada a 2026-09-18");
+  assertEquals(text.indexOf("bloco de") < text.indexOf("2026-09-21:"), true);
+  assertEquals(buildPlanContext([], items, "2026-09-20", null, true, [])!.includes("bloco de"), false);
+});
+
+Deno.test("bio: sem notificações ligadas, ela não promete avisar fora da app", () => {
+  const off = buildSystemInstruction(null, { ...BIO_BASE, carol_push_enabled: false }, null, null, "N", "A", null, null, null, null, null, null);
+  assertStringIncludes(off, "não prometas avisá-lo fora da app");
+  const on = buildSystemInstruction(null, { ...BIO_BASE, carol_push_enabled: true, carol_push_types: ["race_eve", "silence"], carol_push_start_hour: 8, carol_push_end_hour: 20, water_reminder_enabled: true }, null, null, "N", "A", null, null, null, null, null, null);
+  assertStringIncludes(on, "ligadas, das 8h às 20h (momentos: véspera da prova, dias sem registos)");
+  assertStringIncludes(on, "Lembretes de água: ligados");
+  const unknown = buildSystemInstruction(null, BIO_BASE, null, null, "N", "A", null, null, null, null, null, null);
+  assertEquals(unknown.includes("Notificações tuas"), false);
+});
+
+Deno.test("buildRaceEventsContext: o conflito já reconhecido não volta a ser levantado", () => {
+  const text = buildRaceEventsContext([
+    { id: "r1", date: "2026-11-08", name: "Maratona", race_type: "estrada", distance_km: 42.2, race_priority: "a", conflict_acknowledged_at: "2026-09-19T12:00:00Z" },
+  ], "2026-09-20", null, null, [])!;
+  assertStringIncludes(text, "conflito de provas já reconhecido por ele a 2026-09-19: não voltes a levantá-lo");
+});
+

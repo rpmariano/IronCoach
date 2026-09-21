@@ -8,7 +8,8 @@
    treino sozinho não faz uma semana.
 
    Puro, para os testes; a memória de "já vi o momento" vive em localStorage
-   (wasWeekCelebrated/markWeekCelebrated). */
+   (wasWeekCelebrated/markWeekCelebrated) e, para os outros dispositivos, em
+   coach_impressions (ação 5.1). */
 
 import { addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, diffDaysISO } from './WeeklyPlanCard';
@@ -59,7 +60,14 @@ export function weekDoneLine({ week, count }) {
 
 const markKey = (userId, weekStart) => `ironcoach_week_done_${userId || 'anon'}_${weekStart}`;
 
-export function wasWeekCelebrated(userId, weekStart, storage = globalThis.localStorage) {
+/** A chave deste momento em coach_impressions (kind 'moment', ação 5.1) — a
+ *  mesma na escrita (WeekDoneRibbon) e na leitura (wasWeekCelebrated). */
+export const weekDoneMomentKey = (weekStart) => `weekdone:${weekStart}`;
+
+/* Visto neste telemóvel (localStorage) ou em qualquer outro: `shown` é o
+   impressionShown do store (chaves `kind:key`), opcional. */
+export function wasWeekCelebrated(userId, weekStart, shown = null, storage = globalThis.localStorage) {
+  if (shown?.has(`moment:${weekDoneMomentKey(weekStart)}`)) return true;
   try { return storage?.getItem(markKey(userId, weekStart)) === '1'; } catch { return true; }
 }
 
