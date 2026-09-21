@@ -963,8 +963,9 @@ export const useAppStore = create((set, get) => ({
     const patch = {};
     for (const k of kinds) patch[`${k === 'stats_pool' ? 'stats_pool' : 'leaderboard'}_consent_at`] = on ? agora : null;
     /* O nome abreviado só existe com o consentimento das tabelas. A retirar,
-       é o trigger clear_pool_data_on_consent_revoked que o limpa no servidor
-       — aqui espelha-se, para a UI não ficar a mostrar um nome que já não há. */
+       é o trigger clear_leaderboard_name_on_consent_revoked que o limpa no
+       servidor — aqui espelha-se, para a UI não ficar a mostrar um nome que
+       já não há. */
     if (kind === 'leaderboard' && on) patch.leaderboard_display_name = profile.leaderboard_display_name || null;
     if (kinds.includes('leaderboard') && !on) patch.leaderboard_display_name = null;
 

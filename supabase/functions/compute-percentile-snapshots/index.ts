@@ -19,13 +19,13 @@
 // entre os dois snapshots É essa pessoa. Por isso:
 //   · as janelas são uma grelha fixa de 14 dias, iguais para toda a gente, e
 //     NÃO se sobrepõem (closedWindow);
-//   · uma janela publicada não se volta a calcular. A função pode correr
-//     todos os dias — 13 dessas 14 vezes não escreve nada;
-//   · a única recomputação é a de uma revogação (stale_at, posto pelo trigger
-//     clear_pool_data_on_consent_revoked), porque aí sair tem de ter efeito
-//     imediato e vale mais o direito do atleta do que o ruído do delta. E o
-//     trigger marca TODAS as janelas vivas, não a do segmento dele: marcar só
-//     a dele era dizer qual é.
+//   · uma janela publicada NUNCA se volta a calcular — nem sequer quando
+//     alguém retira o consentimento. Tirar uma pessoa de um agregado já
+//     publicado seria a forma mais fiável de a apontar: as duas versões da
+//     mesma janela diferem por ela. Quem sai deixa de contar a partir da
+//     janela seguinte (no máximo 14 dias), e o que fica publicado é um
+//     agregado de 20+ pessoas que já não é dado pessoal de ninguém.
+// A função pode correr todos os dias — 13 dessas 14 vezes não escreve nada.
 // Refresca-se ao ritmo da janela, nunca mais depressa.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
@@ -89,17 +89,15 @@ async function handler(req: Request): Promise<Response> {
   const janela = closedWindow(hoje);
   if (!janela) return jsonResponse({ skipped: "ainda não fechou nenhuma janela" });
 
-  // Já calculada e não marcada para recomputação? Não se toca — ver o bloco
-  // sobre diferenciação no topo.
+  // Já publicada? Não se toca, aconteça o que acontecer entretanto — ver o
+  // bloco sobre diferenciação no topo.
   const { data: jaFeitos, error: erroFeitos } = await sb
     .from("percentile_snapshots")
-    .select("age_band, stale_at")
+    .select("age_band")
     .eq("metric", METRIC)
     .eq("window_start", janela.start);
   if (erroFeitos) return jsonResponse({ error: "Não foi possível ler os snapshots" }, 500);
-  const temSnapshots = (jaFeitos || []).length > 0;
-  const staleado = (jaFeitos || []).some((s) => s.stale_at !== null);
-  if (temSnapshots && !staleado) {
+  if ((jaFeitos || []).length > 0) {
     return jsonResponse({ window: janela, skipped: "janela já publicada" });
   }
 
@@ -207,20 +205,9 @@ async function handler(req: Request): Promise<Response> {
       n: s.scores.length,
       boundaries: ventileBoundaries(s.scores),
       computed_at: new Date().toISOString(),
-      stale_at: null,
     }));
 
   const abaixoDoLimiar = segmentos.size - linhas.length;
-
-  /* Depois de uma revogação apaga-se a janela inteira antes de a reescrever.
-     Um upsert por cima deixava de pé os segmentos que ENTRETANTO caíram
-     abaixo do limiar — precisamente aqueles de onde alguém saiu — com os
-     números de antes da saída. Apagar primeiro é o que faz a revogação valer. */
-  if (staleado) {
-    const { error } = await sb.from("percentile_snapshots")
-      .delete().eq("metric", METRIC).eq("window_start", janela.start);
-    if (error) return jsonResponse({ error: "Não foi possível limpar a janela marcada" }, 500);
-  }
 
   if (linhas.length) {
     const { error } = await sb.from("percentile_snapshots").upsert(linhas, {

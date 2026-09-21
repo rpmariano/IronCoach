@@ -7,7 +7,8 @@
 -- O que entra:
 --   a) privacy_consents   — o livro do consentimento. SÓ INSERÇÕES.
 --   b) profiles.*_consent — cache do estado atual, lida pela agregação.
---   c) trigger de revogação, à imagem de clear_cycle_data_on_consent_revoked.
+--   c) revogação: o que tem efeito imediato (o nome abreviado) e o que espera
+--      pela janela seguinte (o denominador) — e porquê.
 --   d) percentile_snapshots — os agregados. SEM user_id NENHUM.
 --
 -- O princípio que segura tudo: o atleta entra num DENOMINADOR, não numa
@@ -151,10 +152,6 @@ create table if not exists public.percentile_snapshots (
   boundaries   numeric[] not null                  -- 19 fronteiras de ventil
     check (array_length(boundaries, 1) = 19),
   computed_at  timestamptz not null default now(),
-  -- Marcado quando uma revogação torna esta janela desatualizada. Não é para
-  -- os clientes verem (ver os GRANTs por coluna, mais abaixo): saber que
-  -- ALGUÉM saiu agora é informação a mais.
-  stale_at     timestamptz,
   primary key (metric, age_band, gender, terrain, window_start),
   constraint percentile_snapshots_janela check (window_end > window_start),
   -- A letra do escalão tem de bater certo com o género.
@@ -183,7 +180,7 @@ drop policy if exists "percentile_snapshots read all" on public.percentile_snaps
 create policy "percentile_snapshots read all" on public.percentile_snapshots
   for select to authenticated using (true);
 
--- O RLS é por LINHA; `n` e `stale_at` precisam de proteção por COLUNA, que
+-- O RLS é por LINHA; o `n` exato precisa de proteção por COLUNA, que
 -- é privilégio, não política. Por omissão o Supabase dá tudo a anon e
 -- authenticated nas tabelas de public — retira-se e devolve-se só o que o
 -- cliente pode ver. Consequência prática, e é a intenção: um
@@ -195,46 +192,47 @@ grant select (metric, age_band, gender, terrain, window_start, window_end, n_ban
 
 
 -- ────────────────────────────────────────────────────────────────────────────
--- c) Trigger de revogação — à imagem de clear_cycle_data_on_consent_revoked
+-- c) Revogação — o que tem efeito imediato, e o que NÃO tem (de propósito)
 -- ────────────────────────────────────────────────────────────────────────────
 --
--- Retirar o consentimento tem de ter efeito IMEDIATO, não "a partir do
--- próximo snapshot":
---   · dos snapshots FUTUROS o atleta sai sozinho — a agregação lê
+-- Retirar o 'stats_pool' NÃO mexe nos snapshots já publicados. É uma decisão
+-- tomada, não um esquecimento:
+--   · dos snapshots SEGUINTES o atleta sai sozinho, porque a agregação lê
 --     profiles.stats_pool_consent_at e ele já lá não está;
---   · as janelas VIVAS (as que ainda não fecharam) ficam marcadas com
---     `stale_at`, e a agregação recomputa-as na volta seguinte;
---   · o nome abreviado desaparece do perfil com a revogação do 'leaderboard',
---     porque sem consentimento não há nome para mostrar em lado nenhum.
+--   · o snapshot já publicado fica como está até a janela seguinte fechar —
+--     no máximo 14 dias. Recalculá-lo para lhe tirar uma pessoa publicaria
+--     duas versões da MESMA janela a diferir por um indivíduo, que é
+--     precisamente o ataque de diferenciação que esta tabela existe para
+--     evitar: tirar alguém do agregado seria a forma mais fiável de o apontar.
+--   · o que fica publicado é um agregado de 20 pessoas ou mais, sem user_id,
+--     sem nome, sem data de nascimento e sem forma de voltar a uma pessoa —
+--     já não é dado pessoal de ninguém (RGPD, considerando 26).
+-- O ecrã de consentimento diz isto por palavras, antes de o atleta decidir.
+-- Uma promessa de "efeito imediato" que só se cumprisse num dia em catorze
+-- era pior do que não a fazer.
 --
--- Marcam-se TODAS as janelas vivas, não as do segmento dele: saber qual o
--- segmento a recomputar era, por si só, dizer em que segmento ele está.
+-- Retirar o 'leaderboard' tem efeito imediato e verdadeiro, porque aí há mesmo
+-- um dado pessoal guardado — o nome abreviado — e esse apaga-se na mesma
+-- transação.
 
-create or replace function public.clear_pool_data_on_consent_revoked()
+create or replace function public.clear_leaderboard_name_on_consent_revoked()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if old.stats_pool_consent_at is not null and new.stats_pool_consent_at is null then
-    update public.percentile_snapshots
-      set stale_at = now()
-      where window_end >= current_date and stale_at is null;
-  end if;
-
   if old.leaderboard_consent_at is not null and new.leaderboard_consent_at is null then
     new.leaderboard_display_name := null;
   end if;
-
   return new;
 end $$;
 
 -- Lição de 20260918001600: uma função de trigger não tem de estar exposta
 -- como RPC. O privilégio EXECUTE é verificado ao CRIAR o trigger, não quando
 -- ele dispara — retirá-lo a anon/authenticated não o desliga.
-revoke execute on function public.clear_pool_data_on_consent_revoked() from public, anon, authenticated;
+revoke execute on function public.clear_leaderboard_name_on_consent_revoked() from public, anon, authenticated;
 
 -- BEFORE, não AFTER: o `new.leaderboard_display_name := null` tem de chegar à
 -- linha que vai ser gravada (o clear_cycle_data_on_consent_revoked é AFTER
 -- porque só escreve NOUTRA tabela).
-drop trigger if exists clear_pool_data_on_consent_revoked on public.profiles;
-create trigger clear_pool_data_on_consent_revoked
-  before update of stats_pool_consent_at, leaderboard_consent_at on public.profiles
-  for each row execute function public.clear_pool_data_on_consent_revoked();
+drop trigger if exists clear_leaderboard_name_on_consent_revoked on public.profiles;
+create trigger clear_leaderboard_name_on_consent_revoked
+  before update of leaderboard_consent_at on public.profiles
+  for each row execute function public.clear_leaderboard_name_on_consent_revoked();

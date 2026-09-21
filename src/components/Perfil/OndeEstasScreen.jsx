@@ -52,10 +52,10 @@ const METRICAS = [
   { key: 'plan_execution', label: 'Plano', srLabel: 'Execução do plano', icon: <Gauge size={14} />, tone: 'ok' },
 ];
 
-/* As colunas que o cliente pode pedir. `n` e `stale_at` NÃO estão aqui, e não
-   é por educação: os GRANTs por coluna da migração recusam-nas, e um
-   `select('*')` sobre esta tabela falha de propósito. O que se lê é a banda
-   do tamanho, nunca o tamanho. */
+/* As colunas que o cliente pode pedir. O `n` exato NÃO está aqui, e não é por
+   educação: os GRANTs por coluna da migração recusam-no, e um `select('*')`
+   sobre esta tabela falha de propósito. O que se lê é a banda do tamanho,
+   nunca o tamanho. */
 const COLUNAS = 'metric, age_band, gender, terrain, window_start, window_end, n_band, boundaries, computed_at';
 
 const CARD_SECUNDARIO = { background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', borderRadius: 18 };

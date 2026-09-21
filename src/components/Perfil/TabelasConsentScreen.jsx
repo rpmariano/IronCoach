@@ -114,7 +114,7 @@ export default function TabelasConsentScreen({ onClose }) {
     }
     setAGravar(null);
     if (!ok) { showToast('Não foi possível gravar a tua decisão. Tenta outra vez.', 'error'); return; }
-    if (kind === 'stats_pool' && !on) showToast('Saíste da média. Já não contas para nenhuma distribuição.', 'success');
+    if (kind === 'stats_pool' && !on) showToast('Saíste da média. Deixas de contar a partir da próxima distribuição.', 'success');
     if (kind === 'leaderboard' && !on) showToast('O teu nome saiu das tabelas.', 'success');
   };
 
@@ -202,9 +202,11 @@ export default function TabelasConsentScreen({ onClose }) {
 
         <Warning tone="ok" title="O que a lei diz">
           Isto é consentimento explícito ao abrigo do art. 9.º/2 a) do RGPD, porque a métrica se cruza com dados de
-          saúde. É voluntário, não muda nada no resto da app, e podes retirá-lo a qualquer momento — com efeito
-          imediato: sais dos cálculos seguintes e as distribuições ainda vivas são refeitas sem ti. Cada decisão tua
-          fica registada com a data e a versão do texto que leste, para poderes pedir-nos que a demonstremos.
+          saúde. É voluntário, não muda nada no resto da app, e podes retirá-lo a qualquer momento. O teu nome sai
+          das tabelas na hora. Da média sais no ciclo seguinte: a distribuição já publicada não se refaz para te
+          tirar, porque refazê-la seria apontar-te — o que lá está é um agregado de 20 atletas ou mais que já não
+          identifica ninguém. Cada decisão tua fica registada com a data e a versão do texto que leste, para poderes
+          pedir-nos que a demonstremos.
         </Warning>
 
         <p className="m-0 text-[11px] text-center" style={{ color: 'var(--text-4)' }}>

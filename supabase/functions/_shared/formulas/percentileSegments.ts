@@ -45,8 +45,8 @@ export interface Window { start: string; end: string }
  * se chama "closed" e não "current": refrescar todos os dias uma janela que
  * ainda anda a andar publica duas distribuições que só diferem por um dia de
  * um atleta — e a diferença ENTRE elas é esse atleta. As janelas aqui não se
- * sobrepõem e não se recalculam depois de publicadas (a única exceção é uma
- * revogação, que marca a janela viva com `stale_at`). */
+ * sobrepõem e não se recalculam depois de publicadas, sem exceção: nem uma
+ * revogação as mexe, porque tirar alguém de um agregado publicado aponta-o. */
 export function closedWindow(todayISO: string, anchor = WINDOW_ANCHOR, days = WINDOW_DAYS): Window | null {
   const elapsed = daysBetween(anchor, todayISO);
   if (!Number.isFinite(elapsed) || elapsed < days) return null;

@@ -87,6 +87,18 @@ describe('TabelasConsentScreen', () => {
     const ecra = screen.getByTestId('tabelas-consent-screen');
     expect(ecra).toHaveTextContent('art. 9.º/2 a)');
     expect(ecra).toHaveTextContent('podes retirá-lo a qualquer momento');
-    expect(ecra).toHaveTextContent('efeito');
+  });
+
+  /* O ecrã tem de dizer que sair da média só vale no ciclo seguinte. A versão
+     anterior prometia efeito imediato sobre as distribuições já publicadas, e
+     isso não era verdade — nem passou a ser: refazer um agregado publicado
+     para lhe tirar uma pessoa é o que a aponta. Uma promessa que não se cumpre
+     num ecrã de consentimento é pior do que não a fazer. */
+  it('diz a verdade sobre quando a saída da média produz efeito', () => {
+    montar();
+    const ecra = screen.getByTestId('tabelas-consent-screen');
+    expect(ecra).toHaveTextContent('O teu nome sai das tabelas na hora');
+    expect(ecra).toHaveTextContent('Da média sais no ciclo seguinte');
+    expect(ecra).not.toHaveTextContent('efeito imediato');
   });
 });
