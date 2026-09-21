@@ -941,6 +941,55 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     return { ...run, race_id: raceId };
   };
 
+  /* "Prova fora da agenda" deixou de deixar a competição por ligar (pedido
+     2026-09-21: "quero que todas as competições sejam provas, não há razão
+     para serem diferentes"). Quando não se escolhe nada em "Qual prova?", a
+     prova cria-se aqui, com o que o próprio registo já sabe — sem ecrã
+     extra, sem pedir mais nada ao atleta.
+
+     O objetivo é o próprio resultado (delta zero): não havia meta definida
+     antes desta prova, e a tabela não admite "sem meta" —
+     target_time_seconds e target_pace_seconds_per_km são NOT NULL e > 0.
+     Mesma convenção da migração das provas antigas sem prova (2026-09-21).
+
+     Sem distância ou duração não há prova válida (distance_km também exige
+     > 0) — fica por ligar, como acontecia antes; é o mesmo caminho que uma
+     "Prova fora da agenda" sem race_id sempre teve para este caso raro. */
+  const autoCreateRaceForCompetition = async (run) => {
+    const seconds = Math.round(Number(run?.duration_seconds) || 0);
+    const km = Number(run?.distance_km) || 0;
+    if (!run?.id || !seconds || !km) return run;
+    const pace = Math.round(seconds / km);
+    const { data: newRace, error } = await supabase
+      .from('race_events')
+      .insert({
+        user_id: profile?.id,
+        name: run.name || 'Prova',
+        date: run.date,
+        race_type: completedRaceType === 'trail' ? 'trail' : 'estrada',
+        location: '',
+        target_time: formatDuration(seconds),
+        target_time_seconds: seconds,
+        target_pace_seconds_per_km: pace,
+        distance_km: km,
+        status: 'concluida',
+      })
+      .select()
+      .single();
+    if (error || !newRace) {
+      console.warn('Prova automática não criada — a corrida fica por ligar', error);
+      return run;
+    }
+    const { error: linkError } = await supabase.from('runs').update({ race_id: newRace.id }).eq('id', run.id);
+    if (linkError) {
+      console.warn('Corrida não ligada à prova automática', linkError);
+      return run;
+    }
+    const store = useAppStore.getState();
+    store.setRaceEvents([...(store.raceEvents || []), newRace]);
+    return { ...run, race_id: newRace.id };
+  };
+
   /* A hora de início toma o mesmo caminho do race_id acima, e pela mesma
      razão: quem escreve a linha em `runs` é a analyze-run, e acrescentar-lhe
      um campo obriga a mexer numa função que faz deploy em produção a cada
@@ -1164,6 +1213,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
 
     if (!isRaceMode) {
+      // "Prova fora da agenda": kind='competicao' sem raceId escolhido —
+      // a prova cria-se aqui, sozinha (ver autoCreateRaceForCompetition).
+      if (runKind === 'competicao' && !raceId) {
+        run = await autoCreateRaceForCompetition(run);
+      }
       finishCreateAndGoToCalendar(run, label);
       return;
     }
@@ -2026,7 +2080,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               className="px-3 py-1.5"
               type="button"
             >
-              Competição
+              Prova
             </Chip>
           </div>
 
@@ -2150,12 +2204,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </div>
           )}
 
-          {/* Main Manual Fields */}
-          {renderCoreMetrics()}
-
           {showToggle && renderEntryMethodChips()}
 
-          {showFotoBlock ? renderPhotoBlock() : renderManualDetails()}
+          {/* Distância e duração são manuais — na opção "Foto (IA)" quem os
+              dá é a análise do print, não o atleta. Estavam a renderizar-se
+              sempre, antes da própria escolha do método, e apareciam mesmo
+              com "Foto (IA)" selecionada (bug #34, relatado 2026-09-21). O
+              modo prova, mais acima, já seguia este padrão correto. */}
+          {showFotoBlock ? renderPhotoBlock() : (
+            <>
+              {renderCoreMetrics()}
+              {renderManualDetails()}
+            </>
+          )}
 
           {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
           </div>
