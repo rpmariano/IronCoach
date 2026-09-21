@@ -201,7 +201,10 @@ async function handler(req: Request): Promise<Response> {
         runDistanceKm: raceRun?.distance_km ?? null,
       }, geminiKey);
       if (message.generated) tally.texto_gerado = (tally.texto_gerado || 0) + 1;
-      const payload = JSON.stringify({ title: message.title, body: message.body, tag: "carol-proactive", tab: proactiveTab(candidate.trigger) });
+      // A chave viaja no payload (P.9): o sw.js guarda-a e o cliente, ao vê-la
+      // coincidir com um candidato calculado localmente, sabe que conversa
+      // prometeu — o `trigger` não vai, é o prefixo da própria chave.
+      const payload = JSON.stringify({ title: message.title, body: message.body, tag: "carol-proactive", tab: proactiveTab(candidate.trigger), key: candidate.key });
       let anySuccess = false;
       for (const sub of userSubs) {
         try {
@@ -217,6 +220,14 @@ async function handler(req: Request): Promise<Response> {
       if (anySuccess) {
         sent++;
         tally.enviada = (tally.enviada || 0) + 1;
+        // O texto só existe depois de enviar (composePushMessage já correu) —
+        // por isso é um update à linha do claim, não o insert de cima (P.9).
+        // Falha aqui não desfaz o envio: fica sem body/generated, e o coach-chat
+        // trata isso como "sem detalhe do que foi dito" (fetchPushesBlock).
+        const { error: bodyErr } = await sb.from("coach_proactive_pushes")
+          .update({ body: message.body.slice(0, 200), generated: message.generated })
+          .eq("user_id", userId).eq("key", candidate.key);
+        if (bodyErr) console.error("coach-proactive-tick: não gravou o texto enviado", userId, candidate.key, bodyErr);
       } else {
         // Nenhuma subscrição aceitou: liberta a chave para a próxima hora.
         await sb.from("coach_proactive_pushes").delete().eq("user_id", userId).eq("key", candidate.key);

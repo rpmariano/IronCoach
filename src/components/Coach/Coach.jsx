@@ -14,7 +14,7 @@ import RecordConfirmation from '../shared/RecordConfirmation';
 import { planStartMoment } from '../../utils/planStart';
 import { todayISO } from '../../lib/utils';
 import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
-import { pickProactiveTrigger, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
+import { listProactiveTriggers, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
 import { writeCachedBalance } from '../../utils/raceBalance';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -372,28 +372,56 @@ export default function Coach() {
   const proactiveAttempted = useRef(false);
   useEffect(() => {
     if (coachIntent || coachLoading || proactiveAttempted.current) return;
-    const candidate = pickProactiveTrigger({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems });
-    if (!candidate || wasProactiveSent(profile?.id, candidate)) return;
+    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems })
+      .filter((c) => !wasProactiveSent(profile?.id, c));
+    if (!list.length) return;
+    // Uma notificação tocada com a app já a carregar os dados (ação P.9):
+    // este candidato vai primeiro. Se a chave já não estiver na lista
+    // (resolvido entretanto, ou já enviado por outro dispositivo), segue-se
+    // a ordem normal — consome-se sempre, para não voltar a pedir prioridade
+    // numa montagem futura por engano.
+    const requestedKey = useAppStore.getState().proactiveKeyRequested;
+    if (requestedKey) useAppStore.getState().setProactiveKeyRequested(null);
+    const requested = requestedKey ? list.find((c) => c.key === requestedKey) : null;
+    const ordered = requested
+      ? [requested, ...list.filter((c) => c.key !== requestedKey)]
+      : list;
     proactiveAttempted.current = true;
-    sendCoachInitiatedPayload({
-      message: '',
-      proactive_trigger: candidate.trigger,
-      proactive_details: candidate.details,
-      // A chave vai para o servidor (coach_proactive_log): se outro
-      // dispositivo já recebeu esta mensagem, ela não se repete aqui.
-      proactive_key: candidate.key,
-      // Só no balanço da prova com a corrida registada: o veredicto calculado
-      // pela app (utils/raceOutcome.js), para o servidor escrever o balanço
-      // com os números certos — superado / perto / aquém.
-      ...(candidate.raceOutcome ? { race_outcome: candidate.raceOutcome } : {}),
-      userData: profile || {},
-      activeInsights: activeInsightsPayload(),
-    }, { silent: true }).then((data) => {
-      // "already_sent" é o servidor a dizer que outro dispositivo já a
-      // recebeu: marca-se também aqui, para não voltar a perguntar. O
-      // "quiet_hours" (ela falou há pouco) não marca — tenta-se depois.
-      if (data && (!data.skipped || data.reason === 'already_sent')) markProactiveSent(profile?.id, candidate);
-    });
+
+    // Uma tentativa de cada vez, à espera da resposta: "already_sent" (outro
+    // dispositivo já a deu) passa ao candidato seguinte — barato, o
+    // coach-chat recusa antes de ler ou chamar o modelo; "quiet_hours" (ela
+    // falou há pouco por qualquer motivo) para a lista inteira, não só este
+    // candidato — não é ele que está errado, é o momento.
+    (async () => {
+      for (const candidate of ordered) {
+        const data = await sendCoachInitiatedPayload({
+          message: '',
+          proactive_trigger: candidate.trigger,
+          proactive_details: candidate.details,
+          // A chave vai para o servidor (coach_proactive_log): se outro
+          // dispositivo já recebeu esta mensagem, ela não se repete aqui.
+          proactive_key: candidate.key,
+          // Só no balanço da prova com a corrida registada: o veredicto calculado
+          // pela app (utils/raceOutcome.js), para o servidor escrever o balanço
+          // com os números certos — superado / perto / aquém.
+          ...(candidate.raceOutcome ? { race_outcome: candidate.raceOutcome } : {}),
+          // O toque numa notificação fura as quiet hours (ação P.9), como o
+          // botão "Falar com a Carol" do balanço já fazia: prometeu-se uma
+          // conversa, e recusá-la em silêncio por ela ter falado por
+          // qualquer outro motivo há menos de 6h deixava o toque sem
+          // resposta nenhuma. Só o candidato pedido pelo toque, nunca a
+          // tentativa silenciosa normal ao abrir o chat.
+          ...(candidate === requested ? { proactive_force: true } : {}),
+          userData: profile || {},
+          activeInsights: activeInsightsPayload(),
+        }, { silent: true });
+        if (!data) return; // erro de rede — não martela os candidatos seguintes
+        if (!data.skipped) { markProactiveSent(profile?.id, candidate); return; }
+        if (data.reason === 'already_sent') { markProactiveSent(profile?.id, candidate); continue; }
+        return; // quiet_hours (ou outro motivo global) — tenta-se tudo de novo na próxima abertura
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

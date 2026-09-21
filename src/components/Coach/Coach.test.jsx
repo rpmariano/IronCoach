@@ -644,6 +644,58 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
   });
 
+  it('P.9 — already_sent no primeiro candidato passa ao seguinte, sem parar a lista inteira', async () => {
+    const today = localISO(new Date());
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
+    // Dois momentos ao mesmo tempo: o fim de bloco (prioridade sobre o
+    // silêncio) e o silêncio — ver src/utils/proactiveParity.test.js para a
+    // mesma combinação do lado do servidor.
+    useAppStore.setState({
+      meals: [{ id: 'm1', date: fiveDaysAgo }],
+      coachPlans: [{ id: 'b1', status: 'aceite', race_id: null, period_start: fiveDaysAgo, period_end: today }],
+      coachPlanItems: [{ plan_id: 'b1', kind: 'corrida' }],
+    });
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce({ data: { skipped: true, reason: 'already_sent', proactive: 'block_end', model_message: null, suggestions: [] }, error: null })
+      .mockResolvedValueOnce({ data: { model_message: { id: 'p2', content: 'Estás bem? Não vejo nada teu há cinco dias.' }, suggestions: [], proactive: 'silence' }, error: null });
+
+    renderCoach();
+    await waitFor(() => expect(screen.getByText(/Estás bem\?/)).toBeInTheDocument());
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
+    const firstBody = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    const secondBody = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[1][1].body);
+    expect(firstBody.proactive_trigger).toBe('block_end');
+    expect(secondBody.proactive_trigger).toBe('silence');
+    // Sem toque nenhum, nenhuma tentativa silenciosa fura as quiet hours.
+    expect(firstBody.proactive_force).toBeUndefined();
+    expect(secondBody.proactive_force).toBeUndefined();
+  });
+
+  it('P.9 — uma notificação tocada põe esse candidato à cabeça da lista', async () => {
+    const today = localISO(new Date());
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
+    // block_end tem prioridade sobre silence — sem o pedido, seria o primeiro.
+    useAppStore.setState({
+      meals: [{ id: 'm1', date: fiveDaysAgo }],
+      coachPlans: [{ id: 'b1', status: 'aceite', race_id: null, period_start: fiveDaysAgo, period_end: today }],
+      coachPlanItems: [{ plan_id: 'b1', kind: 'corrida' }],
+      proactiveKeyRequested: `silence:${fiveDaysAgo}`,
+    });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'p1', content: 'Estás bem? Não vejo nada teu há cinco dias.' }, suggestions: [], proactive: 'silence' },
+      error: null,
+    });
+
+    renderCoach();
+    await waitFor(() => expect(screen.getByText(/Estás bem\?/)).toBeInTheDocument());
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.proactive_trigger).toBe('silence');
+    // O toque fura as quiet hours (como o balanço já faz) — só este pedido, não a tentativa silenciosa normal.
+    expect(body.proactive_force).toBe(true);
+    expect(useAppStore.getState().proactiveKeyRequested).toBeNull();
+  });
+
   it('INCIDENTE 2026-09-12 — se o servidor recusar (409 busy), a mensagem proativa falha em silêncio: sem "A tua mensagem não saiu"', async () => {
     // O atleta não escreveu nada — uma bolha a dizer que a mensagem dele
     // não saiu, sozinha ao abrir o chat, era o que apareceu no incidente.

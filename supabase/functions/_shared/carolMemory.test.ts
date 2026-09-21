@@ -3,6 +3,8 @@ import {
   buildAthletePortrait,
   buildBodyGoalsContext,
   buildImpressionsContext,
+  buildPushesContext,
+  fetchPushesBlock,
   fetchCheckinBlock,
   lisbonTodayISO,
   buildDailyCardContext,
@@ -347,6 +349,38 @@ Deno.test("impressões (5.1): boas-vindas sem frases ficam de fora; as de anteon
   assert(!text.includes("em que lhe disseste."));
   // A pergunta de anteontem já teve o cartão dela: a linha fica, a instrução não.
   assert(!text.includes("se lhe perguntaste algo"));
+});
+
+// Ação P.9: o que ela disse fora da app, e se ele tocou.
+Deno.test("buildPushesContext: cada notificação, o dia, o texto e se foi tocada", () => {
+  const text = buildPushesContext(
+    [
+      { key: "silence:2026-09-17", trigger: "silence", sent_date: "2026-09-17", sent_at: "2026-09-17T20:07:00Z", body: "Não vejo nenhum treino teu há 4 dias." },
+      { key: "race_eve:r1", trigger: "race_eve", sent_date: "2026-09-18", sent_at: "2026-09-18T18:00:00Z", body: null },
+    ],
+    new Set(["silence:2026-09-17"]),
+    "2026-09-18",
+  )!;
+  assertStringIncludes(text, "NOTIFICASTE-O (últimos 3 dias):");
+  assertStringIncludes(text, `- Ontem, dias sem registos: "Não vejo nenhum treino teu há 4 dias." (tocou).`);
+  assertStringIncludes(text, "- Hoje, véspera da prova (não abriu).");
+  assertStringIncludes(text, "A primeira mensagem continua a notificação; não a repitas com outras palavras.");
+  assertEquals(buildPushesContext([], new Set(), "2026-09-18"), null);
+  assertEquals(buildPushesContext(null, null, "2026-09-18"), null);
+});
+
+Deno.test("fetchPushesBlock: cruza os envios com as impressões 'push' para saber o que foi tocado", async () => {
+  const sb = fakeSb({
+    coach_proactive_pushes: { data: [{ key: "block_end:p1", trigger: "block_end", sent_date: "2026-09-18", sent_at: "2026-09-18T09:00:00Z", body: "O plano acaba amanhã." }] },
+    coach_impressions: { data: [{ key: "block_end:p1" }] },
+  });
+  const text = await fetchPushesBlock(sb, "u1", "2026-09-18");
+  assertStringIncludes(text!, `- Hoje, fim de bloco: "O plano acaba amanhã." (tocou).`);
+});
+
+Deno.test("fetchPushesBlock: uma tabela em erro devolve null, sem rebentar", async () => {
+  const sb = fakeSb({ coach_proactive_pushes: { error: { message: "boom" } } });
+  assertEquals(await fetchPushesBlock(sb, "u1", "2026-09-18"), null);
 });
 
 Deno.test("fetchCheckinBlock: sem consentimento, o ciclo é apagado antes de chegar à Carol", async () => {
