@@ -99,8 +99,21 @@ export function trainingItems(items = []) {
   return (items || []).filter((i) => i.kind !== 'descanso');
 }
 
-/** Título do dia inteiro: os treinos separados por " + ", ou "Descanso". */
+/** Um dia SEM nenhuma linha do plano não é descanso planeado — é ausência de
+ *  plano. A Carol é instruída a não escrever linhas para dias sem nada a
+ *  dizer (coach-chat: "Dias sem treino e sem nada a dizer não devem entrar
+ *  de todo"), e `buildPlanDays` fabrica na mesma o dia para a lista ficar
+ *  contínua. O resultado era o ecrã dizer "Descanso" a um dia que ninguém
+ *  planeou — indistinguível de um descanso a sério (bug reportado na app,
+ *  "Registo · plano"). Quem distingue é esta função. */
+export function isUnplannedDay(items = []) {
+  return (items || []).length === 0;
+}
+
+/** Título do dia inteiro: os treinos separados por " + ", "Descanso" quando o
+ *  plano marcou descanso, ou "Sem plano" quando não há plano nenhum. */
 export function dayTitle(items = [], raceName = null) {
+  if (isUnplannedDay(items)) return 'Sem plano';
   const t = trainingItems(items);
   return t.length ? t.map((i) => planItemTitle(i, raceName)).join(' + ') : 'Descanso';
 }
@@ -112,7 +125,7 @@ export function dayStatus(day, today) {
   if (items.some((i) => i.isRace && i.status !== 'concluido')) return { label: 'Prova', tone: 'race' };
   // O dia da prova no plano vale o mesmo badge âmbar que a prova da agenda.
   if (items.some((i) => isRacePlanItem(i) && i.status === 'pendente')) return { label: 'Prova', tone: 'race' };
-  if (t.length === 0) return { label: 'Descanso', tone: 'neutral' };
+  if (t.length === 0) return isUnplannedDay(items) ? { label: 'Sem plano', tone: 'neutral' } : { label: 'Descanso', tone: 'neutral' };
   if (t.every((i) => i.status === 'concluido')) return { label: 'Concluído', tone: 'ok' };
   if (t.every((i) => i.status === 'cancelado')) return { label: 'Cancelado', tone: 'neutral' };
   if (day.dateISO < today && t.some((i) => i.status === 'pendente')) return { label: 'Em atraso', tone: 'warn' };

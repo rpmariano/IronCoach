@@ -1,10 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, MessageCircle, Utensils } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Utensils } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
 import { planWeekLabel } from './DayPlanCard';
-import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRacePlanItem, raceNameForDate, trainingItems } from '../../utils/homeModels';
+import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRacePlanItem, isUnplannedDay, raceNameForDate, trainingItems } from '../../utils/homeModels';
 import MealSheet from './MealSheet';
 
 /* "O plano" — o plano acordado inteiro, dia a dia, em ecrã cheio
@@ -41,6 +41,17 @@ function dayPill(day, today) {
   if (status.label === 'Em atraso') return { text: 'Em atraso', color: 'var(--warn)' };
   if (status.label === 'Cancelado') return { text: 'Cancelado', color: 'var(--danger)' };
   return null;
+}
+
+/* O resumo que fica no cabeçalho da semana fechada — é o que torna o
+   colapso honesto: sem ele, fechar uma semana esconde informação em vez de
+   a arrumar. "2/4" são as sessões dadas; uma semana sem nenhum treino
+   planeado diz-se pelo nome, para não se confundir com "0/0 feitos". */
+function weekSummary(week) {
+  const items = (week?.days || []).flatMap((d) => trainingItems(d.items));
+  if (items.length === 0) return 'Sem treinos';
+  const done = items.filter((i) => i.status === 'concluido').length;
+  return `${done}/${items.length} feitos`;
 }
 
 function StatTile({ value, suffix, label, testId }) {
@@ -81,6 +92,71 @@ export default function PlanoScreen({ onClose }) {
   const week = planWeekLabel(planWindow, today);
   const thisWeekStart = weekStartISO(today);
   const currentWeek = weeks.find((w) => w.start === thisWeekStart);
+
+  /* Semanas fechadas por omissão, menos a que está a correr (pedido do
+     utilizador: um plano de 10 semanas abria com 70 linhas de dias, e a
+     semana de hoje ficava perdida no meio). O estado guarda as semanas
+     ABERTAS — assim uma semana que apareça depois (o plano cresce quando a
+     Carol detalha o microciclo seguinte) nasce fechada, sem precisar de
+     ser reconciliada aqui. */
+  const [openWeeks, setOpenWeeks] = useState(() => new Set());
+  const initialisedRef = useRef(false);
+  useEffect(() => {
+    if (initialisedRef.current || weeks.length === 0) return;
+    initialisedRef.current = true;
+    // Sem semana em curso (plano só no futuro), abre a primeira: um ecrã
+    // inteiramente fechado não diz nada a quem acabou de entrar.
+    setOpenWeeks(new Set([currentWeek ? currentWeek.start : weeks[0].start]));
+  }, [weeks, currentWeek]);
+
+  const toggleWeek = (start) => {
+    setOpenWeeks((prev) => {
+      const next = new Set(prev);
+      if (next.has(start)) next.delete(start);
+      else next.add(start);
+      return next;
+    });
+  };
+
+  /* O foco na semana atual: se ela não é a primeira da lista, o ecrã abre
+     com ela à vista em vez de obrigar a rolar. `block: 'start'` e não
+     `center` — o cabeçalho da semana deve encostar ao topo, com os dias
+     dela por baixo. */
+  const currentWeekRef = useRef(null);
+  const jaRolouRef = useRef(false);
+  useEffect(() => {
+    // Uma vez só, à entrada: sem esta guarda, abrir ou fechar qualquer
+    // semana puxava o ecrã de volta para a de hoje a meio da leitura.
+    if (jaRolouRef.current) return undefined;
+    if (!currentWeek || weeks[0]?.start === currentWeek.start) return undefined;
+    if (!openWeeks.has(currentWeek.start)) return undefined;
+    const node = currentWeekRef.current;
+    if (!node?.scrollIntoView) return undefined;
+    /* Num frame à frente, e não já: o efeito que abre a semana em curso só
+       produz o layout novo no commit seguinte, e rolar antes disso media a
+       página toda colapsada — o destino saía calculado com as alturas
+       erradas e a semana acabava fora do sítio. */
+    jaRolouRef.current = true;
+    const id = requestAnimationFrame(() => {
+      node.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [currentWeek, weeks, openWeeks]);
+
+  /* Dias sem plano nenhum: o atleta tem de poder pedir à Carol que os
+     preencha. Um convite por dia vazio seria ruído num bloco de cinco dias
+     seguidos, por isso só aparece no PRIMEIRO dia de cada bloco contíguo —
+     e nunca no passado, que já não há plano a fazer para ontem. */
+  const askPlanDates = useMemo(() => {
+    const out = new Set();
+    let prevUnplanned = false;
+    days.forEach((d) => {
+      const unplanned = isUnplannedDay(d.items);
+      if (unplanned && !prevUnplanned && d.dateISO >= today) out.add(d.dateISO);
+      prevUnplanned = unplanned;
+    });
+    return out;
+  }, [days, today]);
 
   /* O resumo é sempre da semana em curso. Os quilómetros são os PLANEADOS
      dos treinos já dados — a distância real vive no registo da corrida, que
@@ -150,16 +226,34 @@ export default function PlanoScreen({ onClose }) {
       </div>
 
       <div className="rounded-[24px]" style={{ background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: '4px 16px 8px', boxShadow: 'var(--shadow-card)' }}>
-        {weeks.map((w) => (
-          <div key={w.start}>
-            <div className="text-[11px] font-extrabold uppercase" style={{ color: 'var(--text-4)', letterSpacing: 'var(--tracking-eyebrow)', padding: '12px 0 6px' }}>
-              {w.start === thisWeekStart ? 'Esta semana'
-                : w.start === addDaysISO(thisWeekStart, 7) ? 'Próxima semana'
-                  : `Semana de ${formatDayMonth(w.start)} a ${formatDayMonth(addDaysISO(w.start, 6))}`}
-            </div>
-            {w.days.map((d, i) => {
+        {weeks.map((w) => {
+          const isOpen = openWeeks.has(w.start);
+          const isCurrent = w.start === thisWeekStart;
+          const label = isCurrent ? 'Esta semana'
+            : w.start === addDaysISO(thisWeekStart, 7) ? 'Próxima semana'
+              : `Semana de ${formatDayMonth(w.start)} a ${formatDayMonth(addDaysISO(w.start, 6))}`;
+          return (
+          <div key={w.start} ref={isCurrent ? currentWeekRef : null} style={{ scrollMarginTop: 12 }}>
+            <button
+              type="button"
+              data-testid={`plano-semana-${w.start}`}
+              aria-expanded={isOpen}
+              onClick={() => toggleWeek(w.start)}
+              className="w-full flex items-center gap-2 text-left"
+              style={{ minHeight: 44, padding: '10px 0 6px' }}
+            >
+              <span className="text-[11px] font-extrabold uppercase flex-1 min-w-0 truncate" style={{ color: isCurrent ? 'var(--text-2)' : 'var(--text-4)', letterSpacing: 'var(--tracking-eyebrow)' }}>
+                {label}
+              </span>
+              <span className="shrink-0 text-[11px] font-bold" style={{ color: 'var(--text-4)' }}>{weekSummary(w)}</span>
+              {isOpen
+                ? <ChevronUp size={14} style={{ color: 'var(--text-4)', flexShrink: 0 }} />
+                : <ChevronDown size={14} style={{ color: 'var(--text-4)', flexShrink: 0 }} />}
+            </button>
+            {isOpen && w.days.map((d, i) => {
               const pill = dayPill(d, today);
               const meals = mealsForDay(d.items);
+              const unplanned = isUnplannedDay(d.items);
               const notes = trainingItems(d.items).filter((it) => !isRacePlanItem(it) && typeof it.notes === 'string' && it.notes.trim());
               return (
                 <div
@@ -178,7 +272,20 @@ export default function PlanoScreen({ onClose }) {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{dayTitle(d.items, raceNameForDate(raceEvents, d.dateISO))}</div>
+                    <div className="text-[13.5px] font-extrabold" style={{ color: unplanned ? 'var(--text-4)' : 'var(--text-1)' }}>{dayTitle(d.items, raceNameForDate(raceEvents, d.dateISO))}</div>
+                    {askPlanDates.has(d.dateISO) && (
+                      <button
+                        type="button"
+                        data-testid={`plano-pedir-${d.dateISO}`}
+                        onClick={() => goCoach('adapt_plan')}
+                        className="inline-flex items-center gap-1.5 min-h-[44px] -my-[7px] text-[11.5px] font-bold text-left"
+                        style={{ color: 'var(--coach)' }}
+                      >
+                        <MessageCircle size={13} />
+                        Pedir-me um plano para estes dias
+                        <ChevronRight size={12} />
+                      </button>
+                    )}
                     {notes.map((it) => (
                       <p key={it.id} className="text-[12px] leading-[1.45] mt-[3px]" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>{it.notes.trim()}</p>
                     ))}
@@ -196,7 +303,8 @@ export default function PlanoScreen({ onClose }) {
               );
             })}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       <button type="button" data-testid="plano-adaptar" onClick={() => goCoach('adapt_plan')} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-1 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>

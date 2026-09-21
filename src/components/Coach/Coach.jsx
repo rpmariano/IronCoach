@@ -237,6 +237,19 @@ export default function Coach() {
     return data;
   });
 
+  /* Vindo do fim do arranque (onboarding): a Carol prometeu lá o plano e o
+     arranque acabava sem plano nenhum e sem conversa. Agora é ela que abre,
+     pelo canal do check-in do plano — o único onde as ferramentas de propor
+     estão abertas; o guião do arranque é montado no servidor
+     (onboarding_start). */
+  const handleOnboardingStart = () => sendCoachInitiatedPayload({
+    message: '',
+    is_plan_checkin: true,
+    onboarding_start: true,
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  });
+
   /* Vindo do Início, aviso "A Carol precisa de falar contigo" por conflito
      de provas principais (specs/plano-vinculado-a-prova.md §4.4). Vai pelo
      canal do check-in do plano — é lá que as ferramentas de propor estão
@@ -301,6 +314,11 @@ export default function Coach() {
       const { races, target } = coachIntent;
       setCoachIntent(null);
       handleRaceConflictCheckin({ races, target });
+      return;
+    }
+    if (coachIntent === 'onboarding_start' || (coachIntent && coachIntent.kind === 'onboarding_start')) {
+      setCoachIntent(null);
+      handleOnboardingStart();
       return;
     }
     // Os botões "Adaptar plano" mandam a string; o Início, quando detetou uma

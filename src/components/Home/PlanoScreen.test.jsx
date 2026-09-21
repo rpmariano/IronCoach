@@ -31,6 +31,20 @@ const hoje = {
   meal_macros: { kcal: 2300, items: [{ tipo: 'almoco', texto: 'Atum com grão-de-bico' }] },
 };
 
+// A segunda-feira da semana de uma data qualquer — igual à do componente.
+const weekStartOf = (dateISO) => {
+  const d = new Date(`${dateISO}T00:00:00Z`);
+  return addDaysISO(dateISO, -((d.getUTCDay() + 6) % 7));
+};
+
+/* Os testes correm em qualquer dia da semana, e "amanhã" tanto pode cair
+   na semana em curso (aberta) como na seguinte (fechada). Este ajudante
+   garante que a semana do dia em causa está aberta, sem presumir qual é. */
+const abrirSemanaDe = (dateISO) => {
+  const cabecalho = screen.getByTestId(`plano-semana-${weekStartOf(dateISO)}`);
+  if (cabecalho.getAttribute('aria-expanded') === 'false') fireEvent.click(cabecalho);
+};
+
 let setActiveTab;
 let setCoachIntent;
 let onClose;
@@ -93,6 +107,67 @@ describe('PlanoScreen', () => {
     expect(setCoachIntent).toHaveBeenCalledWith('adapt_plan');
     expect(onClose).toHaveBeenCalled();
     expect(setActiveTab).toHaveBeenCalledWith('coach');
+  });
+
+  /* Um plano de várias semanas abria com dezenas de linhas de dias e a
+     semana em curso perdida no meio. Fechadas por omissão, menos a de hoje. */
+  it('só a semana em curso abre; as outras ficam fechadas até serem tocadas', () => {
+    const proximaSegunda = addDaysISO(monday, 7);
+    const longo = { id: 'p1', status: 'aceite', period_start: monday, period_end: addDaysISO(proximaSegunda, 6) };
+    const amanhaNaProxima = { id: 'i3', plan_id: 'p1', planned_date: proximaSegunda, kind: 'corrida', training_type: 'longo', target_distance_km: 14, status: 'pendente' };
+    setup({ coachPlans: [longo], coachPlanItems: [feito, hoje, amanhaNaProxima] });
+
+    // A semana de hoje está aberta: os dias dela veem-se.
+    expect(screen.getByTestId(`plano-dia-${today}`)).toBeInTheDocument();
+    // A seguinte está fechada: o cabeçalho existe, os dias não.
+    const cabecalho = screen.getByTestId(`plano-semana-${proximaSegunda}`);
+    expect(cabecalho).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId(`plano-dia-${proximaSegunda}`)).not.toBeInTheDocument();
+    // E o resumo diz o que lá está sem ser preciso abrir.
+    expect(cabecalho).toHaveTextContent('0/1 feitos');
+
+    fireEvent.click(cabecalho);
+    expect(cabecalho).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId(`plano-dia-${proximaSegunda}`)).toBeInTheDocument();
+
+    // E volta a fechar.
+    fireEvent.click(cabecalho);
+    expect(screen.queryByTestId(`plano-dia-${proximaSegunda}`)).not.toBeInTheDocument();
+  });
+
+  /* Um dia sem NENHUMA linha não é descanso: é plano em falta. A Carol não
+     escreve linhas para dias sem nada a dizer, por isso a lista fabrica-os
+     — e dizia "Descanso" a dias que ninguém planeou. */
+  it('um dia sem linha nenhuma diz "Sem plano" e convida a pedir um', () => {
+    // Plano de hoje até depois de amanhã, com item só para hoje.
+    const amanha = addDaysISO(today, 1);
+    const depois = addDaysISO(today, 2);
+    const curto = { id: 'p1', status: 'aceite', period_start: today, period_end: depois };
+    setup({ coachPlans: [curto], coachPlanItems: [hoje] });
+    abrirSemanaDe(amanha);
+    abrirSemanaDe(depois);
+
+    expect(screen.getByTestId(`plano-dia-${amanha}`)).toHaveTextContent('Sem plano');
+    expect(screen.getByTestId(`plano-dia-${depois}`)).toHaveTextContent('Sem plano');
+
+    // O convite aparece só no primeiro dia do bloco vazio, não em todos.
+    expect(screen.getByTestId(`plano-pedir-${amanha}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`plano-pedir-${depois}`)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId(`plano-pedir-${amanha}`));
+    expect(setCoachIntent).toHaveBeenCalledWith('adapt_plan');
+    expect(setActiveTab).toHaveBeenCalledWith('coach');
+  });
+
+  it('um dia com linha de descanso continua a dizer "Descanso", sem convite', () => {
+    const amanha = addDaysISO(today, 1);
+    const curto = { id: 'p1', status: 'aceite', period_start: today, period_end: amanha };
+    const descanso = { id: 'i9', plan_id: 'p1', planned_date: amanha, kind: 'descanso', status: 'pendente' };
+    setup({ coachPlans: [curto], coachPlanItems: [hoje, descanso] });
+    abrirSemanaDe(amanha);
+
+    expect(screen.getByTestId(`plano-dia-${amanha}`)).toHaveTextContent('Descanso');
+    expect(screen.queryByTestId(`plano-pedir-${amanha}`)).not.toBeInTheDocument();
   });
 
   it('sem plano aceite não há lista nenhuma — há o convite a pedir um', () => {

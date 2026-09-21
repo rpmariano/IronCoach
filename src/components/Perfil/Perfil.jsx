@@ -14,6 +14,8 @@ import CoachMemoryCard from './CoachMemoryCard';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
+import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
+import CoachInsightsDock from '../BI/CoachInsightsDock';
 import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
@@ -172,15 +174,19 @@ export default function Perfil() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabIndex]);
 
-  // A ação de cada separador vive agora na ActionBar fixa (ponto 2 do
-  // handoff). Antes ficava no fim do carrossel e, como o carrossel
-  // (tab-swipe-carousel, align-items:flex-start) tem sempre a altura do
-  // separador mais alto dos 4, "Guardar alterações" aparecia à mesma
-  // distância fixa do topo mesmo num separador curto — com um vão enorme
-  // até lá, e muitas vezes abaixo da dobra. Media-se então a altura do
-  // separador visível para encolher o carrossel; com o botão fora do
-  // scroll, essa medição deixou de ter razão de ser.
+  /* A ação de cada separador vive na ActionBar fixa (ponto 2 do handoff).
+     Antes ficava no fim do carrossel e, como o carrossel
+     (tab-swipe-carousel, align-items:flex-start) tem sempre a altura do
+     separador mais alto dos 4, "Guardar alterações" aparecia à mesma
+     distância fixa do topo mesmo num separador curto. Media-se então a
+     altura do separador visível para encolher o carrossel; ao tirar o botão
+     do scroll, essa medição foi removida — mas o vão continuou lá, agora
+     como scroll vazio por baixo do conteúdo de um separador curto. Foi
+     exatamente isso que o utilizador relatou a partir deste ecrã ("o limite
+     de scroll tem de ser ajustado ao conteúdo existente em cada tela"), e é
+     o que o hook partilhado volta a resolver. */
   const pageRefs = useRef([]);
+  useCarouselActiveHeight(scrollRef, pageRefs, tabIndex);
 
   /* Recarrega o rascunho a partir do perfil, mas nunca por cima de alterações
      por gravar. Depender da identidade do objeto `profile` não servia: o
@@ -994,6 +1000,11 @@ export default function Perfil() {
       <ActionBar>
         {tab === 'equipamento' ? addShoesButton : saveButton}
       </ActionBar>
+
+      {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
+          Chat (pedido do utilizador). Sobe acima da barra de ação: a 100px
+          o botão caía em cima do "Guardar alterações". */}
+      <CoachInsightsDock bottom={168} />
     </div>
   );
 }

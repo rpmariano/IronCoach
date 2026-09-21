@@ -77,6 +77,20 @@ describe('CoachInsightModal', () => {
     expect(mockOnClose).toHaveBeenCalled();
   });
 
+  /* O "Entendido" estava encolhido ao conteúdo, dentro do cartão, e lia-se
+     como um botão de outra categoria ao lado do "Falar com a Carol" e do
+     "Ignorar", ambos em largura total (pedido do utilizador). */
+  it('o "Entendido" tem a mesma largura dos botões do rodapé', () => {
+    render(<CoachInsightModal insights={sampleInsights} onClose={mockOnClose} />);
+    const entendido = screen.getByRole('button', { name: /Entendido/i });
+    const ignorar = screen.getByRole('button', { name: /^Ignorar$/i });
+    expect(entendido.className).toContain('w-full');
+    expect(ignorar.className).toContain('w-full');
+    // E o mesmo corpo de texto, para não parecerem de pesos diferentes.
+    expect(entendido.className).toContain('text-[12.5px]');
+    expect(ignorar.className).toContain('text-[12.5px]');
+  });
+
   /* Os avisos da Carol (2026-09-13): cada um com o seu "Falar com a Carol";
      sem "Entendido" nem "Ignorar", porque saem quando o assunto se resolve. */
   describe('avisos da Carol', () => {

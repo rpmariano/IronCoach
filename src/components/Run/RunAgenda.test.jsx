@@ -324,7 +324,31 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.change(screen.getByPlaceholderText('Ex.: 1:45:00'), { target: { value: '1:00:00' } });
   }
 
-  it('prova NOVA: ao gravar, navega para o Calendário e deixa a data da prova pendente — independentemente do separador de origem', async () => {
+  /* Pedido do utilizador: acabada de criar, a página que interessa é a da
+     PROVA — a preparação, o objetivo, o que falta —, não o mês inteiro do
+     Calendário com ela a ser mais um ponto no dia. */
+  it('prova NOVA: ao gravar, aterra no hub DESSA prova — independentemente do separador de origem', async () => {
+    const insertedRace = { ...EXISTING_RACE, id: 'race-nova', website: null, web_info: null };
+    vi.spyOn(supabase, 'from').mockReturnValue({
+      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: insertedRace, error: null }) }) }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    });
+    useAppStore.setState({ activeTab: 'holistica' });
+    renderAgenda();
+    fillRequiredFields();
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+
+    await waitFor(() => {
+      expect(useAppStore.getState().editingRaceId).toBe('race-nova');
+    });
+    // E não desvia para o Calendário pelo caminho.
+    expect(useAppStore.getState().activeTab).toBe('holistica');
+  });
+
+  /* Sem linha devolvida pelo insert não há hub para abrir — aí o Calendário
+     no dia da prova continua a ser o destino, em vez de não ir a lado nenhum. */
+  it('prova NOVA sem id devolvido: recai no Calendário com a data pendente', async () => {
     useAppStore.setState({ activeTab: 'holistica' });
     renderAgenda();
     fillRequiredFields();

@@ -73,7 +73,15 @@ export function slotPosition(index, count, size = 'lg') {
    valor a tinta do número gravado. Quem não estiver aqui (silver, ou um
    nome novo por engano) cai na prata sem esmalte. O verde é --ok-ink de
    tokens/colors.css, a mesma tinta do "objetivo batido". */
-const TEXT_FILL = { amber: '#3c1d02', cyan: '#04252b', ok: '#052e22' };
+/* Os três da escala d'Os Recordes (utils/medalhoes.js, NIVEIS) juntaram-se
+   aos de sempre. São metais, não cores de módulo: a lei da app continua a
+   valer para os outros medalhões (ciano é a corrida, âmbar é a prova, verde
+   é o objetivo batido), e aqui a cor diz o NÍVEL, que é o que este medalhão
+   passou a medir. */
+const TEXT_FILL = {
+  amber: '#3c1d02', cyan: '#04252b', ok: '#052e22',
+  bronze: '#33180a', prata: '#1e2733', ouro: '#3d2a02',
+};
 const ENAMELS = Object.keys(TEXT_FILL);
 
 function StarFacets({ id, light = false }) {
@@ -128,6 +136,26 @@ export function MedalhaoDefs() {
           <stop offset="30%" stopColor="#34d399" />
           <stop offset="100%" stopColor="#052e22" />
         </radialGradient>
+        {/* Bronze, prata e ouro — os três níveis d'Os Recordes. Mesma forma
+            radial dos outros esmaltes (luz a 30% do topo), com os metais
+            reais: o bronze puxa ao cobre, a prata ao aço frio, o ouro ao
+            âmbar mas mais claro e mais amarelo, para não se confundir com o
+            âmbar da prova. */}
+        <radialGradient id={MEDAL_ID('enam-bronze')} cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#f6d5b8" />
+          <stop offset="30%" stopColor="#c87f43" />
+          <stop offset="100%" stopColor="#4a2410" />
+        </radialGradient>
+        <radialGradient id={MEDAL_ID('enam-prata')} cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="30%" stopColor="#c3ced9" />
+          <stop offset="100%" stopColor="#3a4654" />
+        </radialGradient>
+        <radialGradient id={MEDAL_ID('enam-ouro')} cx="50%" cy="30%" r="70%">
+          <stop offset="0%" stopColor="#fff6cc" />
+          <stop offset="30%" stopColor="#f0c33c" />
+          <stop offset="100%" stopColor="#6b4a06" />
+        </radialGradient>
         <linearGradient id={MEDAL_ID('silver-ring')} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#ffffff" />
           <stop offset="40%" stopColor="#94a3b8" />
@@ -175,6 +203,26 @@ export function MedalhaoDefs() {
           <stop offset="0%" stopColor="#a7f3d0" />
           <stop offset="55%" stopColor="#34d399" />
           <stop offset="100%" stopColor="#052e22" />
+        </radialGradient>
+        {/* Os três da escala d'Os Recordes. Têm de existir nesta família
+            `dt-*` e não só na `enam-*`: ENAMELS vem de TEXT_FILL, e é ele
+            que MedalSlotIcon percorre — sem estes, cada encaixe ganho na
+            persiana do Palmarés pedia um gradiente inexistente e o browser
+            resolvia para `none`, deixando o ícone de 44px vazio. */}
+        <radialGradient id={MEDAL_ID('dt-bronze')} cx="35%" cy="28%" r="85%">
+          <stop offset="0%" stopColor="#f0cba8" />
+          <stop offset="55%" stopColor="#c87f43" />
+          <stop offset="100%" stopColor="#5c2d12" />
+        </radialGradient>
+        <radialGradient id={MEDAL_ID('dt-prata')} cx="35%" cy="28%" r="85%">
+          <stop offset="0%" stopColor="#f4f7fa" />
+          <stop offset="55%" stopColor="#c3ced9" />
+          <stop offset="100%" stopColor="#49586a" />
+        </radialGradient>
+        <radialGradient id={MEDAL_ID('dt-ouro')} cx="35%" cy="28%" r="85%">
+          <stop offset="0%" stopColor="#fdefb8" />
+          <stop offset="55%" stopColor="#f0c33c" />
+          <stop offset="100%" stopColor="#7d5806" />
         </radialGradient>
 
         {/* Sombra das estrelas */}

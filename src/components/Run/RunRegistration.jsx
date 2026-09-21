@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy } from 'lucide-react';
+import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { compressImage } from '../../lib/image';
@@ -24,6 +24,7 @@ import { raceResultSeconds } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
+import PremiumModal from '../shared/PremiumModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '../../utils/runRecord';
@@ -305,6 +306,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  /* Um campo obrigatório em falta ao gravar era só uma linha vermelha no fundo
+     do formulário, fora do ecrã quando se carrega em "Guardar" a meio de uma
+     página longa — foi o que aconteceu com o tempo oficial da prova
+     (relatado pelo utilizador: "a mensagem de alerta deve ser mais visível").
+     Passa a parar o ecrã com o mesmo diálogo "Dados Incompletos" que o
+     formulário da prova já usa, e a linha inline fica como estava para quem
+     volte a olhar para o campo. Os erros ASSÍNCRONOS (falha a gravar, limite
+     de imagens) continuam só inline: não são um passo em falta do atleta. */
+  const [validationError, setValidationError] = useState(null);
+  const failValidation = (msg) => {
+    setErrorMsg(msg);
+    setValidationError(msg);
+  };
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -872,15 +886,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (memory) {
       setDiploma(memory);
       setIsFormDirty(true);
-      // Em modo prova a Carol lê o diploma logo (analyze-diploma) e o
-      // registo mostra a leitura para o atleta aplicar — não se preenche
-      // nada por conta própria. Um PDF não se lê (o hook ignora-o).
-      if (isRaceMode) diplomaReading.ask(memory);
+      /* Em modo prova a Carol lê o diploma logo (analyze-diploma) e o que ele
+         diz entra SOZINHO nos campos do resultado, por cima do que lá
+         estiver: o diploma é o documento oficial da prova e ganha ao que foi
+         escrito à mão (pedido do utilizador). Nada fica gravado sem ele
+         guardar o registo, por isso continua a poder corrigir qualquer campo
+         antes disso. Um PDF não se lê (o hook ignora-o). */
+      if (isRaceMode) {
+        const reading = await diplomaReading.ask(memory);
+        if (reading) applyDiplomaReading(reading);
+      }
     }
   };
 
-  const applyDiplomaReading = () => {
-    const values = diplomaFormValues(diplomaReading.state?.reading);
+  const applyDiplomaReading = (reading) => {
+    const values = diplomaFormValues(reading || diplomaReading.state?.reading);
     if (values.officialTime) setOfficialTime(values.officialTime);
     if (values.position) setPosition(values.position);
     if (values.ageGroup) setAgeGroup(values.ageGroup);
@@ -1180,21 +1200,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (!runPhotos.length || analyzingRun) return;
 
     if (!runName.trim()) {
-      setErrorMsg('Preenche o nome da corrida.');
+      failValidation('Preenche o nome da corrida.');
       return;
     }
     if (runKind === 'treino' && !runTrainingType) {
-      setErrorMsg('Escolhe o tipo de treino.');
+      failValidation('Escolhe o tipo de treino.');
       return;
     }
     if (runKind === 'competicao' && !completedRaceType) {
-      setErrorMsg('Escolhe a disciplina.');
+      failValidation('Escolhe a disciplina.');
       return;
     }
     // O tempo oficial é o resultado da prova — sem ele não há o que comparar
     // com o objetivo no hub, e o registo do dia fica pela metade.
     if (isRaceMode && !parseDurationToSeconds(officialTime)) {
-      setErrorMsg('Indica o tempo oficial da prova.');
+      failValidation('Indica o tempo oficial da prova.');
       return;
     }
 
@@ -1311,19 +1331,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const isForceReanalyze = forceReanalyze === true;
 
     if (!runName.trim()) {
-      setErrorMsg('Preenche o nome da corrida.');
+      failValidation('Preenche o nome da corrida.');
       return;
     }
     if (runKind === 'treino' && !runTrainingType) {
-      setErrorMsg('Escolhe o tipo de treino.');
+      failValidation('Escolhe o tipo de treino.');
       return;
     }
     if (runKind === 'competicao' && !completedRaceType) {
-      setErrorMsg('Escolhe a disciplina.');
+      failValidation('Escolhe a disciplina.');
       return;
     }
     if (isRaceMode && !parseDurationToSeconds(officialTime)) {
-      setErrorMsg('Indica o tempo oficial da prova.');
+      failValidation('Indica o tempo oficial da prova.');
       return;
     }
 
@@ -1911,11 +1931,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             afterDiploma={(
               <DiplomaReadingCard
                 state={diplomaReading.state}
-                onApply={applyDiplomaReading}
-                onDismiss={diplomaReading.clear}
-                applyLabel="Aplicar ao registo"
                 appliedLabel="Aplicado ao registo"
-                appliedHint="O tempo oficial e a classificação ficaram em “O resultado”, lá em cima."
+                appliedHint="O que o diploma diz ficou em “O resultado”, lá em cima, por cima do que estava. Confere antes de guardar."
                 manualHint="Podes preencher à mão em “O resultado”, lá em cima."
               />
             )}
@@ -2585,6 +2602,37 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       />
 
       {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} first={confirmation.first} onDone={confirmation.done} />}
+
+      {/* O mesmo diálogo do formulário da prova (RunAgenda), pela mesma razão:
+          um campo obrigatório em falta tem de parar o ecrã, não ficar numa
+          linha no fundo da página. */}
+      {validationError && (
+      <PremiumModal
+        isOpen={!!validationError}
+        onClose={() => setValidationError(null)}
+        title="Dados Incompletos"
+        subtitle="Por favor, corrige os seguintes erros:"
+        icon={AlertTriangle}
+        theme="warning"
+        variant="dialog"
+      >
+        <div className="p-6 space-y-6">
+          <p data-testid="run-validation-error" className="text-sm text-[var(--text-3)] leading-relaxed text-center">
+            {validationError}
+          </p>
+          <div className="flex justify-center">
+            <Button
+              variant="module"
+              moduleColor="var(--mod-prova)"
+              onClick={() => setValidationError(null)}
+              className="w-full"
+            >
+              Entendido
+            </Button>
+          </div>
+        </div>
+      </PremiumModal>
+      )}
     </div>
   );
 }

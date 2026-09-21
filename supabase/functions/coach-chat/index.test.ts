@@ -3754,12 +3754,12 @@ Deno.test("bestLoadsLine: a melhor carga por exercício, ordenada pelo 1RM, com 
 
 Deno.test("buildPlanContext: o bloco aceite diz o que é e o que lhe aconteceu", () => {
   const items = [{ planned_date: "2026-09-21", kind: "corrida", training_type: "longo", target_distance_km: 14, status: "pendente" }];
-  const text = buildPlanContext([], items, "2026-09-20", null, [
+  const text = buildPlanContext([], items, "2026-09-20", null, true, [
     { id: "p1", period_start: "2026-09-07", period_end: "2026-10-04", summary: "Base para a meia.", race_lost_at: "2026-09-18T10:00:00Z", trimmed_at: null },
   ])!;
   assertStringIncludes(text, "bloco de 2026-09-07 a 2026-10-04; resumo: Base para a meia.; a prova a que estava ligado foi apagada a 2026-09-18");
   assertEquals(text.indexOf("bloco de") < text.indexOf("2026-09-21:"), true);
-  assertEquals(buildPlanContext([], items, "2026-09-20", null, [])!.includes("bloco de"), false);
+  assertEquals(buildPlanContext([], items, "2026-09-20", null, true, [])!.includes("bloco de"), false);
 });
 
 Deno.test("bio: sem notificações ligadas, ela não promete avisar fora da app", () => {

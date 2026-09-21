@@ -17,6 +17,7 @@ import GymRegistration from '../Gym/GymRegistration';
 import MealRegistration from '../Nutrition/MealRegistration';
 import BodyRegistration from '../Body/BodyRegistration';
 import CreatedRecordModal from '../shared/CreatedRecordModal';
+import CoachInsightsDock from '../BI/CoachInsightsDock';
 import { Dialog } from '../shared/Sheet';
 import { orderDayRecords } from '../../utils/dayOrder';
 
@@ -350,6 +351,9 @@ export default function Calendar() {
       )}
 
       <CreatedRecordModal />
+      {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
+          Chat (pedido do utilizador). */}
+      <CoachInsightsDock />
     </div>
   );
 }

@@ -17,10 +17,12 @@ vi.mock('../../lib/supabase', () => ({
 
 let profileUpdates;
 let coachNoteInserts;
+let raceInserts;
 
-function wireSupabase({ profilesError = null } = {}) {
+function wireSupabase({ profilesError = null, raceError = null } = {}) {
   profileUpdates = [];
   coachNoteInserts = [];
+  raceInserts = [];
   supabase.from.mockImplementation((table) => {
     if (table === 'profiles') {
       return {
@@ -34,6 +36,20 @@ function wireSupabase({ profilesError = null } = {}) {
       return {
         insert: (row) => { coachNoteInserts.push(row); return Promise.resolve({ error: null }); },
         select: () => ({ eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }) }),
+      };
+    }
+    if (table === 'race_events') {
+      return {
+        insert: (row) => {
+          raceInserts.push(row);
+          return {
+            select: () => ({
+              single: () => Promise.resolve(
+                raceError ? { data: null, error: raceError } : { data: { id: 'race-nova', ...row }, error: null },
+              ),
+            }),
+          };
+        },
       };
     }
     return { select: () => ({ eq: () => ({ order: () => Promise.resolve({ data: [], error: null }) }) }) };
@@ -165,7 +181,7 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Continuar');                                  // → a tua prova
     clicar('Ainda não tenho prova marcada');              // → fecho
 
-    clicar('Ir para a Home');
+    clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
     const update = profileUpdates[0];
@@ -195,7 +211,7 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Continuar');
     clicar('Continuar');
     clicar('Ainda não tenho prova marcada');
-    clicar('Ir para a Home');
+    clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(coachNoteInserts.length).toBe(2));
     expect(coachNoteInserts[0]).toMatchObject({ category: 'objetivo_pessoal' });
@@ -204,7 +220,7 @@ describe('Onboarding — o que fica gravado', () => {
     expect(coachNoteInserts[1].note).toMatch(/20 km por semana, 3 dias por semana/);
   });
 
-  it('a prova do passo 6 segue para o formulário de Prova, pré-preenchida', async () => {
+  it('prova do passo 6 SEM os obrigatórios todos: segue para o formulário, pré-preenchida', async () => {
     renderOnboarding();
     clicar('Vamos a isso');
     clicar('Continuar');
@@ -215,7 +231,7 @@ describe('Onboarding — o que fica gravado', () => {
     fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
     fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
     clicar('Criar o meu plano');
-    clicar('Ir para a Home');
+    clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(useAppStore.getState().openCreationMode).toBe('race'));
     expect(useAppStore.getState().racePrefill).toMatchObject({
@@ -226,21 +242,110 @@ describe('Onboarding — o que fica gravado', () => {
     });
   });
 
+  /* Relatado pelo utilizador: o arranque perguntava meia dúzia de campos da
+     prova e depois atirava-o para o formulário de criar prova. Perguntados
+     todos os obrigatórios, a prova nasce gravada e o formulário não abre. */
+  it('prova do passo 6 COM os obrigatórios todos: grava-se e o formulário não abre', async () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
+    fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
+    fireEvent.change(screen.getByLabelText(/Local/), { target: { value: 'Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Objetivo de tempo/), { target: { value: '1:45:00' } });
+    clicar('Criar o meu plano');
+    clicar('Ver o Início primeiro');
+
+    await waitFor(() => expect(raceInserts.length).toBe(1));
+    expect(raceInserts[0]).toMatchObject({
+      name: 'Meia de Lisboa',
+      date: '2027-03-08',
+      location: 'Lisboa',
+      distance_km: 21.1,
+      target_time: '1:45:00',
+      target_time_seconds: 6300,
+      race_type: 'estrada',
+    });
+    /* Sem `status`, como o formulário da prova: deixa o default da coluna.
+       Forçá-lo criava uma prova 'concluida' sem corrida ligada, que corta a
+       sequência no Palmarés. */
+    expect(raceInserts[0]).not.toHaveProperty('status');
+    // 6300 s / 21,1 km = 298,58 → 299 s/km
+    expect(raceInserts[0].target_pace_seconds_per_km).toBe(299);
+    expect(useAppStore.getState().openCreationMode).toBeNull();
+    expect(useAppStore.getState().raceEvents).toHaveLength(1);
+  });
+
+  /* Reabrir o arranque pelo Perfil restaura o rascunho com a prova ainda
+     preenchida; sem dedupe, terminá-lo outra vez gravava uma segunda igual. */
+  it('não grava a prova duas vezes se ela já existir com o mesmo nome e data', async () => {
+    useAppStore.setState({
+      raceEvents: [{ id: 'ja-existe', name: 'Meia de Lisboa', date: '2027-03-08', distance_km: 21.1 }],
+    });
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
+    fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
+    fireEvent.change(screen.getByLabelText(/Local/), { target: { value: 'Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Objetivo de tempo/), { target: { value: '1:45:00' } });
+    clicar('Criar o meu plano');
+    clicar('Ver o Início primeiro');
+
+    await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
+    expect(raceInserts).toHaveLength(0);
+    // E não manda o atleta para o formulário: a prova já lá está.
+    expect(useAppStore.getState().openCreationMode).toBeNull();
+  });
+
+  /* Falhar a gravação não pode perder a prova: cai no formulário, como antes. */
+  it('se a gravação da prova falhar, o formulário abre pré-preenchido', async () => {
+    wireSupabase({ raceError: { message: 'boom' } });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    clicar('Continuar');
+    fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
+    fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
+    fireEvent.change(screen.getByLabelText(/Local/), { target: { value: 'Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/Objetivo de tempo/), { target: { value: '1:45:00' } });
+    clicar('Criar o meu plano');
+    clicar('Ver o Início primeiro');
+
+    await waitFor(() => expect(useAppStore.getState().openCreationMode).toBe('race'));
+    expect(useAppStore.getState().racePrefill).toMatchObject({ name: 'Meia de Lisboa', location: 'Lisboa', target_time: '1:45:00' });
+  });
+
   it('sem prova declarada não abre formulário nenhum', async () => {
     renderOnboarding();
     percorrerTudo();
-    clicar('Ir para a Home');
+    clicar('Ver o Início primeiro');
     await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
     expect(useAppStore.getState().openCreationMode).toBeNull();
     expect(useAppStore.getState().activeTab).toBe('home');
   });
 
-  it('"Falar com a Carol" termina o arranque e abre o separador Coach', async () => {
+  it('"Combinar o meu plano" termina o arranque e abre o chat com a Carol a falar', async () => {
     renderOnboarding();
     percorrerTudo();
-    clicar('Falar com a Carol');
+    clicar('Combinar o meu plano');
     await waitFor(() => expect(useAppStore.getState().activeTab).toBe('coach'));
     expect(useAppStore.getState().profile.onboarding_done).toBe(true);
+    /* O arranque prometeu um plano: é ela que abre a conversa, não o atleta
+       que tem de pedir (ver Coach/Coach.jsx, onboarding_start). */
+    expect(useAppStore.getState().coachIntent).toBe('onboarding_start');
   });
 
   it('a coluna onboarding_done ainda não existir não perde as respostas', async () => {
@@ -253,7 +358,7 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Vamos a isso');
     fireEvent.change(screen.getByLabelText(/Como te chamo/), { target: { value: 'Rui' } });
     percorrerTudoAPartirDoPasso2();
-    clicar('Ir para a Home');
+    clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(profileUpdates.length).toBe(2));
     expect(profileUpdates[0]).toHaveProperty('onboarding_done', true);

@@ -52,6 +52,15 @@ const due = (medalhao, slot, periodKey, over = {}) => ({
   title: `T ${medalhao} ${slot}`, line: `L ${medalhao} ${slot} ${periodKey}`, ...over,
 });
 
+/* O que decide se uma medalha toca é a DATA DO FEITO, não o estado da
+   tabela: um feito de há mais de uma semana entra já como visto, venha na
+   primeira sincronização ou na centésima. Foi o que travou a enxurrada
+   quando a escala bronze/prata/ouro passou a cunhar medalhas por corridas
+   de meses atrás. Este ajudante marca as que são de hoje — as que o atleta
+   tem mesmo de ver a tocar. */
+const dueDeHoje = (medalhao, slot, periodKey, over = {}) =>
+  due(medalhao, slot, periodKey, { awardedOn: todayISO(), ...over });
+
 beforeEach(() => {
   db.rows = [];
   db.error = null;
@@ -94,7 +103,7 @@ describe('syncMedalAwards', () => {
 
     const res = await syncMedalAwards({
       userId: 'u1',
-      due: [...historico, due('ano_km', 'mes', '2026-08', { value: 182 }), due('recordes', '10k', 'race-9', { value: 3107, raceId: 'race-9' })],
+      due: [...historico, dueDeHoje('ano_km', 'mes', '2026-08', { value: 182 }), dueDeHoje('recordes', '10k', 'race-9', { value: 3107, raceId: 'race-9' })],
     });
     expect(res.available).toBe(true);
     expect(res.pending.map((p) => [p.medalhao, p.period_key])).toEqual([['recordes', 'race-9'], ['ano_km', '2026-08']]);
@@ -108,11 +117,24 @@ describe('syncMedalAwards', () => {
 
   it('idempotente: voltar a sincronizar não duplica e continua a devolver as por ver', async () => {
     await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07')] });
-    const list = [due('ano_km', 'mes', '2026-07'), due('superacao', 'o1', '')];
+    const list = [due('ano_km', 'mes', '2026-07'), dueDeHoje('superacao', 'o1', '')];
     await syncMedalAwards({ userId: 'u1', due: list });
     const again = await syncMedalAwards({ userId: 'u1', due: list });
     expect(db.rows).toHaveLength(2);
     expect(again.pending.map((p) => p.medalhao)).toEqual(['superacao']);
+  });
+
+  /* A regressão que a escala d'Os Recordes trouxe: a guarda de histórico só
+     valia na primeiríssima sincronização, por isso quem já tinha uma linha
+     na tabela abria a app com dezenas de animações por feitos antigos. */
+  it('medalhas novas por feitos antigos entram já vistas, mesmo não sendo a primeira sincronização', async () => {
+    await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07')] });
+
+    const antigas = ['5k', '10k', '21k'].map((slot) => due('recordes', slot, 'bronze', { awardedOn: '2026-06-15' }));
+    const res = await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07'), ...antigas] });
+
+    expect(res.pending).toEqual([]);
+    expect(db.rows.filter((r) => r.medalhao === 'recordes').every((r) => r.seen_at)).toBe(true);
   });
 
   it('tabela em falta: available false, sem rebentar, um só aviso', async () => {
@@ -133,7 +155,7 @@ describe('syncMedalAwards', () => {
 describe('markMedalAwardsSeen', () => {
   it('marca seen_at nas indicadas e deixa as outras', async () => {
     await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07')] });
-    const { pending } = await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07'), due('terreno', 'trail1', ''), due('recordes', '5k', 'r2')] });
+    const { pending } = await syncMedalAwards({ userId: 'u1', due: [due('ano_km', 'mes', '2026-07'), dueDeHoje('terreno', 'trail1', ''), dueDeHoje('recordes', '5k', 'r2')] });
     expect(pending).toHaveLength(2);
     await markMedalAwardsSeen([pending[0].id]);
     const after = await syncMedalAwards({ userId: 'u1', due: [] });

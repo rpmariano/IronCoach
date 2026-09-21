@@ -142,8 +142,17 @@ describe('DayPlanCard — "Ver o plano · amanhã: …"', () => {
     expect(onOpenPlano).toHaveBeenCalled();
   });
 
-  it('sem nada planeado para amanhã, o rodapé diz descanso', () => {
+  /* Sem NENHUMA linha para amanhã não é descanso — é o plano que não cobre
+     aquele dia, e dizer-lhe "descanso" dava por planeado o que ninguém
+     planeou (o mesmo engano que o ecrã do plano corrigiu). */
+  it('sem nenhuma linha para amanhã, o rodapé diz sem plano', () => {
     render(<DayPlanCard plans={[twoDayPlan]} planItems={[hoje]} raceEvents={[]} onOpenPlano={vi.fn()} />);
+    expect(screen.getByTestId('day-plan-open-plano')).toHaveTextContent('· amanhã: sem plano');
+  });
+
+  it('com uma linha de descanso para amanhã, o rodapé diz descanso', () => {
+    const amanhaDescanso = { id: 'i2', plan_id: 'p1', planned_date: tomorrow, kind: 'descanso', status: 'pendente' };
+    render(<DayPlanCard plans={[twoDayPlan]} planItems={[hoje, amanhaDescanso]} raceEvents={[]} onOpenPlano={vi.fn()} />);
     expect(screen.getByTestId('day-plan-open-plano')).toHaveTextContent('· amanhã: descanso');
   });
 });

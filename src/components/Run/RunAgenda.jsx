@@ -3,6 +3,7 @@ import { useAppStore } from '../../store';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
+import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import Warning from '../shared/Warning';
@@ -202,40 +203,9 @@ export default function RunAgenda({ onClose }) {
   );
   scrollToRef.current = scrollTo;
 
-  // Ajusta dinamicamente a altura do carrossel à página ativa sem cortar conteúdos
-  useEffect(() => {
-    const carousel = scrollRef.current;
-    if (!carousel) return;
-
-    carousel.style.transition = 'height 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
-    carousel.style.overflowY = 'hidden';
-
-    let activeEl = null;
-    let observer = null;
-
-    const updateHeight = () => {
-      const idx = PAGE_KEYS.indexOf(activePage);
-      activeEl = pageRefs.current[idx >= 0 ? idx : 0] || carousel.children[idx >= 0 ? idx : 0];
-      if (!activeEl) return;
-      const newHeight = activeEl.scrollHeight;
-      if (newHeight > 0) {
-        carousel.style.height = `${newHeight}px`;
-      }
-    };
-
-    updateHeight();
-
-    if (window.ResizeObserver && activeEl) {
-      observer = new ResizeObserver(() => {
-        updateHeight();
-      });
-      observer.observe(activeEl);
-    }
-
-    return () => {
-      if (observer) observer.disconnect();
-    };
-  }, [activePage]);
+  // A altura do carrossel segue a página ativa — o mesmo que o Perfil e o
+  // Dashboard fazem, agora pelo hook partilhado (utils/useCarouselActiveHeight).
+  useCarouselActiveHeight(scrollRef, pageRefs, PAGE_KEYS.indexOf(activePage));
 
   const activeTab = useAppStore(state => state.activeTab);
   const [initialTab] = useState(activeTab);
@@ -724,6 +694,7 @@ export default function RunAgenda({ onClose }) {
       notes: draft.notes?.trim() || null,
     };
 
+    let createdRaceId = null;
     try {
       if (editingEventId) {
         const { error } = await supabase
@@ -745,6 +716,7 @@ export default function RunAgenda({ onClose }) {
           .single();
         if (error) throw error;
         if (data) {
+          createdRaceId = data.id;
           setRaceEvents([...raceEvents, data]);
           // Site preenchido, mas o atleta não pediu "Obter informação" antes
           // de gravar (web_info continua null) — pede-o agora, em segundo
@@ -777,24 +749,33 @@ export default function RunAgenda({ onClose }) {
       }
       setConfirmation({ label: 'Prova guardada', done: () => {
       handleCloseForm();
-      // Gravar uma prova NOVA vai sempre para o Calendário, aberto no dia
-      // da prova — independentemente de onde a criação foi iniciada (ex.:
-      // o "+" a partir de outro separador). Editar uma já gravada continua
-      // a voltar para onde se estava, tal como cancelar/fechar sem gravar
-      // (handleCloseForm, acima, já revela o activeTab original intacto —
-      // ver initialTab). setNavGuard(null) primeiro, tal como
-      // discardAndLeave: o próprio navGuard deste formulário ainda está
-      // registado neste render e bloquearia este setActiveTab como se
-      // fosse o atleta a tentar sair com alterações por gravar.
+      // Gravar uma prova NOVA aterra no HUB dessa prova (pedido do
+      // utilizador): acabada de criar, o que o atleta quer é a página dela
+      // — a preparação, o objetivo, o que falta —, não o mês inteiro do
+      // Calendário com a prova a ser mais um ponto no dia. Editar uma já
+      // gravada continua a voltar para onde se estava, tal como
+      // cancelar/fechar sem gravar (handleCloseForm, acima, já revela o
+      // activeTab original intacto — ver initialTab). setNavGuard(null)
+      // primeiro, tal como discardAndLeave: o próprio navGuard deste
+      // formulário ainda está registado neste render e bloquearia a
+      // navegação como se fosse o atleta a tentar sair com alterações por
+      // gravar.
       // !leavePrompt?.target: se isto veio de "Gravar e sair" a caminho de
       // outro separador (navGuard intercetado), saveAndLeave já vai repor
-      // esse destino a seguir — sem esta guarda, ficava pendingCalendarDate
-      // por aplicar (só à próxima visita ao Calendário) sem nunca lá se
-      // chegar agora.
+      // esse destino a seguir — por isso este ramo nem chega a correr.
       if (!editingEventId) {
         setNavGuard(null);
-        useAppStore.getState().setPendingCalendarDate(draft.date);
-        useAppStore.getState().setActiveTab('calendario');
+        if (createdRaceId) {
+          // setEditingRaceId repõe openCreationMode='race', o que remonta
+          // este mesmo ecrã já ligado à prova gravada e com o subnav na
+          // primeira página — o hub (activePage nasce em 'hub').
+          useAppStore.getState().setEditingRaceId(createdRaceId);
+        } else {
+          // Sem id devolvido pelo insert não há hub para abrir; o
+          // Calendário no dia da prova continua a ser o destino honesto.
+          useAppStore.getState().setPendingCalendarDate(draft.date);
+          useAppStore.getState().setActiveTab('calendario');
+        }
       }
       } });
       return true;

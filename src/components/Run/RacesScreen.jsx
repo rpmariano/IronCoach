@@ -4,6 +4,7 @@ import RaceCard from '../Home/RaceCard';
 import PalmaresCard from '../Perfil/PalmaresCard';
 import RaceListCard from './RaceListCard';
 import SectionLabel from '../shared/SectionLabel';
+import CoachInsightsDock from '../BI/CoachInsightsDock';
 
 /* "As tuas provas" — o separador Provas da barra (2026-09-13, opção A de
    "Onde vivem as provas"). A prova é o grande objetivo da app e estava
@@ -46,6 +47,10 @@ export default function RacesScreen() {
       <div className="flex flex-col gap-2" style={{ marginTop: 6 }}>
         <RaceListCard />
       </div>
+
+      {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
+          Chat (pedido do utilizador). */}
+      <CoachInsightsDock />
     </div>
   );
 }

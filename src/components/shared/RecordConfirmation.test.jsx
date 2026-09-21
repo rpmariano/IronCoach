@@ -107,16 +107,63 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
     expect(cartao).toHaveTextContent('Meia: 1:53:42, 4:04 abaixo do anterior');
   });
 
-  it('com conquista, a confirmação só sai aos 1,6 s', () => {
+  /* Relatado pelo utilizador: os parabéns da prova saíam antes de dar tempo
+     de os ler. Uma mensagem com texto a sério espera pelo atleta. */
+  it('com conquista, a confirmação não sai sozinha — espera pela dispensa', () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
 
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT); });
+    act(() => { vi.advanceTimersByTime(60000); });
     expect(onDone).not.toHaveBeenCalled();
+    expect(screen.getByTestId('record-confirmation')).toHaveAttribute('data-dismissible', 'true');
+  });
 
-    act(() => { vi.advanceTimersByTime(1600 - DUR_CONFIRM_EXIT); });
+  it('o botão "Continuar" fecha, e só uma vez', () => {
+    const onDone = vi.fn();
+    render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
+    const fechar = screen.getByTestId('record-confirmation-close');
+    fireEvent.click(fechar);
+    fireEvent.click(fechar);
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('clicar FORA da mensagem fecha; clicar na mensagem não', () => {
+    const onDone = vi.fn();
+    render(<RecordConfirmation label="Meia de Lisboa concluída" tone="race" achievement={CONQUISTA} onDone={onDone} />);
+    // O cartão da conquista só entra aos 300 ms; o rótulo está lá desde já.
+    fireEvent.click(screen.getByText('Meia de Lisboa concluída'));
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('record-confirmation'));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('o foco vai para o botão e o Tab não sai da mensagem', () => {
+    const onDone = vi.fn();
+    render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
+    const fechar = screen.getByTestId('record-confirmation-close');
+    expect(document.activeElement).toBe(fechar);
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(document.activeElement).toBe(fechar);
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('Escape fecha', () => {
+    const onDone = vi.fn();
+    render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  /* A prova concluída é por si só uma mensagem de parabéns, mesmo sem
+     conquista nova — o rótulo traz o nome da prova e o tempo. */
+  it('a prova concluída sem conquista também espera pela dispensa', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<RecordConfirmation label="Meia de Lisboa concluída · 1:53:42" tone="race" onDone={onDone} />);
+    act(() => { vi.advanceTimersByTime(60000); });
+    expect(onDone).not.toHaveBeenCalled();
+    expect(screen.getByTestId('record-confirmation-close')).toBeInTheDocument();
   });
 
   it('havendo mais do que uma, mostra a primeira e conta o resto', () => {
@@ -135,7 +182,7 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
     expect(screen.queryByTestId('record-confirmation-achievement')).not.toBeInTheDocument();
   });
 
-  it('com prefers-reduced-motion o cartão não espera pelos 300 ms', () => {
+  it('com prefers-reduced-motion o cartão não espera pelos 300 ms — mas continua a exigir dispensa', () => {
     window.matchMedia = () => ({ matches: true });
     vi.useFakeTimers();
     const onDone = vi.fn();
@@ -143,7 +190,8 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
 
     act(() => { vi.advanceTimersByTime(DUR_TAP); });
     expect(screen.getByTestId('record-confirmation-achievement')).toBeInTheDocument();
-    expect(onDone).toHaveBeenCalledTimes(1);
+    // O movimento reduzido tira a animação, não o tempo de leitura.
+    expect(onDone).not.toHaveBeenCalled();
   });
 });
 
@@ -159,15 +207,15 @@ describe('RecordConfirmation — o primeiro registo de um tipo', () => {
     expect(screen.getByTestId('record-confirmation-first')).toHaveTextContent('A primeira corrida.');
   });
 
-  it('fica o tempo de ler — e um toque segue logo, uma vez só', () => {
+  it('fica até ser dispensada — e o toque no fundo segue logo, uma vez só', () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation first={FIRST} onDone={onDone} />);
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT - 1 + 100); });
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT_FIRST * 2); });
     expect(onDone).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('record-confirmation'));
     expect(onDone).toHaveBeenCalledTimes(1);
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT_FIRST); });
+    fireEvent.click(screen.getByTestId('record-confirmation'));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
@@ -177,9 +225,9 @@ describe('RecordConfirmation — o primeiro registo de um tipo', () => {
     const onDone = vi.fn();
     render(<RecordConfirmation first={FIRST} onDone={onDone} />);
     expect(screen.getByTestId('record-confirmation-first')).toBeInTheDocument();
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT_FIRST - 1); });
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT_FIRST * 2); });
     expect(onDone).not.toHaveBeenCalled();
-    act(() => { vi.advanceTimersByTime(1); });
+    fireEvent.click(screen.getByTestId('record-confirmation-close'));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 });

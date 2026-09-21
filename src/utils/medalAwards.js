@@ -104,11 +104,18 @@ export async function syncMedalAwards({ userId, due = [] } = {}) {
       return { pending: decorate(rows.filter((r) => !r.seen_at), dueByKey), available: true };
     }
 
-    // Primeira sincronização (nenhuma linha ainda): o que já estava ganho é
-    // histórico — grava-se como visto, para não animar meses de corridas de
-    // uma vez. Mas só o que tem mais de uma semana: um atleta novo cuja
-    // primeira medalha chega na primeira sincronização tem de a ver a tocar.
-    const firstSync = rows.length === 0;
+    /* O que já estava ganho é histórico — grava-se como visto, para não
+       animar meses de corridas de uma vez. Só o que tem mais de uma semana:
+       a medalha que o atleta acabou de ganhar tem de a ver a tocar.
+
+       A guarda era `firstSync && ehHistorico(d)`, e isso só protegia a
+       primeiríssima sincronização. Quando uma regra nova passa a cunhar
+       medalhas com data antiga — foi o que a escala bronze/prata/ouro
+       d'Os Recordes fez, até 18 de uma vez por corridas de há meses —,
+       toda a gente que já tinha UMA linha na tabela caía fora da guarda e
+       abria a app com a tempestade de animações que este código existe
+       precisamente para evitar. A data do feito é que decide, não o estado
+       da tabela. */
     const now = new Date().toISOString();
     const historicoAte = new Date(Date.now() - HISTORICO_DIAS * 86400000).toISOString().slice(0, 10);
     const ehHistorico = (d) => !d.awardedOn || d.awardedOn < historicoAte;
@@ -120,7 +127,7 @@ export async function syncMedalAwards({ userId, due = [] } = {}) {
       value: d.value ?? null,
       race_id: d.raceId ?? null,
       awarded_at: awardedAtOf(d.awardedOn),
-      seen_at: firstSync && ehHistorico(d) ? now : null,
+      seen_at: ehHistorico(d) ? now : null,
     }));
 
     const { error: writeError } = await supabase

@@ -133,6 +133,112 @@ async function fetchGeminiWithTimeout(
   }
 }
 
+/* ── Depois de gravar uma avaliação: o perfil acompanha ────────────────────
+   Duas coisas que o registo de uma avaliação corporal deixava por fazer, as
+   duas relatadas pelo utilizador a partir do Perfil.
+
+   1. O PESO. `profiles.weight_kg` era escrito à mão no Perfil e no arranque,
+      e mais nada — a balança dizia um número, o perfil continuava com outro.
+      E é `profiles.weight_kg` que alimenta os hidratos da véspera da prova,
+      a vida útil das sapatilhas e o cálculo de TDEE, por isso a divergência
+      não é cosmética. Uma avaliação recente (≤ PESO_RECENTE_DIAS) e que seja
+      a MAIS RECENTE do atleta passa a repor o peso do perfil. Editar uma
+      avaliação antiga não mexe em nada: não é o peso de agora.
+
+   2. OS OBJETIVOS. Esta era a única função analyze-* que nunca levantava uma
+      intervenção da Carol — registar o corpo não levava a conversa nenhuma.
+      Faltando os objetivos do corpo ou os de macronutrientes, fica marcada
+      uma intervenção a pedir que os definam em conjunto. */
+const PESO_RECENTE_DIAS = 7;
+const BODY_GOAL_COLUMNS = ["goal_weight_kg", "goal_body_fat_pct", "goal_muscle_mass_kg", "goal_lean_body_mass_kg"];
+const MACRO_GOAL_COLUMNS = ["calorie_goal", "protein_goal", "carbs_goal", "fat_goal"];
+
+function daysBetweenISO(fromISO: string, toISO: string): number | null {
+  const a = Date.parse(`${String(fromISO).slice(0, 10)}T00:00:00Z`);
+  const b = Date.parse(`${String(toISO).slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+// deno-lint-ignore no-explicit-any
+export async function syncProfileAfterAssessment(sb: any, userId: string, assessment: any): Promise<void> {
+  try {
+    if (!assessment?.date) return;
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const patch: Record<string, unknown> = {};
+
+    // ── 1. O peso ──────────────────────────────────────────────────────
+    const peso = Number(assessment.weight_kg);
+    const idade = daysBetweenISO(assessment.date, todayISO);
+    /* `idade >= -1` e não `>= 0`: o servidor conta os dias em UTC e a data da
+       avaliação é escrita na hora LOCAL do atleta. Entre a meia-noite e a uma
+       da manhã em Lisboa no horário de verão, o "hoje" em UTC ainda é ontem —
+       uma pesagem acabada de registar dava idade -1 e o peso do perfil não se
+       repunha, sem nada nos logs a dizer porquê. O desencontro é dos fusos a
+       ORIENTE de UTC — os que já entraram no dia seguinte enquanto o servidor
+       ainda conta o anterior. Um dia de folga cobre qualquer um deles sem
+       abrir a janela a datas futuras a sério. */
+    const recente = idade !== null && idade >= -1 && idade <= PESO_RECENTE_DIAS;
+    if (Number.isFinite(peso) && peso > 0 && recente) {
+      /* Só se não houver nenhuma avaliação mais recente: editar a de há três
+         dias quando a de ontem já entrou não pode fazer recuar o peso. */
+      const { data: maisRecente } = await sb
+        .from("body_assessments")
+        .select("date")
+        .eq("user_id", userId)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const limite = maisRecente?.date ? String(maisRecente.date).slice(0, 10) : null;
+      if (!limite || String(assessment.date).slice(0, 10) >= limite) {
+        patch.weight_kg = peso;
+      }
+    }
+
+    // ── 2. Os objetivos ────────────────────────────────────────────────
+    const { data: perfil, error: erroPerfil } = await sb
+      .from("profiles")
+      .select([...BODY_GOAL_COLUMNS, ...MACRO_GOAL_COLUMNS, "coach_intervention_status"].join(", "))
+      .eq("id", userId)
+      .maybeSingle();
+    // O supabase-js não LANÇA nestes casos: devolve o erro no objeto. Sem o
+    // ler, uma leitura recusada (RLS, coluna em falta) passava por "o atleta
+    // não tem perfil" e saltava a intervenção sem deixar rasto nenhum.
+    if (erroPerfil) console.warn("syncProfileAfterAssessment: falha a ler o perfil:", erroPerfil);
+
+    if (perfil) {
+      const temAlgum = (cols: string[]) => cols.some((c) => perfil[c] !== null && perfil[c] !== undefined);
+      const faltamCorpo = !temAlgum(BODY_GOAL_COLUMNS);
+      const faltamMacros = !temAlgum(MACRO_GOAL_COLUMNS);
+      /* Uma intervenção já pendente não se sobrepõe: o motivo que lá está
+         pode ser mais urgente do que este, e o atleta só vê um de cada vez.
+         'in_progress' conta como pendente — é uma conversa JÁ A MEIO, e
+         reescrever o motivo aqui apagava sem retorno a razão pela qual ela
+         chamou por ele (a coluna não tem histórico). É a mesma leitura que
+         o resto da app faz: ver store/index.js e Home/Home.jsx, ambos com
+         ['needed','in_progress']. */
+      const intervencaoPendente = ["needed", "in_progress"].includes(perfil.coach_intervention_status);
+      if ((faltamCorpo || faltamMacros) && !intervencaoPendente) {
+        const emFalta = [faltamCorpo ? "os do corpo" : null, faltamMacros ? "os de macronutrientes" : null]
+          .filter(Boolean).join(" e ");
+        patch.coach_intervention_status = "needed";
+        patch.coach_intervention_reason =
+          `O atleta acabou de registar uma avaliação corporal e ainda não tem objetivos definidos (${emFalta}). ` +
+          `Propõe-lhe definir os objetivos em conjunto — valores do corpo E macronutrientes —, partindo dos ` +
+          `números desta avaliação. Pergunta onde ele quer chegar antes de propores valores.`;
+      }
+    }
+
+    if (Object.keys(patch).length > 0) {
+      const { error: erroUpdate } = await sb.from("profiles").update(patch).eq("id", userId);
+      if (erroUpdate) console.warn("syncProfileAfterAssessment: falha a gravar o perfil:", erroUpdate);
+    }
+  } catch (e) {
+    // Nunca é motivo para falhar o registo: a avaliação já está gravada.
+    console.warn("syncProfileAfterAssessment falhou:", e);
+  }
+}
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -547,6 +653,7 @@ Deno.serve(async (req) => {
           .select()
           .single();
         if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
+        await syncProfileAfterAssessment(sb, userId, updated);
         return jsonResponse({ assessment: updated });
       }
 
@@ -568,6 +675,7 @@ Deno.serve(async (req) => {
         .single();
       if (insertError) return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
 
+      await syncProfileAfterAssessment(sb, userId, assessment);
       return jsonResponse({ assessment });
     }
 
@@ -622,6 +730,7 @@ Deno.serve(async (req) => {
         .single();
       if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
 
+      await syncProfileAfterAssessment(sb, userId, updated);
       return jsonResponse({ assessment: updated, usage: result.usage });
     }
 
@@ -705,6 +814,7 @@ Deno.serve(async (req) => {
 
     await checkAndLogAppImage(sb, userId, "body", images, mime, result as unknown as Record<string, unknown>);
 
+    await syncProfileAfterAssessment(sb, userId, assessment);
     return jsonResponse({ assessment, usage: result.usage });
   } catch (e) {
     console.error("Erro inesperado:", e);

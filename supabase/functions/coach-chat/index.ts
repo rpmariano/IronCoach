@@ -300,10 +300,12 @@ const PROPOSE_PLAN_TOOL = {
               type: "STRING",
               description:
                 "Sugestão alimentar OBRIGATÓRIA para todos os dias do plano, independentemente da carga do treino. " +
-                "Percorre as refeições do dia (Pequeno-almoço, Almoço, Lanche, Jantar — Ceia só se fizer sentido), mas por " +
+                "Percorre as refeições do dia (Pequeno-almoço, Lanche da manhã, Almoço, Lanche da tarde, Jantar — Ceia só se " +
+                "fizer sentido), mas por " +
                 "CATEGORIA de alimento e quantidade redonda, NUNCA um cardápio de precisão a listar macros exatos por " +
-                "refeição: \"Pequeno-almoço: omelete de 2 ovos + fatia de pão. Almoço: 150g de peixe/frango + 100g de " +
-                "arroz/batata + vegetais à vontade. Lanche: 150g de iogurte skyr + fruta. Jantar: 150g de proteína + " +
+                "refeição: \"Pequeno-almoço: omelete de 2 ovos + fatia de pão. Lanche da manhã: 1 peça de fruta + punhado de " +
+                "frutos secos. Almoço: 150g de peixe/frango + 100g de " +
+                "arroz/batata + vegetais à vontade. Lanche da tarde: 150g de iogurte skyr + fruta. Jantar: 150g de proteína + " +
                 "leguminosas ou hidratos + vegetais.\" Usa um núcleo pequeno de alimentos comuns e fáceis de ter em casa " +
                 "(ovos, frango, peixe fresco ou em lata, iogurte skyr/grego, arroz, batata, aveia, leguminosas, fruta, " +
                 "vegetais) e REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às compras por um " +
@@ -423,7 +425,8 @@ const SAVE_MEALS_TOOL = {
               type: "STRING",
               description:
                 "Sugestão alimentar para o dia inteiro — menciona refeições principais " +
-                "(pequeno-almoço, almoço, jantar e snacks se relevantes), por CATEGORIA de " +
+                "(pequeno-almoço, almoço, jantar) e os lanches (lanche da manhã e lanche da tarde) " +
+                "sempre que fizerem parte do dia do atleta, por CATEGORIA de " +
                 "alimento e quantidade redonda (ex.: \"150g de peixe\", \"2 ovos\", \"150g de " +
                 "iogurte skyr\"), não um cardápio de precisão. Reutiliza alimentos comuns de dia " +
                 "para dia — não exijas ingredientes novos a cada sugestão, isso obriga o atleta a " +
@@ -3254,8 +3257,12 @@ const MEAL_DOCTRINE =
   `REPETE-OS de dia para dia — o atleta não pode sentir que precisa de ir às ` +
   `compras por um ingrediente novo a cada refeição sugerida. Excesso de ` +
   `precisão/variedade gera ansiedade e abandono, não adesão.\n` +
-  `- Dia leve/descanso (<60 min Z1-Z2): pequeno-almoço 20-25% kcal, almoço ` +
-  `30-35%, lanche 10-15%, jantar 25-30%, ceia opcional 5-10%. Proteína ` +
+  `- Dia leve/descanso (<60 min Z1-Z2), com os lanches: pequeno-almoço 20-25% ` +
+  `kcal, lanche da manhã 5-10%, almoço 25-30%, lanche da tarde 10-15%, jantar ` +
+  `20-25%, ceia opcional 5-10%. Sem os lanches, o pequeno-almoço, o almoço e o ` +
+  `jantar absorvem essas percentagens. Estas faixas são orientativas mas o DIA ` +
+  `TEM DE SOMAR 100%: escolhe dentro de cada faixa de forma a fechar a conta, ` +
+  `nunca somes os extremos de todas. Proteína ` +
   `0,3-0,4 g/kg por refeição, 3-5 doses espaçadas 3-4h.\n` +
   `- Dia de treino exigente (>60 min Z3-Z5): hidratos concentram-se na ` +
   `janela peri-treino (40-50% do total diário). Pré (1-3h antes): 1,0-2,0 ` +
@@ -3509,6 +3516,10 @@ export function buildPlanContext(
   todayISO: string,
   // deno-lint-ignore no-explicit-any
   boundPlan: any = null,
+  /* Já houve algum plano aceite na vida deste atleta? Omitido (true) mantém o
+     comportamento de sempre — só o chamador real, que sabe contar, é que o
+     passa. Ver a secção do PRIMEIRO PLANO mais abaixo. */
+  everHadPlan = true,
   /* Os planos aceites, com o que são e o que lhes aconteceu (5.2): o início
      e o fim do bloco, o resumo com que foram propostos, e as marcas de
      "a prova foi apagada" e "foi encurtado" — que o servidor escrevia e o
@@ -3517,6 +3528,25 @@ export function buildPlanContext(
   activeMeta: any[] = [],
 ): string | null {
   const sections: string[] = [];
+
+  /* Sem plano nenhum e sem passado: o que aí vem é o PRIMEIRO plano deste
+     atleta. Sem isto dito por extenso, o modelo caía nas instruções de
+     adaptação — que são a maioria do que lê sobre planos — e falava do
+     primeiro plano como se fosse um ajuste a um anterior que nunca existiu
+     (relatado pelo utilizador: "apesar de ser o primeiro plano, a conversa
+     da Carol surge como se fosse uma alteração"). */
+  if (pendingItems.length === 0 && activeItems.length === 0 && !everHadPlan) {
+    sections.push(
+      `PRIMEIRO PLANO — NUNCA HOUVE NENHUM: este atleta nunca teve um plano aceite. ` +
+      `Se ele pedir um plano, é o primeiro da vida dele contigo: fala-lhe como um ARRANQUE, ` +
+      `nunca como uma alteração.\n` +
+      `  PROIBIDO neste caso: "adaptar", "ajustar", "o plano anterior", "o que não correu bem", ` +
+      `"o que querias diferente", "recrio a proposta com as alterações", ou qualquer pergunta ` +
+      `sobre um plano passado — não há passado nenhum, e perguntar por ele deixa o atleta perdido.\n` +
+      `  O diagnóstico que fazes antes de propor é sobre ELE e só sobre ele: objetivo, quantos dias ` +
+      `por semana pode treinar, quanto tempo tem, restrições alimentares, lesões. Depois propões.`
+    );
+  }
 
   // Plano PROPOSTO (aguarda aceitação do atleta)
   if (pendingItems.length > 0) {
@@ -4550,10 +4580,15 @@ export function buildSystemInstruction(
     `  • Resposta máxima: 1 parágrafo + 1 pergunta. Sem introduções, sem resumos do estado atual.\n` +
     `  • Explica que recrias uma nova proposta (treino + nutrição) com as alterações pedidas ` +
     `para o atleta aceitar na Home — não editas bloco a bloco.\n\n` +
+    `PRIMEIRO PLANO DE SEMPRE (o contexto di-lo com "PRIMEIRO PLANO — NUNCA HOUVE NENHUM"):\n` +
+    `  • É um ARRANQUE, não uma alteração. Nada do que se segue sobre "o plano anterior", ` +
+    `"o que não correu bem" ou "recriar com as alterações" se aplica — não há anterior nenhum, ` +
+    `e falar como se houvesse deixa o atleta sem perceber do que estás a falar.\n` +
+    `  • O diagnóstico é só sobre ele: objetivo, dias por semana, tempo disponível, restrições, lesões.\n\n` +
     `EM AMBOS OS CASOS — PROIBIDO:\n` +
     `  - NUNCA: Resumir o plano ou os objetivos atuais quando o atleta quer mudar algo — ele sabe o que tem.\n` +
     `  - NUNCA: Defender ou justificar o plano/objetivos atuais quando o atleta quer mudar algo.\n` +
-    `  - NUNCA: Criar um plano sem primeiro perceber porque o anterior falhou ou o que quer diferente.\n` +
+    `  - NUNCA: Criar um plano, HAVENDO UM ANTERIOR, sem primeiro perceber porque falhou ou o que quer diferente (no primeiro plano de sempre esta regra não se aplica).\n` +
     `  - NUNCA: Responder ao pedido de "plano" ou "adaptar" com análise de macros/objetivos sem perguntar nada.\n` +
     `  - NUNCA: Omitir a componente nutricional na pergunta diagnóstica — plano é sempre treino + nutrição.\n\n` +
     `PLANOS DE TREINO: quando o utilizador te pedir um plano, sugestões de treinos para os ` +
@@ -5411,7 +5446,23 @@ async function handler(req: Request): Promise<Response> {
        "não podes" sem dizer "usa este" era mandá-lo adivinhar. */
     // deno-lint-ignore no-explicit-any
     const boundPlan = (activePlans || []).find((p: any) => p.race_id) || null;
-    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan, activePlans || []);
+
+    /* Uma contagem, não as linhas: só interessa saber se alguma vez houve um
+       plano aceite. É o que distingue "o primeiro plano" de "mais um plano"
+       no discurso da Carol (ver buildPlanContext). */
+    const { count: planosAceitesDeSempre, error: erroContagem } = await sb
+      .from("coach_plans")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "aceite");
+    /* Falhando a contagem, assume-se que JÁ HOUVE plano: é o comportamento
+       de sempre e o erro seguro. Ao contrário, um count a null por causa de
+       uma query falhada punha a Carol a dizer a um atleta de meses que nunca
+       teve plano nenhum — pior do que não dizer nada. */
+    if (erroContagem) console.warn("coach-chat: falha a contar planos aceites:", erroContagem);
+    const everHadPlan = erroContagem ? true : (planosAceitesDeSempre ?? 0) > 0;
+
+    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan, everHadPlan, activePlans || []);
 
     // ── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ────
     // Uma janela mais larga do que a de 7 dias usada acima (nutritionSummary/
@@ -5693,7 +5744,29 @@ async function handler(req: Request): Promise<Response> {
         `A decisão é dele; o teu trabalho é que seja informada.`
       : null;
 
-    const planCheckinPrompt = raceConflictPrompt ? raceConflictPrompt : planDivergence.length > 0
+    /* O fim do arranque (onboarding). A Carol promete lá um plano — "escrevo
+       o plano, tu decides" — e o arranque acabava sem plano nenhum e sem
+       conversa: o atleta ficava à espera de uma coisa que ninguém lhe ia
+       dar (relatado pelo utilizador). Agora o último passo traz o atleta
+       para aqui e é ela que abre a conversa. Entra pelo canal do check-in
+       do plano porque é o único onde as ferramentas de propor estão abertas;
+       o guião é que é outro: é uma apresentação, não um ajuste. */
+    const onboardingStartPrompt = body.onboarding_start
+      ? `O atleta ACABOU DE TERMINAR O ARRANQUE (onboarding) e foi trazido direto para o chat — ` +
+        `é a primeira conversa a sério entre vocês. Tu prometeste-lhe ali que escreves o plano, ` +
+        `por isso é isso que vens fazer agora: não esperes que ele peça.\n` +
+        `Abre tu, em duas ou três frases, pelo nome dele: diz que já leste o que ele te contou, ` +
+        `nomeia o que ele te deu (o objetivo, a prova se houver uma, os dias que pode treinar) ` +
+        `e explica que o passo seguinte é combinarem o plano.\n` +
+        `É o PRIMEIRO plano dele: fala como um arranque, nunca como uma alteração — não há plano ` +
+        `anterior, não perguntes o que correu mal nem o que quer diferente.\n` +
+        `Acaba com UMA pergunta só, a que te falta mesmo para propor o plano (por exemplo os dias ` +
+        `da semana em que pode treinar, ou como se tem sentido a correr). Não faças uma lista de ` +
+        `perguntas: o arranque acabou de o interrogar durante seis ecrãs. ` +
+        `Assim que tiveres o que precisas, propõe o plano com propose_training_plan.`
+      : null;
+
+    const planCheckinPrompt = onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
         `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +

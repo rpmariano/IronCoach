@@ -514,6 +514,26 @@ export function StepProva({ draft, set, carolNote, reaction }) {
             onChange={(e) => set('race_distance_km', e.target.value)}
           />
         </div>
+        {/* O local e o objetivo de tempo são obrigatórios para gravar uma
+            prova (ver a validação em Run/RunAgenda.jsx). Sem eles, o arranque
+            só conseguia entregar um rascunho e atirava o atleta para o ecrã
+            de criar prova mal acabava de responder a seis ecrãs — foi o que
+            o utilizador relatou. Perguntados aqui, a prova nasce gravada. */}
+        <Field
+          label="Local"
+          type="text"
+          placeholder="Ex.: Lisboa"
+          value={draft.race_location}
+          onChange={(e) => set('race_location', e.target.value)}
+        />
+        <Field
+          label="Objetivo de tempo"
+          type="text"
+          inputMode="numeric"
+          placeholder="Ex.: 1:45:00"
+          value={draft.race_target_time}
+          onChange={(e) => set('race_target_time', e.target.value)}
+        />
         <div>
           <FieldLabel>Terreno</FieldLabel>
           <div className="flex" style={{ gap: 8 }}>
@@ -543,6 +563,19 @@ export function StepProva({ draft, set, carolNote, reaction }) {
             })}
           </div>
         </div>
+
+        {/* O D+ só é obrigatório no trail — e só aí é que aparece. */}
+        {draft.race_type === 'trail' && (
+          <Field
+            label="Desnível acumulado (D+)"
+            type="number"
+            inputMode="numeric"
+            step="1"
+            suffix="m"
+            value={draft.race_elevation_gain_m}
+            onChange={(e) => set('race_elevation_gain_m', e.target.value)}
+          />
+        )}
       </div>
 
       <CarolReply reaction={reaction}>{carolNote}</CarolReply>

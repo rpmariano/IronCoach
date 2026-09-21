@@ -630,21 +630,21 @@ export function detectCoachInsights(data, profile) {
             insights.push({
               id: 'race_tactic_ultra', severity: 'critical',
               title: `Risco Elevado: Ultra-Trail`,
-              message: `Falta-te histórico de corrida de fundo (maratona) para suportar as cargas de uma Ultra. A recomendação da Carol é reduzir a distância para evitar sobrecargas articulares.`,
+              message: `Falta-te histórico de corrida de fundo (maratona) para suportar as cargas de uma Ultra. Recomendo-te reduzir a distância para evitar sobrecargas articulares.`,
               metric: 'Viabilidade', value: 0, threshold: 0, module: 'corrida'
             });
           } else if (viability.flags.includes('tempo_insuficiente')) {
             insights.push({
               id: 'race_tactic_time', severity: 'warning',
               title: `Calendário Apertado: ${raceName}`,
-              message: `O tempo de preparação restante é demasiado curto para a distância de ${dist}km. A Carol sugere que foques os treinos apenas em adaptação e ajustes as tuas expectativas de tempo.`,
+              message: `O tempo de preparação restante é demasiado curto para a distância de ${dist}km. Sugiro-te focar os treinos apenas em adaptação e ajustar as tuas expectativas de tempo.`,
               metric: 'Tempo', value: daysLeft, threshold: 0, module: 'corrida'
             });
           } else if (viability.flags.includes('volume_insuficiente')) {
             insights.push({
               id: 'race_volume', severity: 'warning',
               title: `Volume de Treino Insuficiente: ${raceName}`,
-              message: `O teu volume semanal médio (${weeklyVol} km) não suporta em segurança a distância de ${dist}km. A Carol recomenda aumentar a carga gradualmente (regra dos 10%/semana) ou rever a distância.`,
+              message: `O teu volume semanal médio (${weeklyVol} km) não suporta em segurança a distância de ${dist}km. Recomendo-te aumentar a carga gradualmente (regra dos 10%/semana) ou rever a distância.`,
               metric: 'Volume', value: weeklyVol, threshold: 0, module: 'corrida'
             });
           } else if (targetPace && predictedPaceReal > 0) {
@@ -653,7 +653,7 @@ export function detectCoachInsights(data, profile) {
               insights.push({
                 id: 'race_tactic_pace', severity: 'warning',
                 title: `Ritmo-Alvo Irrealista: ${raceName}`,
-                message: `O teu alvo de ritmo é excessivamente otimista face ao teu VDOT atual. A Carol avisa que manter esse Pace vai causar quebra a meio da prova. Recalcula o alvo!`,
+                message: `O teu alvo de ritmo é excessivamente otimista face ao teu VDOT atual. Aviso-te desde já: manter esse ritmo vai causar quebra a meio da prova. Recalcula o alvo!`,
                 metric: 'Pace', value: predictedPaceReal, threshold: targetPace, module: 'corrida'
               });
             }

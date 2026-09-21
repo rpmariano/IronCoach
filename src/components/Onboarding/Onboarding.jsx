@@ -14,6 +14,8 @@ import {
   OBJETIVOS, TEMPO_A_CORRER,
 } from './OnboardingSteps';
 import { dietaryRestrictionLabel } from '../../utils/diet';
+import { supabase } from '../../lib/supabase';
+import { parseDurationToSeconds } from '../../utils/run';
 import { firstName, reactToRace } from './carolReactions';
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -72,6 +74,13 @@ const EMPTY_DRAFT = {
   race_date: '',
   race_distance_km: '',
   race_type: 'estrada',
+  /* Os três que faltavam para a prova poder NASCER GRAVADA em vez de ir
+     abrir o formulário de criar prova por cima do fim do arranque
+     (relatado pelo utilizador). São os obrigatórios da validação de
+     Run/RunAgenda.jsx: local, objetivo de tempo e, só no trail, o D+. */
+  race_location: '',
+  race_target_time: '',
+  race_elevation_gain_m: '',
 };
 
 const numText = (v) => (v === null || v === undefined || v === '' ? '' : String(v));
@@ -189,6 +198,7 @@ export default function Onboarding({ reentry = false, onDone }) {
   const setActiveTab = useAppStore((s) => s.setActiveTab);
   const setOpenCreationMode = useAppStore((s) => s.setOpenCreationMode);
   const setRacePrefill = useAppStore((s) => s.setRacePrefill);
+  const setCoachIntent = useAppStore((s) => s.setCoachIntent);
 
   const userId = profile?.id || 'anon';
   const draftKey = `ironcoach_onboarding_draft_${userId}`;
@@ -222,6 +232,15 @@ export default function Onboarding({ reentry = false, onDone }) {
 
   const semanas = weeksUntil(draft.race_date);
   const temProva = !!(draft.race_name.trim() && draft.race_date && parseNum(draft.race_distance_km));
+  /* Tem tudo o que a BD exige? Então grava-se aqui e o atleta nunca vê o
+     formulário. Faltando alguma coisa, cai-se no comportamento antigo:
+     pré-preenche e abre o formulário para ele completar. */
+  const provaCompleta = !!(
+    temProva
+    && draft.race_location.trim()
+    && parseDurationToSeconds(draft.race_target_time)
+    && (draft.race_type !== 'trail' || Number.isFinite(parseNum(draft.race_elevation_gain_m)))
+  );
 
   /* A nota da Carol do passo 6 é a única que depende das respostas — o mock
      mostra-a com os números do exemplo ("Com 38 km por semana e 25 semanas
@@ -308,11 +327,75 @@ export default function Onboarding({ reentry = false, onDone }) {
     setIsDirty(false);
   }, [draft, addCoachNote, markOnboardingDone, draftKey]);
 
+  /* Grava a prova do passo 6 diretamente em race_events. Espelha o payload
+     de Run/RunAgenda.jsx (handleSaveForm) nos campos que a BD tem como NOT
+     NULL — incluindo o ritmo-alvo, que lá é calculado a partir do tempo e
+     não é pedido duas vezes. O nível é o do perfil como ponto de partida: o
+     nível POR PROVA existe para poder ser diferente, e o atleta pode mudá-lo
+     depois no hub, mas obrigá-lo a declará-lo duas vezes no arranque era
+     ruído. Devolve true se ficou gravada — é isso que decide se o formulário
+     de criar prova ainda precisa de abrir. */
+  const gravarProva = useCallback(async () => {
+    const userId = profile?.id;
+    const distancia = parseNum(draft.race_distance_km);
+    const tempoSegundos = parseDurationToSeconds(draft.race_target_time);
+    if (!userId || !distancia || !tempoSegundos) return false;
+    /* Reabrir o arranque pelo Perfil (reentry) restaura o rascunho com os
+       campos da prova ainda preenchidos — sem esta verificação, terminá-lo
+       outra vez inseria uma segunda prova igual, e o atleta nem via o
+       formulário para dar por isso. O par nome+data chega: é o que ele
+       reconheceria como "a mesma prova". */
+    const nome = draft.race_name.trim();
+    const jaExiste = (raceEvents || []).some((e) => (
+      String(e?.name || '').trim().toLowerCase() === nome.toLowerCase()
+      && String(e?.date || '').slice(0, 10) === draft.race_date
+    ));
+    if (jaExiste) return true;
+    try {
+      const payload = {
+        user_id: userId,
+        name: nome,
+        date: draft.race_date,
+        location: draft.race_location.trim(),
+        race_type: draft.race_type,
+        distance_km: distancia,
+        target_time: draft.race_target_time.trim(),
+        target_time_seconds: tempoSegundos,
+        target_pace_seconds_per_km: Math.round(tempoSegundos / distancia),
+        experience_level: draft.experience_level || 'iniciante',
+        race_priority: 'a',
+        elevation_gain_m: draft.race_type === 'trail' ? parseNum(draft.race_elevation_gain_m) : null,
+        /* Sem `status`: deixa o default da coluna ('agendada'). Marcá-la
+           'concluida' por a data ser passada criava uma prova concluída SEM
+           corrida ligada, e essas são filtradas por completedRaces — o que
+           cortava já a sequência no medalhão "A Sequência" a quem
+           declarasse no arranque uma prova que já correu.
+
+           NOTA: isto DIVERGE de propósito do formulário da prova, que ainda
+           põe `status: date < hoje ? 'concluida' : 'agendada'` no insert
+           (Run/RunAgenda.jsx). O mesmo defeito continua lá; não se corrigiu
+           aqui por estar fora do âmbito. Quem for alinhar os dois, alinhe o
+           formulário por este, não o contrário. */
+      };
+      const { data, error } = await supabase.from('race_events').insert(payload).select().single();
+      if (error || !data) {
+        console.warn('Não foi possível gravar a prova do arranque:', error);
+        return false;
+      }
+      useAppStore.getState().setRaceEvents([...(raceEvents || []), data]);
+      return true;
+    } catch (err) {
+      console.warn('Não foi possível gravar a prova do arranque:', err);
+      return false;
+    }
+  }, [profile, draft, raceEvents]);
+
   /* Termina o arranque. `destino`:
-     - 'home'  → Início. Quem declarou uma prova cai no formulário de Prova já
-                 preenchido com os quatro campos do passo 6 (ver comentário no
-                 topo: race_events exige mais do que o arranque pergunta).
-     - 'coach' → separador Coach, para continuar a conversa com a Carol.
+     - 'home'  → Início. A prova do passo 6 já foi gravada aqui quando tinha
+                 tudo (gravarProva); só se faltar um obrigatório é que o
+                 formulário de Prova abre, pré-preenchido.
+     - 'coach' → separador Coach, e é a Carol que abre a conversa sobre o
+                 plano que prometeu no arranque (intent onboarding_start).
      - 'skip'  → saída pelo "Já uso a app noutro dispositivo" do passo 1: marca
                  o arranque como feito sem levar ninguém a lado nenhum. */
   const terminar = useCallback(async (destino) => {
@@ -324,22 +407,42 @@ export default function Onboarding({ reentry = false, onDone }) {
       setIsSaving(false);
     }
 
+    /* A prova declarada no passo 6 grava-se AQUI quando tem tudo o que a BD
+       exige. Antes ia sempre abrir o formulário de criar prova por cima do
+       fim do arranque — seis ecrãs de perguntas para acabar num sétimo
+       formulário, com metade dos campos já respondidos (relatado pelo
+       utilizador). Faltando algum obrigatório, o formulário continua a
+       abrir, pré-preenchido, que é melhor do que perder a resposta. */
+    let provaGravada = false;
+    if (provaCompleta) {
+      provaGravada = await gravarProva();
+    }
+
     if (destino === 'coach') {
       setActiveTab('coach');
+      /* O arranque prometeu um plano e acabava sem nenhum: é ela que abre a
+         conversa, já com tudo o que ele acabou de contar (ver
+         Coach/Coach.jsx, onboarding_start). */
+      setCoachIntent('onboarding_start');
     } else if (destino === 'home') {
       if (!reentry) setActiveTab('home');
-      if (temProva) {
+      if (temProva && !provaGravada) {
         setRacePrefill({
           name: draft.race_name.trim(),
           date: draft.race_date,
           distance_km: String(parseNum(draft.race_distance_km)),
           race_type: draft.race_type,
+          location: draft.race_location.trim(),
+          target_time: draft.race_target_time.trim(),
+          ...(draft.race_type === 'trail' && draft.race_elevation_gain_m !== ''
+            ? { elevation_gain_m: String(draft.race_elevation_gain_m) }
+            : {}),
         });
         setOpenCreationMode('race');
       }
     }
     onDone?.();
-  }, [isSaving, gravar, reentry, temProva, draft, setActiveTab, setOpenCreationMode, setRacePrefill, onDone]);
+  }, [isSaving, gravar, gravarProva, reentry, temProva, provaCompleta, draft, setActiveTab, setCoachIntent, setOpenCreationMode, setRacePrefill, onDone]);
 
   /* O passo seguinte entra do lado de onde se vem — da direita a avançar,
      da esquerda a recuar — com a mesma entrada dos separadores (tabEnter,
@@ -409,6 +512,9 @@ export default function Onboarding({ reentry = false, onDone }) {
               set('race_name', '');
               set('race_date', '');
               set('race_distance_km', '');
+              set('race_location', '');
+              set('race_target_time', '');
+              set('race_elevation_gain_m', '');
               avancar();
             }}>
               Ainda não tenho prova marcada
@@ -418,11 +524,16 @@ export default function Onboarding({ reentry = false, onDone }) {
       case 'fecho':
         return (
           <ActionBar aboveNav={false} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 9 }}>
-            <PrimaryButton hero tone="race" disabled={isSaving} onClick={() => terminar('home')}>
-              Ir para a Home
+            {/* O destino principal é o chat, não a Home: o arranque promete
+                um plano ("escrevo o plano, tu decides") e acabava sem plano
+                nenhum e sem conversa — o atleta ficava à espera de algo que
+                não vinha (relatado pelo utilizador). Quem quiser ver a app
+                primeiro continua a poder ir para o Início. */}
+            <PrimaryButton hero tone="race" disabled={isSaving} onClick={() => terminar('coach')}>
+              <Sparkles size={17} /> Combinar o meu plano
             </PrimaryButton>
-            <GhostButton disabled={isSaving} onClick={() => terminar('coach')} style={{ minHeight: 'var(--tap)' }}>
-              Falar com a Carol
+            <GhostButton disabled={isSaving} onClick={() => terminar('home')} style={{ minHeight: 'var(--tap)' }}>
+              Ver o Início primeiro
             </GhostButton>
           </ActionBar>
         );
