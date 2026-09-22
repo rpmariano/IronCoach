@@ -3,11 +3,11 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
 
-/* A grelha dos badges e o ecrã de detalhe. As regras são de
-   utils/badges.js (testadas lá); aqui só a UI: a grelha agrupada por
-   família, o anel com o número ao centro, os três estados, a regra numa
-   frase, o bloco do dado em falta e as sessões agrupadas pelo que aconteceu
-   a cada uma. */
+/* A Vitrina dos badges, o painel do que falta e o ecrã de detalhe. As regras
+   são de utils/badges.js (testadas lá); aqui só a UI: a Vitrina a mostrar SÓ
+   o que já foi ganho, o painel "O que há para ganhar" com o resto e as
+   regras à vista, o anel com o número ao centro, a regra numa frase, o bloco
+   do dado em falta e as sessões agrupadas pelo que aconteceu a cada uma. */
 
 const badge = (over) => ({
   key: 'x', name: 'X', rule: 'A regra do badge X, numa frase inteira.', familia: 'desempenho', cor: 'run', glifo: 'heart',
@@ -26,7 +26,7 @@ const BADGES = [
     indeterminadas: { n: 3, campoLabel: 'as zonas de frequência cardíaca', comoResolver: 'Abre o registo e preenche os minutos por zona.', frase: '3 sessões ficaram por decidir: não têm as zonas de frequência cardíaca. Não contam nem a favor nem contra.' },
   }),
   badge({
-    key: 'escalada', name: 'A Escalada', familia: 'acumulacao', cor: 'run', glifo: 'peak', state: 'progress', ring: 0.5, centro: '5k',
+    key: 'escalada', name: 'A Escalada', rule: 'Somar metros de subida ao longo do tempo.', familia: 'acumulacao', cor: 'run', glifo: 'peak', state: 'progress', ring: 0.5, centro: '5k',
     linha: 'faltam 5 000 m para bronze',
     niveis: [
       { key: 'bronze', label: 'Bronze', limiar: 10000, ganho: false },
@@ -50,16 +50,24 @@ const BADGES = [
 
 const marcarVistos = vi.fn();
 let pending = [];
+let badges = BADGES;
 
 vi.mock('../../utils/useBadges', () => ({
-  default: vi.fn(() => ({ badges: BADGES, due: [], pending, marcarVistos })),
+  default: vi.fn(() => ({ badges, due: [], pending, marcarVistos })),
 }));
 
 import BadgesCard from './BadgesCard';
 
-describe('BadgesCard — a grelha da Vitrina', () => {
+/** Abre o painel "O que há para ganhar" e devolve-o. */
+const abrirPorGanhar = () => {
+  fireEvent.click(screen.getByTestId('badges-por-ganhar'));
+  return screen.getByTestId('badges-por-ganhar-sheet');
+};
+
+describe('BadgesCard — a Vitrina só mostra o que já foi ganho', () => {
   beforeEach(() => {
     pending = [];
+    badges = BADGES;
     marcarVistos.mockReset();
     useAppStore.setState({
       profile: { id: 'user-1' }, runs: [], raceEvents: [],
@@ -67,36 +75,45 @@ describe('BadgesCard — a grelha da Vitrina', () => {
     });
   });
 
-  it('mostra os badges em grelha, com o número dentro do anel e a contagem dos ganhos', () => {
+  /* A decisão de 2026-09-22: "os badges só devem aparecer à medida que se vão
+     ganhando e não aparecerem a zero". Os anéis por ganhar saem da Vitrina —
+     mas o contador do cabeçalho continua a dizer o total, que é outra coisa:
+     não ver os vazios não é deixar de saber quantos são. */
+  it('mostra só os ganhos, com o número dentro do anel, e conta o total no cabeçalho', () => {
     render(<BadgesCard />);
     const grelha = screen.getByTestId('badges-grelha');
-    expect(grelha.querySelectorAll('button')).toHaveLength(5);
+    expect(grelha.querySelectorAll('button')).toHaveLength(2);
     expect(screen.getByTestId('badges-card')).toHaveTextContent('2 de 5');
 
     const ganho = screen.getByTestId('badge-tile-z2_mestre');
     expect(ganho).toHaveAttribute('data-state', 'won');
     expect(within(ganho).getByTestId('badge-ring-z2_mestre')).toHaveTextContent('94');
     expect(ganho).toHaveTextContent('2×');
+    expect(screen.getByTestId('badge-tile-recorde_pessoal')).toBeInTheDocument();
 
-    // Por ganhar: o número mostra a melhor tentativa, não um vazio.
-    expect(screen.getByTestId('badge-ring-semana_100')).toHaveTextContent('+50');
-    expect(screen.getByTestId('badge-tile-escalada')).toHaveAttribute('data-state', 'progress');
+    // Os por ganhar não estão na Vitrina — estão atrás da entrada do fim.
+    expect(screen.queryByTestId('badge-tile-escalada')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('badge-tile-semana_100')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('badge-tile-solsticio')).not.toBeInTheDocument();
   });
 
-  /* A grelha agrupa por família, pela ordem de FAMILIAS, e cada grupo leva o
-     seu cabeçalho: um amuleto lado a lado com o Mestre da Z2 fingia valer o
-     mesmo. */
-  it('a grelha agrupa por família, pela ordem certa', () => {
+  /* Uma conta nova: nem grelha nem parede de anéis cinzentos. Uma linha que
+     explica o vazio — está tudo bem, não falhou nada. */
+  it('sem nenhum ganho não há grelha nenhuma, só uma linha a dizer porquê', () => {
+    badges = BADGES.map((b) => (b.state === 'won' ? { ...b, state: 'empty', ring: 0, count: 0 } : b));
     render(<BadgesCard />);
-    const grupos = [...screen.getByTestId('badges-grelha').children].map((g) => g.getAttribute('data-testid'));
-    expect(grupos).toEqual([
-      'badges-familia-desempenho', 'badges-familia-disciplina',
-      'badges-familia-acumulacao', 'badges-familia-amuletos',
-    ]);
-    const amuletos = screen.getByTestId('badges-familia-amuletos');
-    expect(amuletos).toHaveTextContent('Amuletos');
-    expect(within(amuletos).getByTestId('badge-tile-solsticio')).toBeInTheDocument();
-    expect(within(screen.getByTestId('badges-familia-desempenho')).getByTestId('badge-tile-z2_mestre')).toBeInTheDocument();
+    expect(screen.queryByTestId('badges-grelha')).not.toBeInTheDocument();
+    expect(screen.getByTestId('badges-vazio')).toHaveTextContent('Ainda não há badges ganhos.');
+    expect(screen.getByTestId('badges-card')).toHaveTextContent('0 de 5');
+    // E o caminho para o que existe continua lá.
+    expect(screen.getByTestId('badges-por-ganhar')).toHaveTextContent('5 por ganhar');
+  });
+
+  it('com tudo ganho não há entrada para o que falta', () => {
+    badges = BADGES.map((b) => ({ ...b, state: 'won', ring: 1, count: 1 }));
+    render(<BadgesCard />);
+    expect(screen.queryByTestId('badges-por-ganhar')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('badges-progresso')).not.toBeInTheDocument();
   });
 
   it('a frase de progresso é a do badge mais perto, e abre o detalhe dele', () => {
@@ -132,18 +149,11 @@ describe('BadgesCard — a grelha da Vitrina', () => {
     expect(bloco).toHaveTextContent('Abre o registo e preenche os minutos por zona.');
   });
 
-  it('os níveis aparecem nos badges com escala', () => {
-    render(<BadgesCard />);
-    fireEvent.click(screen.getByTestId('badge-tile-escalada'));
-    const niveis = screen.getByTestId('badge-detalhe-niveis');
-    expect(niveis).toHaveTextContent('Bronze');
-    expect(niveis).toHaveTextContent('10 000');
-    expect(screen.getByTestId('badge-nivel-ouro')).toHaveAttribute('data-ganho', '0');
-  });
-
   /* A ESCALA PEQUENA do momento do badge (fase 4): um badge ganho e ainda
      por ver fecha o anel na própria célula, com um salto, e fica visto — sem
-     interromper nada. Quem vê primeiro consome. */
+     interromper nada. Quem vê primeiro consome. A Vitrina só mostrar os
+     ganhos não lhe tira o palco: um badge por ver é, por construção, um
+     badge ganho (só o ramo `won` de cada regra preenche o `due`). */
   it('um badge por ver dá o salto na própria célula e fica visto', () => {
     pending = [{ id: 'a1', badge_key: 'z2_mestre' }];
     render(<BadgesCard />);
@@ -152,7 +162,7 @@ describe('BadgesCard — a grelha da Vitrina', () => {
     expect(celula.className).toContain('badge-salto');
     expect(marcarVistos).toHaveBeenCalledWith(['a1']);
     // As outras células não saltam: não há novidade nenhuma nelas.
-    expect(screen.getByTestId('badge-tile-escalada')).not.toHaveAttribute('data-novo');
+    expect(screen.getByTestId('badge-tile-recorde_pessoal')).not.toHaveAttribute('data-novo');
   });
 
   it('sem nada por ver (a migração por aplicar), nenhuma célula salta', () => {
@@ -172,5 +182,75 @@ describe('BadgesCard — a grelha da Vitrina', () => {
     fireEvent.click(screen.getByTestId('badge-tile-recorde_pessoal'));
     fireEvent.click(screen.getByTestId('badge-sessao-race-p2'));
     expect(useAppStore.getState().editingRaceId).toBe('p2');
+  });
+});
+
+describe('BadgesPorGanharSheet — o que falta, com as regras à vista', () => {
+  beforeEach(() => {
+    pending = [];
+    badges = BADGES;
+    marcarVistos.mockReset();
+    useAppStore.setState({
+      profile: { id: 'user-1' }, runs: [], raceEvents: [],
+      editingRaceId: null, editingRunId: null, openCreationMode: null,
+    });
+  });
+
+  it('a entrada do fim abre o painel com os que faltam, e só esses', () => {
+    render(<BadgesCard />);
+    expect(screen.getByTestId('badges-por-ganhar')).toHaveTextContent('O que há para ganhar');
+    expect(screen.getByTestId('badges-por-ganhar')).toHaveTextContent('3 por ganhar');
+
+    const painel = abrirPorGanhar();
+    const grelha = within(painel).getByTestId('badges-por-ganhar-grelha');
+    expect(grelha.querySelectorAll('button')).toHaveLength(3);
+    expect(within(grelha).getByTestId('badge-tile-escalada')).toBeInTheDocument();
+    expect(within(grelha).getByTestId('badge-tile-semana_100')).toBeInTheDocument();
+    expect(within(grelha).getByTestId('badge-tile-solsticio')).toBeInTheDocument();
+    expect(within(grelha).queryByTestId('badge-tile-z2_mestre')).not.toBeInTheDocument();
+  });
+
+  /* A grelha agrupa por família, pela ordem de FAMILIAS, e cada grupo leva o
+     seu cabeçalho: um amuleto lado a lado com o Mestre da Z2 fingia valer o
+     mesmo. (A Vitrina usa a MESMA grelha — é por isso que ela saiu para
+     BadgesGrelha.jsx.) */
+  it('agrupa por família, pela ordem certa', () => {
+    render(<BadgesCard />);
+    const grelha = within(abrirPorGanhar()).getByTestId('badges-por-ganhar-grelha');
+    const grupos = [...grelha.children].map((g) => g.getAttribute('data-testid'));
+    expect(grupos).toEqual([
+      'badges-familia-disciplina', 'badges-familia-acumulacao', 'badges-familia-amuletos',
+    ]);
+    const amuletos = within(grelha).getByTestId('badges-familia-amuletos');
+    expect(amuletos).toHaveTextContent('Amuletos');
+    expect(within(amuletos).getByTestId('badge-tile-solsticio')).toBeInTheDocument();
+  });
+
+  /* Quem vem a este painel vem perguntar COMO se ganha — esconder a resposta
+     atrás de um toque era esconder a resposta atrás da pergunta. */
+  it('as regras estão à vista, sem ser preciso abrir nada', () => {
+    render(<BadgesCard />);
+    const painel = abrirPorGanhar();
+    expect(within(painel).getByTestId('badge-regra-escalada')).toHaveTextContent('Somar metros de subida ao longo do tempo.');
+    expect(within(painel).getByTestId('badge-regra-escalada')).toHaveTextContent('faltam 5 000 m para bronze');
+    expect(within(painel).getByTestId('badges-regras-amuletos')).toHaveTextContent('Solstício');
+  });
+
+  it('uma célula do painel abre o detalhe do badge, com os níveis', () => {
+    render(<BadgesCard />);
+    const painel = abrirPorGanhar();
+    fireEvent.click(within(painel).getByTestId('badge-tile-escalada'));
+    const niveis = screen.getByTestId('badge-detalhe-niveis');
+    expect(niveis).toHaveTextContent('Bronze');
+    expect(niveis).toHaveTextContent('10 000');
+    expect(screen.getByTestId('badge-nivel-ouro')).toHaveAttribute('data-ganho', '0');
+  });
+
+  it('fecha-se e a Vitrina fica como estava', () => {
+    render(<BadgesCard />);
+    const painel = abrirPorGanhar();
+    fireEvent.click(within(painel).getByLabelText('Fechar'));
+    expect(screen.queryByTestId('badges-por-ganhar-sheet')).not.toBeInTheDocument();
+    expect(screen.getByTestId('badge-tile-z2_mestre')).toBeInTheDocument();
   });
 });
