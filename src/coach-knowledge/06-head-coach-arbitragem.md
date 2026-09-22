@@ -16,6 +16,10 @@ Carol DIZ. Um ficheiro "de gamificação" seria um ficheiro que a doutrina da
 Carol nunca abriria — e a regra existe precisamente para ser aplicada ao
 falar.
 
+**Acrescentada em 2026-09-22 a entrada #7** — os prints que faltam: a Carol
+diz o padrão uma vez, em vez de um painel que avisava a cada registo. Também
+decisão de produto, e aqui pela mesma razão: é uma regra sobre o que ela diz.
+
 **Este bloco vinha marcado no questionário como "parcialmente de produto, não
 de literatura pura" — e essa reserva revelou-se desnecessária.** As cinco
 perguntas voltaram com fontes canónicas e números concretos, incluindo as de
@@ -315,6 +319,46 @@ A diferença entre este bloco e o geral é a diferença que a doutrina já fazia
 lá a proteção é **estrutural** (ela não tem o dado), aqui é **declarada** (ela
 tem o dado e sabe porquê). A segunda é mais fraca do que a primeira — por
 isso só se aplica a um badge de cada vez, e só depois de ele carregar.
+
+### #7 — Os prints que faltam: dizer o padrão, uma vez
+
+> **Decisão de produto, 2026-09-22** — não vem de `specs/coach-investigacao.md`.
+> Fica neste bloco pelo mesmo motivo do #6: é uma regra sobre o que a Carol
+> DIZ, e é a aplicação direta do R2.
+
+```
+Valor:     Quando as corridas recentes chegam, por hábito, sem um ecrã que a
+           app sabe ler (zonas de FC, limiares, dinâmica de corrida), a
+           Carol diz-lhe UMA vez que print acrescentar e o que ganha com ele.
+           Padrão = ≥3 corridas por print nos últimos 30 dias, o ecrã falta
+           em mais de metade E na mais recente. Um registo isolado não é
+           nada; quando ele manda o ecrã uma vez, ela cala-se.
+Como:      Comenta O PADRÃO, NÃO O NÚMERO (R2 do #6): "as tuas corridas têm
+           chegado sem as zonas", nunca "faltam em 7 de 8". Informação, não
+           repreensão — a culpa era da app, que nunca lhe disse que ecrãs
+           valiam a pena. Nunca abre a conversa com isto nem o mete no meio
+           de outro assunto; se já o disse, não repete.
+           Só nomeia o ecrã se souber a app; um ecrã por confirmar
+           (`confirmado: false` em `_shared/sourceApps.ts`) diz-se como
+           sugestão. Só promete o que a app faz com o dado: as zonas dão a
+           distribuição 80/20 e o Mestre da Z2 (que sem elas nunca cai);
+           limiares e dinâmica ficam no cartão da corrida — nenhum dos dois
+           calibra zonas nem alimenta uma análise da técnica.
+           A iniciante não sugere a dinâmica de corrida (#4: oscilação
+           vertical e GCT são tema contraindicado).
+Porquê:    Medido a 2026-09-22 — a mesma corrida deu 16 campos com 4 prints
+           e 8 com 1. Um perfil tem 73 corridas e zero com zonas. O painel de
+           métricas em falta avisava a cada registo e era dispensado; um
+           aviso repetido é ruído, uma observação feita uma vez é conselho.
+Confiança: n/a — decisão de produto.
+```
+
+✅ **Implementado a 2026-09-22.** `buildCaptureCoverageContext`
+(`_shared/carolMemory.ts`, 1.9) conta, por ecrã do catálogo, as corridas que
+chegaram sem NENHUM dos campos desse ecrã — pelos campos, não pela
+`source_app`, que os registos antigos não têm. Entra no `coach-chat` só em
+turnos com mensagem do atleta: nos turnos em que é ela a abrir a conversa o
+bloco não está lá, e é essa ausência — como no #6 — a proteção a sério.
 
 ---
 

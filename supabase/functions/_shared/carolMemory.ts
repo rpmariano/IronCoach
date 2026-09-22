@@ -33,6 +33,7 @@ import {
   familiaDoBadge,
   nomeDoBadge,
 } from "./badgeCatalog.ts";
+import { SOURCE_APPS, type SourceApp, type SourceScreen } from "./sourceApps.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
 // Quota por tipo: as refeições são várias por dia e, com um teto só,
@@ -421,6 +422,239 @@ export function buildBadgeQuestionContext(ctx: any): string | null {
         `datas, horas ou rotas para o fechar. Um amuleto perseguido deixa de ser um amuleto, e um contador ` +
         `empurrado é carga aguda a subir sem ele dar por isso.`) +
     `\nFala em linguagem de pessoa: o nome do badge, nunca a chave; o que a regra quer dizer, nunca o nome do campo.`;
+}
+
+// ── 1.9 — Os prints que costumam faltar (captura de dados) ───────────────
+
+/* O padrão de prints em falta, dito uma vez pela Carol em vez de um painel
+ * que se dispensa a cada registo (`MissingMetricsBottomSheet`).
+ *
+ * Porque existe: a mesma corrida registada com 4 prints deu 16 campos, com 1
+ * print deu 8 (medido a 2026-09-22, ver `_shared/sourceApps.ts`). Um perfil
+ * tem 73 corridas, 1,44 prints de média e ZERO com zonas de FC — o painel
+ * avisava, era dispensado e esquecia-se. A Carol lembra-se; o painel não.
+ *
+ * Decisões, pela ordem em que importam:
+ *
+ * 1. CONTA-SE PELOS CAMPOS, NÃO PELA `source_app`. Os registos anteriores a
+ *    2026-09-22 não a têm. Por cada ecrã do catálogo conta-se quantas
+ *    corridas recentes chegaram sem NENHUM dos campos desse ecrã. O primeiro
+ *    ecrã de cada app (o resumo) nunca entra: se faltasse, não havia registo.
+ *
+ * 2. SÓ HÁ BLOCO QUANDO HÁ PADRÃO (doutrina 6 #6, R2: "comenta O PADRÃO, NÃO
+ *    O NÚMERO"). Um ecrã só é sugerido quando, nas corridas recentes
+ *    registadas por print:
+ *      - há pelo menos 3 (CAPTURA_MIN_REGISTOS) — a mesma régua de
+ *        confirmação de um sinal que a doutrina já usa ("persistir ≥2-3
+ *        sessões", 2.2 #5); com menos, um registo isolado passava por hábito;
+ *      - faltou em MAIS DE METADE — tolera o registo em que ele mandou tudo
+ *        sem apagar o padrão dos outros;
+ *      - e faltou TAMBÉM NA MAIS RECENTE. Assim que ele manda o ecrã uma vez,
+ *        o bloco cala-se: o hábito está a mudar, e insistir seria repreender.
+ *    E o bloco não leva números ("7 de 8"), só "todas"/"a maioria": é a
+ *    ausência do número que a impede de o citar — o mesmo desenho do
+ *    `buildBadgesContext`.
+ *
+ * 3. A JANELA: os últimos 30 dias (CAPTURA_JANELA_DIAS), até às 20 corridas
+ *    mais recentes. São os mesmos 30 dias do painel de indicadores do chat
+ *    (RUNNING_WINDOW_DAYS em coach-chat): a distribuição 80/20 que ela lê
+ *    sai exatamente destas corridas, por isso "sem zonas" aqui é "painel
+ *    cego" ali. Uma janela mais longa lembrava-se de um hábito que já mudou.
+ *
+ * 4. SÓ CONTAM CORRIDAS VINDAS DE PRINT: com `source_app` ou com algum campo
+ *    do ecrã de resumo em `details`. Uma corrida manual só com distância e
+ *    tempo não é um print a que faltou um ecrã. E os ecrãs de FC só contam
+ *    corridas com FC: sem FC média nem máxima o relógio não a mediu, e não
+ *    há ecrã de zonas para pedir.
+ *
+ * 5. O ECRÃ SÓ SE NOMEIA COM A APP CONHECIDA. A app é a da corrida mais
+ *    recente que tenha `source_app`. Se essa for `desconhecida` (ou outra
+ *    chave que o catálogo não tenha), NÃO se recua para uma mais antiga que
+ *    se conheça: ele pode ter mudado de app, e nomear o ecrã da antiga era
+ *    mandá-lo procurar um sítio que já não existe. Sem app, fala-se dos
+ *    dados ("as zonas de frequência cardíaca") e mais nada. Um ecrã com
+ *    `confirmado: false` pode ser nomeado, mas como sugestão, não como
+ *    certeza.
+ *
+ * 6. SÓ SE PROMETE O QUE O CÓDIGO USA (verificado a 2026-09-22):
+ *    - hr_zones → a distribuição de intensidade (computeTrainingDistribution:
+ *      o painel de indicadores do chat e o RunDashboard), os minutos por
+ *      zona em cada corrida que ela lê (summariseRuns) e o Mestre da Z2
+ *      (src/utils/badges.js — sem zonas o treino fica INDETERMINADO).
+ *    - limiares → o cartão da corrida (RunCard) e a linha de cada corrida
+ *      que ela lê. NÃO calibram as zonas: essas saem da FC máxima e da FC de
+ *      repouso (resolveHrZones), e o bloco diz-lhe isso para não o prometer.
+ *    - dinâmica de corrida → SÓ o cartão da corrida ("Biomecânica de
+ *      Corrida"). Nenhuma análise da Carol lê estes campos; o bloco diz-lhe
+ *      que não prometa uma análise da técnica que não existe.
+ *    Um ecrã cujos campos não caiam em nenhum destes grupos não é sugerido:
+ *    sem ganho verificado, pedir um print a mais é só trabalho para ele.
+ *
+ * 7. A DINÂMICA DE CORRIDA NÃO SE SUGERE A INICIANTE (nem com o nível por
+ *    saber): a doutrina 6 #4 põe a oscilação vertical e o GCT na lista de
+ *    temas contraindicados a esse nível.
+ *
+ * Não é sobre badges. O Mestre da Z2 aparece como consequência e mais nada.
+ */
+
+export const CAPTURA_JANELA_DIAS = 30;
+export const CAPTURA_MAX_REGISTOS = 20;
+const CAPTURA_MIN_REGISTOS = 3;
+
+/* Colunas de `runs` que o catálogo lista no ecrã de resumo por conveniência
+   do painel de métricas em falta — não vivem em `details` (ver o comentário
+   do ecrã `resumo` em sourceApps.ts). Não servem de prova de print: uma
+   corrida manual também as tem. */
+const COLUNAS_DE_RUNS = new Set(["distance_km", "duration_seconds"]);
+const CAMPOS_DE_FC = ["avg_heart_rate_bpm", "max_heart_rate_bpm"];
+
+interface GrupoDeDados {
+  id: string;
+  campos: string[];
+  /** Os dados, em linguagem de pessoa — é assim que se fala sem app conhecida. */
+  dados: string;
+  /** O que se ganha, só o que o código da app de facto usa (ver 6. acima). */
+  ganho: string;
+  /** Só faz sentido pedir este dado a uma corrida em que o relógio mediu FC. */
+  exigeFC: boolean;
+  /** Níveis a quem este dado é tema contraindicado (doutrina 6 #4). Com o
+   *  nível desconhecido também fica de fora: o lado seguro é não o sugerir. */
+  contraindicadoA?: string[];
+}
+
+const NIVEIS = ["iniciante", "basico", "medio", "avancado"];
+
+const GRUPOS_DE_DADOS: GrupoDeDados[] = [
+  {
+    id: "zonas",
+    campos: ["hr_zones"],
+    dados: "as zonas de frequência cardíaca (os minutos em cada zona)",
+    ganho: "a distribuição de intensidade (o 80/20 que tu lês no painel de indicadores e ele vê no painel de " +
+      "corrida só se calcula com elas) e os minutos por zona de cada corrida. E o Mestre da Z2: sem zonas esse " +
+      "badge não lhe pode cair, por bem feitos que sejam os treinos fáceis",
+    exigeFC: true,
+  },
+  {
+    id: "limiares",
+    campos: ["aerobic_threshold_bpm", "anaerobic_threshold_bpm"],
+    dados: "os limiares aeróbio e anaeróbio",
+    ganho: "ficam no cartão da corrida e passam a chegar-te em cada corrida, para veres como evoluem. " +
+      "Não recalibram as zonas que a app calcula (essas saem da FC máxima), por isso não lho prometas",
+    exigeFC: true,
+  },
+  {
+    id: "dinamica",
+    campos: ["ground_contact_time_ms", "vertical_oscillation_cm", "flight_time_ms", "leg_stiffness_kn_m", "regularity_score"],
+    dados: "a dinâmica de corrida (tempo de contacto com o solo, oscilação vertical, tempo de voo)",
+    ganho: "ficam no cartão da corrida, na secção de biomecânica, para ele acompanhar. Tu hoje não recebes estes " +
+      "números: não prometas uma análise da técnica",
+    exigeFC: false,
+    // 6 #4: "métricas avançadas (oscilação vertical, … GCT)" são tema
+    // contraindicado a iniciante. Sugerir o print era trazê-las à conversa.
+    contraindicadoA: ["iniciante"],
+  },
+];
+
+function temCampo(details: Record<string, unknown>, campo: string): boolean {
+  const v = details[campo];
+  if (v === null || v === undefined || v === "") return false;
+  if (Array.isArray(v)) return v.length > 0;
+  return true;
+}
+
+function gruposDoEcra(ecra: SourceScreen, nivel: string | null): GrupoDeDados[] {
+  return GRUPOS_DE_DADOS.filter((g) =>
+    g.campos.some((c) => ecra.campos.includes(c)) &&
+    !(g.contraindicadoA && (!nivel || !NIVEIS.includes(nivel) || g.contraindicadoA.includes(nivel)))
+  );
+}
+
+/**
+ * O padrão de ecrãs em falta nas corridas recentes, ou null se não houver
+ * padrão. `rows`: corridas com `date` e `details` (ou só as chaves de
+ * `details` que o catálogo usa — é o que `fetchChatMemoryBlocks` projeta).
+ * `nivel`: `profiles.experience_level`, para os temas contraindicados (6 #4).
+ * `apps` existe para os testes poderem usar um catálogo seu.
+ */
+export function buildCaptureCoverageContext(
+  rows: any[] | null | undefined,
+  opts: { nivel?: string | null; apps?: Record<string, SourceApp> } = {},
+): string | null {
+  const apps = opts.apps ?? SOURCE_APPS;
+  const nivel = typeof opts.nivel === "string" ? opts.nivel : null;
+  const appsDeCorrida = Object.keys(apps).sort()
+    .map((k) => ({ chave: k, app: apps[k] }))
+    .filter((a) => a.app?.dominio === "corrida" && Array.isArray(a.app.ecras));
+  if (!appsDeCorrida.length) return null;
+
+  // O que prova que uma corrida veio de print: os campos do resumo que vivem em details.
+  const camposDoResumo = new Set<string>();
+  for (const { app } of appsDeCorrida) {
+    for (const c of app.ecras[0]?.campos || []) if (!COLUNAS_DE_RUNS.has(c)) camposDoResumo.add(c);
+  }
+
+  const corridas = (rows || [])
+    .filter((r) => r && typeof r.date === "string")
+    .map((r) => ({ date: r.date.slice(0, 10), details: (r.details && typeof r.details === "object" ? r.details : {}) as Record<string, unknown> }))
+    .filter((r) => typeof r.details.source_app === "string" || [...camposDoResumo].some((c) => temCampo(r.details, c)))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, CAPTURA_MAX_REGISTOS);
+  if (corridas.length < CAPTURA_MIN_REGISTOS) return null;
+
+  // A app da corrida mais recente que a diga — conhecida ou não (ver 5. acima).
+  const chaveRecente = corridas.find((r) => typeof r.details.source_app === "string")?.details.source_app as string | undefined;
+  const appConhecida = chaveRecente && apps[chaveRecente]?.dominio === "corrida" ? apps[chaveRecente] : null;
+
+  // Os ecrãs a avaliar: os da app conhecida, ou — sem ela — os de todas as
+  // apps de corrida, com os grupos de dados repetidos contados uma vez só.
+  const candidatos: SourceScreen[] = [];
+  const vistos = new Set<string>();
+  for (const app of appConhecida ? [appConhecida] : appsDeCorrida.map((a) => a.app)) {
+    for (const ecra of app.ecras.slice(1)) {
+      const assinatura = gruposDoEcra(ecra, nivel).map((g) => g.id).join("+");
+      if (!assinatura || (!appConhecida && vistos.has(assinatura))) continue;
+      vistos.add(assinatura);
+      candidatos.push(ecra);
+    }
+  }
+
+  const linhas: string[] = [];
+  for (const ecra of candidatos) {
+    const grupos = gruposDoEcra(ecra, nivel);
+    const exigeFC = grupos.every((g) => g.exigeFC);
+    const elegiveis = exigeFC ? corridas.filter((r) => CAMPOS_DE_FC.some((c) => temCampo(r.details, c))) : corridas;
+    if (elegiveis.length < CAPTURA_MIN_REGISTOS) continue;
+    const semEcra = elegiveis.filter((r) => !ecra.campos.some((c) => temCampo(r.details, c)));
+    // Padrão = a maioria E a mais recente (ver 2. acima).
+    if (semEcra.length * 2 <= elegiveis.length || semEcra[0] !== elegiveis[0]) continue;
+
+    const quantas = semEcra.length === elegiveis.length ? "em todas as corridas recentes" : "na maioria das corridas recentes, incluindo a última";
+    const dados = grupos.map((g) => g.dados).join(" e ");
+    let onde: string;
+    if (!appConhecida) {
+      onde = "Não sabes de que app vêm os prints dele: fala dos dados, sem inventares o nome de uma app nem de um ecrã.";
+    } else if (ecra.confirmado) {
+      onde = `No ${appConhecida.nome}, estão no ecrã "${ecra.nome}".`;
+    } else {
+      onde = `No ${appConhecida.nome}, devem estar no ecrã "${ecra.nome}" — é onde contamos que estejam, mas ainda não ` +
+        `está confirmado com prints reais: sugere-o ("deve estar no ecrã…"), não o afirmes como certo.`;
+    }
+    linhas.push(`- ${dados[0].toUpperCase()}${dados.slice(1)}: faltaram ${quantas}. ${onde}\n` +
+      grupos.map((g) => `    o que ganha com ${g.dados.split(" (")[0]}: ${g.ganho}.`).join("\n"));
+  }
+  if (!linhas.length) return null;
+
+  return `PRINTS QUE COSTUMAM FALTAR NAS CORRIDAS (últimos ${CAPTURA_JANELA_DIAS} dias, só corridas registadas por print — ` +
+    `é sobre os dados que chegam à app, não sobre o treino dele):\n${linhas.join("\n")}\n` +
+    `COMO USAR (é uma sugestão a dar UMA vez, não um aviso):\n` +
+    `- Se já lhe falaste disto nas mensagens que tens desta conversa, não voltes ao assunto, a não ser que ele pergunte.\n` +
+    `- Nunca abras a conversa com isto nem o metas no meio de outro assunto. O sítio certo é quando ele falar de ` +
+    `uma corrida, de um registo, ou de alguma coisa que dependa destes dados.\n` +
+    `- É o padrão que comentas, não a contagem: "as tuas corridas têm chegado sem as zonas", nunca "faltam em N registos".\n` +
+    `- Se ele disser que o relógio ou a app dele não mostram isso, aceita e não voltes ao assunto.\n` +
+    `- Tom de informação útil, não de repreensão: diz o que acrescentar da próxima vez (o ecrã, se o souberes; ` +
+    `senão, os dados) e o que isso lhe dá, numa ` +
+    `ou duas frases. Ele não fez nada de errado — a app é que não lhe tinha dito que ecrãs valiam a pena.`;
 }
 
 // ── 5.2 — A proposta de objetivos por decidir ────────────────────────────
@@ -955,6 +1189,22 @@ export interface ChatMemoryBlocks {
   adherence: string | null;
   /** A proposta de objetivos por decidir (5.2). */
   proposals: string | null;
+  /** Os prints que costumam faltar nas corridas (1.9) — só quando há padrão. */
+  captureCoverage: string | null;
+}
+
+/* As chaves de `details` que `buildCaptureCoverageContext` lê: a fonte, a FC
+   (para saber se o relógio a mediu) e os campos de todos os ecrãs das apps
+   de corrida do catálogo. Projetadas uma a uma (`chave:details->chave`, o
+   precedente é o `details:details->splits` do retrato) em vez de `details`
+   inteiro. Derivadas do catálogo: uma app ou um campo novo entra sozinho. */
+function chavesDaCaptura(): string[] {
+  const chaves = new Set<string>(["source_app", ...CAMPOS_DE_FC]);
+  for (const app of Object.values(SOURCE_APPS)) {
+    if (app.dominio !== "corrida") continue;
+    for (const ecra of app.ecras) for (const c of ecra.campos) if (!COLUNAS_DE_RUNS.has(c)) chaves.add(c);
+  }
+  return [...chaves].sort();
 }
 
 /**
@@ -975,7 +1225,8 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     // O retrato da época (5.3) — extraído para fetchPortraitBlock, que o
     // cartão diário e o analyze-run também chamam via fetchSharedMemoryBlock.
     const portraitPromise = fetchPortraitBlock(sb, userId, todayISO);
-    const [runsR, gymR, mealsR, upcomingNotesR, cardR, badgesR, pastRacesR, bodyNotesR, goalsR] = await Promise.all([
+    const chavesCaptura = chavesDaCaptura();
+    const [runsR, gymR, mealsR, upcomingNotesR, cardR, badgesR, pastRacesR, bodyNotesR, goalsR, captureR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
         .eq("user_id", userId).gte("date", recordsFrom).lte("date", todayISO).or(hasText)
         .order("date", { ascending: false }).limit(RECORD_QUOTA.runs),
@@ -1007,6 +1258,12 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       sb.from("coach_goal_proposals").select("status, goals, rationale, created_at")
         .eq("user_id", userId).eq("status", "proposto")
         .order("created_at", { ascending: false }).limit(1),
+      // 1.9: os prints que costumam faltar. Só a data e as chaves de details
+      // que o catálogo usa, nunca details inteiro (os splits entram por serem
+      // do ecrã de resumo — são prova de que a corrida veio de um print).
+      sb.from("runs").select(["date", ...chavesCaptura.map((c) => `${c}:details->${c}`)].join(", "))
+        .eq("user_id", userId).gte("date", addDaysISO(todayISO, -(CAPTURA_JANELA_DIAS - 1))).lte("date", todayISO)
+        .order("date", { ascending: false }).limit(CAPTURA_MAX_REGISTOS),
     ]);
     warn("runs(notas)", runsR.error);
     warn("workout_sessions(notas)", gymR.error);
@@ -1017,6 +1274,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     warn("race_events(concluídas)", pastRacesR.error);
     warn("body_assessments(notas)", bodyNotesR.error);
     warn("coach_goal_proposals", goalsR.error);
+    warn("runs(captura)", captureR.error);
 
     const entries = [
       ...toRecordEntries(runsR.data, runLabel),
@@ -1054,9 +1312,14 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       pushes: await pushesPromise,
       adherence: await adherencePromise,
       proposals: buildGoalProposalContext((goalsR.data || [])[0] ?? null),
+      // Cada linha volta com as chaves soltas; reagrupam-se em `details`.
+      captureCoverage: buildCaptureCoverageContext((captureR.data || []).map((r: any) => ({
+        date: r?.date,
+        details: Object.fromEntries(chavesCaptura.map((c) => [c, r?.[c]])),
+      })), { nivel: profile?.experience_level ?? null }),
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, raceHistory: null, badges: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null };
+    return { records: null, dailyCard: null, raceHistory: null, badges: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null, captureCoverage: null };
   }
 }

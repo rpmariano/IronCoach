@@ -5790,6 +5790,13 @@ async function handler(req: Request): Promise<Response> {
       memoryBlocks.proposals,
       buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
       memoryBlocks.records,
+      // Os prints que costumam faltar nas corridas (1.9) — logo a seguir aos
+      // registos, porque é sobre como eles chegam à app. Só em turnos com
+      // mensagem do atleta: num turno em que é ela a abrir a conversa
+      // (proativo, intervenção, "Adaptar Plano") a conversa é sobre outro
+      // assunto, e a regra é nunca abrir com isto. Como nos badges, a
+      // proteção a sério é o bloco não estar lá, não a instrução dentro dele.
+      message && !proactiveTrigger ? memoryBlocks.captureCoverage : null,
       // O que ela prescreveu e o que aconteceu (Fase 3).
       memoryBlocks.adherence,
       memoryBlocks.dailyCard,

@@ -34,7 +34,7 @@ tal, e não reclama confiança de literatura nenhuma.
 | [04-nutricao-seguranca.md](04-nutricao-seguranca.md) | RED-S, défice máximo, piso de gordura corporal |
 | [04-nutricao-treino-prova.md](04-nutricao-treino-prova.md) | Timing peri-treino, carga de hidratos, cafeína, sódio |
 | [05-corpo.md](05-corpo.md) | Métricas de bioimpedância fiáveis, metas realistas, transtornos alimentares |
-| [06-head-coach-arbitragem.md](06-head-coach-arbitragem.md) | Hierarquia de alarmes, comunicação por nível, o que nunca dizer, os badges que nunca se sugerem |
+| [06-head-coach-arbitragem.md](06-head-coach-arbitragem.md) | Hierarquia de alarmes, comunicação por nível, o que nunca dizer, os badges que nunca se sugerem, os prints que faltam |
 | [07-sugestoes-alimentares.md](07-sugestoes-alimentares.md) | Macros por refeição, equivalência g/kg→alimentos, pré-prova, restrições |
 | [08-nivel-por-prova-trail.md](08-nivel-por-prova-trail.md) | Nível para uma prova concreta, bandas D+/km, pré-requisitos de trail, triagem por Tempo em Pé |
 
