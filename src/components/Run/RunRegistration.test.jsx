@@ -26,11 +26,19 @@ const mocks = vi.hoisted(() => ({
   // Prints a editar: as signed URLs podem falhar; o que sai do bucket regista-se.
   signError: null,
   removed: [],
+  // A prova automática (autoCreateRaceForCompetition) insere em race_events
+  // — por omissão devolve null/null (o comportamento inerte de sempre); os
+  // testes que a exercitam de facto definem insertResult antes de gravar.
+  inserts: [],
+  insertResult: null,
 }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: (table) => ({
-      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+      insert: (payload) => {
+        mocks.inserts.push({ table, payload });
+        return { select: () => ({ single: () => Promise.resolve(mocks.insertResult || { data: null, error: null }) }) };
+      },
       update: (payload) => ({
         eq: (col, val) => {
           mocks.updates.push({ table, payload, id: val });
@@ -103,7 +111,7 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
   it('envia race_type (não training_type) para uma competição', async () => {
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-1' } }, error: null });
     render(<RunRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
     await selectPhoto();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
@@ -201,12 +209,25 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
     expect(screen.queryByPlaceholderText('Ex: 48.5')).not.toBeInTheDocument(); // VO2 Max is an extra field
   });
 
-  it('ao escolher Manual, esconde o upload e mostra os campos manuais extra', () => {
+  /* Bug relatado 2026-09-21: "O tempo da corrida aparece para fazer o
+     registo manual, mesmo estando escolhido a opção de análise do coach.
+     Esses campos só deveriam surgir na opção manual." Distância e duração
+     (renderCoreMetrics) renderizavam-se sempre, antes da própria escolha do
+     método — mostravam-se mesmo com "Foto (IA)" selecionada. */
+  it('com "Foto (IA)" selecionada (por omissão), não mostra distância nem duração — só a IA os dá', () => {
+    render(<RunRegistration onClose={onClose} />);
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument(); // Distância
+    expect(screen.queryByPlaceholderText('00:00')).not.toBeInTheDocument(); // Duração
+  });
+
+  it('ao escolher Manual, esconde o upload e mostra os campos manuais extra, incluindo distância e duração', () => {
     render(<RunRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ex: 48.5')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument(); // Distância
+    expect(screen.getByPlaceholderText('00:00')).toBeInTheDocument(); // Duração
     expect(screen.getByRole('button', { name: /Analisar corrida/i })).toBeInTheDocument();
   });
 
@@ -340,6 +361,8 @@ describe('RunRegistration — regista sem vir do botão "Registar sessão" (bate
     mocks.invoke.mockReset().mockResolvedValue({ data: { run: { id: 'run-frio' } }, error: null });
     mocks.updateRun.mockReset().mockResolvedValue({ error: null });
     mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
     onClose.mockClear();
     useAppStore.setState({
       profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, planItemPrefill: null,
@@ -472,6 +495,8 @@ describe('RunRegistration — editar corrida existente', () => {
     it('com as signed URLs a falhar, nada se remove: guardar continua pelos campos e não toca nos prints', async () => {
       mocks.signError = { message: 'token expirado' };
       mocks.updates.length = 0;
+      mocks.inserts.length = 0;
+      mocks.insertResult = null;
       mocks.removed.length = 0;
       try {
         useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
@@ -496,6 +521,8 @@ describe('RunRegistration — editar corrida existente', () => {
 
     it('com todos os prints removidos, guarda pelos campos e a corrida fica sem imagens', async () => {
       mocks.updates.length = 0;
+      mocks.inserts.length = 0;
+      mocks.insertResult = null;
       mocks.removed.length = 0;
       useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
       render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
@@ -834,6 +861,8 @@ describe('RunRegistration — modo prova', () => {
     mocks.invoke.mockReset().mockResolvedValue({ data: { run: { id: 'run-race-1' } }, error: null });
     mocks.updateRun.mockReset().mockResolvedValue({ error: null });
     mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
     mocks.uploads.length = 0;
     mocks.uploadError = null;
     onClose.mockClear();
@@ -885,7 +914,7 @@ describe('RunRegistration — modo prova', () => {
     render(<RunRegistration onClose={onClose} />);
 
     expect(screen.queryByLabelText('Qual prova?')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
 
     const seletor = screen.getByLabelText('Qual prova?');
     // Por omissão, o comportamento de hoje: competição sem prova da agenda.
@@ -904,7 +933,7 @@ describe('RunRegistration — modo prova', () => {
       raceEvents: [{ ...PROVA, date: longe.toISOString().slice(0, 10) }],
     });
     render(<RunRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
 
     expect(screen.queryByLabelText('Qual prova?')).not.toBeInTheDocument();
   });
@@ -987,7 +1016,7 @@ describe('RunRegistration — modo prova', () => {
     useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [] });
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-9', kind: 'competicao', distance_km: 10, duration_seconds: 3088, details: { official_time_seconds: 3087, position: 1668, avg_heart_rate_bpm: 160, cadence_spm: 170, elevation_gain_m: 40, avg_pace_seconds_per_km: 309 } } }, error: null });
     render(<RunRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
     await selectPhoto();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
@@ -1289,6 +1318,111 @@ describe('RunRegistration — modo prova', () => {
   });
 });
 
+/* "Todas as competições passam a ser provas" (pedido 2026-09-21): "Prova
+   fora da agenda" deixa de deixar a competição por ligar — a prova
+   cria-se sozinha, com o que o próprio registo já sabe. */
+describe('RunRegistration — a prova cria-se sozinha quando é "fora da agenda"', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.updateRun.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, shoes: [], coachPlans: [], coachPlanItems: [] });
+  });
+
+  it('grava a prova em race_events e liga a corrida a ela', async () => {
+    const novaProva = { id: 'race-auto-1', name: 'Corrida da Ponte', date: '2026-09-20', race_type: 'estrada', distance_km: 10, status: 'concluida' };
+    mocks.insertResult = { data: novaProva, error: null };
+    mocks.invoke.mockResolvedValue({
+      data: { run: { id: 'run-auto-1', kind: 'competicao', name: 'Corrida da Ponte', date: '2026-09-20', distance_km: 10, duration_seconds: 3000 } },
+      error: null,
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+
+    // A prova gravou-se com o que a corrida já sabia — objetivo é o próprio
+    // resultado, porque a coluna não admite "sem meta" (NOT NULL, > 0).
+    await waitFor(() => expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(true));
+    const provaGravada = mocks.inserts.find(i => i.table === 'race_events').payload;
+    expect(provaGravada).toMatchObject({
+      name: 'Corrida da Ponte', date: '2026-09-20', distance_km: 10, status: 'concluida', race_type: 'estrada',
+      target_time_seconds: 3000, target_pace_seconds_per_km: 300,
+    });
+
+    // E a corrida ficou ligada à prova que acabou de nascer.
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.payload.race_id === 'race-auto-1'),
+    ).toBe(true));
+  });
+
+  it('sem distância ou duração, não tenta criar prova nenhuma', async () => {
+    mocks.invoke.mockResolvedValue({
+      data: { run: { id: 'run-auto-2', kind: 'competicao', name: 'Corrida sem dados', date: '2026-09-20', distance_km: null, duration_seconds: null } },
+      error: null,
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(false);
+  });
+
+  it('se a criação da prova falhar, a corrida grava-se na mesma — só fica por ligar', async () => {
+    mocks.insertResult = { data: null, error: { message: 'falha de rede' } };
+    mocks.invoke.mockResolvedValue({
+      data: { run: { id: 'run-auto-3', kind: 'competicao', name: 'Corrida qualquer', date: '2026-09-20', distance_km: 10, duration_seconds: 3000 } },
+      error: null,
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+
+    // Tentou — e a corrida fechou-se na mesma, sem ficar presa no ecrã.
+    await waitFor(() => expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(true));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.updates.some(u => u.table === 'runs' && u.payload.race_id)).toBe(false);
+  });
+
+  it('escolher uma prova já agendada continua a ligar-se a ela — não cria uma segunda', async () => {
+    const jaAgendada = { id: 'race-jaagendada', name: 'Meia de Lisboa', date: todayISO(), race_type: 'estrada', distance_km: 21.0975, status: 'agendada', target_time: '1:52:00' };
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [jaAgendada], runRacePrefill: null, shoes: [] });
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-auto-4' } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+
+    fireEvent.change(screen.getByLabelText('Qual prova?'), { target: { value: 'race-jaagendada' } });
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByPlaceholderText('ex.: 1:45:00'), { target: { value: '1:50:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.payload.race_id === 'race-jaagendada'),
+    ).toBe(true));
+    // Nenhuma prova nova — ligou-se à que já existia na agenda.
+    expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(false);
+  });
+});
 
 /* Hora de início da corrida (specs/plano-de-prova.md, "A véspera e a hora").
    Opcional, ao lado da data, e sem valor por omissão. Quem insere a linha em
@@ -1301,6 +1435,8 @@ describe('RunRegistration — hora de início', () => {
     mocks.invoke.mockReset();
     mocks.updateRun.mockReset().mockResolvedValue({ error: null });
     mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
     onClose.mockClear();
     localStorage.clear();
     useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [] });

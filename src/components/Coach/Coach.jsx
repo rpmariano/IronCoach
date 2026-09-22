@@ -993,6 +993,7 @@ export default function Coach() {
           profile={profile}
           onRespondGoal={handleRespondGoal}
           onClose={handleCloseProposalsSheet}
+          raceEvents={raceEvents}
         />
       )}
       {planStart && <RecordConfirmation label="Plano aceite" first={planStart} onDone={() => setPlanStart(null)} />}

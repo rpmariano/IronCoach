@@ -102,7 +102,11 @@ export const TIPOS_TREINO = {
 };
 
 export function runKindLabel(run) {
-  if (run?.kind === 'competicao') return 'Competição';
+  /* 'Prova', não 'Competição': veio do dev em 2026-09-22 ("toda a competição
+     passa a ser uma prova", 215eb34). A alteração deles foi feita em
+     medalhoes.js, de onde esta função já tinha saído — é aqui que ela vive
+     agora, e é aqui que a mudança tem de estar para não se perder no merge. */
+  if (run?.kind === 'competicao') return 'Prova';
   if (run?.kind === 'treino' && run.training_type) return TIPOS_TREINO[run.training_type] || capitalize(run.training_type);
   return 'Corrida';
 }

@@ -83,11 +83,15 @@ describe('CreatedRecordModal', () => {
   /* Pedido do utilizador (2026-09-01): o "Eliminar avaliação" do cartão de
      pré-visualização era um botão só de decoração — o wrapper
      pointer-events-none do preview desativa-o — e vivia isolado lá em
-     cima, longe de "Atualizar registo"/"Fechar" (rodapé à parte). Os três
-     botões devem de estar juntos no mesmo frame, e "Fechar" deve de ser o
-     mais destacado dos três. */
-  describe('Fechar, Atualizar registo e Eliminar juntos', () => {
-    it('mostra os três botões no mesmo frame, com "Fechar" como o mais destacado (variant primary)', () => {
+     cima, longe de "Fechar" (rodapé à parte). Os dois botões devem de
+     estar juntos no mesmo frame, e "Fechar" deve de ser o mais destacado
+     dos dois.
+
+     Havia um terceiro, "Atualizar registo" — saiu (2026-09-21): "acabamos
+     de o submeter, atualização só se for ver o detalhe". Editar continua
+     possível a partir do cartão do dia no Calendário. */
+  describe('Fechar e Eliminar juntos', () => {
+    it('mostra os dois botões no mesmo frame, com "Fechar" como o mais destacado (variant primary)', () => {
       mockStore({
         newlyCreatedRecord: { type: 'body', record: { id: 'a1', date: '2026-08-24', weight_kg: 79.2 } },
       });
@@ -96,19 +100,24 @@ describe('CreatedRecordModal', () => {
       // PremiumModal também tem o seu próprio X com aria-label="Fechar" —
       // filtra pelo texto visível do botão para apanhar só o nosso.
       const fechar = screen.getAllByRole('button', { name: 'Fechar' }).find((el) => el.textContent === 'Fechar');
-      const atualizar = screen.getByRole('button', { name: /Atualizar registo/i });
       const eliminar = screen.getByRole('button', { name: /^Eliminar$/i });
 
-      // Mesmo contentor (frame) — o pai imediato comum aos três.
-      expect(fechar.parentElement).toBe(atualizar.parentElement);
-      expect(atualizar.parentElement).toBe(eliminar.parentElement);
+      // Mesmo contentor (frame) — o pai imediato comum aos dois.
+      expect(fechar.parentElement).toBe(eliminar.parentElement);
 
       // "Fechar" é o variant="primary" (preenchido, cor de destaque) —
-      // o mais visualmente destacado dos três; os outros dois são
-      // variantes secundárias (outline/danger-outline).
+      // o mais visualmente destacado dos dois; "Eliminar" é secundário
+      // (danger-outline).
       expect(fechar.className).toMatch(/bg-\[var\(--accent\)\]/);
-      expect(atualizar.className).not.toMatch(/bg-\[var\(--accent\)\]/);
       expect(eliminar.className).not.toMatch(/bg-\[var\(--accent\)\]/);
+    });
+
+    it('não mostra "Atualizar registo" — o registo acabou de ser submetido, não há nada por atualizar ainda', () => {
+      mockStore({
+        newlyCreatedRecord: { type: 'body', record: { id: 'a1', date: '2026-08-24', weight_kg: 79.2 } },
+      });
+      render(<CreatedRecordModal />);
+      expect(screen.queryByRole('button', { name: /Atualizar registo/i })).not.toBeInTheDocument();
     });
 
     it('pede ao cartão de pré-visualização para esconder as suas próprias Ações (Editar/Eliminar) — evita um "Eliminar" duplicado e inerte', () => {

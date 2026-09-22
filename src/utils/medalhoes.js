@@ -151,7 +151,13 @@ function slot(fields) {
 /* O nome de um registo (`runKindLabel`), a distância numa linha
    (`fmtKmLinha`) e a ordem da lista (`newestFirst`) vivem no motor
    (utils/premios.js) desde que os badges de treino (utils/badges.js)
-   passaram a montar as mesmas listas. */
+   passaram a montar as mesmas listas.
+
+   Merge de 2026-09-22: o `dev` trouxe "toda a competição passa a ser uma
+   prova" (215eb34) e mudou aqui o rótulo de 'Competição' para 'Prova'.
+   Como estas funções já tinham saído para o motor, ficar com o nosso lado
+   deste conflito apagava essa alteração em silêncio — foi levada para
+   `premios.js`, que é onde a função agora vive. */
 
 function raceContribution({ race, run, outcome }, { metaExtra = [], ...extra } = {}) {
   return {

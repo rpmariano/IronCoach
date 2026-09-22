@@ -1633,8 +1633,12 @@ export async function runGetGymHistory(sb: any, userId: string, args: { start_da
 }
 
 // ── Corrida ──────────────────────────────────────────────────────────────
+// "competicao" chama-se "Prova" na interface (2026-09-21): toda a
+// competição passou a ser uma prova, mesmo sem estar na agenda (ver
+// RunRegistration.jsx, autoCreateRaceForCompetition). O valor interno
+// mantém-se "competicao" — só o rótulo que a Carol usa muda.
 const RUN_KIND_LABELS: Record<string, string> = {
-  simples: "Simples", treino: "Treino", competicao: "Competição",
+  simples: "Simples", treino: "Treino", competicao: "Prova",
 };
 // Os momentos em que ela pode notificar (P.5/P.6), como se leem na bio.
 const PUSH_TYPE_LABELS: Record<string, string> = {

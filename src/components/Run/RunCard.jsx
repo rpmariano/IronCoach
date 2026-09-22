@@ -28,7 +28,11 @@ function paceSecPerKm(run) {
 }
 
 function runKindLabel(run) {
-  if (run.kind === 'competicao') return 'Competição';
+  // 'competicao' passou a chamar-se "Prova" na interface — toda a
+  // competição é agora uma prova (mesmo sem estar na agenda, ver
+  // RunRegistration.jsx, autoCreateRaceForCompetition). O valor interno
+  // 'competicao' mantém-se: recordes, conquistas e medalhas dependem dele.
+  if (run.kind === 'competicao') return 'Prova';
   if (run.kind === 'treino' && run.training_type) {
     const map = {
       continuo: 'Contínuo',
