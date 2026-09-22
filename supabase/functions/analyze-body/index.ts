@@ -10,6 +10,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -85,9 +86,14 @@ const RESPONSE_SCHEMA = {
       ),
       required: METRIC_FIELDS.map((f) => f.key),
     },
+    // Que app deu estes prints — ver _shared/sourceApps.ts. Não é uma
+    // métrica: é o que permite, um dia, dizer ao atleta QUE ECRÃ traz o que
+    // falta em vez de só nomear o campo. O enum inclui sempre "desconhecida":
+    // sem essa saída, um print da Withings era arrumado à força na Renpho.
+    source_app: { type: "STRING", nullable: true, enum: opcoesDeFonte("corpo") },
     summary: { type: "STRING" },
   },
-  required: ["metrics", "summary"],
+  required: ["metrics", "summary", "source_app"],
 };
 
 // Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
@@ -363,7 +369,15 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     "- No ecrã \"Comparativo\", cada cartão mostra o valor grande (atual) e por baixo uma variação " +
     "com sinal (ex.: \"−0.40\", \"+0.1\"). Extrai SEMPRE o valor grande atual, NUNCA a variação.\n" +
     "- No ecrã \"Tendências\" (gráfico), usa o valor mais recente/último ponto, não a meta nem os extremos.\n" +
-    "- Combina a informação de todas as imagens numa única leitura coerente da mesma pesagem.\n\n" +
+    "- Combina a informação de todas as imagens numa única leitura coerente da mesma pesagem.\n" +
+    "- source_app: identifica de QUE APLICAÇÃO são estes prints, pelo cabeçalho, pelo nome visível, pelo tipo " +
+    "de letra e pelo estilo do ecrã (cores, ícones, disposição dos cartões) — não pelos valores nem pelo facto " +
+    "de serem métricas de composição corporal, que são as mesmas em todas as balanças. Devolve exatamente uma " +
+    "destas chaves: " + opcoesDeFonte("corpo").join(", ") + ". A Renpho Health reconhece-se pelo nome no topo, " +
+    "pelo donut da Visão geral e pela terminologia própria (ex.: \"Gordura Viceral\" escrito assim, " +
+    "\"Peso corporal sem gordura\"). Se as imagens forem de outra app (Withings, Xiaomi Zepp, Tanita, Huawei " +
+    "Health...), ou se não tiveres a certeza, devolve \"" + FONTE_NAO_RECONHECIDA + "\" — nunca escolhas a app " +
+    "mais parecida por eliminação.\n\n" +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
     "\n\n" +
@@ -404,7 +418,13 @@ async function analyzeWithGemini(
   geminiKey: string,
   memoryBlock: string | null = null,
 ): Promise<
-  { metrics: Record<string, number | null>; classifications: Record<string, string>; summary: string; usage: GeminiUsage }
+  {
+    metrics: Record<string, number | null>;
+    classifications: Record<string, string>;
+    summary: string;
+    sourceApp: string;
+    usage: GeminiUsage;
+  }
 > {
   const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock) }];
   for (const b64 of images) {
@@ -443,7 +463,12 @@ async function analyzeWithGemini(
     cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
   };
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
-  let parsed: { metrics?: Record<string, unknown>; classifications?: Record<string, unknown>; summary?: unknown };
+  let parsed: {
+    metrics?: Record<string, unknown>;
+    classifications?: Record<string, unknown>;
+    summary?: unknown;
+    source_app?: unknown;
+  };
   try {
     parsed = JSON.parse(rawText);
   } catch {
@@ -475,8 +500,17 @@ async function analyzeWithGemini(
     }
   }
 
+  /* A fonte NÃO é uma classificação de métrica nenhuma — vai à boleia do
+     mesmo jsonb por uma razão prática: `body_assessments` não tem coluna
+     `details` (ao contrário de `runs`), e este trabalho não abre migrações.
+     `classifications` é indexado pelas chaves de METRIC_FIELDS, onde
+     "source_app" nunca pode cair, por isso não colide com nada. Se um dia
+     houver coluna própria, é daqui que sai. */
+  const sourceApp = normalizarFonte(parsed.source_app, "corpo");
+  classifications.source_app = sourceApp;
+
   const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
-  return { metrics, classifications, summary, usage };
+  return { metrics, classifications, summary, sourceApp, usage };
 }
 
 // Gera o resumo/comentário do Coach a partir de valores indicados manualmente
@@ -731,7 +765,7 @@ Deno.serve(async (req) => {
       if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
 
       await syncProfileAfterAssessment(sb, userId, updated);
-      return jsonResponse({ assessment: updated, usage: result.usage });
+      return jsonResponse({ assessment: updated, source_app: result.sourceApp, usage: result.usage });
     }
 
     // ── Modo normal: nova avaliação a partir de imagens ────────────────
@@ -815,7 +849,10 @@ Deno.serve(async (req) => {
     await checkAndLogAppImage(sb, userId, "body", images, mime, result as unknown as Record<string, unknown>);
 
     await syncProfileAfterAssessment(sb, userId, assessment);
-    return jsonResponse({ assessment, usage: result.usage });
+    /* A fonte também à cabeça da resposta, e não só escondida dentro de
+       `classifications` — é onde o cliente a vai buscar sem ter de saber do
+       arranjo do jsonb. */
+    return jsonResponse({ assessment, source_app: result.sourceApp, usage: result.usage });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);

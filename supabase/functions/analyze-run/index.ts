@@ -25,6 +25,7 @@ import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
+import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -127,12 +128,19 @@ const RESPONSE_SCHEMA = {
     asymmetry_pct: { type: "NUMBER", nullable: true },
     leg_stiffness_kn_m: { type: "NUMBER", nullable: true },
     regularity_score: { type: "NUMBER", nullable: true },
+    // Que app deu estes prints. Não é uma métrica: é o que permite, depois,
+    // dizer ao atleta QUE ECRÃ traz o que falta em vez de só nomear o campo
+    // em falta (ver _shared/sourceApps.ts). O enum inclui sempre
+    // "desconhecida" — sem essa saída, um print do Strava era arrumado à
+    // força na app mais parecida, e a sugestão saía errada com toda a
+    // confiança do mundo.
+    source_app: { type: "STRING", nullable: true, enum: opcoesDeFonte("corrida") },
   },
   required: [
     "distance_km", "duration_seconds", "warmup_minutes",
     "recovery_seconds", "splits", "official_time_seconds", "position",
     "elevation_gain_m", "cadence_spm", "max_cadence_spm", "calories_kcal", "avg_heart_rate_bpm",
-    "max_heart_rate_bpm", "vo2_max", "hr_zones",
+    "max_heart_rate_bpm", "vo2_max", "hr_zones", "source_app",
   ],
 };
 
@@ -186,6 +194,15 @@ function buildPrompt(
     "cada linha como { zone, minutes } (zone = número da zona apresentado, ex: 1 a 5). Só devolve null se tiveres " +
     "a certeza de que NENHUMA das imagens mostra este ecrã.\n" +
     "- vo2_max: se houver um ecrã com o valor de VO2 máx (ou 'VO2max'/'VO2 Max') estimado para esta atividade, extrai-o.\n" +
+    "- source_app: identifica de QUE APLICAÇÃO são estes prints, pelo cabeçalho, pelo nome visível, pelo " +
+    "tipo de letra e pelo estilo do ecrã (cores, ícones, disposição dos cartões) — não pelos valores. " +
+    "Devolve exatamente uma destas chaves: " + opcoesDeFonte("corrida").join(", ") + ". " +
+    "A Samsung Health reconhece-se pelo cabeçalho com a data e a hora da atividade por cima do mapa, pelos " +
+    "cartões arredondados em grelha de dois e pela terminologia própria ('Perda por transpiração', " +
+    "'Hidratação recomendada', 'Rigidez das pernas', 'Regularidade'). Se as imagens forem de outra app " +
+    "(Strava, Garmin Connect, Nike Run Club, Apple Fitness, Coros...), ou se não tiveres a certeza de qual é, " +
+    "devolve \"" + FONTE_NAO_RECONHECIDA + "\" — nunca escolhas a app mais parecida por eliminação. Se os prints " +
+    "forem de apps diferentes, devolve a app do ecrã principal (o que tem distância e tempo).\n" +
     "Não inventes valores — se algum destes dados não estiver visível em nenhuma imagem, ou não te sentires " +
     "confiante, devolve null nesse campo em vez de arriscar.";
   if (kindHint === "treino") {
@@ -351,6 +368,9 @@ type RunExtraction = {
   asymmetry_pct?: number | null;
   leg_stiffness_kn_m?: number | null;
   regularity_score?: number | null;
+  /* Chave de _shared/sourceApps.ts, ou FONTE_NAO_RECONHECIDA. Nunca null:
+     normalizarFonte() garante sempre uma das duas coisas. */
+  source_app?: string;
 };
 
 /* Enquadramento da análise conforme a situação do atleta.
@@ -964,6 +984,16 @@ async function analyzeWithGemini(
       distance_km: num((s as Record<string, unknown>)?.distance_km),
       time_seconds: num((s as Record<string, unknown>)?.time_seconds),
     }))
+    /* OU, ao contrário das zonas logo abaixo, que exigem os dois campos.
+       A assimetria é deliberada (justificada a 2026-09-22, depois de ter
+       ficado por explicar): um split meio lido continua a ser informação —
+       aparece na tabela editável do registo e o atleta completa-o à mão —, e
+       quem o consome (computeBestPace) já descarta as linhas incompletas.
+       Uma zona sem minutos não é meia informação, é veneno:
+       computeTrainingDistribution soma `z.minutes` sem guarda nenhuma, e um
+       null ali dentro transforma a distribuição de TODAS as corridas em NaN.
+       O lado seguro do erro é oposto nos dois casos, e por isso o filtro
+       também é. */
     .filter((s) => s.distance_km !== null || s.time_seconds !== null);
 
   const rawZones = Array.isArray(parsed.hr_zones) ? parsed.hr_zones : [];
@@ -972,6 +1002,7 @@ async function analyzeWithGemini(
       zone: num((z as Record<string, unknown>)?.zone),
       minutes: num((z as Record<string, unknown>)?.minutes),
     }))
+    // E (ver a justificação da assimetria no filtro dos splits acima).
     .filter((z) => z.zone !== null && z.minutes !== null);
 
   const extraction: RunExtraction = {
@@ -1005,6 +1036,7 @@ async function analyzeWithGemini(
     asymmetry_pct: num(parsed.asymmetry_pct),
     leg_stiffness_kn_m: num(parsed.leg_stiffness_kn_m),
     regularity_score: num(parsed.regularity_score),
+    source_app: normalizarFonte(parsed.source_app, "corrida"),
   };
 
   console.log("Extração de corrida:", JSON.stringify({
@@ -1021,6 +1053,7 @@ async function analyzeWithGemini(
     has_thresholds: extraction.aerobic_threshold_bpm !== null || extraction.anaerobic_threshold_bpm !== null,
     has_biomechanics: extraction.ground_contact_time_ms !== null || extraction.vertical_oscillation_cm !== null,
     hr_zones_count: extraction.hr_zones?.length || 0,
+    source_app: extraction.source_app,
   }));
 
   return { extraction, usage };
@@ -1057,6 +1090,12 @@ function detailsFromExtraction(
   if (e.asymmetry_pct) d.asymmetry_pct = e.asymmetry_pct;
   if (e.leg_stiffness_kn_m) d.leg_stiffness_kn_m = e.leg_stiffness_kn_m;
   if (e.regularity_score) d.regularity_score = e.regularity_score;
+  /* A fonte vai para `details` como os outros campos lidos da imagem (jsonb,
+     sem migração nenhuma). Grava-se TAMBÉM quando é "desconhecida": é a
+     diferença entre "esta corrida é de uma app que não sabemos ler" e "esta
+     corrida é antiga e nunca lhe perguntámos" — e quem lê já cai no genérico
+     numa chave que o catálogo não conheça. */
+  if (e.source_app) d.source_app = e.source_app;
 
   if (kind === "treino" && trainingType && REPEAT_TRAINING_TYPES.has(trainingType)) {
     if (e.warmup_minutes) d.warmup_minutes = e.warmup_minutes;

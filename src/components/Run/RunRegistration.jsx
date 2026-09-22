@@ -23,6 +23,7 @@ import { achievementsForRace } from '../../utils/achievements';
 import { raceResultSeconds } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
+import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps.ts';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
@@ -414,6 +415,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // Estado do Bottom Sheet de métricas em falta
   const [showMissingMetricsSheet, setShowMissingMetricsSheet] = useState(false);
   const [missingKeysList, setMissingKeysList] = useState([]);
+  /* A app de onde vieram os prints (details.source_app, gravado pela
+     extração — ver supabase/functions/_shared/sourceApps.ts). Serve duas
+     coisas: dizer ao painel de métricas em falta QUE ecrã traz o que falta, e
+     não a perder quando se grava uma edição manual (buildDetailsFromForm
+     reconstrói `details` de raiz e apagaria a fonte sem isto). */
+  const [runSourceApp, setRunSourceApp] = useState(null);
   const [userBypassedMissingSheet, setUserBypassedMissingSheet] = useState(false);
   const [sheetClosedViaTouch, setSheetClosedViaTouch] = useState(false);
   const [pendingCreatedRun, setPendingCreatedRun] = useState(null);
@@ -538,6 +545,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       leg_stiffness_kn_m: parseFloat(legStiffness) || null,
     };
     if (parsedHrZones.length > 0) details.hr_zones = parsedHrZones;
+    if (runSourceApp) details.source_app = runSourceApp;
     if (runKind === 'treino') {
       if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
       if (recoverySeconds) details.recovery_seconds = parseInt(recoverySeconds);
@@ -580,6 +588,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         setRunEffortRpe(persisted?.runEffortRpe ?? (r.effort_rpe || 0));
         setRunNotes(persisted?.runNotes ?? (r.notes || ''));
         setShoeId(persisted?.shoeId ?? (r.shoe_id || null));
+        /* A fonte não é editável no formulário — só se transporta, para não
+           se perder no próximo `update` de `details`. Sem rascunho: nada no
+           formulário a muda. */
+        setRunSourceApp(d.source_app || null);
 
         setElevationGain(persisted?.elevationGain ?? (d.elevation_gain_m || ''));
         setCadence(persisted?.cadence ?? (d.cadence_spm || ''));
@@ -1349,6 +1361,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           minutes: z.minutes || ''
         })));
       }
+
+      setRunSourceApp(extractedDetails.source_app || null);
 
       const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds);
       if (missing.length > 0 && !userBypassedMissingSheet) {
@@ -2262,6 +2276,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <ImagePlus className="w-7 h-7 text-[var(--text-3)] mx-auto mb-2" />
                   <p className="text-[11px] text-[var(--text-3)] font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
                   <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
+                  {/* Uma linha por app conhecida, com os ecrãs que um print do
+                      resumo sozinho deixa de fora — vem do catálogo
+                      (supabase/functions/_shared/sourceApps.ts), por isso uma
+                      app nova aparece aqui sem se tocar neste ficheiro. Uma
+                      linha por app e mais nada: isto é um seletor de fotos,
+                      não um manual. */}
+                  {ecrasQueSePerdem('corrida').map(({ app, ecras }) => (
+                    <p key={app.nome} className="text-[11px] text-[var(--text-3)] mt-1 px-4">
+                      No <span className="font-bold">{app.nome}</span>, junta {ecras.map((e) => e.nome).join(' e ')} — só o resumo deixa essas métricas de fora
+                    </p>
+                  ))}
                 </label>
               )}
             </>
@@ -2626,6 +2651,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       <MissingMetricsBottomSheet
         isOpen={showMissingMetricsSheet}
         missingKeys={missingKeysList}
+        sourceApp={runSourceApp}
         onAddPhotos={() => {
           setShowMissingMetricsSheet(false);
           // A editar não há seletor Foto/Manual: abre-se o seletor de

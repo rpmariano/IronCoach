@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles, ImagePlus, PencilLine, ArrowRight, HeartPulse, Zap, Navigation, Droplet, Footprints, Activity, Split } from 'lucide-react';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
+import { agruparCamposPorEcra, appDaFonte } from '../../../supabase/functions/_shared/sourceApps.ts';
 
 export const METRIC_CONFIGS = {
   distance_km: { label: 'Distância da Corrida (km)', icon: <Navigation className="w-4 h-4 text-[var(--run)]" /> },
@@ -17,14 +18,34 @@ export const METRIC_CONFIGS = {
   total_steps: { label: 'Passos Totais', icon: <Footprints className="w-4 h-4 text-[var(--run)]" /> },
 };
 
+/* Uma linha por métrica em falta — o que o painel sempre mostrou. */
+function LinhaMetrica({ chave }) {
+  const cfg = METRIC_CONFIGS[chave] || { label: chave, icon: <Sparkles className="w-4 h-4 text-[var(--text-3)]" /> };
+  return (
+    <div className="flex items-center gap-2.5 bg-[var(--surface-soft)] rounded-xl px-3 py-2.5 text-xs font-medium text-[var(--text-2)] border border-[var(--border-faint)]">
+      {cfg.icon}
+      <span>{cfg.label}</span>
+    </div>
+  );
+}
+
 export default function MissingMetricsBottomSheet({
   isOpen,
   missingKeys = [],
+  sourceApp = null,
   onAddPhotos,
   onGoManual,
   onProceedAnyway,
   onClose,
 }) {
+  /* `sourceApp` é a chave gravada em `runs.details.source_app` pela extração
+     (ver supabase/functions/_shared/sourceApps.ts). Uma chave que o catálogo
+     não conheça — ou nenhuma, nas corridas anteriores a isto existir —
+     devolve um grupo só, sem ecrã, que é o texto de hoje. */
+  const app = appDaFonte(sourceApp);
+  const grupos = agruparCamposPorEcra(sourceApp, missingKeys);
+  const temEcras = grupos.some((g) => g.ecra);
+
   return (
     <PremiumModal
       isOpen={isOpen}
@@ -44,17 +65,39 @@ export default function MissingMetricsBottomSheet({
               <span className="text-[11px] font-bold text-[var(--text-3)] block uppercase tracking-wider">
                 Métricas sugeridas ({missingKeys.length}):
               </span>
-              <div className="space-y-1.5">
-                {missingKeys.map((key) => {
-                  const cfg = METRIC_CONFIGS[key] || { label: key, icon: <Sparkles className="w-4 h-4 text-[var(--text-3)]" /> };
-                  return (
-                    <div key={key} className="flex items-center gap-2.5 bg-[var(--surface-soft)] rounded-xl px-3 py-2.5 text-xs font-medium text-[var(--text-2)] border border-[var(--border-faint)]">
-                      {cfg.icon}
-                      <span>{cfg.label}</span>
+              {temEcras ? (
+                /* Fonte reconhecida: as métricas agrupam-se pelo PRINT que as
+                   traz. O atleta não tem de perceber que a oscilação vertical
+                   e o tempo de contacto no solo vivem no mesmo sítio — vê dois
+                   ecrãs com nome, em vez de seis campos soltos. */
+                <div className="space-y-4">
+                  {grupos.map((grupo, i) => (
+                    <div key={grupo.ecra ? grupo.ecra.id : `sem-ecra-${i}`} className="space-y-1.5">
+                      <p className="text-[11px] text-[var(--text-3)] leading-snug">
+                        {grupo.ecra ? (
+                          <>
+                            O ecrã <span className="font-bold text-[var(--text-2)]">{grupo.ecra.nome}</span>
+                            {app ? ` da ${app.nome}` : ''} traz{' '}
+                            {grupo.chaves.length === 1 ? 'esta' : `estas ${grupo.chaves.length}`}:
+                          </>
+                        ) : (
+                          <>Estas não vêm de nenhum ecrã que eu conheça:</>
+                        )}
+                      </p>
+                      <div className="space-y-1.5">
+                        {grupo.chaves.map((key) => <LinhaMetrica key={key} chave={key} />)}
+                      </div>
                     </div>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                /* Fonte desconhecida (ou registo antigo, sem fonte gravada):
+                   exatamente o painel de sempre — nunca se inventa o nome de
+                   um ecrã de uma app que o catálogo não conhece. */
+                <div className="space-y-1.5">
+                  {missingKeys.map((key) => <LinhaMetrica key={key} chave={key} />)}
+                </div>
+              )}
             </div>
           )}
         </div>

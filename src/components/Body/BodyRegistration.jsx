@@ -17,6 +17,7 @@ import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
+import { ecraPrincipal } from '../../../supabase/functions/_shared/sourceApps.ts';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -593,6 +594,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 <ImagePlus className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
                 <p className="text-xs text-[var(--text-3)] font-semibold">Escolhe os prints da app Renpho Health</p>
                 <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
+                {/* O ecrã que traz a pesagem toda, pelo nome que tem na app —
+                    vem do catálogo (supabase/functions/_shared/sourceApps.ts).
+                    Se a Renpho sair do catálogo, esta linha desaparece em vez
+                    de mentir. */}
+                {ecraPrincipal('renpho') && (
+                  <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">
+                    O ecrã <span className="font-bold">{ecraPrincipal('renpho').nome}</span> é o que traz todas as métricas de uma vez
+                  </p>
+                )}
               </label>
             )}
           </>
