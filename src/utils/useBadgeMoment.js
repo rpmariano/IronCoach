@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { useAppStore } from '../store';
 import useBadges from './useBadges';
-import { isFormOpen } from './useMedalMoment';
+import { isFormOpen } from './formGuard';
 import { colapsarMedios, planBadgeMoments } from './badgeMoment';
 
 /* QUANDO é que o momento do badge aparece (fase 4 da reforma da

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { isFormOpen } from './formGuard';
 import { useAppStore } from '../store';
 import { computeMedalhoes } from './medalhoes';
 import { syncMedalAwards, markMedalAwardsSeen, MEDALHAO_SIGNIFICANCE } from './medalAwards';
@@ -33,9 +34,9 @@ export function resetMedalMomentSession() {
   session.pending = [];
 }
 
-export function isFormOpen(state) {
-  return !!(state?.openCreationMode || state?.editingRaceId || state?.editingRunId || state?.navGuard || state?.onboardingOpen);
-}
+/* Mudou-se para utils/formGuard.js — reexporta-se aqui para não partir quem
+   ainda a importa deste sítio. */
+export { isFormOpen } from './formGuard';
 
 function byPriority(a, b) {
   const pa = PRIORITY.indexOf(a?.medalhao);
