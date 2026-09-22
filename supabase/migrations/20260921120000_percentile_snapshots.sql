@@ -1,8 +1,10 @@
 -- ============================================================================
 -- Onde estás — comparação por percentil dentro do escalão (gamificação, Fase 5)
 --
--- NÃO APLICADA. Este ficheiro é só o desenho escrito; a aplicação é um pedido
--- à parte, com o cuidado habitual (CLAUDE.md: a BD é produção real).
+-- APLICADA EM PRODUÇÃO a 2026-09-22, com autorização explícita, antes do
+-- merge do código que dela depende (o DDL primeiro: enquanto a coluna/tabela
+-- não existe, o código antigo continua a correr sem tocar nela; o contrário
+-- não é verdade).
 --
 -- O que entra:
 --   a) privacy_consents   — o livro do consentimento. SÓ INSERÇÕES.

@@ -1,8 +1,10 @@
 -- ============================================================================
 -- user_badges — os badges de treino (reforma da gamificação, fase 2)
 --
--- NÃO APLICADA. Este ficheiro é só o desenho escrito; a aplicação é um pedido
--- à parte, com o cuidado habitual (CLAUDE.md: a BD é produção real).
+-- APLICADA EM PRODUÇÃO a 2026-09-22, com autorização explícita, antes do
+-- merge do código que dela depende (o DDL primeiro: enquanto a coluna/tabela
+-- não existe, o código antigo continua a correr sem tocar nela; o contrário
+-- não é verdade).
 --
 -- Porquê uma tabela, se as regras vivem em código: as REGRAS vivem mesmo em
 -- código (src/utils/badges.js), e é lá que ficam — "90% do tempo em Z2" não é

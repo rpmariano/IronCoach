@@ -32,10 +32,16 @@
 -- memória da Carol não perder os melhores tempos por prova entre o deploy do
 -- cliente e a aplicação desta migração.
 --
--- ATENÇÃO: é produção. Só se aplica com pedido explícito. Enquanto não for
--- aplicada, as medalhas novas d'Os Níveis não entram na tabela (o insert
--- falha na restrição) — medalAwards.js é best-effort e a app segue, mas o
--- momento da medalha desses encaixes não aparece.
+-- APLICADA EM PRODUÇÃO a 2026-09-22, com autorização explícita, ANTES do
+-- merge do código — e a ordem aqui não era uma preferência, era o bloqueio.
+-- `src/utils/medalAwards.js` grava o lote inteiro NUM upsert só, e o
+-- `ignoreDuplicates` traduz-se em `on conflict do nothing`, que só apanha
+-- conflitos de chave única: uma violação de CHECK aborta a instrução TODA.
+-- Com o código novo a emitir 'niveis' contra a restrição antiga, deixava de
+-- se gravar medalha NENHUMA — ano_km, distancias, terreno, sequencia e
+-- superacao incluídas — e nenhuma cerimónia disparava. Sem perda de dados (o
+-- `missing` recalcula-se a cada sincronização), mas com o Palmarés mudo até
+-- à migração. Por isso: DDL primeiro, sempre.
 -- ============================================================================
 
 alter table public.medal_awards
