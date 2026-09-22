@@ -37,9 +37,9 @@ const splits = (tempos) => ({ splits: tempos.map((t) => ({ distance_km: 1, time_
 describe('computeBadges — forma', () => {
   const r = compute();
 
-  it('devolve os oito badges pela ordem fixa da grelha', () => {
+  it('devolve os nove badges pela ordem fixa da grelha', () => {
     expect(r.badges.map((b) => b.key)).toEqual(BADGE_KEYS);
-    expect(BADGE_KEYS).toHaveLength(8);
+    expect(BADGE_KEYS).toHaveLength(9);
   });
 
   /* A regra da casa: o relógio entra sempre, nunca se lê o real. */
@@ -348,5 +348,117 @@ describe('Recorde pessoal — o único âmbar', () => {
     const b = bad(r, 'recorde_pessoal');
     expect(b.state).toBe('empty');
     expect(b.centro).toBe('+42s');
+  });
+});
+
+/* A régua da cadência é a da doutrina 2.4 #3
+   (src/coach-knowledge/02-corrida-tecnica-sinais.md):
+
+     esperado = 150 + 6,0 × v(m/s) − 0,7 × (altura − 175)
+
+   Os treinos destes testes são 10 km em 3600 s — 2,778 m/s — o que dá 166,7
+   spm esperados a 175 cm de altura. Daí os números: 156 spm é −10,7 (baixa),
+   164 spm é −2,7 (de volta ao esperado). */
+describe('Cadência corrigida — a mudança, não o número', () => {
+  const COM_ALTURA = { ...PROFILE, height_cm: 175 };
+  const corrida = (date, spm) => treino(date, { details: { cadence_spm: spm } });
+  /* Quartas-feiras: a de 19 ago é a semana de 17 ago, e as três seguintes
+     são as semanas de 24 ago, 31 ago e 7 set — todas já fechadas a 22 set. */
+  const BAIXA = '2026-08-19';
+  const CORRIGIDAS = ['2026-08-26', '2026-09-02', '2026-09-09'];
+
+  const cenario = (over = {}) => compute({ profile: COM_ALTURA, ...over });
+
+  it('três semanas seguidas de volta ao esperado, depois de uma abaixo, ganham o badge', () => {
+    const r = cenario({ runs: [corrida(BAIXA, 156), ...CORRIGIDAS.map((d) => corrida(d, 164))] });
+    const b = bad(r, 'cadencia_corrigida');
+    expect(b.state).toBe('won');
+    expect(b.cor).toBe('run');
+    // 164 − 156 = 8 spm ganhos face à régua (a velocidade é a mesma).
+    expect(b.centro).toBe('+8');
+    expect(b.count).toBe(1);
+    expect(estados(b, 'conta')).toHaveLength(3);
+
+    const due = dueDe(r, 'cadencia_corrigida');
+    expect(due).toHaveLength(1);
+    expect(due[0]).toMatchObject({
+      tier: '', periodKey: '2026-08-24', value: 8, valueUnit: 'spm', awardedOn: '2026-09-14', raceId: null,
+    });
+  });
+
+  it('duas semanas ainda não são três', () => {
+    const r = cenario({ runs: [corrida(BAIXA, 156), ...CORRIGIDAS.slice(0, 2).map((d) => corrida(d, 164))] });
+    const b = bad(r, 'cadencia_corrigida');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('2/3');
+    expect(dueDe(r, 'cadencia_corrigida')).toEqual([]);
+  });
+
+  /* O badge NÃO é "tens boa cadência" — é "corrigiste a tua". Sem uma fase
+     abaixo do esperado não há correção nenhuma a premiar. */
+  it('sem uma fase abaixo do esperado não há nada a corrigir, por muito boa que a cadência seja', () => {
+    const r = cenario({ runs: [corrida(BAIXA, 172), ...CORRIGIDAS.map((d) => corrida(d, 174))] });
+    const b = bad(r, 'cadencia_corrigida');
+    expect(b.state).toBe('empty');
+    expect(b.linha).toContain('não há nada a corrigir');
+    expect(dueDe(r, 'cadencia_corrigida')).toEqual([]);
+  });
+
+  it('sem cadência no registo, a corrida fica indeterminada', () => {
+    const r = cenario({ runs: [treino('2026-09-09'), corrida('2026-09-10', 164)] });
+    const b = bad(r, 'cadencia_corrigida');
+    expect(b.indeterminadas.n).toBe(1);
+    expect(b.indeterminadas.frase).toContain('a cadência média');
+    expect(estados(b, 'indeterminada')).toHaveLength(1);
+  });
+
+  /* A fraqueza conhecida, tratada pelo lado seguro: a velocidade média de um
+     intervalado não representa nada, e a subida levanta a cadência sem que a
+     mecânica seja melhor. Nenhum dos dois entra na régua. */
+  it('o intervalado e a subida não entram na régua', () => {
+    const r = cenario({
+      runs: [
+        treino('2026-08-19', { training_type: 'intervalos', details: { cadence_spm: 150 } }),
+        treino('2026-08-26', { training_type: 'trail', details: { cadence_spm: 150 } }),
+        // 'continuo', mas 40 m de D+ por km: acima da banda rolante.
+        treino('2026-09-02', { details: { cadence_spm: 150, elevation_gain_m: 400 } }),
+      ],
+    });
+    const b = bad(r, 'cadencia_corrigida');
+    expect(b.sessoes).toHaveLength(0);
+    expect(b.state).toBe('empty');
+    expect(b.linha).toContain('contínuas em plano');
+  });
+
+  /* Sem altura no perfil, a régua perde o termo de estatura e podia acusar
+     de baixa a cadência certa de alguém alto. A doutrina manda descer a
+     exigência: sem altura, só abaixo dos 155 spm — o sinal vermelho do #1. */
+  it('sem altura no perfil, só abaixo de 155 spm é que a fase conta como baixa', () => {
+    const runs156 = [corrida(BAIXA, 156), ...CORRIGIDAS.map((d) => corrida(d, 164))];
+    expect(bad(compute({ runs: runs156 }), 'cadencia_corrigida').state).toBe('empty');
+
+    const runs152 = [corrida(BAIXA, 152), ...CORRIGIDAS.map((d) => corrida(d, 164))];
+    expect(bad(compute({ runs: runs152 }), 'cadencia_corrigida').state).toBe('won');
+  });
+
+  /* O −0,7 spm por cm acima de 175: a 190 cm, 156 spm é a cadência esperada
+     para este ritmo, não uma cadência baixa. */
+  it('a régua desconta a estatura — 156 spm a 190 cm não é fase baixa', () => {
+    const runs = [corrida(BAIXA, 156), ...CORRIGIDAS.map((d) => corrida(d, 164))];
+    const r = compute({ profile: { ...PROFILE, height_cm: 190 }, runs });
+    expect(bad(r, 'cadencia_corrigida').state).toBe('empty');
+  });
+
+  /* Os "180 spm" são Jack Daniels a contar passos em Los Angeles, 1984 — 46
+     fundistas de elite em prova — e estão proibidos pela doutrina (#1, #3.1).
+     Nada do que o atleta lê neste badge os pode ressuscitar. */
+  it('nenhuma frase deste badge diz 180', () => {
+    const r = cenario({ runs: [corrida(BAIXA, 156), ...CORRIGIDAS.map((d) => corrida(d, 164))] });
+    const b = bad(r, 'cadencia_corrigida');
+    const texto = [b.rule, b.linha, b.detalhe, b.dependeDe, b.comoResolver, b.centroAria,
+      ...dueDe(r, 'cadencia_corrigida').map((d) => d.line),
+      ...b.sessoes.map((s) => `${s.meta} ${s.porque}`)].join(' ');
+    expect(texto).not.toMatch(/180/);
+    expect(texto).not.toMatch(/lesõ|lesão/);
   });
 });

@@ -34,11 +34,12 @@
 
    ── O DADO QUE FALTA ────────────────────────────────────────────────────
    Metade destas regras vive de campos OPCIONAIS de `runs.details`
-   (`hr_zones`, `splits`, `elevation_gain_m`) — campos que muita gente nunca
-   preenche (é por isso que existe o `detectMissingRunMetrics` do registo de
-   corrida, que os pede). Uma sessão sem o campo que a regra exige **não
-   conta nem a favor nem contra**: fica INDETERMINADA, é contada à parte, e o
-   ecrã de detalhe diz quantas são, porquê, e o que fazer para as resolver.
+   (`hr_zones`, `splits`, `elevation_gain_m`, `cadence_spm`) — campos que
+   muita gente nunca preenche (é por isso que existe o
+   `detectMissingRunMetrics` do registo de corrida, que os pede). Uma sessão
+   sem o campo que a regra exige **não conta nem a favor nem contra**: fica
+   INDETERMINADA, é contada à parte, e o ecrã de detalhe diz quantas são,
+   porquê, e o que fazer para as resolver.
    Sem isto, um badge ficaria por ganhar em silêncio e o atleta nunca saberia
    se lhe faltava correr ou preencher.
 
@@ -70,10 +71,15 @@ import { formatDatePTShort } from './racePlanEngine';
 import { evaluatePrescriptions, executionBase } from '@formulas/prescriptionAdherence.ts';
 
 /** A ordem da grelha da Vitrina: o treino, o terreno, a disciplina, a prova.
- *  Quatro colunas, duas linhas. */
+ *  Quatro colunas — duas linhas cheias e a prova sozinha na terceira, que é
+ *  o lugar que lhe assenta: o `recorde_pessoal` é o único que não nasce de
+ *  um dia de treino, e é o único âmbar. A Cadência corrigida entra ao lado
+ *  do Negative split, com quem partilha o assunto — como se corre, não
+ *  quanto se corre. */
 export const BADGE_KEYS = [
   'z2_mestre',
   'negative_split',
+  'cadencia_corrigida',
   'coruja',
   'cabra_montesa',
   'escalada',
@@ -1007,7 +1013,359 @@ function descansoCumprido({ semanas }) {
   };
 }
 
-// ── 8. Recorde pessoal ───────────────────────────────────────────────────
+// ── 8. Cadência corrigida ────────────────────────────────────────────────
+
+/* chave     cadencia_corrigida
+   regra     "Depois de um período com a cadência abaixo do esperado para o
+             teu ritmo, três semanas seguidas com ela de volta ao esperado —
+             em corridas contínuas em plano."
+   campo     runs.details.cadence_spm (com distance_km e duration_seconds
+             para a velocidade média, e profiles.height_cm para afinar a
+             régua)
+   em falta  sem `cadence_spm`, a corrida fica INDETERMINADA: não há cadência
+             para medir e inventar uma era pior do que não contar. Sem
+             `height_cm`, a régua usa-se SEM o termo de estatura e sobe-se a
+             fasquia de entrada (ver abaixo).
+   cor       --run (é treino de corrida)
+   níveis    não — repete-se: quem recair e voltar a corrigir ganha outra vez.
+
+   ── A RÉGUA, e porque é que ela NÃO diz 180 ─────────────────────────────
+   Doutrina 2.4 #3 (src/coach-knowledge/02-corrida-tecnica-sinais.md), que
+   não se reabre aqui:
+
+     esperado = 150 + 6,0 × v_média(m/s) − 0,7 × (altura_cm − 175)
+     desvio   = cadence_spm − esperado
+
+   O 150 + 6,0×v é van Oeveren (2017), confirmado por Malisoux (2023) e de
+   Ruiter (2019); o −0,7 spm/cm é o mais conservador de duas fontes em
+   conflito (#3, "Conflito de fontes na correção de estatura"). Os "180 spm"
+   são Jack Daniels a contar passos na bancada de Los Angeles em 1984 — 46
+   fundistas de elite, EM PROVA — e estão PROIBIDOS pelo #1 e pelo #3.1: é
+   um mínimo observado numa população extrema, não um alvo de ninguém. Não
+   há termo de género nem de idade, e é deliberado (#3.2 e #3.3): as
+   diferenças entre sexos explicam-se por comprimento de perna e desaparecem
+   ao normalizar pela estatura, e a idade já entra pela velocidade — corrigi-
+   la outra vez era contá-la duas vezes.
+
+   ── PORQUE É QUE O BADGE NÃO É "TENS BOA CADÊNCIA" ──────────────────────
+   Um badge de cadência alta premiava ser baixo e rápido, que não é mérito
+   nenhum — é estatura e ritmo, e o `desvio` já os desconta. Este badge mede
+   uma MUDANÇA que o atleta fez, contra ele próprio: sai de um período com a
+   cadência abaixo da régua e mantém-na de volta durante três semanas
+   seguidas. O que a evidência sustenta com confiança ALTA é a carga
+   articular (Heiderscheit, MSSE 2011: +5% de cadência → ~20% menos energia
+   absorvida no joelho; +10% → ~34%). A PREVENÇÃO DE LESÃO em quem não tem
+   sintomas NÃO está provada (#3.4, confiança MÉDIA) — por isso nenhuma das
+   frases que o atleta lê aqui promete que isto evita lesões.
+
+   ── A FRAQUEZA CONHECIDA: o despiste de intervalados e de trail ─────────
+   A régua vale para CORRIDA CONTÍNUA EM PLANO (#3, "Condições"). Num
+   intervalado a velocidade média mistura esforço e recuperação e não
+   representa nada; a subir, a cadência sobe sem que a mecânica seja pior.
+   Com os dados de hoje só há duas peneiras, e ambas são GROSSEIRAS:
+
+     1. `training_type` — entram 'continuo', 'longo' e 'recuperacao'. Ficam
+        de fora 'intervalos' e 'fartlek' (ritmo variável), 'tempo' (é
+        contínuo, mas é Z4 e quase sempre leva aquecimento e retorno à calma
+        no mesmo registo, o que estraga a velocidade média), e 'subidas',
+        'trail' e 'tecnico' (terreno).
+     2. `elevation_gain_m` TOTAL — acima de 25 m de D+ por km a sessão sai.
+        Os 25 m/km são o topo da banda "rolante" de ELEVATION_RATIO_BANDS
+        (utils/run.js), a régua que a casa já usa para "transição fácil
+        vindo da estrada"; não é um número novo.
+
+   O QUE FICA POR FORA, assumido e não resolvido:
+     · um `continuo` que na verdade foi uma progressão ou uns strides no fim
+       — o tipo diz contínuo e nós acreditamos;
+     · uma corrida ondulada SEM D+ preenchido: só o `training_type` a
+       peneira, e um 'continuo' de 24 m/km de média pode ter 300 m de
+       subida em três rampas. A subida INFLA a cadência, e uma cadência
+       inflada é o que faz um FALSO POSITIVO aqui — o pior erro possível
+       neste badge;
+     · o D+ é um total: 25 m/km podem ser um sobe-e-desce constante ou uma
+       única rampa. Sem declive por troço (`splits` só guarda distância e
+       tempo) não há forma de distinguir, e a doutrina assume-o como a
+       fraqueza real desta regra;
+     · uma corrida sem distância ou sem duração não é candidata de todo —
+       sem velocidade média não há régua, e não é "falta de cadência";
+     · `details.max_cadence_spm` existe e NÃO se usa, por ordem expressa da
+       doutrina (#3, fim): é um pico instantâneo, tipicamente de um sprint ou
+       de uma descida, e não tem norma publicada com que o comparar.
+   Na dúvida exclui-se: um falso positivo manda o atleta mudar a técnica sem
+   razão, e é isso que se está a evitar. */
+const CAD_BASE_SPM = 150;
+const CAD_POR_MS = 6.0;
+const CAD_POR_CM = 0.7;
+const CAD_ALTURA_REF = 175;
+/** Abaixo disto, o desvio deixa de ser ruído (doutrina #3: `desvio ≥ −8` é
+ *  normal e NÃO se comenta). É a porta de entrada do badge, não um alvo. */
+const CAD_DESVIO_BAIXO = -8;
+/** E a partir daqui considera-se de volta ao esperado. */
+const CAD_DESVIO_CORRIGIDO = -4;
+/** O sinal vermelho do #1, que se mantém intacto — e a única fasquia que
+ *  vale quando não há altura no perfil. */
+const CAD_PISO_SPM = 155;
+/** "3 a 4 semanas consecutivas": fica-se pelo limite de baixo, e quatro
+ *  semanas seguidas contêm três. */
+const CAD_SEMANAS = 3;
+/** Topo da banda "rolante" (25 m/km) — ver a fraqueza conhecida acima. */
+const CAD_PLANO_MAX_DMAIS_KM = 25;
+/** Os tipos de treino que a régua aceita. */
+const CAD_TIPOS_CONTINUOS = ['continuo', 'longo', 'recuperacao'];
+
+/** A velocidade média em m/s, ou null sem distância ou sem duração. */
+function velocidadeMediaMs(run) {
+  const km = num(run?.distance_km);
+  const segundos = num(run?.duration_seconds);
+  return km && segundos ? (km * 1000) / segundos : null;
+}
+
+/** A altura do perfil, em cm, quando é um número de gente. Fora do intervalo
+ *  (dedo escorregado no teclado, metros em vez de centímetros) trata-se como
+ *  ausente: uma régua afinada por um disparate é pior do que uma régua sem
+ *  termo de estatura. */
+function alturaDoPerfil(profile) {
+  const h = num(profile?.height_cm);
+  return h && h >= 120 && h <= 230 ? h : null;
+}
+
+/** A régua: cadência esperada (spm) para esta velocidade e esta estatura.
+ *  Sem altura, fica só o termo da velocidade. */
+function cadenciaEsperada(v, alturaCm) {
+  const base = CAD_BASE_SPM + CAD_POR_MS * v;
+  return alturaCm ? base - CAD_POR_CM * (alturaCm - CAD_ALTURA_REF) : base;
+}
+
+/** Corrida contínua em plano — as duas peneiras grosseiras descritas acima. */
+function corridaContinuaEmPlano(run) {
+  if (!CAD_TIPOS_CONTINUOS.includes(run?.training_type)) return false;
+  if (velocidadeMediaMs(run) == null) return false;
+  const dmais = num(run?.details?.elevation_gain_m);
+  const km = num(run?.distance_km);
+  // Sem D+ no registo não há como peneirar pelo terreno: sobra o tipo de
+  // treino, e é esse o buraco assumido lá em cima.
+  if (dmais && km && dmais / km > CAD_PLANO_MAX_DMAIS_KM) return false;
+  return true;
+}
+
+/** "+3,2 spm" / "−9,1 spm" — o desvio face à régua, sempre com sinal. */
+function fmtDesvio(d) {
+  const v = round1(Math.abs(d));
+  return `${d >= 0 ? '+' : '−'}${String(v).replace('.', ',')} spm`;
+}
+
+const fmtSpm = (spm) => `${Math.round(spm)} spm`;
+
+/** As semanas com cadência medida: média de spm e média de desvio das
+ *  corridas contínuas em plano dessa semana, mais as corridas que ficaram
+ *  por decidir (candidatas sem `cadence_spm`). */
+function semanasDeCadencia({ treinos, alturaCm, today }) {
+  const indeterminadas = [];
+  const porSemana = new Map();
+  for (const run of treinos) {
+    if (!corridaContinuaEmPlano(run)) continue;
+    const spm = num(run?.details?.cadence_spm);
+    if (spm == null) { indeterminadas.push(run); continue; }
+    const desvio = spm - cadenciaEsperada(velocidadeMediaMs(run), alturaCm);
+    const segunda = segundaDe(dayOf(run.date));
+    if (!porSemana.has(segunda)) porSemana.set(segunda, []);
+    porSemana.get(segunda).push({ run, spm, desvio });
+  }
+
+  const semanas = [...porSemana.keys()].sort().map((segunda) => {
+    const corridas = porSemana.get(segunda);
+    const spm = corridas.reduce((s, c) => s + c.spm, 0) / corridas.length;
+    const desvio = corridas.reduce((s, c) => s + c.desvio, 0) / corridas.length;
+    const domingo = addDays(segunda, 6);
+    return {
+      segunda,
+      domingo,
+      // Como nos badges semanais: uma semana só se julga depois de fechada
+      // — no próprio domingo ainda se pode correr.
+      fechada: domingo < today,
+      corridas,
+      spm,
+      desvio,
+      // Sem altura no perfil, a régua perde o termo de estatura e podia
+      // acusar de baixa a cadência de alguém alto que a tem certa. Por isso
+      // a doutrina manda DESCER A EXIGÊNCIA: sem altura, só se dá uma
+      // semana por baixa abaixo dos 155 spm, o sinal vermelho do #1.
+      baixa: desvio < CAD_DESVIO_BAIXO && (alturaCm ? true : spm < CAD_PISO_SPM),
+      corrigida: desvio >= CAD_DESVIO_CORRIGIDO,
+    };
+  });
+
+  return { semanas, indeterminadas };
+}
+
+/* A varredura: da semana mais antiga para a mais recente, à procura de
+   CAD_SEMANAS semanas seguidas (de calendário) com a cadência de volta ao
+   esperado, precedidas de pelo menos uma semana baixa.
+
+   Uma semana pelo meio (desvio entre −8 e −4) não é baixa nem corrigida:
+   parte a sequência, mas não apaga a memória da semana baixa — uma subida
+   gradual (−10, −6, depois três semanas a −3) é exatamente a correção que
+   este badge existe para reconhecer.
+
+   Depois de uma conquista a memória da semana baixa limpa-se: a repetição
+   exige uma recaída nova, senão um atleta que corrigiu uma vez ganhava o
+   badge outra vez a cada três semanas boas. */
+function correcoesDeCadencia(semanas) {
+  const conquistas = [];
+  let baixa = null;
+  let sequencia = [];
+  for (const s of semanas.filter((x) => x.fechada)) {
+    if (s.corrigida) {
+      const anterior = sequencia[sequencia.length - 1];
+      if (anterior && s.segunda !== addDays(anterior.segunda, 7)) sequencia = [];
+      sequencia.push(s);
+      if (baixa && sequencia.length >= CAD_SEMANAS) {
+        const corrigidas = sequencia.slice(0, CAD_SEMANAS);
+        conquistas.push({ baixa, semanas: corrigidas, fim: corrigidas[corrigidas.length - 1] });
+        baixa = null;
+        sequencia = [];
+      }
+    } else {
+      sequencia = [];
+      if (s.baixa) baixa = s;
+    }
+  }
+  return { conquistas, baixa, sequencia };
+}
+
+function cadenciaCorrigida({ treinos, profile, today }) {
+  const alturaCm = alturaDoPerfil(profile);
+  const { semanas, indeterminadas } = semanasDeCadencia({ treinos, alturaCm, today });
+  const { conquistas, baixa, sequencia } = correcoesDeCadencia(semanas);
+
+  const ganhoDe = (c) => (c.semanas.reduce((s, x) => s + x.desvio, 0) / c.semanas.length) - c.baixa.desvio;
+  const contadas = new Set(conquistas.flatMap((c) => c.semanas.map((s) => s.segunda)));
+  const fechadas = semanas.filter((s) => s.fechada);
+
+  const metaDaSemana = (s) => `${fmtSpm(s.spm)} de média · ${fmtDesvio(s.desvio)} face ao esperado · ${s.corridas.length} ${plural(s.corridas.length, 'corrida', 'corridas')}`;
+
+  const sessoes = newestFirst([
+    ...fechadas.map((s) => {
+      const conta = contadas.has(s.segunda);
+      return sessaoDaSemana(s, {
+        status: conta ? 'conta' : 'falhou',
+        meta: metaDaSemana(s),
+        porque: conta
+          ? 'Cadência de volta ao esperado para o ritmo desta semana.'
+          : (s.baixa
+            ? 'Cadência abaixo do esperado — é o ponto de partida deste badge.'
+            : 'Não fez parte de uma sequência de três semanas corrigidas.'),
+      });
+    }),
+    ...indeterminadas.map((run) => sessaoDaCorrida(run, {
+      status: 'indeterminada',
+      meta: run?.distance_km ? fmtKmLinha(num(run.distance_km)) : null,
+      porque: 'Sem cadência média no registo.',
+    })),
+  ]);
+
+  const due = conquistas.map((c) => {
+    const ganho = ganhoDe(c);
+    return {
+      badgeKey: 'cadencia_corrigida',
+      tier: '',
+      // Uma linha por correção, com a segunda-feira em que a sequência
+      // começou: as repetições contam-se com count(*), como no resto.
+      periodKey: c.semanas[0].segunda,
+      value: round1(ganho),
+      valueUnit: 'spm',
+      raceId: null,
+      // Como nos badges semanais: o prémio é da segunda seguinte ao fecho —
+      // o primeiro dia em que os dados o provam.
+      awardedOn: addDays(c.fim.domingo, 1),
+      title: 'Cadência corrigida',
+      // O que o atleta lê. Fala de carga articular (confiança ALTA) e NUNCA
+      // de prevenção de lesão (confiança MÉDIA, doutrina #3.4).
+      line: `De ${fmtSpm(c.baixa.spm)} na ${labelSemana(c.baixa.segunda)} para ${fmtSpm(c.semanas[c.semanas.length - 1].spm)}: ${CAD_SEMANAS} semanas seguidas com a cadência de volta ao esperado para o teu ritmo — mais ${round1(ganho).toString().replace('.', ',')} spm face à régua, e menos carga absorvida no joelho a cada apoio.`,
+    };
+  });
+
+  const comum = {
+    key: 'cadencia_corrigida',
+    name: 'Cadência corrigida',
+    rule: `Depois de um período com a cadência abaixo do esperado para o teu ritmo, ${CAD_SEMANAS} semanas seguidas com ela de volta ao esperado — em corridas contínuas em plano.`,
+    cor: 'run',
+    glifo: 'steps',
+    campo: 'details.cadence_spm',
+    campoLabel: 'a cadência média',
+    dependeDe: 'Precisa da cadência média (spm) no registo da corrida — e da tua altura no Perfil, que é o que afina a régua à tua passada.',
+    comoResolver: 'Abre o registo da corrida e preenche a cadência média (spm) — vem no resumo do relógio. A altura preenche-se uma vez, no Perfil.',
+    unidade: 'spm',
+    sessoes,
+    indeterminadas: blocoIndeterminadas(indeterminadas, {
+      campoLabel: 'a cadência média',
+      comoResolver: 'Abre o registo da corrida e preenche a cadência média (spm) — vem no resumo do relógio.',
+    }),
+  };
+
+  if (conquistas.length) {
+    const ultima = conquistas[conquistas.length - 1];
+    const ganho = ganhoDe(ultima);
+    return {
+      badge: badge({
+        ...comum,
+        state: 'won',
+        ring: 1,
+        centro: `+${Math.max(1, Math.round(ganho))}`,
+        centroAria: `Cadência corrigida: ganho, mais ${Math.round(ganho)} spm face ao esperado para o teu ritmo`,
+        value: round1(ganho),
+        count: conquistas.length,
+        awardedOn: addDays(ultima.fim.domingo, 1),
+        linha: conquistas.length > 1
+          ? `${conquistas.length} vezes · a última na ${labelSemana(ultima.fim.segunda)}`
+          : `ganho na ${labelSemana(ultima.fim.segunda)}`,
+        detalhe: `de ${fmtSpm(ultima.baixa.spm)} para ${fmtSpm(ultima.semanas[ultima.semanas.length - 1].spm)} de média`,
+      }),
+      due,
+    };
+  }
+
+  // A caminho: houve uma fase baixa e já há semanas corrigidas seguidas.
+  if (baixa && sequencia.length) {
+    return {
+      badge: badge({
+        ...comum,
+        state: 'progress',
+        ring: Math.min(sequencia.length / CAD_SEMANAS, 0.99),
+        centro: `${sequencia.length}/${CAD_SEMANAS}`,
+        centroAria: `Cadência corrigida: a caminho, ${sequencia.length} de ${CAD_SEMANAS} semanas seguidas com a cadência de volta ao esperado`,
+        linha: `${sequencia.length} de ${CAD_SEMANAS} ${plural(CAD_SEMANAS, 'semana seguida', 'semanas seguidas')} com a cadência de volta ao esperado`,
+      }),
+      due: [],
+    };
+  }
+
+  /* Por ganhar. A frase muda com a razão — e nenhuma delas manda o atleta
+     perseguir um número: a correção, quando é caso disso, é sempre +5-10%
+     SOBRE A CADÊNCIA DO PRÓPRIO (doutrina #1), nunca um valor absoluto. Uma
+     cadência dentro do esperado não se comenta (`desvio ≥ −8` é ruído): diz-
+     se que não há nada a corrigir, e fica-se por aí. */
+  let linha = 'ainda sem corridas contínuas em plano com a cadência registada';
+  if (baixa) {
+    linha = `a cadência anda abaixo do esperado para o teu ritmo — este badge ganha-se a recuperá-la, subindo 5-10% sobre a TUA cadência, ${CAD_SEMANAS} semanas seguidas`;
+  } else if (fechadas.length) {
+    linha = 'sem nenhuma fase de cadência baixa para o teu ritmo — não há nada a corrigir';
+  }
+
+  return {
+    badge: badge({
+      ...comum,
+      state: 'empty',
+      ring: 0,
+      centro: String(CAD_SEMANAS),
+      centroAria: `Cadência corrigida: por ganhar. ${comum.rule}`,
+      linha,
+    }),
+    due: [],
+  };
+}
+
+// ── 9. Recorde pessoal ───────────────────────────────────────────────────
 
 /* chave     recorde_pessoal
    regra     "Uma prova cujo tempo oficial é o teu melhor de sempre naquela
@@ -1162,10 +1520,11 @@ export function computeBadges({
   const completed = completedRaces({ raceEvents, runs, profile: profile || {}, today: hoje }).reverse();
   const semanas = semanasAvaliadas({ planItems, runs, gym: gymSessions, today: hoje });
 
-  const ctx = { runs, treinos, raceEvents, completed, semanas, today: hoje };
+  const ctx = { runs, treinos, raceEvents, completed, semanas, profile: profile || {}, today: hoje };
   const partes = {
     z2_mestre: z2Mestre(ctx),
     negative_split: negativeSplit(ctx),
+    cadencia_corrigida: cadenciaCorrigida(ctx),
     coruja: coruja(ctx),
     cabra_montesa: cabraMontesa(ctx),
     escalada: escalada(ctx),

@@ -56,7 +56,10 @@ create table if not exists public.user_badges (
   period_key text not null default '',
   -- O número que o badge gravou. A unidade está na coluna ao lado.
   value numeric,
-  value_unit text check (value_unit is null or value_unit in ('pct', 'count', 'seconds', 'km', 'vdot', 'metros')),
+  -- 'spm' entrou com a Cadência corrigida: o número que ela guarda são os
+  -- passos por minuto GANHOS face à régua da doutrina 2.4 #3, não a cadência
+  -- em si.
+  value_unit text check (value_unit is null or value_unit in ('pct', 'count', 'seconds', 'km', 'vdot', 'metros', 'spm')),
   -- Só os badges que nascem de uma prova (hoje: recorde_pessoal). on delete
   -- set null: apagar a prova não apaga a memória do badge.
   race_id uuid references public.race_events(id) on delete set null,
@@ -125,4 +128,4 @@ comment on column public.user_badges.tier is
   'não enfiado no period_key, como o Palmarés fez.';
 
 comment on column public.user_badges.value_unit is
-  'A unidade de `value`: pct, count, seconds, km, vdot ou metros.';
+  'A unidade de `value`: pct, count, seconds, km, vdot, metros ou spm.';

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BedDouble, CheckCheck, Heart, Moon, Mountain, MountainSnow, TrendingDown, Trophy } from 'lucide-react';
+import { BedDouble, CheckCheck, Footprints, Heart, Moon, Mountain, MountainSnow, TrendingDown, Trophy } from 'lucide-react';
 
 /* O badge de treino: um ANEL DE PROGRESSO COM UM NÚMERO AO CENTRO
    (utils/badges.js; desenho decidido com o utilizador, fase 2 da reforma da
@@ -54,6 +54,7 @@ const BRILHO = {
 const GLIFOS = {
   heart: Heart,
   trending: TrendingDown,
+  steps: Footprints,
   moon: Moon,
   mountain: Mountain,
   peak: MountainSnow,
