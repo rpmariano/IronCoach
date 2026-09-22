@@ -5782,9 +5782,9 @@ async function handler(req: Request): Promise<Response> {
       // O tempo previsto para a prova, se ela for nos próximos 7 dias.
       await raceWeatherPromise,
       memoryBlocks.portrait,
-      memoryBlocks.palmares,
-      // A vitrina de badges, logo a seguir ao Palmarés porque é a mesma
-      // pergunta ("o que ele já conquistou") noutra escala — e porque as
+      memoryBlocks.raceHistory,
+      // A vitrina de badges, logo a seguir às provas concluídas: é a mesma
+      // pergunta ("o que ele já fez/conquistou") noutra escala — e as
       // regras do 6 #6 viajam dentro do bloco, não num sítio à parte.
       memoryBlocks.badges,
       memoryBlocks.proposals,

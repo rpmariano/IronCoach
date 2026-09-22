@@ -8,7 +8,7 @@ import {
   fetchCheckinBlock,
   lisbonTodayISO,
   buildDailyCardContext,
-  buildPalmaresContext,
+  buildRaceHistoryContext,
   buildRecordMemoryContext,
   buildSharedMemoryBlock,
   clip,
@@ -87,38 +87,17 @@ Deno.test("cartão diário: hoje e ontem, com a prontidão e o conceito", () => 
   assertEquals(buildDailyCardContext([{ date: "2026-09-18" }], "2026-09-18"), null);
 });
 
-/* O medalhão chamou-se 'recordes' até 2026-09-21 e passou a 'niveis': as
-   linhas antigas continuam em medal_awards e as duas chaves têm de contar
-   para o mesmo recorde em vigor. */
-Deno.test("palmarés: o recorde em vigor é o mais recente; terreno agrupa encaixes numerados", () => {
-  const text = buildPalmaresContext(
-    [
-      { medalhao: "recordes", slot: "10k", value: 2900, awarded_at: "2026-03-01T10:00:00Z" },
-      { medalhao: "niveis", slot: "10k", value: 2712, awarded_at: "2026-09-01T10:00:00Z" },
-      { medalhao: "distancias", slot: "21k", value: null, awarded_at: "2026-05-01" },
-      { medalhao: "distancias", slot: "10k", value: null, awarded_at: "2026-03-01" },
-      { medalhao: "superacao", slot: "o1", value: 1, awarded_at: "2026-03-01" },
-      { medalhao: "superacao", slot: "o2", value: 2, awarded_at: "2026-09-01" },
-      { medalhao: "terreno", slot: "estrada1", value: 1, awarded_at: "2026-03-01" },
-      { medalhao: "terreno", slot: "estrada5", value: 5, awarded_at: "2026-09-01" },
-      { medalhao: "ano_km", slot: "mes", period_key: "2026-08", value: 182.4, awarded_at: "2026-09-01" },
-      { medalhao: "epoca", slot: "prova", value: 1, awarded_at: "2026-09-01" },
-    ],
+Deno.test("histórico de provas: tempo real face ao objetivo, com e sem corrida ligada", () => {
+  const text = buildRaceHistoryContext(
     [
       { id: "r1", date: "2026-09-01", name: "10 km de Lisboa", distance_km: 10, race_priority: "a", target_time_seconds: 2700, notes: "calor" },
       { id: "r2", date: "2026-05-01", name: "Meia do Porto", distance_km: 21.1, race_priority: "b", target_time_seconds: null },
     ],
     [{ race_id: "r1", duration_seconds: 2712 }],
   )!;
-  assertStringIncludes(text, "Recordes pessoais em prova: 10 km 45:12");
-  assert(!text.includes("48:20"));
-  assertStringIncludes(text, "Distâncias já concluídas em prova: 10 km, meia maratona");
-  assertStringIncludes(text, "Objetivos de tempo batidos em prova: 2");
-  assertStringIncludes(text, "Provas por terreno: 5 em estrada");
-  assertStringIncludes(text, "a última foi mês 2026-08 com 182.4 km");
   assertStringIncludes(text, `2026-09-01 · 10 km de Lisboa: 10 km, principal, tempo 45:12 (objetivo 45:00, +0:12) — nota do atleta: "calor"`);
   assertStringIncludes(text, "2026-05-01 · Meia do Porto: 21.1 km, sem corrida ligada");
-  assertEquals(buildPalmaresContext([], [], []), null);
+  assertEquals(buildRaceHistoryContext([], []), null);
 });
 
 Deno.test("metas corporais: meta, quem a definiu e quanto falta face à última avaliação", () => {
@@ -272,15 +251,14 @@ Deno.test("fetchChatMemoryBlocks: monta os blocos; uma tabela em erro tira só o
   const sb = fakeSb({
     runs: { data: [{ date: "2026-09-17", kind: "treino", training_type: "longo", distance_km: 16, notes: "cansado", coach_notes: "Ritmo certo." }] },
     coach_daily_summary: { error: { message: "boom" } },
-    medal_awards: { data: [{ medalhao: "distancias", slot: "10k", awarded_at: "2026-09-01" }] },
     user_badges: { data: [{ badge_key: "escalada", tier: "prata", period_key: "", awarded_at: "2026-09-10T08:00:00Z" }] },
-    race_events: { data: [], count: 0 },
+    race_events: { data: [{ id: "r1", date: "2026-09-01", name: "10 km de Lisboa", distance_km: 10, race_priority: "a", target_time_seconds: null, notes: null, race_type: "estrada", location: null, coach_balance: null }], count: 0 },
   });
   const blocks = await fetchChatMemoryBlocks(sb, "u1", "2026-09-18");
   assertStringIncludes(blocks.records!, `nota do atleta: "cansado"`);
   assertEquals(blocks.proposals, null);
   assertEquals(blocks.dailyCard, null);
-  assertStringIncludes(blocks.palmares!, "Distâncias já concluídas em prova: 10 km");
+  assertStringIncludes(blocks.raceHistory!, "10 km de Lisboa: 10 km, principal, estrada, sem corrida ligada");
   assertStringIncludes(blocks.portrait!, "Corrida: 16 km em 1 corridas");
   // A vitrina de badges (6 #6): o que foi ganho, e as regras com ele.
   assertStringIncludes(blocks.badges!, "A Escalada (prata, a última a 2026-09-10)");
@@ -296,12 +274,11 @@ Deno.test("fetchChatMemoryBlocks: sem badges ganhos, o bloco da vitrina não exi
 Deno.test("fetchChatMemoryBlocks: user_badges em erro tira só a vitrina", async () => {
   const sb = fakeSb({
     user_badges: { error: { message: "boom" } },
-    medal_awards: { data: [{ medalhao: "distancias", slot: "10k", awarded_at: "2026-09-01" }] },
-    race_events: { data: [], count: 0 },
+    race_events: { data: [{ id: "r1", date: "2026-09-01", name: "10 km de Lisboa", distance_km: 10, race_priority: "a", target_time_seconds: null, notes: null, race_type: "estrada", location: null, coach_balance: null }], count: 0 },
   });
   const blocks = await fetchChatMemoryBlocks(sb, "u1", "2026-09-18");
   assertEquals(blocks.badges, null);
-  assertStringIncludes(blocks.palmares!, "Distâncias já concluídas em prova: 10 km");
+  assertStringIncludes(blocks.raceHistory!, "10 km de Lisboa: 10 km, principal, estrada, sem corrida ligada");
 });
 
 Deno.test("fetchSharedMemoryBlock: uma exceção no cliente devolve null, não rebenta", async () => {
@@ -440,8 +417,8 @@ Deno.test("fetchCheckinBlock: sem perfil passado, lê o género e o consentiment
 });
 
 /* 5.2 — o que a app já tinha e o chat não lia. */
-Deno.test("palmarés: a prova concluída leva o terreno, o local e o balanço que ela escreveu", () => {
-  const text = buildPalmaresContext([], [
+Deno.test("histórico de provas: a prova concluída leva o terreno, o local e o balanço que ela escreveu", () => {
+  const text = buildRaceHistoryContext([
     { id: "r1", date: "2026-09-06", name: "Trail de Sintra", distance_km: 21, race_type: "trail", elevation_gain_m: 640, location: "Sintra", target_time_seconds: 7200, coach_balance: 'Foi uma prova de gestão: começaste "a medo" e acabaste forte.' },
   ], [{ race_id: "r1", duration_seconds: 7000 }])!;
   assertStringIncludes(text, "Trail de Sintra: 21 km, trail, 640 m D+, Sintra, tempo 1:56:40 (objetivo 2:00:00, −3:20)");

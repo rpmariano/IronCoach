@@ -199,56 +199,21 @@ export function buildDailyCardContext(rows: any[] | null | undefined, todayISO: 
     `Se hoje disseres algo diferente, explica o que mudou.`;
 }
 
-// ── 1.5 — Palmarés e provas concluídas ───────────────────────────────────
+// ── 1.5 — Últimas provas concluídas ──────────────────────────────────────
 
-const DISTANCE_LABELS: Record<string, string> = { "5k": "5 km", "10k": "10 km", "21k": "meia maratona", "42k": "maratona" };
-const PERIOD_LABELS: Record<string, string> = { mes: "mês", trimestre: "trimestre", semestre: "semestre", ano: "ano" };
-const TERRAIN_LABELS: Record<string, string> = { estrada: "estrada", trail: "trail" };
+/* Até 2026-09-21 esta secção também construía o Palmarés: medalhas lidas de
+   `medal_awards` (recordes, distâncias, sequências, terreno, "Ano em Km").
+   Essa parte foi substituída pelos badges (buildBadgesContext, abaixo) a
+   pedido do utilizador — "não quero medalhas e estrelas, quero só badges"
+   — e `medal_awards` deixou de ser lida aqui; a tabela fica em produção só
+   como histórico (specs/palmares-medalhoes.md, marcada como tal).
 
-export function buildPalmaresContext(medals: any[] | null | undefined, pastRaces: any[] | null | undefined, raceRuns: any[] | null | undefined): string | null {
-  const lines: string[] = [];
-  const list = (medals || []).filter((m) => m && typeof m.medalhao === "string");
-
-  /* Recordes: o valor mais recente de cada distância é o recorde em vigor.
-     O medalhão chamou-se 'recordes' até 2026-09-21 e passou a 'niveis'
-     (src/utils/medalhoes.js) — os dois valores são lidos porque as linhas
-     antigas ficam em `medal_awards` como histórico e a restrição da tabela
-     continua a aceitar ambos (migração 20260921140000_medal_awards_niveis).
-     O `value` é o mesmo nos dois: os segundos da melhor prova da distância. */
-  const records = new Map<string, any>();
-  for (const m of list.filter((x) => x.medalhao === "niveis" || x.medalhao === "recordes")) {
-    const prev = records.get(m.slot);
-    if (!prev || String(m.awarded_at) > String(prev.awarded_at)) records.set(m.slot, m);
-  }
-  const recordParts = ["5k", "10k", "21k", "42k"]
-    .filter((k) => records.has(k) && Number(records.get(k).value) > 0)
-    .map((k) => `${DISTANCE_LABELS[k]} ${formatSeconds(Number(records.get(k).value))}`);
-  if (recordParts.length) lines.push(`- Recordes pessoais em prova: ${recordParts.join(" · ")}`);
-
-  const distances = ["5k", "10k", "21k", "42k"].filter((k) => list.some((m) => m.medalhao === "distancias" && m.slot === k));
-  if (distances.length) lines.push(`- Distâncias já concluídas em prova: ${distances.map((k) => DISTANCE_LABELS[k]).join(", ")}`);
-
-  const beaten = list.filter((m) => m.medalhao === "superacao").reduce((mx, m) => Math.max(mx, Number(m.value) || 0), 0);
-  if (beaten > 0) lines.push(`- Objetivos de tempo batidos em prova: ${beaten}`);
-
-  const seq = list.filter((m) => m.medalhao === "sequencia").reduce((mx, m) => Math.max(mx, Number(m.value) || 0), 0);
-  if (seq > 0) lines.push(`- Melhor sequência de provas concluídas: ${seq}`);
-
-  // O encaixe do terreno leva o número atrás ("estrada1", "trail5"); o valor é a contagem.
-  const terrain = new Map<string, number>();
-  for (const m of list.filter((x) => x.medalhao === "terreno")) {
-    const key = String(m.slot).replace(/\d+$/, "");
-    terrain.set(key, Math.max(terrain.get(key) || 0, Number(m.value) || 0));
-  }
-  if (terrain.size) lines.push(`- Provas por terreno: ${[...terrain].map(([k, n]) => `${n} em ${TERRAIN_LABELS[k] ?? k}`).join(", ")}`);
-
-  const kmMedals = list.filter((m) => m.medalhao === "ano_km").sort((a, b) => String(b.awarded_at).localeCompare(String(a.awarded_at)));
-  if (kmMedals.length) {
-    const last = kmMedals[0];
-    lines.push(`- O Ano em Km: ${kmMedals.length} medalha(s); a última foi ${PERIOD_LABELS[last.slot] ?? last.slot} ${last.period_key} com ${km(last.value) ?? "?"}`);
-  }
-
-  // Provas concluídas: tempo real (a corrida ligada) face ao objetivo.
+   O que NÃO era Palmarés e por isso fica: o registo factual das provas já
+   corridas — tempo real face ao objetivo, e o balanço que a própria Carol
+   escreveu no dia seguinte (race_events.coach_balance). Isso é história do
+   atleta, não uma medalha, e continua a dar-lhe contexto e medida. */
+export function buildRaceHistoryContext(pastRaces: any[] | null | undefined, raceRuns: any[] | null | undefined): string | null {
+  // Tempo real (a corrida ligada) face ao objetivo.
   const runByRace = new Map<string, any>();
   for (const r of raceRuns || []) if (r?.race_id && !runByRace.has(r.race_id)) runByRace.set(r.race_id, r);
   const raceLines = (pastRaces || []).slice(0, 5).map((race) => {
@@ -279,15 +244,13 @@ export function buildPalmaresContext(medals: any[] | null | undefined, pastRaces
     // O balanço que ela própria escreveu no dia seguinte (race_events.coach_balance):
     // escrevia-o o chat e nunca ninguém o lia de volta.
     const balance = clip(race.coach_balance, 200);
-    return `  - ${race.date} · ${clip(race.name, 80) ?? "Prova"}: ${parts.join(", ")}` +
+    return `- ${race.date} · ${clip(race.name, 80) ?? "Prova"}: ${parts.join(", ")}` +
       `${note ? ` — nota do atleta: "${note.replace(/"/g, "'")}"` : ""}` +
       `${balance ? ` — o teu balanço: "${balance.replace(/"/g, "'")}"` : ""}`;
   });
-  if (raceLines.length) lines.push(`- Últimas provas concluídas:\n${raceLines.join("\n")}`);
-
-  if (!lines.length) return null;
-  return `PALMARÉS E PROVAS PASSADAS (o que o atleta já conquistou — é a história dele, usa-a para dar contexto e medida, ` +
-    `não para elogiar por rotina):\n${lines.join("\n")}`;
+  if (!raceLines.length) return null;
+  return `ÚLTIMAS PROVAS CONCLUÍDAS (o que o atleta já correu — é a história dele, usa-a para dar contexto e medida, ` +
+    `não para elogiar por rotina):\n${raceLines.join("\n")}`;
 }
 
 // ── 1.8 — A vitrina de badges (gamificação, fase 6) ──────────────────────
@@ -904,7 +867,9 @@ export async function fetchSharedMemoryBlock(
 export interface ChatMemoryBlocks {
   records: string | null;
   dailyCard: string | null;
-  palmares: string | null;
+  /** As últimas provas concluídas (tempo face ao objetivo, o teu balanço) —
+   *  não é o Palmarés (medalhas), substituído pelos badges a 2026-09-22. */
+  raceHistory: string | null;
   /** A vitrina de badges já ganhos, com as regras do 6 #6 (fase 6). */
   badges: string | null;
   portrait: string | null;
@@ -935,7 +900,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     // O retrato da época (5.3) — extraído para fetchPortraitBlock, que o
     // cartão diário e o analyze-run também chamam via fetchSharedMemoryBlock.
     const portraitPromise = fetchPortraitBlock(sb, userId, todayISO);
-    const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, badgesR, pastRacesR, bodyNotesR, goalsR] = await Promise.all([
+    const [runsR, gymR, mealsR, upcomingNotesR, cardR, badgesR, pastRacesR, bodyNotesR, goalsR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
         .eq("user_id", userId).gte("date", recordsFrom).lte("date", todayISO).or(hasText)
         .order("date", { ascending: false }).limit(RECORD_QUOTA.runs),
@@ -950,8 +915,6 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
         .order("date", { ascending: true }).limit(5),
       sb.from("coach_daily_summary").select("date, recap, warnings, meal_suggestion, tomorrow_prep, race_readiness, daily_concept")
         .eq("user_id", userId).gte("date", addDaysISO(todayISO, -1)).lte("date", todayISO),
-      sb.from("medal_awards").select("medalhao, slot, period_key, value, awarded_at")
-        .eq("user_id", userId).order("awarded_at", { ascending: false }).limit(200),
       /* Só a conquista: `tier`, `period_key` e `awarded_at` chegam para dizer
          o nível, as repetições e a última vez. O `value` fica DE FORA de
          propósito — é o número que alimentaria um "faltam-te X" (6 #6, R1). */
@@ -975,7 +938,6 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     warn("meals(notas)", mealsR.error);
     warn("race_events(notas)", upcomingNotesR.error);
     warn("coach_daily_summary", cardR.error);
-    warn("medal_awards", medalsR.error);
     warn("user_badges", badgesR.error);
     warn("race_events(concluídas)", pastRacesR.error);
     warn("body_assessments(notas)", bodyNotesR.error);
@@ -1009,7 +971,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     return {
       records: [recordsBlock, upcomingBlock].filter(Boolean).join("\n\n") || null,
       dailyCard: buildDailyCardContext(cardR.data, todayISO),
-      palmares: buildPalmaresContext(medalsR.data, pastRaces, raceRuns),
+      raceHistory: buildRaceHistoryContext(pastRaces, raceRuns),
       badges: buildBadgesContext(badgesR.data),
       portrait: await portraitPromise,
       checkin: await checkinPromise,
@@ -1020,6 +982,6 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, palmares: null, badges: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null };
+    return { records: null, dailyCard: null, raceHistory: null, badges: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null };
   }
 }

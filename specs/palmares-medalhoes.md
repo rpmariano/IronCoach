@@ -1,5 +1,13 @@
 # Palmarés — os medalhões
 
+> **HISTÓRICO — feature substituída a 2026-09-22.** O Palmarés (medalhões,
+> medalhas, encaixes) descrito nesta spec deixou de existir na app: decisão
+> do utilizador — "não quero medalhas e estrelas, quero só badges". A tabela
+> `medal_awards` fica em produção como histórico (não é lida nem escrita),
+> mas nada do que se segue reflete o código atual. Para a feature que a
+> substituiu, ver `src/utils/badges.js`, `src/components/Perfil/BadgesCard.jsx`
+> e a doutrina `src/coach-knowledge/06-head-coach-arbitragem.md` #6.
+
 Decidido em 2026-09-14/15 sobre o canvas "IronCoach — Início e o âmbar da prova"
 (https://claude.ai/artifact/NbHMkqfbCw2vBWdcPMvEea, pranchas "Palmarés — os
 medalhões", "Medalhão — detalhe e regras", "O momento da medalha"). Substitui o

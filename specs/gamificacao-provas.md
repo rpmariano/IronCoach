@@ -1,5 +1,12 @@
 # Palmarés — gamificação das provas
 
+> **Nota (2026-09-22):** o Palmarés (medalhões) para onde este spec dizia que
+> as conquistas se arquivavam foi substituído pelos badges — ver
+> `palmares-medalhoes.md` (marcada como histórico) e `src/utils/badges.js`.
+> O que se segue sobre o CÁLCULO das conquistas por prova (`premios.js`,
+> os cartões no registo/hub/Início/chat) continua a descrever o mecanismo
+> atual; só o destino de arquivo mudou.
+
 Decidido em 2026-09-12, sobre o canvas "Palmarés da IronCoach"
 (https://claude.ai/code/artifact/493e420d-b75a-45ea-abcb-e59d220d454f).
 Depende de `prova-concluida.md` (corrida ligada à prova por `runs.race_id`,
@@ -8,9 +15,10 @@ memórias em `race_events`). Complementa `PRD.md` §3.4 e CAROL.md §7.
 ## Princípio
 
 A conquista é um momento, não um bloco fixo. Aparece onde o dia a seguir à
-prova se vive — o registo, o Início, a Carol — e arquiva-se num sítio só, o
-Palmarés, que vive no separador Provas desde 2026-09-13 (antes no Perfil).
-Nunca compete com "o que faço hoje".
+prova se vive — o registo, o Início, a Carol — e arquivava-se num sítio só, o
+Palmarés (separador Provas desde 2026-09-13, antes no Perfil) — substituído
+pelos badges a 2026-09-22, ver nota acima. Nunca compete com "o que faço
+hoje".
 
 ## As conquistas (calculadas dos dados, sem tabelas novas)
 
@@ -45,8 +53,9 @@ conquistas DESTA prova com `{ key, unlocked, date, raceId, detail, isNew }`;
 `isNew` = registada há menos de 7 dias. O `today` é **obrigatório** — o motor
 não usa o relógio real, para o hub, o Início e a Carol não poderem discordar
 sobre que dia é hoje. O palmarés global de conquistas
-(`computeAchievements`) deixou de existir em 2026-09-21: o palmarés são os
-medalhões.
+(`computeAchievements`) deixou de existir em 2026-09-21, substituído pelos
+medalhões — que por sua vez foram substituídos pelos badges a 2026-09-22
+(ver nota no topo deste ficheiro).
 
 ## Onde aparece
 
@@ -73,8 +82,10 @@ medalhões.
    4:04 abaixo do anterior". O prompt recebe as conquistas novas no contexto
    (é uma mudança em `coach-chat`, portanto produção: passo à parte, com o
    cuidado habitual).
-5. **Substituído em 2026-09-15 pelos medalhões — ver `palmares-medalhoes.md`.**
-   O texto abaixo descreve o cartão que existe hoje, até essa spec entrar.
+5. **Substituído em 2026-09-15 pelos medalhões (`palmares-medalhoes.md`),
+   por sua vez substituídos pelos badges a 2026-09-22 — ver nota no topo
+   deste ficheiro.** O texto abaixo é histórico: descreve o cartão "Palmarés"
+   que existiu entre estas duas mudanças, não o que a app mostra hoje.
    **Separador Provas** (era Perfil · Pessoal, opção B, até 2026-09-13; ver
    specs/prova-concluida.md §"Onde vivem as provas") — cartão "Palmarés":
    as conquistas em linha (44px cada, cor ou cadeado, rótulo curto) e "Ver
