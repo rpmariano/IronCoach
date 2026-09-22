@@ -6,6 +6,13 @@ consultáveis por bloco. Cada ficheiro é **gerado a partir das respostas já
 registadas e verificadas** nessa investigação — não reabre decisões, só as
 torna mais fáceis de encontrar por assunto.
 
+**Exceção, 2026-09-22:** duas entradas são investigação NOVA, feita de raiz e
+não convertida daquele ficheiro — a régua de cadência (2.4 #3) e o bloco
+inteiro de VO2máx/VDOT (2.5). Estão assinaladas como tal no próprio sítio,
+com a ressalva de método que lhes corresponde: foram investigadas só por
+pesquisa web, porque o proxy desta sessão bloqueou o acesso direto às páginas
+dos artigos. Confiança calibrada em conformidade e lacunas declaradas.
+
 ## Estrutura
 
 | Ficheiro | Cobre |
@@ -15,7 +22,8 @@ torna mais fáceis de encontrar por assunto.
 | [02-corrida-carga-progressao.md](02-corrida-carga-progressao.md) | Aumento máximo semanal, ACWR, frequência, descarga, treino longo, regresso após pausa |
 | [02-corrida-intensidade.md](02-corrida-intensidade.md) | Distribuição de intensidade (80/20), zonas de FC, método caminhada/corrida |
 | [02-corrida-prova.md](02-corrida-prova.md) | Taper, carga de hidratos pré-prova, pace-alvo |
-| [02-corrida-tecnica-sinais.md](02-corrida-tecnica-sinais.md) | Sinais de sobretreino/lesão detetáveis nos dados |
+| [02-corrida-tecnica-sinais.md](02-corrida-tecnica-sinais.md) | Sinais de sobretreino/lesão detetáveis nos dados; régua de cadência por velocidade e estatura |
+| [02-corrida-vo2max-vdot.md](02-corrida-vo2max-vdot.md) | Normas de VO2máx por idade/sexo, erro do VO2máx de relógio, VDOT vs. VO2máx, melhoria acima do ruído |
 | [03-ginasio.md](03-ginasio.md) | Papel da força por nível, séries/semana, grupos prioritários, periodização |
 | [04-nutricao-base-diaria.md](04-nutricao-base-diaria.md) | Metas de proteína/hidratos/gordura por nível e objetivo |
 | [04-nutricao-seguranca.md](04-nutricao-seguranca.md) | RED-S, défice máximo, piso de gordura corporal |
@@ -53,7 +61,8 @@ modelo de duas formas:
 | 2.1 — Carga/progressão | ✅ Doutrina no prompt (tabela de % por nível, ACWR, descarga, treino longo, regresso após pausa); ACWR calculado em tempo real de `recentRuns` e incluído no contexto |
 | 2.2 — Intensidade | ✅ Distribuição 80/20 por nível no prompt; quando introduzir qualidade por nível; sinal RPE/pace; zonas FC Tanaka+Karvonen calculadas de `birth_date`+`resting_hr_bpm` |
 | 2.3 — Prova | ✅ Taper por prioridade (`race_priority`) no `coach-chat` |
-| 2.4 — Técnica/sinais | ⚠️ Parcial — cadência <155 spm flagged por run (⚠ no contexto); doutrina "nunca 180 spm" no prompt; `avg_heart_rate_bpm` por run agora incluído no contexto (sinal de deriva/fadiga Bloco 2.4 #2). FC repouso trend, HRV, GCT balance, cadência intra-sessão: não capturáveis sem integração wearable |
+| 2.4 — Técnica/sinais | ⚠️ Parcial — cadência <155 spm flagged por run (⚠ no contexto); doutrina "nunca 180 spm" no prompt; `avg_heart_rate_bpm` por run agora incluído no contexto (sinal de deriva/fadiga Bloco 2.4 #2). FC repouso trend, HRV, GCT balance, cadência intra-sessão: não capturáveis sem integração wearable. **Régua de cadência (2.4 #3, nova em 2026-09-22): ❌ não wired** — a régua `150 + 6,0×v − 0,7×(altura−175)` é implementável com os dados atuais mas ainda não existe em código |
+| 2.5 — VO2máx/VDOT | ⚠️ Parcial — o VDOT está wired e de sobra (`getVDOTTrend`, `@formulas/racePrediction.ts`, escala d'"Os Níveis" em `utils/medalhoes.js`). O **VO2máx** não: `runs.details.vo2_max` é guardado e mostrado no `RunCard`, mas nunca é validado (#2), nem comparado com a norma de idade/sexo (#1), nem lido como tendência (#4) |
 | 3 — Ginásio | ✅ Doutrina completa no prompt (papel por nível, grupos prioritários, séries/sem, faixas reps, progressão, interferência, manutenção, pliometria, falha); `computeGymMetrics` deteta spike volume-carga pernas (#6), intervalo <48h (#7) e séries ≥15 reps (#10); `highRepSets` tracking em `summariseSessions` |
 | 4.1/4.2/4.3 — Nutrição | ✅ Doutrina completa no prompt (tabelas proteína/hidratos/gordura, TMB/GETD Mifflin-St Jeor, défice máximo, hidratação, RED-S, ferro, ritmo de perda de peso, pré/pós-treino, carb-loading, fibra, cafeína); `buildNutritionTargets` calcula TMB+GETD+proteína+hidratação em tempo real com dados do perfil e volume semanal; flag RED-S se FC repouso <40 bpm; 22 testes novos (total 120) |
 | 5 — Corpo | ✅ Doutrina completa no prompt (BIA fiável vs. não fiável, variação de peso, médias móveis, gordura corporal faixas + piso RED-S, peso de prova proibido em iniciante/básico, tabela de ganho muscular por nível, visceral fat Renpho, água corporal, sinais de sobretreino #1-#4); `computeBodyMetrics` deteta queda de peso >1,5% em 72h (#11), gordura abaixo do piso RED-S (#6), visceral fat ≥10/≥15 (#8), exclui `muscle_mass_kg` (não fiável); fetch de `body_assessments` (30 dias) injetado no contexto; 21 testes novos (total 141) |
