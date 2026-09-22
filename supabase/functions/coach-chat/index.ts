@@ -22,7 +22,7 @@ import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
-import { buildBodyGoalsContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
+import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { CAROL_TONE_RULES } from "../_shared/carolTone.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
@@ -5808,6 +5808,18 @@ async function handler(req: Request): Promise<Response> {
         `- [${i.state}] ${i.title} (${i.metric}: ${i.value}): ${i.message}`
       ).join("\n");
       finalSystemInstruction += "\n\n--- AVISOS ATIVOS (INSIGHTS BIOMETRICOS) ---\nO motor de regras gerou os seguintes alertas. Tem em conta que o utilizador os pode ter ignorado.\n" + insightsContext;
+    }
+
+    /* O atleta carregou no botão do ecrã de um badge (Perfil >
+       BadgeDetailSheet) para ela lhe explicar o badge. Mesmo molde dos
+       AVISOS ATIVOS acima: o cliente manda o contexto, o servidor injeta-o.
+       É aqui — e SÓ aqui — que o progresso de um badge chega ao prompt: o
+       bloco geral da vitrina (buildBadgesContext) continua a não o ter, de
+       propósito. O que abre esta porta é a pergunta ter sido dele; ver
+       buildBadgeQuestionContext e a doutrina 6 #6. */
+    const badgeQuestionContext = buildBadgeQuestionContext(body.badgeContext);
+    if (badgeQuestionContext) {
+      finalSystemInstruction += "\n\n--- PERGUNTA SOBRE UM BADGE (foi o atleta que a abriu) ---\n" + badgeQuestionContext;
     }
 
     // Texto injetado quando o atleta bateu à porta do "Adaptar Plano" (ver

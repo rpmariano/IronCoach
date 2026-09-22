@@ -851,3 +851,70 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
   });
 });
 
+
+/* O botão "Falar com a Carol" do ecrã de um badge (Perfil/BadgeDetailSheet).
+   O atleta pediu-lhe que lhe explicasse o badge: a pergunta DELE entra no
+   chat como se a tivesse escrito, e o estado do badge viaja à parte, no
+   `badgeContext` do corpo do pedido — nunca dentro da mensagem. É a porta
+   que a doutrina 6 #6 prevê: o progresso de um badge só chega à Carol
+   porque foi ele que perguntou, e só o deste badge. */
+describe('Coach — explicar um badge (coachIntent badge)', () => {
+  const INTENT = {
+    kind: 'badge',
+    badgeKey: 'escalada',
+    badgeName: 'A Escalada',
+    familia: 'acumulacao',
+    pergunta: 'Explica-me o badge A Escalada — o que é que ele quer dizer e como é que se ganha?',
+    estado: 'empty',
+  };
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'A Escalada soma os metros de subida.' }, suggestions: [] },
+      error: null,
+    });
+  });
+
+  it('envia a pergunta do atleta como mensagem, com o contexto do badge à parte', async () => {
+    useAppStore.setState({ coachIntent: INTENT });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+
+    // A mensagem visível é a do atleta, e só ela: nada de chaves nem de
+    // marcadores dentro do texto.
+    expect(body.message).toBe(INTENT.pergunta);
+    expect(body.message).not.toMatch(/escalada|badgeContext|acumulacao/);
+    await waitFor(() => expect(screen.getByText(INTENT.pergunta)).toBeInTheDocument());
+
+    // O estado vai fora da mensagem, no molde do activeInsights.
+    expect(body.badgeContext).toMatchObject({ key: 'escalada', familia: 'acumulacao', estado: 'empty' });
+    expect(body.badgeContext.name).toBe('A Escalada');
+    expect(typeof body.badgeContext.regra).toBe('string');
+    // E o resto do payload de sempre continua lá.
+    expect(Array.isArray(body.activeInsights)).toBe(true);
+    // A intenção consome-se: uma pergunta, um pedido.
+    expect(useAppStore.getState().coachIntent).toBeNull();
+  });
+
+  it('uma mensagem escrita à mão a seguir já não leva contexto de badge nenhum', async () => {
+    useAppStore.setState({ coachIntent: INTENT });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'E o meu plano?' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    });
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+    const segundo = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[1][1].body);
+    expect(segundo.message).toBe('E o meu plano?');
+    expect(segundo.badgeContext).toBeUndefined();
+  });
+});

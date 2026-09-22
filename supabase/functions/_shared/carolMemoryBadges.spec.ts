@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildBadgesContext } from './carolMemory.ts';
+import { buildBadgesContext, buildBadgeQuestionContext } from './carolMemory.ts';
 
 const linha = (badge_key: string, extra: Record<string, unknown> = {}) => ({
   badge_key,
@@ -125,5 +125,99 @@ describe('buildBadgesContext — o que NUNCA mostra (6 #6)', () => {
     const texto = buildBadgesContext([linha('z2_mestre', { period_key: 'run-1' })])!;
     expect(texto).toContain('Acumulação e Amuletos');
     expect(texto).toContain('ACELERAÇÃO NO FIM DO PERÍODO');
+  });
+});
+
+/* `buildBadgeQuestionContext` — a porta da pergunta direta (6 #6).
+ *
+ * O bloco acima existe para garantir que a Carol NÃO tem o progresso. Este
+ * existe para garantir que, quando ela o tem, tem também o aviso que o
+ * justifica: foi o atleta que perguntou, vale para este badge e mais
+ * nenhum, e numa família proibida o número vai sozinho.
+ *
+ * O teste que conta mais é o último: o bloco geral continua sem progresso
+ * nenhum depois desta porta existir. */
+describe('buildBadgeQuestionContext — a pergunta direta sobre UM badge', () => {
+  const ctx = (over: Record<string, unknown> = {}) => ({
+    key: 'z2_mestre', estado: 'empty', regra: 'Uma corrida com 80% do tempo em Z1-Z2.',
+    progresso: 'faltam 6 pontos para a próxima', niveis: null, repeticoes: null, ...over,
+  });
+
+  it('não devolve bloco nenhum sem contexto ou com uma chave desconhecida', () => {
+    expect(buildBadgeQuestionContext(null)).toBeNull();
+    expect(buildBadgeQuestionContext(undefined)).toBeNull();
+    expect(buildBadgeQuestionContext('z2_mestre')).toBeNull();
+    // Sem entrada no catálogo não há família — e sem família não há regra
+    // que proteja o badge. O lado seguro do erro é o silêncio.
+    expect(buildBadgeQuestionContext(ctx({ key: 'badge_do_futuro' }))).toBeNull();
+  });
+
+  it('diz em voz alta que foi o atleta que perguntou, e que vale só para este badge', () => {
+    const texto = buildBadgeQuestionContext(ctx())!;
+    expect(texto).toContain('PERGUNTA DIRETA SOBRE UM BADGE');
+    expect(texto).toContain('Foi ELE que perguntou');
+    expect(texto).toContain('vale só para ESTE badge');
+    expect(texto).toContain('não voltas a ele');
+  });
+
+  it('leva o progresso deste badge — a regra, onde ele está, os níveis e as repetições', () => {
+    const texto = buildBadgeQuestionContext(ctx({
+      key: 'escalada', estado: 'progress', regra: 'Somar metros de subida.',
+      progresso: 'faltam 5 000 m para bronze',
+      niveis: [
+        { label: 'Bronze', limiar: 10000, ganho: true },
+        { label: 'Prata', limiar: 25000, ganho: false },
+      ],
+      repeticoes: 3,
+    }))!;
+    expect(texto).toContain('A Escalada (família: Acumulação) — a caminho');
+    expect(texto).toContain('Somar metros de subida.');
+    expect(texto).toContain('faltam 5 000 m para bronze');
+    expect(texto).toContain('Bronze 10000 (ganho) · Prata 25000');
+    expect(texto).toContain('Já o ganhou 3 vezes');
+  });
+
+  /* O nome e a família saem do catálogo do servidor, nunca do que o cliente
+     disser: é a família que decide a regra, e uma família vinda de fora era
+     uma forma de a contornar. */
+  it('ignora o nome e a família que o cliente mandar — o catálogo é que manda', () => {
+    const texto = buildBadgeQuestionContext(ctx({
+      key: 'coruja', name: 'Mestre da Z2', familia: 'desempenho',
+    }))!;
+    expect(texto).toContain('Coruja (família: Amuletos)');
+    expect(texto).not.toContain('Mestre da Z2');
+    expect(texto).toContain('NUNCA propões');
+  });
+
+  it('numa família sugerível, deixa-a dizer o que treinar para melhorar', () => {
+    const texto = buildBadgeQuestionContext(ctx({ key: 'z2_mestre' }))!;
+    expect(texto).toContain('Desempenho e Disciplina podes sugerir à vontade');
+    expect(texto).toContain('para o ganhar ou para ir mais longe nele');
+    expect(texto).not.toContain('NUNCA propões');
+  });
+
+  it('numa família proibida, o número vai sozinho — sem empurrão nenhum', () => {
+    for (const key of ['escalada', 'quilometros', 'coruja', 'anos']) {
+      const texto = buildBadgeQuestionContext(ctx({ key }))!;
+      expect(texto, key).toContain('NUNCA propões (6 #6, R1 e R3)');
+      expect(texto, key).toContain('Nada de o encorajar a ir buscá-lo hoje');
+      expect(texto, key).toContain('nada de lhe pores isto como objetivo');
+      expect(texto, key).toContain('nada de sugerires treinos');
+      expect(texto, key).toContain('PÁRA AÍ');
+      // E nunca o convite que a porta NÃO abre.
+      expect(texto, key).not.toContain('podes sugerir à vontade');
+    }
+  });
+
+  /* A rede de segurança do conjunto: esta porta não pode ter aberto a outra.
+     O bloco geral da vitrina continua a não ter progresso nenhum. */
+  it('não contamina o bloco geral da vitrina, que continua sem progresso', () => {
+    const geral = buildBadgesContext([
+      linha('escalada', { tier: 'bronze', value: 12345 }),
+      linha('coruja'),
+    ])!.split('REGRAS (')[0];
+    expect(geral).not.toContain('12345');
+    expect(geral.toLowerCase()).not.toContain('faltam');
+    expect(geral).not.toContain('PERGUNTA DIRETA');
   });
 });

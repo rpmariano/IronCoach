@@ -1,11 +1,12 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useEscapeClose } from '../shared/Sheet';
 import BadgeRing, { corDoBadge } from '../shared/BadgeRing';
 import SectionLabel from '../shared/SectionLabel';
 import { DateTile } from '../Run/RaceListCard';
+import Button from '../shared/Button';
 
 /* O ecrã de detalhe de um badge (reforma da gamificação, fase 2).
 
@@ -35,6 +36,41 @@ const GRUPOS = [
   { status: 'falhou', label: 'Não chegaram lá' },
   { status: 'indeterminada', label: 'Por decidir — falta o dado' },
 ];
+
+/* As duas famílias que a Carol PODE trazer à conversa por iniciativa dela
+   (doutrina 6 #6, R1 e R3). O botão de lhe perguntar existe em todos os
+   badges — quem pergunta é o atleta, e a doutrina prevê essa porta à letra
+   ("perguntado diretamente pelo atleta, responde com o número") — mas a
+   pergunta que ele envia não é a mesma: nas outras duas famílias
+   (`acumulacao`, `amuletos`) pede o que o badge É e COMO SE GANHA, e nunca
+   "como melhoro". Melhorar um amuleto não quer dizer nada: não se treina
+   para fazer anos, e "corre de madrugada para ganhares a Coruja" destrói
+   exatamente aquilo que torna o amuleto agradável. */
+const FAMILIAS_SUGERIVEIS = new Set(['desempenho', 'disciplina']);
+
+/** A mensagem que o atleta envia ao carregar no botão. Sai no chat tal e
+ *  qual, por isso tem de soar a pessoa e não a formulário — o estado do
+ *  badge viaja à parte, no `badgeContext` do pedido (Coach.jsx). */
+export function perguntaDoBadge(badge) {
+  const nome = badge?.name || 'este';
+  if (!FAMILIAS_SUGERIVEIS.has(badge?.familia)) {
+    return `Explica-me o badge ${nome} — o que é que ele quer dizer e como é que se ganha?`;
+  }
+  return badge?.state === 'won'
+    ? `Explica-me o badge ${nome} — o que é que ele quer dizer, e o que posso fazer para ir mais longe nele?`
+    : `Explica-me o badge ${nome} — o que é que ele quer dizer, e o que posso fazer para o ganhar?`;
+}
+
+/** A legenda por baixo do botão: o atleta sai deste ecrã para outro
+ *  separador, e tem direito a saber o que lhe vai ser dito lá. */
+function legendaDoBotao(badge) {
+  if (!FAMILIAS_SUGERIVEIS.has(badge?.familia)) {
+    return 'Pergunta-lhe o que este badge significa e como se ganha.';
+  }
+  return badge?.state === 'won'
+    ? 'Pergunta-lhe o que este badge significa e como podes ir mais longe nele.'
+    : 'Pergunta-lhe o que este badge significa e o que podes fazer para o ganhar.';
+}
 
 const CARD = {
   background: 'var(--surface-glass)',
@@ -71,7 +107,7 @@ function Linha({ sessao, onOpen }) {
 }
 
 export default function BadgeDetailSheet({ badge, onClose, onNavigate }) {
-  const { setEditingRaceId, setEditingRunId, setOpenCreationMode } = useAppStore();
+  const { setEditingRaceId, setEditingRunId, setOpenCreationMode, setCoachIntent, setActiveTab } = useAppStore();
   useEscapeClose(onClose);
 
   if (!badge) return null;
@@ -88,6 +124,32 @@ export default function BadgeDetailSheet({ badge, onClose, onNavigate }) {
       setEditingRunId(s.runId);
       setOpenCreationMode('run');
     }
+  };
+
+  /* O botão que leva à Carol. Escreve a intenção, salta para o separador do
+     Coach e só então fecha — o `onNavigate` é o mesmo que uma prova ou uma
+     corrida já usam, e é ele que fecha TODAS as camadas: aberto a partir da
+     Vitrina fecha este ecrã, aberto a partir do "o que há para ganhar" fecha
+     este e o painel por baixo. Sem isso o atleta voltava do chat e
+     encontrava dois ecrãs empilhados que já ninguém tinha pedido. */
+  const falarComACarol = () => {
+    setCoachIntent({
+      kind: 'badge',
+      badgeKey: badge.key,
+      badgeName: badge.name,
+      familia: badge.familia || null,
+      pergunta: perguntaDoBadge(badge),
+      estado: badge.state,
+    });
+    // `setActiveTab` devolve false quando um guard de navegação recusa o
+    // salto (store/index.js). Nesse caso não se fecha nada e a intenção
+    // desfaz-se: ficava escrita à espera de um chat que não chegou a abrir,
+    // e disparava sozinha da próxima vez que ele lá fosse.
+    if (setActiveTab('coach') === false) {
+      setCoachIntent(null);
+      return;
+    }
+    onNavigate?.();
   };
 
   const conteudo = (
@@ -142,6 +204,29 @@ export default function BadgeDetailSheet({ badge, onClose, onNavigate }) {
               {badge.dependeDe}
             </p>
           )}
+        </div>
+
+        {/* A conversa com a Carol. Faz sentido nos dois estados: num badge
+            por ganhar interessa o que falta, num ganho interessa o que
+            significa ter chegado lá. Mesma cor e mesmo gesto do "Falar com
+            a Carol" do RunCard — não há um terceiro aspeto para a mesma
+            coisa. */}
+        <div className="flex flex-col gap-1.5">
+          <Button
+            variant="module"
+            moduleColor="var(--grad-coach-legible)"
+            onClick={falarComACarol}
+            data-testid="badge-detalhe-carol"
+            className="w-full shadow-md border-transparent font-semibold text-xs py-3"
+          >
+            <div className="flex items-center justify-center gap-2 w-full">
+              <MessageSquare size={16} />
+              <span>Falar com a Carol</span>
+            </div>
+          </Button>
+          <p className="m-0 text-[11.5px] text-center leading-relaxed" data-testid="badge-detalhe-carol-legenda" style={{ color: 'var(--text-4)' }}>
+            {legendaDoBotao(badge)}
+          </p>
         </div>
 
         {/* Os degraus, nos badges com níveis. */}

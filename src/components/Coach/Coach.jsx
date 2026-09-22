@@ -7,6 +7,7 @@ import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
+import { computeBadges } from '../../utils/badges';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 import CoachAvatar from './CoachAvatar';
@@ -188,6 +189,47 @@ export default function Coach() {
     }));
   };
 
+  /* O contexto do badge que o atleta abriu ao carregar em "Falar com a
+     Carol" (Perfil/BadgeDetailSheet.jsx) — mesmo molde do activeInsights
+     acima: o cliente manda, o servidor injeta no prompt
+     (_shared/carolMemory.ts, buildBadgeQuestionContext).
+
+     Isto é a ÚNICA via por onde o progresso de um badge chega à Carol: o
+     bloco geral da vitrina nunca o leva, e é essa ausência que cumpre o R1 e
+     o R3 da doutrina 6 #6. A porta abre-se aqui porque quem perguntou foi o
+     atleta, e a própria regra prevê o caso — vale para ESTE badge e mais
+     nenhum, e é o servidor que junta o aviso que o diz.
+
+     Os números não vêm do `coachIntent` (que leva a identificação do badge,
+     não o estado dele): recalculam-se das mesmas regras que desenharam o
+     ecrã, para o que vai ao servidor ser o que o atleta estava a ver. Se
+     falhar, vai só a identificação — a conversa continua, com menos. */
+  const badgeContextPayload = (intent) => {
+    const key = intent?.badgeKey;
+    if (!key) return null;
+    let badge = null;
+    try {
+      const { badges } = computeBadges({
+        runs, raceEvents, profile: profile || {}, planItems: coachPlanItems, gymSessions, today: todayISO(),
+      });
+      badge = (badges || []).find((b) => b.key === key) || null;
+    } catch {
+      badge = null;
+    }
+    return {
+      key,
+      name: badge?.name || intent.badgeName || null,
+      familia: badge?.familia || intent.familia || null,
+      estado: badge?.state || intent.estado || null,
+      regra: badge?.rule || null,
+      progresso: badge?.linha || null,
+      niveis: Array.isArray(badge?.niveis)
+        ? badge.niveis.map((n) => ({ label: n.label, limiar: n.limiar, ganho: !!n.ganho }))
+        : null,
+      repeticoes: badge?.count || null,
+    };
+  };
+
   const handleProactiveIntervention = (intentData) => sendCoachInitiatedPayload({
     message: '',
     is_intervention_start: true,
@@ -341,6 +383,17 @@ export default function Coach() {
       const { text } = coachIntent;
       setCoachIntent(null);
       handleSend(text);
+      return;
+    }
+    /* Vindo do ecrã de um badge (Perfil > Vitrina, ou o painel "o que há
+       para ganhar"): o atleta pediu que ela lhe explicasse o badge. A
+       pergunta dele entra na conversa como se a tivesse escrito — é o molde
+       do `say` — mas leva atrás, fora da mensagem, o contexto deste badge.
+       Ver badgeContextPayload acima. */
+    if (coachIntent && coachIntent.kind === 'badge') {
+      const intent = coachIntent;
+      setCoachIntent(null);
+      handleSend(intent.pergunta, { badgeContext: badgeContextPayload(intent) });
       return;
     }
     // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
@@ -671,7 +724,11 @@ export default function Coach() {
     setCoachLoading(false);
   };
 
-  const handleSend = async (textToSend) => {
+  /* `extras`: campos que vão para o corpo do pedido a acompanhar esta
+     mensagem — hoje só o `badgeContext` (ver badgeContextPayload). Fica de
+     fora da mensagem de propósito: o que o atleta escreve tem de ser o que
+     ele diria, e o contexto é do servidor. */
+  const handleSend = async (textToSend, extras) => {
     const text = (typeof textToSend === 'string' ? textToSend : inputStr).trim();
     if (!text || coachLoading) return;
 
@@ -709,7 +766,8 @@ export default function Coach() {
       const payload = {
         message: text,
         userData: profile || {},
-        activeInsights: insightsContext
+        activeInsights: insightsContext,
+        ...(extras && typeof extras === 'object' ? extras : null),
       };
 
       const { data, error, isTimeout, isBusy } = await invokeEdgeFunctionWithTimeout('coach-chat', {

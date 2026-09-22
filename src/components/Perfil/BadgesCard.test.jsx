@@ -91,6 +91,7 @@ describe('BadgesCard — a Vitrina só mostra o que já foi ganho', () => {
     useAppStore.setState({
       profile: { id: 'user-1' }, runs: [], raceEvents: [],
       editingRaceId: null, editingRunId: null, openCreationMode: null,
+      coachIntent: null, activeTab: 'perfil', navGuard: null,
     });
   });
 
@@ -205,6 +206,30 @@ describe('BadgesCard — a Vitrina só mostra o que já foi ganho', () => {
     expect(marcarVistos).not.toHaveBeenCalled();
   });
 
+  /* O botão que leva à Carol (doutrina 6 #6, a porta da pergunta direta).
+     Num badge JÁ GANHO a pergunta é sobre o que ele significa e até onde
+     ainda dá para ir — o badge é de desempenho, família que ela pode
+     sugerir à vontade. */
+  it('o detalhe de um badge ganho traz o botão da Carol, e o clique salta para o chat', () => {
+    render(<BadgesCard />);
+    fireEvent.click(screen.getByTestId('badge-tile-z2_mestre'));
+    const botao = screen.getByTestId('badge-detalhe-carol');
+    expect(botao).toHaveTextContent('Falar com a Carol');
+    expect(screen.getByTestId('badge-detalhe-carol-legenda')).toHaveTextContent('como podes ir mais longe nele');
+
+    fireEvent.click(botao);
+    const intent = useAppStore.getState().coachIntent;
+    expect(intent).toMatchObject({
+      kind: 'badge', badgeKey: 'z2_mestre', badgeName: 'Mestre da Z2',
+      familia: 'desempenho', estado: 'won',
+    });
+    // A mensagem é do atleta e tem de soar a pessoa — não a formulário.
+    expect(intent.pergunta).toBe('Explica-me o badge Mestre da Z2 — o que é que ele quer dizer, e o que posso fazer para ir mais longe nele?');
+    expect(useAppStore.getState().activeTab).toBe('coach');
+    // E o ecrã fecha-se: o chat toma o lugar do separador.
+    expect(screen.queryByTestId('badge-detalhe-z2_mestre')).not.toBeInTheDocument();
+  });
+
   it('uma corrida da lista abre o registo; uma prova abre o hub', () => {
     render(<BadgesCard />);
     fireEvent.click(screen.getByTestId('badge-tile-z2_mestre'));
@@ -227,6 +252,7 @@ describe('BadgesPorGanharSheet — o que falta, com as regras à vista', () => {
     useAppStore.setState({
       profile: { id: 'user-1' }, runs: [], raceEvents: [],
       editingRaceId: null, editingRunId: null, openCreationMode: null,
+      coachIntent: null, activeTab: 'perfil', navGuard: null,
     });
   });
 
@@ -278,6 +304,45 @@ describe('BadgesPorGanharSheet — o que falta, com as regras à vista', () => {
     expect(niveis).toHaveTextContent('Bronze');
     expect(niveis).toHaveTextContent('10 000');
     expect(screen.getByTestId('badge-nivel-ouro')).toHaveAttribute('data-ganho', '0');
+  });
+
+  /* O botão da Carol no OUTRO caminho: aberto daqui, o salto para o chat tem
+     de fechar as DUAS camadas — o detalhe e este painel — senão o atleta
+     voltava da conversa e encontrava dois ecrãs empilhados. */
+  it('o botão da Carol num badge por ganhar fecha o detalhe E o painel', () => {
+    render(<BadgesCard />);
+    const painel = abrirPorGanhar();
+    fireEvent.click(within(painel).getByTestId('badge-tile-semana_100'));
+    expect(screen.getByTestId('badge-detalhe-carol-legenda')).toHaveTextContent('o que podes fazer para o ganhar');
+
+    fireEvent.click(screen.getByTestId('badge-detalhe-carol'));
+    const intent = useAppStore.getState().coachIntent;
+    expect(intent).toMatchObject({ kind: 'badge', badgeKey: 'semana_100', familia: 'disciplina', estado: 'empty' });
+    expect(intent.pergunta).toBe('Explica-me o badge Semana 100% — o que é que ele quer dizer, e o que posso fazer para o ganhar?');
+    expect(useAppStore.getState().activeTab).toBe('coach');
+    expect(screen.queryByTestId('badge-detalhe-semana_100')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('badges-por-ganhar-sheet')).not.toBeInTheDocument();
+  });
+
+  /* O coração da doutrina 6 #6 no lado do cliente: num amuleto ou num
+     contador, a pergunta que sai daqui NUNCA pede como melhorar. Perguntar
+     "o que faço para ganhar a Coruja" é pedir-lhe que sugira um amuleto — e
+     um amuleto sugerido deixa de ser um amuleto. Só o que é e como se ganha. */
+  it('num amuleto e num badge de acumulação a pergunta só pede o que é e como se ganha', () => {
+    render(<BadgesCard />);
+    for (const [key, nome, familia] of [['solsticio', 'Solstício', 'amuletos'], ['escalada', 'A Escalada', 'acumulacao']]) {
+      const painel = abrirPorGanhar();
+      fireEvent.click(within(painel).getByTestId(`badge-tile-${key}`));
+      expect(screen.getByTestId('badge-detalhe-carol-legenda')).toHaveTextContent('o que este badge significa e como se ganha');
+
+      fireEvent.click(screen.getByTestId('badge-detalhe-carol'));
+      const intent = useAppStore.getState().coachIntent;
+      expect(intent, key).toMatchObject({ kind: 'badge', badgeKey: key, familia });
+      expect(intent.pergunta).toBe(`Explica-me o badge ${nome} — o que é que ele quer dizer e como é que se ganha?`);
+      // Nem uma palavra que peça um empurrão.
+      expect(intent.pergunta, key).not.toMatch(/melhorar|mais longe|o que posso fazer/);
+      useAppStore.setState({ coachIntent: null, activeTab: 'perfil' });
+    }
   });
 
   it('fecha-se e a Vitrina fica como estava', () => {

@@ -266,6 +266,58 @@ A Vitrina do Perfil segue a mesma regra do seu lado: a frase de progresso
 ("faltam 5 000 m para bronze") nunca mostra um amuleto, ainda que seja o
 badge mais perto de se fechar — `src/components/Perfil/BadgesCard.jsx`.
 
+### A porta da pergunta direta (2026-09-22, o botão do ecrã do badge)
+
+O ecrã de detalhe de um badge (`src/components/Perfil/BadgeDetailSheet.jsx`)
+passou a ter um botão que leva à conversa com a Carol para ela explicar o
+badge. **Isto não é uma exceção a R1 e R3 — é a segunda frase de R1, posta a
+funcionar:** *"Perguntado diretamente pelo atleta ('quanto me falta?'),
+responde com o número e sem encorajamento nenhum a ir buscá-lo hoje."* O
+botão É o atleta a perguntar. A iniciativa continua a não poder ser dela, e
+daqui não há caminho nenhum para ela ficar com a iniciativa.
+
+O botão existe em todos os badges, ganhos e por ganhar — mas a PERGUNTA que
+sai dele muda com a família, e é aí que R1 e R3 se cumprem do lado do
+cliente:
+
+- `desempenho` e `disciplina`: "o que é que ele quer dizer, e o que posso
+  fazer para o ganhar / para ir mais longe nele?"
+- `acumulacao` e `amuletos`: "o que é que ele quer dizer **e como é que se
+  ganha?**" — e nada mais. Nunca "como melhoro". Melhorar um amuleto não quer
+  dizer nada: não se treina para fazer anos, e "corre de madrugada para
+  ganhares a Coruja" destrói exatamente o que torna o amuleto agradável. A
+  pergunta é do atleta, mas quem a escreve é a app — e uma app que lhe
+  pusesse na boca "o que faço para ganhar a Coruja" estava a pedir à Carol
+  que sugerisse um amuleto por interposta pessoa.
+
+Do lado do servidor, o progresso deste badge — e **só deste** — viaja no
+`body.badgeContext` do `coach-chat`, no mesmo molde do `body.activeInsights`:
+o cliente manda o contexto, o servidor injeta-o no prompt
+(`buildBadgeQuestionContext`, `_shared/carolMemory.ts`). Três coisas o mantêm
+dentro da doutrina:
+
+1. **É de um badge só.** O bloco geral (`buildBadgesContext`) **não mudou**:
+   continua sem progresso nenhum, e os testes que o provam
+   (`carolMemoryBadges.spec.ts`) continuam verdes — incluindo um novo que
+   verifica que esta porta não contaminou aquele bloco. Quem não carrega no
+   botão fala com a Carol de sempre, a que não sabe o que falta.
+2. **A família vem do catálogo do servidor**, nunca do que o cliente disser.
+   É a família que decide a regra; aceitar uma família vinda de fora era
+   deixar aberta a porta de a contornar. Chave que o catálogo não conheça não
+   produz bloco nenhum — o mesmo critério de silêncio do `buildBadgesContext`.
+3. **O texto injetado diz em voz alta o que é:** que foi o atleta que
+   perguntou, que vale só para este badge, e que numa família proibida ela
+   responde com o número e pára aí — sem encorajamento a ir buscá-lo hoje,
+   sem o transformar em objetivo, sem sugerir treinos, datas, horas ou rotas
+   para o fechar.
+
+A diferença entre este bloco e o geral é a diferença que a doutrina já fazia:
+lá a proteção é **estrutural** (ela não tem o dado), aqui é **declarada** (ela
+tem o dado e sabe porquê). A segunda é mais fraca do que a primeira — por
+isso só se aplica a um badge de cada vez, e só depois de ele carregar.
+
+---
+
 ---
 
 ## 🏁 Investigação completa

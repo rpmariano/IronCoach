@@ -348,6 +348,81 @@ export function buildBadgesContext(rows: any[] | null | undefined): string | nul
     `nunca "correste 48 km esta semana". Descreve, diz o que costuma custar, e deixa a decisão nele.`;
 }
 
+// ── 1.8b — A porta da pergunta direta sobre UM badge (6 #6) ──────────────
+
+const ESTADO_DO_BADGE: Record<string, string> = {
+  won: "já ganho",
+  progress: "a caminho",
+  empty: "por ganhar",
+};
+
+/**
+ * `buildBadgeQuestionContext` — o contexto que acompanha o botão "Falar com
+ * a Carol" do ecrã de detalhe de um badge (`Perfil/BadgeDetailSheet.jsx`).
+ *
+ * É a exceção que a própria doutrina 6 #6 prevê, à letra: *"Perguntado
+ * diretamente pelo atleta ('quanto me falta?'), responde com o número e sem
+ * encorajamento nenhum a ir buscá-lo hoje."* O botão É o atleta a perguntar —
+ * não há daqui caminho nenhum para ela trazer o assunto por iniciativa dela.
+ *
+ * Por isso este bloco PODE levar o progresso, que o `buildBadgesContext`
+ * nunca leva. Três coisas o mantêm dentro da doutrina:
+ *
+ *   1. É de UM badge só — o que ele abriu. A vitrina continua sem progresso
+ *      nenhum: quem não carrega no botão fala com a Carol de sempre.
+ *   2. A família vem do catálogo do servidor, não do que o cliente disser.
+ *      Chave que o catálogo não conheça não produz bloco nenhum — sem
+ *      família não há regra que a proteja, e o lado seguro do erro é o
+ *      silêncio (o mesmo critério do `buildBadgesContext`).
+ *   3. O texto diz em voz alta o que isto é: resposta a uma pergunta direta,
+ *      válida só para este badge, e numa família proibida o número vai
+ *      sozinho — sem encorajamento a ir buscá-lo hoje e sem virar objetivo.
+ */
+export function buildBadgeQuestionContext(ctx: any): string | null {
+  if (!ctx || typeof ctx !== "object") return null;
+  const key = typeof ctx.key === "string" ? ctx.key : null;
+  const familia = familiaDoBadge(key);
+  const nome = nomeDoBadge(key);
+  if (!familia || !nome) return null;
+
+  const estado = ESTADO_DO_BADGE[String(ctx.estado || "")] || "por ganhar";
+  const podeSugerir = !FAMILIAS_QUE_NAO_SE_SUGEREM.includes(familia);
+
+  const linhas: string[] = [`- Badge: ${nome} (família: ${FAMILIA_LABELS[familia]}) — ${estado}.`];
+  const regra = clip(ctx.regra, 220);
+  if (regra) linhas.push(`- A regra: ${regra}`);
+  // O progresso — o dado que a vitrina nunca dá. Vem porque ele perguntou.
+  const progresso = clip(ctx.progresso, 160);
+  if (progresso) linhas.push(`- Onde ele está: ${progresso}`);
+  const degraus = (Array.isArray(ctx.niveis) ? ctx.niveis.slice(0, 6) : [])
+    .map((n: any) => {
+      const label = clip(n?.label, 40);
+      if (!label) return null;
+      const limiar = n?.limiar === null || n?.limiar === undefined ? "" : ` ${n.limiar}`;
+      return `${label}${limiar}${n?.ganho ? " (ganho)" : ""}`;
+    })
+    .filter(Boolean);
+  if (degraus.length) linhas.push(`- Os níveis: ${degraus.join(" · ")}`);
+  const repeticoes = Number(ctx.repeticoes);
+  if (Number.isFinite(repeticoes) && repeticoes > 1) linhas.push(`- Já o ganhou ${repeticoes} vezes.`);
+
+  return `PERGUNTA DIRETA SOBRE UM BADGE — o atleta abriu esta conversa a partir do ecrã deste badge, ` +
+    `no botão que te chama. Foi ELE que perguntou: não foste tu que trouxeste o assunto, e não voltas a ele ` +
+    `por iniciativa tua depois de responderes.\n${linhas.join("\n")}\n` +
+    `Isto é a RESPOSTA À PERGUNTA DELE e vale só para ESTE badge: não o estendas a mais nenhum, não abras a ` +
+    `vitrina toda, e não guardes este progresso para o trazeres de volta mais tarde.\n` +
+    (podeSugerir
+      ? `Desempenho e Disciplina podes sugerir à vontade — é treino específico, não um contador a encher. ` +
+        `Explica-lhe o que o badge mede, porque é que isso importa para a forma como ele corre, e o que pode ` +
+        `treinar para o ganhar ou para ir mais longe nele.`
+      : `ATENÇÃO — esta é uma das famílias que tu NUNCA propões (6 #6, R1 e R3). Respondes aqui só porque ele ` +
+        `PERGUNTOU: explica o que o badge é e como se ganha, dá o número se ele fizer falta à explicação, e PÁRA AÍ. ` +
+        `Nada de o encorajar a ir buscá-lo hoje, nada de lhe pores isto como objetivo, nada de sugerires treinos, ` +
+        `datas, horas ou rotas para o fechar. Um amuleto perseguido deixa de ser um amuleto, e um contador ` +
+        `empurrado é carga aguda a subir sem ele dar por isso.`) +
+    `\nFala em linguagem de pessoa: o nome do badge, nunca a chave; o que a regra quer dizer, nunca o nome do campo.`;
+}
+
 // ── 5.2 — A proposta de objetivos por decidir ────────────────────────────
 
 const GOAL_LABELS: Record<string, [string, string]> = {
