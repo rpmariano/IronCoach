@@ -40,6 +40,10 @@ function formatItemSummary(item, raceName = null) {
 
 const clean = (s) => (typeof s === 'string' && s.trim() ? s.trim() : null);
 
+// A frase do plano com que o coach-daily-summary abre o aviso. Acaba no
+// primeiro ponto seguido de espaço ou do fim — "10.5 km" não a corta.
+const PLAN_SENTENCE_RE = /^Para hoje tens agendado:.*?\.(?=\s|$)\s*/;
+
 /** A prova por correr marcada para esta data, ou null. Uma prova já
  *  concluída não tem véspera nem manhã — o que ela tem é balanço, e disso
  *  trata o coachProactive. */
@@ -85,7 +89,7 @@ function buildEve(race, profile) {
 /** As mensagens do dia, por ordem: recapitulação, aviso de hoje (plano +
  *  água), estratégia nutricional, preparar amanhã, conceito do dia. */
 export function useCoachDailyMessages() {
-  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs } = useAppStore();
+  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs, gymSessions } = useAppStore();
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
 
@@ -137,6 +141,17 @@ export function useCoachDailyMessages() {
     return { today: items.filter((i) => i.planned_date === today), tomorrow: items.filter((i) => i.planned_date === tomorrow) };
   }, [coachPlans, coachPlanItems, today, tomorrow]);
 
+  /* O que já está registado hoje, por tipo. O aviso é gerado uma vez por dia
+     e fica em cache: sem isto, "Para hoje tens agendado: Corrida…" ficava lá
+     depois de a corrida estar registada (bug #38, 2026-09-21). Conta também
+     o registo que não ficou ligado ao item do plano. */
+  const doneKindsToday = useMemo(() => {
+    const kinds = new Set();
+    if ((runs || []).some((r) => typeof r?.date === 'string' && r.date.slice(0, 10) === today)) kinds.add('corrida');
+    if ((gymSessions || []).some((s) => typeof s?.date === 'string' && s.date.slice(0, 10) === today)) kinds.add('ginasio');
+    return kinds;
+  }, [runs, gymSessions, today]);
+
   return useMemo(() => {
     const list = [];
     // Os rótulos das secções são a Carol a falar, não crachás de módulo: todos
@@ -148,12 +163,21 @@ export function useCoachDailyMessages() {
 
     // Aviso de hoje: o do servidor, senão o plano de hoje; a água junta-se.
     const nonRest = activePlanItems.today.filter((i) => i.kind !== 'descanso');
+    const isDone = (i) => i.status === 'concluido' || doneKindsToday.has(i.kind);
+    const pending = nonRest.filter((i) => !isDone(i));
     const raceTodayName = raceToday ? raceToday.name : raceNameForDate(raceEvents, today);
     // No dia da prova a frase da prova (mais abaixo) já diz o que é o dia —
     // acrescentar-lhe "Para hoje tens agendado: Prova (…)" era dizer duas
     // vezes a mesma coisa. O aviso do servidor, esse, mantém-se: é dele.
-    let warning = clean(dailySummary?.warnings)
-      || (!raceToday && nonRest.length ? `Para hoje tens agendado: ${nonRest.map((i) => formatItemSummary(i, raceTodayName)).join(' e ')}.` : '');
+    const planSentence = !raceToday && pending.length ? `Para hoje tens agendado: ${pending.map((i) => formatItemSummary(i, raceTodayName)).join(' e ')}.` : '';
+    let warning = clean(dailySummary?.warnings);
+    // Depois de registada a atividade, a frase do plano do servidor passa a
+    // ser a do que ainda falta (ou nenhuma); água, RED-S e carga continuam.
+    if (warning && nonRest.some(isDone)) {
+      const rest = warning.replace(PLAN_SENTENCE_RE, '').trim();
+      if (rest !== warning) warning = [planSentence, rest].filter(Boolean).join(' ');
+    }
+    warning = warning || planSentence;
     const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0);
     // A água só se cobra a quem ligou os lembretes de água (perfil); sem
     // eles o registo é opcional e a frase era ruído (pedido 2026-09-13).
@@ -195,7 +219,7 @@ export function useCoachDailyMessages() {
 
     if (clean(dailySummary?.daily_concept?.body)) list.push({ key: 'daily_concept', label: dailySummary.daily_concept.title || 'Conceito do dia', color: 'var(--coach)', text: clean(dailySummary.daily_concept.body) });
     return list;
-  }, [dailySummary, activePlanItems, waterLogs, profile, today, tomorrow, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel]);
+  }, [dailySummary, activePlanItems, doneKindsToday, waterLogs, profile, today, tomorrow, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel]);
 }
 
 /* O cabeçalho é sempre a Carol. Os avisos "precisa de falar contigo" saíram

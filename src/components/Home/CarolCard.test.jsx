@@ -10,7 +10,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
 
   beforeEach(() => {
     loadDailySummary.mockClear();
-    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' }, raceEvents: [], runs: [] });
+    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' }, raceEvents: [], runs: [], gymSessions: [] });
   });
 
   it('pede o resumo ao montar, sem reload — não force', () => {
@@ -80,6 +80,76 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     });
     render(<CarolCard />);
     expect(screen.getByText(/Para hoje tens agendado: Corrida \(longo, 16 km\)\. Ainda não registaste água hoje\./)).toBeInTheDocument();
+  });
+
+  /* Bug #38 (2026-09-21): o aviso é gerado uma vez por dia e fica em cache —
+     depois de registada a atividade do dia, "Para hoje tens agendado" deixa
+     de fazer sentido. O resto do aviso (água, carga, RED-S) mantém-se. */
+  describe('o aviso de hoje depois de registada a atividade', () => {
+    const today = todayISO();
+    const plano = (items) => ({
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: today, period_end: today }],
+      coachPlanItems: items.map((it, n) => ({ id: `i${n}`, plan_id: 'p1', planned_date: today, status: 'pendente', ...it })),
+    });
+    const aviso = 'Para hoje tens agendado: Corrida (longo, 10.5 km). Carga de treino desta semana muito elevada face às últimas 4 semanas (ACWR 1.62).';
+
+    const avisoRenderizado = () => {
+      render(<CarolCard />);
+      fireEvent.click(screen.getByText('Ler mais'));
+      return screen.getByText('Aviso de hoje').parentElement.textContent;
+    };
+
+    it('com a corrida registada, tira a frase do plano e mantém o resto do servidor', () => {
+      useAppStore.setState({
+        ...plano([{ kind: 'corrida', training_type: 'longo', target_distance_km: 10.5 }]),
+        runs: [{ id: 'r1', date: today, distance_km: 10.6 }],
+        dailySummary: { date: today, recap: 'Semana forte.', warnings: aviso, meal_suggestion: null, tomorrow_prep: null },
+      });
+      const texto = avisoRenderizado();
+      expect(texto).not.toMatch(/Para hoje tens agendado/);
+      expect(texto).toMatch(/Carga de treino desta semana muito elevada/);
+    });
+
+    it('item marcado concluído no plano conta como feito, mesmo sem a corrida carregada', () => {
+      useAppStore.setState({
+        ...plano([{ kind: 'corrida', training_type: 'longo', target_distance_km: 10.5, status: 'concluido' }]),
+        dailySummary: { date: today, recap: 'Semana forte.', warnings: aviso, meal_suggestion: null, tomorrow_prep: null },
+      });
+      expect(avisoRenderizado()).not.toMatch(/Para hoje tens agendado/);
+    });
+
+    it('corrida e ginásio no plano, só a corrida feita: fica só o ginásio por fazer', () => {
+      useAppStore.setState({
+        ...plano([
+          { kind: 'corrida', training_type: 'fácil', target_distance_km: 6 },
+          { kind: 'ginasio', categories: ['Pernas'], target_duration_min: 40 },
+        ]),
+        runs: [{ id: 'r1', date: today, distance_km: 6 }],
+        dailySummary: { date: today, recap: 'Semana forte.', warnings: 'Para hoje tens agendado: Corrida (fácil, 6 km) e Ginásio (Pernas, 40 min).', meal_suggestion: null, tomorrow_prep: null },
+      });
+      const texto = avisoRenderizado();
+      expect(texto).toMatch(/Para hoje tens agendado: Ginásio \(Pernas, 40 min\)\./);
+      expect(texto).not.toMatch(/Corrida/);
+    });
+
+    it('sem nada mais a dizer, a secção desaparece', () => {
+      useAppStore.setState({
+        ...plano([{ kind: 'corrida', training_type: 'longo', target_distance_km: 16 }]),
+        runs: [{ id: 'r1', date: today, distance_km: 16 }],
+      });
+      render(<CarolCard />);
+      expect(screen.queryByText(/Para hoje tens agendado/)).not.toBeInTheDocument();
+      expect(screen.queryByText('Aviso de hoje')).not.toBeInTheDocument();
+    });
+
+    it('uma corrida de outro dia não conta', () => {
+      useAppStore.setState({
+        ...plano([{ kind: 'corrida', training_type: 'longo', target_distance_km: 16 }]),
+        runs: [{ id: 'r1', date: addDaysISO(today, -1), distance_km: 16 }],
+      });
+      render(<CarolCard />);
+      expect(screen.getByText(/Para hoje tens agendado: Corrida \(longo, 16 km\)\./)).toBeInTheDocument();
+    });
   });
 
   it('a água conta mesmo sem "hidratar" no aviso (o \\b não casa antes de "á")', () => {

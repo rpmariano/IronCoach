@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Trophy } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Trophy, MessageSquare } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -400,6 +400,17 @@ export default function Perfil() {
     useAppStore.getState().setActiveTab(target);
   };
 
+  // A pergunta entra no chat como se o atleta a tivesse escrito (intent
+  // 'say'); sair com alterações por gravar passa pelo mesmo navGuard.
+  const askCarolForGoals = () => {
+    const { setCoachIntent, setActiveTab } = useAppStore.getState();
+    setCoachIntent({
+      kind: 'say',
+      text: 'Quero definir os meus objetivos contigo, para o corpo e para a nutrição. Olha para as minhas avaliações corporais e para o meu treino e propõe-me metas.',
+    });
+    setActiveTab('coach');
+  };
+
   const discardAndLeave = () => {
     const pending = leavePrompt;
     dirtyKeys.current.clear();
@@ -557,6 +568,21 @@ export default function Perfil() {
                   recomendações do coach. Guardamos a data, não a idade.
                 </p>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="perfil-altura" className="text-[11px] text-[var(--text-3)] block mb-1">Altura (cm)</label>
+                  <input id="perfil-altura" type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
+                </div>
+                <div>
+                  <label htmlFor="perfil-peso" className="text-[11px] text-[var(--text-3)] block mb-1">Peso atual (kg)</label>
+                  <input id="perfil-peso" type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
+                </div>
+              </div>
+              <p className="text-[11px] text-[var(--text-3)] -mt-1">
+                O peso atual atualiza-se sozinho quando registas uma avaliação corporal recente.
+              </p>
               <ExperienceLevelHelp label="Nível como corredor" variant="dark" fieldId="perfil-nivel">
                 <select
                   id="perfil-nivel"
@@ -659,27 +685,35 @@ export default function Perfil() {
 
       <div ref={(el) => { pageRefs.current[1] = el; setPageRef(1)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Metas</h2>
+          {/* Bug #41 (2026-09-22): Metas é só o que o atleta quer atingir — a
+              altura e o peso atual são medições e passaram para o Pessoal.
+              Este cartão diz-o e leva à Carol, com quem os objetivos se
+              afinam (update_goals, aceitar/recusar na persiana). */}
+          <div className="module-card-contrast" data-testid="perfil-metas-intro">
+            <div className="flex items-center gap-2 mb-2">
+              <Target size={16} style={{ color: 'var(--coach)' }} />
+              <h3 className="text-sm font-semibold">As tuas metas</h3>
+            </div>
+            <p className="text-[11.5px] text-[var(--text-3)] leading-relaxed">
+              Tudo o que está aqui são objetivos teus — o corpo e a nutrição que queres
+              atingir, não medições. Afina-os com a Carol: ela olha para as tuas
+              avaliações corporais e para o teu treino e propõe valores, que aceitas ou recusas.
+            </p>
+            <button
+              type="button"
+              data-testid="perfil-metas-carol"
+              onClick={askCarolForGoals}
+              className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold"
+              style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}
+            >
+              <MessageSquare size={15} /> Definir objetivos com a Carol
+            </button>
+          </div>
+
           <div className="module-card-contrast">
             <div className="flex items-center gap-2 mb-3">
-              <User size={16} className="text-[var(--gym)]" />
-              <h3 className="text-sm font-semibold">Avaliação Corporal</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div>
-                <label htmlFor="perfil-altura" className="text-[11px] text-[var(--text-3)] block mb-1">Altura (cm)</label>
-                <input id="perfil-altura" type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
-              </div>
-              <div>
-                <label htmlFor="perfil-peso" className="text-[11px] text-[var(--text-3)] block mb-1">Peso atual (kg)</label>
-                <input id="perfil-peso" type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 mb-3 mt-1">
-              <Target size={14} className="text-[var(--gym)]" />
-              <h4 className="text-xs font-semibold text-[var(--text-3)]">Objetivos corporais</h4>
+              <Target size={16} className="text-[var(--gym)]" />
+              <h3 className="text-sm font-semibold">Objetivos corporais</h3>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {BODY_METRICS.map(m => {
@@ -789,11 +823,86 @@ export default function Perfil() {
               </button>
             </div>
 
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]">
+          </div>
+      </div>
+
+      {/* Vitrina — os badges, um cartão só (2026-09-22). Nasceu com dois: os
+          badges em cima e o Palmarés dos medalhões por baixo. Na fase C os
+          medalhões saíram — os seis foram portados para badges e o cartão de
+          baixo deixou de ter o que mostrar —, e o que ele ainda dava e os
+          badges não davam ("Onde estás", o percentil por escalão) mudou-se
+          para dentro da BadgesCard. O separador continua a ser o mesmo sítio
+          e a responder à mesma pergunta; só deixou de a responder duas vezes.
+
+          Igual ao Equipamento, não escreve no rascunho partilhado: o cartão
+          lê tudo direto do store e abre as suas próprias persianas. */}
+      <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Vitrina</h2>
+          <BadgesCard />
+      </div>
+
+      {/* Equipamento — ao contrário dos outros separadores, este não escreve
+          no rascunho partilhado: o armário faz o seu próprio CRUD na tabela
+          shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
+          continua a ser só dos campos do perfil. */}
+      <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Equipamento</h2>
+          <ShoeCabinet ref={shoeCabinetRef} />
+      </div>
+
+      <div ref={(el) => { pageRefs.current[4] = el; setPageRef(4)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Coach</h2>
+          {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
+              objetivos") foi removido — nunca chegou a chamar a Edge Function
+              suggest-goals (era um placeholder com setTimeout, ver histórico
+              git), e os objetivos já se discutem e definem a sério pelo Chat
+              (update_goals, com ecrã de aceitar/recusar). Manter os dois
+              caminhos seria redundante e o botão daqui nunca funcionou.
+              A própria Edge Function suggest-goals foi removida a
+              2026-08-23, já sem nada que a chamasse. */}
+          {/* "Rever o arranque com a Carol" — os seis passos do onboarding
+              outra vez, preenchidos a partir do perfil e da Memória do Coach
+              (ponto 8 do handoff; texto do mock "Perfil · Coach"). Abre o
+              mesmo componente de ecrã inteiro do primeiro acesso; ao terminar
+              volta para aqui. */}
+          <button
+            type="button"
+            onClick={() => setOnboardingOpen(true)}
+            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
+            style={{
+              minHeight: 'var(--tap)',
+              padding: 15,
+              borderRadius: 'var(--radius-xl)',
+              background: 'var(--tint-coach-bg)',
+              border: '1px solid var(--tint-coach-bd)',
+            }}
+          >
+            <CoachAvatar size={36} radius={11} />
+            <span className="flex-1 min-w-0">
+              <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--coach-soft)' }}>
+                Rever o arranque com a Carol
+              </span>
+              <span className="block" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
+                Os seis passos outra vez, com as respostas que já deste
+              </span>
+            </span>
+            <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+          </button>
+
+          {/* Bug #41 (2026-09-22): todos os pedidos de notificações vivem
+              aqui, no separador da Carol — saíram de Metas, que ficou só com
+              objetivos. A meta de água continua em Metas; o lembrete dela
+              é uma notificação e mudou-se para aqui. */}
+          <div className="module-card-contrast" data-testid="perfil-notificacoes">
+            <div className="flex items-center gap-2 mb-4">
+              <Bell size={16} style={{ color: 'var(--coach)' }} />
+              <h3 className="text-sm font-semibold">Notificações</h3>
+            </div>
+            <div className="flex items-center justify-between">
               <div className="pr-4">
                 <p className="text-xs font-semibold flex items-center gap-1.5"><Bell size={14} className="text-[var(--run)]" /> Lembretes de água</p>
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
-                  Notificações entre as {formatHour(reminderStartHour)} e as {formatHour(reminderEndHour)} enquanto não atingires a meta.
+                  Notificações entre as {formatHour(reminderStartHour)} e as {formatHour(reminderEndHour)} enquanto não atingires a meta de água (definida em Metas).
                 </p>
               </div>
               <button onClick={toggleWaterReminder} type="button" disabled={subscribingPush}
@@ -921,70 +1030,6 @@ export default function Perfil() {
               </div>
             )}
           </div>
-      </div>
-
-      {/* Vitrina — os badges, um cartão só (2026-09-22). Nasceu com dois: os
-          badges em cima e o Palmarés dos medalhões por baixo. Na fase C os
-          medalhões saíram — os seis foram portados para badges e o cartão de
-          baixo deixou de ter o que mostrar —, e o que ele ainda dava e os
-          badges não davam ("Onde estás", o percentil por escalão) mudou-se
-          para dentro da BadgesCard. O separador continua a ser o mesmo sítio
-          e a responder à mesma pergunta; só deixou de a responder duas vezes.
-
-          Igual ao Equipamento, não escreve no rascunho partilhado: o cartão
-          lê tudo direto do store e abre as suas próprias persianas. */}
-      <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
-          <h2 className="sr-only">Vitrina</h2>
-          <BadgesCard />
-      </div>
-
-      {/* Equipamento — ao contrário dos outros separadores, este não escreve
-          no rascunho partilhado: o armário faz o seu próprio CRUD na tabela
-          shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
-          continua a ser só dos campos do perfil. */}
-      <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
-          <h2 className="sr-only">Equipamento</h2>
-          <ShoeCabinet ref={shoeCabinetRef} />
-      </div>
-
-      <div ref={(el) => { pageRefs.current[4] = el; setPageRef(4)(el); }} className="tab-swipe-page space-y-4">
-          <h2 className="sr-only">Coach</h2>
-          {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
-              objetivos") foi removido — nunca chegou a chamar a Edge Function
-              suggest-goals (era um placeholder com setTimeout, ver histórico
-              git), e os objetivos já se discutem e definem a sério pelo Chat
-              (update_goals, com ecrã de aceitar/recusar). Manter os dois
-              caminhos seria redundante e o botão daqui nunca funcionou.
-              A própria Edge Function suggest-goals foi removida a
-              2026-08-23, já sem nada que a chamasse. */}
-          {/* "Rever o arranque com a Carol" — os seis passos do onboarding
-              outra vez, preenchidos a partir do perfil e da Memória do Coach
-              (ponto 8 do handoff; texto do mock "Perfil · Coach"). Abre o
-              mesmo componente de ecrã inteiro do primeiro acesso; ao terminar
-              volta para aqui. */}
-          <button
-            type="button"
-            onClick={() => setOnboardingOpen(true)}
-            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
-            style={{
-              minHeight: 'var(--tap)',
-              padding: 15,
-              borderRadius: 'var(--radius-xl)',
-              background: 'var(--tint-coach-bg)',
-              border: '1px solid var(--tint-coach-bd)',
-            }}
-          >
-            <CoachAvatar size={36} radius={11} />
-            <span className="flex-1 min-w-0">
-              <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--coach-soft)' }}>
-                Rever o arranque com a Carol
-              </span>
-              <span className="block" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
-                Os seis passos outra vez, com as respostas que já deste
-              </span>
-            </span>
-            <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
-          </button>
 
           <CoachMemoryCard />
 

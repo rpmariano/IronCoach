@@ -554,3 +554,55 @@ describe('Perfil — notificações da Carol (P.6)', () => {
   });
 });
 
+
+/* Bug #41 (2026-09-22): Metas só com objetivos. Altura e peso atual são
+   medições (Pessoal); os pedidos de notificações vivem no separador Coach;
+   Metas diz o que é e leva à Carol para os afinar. Os separadores estão
+   todos montados — o separador de um campo é a .tab-swipe-page onde vive. */
+describe('Perfil — reorganização das Metas (#41)', () => {
+  const separadorDe = (el) => el.closest('.tab-swipe-page')?.querySelector('h2.sr-only')?.textContent;
+
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      coachIntent: null,
+    });
+  });
+
+  it('altura e peso atual estão no Pessoal, não em Metas', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByLabelText('Altura (cm)'))).toBe('Pessoal');
+    expect(separadorDe(screen.getByLabelText('Peso atual (kg)'))).toBe('Pessoal');
+  });
+
+  it('os objetivos continuam em Metas', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByLabelText(/Calorias/))).toBe('Metas');
+    expect(separadorDe(screen.getByText('Objetivos corporais'))).toBe('Metas');
+    // A autorização do Coach é sobre as metas, não é uma notificação.
+    expect(separadorDe(screen.getByText('O Coach pode ajustar as metas'))).toBe('Metas');
+  });
+
+  it('as notificações (água e Carol) passaram para o separador Coach', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByText('Lembretes de água'))).toBe('Coach');
+    expect(separadorDe(screen.getByTestId('perfil-carol-push'))).toBe('Coach');
+    expect(separadorDe(screen.getByTestId('perfil-notificacoes'))).toBe('Coach');
+  });
+
+  it('Metas explica que são objetivos a afinar com a Carol e leva ao chat com a pergunta', () => {
+    render(<Perfil />);
+    const intro = screen.getByTestId('perfil-metas-intro');
+    expect(separadorDe(intro)).toBe('Metas');
+    expect(intro.textContent).toMatch(/objetivos teus/);
+    fireEvent.click(screen.getByTestId('perfil-metas-carol'));
+    const { coachIntent, activeTab } = useAppStore.getState();
+    expect(coachIntent).toMatchObject({ kind: 'say' });
+    expect(coachIntent.text).toMatch(/definir os meus objetivos/);
+    expect(activeTab).toBe('coach');
+  });
+});

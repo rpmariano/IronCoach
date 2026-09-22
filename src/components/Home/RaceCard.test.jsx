@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import RaceCard from './RaceCard';
 import { todayISO } from '../../lib/utils';
 
@@ -241,5 +241,72 @@ describe('Home/RaceCard — o dia a seguir à prova', () => {
 
     expect(screen.queryByTestId('race-card-completed')).not.toBeInTheDocument();
     expect(screen.getByTestId('race-card-empty')).toBeInTheDocument();
+  });
+});
+
+/* Bug #39 (2026-09-21): com mais de uma prova, o cartão tinha pontos e setas
+   mas não deslizava com o dedo nem dava o tique tátil dos outros carrosséis. */
+describe('Home/RaceCard — deslizar entre provas', () => {
+  const DUAS = [
+    { ...PROVA, id: 'race-1', name: 'Meia de Lisboa', date: emDias(30) },
+    { ...PROVA, id: 'race-2', name: 'Maratona do Porto', date: emDias(60) },
+  ];
+  const swipe = (el, fromX, toX, fromY = 100, toY = 100) => {
+    fireEvent.touchStart(el, { touches: [{ clientX: fromX, clientY: fromY }] });
+    fireEvent.touchEnd(el, { changedTouches: [{ clientX: toX, clientY: toY }] });
+  };
+
+  let vibrate;
+  beforeEach(() => {
+    vibrate = vi.fn();
+    Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true, writable: true });
+  });
+
+  it('swipe para a esquerda passa à prova seguinte e vibra; para a direita volta', () => {
+    render(<RaceCard raceEvents={DUAS} runs={[]} profile={PROFILE} />);
+    const body = screen.getByTestId('race-card-body');
+    expect(screen.getByText('Meia de Lisboa')).toBeInTheDocument();
+
+    swipe(body, 250, 100);
+    expect(screen.getByText('Maratona do Porto')).toBeInTheDocument();
+    expect(vibrate).toHaveBeenCalledTimes(1);
+
+    swipe(body, 100, 250);
+    expect(screen.getByText('Meia de Lisboa')).toBeInTheDocument();
+    expect(vibrate).toHaveBeenCalledTimes(2);
+  });
+
+  it('no fim da lista não passa além da última nem vibra', () => {
+    render(<RaceCard raceEvents={DUAS} runs={[]} profile={PROFILE} />);
+    swipe(screen.getByTestId('race-card-body'), 100, 250);
+    expect(screen.getByText('Meia de Lisboa')).toBeInTheDocument();
+    expect(vibrate).not.toHaveBeenCalled();
+  });
+
+  it('um gesto sobretudo vertical é scroll da página, não troca de prova', () => {
+    render(<RaceCard raceEvents={DUAS} runs={[]} profile={PROFILE} />);
+    swipe(screen.getByTestId('race-card-body'), 200, 140, 100, 300);
+    expect(screen.getByText('Meia de Lisboa')).toBeInTheDocument();
+    expect(vibrate).not.toHaveBeenCalled();
+  });
+
+  it('o swipe não abre o hub; um toque simples continua a abrir', () => {
+    const onOpenRace = vi.fn();
+    render(<RaceCard raceEvents={DUAS} runs={[]} profile={PROFILE} onOpenRace={onOpenRace} />);
+    const body = screen.getByTestId('race-card-body');
+    swipe(body, 250, 100);
+    fireEvent.click(body);
+    expect(onOpenRace).not.toHaveBeenCalled();
+    fireEvent.click(body);
+    expect(onOpenRace).toHaveBeenCalledWith('race-2');
+  });
+
+  it('as setas e os pontos também dão o tique', () => {
+    render(<RaceCard raceEvents={DUAS} runs={[]} profile={PROFILE} />);
+    fireEvent.click(screen.getByLabelText('Prova seguinte'));
+    expect(screen.getByText('Maratona do Porto')).toBeInTheDocument();
+    expect(vibrate).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByLabelText('Prova anterior'));
+    expect(vibrate).toHaveBeenCalledTimes(2);
   });
 });
