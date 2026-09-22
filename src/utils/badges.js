@@ -2605,3 +2605,40 @@ export function computeBadges({
 
   return { badges, due };
 }
+
+/**
+ * Os badges que ESTA prova deu — o que o estúdio do mural pode mostrar
+ * (fase 4 da reforma da gamificação).
+ *
+ * A pergunta é a mesma que `achievementsForRace` faz às conquistas, feita à
+ * lista `due`: quais os prémios cujo `raceId` é o desta prova. Não há régua
+ * nova nenhuma aqui — o motor é o de sempre, e um badge só entra no mural
+ * de uma prova se foi ESSA prova a dá-lo.
+ *
+ * Hoje isso é o `recorde_pessoal`, o único badge que nasce de uma prova (e o
+ * único âmbar da vitrina). O "À medida da prova" NÃO entra, apesar de ter
+ * uma prova no nome: mede saídas de TREINO contra a prova principal que
+ * ainda está por correr (`provaAlvo` exclui as concluídas), e os seus
+ * prémios trazem `raceId: null`. Pô-lo no mural de uma prova concluída era
+ * mostrar, no mural da prova A, um badge ganho a preparar a prova B.
+ *
+ * Devolve o badge calculado, mais o título e a frase DAQUELE prémio — o
+ * badge diz "3 recordes", o prémio diz qual foi o desta prova.
+ *
+ * @returns {object[]}
+ */
+export function badgesForRace(params, raceId) {
+  if (!raceId) return [];
+  const { badges, due } = computeBadges(params);
+  const byKey = new Map(badges.map((b) => [b.key, b]));
+  const vistos = new Set();
+  const lista = [];
+  for (const entrada of due) {
+    if (!entrada.raceId || entrada.raceId !== raceId) continue;
+    if (vistos.has(entrada.badgeKey)) continue;
+    vistos.add(entrada.badgeKey);
+    const badge = byKey.get(entrada.badgeKey);
+    if (badge) lista.push({ ...badge, awardTitle: entrada.title, awardLine: entrada.line });
+  }
+  return lista;
+}

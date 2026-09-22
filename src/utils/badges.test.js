@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBadges, BADGE_KEYS, FAMILIAS, FAMILIA_KEYS, segundaDe } from './badges';
+import { computeBadges, badgesForRace, BADGE_KEYS, FAMILIAS, FAMILIA_KEYS, segundaDe } from './badges';
 
 /* Os badges de treino (fase 2 da reforma da gamificação).
 
@@ -384,6 +384,28 @@ describe('Recorde pessoal — o único âmbar', () => {
     const b = bad(r, 'recorde_pessoal');
     expect(b.state).toBe('empty');
     expect(b.centro).toBe('+42s');
+  });
+
+  /* O que o estúdio do mural mostra: só os badges cujo prémio traz o
+     `raceId` DESTA prova. É o filtro que impede o mural de uma prova de
+     exibir um badge ganho noutra (ou num treino). */
+  describe('badgesForRace — o que esta prova deu ao mural', () => {
+    const params = (lista) => ({
+      runs: [], raceEvents: [], planItems: [], gymSessions: [], profile: PROFILE, today: HOJE, ...cenario(lista),
+    });
+
+    it('devolve o badge da prova que o deu, e nada na que não o deu', () => {
+      const p = params([prova('p1', '2026-03-01', 3000), prova('p2', '2026-06-01', 2900)]);
+      const daP2 = badgesForRace(p, 'p2');
+      expect(daP2.map((b) => b.key)).toEqual(['recorde_pessoal']);
+      expect(daP2[0].centro).toBe('1');
+      expect(daP2[0].awardLine).toContain('melhor tempo de sempre');
+      expect(badgesForRace(p, 'p1')).toEqual([]);
+    });
+
+    it('sem prova nenhuma pedida, não devolve nada', () => {
+      expect(badgesForRace(params([prova('p1', '2026-03-01', 3000)]), null)).toEqual([]);
+    });
   });
 });
 

@@ -23,7 +23,10 @@ import { loadStudioAssets, renderMuralStudio } from '../../utils/muralStudioDraw
       escolhe-se a memória; arrasta-se a foto para a mover e desliza-se para
       ampliar (pedido 2026-09-14 — o ponto de foco fixo saiu).
    3. Grafismos — peças prontas que se ligam e desligam, o tema de cor e o
-      canto da marca, que vai sempre.
+      canto da marca, que vai sempre. Desde 2026-09-22 há mais uma: os
+      BADGES desta prova (fase 4 da reforma da gamificação), o anel com o
+      número, igual ao da Vitrina. É mais um grafismo, não um motor novo — a
+      lista vem já filtrada de `badgesForRace` (utils/badges.js).
 
    A composição grava-se na prova (`race_events.mural_composition`, pedido
    2026-09-14 — antes só ficava no telemóvel), por update à parte com
@@ -39,6 +42,12 @@ const STEPS = [
   { key: 'fotos', label: 'Fotos' },
   { key: 'grafismos', label: 'Grafismos' },
 ];
+/* Um `[]` escrito como valor por omissão de um parâmetro nasce OUTRA VEZ a
+   cada render — e `data` (um useMemo que depende dele) rebentava a cada
+   render, o que refazia a pré-visualização em ciclo. Uma lista vazia só,
+   partilhada, é o que mantém a identidade estável. */
+const VAZIO = Object.freeze([]);
+
 const CORNER_ICONS = { tl: ArrowUpLeft, tr: ArrowUpRight, bl: ArrowDownLeft, br: ArrowDownRight };
 const GRAPHIC_LABEL = Object.fromEntries(STUDIO_GRAPHICS.map((g) => [g.key, g.label]));
 
@@ -52,7 +61,7 @@ const chip = (active) => ({
 const sectionLabel = 'text-[11px] font-extrabold uppercase mt-4 mb-2';
 const sectionStyle = { letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' };
 
-export default function RaceMuralSheet({ race, run, seconds, classification = '', achievements = [], memoryUrls, onSaved, onClose }) {
+export default function RaceMuralSheet({ race, run, seconds, classification = '', achievements = VAZIO, badges = VAZIO, memoryUrls, onSaved, onClose }) {
   const photosKey = (memoryUrls?.photos || []).join('|');
   const candidates = useMemo(() => muralCandidates({
     photos: memoryUrls?.photos || [],
@@ -63,8 +72,8 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   }), [photosKey, memoryUrls?.medal, memoryUrls?.diploma, race?.diploma_path]);
   const candidatesKey = candidates.map((c) => `${c.id}=${c.url}`).join('|');
   const data = useMemo(
-    () => muralData({ race, run, seconds, classification, achievements }),
-    [race, run, seconds, classification, achievements],
+    () => muralData({ race, run, seconds, classification, achievements, badges }),
+    [race, run, seconds, classification, achievements, badges],
   );
 
   const storedRef = useRef(null);

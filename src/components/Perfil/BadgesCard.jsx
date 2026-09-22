@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import useBadges from '../../utils/useBadges';
 import { FAMILIAS } from '../../utils/badges';
@@ -27,7 +27,20 @@ import BadgeDetailSheet from './BadgeDetailSheet';
    a desenhar a cada aparecimento.
 
    Isto SOMA-SE ao Palmarés, não o substitui: os medalhões continuam logo
-   abaixo, no mesmo separador. */
+   abaixo, no mesmo separador.
+
+   ── A ESCALA PEQUENA DO MOMENTO (fase 4) ────────────────────────────────
+   Um badge ganho entretanto e ainda por ver (o `pending` de useBadges) não
+   abre cerimónia nenhuma aqui: o anel fecha-se na PRÓPRIA célula, com um
+   salto (.badge-salto em globals.css), e fica visto. É a terceira escala do
+   momento — a que não interrompe.
+
+   E consome: quem vê primeiro marca `seen_at`. Se o atleta abriu a Vitrina e
+   viu o anel fechar-se, a novidade já lhe foi dada — abrir-lhe um ecrã
+   inteiro no Início a seguir era contar-lhe a mesma coisa duas vezes. O
+   `novos` guarda as chaves NUMA lista própria, que nunca encolhe: marcar
+   como visto esvazia o `pending`, e sem isto o salto desaparecia no mesmo
+   instante em que devia começar. */
 
 const TILE = {
   minHeight: 44,
@@ -49,9 +62,20 @@ function legendaDe(badge) {
 }
 
 export default function BadgesCard() {
-  const { badges } = useBadges();
+  const { badges, pending, marcarVistos } = useBadges();
   const [abertoKey, setAbertoKey] = useState(null);
+  const [novos, setNovos] = useState(() => new Set());
   const { ref, style, animate, playKey } = useRevealAnimation();
+
+  useEffect(() => {
+    if (!pending?.length) return;
+    setNovos((antes) => {
+      const proximo = new Set(antes);
+      pending.forEach((p) => proximo.add(p.badge_key));
+      return proximo;
+    });
+    marcarVistos(pending.map((p) => p.id));
+  }, [pending, marcarVistos]);
 
   const lista = badges || [];
   if (lista.length === 0) return null;
@@ -102,15 +126,17 @@ export default function BadgesCard() {
               <div className="grid grid-cols-4 gap-1">
                 {grupo.lista.map((badge, i) => {
                   const legenda = legendaDe(badge);
+                  const novo = novos.has(badge.key);
                   return (
                     <button
                       key={badge.key}
                       type="button"
                       data-testid={`badge-tile-${badge.key}`}
                       data-state={badge.state}
+                      data-novo={novo ? 'true' : undefined}
                       aria-label={badge.centroAria || badge.name}
                       onClick={() => setAbertoKey(badge.key)}
-                      className="flex flex-col items-center gap-1.5 text-center min-w-0"
+                      className={`flex flex-col items-center gap-1.5 text-center min-w-0${novo ? ' badge-salto' : ''}`}
                       style={TILE}
                     >
                       {/* `key` com o playKey: o anel só desenha ao montar, por

@@ -22,6 +22,8 @@ import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
 import MedalMoment from '../shared/MedalMoment';
 import useMedalMoment from '../../utils/useMedalMoment';
+import BadgeMoment from '../shared/BadgeMoment';
+import useBadgeMoment from '../../utils/useBadgeMoment';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -59,6 +61,13 @@ export default function Home() {
   // O momento da medalha (specs/palmares-medalhoes.md) — a regra de quando
   // aparece vive no hook.
   const medalMoment = useMedalMoment();
+  /* O momento do badge (fase 4 da reforma da gamificação) — a regra de
+     quando aparece e em que escala vive no hook. Fica atrás da medalha:
+     duas cerimónias de ecrã inteiro ao mesmo tempo não são duas cerimónias,
+     são uma confusão. Sem a migração `user_badges` aplicada não há `pending`
+     nenhum e isto não mostra nada. */
+  const badgeMoment = useBadgeMoment();
+  const badgeVisivel = !medalMoment.award ? (badgeMoment.grande || badgeMoment.medio) : null;
 
   const today = todayISO();
 
@@ -359,6 +368,27 @@ export default function Home() {
           onOpenPalmares={() => setActiveTab('provas')}
         />
       )}
+      {badgeVisivel && (badgeMoment.grande ? (
+        <BadgeMoment
+          /* A fila: cada grande é um momento novo, por isso remonta (a
+             coreografia só toca ao montar). */
+          key={badgeMoment.grande.award.id}
+          escala="grande"
+          badge={badgeMoment.grande.badge}
+          titulo={badgeMoment.grande.award.title || badgeMoment.grande.badge?.name}
+          linha={badgeMoment.grande.award.line}
+          restantes={badgeMoment.filaRestante}
+          onClose={badgeMoment.fecharGrande}
+        />
+      ) : (
+        <BadgeMoment
+          escala="medio"
+          badge={badgeMoment.medio.badge}
+          titulo={badgeMoment.medio.titulo}
+          linha={badgeMoment.medio.linha}
+          onClose={badgeMoment.fecharMedio}
+        />
+      ))}
     </div>
   );
 }

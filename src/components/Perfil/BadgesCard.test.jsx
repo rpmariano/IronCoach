@@ -48,14 +48,19 @@ const BADGES = [
   }),
 ];
 
+const marcarVistos = vi.fn();
+let pending = [];
+
 vi.mock('../../utils/useBadges', () => ({
-  default: vi.fn(() => ({ badges: BADGES, due: [] })),
+  default: vi.fn(() => ({ badges: BADGES, due: [], pending, marcarVistos })),
 }));
 
 import BadgesCard from './BadgesCard';
 
 describe('BadgesCard — a grelha da Vitrina', () => {
   beforeEach(() => {
+    pending = [];
+    marcarVistos.mockReset();
     useAppStore.setState({
       profile: { id: 'user-1' }, runs: [], raceEvents: [],
       editingRaceId: null, editingRunId: null, openCreationMode: null,
@@ -134,6 +139,26 @@ describe('BadgesCard — a grelha da Vitrina', () => {
     expect(niveis).toHaveTextContent('Bronze');
     expect(niveis).toHaveTextContent('10 000');
     expect(screen.getByTestId('badge-nivel-ouro')).toHaveAttribute('data-ganho', '0');
+  });
+
+  /* A ESCALA PEQUENA do momento do badge (fase 4): um badge ganho e ainda
+     por ver fecha o anel na própria célula, com um salto, e fica visto — sem
+     interromper nada. Quem vê primeiro consome. */
+  it('um badge por ver dá o salto na própria célula e fica visto', () => {
+    pending = [{ id: 'a1', badge_key: 'z2_mestre' }];
+    render(<BadgesCard />);
+    const celula = screen.getByTestId('badge-tile-z2_mestre');
+    expect(celula).toHaveAttribute('data-novo', 'true');
+    expect(celula.className).toContain('badge-salto');
+    expect(marcarVistos).toHaveBeenCalledWith(['a1']);
+    // As outras células não saltam: não há novidade nenhuma nelas.
+    expect(screen.getByTestId('badge-tile-escalada')).not.toHaveAttribute('data-novo');
+  });
+
+  it('sem nada por ver (a migração por aplicar), nenhuma célula salta', () => {
+    render(<BadgesCard />);
+    expect(screen.getByTestId('badge-tile-z2_mestre')).not.toHaveAttribute('data-novo');
+    expect(marcarVistos).not.toHaveBeenCalled();
   });
 
   it('uma corrida da lista abre o registo; uma prova abre o hub', () => {

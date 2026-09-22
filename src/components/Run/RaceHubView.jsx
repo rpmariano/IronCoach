@@ -47,6 +47,7 @@ import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../
 import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
+import { badgesForRace } from '../../utils/badges';
 import { todayISO } from '../../lib/utils';
 import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
@@ -333,6 +334,20 @@ export default function RaceHubView({
     [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
 
+  /* Os badges que ESTA prova deu (utils/badges.js) — hoje o `recorde_pessoal`,
+     o único badge que nasce de uma prova. Só servem ao estúdio do mural: no
+     hub as conquistas já dizem o mesmo em fichas, e a Vitrina dos badges vive
+     no Perfil. O plano e o ginásio entram porque o motor é o mesmo de sempre
+     e calcula a lista toda; o filtro pelo `raceId` é que decide o que sai. */
+  const storePlanItems = useAppStore((s) => s.coachPlanItems);
+  const storeGymSessions = useAppStore((s) => s.gymSessions);
+  const raceBadges = useMemo(
+    () => (raceRun && race?.id
+      ? badgesForRace({ raceEvents: palmaresRaces, runs, profile, planItems: storePlanItems, gymSessions: storeGymSessions, today: hoje }, race.id)
+      : []),
+    [raceRun, palmaresRaces, runs, profile, storePlanItems, storeGymSessions, race?.id, hoje],
+  );
+
   // Resumo do ciclo: só o que se calcula dos registos reais (volume e VDOT).
   // "Adesão ao plano" e "Lesões" do mock não têm fonte no modelo de dados —
   // ficam de fora em vez de saírem inventados.
@@ -595,7 +610,7 @@ export default function RaceHubView({
           <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
         )}
         {muralOpen && (
-          <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
+          <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} badges={raceBadges} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
         )}
 
         {openPhoto && (

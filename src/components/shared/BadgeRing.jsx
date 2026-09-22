@@ -93,7 +93,7 @@ function tamanhoDoNumero(size, texto) {
   return Math.max(10, Math.round(size * fator));
 }
 
-export default function BadgeRing({ badge, size = 64, index = 0, animate = false }) {
+export default function BadgeRing({ badge, size = 64, index = 0, animate = false, delay = 0 }) {
   // Igual ao Orbit: com `animate`, o primeiro pintado é a zero.
   const [drawn, setDrawn] = useState(!animate);
 
@@ -111,8 +111,12 @@ export default function BadgeRing({ badge, size = 64, index = 0, animate = false
   const fracao = ganho ? 1 : Math.max(0, Math.min(1, badge.ring || 0));
   const Glifo = GLIFOS[badge.glifo] || null;
   const mostraGlifo = !!Glifo && size >= GLIFO_MIN_SIZE;
+  /* `delay` (ms) é para quem não é uma grelha: no momento do badge
+     (shared/BadgeMoment.jsx) o anel só parte aos 360 ms, depois de o disco
+     assentar, e a folha de tempos da cerimónia é que manda. Na Vitrina fica
+     a zero e o desfasamento é só o dos vizinhos. */
   const transicao = animate
-    ? `stroke-dashoffset var(--dur-rings) var(--ease-out) calc(var(--stagger-rings) * ${index})`
+    ? `stroke-dashoffset var(--dur-rings) var(--ease-out) calc(var(--stagger-rings) * ${index} + ${Math.max(0, Number(delay) || 0)}ms)`
     : 'none';
 
   return (

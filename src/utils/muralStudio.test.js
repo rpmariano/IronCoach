@@ -119,7 +119,7 @@ describe('composição', () => {
     const c = defaultComposition({ candidates: CANDIDATES, data });
     expect(c).toMatchObject({ template: 'capa', format: 'retrato', theme: 'dourado', brandCorner: 'tl', medalCorner: DEFAULT_MEDAL_CORNER });
     expect(c.slots).toEqual({ s1: { id: 'photo-0', fx: 0.5, fy: 0.42, zoom: 1 } });
-    expect(c.graphics).toEqual({ titulo: true, tempo: true, numeros: true, classificacao: true, ritmo: true, conquistas: false, diploma: false, medalhao: true });
+    expect(c.graphics).toEqual({ titulo: true, tempo: true, numeros: true, classificacao: true, ritmo: true, conquistas: false, badges: false, diploma: false, medalhao: true });
     const semNada = defaultComposition({ candidates: [], data: muralData({ race: TEJO, run: { distance_km: 10, details: {} }, seconds: 3087 }) });
     expect(semNada.graphics).toMatchObject({ ritmo: false, classificacao: false, medalhao: false, diploma: false });
   });
@@ -244,6 +244,23 @@ describe('dados do mural', () => {
     expect(graphicUnavailableReason('medalhao', { data: d, candidates: CANDIDATES, template: 'numeros' })).toBe('Sem espaço livre neste modelo');
     expect(graphicUnavailableReason('medalhao', { data: d, candidates: CANDIDATES, template: 'capa' })).toBeNull();
     expect(graphicUnavailableReason('titulo', { data: d })).toBeNull();
+  });
+
+  /* Os badges desta prova (fase 4 da reforma da gamificação): entram no
+     estúdio como mais um grafismo, com o MESMO número que a Vitrina mostra
+     dentro do anel. Quem os filtra pela prova é `badgesForRace`
+     (utils/badges.js) — aqui só se desenham os que chegarem. */
+  it('os badges desta prova são mais um grafismo, com o número do anel', () => {
+    const d = muralData({
+      race: TEJO, run: RUN, seconds: 3087,
+      badges: [{ key: 'recorde_pessoal', name: 'Recorde pessoal', centro: '1', cor: 'race' }],
+    });
+    expect(d.badges).toEqual([{ key: 'recorde_pessoal', name: 'Recorde pessoal', centro: '1' }]);
+    expect(graphicUnavailableReason('badges', { data: d, candidates: [] })).toBeNull();
+
+    const semBadges = muralData({ race: TEJO, run: RUN, seconds: 3087 });
+    expect(semBadges.badges).toEqual([]);
+    expect(graphicUnavailableReason('badges', { data: semBadges, candidates: [] })).toBe('Sem badges desta prova');
   });
 
   /* A razão do diploma distingue "não há diploma" de "o diploma só deu o

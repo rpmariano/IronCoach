@@ -492,6 +492,20 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
   /* A linha fica: diz quanto falta para fechar, não é decoração. */
 }
 
+/* A ESCALA PEQUENA do momento do badge (Perfil/BadgesCard.jsx, fase 4 da
+   reforma da gamificação): um badge ganho que a Vitrina apanha antes de a
+   cerimónia acontecer fecha o anel na própria célula e dá um salto quando
+   ele fecha. Sem háptico e sem interromper nada — e fica visto, porque quem
+   vê primeiro consome. O atraso é o do anel a desenhar-se (--dur-rings): o
+   salto é a CHEGADA do anel, não um efeito por cima dele. */
+.badge-salto { animation: badgeSalto var(--dur-confirm) var(--ease-spring) var(--dur-rings) both; }
+@keyframes badgeSalto {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .badge-salto { animation: none; } }
+
 /* A Home no primeiro dia: o que a Carol guardou do arranque entra facto a
    facto (Home/FirstDayCard.jsx; atrasos no JSX). */
 .first-day-fact { animation: welcomeBubble 420ms var(--ease-out) both; }
