@@ -4,6 +4,17 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import Perfil from './Perfil';
 
+// A Vitrina (separador novo — ver TABS em Perfil.jsx) monta o PalmaresCard
+// em todos os testes deste ficheiro, porque os separadores do Perfil ficam
+// todos montados ao mesmo tempo (carrossel de swipe). As regras dos
+// medalhões têm os testes delas em utils/medalhoes.test.js; aqui só
+// interessa a UI, tal como em PalmaresCard.test.jsx e (antes) em
+// RacesScreen.test.jsx.
+vi.mock('../../utils/medalhoes', async () => {
+  const { makeMedalhoes } = await import('../../test/medalhoesFixture');
+  return { computeMedalhoes: vi.fn(() => makeMedalhoes()) };
+});
+
 // Captura o payload de cada UPDATE para se poder afirmar o que é enviado.
 const mocks = vi.hoisted(() => ({ updates: [] }));
 // Os 3 separadores ficam sempre montados (carrossel de swipe — ver
@@ -440,6 +451,106 @@ describe('Perfil — etiquetas programáticas', () => {
       return true;
     });
     expect(semNome.map((el) => el.outerHTML.slice(0, 80))).toEqual([]);
+  });
+});
+
+// A Vitrina (2026-09-22, fase 1 da reforma da gamificação): o Palmarés
+// mudou-se para aqui do separador Provas — RacesScreen.test.jsx tinha esta
+// cobertura antes de o cartão se mudar de sítio (o próprio PalmaresCard, em
+// isolamento, continua testado em PalmaresCard.test.jsx).
+describe('Perfil — Vitrina (o Palmarés, mudado do separador Provas)', () => {
+  const abrirVitrina = () => fireEvent.click(screen.getByRole('button', { name: 'Vitrina' }));
+
+  const PROVA = {
+    id: 'race-1',
+    name: 'Meia de Lisboa',
+    date: '2026-05-10',
+    distance_km: 21.0975,
+    race_type: 'estrada',
+    status: 'concluida',
+    target_time_seconds: 6900,
+  };
+  const CORRIDA = {
+    id: 'run-1',
+    kind: 'competicao',
+    race_id: 'race-1',
+    date: '2026-05-10',
+    distance_km: 21.0975,
+    duration_seconds: 6822,
+    details: { official_time_seconds: 6822 },
+  };
+
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      raceEvents: [],
+      runs: [],
+      coachPlans: [],
+      coachPlanItems: [],
+      editingRaceId: null,
+      openCreationMode: null,
+    });
+  });
+
+  it('mostra o Palmarés (o herói dos medalhões)', () => {
+    render(<Perfil />);
+    abrirVitrina();
+    expect(screen.getByTestId('palmares-card')).toBeInTheDocument();
+    expect(screen.getByTestId('palmares-heroi')).toBeInTheDocument();
+  });
+
+  it('sem provas, a persiana diz que ainda não há', () => {
+    render(<Perfil />);
+    abrirVitrina();
+    fireEvent.click(screen.getByTestId('palmares-provas'));
+    expect(screen.getByTestId('palmares-sheet')).toHaveTextContent('Provas concluídas');
+    expect(screen.getByTestId('palmares-sem-provas')).toHaveTextContent('Ainda sem provas concluídas');
+  });
+
+  it('"As provas e as medalhas de cada uma" abre a lista, sem a lista das conquistas', () => {
+    useAppStore.setState({ raceEvents: [PROVA], runs: [CORRIDA] });
+    render(<Perfil />);
+    abrirVitrina();
+
+    const link = screen.getByTestId('palmares-provas');
+    expect(link).toHaveTextContent('As provas e as medalhas de cada uma');
+    fireEvent.click(link);
+
+    const persiana = screen.getByTestId('palmares-sheet');
+    expect(persiana).toHaveTextContent('Provas concluídas');
+    expect(persiana).not.toHaveTextContent('Precisa de duas provas na mesma distância');
+    expect(screen.getByTestId('palmares-prova-race-1')).toHaveTextContent('1:53:42');
+  });
+
+  it('tocar numa prova leva ao hub dela', () => {
+    useAppStore.setState({ raceEvents: [PROVA], runs: [CORRIDA] });
+    render(<Perfil />);
+    abrirVitrina();
+    fireEvent.click(screen.getByTestId('palmares-provas'));
+    fireEvent.click(screen.getByTestId('palmares-prova-race-1'));
+
+    expect(useAppStore.getState().editingRaceId).toBe('race-1');
+  });
+
+  it('a Vitrina não suja o rascunho: sair para outro separador não pede confirmação', () => {
+    render(<Perfil />);
+    abrirVitrina();
+    expect(screen.getByTestId('palmares-card')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pessoal' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('não mostra "Guardar alterações" nem nenhum outro botão de ação na barra', () => {
+    render(<Perfil />);
+    abrirVitrina();
+    const bar = screen.queryByTestId('action-bar');
+    expect(bar).not.toBeInTheDocument();
   });
 });
 

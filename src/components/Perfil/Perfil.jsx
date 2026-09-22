@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus } from 'lucide-react';
+import { Bot, User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Trophy } from 'lucide-react';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -14,6 +14,7 @@ import CoachMemoryCard from './CoachMemoryCard';
 import TabelasConsentScreen from './TabelasConsentScreen';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
+import PalmaresCard from './PalmaresCard';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
@@ -22,17 +23,28 @@ import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
 import { todayISO } from '../../lib/utils';
 
-const TAB_KEYS = ['perfil', 'metas', 'equipamento', 'coach'];
+const TAB_KEYS = ['perfil', 'metas', 'vitrina', 'equipamento', 'coach'];
 
-/* Os quatro separadores do Perfil no SubNav (ponto 4 do handoff). O tom é o do
-   assunto de cada um — Pessoal ginásio, Metas a prova, Equipamento corrida,
-   Coach a Carol — como o mock "Perfil" e os três "Submenus do Perfil" mostram,
-   em vez de o âmbar da prova em todos. "Equipa." é a abreviatura do mock:
-   quatro rótulos por extenso em 348px cairiam abaixo dos 11px (auditoria,
-   achado 1). */
+/* Os cinco separadores do Perfil no SubNav (ponto 4 do handoff). O tom é o do
+   assunto de cada um — Pessoal ginásio, Metas a prova, Vitrina a prova,
+   Equipamento corrida, Coach a Carol — como o mock "Perfil" e os três
+   "Submenus do Perfil" mostram, em vez de o âmbar da prova em todos.
+   "Equipa." é a abreviatura do mock: quatro rótulos por extenso em 348px
+   cairiam abaixo dos 11px (auditoria, achado 1); com cinco separadores o
+   vão de cada botão fica ainda mais apertado — medido a 390px no relatório
+   desta mudança, sem encolher texto abaixo desse piso.
+
+   Vitrina — o Palmarés que saiu do separador Provas (2026-09-22, fase 1 da
+   reforma da gamificação) — fica entre Metas e Equipamento: Metas é para
+   onde vais, Vitrina é o que já ganhaste por lá, e só depois vem o
+   equipamento com que o fazes. Leva o mesmo tom --race de Metas (não um
+   tom novo): os medalhões já são desenhados na mesma cor âmbar da prova
+   (PalmaresCard, HERO_CARD), por isso partilhar o tom aqui é continuar o
+   mesmo significado, não inventar um segundo. */
 const TABS = [
   { key: 'perfil', label: 'Pessoal', icon: <User size={14} />, tone: 'gym' },
   { key: 'metas', label: 'Metas', icon: <Target size={14} />, tone: 'race' },
+  { key: 'vitrina', label: 'Vitrina', icon: <Trophy size={14} />, tone: 'race' },
   // srLabel: "Equipa." lê-se "equipa" num leitor de ecrã, que é outra coisa.
   // O SubNav já tem o mecanismo (o Dashboard usa-o em "Geral" → "Visão
   // Geral"); faltava aqui.
@@ -106,7 +118,7 @@ const CAROL_PUSH_TYPES = [
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 
 export default function Perfil() {
-  const { profile, setProfile, session, setNavGuard, setOnboardingOpen } = useAppStore();
+  const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setEditingRaceId } = useAppStore();
   const [tab, setTab] = useState('perfil');
   // O ecrã do consentimento das tabelas (Fase 5) — ecrã inteiro por portal,
   // como o onboarding: não é um separador nem um formulário deste ecrã.
@@ -912,16 +924,28 @@ export default function Perfil() {
           </div>
       </div>
 
+      {/* Vitrina — o Palmarés (medalhões), mudado do separador Provas para
+          aqui (2026-09-22, fase 1 da reforma da gamificação). Igual ao
+          Equipamento, não escreve no rascunho partilhado: o cartão lê tudo
+          direto do store e abre as suas próprias persianas. onOpenRace
+          continua a ser setEditingRaceId — o hub da prova é um overlay
+          global (App.jsx, fora dos separadores), por isso abrir a partir
+          daqui não precisa de nenhuma navegação entre separadores nova. */}
+      <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
+          <h2 className="sr-only">Vitrina</h2>
+          <PalmaresCard onOpenRace={setEditingRaceId} />
+      </div>
+
       {/* Equipamento — ao contrário dos outros separadores, este não escreve
           no rascunho partilhado: o armário faz o seu próprio CRUD na tabela
           shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
-      <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Equipamento</h2>
           <ShoeCabinet ref={shoeCabinetRef} />
       </div>
 
-      <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
+      <div ref={(el) => { pageRefs.current[4] = el; setPageRef(4)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Coach</h2>
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
@@ -1034,10 +1058,15 @@ export default function Perfil() {
           "Guardar alterações" grava tudo o que estiver por gravar em
           qualquer um deles, não só no separador visível. O Equipamento é a
           exceção: grava-se a si próprio, par a par, e a barra passa a ser
-          "Adicionar sapatilhas" (mock "Perfil · Equipamento"). */}
-      <ActionBar>
-        {tab === 'equipamento' ? addShoesButton : saveButton}
-      </ActionBar>
+          "Adicionar sapatilhas" (mock "Perfil · Equipamento"). A Vitrina não
+          tem formulário nenhum — é só o Palmarés, que se lê, não se grava —
+          por isso a barra nem aparece nesse separador (em vez de mostrar um
+          botão sem ação, como fazia o Equipamento antes de ganhar o dele). */}
+      {tab !== 'vitrina' && (
+        <ActionBar>
+          {tab === 'equipamento' ? addShoesButton : saveButton}
+        </ActionBar>
+      )}
 
       {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
           Chat (pedido do utilizador). Sobe acima da barra de ação: a 100px

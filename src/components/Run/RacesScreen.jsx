@@ -1,7 +1,6 @@
 import React from 'react';
 import { useAppStore } from '../../store';
 import RaceCard from '../Home/RaceCard';
-import PalmaresCard from '../Perfil/PalmaresCard';
 import RaceListCard from './RaceListCard';
 import SectionLabel from '../shared/SectionLabel';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
@@ -15,9 +14,12 @@ import CoachInsightsDock from '../BI/CoachInsightsDock';
    1. "Para onde vou" — o MESMO cartão do Início (a próxima prova, a fase, os
       dias, o trilho; o dia seguinte com as conquistas), porque é a mesma
       prova e tem de se ler da mesma maneira;
-   2. o Palmarés, que saiu do Perfil: é o arquivo das provas, vive com elas;
-   3. todas as provas por grupos — próximas, por registar, concluídas — com
+   2. todas as provas por grupos — próximas, por registar, concluídas — com
       "Marcar prova". Cada linha abre o hub.
+
+   O Palmarés (2026-09-22, fase 1 da reforma da gamificação) mudou-se daqui
+   para o separador "Vitrina" do Perfil — este ecrã volta a falar só de
+   provas, ver Perfil.jsx.
 
    Sem estado próprio: tudo vem do store e dos componentes que já existiam. */
 export default function RacesScreen() {
@@ -40,9 +42,6 @@ export default function RacesScreen() {
         onCreateRace={createRace}
         onRegisterRace={registerRace}
       />
-
-      <SectionLabel style={{ marginTop: 6 }}>O que já conquistei</SectionLabel>
-      <PalmaresCard onOpenRace={setEditingRaceId} />
 
       <div className="flex flex-col gap-2" style={{ marginTop: 6 }}>
         <RaceListCard />
