@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BedDouble, Cake, CheckCheck, Clock, Crosshair, Footprints, Gauge, Heart, Leaf, Link, Map, Milestone, Moon, Mountain, MountainSnow, Route, Ruler, Sun, Target, TrendingDown, Trophy, Watch } from 'lucide-react';
+import { BedDouble, Cake, CheckCheck, Clock, Crosshair, Footprints, Gauge, Heart, Leaf, Link, Map, Milestone, Moon, Mountain, MountainSnow, Route, Ruler, Sun, Target, TrendingDown, Trophy, Watch, Zap } from 'lucide-react';
 
 /* O badge de treino: um ANEL DE PROGRESSO COM UM NÚMERO AO CENTRO
    (utils/badges.js; desenho decidido com o utilizador, fase 2 da reforma da
@@ -75,6 +75,9 @@ const GLIFOS = {
   check: CheckCheck,
   moonrest: BedDouble,
   trophy: Trophy,
+  // O Passo: o relâmpago da velocidade pura. Os pés (`steps`) já são da
+  // cadência, e o mostrador (`gauge`) já é da escala VDOT d'Os Níveis.
+  zap: Zap,
   // Os seis que vieram d'O Palmarés (fase A): os quilómetros de treino que se
   // acumulam, os marcos das distâncias de prova, o mostrador da escala VDOT,
   // a mira do objetivo batido, o mapa dos dois terrenos e o elo da série de

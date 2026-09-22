@@ -41,6 +41,11 @@ export const BADGE_CATALOG: Record<string, BadgeCatalogEntry> = {
   z2_mestre: { nome: "Mestre da Z2", familia: "desempenho" },
   negative_split: { nome: "Negative split", familia: "desempenho" },
   cadencia_corrigida: { nome: "Cadência corrigida", familia: "desempenho" },
+  // O Passo (2026-09-22): o encaixe do passo mais rápido do medalhão "Os
+  // Níveis", que a fase A não trouxe por não caber em três degraus, volta
+  // como badge próprio. Desempenho — mede velocidade pura, de prova ou de
+  // treino, e é por contar treino que é ciano e não âmbar.
+  melhor_passo: { nome: "O Passo", familia: "desempenho" },
   cabra_montesa: { nome: "Cabra-montesa", familia: "desempenho" },
   medida_da_prova: { nome: "À medida da prova", familia: "desempenho" },
   // Os que vieram d'O Palmarés (fase A, 2026-09-22): os medalhões passaram a

@@ -35,6 +35,12 @@
    decide a cor é sempre "o que é que isto mede", nunca "de que tabela saiu o
    dado".
 
+   E UM BADGE QUE CONTA PROVAS E MESMO ASSIM É CIANO: `melhor_passo` (O
+   Passo) mede o passo mais rápido de sempre, e esse tanto pode nascer numa
+   prova como numa série de terça-feira. Conta as duas, logo não NASCE de uma
+   prova — e o âmbar é só para o que nasce. A mesma pergunta de sempre, a
+   mesma resposta: a cor vem do que se mede.
+
    NÃO HÁ COR DO TERRENO, e é de propósito. A subida é corrida — trail é
    corrida — por isso a Cabra-montesa e A Escalada são `run` como as outras.
    Houve uma versão desta lista que lhes deu `--gym` "a cor do terreno":
@@ -106,9 +112,10 @@ import {
   runKindLabel,
   varrerSequencia,
 } from './premios';
-import { formatDuration, raceDistanceLabel } from './run';
+import { formatDuration, formatPace, raceDistanceLabel } from './run';
 import { formatDatePTShort } from './racePlanEngine';
 import { calculateVDOT } from '@formulas/racePrediction.ts';
+import { computeBestPace } from '@formulas/bestPace.ts';
 import { evaluatePrescriptions, executionBase } from '@formulas/prescriptionAdherence.ts';
 
 /** As quatro famílias, pela ordem em que a Vitrina as mostra: primeiro o que
@@ -131,14 +138,16 @@ export const FAMILIA_KEYS = FAMILIAS.map((f) => f.key);
  *
  *  A lógica de sempre, que a fase A não mudou: dentro de cada família, o que
  *  nasce de um dia de treino vem primeiro e o que nasce de uma prova vem no
- *  fim. Os badges de prova são os âmbar, e ficarem juntos no fim de cada
- *  família é o que faz a cor ler-se como um bloco em vez de salpicos.
+ *  fim. O Passo conta as duas, e fica do lado do treino porque não precisa
+ *  de prova nenhuma para se ganhar. Os badges de prova são os âmbar, e
+ *  ficarem juntos no fim de cada família é o que faz a cor ler-se como um
+ *  bloco em vez de salpicos.
  *
- *  Desempenho: primeiro como se corre (Z2, negative split, cadência), depois
- *  o terreno de treino (Cabra-montesa, À medida da prova, que partilham o
- *  D+), e as cinco de prova a fechar — a primeira vez em cada distância e em
- *  cada terreno, a escala, o objetivo batido, e o recorde pessoal no fim, que
- *  é o mais difícil dos cinco.
+ *  Desempenho: primeiro como se corre (Z2, negative split, cadência, O
+ *  Passo), depois o terreno de treino (Cabra-montesa, À medida da prova, que
+ *  partilham o D+), e as cinco de prova a fechar — a primeira vez em cada
+ *  distância e em cada terreno, a escala, o objetivo batido, e o recorde
+ *  pessoal no fim, que é o mais difícil dos cinco.
  *  Disciplina: as duas semanas da Carol primeiro (Semana 100%, Descanso
  *  cumprido) e A Sequência a seguir — é disciplina também, mas conta-se em
  *  provas, não em semanas.
@@ -152,6 +161,7 @@ export const BADGE_KEYS = [
   'z2_mestre',
   'negative_split',
   'cadencia_corrigida',
+  'melhor_passo',
   'cabra_montesa',
   'medida_da_prova',
   'distancias',
@@ -813,13 +823,28 @@ function badgeDeNiveis({
   // de treinos cabe, em metros acumulados ("9,8k/10k") não. Aí mostra-se só
   // o corrente, e é o arco que diz quanto falta.
   centroCompara = true,
+  /* A ESCALA QUE DESCE. Todos os outros badges de níveis sobem — mais
+     metros, mais quilómetros, mais VDOT — e o degrau ganha-se com `>=`. O
+     Passo é o único que desce: 4.15/km é melhor do que 6.00/km, e o degrau
+     ganha-se com `<=`. Em vez de um segundo motor, é este parâmetro que
+     vira as três comparações que dependem do sentido (o degrau atingido, o
+     que falta para o seguinte, e a proporção do anel). Com `false` — o
+     omisso — nada muda para os outros, e os testes deles provam-no. */
+  menorEMelhor = false,
+  /* Como se escreve a DISTÂNCIA até ao degrau seguinte, quando ela não se
+     escreve como um valor. Num acumulado a diferença é da mesma espécie que
+     o total (faltam "300 m"), mas num passo não é: a diferença entre 6.00 e
+     5.00 são 60 segundos por km, não um ritmo de "1.00/km". Por omissão usa
+     o mesmo `fmtValor` de sempre. */
+  fmtDiferenca = null,
 }) {
+  const escreveFalta = fmtDiferenca || fmtValor;
   // `passos`: [{ valor, date, ... }] do mais antigo para o mais recente, já
   // com o acumulado em `valor`.
   const totalAtual = passos.length ? passos[passos.length - 1].valor : 0;
   const ganhos = [];
   for (let i = 0; i < NIVEIS.length; i += 1) {
-    const passo = passos.find((p) => p.valor >= limiares[i]);
+    const passo = passos.find((p) => (menorEMelhor ? p.valor <= limiares[i] : p.valor >= limiares[i]));
     // `raceId` só vem nos badges que nascem de provas (Os Níveis, A
     // Sequência): é a prova que confirmou o degrau, e é ela que o põe no
     // mural dessa prova (`badgesForRace`).
@@ -830,6 +855,10 @@ function badgeDeNiveis({
   const seguinte = seguinteIdx < NIVEIS.length
     ? { nivel: NIVEIS[seguinteIdx], limiar: limiares[seguinteIdx] }
     : null;
+  /* O que falta para um limiar — sempre um número positivo, seja a escala a
+     subir (faltam metros para lá chegar) ou a descer (há segundos por km a
+     cortar). */
+  const falta = (limiar) => (menorEMelhor ? totalAtual - limiar : limiar - totalAtual);
 
   const due = ganhos.map((g) => ({
     badgeKey: key,
@@ -863,7 +892,7 @@ function badgeDeNiveis({
         centroAria: `${name}: ${atingido.nivel.label}, ${fmtValor(totalAtual)}`,
         awardedOn: atingido.awardedOn,
         linha: seguinte
-          ? `${atingido.nivel.label} · faltam ${fmtValor(seguinte.limiar - totalAtual)} para ${seguinte.nivel.label.toLowerCase()}`
+          ? `${atingido.nivel.label} · faltam ${escreveFalta(falta(seguinte.limiar))} para ${seguinte.nivel.label.toLowerCase()}`
           : `${atingido.nivel.label} — o degrau mais alto`,
         detalhe: `${fmtValor(totalAtual)} ${tituloDe}`,
       }),
@@ -872,19 +901,24 @@ function badgeDeNiveis({
   }
 
   const alvo = limiares[0];
-  const emCurso = totalAtual > 0;
+  /* Numa escala que desce, "ainda a zero" não é o valor zero — zero seria o
+     passo infinitamente rápido. É não haver medida nenhuma. */
+  const emCurso = menorEMelhor ? passos.length > 0 : totalAtual > 0;
   return {
     badge: badge({
       ...comum,
       state: emCurso ? 'progress' : 'empty',
-      ring: emCurso ? Math.min(totalAtual / alvo, 0.99) : 0,
+      // A proporção do caminho até ao bronze, pelo lado certo da divisão: a
+      // subir é quanto já se tem do alvo, a descer é quanto o alvo já é do
+      // que se tem (6.30/km com o bronze em 6.00 lê-se 95% do caminho).
+      ring: emCurso ? Math.min(menorEMelhor ? alvo / totalAtual : totalAtual / alvo, 0.99) : 0,
       centro: emCurso && centroCompara
         ? `${fmtCentroValor(totalAtual)}/${fmtCentroValor(alvo)}`
         : fmtCentroValor(emCurso ? totalAtual : alvo),
       centroAria: emCurso
         ? `${name}: a caminho, ${fmtValor(totalAtual)} de ${fmtValor(alvo)} para bronze`
         : `${name}: por ganhar. ${rule}`,
-      linha: emCurso ? `faltam ${fmtValor(alvo - totalAtual)} para bronze` : semNada,
+      linha: emCurso ? `faltam ${escreveFalta(falta(alvo))} para bronze` : semNada,
       detalhe: emCurso ? `${fmtValor(totalAtual)} ${tituloDe}` : null,
     }),
     due: [],
@@ -2527,6 +2561,165 @@ function sequencia({ completed, raceEvents, runs, today }) {
   });
 }
 
+// ── 15. O Passo ──────────────────────────────────────────────────────────
+
+/* chave     melhor_passo
+   regra     "O teu passo mais rápido de sempre, de prova ou de treino:
+             6.00/km (bronze), 5.00/km (prata), 4.15/km (ouro)."
+   campo     runs.distance_km + runs.duration_seconds (e, quando existirem,
+             os parciais de runs.details.splits) — a medida é a do
+             `computeBestPace` (@formulas/bestPace.ts), a mesma que o
+             dashboard de corrida mostra nos recordes de ritmo.
+   em falta  corrida sem distância ou sem tempo, ou cuja distância não cai em
+             nenhum dos três escalões: INDETERMINADA. Não conta nem a favor
+             nem contra — um sprint de 2 km não é uma tentativa falhada a
+             este badge, é uma corrida que ele não sabe ler.
+   cor       --run (ciano) — ver abaixo.
+   família   desempenho — é velocidade pura, a medida mais direta que há.
+   níveis    sim: bronze 6.00/km, prata 5.00/km, ouro 4.15/km.
+
+   ── DE ONDE VEM ─────────────────────────────────────────────────────────
+   Era um dos seis encaixes do medalhão "Os Níveis" (o antigo
+   utils/medalhoes.js), e não veio na fase A porque um badge tem três
+   degraus e uma escala só — o que coube foi o VDOT de prova. Isso foi uma
+   limitação da FORMA do badge, não um juízo sobre o que ele mede, e a
+   resposta é esta: escala própria, badge próprio. (O outro encaixe que
+   ficou de fora, o VO2 do relógio, continua de fora e de propósito: é uma
+   estimativa do aparelho, não uma coisa corrida.)
+
+   ── PORQUÊ CIANO, E NÃO ÂMBAR ───────────────────────────────────────────
+   Porque conta TREINO TAMBÉM: o passo mais rápido de sempre tanto pode
+   nascer de uma prova como de uma série de terça-feira, e a lei da cor diz
+   que o âmbar é só o que NASCE de uma prova. É o mesmo raciocínio d'A
+   Escalada. A pergunta é o que o badge mede, não de que tabela veio o dado.
+
+   ── PORQUÊ ESCALA PRÓPRIA, E NÃO VDOT ───────────────────────────────────
+   Os limiares são os do encaixe, sem mudar nada — 360, 300 e 255 s/km. O
+   VDOT compara distâncias diferentes pela aptidão que exigem, que é o que
+   Os Níveis precisam; aqui não se compara nada com nada, mede-se velocidade
+   crua em s/km. Os três escalões (5, 10 e 21 km) são os do
+   `computeBestPace`, e um passo de 5 km vale o mesmo que um de 21 km — o
+   que é generoso para o de 5 km e é assim desde o medalhão.
+
+   ── A ESCALA QUE DESCE ──────────────────────────────────────────────────
+   É o único badge em que MAIS BAIXO É MELHOR. O `badgeDeNiveis` aceita-o
+   pelo `menorEMelhor`, que vira as comparações do sentido do degrau — não
+   há motor novo aqui. */
+const PASSO_BUCKETS = [5, 10, 21];
+const PASSO_LIMIARES = [360, 300, 255];
+
+/* Abaixo disto não é um atleta a correr: é o GPS a delirar, uma saída de
+   bicicleta mal classificada, ou um tempo escrito em minutos onde deviam
+   estar horas. O recorde mundial dos 10 000 m anda nos ~157 s/km (2.37/km),
+   e 150 fica um pouco abaixo disso — o suficiente para nunca cortar um
+   registo humano, que é o erro que não se pode cometer, e para apanhar o
+   lixo que é ordens de grandeza mais rápido.
+
+   Importa pela mesma razão que o teto de VDOT d'Os Níveis: `user_badges` é
+   append-only e não tem política de delete, por isso um ouro cunhado por um
+   registo errado fica lá para sempre, mesmo depois de o atleta corrigir a
+   corrida. Entre deixar passar um ciclista lento (que este teto não apanha —
+   nenhum número o apanharia) e roubar um ouro a quem o correu, a escolha é
+   fácil: o teto é largo de propósito. */
+const PASSO_MINIMO_PLAUSIVEL = 150;
+
+/* O melhor passo de UMA corrida, pelos três escalões. Cada corrida passa
+   sozinha pelo MESMO `computeBestPace` que o total usaria — é a régua do
+   badge aplicada uma vez, em vez de uma conta paralela para a lista do
+   detalhe que podia discordar dela (foi o bug do encaixe do medalhão).
+   Devolve `medidas` (o que se conseguiu ler) e `melhor` (a mais rápida das
+   plausíveis), que são coisas diferentes quando o registo é lixo. */
+function passoDaCorrida(run) {
+  const maisRapida = (lista) => lista.reduce((a, m) => (!a || m.pace < a.pace ? m : a), null);
+  const medidas = PASSO_BUCKETS.map((km) => computeBestPace([run], km)).filter(Boolean);
+  return {
+    medidas,
+    // A mais rápida DE TODAS (mesmo implausível): é o número que a sessão
+    // indeterminada mostra, para o atleta ver o que o registo diz.
+    bruta: maisRapida(medidas),
+    melhor: maisRapida(medidas.filter((m) => m.pace >= PASSO_MINIMO_PLAUSIVEL)),
+  };
+}
+
+function melhorPasso({ runs, today }) {
+  /* Prova OU treino: é a única coisa que este badge tem de diferente dos
+     outros de corrida, e é o que o torna ciano. Por isso lê `runs` e não
+     `treinos` — mas com o mesmo filtro do relógio que o `computeBadges`
+     aplica aos treinos: uma corrida com data no futuro não conta. */
+  const corridas = (runs || []).filter((r) => r && dayOf(r.date) && dayOf(r.date) <= today);
+  const medidas = [];
+  const indeterminadas = [];
+  for (const run of corridas) {
+    const { medidas: lidas, bruta, melhor } = passoDaCorrida(run);
+    if (!lidas.length) {
+      indeterminadas.push({ run, porque: 'Sem distância de 5, 10 ou 21 km (inteira ou em parcial) para medir o passo.' });
+      continue;
+    }
+    if (!melhor) {
+      indeterminadas.push({ run, porque: `${formatPace(bruta.pace)}/km — fora do plausível, não decide nada.` });
+      continue;
+    }
+    medidas.push({ run, pace: melhor.pace, source: melhor.source });
+  }
+
+  /* O recorde só DESCE, e cada descida é um passo com o dia em que os dados
+     a provam — a mesma régua do acumulado d'A Escalada e do máximo d'Os
+     Níveis, com um mínimo em vez de uma soma. Daí a ordem cronológica. */
+  const porData = [...medidas].sort((a, b) => (dayOf(a.run.date) || '').localeCompare(dayOf(b.run.date) || ''));
+  let recorde = Infinity;
+  const passos = [];
+  const baixaram = new Set();
+  for (const m of porData) {
+    if (m.pace >= recorde) continue;
+    recorde = m.pace;
+    baixaram.add(m.run);
+    passos.push({ valor: recorde, date: dayOf(m.run.date) });
+  }
+
+  const sessoes = newestFirst([
+    ...medidas.map(({ run, pace, source }) => sessaoDaCorrida(run, {
+      status: baixaram.has(run) ? 'conta' : 'falhou',
+      meta: `${formatPace(pace)}/km${source === 'split' ? ' (num parcial)' : ''}`,
+      porque: baixaram.has(run) ? 'Baixou o teu passo mais rápido.' : 'Não baixou o teu passo mais rápido.',
+    })),
+    ...indeterminadas.map(({ run, porque }) => sessaoDaCorrida(run, {
+      status: 'indeterminada',
+      meta: run?.distance_km ? fmtKmLinha(num(run.distance_km)) : null,
+      porque,
+    })),
+  ]);
+
+  return badgeDeNiveis({
+    key: 'melhor_passo',
+    name: 'O Passo',
+    rule: 'O teu passo mais rápido de sempre, de prova ou de treino — 6.00/km para bronze, 5.00/km para prata, 4.15/km para ouro.',
+    familia: 'desempenho',
+    cor: 'run',
+    glifo: 'zap',
+    campo: 'distance_km + duration_seconds',
+    campoLabel: 'a distância e o tempo',
+    dependeDe: 'Precisa de corridas (ou parciais) de 5, 10 ou 21 km com distância e tempo registados.',
+    comoResolver: 'Abre o registo da corrida e confirma a distância e a duração — sem as duas não há passo para medir.',
+    unidade: 'seconds',
+    limiares: PASSO_LIMIARES,
+    passos,
+    menorEMelhor: true,
+    fmtValor: (v) => `${formatPace(v)}/km`,
+    // A diferença entre dois passos são segundos por km, não um passo: "60 s
+    // por km" e nunca "1.00/km", que era o mesmo número a dizer outra coisa.
+    fmtDiferenca: (d) => `${Math.max(1, Math.round(d))} s por km`,
+    fmtCentroValor: (v) => formatPace(v),
+    // "6.30/6.00" não cabe no anel; mostra-se só o corrente, e é o arco que
+    // diz quanto falta (o mesmo que A Escalada faz com os metros).
+    centroCompara: false,
+    sessoes,
+    indeterminadas: indeterminadas.map(({ run }) => run),
+    semNada: 'ainda sem corridas de 5, 10 ou 21 km com distância e tempo',
+    tituloDe: 'no teu esforço mais rápido de sempre',
+    linhaDue: (g) => `${formatPace(g.valor)}/km — ${g.nivel.label.toLowerCase()} d'O Passo.`,
+  });
+}
+
 // ── OS AMULETOS ──────────────────────────────────────────────────────────
 
 /* Seis badges que não medem desenvolvimento nenhum (família `amuletos`, ao
@@ -3256,6 +3449,7 @@ export function computeBadges({
     z2_mestre: z2Mestre(ctx),
     negative_split: negativeSplit(ctx),
     cadencia_corrigida: cadenciaCorrigida(ctx),
+    melhor_passo: melhorPasso(ctx),
     cabra_montesa: cabraMontesa(ctx),
     medida_da_prova: medidaDaProva(ctx),
     distancias: distancias(ctx),
