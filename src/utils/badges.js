@@ -20,10 +20,17 @@
    Uma cor, um significado, como no resto da app:
      `run`  (ciano --run)  o treino de corrida em si;
      `ok`   (verde --ok)   a disciplina: fazer o que estava combinado;
-     `gym`  (--gym)        o terreno, a subida;
      `race` (âmbar --race) SÓ o que nasce de uma prova.
    Nenhum badge de treino é âmbar. O único âmbar desta lista é o
    `recorde_pessoal`, e é âmbar precisamente porque só uma prova o dá.
+
+   NÃO HÁ COR DO TERRENO, e é de propósito. A subida é corrida — trail é
+   corrida — por isso a Cabra-montesa e A Escalada são `run` como as outras.
+   Houve uma versão desta lista que lhes deu `--gym` "a cor do terreno":
+   estava errada. O --gym é o módulo ginásio e mais nada, e a primeira linha
+   de tokens/colors.css é justamente "nunca reutilizar uma cor para outro
+   fim". Inventar um significado novo para uma cor que já tem dono é como se
+   desfaz uma linguagem visual.
 
    ── O DADO QUE FALTA ────────────────────────────────────────────────────
    Metade destas regras vive de campos OPCIONAIS de `runs.details`
@@ -455,7 +462,7 @@ function negativeSplit({ treinos }) {
    regra     "Um treino de 8 km ou mais com 50 metros de subida por km."
    campo     runs.details.elevation_gain_m (com runs.distance_km)
    em falta  INDETERMINADA: sem D+ não se sabe se foi montanha ou passeio.
-   cor       --gym (a cor do terreno)
+   cor       --run (a subida é corrida, não ginásio)
    níveis    não — repete-se.
 
    Os 50 m/km são a banda "montanha" de ELEVATION_RATIO_BANDS (utils/run.js),
@@ -471,7 +478,7 @@ function cabraMontesa({ treinos }) {
     key: 'cabra_montesa',
     name: 'Cabra-montesa',
     rule: `Um treino de ${CABRA_KM} km ou mais com ${CABRA_ALVO_RACIO} metros de subida por quilómetro.`,
-    cor: 'gym',
+    cor: 'run',
     glifo: 'mountain',
     campo: 'details.elevation_gain_m',
     campoLabel: 'o desnível positivo',
@@ -669,7 +676,7 @@ function coruja({ treinos }) {
    em falta  a corrida NÃO SOMA — não conta a favor (não se inventa D+) nem
              contra (não apaga nada). O detalhe diz quantas ficaram de fora,
              porque um total que parece baixo é quase sempre isso.
-   cor       --gym (o terreno)
+   cor       --run (a subida é corrida, não ginásio)
    níveis    sim: bronze 10 000 m, prata 25 000 m, ouro 50 000 m.
 
    Acumulado de SEMPRE, não do ano: um badge de ano precisava de period_key
@@ -702,7 +709,7 @@ function escalada({ treinos }) {
     key: 'escalada',
     name: 'A Escalada',
     rule: 'Metros de subida acumulados em treino — 10 000 para bronze, 25 000 para prata, 50 000 para ouro.',
-    cor: 'gym',
+    cor: 'run',
     glifo: 'peak',
     campo: 'details.elevation_gain_m',
     campoLabel: 'o desnível positivo',

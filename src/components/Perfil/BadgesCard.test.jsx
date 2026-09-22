@@ -25,7 +25,7 @@ const BADGES = [
     indeterminadas: { n: 3, campoLabel: 'as zonas de frequência cardíaca', comoResolver: 'Abre o registo e preenche os minutos por zona.', frase: '3 sessões ficaram por decidir: não têm as zonas de frequência cardíaca. Não contam nem a favor nem contra.' },
   }),
   badge({
-    key: 'escalada', name: 'A Escalada', cor: 'gym', glifo: 'peak', state: 'progress', ring: 0.5, centro: '5k',
+    key: 'escalada', name: 'A Escalada', cor: 'run', glifo: 'peak', state: 'progress', ring: 0.5, centro: '5k',
     linha: 'faltam 5 000 m para bronze',
     niveis: [
       { key: 'bronze', label: 'Bronze', limiar: 10000, ganho: false },

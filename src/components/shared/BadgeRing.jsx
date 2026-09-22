@@ -18,8 +18,8 @@ import { BedDouble, CheckCheck, Heart, Moon, Mountain, MountainSnow, TrendingDow
                 mostrar a melhor tentativa ("+14"), não um vazio.
 
    A cor é a da lei da app, e vem do badge (utils/badges.js, "A LEI DA COR"):
-   ciano o treino, verde a disciplina, --gym o terreno, âmbar SÓ o que nasce
-   de uma prova.
+   ciano o treino, verde a disciplina, âmbar SÓ o que nasce de uma prova. Não
+   há cor do terreno — a subida é corrida, e o --gym é o módulo ginásio.
 
    A animação é a mesma dos anéis do Início (shared/Orbit.jsx): o primeiro
    render desenha a zero e só no frame seguinte se põe o valor real — é a
@@ -39,7 +39,6 @@ export const GLIFO_MIN_SIZE = 96;
 const CORES = {
   run: 'var(--run)',
   ok: 'var(--ok)',
-  gym: 'var(--gym)',
   race: 'var(--race)',
 };
 
@@ -49,7 +48,6 @@ const CORES = {
 const BRILHO = {
   run: 'rgba(46,224,255,.45)',
   ok: 'rgba(52,211,153,.45)',
-  gym: 'rgba(158,195,210,.45)',
   race: 'rgba(251,191,36,.45)',
 };
 

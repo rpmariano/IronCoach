@@ -68,7 +68,7 @@ describe('computeBadges — forma', () => {
      prova. Nenhum badge de treino o pode usar. */
   it('a lei da cor: âmbar só no badge que nasce de uma prova', () => {
     expect(r.badges.filter((b) => b.cor === 'race').map((b) => b.key)).toEqual(['recorde_pessoal']);
-    expect(r.badges.every((b) => ['run', 'ok', 'gym', 'race'].includes(b.cor))).toBe(true);
+    expect(r.badges.every((b) => ['run', 'ok', 'race'].includes(b.cor))).toBe(true);
   });
 
   it('a competição não é treino: não entra em nenhum badge de treino', () => {
@@ -156,7 +156,7 @@ describe('Cabra-montesa e A Escalada — o D+ que falta não conta contra', () =
     const b = bad(r, 'cabra_montesa');
     expect(b.state).toBe('won');
     expect(b.centro).toBe('60');
-    expect(b.cor).toBe('gym');
+    expect(b.cor).toBe('run');
     expect(dueDe(r, 'cabra_montesa')[0].valueUnit).toBe('metros');
   });
 
