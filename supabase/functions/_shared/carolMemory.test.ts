@@ -273,6 +273,7 @@ Deno.test("fetchChatMemoryBlocks: monta os blocos; uma tabela em erro tira só o
     runs: { data: [{ date: "2026-09-17", kind: "treino", training_type: "longo", distance_km: 16, notes: "cansado", coach_notes: "Ritmo certo." }] },
     coach_daily_summary: { error: { message: "boom" } },
     medal_awards: { data: [{ medalhao: "distancias", slot: "10k", awarded_at: "2026-09-01" }] },
+    user_badges: { data: [{ badge_key: "escalada", tier: "prata", period_key: "", awarded_at: "2026-09-10T08:00:00Z" }] },
     race_events: { data: [], count: 0 },
   });
   const blocks = await fetchChatMemoryBlocks(sb, "u1", "2026-09-18");
@@ -281,6 +282,26 @@ Deno.test("fetchChatMemoryBlocks: monta os blocos; uma tabela em erro tira só o
   assertEquals(blocks.dailyCard, null);
   assertStringIncludes(blocks.palmares!, "Distâncias já concluídas em prova: 10 km");
   assertStringIncludes(blocks.portrait!, "Corrida: 16 km em 1 corridas");
+  // A vitrina de badges (6 #6): o que foi ganho, e as regras com ele.
+  assertStringIncludes(blocks.badges!, "A Escalada (prata, a última a 2026-09-10)");
+  assertStringIncludes(blocks.badges!, "Acumulação e Amuletos");
+});
+
+Deno.test("fetchChatMemoryBlocks: sem badges ganhos, o bloco da vitrina não existe", async () => {
+  const sb = fakeSb({ race_events: { data: [], count: 0 } });
+  const blocks = await fetchChatMemoryBlocks(sb, "u1", "2026-09-18");
+  assertEquals(blocks.badges, null);
+});
+
+Deno.test("fetchChatMemoryBlocks: user_badges em erro tira só a vitrina", async () => {
+  const sb = fakeSb({
+    user_badges: { error: { message: "boom" } },
+    medal_awards: { data: [{ medalhao: "distancias", slot: "10k", awarded_at: "2026-09-01" }] },
+    race_events: { data: [], count: 0 },
+  });
+  const blocks = await fetchChatMemoryBlocks(sb, "u1", "2026-09-18");
+  assertEquals(blocks.badges, null);
+  assertStringIncludes(blocks.palmares!, "Distâncias já concluídas em prova: 10 km");
 });
 
 Deno.test("fetchSharedMemoryBlock: uma exceção no cliente devolve null, não rebenta", async () => {

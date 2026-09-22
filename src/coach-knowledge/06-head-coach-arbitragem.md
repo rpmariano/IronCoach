@@ -227,18 +227,40 @@ Confiança: n/a — é uma decisão de produto, não um achado de literatura. O
            carga aguda sem que o atleta note.
 ```
 
-⚠️ **Implementável hoje, e ainda não implementado.** A peça que faltava já
-existe: desde 2026-09-22 cada badge declara uma `familia`
-(`desempenho` · `disciplina` · `acumulacao` · `amuletos`) em
-`src/utils/badges.js`, e é ela que identifica os badges proibidos — até aqui
-só havia a cor, e a cor não chega (A Escalada e o Mestre da Z2 são os dois
-ciano e são coisas opostas). O que falta é o outro lado: nenhuma Edge
-Function recebe hoje o estado dos badges no contexto, por isso R1 e R3 são,
-neste momento, uma proibição sobre uma coisa de que a Carol nem sabe. Isso é
-seguro por acidente e não por desenho — no dia em que os badges entrarem no
-contexto do `coach-chat`, estas três regras têm de entrar com eles, no mesmo
-commit. R2 é a única que já se podia implementar sem tocar nos badges: o
-volume por dia dentro do período civil já está todo em `runs`.
+✅ **Implementado a 2026-09-22**, e com as três regras no mesmo commit que os
+dados, como esta entrada exigia.
+
+A peça que identifica os badges proibidos é a `familia`
+(`desempenho` · `disciplina` · `acumulacao` · `amuletos`), declarada por cada
+badge em `src/utils/badges.js`. A cor não chegava: A Escalada e o Mestre da
+Z2 são os dois ciano e são coisas opostas.
+
+Como está montado, e porquê assim:
+
+- `supabase/functions/_shared/badgeCatalog.ts` — chave → nome e família, do
+  lado do servidor (o Deno não importa o `badges.js`). A cópia não pode
+  derivar em silêncio: `src/utils/badgeCatalog.test.js` corre `computeBadges`
+  e exige que as duas listas coincidam na chave, no nome e na família. Um
+  badge novo sem entrada no catálogo parte o teste — que é exatamente o
+  momento em que alguém tem de decidir a que família ele pertence e,
+  portanto, se a Carol pode falar dele.
+- `buildBadgesContext` (`_shared/carolMemory.ts`, 1.8) monta o bloco a partir
+  de `user_badges`, que é append-only: **uma linha ali é uma conquista, nunca
+  um progresso**. A consulta pede `badge_key, tier, period_key, awarded_at` e
+  deixa o `value` de fora de propósito.
+- `coach-chat` recebe-o logo a seguir ao Palmarés, com o texto das três
+  regras dentro do próprio bloco.
+
+**O que faz R1 e R3 valerem não é o prompt — é a ausência do dado.** Ela não
+pode dizer "faltam-te 300 m para o próximo degrau" porque esse número não
+existe em lado nenhum do contexto dela. O texto das regras vai junto para o
+caso de ela inferir o que não lhe demos, mas a proteção a sério é estrutural.
+Um badge cuja chave o catálogo não conheça fica de fora: sem família não há
+regra que o proteja, e o lado seguro do erro é o silêncio.
+
+R2 é a única que não precisa dos badges — o volume por dia dentro do período
+civil já estava todo em `runs` — e viaja no mesmo bloco, com a régua do
+2.1 #1 nomeada.
 
 A Vitrina do Perfil segue a mesma regra do seu lado: a frase de progresso
 ("faltam 5 000 m para bronze") nunca mostra um amuleto, ainda que seja o
