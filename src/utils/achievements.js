@@ -1,28 +1,28 @@
 /* As conquistas de UMA prova (specs/gamificacao-provas.md).
 
-   É a segunda vista do motor dos prémios: as regras — que provas contam, o
+   É uma das vistas do motor dos prémios: as regras — que provas contam, o
    que é objetivo batido, o que é recorde pessoal, o que é um elo de
    sequência, o que é trail — vivem em `utils/premios.js` e são exatamente
-   as mesmas que `utils/medalhoes.js` usa para o Palmarés. Aqui só se
-   pergunta o que é que ESTA prova deu, e se escreve a frase. É por isso que
-   o hub, o Início, o Palmarés e a confirmação do registo nunca podem
-   discordar sobre a mesma prova.
+   as mesmas que `utils/badges.js` usa para a Vitrina. Aqui só se pergunta o
+   que é que ESTA prova deu, e se escreve a frase. É por isso que o hub, o
+   Início, a Vitrina e a confirmação do registo nunca podem discordar sobre
+   a mesma prova.
 
    Seis conquistas, calculadas dos dados que já existem: nenhuma tabela nova,
-   nenhuma data de desbloqueio guardada (isso é dos medalhões, em
-   `medal_awards`). Cinco delas são a mesma pergunta que um encaixe do
-   Palmarés faz, feita a uma prova só:
+   nenhuma data de desbloqueio guardada (isso é dos badges, em
+   `user_badges`). Cinco delas são a mesma pergunta que um badge de prova
+   faz, feita a uma prova só:
 
-     prova_concluida  → a contagem bruta; o Palmarés conta por balde
-     objetivo_batido  → A Superação
+     prova_concluida  → a contagem bruta; o badge conta por degraus
+     objetivo_batido  → `superacao`
      recorde_pessoal  → regra própria: o melhor tempo do atleta na categoria
-                        (`outcome.isPersonalRecord`). NÃO é o medalhão "Os
-                        Níveis", que é uma escala de aptidão (VDOT) — ver
+                        (`outcome.isPersonalRecord`). NÃO é o badge dos
+                        níveis, que é uma escala de aptidão (VDOT) — ver
                         `bateuRecordePessoal` em utils/premios.js
-     primeira_trail   → O Terreno (o encaixe `trail1`)
-     sequencia        → A Sequência (o elo desta prova, não o máximo)
+     primeira_trail   → `terreno` (a primeira de trail)
+     sequencia        → `sequencia` (o elo desta prova, não o máximo)
 
-   A sexta, `acima_do_treino`, não tem par no Palmarés: mede a prova contra
+   A sexta, `acima_do_treino`, não tem par na Vitrina: mede a prova contra
    o que os TREINOS anteriores faziam esperar, que é a única coisa premiada
    aqui que não depende de ter marcado objetivo nem de ter histórico na
    distância.
@@ -142,13 +142,13 @@ export function evaluateRace({ raceEvents = [], runs = [], profile = {}, today }
   /* A sequência conta-se a partir da 2.ª prova seguida: o elo desta prova na
      sua própria sequência é o número que ela mostra ("2 provas seguidas").
      Sai do varrimento único de utils/premios.js — o mesmo que dá os marcos
-     d'A Sequência no Palmarés.
+     do badge `sequencia`.
 
      Antes saía da sequência que chega a HOJE, e por isso uma prova que foi a
      3.ª seguida perdia o "3 provas seguidas" assim que uma prova posterior
      passasse por registar: a leitura do hub de uma prova antiga mudava por
-     causa de uma prova que veio depois. Agora não — é a mesma lei da medalha
-     d'A Sequência, o que se ganhou não se perde. */
+     causa de uma prova que veio depois. Agora não — é a mesma lei que o
+     badge da sequência segue: o que se ganhou não se perde. */
   const elo = varrerSequencia({ raceEvents, runs, today: hoje }).posicaoDe(race.id);
   if (elo >= 2) earned.push(item('sequencia', 'Sequência de provas', 'Sequência', 'race', Repeat, `${elo} provas seguidas`));
 

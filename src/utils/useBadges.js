@@ -11,17 +11,16 @@ import { todayISO } from '../lib/utils';
    que não se recalcula. A sincronização corre UMA vez por sessão e de novo
    quando o número de badges devidos muda (gravou-se uma corrida, fechou-se
    uma semana) ou quando o dia muda (a PWA fica aberta dias, e há badges que
-   se ganham no fecho da semana). É a mesma chave do momento da medalha
-   (utils/useMedalMoment.js), pela mesma razão: contar corridas falhava os
-   dois casos.
+   se ganham no fecho da semana). A chave é a que o momento da medalha usava,
+   pela mesma razão: contar corridas falhava os dois casos.
 
    ── O QUE FALTA VER É DE TODA A APP, NÃO DE UM ECRÃ ─────────────────────
    Desde a fase 4 o `pending` tem leitores: o momento do badge no Início
    (utils/useBadgeMoment.js) e a Vitrina no Perfil (Perfil/BadgesCard.jsx).
    Os dois têm de ver a MESMA lista, senão o mesmo badge tocava duas vezes —
    por isso o que falta ver vive ao nível do módulo, com quem o está a ler
-   inscrito para ser avisado quando muda. É o mesmo padrão do `session` de
-   useMedalMoment.js, com a diferença de haver aqui mais do que um leitor.
+   inscrito para ser avisado quando muda — é o padrão que os medalhões já
+   usavam, com a diferença de haver aqui mais do que um leitor.
 
    Quem vê primeiro CONSOME: `marcarVistos` tira os prémios da lista e grava
    `seen_at`. É de propósito — se o atleta abriu a Vitrina e viu o anel

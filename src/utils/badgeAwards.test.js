@@ -1,10 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { todayISO } from '../lib/utils';
 
-/* A sincronização dos badges contra um cliente Supabase falso em memória — o
-   mesmo molde do medalAwards.test.js, porque a política é a mesma: o que tem
-   mais de uma semana entra já visto, nada se duplica, e uma tabela que ainda
-   não existe nunca parte a app.
+/* A sincronização dos badges contra um cliente Supabase falso em memória. A
+   política: o que tem mais de uma semana entra já visto, nada se duplica, e
+   uma tabela que ainda não existe nunca parte a app.
 
    O que este ficheiro guarda além disso é a chave: (badge_key, tier,
    period_key). O `tier` vem sempre como texto — '' quando o badge não tem

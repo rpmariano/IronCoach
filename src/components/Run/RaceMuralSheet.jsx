@@ -286,8 +286,8 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   // hub da prova e dos outros ecrãs de topo desta app). Esc continua a
   // fechar, como fechava a persiana — pela mesma pilha do Sheet.jsx
   // (useEscapeClose), não um listener à parte (achado na revisão pré-push
-  // do ecrã irmão, MedalhaoContribSheet: um listener próprio não sabe o
-  // que está empilhado por baixo dele).
+  // da promoção de um ecrã irmão a ecrã inteiro: um listener próprio não
+  // sabe o que está empilhado por baixo dele).
   useEscapeClose(handleClose);
 
   const onCropKey = (e) => {

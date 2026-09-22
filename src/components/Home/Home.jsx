@@ -20,8 +20,6 @@ import FirstDayCard from './FirstDayCard';
 import CheckinCard from './CheckinCard';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
-import MedalMoment from '../shared/MedalMoment';
-import useMedalMoment from '../../utils/useMedalMoment';
 import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
 
@@ -58,16 +56,13 @@ export default function Home() {
   // Dispensar o aviso do balanço grava a marca em localStorage, que não é
   // estado do React — este contador faz o useMemo voltar a ler.
   const [balanceDismissals, setBalanceDismissals] = useState(0);
-  // O momento da medalha (specs/palmares-medalhoes.md) — a regra de quando
-  // aparece vive no hook.
-  const medalMoment = useMedalMoment();
   /* O momento do badge (fase 4 da reforma da gamificação) — a regra de
-     quando aparece e em que escala vive no hook. Fica atrás da medalha:
-     duas cerimónias de ecrã inteiro ao mesmo tempo não são duas cerimónias,
-     são uma confusão. Sem a migração `user_badges` aplicada não há `pending`
+     quando aparece e em que escala vive no hook. É a única cerimónia de ecrã
+     inteiro do Início desde que os medalhões saíram (fase C): já não espera
+     por ninguém. Sem a migração `user_badges` aplicada não há `pending`
      nenhum e isto não mostra nada. */
   const badgeMoment = useBadgeMoment();
-  const badgeVisivel = !medalMoment.award ? (badgeMoment.grande || badgeMoment.medio) : null;
+  const badgeVisivel = badgeMoment.grande || badgeMoment.medio;
 
   const today = todayISO();
 
@@ -359,15 +354,6 @@ export default function Home() {
 
       <CoachInsightButton insights={homeInsights} alerts={carolAlerts} onClick={openInsights} />
       {showInsights && <CoachInsightModal insights={homeInsights} alerts={carolAlerts} onClose={() => setShowInsights(false)} />}
-      {medalMoment.award && (
-        <MedalMoment
-          award={medalMoment.award}
-          medalhao={medalMoment.medalhao}
-          extraCount={medalMoment.extraCount}
-          onClose={medalMoment.close}
-          onOpenPalmares={() => setActiveTab('provas')}
-        />
-      )}
       {badgeVisivel && (badgeMoment.grande ? (
         <BadgeMoment
           /* A fila: cada grande é um momento novo, por isso remonta (a

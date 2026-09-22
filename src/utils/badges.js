@@ -1,15 +1,16 @@
-/* Os badges de TREINO — a segunda vitrina, ao lado d'O Palmarés
-   (reforma da gamificação, fase 2).
+/* Os badges — a Vitrina (reforma da gamificação, fase 2).
 
-   O Palmarés (utils/medalhoes.js) conta a vida de PROVA: distâncias, níveis,
-   terreno, sequência, objetivos batidos. Isto conta a vida dos dias entre as
-   provas — o que se faz de segunda a domingo e que, até aqui, não dava
-   prémio nenhum: a semana cumprida, o descanso respeitado, o treino inteiro
-   em Z2, a subida que se acumula.
+   Nasceram como a segunda vitrina, ao lado d'O Palmarés: este ficheiro
+   contava a vida dos dias ENTRE as provas — o que se faz de segunda a
+   domingo e que não dava prémio nenhum: a semana cumprida, o descanso
+   respeitado, o treino inteiro em Z2, a subida que se acumula. Na fase A os
+   seis medalhões foram portados para cá e na fase C o Palmarés saiu: hoje
+   isto conta as duas vidas, a de treino e a de prova, e é a única coleção
+   da app.
 
-   Este ficheiro é uma TERCEIRA VISTA do motor dos prémios (utils/premios.js),
-   ao lado do Palmarés e das conquistas de cada prova. As regras da casa são
-   as mesmas e não se reabrem aqui:
+   É uma VISTA do motor dos prémios (utils/premios.js), ao lado das
+   conquistas de cada prova. As regras da casa são as mesmas e não se
+   reabrem aqui:
 
    1. **O relógio entra sempre** — `today` (ISO `YYYY-MM-DD`) é obrigatório
       (`requireToday`); nada aqui chama `new Date()`.
@@ -278,7 +279,7 @@ function badge(fields) {
      'conta'          — cumpriu a regra (é uma das que deram o badge);
      'falhou'         — tinha o dado e não chegou lá;
      'indeterminada'  — faltava o dado, e por isso não pesou para nenhum lado.
-   `kind` decide o que se abre ao tocar (igual ao MedalhaoContribSheet):
+   `kind` decide o que se abre ao tocar:
    'race' abre o hub da prova, 'run' abre o registo da corrida, e o resto
    ('semana') não abre nada — uma semana não é um registo. */
 function sessaoDaCorrida(run, { status, porque, meta }) {
@@ -2474,12 +2475,12 @@ function terreno({ completed }) {
    Quatro encaixes não cabem em três degraus, e o que saiu foi o 2: duas
    provas seguidas não são uma série, são uma coincidência — e o estado "a
    caminho" já mostra "2/3" no anel, que diz a mesma coisa sem a cunhar.
-   ⚠️ Quem já tinha a medalha das 2 no Palmarés NÃO ganha bronze por ela; é
-   matéria da migração de dados (fase B), não desta.
+   ⚠️ Quem já tinha a medalha das 2 no Palmarés NÃO ganhou bronze por ela: a
+   migração de dados (fase B) não converteu esse encaixe.
 
    O varrimento é um só e vive em `utils/premios.js` (`varrerSequencia`), que
    devolve os RECORDES: cada vez que a maior série de sempre cresce. Como ela
-   cresce de um em um, cada recorde é um passo novo — e uma medalha ganha não
+   cresce de um em um, cada recorde é um passo novo — e um badge ganho não
    se perde no dia em que a série seguinte quebra, que é a razão de o
    varrimento guardar máximos em vez de olhar só para a série em curso. */
 const SEQUENCIA_LIMIARES = [3, 5, 8];

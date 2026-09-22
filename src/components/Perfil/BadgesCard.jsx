@@ -6,6 +6,8 @@ import GlassCard from '../shared/GlassCard';
 import BadgesGrelha from './BadgesGrelha';
 import BadgeDetailSheet from './BadgeDetailSheet';
 import BadgesPorGanharSheet from './BadgesPorGanharSheet';
+import OndeEstasScreen from './OndeEstasScreen';
+import TabelasConsentScreen from './TabelasConsentScreen';
 
 /* A Vitrina dos badges de treino (reforma da gamificação, fase 2).
 
@@ -41,6 +43,16 @@ import BadgesPorGanharSheet from './BadgesPorGanharSheet';
    (utils/badges.js), logo um badge por ver é sempre um badge ganho e a
    célula onde ele salta está sempre à vista.
 
+   ── "ONDE ESTÁS" (fase C) ───────────────────────────────────────────────
+   O percentil por escalão (Perfil/OndeEstasScreen.jsx, fase 5) abria-se do
+   Palmarés. Com os medalhões fora, passou para aqui — é a mesma pergunta
+   ("como é que eu estou?") e nenhum badge lhe responde: um badge diz o que
+   ELE já fez, o percentil diz onde isso o põe ao pé dos outros. Fica por
+   baixo do "o que há para ganhar" porque é o degrau mais largo dos três: o
+   que já tens, o que falta, e onde isso te deixa. O consentimento das
+   tabelas (TabelasConsentScreen) abre por cima sem o desmontar, como abria
+   no Palmarés.
+
    E consome: quem vê primeiro marca `seen_at`. Se o atleta abriu a Vitrina e
    viu o anel fechar-se, a novidade já lhe foi dada — abrir-lhe um ecrã
    inteiro no Início a seguir era contar-lhe a mesma coisa duas vezes. O
@@ -48,9 +60,9 @@ import BadgesPorGanharSheet from './BadgesPorGanharSheet';
    como visto esvazia o `pending`, e sem isto o salto desaparecia no mesmo
    instante em que devia começar. */
 
-/* O molde das duas linhas de rodapé do cartão (o badge mais perto e a
-   entrada do que falta): a mesma caixa, para se lerem como o mesmo tipo de
-   coisa — um caminho para fora da Vitrina. */
+/* O molde das linhas de rodapé do cartão (o badge mais perto, a entrada do
+   que falta e o "Onde estás"): a mesma caixa, para se lerem como o mesmo
+   tipo de coisa — um caminho para fora da Vitrina. */
 const LINHA = {
   marginTop: 10,
   minHeight: 44,
@@ -64,6 +76,11 @@ export default function BadgesCard() {
   const { badges, pending, marcarVistos } = useBadges();
   const [abertoKey, setAbertoKey] = useState(null);
   const [porGanharAberto, setPorGanharAberto] = useState(false);
+  /* "Onde estás" e o consentimento que lhe dá entrada: dois ecrãs inteiros,
+     o segundo por cima do primeiro sem o desmontar — fechá-lo volta ao
+     percentil. */
+  const [ondeEstasAberto, setOndeEstasAberto] = useState(false);
+  const [tabelasAberto, setTabelasAberto] = useState(false);
   const [novos, setNovos] = useState(() => new Set());
   const { ref, style, animate, playKey } = useRevealAnimation();
 
@@ -83,8 +100,8 @@ export default function BadgesCard() {
   const ganhos = lista.filter((b) => b.state === 'won');
   const porGanhar = lista.filter((b) => b.state !== 'won');
   const aberto = abertoKey ? lista.find((b) => b.key === abertoKey) : null;
-  // A frase de progresso: o badge por ganhar que está mais perto. É o mesmo
-  // recurso do Palmarés — uma linha só, a que vale a pena perseguir hoje.
+  // A frase de progresso: o badge por ganhar que está mais perto. Uma linha
+  // só, a que vale a pena perseguir hoje.
   const maisPerto = porGanhar
     // Um amuleto nunca vai para esta linha: ela é um empurrão ("faltam 5 000 m
     // para bronze"), e empurrar para um amuleto estraga-o — é a mesma regra
@@ -155,6 +172,20 @@ export default function BadgesCard() {
             <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
           </button>
         )}
+
+        <button
+          type="button"
+          data-testid="badges-onde-estas"
+          onClick={() => setOndeEstasAberto(true)}
+          className="w-full flex items-center gap-2.5 text-left"
+          style={LINHA}
+        >
+          <span className="flex-1 text-[12px] leading-[1.45]" style={{ color: 'var(--text-3)' }}>
+            <span className="font-extrabold" style={{ color: 'var(--text-2)' }}>Onde estás</span>
+            {' — o teu percentil no escalão'}
+          </span>
+          <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+        </button>
       </GlassCard>
 
       {aberto && (
@@ -168,6 +199,15 @@ export default function BadgesCard() {
       {porGanharAberto && (
         <BadgesPorGanharSheet lista={porGanhar} onClose={() => setPorGanharAberto(false)} />
       )}
+
+      {ondeEstasAberto && (
+        <OndeEstasScreen
+          onClose={() => setOndeEstasAberto(false)}
+          onOpenTabelas={() => setTabelasAberto(true)}
+        />
+      )}
+
+      {tabelasAberto && <TabelasConsentScreen onClose={() => setTabelasAberto(false)} />}
     </div>
   );
 }

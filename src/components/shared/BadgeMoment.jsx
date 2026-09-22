@@ -36,10 +36,10 @@ import './BadgeMoment.css';
    também não há linha a esvaziar-se — sem contagem para mostrar, era uma
    promessa falsa.
 
-   ── O GESTO É O DA MEDALHA ──────────────────────────────────────────────
-   Na escala grande: primeiro toque salta para o fim, segundo fecha
-   (shared/MedalMoment.jsx). Não se aprende gesto novo por causa de uma
-   cerimónia nova.
+   ── O GESTO ─────────────────────────────────────────────────────────────
+   Na escala grande: primeiro toque salta para o fim, segundo fecha. É o
+   gesto que o momento da medalha trouxe e que ficou quando ele saiu — não
+   se aprende gesto novo por causa de uma cerimónia nova.
 
    ── DIÁLOGO MODAL A SÉRIO (a escala grande) ─────────────────────────────
    Foco no botão ao abrir, Tab preso cá dentro, Escape fecha, e ao fechar o

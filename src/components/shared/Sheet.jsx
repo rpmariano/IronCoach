@@ -36,8 +36,8 @@ const DIALOG_MS = 220;
    visualmente) responde — por isso um único mecanismo de pilha, partilhado
    por quem quer que feche com Escape, e não um addEventListener por sítio.
    (2ª ronda, mesmo dia: promover a lista de registos a ecrã inteiro com o
-   seu PRÓPRIO listener, fora desta pilha, trouxe o bug de volta — a
-   MedalhaoSheet por baixo continuava no topo da pilha e respondia também.) */
+   seu PRÓPRIO listener, fora desta pilha, trouxe o bug de volta — a persiana
+   por baixo continuava no topo da pilha e respondia também.) */
 const closeStack = [];
 
 function pushCloseStack(requestClose) {
@@ -56,7 +56,7 @@ function pushCloseStack(requestClose) {
 
 /* Para quem não é Sheet/Dialog mas ainda assim fecha com Escape e pode
    ficar por cima ou por baixo de um dos dois — os ecrãs inteiros
-   (RaceMuralSheet, RaceMemoriesSheet, MedalhaoContribSheet). Sem entrada/
+   (RaceMuralSheet, RaceMemoriesSheet, OndeEstasScreen). Sem entrada/
    saída animada: fecha logo, como o botão de recuar do cabeçalho. */
 export function useEscapeClose(onClose) {
   useEffect(() => pushCloseStack(() => onClose?.()), [onClose]);

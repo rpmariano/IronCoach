@@ -14,7 +14,6 @@ import CoachMemoryCard from './CoachMemoryCard';
 import TabelasConsentScreen from './TabelasConsentScreen';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
-import PalmaresCard from './PalmaresCard';
 import BadgesCard from './BadgesCard';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
@@ -35,13 +34,12 @@ const TAB_KEYS = ['perfil', 'metas', 'vitrina', 'equipamento', 'coach'];
    vão de cada botão fica ainda mais apertado — medido a 390px no relatório
    desta mudança, sem encolher texto abaixo desse piso.
 
-   Vitrina — o Palmarés que saiu do separador Provas (2026-09-22, fase 1 da
-   reforma da gamificação) — fica entre Metas e Equipamento: Metas é para
-   onde vais, Vitrina é o que já ganhaste por lá, e só depois vem o
-   equipamento com que o fazes. Leva o mesmo tom --race de Metas (não um
-   tom novo): os medalhões já são desenhados na mesma cor âmbar da prova
-   (PalmaresCard, HERO_CARD), por isso partilhar o tom aqui é continuar o
-   mesmo significado, não inventar um segundo. */
+   Vitrina — os badges (2026-09-22, reforma da gamificação) — fica entre
+   Metas e Equipamento: Metas é para onde vais, Vitrina é o que já ganhaste
+   por lá, e só depois vem o equipamento com que o fazes. Leva o mesmo tom
+   --race de Metas (não um tom novo): o que se ganha ganha-se a correr, e a
+   prova é o horizonte de tudo o que está lá dentro — partilhar o tom é
+   continuar o mesmo significado, não inventar um segundo. */
 const TABS = [
   { key: 'perfil', label: 'Pessoal', icon: <User size={14} />, tone: 'gym' },
   { key: 'metas', label: 'Metas', icon: <Target size={14} />, tone: 'race' },
@@ -119,7 +117,7 @@ const CAROL_PUSH_TYPES = [
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 
 export default function Perfil() {
-  const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setEditingRaceId } = useAppStore();
+  const { profile, setProfile, session, setNavGuard, setOnboardingOpen } = useAppStore();
   const [tab, setTab] = useState('perfil');
   // O ecrã do consentimento das tabelas (Fase 5) — ecrã inteiro por portal,
   // como o onboarding: não é um separador nem um formulário deste ecrã.
@@ -925,22 +923,19 @@ export default function Perfil() {
           </div>
       </div>
 
-      {/* Vitrina — os badges de treino e o Palmarés (medalhões), mudado do
-          separador Provas para aqui (2026-09-22, fase 1 da reforma da
-          gamificação). Igual ao Equipamento, não escreve no rascunho
-          partilhado: os cartões leem tudo direto do store e abrem as suas
-          próprias persianas. onOpenRace continua a ser setEditingRaceId — o
-          hub da prova é um overlay global (App.jsx, fora dos separadores),
-          por isso abrir a partir daqui não precisa de nenhuma navegação
-          entre separadores nova.
+      {/* Vitrina — os badges, um cartão só (2026-09-22). Nasceu com dois: os
+          badges em cima e o Palmarés dos medalhões por baixo. Na fase C os
+          medalhões saíram — os seis foram portados para badges e o cartão de
+          baixo deixou de ter o que mostrar —, e o que ele ainda dava e os
+          badges não davam ("Onde estás", o percentil por escalão) mudou-se
+          para dentro da BadgesCard. O separador continua a ser o mesmo sítio
+          e a responder à mesma pergunta; só deixou de a responder duas vezes.
 
-          A ordem diz o que é cada coisa: em cima os badges, que são os dias
-          de treino entre as provas (fase 2); por baixo o Palmarés, que é a
-          vida de prova. Os badges SOMAM-SE — não substituem nada. */}
+          Igual ao Equipamento, não escreve no rascunho partilhado: o cartão
+          lê tudo direto do store e abre as suas próprias persianas. */}
       <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Vitrina</h2>
           <BadgesCard />
-          <PalmaresCard onOpenRace={setEditingRaceId} />
       </div>
 
       {/* Equipamento — ao contrário dos outros separadores, este não escreve
@@ -1066,7 +1061,7 @@ export default function Perfil() {
           qualquer um deles, não só no separador visível. O Equipamento é a
           exceção: grava-se a si próprio, par a par, e a barra passa a ser
           "Adicionar sapatilhas" (mock "Perfil · Equipamento"). A Vitrina não
-          tem formulário nenhum — é só o Palmarés, que se lê, não se grava —
+          tem formulário nenhum — são os badges, que se leem, não se gravam —
           por isso a barra nem aparece nesse separador (em vez de mostrar um
           botão sem ação, como fazia o Equipamento antes de ganhar o dele). */}
       {tab !== 'vitrina' && (

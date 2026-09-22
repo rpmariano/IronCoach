@@ -24,7 +24,7 @@ import { syncBadgeAwards, markBadgeAwardsSeen } from './badgeAwards';
    1. os GRANDES em fila — um de cada vez, e o seguinte só depois de o
       anterior ser dispensado;
    2. os MÉDIOS colapsados, e à espera de a fila dos grandes acabar;
-   3. nada com um formulário aberto (a mesma regra do momento da medalha);
+   3. nada com um formulário aberto (utils/formGuard.js);
    4. SEM A MIGRAÇÃO APLICADA não acontece nada — `syncBadgeAwards` devolve
       `available: false` e `pending: []`, e a app segue. */
 

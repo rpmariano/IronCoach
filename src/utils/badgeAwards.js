@@ -1,5 +1,7 @@
-/* A sincronização dos badges de treino — o par de `utils/medalAwards.js`
-   para a tabela `user_badges` (migração 20260922120000_user_badges.sql).
+/* A sincronização dos badges — a escrita da tabela `user_badges` (migração
+   20260922120000_user_badges.sql). Nasceu como par de `utils/medalAwards.js`
+   e ficou sozinha quando os medalhões saíram: `medal_awards` continua em
+   produção, mas ninguém no código a lê nem lhe escreve.
 
    `computeBadges` (utils/badges.js) diz o que os dados provam estar ganho —
    a lista `due`. Aqui compara-se essa lista com o que já está gravado e
@@ -13,21 +15,22 @@
    true })` — um insert que não faz nada quando a linha já existe — e não um
    update.
 
-   Best-effort em tudo, como as medalhas: a tabela pode ainda não existir (a
+   Best-effort em tudo: a tabela pode ainda não existir (a
    migração só se aplica com pedido explícito) ou a rede falhar. Nesse caso
    devolve-se `available: false`, avisa-se UMA vez na consola e a app segue —
    um badge por gravar nunca pode partir a Vitrina.
 
-   O momento da conquista (o ecrã/cartão que toca quando se ganha) é a fase 4
-   e ainda não existe: `pending` já vem de cá calculado, mas ninguém o mostra
-   e nada se marca como visto. Até lá, um badge ganho aparece na grelha — que
-   é onde tem de estar de qualquer maneira. */
+   O `pending` daqui é o que faz tocar o momento da conquista (fase 4): a
+   cerimónia no Início (utils/useBadgeMoment.js) e o salto do anel na Vitrina
+   (Perfil/BadgesCard.jsx) leem a MESMA lista, e quem a vê primeiro marca-a
+   como vista. Sem a migração aplicada não há `pending` nenhum e um badge
+   ganho aparece na grelha na mesma — que é onde tem de estar de qualquer
+   maneira. */
 
 const COLUMNS = 'id, badge_key, tier, period_key, value, value_unit, race_id, awarded_at, seen_at';
 
-/** O que tem mais de uma semana é história: grava-se já visto, para a fase 4
- *  não abrir a app com meses de animações de uma vez (é a mesma heurística,
- *  e a mesma janela, de `utils/medalAwards.js`). */
+/** O que tem mais de uma semana é história: grava-se já visto, para o
+ *  momento do badge não abrir a app com meses de animações de uma vez. */
 const HISTORICO_DIAS = 7;
 
 let warned = false;
@@ -112,7 +115,7 @@ export async function syncBadgeAwards({ userId, due = [] } = {}) {
     const payload = missing.map((d) => ({
       user_id: userId,
       badge_key: d.badgeKey,
-      // '' é "sem nível", como o `period_key` de medal_awards: a coluna é
+      // '' é "sem nível", tal como o `period_key`: a coluna é
       // `not null` de propósito — em Postgres dois NULL são DISTINTOS numa
       // chave única, e a linha sem nível duplicava a cada sincronização (ver
       // o comentário da migração).

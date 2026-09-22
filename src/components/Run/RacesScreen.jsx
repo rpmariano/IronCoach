@@ -18,8 +18,8 @@ import CoachInsightsDock from '../BI/CoachInsightsDock';
       "Marcar prova". Cada linha abre o hub.
 
    O Palmarés (2026-09-22, fase 1 da reforma da gamificação) mudou-se daqui
-   para o separador "Vitrina" do Perfil — este ecrã volta a falar só de
-   provas, ver Perfil.jsx.
+   para o separador "Vitrina" do Perfil, e na fase C deu lugar aos badges —
+   este ecrã volta a falar só de provas, ver Perfil.jsx.
 
    Sem estado próprio: tudo vem do store e dos componentes que já existiam. */
 export default function RacesScreen() {

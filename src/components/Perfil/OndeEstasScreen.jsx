@@ -28,8 +28,8 @@ import { evaluatePrescriptions } from '@formulas/prescriptionAdherence.ts';
 import { ageBandFor, terrainForAthlete, WINDOW_DAYS } from '@formulas/percentileSegments.ts';
 
 /* "Onde estás" — o percentil dentro do escalão (gamificação, Fase 5).
-   Abre-se do Palmarés, no separador Provas, e é um ecrã inteiro como os
-   registos de um medalhão (MedalhaoContribSheet): portal em document.body,
+   Abre-se da Vitrina, no Perfil (Perfil/BadgesCard.jsx) — abria do Palmarés
+   até ele sair, na fase C —, e é um ecrã inteiro: portal em document.body,
    cabeçalho com o recuo, e o Escape pela pilha partilhada da Sheet.
 
    Duas regras que mandam em tudo o que está aqui:

@@ -21,7 +21,7 @@ describe('Provas — o ecrã junta a próxima prova e a lista', () => {
     expect(screen.getByTestId('race-list-resumo')).toHaveTextContent('Ainda sem provas marcadas.');
     // Aqui não há "Todas as provas": já se está nelas.
     expect(screen.queryByTestId('race-card-all')).not.toBeInTheDocument();
-    // O Palmarés já não vive aqui — mudou-se para a Vitrina do Perfil.
-    expect(screen.queryByTestId('palmares-card')).not.toBeInTheDocument();
+    // A coleção não vive aqui — é a Vitrina, no Perfil.
+    expect(screen.queryByTestId('badges-card')).not.toBeInTheDocument();
   });
 });

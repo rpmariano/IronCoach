@@ -8,9 +8,9 @@ import { completedRaces } from './premios';
    batido"/"recorde pessoal" saem do raceOutcome — não de uma comparação
    escrita outra vez aqui.
 
-   Desde a fusão dos motores (utils/premios.js) já não há palmarés GLOBAL de
-   conquistas: o Palmarés são os medalhões (utils/medalhoes.test.js). Cada
-   prova avalia-se nela própria, que é a única leitura que a app mostra. */
+   Desde a fusão dos motores (utils/premios.js) já não há lista GLOBAL de
+   conquistas: a coleção é a dos badges (utils/badges.test.js). Cada prova
+   avalia-se nela própria, que é a única leitura que a app mostra. */
 
 const HOJE = '2026-09-12';
 const PROFILE = { id: 'atleta', experience_level: 'medio' };
@@ -137,7 +137,7 @@ describe('duas provas com objetivo batido têm-no as duas', () => {
   });
 });
 
-/* A sequência é a mesma lei da medalha d'A Sequência: o que se ganhou não se
+/* A sequência segue a mesma lei do badge homónimo: o que se ganhou não se
    perde. Antes, o elo de cada prova saía da sequência que chega a HOJE — e
    uma prova antiga perdia o "2 provas seguidas" por causa de uma prova
    posterior que ficou por registar. */
@@ -196,8 +196,8 @@ describe('o que não conta como prova feita', () => {
   });
 
   /* A divergência que a fusão dos motores veio fechar: `completedRaces` não
-     filtrava datas futuras e `computeMedalhoes` filtrava — uma prova marcada
-     concluída com data à frente contava num motor e não no outro. */
+     filtrava datas futuras e o motor dos medalhões filtrava — uma prova
+     marcada concluída com data à frente contava num motor e não no outro. */
   it('uma prova concluída com data no futuro ainda não aconteceu', () => {
     const futura = meia({ id: 'r9', name: 'Meia de Outubro', date: '2026-10-04' });
     const run = corrida({ id: 'run9', race_id: 'r9', date: '2026-10-04', duration_seconds: 6822, details: { official_time_seconds: 6822 } });

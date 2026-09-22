@@ -108,8 +108,7 @@ export default function BadgesGrelha({
                       do StatusCard com a órbita do Início. */}
                   <BadgeRing key={`${badge.key}-${playKey}`} badge={badge} size={56} index={i} animate={animate} />
                   {/* Spans: isto é um <button>, cujo conteúdo só admite
-                      phrasing content (o mesmo achado de 2026-09-15 no
-                      PalmaresCard). */}
+                      phrasing content (achado 2026-09-15). */}
                   <span className="block w-full text-[10.5px] font-extrabold leading-[1.2]" style={{ color: badge.state === 'empty' ? 'var(--text-4)' : 'var(--text-2)' }}>
                     {badge.name}
                   </span>

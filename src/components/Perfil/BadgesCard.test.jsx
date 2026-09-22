@@ -7,7 +7,26 @@ import { useAppStore } from '../../store';
    são de utils/badges.js (testadas lá); aqui só a UI: a Vitrina a mostrar SÓ
    o que já foi ganho, o painel "O que há para ganhar" com o resto e as
    regras à vista, o anel com o número ao centro, a regra numa frase, o bloco
-   do dado em falta e as sessões agrupadas pelo que aconteceu a cada uma. */
+   do dado em falta e as sessões agrupadas pelo que aconteceu a cada uma.
+
+   Mais a entrada do "Onde estás", que a Vitrina herdou do Palmarés quando
+   ele saiu (fase C): é o único caminho que resta para o percentil por
+   escalão, e por isso o que este ficheiro guarda é que ele existe mesmo
+   quando não há nada por ganhar — o ecrã em si é de OndeEstasScreen.test.jsx. */
+
+// O "Onde estás" lê percentile_snapshots ao montar. Sem linha nenhuma o
+// ecrã mostra o estado certo na mesma; o que não pode é ir à rede.
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          order: () => ({ limit: () => Promise.resolve({ data: [], error: null }) }),
+        }),
+      }),
+    }),
+  },
+}));
 
 const badge = (over) => ({
   key: 'x', name: 'X', rule: 'A regra do badge X, numa frase inteira.', familia: 'desempenho', cor: 'run', glifo: 'heart',
@@ -114,6 +133,21 @@ describe('BadgesCard — a Vitrina só mostra o que já foi ganho', () => {
     render(<BadgesCard />);
     expect(screen.queryByTestId('badges-por-ganhar')).not.toBeInTheDocument();
     expect(screen.queryByTestId('badges-progresso')).not.toBeInTheDocument();
+  });
+
+  /* O "Onde estás" não é um badge e não se gere como um: não depende de
+     haver ganhos nem de faltar alguma coisa, porque a pergunta que responde
+     ("onde é que isto me põe ao pé dos outros") nenhum badge responde. Por
+     isso está lá com tudo ganho, como está com tudo por ganhar. */
+  it('o "Onde estás" está sempre na Vitrina, e abre o ecrã do percentil', () => {
+    badges = BADGES.map((b) => ({ ...b, state: 'won', ring: 1, count: 1 }));
+    render(<BadgesCard />);
+
+    const linha = screen.getByTestId('badges-onde-estas');
+    expect(linha).toHaveTextContent('Onde estás — o teu percentil no escalão');
+
+    fireEvent.click(linha);
+    expect(screen.getByTestId('onde-estas-screen')).toBeInTheDocument();
   });
 
   it('a frase de progresso é a do badge mais perto, e abre o detalhe dele', () => {

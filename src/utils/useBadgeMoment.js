@@ -5,16 +5,16 @@ import { isFormOpen } from './formGuard';
 import { colapsarMedios, planBadgeMoments } from './badgeMoment';
 
 /* QUANDO é que o momento do badge aparece (fase 4 da reforma da
-   gamificação). É o molde de utils/useMedalMoment.js, e de propósito: o
-   Palmarés já resolveu este problema e as duas cerimónias são da mesma
-   família.
+   gamificação). Nasceu do molde do momento da medalha, e de propósito: o
+   Palmarés já tinha resolvido este problema, e quando saiu (fase C) esta
+   passou a ser a única cerimónia do Início.
 
    - A sincronização é a do `useBadges` (uma vez por sessão, e outra quando
      muda o número de badges devidos ou o dia). Não há aqui uma segunda: a
      lista do que falta ver é UMA em toda a app, senão o mesmo badge tocava
      no Início e voltava a tocar na Vitrina.
-   - Nunca com um formulário aberto — a mesma regra do momento da medalha
-     (`isFormOpen`): openCreationMode, editingRaceId, editingRunId, navGuard
+   - Nunca com um formulário aberto (`isFormOpen`, utils/formGuard.js):
+     openCreationMode, editingRaceId, editingRunId, navGuard
      e o onboarding. A RecordConfirmation vive DENTRO desses ecrãs de
      registo, por isso "formulário aberto" já cobre o fecho de um registo: o
      Início só volta a montar depois de ele sair — e é exatamente aí que o
@@ -88,8 +88,7 @@ export default function useBadgeMoment() {
   return {
     grande,
     medio,
-    // Quantos grandes ficam para trás deste — o botão di-lo, como o
-    // "e mais N medalhas" do Palmarés.
+    // Quantos grandes ficam para trás deste — o botão di-lo.
     filaRestante: grande ? plano.grandes.length - 1 : 0,
     fecharGrande,
     fecharMedio,

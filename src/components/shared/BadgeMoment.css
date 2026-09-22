@@ -1,7 +1,7 @@
 /* O momento do badge (shared/BadgeMoment.jsx, fase 4 da reforma da
-   gamificação). A folha de tempos é a que foi decidida, e o total é o mesmo
-   do momento da medalha — 2,6 s, --dur-badge-moment — porque as duas
-   cerimónias são da mesma família:
+   gamificação). A folha de tempos é a que foi decidida, e o total — 2,6 s,
+   --dur-badge-moment — é o que o momento da medalha tinha, porque as duas
+   cerimónias eram da mesma família:
 
      0–400     o scrim
      0–520     o disco entra e assenta            (0–20%)   háptico leve
@@ -23,8 +23,8 @@
 .ic-bm {
   position: fixed;
   inset: 0;
-  /* Abaixo do momento da medalha (120): se os dois estiverem por mostrar, a
-     medalha é que manda — mas o Início já só monta um de cada vez. */
+  /* 118: por baixo das persianas e dos ecrãs inteiros, acima do resto. O
+     120 ficou vago quando o momento da medalha saiu. */
   z-index: 118;
   color: var(--text-1);
   overflow: hidden;

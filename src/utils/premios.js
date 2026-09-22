@@ -1,20 +1,20 @@
-/* O motor dos prémios — a base única do Palmarés.
+/* O motor dos prémios — a base única de tudo o que a app premeia.
 
    Até 2026-09-21 havia dois motores a correr ao mesmo tempo sobre os mesmos
-   dados: `utils/medalhoes.js` (os medalhões do Palmarés) e
-   `utils/achievements.js` (as conquistas de cada prova). Tinham a régua das
-   provas partilhada (`completedRaces` vivia num e era importado pelo outro),
-   mas repetiam tudo o resto: a sequência de provas contava-se de duas
-   maneiras, a primeira de trail decidia-se duas vezes, o objetivo batido
-   tinha o mesmo predicado escrito em dois sítios — e os helpers de datas
-   estavam copiados de um lado para o outro, com diferenças reais (um filtrava
-   provas com data futura, o outro não).
+   dados: `utils/medalhoes.js` (os medalhões do Palmarés, entretanto
+   removido) e `utils/achievements.js` (as conquistas de cada prova). Tinham
+   a régua das provas partilhada (`completedRaces` vivia num e era importado
+   pelo outro), mas repetiam tudo o resto: a sequência de provas contava-se
+   de duas maneiras, a primeira de trail decidia-se duas vezes, o objetivo
+   batido tinha o mesmo predicado escrito em dois sítios — e os helpers de
+   datas estavam copiados de um lado para o outro, com diferenças reais (um
+   filtrava provas com data futura, o outro não).
 
-   Este ficheiro é a base onde as regras passam a viver UMA vez. Por cima
-   dele ficam as duas vistas, que não decidem nada por si:
+   Este ficheiro é a base onde as regras vivem UMA vez. Por cima dele ficam
+   as vistas, que não decidem nada por si:
 
-     - `utils/medalhoes.js` — o Palmarés (os seis medalhões e os seus
-       encaixes), que é a vista do atleta de sempre;
+     - `utils/badges.js` — os badges da Vitrina, que desde 2026-09-22 são a
+       única coleção (os seis medalhões foram portados para lá);
      - `utils/achievements.js` — as conquistas DE UMA prova, que é a vista
        do hub, do cartão do Início e da confirmação do registo.
 
@@ -26,7 +26,7 @@
       correrem em relógios diferentes (era o que acontecia entre os dois
       motores à meia-noite local e em qualquer chamada com data simulada).
 
-   2. **Uma prova com data no futuro não conta.** `computeMedalhoes` já
+   2. **Uma prova com data no futuro não conta.** O motor dos medalhões já
       filtrava; `completedRaces` não — e uma prova marcada `concluida` com
       data à frente contava num motor e não no outro. Passa a contar em
       nenhum: enquanto o dia não chegar, não há prova feita. Isto MUDA
@@ -172,10 +172,11 @@ export const acimaDoTreino = (outcome) => outcome?.vsTraining === 'acima';
    percursos medidos por cima.
 
    Vive aqui, ao lado de TERRENOS, porque é a mesma espécie de regra — o que
-   é uma prova de 10 km, tal como o que é uma prova de trail — e porque
-   passou a ter dois leitores: O Palmarés (`utils/medalhoes.js`) e o badge
-   `distancias` de `utils/badges.js`. O Palmarés ainda tem a sua cópia da
-   tabela; é essa que desaparece quando o ficheiro desaparecer, não esta. */
+   é uma prova de 10 km, tal como o que é uma prova de trail. Teve dois
+   leitores enquanto O Palmarés existiu (cada um com a sua cópia da tabela);
+   ficou só com o badge `distancias` de `utils/badges.js` quando a cópia de
+   lá se foi com o ficheiro, que é o que esta tabela sempre devia ter sido:
+   uma só. */
 export const DISTANCIAS_DE_PROVA = [
   { key: '5k', min: 4.8, max: 5.5, label: '5 km', nome: '5 km', primeira: 'Primeiros 5 km' },
   { key: '10k', min: 9.5, max: 11, label: '10 km', nome: '10 km', primeira: 'Primeiros 10 km' },
@@ -229,9 +230,9 @@ export function provasDoTerreno(completed, terrenoKey) {
 /* Um varrimento só, do princípio para o fim, que responde às duas perguntas
    que antes eram dois cálculos:
 
-   - `recordes` — cada vez que a maior sequência de sempre cresce (o que O
-     Palmarés cunha: uma medalha ganha não se perde no dia em que a sequência
-     seguinte quebra);
+   - `recordes` — cada vez que a maior sequência de sempre cresce (a lei que
+     a app cunha desde o Palmarés e que os badges herdaram: o que se ganhou
+     não se perde no dia em que a sequência seguinte quebra);
    - `posicaoDe(raceId)` — em que elo da SUA sequência ficou cada prova (o
      "N provas seguidas" que o hub mostra nessa prova). O máximo de sempre
      não dá este número, por isso o varrimento tem de ser posicional.

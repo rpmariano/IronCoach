@@ -9,7 +9,6 @@ import Layout from './components/Layout/Layout';
 import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
-import { MedalhaoDefs } from './components/shared/Medalhao';
 import CarolWelcome from './components/Welcome/CarolWelcome';
 import { decideWelcome, buildWelcome, readSeen, markSeen, slotKey } from './utils/carolWelcome';
 import { detectRaceConflict } from './utils/planDivergence';
@@ -302,13 +301,17 @@ function buildDemoData() {
   };
 }
 
-/* Variante de ?demo=true&palmares=1 — o atleta que já correu e ainda não
+/* Variante de ?demo=true&provas=1 — o atleta que já correu e ainda não
    marcou a próxima (specs/gamificacao-provas.md). É o único estado onde o
    Início mostra "Prova concluída · ontem": com uma prova por correr ou por
    registar, o cartão volta a olhar para a frente, que é a função dele. Serve
-   também para ver o hub pós-prova com conquistas e o Palmarés do separador Provas com
-   umas desbloqueadas e outras ainda por fazer. */
-function buildPalmaresDemoData() {
+   também para ver o hub pós-prova com conquistas e a Vitrina do Perfil com
+   uns badges de prova ganhos e outros ainda por ganhar.
+
+   Chamava-se `palmares=1` até os medalhões saírem (2026-09-22, fase C da
+   reforma da gamificação): já não há Palmarés nenhum para ver, e o nome
+   antigo mandava procurar um ecrã que não existe. */
+function buildProvasDemoData() {
   const today = new Date();
   const inDays = (n) => {
     const d = new Date(today);
@@ -318,19 +321,19 @@ function buildPalmaresDemoData() {
   return {
     raceEvents: [
       {
-        id: 'demo-palmares-1', date: inDays(-160), name: 'Meia do Estoril',
+        id: 'demo-prova-1', date: inDays(-160), name: 'Meia do Estoril',
         location: 'Estoril', race_type: 'estrada', distance_km: 21.0975,
         experience_level: 'medio', status: 'concluida',
         target_time: '2:00:00', target_time_seconds: 7200,
       },
       {
-        id: 'demo-palmares-2', date: inDays(-70), name: 'Trail da Arrábida',
+        id: 'demo-prova-2', date: inDays(-70), name: 'Trail da Arrábida',
         location: 'Setúbal', race_type: 'trail', distance_km: 18, elevation_gain_m: 740,
         experience_level: 'medio', status: 'concluida',
         target_time: '2:20:00', target_time_seconds: 8400,
       },
       {
-        id: 'demo-palmares-3', date: inDays(-1), name: 'Corrida das Vindimas',
+        id: 'demo-prova-3', date: inDays(-1), name: 'Corrida das Vindimas',
         location: 'Palmela', race_type: 'estrada', distance_km: 10,
         experience_level: 'medio', status: 'concluida',
         target_time: '47:00', target_time_seconds: 2820, target_pace_seconds_per_km: 282,
@@ -339,9 +342,9 @@ function buildPalmaresDemoData() {
     waterLogs: [],
     meals: [],
     runs: [
-      { id: 'demo-pr-1', date: inDays(-160), name: 'Meia do Estoril', kind: 'competicao', race_id: 'demo-palmares-1', distance_km: 21.0975, duration_seconds: 7106, details: { official_time_seconds: 7106 } },
-      { id: 'demo-pr-2', date: inDays(-70), name: 'Trail da Arrábida', kind: 'competicao', race_id: 'demo-palmares-2', distance_km: 18, elevation_gain_m: 740, duration_seconds: 8880, details: { official_time_seconds: 8880 } },
-      { id: 'demo-pr-3', date: inDays(-1), name: 'Corrida das Vindimas', kind: 'competicao', race_id: 'demo-palmares-3', distance_km: 10, duration_seconds: 2766, details: {
+      { id: 'demo-pr-1', date: inDays(-160), name: 'Meia do Estoril', kind: 'competicao', race_id: 'demo-prova-1', distance_km: 21.0975, duration_seconds: 7106, details: { official_time_seconds: 7106 } },
+      { id: 'demo-pr-2', date: inDays(-70), name: 'Trail da Arrábida', kind: 'competicao', race_id: 'demo-prova-2', distance_km: 18, elevation_gain_m: 740, duration_seconds: 8880, details: { official_time_seconds: 8880 } },
+      { id: 'demo-pr-3', date: inDays(-1), name: 'Corrida das Vindimas', kind: 'competicao', race_id: 'demo-prova-3', distance_km: 10, duration_seconds: 2766, details: {
         official_time_seconds: 2766, gun_time_seconds: 2790, position: 212, age_group_position: 31, official_splits: [{ km: 5, seconds: 1390 }],
         // Parciais do relógio: dão a linha do ritmo no estúdio do mural.
         splits: [283, 279, 281, 276, 274, 277, 279, 275, 272, 270].map((time_seconds) => ({ distance_km: 1, time_seconds })),
@@ -473,8 +476,8 @@ export default function App() {
     const uid = s.session?.user?.id;
     const clear = () => { if (useAppStore.getState().welcomeGate !== 'open') s.setWelcomeGate('clear'); };
     if (!uid) { clear(); return; }
-    /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento da
-       medalha, um campo com o foco (a mesma regra da atualização automática,
+    /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento do
+       badge, um campo com o foco (a mesma regra da atualização automática,
        lib/appUpdate.js). Fica para a próxima vez que se voltar à app. */
     if (isBusy(document)) { clear(); return; }
     /* O que já foi saudado em qualquer dispositivo (ação 5.1): às chaves
@@ -689,12 +692,12 @@ export default function App() {
         // inicialização única fora do fluxo normal de dados — os setters
         // existem para respostas do Supabase, não para semear um estado
         // fictício de propósito.
-        // ?demo=true&palmares=1 — provas já corridas e nenhuma marcada: o
-        // dia a seguir no Início, o hub com conquistas e o Palmarés cheio.
-        const verPalmares = params.get('palmares') === '1';
+        // ?demo=true&provas=1 — provas já corridas e nenhuma marcada: o
+        // dia a seguir no Início, o hub com conquistas e a Vitrina cheia.
+        const verProvas = params.get('provas') === '1';
         useAppStore.setState(
           forcarOnboarding ? buildEmptyDemoData()
-            : verPalmares ? buildPalmaresDemoData()
+            : verProvas ? buildProvasDemoData()
               : buildDemoData(),
         );
         setIsInitializing(false);
@@ -791,8 +794,6 @@ export default function App() {
 
   return (
     <ToastProvider>
-      {/* A biblioteca de formas dos medalhões: uma vez, os ids são globais. */}
-      <MedalhaoDefs />
       <Layout>
         {/* O Suspense vive DENTRO do Layout, e não à volta dele: o cabeçalho,
             a barra inferior e o FAB não têm de piscar por causa do ecrã que
