@@ -45,14 +45,14 @@ describe('badgeCatalog — as famílias que a Carol não sugere (6 #6)', () => {
      inscrever. Este teste prova que a proibição apanha todos os que existem
      hoje — e o teste de paridade acima garante que não nasce nenhum fora do
      catálogo. */
-  it('apanham A Escalada e os sete amuletos', () => {
+  it('apanham Os Quilómetros, A Escalada e os sete amuletos', () => {
     const proibidos = Object.entries(BADGE_CATALOG)
       .filter(([, e]) => FAMILIAS_QUE_NAO_SE_SUGEREM.includes(e.familia))
       .map(([k]) => k)
       .sort();
     expect(proibidos).toEqual([
-      'anos', 'coruja', 'escalada', 'numero_certo',
-      'quatro_estacoes', 'relogio_suico', 'solsticio', 'volta_ao_relogio',
+      'anos', 'coruja', 'escalada', 'numero_certo', 'quatro_estacoes',
+      'quilometros', 'relogio_suico', 'solsticio', 'volta_ao_relogio',
     ]);
   });
 

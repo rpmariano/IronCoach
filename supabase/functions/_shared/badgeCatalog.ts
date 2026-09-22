@@ -43,11 +43,21 @@ export const BADGE_CATALOG: Record<string, BadgeCatalogEntry> = {
   cadencia_corrigida: { nome: "Cadência corrigida", familia: "desempenho" },
   cabra_montesa: { nome: "Cabra-montesa", familia: "desempenho" },
   medida_da_prova: { nome: "À medida da prova", familia: "desempenho" },
+  // Os que vieram d'O Palmarés (fase A, 2026-09-22): os medalhões passaram a
+  // badges, e estes cinco medem o que os seis medalhões mediam. São todos de
+  // prova — quatro em desempenho, A Sequência em disciplina, e Os Quilómetros
+  // em acumulação, lá em baixo.
+  distancias: { nome: "As Distâncias", familia: "desempenho" },
+  terreno: { nome: "O Terreno", familia: "desempenho" },
+  niveis: { nome: "Os Níveis", familia: "desempenho" },
+  superacao: { nome: "A Superação", familia: "desempenho" },
   recorde_pessoal: { nome: "Recorde pessoal", familia: "desempenho" },
   // Disciplina — o que mede se se fez o combinado.
   semana_100: { nome: "Semana 100%", familia: "disciplina" },
   descanso_cumprido: { nome: "Descanso cumprido", familia: "disciplina" },
+  sequencia: { nome: "A Sequência", familia: "disciplina" },
   // Acumulação — o que só soma quantidade. R1.
+  quilometros: { nome: "Os Quilómetros", familia: "acumulacao" },
   escalada: { nome: "A Escalada", familia: "acumulacao" },
   // Amuletos — o que não mede desenvolvimento nenhum. R3.
   coruja: { nome: "Coruja", familia: "amuletos" },

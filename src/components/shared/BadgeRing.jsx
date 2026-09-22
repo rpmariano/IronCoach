@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BedDouble, Cake, CheckCheck, Clock, Footprints, Heart, Leaf, Moon, Mountain, MountainSnow, Ruler, Sun, Target, TrendingDown, Trophy, Watch } from 'lucide-react';
+import { BedDouble, Cake, CheckCheck, Clock, Crosshair, Footprints, Gauge, Heart, Leaf, Link, Map, Milestone, Moon, Mountain, MountainSnow, Route, Ruler, Sun, Target, TrendingDown, Trophy, Watch } from 'lucide-react';
 
 /* O badge de treino: um ANEL DE PROGRESSO COM UM NÚMERO AO CENTRO
    (utils/badges.js; desenho decidido com o utilizador, fase 2 da reforma da
@@ -20,6 +20,8 @@ import { BedDouble, Cake, CheckCheck, Clock, Footprints, Heart, Leaf, Moon, Moun
    A cor é a da lei da app, e vem do badge (utils/badges.js, "A LEI DA COR"):
    ciano o treino, verde a disciplina, âmbar SÓ o que nasce de uma prova. Não
    há cor do terreno — a subida é corrida, e o --gym é o módulo ginásio.
+   A pergunta que decide a cor é o que o badge MEDE: A Sequência conta provas
+   e é verde, porque o que ela mede é aparecer, não correr.
 
    E há uma AUSÊNCIA de cor: os amuletos (a Coruja, o Solstício, os Anos…)
    são `neutro`, prata à volta do --text-3. Não é uma quarta cor de
@@ -73,6 +75,16 @@ const GLIFOS = {
   check: CheckCheck,
   moonrest: BedDouble,
   trophy: Trophy,
+  // Os seis que vieram d'O Palmarés (fase A): os quilómetros de treino que se
+  // acumulam, os marcos das distâncias de prova, o mostrador da escala VDOT,
+  // a mira do objetivo batido, o mapa dos dois terrenos e o elo da série de
+  // provas.
+  route: Route,
+  milestone: Milestone,
+  gauge: Gauge,
+  crosshair: Crosshair,
+  map: Map,
+  link: Link,
   // Os amuletos: o relógio, a estação, a rotina, o Sol, o dia de anos e a
   // fita métrica.
   clock: Clock,

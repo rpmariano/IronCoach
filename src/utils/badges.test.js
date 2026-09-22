@@ -40,9 +40,11 @@ const splits = (tempos) => ({ splits: tempos.map((t) => ({ distance_km: 1, time_
 describe('computeBadges — forma', () => {
   const r = compute();
 
-  it('devolve os dezasseis badges pela ordem fixa da grelha', () => {
+  it('devolve os vinte e dois badges pela ordem fixa da grelha', () => {
     expect(r.badges.map((b) => b.key)).toEqual(BADGE_KEYS);
-    expect(BADGE_KEYS).toHaveLength(16);
+    // Dezasseis até à fase A; os seis d'O Palmarés (os medalhões passaram a
+    // badges) fazem vinte e dois.
+    expect(BADGE_KEYS).toHaveLength(22);
   });
 
   /* A família é o que a Vitrina agrupa e, sobretudo, o que diz à Carol o que
@@ -58,7 +60,7 @@ describe('computeBadges — forma', () => {
 
   it('as duas famílias que a Carol não pode sugerir são as que se espera', () => {
     const daFamilia = (f) => r.badges.filter((b) => b.familia === f).map((b) => b.key);
-    expect(daFamilia('acumulacao')).toEqual(['escalada']);
+    expect(daFamilia('acumulacao')).toEqual(['quilometros', 'escalada']);
     expect(daFamilia('amuletos')).toEqual([
       'coruja', 'volta_ao_relogio', 'relogio_suico', 'quatro_estacoes', 'solsticio', 'anos', 'numero_certo',
     ]);
@@ -86,11 +88,32 @@ describe('computeBadges — forma', () => {
     }
   });
 
-  /* "Uma cor, um significado": âmbar (--race) SÓ no badge que nasce de uma
+  /* "Uma cor, um significado": âmbar (--race) SÓ nos badges que nascem de uma
      prova. Nenhum badge de treino o pode usar. */
-  it('a lei da cor: âmbar só no badge que nasce de uma prova', () => {
-    expect(r.badges.filter((b) => b.cor === 'race').map((b) => b.key)).toEqual(['recorde_pessoal']);
+  it('a lei da cor: âmbar só nos badges que nascem de uma prova', () => {
+    expect(r.badges.filter((b) => b.cor === 'race').map((b) => b.key))
+      .toEqual(['distancias', 'terreno', 'niveis', 'superacao', 'recorde_pessoal']);
     expect(r.badges.every((b) => ['run', 'ok', 'race', 'neutro'].includes(b.cor))).toBe(true);
+  });
+
+  /* O outro lado da mesma lei, e o caso que a torna visível: A Sequência
+     conta PROVAS e é verde. A cor não pergunta de que tabela veio o dado,
+     pergunta o que o badge mede — e o que ela mede é aparecer, que é
+     disciplina como a Semana 100%. */
+  it('A Sequência conta provas e mesmo assim é verde, porque o que mede é disciplina', () => {
+    const b = bad(r, 'sequencia');
+    expect(b.cor).toBe('ok');
+    expect(b.familia).toBe('disciplina');
+  });
+
+  /* Os badges de prova leem `completedRaces` e os de treino leem `treinos`;
+     nenhum lê as duas listas. Sem provas nenhumas, os cinco âmbar e A
+     Sequência não têm nada para mostrar por muitos treinos que haja. */
+  it('um treino não alimenta badge de prova nenhum', () => {
+    const so = compute({ runs: [treino('2026-09-10', { distance_km: 42.2 })] });
+    for (const key of ['distancias', 'terreno', 'niveis', 'superacao', 'recorde_pessoal', 'sequencia']) {
+      expect(bad(so, key).state, key).toBe('empty');
+    }
   });
 
   /* A ausência de cor: um amuleto não mede desempenho nenhum, logo não
@@ -344,7 +367,7 @@ describe('Os badges semanais — o plano da Carol', () => {
   });
 });
 
-describe('Recorde pessoal — o único âmbar', () => {
+describe('Recorde pessoal — o âmbar que já cá estava', () => {
   const prova = (id, date, seconds, over = {}) => ({
     race: { id, name: `Prova ${id}`, date, distance_km: 10, status: 'concluida', race_type: 'estrada', ...over },
     run: {
@@ -394,13 +417,24 @@ describe('Recorde pessoal — o único âmbar', () => {
       runs: [], raceEvents: [], planItems: [], gymSessions: [], profile: PROFILE, today: HOJE, ...cenario(lista),
     });
 
-    it('devolve o badge da prova que o deu, e nada na que não o deu', () => {
+    /* MUDOU NA FASE A, e de propósito: a p1 deixou de devolver lista vazia.
+       Ela é a primeira prova de 10 km, a primeira de estrada e a que subiu o
+       VDOT do zero ao bronze — três feitos que o Palmarés já cunhava em
+       medalhões e que agora são badges com o `raceId` dela. O mural de uma
+       prova mostra o que ESSA prova deu, e ela deu isto. */
+    it('devolve os badges da prova que os deu, e não os de outra prova', () => {
       const p = params([prova('p1', '2026-03-01', 3000), prova('p2', '2026-06-01', 2900)]);
       const daP2 = badgesForRace(p, 'p2');
       expect(daP2.map((b) => b.key)).toEqual(['recorde_pessoal']);
       expect(daP2[0].centro).toBe('1');
       expect(daP2[0].awardLine).toContain('melhor tempo de sempre');
-      expect(badgesForRace(p, 'p1')).toEqual([]);
+
+      const daP1 = badgesForRace(p, 'p1');
+      expect(daP1.map((b) => b.key)).toEqual(['distancias', 'terreno', 'niveis']);
+      expect(daP1.find((b) => b.key === 'distancias').awardTitle).toBe('Primeiros 10 km');
+      expect(daP1.find((b) => b.key === 'terreno').awardTitle).toBe('Primeira em estrada');
+      // O recorde pessoal não: a primeira prova não bate melhor nenhum.
+      expect(daP1.some((b) => b.key === 'recorde_pessoal')).toBe(false);
     });
 
     it('sem prova nenhuma pedida, não devolve nada', () => {
@@ -729,5 +763,265 @@ describe('Amuletos — Anos e Número certo', () => {
   it('sem distância no registo, a corrida fica indeterminada', () => {
     const b = bad(compute({ runs: [treino('2026-09-10', { distance_km: null })] }), 'numero_certo');
     expect(b.indeterminadas.n).toBe(1);
+  });
+});
+
+/* ── Os seis que vieram d'O Palmarés (fase A) ─────────────────────────────
+
+   Os medalhões passaram a badges. O que estes testes guardam, além do que já
+   se guardava acima:
+
+   · a LEI DA COR no caso difícil — quatro âmbar novos porque nascem de
+     provas, e A Sequência VERDE apesar de também contar provas;
+   · a terceira resposta do `encaixeDe` (NENHUM_ENCAIXE): uma prova de 15 km,
+     ou a 3.ª de estrada, não enchem encaixe nenhum E TAMBÉM NÃO ficam "por
+     decidir" — a indeterminada é para a falta de dado, não para o "não";
+   · o prémio POR ENCAIXE d'As Distâncias e d'O Terreno, que é o que impede a
+     primeira meia maratona de ficar à espera de uma maratona;
+   · os limiares, que são decisões de produto e não podem mudar por acidente. */
+
+/** Uma prova concluída com a corrida registada — a matéria dos badges de
+ *  prova. `semRegisto` devolve-a sem corrida nenhuma: é a que quebra a série. */
+const feita = (id, date, {
+  km = 10, seconds = 3000, terreno = 'estrada', objetivo = null, semTempo = false, semRegisto = false,
+} = {}) => {
+  const race = {
+    id, name: `Prova ${id}`, date, distance_km: km, status: 'concluida', race_type: terreno,
+    ...(objetivo ? { target_time_seconds: objetivo } : {}),
+  };
+  const run = semRegisto ? null : {
+    id: `run-${id}`,
+    date,
+    kind: 'competicao',
+    race_id: id,
+    distance_km: km,
+    duration_seconds: semTempo ? null : seconds,
+    details: semTempo ? {} : { official_time_seconds: seconds },
+  };
+  return { race, run };
+};
+
+const cenarioDeProvas = (lista) => ({
+  raceEvents: lista.map((p) => p.race),
+  runs: lista.map((p) => p.run).filter(Boolean),
+});
+
+describe('Os Quilómetros — o acumulado de treino', () => {
+  const longo = (date, km) => treino(date, { distance_km: km });
+
+  it('500 km acumulados dão bronze no dia em que o acumulado passa o limiar', () => {
+    const r = compute({ runs: [longo('2026-03-01', 200), longo('2026-05-01', 200), longo('2026-07-01', 200)] });
+    const b = bad(r, 'quilometros');
+    expect(b.state).toBe('won');
+    expect(b.tier).toBe('bronze');
+    expect(b.cor).toBe('run');
+    expect(b.familia).toBe('acumulacao');
+    expect(b.centro).toBe('600');
+    expect(b.linha).toContain('prata');
+
+    const due = dueDe(r, 'quilometros');
+    expect(due).toHaveLength(1);
+    // O dia do prémio é aquele em que o acumulado passou os 500 km.
+    expect(due[0]).toMatchObject({ tier: 'bronze', periodKey: '', awardedOn: '2026-07-01', value: 600, valueUnit: 'km' });
+  });
+
+  it('a caminho do bronze mostra o acumulado, e a corrida sem distância fica à parte', () => {
+    const r = compute({ runs: [longo('2026-05-01', 250), treino('2026-06-01', { distance_km: null })] });
+    const b = bad(r, 'quilometros');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('250');
+    expect(b.ring).toBeCloseTo(0.5, 2);
+    expect(b.indeterminadas.n).toBe(1);
+    expect(b.indeterminadas.frase).toContain('distância');
+  });
+
+  /* É ciano, e o ciano não conta provas — ao contrário d'O Ano em Km, que
+     somava tudo. Os quilómetros de prova têm os seus quatro badges âmbar. */
+  it('os quilómetros de prova não entram', () => {
+    const r = compute({ runs: [{ id: 'r1', date: '2026-05-01', kind: 'competicao', distance_km: 600, details: {} }] });
+    expect(bad(r, 'quilometros').value).toBe(0);
+  });
+});
+
+describe('As Distâncias — a primeira vez em cada uma', () => {
+  it('a primeira prova de 10 km enche o encaixe e cunha o SEU prémio', () => {
+    const r = compute(cenarioDeProvas([feita('p1', '2026-03-01')]));
+    const b = bad(r, 'distancias');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('1/4');
+    expect(b.cor).toBe('race');
+    expect(b.familia).toBe('desempenho');
+
+    const due = dueDe(r, 'distancias');
+    expect(due).toHaveLength(1);
+    expect(due[0]).toMatchObject({
+      periodKey: '10k', raceId: 'p1', value: 10, valueUnit: 'km',
+      title: 'Primeiros 10 km', awardedOn: '2026-03-01',
+    });
+  });
+
+  it('só a primeira de cada distância cunha: a segunda não repete o prémio', () => {
+    const r = compute(cenarioDeProvas([feita('p1', '2026-03-01'), feita('p2', '2026-06-01')]));
+    expect(dueDe(r, 'distancias').map((d) => d.raceId)).toEqual(['p1']);
+  });
+
+  /* A terceira resposta do `encaixeDe`: tem o dado, e a resposta é "nenhum". */
+  it('uma prova de 15 km não enche encaixe nenhum, e também não fica por decidir', () => {
+    const b = bad(compute(cenarioDeProvas([feita('p1', '2026-03-01', { km: 15 })])), 'distancias');
+    expect(b.state).toBe('empty');
+    expect(b.indeterminadas).toBeNull();
+    expect(estados(b, 'indeterminada')).toHaveLength(0);
+  });
+
+  it('uma prova sem distância fica indeterminada — não se adivinha o encaixe', () => {
+    const b = bad(compute(cenarioDeProvas([feita('p1', '2026-03-01', { km: null })])), 'distancias');
+    expect(b.indeterminadas.n).toBe(1);
+    expect(b.indeterminadas.frase).toContain('distância da prova');
+  });
+
+  it('as quatro distâncias fecham o anel, com um prémio por cada', () => {
+    const r = compute(cenarioDeProvas([
+      feita('p1', '2026-01-04', { km: 5, seconds: 1500 }),
+      feita('p2', '2026-02-01', { km: 10 }),
+      feita('p3', '2026-03-01', { km: 21.1, seconds: 7200 }),
+      feita('p4', '2026-04-01', { km: 42.2, seconds: 15000 }),
+    ]));
+    const b = bad(r, 'distancias');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('4');
+    expect(dueDe(r, 'distancias').map((d) => d.periodKey)).toEqual(['5k', '10k', '21k', '42k']);
+  });
+});
+
+describe('Os Níveis — a escala VDOT', () => {
+  it('10 km em 55:00 dão bronze, e o prémio guarda o VDOT com a casa decimal', () => {
+    const r = compute(cenarioDeProvas([feita('p1', '2026-03-01', { seconds: 3300 })]));
+    const b = bad(r, 'niveis');
+    expect(b.state).toBe('won');
+    expect(b.tier).toBe('bronze');
+    expect(b.cor).toBe('race');
+    expect(b.centro).toBe('36');
+
+    const due = dueDe(r, 'niveis');
+    expect(due).toHaveLength(1);
+    expect(due[0]).toMatchObject({ tier: 'bronze', value: 35.8, valueUnit: 'vdot', raceId: 'p1' });
+  });
+
+  /* A escala não soma: só a prova que SUBIU o melhor conta. E uma prova que
+     não subiu nada não é uma dúvida — é uma prova que não chegou lá. */
+  it('só a prova que sobe o melhor VDOT conta; as outras falharam, não ficaram por decidir', () => {
+    const b = bad(compute(cenarioDeProvas([
+      feita('p1', '2026-03-01', { seconds: 2400 }),
+      feita('p2', '2026-06-01', { seconds: 3300 }),
+    ])), 'niveis');
+    expect(b.tier).toBe('prata');
+    expect(estados(b, 'conta').map((s) => s.raceId)).toEqual(['p1']);
+    expect(estados(b, 'falhou').map((s) => s.raceId)).toEqual(['p2']);
+    expect(estados(b, 'indeterminada')).toHaveLength(0);
+  });
+
+  it('sem tempo oficial, a prova fica indeterminada', () => {
+    const b = bad(compute(cenarioDeProvas([feita('p1', '2026-03-01', { semTempo: true })])), 'niveis');
+    expect(b.state).toBe('empty');
+    expect(b.indeterminadas.n).toBe(1);
+    expect(b.indeterminadas.frase).toContain('tempo oficial');
+  });
+});
+
+describe('A Superação — o objetivo batido', () => {
+  it('bater o objetivo ganha o badge e repete-se: uma linha por prova', () => {
+    const r = compute(cenarioDeProvas([
+      feita('p1', '2026-03-01', { seconds: 2900, objetivo: 3000 }),
+      feita('p2', '2026-06-01', { seconds: 2800, objetivo: 3000 }),
+    ]));
+    const b = bad(r, 'superacao');
+    expect(b.state).toBe('won');
+    expect(b.cor).toBe('race');
+    expect(b.count).toBe(2);
+    expect(b.centro).toBe('2');
+
+    const due = dueDe(r, 'superacao');
+    expect(due).toHaveLength(2);
+    expect(due[0]).toMatchObject({
+      periodKey: 'p1', raceId: 'p1', value: 2900, valueUnit: 'seconds', awardedOn: '2026-03-01',
+    });
+  });
+
+  /* Quem nunca marcou objetivo não falhou nada: dizer-lhe que falhou era
+     mentir-lhe sobre uma coisa que ele não fez. */
+  it('sem objetivo marcado, a prova fica indeterminada — e não "falhou"', () => {
+    const b = bad(compute(cenarioDeProvas([feita('p1', '2026-03-01')])), 'superacao');
+    expect(b.state).toBe('empty');
+    expect(estados(b, 'falhou')).toHaveLength(0);
+    expect(b.indeterminadas.n).toBe(1);
+    expect(b.indeterminadas.frase).toContain('objetivo de tempo');
+  });
+
+  it('falhar por 30 segundos diz quanto faltou', () => {
+    const b = bad(compute(cenarioDeProvas([feita('p1', '2026-03-01', { seconds: 3030, objetivo: 3000 })])), 'superacao');
+    expect(b.state).toBe('empty');
+    expect(b.centro).toBe('+30s');
+  });
+});
+
+describe('O Terreno — estrada e trail em separado', () => {
+  it('a primeira de cada terreno enche dois dos quatro encaixes', () => {
+    const r = compute(cenarioDeProvas([feita('p1', '2026-03-01'), feita('p2', '2026-04-01', { terreno: 'trail' })]));
+    const b = bad(r, 'terreno');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('2/4');
+    expect(b.cor).toBe('race');
+
+    const due = dueDe(r, 'terreno');
+    expect(due.map((d) => d.periodKey)).toEqual(['estrada1', 'trail1']);
+    expect(due[0]).toMatchObject({ raceId: 'p1', value: 1, valueUnit: 'count', title: 'Primeira em estrada' });
+  });
+
+  it('a quinta de estrada enche o outro encaixe, e as três do meio não ficam por decidir', () => {
+    const r = compute(cenarioDeProvas([1, 2, 3, 4, 5].map((n) => feita(`p${n}`, `2026-0${n}-01`))));
+    const b = bad(r, 'terreno');
+    expect(b.centro).toBe('2/4');
+    expect(dueDe(r, 'terreno').map((d) => d.periodKey)).toEqual(['estrada1', 'estrada5']);
+    expect(b.indeterminadas).toBeNull();
+    expect(estados(b, 'indeterminada')).toHaveLength(0);
+    expect(estados(b, 'conta')).toHaveLength(2);
+  });
+});
+
+describe('A Sequência — as provas seguidas com a corrida registada', () => {
+  it('três provas seguidas dão bronze, no dia da terceira', () => {
+    const r = compute(cenarioDeProvas([
+      feita('p1', '2026-03-01'), feita('p2', '2026-04-01'), feita('p3', '2026-05-01'),
+    ]));
+    const b = bad(r, 'sequencia');
+    expect(b.state).toBe('won');
+    expect(b.tier).toBe('bronze');
+    expect(b.cor).toBe('ok');
+    expect(b.centro).toBe('3');
+    expect(dueDe(r, 'sequencia')[0]).toMatchObject({
+      tier: 'bronze', value: 3, valueUnit: 'count', raceId: 'p3', awardedOn: '2026-05-01',
+    });
+  });
+
+  /* A regra inteira do badge: a prova que passa sem registo QUEBRA — não fica
+     por decidir — e o que já foi ganho não se perde com ela. */
+  it('uma prova sem registo quebra a série, e não apaga o que já estava ganho', () => {
+    const r = compute(cenarioDeProvas([
+      feita('p1', '2026-03-01'), feita('p2', '2026-04-01'), feita('p3', '2026-05-01'),
+      feita('p4', '2026-06-01', { semRegisto: true }), feita('p5', '2026-07-01'),
+    ]));
+    const b = bad(r, 'sequencia');
+    expect(b.tier).toBe('bronze');
+    expect(b.value).toBe(3);
+    expect(b.indeterminadas).toBeNull();
+    expect(estados(b, 'falhou').map((s) => s.raceId)).toEqual(['p4']);
+  });
+
+  it('duas seguidas ainda não são uma série: mostra 2/3 e não cunha nada', () => {
+    const r = compute(cenarioDeProvas([feita('p1', '2026-03-01'), feita('p2', '2026-04-01')]));
+    const b = bad(r, 'sequencia');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('2/3');
+    expect(dueDe(r, 'sequencia')).toEqual([]);
   });
 });

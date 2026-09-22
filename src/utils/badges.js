@@ -21,8 +21,18 @@
      `run`  (ciano --run)  o treino de corrida em si;
      `ok`   (verde --ok)   a disciplina: fazer o que estava combinado;
      `race` (âmbar --race) SÓ o que nasce de uma prova.
-   Nenhum badge de treino é âmbar. O único âmbar desta lista é o
-   `recorde_pessoal`, e é âmbar precisamente porque só uma prova o dá.
+   Nenhum badge de treino é âmbar, e nenhum badge de prova é ciano. Os âmbar
+   são cinco, e são-no todos pela mesma razão — só uma prova os dá: o
+   `recorde_pessoal`, `distancias`, `niveis`, `superacao` e `terreno` (estes
+   quatro vieram d'O Palmarés na fase A, quando os badges passaram a
+   substituir os medalhões).
+
+   E UM BADGE DE PROVA QUE NÃO É ÂMBAR: a `sequencia` é verde. Não é exceção
+   nenhuma à lei — é a lei a funcionar. O que ela mede não é a prova, é
+   APARECER a ela com a corrida registada, e isso é disciplina como a Semana
+   100%. Uma série de provas não se corre melhor: cumpre-se. A pergunta que
+   decide a cor é sempre "o que é que isto mede", nunca "de que tabela saiu o
+   dado".
 
    NÃO HÁ COR DO TERRENO, e é de propósito. A subida é corrida — trail é
    corrida — por isso a Cabra-montesa e A Escalada são `run` como as outras.
@@ -78,18 +88,26 @@
    sincroniza, como o `due` dos medalhões. */
 
 import {
+  DISTANCIAS_DE_PROVA,
+  TERRENOS,
   addDays,
+  bateuObjetivo,
   bateuRecordePessoal,
   completedRaces,
   dayOf,
+  distanciaDeProva,
   fmtKmLinha,
+  kmDeProva,
   newestFirst,
   plural,
+  provasDoTerreno,
   requireToday,
   runKindLabel,
+  varrerSequencia,
 } from './premios';
 import { formatDuration, raceDistanceLabel } from './run';
 import { formatDatePTShort } from './racePlanEngine';
+import { calculateVDOT } from '@formulas/racePrediction.ts';
 import { evaluatePrescriptions, executionBase } from '@formulas/prescriptionAdherence.ts';
 
 /** As quatro famílias, pela ordem em que a Vitrina as mostra: primeiro o que
@@ -110,10 +128,22 @@ export const FAMILIA_KEYS = FAMILIAS.map((f) => f.key);
 /** A ordem da grelha da Vitrina, agora DENTRO de cada família (a grelha
  *  agrupa por FAMILIAS, e esta lista é a ordem dentro de cada grupo).
  *
+ *  A lógica de sempre, que a fase A não mudou: dentro de cada família, o que
+ *  nasce de um dia de treino vem primeiro e o que nasce de uma prova vem no
+ *  fim. Os badges de prova são os âmbar, e ficarem juntos no fim de cada
+ *  família é o que faz a cor ler-se como um bloco em vez de salpicos.
+ *
  *  Desempenho: primeiro como se corre (Z2, negative split, cadência), depois
- *  o terreno (Cabra-montesa, À medida da prova, que partilham o D+), e a
- *  prova no fim — o `recorde_pessoal` é o único que não nasce de um dia de
- *  treino, e o único âmbar.
+ *  o terreno de treino (Cabra-montesa, À medida da prova, que partilham o
+ *  D+), e as cinco de prova a fechar — a primeira vez em cada distância e em
+ *  cada terreno, a escala, o objetivo batido, e o recorde pessoal no fim, que
+ *  é o mais difícil dos cinco.
+ *  Disciplina: as duas semanas da Carol primeiro (Semana 100%, Descanso
+ *  cumprido) e A Sequência a seguir — é disciplina também, mas conta-se em
+ *  provas, não em semanas.
+ *  Acumulação: os quilómetros antes dos metros de subida. É a medida base da
+ *  corrida, e toda a gente a tem (a distância vem em qualquer registo; o D+
+ *  falta em metade deles).
  *  Amuletos: a Coruja abre, porque é a mais antiga; os outros seis vêm a
  *  seguir, do relógio para o calendário e daí para a fita métrica. */
 export const BADGE_KEYS = [
@@ -123,11 +153,17 @@ export const BADGE_KEYS = [
   'cadencia_corrigida',
   'cabra_montesa',
   'medida_da_prova',
+  'distancias',
+  'terreno',
+  'niveis',
+  'superacao',
   'recorde_pessoal',
   // disciplina
   'semana_100',
   'descanso_cumprido',
+  'sequencia',
   // acumulação
+  'quilometros',
   'escalada',
   // amuletos
   'coruja',
@@ -254,6 +290,35 @@ function sessaoDaCorrida(run, { status, porque, meta }) {
     date: dayOf(run?.date),
     title: run?.name || runKindLabel(run),
     meta,
+    status,
+    porque,
+  };
+}
+
+/* Uma PROVA na lista do detalhe — o par de `sessaoDaCorrida` para os badges
+   que nascem de provas. `kind: 'race'` é o que manda o toque abrir o hub da
+   prova e não o registo solto da corrida.
+
+   Viveu dentro do `recorde_pessoal` enquanto ele foi o único badge de prova.
+   Deixou de o ser na fase A (As Distâncias, Os Níveis, A Superação, O
+   Terreno e A Sequência vieram d'O Palmarés), e uma segunda cópia era a
+   forma garantida de duas listas chamarem nomes diferentes à mesma prova. */
+const linhaDaProva = ({ race, outcome }) => [
+  raceDistanceLabel(Number(race?.distance_km) || null),
+  outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null,
+].filter(Boolean).join(' · ');
+
+function sessaoDaProva(entry, { status, porque, meta }) {
+  const { race, outcome } = entry;
+  return {
+    kind: 'race',
+    id: race?.id ?? null,
+    raceId: race?.id ?? null,
+    runId: outcome?.runId ?? null,
+    date: dayOf(race?.date),
+    title: race?.name || 'Prova sem nome',
+    // Sem `meta` própria, a linha de sempre: a distância e o tempo oficial.
+    meta: meta ?? linhaDaProva(entry),
     status,
     porque,
   };
@@ -739,6 +804,10 @@ function medidaDaProva({ treinos, raceEvents, today }) {
 function badgeDeNiveis({
   key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver, unidade,
   limiares, passos, fmtValor, fmtCentroValor, sessoes, indeterminadas, semNada, tituloDe, linhaDue,
+  /* O número que vai para a coluna `value`. Inteiro por omissão — metros,
+     treinos, provas — mas o VDOT d'Os Níveis tem uma casa decimal e 44,5
+     arredondado a 44 é o mesmo número a dizer outra coisa noutro ecrã. */
+  arredondaValor = Math.round,
   // "3/5" só cabe no anel quando os dois números são curtos: numa contagem
   // de treinos cabe, em metros acumulados ("9,8k/10k") não. Aí mostra-se só
   // o corrente, e é o arco que diz quanto falta.
@@ -750,7 +819,10 @@ function badgeDeNiveis({
   const ganhos = [];
   for (let i = 0; i < NIVEIS.length; i += 1) {
     const passo = passos.find((p) => p.valor >= limiares[i]);
-    if (passo) ganhos.push({ nivel: NIVEIS[i], awardedOn: passo.date, valor: passo.valor });
+    // `raceId` só vem nos badges que nascem de provas (Os Níveis, A
+    // Sequência): é a prova que confirmou o degrau, e é ela que o põe no
+    // mural dessa prova (`badgesForRace`).
+    if (passo) ganhos.push({ nivel: NIVEIS[i], awardedOn: passo.date, valor: passo.valor, raceId: passo.raceId ?? null });
   }
   const atingido = ganhos.length ? ganhos[ganhos.length - 1] : null;
   const seguinteIdx = ganhos.length;
@@ -762,9 +834,9 @@ function badgeDeNiveis({
     badgeKey: key,
     tier: g.nivel.key,
     periodKey: '',
-    value: Math.round(g.valor),
+    value: arredondaValor(g.valor),
     valueUnit: unidade,
-    raceId: null,
+    raceId: g.raceId ?? null,
     awardedOn: g.awardedOn,
     title: `${name} · ${g.nivel.label}`,
     line: linhaDue(g),
@@ -775,7 +847,7 @@ function badgeDeNiveis({
     niveis: NIVEIS.map((n, i) => ({ ...n, limiar: limiares[i], ganho: i < ganhos.length })),
     sessoes,
     indeterminadas: blocoIndeterminadas(indeterminadas, { campoLabel, comoResolver }),
-    value: Math.round(totalAtual),
+    value: arredondaValor(totalAtual),
     count: ganhos.length,
   };
 
@@ -815,6 +887,171 @@ function badgeDeNiveis({
       detalhe: emCurso ? `${fmtValor(totalAtual)} ${tituloDe}` : null,
     }),
     due: [],
+  };
+}
+
+// ── Os badges de ENCAIXES ────────────────────────────────────────────────
+
+/** "madrugada, manhã e noite" — a enumeração portuguesa, com o "e" no fim. */
+function juntar(partes) {
+  if (partes.length <= 1) return partes[0] || '';
+  return `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}`;
+}
+
+/* Cinco badges são o mesmo jogo: um conjunto FIXO de encaixes e um badge que
+   se ganha quando todos ficam preenchidos. Três são amuletos (as quatro
+   faixas do dia, as quatro estações, os dois solstícios) e dois vieram d'O
+   Palmarés na fase A (As Distâncias — 5, 10, 21,1 e 42,2 km — e O Terreno —
+   a 1.ª e a 5.ª prova em estrada e em trail). O que muda é o que define o
+   encaixe, de que lista saem os candidatos e as palavras — por isso a
+   varredura vive aqui uma vez, como a dos badges de medida.
+
+   `encaixeDe(item)` responde uma de TRÊS coisas, e a terceira nasceu com os
+   badges de prova:
+
+     · a CHAVE do encaixe que o item preenche;
+     · `null` — falta o dado, e o item fica INDETERMINADO (a regra de sempre);
+     · `NENHUM_ENCAIXE` — o item tem o dado e simplesmente não preenche
+       encaixe nenhum.
+
+   Sem a terceira, a 2.ª prova de estrada — que não é nem a 1.ª nem a 5.ª, e
+   sobre a qual não há dúvida nenhuma — aparecia no ecrã como "por decidir".
+   Uma prova de 15 km, que não cai em nenhuma das quatro distâncias, o mesmo.
+
+   `candidatas` também já não são obrigatoriamente corridas: os badges de
+   prova passam as entradas de `completedRaces` e, com elas, o seu `fazSessao`
+   e o seu `dataDe`. Uma prova não é um registo de corrida — o que se abre ao
+   tocar é o hub da prova, não o registo.
+
+   A lista de sessões mostra só a PRIMEIRA corrida de cada encaixe. As outras
+   não falharam nada, apenas repetiram um encaixe já preenchido, e listá-las
+   todas enchia o ecrã sem responder à única pergunta que ele tem de
+   responder: quais os encaixes que faltam. */
+export const NENHUM_ENCAIXE = Symbol('sem encaixe');
+
+function badgeDeEncaixes({
+  key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
+  encaixes, encaixeDe, candidatas, descreveEncaixe, porqueConta, semNada, linhaDue,
+  // Por omissão os candidatos são CORRIDAS, que é o caso dos amuletos. Os
+  // badges de prova trocam estes três, e mais nada.
+  fazSessao = sessaoDaCorrida,
+  dataDe = (run) => dayOf(run?.date),
+  metaSimples = (run) => (run?.distance_km ? fmtKmLinha(num(run.distance_km)) : null),
+  /* Quando existe, cunha-se um prémio POR ENCAIXE CHEIO em vez de um só no
+     fim. É o que O Palmarés fazia, e a razão é a mesma: "a primeira meia
+     maratona" é um feito seu e não pode ficar à espera de uma maratona para
+     existir. Os amuletos não o usam — metade das estações não é feito
+     nenhum, e repetir as quatro também não. */
+  duePorEncaixe = null,
+}) {
+  const porEncaixe = new Map();
+  const indeterminadas = [];
+  const ordenadas = [...candidatas].sort((a, b) => (dataDe(a) || '').localeCompare(dataDe(b) || ''));
+  for (const item of ordenadas) {
+    const encaixe = encaixeDe(item);
+    if (encaixe === NENHUM_ENCAIXE) continue;
+    if (encaixe == null) { indeterminadas.push(item); continue; }
+    if (!porEncaixe.has(encaixe)) porEncaixe.set(encaixe, item);
+  }
+
+  const cheios = encaixes.filter((e) => porEncaixe.has(e.key));
+  const vazios = encaixes.filter((e) => !porEncaixe.has(e.key));
+  const completo = vazios.length === 0 && encaixes.length > 0;
+  // O dia em que o último encaixe se preencheu — o primeiro dia em que os
+  // dados o provam, a mesma régua do resto do ficheiro.
+  const ultimoDia = cheios
+    .map((e) => dataDe(porEncaixe.get(e.key)))
+    .sort()
+    .slice(-1)[0] || null;
+
+  const sessoes = newestFirst([
+    ...cheios.map((e) => {
+      const item = porEncaixe.get(e.key);
+      return fazSessao(item, {
+        status: 'conta',
+        meta: descreveEncaixe(e, item),
+        porque: porqueConta(e),
+      });
+    }),
+    ...indeterminadas.map((item) => fazSessao(item, {
+      status: 'indeterminada',
+      meta: metaSimples(item),
+      porque: `Sem ${campoLabel} no registo.`,
+    })),
+  ]);
+
+  const comum = {
+    key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
+    unidade: 'count',
+    value: cheios.length,
+    sessoes,
+    indeterminadas: blocoIndeterminadas(indeterminadas, { campoLabel, comoResolver }),
+  };
+
+  // Um prémio por encaixe cheio, quando o badge os cunha assim: a chave do
+  // encaixe é o `period_key`, e é ela que os distingue em `user_badges`.
+  const duePorCheio = duePorEncaixe
+    ? cheios.map((e) => {
+      const item = porEncaixe.get(e.key);
+      const extra = duePorEncaixe(e, item) || {};
+      return {
+        badgeKey: key,
+        tier: '',
+        periodKey: e.key,
+        value: extra.value ?? null,
+        valueUnit: extra.valueUnit ?? 'count',
+        raceId: extra.raceId ?? null,
+        awardedOn: dataDe(item),
+        title: extra.title || name,
+        line: extra.line || '',
+      };
+    })
+    : null;
+
+  const faltam = juntar(vazios.map((e) => e.label));
+
+  if (completo) {
+    return {
+      badge: badge({
+        ...comum,
+        state: 'won',
+        ring: 1,
+        centro: String(encaixes.length),
+        centroAria: `${name}: ganho, ${juntar(encaixes.map((e) => e.label))}`,
+        count: 1,
+        awardedOn: ultimoDia,
+        linha: `${juntar(encaixes.map((e) => e.label))} — completo a ${formatDatePTShort(ultimoDia)}`,
+        detalhe: juntar(encaixes.map((e) => e.label)),
+      }),
+      due: duePorCheio || [{
+        badgeKey: key,
+        tier: '',
+        // Ganha-se uma vez: não há período que distinga uma repetição, e
+        // repetir "as quatro estações" não é feito nenhum novo.
+        periodKey: '',
+        value: encaixes.length,
+        valueUnit: 'count',
+        raceId: null,
+        awardedOn: ultimoDia,
+        title: name,
+        line: linhaDue({ ultimoDia }),
+      }],
+    };
+  }
+
+  const comecou = cheios.length > 0;
+  return {
+    badge: badge({
+      ...comum,
+      state: comecou ? 'progress' : 'empty',
+      ring: comecou ? Math.min(cheios.length / encaixes.length, 0.99) : 0,
+      centro: `${cheios.length}/${encaixes.length}`,
+      centroAria: comecou
+        ? `${name}: a caminho, ${cheios.length} de ${encaixes.length}. ${plural(vazios.length, 'Falta', 'Faltam')} ${faltam}`
+        : `${name}: por ganhar. ${rule}`,
+      linha: comecou ? `${plural(vazios.length, 'falta', 'faltam')} ${faltam}` : semNada,
+    }),
+    due: duePorCheio || [],
   };
 }
 
@@ -1633,23 +1870,6 @@ function recordePessoal({ completed }) {
   const semTempo = completed.filter(({ outcome }) => !outcome?.officialSeconds);
   const recordes = comTempo.filter(({ outcome }) => bateuRecordePessoal(outcome));
 
-  const linhaDaProva = ({ race, outcome }) => [
-    raceDistanceLabel(Number(race.distance_km) || null),
-    outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null,
-  ].filter(Boolean).join(' · ');
-
-  const sessaoDaProva = ({ race, outcome }, { status, porque }) => ({
-    kind: 'race',
-    id: race.id ?? null,
-    raceId: race.id ?? null,
-    runId: outcome?.runId ?? null,
-    date: dayOf(race.date),
-    title: race.name || 'Prova sem nome',
-    meta: linhaDaProva({ race, outcome }),
-    status,
-    porque,
-  });
-
   const sessoes = newestFirst([
     ...recordes.map((e) => sessaoDaProva(e, { status: 'conta', porque: 'O melhor tempo de sempre nesta distância.' })),
     ...comTempo.filter((e) => !bateuRecordePessoal(e.outcome)).map((e) => sessaoDaProva(e, {
@@ -1734,6 +1954,578 @@ function recordePessoal({ completed }) {
   };
 }
 
+// ── 9. Os Quilómetros ────────────────────────────────────────────────────
+
+/* chave     quilometros
+   regra     "Quilómetros acumulados em treino: 500 (bronze), 1 250 (prata),
+             2 500 (ouro)."
+   campo     runs.distance_km
+   em falta  a corrida NÃO SOMA — não conta a favor (não se inventam
+             quilómetros) nem contra. Fica indeterminada, como n'A Escalada.
+   cor       --run — é treino de corrida, e é a mesma cor d'A Escalada por
+             ser exatamente a mesma espécie de coisa.
+   família   acumulacao — soma, e é o que a doutrina 6 #6 manda a Carol nunca
+             sugerir: "faltam-te 40 km para o próximo degrau" é a frase que
+             põe alguém a correr um longo a mais numa semana de descarga.
+   níveis    sim: 500, 1 250 e 2 500 km.
+
+   ── PORQUÊ SÓ TREINO ────────────────────────────────────────────────────
+   O medalhão "O Ano em Km" somava TUDO, provas incluídas. Este não: é ciano,
+   e a lei da cor não deixa um badge de treino contar provas (ver o cabeçalho
+   e `treinosDe`). Os quilómetros de prova têm os seus quatro badges — As
+   Distâncias, Os Níveis, A Superação, O Terreno — e não precisam de ser
+   contados duas vezes.
+
+   ── PORQUÊ DE SEMPRE, E NÃO DO ANO ──────────────────────────────────────
+   O medalhão comparava PERÍODOS (o melhor mês, trimestre, semestre e ano de
+   sempre). Isso não se porta para um badge de três níveis sem inventar uma
+   pergunta que ninguém respondeu — "o que acontece a 1 de janeiro?" — e é a
+   mesma decisão que A Escalada já tinha tomado: acumulado de sempre, que é o
+   que um corredor conta quando diz quantos quilómetros leva na vida.
+
+   ── PORQUÊ 500 / 1 250 / 2 500 ──────────────────────────────────────────
+   A PROPORÇÃO não se escolheu: é a d'A Escalada — 1 : 2,5 : 5, como
+   10 000 / 25 000 / 50 000 m. Os dois badges de acumulação são o par que o
+   utilizador pediu para existir, e subirem com a mesma forma é o que impede
+   um deles de ser sempre o fácil. Isso deixa UM número por decidir, o
+   bronze; os outros dois saem dele.
+
+   E o bronze não se calibra a um utilizador — calibra-se ao que significa
+   alguma coisa para quem corre. A app vai ter milhares de contas; a régua
+   tem de aguentar a primeira semana de todas elas e o quinto ano de algumas.
+   Os dois erros, os dois fáceis de cometer:
+
+     · um limiar que se ganha na primeira semana não diz nada. Um badge que
+       toda a gente tem no dia em que instala a app não é um feito, é um
+       cumprimento — e gasta a vitrina inteira, porque ensina que os anéis
+       cheios não querem dizer nada;
+     · um limiar a três anos de distância também não. Um badge que ninguém
+       alcança é um badge que não existe, e para o atleta é pior do que não
+       o haver: é um lugar vazio na grelha a dizer-lhe que não chega.
+
+   Entre os dois, o que faz sentido para um badge de ACUMULAÇÃO é a ordem de
+   grandeza dos MESES. Não semanas — em semanas não se acumula nada — e não
+   anos, que é onde vive o ouro.
+
+   A conta, com um utilizador ativo real como referência de ritmo (não como
+   alvo a satisfazer): ~64 km de treino por mês, que é o que a produção
+   mostra numa conta com 7 meses de uso regular. A esse ritmo:
+
+     bronze    500 km  ≈ 8 meses — e ≈ 3 meses a 170 km/mês, que é o que faz
+                         quem treina a sério. Meses nos dois casos;
+     prata   1 250 km  ≈ 20 meses;
+     ouro    2 500 km  ≈ 3 anos e meio — o degrau que se conta em anos, que
+                         é o que um degrau mais alto deve ser.
+
+   ── E A COMPARAÇÃO COM A ESCALADA ───────────────────────────────────────
+   À mesma referência, o bronze d'A Escalada (10 000 m de D+) fica bastante
+   mais longe do que este. É justo que fique: o D+ é um campo OPCIONAL do
+   registo, e quanto dele se acumula depende sobretudo de onde se vive. A
+   distância vem preenchida em qualquer registo e não depende de nada — é a
+   medida que a app consegue mesmo dar a toda a gente, e por isso é a que
+   pode ter o degrau mais baixo dos dois sem se desvalorizar. */
+const QUILOMETROS_LIMIARES = [500, 1250, 2500];
+
+/** Km para o NÚMERO DENTRO DO ANEL, onde só cabem 3 ou 4 caracteres: "2,5k"
+ *  a partir dos 1 000, "850" abaixo disso. É o par de `fmtMetrosCurto`. */
+function fmtKmCurto(km) {
+  const v = Math.max(0, Math.round(km || 0));
+  if (v >= 1000) return `${String(round1(v / 1000)).replace('.', ',')}k`;
+  return milhares(v);
+}
+
+const fmtKmTotal = (km) => `${milhares(Math.round(Math.max(0, km || 0)))} km`;
+
+function quilometros({ treinos }) {
+  const comKm = [];
+  const indeterminadas = [];
+  for (const run of treinos) {
+    const km = num(run?.distance_km);
+    if (km == null) indeterminadas.push(run);
+    else comKm.push({ run, km });
+  }
+  const porData = [...comKm].sort((a, b) => (dayOf(a.run.date) || '').localeCompare(dayOf(b.run.date) || ''));
+  let acumulado = 0;
+  const passos = porData.map(({ run, km }) => {
+    acumulado += km;
+    return { valor: acumulado, date: dayOf(run.date) };
+  });
+
+  const sessoes = newestFirst([
+    ...comKm.map(({ run, km }) => sessaoDaCorrida(run, { status: 'conta', meta: fmtKmLinha(km), porque: 'Somou ao acumulado.' })),
+    ...indeterminadas.map((run) => sessaoDaCorrida(run, { status: 'indeterminada', meta: null, porque: 'Sem distância no registo — não somou.' })),
+  ]);
+
+  return badgeDeNiveis({
+    key: 'quilometros',
+    name: 'Os Quilómetros',
+    rule: 'Quilómetros acumulados em treino — 500 para bronze, 1 250 para prata, 2 500 para ouro.',
+    familia: 'acumulacao',
+    cor: 'run',
+    glifo: 'route',
+    campo: 'distance_km',
+    campoLabel: 'a distância',
+    dependeDe: 'Precisa da distância no registo da corrida.',
+    comoResolver: 'Abre o registo da corrida e preenche a distância — sem ela a corrida não soma para o acumulado.',
+    unidade: 'km',
+    limiares: QUILOMETROS_LIMIARES,
+    passos,
+    fmtValor: fmtKmTotal,
+    fmtCentroValor: fmtKmCurto,
+    sessoes,
+    indeterminadas,
+    semNada: 'ainda sem treinos com distância registada',
+    tituloDe: 'de treino acumulado',
+    // "850/1k" não cabe no anel; é o arco que diz quanto falta.
+    centroCompara: false,
+    linhaDue: (g) => `${fmtKmTotal(g.valor)} de treino acumulado — ${g.nivel.label.toLowerCase()} d'Os Quilómetros.`,
+  });
+}
+
+// ── 10. As Distâncias ────────────────────────────────────────────────────
+
+/* chave     distancias
+   regra     "A primeira prova concluída em cada distância: 5, 10, 21,1 e
+             42,2 km."
+   campo     race_events.distance_km (a distância OFICIAL da prova)
+   em falta  uma prova concluída sem distância fica INDETERMINADA: não se
+             adivinha em que encaixe cai. Uma prova de 15 km não fica — tem o
+             dado, e a resposta é que não cai em nenhum (NENHUM_ENCAIXE).
+   cor       --race (âmbar) — nasce de uma prova.
+   família   desempenho — a família diz O QUE MEDE, a cor diz DE ONDE VEM.
+             Podia argumentar-se `acumulacao`, por contar ocorrências; não é:
+             quatro encaixes fixos que se enchem uma vez não são um total que
+             cresce, e o que separa a maratona dos 5 km é aptidão, não volume.
+   níveis    não — quatro encaixes.
+
+   As bandas de cada distância são as de `utils/premios.js`
+   (DISTANCIAS_DE_PROVA), partilhadas com O Palmarés: a distância oficial com
+   a folga do GPS, e não a categoria de treino de `categorizeDistance`.
+
+   Um prémio POR ENCAIXE, e não um só no fim (ver `duePorEncaixe`): a
+   primeira meia maratona é um feito no dia em que acontece e não pode ficar
+   à espera de uma maratona — que muita gente nunca vai correr — para
+   aparecer na história do atleta. O ANEL, esse, só fecha com os quatro. */
+/* Os encaixes são as próprias entradas de DISTANCIAS_DE_PROVA: já trazem o
+   `key` e o `label` que a varredura precisa, mais o `primeira` que dá o
+   título do prémio. */
+function distancias({ completed }) {
+  return badgeDeEncaixes({
+    key: 'distancias',
+    name: 'As Distâncias',
+    rule: 'A primeira prova concluída em cada uma das quatro distâncias: 5, 10, 21,1 e 42,2 km.',
+    familia: 'desempenho',
+    cor: 'race',
+    glifo: 'milestone',
+    campo: 'race_events.distance_km',
+    campoLabel: 'a distância da prova',
+    dependeDe: 'Precisa da distância da prova concluída.',
+    comoResolver: 'Abre o hub da prova e preenche a distância — sem ela não se sabe que encaixe a prova enche.',
+    encaixes: DISTANCIAS_DE_PROVA,
+    candidatas: completed,
+    fazSessao: sessaoDaProva,
+    dataDe: (entry) => dayOf(entry?.race?.date),
+    metaSimples: () => null,
+    encaixeDe: ({ race, outcome }) => {
+      if (kmDeProva(race, outcome) == null) return null;
+      const dist = distanciaDeProva(race, outcome);
+      return dist ? dist.key : NENHUM_ENCAIXE;
+    },
+    descreveEncaixe: (encaixe, entry) => linhaDaProva(entry),
+    porqueConta: (encaixe) => `A tua primeira prova de ${encaixe.label}.`,
+    semNada: 'ainda sem provas concluídas nestas distâncias',
+    duePorEncaixe: (encaixe, { race, outcome }) => ({
+      value: round1(kmDeProva(race, outcome) || 0),
+      valueUnit: 'km',
+      raceId: race?.id ?? null,
+      title: encaixe.primeira,
+      line: `${encaixe.label} — ${race?.name || 'a prova'}, a tua primeira prova nesta distância.`,
+    }),
+    linhaDue: () => '5, 10, 21,1 e 42,2 km: uma primeira vez em cada distância.',
+  });
+}
+
+// ── 11. Os Níveis ────────────────────────────────────────────────────────
+
+/* chave     niveis
+   regra     "A escala VDOT no teu melhor esforço de prova: 35 (bronze), 45
+             (prata), 55 (ouro)."
+   campo     o tempo oficial da prova (com a distância) — o VDOT calcula-se
+             com `calculateVDOT` (@formulas/racePrediction.ts), a mesma
+             fórmula que a tendência do dashboard de corrida usa.
+   em falta  prova concluída sem tempo oficial: INDETERMINADA. É o caso mais
+             comum de todos, o mesmo do `recorde_pessoal`.
+   cor       --race (âmbar) — nasce de provas.
+   família   desempenho — não há medida de desempenho mais direta.
+   níveis    sim: VDOT 35, 45 e 55.
+
+   ── PORQUÊ VDOT, E NÃO TEMPOS POR DISTÂNCIA ─────────────────────────────
+   É a única régua que compara distâncias diferentes: um 10 km de ouro e uma
+   maratona de ouro exigem a mesma aptidão aeróbica. Os limiares são os do
+   medalhão, sem mudar nada:
+
+     VDOT 35 (bronze) = 5 km 27:01 · 10 km 56:06 · meia 2:04:22 · maratona 4:16:24
+     VDOT 45 (prata)  = 5 km 21:50 · 10 km 45:16 · meia 1:40:20 · maratona 3:28:27
+     VDOT 55 (ouro)   = 5 km 18:23 · 10 km 38:07 · meia 1:24:20 · maratona 2:56:03
+
+   ── O QUE NÃO VEIO ──────────────────────────────────────────────────────
+   O medalhão tinha seis encaixes: as quatro distâncias, o passo mais rápido
+   de sempre e o melhor VO2 do relógio. Um badge tem TRÊS degraus e uma
+   escala só, por isso o que veio foi a escala — o melhor VDOT de prova de
+   sempre. O passo mais rápido não se perde: é o mesmo esforço visto pelo
+   tempo, e quem sobe de nível sobe-o com ele. O VO2 do relógio ficou de
+   fora de propósito — é um número que o relógio ESTIMA, não um que o atleta
+   correu, e a escala é de provas.
+
+   ── E NÃO É O RECORDE PESSOAL ───────────────────────────────────────────
+   Sobe-se de bronze para prata sem bater tempo próprio nenhum (basta uma
+   primeira prova numa distância nova), e o recorde pessoal é o atleta contra
+   ele mesmo na mesma distância. Ver `bateuRecordePessoal` em
+   utils/premios.js. São duas perguntas, e são dois badges. */
+const NIVEIS_VDOT = [35, 45, 55];
+
+/* Acima disto não é um atleta: é um tempo mal escrito (minutos onde deviam
+   estar horas), uma distância errada, ou um registo de bicicleta. O recorde
+   mundial dos 10 000 m anda em VDOT ~85. Importa porque `user_badges` é
+   append-only: um ouro cunhado por um registo errado fica lá para sempre,
+   mesmo depois de o atleta corrigir a prova. É o mesmo teto que O Palmarés
+   usa — e, quando o Palmarés sair, esta é a cópia que fica. */
+const VDOT_MAXIMO_PLAUSIVEL = 85;
+
+function niveis({ completed }) {
+  const comVdot = [];
+  const indeterminadas = [];
+  for (const entry of completed) {
+    const km = kmDeProva(entry.race, entry.outcome);
+    const segundos = entry.outcome?.officialSeconds;
+    const vdot = km && segundos ? calculateVDOT(km, segundos) : 0;
+    if (!vdot) { indeterminadas.push({ entry, porque: 'Sem tempo oficial no registo.' }); continue; }
+    if (vdot > VDOT_MAXIMO_PLAUSIVEL) {
+      indeterminadas.push({ entry, porque: `VDOT ${String(vdot).replace('.', ',')} — fora do plausível, não decide nada.` });
+      continue;
+    }
+    comVdot.push({ entry, vdot });
+  }
+
+  /* `completed` chega da mais antiga para a mais recente: o melhor VDOT só
+     sobe, e cada subida é um passo com o dia em que os dados a provam — a
+     mesma régua do acumulado d'A Escalada, com um máximo em vez de uma soma. */
+  let melhor = 0;
+  const passos = [];
+  const subiram = new Set();
+  for (const { entry, vdot } of comVdot) {
+    if (vdot <= melhor) continue;
+    melhor = vdot;
+    subiram.add(entry);
+    passos.push({ valor: melhor, date: dayOf(entry.race.date), raceId: entry.race.id ?? null });
+  }
+
+  const vdotTexto = (v) => `VDOT ${String(round1(v)).replace('.', ',')}`;
+  const sessoes = newestFirst([
+    ...comVdot.map(({ entry, vdot }) => sessaoDaProva(entry, {
+      status: subiram.has(entry) ? 'conta' : 'falhou',
+      meta: `${linhaDaProva(entry)} · ${vdotTexto(vdot)}`,
+      porque: subiram.has(entry) ? 'Subiu o teu melhor VDOT.' : 'Não subiu o teu melhor VDOT.',
+    })),
+    ...indeterminadas.map(({ entry, porque }) => sessaoDaProva(entry, { status: 'indeterminada', porque })),
+  ]);
+
+  return badgeDeNiveis({
+    key: 'niveis',
+    name: 'Os Níveis',
+    rule: 'A escala VDOT no teu melhor esforço de prova — 35 para bronze, 45 para prata, 55 para ouro.',
+    familia: 'desempenho',
+    cor: 'race',
+    glifo: 'gauge',
+    campo: 'details.official_time_seconds',
+    campoLabel: 'o tempo oficial da prova',
+    dependeDe: 'Precisa do tempo oficial da prova (e da distância) para calcular o VDOT.',
+    comoResolver: 'Abre o hub da prova e regista o tempo oficial (ou lê o diploma) — sem tempo não há VDOT.',
+    unidade: 'vdot',
+    limiares: NIVEIS_VDOT,
+    passos,
+    // Uma casa decimal, que é a do VDOT que a app já mostra noutros ecrãs.
+    arredondaValor: round1,
+    fmtValor: (v) => `${String(round1(v)).replace('.', ',')} de VDOT`,
+    fmtCentroValor: (v) => String(Math.round(v)),
+    sessoes,
+    indeterminadas: indeterminadas.map(({ entry }) => entry),
+    semNada: 'ainda sem provas com tempo oficial para calcular o VDOT',
+    tituloDe: 'no teu melhor esforço de prova',
+    linhaDue: (g) => `${String(round1(g.valor)).replace('.', ',')} de VDOT — ${g.nivel.label.toLowerCase()} d'Os Níveis.`,
+  });
+}
+
+// ── 12. A Superação ──────────────────────────────────────────────────────
+
+/* chave     superacao
+   regra     "Uma prova concluída no objetivo de tempo que marcaste, ou
+             abaixo dele."
+   campo     race_events.target_time_seconds + o tempo oficial; o veredicto é
+             o de utils/raceOutcome.js, pelo predicado `bateuObjetivo` do
+             motor — não se comparam tempos aqui.
+   em falta  duas faltas e as duas se dizem, porque a resposta ao atleta é
+             diferente: sem OBJETIVO marcado não há nada contra que medir (e
+             o `basis` do veredicto cai em 'previsao'); sem TEMPO OFICIAL não
+             há o que medir. Nos dois casos a prova fica INDETERMINADA — dizer
+             que "falhou" quem nunca marcou objetivo era mentir-lhe.
+   cor       --race (âmbar) — nasce de uma prova.
+   família   desempenho.
+   níveis    não — repete-se, uma linha por prova (period_key = o id da prova).
+
+   O medalhão contava 1, 3, 5 e 10 objetivos em quatro encaixes. O badge é
+   repetível, que é a forma da vitrina para a mesma coisa: cada objetivo
+   batido é uma linha em `user_badges` com a SUA data e a SUA prova, e o
+   número dentro do anel é quantos são. Um contador de encaixes daria menos
+   história, não mais. */
+function superacao({ completed }) {
+  const julgaveis = completed.filter(({ outcome }) => outcome?.officialSeconds && outcome?.basis === 'objetivo');
+  const porJulgar = completed.filter(({ outcome }) => !(outcome?.officialSeconds && outcome?.basis === 'objetivo'));
+  const batidos = julgaveis.filter(({ outcome }) => bateuObjetivo(outcome));
+  const falhados = julgaveis.filter(({ outcome }) => !bateuObjetivo(outcome));
+
+  const sessoes = newestFirst([
+    ...batidos.map((entry) => sessaoDaProva(entry, {
+      status: 'conta',
+      porque: entry.outcome.deltaTargetSeconds === 0
+        ? 'Objetivo cumprido em cima da hora.'
+        : `Objetivo batido por ${formatDuration(Math.abs(Math.round(entry.outcome.deltaTargetSeconds)))}.`,
+    })),
+    ...falhados.map((entry) => sessaoDaProva(entry, {
+      status: 'falhou',
+      porque: `Ficou a ${formatDuration(Math.round(entry.outcome.deltaTargetSeconds))} do objetivo.`,
+    })),
+    ...porJulgar.map((entry) => sessaoDaProva(entry, {
+      status: 'indeterminada',
+      porque: entry.outcome?.officialSeconds ? 'Sem objetivo de tempo marcado na prova.' : 'Sem tempo oficial no registo.',
+    })),
+  ]);
+
+  const due = batidos.map(({ race, outcome }) => ({
+    badgeKey: 'superacao',
+    tier: '',
+    periodKey: String(race.id ?? dayOf(race.date) ?? ''),
+    // O tempo oficial, como no `recorde_pessoal`: é o número da prova. A
+    // margem — por quanto bateu — vai na frase, que é onde se lê.
+    value: Math.round(outcome.officialSeconds),
+    valueUnit: 'seconds',
+    raceId: race.id ?? null,
+    awardedOn: dayOf(race.date),
+    title: 'Objetivo batido',
+    line: `${formatDuration(outcome.officialSeconds)} para um objetivo de ${formatDuration(outcome.targetSeconds)} — ${race.name || 'a prova'}.`,
+  }));
+
+  const comum = {
+    key: 'superacao',
+    name: 'A Superação',
+    rule: 'Uma prova concluída no objetivo de tempo que marcaste, ou abaixo dele.',
+    familia: 'desempenho',
+    cor: 'race',
+    glifo: 'crosshair',
+    campo: 'target_time_seconds',
+    campoLabel: 'o objetivo de tempo da prova',
+    dependeDe: 'Precisa do objetivo de tempo marcado na prova e do tempo oficial dela.',
+    comoResolver: 'Abre o hub da prova, marca o objetivo de tempo antes de correres e regista o tempo oficial depois — sem os dois não há objetivo para bater.',
+    unidade: 'seconds',
+    sessoes,
+    indeterminadas: blocoIndeterminadas(porJulgar, {
+      campoLabel: 'o objetivo de tempo da prova',
+      comoResolver: 'Abre o hub da prova, marca o objetivo de tempo antes de correres e regista o tempo oficial depois — sem os dois não há objetivo para bater.',
+    }),
+  };
+
+  if (batidos.length) {
+    // `completed` chega da mais antiga para a mais recente: a última é a
+    // mais recente.
+    const ultimo = batidos[batidos.length - 1];
+    return {
+      badge: badge({
+        ...comum,
+        state: 'won',
+        ring: 1,
+        centro: String(batidos.length),
+        centroAria: `A Superação: ${batidos.length} ${plural(batidos.length, 'objetivo batido', 'objetivos batidos')}`,
+        value: Math.round(ultimo.outcome.officialSeconds),
+        count: batidos.length,
+        awardedOn: dayOf(ultimo.race.date),
+        linha: `${batidos.length} ${plural(batidos.length, 'objetivo batido', 'objetivos batidos')} · o último em ${ultimo.race.name || 'prova'}, a ${formatDatePTShort(dayOf(ultimo.race.date))}`,
+        detalhe: linhaDaProva(ultimo),
+      }),
+      due,
+    };
+  }
+
+  const maisPerto = falhados.reduce((m, e) => (!m || e.outcome.deltaTargetSeconds < m.outcome.deltaTargetSeconds ? e : m), null);
+  return {
+    badge: badge({
+      ...comum,
+      state: 'empty',
+      ring: 0,
+      centro: maisPerto ? fmtFaltaSegundos(maisPerto.outcome.deltaTargetSeconds) : '1',
+      centroAria: maisPerto
+        ? `A Superação: por ganhar. A prova mais perto ficou a ${formatDuration(Math.round(maisPerto.outcome.deltaTargetSeconds))} do objetivo`
+        : 'A Superação: por ganhar. Ainda sem provas com objetivo marcado e tempo oficial.',
+      linha: maisPerto
+        ? `a mais perto: ${maisPerto.race.name || 'prova'}, a ${fmtFaltaSegundos(maisPerto.outcome.deltaTargetSeconds).replace('+', '')} do objetivo`
+        : 'marca o objetivo de tempo antes da próxima prova e este badge passa a ter resposta',
+    }),
+    due: [],
+  };
+}
+
+// ── 13. O Terreno ────────────────────────────────────────────────────────
+
+/* chave     terreno
+   regra     "A 1.ª e a 5.ª prova em estrada e em trail — quatro encaixes."
+   campo     race_events.race_type
+   em falta  NENHUMA falta é possível: a coluna só admite os dois valores e
+             uma prova antiga sem terreno conta como estrada, que é o que era
+             (`terrenoDe`, em utils/premios.js). É o único badge de prova sem
+             sessões indeterminadas — e a 2.ª, a 3.ª e a 4.ª prova de um
+             terreno também não ficam por decidir: têm o dado e simplesmente
+             não enchem encaixe nenhum (NENHUM_ENCAIXE).
+   cor       --race (âmbar) — nasce de provas.
+   família   desempenho — 21 km em trail não é a mesma prova que 21 km em
+             estrada, e é essa diferença que o badge mede. O medalhão ficava
+             "sem esmalte" porque contava ocorrências; a vitrina não tem essa
+             saída, e não precisa dela: a prata aqui é dos amuletos.
+   níveis    não — quatro encaixes.
+
+   Um prémio por encaixe, pela mesma razão d'As Distâncias: a primeira prova
+   de trail é um feito seu, e não fica à espera da quinta de estrada. */
+const TERRENO_MARCOS = [1, 5];
+
+function terreno({ completed }) {
+  /* Que prova enche que encaixe, decidido UMA vez com `provasDoTerreno` (da
+     mais antiga para a mais recente, que é a ordem em que se ganha a
+     primeira e a quinta). O `encaixeDe` abaixo só consulta o resultado — uma
+     prova não sabe sozinha que é a quinta. */
+  const doEncaixe = new Map();
+  const encaixes = [];
+  for (const n of TERRENO_MARCOS) {
+    for (const t of TERRENOS) {
+      const provas = provasDoTerreno(completed, t.key);
+      const nth = provas[n - 1] || null;
+      const key = `${t.key}${n}`;
+      encaixes.push({
+        key,
+        label: n === 1 ? `1.ª ${t.em}` : `${n} ${t.em}`,
+        marco: n,
+        terreno: t,
+      });
+      if (nth?.race?.id != null) doEncaixe.set(nth.race.id, key);
+    }
+  }
+
+  return badgeDeEncaixes({
+    key: 'terreno',
+    name: 'O Terreno',
+    rule: 'A primeira prova de cada terreno e a quinta: estrada e trail contam em separado.',
+    familia: 'desempenho',
+    cor: 'race',
+    glifo: 'map',
+    campo: 'race_type',
+    campoLabel: 'o terreno da prova',
+    dependeDe: 'Precisa do terreno da prova — que qualquer prova já tem: trail, ou estrada em tudo o resto.',
+    comoResolver: 'Nada a resolver: uma prova sem terreno marcado conta como estrada, que é o que era.',
+    encaixes,
+    candidatas: completed,
+    fazSessao: sessaoDaProva,
+    dataDe: (entry) => dayOf(entry?.race?.date),
+    metaSimples: () => null,
+    encaixeDe: (entry) => doEncaixe.get(entry?.race?.id) ?? NENHUM_ENCAIXE,
+    descreveEncaixe: (encaixe, entry) => linhaDaProva(entry),
+    porqueConta: (encaixe) => (encaixe.marco === 1
+      ? `A tua primeira prova ${encaixe.terreno.em}.`
+      : `A tua ${encaixe.marco}.ª prova ${encaixe.terreno.em}.`),
+    semNada: 'ainda sem provas concluídas',
+    duePorEncaixe: (encaixe, { race }) => ({
+      value: encaixe.marco,
+      valueUnit: 'count',
+      raceId: race?.id ?? null,
+      title: encaixe.marco === 1 ? `Primeira ${encaixe.terreno.em}` : `${encaixe.marco} provas ${encaixe.terreno.em}`,
+      line: encaixe.marco === 1
+        ? `${race?.name || 'A prova'} — a tua primeira prova ${encaixe.terreno.em}.`
+        : `${race?.name || 'A prova'} — a tua ${encaixe.marco}.ª prova ${encaixe.terreno.em}.`,
+    }),
+    linhaDue: () => 'A primeira e a quinta, em estrada e em trail.',
+  });
+}
+
+// ── 14. A Sequência ──────────────────────────────────────────────────────
+
+/* chave     sequencia
+   regra     "A maior série de provas seguidas com a corrida registada: 3
+             (bronze), 5 (prata), 8 (ouro)."
+   campo     race_events.status + a corrida ligada (findRaceRun)
+   em falta  NÃO HÁ indeterminadas, e é o único badge de que isso se diz
+             assim: aqui a ausência do dado É a resposta. Uma prova que
+             passou sem a corrida registada não fica por decidir — QUEBRA a
+             sequência, que é a regra inteira deste badge.
+   cor       --ok (verde) — disciplina, e não âmbar apesar de contar provas.
+             A cor diz de onde vem o feito e a família diz o que ele mede;
+             aqui as duas apontam para o mesmo sítio e o que se mede não é a
+             prova, é APARECER: uma sequência não se corre melhor, cumpre-se.
+             É o mesmo verde da Semana 100% e do Descanso cumprido.
+   família   disciplina.
+   níveis    sim: 3, 5 e 8 provas seguidas.
+
+   ── PORQUÊ 3 / 5 / 8, SE O MEDALHÃO TINHA 2, 3, 5 E 8 ───────────────────
+   Quatro encaixes não cabem em três degraus, e o que saiu foi o 2: duas
+   provas seguidas não são uma série, são uma coincidência — e o estado "a
+   caminho" já mostra "2/3" no anel, que diz a mesma coisa sem a cunhar.
+   ⚠️ Quem já tinha a medalha das 2 no Palmarés NÃO ganha bronze por ela; é
+   matéria da migração de dados (fase B), não desta.
+
+   O varrimento é um só e vive em `utils/premios.js` (`varrerSequencia`), que
+   devolve os RECORDES: cada vez que a maior série de sempre cresce. Como ela
+   cresce de um em um, cada recorde é um passo novo — e uma medalha ganha não
+   se perde no dia em que a série seguinte quebra, que é a razão de o
+   varrimento guardar máximos em vez de olhar só para a série em curso. */
+const SEQUENCIA_LIMIARES = [3, 5, 8];
+
+function sequencia({ completed, raceEvents, runs, today }) {
+  const { recordes } = varrerSequencia({ raceEvents, runs, today });
+  const passos = recordes.map((r) => ({ valor: r.n, date: r.awardedOn, raceId: r.race?.id ?? null }));
+
+  /* A lista do detalhe é a história toda, prova a prova: as que contaram e
+     as que quebraram. É a única forma de o atleta ver ONDE a série partiu —
+     um número sozinho não o diz. */
+  const entryDaProva = new Map(completed.map((entry) => [entry.race.id, entry]));
+  const passadas = (raceEvents || [])
+    .filter((race) => race && dayOf(race.date) && dayOf(race.date) <= today);
+  const sessoes = newestFirst(passadas.map((race) => {
+    const entry = entryDaProva.get(race.id);
+    return entry
+      ? sessaoDaProva(entry, { status: 'conta', porque: 'Corrida registada — a série continuou.' })
+      : sessaoDaProva({ race, outcome: null }, { status: 'falhou', porque: 'Passou sem a corrida registada — quebrou a série.' });
+  }));
+
+  return badgeDeNiveis({
+    key: 'sequencia',
+    name: 'A Sequência',
+    rule: 'A maior série de provas seguidas com a corrida registada — 3 para bronze, 5 para prata, 8 para ouro.',
+    familia: 'disciplina',
+    cor: 'ok',
+    glifo: 'link',
+    campo: 'race_events.status',
+    campoLabel: 'a corrida ligada à prova',
+    dependeDe: 'Precisa da prova marcada como concluída e da corrida registada nela.',
+    comoResolver: 'Abre o hub da prova e regista a corrida — uma prova que passa sem registo quebra a série.',
+    unidade: 'count',
+    limiares: SEQUENCIA_LIMIARES,
+    passos,
+    fmtValor: (n) => `${Math.max(0, Math.round(n))} ${plural(Math.round(n), 'prova', 'provas')}`,
+    fmtCentroValor: (n) => String(Math.max(0, Math.round(n))),
+    sessoes,
+    // Ver o bloco acima: aqui a falta do registo é a resposta, não uma dúvida.
+    indeterminadas: [],
+    semNada: 'ainda sem provas seguidas com a corrida registada',
+    tituloDe: 'seguidas com a corrida registada',
+    linhaDue: (g) => `${g.valor} provas seguidas com a corrida registada — ${g.nivel.label.toLowerCase()} d'A Sequência.`,
+  });
+}
+
 // ── OS AMULETOS ──────────────────────────────────────────────────────────
 
 /* Seis badges que não medem desenvolvimento nenhum (família `amuletos`, ao
@@ -1756,123 +2548,10 @@ function recordePessoal({ completed }) {
    identifica — e é meia razão para a família existir.
 
    ── O QUE ENTRA ─────────────────────────────────────────────────────────
-   Os amuletos leem `treinos`, como todos os outros badges desta vitrina: uma
-   prova não é treino (ver `treinosDe`, no fim do ficheiro), e não se abre
-   aqui uma exceção só porque o badge é leve. */
-
-/** "madrugada, manhã e noite" — a enumeração portuguesa, com o "e" no fim. */
-function juntar(partes) {
-  if (partes.length <= 1) return partes[0] || '';
-  return `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}`;
-}
-
-/* ── Os badges de ENCAIXES ───────────────────────────────────────────────
-   Três amuletos são o mesmo jogo: um conjunto FIXO de encaixes (as quatro
-   faixas do dia, as quatro estações, os dois solstícios) e um badge que se
-   ganha quando todos ficam preenchidos. O que muda é o que define o encaixe
-   e as palavras — por isso a varredura vive aqui uma vez, como a dos badges
-   de medida.
-
-   `encaixeDe(run)` devolve a chave do encaixe, ou `null` quando falta o dado
-   (é o que cria a sessão indeterminada — a mesma regra de sempre).
-
-   A lista de sessões mostra só a PRIMEIRA corrida de cada encaixe. As outras
-   não falharam nada, apenas repetiram um encaixe já preenchido, e listá-las
-   todas enchia o ecrã sem responder à única pergunta que ele tem de
-   responder: quais os encaixes que faltam. */
-function badgeDeEncaixes({
-  key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
-  encaixes, encaixeDe, candidatas, descreveEncaixe, porqueConta, semNada, linhaDue,
-}) {
-  const porEncaixe = new Map();
-  const indeterminadas = [];
-  const ordenadas = [...candidatas].sort((a, b) => (dayOf(a.date) || '').localeCompare(dayOf(b.date) || ''));
-  for (const run of ordenadas) {
-    const encaixe = encaixeDe(run);
-    if (encaixe == null) { indeterminadas.push(run); continue; }
-    if (!porEncaixe.has(encaixe)) porEncaixe.set(encaixe, run);
-  }
-
-  const cheios = encaixes.filter((e) => porEncaixe.has(e.key));
-  const vazios = encaixes.filter((e) => !porEncaixe.has(e.key));
-  const completo = vazios.length === 0 && encaixes.length > 0;
-  // O dia em que o último encaixe se preencheu — o primeiro dia em que os
-  // dados o provam, a mesma régua do resto do ficheiro.
-  const ultimoDia = cheios
-    .map((e) => dayOf(porEncaixe.get(e.key).date))
-    .sort()
-    .slice(-1)[0] || null;
-
-  const sessoes = newestFirst([
-    ...cheios.map((e) => {
-      const run = porEncaixe.get(e.key);
-      return sessaoDaCorrida(run, {
-        status: 'conta',
-        meta: descreveEncaixe(e, run),
-        porque: porqueConta(e),
-      });
-    }),
-    ...indeterminadas.map((run) => sessaoDaCorrida(run, {
-      status: 'indeterminada',
-      meta: run?.distance_km ? fmtKmLinha(num(run.distance_km)) : null,
-      porque: `Sem ${campoLabel} no registo.`,
-    })),
-  ]);
-
-  const comum = {
-    key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
-    unidade: 'count',
-    value: cheios.length,
-    sessoes,
-    indeterminadas: blocoIndeterminadas(indeterminadas, { campoLabel, comoResolver }),
-  };
-
-  const faltam = juntar(vazios.map((e) => e.label));
-
-  if (completo) {
-    return {
-      badge: badge({
-        ...comum,
-        state: 'won',
-        ring: 1,
-        centro: String(encaixes.length),
-        centroAria: `${name}: ganho, ${juntar(encaixes.map((e) => e.label))}`,
-        count: 1,
-        awardedOn: ultimoDia,
-        linha: `${juntar(encaixes.map((e) => e.label))} — completo a ${formatDatePTShort(ultimoDia)}`,
-        detalhe: juntar(encaixes.map((e) => e.label)),
-      }),
-      due: [{
-        badgeKey: key,
-        tier: '',
-        // Ganha-se uma vez: não há período que distinga uma repetição, e
-        // repetir "as quatro estações" não é feito nenhum novo.
-        periodKey: '',
-        value: encaixes.length,
-        valueUnit: 'count',
-        raceId: null,
-        awardedOn: ultimoDia,
-        title: name,
-        line: linhaDue({ ultimoDia }),
-      }],
-    };
-  }
-
-  const comecou = cheios.length > 0;
-  return {
-    badge: badge({
-      ...comum,
-      state: comecou ? 'progress' : 'empty',
-      ring: comecou ? Math.min(cheios.length / encaixes.length, 0.99) : 0,
-      centro: `${cheios.length}/${encaixes.length}`,
-      centroAria: comecou
-        ? `${name}: a caminho, ${cheios.length} de ${encaixes.length}. ${plural(vazios.length, 'Falta', 'Faltam')} ${faltam}`
-        : `${name}: por ganhar. ${rule}`,
-      linha: comecou ? `${plural(vazios.length, 'falta', 'faltam')} ${faltam}` : semNada,
-    }),
-    due: [],
-  };
-}
+   Os amuletos leem `treinos`, como todos os badges de treino desta vitrina:
+   uma prova não é treino (ver `treinosDe`, no fim do ficheiro), e não se abre
+   aqui uma exceção só porque o badge é leve. Os badges de prova — que desde
+   a fase A são cinco — leem `completedRaces`, e nunca as duas listas. */
 
 /* ── O CALENDÁRIO DO SOL ─────────────────────────────────────────────────
    Duas estações do ano e dois solstícios são perguntas de astronomia, não de
@@ -2578,9 +3257,15 @@ export function computeBadges({
     cadencia_corrigida: cadenciaCorrigida(ctx),
     cabra_montesa: cabraMontesa(ctx),
     medida_da_prova: medidaDaProva(ctx),
+    distancias: distancias(ctx),
+    terreno: terreno(ctx),
+    niveis: niveis(ctx),
+    superacao: superacao(ctx),
     recorde_pessoal: recordePessoal(ctx),
     semana_100: semana100(ctx),
     descanso_cumprido: descansoCumprido(ctx),
+    sequencia: sequencia(ctx),
+    quilometros: quilometros(ctx),
     escalada: escalada(ctx),
     coruja: coruja(ctx),
     volta_ao_relogio: voltaAoRelogio(ctx),
@@ -2615,12 +3300,18 @@ export function computeBadges({
  * nova nenhuma aqui — o motor é o de sempre, e um badge só entra no mural
  * de uma prova se foi ESSA prova a dá-lo.
  *
- * Hoje isso é o `recorde_pessoal`, o único badge que nasce de uma prova (e o
- * único âmbar da vitrina). O "À medida da prova" NÃO entra, apesar de ter
- * uma prova no nome: mede saídas de TREINO contra a prova principal que
- * ainda está por correr (`provaAlvo` exclui as concluídas), e os seus
- * prémios trazem `raceId: null`. Pô-lo no mural de uma prova concluída era
- * mostrar, no mural da prova A, um badge ganho a preparar a prova B.
+ * Desde a fase A são cinco: o `recorde_pessoal` e os quatro que vieram d'O
+ * Palmarés — `distancias` (a primeira vez naquela distância), `terreno` (a
+ * 1.ª ou a 5.ª naquele terreno), `niveis` (a prova que subiu o VDOT) e
+ * `superacao` (o objetivo batido). Todos trazem o `raceId` da prova que os
+ * deu, que é o que este filtro pergunta. A `sequencia` também o traz, na
+ * prova que confirmou o recorde da série.
+ *
+ * O "À medida da prova" NÃO entra, apesar de ter uma prova no nome: mede
+ * saídas de TREINO contra a prova principal que ainda está por correr
+ * (`provaAlvo` exclui as concluídas), e os seus prémios trazem
+ * `raceId: null`. Pô-lo no mural de uma prova concluída era mostrar, no
+ * mural da prova A, um badge ganho a preparar a prova B.
  *
  * Devolve o badge calculado, mais o título e a frase DAQUELE prémio — o
  * badge diz "3 recordes", o prémio diz qual foi o desta prova.

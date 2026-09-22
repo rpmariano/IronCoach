@@ -163,6 +163,44 @@ export const bateuRecordePessoal = (outcome) => !!outcome?.isPersonalRecord;
  *  medalhões: é só da prova. */
 export const acimaDoTreino = (outcome) => outcome?.vsTraining === 'acima';
 
+// ── As distâncias de prova ───────────────────────────────────────────────
+
+/* As quatro distâncias que dão prémio, pela distância OFICIAL da prova e não
+   pela categoria de treino de `categorizeDistance` (utils/run.js): aí a
+   "meia" vai de 11 a 22,5 km e a "maratona" de 22,5 a 50, e uma prova de
+   15 km levava o prémio dos 21,1. A folga de cada banda cobre o GPS e os
+   percursos medidos por cima.
+
+   Vive aqui, ao lado de TERRENOS, porque é a mesma espécie de regra — o que
+   é uma prova de 10 km, tal como o que é uma prova de trail — e porque
+   passou a ter dois leitores: O Palmarés (`utils/medalhoes.js`) e o badge
+   `distancias` de `utils/badges.js`. O Palmarés ainda tem a sua cópia da
+   tabela; é essa que desaparece quando o ficheiro desaparecer, não esta. */
+export const DISTANCIAS_DE_PROVA = [
+  { key: '5k', min: 4.8, max: 5.5, label: '5 km', nome: '5 km', primeira: 'Primeiros 5 km' },
+  { key: '10k', min: 9.5, max: 11, label: '10 km', nome: '10 km', primeira: 'Primeiros 10 km' },
+  { key: '21k', min: 20.5, max: 22.5, label: '21,1 km', nome: 'meia maratona', primeira: 'Primeira meia maratona' },
+  { key: '42k', min: 41.5, max: 43.5, label: '42,2 km', nome: 'maratona', primeira: 'Primeira maratona' },
+];
+
+/** Os quilómetros de uma prova: os da agenda e, se lá não estiverem, os que o
+ *  veredicto apurou da corrida ligada. Null quando não há nenhum dos dois —
+ *  e é esse null que deixa a prova por decidir, em vez de a pôr num encaixe
+ *  errado. */
+export function kmDeProva(race, outcome) {
+  const km = Number(race?.distance_km) || Number(outcome?.distanceKm);
+  return Number.isFinite(km) && km > 0 ? km : null;
+}
+
+/** A distância de DISTANCIAS_DE_PROVA em que uma prova cai, ou null se cair
+ *  entre bandas (uma prova de 15 km não é nenhuma das quatro) ou se não se
+ *  souber a distância. */
+export function distanciaDeProva(race, outcome) {
+  const km = kmDeProva(race, outcome);
+  if (km == null) return null;
+  return DISTANCIAS_DE_PROVA.find((d) => km >= d.min && km <= d.max) || null;
+}
+
 // ── O terreno ────────────────────────────────────────────────────────────
 
 /* Estrada e trail são os dois únicos terrenos (RACE_TERRAIN_TYPES em
