@@ -39,9 +39,12 @@ import {
   completedRaces,
   dayOf,
   daysBetween,
+  fmtKmLinha,
+  newestFirst,
   plural,
   provasDoTerreno,
   requireToday,
+  runKindLabel,
   varrerSequencia,
 } from './premios';
 import { findRaceRun, formatDuration, formatPace, raceDistanceLabel } from './run';
@@ -145,32 +148,10 @@ function slot(fields) {
    `kind: 'gym'` e não abrem nada, porque o plano não guarda qual foi a
    sessão gravada. Forma: { kind, id, raceId, runId, date, title, meta }. */
 
-// O mesmo nome que o cartão da corrida dá ao tipo de treino (Run/RunCard.jsx,
-// runKindLabel) — a lista tem de ler-se como o Calendário.
-const TIPOS_TREINO = {
-  continuo: 'Contínuo',
-  longo: 'Longo',
-  recuperacao: 'Recuperação',
-  tempo: 'Ritmo (Tempo)',
-  fartlek: 'Fartlek',
-  intervalos: 'Intervalos',
-  subidas: 'Subidas',
-  trail: 'Trail',
-  tecnico: 'Técnico (trilho)',
-};
-
-function runKindLabel(run) {
-  if (run?.kind === 'competicao') return 'Competição';
-  if (run?.kind === 'treino' && run.training_type) return TIPOS_TREINO[run.training_type] || capitalize(run.training_type);
-  return 'Corrida';
-}
-
-/** "10,2 km": uma casa decimal, para a linha de um registo. */
-function fmtKmLinha(value) {
-  return `${String(Math.round(value * 10) / 10).replace('.', ',')} km`;
-}
-
-const newestFirst = (list) => [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+/* O nome de um registo (`runKindLabel`), a distância numa linha
+   (`fmtKmLinha`) e a ordem da lista (`newestFirst`) vivem no motor
+   (utils/premios.js) desde que os badges de treino (utils/badges.js)
+   passaram a montar as mesmas listas. */
 
 function raceContribution({ race, run, outcome }, { metaExtra = [], ...extra } = {}) {
   return {

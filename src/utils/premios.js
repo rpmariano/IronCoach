@@ -81,6 +81,40 @@ export const plural = (n, um, varios) => (n === 1 ? um : varios);
 /** "3.ª prova" — o ordinal feminino, que é como se lê em português. */
 export const ordinalFem = (n) => `${n}.ª`;
 
+// ── O nome de um registo ─────────────────────────────────────────────────
+
+/* O mesmo nome que o cartão da corrida dá ao tipo de treino (Run/RunCard.jsx,
+   runKindLabel) — a lista tem de ler-se como o Calendário. Vive aqui, e não
+   na vista, desde que os badges de treino (utils/badges.js) passaram a
+   precisar dela ao lado d'O Palmarés: uma segunda cópia da tabela era a
+   forma garantida de os dois ecrãs chamarem nomes diferentes ao mesmo
+   treino. */
+export const TIPOS_TREINO = {
+  continuo: 'Contínuo',
+  longo: 'Longo',
+  recuperacao: 'Recuperação',
+  tempo: 'Ritmo (Tempo)',
+  fartlek: 'Fartlek',
+  intervalos: 'Intervalos',
+  subidas: 'Subidas',
+  trail: 'Trail',
+  tecnico: 'Técnico (trilho)',
+};
+
+export function runKindLabel(run) {
+  if (run?.kind === 'competicao') return 'Competição';
+  if (run?.kind === 'treino' && run.training_type) return TIPOS_TREINO[run.training_type] || capitalize(run.training_type);
+  return 'Corrida';
+}
+
+/** "10,2 km": uma casa decimal, para a linha de um registo. */
+export function fmtKmLinha(value) {
+  return `${String(Math.round(value * 10) / 10).replace('.', ',')} km`;
+}
+
+/** Os registos da lista, do mais recente para o mais antigo. */
+export const newestFirst = (list) => [...list].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
 // ── A régua das provas ───────────────────────────────────────────────────
 
 /* As provas que contam: `status = 'concluida'`, com corrida ligada

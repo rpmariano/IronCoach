@@ -7,8 +7,8 @@ import { useCountUpDisplay } from '../../utils/useCountUp';
    mais pequeno da app). `empty` desenha os anéis tracejados do primeiro dia.
 
    `animate` é a animação 1 do ponto 9 ("anéis que se desenham"): os três
-   partem de zero com 80 ms de desfasamento, de fora para dentro, em
-   --dur-rings (1100 ms). Quem decide é quem monta o componente — no Início
+   partem de zero com --stagger-rings (80 ms) de desfasamento, de fora para
+   dentro, em --dur-rings (1100 ms). Quem decide é quem monta o componente — no Início
    é o useRevealAnimation do StatusCard: quando a órbita aparece no ecrã, e
    outra vez ao voltar ao Início. */
 const RADII = [60, 45, 30];
@@ -40,7 +40,12 @@ export function Orbit({ rings = [], size = 116, empty = false, animate = false }
             <circle
               cx="66" cy="66" r={r} fill="none" stroke={ring.color} strokeWidth="9" strokeLinecap="round"
               strokeDasharray={c} strokeDashoffset={drawn ? c * (1 - pct) : c}
-              style={{ filter: `drop-shadow(0 0 6px ${ring.color}88)`, transition: animate ? `stroke-dashoffset var(--dur-rings) var(--ease-out) ${i * 80}ms` : 'none' }}
+              // O desfasamento é o token --stagger-rings (tokens/motion.css),
+              // não um 80 escrito à mão: o token existia e nunca era lido, e
+              // os anéis dos badges (shared/BadgeRing.jsx) passaram a precisar
+              // do MESMO valor — dois 80 em ficheiros diferentes acabariam
+              // por deixar de ser o mesmo número.
+              style={{ filter: `drop-shadow(0 0 6px ${ring.color}88)`, transition: animate ? `stroke-dashoffset var(--dur-rings) var(--ease-out) calc(var(--stagger-rings) * ${i})` : 'none' }}
             />
           </g>
         );

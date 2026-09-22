@@ -15,6 +15,7 @@ import TabelasConsentScreen from './TabelasConsentScreen';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
 import PalmaresCard from './PalmaresCard';
+import BadgesCard from './BadgesCard';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
@@ -924,15 +925,21 @@ export default function Perfil() {
           </div>
       </div>
 
-      {/* Vitrina — o Palmarés (medalhões), mudado do separador Provas para
-          aqui (2026-09-22, fase 1 da reforma da gamificação). Igual ao
-          Equipamento, não escreve no rascunho partilhado: o cartão lê tudo
-          direto do store e abre as suas próprias persianas. onOpenRace
-          continua a ser setEditingRaceId — o hub da prova é um overlay
-          global (App.jsx, fora dos separadores), por isso abrir a partir
-          daqui não precisa de nenhuma navegação entre separadores nova. */}
+      {/* Vitrina — os badges de treino e o Palmarés (medalhões), mudado do
+          separador Provas para aqui (2026-09-22, fase 1 da reforma da
+          gamificação). Igual ao Equipamento, não escreve no rascunho
+          partilhado: os cartões leem tudo direto do store e abrem as suas
+          próprias persianas. onOpenRace continua a ser setEditingRaceId — o
+          hub da prova é um overlay global (App.jsx, fora dos separadores),
+          por isso abrir a partir daqui não precisa de nenhuma navegação
+          entre separadores nova.
+
+          A ordem diz o que é cada coisa: em cima os badges, que são os dias
+          de treino entre as provas (fase 2); por baixo o Palmarés, que é a
+          vida de prova. Os badges SOMAM-SE — não substituem nada. */}
       <div ref={(el) => { pageRefs.current[2] = el; setPageRef(2)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Vitrina</h2>
+          <BadgesCard />
           <PalmaresCard onOpenRace={setEditingRaceId} />
       </div>
 
