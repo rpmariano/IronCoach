@@ -50,16 +50,23 @@ create table if not exists public.user_badges (
   -- É a mesma convenção que period_key já usa aqui e em medal_awards.
   tier text not null default '' check (tier in ('', 'bronze', 'prata', 'ouro')),
   -- O período/ocorrência que distingue as repetições: o id da corrida
-  -- (Mestre da Z2, Negative split, Cabra-montesa), a segunda-feira da semana
-  -- (Semana 100%, Descanso cumprido), o id da prova (Recorde pessoal), ''
-  -- quando o badge se ganha uma vez por nível (A Escalada, a Coruja).
+  -- (Mestre da Z2, Negative split, Cabra-montesa, À medida da prova, Número
+  -- certo), a segunda-feira da semana (Semana 100%, Descanso cumprido), o id
+  -- da prova (Recorde pessoal), o ano (Anos), '' quando o badge se ganha uma
+  -- vez por nível (A Escalada, a Coruja) ou de todo (os amuletos de
+  -- encaixes: Volta ao relógio, Quatro estações, Solstício, Relógio suíço).
   period_key text not null default '',
   -- O número que o badge gravou. A unidade está na coluna ao lado.
   value numeric,
   -- 'spm' entrou com a Cadência corrigida: o número que ela guarda são os
   -- passos por minuto GANHOS face à régua da doutrina 2.4 #3, não a cadência
   -- em si.
-  value_unit text check (value_unit is null or value_unit in ('pct', 'count', 'seconds', 'km', 'vdot', 'metros', 'spm')),
+  -- 'anos' entrou com o amuleto Anos, e é a única unidade desta lista que não
+  -- mede treino nenhum: são os anos que o atleta fez no dia em que correu.
+  -- Podia ter ido em 'count' — não foi, porque 'count' quer dizer "quantas
+  -- vezes" em todas as outras linhas da tabela, e 41 ali não são 41 vezes
+  -- nada. Uma unidade nova é mais barata do que uma unidade com dois sentidos.
+  value_unit text check (value_unit is null or value_unit in ('pct', 'count', 'seconds', 'km', 'vdot', 'metros', 'spm', 'anos')),
   -- Só os badges que nascem de uma prova (hoje: recorde_pessoal). on delete
   -- set null: apagar a prova não apaga a memória do badge.
   race_id uuid references public.race_events(id) on delete set null,
@@ -128,4 +135,4 @@ comment on column public.user_badges.tier is
   'não enfiado no period_key, como o Palmarés fez.';
 
 comment on column public.user_badges.value_unit is
-  'A unidade de `value`: pct, count, seconds, km, vdot, metros ou spm.';
+  'A unidade de `value`: pct, count, seconds, km, vdot, metros, spm ou anos.';

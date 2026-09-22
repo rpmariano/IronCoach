@@ -13,6 +13,11 @@ com a ressalva de método que lhes corresponde: foram investigadas só por
 pesquisa web, porque o proxy desta sessão bloqueou o acesso direto às páginas
 dos artigos. Confiança calibrada em conformidade e lacunas declaradas.
 
+E uma terceira entrada não é sequer investigação: **6 #6** — os badges que a
+Carol nunca sugere — é uma decisão de produto do atleta, registada na
+doutrina porque é só por aqui que ela chega à Carol. Está assinalada como
+tal, e não reclama confiança de literatura nenhuma.
+
 ## Estrutura
 
 | Ficheiro | Cobre |
@@ -29,7 +34,7 @@ dos artigos. Confiança calibrada em conformidade e lacunas declaradas.
 | [04-nutricao-seguranca.md](04-nutricao-seguranca.md) | RED-S, défice máximo, piso de gordura corporal |
 | [04-nutricao-treino-prova.md](04-nutricao-treino-prova.md) | Timing peri-treino, carga de hidratos, cafeína, sódio |
 | [05-corpo.md](05-corpo.md) | Métricas de bioimpedância fiáveis, metas realistas, transtornos alimentares |
-| [06-head-coach-arbitragem.md](06-head-coach-arbitragem.md) | Hierarquia de alarmes, comunicação por nível, o que nunca dizer |
+| [06-head-coach-arbitragem.md](06-head-coach-arbitragem.md) | Hierarquia de alarmes, comunicação por nível, o que nunca dizer, os badges que nunca se sugerem |
 | [07-sugestoes-alimentares.md](07-sugestoes-alimentares.md) | Macros por refeição, equivalência g/kg→alimentos, pré-prova, restrições |
 | [08-nivel-por-prova-trail.md](08-nivel-por-prova-trail.md) | Nível para uma prova concreta, bandas D+/km, pré-requisitos de trail, triagem por Tempo em Pé |
 
@@ -66,7 +71,7 @@ modelo de duas formas:
 | 3 — Ginásio | ✅ Doutrina completa no prompt (papel por nível, grupos prioritários, séries/sem, faixas reps, progressão, interferência, manutenção, pliometria, falha); `computeGymMetrics` deteta spike volume-carga pernas (#6), intervalo <48h (#7) e séries ≥15 reps (#10); `highRepSets` tracking em `summariseSessions` |
 | 4.1/4.2/4.3 — Nutrição | ✅ Doutrina completa no prompt (tabelas proteína/hidratos/gordura, TMB/GETD Mifflin-St Jeor, défice máximo, hidratação, RED-S, ferro, ritmo de perda de peso, pré/pós-treino, carb-loading, fibra, cafeína); `buildNutritionTargets` calcula TMB+GETD+proteína+hidratação em tempo real com dados do perfil e volume semanal; flag RED-S se FC repouso <40 bpm; 22 testes novos (total 120) |
 | 5 — Corpo | ✅ Doutrina completa no prompt (BIA fiável vs. não fiável, variação de peso, médias móveis, gordura corporal faixas + piso RED-S, peso de prova proibido em iniciante/básico, tabela de ganho muscular por nível, visceral fat Renpho, água corporal, sinais de sobretreino #1-#4); `computeBodyMetrics` deteta queda de peso >1,5% em 72h (#11), gordura abaixo do piso RED-S (#6), visceral fat ≥10/≥15 (#8), exclui `muscle_mass_kg` (não fiável); fetch de `body_assessments` (30 dias) injetado no contexto; 21 testes novos (total 141) |
-| 6 — Head Coach | ✅ Doutrina completa no prompt: conflito composição/prova (défice a zero a 21-28d de prova A), hierarquia G1-G5 com ações explícitas (G1→clearance médico, G2→ortopedia, G3→multidisciplinar, G4→repouso, G5→sem impacto), vocabulário por nível (1-2 recs/iniciante → 4-5+/avançado; VDOT/HRV/RIR proibidos em iniciante), temas contraindicados por nível, frequência de ajuste 7-14 dias com razão fisiológica (Issurin/Verkhoshansky); 7 testes novos (total 148) |
+| 6 — Head Coach | ✅ Doutrina completa no prompt: conflito composição/prova (défice a zero a 21-28d de prova A), hierarquia G1-G5 com ações explícitas (G1→clearance médico, G2→ortopedia, G3→multidisciplinar, G4→repouso, G5→sem impacto), vocabulário por nível (1-2 recs/iniciante → 4-5+/avançado; VDOT/HRV/RIR proibidos em iniciante), temas contraindicados por nível, frequência de ajuste 7-14 dias com razão fisiológica (Issurin/Verkhoshansky); 7 testes novos (total 148). **Badges que a Carol nunca sugere (6 #6, nova em 2026-09-22): ⚠️ meio wired** — a `familia` que identifica os badges proibidos existe em `src/utils/badges.js` e a Vitrina já a respeita (a frase de progresso nunca mostra um amuleto), mas nenhuma Edge Function recebe o estado dos badges no contexto; no dia em que receber, as três regras têm de entrar no mesmo commit |
 | 7 — Sugestões alimentares | ✅ `MEAL_DOCTRINE` em `coach-chat`, `coach-daily-summary`, `analyze-meal`; restrições alimentares em `src/utils/diet.js` |
 | 8 — Nível por prova / trail | ✅ Motor completo e ligado dos dois lados: `categorizeElevationRatio()`, invalidação do nível, `assessRaceLevelTriage()`, `RaceLevelSuggestion.jsx`, `ExperienceLevelHelp.jsx` (`context='prova'`) no formulário; `buildRaceEventsContext` injeta o NÍVEL MEDIDO no `coach-chat` — ver [specs/nivel-por-prova.md](../../specs/nivel-por-prova.md) |
 

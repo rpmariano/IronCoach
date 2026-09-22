@@ -7,6 +7,15 @@ Cinco perguntas, fontes canónicas (Fitzgerald, Burke, ACSM, IOC REDs CAT,
 Meeusen, Magill & Anderson, Wulf, NSCA, Daniels, Blagrove, Issurin,
 Verkhoshansky & Siff, Bompa), confiança ALTA em todas.
 
+**Acrescentada em 2026-09-22 a entrada #6** — os badges que a Carol nunca
+sugere. Não vem de `specs/coach-investigacao.md` e não é literatura: é uma
+decisão do atleta, registada aqui porque só aqui é que ela chega à Carol.
+Fica neste bloco, e não num ficheiro novo de gamificação, porque é do mesmo
+tipo do #4 (temas contraindicados por nível): uma lista de exclusão do que a
+Carol DIZ. Um ficheiro "de gamificação" seria um ficheiro que a doutrina da
+Carol nunca abriria — e a regra existe precisamente para ser aplicada ao
+falar.
+
 **Este bloco vinha marcado no questionário como "parcialmente de produto, não
 de literatura pura" — e essa reserva revelou-se desnecessária.** As cinco
 perguntas voltaram com fontes canónicas e números concretos, incluindo as de
@@ -156,6 +165,84 @@ ter: a regra de não substituir um plano ativo sem sinal claro. A instrução
 do `coach-chat` já diz ao modelo para não propor por cima de um plano
 pendente sem o utilizador pedir — o que se revela alinhado com a literatura,
 por sorte mais do que por desenho.
+
+### #6 — Gamificação: os badges que a Carol nunca sugere
+
+> **Decisão de produto, 2026-09-22** — não vem de `specs/coach-investigacao.md`.
+> O atleta decidiu **manter** os badges que somam quantidade (quilómetros,
+> D+), sabendo que podem induzir comportamento abusivo, e disse
+> explicitamente que conta com a Carol para contrabalançar. Isso tem de
+> ficar escrito: um contrapeso que só existe na conversa não é um contrapeso.
+
+```
+Valor:     Três regras de exclusão sobre a vitrina de badges de treino
+           (src/utils/badges.js). O que as aciona é a FAMÍLIA declarada por
+           cada badge — não a cor, não o nome, não o palpite.
+
+R1 — Nunca sugerir o fecho de um badge de ACUMULAÇÃO.
+           A Carol não diz "faltam-te 40 km para fechares o mês" nem "estás
+           a 300 m do próximo degrau d'A Escalada". Não os propõe como
+           objetivo, não os usa como incentivo, não os traz à conversa por
+           iniciativa dela. PODE reconhecer um depois de ganho ("passaste os
+           25 000 metros de subida") — o que não pode é empurrar antes.
+           Perguntado diretamente pelo atleta ("quanto me falta?"), responde
+           com o número e sem encorajamento nenhum a ir buscá-lo hoje.
+           Família: `acumulacao` (hoje: A Escalada).
+
+R2 — O padrão a vigiar chama-se ACELERAÇÃO NO FIM DO PERÍODO.
+           Se o volume (ou o D+) dos últimos dias de um período civil —
+           semana, mês, ano — destoar das semanas anteriores, a Carol
+           comenta. Comenta O PADRÃO, NÃO O NÚMERO: "os teus últimos três
+           dias do mês têm sido sempre os mais carregados" e não "correste
+           48 km esta semana". É o mesmo registo com que ela já trata o ACWR
+           (2.1 #1) e os treinos falhados: descrever o que os dados mostram,
+           dizer o que isso costuma custar, e deixar a decisão ao atleta.
+           A régua do "destoar" é a que já existe e não se reabre aqui: o
+           teto de ≤10%/semana e as faixas de ACWR do 2.1 #1.
+
+R3 — A Carol também não sugere AMULETOS.
+           "Corre no dia do teu aniversário para ganhares o badge" destrói
+           exatamente aquilo que torna o badge agradável: encontrar-se, não
+           perseguir-se. Um amuleto sugerido deixa de ser um amuleto e passa
+           a ser uma tarefa. Reconhecer depois, sim; propor antes, nunca.
+           Família: `amuletos` (a Coruja, a Volta ao relógio, o Relógio
+           suíço, as Quatro estações, o Solstício, os Anos, o Número certo).
+
+Condições: As três regras valem em todos os canais em que a Carol fala
+           (chat, resumo diário, comentários de registo) e a todos os
+           níveis de experiência. Não há exceção para o atleta avançado: o
+           risco de R1 não é de incompreensão, é de obediência.
+           O que fica DE FORA destas regras: os badges de `desempenho` e de
+           `disciplina`. Esses a Carol pode sugerir à vontade — "este fim de
+           semana dava uma saída de montanha" é treino específico, não um
+           contador a encher.
+Fonte:     Decisão do atleta, 2026-09-22 (manter os badges de acumulação e
+           contrabalançá-los pela Carol). O mecanismo de R2 assenta no
+           2.1 #1 (teto semanal e ACWR, confiança ALTA) e no Bloco 6 #2
+           (hierarquia de alarmes: descrever, não alarmar).
+Confiança: n/a — é uma decisão de produto, não um achado de literatura. O
+           que TEM confiança ALTA é o mecanismo que ela usa (o teto de
+           volume e o ACWR do 2.1 #1) e a razão de ser dela: um objetivo
+           externo com prazo civil é exatamente a forma de fazer subir a
+           carga aguda sem que o atleta note.
+```
+
+⚠️ **Implementável hoje, e ainda não implementado.** A peça que faltava já
+existe: desde 2026-09-22 cada badge declara uma `familia`
+(`desempenho` · `disciplina` · `acumulacao` · `amuletos`) em
+`src/utils/badges.js`, e é ela que identifica os badges proibidos — até aqui
+só havia a cor, e a cor não chega (A Escalada e o Mestre da Z2 são os dois
+ciano e são coisas opostas). O que falta é o outro lado: nenhuma Edge
+Function recebe hoje o estado dos badges no contexto, por isso R1 e R3 são,
+neste momento, uma proibição sobre uma coisa de que a Carol nem sabe. Isso é
+seguro por acidente e não por desenho — no dia em que os badges entrarem no
+contexto do `coach-chat`, estas três regras têm de entrar com eles, no mesmo
+commit. R2 é a única que já se podia implementar sem tocar nos badges: o
+volume por dia dentro do período civil já está todo em `runs`.
+
+A Vitrina do Perfil segue a mesma regra do seu lado: a frase de progresso
+("faltam 5 000 m para bronze") nunca mostra um amuleto, ainda que seja o
+badge mais perto de se fechar — `src/components/Perfil/BadgesCard.jsx`.
 
 ---
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeBadges, BADGE_KEYS, segundaDe } from './badges';
+import { computeBadges, BADGE_KEYS, FAMILIAS, FAMILIA_KEYS, segundaDe } from './badges';
 
 /* Os badges de treino (fase 2 da reforma da gamificação).
 
@@ -8,7 +8,10 @@ import { computeBadges, BADGE_KEYS, segundaDe } from './badges';
    1. a SESSÃO INDETERMINADA — uma corrida sem o campo que a regra exige não
       conta nem a favor nem contra, e isso tem de ser visível (é metade da
       razão de o motor existir);
-   2. a LEI DA COR — âmbar só no badge que nasce de uma prova;
+   2. a LEI DA COR — âmbar só no badge que nasce de uma prova, e prata
+      (`neutro`) só nos amuletos;
+   2b. a FAMÍLIA — é o que diz à Carol o que ela nunca pode sugerir
+      (doutrina 6 #6), por isso não pode faltar a nenhum badge;
    3. o calendário dos badges semanais: uma semana só se julga depois de
       fechada, e o dia do prémio é a segunda seguinte;
    4. a forma do `due`, que é o que vai parar a `user_badges` para sempre. */
@@ -37,9 +40,28 @@ const splits = (tempos) => ({ splits: tempos.map((t) => ({ distance_km: 1, time_
 describe('computeBadges — forma', () => {
   const r = compute();
 
-  it('devolve os nove badges pela ordem fixa da grelha', () => {
+  it('devolve os dezasseis badges pela ordem fixa da grelha', () => {
     expect(r.badges.map((b) => b.key)).toEqual(BADGE_KEYS);
-    expect(BADGE_KEYS).toHaveLength(9);
+    expect(BADGE_KEYS).toHaveLength(16);
+  });
+
+  /* A família é o que a Vitrina agrupa e, sobretudo, o que diz à Carol o que
+     ela nunca pode sugerir (doutrina 6 #6: nada de `acumulacao`, nada de
+     `amuletos`). Um badge sem família seria um badge que ela não sabe
+     classificar — e classificaria mal. */
+  it('cada badge declara uma família conhecida', () => {
+    for (const b of r.badges) {
+      expect(FAMILIA_KEYS, b.key).toContain(b.familia);
+    }
+    expect(FAMILIAS.map((f) => f.key)).toEqual(['desempenho', 'disciplina', 'acumulacao', 'amuletos']);
+  });
+
+  it('as duas famílias que a Carol não pode sugerir são as que se espera', () => {
+    const daFamilia = (f) => r.badges.filter((b) => b.familia === f).map((b) => b.key);
+    expect(daFamilia('acumulacao')).toEqual(['escalada']);
+    expect(daFamilia('amuletos')).toEqual([
+      'coruja', 'volta_ao_relogio', 'relogio_suico', 'quatro_estacoes', 'solsticio', 'anos', 'numero_certo',
+    ]);
   });
 
   /* A regra da casa: o relógio entra sempre, nunca se lê o real. */
@@ -68,7 +90,19 @@ describe('computeBadges — forma', () => {
      prova. Nenhum badge de treino o pode usar. */
   it('a lei da cor: âmbar só no badge que nasce de uma prova', () => {
     expect(r.badges.filter((b) => b.cor === 'race').map((b) => b.key)).toEqual(['recorde_pessoal']);
-    expect(r.badges.every((b) => ['run', 'ok', 'race'].includes(b.cor))).toBe(true);
+    expect(r.badges.every((b) => ['run', 'ok', 'race', 'neutro'].includes(b.cor))).toBe(true);
+  });
+
+  /* A ausência de cor: um amuleto não mede desempenho nenhum, logo não
+     reclama nenhuma cor de significado — e nenhum badge que meça alguma
+     coisa se pode disfarçar de amuleto. A Coruja é o caso que mudou: era
+     `run`. */
+  it('os amuletos não levam cor de significado, e mais ninguém leva a prata', () => {
+    const amuletos = r.badges.filter((b) => b.familia === 'amuletos');
+    expect(amuletos.every((b) => b.cor === 'neutro')).toBe(true);
+    expect(r.badges.filter((b) => b.cor === 'neutro').map((b) => b.familia))
+      .toEqual(amuletos.map(() => 'amuletos'));
+    expect(r.badges.find((b) => b.key === 'coruja').cor).toBe('neutro');
   });
 
   it('a competição não é treino: não entra em nenhum badge de treino', () => {
@@ -115,7 +149,9 @@ describe('Mestre da Z2 — o treino sem zonas fica indeterminado', () => {
     expect(b.indeterminadas.n).toBe(1);
     expect(b.indeterminadas.frase).toContain('zonas de frequência cardíaca');
     expect(b.indeterminadas.comoResolver).toMatch(/minutos por zona/);
-    expect(r.due).toEqual([]);
+    // `dueDe`, e não `r.due`: o treino de fixture tem 10,00 km certos e
+    // ganha o Número certo — que é exatamente o que esse amuleto faz.
+    expect(dueDe(r, 'z2_mestre')).toEqual([]);
   });
 
   it('um treino curto não é sequer candidato — não aparece como indeterminado', () => {
@@ -460,5 +496,216 @@ describe('Cadência corrigida — a mudança, não o número', () => {
       ...b.sessoes.map((s) => `${s.meta} ${s.porque}`)].join(' ');
     expect(texto).not.toMatch(/180/);
     expect(texto).not.toMatch(/lesõ|lesão/);
+  });
+});
+
+/* O badge de especificidade: a régua não é um número da casa, é a da prova
+   do atleta. Sem prova principal marcada não há alvo — e o badge diz isso
+   em vez de ficar um anel vazio sem explicação. */
+describe('À medida da prova — o alvo sai da prova principal', () => {
+  // 1 800 m em 30 km = 60 m de subida por quilómetro.
+  const provaA = (over = {}) => ({
+    id: 'alvo', name: 'Trail da Serra', date: '2026-11-15', status: 'agendada',
+    race_priority: 'a', race_type: 'trail', distance_km: 30, elevation_gain_m: 1800, ...over,
+  });
+  const saida = (date, dmais, km = 12) => treino(date, { distance_km: km, details: { elevation_gain_m: dmais } });
+
+  it('uma saída com o desnível por quilómetro que a prova exige ganha o badge', () => {
+    // 800 m em 12 km = 66,7 m/km = 111% dos 60 m/km exigidos.
+    const r = compute({ raceEvents: [provaA()], runs: [saida('2026-09-05', 800)] });
+    const b = bad(r, 'medida_da_prova');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('111%');
+    expect(b.familia).toBe('desempenho');
+    expect(b.rule).toContain('60 m/km');
+    expect(b.rule).toContain('Trail da Serra');
+    expect(dueDe(r, 'medida_da_prova')[0]).toMatchObject({ valueUnit: 'pct', awardedOn: '2026-09-05' });
+  });
+
+  it('abaixo do exigido, o número diz a que percentagem ficou', () => {
+    // 400 m em 12 km = 33,3 m/km = 56% do exigido.
+    const b = bad(compute({ raceEvents: [provaA()], runs: [saida('2026-09-05', 400)] }), 'medida_da_prova');
+    expect(b.state).toBe('empty');
+    expect(b.centro).toBe('+44%');
+  });
+
+  /* O ponto do badge: o MESMO treino é específico para uma prova e
+     irrelevante para outra. 800 m em 12 km chega para um alvo de 60 m/km e
+     não chega para um de 100. */
+  it('o mesmo treino chega para uma prova e não chega para outra', () => {
+    const exigente = provaA({ elevation_gain_m: 3000 }); // 100 m/km
+    expect(bad(compute({ raceEvents: [exigente], runs: [saida('2026-09-05', 800)] }), 'medida_da_prova').state).toBe('empty');
+  });
+
+  it('sem prova principal marcada não há alvo, e o badge explica-o', () => {
+    const b = bad(compute({ runs: [saida('2026-09-05', 800)] }), 'medida_da_prova');
+    expect(b.state).toBe('empty');
+    expect(b.centro).toBe('—');
+    expect(b.linha).toContain('sem prova principal marcada');
+    expect(b.sessoes).toHaveLength(0);
+  });
+
+  it('prova principal sem D+ preenchido também não dá alvo, e diz porquê', () => {
+    const b = bad(compute({ raceEvents: [provaA({ elevation_gain_m: null })], runs: [saida('2026-09-05', 800)] }), 'medida_da_prova');
+    expect(b.state).toBe('empty');
+    expect(b.linha).toContain('desnível');
+    expect(b.linha).toContain('Trail da Serra');
+  });
+
+  it('uma prova secundária, ou já concluída, não é alvo de nada', () => {
+    expect(bad(compute({ raceEvents: [provaA({ race_priority: 'b' })] }), 'medida_da_prova').centro).toBe('—');
+    expect(bad(compute({ raceEvents: [provaA({ status: 'concluida', date: '2026-01-10' })] }), 'medida_da_prova').centro).toBe('—');
+  });
+
+  it('uma saída sem D+ no registo fica indeterminada, como nas outras', () => {
+    const r = compute({ raceEvents: [provaA()], runs: [treino('2026-09-05', { distance_km: 12 })] });
+    expect(bad(r, 'medida_da_prova').indeterminadas.n).toBe(1);
+  });
+});
+
+/* Os amuletos. O que estes testes guardam não é a graça de nenhum deles — é
+   que continuam a cumprir o contrato da casa (campo, dependência, sessão
+   indeterminada) e que a família os mantém fora do alcance da Carol. */
+describe('Amuletos — Volta ao relógio', () => {
+  const hora = (date, hhmm) => treino(date, { start_time: hhmm });
+
+  it('as quatro faixas do dia fecham o badge', () => {
+    const r = compute({
+      runs: [hora('2026-09-01', '05:10'), hora('2026-09-02', '09:00'), hora('2026-09-03', '15:20'), hora('2026-09-04', '22:00')],
+    });
+    const b = bad(r, 'volta_ao_relogio');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('4');
+    expect(b.cor).toBe('neutro');
+    expect(dueDe(r, 'volta_ao_relogio')[0]).toMatchObject({ periodKey: '', value: 4, valueUnit: 'count', awardedOn: '2026-09-04' });
+  });
+
+  it('a caminho, diz que faixas faltam', () => {
+    const b = bad(compute({ runs: [hora('2026-09-01', '05:10'), hora('2026-09-02', '09:00')] }), 'volta_ao_relogio');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('2/4');
+    expect(b.linha).toBe('faltam tarde e noite');
+  });
+
+  it('sem hora de início, a corrida fica indeterminada', () => {
+    const b = bad(compute({ runs: [treino('2026-09-01')] }), 'volta_ao_relogio');
+    expect(b.indeterminadas.n).toBe(1);
+    expect(estados(b, 'indeterminada')).toHaveLength(1);
+  });
+});
+
+describe('Amuletos — Relógio suíço', () => {
+  const dez = (n) => Array.from({ length: n }, (_, i) => treino(`2026-09-${String(i + 1).padStart(2, '0')}`, { start_time: '07:15' }));
+
+  it('dez corridas na mesma meia-hora do relógio', () => {
+    const r = compute({ runs: dez(10) });
+    const b = bad(r, 'relogio_suico');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('10');
+    expect(b.linha).toContain('07:00-07:29');
+    expect(dueDe(r, 'relogio_suico')[0]).toMatchObject({ value: 10, valueUnit: 'count', awardedOn: '2026-09-10' });
+  });
+
+  it('nove ainda não são dez', () => {
+    const b = bad(compute({ runs: dez(9) }), 'relogio_suico');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('9/10');
+  });
+
+  /* A meia-hora é a do relógio, não uma janela deslizante: às 07:29 e às
+     07:31 são duas gavetas diferentes, e é de propósito. */
+  it('a meia-hora é a do relógio, não uma janela deslizante', () => {
+    const runs = [...dez(9), treino('2026-09-20', { start_time: '07:31' })];
+    expect(bad(compute({ runs }), 'relogio_suico').state).toBe('progress');
+  });
+});
+
+/* As estações são as astronómicas, calculadas do ângulo do Sol — não as do
+   calendário comercial. Em 2026 o equinócio de março é a 20; o dia da
+   viragem conta para a estação nova. */
+describe('Amuletos — Quatro estações e Solstício', () => {
+  it('uma corrida em cada estação fecha as Quatro estações', () => {
+    const r = compute({
+      runs: [treino('2026-01-10'), treino('2026-04-10'), treino('2026-07-10'), treino('2025-10-10')],
+    });
+    const b = bad(r, 'quatro_estacoes');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('4');
+    // A data é obrigatória em qualquer registo: aqui não há indeterminadas.
+    expect(b.indeterminadas).toBeNull();
+  });
+
+  it('o dia do equinócio já é da estação nova', () => {
+    // 19 de março de 2026 é inverno; 20 de março é o equinócio, e é primavera.
+    const b = bad(compute({ runs: [treino('2026-03-19'), treino('2026-03-20')] }), 'quatro_estacoes');
+    expect(b.state).toBe('progress');
+    expect(b.centro).toBe('2/4');
+    expect(b.linha).toBe('faltam verão e outono');
+  });
+
+  it('o dia mais longo e o mais curto — e as datas não são fixas', () => {
+    // 2025: solstícios a 21 de junho e a 21 de dezembro (hora de Lisboa).
+    const r = compute({ runs: [treino('2025-06-21'), treino('2025-12-21')] });
+    const b = bad(r, 'solsticio');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('2');
+    expect(dueDe(r, 'solsticio')).toHaveLength(1);
+
+    // 2024: o solstício de junho foi a 20, não a 21 — um dia fixo falhava
+    // aqui, e falha de quatro em quatro anos.
+    expect(bad(compute({ runs: [treino('2024-06-20')] }), 'solsticio').centro).toBe('1/2');
+    expect(bad(compute({ runs: [treino('2024-06-21')] }), 'solsticio').centro).toBe('0/2');
+  });
+
+  /* Uma corrida a 3 de maio não tem dado nenhum em falta — está só fora dos
+     dois dias. Se entrasse como indeterminada, o histórico inteiro aparecia
+     no ecrã de detalhe como "por decidir". */
+  it('uma corrida fora dos dois dias não é uma sessão por decidir', () => {
+    const b = bad(compute({ runs: [treino('2026-05-03')] }), 'solsticio');
+    expect(b.sessoes).toHaveLength(0);
+    expect(b.indeterminadas).toBeNull();
+    expect(b.state).toBe('empty');
+  });
+});
+
+describe('Amuletos — Anos e Número certo', () => {
+  const COM_ANOS = { ...PROFILE, birth_date: '1985-09-14' };
+
+  it('correr no dia de anos, uma linha por ano', () => {
+    const r = compute({ profile: COM_ANOS, runs: [treino('2025-09-14'), treino('2026-09-14')] });
+    const b = bad(r, 'anos');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('41');
+    expect(b.count).toBe(2);
+    const due = dueDe(r, 'anos');
+    expect(due.map((d) => d.periodKey)).toEqual(['2025', '2026']);
+    expect(due[1]).toMatchObject({ value: 41, valueUnit: 'anos', awardedOn: '2026-09-14' });
+  });
+
+  /* Sem data de nascimento não há candidato nenhum — e isso diz-se, em vez
+     de deixar o badge por ganhar sem explicação. */
+  it('sem data de nascimento no Perfil, o badge diz porquê', () => {
+    const b = bad(compute({ runs: [treino('2026-09-14')] }), 'anos');
+    expect(b.state).toBe('empty');
+    expect(b.centro).toBe('—');
+    expect(b.linha).toContain('data de nascimento');
+    expect(b.sessoes).toHaveLength(0);
+  });
+
+  it('os 10,00 km certos, com vinte metros de margem', () => {
+    const r = compute({ runs: [treino('2026-09-10', { distance_km: 10.005 })] });
+    const b = bad(r, 'numero_certo');
+    expect(b.state).toBe('won');
+    expect(b.centro).toBe('10');
+    expect(dueDe(r, 'numero_certo')[0]).toMatchObject({ valueUnit: 'km', awardedOn: '2026-09-10' });
+
+    const fora = bad(compute({ runs: [treino('2026-09-10', { distance_km: 10.4 })] }), 'numero_certo');
+    expect(fora.state).toBe('empty');
+    expect(fora.centro).toBe('+400');
+  });
+
+  it('sem distância no registo, a corrida fica indeterminada', () => {
+    const b = bad(compute({ runs: [treino('2026-09-10', { distance_km: null })] }), 'numero_certo');
+    expect(b.indeterminadas.n).toBe(1);
   });
 });

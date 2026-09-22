@@ -4,12 +4,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
 
 /* A grelha dos badges e o ecrã de detalhe. As regras são de
-   utils/badges.js (testadas lá); aqui só a UI: o anel com o número ao
-   centro, os três estados, a regra numa frase, o bloco do dado em falta e as
-   sessões agrupadas pelo que aconteceu a cada uma. */
+   utils/badges.js (testadas lá); aqui só a UI: a grelha agrupada por
+   família, o anel com o número ao centro, os três estados, a regra numa
+   frase, o bloco do dado em falta e as sessões agrupadas pelo que aconteceu
+   a cada uma. */
 
 const badge = (over) => ({
-  key: 'x', name: 'X', rule: 'A regra do badge X, numa frase inteira.', cor: 'run', glifo: 'heart',
+  key: 'x', name: 'X', rule: 'A regra do badge X, numa frase inteira.', familia: 'desempenho', cor: 'run', glifo: 'heart',
   state: 'empty', tier: null, ring: 0, centro: '—', centroAria: 'X: por ganhar', linha: null,
   count: 0, niveis: null, sessoes: [], indeterminadas: null, ...over,
 });
@@ -25,7 +26,7 @@ const BADGES = [
     indeterminadas: { n: 3, campoLabel: 'as zonas de frequência cardíaca', comoResolver: 'Abre o registo e preenche os minutos por zona.', frase: '3 sessões ficaram por decidir: não têm as zonas de frequência cardíaca. Não contam nem a favor nem contra.' },
   }),
   badge({
-    key: 'escalada', name: 'A Escalada', cor: 'run', glifo: 'peak', state: 'progress', ring: 0.5, centro: '5k',
+    key: 'escalada', name: 'A Escalada', familia: 'acumulacao', cor: 'run', glifo: 'peak', state: 'progress', ring: 0.5, centro: '5k',
     linha: 'faltam 5 000 m para bronze',
     niveis: [
       { key: 'bronze', label: 'Bronze', limiar: 10000, ganho: false },
@@ -33,7 +34,14 @@ const BADGES = [
       { key: 'ouro', label: 'Ouro', limiar: 50000, ganho: false },
     ],
   }),
-  badge({ key: 'semana_100', name: 'Semana 100%', cor: 'ok', glifo: 'check', state: 'empty', centro: '+50', linha: 'a melhor: semana de 7 set 2026, índice 50' }),
+  badge({ key: 'semana_100', name: 'Semana 100%', familia: 'disciplina', cor: 'ok', glifo: 'check', state: 'empty', centro: '+50', linha: 'a melhor: semana de 7 set 2026, índice 50' }),
+  /* Um amuleto: prata, na sua própria família, e — o ponto — com um `ring`
+     alto de propósito, para provar que mesmo assim não é ele que vai parar à
+     frase de progresso. */
+  badge({
+    key: 'solsticio', name: 'Solstício', familia: 'amuletos', cor: 'neutro', glifo: 'sun',
+    state: 'progress', ring: 0.9, centro: '1/2', linha: 'falta o dia mais curto',
+  }),
   badge({
     key: 'recorde_pessoal', name: 'Recorde pessoal', cor: 'race', glifo: 'trophy', state: 'won', ring: 1, centro: '1', count: 1,
     sessoes: [{ kind: 'race', id: 'p2', raceId: 'p2', runId: 'run-p2', date: '2026-06-01', title: 'Prova p2', meta: '10 km · 48:20', status: 'conta', porque: 'O melhor tempo de sempre nesta distância.' }],
@@ -57,8 +65,8 @@ describe('BadgesCard — a grelha da Vitrina', () => {
   it('mostra os badges em grelha, com o número dentro do anel e a contagem dos ganhos', () => {
     render(<BadgesCard />);
     const grelha = screen.getByTestId('badges-grelha');
-    expect(grelha.querySelectorAll('button')).toHaveLength(4);
-    expect(screen.getByTestId('badges-card')).toHaveTextContent('2 de 4');
+    expect(grelha.querySelectorAll('button')).toHaveLength(5);
+    expect(screen.getByTestId('badges-card')).toHaveTextContent('2 de 5');
 
     const ganho = screen.getByTestId('badge-tile-z2_mestre');
     expect(ganho).toHaveAttribute('data-state', 'won');
@@ -70,9 +78,28 @@ describe('BadgesCard — a grelha da Vitrina', () => {
     expect(screen.getByTestId('badge-tile-escalada')).toHaveAttribute('data-state', 'progress');
   });
 
+  /* A grelha agrupa por família, pela ordem de FAMILIAS, e cada grupo leva o
+     seu cabeçalho: um amuleto lado a lado com o Mestre da Z2 fingia valer o
+     mesmo. */
+  it('a grelha agrupa por família, pela ordem certa', () => {
+    render(<BadgesCard />);
+    const grupos = [...screen.getByTestId('badges-grelha').children].map((g) => g.getAttribute('data-testid'));
+    expect(grupos).toEqual([
+      'badges-familia-desempenho', 'badges-familia-disciplina',
+      'badges-familia-acumulacao', 'badges-familia-amuletos',
+    ]);
+    const amuletos = screen.getByTestId('badges-familia-amuletos');
+    expect(amuletos).toHaveTextContent('Amuletos');
+    expect(within(amuletos).getByTestId('badge-tile-solsticio')).toBeInTheDocument();
+    expect(within(screen.getByTestId('badges-familia-desempenho')).getByTestId('badge-tile-z2_mestre')).toBeInTheDocument();
+  });
+
   it('a frase de progresso é a do badge mais perto, e abre o detalhe dele', () => {
     render(<BadgesCard />);
     const progresso = screen.getByTestId('badges-progresso');
+    // O Solstício está mais perto (ring 0,9 contra 0,5) e mesmo assim não é
+    // ele: um amuleto nunca vai para esta linha, porque esta linha é um
+    // empurrão e empurrar para um amuleto estraga-o (doutrina 6 #6).
     expect(progresso).toHaveTextContent('A Escalada — faltam 5 000 m para bronze');
     fireEvent.click(progresso);
     expect(screen.getByTestId('badge-detalhe-escalada')).toBeInTheDocument();

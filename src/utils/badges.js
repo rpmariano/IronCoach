@@ -32,6 +32,28 @@
    fim". Inventar um significado novo para uma cor que já tem dono é como se
    desfaz uma linguagem visual.
 
+   E HÁ UMA AUSÊNCIA DE COR: `neutro` (prata, à volta do --text-3), que é o
+   que os AMULETOS levam. Não é uma quarta cor a somar à lei — é a lei levada
+   até ao fim. Uma cor de significado diz "isto mede alguma coisa do teu
+   treino"; um amuleto não mede nada (correr no dia do teu aniversário não
+   diz nada sobre como corres), logo não tem significado nenhum a reclamar, e
+   pintá-lo de ciano era mentir-lhe sobre o que ele é. A Coruja era `run` até
+   aqui — foi o primeiro caso a mudar, e é o que torna a regra visível: a
+   hora a que se corre não é melhor nem pior, é só uma curiosidade.
+
+   ── AS FAMÍLIAS ─────────────────────────────────────────────────────────
+   Cada badge declara uma `familia` (ver FAMILIAS, logo abaixo), e a Vitrina
+   agrupa-os por ela em vez de os despejar numa grelha só.
+
+   Isto NÃO é arrumação cosmética: a família é o que diz à Carol quais os
+   badges que ela nunca pode sugerir — a doutrina 6 #6
+   (src/coach-knowledge/06-head-coach-arbitragem.md) nomeia `acumulacao` e
+   `amuletos` à letra. Até aqui a única etiqueta que um badge tinha era a
+   cor, e a cor não chega para isso: A Escalada e o Mestre da Z2 são os dois
+   ciano e são coisas opostas — uma soma metros (e empurrar alguém a somá-los
+   mais depressa é exatamente o comportamento que não se quer induzir), a
+   outra mede como se correu um treino.
+
    ── O DADO QUE FALTA ────────────────────────────────────────────────────
    Metade destas regras vive de campos OPCIONAIS de `runs.details`
    (`hr_zones`, `splits`, `elevation_gain_m`, `cadence_spm`) — campos que
@@ -70,22 +92,51 @@ import { formatDuration, raceDistanceLabel } from './run';
 import { formatDatePTShort } from './racePlanEngine';
 import { evaluatePrescriptions, executionBase } from '@formulas/prescriptionAdherence.ts';
 
-/** A ordem da grelha da Vitrina: o treino, o terreno, a disciplina, a prova.
- *  Quatro colunas — duas linhas cheias e a prova sozinha na terceira, que é
- *  o lugar que lhe assenta: o `recorde_pessoal` é o único que não nasce de
- *  um dia de treino, e é o único âmbar. A Cadência corrigida entra ao lado
- *  do Negative split, com quem partilha o assunto — como se corre, não
- *  quanto se corre. */
+/** As quatro famílias, pela ordem em que a Vitrina as mostra: primeiro o que
+ *  mede a corrida, depois o que mede o cumprimento, depois o que só soma, e
+ *  no fim o que não mede nada.
+ *
+ *  A ordem é a da importância para o atleta, e o fim da lista é deliberado:
+ *  os amuletos ficam por último porque é esse o peso que têm. */
+export const FAMILIAS = [
+  { key: 'desempenho', label: 'Desempenho', descricao: 'O que mede como corres.' },
+  { key: 'disciplina', label: 'Disciplina', descricao: 'O que mede se fizeste o combinado.' },
+  { key: 'acumulacao', label: 'Acumulação', descricao: 'O que soma quantidade ao longo do tempo.' },
+  { key: 'amuletos', label: 'Amuletos', descricao: 'O que não mede desenvolvimento nenhum.' },
+];
+
+export const FAMILIA_KEYS = FAMILIAS.map((f) => f.key);
+
+/** A ordem da grelha da Vitrina, agora DENTRO de cada família (a grelha
+ *  agrupa por FAMILIAS, e esta lista é a ordem dentro de cada grupo).
+ *
+ *  Desempenho: primeiro como se corre (Z2, negative split, cadência), depois
+ *  o terreno (Cabra-montesa, À medida da prova, que partilham o D+), e a
+ *  prova no fim — o `recorde_pessoal` é o único que não nasce de um dia de
+ *  treino, e o único âmbar.
+ *  Amuletos: a Coruja abre, porque é a mais antiga; os outros seis vêm a
+ *  seguir, do relógio para o calendário e daí para a fita métrica. */
 export const BADGE_KEYS = [
+  // desempenho
   'z2_mestre',
   'negative_split',
   'cadencia_corrigida',
-  'coruja',
   'cabra_montesa',
-  'escalada',
+  'medida_da_prova',
+  'recorde_pessoal',
+  // disciplina
   'semana_100',
   'descanso_cumprido',
-  'recorde_pessoal',
+  // acumulação
+  'escalada',
+  // amuletos
+  'coruja',
+  'volta_ao_relogio',
+  'relogio_suico',
+  'quatro_estacoes',
+  'solsticio',
+  'anos',
+  'numero_certo',
 ];
 
 /** Os três degraus dos badges com níveis. A chave vai para a COLUNA `tier` de
@@ -159,6 +210,10 @@ function badge(fields) {
     key: '',
     name: '',
     rule: '',
+    // Sem valor por omissão de propósito: um badge sem família é um badge
+    // que a Carol não sabe classificar, e isso tem de rebentar no teste, não
+    // cair silenciosamente em 'desempenho'.
+    familia: null,
     cor: 'run',
     glifo: null,
     campo: null,
@@ -227,7 +282,7 @@ function blocoIndeterminadas(lista, { campoLabel, comoResolver }) {
    `null` que cria a sessão indeterminada. Nunca devolver 0 por falta de
    dado: 0 é uma medida real e conta como tentativa falhada. */
 function badgeDeMedida({
-  key, name, rule, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
+  key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
   alvo, unidade, candidatas, medir, descreveMedida, fmtCentro, fmtFalta,
   semCandidatas, linhaDue,
 }) {
@@ -267,7 +322,7 @@ function badgeDeMedida({
   }));
 
   const comum = {
-    key, name, rule, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
+    key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
     unidade,
     sessoes,
     indeterminadas: blocoIndeterminadas(indeterminadas, { campoLabel, comoResolver }),
@@ -331,6 +386,12 @@ function badgeDeMedida({
    em falta  o treino fica INDETERMINADO: sem zonas não há forma de saber se
              foi fácil ou não, e inventar um valor era pior do que não contar.
    cor       --run (é treino de corrida)
+   família   desempenho — e é um dos casos duvidosos. Podia argumentar-se
+             `disciplina`: fazer o treino fácil fácil é obedecer, e é das
+             coisas que mais custa obedecer. Fica em desempenho porque o que
+             o badge LÊ é a fisiologia da sessão (a distribuição do tempo por
+             zona), não o que estava combinado — ganha-se sem plano nenhum, e
+             um badge de disciplina sem plano não faz sentido.
    níveis    não — repete-se, uma linha por treino.
 
    Porquê 45 minutos: abaixo disso a percentagem em Z2 diz mais sobre o
@@ -368,6 +429,7 @@ function z2Mestre({ treinos }) {
     key: 'z2_mestre',
     name: 'Mestre da Z2',
     rule: `Um treino de ${Z2_MINUTOS} minutos ou mais com ${Z2_ALVO_PCT}% do tempo em Z1 ou Z2.`,
+    familia: 'desempenho',
     cor: 'run',
     glifo: 'heart',
     campo: 'details.hr_zones',
@@ -397,6 +459,7 @@ function z2Mestre({ treinos }) {
    campo     runs.details.splits — [{ distance_km, time_seconds }]
    em falta  INDETERMINADA: sem parciais não há duas metades para comparar.
    cor       --run
+   família   desempenho — gestão de esforço é como se corre.
    níveis    não — repete-se.
 
    O 1% é a folga do relógio: uma segunda metade "mais rápida" por meio
@@ -439,6 +502,7 @@ function negativeSplit({ treinos }) {
     key: 'negative_split',
     name: 'Negative split',
     rule: `Uma corrida de ${NEG_SPLIT_KM} km ou mais com a segunda metade pelo menos ${NEG_SPLIT_ALVO_PCT}% mais rápida do que a primeira.`,
+    familia: 'desempenho',
     cor: 'run',
     glifo: 'trending',
     campo: 'details.splits',
@@ -469,6 +533,17 @@ function negativeSplit({ treinos }) {
    campo     runs.details.elevation_gain_m (com runs.distance_km)
    em falta  INDETERMINADA: sem D+ não se sabe se foi montanha ou passeio.
    cor       --run (a subida é corrida, não ginásio)
+   família   desempenho, e foi decisão de quem escreveu isto — a alternativa
+             era `acumulacao`, por ser o badge do D+ ao lado d'A Escalada. É
+             desempenho porque o que mede é UMA SESSÃO, não um total: 50 m de
+             subida por quilómetro durante 8 km é uma coisa que o atleta ou
+             consegue ou não consegue naquele dia, e nenhum quilómetro a mais
+             acumulado a torna mais fácil. A Escalada é que soma. Isto é a
+             diferença entre "levantei 100 kg" e "levantei 40 toneladas ao
+             longo do ano": só a segunda é uma acumulação.
+             A consequência prática é a que interessa: a Carol PODE falar
+             disto antes de acontecer ("este fim de semana dava uma saída de
+             montanha"), e NÃO pode falar d'A Escalada.
    níveis    não — repete-se.
 
    Os 50 m/km são a banda "montanha" de ELEVATION_RATIO_BANDS (utils/run.js),
@@ -484,6 +559,7 @@ function cabraMontesa({ treinos }) {
     key: 'cabra_montesa',
     name: 'Cabra-montesa',
     rule: `Um treino de ${CABRA_KM} km ou mais com ${CABRA_ALVO_RACIO} metros de subida por quilómetro.`,
+    familia: 'desempenho',
     cor: 'run',
     glifo: 'mountain',
     campo: 'details.elevation_gain_m',
@@ -506,6 +582,146 @@ function cabraMontesa({ treinos }) {
   });
 }
 
+// ── 4. À medida da prova ─────────────────────────────────────────────────
+
+/* chave     medida_da_prova
+   regra     "Uma saída de 8 km ou mais com o desnível por quilómetro que a
+             tua prova principal exige."
+   campo     runs.details.elevation_gain_m (com runs.distance_km), e do outro
+             lado race_events.elevation_gain_m / distance_km da prova com
+             `race_priority = 'a'` agendada (RACE_PRIORITIES, utils/run.js)
+   em falta  duas faltas diferentes, e dizem-se as duas:
+             · sem prova principal marcada, ou com ela sem D+ preenchido, NÃO
+               HÁ ALVO — e o badge diz isso em vez de ficar um anel vazio sem
+               explicação. Não é "por ganhar", é "não há a que apontar";
+             · uma corrida sem D+ no registo fica INDETERMINADA, como na
+               Cabra-montesa e n'A Escalada.
+   cor       --run (a subida é corrida)
+   família   desempenho — mede preparação para o objetivo, que é o
+             desempenho visto do lado do que ainda falta.
+   níveis    não — repete-se, uma linha por saída.
+
+   ── PORQUE É QUE ISTO NÃO É OUTRA CABRA-MONTESA ─────────────────────────
+   A Cabra-montesa tem uma régua fixa (50 m/km, a banda "montanha") e é a
+   mesma para toda a gente. Esta é a régua DA PROVA DO ATLETA: quem tem uma
+   maratona de estrada à frente não ganha nada em acumular montanha, e quem
+   tem um trail de 70 m/km não fica preparado com saídas de 30. O mesmo
+   treino é específico para um e irrelevante para o outro — e é essa
+   diferença que este badge existe para mostrar. É também por isso que o alvo
+   MUDA quando o atleta muda a prova principal: o badge não guarda um número,
+   guarda uma pergunta.
+
+   A medida é uma RAZÃO ENTRE RAZÕES — o D+/km da saída a dividir pelo D+/km
+   que a prova exige, em percentagem, alvo 100. Assim a mesma régua serve
+   todas as provas sem inventar limiares novos, e o número que o atleta lê
+   ("118%") responde diretamente à pergunta "isto chega?".
+
+   ── O QUE NÃO SE PENEIRA, e porquê ──────────────────────────────────────
+   NÃO se filtra por `training_type = 'trail'`. Uma saída com o D+/km de uma
+   prova de montanha é uma saída de trail, tenha o atleta escrito o que
+   tiver no tipo de treino — o terreno prova-se pelo desnível, não pela
+   etiqueta. Filtrar pelo tipo só acrescentaria uma forma de o badge não
+   contar uma saída que contou mesmo.
+
+   Uma prova principal PLANA (ou quase) dá um alvo baixo e um badge fácil, e
+   está certo assim: se o objetivo não exige subida, estar preparado para ele
+   não exige subida nenhuma. O badge mede especificidade, não sofrimento. */
+const MEDIDA_KM = CABRA_KM; // a mesma distância mínima da Cabra-montesa
+
+/** A prova-alvo: a principal (`race_priority = 'a'`) agendada mais próxima.
+ *  `|| 'a'` porque o default da coluna é 'a' (migração
+ *  20260809120000_resting_hr_race_priority.sql) — uma prova antiga sem o
+ *  campo preenchido é principal, como em utils/planDivergence.js.
+ *  Uma prova já concluída não é alvo de nada: o que ela exigia, exigiu. */
+function provaAlvo({ raceEvents, today }) {
+  return (raceEvents || [])
+    .filter((r) => r && dayOf(r.date) && dayOf(r.date) >= today
+      && r.status !== 'concluida' && (r.race_priority || 'a') === 'a')
+    .sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)))[0] || null;
+}
+
+/** O D+ por quilómetro que uma prova exige, ou null quando não se sabe. Em
+ *  `num`, um D+ de 0 é null — e é o que se quer: uma prova de estrada com o
+ *  campo a zeros não tem exigência de desnível para preparar. */
+function racioDaProva(race) {
+  const dmais = num(race?.elevation_gain_m);
+  const km = num(race?.distance_km);
+  return dmais && km ? dmais / km : null;
+}
+
+const racioDaCorrida = (run) => {
+  const dmais = num(run?.details?.elevation_gain_m);
+  const km = num(run?.distance_km);
+  return dmais && km ? dmais / km : null;
+};
+
+const DEPENDE_MEDIDA = 'Precisa do D+ (ganho de altimetria) no registo da corrida e do D+ da tua prova principal.';
+const RESOLVER_MEDIDA = 'Preenche o D+ (ganho de altimetria) no registo da corrida, e o desnível da prova principal no hub da prova.';
+
+function medidaDaProva({ treinos, raceEvents, today }) {
+  const alvoRace = provaAlvo({ raceEvents, today });
+  const racioAlvo = racioDaProva(alvoRace);
+  const nomeProva = alvoRace?.name || 'a tua prova principal';
+
+  const comum = {
+    key: 'medida_da_prova',
+    name: 'À medida da prova',
+    familia: 'desempenho',
+    cor: 'run',
+    glifo: 'target',
+    campo: 'details.elevation_gain_m',
+    campoLabel: 'o desnível positivo',
+    dependeDe: DEPENDE_MEDIDA,
+    comoResolver: RESOLVER_MEDIDA,
+    unidade: 'pct',
+  };
+
+  /* Sem alvo o badge NÃO finge ser um badge por ganhar: um anel pontilhado
+     com um número cinzento diria ao atleta que lhe falta correr, quando o
+     que lhe falta é marcar a prova (ou preencher-lhe o desnível). É o mesmo
+     princípio da sessão indeterminada — nada fica por explicar. */
+  if (!racioAlvo) {
+    const semDmais = !!alvoRace && !racioDaProva(alvoRace);
+    return {
+      badge: badge({
+        ...comum,
+        rule: `Uma saída de ${MEDIDA_KM} km ou mais com o desnível por quilómetro que a tua prova principal exige.`,
+        state: 'empty',
+        ring: 0,
+        centro: '—',
+        centroAria: semDmais
+          ? `À medida da prova: sem alvo. ${nomeProva} não tem o desnível preenchido.`
+          : 'À medida da prova: sem alvo. Ainda não há prova principal marcada.',
+        linha: semDmais
+          ? `${nomeProva} ainda não tem o desnível preenchido — sem ele não há alvo a que apontar`
+          : 'sem prova principal marcada não há alvo: marca a prova do teu objetivo na Agenda',
+        sessoes: [],
+        indeterminadas: null,
+      }),
+      due: [],
+    };
+  }
+
+  const exigido = `${Math.round(racioAlvo)} m/km`;
+  const candidatas = treinos.filter((r) => (num(r?.distance_km) || 0) >= MEDIDA_KM);
+
+  return badgeDeMedida({
+    ...comum,
+    rule: `Uma saída de ${MEDIDA_KM} km ou mais com o desnível por quilómetro que a tua prova principal exige — ${exigido} em ${nomeProva}.`,
+    alvo: 100,
+    candidatas,
+    medir: (run) => {
+      const racio = racioDaCorrida(run);
+      return racio == null ? null : (racio / racioAlvo) * 100;
+    },
+    descreveMedida: (pct, run) => `${Math.round(racioDaCorrida(run) || 0)} m/km · ${Math.round(pct)}% do que ${nomeProva} exige`,
+    fmtCentro: (pct) => `${Math.round(pct)}%`,
+    fmtFalta: (delta) => `+${Math.max(1, Math.round(delta))}%`,
+    semCandidatas: `ainda sem saídas de ${MEDIDA_KM} km com D+ registado`,
+    linhaDue: ({ run }) => `${Math.round(racioDaCorrida(run) || 0)} metros de subida por quilómetro — o terreno que ${nomeProva} exige (${exigido}).`,
+  });
+}
+
 // ── Os badges de CONTAGEM COM NÍVEIS ─────────────────────────────────────
 
 /* Dois badges acumulam: somam sessões (a Coruja) ou metros (A Escalada) e
@@ -521,7 +737,7 @@ function cabraMontesa({ treinos }) {
    seguinte. Sem nível nenhum, o anel mostra a proporção do caminho até ao
    bronze e o número é "corrente/alvo". */
 function badgeDeNiveis({
-  key, name, rule, cor, glifo, campo, campoLabel, dependeDe, comoResolver, unidade,
+  key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver, unidade,
   limiares, passos, fmtValor, fmtCentroValor, sessoes, indeterminadas, semNada, tituloDe, linhaDue,
   // "3/5" só cabe no anel quando os dois números são curtos: numa contagem
   // de treinos cabe, em metros acumulados ("9,8k/10k") não. Aí mostra-se só
@@ -555,7 +771,7 @@ function badgeDeNiveis({
   }));
 
   const comum = {
-    key, name, rule, cor, glifo, campo, campoLabel, dependeDe, comoResolver, unidade,
+    key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver, unidade,
     niveis: NIVEIS.map((n, i) => ({ ...n, limiar: limiares[i], ganho: i < ganhos.length })),
     sessoes,
     indeterminadas: blocoIndeterminadas(indeterminadas, { campoLabel, comoResolver }),
@@ -602,7 +818,7 @@ function badgeDeNiveis({
   };
 }
 
-// ── 4. Coruja ────────────────────────────────────────────────────────────
+// ── 5. Coruja ────────────────────────────────────────────────────────────
 
 /* chave     coruja
    regra     "Treinos começados às 21:00 ou mais tarde, ou antes das 6:00:
@@ -612,7 +828,14 @@ function badgeDeNiveis({
    em falta  INDETERMINADO: um treino sem hora pode ter sido às 7 da manhã ou
              às 11 da noite. Não conta — e a contagem das que ficaram assim
              aparece no detalhe, porque é aí que está o badge que falta.
-   cor       --run
+   cor       NEUTRO (prata) — e mudou: era --run. A hora a que se corre não
+             diz nada sobre como se corre, e uma cor de significado a dizer
+             que sim era o que estava errado. Ver "A LEI DA COR" no topo.
+   família   amuletos — o utilizador foi explícito: "nada contribui para o
+             desenvolvimento do atleta, é mera curiosidade". Tem níveis, o
+             que a faria parecer de `acumulacao`; não é — o que ela acumula
+             não é volume de treino nenhum, é a repetição de uma
+             circunstância. Somar treinos noturnos não deixa ninguém melhor.
    níveis    sim: bronze 5, prata 15, ouro 30. */
 const CORUJA_NOITE = 21;
 const CORUJA_MADRUGADA = 6;
@@ -654,7 +877,8 @@ function coruja({ treinos }) {
     key: 'coruja',
     name: 'Coruja',
     rule: `Treinos começados às ${CORUJA_NOITE}:00 ou mais tarde, ou antes das 0${CORUJA_MADRUGADA}:00 — 5 para bronze, 15 para prata, 30 para ouro.`,
-    cor: 'run',
+    familia: 'amuletos',
+    cor: 'neutro',
     glifo: 'moon',
     campo: 'start_time',
     campoLabel: 'a hora de início',
@@ -673,7 +897,7 @@ function coruja({ treinos }) {
   });
 }
 
-// ── 5. A Escalada ────────────────────────────────────────────────────────
+// ── 6. A Escalada ────────────────────────────────────────────────────────
 
 /* chave     escalada
    regra     "Metros de subida acumulados em treino: 10 000 (bronze),
@@ -683,6 +907,10 @@ function coruja({ treinos }) {
              contra (não apaga nada). O detalhe diz quantas ficaram de fora,
              porque um total que parece baixo é quase sempre isso.
    cor       --run (a subida é corrida, não ginásio)
+   família   acumulacao — soma metros ao longo do tempo, e é o exemplo
+             canónico do que a doutrina 6 #6 manda a Carol NUNCA sugerir:
+             "estás a 300 m do próximo degrau" é a frase que põe alguém a
+             procurar uma rampa com o joelho a queixar-se.
    níveis    sim: bronze 10 000 m, prata 25 000 m, ouro 50 000 m.
 
    Acumulado de SEMPRE, não do ano: um badge de ano precisava de period_key
@@ -715,6 +943,7 @@ function escalada({ treinos }) {
     key: 'escalada',
     name: 'A Escalada',
     rule: 'Metros de subida acumulados em treino — 10 000 para bronze, 25 000 para prata, 50 000 para ouro.',
+    familia: 'acumulacao',
     cor: 'run',
     glifo: 'peak',
     campo: 'details.elevation_gain_m',
@@ -802,6 +1031,8 @@ function sessaoDaSemana(semana, { status, meta, porque }) {
    em falta  sem plano na semana, a semana não entra na conta (não há nada a
              cumprir); é o único "em falta" possível aqui, e é dito na frase.
    cor       --ok (a disciplina, o mesmo verde do objetivo batido)
+   família   disciplina — mede exatamente "fizeste o combinado", e é o único
+             badge cuja régua é o plano da Carol.
    níveis    não — repete-se, uma linha por semana (period_key = a segunda). */
 function semana100({ semanas }) {
   const fechadas = semanas.filter((s) => s.fechada);
@@ -835,6 +1066,7 @@ function semana100({ semanas }) {
     key: 'semana_100',
     name: 'Semana 100%',
     rule: 'Uma semana fechada com pelo menos um treino e tudo o que o plano pedia cumprido — índice de execução 100.',
+    familia: 'disciplina',
     cor: 'ok',
     glifo: 'check',
     campo: 'coach_plan_items',
@@ -905,6 +1137,7 @@ function semana100({ semanas }) {
    campo     coach_plan_items (kind = 'descanso') + runs/workout_sessions
    em falta  sem dias de descanso prescritos, a semana não entra na conta.
    cor       --ok (a disciplina)
+   família   disciplina — o combinado também é não correr.
    níveis    não — repete-se, uma linha por semana.
 
    Existe porque o descanso é a parte do plano que ninguém festeja e que é
@@ -946,6 +1179,7 @@ function descansoCumprido({ semanas }) {
     key: 'descanso_cumprido',
     name: 'Descanso cumprido',
     rule: 'Uma semana fechada com pelo menos um dia de descanso prescrito e nenhum deles trocado por treino.',
+    familia: 'disciplina',
     cor: 'ok',
     glifo: 'moonrest',
     campo: 'coach_plan_items',
@@ -1013,7 +1247,7 @@ function descansoCumprido({ semanas }) {
   };
 }
 
-// ── 8. Cadência corrigida ────────────────────────────────────────────────
+// ── 7. Cadência corrigida ────────────────────────────────────────────────
 
 /* chave     cadencia_corrigida
    regra     "Depois de um período com a cadência abaixo do esperado para o
@@ -1027,6 +1261,10 @@ function descansoCumprido({ semanas }) {
              `height_cm`, a régua usa-se SEM o termo de estatura e sobe-se a
              fasquia de entrada (ver abaixo).
    cor       --run (é treino de corrida)
+   família   desempenho — mede uma mudança na mecânica da passada. Três
+             semanas seguidas podiam fazê-lo parecer disciplina; não é: o que
+             se julga não é ter cumprido nada, é a cadência ter voltado ao
+             esperado para o ritmo.
    níveis    não — repete-se: quem recair e voltar a corrigir ganha outra vez.
 
    ── A RÉGUA, e porque é que ela NÃO diz 180 ─────────────────────────────
@@ -1289,6 +1527,7 @@ function cadenciaCorrigida({ treinos, profile, today }) {
     key: 'cadencia_corrigida',
     name: 'Cadência corrigida',
     rule: `Depois de um período com a cadência abaixo do esperado para o teu ritmo, ${CAD_SEMANAS} semanas seguidas com ela de volta ao esperado — em corridas contínuas em plano.`,
+    familia: 'desempenho',
     cor: 'run',
     glifo: 'steps',
     campo: 'details.cadence_spm',
@@ -1365,7 +1604,7 @@ function cadenciaCorrigida({ treinos, profile, today }) {
   };
 }
 
-// ── 9. Recorde pessoal ───────────────────────────────────────────────────
+// ── 8. Recorde pessoal ───────────────────────────────────────────────────
 
 /* chave     recorde_pessoal
    regra     "Uma prova cujo tempo oficial é o teu melhor de sempre naquela
@@ -1376,6 +1615,11 @@ function cadenciaCorrigida({ treinos, profile, today }) {
    em falta  prova concluída sem tempo oficial: INDETERMINADA. É o caso mais
              comum de todos (a prova fechou-se à mão e o diploma nunca foi
              lido), e é exatamente o que o detalhe tem de dizer.
+   família   desempenho — é o atleta contra ele próprio à mesma distância, e
+             não há medida de desempenho mais direta do que essa. A família
+             não segue a cor: a cor diz DE ONDE vem (uma prova), a família diz
+             O QUE MEDE. São perguntas diferentes, e é por isso que a família
+             teve de existir.
    cor       --race (âmbar) — É O ÚNICO âmbar desta vitrina, e é-o porque
              nasce de uma prova. Nenhum badge de treino leva esta cor.
    níveis    não — repete-se, uma linha por prova (period_key = o id da prova).
@@ -1433,6 +1677,7 @@ function recordePessoal({ completed }) {
     key: 'recorde_pessoal',
     name: 'Recorde pessoal',
     rule: 'Uma prova cujo tempo oficial é o teu melhor de sempre naquela distância.',
+    familia: 'desempenho',
     cor: 'race',
     glifo: 'trophy',
     campo: 'details.official_time_seconds',
@@ -1489,6 +1734,812 @@ function recordePessoal({ completed }) {
   };
 }
 
+// ── OS AMULETOS ──────────────────────────────────────────────────────────
+
+/* Seis badges que não medem desenvolvimento nenhum (família `amuletos`, ao
+   lado da Coruja, que já cá estava). Correr às quatro horas do dia, nas
+   quatro estações, no dia de anos, nos dois solstícios, dez vezes à mesma
+   meia-hora, ou uma vez os 10,00 km certos: nada disto diz se o atleta está
+   melhor ou pior. São coisas que se encontram, não que se perseguem.
+
+   ── O TOM ───────────────────────────────────────────────────────────────
+   Estes badges NÃO SÃO A SÉRIO, e o que o atleta lê tem de o deixar claro —
+   sem piada nenhuma, que a app é sóbria. A saída é a mesma de sempre: dizer
+   a verdade e parar. "Dez corridas começadas na mesma meia-hora. Isto não é
+   treino nenhum, é hábito" diz as duas coisas (o que aconteceu e o peso que
+   tem) sem uma única piscadela de olho.
+
+   ── E A CAROL NÃO OS SUGERE ─────────────────────────────────────────────
+   Doutrina 6 #6 (src/coach-knowledge/06-head-coach-arbitragem.md), terceira
+   regra: dizer "corre no dia do teu aniversário para ganhares o badge"
+   destrói exatamente aquilo que o torna agradável. É a família que a
+   identifica — e é meia razão para a família existir.
+
+   ── O QUE ENTRA ─────────────────────────────────────────────────────────
+   Os amuletos leem `treinos`, como todos os outros badges desta vitrina: uma
+   prova não é treino (ver `treinosDe`, no fim do ficheiro), e não se abre
+   aqui uma exceção só porque o badge é leve. */
+
+/** "madrugada, manhã e noite" — a enumeração portuguesa, com o "e" no fim. */
+function juntar(partes) {
+  if (partes.length <= 1) return partes[0] || '';
+  return `${partes.slice(0, -1).join(', ')} e ${partes[partes.length - 1]}`;
+}
+
+/* ── Os badges de ENCAIXES ───────────────────────────────────────────────
+   Três amuletos são o mesmo jogo: um conjunto FIXO de encaixes (as quatro
+   faixas do dia, as quatro estações, os dois solstícios) e um badge que se
+   ganha quando todos ficam preenchidos. O que muda é o que define o encaixe
+   e as palavras — por isso a varredura vive aqui uma vez, como a dos badges
+   de medida.
+
+   `encaixeDe(run)` devolve a chave do encaixe, ou `null` quando falta o dado
+   (é o que cria a sessão indeterminada — a mesma regra de sempre).
+
+   A lista de sessões mostra só a PRIMEIRA corrida de cada encaixe. As outras
+   não falharam nada, apenas repetiram um encaixe já preenchido, e listá-las
+   todas enchia o ecrã sem responder à única pergunta que ele tem de
+   responder: quais os encaixes que faltam. */
+function badgeDeEncaixes({
+  key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
+  encaixes, encaixeDe, candidatas, descreveEncaixe, porqueConta, semNada, linhaDue,
+}) {
+  const porEncaixe = new Map();
+  const indeterminadas = [];
+  const ordenadas = [...candidatas].sort((a, b) => (dayOf(a.date) || '').localeCompare(dayOf(b.date) || ''));
+  for (const run of ordenadas) {
+    const encaixe = encaixeDe(run);
+    if (encaixe == null) { indeterminadas.push(run); continue; }
+    if (!porEncaixe.has(encaixe)) porEncaixe.set(encaixe, run);
+  }
+
+  const cheios = encaixes.filter((e) => porEncaixe.has(e.key));
+  const vazios = encaixes.filter((e) => !porEncaixe.has(e.key));
+  const completo = vazios.length === 0 && encaixes.length > 0;
+  // O dia em que o último encaixe se preencheu — o primeiro dia em que os
+  // dados o provam, a mesma régua do resto do ficheiro.
+  const ultimoDia = cheios
+    .map((e) => dayOf(porEncaixe.get(e.key).date))
+    .sort()
+    .slice(-1)[0] || null;
+
+  const sessoes = newestFirst([
+    ...cheios.map((e) => {
+      const run = porEncaixe.get(e.key);
+      return sessaoDaCorrida(run, {
+        status: 'conta',
+        meta: descreveEncaixe(e, run),
+        porque: porqueConta(e),
+      });
+    }),
+    ...indeterminadas.map((run) => sessaoDaCorrida(run, {
+      status: 'indeterminada',
+      meta: run?.distance_km ? fmtKmLinha(num(run.distance_km)) : null,
+      porque: `Sem ${campoLabel} no registo.`,
+    })),
+  ]);
+
+  const comum = {
+    key, name, rule, familia, cor, glifo, campo, campoLabel, dependeDe, comoResolver,
+    unidade: 'count',
+    value: cheios.length,
+    sessoes,
+    indeterminadas: blocoIndeterminadas(indeterminadas, { campoLabel, comoResolver }),
+  };
+
+  const faltam = juntar(vazios.map((e) => e.label));
+
+  if (completo) {
+    return {
+      badge: badge({
+        ...comum,
+        state: 'won',
+        ring: 1,
+        centro: String(encaixes.length),
+        centroAria: `${name}: ganho, ${juntar(encaixes.map((e) => e.label))}`,
+        count: 1,
+        awardedOn: ultimoDia,
+        linha: `${juntar(encaixes.map((e) => e.label))} — completo a ${formatDatePTShort(ultimoDia)}`,
+        detalhe: juntar(encaixes.map((e) => e.label)),
+      }),
+      due: [{
+        badgeKey: key,
+        tier: '',
+        // Ganha-se uma vez: não há período que distinga uma repetição, e
+        // repetir "as quatro estações" não é feito nenhum novo.
+        periodKey: '',
+        value: encaixes.length,
+        valueUnit: 'count',
+        raceId: null,
+        awardedOn: ultimoDia,
+        title: name,
+        line: linhaDue({ ultimoDia }),
+      }],
+    };
+  }
+
+  const comecou = cheios.length > 0;
+  return {
+    badge: badge({
+      ...comum,
+      state: comecou ? 'progress' : 'empty',
+      ring: comecou ? Math.min(cheios.length / encaixes.length, 0.99) : 0,
+      centro: `${cheios.length}/${encaixes.length}`,
+      centroAria: comecou
+        ? `${name}: a caminho, ${cheios.length} de ${encaixes.length}. ${plural(vazios.length, 'Falta', 'Faltam')} ${faltam}`
+        : `${name}: por ganhar. ${rule}`,
+      linha: comecou ? `${plural(vazios.length, 'falta', 'faltam')} ${faltam}` : semNada,
+    }),
+    due: [],
+  };
+}
+
+/* ── O CALENDÁRIO DO SOL ─────────────────────────────────────────────────
+   Duas estações do ano e dois solstícios são perguntas de astronomia, não de
+   calendário — e por isso não se resolvem com um dia fixo.
+
+   ⚠️ HEMISFÉRIO NORTE, ASSUMIDO. A app é portuguesa e todo o resto dela o é
+   (a semana de segunda a domingo, o fuso de Lisboa em `segundaDe`). Abaixo
+   do equador as estações são as opostas e o "dia mais longo" é o solstício
+   de dezembro: um atleta no Brasil ou em Moçambique veria estes dois
+   amuletos ao contrário. Fica escrito porque é uma limitação real, não um
+   esquecimento — e porque o dia em que a app tiver utilizadores a sul do
+   equador é este comentário que diz onde mexer.
+
+   AS DATAS VARIAM entre 20 e 22 de junho/dezembro (e entre 19 e 21 de março),
+   por causa dos anos bissextos e da precessão — em 2026 o solstício de junho
+   é a 21, em 2028 é a 20. Um dia fixo estaria errado com regularidade, e
+   estas regras são perguntas de SIM OU NÃO sobre um único dia: errar o dia é
+   errar tudo.
+
+   Por isso calcula-se: a longitude aparente do Sol (Meeus, *Astronomical
+   Algorithms*, cap. 25, a versão de baixa precisão — erro ~0,01°, que em
+   tempo dá ~15 minutos) e uma bissecção à procura do instante em que ela
+   passa os 0° (equinócio de março), 90° (solstício de junho), 180°
+   (equinócio de setembro) e 270° (solstício de dezembro).
+
+   Duas aproximações assumidas, ambas irrelevantes para o que aqui se
+   pergunta (o DIA, não a hora):
+     · ΔT (a diferença entre o Tempo Dinâmico e o UTC, ~70 s neste século)
+       não se aplica;
+     · os ~15 minutos de erro do método só mudariam o dia se o evento caísse
+       a menos de 15 minutos da meia-noite de Lisboa. */
+
+/** Dia juliano ↔ milissegundos de época (JD 2440587,5 = 1970-01-01T00:00Z). */
+const JD_EPOCA = 2440587.5;
+const msDeJD = (jd) => (jd - JD_EPOCA) * 86400000;
+const jdDeISO = (iso) => Date.parse(`${iso}T00:00:00Z`) / 86400000 + JD_EPOCA;
+
+const GRAUS = Math.PI / 180;
+const norm360 = (x) => ((x % 360) + 360) % 360;
+
+/** A longitude aparente do Sol, em graus, para um dia juliano. */
+function longitudeSolar(jd) {
+  const T = (jd - 2451545.0) / 36525;
+  const L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T;
+  const M = (357.52911 + 35999.05029 * T - 0.0001537 * T * T) * GRAUS;
+  const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M)
+    + (0.019993 - 0.000101 * T) * Math.sin(2 * M)
+    + 0.000289 * Math.sin(3 * M);
+  const omega = (125.04 - 1934.136 * T) * GRAUS;
+  return norm360(L0 + C - 0.00569 - 0.00478 * Math.sin(omega));
+}
+
+/* Os quatro eventos, com o dia aproximado à volta do qual se procura e o
+   fuso de Lisboa nesse dia. A hora legal portuguesa é UTC+1 do último
+   domingo de março ao último domingo de outubro (25-31 de março e 25-31 de
+   outubro): o equinócio de março (19-21) cai SEMPRE antes de a hora de verão
+   começar, e o de setembro e o solstício de junho caem SEMPRE dentro dela.
+   Por isso o desvio é constante por evento e não precisa de regra de fuso. */
+const EVENTOS_SOLARES = [
+  { key: 'equinocio_marco', graus: 0, mes: 3, dia: 20, horasLisboa: 0 },
+  { key: 'solsticio_junho', graus: 90, mes: 6, dia: 21, horasLisboa: 1 },
+  { key: 'equinocio_setembro', graus: 180, mes: 9, dia: 22, horasLisboa: 1 },
+  { key: 'solsticio_dezembro', graus: 270, mes: 12, dia: 21, horasLisboa: 0 },
+];
+
+/** A diferença angular até ao alvo, dobrada para [−180, 180) — é o que faz a
+ *  bissecção funcionar na passagem dos 360° para os 0° (equinócio de março). */
+const distanciaAngular = (longitude, alvo) => norm360(longitude - alvo + 180) - 180;
+
+/** O dia, em Lisboa, do evento solar deste ano. */
+function diaDoEvento(ano, evento) {
+  const centro = jdDeISO(`${ano}-${String(evento.mes).padStart(2, '0')}-${String(evento.dia).padStart(2, '0')}`);
+  let lo = centro - 3;
+  let hi = centro + 3;
+  // 50 bissecções sobre uma janela de 6 dias: a precisão do intervalo passa
+  // a ser microssegundos, muito abaixo do erro do próprio método.
+  for (let i = 0; i < 50; i += 1) {
+    const meio = (lo + hi) / 2;
+    if (distanciaAngular(longitudeSolar(meio), evento.graus) < 0) lo = meio;
+    else hi = meio;
+  }
+  const d = new Date(msDeJD((lo + hi) / 2) + evento.horasLisboa * 3600000);
+  return d.toISOString().slice(0, 10);
+}
+
+/* Os quatro dias de um ano, calculados uma vez. O cache é de módulo e nunca
+   se invalida de propósito: a resposta para um ano não muda. */
+const cacheSolar = new Map();
+function diasSolaresDe(ano) {
+  if (!cacheSolar.has(ano)) {
+    const dias = {};
+    for (const evento of EVENTOS_SOLARES) dias[evento.key] = diaDoEvento(ano, evento);
+    cacheSolar.set(ano, dias);
+  }
+  return cacheSolar.get(ano);
+}
+
+/** A estação do ano (hemisfério norte) de uma data ISO. O DIA DA VIRAGEM
+ *  conta para a estação NOVA: a mudança dá-se a uma hora concreta e nós só
+ *  temos o dia, por isso escolhe-se uma regra e diz-se qual — o dia do
+ *  equinócio de março é primavera, o do solstício de junho é verão. */
+function estacaoDe(iso) {
+  const dias = diasSolaresDe(Number(iso.slice(0, 4)));
+  if (iso < dias.equinocio_marco) return 'inverno';
+  if (iso < dias.solsticio_junho) return 'primavera';
+  if (iso < dias.equinocio_setembro) return 'verao';
+  if (iso < dias.solsticio_dezembro) return 'outono';
+  return 'inverno';
+}
+
+// ── Amuleto 1. Volta ao relógio ──────────────────────────────────────────
+
+/* chave     volta_ao_relogio
+   regra     "Correr nas quatro faixas do dia: madrugada, manhã, tarde e
+             noite."
+   campo     runs.start_time
+   em falta  INDETERMINADA, como na Coruja: sem hora não há faixa.
+   cor       neutro (amuleto)
+   família   amuletos
+   níveis    não — quatro encaixes, ganha-se uma vez.
+
+   Este badge ABSORVE o "Madrugador" que foi rejeitado por ser o espelho da
+   Coruja: dois badges iguais ao contrário (um por correr cedo, outro por
+   correr tarde) não são dois badges, são um a fingir. Em vez disso, um só
+   com quatro encaixes — e a Coruja mantém-se por si, porque conta uma coisa
+   diferente (a REPETIÇÃO do treino noturno, com níveis, não o encaixe).
+
+   As faixas daqui NÃO são a janela da Coruja, e é de propósito: a Coruja
+   começa às 21:00 (é um treino noturno a sério), a "noite" daqui começa às
+   18:00 (é uma faixa do dia, como as outras três). São perguntas diferentes
+   sobre o mesmo campo; alinhá-las deixaria a tarde com doze horas e a noite
+   com três. */
+const FAIXAS_DO_DIA = [
+  { key: 'madrugada', label: 'madrugada', desde: 0, ate: 6 },
+  { key: 'manha', label: 'manhã', desde: 6, ate: 12 },
+  { key: 'tarde', label: 'tarde', desde: 12, ate: 18 },
+  { key: 'noite', label: 'noite', desde: 18, ate: 24 },
+];
+
+const RESOLVER_HORA = 'Abre o registo da corrida e preenche a hora a que começaste — é o campo ao lado da data.';
+
+function voltaAoRelogio({ treinos }) {
+  return badgeDeEncaixes({
+    key: 'volta_ao_relogio',
+    name: 'Volta ao relógio',
+    rule: 'Correr nas quatro faixas do dia: madrugada, manhã, tarde e noite.',
+    familia: 'amuletos',
+    cor: 'neutro',
+    glifo: 'clock',
+    campo: 'start_time',
+    campoLabel: 'a hora de início',
+    dependeDe: 'Precisa da hora de início no registo da corrida.',
+    comoResolver: RESOLVER_HORA,
+    encaixes: FAIXAS_DO_DIA,
+    candidatas: treinos,
+    encaixeDe: (run) => {
+      const h = horaDe(run?.start_time);
+      if (h == null) return null;
+      return (FAIXAS_DO_DIA.find((f) => h >= f.desde && h < f.ate) || {}).key || null;
+    },
+    descreveEncaixe: (encaixe, run) => `${encaixe.label} · começou às ${horaMinutoDe(run.start_time)}`,
+    porqueConta: (encaixe) => `A primeira corrida de ${encaixe.label}.`,
+    semNada: 'ainda sem corridas com hora de início registada',
+    linhaDue: () => 'Madrugada, manhã, tarde e noite: o dia inteiro corrido, a horas diferentes. Não diz nada sobre como corres — diz que correste a todas as horas.',
+  });
+}
+
+// ── Amuleto 2. Quatro estações ───────────────────────────────────────────
+
+/* chave     quatro_estacoes
+   regra     "Correr em cada uma das quatro estações do ano."
+   campo     runs.date
+   em falta  não há falta possível: a data é obrigatória em qualquer registo.
+             Por isso este badge nunca tem sessões indeterminadas — e é o
+             único (com o Solstício) de que isso se pode dizer.
+   cor       neutro (amuleto)
+   família   amuletos
+   níveis    não — quatro encaixes.
+
+   As estações são as astronómicas, do equinócio ao solstício, calculadas no
+   "CALENDÁRIO DO SOL" acima — não as do calendário comercial (1 de março,
+   1 de junho). Hemisfério norte, assumido; ver o aviso lá em cima.
+
+   Não se exige o MESMO ano: quem começou a registar em julho levaria um ano
+   e meio a fechar o conjunto, e não há nada nisso que valha a pena castigar.
+   O badge pergunta "já correste em cada estação?", não "já fizeste um ano
+   inteiro?". */
+const ESTACOES = [
+  { key: 'primavera', label: 'primavera' },
+  { key: 'verao', label: 'verão' },
+  { key: 'outono', label: 'outono' },
+  { key: 'inverno', label: 'inverno' },
+];
+
+const SEM_FALTA_DE_DATA = 'Nada a resolver: a data vem preenchida em todos os registos de corrida.';
+
+function quatroEstacoes({ treinos }) {
+  return badgeDeEncaixes({
+    key: 'quatro_estacoes',
+    name: 'Quatro estações',
+    rule: 'Correr em cada uma das quatro estações do ano.',
+    familia: 'amuletos',
+    cor: 'neutro',
+    glifo: 'leaf',
+    campo: 'date',
+    campoLabel: 'a data da corrida',
+    dependeDe: 'Precisa da data da corrida — que qualquer registo já tem.',
+    comoResolver: SEM_FALTA_DE_DATA,
+    encaixes: ESTACOES,
+    candidatas: treinos,
+    encaixeDe: (run) => estacaoDe(dayOf(run.date)),
+    descreveEncaixe: (encaixe) => encaixe.label,
+    porqueConta: (encaixe) => `A primeira corrida da ${encaixe.label}.`,
+    semNada: 'ainda sem corridas registadas',
+    linhaDue: () => 'Primavera, verão, outono e inverno: uma corrida em cada estação. O ano inteiro, visto de fora.',
+  });
+}
+
+// ── Amuleto 3. Solstício ─────────────────────────────────────────────────
+
+/* chave     solsticio
+   regra     "Correr no dia mais longo e no dia mais curto do ano."
+   campo     runs.date
+   em falta  nenhuma, como nas Quatro estações.
+   cor       neutro (amuleto)
+   família   amuletos
+   níveis    não — dois encaixes.
+
+   Os dois dias calculam-se (ver o "CALENDÁRIO DO SOL"): variam entre 20 e 22
+   de junho e de dezembro, e um dia fixo estaria errado com regularidade.
+
+   Hemisfério norte, assumido: a sul do equador o dia mais longo é o
+   solstício de dezembro, e este badge estaria trocado.
+
+   Também aqui não se exige o mesmo ano: os dois dias estão a seis meses um
+   do outro de qualquer maneira, e exigi-lo só acrescentaria a hipótese de
+   alguém falhar por meio ano. */
+const SOLSTICIOS = [
+  { key: 'maior', label: 'o dia mais longo' },
+  { key: 'menor', label: 'o dia mais curto' },
+];
+
+/** 'maior', 'menor', ou null — para uma data ISO. */
+function encaixeDoSolsticio(iso) {
+  const dias = diasSolaresDe(Number(iso.slice(0, 4)));
+  if (iso === dias.solsticio_junho) return 'maior';
+  if (iso === dias.solsticio_dezembro) return 'menor';
+  return null;
+}
+
+function solsticio({ treinos }) {
+  return badgeDeEncaixes({
+    key: 'solsticio',
+    name: 'Solstício',
+    rule: 'Correr no dia mais longo e no dia mais curto do ano.',
+    familia: 'amuletos',
+    cor: 'neutro',
+    glifo: 'sun',
+    campo: 'date',
+    campoLabel: 'a data da corrida',
+    dependeDe: 'Precisa da data da corrida — que qualquer registo já tem.',
+    comoResolver: SEM_FALTA_DE_DATA,
+    encaixes: SOLSTICIOS,
+    /* As candidatas filtram-se ANTES, e é preciso que assim seja: em
+       `badgeDeEncaixes` um `null` quer dizer "falta o dado" e cria uma sessão
+       indeterminada. Uma corrida a 3 de maio não tem dado nenhum em falta —
+       está só fora dos dois dias. Sem este filtro, o histórico inteiro
+       aparecia no ecrã de detalhe como "por decidir". */
+    candidatas: treinos.filter((r) => encaixeDoSolsticio(dayOf(r.date)) != null),
+    encaixeDe: (run) => encaixeDoSolsticio(dayOf(run.date)),
+    descreveEncaixe: (encaixe) => encaixe.label,
+    porqueConta: (encaixe) => `Correste n${encaixe.key === 'maior' ? 'o dia mais longo' : 'o dia mais curto'} do ano.`,
+    semNada: 'ainda sem corridas num solstício',
+    linhaDue: () => 'O dia mais longo e o dia mais curto do ano, os dois corridos. Duas voltas ao Sol apanhadas nos extremos.',
+  });
+}
+
+// ── Amuleto 4. Relógio suíço ─────────────────────────────────────────────
+
+/* chave     relogio_suico
+   regra     "Dez corridas começadas na mesma meia-hora."
+   campo     runs.start_time
+   em falta  INDETERMINADA: sem hora não há meia-hora a que pertencer.
+   cor       neutro (amuleto)
+   família   amuletos
+   níveis    não — ganha-se uma vez.
+
+   A meia-hora é a do relógio, não uma janela deslizante: 07:00-07:29 e
+   07:30-07:59 são duas gavetas diferentes. Uma janela deslizante seria mais
+   "justa" e daria muito mais badges — e é precisamente por isso que não se
+   usa: o que o badge repara é numa ROTINA, e uma rotina é sair sempre à
+   mesma hora, não sair sempre a menos de trinta minutos de distância.
+
+   Dez, e não cinco: cinco acontece por acaso a quem treina de manhã antes do
+   trabalho. Dez já é sinal de um hábito que se aguenta. */
+const SUICO_ALVO = 10;
+
+/** `{ h, min }` de "HH:MM[:SS]", ou null. É a leitura do `horaDe` da Coruja
+ *  com os minutos que ela deita fora — aqui eles são metade da pergunta. */
+function horaEMinutoDe(startTime) {
+  if (typeof startTime !== 'string') return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(startTime.trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || h < 0 || h > 23 || !Number.isFinite(min) || min > 59) return null;
+  return { h, min };
+}
+
+const doisDigitos = (n) => String(n).padStart(2, '0');
+
+/** "07:34" — a hora de início normalizada, ou null. */
+function horaMinutoDe(startTime) {
+  const t = horaEMinutoDe(startTime);
+  return t ? `${doisDigitos(t.h)}:${doisDigitos(t.min)}` : null;
+}
+
+/** "07:30" — a meia-hora do relógio a que uma hora de início pertence. */
+function meiaHoraDe(startTime) {
+  const t = horaEMinutoDe(startTime);
+  return t ? `${doisDigitos(t.h)}:${t.min < 30 ? '00' : '30'}` : null;
+}
+
+/** "07:00-07:29" — a gaveta, dita por extenso. */
+function labelMeiaHora(chave) {
+  const [h, m] = chave.split(':').map(Number);
+  return `${chave}-${String(h).padStart(2, '0')}:${m === 0 ? '29' : '59'}`;
+}
+
+function relogioSuico({ treinos }) {
+  const porMeiaHora = new Map();
+  const indeterminadas = [];
+  const comHora = [];
+  for (const run of [...treinos].sort((a, b) => (dayOf(a.date) || '').localeCompare(dayOf(b.date) || ''))) {
+    const chave = meiaHoraDe(run?.start_time);
+    if (chave == null) { indeterminadas.push(run); continue; }
+    if (!porMeiaHora.has(chave)) porMeiaHora.set(chave, []);
+    porMeiaHora.get(chave).push(run);
+    comHora.push({ run, chave });
+  }
+
+  /* A gaveta que lidera. Em empate fica a que chegou lá primeiro: é a que
+     ganhou o badge, e a data do prémio tem de ser a mais antiga que os dados
+     provam. */
+  let melhor = null;
+  for (const [chave, lista] of porMeiaHora) {
+    const marco = lista.length >= SUICO_ALVO ? dayOf(lista[SUICO_ALVO - 1].date) : null;
+    const candidato = { chave, lista, marco };
+    if (!melhor) { melhor = candidato; continue; }
+    if (marco && melhor.marco) { if (marco < melhor.marco) melhor = candidato; continue; }
+    if (marco && !melhor.marco) { melhor = candidato; continue; }
+    if (!marco && !melhor.marco && lista.length > melhor.lista.length) melhor = candidato;
+  }
+
+  const contagem = melhor ? melhor.lista.length : 0;
+  const ganho = !!melhor && !!melhor.marco;
+  const label = melhor ? labelMeiaHora(melhor.chave) : null;
+
+  const sessoes = newestFirst([
+    ...comHora.map(({ run, chave }) => sessaoDaCorrida(run, {
+      status: chave === melhor?.chave ? 'conta' : 'falhou',
+      meta: `começou às ${horaMinutoDe(run.start_time)}`,
+      porque: chave === melhor?.chave
+        ? `Na meia-hora das ${label}.`
+        : `Noutra meia-hora — a mais repetida é a das ${label}.`,
+    })),
+    ...indeterminadas.map((run) => sessaoDaCorrida(run, {
+      status: 'indeterminada',
+      meta: run?.distance_km ? fmtKmLinha(num(run.distance_km)) : null,
+      porque: 'Sem hora de início no registo.',
+    })),
+  ]);
+
+  const comum = {
+    key: 'relogio_suico',
+    name: 'Relógio suíço',
+    rule: `${SUICO_ALVO} corridas começadas na mesma meia-hora do relógio.`,
+    familia: 'amuletos',
+    cor: 'neutro',
+    glifo: 'watch',
+    campo: 'start_time',
+    campoLabel: 'a hora de início',
+    dependeDe: 'Precisa da hora de início no registo da corrida.',
+    comoResolver: RESOLVER_HORA,
+    unidade: 'count',
+    value: contagem,
+    sessoes,
+    indeterminadas: blocoIndeterminadas(indeterminadas, { campoLabel: 'a hora de início', comoResolver: RESOLVER_HORA }),
+  };
+
+  if (ganho) {
+    return {
+      badge: badge({
+        ...comum,
+        state: 'won',
+        ring: 1,
+        centro: String(SUICO_ALVO),
+        centroAria: `Relógio suíço: ganho, ${SUICO_ALVO} corridas começadas entre as ${label}`,
+        count: 1,
+        awardedOn: melhor.marco,
+        linha: `${contagem} corridas começadas entre as ${label}`,
+        detalhe: `a meia-hora das ${label}`,
+      }),
+      due: [{
+        badgeKey: 'relogio_suico',
+        tier: '',
+        periodKey: '',
+        value: SUICO_ALVO,
+        valueUnit: 'count',
+        raceId: null,
+        awardedOn: melhor.marco,
+        title: 'Relógio suíço',
+        line: `${SUICO_ALVO} corridas começadas entre as ${label}. Isto não é treino nenhum — é hábito.`,
+      }],
+    };
+  }
+
+  return {
+    badge: badge({
+      ...comum,
+      state: contagem > 0 ? 'progress' : 'empty',
+      ring: contagem > 0 ? Math.min(contagem / SUICO_ALVO, 0.99) : 0,
+      centro: contagem > 0 ? `${contagem}/${SUICO_ALVO}` : String(SUICO_ALVO),
+      centroAria: contagem > 0
+        ? `Relógio suíço: a caminho, ${contagem} de ${SUICO_ALVO} corridas na meia-hora das ${label}`
+        : `Relógio suíço: por ganhar. ${SUICO_ALVO} corridas começadas na mesma meia-hora do relógio.`,
+      linha: contagem > 0
+        ? `${contagem} de ${SUICO_ALVO} na meia-hora das ${label}`
+        : 'ainda sem corridas com hora de início registada',
+    }),
+    due: [],
+  };
+}
+
+// ── Amuleto 5. Anos ──────────────────────────────────────────────────────
+
+/* chave     anos
+   regra     "Correr no dia do teu aniversário."
+   campo     profiles.birth_date (com runs.date)
+   em falta  SEM DATA DE NASCIMENTO NÃO HÁ CANDIDATO NENHUM — e o badge diz
+             isso, em vez de ficar por ganhar sem explicação. Não é uma
+             sessão indeterminada (nenhuma corrida está por decidir): é a
+             pergunta que não se pode fazer. A data de nascimento já é pedida
+             pelo Perfil, para as zonas de FC.
+   cor       neutro (amuleto)
+   família   amuletos
+   níveis    não — repete-se, uma linha por ano (period_key = o ano).
+
+   Quem nasceu a 29 de fevereiro só o encontra em ano bissexto, e não se
+   inventa aqui um 28 nem um 1 de março: a data é a que é, e o dia de anos de
+   quem nasceu a 29 de fevereiro é um assunto mais velho do que esta app. */
+function anos({ treinos, profile }) {
+  const nascimento = dayOf(profile?.birth_date);
+  const comum = {
+    key: 'anos',
+    name: 'Anos',
+    rule: 'Correr no dia do teu aniversário.',
+    familia: 'amuletos',
+    cor: 'neutro',
+    glifo: 'cake',
+    campo: 'birth_date',
+    campoLabel: 'a data de nascimento',
+    dependeDe: 'Precisa da tua data de nascimento no Perfil.',
+    comoResolver: 'Preenche a data de nascimento no Perfil — é a mesma que dá as zonas de frequência cardíaca.',
+    unidade: 'anos',
+    sessoes: [],
+    indeterminadas: null,
+  };
+
+  if (!nascimento) {
+    return {
+      badge: badge({
+        ...comum,
+        state: 'empty',
+        ring: 0,
+        centro: '—',
+        centroAria: 'Anos: sem data de nascimento no Perfil não há dia a assinalar.',
+        linha: 'sem data de nascimento no Perfil não há dia a assinalar — preenche-a e este passa a contar',
+      }),
+      due: [],
+    };
+  }
+
+  const diaEMes = nascimento.slice(5);
+  const anoDeNascimento = Number(nascimento.slice(0, 4));
+  const ganhas = treinos
+    .filter((r) => dayOf(r.date).slice(5) === diaEMes)
+    .sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
+  const idadeEm = (iso) => Number(iso.slice(0, 4)) - anoDeNascimento;
+
+  // Uma linha por ANO: dois treinos no mesmo aniversário são o mesmo feito.
+  const porAno = new Map();
+  for (const run of ganhas) porAno.set(dayOf(run.date).slice(0, 4), run);
+
+  const sessoes = newestFirst([...porAno.values()].map((run) => sessaoDaCorrida(run, {
+    status: 'conta',
+    meta: `${idadeEm(dayOf(run.date))} anos`,
+    porque: 'Correste no dia do teu aniversário.',
+  })));
+
+  const due = [...porAno.entries()].map(([ano, run]) => ({
+    badgeKey: 'anos',
+    tier: '',
+    periodKey: ano,
+    value: idadeEm(dayOf(run.date)),
+    valueUnit: 'anos',
+    raceId: null,
+    awardedOn: dayOf(run.date),
+    title: 'Anos',
+    line: `Correste no dia em que fizeste ${idadeEm(dayOf(run.date))} anos. Não conta para nada — conta para si mesmo.`,
+  }));
+
+  if (porAno.size) {
+    const ultima = [...porAno.values()].slice(-1)[0];
+    const dia = dayOf(ultima.date);
+    return {
+      badge: badge({
+        ...comum,
+        state: 'won',
+        ring: 1,
+        centro: String(idadeEm(dia)),
+        centroAria: `Anos: ganho. Correste no dia em que fizeste ${idadeEm(dia)} anos`,
+        value: idadeEm(dia),
+        count: porAno.size,
+        awardedOn: dia,
+        sessoes,
+        linha: porAno.size > 1
+          ? `${porAno.size} aniversários corridos · o último a ${formatDatePTShort(dia)}`
+          : `corrido a ${formatDatePTShort(dia)}, no dia em que fizeste ${idadeEm(dia)} anos`,
+        detalhe: `${idadeEm(dia)} anos`,
+      }),
+      due,
+    };
+  }
+
+  return {
+    badge: badge({
+      ...comum,
+      state: 'empty',
+      ring: 0,
+      centro: '—',
+      centroAria: 'Anos: por ganhar. Correr no dia do teu aniversário.',
+      linha: `ainda sem nenhuma corrida a ${formatDatePTShort(nascimento)} — o teu dia de anos`,
+    }),
+    due: [],
+  };
+}
+
+// ── Amuleto 6. Número certo ──────────────────────────────────────────────
+
+/* chave     numero_certo
+   regra     "Uma corrida entre 9,99 e 10,01 km."
+   campo     runs.distance_km
+   em falta  INDETERMINADA: uma corrida sem distância não se pode medir.
+   cor       neutro (amuleto)
+   família   amuletos
+   níveis    não — repete-se, uma linha por corrida.
+
+   A janela é de vinte metros — dez para cada lado — e é estreita de
+   propósito: aos 10,05 km já é uma corrida de dez quilómetros como as
+   outras. O que o badge repara é no acaso do número redondo, e um acaso com
+   margem larga deixa de ser acaso.
+
+   Vinte metros também é, por acidente feliz, mais ou menos o erro de um GPS
+   em dez quilómetros — o que quer dizer que este badge é, com toda a
+   honestidade, metade mérito e metade satélite. */
+const CERTO_ALVO_KM = 10;
+const CERTO_MARGEM_KM = 0.01;
+
+function numeroCerto({ treinos }) {
+  const comDistancia = [];
+  const indeterminadas = [];
+  for (const run of treinos) {
+    const km = num(run?.distance_km);
+    if (km == null) indeterminadas.push(run);
+    else comDistancia.push({ run, km, erro: Math.abs(km - CERTO_ALVO_KM) });
+  }
+  const certas = comDistancia
+    .filter((c) => c.erro <= CERTO_MARGEM_KM)
+    .sort((a, b) => dayOf(a.run.date).localeCompare(dayOf(b.run.date)));
+  const maisPerto = comDistancia
+    .filter((c) => c.erro > CERTO_MARGEM_KM)
+    .reduce((m, c) => (!m || c.erro < m.erro ? c : m), null);
+
+  const fmtKm3 = (km) => `${km.toFixed(2).replace('.', ',')} km`;
+
+  const sessoes = newestFirst([
+    ...certas.map(({ run, km }) => sessaoDaCorrida(run, { status: 'conta', meta: fmtKm3(km), porque: 'O número certo.' })),
+    ...comDistancia.filter((c) => c.erro > CERTO_MARGEM_KM).map(({ run, km, erro }) => sessaoDaCorrida(run, {
+      status: 'falhou',
+      meta: fmtKm3(km),
+      porque: `${fmtMetros(erro * 1000)} ao lado dos ${CERTO_ALVO_KM} km.`,
+    })),
+    ...indeterminadas.map((run) => sessaoDaCorrida(run, {
+      status: 'indeterminada', meta: null, porque: 'Sem distância no registo.',
+    })),
+  ]);
+
+  const comum = {
+    key: 'numero_certo',
+    name: 'Número certo',
+    rule: `Uma corrida entre ${(CERTO_ALVO_KM - CERTO_MARGEM_KM).toFixed(2).replace('.', ',')} e ${(CERTO_ALVO_KM + CERTO_MARGEM_KM).toFixed(2).replace('.', ',')} km.`,
+    familia: 'amuletos',
+    cor: 'neutro',
+    glifo: 'ruler',
+    campo: 'distance_km',
+    campoLabel: 'a distância',
+    dependeDe: 'Precisa da distância no registo da corrida.',
+    comoResolver: 'Abre o registo da corrida e preenche a distância percorrida.',
+    unidade: 'km',
+    sessoes,
+    indeterminadas: blocoIndeterminadas(indeterminadas, {
+      campoLabel: 'a distância',
+      comoResolver: 'Abre o registo da corrida e preenche a distância percorrida.',
+    }),
+  };
+
+  const due = certas.map(({ run, km }) => ({
+    badgeKey: 'numero_certo',
+    tier: '',
+    periodKey: String(run.id ?? dayOf(run.date) ?? ''),
+    value: round1(km * 100) / 100,
+    valueUnit: 'km',
+    raceId: null,
+    awardedOn: dayOf(run.date),
+    title: 'Número certo',
+    line: `${fmtKm3(km)}. Nem mais nem menos — coisa que não se consegue de propósito.`,
+  }));
+
+  if (certas.length) {
+    const ultima = certas[certas.length - 1];
+    return {
+      badge: badge({
+        ...comum,
+        state: 'won',
+        ring: 1,
+        centro: String(CERTO_ALVO_KM),
+        centroAria: `Número certo: ganho, ${fmtKm3(ultima.km)}`,
+        value: round1(ultima.km * 100) / 100,
+        count: certas.length,
+        awardedOn: dayOf(ultima.run.date),
+        linha: certas.length > 1
+          ? `${certas.length} vezes · a última a ${formatDatePTShort(dayOf(ultima.run.date))}`
+          : `${fmtKm3(ultima.km)} a ${formatDatePTShort(dayOf(ultima.run.date))}`,
+        detalhe: fmtKm3(ultima.km),
+      }),
+      due,
+    };
+  }
+
+  return {
+    badge: badge({
+      ...comum,
+      state: 'empty',
+      ring: 0,
+      centro: maisPerto ? `+${fmtMetrosCurto(maisPerto.erro * 1000)}` : String(CERTO_ALVO_KM),
+      centroAria: maisPerto
+        ? `Número certo: por ganhar. A corrida mais perto ficou a ${fmtMetros(maisPerto.erro * 1000)} dos ${CERTO_ALVO_KM} km`
+        : `Número certo: por ganhar. ${comum.rule}`,
+      linha: maisPerto
+        ? `a mais perto: ${fmtKm3(maisPerto.km)}, a ${fmtMetros(maisPerto.erro * 1000)} do número certo`
+        : 'ainda sem corridas com distância registada',
+    }),
+    due: [],
+  };
+}
+
 // ── Tudo junto ───────────────────────────────────────────────────────────
 
 /* As corridas que os badges de treino olham: as que não são prova. Uma
@@ -1525,12 +2576,19 @@ export function computeBadges({
     z2_mestre: z2Mestre(ctx),
     negative_split: negativeSplit(ctx),
     cadencia_corrigida: cadenciaCorrigida(ctx),
-    coruja: coruja(ctx),
     cabra_montesa: cabraMontesa(ctx),
-    escalada: escalada(ctx),
+    medida_da_prova: medidaDaProva(ctx),
+    recorde_pessoal: recordePessoal(ctx),
     semana_100: semana100(ctx),
     descanso_cumprido: descansoCumprido(ctx),
-    recorde_pessoal: recordePessoal(ctx),
+    escalada: escalada(ctx),
+    coruja: coruja(ctx),
+    volta_ao_relogio: voltaAoRelogio(ctx),
+    relogio_suico: relogioSuico(ctx),
+    quatro_estacoes: quatroEstacoes(ctx),
+    solsticio: solsticio(ctx),
+    anos: anos(ctx),
+    numero_certo: numeroCerto(ctx),
   };
 
   const badges = BADGE_KEYS.map((key) => partes[key].badge);

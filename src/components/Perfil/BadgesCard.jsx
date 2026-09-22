@@ -1,12 +1,19 @@
 import React, { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import useBadges from '../../utils/useBadges';
+import { FAMILIAS } from '../../utils/badges';
 import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import BadgeRing, { corDoBadge } from '../shared/BadgeRing';
 import GlassCard from '../shared/GlassCard';
 import BadgeDetailSheet from './BadgeDetailSheet';
 
 /* A grelha dos badges de treino, na Vitrina (reforma da gamificação, fase 2).
+
+   AGRUPADA POR FAMÍLIA (utils/badges.js, FAMILIAS): desempenho, disciplina,
+   acumulação e amuletos, cada uma com o seu cabeçalho. Numa grelha só, um
+   amuleto ficava lado a lado com o Mestre da Z2 a fingir que valia o mesmo —
+   e a família existe precisamente para dizer que não vale. A ordem é a do
+   peso que cada família tem, com os amuletos no fim.
 
    Quatro colunas: o número dentro do anel dispensa metade do rótulo, por isso
    cabem quatro onde os medalhões só levavam dois. Cada badge abre o seu ecrã
@@ -54,8 +61,24 @@ export default function BadgesCard() {
   // A frase de progresso: o badge por ganhar que está mais perto. É o mesmo
   // recurso do Palmarés — uma linha só, a que vale a pena perseguir hoje.
   const maisPerto = lista
-    .filter((b) => b.state !== 'won' && b.linha)
+    // Um amuleto nunca vai para esta linha: ela é um empurrão ("faltam 5 000 m
+    // para bronze"), e empurrar para um amuleto estraga-o — é a mesma regra
+    // que a Carol segue na doutrina 6 #6. A família é o que o identifica.
+    .filter((b) => b.state !== 'won' && b.linha && b.familia !== 'amuletos')
     .reduce((m, b) => (!m || (b.ring || 0) > (m.ring || 0) ? b : m), null);
+
+  /* Os grupos, pela ordem de FAMILIAS. Um badge com uma família que esta
+     lista não conheça não desaparece do ecrã — cai num grupo "Outros", à
+     vista. Nada some em silêncio nesta vitrina. */
+  const grupos = [
+    ...FAMILIAS
+      .map((f) => ({ ...f, lista: lista.filter((b) => b.familia === f.key) }))
+      .filter((g) => g.lista.length > 0),
+    ...(() => {
+      const orfaos = lista.filter((b) => !FAMILIAS.some((f) => f.key === b.familia));
+      return orfaos.length ? [{ key: 'outros', label: 'Outros', lista: orfaos }] : [];
+    })(),
+  ];
 
   return (
     <div className="flex flex-col gap-2" data-testid="badges-card">
@@ -67,37 +90,50 @@ export default function BadgesCard() {
           </span>
         </div>
 
-        <div ref={ref} style={style} className="grid grid-cols-4 gap-1 mt-3" data-testid="badges-grelha">
-          {lista.map((badge, i) => {
-            const legenda = legendaDe(badge);
-            return (
-              <button
-                key={badge.key}
-                type="button"
-                data-testid={`badge-tile-${badge.key}`}
-                data-state={badge.state}
-                aria-label={badge.centroAria || badge.name}
-                onClick={() => setAbertoKey(badge.key)}
-                className="flex flex-col items-center gap-1.5 text-center min-w-0"
-                style={TILE}
+        <div ref={ref} style={style} className="flex flex-col gap-2 mt-3" data-testid="badges-grelha">
+          {grupos.map((grupo) => (
+            <div key={grupo.key} data-testid={`badges-familia-${grupo.key}`}>
+              <div
+                className="text-[10px] font-extrabold uppercase"
+                style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)', padding: '2px 2px 4px' }}
               >
-                {/* `key` com o playKey: o anel só desenha ao montar, por isso
-                    tem de remontar a cada aparecimento — é o padrão do
-                    StatusCard com a órbita do Início. */}
-                <BadgeRing key={`${badge.key}-${playKey}`} badge={badge} size={56} index={i} animate={animate} />
-                {/* Spans: isto é um <button>, cujo conteúdo só admite phrasing
-                    content (o mesmo achado de 2026-09-15 no PalmaresCard). */}
-                <span className="block w-full text-[10.5px] font-extrabold leading-[1.2]" style={{ color: badge.state === 'empty' ? 'var(--text-4)' : 'var(--text-2)' }}>
-                  {badge.name}
-                </span>
-                {legenda && (
-                  <span className="block w-full text-[9.5px] font-extrabold uppercase leading-none" style={{ letterSpacing: '.04em', color: badge.state === 'won' ? corDoBadge(badge) : 'var(--text-4)' }}>
-                    {legenda}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                {grupo.label}
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {grupo.lista.map((badge, i) => {
+                  const legenda = legendaDe(badge);
+                  return (
+                    <button
+                      key={badge.key}
+                      type="button"
+                      data-testid={`badge-tile-${badge.key}`}
+                      data-state={badge.state}
+                      aria-label={badge.centroAria || badge.name}
+                      onClick={() => setAbertoKey(badge.key)}
+                      className="flex flex-col items-center gap-1.5 text-center min-w-0"
+                      style={TILE}
+                    >
+                      {/* `key` com o playKey: o anel só desenha ao montar, por
+                          isso tem de remontar a cada aparecimento — é o padrão
+                          do StatusCard com a órbita do Início. */}
+                      <BadgeRing key={`${badge.key}-${playKey}`} badge={badge} size={56} index={i} animate={animate} />
+                      {/* Spans: isto é um <button>, cujo conteúdo só admite
+                          phrasing content (o mesmo achado de 2026-09-15 no
+                          PalmaresCard). */}
+                      <span className="block w-full text-[10.5px] font-extrabold leading-[1.2]" style={{ color: badge.state === 'empty' ? 'var(--text-4)' : 'var(--text-2)' }}>
+                        {badge.name}
+                      </span>
+                      {legenda && (
+                        <span className="block w-full text-[9.5px] font-extrabold uppercase leading-none" style={{ letterSpacing: '.04em', color: badge.state === 'won' ? corDoBadge(badge) : 'var(--text-4)' }}>
+                          {legenda}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
 
         {maisPerto && (
