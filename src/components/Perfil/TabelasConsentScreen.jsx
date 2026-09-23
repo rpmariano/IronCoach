@@ -7,7 +7,7 @@ import SectionLabel from '../shared/SectionLabel';
 import Warning from '../shared/Warning';
 import { useEscapeClose } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
-import { shortDisplayName } from '../../utils/percentile';
+import { shortDisplayName, TABELAS_POLICY_VERSION } from '../../utils/percentile';
 
 /* "Entrar nas tabelas" — o consentimento da comparação por percentil
    (gamificação, Fase 5).
@@ -34,12 +34,7 @@ import { shortDisplayName } from '../../utils/percentile';
 
 const CARD_SECUNDARIO = { background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', borderRadius: 18 };
 
-/* A versão do texto deste ecrã, gravada com cada decisão no livro de
-   consentimentos (privacy_consents.policy_version). Sobe sempre que o texto
-   que o atleta lê mudar. v2 (2026-09-22, bug #43): o mesmo conteúdo em
-   linguagem simples — "denominador", "índice de execução" e "segmento" não
-   se percebiam. */
-export const TABELAS_POLICY_VERSION = 'v2';
+
 
 /** O que passa a ver-se com o consentimento das tabelas. */
 const PASSA_A_VER_SE = [
@@ -159,8 +154,8 @@ export default function TabelasConsentScreen({ onClose }) {
             Comparar-te com atletas como tu
           </h2>
           <p className="m-0 text-[12.5px] mt-1.5" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
-            São duas escolhas, separadas. A primeira põe-te a contar para a média de quem tem a tua idade e o teu
-            nível, sem o teu nome — e é assim que ficas a saber onde estás. A segunda põe o teu nome abreviado na
+            São duas escolhas, separadas. A primeira põe-te a contar para a média do teu escalão (idade e género)
+            na tua modalidade, estrada ou trail, sem o teu nome — e é assim que ficas a saber onde estás. A segunda põe o teu nome abreviado na
             tabela. Podes escolher só a primeira, e mudar de ideias quando quiseres.
           </p>
         </GlassCard>
@@ -176,7 +171,7 @@ export default function TabelasConsentScreen({ onClose }) {
         <SectionLabel style={{ marginTop: 6 }}>O que nunca sai</SectionLabel>
         <div style={{ ...CARD_SECUNDARIO, padding: 14 }}>
           <p className="m-0 text-[11.5px]" style={{ color: 'var(--text-4)' }}>
-            Escolhas o que escolheres, nada disto é mostrado a ninguém:
+            Escolhas o que escolheres, nada disto chega a ninguém:
           </p>
           <Lista items={NUNCA_SAI} cor="var(--text-4)" testId="tabelas-nunca-sai" />
         </div>
@@ -187,7 +182,7 @@ export default function TabelasConsentScreen({ onClose }) {
           id="consent-stats-pool"
           testId="tabelas-switch-stats-pool"
           titulo="Contar para a média do meu escalão"
-          descricao={'Quanto cumpres do teu plano passa a contar para a média de atletas da tua idade e do teu nível. Ninguém vê o teu nome nem a tua posição, e só há média em grupos com 20 atletas ou mais.'}
+          descricao={'Quanto cumpres do teu plano passa a contar para a média do teu escalão (idade e género) na tua modalidade. Ninguém vê o teu nome nem a tua posição, e só há média em grupos com 20 atletas ou mais.'}
           checked={naMedia}
           onChange={(on) => trocar('stats_pool', on)}
           disabled={aGravar !== null}
@@ -212,8 +207,9 @@ export default function TabelasConsentScreen({ onClose }) {
 
         <Warning tone="ok" title="Os teus direitos">
           É voluntário, não muda nada no resto da app e podes desligar a qualquer momento. O teu nome sai da tabela na
-          hora. Da média sais na atualização seguinte (de 14 em 14 dias): a média já publicada não se refaz, porque é
-          um valor de grupo com 20 atletas ou mais que não te identifica. Como estes números se cruzam com dados de
+          hora. Da média sais na atualização seguinte (de 14 em 14 dias): a média já publicada não se refaz, porque
+          refazê-la só para te tirar mostraria, pela diferença, o teu próprio valor — e o que lá está é um valor de
+          grupo com 20 atletas ou mais, que não te identifica. Como estes números se cruzam com dados de
           saúde, isto é um consentimento explícito (RGPD, art. 9.º/2 a)). Guardamos a data de cada escolha tua e a versão
           deste texto, para o podermos demonstrar se nos pedires.
         </Warning>

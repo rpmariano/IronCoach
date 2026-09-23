@@ -4,6 +4,7 @@ import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from 
 import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin } from '../utils/checkin';
+import { TABELAS_POLICY_VERSION } from '../utils/percentile';
 
 const getInitialDashboardTab = () => {
   try {
@@ -939,7 +940,7 @@ export const useAppStore = create((set, get) => ({
      denominador. Sair do denominador e continuar numa tabela era impossível
      de cumprir. Cascata só a retirar, nunca a conceder — e o ecrã diz-lo
      antes de acontecer. */
-  setPrivacyConsent: async (kind, on, { policyVersion = 'v1', source = 'app' } = {}) => {
+  setPrivacyConsent: async (kind, on, { policyVersion = TABELAS_POLICY_VERSION, source = 'app' } = {}) => {
     const profile = get().profile;
     if (!profile?.id) return false;
     if (kind !== 'stats_pool' && kind !== 'leaderboard') return false;

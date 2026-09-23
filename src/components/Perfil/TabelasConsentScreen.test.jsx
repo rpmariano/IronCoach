@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { ToastProvider } from '../shared/ToastProvider';
 import TabelasConsentScreen from './TabelasConsentScreen';
+import { TABELAS_POLICY_VERSION } from '../../utils/percentile';
 
 /* A garantia que este ecrã existe para dar: DOIS interruptores separados,
    nunca encadeados, e a sério — `<input type="checkbox">` dentro de um
@@ -50,7 +51,7 @@ describe('TabelasConsentScreen', () => {
   it('entrar na média não liga as tabelas: são duas decisões', async () => {
     montar();
     fireEvent.click(screen.getByTestId('tabelas-switch-stats-pool').querySelector('input'));
-    await waitFor(() => expect(setPrivacyConsent).toHaveBeenCalledWith('stats_pool', true, { policyVersion: 'v2' }));
+    await waitFor(() => expect(setPrivacyConsent).toHaveBeenCalledWith('stats_pool', true, { policyVersion: TABELAS_POLICY_VERSION }));
     expect(setPrivacyConsent).toHaveBeenCalledTimes(1);
     expect(setPrivacyConsent).not.toHaveBeenCalledWith('leaderboard', expect.anything());
   });
@@ -110,5 +111,19 @@ describe('TabelasConsentScreen', () => {
     render(<TabelasConsentScreen onClose={() => {}} />);
     expect(screen.getByTestId('tabelas-switch-stats-pool')).toHaveStyle({ flexShrink: '0' });
     expect(screen.getByTestId('tabelas-switch-leaderboard')).toHaveStyle({ flexShrink: '0' });
+  });
+
+  /* Revisão pré-deploy do bug #43: o grupo da média é escalão (idade e
+     género) × modalidade — o nível não entra. O texto não pode dizer outra
+     coisa: fica gravado como a versão que o atleta leu. */
+  it('descreve o grupo tal como ele é: escalão e modalidade, sem nível', () => {
+    useAppStore.setState({ profile: { id: 'u1', display_name: 'Rui Mariano' } });
+    render(<TabelasConsentScreen onClose={() => {}} />);
+    const ecra = screen.getByTestId('tabelas-consent-screen');
+    expect(ecra).toHaveTextContent('escalão (idade e género)');
+    expect(ecra).toHaveTextContent('estrada ou trail');
+    expect(screen.getByTestId('tabelas-switch-stats-pool').textContent).not.toMatch(/nível/);
+    expect(ecra).toHaveTextContent('nada disto chega a ninguém');
+    expect(TABELAS_POLICY_VERSION).toBe('v2');
   });
 });

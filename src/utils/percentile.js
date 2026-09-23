@@ -172,6 +172,13 @@ export function percentileSentence(percentile, { ageBand, terrain }) {
 /* O nome abreviado das tabelas: primeiro nome + inicial do último.
    "Rui Pedro Mariano" → "Rui M.". É o máximo que sai — nunca o nome
    completo, nunca o email. Um nome só fica como está; sem nome, nada. */
+/* A versão do texto de "Entrar nas tabelas", gravada com cada decisão no
+   livro de consentimentos (privacy_consents.policy_version). Sobe sempre que
+   o texto que o atleta lê mudar. v2 (2026-09-22, bug #43): o mesmo conteúdo
+   em linguagem simples. É também o valor por omissão de setPrivacyConsent,
+   para uma chamada sem versão nunca gravar um texto que já não existe. */
+export const TABELAS_POLICY_VERSION = 'v2';
+
 export function shortDisplayName(full) {
   const partes = String(full || '').trim().split(/\s+/).filter(Boolean);
   if (!partes.length) return '';

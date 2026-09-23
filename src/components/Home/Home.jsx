@@ -334,7 +334,7 @@ export default function Home() {
       {showDismiss && (
         <Dialog
           title="Dispensar o aviso da Carol?"
-          onClose={() => !dismissing && setShowDismiss(false)}
+          onClose={() => setShowDismiss(false)}
           actions={(
             <>
               <button type="button" disabled={dismissing} onClick={dismissIntervention} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-extrabold disabled:opacity-45" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>

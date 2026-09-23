@@ -70,12 +70,20 @@ export function closeTopOverlay() {
    (RaceMuralSheet, RaceMemoriesSheet, OndeEstasScreen). Sem entrada/
    saída animada: fecha logo, como o botão de recuar do cabeçalho. */
 export function useEscapeClose(onClose) {
-  useEffect(() => pushCloseStack(() => onClose?.()), [onClose]);
+  // Por ref e só ao montar: um onClose inline novo a cada render voltava a
+  // empilhar este ecrã, e ele passava para cima das persianas que abriu —
+  // o Escape/voltar fechava o ecrã inteiro em vez da persiana (revisão
+  // pré-deploy do bug #43).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => pushCloseStack(() => onCloseRef.current?.()), []);
 }
 
 function useEnterExit(onClose, closeMs) {
   const [visible, setVisible] = useState(false);
   const closingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const raf = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(raf);
@@ -85,8 +93,8 @@ function useEnterExit(onClose, closeMs) {
     closingRef.current = true;
     setVisible(false);
     const ms = prefersReducedMotion() ? 120 : closeMs;
-    setTimeout(() => onClose?.(), ms);
-  }, [onClose, closeMs]);
+    setTimeout(() => onCloseRef.current?.(), ms);
+  }, [closeMs]);
   useEffect(() => pushCloseStack(requestClose), [requestClose]);
   return { visible, requestClose };
 }

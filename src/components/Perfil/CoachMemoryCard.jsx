@@ -95,7 +95,7 @@ export default function CoachMemoryCard() {
     const ok = await addCoachNote({ category: draftCat, note: text });
     setBusy(false);
     if (ok) { showToast('Guardado na memória do Coach'); resetAdd(); }
-    else showToast('Não foi possível guardar');
+    else showToast('Não foi possível guardar', 'error');
   };
 
   const handleSaveEdit = async (id) => {
@@ -105,7 +105,7 @@ export default function CoachMemoryCard() {
     const ok = await updateCoachNote(id, { note: text });
     setBusy(false);
     if (ok) { showToast('Nota atualizada'); setEditingId(null); }
-    else showToast('Não foi possível atualizar');
+    else showToast('Não foi possível atualizar', 'error');
   };
 
   // Leva a conversa para o Coach já focada nesta nota. O atleta não
@@ -121,7 +121,7 @@ export default function CoachMemoryCard() {
     setBusy(true);
     const ok = await deleteCoachNote(id);
     setBusy(false);
-    showToast(ok ? 'Nota removida' : 'Não foi possível remover');
+    showToast(ok ? 'Nota removida' : 'Não foi possível remover', ok ? 'success' : 'error');
   };
 
   return (

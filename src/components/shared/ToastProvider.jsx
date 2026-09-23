@@ -18,9 +18,10 @@ export const useToast = () => useContext(ToastContext);
    baixo, e o mais antigo sai quando um dos visíveis for dispensado. */
 export const TOASTS_VISIVEIS = 4;
 
-/* Quanto tempo cada aviso fica à vista. O erro fica o dobro: era o caso que
-   mais doía quando saía antes de ser lido. */
-export const TOAST_MS = { success: 3000, error: 6000 };
+/* Quanto tempo cada aviso fica à vista. O erro (e o aviso/info, que também
+   trazem algo a ler) fica o dobro: era o caso que mais doía quando saía
+   antes de ser lido. */
+export const TOAST_MS = { success: 3000, error: 6000, warning: 6000, info: 6000 };
 
 /* Os avisos curtos da app — "+250 ml de água", "Guardado", "Não consegui
    registar". São 84 sítios a chamar `showToast`.
