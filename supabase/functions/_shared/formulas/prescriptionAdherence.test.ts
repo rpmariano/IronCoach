@@ -153,3 +153,19 @@ Deno.test("executionScore: o texto do prompt não mudou por causa do índice", (
   assertStringIncludes(texto, "1 treinos prescritos: 1 cumpridos, 0 a menos, 0 a mais, 0 não feitos");
   assert(!texto.includes("índice"));
 });
+
+// 2026-09-23: um dia "só refeições" DENTRO de um plano de treino (marca
+// 'so-refeicoes') também não é descanso prescrito.
+Deno.test("um dia só com refeições dentro do plano de treino não conta como descanso", () => {
+  const summary = evaluatePrescriptions({
+    items: [
+      { planned_date: "2026-09-14", kind: "corrida", target_distance_km: 10, plan_id: "treino" },
+      { planned_date: "2026-09-15", kind: "descanso", categories: ["so-refeicoes"], plan_id: "treino" },
+    ],
+    runs: [{ date: "2026-09-14", distance_km: 10 }, { date: "2026-09-15", distance_km: 6 }],
+    gym: [],
+    mealsByDate: {},
+  }, TODAY);
+  assertEquals(summary.training.map((t) => t.outcome), ["cumprido"]);
+});
+

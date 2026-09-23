@@ -623,6 +623,7 @@ Deno.test("PERCURSO J2: UMA refeição dentro do plano grava logo e substitui s�
   assertEquals(porTipo.almoco, "150g de peixe com arroz.", "o almoço fica como estava");
   assertEquals(porTipo.jantar, "Omelete de 3 ovos com salada.", "só o jantar muda");
   assertEquals(dia.meal_macros.kcal, null, "os totais deixam de bater certo com a lista — não se mostram");
+  assertEquals(dia.meal_suggestion, "Almoço: 150g de peixe com arroz.\nJantar: Omelete de 3 ovos com salada.", "o texto que a Carol lê acompanha a lista");
 });
 
 Deno.test("PERCURSO J3: UMA refeição num dia do plano sem nada marcado cria o dia 'só refeições'", async () => {

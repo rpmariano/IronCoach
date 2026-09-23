@@ -13,6 +13,8 @@
 // sessão (completed_run_id / completed_session_id). A maior parte dos atletas
 // não marca — por isso, sem ligação, conta o que foi registado nesse dia.
 
+import { isMealOnlyItem } from "./mealSuggestions.ts";
+
 export const ADHERENCE_WINDOW_DAYS = 14;
 /** ±15%: dentro disto, o treino foi o prescrito. */
 export const ADHERENCE_TOLERANCE = 0.15;
@@ -36,6 +38,8 @@ export interface PlanItemRow {
   meal_macros?: { kcal?: number; protein_g?: number; carbs_g?: number; fat_g?: number } | null;
   actual_date?: string | null;
   plan_id?: string | null;
+  // Só para a marca 'so-refeicoes' (mealSuggestions.ts) num descanso.
+  categories?: string[] | null;
 }
 
 export interface RunRow { id?: string; date: string; distance_km?: number | string | null; duration_seconds?: number | null; effort_rpe?: number | null }
@@ -242,8 +246,10 @@ export function evaluatePrescriptions(
   const trainingPlans = new Set(items.filter((i) => i.kind === "corrida" || i.kind === "ginasio").map((i) => i.plan_id ?? "sem-plano"));
   const takenRunIds = new Set(items.map((i) => i.completed_run_id).filter((x): x is string => !!x));
   const takenGymIds = new Set(items.map((i) => i.completed_session_id).filter((x): x is string => !!x));
+  // Um dia "só refeições" dentro de um plano de treino também não é descanso
+  // prescrito — é um dia sem treino planeado (marca 'so-refeicoes').
   const training = items
-    .filter((i) => i.kind === "corrida" || i.kind === "ginasio" || (i.kind === "descanso" && trainingPlans.has(i.plan_id ?? "sem-plano")))
+    .filter((i) => i.kind === "corrida" || i.kind === "ginasio" || (i.kind === "descanso" && !isMealOnlyItem(i) && trainingPlans.has(i.plan_id ?? "sem-plano")))
     .map((i) => {
       // O registo ligado a ESTE item não conta como "tomado" para ele.
       const ownRuns = new Set([...takenRunIds].filter((id) => id !== i.completed_run_id));

@@ -1059,7 +1059,7 @@ export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: str
     const from = addDaysISO(todayISO, -ADHERENCE_WINDOW_DAYS);
     const [itemsR, runsR, gymR, mealsR] = await Promise.all([
       sb.from("coach_plan_items")
-        .select("id, plan_id, planned_date, actual_date, kind, training_type, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
+        .select("id, plan_id, planned_date, actual_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
         .eq("user_id", userId).eq("coach_plans.status", "aceite")
         .gte("planned_date", from).lt("planned_date", todayISO),
       sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")

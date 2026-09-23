@@ -133,7 +133,7 @@ async function handler(req: Request): Promise<Response> {
         quinzena, não vale a pena ser esperto de outra maneira. */
   const [itensRes, corridasRes, ginasioRes, provasRes] = await Promise.all([
     sb.from("coach_plan_items")
-      .select("user_id, plan_id, planned_date, kind, training_type, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, actual_date")
+      .select("user_id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, actual_date")
       .in("user_id", ids).gte("planned_date", janela.start).lt("planned_date", janela.end),
     sb.from("runs")
       .select("user_id, id, date, distance_km, duration_seconds, effort_rpe")
