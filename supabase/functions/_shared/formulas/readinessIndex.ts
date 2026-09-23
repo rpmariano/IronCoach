@@ -18,6 +18,7 @@ import { computeVdotTrend, type RunForVdot } from "./vdotTrend.ts";
 import { computeRecentWeeklyVolume, assessRaceViability } from "./raceViability.ts";
 import { getRecommendedPrepWeeks, resolveExperienceLevel, getRacePrediction, type RaceForPlanning, type ProfileForPlanning } from "./racePlanning.ts";
 import type { RaceRun } from "./racePrediction.ts";
+import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
 
 export interface ReadinessPillar {
   key: "acwr" | "ea" | "calories" | "vdot" | "tactic" | "checkin";
@@ -52,22 +53,30 @@ const scale5 = (v: number) => (v - 1) * 25;
 /**
  * Pilar "Como acordaste" (2026-09-23): até aqui o atleta dizia que dormiu mal
  * e o índice não mexia. Média do sono, da energia e da calma; a dor tira 5
- * pontos por cada ponto até 3, e a partir de 4 — o limiar do alarme G2/G5 do
- * check-in (checkinAlarms.ts) — o pilar fica no máximo em 20. Sem check-in
- * de hoje, o pilar não existe (não há dado, não há nota inventada).
+ * pontos por cada ponto abaixo do limiar do alarme G2/G5 (PAIN_ALARM_THRESHOLD,
+ * checkinAlarms.ts) e, a partir dele, o pilar fica no máximo em 20. Sem
+ * check-in de hoje, o pilar não existe (não há dado, não há nota inventada).
+ *
+ * O texto usa o mesmo corte do resumo do dia e das boas-vindas: sono ou
+ * energia ≤2 é um dia em baixo, seja qual for a média — nunca "acordaste bem"
+ * a quem dormiu mal. E é lido também pela Carol (buildReadinessPanel), por
+ * isso fala na voz dela.
  */
 export function checkinPillar(c: CheckinForReadiness | null | undefined): ReadinessPillar | null {
   const sleep = Number(c?.sleep), energy = Number(c?.energy), stress = Number(c?.stress);
   if (![sleep, energy, stress].every((v) => v >= 1 && v <= 5)) return null;
   const base = (scale5(sleep) + scale5(energy) + scale5(6 - stress)) / 3;
   const pain = Math.max(0, Number(c?.pain) || 0);
-  const score = Math.round(pain >= 4 ? Math.min(base, 20) : Math.max(0, base - pain * 5));
+  const painAlarm = pain >= PAIN_ALARM_THRESHOLD;
+  const score = Math.round(painAlarm ? Math.min(base, 20) : Math.max(0, base - pain * 5));
+  const emBaixo = sleep <= 2 || energy <= 2;
 
   let desc: string;
-  if (pain >= 4) desc = `Dor de ${pain}/10 hoje. Treino de impacto só depois de falares com a Carol.`;
+  if (painAlarm) desc = `Dor de ${pain}/10: hoje nada de impacto. Fala comigo no chat.`;
+  else if (emBaixo) desc = sleep <= 2 ? "Dormiste mal. Hoje o treino é mais leve." : "Estás sem energia. Hoje o treino é mais leve.";
   else if (score >= 75) desc = "Acordaste bem: sono, energia e cabeça a favor do treino de hoje.";
   else if (score >= 50) desc = "Dia normal. Treina, mas atento a como te sentes.";
-  else desc = "Hoje estás em baixo (sono, energia ou stress). Um treino mais leve rende mais.";
+  else desc = "Hoje estás em baixo. Um treino mais leve rende mais.";
   return { key: "checkin", label: "Como acordaste", score, desc };
 }
 

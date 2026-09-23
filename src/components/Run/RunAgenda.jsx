@@ -262,6 +262,17 @@ export default function RunAgenda({ onClose }) {
 
   // Só é relevante a editar (a criar, a invalidação já limpa o campo em vez
   // de o deixar "por reconfirmar" — ver applyExperienceLevelInvalidation).
+  // Tempo previsto da prova de trail, para a ajuda dos níveis mostrar horas
+  // (Riegel sobre as corridas todas — memoizado, não a cada tecla).
+  const trailPredictedSeconds = useMemo(() => (draft.race_type === 'trail' ? predictRaceSeconds({
+    raceType: draft.race_type,
+    distanceKm: parseFormNumber(draft.distance_km),
+    elevationGainM: parseFormNumber(draft.elevation_gain_m),
+    declaredLevel: draft.experience_level,
+    profile,
+    runs,
+  }) : null), [draft.race_type, draft.distance_km, draft.elevation_gain_m, draft.experience_level, profile, runs]);
+
   const experienceLevelStale = useMemo(() => {
     if (!editingEventId || !draft.experience_level || !experienceLevelCategoryKey) return false;
     const currentKey = raceLevelCategoryKey(draft.race_type, parseFormNumber(draft.distance_km), parseFormNumber(draft.elevation_gain_m));
@@ -1123,14 +1134,7 @@ export default function RunAgenda({ onClose }) {
                 raceType={draft.race_type}
                 distanceKm={parseFormNumber(draft.distance_km)}
                 elevationGainM={parseFormNumber(draft.elevation_gain_m)}
-                predictedSeconds={draft.race_type === 'trail' ? predictRaceSeconds({
-                  raceType: draft.race_type,
-                  distanceKm: parseFormNumber(draft.distance_km),
-                  elevationGainM: parseFormNumber(draft.elevation_gain_m),
-                  declaredLevel: draft.experience_level,
-                  profile,
-                  runs,
-                }) : null}
+                predictedSeconds={trailPredictedSeconds}
                 fieldId="ra-nivel-para-esta-prova"
               >
                 <select

@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { HelpCircle, Sparkles } from 'lucide-react';
 import { EXPERIENCE_LEVELS, EXPERIENCE_TIEBREAK_HINT, experienceLevelLabel } from '../../utils/experience';
-import { elevationRatioLabel } from '../../utils/run';
+import { elevationRatioLabel, formatHoursMinutes } from '../../utils/run';
 import { categorizeDistance, categorizeElevationRatio, MIN_PREP_WEEKS, MIN_VOLUME_KM } from '@formulas/vocabulary.ts';
 import { TIME_ON_FEET_FLOORS_PCT, ELEVATION_FLOORS_PCT } from '@formulas/raceLevelTriage.ts';
 import PremiumModal from './PremiumModal';
-import { formatHoursMinutes } from '../Run/RaceLevelSuggestion';
 
 const LEVEL_KEYS = ['iniciante', 'basico', 'medio', 'avancado'];
 

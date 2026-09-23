@@ -48,11 +48,17 @@ describe('computeReadinessIndex — check-in de hoje', () => {
   it('dor ≥4 fica no máximo em 20, mesmo com o resto ótimo', () => {
     const p = checkinPillar({ sleep: 5, energy: 5, stress: 1, pain: 4 });
     expect(p.score).toBe(20);
-    expect(p.desc).toMatch(/Dor de 4\/10/);
+    expect(p.desc).toMatch(/Dor de 4\/10: hoje nada de impacto/);
   });
 
   it('dor ligeira tira 5 pontos por ponto', () => {
     expect(checkinPillar({ sleep: 5, energy: 5, stress: 1, pain: 2 }).score).toBe(90);
+  });
+
+  it('sono ≤2 nunca é "acordaste bem", mesmo com a média alta (o mesmo corte do resumo)', () => {
+    const p = checkinPillar({ sleep: 2, energy: 5, stress: 1, pain: 0 });
+    expect(p.score).toBe(75);
+    expect(p.desc).toMatch(/Dormiste mal/);
   });
 
   it('check-in incompleto não conta', () => {

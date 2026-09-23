@@ -23,6 +23,7 @@ import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { resolveMaxHR, resolveHrZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
+import { PAIN_ALARM_THRESHOLD } from "../_shared/formulas/checkinAlarms.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 
@@ -565,8 +566,9 @@ export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null):
 
 // O check-in de hoje como a Carol o lê no recap: as escalas em palavras (as
 // mesmas do cartão, src/utils/checkin.js) e o veredicto já decidido —
-// `dia_em_baixo` com sono ≤2 ou energia ≤2, `dor_alta` com dor ≥4 (o limiar
-// dos alarmes G2/G5). O modelo não tem de adivinhar onde fica a linha.
+// `dia_em_baixo` com sono ≤2 ou energia ≤2, `dor_alta` a partir do limiar
+// dos alarmes G2/G5 (PAIN_ALARM_THRESHOLD). O modelo não tem de adivinhar
+// onde fica a linha.
 const CHECKIN_WORDS: Record<string, string[]> = {
   sono: ["péssimo", "mau", "razoável", "bom", "ótimo"],
   energia: ["sem energia", "em baixo", "normal", "com energia", "cheio"],
@@ -584,7 +586,7 @@ export function checkinForSummary(c: any): Record<string, unknown> | null {
     dor: pain,
     dor_local: pain > 0 ? (c?.pain_location || null) : null,
     dia_em_baixo: sleep <= 2 || energy <= 2,
-    dor_alta: pain >= 4,
+    dor_alta: pain >= PAIN_ALARM_THRESHOLD,
   };
 }
 
@@ -635,14 +637,16 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `Se existir "o_que_ja_viu_na_app", não repitas como novidade nem contradigas o que já lhe disseste ao abrir a app, ` +
     `e se lhe fizeste uma pergunta, retoma-a. Só preenches se houver histórico — caso contrário null.\n` +
     `CHECK-IN DE HOJE — se existir "checkin_hoje", o recap abre por ele (mesmo sem histórico, aí preenches o recap):\n` +
-    `  - "dor_alta" true: não mandas fazer o treino de impacto de hoje. Dizes que, com essa dor, corrida e saltos ` +
-    `ficam em pausa até falarem no chat — sem diagnosticar.\n` +
+    `  - "dor_alta" true: hoje nada de impacto (corrida, saltos) — e pedes-lhe que fale contigo no chat. ` +
+    `Sem diagnosticar e sem prometer quando volta: isso decide-se no chat, pela hierarquia de alarmes.\n` +
     `  - "dia_em_baixo" true: se "plano_treino_hoje" tiver corrida ou ginásio, baixas a intensidade de hoje — ` +
     `séries/intervalos passam a rodagem fácil ou o treino encurta ~1/3 — e dizes PORQUÊ, com o que ele respondeu ` +
-    `("dormiste mal", "estás sem energia"). Sem treino hoje, uma frase sobre descansar bem. Nunca sermão.\n` +
+    `("dormiste mal", "estás sem energia"). Sem treino hoje, uma frase sobre descansar bem. Nunca sermão. ` +
+    `EXCEÇÃO: se existir "vespera_da_prova" (a prova é hoje ou amanhã), não mexes na prova nem no treino da véspera — ` +
+    `uma noite mal dormida antes da prova é normal e não estraga a prova; diz-lho, com calma.\n` +
     `  - Stress "tenso"/"muito tenso" sozinho: uma frase a lembrar que o treino leve também conta, sem mexer no plano.\n` +
     `  - Tudo bem: uma frase curta a confirmar que o dia está a favor do treino previsto. Não repitas os valores todos.\n` +
-    `  Sem "checkin_hoje", não falas de check-in nem de sono.\n` +
+    `  Sem "checkin_hoje", não inventes como ele acordou hoje (os alarmes do bloco de memória continuam a valer).\n` +
     `ENQUADRAMENTO OBRIGATÓRIO — lê "modo_acompanhamento" antes de escrever:\n` +
     `  - PROVA_COM_PLANO: podes falar de plano, de dias previstos e de fase de preparação.\n` +
     `  - MANUTENCAO_COM_PLANO: há plano mas NÃO há prova. Fala do plano, mas nunca de taper, ` +

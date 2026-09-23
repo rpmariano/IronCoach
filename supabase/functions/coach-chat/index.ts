@@ -22,7 +22,7 @@ import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
-import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
+import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, lisbonTodayISO } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL } from "../_shared/carolTone.ts";
 import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
@@ -5539,11 +5539,13 @@ async function handler(req: Request): Promise<Response> {
       .limit(30);
     // O check-in de hoje entra no Índice de Prontidão (pilar "Como
     // acordaste", 2026-09-23) — a Carol tem de ver o mesmo número do ecrã.
+    // Dia de Lisboa, como o cliente o grava e o bloco de memória o lê — o
+    // todayISO daqui é UTC e, entre a meia-noite e a uma, apanhava o de ontem.
     const { data: todayCheckin, error: err_todayCheckin } = await sb
       .from("daily_checkins")
       .select("sleep, energy, stress, pain")
       .eq("user_id", userId)
-      .eq("date", todayISO)
+      .eq("date", lisbonTodayISO())
       .maybeSingle();
     // Todas as queries de contexto acima falham "em silencio" se pedirem uma
     // coluna inexistente — ver warnIfQueryFailed. Isto poe o erro nos logs.

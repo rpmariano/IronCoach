@@ -172,7 +172,7 @@ export const WELCOME_PHRASES = {
     'Ainda vais a tempo do check-in de hoje. Com ele, afino o treino que falta.',
   ],
   dormiuBem: ['O check-in diz que dormiste bem.', 'Noite boa, pelo que me disseste. Hoje há margem para cumprir tudo.', 'Dormiste bem. Isso conta para o treino de hoje.'],
-  dormiuMal: ['Dormiste mal, pelo check-in. Hoje não se força nada.', 'Noite fraca. Hoje o treino é para cumprir, não para puxar.', 'Com pouco sono, hoje faz-se o que está no plano, sem forçar.'],
+  dormiuMal: ['Dormiste mal, pelo check-in. Hoje não se força nada.', 'Noite fraca. Hoje o treino é para cumprir, não para puxar.', 'Com pouco sono, hoje o treino é mais leve.'],
   descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. É hoje que o treino da semana assenta.', 'Hoje não se treina. O descanso está no plano de propósito.'],
   semTreinoHoje: ['Hoje não há treino planeado.', 'O plano não pede treino hoje.', 'Hoje não tens treino no plano.'],
   treinoHoje: (t) => [`Hoje tens ${t}.`, `O treino de hoje: ${t}.`, `Para hoje, o plano pede ${t}.`],
@@ -300,7 +300,10 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
       action = 'checkin';
     }
     const feita = corridasHoje[0];
-    if (feita && km(feita.distance_km)) lines.push(pick(P.corridaFeita(km(feita.distance_km)), 'corridaFeita'));
+    // Só cabem duas linhas: com o check-in por fazer e sem refeições, a das
+    // refeições ganha à da corrida (o chip "Por registar" fala delas).
+    const cabeCorrida = !(action === 'checkin' && refeicoesHoje === 0);
+    if (cabeCorrida && feita && km(feita.distance_km)) lines.push(pick(P.corridaFeita(km(feita.distance_km)), 'corridaFeita'));
     if (refeicoesHoje === 0) lines.push(pick(P.semRefeicoes, 'semRefeicoes'));
     else if (!feita && tituloHoje && !semTreino(tituloHoje) && !treinoHojeFeito) lines.push(pick(P.treinoPorFazer(lowerFirst(tituloHoje)), 'treinoPorFazer'));
     if (refeicoesHoje === 0) chip = { label: 'Por registar', value: 'Refeições de hoje', icon: 'plate' };

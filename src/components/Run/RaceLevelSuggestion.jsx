@@ -3,6 +3,7 @@ import { Calculator, AlertOctagon } from 'lucide-react';
 import Warning, { WarningAction } from '../shared/Warning';
 import { getRacePrediction } from '../../utils/biEngine';
 import { assessRaceLevelTriage } from '@formulas/raceLevelTriage.ts';
+import { formatHoursMinutes } from '../../utils/run';
 
 // Rótulos das 5 bandas do motor de triagem (Bloco 8) — 4 coincidem com
 // EXPERIENCE_LEVELS (src/utils/experience.js), "sub_iniciante" é um estado
@@ -22,14 +23,6 @@ function levelLabel(band) {
 
 // Apresentação casual ("1h40", "45min") — formatDuration (run.js) dá
 // H:MM:SS, pensado para tempos-alvo de prova, não para "quanto treinaste".
-export function formatHoursMinutes(totalSeconds) {
-  if (!totalSeconds || totalSeconds <= 0) return null;
-  const totalMinutes = Math.round(totalSeconds / 60);
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  if (h > 0) return `${h}h${m > 0 ? String(m).padStart(2, '0') : ''}`;
-  return `${m}min`;
-}
 
 /**
  * Propõe o nível do atleta PARA ESTA PROVA a partir do histórico de treino
