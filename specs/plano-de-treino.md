@@ -397,10 +397,21 @@ campos.
 
 ### Modelo
 
-`profiles.coach_can_set_nutrition_goals` (autorização), `protein_goal_set_by_coach`
-e `fat_goal_set_by_coach` (origem do valor atual, só para a UI). Uma edição
-manual do atleta desliga a flag correspondente — o valor deixa de ser "do
-coach" no momento em que é substituído.
+`protein_goal_set_by_coach` e `fat_goal_set_by_coach` (origem do valor atual,
+só para a UI). Uma edição manual do atleta desliga a flag correspondente — o
+valor deixa de ser "do coach" no momento em que é substituído.
+
+`profiles.coach_can_set_nutrition_goals` (o interruptor "O Coach pode ajustar
+as metas") deixou de ser lido a 2026-09-22 (bug #41): a Carol propõe sempre
+por `update_goals`, que nunca escreve no perfil — cria uma proposta que o
+atleta aceita ou recusa. A coluna fica na base de dados sem uso.
+
+Depois de uma avaliação corporal, a Carol chama o atleta ao chat para definir
+objetivos quando faltam, e para os rever quando a avaliação mostra que deviam
+mudar (`goals_review` na resposta do analyze-body). O motivo da intervenção
+leva a etiqueta `[objetivos]` (`_shared/formulas/goalsIntervention.ts`): o
+coach-chat conduz uma conversa de convite em vez da de desvio ao plano, e a
+app fecha a intervenção quando o atleta aceita ou recusa a proposta.
 
 ### Coach
 

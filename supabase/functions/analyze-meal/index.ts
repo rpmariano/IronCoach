@@ -8,7 +8,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 
 const MAX_PHOTOS = 6;
@@ -508,6 +508,8 @@ async function generateMealCoachNotes(
   geminiKey: string,
   diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
   memoryBlock: string | null = null,
+  // profiles.experience_level — calibra a linguagem (bug #40).
+  experienceLevel: string | null = null,
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
   if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
@@ -569,8 +571,9 @@ async function generateMealCoachNotes(
 
   const prompt =
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a refeição que ele acabou de registar. ` +
-    `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
+    `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `Refeição: ${typeLabel}, ${meal.date}\n` +
     `Calorias: ${totals.calories.toFixed(0)} kcal\n` +
@@ -660,7 +663,7 @@ async function attachMealCoachNotes(
     const memoryPromise = fetchSharedMemoryBlock(sb, userId);
     const { data: profile } = await sb
       .from("profiles")
-      .select("calorie_goal, protein_goal, carbs_goal, fat_goal, dietary_restrictions, dietary_notes")
+      .select("calorie_goal, protein_goal, carbs_goal, fat_goal, dietary_restrictions, dietary_notes, experience_level")
       .eq("id", userId)
       .maybeSingle();
 
@@ -741,6 +744,7 @@ async function attachMealCoachNotes(
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
       },
       await memoryPromise,
+      (profile?.experience_level as string | null) ?? null,
     );
 
     if (result.text) {

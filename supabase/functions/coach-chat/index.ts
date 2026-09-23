@@ -24,7 +24,8 @@ import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
-import { CAROL_TONE_RULES } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL } from "../_shared/carolTone.ts";
+import { GOALS_INTERVENTION_TAG, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
@@ -327,10 +328,11 @@ const PROPOSE_PLAN_TOOL = {
   },
 };
 
-// Escreve objetivos do atleta diretamente no perfil — macronutrientes, água e
-// objetivos corporais. A autorização (profiles.coach_can_set_nutrition_goals)
-// é verificada no EXECUTOR (runUpdateGoals), não aqui — a ferramenta fica
-// sempre visível ao modelo, mas recusa escrever sem o interruptor ligado.
+// Propõe objetivos do atleta — macronutrientes, água e objetivos corporais.
+// Nunca escreve no perfil: cria uma proposta que o atleta aceita ou recusa.
+// Até 2026-09-22 havia também um interruptor no Perfil ("O Coach pode ajustar
+// as metas") que tinha de estar ligado — uma segunda autorização por cima da
+// do atleta na persiana, que não protegia nada. Saiu (bug #41).
 //
 // O modelo deve chamar esta ferramenta proativamente em vez de perguntar primeiro,
 // pois o utilizador tem agora uma persiana (bottom sheet) que lhe permite rever
@@ -505,7 +507,10 @@ const RESOLVE_INTERVENTION_TOOL = {
     "ou duração trocada, sessão duplicada), o atleta esclareceu o engano e não há nada no plano para ajustar → " +
     "'falso_positivo'.\n" +
     "NÃO aciones isto perante desculpas genéricas ('amanhã volto ao foco', 'desculpa, falhei'). Nesses casos, " +
-    "deves insistir que o plano já ficou comprometido e precisa de ser reestruturado para o resto da semana.",
+    "deves insistir que o plano já ficou comprometido e precisa de ser reestruturado para o resto da semana.\n" +
+    "Numa CONVERSA SOBRE OBJETIVOS (ver o prompt): aceitar ou recusar a proposta de objetivos fecha-a sozinho — " +
+    "não chames esta ferramenta nesse caso. Só 'atleta_ignorou', e só se ele disser explicitamente que não quer " +
+    "definir/rever objetivos agora.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -2748,8 +2753,8 @@ const GOAL_META: Record<string, { flag: string; label: string; unit: string }> =
   goal_lean_body_mass_kg: { flag: "goal_lean_mass_set_by_coach", label: "massa magra alvo",      unit: "kg" },
 };
 
-// Executa update_goals: escreve qualquer combinação dos campos acima no perfil,
-// SÓ se o atleta tiver ativado coach_can_set_nutrition_goals (toggle global).
+// Executa update_goals: cria uma proposta com qualquer combinação dos campos
+// acima, que o atleta aceita ou recusa.
 /** Grava na prova o que se acordou no chat. Devolve "Prova atualizada: …"
  *  em caso de sucesso (é o prefixo que o handler usa para avisar o cliente). */
 // deno-lint-ignore no-explicit-any
@@ -2849,16 +2854,11 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
 
   const { data: profile, error: profileErr } = await sb
     .from("profiles")
-    .select("coach_can_set_nutrition_goals, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg")
+    .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg")
     .eq("id", userId)
     .maybeSingle();
 
-  if (profileErr) return `Erro a verificar autorização: ${profileErr.message}`;
-  if (!profile?.coach_can_set_nutrition_goals) {
-    return "Erro: o atleta ainda não autorizou o Coach a escrever metas. " +
-      "Explica que pode ativar 'O Coach pode ajustar as metas' no Perfil > separador Metas, " +
-      "e não tentes de novo nesta resposta.";
-  }
+  if (profileErr) return `Erro a ler os objetivos atuais: ${profileErr.message}`;
 
   // Filtrar apenas campos efetivamente DIFERENTES dos objetivos atuais no perfil.
   // BUG CORRIGIDO: a maioria destas colunas é `numeric` no Postgres, que o
@@ -3114,6 +3114,32 @@ export async function runSaveCoachNote(sb: any, userId: string, args: any): Prom
 
   return `Nota guardada (${category}): "${note}". Passa a estar sempre presente no teu contexto, ` +
     `mesmo daqui a semanas. Diz ao atleta numa frase curta o que ficou registado.`;
+}
+
+/** A conversa sobre objetivos (bug #41, 2026-09-22) — a intervenção que a
+ *  análise corporal levanta. Não é a de desvios ao plano: ali a Carol
+ *  confronta; aqui convida e convence, e quem fecha é a decisão do atleta
+ *  na proposta de objetivos (a app resolve a intervenção ao aceitar ou
+ *  recusar — store/index.js, respondToGoalProposal). */
+export function buildGoalsInterventionInstruction(isStart: boolean, reason: string | null): string {
+  const motivo = (reason || "").replace(GOALS_INTERVENTION_TAG, "").trim();
+  return `\n\n=== CONVERSA SOBRE OBJETIVOS ===\n` +
+    `Chamaste o atleta para falar dos objetivos dele, depois de ele registar uma avaliação corporal. Não é uma ` +
+    `chamada de atenção: ele não fez nada de errado. OBJETIVO: convencê-lo a definir (ou rever) objetivos ` +
+    `contigo, para o corpo e para a nutrição. Mostra-lhe o que ganha com isso, em palavras simples: o plano e as ` +
+    `refeições passam a apontar para esses objetivos, e tu passas a conseguir dizer-lhe se está no bom caminho.\n` +
+    (isStart
+      ? `O atleta acabou de abrir a conversa a partir do teu aviso. INICIA tu, com calma e sem cobranças: diz o que ` +
+        `viste na avaliação e porque vale a pena falar dos objetivos agora. Pergunta onde ele quer chegar antes de ` +
+        `propores valores.\n`
+      : "") +
+    (motivo ? `O que te levou a chamá-lo: "${motivo}"\n` : "") +
+    `COMO AVANÇAR: quando souberes onde ele quer chegar, propõe os valores com update_goals — ele aceita ou ` +
+    `recusa na app. Se ele disser que não quer agora, respeita-o e não insistas mais do que uma vez.\n` +
+    `REGRA PARA FECHAR: aceitar ou recusar a proposta de objetivos fecha esta conversa sozinho — NÃO chames ` +
+    `resolve_intervention nesse caso. Chama resolve_intervention com 'atleta_ignorou' SÓ se ele disser ` +
+    `explicitamente que não quer definir nem rever objetivos agora. Nunca uses 'plano_ajustado' nem ` +
+    `'falso_positivo' aqui.\n`;
 }
 
 export async function runResolveIntervention(sb: any, userId: string, args: any): Promise<string> {
@@ -3935,7 +3961,6 @@ export function buildSystemInstruction(
     resting_hr_bpm: number | null;
     dietary_restrictions: string[] | null;
     dietary_notes: string | null;
-    coach_can_set_nutrition_goals: boolean | null;
     /* O que ela pode prometer fora da app (5.2): sem isto dizia "aviso-te
        amanhã" a quem tem as notificações desligadas. */
     carol_push_enabled?: boolean | null;
@@ -4052,11 +4077,10 @@ export function buildSystemInstruction(
     // variáveis) — ver a nota sobre prefixo estável em buildSystemInstruction.
     `- Honesta e direta quando há algo a corrigir ou recusar; encorajas com factos, não com adjetivos.\n` +
     `- Ritmo: uma ideia por parágrafo, no máximo 2 frases por parágrafo na conversa corrente. Separas ideias com uma linha em branco — a app mostra cada parágrafo como uma bolha, por isso uma resposta corrente tem 1 a 3 parágrafos; mais do que isso só em planos ou explicações técnicas pedidas.\n` +
-    `- Adapta a profundidade técnica ao nível de experiência descrito no perfil:\n` +
-    `  - Iniciante: 1-2 recomendações simples, sem jargão, foca em sensações e hábitos.\n` +
-    `  - Básico: 2-3 recomendações, zonas de treino, macros básicas.\n` +
-    `  - Médio: justificações fisiológicas simples, RPE, g/kg de macros.\n` +
-    `  - Avançado: análise multi-métrica, terminologia completa (VDOT, HRV, ACWR, EA em kcal/kg FFM).\n` +
+    // Linguagem por nível (bug #40) — a mesma régua dos comentários nos
+    // registos, ver _shared/carolTone.ts. O "Básico" autorizava "zonas de
+    // treino, macros" sem os explicar.
+    CAROL_LANGUAGE_BY_LEVEL +
     `- Usa sempre **português de Portugal** por defeito (ginásio, quilómetro, hidratos, etc.).\n` +
     `- Nunca abras resposta com clichês como "Claro que sim!", "Ótima pergunta!" ou "Com certeza!".\n` +
     `- **Podes moralizar quando a situação genuinamente o exige**: um padrão alimentar perigoso, sinais de ` +
@@ -4775,8 +4799,8 @@ export function buildSystemInstruction(
 
     `VOCABULÁRIO E QUANTIDADE DE INFORMAÇÃO POR NÍVEL (Bloco 6 #3 — Magill & Anderson 2017, Wulf 2013):\n` +
     `  Iniciante: 1-2 recomendações por resposta. Zero profundidade técnica. Usar APENAS sensação de esforço ("ritmo de conversa"). PROIBIDO: VDOT, VO2máx, rMSSD, HRV, RIR, ACWR, DEXA, GCT, watts.\n` +
-    `  Básico: 2-3 recomendações/semana. Nível baixo-moderado. Permitido: zonas Z1-Z3, pace min/km, séries e repetições, proteína/hidratos. Evitar fisiologia avançada.\n` +
-    `  Médio: 3-4 por microciclo. Justificações fisiológicas simples: limiar anaeróbico, 80/20, rácio de carga. Permitido: RPE Borg, RIR, tapering, g/kg de macros.\n` +
+    `  Básico: 2-3 recomendações/semana. Nível baixo-moderado. Permitido: pace min/km, séries e repetições, proteína/hidratos — sempre em palavras do dia a dia. Zonas (Z1-Z3) só descritas pela sensação ("um ritmo em que consegues falar"), nunca pela sigla. Evitar fisiologia avançada.\n` +
+    `  Médio: 3-4 por microciclo. Justificações fisiológicas simples: limiar anaeróbico, 80/20, rácio de carga. Permitido: RPE Borg, RIR, tapering, g/kg de macros — cada termo explicado numa frase curta na primeira vez que aparece.\n` +
     `  Avançado: 4-5+ por microciclo. Análise multi-métrica. Terminologia científica completa: VDOT, HRV/rMSSD, GCT balance, ACWR, EA em kcal/kg FFM.\n\n` +
 
     `TEMAS CONTRAINDICADOS POR NÍVEL (Bloco 6 #4):\n` +
@@ -4888,19 +4912,15 @@ export function buildSystemInstruction(
     sys += `\n\n${coachNotesContext.trim()}`;
   }
 
-  // Instruções de metas — o modelo só menciona update_goals quando autorizado,
-  // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
-  sys += biometrics.coach_can_set_nutrition_goals
-    ? `\n\nPROPOSTA DE OBJETIVOS E METAS (autorizado):\n` +
+  // Instruções de metas — update_goals está sempre disponível: cria uma
+  // proposta, e é o atleta que a aceita ou recusa na persiana.
+  sys +=
+    `\n\nPROPOSTA DE OBJETIVOS E METAS:\n` +
       `1. OBRIGATÓRIO (aplica-se só no CASO E do ESQUEMA DE DECISÃO — nos casos A-D esta regra NÃO se aplica e update_goals está PROIBIDO): Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles. Exceção 1: se os valores calculados forem EFETIVAMENTE IGUAIS aos atuais do perfil, não chames a ferramenta nem sugiras alterar metas. Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a)): se o atleta acabou de confirmar que aceitou uma proposta de objetivos nesta troca de mensagens, usa os valores JÁ ACEITES tal como estão nos dados do perfil que te foram dados — não os recalcules nem os ajustes de novo só porque a tua própria conta interna dá um número ligeiramente diferente; isso NÃO conta como "discutir novos valores" para efeitos desta regra.\n` +
       `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Home) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
       `4. SEQUÊNCIA DE DEPENDÊNCIA (não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos — nesse caso avança DIRETO para o plano, sem passar outra vez pelos objetivos): Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação de objetivos NOVOS, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
-      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). SE ESSE PLANO TIVER PROVA-OBJETIVO (race_id no contexto do plano): o period_end continua a ser o dia da prova e passas o MESMO race_id — um bloco até à prova pode ter 10 semanas, e encurtá-lo desvincularia o plano da prova (o servidor recusa). Nesse caso escreve os treinos dos próximos 7-14 dias e diz ao atleta que o resto do bloco se detalha à medida que chega. Só num plano SEM prova-objetivo é que period_end mais curto faz sentido: aí, se o período restante tiver mais de 14 dias, cobre só os primeiros 14 e diz-lhe que o resto fica para o próximo microciclo (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`
-    : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
-      `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
-      `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
-      `diretamente no teu perfil, ativa 'O Coach pode ajustar as metas' no Perfil, separador Metas."`;
+      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). SE ESSE PLANO TIVER PROVA-OBJETIVO (race_id no contexto do plano): o period_end continua a ser o dia da prova e passas o MESMO race_id — um bloco até à prova pode ter 10 semanas, e encurtá-lo desvincularia o plano da prova (o servidor recusa). Nesse caso escreve os treinos dos próximos 7-14 dias e diz ao atleta que o resto do bloco se detalha à medida que chega. Só num plano SEM prova-objetivo é que period_end mais curto faz sentido: aí, se o período restante tiver mais de 14 dias, cobre só os primeiros 14 e diz-lhe que o resto fica para o próximo microciclo (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`;
 
   /* ── A partir daqui é TUDO o que varia ────────────────────────────────
      Tudo o que está acima é idêntico entre atletas e entre mensagens: é o
@@ -4970,7 +4990,9 @@ export function buildSystemInstruction(
     sys += `\n\n${buildProactiveInstruction(proactiveTrigger, proactiveDetails, raceOutcome)}`;
   }
 
-  if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
+  if ((interventionStatus === 'needed' || interventionStatus === 'in_progress') && isGoalsIntervention(interventionReason)) {
+    sys += buildGoalsInterventionInstruction(isInterventionStart, interventionReason);
+  } else if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
     sys += `\n\n=== MODO DE INTERVENÇÃO PROATIVA ATIVO ===\n` +
            `Identificaste desvios significativos no cumprimento do plano (ex.: falhas repetidas na nutrição ou faltas/desvios grandes nos treinos) e decidiste intervir.\n` +
            `O botão flutuante vermelho está visível na app para o atleta.\n` +
@@ -5124,7 +5146,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason, " +
+      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_intervention_status, coach_intervention_reason, " +
         "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, " +
         "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach, " +
         "cycle_tracking_consent_at, carol_push_enabled, carol_push_types, carol_push_start_hour, carol_push_end_hour, water_reminder_enabled")
@@ -5728,7 +5750,6 @@ async function handler(req: Request): Promise<Response> {
         resting_hr_bpm: (profile?.resting_hr_bpm as number | null) ?? null,
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
-        coach_can_set_nutrition_goals: (profile?.coach_can_set_nutrition_goals as boolean | null) ?? null,
         carol_push_enabled: (profile?.carol_push_enabled as boolean | null) ?? null,
         carol_push_types: (profile?.carol_push_types as string[] | null) ?? null,
         carol_push_start_hour: (profile?.carol_push_start_hour as number | null) ?? null,

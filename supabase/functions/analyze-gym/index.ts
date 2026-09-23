@@ -14,7 +14,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule, fetchExperienceLevel } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
@@ -527,6 +527,8 @@ async function generateGymCoachNotes(
   // "FC média X bpm = ZY (Karvonen; FCmáx Z observada)" (ação 5.4) — só em
   // aulas; substitui a linha simples "FC média: X bpm" quando existe.
   hrZoneLine: string | null = null,
+  // profiles.experience_level — calibra a linguagem (bug #40).
+  experienceLevel: string | null = null,
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
 
@@ -575,8 +577,9 @@ async function generateGymCoachNotes(
 
   const prompt =
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a sessão de ginásio que ele acabou de registar. ` +
-    `Escreve uma análise técnica curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
+    `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `Sessão de hoje (${session.date}):\n${contextLines}\n\n${historyLine}\n` +
     crossActivitiesSection + planSection + `\n` +
@@ -732,6 +735,7 @@ async function attachGymCoachNotes(
       geminiKey,
       await memoryPromise,
       hrZoneLine,
+      await fetchExperienceLevel(sb, userId),
     );
 
     if (result.text) {

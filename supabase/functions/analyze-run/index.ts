@@ -17,7 +17,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
@@ -511,6 +511,8 @@ async function generateCoachNotes(
   // "FC média X bpm = ZY (Karvonen; FCmáx Z observada)" (ação 5.4), já
   // pronta — substitui a linha simples "FC média: X bpm" quando existe.
   hrZoneLine: string | null = null,
+  // profiles.experience_level — calibra a linguagem (bug #40).
+  experienceLevel: string | null = null,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
 
@@ -633,8 +635,9 @@ async function generateCoachNotes(
 
   const prompt =
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a corrida que ele acabou de registar. ` +
-    `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise técnica curta (4-6 frases).\n\n` +
+    `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise curta (4-6 frases).\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `REGRAS OBRIGATÓRIAS:\n` +
     `- NUNCA inventes ou estimes números que não te foram dados explicitamente.\n` +
@@ -836,7 +839,7 @@ async function attachCoachNotes(
         .neq("id", run.id),
       // FCmáx e zona (ação 5.4): birth_date/resting_hr_bpm para resolveMaxHR
       // e resolveHrZones — a mesma régua do coach-chat e do cartão diário.
-      sb.from("profiles").select("birth_date, resting_hr_bpm").eq("id", userId).maybeSingle(),
+      sb.from("profiles").select("birth_date, resting_hr_bpm, experience_level").eq("id", userId).maybeSingle(),
     ]);
 
     // Régua única do recorde (ação 5.3): TODAS as corridas (sem filtro de
@@ -899,6 +902,7 @@ async function attachCoachNotes(
       bestPacesLine,
       personalRecordKind,
       hrZoneLine,
+      (hrProfile?.experience_level as string | null) ?? null,
     );
 
     if (coachResult.text) {

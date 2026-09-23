@@ -22,7 +22,7 @@ import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/f
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { resolveMaxHR, resolveHrZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 
@@ -593,6 +593,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `conteúdos independentes para o cartão diário da Home, em primeira pessoa. Nunca genérico. ` +
     `Devolve null nos campos onde não tens nada útil a dizer.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    // Linguagem por nível (bug #40) — ctx.perfil.experience_level.
+    `${carolLanguageRule((ctx.perfil as { experience_level?: string | null } | undefined)?.experience_level ?? null)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
     `CAMPOS A PREENCHER:\n\n` +

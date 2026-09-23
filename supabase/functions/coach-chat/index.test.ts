@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -463,7 +463,6 @@ const BIO_BASE = {
   height_cm: null, weight_kg: null, gender: null, birth_date: null,
   experience_level: null, resting_hr_bpm: null,
   dietary_restrictions: null as string[] | null, dietary_notes: null as string | null,
-  coach_can_set_nutrition_goals: false as boolean | null,
 };
 
 function sysCom(restrictions: string[] | null, notes: string | null): string {
@@ -695,7 +694,6 @@ Deno.test("descarta a duração que o modelo ponha num dia de descanso", async (
 
 // deno-lint-ignore no-explicit-any
 function makeGoalsSb(opts: {
-  authorized?: boolean;
   profileError?: any;
   updateError?: any;
   profile?: any;
@@ -731,7 +729,7 @@ function makeGoalsSb(opts: {
             maybeSingle: () => Promise.resolve(
               opts.profileError
                 ? { data: null, error: opts.profileError }
-                : { data: { coach_can_set_nutrition_goals: opts.authorized ?? true, ...(opts.profile || {}) }, error: null },
+                : { data: { ...(opts.profile || {}) }, error: null },
             ),
           }),
         }),
@@ -754,15 +752,18 @@ function makeGoalsSb(opts: {
 // já não existe para este caminho) e passavam a throw silenciosamente
 // mal a lógica de auto-substituição de propostas foi adicionada.
 
-Deno.test("recusa escrever sem autorização, mesmo com valores válidos", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: false });
+// Bug #41 (2026-09-22): o interruptor "O Coach pode ajustar as metas" saiu —
+// a proposta é sempre criada, e é o atleta que a aceita ou recusa.
+Deno.test("cria a proposta sem depender de nenhum interruptor no perfil", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { protein_goal: 120 } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
-  assertStringIncludes(result, "não autorizou");
-  assertEquals(calls.inserts.length, 0);
+  assertEquals(result.includes("não autorizou"), false);
+  assertEquals(calls.inserts.length, 1);
+  assertEquals(calls.inserts[0].goals.protein_goal, 150);
 });
 
 Deno.test("com autorização, propõe a proteína e marca a origem", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150.4 });
   assertStringIncludes(result, "criada com SUCESSO");
   assertEquals(calls.inserts[0].goals.protein_goal, 150); // arredondado
@@ -771,7 +772,7 @@ Deno.test("com autorização, propõe a proteína e marca a origem", async () =>
 });
 
 Deno.test("propõe proteína e gordura ao mesmo tempo", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { protein_goal: 140, fat_goal: 70 });
   assertEquals(calls.inserts[0].goals.protein_goal, 140);
   assertEquals(calls.inserts[0].goals.fat_goal, 70);
@@ -779,7 +780,7 @@ Deno.test("propõe proteína e gordura ao mesmo tempo", async () => {
 });
 
 Deno.test("aceita calorie_goal e carbs_goal — todos os macros são agora editáveis pelo Coach", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { calorie_goal: 2200, carbs_goal: 300 });
   assertEquals(calls.inserts[0].goals.calorie_goal, 2200);
   assertEquals(calls.inserts[0].goals.calorie_goal_set_by_coach, true);
@@ -788,7 +789,7 @@ Deno.test("aceita calorie_goal e carbs_goal — todos os macros são agora edit�
 });
 
 Deno.test("aceita water_goal_ml e objetivos corporais", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { water_goal_ml: 2500, goal_weight_kg: 70.5, goal_body_fat_pct: 15 });
   assertEquals(calls.inserts[0].goals.water_goal_ml, 2500);
   assertEquals(calls.inserts[0].goals.water_goal_set_by_coach, true);
@@ -799,21 +800,21 @@ Deno.test("aceita water_goal_ml e objetivos corporais", async () => {
 });
 
 Deno.test("rejeita sem gravar quando nenhum campo é dado", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", {});
   assertStringIncludes(result, "Erro");
   assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("rejeita um valor fora do intervalo plausível (proteína 900g)", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 900 });
   assertStringIncludes(result, "Erro");
   assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("rejeita um valor negativo ou zero (gordura 0g)", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", { fat_goal: 0 });
   assertStringIncludes(result, "Erro");
   assertEquals(calls.inserts.length, 0);
@@ -827,19 +828,19 @@ Deno.test("propaga o erro se a leitura do perfil falhar", async () => {
 });
 
 Deno.test("propaga o erro se substituir propostas anteriores falhar", async () => {
-  const { sb } = makeGoalsSb({ authorized: true, supersedeError: { message: "conflito ao substituir" } });
+  const { sb } = makeGoalsSb({ supersedeError: { message: "conflito ao substituir" } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "conflito ao substituir");
 });
 
 Deno.test("propaga o erro se a escrita da proposta falhar", async () => {
-  const { sb } = makeGoalsSb({ authorized: true, insertError: { message: "conflito" } });
+  const { sb } = makeGoalsSb({ insertError: { message: "conflito" } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "conflito");
 });
 
 Deno.test("uma nova proposta substitui (marca 'recusado') qualquer proposta anterior ainda pendente", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertEquals(calls.supersedes.length, 1);
   assertEquals(calls.supersedes[0].status, "recusado");
@@ -855,7 +856,6 @@ Deno.test("uma nova proposta substitui (marca 'recusado') qualquer proposta ante
 
 Deno.test("valores idênticos aos atuais NÃO geram proposta, mesmo vindo como string do Postgres (numeric)", async () => {
   const { sb, calls } = makeGoalsSb({
-    authorized: true,
     profile: { calorie_goal: "2200", protein_goal: "150" }, // como o PostgREST devolve `numeric`
   });
   const result = await runUpdateGoals(sb, "user-1", { calorie_goal: 2200, protein_goal: 150 });
@@ -865,7 +865,6 @@ Deno.test("valores idênticos aos atuais NÃO geram proposta, mesmo vindo como s
 
 Deno.test("uma mudança real ainda é detetada quando o valor atual vem como string", async () => {
   const { sb, calls } = makeGoalsSb({
-    authorized: true,
     profile: { calorie_goal: "2200", protein_goal: "150" },
   });
   await runUpdateGoals(sb, "user-1", { calorie_goal: 2400, protein_goal: 150 });
@@ -911,9 +910,11 @@ Deno.test("sem athleteFirstName, o prompt não menciona nome próprio (recua par
 
 // ─── autorização no system prompt ────────────────────────────────────────
 
-Deno.test("sem autorização, o prompt diz ao modelo para não tentar a ferramenta", () => {
-  const sys = sysCom(null, null); // BIO_BASE tem coach_can_set_nutrition_goals: false
-  assertStringIncludes(sys, "NÃO uses a ferramenta update_goals");
+Deno.test("o prompt já não manda o atleta ligar um interruptor para gravar metas", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("NÃO uses a ferramenta update_goals"), false);
+  assertEquals(sys.includes("O Coach pode ajustar as metas"), false);
+  assertStringIncludes(sys, "PROPOSTA DE OBJETIVOS E METAS");
 });
 
 Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta imediatamente ao discutir valores", () => {
@@ -923,7 +924,7 @@ Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta ime
   // não por troca de mensagens antes de a ferramenta ser chamada.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "OBRIGATÓRIO");
@@ -935,7 +936,7 @@ Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta ime
 Deno.test("regra 5 exige chamar a ferramenta certa consoante o pedido original (plano vs. refeições avulsas)", () => {
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "propose_training_plan com replace_active_plan=true");
@@ -953,7 +954,7 @@ Deno.test("regra 5 tem ação por omissão (propor plano de refeições) quando 
   // o período todo, não uma alteração silenciosa de 2-3 dias).
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "SEM PEDIDO EXPLÍCITO NO HISTÓRICO");
@@ -972,7 +973,7 @@ Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curt
   // (não um número arbitrário menor) para coincidir com esse máximo.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto");
@@ -996,7 +997,7 @@ Deno.test("Regra 5(a) tem precedência sobre a Regra 1 — não reproponhas obje
   // têm agora precedência cruzada explícita para o modelo não hesitar.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a))");
@@ -1384,11 +1385,9 @@ Deno.test("caso A manda rever a proposta no Coach, não no ecrã Home", () => {
 });
 
 Deno.test("a dependência objetivos→plano não se aplica a objetivos já aceites", () => {
-  // A regra 4 vive no ramo autorizado do prompt — sysCom() usa BIO_BASE, que
-  // tem coach_can_set_nutrition_goals: false, e aí esta secção nem existe.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos");
@@ -3862,5 +3861,39 @@ Deno.test("buildRaceEventsContext: o conflito já reconhecido não volta a ser l
     { id: "r1", date: "2026-11-08", name: "Maratona", race_type: "estrada", distance_km: 42.2, race_priority: "a", conflict_acknowledged_at: "2026-09-19T12:00:00Z" },
   ], "2026-09-20", null, null, [])!;
   assertStringIncludes(text, "conflito de provas já reconhecido por ele a 2026-09-19: não voltes a levantá-lo");
+});
+
+// ─── conversa sobre objetivos (bug #41, 2026-09-22) ─────────────────────
+// A intervenção da análise corporal não é a de desvios ao plano: convida
+// e convence, e fecha-se com a decisão do atleta na proposta de objetivos.
+
+Deno.test("conversa sobre objetivos: convida, não confronta, e sabe como fecha", () => {
+  const sys = buildGoalsInterventionInstruction(true, "[objetivos] O atleta ainda não tem objetivos definidos (os do corpo).");
+  assertStringIncludes(sys, "CONVERSA SOBRE OBJETIVOS");
+  assertStringIncludes(sys, "Não é uma chamada de atenção");
+  assertStringIncludes(sys, "INICIA tu");
+  assertStringIncludes(sys, "update_goals");
+  assertStringIncludes(sys, "NÃO chames resolve_intervention nesse caso");
+  // A etiqueta é para as máquinas; a Carol lê só o motivo.
+  assertEquals(sys.includes("[objetivos]"), false);
+  assertStringIncludes(sys, "O atleta ainda não tem objetivos definidos (os do corpo).");
+});
+
+Deno.test("conversa sobre objetivos: sem ser o arranque, não manda iniciar", () => {
+  assertEquals(buildGoalsInterventionInstruction(false, "[objetivos] x").includes("INICIA tu"), false);
+});
+
+Deno.test("o prompt escolhe a conversa pela etiqueta do motivo", () => {
+  const args = (reason: string) => buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, true, "needed", reason,
+  );
+  const objetivos = args("[objetivos] O peso-alvo já foi atingido.");
+  assertStringIncludes(objetivos, "CONVERSA SOBRE OBJETIVOS");
+  assertEquals(objetivos.includes("MODO DE INTERVENÇÃO PROATIVA ATIVO"), false);
+
+  const plano = args("Falhou 3 treinos seguidos.");
+  assertStringIncludes(plano, "MODO DE INTERVENÇÃO PROATIVA ATIVO");
+  assertEquals(plano.includes("CONVERSA SOBRE OBJETIVOS"), false);
 });
 

@@ -762,32 +762,18 @@ export default function Perfil() {
               </div>
             </div>
 
-            {/* Toggle global de autorização — cobre todos os objetivos (nutrição,
-                água, corpo). O Coach propõe sempre em texto primeiro e pede
-                confirmação; só grava quando o atleta diz que sim. */}
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]">
-              <div className="pr-4">
-                <p className="text-xs font-semibold flex items-center gap-1.5">
-                  <Bot size={14} style={{ color: 'var(--mod-coach-to)' }} /> O Coach pode ajustar as metas
-                </p>
-                <p className="text-[11px] text-[var(--text-3)] mt-1">
-                  Permite que o Coach grave metas diretamente no teu perfil (nutrição, água e objetivos corporais)
-                  quando concordares com a sugestão dele no chat. Os campos alterados pelo Coach ficam marcados com
-                  "Coach"; editá-los à mão devolve o controlo a ti.
-                </p>
-              </div>
-              <button onClick={() => updateDraft('coach_can_set_nutrition_goals', !draft.coach_can_set_nutrition_goals)} type="button"
-                aria-label={draft.coach_can_set_nutrition_goals ? 'Desativar autorização do Coach' : 'Ativar autorização do Coach'}
-                aria-pressed={!!draft.coach_can_set_nutrition_goals}
-                className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
-                  draft.coach_can_set_nutrition_goals ? '' : 'bg-[var(--surface-strong)]'
-                }`}
-                style={draft.coach_can_set_nutrition_goals ? { background: 'var(--mod-coach-to)' } : undefined}>
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
-                  draft.coach_can_set_nutrition_goals ? 'translate-x-5' : 'translate-x-0'
-                }`} style={{ backgroundColor: draft.coach_can_set_nutrition_goals ? 'var(--coach-ink)' : 'var(--text-1)' }}></span>
-              </button>
-            </div>
+            {/* O interruptor "O Coach pode ajustar as metas" saiu (2026-09-22,
+                bug #41): a Carol propõe e é o atleta que aceita ou recusa na
+                persiana — uma segunda autorização por cima disso não protegia
+                nada, só obrigava a vir aqui ligar um interruptor. Fica a
+                regra que continua a valer. */}
+            <p className="flex items-start gap-1.5 text-[11px] text-[var(--text-3)] mt-5 pt-4 border-t border-[var(--border-glass)]" data-testid="perfil-metas-coach-nota">
+              <Bot size={14} className="shrink-0 mt-px" style={{ color: 'var(--mod-coach-to)' }} />
+              <span>
+                A Carol pode propor-te metas no chat; só mudam aqui se aceitares. As que vierem dela ficam
+                marcadas com "Coach" — editá-las à mão devolve-te o controlo.
+              </span>
+            </p>
 
           </div>
       </div>

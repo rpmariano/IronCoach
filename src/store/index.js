@@ -5,6 +5,7 @@ import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin } from '../utils/checkin';
 import { TABELAS_POLICY_VERSION } from '../utils/percentile';
+import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 
 const getInitialDashboardTab = () => {
   try {
@@ -443,6 +444,21 @@ export const useAppStore = create((set, get) => ({
           set({ profile: updatedProfile });
         }
       }
+    }
+
+    /* A conversa sobre objetivos que a análise corporal abriu (bug #41)
+       fecha-se com a decisão do atleta na proposta — aceitar OU recusar. A
+       Carol não chama resolve_intervention nesse caso (ver coach-chat,
+       buildGoalsInterventionInstruction); sem isto o botão "a Carol precisa
+       de falar contigo" ficava aceso depois de ele já ter decidido. As
+       intervenções de desvio ao plano não se tocam: essas fecham-se no chat. */
+    const current = get().profile;
+    if (current?.id && ['needed', 'in_progress'].includes(current.coach_intervention_status)
+      && isGoalsIntervention(current.coach_intervention_reason)) {
+      const resolved = { coach_intervention_status: 'resolved', coach_intervention_reason: null };
+      const { error: resolveError } = await supabase.from('profiles').update(resolved).eq('id', current.id);
+      if (resolveError) console.error('Error resolving goals intervention:', resolveError);
+      else set({ profile: { ...get().profile, ...resolved } });
     }
 
     set((state) => ({

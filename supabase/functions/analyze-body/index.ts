@@ -8,7 +8,20 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
+import {
+  GOALS_REVIEW_SCHEMA,
+  MANUAL_SUMMARY_SCHEMA,
+  BODY_GOAL_COLUMNS,
+  MACRO_GOAL_COLUMNS,
+  fetchGoalsContext,
+  goalsInterventionFor,
+  goalsReviewSection,
+  parseGoalsReview,
+  parseManualSummary,
+  type GoalsContext,
+  type GoalsReview,
+} from "./goalsReview.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
 
@@ -92,7 +105,10 @@ const RESPONSE_SCHEMA = {
     // sem essa saída, um print da Withings era arrumado à força na Renpho.
     source_app: { type: "STRING", nullable: true, enum: opcoesDeFonte("corpo") },
     summary: { type: "STRING" },
+    goals_review: GOALS_REVIEW_SCHEMA,
   },
+  // goals_review fica fora de `required` de propósito: é um juízo, não uma
+  // leitura — se o modelo o omitir, a pesagem grava-se na mesma.
   required: ["metrics", "summary", "source_app"],
 };
 
@@ -156,8 +172,6 @@ async function fetchGeminiWithTimeout(
       Faltando os objetivos do corpo ou os de macronutrientes, fica marcada
       uma intervenção a pedir que os definam em conjunto. */
 const PESO_RECENTE_DIAS = 7;
-const BODY_GOAL_COLUMNS = ["goal_weight_kg", "goal_body_fat_pct", "goal_muscle_mass_kg", "goal_lean_body_mass_kg"];
-const MACRO_GOAL_COLUMNS = ["calorie_goal", "protein_goal", "carbs_goal", "fat_goal"];
 
 function daysBetweenISO(fromISO: string, toISO: string): number | null {
   const a = Date.parse(`${String(fromISO).slice(0, 10)}T00:00:00Z`);
@@ -167,7 +181,7 @@ function daysBetweenISO(fromISO: string, toISO: string): number | null {
 }
 
 // deno-lint-ignore no-explicit-any
-export async function syncProfileAfterAssessment(sb: any, userId: string, assessment: any): Promise<void> {
+export async function syncProfileAfterAssessment(sb: any, userId: string, assessment: any, goalsReview: GoalsReview = null): Promise<void> {
   try {
     if (!assessment?.date) return;
     const todayISO = new Date().toISOString().slice(0, 10);
@@ -213,25 +227,10 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
     if (erroPerfil) console.warn("syncProfileAfterAssessment: falha a ler o perfil:", erroPerfil);
 
     if (perfil) {
-      const temAlgum = (cols: string[]) => cols.some((c) => perfil[c] !== null && perfil[c] !== undefined);
-      const faltamCorpo = !temAlgum(BODY_GOAL_COLUMNS);
-      const faltamMacros = !temAlgum(MACRO_GOAL_COLUMNS);
-      /* Uma intervenção já pendente não se sobrepõe: o motivo que lá está
-         pode ser mais urgente do que este, e o atleta só vê um de cada vez.
-         'in_progress' conta como pendente — é uma conversa JÁ A MEIO, e
-         reescrever o motivo aqui apagava sem retorno a razão pela qual ela
-         chamou por ele (a coluna não tem histórico). É a mesma leitura que
-         o resto da app faz: ver store/index.js e Home/Home.jsx, ambos com
-         ['needed','in_progress']. */
-      const intervencaoPendente = ["needed", "in_progress"].includes(perfil.coach_intervention_status);
-      if ((faltamCorpo || faltamMacros) && !intervencaoPendente) {
-        const emFalta = [faltamCorpo ? "os do corpo" : null, faltamMacros ? "os de macronutrientes" : null]
-          .filter(Boolean).join(" e ");
+      const intervencao = goalsInterventionFor(perfil, goalsReview);
+      if (intervencao) {
         patch.coach_intervention_status = "needed";
-        patch.coach_intervention_reason =
-          `O atleta acabou de registar uma avaliação corporal e ainda não tem objetivos definidos (${emFalta}). ` +
-          `Propõe-lhe definir os objetivos em conjunto — valores do corpo E macronutrientes —, partindo dos ` +
-          `números desta avaliação. Pergunta onde ele quer chegar antes de propores valores.`;
+        patch.coach_intervention_reason = intervencao;
       }
     }
 
@@ -345,7 +344,7 @@ function historyContext(history: any[]): string {
     lines.join("\n");
 }
 
-function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null): string {
+function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null): string {
   const mapping = METRIC_FIELDS
     .map((f) => `- ${f.key} — na Renpho aparece como "${f.renpho}"${f.hint ? ` — ${f.hint}` : ""}`)
     .join("\n");
@@ -390,7 +389,9 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     "dos valores desta pesagem: o que está bom e o que merece atenção. " +
     "Se existir histórico acima, compara com a avaliação mais recente e comenta a evolução " +
     "(o que melhorou, o que piorou, ex.: peso, gordura corporal, massa muscular). " +
-    "Sê direto e prático, sem alarmismos e sem dar diagnósticos médicos.";
+    "Sê direto e prático, sem alarmismos e sem dar diagnósticos médicos. " +
+    carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
+    goalsReviewSection(goalsCtx?.goals ?? null);
   if (notes && notes.trim()) {
     prompt +=
       "\n\nObservação do utilizador sobre esta pesagem (usa-a como contexto): " +
@@ -417,6 +418,7 @@ async function analyzeWithGemini(
   history: unknown[],
   geminiKey: string,
   memoryBlock: string | null = null,
+  goalsCtx: GoalsContext | null = null,
 ): Promise<
   {
     metrics: Record<string, number | null>;
@@ -424,9 +426,10 @@ async function analyzeWithGemini(
     summary: string;
     sourceApp: string;
     usage: GeminiUsage;
+    goalsReview: GoalsReview;
   }
 > {
-  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock) }];
+  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -468,6 +471,7 @@ async function analyzeWithGemini(
     classifications?: Record<string, unknown>;
     summary?: unknown;
     source_app?: unknown;
+    goals_review?: unknown;
   };
   try {
     parsed = JSON.parse(rawText);
@@ -510,7 +514,7 @@ async function analyzeWithGemini(
   classifications.source_app = sourceApp;
 
   const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
-  return { metrics, classifications, summary, sourceApp, usage };
+  return { metrics, classifications, summary, sourceApp, usage, goalsReview: parseGoalsReview(parsed.goals_review) };
 }
 
 // Gera o resumo/comentário do Coach a partir de valores indicados manualmente
@@ -524,9 +528,10 @@ async function generateBodySummaryFromMetrics(
   history: unknown[],
   geminiKey: string,
   memoryBlock: string | null = null,
-): Promise<{ text: string | null }> {
+  goalsCtx: GoalsContext | null = null,
+): Promise<{ text: string | null; goalsReview: GoalsReview }> {
   const hasAny = Object.values(metrics).some((v) => v !== null && v !== undefined);
-  if (!hasAny) return { text: null };
+  if (!hasAny) return { text: null, goalsReview: null };
 
   const metricLines = METRIC_FIELDS
     .filter((f) => metrics[f.key] !== null && metrics[f.key] !== undefined)
@@ -547,7 +552,10 @@ async function generateBodySummaryFromMetrics(
     "corporal, massa muscular). Sê direta e prática, sem alarmismos e sem dar diagnósticos " +
     "médicos. Se o peso desceu mais de 1 kg face a uma avaliação de há cerca de uma semana (ou a um " +
     "ritmo equivalente), pergunta se é intencional antes de sugerires mexer nas calorias — não ajustes " +
-    "nada por tua conta." +
+    "nada por tua conta. " +
+    carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
+    goalsReviewSection(goalsCtx?.goals ?? null) +
+    "Responde em JSON: \"summary\" com a avaliação, \"goals_review\" com o juízo acima." +
     (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
 
   try {
@@ -558,7 +566,12 @@ async function generateBodySummaryFromMetrics(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "minimal" } },
+          generationConfig: {
+            maxOutputTokens: 4096,
+            thinkingConfig: { thinkingLevel: "minimal" },
+            response_mime_type: "application/json",
+            response_schema: MANUAL_SUMMARY_SCHEMA,
+          },
         }),
       },
       45000,
@@ -566,14 +579,13 @@ async function generateBodySummaryFromMetrics(
     );
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());
-      return { text: null };
+      return { text: null, goalsReview: null };
     }
     const json = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return { text: text ? String(text).trim() : null };
+    return parseManualSummary(json?.candidates?.[0]?.content?.parts?.[0]?.text);
   } catch (e) {
     console.warn("Body manual summary generation error:", e);
-    return { text: null };
+    return { text: null, goalsReview: null };
   }
 }
 
@@ -611,6 +623,7 @@ Deno.serve(async (req) => {
     // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
     // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.
     const memoryPromise = fetchSharedMemoryBlock(sb, userId);
+    const goalsCtxPromise = fetchGoalsContext(sb, userId);
 
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
@@ -671,7 +684,7 @@ Deno.serve(async (req) => {
       if (editingId) historyQuery = historyQuery.neq("id", editingId);
       const { data: history } = await historyQuery;
 
-      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise);
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise);
 
       if (editingId) {
         const { data: updated, error: updateError } = await sb
@@ -687,7 +700,7 @@ Deno.serve(async (req) => {
           .select()
           .single();
         if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
-        await syncProfileAfterAssessment(sb, userId, updated);
+        await syncProfileAfterAssessment(sb, userId, updated, summaryResult.goalsReview);
         return jsonResponse({ assessment: updated });
       }
 
@@ -709,7 +722,7 @@ Deno.serve(async (req) => {
         .single();
       if (insertError) return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
 
-      await syncProfileAfterAssessment(sb, userId, assessment);
+      await syncProfileAfterAssessment(sb, userId, assessment, summaryResult.goalsReview);
       return jsonResponse({ assessment });
     }
 
@@ -751,7 +764,7 @@ Deno.serve(async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise);
+        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -764,7 +777,7 @@ Deno.serve(async (req) => {
         .single();
       if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
 
-      await syncProfileAfterAssessment(sb, userId, updated);
+      await syncProfileAfterAssessment(sb, userId, updated, result.goalsReview);
       return jsonResponse({ assessment: updated, source_app: result.sourceApp, usage: result.usage });
     }
 
@@ -820,7 +833,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
@@ -848,7 +861,7 @@ Deno.serve(async (req) => {
 
     await checkAndLogAppImage(sb, userId, "body", images, mime, result as unknown as Record<string, unknown>);
 
-    await syncProfileAfterAssessment(sb, userId, assessment);
+    await syncProfileAfterAssessment(sb, userId, assessment, result.goalsReview);
     /* A fonte também à cabeça da resposta, e não só escondida dentro de
        `classifications` — é onde o cliente a vai buscar sem ter de saber do
        arranjo do jsonb. */

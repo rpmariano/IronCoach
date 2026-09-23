@@ -225,21 +225,14 @@ describe('Perfil — metas escritas pelo Coach', () => {
     });
   });
 
-  it('o interruptor começa desligado quando o perfil não o tem definido', () => {
+  // O interruptor "O Coach pode ajustar as metas" saiu (bug #41): a Carol
+  // propõe sempre, e é o atleta que aceita ou recusa. Fica a nota da regra.
+  it('já não há interruptor de autorização; fica a nota do selo "Coach"', () => {
     render(<Perfil />);
     abrirMetas();
-    expect(screen.getByLabelText('Ativar autorização do Coach')).toBeInTheDocument();
-  });
-
-  it('ligar o interruptor marca o campo como alterado e grava-o', async () => {
-    render(<Perfil />);
-    abrirMetas();
-    fireEvent.click(screen.getByLabelText('Ativar autorização do Coach'));
-    expect(screen.getByLabelText('Desativar autorização do Coach')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
-    await waitFor(() => expect(mocks.updates.length).toBe(1));
-    expect(mocks.updates[0]).toEqual({ coach_can_set_nutrition_goals: true });
+    expect(screen.queryByLabelText('Ativar autorização do Coach')).not.toBeInTheDocument();
+    expect(screen.queryByText('O Coach pode ajustar as metas')).not.toBeInTheDocument();
+    expect(screen.getByTestId('perfil-metas-coach-nota')).toHaveTextContent('só mudam aqui se aceitares');
   });
 
   it('mostra o selo "Coach" quando a proteína foi definida pelo Coach', () => {
@@ -583,8 +576,7 @@ describe('Perfil — reorganização das Metas (#41)', () => {
     render(<Perfil />);
     expect(separadorDe(screen.getByLabelText(/Calorias/))).toBe('Metas');
     expect(separadorDe(screen.getByText('Objetivos corporais'))).toBe('Metas');
-    // A autorização do Coach é sobre as metas, não é uma notificação.
-    expect(separadorDe(screen.getByText('O Coach pode ajustar as metas'))).toBe('Metas');
+    expect(separadorDe(screen.getByTestId('perfil-metas-coach-nota'))).toBe('Metas');
   });
 
   it('as notificações (água e Carol) passaram para o separador Coach', () => {
