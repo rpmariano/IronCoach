@@ -23,6 +23,16 @@ export function isGoalsIntervention(reason: string | null | undefined): boolean 
     (reason.startsWith(GOALS_INTERVENTION_TAG) || reason.startsWith(LEGACY_MISSING_GOALS_PREFIX));
 }
 
+const REVIEW_MARKER = "deviam ser revistos";
+
+/** 'definir' (faltam objetivos), 'rever' (há, mas deviam mudar), ou null
+ *  quando o motivo não é de objetivos — para a app dizer ao atleta de que
+ *  se trata sem mostrar o motivo técnico, que é escrito para a Carol. */
+export function goalsInterventionKind(reason: string | null | undefined): "definir" | "rever" | null {
+  if (!isGoalsIntervention(reason)) return null;
+  return (reason as string).includes(REVIEW_MARKER) ? "rever" : "definir";
+}
+
 /* Quando o atleta diz que não quer objetivos agora (no chat, ou dispensando o
    aviso no Início), fica uma proposta 'recusado' sem valores. Não aparece em
    lado nenhum — só se leem as 'proposto' — mas entra na espera de 14 dias
@@ -45,6 +55,6 @@ export function missingGoalsReason(emFalta: string): string {
 /** Há objetivos, mas a avaliação diz que deviam mudar. */
 export function reviewGoalsReason(motivo: string): string {
   return `${GOALS_INTERVENTION_TAG} O atleta acabou de registar uma avaliação corporal e, pela tua leitura, ` +
-    `os objetivos que tem deviam ser revistos: ${motivo.trim()} Explica-lhe porquê, com os números desta ` +
+    `os objetivos que tem ${REVIEW_MARKER}: ${motivo.trim()} Explica-lhe porquê, com os números desta ` +
     `avaliação, e propõe os valores novos.`;
 }

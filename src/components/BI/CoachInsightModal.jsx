@@ -49,7 +49,7 @@ function AlertCard({ alert, onClose }) {
           className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-[14px] rounded-[11px] text-[12.5px] font-extrabold"
           style={{ background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)' }}
         >
-          <Sparkles size={14} /> Falar com a Carol
+          <Sparkles size={14} /> Falar agora
         </button>
         {alert.onDismiss && (
           <button
@@ -59,7 +59,7 @@ function AlertCard({ alert, onClose }) {
             className="min-h-[44px] px-[12px] rounded-[11px] text-[12px] font-bold"
             style={{ background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}
           >
-            Dispensar aviso
+            Agora não
           </button>
         )}
       </div>

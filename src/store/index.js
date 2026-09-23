@@ -155,6 +155,9 @@ export const useAppStore = create((set, get) => ({
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
   navGuard: null,
+  // O botão "Fazer o check-in" das boas-vindas pede ao cartão do Início
+  // que abra a persiana do check-in (CheckinCard consome e limpa).
+  checkinRequested: false,
   
   // Actions
   setSession: (session) => {
@@ -192,6 +195,8 @@ export const useAppStore = create((set, get) => ({
     }
   },
   setNavGuard: (fn) => set({ navGuard: fn }),
+  requestCheckin: () => set({ checkinRequested: true }),
+  clearCheckinRequest: () => set({ checkinRequested: false }),
   // Devolve false quando o guard recusa, para quem chama não seguir com
   // efeitos secundários (ex.: abrir um formulário de registo) numa navegação
   // que não aconteceu.

@@ -127,9 +127,11 @@ describe('CoachInsightModal', () => {
       expect(mockOnClose).toHaveBeenCalled();
     });
 
-    it('com avisos e insights, só há um "Falar com a Carol" por aviso e "Ignorar" é só dos insights', () => {
+    it('com avisos e insights, só há um "Falar agora" por aviso e "Ignorar" é só dos insights', () => {
       render(<CoachInsightModal alerts={[alerta()]} insights={sampleInsights} onClose={mockOnClose} />);
-      expect(screen.getAllByText('Falar com a Carol')).toHaveLength(1);
+      expect(screen.getAllByText('Falar agora')).toHaveLength(1);
+      // Pedido 2026-09-23: "Carol" só no cabeçalho, não repetida no aviso.
+      expect(screen.queryByText('Falar com a Carol')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'Ignorar os insights' }));
       expect(mockSetInsightState).toHaveBeenCalledWith('insight-1', 'ignored');
       expect(mockSetInsightState).not.toHaveBeenCalledWith('plano', expect.anything());

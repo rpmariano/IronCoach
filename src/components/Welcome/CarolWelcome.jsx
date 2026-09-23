@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Footprints, UtensilsCrossed, Moon, Clock, Trophy } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { LOOK, ambientBackground, contourRings } from '../../utils/ambientWorld';
+import { useAppStore } from '../../store';
 
 /* A sala da Carol — as boas-vindas antes da Home (canvas de design
    "Boas-vindas da Carol", 2026-09-19). A decisão de QUANDO aparece e o
@@ -214,7 +215,17 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
           <button
             ref={buttonRef}
             type="button"
-            onClick={(e) => { e.stopPropagation(); fechar(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              // "Fazer o check-in": leva ao Início e abre-o lá (o cartão
+              // "Como estás hoje?"). Se a navegação for recusada (um
+              // formulário por gravar), só fecha.
+              if (welcome.action === 'checkin') {
+                const { setActiveTab, requestCheckin } = useAppStore.getState();
+                if (setActiveTab('home') !== false) requestCheckin();
+              }
+              fechar();
+            }}
             className="transition active:scale-[.98]"
             style={{
               height: 54,

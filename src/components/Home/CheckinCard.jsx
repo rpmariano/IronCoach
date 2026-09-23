@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { HeartPulse, ChevronRight, Pencil } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -26,6 +26,14 @@ export default function CheckinCard() {
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const [open, setOpen] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  // Pedido das boas-vindas da manhã ("Fazer o check-in"): abre a persiana
+  // uma vez e limpa o pedido, para não voltar a abrir ao regressar ao Início.
+  const checkinRequested = useAppStore((s) => s.checkinRequested);
+  useEffect(() => {
+    if (!checkinRequested) return;
+    setOpen(true);
+    useAppStore.getState().clearCheckinRequest();
+  }, [checkinRequested]);
   const today = todayISO();
   const checkin = todaysCheckin(dailyCheckins, today);
   const reply = useMemo(() => checkinReply(dailyCheckins, today), [dailyCheckins, today]);

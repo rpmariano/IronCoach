@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import CarolWelcome from './CarolWelcome';
+import { useAppStore } from '../../store';
 
 const welcome = {
   variant: 'manha',
@@ -86,3 +87,27 @@ describe('CarolWelcome — o foco (revisão pré-master de 2026-09-19)', () => {
     antes.remove();
   });
 });
+
+// Pedido 2026-09-23: o check-in da manhã explica-se e o botão abre-o.
+describe('CarolWelcome — "Fazer o check-in"', () => {
+  it('leva ao Início e pede ao cartão que abra o check-in', () => {
+    useAppStore.setState({ activeTab: 'coach', navGuard: null, checkinRequested: false });
+    const onClose = vi.fn();
+    render(<CarolWelcome welcome={{ ...welcome, cta: 'Fazer o check-in', action: 'checkin' }} now={NOW} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Fazer o check-in' }));
+    expect(useAppStore.getState().activeTab).toBe('home');
+    expect(useAppStore.getState().checkinRequested).toBe(true);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('com a navegação recusada (formulário por gravar), só fecha', () => {
+    useAppStore.setState({ activeTab: 'perfil', navGuard: () => false, checkinRequested: false });
+    const onClose = vi.fn();
+    render(<CarolWelcome welcome={{ ...welcome, cta: 'Fazer o check-in', action: 'checkin' }} now={NOW} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Fazer o check-in' }));
+    expect(useAppStore.getState().checkinRequested).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    useAppStore.setState({ navGuard: null });
+  });
+});
+

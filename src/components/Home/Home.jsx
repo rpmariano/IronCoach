@@ -23,6 +23,7 @@ import CoachInsightModal from '../BI/CoachInsightModal';
 import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
 import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
+import { pendingTopicLines } from '../../utils/carolTopics';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -49,6 +50,7 @@ export default function Home() {
     dailySummary, logImpression, logImpressionDismissed, impressionDismissed,
   } = useAppStore();
   const pendingTopics = useAppStore(selectCoachPendingTopics);
+  const coachGoalProposals = useAppStore((s) => s.coachGoalProposals);
 
   const [showInsights, setShowInsights] = useState(false);
   const [showDismiss, setShowDismiss] = useState(false);
@@ -181,8 +183,11 @@ export default function Home() {
     carolAlerts.push({
       id: 'assuntos',
       severity: 'warning',
-      title: 'A Carol precisa de falar contigo',
-      message: pendingTopics === 1 ? 'Tens 1 assunto a resolver com ela.' : `Tens ${pendingTopics} assuntos a resolver com ela.`,
+      // Na voz dela e a dizer o assunto (pedido 2026-09-23): "Tens 1 assunto
+      // a resolver com ela" não dizia qual, e o popup repetia "Carol" 4 vezes.
+      title: 'Preciso de falar contigo',
+      message: pendingTopicLines({ profile, coachPlans, coachGoalProposals }).join(' ')
+        || (pendingTopics === 1 ? 'Tenho um assunto para ver contigo.' : `Tenho ${pendingTopics} assuntos para ver contigo.`),
       onTalk: openCoach,
       onDismiss: interventionPending ? () => setShowDismiss(true) : null,
     });
@@ -191,7 +196,7 @@ export default function Home() {
     carolAlerts.push({
       id: 'conflito-provas',
       severity: 'warning',
-      title: 'A Carol precisa de falar contigo',
+      title: 'Preciso de falar contigo',
       // Sem onDismiss, de propósito: enquanto houver duas principais no mesmo
       // bloco não há plano certo, e a decisão é do atleta — mas tem de ser
       // tomada. A Carol grava-a e não volta a perguntar.
@@ -341,7 +346,7 @@ export default function Home() {
 
       {showDismiss && (
         <Dialog
-          title="Dispensar o aviso da Carol?"
+          title="Dispensar este aviso?"
           onClose={() => setShowDismiss(false)}
           actions={(
             <>
@@ -355,7 +360,7 @@ export default function Home() {
           )}
         >
           <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
-            O aviso deixa de aparecer na Home. Podes voltar a falar com a Carol no Chat sempre que quiseres.
+            O aviso deixa de aparecer no Início. Podes voltar a falar comigo no chat sempre que quiseres.
           </p>
         </Dialog>
       )}

@@ -102,3 +102,20 @@ describe('CheckinCard — apagar os check-ins (privacidade)', () => {
   });
 });
 
+// "Fazer o check-in" nas boas-vindas da manhã (2026-09-23): o pedido abre a
+// persiana uma vez e limpa-se.
+describe('CheckinCard — pedido das boas-vindas', () => {
+  it('abre a persiana quando as boas-vindas o pedem, e consome o pedido', () => {
+    useAppStore.setState({ checkinRequested: true });
+    renderCard();
+    expect(screen.getByTestId('checkin-sheet')).toBeInTheDocument();
+    expect(useAppStore.getState().checkinRequested).toBe(false);
+  });
+
+  it('sem pedido, fica fechada', () => {
+    useAppStore.setState({ checkinRequested: false });
+    renderCard();
+    expect(screen.queryByTestId('checkin-sheet')).not.toBeInTheDocument();
+  });
+});
+
