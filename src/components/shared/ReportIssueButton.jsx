@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Bug, Send, Upload, X } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
@@ -6,6 +6,36 @@ import { currentPageLabel } from '../../lib/utils';
 import { useToast } from './ToastProvider';
 import PremiumModal from './PremiumModal';
 import { Button } from './Button';
+
+/* O botão arrasta-se (pedido 2026-09-23: tapava a caixa de texto do Coach).
+   Ao largar encosta à margem mais perto e a posição fica neste telemóvel
+   (localStorage — é uma preferência do aparelho, não da conta). Um toque
+   sem arrastar abre o report como sempre; o teclado e o leitor de ecrã não
+   mudam nada (a posição é só onde está, não o que faz). */
+const POS_KEY = 'ironcoach_bug_button_pos';
+const DRAG_THRESHOLD_PX = 6;
+const EDGE_GAP_PX = 12;
+const SIZE_PX = 36;
+export const DEFAULT_BUG_BUTTON_POS = { side: 'left', bottom: 96 };
+
+function readPos() {
+  try {
+    const p = JSON.parse(window.localStorage.getItem(POS_KEY) || 'null');
+    if (p && (p.side === 'left' || p.side === 'right') && Number.isFinite(p.bottom)) return p;
+  } catch { /* sem armazenamento: posição de sempre */ }
+  return DEFAULT_BUG_BUTTON_POS;
+}
+
+function savePos(p) {
+  try { window.localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch { /* fica só nesta visita */ }
+}
+
+// Entre o cabeçalho e a barra de baixo: nunca por cima de nenhum dos dois.
+export function clampBottom(bottom, viewportH) {
+  const min = 84; // acima da barra de baixo (76px) com folga
+  const max = Math.max(min, viewportH - 85 - SIZE_PX - 8); // abaixo do cabeçalho (85px)
+  return Math.min(max, Math.max(min, bottom));
+}
 
 /**
  * Botão discreto (presente em todos os ecrãs via Layout) que permite ao
@@ -23,7 +53,60 @@ export default function ReportIssueButton() {
   const [files, setFiles] = useState([]);
   const [uploadProgress, setUploadProgress] = useState(0);
 
-  const handleOpen = () => setIsOpen(true);
+  const [pos, setPos] = useState(readPos);
+  const [dragXY, setDragXY] = useState(null); // {x, y} do canto sup. esq. a meio do arrasto
+  const drag = useRef(null);
+  const draggedAt = useRef(0);
+
+  const onPointerDown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    drag.current = { startX: e.clientX, startY: e.clientY, offX: e.clientX - r.left, offY: e.clientY - r.top, moved: false };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    const d = drag.current;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < DRAG_THRESHOLD_PX) return;
+    d.moved = true;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    setDragXY({
+      x: Math.min(vw - SIZE_PX, Math.max(0, e.clientX - d.offX)),
+      y: Math.min(vh - SIZE_PX, Math.max(0, e.clientY - d.offY)),
+    });
+  };
+
+  const onPointerUp = (e) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d?.moved) return;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const x = e.clientX - d.offX, y = e.clientY - d.offY;
+    // A coluna da app é max-w-md centrada: a margem é a do ecrã, que num
+    // telemóvel é a mesma coisa.
+    const next = {
+      side: x + SIZE_PX / 2 < vw / 2 ? 'left' : 'right',
+      bottom: Math.round(clampBottom(vh - y - SIZE_PX, vh)),
+    };
+    setDragXY(null);
+    setPos(next);
+    savePos(next);
+    draggedAt.current = Date.now();
+  };
+
+  const handleOpen = () => {
+    // O click que o browser dispara no fim de um arrasto não abre o report
+    // (por tempo, não por bandeira: se o click não vier, o toque seguinte
+    // não pode ficar engolido).
+    if (Date.now() - draggedAt.current < 400) return;
+    setIsOpen(true);
+  };
+
+  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
+  const placement = dragXY
+    ? { left: dragXY.x, top: dragXY.y }
+    : { [pos.side]: EDGE_GAP_PX, bottom: clampBottom(pos.bottom, viewportH) };
 
   const handleClose = () => {
     if (submitting) return;
@@ -159,9 +242,17 @@ export default function ReportIssueButton() {
     <>
       <button
         onClick={handleOpen}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => { drag.current = null; setDragXY(null); }}
         aria-label="Reportar um problema"
-        title="Reportar um problema"
-        className="tap-44 fixed bottom-24 left-3 z-30 w-9 h-9 rounded-full flex items-center justify-center bg-[var(--surface-strong)] backdrop-blur-xl border border-[var(--border-glass)] text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-white/20 active:scale-95 transition shadow-[0_2px_10px_rgba(0,0,0,0.25)]"
+        title="Reportar um problema (arrasta para mudar de sítio)"
+        data-testid="report-issue-button"
+        // touch-action none: arrastar o botão não faz scroll ao ecrã.
+        // Sem transition durante o arrasto, senão o botão ficava atrás do dedo.
+        className={`hide-when-keyboard tap-44 fixed z-30 w-9 h-9 rounded-full flex items-center justify-center bg-[var(--surface-strong)] backdrop-blur-xl border border-[var(--border-glass)] text-[var(--text-3)] hover:text-[var(--text-1)] hover:bg-white/20 shadow-[0_2px_10px_rgba(0,0,0,0.25)] ${dragXY ? 'scale-110 cursor-grabbing' : 'active:scale-95 transition'}`}
+        style={{ ...placement, touchAction: 'none' }}
       >
         <Bug size={15} />
       </button>

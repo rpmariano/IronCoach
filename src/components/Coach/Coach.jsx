@@ -972,7 +972,7 @@ export default function Coach() {
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-          <div className="fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
+          <div className="hide-when-keyboard fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
             <button
               type="button"
               // disabled={coachLoading} é o único guard aqui — impede mesmo o

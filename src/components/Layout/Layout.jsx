@@ -9,6 +9,7 @@ import WaterSheet from '../Home/WaterSheet';
 import PaceCalculatorSheet from '../shared/PaceCalculatorSheet';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 import { useTabEnter } from '../../utils/useTabEnter';
+import { installSoftKeyboardWatcher } from '../../utils/softKeyboard';
 
 /* Os separadores do Dashboard: qualquer um deles acende a coluna "Dashboard"
    da barra inferior. */
@@ -63,6 +64,10 @@ export default function Layout({ children }) {
   // "O conteúdo segue a pílula": o ecrã do separador novo entra com
   // translateX(±14px) → 0 em --dur-tab-content.
   const setContentRef = useTabEnter(navIndex);
+
+  // Teclado aberto → a barra de baixo, o "+" e o botão dos bugs saem da
+  // frente da caixa de texto (ver utils/softKeyboard.js e globals.css).
+  useEffect(() => installSoftKeyboardWatcher(), []);
 
   useEffect(() => {
     if (activeTab !== 'coach') {
@@ -330,7 +335,7 @@ export default function Layout({ children }) {
       <nav
         ref={navRef}
         data-testid="bottom-nav"
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        className="hide-when-keyboard fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
         style={{
           // --nav-h (76px): a barra tem de medir o que a moldura dos mocks
           // reserva para ela, senão a ActionBar — que assenta a

@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { ToastProvider } from './ToastProvider';
-import ReportIssueButton from './ReportIssueButton';
+import ReportIssueButton, { clampBottom } from './ReportIssueButton';
 
 vi.mock('../../store', () => ({
   useAppStore: vi.fn(),
@@ -240,5 +240,49 @@ describe('ReportIssueButton', () => {
         }),
       );
     }
+  });
+});
+
+describe('ReportIssueButton — arrastar', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAppStore.mockReturnValue({
+      session: { user: { id: 'user-1' } }, profile: { id: 'user-1' },
+      activeTab: 'coach', openCreationMode: null, editingRaceId: null,
+    });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 400 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+  });
+
+  it('arrastar para a direita encosta-o à margem direita, guarda a posição e não abre o report', () => {
+    renderButton();
+    const btn = screen.getByTestId('report-issue-button');
+    btn.getBoundingClientRect = () => ({ left: 12, top: 668, width: 36, height: 36 });
+    fireEvent.pointerDown(btn, { clientX: 30, clientY: 686, pointerId: 1, button: 0 });
+    fireEvent.pointerMove(btn, { clientX: 350, clientY: 400, pointerId: 1 });
+    fireEvent.pointerUp(btn, { clientX: 350, clientY: 400, pointerId: 1 });
+    fireEvent.click(btn);
+
+    expect(screen.queryByPlaceholderText(/Resume o problema/)).not.toBeInTheDocument();
+    expect(btn.style.right).toBe('12px');
+    const saved = JSON.parse(window.localStorage.getItem('ironcoach_bug_button_pos'));
+    expect(saved.side).toBe('right');
+    // y do canto = 400 - 18 = 382 → bottom = 800 - 382 - 36 = 382
+    expect(saved.bottom).toBe(382);
+  });
+
+  it('um toque sem arrastar abre o report como sempre', () => {
+    renderButton();
+    const btn = screen.getByTestId('report-issue-button');
+    fireEvent.pointerDown(btn, { clientX: 30, clientY: 686, pointerId: 1, button: 0 });
+    fireEvent.pointerMove(btn, { clientX: 32, clientY: 687, pointerId: 1 });
+    fireEvent.pointerUp(btn, { clientX: 32, clientY: 687, pointerId: 1 });
+    fireEvent.click(btn);
+    expect(screen.getByPlaceholderText(/Resume o problema/)).toBeInTheDocument();
+  });
+
+  it('nunca fica por cima da barra de baixo nem do cabeçalho', () => {
+    expect(clampBottom(10, 800)).toBe(84);
+    expect(clampBottom(5000, 800)).toBe(800 - 85 - 36 - 8);
   });
 });

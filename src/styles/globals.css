@@ -678,3 +678,18 @@ html[data-page-hidden] .coach-breathing {
      por isso `none` não deixa nada a meio. */
   .animate-pulse { animation: none !important; }
 }
+
+/* Teclado do telemóvel aberto (utils/softKeyboard.js põe
+   data-keyboard="open" no <html>): o que flutua no fundo sai da frente do
+   campo onde se escreve, e o respiro do scroll encolhe para a caixa de
+   texto encostar ao teclado. A barra de ação ("Guardar") desce e cola ao
+   teclado em vez de ficar suspensa sobre uma barra que já não está lá. */
+:root[data-keyboard="open"] {
+  --scroll-pad-bottom: 16px;
+  --scroll-pad-bottom-actionbar: 88px;
+  --actionbar-bottom: 0px;
+}
+:root[data-keyboard="open"] .hide-when-keyboard {
+  display: none !important;
+}
+
