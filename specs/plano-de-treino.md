@@ -415,7 +415,10 @@ app fecha a intervenção quando o atleta aceita ou recusa a proposta.
 
 Regras que evitam chamar o atleta em repetição:
 - "Rever" só vem da avaliação **mais recente** e com **≤ 7 dias** (a mesma
-  régua do peso do perfil). Faltarem objetivos não depende disto.
+  régua do peso do perfil).
+- O convite a **definir** objetivos (quando faltam) volta no máximo a cada
+  **7 dias** depois de uma proposta ou de um "agora não" (decidido a
+  2026-09-23: insiste, mas não a cada pesagem).
 - Nunca "rever" nos **14 dias** a seguir a uma proposta de objetivos (aceite,
   recusada ou por decidir). Dizer "agora não" no chat (`atleta_ignorou`) ou
   dispensar o aviso no Início grava uma proposta `recusado` vazia só para

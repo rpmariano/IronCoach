@@ -13,6 +13,7 @@ import {
   GOALS_REVIEW_SCHEMA,
   MANUAL_SUMMARY_SCHEMA,
   BODY_GOAL_COLUMNS,
+  GOALS_MISSING_COOLDOWN_DAYS,
   GOALS_REVIEW_COOLDOWN_DAYS,
   MACRO_GOAL_COLUMNS,
   fetchGoalsContext,
@@ -232,21 +233,24 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
     if (erroPerfil) console.warn("syncProfileAfterAssessment: falha a ler o perfil:", erroPerfil);
 
     if (perfil) {
-      // Rever só pela avaliação atual e fora do período de espera depois de
-      // uma proposta de objetivos (revisão pré-deploy do bug #41).
-      let reviewAllowed = ehAAtual && !!goalsReview?.needed;
-      if (reviewAllowed) {
-        const desde = new Date(Date.now() - GOALS_REVIEW_COOLDOWN_DAYS * 86400000).toISOString();
-        const { data: recentes, error: erroPropostas } = await sb
-          .from("coach_goal_proposals")
-          .select("id")
-          .eq("user_id", userId)
-          .gte("created_at", desde)
-          .limit(1);
-        // Sem conseguir confirmar, não se chama: pior é chamar em repetição.
-        reviewAllowed = !erroPropostas && (recentes || []).length === 0;
-      }
-      const intervencao = goalsInterventionFor(perfil, goalsReview, { reviewAllowed });
+      /* Períodos de espera depois de uma proposta de objetivos (aceite,
+         recusada, por decidir, ou a marca de "agora não"): rever, 14 dias e
+         só pela avaliação atual; o convite a definir quando faltam, 7 dias
+         (decidido a 2026-09-23 — insiste, mas não a cada pesagem). Sem
+         conseguir ler as propostas, não se chama: pior é chamar em
+         repetição. */
+      const desde = new Date(Date.now() - GOALS_REVIEW_COOLDOWN_DAYS * 86400000).toISOString();
+      const { data: recentes, error: erroPropostas } = await sb
+        .from("coach_goal_proposals")
+        .select("created_at")
+        .eq("user_id", userId)
+        .gte("created_at", desde);
+      if (erroPropostas) console.warn("syncProfileAfterAssessment: falha a ler as propostas:", erroPropostas);
+      const ultimaProposta = erroPropostas ? null : (recentes || []).map((r: { created_at: string }) => r.created_at).sort().pop() ?? null;
+      const diasDesde = ultimaProposta ? (Date.now() - Date.parse(ultimaProposta)) / 86400000 : Infinity;
+      const reviewAllowed = !erroPropostas && ehAAtual && !!goalsReview?.needed && diasDesde >= GOALS_REVIEW_COOLDOWN_DAYS;
+      const missingAllowed = !erroPropostas && diasDesde >= GOALS_MISSING_COOLDOWN_DAYS;
+      const intervencao = goalsInterventionFor(perfil, goalsReview, { reviewAllowed, missingAllowed });
       if (intervencao) {
         patch.coach_intervention_status = "needed";
         patch.coach_intervention_reason = intervencao;

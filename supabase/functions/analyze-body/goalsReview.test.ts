@@ -35,6 +35,10 @@ Deno.test("goalsInterventionFor — rever só quando é permitido (avaliação a
   assert(isGoalsIntervention(goalsInterventionFor({ coach_intervention_status: null }, null, { reviewAllowed: false })));
 });
 
+Deno.test("goalsInterventionFor — faltar objetivos respeita a sua espera (7 dias)", () => {
+  assertEquals(goalsInterventionFor({ coach_intervention_status: null }, null, { missingAllowed: false }), null);
+});
+
 Deno.test("isGoalsIntervention — reconhece o motivo antigo, sem etiqueta, ainda em produção", () => {
   assert(isGoalsIntervention("O atleta acabou de registar uma avaliação corporal e ainda não tem objetivos definidos (os do corpo)."));
   assertEquals(isGoalsIntervention("Falhou 3 treinos."), false);

@@ -309,4 +309,19 @@ describe('Home/RaceCard — deslizar entre provas', () => {
     fireEvent.click(screen.getByLabelText('Prova anterior'));
     expect(vibrate).toHaveBeenCalledTimes(2);
   });
+
+  // Revisão pré-deploy: a marca do swipe tinha de caducar — sem prazo, o
+  // próximo clique de rato (aparelho híbrido) era engolido.
+  it('passado um instante, o clique a seguir a um swipe já abre o hub', () => {
+    const onOpenRace = vi.fn();
+    const agora = vi.spyOn(Date, 'now');
+    agora.mockReturnValue(1000);
+    render(<RaceCard raceEvents={DUAS} runs={[]} profile={PROFILE} onOpenRace={onOpenRace} />);
+    swipe(screen.getByTestId('race-card-body'), 250, 100);
+    agora.mockReturnValue(2000);
+    fireEvent.click(screen.getByTestId('race-card-body'));
+    expect(onOpenRace).toHaveBeenCalledWith('race-2');
+    agora.mockRestore();
+  });
 });
+

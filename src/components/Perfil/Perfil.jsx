@@ -453,7 +453,14 @@ export default function Perfil() {
       isSaving={isSaving}
       onSaveAndLeave={saveAndLeave}
       onDiscardAndLeave={discardAndLeave}
-      onCancel={() => setLeavePrompt(null)}
+      onCancel={() => {
+        // Cancelar a saída para o Coach deixava pendurado o pedido à Carol
+        // (ex.: "Definir objetivos com a Carol", ou discutir uma nota da
+        // memória): seria enviado sozinho, em nome do atleta, da próxima vez
+        // que abrisse o chat (revisão pré-deploy da Vaga 1).
+        if (leavePrompt?.target === 'coach') useAppStore.getState().setCoachIntent(null);
+        setLeavePrompt(null);
+      }}
       title="Tens alterações por gravar"
       message="Se saíres agora, as alterações que fizeste neste separador não ficam guardadas."
     />

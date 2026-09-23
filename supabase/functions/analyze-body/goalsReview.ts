@@ -121,17 +121,27 @@ export function parseManualSummary(raw: unknown): { text: string | null; goalsRe
  *  já foi atingido" era chamado outra vez em cada pesagem seguinte. */
 export const GOALS_REVIEW_COOLDOWN_DAYS = 14;
 
-/** `reviewAllowed` vem de quem chama: só a pesagem mais recente e recente
- *  (≤ 7 dias) pode pedir revisão, e nunca dentro do período de espera
- *  depois de uma proposta. Faltar objetivos não depende disto. */
+/** O convite a DEFINIR objetivos (quando faltam) volta no máximo a cada 7
+ *  dias depois de uma proposta ou de um "agora não" (decidido a
+ *  2026-09-23): insiste, mas não a cada pesagem. */
+export const GOALS_MISSING_COOLDOWN_DAYS = 7;
+
+/** `reviewAllowed` e `missingAllowed` vêm de quem chama: só a pesagem mais
+ *  recente e recente (≤ 7 dias) pode pedir revisão, e nenhum dos dois
+ *  convites volta dentro do seu período de espera depois de uma proposta. */
 // deno-lint-ignore no-explicit-any
-export function goalsInterventionFor(perfil: any, goalsReview: GoalsReview, { reviewAllowed = true }: { reviewAllowed?: boolean } = {}): string | null {
+export function goalsInterventionFor(
+  perfil: any,
+  goalsReview: GoalsReview,
+  { reviewAllowed = true, missingAllowed = true }: { reviewAllowed?: boolean; missingAllowed?: boolean } = {},
+): string | null {
   if (!perfil) return null;
   if (["needed", "in_progress"].includes(perfil.coach_intervention_status)) return null;
   const temAlgum = (cols: string[]) => cols.some((c) => perfil[c] !== null && perfil[c] !== undefined);
   const faltamCorpo = !temAlgum(BODY_GOAL_COLUMNS);
   const faltamMacros = !temAlgum(MACRO_GOAL_COLUMNS);
   if (faltamCorpo || faltamMacros) {
+    if (!missingAllowed) return null;
     const emFalta = [faltamCorpo ? "os do corpo" : null, faltamMacros ? "os de macronutrientes" : null]
       .filter(Boolean).join(" e ");
     return missingGoalsReason(emFalta);

@@ -603,4 +603,18 @@ describe('Perfil — reorganização das Metas (#41)', () => {
     expect(coachIntent.text).toMatch(/definir os meus objetivos/);
     expect(activeTab).toBe('coach');
   });
+
+  // Revisão pré-deploy da Vaga 1: com alterações por gravar, o pedido à
+  // Carol ficava pendurado se o atleta cancelasse a saída — e era enviado
+  // sozinho, em nome dele, da próxima vez que abrisse o chat.
+  it('cancelar a saída para o Coach não deixa o pedido à Carol pendurado', () => {
+    render(<Perfil />);
+    abrirMetas();
+    sujarCalorias('2222');
+    fireEvent.click(screen.getByTestId('perfil-metas-carol'));
+    expect(useAppStore.getState().activeTab).toBe('perfil');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(useAppStore.getState().coachIntent).toBeNull();
+  });
 });
+

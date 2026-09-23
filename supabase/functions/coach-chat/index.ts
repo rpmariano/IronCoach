@@ -26,6 +26,7 @@ import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL } from "../_shared/carolTone.ts";
 import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
+import { MEAL_ONLY_CATEGORY, MEAL_ONLY_DAY_LABEL, MEAL_TYPE_LABEL, isMealOnlyItem, mergeSingleMeal } from "../_shared/formulas/mealSuggestions.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
@@ -411,12 +412,18 @@ const UPDATE_GOALS_TOOL = {
 const SAVE_MEALS_TOOL = {
   name: "save_meal_suggestions",
   description:
-    "Grava sugestões alimentares para dias concretos, visíveis no ecrã Home (Plano da semana). " +
-    "Usa esta ferramenta SEMPRE que o atleta pedir sugestões de refeições para um ou mais dias " +
-    "específicos (ex.: 'o que devo comer esta semana?', 'sugestão de refeição para amanhã', " +
-    "'plano alimentar para 7 dias'). NÃO uses para comentários genéricos de nutrição no texto — " +
-    "só quando o atleta quer recomendações estruturadas por dia para ver no plano. " +
-    "Podes usar esta ferramenta mesmo quando há um plano de treino ativo — ela não interfere.",
+    "Grava sugestões alimentares para dias concretos, visíveis no ecrã Início (Plano da semana). " +
+    "NÃO uses para comentários genéricos de nutrição no texto. As regras (impostas pelo servidor — " +
+    "o resultado diz-te o que ficou gravado; nunca digas mais do que isso):\n" +
+    "1) Dia DENTRO de um plano aceite, UMA refeição (ex.: 'o que janto hoje?'): preenche meal_type e " +
+    "grava-se logo, substituindo só essa refeição nesse dia. Diz-lhe claramente que gravaste só essa refeição.\n" +
+    "2) Dia DENTRO de um plano aceite, o dia INTEIRO de refeições: primeiro mostra-lhe as refeições no " +
+    "texto e pergunta se as gravas no plano. Só depois de ele dizer que sim chamas com athlete_confirmed=true.\n" +
+    "3) Dia SEM plano, uma refeição ou um só dia: NÃO chames esta ferramenta — responde só no texto. A app " +
+    "não cria planos por causa de refeições.\n" +
+    "4) SEM plano e MAIS DE UM DIA: antes de gravares, pergunta-lhe se quer juntar treinos a esses dias. Se " +
+    "quiser, usa propose_training_plan (com meal_suggestion por dia) em vez desta. Se não quiser, chama esta: " +
+    "fica um plano PROPOSTO só de refeições, que ele aceita ou recusa no Início.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -427,10 +434,18 @@ const SAVE_MEALS_TOOL = {
           type: "OBJECT",
           properties: {
             date: { type: "STRING", description: "Data no formato YYYY-MM-DD." },
+            meal_type: {
+              type: "STRING",
+              enum: MEAL_TYPE_KEYS,
+              description:
+                "Preenche SÓ quando o atleta pediu UMA refeição (ex.: só o jantar): é a refeição que " +
+                "substituis nesse dia. Nesse caso 'meal' é essa refeição apenas, e deixa meal_items e os " +
+                "meal_estimated_* vazios. Para um dia inteiro, deixa isto vazio.",
+            },
             meal: {
               type: "STRING",
               description:
-                "Sugestão alimentar para o dia inteiro — menciona refeições principais " +
+                "Sugestão alimentar para o dia inteiro (ou, com meal_type, só essa refeição) — no dia inteiro, menciona refeições principais " +
                 "(pequeno-almoço, almoço, jantar) e os lanches (lanche da manhã e lanche da tarde) " +
                 "sempre que fizerem parte do dia do atleta, por CATEGORIA de " +
                 "alimento e quantidade redonda (ex.: \"150g de peixe\", \"2 ovos\", \"150g de " +
@@ -445,6 +460,12 @@ const SAVE_MEALS_TOOL = {
         },
         minItems: 1,
         maxItems: 14,
+      },
+      athlete_confirmed: {
+        type: "BOOLEAN",
+        description:
+          "true SÓ depois de o atleta ter dito explicitamente que sim a gravar estas refeições nesta " +
+          "conversa. Obrigatório para gravar um dia inteiro dentro do plano (regra 2).",
       },
     },
     required: ["suggestions"],
@@ -2930,26 +2951,27 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
 }
 
 // ── Sugestões alimentares ────────────────────────────────────────────────
-// Grava meal_suggestion em coach_plan_items existentes (plano ativo aceite)
-// ou cria um plano proposto de descanso para datas fora do plano ativo.
-// Não conflitua com a regra de proteção de microciclo — é independente de
-// propose_training_plan.
+// As regras vivem em _shared/formulas/mealSuggestions.ts (decididas a
+// 2026-09-23) e são IMPOSTAS aqui, não só pedidas ao modelo:
+//   · dia no plano aceite, UMA refeição (meal_type) → grava logo e substitui
+//     só essa refeição;
+//   · dia no plano aceite, dia inteiro → só com athlete_confirmed=true;
+//   · sem plano, uma refeição ou um dia → não grava (fica na conversa);
+//   · sem plano, mais de um dia → plano proposto só de refeições.
+// Valida tudo ANTES de escrever: uma recusa nunca deixa metade gravada.
 // deno-lint-ignore no-explicit-any
 export async function runSaveMealSuggestions(sb: any, userId: string, args: any): Promise<string> {
   const { suggestions } = args || {};
   if (!Array.isArray(suggestions) || suggestions.length === 0) {
     return "Erro: 'suggestions' tem de ser uma lista com pelo menos uma sugestão ({date, meal}).";
   }
+  const confirmed = args?.athlete_confirmed === true;
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
   // TODOS os planos ativos (aceites, ainda por terminar) — não apenas um.
-  // Desde que aceitar passou a viver no chat, vários planos podem coexistir
-  // (um de treino e um de refeições, propostos em alturas diferentes), e
-  // escolher só o mais recente por period_start punha sugestões no plano
-  // errado: um dia coberto pelo plano de treino era tratado como "fora"
-  // porque o plano de refeições era mais recente, e acabava num item
-  // paralelo — dois itens para o mesmo dia, um deles órfão de treino.
+  // Vários planos podem coexistir (um de treino e um de refeições), e
+  // escolher só o mais recente punha sugestões no plano errado.
   const { data: activePlans, error: planErr } = await sb
     .from("coach_plans")
     .select("id, period_start, period_end")
@@ -2961,109 +2983,138 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
 
   const plans: { id: string; period_start: string; period_end: string }[] = activePlans || [];
 
-  // O plano que cobre este dia. Havendo mais que um, ganha o que JÁ tem um
-  // item para o dia (é onde o treino está, e é a esse que a sugestão se deve
-  // colar); caso nenhum tenha, fica o primeiro que cobre a data.
+  // O plano que cobre este dia e o item que lá está (o treino, tipicamente —
+  // é a ele que a sugestão se cola). Havendo mais que um plano, ganha o que
+  // JÁ tem um item para o dia.
   const planForDate = async (date: string) => {
     const covering = plans.filter((p) => date >= p.period_start && date <= p.period_end);
     if (covering.length === 0) return null;
     for (const p of covering) {
       const { data: hit } = await sb
         .from("coach_plan_items")
-        .select("id")
+        .select("id, meal_suggestion, meal_macros")
         .eq("plan_id", p.id)
         .eq("planned_date", date)
         .limit(1)
         .maybeSingle();
-      if (hit) return { plan: p, existingItemId: hit.id as string };
+      if (hit) return { plan: p, existing: hit };
     }
-    return { plan: covering[0], existingItemId: null };
+    return { plan: covering[0], existing: null };
   };
 
-  const saved: string[] = [];
-  const outside: { date: string; meal: string; mealMacros: Record<string, unknown> | null }[] = [];
-
+  // ── 1. Classificar (sem escrever nada) ─────────────────────────────────
+  type Entry = {
+    date: string; meal: string; mealType: string | null;
+    // deno-lint-ignore no-explicit-any
+    mealMacros: Record<string, unknown> | null; match: any;
+  };
+  const inside: Entry[] = [];
+  const outside: Entry[] = [];
   for (const s of suggestions) {
-    const { date, meal } = s || {};
+    const date = typeof s?.date === "string" ? s.date.trim() : "";
+    const meal = typeof s?.meal === "string" ? s.meal.trim() : "";
     if (!date || !meal) continue;
-    const mealMacros = buildMealMacros(s);
-    const match = await planForDate(date);
+    const mealType = typeof s?.meal_type === "string" && MEAL_TYPE_KEYS.includes(s.meal_type) ? s.meal_type : null;
+    const entry: Entry = { date, meal, mealType, mealMacros: mealType ? null : buildMealMacros(s), match: await planForDate(date) };
+    (entry.match ? inside : outside).push(entry);
+  }
+  if (inside.length === 0 && outside.length === 0) return "Nenhuma sugestão válida para gravar.";
 
-    if (match) {
-      // A coluna é planned_date (nunca existiu "day" em coach_plan_items —
-      // ver migração 20260810000000_coach_plans.sql).
-      if (match.existingItemId) {
-        // Já há um item nesse dia (tipicamente o treino) — a sugestão cola-se
-        // a ele, nunca cria um segundo item para o mesmo dia.
-        // meal_items é OPCIONAL em cada chamada (ao contrário de `meal`, que
-        // é sempre obrigatório) — uma chamada seguinte só para afinar o
-        // texto pode legitimamente não trazer meal_items, e mealMacros vem
-        // null. Só sobrescrever meal_macros quando esta chamada trouxe uma
-        // estimativa nova e válida; caso contrário preservar a que já lá
-        // estava, para não apagar um número bom por causa de uma edição
-        // que nem mexia nos macros.
-        const updatePayload: Record<string, unknown> = { meal_suggestion: meal };
-        if (mealMacros !== null) updatePayload.meal_macros = mealMacros;
-        const { error: upErr } = await sb
-          .from("coach_plan_items")
-          .update(updatePayload)
-          .eq("id", match.existingItemId);
-        if (upErr) return `Erro ao atualizar sugestão para ${date}: ${upErr.message}`;
-      } else {
-        // Dia coberto pelo plano mas sem nada marcado — item de descanso só
-        // para pendurar a sugestão.
-        const { error: insErr } = await sb.from("coach_plan_items").insert({
-          plan_id: match.plan.id,
-          user_id: userId,
-          planned_date: date,
-          kind: "descanso",
-          meal_suggestion: meal,
-          meal_macros: mealMacros,
-        });
-        if (insErr) return `Erro ao inserir sugestão para ${date}: ${insErr.message}`;
-      }
-      saved.push(date);
+  const fullDaysInside = inside.filter((e) => !e.mealType);
+  if (fullDaysInside.length > 0 && !confirmed) {
+    return "NÃO GRAVADO: um dia inteiro de refeições dentro do plano só se grava com o sim explícito do atleta. " +
+      `Dias em causa: ${fullDaysInside.map((e) => e.date).join(", ")}. Mostra-lhe as refeições, pergunta se as ` +
+      "gravas no plano e chama de novo com athlete_confirmed=true só depois de ele dizer que sim. Não digas que " +
+      "ficaram gravadas.";
+  }
+  const outsideDays = [...new Set(outside.map((e) => e.date))];
+  const outsideIgnored = outsideDays.length === 1;
+
+  // ── 2. Gravar ───────────────────────────────────────────────────────────
+  const saved: string[] = [];
+  for (const e of inside) {
+    const payload: Record<string, unknown> = {};
+    if (e.mealType) {
+      Object.assign(payload, mergeSingleMeal(e.match.existing, e.mealType, e.meal));
     } else {
-      outside.push({ date, meal, mealMacros });
+      payload.meal_suggestion = e.meal;
+      // Uma edição só do texto não apaga uma estimativa boa que já lá estava.
+      if (e.mealMacros !== null) payload.meal_macros = e.mealMacros;
     }
+    if (e.match.existing) {
+      const { error: upErr } = await sb.from("coach_plan_items").update(payload).eq("id", e.match.existing.id);
+      if (upErr) return `Erro ao atualizar sugestão para ${e.date}: ${upErr.message}`;
+    } else {
+      // Dia do plano sem nada marcado: o item leva a marca "só refeições" —
+      // aparece como "Sem treino planeado", nunca como um descanso que
+      // ninguém decidiu.
+      const { error: insErr } = await sb.from("coach_plan_items").insert({
+        plan_id: e.match.plan.id,
+        user_id: userId,
+        planned_date: e.date,
+        kind: "descanso",
+        categories: [MEAL_ONLY_CATEGORY],
+        meal_suggestion: payload.meal_suggestion ?? e.meal,
+        meal_macros: payload.meal_macros ?? null,
+      });
+      if (insErr) return `Erro ao inserir sugestão para ${e.date}: ${insErr.message}`;
+    }
+    saved.push(e.date);
   }
 
-  // Para datas fora do plano ativo, criar um plano proposto dedicado.
-  if (outside.length > 0) {
-    const dates = outside.map((o) => o.date).sort();
-    const periodStart = dates[0];
-    const periodEnd = dates[dates.length - 1];
-
+  let proposedDays: string[] = [];
+  if (outside.length > 0 && !outsideIgnored) {
+    // Mais de um dia sem plano: um plano PROPOSTO só de refeições, que o
+    // atleta aceita ou recusa. Um dia por item (o último pedido para o
+    // mesmo dia ganha).
+    const byDate = new Map<string, Entry>();
+    for (const e of outside) byDate.set(e.date, e);
+    proposedDays = [...byDate.keys()].sort();
     const { data: newPlan, error: createErr } = await sb
       .from("coach_plans")
       .insert({
         user_id: userId,
         status: "proposto",
-        period_start: periodStart,
-        period_end: periodEnd,
-        // coach_plans tem "summary", não "notes" — essa coluna só existe em
-        // coach_plan_items (migração 20260810000000_coach_plans.sql).
+        period_start: proposedDays[0],
+        period_end: proposedDays[proposedDays.length - 1],
         summary: "Sugestões alimentares do Coach",
       })
       .select("id")
       .single();
     if (createErr) return `Erro ao criar plano para sugestões: ${createErr.message}`;
 
-    const items = outside.map((o) => ({
-      plan_id: newPlan.id,
-      user_id: userId,
-      planned_date: o.date,
-      kind: "descanso",
-      meal_suggestion: o.meal,
-      meal_macros: o.mealMacros,
-    }));
+    const items = proposedDays.map((date) => {
+      const e = byDate.get(date)!;
+      const merged = e.mealType ? mergeSingleMeal(null, e.mealType, e.meal) : { meal_suggestion: e.meal, meal_macros: e.mealMacros };
+      return {
+        plan_id: newPlan.id,
+        user_id: userId,
+        planned_date: date,
+        kind: "descanso",
+        categories: [MEAL_ONLY_CATEGORY],
+        meal_suggestion: merged.meal_suggestion,
+        meal_macros: merged.meal_macros,
+      };
+    });
     const { error: itemsErr } = await sb.from("coach_plan_items").insert(items);
     if (itemsErr) return `Erro ao inserir itens de sugestão: ${itemsErr.message}`;
-    outside.forEach((o) => saved.push(o.date));
   }
 
-  if (saved.length === 0) return "Nenhuma sugestão válida para gravar.";
-  return `Sugestões alimentares gravadas para: ${saved.sort().join(", ")}. Estão visíveis no ecrã Home.`;
+  const parts: string[] = [];
+  if (saved.length) {
+    const singles = inside.filter((e) => e.mealType).map((e) => `${MEAL_TYPE_LABEL[e.mealType!] || e.mealType} de ${e.date}`);
+    parts.push(`Gravado no plano para: ${[...new Set(saved)].sort().join(", ")}.` +
+      (singles.length ? ` Só a refeição pedida (${singles.join(", ")}) — as outras refeições desses dias ficaram como estavam. Diz-lhe isso.` : ""));
+  }
+  if (proposedDays.length) {
+    parts.push(`Criado um plano PROPOSTO só de refeições para ${proposedDays.join(", ")}: o atleta aceita ou recusa no Início. ` +
+      "Não digas que ficou gravado no plano dele.");
+  }
+  if (outsideIgnored) {
+    parts.push(`NÃO GRAVADO para ${outsideDays[0]}: sem plano, uma refeição ou um dia fica só na conversa — a app não cria ` +
+      "planos por causa de refeições. Dá-lhe a sugestão no texto e não digas que a gravaste.");
+  }
+  return parts.join(" ");
 }
 
 const NOTE_CATEGORIES = new Set([
@@ -3613,6 +3664,7 @@ function describeItem(i: any): string {
     return [i.training_type || "corrida", i.target_distance_km ? `${i.target_distance_km} km` : null]
       .filter(Boolean).join(" ");
   }
+  if (isMealOnlyItem(i)) return `${MEAL_ONLY_DAY_LABEL.toLowerCase()} (só refeições sugeridas)`;
   if (i.kind === "descanso") return "descanso";
   return ["ginásio", i.categories?.length ? i.categories.join("/") : null,
     i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
@@ -4363,7 +4415,7 @@ export function buildSystemInstruction(
     `A lógica é diferente: não foi o atleta a pedir, por isso a intenção precisa de ser confirmada antes de propor.\n` +
     `- NUNCA apresentes valores ou um plano só em texto à espera que o atleta diga "sim" — sem a ferramenta ele não tem nada para aceitar e fica preso.\n` +
     `- NUNCA digas que algo "já está atualizado", "já guardei" ou "já tens disponível" como se estivesse concluído — está PROPOSTO, à espera da decisão dele.\n` +
-    `- Exceção: save_meal_suggestions grava DIRETO, sem ecrã de revisão. Só a usas quando o atleta pediu explicitamente sugestões alimentares avulsas para dias concretos.\n\n` +
+    `- Exceção: save_meal_suggestions grava DIRETO só UMA refeição (meal_type) num dia do plano aceite. Um dia inteiro dentro do plano só se grava com o sim explícito do atleta (athlete_confirmed=true); sem plano, mais de um dia fica PROPOSTO para ele aceitar; uma refeição ou um dia sem plano não se grava — fica no texto.\n\n` +
     `## ESQUEMA DE DECISÃO — PRECEDÊNCIA ABSOLUTA SOBRE TODAS AS OUTRAS REGRAS\n` +
     `Antes de responder, classifica SEMPRE a última mensagem do atleta num destes 5 casos. O caso determina que ferramentas podes chamar neste turno. Ferramentas fora da lista PERMITIDO são PROIBIDAS, mesmo que outra regra deste prompt pareça exigi-las.\n\n` +
     `CASO A — "Aceitei os novos objetivos."\n` +
@@ -4798,9 +4850,9 @@ export function buildSystemInstruction(
     `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n` +
     `SUGESTÕES ALIMENTARES E PLANO ALIMENTAR:\n` +
     `1. NUNCA criar um plano alimentar de apenas 1 dia quando o atleta pede um "novo plano alimentar", "plano de refeições" ou "sugestões de nutrição para o plano" (a menos que tenha pedido expressamente "para hoje" ou "para amanhã").\n` +
-    `2. Se existir um plano de treino ativo (ou plano alimentar em curso com period_start e period_end), o novo plano alimentar DEVE herdar exatamente a duração e o período desse plano ativo, gerando sugestões alimentares para TODOS os dias desse período através da ferramenta save_meal_suggestions.\n` +
-    `3. Se NÃO existir um plano ativo nem datas especificadas pelo atleta, o Coach NÃO PODE ADIVINHAR nem propor um plano de 1 dia. DEVE PERGUNTAR ao atleta qual a duração pretendida (ex.: 7 ou 14 dias) ANTES de chamar a ferramenta save_meal_suggestions.\n` +
-    `4. Se o pedido for apenas "uma ideia para hoje" ou uma dúvida alimentar pontual, responde em texto normal sem usar ferramentas — usa save_meal_suggestions apenas para planos alimentares ou sugestões estruturadas por dia.\n\n` +
+    `2. Se existir um plano de treino ativo (ou plano alimentar em curso com period_start e period_end), o novo plano alimentar DEVE herdar exatamente a duração e o período desse plano ativo, gerando sugestões alimentares para TODOS os dias desse período através da ferramenta save_meal_suggestions. São dias inteiros dentro do plano: mostra-lhos primeiro e só os gravas depois do sim dele (athlete_confirmed=true).\n` +
+    `3. Se NÃO existir um plano ativo nem datas especificadas pelo atleta, o Coach NÃO PODE ADIVINHAR nem propor um plano de 1 dia. DEVE PERGUNTAR ao atleta qual a duração pretendida (ex.: 7 ou 14 dias) — e se quer juntar treinos a esses dias — ANTES de chamar save_meal_suggestions (ou propose_training_plan, se quiser treinos).\n` +
+    `4. Uma dúvida alimentar pontual responde-se em texto, sem ferramentas. Um pedido de UMA refeição (ex.: "o que janto hoje?") para um dia DENTRO do plano aceite grava-se com save_meal_suggestions e meal_type — fica no plano, só essa refeição. Sem plano, uma refeição ou um dia fica só no texto.\n\n` +
     MEAL_DOCTRINE +
 
     // ── Doutrina Bloco 6 — Head Coach: arbitragem e comunicação ──────────────

@@ -10,6 +10,7 @@ import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { isRacePlanItem, raceNameForDate } from '../../utils/homeModels';
+import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
 import './WeeklyPlanCard.css';
 
 // Mesmos valores por omissão de computeMacroAdherence
@@ -122,6 +123,7 @@ function itemTitle(item, raceName = null) {
       item.target_duration_min ? `${item.target_duration_min} min` : null,
     ].filter(Boolean).join(' · ');
   }
+  if (isMealOnlyItem(item)) return MEAL_ONLY_DAY_LABEL;
   return 'Descanso';
 }
 
@@ -129,6 +131,7 @@ function itemIcon(item) {
   if (item.isRace || isRacePlanItem(item)) return Flag;
   if (item.kind === 'corrida') return RunIcon;
   if (item.kind === 'ginasio') return DumbbellIcon;
+  if (isMealOnlyItem(item)) return Utensils;
   return Coffee;
 }
 
@@ -192,8 +195,12 @@ function MacroRings({ profile, mealMacros }) {
   // sem mealMacros.kcal), deriva das metas de macro em vez de cair no
   // default fixo, para o número de kcal nunca contradizer os três anéis.
   const calorieGoal = mealMacros?.kcal ?? (profile?.calorie_goal || shares.kcalFromMacros || DEFAULT_CALORIE_GOAL);
-  const label = mealMacros ? 'Estimativa desta sugestão' : 'Objetivo diário de calorias';
-  const legend = mealMacros ? 'anel = % da energia desta sugestão' : 'anel = % da energia do objetivo diário';
+  // Sem totais (ex.: trocou-se só uma refeição do dia e a estimativa deixou
+  // de bater certo com a lista), os números são os do objetivo — e o rótulo
+  // tem de o dizer.
+  const hasEstimate = mealMacros?.kcal != null;
+  const label = hasEstimate ? 'Estimativa desta sugestão' : 'Objetivo diário de calorias';
+  const legend = hasEstimate ? 'anel = % da energia desta sugestão' : 'anel = % da energia do objetivo diário';
   return (
     <>
       <div className="wpc-nutri-total">

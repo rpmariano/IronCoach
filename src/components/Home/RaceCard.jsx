@@ -201,7 +201,10 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
      por goTo, que dispara o mesmo triggerCarouselTick. Um swipe não abre o
      hub: o clique que o browser possa gerar a seguir é ignorado. */
   const touchStartRef = useRef(null);
-  const swipedRef = useRef(false);
+  // Quando foi o último swipe: o clique que o browser gere a seguir (se
+  // gerar) ignora-se, mas só esse e só logo a seguir — uma flag sem prazo
+  // ficava presa e engolia o próximo clique de rato num aparelho híbrido.
+  const swipedAtRef = useRef(0);
   const goTo = (i) => {
     const next = Math.max(0, Math.min(upcoming.length - 1, i));
     if (next === safeIndex) return;
@@ -211,7 +214,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
   const onTouchStart = (e) => {
     const t = e.touches?.[0];
     touchStartRef.current = t ? { x: t.clientX, y: t.clientY } : null;
-    swipedRef.current = false;
+    swipedAtRef.current = 0;
   };
   const onTouchEnd = (e) => {
     const start = touchStartRef.current;
@@ -221,11 +224,11 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    swipedRef.current = true;
+    swipedAtRef.current = Date.now();
     goTo(safeIndex + (dx < 0 ? 1 : -1));
   };
   const openRace = () => {
-    if (swipedRef.current) { swipedRef.current = false; return; }
+    if (swipedAtRef.current && Date.now() - swipedAtRef.current < 400) { swipedAtRef.current = 0; return; }
     onOpenRace?.(race.id);
   };
 

@@ -1,4 +1,4 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
@@ -1478,30 +1478,22 @@ Deno.test("save_meal_suggestions: rejeita lista vazia", async () => {
   assertStringIncludes(result, "Erro");
 });
 
-// Colar a sugestão a um item já existente depende de casar o dia com o plano
-// certo entre vários ativos — estado a mais para um mock raso. Coberto por
-// PERCURSO A e PERCURSO H em plan-simulation.test.ts.
+// Este mock raso nunca devolve planos ativos (a consulta acaba em .order(),
+// não em maybeSingle) — só exercita o caminho "sem plano". O que depende de
+// um plano aceite (colar ao dia, uma refeição, confirmação) está nos
+// PERCURSOS de plan-simulation.test.ts, com um Supabase falso com estado.
 
-Deno.test("save_meal_suggestions: cria item descanso quando não existe item no plano ativo para esse dia", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
-    existingItem: null,
-  });
+Deno.test("save_meal_suggestions: sem plano, um só dia não grava nada (fica na conversa)", async () => {
+  const { sb, calls } = makeMealsSb({ activePlan: null });
   const result = await runSaveMealSuggestions(sb, "u1", {
     suggestions: [{ date: "2026-08-13", meal: "Salmão com batata doce" }],
   });
-  assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-13");
-  assertEquals(inserted?.kind, "descanso");
-  assertEquals(inserted?.user_id, "u1");
-  assertEquals(inserted?.meal_suggestion, "Salmão com batata doce");
+  assertStringIncludes(result, "NÃO GRAVADO");
+  assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("save_meal_suggestions: grava meal_macros quando a sugestão traz meal_items ao lado de meal", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
-    existingItem: null,
-  });
+  const { sb, calls } = makeMealsSb({ activePlan: null });
   const result = await runSaveMealSuggestions(sb, "u1", {
     suggestions: [{
       date: "2026-08-13",
@@ -1511,55 +1503,40 @@ Deno.test("save_meal_suggestions: grava meal_macros quando a sugestão traz meal
         { meal_type: "jantar", description: "150g de carne de aves + vegetais" },
       ],
       meal_estimated_kcal: 1800, meal_estimated_protein_g: 120, meal_estimated_carbs_g: 180, meal_estimated_fat_g: 55,
-    }],
+    }, { date: "2026-08-14", meal: "Ovos e tosta." }],
   });
-  assertStringIncludes(result, "gravadas");
+  assertStringIncludes(result, "PROPOSTO");
   const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-13");
   assertEquals(inserted?.meal_suggestion, "Almoço: peixe. Jantar: frango.");
   assertEquals(inserted?.meal_macros?.kcal, 1800);
 });
 
-Deno.test("save_meal_suggestions: cria plano proposto para datas fora do plano ativo", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-14" },
-  });
+Deno.test("save_meal_suggestions: sem plano, mais de um dia cria plano proposto só de refeições", async () => {
+  const { sb, calls } = makeMealsSb({ activePlan: null });
   const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-20", meal: "Pasta pré-corrida" }],
+    suggestions: [{ date: "2026-08-20", meal: "Pasta pré-corrida" }, { date: "2026-08-21", meal: "Arroz e peixe" }],
   });
-  assertStringIncludes(result, "gravadas");
+  assertStringIncludes(result, "PROPOSTO");
   const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-20");
   assertEquals(inserted?.kind, "descanso");
+  assertEquals(inserted?.categories, ["so-refeicoes"]);
   assertEquals(inserted?.meal_suggestion, "Pasta pré-corrida");
   assertEquals(inserted?.user_id, "u1");
-  // O plano proposto criado para datas fora do plano ativo usa "summary",
-  // nunca "notes" (coach_plans não tem essa coluna — ver migração
-  // 20260810000000_coach_plans.sql; "notes" só existe em coach_plan_items).
+  // O plano proposto usa "summary", nunca "notes" (coach_plans não tem essa
+  // coluna — ver migração 20260810000000_coach_plans.sql).
   const planInsert = calls.inserts.find((i: any) => i.status === "proposto");
   assertEquals(planInsert?.summary, "Sugestões alimentares do Coach");
   assertEquals(Object.prototype.hasOwnProperty.call(planInsert ?? {}, "notes"), false);
 });
 
-Deno.test("save_meal_suggestions: sem plano ativo cria plano proposto", async () => {
-  const { sb, calls } = makeMealsSb({ activePlan: null });
-  const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-15", meal: "Ovos mexidos com tosta" }],
-  });
-  assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-15");
-  assertEquals(inserted?.kind, "descanso");
-  assertEquals(inserted?.user_id, "u1");
-});
-
 Deno.test("save_meal_suggestions: regressão — nunca escreve na coluna 'day' (não existe em coach_plan_items)", async () => {
-  // Bug real reportado pelo utilizador: a função usava .eq("day", date) e
-  // insert({ day: date, ... }) — "day" nunca existiu em coach_plan_items
-  // (a coluna sempre foi planned_date, ver migração 20260810000000_coach_plans.sql).
-  // Isto fazia a escrita falhar sempre que o Coach tentava gravar uma sugestão
-  // alimentar no plano, e o atleta via "Edge Function returned a non-2xx status code".
+  // Bug real: a função usava .eq("day", date) e insert({ day: date, ... }) —
+  // "day" nunca existiu em coach_plan_items (a coluna é planned_date).
   const { sb, calls } = makeMealsSb({ activePlan: null });
   await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-16", meal: "Massa integral com atum" }],
+    suggestions: [{ date: "2026-08-16", meal: "Massa integral com atum" }, { date: "2026-08-17", meal: "Frango" }],
   });
+  assert(calls.inserts.length > 0);
   for (const insertedRow of calls.inserts) {
     assertEquals(Object.prototype.hasOwnProperty.call(insertedRow, "day"), false);
   }
@@ -1571,7 +1548,7 @@ Deno.test("save_meal_suggestions: propaga erro da criação do plano", async () 
     insertPlanError: { message: "permission denied" },
   });
   const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-15", meal: "Banana e iogurte" }],
+    suggestions: [{ date: "2026-08-15", meal: "Banana e iogurte" }, { date: "2026-08-16", meal: "Aveia" }],
   });
   assertStringIncludes(result, "permission denied");
 });

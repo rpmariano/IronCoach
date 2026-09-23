@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { mealNutrients } from './nutrition';
 import { lisbonTodayISO } from '../lib/utils';
+import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
 
 // ─── Datas ──────────────────────────────────────────────────────────────────
 
@@ -92,6 +93,8 @@ export function planItemTitle(item, raceName = null) {
     const cats = item.categories?.length ? item.categories.join('/') : 'Ginásio';
     return [cats, item.target_duration_min ? `${item.target_duration_min} min` : null].filter(Boolean).join(' · ');
   }
+  // Um dia só com refeições sugeridas não é um descanso que alguém decidiu.
+  if (isMealOnlyItem(item)) return MEAL_ONLY_DAY_LABEL;
   return 'Descanso';
 }
 
@@ -111,11 +114,13 @@ export function isUnplannedDay(items = []) {
 }
 
 /** Título do dia inteiro: os treinos separados por " + ", "Descanso" quando o
- *  plano marcou descanso, ou "Sem plano" quando não há plano nenhum. */
+ *  plano marcou descanso, "Sem treino planeado" quando o dia só tem
+ *  refeições sugeridas, ou "Sem plano" quando não há plano nenhum. */
 export function dayTitle(items = [], raceName = null) {
   if (isUnplannedDay(items)) return 'Sem plano';
   const t = trainingItems(items);
-  return t.length ? t.map((i) => planItemTitle(i, raceName)).join(' + ') : 'Descanso';
+  if (t.length) return t.map((i) => planItemTitle(i, raceName)).join(' + ');
+  return items.every(isMealOnlyItem) ? MEAL_ONLY_DAY_LABEL : 'Descanso';
 }
 
 /** Estado do dia para o badge: tom e texto. */
@@ -125,7 +130,10 @@ export function dayStatus(day, today) {
   if (items.some((i) => i.isRace && i.status !== 'concluido')) return { label: 'Prova', tone: 'race' };
   // O dia da prova no plano vale o mesmo badge âmbar que a prova da agenda.
   if (items.some((i) => isRacePlanItem(i) && i.status === 'pendente')) return { label: 'Prova', tone: 'race' };
-  if (t.length === 0) return isUnplannedDay(items) ? { label: 'Sem plano', tone: 'neutral' } : { label: 'Descanso', tone: 'neutral' };
+  if (t.length === 0) {
+    if (isUnplannedDay(items)) return { label: 'Sem plano', tone: 'neutral' };
+    return { label: items.every(isMealOnlyItem) ? 'Sem treino' : 'Descanso', tone: 'neutral' };
+  }
   if (t.every((i) => i.status === 'concluido')) return { label: 'Concluído', tone: 'ok' };
   if (t.every((i) => i.status === 'cancelado')) return { label: 'Cancelado', tone: 'neutral' };
   if (day.dateISO < today && t.some((i) => i.status === 'pendente')) return { label: 'Em atraso', tone: 'warn' };

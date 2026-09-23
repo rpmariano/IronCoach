@@ -21,6 +21,18 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
     expect(dayTitle([{ kind: 'corrida', training_type: 'longo', target_distance_km: 16 }, { kind: 'ginasio', categories: ['core'] }])).toBe('Rodagem longa · 16 km + core');
   });
 
+  /* Refeições (2026-09-23): um dia do plano só com refeições sugeridas não é
+     um descanso que alguém decidiu — "Sem treino planeado". */
+  it('o dia só com refeições diz "Sem treino planeado", não "Descanso"', () => {
+    const soRefeicoes = { kind: 'descanso', categories: ['so-refeicoes'], meal_suggestion: 'Jantar: peixe.' };
+    expect(planItemTitle(soRefeicoes)).toBe('Sem treino planeado');
+    expect(dayTitle([soRefeicoes])).toBe('Sem treino planeado');
+    expect(dayStatus({ dateISO: '2026-09-23', items: [soRefeicoes] }, '2026-09-23').label).toBe('Sem treino');
+    // Um descanso a sério continua a ser descanso.
+    expect(dayTitle([{ kind: 'descanso', meal_suggestion: 'Dia leve.' }])).toBe('Descanso');
+    expect(dayStatus({ dateISO: '2026-09-23', items: [{ kind: 'descanso' }] }, '2026-09-23').label).toBe('Descanso');
+  });
+
   /* ── O dia da prova no plano (specs/plano-de-prova.md) ─────────────────── */
   it('o item de prova é a corrida com training_type "prova" (e a grafia antiga)', () => {
     expect(isRacePlanItem({ kind: 'corrida', training_type: 'prova' })).toBe(true);
