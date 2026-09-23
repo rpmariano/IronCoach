@@ -959,7 +959,9 @@ Deno.test("regra 5 tem ação por omissão (propor plano de refeições) quando 
   );
   assertStringIncludes(sys, "SEM PEDIDO EXPLÍCITO NO HISTÓRICO");
   assertStringIncludes(sys, "a ação por omissão é CHAMAR propose_training_plan");
-  assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta");
+  // 2026-09-23: save_meal_suggestions já não grava sempre direto (um dia
+  // inteiro no plano precisa do sim) — o motivo passou a ser o que ele espera.
+  assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui: ele espera um plano para aceitar");
 });
 
 Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curto), com teto de 14 dias alinhado à doutrina de microciclo", () => {

@@ -89,7 +89,12 @@ export function mergeSingleMeal(
       meal_macros: { items: merged, kcal: null, protein_g: null, carbs_g: null, fat_g: null },
     };
   }
-  const text = typeof existing?.meal_suggestion === "string" ? existing.meal_suggestion.trim() : "";
+  // Tira o markdown antigo ("- **Almoço:** arroz") antes de partir nos
+  // rótulos — o mesmo que parseMealSuggestion faz na app; sem isto o texto
+  // que a Carol lê ficava com "**" e traços soltos.
+  const text = typeof existing?.meal_suggestion === "string"
+    ? existing.meal_suggestion.replace(/\*\*/g, "").replace(/^\s*[-•*]\s+/gm, "").trim()
+    : "";
   if (text) {
     // Parte o texto nos rótulos: [antes, rótulo1, corpo1, rótulo2, corpo2, …].
     const parts = text.split(LABEL_SPLIT);

@@ -81,7 +81,8 @@ describe('buildWelcome — o que ela diz', () => {
       { id: 'i2', plan_id: 'p1', planned_date: '2026-09-20', kind: 'descanso', status: 'pendente' },
     ],
     dailyCheckins: [{ date: hoje, sleep: 4 }],
-    runs: [], meals: [], raceEvents: [],
+    // Um registo antigo: sem nenhum, é o primeiro dia (sem check-in no Início).
+    runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], raceEvents: [],
   };
 
   it('manhã: o sono do check-in e o treino do dia', () => {
@@ -179,7 +180,7 @@ describe('boas-vindas — variedade, dados e o check-in', () => {
     profile: { display_name: 'Rui' },
     coachPlans: [{ id: 'p1', status: 'aceite' }],
     coachPlanItems: [],
-    dailyCheckins: [], runs: [], meals: [], raceEvents: [],
+    dailyCheckins: [], runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], raceEvents: [],
   };
 
   it('a mesma frase durante o dia; outra no dia seguinte', () => {
@@ -215,6 +216,14 @@ describe('boas-vindas — variedade, dados e o check-in', () => {
     const w = buildWelcome('manha', data, at('2026-09-22T07:00:00'));
     expect(WELCOME_PHRASES.semTreinoHoje).toContain(w.lines[1]);
     expect(w.chip).toMatchObject({ value: 'Sem treino planeado' });
+  });
+
+  // Revisão pré-deploy: no primeiro dia o Início não mostra o cartão do
+  // check-in — o botão não teria o que abrir.
+  it('no primeiro dia (sem registos nem prova) não pede o check-in', () => {
+    const w = buildWelcome('manha', { ...base, coachPlans: [], runs: [], meals: [], raceEvents: [] }, at('2026-09-22T07:00:00'));
+    expect(w.action).toBeUndefined();
+    expect(w.lines.join(' ')).not.toMatch(/check-in/);
   });
 });
 

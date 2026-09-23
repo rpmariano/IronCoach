@@ -141,7 +141,7 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     // Na voz dela e a dizer o assunto, sem o motivo técnico (2026-09-23).
     const aviso = screen.getByTestId('carol-alert-assuntos');
     expect(aviso).toHaveTextContent('Preciso de falar contigo');
-    expect(aviso).toHaveTextContent('há coisas no plano que quero ajustar contigo');
+    expect(aviso).toHaveTextContent('há uma coisa que quero ver contigo');
     expect(aviso).not.toHaveTextContent('carga a subir');
     expect(aviso.textContent.match(/Carol/g) || []).toHaveLength(0);
     expect(screen.queryByTestId('carol-alert-plano')).not.toBeInTheDocument();

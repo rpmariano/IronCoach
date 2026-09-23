@@ -20,7 +20,7 @@ describe('pendingTopicLines', () => {
   it('check-in e desvio ao plano, sem mostrar o motivo técnico', () => {
     expect(pendingTopicLines(comMotivo('Check-in de hoje: dor 6/10.'))[0]).toMatch(/check-in de hoje/);
     const plano = pendingTopicLines(comMotivo('ACWR 1.8, três treinos falhados.'))[0];
-    expect(plano).toMatch(/ajustar contigo/);
+    expect(plano).toMatch(/quero ver contigo/);
     expect(plano).not.toMatch(/ACWR/);
   });
 

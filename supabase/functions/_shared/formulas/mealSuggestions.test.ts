@@ -33,3 +33,9 @@ Deno.test("isMealOnlyItem — só o descanso com a marca", () => {
   assertEquals(isMealOnlyItem({ kind: "ginasio", categories: ["so-refeicoes"] }), false);
   assertEquals(mealTextFromItems([{ tipo: "ceia", texto: "Chá." }]), "Ceia: Chá.");
 });
+
+Deno.test("mergeSingleMeal — texto antigo com markdown não deixa lixo no texto da Carol", () => {
+  const r = mergeSingleMeal({ meal_suggestion: "- **Almoço:** arroz\n- **Jantar:** frango" }, "jantar", "Omelete.");
+  assertEquals(r.meal_suggestion, "Almoço: arroz\nJantar: Omelete.");
+});
+

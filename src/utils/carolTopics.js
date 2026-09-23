@@ -16,7 +16,7 @@ export function pendingTopicLines({ profile, coachPlans = [], coachGoalProposals
     if (objetivos === 'definir') lines.push('Vi a tua avaliação corporal. Quero definir contigo os teus objetivos.');
     else if (objetivos === 'rever') lines.push('A tua última avaliação mostra que os teus objetivos já não servem. Quero revê-los contigo.');
     else if (reason.startsWith('Check-in de hoje:')) lines.push('O teu check-in de hoje deixou-me de pé atrás. Quero ver contigo o treino de hoje.');
-    else lines.push('Vi o teu último registo e há coisas no plano que quero ajustar contigo.');
+    else lines.push('Vi o teu último registo e há uma coisa que quero ver contigo.');
   }
   const planos = (coachPlans || []).filter((p) => p?.status === 'proposto').length;
   if (planos === 1) lines.push('Tens um plano meu à espera que o aceites ou recuses.');

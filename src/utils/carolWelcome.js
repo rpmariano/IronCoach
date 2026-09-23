@@ -17,7 +17,7 @@
 
 import { formatPace } from './run';
 import { normalizeGender } from '@formulas/vocabulary.ts';
-import { planItemTitle, raceNameForDate } from './homeModels';
+import { planItemTitle, raceNameForDate, hasAnyRecord } from './homeModels';
 import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
@@ -146,6 +146,12 @@ function titleOf(items, raceEvents, dateISO) {
 
 const semTreino = (titulo) => titulo === 'Descanso' || titulo === MEAL_ONLY_DAY_LABEL;
 
+/** O primeiro dia do Início (Home.jsx): sem registos nem prova marcada. */
+function isFirstDay(data, hoje) {
+  const provaMarcada = (data.raceEvents || []).some((e) => e?.status !== 'concluida' && String(e?.date).slice(0, 10) >= hoje);
+  return !hasAnyRecord(data) && !provaMarcada;
+}
+
 /* ── variantes (pedido 2026-09-23) ──────────────────────────────────────────
    As frases eram sempre as mesmas: a mesma situação, a mesma frase, todos os
    dias. Cada situação tem agora um conjunto, e a frase escolhe-se pelo dia —
@@ -158,22 +164,22 @@ export const WELCOME_PHRASES = {
     'Como dormiste? Conta-me no check-in e eu acerto o dia contigo.',
     'Antes de mais: como acordaste? Três perguntas no check-in e eu ajusto o treino.',
   ],
-  dormiuBem: ['O check-in diz que dormiste bem.', 'Noite boa, pelo que me disseste. O corpo agradece.', 'Dormiste bem. Isso conta para o treino de hoje.'],
+  dormiuBem: ['O check-in diz que dormiste bem.', 'Noite boa, pelo que me disseste. Hoje há margem para cumprir tudo.', 'Dormiste bem. Isso conta para o treino de hoje.'],
   dormiuMal: ['Dormiste mal, pelo check-in. Hoje não se força nada.', 'Noite fraca. Hoje o treino é para cumprir, não para puxar.', 'Com pouco sono, hoje faz-se o que está no plano, sem forçar.'],
-  descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. Deixa o corpo trabalhar por ti.', 'Hoje não se treina. O descanso também faz parte do plano.'],
+  descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. É hoje que o treino da semana assenta.', 'Hoje não se treina. O descanso está no plano de propósito.'],
   semTreinoHoje: ['Hoje não há treino planeado.', 'O plano não pede treino hoje.', 'Hoje não tens treino no plano.'],
-  treinoHoje: (t) => [`Hoje tens ${t}.`, `O treino de hoje: ${t}.`, `Para hoje, ${t}. Um passo de cada vez.`],
+  treinoHoje: (t) => [`Hoje tens ${t}.`, `O treino de hoje: ${t}.`, `Para hoje, o plano pede ${t}.`],
   corridaFeita: (k) => [`Já vi a corrida de hoje: ${k} km.`, `Corrida de hoje registada: ${k} km.`, `${k} km já feitos hoje.`],
   semRefeicoes: ['Ainda não vi nenhuma refeição hoje. Uma foto chega.', 'Nenhuma refeição registada hoje. Tira uma foto ao próximo prato.', 'Ainda não sei o que comeste hoje. Uma foto e eu trato do resto.'],
-  treinoPorFazer: (t) => [`Ainda tens ${t} por fazer.`, `Não te esqueças: ${t}.`, `Ainda há ${t} no plano de hoje.`],
+  treinoPorFazer: (t) => [`Ainda tens ${t} por fazer.`, `Ainda falta o treino de hoje: ${t}.`, `O treino de hoje continua por fazer: ${t}.`],
   corridaDoDia: (k, r) => [`Hoje ficaram ${k} km${r}.`, `Fecho do dia: ${k} km${r}.`, `${k} km registados hoje${r}.`],
   treinoNaoRegistado: ['Não vi o treino de hoje registado. Aconteceu alguma coisa?', 'O treino de hoje ainda não apareceu. Correu tudo bem?', 'Falta-me o registo do treino de hoje. Conta-me o que se passou.'],
   amanhaDescanso: ['Amanhã é descanso.', 'Amanhã descansas.', 'Amanhã o plano pede descanso.'],
   amanhaSemTreino: ['Amanhã não há treino planeado.', 'Amanhã o plano não pede treino.', 'Amanhã não tens treino no plano.'],
   amanhaTreino: (t) => [`Amanhã tens ${t}.`, `Amanhã: ${t}.`, `Para amanhã, ${t}.`],
   quando: (q, t) => [`${q} tens ${t}.`, `${q}: ${t}.`, `${q} o plano pede ${t}.`],
-  sono: ['A esta hora, o sono vale mais do que qualquer treino.', 'Vai dormir. A recuperação faz-se agora.', 'O melhor treino a esta hora é dormir.'],
-  faltamDias: (n, nome) => [`Faltam ${n} dias para ${nome}.`, `${nome} está a ${n} dias.`, `Mais ${n} dias e é ${nome}.`],
+  sono: ['A esta hora, o sono vale mais do que qualquer treino.', 'Vai dormir. O treino de amanhã começa a fazer-se agora.', 'O melhor treino a esta hora é dormir.'],
+  faltamDias: (n, nome) => [`Faltam ${n} dias para a prova: ${nome}.`, `${nome} está a ${n} dias.`, `A prova é daqui a ${n} dias: ${nome}.`],
   ontem: (k) => [`Ontem ficaram ${k} km.`, `Ontem fizeste ${k} km.`, `Ainda conto os ${k} km de ontem.`],
   semana: (k) => [`Esta semana já levas ${k} km.`, `${k} km nesta semana, até agora.`, `A semana vai em ${k} km.`],
 };
@@ -266,9 +272,10 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
   if (variant === 'manha') {
     if (checkin && Number(checkin.sleep) >= 4) lines.push(pick(P.dormiuBem, 'dormiuBem'));
     else if (checkin && Number(checkin.sleep) > 0 && Number(checkin.sleep) <= 2) lines.push(pick(P.dormiuMal, 'dormiuMal'));
-    else if (!checkin) {
+    else if (!checkin && !isFirstDay(data, hoje)) {
       // O check-in é o cartão "Como estás hoje?" do Início: a frase diz o que
       // é e o botão abre-o (pedido 2026-09-23 — "nem sei a que se refere").
+      // No primeiro dia o Início não mostra esse cartão — não se pede.
       lines.push(pick(P.checkinFalta, 'checkinFalta'));
       action = 'checkin';
     }

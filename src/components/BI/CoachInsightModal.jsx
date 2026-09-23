@@ -45,6 +45,7 @@ function AlertCard({ alert, onClose }) {
         <button
           type="button"
           data-testid={`carol-alert-talk-${alert.id}`}
+          aria-label="Falar agora com a Carol"
           onClick={talk}
           className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-[14px] rounded-[11px] text-[12.5px] font-extrabold"
           style={{ background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)' }}
@@ -55,6 +56,7 @@ function AlertCard({ alert, onClose }) {
           <button
             type="button"
             data-testid={`carol-alert-dismiss-${alert.id}`}
+            aria-label="Dispensar este aviso"
             onClick={dismiss}
             className="min-h-[44px] px-[12px] rounded-[11px] text-[12px] font-bold"
             style={{ background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}
