@@ -140,7 +140,7 @@ export default function Coach() {
       // live: entra bolha a bolha, precedida de "a escrever…" (ver revealMessage).
       if (data?.model_message?.content) {
         addCoachMessage({
-          id: (Date.now() + 1).toString(),
+          id: data.model_message.id || (Date.now() + 1).toString(),
           role: 'assistant',
           content: data.model_message.content,
           live: true,
@@ -741,7 +741,8 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     // Add user message to state
-    addCoachMessage({ id: Date.now().toString(), role: 'user', content: text });
+    const localUserId = Date.now().toString();
+    addCoachMessage({ id: localUserId, role: 'user', content: text });
     setCoachLoading(true);
     setCoachSuggestions([]);
 
@@ -786,8 +787,13 @@ export default function Coach() {
       // A função devolve a resposta em model_message.content — `data.reply`
       // nunca existiu no payload, o que fazia cair sempre no texto de
       // fallback e esconder a resposta real do coach.
+      // Pedido repetido (o servidor devolveu a resposta que já tinha dado):
+      // a pergunta não voltou a ser gravada, por isso a bolha repetida sai.
+      if (data?.duplicate) removeCoachMessage(localUserId);
+      // O id da BD, quando vem: se esta resposta já estiver no ecrã (chegou
+      // num recarregamento), o store não a mostra outra vez.
       addCoachMessage({
-        id: (Date.now() + 1).toString(),
+        id: data?.model_message?.id || (Date.now() + 1).toString(),
         role: 'assistant',
         content: data?.model_message?.content || 'Não consegui responder agora. Tenta outra vez.',
         live: true,

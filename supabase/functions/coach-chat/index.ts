@@ -2086,6 +2086,34 @@ export function buildSuggestionAdherencePanel(
   );
 }
 
+// ─── Pedido repetido ────────────────────────────────────────────────────
+// Ver o uso no handler (incidente 2026-09-23). 2 minutos cobrem a repetição
+// do browser e o "enviar outra vez" de quem não viu a resposta chegar; uma
+// pergunta igual feita de propósito tão depressa já tem a resposta à vista.
+export const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+
+// As respostas que a app escreve sozinha ao decidir uma proposta ("Aceitei o
+// plano.") repetem-se legitimamente: aceitar duas propostas seguidas não é
+// um pedido repetido.
+const APP_WRITTEN_REPLY = /^(Aceitei|Recusei) (o plano|os novos objetivos)\.$/;
+
+// deno-lint-ignore no-explicit-any
+export async function findAnsweredDuplicate(sb: any, userId: string, message: string, now = Date.now()) {
+  if (APP_WRITTEN_REPLY.test(message.trim())) return null;
+  const { data: lastUser } = await sb.from("coach_messages")
+    .select("id, role, content, created_at")
+    .eq("user_id", userId).eq("role", "user")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!lastUser || String(lastUser.content).trim() !== message.trim()) return null;
+  if (now - Date.parse(lastUser.created_at) > DUPLICATE_WINDOW_MS) return null;
+  const { data: reply } = await sb.from("coach_messages")
+    .select("id, role, content, created_at")
+    .eq("user_id", userId).eq("role", "model")
+    .gt("created_at", lastUser.created_at)
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  return reply ? { user: lastUser, model: reply } : null;
+}
+
 // ─── Índice de Prontidão + métricas cruzadas (Fase E — omnisciência) ───────
 // O gap original que motivou toda a Fase E: antes desta migração, este
 // número (score 0-100 + pilares) só existia no ecrã (Home, RaceHubView) — a
@@ -5809,6 +5837,30 @@ async function handler(req: Request): Promise<Response> {
         goals_updated: false,
         goal_proposed: false,
       });
+    }
+
+    // ── Pedido repetido (incidente 2026-09-23) ──────────────────────────
+    // A resposta a uma pergunta perdeu-se a caminho do telemóvel (ligação
+    // em baixo) e o mesmo POST chegou outra vez 38 s depois — o browser
+    // repete-o sozinho ao recuperar a ligação. A Carol respondia duas vezes
+    // à mesma pergunta, com textos diferentes. Uma mensagem igual à última
+    // do atleta, há menos de DUPLICATE_WINDOW_MS e já com resposta, é o
+    // mesmo pedido: devolve-se essa resposta, sem gravar nem gerar nada.
+    if (message) {
+      const duplicate = await findAnsweredDuplicate(sb, userId, message);
+      if (duplicate) {
+        console.log("coach-chat pedido repetido: devolve a resposta já dada", { userMessageId: duplicate.user.id });
+        return jsonResponse({
+          user_message: duplicate.user,
+          model_message: duplicate.model,
+          suggestions: [],
+          usage: null,
+          plan_proposed: false,
+          goals_updated: false,
+          goal_proposed: false,
+          duplicate: true,
+        });
+      }
     }
 
     // ── Guardar mensagem do utilizador antes de chamar o Gemini ─────────

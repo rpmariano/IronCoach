@@ -255,6 +255,30 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(useAppStore.getState().coachLoading).toBe(false);
   });
 
+  // Incidente 2026-09-23: o servidor reconheceu um pedido repetido e devolveu
+  // a resposta que já tinha dado — e essa resposta já estava no ecrã.
+  it('pedido repetido: não repete a resposta já mostrada nem deixa a pergunta em dobro', async () => {
+    useAppStore.setState({
+      coachMessages: [
+        { id: 'u1', role: 'user', content: 'Dieta para a recuperação?', created_at: new Date().toISOString() },
+        { id: 'm1', role: 'model', content: 'Proteína alta e bem distribuída.', created_at: new Date().toISOString() },
+      ],
+    });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Proteína alta e bem distribuída.' }, duplicate: true, suggestions: [] },
+      error: null,
+    });
+
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Dieta para a recuperação?' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+
+    await waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+    const msgs = useAppStore.getState().coachMessages;
+    expect(msgs.filter((m) => m.content === 'Proteína alta e bem distribuída.')).toHaveLength(1);
+    expect(msgs.filter((m) => m.content === 'Dieta para a recuperação?')).toHaveLength(1);
+  });
+
   it('trata o atleta pelo primeiro nome no aviso de demora, quando o perfil o tem', async () => {
     useAppStore.setState({ profile: { id: 'user-1', display_name: 'Patrícia Martins' } });
     // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o

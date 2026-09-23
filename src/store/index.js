@@ -269,7 +269,15 @@ export const useAppStore = create((set, get) => ({
   setProactiveKeyRequested: (key) => set({ proactiveKeyRequested: key }),
 
   // Coach Actions
-  addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),
+  // A mesma mensagem (mesmo id da BD) nunca entra duas vezes: a resposta que
+  // chega pela sondagem de handleAsyncFallback pode já ter vindo no
+  // recarregamento dos dados ao voltar à app (incidente 2026-09-23 — a
+  // Carol aparecia a repetir-se).
+  addCoachMessage: (msg) => set((state) => (
+    msg?.id != null && state.coachMessages.some((m) => m.id === msg.id)
+      ? {}
+      : { coachMessages: [...state.coachMessages, msg] }
+  )),
   // Usado para retirar a mensagem placeholder "isto está a demorar…" depois
   // de resolvida (com a resposta real ou com o erro final) — ver
   // handleAsyncFallback em Coach.jsx.

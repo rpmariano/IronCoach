@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3921,3 +3921,55 @@ Deno.test("resolve_intervention: numa intervenção de plano não há marca nenh
   assertEquals(calls.updates.length, 1);
 });
 
+
+// ── Pedido repetido (incidente 2026-09-23) ──────────────────────────────
+// O mesmo POST chegou duas vezes (a resposta perdeu-se a caminho do
+// telemóvel e o browser repetiu-o): a Carol respondia duas vezes.
+function dupSb(rows: Array<{ id: string; role: string; content: string; created_at: string }>) {
+  return {
+    from: () => {
+      const f: Record<string, unknown> = {};
+      const chain = {
+        select: () => chain,
+        eq: (c: string, v: unknown) => { f[c] = v; return chain; },
+        gt: (_c: string, v: string) => { f.gt = v; return chain; },
+        order: (_c: string, o: { ascending: boolean }) => { f.asc = o.ascending; return chain; },
+        limit: () => chain,
+        maybeSingle: () => {
+          let r = rows.filter((x) => x.role === f.role);
+          if (f.gt) r = r.filter((x) => x.created_at > (f.gt as string));
+          r.sort((a, b) => (f.asc ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at)));
+          return Promise.resolve({ data: r[0] ?? null });
+        },
+      };
+      return chain;
+    },
+  };
+}
+
+Deno.test("findAnsweredDuplicate: a mesma pergunta 38 s depois, já respondida, devolve a resposta dada", async () => {
+  const rows = [
+    { id: "u1", role: "user", content: "Vou precisar de uma dieta especial", created_at: "2026-09-23T20:44:13.000Z" },
+    { id: "m1", role: "model", content: "Não precisas de uma dieta exótica…", created_at: "2026-09-23T20:44:29.000Z" },
+  ];
+  const now = Date.parse("2026-09-23T20:44:51.000Z");
+  const dup = await findAnsweredDuplicate(dupSb(rows), "u", "Vou precisar de uma dieta especial ", now);
+  assertEquals(dup?.model.id, "m1");
+});
+
+Deno.test("findAnsweredDuplicate: outra pergunta, fora da janela, ou ainda sem resposta — não é repetido", async () => {
+  const rows = [
+    { id: "u1", role: "user", content: "Ok", created_at: "2026-09-23T20:44:13.000Z" },
+    { id: "m1", role: "model", content: "Plano fechado.", created_at: "2026-09-23T20:44:29.000Z" },
+  ];
+  const t = Date.parse("2026-09-23T20:44:51.000Z");
+  assertEquals(await findAnsweredDuplicate(dupSb(rows), "u", "Aceitei o plano.", t), null);
+  assertEquals(await findAnsweredDuplicate(dupSb(rows), "u", "Ok", t + DUPLICATE_WINDOW_MS), null);
+  assertEquals(await findAnsweredDuplicate(dupSb(rows.slice(0, 1)), "u", "Ok", t), null);
+  // Aceitar duas propostas seguidas não é um pedido repetido.
+  const aceites = [
+    { id: "u2", role: "user", content: "Aceitei o plano.", created_at: "2026-09-23T20:44:13.000Z" },
+    { id: "m2", role: "model", content: "Plano fechado.", created_at: "2026-09-23T20:44:20.000Z" },
+  ];
+  assertEquals(await findAnsweredDuplicate(dupSb(aceites), "u", "Aceitei o plano.", t), null);
+});
