@@ -194,14 +194,14 @@ export default function Layout({ children }) {
             <BugNotificationsHandler />
             {/* O Calendário saiu da barra para aqui (2026-09-13): continua a um
                 toque, mas a barra ficou para o que a app é. */}
-            {/* Calculadora de ritmo: fica à esquerda do Calendário porque é a
-                única das três que não navega para lado nenhum — abre uma
-                persiana e devolve o atleta ao sítio onde estava. */}
-            <HeaderIconBtn label="Calculadora de ritmo" active={calculadoraAberta} onClick={() => setCalculadoraAberta(true)}>
-              <Calculator size={18} />
-            </HeaderIconBtn>
             <HeaderIconBtn label="Calendário" active={activeTab === 'calendario'} onClick={() => setActiveTab('calendario')}>
               <Calendar size={18} />
+            </HeaderIconBtn>
+            {/* Calculadora de ritmo: à direita do Calendário (pedido do
+                utilizador, 2026-09-23). Não navega — abre uma persiana e
+                devolve o atleta ao sítio onde estava. */}
+            <HeaderIconBtn label="Calculadora de ritmo" active={calculadoraAberta} onClick={() => setCalculadoraAberta(true)}>
+              <Calculator size={18} />
             </HeaderIconBtn>
             {/* O Perfil deixou o âmbar: o âmbar é só da prova. */}
             <HeaderIconBtn label="Perfil" active={activeTab === 'perfil'} onClick={() => setActiveTab('perfil')}>
