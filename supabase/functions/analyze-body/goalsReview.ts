@@ -91,7 +91,20 @@ export function parseManualSummary(raw: unknown): { text: string | null; goalsRe
     const text = typeof parsed?.summary === "string" && parsed.summary.trim() ? parsed.summary.trim() : null;
     return { text, goalsReview: parseGoalsReview(parsed?.goals_review) };
   } catch {
-    return { text: raw.trim(), goalsReview: null };
+    const trimmed = raw.trim();
+    // JSON cortado (ex.: limite de tokens): tenta salvar o summary; nunca
+    // mostra "{"summary":…" ao atleta.
+    if (trimmed.startsWith("{")) {
+      const m = trimmed.match(/"summary"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+      if (!m) return { text: null, goalsReview: null };
+      try {
+        const text = JSON.parse(`"${m[1]}"`).trim();
+        return { text: text || null, goalsReview: null };
+      } catch {
+        return { text: null, goalsReview: null };
+      }
+    }
+    return { text: trimmed, goalsReview: null };
   }
 }
 
@@ -103,8 +116,16 @@ export function parseManualSummary(raw: unknown): { text: string | null; goalsRe
  *  como pendente — é uma conversa JÁ A MEIO, e reescrever o motivo apagava
  *  sem retorno a razão pela qual ela chamou (a coluna não tem histórico). É
  *  a mesma leitura do resto da app (store/index.js, Home/Home.jsx). */
+/** Dias sem voltar a pedir revisão depois de uma proposta de objetivos
+ *  (aceite, recusada ou por decidir): sem isto, quem recusasse "o peso-alvo
+ *  já foi atingido" era chamado outra vez em cada pesagem seguinte. */
+export const GOALS_REVIEW_COOLDOWN_DAYS = 14;
+
+/** `reviewAllowed` vem de quem chama: só a pesagem mais recente e recente
+ *  (≤ 7 dias) pode pedir revisão, e nunca dentro do período de espera
+ *  depois de uma proposta. Faltar objetivos não depende disto. */
 // deno-lint-ignore no-explicit-any
-export function goalsInterventionFor(perfil: any, goalsReview: GoalsReview): string | null {
+export function goalsInterventionFor(perfil: any, goalsReview: GoalsReview, { reviewAllowed = true }: { reviewAllowed?: boolean } = {}): string | null {
   if (!perfil) return null;
   if (["needed", "in_progress"].includes(perfil.coach_intervention_status)) return null;
   const temAlgum = (cols: string[]) => cols.some((c) => perfil[c] !== null && perfil[c] !== undefined);
@@ -115,6 +136,6 @@ export function goalsInterventionFor(perfil: any, goalsReview: GoalsReview): str
       .filter(Boolean).join(" e ");
     return missingGoalsReason(emFalta);
   }
-  if (goalsReview?.needed && goalsReview.reason) return reviewGoalsReason(goalsReview.reason);
+  if (reviewAllowed && goalsReview?.needed && goalsReview.reason) return reviewGoalsReason(goalsReview.reason);
   return null;
 }

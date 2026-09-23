@@ -13,7 +13,7 @@ Deno.test("carolLanguageRule — o básico proíbe siglas e dá a alternativa do
 Deno.test("carolLanguageRule — o iniciante é o básico com menos números", () => {
   const r = carolLanguageRule("iniciante");
   assertStringIncludes(r, "Sem siglas nem jargão");
-  assertStringIncludes(r, "no máximo dois números");
+  assertStringIncludes(r, "o mínimo de números");
 });
 
 Deno.test("carolLanguageRule — médio explica os termos, avançado não precisa", () => {

@@ -452,13 +452,30 @@ export const useAppStore = create((set, get) => ({
        buildGoalsInterventionInstruction); sem isto o botão "a Carol precisa
        de falar contigo" ficava aceso depois de ele já ter decidido. As
        intervenções de desvio ao plano não se tocam: essas fecham-se no chat. */
-    const current = get().profile;
-    if (current?.id && ['needed', 'in_progress'].includes(current.coach_intervention_status)
-      && isGoalsIntervention(current.coach_intervention_reason)) {
-      const resolved = { coach_intervention_status: 'resolved', coach_intervention_reason: null };
-      const { error: resolveError } = await supabase.from('profiles').update(resolved).eq('id', current.id);
-      if (resolveError) console.error('Error resolving goals intervention:', resolveError);
-      else set({ profile: { ...get().profile, ...resolved } });
+    /* Lido no servidor, não do store: um registo posterior pode ter trocado o
+       motivo por um desvio ao plano sem o store saber — e fechar esse por
+       engano era apagar a razão pela qual ela precisa de falar com ele. O
+       update só pega se o motivo ainda for o mesmo que se leu. */
+    const profileId = get().profile?.id;
+    if (profileId) {
+      const { data: fresh } = await supabase
+        .from('profiles')
+        .select('coach_intervention_status, coach_intervention_reason')
+        .eq('id', profileId)
+        .maybeSingle();
+      if (fresh && ['needed', 'in_progress'].includes(fresh.coach_intervention_status)
+        && isGoalsIntervention(fresh.coach_intervention_reason)) {
+        const resolved = { coach_intervention_status: 'resolved', coach_intervention_reason: null };
+        const { error: resolveError } = await supabase
+          .from('profiles')
+          .update(resolved)
+          .eq('id', profileId)
+          .eq('coach_intervention_reason', fresh.coach_intervention_reason);
+        if (resolveError) console.error('Error resolving goals intervention:', resolveError);
+        else set({ profile: { ...get().profile, ...resolved } });
+      } else if (fresh) {
+        set({ profile: { ...get().profile, ...fresh } });
+      }
     }
 
     set((state) => ({

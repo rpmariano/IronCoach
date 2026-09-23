@@ -13,6 +13,7 @@ import {
   GOALS_REVIEW_SCHEMA,
   MANUAL_SUMMARY_SCHEMA,
   BODY_GOAL_COLUMNS,
+  GOALS_REVIEW_COOLDOWN_DAYS,
   MACRO_GOAL_COLUMNS,
   fetchGoalsContext,
   goalsInterventionFor,
@@ -199,9 +200,11 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
        ainda conta o anterior. Um dia de folga cobre qualquer um deles sem
        abrir a janela a datas futuras a sério. */
     const recente = idade !== null && idade >= -1 && idade <= PESO_RECENTE_DIAS;
-    if (Number.isFinite(peso) && peso > 0 && recente) {
-      /* Só se não houver nenhuma avaliação mais recente: editar a de há três
-         dias quando a de ontem já entrou não pode fazer recuar o peso. */
+    /* Só vale como "o corpo de agora" a avaliação recente e sem nenhuma mais
+       nova: editar a de há três dias quando a de ontem já entrou não pode
+       fazer recuar o peso — nem pedir para rever objetivos com dados velhos. */
+    let ehAAtual = false;
+    if (recente) {
       const { data: maisRecente } = await sb
         .from("body_assessments")
         .select("date")
@@ -210,9 +213,10 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
         .limit(1)
         .maybeSingle();
       const limite = maisRecente?.date ? String(maisRecente.date).slice(0, 10) : null;
-      if (!limite || String(assessment.date).slice(0, 10) >= limite) {
-        patch.weight_kg = peso;
-      }
+      ehAAtual = !limite || String(assessment.date).slice(0, 10) >= limite;
+    }
+    if (Number.isFinite(peso) && peso > 0 && ehAAtual) {
+      patch.weight_kg = peso;
     }
 
     // ── 2. Os objetivos ────────────────────────────────────────────────
@@ -227,7 +231,21 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
     if (erroPerfil) console.warn("syncProfileAfterAssessment: falha a ler o perfil:", erroPerfil);
 
     if (perfil) {
-      const intervencao = goalsInterventionFor(perfil, goalsReview);
+      // Rever só pela avaliação atual e fora do período de espera depois de
+      // uma proposta de objetivos (revisão pré-deploy do bug #41).
+      let reviewAllowed = ehAAtual && !!goalsReview?.needed;
+      if (reviewAllowed) {
+        const desde = new Date(Date.now() - GOALS_REVIEW_COOLDOWN_DAYS * 86400000).toISOString();
+        const { data: recentes, error: erroPropostas } = await sb
+          .from("coach_goal_proposals")
+          .select("id")
+          .eq("user_id", userId)
+          .gte("created_at", desde)
+          .limit(1);
+        // Sem conseguir confirmar, não se chama: pior é chamar em repetição.
+        reviewAllowed = !erroPropostas && (recentes || []).length === 0;
+      }
+      const intervencao = goalsInterventionFor(perfil, goalsReview, { reviewAllowed });
       if (intervencao) {
         patch.coach_intervention_status = "needed";
         patch.coach_intervention_reason = intervencao;

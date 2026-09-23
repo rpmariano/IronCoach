@@ -13,8 +13,14 @@
 
 export const GOALS_INTERVENTION_TAG = "[objetivos]";
 
+/* O motivo "faltam objetivos" já estava em produção antes da etiqueta
+   (bad9f9e, 2026-09-20), com este início. Uma intervenção dessas ainda
+   pendente é também uma conversa sobre objetivos. */
+const LEGACY_MISSING_GOALS_PREFIX = "O atleta acabou de registar uma avaliação corporal e ainda não tem objetivos definidos";
+
 export function isGoalsIntervention(reason: string | null | undefined): boolean {
-  return typeof reason === "string" && reason.startsWith(GOALS_INTERVENTION_TAG);
+  return typeof reason === "string" &&
+    (reason.startsWith(GOALS_INTERVENTION_TAG) || reason.startsWith(LEGACY_MISSING_GOALS_PREFIX));
 }
 
 /** Não há objetivos definidos (todos em falta numa família). */

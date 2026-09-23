@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3895,5 +3895,18 @@ Deno.test("o prompt escolhe a conversa pela etiqueta do motivo", () => {
   const plano = args("Falhou 3 treinos seguidos.");
   assertStringIncludes(plano, "MODO DE INTERVENÇÃO PROATIVA ATIVO");
   assertEquals(plano.includes("CONVERSA SOBRE OBJETIVOS"), false);
+});
+
+// A mensagem de arranque tem de bater certo com o system prompt: era a mesma
+// para todas as intervenções e pedia confronto (revisão pré-deploy do #41).
+Deno.test("arranque da intervenção: objetivos convida; plano confronta; a etiqueta nunca segue", () => {
+  const objetivos = buildInterventionStartTurn('Motivo/Análise: "[objetivos] x"', "[objetivos] O peso-alvo já foi atingido.");
+  assertEquals(objetivos.includes("confrontando"), false);
+  assertEquals(objetivos.includes("[objetivos]"), false);
+  assertStringIncludes(objetivos, "sem cobranças");
+
+  const plano = buildInterventionStartTurn('Motivo/Análise: "Falhou 3 treinos."', "Falhou 3 treinos.");
+  assertStringIncludes(plano, "confrontando");
+  assertStringIncludes(plano, "Falhou 3 treinos.");
 });
 

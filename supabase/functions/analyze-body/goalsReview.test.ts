@@ -23,6 +23,24 @@ Deno.test("parseManualSummary — JSON dá comentário e juízo; texto solto fic
   assertEquals(parseManualSummary(""), { text: null, goalsReview: null });
 });
 
+Deno.test("parseManualSummary — JSON cortado nunca aparece cru ao atleta", () => {
+  assertEquals(parseManualSummary('{"summary":"Bom registo, \\"firme\\".","goals_review":{"nee'),
+    { text: 'Bom registo, "firme".', goalsReview: null });
+  assertEquals(parseManualSummary('{"summary":"Bom regis'), { text: null, goalsReview: null });
+});
+
+Deno.test("goalsInterventionFor — rever só quando é permitido (avaliação atual, fora do período de espera)", () => {
+  assertEquals(goalsInterventionFor(COM_OBJETIVOS, { needed: true, reason: "x" }, { reviewAllowed: false }), null);
+  // Faltar objetivos não depende disso.
+  assert(isGoalsIntervention(goalsInterventionFor({ coach_intervention_status: null }, null, { reviewAllowed: false })));
+});
+
+Deno.test("isGoalsIntervention — reconhece o motivo antigo, sem etiqueta, ainda em produção", () => {
+  assert(isGoalsIntervention("O atleta acabou de registar uma avaliação corporal e ainda não tem objetivos definidos (os do corpo)."));
+  assertEquals(isGoalsIntervention("Falhou 3 treinos."), false);
+  assertEquals(isGoalsIntervention(null), false);
+});
+
 Deno.test("goalsReviewSection — mostra os objetivos atuais, ou diz que não há", () => {
   const s = goalsReviewSection({ goal_weight_kg: 72, calorie_goal: null });
   assertStringIncludes(s, "peso-alvo (kg): 72");

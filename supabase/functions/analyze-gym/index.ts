@@ -657,6 +657,7 @@ async function attachGymCoachNotes(
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
     // Carol que comenta este registo é a mesma que falou com ele ontem.
     const memoryPromise = fetchSharedMemoryBlock(sb, userId);
+    const levelPromise = fetchExperienceLevel(sb, userId);
     const { data: previous } = await sb
       .from("workout_sessions")
       .select("date, duration_seconds, calories_kcal, avg_hr, max_hr, exertion")
@@ -735,7 +736,7 @@ async function attachGymCoachNotes(
       geminiKey,
       await memoryPromise,
       hrZoneLine,
-      await fetchExperienceLevel(sb, userId),
+      await levelPromise,
     );
 
     if (result.text) {

@@ -415,17 +415,17 @@ app fecha a intervenção quando o atleta aceita ou recusa a proposta.
 
 ### Coach
 
-Nova ferramenta `update_nutrition_goals`. A autorização é verificada no
-**executor**, não na declaração — a ferramenta fica sempre visível ao modelo,
-mas recusa escrever sem o interruptor ligado, dizendo ao modelo para orientar
-o atleta a ativá-lo. O prompt já avisa antecipadamente se a autorização está
-ligada ou não, para o modelo não gastar uma ronda de function-calling a
-tentar às cegas.
+Ferramenta `update_goals` (nasceu como `update_nutrition_goals`). Nunca
+escreve no perfil: cria uma proposta em `coach_goal_proposals`, que o atleta
+aceita ou recusa na persiana do Coach. Até 2026-09-22 recusava sem o
+interruptor de autorização ligado; desde o bug #41 está sempre disponível — a
+decisão do atleta na persiana é a autorização.
 
 ### Interface
 
-Perfil → Metas → toggle "O Coach pode ajustar as metas", com a mesma
-estética do toggle de lembretes de água. Os campos de Proteína e Gordura
+Perfil → Metas: uma nota diz que a Carol pode propor metas no chat e que só
+mudam se o atleta aceitar (o toggle "O Coach pode ajustar as metas" saiu a
+2026-09-22, bug #41). Os campos de Proteína e Gordura
 mostram um selo "Coach" (cor do módulo Coach) quando o valor atual veio dele;
 editar o campo à mão remove o selo e grava as duas mudanças juntas (valor +
 flag) na mesma gravação.

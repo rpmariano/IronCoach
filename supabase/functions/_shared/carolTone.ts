@@ -55,7 +55,7 @@ const LEVEL_RULES: Record<string, string> = {
   avancado:
     `podes usar a terminologia técnica completa (VDOT, limiar, zonas, RPE, cadência, ACWR, HRV, g/kg) sem a explicar.`,
 };
-LEVEL_RULES.iniciante = LEVEL_RULES.basico + ` Com um iniciante, no máximo dois números por resposta.`;
+LEVEL_RULES.iniciante = LEVEL_RULES.basico + ` Com um iniciante, usa o mínimo de números: só os que provam o que dizes, e sempre com o que querem dizer.`;
 
 const LEVEL_LABEL: Record<string, string> = {
   iniciante: "iniciante", basico: "básico", medio: "médio", avancado: "avançado",

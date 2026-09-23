@@ -188,9 +188,9 @@ foi adequada ao treino que fiz?"* é retrospetiva e responde-se bem.
 
 **Resolução em três camadas:**
 
-1. **Metas estáveis** (proteína, gordura) — o coach pode escrevê-las no
-   perfil, com o *toggle* de autorização e a cor do módulo Coach a marcar a
-   origem. Mudam com o peso e o nível, não com o dia.
+1. **Metas estáveis** (proteína, gordura) — o coach propõe-as e o atleta
+   aceita ou recusa na persiana; a cor do módulo Coach marca a origem. Mudam
+   com o peso e o nível, não com o dia.
 2. **Metas variáveis** (calorias, hidratos, água) — a coluna guarda a **linha
    de base** (dia sem treino). O acréscimo do treino do dia vive na análise
    do coach, nunca na meta gravada.
@@ -201,6 +201,7 @@ foi adequada ao treino que fiz?"* é retrospetiva e responde-se bem.
    data corrigir os dois dias sozinha.
 
 **Estado**: a camada 3 está implementada (heurístico mínimo — só isenta
-calorias/hidratos no dia de um longo do plano). As camadas 1 e 2 dependem do
-*toggle* de autorização no Perfil, ainda por construir.
+calorias/hidratos no dia de um longo do plano). As camadas 1 e 2 passam pela
+proposta de objetivos (`update_goals`) — o *toggle* de autorização que
+chegou a existir no Perfil saiu a 2026-09-22 (bug #41).
 

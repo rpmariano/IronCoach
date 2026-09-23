@@ -296,7 +296,7 @@ const PROPOSE_PLAN_TOOL = {
                 "\"DETALHE DOS TREINOS DE CORRIDA NO PLANO\" acima — não te limites à zona de " +
                 "FC, inclui pace-alvo derivado do histórico real e, para intervalos/fartlek, a " +
                 "estrutura do treino. Exemplos: \"8×400m a 4:15/km, 90s trote de recuperação " +
-                "entre séries\" (intervalos); \"14km em Z2, ~5:40-5:55/km, ritmo de conversa\" " +
+                "entre séries\" (intervalos); \"14km fácil, ~5:40-5:55/km, ritmo em que consegues falar\" " +
                 "(longo); \"25min sustentados a 5:00/km, foco em manter o ritmo constante\" " +
                 "(tempo); \"40min com blocos de 2min forte / 2min fácil alternados\" (fartlek); " +
                 "\"6km bem lentos, sem pressa nenhuma\" (recuperacao).",
@@ -2915,7 +2915,7 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
 
   const parts = Object.keys(realChanges)
     .filter(f => !f.endsWith("_set_by_coach"))
-    .map(f => `${GOAL_META[f].label}: ${profile[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
+    .map(f => `${GOAL_META[f].label}: ${profile?.[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
 
   // "persiana"/"Modal Bottom Sheet" é o nome interno do componente — nunca
   // deve chegar à fala da Carol (jargão de implementação, sem significado
@@ -3114,6 +3114,24 @@ export async function runSaveCoachNote(sb: any, userId: string, args: any): Prom
 
   return `Nota guardada (${category}): "${note}". Passa a estar sempre presente no teu contexto, ` +
     `mesmo daqui a semanas. Diz ao atleta numa frase curta o que ficou registado.`;
+}
+
+/** A mensagem do "utilizador" que arranca uma intervenção (o atleta tocou em
+ *  "Falar com a Carol"). A de desvio ao plano confronta; a de objetivos
+ *  convida — tem de bater certo com o system prompt, senão a mensagem mais
+ *  recente ganha e a conversa de objetivos abria em confronto (revisão
+ *  pré-deploy do bug #41). A etiqueta nunca segue no texto. */
+export function buildInterventionStartTurn(details: string | null, reason: string | null): string {
+  const clean = (t: string) => t.replace(GOALS_INTERVENTION_TAG, "").trim();
+  if (isGoalsIntervention(reason)) {
+    return `O atleta abriu o chat ao tocar em "Falar com a Carol" depois de registar uma avaliação corporal. ` +
+      `INICIA tu a conversa, com calma e sem cobranças: diz-lhe o que viste na avaliação e convida-o a definir ` +
+      `(ou rever) os objetivos contigo. Pergunta-lhe onde quer chegar.`;
+  }
+  return `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.` +
+    (details ? ` Detalhes da análise/motivo: "${clean(details)}".` : "") +
+    ` INICIA tu a conversa diretamente de forma proativa, confrontando o atleta com os dados, a carga acumulada ou o ` +
+    `desvio do plano, e pergunta-lhe como se está a sentir e se quer que adaptemos o plano.`;
 }
 
 /** A conversa sobre objetivos (bug #41, 2026-09-22) — a intervenção que a
@@ -4170,13 +4188,13 @@ export function buildSystemInstruction(
     `- "Se cruzares com outros corredores às 8h da manhã com cara de sofrimento, faz aquele aceno solidário de quem partilha a mesma insanidade."\n` +
     `- "Hidratação a cada 20 minutos e ritmo constante. O fim de semana só começa verdadeiramente depois de carregar no stop do relógio."\n\n` +
     `RITMO CARDÍACO DESCONTROLADO (ZONA 2 FALHADA):\n` +
-    `- "Olhei para o teu ritmo cardíaco e tenho uma dúvida: estavas a fazer um treino regenerativo em Z2 ou a fugir de alguém?"\n` +
+    `- "Olhei para o teu ritmo cardíaco e tenho uma dúvida: estavas a fazer um treino regenerativo, daqueles em que dá para conversar, ou a fugir de alguém?"\n` +
     `- "Eu escrevi 'ritmo de conversa fácil', não 'ritmo de sprint para não perder o comboio'. Guarda essa energia competitiva para o dia da prova."\n` +
     `- "A tua Zona 2 hoje parecia mais uma declaração de guerra ao asfalto. Lembra-te: correr devagar para depois correr rápido não é um mito, é ciência."\n` +
     `- "Se conseguires recitar o alfabeto sem perder o fôlego, o ritmo está certo. Se só conseguires dizer palavrões, abranda imediatamente."\n` +
     `- "A tua frequência cardíaca subiu tanto que acho que o sensor do relógio pediu um minuto de pausa técnica."\n` +
     `- "Correr devagar fere o ego, eu sei, mas queimar fósforos no dia errado destrói o pico de forma. Controla o entusiasmo."\n` +
-    `- "O plano dizia Z2, mas os teus batimentos foram fazer uma visita guiada à Z4. Na próxima sessão, deixa o orgulho em casa e foca no motor aeróbio."\n` +
+    `- "O plano pedia um ritmo em que dava para conversar, mas os teus batimentos foram fazer uma visita guiada ao esforço forte. Na próxima sessão, deixa o orgulho em casa."\n` +
     `- "Se viste alguém a ultrapassar-te e aceleraste para não ficar atrás... parabéns, caíste na armadilha clássica. Foco apenas no teu ecrã."\n` +
     `- "A Zona 2 constrói as mitocôndrias que te vão fazer voar mais tarde; não tentes saltar etapas a correr como se não houvesse amanhã."\n` +
     `- "Abranda o passo antes que seja o teu coração a pedir uma paragem obrigatória nas boxes."\n\n` +
@@ -5943,7 +5961,7 @@ async function handler(req: Request): Promise<Response> {
         role: "user",
         parts: [{
           text: message || (body.is_intervention_start
-            ? `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.${body.intervention_details ? ` Detalhes da análise/motivo: "${body.intervention_details}".` : ''} INICIA tu a conversa diretamente de forma proativa, confrontando o atleta com os dados, a carga acumulada ou o desvio do plano, e pergunta-lhe como se está a sentir e se quer que adaptemos o plano.`
+            ? buildInterventionStartTurn(body.intervention_details ?? null, profile?.coach_intervention_reason ?? null)
             : body.is_plan_checkin
               ? planCheckinPrompt
               : proactiveTrigger
