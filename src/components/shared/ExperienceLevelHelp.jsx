@@ -5,6 +5,7 @@ import { elevationRatioLabel } from '../../utils/run';
 import { categorizeDistance, categorizeElevationRatio, MIN_PREP_WEEKS, MIN_VOLUME_KM } from '@formulas/vocabulary.ts';
 import { TIME_ON_FEET_FLOORS_PCT, ELEVATION_FLOORS_PCT } from '@formulas/raceLevelTriage.ts';
 import PremiumModal from './PremiumModal';
+import { formatHoursMinutes } from '../Run/RaceLevelSuggestion';
 
 const LEVEL_KEYS = ['iniciante', 'basico', 'medio', 'avancado'];
 
@@ -12,13 +13,42 @@ const DISTANCE_CATEGORY_LABELS = {
   '5k': '5 km', '10k': '10 km', meia: 'Meia Maratona', maratona: 'Maratona', ultra: 'Ultra',
 };
 
-// "70-90%", "90-110%"... até ao último nível, que fica aberto ("≥140%") —
-// mesma convenção de fronteira de categorizeElevationRatio: cada banda
-// fechada no piso próprio, aberta no piso seguinte.
-function pctRangeLabel(floors, key) {
+// Trail sem números da prova: a banda dita por palavras. Os limites são os
+// de TIME_ON_FEET_FLOORS_PCT / ELEVATION_FLOORS_PCT, arredondados à fração
+// que se entende de cabeça.
+const TIME_WORDS = {
+  iniciante: 'um pouco menos do que a prova',
+  basico: 'mais ou menos o tempo da prova',
+  medio: 'um pouco mais do que a prova',
+  avancado: 'quase uma vez e meia a prova, ou mais',
+};
+const CLIMB_WORDS = {
+  iniciante: 'entre ⅓ e metade da subida da prova',
+  basico: 'mais de metade da subida da prova',
+  medio: 'quase toda a subida da prova',
+  avancado: 'toda a subida da prova, ou mais',
+};
+
+const roundTo = (v, step) => Math.round(v / step) * step;
+
+// Com números da prova: o intervalo do nível em horas / metros, a partir dos
+// MESMOS pisos que classificam — nunca uma cópia que possa divergir.
+function bandRange(floors, key, total, step, fmt) {
   const idx = LEVEL_KEYS.indexOf(key);
   const nextKey = LEVEL_KEYS[idx + 1];
-  return nextKey ? `${floors[key]}-${floors[nextKey]}%` : `≥${floors[key]}%`;
+  const lo = fmt(roundTo((total * floors[key]) / 100, step));
+  if (!nextKey) return `${lo} ou mais`;
+  return `${lo} a ${fmt(roundTo((total * floors[nextKey]) / 100, step))}`;
+}
+
+function timeCell(key, raceSeconds) {
+  if (!raceSeconds) return TIME_WORDS[key];
+  return bandRange(TIME_ON_FEET_FLOORS_PCT, key, raceSeconds, 300, formatHoursMinutes);
+}
+
+function climbCell(key, raceElevation) {
+  if (!raceElevation) return CLIMB_WORDS[key];
+  return bandRange(ELEVATION_FLOORS_PCT, key, raceElevation, 10, (m) => `${m} m`);
 }
 
 /* Ajuda para escolher o nível de corredor, partilhada pelos dois sítios onde
@@ -35,7 +65,8 @@ function pctRangeLabel(floors, key) {
    `context='prova'`: tabela por categoria, construída a partir das MESMAS
    tabelas que classificam (MIN_PREP_WEEKS/MIN_VOLUME_KM em estrada,
    TIME_ON_FEET_FLOORS_PCT/ELEVATION_FLOORS_PCT em trail) — nunca uma cópia
-   que possa divergir. Precisa de `raceType` e `distanceKm`; `elevationGainM`
+   que possa divergir. Em trail, em linguagem simples: horas e metros desta
+   prova quando há `predictedSeconds`/D+, palavras quando não há. Precisa de `raceType` e `distanceKm`; `elevationGainM`
    só importa em trail. Ver RaceLevelSuggestion.jsx para a proposta MEDIDA
    a partir do histórico — este componente é só a tabela de referência.
 
@@ -60,6 +91,9 @@ export default function ExperienceLevelHelp({
   raceType,
   distanceKm,
   elevationGainM,
+  // Tempo previsto para a prova (predictRaceSeconds) — em trail, a tabela
+  // mostra horas em vez de "x% do previsto". Sem ele, palavras.
+  predictedSeconds,
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dark = variant === 'dark';
@@ -71,6 +105,8 @@ export default function ExperienceLevelHelp({
   const isTrail = isProva && raceType === 'trail';
   const distCat = isProva ? categorizeDistance(distanceKm) : null;
   const elevCat = isTrail ? categorizeElevationRatio(distanceKm, elevationGainM) : null;
+  const raceSeconds = isTrail && predictedSeconds > 0 ? predictedSeconds : null;
+  const raceElevation = isTrail && elevationGainM > 0 ? Math.round(elevationGainM) : null;
 
   return (
     <div>
@@ -123,39 +159,56 @@ export default function ExperienceLevelHelp({
 
           {isProva ? (
             <div>
-              {isTrail && elevCat && (
-                <p className="text-[11px] text-[var(--text-3)] mb-2">
-                  Esta prova cai na banda <strong>{elevationRatioLabel(elevCat)}</strong>
-                  {' '}({Math.round(elevationGainM / distanceKm)} m de D+ por km).
-                </p>
-              )}
-
               {isTrail ? (
                 <>
+                  {/* Linguagem simples (pedido de 2026-09-23): nada de "Tempo
+                      em Pé", "D+" nem percentagens. Sempre que há dados, os
+                      limites mostram-se em horas e metros para ESTA prova. */}
+                  <p className="text-[11px] leading-relaxed text-[var(--text-2)] mb-1.5">
+                    Em trail, o nível mede-se por quanto a tua semana de treino já se parece com esta prova:
+                  </p>
+                  <ul className="text-[11px] leading-relaxed text-[var(--text-3)] space-y-1 mb-2">
+                    <li>
+                      <strong className="text-[var(--text-2)]">Tempo a correr</strong> — as horas que corres numa
+                      semana, comparadas com o que deves demorar na prova
+                      {raceSeconds ? <> (cerca de <strong>{formatHoursMinutes(raceSeconds)}</strong>)</> : null}.
+                    </li>
+                    <li>
+                      <strong className="text-[var(--text-2)]">Subida</strong> — os metros que sobes numa semana,
+                      comparados com tudo o que a prova sobe
+                      {raceElevation ? <> (<strong>{raceElevation} m</strong>)</> : null}.
+                    </li>
+                  </ul>
+                  {elevCat && (
+                    <p className="text-[11px] text-[var(--text-3)] mb-2">
+                      Terreno desta prova: <strong>{elevationRatioLabel(elevCat)}</strong>
+                      {' '}— cerca de {Math.round(elevationGainM / distanceKm)} m a subir por cada km.
+                    </p>
+                  )}
                   <div className="overflow-x-auto -mx-1 px-1">
                     <table className="w-full text-[11px] border-collapse">
                       <thead>
                         <tr className="text-[var(--text-3)] text-left">
                           <th className="pb-1.5 font-semibold">Nível</th>
-                          <th className="pb-1.5 font-semibold">Tempo em Pé/semana</th>
-                          <th className="pb-1.5 font-semibold">D+/semana</th>
+                          <th className="pb-1.5 font-semibold">Corres por semana</th>
+                          <th className="pb-1.5 font-semibold">Sobes por semana</th>
                         </tr>
                       </thead>
                       <tbody>
                         {LEVEL_KEYS.map((lvl) => (
                           <tr key={lvl} className="border-t border-[var(--border-faint)]">
                             <td className="py-1.5 font-semibold text-[var(--text-2)] whitespace-nowrap">{experienceLevelLabel(lvl)}</td>
-                            <td className="py-1.5 text-[var(--text-3)]">{pctRangeLabel(TIME_ON_FEET_FLOORS_PCT, lvl)} do previsto</td>
-                            <td className="py-1.5 text-[var(--text-3)]">{pctRangeLabel(ELEVATION_FLOORS_PCT, lvl)} do D+ da prova</td>
+                            <td className="py-1.5 text-[var(--text-3)]">{timeCell(lvl, raceSeconds)}</td>
+                            <td className="py-1.5 text-[var(--text-3)]">{climbCell(lvl, raceElevation)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                   <p className="text-[11px] leading-relaxed text-[var(--text-3)] mt-3">
-                    Percentagens relativas a ESTA prova (tempo previsto e D+), não valores absolutos —
-                    quanto mais perto de 100%, mais o teu treino recente se parece com o esforço da prova.
-                    As duas colunas são independentes: o teu nível é o mais baixo das duas.
+                    Conta uma semana boa das tuas últimas quatro — não a melhor, para uma semana fora do normal
+                    não enganar. Se o tempo te põe num nível e a subida noutro, fica o mais baixo: é o mais seguro.
+                    Abaixo do Iniciante, esta prova ainda é cedo demais.
                   </p>
                 </>
               ) : distCat ? (

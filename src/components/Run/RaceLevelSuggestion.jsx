@@ -22,7 +22,7 @@ function levelLabel(band) {
 
 // Apresentação casual ("1h40", "45min") — formatDuration (run.js) dá
 // H:MM:SS, pensado para tempos-alvo de prova, não para "quanto treinaste".
-function formatHoursMinutes(totalSeconds) {
+export function formatHoursMinutes(totalSeconds) {
   if (!totalSeconds || totalSeconds <= 0) return null;
   const totalMinutes = Math.round(totalSeconds / 60);
   const h = Math.floor(totalMinutes / 60);
@@ -46,6 +46,20 @@ function formatHoursMinutes(totalSeconds) {
  * tom dela — é um cálculo, com o ícone de cálculo, e diz que o é. O que a
  * Carol acha da prova diz-o ela no hub e no chat.
  */
+/** Tempo previsto para a prova, com as mesmas entradas que a sugestão de
+ *  nível usa — a ajuda dos níveis de trail mostra-o em horas em vez de
+ *  percentagens. null sem distância ou sem corridas registadas. */
+export function predictRaceSeconds({ raceType, distanceKm, elevationGainM, declaredLevel, profile, runs }) {
+  if (!(distanceKm > 0)) return null;
+  const prediction = getRacePrediction({
+    distance_km: distanceKm,
+    elevation_gain_m: raceType === 'trail' ? elevationGainM : null,
+    race_type: raceType,
+    experience_level: declaredLevel || undefined,
+  }, profile, runs || []);
+  return prediction?.predictedSeconds > 0 ? prediction.predictedSeconds : null;
+}
+
 const NOTA_FORMULA = 'Cálculo a partir dos teus últimos treinos, não uma opinião da Carol.';
 export default function RaceLevelSuggestion({
   raceType,
@@ -65,14 +79,8 @@ export default function RaceLevelSuggestion({
     // declarado nesta prova) — não a duplicamos com outra regra só aqui,
     // ou este ecrã voltava a divergir de todos os outros (ver o aviso no
     // próprio comentário de getRacePrediction em biEngine.js).
-    const raceForPrediction = {
-      distance_km: distanceKm,
-      elevation_gain_m: raceType === 'trail' ? elevationGainM : null,
-      race_type: raceType,
-      experience_level: declaredLevel || undefined,
-    };
-    const prediction = getRacePrediction(raceForPrediction, profile, runs || []);
-    if (!(prediction?.predictedSeconds > 0)) return null; // sem corridas — nada a prever
+    const predictedSeconds = predictRaceSeconds({ raceType, distanceKm, elevationGainM, declaredLevel, profile, runs });
+    if (!predictedSeconds) return null; // sem corridas — nada a prever
 
     // runs vêm do store como linhas cruas de `runs` — o D+ vive em
     // details.elevation_gain_m (jsonb), não numa coluna própria (ver
@@ -88,7 +96,7 @@ export default function RaceLevelSuggestion({
     const triage = assessRaceLevelTriage({
       runs: flattenedRuns,
       todayISO,
-      raceTimeSecondsPrevisto: prediction.predictedSeconds,
+      raceTimeSecondsPrevisto: predictedSeconds,
       raceElevationM,
     });
 
@@ -108,10 +116,10 @@ export default function RaceLevelSuggestion({
 
   const timeStr = formatHoursMinutes(result.peakTimeOnFeetSeconds);
   const elevationStr = result.isTrail && result.raceElevationM > 0 && result.peakElevationM != null
-    ? `${Math.round(result.peakElevationM)} m D+/semana`
+    ? `sobes ${Math.round(result.peakElevationM)} m por semana`
     : null;
   const evidence = [
-    timeStr ? `longo semanal de ${timeStr}` : null,
+    timeStr ? `corres ${timeStr} por semana` : null,
     elevationStr,
   ].filter(Boolean).join(', ');
 

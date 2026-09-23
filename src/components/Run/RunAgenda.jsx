@@ -12,7 +12,7 @@ import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import RaceHubView from './RaceHubView';
-import RaceLevelSuggestion from './RaceLevelSuggestion';
+import RaceLevelSuggestion, { predictRaceSeconds } from './RaceLevelSuggestion';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
@@ -1123,6 +1123,14 @@ export default function RunAgenda({ onClose }) {
                 raceType={draft.race_type}
                 distanceKm={parseFormNumber(draft.distance_km)}
                 elevationGainM={parseFormNumber(draft.elevation_gain_m)}
+                predictedSeconds={draft.race_type === 'trail' ? predictRaceSeconds({
+                  raceType: draft.race_type,
+                  distanceKm: parseFormNumber(draft.distance_km),
+                  elevationGainM: parseFormNumber(draft.elevation_gain_m),
+                  declaredLevel: draft.experience_level,
+                  profile,
+                  runs,
+                }) : null}
                 fieldId="ra-nivel-para-esta-prova"
               >
                 <select
