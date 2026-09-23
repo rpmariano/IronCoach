@@ -34,12 +34,19 @@ import { shortDisplayName } from '../../utils/percentile';
 
 const CARD_SECUNDARIO = { background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', borderRadius: 18 };
 
+/* A versão do texto deste ecrã, gravada com cada decisão no livro de
+   consentimentos (privacy_consents.policy_version). Sobe sempre que o texto
+   que o atleta lê mudar. v2 (2026-09-22, bug #43): o mesmo conteúdo em
+   linguagem simples — "denominador", "índice de execução" e "segmento" não
+   se percebiam. */
+export const TABELAS_POLICY_VERSION = 'v2';
+
 /** O que passa a ver-se com o consentimento das tabelas. */
 const PASSA_A_VER_SE = [
   'O teu nome abreviado (por exemplo, "Rui M.")',
   'O teu escalão etário',
   'O teu nível e a modalidade que preparas',
-  'A métrica da tabela — quanto do plano cumpriste',
+  'Quanto do teu plano cumpriste',
 ];
 
 /** O que NUNCA sai, com consentimento ou sem ele. */
@@ -62,7 +69,10 @@ function Interruptor({ id, titulo, descricao, checked, onChange, disabled, motiv
       htmlFor={id}
       data-testid={testId}
       className="flex items-start gap-3 w-full cursor-pointer"
-      style={{ ...CARD_SECUNDARIO, padding: 14, minHeight: 44, opacity: disabled ? 0.55 : 1, cursor: disabled ? 'default' : 'pointer' }}
+      // flexShrink 0: o pai é um flex em coluna com scroll, e o minHeight
+      // explícito tira ao cartão o min-height automático — encolhia até 44px
+      // e o texto passava por cima do cartão seguinte (bug #43).
+      style={{ ...CARD_SECUNDARIO, padding: 14, minHeight: 44, flexShrink: 0, opacity: disabled ? 0.55 : 1, cursor: disabled ? 'default' : 'pointer' }}
     >
       <input
         id={id}
@@ -108,7 +118,7 @@ export default function TabelasConsentScreen({ onClose }) {
 
   const trocar = async (kind, on) => {
     setAGravar(kind);
-    const ok = await setPrivacyConsent(kind, on);
+    const ok = await setPrivacyConsent(kind, on, { policyVersion: TABELAS_POLICY_VERSION });
     if (ok && kind === 'leaderboard' && on && !profile?.leaderboard_display_name) {
       await setLeaderboardDisplayName(shortDisplayName(profile?.display_name));
     }
@@ -143,22 +153,22 @@ export default function TabelasConsentScreen({ onClose }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-2" style={{ padding: '12px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-2 [&>*]:shrink-0" style={{ padding: '12px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
         <GlassCard radius={24} padding={16}>
           <h2 className="m-0 text-[16px] font-black" style={{ letterSpacing: 'var(--tracking-tight)', color: 'var(--text-1)' }}>
-            São duas decisões, não uma
+            Comparar-te com atletas como tu
           </h2>
           <p className="m-0 text-[12.5px] mt-1.5" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
-            Entrar na média é contar para um número de grupo, sem nome nenhum. Aparecer nas tabelas é ser visto pelo
-            nome abreviado. Podes fazer a primeira e nunca fazer a segunda — e podes desfazer qualquer uma a qualquer
-            momento.
+            São duas escolhas, separadas. A primeira põe-te a contar para a média de quem tem a tua idade e o teu
+            nível, sem o teu nome — e é assim que ficas a saber onde estás. A segunda põe o teu nome abreviado na
+            tabela. Podes escolher só a primeira, e mudar de ideias quando quiseres.
           </p>
         </GlassCard>
 
         <SectionLabel style={{ marginTop: 6 }}>O que passa a ver-se</SectionLabel>
         <div style={{ ...CARD_SECUNDARIO, padding: 14 }}>
           <p className="m-0 text-[11.5px]" style={{ color: 'var(--text-4)' }}>
-            Só com o segundo interruptor ligado, e só isto:
+            Só se escolheres aparecer na tabela, e só isto:
           </p>
           <Lista items={PASSA_A_VER_SE} cor="var(--ok)" testId="tabelas-passa-a-ver-se" />
         </div>
@@ -166,7 +176,7 @@ export default function TabelasConsentScreen({ onClose }) {
         <SectionLabel style={{ marginTop: 6 }}>O que nunca sai</SectionLabel>
         <div style={{ ...CARD_SECUNDARIO, padding: 14 }}>
           <p className="m-0 text-[11.5px]" style={{ color: 'var(--text-4)' }}>
-            Com consentimento ou sem ele, nada disto chega a ninguém:
+            Escolhas o que escolheres, nada disto é mostrado a ninguém:
           </p>
           <Lista items={NUNCA_SAI} cor="var(--text-4)" testId="tabelas-nunca-sai" />
         </div>
@@ -176,8 +186,8 @@ export default function TabelasConsentScreen({ onClose }) {
         <Interruptor
           id="consent-stats-pool"
           testId="tabelas-switch-stats-pool"
-          titulo="Entrar na média do meu escalão"
-          descricao={'O teu índice de execução do plano passa a contar para a distribuição do teu escalão. Não aparece nome nenhum nem lugar nenhum — só entras no denominador, e só em segmentos com 20 atletas ou mais.'}
+          titulo="Contar para a média do meu escalão"
+          descricao={'Quanto cumpres do teu plano passa a contar para a média de atletas da tua idade e do teu nível. Ninguém vê o teu nome nem a tua posição, e só há média em grupos com 20 atletas ou mais.'}
           checked={naMedia}
           onChange={(on) => trocar('stats_pool', on)}
           disabled={aGravar !== null}
@@ -187,31 +197,26 @@ export default function TabelasConsentScreen({ onClose }) {
           id="consent-leaderboard"
           testId="tabelas-switch-leaderboard"
           titulo="Aparecer nas tabelas com o meu nome abreviado"
-          descricao={`Passas a ser visível como "${nomeCurto}", com o escalão, o nível, a modalidade e a métrica. É uma decisão à parte da de cima: ligar a primeira não liga esta.`}
+          descricao={`Apareces na tabela como "${nomeCurto}", com o escalão, o nível, a modalidade e quanto do plano cumpriste. É uma escolha à parte: ligar a de cima não liga esta.`}
           checked={nasTabelas}
           onChange={(on) => trocar('leaderboard', on)}
           disabled={aGravar !== null || !naMedia}
-          motivo="Fica disponível depois de entrares na média — a tabela mostra a métrica, e a métrica vem de lá."
+          motivo="Primeiro tens de contar para a média — é de lá que vêm os números da tabela."
         />
 
         {naMedia && nasTabelas && (
           <Warning tone="warn" title="Se saíres da média">
-            Sair da média tira-te também das tabelas: a tabela mostra a métrica, e sem média não há métrica para mostrar.
+            Se deixares de contar para a média, sais também da tabela — sem média não há números para mostrar.
           </Warning>
         )}
 
-        <Warning tone="ok" title="O que a lei diz">
-          Isto é consentimento explícito ao abrigo do art. 9.º/2 a) do RGPD, porque a métrica se cruza com dados de
-          saúde. É voluntário, não muda nada no resto da app, e podes retirá-lo a qualquer momento. O teu nome sai
-          das tabelas na hora. Da média sais no ciclo seguinte: a distribuição já publicada não se refaz para te
-          tirar, porque refazê-la seria apontar-te — o que lá está é um agregado de 20 atletas ou mais que já não
-          identifica ninguém. Cada decisão tua fica registada com a data e a versão do texto que leste, para poderes
-          pedir-nos que a demonstremos.
+        <Warning tone="ok" title="Os teus direitos">
+          É voluntário, não muda nada no resto da app e podes desligar a qualquer momento. O teu nome sai da tabela na
+          hora. Da média sais na atualização seguinte (de 14 em 14 dias): a média já publicada não se refaz, porque é
+          um valor de grupo com 20 atletas ou mais que não te identifica. Como estes números se cruzam com dados de
+          saúde, isto é um consentimento explícito (RGPD, art. 9.º/2 a)). Guardamos a data de cada escolha tua e a versão
+          deste texto, para o podermos demonstrar se nos pedires.
         </Warning>
-
-        <p className="m-0 text-[11px] text-center" style={{ color: 'var(--text-4)' }}>
-          As distribuições publicam-se de 14 em 14 dias e nunca com menos de 20 atletas num segmento.
-        </p>
       </div>
     </div>
   );

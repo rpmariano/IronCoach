@@ -594,6 +594,12 @@ describe('Perfil — reorganização das Metas (#41)', () => {
     expect(separadorDe(screen.getByTestId('perfil-notificacoes'))).toBe('Coach');
   });
 
+  // Bug #42 (2026-09-22): "Comparar-me com o meu escalão" vive na Vitrina.
+  it('a comparação com o escalão está na Vitrina, não no Pessoal', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByTestId('perfil-privacidade-tabelas'))).toBe('Vitrina');
+  });
+
   it('Metas explica que são objetivos a afinar com a Carol e leva ao chat com a pergunta', () => {
     render(<Perfil />);
     const intro = screen.getByTestId('perfil-metas-intro');

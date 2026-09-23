@@ -87,7 +87,7 @@ export default function BadgesPorGanharSheet({ lista, onClose }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-3" style={{ padding: '14px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-3 [&>*]:shrink-0" style={{ padding: '14px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
         {porGanhar.length === 0 ? (
           <p className="m-0 text-[12.5px] leading-relaxed" data-testid="badges-por-ganhar-vazio" style={{ color: 'var(--text-3)' }}>
             Já ganhaste todos os badges que existem.

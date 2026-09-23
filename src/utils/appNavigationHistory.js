@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAppStore } from '../store';
+import { closeTopOverlay } from '../components/shared/Sheet';
 
 function sameScreen(a, b) {
   return a.tab === b.tab && a.editing === b.editing;
@@ -66,6 +67,13 @@ export function useAppNavigationHistory({ activeTab, setActiveTab, isCreatingOrE
 
   useEffect(() => {
     const handlePopState = () => {
+      // Uma persiana, diálogo ou ecrã inteiro aberto (a pilha do Escape,
+      // shared/Sheet.jsx) fecha-se primeiro, e o ecrã por baixo fica onde
+      // estava — o mesmo que as boas-vindas logo abaixo.
+      if (closeTopOverlay()) {
+        window.history.pushState({ ironcoachNav: true }, '');
+        return;
+      }
       const overlay = overlayRef.current;
       if (overlay.open && overlay.close) {
         overlay.close();

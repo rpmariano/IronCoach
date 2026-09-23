@@ -177,7 +177,7 @@ export default function BadgeDetailSheet({ badge, onClose, onNavigate }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-3" style={{ padding: '14px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-3 [&>*]:shrink-0" style={{ padding: '14px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
         {/* O anel em grande — aqui o glifo já cabe ao lado do número. */}
         <div className="flex flex-col items-center gap-2">
           <BadgeRing badge={badge} size={132} />

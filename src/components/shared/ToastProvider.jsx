@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import './Toast.css';
 
 const ToastContext = createContext({
@@ -18,30 +18,41 @@ export const useToast = () => useContext(ToastContext);
    baixo, e o mais antigo sai quando um dos visíveis for dispensado. */
 export const TOASTS_VISIVEIS = 4;
 
+/* Quanto tempo cada aviso fica à vista. O erro fica o dobro: era o caso que
+   mais doía quando saía antes de ser lido. */
+export const TOAST_MS = { success: 3000, error: 6000 };
+
 /* Os avisos curtos da app — "+250 ml de água", "Guardado", "Não consegui
    registar". São 84 sítios a chamar `showToast`.
 
-   Desapareciam sozinhos ao fim de 3 s. Desde 2026-09-21 esperam pelo atleta:
-   «todas as mensagens que têm este caráter temporário devem deixar de o ter;
-   quero que só desapareçam mediante ação do utilizador». Um aviso de erro que
-   se apagava em 3 s era o caso que mais doía — quem não estivesse a olhar
-   para o ecrã no instante certo nunca soube que o registo tinha falhado.
-
-   Tirar o temporizador obrigou a dar-lhes uma saída: não tinham nenhuma.
-   Cada aviso passa a ser um botão — toca-se nele e sai —, com o × à direita
-   a dizer que é isso que acontece. A partir do terceiro empilhado aparece
-   "Limpar tudo", porque tocar num de cada vez começa a ser trabalho. */
+   Saem sozinhos (TOAST_MS). Entre 2026-09-21 e 2026-09-22 esperaram pelo
+   toque do atleta, junto com as confirmações e os parabéns; o bug #44 pediu
+   os avisos curtos de volta ao desenho original — os diálogos (parabéns,
+   confirmação de registo) continuam a esperar. Tocar num aviso continua a
+   fechá-lo antes do tempo, e "Limpar tudo" aparece se se empilharem. */
 export const ToastProvider = ({ children }) => {
   const [toasts, setToasts] = useState([]);
+  const timers = useRef(new Map());
 
   const dismiss = useCallback((id) => {
+    clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   const showToast = useCallback((message, type = 'success') => {
     const id = crypto.randomUUID();
     setToasts((prev) => [...prev, { id, message, type }]);
+    timers.current.set(id, setTimeout(() => dismiss(id), TOAST_MS[type] ?? TOAST_MS.success));
+  }, [dismiss]);
+
+  const clearAll = useCallback(() => {
+    timers.current.forEach(clearTimeout);
+    timers.current.clear();
+    setToasts([]);
   }, []);
+
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
 
   const visiveis = toasts.slice(-TOASTS_VISIVEIS);
   const escondidos = toasts.length - visiveis.length;
@@ -61,7 +72,7 @@ export const ToastProvider = ({ children }) => {
             type="button"
             className="toast-clear-all"
             data-testid="toast-clear-all"
-            onClick={() => setToasts([])}
+            onClick={clearAll}
           >
             Limpar tudo ({toasts.length})
           </button>

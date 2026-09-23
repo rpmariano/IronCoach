@@ -44,13 +44,13 @@ describe('TabelasConsentScreen', () => {
     montar();
     const tabelas = screen.getByTestId('tabelas-switch-leaderboard').querySelector('input');
     expect(tabelas.disabled).toBe(true);
-    expect(screen.getByTestId('tabelas-switch-leaderboard')).toHaveTextContent('Fica disponível depois de entrares na média');
+    expect(screen.getByTestId('tabelas-switch-leaderboard')).toHaveTextContent('Primeiro tens de contar para a média');
   });
 
   it('entrar na média não liga as tabelas: são duas decisões', async () => {
     montar();
     fireEvent.click(screen.getByTestId('tabelas-switch-stats-pool').querySelector('input'));
-    await waitFor(() => expect(setPrivacyConsent).toHaveBeenCalledWith('stats_pool', true));
+    await waitFor(() => expect(setPrivacyConsent).toHaveBeenCalledWith('stats_pool', true, { policyVersion: 'v2' }));
     expect(setPrivacyConsent).toHaveBeenCalledTimes(1);
     expect(setPrivacyConsent).not.toHaveBeenCalledWith('leaderboard', expect.anything());
   });
@@ -69,7 +69,7 @@ describe('TabelasConsentScreen', () => {
       profile: perfil({ stats_pool_consent_at: '2026-09-20T10:00:00Z', leaderboard_consent_at: '2026-09-20T10:05:00Z' }),
     });
     montar();
-    expect(screen.getByTestId('tabelas-consent-screen')).toHaveTextContent('Sair da média tira-te também das tabelas');
+    expect(screen.getByTestId('tabelas-consent-screen')).toHaveTextContent('sais também da tabela');
   });
 
   it('diz o que se vê, o que nunca sai, e o nome abreviado que passaria a aparecer', () => {
@@ -86,7 +86,7 @@ describe('TabelasConsentScreen', () => {
     montar();
     const ecra = screen.getByTestId('tabelas-consent-screen');
     expect(ecra).toHaveTextContent('art. 9.º/2 a)');
-    expect(ecra).toHaveTextContent('podes retirá-lo a qualquer momento');
+    expect(ecra).toHaveTextContent('podes desligar a qualquer momento');
   });
 
   /* O ecrã tem de dizer que sair da média só vale no ciclo seguinte. A versão
@@ -97,8 +97,18 @@ describe('TabelasConsentScreen', () => {
   it('diz a verdade sobre quando a saída da média produz efeito', () => {
     montar();
     const ecra = screen.getByTestId('tabelas-consent-screen');
-    expect(ecra).toHaveTextContent('O teu nome sai das tabelas na hora');
-    expect(ecra).toHaveTextContent('Da média sais no ciclo seguinte');
+    expect(ecra).toHaveTextContent('O teu nome sai da tabela na hora');
+    expect(ecra).toHaveTextContent('Da média sais na atualização seguinte');
     expect(ecra).not.toHaveTextContent('efeito imediato');
+  });
+
+  /* Bug #43 (2026-09-22): o cartão do interruptor tem minHeight explícito e
+     vive num flex em coluna com scroll — sem flexShrink 0 encolhia até 44px
+     e o texto passava por cima do cartão seguinte ("ecrã partido no final"). */
+  it('os cartões dos interruptores não encolhem', () => {
+    useAppStore.setState({ profile: { id: 'u1', display_name: 'Rui Mariano' } });
+    render(<TabelasConsentScreen onClose={() => {}} />);
+    expect(screen.getByTestId('tabelas-switch-stats-pool')).toHaveStyle({ flexShrink: '0' });
+    expect(screen.getByTestId('tabelas-switch-leaderboard')).toHaveStyle({ flexShrink: '0' });
   });
 });

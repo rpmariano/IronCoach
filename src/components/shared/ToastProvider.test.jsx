@@ -1,12 +1,11 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
-import { ToastProvider, useToast, TOASTS_VISIVEIS } from './ToastProvider';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { ToastProvider, useToast, TOASTS_VISIVEIS, TOAST_MS } from './ToastProvider';
 
-/* Os avisos curtos da app. Este ficheiro não existia: o ToastProvider eram
-   12 linhas sem estado e um setTimeout. Desde 2026-09-21 não saem sozinhos
-   («só desaparecem mediante ação do utilizador»), e passou a haver dispensa
-   individual, "Limpar tudo" e uma região viva — tudo isso precisa de rede. */
+/* Os avisos curtos da app. Saem sozinhos (bug #44, 2026-09-22: "devem
+   desaparecer sozinhas, como estava originalmente desenhado"); o toque, o
+   "Limpar tudo" e a região viva ficaram do período em que esperavam. */
 
 function Disparador({ quantos = 1, tipo = 'success' }) {
   const { showToast } = useToast();
@@ -26,14 +25,27 @@ const montar = (props) => render(
 const disparar = () => fireEvent.click(screen.getByRole('button', { name: 'disparar' }));
 
 describe('ToastProvider', () => {
-  it('o aviso fica no ecrã — não sai com o tempo', async () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('o aviso sai sozinho ao fim de 3 s', () => {
+    vi.useFakeTimers();
     montar();
     disparar();
     expect(screen.getByTestId('toast')).toHaveTextContent('Aviso 1');
-
-    // Tempo de sobra para os 3 s de antes.
-    await new Promise((r) => setTimeout(r, 200));
+    act(() => { vi.advanceTimersByTime(TOAST_MS.success - 1); });
     expect(screen.getByTestId('toast')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+  });
+
+  it('um erro fica o dobro do tempo, para dar para o ler', () => {
+    vi.useFakeTimers();
+    montar({ tipo: 'error' });
+    disparar();
+    act(() => { vi.advanceTimersByTime(TOAST_MS.success); });
+    expect(screen.getByTestId('toast')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(TOAST_MS.error - TOAST_MS.success); });
+    expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
   });
 
   it('sai ao toque', () => {

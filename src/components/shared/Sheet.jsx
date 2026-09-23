@@ -54,6 +54,17 @@ function pushCloseStack(requestClose) {
   };
 }
 
+/** Fecha o que está por cima de tudo (a última persiana, diálogo ou ecrã
+ *  inteiro a abrir). Devolve false se não houver nada aberto. O "voltar" do
+ *  telemóvel passa por aqui antes de mudar de separador — sem isto, voltar
+ *  de "Entrar nas tabelas" saía do Perfil para o Início (bug #43). */
+export function closeTopOverlay() {
+  const top = closeStack[closeStack.length - 1];
+  if (!top) return false;
+  top();
+  return true;
+}
+
 /* Para quem não é Sheet/Dialog mas ainda assim fecha com Escape e pode
    ficar por cima ou por baixo de um dos dois — os ecrãs inteiros
    (RaceMuralSheet, RaceMemoriesSheet, OndeEstasScreen). Sem entrada/

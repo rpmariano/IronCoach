@@ -244,7 +244,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-2" style={{ padding: '12px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-2 [&>*]:shrink-0" style={{ padding: '12px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
         <SubNav
           items={METRICAS}
           activeIndex={Math.max(0, METRICAS.findIndex((m) => m.key === metric))}
