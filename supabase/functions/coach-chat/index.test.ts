@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -3908,5 +3908,37 @@ Deno.test("arranque da intervenção: objetivos convida; plano confronta; a etiq
   const plano = buildInterventionStartTurn('Motivo/Análise: "Falhou 3 treinos."', "Falhou 3 treinos.");
   assertStringIncludes(plano, "confrontando");
   assertStringIncludes(plano, "Falhou 3 treinos.");
+});
+
+// "Não quero objetivos agora" no chat tem de travar a próxima pesagem: fica
+// uma proposta recusada e vazia (revisão pré-deploy do #41, M1).
+function makeResolveSb(reason: string | null) {
+  // deno-lint-ignore no-explicit-any
+  const calls = { inserts: [] as any[], updates: [] as any[] };
+  const sb = {
+    from: (table: string) => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { coach_intervention_reason: reason } }) }) }),
+      // deno-lint-ignore no-explicit-any
+      update: (row: any) => { calls.updates.push({ table, row }); return { eq: () => Promise.resolve({ error: null }) }; },
+      // deno-lint-ignore no-explicit-any
+      insert: (row: any) => { calls.inserts.push({ table, row }); return Promise.resolve({ error: null }); },
+    }),
+  };
+  return { sb, calls };
+}
+
+Deno.test("resolve_intervention: recusar objetivos no chat deixa a marca da recusa", async () => {
+  const { sb, calls } = makeResolveSb("[objetivos] O peso-alvo já foi atingido.");
+  await runResolveIntervention(sb, "u1", { action_taken: "atleta_ignorou" });
+  assertEquals(calls.inserts.length, 1);
+  assertEquals(calls.inserts[0].table, "coach_goal_proposals");
+  assertEquals(calls.inserts[0].row.status, "recusado");
+});
+
+Deno.test("resolve_intervention: numa intervenção de plano não há marca nenhuma", async () => {
+  const { sb, calls } = makeResolveSb("Falhou 3 treinos.");
+  await runResolveIntervention(sb, "u1", { action_taken: "atleta_ignorou" });
+  assertEquals(calls.inserts.length, 0);
+  assertEquals(calls.updates.length, 1);
 });
 

@@ -413,6 +413,19 @@ leva a etiqueta `[objetivos]` (`_shared/formulas/goalsIntervention.ts`): o
 coach-chat conduz uma conversa de convite em vez da de desvio ao plano, e a
 app fecha a intervenção quando o atleta aceita ou recusa a proposta.
 
+Regras que evitam chamar o atleta em repetição:
+- "Rever" só vem da avaliação **mais recente** e com **≤ 7 dias** (a mesma
+  régua do peso do perfil). Faltarem objetivos não depende disto.
+- Nunca "rever" nos **14 dias** a seguir a uma proposta de objetivos (aceite,
+  recusada ou por decidir). Dizer "agora não" no chat (`atleta_ignorou`) ou
+  dispensar o aviso no Início grava uma proposta `recusado` vazia só para
+  contar nesta espera — não aparece em lado nenhum.
+- O motivo antigo "faltam objetivos", sem etiqueta (anterior a 2026-09-22),
+  também conta como conversa de objetivos.
+- A app só fecha a intervenção se o motivo lido no servidor ainda for de
+  objetivos, com um update condicionado a esse motivo: um desvio ao plano
+  registado entretanto nunca é apagado.
+
 ### Coach
 
 Ferramenta `update_goals` (nasceu como `update_nutrition_goals`). Nunca

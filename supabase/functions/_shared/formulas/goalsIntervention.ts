@@ -23,6 +23,17 @@ export function isGoalsIntervention(reason: string | null | undefined): boolean 
     (reason.startsWith(GOALS_INTERVENTION_TAG) || reason.startsWith(LEGACY_MISSING_GOALS_PREFIX));
 }
 
+/* Quando o atleta diz que não quer objetivos agora (no chat, ou dispensando o
+   aviso no Início), fica uma proposta 'recusado' sem valores. Não aparece em
+   lado nenhum — só se leem as 'proposto' — mas entra na espera de 14 dias
+   do analyze-body, que conta propostas: sem ela, quem recusava pela conversa
+   era chamado outra vez na pesagem seguinte (revisão pré-deploy do #41). */
+export const GOALS_DECLINED_RATIONALE = "O atleta preferiu não definir nem rever objetivos agora.";
+
+export function goalsDeclinedMarker(userId: string) {
+  return { user_id: userId, status: "recusado", goals: {}, rationale: GOALS_DECLINED_RATIONALE };
+}
+
 /** Não há objetivos definidos (todos em falta numa família). */
 export function missingGoalsReason(emFalta: string): string {
   return `${GOALS_INTERVENTION_TAG} O atleta acabou de registar uma avaliação corporal e ainda não tem ` +

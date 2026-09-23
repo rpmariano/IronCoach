@@ -22,6 +22,7 @@ import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
 import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
+import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -277,6 +278,13 @@ export default function Home() {
       const { supabase } = await import('../../lib/supabase');
       const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null }).eq('id', profile.id);
       if (error) throw error;
+      // Dispensar um convite para objetivos é dizer "agora não": fica
+      // registado para a Carol não voltar a chamar na próxima pesagem
+      // (espera de 14 dias, ver goalsDeclinedMarker).
+      if (isGoalsIntervention(profile.coach_intervention_reason)) {
+        const { error: markErr } = await supabase.from('coach_goal_proposals').insert(goalsDeclinedMarker(profile.id));
+        if (markErr) console.warn('Falha a registar a recusa de objetivos:', markErr);
+      }
       setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
       logImpressionDismissed({ kind: 'alert', key: 'assuntos', title: 'A Carol precisa de falar contigo' });
       setShowDismiss(false);

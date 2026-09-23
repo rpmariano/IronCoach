@@ -205,15 +205,16 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
        fazer recuar o peso — nem pedir para rever objetivos com dados velhos. */
     let ehAAtual = false;
     if (recente) {
-      const { data: maisRecente } = await sb
+      const { data: maisRecente, error: erroMaisRecente } = await sb
         .from("body_assessments")
         .select("date")
         .eq("user_id", userId)
         .order("date", { ascending: false })
         .limit(1)
         .maybeSingle();
+      // Sem conseguir confirmar que é a mais recente, não se trata como tal.
       const limite = maisRecente?.date ? String(maisRecente.date).slice(0, 10) : null;
-      ehAAtual = !limite || String(assessment.date).slice(0, 10) >= limite;
+      ehAAtual = !erroMaisRecente && (!limite || String(assessment.date).slice(0, 10) >= limite);
     }
     if (Number.isFinite(peso) && peso > 0 && ehAAtual) {
       patch.weight_kg = peso;

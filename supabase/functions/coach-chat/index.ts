@@ -25,7 +25,7 @@ import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL } from "../_shared/carolTone.ts";
-import { GOALS_INTERVENTION_TAG, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
+import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
@@ -3166,6 +3166,11 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
     return "Erro: action_taken tem de ser 'plano_ajustado', 'atleta_ignorou' ou 'falso_positivo'. A intervenção não foi resolvida.";
   }
 
+  // Numa conversa sobre objetivos, "não quero agora" fica registado para a
+  // espera de 14 dias do analyze-body (ver goalsDeclinedMarker).
+  const { data: current } = await sb.from("profiles").select("coach_intervention_reason").eq("id", userId).maybeSingle();
+  const eraDeObjetivos = isGoalsIntervention(current?.coach_intervention_reason);
+
   const { error } = await sb
     .from("profiles")
     .update({ 
@@ -3176,6 +3181,11 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
 
   if (error) {
     return `Erro ao resolver a intervenção: ${error.message}`;
+  }
+
+  if (eraDeObjetivos && actionTaken === "atleta_ignorou") {
+    const { error: markErr } = await sb.from("coach_goal_proposals").insert(goalsDeclinedMarker(userId));
+    if (markErr) console.warn("resolve_intervention: falha a registar a recusa de objetivos:", markErr);
   }
 
   return `Intervenção marcada como resolvida com motivo: ${actionTaken}. O botão flutuante de alerta na homepage vai desaparecer.`;

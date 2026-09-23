@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
    As intervenções de desvio ao plano não se tocam: essas fecham-se no chat.
    A decisão lê o motivo no servidor, não no store (revisão pré-deploy). */
 
-const db = { profile: null, updates: [] };
+const db = { profile: null, updates: [], rowsMatched: 1 };
 vi.mock('../lib/supabase', () => ({
   supabase: {
     from: (table) => ({
@@ -13,7 +13,11 @@ vi.mock('../lib/supabase', () => ({
         const filters = {};
         const chain = {
           eq: (col, val) => { filters[col] = val; return chain; },
-          then: (resolve) => { db.updates.push({ table, row, filters }); resolve({ error: null }); },
+          select: () => chain,
+          then: (resolve) => {
+            db.updates.push({ table, row, filters });
+            resolve({ data: Array.from({ length: db.rowsMatched }, () => ({ id: 'u1' })), error: null });
+          },
         };
         return chain;
       },
@@ -32,6 +36,7 @@ describe('respondToGoalProposal — fecha a conversa sobre objetivos', () => {
   beforeEach(() => {
     db.updates.length = 0;
     db.profile = null;
+    db.rowsMatched = 1;
   });
 
   // `local` é o que o store julga saber; `servidor` é o que está na BD.
@@ -74,5 +79,12 @@ describe('respondToGoalProposal — fecha a conversa sobre objetivos', () => {
     await useAppStore.getState().respondToGoalProposal('gp1', false);
     expect(resolucoes()).toHaveLength(0);
     expect(useAppStore.getState().profile.coach_intervention_reason).toBe('Falhou 3 treinos seguidos.');
+  });
+
+  it('se o motivo mudou entre a leitura e a escrita (0 linhas), o store não se dá por resolvido', async () => {
+    cenario({ local: obj(), servidor: obj() });
+    db.rowsMatched = 0;
+    await useAppStore.getState().respondToGoalProposal('gp1', false);
+    expect(useAppStore.getState().profile.coach_intervention_status).toBe('needed');
   });
 });

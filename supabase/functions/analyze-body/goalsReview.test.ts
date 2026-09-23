@@ -1,6 +1,6 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { goalsInterventionFor, goalsReviewSection, parseGoalsReview, parseManualSummary } from "./goalsReview.ts";
-import { GOALS_INTERVENTION_TAG, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
+import { GOALS_DECLINED_RATIONALE, GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
 
 // Bug #41 (2026-09-22): a Carol chama o atleta para definir objetivos — e
 // volta a chamar sempre que uma avaliação mostre que deviam mudar.
@@ -71,3 +71,8 @@ Deno.test("goalsInterventionFor — uma intervenção pendente não é substitu�
     assertEquals(goalsInterventionFor({ coach_intervention_status: status }, null), null);
   }
 });
+
+Deno.test("goalsDeclinedMarker — uma proposta recusada e vazia, só para a espera de 14 dias", () => {
+  assertEquals(goalsDeclinedMarker("u1"), { user_id: "u1", status: "recusado", goals: {}, rationale: GOALS_DECLINED_RATIONALE });
+});
+

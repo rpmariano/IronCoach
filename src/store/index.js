@@ -466,13 +466,16 @@ export const useAppStore = create((set, get) => ({
       if (fresh && ['needed', 'in_progress'].includes(fresh.coach_intervention_status)
         && isGoalsIntervention(fresh.coach_intervention_reason)) {
         const resolved = { coach_intervention_status: 'resolved', coach_intervention_reason: null };
-        const { error: resolveError } = await supabase
+        const { data: rows, error: resolveError } = await supabase
           .from('profiles')
           .update(resolved)
           .eq('id', profileId)
-          .eq('coach_intervention_reason', fresh.coach_intervention_reason);
+          .eq('coach_intervention_reason', fresh.coach_intervention_reason)
+          .select('id');
         if (resolveError) console.error('Error resolving goals intervention:', resolveError);
-        else set({ profile: { ...get().profile, ...resolved } });
+        // Nenhuma linha: o motivo mudou entre a leitura e a escrita — o
+        // servidor não mexeu, o store também não.
+        else if ((rows || []).length > 0) set({ profile: { ...get().profile, ...resolved } });
       } else if (fresh) {
         set({ profile: { ...get().profile, ...fresh } });
       }
