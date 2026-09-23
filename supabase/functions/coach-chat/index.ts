@@ -2101,10 +2101,11 @@ function buildReadinessPanel(
   profile: any,
   todayISO: string,
   nextRace: any | null,
+  todayCheckin: any | null = null,
 ): string | null {
   const bodyForShared = (bodyAssessments || []).map((a: any) => ({ ...a, date: a.assessed_at }));
 
-  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace);
+  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin);
   const cross = computeCrossMetrics(runs || [], gymSessions || [], bodyForShared, todayISO, "todos");
 
   if (readiness.pillars.length === 0) return null;
@@ -5536,6 +5537,14 @@ async function handler(req: Request): Promise<Response> {
       .gte("date", bodyStartISO)
       .order("date", { ascending: false })
       .limit(30);
+    // O check-in de hoje entra no Índice de Prontidão (pilar "Como
+    // acordaste", 2026-09-23) — a Carol tem de ver o mesmo número do ecrã.
+    const { data: todayCheckin, error: err_todayCheckin } = await sb
+      .from("daily_checkins")
+      .select("sleep, energy, stress, pain")
+      .eq("user_id", userId)
+      .eq("date", todayISO)
+      .maybeSingle();
     // Todas as queries de contexto acima falham "em silencio" se pedirem uma
     // coluna inexistente — ver warnIfQueryFailed. Isto poe o erro nos logs.
     warnIfQueryFailed("meals(7d)", err_weekMeals);
@@ -5545,6 +5554,7 @@ async function handler(req: Request): Promise<Response> {
     warnIfQueryFailed("shoes", err_shoeRows);
     warnIfQueryFailed("race_events", err_upcomingRaces);
     warnIfQueryFailed("body_assessments", err_bodyAssessments);
+    warnIfQueryFailed("daily_checkins(hoje)", err_todayCheckin);
 
     const bodyMetricsLine = computeBodyMetrics(
       (bodyAssessments || []) as BodyAssessmentRow[],
@@ -5576,6 +5586,7 @@ async function handler(req: Request): Promise<Response> {
       profile,
       todayISO,
       nextUpcomingRace,
+      todayCheckin ?? null,
     );
     const racePhasesPanel = buildRacePhasesPanel(recentRuns || [], nextUpcomingRace, profile, todayISO);
 

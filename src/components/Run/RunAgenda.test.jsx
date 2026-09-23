@@ -478,13 +478,13 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
       expect(comboboxes()[2].value).toBe('medio');
-      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou a subida/i)).not.toBeInTheDocument();
 
       fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } }); // 10k → meia
 
       // Não apaga uma resposta já gravada — só destaca para reconfirmação.
       expect(comboboxes()[2].value).toBe('medio');
-      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+      expect(screen.getByText(/Mudaste o tipo, a distância ou a subida/i)).toBeInTheDocument();
     });
 
     it('a EDITAR: reconfirmar o nível (reescolher no select) remove o aviso', () => {
@@ -493,12 +493,12 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
       fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
-      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+      expect(screen.getByText(/Mudaste o tipo, a distância ou a subida/i)).toBeInTheDocument();
 
       // O próprio atleta reconfirma o nível para a categoria atual (meia).
       fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
 
-      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou a subida/i)).not.toBeInTheDocument();
     });
   });
 

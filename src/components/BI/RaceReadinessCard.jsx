@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
-import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target } from 'lucide-react';
+import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target, Sunrise } from 'lucide-react';
 import { differenceInDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
+import { useAppStore } from '../../store';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { buildTrailModel } from '../../utils/homeModels';
 
@@ -14,6 +15,7 @@ const PILLAR_ICONS = {
   calories: <Utensils size={13} style={{ color: 'var(--nutrition)' }} />,
   vdot: <TrendingUp size={13} style={{ color: 'var(--run)' }} />,
   tactic: <Target size={13} style={{ color: 'var(--race)' }} />,
+  checkin: <Sunrise size={13} style={{ color: 'var(--coach)' }} />,
 };
 
 export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace }) {
@@ -26,9 +28,10 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
       .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
   }, [raceEvents, today]);
 
+  const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace),
-    [runs, meals, bodyAssessments, gymSessions, profile, nextRace]
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins),
+    [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins]
   );
 
   const daysLeft = nextRace ? differenceInDays(parseISO(nextRace.date), new Date()) : null;

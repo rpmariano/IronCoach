@@ -116,6 +116,10 @@ A migration `20260918151242_daily_checkins` já está aplicada em produção. Fo
 - **Texto do consentimento.** Passa a dizer a verdade: fica na conta, entra nas análises, que são feitas por um modelo de IA, e desligar apaga os dias marcados. Desligar pede confirmação.
 - **Data.** O servidor lê o check-in e as impressões com o dia de Lisboa, como o cliente os grava.
 - **Cartão diário.** É refeito depois de cada check-in, para refletir como o atleta acordou.
+- **2026-09-23 — o check-in passa a mexer nas coisas:**
+  - **Índice de Prontidão.** Ganha o pilar "Como acordaste", só quando há check-in de hoje. É a média do sono, da energia e da calma (stress invertido). A dor tira 5 pontos por cada ponto até 3; a partir de 4, o pilar fica no máximo em 20. O ecrã e a Carol no chat usam a mesma fórmula, `readinessIndex.ts`.
+  - **Resumo do dia.** Recebe `checkin_hoje` com o veredicto já decidido: `dia_em_baixo` quando o sono ou a energia estão em 2 ou menos, `dor_alta` quando a dor está em 4 ou mais. Com o dia em baixo, o recap baixa a intensidade do treino de hoje e diz porquê. Com dor alta, põe o impacto em pausa até falarem no chat.
+  - **Boas-vindas.** Se o check-in faltar, a tarde também o pede, com o botão que o abre. A noite não o pede, porque já não há treino do dia para ajustar.
 
 **Ficou de fora:** um ecrã de privacidade para rever ou apagar os check-ins. Hoje, a única forma de apagar dados é retirar o consentimento do ciclo, que apaga só o ciclo.
 

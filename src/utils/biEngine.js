@@ -697,13 +697,16 @@ export function detectCoachInsights(data, profile) {
 
 /**
  * Índice de Prontidão — composto de 4 pilares (sempre) + 1 pilar tático (só
- * com prova agendada). Delega em @formulas/readinessIndex.ts (T1.5) —
+ * com prova agendada) + o check-in de hoje, quando existe (`dailyCheckins`
+ * do store; só se usa a linha de hoje). Delega em @formulas/readinessIndex.ts (T1.5) —
  * única implementação, partilhada com a Carol (specs/formulas-checklist.md
  * Fase E, o gap original que motivou toda a fase).
  */
-export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null) {
+export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = []) {
   try {
-    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, todayISO(), nextRace);
+    const today = todayISO();
+    const todayCheckin = (dailyCheckins || []).find((c) => c?.date === today) || null;
+    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin);
   } catch (e) {
     return { score: 0, pillars: [], level: 'low' };
   }

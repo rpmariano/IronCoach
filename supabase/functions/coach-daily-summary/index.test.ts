@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE, hhmmOf } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
 // Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
@@ -248,4 +248,25 @@ Deno.test("hhmmOf: 'HH:MM:SS' do PostgREST vira 'HH:MM'; o resto é null", () =>
   assertEquals(hhmmOf("7:05"), "07:05");
   assertEquals(hhmmOf(null), null);
   assertEquals(hhmmOf("lixo"), null);
+});
+
+// Check-in de hoje no recap (2026-09-23): as escalas em palavras e o
+// veredicto já decidido, para o modelo não adivinhar onde fica a linha.
+Deno.test("checkinForSummary: dormiu mal → dia_em_baixo; dor ≥4 → dor_alta", () => {
+  const mal = checkinForSummary({ sleep: 2, energy: 3, stress: 4, pain: 0 });
+  assertEquals(mal?.sono, "mau");
+  assertEquals(mal?.stress, "tenso");
+  assertEquals(mal?.dia_em_baixo, true);
+  assertEquals(mal?.dor_alta, false);
+  assertEquals(mal?.dor_local, null);
+
+  const dor = checkinForSummary({ sleep: 4, energy: 4, stress: 2, pain: 5, pain_location: "joelho" });
+  assertEquals(dor?.dia_em_baixo, false);
+  assertEquals(dor?.dor_alta, true);
+  assertEquals(dor?.dor_local, "joelho");
+});
+
+Deno.test("checkinForSummary: sem check-in (ou incompleto) não há bloco", () => {
+  assertEquals(checkinForSummary(null), null);
+  assertEquals(checkinForSummary({ sleep: 4, energy: null, stress: 2 }), null);
 });

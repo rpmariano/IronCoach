@@ -563,6 +563,31 @@ export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null):
   return sharedComputeTDEE(bmr, weeklyVolumeKm, Number(weight_kg));
 }
 
+// O check-in de hoje como a Carol o lê no recap: as escalas em palavras (as
+// mesmas do cartão, src/utils/checkin.js) e o veredicto já decidido —
+// `dia_em_baixo` com sono ≤2 ou energia ≤2, `dor_alta` com dor ≥4 (o limiar
+// dos alarmes G2/G5). O modelo não tem de adivinhar onde fica a linha.
+const CHECKIN_WORDS: Record<string, string[]> = {
+  sono: ["péssimo", "mau", "razoável", "bom", "ótimo"],
+  energia: ["sem energia", "em baixo", "normal", "com energia", "cheio"],
+  stress: ["calmo", "tranquilo", "normal", "tenso", "muito tenso"],
+};
+// deno-lint-ignore no-explicit-any
+export function checkinForSummary(c: any): Record<string, unknown> | null {
+  const sleep = Number(c?.sleep), energy = Number(c?.energy), stress = Number(c?.stress);
+  if (![sleep, energy, stress].every((v) => v >= 1 && v <= 5)) return null;
+  const pain = Math.max(0, Number(c?.pain) || 0);
+  return {
+    sono: CHECKIN_WORDS.sono[sleep - 1],
+    energia: CHECKIN_WORDS.energia[energy - 1],
+    stress: CHECKIN_WORDS.stress[stress - 1],
+    dor: pain,
+    dor_local: pain > 0 ? (c?.pain_location || null) : null,
+    dia_em_baixo: sleep <= 2 || energy <= 2,
+    dor_alta: pain >= 4,
+  };
+}
+
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -609,6 +634,15 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `descanso não respeitado, proteína abaixo) diz-se com o número; um dia isolado não. ` +
     `Se existir "o_que_ja_viu_na_app", não repitas como novidade nem contradigas o que já lhe disseste ao abrir a app, ` +
     `e se lhe fizeste uma pergunta, retoma-a. Só preenches se houver histórico — caso contrário null.\n` +
+    `CHECK-IN DE HOJE — se existir "checkin_hoje", o recap abre por ele (mesmo sem histórico, aí preenches o recap):\n` +
+    `  - "dor_alta" true: não mandas fazer o treino de impacto de hoje. Dizes que, com essa dor, corrida e saltos ` +
+    `ficam em pausa até falarem no chat — sem diagnosticar.\n` +
+    `  - "dia_em_baixo" true: se "plano_treino_hoje" tiver corrida ou ginásio, baixas a intensidade de hoje — ` +
+    `séries/intervalos passam a rodagem fácil ou o treino encurta ~1/3 — e dizes PORQUÊ, com o que ele respondeu ` +
+    `("dormiste mal", "estás sem energia"). Sem treino hoje, uma frase sobre descansar bem. Nunca sermão.\n` +
+    `  - Stress "tenso"/"muito tenso" sozinho: uma frase a lembrar que o treino leve também conta, sem mexer no plano.\n` +
+    `  - Tudo bem: uma frase curta a confirmar que o dia está a favor do treino previsto. Não repitas os valores todos.\n` +
+    `  Sem "checkin_hoje", não falas de check-in nem de sono.\n` +
     `ENQUADRAMENTO OBRIGATÓRIO — lê "modo_acompanhamento" antes de escrever:\n` +
     `  - PROVA_COM_PLANO: podes falar de plano, de dias previstos e de fase de preparação.\n` +
     `  - MANUTENCAO_COM_PLANO: há plano mas NÃO há prova. Fala do plano, mas nunca de taper, ` +
@@ -736,6 +770,7 @@ Deno.serve(async (req) => {
       { data: acceptedPlans },
       { data: upcomingRaces },
       { data: bodyAssessments },
+      { data: todayCheckin },
     ] = await Promise.all([
       sb.from("profiles")
         .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, water_reminder_enabled, dietary_restrictions, dietary_notes, experience_level, weight_kg, height_cm, gender, birth_date, resting_hr_bpm")
@@ -762,6 +797,10 @@ Deno.serve(async (req) => {
       // Composição corporal: 30 dias para RED-S e tendência de peso
       sb.from("body_assessments").select("date, assessment_time, weight_kg, body_fat_pct, lean_body_mass_kg, visceral_fat, body_water_pct")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
+      // O check-in de hoje, para a regra explícita do recap (2026-09-23).
+      // Gravar um check-in regenera este resumo (saveDailyCheckin no store).
+      sb.from("daily_checkins").select("sleep, energy, stress, pain, pain_location")
+        .eq("user_id", userId).eq("date", today).maybeSingle(),
     ]);
 
     const nextRace = upcomingRaces?.[0] ?? null;
@@ -853,6 +892,8 @@ Deno.serve(async (req) => {
     if (raceWeather) (ctx as Record<string, unknown>).meteorologia_prova = raceWeather;
     if (adherence) (ctx as Record<string, unknown>).prescrito_vs_feito = adherence;
     if (impressions) (ctx as Record<string, unknown>).o_que_ja_viu_na_app = impressions;
+    const checkinHoje = checkinForSummary(todayCheckin);
+    if (checkinHoje) (ctx as Record<string, unknown>).checkin_hoje = checkinHoje;
 
     // No dia da prova o aviso é a prova (o cliente escreve-a): listar aqui
     // "Corrida (contínuo, 10 km)" era o item do plano a contradizer o dia. E

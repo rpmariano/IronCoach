@@ -108,9 +108,10 @@ export default function RaceHubView({
   const distanceLabel = raceDistanceLabel(race?.distance_km || 10);
   const info = race?.web_info || null;
 
+  const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race),
-  [runs, meals, bodyAssessments, gymSessions, profile, race]);
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins),
+  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins]);
 
   const readinessTitle = readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
 

@@ -104,6 +104,21 @@ describe('buildWelcome — o que ela diz', () => {
     expect(w.chip).toMatchObject({ label: 'Por registar' });
   });
 
+  it('tarde sem check-in: volta a pedi-lo, com o botão que o abre', () => {
+    const w = buildWelcome('tarde', { ...base, dailyCheckins: [] }, at(`${hoje}T14:00:00`));
+    expect(WELCOME_PHRASES.checkinFaltaTarde).toContain(w.lines[0]);
+    expect(w.action).toBe('checkin');
+    expect(w.cta).toBe('Fazer o check-in');
+    // A segunda linha continua a ser a da tarde.
+    expect(WELCOME_PHRASES.semRefeicoes).toContain(w.lines[1]);
+  });
+
+  it('noite sem check-in: já não o pede', () => {
+    const w = buildWelcome('noite', { ...base, dailyCheckins: [] }, at(`${hoje}T21:40:00`));
+    expect(w.action).toBeUndefined();
+    expect(w.lines.join(' ')).not.toMatch(/check-in/);
+  });
+
   it('noite: a corrida do dia, com o ritmo, e o amanhã', () => {
     const w = buildWelcome('noite', { ...base, runs: [{ date: hoje, distance_km: 8, duration_seconds: 8 * 331 }] }, at(`${hoje}T21:40:00`));
     expect(w.lines[0]).toMatch(/8 km.* a \d/);

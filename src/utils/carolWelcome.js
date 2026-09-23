@@ -164,6 +164,13 @@ export const WELCOME_PHRASES = {
     'Como dormiste? Conta-me no check-in e eu acerto o dia contigo.',
     'Antes de mais: como acordaste? Três perguntas no check-in e eu ajusto o treino.',
   ],
+  // À tarde (pedido 2026-09-23): quem saltou o da manhã, ou só abriu a app
+  // depois do meio-dia, ainda vai a tempo de acertar o resto do dia.
+  checkinFaltaTarde: [
+    'Ainda não sei como estás hoje. Três perguntas no check-in e eu acerto o resto do dia.',
+    'Falta o check-in de hoje. Diz-me como dormiste e como te sentes, e eu ajusto o que falta.',
+    'Ainda vais a tempo do check-in de hoje. Com ele, afino o treino que falta.',
+  ],
   dormiuBem: ['O check-in diz que dormiste bem.', 'Noite boa, pelo que me disseste. Hoje há margem para cumprir tudo.', 'Dormiste bem. Isso conta para o treino de hoje.'],
   dormiuMal: ['Dormiste mal, pelo check-in. Hoje não se força nada.', 'Noite fraca. Hoje o treino é para cumprir, não para puxar.', 'Com pouco sono, hoje faz-se o que está no plano, sem forçar.'],
   descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. É hoje que o treino da semana assenta.', 'Hoje não se treina. O descanso está no plano de propósito.'],
@@ -286,6 +293,12 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
   }
 
   if (variant === 'tarde') {
+    // O check-in que faltar volta a pedir-se à tarde — à noite já não, porque
+    // já não há treino do dia para ajustar.
+    if (!checkin && !isFirstDay(data, hoje)) {
+      lines.push(pick(P.checkinFaltaTarde, 'checkinFaltaTarde'));
+      action = 'checkin';
+    }
     const feita = corridasHoje[0];
     if (feita && km(feita.distance_km)) lines.push(pick(P.corridaFeita(km(feita.distance_km)), 'corridaFeita'));
     if (refeicoesHoje === 0) lines.push(pick(P.semRefeicoes, 'semRefeicoes'));

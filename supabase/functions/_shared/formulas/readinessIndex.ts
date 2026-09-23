@@ -1,5 +1,6 @@
 // Índice de Prontidão — composto de 4 pilares (sempre) + 1 pilar tático
-// (só quando há prova agendada), score 0-100.
+// (só quando há prova agendada) + 1 pilar do check-in de hoje (só quando o
+// atleta o fez), score 0-100.
 //
 // @contexto Migrado de src/utils/biEngine.js calculateReadinessIndex
 // (specs/formulas-checklist.md Fase E) — o gap original que motivou toda
@@ -19,7 +20,7 @@ import { getRecommendedPrepWeeks, resolveExperienceLevel, getRacePrediction, typ
 import type { RaceRun } from "./racePrediction.ts";
 
 export interface ReadinessPillar {
-  key: "acwr" | "ea" | "calories" | "vdot" | "tactic";
+  key: "acwr" | "ea" | "calories" | "vdot" | "tactic" | "checkin";
   label: string;
   score: number;
   desc: string;
@@ -35,6 +36,39 @@ export interface NextRaceForReadiness extends RaceForPlanning {
   date: string;
   target_pace_seconds_per_km?: number | null;
   race_priority?: string | null;
+}
+
+/** O check-in de HOJE (daily_checkins): sono/energia/stress 1-5, dor 0-10. */
+export interface CheckinForReadiness {
+  sleep?: number | null;
+  energy?: number | null;
+  stress?: number | null;
+  pain?: number | null;
+}
+
+// Uma escala 1-5 em 0-100 (1 → 0, 5 → 100). No stress, 1 é "calmo": inverte-se.
+const scale5 = (v: number) => (v - 1) * 25;
+
+/**
+ * Pilar "Como acordaste" (2026-09-23): até aqui o atleta dizia que dormiu mal
+ * e o índice não mexia. Média do sono, da energia e da calma; a dor tira 5
+ * pontos por cada ponto até 3, e a partir de 4 — o limiar do alarme G2/G5 do
+ * check-in (checkinAlarms.ts) — o pilar fica no máximo em 20. Sem check-in
+ * de hoje, o pilar não existe (não há dado, não há nota inventada).
+ */
+export function checkinPillar(c: CheckinForReadiness | null | undefined): ReadinessPillar | null {
+  const sleep = Number(c?.sleep), energy = Number(c?.energy), stress = Number(c?.stress);
+  if (![sleep, energy, stress].every((v) => v >= 1 && v <= 5)) return null;
+  const base = (scale5(sleep) + scale5(energy) + scale5(6 - stress)) / 3;
+  const pain = Math.max(0, Number(c?.pain) || 0);
+  const score = Math.round(pain >= 4 ? Math.min(base, 20) : Math.max(0, base - pain * 5));
+
+  let desc: string;
+  if (pain >= 4) desc = `Dor de ${pain}/10 hoje. Treino de impacto só depois de falares com a Carol.`;
+  else if (score >= 75) desc = "Acordaste bem: sono, energia e cabeça a favor do treino de hoje.";
+  else if (score >= 50) desc = "Dia normal. Treina, mas atento a como te sentes.";
+  else desc = "Hoje estás em baixo (sono, energia ou stress). Um treino mais leve rende mais.";
+  return { key: "checkin", label: "Como acordaste", score, desc };
 }
 
 type RunInput = RunForAcwr & RunForVdot & RaceRun;
@@ -62,6 +96,7 @@ export function computeReadinessIndex(
   profile: ProfileForAdherence & ProfileForPlanning,
   todayISO: string,
   nextRace: NextRaceForReadiness | null = null,
+  todayCheckin: CheckinForReadiness | null = null,
 ): ReadinessIndex {
   const pillars: ReadinessPillar[] = [];
 
@@ -199,6 +234,10 @@ export function computeReadinessIndex(
 
     pillars.push({ key: "tactic", label: "Viabilidade Tática", score: tacticScore, desc: tacticDesc });
   }
+
+  // --- Pilar 6: Como acordaste (só com check-in de hoje) ---
+  const checkin = checkinPillar(todayCheckin);
+  if (checkin) pillars.push(checkin);
 
   const totalScore = Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length);
   const level = totalScore >= 75 ? "high" : totalScore >= 50 ? "medium" : "low";

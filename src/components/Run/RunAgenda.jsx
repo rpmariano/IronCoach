@@ -660,7 +660,7 @@ export default function RunAgenda({ onClose }) {
     if (draft.race_type === 'trail') {
       elevationGainM = parseFloat((draft.elevation_gain_m ?? '').toString().replace(',', '.'));
       if (!Number.isFinite(elevationGainM) || elevationGainM < 0) {
-        setValidationError('Indica o D+ (desnível acumulado) desta prova de trail.');
+        setValidationError('Indica a subida total desta prova de trail, em metros.');
         return false;
       }
     }
@@ -1100,7 +1100,7 @@ export default function RunAgenda({ onClose }) {
                 </div>
                 {draft.race_type === 'trail' && (
                   <div className="min-w-0">
-                    <label htmlFor="ra-d-desnivel-m" className="text-[11px] text-[var(--text-3)] mb-1 block">D+ (desnível, m) <span className="text-[var(--danger)]">*</span></label>
+                    <label htmlFor="ra-d-desnivel-m" className="text-[11px] text-[var(--text-3)] mb-1 block">Subida total (m) <span className="text-[var(--danger)]">*</span></label>
                     <input id="ra-d-desnivel-m"
                       type="number"
                       min="0"
@@ -1155,7 +1155,7 @@ export default function RunAgenda({ onClose }) {
                     icon={<AlertTriangle size={12} />}
                     className="mt-1.5"
                   >
-                    Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.
+                    Mudaste o tipo, a distância ou a subida desde que escolheste este nível — confirma se ainda se aplica.
                   </Warning>
                 )}
                 {/* Nível medido a partir do histórico de treino — proposta,
