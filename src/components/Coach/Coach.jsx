@@ -11,6 +11,7 @@ import { computeBadges } from '../../utils/badges';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 import CoachAvatar from './CoachAvatar';
+import { messageMood } from '@formulas/carolMood.ts';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { planStartMoment } from '../../utils/planStart';
 import { todayISO } from '../../lib/utils';
@@ -37,6 +38,25 @@ const COACH_CHAT_DRAFT_KEY = 'ironcoach:carol-chat-rascunho';
 // aguardamos de forma assíncrona em vez de desistir logo — ver
 // handleAsyncFallback abaixo.
 const POLL_INTERVAL_MS = 4000;
+
+// Quanto tempo a cara do cabeçalho guarda a emoção da última mensagem dela.
+const HEADER_MOOD_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** A hora de uma mensagem: a gravada, ou a do id local (Date.now()). */
+function messageTime(msg) {
+  if (msg.created_at) {
+    const t = new Date(msg.created_at).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (msg.id && !isNaN(msg.id)) return parseInt(msg.id, 10);
+  return null;
+}
+
+/** A emoção de uma mensagem da Carol; o aviso de demora é ela a pensar. */
+function carolMoodOf(msg) {
+  if (typeof msg.id === 'string' && msg.id.startsWith('waiting-')) return 'thinking';
+  return messageMood(msg);
+}
 const POLL_MAX_MS = 180000; // cobre o pior caso de latência do coach-chat
 
 // Mesma extração que firstNameOf em coach-chat/index.ts — duplicada porque
@@ -143,6 +163,7 @@ export default function Coach() {
           id: data.model_message.id || (Date.now() + 1).toString(),
           role: 'assistant',
           content: data.model_message.content,
+          mood: data.model_message.mood,
           live: true,
         });
       }
@@ -644,9 +665,11 @@ export default function Coach() {
     const deadline = Date.now() + POLL_MAX_MS;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      // '*' e não a lista das colunas: a `mood` pode ainda não existir na
+      // base (migration por aplicar), e pedi-la pelo nome partia a sondagem.
       const { data: rows } = await supabase
         .from('coach_messages')
-        .select('id, content, created_at')
+        .select('*')
         .eq('user_id', profile?.id)
         .eq('role', 'model')
         .gt('created_at', afterIso)
@@ -674,7 +697,7 @@ export default function Coach() {
     removeCoachMessage(waitingId);
 
     if (modelRow) {
-      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, live: true });
+      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true });
       // Chegados por sondagem, não temos os flags plan_proposed/goal_proposed/
       // goals_updated do payload síncrono (nem as sugestões rápidas, que só
       // vêm nesse payload e não ficam persistidas) — por isso verificamos
@@ -796,6 +819,7 @@ export default function Coach() {
         id: data?.model_message?.id || (Date.now() + 1).toString(),
         role: 'assistant',
         content: data?.model_message?.content || 'Não consegui responder agora. Tenta outra vez.',
+        mood: data?.model_message?.mood,
         live: true,
       });
       if (Array.isArray(data?.suggestions)) {
@@ -824,6 +848,19 @@ export default function Coach() {
     }
   };
 
+  // A cara dela no chat (CAROL.md §4). Enquanto pensa ou escreve, "a pensar";
+  // depois, a emoção do que acabou de dizer — a que o modelo escolheu junto
+  // com o texto, ou a que o texto sugere nas mensagens antigas (messageMood).
+  // Ao fim de umas horas volta à neutra: quem abre o chat no dia seguinte não
+  // é recebido com a preocupação de ontem.
+  const lastCarolMsg = [...visibleMessages].reverse().find((m) => m.role !== 'user');
+  const lastCarolAt = lastCarolMsg ? messageTime(lastCarolMsg) : null;
+  const headerMood = coachLoading || typingActive
+    ? 'thinking'
+    : lastCarolMsg && (lastCarolAt == null || Date.now() - lastCarolAt < HEADER_MOOD_TTL_MS)
+      ? carolMoodOf(lastCarolMsg)
+      : 'neutral';
+
   const defaultSuggestions = [
     'Como está a minha nutrição hoje?',
     'Cria-me um plano de treino para uma meia maratona',
@@ -837,7 +874,7 @@ export default function Coach() {
         <div className="flex items-center gap-2.5">
           {/* Ponto 9, animação 7: o halo só respira quando há assunto por
               resolver — três ciclos e para. */}
-          <CoachAvatar size={36} radius={12} breathing={hasPendingTopic} />
+          <CoachAvatar size={36} radius={12} mood={headerMood} breathing={hasPendingTopic} draw />
           <div>
             <h2 className="text-base font-bold leading-none tracking-tight" style={{ color: 'var(--coach-soft)' }}>Carol</h2>
             <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--text-4)' }}>a tua treinadora</p>
@@ -914,13 +951,13 @@ export default function Coach() {
           const shown = reveal[msg.id] === undefined ? chunks.length : Math.min(reveal[msg.id], chunks.length);
           if (shown === 0) return null;
 
-          return (
-            <div key={idx} className={`flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
+          const bubbles = (
+            <div className={`flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start min-w-0 flex-1'}`}>
               {chunks.slice(0, shown).map((chunk, cIdx) => (
                 <div
                   key={cIdx}
                   data-testid={isWaiting ? 'coach-waiting-message' : undefined}
-                  className={`max-w-[85%] px-[15px] py-[13px] text-[13px] leading-normal ${isUser ? 'coach-bubble-user font-semibold' : 'coach-bubble-model'}`}
+                  className={`${isUser ? 'max-w-[85%]' : 'max-w-[92%]'} px-[15px] py-[13px] text-[13px] leading-normal ${isUser ? 'coach-bubble-user font-semibold' : 'coach-bubble-model'}`}
                 >
                   {isUser ? chunk : <CoachText>{chunk}</CoachText>}
                 </div>
@@ -932,12 +969,27 @@ export default function Coach() {
               )}
             </div>
           );
+          if (isUser) return <React.Fragment key={idx}>{bubbles}</React.Fragment>;
+          // A cara dela ao lado do que diz, com a emoção dessa mensagem — é
+          // aí que o atleta está a olhar. Só a mais recente pisca.
+          return (
+            <div key={idx} className="flex items-start gap-2" data-testid="coach-message-carol">
+              <CoachAvatar
+                size={24}
+                mood={isWaiting ? 'thinking' : carolMoodOf(msg)}
+                alive={msg === lastCarolMsg}
+                style={{ marginTop: 6 }}
+              />
+              {bubbles}
+            </div>
+          );
         })}
 
         {/* "a escrever…" — CAROL.md §5: precede cada mensagem dela, 600 a
             900 ms; some com prefers-reduced-motion (as bolhas entram logo). */}
         {(coachLoading || typingActive) && (
-          <div className="flex justify-start" data-testid="coach-typing">
+          <div className="flex justify-start items-start gap-2" data-testid="coach-typing">
+            <CoachAvatar size={24} mood="thinking" style={{ marginTop: 6 }} />
             <div className="coach-bubble-model px-[15px] py-3 flex items-center gap-2">
               <span className="text-[11px] font-semibold" style={{ color: 'var(--coach-soft)' }}>a escrever…</span>
               <span className="flex items-center gap-1" aria-hidden="true">

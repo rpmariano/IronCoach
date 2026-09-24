@@ -942,3 +942,66 @@ describe('Coach — explicar um badge (coachIntent badge)', () => {
     expect(segundo.badgeContext).toBeUndefined();
   });
 });
+
+describe('Coach — CAROL.md §4: a cara acompanha o que ela diz', () => {
+  const originalMatchMedia = window.matchMedia;
+  const headerMood = (container) => container.querySelector('[data-mood]').getAttribute('data-mood');
+  const messageMoods = () => screen.getAllByTestId('coach-message-carol')
+    .map((el) => el.querySelector('[data-mood]').getAttribute('data-mood'));
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+    window.matchMedia = () => ({ matches: true });
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it('cada mensagem dela tem a sua emoção — a gravada pelo modelo, ou a que o texto sugere', () => {
+    const now = new Date().toISOString();
+    useAppStore.setState({
+      coachMessages: [
+        { id: 'a', role: 'model', content: 'Novo recorde nos 10 km.', mood: 'proud', created_at: now },
+        { id: 'b', role: 'user', content: 'Tenho uma dor no joelho.', created_at: now },
+        // Mensagem antiga, sem emoção gravada: vale o texto.
+        { id: 'c', role: 'model', content: 'Uma dor de 6 não se ignora. Hoje não se força.', created_at: now },
+      ],
+    });
+    const { container } = renderCoach();
+    expect(messageMoods()).toEqual(['proud', 'worried']);
+    // O cabeçalho fica com a da última.
+    expect(headerMood(container)).toBe('worried');
+  });
+
+  it('enquanto pensa, "a pensar"; quando responde, a emoção da resposta', async () => {
+    let resolve;
+    invokeEdgeFunctionWithTimeout.mockReturnValue(new Promise((r) => { resolve = r; }));
+    const { container } = renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Dormi mal.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    await waitFor(() => expect(headerMood(container)).toBe('thinking'));
+
+    await act(async () => {
+      resolve({
+        data: { model_message: { id: 'r1', content: 'Hoje fazemos menos.', mood: 'caring' }, suggestions: [], plan_proposed: false, goal_proposed: false, goals_updated: false },
+        error: null,
+      });
+    });
+    await waitFor(() => expect(headerMood(container)).toBe('caring'));
+    expect(messageMoods()).toEqual(['caring']);
+  });
+
+  it('no dia seguinte o cabeçalho volta à neutra; a mensagem guarda a sua', () => {
+    const ontem = new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString();
+    useAppStore.setState({
+      coachMessages: [{ id: 'a', role: 'model', content: 'Isto preocupa-me.', mood: 'worried', created_at: ontem }],
+    });
+    const { container } = renderCoach();
+    expect(headerMood(container)).toBe('neutral');
+    expect(messageMoods()).toEqual(['worried']);
+  });
+});

@@ -170,7 +170,7 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
               boxShadow: '0 18px 40px rgba(0,0,0,.45)',
             }}
           >
-            <CoachAvatar size={40} mood="happy" breathing />
+            <CoachAvatar size={40} mood="happy" breathing draw />
             <div className="min-w-0 flex-1">
               <div className="text-[17px] font-black leading-[1.2]" style={{ color: 'var(--text-1)', letterSpacing: '-.015em' }}>{first.title}</div>
               <div className="text-[13px] leading-[1.5] mt-1" style={{ color: 'var(--text-3)' }}>{first.sub}</div>

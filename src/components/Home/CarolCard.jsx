@@ -10,6 +10,7 @@ import { isRacePlanItem, raceNameForDate } from '../../utils/homeModels';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
 import GlassCard from '../shared/GlassCard';
 import CoachAvatar from '../Coach/CoachAvatar';
+import { inferMoodFromText } from '@formulas/carolMood.ts';
 
 /* O cartão da Carol no topo do Início (mock "Início": ciano, "Ler mais").
    Duas partes: o cabeçalho com o nome dela, que abre o chat, e uma linha do
@@ -229,6 +230,8 @@ export function useCoachDailyMessages() {
    subtítulo "a tua treinadora", o ícone Sparkles e o fio que separava o
    cabeçalho do resumo — eram três coisas a dizer "isto é a Carol" quando
    uma bastava. */
+const MOOD_KEYS = new Set(['recap', 'warnings', 'tomorrow_prep']);
+
 export default function CarolCard({ onOpenCoach, onOpenRace }) {
   const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
   const messages = useCoachDailyMessages();
@@ -247,7 +250,11 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
       {/* O GlassCard embrulha os filhos num div próprio: o flex tem de viver
           aqui dentro, senão o avatar fica por cima do texto. */}
       <div className="flex items-start gap-[11px]">
-      <CoachAvatar size={34} mood="neutral" className="mt-[1px]" />
+      {/* A cara do resumo de hoje: a pensar enquanto carrega, depois a que o
+          texto pede — um aviso de dor deixa-a preocupada, um recorde
+          orgulhosa. O conceito do dia e a estratégia nutricional ficam de
+          fora: uma lição sobre sobretreino não é um aviso ao atleta. */}
+      <CoachAvatar size={34} mood={loading ? 'thinking' : inferMoodFromText(messages.filter((m) => MOOD_KEYS.has(m.key)).map((m) => m.text).join(' '))} className="mt-[1px]" />
       <div className="flex-1 min-w-0">
         {/* Alvo ≥44px sem empurrar o resumo para baixo: a margem negativa
             devolve à linha a sua altura visual (padrão de DayPlanCard). */}

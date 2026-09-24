@@ -401,6 +401,55 @@ a[href]:not(.no-tap-scale):active {
   50%      { box-shadow: 0 0 0 7px rgba(34, 211, 238, 0); }
 }
 
+/* ===== O rosto da Carol (CoachAvatar) =====
+   Um retrato de traço simples dentro do disco ciano dela.
+
+   A assinatura (`.carol-draw`): as linhas — rabo-de-cavalo, cabelo,
+   maxilar, e a franja e o pescoço a meio — desenham-se em --dur-sign, e só depois o
+   desenho ganha cor (`.carol-fill`) e acendem os olhos, as bochechas e a
+   boca (`.carol-feat`). Toca uma vez, à entrada; com movimento reduzido o
+   token vai a zero e o JSX nem põe a classe.
+
+   O piscar (`.carol-blink`): o único loop do rosto — é o que faz dela
+   alguém e não um ícone. Um piscar de 150 ms em cada ~5 s, com compasso e
+   atraso diferentes por instância (vêm do JSX), pára com a página escondida
+   e desliga com movimento reduzido. */
+.carol-face {
+  position: relative;
+  overflow: hidden;
+  background: var(--carol-face-bg);
+}
+.carol-blink {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: carolBlink var(--carol-blink-dur, 5.4s) linear var(--carol-blink-delay, 0s) infinite;
+}
+@keyframes carolBlink {
+  0%, 96%, 100% { transform: scaleY(1); }
+  97.4%         { transform: scaleY(.12); }
+}
+/* Traço de 1 e intervalo de 2 (pathLength="1"), a começar um pouco antes
+   da ponta: com o intervalo justo, a ponta redonda do traço deixava um ponto
+   aceso no início do caminho antes de a linha partir. */
+.carol-draw .carol-sig {
+  stroke-dasharray: 1 2;
+  stroke-dashoffset: 1.05;
+  animation: carolSign var(--dur-sign) cubic-bezier(.65, 0, .35, 1) forwards;
+}
+.carol-draw .carol-sig-2 { animation-delay: calc(var(--dur-sign) * .5); animation-duration: calc(var(--dur-sign) * .6); }
+.carol-draw .carol-fill {
+  opacity: 0;
+  animation: carolFeat 420ms var(--ease-out) calc(var(--dur-sign) * .6) forwards;
+}
+.carol-draw .carol-feat {
+  opacity: 0;
+  animation: carolFeat 320ms var(--ease-out) calc(var(--dur-sign) * .75) forwards;
+}
+.carol-draw .carol-eyes-in { animation-delay: calc(var(--dur-sign) * .8); }
+.carol-draw .carol-mouth-in { animation-delay: calc(var(--dur-sign) * .95); }
+@keyframes carolSign { to { stroke-dashoffset: 0; } }
+@keyframes carolFeat { to { opacity: 1; } }
+
 /* ===== Um impulso, nunca um loop =====
    O botão "Propostas por rever" do Chat estava em `animate-bounce` — um
    salto infinito. Um elemento que salta para sempre deixa de chamar e
@@ -645,12 +694,13 @@ html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
 
 /* ===== Loops param quando ninguém vê =====
    Os únicos ciclos infinitos que ficam na app são decoração ou espera: a
-   onda do botão de insights, o halo da Carol e os três pontos do
-   "a escrever…". Com a página em segundo plano não há nada a comunicar —
+   onda do botão de insights, o halo da Carol, o piscar dela e os três
+   pontos do "a escrever…". Com a página em segundo plano não há nada a comunicar —
    `data-page-hidden` vem de utils/pageVisibility.js, ligado no main.jsx. */
 html[data-page-hidden] .coach-wave-ring,
 html[data-page-hidden] .coach-typing-dot,
-html[data-page-hidden] .coach-breathing {
+html[data-page-hidden] .coach-breathing,
+html[data-page-hidden] .carol-blink {
   animation-play-state: paused;
 }
 
@@ -674,6 +724,8 @@ html[data-page-hidden] .coach-breathing {
   .coach-wave-ring { animation-iteration-count: 1 !important; }
   /* Halo da Carol: já eram três ciclos — aqui, um. */
   .coach-breathing { animation-iteration-count: 1 !important; }
+  /* O piscar da Carol: ela fica de olhos abertos. */
+  .carol-blink { animation: none !important; }
   /* Ornamento puro: o pulsar dos esqueletos. Repousa no estado inicial,
      por isso `none` não deixa nada a meio. */
   .animate-pulse { animation: none !important; }
