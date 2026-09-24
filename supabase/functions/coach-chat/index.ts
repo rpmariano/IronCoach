@@ -626,8 +626,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "week_review";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "week_review"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -719,6 +719,17 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `O bloco de treino dele acaba hoje ou nos próximos dias e não há outro a seguir. Faz o ponto em duas ou três frases, com os ` +
     `números do bloco O QUE PRESCREVESTE vs O QUE ACONTECEU: o que correu bem e o que ficou por fazer, sem sermão. Depois pergunta ` +
     `se preparamos o próximo bloco e com que objetivo (manter, subir volume, uma prova). NÃO proponhas já o plano — espera que ele diga que sim.`,
+  // Balanço da semana (2026-09-24): à segunda-feira (ou terça, se ele não
+  // abriu a app na segunda), a semana de segunda a domingo que acabou. As
+  // datas e as contagens vêm no Contexto, calculadas pela app.
+  week_review:
+    `É o balanço da semana que acabou no domingo — as datas e as contagens estão no Contexto. Três bolhas curtas: ` +
+    `(1) o que ele fez face ao que estava previsto — usa o bloco O QUE PRESCREVESTE vs O QUE ACONTECEU, só os dias dessa semana; ` +
+    `sem plano, compara o volume com a semana anterior (no Contexto); ` +
+    `(2) o que ficou bem e o que ficou a faltar, com um número concreto em cada — o sono e a energia dos check-ins contam, se os houver; ` +
+    `(3) o foco da semana que começa, numa frase, a partir do plano em vigor e da próxima prova. ` +
+    `Semana cumprida a 100%: uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +
+    `Não inventes números que não estejam no Contexto ou nos blocos.`,
 };
 
 // ── Balanço da prova (race_after com a corrida registada) ─────────────────
@@ -1694,7 +1705,7 @@ const RUN_KIND_LABELS: Record<string, string> = {
 // Os momentos em que ela pode notificar (P.5/P.6), como se leem na bio.
 const PUSH_TYPE_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
-  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos", week_review: "balanço da semana",
 };
 const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", tempo: "Tempo", recuperacao: "Recuperação",
