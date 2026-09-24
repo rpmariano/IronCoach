@@ -17,10 +17,13 @@ import { todayISO } from './lib/utils';
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
 // que o envolve (Layout, Auth) nunca podem ficar à espera de um pedido de
-// rede extra. Tudo o resto abre por ação do atleta e entra por import()
+// rede extra. A única espera deliberada é o ecrã do logo, que se deixa
+// desenhar até ao fim (utils/logoIntro.js) — e o que ele puder aquecer
+// entretanto, aquece (ver usePreloadDuringSplash). Tudo o resto abre por ação do atleta e entra por import()
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
+import { holdForLogo, logoIntroMs, registerSkeletonLogo, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -72,22 +75,30 @@ const loadGymRegistration = retryOnce(() => import('./components/Gym/GymRegistra
 // eles: ecrã de topo, a partir do rodapé de "O que faço hoje".
 const loadPlanoScreen = retryOnce(() => import('./components/Home/PlanoScreen'));
 
-const Dashboard = lazy(loadDashboard);
-const Calendar = lazy(loadCalendar);
-const RacesScreen = lazy(loadRaces);
-const Coach = lazy(loadCoach);
-const Perfil = lazy(loadPerfil);
-const Admin = lazy(loadAdmin);
+/* holdForLogo: se o ecrã demorar o bastante para o logo aparecer no
+   esqueleto, só entra quando o brasão acabar de se desenhar (utils/
+   logoIntro.js). O pré-carregamento por gesto chama as fábricas cruas. */
+const Dashboard = lazy(holdForLogo(loadDashboard));
+const Calendar = lazy(holdForLogo(loadCalendar));
+const RacesScreen = lazy(holdForLogo(loadRaces));
+const Coach = lazy(holdForLogo(loadCoach));
+const Perfil = lazy(holdForLogo(loadPerfil));
+const Admin = lazy(holdForLogo(loadAdmin));
+// O onboarding não espera pelo logo: o fallback dele é o logo já desenhado
+// (FullScreenLoader still) — no primeiro acesso vem logo a seguir ao ecrã do
+// logo, e na reentrada pelo Perfil um desenho seria só demora.
 const Onboarding = lazy(loadOnboarding);
-const RunAgenda = lazy(loadRunAgenda);
-const MealRegistration = lazy(loadMealRegistration);
-const BodyRegistration = lazy(loadBodyRegistration);
-const RunRegistration = lazy(loadRunRegistration);
-const GymRegistration = lazy(loadGymRegistration);
-const PlanoScreen = lazy(loadPlanoScreen);
+const RunAgenda = lazy(holdForLogo(loadRunAgenda));
+const MealRegistration = lazy(holdForLogo(loadMealRegistration));
+const BodyRegistration = lazy(holdForLogo(loadBodyRegistration));
+const RunRegistration = lazy(holdForLogo(loadRunRegistration));
+const GymRegistration = lazy(holdForLogo(loadGymRegistration));
+const PlanoScreen = lazy(holdForLogo(loadPlanoScreen));
 
 // Bancadas de teste do design system: só se chegam por ?tab=design-system /
-// ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém.
+// ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém. O fallback
+// delas é o logo já desenhado (FullScreenLoader still): sem desenho, nada a
+// cortar, e nada a esperar.
 const ButtonShowcase = lazy(() => import('./components/DesignSystem/ButtonShowcase'));
 const UIAuditSandbox = lazy(() => import('./components/DesignSystem/UIAuditSandbox'));
 
@@ -134,6 +145,21 @@ function usePreloadOnNavTouch() {
   }, []);
 }
 
+/* Enquanto o logo de arranque se desenha (~2,5 s), a rede está livre:
+   aquece-se o chunk do separador por onde a app vai entrar (uma notificação
+   abre ?tab=coach, por exemplo) e, se os dados já disseram que é o primeiro
+   acesso, o do onboarding. Sem isto, a app saía do logo de arranque para
+   cair no logo do esqueleto — dois desenhos seguidos. */
+function usePreloadDuringSplash(showBootSplash, activeTab, needsOnboarding) {
+  useEffect(() => {
+    if (!showBootSplash) return;
+    PRELOAD_BY_TAB[activeTab]?.();
+  }, [showBootSplash, activeTab]);
+  useEffect(() => {
+    if (showBootSplash && needsOnboarding) loadOnboarding();
+  }, [showBootSplash, needsOnboarding]);
+}
+
 /* Esqueleto de transição — a mesma linguagem do `carol-skeleton` do Início
    (barras a rgba(255,255,255,.08)). Nunca um spinner nem a palavra "a
    carregar" escrita no ecrã: o estado diz-se a quem usa leitor de ecrã pelo
@@ -142,28 +168,45 @@ function usePreloadOnNavTouch() {
    disso — e existe sobretudo para a primeira visita a cada separador com
    rede lenta. */
 /* O ecrã a chegar: o brasão desenhado a traço (shared/LogoLoader), onde o
-   conteúdo vai aparecer — em vez dos retângulos a pulsar. */
+   conteúdo vai aparecer — em vez dos retângulos a pulsar. Só aparece se a
+   espera passar de SKELETON_DELAY_MS (um ecrã em cache não mostra logo
+   nenhum); e, se aparecer, o ecrã espera que acabe de se desenhar — a
+   fábrica do lazy está embrulhada em holdForLogo, com os mesmos tempos. */
 function ScreenSkeleton() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), SKELETON_DELAY_MS);
+    return () => clearTimeout(t);
+  }, []);
+  // O brasão à vista fica registado: o ecrã que está a chegar espera por ele.
+  useEffect(() => (visible ? registerSkeletonLogo() : undefined), [visible]);
   return (
-    <div data-testid="screen-skeleton" className="flex items-center justify-center" style={{ minHeight: '46vh' }}>
-      <LogoLoader size={64} label="A carregar o ecrã" />
+    <div data-testid="screen-skeleton" role="status" aria-label="A carregar o ecrã" className="flex items-center justify-center" style={{ minHeight: '46vh' }}>
+      {visible && <LogoLoader size={64} label={null} />}
     </div>
   );
 }
 
-/* Para os ecrãs que vivem FORA do Layout (arranque, bancadas de teste). É o
-   mesmo componente que o App mostra enquanto `isInitializing`, mas cada
-   montagem é uma instância nova: o brasão recomeça o desenho quando um
-   destes substitui o outro. Vale a pena — um brasão a meio, herdado do
-   ecrã anterior, lia-se pior do que um desenho do princípio. */
-function FullScreenLoader() {
+/* O ecrã do logo: o brasão a desenhar-se e, por baixo, o nome e o
+   "AI-POWERED", como no lockup da marca (public/brand/ironcoach-lockup.svg)
+   — IRON claro, COACH no ciano da Carol, AI-POWERED no ouro. Mais nada.
+
+   No arranque o App segura-o até o desenho acabar (useHeldWhile +
+   LOGO_INTRO_MS): a Home nunca entra com o brasão a meio. `still` mostra-o
+   já desenhado — para quando vem logo a seguir ao arranque (o arranque do
+   onboarding a descarregar), onde um segundo desenho seria repetição. */
+function FullScreenLoader({ still = false }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" style={{ gap: 18 }}>
-      <LogoLoader size={112} label="A carregar" />
-      {/* A palavra entra quando o brasão acaba de se desenhar. */}
-      <span aria-hidden="true" className="logo-loader-word" style={{ fontSize: 12, fontWeight: 900, letterSpacing: '.32em', color: 'var(--text-3)', paddingLeft: '.32em' }}>
-        IRONCOACH
-      </span>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" data-testid="boot-splash" style={{ gap: 20 }}>
+      <LogoLoader size={112} label="A carregar" still={still} />
+      <div aria-hidden="true" className="flex flex-col items-center" style={{ gap: 8 }}>
+        <span className={still ? undefined : 'logo-loader-word'} style={{ fontSize: 30, fontWeight: 900, letterSpacing: '.14em', paddingLeft: '.14em', color: 'var(--text-1)', lineHeight: 1 }}>
+          IRON<span className="brand-coach-word">COACH</span>
+        </span>
+        <span className={still ? undefined : 'logo-loader-tagline'} style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.62em', paddingLeft: '.62em', color: 'var(--brand-gold)', lineHeight: 1 }}>
+          AI-POWERED
+        </span>
+      </div>
     </div>
   );
 }
@@ -395,6 +438,9 @@ export default function App() {
   const setOnboardingOpen = useAppStore((s) => s.setOnboardingOpen);
   const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
+  // O ecrã do logo fica enquanto os dados carregam E até o desenho acabar.
+  const [introMs] = useState(logoIntroMs);
+  const showBootSplash = useHeldWhile(isInitializing, introMs);
   /* O utilizador cujos dados já estão carregados. Ao voltar à app depois de
      ter estado noutra, o Supabase recupera a sessão e emite SIGNED_IN com o
      MESMO utilizador (auth-js, _onVisibilityChanged → _recoverAndRefresh).
@@ -464,7 +510,7 @@ export default function App() {
     // preferência sem lhe dar prioridade sobre um coachIntent explícito.
     useAppStore.getState().setProactiveKeyRequested(key);
   }, [setActiveTab]);
-  const welcomeReady = !isInitializing && !!session && !showOnboarding;
+  const welcomeReady = !showBootSplash && !!session && !showOnboarding;
   const welcomeReadyRef = useRef(false);
   welcomeReadyRef.current = welcomeReady;
   const markCurrentSlotSeen = useCallback(() => {
@@ -614,6 +660,7 @@ export default function App() {
   // Aquece o chunk do separador ao toque, antes de o React o pedir — ver o
   // comentário em usePreloadOnNavTouch, no topo.
   usePreloadOnNavTouch();
+  usePreloadDuringSplash(showBootSplash, activeTab, needsOnboarding);
 
   useEffect(() => {
     registerServiceWorker();
@@ -746,14 +793,14 @@ export default function App() {
   }, [setSession, setProfile, loadInitialData, setActiveTab, consumeProactiveKey]);
 
   if (activeTab === 'design-system') {
-    return <Suspense fallback={<FullScreenLoader />}><ButtonShowcase /></Suspense>;
+    return <Suspense fallback={<FullScreenLoader still />}><ButtonShowcase /></Suspense>;
   }
 
   if (activeTab === 'audit-sandbox') {
-    return <Suspense fallback={<FullScreenLoader />}><UIAuditSandbox /></Suspense>;
+    return <Suspense fallback={<FullScreenLoader still />}><UIAuditSandbox /></Suspense>;
   }
 
-  if (isInitializing) {
+  if (showBootSplash) {
     return <FullScreenLoader />;
   }
 
@@ -770,7 +817,7 @@ export default function App() {
   if (showOnboarding) {
     return (
       <ToastProvider>
-        <Suspense fallback={<FullScreenLoader />}>
+        <Suspense fallback={<FullScreenLoader still />}>
           <Onboarding
             reentry={!needsOnboarding}
             onDone={() => setOnboardingOpen(false)}

@@ -12,8 +12,11 @@ import { prefersReducedMotion } from '../../utils/coachBubbles';
    - ícone parado: cabeçalho da app (sempre visível — os seis filtros de brilho
      em loop gastariam GPU e bateria o dia inteiro, e a 36px o movimento é
      ruído); anima só um ciclo ao toque, via `playOnce`;
-   - lockup animado: login e loader de arranque, os únicos momentos em que a
-     app não tem mais nada para mostrar e o movimento diz "estou a arrancar";
+   - lockup animado: o login, o único momento em que a app não tem mais nada
+     para mostrar e o movimento diz "estou a arrancar". O ecrã de arranque
+     já não usa estes ficheiros: é o brasão desenhado a traço
+     (shared/LogoLoader), com o nome e o "AI-POWERED" por baixo, e deixa-se
+     desenhar até ao fim (utils/logoIntro.js);
    - os PNGs da PWA (icon-*.png, apple-touch-icon, favicon) são o ícone
      parado rasterizado — iOS e o manifesto ignoram SVG.
 
