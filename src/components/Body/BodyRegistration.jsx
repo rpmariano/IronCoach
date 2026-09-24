@@ -250,7 +250,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
-  usePersistedFormDraft(draftStorageKey, { date, assessmentTime, notes, metrics, entryMethod }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  usePersistedFormDraft(draftStorageKey, { date, assessmentTime, notes, metrics, entryMethod }, { isDirty: isFormDirty && !confirmation });
 
   /* A hora grava-se por update à parte, como a da corrida e a da refeição:
      quem insere a linha é a analyze-body, e acrescentar-lhe um campo obriga

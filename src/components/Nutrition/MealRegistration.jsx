@@ -277,7 +277,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
     date, mealTime, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
-  }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  }, { isDirty: isFormDirty && !confirmation });
 
   /* A hora grava-se por update à parte, a seguir, pela mesma razão da hora
      da corrida (RunRegistration.persistRunStartTime): quem insere a linha

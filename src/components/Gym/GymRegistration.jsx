@@ -362,7 +362,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   usePersistedFormDraft(draftStorageKey, {
     date, startTime, kind, categories, customCategory, name, notes, entryMethod,
     durationStr, calories, avgHr, maxHr, exertion, exercises,
-  }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  }, { isDirty: isFormDirty && !confirmation });
 
   /* As fotos do rascunho guardam-se à parte, em IndexedDB
      (draftMediaPersistence.js), para sobreviverem a sair da app e voltar

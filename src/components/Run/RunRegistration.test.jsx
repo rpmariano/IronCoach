@@ -1408,6 +1408,11 @@ describe('RunRegistration — modo prova', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
     await waitFor(() => expect(screen.getByTestId('record-confirmation')).toBeInTheDocument());
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    // E com a confirmação à vista o rascunho não volta a guardar-se: se o
+    // Android matasse a app agora, o próximo registo abria cheio e gravar
+    // outra vez duplicava a corrida (revisão pré-deploy de 6e92d67).
+    await act(async () => { await new Promise((r) => setTimeout(r, 900)); });
+    expect(localStorage.getItem('ironcoach:corrida-rascunho:nova')).toBeNull();
   });
 
   /* Revisão pré-deploy 2026-09-13: o rascunho guardava as memórias já no

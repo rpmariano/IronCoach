@@ -404,7 +404,9 @@ export default function RunAgenda({ onClose }) {
 
   // Grava o rascunho (com debounce) enquanto houver alterações por gravar
   // — sobrevive a um recarregamento da página (ver formDraftPersistence.js).
-  usePersistedFormDraft(draftStorageKey, draft, { isDirty: isDirty && !detailsLocked });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  usePersistedFormDraft(draftStorageKey, draft, { isDirty: isDirty && !detailsLocked && !confirmation });
 
   const handleCloseForm = () => {
     // Funil único por onde passa toda a saída "intencional" desta sessão

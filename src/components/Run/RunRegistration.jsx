@@ -831,7 +831,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     warmupMinutes, recoverySeconds, splits, hrZones,
     officialTime, position, completedRaceType,
     bibNumber, ageGroup, ageGroupPosition, genderPosition, participants, gunTimeSeconds, officialSplits,
-  }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  }, { isDirty: isFormDirty && !confirmation });
 
   /* As fotos do rascunho guardam-se à parte, em IndexedDB
      (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
@@ -1380,12 +1382,20 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      prints, "Manual", ou reabrir depois de o Android matar a app. */
   const adoptCreatedRun = (run) => {
     const paths = run.photo_paths || [];
-    const sent = [...runPhotos];
+    // Os prints novos (ainda em base64) são os últimos de photo_paths: a
+    // analyze-run grava [...os que ficaram, ...os novos]. Casar por índice
+    // com o formulário inteiro dava a um print novo o caminho de um antigo,
+    // quando os antigos não estão à vista (revisão pré-deploy de 6e92d67).
+    const fresh = runPhotos.filter((p) => p.base64);
+    const freshPaths = paths.slice(paths.length - fresh.length);
     setRunPhotos((prev) => prev.map((p) => {
-      const i = sent.indexOf(p);
-      return i >= 0 && paths[i] ? { dataUrl: p.dataUrl, path: paths[i] } : p;
+      const i = fresh.indexOf(p);
+      return i >= 0 && freshPaths[i] ? { dataUrl: p.dataUrl, path: freshPaths[i] } : p;
     }));
-    createdRunRef.current = { run, photosShown: true };
+    // À vista estão todos os prints da corrida? Senão, a reanálise mantém
+    // os que faltam (photosShown falso) em vez de os deitar fora.
+    const shown = new Set([...runPhotos.filter((p) => p.path).map((p) => p.path), ...freshPaths]);
+    createdRunRef.current = { run, photosShown: paths.every((p) => shown.has(p)) };
     setPendingCreatedRun(run);
   };
 
