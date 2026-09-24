@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { subDays, format } from 'date-fns';
-import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel, sessionVolumeKg } from './biEngine';
+import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel, sessionVolumeKg, calculateACWRHistory } from './biEngine';
 
 // Datas relativas a "agora" — daysAgo negativo devolve uma data futura
 // (útil para simular uma prova agendada).
@@ -381,5 +381,26 @@ describe('detectCoachInsights', () => {
     for (let i = 1; i < insights.length; i++) {
       expect(order[insights[i].severity]).toBeGreaterThanOrEqual(order[insights[i - 1].severity]);
     }
+  });
+});
+
+/* O gráfico semanal do ACWR com a regra de histórico (2026-09-24): semanas
+   sem corridas em 3 das 4 não têm rácio — buraco na linha, não um pico. */
+describe('calculateACWRHistory — sem histórico, sem rácio', () => {
+  it('as semanas sem histórico ficam com ratio null e hasEnoughData false', () => {
+    const runs = [{ date: iso(1), distance_km: 10 }];
+    const weeks = calculateACWRHistory(runs, 4);
+    expect(weeks).toHaveLength(4);
+    const last = weeks[weeks.length - 1];
+    expect(last.hasEnoughData).toBe(false);
+    expect(last.ratio).toBeNull();
+    expect(last.acuteLoad).toBeGreaterThan(0);
+  });
+
+  it('com corridas em 3 das 4 semanas há rácio', () => {
+    const runs = [iso(1), iso(8), iso(15), iso(22)].map((date) => ({ date, distance_km: 10 }));
+    const last = calculateACWRHistory(runs, 4).at(-1);
+    expect(last.hasEnoughData).toBe(true);
+    expect(typeof last.ratio).toBe('number');
   });
 });

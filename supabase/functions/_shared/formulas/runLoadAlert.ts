@@ -19,14 +19,11 @@
 // goalsIntervention.ts): sem coluna nova, sem migração. Vive em formulas/
 // para o frontend a importar pelo @formulas (utils/carolTopics.js).
 
-import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "./runAcwr.ts";
+import { computeRunAcwr } from "./runAcwr.ts";
 import { ACWR_DANGER, ACWR_SAFE_MAX } from "./acwr.ts";
 
 export const RUN_LOAD_INTERVENTION_TAG = "[carga]";
 
-/** Semanas (de 4) com pelo menos uma corrida para o rácio valer alguma
- *  coisa — a regra única de runAcwr.ts, a mesma dos ecrãs e do chat. */
-export const LOAD_HISTORY_MIN_WEEKS = RUN_ACWR_MIN_HISTORY_WEEKS;
 
 /** Folga sobre o prescrito antes de a carga deixar de ser "a do plano" —
  *  uma rodagem de 6 km que dá 6,5 não é desvio. */
@@ -272,39 +269,42 @@ export function runLoadInterventionToOpen(
 //
 // A doutrina da Carol manda respeitar o ACWR ao propor um plano, mas era só
 // uma instrução ao modelo: nada a verificava. Aqui fica a regra. Projeta a
-// carga dia a dia com o plano cumprido (as corridas registadas mais as do
-// plano) e aponta o primeiro dia em que o plano, e não o passado, leva o
-// ACWR acima de 1,50.
+// carga dia a dia com tudo cumprido — as corridas registadas, os treinos
+// ainda por fazer do plano em curso (fixos: a proposta não lhes mexe) e os
+// da proposta — e aponta as janelas de 7 dias em que é A PROPOSTA que leva o
+// ACWR acima de 1,50: o mesmo dia, sem ela, ficaria ≤1,50.
 //
 // - Sem histórico (corridas em menos de 3 das 4 semanas) não há regra: o
 //   rácio não existe e a app não o usa para nada.
-// - Se sem o plano esse dia já estaria acima de 1,50 (o atleta chegou
-//   sobrecarregado), não é o plano que o leva lá — a doutrina (descarga)
-//   trata disso na conversa.
+// - O que já vinha de trás (as corridas ou o plano em curso, sem a proposta,
+//   já passam de 1,50) não é da proposta. Antes contava-se só com as
+//   corridas registadas, e a carga do plano em curso caía em cima de
+//   qualquer proposta — nem uma rodagem de 1 km passava (revisão pré-deploy
+//   de bf21a2b, bloqueada).
+// - Avalia-se do primeiro dia da proposta até 6 dias depois do último: o
+//   rácio ainda sobe enquanto as corridas antigas saem da janela crónica.
 // - A prova não entra: é um dado, o plano não a pode encurtar, e uma meia
 //   maratona passa sozinha o 1,50 no dia dela.
 // - Um item de hoje só conta se ainda não houver corrida registada hoje.
 
 export interface PlanLoadViolation {
+  /** A janela de 7 dias: de `from` a `date`. */
+  from: string;
   date: string;
+  /** Arredondado para cima (1,501 diz-se 1,51, não 1,50 ao lado de "≤1,50"). */
   ratio: number;
-  /** Km dos 7 dias até `date`, com o plano cumprido. */
-  acuteKm: number;
-  /** O máximo desses 7 dias para o rácio ficar ≤1,50, com o que vem antes. */
-  maxAcuteKm: number;
+  /** Km dessa janela: já corridos, do plano em curso, e da proposta. */
+  doneKm: number;
+  fixedKm: number;
+  proposedKm: number;
+  /** O máximo da proposta nessa janela para o rácio ficar ≤1,50 (0 se nada cabe). */
+  maxProposedKm: number;
 }
 
-export function planLoadViolation(
-  { runs, planItems, today }: { runs: LoadRun[]; planItems: LoadPlanItem[]; today: string },
-): PlanLoadViolation | null {
-  const past = (runs || [])
-    .filter((r) => r && typeof r.date === "string" && r.date.slice(0, 10) <= today)
-    .map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0, duration_seconds: r.duration_seconds ?? null }));
-  if (!computeRunAcwr(past, today).hasEnoughData) return null;
+type DayKm = { date: string; distance_km: number; duration_seconds?: number | null };
 
-  const pace = athletePaceMinPerKm(past);
-  const ranToday = past.some((r) => r.date === today && r.distance_km > 0);
-  const planned = (planItems || [])
+function plannedRuns(items: LoadPlanItem[], today: string, ranToday: boolean, pace: number): DayKm[] {
+  return (items || [])
     .filter((i) => i && i.kind === "corrida" && i.status !== "cancelado" && i.training_type !== "prova" &&
       typeof i.planned_date === "string" && (i.planned_date > today || (i.planned_date === today && !ranToday)))
     .map((i) => {
@@ -313,30 +313,57 @@ export function planLoadViolation(
       return { date: i.planned_date, distance_km: km > 0 ? km : min > 0 ? min / pace : 0 };
     })
     .filter((r) => r.distance_km > 0);
-  if (!planned.length) return null;
+}
 
-  const projected = [...past, ...planned];
-  const last = planned.reduce((max, r) => (r.date > max ? r.date : max), today);
-  for (let d = today; d <= last; d = addDaysISO(d, 1)) {
+const kmIn = (list: DayKm[], from: string, to: string) =>
+  list.filter((r) => r.date >= from && r.date <= to).reduce((sum, r) => sum + r.distance_km, 0);
+
+export function planLoadViolations(
+  { runs, fixedItems, proposedItems, today }: { runs: LoadRun[]; fixedItems: LoadPlanItem[]; proposedItems: LoadPlanItem[]; today: string },
+): PlanLoadViolation[] {
+  const past: DayKm[] = (runs || [])
+    .filter((r) => r && typeof r.date === "string" && r.date.slice(0, 10) <= today)
+    .map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0, duration_seconds: r.duration_seconds ?? null }));
+  if (!computeRunAcwr(past, today).hasEnoughData) return [];
+
+  const pace = athletePaceMinPerKm(past);
+  const ranToday = past.some((r) => r.date === today && r.distance_km > 0);
+  const fixed = plannedRuns(fixedItems, today, ranToday, pace);
+  const proposed = plannedRuns(proposedItems, today, ranToday, pace);
+  if (!proposed.length) return [];
+
+  const baseline = [...past, ...fixed];
+  const projected = [...baseline, ...proposed];
+  const first = proposed.reduce((min, r) => (r.date < min ? r.date : min), proposed[0].date);
+  const last = addDaysISO(proposed.reduce((max, r) => (r.date > max ? r.date : max), first), 6);
+  const out: PlanLoadViolation[] = [];
+  for (let d = first; d <= last; d = addDaysISO(d, 1)) {
     const withPlan = computeRunAcwr(projected, d);
     if (!(withPlan.chronicWeeklyKm > 0) || !(withPlan.ratio > ACWR_DANGER)) continue;
-    const without = computeRunAcwr(past, d);
+    const without = computeRunAcwr(baseline, d);
     if (without.chronicWeeklyKm > 0 && without.ratio > ACWR_DANGER) continue;
+    const from = addDaysISO(d, -6);
+    const done = kmIn(past, from, d);
+    const fixedKm = kmIn(fixed, from, d);
+    const proposedKm = kmIn(proposed, from, d);
     // rácio = aguda ÷ ((anterior + aguda) ÷ 4) ≤ L  ⇔  aguda ≤ L × anterior ÷ (4 − L)
     // (0,6 × anterior com L = 1,5), com "anterior" os km dos 21 dias antes
-    // da janela aguda.
-    const olderFrom = addDaysISO(d, -27);
-    const olderTo = addDaysISO(d, -7);
-    const olderKm = projected
-      .filter((r) => r.date >= olderFrom && r.date <= olderTo)
-      .reduce((sum, r) => sum + r.distance_km, 0);
-    return {
+    // da janela aguda. O que sobra para a proposta é esse teto menos o que
+    // já lá está e o que o plano em curso lá tem.
+    const olderKm = kmIn(projected, addDaysISO(d, -27), addDaysISO(d, -7));
+    const maxAcute = (ACWR_DANGER * olderKm) / (4 - ACWR_DANGER);
+    out.push({
+      from,
       date: d,
-      ratio: Math.round(withPlan.ratio * 100) / 100,
-      acuteKm: round1(withPlan.acuteKm),
-      // Arredondado para baixo: é um teto.
-      maxAcuteKm: Math.floor(((ACWR_DANGER * olderKm) / (4 - ACWR_DANGER)) * 10) / 10,
-    };
+      ratio: Math.ceil(withPlan.ratio * 100) / 100,
+      doneKm: round1(done),
+      fixedKm: round1(fixedKm),
+      proposedKm: round1(proposedKm),
+      maxProposedKm: Math.max(0, Math.floor((maxAcute - done - fixedKm) * 10) / 10),
+    });
+    // A janela seguinte que se reporta começa depois desta: a mesma carga
+    // não se conta duas vezes.
+    d = addDaysISO(d, 6);
   }
-  return null;
+  return out;
 }

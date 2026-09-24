@@ -79,7 +79,7 @@
     }
   },
   {
-    "name": "mesmo atleta, agora com prova agendada — ganha o pilar tático",
+    "name": "mesmo atleta, agora com prova agendada — ganha o pilar tático (2 corridas não dizem o volume: avalia o ritmo)",
     "input": {
       "todayISO": "2026-08-25",
       "nextRace": {
@@ -139,7 +139,7 @@
       }
     },
     "expect": {
-      "score": 45,
+      "score": 50,
       "pillars": [
         {
           "key": "ea",
@@ -162,11 +162,126 @@
         {
           "key": "tactic",
           "label": "Viabilidade Tática",
-          "score": 50,
-          "desc": "Volume de treino (4km/sem) insuficiente para a distância."
+          "score": 70,
+          "desc": "Ritmo-alvo exigente, mas alcançável num bom dia."
         }
       ],
-      "level": "low"
+      "level": "medium"
+    }
+  },
+  {
+    "name": "com histórico (4 de 4 semanas) e pouco volume para a distância — volume insuficiente",
+    "input": {
+      "todayISO": "2026-08-25",
+      "nextRace": {
+        "date": "2026-09-15",
+        "distance_km": "21.1",
+        "race_type": "estrada",
+        "target_pace_seconds_per_km": 300,
+        "race_priority": "a"
+      },
+      "runs": [
+        {
+          "date": "2026-08-01",
+          "distance_km": 3,
+          "duration_seconds": 1080,
+          "effort_rpe": 5
+        },
+        {
+          "date": "2026-08-08",
+          "distance_km": 3,
+          "duration_seconds": 1080,
+          "effort_rpe": 5
+        },
+        {
+          "date": "2026-08-15",
+          "distance_km": 3,
+          "duration_seconds": 1080,
+          "effort_rpe": 5
+        },
+        {
+          "date": "2026-08-10",
+          "distance_km": 8,
+          "duration_seconds": 2400,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        },
+        {
+          "date": "2026-08-24",
+          "distance_km": 8,
+          "duration_seconds": 2280,
+          "kind": "competicao",
+          "training_type": null,
+          "effort_rpe": 8
+        }
+      ],
+      "meals": [
+        {
+          "date": "2026-08-24",
+          "meal_items": [
+            {
+              "quantity_grams": 500,
+              "calories_per_100g": 200,
+              "protein_per_100g": 20,
+              "carbs_per_100g": 20,
+              "fat_per_100g": 5
+            }
+          ]
+        }
+      ],
+      "bodyAssessments": [
+        {
+          "date": "2026-08-20",
+          "weight_kg": 70,
+          "body_fat_pct": 18,
+          "lean_body_mass_kg": 57
+        }
+      ],
+      "gymSessions": [],
+      "profile": {
+        "weight_kg": 70,
+        "calorie_goal": 2000,
+        "protein_goal": 140,
+        "carbs_goal": 250,
+        "fat_goal": 65
+      }
+    },
+    "expect": {
+      "score": 56,
+      "pillars": [
+        {
+          "key": "acwr",
+          "label": "Carga de Treino",
+          "score": 100,
+          "desc": "Carga ideal (1.28). Estás no sweet-spot de adaptação."
+        },
+        {
+          "key": "ea",
+          "label": "Disponibilidade Energética",
+          "score": 10,
+          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão."
+        },
+        {
+          "key": "calories",
+          "label": "Nutrição",
+          "score": 20,
+          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino."
+        },
+        {
+          "key": "vdot",
+          "label": "Forma Aeróbica (VDOT)",
+          "score": 100,
+          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer."
+        },
+        {
+          "key": "tactic",
+          "label": "Viabilidade Tática",
+          "score": 50,
+          "desc": "Volume de treino (6.3km/sem) insuficiente para a distância."
+        }
+      ],
+      "level": "medium"
     }
   },
   {

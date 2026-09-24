@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { planLoadViolation, runLoadReading, runLoadInterventionReason, runLoadInterventionToOpen, isRunLoadIntervention, runLoadInterventionKind, RUN_LOAD_INTERVENTION_TAG } from "./runLoadAlert.ts";
+import { planLoadViolations, runLoadReading, runLoadInterventionReason, runLoadInterventionToOpen, isRunLoadIntervention, runLoadInterventionKind, RUN_LOAD_INTERVENTION_TAG } from "./runLoadAlert.ts";
 import { computeRunAcwr } from "./runAcwr.ts";
 
 const TODAY = "2026-09-24";
@@ -290,40 +290,76 @@ function addDaysT(d: string, n: number) {
 }
 
 // ── A guarda de carga dos planos ─────────────────────────────────────────────
+const hist4 = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)];
+const guard = (runs: ReturnType<typeof run>[], proposedItems: ReturnType<typeof item>[], fixedItems: ReturnType<typeof item>[] = []) =>
+  planLoadViolations({ runs, fixedItems, proposedItems, today: TODAY });
 
 Deno.test("guarda do plano: sem histórico não há regra (o caso do Rui)", () => {
   const runs = [run("2026-09-13", 10.11), run("2026-09-21", 7.01), run("2026-09-24", 5.03)];
-  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-26", 20), item("2026-09-28", 20)], today: TODAY }), null);
+  assertEquals(guard(runs, [item("2026-09-26", 20), item("2026-09-28", 20)]), []);
 });
 
-Deno.test("guarda do plano: com histórico, um plano que dispara a carga é apontado, com o teto de km", () => {
-  // 4 semanas a 10 km; o plano mete 30 km nos próximos 3 dias.
-  const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)];
-  const v = planLoadViolation({ runs, planItems: [item("2026-09-25", 10), item("2026-09-26", 10), item("2026-09-27", 10)], today: TODAY });
-  assert(v !== null);
+Deno.test("guarda do plano: com histórico, uma proposta que dispara a carga é apontada, com o que lhe cabe", () => {
+  const [v] = guard(hist4, [item("2026-09-25", 10), item("2026-09-26", 10), item("2026-09-27", 10)]);
+  assert(v !== undefined);
   assert(v.ratio > 1.5);
-  // No dia apontado, com acuteKm no teto o rácio fica ≤1,50.
-  const older = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)]
-    .filter((r) => r.date >= addDaysT(v.date, -27) && r.date <= addDaysT(v.date, -7));
-  const atCap = computeRunAcwr([...older, run(v.date, v.maxAcuteKm)], v.date);
-  assert(atCap.ratio <= 1.5, `teto ${v.maxAcuteKm} dá ${atCap.ratio}`);
+  assertEquals(v.fixedKm, 0);
+  // Com a proposta no máximo que lhe cabe, o rácio desse dia fica ≤1,50.
+  // (hist4 já traz os km corridos dessa janela; soma-se só a proposta.)
+  const atCap = computeRunAcwr([...hist4, run(v.date, v.maxProposedKm)], v.date);
+  assert(atCap.ratio <= 1.5, `máximo ${v.maxProposedKm} dá ${atCap.ratio}`);
 });
 
-Deno.test("guarda do plano: um plano progressivo passa", () => {
-  const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)];
-  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-26", 6), item("2026-09-28", 5)], today: TODAY }), null);
+Deno.test("guarda do plano: uma proposta progressiva passa", () => {
+  assertEquals(guard(hist4, [item("2026-09-26", 6), item("2026-09-28", 5)]), []);
 });
 
 Deno.test("guarda do plano: a prova não conta, e o que já vinha de trás também não", () => {
-  const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)];
-  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-27", 21.1, { training_type: "prova" })], today: TODAY }), null);
-  // Chegou sobrecarregado (30 km ontem): uma rodagem leve hoje não é o plano a levá-lo lá.
-  const loaded = [...runs, run("2026-09-23", 30)];
-  assertEquals(planLoadViolation({ runs: loaded, planItems: [item("2026-09-25", 4)], today: TODAY }), null);
+  assertEquals(guard(hist4, [item("2026-09-27", 21.1, { training_type: "prova" })]), []);
+  // Chegou sobrecarregado (30 km ontem): uma rodagem leve não é a proposta a levá-lo lá.
+  assertEquals(guard([...hist4, run("2026-09-23", 30)], [item("2026-09-25", 4)]), []);
 });
 
 Deno.test("guarda do plano: o item de hoje só conta se ainda não correu hoje", () => {
   const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 8), run("2026-09-24", 8)];
-  // Já correu hoje 8 km; o item de hoje (8 km) não se soma outra vez.
-  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-24", 8)], today: TODAY }), null);
+  assertEquals(guard(runs, [item("2026-09-24", 8)]), []);
+});
+
+// Revisão pré-deploy de bf21a2b (bloqueada): a carga do plano em curso não é da proposta.
+Deno.test("guarda do plano: o plano em curso já leva a carga a perigo — uma proposta leve passa", () => {
+  // 3 semanas a ~30 km, 45 km nos últimos 7 dias e 10 km do plano ainda hoje.
+  const runs = [run("2026-09-01", 30), run("2026-09-08", 30), run("2026-09-15", 30), run("2026-09-19", 20), run("2026-09-22", 25)];
+  const fixed = [item("2026-09-24", 10)];
+  assertEquals(guard(runs, [item("2026-09-25", 5), item("2026-09-26", 5), item("2026-09-28", 8)], fixed), []);
+  assertEquals(guard(runs, [item("2026-09-26", 1)], fixed), []);
+});
+
+Deno.test("guarda do plano: o próximo bloco depois de uma semana de pico do plano em curso", () => {
+  const fixed = [item("2026-09-26", 12), item("2026-09-28", 12), item("2026-09-30", 12)];
+  // Uma rodagem de 3 km dez dias depois: passa.
+  assertEquals(guard(hist4, [item("2026-10-04", 3)], fixed), []);
+});
+
+Deno.test("guarda do plano: plano em curso + proposta juntos passam de 1,50, e cada parte sozinha não", () => {
+  // ~10 km/semana; a 29/09 a janela (23 a 29/09) aguenta 18 km: 8 do plano
+  // em curso + 12 da proposta passam, cada um sozinho não.
+  const fixed = [item("2026-09-25", 8)];
+  const proposed = [item("2026-09-28", 6), item("2026-09-29", 6)];
+  assertEquals(guard(hist4, fixed), []);
+  assertEquals(guard(hist4, proposed), []);
+  const [v] = guard(hist4, proposed, fixed);
+  assert(v !== undefined, "devia apontar");
+  assertEquals(v.from, "2026-09-23");
+  assertEquals(v.date, "2026-09-29");
+  assertEquals(v.fixedKm, 8);
+  assertEquals(v.proposedKm, 12);
+  assertEquals(v.maxProposedKm, 10);
+});
+
+Deno.test("guarda do plano: avalia até 6 dias depois do último treino da proposta", () => {
+  // Um pico no último dia pode só passar de 1,50 nos dias seguintes, quando o
+  // histórico antigo sai da janela crónica — tem de ser apanhado na mesma.
+  const v = guard(hist4, [item("2026-09-25", 9), item("2026-09-27", 9), item("2026-09-29", 9)]);
+  assert(v.length >= 1);
+  assert(v[0].date >= "2026-09-25" && v[0].date <= "2026-10-05");
 });

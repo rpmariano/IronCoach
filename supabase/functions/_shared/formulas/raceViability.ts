@@ -33,6 +33,7 @@
 // era calculada e nunca lida, deixou de existir.
 
 import { categorizeDistance, MIN_PREP_WEEKS, MIN_VOLUME_KM } from "./vocabulary.ts";
+import { computeRunAcwr } from "./runAcwr.ts";
 
 export interface RunForVolume {
   date: string;
@@ -47,6 +48,32 @@ export function computeRecentWeeklyVolume(runs: RunForVolume[], todayISO: string
     .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= cutoffMs)
     .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
   return Math.round((total / weeks) * 10) / 10;
+}
+
+/** O volume semanal que a app conhece de facto: a média das últimas 4
+ *  semanas, só com histórico (corridas em 3 das 4 semanas, a regra de
+ *  runAcwr.ts). Sem ele, null — "sem dados para julgar" (pedido 2026-09-24:
+ *  "se a app não tem dados, não apresenta dados"). Antes, 3 corridas em 4
+ *  semanas davam ~5 km/semana e "volume insuficiente" para um 10 km a quem
+ *  corre mais do que regista. */
+export function knownWeeklyVolume(runs: RunForVolume[], todayISO: string): number | null {
+  const list = (runs || []).filter((r) => r && typeof r.date === "string")
+    .map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0 }));
+  if (!computeRunAcwr(list, todayISO).hasEnoughData) return null;
+  const v = computeRecentWeeklyVolume(list, todayISO, 4);
+  return v > 0 ? v : null;
+}
+
+/** O volume semanal de referência do nível do perfil: o mínimo da doutrina
+ *  (MIN_VOLUME_KM, Bloco 1 #2) para a distância da próxima prova, ou 10 km
+ *  sem prova. É o que a Carol usa para planear quando a app não conhece o
+ *  volume de facto — o nível já diz quanto um atleta assim corre, e não se
+ *  lhe pergunta o que o perfil já responde. null sem nível. */
+export function levelReferenceWeeklyKm(level: string | null | undefined, distanceKm: number | null | undefined): { km: number; category: string } | null {
+  if (!level || !MIN_VOLUME_KM[level]) return null;
+  const category = categorizeDistance(distanceKm ?? undefined) || "10k";
+  const km = MIN_VOLUME_KM[level][category as keyof typeof MIN_VOLUME_KM[string]];
+  return km != null ? { km, category } : null;
 }
 
 export type ViabilityFlag = "ultra_para_iniciante" | "tempo_insuficiente" | "volume_insuficiente";

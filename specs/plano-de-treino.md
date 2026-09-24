@@ -393,7 +393,8 @@ seguem:
 | Dashboard de corrida, Visão geral, avisos (biEngine) | "Sem dados", sem número nem alerta |
 | Gráfico semanal do ACWR | a linha do rácio tem um buraco nessas semanas |
 | Índice de Prontidão (Home, hub da prova) | o pilar "Carga de Treino" não entra |
-| ACWR combinado (chat) | 0, a linha não aparece |
+| ACWR combinado (chat) | o de corrida conta 0; só aparece se o ginásio tiver histórico (regra própria do ginásio) |
+| Volume semanal (viabilidade da prova, avisos, hub) | desconhecido (`knownWeeklyVolume`): nem "volume insuficiente" nem "o teu volume é X km/semana" |
 | Chat da Carol | "ACWR: SEM HISTÓRICO SUFICIENTE — o rácio não existe" |
 | Resumo do dia | `acwr.ratio: null` |
 | Guarda dos planos | não se aplica |
@@ -402,14 +403,27 @@ Com histórico, a linha de ACWR do chat diz se a carga está DENTRO ou ACIMA
 do plano que a Carol prescreveu (a mesma leitura do cartão), e a doutrina só
 manda alertar/descarregar quando está acima.
 
+Sem histórico, o volume de referência para planear é o do **nível do
+perfil** (`levelReferenceWeeklyKm`: o mínimo da doutrina `MIN_VOLUME_KM` para
+o nível e a distância da próxima prova, 10 km sem prova) — vem na linha de
+ACWR do chat e a Carol não pergunta ao atleta quanto corre ("ela já conhece o
+meu nível de experiência"). É um ponto de partida para calibrar, não uma
+medida: não bloqueia planos. A linha lembra também que uma semana pesada
+depois de semanas vazias pode ser regresso de uma paragem — aí pergunta.
+
 **Guarda de carga dos planos (2026-09-24).** A doutrina mandava respeitar o
 ACWR ao propor um plano, mas nada o verificava. `propose_training_plan`
-projeta agora a carga dia a dia com o plano cumprido (`planLoadViolation`):
-se, com histórico, o plano levar o ACWR acima de 1,50 num dia em que sem ele
-ficaria abaixo, não é gravado e o modelo recebe o dia e o teto de km dos 7
-dias (aguda ≤ 1,5 × anterior ÷ 2,5). Contam as corridas registadas, os
-treinos por fazer do plano ativo antes da proposta e os da proposta; a
-prova não conta (é um dado). Uma falha a ler deixa passar.
+projeta agora a carga dia a dia com tudo cumprido (`planLoadViolations`): as
+corridas registadas, os treinos por fazer do plano em curso antes da
+proposta (fixos) e os da proposta. Com histórico, as janelas de 7 dias em que
+é **a proposta** que leva o ACWR acima de 1,50 (sem ela ficaria ≤1,50) fazem
+o plano não ser gravado, e o modelo recebe, por janela, as datas, os km já
+corridos + do plano em curso + da proposta e o máximo que cabe à proposta
+(aguda ≤ 1,5 × anterior ÷ 2,5). Avalia-se do primeiro dia da proposta até 6
+dias depois do último. A prova não conta (é um dado). Uma falha a ler deixa
+passar. A primeira versão comparava só com as corridas registadas e atribuía
+à proposta a carga do plano em curso — nem uma rodagem de 1 km passava
+(revisão pré-deploy de bf21a2b, bloqueada).
 
 ### Modelo
 

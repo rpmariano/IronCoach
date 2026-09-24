@@ -5,7 +5,7 @@
 import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInCalendarDays, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
-import { assessRaceViability, recentWeeklyVolume } from './raceViability';
+import { assessRaceViability, knownRecentWeeklyVolume } from './raceViability';
 import { getRecommendedPrepWeeks, resolveExperienceLevel } from './racePlanEngine';
 import { getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from '@formulas/racePlanning.ts';
 import { todayISO } from '../lib/utils';
@@ -598,7 +598,7 @@ export function detectCoachInsights(data, profile) {
 
         // 5b. Avaliação Tática Completa (Viabilidade + Ritmo)
         if (data.runs?.length > 0) {
-          const weeklyVol = recentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
+          const weeklyVol = knownRecentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
           const expLevel = resolveExperienceLevel(next, profile);
           // dist em bruto para semanas de preparação e viabilidade — as
           // tabelas MIN_PREP_WEEKS/MIN_VOLUME_KM não têm categoria de trail
@@ -619,7 +619,7 @@ export function detectCoachInsights(data, profile) {
             distanceKm: dist,
             experienceLevel: expLevel,
             weeksToRace: prepWeeksForViability,
-            weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+            weeklyVolumeKm: weeklyVol,
             racePriority: next.race_priority || 'a',
           });
 
@@ -701,8 +701,9 @@ export function detectCoachInsights(data, profile) {
 }
 
 /**
- * Índice de Prontidão — composto de 4 pilares (sempre) + 1 pilar tático (só
- * com prova agendada) + o check-in de hoje, quando existe (`dailyCheckins`
+ * Índice de Prontidão — composto de 3 pilares (sempre) + o de carga (só com
+ * histórico de corrida) + 1 pilar tático (só com prova agendada) + o
+ * check-in de hoje, quando existe (`dailyCheckins`
  * do store; só se usa a linha de hoje). Delega em @formulas/readinessIndex.ts (T1.5) —
  * única implementação, partilhada com a Carol (specs/formulas-checklist.md
  * Fase E, o gap original que motivou toda a fase).
