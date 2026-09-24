@@ -1,6 +1,7 @@
 -- ============================================================================
 -- A emoção de cada resposta da Carol (CAROL.md §4 — o rosto)
--- POR APLICAR em produção. O coach-chat funciona antes e depois: sem a coluna,
+-- Aplicada em produção a 2026-09-24 (via MCP do Supabase). O coach-chat funciona
+-- antes e depois: sem a coluna,
 -- grava a mensagem sem a emoção (e o cliente deduz a emoção do texto).
 --
 -- O modelo escolhe a emoção na mesma resposta em que escreve o texto (campo
