@@ -616,7 +616,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       savedSession = await persistSessionStartTime(savedSession);
 
       if (profile?.id) await loadInitialData(profile.id);
-      finishCreateAndGoToCalendar(savedSession, needsReanalysis ? 'Treino reanalisado pelo Coach' : 'Treino atualizado');
+      finishCreateAndGoToCalendar(savedSession, needsReanalysis ? 'Treino reanalisado pela Carol' : 'Treino atualizado');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');

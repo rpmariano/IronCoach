@@ -459,7 +459,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
       savedMeal = await persistMealTime(savedMeal);
       if (profile?.id) await loadInitialData(profile.id);
-      finishCreateAndGoToCalendar(savedMeal, needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
+      finishCreateAndGoToCalendar(savedMeal, needsReanalysis ? 'Refeição reanalisada pela Carol' : 'Refeição atualizada');
     }
   };
 
@@ -766,7 +766,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     />
                   </div>
                 </div>
-                <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
+                <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">Sem gramas indicadas, a Carol estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
                 <AddButton
                   onClick={handleAddItem}
                   disabled={!itemName.trim()}
@@ -802,7 +802,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     ) : (
                       <div className="flex-1">
                         <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
-                        <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pelo Coach'}</p>
+                        <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol'}</p>
                       </div>
                     )}
                     <button

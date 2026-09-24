@@ -325,7 +325,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       savedAssessment = await persistAssessmentTime(savedAssessment);
       if (profile?.id) await loadInitialData(profile.id);
-      finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
+      finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pela Carol' : 'Avaliação atualizada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');

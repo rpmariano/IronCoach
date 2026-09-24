@@ -114,7 +114,7 @@ describe('PlanProposalBottomSheet', () => {
         onClose={() => {}}
       />
     );
-    expect(screen.getByText('Propostas do Coach')).toBeInTheDocument();
+    expect(screen.getByText('Propostas da Carol')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aceitar objetivos/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aceitar plano/i })).toBeInTheDocument();
   });

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye, PenLine, Clock, Trophy, TrendingUp, Heart, RotateCcw, Check, Bot, House, Lightbulb } from 'lucide-react';
+import { Eye, PenLine, Clock, Trophy, TrendingUp, Heart, RotateCcw, Check, House, Lightbulb } from 'lucide-react';
+import CarolIcon from '../Coach/CarolIcon';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
 import { prefersReducedMotion, typingDelayFor } from '../../utils/coachBubbles';
@@ -197,7 +198,7 @@ export function CarolReply({ reaction, children, style }) {
 const PROMESSAS = [
   { icon: <Eye size={17} />, title: 'Vejo tudo o que registas', text: 'Corridas, ginásio, refeições, peso. É com isso que percebo se estás no caminho certo.' },
   { icon: <PenLine size={17} />, title: 'Escrevo o plano, tu decides', text: 'Proponho a semana de treino e as refeições. Aceitas, recusas ou pedes outra coisa.' },
-  { icon: <Clock size={17} />, title: 'Estou sempre a um toque', text: 'No separador Coach, a qualquer hora. Pergunta o que quiseres, mesmo a meio de uma corrida.' },
+  { icon: <Clock size={17} />, title: 'Estou sempre a um toque', text: 'No separador Carol, a qualquer hora. Pergunta o que quiseres, mesmo a meio de uma corrida.' },
 ];
 
 export function StepCarol() {
@@ -586,8 +587,8 @@ export function StepProva({ draft, set, carolNote, reaction }) {
 /* ── Fecho ───────────────────────────────────────────────────────────────── */
 
 const ONDE_ME_ENCONTRAS = [
-  { icon: <Bot size={18} />, title: 'Separador Coach', text: 'Para falar comigo sobre o que quiseres', destaque: true },
-  { icon: <House size={18} />, title: 'No topo da Home', text: 'Deixo lá um recado sempre que há algo a corrigir' },
+  { icon: <CarolIcon size={18} />, title: 'Separador Carol', text: 'Para falar comigo sobre o que quiseres', destaque: true },
+  { icon: <House size={18} />, title: 'No topo do Início', text: 'Deixo lá um recado sempre que há algo a corrigir' },
   { icon: <Lightbulb size={18} />, title: 'Dentro de cada registo', text: 'Comento o que registas, sem teres de perguntar' },
 ];
 
@@ -698,7 +699,7 @@ export function StepFecho({ titulo, resumo, semanas, raceName }) {
       </div>
 
       <CarolNote style={{ marginTop: 22 }}>
-        Podes rever ou mudar tudo isto em Perfil · Coach, quando quiseres.
+        Podes rever ou mudar tudo isto em Perfil · Carol, quando quiseres.
       </CarolNote>
     </>
   );

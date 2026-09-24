@@ -94,7 +94,7 @@ export default function CoachMemoryCard() {
     setBusy(true);
     const ok = await addCoachNote({ category: draftCat, note: text });
     setBusy(false);
-    if (ok) { showToast('Guardado na memória do Coach'); resetAdd(); }
+    if (ok) { showToast('Guardado na memória da Carol'); resetAdd(); }
     else showToast('Não foi possível guardar', 'error');
   };
 
@@ -128,7 +128,7 @@ export default function CoachMemoryCard() {
     <div className="module-card-contrast">
       <div className="flex items-center gap-2 mb-3">
         <Brain size={16} className="text-[var(--mod-coach-to)]" />
-        <h3 className="text-sm font-semibold">Memória do Coach</h3>
+        <h3 className="text-sm font-semibold">Memória da Carol</h3>
         <button
           type="button"
           onClick={() => setShowCategoryHelp(true)}
