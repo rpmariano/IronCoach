@@ -14,14 +14,19 @@ import React, { useId } from 'react';
    comprimento real de cada um (regras .logo-loader-* em globals.css).
    Movimento reduzido: o brasão aparece já desenhado e parado.
 
-   `size` em px; `label` é o que o leitor de ecrã ouve. */
+   `size` em px; `label` é o que o leitor de ecrã ouve. `still` mostra-o já
+   desenhado e parado — para quando vem logo a seguir a um desenho
+   completo, onde recomeçar seria repetição.
+
+   Quem mostra este logo não o interrompe a meio: o App segura o ecrã até
+   o desenho acabar (utils/logoIntro.js). */
 
 const HEX = '0,-170 148,-85 148,85 0,170 -148,85 -148,-85';
 const HEX_IN = '0,-154 130,-73 130,73 0,154 -130,73 -130,-73';
 const CHEVRON_OURO = 'M -84,-78 L -18,0 L -84,78 L -48,78 L 18,0 L -48,-78 Z';
 const CHEVRON_CIANO = 'M -18,-78 L 48,0 L -18,78 L 18,78 L 84,0 L 18,-78 Z';
 
-export default function LogoLoader({ size = 96, label = 'A carregar', className = '', style }) {
+export default function LogoLoader({ size = 96, label = 'A carregar', className = '', style, still = false }) {
   // Ids próprios por instância: dois carregadores ao mesmo tempo não partilham gradientes.
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const id = (n) => `${n}-${uid}`;
@@ -30,7 +35,8 @@ export default function LogoLoader({ size = 96, label = 'A carregar', className 
       role="status"
       aria-label={label}
       data-testid="logo-loader"
-      className={`logo-loader ${className}`}
+      data-still={still ? 'true' : undefined}
+      className={`logo-loader ${still ? 'logo-loader--still ' : ''}${className}`}
       style={{ width: size, height: size, ...style }}
     >
       <svg viewBox="0 0 512 512" width={size} height={size} aria-hidden="true" style={{ overflow: 'visible' }}>

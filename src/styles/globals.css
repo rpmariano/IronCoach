@@ -617,12 +617,27 @@ html[data-page-hidden] .welcome-halo { animation-play-state: paused; }
 @keyframes logoPop { 0% { transform: scale(1); } 40% { transform: scale(1.045); } 100% { transform: scale(1); } }
 html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
 .logo-loader-word { animation: welcomeBubble 520ms var(--ease-out) 1500ms both; }
+/* O ecrã do logo (App.jsx, FullScreenLoader): o nome e, a seguir, o
+   "AI-POWERED" — como no lockup da marca. O total (2450 ms) é o
+   LOGO_INTRO_MS de utils/logoIntro.js: mudar aqui é mudar lá. */
+.logo-loader-tagline { animation: welcomeBubble 520ms var(--ease-out) 1750ms both; }
+.brand-coach-word {
+  background: linear-gradient(135deg, #a5f3fc, #22d3ee 45%, #0891b2);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* Já desenhado e parado (`still`). */
+.logo-loader--still .logo-loader-hex, .logo-loader--still .logo-loader-hex-in, .logo-loader--still .logo-loader-chev { animation: none; stroke-dashoffset: 0; }
+.logo-loader--still .logo-loader-fill { animation: none; opacity: 1; }
+.logo-loader--still .logo-loader-aura { animation: none; opacity: .32; }
+.logo-loader--still svg { animation: none; }
 @media (prefers-reduced-motion: reduce) {
   .logo-loader-hex, .logo-loader-hex-in, .logo-loader-chev { animation: none; stroke-dashoffset: 0; }
   .logo-loader-fill { animation: none; opacity: 1; }
   .logo-loader-aura { animation: none; opacity: .32; }
   .logo-loader svg { animation: none; }
-  .logo-loader-word { animation: none; }
+  .logo-loader-word, .logo-loader-tagline { animation: none; }
 }
 
 /* "a escrever…" — três pontos a respirar ao lado do texto */
