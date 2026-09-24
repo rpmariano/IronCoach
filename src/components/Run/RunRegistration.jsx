@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories as persistRaceMemoriesShared, MAX_RACE_PHOTOS } from '../../utils/raceMemories';
@@ -292,6 +293,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const photosLoadedForKeyRef = useRef(null);
   // "Mais prints" no aviso das métricas em falta abre o seletor daqui.
   const editPhotoInputRef = useRef(null);
+  // ...e, a criar, o seletor do bloco de prints.
+  const addPhotoInputRef = useRef(null);
+  /* A corrida que a análise por foto JÁ gravou, quando a seguir aparece o
+     aviso das métricas em falta — { run, photosShown }. Com isto, "Mais
+     prints" junta os prints novos a ESSA corrida (reanálise com run_id) em
+     vez de criar outra: antes, a análise seguinte gravava uma segunda
+     corrida igual (relatado 2026-09-24). Os prints que foram com ela passam
+     a ser dela, como a editar ({ path }): saem do rascunho de fotos novas e
+     a reanálise mantém-nos por caminho. `photosShown`: estão no formulário
+     (falso num rascunho reaberto enquanto não carregam — aí mantêm-se todos). */
+  const createdRunRef = useRef(null);
   /* Ponto 7 do redesenho: o mesmo par espera/erro da Refeição
      (src/utils/useAnalysis.js). Só a análise por foto passa por aqui — o
      registo manual (handleSaveCorrida) é uma gravação, não uma leitura de
@@ -766,6 +778,29 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (persisted.officialSplits) setOfficialSplits(persisted.officialSplits);
     if (persisted.completedRaceType) setCompletedRaceType(persisted.completedRaceType);
     if (persisted.raceId !== undefined) setRaceId(persisted.raceId);
+    if (persisted.createdRun?.id) {
+      // A corrida já estava gravada: tudo o que se fizer a seguir é sobre
+      // ela. Os prints dela voltam do servidor; até lá mantêm-se todos.
+      const run = persisted.createdRun;
+      createdRunRef.current = { run, photosShown: false };
+      setPendingCreatedRun(run);
+      const paths = Array.isArray(run.photo_paths) ? run.photo_paths : [];
+      if (paths.length) {
+        const failed = () => {
+          if (createdRunRef.current?.run.id === run.id) {
+            setErrorMsg('Os prints desta corrida não carregaram. Ficam na corrida; os que juntares somam-se a eles.');
+          }
+        };
+        supabase.storage.from('run-photos').createSignedUrls(paths, 3600).then(({ data, error }) => {
+          if (createdRunRef.current?.run.id !== run.id) return;
+          if (error || !Array.isArray(data)) { failed(); return; }
+          const loaded = data.map((d, i) => ({ url: d.signedUrl, dataUrl: d.signedUrl, path: paths[i] })).filter((p) => p.url && p.path);
+          setRunPhotos((prev) => [...loaded, ...prev.filter((p) => !p.path)].slice(0, MAX_PHOTOS));
+          if (loaded.length === paths.length) createdRunRef.current.photosShown = true;
+          else failed();
+        }).catch(failed);
+      }
+    }
     setIsFormDirty(true);
   }, [runIdToEdit, draftStorageKey]);
 
@@ -779,6 +814,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // rascunho tem mesmo de guardar é a PROVA escolhida — sem ela, recarregar
   // a página caía no formulário de competição genérico.
   usePersistedFormDraft(draftStorageKey, {
+    // A corrida que a análise por foto já gravou (aviso das métricas em
+    // falta): sem ela, um rascunho reaberto — o Android mata a app com o
+    // seletor de prints aberto — voltava a criar a corrida.
+    createdRun: pendingCreatedRun,
     raceId,
     entryMethod, runKind, runTrainingType, runDate, runStartTime, runName, shoeId,
     runDistance, runDuration, runEffortRpe, runNotes,
@@ -842,7 +881,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const files = Array.from(e.target.files || []);
     e.target.value = '';
     if (!files.length) return;
-    const remaining = MAX_PHOTOS - runPhotos.length;
+    // Os prints da corrida já gravada que não estão à vista (rascunho
+    // reaberto e ainda por carregar) contam para o limite: a reanálise
+    // mantém-nos, e o servidor recusa mais de MAX_PHOTOS no total.
+    const created = createdRunRef.current;
+    const hiddenKept = created && !created.photosShown ? (created.run.photo_paths?.length || 0) : 0;
+    const remaining = MAX_PHOTOS - runPhotos.length - hiddenKept;
     if (remaining <= 0) {
       setErrorMsg(`Máximo de ${MAX_PHOTOS} imagens.`);
       return;
@@ -857,11 +901,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         console.warn('Falha a processar imagem', err);
       }
     }
+    clearStaleMissingMetrics();
   };
 
   const removePhoto = (index) => {
     setRunPhotos(prev => prev.filter((_, i) => i !== index));
     setIsFormDirty(true);
+    clearStaleMissingMetrics();
+  };
+
+  // Com a corrida já gravada, mexer nos prints torna velho o aviso das
+  // métricas em falta — era sobre os prints de antes; a próxima análise diz
+  // o que falta. Sem isto o botão "Métricas em falta" ficava lá.
+  const clearStaleMissingMetrics = () => {
+    if (!createdRunRef.current) return;
+    setMissingKeysList([]);
+    setSheetClosedViaTouch(false);
   };
 
   /* Reanálise pelos prints (a editar, com prints removidos ou novos): sem
@@ -1293,9 +1348,116 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     analysis.run(analyzeRunTask);
   };
 
+  // Põe a corrida no store, ou substitui-a se já lá estiver (pelo id): a
+  // corrida criada entra logo que é gravada, e volta a entrar reanalisada.
+  const upsertRunInStore = (run) => {
+    const store = useAppStore.getState();
+    const exists = store.runs.some((r) => r.id === run.id);
+    store.setRuns(exists ? store.runs.map((r) => (r.id === run.id ? run : r)) : [...store.runs, run]);
+  };
+
+  /* A corrida deixa de estar "por fechar": sai do ref, do estado e do
+     rascunho JÁ. O rascunho grava com espera e só se apaga ao fechar o ecrã
+     (depois da confirmação); se a app morresse entretanto, o próximo registo
+     novo reabria sobre esta corrida e podia gravar-lhe por cima (revisão
+     pré-deploy de 7afdb01). */
+  const forgetCreatedRun = () => {
+    createdRunRef.current = null;
+    setPendingCreatedRun(null);
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      const draft = raw ? JSON.parse(raw) : null;
+      if (draft?.createdRun) {
+        delete draft.createdRun;
+        localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+      }
+    } catch { /* sem storage: fica o que a próxima gravação do rascunho puser */ }
+  };
+
+  // O fecho da corrida criada pela análise por foto (logo, ou depois do
+  // aviso das métricas em falta).
+  const finishCreatedRun = async (run) => {
+    forgetCreatedRun();
+    upsertRunInStore(run);
+    await completePlanItemForRun(run);
+    await finishSavedRun(run, 'Corrida registada');
+  };
+
+  /* O formulário ainda diz o mesmo que a corrida gravada, no que não vem da
+     imagem (nome, data, RPE, notas, sapatilhas, tipo)? Se o atleta mudou
+     alguma coisa depois do aviso, a corrida não pode fechar como estava —
+     essas mudanças perdiam-se sem aviso. */
+  // Um campo que a corrida não traz (undefined) não se compara: não há
+  // nada a dizer que mudou. O servidor devolve a linha inteira.
+  const sameAsRun = (fromRun, norm, fromForm) => fromRun === undefined || norm(fromRun) === fromForm;
+  const trimmed = (v) => (v || '').trim();
+  // O que mexe na análise (RPE, notas, tipo) — mudar isto pede reanálise.
+  const analysisMatchesRun = (run) => (
+    sameAsRun(run.effort_rpe, (v) => Number(v || 0), Number(runEffortRpe || 0))
+    && sameAsRun(run.notes, trimmed, runNotes.trim())
+    && sameAsRun(run.kind, (v) => v, runKind)
+    && (runKind !== 'treino' || sameAsRun(run.training_type, (v) => v ?? null, runTrainingType))
+    && (runKind !== 'competicao' || sameAsRun(run.details?.race_type, (v) => v ?? null, completedRaceType))
+  );
+  const formMatchesRun = (run) => (
+    analysisMatchesRun(run)
+    && sameAsRun(run.name, trimmed, runName.trim())
+    && sameAsRun(run.date, (v) => v, runDate)
+    && sameAsRun(run.shoe_id, (v) => v ?? null, shoeId ?? null)
+  );
+
+  /* Os prints novos depois de a corrida já estar gravada: reanálise dela,
+     com os prints que já lá estavam e ainda estão no formulário (keep_paths)
+     e os que se juntaram (images). O que não vem da imagem vai junto, como
+     na edição (reanalysisBody). Sem mudanças nos prints, fecha-se como está. */
+  const reanalyzeCreatedRunTask = async (created) => {
+    const runPaths = created.run.photo_paths || [];
+    const keep = created.photosShown ? runPhotos.filter((p) => p.path).map((p) => p.path) : runPaths;
+    const fresh = runPhotos.filter((p) => p.base64);
+    const samePhotos = !fresh.length && keep.length === runPaths.length && keep.every((p) => runPaths.includes(p));
+    if (samePhotos && formMatchesRun(created.run)) {
+      await finishCreatedRun(created.run);
+      return;
+    }
+    // Só o nome, a data ou as sapatilhas mudaram: não mexem na análise —
+    // update direto, sem voltar a ler os prints (como a editar, PRD 3.2).
+    if (samePhotos && analysisMatchesRun(created.run)) {
+      const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
+      const { error } = await supabase.from('runs').update(payload).eq('id', created.run.id);
+      if (error) throw new Error(error.message || 'Falha a gravar a corrida.');
+      await finishCreatedRun({ ...created.run, ...payload });
+      return;
+    }
+    const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+      body: {
+        run_id: created.run.id,
+        keep_paths: keep,
+        images: fresh.map((p) => p.base64),
+        mime_type: 'image/jpeg',
+        kind: runKind,
+        training_type: runKind === 'treino' ? runTrainingType : null,
+        race_type: runKind === 'competicao' ? completedRaceType : null,
+        date: runDate,
+        name: runName.trim(),
+        effort_rpe: runEffortRpe || null,
+        shoe_id: shoeId,
+        notes: runNotes.trim() ? runNotes.trim() : null,
+      },
+    }, ANALYZE_TIMEOUT_MS);
+    if (error) throw new Error(error);
+    if (data?.error) throw new Error(data.error);
+    applyExtractedRun(data.run);
+    // Não se volta a insistir nas métricas: o atleta já juntou o que tinha.
+    await finishCreatedRun(data.run);
+  };
+
   // A tarefa, separada das validações e do gesto: é ela que o "Tentar de
   // novo" repete, com os mesmos prints e os mesmos campos.
   const analyzeRunTask = async () => {
+    if (createdRunRef.current) {
+      await reanalyzeCreatedRunTask(createdRunRef.current);
+      return;
+    }
     {
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
@@ -1311,11 +1473,39 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           race_type: runKind === 'competicao' ? completedRaceType : null,
           shoe_id: shoeId,
         },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
       const createdRun = data.run;
+      const extractedDetails = applyExtractedRun(createdRun);
+
+      const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds);
+      if (missing.length > 0 && !userBypassedMissingSheet) {
+        // A corrida JÁ está gravada: entra já no store (sair daqui não a
+        // esconde até recarregar), e os prints que levou passam a ser dela.
+        const paths = createdRun.photo_paths || [];
+        const sent = [...runPhotos];
+        setRunPhotos((prev) => prev.map((p) => {
+          const i = sent.indexOf(p);
+          return i >= 0 && paths[i] ? { dataUrl: p.dataUrl, path: paths[i] } : p;
+        }));
+        createdRunRef.current = { run: createdRun, photosShown: true };
+        upsertRunInStore(createdRun);
+        setPendingCreatedRun(createdRun);
+        setMissingKeysList(missing);
+        setShowMissingMetricsSheet(true);
+        return;
+      }
+
+      await finishCreatedRun(createdRun);
+    }
+  };
+
+  // Pré-preenche o formulário com o que a analyze-run leu (a criar ou a
+  // reanalisar), para o atleta rever ou editar depois. Devolve os details.
+  const applyExtractedRun = (createdRun) => {
+    {
       const extractedDetails = createdRun.details || {};
 
       // Pré-preencher campos manuais para o caso de o atleta querer rever ou editar depois
@@ -1363,18 +1553,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       }
 
       setRunSourceApp(extractedDetails.source_app || null);
-
-      const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds);
-      if (missing.length > 0 && !userBypassedMissingSheet) {
-        setPendingCreatedRun(createdRun);
-        setMissingKeysList(missing);
-        setShowMissingMetricsSheet(true);
-        return;
-      }
-
-      setRuns([...runs, createdRun]);
-      await completePlanItemForRun(createdRun);
-      await finishSavedRun(createdRun, 'Corrida registada');
+      return extractedDetails;
     }
   };
 
@@ -1382,10 +1561,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const handleProceedAnyway = async () => {
     setShowMissingMetricsSheet(false);
     setUserBypassedMissingSheet(true);
-    if (pendingCreatedRun) {
-      setRuns([...runs, pendingCreatedRun]);
-      await completePlanItemForRun(pendingCreatedRun);
-      await finishSavedRun(pendingCreatedRun, 'Corrida registada');
+    // Vindo do manual (o aviso também aparece aí), o que o atleta escreveu
+    // grava-se — em cima da corrida já criada, se a houver.
+    if (pendingCreatedRun && entryMethod !== 'manual') {
+      const run = createdRunRef.current?.run || pendingCreatedRun;
+      // Mudou o nome, a data, o RPE, as notas, as sapatilhas ou o tipo
+      // depois do aviso: vai numa reanálise, que os grava (e não volta a
+      // mostrar o aviso). Fechar como estava perdia-os sem aviso.
+      if (createdRunRef.current && !formMatchesRun(run)) {
+        analysis.run(analyzeRunTask);
+        return;
+      }
+      await finishCreatedRun(run);
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
     }
@@ -1513,7 +1700,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               asymmetry_pct: parseFloat(asymmetryPct) || null,
               leg_stiffness_kn_m: parseFloat(legStiffness) || null,
             },
-          });
+          }, ANALYZE_TIMEOUT_MS);
           if (error) throw new Error(error);
           const updatedRun = data.run;
           if (photosChanged && runPhotos.length === 0 && originalPhotoPathsRef.current.length) {
@@ -1544,9 +1731,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         return;
       }
 
+      // Se a análise por foto já gravou esta corrida (aviso das métricas em
+      // falta → "Preencher à mão", ou "Escrever" depois de uma falha), o
+      // manual atualiza-a em vez de criar uma segunda.
+      const created = createdRunRef.current;
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
           mode: 'manual',
+          ...(created ? { run_id: created.run.id } : {}),
           date: runDate,
           kind: runKind,
           name: runName.trim(),
@@ -1583,12 +1775,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           asymmetry_pct: parseFloat(asymmetryPct) || null,
           leg_stiffness_kn_m: parseFloat(legStiffness) || null,
         },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
       newlySavedRun = data.run;
-      setRuns([...runs, newlySavedRun]);
+      forgetCreatedRun();
+      upsertRunInStore(newlySavedRun);
 
       // Se esta corrida vem do plano (ou bate com um treino de corrida
       // pendente nesse dia), marca o item como concluído — a data usada é a
@@ -2258,13 +2451,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   </div>
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-[11px] text-[var(--text-3)]">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
-                    <button onClick={() => { setRunPhotos([]); setIsFormDirty(true); }} className="tap-h-44 text-[11px] text-[var(--text-3)] hover:text-[var(--danger)] flex items-center gap-1 transition">
+                    <button onClick={() => { setRunPhotos([]); setIsFormDirty(true); clearStaleMissingMetrics(); }} className="tap-h-44 text-[11px] text-[var(--text-3)] hover:text-[var(--danger)] flex items-center gap-1 transition">
                       <Trash2 className="w-3.5 h-3.5" /> Limpar todos
                     </button>
                   </div>
                   {runPhotos.length < MAX_PHOTOS && (
                     <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corrida-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corrida-to)]/5 transition mb-3">
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
+                      <input ref={addPhotoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
                       <ImagePlus className="w-4 h-4 text-[var(--mod-corrida-to)]" />
                       <span className="text-[12px] font-bold text-[var(--mod-corrida-to)]">Adicionar outro print</span>
                     </label>
@@ -2272,7 +2465,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 </>
               ) : (
                 <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-3 bg-[var(--surface-glass)]">
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
+                  <input ref={addPhotoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
                   <ImagePlus className="w-7 h-7 text-[var(--text-3)] mx-auto mb-2" />
                   <p className="text-[11px] text-[var(--text-3)] font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
                   <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
@@ -2654,11 +2847,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         sourceApp={runSourceApp}
         onAddPhotos={() => {
           setShowMissingMetricsSheet(false);
-          // A editar não há seletor Foto/Manual: abre-se o seletor de
-          // ficheiros dos prints diretamente (relatado 2026-09-13).
+          // Abre-se logo o seletor de ficheiros dos prints — a editar
+          // (relatado 2026-09-13) e a criar (relatado 2026-09-24: antes, o
+          // botão só fechava o aviso e o atleta tinha de procurar onde
+          // juntar os prints).
+          const input = runIdToEdit ? editPhotoInputRef.current : addPhotoInputRef.current;
           if (!runIdToEdit) setEntryMethod('foto');
-          else if (editPhotoInputRef.current) editPhotoInputRef.current.click();
-          else setErrorMsg(serverPhotosLoaded ? `Máximo de ${MAX_PHOTOS} imagens.` : 'Os prints ainda estão a carregar.');
+          if (input) input.click();
+          else if (runIdToEdit) setErrorMsg(serverPhotosLoaded ? `Máximo de ${MAX_PHOTOS} imagens.` : 'Os prints ainda estão a carregar.');
+          else if (runPhotos.length >= MAX_PHOTOS) setErrorMsg(`Máximo de ${MAX_PHOTOS} imagens.`);
         }}
         onGoManual={() => {
           setShowMissingMetricsSheet(false);

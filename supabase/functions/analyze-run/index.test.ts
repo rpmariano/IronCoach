@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildWeeklyVolumeLine, computeRunRecordContext, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
+import { buildWeeklyVolumeLine, computeRunRecordContext, keepImageOnlyDetails, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -119,4 +119,19 @@ Deno.test("buildWeeklyVolumeLine: a meio da semana (quinta, dia 4 de 7), soma s�
 
 Deno.test("buildWeeklyVolumeLine: sem corridas nenhumas, string vazia — sem crash", () => {
   assertEquals(buildWeeklyVolumeLine([], "2026-09-21"), "");
+});
+
+Deno.test("keepImageOnlyDetails: editar à mão não apaga a app de origem nem o que só os prints dão", () => {
+  const antes = { source_app: "samsung_health", regularity_score: 82, recommended_hydration_ml: 600, avg_heart_rate_bpm: 140 };
+  const formulario = { avg_heart_rate_bpm: 150, cadence_spm: 170 };
+  assertEquals(keepImageOnlyDetails(antes, formulario), {
+    avg_heart_rate_bpm: 150, cadence_spm: 170,
+    source_app: "samsung_health", regularity_score: 82, recommended_hydration_ml: 600,
+  });
+  // O que o formulário traz ganha; sem nada antes, fica como veio.
+  assertEquals(keepImageOnlyDetails(antes, { source_app: "garmin" })?.source_app, "garmin");
+  assertEquals(keepImageOnlyDetails(null, formulario), formulario);
+  // Sem métricas no formulário (details null): fica só o que os prints davam.
+  assertEquals(keepImageOnlyDetails({ source_app: "strava" }, null), { source_app: "strava" });
+  assertEquals(keepImageOnlyDetails({}, null), null);
 });

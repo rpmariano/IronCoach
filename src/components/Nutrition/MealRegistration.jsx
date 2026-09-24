@@ -3,6 +3,7 @@ import { Camera, ImagePlus, X, Trash2, PencilLine, MessageSquare, Image as Image
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -350,7 +351,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         meal_type: mealType,
         notes: notes.trim() || null,
       },
-    });
+    }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
     if (data?.error) throw new Error(data.error);
 
@@ -406,7 +407,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         notes: notes.trim() || null,
         items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
       },
-    });
+    }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
     if (data?.error) throw new Error(data.error);
 
@@ -442,7 +443,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             notes: notes.trim() || null,
             items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
           },
-        });
+        }, ANALYZE_TIMEOUT_MS);
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedMeal = data?.meal;

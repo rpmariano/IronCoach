@@ -26,6 +26,13 @@ import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartR
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import {
+  fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_RETRYABLE_STATUSES,
+  geminiBusyMessage,
+  hasTimeFor,
+  requestDeadlines,
+} from "../_shared/geminiFetch.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -219,33 +226,16 @@ function buildPrompt(
   return prompt;
 }
 
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
-
-async function fetchGeminiWithTimeout(
+// Repetições quando o Gemini está ocupado ou sem resposta, e o prazo do
+// pedido: ver _shared/geminiFetch.ts. Os valores por omissão são os desta função.
+function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
-    }
-  }
+  return fetchGemini(url, options, timeoutMs, retries, deadline);
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -513,8 +503,13 @@ async function generateCoachNotes(
   hrZoneLine: string | null = null,
   // profiles.experience_level — calibra a linguagem (bug #40).
   experienceLevel: string | null = null,
+  // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
+  // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
+  // corrida já está gravada e a resposta não pode passar o que a app espera.
+  if (!hasTimeFor(deadline)) return { text: null, debug: { reason: "sem_tempo" } };
 
   const trainingTypeLabel = run.training_type
     ? TRAINING_TYPE_LABELS[run.training_type] || run.training_type
@@ -691,6 +686,7 @@ async function generateCoachNotes(
       },
       45000,
       0,
+      deadline,
     );
 
     if (!res.ok) {
@@ -748,6 +744,7 @@ async function attachCoachNotes(
     details: Record<string, unknown> | null;
   },
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<void> {
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
@@ -903,6 +900,7 @@ async function attachCoachNotes(
       personalRecordKind,
       hrZoneLine,
       (hrProfile?.experience_level as string | null) ?? null,
+      deadline,
     );
 
     if (coachResult.text) {
@@ -932,6 +930,7 @@ async function analyzeWithGemini(
   raceType: string | null,
   notes: string | null,
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ extraction: RunExtraction; usage: GeminiUsage }> {
   const parts: unknown[] = [{ text: buildPrompt(kindHint, trainingType, raceType, notes) }];
   for (const b64 of images) {
@@ -951,6 +950,9 @@ async function analyzeWithGemini(
         },
       }),
     },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
   );
 
   if (!geminiRes.ok) {
@@ -960,6 +962,10 @@ async function analyzeWithGemini(
       throw new Error(
         "O Gemini atingiu o limite de pedidos gratuitos neste momento. Espera um pouco e tenta novamente.",
       );
+    }
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
+      // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
+      throw new Error(geminiBusyMessage("ler os prints"));
     }
     throw new Error(`Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.`);
   }
@@ -1128,6 +1134,30 @@ function shoeId(body: Record<string, unknown>): string | null {
   return typeof raw === "string" && UUID_RE.test(raw) ? raw : null;
 }
 
+/* O que só a leitura dos prints sabe e o formulário manual não traz: a app de
+   origem (a Carol usa-a para dizer que ecrã falta — carolMemory, regra 5), a
+   regularidade e a hidratação recomendada. Editar à mão reconstrói `details`
+   a partir do formulário e apagava-os; ficam os que já lá estavam. Pesa mais
+   desde 2026-09-24: "Manual" depois do aviso das métricas em falta grava por
+   cima da corrida que os prints acabaram de criar. */
+const IMAGE_ONLY_DETAILS = ["source_app", "regularity_score", "recommended_hydration_ml"] as const;
+
+export function keepImageOnlyDetails(
+  existing: unknown,
+  next: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const prev = existing && typeof existing === "object" ? existing as Record<string, unknown> : {};
+  const out: Record<string, unknown> = { ...(next || {}) };
+  let kept = false;
+  for (const k of IMAGE_ONLY_DETAILS) {
+    if (out[k] == null && prev[k] != null) {
+      out[k] = prev[k];
+      kept = true;
+    }
+  }
+  return next || kept ? out : null;
+}
+
 /** Reanálise a editar (pedido 2026-09-13): dos prints já guardados, quais
  *  ficam (`keep_paths`, por omissão todos) e quais saem — só se aceitam
  *  caminhos que a corrida já tinha, nunca um caminho inventado. */
@@ -1163,6 +1193,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Prazos deste pedido (ver _shared/geminiFetch.ts).
+  const { extraction: extractionDeadline, coach: coachDeadline } = requestDeadlines();
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado" }, 405);
   }
@@ -1249,7 +1281,7 @@ Deno.serve(async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey);
+        result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey, extractionDeadline);
       } catch (e) {
         if (newPaths.length) await sb.storage.from("run-photos").remove(newPaths);
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
@@ -1300,7 +1332,7 @@ Deno.serve(async (req) => {
         duration_seconds: result.extraction.duration_seconds,
         effort_rpe: updated.effort_rpe ?? null,
         details,
-      }, geminiKey);
+      }, geminiKey, coachDeadline);
 
       return jsonResponse({ run: updated, usage: result.usage });
     }
@@ -1379,12 +1411,13 @@ Deno.serve(async (req) => {
         const runId = body.run_id;
         const { data: existing, error: fetchError } = await sb
           .from("runs")
-          .select("id")
+          .select("id, details")
           .eq("id", runId)
           .eq("user_id", userId)
           .maybeSingle();
         if (fetchError) return jsonResponse({ error: `Falha a procurar corrida: ${fetchError.message}` }, 500);
         if (!existing) return jsonResponse({ error: "Corrida não encontrada" }, 404);
+        const editedDetails = keepImageOnlyDetails(existing.details, details);
 
         const { data: updatedRun, error: updateError } = await sb
           .from("runs")
@@ -1392,7 +1425,7 @@ Deno.serve(async (req) => {
             date: body.date,
             kind,
             training_type: trainingType,
-            details,
+            details: editedDetails,
             notes: rawNotes,
             name: clientName,
             effort_rpe: effortRpe,
@@ -1413,8 +1446,8 @@ Deno.serve(async (req) => {
           distance_km: extraction.distance_km,
           duration_seconds: extraction.duration_seconds,
           effort_rpe: effortRpe,
-          details,
-        }, geminiKey);
+          details: editedDetails,
+        }, geminiKey, coachDeadline);
 
         return jsonResponse({ run: updatedRun });
       }
@@ -1450,7 +1483,7 @@ Deno.serve(async (req) => {
         duration_seconds: extraction.duration_seconds,
         effort_rpe: effortRpe,
         details,
-      }, geminiKey);
+      }, geminiKey, coachDeadline);
 
       return jsonResponse({ run });
     }
@@ -1516,7 +1549,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey);
+      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey, extractionDeadline);
     } catch (e) {
       await sb.storage.from("run-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
@@ -1561,7 +1594,7 @@ Deno.serve(async (req) => {
       duration_seconds: result.extraction.duration_seconds,
       effort_rpe: effortRpe,
       details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
-    }, geminiKey);
+    }, geminiKey, coachDeadline);
 
     await checkAndLogAppImage(sb, userId, "run", images, mime, result.extraction as unknown as Record<string, unknown>);
 

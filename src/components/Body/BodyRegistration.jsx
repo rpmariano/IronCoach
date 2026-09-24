@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
@@ -308,7 +309,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             notes: notes.trim() || null,
             metrics: payloadMetrics,
           },
-        });
+        }, ANALYZE_TIMEOUT_MS);
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedAssessment = data?.assessment;
@@ -371,7 +372,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           date,
           notes: notes.trim() || null,
         },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
@@ -406,7 +407,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       }
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
         body: { mode: 'manual', date, notes: notes.trim() || null, metrics: payloadMetrics },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 

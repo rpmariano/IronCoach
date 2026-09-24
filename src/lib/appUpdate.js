@@ -65,16 +65,58 @@ export function isBusy(doc = globalThis.document) {
   return false;
 }
 
-/** O URL a pedir para trazer a versão `build` sem passar pela cache. */
-export function freshUrl(href, build) {
+/** O URL a pedir para trazer a versão `build` sem passar pela cache.
+    `extra`: outros parâmetros a pôr (ex.: { resume }, ver resumeParams). */
+export function freshUrl(href, build, extra = {}) {
   const url = new URL(href);
+  for (const [k, v] of Object.entries(extra)) {
+    if (v) url.searchParams.set(k, v);
+  }
   url.searchParams.set(VERSION_PARAM, build || String(Date.now()));
   return url.toString();
 }
 
 /** Recarrega a app a partir da rede, não da cache HTTP do index.html. */
-export function reloadFresh(build, loc = globalThis.location) {
-  loc.replace(freshUrl(loc.href, build));
+export function reloadFresh(build, loc = globalThis.location, extra = {}) {
+  loc.replace(freshUrl(loc.href, build, extra));
+}
+
+/* ?resume=<separador>: uma recarga técnica (uma atualização, um ecrã que
+   falhou a carregar) volta ao separador onde a app estava, em vez de cair no
+   Início — o que fazia a recarga parecer um reinício (relatado 2026-09-24).
+   Um parâmetro próprio, não o ?tab=: esse diz "a app abriu por uma
+   notificação", e o arranque salta as boas-vindas da Carol e dá a faixa do
+   dia por vista (revisão pré-deploy de 639c495). O App lê-o no arranque e
+   tira-o logo da barra de endereço (stripResumeParam). */
+const RESUME_PARAM = 'resume';
+
+/** Os parâmetros de uma recarga técnica para voltar a `tab`. O Início é o
+    separador por omissão, e as bancadas de teste já vêm no ?tab=. */
+export function resumeParams(tab) {
+  return typeof tab === 'string' && tab && !/^(home|design-system|audit-sandbox)$/.test(tab)
+    ? { [RESUME_PARAM]: tab }
+    : {};
+}
+
+/** O separador por onde a app entra: o da recarga técnica (é onde se
+    estava) ou o do ?tab= (notificação, link); null sem nenhum. */
+export function entryTabFromSearch(search) {
+  try {
+    const params = new URLSearchParams(search);
+    return params.get(RESUME_PARAM) || params.get('tab') || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Tira o ?resume= da barra de endereço, depois de o App o ler. */
+export function stripResumeParam(win = globalThis.window) {
+  try {
+    const url = new URL(win.location.href);
+    if (!url.searchParams.has(RESUME_PARAM)) return;
+    url.searchParams.delete(RESUME_PARAM);
+    win.history.replaceState(win.history.state, '', url.pathname + url.search + url.hash);
+  } catch { /* sem history — fica o parâmetro, que só repete o separador */ }
 }
 
 /** Tira o ?v= da barra de endereço depois de uma recarga (não o do ?tab=). */

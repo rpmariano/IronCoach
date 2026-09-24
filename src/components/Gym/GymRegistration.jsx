@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
@@ -493,7 +494,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           categories,
           notes: notes.trim() || null,
         },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
@@ -539,7 +540,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           max_hr: maxHr ? parseInt(maxHr) : null,
           exertion: exertion ? parseInt(exertion) : null,
         },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
@@ -597,7 +598,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             exertion: exertion ? parseInt(exertion) : null,
             sets: flattenExercises(exercises),
           },
-        });
+        }, ANALYZE_TIMEOUT_MS);
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedSession = data?.session ? { ...data.session, workout_session_sets: data.sets || [] } : null;

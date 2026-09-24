@@ -10,6 +10,12 @@
 // A chave Gemini vive só aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import {
+  fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_RETRYABLE_STATUSES,
+  geminiBusyMessage,
+  requestDeadlines,
+} from "../_shared/geminiFetch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +26,6 @@ const corsHeaders = {
 const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
-const GEMINI_RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const MAX_IMAGE_B64_LENGTH = 6_000_000; // ~4,5 MB de imagem — mais do que o cliente alguma vez envia
 
 export type DiplomaReading = {
@@ -140,31 +145,28 @@ export function readingHasAnything(r: DiplomaReading): boolean {
   return !!(r.chip_time_seconds || r.gun_time_seconds || r.position || r.age_group_position || r.gender_position || r.participants || r.bib_number || r.splits.length);
 }
 
-async function fetchGeminiWithTimeout(url: string, options: RequestInit, timeoutMs = GEMINI_TIMEOUT_MS, retries = GEMINI_RETRIES): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (_e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error("O Gemini demorou demasiado tempo a responder. Tenta outra vez daqui a pouco.");
-    }
-  }
+// Repetições quando o Gemini está ocupado ou sem resposta, e o prazo do
+// pedido: ver _shared/geminiFetch.ts. Os valores por omissão são os desta função.
+function fetchGeminiWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs = GEMINI_TIMEOUT_MS,
+  retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<Response> {
+  return fetchGemini(url, options, timeoutMs, retries, deadline);
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
-async function readDiplomaWithGemini(imageB64: string, mime: string, geminiKey: string): Promise<{ reading: DiplomaReading; usage: Record<string, number> }> {
+async function readDiplomaWithGemini(
+  imageB64: string,
+  mime: string,
+  geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<{ reading: DiplomaReading; usage: Record<string, number> }> {
   const res = await fetchGeminiWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
     {
@@ -175,11 +177,15 @@ async function readDiplomaWithGemini(imageB64: string, mime: string, geminiKey: 
         generationConfig: { temperature: 0, response_mime_type: "application/json", response_schema: RESPONSE_SCHEMA },
       }),
     },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
   );
   if (!res.ok) {
     const errText = await res.text();
     console.error("Gemini error:", res.status, errText);
     if (res.status === 429) throw new Error("O Gemini atingiu o limite de pedidos neste momento. Espera um pouco e tenta de novo.");
+    if (GEMINI_RETRYABLE_STATUSES.has(res.status)) throw new Error(geminiBusyMessage("ler o diploma"));
     throw new Error(`Leitura falhou (Gemini ${res.status}). Tenta de novo.`);
   }
   const json = await res.json();
@@ -200,6 +206,9 @@ async function readDiplomaWithGemini(imageB64: string, mime: string, geminiKey: 
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  // Só lê (não grava nada), mas também tem prazo: a app deve ter a resposta
+  // antes de desistir (ver _shared/geminiFetch.ts).
+  const { extraction: readDeadline } = requestDeadlines();
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
 
   try {
@@ -218,7 +227,7 @@ Deno.serve(async (req) => {
     if (!image) return jsonResponse({ error: "Sem imagem do diploma." }, 400);
     if (image.length > MAX_IMAGE_B64_LENGTH) return jsonResponse({ error: "Imagem demasiado grande." }, 413);
 
-    const { reading, usage } = await readDiplomaWithGemini(image, mime, geminiKey);
+    const { reading, usage } = await readDiplomaWithGemini(image, mime, geminiKey, readDeadline);
     return jsonResponse({ reading, usage });
   } catch (e) {
     console.error("analyze-diploma:", e);
