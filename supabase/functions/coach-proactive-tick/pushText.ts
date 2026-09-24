@@ -44,6 +44,7 @@ const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
   intervention: "Há um assunto por resolver.",
   race_conflict: "Ele tem duas provas principais no mesmo bloco de treino. A notificação chama-o para decidirem juntos qual é o objetivo.",
   block_end: "O bloco de treino dele está a acabar e não há outro a seguir. A notificação chama-o para fazerem o ponto e prepararem o próximo.",
+  week_review: "É segunda-feira e a semana dele fechou no domingo. A notificação chama-o para o balanço da semana: o que fez face ao plano e o foco da que começa.",
 };
 
 /** Os dados do momento, em linhas — só o que existe; nada é inventado. */
@@ -52,12 +53,13 @@ export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string
   if (f.firstName) lines.push(`Nome do atleta: ${f.firstName}`);
   if (c.trigger === "silence") lines.push(`Dias sem registos: ${c.silenceDays ?? "vários"}`);
   if (c.trigger === "block_end" && c.blockEnd) lines.push(`Último dia do bloco: ${c.blockEnd}`);
+  if (c.trigger === "week_review" && c.weekStart && c.weekEnd) lines.push(`Semana revista: ${c.weekStart} a ${c.weekEnd}`);
   if (c.trigger === "race_conflict") {
     if (c.raceName) lines.push(`Prova-objetivo do bloco: ${c.raceName}`);
     if (c.conflictRaceNames?.length) lines.push(`Outra(s) principal(is) no mesmo bloco: ${c.conflictRaceNames.join(", ")}`);
     return lines;
   }
-  if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention") {
+  if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention" && c.trigger !== "week_review") {
     const name = (f.raceName || c.raceName || "").trim();
     if (name) lines.push(`Prova: ${name}`);
     const km = Number(f.distanceKm);

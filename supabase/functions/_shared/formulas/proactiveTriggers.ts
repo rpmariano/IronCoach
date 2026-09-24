@@ -19,7 +19,7 @@ export const SILENCE_DAYS = 3;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
 export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 
-export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence";
+export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "week_review";
 
 export interface TriggerRace {
   id: string;
@@ -72,6 +72,9 @@ export interface ServerProactiveCandidate {
   blockEnd?: string | null;
   /** Conflito de provas: as outras principais dentro do bloco. */
   conflictRaceNames?: string[];
+  /** Balanço da semana: a semana revista (segunda e domingo). */
+  weekStart?: string | null;
+  weekEnd?: string | null;
 }
 
 const DAY_MS = 86400000;
@@ -137,6 +140,37 @@ export function findRaceRunServer(runs: TriggerRun[] | null | undefined, race: T
   if (linked) return linked;
   if (race.status !== "concluida") return null;
   return list.find((r) => !r?.race_id && r?.kind === "competicao" && r?.date === race.date) || null;
+}
+
+/* ── Balanço da semana (pedido de produto 2026-09-24) ───────────────────────
+   CAROL.md §3: "Semana cumprida a 100% — uma frase de reconhecimento no
+   resumo de segunda-feira". À segunda-feira a Carol faz o balanço da semana
+   que acabou no domingo: o que foi feito face ao plano, o que ficou bem e a
+   faltar, e o foco da semana que começa. Vale também à terça, para quem não
+   abriu a app na segunda; depois disso já não é "o balanço", é história.
+   Só com alguma coisa registada desde o início dessa semana — sem nada, o
+   momento certo é o silêncio ("Estás bem?"), não um balanço de uma semana
+   vazia. A chave é a segunda-feira da semana revista: uma por semana. */
+export const WEEK_REVIEW_DAYS = 2;
+
+/** A semana a rever hoje (segunda a domingo), ou null. `todayISO` é um dia
+ *  de Lisboa; `lastRecordDate`, o registo mais recente do atleta. */
+export function findWeekToReview(todayISO: string, lastRecordDate: string | null | undefined): { weekStart: string; weekEnd: string } | null {
+  const today = dayOf(todayISO);
+  if (!today) return null;
+  // Dia da semana do próprio dia (0 domingo … 6 sábado), sem fuso: a data já é de Lisboa.
+  const dow = new Date(`${today}T00:00:00Z`).getUTCDay();
+  const sinceMonday = (dow + 6) % 7; // 0 à segunda, 1 à terça…
+  if (sinceMonday >= WEEK_REVIEW_DAYS) return null;
+  const weekStart = addDaysISO(today, -sinceMonday - 7);
+  const weekEnd = addDaysISO(weekStart, 6);
+  const last = dayOf(lastRecordDate ?? null);
+  if (!last || last < weekStart) return null;
+  return { weekStart, weekEnd };
+}
+
+function addDaysISO(iso: string, n: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 }
 
 /** O input dos momentos proativos do servidor. */
@@ -225,6 +259,13 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     const gap = daysBetween(last, todayISO);
     if (gap >= SILENCE_DAYS) out.push({ ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last });
   }
+
+  // O balanço da semana é o último da lista: o dia da prova, um assunto por
+  // resolver ou um "Estás bem?" passam-lhe à frente.
+  const week = ok("week_review") ? findWeekToReview(todayISO, input.lastRecordDate) : null;
+  if (week) {
+    out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
+  }
   return out;
 }
 
@@ -256,6 +297,8 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
       return { title, body: "Tens duas provas principais no mesmo bloco. Temos de decidir qual é o objetivo." };
     case "block_end":
       return { title, body: "O teu bloco de treino está a acabar. Vamos ver como correu e preparar o próximo." };
+    case "week_review":
+      return { title, body: "A semana fechou. Fiz o balanço e já sei o que muda nesta." };
   }
 }
 
@@ -269,7 +312,7 @@ export function proactiveTab(trigger: ProactiveTriggerName): "coach" | "home" {
 export const DEFAULT_PUSH_START_HOUR = 9;
 export const DEFAULT_PUSH_END_HOUR = 21;
 export const RACE_MORNING_EARLIEST_HOUR = 6;
-export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence"];
+export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "week_review"];
 
 /** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
  *  por dia e os momentos que aceita. Tudo opcional, com os valores por omissão

@@ -115,6 +115,7 @@ const CAROL_PUSH_TYPES = [
   { key: 'race_after', label: 'Balanço da prova' },
   { key: 'block_end', label: 'Fim de bloco' },
   { key: 'silence', label: 'Dias sem registos' },
+  { key: 'week_review', label: 'Balanço da semana' },
 ];
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 

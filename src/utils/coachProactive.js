@@ -16,7 +16,7 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, findWeekToReview } from '@formulas/proactiveTriggers.ts';
 
 export const SILENCE_DAYS = 3;
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
@@ -58,7 +58,7 @@ function daysBetween(fromIso, toIso) {
  *  os testes. Usada pelo efeito passivo do Coach (P.9) para saber a que
  *  candidato uma notificação tocada corresponde, mesmo que não seja o
  *  primeiro da lista; `pickProactiveTrigger` continua a ser só o primeiro. */
-export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [] }, now = new Date()) {
+export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [], dailyCheckins = [] }, now = new Date()) {
   const today = isoDay(now);
   const races = (raceEvents || []).filter((r) => r && typeof r.date === 'string');
   const scheduled = races.filter((r) => r.status !== 'concluida');
@@ -114,7 +114,59 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
       });
     }
   }
+
+  /* O balanço da semana (2026-09-24): à segunda e à terça, a semana de
+     segunda a domingo que acabou. A régua é a do servidor, para a chave ser
+     a da notificação; as contagens vão no Contexto, para ela não as
+     adivinhar. O último da lista: tudo o resto passa-lhe à frente. */
+  const week = findWeekToReview(today, last);
+  if (week) {
+    list.push({
+      trigger: 'week_review',
+      key: `week_review:${week.weekStart}`,
+      details: describeWeek({ runs, meals, gymSessions, dailyCheckins }, week.weekStart, week.weekEnd),
+    });
+  }
   return list;
+}
+
+const inRange = (d, from, to) => typeof d === 'string' && d.slice(0, 10) >= from && d.slice(0, 10) <= to;
+const fmtKm = (km) => (Math.round(km * 10) / 10).toString().replace('.', ',');
+const addDaysIso = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+
+function weekCounts({ runs, meals, gymSessions, dailyCheckins }, from, to) {
+  const weekRuns = (runs || []).filter((r) => inRange(r?.date, from, to));
+  const km = weekRuns.reduce((sum, r) => sum + (Number(r?.distance_km) || 0), 0);
+  const gym = (gymSessions || []).filter((g) => inRange(g?.date, from, to)).length;
+  const mealDays = new Set((meals || []).filter((m) => inRange(m?.date, from, to)).map((m) => m.date.slice(0, 10))).size;
+  const checkins = (dailyCheckins || []).filter((c) => inRange(c?.date, from, to));
+  return { runs: weekRuns.length, km, gym, mealDays, checkins };
+}
+
+function avg(list, field) {
+  const vals = list.map((c) => Number(c?.[field])).filter((v) => Number.isFinite(v) && v > 0);
+  return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+}
+
+/** O resumo da semana em números, para o Contexto do balanço. Só factos
+ *  contados dos registos: o que o plano previa vem do bloco O QUE
+ *  PRESCREVESTE do servidor. */
+export function describeWeek(data, weekStart, weekEnd) {
+  const w = weekCounts(data, weekStart, weekEnd);
+  const prevStart = addDaysIso(weekStart, -7);
+  const p = weekCounts(data, prevStart, addDaysIso(weekStart, -1));
+  const parts = [
+    `Semana de ${weekStart} a ${weekEnd}: ${w.runs} corrida${w.runs === 1 ? '' : 's'} (${fmtKm(w.km)} km)`,
+    `${w.gym} sess${w.gym === 1 ? 'ão' : 'ões'} de ginásio`,
+    `refeições registadas em ${w.mealDays} de 7 dias`,
+    `${w.checkins.length} check-in${w.checkins.length === 1 ? '' : 's'}`,
+  ];
+  const sleep = avg(w.checkins, 'sleep');
+  const energy = avg(w.checkins, 'energy');
+  const checkinLine = sleep != null || energy != null
+    ? ` Check-ins: sono médio ${sleep ?? '—'}/5, energia média ${energy ?? '—'}/5.`
+    : '';
+  return `${parts.join(', ')}.${checkinLine} Semana anterior: ${p.runs} corrida${p.runs === 1 ? '' : 's'} (${fmtKm(p.km)} km), ${p.gym} de ginásio.`;
 }
 
 /** Escolhe a mensagem proativa para este momento, ou null — o primeiro de
