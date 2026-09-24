@@ -195,10 +195,10 @@ function ScreenSkeleton() {
    LOGO_INTRO_MS): a Home nunca entra com o brasão a meio. `still` mostra-o
    já desenhado — para quando vem logo a seguir ao arranque (o arranque do
    onboarding a descarregar), onde um segundo desenho seria repetição. */
-function FullScreenLoader({ still = false }) {
+function FullScreenLoader({ still = false, decorative = false }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" data-testid="boot-splash" style={{ gap: 20 }}>
-      <LogoLoader size={112} label="A carregar" still={still} />
+      <LogoLoader size={112} label={decorative ? null : 'A carregar'} still={still} />
       <div aria-hidden="true" className="flex flex-col items-center" style={{ gap: 8 }}>
         <span className={still ? undefined : 'logo-loader-word'} style={{ fontSize: 30, fontWeight: 900, letterSpacing: '.14em', paddingLeft: '.14em', color: 'var(--text-1)', lineHeight: 1 }}>
           IRON<span className="brand-coach-word">COACH</span>
@@ -821,7 +821,8 @@ export default function App() {
     /* No primeiro arranque quem se vê é o logo do index.html, por cima; por
        baixo fica o mesmo logo já desenhado, que só aparece se o do HTML
        tiver saído por outra razão (a rede de segurança dele). */
-    return <FullScreenLoader still={!firstBootDone} />;
+    // `decorative`: o anúncio "A carregar" é o do logo do HTML, por cima.
+    return <FullScreenLoader still={!firstBootDone} decorative={!firstBootDone} />;
   }
 
   if (!session) {
