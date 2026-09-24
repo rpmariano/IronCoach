@@ -80,7 +80,10 @@ export default function Home() {
 
   const hasRecords = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
   const hasUpcomingRace = (raceEvents || []).some((e) => e.status !== 'concluida' && e.date >= today);
-  const firstDay = !hasRecords && !hasUpcomingRace;
+  // Com dados ainda a chegar depois do prazo do arranque, vazio não é
+  // "primeiro dia" (dataPending, ver loadInitialData no store).
+  const dataPending = useAppStore((s) => s.dataPending);
+  const firstDay = !dataPending && !hasRecords && !hasUpcomingRace;
 
   /* No primeiro dia a Carol lembra-se do arranque (utils/firstDay.js): o
      objetivo e o que o atleta contou vêm da Memória do Coach, que o

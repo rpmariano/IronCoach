@@ -501,8 +501,11 @@ export default function App() {
        Carol" em Perfil · Coach. Conta como ecrã de topo, para o "voltar" do
        telemóvel o fechar em vez de sair da app. */
   const dadosAtleta = { profile, runs, meals, gymSessions, bodyAssessments, raceEvents };
-  const needsOnboarding = !isInitializing && shouldShowOnboarding(dadosAtleta);
-  const silentlyDone = !isInitializing && shouldSilentlyMarkDone(dadosAtleta);
+  // Com dados ainda a chegar depois do prazo do arranque (dataPending, ver
+  // loadInitialData), uma lista vazia não quer dizer "sem registos".
+  const dataPending = useAppStore((s) => s.dataPending);
+  const needsOnboarding = !isInitializing && !dataPending && shouldShowOnboarding(dadosAtleta);
+  const silentlyDone = !isInitializing && !dataPending && shouldSilentlyMarkDone(dadosAtleta);
   const showOnboarding = !!session && (needsOnboarding || onboardingOpen);
 
   useEffect(() => {
@@ -554,7 +557,9 @@ export default function App() {
     // preferência sem lhe dar prioridade sobre um coachIntent explícito.
     useAppStore.getState().setProactiveKeyRequested(key);
   }, [setActiveTab]);
-  const welcomeReady = !showBootSplash && !!session && !showOnboarding;
+  // As boas-vindas esperam pelos dados todos: decidem pelas impressões (o
+  // que já foi saudado noutro dispositivo) e pelos registos.
+  const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending;
 
   // Com a app já à vista, os outros ecrãs carregam-se em tempo morto (ver
   // PREFETCH_WHEN_IDLE). Nos testes não: o import() tardio chegaria depois
@@ -683,7 +688,7 @@ export default function App() {
         sinceLastMs: Date.now() - lastVisibleReloadRef.current,
       })) return;
       lastVisibleReloadRef.current = Date.now();
-      loadInitialData(userId);
+      loadInitialData(userId, { join: true });
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -779,7 +784,7 @@ export default function App() {
         // ?tab= sem nada a meio; ver shouldRestoreNavigation).
         if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
         setNavigationDecided(true);
-        loadInitialData(existingSession.user.id)
+        loadInitialData(existingSession.user.id, { join: true })
           .then(() => {
             // O ecrã reposto aponta para uma corrida ou prova que já não
             // existe (ou que não carregou)? Fecha-se.
@@ -861,9 +866,9 @@ export default function App() {
         // onboarding montava e desmontava logo a seguir. Enquanto os dados
         // carregam, é o loader que se vê.
         setIsInitializing(true);
-        Promise.resolve(loadInitialData(userId)).finally(() => setIsInitializing(false));
+        Promise.resolve(loadInitialData(userId, { join: true })).finally(() => setIsInitializing(false));
       } else {
-        loadInitialData(userId);
+        loadInitialData(userId, { join: true });
       }
     });
 
