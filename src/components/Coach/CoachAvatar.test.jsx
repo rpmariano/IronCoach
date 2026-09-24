@@ -59,7 +59,8 @@ describe('carolFace — a geometria', () => {
 
   it('o enquadramento aproxima-se da cara nos tamanhos pequenos', () => {
     expect(frameFor(24).detail).toBe('min');
-    expect(frameFor(36).detail).toBe('min');
+    expect(frameFor(31).detail).toBe('min');
+    expect(frameFor(36).detail).toBe('mid');
     expect(frameFor(44).detail).toBe('mid');
     expect(frameFor(76).detail).toBe('full');
   });
@@ -72,7 +73,7 @@ describe('CoachAvatar — as feições que dizem a emoção', () => {
     return Number(container.querySelector(`[data-part="${part}"]`).getAttribute('stroke-width')) * (size / vbW);
   };
 
-  it.each([24, 36, 44, 48])('a %i px, sobrancelhas e boca com pelo menos 1,2 px', (size) => {
+  it.each([24, 30, 32, 36, 40, 44, 48, 55, 56, 64, 76])('a %i px, sobrancelhas e boca com pelo menos 1,2 px', (size) => {
     const { container } = render(<CoachAvatar mood="worried" size={size} />);
     expect(px(container, 'browL', size)).toBeGreaterThanOrEqual(1.2);
     expect(px(container, 'mouth', size)).toBeGreaterThanOrEqual(1.2);
@@ -83,5 +84,12 @@ describe('CoachAvatar — as feições que dizem a emoção', () => {
     const { container: small } = render(<CoachAvatar mood="worried" size={36} />);
     // Relativo ao tamanho: pequeno, mais grosso; grande, o do desenho.
     expect(px(small, 'browL', 36) / 36).toBeGreaterThan(px(container, 'browL', 96) / 96);
+  });
+
+  it('o traço não afina ao mudar de enquadramento', () => {
+    // Aos 56 px entra o enquadramento grande: a sobrancelha não pode cair
+    // para menos do que tinha a 44 (o tamanho logo abaixo mais usado).
+    const at = (size) => px(render(<CoachAvatar mood="worried" size={size} />).container, 'browL', size);
+    expect(at(56)).toBeGreaterThanOrEqual(at(44) * 0.95);
   });
 });

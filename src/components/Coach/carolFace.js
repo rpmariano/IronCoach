@@ -258,9 +258,12 @@ export function rigPaths(rig) {
    engrossa as sobrancelhas e a boca (e, a meio, os olhos): são elas que
    distinguem as emoções, e à escala do traço principal ficavam abaixo de
    1 px nos tamanhos pequenos — a neutra, a empática e a "a pensar" liam-se
-   iguais. */
+   iguais. Desce até 1 aos 81 px, sem saltos entre enquadramentos.
+   O enquadramento 'min' fica abaixo de 32 px: cortava o rabo-de-cavalo, e
+   a 36 px a Carol aparecia sem ele ao lado de uma com ele (CAROL.md §4:
+   muda a expressão, nunca a pessoa). */
 export function frameFor(size) {
-  if (size < 40) return { viewBox: '15 11 72 72', detail: 'min', strokePx: 1.25, featBoost: 1.45 };
-  if (size < 56) return { viewBox: '11 6 80 80', detail: 'mid', strokePx: Math.max(1.4, size * 0.034), featBoost: 1.25 };
-  return { viewBox: '12 6 78 78', detail: 'full', strokePx: Math.min(3, size * 0.03), featBoost: 1 };
+  if (size < 32) return { viewBox: '15 11 72 72', detail: 'min', strokePx: 1.25, featBoost: 1.45 };
+  if (size < 56) return { viewBox: '11 6 80 80', detail: 'mid', strokePx: Math.max(1.4, size * 0.034), featBoost: 1.3 };
+  return { viewBox: '12 6 78 78', detail: 'full', strokePx: Math.min(3, size * 0.03), featBoost: Math.max(1, 1.25 - (size - 56) / 100) };
 }
