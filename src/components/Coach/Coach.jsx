@@ -670,9 +670,10 @@ export default function Coach() {
   // esperava-se sempre os 3 minutos — a 2026-09-24 o servidor desistiu aos
   // 80 s e a atleta só soube quase 2 minutos depois. Um lock que não se lê
   // (erro) ou que ficou preso (a função morta a meio) mantém a sondagem, e
-  // só se desiste com DUAS leituras seguidas de lock livre sem resposta: um
-  // pedido que falhou a reservar o lock corre sem ele, e o que chegou tarde
-  // ao servidor ainda não o tinha reservado na primeira leitura.
+  // só se desiste com DUAS leituras seguidas de lock livre sem resposta: o
+  // pedido que chegou tarde ao servidor ainda não o tinha reservado na
+  // primeira. (Um pedido que falhou a reservar o lock corre sem ele do
+  // princípio ao fim — esse caso raro continua sem cobertura.)
   const waitForAsyncReply = async (afterIso) => {
     const deadline = Date.now() + POLL_MAX_MS;
     let freeReads = 0;

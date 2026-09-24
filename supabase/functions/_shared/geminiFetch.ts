@@ -66,6 +66,7 @@ export async function fetchGeminiWithTimeout(
   let networkRetries = 0;
   const fits = (waitMs: number) => Date.now() + waitMs + GEMINI_MIN_ATTEMPT_MS <= deadline;
   for (;;) {
+    const attemptStartedAt = Date.now();
     const controller = new AbortController();
     const limit = Math.max(GEMINI_MIN_ATTEMPT_MS, Math.min(timeoutMs, deadline - Date.now()));
     const timer = setTimeout(() => controller.abort(), limit);
@@ -86,7 +87,11 @@ export async function fetchGeminiWithTimeout(
     } catch (_e) {
       clearTimeout(timer);
       const timedOut = controller.signal.aborted;
-      if (timedOut ? timeoutRetries < retries : networkRetries < GEMINI_NETWORK_RETRIES) {
+      // Só a falha de rede RÁPIDA se repete sempre: uma ligação que cai ao
+      // fim de 90 s é lentidão com outro nome, e repeti-la gastava o resto
+      // do prazo (revisão pré-deploy de fe3df94).
+      const fastNetworkFailure = !timedOut && Date.now() - attemptStartedAt < GEMINI_MIN_ATTEMPT_MS;
+      if (timedOut ? timeoutRetries < retries : (fastNetworkFailure && networkRetries < GEMINI_NETWORK_RETRIES)) {
         if (fits(0)) {
           if (timedOut) timeoutRetries++;
           else networkRetries++;

@@ -77,7 +77,7 @@ const CHAT_BUDGET_MS = 125000;
 // A legenda da prova é curta: o limite de antes chega, e o pedido inteiro
 // cabe nos 45 s que a app espera por ela.
 const CAPTION_TIMEOUT_MS = 40000;
-const CAPTION_BUDGET_MS = 43000;
+const CAPTION_BUDGET_MS = 40000;
 
 const NUTRITION_TOOL = {
   name: "get_nutrition_history",
@@ -5431,7 +5431,8 @@ async function handler(req: Request): Promise<Response> {
       if (!captionOutcome || !captionOutcome.official_seconds) return jsonResponse({ error: "Prova sem tempo para legendar" }, 400);
       const { data: captionProfile } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
       // Dentro dos 45 s que a app espera pela legenda (requestRaceCaption),
-      // agora que o "ocupado" se repete com esperas.
+      // agora que o "ocupado" se repete com esperas — com folga para o
+      // arranque a frio, que a app conta e este relógio não.
       const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
       return jsonResponse({ caption });
     }
@@ -6413,9 +6414,11 @@ async function handler(req: Request): Promise<Response> {
       if (!(planWasProposed || goalsWereUpdated || goalWasProposed || raceWasUpdated || interventionWasResolved)) return null;
       const text = planWasProposed
         ? "Deixei-te a proposta de plano no Início — abre-a e diz-me se te serve."
-        : goalWasProposed
+        : goalWasProposed || goalsWereUpdated
           ? "Deixei-te a proposta de objetivos no Início — vê se concordas."
-          : "Já está feito do meu lado. Se quiseres, diz-me o que achas.";
+          : raceWasUpdated
+            ? "Atualizei a prova como combinámos."
+            : "Fechei este assunto do meu lado.";
       const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral");
       return jsonResponse({
         user_message: userMsg,
@@ -6466,6 +6469,10 @@ async function handler(req: Request): Promise<Response> {
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
         console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes }));
+        // Depois de uma escrita (ronda > 0), o erro não é "a mensagem não
+        // saiu": o plano, a prova ou os objetivos já mudaram.
+        const fallback = await replyAfterWritesWithoutText();
+        if (fallback) return fallback;
         if (geminiRes.status === 429) {
           return jsonResponse({
             error: "O coach atingiu o limite de pedidos da API neste momento. Tenta novamente dentro de alguns minutos.",
@@ -6562,6 +6569,8 @@ async function handler(req: Request): Promise<Response> {
 
     if (!rawText) {
       console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
+      const fallback = await replyAfterWritesWithoutText();
+      if (fallback) return fallback;
       return jsonResponse({ error: "O coach não conseguiu gerar uma resposta. Tenta novamente." }, 502);
     }
 
@@ -6605,6 +6614,8 @@ async function handler(req: Request): Promise<Response> {
       // o texto bruto ao utilizador (parecia um JSON partido no ecrã); melhor
       // pedir para tentar de novo do que guardar/mostrar lixo no histórico.
       console.error("Gemini devolveu JSON inválido/incompleto:", rawText);
+      const fallback = await replyAfterWritesWithoutText();
+      if (fallback) return fallback;
       return jsonResponse({
         error: "O coach teve um problema a gerar a resposta. Tenta novamente.",
       }, 502);
