@@ -48,11 +48,12 @@ export async function fetchPublishedBuild(fetchImpl = globalThis.fetch, base = i
   }
 }
 
-/** Há alguma coisa a meio que uma recarga deitaria fora?
-    Os registos e edições abrem todos numa folha ou modal (role="dialog"); a
-    conversa com a Carol é uma textarea no ecrã. Um campo com o foco também
-    conta: o atleta está a escrever. O arranque também: o rascunho sobrevive
-    a uma recarga, o passo em que ia não. */
+/** Há alguma coisa a meio que uma recarga deitaria fora, pelo DOM?
+    Folhas e modais (role="dialog"); a conversa com a Carol, que é uma
+    textarea no ecrã; um campo com o foco (o atleta está a escrever); o
+    arranque (o rascunho sobrevive a uma recarga, o passo em que ia não).
+    Os registos e edições são ecrãs inteiros, não folhas: esses vêem-se pela
+    store (utils/navigationRestore.js, isScreenOpen), que main.jsx junta. */
 export function isBusy(doc = globalThis.document) {
   if (!doc) return true;
   if (doc.querySelector('[role="dialog"], [aria-modal="true"], [data-testid="onboarding"]')) return true;
