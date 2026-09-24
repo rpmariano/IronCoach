@@ -1,7 +1,8 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh, isBusy } from './lib/appUpdate';
+import { reloadFresh, isBusy, tabParams } from './lib/appUpdate';
+import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
@@ -52,28 +53,55 @@ function retryOnce(load) {
     } catch { already = true; }
     if (!already && typeof window !== 'undefined') {
       // Sem passar pela cache do index.html (max-age=600 no GitHub Pages),
-      // que ainda apontaria para os chunks que acabaram de desaparecer.
-      reloadFresh();
+      // que ainda apontaria para os chunks que acabaram de desaparecer — e
+      // de volta ao separador que se estava a abrir, não ao Início.
+      reloadFresh(undefined, window.location, tabParams(useAppStore.getState().activeTab));
       return new Promise(() => {});
     }
     throw err;
   });
 }
-const loadDashboard = retryOnce(() => import('./components/Dashboard/Dashboard'));
-const loadCalendar = retryOnce(() => import('./components/Calendar/Calendar'));
-const loadRaces = retryOnce(() => import('./components/Run/RacesScreen'));
-const loadCoach = retryOnce(() => import('./components/Coach/Coach'));
-const loadPerfil = retryOnce(() => import('./components/Perfil/Perfil'));
-const loadAdmin = retryOnce(() => import('./components/Admin/Admin'));
-const loadOnboarding = retryOnce(() => import('./components/Onboarding/Onboarding'));
-const loadRunAgenda = retryOnce(() => import('./components/Run/RunAgenda'));
-const loadMealRegistration = retryOnce(() => import('./components/Nutrition/MealRegistration'));
-const loadBodyRegistration = retryOnce(() => import('./components/Body/BodyRegistration'));
-const loadRunRegistration = retryOnce(() => import('./components/Run/RunRegistration'));
-const loadGymRegistration = retryOnce(() => import('./components/Gym/GymRegistration'));
+// Os import() crus: o pré-carregamento em tempo morto (PREFETCH_WHEN_IDLE)
+// usa-os diretamente — uma falha aí não deve recarregar a app.
+const importDashboard = () => import('./components/Dashboard/Dashboard');
+const importCalendar = () => import('./components/Calendar/Calendar');
+const importRaces = () => import('./components/Run/RacesScreen');
+const importCoach = () => import('./components/Coach/Coach');
+const importPerfil = () => import('./components/Perfil/Perfil');
+const importRunAgenda = () => import('./components/Run/RunAgenda');
+const importMealRegistration = () => import('./components/Nutrition/MealRegistration');
+const importBodyRegistration = () => import('./components/Body/BodyRegistration');
+const importRunRegistration = () => import('./components/Run/RunRegistration');
+const importGymRegistration = () => import('./components/Gym/GymRegistration');
 // "O plano" (dia a dia do plano acordado) não é um registo, mas abre como
 // eles: ecrã de topo, a partir do rodapé de "O que faço hoje".
-const loadPlanoScreen = retryOnce(() => import('./components/Home/PlanoScreen'));
+const importPlanoScreen = () => import('./components/Home/PlanoScreen');
+
+const loadDashboard = retryOnce(importDashboard);
+const loadCalendar = retryOnce(importCalendar);
+const loadRaces = retryOnce(importRaces);
+const loadCoach = retryOnce(importCoach);
+const loadPerfil = retryOnce(importPerfil);
+const loadAdmin = retryOnce(() => import('./components/Admin/Admin'));
+const loadOnboarding = retryOnce(() => import('./components/Onboarding/Onboarding'));
+const loadRunAgenda = retryOnce(importRunAgenda);
+const loadMealRegistration = retryOnce(importMealRegistration);
+const loadBodyRegistration = retryOnce(importBodyRegistration);
+const loadRunRegistration = retryOnce(importRunRegistration);
+const loadGymRegistration = retryOnce(importGymRegistration);
+const loadPlanoScreen = retryOnce(importPlanoScreen);
+
+/* Todos os ecrãs que um atleta abre, pela ordem do que se abre mais cedo,
+   carregados em tempo morto depois do arranque (utils/prefetchScreens.js).
+   Sem isto, uma publicação a meio da sessão fazia a app recarregar na
+   primeira visita a um separador ainda não aberto — "a app reinicia quando
+   mudo de menu" (relatado 2026-09-24). Ficam de fora o Admin (só para quem
+   o é) e o arranque (só no primeiro acesso). */
+const PREFETCH_WHEN_IDLE = [
+  importCoach, importCalendar, importRaces, importPerfil, importDashboard,
+  importRunRegistration, importMealRegistration, importGymRegistration,
+  importBodyRegistration, importRunAgenda, importPlanoScreen,
+];
 
 /* holdForLogo: se o ecrã demorar o bastante para o logo aparecer no
    esqueleto, só entra quando o brasão acabar de se desenhar (utils/
@@ -517,6 +545,14 @@ export default function App() {
     useAppStore.getState().setProactiveKeyRequested(key);
   }, [setActiveTab]);
   const welcomeReady = !showBootSplash && !!session && !showOnboarding;
+
+  // Com a app já à vista, os outros ecrãs carregam-se em tempo morto (ver
+  // PREFETCH_WHEN_IDLE). Nos testes não: o import() tardio chegaria depois
+  // de o ambiente fechar.
+  useEffect(() => {
+    if (!welcomeReady || import.meta.env.MODE === 'test') return undefined;
+    return prefetchScreensWhenIdle(PREFETCH_WHEN_IDLE);
+  }, [welcomeReady]);
   const welcomeReadyRef = useRef(false);
   welcomeReadyRef.current = welcomeReady;
   const markCurrentSlotSeen = useCallback(() => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { startAppUpdateWatcher, isBusy, freshUrl, fetchPublishedBuild, stripVersionParam } from './appUpdate';
+import { startAppUpdateWatcher, isBusy, freshUrl, fetchPublishedBuild, stripVersionParam, tabParams } from './appUpdate';
 
 /* A app recarrega-se sozinha depois de um deploy, mas só quando isso não
    deita nada fora. Aqui: quando recarrega, quando espera, e que nunca entra
@@ -154,5 +154,22 @@ describe('URLs', () => {
   it('fetchPublishedBuild devolve null num 404 ou erro de rede', async () => {
     await expect(fetchPublishedBuild(vi.fn().mockResolvedValue({ ok: false }), '/')).resolves.toBeNull();
     await expect(fetchPublishedBuild(vi.fn().mockRejectedValue(new Error('offline')), '/')).resolves.toBeNull();
+  });
+});
+
+describe('recarga técnica — volta ao separador onde se estava', () => {
+  // Relatado 2026-09-24: "a app reinicia quando mudamos de menu" — a recarga
+  // caía sempre no Início.
+  it('freshUrl põe o separador pedido, e o ?v=', () => {
+    expect(freshUrl('https://x.io/IronCoach/', 'bbb', { tab: 'coach' })).toBe('https://x.io/IronCoach/?tab=coach&v=bbb');
+    // O separador atual ganha ao que estava no URL.
+    expect(freshUrl('https://x.io/IronCoach/?tab=home', 'bbb', { tab: 'perfil' })).toBe('https://x.io/IronCoach/?tab=perfil&v=bbb');
+  });
+
+  it('tabParams: os separadores sim, as bancadas de teste não', () => {
+    expect(tabParams('provas')).toEqual({ tab: 'provas' });
+    expect(tabParams('nutricao')).toEqual({ tab: 'nutricao' });
+    expect(tabParams('design-system')).toEqual({});
+    expect(tabParams(null)).toEqual({});
   });
 });

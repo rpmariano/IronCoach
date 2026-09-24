@@ -65,16 +65,28 @@ export function isBusy(doc = globalThis.document) {
   return false;
 }
 
-/** O URL a pedir para trazer a versão `build` sem passar pela cache. */
-export function freshUrl(href, build) {
+/** O URL a pedir para trazer a versão `build` sem passar pela cache.
+    `extra`: outros parâmetros a pôr (ex.: { tab }, ver tabParams). */
+export function freshUrl(href, build, extra = {}) {
   const url = new URL(href);
+  for (const [k, v] of Object.entries(extra)) {
+    if (v) url.searchParams.set(k, v);
+  }
   url.searchParams.set(VERSION_PARAM, build || String(Date.now()));
   return url.toString();
 }
 
 /** Recarrega a app a partir da rede, não da cache HTTP do index.html. */
-export function reloadFresh(build, loc = globalThis.location) {
-  loc.replace(freshUrl(loc.href, build));
+export function reloadFresh(build, loc = globalThis.location, extra = {}) {
+  loc.replace(freshUrl(loc.href, build, extra));
+}
+
+/** O separador onde a app estava, para uma recarga técnica (uma
+    atualização, um ecrã que falhou a carregar) voltar a ele em vez de cair
+    no Início — o que fazia a recarga parecer um reinício (relatado
+    2026-09-24). As bancadas de teste não contam. */
+export function tabParams(tab) {
+  return typeof tab === 'string' && tab && !/^(design-system|audit-sandbox)$/.test(tab) ? { tab } : {};
 }
 
 /** Tira o ?v= da barra de endereço depois de uma recarga (não o do ?tab=). */
