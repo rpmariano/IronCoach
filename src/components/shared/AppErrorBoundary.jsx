@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { releaseBootSplash } from '../../utils/logoIntro';
 import { clearNavigation } from '../../utils/navigationRestore';
+import { useAppStore } from '../../store';
 
 /**
  * Rede de segurança de última instância. Antes disto, um erro de render não
@@ -35,6 +36,11 @@ export default class AppErrorBoundary extends Component {
     // navigationRestore.js) pode ser o que rebentou: "Recarregar" repunha-o e
     // rebentava outra vez. Esquece-se, e a recarga volta ao Início.
     clearNavigation();
+    // E o ecrã aberto sai da store: senão a atualização automática via a app
+    // "ocupada" e nunca recarregava para a versão com a correção.
+    try {
+      useAppStore.setState({ openCreationMode: null, editingRunId: null, editingRaceId: null });
+    } catch { /* a store é o que menos importa aqui */ }
     // eslint-disable-next-line no-console
     console.error('[AppErrorBoundary] Erro não apanhado no render:', error, info?.componentStack);
   }

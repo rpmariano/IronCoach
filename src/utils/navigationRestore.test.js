@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { create } from 'zustand';
-import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, RESTORE_WINDOW_MS } from './navigationRestore';
+import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation, RESTORE_WINDOW_MS } from './navigationRestore';
 
 // Relatado 2026-09-24: sair para outra app a meio de um registo e voltar
 // deixava a app no Início — o Android matava-a e o ecrã perdia-se.
@@ -130,5 +130,24 @@ describe('o que não se repõe (revisão pré-deploy de 5ce5f31)', () => {
     const store = makeStore();
     applyNavigation(store, { activeTab: 'design-system', screen: null });
     expect(store.getState().activeTab).toBe('home');
+  });
+});
+
+describe('shouldRestoreNavigation — quando manda o URL (revisão pré-deploy de 79c0bf9)', () => {
+  const comEcra = { activeTab: 'corrida', screen: { openCreationMode: 'run' } };
+  const semEcra = { activeTab: 'corrida', screen: null };
+  it('sem nada guardado, ou com uma notificação acabada de tocar, não', () => {
+    expect(shouldRestoreNavigation({ saved: null })).toBe(false);
+    expect(shouldRestoreNavigation({ tabParam: 'coach', carolParam: 'k1', saved: comEcra })).toBe(false);
+  });
+  it('uma bancada pedida por URL, não', () => {
+    expect(shouldRestoreNavigation({ tabParam: 'design-system', saved: comEcra })).toBe(false);
+  });
+  it('um ?tab= sem nada a meio: manda o URL; com um registo a meio: repõe', () => {
+    expect(shouldRestoreNavigation({ tabParam: 'perfil', saved: semEcra })).toBe(false);
+    expect(shouldRestoreNavigation({ tabParam: 'coach', saved: comEcra })).toBe(true);
+  });
+  it('sem nada no URL, repõe', () => {
+    expect(shouldRestoreNavigation({ saved: semEcra })).toBe(true);
   });
 });

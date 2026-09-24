@@ -1238,6 +1238,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      do objetivo, o balanço da Carol e a galeria das memórias. */
   const finishRaceAndGoToHub = () => {
     const hadPendingNav = !!pendingNavTarget.current;
+    // Ligada e com as memórias: a corrida deixa de estar "por fechar".
+    forgetCreatedRun();
     // "Meia de Lisboa concluída · 1:53:42" — o nome dela e o tempo que conta.
     const finalSeconds = raceResultSeconds(savedRaceRunRef.current);
     // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
@@ -1304,6 +1306,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       await persistRaceLinkAndMemories();
     } catch (err) {
       console.error('Falha a ligar a corrida à prova ou a guardar as memórias', err);
+      // A corrida está gravada; falta a ligação ou as memórias. Fica como a
+      // corrida deste ecrã (e no rascunho): se o Android matar a app agora,
+      // reabrir e gravar outra vez retoma ESTA, não cria uma segunda ligada
+      // à mesma prova (revisão pré-deploy de 79c0bf9).
+      adoptCreatedRun(run);
       setMemoriesFailed(true);
       setIsSubmitting(false);
       return;
@@ -1365,6 +1372,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const store = useAppStore.getState();
     const exists = store.runs.some((r) => r.id === run.id);
     store.setRuns(exists ? store.runs.map((r) => (r.id === run.id ? run : r)) : [...store.runs, run]);
+  };
+
+  /* Esta corrida, já gravada, passa a ser a deste ecrã: os prints que foram
+     com ela passam a ser dela ({ path }, como a editar) e ela vai para o
+     rascunho (createdRun). Tudo o que se fizer a seguir é sobre ela — mais
+     prints, "Manual", ou reabrir depois de o Android matar a app. */
+  const adoptCreatedRun = (run) => {
+    const paths = run.photo_paths || [];
+    const sent = [...runPhotos];
+    setRunPhotos((prev) => prev.map((p) => {
+      const i = sent.indexOf(p);
+      return i >= 0 && paths[i] ? { dataUrl: p.dataUrl, path: paths[i] } : p;
+    }));
+    createdRunRef.current = { run, photosShown: true };
+    setPendingCreatedRun(run);
   };
 
   /* A corrida deixa de estar "por fechar": sai do ref, do estado e do
@@ -1504,16 +1526,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds);
       if (missing.length > 0 && !userBypassedMissingSheet) {
         // A corrida JÁ está gravada: entra já no store (sair daqui não a
-        // esconde até recarregar), e os prints que levou passam a ser dela.
-        const paths = createdRun.photo_paths || [];
-        const sent = [...runPhotos];
-        setRunPhotos((prev) => prev.map((p) => {
-          const i = sent.indexOf(p);
-          return i >= 0 && paths[i] ? { dataUrl: p.dataUrl, path: paths[i] } : p;
-        }));
-        createdRunRef.current = { run: createdRun, photosShown: true };
+        // esconde até recarregar), e fica como a corrida deste ecrã.
+        adoptCreatedRun(createdRun);
         upsertRunInStore(createdRun);
-        setPendingCreatedRun(createdRun);
         setMissingKeysList(missing);
         setShowMissingMetricsSheet(true);
         return;

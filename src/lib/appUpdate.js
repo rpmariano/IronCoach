@@ -93,6 +93,12 @@ export function reloadFresh(build, loc = globalThis.location, extra = {}) {
    tira-o logo da barra de endereço (stripResumeParam). */
 const RESUME_PARAM = 'resume';
 
+/** As bancadas de teste do design system (?tab=design-system /
+    ?tab=audit-sandbox): só se chegam por URL e não têm saída. */
+export function isBenchTab(tab) {
+  return tab === 'design-system' || tab === 'audit-sandbox';
+}
+
 /* O App já aplicou o separador de entrada do URL? Até lá o separador da
    store ainda é o de partida ('home'), não o do ?tab= de uma notificação:
    uma recarga nesse instante (o vigia verifica logo no arranque) tem de
@@ -118,7 +124,7 @@ export function markEntryWelcomeHandled() { welcomeHandled = true; }
     de teste, o URL fica como está. */
 export function resumeParams(tab, applied = entryApplied, handled = welcomeHandled) {
   if (!applied) return {};
-  if (typeof tab !== 'string' || !tab || /^(design-system|audit-sandbox)$/.test(tab)) return {};
+  if (typeof tab !== 'string' || !tab || isBenchTab(tab)) return {};
   return handled ? { [RESUME_PARAM]: tab, tab: null, carol: null } : { [RESUME_PARAM]: tab };
 }
 

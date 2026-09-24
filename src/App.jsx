@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
-import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen } from './utils/navigationRestore';
+import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
@@ -774,11 +774,10 @@ export default function App() {
         setSession(existingSession);
         loadedUserIdRef.current = existingSession.user.id;
         // Voltar depois de o Android ter matado a app: o separador e o ecrã
-        // onde se estava, que reabre com o rascunho guardado. Não quando se
-        // entra por uma notificação acabada de tocar (?carol=): aí manda o
-        // que ela prometeu. Um ?tab= que ficou de uma notificação antiga não
-        // conta — senão uma sessão aberta por notificação nunca repunha nada.
-        if (!carolParam && savedNavigation) applyNavigation(useAppStore, savedNavigation);
+        // onde se estava, que reabre com o rascunho guardado — salvo quando
+        // o URL manda (uma notificação acabada de tocar, uma bancada, um
+        // ?tab= sem nada a meio; ver shouldRestoreNavigation).
+        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
         setNavigationDecided(true);
         loadInitialData(existingSession.user.id)
           .then(() => {
@@ -820,7 +819,7 @@ export default function App() {
               : buildDemoData(),
         );
         // Também em demo, como com sessão: é onde isto se consegue ver sem conta.
-        if (!carolParam && savedNavigation) applyNavigation(useAppStore, savedNavigation);
+        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
         setNavigationDecided(true);
         setIsInitializing(false);
       } else {

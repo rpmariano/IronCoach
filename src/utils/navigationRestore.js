@@ -16,6 +16,8 @@
    app saiu há menos de RESTORE_WINDOW_MS, repõe-se tudo — e o ecrã reabre
    com o rascunho que já estava guardado. */
 
+import { isBenchTab } from '../lib/appUpdate';
+
 const KEY = 'ironcoach:ecra-aberto';
 /** Quanto tempo depois de sair da app ainda se volta ao mesmo ecrã. */
 export const RESTORE_WINDOW_MS = 30 * 60 * 1000;
@@ -103,6 +105,19 @@ export function readRecentNavigation({ storage = defaultStorage(), now = () => D
   }
 }
 
+/** Repor o que ficou guardado, dado o URL de entrada?
+    - uma notificação acabada de tocar (?carol=) manda: não;
+    - uma bancada de teste pedida por URL: não;
+    - um ?tab= explícito sem nada a meio (nenhum ecrã guardado): manda o URL;
+    - de resto, sim — incluindo um ?tab= que ficou de uma notificação antiga,
+      com um registo a meio (revisão pré-deploy de 79c0bf9). */
+export function shouldRestoreNavigation({ tabParam = null, carolParam = null, saved = null } = {}) {
+  if (!saved || carolParam) return false;
+  if (tabParam && isBenchTab(tabParam)) return false;
+  if (tabParam && !saved.screen) return false;
+  return true;
+}
+
 /** Repõe na store o separador e o ecrã guardados (os prefills primeiro: o
     ecrã lê-os ao montar). */
 export function applyNavigation(store, saved) {
@@ -110,7 +125,7 @@ export function applyNavigation(store, saved) {
   const s = store.getState();
   // As bancadas de teste não têm saída: só por ?tab=.
   const tab = saved.activeTab;
-  if (typeof tab === 'string' && tab && !/^(design-system|audit-sandbox)$/.test(tab)) s.setActiveTab(tab);
+  if (typeof tab === 'string' && tab && !isBenchTab(tab)) s.setActiveTab(tab);
   const screen = saved.screen;
   if (!screen) return;
   const prefills = {};

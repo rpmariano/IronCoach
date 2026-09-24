@@ -346,6 +346,24 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     });
     // E não desvia para o Calendário pelo caminho.
     expect(useAppStore.getState().activeTab).toBe('holistica');
+    // A confirmação sai com o gesto: o ecrã fica montado (já no hub) e ela
+    // ficava presa por cima, sem se poder dispensar (revisão pré-deploy de
+    // 79c0bf9 — já acontecia em produção).
+    await waitFor(() => expect(screen.queryByTestId('record-confirmation-close')).toBeNull());
+  });
+
+  it('prova NOVA: gravada, o rascunho já não está guardado com a confirmação à vista', async () => {
+    const insertedRace = { ...EXISTING_RACE, id: 'race-nova', website: null, web_info: null };
+    vi.spyOn(supabase, 'from').mockReturnValue({
+      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: insertedRace, error: null }) }) }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    });
+    renderAgenda();
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await screen.findByTestId('record-confirmation-close');
+    await new Promise((r) => setTimeout(r, 900)); // mais do que o debounce do rascunho
+    expect(localStorage.getItem('ironcoach:prova-rascunho:nova')).toBeNull();
   });
 
   /* Sem linha devolvida pelo insert não há hub para abrir — aí o Calendário
