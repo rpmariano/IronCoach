@@ -106,7 +106,7 @@ export function AnalysisSkeleton({
     >
       {steps && (
         <div data-testid="analysis-step" className="flex items-center" style={{ gap: 10 }}>
-          <CoachAvatar size={28} />
+          <CoachAvatar size={28} mood="thinking" />
           <span className="flex-1 min-w-0" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
             <span key={step.text} className="fade-in" style={{ display: 'inline-block' }}>{step.slow ? 'Está a demorar mais do que o costume. Continuo.' : step.text}</span>
           </span>

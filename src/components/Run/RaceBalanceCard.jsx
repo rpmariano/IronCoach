@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
+import { inferMoodFromText } from '@formulas/carolMood.ts';
 import { useAppStore } from '../../store';
 import { existingRaceBalance, requestRaceBalance, balanceAlreadyGivenInChat, balanceParagraphs } from '../../utils/raceBalance';
 
@@ -63,7 +64,8 @@ export default function RaceBalanceCard({ race, run, runs = [], profile = {}, nu
   return (
     <div data-testid="race-balance-card" style={{ borderRadius: 22, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', padding: 16, marginTop: 12 }}>
       <div className="flex items-center gap-2.5">
-        <CoachAvatar size={28} breathing={loading} />
+        {/* A pensar enquanto escreve; depois, a cara do veredicto. */}
+        <CoachAvatar size={28} mood={loading ? 'thinking' : inferMoodFromText(balance?.text)} breathing={loading} />
         <span className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--coach-soft)' }}>
           Balanço da Carol
         </span>
