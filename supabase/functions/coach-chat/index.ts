@@ -7,6 +7,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
+import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
@@ -58,7 +59,9 @@ import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.
 // generationConfig podem mudar de geração para geração (ver thinkingConfig
 // abaixo) — por isso esta função evita depender de campos específicos de uma
 // geração de modelo.
-const GEMINI_MODEL = "gemini-flash-latest";
+// Exportado para a validação do esquema contra a API real
+// (scripts/probe-coach-chat-schema.ts) usar exatamente o mesmo modelo.
+export const GEMINI_MODEL = "gemini-flash-latest";
 const MAX_HISTORY   = 30;   // mensagens mais recentes enviadas ao Gemini
 const MAX_MSG_LEN   = 2000; // caracteres máximos por mensagem
 const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de forçar resposta final
@@ -1235,7 +1238,7 @@ const corsHeaders = {
 // de guardar/mostrar uma resposta. `mood` é a cara com que ela diz a
 // resposta (CAROL.md §4): escolhida na mesma decisão que escreve o texto,
 // para a cara nunca contradizer as palavras.
-const RESPONSE_SCHEMA = {
+export const RESPONSE_SCHEMA_BASE = {
   type: "OBJECT",
   properties: {
     on_topic: { type: "BOOLEAN" },
@@ -1249,6 +1252,66 @@ const RESPONSE_SCHEMA = {
   },
   required: ["on_topic", "reply", "suggestions", "mood"],
 };
+
+/* As recomendações soltas (5.5, push 2): o que ela recomenda na conversa,
+   fora do plano, num campo à parte — validado em
+   _shared/formulas/recommendations.ts e gravado em coach_recommendations.
+   A forma segue a lição de 2026-09-05 (ver MEAL_MACROS_SCHEMA_PROPERTIES):
+   um array ao nível de topo, OPCIONAL, SEM minItems/maxItems, de objetos
+   planos (sem arrays lá dentro). O limite de 5 é aplicado em código. E há
+   uma rede: se a API recusar este esquema (400 INVALID_ARGUMENT), o pedido
+   repete-se sem o campo — ver shouldRetryWithoutRecommendations. */
+export const RESPONSE_SCHEMA = {
+  ...RESPONSE_SCHEMA_BASE,
+  properties: {
+    ...RESPONSE_SCHEMA_BASE.properties,
+    recommendations: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          date: { type: "STRING", description: "O dia a que se refere, AAAA-MM-DD." },
+          kind: { type: "STRING", enum: ["descanso", "corrida", "ginasio", "proteina"] },
+          distance_km: { type: "NUMBER" },
+          duration_min: { type: "NUMBER" },
+          protein_g: { type: "NUMBER" },
+        },
+        required: ["date", "kind"],
+      },
+    },
+  },
+};
+
+/** A API recusou o esquema com as recomendações? Então repete-se sem elas
+ *  (uma vez), em vez de o chat ir abaixo como a 2026-09-05. */
+export function shouldRetryWithoutRecommendations(status: number, errText: string, usingRecommendations: boolean): boolean {
+  return usingRecommendations && status === 400 && /INVALID_ARGUMENT/.test(errText || "");
+}
+
+/* Esta instância deixa de enviar o campo depois de uma recusa: não vale a
+   pena pagar a ida e volta falhada em todos os pedidos até ao próximo
+   arranque a frio. */
+let recommendationsSchemaRejected = false;
+
+/* Grava as recomendações da resposta, validadas, depois da mensagem dela.
+   Best-effort: sem a tabela (migration por aplicar) ou com um erro, fica no
+   log — a mensagem já foi entregue. Devolve quantas ficaram gravadas. */
+// deno-lint-ignore no-explicit-any
+export async function saveRecommendations(sb: any, userId: string, messageId: string | null, raw: unknown, todayISO: string): Promise<number> {
+  const rows = parseRecommendations(raw, todayISO);
+  if (!rows.length) return 0;
+  try {
+    const { error } = await sb.from("coach_recommendations").upsert(
+      rows.map((r) => ({ ...r, user_id: userId, message_id: messageId })),
+      { onConflict: "user_id,date,kind" },
+    );
+    if (error) { console.warn("coach_recommendations: gravação falhou:", error.message ?? error); return 0; }
+    return rows.length;
+  } catch (e) {
+    console.warn("coach_recommendations: gravação falhou:", e);
+    return 0;
+  }
+}
 
 // Grava a resposta dela com a emoção. Sem a coluna `mood` (a migration
 // 20260924001000 ainda por aplicar) o PostgREST recusa o insert inteiro — e
@@ -4700,6 +4763,13 @@ export function buildSystemInstruction(
     `- "worried": dor, lesão, alarme G1–G5, sinais de RED-S ou sobretreino, objetivo inviável, discordância com um pedido arriscado, dias sem notícias.\n` +
     `- "caring": o atleta está em baixo — dormiu mal, está cansado, frustrado, stressado, falhou um treino por motivos da vida. Quando lhe dizes "estou contigo" e baixas a carga.\n` +
     `Um aviso ganha sempre: se a resposta tem um alerta de saúde, é "worried" mesmo que também elogies alguma coisa. Não uses "happy" nem "proud" por simpatia — o elogio automático tira-te credibilidade.\n\n` +
+    // ── Recommendations (5.5, push 2) ───────────────────────────────────────
+    `## Campo "recommendations"\n` +
+    `Só quando, NESTA resposta, recomendas uma coisa concreta para um dia fora do plano aceite (ou por cima dele): descanso, uma corrida ou ` +
+    `uma sessão de ginásio (com a distância ou a duração que disseste), ou uma quantidade de proteína para o dia. Uma entrada por recomendação: ` +
+    `a data (AAAA-MM-DD, contada a partir de "Hoje (…)" no contexto), o tipo e o número que está no texto — o mesmo, nunca outro. ` +
+    `Em tudo o resto o array fica vazio: conversa, explicações, conselhos gerais, e o que já está no plano. Não é um plano: para vários dias, ` +
+    `propõe o plano pela ferramenta.\n\n` +
     `## Provas Próximas\n` +
     `Se houver "Próximas provas agendadas" no contexto, tem sempre em conta a proximidade e a "fase do plano" ao dar conselhos de treino ou nutrição, mesmo sem o atleta mencionar. Regras gerais:\n` +
     `- Fase "Não iniciado": o atleta está fora da janela oficial de preparação para a distância. Treinos de manutenção ou base.\n` +
@@ -6350,6 +6420,9 @@ async function handler(req: Request): Promise<Response> {
     // tools + response_schema coexistem: quando o modelo decide chamar uma
     // função devolve uma parte functionCall (ignora o schema), quando decide
     // responder ao utilizador segue o schema {reply, suggestions} como sempre.
+    // Com as recomendações no esquema, salvo se esta instância já as viu
+    // recusadas (5.5, push 2 — ver shouldRetryWithoutRecommendations).
+    let useRecommendationsSchema = !recommendationsSchemaRejected;
     async function callGemini(withTools = true) {
       const res = await fetchGeminiWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
@@ -6386,7 +6459,7 @@ async function handler(req: Request): Promise<Response> {
               // não conseguiu gerar uma resposta" sem pista nenhuma da causa.
               maxOutputTokens: 8192,
               response_mime_type: "application/json",
-              response_schema: RESPONSE_SCHEMA,
+              response_schema: useRecommendationsSchema ? RESPONSE_SCHEMA : RESPONSE_SCHEMA_BASE,
             },
           }),
         },
@@ -6482,6 +6555,17 @@ async function handler(req: Request): Promise<Response> {
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
         console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes }));
+        /* A rede da 5.5: o esquema com as recomendações recusado pela API.
+           Repete-se esta mesma ronda, uma vez, sem o campo — o atleta tem a
+           resposta na mesma, sem recomendações gravadas — e a instância
+           deixa de o enviar. Nunca mais o chat abaixo por causa do esquema. */
+        if (shouldRetryWithoutRecommendations(geminiRes.status, errText, useRecommendationsSchema)) {
+          console.error("coach-chat: RESPONSE_SCHEMA com recommendations recusado pela API — a repetir sem ele", JSON.stringify({ round, turnCase }));
+          useRecommendationsSchema = false;
+          recommendationsSchemaRejected = true;
+          round--;
+          continue;
+        }
         // Depois de uma escrita (ronda > 0), o erro não é "a mensagem não
         // saiu": o plano, a prova ou os objetivos já mudaram.
         const fallback = await replyAfterWritesWithoutText();
@@ -6590,6 +6674,8 @@ async function handler(req: Request): Promise<Response> {
     let replyText: string;
     let suggestions: string[] = [];
     let replyMood: CarolMood | null = null;
+    // As recomendações soltas (5.5, push 2): gravam-se depois da mensagem.
+    let rawRecommendations: unknown = null;
     try {
       const parsed = JSON.parse(rawText);
       // O modelo sinaliza perguntas ambíguas fora do âmbito via "on_topic".
@@ -6614,6 +6700,7 @@ async function handler(req: Request): Promise<Response> {
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
       // Fora do vocabulário (ou em falta) fica null, e o cliente deduz do texto.
       replyMood = normalizeMessageMood(parsed.mood);
+      rawRecommendations = parsed.recommendations ?? null;
       // Numa mensagem por iniciativa dela não há "perguntas de seguimento"
       // a oferecer — é ela que está à espera de resposta. A exceção é o
       // balanço "perto do objetivo": a pergunta ("para a próxima é para fazer
@@ -6636,6 +6723,10 @@ async function handler(req: Request): Promise<Response> {
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
     const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
+
+    // Depois da mensagem, as recomendações soltas que ela deu (5.5, push 2):
+    // validadas, com a ligação à mensagem quando ela ficou gravada.
+    await saveRecommendations(sb, userId, modelMsg?.id ?? null, rawRecommendations, todayISO);
 
     // O balanço feito, a prova fica na memória de longo prazo dela (uma nota
     // "outro" com tempo, objetivo e veredicto) — é o que permite ao próximo

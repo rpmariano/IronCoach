@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
+import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
@@ -4126,4 +4127,74 @@ Deno.test("checkPlanLoad: a carga do plano em curso não cai em cima de uma prop
 Deno.test("checkPlanLoad: uma falha a ler deixa passar", async () => {
   const broken = { from: () => { throw new Error("rede"); } };
   assertEquals(await checkPlanLoad(broken, "u1", [planRow("2026-09-25", 50)], [], "2026-09-25", "2026-09-24"), null);
+});
+
+// ── 5.5, push 2: as recomendações soltas ─────────────────────────────────────
+
+Deno.test("RESPONSE_SCHEMA: as recomendações seguem a lição de 2026-09-05 — opcionais, ao nível de topo, sem limites de comprimento, objetos planos", () => {
+  // deno-lint-ignore no-explicit-any
+  const rec: any = (RESPONSE_SCHEMA.properties as any).recommendations;
+  assertEquals(rec.type, "ARRAY");
+  // Opcional: o modelo pode não o enviar, e a resposta continua válida.
+  assertEquals(RESPONSE_SCHEMA.required.includes("recommendations"), false);
+  // Sem minItems/maxItems em lado nenhum dentro dele (o padrão que deu 400).
+  const json = JSON.stringify(rec);
+  assertEquals(/minItems|maxItems/.test(json), false);
+  // Objetos planos: nenhuma propriedade é um array ou um objeto.
+  assertEquals(rec.items.type, "OBJECT");
+  for (const p of Object.values(rec.items.properties)) {
+    // deno-lint-ignore no-explicit-any
+    assert(["STRING", "NUMBER"].includes((p as any).type));
+  }
+  // O resto do esquema é exatamente o de antes.
+  assertEquals({ ...RESPONSE_SCHEMA.properties, recommendations: undefined }, { ...RESPONSE_SCHEMA_BASE.properties, recommendations: undefined });
+  assertEquals(RESPONSE_SCHEMA.required, RESPONSE_SCHEMA_BASE.required);
+});
+
+Deno.test("shouldRetryWithoutRecommendations: só um 400 INVALID_ARGUMENT com o campo novo no pedido", () => {
+  const invalid = '{"error":{"code":400,"message":"Invalid JSON payload","status":"INVALID_ARGUMENT"}}';
+  assertEquals(shouldRetryWithoutRecommendations(400, invalid, true), true);
+  // Já sem o campo: o problema é outro, não se repete.
+  assertEquals(shouldRetryWithoutRecommendations(400, invalid, false), false);
+  assertEquals(shouldRetryWithoutRecommendations(429, "RESOURCE_EXHAUSTED", true), false);
+  assertEquals(shouldRetryWithoutRecommendations(503, "UNAVAILABLE", true), false);
+  assertEquals(shouldRetryWithoutRecommendations(400, "", true), false);
+});
+
+function makeRecommendationsSb(error: unknown = null) {
+  // deno-lint-ignore no-explicit-any
+  const calls: any[] = [];
+  const sb = {
+    from: (table: string) => ({
+      // deno-lint-ignore no-explicit-any
+      upsert: (rows: any, opts: any) => { calls.push({ table, rows, opts }); return Promise.resolve({ error }); },
+    }),
+  };
+  return { sb, calls };
+}
+
+Deno.test("saveRecommendations: grava as validadas, ligadas à mensagem, uma por dia e tipo", async () => {
+  const { sb, calls } = makeRecommendationsSb();
+  const saved = await saveRecommendations(sb, "u1", "m1", [
+    { date: "2026-09-26", kind: "descanso" },
+    { date: "2026-09-25", kind: "proteina", protein_g: 140 },
+    { date: "2026-09-26", kind: "voar" },
+  ], "2026-09-25");
+  assertEquals(saved, 2);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].table, "coach_recommendations");
+  assertEquals(calls[0].opts, { onConflict: "user_id,date,kind" });
+  assertEquals(calls[0].rows, [
+    { date: "2026-09-26", kind: "descanso", user_id: "u1", message_id: "m1" },
+    { date: "2026-09-25", kind: "proteina", protein_g: 140, user_id: "u1", message_id: "m1" },
+  ]);
+});
+
+Deno.test("saveRecommendations: sem nada válido não escreve; com erro, fica no log e não rebenta", async () => {
+  const empty = makeRecommendationsSb();
+  assertEquals(await saveRecommendations(empty.sb, "u1", "m1", null, "2026-09-25"), 0);
+  assertEquals(await saveRecommendations(empty.sb, "u1", "m1", [], "2026-09-25"), 0);
+  assertEquals(empty.calls.length, 0);
+  const failing = makeRecommendationsSb({ message: "relation does not exist" });
+  assertEquals(await saveRecommendations(failing.sb, "u1", null, [{ date: "2026-09-26", kind: "descanso" }], "2026-09-25"), 0);
 });
