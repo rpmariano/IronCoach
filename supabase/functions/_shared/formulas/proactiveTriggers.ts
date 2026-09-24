@@ -11,7 +11,8 @@
 //
 // Prioridade, como no cliente: manhã da prova > véspera > depois da prova >
 // fim de bloco > silêncio > balanço da semana — e o balanço só num dia sem
-// mais nenhum (ver o fim de listServerProactive). O servidor tem mais dois
+// mais nenhum; sem balanço, o treino de ontem por registar (P.10) vem por
+// último (ver o fim de listServerProactive). O servidor tem mais dois
 // momentos que o cliente trata pelo Início, não pelo chat (P.5): um assunto
 // por resolver (intervenção — dor no check-in, desvio num registo) passa à
 // frente de tudo, e o conflito de provas vem logo a seguir à véspera.
@@ -20,7 +21,7 @@ export const SILENCE_DAYS = 3;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
 export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 
-export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "week_review";
+export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "missed_workout" | "week_review";
 
 export interface TriggerRace {
   id: string;
@@ -42,6 +43,16 @@ export interface TriggerPlan {
   period_end?: string | null;
   race_id?: string | null;
   hasTraining?: boolean;
+}
+
+/** Um item de plano — para o treino de ontem por registar (P.10). */
+export interface TriggerPlanItem {
+  plan_id?: string | null;
+  planned_date?: string | null;
+  kind?: string | null;
+  status?: string | null;
+  training_type?: string | null;
+  created_at?: string | null;
 }
 
 /** Quantos dias antes do fim de um bloco a Carol chama por ele. */
@@ -81,6 +92,12 @@ export interface ServerProactiveCandidate {
   /** Manhã da prova: a hora de partida em minutos desde a meia-noite de
    *  Lisboa, ou null sem hora marcada (P.10). */
   startMinutes?: number | null;
+  /** Silêncio (P.10): o último check-in, quando é DEPOIS do último registo —
+   *  ele está por cá, o que falta são os treinos. */
+  lastCheckinDate?: string | null;
+  /** Silêncio com check-in: dias desde o último treino (corrida ou ginásio),
+   *  ou null se não houver nenhum. */
+  trainingSilenceDays?: number | null;
 }
 
 /** "08:30" / "08:30:00" → 510. null se não for uma hora válida. */
@@ -152,6 +169,55 @@ export function findEndingBlock(plans: TriggerPlan[] | null | undefined, todayIS
     if (!next) return plan;
   }
   return null;
+}
+
+/* ── O treino de ontem por registar (P.10) ──────────────────────────────────
+   Um treino do plano aceite (corrida ou ginásio) planeado para ontem, ainda
+   pendente, e sem nenhuma corrida nem sessão registada nesse dia (a data conta
+   pelo calendário, como em src/utils/planDivergence.js). A Carol pergunta o
+   que aconteceu — sem reagendar: pode ter treinado e não registado.
+   Fica de fora:
+   - num dia de prova: a prova manda no dia;
+   - o item que é a própria prova: esse é o "como correu?";
+   - o que foi planeado antes da última reescrita do plano (o dia do item mais
+     recente): ao reescrevê-lo ela já o teve à frente — a mesma guarda do
+     aviso de ajuste do Início.
+   Duas sessões falhadas numa semana continuam a ser o aviso "O plano precisa
+   de um ajuste" do Início, que leva a ajustar o plano; isto é só a pergunta. */
+
+/** O dia de Lisboa de um instante — a reescrita conta pelo dia em que aconteceu. */
+function lisbonDayOf(iso: string): string | null {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date(t)) : null;
+}
+
+export function isRacePlanItemServer(item: TriggerPlanItem): boolean {
+  return item?.kind === "corrida" && (item.training_type === "prova" || item.training_type === "competicao");
+}
+
+export function findMissedWorkout(
+  input: { plans?: TriggerPlan[] | null; planItems?: TriggerPlanItem[] | null; trainingDates?: Array<string | null | undefined> | null; raceEvents?: TriggerRace[] | null },
+  todayISO: string,
+): { date: string; items: TriggerPlanItem[] } | null {
+  const yesterday = addDaysISO(todayISO, -1);
+  if ((input.raceEvents || []).some((r) => r && r.status !== "concluida" && dayOf(r.date) === todayISO)) return null;
+  if ((input.trainingDates || []).some((d) => dayOf(d ?? null) === yesterday)) return null;
+  const accepted = new Set((input.plans || []).filter((p) => p?.status === "aceite").map((p) => p.id));
+  const items = (input.planItems || []).filter((i) => i && i.plan_id && accepted.has(i.plan_id));
+  const rewriteByPlan = new Map<string, string>();
+  for (const i of items) {
+    const day = i.created_at ? lisbonDayOf(i.created_at) : null;
+    if (!day) continue;
+    const prev = rewriteByPlan.get(i.plan_id!);
+    if (!prev || day > prev) rewriteByPlan.set(i.plan_id!, day);
+  }
+  const missed = items.filter((i) => {
+    if ((i.kind !== "corrida" && i.kind !== "ginasio") || i.status !== "pendente") return false;
+    if (dayOf(i.planned_date ?? null) !== yesterday || isRacePlanItemServer(i)) return false;
+    const rewrite = rewriteByPlan.get(i.plan_id!);
+    return !rewrite || yesterday >= rewrite;
+  });
+  return missed.length ? { date: yesterday, items: missed } : null;
 }
 
 function daysBetween(fromIso: string, toIso: string): number {
@@ -235,6 +301,14 @@ export type ServerProactiveInput = {
     /** Balanço da semana: datas de registos que cubram a semana revista (o
      *  tick só as lê à segunda e à terça — weekToReviewBounds). */
     weekRecordDates?: Array<string | null | undefined> | null;
+    /** P.10, treino de ontem por registar: os itens dos planos (basta que
+     *  incluam os dos planos aceites que cobrem ontem) e as datas das corridas
+     *  e sessões de ginásio (basta que incluam ontem). */
+    planItems?: TriggerPlanItem[] | null;
+    trainingDates?: Array<string | null | undefined> | null;
+    /** P.10, silêncio: o último check-in e o último treino (corrida ou ginásio). */
+    lastCheckinDate?: string | null;
+    lastTrainingDate?: string | null;
 };
 
 /** O momento mais importante agora, ou null. */
@@ -318,7 +392,18 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   const last = input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
   if (last) {
     const gap = daysBetween(last, todayISO);
-    if (gap >= SILENCE_DAYS) out.push({ ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last });
+    if (gap >= SILENCE_DAYS) {
+      /* Com check-ins depois do último registo, ele está por cá: o que falta
+         são os treinos, não notícias dele (P.10). Os dias contam então desde
+         o último treino — o último registo pode ter sido uma refeição. */
+      const checkin = dayOf(input.lastCheckinDate ?? null);
+      const checkinAfter = checkin && checkin > last ? checkin : null;
+      const training = dayOf(input.lastTrainingDate ?? null);
+      out.push({
+        ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last,
+        ...(checkinAfter ? { lastCheckinDate: checkinAfter, trainingSilenceDays: training ? daysBetween(training, todayISO) : null } : {}),
+      });
+    }
   }
 
   // O balanço da semana só entra num dia sem mais nada: a prova, a véspera,
@@ -328,6 +413,12 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   const week = out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
   if (week) {
     out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
+  } else {
+    /* O treino de ontem por registar (P.10) vem por último e não conta para
+       o balanço da semana: à segunda, o treino de domingo que ficou por
+       fazer é assunto do balanço, que fica com o dia. */
+    const missed = findMissedWorkout(input, todayISO);
+    if (missed) out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date });
   }
   return out.filter((c) => ok(c.trigger));
 }
@@ -359,7 +450,13 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
           : `Como correu a prova${name ? ` ${name}` : ""}? Conta-me, e regista a corrida.`,
       };
     case "silence":
-      return { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
+      // Com check-ins recentes ele está por cá: o que falta são os treinos (P.10).
+      return c.lastCheckinDate
+        ? { title, body: `Não vejo nenhum treino teu há ${c.trainingSilenceDays ?? c.silenceDays ?? SILENCE_DAYS} dias. Está tudo bem?` }
+        : { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
+    // A frase fixa de propósito (P.10): pergunta, não acusa — pode ter treinado e não registado.
+    case "missed_workout":
+      return { title, body: "Não vi o treino de ontem registado. Aconteceu alguma coisa?" };
     // Genérica de propósito: o motivo pode ser de saúde (uma dor), e o
     // ecrã bloqueado não é sítio para o dizer.
     case "intervention":
@@ -385,7 +482,7 @@ export const DEFAULT_PUSH_END_HOUR = 21;
 export const RACE_MORNING_EARLIEST_HOUR = 6;
 /** Com hora de partida, a manhã da prova sai no máximo 2 h antes dela (P.10). */
 export const RACE_MORNING_LEAD_MINUTES = 120;
-export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "week_review"];
+export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "missed_workout", "week_review"];
 
 /** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
  *  por dia e os momentos que aceita. Tudo opcional, com os valores por omissão

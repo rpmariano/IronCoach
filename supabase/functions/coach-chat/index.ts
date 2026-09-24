@@ -638,8 +638,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "week_review";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "week_review"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -703,9 +703,19 @@ export async function recordProactiveDelivered(sb: any, userId: string, trigger:
 }
 
 const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
+  // P.10: com check-ins depois do último registo, ele está por cá — o que
+  // falta são os treinos. O Contexto (do cliente) diz se é o caso.
   silence:
-    `Está sem qualquer registo há 3 dias ou mais. Pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase de contexto no máximo. ` +
-    `Sem sermão, sem lista de treinos em atraso, sem reagendar nada: isso fica para quando ele responder.`,
+    `Está sem qualquer registo há 3 dias ou mais. Se o Contexto disser que fez check-in depois do último registo, ele está por cá: ` +
+    `não lhe perguntes se está bem em geral — diz que não vês nenhum treino dele há tantos dias (o número do Contexto) e pergunta o que se ` +
+    `passa com os treinos. Sem esse check-in, pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase de contexto no máximo. ` +
+    `Nos dois casos: sem sermão, sem lista de treinos em atraso, sem reagendar nada — isso fica para quando ele responder.`,
+  // P.10: o treino de ontem do plano ficou por registar. Pergunta e ouve —
+  // pode ter treinado e não registado; reagendar é outra conversa.
+  missed_workout:
+    `Ontem havia treino no plano e não há registo dele — o Contexto diz qual. Pergunta-lhe o que aconteceu, numa ou duas frases, ` +
+    `sem sermão e sem dar o treino como falhado: pode ter treinado e não registado. NÃO reagendes nem mexas no plano neste turno — ` +
+    `ouve primeiro. Se ele disser que treinou, pede-lhe que registe; se não treinou, pergunta o que o impediu e fica por aí.`,
   race_eve:
     `Amanhã é a prova. Primeiro, o PLANO PARA O DIA (bloco no contexto, se existir): apresenta-o na tua voz, troço a troço — o ritmo do ` +
     `primeiro km e porquê, onde controlar, onde aguentar, o ponto de decisão e o que o decide, o final, o abastecimento nos km certos — e cita ` +
@@ -1677,7 +1687,8 @@ const RUN_KIND_LABELS: Record<string, string> = {
 // Os momentos em que ela pode notificar (P.5/P.6), como se leem na bio.
 const PUSH_TYPE_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
-  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos", week_review: "balanço da semana",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
+  missed_workout: "treino por registar", week_review: "balanço da semana",
 };
 const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", tempo: "Tempo", recuperacao: "Recuperação",

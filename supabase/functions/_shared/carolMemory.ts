@@ -995,7 +995,8 @@ export async function fetchImpressionsBlock(sb: any, userId: string, todayISO: s
 // acima: um rótulo de apresentação, não lógica, o risco de divergir é baixo).
 const PUSH_TRIGGER_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
-  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos", week_review: "balanço da semana",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
+  missed_workout: "treino por registar", week_review: "balanço da semana",
 };
 
 export function buildPushesContext(

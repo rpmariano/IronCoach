@@ -523,7 +523,7 @@ describe('Perfil — notificações da Carol (P.6)', () => {
       carol_push_enabled: true,
       carol_push_max_per_day: 2,
       carol_push_start_hour: 8,
-      carol_push_types: ['intervention', 'race_morning', 'race_eve', 'race_conflict', 'race_after', 'block_end', 'week_review'],
+      carol_push_types: ['intervention', 'race_morning', 'race_eve', 'race_conflict', 'race_after', 'block_end', 'missed_workout', 'week_review'],
     });
   });
 

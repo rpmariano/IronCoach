@@ -52,14 +52,17 @@ function addDays(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 }
 
+/* O último registo de todos (o silêncio) e o último treino — corrida ou
+   ginásio — para o silêncio com check-ins (P.10). Uma linha por tabela. */
 // deno-lint-ignore no-explicit-any
-async function lastRecordDate(sb: any, userId: string): Promise<string | null> {
+async function lastRecordDates(sb: any, userId: string): Promise<{ last: string | null; lastTraining: string | null }> {
   const tables = ["runs", "meals", "workout_sessions", "body_assessments"];
   const results = await Promise.all(tables.map((t) =>
     sb.from(t).select("date").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle()
   ));
-  const dates = results.map((r: { data: { date?: string } | null }) => r.data?.date).filter((d): d is string => typeof d === "string");
-  return dates.length ? dates.sort().pop()! : null;
+  const dates = results.map((r: { data: { date?: string } | null }) => (typeof r.data?.date === "string" ? r.data.date : null));
+  const maxOf = (list: (string | null)[]) => list.filter((d): d is string => !!d).sort().pop() ?? null;
+  return { last: maxOf(dates), lastTraining: maxOf([dates[0], dates[2]]) };
 }
 
 /* O balanço da semana (week_review) precisa de saber se houve algum registo
@@ -129,21 +132,33 @@ async function handler(req: Request): Promise<Response> {
   const tally: Record<string, number> = {};
   let sent = 0;
 
+  const yesterday = addDays(today, -1);
+
   for (const [userId, userSubs] of byUser) {
     try {
-      const [{ data: races, error: racesErr }, { data: runs, error: runsErr }, last, { data: plans, error: plansErr }, weekDates] = await Promise.all([
+      const [
+        { data: races, error: racesErr }, { data: runs, error: runsErr }, { last, lastTraining }, { data: plans, error: plansErr }, weekDates,
+        { data: gymYesterday }, { data: lastCheckin },
+      ] = await Promise.all([
         // Até 6 meses à frente: o conflito de provas olha para dentro do bloco.
         sb.from("race_events").select("id, name, date, status, distance_km, coach_balance, start_time, target_time_seconds, race_priority, conflict_acknowledged_at")
           .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 183)),
         sb.from("runs").select("id, date, race_id, kind, created_at, duration_seconds, distance_km")
           .eq("user_id", userId).gte("date", addDays(today, -8)),
-        lastRecordDate(sb, userId),
-        // Os planos em vigor ou propostos, com os tipos dos itens — para o
+        lastRecordDates(sb, userId),
+        // Os planos em vigor ou propostos, com os itens — o tipo, para o
         // conflito de provas e o fim de bloco (um plano só de refeições não
-        // é um bloco de treino).
-        sb.from("coach_plans").select("id, status, period_start, period_end, race_id, coach_plan_items(kind)")
-          .eq("user_id", userId).in("status", ["aceite", "proposto"]).gte("period_end", today),
+        // é um bloco de treino); a data, o estado e quando foi criado, para o
+        // treino de ontem por registar (P.10). Desde ontem: um bloco que
+        // acabou ontem ainda tem o treino de ontem.
+        sb.from("coach_plans").select("id, status, period_start, period_end, race_id, coach_plan_items(kind, planned_date, status, training_type, created_at)")
+          .eq("user_id", userId).in("status", ["aceite", "proposto"]).gte("period_end", yesterday),
         weekRecordDates(sb, userId, reviewWeek),
+        // O treino de ontem conta como feito com qualquer sessão de ginásio
+        // nesse dia (as corridas já vêm acima) — P.10.
+        sb.from("workout_sessions").select("date").eq("user_id", userId).eq("date", yesterday).limit(1),
+        // O último check-in: ele está por cá, mesmo sem registos (P.10).
+        sb.from("daily_checkins").select("date").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
       ]);
       // Sem as provas ou as corridas, o momento escolhido podia ser o errado
       // (a véspera a cair para o silêncio): salta-se o atleta nesta hora.
@@ -161,10 +176,19 @@ async function handler(req: Request): Promise<Response> {
         race_id: p.race_id,
         hasTraining: (p.coach_plan_items || []).some((i: { kind?: string }) => i?.kind === "corrida" || i?.kind === "ginasio"),
       }));
+      // deno-lint-ignore no-explicit-any
+      const planItems = (plans || []).flatMap((p: any) => (p.coach_plan_items || []).map((i: any) => ({ ...i, plan_id: p.id })));
       const candidates = listServerProactive({
         raceEvents: races || [],
         runs: runs || [],
         lastRecordDate: last,
+        lastTrainingDate: lastTraining,
+        lastCheckinDate: lastCheckin?.date ?? null,
+        planItems,
+        trainingDates: [
+          ...(runs || []).map((r: { date?: string | null }) => r.date ?? null),
+          ...(gymYesterday || []).map((g: { date?: string | null }) => g.date ?? null),
+        ],
         intervention: interventionById.get(userId) ?? null,
         plans: triggerPlans,
         // Um momento desligado no Perfil não esconde os seguintes — exceto o

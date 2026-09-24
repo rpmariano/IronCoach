@@ -3017,6 +3017,18 @@ Deno.test("proactiveTrigger: cada gatilho injeta a sua instrução, o contexto d
   assertEquals(buildProactiveInstruction("silence", null).includes("Contexto:"), false);
 });
 
+Deno.test("P.10: o treino de ontem pergunta e ouve, sem reagendar; o silêncio com check-ins pergunta pelos treinos", () => {
+  const missed = buildProactiveInstruction("missed_workout", "Treino de ontem (2026-09-23) por registar: corrida (longo, 16 km).");
+  assertStringIncludes(missed, "Contexto: Treino de ontem (2026-09-23) por registar");
+  assertStringIncludes(missed, "Pergunta-lhe o que aconteceu");
+  assertStringIncludes(missed, "NÃO reagendes");
+  assertStringIncludes(missed, "pode ter treinado e não registado");
+  const silence = buildProactiveInstruction("silence", "Último registo: 2026-09-14 (há 4 dias). Fez check-in depois disso (último: 2026-09-17).");
+  assertStringIncludes(silence, "fez check-in depois do último registo");
+  assertStringIncludes(silence, "não vês nenhum treino dele");
+  assertStringIncludes(silence, "Estás bem?");
+});
+
 Deno.test("shouldSkipProactive: salta se a Carol foi a última a falar há menos de 6h; não salta se o atleta já respondeu ou se passou o silêncio", () => {
   const now = Date.parse("2026-09-11T09:00:00Z");
   const recent = new Date(now - 2 * 3600000).toISOString();

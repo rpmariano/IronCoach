@@ -79,3 +79,21 @@ Deno.test("describeFacts: o balanço da semana leva as datas da semana e nada de
   const week = { ...silence, trigger: "week_review" as const, key: "week_review:2026-09-21", silenceDays: null, weekStart: "2026-09-21", weekEnd: "2026-09-27" };
   assertEquals(describeFacts(week, { firstName: "Rui", raceName: "Meia" }), ["Nome do atleta: Rui", "Semana revista: 2026-09-21 a 2026-09-27"]);
 });
+
+Deno.test("P.10: o treino de ontem nunca passa pelo gerador — frase fixa, sem custo", async () => {
+  const missed = { ...silence, trigger: "missed_workout" as const, key: "missed_workout:2026-09-23", silenceDays: null, anchorDate: "2026-09-23" };
+  const good = { candidates: [{ content: { parts: [{ text: "Ontem ficou por fazer o longo. Conta-me o que se passou." }] } }] };
+  const msg = await composePushMessage(missed, {}, "chave", fakeFetch(good));
+  assertEquals(msg, { title: "Carol", body: "Não vi o treino de ontem registado. Aconteceu alguma coisa?", generated: false, usage: null });
+  assertEquals(describeFacts(missed, { firstName: "Rui", raceName: "Meia" }), ["Nome do atleta: Rui"]);
+});
+
+Deno.test("P.10: o silêncio com check-ins diz ao modelo que ele está por cá e conta os dias sem treino", () => {
+  const withCheckin = { ...silence, lastCheckinDate: "2026-09-17", trainingSilenceDays: 10 };
+  const facts = describeFacts(withCheckin, {});
+  assertEquals(facts[0], "Dias sem nenhum treino registado: 10");
+  assertStringIncludes(facts[1], "Último check-in: 2026-09-17");
+  assertStringIncludes(buildPushPrompt(withCheckin, {}), "Ele faz os check-ins mas não regista treinos");
+  // Sem check-in, como antes.
+  assertEquals(describeFacts(silence, {}), [`Dias sem registos: ${silence.silenceDays}`]);
+});
