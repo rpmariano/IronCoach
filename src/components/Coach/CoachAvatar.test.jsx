@@ -59,7 +59,29 @@ describe('carolFace — a geometria', () => {
 
   it('o enquadramento aproxima-se da cara nos tamanhos pequenos', () => {
     expect(frameFor(24).detail).toBe('min');
-    expect(frameFor(36).detail).toBe('mid');
+    expect(frameFor(36).detail).toBe('min');
+    expect(frameFor(44).detail).toBe('mid');
     expect(frameFor(76).detail).toBe('full');
+  });
+});
+
+describe('CoachAvatar — as feições que dizem a emoção', () => {
+  // Em píxeis de ecrã: a espessura do traço × a escala do viewBox.
+  const px = (container, part, size) => {
+    const vbW = Number(container.querySelector('svg').getAttribute('viewBox').split(' ')[2]);
+    return Number(container.querySelector(`[data-part="${part}"]`).getAttribute('stroke-width')) * (size / vbW);
+  };
+
+  it.each([24, 36, 44, 48])('a %i px, sobrancelhas e boca com pelo menos 1,2 px', (size) => {
+    const { container } = render(<CoachAvatar mood="worried" size={size} />);
+    expect(px(container, 'browL', size)).toBeGreaterThanOrEqual(1.2);
+    expect(px(container, 'mouth', size)).toBeGreaterThanOrEqual(1.2);
+  });
+
+  it('nos tamanhos grandes o traço volta à escala do desenho', () => {
+    const { container } = render(<CoachAvatar mood="worried" size={96} />);
+    const { container: small } = render(<CoachAvatar mood="worried" size={36} />);
+    // Relativo ao tamanho: pequeno, mais grosso; grande, o do desenho.
+    expect(px(small, 'browL', 36) / 36).toBeGreaterThan(px(container, 'browL', 96) / 96);
   });
 });

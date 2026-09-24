@@ -253,8 +253,10 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
       {/* A cara do resumo de hoje: a pensar enquanto carrega, depois a que o
           texto pede — um aviso de dor deixa-a preocupada, um recorde
           orgulhosa. O conceito do dia e a estratégia nutricional ficam de
-          fora: uma lição sobre sobretreino não é um aviso ao atleta. */}
-      <CoachAvatar size={34} mood={loading ? 'thinking' : inferMoodFromText(messages.filter((m) => MOOD_KEYS.has(m.key)).map((m) => m.text).join(' '))} className="mt-[1px]" />
+          fora: uma lição sobre sobretreino não é um aviso ao atleta. Com
+          56 px para a emoção se ler; sem o desenho a traço, que a cada
+          regresso ao Início seria ruído. */}
+      <CoachAvatar size={56} draw={false} mood={loading ? 'thinking' : inferMoodFromText(messages.filter((m) => MOOD_KEYS.has(m.key)).map((m) => m.text).join(' '))} className="mt-[1px]" />
       <div className="flex-1 min-w-0">
         {/* Alvo ≥44px sem empurrar o resumo para baixo: a margem negativa
             devolve à linha a sua altura visual (padrão de DayPlanCard). */}

@@ -874,7 +874,7 @@ export default function Coach() {
         <div className="flex items-center gap-2.5">
           {/* Ponto 9, animação 7: o halo só respira quando há assunto por
               resolver — três ciclos e para. */}
-          <CoachAvatar size={36} radius={12} mood={headerMood} breathing={hasPendingTopic} draw />
+          <CoachAvatar size={48} radius={15} mood={headerMood} breathing={hasPendingTopic} draw />
           <div>
             <h2 className="text-base font-bold leading-none tracking-tight" style={{ color: 'var(--coach-soft)' }}>Carol</h2>
             <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--text-4)' }}>a tua treinadora</p>
@@ -971,14 +971,15 @@ export default function Coach() {
           );
           if (isUser) return <React.Fragment key={idx}>{bubbles}</React.Fragment>;
           // A cara dela ao lado do que diz, com a emoção dessa mensagem — é
-          // aí que o atleta está a olhar. Só a mais recente pisca.
+          // aí que o atleta está a olhar. Só a mais recente pisca. 36 px: a
+          // 24 as emoções confundiam-se (feedback de produto 2026-09-24).
           return (
             <div key={idx} className="flex items-start gap-2" data-testid="coach-message-carol">
               <CoachAvatar
-                size={24}
+                size={36}
                 mood={isWaiting ? 'thinking' : carolMoodOf(msg)}
                 alive={msg === lastCarolMsg}
-                style={{ marginTop: 6 }}
+                style={{ marginTop: 2 }}
               />
               {bubbles}
             </div>
@@ -989,7 +990,7 @@ export default function Coach() {
             900 ms; some com prefers-reduced-motion (as bolhas entram logo). */}
         {(coachLoading || typingActive) && (
           <div className="flex justify-start items-start gap-2" data-testid="coach-typing">
-            <CoachAvatar size={24} mood="thinking" style={{ marginTop: 6 }} />
+            <CoachAvatar size={36} mood="thinking" style={{ marginTop: 2 }} />
             <div className="coach-bubble-model px-[15px] py-3 flex items-center gap-2">
               <span className="text-[11px] font-semibold" style={{ color: 'var(--coach-soft)' }}>a escrever…</span>
               <span className="flex items-center gap-1" aria-hidden="true">
