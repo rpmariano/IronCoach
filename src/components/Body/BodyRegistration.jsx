@@ -170,6 +170,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     // …ou a avaliação que atravessa uma meta do Corpo (utils/bodyGoal.js).
     const first = !isEditing && (firstRecordMoment('body', st, createdRecord)
       || bodyGoalMoment(createdRecord, st.bodyAssessments, st.profile));
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {

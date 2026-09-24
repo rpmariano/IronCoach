@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { releaseBootSplash } from '../../utils/logoIntro';
+import { clearNavigation } from '../../utils/navigationRestore';
 
 /**
  * Rede de segurança de última instância. Antes disto, um erro de render não
@@ -30,6 +31,10 @@ export default class AppErrorBoundary extends Component {
     // O logo de arranque do index.html fica por cima de tudo: um erro logo no
     // arranque ficava escondido debaixo dele. Sai para o erro se ver.
     releaseBootSplash();
+    // O ecrã reposto depois de o Android matar a app (utils/
+    // navigationRestore.js) pode ser o que rebentou: "Recarregar" repunha-o e
+    // rebentava outra vez. Esquece-se, e a recarga volta ao Início.
+    clearNavigation();
     // eslint-disable-next-line no-console
     console.error('[AppErrorBoundary] Erro não apanhado no render:', error, info?.componentStack);
   }

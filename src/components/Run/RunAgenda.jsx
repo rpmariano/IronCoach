@@ -758,6 +758,9 @@ export default function RunAgenda({ onClose }) {
         handleCloseForm();
         return true;
       }
+      // Gravada: o rascunho apaga-se JÁ, não só ao dispensar a confirmação
+      // (revisão pré-deploy de 5ce5f31).
+      clearPersistedFormDraft(draftStorageKey);
       setConfirmation({ label: 'Prova guardada', done: () => {
       handleCloseForm();
       // Gravar uma prova NOVA aterra no HUB dessa prova (pedido do

@@ -411,6 +411,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // única corrida não é "a primeira", nem um recorde novo.
     const first = !runIdToEdit && (firstRecordMoment('run', useAppStore.getState(), createdRecord)
       || runRecordMoment(createdRecord, useAppStore.getState().runs));
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
@@ -1236,6 +1240,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const hadPendingNav = !!pendingNavTarget.current;
     // "Meia de Lisboa concluída · 1:53:42" — o nome dela e o tempo que conta.
     const finalSeconds = raceResultSeconds(savedRaceRunRef.current);
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({
       label: `${raceEvent?.name || 'Prova'} concluída${finalSeconds ? ` · ${formatDuration(finalSeconds)}` : ''}`,
       tone: 'race',

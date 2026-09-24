@@ -24,12 +24,18 @@ const PREFILLS = ['planItemPrefill', 'runRacePrefill', 'racePrefill'];
 /** Há um ecrã de topo aberto (ou um formulário com alterações por gravar)?
     Uma recarga ou uma camada por cima deitava-o fora. */
 export function isScreenOpen(s) {
-  return !!(s && (s.openCreationMode || s.editingRaceId || s.editingRunId || s.onboardingOpen || s.navGuard));
+  return !!(s && (s.openCreationMode || s.editingRaceId || s.onboardingOpen || s.navGuard));
 }
 
+// A corrida em edição só conta dentro do registo de corrida (é como o App a
+// mostra); um registo já gravado, com a confirmação à vista, não conta.
 function screenOf(s) {
-  if (!s.openCreationMode && !s.editingRaceId && !s.editingRunId) return null;
-  return { openCreationMode: s.openCreationMode || null, editingRaceId: s.editingRaceId || null, editingRunId: s.editingRunId || null };
+  if (s.recordSaved || (!s.openCreationMode && !s.editingRaceId)) return null;
+  return {
+    openCreationMode: s.openCreationMode || null,
+    editingRaceId: s.editingRaceId || null,
+    editingRunId: s.openCreationMode === 'run' ? (s.editingRunId || null) : null,
+  };
 }
 
 function sameScreen(a, b) {
@@ -102,7 +108,9 @@ export function readRecentNavigation({ storage = defaultStorage(), now = () => D
 export function applyNavigation(store, saved) {
   if (!saved) return;
   const s = store.getState();
-  if (typeof saved.activeTab === 'string' && saved.activeTab) s.setActiveTab(saved.activeTab);
+  // As bancadas de teste não têm saída: só por ?tab=.
+  const tab = saved.activeTab;
+  if (typeof tab === 'string' && tab && !/^(design-system|audit-sandbox)$/.test(tab)) s.setActiveTab(tab);
   const screen = saved.screen;
   if (!screen) return;
   const prefills = {};
@@ -113,6 +121,19 @@ export function applyNavigation(store, saved) {
     editingRaceId: screen.editingRaceId || null,
     editingRunId: screen.editingRunId || null,
   });
+}
+
+/** O ecrã reposto aponta para uma corrida ou prova que já não existe (ou
+    que não carregou — arranque sem rede)? Fecha-o: um formulário em branco
+    gravado por cima da corrida real apagava-a (revisão pré-deploy de
+    5ce5f31). */
+export function dropMissingScreen(store) {
+  const s = store.getState();
+  const runGone = s.openCreationMode === 'run' && s.editingRunId && !(s.runs || []).some((r) => r.id === s.editingRunId);
+  const raceGone = s.editingRaceId && !(s.raceEvents || []).some((e) => e.id === s.editingRaceId);
+  if (runGone || raceGone) {
+    store.setState({ openCreationMode: null, editingRunId: null, editingRaceId: null, runRacePrefill: null });
+  }
 }
 
 /** Esquece o ecrã guardado (terminar a sessão: não passa para outra conta). */

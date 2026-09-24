@@ -225,6 +225,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
     const first = !isEditing && firstRecordMoment('gym', useAppStore.getState(), createdRecord);
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {

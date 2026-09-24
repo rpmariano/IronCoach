@@ -3,7 +3,7 @@ import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
-import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation } from './utils/navigationRestore';
+import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen } from './utils/navigationRestore';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
@@ -486,7 +486,11 @@ export default function App() {
      lido AQUI, no primeiro render, antes de qualquer mudança de separador o
      reescrever. Repõe-se quando a sessão existe (abaixo). */
   const [savedNavigation] = useState(() => readRecentNavigation());
-  useEffect(() => startNavigationPersistence(useAppStore), []);
+  /* Só se começa a guardar depois de decidida a reposição: uma escrita antes
+     (a app escondida durante o arranque, uma recarga logo a seguir) punha
+     por cima o estado de partida e o ecrã perdia-se. */
+  const [navigationDecided, setNavigationDecided] = useState(false);
+  useEffect(() => (navigationDecided ? startNavigationPersistence(useAppStore) : undefined), [navigationDecided]);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
      - PRIMEIRO ACESSO: decidido pela regra de utils/onboarding.js — perfil
@@ -771,10 +775,16 @@ export default function App() {
         loadedUserIdRef.current = existingSession.user.id;
         // Voltar depois de o Android ter matado a app: o separador e o ecrã
         // onde se estava, que reabre com o rascunho guardado. Não quando se
-        // entra por uma notificação (?tab=): aí manda o que ela prometeu.
-        if (!tabParam && savedNavigation) applyNavigation(useAppStore, savedNavigation);
+        // entra por uma notificação acabada de tocar (?carol=): aí manda o
+        // que ela prometeu. Um ?tab= que ficou de uma notificação antiga não
+        // conta — senão uma sessão aberta por notificação nunca repunha nada.
+        if (!carolParam && savedNavigation) applyNavigation(useAppStore, savedNavigation);
+        setNavigationDecided(true);
         loadInitialData(existingSession.user.id)
           .then(() => {
+            // O ecrã reposto aponta para uma corrida ou prova que já não
+            // existe (ou que não carregou)? Fecha-se.
+            dropMissingScreen(useAppStore);
             if (proactiveKeyRef.current) {
               consumeProactiveKey(proactiveKeyRef.current);
               proactiveKeyRef.current = null;
@@ -810,10 +820,12 @@ export default function App() {
               : buildDemoData(),
         );
         // Também em demo, como com sessão: é onde isto se consegue ver sem conta.
-        if (!tabParam && savedNavigation) applyNavigation(useAppStore, savedNavigation);
+        if (!carolParam && savedNavigation) applyNavigation(useAppStore, savedNavigation);
+        setNavigationDecided(true);
         setIsInitializing(false);
       } else {
         setSession(null);
+        setNavigationDecided(true);
         setIsInitializing(false);
       }
     });
@@ -831,7 +843,11 @@ export default function App() {
       });
       if (action === 'signed-out') {
         loadedUserIdRef.current = null;
-        // O ecrã guardado não passa para outra conta.
+        // O ecrã aberto e o guardado não passam para outra conta.
+        useAppStore.setState({
+          openCreationMode: null, editingRunId: null, editingRaceId: null,
+          planItemPrefill: null, runRacePrefill: null, racePrefill: null,
+        });
         clearNavigation();
         setSession(null);
         return;

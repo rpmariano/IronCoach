@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { create } from 'zustand';
-import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, RESTORE_WINDOW_MS } from './navigationRestore';
+import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, RESTORE_WINDOW_MS } from './navigationRestore';
 
 // Relatado 2026-09-24: sair para outra app a meio de um registo e voltar
 // deixava a app no Início — o Android matava-a e o ecrã perdia-se.
@@ -11,7 +11,7 @@ function memoryStorage() {
 function makeStore(extra = {}) {
   return create((set) => ({
     activeTab: 'home', openCreationMode: null, editingRaceId: null, editingRunId: null, onboardingOpen: false, navGuard: null,
-    planItemPrefill: null, runRacePrefill: null, racePrefill: null,
+    planItemPrefill: null, runRacePrefill: null, racePrefill: null, recordSaved: false, runs: [], raceEvents: [],
     setActiveTab: (tab) => { set({ activeTab: tab }); return true; },
     ...extra,
   }));
@@ -91,5 +91,44 @@ describe('guardar e repor o ecrã onde se estava', () => {
     store.setState({ openCreationMode: 'meal' });
     clearNavigation(storage);
     expect(readRecentNavigation({ storage, now: () => 2 })).toBeNull();
+  });
+});
+
+describe('o que não se repõe (revisão pré-deploy de 5ce5f31)', () => {
+  it('um registo já gravado, com a confirmação à vista, conta como fechado', () => {
+    const storage = memoryStorage();
+    const store = makeStore();
+    startNavigationPersistence(store, { storage, now: () => 1, doc: fakeDoc(), win: null });
+    store.setState({ openCreationMode: 'meal' });
+    expect(readRecentNavigation({ storage, now: () => 2 }).screen).not.toBeNull();
+    store.setState({ recordSaved: true });
+    expect(readRecentNavigation({ storage, now: () => 3 }).screen).toBeNull();
+  });
+
+  it('a corrida em edição só conta dentro do registo de corrida', () => {
+    const storage = memoryStorage();
+    const store = makeStore();
+    startNavigationPersistence(store, { storage, now: () => 1, doc: fakeDoc(), win: null });
+    store.setState({ openCreationMode: 'meal', editingRunId: 'run-1' });
+    expect(readRecentNavigation({ storage, now: () => 2 }).screen.editingRunId).toBeNull();
+    expect(isScreenOpen({ editingRunId: 'run-1' })).toBe(false);
+  });
+
+  it('uma corrida ou prova que já não existe (ou não carregou) fecha o ecrã reposto', () => {
+    const store = makeStore({ openCreationMode: 'run', editingRunId: 'run-apagada', runs: [{ id: 'run-1' }] });
+    dropMissingScreen(store);
+    expect(store.getState().openCreationMode).toBeNull();
+    const race = makeStore({ openCreationMode: 'race', editingRaceId: 'prova-apagada', raceEvents: [] });
+    dropMissingScreen(race);
+    expect(race.getState().editingRaceId).toBeNull();
+    const ok = makeStore({ openCreationMode: 'run', editingRunId: 'run-1', runs: [{ id: 'run-1' }] });
+    dropMissingScreen(ok);
+    expect(ok.getState().openCreationMode).toBe('run');
+  });
+
+  it('as bancadas de teste não se repõem', () => {
+    const store = makeStore();
+    applyNavigation(store, { activeTab: 'design-system', screen: null });
+    expect(store.getState().activeTab).toBe('home');
   });
 });
