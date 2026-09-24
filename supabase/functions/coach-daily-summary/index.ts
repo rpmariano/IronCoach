@@ -759,6 +759,10 @@ Deno.serve(async (req) => {
     const force = body?.force === true;
 
     const today = todayISO();
+    // A hora a que os dados foram lidos é a que o resumo grava: com a do fim
+    // (o Gemini leva até 40 s), uma corrida criada entretanto contava como já
+    // vista no resumo seguinte e o assunto da carga nunca a avaliava.
+    const snapshotAt = new Date().toISOString();
 
     // ── Cache: devolve já se existir e não for pedido forçado ──────────
     if (!force) {
@@ -781,7 +785,7 @@ Deno.serve(async (req) => {
       { data: profile },
       { data: todayMeals },
       { data: todayWater },
-      { data: recentRuns },
+      { data: loadRuns },
       { data: recentGym },
       { data: acceptedPlans },
       { data: upcomingRaces },
@@ -798,8 +802,11 @@ Deno.serve(async (req) => {
       // Janela alargada a 30 dias para calcular ACWR (precisa de 28 dias de histórico crónico)
       // start_time / assessment_time: as horas a que as coisas aconteceram
       // (pedido 2026-09-13) — a Carol lê-as tal como vêm, nas listas abaixo.
+      // 35 dias e não 30: o assunto da carga relê os 7 dias anteriores, cada
+      // um com a sua janela de 28 (runLoadInterventionToOpen). O resto do
+      // resumo só vê os 30 (recentRuns, abaixo).
       sb.from("runs").select("date, start_time, training_type, distance_km, duration_seconds, effort_rpe, details, kind, created_at")
-        .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
+        .eq("user_id", userId).gte("date", addDaysISO(today, -34)).lte("date", today).order("date", { ascending: false }),
       sb.from("workout_sessions").select("date, start_time, categories, duration_seconds, avg_hr, exertion")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
@@ -824,12 +831,17 @@ Deno.serve(async (req) => {
         .eq("user_id", userId).order("generated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
+    // deno-lint-ignore no-explicit-any
+    const recentRuns = (loadRuns || []).filter((r: any) => r.date >= addDaysISO(today, -29));
     const nextRace = upcomingRaces?.[0] ?? null;
 
     // Encontra os treinos de todos os planos aceites relevantes para os próximos dias
     const acceptedPlanIds = (acceptedPlans || []).map((p: any) => p.id);
     let planItems: any[] = [];
     let lastWeekItems: any[] = [];
+    // O plano aceite até hoje, 13 dias para trás: 7 de janela da carga e 7
+    // de histórico para saber se o alerta já vinha de trás.
+    let loadPlanItems: LoadPlanItem[] = [];
     if (acceptedPlanIds.length > 0) {
       const { data: fetchedItems } = await sb
         .from("coach_plan_items")
@@ -838,13 +850,15 @@ Deno.serve(async (req) => {
         .in("plan_id", acceptedPlanIds)
         // Semana passada incluída só para a regra de segunda-feira (CAROL.md
         // §3: "semana cumprida a 100% → uma frase de reconhecimento"); o resto
-        // do resumo continua a olhar de hoje para a frente (planItems).
-        .gte("planned_date", addDaysISO(today, -7))
+        // do resumo continua a olhar de hoje para a frente (planItems). Os 13
+        // dias para trás são do assunto da carga (loadPlanItems, abaixo).
+        .gte("planned_date", addDaysISO(today, -13))
         .lte("planned_date", addDaysISO(today, 2))
         .neq("status", "cancelado");
       const allItems = fetchedItems || [];
       planItems = allItems.filter((i: any) => i.planned_date >= today);
-      lastWeekItems = allItems.filter((i: any) => i.planned_date < today);
+      lastWeekItems = allItems.filter((i: any) => i.planned_date >= addDaysISO(today, -7) && i.planned_date < today);
+      loadPlanItems = allItems.filter((i: any) => i.planned_date <= today);
     }
 
     const tomorrow = addDaysISO(today, 1);
@@ -854,13 +868,8 @@ Deno.serve(async (req) => {
 
     // Métricas calculadas para alertas determinísticos e contexto do Gemini
     const acwr        = computeACWR(recentRuns || [], today);
-    // O ACWR lido com o plano e o histórico (runLoadAlert.ts): os mesmos 7
-    // dias, com os itens de corrida do plano aceite.
-    const loadWindowStart = addDaysISO(today, -6);
-    const loadPlanItems: LoadPlanItem[] = [...lastWeekItems, ...planItems]
-      // deno-lint-ignore no-explicit-any
-      .filter((i: any) => i.planned_date >= loadWindowStart && i.planned_date <= today);
-    const load        = runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today });
+    // O ACWR lido com o plano e o histórico (runLoadAlert.ts).
+    const load        = runLoadReading({ runs: recentRuns, planItems: loadPlanItems, today });
     const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null);
     // acute_km_per_day × 7 = km dos últimos 7 dias, para o TDEE somar o
     // custo do treino (ver computeTDEE acima).
@@ -915,7 +924,7 @@ Deno.serve(async (req) => {
         ...acwr,
         // Com corridas em menos de 3 das 4 semanas a média crónica é falta
         // de registos, não a forma dele: o rácio não vai ao modelo.
-        ratio: load.enoughHistory ? acwr.ratio : null,
+        ratio: load.enoughHistory ? load.ratio : null,
         semanas_com_corridas_de_4: load.historyWeeks,
         km_ultimos_7_dias: load.acuteKm,
         km_previstos_no_plano_7_dias: load.prescribedKm,
@@ -989,7 +998,7 @@ Deno.serve(async (req) => {
       daily_concept: generated.daily_concept_body
         ? { key: todayConcept.key, title: todayConcept.title, body: generated.daily_concept_body }
         : null,
-      generated_at: new Date().toISOString(),
+      generated_at: snapshotAt,
     };
 
     // A carga que pede conversa vira assunto por resolver: o Início leva-o ao
@@ -998,7 +1007,7 @@ Deno.serve(async (req) => {
     // da base de dados — um assunto aberto entretanto não é substituído.
     let interventionOpened: { status: string; reason: string } | null = null;
     const loadToOpen = runLoadInterventionToOpen({
-      runs: recentRuns || [],
+      runs: loadRuns || [],
       planItems: loadPlanItems,
       today,
       previousSummaryAt: previousSummary?.generated_at ?? null,

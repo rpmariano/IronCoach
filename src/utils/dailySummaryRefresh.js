@@ -58,6 +58,10 @@ export function startDailySummaryRefresh(store, { delayMs = 3000, today = todayI
     if (!uid) return;
     if (prev && state.runs === prev.runs && state.gymSessions === prev.gymSessions) return;
     const keys = trainingKeys(state);
+    // Uma recarga falhada (a rede a acordar no regresso à app) põe as listas
+    // vazias: não são treinos apagados, e a recarga seguinte traz tudo de
+    // volta — cada passagem pedia um resumo novo ao modelo, em vão.
+    if (keys.size === 0 && known?.size) return;
     if (known === null) {
       known = keys;
       return;

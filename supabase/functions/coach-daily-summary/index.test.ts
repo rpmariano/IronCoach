@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
 // Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
@@ -272,7 +272,6 @@ Deno.test("checkinForSummary: sem check-in (ou incompleto) não há bloco", () =
 });
 
 // ── A carga no cartão (pedido 2026-09-24) ───────────────────────────────────
-import { buildWarningsMessage } from "./index.ts";
 
 Deno.test("o aviso de hoje nunca sugere mudar o plano por causa da carga", () => {
   const msg = buildWarningsMessage([{ kind: "corrida", training_type: "continuo", target_distance_km: 6 }], 0, null,

@@ -363,9 +363,18 @@ prescritos) e com corridas em só 2 das 4 semanas. Regras novas, em
 - O cartão não muda o plano (regra no prompt; a exceção é o check-in).
   Quando a carga conta como risco, o `coach-daily-summary` abre um assunto
   por resolver (`coach_intervention_status: 'needed'`, motivo com a etiqueta
-  `[carga]`) — o Início mostra-o e leva ao chat. Só se abre quando são as
-  corridas registadas depois do resumo anterior que levam ao alerta, e nunca
-  por cima de outro assunto pendente — não reabre todos os dias.
+  `[carga]`) — o Início mostra-o e leva ao chat.
+- Abre-se na **passagem** para alerta, não enquanto dura
+  (`runLoadInterventionToOpen`): não abre se o resumo anterior de hoje já
+  via o alerta, nem se o alerta (com plano) já existia em algum dos 7 dias
+  anteriores — cada dia lido com a sua janela e só com as corridas
+  registadas até ao fim dele. Ler o passado com a janela de hoje reabria o
+  assunto quase todos os dias (revisão pré-deploy de 0743341, bloqueada).
+- Só com plano aceite nesses dias: a conversa do chat é de desvio ao plano.
+  Sem plano, o risco fica no recap (`conta_como_risco`).
+- Com outro assunto por resolver, este perde-se (não fica à espera): só há
+  um de cada vez, e no resumo seguinte as corridas já não são novas.
+- Um plano que começa a meio da janela só responde pelos seus dias.
 
 ### Modelo
 

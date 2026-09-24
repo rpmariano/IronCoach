@@ -88,66 +88,149 @@ Deno.test("corridas com data no futuro não entram", () => {
 });
 
 Deno.test("o motivo leva a etiqueta, os números e o tipo certo", () => {
-  const comPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: 16, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true });
+  const comPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: 16, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true });
   assert(comPlano.startsWith(RUN_LOAD_INTERVENTION_TAG));
   assert(comPlano.includes("30 km nos últimos 7 dias"));
   assert(comPlano.includes("12,5 km/semana"));
   assert(comPlano.includes("ACWR 2,4"));
   assertEquals(runLoadInterventionKind(comPlano), "acima_do_plano");
 
-  const semPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: null, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true });
+  const semPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: null, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true });
   assertEquals(runLoadInterventionKind(semPlano), "sem_plano");
 
   assertEquals(isRunLoadIntervention("Check-in de hoje: dor 7"), false);
   assertEquals(runLoadInterventionKind(null), null);
 });
 
-// ── Quando se abre o assunto ────────────────────────────────────────────────
-const at = (date: string, km: number, created: string) => ({ ...run(date, km), created_at: created });
-const spikeRuns = [
-  at("2026-08-29", 10, "2026-08-29T10:00:00.123456+00:00"),
-  at("2026-09-05", 10, "2026-09-05T10:00:00+00:00"),
-  at("2026-09-12", 10, "2026-09-12T10:00:00+00:00"),
-  at("2026-09-20", 15, "2026-09-20T10:00:00+00:00"),
-];
-
-Deno.test("abre quando é a corrida registada depois do último resumo que leva ao alerta", () => {
-  const r = runLoadInterventionToOpen({
-    runs: [...spikeRuns, at("2026-09-24", 15, "2026-09-24T15:36:19.771533+00:00")],
-    planItems: [], today: TODAY, previousSummaryAt: "2026-09-23T23:33:58.407+00:00", interventionStatus: "none",
+// ── Plano que começou a meio da semana ──────────────────────────────────────
+Deno.test("plano novo a meio da janela: as corridas de antes dele não são 'acima do plano'", () => {
+  // 22 km antes do plano (dia 18) e depois exatamente o que o plano pediu.
+  const r = runLoadReading({
+    runs: [...steady, run("2026-09-18", 22), run("2026-09-22", 8), run("2026-09-24", 8)],
+    planItems: [item("2026-09-21", null, { kind: "descanso" }), item("2026-09-22", 8), item("2026-09-24", 8)],
+    today: TODAY,
   });
-  assert(r !== null && r.alert);
+  assert(r.ratio !== null && r.ratio > 1.5);
+  assertEquals(r.followsPlan, true);
+  assertEquals(r.hasPlan, true);
+  assertEquals(r.alert, false);
 });
 
-Deno.test("não reabre num resumo seguinte sem corridas novas (já estava em alerta)", () => {
+// ── Quando se abre o assunto ────────────────────────────────────────────────
+const at = (date: string, km: number, created = `${date}T10:00:00.123456+00:00`) => ({ ...run(date, km), created_at: created });
+// 4 semanas a ~10 km; o plano desta quinzena pede 2 × 5 km por semana.
+const base = [at("2026-08-29", 10), at("2026-09-05", 10), at("2026-09-12", 10)];
+const lightPlan = ["2026-09-11", "2026-09-14", "2026-09-17", "2026-09-20", "2026-09-22", "2026-09-24"].map((d) => item(d, 5));
+
+Deno.test("abre na passagem para alerta, pela corrida registada depois do último resumo", () => {
+  const r = runLoadInterventionToOpen({
+    runs: [...base, at("2026-09-20", 15), at("2026-09-24", 15, "2026-09-24T15:36:19.771533+00:00")],
+    planItems: lightPlan, today: TODAY, previousSummaryAt: "2026-09-23T23:33:58.407+00:00", interventionStatus: "none",
+  });
+  assert(r !== null && r.alert);
+  assertEquals(runLoadInterventionKind(runLoadInterventionReason(r)), "acima_do_plano");
+});
+
+Deno.test("não reabre no mesmo dia: o resumo anterior já via o alerta", () => {
   const r = runLoadInterventionToOpen({
     // Os microssegundos do Postgres têm de ser lidos: um NaN aqui fazia de
     // todas as corridas "novas" e o assunto reabria em cada resumo.
-    runs: [...spikeRuns, at("2026-09-24", 15, "2026-09-24T15:36:19.771533+00:00")],
-    planItems: [], today: TODAY, previousSummaryAt: "2026-09-24T15:40:00.12+00:00", interventionStatus: "resolved",
+    runs: [...base, at("2026-09-20", 15), at("2026-09-24", 15, "2026-09-24T15:36:19.771533+00:00")],
+    planItems: lightPlan, today: TODAY, previousSummaryAt: "2026-09-24T15:40:00.12+00:00", interventionStatus: "resolved",
   });
   assertEquals(r, null);
+});
+
+Deno.test("não reabre nos dias seguintes enquanto a carga continua alta, mesmo com a janela a avançar", () => {
+  // O cenário da revisão pré-deploy: plano leve, o atleta corre sempre a
+  // mais. Um resumo por dia, depois de cada corrida; resolve sempre no chat.
+  const runs = [...base];
+  const opened: string[] = [];
+  for (let d = 15; d <= 30; d++) {
+    const day = `2026-09-${String(d).padStart(2, "0")}`;
+    if (d % 2 === 0) runs.push(at(day, 9, `${day}T18:00:00+00:00`));
+    const plan = Array.from({ length: 20 }, (_, k) => item(`2026-09-${String(11 + k).padStart(2, "0")}`, k % 2 ? 0 : 4));
+    const r = runLoadInterventionToOpen({ runs, planItems: plan, today: day, previousSummaryAt: `${day}T08:00:00Z`, interventionStatus: "resolved" });
+    if (r) opened.push(day);
+  }
+  assertEquals(opened.length, 1, `abriu em ${opened.join(", ")}`);
+});
+
+Deno.test("subida gradual (risco acrescido → perigo) também abre", () => {
+  // Ontem 1,3–1,5 (não é alerta); hoje uma corrida passa os 1,5.
+  const runs = [...base, at("2026-09-19", 8), at("2026-09-23", 8), at("2026-09-24", 6, "2026-09-24T12:00:00+00:00")];
+  const plan = [item("2026-09-17", null, { kind: "descanso" }), item("2026-09-20", 3), item("2026-09-22", 3), item("2026-09-24", 3)];
+  const yesterday = runLoadReading({ runs: runs.slice(0, -1), planItems: plan, today: "2026-09-23" });
+  assert(yesterday.ratio !== null && yesterday.ratio > 1.3 && yesterday.ratio <= 1.5, `ontem ${yesterday.ratio}`);
+  const r = runLoadInterventionToOpen({ runs, planItems: plan, today: TODAY, previousSummaryAt: "2026-09-24T07:00:00Z", interventionStatus: "none" });
+  assert(r !== null, "devia abrir");
+});
+
+Deno.test("corrida de há 3 dias registada hoje: os dias de trás não a viam, abre", () => {
+  const r = runLoadInterventionToOpen({
+    runs: [...base, at("2026-09-20", 15), at("2026-09-21", 15, "2026-09-24T09:00:00+00:00")],
+    planItems: lightPlan, today: TODAY, previousSummaryAt: "2026-09-24T07:00:00Z", interventionStatus: "none",
+  });
+  assert(r !== null);
+});
+
+Deno.test("sem plano aceite nesses dias não abre (o chat falaria de um plano que não existe)", () => {
+  const r = runLoadInterventionToOpen({
+    runs: [...base, at("2026-09-20", 15), at("2026-09-24", 15)],
+    planItems: [], today: TODAY, previousSummaryAt: null, interventionStatus: null,
+  });
+  assertEquals(r, null);
+});
+
+Deno.test("plano sem corridas nesses dias (só descanso) e ele correu muito: abre, com o motivo 'sem_plano'", () => {
+  const rest = ["2026-09-18", "2026-09-19", "2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24"].map((d) => item(d, null, { kind: "descanso" }));
+  const r = runLoadInterventionToOpen({
+    runs: [...base, at("2026-09-20", 15), at("2026-09-24", 15)],
+    planItems: rest, today: TODAY, previousSummaryAt: null, interventionStatus: "none",
+  });
+  assert(r !== null);
+  assertEquals(runLoadInterventionKind(runLoadInterventionReason(r)), "sem_plano");
 });
 
 Deno.test("não abre com outro assunto por resolver", () => {
   for (const status of ["needed", "in_progress"]) {
     const r = runLoadInterventionToOpen({
-      runs: [...spikeRuns, at("2026-09-24", 15, "2026-09-24T15:36:19+00:00")],
-      planItems: [], today: TODAY, previousSummaryAt: "2026-09-23T23:00:00Z", interventionStatus: status,
+      runs: [...base, at("2026-09-20", 15), at("2026-09-24", 15)],
+      planItems: lightPlan, today: TODAY, previousSummaryAt: "2026-09-23T23:00:00Z", interventionStatus: status,
     });
     assertEquals(r, null, status);
   }
 });
 
-Deno.test("sem resumo anterior, todas as corridas são novas", () => {
-  const r = runLoadInterventionToOpen({
-    runs: [...spikeRuns, at("2026-09-24", 15, "2026-09-24T15:36:19+00:00")],
-    planItems: [], today: TODAY, previousSummaryAt: null, interventionStatus: null,
-  });
-  assert(r !== null);
+Deno.test("sem alerta agora, nunca abre", () => {
+  const r = runLoadInterventionToOpen({ runs: base, planItems: lightPlan, today: TODAY, previousSummaryAt: null, interventionStatus: "none" });
+  assertEquals(r, null);
 });
 
-Deno.test("sem alerta agora, nunca abre", () => {
-  const r = runLoadInterventionToOpen({ runs: spikeRuns.slice(0, 3), planItems: [], today: TODAY, previousSummaryAt: null, interventionStatus: "none" });
-  assertEquals(r, null);
+Deno.test("o plano começa com a carga já alta: abre uma vez, no primeiro dia com plano", () => {
+  // Sem plano, 3 semanas a subir (20 → 20 → 30 km): alerta, mas nada a abrir.
+  // Depois o plano pede 5 km/dia e ele corre 7. Um resumo de manhã e outro
+  // depois de cada corrida; resolve sempre no chat.
+  const runs: Array<ReturnType<typeof at>> = [];
+  const day0 = "2026-08-20";
+  const addDays = (d: string, n: number) => { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  for (let d = 0; d < 21; d++) {
+    const date = addDays(day0, d);
+    const dow = d % 7;
+    if (d < 14 && [0, 2, 4, 5].includes(dow)) runs.push(at(date, 5, `${date}T18:00:00Z`));
+    else if (d >= 14 && dow !== 6 && dow !== 3) runs.push(at(date, 6, `${date}T18:00:00Z`));
+  }
+  const planStart = addDays(day0, 21);
+  const plan = Array.from({ length: 30 }, (_, d) => item(addDays(planStart, d), 5));
+  const opened: string[] = [];
+  let prev = `${addDays(planStart, -1)}T08:00:00Z`;
+  for (let d = 0; d < 14; d++) {
+    const today = addDays(planStart, d);
+    if (runLoadInterventionToOpen({ runs, planItems: plan, today, previousSummaryAt: prev, interventionStatus: "resolved" })) opened.push(`${today} manhã`);
+    prev = `${today}T08:00:10Z`;
+    runs.push(at(today, 7, `${today}T18:00:00Z`));
+    if (runLoadInterventionToOpen({ runs, planItems: plan, today, previousSummaryAt: prev, interventionStatus: "resolved" })) opened.push(`${today} tarde`);
+    prev = `${today}T18:00:10Z`;
+  }
+  assertEquals(opened, [`${planStart} tarde`]);
 });

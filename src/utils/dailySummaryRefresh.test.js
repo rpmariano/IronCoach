@@ -68,6 +68,16 @@ describe('startDailySummaryRefresh', () => {
     expect(loadDailySummary).not.toHaveBeenCalled();
   });
 
+  it('uma recarga falhada (listas vazias) não conta como treinos apagados', () => {
+    const { store, loadDailySummary } = setup();
+    store.setState({ session });
+    store.setState({ runs: [run('a')], gymSessions: [] });
+    store.setState({ runs: [], gymSessions: [] });
+    store.setState({ runs: [run('a')], gymSessions: [] });
+    vi.advanceTimersByTime(500);
+    expect(loadDailySummary).not.toHaveBeenCalled();
+  });
+
   it('outra conta: a lista dela é um ponto de partida novo', () => {
     const { store, loadDailySummary } = setup();
     store.setState({ session });

@@ -57,6 +57,8 @@ export interface RunLoadReading {
   chronicWeeklyKm: number;
   /** Km que o plano aceite previa para os mesmos 7 dias; null sem corridas no plano. */
   prescribedKm: number | null;
+  /** Há itens do plano aceite (de qualquer tipo) nestes 7 dias. */
+  hasPlan: boolean;
   historyWeeks: number;
   enoughHistory: boolean;
   followsPlan: boolean;
@@ -103,9 +105,10 @@ export function runLoadReading(
   const enoughHistory = historyWeeks >= LOAD_HISTORY_MIN_WEEKS;
 
   const acuteStart = addDaysISO(today, -6);
-  const planned = (planItems || []).filter((i) =>
-    i && i.kind === "corrida" && i.status !== "cancelado" &&
-    typeof i.planned_date === "string" && i.planned_date >= acuteStart && i.planned_date <= today);
+  const inPlanWindow = (planItems || []).filter((i) =>
+    i && i.status !== "cancelado" && typeof i.planned_date === "string" &&
+    i.planned_date >= acuteStart && i.planned_date <= today);
+  const planned = inPlanWindow.filter((i) => i.kind === "corrida");
   let prescribedKm: number | null = null;
   if (planned.length) {
     const pace = athletePaceMinPerKm(list);
@@ -116,13 +119,20 @@ export function runLoadReading(
       return sum + (min > 0 ? min / pace : 0);
     }, 0);
   }
-  const followsPlan = prescribedKm !== null && prescribedKm > 0 && acwr.acuteKm <= prescribedKm * LOAD_PLAN_TOLERANCE;
+  // Um plano que começou a meio da semana só responde pelos dias dele: as
+  // corridas de antes não são "acima do que o plano previa".
+  const planFrom = inPlanWindow.reduce((min, i) => (i.planned_date < min ? i.planned_date : min), today);
+  const kmOnPlanDays = list
+    .filter((r) => r.date.slice(0, 10) >= planFrom)
+    .reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
+  const followsPlan = prescribedKm !== null && prescribedKm > 0 && kmOnPlanDays <= prescribedKm * LOAD_PLAN_TOLERANCE;
 
   return {
     ratio: ratio !== null ? Math.round(ratio * 100) / 100 : null,
     acuteKm: round1(acwr.acuteKm),
     chronicWeeklyKm: round1(acwr.chronicWeeklyKm),
     prescribedKm: prescribedKm !== null ? round1(prescribedKm) : null,
+    hasPlan: inPlanWindow.length > 0,
     historyWeeks,
     enoughHistory,
     followsPlan,
@@ -134,10 +144,14 @@ export function isRunLoadIntervention(reason: string | null | undefined): boolea
   return typeof reason === "string" && reason.startsWith(RUN_LOAD_INTERVENTION_TAG);
 }
 
-/** Com plano (correu mais do que o previsto) ou sem plano de corrida nesses dias. */
+/* O que distingue os dois motivos — a mesma constante escreve-o e lê-o, para
+   uma frase reescrita não mudar em silêncio o que o Início mostra. */
+const ABOVE_PLAN_MARKER = "o plano previa";
+
+/** Correu mais do que o plano previa, ou o plano não tinha corridas nesses dias. */
 export function runLoadInterventionKind(reason: string | null | undefined): "acima_do_plano" | "sem_plano" | null {
   if (!isRunLoadIntervention(reason)) return null;
-  return (reason as string).includes("o plano previa") ? "acima_do_plano" : "sem_plano";
+  return (reason as string).includes(ABOVE_PLAN_MARKER) ? "acima_do_plano" : "sem_plano";
 }
 
 const num = (n: number) => String(n).replace(".", ",");
@@ -145,7 +159,7 @@ const num = (n: number) => String(n).replace(".", ",");
 /** O motivo, escrito para a Carol (o atleta nunca o vê tal e qual). */
 export function runLoadInterventionReason(r: RunLoadReading): string {
   const plano = r.prescribedKm !== null && r.prescribedKm > 0
-    ? `, quando o plano previa ${num(r.prescribedKm)} km`
+    ? `, quando ${ABOVE_PLAN_MARKER} ${num(r.prescribedKm)} km`
     : `, sem corridas no plano para esses dias`;
   return `${RUN_LOAD_INTERVENTION_TAG} Carga de corrida: ${num(r.acuteKm)} km nos últimos 7 dias${plano}; ` +
     `a média das últimas 4 semanas é ${num(r.chronicWeeklyKm)} km/semana (ACWR ${num(r.ratio ?? 0)}). ` +
@@ -154,17 +168,46 @@ export function runLoadInterventionReason(r: RunLoadReading): string {
 
 const PENDING = ["needed", "in_progress"];
 
-/** Abre-se o assunto só quando são as corridas registadas DEPOIS do último
- *  resumo que levam a carga ao alerta. O resumo refaz-se várias vezes por
- *  dia (depois de um treino, do check-in, ao aceitar um plano) e a carga
- *  fica alta uns dias seguidos: sem isto, o atleta resolvia o assunto no
- *  chat e o resumo seguinte abria-o outra vez. Sem resumo anterior, todas as
- *  corridas contam como novas. Com outro assunto por resolver, espera — só
- *  há um de cada vez (profiles.coach_intervention_*). Devolve a leitura a
- *  usar no motivo, ou null. */
+/** Quantos dias para trás se procura um alerta que já tenha estado vivo. */
+export const LOAD_ALERT_LOOKBACK_DAYS = 7;
+
+type RunWithCreated = LoadRun & { created_at?: string | null };
+
+/** O assunto podia ter aberto em `day`, com as corridas registadas até
+ *  `cutoffMs`? Um alerta sem plano nesse dia não conta: aí não se abre nada,
+ *  e contá-lo calava o assunto na semana em que o plano começa. */
+function couldOpenAsOf(runs: RunWithCreated[], planItems: LoadPlanItem[], day: string, cutoffMs: number): boolean {
+  const known = (runs || []).filter((r) => {
+    const at = r?.created_at ? Date.parse(r.created_at) : NaN;
+    return Number.isFinite(at) && at <= cutoffMs;
+  });
+  const r = runLoadReading({ runs: known, planItems, today: day });
+  return r.alert && r.hasPlan;
+}
+
+/** Abre-se o assunto só na passagem para alerta, não enquanto o alerta dura.
+ *  O resumo refaz-se várias vezes por dia e a carga fica alta dias seguidos:
+ *  sem isto, o atleta resolvia o assunto no chat e o resumo seguinte abria-o
+ *  outra vez. Não abre se:
+ *  - já estava em alerta no resumo anterior de hoje (com as corridas que
+ *    estavam registadas nessa altura);
+ *  - esteve em alerta, com plano, em algum dos 7 dias anteriores, lido como
+ *    se lia nesse dia: a janela de cada dia e só as corridas registadas até
+ *    ao fim dele.
+ *    Ler o passado com a janela de hoje não serve — a janela avança, a
+ *    corrida mais antiga sai e o "antes" parecia calmo todos os dias
+ *    (revisão pré-deploy de 0743341);
+ *  - não há plano aceite nesses dias: a conversa do chat é sobre desvios ao
+ *    plano e confrontava-o com um plano que não existe; aí o recap diz o
+ *    risco (conta_como_risco);
+ *  - há outro assunto por resolver: só há um de cada vez
+ *    (profiles.coach_intervention_*). Este não fica à espera — perde-se,
+ *    porque no resumo seguinte as corridas já não são novas.
+ *  O plano tem de cobrir 13 dias para trás (7 de janela + 7 de histórico).
+ *  Devolve a leitura a usar no motivo, ou null. */
 export function runLoadInterventionToOpen(
   { runs, planItems, today, previousSummaryAt, interventionStatus }: {
-    runs: Array<LoadRun & { created_at?: string | null }>;
+    runs: RunWithCreated[];
     planItems: LoadPlanItem[];
     today: string;
     previousSummaryAt: string | null | undefined;
@@ -173,13 +216,17 @@ export function runLoadInterventionToOpen(
 ): RunLoadReading | null {
   if (interventionStatus && PENDING.includes(interventionStatus)) return null;
   const now = runLoadReading({ runs, planItems, today });
-  if (!now.alert) return null;
+  if (!now.alert || !now.hasPlan) return null;
+
   const since = previousSummaryAt ? Date.parse(previousSummaryAt) : NaN;
-  const known = Number.isFinite(since)
-    ? (runs || []).filter((r) => {
-      const at = r?.created_at ? Date.parse(r.created_at) : NaN;
-      return Number.isFinite(at) && at <= since;
-    })
-    : [];
-  return runLoadReading({ runs: known, planItems, today }).alert ? null : now;
+  if (Number.isFinite(since) && new Date(since).toISOString().slice(0, 10) >= addDaysISO(today, -1)) {
+    // O resumo anterior pode ser de ontem ao fim do dia (em UTC); a janela é
+    // a de hoje, o que conta é se as corridas de então já davam alerta.
+    if (couldOpenAsOf(runs, planItems, today, since)) return null;
+  }
+  for (let back = 1; back <= LOAD_ALERT_LOOKBACK_DAYS; back++) {
+    const day = addDaysISO(today, -back);
+    if (couldOpenAsOf(runs, planItems, day, Date.parse(`${day}T23:59:59Z`))) return null;
+  }
+  return now;
 }
