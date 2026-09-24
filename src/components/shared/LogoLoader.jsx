@@ -14,7 +14,8 @@ import React, { useId } from 'react';
    comprimento real de cada um (regras .logo-loader-* em globals.css).
    Movimento reduzido: o brasão aparece já desenhado e parado.
 
-   `size` em px; `label` é o que o leitor de ecrã ouve. `still` mostra-o já
+   `size` em px; `label` é o que o leitor de ecrã ouve — `null` quando quem o
+   mostra já anuncia o carregamento (fica decorativo). `still` mostra-o já
    desenhado e parado — para quando vem logo a seguir a um desenho
    completo, onde recomeçar seria repetição.
 
@@ -32,8 +33,9 @@ export default function LogoLoader({ size = 96, label = 'A carregar', className 
   const id = (n) => `${n}-${uid}`;
   return (
     <div
-      role="status"
-      aria-label={label}
+      role={label ? 'status' : undefined}
+      aria-label={label || undefined}
+      aria-hidden={label ? undefined : 'true'}
       data-testid="logo-loader"
       data-still={still ? 'true' : undefined}
       className={`logo-loader ${still ? 'logo-loader--still ' : ''}${className}`}

@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { useHeldWhile, holdForLogo, LOGO_DRAW_MS, SKELETON_DELAY_MS } from './logoIntro';
+import { useHeldWhile, holdForLogo, registerSkeletonLogo, LOGO_DRAW_MS, SKELETON_DELAY_MS } from './logoIntro';
 
 describe('useHeldWhile — o ecrã do logo só sai quando o desenho acaba', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -40,6 +40,19 @@ describe('useHeldWhile — o ecrã do logo só sai quando o desenho acaba', () =
     expect(result.current).toBe(false);
   });
 
+  it('volta a ficar ativo a meio da espera: conta desde o início original (o desenho não recomeçou)', () => {
+    const { result, rerender } = renderHook(({ a }) => useHeldWhile(a, 2450), { initialProps: { a: true } });
+    act(() => { vi.advanceTimersByTime(500); });
+    rerender({ a: false });
+    act(() => { vi.advanceTimersByTime(500); });
+    rerender({ a: true });
+    rerender({ a: false });
+    act(() => { vi.advanceTimersByTime(1400); });
+    expect(result.current).toBe(true);
+    act(() => { vi.advanceTimersByTime(60); });
+    expect(result.current).toBe(false);
+  });
+
   it('com movimento reduzido (minMs 0) não retém nada', () => {
     const { result, rerender } = renderHook(({ a }) => useHeldWhile(a, 0), { initialProps: { a: true } });
     rerender({ a: false });
@@ -53,29 +66,61 @@ describe('holdForLogo — o ecrã espera pelo brasão, se ele chegou a aparecer'
   beforeEach(() => { window.matchMedia = () => ({ matches: false }); });
   afterEach(() => { window.matchMedia = original; });
 
-  function clock(times) {
-    let i = 0;
-    return () => times[Math.min(i++, times.length - 1)];
-  }
-
-  it('ecrã em cache (abaixo do atraso): entra logo, o logo nem apareceu', async () => {
+  it('ecrã rápido (nenhum logo à vista): entra logo', async () => {
     const wait = vi.fn(() => Promise.resolve());
-    const load = holdForLogo(() => Promise.resolve('mod'), { now: clock([0, 100]), wait });
-    await expect(load()).resolves.toBe('mod');
+    await expect(holdForLogo(() => Promise.resolve('mod'), { now: () => 100, wait })()).resolves.toBe('mod');
     expect(wait).not.toHaveBeenCalled();
   });
 
-  it('ecrã lento: espera até o brasão acabar', async () => {
-    const wait = vi.fn(() => Promise.resolve());
-    const load = holdForLogo(() => Promise.resolve('mod'), { now: clock([0, 900]), wait });
-    await expect(load()).resolves.toBe('mod');
-    expect(wait).toHaveBeenCalledWith(SKELETON_DELAY_MS + LOGO_DRAW_MS - 900);
+  it('ecrã lento (logo à vista): espera até o brasão acabar', async () => {
+    const off = registerSkeletonLogo(400);
+    let t = 900;
+    const wait = vi.fn(async (ms) => { t += ms; });
+    await expect(holdForLogo(() => Promise.resolve('mod'), { now: () => t, wait })()).resolves.toBe('mod');
+    expect(wait).toHaveBeenCalledWith(400 + LOGO_DRAW_MS - 900);
+    off();
   });
 
   it('ecrã muito lento (o desenho já acabou): entra quando chega', async () => {
+    const off = registerSkeletonLogo(0);
     const wait = vi.fn(() => Promise.resolve());
-    const load = holdForLogo(() => Promise.resolve('mod'), { now: clock([0, 5000]), wait });
-    await expect(load()).resolves.toBe('mod');
+    await expect(holdForLogo(() => Promise.resolve('mod'), { now: () => 5000, wait })()).resolves.toBe('mod');
     expect(wait).not.toHaveBeenCalled();
+    off();
+  });
+});
+
+describe('holdForLogo — casos-limite do logo do esqueleto', () => {
+  const original = window.matchMedia;
+  afterEach(() => { window.matchMedia = original; });
+
+  it('com movimento reduzido nunca espera', async () => {
+    window.matchMedia = () => ({ matches: true });
+    const off = registerSkeletonLogo(0);
+    const wait = vi.fn(() => Promise.resolve());
+    await expect(holdForLogo(() => Promise.resolve('m'), { now: () => 100, wait })()).resolves.toBe('m');
+    expect(wait).not.toHaveBeenCalled();
+    off();
+  });
+
+  it('o atleta sai e volta a meio: espera pelo desenho novo, não pelo antigo', async () => {
+    window.matchMedia = () => ({ matches: false });
+    let t = 1000;
+    const offOld = registerSkeletonLogo(0);
+    let offNew = null;
+    const wait = vi.fn(async (ms) => {
+      t += ms;
+      // Durante a primeira espera, o esqueleto antigo saiu e entrou um novo.
+      if (!offNew) { offOld(); offNew = registerSkeletonLogo(1500); }
+    });
+    await holdForLogo(() => Promise.resolve('m'), { now: () => t, wait })();
+    expect(t).toBe(1500 + LOGO_DRAW_MS);
+    offNew();
+  });
+});
+
+describe('ScreenSkeleton — o atraso fica acima do do React', () => {
+  it('SKELETON_DELAY_MS passa os 300 ms em que o React 19 segura o fallback', () => {
+    expect(SKELETON_DELAY_MS).toBeGreaterThan(300);
   });
 });

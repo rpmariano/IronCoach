@@ -17,11 +17,13 @@ import { todayISO } from './lib/utils';
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
 // que o envolve (Layout, Auth) nunca podem ficar à espera de um pedido de
-// rede extra. Tudo o resto abre por ação do atleta e entra por import()
+// rede extra. A única espera deliberada é o ecrã do logo, que se deixa
+// desenhar até ao fim (utils/logoIntro.js) — e o que ele puder aquecer
+// entretanto, aquece (ver usePreloadDuringSplash). Tudo o resto abre por ação do atleta e entra por import()
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
-import { holdForLogo, logoIntroMs, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
+import { holdForLogo, logoIntroMs, registerSkeletonLogo, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -82,8 +84,9 @@ const RacesScreen = lazy(holdForLogo(loadRaces));
 const Coach = lazy(holdForLogo(loadCoach));
 const Perfil = lazy(holdForLogo(loadPerfil));
 const Admin = lazy(holdForLogo(loadAdmin));
-// O arranque do onboarding não espera: o fallback dele é o logo já
-// desenhado (FullScreenLoader still), logo a seguir ao ecrã do logo.
+// O onboarding não espera pelo logo: o fallback dele é o logo já desenhado
+// (FullScreenLoader still) — no primeiro acesso vem logo a seguir ao ecrã do
+// logo, e na reentrada pelo Perfil um desenho seria só demora.
 const Onboarding = lazy(loadOnboarding);
 const RunAgenda = lazy(holdForLogo(loadRunAgenda));
 const MealRegistration = lazy(holdForLogo(loadMealRegistration));
@@ -93,9 +96,11 @@ const GymRegistration = lazy(holdForLogo(loadGymRegistration));
 const PlanoScreen = lazy(holdForLogo(loadPlanoScreen));
 
 // Bancadas de teste do design system: só se chegam por ?tab=design-system /
-// ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém.
-const ButtonShowcase = lazy(holdForLogo(() => import('./components/DesignSystem/ButtonShowcase')));
-const UIAuditSandbox = lazy(holdForLogo(() => import('./components/DesignSystem/UIAuditSandbox')));
+// ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém. O fallback
+// delas é o logo já desenhado (FullScreenLoader still): sem desenho, nada a
+// cortar, e nada a esperar.
+const ButtonShowcase = lazy(() => import('./components/DesignSystem/ButtonShowcase'));
+const UIAuditSandbox = lazy(() => import('./components/DesignSystem/UIAuditSandbox'));
 
 /* Pré-carregamento por gesto. A barra inferior vive no Layout.jsx, que não é
    território deste ficheiro — em vez de lhe acrescentar handlers, ouve-se o
@@ -140,6 +145,21 @@ function usePreloadOnNavTouch() {
   }, []);
 }
 
+/* Enquanto o logo de arranque se desenha (~2,5 s), a rede está livre:
+   aquece-se o chunk do separador por onde a app vai entrar (uma notificação
+   abre ?tab=coach, por exemplo) e, se os dados já disseram que é o primeiro
+   acesso, o do onboarding. Sem isto, a app saía do logo de arranque para
+   cair no logo do esqueleto — dois desenhos seguidos. */
+function usePreloadDuringSplash(showBootSplash, activeTab, needsOnboarding) {
+  useEffect(() => {
+    if (!showBootSplash) return;
+    PRELOAD_BY_TAB[activeTab]?.();
+  }, [showBootSplash, activeTab]);
+  useEffect(() => {
+    if (showBootSplash && needsOnboarding) loadOnboarding();
+  }, [showBootSplash, needsOnboarding]);
+}
+
 /* Esqueleto de transição — a mesma linguagem do `carol-skeleton` do Início
    (barras a rgba(255,255,255,.08)). Nunca um spinner nem a palavra "a
    carregar" escrita no ecrã: o estado diz-se a quem usa leitor de ecrã pelo
@@ -158,9 +178,11 @@ function ScreenSkeleton() {
     const t = setTimeout(() => setVisible(true), SKELETON_DELAY_MS);
     return () => clearTimeout(t);
   }, []);
+  // O brasão à vista fica registado: o ecrã que está a chegar espera por ele.
+  useEffect(() => (visible ? registerSkeletonLogo() : undefined), [visible]);
   return (
     <div data-testid="screen-skeleton" role="status" aria-label="A carregar o ecrã" className="flex items-center justify-center" style={{ minHeight: '46vh' }}>
-      {visible && <LogoLoader size={64} label="A carregar o ecrã" />}
+      {visible && <LogoLoader size={64} label={null} />}
     </div>
   );
 }
@@ -178,10 +200,10 @@ function FullScreenLoader({ still = false }) {
     <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" data-testid="boot-splash" style={{ gap: 20 }}>
       <LogoLoader size={112} label="A carregar" still={still} />
       <div aria-hidden="true" className="flex flex-col items-center" style={{ gap: 8 }}>
-        <span className={still ? undefined : 'logo-loader-word'} style={{ fontSize: 26, fontWeight: 900, letterSpacing: '.16em', paddingLeft: '.16em', color: 'var(--text-1)', lineHeight: 1 }}>
+        <span className={still ? undefined : 'logo-loader-word'} style={{ fontSize: 30, fontWeight: 900, letterSpacing: '.14em', paddingLeft: '.14em', color: 'var(--text-1)', lineHeight: 1 }}>
           IRON<span className="brand-coach-word">COACH</span>
         </span>
-        <span className={still ? undefined : 'logo-loader-tagline'} style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.42em', paddingLeft: '.42em', color: 'var(--race)', lineHeight: 1 }}>
+        <span className={still ? undefined : 'logo-loader-tagline'} style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.62em', paddingLeft: '.62em', color: 'var(--brand-gold)', lineHeight: 1 }}>
           AI-POWERED
         </span>
       </div>
@@ -417,7 +439,8 @@ export default function App() {
   const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
   // O ecrã do logo fica enquanto os dados carregam E até o desenho acabar.
-  const showBootSplash = useHeldWhile(isInitializing, logoIntroMs());
+  const [introMs] = useState(logoIntroMs);
+  const showBootSplash = useHeldWhile(isInitializing, introMs);
   /* O utilizador cujos dados já estão carregados. Ao voltar à app depois de
      ter estado noutra, o Supabase recupera a sessão e emite SIGNED_IN com o
      MESMO utilizador (auth-js, _onVisibilityChanged → _recoverAndRefresh).
@@ -637,6 +660,7 @@ export default function App() {
   // Aquece o chunk do separador ao toque, antes de o React o pedir — ver o
   // comentário em usePreloadOnNavTouch, no topo.
   usePreloadOnNavTouch();
+  usePreloadDuringSplash(showBootSplash, activeTab, needsOnboarding);
 
   useEffect(() => {
     registerServiceWorker();
@@ -769,11 +793,11 @@ export default function App() {
   }, [setSession, setProfile, loadInitialData, setActiveTab, consumeProactiveKey]);
 
   if (activeTab === 'design-system') {
-    return <Suspense fallback={<FullScreenLoader />}><ButtonShowcase /></Suspense>;
+    return <Suspense fallback={<FullScreenLoader still />}><ButtonShowcase /></Suspense>;
   }
 
   if (activeTab === 'audit-sandbox') {
-    return <Suspense fallback={<FullScreenLoader />}><UIAuditSandbox /></Suspense>;
+    return <Suspense fallback={<FullScreenLoader still />}><UIAuditSandbox /></Suspense>;
   }
 
   if (showBootSplash) {
