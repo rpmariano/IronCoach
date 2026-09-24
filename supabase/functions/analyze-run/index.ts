@@ -48,12 +48,13 @@ const GEMINI_BUSY_BACKOFF_MS = [2000, 4000, 7000];
 /* Só se tenta de novo se ainda couber uma tentativa útil antes do prazo
    (uma leitura de prints demora ~5–10 s). */
 const GEMINI_MIN_ATTEMPT_MS = 8000;
-/* Prazos, contados desde que o pedido chega. Têm de caber nos 100 s que a app
-   espera pela resposta (ANALYZE_RUN_TIMEOUT_MS em RunRegistration.jsx): se a
-   app desistisse antes e o servidor acabasse por gravar a corrida, o "Tentar
-   de novo" gravava-a outra vez. A extração tem prazo mais curto porque a
-   gravação e o comentário ainda vêm depois; o comentário é best-effort e
-   desiste no seu. */
+/* Prazos, contados desde que o pedido chega. Têm de caber, com folga para o
+   arranque a frio e o envio dos prints, nos 130 s que a app espera pela
+   resposta (ANALYZE_RUN_TIMEOUT_MS em src/lib/edgeTimeouts.js): se a app
+   desistisse antes e o servidor acabasse por gravar a corrida, o "Tentar de
+   novo" gravava-a outra vez. A extração tem prazo mais curto porque a
+   gravação e o comentário ainda vêm depois; o comentário é best-effort e,
+   sem tempo para uma tentativa útil, nem começa. */
 const EXTRACTION_BUDGET_MS = 60000;
 const COACH_BUDGET_MS = 88000;
 
@@ -558,6 +559,9 @@ async function generateCoachNotes(
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
+  // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
+  // corrida já está gravada e a resposta não pode passar o que a app espera.
+  if (Date.now() + GEMINI_MIN_ATTEMPT_MS > deadline) return { text: null, debug: { reason: "sem_tempo" } };
 
   const trainingTypeLabel = run.training_type
     ? TRAINING_TYPE_LABELS[run.training_type] || run.training_type

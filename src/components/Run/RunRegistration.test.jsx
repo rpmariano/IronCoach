@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
@@ -197,7 +197,11 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
      das métricas em falta aparecer. "Mais prints" só fechava o aviso, e a
      análise seguinte criava uma segunda corrida igual. */
   describe('"Mais prints" depois de a corrida estar gravada', () => {
-    const gravada = { id: 'run-1', name: 'Corrida de Hoje', distance_km: 5, duration_seconds: 1800, photo_paths: ['user-1/a.jpg'], details: {} };
+    const gravada = {
+      id: 'run-1', name: 'Corrida de Hoje', date: todayISO(), kind: 'treino', training_type: 'continuo',
+      effort_rpe: null, notes: null, shoe_id: null,
+      distance_km: 5, duration_seconds: 1800, photo_paths: ['user-1/a.jpg'], details: {},
+    };
 
     const chegarAoAviso = async () => {
       mocks.invoke.mockResolvedValueOnce({ data: { run: gravada }, error: null });
@@ -234,7 +238,7 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       expect(body.run_id).toBe('run-1');
       expect(body.keep_paths).toEqual(['user-1/a.jpg']);
       expect(body.images).toEqual(['AAA']);
-      expect(timeout).toBeGreaterThanOrEqual(90000);
+      expect(timeout).toBeGreaterThanOrEqual(120000);
 
       await dispensarConfirmacao();
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
@@ -258,6 +262,39 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
       expect(mocks.invoke).toHaveBeenCalledTimes(1);
       expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
+    });
+
+    it('sem prints novos mas com o nome mudado, reanalisa — a mudança não se perde', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: 'Rodagem do Tejo' } });
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, name: 'Rodagem do Tejo' } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const [, { body }] = mocks.invoke.mock.calls[1];
+      expect(body.run_id).toBe('run-1');
+      expect(body.name).toBe('Rodagem do Tejo');
+      expect(body.keep_paths).toEqual(['user-1/a.jpg']);
+      expect(body.images).toEqual([]);
+    });
+
+    it('"Manual" depois do aviso grava por cima da corrida (run_id), sem a duplicar', async () => {
+      await chegarAoAviso();
+      fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: /Manual/ }));
+      const atualizada = { ...gravada, details: { avg_heart_rate_bpm: 150 } };
+      mocks.invoke.mockResolvedValueOnce({ data: { run: atualizada }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      // Ainda faltam métricas no formulário: o aviso volta, e prossegue-se.
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const [, { body }] = mocks.invoke.mock.calls[1];
+      expect(body.mode).toBe('manual');
+      expect(body.run_id).toBe('run-1');
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(useAppStore.getState().runs).toEqual([atualizada]);
     });
   });
 });

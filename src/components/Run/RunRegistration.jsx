@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_RUN_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import RaceMemoriesFields from './RaceMemoriesFields';
 import { pickDiploma, pickMedal, pickPhotos, signRaceMemories, persistRaceMemories as persistRaceMemoriesShared, MAX_RACE_PHOTOS } from '../../utils/raceMemories';
@@ -86,11 +87,6 @@ const COMPLETED_RACE_TYPES = [
 
 // Convert "43m" or "37:57" or "1:11:26" to seconds
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-run
-/* Quanto a app espera pela analyze-run. Tem de passar o prazo do servidor
-   (COACH_BUDGET_MS, 88 s: repetições quando o Gemini está ocupado, gravação
-   e comentário da Carol): se a app desistisse antes e o servidor acabasse
-   por gravar a corrida, o "Tentar de novo" gravava-a outra vez. */
-const ANALYZE_RUN_TIMEOUT_MS = 100000;
 
 // ── Modo prova (specs/prova-concluida.md) ───────────────────────────────────
 // As memórias (diploma, medalha, fotografias do dia) vivem na prova, não na
@@ -1335,6 +1331,21 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     await finishSavedRun(run, 'Corrida registada');
   };
 
+  /* O formulário ainda diz o mesmo que a corrida gravada, no que não vem da
+     imagem (nome, data, RPE, notas, sapatilhas, tipo)? Se o atleta mudou
+     alguma coisa depois do aviso, a corrida não pode fechar como estava —
+     essas mudanças perdiam-se sem aviso. */
+  const formMatchesRun = (run) => (
+    (run.name || '') === runName.trim()
+    && run.date === runDate
+    && Number(run.effort_rpe || 0) === Number(runEffortRpe || 0)
+    && (run.notes || '') === runNotes.trim()
+    && (run.shoe_id ?? null) === (shoeId ?? null)
+    && run.kind === runKind
+    && (runKind !== 'treino' || (run.training_type ?? null) === runTrainingType)
+    && (runKind !== 'competicao' || (run.details?.race_type ?? null) === completedRaceType)
+  );
+
   /* Os prints novos depois de a corrida já estar gravada: reanálise dela,
      com os prints que já lá estavam e ainda estão no formulário (keep_paths)
      e os que se juntaram (images). O que não vem da imagem vai junto, como
@@ -1345,7 +1356,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       .map((p, i) => (runPhotos.includes(p) ? paths[i] : null))
       .filter(Boolean);
     const fresh = runPhotos.filter((p) => !created.sentPhotos.includes(p) && p.base64);
-    if (!fresh.length && keep.length === created.sentPhotos.length) {
+    if (!fresh.length && keep.length === created.sentPhotos.length && formMatchesRun(created.run)) {
       await finishCreatedRun(created.run);
       return;
     }
@@ -1476,7 +1487,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const handleProceedAnyway = async () => {
     setShowMissingMetricsSheet(false);
     setUserBypassedMissingSheet(true);
-    if (pendingCreatedRun) {
+    // Vindo do manual (o aviso também aparece aí), o que o atleta escreveu
+    // grava-se — em cima da corrida já criada, se a houver.
+    if (pendingCreatedRun && entryMethod !== 'manual') {
       await finishCreatedRun(createdRunRef.current?.run || pendingCreatedRun);
     } else {
       handleSaveCorrida(true, pendingForceReanalyze);
@@ -1636,9 +1649,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         return;
       }
 
+      // Se a análise por foto já gravou esta corrida (aviso das métricas em
+      // falta → "Preencher à mão", ou "Escrever" depois de uma falha), o
+      // manual atualiza-a em vez de criar uma segunda.
+      const created = createdRunRef.current;
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
           mode: 'manual',
+          ...(created ? { run_id: created.run.id } : {}),
           date: runDate,
           kind: runKind,
           name: runName.trim(),
@@ -1680,7 +1698,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (data?.error) throw new Error(data.error);
 
       newlySavedRun = data.run;
-      setRuns([...runs, newlySavedRun]);
+      createdRunRef.current = null;
+      upsertRunInStore(newlySavedRun);
 
       // Se esta corrida vem do plano (ou bate com um treino de corrida
       // pendente nesse dia), marca o item como concluído — a data usada é a
