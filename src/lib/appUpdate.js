@@ -70,7 +70,9 @@ export function isBusy(doc = globalThis.document) {
 export function freshUrl(href, build, extra = {}) {
   const url = new URL(href);
   for (const [k, v] of Object.entries(extra)) {
-    if (v) url.searchParams.set(k, v);
+    // null tira o parâmetro; um valor põe-no.
+    if (v === null) url.searchParams.delete(k);
+    else if (v) url.searchParams.set(k, v);
   }
   url.searchParams.set(VERSION_PARAM, build || String(Date.now()));
   return url.toString();
@@ -90,12 +92,23 @@ export function reloadFresh(build, loc = globalThis.location, extra = {}) {
    tira-o logo da barra de endereço (stripResumeParam). */
 const RESUME_PARAM = 'resume';
 
-/** Os parâmetros de uma recarga técnica para voltar a `tab`. O Início é o
-    separador por omissão, e as bancadas de teste já vêm no ?tab=. */
-export function resumeParams(tab) {
-  return typeof tab === 'string' && tab && !/^(home|design-system|audit-sandbox)$/.test(tab)
-    ? { [RESUME_PARAM]: tab }
-    : {};
+/* O App já aplicou o separador de entrada do URL? Até lá o separador da
+   store ainda é o de partida ('home'), não o do ?tab= de uma notificação:
+   uma recarga nesse instante (o vigia verifica logo no arranque) tem de
+   deixar o URL como está. */
+let entryApplied = false;
+/** O App chama isto depois de aplicar o separador de entrada. */
+export function markEntryApplied() { entryApplied = true; }
+
+/** Os parâmetros de uma recarga técnica para voltar a `tab`: põe o
+    ?resume= e tira o ?tab= e o ?carol= de uma notificação antiga — senão
+    uma sessão aberta por notificação voltava sempre a esse separador e sem
+    boas-vindas (revisão pré-deploy de 7326011). Antes de o App aplicar o
+    separador de entrada, e nas bancadas de teste, o URL fica como está. */
+export function resumeParams(tab, applied = entryApplied) {
+  if (!applied) return {};
+  if (typeof tab !== 'string' || !tab || /^(design-system|audit-sandbox)$/.test(tab)) return {};
+  return { [RESUME_PARAM]: tab, tab: null, carol: null };
 }
 
 /** O separador por onde a app entra: o da recarga técnica (é onde se

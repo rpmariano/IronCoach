@@ -18,6 +18,16 @@ describe('prefetchScreensWhenIdle — os ecrãs carregados antes de se pedirem',
     expect(order).toEqual(['coach:início', 'coach:fim', 'perfil:início']);
   });
 
+  it('cada ecrã espera pelo seu tempo morto, não só o primeiro', async () => {
+    vi.useFakeTimers();
+    const idle = vi.fn((fn) => fn());
+    const loads = [vi.fn(() => Promise.resolve()), vi.fn(() => Promise.resolve()), vi.fn(() => Promise.resolve())];
+    prefetchScreensWhenIdle(loads, { delayMs: 0, idle, saveData: false });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(idle).toHaveBeenCalledTimes(3);
+    loads.forEach((l) => expect(l).toHaveBeenCalledTimes(1));
+  });
+
   it('uma falha não pára os seguintes', async () => {
     vi.useFakeTimers();
     const ok = vi.fn(() => Promise.resolve());

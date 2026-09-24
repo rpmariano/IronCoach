@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam } from './lib/appUpdate';
+import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
@@ -724,6 +724,7 @@ export default function App() {
     if (entryTab) {
       setActiveTab(entryTab);
     }
+    markEntryApplied();
     if (carolParam) {
       proactiveKeyRef.current = carolParam;
       // Sem o `carol=`: um F5 a seguir não repete a mesma conversa. O `tab`

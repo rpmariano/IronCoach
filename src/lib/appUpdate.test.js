@@ -161,17 +161,24 @@ describe('recarga técnica — volta ao separador onde se estava', () => {
   // Relatado 2026-09-24: "a app reinicia quando mudamos de menu" — a recarga
   // caía sempre no Início. Com ?resume=, não ?tab=: esse é o da notificação,
   // e saltava as boas-vindas da Carol (revisão pré-deploy de 639c495).
-  it('freshUrl junta o ?resume= e o ?v=, sem tocar no ?tab= de uma notificação', () => {
-    expect(freshUrl('https://x.io/IronCoach/', 'bbb', resumeParams('coach'))).toBe('https://x.io/IronCoach/?resume=coach&v=bbb');
-    expect(freshUrl('https://x.io/IronCoach/?tab=coach&carol=k1', 'bbb', resumeParams('home'))).toBe('https://x.io/IronCoach/?tab=coach&carol=k1&v=bbb');
+  it('freshUrl põe o ?resume= e tira o ?tab= e o ?carol= de uma notificação antiga', () => {
+    expect(freshUrl('https://x.io/IronCoach/', 'bbb', resumeParams('coach', true))).toBe('https://x.io/IronCoach/?resume=coach&v=bbb');
+    expect(freshUrl('https://x.io/IronCoach/?tab=coach&carol=k1&demo=true', 'bbb', resumeParams('home', true)))
+      .toBe('https://x.io/IronCoach/?demo=true&resume=home&v=bbb');
   });
 
-  it('resumeParams: os separadores sim; o Início (por omissão) e as bancadas não', () => {
-    expect(resumeParams('provas')).toEqual({ resume: 'provas' });
-    expect(resumeParams('nutricao')).toEqual({ resume: 'nutricao' });
-    expect(resumeParams('home')).toEqual({});
-    expect(resumeParams('design-system')).toEqual({});
-    expect(resumeParams(null)).toEqual({});
+  it('antes de o App aplicar o separador de entrada, o URL fica como está', () => {
+    // O vigia pode recarregar logo no arranque, com a store ainda em 'home'.
+    expect(resumeParams('home', false)).toEqual({});
+    expect(freshUrl('https://x.io/IronCoach/?tab=coach&carol=k1', 'bbb', resumeParams('home', false)))
+      .toBe('https://x.io/IronCoach/?tab=coach&carol=k1&v=bbb');
+  });
+
+  it('resumeParams: todos os separadores, o Início incluído; as bancadas não', () => {
+    expect(resumeParams('provas', true)).toEqual({ resume: 'provas', tab: null, carol: null });
+    expect(resumeParams('home', true)).toEqual({ resume: 'home', tab: null, carol: null });
+    expect(resumeParams('design-system', true)).toEqual({});
+    expect(resumeParams(null, true)).toEqual({});
   });
 
   it('entryTabFromSearch: a recarga técnica ganha ao ?tab= antigo; sem nada, null', () => {

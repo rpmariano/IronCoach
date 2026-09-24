@@ -346,6 +346,36 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       expect(onClose).not.toHaveBeenCalled();
     });
 
+    it('o "Manual" também tira a corrida do rascunho ao gravar', async () => {
+      await chegarAoAviso();
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada, runName: 'Corrida de Hoje' }));
+      fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: /Manual/ }));
+      mocks.invoke.mockResolvedValueOnce({ data: { run: gravada }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await waitFor(() => {
+        const draft = JSON.parse(localStorage.getItem('ironcoach:corrida-rascunho:nova'));
+        expect(draft?.createdRun).toBeUndefined();
+      });
+    });
+
+    it('rascunho reaberto: se os prints da corrida não carregam, diz-o, e contam para o limite de 6', async () => {
+      mocks.signError = { message: 'sem rede' };
+      try {
+        localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada }));
+        render(<RunRegistration onClose={onClose} />);
+        expect(await screen.findByText(/Os prints desta corrida não carregaram/)).toBeInTheDocument();
+        // A corrida já tem 1 print (escondido): só cabem mais 5.
+        const input = document.querySelector('input[type="file"]');
+        const files = Array.from({ length: 6 }, (_, i) => new File(['x'], `p${i}.jpg`, { type: 'image/jpeg' }));
+        await fireEvent.change(input, { target: { files } });
+        await screen.findByAltText('Print 5');
+        expect(screen.queryByAltText('Print 6')).toBeNull();
+      } finally {
+        mocks.signError = null;
+      }
+    });
+
     it('"Manual" depois do aviso grava por cima da corrida (run_id), sem a duplicar', async () => {
       await chegarAoAviso();
       fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: /Manual/ }));

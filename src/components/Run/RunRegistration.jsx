@@ -885,7 +885,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // reaberto e ainda por carregar) contam para o limite: a reanálise
     // mantém-nos, e o servidor recusa mais de MAX_PHOTOS no total.
     const created = createdRunRef.current;
-    const hiddenKept = created && !created.photosShown ? (created.run.photo_paths?.length || 0) : 0;
+    const shown = new Set(runPhotos.filter((p) => p.path).map((p) => p.path));
+    const hiddenKept = created && !created.photosShown
+      ? (created.run.photo_paths || []).filter((p) => !shown.has(p)).length
+      : 0;
     const remaining = MAX_PHOTOS - runPhotos.length - hiddenKept;
     if (remaining <= 0) {
       setErrorMsg(`Máximo de ${MAX_PHOTOS} imagens.`);
@@ -1387,6 +1390,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      imagem (nome, data, RPE, notas, sapatilhas, tipo)? Se o atleta mudou
      alguma coisa depois do aviso, a corrida não pode fechar como estava —
      essas mudanças perdiam-se sem aviso. */
+  /* O que não mexe na análise (nome, data, sapatilhas) — update direto,
+     como a editar. `fallback`: o que já estava gravado, se o campo ficou
+     vazio (o "Prosseguir" não passa pelas validações do "Analisar", e a
+     analyze-run ignorava um nome vazio ou uma data inválida). */
+  const plainFieldsPayload = (fallback = {}) => ({
+    date: runDate || fallback.date,
+    name: runName.trim() || fallback.name,
+    shoe_id: shoeId,
+  });
+
   // Um campo que a corrida não traz (undefined) não se compara: não há
   // nada a dizer que mudou. O servidor devolve a linha inteira.
   const sameAsRun = (fromRun, norm, fromForm) => fromRun === undefined || norm(fromRun) === fromForm;
@@ -1422,7 +1435,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // Só o nome, a data ou as sapatilhas mudaram: não mexem na análise —
     // update direto, sem voltar a ler os prints (como a editar, PRD 3.2).
     if (samePhotos && analysisMatchesRun(created.run)) {
-      const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
+      const payload = plainFieldsPayload(created.run);
       const { error } = await supabase.from('runs').update(payload).eq('id', created.run.id);
       if (error) throw new Error(error.message || 'Falha a gravar a corrida.');
       await finishCreatedRun({ ...created.run, ...payload });
@@ -1720,7 +1733,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           useAppStore.getState().clearDismissedIntervention(runIdToEdit);
           await finishSavedRun(updatedRun, 'Corrida reanalisada pela Carol');
         } else {
-          const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
+          const payload = plainFieldsPayload(runs.find(r => r.id === runIdToEdit));
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
           if (error) throw error;
           const currentRun = runs.find(r => r.id === runIdToEdit);
