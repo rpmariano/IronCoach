@@ -32,7 +32,8 @@
 // é usado, de propósito. A variável local `hasBaseFitness` do original, que
 // era calculada e nunca lida, deixou de existir.
 
-import { categorizeDistance, MIN_PREP_WEEKS, MIN_VOLUME_KM } from "./vocabulary.ts";
+import { categorizeDistance, LEVEL_WEEKLY_KM_RANGE, MIN_PREP_WEEKS, MIN_VOLUME_KM } from "./vocabulary.ts";
+import { computeRunAcwr } from "./runAcwr.ts";
 
 export interface RunForVolume {
   date: string;
@@ -47,6 +48,42 @@ export function computeRecentWeeklyVolume(runs: RunForVolume[], todayISO: string
     .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= cutoffMs)
     .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
   return Math.round((total / weeks) * 10) / 10;
+}
+
+/** O volume semanal que a app conhece de facto: a média das últimas 4
+ *  semanas, só com histórico (corridas em 3 das 4 semanas, a regra de
+ *  runAcwr.ts). Sem ele, null — "sem dados para julgar" (pedido 2026-09-24:
+ *  "se a app não tem dados, não apresenta dados"). Antes, 3 corridas em 4
+ *  semanas davam ~5 km/semana e "volume insuficiente" para um 10 km a quem
+ *  corre mais do que regista. */
+export function knownWeeklyVolume(runs: RunForVolume[], todayISO: string): number | null {
+  const list = (runs || []).filter((r) => r && typeof r.date === "string")
+    .map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0 }));
+  if (!computeRunAcwr(list, todayISO).hasEnoughData) return null;
+  const v = computeRecentWeeklyVolume(list, todayISO, 4);
+  return v > 0 ? v : null;
+}
+
+/** O volume de referência do nível do perfil, para quando a app não conhece o
+ *  volume de facto (pedido 2026-09-24: "ela já conhece o meu nível de
+ *  experiência"). Duas coisas diferentes, que a primeira versão confundia
+ *  (revisão pré-deploy de 195bb0d):
+ *  - `start`: o volume de PARTIDA — o limite inferior do intervalo do nível
+ *    (LEVEL_WEEKLY_KM_RANGE, Bloco 0 #1). Um iniciante corre 15-25 km/semana;
+ *  - `target`: o volume a ATINGIR até à prova — o pré-requisito da doutrina
+ *    para o nível e a distância dela (MIN_VOLUME_KM, Bloco 1 #2). Com uma
+ *    maratona, 35 km/semana para um iniciante é onde chegar, não de onde
+ *    partir. null sem prova.
+ *  null sem nível. */
+export function levelReferenceWeeklyKm(
+  level: string | null | undefined,
+  raceDistanceKm: number | null | undefined,
+): { start: number; range: [number, number]; target: number | null; category: string | null } | null {
+  if (!level || !LEVEL_WEEKLY_KM_RANGE[level]) return null;
+  const range = LEVEL_WEEKLY_KM_RANGE[level];
+  const category = raceDistanceKm != null ? categorizeDistance(raceDistanceKm) : null;
+  const target = category ? MIN_VOLUME_KM[level]?.[category] ?? null : null;
+  return { start: range[0], range, target, category: category ?? null };
 }
 
 export type ViabilityFlag = "ultra_para_iniciante" | "tempo_insuficiente" | "volume_insuficiente";

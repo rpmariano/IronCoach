@@ -114,7 +114,7 @@ describe('PlanProposalBottomSheet', () => {
         onClose={() => {}}
       />
     );
-    expect(screen.getByText('Propostas do Coach')).toBeInTheDocument();
+    expect(screen.getByText('Propostas da Carol')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aceitar objetivos/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aceitar plano/i })).toBeInTheDocument();
   });
@@ -138,5 +138,58 @@ describe('PlanProposalBottomSheet', () => {
     expect(onRespondGoal).toHaveBeenCalledWith('goal-1', true);
     expect(onRespondPlan).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+/* Bug relatado 2026-09-21: "O título refere 69 dias e 8 corridas, a que se
+   refere?" — a persiana nunca dizia a que PROVA o plano se destinava.
+   plan.period_end é sempre o dia da prova, quando há uma vinculada
+   (coach-chat, runProposeTrainingPlan): um atleta com mais do que uma prova
+   agendada não tinha como saber que "69 dias" não era para a prova mais
+   próxima, mas para a prova A lá mais à frente. */
+describe('PlanProposalBottomSheet — a que prova o plano se refere', () => {
+  const raceEvents = [
+    { id: 'race-a', name: 'Meia dos Descobrimentos', date: '2026-11-29', race_priority: 'a' },
+    { id: 'race-b', name: 'Volkswagen Run', date: '2026-10-25', race_priority: 'b' },
+  ];
+
+  const planParaProvaA = {
+    id: 'plan-2',
+    race_id: 'race-a',
+    period_start: '2026-09-21',
+    period_end: '2026-11-29',
+  };
+
+  const itensParciais = [
+    { id: 'i1', plan_id: 'plan-2', planned_date: '2026-09-22', kind: 'corrida', training_type: 'continuo', target_distance_km: 8, status: 'pendente' },
+    { id: 'i2', plan_id: 'plan-2', planned_date: '2026-09-25', kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'pendente' },
+  ];
+
+  it('o subtítulo diz para que prova o plano se destina', () => {
+    render(<PlanProposalBottomSheet plan={planParaProvaA} items={itensParciais} raceEvents={raceEvents} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.getByText(/Período: 2026-09-21 a 2026-11-29 — para Meia dos Descobrimentos/)).toBeInTheDocument();
+  });
+
+  it('a frase do plano nomeia a prova, em vez de só o número de dias', () => {
+    render(<PlanProposalBottomSheet plan={planParaProvaA} items={itensParciais} raceEvents={raceEvents} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.getByText(/Plano de 70 dias até Meia dos Descobrimentos, com 2 corridas/)).toBeInTheDocument();
+  });
+
+  it('quando os itens não cobrem o bloco todo, diz até quando estão detalhados', () => {
+    render(<PlanProposalBottomSheet plan={planParaProvaA} items={itensParciais} raceEvents={raceEvents} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.getByText(/detalhados até 2026-09-25 — o resto do bloco ainda vai ser definido/)).toBeInTheDocument();
+  });
+
+  it('sem prova vinculada, mantém a frase de sempre — sem "até" nem prova nenhuma', () => {
+    const semProva = { id: 'plan-3', period_start: '2026-08-15', period_end: '2026-08-20' };
+    const itens = [{ id: 'j1', plan_id: 'plan-3', planned_date: '2026-08-20', kind: 'corrida', training_type: 'continuo', target_distance_km: 5, status: 'pendente' }];
+    render(<PlanProposalBottomSheet plan={semProva} items={itens} raceEvents={raceEvents} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.getByText(/Plano de 6 dias, com 1 corrida\./)).toBeInTheDocument();
+  });
+
+  it('sem raceEvents (prop omitida), não rebenta e comporta-se como sem prova', () => {
+    render(<PlanProposalBottomSheet plan={planParaProvaA} items={itensParciais} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.getByText(/Período: 2026-09-21 a 2026-11-29/)).toBeInTheDocument();
+    expect(screen.queryByText(/para Meia dos Descobrimentos/)).not.toBeInTheDocument();
   });
 });

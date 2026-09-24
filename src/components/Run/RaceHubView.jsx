@@ -20,7 +20,6 @@ import {
   Award,
   Flame,
   Zap,
-  Info,
   Star,
   Pencil,
 } from 'lucide-react';
@@ -38,13 +37,18 @@ import RaceWebInfoSections from './RaceWebInfoSections';
 import RacePacingPlanCard from './RacePacingPlanCard';
 import RaceMemoriesSheet from './RaceMemoriesSheet';
 import RaceBalanceCard from './RaceBalanceCard';
+import RaceForecastCard from './RaceForecastCard';
+import RaceTimesBreakdown from './RaceTimesBreakdown';
+import { raceForecast, raceTimesBreakdown, targetLine } from '../../utils/raceTimes';
 import RaceMuralSheet from './RaceMuralSheet';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
-import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, formatTargetTimeLabel, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
+import { racePriorityLabel, raceDistanceLabel, formatPace, formatDuration, findRaceRun, parseDurationToSeconds, describeRaceClassification, describeRaceTimes } from '../../utils/run';
 import { classifyRaceOutcome, describeRaceOutcome, raceResultSeconds } from '../../utils/raceOutcome';
 import { achievementsForRace, missedInRace, describeMissedInRace } from '../../utils/achievements';
+import { badgesForRace } from '../../utils/badges';
+import { todayISO } from '../../lib/utils';
 import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
@@ -63,7 +67,6 @@ export default function RaceHubView({
   onMemoriesSaved,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
-  const [showVdotHelp, setShowVdotHelp] = useState(false);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
 
   const plan = useMemo(() => {
@@ -105,9 +108,10 @@ export default function RaceHubView({
   const distanceLabel = raceDistanceLabel(race?.distance_km || 10);
   const info = race?.web_info || null;
 
+  const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race),
-  [runs, meals, bodyAssessments, gymSessions, profile, race]);
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins),
+  [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins]);
 
   const readinessTitle = readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
 
@@ -116,9 +120,29 @@ export default function RaceHubView({
   // Dashboard: getRacePrediction é o ponto único que resolve nível de
   // experiência e distância equivalente ITRA, para não voltar a divergir
   // entre ecrãs (ver nota em utils/biEngine.js).
+  /* As corridas que servem para prever: o fastestRun do motor só exige
+     distance_km > 0, por isso uma corrida com distância e sem duração entrava
+     como acumulador do reduce e devolvia NaN — o que apagava a previsão do
+     ecrã e punha o bloco a dizer "Regista corridas" a quem tem corridas
+     registadas. O filtro estava dentro do raceForecast, mas o hub passa-lhe a
+     previsão já feita, por isso nunca corria no único caminho real (2.ª
+     revisão pré-deploy). Fica aqui, onde a previsão nasce, e serve também o
+     plano do dia e a distância equivalente. É o mesmo critério do
+     classifyRaceOutcome. */
+  const runsComTempo = useMemo(() =>
+    (runs || []).filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0),
+  [runs]);
+
   const prediction = useMemo(() =>
-    getRacePrediction(race, profile, runs),
-  [race, profile, runs]);
+    getRacePrediction(race, profile, runsComTempo),
+  [race, profile, runsComTempo]);
+
+  /* O objetivo e a previsão prontos a ler, com ritmo, diferença e leitura
+     (utils/raceTimes.js) — o mesmo sítio de onde saem o bloco pós-prova e o
+     contexto da Carol, para os três nunca discordarem. */
+  const forecast = useMemo(() =>
+    raceForecast({ race, runs, profile, prediction }),
+  [race, runs, profile, prediction]);
 
   /* ── Plano para o dia (specs/plano-de-prova.md) ─────────────────────────
      Só nos últimos 7 dias e no próprio dia: antes disso o que interessa é o
@@ -282,10 +306,11 @@ export default function RaceHubView({
   /* ── Conquistas desta prova (specs/gamificacao-provas.md §2) ────────────
      Entre as memórias e o balanço: o que esta prova deu, e numa linha
      discreta o que ficou para a próxima. A lista sai do mesmo
-     computeAchievements do Início e do Perfil — o hub não tem régua
-     própria. O palmarés precisa de TODAS as provas para contar; o store é a
-     fonte, mas a prova aberta entra sempre, mesmo que o store esteja vazio
-     (é o caso dos testes que montam o hub à mão). */
+     `achievementsForRace` do Início e do Perfil, e esse do motor único dos
+     prémios (utils/premios.js) — o hub não tem régua própria. O palmarés
+     precisa de TODAS as provas para contar; o store é a fonte, mas a prova
+     aberta entra sempre, mesmo que o store esteja vazio (é o caso dos testes
+     que montam o hub à mão). */
   const storeRaceEvents = useAppStore((s) => s.raceEvents);
   const palmaresRaces = useMemo(() => {
     const all = storeRaceEvents || [];
@@ -297,13 +322,31 @@ export default function RaceHubView({
     () => (raceRun ? classifyRaceOutcome({ race, run: raceRun, runs, profile }) : null),
     [race, raceRun, runs, profile],
   );
+  // O motor dos prémios exige o dia injetado (utils/premios.js): o hub lê-o
+  // aqui uma vez, para as conquistas desta prova e o Palmarés não poderem
+  // discordar sobre que dia é hoje.
+  const hoje = todayISO();
   const raceAchievements = useMemo(
-    () => (raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile }, race.id) : []),
-    [raceRun, palmaresRaces, runs, profile, race?.id],
+    () => (raceRun && race?.id ? achievementsForRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
+    [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
   );
   const raceMissed = useMemo(
-    () => (raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile }, race.id) : []),
-    [raceRun, palmaresRaces, runs, profile, race?.id],
+    () => (raceRun && race?.id ? missedInRace({ raceEvents: palmaresRaces, runs, profile, today: hoje }, race.id) : []),
+    [raceRun, palmaresRaces, runs, profile, race?.id, hoje],
+  );
+
+  /* Os badges que ESTA prova deu (utils/badges.js) — hoje o `recorde_pessoal`,
+     o único badge que nasce de uma prova. Só servem ao estúdio do mural: no
+     hub as conquistas já dizem o mesmo em fichas, e a Vitrina dos badges vive
+     no Perfil. O plano e o ginásio entram porque o motor é o mesmo de sempre
+     e calcula a lista toda; o filtro pelo `raceId` é que decide o que sai. */
+  const storePlanItems = useAppStore((s) => s.coachPlanItems);
+  const storeGymSessions = useAppStore((s) => s.gymSessions);
+  const raceBadges = useMemo(
+    () => (raceRun && race?.id
+      ? badgesForRace({ raceEvents: palmaresRaces, runs, profile, planItems: storePlanItems, gymSessions: storeGymSessions, today: hoje }, race.id)
+      : []),
+    [raceRun, palmaresRaces, runs, profile, storePlanItems, storeGymSessions, race?.id, hoje],
   );
 
   // Resumo do ciclo: só o que se calcula dos registos reais (volume e VDOT).
@@ -335,16 +378,19 @@ export default function RaceHubView({
     const finalPace = finalSeconds > 0 && Number(raceRun?.distance_km) > 0
       ? formatPace(Math.round(finalSeconds / Number(raceRun.distance_km)))
       : null;
-    // "−2:18" = bateste a previsão por 2:18; "+" = ficaste acima dela.
-    // A previsão que conta aqui é a do TREINO — só corridas anteriores à
-    // prova (raceOutcome.predictedSeconds); a `prediction` geral inclui a
-    // própria corrida da prova, que sendo a mais rápida "previa-se" a si
-    // mesma e dava sempre "−0:00". Sem treino anterior, a linha não aparece.
-    const predSeconds = raceRun ? Number(raceOutcome?.predictedSeconds || 0) : Number(prediction?.predictedSeconds || 0);
-    const diff = finalSeconds > 0 && predSeconds > 0 ? Math.round(finalSeconds - predSeconds) : null;
-    const diffLabel = diff === null
-      ? null
-      : `${diff <= 0 ? '\u2212' : '+'}${formatDuration(Math.abs(diff)) || '0:00'}`;
+    /* Os quatro números da prova concluída — objetivo, o que o treino
+       previa, o real e o melhor anterior na mesma distância, todos com
+       ritmo. Antes eram dois quadrados: o objetivo sem ritmo (e só se o
+       campo de texto livre estivesse preenchido) e a diferença face ao
+       treino. A previsão que conta é a do TREINO — só corridas ANTERIORES
+       à prova (raceOutcome.predictedSeconds); a `prediction` geral inclui
+       a própria corrida da prova, que sendo a mais rápida "previa-se" a si
+       mesma e dava sempre "−0:00". */
+    const timesBreakdown = raceTimesBreakdown(raceOutcome, race);
+    // Prova dada como concluída sem corrida associada: não há real nem
+    // diferenças para mostrar, mas o objetivo que ele pediu continua a ser
+    // informação — fica a linha sozinha em vez de desaparecer o bloco.
+    const targetOnly = timesBreakdown ? null : targetLine(race);
 
     const leaveTo = (mode) => {
       const store = useAppStore.getState();
@@ -424,33 +470,7 @@ export default function RaceHubView({
                   </div>
                 )}
 
-                {(race?.target_time || diffLabel) && (
-                  <div className="flex gap-2.5 mt-4">
-                    {race?.target_time && (
-                      <div className="flex-1" style={{ borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', padding: 11 }}>
-                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>Objetivo</div>
-                        <div className="text-[14px] font-extrabold mt-1" style={{ color: 'var(--text-1)' }}>{formatTargetTimeLabel(race.target_time)}</div>
-                      </div>
-                    )}
-                    {diffLabel && (
-                      <div
-                        className="flex-1"
-                        style={{
-                          borderRadius: 14,
-                          background: diff <= 0 ? 'var(--tint-ok-bg)' : 'var(--tint-warn-bg)',
-                          border: `1px solid ${diff <= 0 ? 'var(--tint-ok-bd)' : 'var(--tint-warn-bd)'}`,
-                          padding: 11,
-                        }}
-                      >
-                        {/* "+2:18" sozinho não dizia de quê: é a diferença
-                            para o que o TREINO previa (VDOT das corridas
-                            anteriores à prova) — pedido 2026-09-13. */}
-                        <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>{`Vs. treino (previa ${formatDuration(predSeconds)})`}</div>
-                        <div className="text-[14px] font-extrabold mt-1" style={{ color: diff <= 0 ? 'var(--ok)' : 'var(--warn)' }}>{diffLabel}</div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                {timesBreakdown && <RaceTimesBreakdown breakdown={timesBreakdown} />}
                 {raceRun?.id && (
                   <button
                     type="button"
@@ -468,6 +488,16 @@ export default function RaceHubView({
                 <p className="text-[12.5px] leading-[1.5] mt-3" style={{ color: 'var(--text-3)' }}>
                   Não tenho a corrida desta prova. Regista-a e mostro-te o tempo final ao lado do objetivo.
                 </p>
+                {targetOnly && (
+                  <div data-testid="race-times-target-only" className="flex gap-2.5 mt-4">
+                    <div className="flex-1" style={{ borderRadius: 14, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.12)', padding: 11 }}>
+                      <div className="text-[11px]" style={{ color: 'var(--text-4)' }}>Objetivo</div>
+                      <div className="text-[14px] font-extrabold mt-1" style={{ color: 'var(--text-1)' }}>
+                        {targetOnly.timeLabel}{targetOnly.paceLabel ? ` · ${targetOnly.paceLabel}` : ''}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <button
                   type="button"
                   onClick={openRaceRegistration}
@@ -581,7 +611,7 @@ export default function RaceHubView({
           <RaceMemoriesSheet race={race} run={raceRun} userId={memoriesUserId} onSaved={onMemoriesSaved} onClose={() => setMemoriesOpen(false)} />
         )}
         {muralOpen && (
-          <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
+          <RaceMuralSheet race={race} run={raceRun} seconds={finalSeconds} classification={classification} achievements={raceAchievements} badges={raceBadges} memoryUrls={memoryUrls} onSaved={onMemoriesSaved} onClose={() => setMuralOpen(false)} />
         )}
 
         {openPhoto && (
@@ -792,67 +822,10 @@ export default function RaceHubView({
               </span>
             </div>
           )}
-          {(race?.target_time || race?.target_pace || race?.target_pace_seconds_per_km) && (
-            <div className="rh-spec-card rh-spec-card-wide">
-              <span className="rh-spec-lbl">Objetivo</span>
-              <span className="rh-spec-val">
-                {[
-                  race?.target_time ? `Total: ${formatTargetTimeLabel(race.target_time)}` : null,
-                  // race é o rascunho em edição (RunAgenda), que só tem
-                  // target_pace (string "5.00" já formatada) — o
-                  // target_pace_seconds_per_km só existe depois de gravar,
-                  // por isso é o fallback, não a fonte principal.
-                  race?.target_pace
-                    ? `Pace: ${race.target_pace}/km`
-                    : race?.target_pace_seconds_per_km
-                    ? `Pace: ${formatPace(race.target_pace_seconds_per_km)}/km`
-                    : null,
-                ].filter(Boolean).join(' | ')}
-              </span>
-            </div>
-          )}
-          {prediction?.predictedSeconds > 0 && (
-            <div className="rh-spec-card rh-spec-card-wide">
-              {/* Título centrado com ícone de ajuda ancorado à direita */}
-              <div className="w-full flex items-center justify-center relative">
-                <span className="rh-spec-lbl">Previsão (VDOT)</span>
-                <button
-                  type="button"
-                  onClick={() => setShowVdotHelp(prev => !prev)}
-                  // tap-area-44: o glifo mantem-se pequeno, a area tocavel e de 44.
-                  className={`tap-area-44 absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-1 transition-all ${
-                    showVdotHelp
-                      ? 'text-[var(--coach)] bg-[var(--surface-strong)]'
-                      : 'text-[var(--text-3)] hover:text-[var(--coach-soft)] active:bg-[var(--surface-strong)]'
-                  }`}
-                  aria-label="Mais informações sobre Previsão VDOT"
-                >
-                  <Info size={14} />
-                </button>
-              </div>
-
-              {/* predictedPaceReal (não predictedPace) — este é o tempo
-                  previsto a dividir pela distância REAL da prova, não pela
-                  equivalente ITRA usada para o Total (ver getRacePrediction
-                  em utils/biEngine.js). Usar predictedPace aqui fazia Total
-                  e Pace virem de bases diferentes e não baterem certo. */}
-              <span className="rh-spec-val">
-                Total: {formatDuration(Math.round(prediction.predictedSeconds))} | Pace: {formatPace(Math.round(prediction.predictedPaceReal))}/km
-              </span>
-
-              {/* Texto explicativo in-flow: expande naturalmente o cartão sem ficar cortado */}
-              {showVdotHelp && (
-                <div className="w-full mt-2.5 pt-2.5 border-t border-[var(--border-glass)] text-left fade-in">
-                  <div className="bg-[var(--tint-coach-bg)] border border-[var(--tint-coach-bd)] text-[var(--coach-soft)] text-[11px] leading-relaxed p-3 rounded-xl flex items-start gap-2.5 shadow-lg">
-                    <Info className="w-4 h-4 mt-0.5 shrink-0 text-[var(--coach)]" />
-                    <p className="flex-1 font-medium">
-                      Estimativa do teu tempo e pace nesta prova pela fórmula de Riegel, a partir da tua corrida mais rápida recente, ajustada a esta distância e ao teu nível de experiência{race?.race_type === 'trail' && race?.elevation_gain_m ? ` (aqui, ${equivalentKm} km — a distância real mais o desnível convertido para equivalente em piso plano, ver D+/ITRA Equiv. acima)` : ''}. Serve para comparares com o Objetivo: se a previsão for mais lenta, o objetivo pode estar otimista para a tua forma atual; quanto mais perto a corrida de referência estiver desta distância, mais fiável é a estimativa.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          {/* Os dois números num bloco só, com a diferença e a leitura —
+              eram dois cartões separados que pediam ao atleta que
+              comparasse sozinho (pedido do utilizador). */}
+          <RaceForecastCard forecast={forecast} raceType={race?.race_type} elevationGainM={Number(race?.elevation_gain_m) || 0} />
         </div>
       </div>
 

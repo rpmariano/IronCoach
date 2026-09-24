@@ -32,7 +32,7 @@ export default function FirstDayCard({ firstName, goal = null, facts = [], onTal
 
   return (
     <div className="rounded-[24px] shrink-0" style={{ background: 'rgba(34,211,238,.08)', border: '1px solid rgba(34,211,238,.32)', padding: 20, boxShadow: 'var(--shadow-card)' }} data-testid="first-day-card" data-goal={goal || undefined}>
-      <CoachAvatar size={38} breathing />
+      <CoachAvatar size={56} breathing draw />
       <div className="text-[19px] font-black leading-[1.2] mt-[13px]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em', textWrap: 'balance' }}>
         {ask.title}
       </div>

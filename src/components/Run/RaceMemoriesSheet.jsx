@@ -124,9 +124,8 @@ export default function RaceMemoriesSheet({ race, run = null, userId, onClose, o
   // Esc fecha, como fechava a persiana — pela mesma pilha do Sheet.jsx
   // (useEscapeClose), não um listener à parte: nada empilha por baixo
   // deste ecrã hoje, mas se algum dia empilhar, o mecanismo já está certo
-  // (achado 2026-09-15 na revisão pré-push da promoção do ecrã irmão,
-  // MedalhaoContribSheet — um listener próprio não sabe o que está por
-  // baixo dele).
+  // (achado 2026-09-15 na revisão pré-push da promoção de um ecrã irmão a
+  // ecrã inteiro — um listener próprio não sabe o que está por baixo dele).
   useEscapeClose(onClose);
 
   const content = (

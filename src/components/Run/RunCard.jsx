@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, Mes
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { useToast } from '../shared/ToastProvider';
 import { useAppStore } from '../../store';
 import CoachText from '../shared/CoachText';
@@ -28,7 +29,11 @@ function paceSecPerKm(run) {
 }
 
 function runKindLabel(run) {
-  if (run.kind === 'competicao') return 'Competição';
+  // 'competicao' passou a chamar-se "Prova" na interface — toda a
+  // competição é agora uma prova (mesmo sem estar na agenda, ver
+  // RunRegistration.jsx, autoCreateRaceForCompetition). O valor interno
+  // 'competicao' mantém-se: recordes, conquistas e medalhas dependem dele.
+  if (run.kind === 'competicao') return 'Prova';
   if (run.kind === 'treino' && run.training_type) {
     const map = {
       continuo: 'Contínuo',
@@ -117,9 +122,10 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
     if (isReanalyzing) return;
     setIsReanalyzing(true);
     try {
+      // O mesmo limite do registo: com o Gemini ocupado a reanálise demora.
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: { run_id: run.id, notes: run.notes || null },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
       setRuns(runs.map(r => (r.id === run.id ? { ...r, ...data.run } : r)));
@@ -409,7 +415,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
             <div className="bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-2 shadow-xs">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-1)]">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
-                Análise do Coach
+                Análise da Carol
               </div>
               <div className="text-xs text-[var(--text-2)] font-normal">
                 <CoachText>{coachCommentary}</CoachText>

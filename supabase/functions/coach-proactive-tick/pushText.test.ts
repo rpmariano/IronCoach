@@ -57,3 +57,8 @@ Deno.test("composePushMessage: usa o texto gerado quando serve; senão, a frase 
   assert(!fromError.generated);
   assertEquals(fromError.body, fixed);
 });
+
+Deno.test("describeFacts: o balanço da semana leva as datas da semana e nada de provas", () => {
+  const week = { ...silence, trigger: "week_review" as const, key: "week_review:2026-09-21", silenceDays: null, weekStart: "2026-09-21", weekEnd: "2026-09-27" };
+  assertEquals(describeFacts(week, { firstName: "Rui", raceName: "Meia" }), ["Nome do atleta: Rui", "Semana revista: 2026-09-21 a 2026-09-27"]);
+});

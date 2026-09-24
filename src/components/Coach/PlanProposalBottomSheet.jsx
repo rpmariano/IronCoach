@@ -33,8 +33,17 @@ export function PlanProposalBottomSheet({
   profile,
   onRespondGoal,
   onClose,
+  raceEvents = [],
 }) {
   if (!plan && !goalProposal) return null;
+
+  /* A prova a que o plano se destina. `plan.period_end` é sempre o dia da
+     prova, quando há uma vinculada (coach-chat, runProposeTrainingPlan) —
+     por isso "Plano de 69 dias com 8 corridas" não dizia a que prova se
+     referia, e um atleta com mais do que uma prova agendada não tinha como
+     adivinhar: 69 dias não bate com a prova mais próxima, é a prova A lá
+     mais à frente (relatado 2026-09-21, "a que se refere?"). */
+  const raceTarget = plan?.race_id ? (raceEvents || []).find((r) => r?.id === plan.race_id) : null;
 
   const planItems = useMemo(() => (items || []).filter(i => plan && i.plan_id === plan.id), [items, plan?.id]);
   const days = useMemo(
@@ -54,14 +63,14 @@ export function PlanProposalBottomSheet({
 
   const both = !!plan && !!goalProposal;
   const title = both
-    ? 'Propostas do Coach'
+    ? 'Propostas da Carol'
     : goalProposal
       ? 'Proposta de Objetivos'
       : 'Nova Proposta de Plano';
   const subtitle = both
     ? 'Objetivos e plano por rever'
     : plan
-      ? `Período: ${plan.period_start} a ${plan.period_end}`
+      ? `Período: ${plan.period_start} a ${plan.period_end}${raceTarget ? ` — para ${raceTarget.name}` : ''}`
       : undefined;
 
   return (
@@ -157,7 +166,8 @@ export function PlanProposalBottomSheet({
                   <p className="flex items-start gap-1.5 font-bold">
                     <Sparkles size={13} className="shrink-0 mt-0.5" />
                     <span>
-                      Plano de {diffDaysISO(plan.period_start, plan.period_end) + 1} dias com{' '}
+                      Plano de {diffDaysISO(plan.period_start, plan.period_end) + 1} dias
+                      {raceTarget ? ` até ${raceTarget.name}` : ''}, com{' '}
                       {(() => {
                         const runs = planItems.filter(i => i.kind === 'corrida').length;
                         const gym = planItems.filter(i => i.kind === 'ginasio').length;
@@ -165,6 +175,18 @@ export function PlanProposalBottomSheet({
                         if (runs > 0) parts.push(`${runs} ${runs === 1 ? 'corrida' : 'corridas'}`);
                         if (gym > 0) parts.push(`${gym} ${gym === 1 ? 'sessão' : 'sessões'} de ginásio`);
                         return parts.length > 0 ? parts.join(' e ') : 'refeições e descanso';
+                      })()}
+                      {/* O bloco pode ir até ao dia da prova sem ainda ter os
+                          treinos todos detalhados — só o troço mais próximo
+                          costuma vir concreto, o resto define-se mais perto
+                          da data. Sem isto, "69 dias com 8 corridas" lia-se
+                          como o plano inteiro, e a conta não batia certo
+                          (relatado 2026-09-21). */}
+                      {(() => {
+                        const lastItemDate = planItems.reduce((max, i) => (i.planned_date > max ? i.planned_date : max), plan.period_start);
+                        return lastItemDate < plan.period_end
+                          ? `, detalhados até ${lastItemDate} — o resto do bloco ainda vai ser definido`
+                          : '';
                       })()}.
                     </span>
                   </p>

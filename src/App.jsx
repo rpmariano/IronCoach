@@ -1,15 +1,16 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh, isBusy } from './lib/appUpdate';
-import { useAppStore } from './store';
+import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
+import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
+import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
+import { useAppStore, whenDataReady } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
 import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from './utils/onboarding';
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
-import { MedalhaoDefs } from './components/shared/Medalhao';
 import CarolWelcome from './components/Welcome/CarolWelcome';
 import { decideWelcome, buildWelcome, readSeen, markSeen, slotKey } from './utils/carolWelcome';
 import { detectRaceConflict } from './utils/planDivergence';
@@ -18,10 +19,13 @@ import { todayISO } from './lib/utils';
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
 // que o envolve (Layout, Auth) nunca podem ficar à espera de um pedido de
-// rede extra. Tudo o resto abre por ação do atleta e entra por import()
+// rede extra. A única espera deliberada é o ecrã do logo, que se deixa
+// desenhar até ao fim (utils/logoIntro.js) — e o que ele puder aquecer
+// entretanto, aquece (ver usePreloadDuringSplash). Tudo o resto abre por ação do atleta e entra por import()
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
+import { adoptBootSplash, holdForLogo, logoIntroMs, registerSkeletonLogo, releaseBootSplash, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -50,45 +54,80 @@ function retryOnce(load) {
     } catch { already = true; }
     if (!already && typeof window !== 'undefined') {
       // Sem passar pela cache do index.html (max-age=600 no GitHub Pages),
-      // que ainda apontaria para os chunks que acabaram de desaparecer.
-      reloadFresh();
+      // que ainda apontaria para os chunks que acabaram de desaparecer — e
+      // de volta ao separador que se estava a abrir, não ao Início.
+      reloadFresh(undefined, window.location, resumeParams(useAppStore.getState().activeTab));
       return new Promise(() => {});
     }
     throw err;
   });
 }
-const loadDashboard = retryOnce(() => import('./components/Dashboard/Dashboard'));
-const loadCalendar = retryOnce(() => import('./components/Calendar/Calendar'));
-const loadRaces = retryOnce(() => import('./components/Run/RacesScreen'));
-const loadCoach = retryOnce(() => import('./components/Coach/Coach'));
-const loadPerfil = retryOnce(() => import('./components/Perfil/Perfil'));
-const loadAdmin = retryOnce(() => import('./components/Admin/Admin'));
-const loadOnboarding = retryOnce(() => import('./components/Onboarding/Onboarding'));
-const loadRunAgenda = retryOnce(() => import('./components/Run/RunAgenda'));
-const loadMealRegistration = retryOnce(() => import('./components/Nutrition/MealRegistration'));
-const loadBodyRegistration = retryOnce(() => import('./components/Body/BodyRegistration'));
-const loadRunRegistration = retryOnce(() => import('./components/Run/RunRegistration'));
-const loadGymRegistration = retryOnce(() => import('./components/Gym/GymRegistration'));
+// Os import() crus: o pré-carregamento em tempo morto (PREFETCH_WHEN_IDLE)
+// usa-os diretamente — uma falha aí não deve recarregar a app.
+const importDashboard = () => import('./components/Dashboard/Dashboard');
+const importCalendar = () => import('./components/Calendar/Calendar');
+const importRaces = () => import('./components/Run/RacesScreen');
+const importCoach = () => import('./components/Coach/Coach');
+const importPerfil = () => import('./components/Perfil/Perfil');
+const importRunAgenda = () => import('./components/Run/RunAgenda');
+const importMealRegistration = () => import('./components/Nutrition/MealRegistration');
+const importBodyRegistration = () => import('./components/Body/BodyRegistration');
+const importRunRegistration = () => import('./components/Run/RunRegistration');
+const importGymRegistration = () => import('./components/Gym/GymRegistration');
 // "O plano" (dia a dia do plano acordado) não é um registo, mas abre como
 // eles: ecrã de topo, a partir do rodapé de "O que faço hoje".
-const loadPlanoScreen = retryOnce(() => import('./components/Home/PlanoScreen'));
+const importPlanoScreen = () => import('./components/Home/PlanoScreen');
 
-const Dashboard = lazy(loadDashboard);
-const Calendar = lazy(loadCalendar);
-const RacesScreen = lazy(loadRaces);
-const Coach = lazy(loadCoach);
-const Perfil = lazy(loadPerfil);
-const Admin = lazy(loadAdmin);
+const loadDashboard = retryOnce(importDashboard);
+const loadCalendar = retryOnce(importCalendar);
+const loadRaces = retryOnce(importRaces);
+const loadCoach = retryOnce(importCoach);
+const loadPerfil = retryOnce(importPerfil);
+const loadAdmin = retryOnce(() => import('./components/Admin/Admin'));
+const loadOnboarding = retryOnce(() => import('./components/Onboarding/Onboarding'));
+const loadRunAgenda = retryOnce(importRunAgenda);
+const loadMealRegistration = retryOnce(importMealRegistration);
+const loadBodyRegistration = retryOnce(importBodyRegistration);
+const loadRunRegistration = retryOnce(importRunRegistration);
+const loadGymRegistration = retryOnce(importGymRegistration);
+const loadPlanoScreen = retryOnce(importPlanoScreen);
+
+/* Todos os ecrãs que um atleta abre, pela ordem do que se abre mais cedo,
+   carregados em tempo morto depois do arranque (utils/prefetchScreens.js).
+   Sem isto, uma publicação a meio da sessão fazia a app recarregar na
+   primeira visita a um separador ainda não aberto — "a app reinicia quando
+   mudo de menu" (relatado 2026-09-24). Ficam de fora o Admin (só para quem
+   o é) e o arranque (só no primeiro acesso). */
+const PREFETCH_WHEN_IDLE = [
+  importCoach, importCalendar, importRaces, importPerfil, importDashboard,
+  importRunRegistration, importMealRegistration, importGymRegistration,
+  importBodyRegistration, importRunAgenda, importPlanoScreen,
+];
+
+/* holdForLogo: se o ecrã demorar o bastante para o logo aparecer no
+   esqueleto, só entra quando o brasão acabar de se desenhar (utils/
+   logoIntro.js). O pré-carregamento por gesto chama as fábricas cruas. */
+const Dashboard = lazy(holdForLogo(loadDashboard));
+const Calendar = lazy(holdForLogo(loadCalendar));
+const RacesScreen = lazy(holdForLogo(loadRaces));
+const Coach = lazy(holdForLogo(loadCoach));
+const Perfil = lazy(holdForLogo(loadPerfil));
+const Admin = lazy(holdForLogo(loadAdmin));
+// O onboarding não espera pelo logo: o fallback dele é o logo já desenhado
+// (FullScreenLoader still) — no primeiro acesso vem logo a seguir ao ecrã do
+// logo, e na reentrada pelo Perfil um desenho seria só demora.
 const Onboarding = lazy(loadOnboarding);
-const RunAgenda = lazy(loadRunAgenda);
-const MealRegistration = lazy(loadMealRegistration);
-const BodyRegistration = lazy(loadBodyRegistration);
-const RunRegistration = lazy(loadRunRegistration);
-const GymRegistration = lazy(loadGymRegistration);
-const PlanoScreen = lazy(loadPlanoScreen);
+const RunAgenda = lazy(holdForLogo(loadRunAgenda));
+const MealRegistration = lazy(holdForLogo(loadMealRegistration));
+const BodyRegistration = lazy(holdForLogo(loadBodyRegistration));
+const RunRegistration = lazy(holdForLogo(loadRunRegistration));
+const GymRegistration = lazy(holdForLogo(loadGymRegistration));
+const PlanoScreen = lazy(holdForLogo(loadPlanoScreen));
 
 // Bancadas de teste do design system: só se chegam por ?tab=design-system /
-// ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém.
+// ?tab=audit-sandbox. Não têm de pesar no arranque de ninguém. O fallback
+// delas é o logo já desenhado (FullScreenLoader still): sem desenho, nada a
+// cortar, e nada a esperar.
 const ButtonShowcase = lazy(() => import('./components/DesignSystem/ButtonShowcase'));
 const UIAuditSandbox = lazy(() => import('./components/DesignSystem/UIAuditSandbox'));
 
@@ -135,6 +174,21 @@ function usePreloadOnNavTouch() {
   }, []);
 }
 
+/* Enquanto o logo de arranque se desenha (~2,5 s), a rede está livre:
+   aquece-se o chunk do separador por onde a app vai entrar (uma notificação
+   abre ?tab=coach, por exemplo) e, se os dados já disseram que é o primeiro
+   acesso, o do onboarding. Sem isto, a app saía do logo de arranque para
+   cair no logo do esqueleto — dois desenhos seguidos. */
+function usePreloadDuringSplash(showBootSplash, activeTab, needsOnboarding) {
+  useEffect(() => {
+    if (!showBootSplash) return;
+    PRELOAD_BY_TAB[activeTab]?.();
+  }, [showBootSplash, activeTab]);
+  useEffect(() => {
+    if (showBootSplash && needsOnboarding) loadOnboarding();
+  }, [showBootSplash, needsOnboarding]);
+}
+
 /* Esqueleto de transição — a mesma linguagem do `carol-skeleton` do Início
    (barras a rgba(255,255,255,.08)). Nunca um spinner nem a palavra "a
    carregar" escrita no ecrã: o estado diz-se a quem usa leitor de ecrã pelo
@@ -143,28 +197,45 @@ function usePreloadOnNavTouch() {
    disso — e existe sobretudo para a primeira visita a cada separador com
    rede lenta. */
 /* O ecrã a chegar: o brasão desenhado a traço (shared/LogoLoader), onde o
-   conteúdo vai aparecer — em vez dos retângulos a pulsar. */
+   conteúdo vai aparecer — em vez dos retângulos a pulsar. Só aparece se a
+   espera passar de SKELETON_DELAY_MS (um ecrã em cache não mostra logo
+   nenhum); e, se aparecer, o ecrã espera que acabe de se desenhar — a
+   fábrica do lazy está embrulhada em holdForLogo, com os mesmos tempos. */
 function ScreenSkeleton() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), SKELETON_DELAY_MS);
+    return () => clearTimeout(t);
+  }, []);
+  // O brasão à vista fica registado: o ecrã que está a chegar espera por ele.
+  useEffect(() => (visible ? registerSkeletonLogo() : undefined), [visible]);
   return (
-    <div data-testid="screen-skeleton" className="flex items-center justify-center" style={{ minHeight: '46vh' }}>
-      <LogoLoader size={64} label="A carregar o ecrã" />
+    <div data-testid="screen-skeleton" role="status" aria-label="A carregar o ecrã" className="flex items-center justify-center" style={{ minHeight: '46vh' }}>
+      {visible && <LogoLoader size={64} label={null} />}
     </div>
   );
 }
 
-/* Para os ecrãs que vivem FORA do Layout (arranque, bancadas de teste). É o
-   mesmo componente que o App mostra enquanto `isInitializing`, mas cada
-   montagem é uma instância nova: o brasão recomeça o desenho quando um
-   destes substitui o outro. Vale a pena — um brasão a meio, herdado do
-   ecrã anterior, lia-se pior do que um desenho do princípio. */
-function FullScreenLoader() {
+/* O ecrã do logo: o brasão a desenhar-se e, por baixo, o nome e o
+   "AI-POWERED", como no lockup da marca (public/brand/ironcoach-lockup.svg)
+   — IRON claro, COACH no ciano da Carol, AI-POWERED no ouro. Mais nada.
+
+   No arranque o App segura-o até o desenho acabar (useHeldWhile +
+   LOGO_INTRO_MS): a Home nunca entra com o brasão a meio. `still` mostra-o
+   já desenhado — para quando vem logo a seguir ao arranque (o arranque do
+   onboarding a descarregar), onde um segundo desenho seria repetição. */
+function FullScreenLoader({ still = false, decorative = false }) {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" style={{ gap: 18 }}>
-      <LogoLoader size={112} label="A carregar" />
-      {/* A palavra entra quando o brasão acaba de se desenhar. */}
-      <span aria-hidden="true" className="logo-loader-word" style={{ fontSize: 12, fontWeight: 900, letterSpacing: '.32em', color: 'var(--text-3)', paddingLeft: '.32em' }}>
-        IRONCOACH
-      </span>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-transparent" data-testid="boot-splash" style={{ gap: 20 }}>
+      <LogoLoader size={112} label={decorative ? null : 'A carregar'} still={still} />
+      <div aria-hidden="true" className="flex flex-col items-center" style={{ gap: 8 }}>
+        <span className={still ? undefined : 'logo-loader-word'} style={{ fontSize: 30, fontWeight: 900, letterSpacing: '.14em', paddingLeft: '.14em', color: 'var(--text-1)', lineHeight: 1 }}>
+          IRON<span className="brand-coach-word">COACH</span>
+        </span>
+        <span className={still ? undefined : 'logo-loader-tagline'} style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.62em', paddingLeft: '.62em', color: 'var(--brand-gold)', lineHeight: 1 }}>
+          AI-POWERED
+        </span>
+      </div>
     </div>
   );
 }
@@ -302,13 +373,17 @@ function buildDemoData() {
   };
 }
 
-/* Variante de ?demo=true&palmares=1 — o atleta que já correu e ainda não
+/* Variante de ?demo=true&provas=1 — o atleta que já correu e ainda não
    marcou a próxima (specs/gamificacao-provas.md). É o único estado onde o
    Início mostra "Prova concluída · ontem": com uma prova por correr ou por
    registar, o cartão volta a olhar para a frente, que é a função dele. Serve
-   também para ver o hub pós-prova com conquistas e o Palmarés do separador Provas com
-   umas desbloqueadas e outras ainda por fazer. */
-function buildPalmaresDemoData() {
+   também para ver o hub pós-prova com conquistas e a Vitrina do Perfil com
+   uns badges de prova ganhos e outros ainda por ganhar.
+
+   Chamava-se `palmares=1` até os medalhões saírem (2026-09-22, fase C da
+   reforma da gamificação): já não há Palmarés nenhum para ver, e o nome
+   antigo mandava procurar um ecrã que não existe. */
+function buildProvasDemoData() {
   const today = new Date();
   const inDays = (n) => {
     const d = new Date(today);
@@ -318,19 +393,19 @@ function buildPalmaresDemoData() {
   return {
     raceEvents: [
       {
-        id: 'demo-palmares-1', date: inDays(-160), name: 'Meia do Estoril',
+        id: 'demo-prova-1', date: inDays(-160), name: 'Meia do Estoril',
         location: 'Estoril', race_type: 'estrada', distance_km: 21.0975,
         experience_level: 'medio', status: 'concluida',
         target_time: '2:00:00', target_time_seconds: 7200,
       },
       {
-        id: 'demo-palmares-2', date: inDays(-70), name: 'Trail da Arrábida',
+        id: 'demo-prova-2', date: inDays(-70), name: 'Trail da Arrábida',
         location: 'Setúbal', race_type: 'trail', distance_km: 18, elevation_gain_m: 740,
         experience_level: 'medio', status: 'concluida',
         target_time: '2:20:00', target_time_seconds: 8400,
       },
       {
-        id: 'demo-palmares-3', date: inDays(-1), name: 'Corrida das Vindimas',
+        id: 'demo-prova-3', date: inDays(-1), name: 'Corrida das Vindimas',
         location: 'Palmela', race_type: 'estrada', distance_km: 10,
         experience_level: 'medio', status: 'concluida',
         target_time: '47:00', target_time_seconds: 2820, target_pace_seconds_per_km: 282,
@@ -339,9 +414,9 @@ function buildPalmaresDemoData() {
     waterLogs: [],
     meals: [],
     runs: [
-      { id: 'demo-pr-1', date: inDays(-160), name: 'Meia do Estoril', kind: 'competicao', race_id: 'demo-palmares-1', distance_km: 21.0975, duration_seconds: 7106, details: { official_time_seconds: 7106 } },
-      { id: 'demo-pr-2', date: inDays(-70), name: 'Trail da Arrábida', kind: 'competicao', race_id: 'demo-palmares-2', distance_km: 18, elevation_gain_m: 740, duration_seconds: 8880, details: { official_time_seconds: 8880 } },
-      { id: 'demo-pr-3', date: inDays(-1), name: 'Corrida das Vindimas', kind: 'competicao', race_id: 'demo-palmares-3', distance_km: 10, duration_seconds: 2766, details: {
+      { id: 'demo-pr-1', date: inDays(-160), name: 'Meia do Estoril', kind: 'competicao', race_id: 'demo-prova-1', distance_km: 21.0975, duration_seconds: 7106, details: { official_time_seconds: 7106 } },
+      { id: 'demo-pr-2', date: inDays(-70), name: 'Trail da Arrábida', kind: 'competicao', race_id: 'demo-prova-2', distance_km: 18, elevation_gain_m: 740, duration_seconds: 8880, details: { official_time_seconds: 8880 } },
+      { id: 'demo-pr-3', date: inDays(-1), name: 'Corrida das Vindimas', kind: 'competicao', race_id: 'demo-prova-3', distance_km: 10, duration_seconds: 2766, details: {
         official_time_seconds: 2766, gun_time_seconds: 2790, position: 212, age_group_position: 31, official_splits: [{ km: 5, seconds: 1390 }],
         // Parciais do relógio: dão a linha do ritmo no estúdio do mural.
         splits: [283, 279, 281, 276, 274, 277, 279, 275, 272, 270].map((time_seconds) => ({ distance_km: 1, time_seconds })),
@@ -392,12 +467,30 @@ export default function App() {
   const setOnboardingOpen = useAppStore((s) => s.setOnboardingOpen);
   const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
+  // O ecrã do logo fica enquanto os dados carregam E até o desenho acabar.
+  /* O primeiro logo é o do index.html (adoptBootSplash): já começou a
+     desenhar-se antes de o React chegar, por isso só falta o que resta do
+     desenho. Os seguintes (depois de um login) são do React e desenham-se
+     inteiros (logoIntroMs). */
+  const [htmlSplash] = useState(adoptBootSplash);
+  const [fullIntroMs] = useState(logoIntroMs);
+  const [firstBootDone, setFirstBootDone] = useState(!htmlSplash);
+  const showBootSplash = useHeldWhile(isInitializing, firstBootDone ? fullIntroMs : htmlSplash.remainingMs);
   /* O utilizador cujos dados já estão carregados. Ao voltar à app depois de
      ter estado noutra, o Supabase recupera a sessão e emite SIGNED_IN com o
      MESMO utilizador (auth-js, _onVisibilityChanged → _recoverAndRefresh).
      Tratá-lo como um login novo punha o ecrã de carregamento e desmontava
      tudo — um registo a meio perdia as fotos (relatado 2026-09-13). */
   const loadedUserIdRef = useRef(null);
+  /* O ecrã onde se estava quando a app saiu (utils/navigationRestore.js) —
+     lido AQUI, no primeiro render, antes de qualquer mudança de separador o
+     reescrever. Repõe-se quando a sessão existe (abaixo). */
+  const [savedNavigation] = useState(() => readRecentNavigation());
+  /* Só se começa a guardar depois de decidida a reposição: uma escrita antes
+     (a app escondida durante o arranque, uma recarga logo a seguir) punha
+     por cima o estado de partida e o ecrã perdia-se. */
+  const [navigationDecided, setNavigationDecided] = useState(false);
+  useEffect(() => (navigationDecided ? startNavigationPersistence(useAppStore) : undefined), [navigationDecided]);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
      - PRIMEIRO ACESSO: decidido pela regra de utils/onboarding.js — perfil
@@ -408,8 +501,11 @@ export default function App() {
        Carol" em Perfil · Coach. Conta como ecrã de topo, para o "voltar" do
        telemóvel o fechar em vez de sair da app. */
   const dadosAtleta = { profile, runs, meals, gymSessions, bodyAssessments, raceEvents };
-  const needsOnboarding = !isInitializing && shouldShowOnboarding(dadosAtleta);
-  const silentlyDone = !isInitializing && shouldSilentlyMarkDone(dadosAtleta);
+  // Com dados ainda a chegar depois do prazo do arranque (dataPending, ver
+  // loadInitialData), uma lista vazia não quer dizer "sem registos".
+  const dataPending = useAppStore((s) => s.dataPending);
+  const needsOnboarding = !isInitializing && !dataPending && shouldShowOnboarding(dadosAtleta);
+  const silentlyDone = !isInitializing && !dataPending && shouldSilentlyMarkDone(dadosAtleta);
   const showOnboarding = !!session && (needsOnboarding || onboardingOpen);
 
   useEffect(() => {
@@ -427,7 +523,9 @@ export default function App() {
      na URL) — guardada aqui porque só se consome depois de loadInitialData
      trazer os dados frescos (perfil, planos, provas); ver consumeProactiveKey. */
   const proactiveKeyRef = useRef(null);
-  const consumeProactiveKey = useCallback((key) => {
+  // `navigate: false` quando os dados chegaram tarde e o atleta já foi para
+  // outro lado: o assunto fica pedido ao Coach, mas não o arranca de onde está.
+  const consumeProactiveKey = useCallback((key, { navigate = true } = {}) => {
     if (!key) return;
     useAppStore.getState().logImpression({ kind: 'push', key, title: null });
     if (key.startsWith('intervention:')) {
@@ -438,7 +536,7 @@ export default function App() {
       const s = useAppStore.getState();
       if (s.profile?.coach_intervention_status === 'needed' || s.profile?.coach_intervention_status === 'in_progress') {
         s.setCoachIntent({ kind: 'proactive_intervention', reason: s.profile?.coach_intervention_reason || null });
-        setActiveTab('coach');
+        if (navigate) setActiveTab('coach');
       }
       return;
     }
@@ -451,17 +549,27 @@ export default function App() {
           races: conflict.races.map((r) => ({ id: r.id, name: r.name, date: r.date })),
           target: conflict.target ? { id: conflict.target.id, name: conflict.target.name, date: conflict.target.date } : null,
         });
-        setActiveTab('coach');
+        if (navigate) setActiveTab('coach');
       }
       return;
     }
-    // Os outros momentos (race_morning/race_eve/race_after/block_end/silence)
+    // Os outros momentos (race_morning/race_eve/race_after/block_end/silence/week_review)
     // o cliente sabe montar sozinho (listProactiveTriggers), mas só o Coach
     // decide — o efeito passivo lá (Coach.jsx) percorre a lista e honra esta
     // preferência sem lhe dar prioridade sobre um coachIntent explícito.
     useAppStore.getState().setProactiveKeyRequested(key);
   }, [setActiveTab]);
-  const welcomeReady = !isInitializing && !!session && !showOnboarding;
+  // As boas-vindas esperam pelos dados todos: decidem pelas impressões (o
+  // que já foi saudado noutro dispositivo) e pelos registos.
+  const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending;
+
+  // Com a app já à vista, os outros ecrãs carregam-se em tempo morto (ver
+  // PREFETCH_WHEN_IDLE). Nos testes não: o import() tardio chegaria depois
+  // de o ambiente fechar.
+  useEffect(() => {
+    if (!welcomeReady || import.meta.env.MODE === 'test') return undefined;
+    return prefetchScreensWhenIdle(PREFETCH_WHEN_IDLE);
+  }, [welcomeReady]);
   const welcomeReadyRef = useRef(false);
   welcomeReadyRef.current = welcomeReady;
   const markCurrentSlotSeen = useCallback(() => {
@@ -473,10 +581,10 @@ export default function App() {
     const uid = s.session?.user?.id;
     const clear = () => { if (useAppStore.getState().welcomeGate !== 'open') s.setWelcomeGate('clear'); };
     if (!uid) { clear(); return; }
-    /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento da
-       medalha, um campo com o foco (a mesma regra da atualização automática,
+    /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento do
+       badge, um campo com o foco (a mesma regra da atualização automática,
        lib/appUpdate.js). Fica para a próxima vez que se voltar à app. */
-    if (isBusy(document)) { clear(); return; }
+    if (isBusy(document) || isScreenOpen(s)) { clear(); return; }
     /* O que já foi saudado em qualquer dispositivo (ação 5.1): às chaves
        deste telemóvel (readSeen) juntam-se as impressões 'welcome', sem o
        prefixo. O merge fica aqui, porque readSeen e decideWelcome são puras
@@ -511,6 +619,9 @@ export default function App() {
   }, [showOnboarding, markCurrentSlotSeen]);
   useEffect(() => {
     if (!welcomeReady) return;
+    // A partir daqui o ?tab= de uma notificação já fez o seu papel: uma
+    // recarga técnica pode tirá-lo (lib/appUpdate.js, resumeParams).
+    markEntryWelcomeHandled();
     if (openedWithTabRef.current) {
       openedWithTabRef.current = false;
       markCurrentSlotSeen();
@@ -579,7 +690,7 @@ export default function App() {
         sinceLastMs: Date.now() - lastVisibleReloadRef.current,
       })) return;
       lastVisibleReloadRef.current = Date.now();
-      loadInitialData(userId);
+      loadInitialData(userId, { join: true });
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -611,21 +722,29 @@ export default function App() {
   // Aquece o chunk do separador ao toque, antes de o React o pedir — ver o
   // comentário em usePreloadOnNavTouch, no topo.
   usePreloadOnNavTouch();
+  usePreloadDuringSplash(showBootSplash, activeTab, needsOnboarding);
 
   useEffect(() => {
     registerServiceWorker();
 
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
+    // O separador por onde entra: o de uma recarga técnica (?resume=, onde
+    // se estava) ou o do ?tab=. O ?resume= não é uma notificação — não mexe
+    // nas boas-vindas (openedWithTabRef só olha para ?tab=) — e sai já da
+    // barra de endereço.
+    const entryTab = entryTabFromSearch(window.location.search);
+    stripResumeParam();
     const isDemo = params.get('demo') === 'true';
     // A chave da notificação que abriu a app (ação P.9) — sem sessão ainda
     // não há a quem atribuir a impressão nem dados para decidir o ecrã;
     // fica à espera de loadInitialData, mais abaixo.
     const carolParam = params.get('carol');
 
-    if (tabParam) {
-      setActiveTab(tabParam);
+    if (entryTab) {
+      setActiveTab(entryTab);
     }
+    markEntryApplied();
     if (carolParam) {
       proactiveKeyRef.current = carolParam;
       // Sem o `carol=`: um F5 a seguir não repete a mesma conversa. O `tab`
@@ -661,14 +780,34 @@ export default function App() {
       if (existingSession?.user) {
         setSession(existingSession);
         loadedUserIdRef.current = existingSession.user.id;
-        loadInitialData(existingSession.user.id)
-          .then(() => {
-            if (proactiveKeyRef.current) {
-              consumeProactiveKey(proactiveKeyRef.current);
-              proactiveKeyRef.current = null;
-            }
-          })
-          .finally(() => setIsInitializing(false));
+        // Voltar depois de o Android ter matado a app: o separador e o ecrã
+        // onde se estava, que reabre com o rascunho guardado — salvo quando
+        // o URL manda (uma notificação acabada de tocar, uma bancada, um
+        // ?tab= sem nada a meio; ver shouldRestoreNavigation).
+        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
+        setNavigationDecided(true);
+        const loading = loadInitialData(existingSession.user.id, { join: true });
+        // O logo sai quando o carregamento devolve (no máximo 10 s)…
+        loading.finally(() => setIsInitializing(false));
+        // …mas fechar o ecrã reposto e abrir a notificação esperam pelos dados
+        // todos: com a rede lenta, as corridas ou as provas podem chegar
+        // depois, e o ecrã de edição reposto fechava-se por "não existir"
+        // (revisão pré-deploy de 90bfa9b).
+        let tabAtEntry = null;
+        loading.then(() => { tabAtEntry = useAppStore.getState().activeTab; }).then(whenDataReady).then(() => {
+          // O ecrã reposto aponta para uma corrida ou prova que já não
+          // existe (ou que não carregou)? Fecha-se.
+          dropMissingScreen(useAppStore);
+          if (proactiveKeyRef.current) {
+            // Com a rede lenta os dados podem chegar até 45 s depois: se o
+            // atleta entretanto mudou de separador ou abriu um ecrã, a
+            // notificação não o arranca de lá (revisão pré-deploy de 62976df).
+            const s = useAppStore.getState();
+            const moved = s.activeTab !== tabAtEntry || isScreenOpen(s) || isBusy(document);
+            consumeProactiveKey(proactiveKeyRef.current, { navigate: !moved });
+            proactiveKeyRef.current = null;
+          }
+        });
       } else if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
@@ -689,17 +828,21 @@ export default function App() {
         // inicialização única fora do fluxo normal de dados — os setters
         // existem para respostas do Supabase, não para semear um estado
         // fictício de propósito.
-        // ?demo=true&palmares=1 — provas já corridas e nenhuma marcada: o
-        // dia a seguir no Início, o hub com conquistas e o Palmarés cheio.
-        const verPalmares = params.get('palmares') === '1';
+        // ?demo=true&provas=1 — provas já corridas e nenhuma marcada: o
+        // dia a seguir no Início, o hub com conquistas e a Vitrina cheia.
+        const verProvas = params.get('provas') === '1';
         useAppStore.setState(
           forcarOnboarding ? buildEmptyDemoData()
-            : verPalmares ? buildPalmaresDemoData()
+            : verProvas ? buildProvasDemoData()
               : buildDemoData(),
         );
+        // Também em demo, como com sessão: é onde isto se consegue ver sem conta.
+        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
+        setNavigationDecided(true);
         setIsInitializing(false);
       } else {
         setSession(null);
+        setNavigationDecided(true);
         setIsInitializing(false);
       }
     });
@@ -717,6 +860,12 @@ export default function App() {
       });
       if (action === 'signed-out') {
         loadedUserIdRef.current = null;
+        // O ecrã aberto e o guardado não passam para outra conta.
+        useAppStore.setState({
+          openCreationMode: null, editingRunId: null, editingRaceId: null,
+          planItemPrefill: null, runRacePrefill: null, racePrefill: null,
+        });
+        clearNavigation();
         setSession(null);
         return;
       }
@@ -730,9 +879,9 @@ export default function App() {
         // onboarding montava e desmontava logo a seguir. Enquanto os dados
         // carregam, é o loader que se vê.
         setIsInitializing(true);
-        Promise.resolve(loadInitialData(userId)).finally(() => setIsInitializing(false));
+        Promise.resolve(loadInitialData(userId, { join: true })).finally(() => setIsInitializing(false));
       } else {
-        loadInitialData(userId);
+        loadInitialData(userId, { join: true });
       }
     });
 
@@ -742,16 +891,31 @@ export default function App() {
     };
   }, [setSession, setProfile, loadInitialData, setActiveTab, consumeProactiveKey]);
 
+  /* O logo do index.html sai quando a app pode entrar — ou logo, nas
+     bancadas de teste, que não passam pelo ecrã do logo. */
+  const benchTab = activeTab === 'design-system' || activeTab === 'audit-sandbox';
+  useEffect(() => {
+    if (firstBootDone) return;
+    if (!showBootSplash || benchTab) {
+      releaseBootSplash();
+      setFirstBootDone(true);
+    }
+  }, [showBootSplash, benchTab, firstBootDone]);
+
   if (activeTab === 'design-system') {
-    return <Suspense fallback={<FullScreenLoader />}><ButtonShowcase /></Suspense>;
+    return <Suspense fallback={<FullScreenLoader still />}><ButtonShowcase /></Suspense>;
   }
 
   if (activeTab === 'audit-sandbox') {
-    return <Suspense fallback={<FullScreenLoader />}><UIAuditSandbox /></Suspense>;
+    return <Suspense fallback={<FullScreenLoader still />}><UIAuditSandbox /></Suspense>;
   }
 
-  if (isInitializing) {
-    return <FullScreenLoader />;
+  if (showBootSplash) {
+    /* No primeiro arranque quem se vê é o logo do index.html, por cima; por
+       baixo fica o mesmo logo já desenhado, que só aparece se o do HTML
+       tiver saído por outra razão (a rede de segurança dele). */
+    // `decorative`: o anúncio "A carregar" é o do logo do HTML, por cima.
+    return <FullScreenLoader still={!firstBootDone} decorative={!firstBootDone} />;
   }
 
   if (!session) {
@@ -767,7 +931,7 @@ export default function App() {
   if (showOnboarding) {
     return (
       <ToastProvider>
-        <Suspense fallback={<FullScreenLoader />}>
+        <Suspense fallback={<FullScreenLoader still />}>
           <Onboarding
             reentry={!needsOnboarding}
             onDone={() => setOnboardingOpen(false)}
@@ -791,8 +955,6 @@ export default function App() {
 
   return (
     <ToastProvider>
-      {/* A biblioteca de formas dos medalhões: uma vez, os ids são globais. */}
-      <MedalhaoDefs />
       <Layout>
         {/* O Suspense vive DENTRO do Layout, e não à volta dele: o cabeçalho,
             a barra inferior e o FAB não têm de piscar por causa do ecrã que

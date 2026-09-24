@@ -13,6 +13,7 @@
 
 import { assertEquals, assert } from "jsr:@std/assert@1";
 import { runProposeTrainingPlan, runSaveMealSuggestions, buildPlanContext } from "./index.ts";
+import { isMealOnlyItem } from "../_shared/formulas/mealSuggestions.ts";
 
 // ─── Supabase falso com estado ───────────────────────────────────────────
 // Suporta as formas de query que o coach-chat usa, incluindo o select
@@ -187,15 +188,17 @@ Deno.test("PERCURSO A: sugestões alimentares dentro do plano aceite entram nos 
   assertEquals(db.coach_plans[0].status, "proposto");
   accept(db, db.coach_plans[0].id);
 
-  // O atleta pede sugestões para dois dias que JÁ têm treino.
+  // O atleta pede sugestões para dois dias que JÁ têm treino — dias inteiros,
+  // por isso só depois do sim dele (athlete_confirmed).
   const res = await runSaveMealSuggestions(sb, USER, {
+    athlete_confirmed: true,
     suggestions: [
       { date: today, meal: "Aveia ao pequeno-almoço, frango ao almoço." },
       { date: plus(2), meal: "Reforça hidratos ao jantar." },
     ],
   });
 
-  assert(res.includes("gravadas"), `esperava sucesso, veio: ${res}`);
+  assert(res.includes("Gravado"), `esperava sucesso, veio: ${res}`);
   // Não pode criar um plano novo — os dias já existem no plano ativo.
   assertEquals(db.coach_plans.length, 1);
   // Nem itens novos: as sugestões colam-se aos itens de treino existentes.
@@ -206,13 +209,14 @@ Deno.test("PERCURSO A: sugestões alimentares dentro do plano aceite entram nos 
   assertEquals(d0!.meal_suggestion, "Aveia ao pequeno-almoço, frango ao almoço.");
 });
 
-Deno.test("PERCURSO A2: sugestão num dia SEM treino dentro do período cria item de descanso", async () => {
+Deno.test("PERCURSO A2: sugestão num dia SEM treino dentro do período cria item 'só refeições', não um descanso", async () => {
   const { sb, db } = createFakeDb();
   await runProposeTrainingPlan(sb, USER, trainingPlan());
   accept(db, db.coach_plans[0].id);
 
   // plus(1) não tem treino nenhum no plano.
   await runSaveMealSuggestions(sb, USER, {
+    athlete_confirmed: true,
     suggestions: [{ date: plus(1), meal: "Dia leve — proteína ao jantar." }],
   });
 
@@ -220,6 +224,7 @@ Deno.test("PERCURSO A2: sugestão num dia SEM treino dentro do período cria ite
   assertEquals(db.coach_plan_items.length, 4);
   const novo = db.coach_plan_items.find((i) => i.planned_date === plus(1));
   assertEquals(novo!.kind, "descanso");
+  assert(isMealOnlyItem(novo), "o dia só com refeições leva a marca — nunca aparece como descanso planeado");
   assertEquals(novo!.plan_id, db.coach_plans[0].id);
   assertEquals(novo!.user_id, USER);
 });
@@ -236,21 +241,22 @@ Deno.test("PERCURSO B: sem plano ativo, as sugestões criam o seu próprio plano
     ],
   });
 
-  assert(res.includes("gravadas"), res);
+  assert(res.includes("PROPOSTO"), res);
   assertEquals(db.coach_plans.length, 1);
   assertEquals(db.coach_plans[0].status, "proposto");
   assertEquals(db.coach_plans[0].summary, "Sugestões alimentares do Coach");
   assertEquals(db.coach_plans[0].period_start, plus(1));
   assertEquals(db.coach_plans[0].period_end, plus(3));
   assertEquals(db.coach_plan_items.length, 2);
-  assert(db.coach_plan_items.every((i) => i.kind === "descanso"));
+  assert(db.coach_plan_items.every((i) => isMealOnlyItem(i)));
 });
 
 Deno.test("PERCURSO B2: plano de refeições aceite e plano de treino coexistem", async () => {
   const { sb, db } = createFakeDb();
 
+  // Sem plano, só mais de um dia cria um plano de refeições.
   await runSaveMealSuggestions(sb, USER, {
-    suggestions: [{ date: plus(1), meal: "Ovos e tosta." }],
+    suggestions: [{ date: plus(1), meal: "Ovos e tosta." }, { date: plus(3), meal: "Massa com atum." }],
   });
   accept(db, db.coach_plans[0].id);
 
@@ -259,8 +265,8 @@ Deno.test("PERCURSO B2: plano de refeições aceite e plano de treino coexistem"
 
   assertEquals(db.coach_plans.length, 2);
   assert(db.coach_plans.every((p) => p.status === "aceite"));
-  // 1 item de refeição + 3 de treino
-  assertEquals(db.coach_plan_items.length, 4);
+  // 2 itens de refeição + 3 de treino
+  assertEquals(db.coach_plan_items.length, 5);
 });
 
 // ─── PERCURSO C: substituir o plano ativo ────────────────────────────────
@@ -269,7 +275,7 @@ Deno.test("PERCURSO C: replace_active_plan recusa o plano de treino e poupa o de
   const { sb, db } = createFakeDb();
 
   // Plano de refeições aceite
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(1), meal: "Ovos." }] });
+  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(1), meal: "Ovos." }, { date: plus(3), meal: "Arroz." }] });
   const mealPlanId = db.coach_plans[0].id;
   accept(db, mealPlanId);
 
@@ -314,23 +320,21 @@ Deno.test("PERCURSO C2: sem replace_active_plan, o plano ativo fica intacto", as
 
 // ─── PERCURSO D: sugestões a cavalo do período do plano ──────────────────
 
-Deno.test("PERCURSO D: sugestões dentro e fora do plano — dentro colam, fora criam plano novo", async () => {
+Deno.test("PERCURSO D: sugestões dentro e fora do plano — dentro colam, UM dia de fora fica na conversa", async () => {
   const { sb, db } = createFakeDb();
   await runProposeTrainingPlan(sb, USER, trainingPlan()); // today..plus(6)
   accept(db, db.coach_plans[0].id);
 
-  await runSaveMealSuggestions(sb, USER, {
+  const res = await runSaveMealSuggestions(sb, USER, {
+    athlete_confirmed: true,
     suggestions: [
       { date: plus(2), meal: "Dentro do plano." },
       { date: plus(10), meal: "Fora do plano." },
     ],
   });
 
-  assertEquals(db.coach_plans.length, 2, "o dia de fora devia gerar um plano proposto");
-  const novo = db.coach_plans[1];
-  assertEquals(novo.status, "proposto");
-  assertEquals(novo.period_start, plus(10));
-  assertEquals(novo.period_end, plus(10));
+  assertEquals(db.coach_plans.length, 1, "um só dia sem plano não cria plano nenhum");
+  assert(res.includes(`NÃO GRAVADO para ${plus(10)}`), res);
 
   // O de dentro colou-se ao item de ginásio que já lá estava.
   const dentro = db.coach_plan_items.find((i) => i.planned_date === plus(2) && i.plan_id === db.coach_plans[0].id);
@@ -345,8 +349,8 @@ Deno.test("PERCURSO E: pedir sugestão duas vezes para o mesmo dia substitui, n�
   await runProposeTrainingPlan(sb, USER, trainingPlan());
   accept(db, db.coach_plans[0].id);
 
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(2), meal: "Primeira versão." }] });
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(2), meal: "Segunda versão." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: plus(2), meal: "Primeira versão." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: plus(2), meal: "Segunda versão." }] });
 
   const doDia = db.coach_plan_items.filter((i) => i.planned_date === plus(2));
   assertEquals(doDia.length, 1, "não pode duplicar o item do dia");
@@ -358,8 +362,8 @@ Deno.test("PERCURSO E2: repetir num dia SEM treino também não duplica o item d
   await runProposeTrainingPlan(sb, USER, trainingPlan());
   accept(db, db.coach_plans[0].id);
 
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(1), meal: "Primeira." }] });
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(1), meal: "Segunda." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: plus(1), meal: "Primeira." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: plus(1), meal: "Segunda." }] });
 
   const doDia = db.coach_plan_items.filter((i) => i.planned_date === plus(1));
   assertEquals(doDia.length, 1, "não pode duplicar o dia de descanso");
@@ -376,6 +380,7 @@ Deno.test("PERCURSO E3: repetir sem meal_items preserva os macros já gravados (
   // seguinte sem meal_items sobrescrevia meal_macros com null mesmo sem
   // intenção nenhuma de apagar a estimativa.
   await runSaveMealSuggestions(sb, USER, {
+    athlete_confirmed: true,
     suggestions: [{
       date: plus(2),
       meal: "Frango com arroz e brócolos.",
@@ -396,6 +401,7 @@ Deno.test("PERCURSO E3: repetir sem meal_items preserva os macros já gravados (
 
   // Pedido seguinte só para afinar o texto — não traz meal_items.
   await runSaveMealSuggestions(sb, USER, {
+    athlete_confirmed: true,
     suggestions: [{ date: plus(2), meal: "Só ajusta o tempero, mantém o resto." }],
   });
 
@@ -428,7 +434,7 @@ Deno.test("PERCURSO F2: a sugestão alimentar aparece no contexto do plano ativo
   const { sb, db } = createFakeDb();
   await runProposeTrainingPlan(sb, USER, trainingPlan());
   accept(db, db.coach_plans[0].id);
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: today, meal: "Aveia e banana." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: today, meal: "Aveia e banana." }] });
 
   const ativos = db.coach_plan_items.filter((i) => i.plan_id === db.coach_plans[0].id);
   const ctx = buildPlanContext([], ativos, today);
@@ -443,6 +449,7 @@ Deno.test("PERCURSO G: uma sugestão sem data ou sem texto é ignorada, não reb
   accept(db, db.coach_plans[0].id);
 
   const res = await runSaveMealSuggestions(sb, USER, {
+    athlete_confirmed: true,
     suggestions: [
       { date: plus(2), meal: "Válida." },
       { date: plus(3) },              // sem meal
@@ -450,7 +457,7 @@ Deno.test("PERCURSO G: uma sugestão sem data ou sem texto é ignorada, não reb
     ],
   });
 
-  assert(res.includes("gravadas"), res);
+  assert(res.includes("Gravado"), res);
   assertEquals(db.coach_plan_items.filter((i) => i.meal_suggestion).length, 1);
 });
 
@@ -463,9 +470,9 @@ Deno.test("PERCURSO G2: um plano proposto NÃO recebe sugestões — só o aceit
     suggestions: [{ date: plus(2), meal: "Sugestão." }],
   });
 
-  // Como não há plano ACEITE, a sugestão tem de criar um plano próprio em
-  // vez de se colar ao proposto (que o atleta ainda pode recusar).
-  assertEquals(db.coach_plans.length, 2);
+  // Não há plano ACEITE: a sugestão nunca se cola ao proposto (que o atleta
+  // ainda pode recusar), e um só dia fica na conversa — não cria plano.
+  assertEquals(db.coach_plans.length, 1);
   const doTreino = db.coach_plan_items.filter((i) => i.plan_id === db.coach_plans[0].id);
   assert(doTreino.every((i) => !i.meal_suggestion), "o plano proposto não devia ser tocado");
 });
@@ -484,15 +491,15 @@ Deno.test("PERCURSO H: sugestão para um dia do plano de TREINO quando há um pl
   const treinoId = db.coach_plans[0].id;
   accept(db, treinoId);
 
-  // Plano de REFEIÇÕES aceite, a começar DEPOIS: plus(10)..plus(10)
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(10), meal: "Fora." }] });
+  // Plano de REFEIÇÕES aceite, a começar DEPOIS: plus(10)..plus(11)
+  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(10), meal: "Fora." }, { date: plus(11), meal: "Fora 2." }] });
   const refeicoesId = db.coach_plans[1].id;
   accept(db, refeicoesId);
 
   const planosAntes = db.coach_plans.length;
 
   // Agora uma sugestão para um dia que está DENTRO do plano de treino.
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(2), meal: "Dia de pernas." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: plus(2), meal: "Dia de pernas." }] });
 
   const itemDoDia = db.coach_plan_items.filter((i) => i.planned_date === plus(2));
   assertEquals(itemDoDia.length, 1, "não devia criar um item paralelo para um dia que já existe no plano de treino");
@@ -517,8 +524,8 @@ Deno.test("PERCURSO H2: dia coberto por DOIS planos aceites sobrepostos não ger
   });
   accept(db, db.coach_plans[1].id);
 
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(3), meal: "Sugestão." }] });
-  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(3), meal: "Corrigida." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: plus(3), meal: "Sugestão." }] });
+  await runSaveMealSuggestions(sb, USER, { athlete_confirmed: true, suggestions: [{ date: plus(3), meal: "Corrigida." }] });
 
   const doDia = db.coach_plan_items.filter((i) => i.planned_date === plus(3));
   assertEquals(doDia.length, 1, `um dia não pode ter dois itens: ${JSON.stringify(doDia)}`);
@@ -570,3 +577,85 @@ Deno.test("PERCURSO I2: aceitar a substituição deixa exatamente um plano de tr
   assertEquals(ativos.length, 1, "não podem ficar dois planos de treino ativos");
   assertEquals(ativos[0].summary, "Plano novo");
 });
+
+// ─── PERCURSO J: as regras das refeições (decididas a 2026-09-23) ────────
+
+Deno.test("PERCURSO J1: dia inteiro dentro do plano SEM o sim do atleta não grava nada", async () => {
+  const { sb, db } = createFakeDb();
+  await runProposeTrainingPlan(sb, USER, trainingPlan());
+  accept(db, db.coach_plans[0].id);
+
+  const res = await runSaveMealSuggestions(sb, USER, {
+    suggestions: [{ date: plus(2), meal: "Dia inteiro." }, { date: plus(1), meal: "Outro dia inteiro." }],
+  });
+
+  assert(res.startsWith("NÃO GRAVADO"), res);
+  assert(db.coach_plan_items.every((i) => !i.meal_suggestion), "nada pode ter ficado gravado");
+  assertEquals(db.coach_plan_items.length, 3, "nem itens novos");
+});
+
+Deno.test("PERCURSO J2: UMA refeição dentro do plano grava logo e substitui só essa refeição", async () => {
+  const { sb, db } = createFakeDb();
+  await runProposeTrainingPlan(sb, USER, trainingPlan());
+  accept(db, db.coach_plans[0].id);
+
+  await runSaveMealSuggestions(sb, USER, {
+    athlete_confirmed: true,
+    suggestions: [{
+      date: plus(2),
+      meal: "Almoço: peixe. Jantar: frango.",
+      meal_items: [
+        { meal_type: "almoco", description: "150g de peixe com arroz." },
+        { meal_type: "jantar", description: "150g de frango com legumes." },
+      ],
+      meal_estimated_kcal: 1500, meal_estimated_protein_g: 110, meal_estimated_carbs_g: 150, meal_estimated_fat_g: 45,
+    }],
+  });
+
+  // Sem confirmação: é só o jantar.
+  const res = await runSaveMealSuggestions(sb, USER, {
+    suggestions: [{ date: plus(2), meal_type: "jantar", meal: "Omelete de 3 ovos com salada." }],
+  });
+
+  assert(res.includes("Gravado"), res);
+  const dia = db.coach_plan_items.find((i) => i.planned_date === plus(2))!;
+  const porTipo = Object.fromEntries(dia.meal_macros.items.map((r: Row) => [r.tipo, r.texto]));
+  assertEquals(porTipo.almoco, "150g de peixe com arroz.", "o almoço fica como estava");
+  assertEquals(porTipo.jantar, "Omelete de 3 ovos com salada.", "só o jantar muda");
+  assertEquals(dia.meal_macros.kcal, null, "os totais deixam de bater certo com a lista — não se mostram");
+  assertEquals(dia.meal_suggestion, "Almoço: 150g de peixe com arroz.\nJantar: Omelete de 3 ovos com salada.", "o texto que a Carol lê acompanha a lista");
+});
+
+Deno.test("PERCURSO J3: UMA refeição num dia do plano sem nada marcado cria o dia 'só refeições'", async () => {
+  const { sb, db } = createFakeDb();
+  await runProposeTrainingPlan(sb, USER, trainingPlan());
+  accept(db, db.coach_plans[0].id);
+
+  await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(1), meal_type: "jantar", meal: "Sopa e peixe." }] });
+
+  const dia = db.coach_plan_items.find((i) => i.planned_date === plus(1))!;
+  assert(isMealOnlyItem(dia));
+  assertEquals(dia.meal_macros.items, [{ tipo: "jantar", texto: "Sopa e peixe." }]);
+});
+
+Deno.test("PERCURSO J4: sem plano, uma refeição ou um só dia não cria plano nenhum", async () => {
+  const { sb, db } = createFakeDb();
+  const r1 = await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(1), meal_type: "jantar", meal: "Massa." }] });
+  const r2 = await runSaveMealSuggestions(sb, USER, { suggestions: [{ date: plus(1), meal: "Dia inteiro." }] });
+  assert(r1.includes("NÃO GRAVADO") && r2.includes("NÃO GRAVADO"), `${r1} | ${r2}`);
+  assertEquals(db.coach_plans.length, 0);
+  assertEquals(db.coach_plan_items.length, 0);
+});
+
+Deno.test("PERCURSO J5: sem plano, mais de um dia cria um plano PROPOSTO só de refeições", async () => {
+  const { sb, db } = createFakeDb();
+  const res = await runSaveMealSuggestions(sb, USER, {
+    suggestions: [{ date: plus(1), meal: "Dia 1." }, { date: plus(2), meal: "Dia 2." }, { date: plus(3), meal: "Dia 3." }],
+  });
+  assert(res.includes("PROPOSTO"), res);
+  assertEquals(db.coach_plans.length, 1);
+  assertEquals(db.coach_plans[0].status, "proposto");
+  assertEquals(db.coach_plan_items.length, 3);
+  assert(db.coach_plan_items.every((i) => isMealOnlyItem(i)));
+});
+

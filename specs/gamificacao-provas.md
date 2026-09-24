@@ -1,5 +1,12 @@
 # Palmarés — gamificação das provas
 
+> **Nota (2026-09-22):** o Palmarés (medalhões) para onde este spec dizia que
+> as conquistas se arquivavam foi substituído pelos badges — ver
+> `palmares-medalhoes.md` (marcada como histórico) e `src/utils/badges.js`.
+> O que se segue sobre o CÁLCULO das conquistas por prova (`premios.js`,
+> os cartões no registo/hub/Início/chat) continua a descrever o mecanismo
+> atual; só o destino de arquivo mudou.
+
 Decidido em 2026-09-12, sobre o canvas "Palmarés da IronCoach"
 (https://claude.ai/code/artifact/493e420d-b75a-45ea-abcb-e59d220d454f).
 Depende de `prova-concluida.md` (corrida ligada à prova por `runs.race_id`,
@@ -8,26 +15,47 @@ memórias em `race_events`). Complementa `PRD.md` §3.4 e CAROL.md §7.
 ## Princípio
 
 A conquista é um momento, não um bloco fixo. Aparece onde o dia a seguir à
-prova se vive — o registo, o Início, a Carol — e arquiva-se num sítio só, o
-Palmarés, que vive no separador Provas desde 2026-09-13 (antes no Perfil).
-Nunca compete com "o que faço hoje".
+prova se vive — o registo, o Início, a Carol — e arquivava-se num sítio só, o
+Palmarés (separador Provas desde 2026-09-13, antes no Perfil) — substituído
+pelos badges a 2026-09-22, ver nota acima. Nunca compete com "o que faço
+hoje".
 
 ## As conquistas (calculadas dos dados, sem tabelas novas)
 
+**Desde 2026-09-21** as regras não vivem aqui: vivem no motor único dos
+prémios, `src/utils/premios.js`, e são as mesmas que os medalhões do Palmarés
+usam (`palmares-medalhoes.md` §"O que acontece às conquistas"). Eram dois
+motores a decidir as mesmas coisas de maneiras ligeiramente diferentes —
+a sequência contava-se de duas formas, a primeira de trail decidia-se duas
+vezes, e uma prova concluída com data no futuro contava num e não no outro.
+`src/utils/achievements.js` é hoje só a vista de UMA prova.
+
 | Chave | Nome | Regra | Cor |
 |---|---|---|---|
-| `prova_concluida` | Prova concluída | contagem de `race_events` com `status = 'concluida'` e corrida ligada | âmbar `--race` |
+| `prova_concluida` | Prova concluída | contagem de `race_events` com `status = 'concluida'`, corrida ligada e data já passada (`completedRaces`) | âmbar `--race` |
 | `objetivo_batido` | Objetivo batido | `details.official_time_seconds` (ou `duration_seconds`) ≤ `target_time_seconds` da prova | verde `--ok` |
-| `recorde_pessoal` | Recorde pessoal | melhor tempo do atleta na categoria de distância da prova (`categorizeDistance` das fórmulas partilhadas), entre corridas `kind = 'competicao'` | ciano `--run` |
+| `acima_do_treino` | Acima do treino | `raceOutcome.vsTraining === 'acima'`: o tempo oficial ficou pelo menos `TRAINING_BAND_RATIO` (2%) abaixo do que a previsão de Riegel sobre as corridas ANTERIORES à prova fazia esperar. A única que não exige objetivo marcado nem histórico na distância | `--gym` (não `--coach`: essa é a cor da Carol e só dela, e era quase o mesmo ciano do recorde pessoal) |
+| `recorde_pessoal` | Recorde pessoal | melhor tempo do atleta na categoria de distância da prova (`categorizeDistance` das fórmulas partilhadas), entre corridas `kind = 'competicao'`. **Regra própria**: não é o medalhão Os Níveis, que é uma escala de aptidão (VDOT) e se sobe sem bater tempo próprio nenhum | ciano `--run` |
 | `primeira_trail` | Primeira de trail | primeira prova concluída com `race_type = 'trail'` | âmbar `--race` |
-| `sequencia` | Sequência de provas | N provas seguidas concluídas com corrida ligada, sem nenhuma agendada que tenha passado por correr; N ≥ 2 | âmbar `--race` |
+| `sequencia` | Sequência de provas | o elo desta prova na sua sequência: N provas seguidas concluídas com corrida ligada, sem nenhuma agendada que tenha passado por correr; N ≥ 2. O elo é o que foi e fica — uma prova posterior que passe sem registo já não o apaga (`varrerSequencia`) | âmbar `--race` |
+
+`acima_do_treino` não entra nas conquistas PERDIDAS de uma prova (só
+`objetivo_batido` e `recorde_pessoal` entram — `LOCKED_SHAPE`, em
+`achievements.js`): a diferença face à previsão já está no bloco dos tempos
+do hub, e três linhas de "fica para a próxima" na mesma prova passavam de
+leitura a repreensão.
 
 Bloqueada = vidro neutro com cadeado, sem cor, e uma frase que diz o que
-falta ("Ficaste a 1:42 na Meia de Lisboa"). Desbloqueada = cor do
-significado, data e a prova que a deu. Uma função pura
-`src/utils/achievements.js` (`computeAchievements({ raceEvents, runs })`)
-devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
-`isNew` = desbloqueada pela prova registada há menos de 7 dias.
+falta ("Objetivo batido fica para a próxima: ficaste a 1:42"). Desbloqueada =
+cor do significado, data e a prova que a deu.
+`achievementsForRace({ raceEvents, runs, profile, today }, raceId)` devolve as
+conquistas DESTA prova com `{ key, unlocked, date, raceId, detail, isNew }`;
+`isNew` = registada há menos de 7 dias. O `today` é **obrigatório** — o motor
+não usa o relógio real, para o hub, o Início e a Carol não poderem discordar
+sobre que dia é hoje. O palmarés global de conquistas
+(`computeAchievements`) deixou de existir em 2026-09-21, substituído pelos
+medalhões — que por sua vez foram substituídos pelos badges a 2026-09-22
+(ver nota no topo deste ficheiro).
 
 ## Onde aparece
 
@@ -42,7 +70,7 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    1:42").
 3. **Início, o dia a seguir** — o cartão "Para onde vou" passa a "Prova
    concluída · ontem" com tempo, pace, objetivo, a ordem da prova em grande
-   (26px), as conquistas em chips (`Recorde pessoal`, `Previsão batida`) e
+   (26px), as conquistas em chips (`Recorde pessoal`, `Acima do treino`) e
    dois botões: "Ver memórias" (hub) e "Próxima prova" (`RunAgenda`). Fica
    até marcares a próxima prova ou 7 dias, o que vier primeiro; depois o
    Início volta a olhar para a frente. A Carol chama pelo balanço no botão
@@ -54,8 +82,10 @@ devolve a lista com `{ key, unlocked, date, raceId, detail, isNew }`;
    4:04 abaixo do anterior". O prompt recebe as conquistas novas no contexto
    (é uma mudança em `coach-chat`, portanto produção: passo à parte, com o
    cuidado habitual).
-5. **Substituído em 2026-09-15 pelos medalhões — ver `palmares-medalhoes.md`.**
-   O texto abaixo descreve o cartão que existe hoje, até essa spec entrar.
+5. **Substituído em 2026-09-15 pelos medalhões (`palmares-medalhoes.md`),
+   por sua vez substituídos pelos badges a 2026-09-22 — ver nota no topo
+   deste ficheiro.** O texto abaixo é histórico: descreve o cartão "Palmarés"
+   que existiu entre estas duas mudanças, não o que a app mostra hoje.
    **Separador Provas** (era Perfil · Pessoal, opção B, até 2026-09-13; ver
    specs/prova-concluida.md §"Onde vivem as provas") — cartão "Palmarés":
    as conquistas em linha (44px cada, cor ou cadeado, rótulo curto) e "Ver

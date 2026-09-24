@@ -17,15 +17,15 @@
   --dur-count: 1400ms;          /* números a contar */
   --dur-trail: 1600ms;          /* trilho do macrociclo */
   --dur-breathe: 2600ms;        /* halo da Carol, três ciclos e para */
+  --dur-sign: 1100ms;           /* a linha do rosto da Carol a desenhar-se */
 
-  /* O momento da medalha (specs/palmares-medalhoes.md): toca UMA vez. As
-     fases são marcos dentro do total — o disco trava, a estrela pousa, o
-     texto sobe. Os keyframes de MedalMoment.css estão em % deste total. */
-  --dur-medal-moment: 2600ms;   /* a coreografia inteira */
-  --dur-medal-brake: 900ms;     /* o disco trava — tique tátil */
-  --dur-medal-land: 1700ms;     /* a estrela encaixa — háptico forte */
-  --ease-medal-disc: cubic-bezier(.16, 1, .3, 1);
-  --ease-medal-fly: cubic-bezier(.22, 1, .36, 1);
+  /* O momento do badge (shared/BadgeMoment.jsx, fase 4 da reforma da
+     gamificação): toca UMA vez. Os marcos (o disco a assentar, o anel a
+     fechar, o clarão, o texto a subir) são percentagens deste total nos
+     keyframes de BadgeMoment.css, e o anel desenha-se com --dur-rings, que
+     já existia. Os 2600ms vêm do momento da medalha, que esta cerimónia
+     substituiu (fase C): o gesto é o mesmo e o tempo com ele. */
+  --dur-badge-moment: 2600ms;
 
   --stagger-rings: 80ms;
   --stagger-bars: 60ms;
@@ -36,6 +36,6 @@
   :root {
     --dur-tab-content: 120ms; --dur-pill-sub: 120ms; --dur-sheet-open: 120ms; --dur-sheet-close: 120ms;
     --dur-confirm: 120ms; --dur-bars: 0ms; --dur-pill-nav-max: 120ms; --dur-rings: 0ms;
-    --dur-count: 0ms; --dur-trail: 0ms; --dur-medal-moment: 0ms; --dur-medal-brake: 0ms; --dur-medal-land: 0ms; --dur-breathe: 0ms; --typing-min: 0ms; --typing-max: 0ms;
+    --dur-count: 0ms; --dur-trail: 0ms; --dur-badge-moment: 0ms; --dur-breathe: 0ms; --dur-sign: 0ms; --typing-min: 0ms; --typing-max: 0ms;
   }
 }

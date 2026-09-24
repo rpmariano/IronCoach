@@ -8,8 +8,31 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT, upstreamErrorText } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
+import {
+  GOALS_REVIEW_SCHEMA,
+  MANUAL_SUMMARY_SCHEMA,
+  BODY_GOAL_COLUMNS,
+  GOALS_MISSING_COOLDOWN_DAYS,
+  GOALS_REVIEW_COOLDOWN_DAYS,
+  MACRO_GOAL_COLUMNS,
+  fetchGoalsContext,
+  goalsInterventionFor,
+  goalsReviewSection,
+  parseGoalsReview,
+  parseManualSummary,
+  type GoalsContext,
+  type GoalsReview,
+} from "./goalsReview.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import {
+  fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_RETRYABLE_STATUSES,
+  geminiBusyMessage,
+  hasTimeFor,
+  requestDeadlines,
+} from "../_shared/geminiFetch.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -85,50 +108,29 @@ const RESPONSE_SCHEMA = {
       ),
       required: METRIC_FIELDS.map((f) => f.key),
     },
+    // Que app deu estes prints — ver _shared/sourceApps.ts. Não é uma
+    // métrica: é o que permite, um dia, dizer ao atleta QUE ECRÃ traz o que
+    // falta em vez de só nomear o campo. O enum inclui sempre "desconhecida":
+    // sem essa saída, um print da Withings era arrumado à força na Renpho.
+    source_app: { type: "STRING", nullable: true, enum: opcoesDeFonte("corpo") },
     summary: { type: "STRING" },
+    goals_review: GOALS_REVIEW_SCHEMA,
   },
-  required: ["metrics", "summary"],
+  // goals_review fica fora de `required` de propósito: é um juízo, não uma
+  // leitura — se o modelo o omitir, a pesagem grava-se na mesma.
+  required: ["metrics", "summary", "source_app"],
 };
 
-// Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
-// vale a pena repetir estes, porque costumam resolver-se à segunda. O 429
-// (limite de pedidos excedido) fica DE FORA de propósito: repetir logo a
-// seguir só volta a bater no mesmo limite por minuto — e até o acelera — por
-// isso passa já ao chamador com uma mensagem clara. Erros "permanentes"
-// (400, 401, 403...) também passam sempre à primeira.
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
-
-// fetch com limite de tempo por tentativa + repetições automáticas quando a
-// chamada fica presa (AbortError), falha ao nível da rede, ou o Gemini
-// devolve um estado transitório (ver GEMINI_RETRYABLE_STATUSES) — por
-// exemplo, confirmámos em produção uma resposta 503 (sobrecarga momentânea)
-// que a app mostrava como erro imediato, mesmo sem qualquer problema de rede
-// ou timeout envolvido. Ao fim das tentativas, devolve a resposta tal como
-// veio (o chamador decide a mensagem) ou lança um erro claro se nem chegou
-// a haver resposta.
-async function fetchGeminiWithTimeout(
+// Repetições quando o Gemini está ocupado ou sem resposta, e o prazo do
+// pedido: ver _shared/geminiFetch.ts. Os valores por omissão são os desta função.
+function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error(upstreamErrorText(null));
-    }
-  }
+  return fetchGemini(url, options, timeoutMs, retries, deadline);
 }
 
 /* ── Depois de gravar uma avaliação: o perfil acompanha ────────────────────
@@ -148,8 +150,6 @@ async function fetchGeminiWithTimeout(
       Faltando os objetivos do corpo ou os de macronutrientes, fica marcada
       uma intervenção a pedir que os definam em conjunto. */
 const PESO_RECENTE_DIAS = 7;
-const BODY_GOAL_COLUMNS = ["goal_weight_kg", "goal_body_fat_pct", "goal_muscle_mass_kg", "goal_lean_body_mass_kg"];
-const MACRO_GOAL_COLUMNS = ["calorie_goal", "protein_goal", "carbs_goal", "fat_goal"];
 
 function daysBetweenISO(fromISO: string, toISO: string): number | null {
   const a = Date.parse(`${String(fromISO).slice(0, 10)}T00:00:00Z`);
@@ -159,7 +159,7 @@ function daysBetweenISO(fromISO: string, toISO: string): number | null {
 }
 
 // deno-lint-ignore no-explicit-any
-export async function syncProfileAfterAssessment(sb: any, userId: string, assessment: any): Promise<void> {
+export async function syncProfileAfterAssessment(sb: any, userId: string, assessment: any, goalsReview: GoalsReview = null): Promise<void> {
   try {
     if (!assessment?.date) return;
     const todayISO = new Date().toISOString().slice(0, 10);
@@ -177,20 +177,24 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
        ainda conta o anterior. Um dia de folga cobre qualquer um deles sem
        abrir a janela a datas futuras a sério. */
     const recente = idade !== null && idade >= -1 && idade <= PESO_RECENTE_DIAS;
-    if (Number.isFinite(peso) && peso > 0 && recente) {
-      /* Só se não houver nenhuma avaliação mais recente: editar a de há três
-         dias quando a de ontem já entrou não pode fazer recuar o peso. */
-      const { data: maisRecente } = await sb
+    /* Só vale como "o corpo de agora" a avaliação recente e sem nenhuma mais
+       nova: editar a de há três dias quando a de ontem já entrou não pode
+       fazer recuar o peso — nem pedir para rever objetivos com dados velhos. */
+    let ehAAtual = false;
+    if (recente) {
+      const { data: maisRecente, error: erroMaisRecente } = await sb
         .from("body_assessments")
         .select("date")
         .eq("user_id", userId)
         .order("date", { ascending: false })
         .limit(1)
         .maybeSingle();
+      // Sem conseguir confirmar que é a mais recente, não se trata como tal.
       const limite = maisRecente?.date ? String(maisRecente.date).slice(0, 10) : null;
-      if (!limite || String(assessment.date).slice(0, 10) >= limite) {
-        patch.weight_kg = peso;
-      }
+      ehAAtual = !erroMaisRecente && (!limite || String(assessment.date).slice(0, 10) >= limite);
+    }
+    if (Number.isFinite(peso) && peso > 0 && ehAAtual) {
+      patch.weight_kg = peso;
     }
 
     // ── 2. Os objetivos ────────────────────────────────────────────────
@@ -205,25 +209,27 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
     if (erroPerfil) console.warn("syncProfileAfterAssessment: falha a ler o perfil:", erroPerfil);
 
     if (perfil) {
-      const temAlgum = (cols: string[]) => cols.some((c) => perfil[c] !== null && perfil[c] !== undefined);
-      const faltamCorpo = !temAlgum(BODY_GOAL_COLUMNS);
-      const faltamMacros = !temAlgum(MACRO_GOAL_COLUMNS);
-      /* Uma intervenção já pendente não se sobrepõe: o motivo que lá está
-         pode ser mais urgente do que este, e o atleta só vê um de cada vez.
-         'in_progress' conta como pendente — é uma conversa JÁ A MEIO, e
-         reescrever o motivo aqui apagava sem retorno a razão pela qual ela
-         chamou por ele (a coluna não tem histórico). É a mesma leitura que
-         o resto da app faz: ver store/index.js e Home/Home.jsx, ambos com
-         ['needed','in_progress']. */
-      const intervencaoPendente = ["needed", "in_progress"].includes(perfil.coach_intervention_status);
-      if ((faltamCorpo || faltamMacros) && !intervencaoPendente) {
-        const emFalta = [faltamCorpo ? "os do corpo" : null, faltamMacros ? "os de macronutrientes" : null]
-          .filter(Boolean).join(" e ");
+      /* Períodos de espera depois de uma proposta de objetivos (aceite,
+         recusada, por decidir, ou a marca de "agora não"): rever, 14 dias e
+         só pela avaliação atual; o convite a definir quando faltam, 7 dias
+         (decidido a 2026-09-23 — insiste, mas não a cada pesagem). Sem
+         conseguir ler as propostas, não se chama: pior é chamar em
+         repetição. */
+      const desde = new Date(Date.now() - GOALS_REVIEW_COOLDOWN_DAYS * 86400000).toISOString();
+      const { data: recentes, error: erroPropostas } = await sb
+        .from("coach_goal_proposals")
+        .select("created_at")
+        .eq("user_id", userId)
+        .gte("created_at", desde);
+      if (erroPropostas) console.warn("syncProfileAfterAssessment: falha a ler as propostas:", erroPropostas);
+      const ultimaProposta = erroPropostas ? null : (recentes || []).map((r: { created_at: string }) => r.created_at).sort().pop() ?? null;
+      const diasDesde = ultimaProposta ? (Date.now() - Date.parse(ultimaProposta)) / 86400000 : Infinity;
+      const reviewAllowed = !erroPropostas && ehAAtual && !!goalsReview?.needed && diasDesde >= GOALS_REVIEW_COOLDOWN_DAYS;
+      const missingAllowed = !erroPropostas && diasDesde >= GOALS_MISSING_COOLDOWN_DAYS;
+      const intervencao = goalsInterventionFor(perfil, goalsReview, { reviewAllowed, missingAllowed });
+      if (intervencao) {
         patch.coach_intervention_status = "needed";
-        patch.coach_intervention_reason =
-          `O atleta acabou de registar uma avaliação corporal e ainda não tem objetivos definidos (${emFalta}). ` +
-          `Propõe-lhe definir os objetivos em conjunto — valores do corpo E macronutrientes —, partindo dos ` +
-          `números desta avaliação. Pergunta onde ele quer chegar antes de propores valores.`;
+        patch.coach_intervention_reason = intervencao;
       }
     }
 
@@ -337,7 +343,7 @@ function historyContext(history: any[]): string {
     lines.join("\n");
 }
 
-function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null): string {
+function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null): string {
   const mapping = METRIC_FIELDS
     .map((f) => `- ${f.key} — na Renpho aparece como "${f.renpho}"${f.hint ? ` — ${f.hint}` : ""}`)
     .join("\n");
@@ -361,7 +367,15 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     "- No ecrã \"Comparativo\", cada cartão mostra o valor grande (atual) e por baixo uma variação " +
     "com sinal (ex.: \"−0.40\", \"+0.1\"). Extrai SEMPRE o valor grande atual, NUNCA a variação.\n" +
     "- No ecrã \"Tendências\" (gráfico), usa o valor mais recente/último ponto, não a meta nem os extremos.\n" +
-    "- Combina a informação de todas as imagens numa única leitura coerente da mesma pesagem.\n\n" +
+    "- Combina a informação de todas as imagens numa única leitura coerente da mesma pesagem.\n" +
+    "- source_app: identifica de QUE APLICAÇÃO são estes prints, pelo cabeçalho, pelo nome visível, pelo tipo " +
+    "de letra e pelo estilo do ecrã (cores, ícones, disposição dos cartões) — não pelos valores nem pelo facto " +
+    "de serem métricas de composição corporal, que são as mesmas em todas as balanças. Devolve exatamente uma " +
+    "destas chaves: " + opcoesDeFonte("corpo").join(", ") + ". A Renpho Health reconhece-se pelo nome no topo, " +
+    "pelo donut da Visão geral e pela terminologia própria (ex.: \"Gordura Viceral\" escrito assim, " +
+    "\"Peso corporal sem gordura\"). Se as imagens forem de outra app (Withings, Xiaomi Zepp, Tanita, Huawei " +
+    "Health...), ou se não tiveres a certeza, devolve \"" + FONTE_NAO_RECONHECIDA + "\" — nunca escolhas a app " +
+    "mais parecida por eliminação.\n\n" +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
     "\n\n" +
@@ -374,7 +388,9 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     "dos valores desta pesagem: o que está bom e o que merece atenção. " +
     "Se existir histórico acima, compara com a avaliação mais recente e comenta a evolução " +
     "(o que melhorou, o que piorou, ex.: peso, gordura corporal, massa muscular). " +
-    "Sê direto e prático, sem alarmismos e sem dar diagnósticos médicos.";
+    "Sê direto e prático, sem alarmismos e sem dar diagnósticos médicos. " +
+    carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
+    goalsReviewSection(goalsCtx?.goals ?? null);
   if (notes && notes.trim()) {
     prompt +=
       "\n\nObservação do utilizador sobre esta pesagem (usa-a como contexto): " +
@@ -401,10 +417,19 @@ async function analyzeWithGemini(
   history: unknown[],
   geminiKey: string,
   memoryBlock: string | null = null,
+  goalsCtx: GoalsContext | null = null,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<
-  { metrics: Record<string, number | null>; classifications: Record<string, string>; summary: string; usage: GeminiUsage }
+  {
+    metrics: Record<string, number | null>;
+    classifications: Record<string, string>;
+    summary: string;
+    sourceApp: string;
+    usage: GeminiUsage;
+    goalsReview: GoalsReview;
+  }
 > {
-  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock) }];
+  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -421,11 +446,18 @@ async function analyzeWithGemini(
         },
       }),
     },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
   );
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
     console.error("Gemini error:", geminiRes.status, errText);
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
+      // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
+      throw new Error(geminiBusyMessage("ler a avaliação"));
+    }
     throw new Error(upstreamErrorText(geminiRes.status));
   }
 
@@ -436,7 +468,13 @@ async function analyzeWithGemini(
     cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
   };
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
-  let parsed: { metrics?: Record<string, unknown>; classifications?: Record<string, unknown>; summary?: unknown };
+  let parsed: {
+    metrics?: Record<string, unknown>;
+    classifications?: Record<string, unknown>;
+    summary?: unknown;
+    source_app?: unknown;
+    goals_review?: unknown;
+  };
   try {
     parsed = JSON.parse(rawText);
   } catch {
@@ -468,8 +506,17 @@ async function analyzeWithGemini(
     }
   }
 
+  /* A fonte NÃO é uma classificação de métrica nenhuma — vai à boleia do
+     mesmo jsonb por uma razão prática: `body_assessments` não tem coluna
+     `details` (ao contrário de `runs`), e este trabalho não abre migrações.
+     `classifications` é indexado pelas chaves de METRIC_FIELDS, onde
+     "source_app" nunca pode cair, por isso não colide com nada. Se um dia
+     houver coluna própria, é daqui que sai. */
+  const sourceApp = normalizarFonte(parsed.source_app, "corpo");
+  classifications.source_app = sourceApp;
+
   const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
-  return { metrics, classifications, summary, usage };
+  return { metrics, classifications, summary, sourceApp, usage, goalsReview: parseGoalsReview(parsed.goals_review) };
 }
 
 // Gera o resumo/comentário do Coach a partir de valores indicados manualmente
@@ -483,9 +530,15 @@ async function generateBodySummaryFromMetrics(
   history: unknown[],
   geminiKey: string,
   memoryBlock: string | null = null,
-): Promise<{ text: string | null }> {
+  goalsCtx: GoalsContext | null = null,
+  // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<{ text: string | null; goalsReview: GoalsReview }> {
   const hasAny = Object.values(metrics).some((v) => v !== null && v !== undefined);
-  if (!hasAny) return { text: null };
+  if (!hasAny) return { text: null, goalsReview: null };
+  // Sem tempo para uma tentativa útil antes do prazo, grava-se sem resumo:
+  // é best-effort, e a resposta não pode passar o que a app espera.
+  if (!hasTimeFor(deadline)) return { text: null, goalsReview: null };
 
   const metricLines = METRIC_FIELDS
     .filter((f) => metrics[f.key] !== null && metrics[f.key] !== undefined)
@@ -506,7 +559,10 @@ async function generateBodySummaryFromMetrics(
     "corporal, massa muscular). Sê direta e prática, sem alarmismos e sem dar diagnósticos " +
     "médicos. Se o peso desceu mais de 1 kg face a uma avaliação de há cerca de uma semana (ou a um " +
     "ritmo equivalente), pergunta se é intencional antes de sugerires mexer nas calorias — não ajustes " +
-    "nada por tua conta." +
+    "nada por tua conta. " +
+    carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
+    goalsReviewSection(goalsCtx?.goals ?? null) +
+    "Responde em JSON: \"summary\" com a avaliação, \"goals_review\" com o juízo acima." +
     (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
 
   try {
@@ -517,22 +573,27 @@ async function generateBodySummaryFromMetrics(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { maxOutputTokens: 4096, thinkingConfig: { thinkingLevel: "minimal" } },
+          generationConfig: {
+            maxOutputTokens: 4096,
+            thinkingConfig: { thinkingLevel: "minimal" },
+            response_mime_type: "application/json",
+            response_schema: MANUAL_SUMMARY_SCHEMA,
+          },
         }),
       },
       45000,
       0,
+      deadline,
     );
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());
-      return { text: null };
+      return { text: null, goalsReview: null };
     }
     const json = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return { text: text ? String(text).trim() : null };
+    return parseManualSummary(json?.candidates?.[0]?.content?.parts?.[0]?.text);
   } catch (e) {
     console.warn("Body manual summary generation error:", e);
-    return { text: null };
+    return { text: null, goalsReview: null };
   }
 }
 
@@ -540,6 +601,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Prazos deste pedido (ver _shared/geminiFetch.ts).
+  const { extraction: extractionDeadline, coach: coachDeadline } = requestDeadlines();
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado" }, 405);
   }
@@ -570,6 +633,7 @@ Deno.serve(async (req) => {
     // paralelo com o resto: todos os caminhos abaixo acabam num resumo.
     // Nunca rejeita, por isso pode ficar por esperar num caminho de erro.
     const memoryPromise = fetchSharedMemoryBlock(sb, userId);
+    const goalsCtxPromise = fetchGoalsContext(sb, userId);
 
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
@@ -630,7 +694,7 @@ Deno.serve(async (req) => {
       if (editingId) historyQuery = historyQuery.neq("id", editingId);
       const { data: history } = await historyQuery;
 
-      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise);
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline);
 
       if (editingId) {
         const { data: updated, error: updateError } = await sb
@@ -646,7 +710,7 @@ Deno.serve(async (req) => {
           .select()
           .single();
         if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
-        await syncProfileAfterAssessment(sb, userId, updated);
+        await syncProfileAfterAssessment(sb, userId, updated, summaryResult.goalsReview);
         return jsonResponse({ assessment: updated });
       }
 
@@ -668,7 +732,7 @@ Deno.serve(async (req) => {
         .single();
       if (insertError) return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
 
-      await syncProfileAfterAssessment(sb, userId, assessment);
+      await syncProfileAfterAssessment(sb, userId, assessment, summaryResult.goalsReview);
       return jsonResponse({ assessment });
     }
 
@@ -710,7 +774,7 @@ Deno.serve(async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise);
+        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -723,8 +787,8 @@ Deno.serve(async (req) => {
         .single();
       if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
 
-      await syncProfileAfterAssessment(sb, userId, updated);
-      return jsonResponse({ assessment: updated, usage: result.usage });
+      await syncProfileAfterAssessment(sb, userId, updated, result.goalsReview);
+      return jsonResponse({ assessment: updated, source_app: result.sourceApp, usage: result.usage });
     }
 
     // ── Modo normal: nova avaliação a partir de imagens ────────────────
@@ -779,7 +843,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
@@ -807,8 +871,11 @@ Deno.serve(async (req) => {
 
     await checkAndLogAppImage(sb, userId, "body", images, mime, result as unknown as Record<string, unknown>);
 
-    await syncProfileAfterAssessment(sb, userId, assessment);
-    return jsonResponse({ assessment, usage: result.usage });
+    await syncProfileAfterAssessment(sb, userId, assessment, result.goalsReview);
+    /* A fonte também à cabeça da resposta, e não só escondida dentro de
+       `classifications` — é onde o cliente a vai buscar sem ter de saber do
+       arranjo do jsonb. */
+    return jsonResponse({ assessment, source_app: result.sourceApp, usage: result.usage });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);

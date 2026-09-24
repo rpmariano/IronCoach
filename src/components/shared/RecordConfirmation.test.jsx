@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 import RecordConfirmation, { DUR_FIRST_IN, DUR_CONFIRM_EXIT_FIRST } from './RecordConfirmation';
-import { DUR_CONFIRM_EXIT, DUR_TAP } from '../../utils/introAnimations';
+import { useAppStore } from '../../store';
 
 /* "Registo confirmado" — animação 6 de `IronCoach - Animacoes.dc.html`:
    impulso elástico de 420 ms, sai aos 900 ms e devolve o atleta ao seu
@@ -24,8 +24,9 @@ describe('RecordConfirmation', () => {
     render(<RecordConfirmation label="Corrida registada" onDone={() => {}} />);
     const overlay = screen.getByTestId('record-confirmation');
     expect(overlay).toBeInTheDocument();
-    expect(overlay).toHaveAttribute('role', 'status');
-    expect(overlay).toHaveAttribute('aria-live', 'polite');
+    // Passou a diálogo: já não se anuncia e passa — espera por uma ação.
+    expect(overlay).toHaveAttribute('role', 'dialog');
+    expect(overlay).toHaveAttribute('aria-modal', 'true');
     expect(screen.getByText('Corrida registada')).toBeInTheDocument();
   });
 
@@ -36,45 +37,52 @@ describe('RecordConfirmation', () => {
     expect(container.querySelector('.record-confirm-label')).not.toBeNull();
   });
 
-  it('chama onDone aos 900 ms (--dur-confirm-exit) e não antes', () => {
+  /* Pedido de 2026-09-21: «todas as mensagens que têm este caráter temporário
+     devem deixar de o ter». O visto simples saía aos 900 ms (120 ms com
+     movimento reduzido); agora espera, como já esperavam os parabéns. */
+  it('o visto simples também espera — não sai sozinho', () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation label="Treino registado" onDone={onDone} />);
 
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT - 1); });
+    act(() => { vi.advanceTimersByTime(60000); });
     expect(onDone).not.toHaveBeenCalled();
-
-    act(() => { vi.advanceTimersByTime(1); });
-    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('record-confirmation')).toBeInTheDocument();
   });
 
-  it('com prefers-reduced-motion sai aos 120 ms — a confirmação lê-se, mas não se espera', () => {
+  it('com prefers-reduced-motion continua a esperar — o movimento é que muda, não o tempo de leitura', () => {
     window.matchMedia = () => ({ matches: true });
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation onDone={onDone} />);
 
-    act(() => { vi.advanceTimersByTime(DUR_TAP); });
+    act(() => { vi.advanceTimersByTime(60000); });
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('sai no botão "Continuar"', () => {
+    const onDone = vi.fn();
+    render(<RecordConfirmation label="Treino registado" onDone={onDone} />);
+    fireEvent.click(screen.getByTestId('record-confirmation-close'));
     expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('desmontar antes do tempo cancela o temporizador — sem onDone órfão', () => {
+  it('sai no clique fora da mensagem, e não no clique nela', () => {
+    const onDone = vi.fn();
+    render(<RecordConfirmation label="Treino registado" onDone={onDone} />);
+    fireEvent.click(screen.getByText('Treino registado'));
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('record-confirmation'));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('desmontar não deixa um onDone órfão para trás', () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     const { unmount } = render(<RecordConfirmation onDone={onDone} />);
     unmount();
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT * 2); });
+    act(() => { vi.advanceTimersByTime(60000); });
     expect(onDone).not.toHaveBeenCalled();
-  });
-
-  it('re-renderizações não adiam a saída (o onDone muda de identidade a cada render)', () => {
-    vi.useFakeTimers();
-    const onDone = vi.fn();
-    const { rerender } = render(<RecordConfirmation onDone={() => onDone()} />);
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT / 2); });
-    rerender(<RecordConfirmation onDone={() => onDone()} />);
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT / 2); });
-    expect(onDone).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -173,12 +181,12 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
     expect(screen.getByTestId('record-confirmation-achievement')).toHaveTextContent('+1 conquista');
   });
 
-  it('sem conquista nenhuma, o registo de todos os dias sai aos 900 ms como sempre', () => {
+  it('sem conquista nenhuma, o registo de todos os dias também espera', () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation onDone={onDone} />);
-    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_EXIT); });
-    expect(onDone).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(60000); });
+    expect(onDone).not.toHaveBeenCalled();
     expect(screen.queryByTestId('record-confirmation-achievement')).not.toBeInTheDocument();
   });
 
@@ -188,7 +196,7 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
     const onDone = vi.fn();
     render(<RecordConfirmation tone="race" achievement={CONQUISTA} onDone={onDone} />);
 
-    act(() => { vi.advanceTimersByTime(DUR_TAP); });
+    // Com movimento reduzido a conquista já lá está no primeiro render.
     expect(screen.getByTestId('record-confirmation-achievement')).toBeInTheDocument();
     // O movimento reduzido tira a animação, não o tempo de leitura.
     expect(onDone).not.toHaveBeenCalled();
@@ -229,5 +237,17 @@ describe('RecordConfirmation — o primeiro registo de um tipo', () => {
     expect(onDone).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('record-confirmation-close'));
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RecordConfirmation — o registo já está gravado', () => {
+  // Com ela à vista, o ecrã deixa de contar como aberto para a reposição
+  // depois de o Android matar a app (utils/navigationRestore.js).
+  it('liga o recordSaved ao aparecer e desliga-o ao sair', () => {
+    useAppStore.setState({ recordSaved: false });
+    const { unmount } = render(<RecordConfirmation label="Refeição registada" onDone={() => {}} />);
+    expect(useAppStore.getState().recordSaved).toBe(true);
+    unmount();
+    expect(useAppStore.getState().recordSaved).toBe(false);
   });
 });

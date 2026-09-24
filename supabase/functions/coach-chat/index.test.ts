@@ -1,5 +1,7 @@
-import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { buildAcwrLine, checkPlanLoad } from "./index.ts";
+import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -463,7 +465,6 @@ const BIO_BASE = {
   height_cm: null, weight_kg: null, gender: null, birth_date: null,
   experience_level: null, resting_hr_bpm: null,
   dietary_restrictions: null as string[] | null, dietary_notes: null as string | null,
-  coach_can_set_nutrition_goals: false as boolean | null,
 };
 
 function sysCom(restrictions: string[] | null, notes: string | null): string {
@@ -695,7 +696,6 @@ Deno.test("descarta a duração que o modelo ponha num dia de descanso", async (
 
 // deno-lint-ignore no-explicit-any
 function makeGoalsSb(opts: {
-  authorized?: boolean;
   profileError?: any;
   updateError?: any;
   profile?: any;
@@ -731,7 +731,7 @@ function makeGoalsSb(opts: {
             maybeSingle: () => Promise.resolve(
               opts.profileError
                 ? { data: null, error: opts.profileError }
-                : { data: { coach_can_set_nutrition_goals: opts.authorized ?? true, ...(opts.profile || {}) }, error: null },
+                : { data: { ...(opts.profile || {}) }, error: null },
             ),
           }),
         }),
@@ -754,15 +754,18 @@ function makeGoalsSb(opts: {
 // já não existe para este caminho) e passavam a throw silenciosamente
 // mal a lógica de auto-substituição de propostas foi adicionada.
 
-Deno.test("recusa escrever sem autorização, mesmo com valores válidos", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: false });
+// Bug #41 (2026-09-22): o interruptor "O Coach pode ajustar as metas" saiu —
+// a proposta é sempre criada, e é o atleta que a aceita ou recusa.
+Deno.test("cria a proposta sem depender de nenhum interruptor no perfil", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { protein_goal: 120 } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
-  assertStringIncludes(result, "não autorizou");
-  assertEquals(calls.inserts.length, 0);
+  assertEquals(result.includes("não autorizou"), false);
+  assertEquals(calls.inserts.length, 1);
+  assertEquals(calls.inserts[0].goals.protein_goal, 150);
 });
 
 Deno.test("com autorização, propõe a proteína e marca a origem", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150.4 });
   assertStringIncludes(result, "criada com SUCESSO");
   assertEquals(calls.inserts[0].goals.protein_goal, 150); // arredondado
@@ -771,7 +774,7 @@ Deno.test("com autorização, propõe a proteína e marca a origem", async () =>
 });
 
 Deno.test("propõe proteína e gordura ao mesmo tempo", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { protein_goal: 140, fat_goal: 70 });
   assertEquals(calls.inserts[0].goals.protein_goal, 140);
   assertEquals(calls.inserts[0].goals.fat_goal, 70);
@@ -779,7 +782,7 @@ Deno.test("propõe proteína e gordura ao mesmo tempo", async () => {
 });
 
 Deno.test("aceita calorie_goal e carbs_goal — todos os macros são agora editáveis pelo Coach", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { calorie_goal: 2200, carbs_goal: 300 });
   assertEquals(calls.inserts[0].goals.calorie_goal, 2200);
   assertEquals(calls.inserts[0].goals.calorie_goal_set_by_coach, true);
@@ -788,7 +791,7 @@ Deno.test("aceita calorie_goal e carbs_goal — todos os macros são agora edit�
 });
 
 Deno.test("aceita water_goal_ml e objetivos corporais", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { water_goal_ml: 2500, goal_weight_kg: 70.5, goal_body_fat_pct: 15 });
   assertEquals(calls.inserts[0].goals.water_goal_ml, 2500);
   assertEquals(calls.inserts[0].goals.water_goal_set_by_coach, true);
@@ -799,21 +802,21 @@ Deno.test("aceita water_goal_ml e objetivos corporais", async () => {
 });
 
 Deno.test("rejeita sem gravar quando nenhum campo é dado", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", {});
   assertStringIncludes(result, "Erro");
   assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("rejeita um valor fora do intervalo plausível (proteína 900g)", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 900 });
   assertStringIncludes(result, "Erro");
   assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("rejeita um valor negativo ou zero (gordura 0g)", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   const result = await runUpdateGoals(sb, "user-1", { fat_goal: 0 });
   assertStringIncludes(result, "Erro");
   assertEquals(calls.inserts.length, 0);
@@ -827,19 +830,19 @@ Deno.test("propaga o erro se a leitura do perfil falhar", async () => {
 });
 
 Deno.test("propaga o erro se substituir propostas anteriores falhar", async () => {
-  const { sb } = makeGoalsSb({ authorized: true, supersedeError: { message: "conflito ao substituir" } });
+  const { sb } = makeGoalsSb({ supersedeError: { message: "conflito ao substituir" } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "conflito ao substituir");
 });
 
 Deno.test("propaga o erro se a escrita da proposta falhar", async () => {
-  const { sb } = makeGoalsSb({ authorized: true, insertError: { message: "conflito" } });
+  const { sb } = makeGoalsSb({ insertError: { message: "conflito" } });
   const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertStringIncludes(result, "conflito");
 });
 
 Deno.test("uma nova proposta substitui (marca 'recusado') qualquer proposta anterior ainda pendente", async () => {
-  const { sb, calls } = makeGoalsSb({ authorized: true });
+  const { sb, calls } = makeGoalsSb();
   await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
   assertEquals(calls.supersedes.length, 1);
   assertEquals(calls.supersedes[0].status, "recusado");
@@ -855,7 +858,6 @@ Deno.test("uma nova proposta substitui (marca 'recusado') qualquer proposta ante
 
 Deno.test("valores idênticos aos atuais NÃO geram proposta, mesmo vindo como string do Postgres (numeric)", async () => {
   const { sb, calls } = makeGoalsSb({
-    authorized: true,
     profile: { calorie_goal: "2200", protein_goal: "150" }, // como o PostgREST devolve `numeric`
   });
   const result = await runUpdateGoals(sb, "user-1", { calorie_goal: 2200, protein_goal: 150 });
@@ -865,7 +867,6 @@ Deno.test("valores idênticos aos atuais NÃO geram proposta, mesmo vindo como s
 
 Deno.test("uma mudança real ainda é detetada quando o valor atual vem como string", async () => {
   const { sb, calls } = makeGoalsSb({
-    authorized: true,
     profile: { calorie_goal: "2200", protein_goal: "150" },
   });
   await runUpdateGoals(sb, "user-1", { calorie_goal: 2400, protein_goal: 150 });
@@ -911,9 +912,11 @@ Deno.test("sem athleteFirstName, o prompt não menciona nome próprio (recua par
 
 // ─── autorização no system prompt ────────────────────────────────────────
 
-Deno.test("sem autorização, o prompt diz ao modelo para não tentar a ferramenta", () => {
-  const sys = sysCom(null, null); // BIO_BASE tem coach_can_set_nutrition_goals: false
-  assertStringIncludes(sys, "NÃO uses a ferramenta update_goals");
+Deno.test("o prompt já não manda o atleta ligar um interruptor para gravar metas", () => {
+  const sys = sysCom(null, null);
+  assertEquals(sys.includes("NÃO uses a ferramenta update_goals"), false);
+  assertEquals(sys.includes("O Coach pode ajustar as metas"), false);
+  assertStringIncludes(sys, "PROPOSTA DE OBJETIVOS E METAS");
 });
 
 Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta imediatamente ao discutir valores", () => {
@@ -923,7 +926,7 @@ Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta ime
   // não por troca de mensagens antes de a ferramenta ser chamada.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "OBRIGATÓRIO");
@@ -935,7 +938,7 @@ Deno.test("com autorização, o prompt obriga o modelo a chamar a ferramenta ime
 Deno.test("regra 5 exige chamar a ferramenta certa consoante o pedido original (plano vs. refeições avulsas)", () => {
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "propose_training_plan com replace_active_plan=true");
@@ -953,12 +956,14 @@ Deno.test("regra 5 tem ação por omissão (propor plano de refeições) quando 
   // o período todo, não uma alteração silenciosa de 2-3 dias).
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "SEM PEDIDO EXPLÍCITO NO HISTÓRICO");
   assertStringIncludes(sys, "a ação por omissão é CHAMAR propose_training_plan");
-  assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta");
+  // 2026-09-23: save_meal_suggestions já não grava sempre direto (um dia
+  // inteiro no plano precisa do sim) — o motivo passou a ser o que ele espera.
+  assertStringIncludes(sys, "NUNCA save_meal_suggestions aqui: ele espera um plano para aceitar");
 });
 
 Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curto), com teto de 14 dias alinhado à doutrina de microciclo", () => {
@@ -972,7 +977,7 @@ Deno.test("regra 5(c) cobre o período do plano ativo (não um sub-período curt
   // (não um número arbitrário menor) para coincidir com esse máximo.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto");
@@ -996,7 +1001,7 @@ Deno.test("Regra 5(a) tem precedência sobre a Regra 1 — não reproponhas obje
   // têm agora precedência cruzada explícita para o modelo não hesitar.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a))");
@@ -1384,11 +1389,9 @@ Deno.test("caso A manda rever a proposta no Coach, não no ecrã Home", () => {
 });
 
 Deno.test("a dependência objetivos→plano não se aplica a objetivos já aceites", () => {
-  // A regra 4 vive no ramo autorizado do prompt — sysCom() usa BIO_BASE, que
-  // tem coach_can_set_nutrition_goals: false, e aí esta secção nem existe.
   const sys = buildSystemInstruction(
     null,
-    { ...BIO_BASE, coach_can_set_nutrition_goals: true },
+    BIO_BASE,
     null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
   );
   assertStringIncludes(sys, "não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos");
@@ -1479,30 +1482,22 @@ Deno.test("save_meal_suggestions: rejeita lista vazia", async () => {
   assertStringIncludes(result, "Erro");
 });
 
-// Colar a sugestão a um item já existente depende de casar o dia com o plano
-// certo entre vários ativos — estado a mais para um mock raso. Coberto por
-// PERCURSO A e PERCURSO H em plan-simulation.test.ts.
+// Este mock raso nunca devolve planos ativos (a consulta acaba em .order(),
+// não em maybeSingle) — só exercita o caminho "sem plano". O que depende de
+// um plano aceite (colar ao dia, uma refeição, confirmação) está nos
+// PERCURSOS de plan-simulation.test.ts, com um Supabase falso com estado.
 
-Deno.test("save_meal_suggestions: cria item descanso quando não existe item no plano ativo para esse dia", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
-    existingItem: null,
-  });
+Deno.test("save_meal_suggestions: sem plano, um só dia não grava nada (fica na conversa)", async () => {
+  const { sb, calls } = makeMealsSb({ activePlan: null });
   const result = await runSaveMealSuggestions(sb, "u1", {
     suggestions: [{ date: "2026-08-13", meal: "Salmão com batata doce" }],
   });
-  assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-13");
-  assertEquals(inserted?.kind, "descanso");
-  assertEquals(inserted?.user_id, "u1");
-  assertEquals(inserted?.meal_suggestion, "Salmão com batata doce");
+  assertStringIncludes(result, "NÃO GRAVADO");
+  assertEquals(calls.inserts.length, 0);
 });
 
 Deno.test("save_meal_suggestions: grava meal_macros quando a sugestão traz meal_items ao lado de meal", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-17" },
-    existingItem: null,
-  });
+  const { sb, calls } = makeMealsSb({ activePlan: null });
   const result = await runSaveMealSuggestions(sb, "u1", {
     suggestions: [{
       date: "2026-08-13",
@@ -1512,55 +1507,40 @@ Deno.test("save_meal_suggestions: grava meal_macros quando a sugestão traz meal
         { meal_type: "jantar", description: "150g de carne de aves + vegetais" },
       ],
       meal_estimated_kcal: 1800, meal_estimated_protein_g: 120, meal_estimated_carbs_g: 180, meal_estimated_fat_g: 55,
-    }],
+    }, { date: "2026-08-14", meal: "Ovos e tosta." }],
   });
-  assertStringIncludes(result, "gravadas");
+  assertStringIncludes(result, "PROPOSTO");
   const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-13");
   assertEquals(inserted?.meal_suggestion, "Almoço: peixe. Jantar: frango.");
   assertEquals(inserted?.meal_macros?.kcal, 1800);
 });
 
-Deno.test("save_meal_suggestions: cria plano proposto para datas fora do plano ativo", async () => {
-  const { sb, calls } = makeMealsSb({
-    activePlan: { id: "plan-1", period_start: "2026-08-10", period_end: "2026-08-14" },
-  });
+Deno.test("save_meal_suggestions: sem plano, mais de um dia cria plano proposto só de refeições", async () => {
+  const { sb, calls } = makeMealsSb({ activePlan: null });
   const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-20", meal: "Pasta pré-corrida" }],
+    suggestions: [{ date: "2026-08-20", meal: "Pasta pré-corrida" }, { date: "2026-08-21", meal: "Arroz e peixe" }],
   });
-  assertStringIncludes(result, "gravadas");
+  assertStringIncludes(result, "PROPOSTO");
   const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-20");
   assertEquals(inserted?.kind, "descanso");
+  assertEquals(inserted?.categories, ["so-refeicoes"]);
   assertEquals(inserted?.meal_suggestion, "Pasta pré-corrida");
   assertEquals(inserted?.user_id, "u1");
-  // O plano proposto criado para datas fora do plano ativo usa "summary",
-  // nunca "notes" (coach_plans não tem essa coluna — ver migração
-  // 20260810000000_coach_plans.sql; "notes" só existe em coach_plan_items).
+  // O plano proposto usa "summary", nunca "notes" (coach_plans não tem essa
+  // coluna — ver migração 20260810000000_coach_plans.sql).
   const planInsert = calls.inserts.find((i: any) => i.status === "proposto");
   assertEquals(planInsert?.summary, "Sugestões alimentares do Coach");
   assertEquals(Object.prototype.hasOwnProperty.call(planInsert ?? {}, "notes"), false);
 });
 
-Deno.test("save_meal_suggestions: sem plano ativo cria plano proposto", async () => {
-  const { sb, calls } = makeMealsSb({ activePlan: null });
-  const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-15", meal: "Ovos mexidos com tosta" }],
-  });
-  assertStringIncludes(result, "gravadas");
-  const inserted = calls.inserts.find((i: any) => i.planned_date === "2026-08-15");
-  assertEquals(inserted?.kind, "descanso");
-  assertEquals(inserted?.user_id, "u1");
-});
-
 Deno.test("save_meal_suggestions: regressão — nunca escreve na coluna 'day' (não existe em coach_plan_items)", async () => {
-  // Bug real reportado pelo utilizador: a função usava .eq("day", date) e
-  // insert({ day: date, ... }) — "day" nunca existiu em coach_plan_items
-  // (a coluna sempre foi planned_date, ver migração 20260810000000_coach_plans.sql).
-  // Isto fazia a escrita falhar sempre que o Coach tentava gravar uma sugestão
-  // alimentar no plano, e o atleta via "Edge Function returned a non-2xx status code".
+  // Bug real: a função usava .eq("day", date) e insert({ day: date, ... }) —
+  // "day" nunca existiu em coach_plan_items (a coluna é planned_date).
   const { sb, calls } = makeMealsSb({ activePlan: null });
   await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-16", meal: "Massa integral com atum" }],
+    suggestions: [{ date: "2026-08-16", meal: "Massa integral com atum" }, { date: "2026-08-17", meal: "Frango" }],
   });
+  assert(calls.inserts.length > 0);
   for (const insertedRow of calls.inserts) {
     assertEquals(Object.prototype.hasOwnProperty.call(insertedRow, "day"), false);
   }
@@ -1572,7 +1552,7 @@ Deno.test("save_meal_suggestions: propaga erro da criação do plano", async () 
     insertPlanError: { message: "permission denied" },
   });
   const result = await runSaveMealSuggestions(sb, "u1", {
-    suggestions: [{ date: "2026-08-15", meal: "Banana e iogurte" }],
+    suggestions: [{ date: "2026-08-15", meal: "Banana e iogurte" }, { date: "2026-08-16", meal: "Aveia" }],
   });
   assertStringIncludes(result, "permission denied");
 });
@@ -1663,6 +1643,87 @@ Deno.test("computeACWR zona destreino: aguda < 80% da crónica", () => {
   ];
   const r = computeACWR(runs, TODAY_ACWR);
   assertEquals(r?.zone, "possível_destreino(<0,80)");
+});
+
+Deno.test("computeACWR devolve null com corridas em só 2 das 4 semanas (pedido 2026-09-24)", () => {
+  // O caso real: 10 km, uma semana vazia, 7 + 5 km — rácio 2,17 que não quer dizer nada.
+  assertEquals(computeACWR([makeRun(11, 10), makeRun(3, 7), makeRun(0, 5)], TODAY_ACWR), null);
+});
+
+// ─── A linha de ACWR lida com o histórico e o plano (2026-09-24) ─────────────
+const planItem = (daysAgo: number, km: number) => ({ ...makeRun(daysAgo, km), planned_date: makeRun(daysAgo, km).date, kind: "corrida", status: "pendente", target_distance_km: km });
+
+Deno.test("buildAcwrLine: sem histórico diz que o rácio não existe (e não dá número)", () => {
+  const runs = [makeRun(11, 10), makeRun(3, 7), makeRun(0, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: [], today: TODAY_ACWR }), true, TODAY_ACWR);
+  assertStringIncludes(line ?? "", "SEM HISTÓRICO SUFICIENTE");
+  assertStringIncludes(line ?? "", "2 das últimas 4 semanas");
+  assertEquals(/\d,\d\d|\d\.\d\d/.test(line ?? ""), false);
+});
+
+Deno.test("buildAcwrLine: sem histórico, o volume de referência vem do nível do perfil (sem perguntar)", () => {
+  const runs = [makeRun(11, 10), makeRun(3, 7), makeRun(0, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: [], today: TODAY_ACWR }), true, TODAY_ACWR,
+    { level: "medio", start: 40, range: [40, 60], target: 35, category: "10k", raceName: "Volkswagen Run" }) ?? "";
+  assertStringIncludes(line, "nível do perfil (Médio: 40-60 km/semana)");
+  assertStringIncludes(line, "parte de 40 km/semana");
+  // 35 < 40: o nível já cobre o mínimo do 10 km — nada de "onde chegar".
+  assertStringIncludes(line, "Para a prova \"Volkswagen Run\" (10k), o nível já cobre o mínimo da doutrina (35 km/semana)");
+  assertEquals(line.includes("é onde chegar"), false);
+  assertStringIncludes(line, "não perguntes ao atleta quanto corre");
+  assertStringIncludes(line, "voltar de uma paragem");
+});
+
+Deno.test("buildAcwrLine: com o alvo acima da partida (iniciante, maratona), o alvo é onde chegar", () => {
+  const runs = [makeRun(11, 10), makeRun(3, 7), makeRun(0, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: [], today: TODAY_ACWR }), true, TODAY_ACWR,
+    { level: "iniciante", start: 15, range: [15, 25], target: 35, category: "maratona", raceName: null }) ?? "";
+  assertStringIncludes(line, "parte de 15 km/semana");
+  assertStringIncludes(line, "Até à prova (maratona), o mínimo da doutrina é 35 km/semana — é onde chegar, não de onde partir");
+});
+
+Deno.test("buildAcwrLine: sem corridas nas 4 semanas, pergunta se tem corrido (não quantos km)", () => {
+  const line = buildAcwrLine(null, runLoadReading({ runs: [], planItems: [], today: TODAY_ACWR }), false, TODAY_ACWR,
+    { level: "iniciante", start: 15, range: [15, 25], target: null, category: null }) ?? "";
+  assertStringIncludes(line, "pergunta-lhe se tem corrido");
+  assertStringIncludes(line, "parte de 15 km/semana");
+  assertEquals(line.includes("mínimo da doutrina"), false);
+});
+
+Deno.test("buildAcwrLine: com histórico mas carga quase nula, sem o texto de 'sem histórico'", () => {
+  const runs = [makeRun(2, 0.1), makeRun(9, 0.1), makeRun(16, 0.1), makeRun(23, 0.1)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: [], today: TODAY_ACWR }), true, TODAY_ACWR) ?? "";
+  assertStringIncludes(line, "quase nula");
+  assertEquals(line.includes("SEM HISTÓRICO"), false);
+});
+
+Deno.test("buildAcwrLine: sem corridas nenhumas, sem linha", () => {
+  assertEquals(buildAcwrLine(null, runLoadReading({ runs: [], planItems: [], today: TODAY_ACWR }), false, TODAY_ACWR), null);
+});
+
+Deno.test("buildAcwrLine: em perigo mas DENTRO do plano que ela prescreveu", () => {
+  const runs = [makeRun(1, 30), makeRun(9, 5), makeRun(16, 5), makeRun(23, 5)];
+  const plan = [planItem(1, 28), planItem(9, 5), planItem(16, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: plan, today: TODAY_ACWR }), true, TODAY_ACWR) ?? "";
+  assertStringIncludes(line, "PERIGO(>1,50)");
+  assertStringIncludes(line, "DENTRO do plano que prescreveste");
+  assertStringIncludes(line, "não é excesso do atleta");
+  assertStringIncludes(line, "ajustar o teu plano é legítimo");
+});
+
+Deno.test("buildAcwrLine: em perigo e ACIMA do plano", () => {
+  const runs = [makeRun(1, 30), makeRun(9, 5), makeRun(16, 5), makeRun(23, 5)];
+  const plan = [planItem(1, 8), planItem(9, 5), planItem(16, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: plan, today: TODAY_ACWR }), true, TODAY_ACWR) ?? "";
+  assertStringIncludes(line, "ACIMA do plano (30 km feitos nos últimos 7 dias para 8 km previstos)");
+});
+
+Deno.test("o prompt não manda alertar para o ACWR dentro do plano nem sem histórico", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "EXCETO se a linha disser que a carga está DENTRO do plano que prescreveste");
+  assertStringIncludes(sys, "ACWR >1,5 que não esteja DENTRO do plano");
+  assertStringIncludes(sys, "não perguntes ao atleta quanto corre");
+  assertStringIncludes(sys, "Sem histórico suficiente não há ACWR e a app não verifica");
 });
 
 // ─── Bloco 2.1-2.2-2.4 — doutrina no system prompt ───────────────────────────
@@ -2523,6 +2584,50 @@ Deno.test("buildRaceEventsContext: em estrada, o eixo de D+ fica desligado (D+ d
   assertStringIncludes(ctx!, "⚠ NÍVEL MEDIDO pelo histórico de treino: Médio — diverge do declarado (Básico)");
 });
 
+/* Bloco 8b — a previsão de tempo. Antes era calculada aqui só para aferir
+   o nível e deitada fora: a Carol via o objetivo e não via o que o treino
+   dela própria apontava, e só comentava a diferença DEPOIS da prova.
+   1:46:10 / 10.37 por km são o getRacePrediction real para estes 4 runs
+   contra esta prova (10 km trail, 500 m D+, iniciante) — confirmados a
+   correr o motor, como o resto deste bloco. */
+Deno.test("buildRaceEventsContext: a previsão do treino entra com tempo e ritmo", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15" })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  // Em duas partes de propósito: o número é o que interessa proteger, a
+  // frase à volta pode mudar sem partir o teste — e já partiu uma vez.
+  assertStringIncludes(ctx!, "PREVISÃO DE TEMPO:");
+  assertStringIncludes(ctx!, "o treino aponta para 1:46:10 (10.37/km)");
+  assertStringIncludes(ctx!, "ainda não fixou tempo-alvo");
+});
+
+Deno.test("buildRaceEventsContext: objetivo mais rápido do que a previsão sai marcado como ambicioso", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", target_time_seconds: 6000 })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "o objetivo está 6:10 ABAIXO do que o treino aponta — é ambicioso");
+});
+
+Deno.test("buildRaceEventsContext: objetivo a menos de 3% da previsão fica alinhado", () => {
+  // 6370 previsto vs 6300 de objetivo = 70 s, 1,1% — dentro da margem que o
+  // plano do dia da prova (buildRacePacingPlan) já usa para o mesmo juízo.
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", target_time_seconds: 6300 })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "o objetivo está alinhado com o que o treino aponta");
+});
+
+Deno.test("buildRaceEventsContext: objetivo mais lento do que a previsão convida a puxar", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", target_time_seconds: 7200 })],
+    TODAY_ISO, null, null, RUNS_MEDIDO_INICIANTE,
+  );
+  assertStringIncludes(ctx!, "o objetivo está 13:50 ACIMA do que o treino aponta — há margem");
+});
+
 Deno.test("buildRaceEventsContext: menos de 3 semanas com dados — sem linha de nível medido", () => {
   // deno-lint-ignore no-explicit-any
   const runs: any[] = [
@@ -2930,6 +3035,7 @@ function outcome(overrides: Partial<RaceOutcome> = {}): RaceOutcome {
   return {
     race_id: "r1", name: "Meia de Lisboa", date: "2027-03-08", race_type: "estrada", distance_km: 21.1, category: "meia",
     official_seconds: 6822, target_seconds: 6720, predicted_seconds: 7282, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
+    previous_best_distance_km: 21.1,
     position: 412, effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true, splits: [], achievements_new: [],
     ...overrides,
   };
@@ -2939,6 +3045,7 @@ Deno.test("parseRaceOutcome: aceita o payload do cliente e normaliza campo a cam
   const parsed = parseRaceOutcome({
     race_id: "r1", name: "  Meia de Lisboa ", date: "2027-03-08", race_type: "estrada", distance_km: "21.1", category: "meia",
     official_seconds: 6822.4, target_seconds: 6720, predicted_seconds: 7281.6, previous_best_seconds: 7066, previous_best_date: "2026-10-11",
+    previous_best_distance_km: "21.1",
     position: "412", effort_rpe: 8, verdict: "perto", basis: "objetivo", vs_training: "acima", is_personal_record: true,
   });
   assertEquals(parsed?.name, "Meia de Lisboa");
@@ -2948,6 +3055,7 @@ Deno.test("parseRaceOutcome: aceita o payload do cliente e normaliza campo a cam
   assertEquals(parsed?.position, 412);
   assertEquals(parsed?.verdict, "perto");
   assertEquals(parsed?.is_personal_record, true);
+  assertEquals(parsed?.previous_best_distance_km, 21.1);
 });
 
 Deno.test("parseRaceOutcome: lixo cai para null, não para erro", () => {
@@ -2972,15 +3080,30 @@ Deno.test("buildRaceOutcomeContext: os números e o veredicto, em maiúsculas on
   const ctx = buildRaceOutcomeContext(outcome());
   assertStringIncludes(ctx, "Prova: Meia de Lisboa, 2027-03-08, Estrada, 21.1 km (meia).");
   assertStringIncludes(ctx, "Tempo oficial: 1:53:42 (5.23/km) · posição 412 · RPE 8.");
-  assertStringIncludes(ctx, "Objetivo: 1:52:00 → 1:42 ACIMA do objetivo (1,5%).");
-  assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
-  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (2026-10-11) → RECORDE PESSOAL por 4:04.");
+  assertStringIncludes(ctx, "Objetivo: 1:52:00 (5.18/km) → 1:42 ACIMA do objetivo (1,5%).");
+  assertStringIncludes(ctx, "Previsão pelo treino (Riegel, só corridas anteriores à prova): 2:01:22 (5.45/km) → 7:40 mais rápido do que a previsão — ACIMA do que o treino perspetivava.");
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 (5.35/km) · 2026-10-11 → RECORDE PESSOAL por 4:04.");
   assertStringIncludes(ctx, "Veredicto: PERTO DO OBJETIVO.");
+});
+
+/* O ritmo do melhor anterior sai da distância DELE. A categoria é larga
+   ("meia" vai de 11,1 a 22,5 km): dividir 1:00:00 pela distância desta prova
+   dava 2.51/km, fisicamente impossível, e a Carol repetia-o em voz alta
+   (revisão pré-deploy de 2026-09-21). */
+Deno.test("buildRaceOutcomeContext: o melhor anterior noutra distância leva o ritmo dele e diz a distância", () => {
+  const ctx = buildRaceOutcomeContext(outcome({ previous_best_seconds: 3600, previous_best_distance_km: 12, is_personal_record: false }));
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:00:00 (5.00/km) em 12 km");
+  assertEquals(ctx.includes("2.51/km"), false);
+});
+
+Deno.test("buildRaceOutcomeContext: sem a distância do recorde, o tempo vai sem ritmo em vez de um ritmo falso", () => {
+  const ctx = buildRaceOutcomeContext(outcome({ previous_best_distance_km: null }));
+  assertStringIncludes(ctx, "Melhor anterior na meia: 1:57:46 · 2026-10-11");
 });
 
 Deno.test("buildRaceOutcomeContext: objetivo batido, sem previsão nem histórico", () => {
   const ctx = buildRaceOutcomeContext(outcome({ verdict: "superado", target_seconds: 6900, predicted_seconds: null, vs_training: null, previous_best_seconds: null, previous_best_date: null, is_personal_record: false }));
-  assertStringIncludes(ctx, "Objetivo: 1:55:00 → 1:18 ABAIXO do objetivo (batido).");
+  assertStringIncludes(ctx, "Objetivo: 1:55:00 (5.27/km) → 1:18 ABAIXO do objetivo (batido).");
   assertStringIncludes(ctx, "Previsão pelo treino: sem corridas anteriores que a sustentem.");
   assertStringIncludes(ctx, "Melhor anterior na meia: nenhum — primeira prova nesta distância.");
   assertStringIncludes(ctx, "Veredicto: OBJETIVO SUPERADO.");
@@ -3802,3 +3925,181 @@ Deno.test("buildRaceEventsContext: o conflito já reconhecido não volta a ser l
   assertStringIncludes(text, "conflito de provas já reconhecido por ele a 2026-09-19: não voltes a levantá-lo");
 });
 
+// ─── conversa sobre objetivos (bug #41, 2026-09-22) ─────────────────────
+// A intervenção da análise corporal não é a de desvios ao plano: convida
+// e convence, e fecha-se com a decisão do atleta na proposta de objetivos.
+
+Deno.test("conversa sobre objetivos: convida, não confronta, e sabe como fecha", () => {
+  const sys = buildGoalsInterventionInstruction(true, "[objetivos] O atleta ainda não tem objetivos definidos (os do corpo).");
+  assertStringIncludes(sys, "CONVERSA SOBRE OBJETIVOS");
+  assertStringIncludes(sys, "Não é uma chamada de atenção");
+  assertStringIncludes(sys, "INICIA tu");
+  assertStringIncludes(sys, "update_goals");
+  assertStringIncludes(sys, "NÃO chames resolve_intervention nesse caso");
+  // A etiqueta é para as máquinas; a Carol lê só o motivo.
+  assertEquals(sys.includes("[objetivos]"), false);
+  assertStringIncludes(sys, "O atleta ainda não tem objetivos definidos (os do corpo).");
+});
+
+Deno.test("conversa sobre objetivos: sem ser o arranque, não manda iniciar", () => {
+  assertEquals(buildGoalsInterventionInstruction(false, "[objetivos] x").includes("INICIA tu"), false);
+});
+
+Deno.test("o prompt escolhe a conversa pela etiqueta do motivo", () => {
+  const args = (reason: string) => buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, true, "needed", reason,
+  );
+  const objetivos = args("[objetivos] O peso-alvo já foi atingido.");
+  assertStringIncludes(objetivos, "CONVERSA SOBRE OBJETIVOS");
+  assertEquals(objetivos.includes("MODO DE INTERVENÇÃO PROATIVA ATIVO"), false);
+
+  const plano = args("Falhou 3 treinos seguidos.");
+  assertStringIncludes(plano, "MODO DE INTERVENÇÃO PROATIVA ATIVO");
+  assertEquals(plano.includes("CONVERSA SOBRE OBJETIVOS"), false);
+});
+
+// A mensagem de arranque tem de bater certo com o system prompt: era a mesma
+// para todas as intervenções e pedia confronto (revisão pré-deploy do #41).
+Deno.test("arranque da intervenção: objetivos convida; plano confronta; a etiqueta nunca segue", () => {
+  const objetivos = buildInterventionStartTurn('Motivo/Análise: "[objetivos] x"', "[objetivos] O peso-alvo já foi atingido.");
+  assertEquals(objetivos.includes("confrontando"), false);
+  assertEquals(objetivos.includes("[objetivos]"), false);
+  assertStringIncludes(objetivos, "sem cobranças");
+
+  const plano = buildInterventionStartTurn('Motivo/Análise: "Falhou 3 treinos."', "Falhou 3 treinos.");
+  assertStringIncludes(plano, "confrontando");
+  assertStringIncludes(plano, "Falhou 3 treinos.");
+});
+
+// "Não quero objetivos agora" no chat tem de travar a próxima pesagem: fica
+// uma proposta recusada e vazia (revisão pré-deploy do #41, M1).
+function makeResolveSb(reason: string | null) {
+  // deno-lint-ignore no-explicit-any
+  const calls = { inserts: [] as any[], updates: [] as any[] };
+  const sb = {
+    from: (table: string) => ({
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { coach_intervention_reason: reason } }) }) }),
+      // deno-lint-ignore no-explicit-any
+      update: (row: any) => { calls.updates.push({ table, row }); return { eq: () => Promise.resolve({ error: null }) }; },
+      // deno-lint-ignore no-explicit-any
+      insert: (row: any) => { calls.inserts.push({ table, row }); return Promise.resolve({ error: null }); },
+    }),
+  };
+  return { sb, calls };
+}
+
+Deno.test("resolve_intervention: recusar objetivos no chat deixa a marca da recusa", async () => {
+  const { sb, calls } = makeResolveSb("[objetivos] O peso-alvo já foi atingido.");
+  await runResolveIntervention(sb, "u1", { action_taken: "atleta_ignorou" });
+  assertEquals(calls.inserts.length, 1);
+  assertEquals(calls.inserts[0].table, "coach_goal_proposals");
+  assertEquals(calls.inserts[0].row.status, "recusado");
+});
+
+Deno.test("resolve_intervention: numa intervenção de plano não há marca nenhuma", async () => {
+  const { sb, calls } = makeResolveSb("Falhou 3 treinos.");
+  await runResolveIntervention(sb, "u1", { action_taken: "atleta_ignorou" });
+  assertEquals(calls.inserts.length, 0);
+  assertEquals(calls.updates.length, 1);
+});
+
+
+// ── Pedido repetido (incidente 2026-09-23) ──────────────────────────────
+// O mesmo POST chegou duas vezes (a resposta perdeu-se a caminho do
+// telemóvel e o browser repetiu-o): a Carol respondia duas vezes.
+function dupSb(rows: Array<{ id: string; role: string; content: string; created_at: string }>) {
+  return {
+    from: () => {
+      const f: Record<string, unknown> = {};
+      const chain = {
+        select: () => chain,
+        eq: (c: string, v: unknown) => { f[c] = v; return chain; },
+        gt: (_c: string, v: string) => { f.gt = v; return chain; },
+        order: (_c: string, o: { ascending: boolean }) => { f.asc = o.ascending; return chain; },
+        limit: () => chain,
+        maybeSingle: () => {
+          let r = rows.filter((x) => x.role === f.role);
+          if (f.gt) r = r.filter((x) => x.created_at > (f.gt as string));
+          r.sort((a, b) => (f.asc ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at)));
+          return Promise.resolve({ data: r[0] ?? null });
+        },
+      };
+      return chain;
+    },
+  };
+}
+
+Deno.test("findAnsweredDuplicate: a mesma pergunta 38 s depois, já respondida, devolve a resposta dada", async () => {
+  const rows = [
+    { id: "u1", role: "user", content: "Vou precisar de uma dieta especial", created_at: "2026-09-23T20:44:13.000Z" },
+    { id: "m1", role: "model", content: "Não precisas de uma dieta exótica…", created_at: "2026-09-23T20:44:29.000Z" },
+  ];
+  const now = Date.parse("2026-09-23T20:44:51.000Z");
+  const dup = await findAnsweredDuplicate(dupSb(rows), "u", "Vou precisar de uma dieta especial ", now);
+  assertEquals(dup?.model.id, "m1");
+});
+
+Deno.test("findAnsweredDuplicate: outra pergunta, fora da janela, ou ainda sem resposta — não é repetido", async () => {
+  const rows = [
+    { id: "u1", role: "user", content: "Ok", created_at: "2026-09-23T20:44:13.000Z" },
+    { id: "m1", role: "model", content: "Plano fechado.", created_at: "2026-09-23T20:44:29.000Z" },
+  ];
+  const t = Date.parse("2026-09-23T20:44:51.000Z");
+  assertEquals(await findAnsweredDuplicate(dupSb(rows), "u", "Aceitei o plano.", t), null);
+  assertEquals(await findAnsweredDuplicate(dupSb(rows), "u", "Ok", t + DUPLICATE_WINDOW_MS), null);
+  assertEquals(await findAnsweredDuplicate(dupSb(rows.slice(0, 1)), "u", "Ok", t), null);
+  // Aceitar duas propostas seguidas não é um pedido repetido.
+  const aceites = [
+    { id: "u2", role: "user", content: "Aceitei o plano.", created_at: "2026-09-23T20:44:13.000Z" },
+    { id: "m2", role: "model", content: "Plano fechado.", created_at: "2026-09-23T20:44:20.000Z" },
+  ];
+  assertEquals(await findAnsweredDuplicate(dupSb(aceites), "u", "Aceitei o plano.", t), null);
+});
+
+// ─── A guarda de carga dos planos (2026-09-24) ───────────────────────────────
+// deno-lint-ignore no-explicit-any
+function loadSb(runs: any[], activeItems: any[] = []) {
+  const chain = (data: unknown) => {
+    // deno-lint-ignore no-explicit-any
+    const c: any = { then: (resolve: (v: unknown) => void) => resolve({ data, error: null }) };
+    for (const m of ["select", "eq", "gte", "lte", "lt", "in"]) c[m] = () => c;
+    return c;
+  };
+  return { from: (t: string) => chain(t === "runs" ? runs : activeItems) };
+}
+const r = (date: string, km: number) => ({ date, distance_km: km, duration_seconds: km * 360 });
+const hist = [r("2026-08-29", 10), r("2026-09-05", 10), r("2026-09-12", 10), r("2026-09-19", 10)];
+const planRow = (planned_date: string, km: number, over: Record<string, unknown> = {}) => ({ planned_date, kind: "corrida", training_type: "continuo", target_distance_km: km, target_duration_min: null, ...over });
+
+Deno.test("checkPlanLoad: plano que leva o ACWR a perigo é recusado, com o dia e o teto", async () => {
+  const msg = await checkPlanLoad(loadSb(hist), "u1", [planRow("2026-09-25", 10), planRow("2026-09-26", 10), planRow("2026-09-27", 10)], [], "2026-09-25", "2026-09-24");
+  assertStringIncludes(msg ?? "", "O plano NÃO foi gravado");
+  assertStringIncludes(msg ?? "", "a proposta pode ter no máximo");
+});
+
+Deno.test("checkPlanLoad: sem histórico não há regra (3 corridas em 4 semanas)", async () => {
+  const few = [r("2026-09-13", 10.11), r("2026-09-21", 7.01), r("2026-09-24", 5.03)];
+  assertEquals(await checkPlanLoad(loadSb(few), "u1", [planRow("2026-09-25", 15), planRow("2026-09-27", 15)], [], "2026-09-25", "2026-09-24"), null);
+});
+
+Deno.test("checkPlanLoad: plano em curso + proposta juntos passam de 1,50 — a mensagem separa as partes e diz o que cabe", async () => {
+  // Cada parte sozinha passa; juntas, a janela de 23 a 29/09 dispara.
+  const rows = [planRow("2026-09-28", 6), planRow("2026-09-29", 6)];
+  assertEquals(await checkPlanLoad(loadSb(hist, []), "u1", rows, [{ id: "p1" }], "2026-09-28", "2026-09-24"), null);
+  const active = [planRow("2026-09-25", 8, { status: "pendente" })];
+  const msg = await checkPlanLoad(loadSb(hist, active), "u1", rows, [{ id: "p1" }], "2026-09-28", "2026-09-24") ?? "";
+  assertStringIncludes(msg, "de 2026-09-23 a 2026-09-29: 0 km já corridos + 8 km do plano em curso + 12 km desta proposta");
+  assertStringIncludes(msg, "a proposta pode ter no máximo 10 km");
+});
+
+Deno.test("checkPlanLoad: a carga do plano em curso não cai em cima de uma proposta leve (revisão de bf21a2b)", async () => {
+  // O plano em curso sozinho já passa de 1,50: uma rodagem de 1 km depois dele passa.
+  const active = [planRow("2026-09-25", 12, { status: "pendente" }), planRow("2026-09-26", 12, { status: "pendente" })];
+  assertEquals(await checkPlanLoad(loadSb(hist, active), "u1", [planRow("2026-09-28", 1)], [{ id: "p1" }], "2026-09-28", "2026-09-24"), null);
+});
+
+Deno.test("checkPlanLoad: uma falha a ler deixa passar", async () => {
+  const broken = { from: () => { throw new Error("rede"); } };
+  assertEquals(await checkPlanLoad(broken, "u1", [planRow("2026-09-25", 50)], [], "2026-09-25", "2026-09-24"), null);
+});

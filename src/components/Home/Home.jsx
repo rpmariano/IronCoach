@@ -20,8 +20,10 @@ import FirstDayCard from './FirstDayCard';
 import CheckinCard from './CheckinCard';
 import CoachInsightButton from '../BI/CoachInsightButton';
 import CoachInsightModal from '../BI/CoachInsightModal';
-import MedalMoment from '../shared/MedalMoment';
-import useMedalMoment from '../../utils/useMedalMoment';
+import BadgeMoment from '../shared/BadgeMoment';
+import useBadgeMoment from '../../utils/useBadgeMoment';
+import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
+import { pendingTopicLines } from '../../utils/carolTopics';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -48,6 +50,7 @@ export default function Home() {
     dailySummary, logImpression, logImpressionDismissed, impressionDismissed,
   } = useAppStore();
   const pendingTopics = useAppStore(selectCoachPendingTopics);
+  const coachGoalProposals = useAppStore((s) => s.coachGoalProposals);
 
   const [showInsights, setShowInsights] = useState(false);
   const [showDismiss, setShowDismiss] = useState(false);
@@ -56,9 +59,13 @@ export default function Home() {
   // Dispensar o aviso do balanço grava a marca em localStorage, que não é
   // estado do React — este contador faz o useMemo voltar a ler.
   const [balanceDismissals, setBalanceDismissals] = useState(0);
-  // O momento da medalha (specs/palmares-medalhoes.md) — a regra de quando
-  // aparece vive no hook.
-  const medalMoment = useMedalMoment();
+  /* O momento do badge (fase 4 da reforma da gamificação) — a regra de
+     quando aparece e em que escala vive no hook. É a única cerimónia de ecrã
+     inteiro do Início desde que os medalhões saíram (fase C): já não espera
+     por ninguém. Sem a migração `user_badges` aplicada não há `pending`
+     nenhum e isto não mostra nada. */
+  const badgeMoment = useBadgeMoment();
+  const badgeVisivel = badgeMoment.grande || badgeMoment.medio;
 
   const today = todayISO();
 
@@ -73,7 +80,10 @@ export default function Home() {
 
   const hasRecords = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
   const hasUpcomingRace = (raceEvents || []).some((e) => e.status !== 'concluida' && e.date >= today);
-  const firstDay = !hasRecords && !hasUpcomingRace;
+  // Com dados ainda a chegar depois do prazo do arranque, vazio não é
+  // "primeiro dia" (dataPending, ver loadInitialData no store).
+  const dataPending = useAppStore((s) => s.dataPending);
+  const firstDay = !dataPending && !hasRecords && !hasUpcomingRace;
 
   /* No primeiro dia a Carol lembra-se do arranque (utils/firstDay.js): o
      objetivo e o que o atleta contou vêm da Memória do Coach, que o
@@ -176,8 +186,11 @@ export default function Home() {
     carolAlerts.push({
       id: 'assuntos',
       severity: 'warning',
-      title: 'A Carol precisa de falar contigo',
-      message: pendingTopics === 1 ? 'Tens 1 assunto a resolver com ela.' : `Tens ${pendingTopics} assuntos a resolver com ela.`,
+      // Na voz dela e a dizer o assunto (pedido 2026-09-23): "Tens 1 assunto
+      // a resolver com ela" não dizia qual, e o popup repetia "Carol" 4 vezes.
+      title: 'Preciso de falar contigo',
+      message: pendingTopicLines({ profile, coachPlans, coachGoalProposals }).join(' ')
+        || (pendingTopics === 1 ? 'Tenho um assunto para ver contigo.' : `Tenho ${pendingTopics} assuntos para ver contigo.`),
       onTalk: openCoach,
       onDismiss: interventionPending ? () => setShowDismiss(true) : null,
     });
@@ -186,7 +199,7 @@ export default function Home() {
     carolAlerts.push({
       id: 'conflito-provas',
       severity: 'warning',
-      title: 'A Carol precisa de falar contigo',
+      title: 'Preciso de falar contigo',
       // Sem onDismiss, de propósito: enquanto houver duas principais no mesmo
       // bloco não há plano certo, e a decisão é do atleta — mas tem de ser
       // tomada. A Carol grava-a e não volta a perguntar.
@@ -273,6 +286,13 @@ export default function Home() {
       const { supabase } = await import('../../lib/supabase');
       const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null }).eq('id', profile.id);
       if (error) throw error;
+      // Dispensar um convite para objetivos é dizer "agora não": fica
+      // registado para a Carol não voltar a chamar na próxima pesagem
+      // (espera de 14 dias, ver goalsDeclinedMarker).
+      if (isGoalsIntervention(profile.coach_intervention_reason)) {
+        const { error: markErr } = await supabase.from('coach_goal_proposals').insert(goalsDeclinedMarker(profile.id));
+        if (markErr) console.warn('Falha a registar a recusa de objetivos:', markErr);
+      }
       setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
       logImpressionDismissed({ kind: 'alert', key: 'assuntos', title: 'A Carol precisa de falar contigo' });
       setShowDismiss(false);
@@ -329,8 +349,8 @@ export default function Home() {
 
       {showDismiss && (
         <Dialog
-          title="Dispensar o aviso da Carol?"
-          onClose={() => !dismissing && setShowDismiss(false)}
+          title="Dispensar este aviso?"
+          onClose={() => setShowDismiss(false)}
           actions={(
             <>
               <button type="button" disabled={dismissing} onClick={dismissIntervention} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-extrabold disabled:opacity-45" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
@@ -343,22 +363,34 @@ export default function Home() {
           )}
         >
           <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
-            O aviso deixa de aparecer na Home. Podes voltar a falar com a Carol no Chat sempre que quiseres.
+            O aviso deixa de aparecer no Início. Podes voltar a falar comigo no chat sempre que quiseres.
           </p>
         </Dialog>
       )}
 
       <CoachInsightButton insights={homeInsights} alerts={carolAlerts} onClick={openInsights} />
       {showInsights && <CoachInsightModal insights={homeInsights} alerts={carolAlerts} onClose={() => setShowInsights(false)} />}
-      {medalMoment.award && (
-        <MedalMoment
-          award={medalMoment.award}
-          medalhao={medalMoment.medalhao}
-          extraCount={medalMoment.extraCount}
-          onClose={medalMoment.close}
-          onOpenPalmares={() => setActiveTab('provas')}
+      {badgeVisivel && (badgeMoment.grande ? (
+        <BadgeMoment
+          /* A fila: cada grande é um momento novo, por isso remonta (a
+             coreografia só toca ao montar). */
+          key={badgeMoment.grande.award.id}
+          escala="grande"
+          badge={badgeMoment.grande.badge}
+          titulo={badgeMoment.grande.award.title || badgeMoment.grande.badge?.name}
+          linha={badgeMoment.grande.award.line}
+          restantes={badgeMoment.filaRestante}
+          onClose={badgeMoment.fecharGrande}
         />
-      )}
+      ) : (
+        <BadgeMoment
+          escala="medio"
+          badge={badgeMoment.medio.badge}
+          titulo={badgeMoment.medio.titulo}
+          linha={badgeMoment.medio.linha}
+          onClose={badgeMoment.fecharMedio}
+        />
+      ))}
     </div>
   );
 }

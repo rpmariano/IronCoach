@@ -7,9 +7,11 @@ import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
+import { computeBadges } from '../../utils/badges';
 import CoachText from '../shared/CoachText';
 import PlanProposalBottomSheet from './PlanProposalBottomSheet';
 import CoachAvatar from './CoachAvatar';
+import { messageMood } from '@formulas/carolMood.ts';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { planStartMoment } from '../../utils/planStart';
 import { todayISO } from '../../lib/utils';
@@ -28,14 +30,34 @@ const COACH_CHAT_DRAFT_KEY = 'ironcoach:carol-chat-rascunho';
 // cliente), não sabemos se o pedido chegou ou não a ser processado no
 // servidor — um incidente investigado em 2026-08-20 mostrou que SIM: o
 // coach-chat pode legitimamente demorar mais de 45s quando encadeia várias
-// rondas de function-calling (até 4 rondas × 2 tentativas × 40s cada), só a
-// resposta é que não chegava a tempo ao cliente. Mostrar logo um erro
+// rondas de function-calling (desde 2026-09-24, até 125 s por pedido — ver
+// CHAT_BUDGET_MS no coach-chat), só a resposta é que não chegava a tempo ao
+// cliente. Mostrar logo um erro
 // definitivo e destravar o campo levava a reformular a mesma pergunta
 // enquanto o pedido original ainda estava em curso, gerando duas respostas
 // (e duas propostas de plano) concorrentes para a mesma pergunta. Por isso
 // aguardamos de forma assíncrona em vez de desistir logo — ver
 // handleAsyncFallback abaixo.
 const POLL_INTERVAL_MS = 4000;
+
+// Quanto tempo a cara do cabeçalho guarda a emoção da última mensagem dela.
+const HEADER_MOOD_TTL_MS = 6 * 60 * 60 * 1000;
+
+/** A hora de uma mensagem: a gravada, ou a do id local (Date.now()). */
+function messageTime(msg) {
+  if (msg.created_at) {
+    const t = new Date(msg.created_at).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (msg.id && !isNaN(msg.id)) return parseInt(msg.id, 10);
+  return null;
+}
+
+/** A emoção de uma mensagem da Carol; o aviso de demora é ela a pensar. */
+function carolMoodOf(msg) {
+  if (typeof msg.id === 'string' && msg.id.startsWith('waiting-')) return 'thinking';
+  return messageMood(msg);
+}
 const POLL_MAX_MS = 180000; // cobre o pior caso de latência do coach-chat
 
 // Mesma extração que firstNameOf em coach-chat/index.ts — duplicada porque
@@ -97,7 +119,7 @@ export default function Coach() {
     respondToGoalProposal,
     coachIntent,
     setCoachIntent,
-    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes
+    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes, dailyCheckins
   } = useAppStore();
   const { showToast } = useToast();
   // Liga o halo do avatar (ponto 9, animação 7).
@@ -149,9 +171,10 @@ export default function Coach() {
       // live: entra bolha a bolha, precedida de "a escrever…" (ver revealMessage).
       if (data?.model_message?.content) {
         addCoachMessage({
-          id: (Date.now() + 1).toString(),
+          id: data.model_message.id || (Date.now() + 1).toString(),
           role: 'assistant',
           content: data.model_message.content,
+          mood: data.model_message.mood,
           live: true,
         });
       }
@@ -196,6 +219,47 @@ export default function Coach() {
           ? 'Ativo (ignorado temporariamente pelo atleta)'
           : 'Ativo (pendente)'
     }));
+  };
+
+  /* O contexto do badge que o atleta abriu ao carregar em "Falar com a
+     Carol" (Perfil/BadgeDetailSheet.jsx) — mesmo molde do activeInsights
+     acima: o cliente manda, o servidor injeta no prompt
+     (_shared/carolMemory.ts, buildBadgeQuestionContext).
+
+     Isto é a ÚNICA via por onde o progresso de um badge chega à Carol: o
+     bloco geral da vitrina nunca o leva, e é essa ausência que cumpre o R1 e
+     o R3 da doutrina 6 #6. A porta abre-se aqui porque quem perguntou foi o
+     atleta, e a própria regra prevê o caso — vale para ESTE badge e mais
+     nenhum, e é o servidor que junta o aviso que o diz.
+
+     Os números não vêm do `coachIntent` (que leva a identificação do badge,
+     não o estado dele): recalculam-se das mesmas regras que desenharam o
+     ecrã, para o que vai ao servidor ser o que o atleta estava a ver. Se
+     falhar, vai só a identificação — a conversa continua, com menos. */
+  const badgeContextPayload = (intent) => {
+    const key = intent?.badgeKey;
+    if (!key) return null;
+    let badge = null;
+    try {
+      const { badges } = computeBadges({
+        runs, raceEvents, profile: profile || {}, planItems: coachPlanItems, gymSessions, today: todayISO(),
+      });
+      badge = (badges || []).find((b) => b.key === key) || null;
+    } catch {
+      badge = null;
+    }
+    return {
+      key,
+      name: badge?.name || intent.badgeName || null,
+      familia: badge?.familia || intent.familia || null,
+      estado: badge?.state || intent.estado || null,
+      regra: badge?.rule || null,
+      progresso: badge?.linha || null,
+      niveis: Array.isArray(badge?.niveis)
+        ? badge.niveis.map((n) => ({ label: n.label, limiar: n.limiar, ganho: !!n.ganho }))
+        : null,
+      repeticoes: badge?.count || null,
+    };
   };
 
   const handleProactiveIntervention = (intentData) => sendCoachInitiatedPayload({
@@ -353,6 +417,17 @@ export default function Coach() {
       handleSend(text);
       return;
     }
+    /* Vindo do ecrã de um badge (Perfil > Vitrina, ou o painel "o que há
+       para ganhar"): o atleta pediu que ela lhe explicasse o badge. A
+       pergunta dele entra na conversa como se a tivesse escrito — é o molde
+       do `say` — mas leva atrás, fora da mensagem, o contexto deste badge.
+       Ver badgeContextPayload acima. */
+    if (coachIntent && coachIntent.kind === 'badge') {
+      const intent = coachIntent;
+      setCoachIntent(null);
+      handleSend(intent.pergunta, { badgeContext: badgeContextPayload(intent) });
+      return;
+    }
     // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
     // que a Carol escreveu — pede-lhe que altere, e a conversa abre já
     // centrada nessa nota para ele explicar o que está errado.
@@ -382,7 +457,7 @@ export default function Coach() {
   const proactiveAttempted = useRef(false);
   useEffect(() => {
     if (coachIntent || coachLoading || proactiveAttempted.current) return;
-    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems })
+    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems, dailyCheckins })
       .filter((c) => !wasProactiveSent(profile?.id, c));
     if (!list.length) return;
     // Uma notificação tocada com a app já a carregar os dados (ação P.9):
@@ -597,19 +672,41 @@ export default function Coach() {
   // Sonda coach_messages à procura da resposta do modelo criada DEPOIS do
   // início deste pedido — usado quando o cliente não conseguiu resposta
   // síncrona mas o pedido pode ainda estar em processamento no servidor.
+  //
+  // Pára cedo quando o servidor já acabou sem resposta: ele liberta o lock
+  // (profiles.coach_chat_busy_since) no fim de qualquer pedido, DEPOIS de
+  // gravar a resposta. Por isso lê-se o lock primeiro e as mensagens depois:
+  // lock livre e nenhuma resposta quer dizer que não vem nenhuma. Antes
+  // esperava-se sempre os 3 minutos — a 2026-09-24 o servidor desistiu aos
+  // 80 s e a atleta só soube quase 2 minutos depois. Um lock que não se lê
+  // (erro) ou que ficou preso (a função morta a meio) mantém a sondagem, e
+  // só se desiste com DUAS leituras seguidas de lock livre sem resposta: o
+  // pedido que chegou tarde ao servidor ainda não o tinha reservado na
+  // primeira. (Um pedido que falhou a reservar o lock corre sem ele do
+  // princípio ao fim — esse caso raro continua sem cobertura.)
   const waitForAsyncReply = async (afterIso) => {
     const deadline = Date.now() + POLL_MAX_MS;
+    let freeReads = 0;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      const { data: lock } = await supabase
+        .from('profiles')
+        .select('coach_chat_busy_since')
+        .eq('id', profile?.id)
+        .single();
+      // '*' e não a lista das colunas: a `mood` pode ainda não existir na
+      // base (migration por aplicar), e pedi-la pelo nome partia a sondagem.
       const { data: rows } = await supabase
         .from('coach_messages')
-        .select('id, content, created_at')
+        .select('*')
         .eq('user_id', profile?.id)
         .eq('role', 'model')
         .gt('created_at', afterIso)
         .order('created_at', { ascending: true })
         .limit(1);
       if (rows && rows.length > 0) return rows[0];
+      freeReads = lock && lock.coach_chat_busy_since === null ? freeReads + 1 : 0;
+      if (freeReads >= 2) return null;
     }
     return null;
   };
@@ -631,7 +728,7 @@ export default function Coach() {
     removeCoachMessage(waitingId);
 
     if (modelRow) {
-      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, live: true });
+      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true });
       // Chegados por sondagem, não temos os flags plan_proposed/goal_proposed/
       // goals_updated do payload síncrono (nem as sugestões rápidas, que só
       // vêm nesse payload e não ficam persistidas) — por isso verificamos
@@ -687,7 +784,11 @@ export default function Coach() {
     setCoachLoading(false);
   };
 
-  const handleSend = async (textToSend) => {
+  /* `extras`: campos que vão para o corpo do pedido a acompanhar esta
+     mensagem — hoje só o `badgeContext` (ver badgeContextPayload). Fica de
+     fora da mensagem de propósito: o que o atleta escreve tem de ser o que
+     ele diria, e o contexto é do servidor. */
+  const handleSend = async (textToSend, extras) => {
     const text = (typeof textToSend === 'string' ? textToSend : inputStr).trim();
     if (!text || coachLoading) return;
 
@@ -700,7 +801,8 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     // Add user message to state
-    addCoachMessage({ id: Date.now().toString(), role: 'user', content: text });
+    const localUserId = Date.now().toString();
+    addCoachMessage({ id: localUserId, role: 'user', content: text });
     setCoachLoading(true);
     setCoachSuggestions([]);
 
@@ -725,7 +827,8 @@ export default function Coach() {
       const payload = {
         message: text,
         userData: profile || {},
-        activeInsights: insightsContext
+        activeInsights: insightsContext,
+        ...(extras && typeof extras === 'object' ? extras : null),
       };
 
       const { data, error, isTimeout, isNetwork } = await invokeEdgeFunctionWithTimeout('coach-chat', {
@@ -747,10 +850,16 @@ export default function Coach() {
       // A função devolve a resposta em model_message.content — `data.reply`
       // nunca existiu no payload, o que fazia cair sempre no texto de
       // fallback e esconder a resposta real do coach.
+      // Pedido repetido (o servidor devolveu a resposta que já tinha dado):
+      // a pergunta não voltou a ser gravada, por isso a bolha repetida sai.
+      if (data?.duplicate) removeCoachMessage(localUserId);
+      // O id da BD, quando vem: se esta resposta já estiver no ecrã (chegou
+      // num recarregamento), o store não a mostra outra vez.
       addCoachMessage({
-        id: (Date.now() + 1).toString(),
+        id: data?.model_message?.id || (Date.now() + 1).toString(),
         role: 'assistant',
         content: data?.model_message?.content || COACH_EMPTY_REPLY_TEXT,
+        mood: data?.model_message?.mood,
         live: true,
       });
       if (Array.isArray(data?.suggestions)) {
@@ -779,6 +888,19 @@ export default function Coach() {
     }
   };
 
+  // A cara dela no chat (CAROL.md §4). Enquanto pensa ou escreve, "a pensar";
+  // depois, a emoção do que acabou de dizer — a que o modelo escolheu junto
+  // com o texto, ou a que o texto sugere nas mensagens antigas (messageMood).
+  // Ao fim de umas horas volta à neutra: quem abre o chat no dia seguinte não
+  // é recebido com a preocupação de ontem.
+  const lastCarolMsg = [...visibleMessages].reverse().find((m) => m.role !== 'user');
+  const lastCarolAt = lastCarolMsg ? messageTime(lastCarolMsg) : null;
+  const headerMood = coachLoading || typingActive
+    ? 'thinking'
+    : lastCarolMsg && (lastCarolAt == null || Date.now() - lastCarolAt < HEADER_MOOD_TTL_MS)
+      ? carolMoodOf(lastCarolMsg)
+      : 'neutral';
+
   const defaultSuggestions = [
     'Como está a minha nutrição hoje?',
     'Cria-me um plano de treino para uma meia maratona',
@@ -792,7 +914,7 @@ export default function Coach() {
         <div className="flex items-center gap-2.5">
           {/* Ponto 9, animação 7: o halo só respira quando há assunto por
               resolver — três ciclos e para. */}
-          <CoachAvatar size={36} radius={12} breathing={hasPendingTopic} />
+          <CoachAvatar size={48} radius={15} mood={headerMood} breathing={hasPendingTopic} draw />
           <div>
             <h2 className="text-base font-bold leading-none tracking-tight" style={{ color: 'var(--coach-soft)' }}>Carol</h2>
             <p className="text-[11px] leading-none mt-1" style={{ color: 'var(--text-4)' }}>a tua treinadora</p>
@@ -869,13 +991,13 @@ export default function Coach() {
           const shown = reveal[msg.id] === undefined ? chunks.length : Math.min(reveal[msg.id], chunks.length);
           if (shown === 0) return null;
 
-          return (
-            <div key={idx} className={`flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start'}`}>
+          const bubbles = (
+            <div className={`flex flex-col gap-1.5 ${isUser ? 'items-end' : 'items-start min-w-0 flex-1'}`}>
               {chunks.slice(0, shown).map((chunk, cIdx) => (
                 <div
                   key={cIdx}
                   data-testid={isWaiting ? 'coach-waiting-message' : undefined}
-                  className={`max-w-[85%] px-[15px] py-[13px] text-[13px] leading-normal ${isUser ? 'coach-bubble-user font-semibold' : 'coach-bubble-model'}`}
+                  className={`${isUser ? 'max-w-[85%]' : 'max-w-[92%]'} px-[15px] py-[13px] text-[13px] leading-normal ${isUser ? 'coach-bubble-user font-semibold' : 'coach-bubble-model'}`}
                 >
                   {isUser ? chunk : <CoachText>{chunk}</CoachText>}
                 </div>
@@ -887,12 +1009,28 @@ export default function Coach() {
               )}
             </div>
           );
+          if (isUser) return <React.Fragment key={idx}>{bubbles}</React.Fragment>;
+          // A cara dela ao lado do que diz, com a emoção dessa mensagem — é
+          // aí que o atleta está a olhar. Só a mais recente pisca. 36 px: a
+          // 24 as emoções confundiam-se (feedback de produto 2026-09-24).
+          return (
+            <div key={idx} className="flex items-start gap-2" data-testid="coach-message-carol">
+              <CoachAvatar
+                size={36}
+                mood={isWaiting ? 'thinking' : carolMoodOf(msg)}
+                alive={msg === lastCarolMsg}
+                style={{ marginTop: 2 }}
+              />
+              {bubbles}
+            </div>
+          );
         })}
 
         {/* "a escrever…" — CAROL.md §5: precede cada mensagem dela, 600 a
             900 ms; some com prefers-reduced-motion (as bolhas entram logo). */}
         {(coachLoading || typingActive) && (
-          <div className="flex justify-start" data-testid="coach-typing">
+          <div className="flex justify-start items-start gap-2" data-testid="coach-typing">
+            <CoachAvatar size={36} mood="thinking" style={{ marginTop: 2 }} />
             <div className="coach-bubble-model px-[15px] py-3 flex items-center gap-2">
               <span className="text-[11px] font-semibold" style={{ color: 'var(--coach-soft)' }}>a escrever…</span>
               <span className="flex items-center gap-1" aria-hidden="true">
@@ -933,7 +1071,7 @@ export default function Coach() {
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-          <div className="fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
+          <div className="hide-when-keyboard fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
             <button
               type="button"
               // disabled={coachLoading} é o único guard aqui — impede mesmo o
@@ -980,7 +1118,7 @@ export default function Coach() {
           <button
             onClick={() => handleSend()}
             disabled={!inputStr.trim() || coachLoading}
-            aria-label="Enviar pergunta ao Coach"
+            aria-label="Enviar pergunta à Carol"
             className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
               coachLoading || !inputStr.trim()
                 ? 'bg-[var(--surface-strong)] text-[var(--text-3)] cursor-not-allowed'
@@ -1012,6 +1150,7 @@ export default function Coach() {
           profile={profile}
           onRespondGoal={handleRespondGoal}
           onClose={handleCloseProposalsSheet}
+          raceEvents={raceEvents}
         />
       )}
       {planStart && <RecordConfirmation label="Plano aceite" first={planStart} onDone={() => setPlanStart(null)} />}

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAppNavigationHistory } from './appNavigationHistory';
 import { useAppStore } from '../store';
+import { useEscapeClose } from '../components/shared/Sheet';
 
 // Bug relatado 2026-08-30: o botão/gesto de "voltar" do telemóvel fechava
 // a app inteira em vez de voltar ao ecrã anterior — quer a navegar entre
@@ -29,6 +30,13 @@ describe('useAppNavigationHistory', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('a app que arranca já dentro de um registo (reposto) — o "voltar" fecha-o, não sai da app', () => {
+    const { closeTopScreen } = setup({ activeTab: 'corrida', isCreatingOrEditing: true });
+    expect(window.history.pushState).toHaveBeenCalledTimes(1);
+    act(() => { firePopState(); });
+    expect(closeTopScreen).toHaveBeenCalledTimes(1);
   });
 
   it('BUG CORRIGIDO — mudar de separador empilha uma entrada de histórico', () => {
@@ -131,6 +139,29 @@ describe('useAppNavigationHistory', () => {
     act(() => { firePopState(); });
 
     expect(closeOverlay).not.toHaveBeenCalled();
+    expect(setActiveTab).toHaveBeenCalledWith('home');
+  });
+
+  /* Bug #43 (2026-09-22): em "Entrar nas tabelas" (ecrã inteiro por cima do
+     Perfil), o "voltar" mudava de separador — o Perfil desmontava-se com o
+     ecrã e o atleta aterrava no Início. Agora fecha o que está por cima e
+     fica onde estava. */
+  it('com um ecrã/persiana aberto por cima, o "voltar" fecha-o e não muda de separador', () => {
+    const { rerender, setActiveTab } = setup();
+    rerender({ activeTab: 'perfil', isCreatingOrEditing: false, ready: true });
+    const onClose = vi.fn();
+    const overlay = renderHook(() => useEscapeClose(onClose));
+    window.history.pushState.mockClear();
+
+    act(() => { firePopState(); });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(setActiveTab).not.toHaveBeenCalled();
+    // Repõe a entrada que o "voltar" consumiu: o próximo volta ao separador.
+    expect(window.history.pushState).toHaveBeenCalledTimes(1);
+
+    overlay.unmount();
+    act(() => { firePopState(); });
     expect(setActiveTab).toHaveBeenCalledWith('home');
   });
 });

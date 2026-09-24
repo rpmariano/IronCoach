@@ -53,7 +53,7 @@ export function groupRaces({ raceEvents = [], runs = [], profile = {}, today } =
     .sort((a, b) => dayOf(b.date).localeCompare(dayOf(a.date)))
     .map((race) => ({ race, days: daysUntil(dayOf(race.date), today) }));
 
-  const data = { raceEvents: valid, runs, profile };
+  const data = { raceEvents: valid, runs, profile, today };
   const concluidas = valid
     .filter((race) => race.status === 'concluida')
     .sort((a, b) => dayOf(b.date).localeCompare(dayOf(a.date)))

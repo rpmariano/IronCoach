@@ -22,27 +22,33 @@ import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
-import { buildBodyGoalsContext, fetchChatMemoryBlocks } from "../_shared/carolMemory.ts";
+import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, fetchWeekAdherenceLine, lisbonTodayISO } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
-import { CAROL_TONE_RULES, upstreamErrorText } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL, upstreamErrorText } from "../_shared/carolTone.ts";
+import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
+import { MEAL_ONLY_CATEGORY, MEAL_ONLY_DAY_LABEL, MEAL_TYPE_LABEL, isMealOnlyItem, mergeSingleMeal } from "../_shared/formulas/mealSuggestions.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
 import { computeNutrientRangeTotals } from "../_shared/formulas/micronutrientTotals.ts";
 import { classifyCalorieCompliance } from "../_shared/formulas/nutritionCompliance.ts";
-import { computeRunAcwr } from "../_shared/formulas/runAcwr.ts";
+import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
+import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
+import { planLoadViolations, runLoadReading, type LoadPlanItem, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
 import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
-import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume } from "../_shared/formulas/raceViability.ts";
+import { LOW_CONFIDENCE } from "../_shared/formulas/racePrediction.ts";
+import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume, knownWeeklyVolume, levelReferenceWeeklyKm } from "../_shared/formulas/raceViability.ts";
 import { assessRaceLevelTriage } from "../_shared/formulas/raceLevelTriage.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
+import { MESSAGE_MOODS, normalizeMessageMood, type CarolMood } from "../_shared/formulas/carolMood.ts";
 import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
-import { buildRacePacingPlan, compareSplitsToPlan, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
+import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
@@ -56,12 +62,22 @@ const GEMINI_MODEL = "gemini-flash-latest";
 const MAX_HISTORY   = 30;   // mensagens mais recentes enviadas ao Gemini
 const MAX_MSG_LEN   = 2000; // caracteres máximos por mensagem
 const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de forçar resposta final
-// Tempo máximo por chamada ao Gemini antes de desistir e tentar mais uma vez.
-// A API do Gemini (sobretudo no tier gratuito) tem latência muito variável —
-// isto evita que uma chamada presa arraste a função até ao limite rígido da
-// plataforma (~150s), o que produz um erro genérico e ilegível no cliente.
-const GEMINI_TIMEOUT_MS = 40000;
-const GEMINI_RETRIES = 1; // repetições automáticas após timeout, antes de desistir de vez
+// Uma tentativa ao Gemini pode demorar até isto: uma proposta de plano com as
+// refeições são milhares de tokens de saída. Eram 40 s com uma repetição a
+// partir do zero — uma resposta que precisava de 50 s era cortada aos 40,
+// recomeçava e voltava a ser cortada (incidente 2026-09-24, 20:25: a atleta
+// ficou sem resposta). Agora é uma tentativa longa, e só se repete quando o
+// Gemini diz que está ocupado (503), dentro do prazo do pedido
+// (_shared/geminiFetch.ts, o mesmo dos registos).
+const GEMINI_ATTEMPT_MS = 100000;
+// Prazo do pedido inteiro, todas as rondas de ferramentas incluídas, com
+// folga para o limite rígido da plataforma (~150 s): passado ele, a função
+// era morta sem libertar o lock e sem resposta legível.
+const CHAT_BUDGET_MS = 125000;
+// A legenda da prova é curta: o limite de antes chega, e o pedido inteiro
+// cabe nos 45 s que a app espera por ela.
+const CAPTION_TIMEOUT_MS = 40000;
+const CAPTION_BUDGET_MS = 40000;
 
 const NUTRITION_TOOL = {
   name: "get_nutrition_history",
@@ -294,7 +310,7 @@ const PROPOSE_PLAN_TOOL = {
                 "\"DETALHE DOS TREINOS DE CORRIDA NO PLANO\" acima — não te limites à zona de " +
                 "FC, inclui pace-alvo derivado do histórico real e, para intervalos/fartlek, a " +
                 "estrutura do treino. Exemplos: \"8×400m a 4:15/km, 90s trote de recuperação " +
-                "entre séries\" (intervalos); \"14km em Z2, ~5:40-5:55/km, ritmo de conversa\" " +
+                "entre séries\" (intervalos); \"14km fácil, ~5:40-5:55/km, ritmo em que consegues falar\" " +
                 "(longo); \"25min sustentados a 5:00/km, foco em manter o ritmo constante\" " +
                 "(tempo); \"40min com blocos de 2min forte / 2min fácil alternados\" (fartlek); " +
                 "\"6km bem lentos, sem pressa nenhuma\" (recuperacao).",
@@ -326,10 +342,11 @@ const PROPOSE_PLAN_TOOL = {
   },
 };
 
-// Escreve objetivos do atleta diretamente no perfil — macronutrientes, água e
-// objetivos corporais. A autorização (profiles.coach_can_set_nutrition_goals)
-// é verificada no EXECUTOR (runUpdateGoals), não aqui — a ferramenta fica
-// sempre visível ao modelo, mas recusa escrever sem o interruptor ligado.
+// Propõe objetivos do atleta — macronutrientes, água e objetivos corporais.
+// Nunca escreve no perfil: cria uma proposta que o atleta aceita ou recusa.
+// Até 2026-09-22 havia também um interruptor no Perfil ("O Coach pode ajustar
+// as metas") que tinha de estar ligado — uma segunda autorização por cima da
+// do atleta na persiana, que não protegia nada. Saiu (bug #41).
 //
 // O modelo deve chamar esta ferramenta proativamente em vez de perguntar primeiro,
 // pois o utilizador tem agora uma persiana (bottom sheet) que lhe permite rever
@@ -408,12 +425,18 @@ const UPDATE_GOALS_TOOL = {
 const SAVE_MEALS_TOOL = {
   name: "save_meal_suggestions",
   description:
-    "Grava sugestões alimentares para dias concretos, visíveis no ecrã Home (Plano da semana). " +
-    "Usa esta ferramenta SEMPRE que o atleta pedir sugestões de refeições para um ou mais dias " +
-    "específicos (ex.: 'o que devo comer esta semana?', 'sugestão de refeição para amanhã', " +
-    "'plano alimentar para 7 dias'). NÃO uses para comentários genéricos de nutrição no texto — " +
-    "só quando o atleta quer recomendações estruturadas por dia para ver no plano. " +
-    "Podes usar esta ferramenta mesmo quando há um plano de treino ativo — ela não interfere.",
+    "Grava sugestões alimentares para dias concretos, visíveis no ecrã Início (Plano da semana). " +
+    "NÃO uses para comentários genéricos de nutrição no texto. As regras (impostas pelo servidor — " +
+    "o resultado diz-te o que ficou gravado; nunca digas mais do que isso):\n" +
+    "1) Dia DENTRO de um plano aceite, UMA refeição (ex.: 'o que janto hoje?'): preenche meal_type e " +
+    "grava-se logo, substituindo só essa refeição nesse dia. Diz-lhe claramente que gravaste só essa refeição.\n" +
+    "2) Dia DENTRO de um plano aceite, o dia INTEIRO de refeições: primeiro mostra-lhe as refeições no " +
+    "texto e pergunta se as gravas no plano. Só depois de ele dizer que sim chamas com athlete_confirmed=true.\n" +
+    "3) Dia SEM plano, uma refeição ou um só dia: NÃO chames esta ferramenta — responde só no texto. A app " +
+    "não cria planos por causa de refeições.\n" +
+    "4) SEM plano e MAIS DE UM DIA: antes de gravares, pergunta-lhe se quer juntar treinos a esses dias. Se " +
+    "quiser, usa propose_training_plan (com meal_suggestion por dia) em vez desta. Se não quiser, chama esta: " +
+    "fica um plano PROPOSTO só de refeições, que ele aceita ou recusa no Início.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -424,10 +447,18 @@ const SAVE_MEALS_TOOL = {
           type: "OBJECT",
           properties: {
             date: { type: "STRING", description: "Data no formato YYYY-MM-DD." },
+            meal_type: {
+              type: "STRING",
+              enum: MEAL_TYPE_KEYS,
+              description:
+                "Preenche SÓ quando o atleta pediu UMA refeição (ex.: só o jantar): é a refeição que " +
+                "substituis nesse dia. Nesse caso 'meal' é essa refeição apenas, e deixa meal_items e os " +
+                "meal_estimated_* vazios. Para um dia inteiro, deixa isto vazio.",
+            },
             meal: {
               type: "STRING",
               description:
-                "Sugestão alimentar para o dia inteiro — menciona refeições principais " +
+                "Sugestão alimentar para o dia inteiro (ou, com meal_type, só essa refeição) — no dia inteiro, menciona refeições principais " +
                 "(pequeno-almoço, almoço, jantar) e os lanches (lanche da manhã e lanche da tarde) " +
                 "sempre que fizerem parte do dia do atleta, por CATEGORIA de " +
                 "alimento e quantidade redonda (ex.: \"150g de peixe\", \"2 ovos\", \"150g de " +
@@ -442,6 +473,12 @@ const SAVE_MEALS_TOOL = {
         },
         minItems: 1,
         maxItems: 14,
+      },
+      athlete_confirmed: {
+        type: "BOOLEAN",
+        description:
+          "true SÓ depois de o atleta ter dito explicitamente que sim a gravar estas refeições nesta " +
+          "conversa. Obrigatório para gravar um dia inteiro dentro do plano (regra 2).",
       },
     },
     required: ["suggestions"],
@@ -504,7 +541,10 @@ const RESOLVE_INTERVENTION_TOOL = {
     "ou duração trocada, sessão duplicada), o atleta esclareceu o engano e não há nada no plano para ajustar → " +
     "'falso_positivo'.\n" +
     "NÃO aciones isto perante desculpas genéricas ('amanhã volto ao foco', 'desculpa, falhei'). Nesses casos, " +
-    "deves insistir que o plano já ficou comprometido e precisa de ser reestruturado para o resto da semana.",
+    "deves insistir que o plano já ficou comprometido e precisa de ser reestruturado para o resto da semana.\n" +
+    "Numa CONVERSA SOBRE OBJETIVOS (ver o prompt): aceitar ou recusar a proposta de objetivos fecha-a sozinho — " +
+    "não chames esta ferramenta nesse caso. Só 'atleta_ignorou', e só se ele disser explicitamente que não quer " +
+    "definir/rever objetivos agora.",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -598,8 +638,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "week_review";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "week_review"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -691,6 +731,17 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `O bloco de treino dele acaba hoje ou nos próximos dias e não há outro a seguir. Faz o ponto em duas ou três frases, com os ` +
     `números do bloco O QUE PRESCREVESTE vs O QUE ACONTECEU: o que correu bem e o que ficou por fazer, sem sermão. Depois pergunta ` +
     `se preparamos o próximo bloco e com que objetivo (manter, subir volume, uma prova). NÃO proponhas já o plano — espera que ele diga que sim.`,
+  // Balanço da semana (2026-09-24): à segunda-feira (ou terça, se ele não
+  // abriu a app na segunda), a semana de segunda a domingo que acabou. As
+  // datas e as contagens vêm no Contexto, calculadas pela app.
+  week_review:
+    `É o balanço da semana que acabou no domingo — as datas e as contagens estão no Contexto. Três bolhas curtas: ` +
+    `(1) o que ele fez face ao que estava previsto — usa a linha "Plano da semana" do Contexto, que já traz as contas e o veredicto ` +
+    `(não recontes a partir do bloco O QUE PRESCREVESTE, que cobre 14 dias); sem essa linha, não digas nada sobre o plano — pode não ter havido, ou a leitura falhou — e compara o volume com a semana anterior (no Contexto); ` +
+    `(2) o que ficou bem e o que ficou a faltar, com um número concreto em cada — o sono e a energia dos check-ins contam, se os houver; ` +
+    `(3) o foco da semana que começa, numa frase, a partir do plano em vigor e da próxima prova. ` +
+    `Só se o Contexto disser "Semana cumprida a 100%: sim": uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +
+    `Não inventes números que não estejam no Contexto ou nos blocos.`,
 };
 
 // ── Balanço da prova (race_after com a corrida registada) ─────────────────
@@ -718,6 +769,10 @@ export interface RaceOutcome {
   predicted_seconds: number | null;
   previous_best_seconds: number | null;
   previous_best_date: string | null;
+  /** A distância a que esse melhor foi feito — a categoria é larga ("meia"
+   *  vai de 11,1 a 22,5 km), por isso o ritmo dele NÃO se tira da distância
+   *  desta prova. Sem ela, a linha vai sem ritmo. */
+  previous_best_distance_km: number | null;
   position: number | null;
   effort_rpe: number | null;
   verdict: RaceVerdict;
@@ -734,6 +789,7 @@ export interface RaceOutcome {
 const ACHIEVEMENT_LABELS: Record<string, string> = {
   prova_concluida: "Prova concluída",
   objetivo_batido: "Objetivo batido",
+  acima_do_treino: "Acima do treino (foi além do que as corridas anteriores faziam esperar)",
   recorde_pessoal: "Recorde pessoal",
   primeira_trail: "Primeira de trail",
   sequencia: "Sequência de provas",
@@ -775,6 +831,7 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
     predicted_seconds: posNum(r.predicted_seconds) ? Math.round(posNum(r.predicted_seconds)!) : null,
     previous_best_seconds: posNum(r.previous_best_seconds) ? Math.round(posNum(r.previous_best_seconds)!) : null,
     previous_best_date: (() => { const d = shortStr(r.previous_best_date, 10); return d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null; })(),
+    previous_best_distance_km: posNum(r.previous_best_distance_km),
     position: posNum(r.position) ? Math.round(posNum(r.position)!) : null,
     effort_rpe: posNum(r.effort_rpe),
     verdict,
@@ -791,7 +848,7 @@ export function parseRaceOutcome(raw: unknown): RaceOutcome | null {
         .slice(0, 60)
       : [],
     achievements_new: Array.isArray(r.achievements_new)
-      ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 5)
+      ? (r.achievements_new as unknown[]).filter((k): k is string => typeof k === "string" && k in ACHIEVEMENT_LABELS).slice(0, 6)
       : [],
   };
 }
@@ -891,11 +948,18 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
     lines.push("Corrida da prova: ainda não registada.");
     return lines.join("\n");
   }
+  /* Cada tempo com o seu ritmo, não só o oficial — pedido do utilizador
+     (2026-09-20): "em todos os casos os objetivos devem sempre surgir com o
+     tempo total e o pace". Sem isto a Carol tinha o ritmo da realidade e
+     tinha de inventar o do objetivo para os comparar em s/km, que é como o
+     atleta pensa a corrida. O ritmo é sempre sobre a distância REAL. */
+  const hmsPace = (seconds: number, km: number | null = o.distance_km) =>
+    `${formatHms(seconds)}${km ? ` (${sharedFormatPaceMinKm(Math.round(seconds / km))}/km)` : ""}`;
   const pace = o.distance_km ? ` (${sharedFormatPaceMinKm(Math.round(o.official_seconds / o.distance_km))}/km)` : "";
   lines.push(`Tempo oficial: ${formatHms(o.official_seconds)}${pace}${o.position ? ` · posição ${o.position}` : ""}${o.effort_rpe ? ` · RPE ${o.effort_rpe}` : ""}.`);
   if (o.target_seconds) {
     const d = o.official_seconds - o.target_seconds;
-    lines.push(`Objetivo: ${formatHms(o.target_seconds)} → ` + (d <= 0
+    lines.push(`Objetivo: ${hmsPace(o.target_seconds)} → ` + (d <= 0
       ? `${absHms(d)} ABAIXO do objetivo (batido${d === 0 ? " em cima da hora" : ""}).`
       : `${absHms(d)} ACIMA do objetivo (${pctOf(d, o.target_seconds)}).`));
   } else {
@@ -904,13 +968,16 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
   if (o.predicted_seconds) {
     const d = o.official_seconds - o.predicted_seconds;
     const band = o.vs_training === "acima" ? "ACIMA do que o treino perspetivava" : o.vs_training === "dentro" ? "DENTRO do que o treino perspetivava" : "ABAIXO do que o treino perspetivava";
-    lines.push(`Previsão pelo treino (Riegel, só corridas anteriores à prova): ${formatHms(o.predicted_seconds)} → ${absHms(d)} ${d <= 0 ? "mais rápido" : "mais lento"} do que a previsão — ${band}.`);
+    lines.push(`Previsão pelo treino (Riegel, só corridas anteriores à prova): ${hmsPace(o.predicted_seconds)} → ${absHms(d)} ${d <= 0 ? "mais rápido" : "mais lento"} do que a previsão — ${band}.`);
   } else {
     lines.push("Previsão pelo treino: sem corridas anteriores que a sustentem.");
   }
   if (o.previous_best_seconds) {
     const d = o.official_seconds - o.previous_best_seconds;
-    lines.push(`Melhor anterior na ${cat || "distância"}: ${formatHms(o.previous_best_seconds)}${o.previous_best_date ? ` (${o.previous_best_date})` : ""} → ` + (o.is_personal_record
+    /* O ritmo deste sai da distância DELE. Dividi-lo pela distância desta
+       prova dava ritmos impossíveis (1:00:00 em 12 km lidos como 2:51/km
+       numa meia) — e a Carol repetia-os em voz alta. */
+    lines.push(`Melhor anterior na ${cat || "distância"}: ${hmsPace(o.previous_best_seconds, o.previous_best_distance_km)}${o.previous_best_distance_km && o.distance_km && Math.abs(o.previous_best_distance_km - o.distance_km) > 0.5 ? ` em ${Math.round(o.previous_best_distance_km * 10) / 10} km` : ""}${o.previous_best_date ? ` · ${o.previous_best_date}` : ""} → ` + (o.is_personal_record
       ? `RECORDE PESSOAL por ${absHms(d)}.`
       : `${absHms(d)} mais lento; sem recorde.`));
   } else {
@@ -1086,7 +1153,7 @@ ${facts.join("\n")}`
   );
 }
 
-async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null): Promise<string> {
+async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<string> {
   const res = await fetchGeminiWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
     {
@@ -1097,6 +1164,9 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
         generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
       }),
     },
+    CAPTION_TIMEOUT_MS,
+    1,
+    deadline,
   );
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
@@ -1152,7 +1222,9 @@ const corsHeaders = {
 // em vez de o modelo as misturar dentro do texto. `on_topic` deixa o
 // próprio modelo sinalizar perguntas fora do âmbito da app (ver
 // buildSystemInstruction) — o servidor devolve erro nesse caso em vez
-// de guardar/mostrar uma resposta.
+// de guardar/mostrar uma resposta. `mood` é a cara com que ela diz a
+// resposta (CAROL.md §4): escolhida na mesma decisão que escreve o texto,
+// para a cara nunca contradizer as palavras.
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -1163,17 +1235,31 @@ const RESPONSE_SCHEMA = {
       items: { type: "STRING" },
       maxItems: 3,
     },
+    mood: { type: "STRING", enum: [...MESSAGE_MOODS] },
   },
-  required: ["on_topic", "reply", "suggestions"],
+  required: ["on_topic", "reply", "suggestions", "mood"],
 };
 
-// Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
-// vale a pena repetir estes, porque costumam resolver-se à segunda. O 429
-// (limite de pedidos excedido) fica DE FORA de propósito: repetir logo a
-// seguir só volta a bater no mesmo limite por minuto — e até o acelera — por
-// isso passa já ao chamador com a mensagem própria de 429 (ver handler).
-// Erros "permanentes" (400, 401, 403...) também passam sempre à primeira.
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
+// Grava a resposta dela com a emoção. Sem a coluna `mood` (a migration
+// 20260924001000 ainda por aplicar) o PostgREST recusa o insert inteiro — e
+// perder a mensagem por causa da cara seria pior do que perder a cara. Por
+// isso, se o insert com a emoção falhar, seja porquê, grava-se sem ela; o
+// cliente deduz a emoção do texto.
+// deno-lint-ignore no-explicit-any
+async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null) {
+  if (mood) {
+    const withMood = await sb.from("coach_messages")
+      .insert({ user_id: userId, role: "model", content, mood })
+      .select()
+      .single();
+    if (!withMood.error) return withMood;
+    console.warn("Resposta gravada sem emoção (coach_messages.mood):", withMood.error.code, withMood.error.message);
+  }
+  return await sb.from("coach_messages")
+    .insert({ user_id: userId, role: "model", content })
+    .select()
+    .single();
+}
 
 // ── Filtro de âmbito pré-Gemini ───────────────────────────────────────────────
 // Evita chamar a API para perguntas claramente fora do âmbito desportivo/saúde.
@@ -1228,41 +1314,6 @@ const OFF_TOPIC_CAROL_REPLY =
   "Essa não é bem a minha área. Estou aqui para te apoiar no treino, nutrição, " +
   "composição corporal e corrida — tudo o que te ajuda a chegar em melhor forma às tuas provas. " +
   "Em que posso ajudar-te?";
-
-// fetch com limite de tempo por tentativa + repetições automáticas quando a
-// chamada fica presa (AbortError), falha ao nível da rede, ou o Gemini
-// devolve um estado transitório (ver GEMINI_RETRYABLE_STATUSES) — por
-// exemplo, confirmámos em produção uma resposta 503 (sobrecarga momentânea)
-// que a app mostrava como erro imediato, mesmo sem qualquer problema de rede
-// ou timeout envolvido. Ao fim das tentativas, devolve a resposta tal como
-// veio (o chamador decide a mensagem) ou lança um erro claro se nem chegou
-// a haver resposta.
-async function fetchGeminiWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs = GEMINI_TIMEOUT_MS,
-  retries = GEMINI_RETRIES,
-): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
-    }
-  }
-}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1616,13 +1667,17 @@ export async function runGetGymHistory(sb: any, userId: string, args: { start_da
 }
 
 // ── Corrida ──────────────────────────────────────────────────────────────
+// "competicao" chama-se "Prova" na interface (2026-09-21): toda a
+// competição passou a ser uma prova, mesmo sem estar na agenda (ver
+// RunRegistration.jsx, autoCreateRaceForCompetition). O valor interno
+// mantém-se "competicao" — só o rótulo que a Carol usa muda.
 const RUN_KIND_LABELS: Record<string, string> = {
-  simples: "Simples", treino: "Treino", competicao: "Competição",
+  simples: "Simples", treino: "Treino", competicao: "Prova",
 };
 // Os momentos em que ela pode notificar (P.5/P.6), como se leem na bio.
 const PUSH_TYPE_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
-  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos", week_review: "balanço da semana",
 };
 const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", tempo: "Tempo", recuperacao: "Recuperação",
@@ -2039,6 +2094,34 @@ export function buildSuggestionAdherencePanel(
   );
 }
 
+// ─── Pedido repetido ────────────────────────────────────────────────────
+// Ver o uso no handler (incidente 2026-09-23). 2 minutos cobrem a repetição
+// do browser e o "enviar outra vez" de quem não viu a resposta chegar; uma
+// pergunta igual feita de propósito tão depressa já tem a resposta à vista.
+export const DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+
+// As respostas que a app escreve sozinha ao decidir uma proposta ("Aceitei o
+// plano.") repetem-se legitimamente: aceitar duas propostas seguidas não é
+// um pedido repetido.
+const APP_WRITTEN_REPLY = /^(Aceitei|Recusei) (o plano|os novos objetivos)\.$/;
+
+// deno-lint-ignore no-explicit-any
+export async function findAnsweredDuplicate(sb: any, userId: string, message: string, now = Date.now()) {
+  if (APP_WRITTEN_REPLY.test(message.trim())) return null;
+  const { data: lastUser } = await sb.from("coach_messages")
+    .select("id, role, content, created_at")
+    .eq("user_id", userId).eq("role", "user")
+    .order("created_at", { ascending: false }).limit(1).maybeSingle();
+  if (!lastUser || String(lastUser.content).trim() !== message.trim()) return null;
+  if (now - Date.parse(lastUser.created_at) > DUPLICATE_WINDOW_MS) return null;
+  const { data: reply } = await sb.from("coach_messages")
+    .select("id, role, content, created_at")
+    .eq("user_id", userId).eq("role", "model")
+    .gt("created_at", lastUser.created_at)
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  return reply ? { user: lastUser, model: reply } : null;
+}
+
 // ─── Índice de Prontidão + métricas cruzadas (Fase E — omnisciência) ───────
 // O gap original que motivou toda a Fase E: antes desta migração, este
 // número (score 0-100 + pilares) só existia no ecrã (Home, RaceHubView) — a
@@ -2054,10 +2137,11 @@ function buildReadinessPanel(
   profile: any,
   todayISO: string,
   nextRace: any | null,
+  todayCheckin: any | null = null,
 ): string | null {
   const bodyForShared = (bodyAssessments || []).map((a: any) => ({ ...a, date: a.assessed_at }));
 
-  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace);
+  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin);
   const cross = computeCrossMetrics(runs || [], gymSessions || [], bodyForShared, todayISO, "todos");
 
   if (readiness.pillars.length === 0) return null;
@@ -2119,12 +2203,13 @@ function buildRacePhasesPanel(runs: any[], race: any | null, profile: any, today
   // computeEffectivePrepStart em racePlanning.ts).
   const { effectiveStartISO, effectiveWeeksAvailable } = computeEffectivePrepStart(race.date, totalWeeks, race.created_at ?? null);
 
-  const weeklyVol = computeRecentWeeklyVolume(runs || [], todayISO);
+  // Só o volume que a app conhece de facto (com histórico); sem ele, null.
+  const weeklyVol = knownWeeklyVolume(runs || [], todayISO);
   const viability = sharedAssessRaceViability({
     distanceKm,
     experienceLevel: level,
     weeksToRace: effectiveWeeksAvailable,
-    weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+    weeklyVolumeKm: weeklyVol,
     racePriority: race.race_priority ?? "a",
   });
 
@@ -2199,21 +2284,156 @@ export function computeACWR(
   todayISO: string,
 ): { acuteKm: number; chronicWeeklyKm: number; ratio: number; zone: string } | null {
   if (!runs || runs.length === 0) return null;
-  const { acuteKm, chronicWeeklyKm, ratio, status: zoneKey } = computeRunAcwr(runs, todayISO);
+  const { acuteKm, chronicWeeklyKm, ratio, status: zoneKey, hasEnoughData } = computeRunAcwr(runs, todayISO);
   // Com menos de 1 km/semana de média crónica o rácio é matematicamente inútil.
   if (chronicWeeklyKm < 1) return null;
-  const ZONE_LABELS: Record<string, string> = {
-    danger: "PERIGO(>1,50)",
-    caution: "risco_acrescido(1,31-1,50]",
-    undertrained: "possível_destreino(<0,80)",
-    safe: "seguro(0,80-1,30]",
-  };
+  // Sem corridas em 3 das 4 semanas também (runAcwr.ts): "se a app não tem
+  // dados, não apresenta dados" (pedido 2026-09-24). A Carol dizia "PERIGO"
+  // sobre o plano que ela própria tinha feito a quem só registou 3 corridas.
+  if (!hasEnoughData) return null;
   return {
     acuteKm:          Math.round(acuteKm          * 10) / 10,
     chronicWeeklyKm:  Math.round(chronicWeeklyKm  * 10) / 10,
     ratio:            Math.round((ratio ?? 0)      * 100) / 100,
     zone:             ZONE_LABELS[zoneKey] ?? "desconhecido",
   };
+}
+
+const ZONE_LABELS: Record<string, string> = {
+  danger: "PERIGO(>1,50)",
+  caution: "risco_acrescido(1,31-1,50]",
+  undertrained: "possível_destreino(<0,80)",
+  safe: "seguro(0,80-1,30]",
+};
+
+/** A linha de ACWR do contexto, lida com o histórico e o plano — a mesma
+ *  leitura do cartão do Início (runLoadAlert.ts). Sem histórico diz que o
+ *  rácio não existe, em vez de o calar: com a linha em falta o modelo
+ *  calculava-o à mão a partir das corridas. Com plano, diz se a carga é a
+ *  que ela prescreveu — era aí que a Carol se contradizia. Sem histórico, o
+ *  volume de referência é o do nível do perfil (pedido 2026-09-24: "ela já
+ *  conhece o meu nível de experiência") — não se pergunta ao atleta. */
+export function buildAcwrLine(
+  acwr: ReturnType<typeof computeACWR>,
+  load: RunLoadReading,
+  hasRuns: boolean,
+  todayISO: string,
+  reference: { level: string; start: number; range: [number, number]; target: number | null; category: string | null; raceName?: string | null } | null = null,
+): string | null {
+  const nivel = reference ? EXPERIENCE_LEVEL_LABELS[reference.level] || reference.level : "";
+  const referencia = reference
+    ? ` Volume de partida para planear: o do nível do perfil (${nivel}: ${reference.range[0]}-${reference.range[1]} km/semana) — ` +
+      `parte de ${reference.start} km/semana e sobe com o teto semanal da doutrina; não perguntes ao atleta quanto corre, o perfil já o diz.` +
+      (reference.target == null
+        ? ""
+        : reference.target > reference.start
+          ? ` Até à prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o mínimo da doutrina é ${reference.target} km/semana — ` +
+            `é onde chegar, não de onde partir.`
+          : ` Para a prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o nível já cobre o mínimo da doutrina ` +
+            `(${reference.target} km/semana): não é preciso subir volume por causa dela.`)
+    : "";
+  if (!acwr) {
+    if (load.enoughHistory) {
+      // Com histórico mas a média das 4 semanas quase a zero: não é falta de
+      // registos, é carga quase nula — sem rácio útil.
+      return `ACWR: carga das últimas 4 semanas quase nula — sem rácio útil.`;
+    }
+    if (!hasRuns) {
+      return reference
+        ? `ACWR: sem corridas registadas nas últimas 4 semanas. Pode ter estado parado (lesão, pausa) ou só não ter registado: ` +
+          `pergunta-lhe se tem corrido antes de planear — não quantos km, isso o nível diz.${referencia}`
+        : null;
+    }
+    return `ACWR: SEM HISTÓRICO SUFICIENTE — corridas registadas em ${load.historyWeeks} das últimas 4 semanas ` +
+      `(são precisas ${RUN_ACWR_MIN_HISTORY_WEEKS}). O rácio não existe: não o cites, não fales de carga aguda/crónica ` +
+      `e não tires dele conclusões de sobrecarga ou risco de lesão. O atleta pode correr mais do que regista — ou pode estar a ` +
+      `voltar de uma paragem: se a semana registada for bem mais pesada do que as anteriores, pergunta-lhe antes de subir o volume.` +
+      referencia;
+  }
+  let line = `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`;
+  const since = load.planFrom && load.planFrom > addDaysISO(todayISO, -6) ? ` desde ${load.planFrom}` : " nos últimos 7 dias";
+  if (load.prescribedKm !== null && load.prescribedKm > 0) {
+    line += load.followsPlan
+      ? ` — DENTRO do plano que prescreveste (${load.kmOnPlanDays} km feitos${since} para ${load.prescribedKm} km previstos): não é ` +
+        `excesso do atleta, não o trates como tal. Se ele se queixar de cansaço, a carga do plano é uma causa possível — ajustar o ` +
+        `teu plano é legítimo.`
+      : ` — ACIMA do plano (${load.kmOnPlanDays} km feitos${since} para ${load.prescribedKm} km previstos).`;
+  } else if (load.hasPlan) {
+    line += ` — o plano não tinha corridas nestes 7 dias.`;
+  }
+  return line;
+}
+
+/** A guarda de carga de runProposeTrainingPlan: as corridas registadas de
+ *  35 dias, os itens de corrida ainda por fazer dos planos de treino ativos
+ *  que ficam antes da proposta (o que ela substitui, a partir do início
+ *  dela, não conta), e as corridas da proposta. Devolve a mensagem de erro
+ *  para o modelo, ou null. */
+// deno-lint-ignore no-explicit-any
+export async function checkPlanLoad(sb: any, userId: string, rows: any[], trainingPlans: any[], periodStart: string, todayISO: string): Promise<string | null> {
+  try {
+    const { data: runs, error } = await sb.from("runs").select("date, distance_km, duration_seconds")
+      .eq("user_id", userId).gte("date", addDaysISO(todayISO, -34)).lte("date", todayISO);
+    if (error) { console.warn("checkPlanLoad: corridas não lidas:", error.message); return null; }
+    // deno-lint-ignore no-explicit-any
+    let before: any[] = [];
+    if (trainingPlans.length && periodStart > todayISO) {
+      const { data, error: itemsError } = await sb.from("coach_plan_items")
+        .select("planned_date, kind, training_type, status, target_distance_km, target_duration_min")
+        .eq("user_id", userId)
+        // deno-lint-ignore no-explicit-any
+        .in("plan_id", trainingPlans.map((p: any) => p.id))
+        .eq("status", "pendente")
+        .gte("planned_date", todayISO)
+        .lt("planned_date", periodStart);
+      if (itemsError) console.warn("checkPlanLoad: plano ativo não lido:", itemsError.message);
+      else before = data || [];
+    }
+    const violations = planLoadViolations({
+      runs: runs || [],
+      fixedItems: before,
+      proposedItems: rows.map((r) => ({ ...r, status: "pendente" })),
+      today: todayISO,
+    });
+    if (!violations.length) return null;
+    const fmt = (n: number) => String(n).replace(".", ",");
+    const janelas = violations.map((v) =>
+      `de ${v.from} a ${v.date}: ${fmt(v.doneKm)} km já corridos + ${fmt(v.fixedKm)} km do plano em curso + ${fmt(v.proposedKm)} km desta proposta ` +
+      `(ACWR ${fmt(v.ratio)}) — nesses dias a proposta pode ter no máximo ${fmt(v.maxProposedKm)} km`
+    );
+    return `Erro: com este plano cumprido, a carga de corrida chega a PERIGO (ACWR acima de 1,50) — ${janelas.join("; ")}. ` +
+      `O plano NÃO foi gravado. Reduz os km da proposta nesses dias (menos km, ou uma corrida a menos) até caberem, e volta a propor. ` +
+      `Se o que não cabe é o plano em curso, a proposta pode começar mais cedo e substituir esses dias. Não digas ao atleta que o plano está na Home.`;
+  } catch (e) {
+    console.warn("checkPlanLoad falhou:", e);
+    return null;
+  }
+}
+
+/** O plano aceite de 13 dias para trás até depois de amanhã — para a linha
+ *  de ACWR saber o que foi prescrito (runLoadReading recorta as janelas).
+ *  Numa falha, sem plano: a linha fica só com o rácio. */
+// deno-lint-ignore no-explicit-any
+export async function fetchLoadPlanItems(sb: any, userId: string, todayISO: string): Promise<LoadPlanItem[]> {
+  try {
+    const from = addDaysISO(todayISO, -13);
+    const { data: plans, error } = await sb.from("coach_plans").select("id")
+      .eq("user_id", userId).eq("status", "aceite").gte("period_end", from);
+    if (error || !plans?.length) return [];
+    const { data: items, error: itemsError } = await sb.from("coach_plan_items")
+      .select("plan_id, planned_date, kind, status, target_distance_km, target_duration_min")
+      .eq("user_id", userId)
+      // deno-lint-ignore no-explicit-any
+      .in("plan_id", plans.map((p: any) => p.id))
+      .gte("planned_date", from)
+      .lte("planned_date", addDaysISO(todayISO, 2))
+      .neq("status", "cancelado");
+    if (itemsError) return [];
+    return items || [];
+  } catch (e) {
+    console.warn("fetchLoadPlanItems falhou:", e);
+    return [];
+  }
 }
 
 // Executa a function call get_running_history: corridas num intervalo.
@@ -2645,6 +2865,18 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     }
   }
 
+  // ── A carga do plano (pedido 2026-09-24) ─────────────────────────────────
+  // A doutrina manda respeitar o ACWR, mas era só uma instrução ao modelo: a
+  // Carol chegava a propor planos que a própria linha de ACWR do contexto
+  // dava como PERIGO. Com histórico suficiente, um plano que, cumprido,
+  // leve o ACWR acima de 1,50 não é gravado — o erro diz o dia e o teto de
+  // km. Sem histórico não há regra (planLoadViolations). Antes de qualquer
+  // escrita, como as outras guardas. Uma falha a ler deixa passar.
+  {
+    const loadError = await checkPlanLoad(sb, userId, rows, trainingPlans, period_start, todayPlansISO);
+    if (loadError) return loadError;
+  }
+
   // Nunca mais de UMA proposta de plano de treino pendente ao mesmo tempo —
   // esta substitui qualquer outra ainda por decidir, em vez de se
   // empilhar como uma segunda opção confusa para o atleta escolher entre
@@ -2727,8 +2959,8 @@ const GOAL_META: Record<string, { flag: string; label: string; unit: string }> =
   goal_lean_body_mass_kg: { flag: "goal_lean_mass_set_by_coach", label: "massa magra alvo",      unit: "kg" },
 };
 
-// Executa update_goals: escreve qualquer combinação dos campos acima no perfil,
-// SÓ se o atleta tiver ativado coach_can_set_nutrition_goals (toggle global).
+// Executa update_goals: cria uma proposta com qualquer combinação dos campos
+// acima, que o atleta aceita ou recusa.
 /** Grava na prova o que se acordou no chat. Devolve "Prova atualizada: …"
  *  em caso de sucesso (é o prefixo que o handler usa para avisar o cliente). */
 // deno-lint-ignore no-explicit-any
@@ -2828,16 +3060,11 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
 
   const { data: profile, error: profileErr } = await sb
     .from("profiles")
-    .select("coach_can_set_nutrition_goals, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg")
+    .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg")
     .eq("id", userId)
     .maybeSingle();
 
-  if (profileErr) return `Erro a verificar autorização: ${profileErr.message}`;
-  if (!profile?.coach_can_set_nutrition_goals) {
-    return "Erro: o atleta ainda não autorizou o Coach a escrever metas. " +
-      "Explica que pode ativar 'O Coach pode ajustar as metas' no Perfil > separador Metas, " +
-      "e não tentes de novo nesta resposta.";
-  }
+  if (profileErr) return `Erro a ler os objetivos atuais: ${profileErr.message}`;
 
   // Filtrar apenas campos efetivamente DIFERENTES dos objetivos atuais no perfil.
   // BUG CORRIGIDO: a maioria destas colunas é `numeric` no Postgres, que o
@@ -2894,7 +3121,7 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
 
   const parts = Object.keys(realChanges)
     .filter(f => !f.endsWith("_set_by_coach"))
-    .map(f => `${GOAL_META[f].label}: ${profile[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
+    .map(f => `${GOAL_META[f].label}: ${profile?.[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
 
   // "persiana"/"Modal Bottom Sheet" é o nome interno do componente — nunca
   // deve chegar à fala da Carol (jargão de implementação, sem significado
@@ -2909,26 +3136,27 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
 }
 
 // ── Sugestões alimentares ────────────────────────────────────────────────
-// Grava meal_suggestion em coach_plan_items existentes (plano ativo aceite)
-// ou cria um plano proposto de descanso para datas fora do plano ativo.
-// Não conflitua com a regra de proteção de microciclo — é independente de
-// propose_training_plan.
+// As regras vivem em _shared/formulas/mealSuggestions.ts (decididas a
+// 2026-09-23) e são IMPOSTAS aqui, não só pedidas ao modelo:
+//   · dia no plano aceite, UMA refeição (meal_type) → grava logo e substitui
+//     só essa refeição;
+//   · dia no plano aceite, dia inteiro → só com athlete_confirmed=true;
+//   · sem plano, uma refeição ou um dia → não grava (fica na conversa);
+//   · sem plano, mais de um dia → plano proposto só de refeições.
+// Valida tudo ANTES de escrever: uma recusa nunca deixa metade gravada.
 // deno-lint-ignore no-explicit-any
 export async function runSaveMealSuggestions(sb: any, userId: string, args: any): Promise<string> {
   const { suggestions } = args || {};
   if (!Array.isArray(suggestions) || suggestions.length === 0) {
     return "Erro: 'suggestions' tem de ser uma lista com pelo menos uma sugestão ({date, meal}).";
   }
+  const confirmed = args?.athlete_confirmed === true;
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
   // TODOS os planos ativos (aceites, ainda por terminar) — não apenas um.
-  // Desde que aceitar passou a viver no chat, vários planos podem coexistir
-  // (um de treino e um de refeições, propostos em alturas diferentes), e
-  // escolher só o mais recente por period_start punha sugestões no plano
-  // errado: um dia coberto pelo plano de treino era tratado como "fora"
-  // porque o plano de refeições era mais recente, e acabava num item
-  // paralelo — dois itens para o mesmo dia, um deles órfão de treino.
+  // Vários planos podem coexistir (um de treino e um de refeições), e
+  // escolher só o mais recente punha sugestões no plano errado.
   const { data: activePlans, error: planErr } = await sb
     .from("coach_plans")
     .select("id, period_start, period_end")
@@ -2940,109 +3168,138 @@ export async function runSaveMealSuggestions(sb: any, userId: string, args: any)
 
   const plans: { id: string; period_start: string; period_end: string }[] = activePlans || [];
 
-  // O plano que cobre este dia. Havendo mais que um, ganha o que JÁ tem um
-  // item para o dia (é onde o treino está, e é a esse que a sugestão se deve
-  // colar); caso nenhum tenha, fica o primeiro que cobre a data.
+  // O plano que cobre este dia e o item que lá está (o treino, tipicamente —
+  // é a ele que a sugestão se cola). Havendo mais que um plano, ganha o que
+  // JÁ tem um item para o dia.
   const planForDate = async (date: string) => {
     const covering = plans.filter((p) => date >= p.period_start && date <= p.period_end);
     if (covering.length === 0) return null;
     for (const p of covering) {
       const { data: hit } = await sb
         .from("coach_plan_items")
-        .select("id")
+        .select("id, meal_suggestion, meal_macros")
         .eq("plan_id", p.id)
         .eq("planned_date", date)
         .limit(1)
         .maybeSingle();
-      if (hit) return { plan: p, existingItemId: hit.id as string };
+      if (hit) return { plan: p, existing: hit };
     }
-    return { plan: covering[0], existingItemId: null };
+    return { plan: covering[0], existing: null };
   };
 
-  const saved: string[] = [];
-  const outside: { date: string; meal: string; mealMacros: Record<string, unknown> | null }[] = [];
-
+  // ── 1. Classificar (sem escrever nada) ─────────────────────────────────
+  type Entry = {
+    date: string; meal: string; mealType: string | null;
+    // deno-lint-ignore no-explicit-any
+    mealMacros: Record<string, unknown> | null; match: any;
+  };
+  const inside: Entry[] = [];
+  const outside: Entry[] = [];
   for (const s of suggestions) {
-    const { date, meal } = s || {};
+    const date = typeof s?.date === "string" ? s.date.trim() : "";
+    const meal = typeof s?.meal === "string" ? s.meal.trim() : "";
     if (!date || !meal) continue;
-    const mealMacros = buildMealMacros(s);
-    const match = await planForDate(date);
+    const mealType = typeof s?.meal_type === "string" && MEAL_TYPE_KEYS.includes(s.meal_type) ? s.meal_type : null;
+    const entry: Entry = { date, meal, mealType, mealMacros: mealType ? null : buildMealMacros(s), match: await planForDate(date) };
+    (entry.match ? inside : outside).push(entry);
+  }
+  if (inside.length === 0 && outside.length === 0) return "Nenhuma sugestão válida para gravar.";
 
-    if (match) {
-      // A coluna é planned_date (nunca existiu "day" em coach_plan_items —
-      // ver migração 20260810000000_coach_plans.sql).
-      if (match.existingItemId) {
-        // Já há um item nesse dia (tipicamente o treino) — a sugestão cola-se
-        // a ele, nunca cria um segundo item para o mesmo dia.
-        // meal_items é OPCIONAL em cada chamada (ao contrário de `meal`, que
-        // é sempre obrigatório) — uma chamada seguinte só para afinar o
-        // texto pode legitimamente não trazer meal_items, e mealMacros vem
-        // null. Só sobrescrever meal_macros quando esta chamada trouxe uma
-        // estimativa nova e válida; caso contrário preservar a que já lá
-        // estava, para não apagar um número bom por causa de uma edição
-        // que nem mexia nos macros.
-        const updatePayload: Record<string, unknown> = { meal_suggestion: meal };
-        if (mealMacros !== null) updatePayload.meal_macros = mealMacros;
-        const { error: upErr } = await sb
-          .from("coach_plan_items")
-          .update(updatePayload)
-          .eq("id", match.existingItemId);
-        if (upErr) return `Erro ao atualizar sugestão para ${date}: ${upErr.message}`;
-      } else {
-        // Dia coberto pelo plano mas sem nada marcado — item de descanso só
-        // para pendurar a sugestão.
-        const { error: insErr } = await sb.from("coach_plan_items").insert({
-          plan_id: match.plan.id,
-          user_id: userId,
-          planned_date: date,
-          kind: "descanso",
-          meal_suggestion: meal,
-          meal_macros: mealMacros,
-        });
-        if (insErr) return `Erro ao inserir sugestão para ${date}: ${insErr.message}`;
-      }
-      saved.push(date);
+  const fullDaysInside = inside.filter((e) => !e.mealType);
+  if (fullDaysInside.length > 0 && !confirmed) {
+    return "NÃO GRAVADO: um dia inteiro de refeições dentro do plano só se grava com o sim explícito do atleta. " +
+      `Dias em causa: ${fullDaysInside.map((e) => e.date).join(", ")}. Mostra-lhe as refeições, pergunta se as ` +
+      "gravas no plano e chama de novo com athlete_confirmed=true só depois de ele dizer que sim. Não digas que " +
+      "ficaram gravadas.";
+  }
+  const outsideDays = [...new Set(outside.map((e) => e.date))];
+  const outsideIgnored = outsideDays.length === 1;
+
+  // ── 2. Gravar ───────────────────────────────────────────────────────────
+  const saved: string[] = [];
+  for (const e of inside) {
+    const payload: Record<string, unknown> = {};
+    if (e.mealType) {
+      Object.assign(payload, mergeSingleMeal(e.match.existing, e.mealType, e.meal));
     } else {
-      outside.push({ date, meal, mealMacros });
+      payload.meal_suggestion = e.meal;
+      // Uma edição só do texto não apaga uma estimativa boa que já lá estava.
+      if (e.mealMacros !== null) payload.meal_macros = e.mealMacros;
     }
+    if (e.match.existing) {
+      const { error: upErr } = await sb.from("coach_plan_items").update(payload).eq("id", e.match.existing.id);
+      if (upErr) return `Erro ao atualizar sugestão para ${e.date}: ${upErr.message}`;
+    } else {
+      // Dia do plano sem nada marcado: o item leva a marca "só refeições" —
+      // aparece como "Sem treino planeado", nunca como um descanso que
+      // ninguém decidiu.
+      const { error: insErr } = await sb.from("coach_plan_items").insert({
+        plan_id: e.match.plan.id,
+        user_id: userId,
+        planned_date: e.date,
+        kind: "descanso",
+        categories: [MEAL_ONLY_CATEGORY],
+        meal_suggestion: payload.meal_suggestion ?? e.meal,
+        meal_macros: payload.meal_macros ?? null,
+      });
+      if (insErr) return `Erro ao inserir sugestão para ${e.date}: ${insErr.message}`;
+    }
+    saved.push(e.date);
   }
 
-  // Para datas fora do plano ativo, criar um plano proposto dedicado.
-  if (outside.length > 0) {
-    const dates = outside.map((o) => o.date).sort();
-    const periodStart = dates[0];
-    const periodEnd = dates[dates.length - 1];
-
+  let proposedDays: string[] = [];
+  if (outside.length > 0 && !outsideIgnored) {
+    // Mais de um dia sem plano: um plano PROPOSTO só de refeições, que o
+    // atleta aceita ou recusa. Um dia por item (o último pedido para o
+    // mesmo dia ganha).
+    const byDate = new Map<string, Entry>();
+    for (const e of outside) byDate.set(e.date, e);
+    proposedDays = [...byDate.keys()].sort();
     const { data: newPlan, error: createErr } = await sb
       .from("coach_plans")
       .insert({
         user_id: userId,
         status: "proposto",
-        period_start: periodStart,
-        period_end: periodEnd,
-        // coach_plans tem "summary", não "notes" — essa coluna só existe em
-        // coach_plan_items (migração 20260810000000_coach_plans.sql).
+        period_start: proposedDays[0],
+        period_end: proposedDays[proposedDays.length - 1],
         summary: "Sugestões alimentares do Coach",
       })
       .select("id")
       .single();
     if (createErr) return `Erro ao criar plano para sugestões: ${createErr.message}`;
 
-    const items = outside.map((o) => ({
-      plan_id: newPlan.id,
-      user_id: userId,
-      planned_date: o.date,
-      kind: "descanso",
-      meal_suggestion: o.meal,
-      meal_macros: o.mealMacros,
-    }));
+    const items = proposedDays.map((date) => {
+      const e = byDate.get(date)!;
+      const merged = e.mealType ? mergeSingleMeal(null, e.mealType, e.meal) : { meal_suggestion: e.meal, meal_macros: e.mealMacros };
+      return {
+        plan_id: newPlan.id,
+        user_id: userId,
+        planned_date: date,
+        kind: "descanso",
+        categories: [MEAL_ONLY_CATEGORY],
+        meal_suggestion: merged.meal_suggestion,
+        meal_macros: merged.meal_macros,
+      };
+    });
     const { error: itemsErr } = await sb.from("coach_plan_items").insert(items);
     if (itemsErr) return `Erro ao inserir itens de sugestão: ${itemsErr.message}`;
-    outside.forEach((o) => saved.push(o.date));
   }
 
-  if (saved.length === 0) return "Nenhuma sugestão válida para gravar.";
-  return `Sugestões alimentares gravadas para: ${saved.sort().join(", ")}. Estão visíveis no ecrã Home.`;
+  const parts: string[] = [];
+  if (saved.length) {
+    const singles = inside.filter((e) => e.mealType).map((e) => `${MEAL_TYPE_LABEL[e.mealType!] || e.mealType} de ${e.date}`);
+    parts.push(`Gravado no plano para: ${[...new Set(saved)].sort().join(", ")}.` +
+      (singles.length ? ` Só a refeição pedida (${singles.join(", ")}) — as outras refeições desses dias ficaram como estavam. Diz-lhe isso.` : ""));
+  }
+  if (proposedDays.length) {
+    parts.push(`Criado um plano PROPOSTO só de refeições para ${proposedDays.join(", ")}: o atleta aceita ou recusa no Início. ` +
+      "Não digas que ficou gravado no plano dele.");
+  }
+  if (outsideIgnored) {
+    parts.push(`NÃO GRAVADO para ${outsideDays[0]}: sem plano, uma refeição ou um dia fica só na conversa — a app não cria ` +
+      "planos por causa de refeições. Dá-lhe a sugestão no texto e não digas que a gravaste.");
+  }
+  return parts.join(" ");
 }
 
 const NOTE_CATEGORIES = new Set([
@@ -3095,11 +3352,60 @@ export async function runSaveCoachNote(sb: any, userId: string, args: any): Prom
     `mesmo daqui a semanas. Diz ao atleta numa frase curta o que ficou registado.`;
 }
 
+/** A mensagem do "utilizador" que arranca uma intervenção (o atleta tocou em
+ *  "Falar com a Carol"). A de desvio ao plano confronta; a de objetivos
+ *  convida — tem de bater certo com o system prompt, senão a mensagem mais
+ *  recente ganha e a conversa de objetivos abria em confronto (revisão
+ *  pré-deploy do bug #41). A etiqueta nunca segue no texto. */
+export function buildInterventionStartTurn(details: string | null, reason: string | null): string {
+  const clean = (t: string) => t.replace(GOALS_INTERVENTION_TAG, "").trim();
+  if (isGoalsIntervention(reason)) {
+    return `O atleta abriu o chat ao tocar em "Falar com a Carol" depois de registar uma avaliação corporal. ` +
+      `INICIA tu a conversa, com calma e sem cobranças: diz-lhe o que viste na avaliação e convida-o a definir ` +
+      `(ou rever) os objetivos contigo. Pergunta-lhe onde quer chegar.`;
+  }
+  return `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.` +
+    (details ? ` Detalhes da análise/motivo: "${clean(details)}".` : "") +
+    ` INICIA tu a conversa diretamente de forma proativa, confrontando o atleta com os dados, a carga acumulada ou o ` +
+    `desvio do plano, e pergunta-lhe como se está a sentir e se quer que adaptemos o plano.`;
+}
+
+/** A conversa sobre objetivos (bug #41, 2026-09-22) — a intervenção que a
+ *  análise corporal levanta. Não é a de desvios ao plano: ali a Carol
+ *  confronta; aqui convida e convence, e quem fecha é a decisão do atleta
+ *  na proposta de objetivos (a app resolve a intervenção ao aceitar ou
+ *  recusar — store/index.js, respondToGoalProposal). */
+export function buildGoalsInterventionInstruction(isStart: boolean, reason: string | null): string {
+  const motivo = (reason || "").replace(GOALS_INTERVENTION_TAG, "").trim();
+  return `\n\n=== CONVERSA SOBRE OBJETIVOS ===\n` +
+    `Chamaste o atleta para falar dos objetivos dele, depois de ele registar uma avaliação corporal. Não é uma ` +
+    `chamada de atenção: ele não fez nada de errado. OBJETIVO: convencê-lo a definir (ou rever) objetivos ` +
+    `contigo, para o corpo e para a nutrição. Mostra-lhe o que ganha com isso, em palavras simples: o plano e as ` +
+    `refeições passam a apontar para esses objetivos, e tu passas a conseguir dizer-lhe se está no bom caminho.\n` +
+    (isStart
+      ? `O atleta acabou de abrir a conversa a partir do teu aviso. INICIA tu, com calma e sem cobranças: diz o que ` +
+        `viste na avaliação e porque vale a pena falar dos objetivos agora. Pergunta onde ele quer chegar antes de ` +
+        `propores valores.\n`
+      : "") +
+    (motivo ? `O que te levou a chamá-lo: "${motivo}"\n` : "") +
+    `COMO AVANÇAR: quando souberes onde ele quer chegar, propõe os valores com update_goals — ele aceita ou ` +
+    `recusa na app. Se ele disser que não quer agora, respeita-o e não insistas mais do que uma vez.\n` +
+    `REGRA PARA FECHAR: aceitar ou recusar a proposta de objetivos fecha esta conversa sozinho — NÃO chames ` +
+    `resolve_intervention nesse caso. Chama resolve_intervention com 'atleta_ignorou' SÓ se ele disser ` +
+    `explicitamente que não quer definir nem rever objetivos agora. Nunca uses 'plano_ajustado' nem ` +
+    `'falso_positivo' aqui.\n`;
+}
+
 export async function runResolveIntervention(sb: any, userId: string, args: any): Promise<string> {
   const actionTaken = args?.action_taken;
   if (actionTaken !== "plano_ajustado" && actionTaken !== "atleta_ignorou" && actionTaken !== "falso_positivo") {
     return "Erro: action_taken tem de ser 'plano_ajustado', 'atleta_ignorou' ou 'falso_positivo'. A intervenção não foi resolvida.";
   }
+
+  // Numa conversa sobre objetivos, "não quero agora" fica registado para a
+  // espera de 14 dias do analyze-body (ver goalsDeclinedMarker).
+  const { data: current } = await sb.from("profiles").select("coach_intervention_reason").eq("id", userId).maybeSingle();
+  const eraDeObjetivos = isGoalsIntervention(current?.coach_intervention_reason);
 
   const { error } = await sb
     .from("profiles")
@@ -3111,6 +3417,11 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
 
   if (error) {
     return `Erro ao resolver a intervenção: ${error.message}`;
+  }
+
+  if (eraDeObjetivos && actionTaken === "atleta_ignorou") {
+    const { error: markErr } = await sb.from("coach_goal_proposals").insert(goalsDeclinedMarker(userId));
+    if (markErr) console.warn("resolve_intervention: falha a registar a recusa de objetivos:", markErr);
   }
 
   return `Intervenção marcada como resolvida com motivo: ${actionTaken}. O botão flutuante de alerta na homepage vai desaparecer.`;
@@ -3316,8 +3627,8 @@ const MEAL_DOCTRINE =
   `funcionar — ajusta a abordagem se não estiverem, não repitas o que não ` +
   `pegou.
 ` +
-  `- SEMPRE que gravares uma sugestão alimentar (propose_training_plan com ` +
-  `meal_suggestion, ou save_meal_suggestions), preenche TAMBÉM meal_items ` +
+  `- SEMPRE que gravares uma sugestão alimentar de um DIA (propose_training_plan com ` +
+  `meal_suggestion, ou save_meal_suggestions sem meal_type), preenche TAMBÉM meal_items ` +
   `(uma entrada por refeição) e os quatro meal_estimated_kcal/protein_g/` +
   `carbs_g/fat_g. Sem eles o cartão do atleta mostra o objetivo genérico do ` +
   `perfil em vez dos números da refeição que TU sugeriste, e a sugestão ` +
@@ -3445,6 +3756,26 @@ export function buildRaceEventsContext(
     // semanas com registo, não força cálculo nenhum: propor "sub_iniciante"
     // com dados quase nulos daria um alarme falso, pior que ficar calado.
     let triageSuffix = "";
+    /* Bloco 8b — O tempo que o TREINO aponta para esta prova, e como ele se
+       compara com o objetivo que o atleta pediu.
+
+       A previsão já era calculada aqui, para aferir o nível, e depois
+       deitada fora: a Carol via o objetivo e não via o que o treino dela
+       própria estava a produzir, e só o comentava DEPOIS da prova, quando
+       já não dava para corrigir nada. Pedido do utilizador (2026-09-20):
+       "dar mais relevância aos tempos que o atleta tem como objetivo e qual
+       o tempo esperado com os treinos que tem feito, tanto durante a
+       preparação como quando se conclui a prova (...) sempre com o tempo
+       total e o pace".
+
+       Sai do mesmo getRacePrediction que o hub usa, mas NÃO é forçosamente o
+       mesmo número: aqui as corridas vêm de uma janela de 30 dias (ver o
+       comentário de `flattenedRuns` acima) e o hub lê o histórico todo. Num
+       atleta com um recorde antigo fora da janela, os dois divergem — e a
+       partir desta entrega o atleta vê ambos, um dito por ela e outro
+       impresso no ecrã. Por isso o próprio bloco diz sobre que período foi
+       calculado, em vez de se apresentar como a verdade única. */
+    let forecastSuffix = "";
     if (e.distance_km) {
       const raceForPrediction = {
         distance_km: e.distance_km,
@@ -3454,6 +3785,35 @@ export function buildRaceEventsContext(
       };
       const prediction = sharedGetRacePrediction(raceForPrediction, { experience_level: profileLevel }, flattenedRuns);
       if (prediction.predictedSeconds > 0) {
+        const predSeconds = Math.round(prediction.predictedSeconds);
+        // O ritmo é sempre sobre a distância REAL da prova, mesmo no trail,
+        // onde a previsão corre sobre a distância equivalente em plano.
+        const predPace = formatPaceMinKm(Math.round(predSeconds / e.distance_km));
+        const targetSeconds = Number(e.target_time_seconds) > 0 ? Math.round(Number(e.target_time_seconds)) : 0;
+        const parts = [`pelas corridas dos últimos 30 dias, o treino aponta para ${formatHms(predSeconds)} (${predPace}/km)`];
+        if (targetSeconds > 0) {
+          /* Exatamente a comparação do plano do dia da prova
+             (buildRacePacingPlan) e a do hub (raceTimes.js, stanceOf): o
+             denominador é a PREVISÃO, não o objetivo. Com o denominador
+             trocado havia uma banda estreita em que o ecrã dizia "alinhado"
+             e a Carol dizia "ambicioso" — no ponto exato em que esta
+             entrega existe para os pôr de acordo (revisão pré-deploy). */
+          const delta = predSeconds - targetSeconds;
+          const leitura = targetSeconds < predSeconds * (1 - AMBITIOUS_RATIO)
+            ? `o objetivo está ${formatHms(Math.abs(delta))} ABAIXO do que o treino aponta — é ambicioso, diz-lho e ajusta o plano ou o objetivo`
+            : (targetSeconds > predSeconds * (1 + AMBITIOUS_RATIO)
+              ? `o objetivo está ${formatHms(Math.abs(delta))} ACIMA do que o treino aponta — há margem, propõe-lhe puxar o objetivo`
+              : "o objetivo está alinhado com o que o treino aponta");
+          parts.push(leitura);
+        } else {
+          parts.push("o atleta ainda não fixou tempo-alvo — propõe-lhe um a partir deste número");
+        }
+        // Referência curta para uma prova longa: o número é extrapolação.
+        if (prediction.confidence != null && prediction.confidence < LOW_CONFIDENCE) {
+          parts.push("previsão de baixa confiança (a corrida de referência é bem mais curta do que a prova) — apresenta-a como estimativa e pede-lhe um treino longo");
+        }
+        forecastSuffix = `\n  PREVISÃO DE TEMPO: ${parts.join("; ")}`;
+
         const raceElevationM = e.race_type === "trail" && e.elevation_gain_m > 0 ? e.elevation_gain_m : 0;
         const triage = assessRaceLevelTriage({
           runs: flattenedRuns,
@@ -3474,7 +3834,7 @@ export function buildRaceEventsContext(
       }
     }
 
-    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${triageSuffix}`;
+    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${forecastSuffix}${triageSuffix}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
 }
@@ -3489,6 +3849,7 @@ function describeItem(i: any): string {
     return [i.training_type || "corrida", i.target_distance_km ? `${i.target_distance_km} km` : null]
       .filter(Boolean).join(" ");
   }
+  if (isMealOnlyItem(i)) return `${MEAL_ONLY_DAY_LABEL.toLowerCase()} (só refeições sugeridas)`;
   if (i.kind === "descanso") return "descanso";
   return ["ginásio", i.categories?.length ? i.categories.join("/") : null,
     i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
@@ -3865,7 +4226,6 @@ export function buildSystemInstruction(
     resting_hr_bpm: number | null;
     dietary_restrictions: string[] | null;
     dietary_notes: string | null;
-    coach_can_set_nutrition_goals: boolean | null;
     /* O que ela pode prometer fora da app (5.2): sem isto dizia "aviso-te
        amanhã" a quem tem as notificações desligadas. */
     carol_push_enabled?: boolean | null;
@@ -3982,11 +4342,10 @@ export function buildSystemInstruction(
     // variáveis) — ver a nota sobre prefixo estável em buildSystemInstruction.
     `- Honesta e direta quando há algo a corrigir ou recusar; encorajas com factos, não com adjetivos.\n` +
     `- Ritmo: uma ideia por parágrafo, no máximo 2 frases por parágrafo na conversa corrente. Separas ideias com uma linha em branco — a app mostra cada parágrafo como uma bolha, por isso uma resposta corrente tem 1 a 3 parágrafos; mais do que isso só em planos ou explicações técnicas pedidas.\n` +
-    `- Adapta a profundidade técnica ao nível de experiência descrito no perfil:\n` +
-    `  - Iniciante: 1-2 recomendações simples, sem jargão, foca em sensações e hábitos.\n` +
-    `  - Básico: 2-3 recomendações, zonas de treino, macros básicas.\n` +
-    `  - Médio: justificações fisiológicas simples, RPE, g/kg de macros.\n` +
-    `  - Avançado: análise multi-métrica, terminologia completa (VDOT, HRV, ACWR, EA em kcal/kg FFM).\n` +
+    // Linguagem por nível (bug #40) — a mesma régua dos comentários nos
+    // registos, ver _shared/carolTone.ts. O "Básico" autorizava "zonas de
+    // treino, macros" sem os explicar.
+    CAROL_LANGUAGE_BY_LEVEL +
     `- Usa sempre **português de Portugal** por defeito (ginásio, quilómetro, hidratos, etc.).\n` +
     `- Nunca abras resposta com clichês como "Claro que sim!", "Ótima pergunta!" ou "Com certeza!".\n` +
     `- **Podes moralizar quando a situação genuinamente o exige**: um padrão alimentar perigoso, sinais de ` +
@@ -4076,13 +4435,13 @@ export function buildSystemInstruction(
     `- "Se cruzares com outros corredores às 8h da manhã com cara de sofrimento, faz aquele aceno solidário de quem partilha a mesma insanidade."\n` +
     `- "Hidratação a cada 20 minutos e ritmo constante. O fim de semana só começa verdadeiramente depois de carregar no stop do relógio."\n\n` +
     `RITMO CARDÍACO DESCONTROLADO (ZONA 2 FALHADA):\n` +
-    `- "Olhei para o teu ritmo cardíaco e tenho uma dúvida: estavas a fazer um treino regenerativo em Z2 ou a fugir de alguém?"\n` +
+    `- "Olhei para o teu ritmo cardíaco e tenho uma dúvida: estavas a fazer um treino regenerativo, daqueles em que dá para conversar, ou a fugir de alguém?"\n` +
     `- "Eu escrevi 'ritmo de conversa fácil', não 'ritmo de sprint para não perder o comboio'. Guarda essa energia competitiva para o dia da prova."\n` +
     `- "A tua Zona 2 hoje parecia mais uma declaração de guerra ao asfalto. Lembra-te: correr devagar para depois correr rápido não é um mito, é ciência."\n` +
     `- "Se conseguires recitar o alfabeto sem perder o fôlego, o ritmo está certo. Se só conseguires dizer palavrões, abranda imediatamente."\n` +
     `- "A tua frequência cardíaca subiu tanto que acho que o sensor do relógio pediu um minuto de pausa técnica."\n` +
     `- "Correr devagar fere o ego, eu sei, mas queimar fósforos no dia errado destrói o pico de forma. Controla o entusiasmo."\n` +
-    `- "O plano dizia Z2, mas os teus batimentos foram fazer uma visita guiada à Z4. Na próxima sessão, deixa o orgulho em casa e foca no motor aeróbio."\n` +
+    `- "O plano pedia um ritmo em que dava para conversar, mas os teus batimentos foram fazer uma visita guiada ao esforço forte. Na próxima sessão, deixa o orgulho em casa."\n` +
     `- "Se viste alguém a ultrapassar-te e aceleraste para não ficar atrás... parabéns, caíste na armadilha clássica. Foco apenas no teu ecrã."\n` +
     `- "A Zona 2 constrói as mitocôndrias que te vão fazer voar mais tarde; não tentes saltar etapas a correr como se não houvesse amanhã."\n` +
     `- "Abranda o passo antes que seja o teu coração a pedir uma paragem obrigatória nas boxes."\n\n` +
@@ -4147,12 +4506,15 @@ export function buildSystemInstruction(
     `- Cita sempre os **valores exatos** dos dados do atleta — não arredondas nem parafraseias.\n` +
     `- Referencia explicitamente o histórico desta conversa quando relevante: "Há pouco disseste que...".\n` +
     `- Referencia conversas anteriores quando relevante para o tema: "Na semana passada mencionaste...".\n` +
-    `- Se detetares um padrão preocupante nos dados (volume decrescente ≥3 semanas, FC a subir, ACWR >1,5), aborda-o proativamente na próxima abertura.\n` +
+    `- Se detetares um padrão preocupante nos dados (volume decrescente ≥3 semanas, FC a subir, ACWR >1,5 fora do plano que prescreveste), aborda-o proativamente na próxima abertura.\n` +
     `- **FADIGA, CANSAÇO E CARGA DIÁRIA (REGRA CRÍTICA)**:\n` +
     `  Quando o atleta disser que se sente cansado, fatigado, dorido, ou questionar o rendimento/próximo treino:\n` +
     `  1. Analisa TODAS as atividades de hoje no contexto (soma de TODAS as corridas de hoje + sessões de ginásio). Se o atleta tiver feito múltiplas sessões (ex.: 3 corridas de 20 km ou corrida longa + ginásio intenso), CITA TODAS ELAS explicitamente pelo nome e volume/duração total acumulado!\n` +
-    `  2. Avalia SEMPRE a linha de ACWR fornecida no contexto. Se o ACWR estiver em PERIGO (≥1,50) ou risco acrescido (1,31-1,49), deves alertar com firmeza para o pico agudo de carga e perigo severo de lesão/sobrecarga.\n` +
-    `  3. Perante um dia de carga extrema ou ACWR em perigo, NÃO proponhas manter o treino normal planeado para o dia seguinte como se nada fosse; deves apontar que o volume de hoje comprometeu o planeamento e sugerir descanso ou ajuste do plano.\n\n` +
+    `  2. Avalia SEMPRE a linha de ACWR fornecida no contexto. Se o ACWR estiver em PERIGO (≥1,50) ou risco acrescido (1,31-1,49), deves alertar com firmeza para o pico agudo de carga e perigo severo de lesão/sobrecarga — ` +
+    `EXCETO se a linha disser que a carga está DENTRO do plano que prescreveste (então não é excesso dele — mas, se houver cansaço, a carga do teu ` +
+    `plano é uma causa possível, a par do sono, da alimentação e da intensidade, e ajustar o plano é legítimo) ` +
+    `ou que não há histórico suficiente (então não há ACWR e não o usas).\n` +
+    `  3. Perante um dia de carga extrema ou ACWR em perigo fora do plano, NÃO proponhas manter o treino normal planeado para o dia seguinte como se nada fosse; deves apontar que o volume de hoje comprometeu o planeamento e sugerir descanso ou ajuste do plano.\n\n` +
     // ── Plano Ativo ───────────────────────────────────────────────────────────
     `## Plano Ativo\n` +
     `Se houver um plano de treino aceite em curso, menciona-o na abertura quando relevante ` +
@@ -4210,7 +4572,7 @@ export function buildSystemInstruction(
     `- O atleta pede explicitamente para alterar, adaptar ou rever o plano\n` +
     `**Gatilhos proativos** (Carol deteta nos dados sem o atleta pedir — aborda na próxima abertura):\n` +
     `- ≥3 treinos planeados em atraso no plano ativo → abre a conversa com a sugestão de adaptação\n` +
-    `- ACWR >1,5 (overreaching) → sugere semana de descarga e redução de volume\n` +
+    `- ACWR >1,5 que não esteja DENTRO do plano (acima dele, ou sem plano — a linha de ACWR diz-to) → sugere semana de descarga e redução de volume\n` +
     `- Sem progressão de pace em ≥3 semanas + treinos de qualidade <15% do volume → sugere adicionar treino estruturado\n` +
     `- Prova A a ≤21 dias + plano atual sem modo taper → sugere entrada em taper\n` +
     `- Objetivos significativamente alterados (nova prova, novo peso-alvo) → sugere adaptar o plano ao novo contexto\n` +
@@ -4241,7 +4603,7 @@ export function buildSystemInstruction(
     `A lógica é diferente: não foi o atleta a pedir, por isso a intenção precisa de ser confirmada antes de propor.\n` +
     `- NUNCA apresentes valores ou um plano só em texto à espera que o atleta diga "sim" — sem a ferramenta ele não tem nada para aceitar e fica preso.\n` +
     `- NUNCA digas que algo "já está atualizado", "já guardei" ou "já tens disponível" como se estivesse concluído — está PROPOSTO, à espera da decisão dele.\n` +
-    `- Exceção: save_meal_suggestions grava DIRETO, sem ecrã de revisão. Só a usas quando o atleta pediu explicitamente sugestões alimentares avulsas para dias concretos.\n\n` +
+    `- Exceção: save_meal_suggestions grava DIRETO só UMA refeição (meal_type) num dia do plano aceite. Um dia inteiro dentro do plano só se grava com o sim explícito do atleta (athlete_confirmed=true); sem plano, mais de um dia fica PROPOSTO para ele aceitar; uma refeição ou um dia sem plano não se grava — fica no texto.\n\n` +
     `## ESQUEMA DE DECISÃO — PRECEDÊNCIA ABSOLUTA SOBRE TODAS AS OUTRAS REGRAS\n` +
     `Antes de responder, classifica SEMPRE a última mensagem do atleta num destes 5 casos. O caso determina que ferramentas podes chamar neste turno. Ferramentas fora da lista PERMITIDO são PROIBIDAS, mesmo que outra regra deste prompt pareça exigi-las.\n\n` +
     `CASO A — "Aceitei os novos objetivos."\n` +
@@ -4316,6 +4678,15 @@ export function buildSystemInstruction(
     `Propõe até 3 perguntas de seguimento curtas, escritas na primeira pessoa como se fosse o atleta a perguntar ` +
     `(ex.: "Queres um plano para esta semana?" → "Cria-me um plano para esta semana"). ` +
     `Não repitas no campo "reply" o convite para essas perguntas. Se não fizer sentido nenhuma, deixa o array vazio.\n\n` +
+    // ── Mood ──────────────────────────────────────────────────────────────────
+    `## Campo "mood"\n` +
+    `É a tua cara enquanto o atleta lê a resposta — o avatar mostra-a ao lado do texto. Escolhe a que corresponde ao tom do que escreveste, nunca uma que o contradiga:\n` +
+    `- "neutral": o normal. Informar, planear, responder a dúvidas. Na dúvida, é esta.\n` +
+    `- "happy": uma coisa boa e concreta — treino bem feito, melhoria, adesão ao plano.\n` +
+    `- "proud": o excecional — recorde pessoal, prova concluída, semana cumprida a 100%, um objetivo atingido. Rara: se aparece todas as semanas, deixa de valer.\n` +
+    `- "worried": dor, lesão, alarme G1–G5, sinais de RED-S ou sobretreino, objetivo inviável, discordância com um pedido arriscado, dias sem notícias.\n` +
+    `- "caring": o atleta está em baixo — dormiu mal, está cansado, frustrado, stressado, falhou um treino por motivos da vida. Quando lhe dizes "estou contigo" e baixas a carga.\n` +
+    `Um aviso ganha sempre: se a resposta tem um alerta de saúde, é "worried" mesmo que também elogies alguma coisa. Não uses "happy" nem "proud" por simpatia — o elogio automático tira-te credibilidade.\n\n` +
     `## Provas Próximas\n` +
     `Se houver "Próximas provas agendadas" no contexto, tem sempre em conta a proximidade e a "fase do plano" ao dar conselhos de treino ou nutrição, mesmo sem o atleta mencionar. Regras gerais:\n` +
     `- Fase "Não iniciado": o atleta está fora da janela oficial de preparação para a distância. Treinos de manutenção ou base.\n` +
@@ -4532,7 +4903,10 @@ export function buildSystemInstruction(
     `  Médio:     ≤10 % OU ≤+5-8 km/sem\n` +
     `  Avançado:  ≤10 % OU ≤+8-10 km/sem\n` +
     `  Nunca subir volume E intensidade (Z3-Z5) na mesma semana.\n` +
-    `ACWR (rácio aguda:crónica, Gabbett 2016): seguro 0,80-1,30 · risco_acrescido 1,31-1,49 · PERIGO ≥1,50 (risco exponencial de lesão/sobretreino). Se o contexto mostrar ACWR em zona de risco, reflete isso no plano antes de propor aumentos.\n` +
+    `ACWR (rácio aguda:crónica, Gabbett 2016): seguro 0,80-1,30 · risco_acrescido 1,31-1,49 · PERIGO ≥1,50 (risco exponencial de lesão/sobretreino). Se o contexto mostrar ACWR em zona de risco, reflete isso no plano antes de propor aumentos. ` +
+    `A app verifica: com histórico suficiente, um plano que, cumprido, leve o ACWR acima de 1,50 é recusado — a resposta diz o dia e o máximo de km. ` +
+    `Sem histórico suficiente não há ACWR e a app não verifica: parte do volume de referência do nível do perfil (vem na linha de ACWR) ` +
+    `e do teto semanal abaixo — não perguntes ao atleta quanto corre.\n` +
     `DESCARGA (semana de recuperação):\n` +
     `  Iniciante: de 2-3 em 2-3 sem · corte de 20-30 % do volume\n` +
     `  Básico:    de 3 em 3 sem     · corte de 20-25 %\n` +
@@ -4676,9 +5050,9 @@ export function buildSystemInstruction(
     `"14 dias"), não perguntes — respeita o que pediu e propõe diretamente.\n\n` +
     `SUGESTÕES ALIMENTARES E PLANO ALIMENTAR:\n` +
     `1. NUNCA criar um plano alimentar de apenas 1 dia quando o atleta pede um "novo plano alimentar", "plano de refeições" ou "sugestões de nutrição para o plano" (a menos que tenha pedido expressamente "para hoje" ou "para amanhã").\n` +
-    `2. Se existir um plano de treino ativo (ou plano alimentar em curso com period_start e period_end), o novo plano alimentar DEVE herdar exatamente a duração e o período desse plano ativo, gerando sugestões alimentares para TODOS os dias desse período através da ferramenta save_meal_suggestions.\n` +
-    `3. Se NÃO existir um plano ativo nem datas especificadas pelo atleta, o Coach NÃO PODE ADIVINHAR nem propor um plano de 1 dia. DEVE PERGUNTAR ao atleta qual a duração pretendida (ex.: 7 ou 14 dias) ANTES de chamar a ferramenta save_meal_suggestions.\n` +
-    `4. Se o pedido for apenas "uma ideia para hoje" ou uma dúvida alimentar pontual, responde em texto normal sem usar ferramentas — usa save_meal_suggestions apenas para planos alimentares ou sugestões estruturadas por dia.\n\n` +
+    `2. Se existir um plano de treino ativo (ou plano alimentar em curso com period_start e period_end), o novo plano alimentar DEVE herdar exatamente a duração e o período desse plano ativo, gerando sugestões alimentares para TODOS os dias desse período através da ferramenta save_meal_suggestions. São dias inteiros dentro do plano: mostra-lhos primeiro e só os gravas depois do sim dele (athlete_confirmed=true).\n` +
+    `3. Se NÃO existir um plano ativo nem datas especificadas pelo atleta, o Coach NÃO PODE ADIVINHAR nem propor um plano de 1 dia. DEVE PERGUNTAR ao atleta qual a duração pretendida (ex.: 7 ou 14 dias) — e se quer juntar treinos a esses dias — ANTES de chamar save_meal_suggestions (ou propose_training_plan, se quiser treinos).\n` +
+    `4. Uma dúvida alimentar pontual responde-se em texto, sem ferramentas. Um pedido de UMA refeição (ex.: "o que janto hoje?") para um dia DENTRO do plano aceite grava-se com save_meal_suggestions e meal_type — fica no plano, só essa refeição. Sem plano, uma refeição ou um dia fica só no texto.\n\n` +
     MEAL_DOCTRINE +
 
     // ── Doutrina Bloco 6 — Head Coach: arbitragem e comunicação ──────────────
@@ -4705,8 +5079,8 @@ export function buildSystemInstruction(
 
     `VOCABULÁRIO E QUANTIDADE DE INFORMAÇÃO POR NÍVEL (Bloco 6 #3 — Magill & Anderson 2017, Wulf 2013):\n` +
     `  Iniciante: 1-2 recomendações por resposta. Zero profundidade técnica. Usar APENAS sensação de esforço ("ritmo de conversa"). PROIBIDO: VDOT, VO2máx, rMSSD, HRV, RIR, ACWR, DEXA, GCT, watts.\n` +
-    `  Básico: 2-3 recomendações/semana. Nível baixo-moderado. Permitido: zonas Z1-Z3, pace min/km, séries e repetições, proteína/hidratos. Evitar fisiologia avançada.\n` +
-    `  Médio: 3-4 por microciclo. Justificações fisiológicas simples: limiar anaeróbico, 80/20, rácio de carga. Permitido: RPE Borg, RIR, tapering, g/kg de macros.\n` +
+    `  Básico: 2-3 recomendações/semana. Nível baixo-moderado. Permitido: pace min/km, séries e repetições, proteína/hidratos — sempre em palavras do dia a dia. Zonas (Z1-Z3) só descritas pela sensação ("um ritmo em que consegues falar"), nunca pela sigla. Evitar fisiologia avançada.\n` +
+    `  Médio: 3-4 por microciclo. Justificações fisiológicas simples: limiar anaeróbico, 80/20, rácio de carga. Permitido: RPE Borg, RIR, tapering, g/kg de macros — cada termo explicado numa frase curta na primeira vez que aparece.\n` +
     `  Avançado: 4-5+ por microciclo. Análise multi-métrica. Terminologia científica completa: VDOT, HRV/rMSSD, GCT balance, ACWR, EA em kcal/kg FFM.\n\n` +
 
     `TEMAS CONTRAINDICADOS POR NÍVEL (Bloco 6 #4):\n` +
@@ -4818,19 +5192,15 @@ export function buildSystemInstruction(
     sys += `\n\n${coachNotesContext.trim()}`;
   }
 
-  // Instruções de metas — o modelo só menciona update_goals quando autorizado,
-  // mas em ambos os casos deve propor primeiro em texto e pedir confirmação.
-  sys += biometrics.coach_can_set_nutrition_goals
-    ? `\n\nPROPOSTA DE OBJETIVOS E METAS (autorizado):\n` +
+  // Instruções de metas — update_goals está sempre disponível: cria uma
+  // proposta, e é o atleta que a aceita ou recusa na persiana.
+  sys +=
+    `\n\nPROPOSTA DE OBJETIVOS E METAS:\n` +
       `1. OBRIGATÓRIO (aplica-se só no CASO E do ESQUEMA DE DECISÃO — nos casos A-D esta regra NÃO se aplica e update_goals está PROIBIDO): Se na conversa estiveres a sugerir, discutir, ou recomendar novos valores de calorias, proteína, hidratos, gordura, água ou peso-alvo que sejam diferentes dos atuais, TENS DE CHAMAR IMEDIATAMENTE a ferramenta update_goals. Não apresentes apenas os valores em texto! Chama a ferramenta NA MESMA MENSAGEM em que falas deles. Exceção 1: se os valores calculados forem EFETIVAMENTE IGUAIS aos atuais do perfil, não chames a ferramenta nem sugiras alterar metas. Exceção 2 (tem PRECEDÊNCIA sobre esta regra — ver Regra 5(a)): se o atleta acabou de confirmar que aceitou uma proposta de objetivos nesta troca de mensagens, usa os valores JÁ ACEITES tal como estão nos dados do perfil que te foram dados — não os recalcules nem os ajustes de novo só porque a tua própria conta interna dá um número ligeiramente diferente; isso NÃO conta como "discutir novos valores" para efeitos desta regra.\n` +
       `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Home) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
       `4. SEQUÊNCIA DE DEPENDÊNCIA (não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos — nesse caso avança DIRETO para o plano, sem passar outra vez pelos objetivos): Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação de objetivos NOVOS, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
-      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas. NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui, porque essa ferramenta grava direto sem revisão do atleta; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). SE ESSE PLANO TIVER PROVA-OBJETIVO (race_id no contexto do plano): o period_end continua a ser o dia da prova e passas o MESMO race_id — um bloco até à prova pode ter 10 semanas, e encurtá-lo desvincularia o plano da prova (o servidor recusa). Nesse caso escreve os treinos dos próximos 7-14 dias e diz ao atleta que o resto do bloco se detalha à medida que chega. Só num plano SEM prova-objetivo é que period_end mais curto faz sentido: aí, se o período restante tiver mais de 14 dias, cobre só os primeiros 14 e diz-lhe que o resto fica para o próximo microciclo (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`
-    : `\n\nATUALIZAÇÃO DE METAS (não autorizado): NÃO uses a ferramenta update_goals — o ` +
-      `atleta ainda não ativou a permissão. Se ele pedir para ajustares metas, propõe os valores ` +
-      `em texto (como farias normalmente), e no fim diz: "Se quiseres que eu grave isto ` +
-      `diretamente no teu perfil, ativa 'O Coach pode ajustar as metas' no Perfil, separador Metas."`;
+      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas (um dia inteiro dentro do plano: mostra-lho primeiro e grava só com o sim dele — athlete_confirmed). NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui: ele espera um plano para aceitar, não refeições avulsas; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). SE ESSE PLANO TIVER PROVA-OBJETIVO (race_id no contexto do plano): o period_end continua a ser o dia da prova e passas o MESMO race_id — um bloco até à prova pode ter 10 semanas, e encurtá-lo desvincularia o plano da prova (o servidor recusa). Nesse caso escreve os treinos dos próximos 7-14 dias e diz ao atleta que o resto do bloco se detalha à medida que chega. Só num plano SEM prova-objetivo é que period_end mais curto faz sentido: aí, se o período restante tiver mais de 14 dias, cobre só os primeiros 14 e diz-lhe que o resto fica para o próximo microciclo (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`;
 
   /* ── A partir daqui é TUDO o que varia ────────────────────────────────
      Tudo o que está acima é idêntico entre atletas e entre mensagens: é o
@@ -4900,7 +5270,9 @@ export function buildSystemInstruction(
     sys += `\n\n${buildProactiveInstruction(proactiveTrigger, proactiveDetails, raceOutcome)}`;
   }
 
-  if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
+  if ((interventionStatus === 'needed' || interventionStatus === 'in_progress') && isGoalsIntervention(interventionReason)) {
+    sys += buildGoalsInterventionInstruction(isInterventionStart, interventionReason);
+  } else if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
     sys += `\n\n=== MODO DE INTERVENÇÃO PROATIVA ATIVO ===\n` +
            `Identificaste desvios significativos no cumprimento do plano (ex.: falhas repetidas na nutrição ou faltas/desvios grandes nos treinos) e decidiste intervir.\n` +
            `O botão flutuante vermelho está visível na app para o atleta.\n` +
@@ -4927,12 +5299,18 @@ export function buildSystemInstruction(
 async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
+  // O prazo do pedido inteiro (CHAT_BUDGET_MS), contado desde que chega.
+  const requestStartedAt = Date.now();
+  const chatDeadline = requestStartedAt + CHAT_BUDGET_MS;
 
   // Declarados fora do try para ficarem visíveis no finally, que liberta o
   // lock de coach_chat_busy_since (ver abaixo) em QUALQUER caminho de saída.
   // deno-lint-ignore no-explicit-any
   let sb: any = null;
   let lockedUserId: string | null = null;
+  // O valor escrito ao reservar: o finally só liberta o lock se ainda for o
+  // deste pedido — não o de outro que o tenha reocupado entretanto.
+  let lockIso: string | null = null;
 
   try {
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
@@ -4960,11 +5338,16 @@ async function handler(req: Request): Promise<Response> {
     // UPDATE condicional otimista: só avança quem conseguir "reservar" o
     // campo; um lock com mais de LOCK_STALE_MS é tratado como órfão (função
     // anterior que morreu a meio) e pode ser reocupado.
-    const LOCK_STALE_MS = 120_000;
+    // Acima do que um pedido pode durar (CHAT_BUDGET_MS e o que vem depois
+    // dele): com 120 s, um pedido que usasse o prazo quase todo via o seu
+    // lock ser tomado como órfão enquanto ainda corria (revisão pré-deploy
+    // de bdc93cf).
+    const LOCK_STALE_MS = CHAT_BUDGET_MS + 35_000;
     const staleBeforeIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
+    const myLockIso = new Date().toISOString();
     const { data: lockRows, error: lockErr } = await sb
       .from("profiles")
-      .update({ coach_chat_busy_since: new Date().toISOString() })
+      .update({ coach_chat_busy_since: myLockIso })
       .eq("id", userId)
       .or(`coach_chat_busy_since.is.null,coach_chat_busy_since.lt.${staleBeforeIso}`)
       .select("id");
@@ -4985,6 +5368,7 @@ async function handler(req: Request): Promise<Response> {
       }, 409);
     } else {
       lockedUserId = userId;
+      lockIso = myLockIso;
     }
 
     const body = await req.json();
@@ -5046,7 +5430,10 @@ async function handler(req: Request): Promise<Response> {
       const captionOutcome = parseRaceOutcome(body.race_outcome);
       if (!captionOutcome || !captionOutcome.official_seconds) return jsonResponse({ error: "Prova sem tempo para legendar" }, 400);
       const { data: captionProfile } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
-      const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null);
+      // Dentro dos 45 s que a app espera pela legenda (requestRaceCaption),
+      // agora que o "ocupado" se repete com esperas — com folga para o
+      // arranque a frio, que a app conta e este relógio não.
+      const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
       return jsonResponse({ caption });
     }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
@@ -5054,7 +5441,7 @@ async function handler(req: Request): Promise<Response> {
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
     const { data: profile } = await sb
       .from("profiles")
-      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_can_set_nutrition_goals, coach_intervention_status, coach_intervention_reason, " +
+      .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_intervention_status, coach_intervention_reason, " +
         "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, " +
         "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach, " +
         "cycle_tracking_consent_at, carol_push_enabled, carol_push_types, carol_push_start_hour, carol_push_end_hour, water_reminder_enabled")
@@ -5210,15 +5597,30 @@ async function handler(req: Request): Promise<Response> {
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
     // calculado para o modelo não ter de o derivar a partir das linhas brutas.
     const acwr = computeACWR(recentRuns || [], todayISO);
+    const [loadPlanItems, nextRaceForLoad] = await Promise.all([
+      fetchLoadPlanItems(sb, userId, todayISO),
+      // A prova-objetivo, para o volume a atingir: a principal mais próxima,
+      // senão a próxima (uma de treino de 5 km antes da principal não é o alvo).
+      sb.from("race_events").select("name, distance_km, race_priority").eq("user_id", userId).gte("date", todayISO)
+        .neq("status", "concluida").order("date", { ascending: true }).limit(5)
+        // deno-lint-ignore no-explicit-any
+        .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
+    ]);
+    const loadReading = runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO });
+    const levelReference = !loadReading.enoughHistory
+      ? (() => {
+        const lvl = (profile?.experience_level as string | null) ?? null;
+        const ref = levelReferenceWeeklyKm(lvl, nextRaceForLoad?.distance_km != null ? Number(nextRaceForLoad.distance_km) : null);
+        return ref && lvl ? { level: lvl, ...ref, raceName: nextRaceForLoad?.name ?? null } : null;
+      })()
+      : null;
     // Até à Fase C isto dizia "ACWR atual (baseado em km)" — o insight de
     // ACWR do frontend (detectCoachInsights, biEngine.js) usava carga sRPE
     // até essa altura, uma grandeza diferente com o mesmo nome, e o rótulo
     // evitava confundi-las no mesmo prompt (P0-3, Fase A). A Fase C unificou
     // os dois em km (specs/formulas-centralizacao.md §5.1) — já não há
     // ambiguidade a desfazer.
-    const acwrLine = acwr
-      ? `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
-      : null;
+    const acwrLine = buildAcwrLine(acwr, loadReading, (recentRuns || []).length > 0, todayISO, levelReference);
 
     // ── Armário de sapatilhas ────────────────────────────────────────────
     // O acumulado e o desgaste de cada par delegam em ../_shared/formulas/
@@ -5281,8 +5683,15 @@ async function handler(req: Request): Promise<Response> {
     // `null` do caso "sem corridas nenhumas" é preservado de propósito: a
     // partilhada devolve 0, e 0 faria disparar a flag `volume_insuficiente`
     // em assessViability, enquanto `null` significa "sem dados para julgar".
+    // Desde 2026-09-24, só com histórico (corridas em 3 das 4 semanas,
+    // knownWeeklyVolume): com meia dúzia de registos a média dava ~5 km/sem e
+    // "OBJETIVO_INVIAVEL: volume insuficiente" a quem corre mais do que regista.
+    const weeklyVolumeKm = knownWeeklyVolume((recentRuns || []) as Array<{ date: string; distance_km: number }>, todayISO);
+    // A nutrição conta a energia das corridas registadas, com ou sem
+    // histórico: gastaram-se a sério (revisão pré-deploy de 195bb0d). Só a
+    // viabilidade precisa do volume "conhecido".
     const runs4w = (recentRuns || []) as Array<{ date: string; distance_km: number }>;
-    const weeklyVolumeKm = runs4w.length > 0 ? computeRecentWeeklyVolume(runs4w, todayISO, 4) : null;
+    const loggedWeeklyVolumeKm = runs4w.length > 0 ? computeRecentWeeklyVolume(runs4w, todayISO, 4) : null;
     const raceEventsContext = buildRaceEventsContext(
       upcomingRaces || [],
       todayISO,
@@ -5364,6 +5773,16 @@ async function handler(req: Request): Promise<Response> {
       .gte("date", bodyStartISO)
       .order("date", { ascending: false })
       .limit(30);
+    // O check-in de hoje entra no Índice de Prontidão (pilar "Como
+    // acordaste", 2026-09-23) — a Carol tem de ver o mesmo número do ecrã.
+    // Dia de Lisboa, como o cliente o grava e o bloco de memória o lê — o
+    // todayISO daqui é UTC e, entre a meia-noite e a uma, apanhava o de ontem.
+    const { data: todayCheckin, error: err_todayCheckin } = await sb
+      .from("daily_checkins")
+      .select("sleep, energy, stress, pain")
+      .eq("user_id", userId)
+      .eq("date", lisbonTodayISO())
+      .maybeSingle();
     // Todas as queries de contexto acima falham "em silencio" se pedirem uma
     // coluna inexistente — ver warnIfQueryFailed. Isto poe o erro nos logs.
     warnIfQueryFailed("meals(7d)", err_weekMeals);
@@ -5373,6 +5792,7 @@ async function handler(req: Request): Promise<Response> {
     warnIfQueryFailed("shoes", err_shoeRows);
     warnIfQueryFailed("race_events", err_upcomingRaces);
     warnIfQueryFailed("body_assessments", err_bodyAssessments);
+    warnIfQueryFailed("daily_checkins(hoje)", err_todayCheckin);
 
     const bodyMetricsLine = computeBodyMetrics(
       (bodyAssessments || []) as BodyAssessmentRow[],
@@ -5404,6 +5824,7 @@ async function handler(req: Request): Promise<Response> {
       profile,
       todayISO,
       nextUpcomingRace,
+      todayCheckin ?? null,
     );
     const racePhasesPanel = buildRacePhasesPanel(recentRuns || [], nextUpcomingRace, profile, todayISO);
 
@@ -5421,7 +5842,7 @@ async function handler(req: Request): Promise<Response> {
       waterGoalMl:   (profile?.water_goal_ml as number | null) ?? null,
       proteinGoal:   (profile?.protein_goal as number | null) ?? null,
       calorieGoal:   (profile?.calorie_goal as number | null) ?? null,
-      weeklyVolumeKm,
+      weeklyVolumeKm: loggedWeeklyVolumeKm,
     });
 
     // ── Treinos do plano ────────────────────────────────────────────────
@@ -5626,6 +6047,30 @@ async function handler(req: Request): Promise<Response> {
       });
     }
 
+    // ── Pedido repetido (incidente 2026-09-23) ──────────────────────────
+    // A resposta a uma pergunta perdeu-se a caminho do telemóvel (ligação
+    // em baixo) e o mesmo POST chegou outra vez 38 s depois — o browser
+    // repete-o sozinho ao recuperar a ligação. A Carol respondia duas vezes
+    // à mesma pergunta, com textos diferentes. Uma mensagem igual à última
+    // do atleta, há menos de DUPLICATE_WINDOW_MS e já com resposta, é o
+    // mesmo pedido: devolve-se essa resposta, sem gravar nem gerar nada.
+    if (message) {
+      const duplicate = await findAnsweredDuplicate(sb, userId, message);
+      if (duplicate) {
+        console.log("coach-chat pedido repetido: devolve a resposta já dada", { userMessageId: duplicate.user.id });
+        return jsonResponse({
+          user_message: duplicate.user,
+          model_message: duplicate.model,
+          suggestions: [],
+          usage: null,
+          plan_proposed: false,
+          goals_updated: false,
+          goal_proposed: false,
+          duplicate: true,
+        });
+      }
+    }
+
     // ── Guardar mensagem do utilizador antes de chamar o Gemini ─────────
     let userMsg = null;
     if (message) {
@@ -5639,6 +6084,17 @@ async function handler(req: Request): Promise<Response> {
       }
       userMsg = data;
     }
+
+    /* O balanço da semana: o plano de segunda a domingo da semana revista,
+       com o "cumprida a 100%" já decidido, junta-se ao Contexto do cliente.
+       A semana vem da chave (week_review:<segunda-feira>). */
+    const weekReviewStart = proactiveTrigger === "week_review"
+      ? (/^week_review:(\d{4}-\d{2}-\d{2})$/.exec(proactiveKey ?? "")?.[1] ?? null)
+      : null;
+    const weekAdherenceLine = weekReviewStart ? await fetchWeekAdherenceLine(sb, userId, weekReviewStart) : null;
+    const turnProactiveDetails = weekAdherenceLine
+      ? [proactiveDetails, weekAdherenceLine].filter(Boolean).join(" ")
+      : proactiveDetails;
 
     // ── Construir pedido ao Gemini ───────────────────────────────────────
     // 1º argumento (coachContext) fixo em null — "Contexto do Coach" foi
@@ -5658,7 +6114,6 @@ async function handler(req: Request): Promise<Response> {
         resting_hr_bpm: (profile?.resting_hr_bpm as number | null) ?? null,
         dietary_restrictions: (profile?.dietary_restrictions as string[] | null) ?? null,
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
-        coach_can_set_nutrition_goals: (profile?.coach_can_set_nutrition_goals as boolean | null) ?? null,
         carol_push_enabled: (profile?.carol_push_enabled as boolean | null) ?? null,
         carol_push_types: (profile?.carol_push_types as string[] | null) ?? null,
         carol_push_start_hour: (profile?.carol_push_start_hour as number | null) ?? null,
@@ -5693,7 +6148,7 @@ async function handler(req: Request): Promise<Response> {
       suggestionAdherencePanel,
       lastExchangeHoursAgo,
       proactiveTrigger,
-      proactiveDetails,
+      turnProactiveDetails,
       raceOutcome,
       racePlanContext,
       splitsContext,
@@ -5712,10 +6167,21 @@ async function handler(req: Request): Promise<Response> {
       // O tempo previsto para a prova, se ela for nos próximos 7 dias.
       await raceWeatherPromise,
       memoryBlocks.portrait,
-      memoryBlocks.palmares,
+      memoryBlocks.raceHistory,
+      // A vitrina de badges, logo a seguir às provas concluídas: é a mesma
+      // pergunta ("o que ele já fez/conquistou") noutra escala — e as
+      // regras do 6 #6 viajam dentro do bloco, não num sítio à parte.
+      memoryBlocks.badges,
       memoryBlocks.proposals,
       buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
       memoryBlocks.records,
+      // Os prints que costumam faltar nas corridas (1.9) — logo a seguir aos
+      // registos, porque é sobre como eles chegam à app. Só em turnos com
+      // mensagem do atleta: num turno em que é ela a abrir a conversa
+      // (proativo, intervenção, "Adaptar Plano") a conversa é sobre outro
+      // assunto, e a regra é nunca abrir com isto. Como nos badges, a
+      // proteção a sério é o bloco não estar lá, não a instrução dentro dele.
+      message && !proactiveTrigger ? memoryBlocks.captureCoverage : null,
       // O que ela prescreveu e o que aconteceu (Fase 3).
       memoryBlocks.adherence,
       memoryBlocks.dailyCard,
@@ -5734,6 +6200,18 @@ async function handler(req: Request): Promise<Response> {
         `- [${i.state}] ${i.title} (${i.metric}: ${i.value}): ${i.message}`
       ).join("\n");
       finalSystemInstruction += "\n\n--- AVISOS ATIVOS (INSIGHTS BIOMETRICOS) ---\nO motor de regras gerou os seguintes alertas. Tem em conta que o utilizador os pode ter ignorado.\n" + insightsContext;
+    }
+
+    /* O atleta carregou no botão do ecrã de um badge (Perfil >
+       BadgeDetailSheet) para ela lhe explicar o badge. Mesmo molde dos
+       AVISOS ATIVOS acima: o cliente manda o contexto, o servidor injeta-o.
+       É aqui — e SÓ aqui — que o progresso de um badge chega ao prompt: o
+       bloco geral da vitrina (buildBadgesContext) continua a não o ter, de
+       propósito. O que abre esta porta é a pergunta ter sido dele; ver
+       buildBadgeQuestionContext e a doutrina 6 #6. */
+    const badgeQuestionContext = buildBadgeQuestionContext(body.badgeContext);
+    if (badgeQuestionContext) {
+      finalSystemInstruction += "\n\n--- PERGUNTA SOBRE UM BADGE (foi o atleta que a abriu) ---\n" + badgeQuestionContext;
     }
 
     // Texto injetado quando o atleta bateu à porta do "Adaptar Plano" (ver
@@ -5829,7 +6307,7 @@ async function handler(req: Request): Promise<Response> {
         role: "user",
         parts: [{
           text: message || (body.is_intervention_start
-            ? `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.${body.intervention_details ? ` Detalhes da análise/motivo: "${body.intervention_details}".` : ''} INICIA tu a conversa diretamente de forma proativa, confrontando o atleta com os dados, a carga acumulada ou o desvio do plano, e pergunta-lhe como se está a sentir e se quer que adaptemos o plano.`
+            ? buildInterventionStartTurn(body.intervention_details ?? null, profile?.coach_intervention_reason ?? null)
             : body.is_plan_checkin
               ? planCheckinPrompt
               : proactiveTrigger
@@ -5899,6 +6377,11 @@ async function handler(req: Request): Promise<Response> {
             },
           }),
         },
+        GEMINI_ATTEMPT_MS,
+        // Sem repetição por tempo: recomeçar do zero uma resposta lenta só
+        // a volta a cortar. As de "ocupado" (503) repetem-se dentro do prazo.
+        0,
+        chatDeadline,
       );
       return res;
     }
@@ -5920,6 +6403,37 @@ async function handler(req: Request): Promise<Response> {
     let raceWasUpdated = false;
     let interventionWasResolved = false;
 
+    /* Uma ferramenta de escrita já correu (o plano proposto, os objetivos, a
+       prova, a intervenção) e não há tempo ou resposta para o texto: sem
+       isto o atleta via "não foi possível obter uma resposta", a app não
+       recarregava o plano, e ao reenviar a Carol propunha tudo outra vez
+       (revisão pré-deploy de bdc93cf). Grava-se uma frase curta — a
+       sondagem da app apanha-a e recarrega o que mudou — e respondem-se as
+       flags como num turno normal. null quando nada foi escrito. */
+    const replyAfterWritesWithoutText = async (): Promise<Response | null> => {
+      if (!(planWasProposed || goalsWereUpdated || goalWasProposed || raceWasUpdated || interventionWasResolved)) return null;
+      const text = planWasProposed
+        ? "Deixei-te a proposta de plano no Início — abre-a e diz-me se te serve."
+        : goalWasProposed || goalsWereUpdated
+          ? "Deixei-te a proposta de objetivos no Início — vê se concordas."
+          : raceWasUpdated
+            ? "Atualizei a prova como combinámos."
+            : "Fechei este assunto do meu lado.";
+      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral");
+      return jsonResponse({
+        user_message: userMsg,
+        model_message: fallbackMsg ?? { id: null, role: "model", content: text, mood: "neutral", created_at: new Date().toISOString() },
+        suggestions: [],
+        usage: totalUsage,
+        plan_proposed: planWasProposed,
+        goals_updated: goalsWereUpdated,
+        goal_proposed: goalWasProposed,
+        race_updated: raceWasUpdated,
+        intervention_resolved: interventionWasResolved,
+        proactive: proactiveTrigger,
+      });
+    };
+
     let geminiJson: Record<string, unknown> | undefined;
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
     // MAX_TOOL_ROUNDS é a final e vai SEM ferramentas, forçando texto — que é
@@ -5932,15 +6446,33 @@ async function handler(req: Request): Promise<Response> {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const isFinalRound = round === MAX_TOOL_ROUNDS;
       let geminiRes: Response;
+      // Uma ronda nova só começa se ainda couber uma tentativa útil no prazo
+      // do pedido; senão a plataforma matava a função a meio (sem libertar o
+      // lock e sem resposta).
+      if (round > 0 && !hasTimeFor(chatDeadline)) {
+        console.error("coach-chat: sem tempo para mais uma ronda", JSON.stringify({ round, turnCase, elapsedMs: Date.now() - requestStartedAt }));
+        const fallback = await replyAfterWritesWithoutText();
+        if (fallback) return fallback;
+        return jsonResponse({ error: "Demorei demasiado a pensar nesta resposta. Envia outra vez, por favor." }, 504);
+      }
       try {
         geminiRes = await callGemini(!isFinalRound);
       } catch (e) {
+        // O caminho que falhou a 2026-09-24 sem deixar rasto nos logs: só a
+        // app registava o timeout.
+        console.error("coach-chat: o Gemini não respondeu", JSON.stringify({ round, turnCase, elapsedMs: Date.now() - requestStartedAt, error: e instanceof Error ? e.message : String(e) }));
+        const fallback = round > 0 ? await replyAfterWritesWithoutText() : null;
+        if (fallback) return fallback;
         return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 504);
       }
 
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
         console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes }));
+        // Depois de uma escrita (ronda > 0), o erro não é "a mensagem não
+        // saiu": o plano, a prova ou os objetivos já mudaram.
+        const fallback = await replyAfterWritesWithoutText();
+        if (fallback) return fallback;
         if (geminiRes.status === 429) {
           // Voz dela, não a de upstreamErrorText: é uma conversa em curso,
           // não uma análise avulsa — "dá-me uns minutos", não "tenta outra vez".
@@ -6037,11 +6569,14 @@ async function handler(req: Request): Promise<Response> {
 
     if (!rawText) {
       console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
+      const fallback = await replyAfterWritesWithoutText();
+      if (fallback) return fallback;
       return jsonResponse({ error: "Não consegui gerar uma resposta. Tenta outra vez." }, 502);
     }
 
     let replyText: string;
     let suggestions: string[] = [];
+    let replyMood: CarolMood | null = null;
     try {
       const parsed = JSON.parse(rawText);
       // O modelo sinaliza perguntas ambíguas fora do âmbito via "on_topic".
@@ -6064,6 +6599,8 @@ async function handler(req: Request): Promise<Response> {
         });
       }
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
+      // Fora do vocabulário (ou em falta) fica null, e o cliente deduz do texto.
+      replyMood = normalizeMessageMood(parsed.mood);
       // Numa mensagem por iniciativa dela não há "perguntas de seguimento"
       // a oferecer — é ela que está à espera de resposta. A exceção é o
       // balanço "perto do objetivo": a pergunta ("para a próxima é para fazer
@@ -6077,17 +6614,15 @@ async function handler(req: Request): Promise<Response> {
       // o texto bruto ao utilizador (parecia um JSON partido no ecrã); melhor
       // pedir para tentar de novo do que guardar/mostrar lixo no histórico.
       console.error("Gemini devolveu JSON inválido/incompleto:", rawText);
+      const fallback = await replyAfterWritesWithoutText();
+      if (fallback) return fallback;
       return jsonResponse({
         error: "Tive um problema a gerar a resposta. Tenta outra vez.",
       }, 502);
     }
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
-    const { data: modelMsg, error: modelMsgErr } = await sb
-      .from("coach_messages")
-      .insert({ user_id: userId, role: "model", content: replyText })
-      .select()
-      .single();
+    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
 
     // O balanço feito, a prova fica na memória de longo prazo dela (uma nota
     // "outro" com tempo, objetivo e veredicto) — é o que permite ao próximo
@@ -6123,7 +6658,7 @@ async function handler(req: Request): Promise<Response> {
       console.error("Falha a guardar resposta:", modelMsgErr);
       return jsonResponse({
         user_message: userMsg,
-        model_message: { id: null, role: "model", content: replyText, created_at: new Date().toISOString() },
+        model_message: { id: null, role: "model", content: replyText, mood: replyMood, created_at: new Date().toISOString() },
         suggestions,
         usage: totalUsage,
         plan_proposed: planWasProposed,
@@ -6137,7 +6672,8 @@ async function handler(req: Request): Promise<Response> {
 
     return jsonResponse({
       user_message: userMsg,
-      model_message: modelMsg,
+      // A emoção vai mesmo quando a coluna ainda não existe (gravada sem ela).
+      model_message: { ...modelMsg, mood: modelMsg?.mood ?? replyMood },
       suggestions,
       usage: totalUsage,
       plan_proposed: planWasProposed,
@@ -6156,11 +6692,12 @@ async function handler(req: Request): Promise<Response> {
     // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava
     // bloqueado até ao timeout de LOCK_STALE_MS por um pedido que já tinha
     // terminado.
-    if (lockedUserId && sb) {
+    if (lockedUserId && lockIso && sb) {
       const { error: unlockErr } = await sb
         .from("profiles")
         .update({ coach_chat_busy_since: null })
-        .eq("id", lockedUserId);
+        .eq("id", lockedUserId)
+        .eq("coach_chat_busy_since", lockIso);
       if (unlockErr) console.error("Falha ao libertar lock do coach-chat:", unlockErr);
     }
   }

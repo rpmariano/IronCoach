@@ -746,8 +746,9 @@ Prontidão**, o gap original que motivou toda a Fase E.
   `resolveExperienceLevel`, `getRacePrediction`, migrados de
   `racePlanEngine.js`/`biEngine.js` (já eram puros, só não partilhados).
 - [x] **`readinessIndex.ts`** — o composto: score 0-100 + pilares (carga/
-  ACWR, Disponibilidade Energética, nutrição, VDOT, e Viabilidade Tática
-  quando há prova agendada). Compõe os seis módulos acima e os das Fases
+  ACWR, Disponibilidade Energética, nutrição, VDOT, Viabilidade Tática
+  quando há prova agendada, e "Como acordaste" quando há check-in de hoje
+  — 2026-09-23). Compõe os seis módulos acima e os das Fases
   C/E anteriores — mesmo código que a Home/RaceHubView usam, não uma
   reconstrução.
 - [x] `biEngine.js` (`calculateACWR`, `calculateCrossMetrics`,

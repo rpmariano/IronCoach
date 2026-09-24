@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import Warning, { WarningAction } from './Warning';
 import CoachAvatar from '../Coach/CoachAvatar';
@@ -106,7 +106,7 @@ export function AnalysisSkeleton({
     >
       {steps && (
         <div data-testid="analysis-step" className="flex items-center" style={{ gap: 10 }}>
-          <CoachAvatar size={28} />
+          <CoachAvatar size={28} mood="thinking" />
           <span className="flex-1 min-w-0" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
             <span key={step.text} className="fade-in" style={{ display: 'inline-block' }}>{step.slow ? 'Está a demorar mais do que o costume. Continuo.' : step.text}</span>
           </span>
@@ -191,8 +191,20 @@ export function AnalysisFailure({
   // A causa diz-se primeiro (sem rede, rede lenta, sessão); o que fazer vem
   // de quem monta (`children`), porque depende do registo.
   const causa = CAUSA[classifyAnalysisFailure(detail)];
+  /* O aviso vive no topo do formulário, e o botão que lançou a análise está
+     na barra de baixo: com o formulário descido (a juntar prints), a falha
+     aparecia fora do ecrã e a app parecia ter parado sem dizer nada
+     (relatado 2026-09-24). Ao aparecer, traz-se o aviso à vista. */
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'center', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+    }
+  }, []);
   return (
     <Warning
+      ref={ref}
       tone="warn"
       title={title || causa.title}
       icon={<CoachAvatar size={20} mood="worried" />}

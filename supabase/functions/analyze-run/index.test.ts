@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { computeRunRecordContext, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
+import { buildWeeklyVolumeLine, computeRunRecordContext, keepImageOnlyDetails, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -72,4 +72,66 @@ Deno.test("resolveReanalysisTypes: o corpo válido ganha; inválido ou ausente f
   assertEquals(resolveReanalysisTypes(existing, { training_type: "inventado" }), { kind: "treino", trainingType: "continuo", raceType: null });
   assertEquals(resolveReanalysisTypes(existing, { kind: "competicao", race_type: "10k" }), { kind: "competicao", trainingType: null, raceType: "10k" });
   assertEquals(resolveReanalysisTypes({ kind: "competicao", training_type: null, details: { race_type: "trail" } }, { kind: "lixo" }), { kind: "competicao", trainingType: null, raceType: "trail" });
+});
+
+// ── buildWeeklyVolumeLine ────────────────────────────────────────────────
+// Bug relatado 2026-09-21: "A análise diz que terminei o volume semanal...
+// Sendo hoje o primeiro dia da semana. Está errado." Havia aqui uma janela
+// ROLANTE dos "7 dias terminados hoje": numa segunda-feira essa janela cobre
+// quase toda a semana anterior, e a Carol lia o número como a semana
+// cumprida — quando a semana de calendário (segunda a domingo) tinha
+// acabado de começar.
+Deno.test("buildWeeklyVolumeLine: numa segunda-feira, só conta o que se correu HOJE — não a semana anterior inteira", () => {
+  const runs = [
+    { date: "2026-09-14", distance_km: 10 }, // segunda anterior
+    { date: "2026-09-16", distance_km: 8 },
+    { date: "2026-09-18", distance_km: 12 },
+    { date: "2026-09-20", distance_km: 21 }, // domingo anterior
+    { date: "2026-09-21", distance_km: 8 },  // hoje, segunda — a corrida acabada de registar
+  ];
+  const linha = buildWeeklyVolumeLine(runs, "2026-09-21");
+  assertStringIncludes(linha, "8.0 km em 1 corrida(s)");
+  assertStringIncludes(linha, "ainda a decorrer (dia 1 de 7, segunda a domingo)");
+  // A janela rolante do bug dava 8+21+12+8 = 49 km — não pode voltar a aparecer.
+  assertEquals(linha.includes("49.0"), false);
+});
+
+Deno.test("buildWeeklyVolumeLine: ao domingo a semana está completa — sem \"ainda a decorrer\"", () => {
+  const runs = [
+    { date: "2026-09-14", distance_km: 10 },
+    { date: "2026-09-20", distance_km: 21 },
+  ];
+  const linha = buildWeeklyVolumeLine(runs, "2026-09-20");
+  assertStringIncludes(linha, "31.0 km em 2 corrida(s)");
+  assertEquals(linha.includes("ainda a decorrer"), false);
+});
+
+Deno.test("buildWeeklyVolumeLine: a meio da semana (quinta, dia 4 de 7), soma só segunda a quinta", () => {
+  const runs = [
+    { date: "2026-09-14", distance_km: 10 }, // segunda desta semana
+    { date: "2026-09-16", distance_km: 8 },  // quarta
+    { date: "2026-09-17", distance_km: 6 },  // quinta, hoje
+  ];
+  const linha = buildWeeklyVolumeLine(runs, "2026-09-17");
+  assertStringIncludes(linha, "24.0 km em 3 corrida(s)");
+  assertStringIncludes(linha, "ainda a decorrer (dia 4 de 7, segunda a domingo)");
+});
+
+Deno.test("buildWeeklyVolumeLine: sem corridas nenhumas, string vazia — sem crash", () => {
+  assertEquals(buildWeeklyVolumeLine([], "2026-09-21"), "");
+});
+
+Deno.test("keepImageOnlyDetails: editar à mão não apaga a app de origem nem o que só os prints dão", () => {
+  const antes = { source_app: "samsung_health", regularity_score: 82, recommended_hydration_ml: 600, avg_heart_rate_bpm: 140 };
+  const formulario = { avg_heart_rate_bpm: 150, cadence_spm: 170 };
+  assertEquals(keepImageOnlyDetails(antes, formulario), {
+    avg_heart_rate_bpm: 150, cadence_spm: 170,
+    source_app: "samsung_health", regularity_score: 82, recommended_hydration_ml: 600,
+  });
+  // O que o formulário traz ganha; sem nada antes, fica como veio.
+  assertEquals(keepImageOnlyDetails(antes, { source_app: "garmin" })?.source_app, "garmin");
+  assertEquals(keepImageOnlyDetails(null, formulario), formulario);
+  // Sem métricas no formulário (details null): fica só o que os prints davam.
+  assertEquals(keepImageOnlyDetails({ source_app: "strava" }, null), { source_app: "strava" });
+  assertEquals(keepImageOnlyDetails({}, null), null);
 });

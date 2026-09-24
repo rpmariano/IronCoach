@@ -40,6 +40,7 @@
   --brand-deep-1: #1e333d;
   --brand-deep-2: #2d4a57;
   --brand-cream: #eccea4;      /* glifo do logo */
+  --brand-gold: #fbbf24;       /* o ouro do brasão e do "AI-POWERED" no lockup — marca, não a prova */
 
   /* significados — uma cor, um sentido */
   --race: #fbbf24;             /* a prova. Só a prova. */
@@ -49,6 +50,18 @@
   --coach-deep: #0e7490;
   --coach-soft: #a5f3fc;
   --coach-ink: #04252b;
+  /* O rosto da Carol (CoachAvatar): um retrato de traço simples dentro do
+     disco ciano dela — linha escura (a tinta da Carol), cara clara, cabelo
+     numa silhueta sólida da mesma tinta com reflexos claros (o elástico, um
+     fio de luz), e o corado das bochechas, que é o único tom quente e sobe
+     com a emoção. */
+  --carol-face-bg: radial-gradient(circle at 50% 32%, #8af0fd 0%, var(--coach) 58%, #13b8d4 100%);
+  --carol-line: #0b2e36;
+  --carol-skin: #fffaf4;
+  --carol-hair: #0b2e36;
+  --carol-hair-light: #9fe8f5;
+  --carol-blush: #ff9f8a;
+  --carol-shine: #ffffff;
   --run: #2ee0ff;              /* módulo corrida */
   --gym: #9ec3d2;              /* módulo ginásio */
   --nutrition: #c77dff;        /* módulo nutrição */

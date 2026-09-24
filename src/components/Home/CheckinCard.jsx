@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { HeartPulse, ChevronRight, Pencil } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -26,6 +26,14 @@ export default function CheckinCard() {
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const [open, setOpen] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  // Pedido das boas-vindas da manhã ("Fazer o check-in"): abre a persiana
+  // uma vez e limpa o pedido, para não voltar a abrir ao regressar ao Início.
+  const checkinRequested = useAppStore((s) => s.checkinRequested);
+  useEffect(() => {
+    if (!checkinRequested) return;
+    setOpen(true);
+    useAppStore.getState().clearCheckinRequest();
+  }, [checkinRequested]);
   const today = todayISO();
   const checkin = todaysCheckin(dailyCheckins, today);
   const reply = useMemo(() => checkinReply(dailyCheckins, today), [dailyCheckins, today]);
@@ -35,7 +43,7 @@ export default function CheckinCard() {
       {checkin ? (
         <GlassCard padding="12px 14px 12px 16px" data-testid="checkin-card-done">
           <div className="flex items-start gap-3">
-            <CoachAvatar key={justSaved ? 'acabado' : 'antes'} size={30} mood={reply?.mood} breathing={justSaved} style={{ marginTop: 1 }} />
+            <CoachAvatar key={justSaved ? 'acabado' : 'antes'} size={44} mood={reply?.mood} breathing={justSaved} style={{ marginTop: 1 }} />
             <div className="flex-1 min-w-0">
               <p
                 key={reply?.text}

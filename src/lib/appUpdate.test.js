@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { startAppUpdateWatcher, isBusy, freshUrl, fetchPublishedBuild, stripVersionParam } from './appUpdate';
+import { startAppUpdateWatcher, isBusy, freshUrl, fetchPublishedBuild, stripVersionParam, resumeParams, entryTabFromSearch, stripResumeParam } from './appUpdate';
 
 /* A app recarrega-se sozinha depois de um deploy, mas só quando isso não
    deita nada fora. Aqui: quando recarrega, quando espera, e que nunca entra
@@ -154,5 +154,52 @@ describe('URLs', () => {
   it('fetchPublishedBuild devolve null num 404 ou erro de rede', async () => {
     await expect(fetchPublishedBuild(vi.fn().mockResolvedValue({ ok: false }), '/')).resolves.toBeNull();
     await expect(fetchPublishedBuild(vi.fn().mockRejectedValue(new Error('offline')), '/')).resolves.toBeNull();
+  });
+});
+
+describe('recarga técnica — volta ao separador onde se estava', () => {
+  // Relatado 2026-09-24: "a app reinicia quando mudamos de menu" — a recarga
+  // caía sempre no Início. Com ?resume=, não ?tab=: esse é o da notificação,
+  // e saltava as boas-vindas da Carol (revisão pré-deploy de 639c495).
+  it('freshUrl põe o ?resume= e tira o ?tab= e o ?carol= de uma notificação antiga', () => {
+    expect(freshUrl('https://x.io/IronCoach/', 'bbb', resumeParams('coach', true, true))).toBe('https://x.io/IronCoach/?resume=coach&v=bbb');
+    expect(freshUrl('https://x.io/IronCoach/?tab=coach&carol=k1&demo=true', 'bbb', resumeParams('home', true, true)))
+      .toBe('https://x.io/IronCoach/?demo=true&resume=home&v=bbb');
+  });
+
+  it('antes de as boas-vindas estarem decididas, o ?tab= da notificação fica (e continua a saltá-las)', () => {
+    // A app abriu a frio por uma notificação; o ecrã do Coach falhou a
+    // carregar antes de as boas-vindas se decidirem.
+    expect(resumeParams('coach', true, false)).toEqual({ resume: 'coach' });
+    expect(freshUrl('https://x.io/IronCoach/?tab=coach', 'bbb', resumeParams('coach', true, false)))
+      .toBe('https://x.io/IronCoach/?tab=coach&resume=coach&v=bbb');
+  });
+
+  it('antes de o App aplicar o separador de entrada, o URL fica como está', () => {
+    // O vigia pode recarregar logo no arranque, com a store ainda em 'home'.
+    expect(resumeParams('home', false)).toEqual({});
+    expect(freshUrl('https://x.io/IronCoach/?tab=coach&carol=k1', 'bbb', resumeParams('home', false)))
+      .toBe('https://x.io/IronCoach/?tab=coach&carol=k1&v=bbb');
+  });
+
+  it('resumeParams: todos os separadores, o Início incluído; as bancadas não', () => {
+    expect(resumeParams('provas', true, true)).toEqual({ resume: 'provas', tab: null, carol: null });
+    expect(resumeParams('home', true, true)).toEqual({ resume: 'home', tab: null, carol: null });
+    expect(resumeParams('design-system', true, true)).toEqual({});
+    expect(resumeParams(null, true, true)).toEqual({});
+  });
+
+  it('entryTabFromSearch: a recarga técnica ganha ao ?tab= antigo; sem nada, null', () => {
+    expect(entryTabFromSearch('?resume=perfil')).toBe('perfil');
+    expect(entryTabFromSearch('?tab=coach&resume=perfil')).toBe('perfil');
+    expect(entryTabFromSearch('?tab=coach')).toBe('coach');
+    expect(entryTabFromSearch('?demo=true')).toBeNull();
+  });
+
+  it('stripResumeParam tira só o ?resume=', () => {
+    const replaceState = vi.fn();
+    const win = { location: { href: 'https://x.io/IronCoach/?demo=true&resume=coach' }, history: { state: null, replaceState } };
+    stripResumeParam(win);
+    expect(replaceState).toHaveBeenCalledWith(null, '', '/IronCoach/?demo=true');
   });
 });

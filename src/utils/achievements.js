@@ -1,182 +1,66 @@
-/* O Palmarés — as conquistas das provas (specs/gamificacao-provas.md).
+/* As conquistas de UMA prova (specs/gamificacao-provas.md).
 
-   Cinco conquistas, sempre pela mesma ordem, calculadas dos dados que já
-   existem: nenhuma tabela nova, nenhuma data de desbloqueio guardada. Se um
-   dia houver conquistas que não se recalculem (ex.: "10 provas seguidas com
-   objetivo batido"), aí sim uma tabela — não agora.
+   É uma das vistas do motor dos prémios: as regras — que provas contam, o
+   que é objetivo batido, o que é recorde pessoal, o que é um elo de
+   sequência, o que é trail — vivem em `utils/premios.js` e são exatamente
+   as mesmas que `utils/badges.js` usa para a Vitrina. Aqui só se pergunta o
+   que é que ESTA prova deu, e se escreve a frase. É por isso que o hub, o
+   Início, a Vitrina e a confirmação do registo nunca podem discordar sobre
+   a mesma prova.
 
-   A régua do resultado é uma só, `utils/raceOutcome.js`: "objetivo batido" é
-   `verdict === 'superado' && basis === 'objetivo'`, "recorde pessoal" é
-   `isPersonalRecord`. Este ficheiro não decide nada sobre tempos — só conta,
-   ordena e escreve a frase. É por isso que o hub, o Início, o Perfil e a
-   confirmação do registo nunca podem discordar sobre a mesma prova.
+   Seis conquistas, calculadas dos dados que já existem: nenhuma tabela nova,
+   nenhuma data de desbloqueio guardada (isso é dos badges, em
+   `user_badges`). Cinco delas são a mesma pergunta que um badge de prova
+   faz, feita a uma prova só:
 
-   Uma prova conta como concluída quando está `status = 'concluida'` E tem
-   corrida ligada (findRaceRun): marcar "concluída" na agenda sem registar
-   nada não dá conquista nenhuma — não há números para as sustentar. */
+     prova_concluida  → a contagem bruta; o badge conta por degraus
+     objetivo_batido  → `superacao`
+     recorde_pessoal  → regra própria: o melhor tempo do atleta na categoria
+                        (`outcome.isPersonalRecord`). NÃO é o badge dos
+                        níveis, que é uma escala de aptidão (VDOT) — ver
+                        `bateuRecordePessoal` em utils/premios.js
+     primeira_trail   → `terreno` (a primeira de trail)
+     sequencia        → `sequencia` (o elo desta prova, não o máximo)
 
-import { Flag, Target, Zap, Mountain, Repeat } from 'lucide-react';
-import { findRaceRun, formatDuration } from './run';
-import { classifyRaceOutcome, formatDelta, raceCategoryLabel } from './raceOutcome';
+   A sexta, `acima_do_treino`, não tem par na Vitrina: mede a prova contra
+   o que os TREINOS anteriores faziam esperar, que é a única coisa premiada
+   aqui que não depende de ter marcado objetivo nem de ter histórico na
+   distância.
+
+   Uma prova conta como concluída quando está `status = 'concluida'`, tem
+   corrida ligada (findRaceRun) e o dia dela já passou — a régua é
+   `completedRaces`, em utils/premios.js. */
+
+import { Flag, Target, Zap, Mountain, Repeat, Rocket } from 'lucide-react';
+import { formatDuration } from './run';
+import { formatDelta, raceCategoryLabel } from './raceOutcome';
+import {
+  acimaDoTreino,
+  bateuObjetivo,
+  bateuRecordePessoal,
+  capitalize,
+  completedRaces,
+  dayOf,
+  daysBetween,
+  ordinalFem,
+  provasDoTerreno,
+  requireToday,
+  varrerSequencia,
+} from './premios';
 
 /** Uma conquista é "nova" enquanto a prova que a deu tiver menos de 7 dias —
  *  é a janela do dia a seguir à prova (a mesma do cartão do Início e do
  *  balanço da Carol). */
 export const NOVA_ATE_DIAS = 7;
 
-/** A ordem é fixa: o Palmarés é sempre a mesma linha, desbloqueada ou não. */
-export const ACHIEVEMENT_KEYS = ['prova_concluida', 'objetivo_batido', 'recorde_pessoal', 'primeira_trail', 'sequencia'];
+/** A ordem é fixa. É também o contrato da fronteira com o servidor: estas
+ *  chaves viajam em `race_outcome.achievements_new` (utils/coachProactive.js)
+ *  e o `coach-chat` só reconhece as que estão em ACHIEVEMENT_LABELS
+ *  (supabase/functions/coach-chat/index.ts) — mudar uma aqui e não lá é a
+ *  Carol deixar de citar a conquista, em silêncio. */
+export const ACHIEVEMENT_KEYS = ['prova_concluida', 'objetivo_batido', 'acima_do_treino', 'recorde_pessoal', 'primeira_trail', 'sequencia'];
 
-const DAY_MS = 86400000;
-
-function isoDay(date) {
-  const d = date instanceof Date ? date : new Date(date);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-function dayOf(value) {
-  return typeof value === 'string' && value.length >= 10 ? value.slice(0, 10) : null;
-}
-
-function daysBetween(fromIso, toIso) {
-  return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / DAY_MS);
-}
-
-/** "3.ª prova" — o ordinal feminino, que é como se lê em português. */
-function ordinalFem(n) {
-  return `${n}.ª`;
-}
-
-function capitalize(text) {
-  return text ? text.charAt(0).toUpperCase() + text.slice(1) : text;
-}
-
-/* As provas que contam para o palmarés: concluídas E com corrida ligada, da
-   mais recente para a mais antiga, cada uma já com o seu veredicto. É a
-   lista que o Palmarés do Perfil mostra por baixo das conquistas. */
-export function completedRaces({ raceEvents = [], runs = [], profile = {} } = {}) {
-  return (raceEvents || [])
-    .filter((race) => race && dayOf(race.date) && race.status === 'concluida')
-    .map((race) => ({ race, run: findRaceRun(runs, race) }))
-    .filter(({ run }) => !!run)
-    .map(({ race, run }) => ({ race, run, outcome: classifyRaceOutcome({ race, run, runs, profile }) }))
-    .sort((a, b) => dayOf(b.race.date).localeCompare(dayOf(a.race.date)));
-}
-
-/* A sequência: quantas provas SEGUIDAS, contando da mais recente para trás,
-   ficaram registadas. Uma prova que já passou e não tem corrida ligada corta
-   a sequência — é exatamente isso que a conquista mede, não "quantas
-   registei ao todo". Provas ainda por correr não entram (nem cortam). */
-function currentStreak(raceEvents, runs, today) {
-  const past = (raceEvents || [])
-    .filter((race) => race && dayOf(race.date) && dayOf(race.date) <= today)
-    .sort((a, b) => dayOf(a.date).localeCompare(dayOf(b.date)));
-  const streak = [];
-  for (let i = past.length - 1; i >= 0; i -= 1) {
-    const race = past[i];
-    if (race.status !== 'concluida' || !findRaceRun(runs, race)) break;
-    streak.unshift(race);
-  }
-  return streak;
-}
-
-/* Cada conquista devolve o mesmo formato:
-   { key, name, short, unlocked, date, raceId, raceName, detail, isNew, tone, Icon }
-   - `detail` desbloqueada = o que aconteceu; bloqueada = o que falta.
-   - `date`/`raceId`/`raceName` = a prova que a desbloqueou (a mais recente
-     que serve, para o "isNew" apanhar a que acabou de ser registada).
-   - `isNew` = essa prova tem menos de 7 dias. */
-export function computeAchievements({ raceEvents = [], runs = [], profile = {}, now = new Date() } = {}) {
-  const today = isoDay(now);
-  const completed = completedRaces({ raceEvents, runs, profile });
-
-  // "Nova" conta pela data do REGISTO (created_at da corrida ligada), não
-  // pela data da prova: quem registar dez dias depois vê o cartão de
-  // conquista na mesma (apanhado na revisão pré-deploy). Sem created_at
-  // (registos antigos, demo), vale a data da prova.
-  const novaEm = (race) => {
-    const entry = completed.find((c) => c.race.id === race?.id);
-    const day = dayOf(entry?.run?.created_at) || dayOf(race?.date);
-    if (!day) return false;
-    return daysBetween(day, today) < NOVA_ATE_DIAS;
-  };
-
-  const build = (key, name, short, tone, Icon, unlockedBy, detail, lockedDetail) => ({
-    key,
-    name,
-    short,
-    tone,
-    Icon,
-    unlocked: !!unlockedBy,
-    date: unlockedBy ? dayOf(unlockedBy.date) : null,
-    raceId: unlockedBy?.id ?? null,
-    raceName: unlockedBy?.name ?? null,
-    detail: unlockedBy ? detail : lockedDetail,
-    isNew: unlockedBy ? novaEm(unlockedBy) : false,
-  });
-
-  // 1. Prova concluída — a contagem. Quem a desbloqueia é sempre a última.
-  const maisRecente = completed[0]?.race || null;
-  const provaConcluida = build(
-    'prova_concluida', 'Prova concluída', 'Prova', 'race', Flag,
-    maisRecente,
-    `${ordinalFem(completed.length)} prova`,
-    'Regista a tua primeira prova',
-  );
-
-  // 2. Objetivo batido — a régua é o raceOutcome, não uma comparação nova.
-  const comObjetivoBatido = completed.find(({ outcome }) => outcome?.verdict === 'superado' && outcome?.basis === 'objetivo');
-  const ultimaComObjetivo = completed.find(({ outcome }) => !!outcome?.targetSeconds && !!outcome?.officialSeconds);
-  let objetivoLocked = 'Marca um objetivo e bate-o';
-  if (ultimaComObjetivo) {
-    objetivoLocked = `Ficaste a ${formatDelta(ultimaComObjetivo.outcome.deltaTargetSeconds)} na ${ultimaComObjetivo.race.name}`;
-  }
-  const objetivoBatido = build(
-    'objetivo_batido', 'Objetivo batido', 'Objetivo', 'ok', Target,
-    comObjetivoBatido?.race || null,
-    comObjetivoBatido
-      ? `${comObjetivoBatido.race.name}, ${formatDuration(comObjetivoBatido.outcome.officialSeconds)} (objetivo ${formatDuration(comObjetivoBatido.outcome.targetSeconds)})`
-      : null,
-    objetivoLocked,
-  );
-
-  // 3. Recorde pessoal — precisa de duas provas na mesma categoria.
-  const comRecorde = completed.find(({ outcome }) => outcome?.isPersonalRecord);
-  const recordePessoal = build(
-    'recorde_pessoal', 'Recorde pessoal', 'Recorde', 'run', Zap,
-    comRecorde?.race || null,
-    comRecorde
-      ? `${capitalize(raceCategoryLabel(comRecorde.outcome.category))}: ${formatDuration(comRecorde.outcome.officialSeconds)}, ${formatDelta(comRecorde.outcome.deltaBestSeconds)} abaixo do anterior`
-      : null,
-    'Precisa de duas provas na mesma distância',
-  );
-
-  // 4. Primeira de trail — a PRIMEIRA, por data, não a mais recente.
-  const trails = completed.filter(({ race }) => race.race_type === 'trail');
-  const primeiroTrail = trails.length ? trails[trails.length - 1] : null;
-  const primeiraTrail = build(
-    'primeira_trail', 'Primeira de trail', 'Trail', 'race', Mountain,
-    primeiroTrail?.race || null,
-    primeiroTrail
-      ? [primeiroTrail.race.name, primeiroTrail.outcome?.officialSeconds ? formatDuration(primeiroTrail.outcome.officialSeconds) : null].filter(Boolean).join(', ')
-      : null,
-    'Ainda sem trail concluído',
-  );
-
-  // 5. Sequência — provas seguidas, sem nenhuma por registar pelo meio.
-  const streak = currentStreak(raceEvents, runs, today);
-  const temSequencia = streak.length >= 2;
-  const sequencia = build(
-    'sequencia', 'Sequência de provas', 'Sequência', 'race', Repeat,
-    temSequencia ? streak[streak.length - 1] : null,
-    `${streak.length} provas seguidas`,
-    'Duas provas seguidas registadas',
-  );
-
-  return [provaConcluida, objetivoBatido, recordePessoal, primeiraTrail, sequencia];
-}
-
-/* As conquistas de UMA prova avaliam-se NA PRÓPRIA prova, não por "foi a
+/* As conquistas de uma prova avaliam-se NA PRÓPRIA prova, não por "foi a
    mais recente a cumprir a condição": com duas provas com objetivo batido,
    as duas o bateram — e o hub da mais antiga, a lista do Palmarés e o cartão
    do Início têm de o dizer. (Antes filtrava-se o palmarés global pelo raceId
@@ -184,24 +68,25 @@ export function computeAchievements({ raceEvents = [], runs = [], profile = {}, 
    "fica para a próxima" errado — apanhado na revisão pré-deploy.)
    Devolve { earned, missed }: o que ela deu, e o que ainda podia ter dado —
    só objetivo e recorde, porque "primeira de trail" ou "sequência" não são
-   falhas de quem correu. */
-export const PERDIDAS_NA_PROVA = ['objetivo_batido', 'recorde_pessoal'];
-
+   falhas de quem correu — a lista delas é este LOCKED_SHAPE. */
 const LOCKED_SHAPE = {
   objetivo_batido: { name: 'Objetivo batido', short: 'Objetivo', tone: 'ok', Icon: Target },
   recorde_pessoal: { name: 'Recorde pessoal', short: 'Recorde', tone: 'run', Icon: Zap },
 };
 
-export function evaluateRace({ raceEvents = [], runs = [], profile = {}, now = new Date() } = {}, raceId) {
+export function evaluateRace({ raceEvents = [], runs = [], profile = {}, today } = {}, raceId) {
   const none = { earned: [], missed: [] };
   if (!raceId) return none;
-  const today = isoDay(now);
-  const completed = completedRaces({ raceEvents, runs, profile });
+  const hoje = requireToday(today, 'evaluateRace');
+  const completed = completedRaces({ raceEvents, runs, profile, today: hoje });
   const idx = completed.findIndex(({ race }) => race.id === raceId);
   if (idx < 0) return none;
   const { race, run, outcome } = completed[idx];
-  // Pela data do registo, como em computeAchievements (ver novaEm).
-  const isNew = daysBetween(dayOf(run?.created_at) || dayOf(race.date), today) < NOVA_ATE_DIAS;
+  /* "Nova" conta pela data do REGISTO (created_at da corrida ligada), não
+     pela data da prova: quem registar dez dias depois vê o cartão de
+     conquista na mesma (apanhado na revisão pré-deploy). Sem created_at
+     (registos antigos, demo), vale a data da prova. */
+  const isNew = daysBetween(dayOf(run?.created_at) || dayOf(race.date), hoje) < NOVA_ATE_DIAS;
   const item = (key, name, short, tone, Icon, detail) => ({
     key, name, short, tone, Icon, unlocked: true, date: dayOf(race.date), raceId: race.id, raceName: race.name ?? null, detail, isNew,
   });
@@ -213,30 +98,59 @@ export function evaluateRace({ raceEvents = [], runs = [], profile = {}, now = n
   // quantas há dela (inclusive) para trás.
   earned.push(item('prova_concluida', 'Prova concluída', 'Prova', 'race', Flag, `${ordinalFem(completed.length - idx)} prova`));
 
-  if (outcome?.verdict === 'superado' && outcome?.basis === 'objetivo') {
+  if (bateuObjetivo(outcome)) {
     earned.push(item('objetivo_batido', 'Objetivo batido', 'Objetivo', 'ok', Target,
       `${race.name}, ${formatDuration(outcome.officialSeconds)} (objetivo ${formatDuration(outcome.targetSeconds)})`));
   } else {
     missed.push(locked('objetivo_batido'));
   }
 
-  if (outcome?.isPersonalRecord) {
+  /* Acima do que o treino previa — a prova em que ele correu mais do que o
+     que as corridas ANTERIORES faziam esperar. A régua é a mesma do balanço
+     da Carol (a banda TRAINING_BAND_RATIO de 2% do raceOutcome, não os 3% do
+     NEAR_TARGET_RATIO, que é outra coisa) — o palmarés não pode discordar do
+     que ela diz sobre a mesma prova.
+
+     O tom é `gym` e não `coach`: --coach é a cor da Carol e só dela
+     (colors.css, "uma cor, um sentido"), e era praticamente o mesmo ciano de
+     --run, o tom do recorde pessoal — numa prova que desse as duas, as
+     pílulas ficavam indistinguíveis no Início.
+
+     Não entra nas "perdidas": a diferença face à previsão já está no bloco
+     dos tempos do hub, e três linhas de "fica para a próxima" na mesma prova
+     passavam de leitura a repreensão. */
+  if (acimaDoTreino(outcome)) {
+    earned.push(item('acima_do_treino', 'Acima do treino', 'Treino', 'gym', Rocket,
+      `${formatDuration(outcome.officialSeconds)} — ${formatDelta(outcome.deltaPredictionSeconds)} abaixo do que o treino previa (${formatDuration(outcome.predictedSeconds)})`));
+  }
+
+  if (bateuRecordePessoal(outcome)) {
     earned.push(item('recorde_pessoal', 'Recorde pessoal', 'Recorde', 'run', Zap,
       `${capitalize(raceCategoryLabel(outcome.category))}: ${formatDuration(outcome.officialSeconds)}, ${formatDelta(outcome.deltaBestSeconds)} abaixo do anterior`));
   } else {
     missed.push(locked('recorde_pessoal'));
   }
 
-  const trails = completed.filter(({ race: r }) => r.race_type === 'trail');
-  if (trails.length && trails[trails.length - 1].race.id === race.id) {
+  // A primeira de trail é a PRIMEIRA por data — a mesma pergunta que enche o
+  // encaixe `trail1` d'O Terreno, feita a esta prova.
+  const trails = provasDoTerreno(completed, 'trail');
+  if (trails.length && trails[0].race.id === race.id) {
     earned.push(item('primeira_trail', 'Primeira de trail', 'Trail', 'race', Mountain,
       [race.name, outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null].filter(Boolean).join(', ')));
   }
 
-  // A sequência conta-se a partir da 2.ª prova seguida: a posição desta na
-  // sequência atual é o número que ela mostra ("2 provas seguidas").
-  const pos = currentStreak(raceEvents, runs, today).findIndex((r) => r.id === race.id);
-  if (pos >= 1) earned.push(item('sequencia', 'Sequência de provas', 'Sequência', 'race', Repeat, `${pos + 1} provas seguidas`));
+  /* A sequência conta-se a partir da 2.ª prova seguida: o elo desta prova na
+     sua própria sequência é o número que ela mostra ("2 provas seguidas").
+     Sai do varrimento único de utils/premios.js — o mesmo que dá os marcos
+     do badge `sequencia`.
+
+     Antes saía da sequência que chega a HOJE, e por isso uma prova que foi a
+     3.ª seguida perdia o "3 provas seguidas" assim que uma prova posterior
+     passasse por registar: a leitura do hub de uma prova antiga mudava por
+     causa de uma prova que veio depois. Agora não — é a mesma lei que o
+     badge da sequência segue: o que se ganhou não se perde. */
+  const elo = varrerSequencia({ raceEvents, runs, today: hoje }).posicaoDe(race.id);
+  if (elo >= 2) earned.push(item('sequencia', 'Sequência de provas', 'Sequência', 'race', Repeat, `${elo} provas seguidas`));
 
   return { earned, missed };
 }

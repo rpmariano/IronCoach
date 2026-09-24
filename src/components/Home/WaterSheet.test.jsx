@@ -48,14 +48,23 @@ describe('WaterSheet', () => {
     expect(screen.queryByTestId('water-goal-reached')).not.toBeInTheDocument();
   });
 
-  it('o copo que passa a meta: a Carol diz-o, e fecha sozinha', async () => {
+  /* Pedido de 2026-09-21: «todas as mensagens que têm este caráter temporário
+     devem deixar de o ter». O momento da meta fechava a persiana 2,6 s
+     depois; agora fica à espera do toque. */
+  it('o copo que passa a meta: a Carol diz-o, e fica à espera do toque', async () => {
     setup(1800);
     fireEvent.click(screen.getByRole('button', { name: /\+250 ml/ }));
     const momento = await screen.findByTestId('water-goal-reached');
     expect(momento).toHaveTextContent('A água de hoje está feita.');
     expect(momento).toHaveTextContent('2,1 L');
+
+    // Tempo de sobra para ter fechado, se ainda fechasse sozinha.
+    await new Promise((r) => setTimeout(r, WATER_GOAL_MOMENT_MS + 200));
     expect(setWaterSheetOpen).not.toHaveBeenCalled();
-    await waitFor(() => expect(setWaterSheetOpen).toHaveBeenCalledWith(false), { timeout: WATER_GOAL_MOMENT_MS + 1000 });
+    expect(screen.getByTestId('water-goal-reached')).toBeInTheDocument();
+
+    fireEvent.click(momento);
+    await waitFor(() => expect(setWaterSheetOpen).toHaveBeenCalledWith(false));
   });
 
   it('com a meta já passada, os copos seguintes voltam a ser normais', async () => {

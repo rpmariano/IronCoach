@@ -1,4 +1,5 @@
 import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../lib/edgeTimeouts';
 import { formatDuration } from './run';
 
 /* invokeEdgeFunctionWithTimeout devolve o erro como TEXTO (a mensagem já
@@ -22,7 +23,7 @@ export async function readDiploma(memory) {
   const mime = (head.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
   const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-diploma', {
     body: JSON.stringify({ image: base64, mime_type: mime }),
-  });
+  }, ANALYZE_TIMEOUT_MS);
   if (error) throw asError(error);
   if (!data?.reading) throw new Error('Não consegui ler o diploma.');
   return data.reading;

@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import MealRegistration from './MealRegistration';
+import { dispensarConfirmacao } from '../../test/recordConfirmation';
 
 // O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
 // e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
@@ -108,6 +109,7 @@ describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () 
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     // A hora (meal_time) junta-se por update à parte — parte da hora atual.
     expect(useAppStore.getState().meals).toEqual([{ ...newMeal, meal_items: items, meal_time: expect.stringMatching(/^\d{2}:\d{2}$/) }]);
@@ -187,7 +189,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
 
     expect(screen.getByText('1 fatia de fiambre')).toBeInTheDocument();
-    expect(screen.getByText('Porção estimada pelo Coach')).toBeInTheDocument();
+    expect(screen.getByText('Porção estimada pela Carol')).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
@@ -233,6 +235,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
       { name: 'Aveia', grams: 40 },
     ]);
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().meals).toEqual([{ ...finalMeal, meal_time: expect.stringMatching(/^\d{2}:\d{2}$/) }]);
   });
@@ -312,6 +315,7 @@ describe('MealRegistration — editar refeição existente', () => {
     expect(mealId).toBe('meal-3');
     expect(mealPayload).toEqual({ date: '2026-01-10', meal_type: 'almoco' });
     expect(mocks.invoke).not.toHaveBeenCalled();
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -346,6 +350,7 @@ describe('MealRegistration — editar refeição existente', () => {
     // O update direto não é usado neste caminho — quem grava é a Edge Function.
     expect(mocks.updateMeal).not.toHaveBeenCalled();
     await waitFor(() => expect(loadInitialData).toHaveBeenCalledWith('user-1'));
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -585,6 +590,7 @@ describe('MealRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     await selectPhoto();
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
 

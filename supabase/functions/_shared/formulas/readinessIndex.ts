@@ -1,5 +1,7 @@
-// Índice de Prontidão — composto de 4 pilares (sempre) + 1 pilar tático
-// (só quando há prova agendada), score 0-100.
+// Índice de Prontidão — composto de 3 pilares (sempre) + o de carga (só com
+// histórico de corrida, runAcwr.ts) + 1 pilar tático (só quando há prova
+// agendada) + 1 pilar do check-in de hoje (só quando o atleta o fez), score
+// 0-100.
 //
 // @contexto Migrado de src/utils/biEngine.js calculateReadinessIndex
 // (specs/formulas-checklist.md Fase E) — o gap original que motivou toda
@@ -14,12 +16,13 @@ import { computeEnergyAvailabilityWindow, type MealForEA, type GymSessionForEA, 
 import { computeMacroAdherence, type MealForAdherence, type ProfileForAdherence, type BodyAssessmentForAdherence } from "./macroAdherence.ts";
 import { classifyCalorieCompliance } from "./nutritionCompliance.ts";
 import { computeVdotTrend, type RunForVdot } from "./vdotTrend.ts";
-import { computeRecentWeeklyVolume, assessRaceViability } from "./raceViability.ts";
+import { knownWeeklyVolume, assessRaceViability } from "./raceViability.ts";
 import { getRecommendedPrepWeeks, resolveExperienceLevel, getRacePrediction, type RaceForPlanning, type ProfileForPlanning } from "./racePlanning.ts";
 import type { RaceRun } from "./racePrediction.ts";
+import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
 
 export interface ReadinessPillar {
-  key: "acwr" | "ea" | "calories" | "vdot" | "tactic";
+  key: "acwr" | "ea" | "calories" | "vdot" | "tactic" | "checkin";
   label: string;
   score: number;
   desc: string;
@@ -35,6 +38,47 @@ export interface NextRaceForReadiness extends RaceForPlanning {
   date: string;
   target_pace_seconds_per_km?: number | null;
   race_priority?: string | null;
+}
+
+/** O check-in de HOJE (daily_checkins): sono/energia/stress 1-5, dor 0-10. */
+export interface CheckinForReadiness {
+  sleep?: number | null;
+  energy?: number | null;
+  stress?: number | null;
+  pain?: number | null;
+}
+
+// Uma escala 1-5 em 0-100 (1 → 0, 5 → 100). No stress, 1 é "calmo": inverte-se.
+const scale5 = (v: number) => (v - 1) * 25;
+
+/**
+ * Pilar "Como acordaste" (2026-09-23): até aqui o atleta dizia que dormiu mal
+ * e o índice não mexia. Média do sono, da energia e da calma; a dor tira 5
+ * pontos por cada ponto abaixo do limiar do alarme G2/G5 (PAIN_ALARM_THRESHOLD,
+ * checkinAlarms.ts) e, a partir dele, o pilar fica no máximo em 20. Sem
+ * check-in de hoje, o pilar não existe (não há dado, não há nota inventada).
+ *
+ * O texto usa o mesmo corte do resumo do dia e das boas-vindas: sono ou
+ * energia ≤2 é um dia em baixo, seja qual for a média — nunca "acordaste bem"
+ * a quem dormiu mal. E é lido também pela Carol (buildReadinessPanel), por
+ * isso fala na voz dela.
+ */
+export function checkinPillar(c: CheckinForReadiness | null | undefined): ReadinessPillar | null {
+  const sleep = Number(c?.sleep), energy = Number(c?.energy), stress = Number(c?.stress);
+  if (![sleep, energy, stress].every((v) => v >= 1 && v <= 5)) return null;
+  const base = (scale5(sleep) + scale5(energy) + scale5(6 - stress)) / 3;
+  const pain = Math.max(0, Number(c?.pain) || 0);
+  const painAlarm = pain >= PAIN_ALARM_THRESHOLD;
+  const score = Math.round(painAlarm ? Math.min(base, 20) : Math.max(0, base - pain * 5));
+  const emBaixo = sleep <= 2 || energy <= 2;
+
+  let desc: string;
+  if (painAlarm) desc = `Dor de ${pain}/10: hoje nada de impacto. Fala comigo no chat.`;
+  else if (emBaixo) desc = sleep <= 2 ? "Dormiste mal. Hoje o treino é mais leve." : "Estás sem energia. Hoje o treino é mais leve.";
+  else if (score >= 75) desc = "Acordaste bem: sono, energia e cabeça a favor do treino de hoje.";
+  else if (score >= 50) desc = "Dia normal. Treina, mas atento a como te sentes.";
+  else desc = "Hoje estás em baixo. Um treino mais leve rende mais.";
+  return { key: "checkin", label: "Como acordaste", score, desc };
 }
 
 type RunInput = RunForAcwr & RunForVdot & RaceRun;
@@ -62,28 +106,32 @@ export function computeReadinessIndex(
   profile: ProfileForAdherence & ProfileForPlanning,
   todayISO: string,
   nextRace: NextRaceForReadiness | null = null,
+  todayCheckin: CheckinForReadiness | null = null,
 ): ReadinessIndex {
   const pillars: ReadinessPillar[] = [];
 
   // --- Pilar 1: ACWR ---
+  // Só com histórico (corridas em 3 das 4 semanas, runAcwr.ts). Sem ele o
+  // pilar não entra — como o tático sem prova e o do check-in sem check-in —
+  // em vez de dizer "Carga de risco (2,00)" a quem só registou duas corridas
+  // (pedido 2026-09-24: "se a app não tem dados, não apresenta dados").
   const acwr = computeRunAcwr(runs || [], todayISO);
   const acwrRatio = acwr.ratio || 0;
-  let acwrScore = 0;
-  let acwrDesc = "Sem dados de corrida suficientes.";
-  if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
-    acwrScore = 100;
-    acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
-  } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
-    acwrScore = 50;
-    acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
-  } else if (acwrRatio > 1.5) {
-    acwrScore = 0;
-    acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
-  } else if (acwrRatio > 0 && acwrRatio < 0.8) {
-    acwrScore = 60;
-    acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+  if (acwr.hasEnoughData) {
+    let acwrScore = 60;
+    let acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+    if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
+      acwrScore = 100;
+      acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
+    } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
+      acwrScore = 50;
+      acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
+    } else if (acwrRatio > 1.5) {
+      acwrScore = 0;
+      acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
+    }
+    pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
   }
-  pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
 
   // --- Pilar 2: Disponibilidade Energética ---
   const ea = computeEnergyAvailabilityWindow(meals || [], bodyAssessments || [], runs || [], gymSessions || [], todayISO, "semana");
@@ -148,7 +196,8 @@ export function computeReadinessIndex(
     const distanceKm = parseFloat((nextRace.distance_km ?? "10").toString().replace(",", ".")) || 10;
     const daysToRace = daysBetweenISO(nextRace.date, todayISO);
     const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
-    const weeklyVol = computeRecentWeeklyVolume(runs || [], todayISO);
+    // Só o volume que a app conhece de facto (com histórico); sem ele, null.
+    const weeklyVol = knownWeeklyVolume(runs || [], todayISO);
     const expLevel = resolveExperienceLevel(nextRace, profile);
 
     // Se o plano já começou, a viabilidade de "tempo insuficiente" avalia o
@@ -163,7 +212,7 @@ export function computeReadinessIndex(
       distanceKm,
       experienceLevel: expLevel,
       weeksToRace: prepWeeksForViability,
-      weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+      weeklyVolumeKm: weeklyVol,
       racePriority: nextRace.race_priority || "a",
     });
 
@@ -199,6 +248,10 @@ export function computeReadinessIndex(
 
     pillars.push({ key: "tactic", label: "Viabilidade Tática", score: tacticScore, desc: tacticDesc });
   }
+
+  // --- Pilar 6: Como acordaste (só com check-in de hoje) ---
+  const checkin = checkinPillar(todayCheckin);
+  if (checkin) pillars.push(checkin);
 
   const totalScore = Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length);
   const level = totalScore >= 75 ? "high" : totalScore >= 50 ? "medium" : "low";

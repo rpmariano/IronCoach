@@ -13,6 +13,8 @@
 // sessão (completed_run_id / completed_session_id). A maior parte dos atletas
 // não marca — por isso, sem ligação, conta o que foi registado nesse dia.
 
+import { isMealOnlyItem } from "./mealSuggestions.ts";
+
 export const ADHERENCE_WINDOW_DAYS = 14;
 /** ±15%: dentro disto, o treino foi o prescrito. */
 export const ADHERENCE_TOLERANCE = 0.15;
@@ -36,6 +38,8 @@ export interface PlanItemRow {
   meal_macros?: { kcal?: number; protein_g?: number; carbs_g?: number; fat_g?: number } | null;
   actual_date?: string | null;
   plan_id?: string | null;
+  // Só para a marca 'so-refeicoes' (mealSuggestions.ts) num descanso.
+  categories?: string[] | null;
 }
 
 export interface RunRow { id?: string; date: string; distance_km?: number | string | null; duration_seconds?: number | null; effort_rpe?: number | null }
@@ -158,7 +162,63 @@ export function evaluateTrainingItem(
 export interface AdherenceSummary {
   training: TrainingResult[];
   counts: Record<TrainingOutcome, number>;
+  /** 0-100, ou null quando não houve nada prescrito na janela — ver executionScore. */
+  executionScore: number | null;
   nutrition: Array<{ date: string; text: string; proteinPct: number | null; kcalPct: number | null }>;
+}
+
+/* ── O índice de execução do plano ──────────────────────────────────────────
+   Um número de 0 a 100 a partir dos MESMOS `counts` que o texto do prompt já
+   resume. Serve a comparação por percentil (gamificação, Fase 5): é a métrica
+   'plan_execution' de percentile_snapshots.
+
+   Nada disto muda o que a Carol lê — o texto continua exatamente igual;
+   isto é só uma segunda leitura dos mesmos números.
+
+   A ponderação:
+     cumprido              1     fez o que estava prescrito
+     a_menos / a_mais     0,5    apareceu, mas não foi aquilo (os dois valem o
+                                 mesmo de propósito: 22 km num longo de 18 não
+                                 é melhor do que 14 — é outra coisa)
+     falhado               0
+     descanso              meio peso, respeitado ou não. O descanso conta —
+                           saltá-lo é desviar-se do plano — mas um plano de 14
+                           dias tem mais dias de descanso do que de treino, e
+                           a peso inteiro um atleta que não treinou nada mas
+                           esteve quieto ficava à frente de quem correu tudo. */
+export const EXECUTION_WEIGHTS: Record<TrainingOutcome, number> = {
+  cumprido: 1,
+  a_menos: 0.5,
+  a_mais: 0.5,
+  falhado: 0,
+  descanso_respeitado: 0.5,
+  descanso_nao_respeitado: 0,
+};
+/** O peso de um dia de descanso no denominador — metade de um dia de treino. */
+export const EXECUTION_REST_WEIGHT = 0.5;
+
+/** O denominador ponderado: quanto plano houve para cumprir. 0 = nada
+ *  prescrito na janela, e nesse caso não há índice nenhum a calcular. */
+export function executionBase(counts: Record<TrainingOutcome, number>): number {
+  const workouts = (counts.cumprido || 0) + (counts.a_menos || 0) + (counts.a_mais || 0) + (counts.falhado || 0);
+  const rests = (counts.descanso_respeitado || 0) + (counts.descanso_nao_respeitado || 0);
+  return workouts + rests * EXECUTION_REST_WEIGHT;
+}
+
+/** 0-100 com uma casa decimal. Sem nada prescrito devolve 0 — quem precisa de
+ *  distinguir "cumpriu zero" de "não havia nada" pergunta a executionBase()
+ *  primeiro (é o que a agregação dos percentis faz). */
+export function executionScore(counts: Record<TrainingOutcome, number>): number {
+  const base = executionBase(counts);
+  if (base <= 0) return 0;
+  let earned = 0;
+  for (const [outcome, weight] of Object.entries(EXECUTION_WEIGHTS) as Array<[TrainingOutcome, number]>) {
+    earned += (counts[outcome] || 0) * weight;
+  }
+  const score = (earned / base) * 100;
+  // Nunca fora de 0-100: os pesos garantem-no, mas o clamp é barato e este
+  // número vai parar a uma distribuição pública.
+  return Math.round(Math.min(100, Math.max(0, score)) * 10) / 10;
 }
 
 /** Os itens dos últimos 14 dias (sem hoje), só os que contam: nem cancelados
@@ -186,8 +246,10 @@ export function evaluatePrescriptions(
   const trainingPlans = new Set(items.filter((i) => i.kind === "corrida" || i.kind === "ginasio").map((i) => i.plan_id ?? "sem-plano"));
   const takenRunIds = new Set(items.map((i) => i.completed_run_id).filter((x): x is string => !!x));
   const takenGymIds = new Set(items.map((i) => i.completed_session_id).filter((x): x is string => !!x));
+  // Um dia "só refeições" dentro de um plano de treino também não é descanso
+  // prescrito — é um dia sem treino planeado (marca 'so-refeicoes').
   const training = items
-    .filter((i) => i.kind === "corrida" || i.kind === "ginasio" || (i.kind === "descanso" && trainingPlans.has(i.plan_id ?? "sem-plano")))
+    .filter((i) => i.kind === "corrida" || i.kind === "ginasio" || (i.kind === "descanso" && !isMealOnlyItem(i) && trainingPlans.has(i.plan_id ?? "sem-plano")))
     .map((i) => {
       // O registo ligado a ESTE item não conta como "tomado" para ele.
       const ownRuns = new Set([...takenRunIds].filter((id) => id !== i.completed_run_id));
@@ -219,7 +281,18 @@ export function evaluatePrescriptions(
       };
     });
 
-  return { training, counts, nutrition };
+  return { training, counts, executionScore: training.length ? executionScore(counts) : null, nutrition };
+}
+
+/** A linha de contas dos treinos ("N treinos prescritos: …; descanso …") —
+ *  a mesma no bloco de 14 dias e no plano da semana do balanço. */
+export function trainingSummaryLine(counts: Record<TrainingOutcome, number>): string {
+  const workouts = counts.cumprido + counts.a_menos + counts.a_mais + counts.falhado;
+  const rests = counts.descanso_respeitado + counts.descanso_nao_respeitado;
+  return [
+    workouts ? `${workouts} treinos prescritos: ${counts.cumprido} cumpridos, ${counts.a_menos} a menos, ${counts.a_mais} a mais, ${counts.falhado} não feitos` : null,
+    rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${rests} dias` : null,
+  ].filter(Boolean).join("; ");
 }
 
 /** O bloco do prompt. null se não houve nada prescrito nos últimos 14 dias. */
@@ -229,12 +302,7 @@ export function buildPrescriptionAdherenceContext(summary: AdherenceSummary): st
   const parts: string[] = [];
 
   if (training.length) {
-    const workouts = counts.cumprido + counts.a_menos + counts.a_mais + counts.falhado;
-    const rests = counts.descanso_respeitado + counts.descanso_nao_respeitado;
-    const summaryLine = [
-      workouts ? `${workouts} treinos prescritos: ${counts.cumprido} cumpridos, ${counts.a_menos} a menos, ${counts.a_mais} a mais, ${counts.falhado} não feitos` : null,
-      rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${rests} dias` : null,
-    ].filter(Boolean).join("; ");
+    const summaryLine = trainingSummaryLine(counts);
     parts.push(`Treinos (±${Math.round(ADHERENCE_TOLERANCE * 100)}% conta como cumprido) — ${summaryLine}:\n` +
       training.slice(-MAX_TRAINING_LINES).map((t) => `- ${t.text}`).join("\n"));
   }

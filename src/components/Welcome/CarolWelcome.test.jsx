@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import CarolWelcome from './CarolWelcome';
-import { WELCOME_AUTO_CLOSE_MS } from '../../utils/carolWelcome';
+import { useAppStore } from '../../store';
 
 const welcome = {
   variant: 'manha',
@@ -42,14 +42,22 @@ describe('CarolWelcome', () => {
     expect(onClose2).toHaveBeenCalledTimes(1);
   });
 
-  it('fecha sozinha ao fim do tempo', () => {
+  /* Pedido de 2026-09-21: «todas as mensagens que têm este caráter
+     temporário devem deixar de o ter; quero que só desapareçam mediante ação
+     do utilizador». Fechava-se aos 7,8 s. Este teste é o que impede que o
+     temporizador volte. */
+  it('não se fecha sozinha — espera pelo atleta', () => {
     vi.useFakeTimers();
     const onClose = vi.fn();
     render(<CarolWelcome welcome={welcome} now={NOW} onClose={onClose} />);
-    act(() => { vi.advanceTimersByTime(1800 + WELCOME_AUTO_CLOSE_MS - 1); });
+    act(() => { vi.advanceTimersByTime(60000); });
     expect(onClose).not.toHaveBeenCalled();
-    act(() => { vi.advanceTimersByTime(1); });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('carol-welcome')).toBeInTheDocument();
+  });
+
+  it('já não mostra a barra que contava o tempo', () => {
+    const { container } = render(<CarolWelcome welcome={welcome} now={NOW} onClose={() => {}} />);
+    expect(container.querySelector('.welcome-drain')).toBeNull();
   });
 
   it('no dia da prova, a variante âmbar', () => {
@@ -79,3 +87,27 @@ describe('CarolWelcome — o foco (revisão pré-master de 2026-09-19)', () => {
     antes.remove();
   });
 });
+
+// Pedido 2026-09-23: o check-in da manhã explica-se e o botão abre-o.
+describe('CarolWelcome — "Fazer o check-in"', () => {
+  it('leva ao Início e pede ao cartão que abra o check-in', () => {
+    useAppStore.setState({ activeTab: 'coach', navGuard: null, checkinRequested: false });
+    const onClose = vi.fn();
+    render(<CarolWelcome welcome={{ ...welcome, cta: 'Fazer o check-in', action: 'checkin' }} now={NOW} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Fazer o check-in' }));
+    expect(useAppStore.getState().activeTab).toBe('home');
+    expect(useAppStore.getState().checkinRequested).toBe(true);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('com a navegação recusada (formulário por gravar), só fecha', () => {
+    useAppStore.setState({ activeTab: 'perfil', navGuard: () => false, checkinRequested: false });
+    const onClose = vi.fn();
+    render(<CarolWelcome welcome={{ ...welcome, cta: 'Fazer o check-in', action: 'checkin' }} now={NOW} onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Fazer o check-in' }));
+    expect(useAppStore.getState().checkinRequested).toBe(false);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    useAppStore.setState({ navGuard: null });
+  });
+});
+

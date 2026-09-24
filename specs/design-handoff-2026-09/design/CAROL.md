@@ -37,12 +37,25 @@ A Carol reage a eventos, não só ao plano.
 
 ## 4. Rosto
 
-O avatar atual é um balão de fala — ícone de chat, não pessoa.
+O avatar era um balão de fala — ícone de chat, não pessoa. Desde 2026-09-24 é um retrato (`src/components/Coach/CoachAvatar.jsx`, geometria em `carolFace.js`).
 
-- Substituir por um retrato ilustrado, sempre o mesmo, em três expressões: **neutra** (por defeito), **contente** (recorde, semana cumprida, prova concluída), **preocupada** (aviso de viabilidade, energia baixa, 3 dias sem registo).
-- A expressão acompanha o tom da mensagem em que aparece. Nunca muda a meio de uma conversa sem motivo.
-- Estilo: traço simples, duas cores (ciano `#22d3ee` sobre fundo escuro), sem fotorrealismo. Deve funcionar a 30px e a 76px.
-- Onde aparece: header do chat, cartão do Início, cabeçalho de cada passo do onboarding, comentários nos registos, balanço no hub de prova.
+- **Desenho:** retrato de traço simples, dentro do disco ciano dela — linha escura, cara clara, bochechas coradas, e o cabelo escuro com estrutura: franja varrida em madeixas com pontas, acima das sobrancelhas, fios de luz a marcar o sentido do cabelo, e rabo-de-cavalo alto com as pontas desfiadas. O queixo fica perto do fundo do disco, para o pescoço ser curto. Só a cabeça: o pescoço sai pelo fundo do disco e os ombros nunca aparecem. Sempre o mesmo; muda a expressão, nunca a pessoa.
+- **Seis emoções** (vocabulário partilhado em `supabase/functions/_shared/formulas/carolMood.ts`):
+
+| Emoção | Quando |
+|---|---|
+| `neutral` — neutra | Por defeito. Informar, planear, responder. |
+| `happy` — contente | Uma coisa boa e concreta: treino bem feito, melhoria, adesão. |
+| `proud` — orgulhosa | O excecional: recorde, prova concluída, semana a 100%. Rara. |
+| `worried` — preocupada | Dor, alarme G1–G5, objetivo inviável, discordância, dias sem notícias. |
+| `caring` — empática | Dia em baixo, cansaço, frustração. Inclina a cabeça. |
+| `thinking` — a pensar | Enquanto escreve ou analisa. Nunca é o tom de uma mensagem. |
+
+- **A expressão acompanha o tom da mensagem em que aparece.** No chat é o modelo que a escolhe, na mesma resposta em que escreve o texto (campo `mood` do JSON estruturado do `coach-chat`), e fica gravada em `coach_messages.mood`. Nas mensagens antigas, ou quando falta, o cliente deduz do texto por marcadores fortes (`inferMoodFromText`); na dúvida, neutra. Um aviso ganha sempre: a cara nunca sorri por cima de uma dor.
+- **Nunca muda sem motivo.** Quando muda, passa de uma à outra em 360 ms (os traços deslizam, o corado sobe ou desce) e acena. No cabeçalho do chat fica "a pensar" enquanto ela escreve, depois a emoção da última mensagem; passadas 6 horas volta à neutra.
+- **Vida:** a assinatura — as linhas desenham-se como uma caneta e só depois o desenho ganha cor — nos momentos de chegada (boas-vindas, onboarding, chat); pisca os olhos a cada ~5 s, com compasso próprio por instância. Com `prefers-reduced-motion`, tudo parado.
+- **Tamanhos:** funciona de 24 px a 88 px. Abaixo de 32 px o enquadramento aproxima-se da cara; acima de 56 px entra o nariz. Nos tamanhos pequenos as sobrancelhas e a boca engrossam, porque são elas que dizem a emoção, e nunca ficam abaixo de 1,2 px. No Início e no chat, nunca menos de 36 px ao lado de uma mensagem dela e 56 px no cartão do Início.
+- **Onde aparece:** header do chat e ao lado de cada mensagem dela, cartão do Início (com a cara do resumo), cabeçalho de cada passo do onboarding, estados de análise ("a pensar"), balanço no hub de prova (a cara do veredicto), boas-vindas.
 
 ## 5. Ritmo humano na escrita
 

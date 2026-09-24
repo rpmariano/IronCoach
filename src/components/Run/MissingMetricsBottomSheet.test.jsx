@@ -56,6 +56,51 @@ describe('MissingMetricsBottomSheet', () => {
     vi.useRealTimers();
   });
 
+  /* Com a fonte reconhecida, o painel deixa de listar campos soltos e passa a
+     dizer QUE PRINT os traz (supabase/functions/_shared/sourceApps.ts). Foi
+     esta a lacuna medida a 2026-09-22: a mesma corrida com 1 foto perdia oito
+     campos, e o painel nomeava a métrica sem nunca dizer onde ela vive. */
+  describe('com a app de origem reconhecida', () => {
+    const comFonte = {
+      ...defaultProps,
+      missingKeys: ['hr_zones', 'thresholds', 'biomechanics'],
+      sourceApp: 'samsung_health',
+    };
+
+    it('agrupa as métricas em falta por ecrã, dizendo o nome do ecrã e da app', () => {
+      render(<MissingMetricsBottomSheet {...comFonte} />);
+      const cabecalhos = screen.getAllByText(/^O ecrã/).map((el) => el.textContent.replace(/\s+/g, ' '));
+      expect(cabecalhos).toEqual([
+        'O ecrã Zonas de Frequência Cardíaca da Samsung Health traz estas 2:',
+        'O ecrã Dinâmica de Corrida da Samsung Health traz esta:',
+      ]);
+    });
+
+    it('não perde nenhuma métrica ao agrupá-las — dois prints, seis campos na mesma', () => {
+      render(<MissingMetricsBottomSheet {...comFonte} />);
+      expect(screen.getByText(/Métricas sugeridas \(3\):/i)).toBeInTheDocument();
+      expect(screen.getByText('Limiares Fisiológicos (FC LA / LAn)')).toBeInTheDocument();
+      expect(screen.getByText(/Métricas Biomecânicas/)).toBeInTheDocument();
+      // O rótulo da métrica e o nome do ecrã são a mesma frase aqui — o que
+      // tem de haver são DUAS ocorrências: o cabeçalho e a linha da métrica.
+      expect(screen.getAllByText('Zonas de Frequência Cardíaca')).toHaveLength(2);
+    });
+  });
+
+  /* O requisito que não pode ceder: uma app que o catálogo não conhece — ou
+     uma corrida antiga, gravada antes de haver fonte nenhuma — mantém o texto
+     de hoje. Nunca se inventa o nome de um ecrã de uma app desconhecida. */
+  it.each([['desconhecida'], ['strava'], [null], [undefined]])(
+    'mantém a lista plana de sempre quando a fonte é %s',
+    (fonte) => {
+      render(<MissingMetricsBottomSheet {...defaultProps} sourceApp={fonte} missingKeys={['hr_zones', 'thresholds']} />);
+      expect(screen.queryByText(/O ecrã/)).toBeNull();
+      expect(screen.getByText(/Métricas sugeridas \(2\):/i)).toBeInTheDocument();
+      expect(screen.getByText('Zonas de Frequência Cardíaca')).toBeInTheDocument();
+      expect(screen.getByText('Limiares Fisiológicos (FC LA / LAn)')).toBeInTheDocument();
+    },
+  );
+
   it('chama onClose ao deslizar para baixo', () => {
     vi.useFakeTimers();
     defaultProps.onClose.mockClear();

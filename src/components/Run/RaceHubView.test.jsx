@@ -514,3 +514,130 @@ describe('RaceHubView — plano para o dia', () => {
     expect(onGoToEdit).toHaveBeenCalled();
   });
 });
+
+/* Pedido 2026-09-20: "dar mais relevância aos tempos que o atleta tem como
+   objetivo e qual o tempo esperado com os treinos (...) no caso de provas
+   concluídas tem de ficar bem claro as diferenças de objetivos pessoais, de
+   treino e a realidade. Em todos os casos os objetivos devem sempre surgir
+   com o tempo total e o pace." */
+describe('RaceHubView — objetivo, previsão e real', () => {
+  const futureDateISO = (daysAhead) => {
+    const d = new Date();
+    d.setDate(d.getDate() + daysAhead);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // Treino: 10 km em 48:00 (4:48/km). Riegel sobre a meia dá ~1:40, bem
+  // abaixo do objetivo de 1:52 — o objetivo é conservador.
+  const TREINO = [
+    { id: 'r-a', kind: 'normal', date: pastDateISO(30), distance_km: 10, duration_seconds: 2880 },
+    { id: 'r-b', kind: 'normal', date: pastDateISO(20), distance_km: 14, duration_seconds: 4200 },
+  ];
+
+  it('antes da prova mostra objetivo e previsão com ritmo, e a diferença entre os dois', () => {
+    const race = { ...RACE, date: futureDateISO(30), status: 'planeada', target_time_seconds: 6720 };
+    render(<RaceHubView race={race} runs={TREINO} profile={PROFILE} />);
+
+    const bloco = screen.getByTestId('race-forecast');
+    expect(bloco).toBeInTheDocument();
+    // O objetivo (1:52:00) e o seu ritmo, que antes não existia em lado nenhum.
+    expect(bloco.textContent).toContain('1:52:00');
+    expect(bloco.textContent).toContain('/km');
+    // A diferença deixou de ser um exercício de cabeça do atleta.
+    expect(screen.getByTestId('race-forecast-delta').textContent).toMatch(/mais (rápido|lento) do que o objetivo/);
+  });
+
+  it('o objetivo aparece mesmo quando só a coluna numérica está preenchida', () => {
+    // Uma prova criada pela Carol grava target_time_seconds e deixa o texto
+    // livre vazio; antes disso o hub escondia o objetivo que ela acabara de
+    // registar, antes e depois da prova.
+    const race = { ...RACE, target_time: null, target_time_seconds: 6720 };
+    render(<RaceHubView race={race} runs={[{ ...RACE_RUN, race_id: 'race-1' }, ...TREINO]} profile={PROFILE} />);
+
+    const linha = screen.getByTestId('race-times-objetivo');
+    expect(linha.textContent).toContain('1:52:00');
+  });
+
+  it('depois da prova põe real, objetivo, previsão e melhor anterior lado a lado, todos com ritmo', () => {
+    const anterior = { id: 'r-old', kind: 'competicao', date: pastDateISO(200), distance_km: 21.1, duration_seconds: 7200 };
+    const race = { ...RACE, target_time_seconds: 6720 };
+    render(<RaceHubView race={race} runs={[{ ...RACE_RUN, race_id: 'race-1' }, ...TREINO, anterior]} profile={PROFILE} />);
+
+    const bloco = screen.getByTestId('race-times-breakdown');
+    // O real: 6822 s = 1:53:42.
+    expect(bloco.textContent).toContain('1:53:42');
+
+    // O objetivo era 1:52:00 — ficou 1:42 mais lento.
+    const objetivo = screen.getByTestId('race-times-objetivo');
+    expect(objetivo.textContent).toContain('1:52:00');
+    expect(objetivo.textContent).toMatch(/1:42 mais lento/);
+
+    // O melhor anterior na mesma distância: 2:00:00, batido por 6:18.
+    const melhor = screen.getByTestId('race-times-melhor');
+    expect(melhor.textContent).toContain('2:00:00');
+    expect(melhor.textContent).toMatch(/6:18 mais rápido/);
+
+    // O que o treino previa continua lá, agora com ritmo e não só como diferença.
+    expect(screen.getByTestId('race-times-previsao').textContent).toMatch(/\/km/);
+  });
+
+  it('prova concluída sem corrida associada mantém o objetivo à vista', () => {
+    const race = { ...RACE, target_time: null, target_time_seconds: 6720 };
+    render(<RaceHubView race={race} runs={[]} profile={PROFILE} />);
+
+    expect(screen.queryByTestId('race-times-breakdown')).not.toBeInTheDocument();
+    expect(screen.getByTestId('race-times-target-only').textContent).toContain('1:52:00');
+  });
+});
+
+/* Os dois defeitos que a revisão pré-deploy apanhou na entrega dos tempos.
+   Nenhum dos testes acima os via, porque todos injetavam
+   `target_time_seconds` à mão — um campo que o hub NUNCA recebe em
+   produção. Estes usam a forma real do que a RunAgenda lhe passa. */
+describe('RaceHubView — o objetivo do rascunho da agenda', () => {
+  const futura = (d) => { const x = new Date(); x.setDate(x.getDate() + d); return x.toISOString().slice(0, 10); };
+
+  // Exatamente o `draft` de RunAgenda: só texto livre, sem colunas numéricas.
+  const DRAFT = {
+    id: 'race-1', name: 'Meia', date: futura(60), distance_km: '21.1',
+    race_type: 'estrada', race_priority: 'a', status: 'planeada',
+    target_time: '1:52:00', target_pace: '5.18',
+  };
+  const TREINO = [{ id: 'r1', kind: 'normal', date: pastDateISO(20), distance_km: 10, duration_seconds: 2880 }];
+
+  it('mostra o objetivo do rascunho, com tempo e ritmo, e compara-o com a previsão', () => {
+    render(<RaceHubView race={DRAFT} runs={TREINO} profile={PROFILE} />);
+
+    const bloco = screen.getByTestId('race-forecast');
+    expect(bloco.textContent).toContain('1:52:00');
+    expect(bloco.textContent).toContain('5.18/km');
+    // E deixa de mandar marcar um objetivo que ele acabou de escrever.
+    expect(bloco.textContent).not.toContain('Marca um objetivo');
+    expect(screen.getByTestId('race-forecast-delta')).toBeInTheDocument();
+  });
+
+  it('sem corridas nenhumas o objetivo continua à vista — conta nova é quem mais precisa dele', () => {
+    render(<RaceHubView race={DRAFT} runs={[]} profile={PROFILE} />);
+
+    const bloco = screen.getByTestId('race-forecast');
+    expect(bloco.textContent).toContain('1:52:00');
+    expect(bloco.textContent).toContain('Regista corridas');
+    // Sem previsão não há diferença para mostrar.
+    expect(screen.queryByTestId('race-forecast-delta')).not.toBeInTheDocument();
+  });
+
+  it('uma corrida com distância e sem duração não apaga o bloco', () => {
+    // fastestRun só exige distance_km > 0: em primeiro no reduce, esta
+    // corrida devolvia NaN e levava o bloco inteiro com ela.
+    const corrompida = [{ id: 'mau', kind: 'normal', date: pastDateISO(5), distance_km: 8, duration_seconds: null }, ...TREINO];
+    render(<RaceHubView race={DRAFT} runs={corrompida} profile={PROFILE} />);
+
+    const bloco = screen.getByTestId('race-forecast');
+    expect(bloco.textContent).toContain('1:52:00');
+    /* O objetivo sozinho não chega como prova: passava na mesma com a
+       previsão perdida. A diferença só existe se as duas sobreviverem —
+       e não pode dizer "Regista corridas" a quem tem corridas. */
+    expect(screen.getByTestId('race-forecast-delta')).toBeInTheDocument();
+    expect(bloco.textContent).not.toContain('Regista corridas');
+  });
+});

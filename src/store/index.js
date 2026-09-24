@@ -4,6 +4,8 @@ import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from 
 import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin } from '../utils/checkin';
+import { TABELAS_POLICY_VERSION } from '../utils/percentile';
+import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 
 const getInitialDashboardTab = () => {
   try {
@@ -86,6 +88,11 @@ export const useAppStore = create((set, get) => ({
   // Ver specs/plano-de-treino.md §11.
   dailySummary: null,
   dailySummaryLoading: false,
+  // De que conta são as corridas e o ginásio que estão no store — posto
+  // quando chegam, no mesmo set. O dailySummaryRefresh espera por ele para
+  // tomar o ponto de partida: uma lista vazia de antes do carregamento não
+  // é "sem treinos" (revisão pré-deploy de 90bfa9b).
+  trainingLoadedFor: null,
   // Item do plano em vias de ser concluído — posto pelo Início mesmo antes de
   // navegar para o registo (RunRegistration/GymRegistration), que o consome
   // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
@@ -153,6 +160,9 @@ export const useAppStore = create((set, get) => ({
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
   navGuard: null,
+  // O botão "Fazer o check-in" das boas-vindas pede ao cartão do Início
+  // que abra a persiana do check-in (CheckinCard consome e limpa).
+  checkinRequested: false,
   
   // Actions
   setSession: (session) => {
@@ -190,6 +200,8 @@ export const useAppStore = create((set, get) => ({
     }
   },
   setNavGuard: (fn) => set({ navGuard: fn }),
+  requestCheckin: () => set({ checkinRequested: true }),
+  clearCheckinRequest: () => set({ checkinRequested: false }),
   // Devolve false quando o guard recusa, para quem chama não seguir com
   // efeitos secundários (ex.: abrir um formulário de registo) numa navegação
   // que não aconteceu.
@@ -212,7 +224,15 @@ export const useAppStore = create((set, get) => ({
     }
     return true;
   },
-  setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
+  // Trocar de ecrã de topo larga a corrida em edição: só o registo de
+  // corrida a usa. Sem isto, o "+" a abrir outro registo por cima de uma
+  // corrida em edição deixava o editingRunId preso — e a app "ocupada" para
+  // sempre aos olhos da atualização (revisão pré-deploy de 5ce5f31).
+  setOpenCreationMode: (mode) => set(mode === 'run' ? { openCreationMode: mode } : { openCreationMode: mode, editingRunId: null }),
+  // A confirmação de gravação à vista (RecordConfirmation): o registo já
+  // está gravado, e o ecrã deixa de contar como aberto para a reposição.
+  recordSaved: false,
+  setRecordSaved: (v) => set({ recordSaved: !!v }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
   /* Abre o registo de corrida em MODO PROVA (specs/prova-concluida.md §3).
      Ponto único das três entradas — hub da prova, cartão do Início e cartão
@@ -253,7 +273,7 @@ export const useAppStore = create((set, get) => ({
   coachIntent: null,
   setCoachIntent: (intent) => set({ coachIntent: intent }),
   /* A chave de uma notificação tocada (P.9) para um momento que o cliente
-     não sabe montar sozinho (só o servidor gera race_after/block_end/silence
+     não sabe montar sozinho (só o servidor gera race_after/block_end/silence/week_review
      com os dados todos) — NÃO é um coachIntent: o efeito passivo do Coach
      (Coach.jsx) cede a qualquer intent explícito, e isto é só uma preferência
      de ordem dentro da lista normal de candidatos (listProactiveTriggers).
@@ -262,7 +282,15 @@ export const useAppStore = create((set, get) => ({
   setProactiveKeyRequested: (key) => set({ proactiveKeyRequested: key }),
 
   // Coach Actions
-  addCoachMessage: (msg) => set((state) => ({ coachMessages: [...state.coachMessages, msg] })),
+  // A mesma mensagem (mesmo id da BD) nunca entra duas vezes: a resposta que
+  // chega pela sondagem de handleAsyncFallback pode já ter vindo no
+  // recarregamento dos dados ao voltar à app (incidente 2026-09-23 — a
+  // Carol aparecia a repetir-se).
+  addCoachMessage: (msg) => set((state) => (
+    msg?.id != null && state.coachMessages.some((m) => m.id === msg.id)
+      ? {}
+      : { coachMessages: [...state.coachMessages, msg] }
+  )),
   // Usado para retirar a mensagem placeholder "isto está a demorar…" depois
   // de resolvida (com a resposta real ou com o erro final) — ver
   // handleAsyncFallback em Coach.jsx.
@@ -441,6 +469,41 @@ export const useAppStore = create((set, get) => ({
         if (updatedProfile) {
           set({ profile: updatedProfile });
         }
+      }
+    }
+
+    /* A conversa sobre objetivos que a análise corporal abriu (bug #41)
+       fecha-se com a decisão do atleta na proposta — aceitar OU recusar. A
+       Carol não chama resolve_intervention nesse caso (ver coach-chat,
+       buildGoalsInterventionInstruction); sem isto o botão "a Carol precisa
+       de falar contigo" ficava aceso depois de ele já ter decidido. As
+       intervenções de desvio ao plano não se tocam: essas fecham-se no chat. */
+    /* Lido no servidor, não do store: um registo posterior pode ter trocado o
+       motivo por um desvio ao plano sem o store saber — e fechar esse por
+       engano era apagar a razão pela qual ela precisa de falar com ele. O
+       update só pega se o motivo ainda for o mesmo que se leu. */
+    const profileId = get().profile?.id;
+    if (profileId) {
+      const { data: fresh } = await supabase
+        .from('profiles')
+        .select('coach_intervention_status, coach_intervention_reason')
+        .eq('id', profileId)
+        .maybeSingle();
+      if (fresh && ['needed', 'in_progress'].includes(fresh.coach_intervention_status)
+        && isGoalsIntervention(fresh.coach_intervention_reason)) {
+        const resolved = { coach_intervention_status: 'resolved', coach_intervention_reason: null };
+        const { data: rows, error: resolveError } = await supabase
+          .from('profiles')
+          .update(resolved)
+          .eq('id', profileId)
+          .eq('coach_intervention_reason', fresh.coach_intervention_reason)
+          .select('id');
+        if (resolveError) console.error('Error resolving goals intervention:', resolveError);
+        // Nenhuma linha: o motivo mudou entre a leitura e a escrita — o
+        // servidor não mexeu, o store também não.
+        else if ((rows || []).length > 0) set({ profile: { ...get().profile, ...resolved } });
+      } else if (fresh) {
+        set({ profile: { ...get().profile, ...fresh } });
       }
     }
 
@@ -757,6 +820,14 @@ export const useAppStore = create((set, get) => ({
       try {
         const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
         if (error) { console.error('Error loading daily summary:', error); return null; }
+        // A carga que pede conversa abre um assunto por resolver no servidor
+        // (runLoadAlert.ts): o Início mostra-o já, sem esperar pela próxima
+        // carga do perfil.
+        const opened = data?.intervention;
+        const profile = get().profile;
+        if (opened?.status === 'needed' && profile && !['needed', 'in_progress'].includes(profile.coach_intervention_status)) {
+          set({ profile: { ...profile, coach_intervention_status: 'needed', coach_intervention_reason: opened.reason || null } });
+        }
         if (data?.summary) {
           set({ dailySummary: data.summary });
           return data.summary;
@@ -922,6 +993,71 @@ export const useAppStore = create((set, get) => ({
     return true;
   },
 
+  /* Os consentimentos de privacidade da comparação por percentil
+     (gamificação, Fase 5). Dois âmbitos INDEPENDENTES:
+       'stats_pool'  — entrar no denominador das distribuições, sem nome;
+       'leaderboard' — aparecer com nome abreviado nas tabelas.
+     Conceder um nunca implica o outro.
+
+     A ordem das duas escritas não é indiferente: PRIMEIRO o livro
+     (privacy_consents), só DEPOIS a cache no perfil. O livro é o que o art.
+     7.º/1 do RGPD obriga a poder demonstrar; se a segunda escrita falhar,
+     fica um livro certo e uma cache atrasada — o contrário deixava um estado
+     ativo que ninguém consegue provar ter sido consentido.
+
+     RETIRAR 'stats_pool' RETIRA TAMBÉM 'leaderboard', e é a única cascata
+     que existe: a tabela com nomes mostra a métrica, e a métrica vem do
+     denominador. Sair do denominador e continuar numa tabela era impossível
+     de cumprir. Cascata só a retirar, nunca a conceder — e o ecrã diz-lo
+     antes de acontecer. */
+  setPrivacyConsent: async (kind, on, { policyVersion = TABELAS_POLICY_VERSION, source = 'app' } = {}) => {
+    const profile = get().profile;
+    if (!profile?.id) return false;
+    if (kind !== 'stats_pool' && kind !== 'leaderboard') return false;
+
+    const agora = new Date().toISOString();
+    const retiraTambemTabelas = kind === 'stats_pool' && !on && !!profile.leaderboard_consent_at;
+    const kinds = retiraTambemTabelas ? [kind, 'leaderboard'] : [kind];
+
+    const { error: erroLivro } = await supabase.from('privacy_consents').insert(
+      kinds.map((k) => ({
+        user_id: profile.id,
+        kind: k,
+        granted_at: on ? agora : null,
+        revoked_at: on ? null : agora,
+        policy_version: policyVersion,
+        source,
+      })),
+    );
+    if (erroLivro) { console.error('Erro a registar o consentimento:', erroLivro); return false; }
+
+    const patch = {};
+    for (const k of kinds) patch[`${k === 'stats_pool' ? 'stats_pool' : 'leaderboard'}_consent_at`] = on ? agora : null;
+    /* O nome abreviado só existe com o consentimento das tabelas. A retirar,
+       é o trigger clear_leaderboard_name_on_consent_revoked que o limpa no
+       servidor — aqui espelha-se, para a UI não ficar a mostrar um nome que
+       já não há. */
+    if (kind === 'leaderboard' && on) patch.leaderboard_display_name = profile.leaderboard_display_name || null;
+    if (kinds.includes('leaderboard') && !on) patch.leaderboard_display_name = null;
+
+    const { error } = await supabase.from('profiles').update(patch).eq('id', profile.id);
+    if (error) { console.error('Erro a gravar o consentimento no perfil:', error); return false; }
+    set((s) => ({ profile: { ...s.profile, ...patch } }));
+    return true;
+  },
+
+  /* O nome abreviado das tabelas. Só se grava com o consentimento
+     'leaderboard' ativo — sem ele não há nome para mostrar em lado nenhum. */
+  setLeaderboardDisplayName: async (nome) => {
+    const profile = get().profile;
+    if (!profile?.id || !profile.leaderboard_consent_at) return false;
+    const valor = (nome || '').trim() || null;
+    const { error } = await supabase.from('profiles').update({ leaderboard_display_name: valor }).eq('id', profile.id);
+    if (error) { console.error('Erro a gravar o nome das tabelas:', error); return false; }
+    set((s) => ({ profile: { ...s.profile, leaderboard_display_name: valor } }));
+    return true;
+  },
+
   /* Apagar todos os check-ins do atleta (privacidade, pendente da Fase 2).
      O RLS "own daily_checkins" é FOR ALL: só apaga as linhas dele. */
   deleteAllCheckins: async () => {
@@ -1005,82 +1141,197 @@ export const useAppStore = create((set, get) => ({
   },
 
   // Fetch initial user data (called after login)
-  loadInitialData: async (userId) => {
-    try {
-      // 1. Fetch Profile
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-        
-      if (profile) {
-        set({ profile, isAdmin: profile.is_admin });
-      }
+  /* O carregamento inicial (e o de cada regresso à app).
 
-      // 2. Fetch all app data concurrently
-      const today = new Date();
-      today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-      const todayStr = today.toISOString().slice(0, 10);
-
-      const [
-        { data: meals },
-        { data: runs },
-        { data: gymSessions },
-        { data: bodyAssessments },
-        { data: waterLogs },
-        { data: coachMsgs },
-        { data: raceEvents },
-        { data: coachPlans },
-        { data: coachPlanItems },
-        { data: shoes },
-        { data: dailySummary },
-        { data: dailyCheckins },
-        impressionsRes,
-      ] = await Promise.all([
-        supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-        supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
-        supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
-        supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
-        supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle(),
-        // 120 dias: o ciclo precisa de 90 para dizer alguma coisa.
-        supabase.from('daily_checkins').select('*').eq('user_id', userId)
-          .gte('date', new Date(Date.now() - 119 * 86400000).toISOString().slice(0, 10))
-          .order('date', { ascending: true }),
-        // O que já foi mostrado e dispensado, em qualquer dispositivo (ação 5.1).
-        queryImpressionKeys(userId),
-      ]);
-
-      set({
-        meals: meals || [],
-        runs: runs || [],
-        gymSessions: gymSessions || [],
-        bodyAssessments: bodyAssessments || [],
-        waterLogs: waterLogs || [],
-        coachMessages: coachMsgs || [],
-        raceEvents: raceEvents || [],
-        coachPlans: coachPlans || [],
-        coachPlanItems: coachPlanItems || [],
-        shoes: shoes || [],
-        dailyCheckins: dailyCheckins || [],
-        ...(dailySummary && { dailySummary })
-      });
-      // Em erro ficam os conjuntos que já havia: um falhanço passageiro numa
-      // recarga não pode fazer a app esquecer o que já saudou.
-      if (impressionsRes?.error) console.warn('coach_impressions:', impressionsRes.error.message);
-      else applyImpressionRows(set, get, impressionsRes?.data);
-
-    } catch (err) {
-      console.error('Error loading initial data:', err);
-    }
+     Arranque preso no logo (relatado 2026-09-24, 19:36): um pedido
+     (coach_plan_items) ficou 37 s preso na rede do telemóvel; o servidor
+     respondeu em milissegundos quando o pedido lá chegou. Isto esperava por
+     tudo sem limite, o isInitializing não descia e o logo não saía — e a
+     rede de segurança de 30 s do index.html já estava desligada, porque a
+     app adota o logo. Agora:
+     - espera no máximo INITIAL_LOAD_BUDGET_MS; o que não chegou continua em
+       segundo plano e entra no store quando chegar (dataPending fica true
+       até lá — o Início, o onboarding e as boas-vindas não tiram conclusões
+       de listas que ainda não vieram);
+     - todos os pedidos saem juntos (o perfil ia primeiro, sozinho);
+     - num recarregamento do mesmo utilizador, um pedido que falha ou chega
+       atrasado mantém o que já lá estava; ao mudar de conta, as listas da
+       anterior limpam-se logo, para nada passar de uma conta para a outra;
+     - com { join: true } (arranque, eventos de sessão, regresso à app), uma
+       chamada para o mesmo utilizador enquanto outra corre junta-se a ela:
+       o INITIAL_SESSION e o getSession do arranque disparavam dois
+       carregamentos no mesmo segundo. Sem join (depois de gravar ou apagar
+       um registo) é sempre um carregamento novo — o que já corria pode ter
+       começado antes da gravação; o mais recente ganha, fatia a fatia. */
+  dataPending: false,
+  loadInitialData: (userId, { join = false } = {}) => {
+    if (join && initialLoad && initialLoad.userId === userId) return initialLoad.promise;
+    const promise = runInitialLoad(set, get, userId)
+      .catch((err) => console.error('Error loading initial data:', err))
+      .finally(() => { if (initialLoad?.promise === promise) initialLoad = null; });
+    initialLoad = { userId, promise };
+    return promise;
   }
 }));
+
+export const INITIAL_LOAD_BUDGET_MS = 10000;
+let initialLoad = null; // { userId, promise } — o carregamento em curso
+let loadedDataUserId = null; // de quem são as listas que estão no store
+let completeUserId = null; // de quem foi o último carregamento que chegou todo
+let loadSeq = 0;
+const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
+
+const EMPTY_DATA = {
+  profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [],
+  coachMessages: [], raceEvents: [], coachPlans: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
+  trainingLoadedFor: null,
+};
+/** O dataPending nunca dura mais do que isto: um pedido que nunca responde
+ *  não pode deixar o onboarding, as boas-vindas e o primeiro dia à espera
+ *  para sempre (revisão pré-deploy de 90bfa9b). */
+export const DATA_PENDING_MAX_MS = 45000;
+
+/** Resolve quando os dados do primeiro carregamento chegaram todos (ou o
+ *  dataPending passou do prazo). Para o que só pode decidir com tudo: o
+ *  ecrã reposto depois de o Android matar a app, a notificação que a abriu. */
+export function whenDataReady() {
+  return new Promise((resolve) => {
+    if (!useAppStore.getState().dataPending) { resolve(); return; }
+    const unsubscribe = useAppStore.subscribe((s) => {
+      if (!s.dataPending) { unsubscribe(); resolve(); }
+    });
+  });
+}
+
+async function runInitialLoad(set, get, userId) {
+  const seq = ++loadSeq;
+  // Só se limpa quando havia OUTRA conta carregada. No arranque a frio o
+  // store já está vazio, e um set de listas vazias (arrays novos) fazia o
+  // dailySummaryRefresh tomá-las como ponto de partida: as corridas que
+  // chegavam a seguir pareciam novas e cada arranque pedia um resumo novo,
+  // pago (revisão pré-deploy de 90bfa9b).
+  const switching = loadedDataUserId !== null && loadedDataUserId !== userId;
+  loadedDataUserId = userId;
+
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  const todayStr = today.toISOString().slice(0, 10);
+  const list = (data) => data || [];
+  const both = (a, b) => Promise.all([a, b]).then(([x, y]) => ({ data: [x.data, y.data], error: x.error || y.error }));
+
+  // [fatia, pedido, o que escrever com o resultado]. Um erro nunca escreve:
+  // fica o que já lá estava (vazio, se a conta mudou).
+  const jobs = [
+    ['profile', supabase.from('profiles').select('*').eq('id', userId).single(),
+      (data) => (data ? { profile: data, isAdmin: data.is_admin } : null)],
+    ['meals', supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
+      (data) => ({ meals: list(data) })],
+    // Corridas e ginásio juntos: o dailySummaryRefresh toma a primeira lista
+    // que chega como ponto de partida — uma sem a outra fazia a segunda
+    // parecer treinos novos e pedia um resumo ao modelo em vão.
+    ['training', both(
+      supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
+      supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
+    ), (data) => ({ runs: list(data[0]), gymSessions: list(data[1]), trainingLoadedFor: userId })],
+    ['bodyAssessments', supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
+      (data) => ({ bodyAssessments: list(data) })],
+    ['waterLogs', supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      (data) => ({ waterLogs: list(data) })],
+    ['coachMessages', supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+      (data) => ({ coachMessages: list(data) })],
+    ['raceEvents', supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
+      (data) => ({ raceEvents: list(data) })],
+    ['coachPlans', supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
+      (data) => ({ coachPlans: list(data) })],
+    ['coachPlanItems', supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
+      (data) => ({ coachPlanItems: list(data) })],
+    ['shoes', supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      (data) => ({ shoes: list(data) })],
+    ['dailySummary', supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle(),
+      (data) => (data ? { dailySummary: data } : null)],
+    // 120 dias: o ciclo precisa de 90 para dizer alguma coisa.
+    ['dailyCheckins', supabase.from('daily_checkins').select('*').eq('user_id', userId)
+      .gte('date', new Date(Date.now() - 119 * 86400000).toISOString().slice(0, 10))
+      .order('date', { ascending: true }),
+      (data) => ({ dailyCheckins: list(data) })],
+    // O que já foi mostrado e dispensado, em qualquer dispositivo (ação 5.1).
+    // Em erro ficam os conjuntos que já havia: um falhanço passageiro numa
+    // recarga não pode fazer a app esquecer o que já saudou.
+    ['impressions', queryImpressionKeys(userId), (data) => () => applyImpressionRows(set, get, data)],
+  ];
+
+  // dataPending só no primeiro carregamento completo de cada conta: num
+  // regresso à app os dados que já lá estão chegam para tirar conclusões, e
+  // fazê-lo subir e descer voltava a disparar o que espera por ele.
+  // Uma troca de conta é sempre um primeiro carregamento, mesmo que essa
+  // conta já tenha estado completa antes (A → B → A).
+  const firstForUser = completeUserId !== userId || switching;
+  if (switching || firstForUser) set({ ...(switching ? EMPTY_DATA : {}), ...(firstForUser ? { dataPending: true } : {}) });
+  if (firstForUser) {
+    setTimeout(() => {
+      if (seq !== loadSeq || !get().dataPending) return;
+      // Passado o prazo, a conta conta como carregada para o dataPending: um
+      // regresso à app com o pedido ainda preso não o volta a subir (o
+      // onboarding do primeiro uso desmontava-se e voltava a montar).
+      completeUserId = userId;
+      set({ dataPending: false });
+    }, DATA_PENDING_MAX_MS);
+  }
+  let pending = jobs.length;
+  let inTime = true;
+  const onTime = {};
+  const canWrite = (slice) => loadedDataUserId === userId && (sliceSeq[slice] || 0) <= seq;
+  const done = () => {
+    if (seq !== loadSeq) return {};
+    completeUserId = userId;
+    return firstForUser ? { dataPending: false } : {};
+  };
+  // Escreve uma fatia que chegou depois do prazo — se este carregamento
+  // ainda for o mais recente a escrevê-la e a conta não tiver mudado.
+  const writeLate = (slice, patch) => {
+    if (!patch || !canWrite(slice)) return;
+    sliceSeq[slice] = seq;
+    if (typeof patch === 'function') patch();
+    else set(patch);
+  };
+
+  const tasks = jobs.map(([slice, request, toPatch]) => Promise.resolve(request)
+    .then((res) => {
+      if (res?.error) {
+        console.warn(`Carregamento inicial (${slice}):`, res.error.message || res.error);
+        // Fica o que lá está — mas uma resposta atrasada de um carregamento
+        // anterior (pedida antes de uma gravação) já não a pode substituir.
+        if (canWrite(slice)) sliceSeq[slice] = seq;
+        return;
+      }
+      if (inTime) onTime[slice] = toPatch(res?.data);
+      else writeLate(slice, toPatch(res?.data));
+    })
+    .catch((err) => console.warn(`Carregamento inicial (${slice}):`, err))
+    .finally(() => {
+      pending -= 1;
+      if (!inTime && pending === 0) { const patch = done(); if (Object.keys(patch).length) set(patch); }
+    }));
+
+  let timer;
+  const budget = new Promise((resolve) => { timer = setTimeout(resolve, INITIAL_LOAD_BUDGET_MS); });
+  await Promise.race([Promise.all(tasks), budget]);
+  clearTimeout(timer);
+  inTime = false;
+
+  // O que chegou a tempo entra num só set, como antes (o dailySummaryRefresh
+  // e os ecrãs veem uma mudança, não treze).
+  const merged = {};
+  for (const [slice] of jobs) {
+    const patch = onTime[slice];
+    if (!patch || !canWrite(slice)) continue;
+    sliceSeq[slice] = seq;
+    if (typeof patch === 'function') patch();
+    else Object.assign(merged, patch);
+  }
+  if (pending === 0) Object.assign(merged, done());
+  set(merged);
+}
 
 // ── Seletores ────────────────────────────────────────────────────────────
 // "Assuntos a resolver" com a Carol (handoff 2026-09, State Management:

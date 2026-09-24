@@ -40,7 +40,7 @@ export default function WeekDoneRibbon({ done }) {
       style={{ background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)', padding: '12px 14px 10px' }}
     >
       <div className="flex items-center gap-2.5">
-        <CoachAvatar size={28} mood="happy" breathing={celebrate} />
+        <CoachAvatar size={40} mood="happy" breathing={celebrate} />
         <p className={`flex-1 min-w-0 text-[13px] font-extrabold leading-[1.35]${celebrate ? ' week-done-line' : ''}`} style={{ color: 'var(--text-1)', margin: 0 }}>
           {line}
         </p>

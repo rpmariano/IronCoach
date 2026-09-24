@@ -6,17 +6,6 @@ import { todayISO, addDaysISO } from '../../lib/utils';
 import { ToastProvider } from '../shared/ToastProvider';
 import Home from './Home';
 
-// O momento da medalha sincroniza com o Supabase — aqui nunca há prémios
-// por ver (o que o faz aparecer testa-se em utils/useMedalMoment.test.jsx).
-vi.mock('../../utils/medalAwards', () => ({
-  syncMedalAwards: vi.fn().mockResolvedValue({ pending: [], available: false }),
-  markMedalAwardsSeen: vi.fn().mockResolvedValue(undefined),
-  // useMedalMoment lê isto ao nível do módulo (a ordem de significância das
-  // medalhas) — sem o mock exportar o nome, o import fica undefined e a
-  // app rebenta ao montar, muito antes de qualquer teste correr.
-  MEDALHAO_SIGNIFICANCE: ['recordes', 'distancias', 'superacao', 'terreno', 'sequencia', 'ano_km'],
-}));
-
 /* O Início chama pela Carol quando o plano precisa de um ajuste
    (specs/plano-de-prova.md, "O plano tem de saber da prova"): a deteção é
    de utils/planDivergence.js — aqui testa-se só o que o Início faz com ela,
@@ -149,7 +138,12 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     expect(alertCount()).toBe(1);
 
     openAlerts();
-    expect(screen.getByTestId('carol-alert-assuntos')).toHaveTextContent('Tens 1 assunto a resolver com ela.');
+    // Na voz dela e a dizer o assunto, sem o motivo técnico (2026-09-23).
+    const aviso = screen.getByTestId('carol-alert-assuntos');
+    expect(aviso).toHaveTextContent('Preciso de falar contigo');
+    expect(aviso).toHaveTextContent('há uma coisa que quero ver contigo');
+    expect(aviso).not.toHaveTextContent('carga a subir');
+    expect(aviso.textContent.match(/Carol/g) || []).toHaveLength(0);
     expect(screen.queryByTestId('carol-alert-plano')).not.toBeInTheDocument();
     expect(screen.getByTestId('carol-alert-dismiss-assuntos')).toBeInTheDocument();
 
@@ -241,5 +235,34 @@ describe('Home — os atalhos de registo respeitam a recusa do navGuard', () => 
     fireEvent.click(screen.getByText(/Já correste hoje\?/));
     expect(setActiveTab).toHaveBeenCalledWith('corrida');
     expect(setOpenCreationMode).toHaveBeenCalledWith('run');
+  });
+});
+
+/* Arranque com dados ainda a chegar depois do prazo (dataPending, ver
+   loadInitialData): as listas vazias não querem dizer "primeiro dia". */
+describe('Home — dados ainda a chegar', () => {
+  const vazio = (dataPending) => {
+    window.localStorage.clear();
+    useAppStore.setState({
+      ...baseState,
+      meals: [],
+      dataPending,
+      setActiveTab: vi.fn(),
+      setOpenCreationMode: vi.fn(),
+      setCoachIntent: vi.fn(),
+      loadDailySummary: vi.fn().mockResolvedValue(null),
+    });
+  };
+
+  it('com dados pendentes não mostra o primeiro dia', () => {
+    vazio(true);
+    renderHome();
+    expect(screen.queryByText(/Já correste hoje\?/)).toBeNull();
+  });
+
+  it('com tudo carregado e sem registos, mostra-o', () => {
+    vazio(false);
+    renderHome();
+    expect(screen.getByText(/Já correste hoje\?/)).toBeTruthy();
   });
 });

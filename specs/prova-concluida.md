@@ -79,9 +79,20 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
    um CTA "Registar a prova" no cartão da prova do Início e da agenda a
    partir do dia da prova (e enquanto não houver corrida ligada, até 7 dias
    depois — no Início a prova por registar mostra-se mesmo já passada); e no
-   FAB "Nova corrida", ao escolher "Competição", um seletor "Qual prova?"
-   com as provas agendadas a ±7 dias, mais "Prova fora da agenda" (corrida
-   de competição sem `race_id`, comportamento de hoje).
+   FAB "Nova corrida", ao escolher "Prova" (rótulo de `kind='competicao'`,
+   2026-09-21 — o valor interno não mudou), um seletor "Qual prova?" com as
+   provas agendadas a ±7 dias, mais "Prova fora da agenda".
+
+   "Prova fora da agenda" já não deixa a competição por ligar (pedido
+   2026-09-21: "quero que todas as competições sejam provas, não há razão
+   para serem diferentes"). Ao gravar, `autoCreateRaceForCompetition`
+   (RunRegistration.jsx) cria a prova sozinha — nome, data, distância e
+   disciplina que o próprio registo já sabe, `status: 'concluida'` — e liga
+   a corrida a ela. O objetivo gravado é o próprio resultado (delta zero):
+   não havia meta definida antes da prova, e a coluna não admite "sem
+   meta" (`target_time_seconds`/`target_pace_seconds_per_km` são NOT NULL
+   e > 0). Sem distância ou duração conhecidas não há prova válida — a
+   corrida fica por ligar, como sempre ficou nesse caso raro.
 4. **O dia especial.** Ao gravar: confirmação própria (`RecordConfirmation`
    em âmbar, a cor da prova, com o nome da prova), a prova fica concluída, e
    o hub pós-prova (`RaceHubView`, estado `isCompleted`) passa a encontrar a

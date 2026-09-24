@@ -4,6 +4,8 @@
 > Pergunta: a Carol é omnisciente e omnipresente?
 >
 > **Atualização 2026-09-18:** a Fase 1 de [carol-omnisciencia-omnipresenca.md](carol-omnisciencia-omnipresenca.md) fechou os achados A1, A5, A6 e A8. O chat passa a ler as análises por registo, o cartão diário, o Palmarés, as notas livres e as metas corporais. As análises e o cartão passam a ler a memória durável e a conversa recente. O resto deste documento descreve o estado antes dessa fase.
+>
+> **Atualização 2026-09-22:** o Palmarés (medalhas, `medal_awards`) foi substituído pelos badges — ver `palmares-medalhoes.md` (marcada como histórico). O chat deixou de ler `medal_awards`; continua a ler o histórico factual das últimas provas concluídas (`buildRaceHistoryContext` em `carolMemory.ts`), que não é o Palmarés.
 
 ## Resposta curta
 

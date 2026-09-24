@@ -17,13 +17,22 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT, upstreamErrorText } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
 import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
+import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
+import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import {
+  fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_RETRYABLE_STATUSES,
+  geminiBusyMessage,
+  hasTimeFor,
+  requestDeadlines,
+} from "../_shared/geminiFetch.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -59,9 +68,12 @@ const REPEAT_TRAINING_TYPES = new Set(["intervalos", "subidas"]);
 // Nome sugerido quando o cliente marcou o nome como "ainda é a sugestão
 // automática" (name_is_auto) — só kind + período do dia (sem tipo/disciplina,
 // para não duplicar o que já aparece nos badges/detalhes da corrida).
+// "Prova" e não "Competição" (2026-09-21): este nome, se ficar por editar,
+// é também o que vai para race_events.name quando a competição não estava
+// na agenda (RunRegistration.jsx, autoCreateRaceForCompetition).
 function buildAutoName(kind: string, period: string): string {
   const p = period || "";
-  return (kind === "competicao" ? `Competição ${p}` : `Treino ${p}`).trim();
+  return (kind === "competicao" ? `Prova ${p}` : `Treino ${p}`).trim();
 }
 
 const RESPONSE_SCHEMA = {
@@ -123,12 +135,19 @@ const RESPONSE_SCHEMA = {
     asymmetry_pct: { type: "NUMBER", nullable: true },
     leg_stiffness_kn_m: { type: "NUMBER", nullable: true },
     regularity_score: { type: "NUMBER", nullable: true },
+    // Que app deu estes prints. Não é uma métrica: é o que permite, depois,
+    // dizer ao atleta QUE ECRÃ traz o que falta em vez de só nomear o campo
+    // em falta (ver _shared/sourceApps.ts). O enum inclui sempre
+    // "desconhecida" — sem essa saída, um print do Strava era arrumado à
+    // força na app mais parecida, e a sugestão saía errada com toda a
+    // confiança do mundo.
+    source_app: { type: "STRING", nullable: true, enum: opcoesDeFonte("corrida") },
   },
   required: [
     "distance_km", "duration_seconds", "warmup_minutes",
     "recovery_seconds", "splits", "official_time_seconds", "position",
     "elevation_gain_m", "cadence_spm", "max_cadence_spm", "calories_kcal", "avg_heart_rate_bpm",
-    "max_heart_rate_bpm", "vo2_max", "hr_zones",
+    "max_heart_rate_bpm", "vo2_max", "hr_zones", "source_app",
   ],
 };
 
@@ -182,6 +201,15 @@ function buildPrompt(
     "cada linha como { zone, minutes } (zone = número da zona apresentado, ex: 1 a 5). Só devolve null se tiveres " +
     "a certeza de que NENHUMA das imagens mostra este ecrã.\n" +
     "- vo2_max: se houver um ecrã com o valor de VO2 máx (ou 'VO2max'/'VO2 Max') estimado para esta atividade, extrai-o.\n" +
+    "- source_app: identifica de QUE APLICAÇÃO são estes prints, pelo cabeçalho, pelo nome visível, pelo " +
+    "tipo de letra e pelo estilo do ecrã (cores, ícones, disposição dos cartões) — não pelos valores. " +
+    "Devolve exatamente uma destas chaves: " + opcoesDeFonte("corrida").join(", ") + ". " +
+    "A Samsung Health reconhece-se pelo cabeçalho com a data e a hora da atividade por cima do mapa, pelos " +
+    "cartões arredondados em grelha de dois e pela terminologia própria ('Perda por transpiração', " +
+    "'Hidratação recomendada', 'Rigidez das pernas', 'Regularidade'). Se as imagens forem de outra app " +
+    "(Strava, Garmin Connect, Nike Run Club, Apple Fitness, Coros...), ou se não tiveres a certeza de qual é, " +
+    "devolve \"" + FONTE_NAO_RECONHECIDA + "\" — nunca escolhas a app mais parecida por eliminação. Se os prints " +
+    "forem de apps diferentes, devolve a app do ecrã principal (o que tem distância e tempo).\n" +
     "Não inventes valores — se algum destes dados não estiver visível em nenhuma imagem, ou não te sentires " +
     "confiante, devolve null nesse campo em vez de arriscar.";
   if (kindHint === "treino") {
@@ -198,31 +226,16 @@ function buildPrompt(
   return prompt;
 }
 
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
-
-async function fetchGeminiWithTimeout(
+// Repetições quando o Gemini está ocupado ou sem resposta, e o prazo do
+// pedido: ver _shared/geminiFetch.ts. Os valores por omissão são os desta função.
+function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error(upstreamErrorText(null));
-    }
-  }
+  return fetchGemini(url, options, timeoutMs, retries, deadline);
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -345,6 +358,9 @@ type RunExtraction = {
   asymmetry_pct?: number | null;
   leg_stiffness_kn_m?: number | null;
   regularity_score?: number | null;
+  /* Chave de _shared/sourceApps.ts, ou FONTE_NAO_RECONHECIDA. Nunca null:
+     normalizarFonte() garante sempre uma das duas coisas. */
+  source_app?: string;
 };
 
 /* Enquadramento da análise conforme a situação do atleta.
@@ -415,6 +431,38 @@ export function computeRunRecordContext(
   return { bestPacesLine, personalRecordKind: personalRecord?.kind ?? null };
 }
 
+/**
+ * A linha "Volume semanal" do contexto do Coach — sempre a semana de
+ * CALENDÁRIO (segunda a domingo) que contém `todayISO`, nunca uma janela
+ * rolante.
+ *
+ * Havia aqui uma janela rolante dos "7 dias terminados hoje": numa
+ * segunda-feira essa janela cobre quase toda a semana anterior, e o rótulo
+ * genérico "Volume semanal" levava a Carol a descrevê-lo como a semana
+ * cumprida/terminada — quando a semana de calendário tinha acabado de
+ * começar (bug relatado 2026-09-21: "a análise diz que terminei o volume
+ * semanal, sendo hoje o primeiro dia da semana"). Mesma confusão
+ * rolante/calendário do bug documentado no cabeçalho de
+ * _shared/formulas/weeklyVolume.ts, que já a resolveu para a Carol no chat
+ * (coach-chat, buildWeeklyRunningContext) — usa-se aqui o mesmo motor.
+ *
+ * `runs` deve incluir a corrida que está a ser registada — o chamador
+ * junta-a ao histórico antes de chamar esta função.
+ */
+export function buildWeeklyVolumeLine(
+  runs: { date: string; distance_km: number | null }[],
+  todayISO: string,
+): string {
+  if (!runs.length) return "";
+  const { currentWeek } = computeCalendarWeeklyVolume(runs, todayISO);
+  // 1=segunda .. 7=domingo, em UTC sobre a string — a mesma conta de
+  // weeklyVolume.ts, para dizer explicitamente que a semana ainda não
+  // acabou em vez de deixar o modelo adivinhar pelo número.
+  const dow = ((new Date(todayISO + "T00:00:00Z").getUTCDay() + 6) % 7) + 1;
+  const aDecorrer = dow < 7 ? `, ainda a decorrer (dia ${dow} de 7, segunda a domingo)` : "";
+  return `${currentWeek.km.toFixed(1)} km em ${currentWeek.count} corrida(s), semana de calendário (segunda a domingo)${aDecorrer}`;
+}
+
 // Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
 // baseado na corrida acabada de ser criada e no contexto das últimas corridas.
 async function generateCoachNotes(
@@ -453,8 +501,15 @@ async function generateCoachNotes(
   // "FC média X bpm = ZY (Karvonen; FCmáx Z observada)" (ação 5.4), já
   // pronta — substitui a linha simples "FC média: X bpm" quando existe.
   hrZoneLine: string | null = null,
+  // profiles.experience_level — calibra a linguagem (bug #40).
+  experienceLevel: string | null = null,
+  // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
+  // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
+  // corrida já está gravada e a resposta não pode passar o que a app espera.
+  if (!hasTimeFor(deadline)) return { text: null, debug: { reason: "sem_tempo" } };
 
   const trainingTypeLabel = run.training_type
     ? TRAINING_TYPE_LABELS[run.training_type] || run.training_type
@@ -513,15 +568,9 @@ async function generateCoachNotes(
         : `~${Math.abs(diff)}s/km mais lento que a média recente`;
   }
 
-  let weeklyVolumeStr = "";
-
-  if (previousRuns.length > 0) {
-    const sevenDaysAgo = new Date(run.date);
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const recentWeekRuns = previousRuns.filter((r) => new Date(r.date) >= sevenDaysAgo);
-    const weeklyVol = recentWeekRuns.reduce((acc, r) => acc + (r.distance_km || 0), 0) + (run.distance_km || 0);
-    weeklyVolumeStr = `${weeklyVol.toFixed(1)} km (nos 7 dias terminados hoje)`;
-  }
+  const weeklyVolumeStr = (previousRuns.length > 0 || (run.distance_km || 0) > 0)
+    ? buildWeeklyVolumeLine([...previousRuns, { date: run.date, distance_km: run.distance_km }], run.date)
+    : "";
 
   // bestPacesLine e personalRecordKind (ação 5.3): substituem o antigo
   // min(pace) de qualquer distância e a tendência crua por metade do
@@ -581,21 +630,22 @@ async function generateCoachNotes(
 
   const prompt =
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a corrida que ele acabou de registar. ` +
-    `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise técnica curta (4-6 frases).\n\n` +
+    `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo — e escreve uma análise curta (4-6 frases).\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `REGRAS OBRIGATÓRIAS:\n` +
     `- NUNCA inventes ou estimes números que não te foram dados explicitamente.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo.\n` +
     `- Compara esta corrida com a média recente E com a tendência de médio prazo quando disponível (pace, volume, recorde pessoal) e diz explicitamente se está melhor, pior ou igual, com a diferença aproximada.\n` +
     `- Se o contexto abaixo diz que esta corrida é um novo recorde pessoal (ritmo ou distância), é a PRIMEIRA frase — com o número e a diferença para o recorde anterior, usando os "melhores por escalão" dados. É o momento de reconhecer; noutro dia qualquer, não se elogia por rotina.\n` +
-    `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada.\n` +
+    `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada. O "Volume semanal" abaixo é sempre a semana de CALENDÁRIO (segunda a domingo) em curso, nunca uma janela rolante — se disser "ainda a decorrer", NUNCA a trates como cumprida, terminada ou fechada.\n` +
     `- CARGA ACUMULADA DOS DIAS RECENTES: Se o atleta fez múltiplas corridas ou ginásio no dia anterior, menciona SEMPRE o volume total somado de ontem e todas as atividades feitas.\n` +
     `- Aponta pelo menos uma coisa a melhorar ou a vigiar (mesmo em corridas boas).\n` +
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala isso.\n` +
     `- Termina com uma sugestão concreta e acionável para o próximo treino (mas se marcarem intervention_needed=true, sugere apenas que cliquem no botão "Falar com a Coach" para falar contigo sobre adaptar o plano).\n\n` +
     `Corrida de hoje:\n` +
-    `- Tipo: ${run.kind === "competicao" ? "Competição" : `Treino (${trainingTypeLabel})`}\n` +
+    `- Tipo: ${run.kind === "competicao" ? "Prova" : `Treino (${trainingTypeLabel})`}\n` +
     `- Data: ${run.date}\n` +
     `- Distância: ${run.distance_km?.toFixed(2) || "?"} km\n` +
     `- Pace: ${paceStr}/km\n` +
@@ -636,6 +686,7 @@ async function generateCoachNotes(
       },
       45000,
       0,
+      deadline,
     );
 
     if (!res.ok) {
@@ -693,6 +744,7 @@ async function attachCoachNotes(
     details: Record<string, unknown> | null;
   },
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<void> {
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
@@ -784,7 +836,7 @@ async function attachCoachNotes(
         .neq("id", run.id),
       // FCmáx e zona (ação 5.4): birth_date/resting_hr_bpm para resolveMaxHR
       // e resolveHrZones — a mesma régua do coach-chat e do cartão diário.
-      sb.from("profiles").select("birth_date, resting_hr_bpm").eq("id", userId).maybeSingle(),
+      sb.from("profiles").select("birth_date, resting_hr_bpm, experience_level").eq("id", userId).maybeSingle(),
     ]);
 
     // Régua única do recorde (ação 5.3): TODAS as corridas (sem filtro de
@@ -847,6 +899,8 @@ async function attachCoachNotes(
       bestPacesLine,
       personalRecordKind,
       hrZoneLine,
+      (hrProfile?.experience_level as string | null) ?? null,
+      deadline,
     );
 
     if (coachResult.text) {
@@ -876,6 +930,7 @@ async function analyzeWithGemini(
   raceType: string | null,
   notes: string | null,
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ extraction: RunExtraction; usage: GeminiUsage }> {
   const parts: unknown[] = [{ text: buildPrompt(kindHint, trainingType, raceType, notes) }];
   for (const b64 of images) {
@@ -895,11 +950,18 @@ async function analyzeWithGemini(
         },
       }),
     },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
   );
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
     console.error("Gemini error:", geminiRes.status, errText);
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
+      // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
+      throw new Error(geminiBusyMessage("ler os prints"));
+    }
     throw new Error(upstreamErrorText(geminiRes.status));
   }
 
@@ -927,6 +989,16 @@ async function analyzeWithGemini(
       distance_km: num((s as Record<string, unknown>)?.distance_km),
       time_seconds: num((s as Record<string, unknown>)?.time_seconds),
     }))
+    /* OU, ao contrário das zonas logo abaixo, que exigem os dois campos.
+       A assimetria é deliberada (justificada a 2026-09-22, depois de ter
+       ficado por explicar): um split meio lido continua a ser informação —
+       aparece na tabela editável do registo e o atleta completa-o à mão —, e
+       quem o consome (computeBestPace) já descarta as linhas incompletas.
+       Uma zona sem minutos não é meia informação, é veneno:
+       computeTrainingDistribution soma `z.minutes` sem guarda nenhuma, e um
+       null ali dentro transforma a distribuição de TODAS as corridas em NaN.
+       O lado seguro do erro é oposto nos dois casos, e por isso o filtro
+       também é. */
     .filter((s) => s.distance_km !== null || s.time_seconds !== null);
 
   const rawZones = Array.isArray(parsed.hr_zones) ? parsed.hr_zones : [];
@@ -935,6 +1007,7 @@ async function analyzeWithGemini(
       zone: num((z as Record<string, unknown>)?.zone),
       minutes: num((z as Record<string, unknown>)?.minutes),
     }))
+    // E (ver a justificação da assimetria no filtro dos splits acima).
     .filter((z) => z.zone !== null && z.minutes !== null);
 
   const extraction: RunExtraction = {
@@ -968,6 +1041,7 @@ async function analyzeWithGemini(
     asymmetry_pct: num(parsed.asymmetry_pct),
     leg_stiffness_kn_m: num(parsed.leg_stiffness_kn_m),
     regularity_score: num(parsed.regularity_score),
+    source_app: normalizarFonte(parsed.source_app, "corrida"),
   };
 
   console.log("Extração de corrida:", JSON.stringify({
@@ -984,6 +1058,7 @@ async function analyzeWithGemini(
     has_thresholds: extraction.aerobic_threshold_bpm !== null || extraction.anaerobic_threshold_bpm !== null,
     has_biomechanics: extraction.ground_contact_time_ms !== null || extraction.vertical_oscillation_cm !== null,
     hr_zones_count: extraction.hr_zones?.length || 0,
+    source_app: extraction.source_app,
   }));
 
   return { extraction, usage };
@@ -1020,6 +1095,12 @@ function detailsFromExtraction(
   if (e.asymmetry_pct) d.asymmetry_pct = e.asymmetry_pct;
   if (e.leg_stiffness_kn_m) d.leg_stiffness_kn_m = e.leg_stiffness_kn_m;
   if (e.regularity_score) d.regularity_score = e.regularity_score;
+  /* A fonte vai para `details` como os outros campos lidos da imagem (jsonb,
+     sem migração nenhuma). Grava-se TAMBÉM quando é "desconhecida": é a
+     diferença entre "esta corrida é de uma app que não sabemos ler" e "esta
+     corrida é antiga e nunca lhe perguntámos" — e quem lê já cai no genérico
+     numa chave que o catálogo não conheça. */
+  if (e.source_app) d.source_app = e.source_app;
 
   if (kind === "treino" && trainingType && REPEAT_TRAINING_TYPES.has(trainingType)) {
     if (e.warmup_minutes) d.warmup_minutes = e.warmup_minutes;
@@ -1046,6 +1127,30 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 function shoeId(body: Record<string, unknown>): string | null {
   const raw = body.shoe_id;
   return typeof raw === "string" && UUID_RE.test(raw) ? raw : null;
+}
+
+/* O que só a leitura dos prints sabe e o formulário manual não traz: a app de
+   origem (a Carol usa-a para dizer que ecrã falta — carolMemory, regra 5), a
+   regularidade e a hidratação recomendada. Editar à mão reconstrói `details`
+   a partir do formulário e apagava-os; ficam os que já lá estavam. Pesa mais
+   desde 2026-09-24: "Manual" depois do aviso das métricas em falta grava por
+   cima da corrida que os prints acabaram de criar. */
+const IMAGE_ONLY_DETAILS = ["source_app", "regularity_score", "recommended_hydration_ml"] as const;
+
+export function keepImageOnlyDetails(
+  existing: unknown,
+  next: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const prev = existing && typeof existing === "object" ? existing as Record<string, unknown> : {};
+  const out: Record<string, unknown> = { ...(next || {}) };
+  let kept = false;
+  for (const k of IMAGE_ONLY_DETAILS) {
+    if (out[k] == null && prev[k] != null) {
+      out[k] = prev[k];
+      kept = true;
+    }
+  }
+  return next || kept ? out : null;
 }
 
 /** Reanálise a editar (pedido 2026-09-13): dos prints já guardados, quais
@@ -1083,6 +1188,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Prazos deste pedido (ver _shared/geminiFetch.ts).
+  const { extraction: extractionDeadline, coach: coachDeadline } = requestDeadlines();
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado" }, 405);
   }
@@ -1169,7 +1276,7 @@ Deno.serve(async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey);
+        result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey, extractionDeadline);
       } catch (e) {
         if (newPaths.length) await sb.storage.from("run-photos").remove(newPaths);
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
@@ -1220,7 +1327,7 @@ Deno.serve(async (req) => {
         duration_seconds: result.extraction.duration_seconds,
         effort_rpe: updated.effort_rpe ?? null,
         details,
-      }, geminiKey);
+      }, geminiKey, coachDeadline);
 
       return jsonResponse({ run: updated, usage: result.usage });
     }
@@ -1299,12 +1406,13 @@ Deno.serve(async (req) => {
         const runId = body.run_id;
         const { data: existing, error: fetchError } = await sb
           .from("runs")
-          .select("id")
+          .select("id, details")
           .eq("id", runId)
           .eq("user_id", userId)
           .maybeSingle();
         if (fetchError) return jsonResponse({ error: `Falha a procurar corrida: ${fetchError.message}` }, 500);
         if (!existing) return jsonResponse({ error: "Corrida não encontrada" }, 404);
+        const editedDetails = keepImageOnlyDetails(existing.details, details);
 
         const { data: updatedRun, error: updateError } = await sb
           .from("runs")
@@ -1312,7 +1420,7 @@ Deno.serve(async (req) => {
             date: body.date,
             kind,
             training_type: trainingType,
-            details,
+            details: editedDetails,
             notes: rawNotes,
             name: clientName,
             effort_rpe: effortRpe,
@@ -1333,8 +1441,8 @@ Deno.serve(async (req) => {
           distance_km: extraction.distance_km,
           duration_seconds: extraction.duration_seconds,
           effort_rpe: effortRpe,
-          details,
-        }, geminiKey);
+          details: editedDetails,
+        }, geminiKey, coachDeadline);
 
         return jsonResponse({ run: updatedRun });
       }
@@ -1370,7 +1478,7 @@ Deno.serve(async (req) => {
         duration_seconds: extraction.duration_seconds,
         effort_rpe: effortRpe,
         details,
-      }, geminiKey);
+      }, geminiKey, coachDeadline);
 
       return jsonResponse({ run });
     }
@@ -1436,7 +1544,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey);
+      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey, extractionDeadline);
     } catch (e) {
       await sb.storage.from("run-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
@@ -1481,7 +1589,7 @@ Deno.serve(async (req) => {
       duration_seconds: result.extraction.duration_seconds,
       effort_rpe: effortRpe,
       details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
-    }, geminiKey);
+    }, geminiKey, coachDeadline);
 
     await checkAndLogAppImage(sb, userId, "run", images, mime, result.extraction as unknown as Record<string, unknown>);
 

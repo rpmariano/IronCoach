@@ -4,6 +4,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import Perfil from './Perfil';
 
+// A Vitrina (separador novo — ver TABS em Perfil.jsx) monta a BadgesCard em
+// todos os testes deste ficheiro, porque os separadores do Perfil ficam
+// todos montados ao mesmo tempo (carrossel de swipe). As regras dos badges
+// têm os testes delas em utils/badges.test.js; aqui só interessa a UI.
+
 // Captura o payload de cada UPDATE para se poder afirmar o que é enviado.
 const mocks = vi.hoisted(() => ({ updates: [] }));
 // Os 3 separadores ficam sempre montados (carrossel de swipe — ver
@@ -220,45 +225,38 @@ describe('Perfil — metas escritas pelo Coach', () => {
     });
   });
 
-  it('o interruptor começa desligado quando o perfil não o tem definido', () => {
+  // O interruptor "O Coach pode ajustar as metas" saiu (bug #41): a Carol
+  // propõe sempre, e é o atleta que aceita ou recusa. Fica a nota da regra.
+  it('já não há interruptor de autorização; fica a nota do selo "Coach"', () => {
     render(<Perfil />);
     abrirMetas();
-    expect(screen.getByLabelText('Ativar autorização do Coach')).toBeInTheDocument();
-  });
-
-  it('ligar o interruptor marca o campo como alterado e grava-o', async () => {
-    render(<Perfil />);
-    abrirMetas();
-    fireEvent.click(screen.getByLabelText('Ativar autorização do Coach'));
-    expect(screen.getByLabelText('Desativar autorização do Coach')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
-    await waitFor(() => expect(mocks.updates.length).toBe(1));
-    expect(mocks.updates[0]).toEqual({ coach_can_set_nutrition_goals: true });
+    expect(screen.queryByLabelText('Ativar autorização do Coach')).not.toBeInTheDocument();
+    expect(screen.queryByText('O Coach pode ajustar as metas')).not.toBeInTheDocument();
+    expect(screen.getByTestId('perfil-metas-coach-nota')).toHaveTextContent('só mudam aqui se aceitares');
   });
 
   it('mostra o selo "Coach" quando a proteína foi definida pelo Coach', () => {
     useAppStore.setState({ profile: { ...PROFILE, protein_goal_set_by_coach: true } });
     render(<Perfil />);
     abrirMetas();
-    expect(screen.getByTitle('Meta definida pelo Coach')).toBeInTheDocument();
+    expect(screen.getByTitle('Meta definida pela Carol')).toBeInTheDocument();
   });
 
   it('não mostra selo nenhum quando nada foi definido pelo Coach', () => {
     render(<Perfil />);
     abrirMetas();
-    expect(screen.queryByTitle('Meta definida pelo Coach')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Meta definida pela Carol')).not.toBeInTheDocument();
   });
 
   it('editar à mão a proteína marcada pelo Coach desliga a origem e grava as duas mudanças', async () => {
     useAppStore.setState({ profile: { ...PROFILE, protein_goal_set_by_coach: true } });
     render(<Perfil />);
     abrirMetas();
-    expect(screen.getByTitle('Meta definida pelo Coach')).toBeInTheDocument();
+    expect(screen.getByTitle('Meta definida pela Carol')).toBeInTheDocument();
 
     fireEvent.change(screen.getByDisplayValue('155'), { target: { value: '160' } });
     // O selo desaparece assim que o atleta edita — o valor já não é "do coach".
-    expect(screen.queryByTitle('Meta definida pelo Coach')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Meta definida pela Carol')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
     await waitFor(() => expect(mocks.updates.length).toBe(1));
@@ -443,6 +441,56 @@ describe('Perfil — etiquetas programáticas', () => {
   });
 });
 
+/* A Vitrina (2026-09-22): o separador onde vive a BadgesCard. Nasceu com
+   dois cartões (badges + Palmarés) e na fase C ficou só com um — os testes
+   dos medalhões foram-se com eles. O que interessa aqui continua a ser o
+   separador, não o cartão: que ele monta o que tem de montar, que não suja o
+   rascunho do Perfil e que não pede para guardar nada. O conteúdo da Vitrina
+   em isolamento é de BadgesCard.test.jsx. */
+describe('Perfil — Vitrina', () => {
+  const abrirVitrina = () => fireEvent.click(screen.getByRole('button', { name: 'Vitrina' }));
+
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      shoes: [],
+      raceEvents: [],
+      runs: [],
+      coachPlans: [],
+      coachPlanItems: [],
+      editingRaceId: null,
+      openCreationMode: null,
+    });
+  });
+
+  it('monta a Vitrina dos badges, com o "Onde estás" que herdou do Palmarés', () => {
+    render(<Perfil />);
+    abrirVitrina();
+    expect(screen.getByTestId('badges-card')).toBeInTheDocument();
+    expect(screen.getByTestId('badges-onde-estas')).toHaveTextContent('Onde estás');
+  });
+
+  it('a Vitrina não suja o rascunho: sair para outro separador não pede confirmação', () => {
+    render(<Perfil />);
+    abrirVitrina();
+    expect(screen.getByTestId('badges-card')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pessoal' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('não mostra "Guardar alterações" nem nenhum outro botão de ação na barra', () => {
+    render(<Perfil />);
+    abrirVitrina();
+    const bar = screen.queryByTestId('action-bar');
+    expect(bar).not.toBeInTheDocument();
+  });
+});
+
 describe('Perfil — notificações da Carol (P.6)', () => {
   beforeEach(() => {
     mocks.updates.length = 0;
@@ -475,7 +523,7 @@ describe('Perfil — notificações da Carol (P.6)', () => {
       carol_push_enabled: true,
       carol_push_max_per_day: 2,
       carol_push_start_hour: 8,
-      carol_push_types: ['intervention', 'race_morning', 'race_eve', 'race_conflict', 'race_after', 'block_end'],
+      carol_push_types: ['intervention', 'race_morning', 'race_eve', 'race_conflict', 'race_after', 'block_end', 'week_review'],
     });
   });
 
@@ -496,6 +544,77 @@ describe('Perfil — notificações da Carol (P.6)', () => {
     fireEvent.click(screen.getByLabelText('Ativar notificações da Carol'));
     await waitFor(() => expect(screen.getByTestId('perfil-carol-push-prefs')).toBeInTheDocument());
     expect(screen.getByLabelText('Ativar lembretes de água')).toBeInTheDocument();
+  });
+});
+
+
+/* Bug #41 (2026-09-22): Metas só com objetivos. Altura e peso atual são
+   medições (Pessoal); os pedidos de notificações vivem no separador Coach;
+   Metas diz o que é e leva à Carol para os afinar. Os separadores estão
+   todos montados — o separador de um campo é a .tab-swipe-page onde vive. */
+describe('Perfil — reorganização das Metas (#41)', () => {
+  const separadorDe = (el) => el.closest('.tab-swipe-page')?.querySelector('h2.sr-only')?.textContent;
+
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+      coachIntent: null,
+    });
+  });
+
+  it('altura e peso atual estão no Pessoal, não em Metas', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByLabelText('Altura (cm)'))).toBe('Pessoal');
+    expect(separadorDe(screen.getByLabelText('Peso atual (kg)'))).toBe('Pessoal');
+  });
+
+  it('os objetivos continuam em Metas', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByLabelText(/Calorias/))).toBe('Metas');
+    expect(separadorDe(screen.getByText('Objetivos corporais'))).toBe('Metas');
+    expect(separadorDe(screen.getByTestId('perfil-metas-coach-nota'))).toBe('Metas');
+  });
+
+  it('as notificações (água e Carol) passaram para o separador Carol', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByText('Lembretes de água'))).toBe('Carol');
+    expect(separadorDe(screen.getByTestId('perfil-carol-push'))).toBe('Carol');
+    expect(separadorDe(screen.getByTestId('perfil-notificacoes'))).toBe('Carol');
+  });
+
+  // Bug #42 (2026-09-22): "Comparar-me com o meu escalão" vive na Vitrina.
+  it('a comparação com o escalão está na Vitrina, não no Pessoal', () => {
+    render(<Perfil />);
+    expect(separadorDe(screen.getByTestId('perfil-privacidade-tabelas'))).toBe('Vitrina');
+  });
+
+  it('Metas explica que são objetivos a afinar com a Carol e leva ao chat com a pergunta', () => {
+    render(<Perfil />);
+    const intro = screen.getByTestId('perfil-metas-intro');
+    expect(separadorDe(intro)).toBe('Metas');
+    expect(intro.textContent).toMatch(/objetivos teus/);
+    fireEvent.click(screen.getByTestId('perfil-metas-carol'));
+    const { coachIntent, activeTab } = useAppStore.getState();
+    expect(coachIntent).toMatchObject({ kind: 'say' });
+    expect(coachIntent.text).toMatch(/definir os meus objetivos/);
+    expect(activeTab).toBe('coach');
+  });
+
+  // Revisão pré-deploy da Vaga 1: com alterações por gravar, o pedido à
+  // Carol ficava pendurado se o atleta cancelasse a saída — e era enviado
+  // sozinho, em nome dele, da próxima vez que abrisse o chat.
+  it('cancelar a saída para o Coach não deixa o pedido à Carol pendurado', () => {
+    render(<Perfil />);
+    abrirMetas();
+    sujarCalorias('2222');
+    fireEvent.click(screen.getByTestId('perfil-metas-carol'));
+    expect(useAppStore.getState().activeTab).toBe('perfil');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(useAppStore.getState().coachIntent).toBeNull();
   });
 });
 

@@ -12,7 +12,7 @@ import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import RaceHubView from './RaceHubView';
-import RaceLevelSuggestion from './RaceLevelSuggestion';
+import RaceLevelSuggestion, { predictRaceSeconds } from './RaceLevelSuggestion';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
@@ -30,7 +30,7 @@ import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
-import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { assessRaceViability, knownRecentWeeklyVolume } from '../../utils/raceViability';
 import { raceLabel } from '../../utils/planDivergence';
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -224,7 +224,7 @@ export default function RunAgenda({ onClose }) {
   const lastEditedTargetRef = useRef(null); // 'time' | 'pace' | null
 
   const todayIso = todayISO();
-  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayIso), [runs, todayIso]);
+  const weeklyVol = useMemo(() => knownRecentWeeklyVolume(runs, todayIso), [runs, todayIso]);
 
   const viability = useMemo(() => {
     if (!draft.distance_km || !draft.date) return { flags: [], isViable: true };
@@ -255,13 +255,24 @@ export default function RunAgenda({ onClose }) {
       distanceKm,
       experienceLevel,
       weeksToRace: prepWeeksForViability >= 0 ? prepWeeksForViability : 0,
-      weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+      weeklyVolumeKm: weeklyVol,
       racePriority: draft.race_priority,
     });
   }, [draft.distance_km, draft.date, draft.experience_level, draft.race_priority, draft.created_at, editingEventId, profile?.experience_level, todayIso, weeklyVol]);
 
   // Só é relevante a editar (a criar, a invalidação já limpa o campo em vez
   // de o deixar "por reconfirmar" — ver applyExperienceLevelInvalidation).
+  // Tempo previsto da prova de trail, para a ajuda dos níveis mostrar horas
+  // (Riegel sobre as corridas todas — memoizado, não a cada tecla).
+  const trailPredictedSeconds = useMemo(() => (draft.race_type === 'trail' ? predictRaceSeconds({
+    raceType: draft.race_type,
+    distanceKm: parseFormNumber(draft.distance_km),
+    elevationGainM: parseFormNumber(draft.elevation_gain_m),
+    declaredLevel: draft.experience_level,
+    profile,
+    runs,
+  }) : null), [draft.race_type, draft.distance_km, draft.elevation_gain_m, draft.experience_level, profile, runs]);
+
   const experienceLevelStale = useMemo(() => {
     if (!editingEventId || !draft.experience_level || !experienceLevelCategoryKey) return false;
     const currentKey = raceLevelCategoryKey(draft.race_type, parseFormNumber(draft.distance_km), parseFormNumber(draft.elevation_gain_m));
@@ -393,7 +404,9 @@ export default function RunAgenda({ onClose }) {
 
   // Grava o rascunho (com debounce) enquanto houver alterações por gravar
   // — sobrevive a um recarregamento da página (ver formDraftPersistence.js).
-  usePersistedFormDraft(draftStorageKey, draft, { isDirty: isDirty && !detailsLocked });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  usePersistedFormDraft(draftStorageKey, draft, { isDirty: isDirty && !detailsLocked && !confirmation });
 
   const handleCloseForm = () => {
     // Funil único por onde passa toda a saída "intencional" desta sessão
@@ -660,7 +673,7 @@ export default function RunAgenda({ onClose }) {
     if (draft.race_type === 'trail') {
       elevationGainM = parseFloat((draft.elevation_gain_m ?? '').toString().replace(',', '.'));
       if (!Number.isFinite(elevationGainM) || elevationGainM < 0) {
-        setValidationError('Indica o D+ (desnível acumulado) desta prova de trail.');
+        setValidationError('Indica a subida total desta prova de trail, em metros.');
         return false;
       }
     }
@@ -747,7 +760,18 @@ export default function RunAgenda({ onClose }) {
         handleCloseForm();
         return true;
       }
+      // Gravada: o rascunho apaga-se JÁ, não só ao dispensar a confirmação
+      // (revisão pré-deploy de 5ce5f31). E o prefill do arranque também sai:
+      // o efeito de carregamento volta a correr (setRaceEvents) e repunha o
+      // rascunho a partir dele.
+      racePrefillRef.current = null;
+      clearPersistedFormDraft(draftStorageKey);
       setConfirmation({ label: 'Prova guardada', done: () => {
+      // A confirmação sai do estado: numa prova nova, setEditingRaceId (mais
+      // abaixo) mantém ESTE ecrã montado, já no hub — sem isto, "Prova
+      // guardada" ficava presa por cima, sem se poder dispensar (revisão
+      // pré-deploy de 79c0bf9; já acontecia em produção).
+      setConfirmation(null);
       handleCloseForm();
       // Gravar uma prova NOVA aterra no HUB dessa prova (pedido do
       // utilizador): acabada de criar, o que o atleta quer é a página dela
@@ -1100,7 +1124,7 @@ export default function RunAgenda({ onClose }) {
                 </div>
                 {draft.race_type === 'trail' && (
                   <div className="min-w-0">
-                    <label htmlFor="ra-d-desnivel-m" className="text-[11px] text-[var(--text-3)] mb-1 block">D+ (desnível, m) <span className="text-[var(--danger)]">*</span></label>
+                    <label htmlFor="ra-d-desnivel-m" className="text-[11px] text-[var(--text-3)] mb-1 block">Subida total (m) <span className="text-[var(--danger)]">*</span></label>
                     <input id="ra-d-desnivel-m"
                       type="number"
                       min="0"
@@ -1123,6 +1147,7 @@ export default function RunAgenda({ onClose }) {
                 raceType={draft.race_type}
                 distanceKm={parseFormNumber(draft.distance_km)}
                 elevationGainM={parseFormNumber(draft.elevation_gain_m)}
+                predictedSeconds={trailPredictedSeconds}
                 fieldId="ra-nivel-para-esta-prova"
               >
                 <select
@@ -1147,7 +1172,7 @@ export default function RunAgenda({ onClose }) {
                     icon={<AlertTriangle size={12} />}
                     className="mt-1.5"
                   >
-                    Mudaste o tipo, a distância ou o D+ desde que escolheste este nível — confirma se ainda se aplica.
+                    Mudaste o tipo, a distância ou a subida desde que escolheste este nível — confirma se ainda se aplica.
                   </Warning>
                 )}
                 {/* Nível medido a partir do histórico de treino — proposta,
@@ -1248,7 +1273,7 @@ export default function RunAgenda({ onClose }) {
               {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
                 <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-faint)] flex flex-col gap-1.5 mt-1">
                   <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
-                    Avaliação do Coach
+                    Avaliação da Carol
                   </span>
                   {viability.flags.length > 0 ? (
                     viability.flags.map(flag => (

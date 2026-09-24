@@ -9,7 +9,7 @@
 // - Gabbett (2016) — ACWR & Training-Injury Prevention
 // - Minetti / ITRA / Naismith (Conversão D+)
 
-import { assessRaceViability, recentWeeklyVolume } from './raceViability';
+import { assessRaceViability, knownRecentWeeklyVolume } from './raceViability';
 import { formatPace } from './run';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -229,7 +229,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   }
 
   // ─── Análise Holística da Carol sobre a Evolução do Treino ───────────────────
-  const weeklyVol = recentWeeklyVolume(runs, today);
+  const weeklyVol = knownRecentWeeklyVolume(runs, today);
   const weeksToRace = Math.floor(Math.max(0, daysToRace) / 7);
   // Se o treino já está em curso ou concluído, a viabilidade avalia as
   // semanas REALMENTE disponíveis a partir do início efetivo
@@ -247,7 +247,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     distanceKm,
     experienceLevel,
     weeksToRace: prepWeeksForViability,
-    weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+    weeklyVolumeKm: weeklyVol,
     racePriority,
   });
 
@@ -403,7 +403,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   } else if (daysToRace <= 7) {
     carolOverviewText = `Estamos na semana decisiva da prova (${daysToRace} dias restantes). O trabalho duro está feito. Prioriza sono reparador, a hidratação e uma recarga equilibrada de hidratos de carbono. Mantém apenas 1 ou 2 corridas curtas com algumas acelerações para ativação neuromuscular.`;
   } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
-    carolOverviewText = `Encontras-te na ${currentPhase.name} (Semana ${currentWeek} de ${totalWeeks}). O teu volume médio recente é de ${weeklyVol} km/semana. Continua a proteger o rácio 80/20 polarizado e respeita a semana de descarga a cada 3-4 semanas para garantir que a tua fadiga aguda (ACWR) se mantém em faixa segura.`;
+    carolOverviewText = `Encontras-te na ${currentPhase.name} (Semana ${currentWeek} de ${totalWeeks}). ${weeklyVol != null ? `O teu volume médio recente é de ${weeklyVol} km/semana. ` : ''}Continua a proteger o rácio 80/20 polarizado e respeita a semana de descarga a cada 3-4 semanas para garantir que a tua fadiga aguda (ACWR) se mantém em faixa segura.`;
   } else {
     // Sem uma única corrida registada nesta fase, "continua a proteger o
     // rácio 80/20"/"respeita a semana de descarga" presumem um histórico

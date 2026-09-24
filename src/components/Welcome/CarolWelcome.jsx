@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Footprints, UtensilsCrossed, Moon, Clock, Trophy } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
-import { WELCOME_AUTO_CLOSE_MS } from '../../utils/carolWelcome';
+import { LOOK, ambientBackground, contourRings } from '../../utils/ambientWorld';
+import { useAppStore } from '../../store';
 
 /* A sala da Carol — as boas-vindas antes da Home (canvas de design
    "Boas-vindas da Carol", 2026-09-19). A decisão de QUANDO aparece e o
@@ -14,9 +15,16 @@ import { WELCOME_AUTO_CLOSE_MS } from '../../utils/carolWelcome';
    âmbar ao amanhecer, ciano à tarde, índigo à noite, quase nada de
    madrugada; no dia da prova, âmbar à volta dela (o rosto fica ciano).
 
-   Entra o nome, depois as bolhas com o compasso do chat; fecha sozinha ao
-   fim de ~6 s (a linha que se esvazia), num toque em qualquer sítio, no
-   botão ou com Escape. Com movimento reduzido tudo aparece de uma vez
+   Entra o nome, depois as bolhas com o compasso do chat; fica até ele a
+   dispensar — num toque em qualquer sítio, no botão ou com Escape.
+
+   Até 2026-09-21 fechava-se sozinha ao fim de ~7,8 s, com uma linha a
+   esvaziar-se por baixo a contar o tempo. Passou a esperar: «todas as
+   mensagens que têm este caráter temporário devem deixar de o ter; quero
+   que só desapareçam mediante ação do utilizador». A linha saiu com o
+   temporizador — sem contagem para mostrar, era uma promessa falsa.
+
+   Com movimento reduzido tudo aparece de uma vez
    (regras .welcome-* em globals.css). É um diálogo modal: o foco vai para
    o botão, o Tab não sai dela, e ao fechar o foco volta ao sítio de onde
    veio; a atualização automática (lib/appUpdate.js) espera por ela. */
@@ -28,28 +36,16 @@ const CY = 196;
 const ARC_R = 150;
 const ARC_RY = ARC_R * 0.62;
 
-const LOOK = {
-  manha: { glow1: 'radial-gradient(120% 60% at 12% 34%, rgba(251,191,36,.22), transparent 62%)', glow2: 'radial-gradient(90% 50% at 88% 10%, rgba(34,211,238,.20), transparent 60%)', top: '#0a1020', disc: 'sun' },
-  tarde: { glow1: 'radial-gradient(120% 60% at 50% 6%, rgba(34,211,238,.26), transparent 62%)', glow2: 'radial-gradient(90% 50% at 90% 40%, rgba(56,189,248,.14), transparent 60%)', top: '#0b1224', disc: 'sun' },
-  noite: { glow1: 'radial-gradient(120% 60% at 82% 16%, rgba(99,102,241,.26), transparent 62%)', glow2: 'radial-gradient(90% 50% at 10% 46%, rgba(34,211,238,.12), transparent 60%)', top: '#080c1a', disc: 'moon' },
-  madrugada: { glow1: 'radial-gradient(120% 60% at 50% 18%, rgba(34,211,238,.08), transparent 62%)', glow2: 'radial-gradient(90% 50% at 15% 70%, rgba(79,70,229,.10), transparent 60%)', top: '#05070f', disc: 'none' },
-  prova: { glow1: 'radial-gradient(120% 60% at 50% 30%, rgba(251,191,36,.30), transparent 62%)', glow2: 'radial-gradient(90% 50% at 10% 8%, rgba(217,119,6,.18), transparent 60%)', top: '#0c0f1a', disc: 'sun' },
-};
+/* A luz da hora e as curvas de nível saíram para utils/ambientWorld.js a
+   2026-09-22: o momento do badge (shared/BadgeMoment.jsx) precisa do mesmo
+   mundo, e duas paletas acabariam a discordar sobre o que é "de noite". O
+   que ficou aqui é o que é só dela: o rosto, o arco do dia e as bolhas. */
 
 const ICON = { run: Footprints, plate: UtensilsCrossed, moon: Moon, clock: Clock, trophy: Trophy };
 
-/* As curvas de nível à volta dela: anéis irregulares, cada vez mais ténues.
-   Fixas (não dependem de nada), calculadas uma vez. */
-const CONTOURS = Array.from({ length: 7 }, (_, i) => {
-  const r = 62 + i * 30;
-  const pts = [];
-  for (let k = 0; k <= 48; k++) {
-    const a = (2 * Math.PI * k) / 48;
-    const wob = 1 + 0.045 * Math.sin(3 * a + i * 0.9) + 0.03 * Math.cos(5 * a - i * 1.3);
-    pts.push(`${(CX + r * wob * Math.cos(a) * 1.08).toFixed(1)},${(CY + r * wob * Math.sin(a) * 0.92).toFixed(1)}`);
-  }
-  return { points: pts.join(' '), opacity: Math.max(0.035, 0.2 - i * 0.026) };
-});
+/* As curvas de nível à volta dela, centradas nela. Fixas, calculadas uma
+   vez (utils/ambientWorld.js). */
+const CONTOURS = contourRings({ cx: CX, cy: CY });
 
 /** A posição no arco do dia (6h à esquerda, 21h à direita). */
 function arcPoint(hourFloat) {
@@ -119,8 +115,6 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
     // Quem tinha o foco antes — para lho devolver ao fechar.
     const antes = document.activeElement;
     buttonRef.current?.focus({ preventScroll: true });
-    // A linha começa a esvaziar-se depois de as bolhas entrarem (1,8 s).
-    const t = setTimeout(() => fecharRef.current(), 1800 + WELCOME_AUTO_CLOSE_MS);
     const onKey = (e) => {
       if (e.key === 'Escape') { fecharRef.current(); return; }
       // Enquanto ela está aberta, o Tab não sai dela: só há uma ação.
@@ -131,7 +125,6 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
     };
     document.addEventListener('keydown', onKey);
     return () => {
-      clearTimeout(t);
       document.removeEventListener('keydown', onKey);
       if (antes && typeof antes.focus === 'function' && document.contains(antes)) antes.focus({ preventScroll: true });
     };
@@ -151,7 +144,7 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
       style={{
         // Acima de tudo o que a app desenha (o menu do FAB é o 50).
         zIndex: 70,
-        background: `${look.glow1}, ${look.glow2}, linear-gradient(180deg, ${look.top} 0%, #070a14 58%, #05070f 100%)`,
+        background: ambientBackground(look),
         color: 'var(--text-1)',
         cursor: 'pointer',
       }}
@@ -222,7 +215,17 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
           <button
             ref={buttonRef}
             type="button"
-            onClick={(e) => { e.stopPropagation(); fechar(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              // "Fazer o check-in": leva ao Início e abre-o lá (o cartão
+              // "Como estás hoje?"). Se a navegação for recusada (um
+              // formulário por gravar), só fecha.
+              if (welcome.action === 'checkin') {
+                const { setActiveTab, requestCheckin } = useAppStore.getState();
+                if (setActiveTab('home') !== false) requestCheckin();
+              }
+              fechar();
+            }}
             className="transition active:scale-[.98]"
             style={{
               height: 54,
@@ -236,11 +239,8 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
           >
             {welcome.cta}
           </button>
-          <div className="flex items-center" style={{ gap: 10 }} aria-hidden="true">
-            <span className="flex-1 overflow-hidden" style={{ height: 2, borderRadius: 2, background: 'rgba(255,255,255,.08)' }}>
-              <span className="welcome-drain block h-full" style={{ background: accent, opacity: 0.7, animationDuration: `${WELCOME_AUTO_CLOSE_MS}ms` }} />
-            </span>
-            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)' }}>Toca em qualquer sítio para saltar</span>
+          <div className="flex items-center justify-center" aria-hidden="true">
+            <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-4)' }}>Toca em qualquer sítio para fechar</span>
           </div>
         </div>
       </div>

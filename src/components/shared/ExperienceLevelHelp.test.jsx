@@ -46,7 +46,7 @@ describe('ExperienceLevelHelp — context="prova", estrada', () => {
 
     expect(screen.getByText(/Valores para 10 km/i)).toBeInTheDocument();
     // Não mostra a tabela de trail.
-    expect(screen.queryByText('Tempo em Pé/semana')).not.toBeInTheDocument();
+    expect(screen.queryByText('Corres por semana')).not.toBeInTheDocument();
   });
 
   it('ultra + iniciante: mostra "Desaconselhado" em vez de um número de semanas', () => {
@@ -75,8 +75,8 @@ describe('ExperienceLevelHelp — context="prova", estrada', () => {
 });
 
 describe('ExperienceLevelHelp — context="prova", trail', () => {
-  it('mostra a tabela de percentagens (Bloco 8 #3) e a banda de terreno da prova', () => {
-    // 20 km com 1000 m D+ → 50 m/km → banda "Montanha" (categorizeElevationRatio).
+  it('em linguagem simples: horas e metros desta prova, sem "D+" nem percentagens', () => {
+    // 20 km com 1000 m D+ → 50 m/km → terreno "Montanha"; previsão de 4h.
     render(
       <ExperienceLevelHelp
         label="Nível para esta prova"
@@ -84,28 +84,47 @@ describe('ExperienceLevelHelp — context="prova", trail', () => {
         raceType="trail"
         distanceKm={20}
         elevationGainM={1000}
+        predictedSeconds={4 * 3600}
       >
         {null}
       </ExperienceLevelHelp>,
     );
     openHelp();
 
-    expect(screen.getByText('Tempo em Pé/semana')).toBeInTheDocument();
-    expect(screen.getByText('D+/semana')).toBeInTheDocument();
-    expect(screen.getByText(/banda/i)).toBeInTheDocument();
+    expect(screen.getByText('Corres por semana')).toBeInTheDocument();
+    expect(screen.getByText('Sobes por semana')).toBeInTheDocument();
     expect(screen.getByText('Montanha')).toBeInTheDocument();
-    expect(screen.getByText(/50 m de D\+ por km/i)).toBeInTheDocument();
+    expect(screen.getByText(/50 m a subir por cada km/i)).toBeInTheDocument();
 
-    // Percentagens da doutrina — TIME_ON_FEET_FLOORS_PCT / ELEVATION_FLOORS_PCT.
+    // Os pisos de TIME_ON_FEET_FLOORS_PCT / ELEVATION_FLOORS_PCT sobre 4h e 1000 m.
+    const iniciante = screen.getByText('Iniciante').closest('tr');
+    expect(within(iniciante).getByText('2h50 a 3h35')).toBeInTheDocument();
+    expect(within(iniciante).getByText('300 m a 500 m')).toBeInTheDocument();
     const avancado = screen.getByText('Avançado').closest('tr');
-    expect(within(avancado).getByText(/≥140%/)).toBeInTheDocument();
-    expect(within(avancado).getByText(/≥100%/)).toBeInTheDocument();
+    expect(within(avancado).getByText('5h35 ou mais')).toBeInTheDocument();
+    expect(within(avancado).getByText('1000 m ou mais')).toBeInTheDocument();
+
+    const dialogo = screen.getByRole('dialog');
+    expect(dialogo.textContent).not.toMatch(/D\+|%|banda|Tempo em Pé/);
 
     // Não mostra a tabela de estrada.
     expect(screen.queryByText('Prep. mínima')).not.toBeInTheDocument();
   });
 
-  it('trail sem D+ preenchido: mostra a tabela na mesma, sem nota de banda (categoria desconhecida)', () => {
+  it('sem previsão de tempo: a coluna do tempo diz-se por palavras', () => {
+    render(
+      <ExperienceLevelHelp label="Nível para esta prova" context="prova" raceType="trail" distanceKm={20} elevationGainM={1000}>
+        {null}
+      </ExperienceLevelHelp>,
+    );
+    openHelp();
+
+    const basico = screen.getByText('Básico').closest('tr');
+    expect(within(basico).getByText('mais ou menos o tempo da prova')).toBeInTheDocument();
+    expect(within(basico).getByText('500 m a 800 m')).toBeInTheDocument();
+  });
+
+  it('trail sem D+ preenchido: mostra a tabela na mesma, sem nota de terreno (categoria desconhecida)', () => {
     render(
       <ExperienceLevelHelp
         label="Nível para esta prova"
@@ -119,7 +138,9 @@ describe('ExperienceLevelHelp — context="prova", trail', () => {
     );
     openHelp();
 
-    expect(screen.getByText('Tempo em Pé/semana')).toBeInTheDocument();
-    expect(screen.queryByText(/banda/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Corres por semana')).toBeInTheDocument();
+    expect(screen.queryByText(/Terreno desta prova/i)).not.toBeInTheDocument();
+    const medio = screen.getByText('Médio').closest('tr');
+    expect(within(medio).getByText('quase toda a subida da prova')).toBeInTheDocument();
   });
 });

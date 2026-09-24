@@ -306,6 +306,24 @@ describe('PlanDayCard — sugestão alimentar', () => {
     expect(screen.queryByText('2400')).not.toBeInTheDocument();
   });
 
+  // Trocou-se só uma refeição do dia (2026-09-23): a lista fica, os totais
+  // deixam de bater certo e vêm a null — o cartão mostra o objetivo do
+  // perfil e diz que é o objetivo, nunca "Estimativa desta sugestão".
+  it('com meal_macros sem totais: mostra o objetivo do perfil e diz que é o objetivo', () => {
+    const profile = { calorie_goal: 2400, protein_goal: 160, carbs_goal: 280, fat_goal: 80 };
+    const semTotais = { items: [{ tipo: 'jantar', texto: 'Omelete.' }], kcal: null, protein_g: null, carbs_g: null, fat_g: null };
+    render(
+      <PlanDayCard
+        {...dayProps()}
+        profile={profile}
+        items={[item({ kind: 'descanso', categories: ['so-refeicoes'], meal_suggestion: 'Jantar: Omelete.', meal_macros: semTotais })]}
+      />
+    );
+    expect(screen.getByText('2400')).toBeInTheDocument();
+    expect(screen.getByText('Objetivo diário de calorias')).toBeInTheDocument();
+    expect(screen.queryByText('Estimativa desta sugestão')).not.toBeInTheDocument();
+  });
+
   it('com meal_macros: mostra a lista de refeições com nome e ícone, não o texto corrido', () => {
     render(
       <PlanDayCard

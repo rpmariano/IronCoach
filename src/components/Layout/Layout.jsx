@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
-import { Bot, House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
+import { House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
+import CarolIcon from '../Coach/CarolIcon';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import BrandMark from '../shared/BrandMark';
@@ -9,6 +10,7 @@ import WaterSheet from '../Home/WaterSheet';
 import PaceCalculatorSheet from '../shared/PaceCalculatorSheet';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
 import { useTabEnter } from '../../utils/useTabEnter';
+import { installSoftKeyboardWatcher } from '../../utils/softKeyboard';
 
 /* Os separadores do Dashboard: qualquer um deles acende a coluna "Dashboard"
    da barra inferior. */
@@ -17,7 +19,7 @@ const DASHBOARD_TABS = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holis
 /* Índice de cada separador na minhoca da barra (0–3). Os ecrãs sem coluna
    própria (Perfil, Calendário, Admin, registos) devolvem -1 e escondem a
    pílula em vez de a deixarem a apontar para um separador onde o atleta já
-   não está. A barra é Início · Provas · Dashboard · Coach desde 2026-09-13
+   não está. A barra é Início · Provas · Evolução · Carol (nomes desde 2026-09-24)
    (opção A de "Onde vivem as provas"): a prova é o grande objetivo da app e
    ganhou coluna; o Calendário passou para o cabeçalho. */
 function navIndexFor(activeTab) {
@@ -63,6 +65,10 @@ export default function Layout({ children }) {
   // "O conteúdo segue a pílula": o ecrã do separador novo entra com
   // translateX(±14px) → 0 em --dur-tab-content.
   const setContentRef = useTabEnter(navIndex);
+
+  // Teclado aberto → a barra de baixo, o "+" e o botão dos bugs saem da
+  // frente da caixa de texto (ver utils/softKeyboard.js e globals.css).
+  useEffect(() => installSoftKeyboardWatcher(), []);
 
   useEffect(() => {
     if (activeTab !== 'coach') {
@@ -180,7 +186,7 @@ export default function Layout({ children }) {
       >
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button type="button" aria-label="IronCoach, ir para a Home" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
+            <button type="button" aria-label="IronCoach, ir para o Início" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
               <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />
             </button>
             <div>
@@ -194,14 +200,14 @@ export default function Layout({ children }) {
             <BugNotificationsHandler />
             {/* O Calendário saiu da barra para aqui (2026-09-13): continua a um
                 toque, mas a barra ficou para o que a app é. */}
-            {/* Calculadora de ritmo: fica à esquerda do Calendário porque é a
-                única das três que não navega para lado nenhum — abre uma
-                persiana e devolve o atleta ao sítio onde estava. */}
-            <HeaderIconBtn label="Calculadora de ritmo" active={calculadoraAberta} onClick={() => setCalculadoraAberta(true)}>
-              <Calculator size={18} />
-            </HeaderIconBtn>
             <HeaderIconBtn label="Calendário" active={activeTab === 'calendario'} onClick={() => setActiveTab('calendario')}>
               <Calendar size={18} />
+            </HeaderIconBtn>
+            {/* Calculadora de ritmo: à direita do Calendário (pedido do
+                utilizador, 2026-09-23). Não navega — abre uma persiana e
+                devolve o atleta ao sítio onde estava. */}
+            <HeaderIconBtn label="Calculadora de ritmo" active={calculadoraAberta} onClick={() => setCalculadoraAberta(true)}>
+              <Calculator size={18} />
             </HeaderIconBtn>
             {/* O Perfil deixou o âmbar: o âmbar é só da prova. */}
             <HeaderIconBtn label="Perfil" active={activeTab === 'perfil'} onClick={() => setActiveTab('perfil')}>
@@ -330,7 +336,7 @@ export default function Layout({ children }) {
       <nav
         ref={navRef}
         data-testid="bottom-nav"
-        className="fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
+        className="hide-when-keyboard fixed bottom-0 left-1/2 -translate-x-1/2 z-40 w-full max-w-md grid grid-cols-5 items-center pt-1.5 border-t shadow-[0_-4px_20px_rgba(0,0,0,0.5)]"
         style={{
           // --nav-h (76px): a barra tem de medir o que a moldura dos mocks
           // reserva para ela, senão a ActionBar — que assenta a
@@ -370,14 +376,17 @@ export default function Layout({ children }) {
           }}
         />
 
-        <VBarBtn tab="home" icon={<House size={20} />} label="Home" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(0)} />
+        {/* Os nomes em português (2026-09-24): Início, Provas, Evolução e Carol
+            — o separador dela tem o nome e o rosto dela (CarolIcon), não um
+            robô. As chaves internas (home, dashboard, coach) não mudam. */}
+        <VBarBtn tab="home" icon={<House size={20} />} label="Início" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(0)} />
         <VBarBtn tab="provas" icon={<Trophy size={20} />} label="Provas" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(1)} />
 
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
 
         <DashboardVBarBtn activeTab={activeTab} setTab={goTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
-        <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
+        <VBarBtn tab="coach" icon={<CarolIcon size={20} />} label="Carol" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
         <button
@@ -472,14 +481,14 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab, pillRef }) {
     <button
       onClick={() => setTab(active ? activeTab : (lastDashboardTab || 'hub'))}
       data-vert="dashboard"
-      aria-label="Dashboard"
+      aria-label="Evolução"
       aria-current={active ? 'page' : undefined}
       className="vbar-btn relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
       style={{ color: 'var(--brand)', fontWeight: active ? 700 : 500 }}
     >
       <NavPillAnchor pillRef={pillRef} />
       <LayoutDashboard size={20} />
-      <span className="text-[11px] leading-none whitespace-nowrap">Dashboard</span>
+      <span className="text-[11px] leading-none whitespace-nowrap">Evolução</span>
     </button>
   );
 }

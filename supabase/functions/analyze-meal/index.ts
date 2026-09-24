@@ -8,8 +8,15 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT, upstreamErrorText } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import {
+  fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_RETRYABLE_STATUSES,
+  geminiBusyMessage,
+  hasTimeFor,
+  requestDeadlines,
+} from "../_shared/geminiFetch.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -137,45 +144,16 @@ function buildManualItemsPrompt(items: { name: string; grams: number | null }[],
   return prompt;
 }
 
-// Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
-// vale a pena repetir estes, porque costumam resolver-se à segunda. O 429
-// (limite de pedidos excedido) fica DE FORA de propósito: repetir logo a
-// seguir só volta a bater no mesmo limite por minuto — e até o acelera — por
-// isso passa já ao chamador com uma mensagem clara. Erros "permanentes"
-// (400, 401, 403...) também passam sempre à primeira.
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
-
-// fetch com limite de tempo por tentativa + repetições automáticas quando a
-// chamada fica presa (AbortError), falha ao nível da rede, ou o Gemini
-// devolve um estado transitório (ver GEMINI_RETRYABLE_STATUSES) — por
-// exemplo, confirmámos em produção uma resposta 503 (sobrecarga momentânea)
-// que a app mostrava como erro imediato, mesmo sem qualquer problema de rede
-// ou timeout envolvido. Ao fim das tentativas, devolve a resposta tal como
-// veio (o chamador decide a mensagem) ou lança um erro claro se nem chegou
-// a haver resposta.
-async function fetchGeminiWithTimeout(
+// Repetições quando o Gemini está ocupado ou sem resposta, e o prazo do
+// pedido: ver _shared/geminiFetch.ts. Os valores por omissão são os desta função.
+function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error(upstreamErrorText(null));
-    }
-  }
+  return fetchGemini(url, options, timeoutMs, retries, deadline);
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -220,6 +198,7 @@ async function runGeminiItemsRequest(
   emptyErrorMessage: string,
   retries = GEMINI_RETRIES,
   timeoutMs = GEMINI_TIMEOUT_MS,
+  deadline = Number.POSITIVE_INFINITY,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage }> {
   const geminiRes = await fetchGeminiWithTimeout(
@@ -237,11 +216,16 @@ async function runGeminiItemsRequest(
     },
     timeoutMs,
     retries,
+    deadline,
   );
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
     console.error("Gemini error:", geminiRes.status, errText);
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
+      // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
+      throw new Error(geminiBusyMessage("analisar a refeição"));
+    }
     throw new Error(upstreamErrorText(geminiRes.status));
   }
 
@@ -292,6 +276,7 @@ async function analyzeWithGemini(
   mime: string,
   notes: string | null,
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage }> {
   const parts: unknown[] = [{ text: buildPrompt(notes) }];
@@ -302,6 +287,9 @@ async function analyzeWithGemini(
     parts,
     geminiKey,
     "Não foi possível identificar alimentos nas fotos. Tenta outro ângulo ou mais luz.",
+    GEMINI_RETRIES,
+    GEMINI_TIMEOUT_MS,
+    deadline,
   );
 }
 
@@ -315,12 +303,13 @@ async function analyzeWithGemini(
 // se aceita a estimativa de porção do Gemini (ver buildManualItemsPrompt).
 // Mais tentativas que a análise por foto (3 em vez de 1): este pedido é só
 // texto, sem imagens, por isso cada tentativa é rápida — dá para tentar mais
-// vezes num burst de 503s da Google sem se aproximar do limite de ~150s da
-// plataforma (pior caso: 4 tentativas de 30s + esperas ≈ 125s).
+// vezes quando a chamada fica presa. O prazo do pedido (deadline) corta as
+// tentativas antes do que a app espera pela resposta.
 async function analyzeManualItems(
   items: { name: string; grams: number | null }[],
   notes: string | null,
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage }> {
   const parts: unknown[] = [{ text: buildManualItemsPrompt(items, notes) }];
@@ -330,6 +319,7 @@ async function analyzeManualItems(
     "Não foi possível estimar valores nutricionais para estes alimentos. Tenta descrevê-los de outra forma.",
     3,
     30000,
+    deadline,
   );
   if (rawItems.length !== items.length) {
     throw new Error("A estimativa não devolveu todos os alimentos pedidos. Tenta novamente.");
@@ -501,8 +491,15 @@ async function generateMealCoachNotes(
   geminiKey: string,
   diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
   memoryBlock: string | null = null,
+  // profiles.experience_level — calibra a linguagem (bug #40).
+  experienceLevel: string | null = null,
+  // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
+  // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
+  // refeição já está gravada e a resposta não pode passar o que a app espera.
+  if (!hasTimeFor(deadline)) return { text: null };
   if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
 
   const typeLabel = MEAL_TYPE_LABELS[meal.meal_type] || meal.meal_type;
@@ -562,8 +559,9 @@ async function generateMealCoachNotes(
 
   const prompt =
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a refeição que ele acabou de registar. ` +
-    `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo mas técnico.\n\n` +
+    `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `Refeição: ${typeLabel}, ${meal.date}\n` +
     `Calorias: ${totals.calories.toFixed(0)} kcal\n` +
@@ -610,6 +608,7 @@ async function generateMealCoachNotes(
       },
       45000,
       0,
+      deadline,
     );
     if (!res.ok) {
       console.warn("Meal coach generation failed:", res.status, await res.text());
@@ -646,6 +645,7 @@ async function attachMealCoachNotes(
   meal: { id: string; coach_notes?: string | null },
   ctx: { date: string; meal_type: string; notes: string | null; totals: MealTotals },
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<void> {
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
@@ -653,7 +653,7 @@ async function attachMealCoachNotes(
     const memoryPromise = fetchSharedMemoryBlock(sb, userId);
     const { data: profile } = await sb
       .from("profiles")
-      .select("calorie_goal, protein_goal, carbs_goal, fat_goal, dietary_restrictions, dietary_notes")
+      .select("calorie_goal, protein_goal, carbs_goal, fat_goal, dietary_restrictions, dietary_notes, experience_level")
       .eq("id", userId)
       .maybeSingle();
 
@@ -734,6 +734,8 @@ async function attachMealCoachNotes(
         dietary_notes: (profile?.dietary_notes as string | null) ?? null,
       },
       await memoryPromise,
+      (profile?.experience_level as string | null) ?? null,
+      deadline,
     );
 
     if (result.text) {
@@ -760,6 +762,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Prazos deste pedido (ver _shared/geminiFetch.ts).
+  const { extraction: extractionDeadline, coach: coachDeadline } = requestDeadlines();
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado" }, 405);
   }
@@ -827,7 +831,7 @@ Deno.serve(async (req) => {
 
       let estimated: { items: unknown[]; usage: GeminiUsage };
       try {
-        estimated = await analyzeManualItems(items, rawNotes, geminiKey);
+        estimated = await analyzeManualItems(items, rawNotes, geminiKey, extractionDeadline);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
       }
@@ -871,7 +875,7 @@ Deno.serve(async (req) => {
 
         await attachMealCoachNotes(sb, userId, updatedMeal, {
           date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
-        }, geminiKey);
+        }, geminiKey, coachDeadline);
 
         return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: estimated.usage });
       }
@@ -895,7 +899,7 @@ Deno.serve(async (req) => {
 
       await attachMealCoachNotes(sb, userId, meal, {
         date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
-      }, geminiKey);
+      }, geminiKey, coachDeadline);
 
       return jsonResponse({ meal: { ...meal, meal_items: savedItems }, usage: estimated.usage });
     }
@@ -928,7 +932,7 @@ Deno.serve(async (req) => {
 
       let items: unknown[], usage: GeminiUsage;
       try {
-        ({ items, usage } = await analyzeWithGemini(images, "image/jpeg", rawNotes, geminiKey));
+        ({ items, usage } = await analyzeWithGemini(images, "image/jpeg", rawNotes, geminiKey, extractionDeadline));
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -1000,7 +1004,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as fotos numa só chamada (partes múltiplas)
     let items: unknown[], usage: GeminiUsage;
     try {
-      ({ items, usage } = await analyzeWithGemini(images, mime, rawNotes, geminiKey));
+      ({ items, usage } = await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline));
     } catch (e) {
       await sb.storage.from("meal-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
@@ -1031,7 +1035,7 @@ Deno.serve(async (req) => {
     // 4. Comentário do Coach (best-effort — ver attachMealCoachNotes)
     await attachMealCoachNotes(sb, userId, meal, {
       date, meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
-    }, geminiKey);
+    }, geminiKey, coachDeadline);
 
     return jsonResponse({ meal, items: savedItems, usage });
   } catch (e) {

@@ -68,9 +68,9 @@ export default function AchievementCard({ achievement, showDate = true, style })
 }
 
 /* A pílula do Início: a mesma conquista reduzida ao essencial, 28px de
-   altura, para caber uma linha delas por baixo do tempo da prova. Serve
-   também o chip "Previsão batida", que não é uma conquista do palmarés mas
-   lê-se ao lado delas.
+   altura, para caber uma linha delas por baixo do tempo da prova. Desde
+   2026-09-21 só serve conquistas do palmarés: o chip "Previsão batida" saiu
+   do RaceCard quando "Acima do treino" passou a dizer o mesmo.
 
    `neutral` (regra do âmbar, redesenho 2026-09-15): a pílula deixa de levar
    a cor do significado — fica em vidro neutro, com o glifo na cor do

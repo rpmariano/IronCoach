@@ -13,19 +13,88 @@
   padding-top: 16px;
   width: 100%;
   max-width: 380px;
+  /* Sem temporizador, a pilha só encolhe por ação do atleta: o teto e o
+     scroll impedem-na de cobrir o ecrã inteiro se ele a deixar crescer. */
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
+/* A pilha em si — o contentor já centra, isto só alinha os avisos entre si. */
+.toast-live {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 0;
+}
+
+/* O aviso inteiro é o botão que o dispensa: é um alvo maior do que um × de
+   12 px num ecrã de telemóvel, e é o gesto que as pessoas já tentam. */
 .toast {
   pointer-events: auto;
-  padding: 10px 20px;
+  min-height: 44px;
+  padding: 10px 16px 10px 20px;
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 700;
   display: flex;
   align-items: center;
   gap: 8px;
+  max-width: 100%;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
   animation: toast-slide-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.toast-text { min-width: 0; }
+
+/* O × não é o alvo — é a legenda do que o toque faz. */
+/* A 0,65 o × ficava em 3,5:1 sobre o verde do sucesso — passa como
+   indicador (3:1) mas é o ÚNICO sinal visual de que o aviso se dispensa, e a
+   16 px bold ainda não conta como texto grande. A 0,8 sobe para ~5:1. */
+.toast-x {
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.8;
+  margin-left: 2px;
+}
+
+/* Os que ficaram para trás do teto de TOASTS_VISIVEIS — contam-se, não se
+   perdem em silêncio. */
+.toast-more {
+  pointer-events: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-3);
+  background: var(--surface-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: 9999px;
+  padding: 3px 10px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.toast-clear-all {
+  pointer-events: auto;
+  flex-shrink: 0;
+  min-height: 44px;
+  margin-bottom: 4px;
+  padding: 0 16px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--text-2);
+  background: var(--surface-glass);
+  border: 1px solid var(--border-glass-strong);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }

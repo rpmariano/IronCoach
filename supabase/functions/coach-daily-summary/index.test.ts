@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, buildWarningsMessage } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
@@ -86,7 +86,7 @@ Deno.test("computeTDEE: soma o custo do treino quando weeklyVolumeKm > 0 (P0-4)"
 // Ação P.12: texto determinístico (nunca passa pelo modelo), sem "⚠️", sem
 // "Certifica-te", sem "Considera" — e as duas de água mantêm a palavra
 // "água" de propósito (CarolCard.jsx:169 usa-a para não duplicar a frase).
-Deno.test("buildWarningsMessage: as cinco frases, na voz dela — sem emoji, sem exclamação, sem frases de manual", () => {
+Deno.test("buildWarningsMessage: as quatro frases, na voz dela — sem emoji, sem exclamação, sem frases de manual", () => {
   const planItem = [{ kind: "corrida", training_type: "longo", target_distance_km: 16 }];
   const semAgua = buildWarningsMessage(planItem, 0, 2500)!;
   assertStringIncludes(semAgua, "Para hoje tens agendado:");
@@ -106,10 +106,6 @@ Deno.test("buildWarningsMessage: as cinco frases, na voz dela — sem emoji, sem
   })!;
   assertStringIncludes(perdaPeso, "Perda de peso rápida (1.2 kg/semana, 1.6% do peso). Não estás a comer o suficiente para o treino que fazes.");
   assertCarolVoice(perdaPeso);
-
-  const acwrAlto = buildWarningsMessage([], 0, null, undefined, { ratio: 1.8 })!;
-  assertStringIncludes(acwrAlto, "Carga de treino desta semana muito elevada face às últimas 4 semanas (ACWR 1.80). Precisas de um dia de recuperação ativa.");
-  assertCarolVoice(acwrAlto);
 
   assertEquals(buildWarningsMessage([], 0, null), null);
 });
@@ -280,4 +276,45 @@ Deno.test("hhmmOf: 'HH:MM:SS' do PostgREST vira 'HH:MM'; o resto é null", () =>
   assertEquals(hhmmOf("7:05"), "07:05");
   assertEquals(hhmmOf(null), null);
   assertEquals(hhmmOf("lixo"), null);
+});
+
+// Check-in de hoje no recap (2026-09-23): as escalas em palavras e o
+// veredicto já decidido, para o modelo não adivinhar onde fica a linha.
+Deno.test("checkinForSummary: dormiu mal → dia_em_baixo; dor ≥4 → dor_alta", () => {
+  const mal = checkinForSummary({ sleep: 2, energy: 3, stress: 4, pain: 0 });
+  assertEquals(mal?.sono, "mau");
+  assertEquals(mal?.stress, "tenso");
+  assertEquals(mal?.dia_em_baixo, true);
+  assertEquals(mal?.dor_alta, false);
+  assertEquals(mal?.dor_local, null);
+
+  const dor = checkinForSummary({ sleep: 4, energy: 4, stress: 2, pain: 5, pain_location: "joelho" });
+  assertEquals(dor?.dia_em_baixo, false);
+  assertEquals(dor?.dor_alta, true);
+  assertEquals(dor?.dor_local, "joelho");
+});
+
+Deno.test("checkinForSummary: sem check-in (ou incompleto) não há bloco", () => {
+  assertEquals(checkinForSummary(null), null);
+  assertEquals(checkinForSummary({ sleep: 4, energy: null, stress: 2 }), null);
+});
+
+// ── A carga no cartão (pedido 2026-09-24) ───────────────────────────────────
+
+Deno.test("o aviso de hoje nunca sugere mudar o plano por causa da carga", () => {
+  const msg = buildWarningsMessage([{ kind: "corrida", training_type: "continuo", target_distance_km: 6 }], 0, null,
+    { hasRedSRisk: false, latestBodyFat: null, gender: "M", weeklyWeightChange: null });
+  assertEquals(msg, "Para hoje tens agendado: Corrida (continuo, 6 km).");
+});
+
+Deno.test("o contexto leva a leitura da carga e não leva o created_at das corridas", () => {
+  const ctx = buildDailySummaryContext({
+    ...baseParams,
+    recentRuns: [{ date: "2026-09-24", distance_km: 5, created_at: "2026-09-24T15:36:19+00:00" }],
+    acwr: { acute_km_per_day: 1.7, chronic_km_per_day: 0.8, ratio: null, segue_o_plano: true, conta_como_risco: false },
+  });
+  const runs = ctx.corridas_ultimos_30_dias as Array<Record<string, unknown>>;
+  assertEquals(runs[0].created_at, undefined);
+  assertEquals(runs[0].distance_km, 5);
+  assertEquals((ctx.acwr as Record<string, unknown>).segue_o_plano, true);
 });

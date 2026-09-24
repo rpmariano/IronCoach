@@ -1,10 +1,11 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
 import { draftMediaStore } from '../../utils/draftMediaPersistence';
 import { todayISO } from '../../lib/utils';
+import { dispensarConfirmacao } from '../../test/recordConfirmation';
 
 // O momento do primeiro registo (3 s de leitura) testa-se em utils/firstRecord
 // e em RecordConfirmation; aqui o registo de todos os dias sai como sempre.
@@ -25,11 +26,19 @@ const mocks = vi.hoisted(() => ({
   // Prints a editar: as signed URLs podem falhar; o que sai do bucket regista-se.
   signError: null,
   removed: [],
+  // A prova automática (autoCreateRaceForCompetition) insere em race_events
+  // — por omissão devolve null/null (o comportamento inerte de sempre); os
+  // testes que a exercitam de facto definem insertResult antes de gravar.
+  inserts: [],
+  insertResult: null,
 }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: (table) => ({
-      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: null, error: null }) }) }),
+      insert: (payload) => {
+        mocks.inserts.push({ table, payload });
+        return { select: () => ({ single: () => Promise.resolve(mocks.insertResult || { data: null, error: null }) }) };
+      },
       update: (payload) => ({
         eq: (col, val) => {
           mocks.updates.push({ table, payload, id: val });
@@ -102,7 +111,7 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
   it('envia race_type (não training_type) para uma competição', async () => {
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-1' } }, error: null });
     render(<RunRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
     await selectPhoto();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
@@ -154,6 +163,7 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().runs).toEqual([newRun]);
   });
@@ -182,6 +192,208 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
     expect(screen.getByText('Métricas em falta')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  /* Relatado 2026-09-24: a primeira análise GRAVA a corrida antes de o aviso
+     das métricas em falta aparecer. "Mais prints" só fechava o aviso, e a
+     análise seguinte criava uma segunda corrida igual. */
+  describe('"Mais prints" depois de a corrida estar gravada', () => {
+    // O rascunho vive em localStorage: cada teste começa sem ele.
+    beforeEach(() => { localStorage.removeItem('ironcoach:corrida-rascunho:nova'); });
+    const gravada = {
+      id: 'run-1', name: 'Corrida de Hoje', date: todayISO(), kind: 'treino', training_type: 'continuo',
+      effort_rpe: null, notes: null, shoe_id: null,
+      distance_km: 5, duration_seconds: 1800, photo_paths: ['user-1/a.jpg'], details: {},
+    };
+
+    const chegarAoAviso = async () => {
+      mocks.invoke.mockResolvedValueOnce({ data: { run: gravada }, error: null });
+      render(<RunRegistration onClose={onClose} />);
+      await selectPhoto();
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await screen.findByTestId('missing-metrics-bottom-sheet');
+    };
+
+    it('a corrida gravada entra logo no store, uma vez só', async () => {
+      await chegarAoAviso();
+      expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
+    });
+
+    it('abre o seletor de prints, e a análise seguinte reanalisa ESSA corrida com os prints novos', async () => {
+      const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      expect(click).toHaveBeenCalled();
+      click.mockRestore();
+
+      // O print novo (o seletor está no bloco dos prints).
+      const input = document.querySelector('input[type="file"]');
+      await fireEvent.change(input, { target: { files: [new File(['fc'], 'fc.jpg', { type: 'image/jpeg' })] } });
+      await screen.findByAltText('Print 2');
+
+      const reanalisada = { ...gravada, photo_paths: ['user-1/a.jpg', 'user-1/b.jpg'], details: { avg_heart_rate_bpm: 150 } };
+      mocks.invoke.mockResolvedValueOnce({ data: { run: reanalisada }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const [fnName, { body }, timeout] = mocks.invoke.mock.calls[1];
+      expect(fnName).toBe('analyze-run');
+      expect(body.run_id).toBe('run-1');
+      expect(body.keep_paths).toEqual(['user-1/a.jpg']);
+      expect(body.images).toEqual(['AAA']);
+      expect(timeout).toBeGreaterThanOrEqual(120000);
+
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(useAppStore.getState().runs).toEqual([reanalisada]);
+    });
+
+    it('"Prosseguir sem estas métricas" fecha com a corrida gravada, sem a duplicar', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+      expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
+    });
+
+    it('sem prints novos, "Analisar" fecha com a corrida como está (não a reanalisa)', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+      expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
+    });
+
+    it('sem prints novos e só com o nome mudado, grava-o direto — sem voltar a ler os prints', async () => {
+      mocks.updateRun.mockResolvedValueOnce({ error: null });
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: 'Rodagem do Tejo' } });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+      expect(mocks.updates.some((u) => u.table === 'runs' && u.id === 'run-1' && u.payload.name === 'Rodagem do Tejo')).toBe(true);
+      expect(useAppStore.getState().runs.map((r) => [r.id, r.name])).toEqual([['run-1', 'Rodagem do Tejo']]);
+    });
+
+    it('sem prints novos mas com as notas mudadas, reanalisa — a mudança chega à Carol', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      fireEvent.change(screen.getByPlaceholderText('Como te sentiste, dores, condições atmosféricas...'), { target: { value: 'Dor no joelho ao km 4' } });
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, notes: 'Dor no joelho ao km 4' } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const [, { body }] = mocks.invoke.mock.calls[1];
+      expect(body.run_id).toBe('run-1');
+      expect(body.notes).toBe('Dor no joelho ao km 4');
+      expect(body.keep_paths).toEqual(['user-1/a.jpg']);
+      expect(body.images).toEqual([]);
+    });
+
+    it('"Prosseguir" depois de mudar o nome grava-o — a mudança não se perde', async () => {
+      mocks.updateRun.mockResolvedValueOnce({ error: null });
+      await chegarAoAviso();
+      // Fecha-se o aviso, muda-se o nome, reabre-se pelo botão flutuante e
+      // prossegue-se.
+      fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: 'Fechar' }));
+      fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: 'Rodagem do Tejo' } });
+      fireEvent.click(await screen.findByRole('button', { name: /Métricas em falta/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(useAppStore.getState().runs.map((r) => [r.id, r.name])).toEqual([['run-1', 'Rodagem do Tejo']]);
+    });
+
+    it('o rascunho reaberto com a corrida já gravada junta-lhe os prints, sem a recriar', async () => {
+      // O Android matou a app com o seletor de prints aberto: o rascunho
+      // volta com a corrida que a primeira análise gravou.
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada }));
+      render(<RunRegistration onClose={onClose} />);
+      // O print dela volta do servidor.
+      await screen.findByAltText('Print 1');
+      const input = document.querySelector('input[type="file"]');
+      await fireEvent.change(input, { target: { files: [new File(['fc'], 'fc.jpg', { type: 'image/jpeg' })] } });
+      await screen.findByAltText('Print 2');
+
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, details: { avg_heart_rate_bpm: 150 } } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      const [, { body }] = mocks.invoke.mock.calls[0];
+      expect(body.run_id).toBe('run-1');
+      expect(body.keep_paths).toEqual(['user-1/a.jpg']);
+      expect(body.images).toEqual(['AAA']);
+    });
+
+    it('fechada a corrida, o rascunho deixa de a guardar — o próximo registo não reabre sobre ela', async () => {
+      await chegarAoAviso();
+      // O rascunho grava com espera: aqui simula-se que já a tinha guardado.
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada, runName: 'Corrida de Hoje' }));
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      // Logo ao fechar a corrida — antes da confirmação e de o ecrã fechar
+      // (que apaga o rascunho inteiro): o resto do rascunho fica, sem ela.
+      await waitFor(() => {
+        const draft = JSON.parse(localStorage.getItem('ironcoach:corrida-rascunho:nova'));
+        expect(draft).not.toBeNull();
+        expect(draft.runName).toBe('Corrida de Hoje');
+        expect(draft.createdRun).toBeUndefined();
+      });
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('o "Manual" também tira a corrida do rascunho ao gravar', async () => {
+      await chegarAoAviso();
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada, runName: 'Corrida de Hoje' }));
+      fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: /Manual/ }));
+      mocks.invoke.mockResolvedValueOnce({ data: { run: gravada }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await waitFor(() => {
+        const draft = JSON.parse(localStorage.getItem('ironcoach:corrida-rascunho:nova'));
+        expect(draft?.createdRun).toBeUndefined();
+      });
+    });
+
+    it('rascunho reaberto: se os prints da corrida não carregam, diz-o, e contam para o limite de 6', async () => {
+      mocks.signError = { message: 'sem rede' };
+      try {
+        localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada }));
+        render(<RunRegistration onClose={onClose} />);
+        expect(await screen.findByText(/Os prints desta corrida não carregaram/)).toBeInTheDocument();
+        // A corrida já tem 1 print (escondido): só cabem mais 5.
+        const input = document.querySelector('input[type="file"]');
+        const files = Array.from({ length: 6 }, (_, i) => new File(['x'], `p${i}.jpg`, { type: 'image/jpeg' }));
+        await fireEvent.change(input, { target: { files } });
+        await screen.findByAltText('Print 5');
+        expect(screen.queryByAltText('Print 6')).toBeNull();
+      } finally {
+        mocks.signError = null;
+      }
+    });
+
+    it('"Manual" depois do aviso grava por cima da corrida (run_id), sem a duplicar', async () => {
+      await chegarAoAviso();
+      fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: /Manual/ }));
+      const atualizada = { ...gravada, details: { avg_heart_rate_bpm: 150 } };
+      mocks.invoke.mockResolvedValueOnce({ data: { run: atualizada }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      // Ainda faltam métricas no formulário: o aviso volta, e prossegue-se.
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const [, { body }] = mocks.invoke.mock.calls[1];
+      expect(body.mode).toBe('manual');
+      expect(body.run_id).toBe('run-1');
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(useAppStore.getState().runs).toEqual([atualizada]);
+    });
+  });
 });
 
 describe('RunRegistration — cartão único: alternar entre Foto e Manual', () => {
@@ -199,12 +411,25 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
     expect(screen.queryByPlaceholderText('Ex: 48.5')).not.toBeInTheDocument(); // VO2 Max is an extra field
   });
 
-  it('ao escolher Manual, esconde o upload e mostra os campos manuais extra', () => {
+  /* Bug relatado 2026-09-21: "O tempo da corrida aparece para fazer o
+     registo manual, mesmo estando escolhido a opção de análise do coach.
+     Esses campos só deveriam surgir na opção manual." Distância e duração
+     (renderCoreMetrics) renderizavam-se sempre, antes da própria escolha do
+     método — mostravam-se mesmo com "Foto (IA)" selecionada. */
+  it('com "Foto (IA)" selecionada (por omissão), não mostra distância nem duração — só a IA os dá', () => {
+    render(<RunRegistration onClose={onClose} />);
+    expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument(); // Distância
+    expect(screen.queryByPlaceholderText('00:00')).not.toBeInTheDocument(); // Duração
+  });
+
+  it('ao escolher Manual, esconde o upload e mostra os campos manuais extra, incluindo distância e duração', () => {
     render(<RunRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     expect(screen.queryByText(/Escolhe os prints da app de corrida/)).not.toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ex: 48.5')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument(); // Distância
+    expect(screen.getByPlaceholderText('00:00')).toBeInTheDocument(); // Duração
     expect(screen.getByRole('button', { name: /Analisar corrida/i })).toBeInTheDocument();
   });
 
@@ -287,6 +512,7 @@ describe('RunRegistration — registo manual também passa pelo Coach (analyze-r
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(useAppStore.getState().runs).toEqual([newRun]);
   });
@@ -337,6 +563,8 @@ describe('RunRegistration — regista sem vir do botão "Registar sessão" (bate
     mocks.invoke.mockReset().mockResolvedValue({ data: { run: { id: 'run-frio' } }, error: null });
     mocks.updateRun.mockReset().mockResolvedValue({ error: null });
     mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
     onClose.mockClear();
     useAppStore.setState({
       profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, planItemPrefill: null,
@@ -469,6 +697,8 @@ describe('RunRegistration — editar corrida existente', () => {
     it('com as signed URLs a falhar, nada se remove: guardar continua pelos campos e não toca nos prints', async () => {
       mocks.signError = { message: 'token expirado' };
       mocks.updates.length = 0;
+      mocks.inserts.length = 0;
+      mocks.insertResult = null;
       mocks.removed.length = 0;
       try {
         useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
@@ -481,6 +711,7 @@ describe('RunRegistration — editar corrida existente', () => {
 
         fireEvent.change(screen.getByLabelText(/Nome da corrida/i), { target: { value: 'Rodagem leve' } });
         fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+        await dispensarConfirmacao();
         await waitFor(() => expect(onClose).toHaveBeenCalled());
         expect(mocks.invoke).not.toHaveBeenCalled();
         expect(mocks.updates.some(u => u.table === 'runs' && Array.isArray(u.payload.photo_paths))).toBe(false);
@@ -492,6 +723,8 @@ describe('RunRegistration — editar corrida existente', () => {
 
     it('com todos os prints removidos, guarda pelos campos e a corrida fica sem imagens', async () => {
       mocks.updates.length = 0;
+      mocks.inserts.length = 0;
+      mocks.insertResult = null;
       mocks.removed.length = 0;
       useAppStore.setState({ profile: PROFILE, runs: [COM_PRINTS], raceEvents: [] });
       render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
@@ -532,6 +765,7 @@ describe('RunRegistration — editar corrida existente', () => {
     expect(id).toBe('run-9');
     expect(payload).toEqual({ date: '2026-08-01', name: 'Rodagem longa', shoe_id: null });
     expect(mocks.invoke).not.toHaveBeenCalled();
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -570,6 +804,7 @@ describe('RunRegistration — editar corrida existente', () => {
     expect(body.run_id).toBe('run-9');
     expect(body.distance_km).toBe(12);
     expect(mocks.updateRun).not.toHaveBeenCalled();
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
@@ -759,6 +994,7 @@ describe('RunRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     unmount();
 
@@ -827,6 +1063,8 @@ describe('RunRegistration — modo prova', () => {
     mocks.invoke.mockReset().mockResolvedValue({ data: { run: { id: 'run-race-1' } }, error: null });
     mocks.updateRun.mockReset().mockResolvedValue({ error: null });
     mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
     mocks.uploads.length = 0;
     mocks.uploadError = null;
     onClose.mockClear();
@@ -878,7 +1116,7 @@ describe('RunRegistration — modo prova', () => {
     render(<RunRegistration onClose={onClose} />);
 
     expect(screen.queryByLabelText('Qual prova?')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
 
     const seletor = screen.getByLabelText('Qual prova?');
     // Por omissão, o comportamento de hoje: competição sem prova da agenda.
@@ -897,7 +1135,7 @@ describe('RunRegistration — modo prova', () => {
       raceEvents: [{ ...PROVA, date: longe.toISOString().slice(0, 10) }],
     });
     render(<RunRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
 
     expect(screen.queryByLabelText('Qual prova?')).not.toBeInTheDocument();
   });
@@ -980,7 +1218,7 @@ describe('RunRegistration — modo prova', () => {
     useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [] });
     mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-9', kind: 'competicao', distance_km: 10, duration_seconds: 3088, details: { official_time_seconds: 3087, position: 1668, avg_heart_rate_bpm: 160, cadence_spm: 170, elevation_gain_m: 40, avg_pace_seconds_per_km: 309 } } }, error: null });
     render(<RunRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Competição/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
     await selectPhoto();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
@@ -1170,6 +1408,11 @@ describe('RunRegistration — modo prova', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Tentar de novo' }));
     await waitFor(() => expect(screen.getByTestId('record-confirmation')).toBeInTheDocument());
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    // E com a confirmação à vista o rascunho não volta a guardar-se: se o
+    // Android matasse a app agora, o próximo registo abria cheio e gravar
+    // outra vez duplicava a corrida (revisão pré-deploy de 6e92d67).
+    await act(async () => { await new Promise((r) => setTimeout(r, 900)); });
+    expect(localStorage.getItem('ironcoach:corrida-rascunho:nova')).toBeNull();
   });
 
   /* Revisão pré-deploy 2026-09-13: o rascunho guardava as memórias já no
@@ -1282,6 +1525,111 @@ describe('RunRegistration — modo prova', () => {
   });
 });
 
+/* "Todas as competições passam a ser provas" (pedido 2026-09-21): "Prova
+   fora da agenda" deixa de deixar a competição por ligar — a prova
+   cria-se sozinha, com o que o próprio registo já sabe. */
+describe('RunRegistration — a prova cria-se sozinha quando é "fora da agenda"', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.updateRun.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, shoes: [], coachPlans: [], coachPlanItems: [] });
+  });
+
+  it('grava a prova em race_events e liga a corrida a ela', async () => {
+    const novaProva = { id: 'race-auto-1', name: 'Corrida da Ponte', date: '2026-09-20', race_type: 'estrada', distance_km: 10, status: 'concluida' };
+    mocks.insertResult = { data: novaProva, error: null };
+    mocks.invoke.mockResolvedValue({
+      data: { run: { id: 'run-auto-1', kind: 'competicao', name: 'Corrida da Ponte', date: '2026-09-20', distance_km: 10, duration_seconds: 3000 } },
+      error: null,
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+
+    // A prova gravou-se com o que a corrida já sabia — objetivo é o próprio
+    // resultado, porque a coluna não admite "sem meta" (NOT NULL, > 0).
+    await waitFor(() => expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(true));
+    const provaGravada = mocks.inserts.find(i => i.table === 'race_events').payload;
+    expect(provaGravada).toMatchObject({
+      name: 'Corrida da Ponte', date: '2026-09-20', distance_km: 10, status: 'concluida', race_type: 'estrada',
+      target_time_seconds: 3000, target_pace_seconds_per_km: 300,
+    });
+
+    // E a corrida ficou ligada à prova que acabou de nascer.
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.payload.race_id === 'race-auto-1'),
+    ).toBe(true));
+  });
+
+  it('sem distância ou duração, não tenta criar prova nenhuma', async () => {
+    mocks.invoke.mockResolvedValue({
+      data: { run: { id: 'run-auto-2', kind: 'competicao', name: 'Corrida sem dados', date: '2026-09-20', distance_km: null, duration_seconds: null } },
+      error: null,
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(false);
+  });
+
+  it('se a criação da prova falhar, a corrida grava-se na mesma — só fica por ligar', async () => {
+    mocks.insertResult = { data: null, error: { message: 'falha de rede' } };
+    mocks.invoke.mockResolvedValue({
+      data: { run: { id: 'run-auto-3', kind: 'competicao', name: 'Corrida qualquer', date: '2026-09-20', distance_km: 10, duration_seconds: 3000 } },
+      error: null,
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+
+    // Tentou — e a corrida fechou-se na mesma, sem ficar presa no ecrã.
+    await waitFor(() => expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(true));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(mocks.updates.some(u => u.table === 'runs' && u.payload.race_id)).toBe(false);
+  });
+
+  it('escolher uma prova já agendada continua a ligar-se a ela — não cria uma segunda', async () => {
+    const jaAgendada = { id: 'race-jaagendada', name: 'Meia de Lisboa', date: todayISO(), race_type: 'estrada', distance_km: 21.0975, status: 'agendada', target_time: '1:52:00' };
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [jaAgendada], runRacePrefill: null, shoes: [] });
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-auto-4' } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+
+    fireEvent.change(screen.getByLabelText('Qual prova?'), { target: { value: 'race-jaagendada' } });
+    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.change(screen.getByPlaceholderText('ex.: 1:45:00'), { target: { value: '1:50:00' } });
+    fireEvent.click(screen.getByRole('button', { name: /Registar a prova/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.payload.race_id === 'race-jaagendada'),
+    ).toBe(true));
+    // Nenhuma prova nova — ligou-se à que já existia na agenda.
+    expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(false);
+  });
+});
 
 /* Hora de início da corrida (specs/plano-de-prova.md, "A véspera e a hora").
    Opcional, ao lado da data, e sem valor por omissão. Quem insere a linha em
@@ -1294,6 +1642,8 @@ describe('RunRegistration — hora de início', () => {
     mocks.invoke.mockReset();
     mocks.updateRun.mockReset().mockResolvedValue({ error: null });
     mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
     onClose.mockClear();
     localStorage.clear();
     useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], shoes: [] });
@@ -1327,6 +1677,7 @@ describe('RunRegistration — hora de início', () => {
     fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
+    await dispensarConfirmacao();
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(mocks.updates).toEqual([]);
   });

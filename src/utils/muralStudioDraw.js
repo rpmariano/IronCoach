@@ -187,6 +187,12 @@ export function drawMuralStudio(canvas, { composition, data, candidates = [], im
   const chipFont = (s) => Math.round(W * 0.021 * s);
   const cellH = (s) => W * 0.088 * s;
   const cardPad = (s) => W * 0.024 * s;
+  /* O selo de um badge: o anel cheio com o número dentro, igual ao da
+     Vitrina (shared/BadgeRing.jsx). O anel vai no acento do tema e não na
+     cor do badge — dentro do mural quem manda é o tema, como já acontece
+     com a linha do ritmo e as fichas das conquistas. */
+  const badgeRing = (s) => W * 0.13 * s;
+  const badgeGap = (s) => W * 0.035 * s;
 
   const chipRows = (s) => {
     ctx.font = `800 ${chipFont(s)}px ${FONT}`;
@@ -208,6 +214,7 @@ export function drawMuralStudio(canvas, { composition, data, candidates = [], im
   if (wants('classificacao')) blocks.push({ key: 'classificacao', height: (s) => classSize(s) * 1.45 + gapOf(s) * 0.6 });
   if (wants('ritmo')) blocks.push({ key: 'ritmo', height: (s) => chartH(s) + statLabel(s) * 1.9 + gapOf(s) });
   if (wants('conquistas')) blocks.push({ key: 'conquistas', height: (s) => { const r = chipRows(s).length; return r * chipH(s) + (r - 1) * 10 * s + gapOf(s); } });
+  if (wants('badges')) blocks.push({ key: 'badges', height: (s) => badgeRing(s) + statLabel(s) * 2 + gapOf(s) });
   if (wants('diploma')) blocks.push({ key: 'diploma', height: (s) => Math.ceil(data.diplomaCells.length / 3) * cellH(s) + 2 * cardPad(s) + gapOf(s) });
 
   const availableH = zone.bottom - zone.top;
@@ -326,6 +333,48 @@ export function drawMuralStudio(canvas, { composition, data, candidates = [], im
       });
       ctx.restore();
       y += gapOf(s) - 10 * s;
+    } else if (b.key === 'badges') {
+      const d = badgeRing(s);
+      const lista = data.badges;
+      const linhaW = lista.length * d + (lista.length - 1) * badgeGap(s);
+      let x = center ? zone.x + (zone.w - linhaW) / 2 : zone.x;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      lista.forEach((bd) => {
+        const cx = x + d / 2;
+        const cy = y + d / 2;
+        const lw = Math.max(3, W * 0.012 * s);
+        // O carril, e por cima o anel cheio: ganho é anel cheio.
+        ctx.beginPath();
+        ctx.arc(cx, cy, d / 2 - lw / 2, 0, Math.PI * 2);
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = light ? 'rgba(17,24,39,.10)' : 'rgba(255,255,255,.10)';
+        ctx.stroke();
+        ctx.save();
+        if (!light) { ctx.shadowColor = rgba(theme.glow, 0.6); ctx.shadowBlur = W * 0.018; }
+        ctx.beginPath();
+        ctx.arc(cx, cy, d / 2 - lw / 2, 0, Math.PI * 2);
+        ctx.lineWidth = lw;
+        ctx.strokeStyle = theme.accent;
+        ctx.stroke();
+        ctx.restore();
+        // O número encolhe com o que tem de dizer, como no anel da Vitrina.
+        const n = (bd.centro || '').length;
+        ctx.font = `900 ${Math.round(d * (n <= 2 ? 0.34 : n <= 3 ? 0.3 : n <= 4 ? 0.25 : 0.2))}px ${FONT}`;
+        ctx.fillStyle = theme.accent;
+        ctx.fillText(bd.centro, cx, cy + 1);
+        ctx.font = `800 ${statLabel(s)}px ${FONT}`;
+        ctx.fillStyle = theme.faint;
+        wrapLines(ctx, bd.name.toUpperCase(), d + badgeGap(s) * 0.8, 2).forEach((linha, i) => {
+          ctx.fillText(linha, cx, y + d + statLabel(s) * (0.9 + i * 1.1));
+        });
+        x += d + badgeGap(s);
+      });
+      ctx.restore();
+      ctx.textAlign = center ? 'center' : 'left';
+      ctx.textBaseline = 'alphabetic';
+      y += d + statLabel(s) * 2 + gapOf(s);
     } else if (b.key === 'diploma') {
       const cells = data.diplomaCells;
       const rows = Math.ceil(cells.length / 3);

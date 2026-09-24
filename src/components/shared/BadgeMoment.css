@@ -1,0 +1,159 @@
+/* O momento do badge (shared/BadgeMoment.jsx, fase 4 da reforma da
+   gamificação). A folha de tempos é a que foi decidida, e o total — 2,6 s,
+   --dur-badge-moment — é o que o momento da medalha tinha, porque as duas
+   cerimónias eram da mesma família:
+
+     0–400     o scrim
+     0–520     o disco entra e assenta            (0–20%)   háptico leve
+     360–1460  o ANEL desenha-se e o NÚMERO conta  (no JSX: --dur-rings com
+               360 ms de atraso, e a contagem com a mesma curva — param no
+               mesmo instante)                              háptico forte ao fechar
+     1400–1900 clarão e fagulhas                  (53,8–73%)
+     1750–2350 sobem o nome e a frase             (67,3–90,4%)
+     2200–2600 aparece o botão                    (84,6–100%)
+
+   Sem saída: quem fecha é o atleta (precedente de 2026-09-21 na sala da
+   Carol — «todas as mensagens que têm este caráter temporário devem deixar
+   de o ter»). Não há temporizador nenhum a fechar isto, e por isso também
+   não há contagem a mostrar: seria uma promessa falsa.
+
+   Com movimento reduzido, ou depois do primeiro toque (que salta para o
+   fim), tudo aparece de uma vez, sem clarão, sem fagulhas e sem hápticos. */
+
+.ic-bm {
+  position: fixed;
+  inset: 0;
+  /* 118: por baixo das persianas e dos ecrãs inteiros, acima do resto. O
+     120 ficou vago quando o momento da medalha saiu. */
+  z-index: 118;
+  color: var(--text-1);
+  overflow: hidden;
+  cursor: pointer;
+  animation: ic-bm-scrim 400ms ease-out both;
+}
+@keyframes ic-bm-scrim { from { opacity: 0; } to { opacity: 1; } }
+
+.ic-bm-col {
+  position: relative;
+  height: 100%;
+  max-width: 28rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(26px + env(safe-area-inset-top, 0px)) 24px calc(96px + env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+}
+
+/* As curvas de nível do mundo da app (utils/ambientWorld.js), aqui
+   centradas no anel — na sala da Carol centram-se nela. */
+.ic-bm .bm-contours { animation: ic-bm-contours var(--dur-badge-moment) var(--ease-out) both; }
+@keyframes ic-bm-contours {
+  0% { opacity: 0; transform: scale(.88); }
+  30%, 100% { opacity: 1; transform: scale(1); }
+}
+
+.ic-bm .bm-eyebrow { animation: ic-bm-eyebrow var(--dur-badge-moment) ease-out both; }
+@keyframes ic-bm-eyebrow {
+  0%, 5% { opacity: 0; transform: translateY(-8px); }
+  15%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+/* 0–520 ms: entra e assenta. */
+.ic-bm .bm-disc { animation: ic-bm-disc var(--dur-badge-moment) var(--ease-out) both; }
+@keyframes ic-bm-disc {
+  0% { opacity: 0; transform: translateY(22px) scale(.72); }
+  16% { opacity: 1; transform: translateY(0) scale(1.04); }
+  20%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* O halo acende com o anel a fechar-se e fica. */
+.ic-bm .bm-halo { animation: ic-bm-halo var(--dur-badge-moment) ease-out both; }
+@keyframes ic-bm-halo {
+  0%, 40% { opacity: 0; transform: scale(.8); }
+  56% { opacity: 1; transform: scale(1.06); }
+  73%, 100% { opacity: .72; transform: scale(1); }
+}
+
+.ic-bm .bm-flash { animation: ic-bm-flash var(--dur-badge-moment) ease-out both; }
+@keyframes ic-bm-flash {
+  0%, 53.8% { opacity: 0; transform: scale(.2); }
+  60% { opacity: .95; transform: scale(1.1); }
+  73%, 100% { opacity: 0; transform: scale(2.6); }
+}
+
+.ic-bm .bm-spark { animation: ic-bm-spark var(--dur-badge-moment) ease-out both; }
+@keyframes ic-bm-spark {
+  0%, 53.8% { opacity: 0; transform: translate(0, 0) scale(1); }
+  58% { opacity: 1; }
+  73%, 100% { opacity: 0; transform: translate(var(--sx), var(--sy)) scale(.3); }
+}
+
+.ic-bm .bm-caption { animation: ic-bm-caption var(--dur-badge-moment) var(--ease-out) both; }
+@keyframes ic-bm-caption {
+  0%, 67.3% { opacity: 0; transform: translateY(16px); }
+  90.4%, 100% { opacity: 1; transform: translateY(0); }
+}
+
+.ic-bm .bm-cta { animation: ic-bm-cta var(--dur-badge-moment) ease-out both; }
+@keyframes ic-bm-cta {
+  0%, 84.6% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ── O cartão (escala média) ─────────────────────────────────────────────
+   Entra por baixo, com o compasso de uma persiana (--dur-sheet-open), e o
+   anel desenha-se lá dentro. Sem clarão e sem fagulhas: um badge que não
+   para o ecrã também não faz fogo de artifício. */
+/* Não tapa nada: o resto da app continua a responder por baixo dele — é a
+   diferença entre um cartão e uma cerimónia. Só o cartão é que apanha o
+   toque. */
+.ic-bm--medio { background: transparent; pointer-events: none; cursor: default; }
+.ic-bm--medio .bm-card {
+  pointer-events: auto;
+  cursor: pointer;
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  /* Acima da barra inferior: o cartão não pode tapar a navegação, que é
+     justamente por onde o atleta vai ver o badge na Vitrina. */
+  bottom: calc(var(--nav-h) + 12px + env(safe-area-inset-bottom, 0px));
+  max-width: 28rem;
+  margin: 0 auto;
+  animation: ic-bm-card var(--dur-sheet-open) var(--ease-out) both;
+}
+@keyframes ic-bm-card {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Estado final — depois do primeiro toque (salta a coreografia). */
+.ic-bm.is-final .bm-contours,
+.ic-bm.is-final .bm-eyebrow,
+.ic-bm.is-final .bm-disc,
+.ic-bm.is-final .bm-halo,
+.ic-bm.is-final .bm-caption,
+.ic-bm.is-final .bm-cta,
+.ic-bm.is-final .bm-card { animation: none; opacity: 1; transform: none; }
+.ic-bm.is-final .bm-halo { opacity: .72; }
+.ic-bm.is-final .bm-flash,
+.ic-bm.is-final .bm-spark { animation: none; opacity: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ic-bm, .ic-bm .bm-contours, .ic-bm .bm-eyebrow, .ic-bm .bm-disc,
+  .ic-bm .bm-caption, .ic-bm .bm-cta, .ic-bm--medio .bm-card { animation: none; opacity: 1; transform: none; }
+  .ic-bm .bm-halo { animation: none; opacity: .72; transform: none; }
+  .ic-bm .bm-flash, .ic-bm .bm-spark { animation: none; opacity: 0; }
+}
+
+/* Ecrãs baixos: o anel encolhe para o nome, a frase e o botão caberem sem
+   rolar — a mesma regra que a sala da Carol tem para a arte dela. A escala
+   vai no invólucro porque a animação do disco já usa o `transform`. */
+.ic-bm .bm-disc-wrap { transform-origin: 50% 50%; }
+@media (max-height: 700px) {
+  .ic-bm--grande .bm-disc-wrap { transform: scale(.82); }
+}
+@media (max-height: 600px) {
+  .ic-bm--grande .bm-disc-wrap { transform: scale(.66); }
+}

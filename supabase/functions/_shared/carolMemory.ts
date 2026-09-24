@@ -22,10 +22,18 @@
 
 import { buildCheckinContext, type DailyCheckin } from "./formulas/checkinAlarms.ts";
 import { normalizeGender } from "./formulas/vocabulary.ts";
-import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, ADHERENCE_WINDOW_DAYS } from "./formulas/prescriptionAdherence.ts";
+import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, trainingSummaryLine, ADHERENCE_WINDOW_DAYS, type TrainingOutcome } from "./formulas/prescriptionAdherence.ts";
 import { computeBestPace, type BestPaceBucket } from "./formulas/bestPace.ts";
 import { computeVdotTrend } from "./formulas/vdotTrend.ts";
 import { formatPaceMinKm } from "./formulas/paceFormat.ts";
+import {
+  FAMILIA_LABELS,
+  FAMILIA_ORDER,
+  FAMILIAS_QUE_NAO_SE_SUGEREM,
+  familiaDoBadge,
+  nomeDoBadge,
+} from "./badgeCatalog.ts";
+import { SOURCE_APPS, type SourceApp, type SourceScreen } from "./sourceApps.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
 // Quota por tipo: as refeições são várias por dia e, com um teto só,
@@ -192,51 +200,21 @@ export function buildDailyCardContext(rows: any[] | null | undefined, todayISO: 
     `Se hoje disseres algo diferente, explica o que mudou.`;
 }
 
-// ── 1.5 — Palmarés e provas concluídas ───────────────────────────────────
+// ── 1.5 — Últimas provas concluídas ──────────────────────────────────────
 
-const DISTANCE_LABELS: Record<string, string> = { "5k": "5 km", "10k": "10 km", "21k": "meia maratona", "42k": "maratona" };
-const PERIOD_LABELS: Record<string, string> = { mes: "mês", trimestre: "trimestre", semestre: "semestre", ano: "ano" };
-const TERRAIN_LABELS: Record<string, string> = { estrada: "estrada", trail: "trail" };
+/* Até 2026-09-21 esta secção também construía o Palmarés: medalhas lidas de
+   `medal_awards` (recordes, distâncias, sequências, terreno, "Ano em Km").
+   Essa parte foi substituída pelos badges (buildBadgesContext, abaixo) a
+   pedido do utilizador — "não quero medalhas e estrelas, quero só badges"
+   — e `medal_awards` deixou de ser lida aqui; a tabela fica em produção só
+   como histórico (specs/palmares-medalhoes.md, marcada como tal).
 
-export function buildPalmaresContext(medals: any[] | null | undefined, pastRaces: any[] | null | undefined, raceRuns: any[] | null | undefined): string | null {
-  const lines: string[] = [];
-  const list = (medals || []).filter((m) => m && typeof m.medalhao === "string");
-
-  // Recordes: o valor mais recente de cada distância é o recorde em vigor.
-  const records = new Map<string, any>();
-  for (const m of list.filter((x) => x.medalhao === "recordes")) {
-    const prev = records.get(m.slot);
-    if (!prev || String(m.awarded_at) > String(prev.awarded_at)) records.set(m.slot, m);
-  }
-  const recordParts = ["5k", "10k", "21k", "42k"]
-    .filter((k) => records.has(k) && Number(records.get(k).value) > 0)
-    .map((k) => `${DISTANCE_LABELS[k]} ${formatSeconds(Number(records.get(k).value))}`);
-  if (recordParts.length) lines.push(`- Recordes pessoais em prova: ${recordParts.join(" · ")}`);
-
-  const distances = ["5k", "10k", "21k", "42k"].filter((k) => list.some((m) => m.medalhao === "distancias" && m.slot === k));
-  if (distances.length) lines.push(`- Distâncias já concluídas em prova: ${distances.map((k) => DISTANCE_LABELS[k]).join(", ")}`);
-
-  const beaten = list.filter((m) => m.medalhao === "superacao").reduce((mx, m) => Math.max(mx, Number(m.value) || 0), 0);
-  if (beaten > 0) lines.push(`- Objetivos de tempo batidos em prova: ${beaten}`);
-
-  const seq = list.filter((m) => m.medalhao === "sequencia").reduce((mx, m) => Math.max(mx, Number(m.value) || 0), 0);
-  if (seq > 0) lines.push(`- Melhor sequência de provas concluídas: ${seq}`);
-
-  // O encaixe do terreno leva o número atrás ("estrada1", "trail5"); o valor é a contagem.
-  const terrain = new Map<string, number>();
-  for (const m of list.filter((x) => x.medalhao === "terreno")) {
-    const key = String(m.slot).replace(/\d+$/, "");
-    terrain.set(key, Math.max(terrain.get(key) || 0, Number(m.value) || 0));
-  }
-  if (terrain.size) lines.push(`- Provas por terreno: ${[...terrain].map(([k, n]) => `${n} em ${TERRAIN_LABELS[k] ?? k}`).join(", ")}`);
-
-  const kmMedals = list.filter((m) => m.medalhao === "ano_km").sort((a, b) => String(b.awarded_at).localeCompare(String(a.awarded_at)));
-  if (kmMedals.length) {
-    const last = kmMedals[0];
-    lines.push(`- O Ano em Km: ${kmMedals.length} medalha(s); a última foi ${PERIOD_LABELS[last.slot] ?? last.slot} ${last.period_key} com ${km(last.value) ?? "?"}`);
-  }
-
-  // Provas concluídas: tempo real (a corrida ligada) face ao objetivo.
+   O que NÃO era Palmarés e por isso fica: o registo factual das provas já
+   corridas — tempo real face ao objetivo, e o balanço que a própria Carol
+   escreveu no dia seguinte (race_events.coach_balance). Isso é história do
+   atleta, não uma medalha, e continua a dar-lhe contexto e medida. */
+export function buildRaceHistoryContext(pastRaces: any[] | null | undefined, raceRuns: any[] | null | undefined): string | null {
+  // Tempo real (a corrida ligada) face ao objetivo.
   const runByRace = new Map<string, any>();
   for (const r of raceRuns || []) if (r?.race_id && !runByRace.has(r.race_id)) runByRace.set(r.race_id, r);
   const raceLines = (pastRaces || []).slice(0, 5).map((race) => {
@@ -267,15 +245,416 @@ export function buildPalmaresContext(medals: any[] | null | undefined, pastRaces
     // O balanço que ela própria escreveu no dia seguinte (race_events.coach_balance):
     // escrevia-o o chat e nunca ninguém o lia de volta.
     const balance = clip(race.coach_balance, 200);
-    return `  - ${race.date} · ${clip(race.name, 80) ?? "Prova"}: ${parts.join(", ")}` +
+    return `- ${race.date} · ${clip(race.name, 80) ?? "Prova"}: ${parts.join(", ")}` +
       `${note ? ` — nota do atleta: "${note.replace(/"/g, "'")}"` : ""}` +
       `${balance ? ` — o teu balanço: "${balance.replace(/"/g, "'")}"` : ""}`;
   });
-  if (raceLines.length) lines.push(`- Últimas provas concluídas:\n${raceLines.join("\n")}`);
+  if (!raceLines.length) return null;
+  return `ÚLTIMAS PROVAS CONCLUÍDAS (o que o atleta já correu — é a história dele, usa-a para dar contexto e medida, ` +
+    `não para elogiar por rotina):\n${raceLines.join("\n")}`;
+}
 
-  if (!lines.length) return null;
-  return `PALMARÉS E PROVAS PASSADAS (o que o atleta já conquistou — é a história dele, usa-a para dar contexto e medida, ` +
-    `não para elogiar por rotina):\n${lines.join("\n")}`;
+// ── 1.8 — A vitrina de badges (gamificação, fase 6) ──────────────────────
+
+/* O que a Carol sabe dos badges de treino — e, sobretudo, o que NÃO sabe.
+ *
+ * Duas decisões de desenho, e a segunda é a que importa:
+ *
+ * 1. Só entram badges JÁ GANHOS (`user_badges` é append-only: uma linha ali é
+ *    uma conquista, nunca um progresso). O estado "a caminho" não se
+ *    persiste, e é de propósito que não se calcula aqui também.
+ *
+ * 2. Por isso as regras R1 e R3 da doutrina 6 #6 — nunca sugerir o fecho de
+ *    um badge de acumulação, nunca sugerir um amuleto — deixam de depender
+ *    só do prompt: ela NÃO TEM o número que falta. Não pode dizer "faltam-te
+ *    300 m para o próximo degrau d'A Escalada" porque essa frase não existe
+ *    em lado nenhum do contexto dela. O texto das regras vai abaixo na mesma,
+ *    para o caso de ela inferir o que não lhe demos — mas a proteção a sério
+ *    é esta: a ausência do dado, não a proibição de o usar.
+ *
+ * A família vem do catálogo partilhado (_shared/badgeCatalog.ts), com teste
+ * de paridade contra src/utils/badges.js. Um badge cuja chave o catálogo não
+ * conheça fica de fora: sem família não há regra que o proteja, e o lado
+ * seguro do erro é o silêncio.
+ */
+
+const TIER_LABELS: Record<string, string> = { bronze: "bronze", prata: "prata", ouro: "ouro" };
+const TIER_ORDER: Record<string, number> = { bronze: 1, prata: 2, ouro: 3 };
+
+/** O maior nível ganho de um badge com escala, ou null se não tiver escala. */
+function melhorTier(rows: any[]): string | null {
+  let best: string | null = null;
+  for (const r of rows) {
+    const t = String(r?.tier || "");
+    if (!TIER_ORDER[t]) continue;
+    if (!best || TIER_ORDER[t] > TIER_ORDER[best]) best = t;
+  }
+  return best;
+}
+
+/** O dia (YYYY-MM-DD) da conquista mais recente da lista. */
+function ultimaConquista(rows: any[]): string | null {
+  let best: string | null = null;
+  for (const r of rows) {
+    const d = typeof r?.awarded_at === "string" ? r.awarded_at.slice(0, 10) : null;
+    if (d && (!best || d > best)) best = d;
+  }
+  return best;
+}
+
+export function buildBadgesContext(rows: any[] | null | undefined): string | null {
+  const porBadge = new Map<string, any[]>();
+  for (const r of rows || []) {
+    const key = typeof r?.badge_key === "string" ? r.badge_key : null;
+    // Sem entrada no catálogo não há família, e sem família não há R1/R3.
+    if (!key || !familiaDoBadge(key)) continue;
+    const list = porBadge.get(key);
+    if (list) list.push(r);
+    else porBadge.set(key, [r]);
+  }
+  if (!porBadge.size) return null;
+
+  const linhas: string[] = [];
+  for (const familia of FAMILIA_ORDER) {
+    const doGrupo = [...porBadge.entries()].filter(([k]) => familiaDoBadge(k) === familia);
+    if (!doGrupo.length) continue;
+    const itens = doGrupo.map(([k, list]) => {
+      const partes: string[] = [];
+      const tier = melhorTier(list);
+      if (tier) partes.push(TIER_LABELS[tier]);
+      // As repetições contam-se por linha (uma por period_key) — nunca por um
+      // contador mutável, que perderia as datas.
+      const repeticoes = tier ? list.filter((r) => String(r?.tier || "") === tier).length : list.length;
+      if (repeticoes > 1) partes.push(`${repeticoes}×`);
+      const ultima = ultimaConquista(list);
+      if (ultima) partes.push(`a última a ${ultima}`);
+      return `${nomeDoBadge(k)}${partes.length ? ` (${partes.join(", ")})` : ""}`;
+    });
+    linhas.push(`- ${FAMILIA_LABELS[familia]}: ${itens.sort().join(" · ")}`);
+  }
+  if (!linhas.length) return null;
+
+  const proibidas = FAMILIAS_QUE_NAO_SE_SUGEREM.map((f) => FAMILIA_LABELS[f]).join(" e ");
+
+  return `BADGES DE TREINO JÁ GANHOS (a vitrina do Perfil; só o que já está conquistado — ` +
+    `o que falta para o próximo NÃO te é dado, e isso é intencional):\n${linhas.join("\n")}\n` +
+    `REGRAS (valem em todos os canais e em todos os níveis de experiência):\n` +
+    `- ${proibidas}: reconhece depois de ganho, nunca proponhas antes. Não dizes ` +
+    `"faltam-te X km/metros", não os usas como incentivo, não os trazes à conversa por iniciativa tua. ` +
+    `Se ele PERGUNTAR diretamente quanto falta, responde com o número e sem nenhum encorajamento a ir buscá-lo hoje.\n` +
+    `- Desempenho e Disciplina podes sugerir à vontade: são treino específico, não um contador a encher.\n` +
+    `- O padrão a vigiar é a ACELERAÇÃO NO FIM DO PERÍODO. Se os últimos dias de uma semana, mês ou ano ` +
+    `destoarem das semanas anteriores (régua do 2.1 #1: teto de ≤10%/semana e as faixas de ACWR), comenta — ` +
+    `mas comenta O PADRÃO, não o número: "os teus últimos três dias do mês têm sido sempre os mais carregados", ` +
+    `nunca "correste 48 km esta semana". Descreve, diz o que costuma custar, e deixa a decisão nele.`;
+}
+
+// ── 1.8b — A porta da pergunta direta sobre UM badge (6 #6) ──────────────
+
+const ESTADO_DO_BADGE: Record<string, string> = {
+  won: "já ganho",
+  progress: "a caminho",
+  empty: "por ganhar",
+};
+
+/**
+ * `buildBadgeQuestionContext` — o contexto que acompanha o botão "Falar com
+ * a Carol" do ecrã de detalhe de um badge (`Perfil/BadgeDetailSheet.jsx`).
+ *
+ * É a exceção que a própria doutrina 6 #6 prevê, à letra: *"Perguntado
+ * diretamente pelo atleta ('quanto me falta?'), responde com o número e sem
+ * encorajamento nenhum a ir buscá-lo hoje."* O botão É o atleta a perguntar —
+ * não há daqui caminho nenhum para ela trazer o assunto por iniciativa dela.
+ *
+ * Por isso este bloco PODE levar o progresso, que o `buildBadgesContext`
+ * nunca leva. Três coisas o mantêm dentro da doutrina:
+ *
+ *   1. É de UM badge só — o que ele abriu. A vitrina continua sem progresso
+ *      nenhum: quem não carrega no botão fala com a Carol de sempre.
+ *   2. A família vem do catálogo do servidor, não do que o cliente disser.
+ *      Chave que o catálogo não conheça não produz bloco nenhum — sem
+ *      família não há regra que a proteja, e o lado seguro do erro é o
+ *      silêncio (o mesmo critério do `buildBadgesContext`).
+ *   3. O texto diz em voz alta o que isto é: resposta a uma pergunta direta,
+ *      válida só para este badge, e numa família proibida o número vai
+ *      sozinho — sem encorajamento a ir buscá-lo hoje e sem virar objetivo.
+ */
+export function buildBadgeQuestionContext(ctx: any): string | null {
+  if (!ctx || typeof ctx !== "object") return null;
+  const key = typeof ctx.key === "string" ? ctx.key : null;
+  const familia = familiaDoBadge(key);
+  const nome = nomeDoBadge(key);
+  if (!familia || !nome) return null;
+
+  const estado = ESTADO_DO_BADGE[String(ctx.estado || "")] || "por ganhar";
+  const podeSugerir = !FAMILIAS_QUE_NAO_SE_SUGEREM.includes(familia);
+
+  const linhas: string[] = [`- Badge: ${nome} (família: ${FAMILIA_LABELS[familia]}) — ${estado}.`];
+  const regra = clip(ctx.regra, 220);
+  if (regra) linhas.push(`- A regra: ${regra}`);
+  // O progresso — o dado que a vitrina nunca dá. Vem porque ele perguntou.
+  const progresso = clip(ctx.progresso, 160);
+  if (progresso) linhas.push(`- Onde ele está: ${progresso}`);
+  const degraus = (Array.isArray(ctx.niveis) ? ctx.niveis.slice(0, 6) : [])
+    .map((n: any) => {
+      const label = clip(n?.label, 40);
+      if (!label) return null;
+      const limiar = n?.limiar === null || n?.limiar === undefined ? "" : ` ${n.limiar}`;
+      return `${label}${limiar}${n?.ganho ? " (ganho)" : ""}`;
+    })
+    .filter(Boolean);
+  if (degraus.length) linhas.push(`- Os níveis: ${degraus.join(" · ")}`);
+  const repeticoes = Number(ctx.repeticoes);
+  if (Number.isFinite(repeticoes) && repeticoes > 1) linhas.push(`- Já o ganhou ${repeticoes} vezes.`);
+
+  return `PERGUNTA DIRETA SOBRE UM BADGE — o atleta abriu esta conversa a partir do ecrã deste badge, ` +
+    `no botão que te chama. Foi ELE que perguntou: não foste tu que trouxeste o assunto, e não voltas a ele ` +
+    `por iniciativa tua depois de responderes.\n${linhas.join("\n")}\n` +
+    `Isto é a RESPOSTA À PERGUNTA DELE e vale só para ESTE badge: não o estendas a mais nenhum, não abras a ` +
+    `vitrina toda, e não guardes este progresso para o trazeres de volta mais tarde.\n` +
+    (podeSugerir
+      ? `Desempenho e Disciplina podes sugerir à vontade — é treino específico, não um contador a encher. ` +
+        `Explica-lhe o que o badge mede, porque é que isso importa para a forma como ele corre, e o que pode ` +
+        `treinar para o ganhar ou para ir mais longe nele.`
+      : `ATENÇÃO — esta é uma das famílias que tu NUNCA propões (6 #6, R1 e R3). Respondes aqui só porque ele ` +
+        `PERGUNTOU: explica o que o badge é e como se ganha, dá o número se ele fizer falta à explicação, e PÁRA AÍ. ` +
+        `Nada de o encorajar a ir buscá-lo hoje, nada de lhe pores isto como objetivo, nada de sugerires treinos, ` +
+        `datas, horas ou rotas para o fechar. Um amuleto perseguido deixa de ser um amuleto, e um contador ` +
+        `empurrado é carga aguda a subir sem ele dar por isso.`) +
+    `\nFala em linguagem de pessoa: o nome do badge, nunca a chave; o que a regra quer dizer, nunca o nome do campo.`;
+}
+
+// ── 1.9 — Os prints que costumam faltar (captura de dados) ───────────────
+
+/* O padrão de prints em falta, dito uma vez pela Carol em vez de um painel
+ * que se dispensa a cada registo (`MissingMetricsBottomSheet`).
+ *
+ * Porque existe: a mesma corrida registada com 4 prints deu 16 campos, com 1
+ * print deu 8 (medido a 2026-09-22, ver `_shared/sourceApps.ts`). Um perfil
+ * tem 73 corridas, 1,44 prints de média e ZERO com zonas de FC — o painel
+ * avisava, era dispensado e esquecia-se. A Carol lembra-se; o painel não.
+ *
+ * Decisões, pela ordem em que importam:
+ *
+ * 1. CONTA-SE PELOS CAMPOS, NÃO PELA `source_app`. Os registos anteriores a
+ *    2026-09-22 não a têm. Por cada ecrã do catálogo conta-se quantas
+ *    corridas recentes chegaram sem NENHUM dos campos desse ecrã. O primeiro
+ *    ecrã de cada app (o resumo) nunca entra: se faltasse, não havia registo.
+ *
+ * 2. SÓ HÁ BLOCO QUANDO HÁ PADRÃO (doutrina 6 #6, R2: "comenta O PADRÃO, NÃO
+ *    O NÚMERO"). Um ecrã só é sugerido quando, nas corridas recentes
+ *    registadas por print:
+ *      - há pelo menos 3 (CAPTURA_MIN_REGISTOS) — a mesma régua de
+ *        confirmação de um sinal que a doutrina já usa ("persistir ≥2-3
+ *        sessões", 2.2 #5); com menos, um registo isolado passava por hábito;
+ *      - faltou em MAIS DE METADE — tolera o registo em que ele mandou tudo
+ *        sem apagar o padrão dos outros;
+ *      - e faltou TAMBÉM NA MAIS RECENTE. Assim que ele manda o ecrã uma vez,
+ *        o bloco cala-se: o hábito está a mudar, e insistir seria repreender.
+ *    E o bloco não leva números ("7 de 8"), só "todas"/"a maioria": é a
+ *    ausência do número que a impede de o citar — o mesmo desenho do
+ *    `buildBadgesContext`.
+ *
+ * 3. A JANELA: os últimos 30 dias (CAPTURA_JANELA_DIAS), até às 20 corridas
+ *    mais recentes. São os mesmos 30 dias do painel de indicadores do chat
+ *    (RUNNING_WINDOW_DAYS em coach-chat): a distribuição 80/20 que ela lê
+ *    sai exatamente destas corridas, por isso "sem zonas" aqui é "painel
+ *    cego" ali. Uma janela mais longa lembrava-se de um hábito que já mudou.
+ *
+ * 4. SÓ CONTAM CORRIDAS VINDAS DE PRINT: com `source_app` ou com algum campo
+ *    do ecrã de resumo em `details`. Uma corrida manual só com distância e
+ *    tempo não é um print a que faltou um ecrã. E os ecrãs de FC só contam
+ *    corridas com FC: sem FC média nem máxima o relógio não a mediu, e não
+ *    há ecrã de zonas para pedir.
+ *
+ * 5. O ECRÃ SÓ SE NOMEIA COM A APP CONHECIDA. A app é a da corrida mais
+ *    recente que tenha `source_app`. Se essa for `desconhecida` (ou outra
+ *    chave que o catálogo não tenha), NÃO se recua para uma mais antiga que
+ *    se conheça: ele pode ter mudado de app, e nomear o ecrã da antiga era
+ *    mandá-lo procurar um sítio que já não existe. Sem app, fala-se dos
+ *    dados ("as zonas de frequência cardíaca") e mais nada. Um ecrã com
+ *    `confirmado: false` pode ser nomeado, mas como sugestão, não como
+ *    certeza.
+ *
+ * 6. SÓ SE PROMETE O QUE O CÓDIGO USA (verificado a 2026-09-22):
+ *    - hr_zones → a distribuição de intensidade (computeTrainingDistribution:
+ *      o painel de indicadores do chat e o RunDashboard), os minutos por
+ *      zona em cada corrida que ela lê (summariseRuns) e o Mestre da Z2
+ *      (src/utils/badges.js — sem zonas o treino fica INDETERMINADO).
+ *    - limiares → o cartão da corrida (RunCard) e a linha de cada corrida
+ *      que ela lê. NÃO calibram as zonas: essas saem da FC máxima e da FC de
+ *      repouso (resolveHrZones), e o bloco diz-lhe isso para não o prometer.
+ *    - dinâmica de corrida → SÓ o cartão da corrida ("Biomecânica de
+ *      Corrida"). Nenhuma análise da Carol lê estes campos; o bloco diz-lhe
+ *      que não prometa uma análise da técnica que não existe.
+ *    Um ecrã cujos campos não caiam em nenhum destes grupos não é sugerido:
+ *    sem ganho verificado, pedir um print a mais é só trabalho para ele.
+ *
+ * 7. A DINÂMICA DE CORRIDA NÃO SE SUGERE A INICIANTE (nem com o nível por
+ *    saber): a doutrina 6 #4 põe a oscilação vertical e o GCT na lista de
+ *    temas contraindicados a esse nível.
+ *
+ * Não é sobre badges. O Mestre da Z2 aparece como consequência e mais nada.
+ */
+
+export const CAPTURA_JANELA_DIAS = 30;
+export const CAPTURA_MAX_REGISTOS = 20;
+const CAPTURA_MIN_REGISTOS = 3;
+
+/* Colunas de `runs` que o catálogo lista no ecrã de resumo por conveniência
+   do painel de métricas em falta — não vivem em `details` (ver o comentário
+   do ecrã `resumo` em sourceApps.ts). Não servem de prova de print: uma
+   corrida manual também as tem. */
+const COLUNAS_DE_RUNS = new Set(["distance_km", "duration_seconds"]);
+const CAMPOS_DE_FC = ["avg_heart_rate_bpm", "max_heart_rate_bpm"];
+
+interface GrupoDeDados {
+  id: string;
+  campos: string[];
+  /** Os dados, em linguagem de pessoa — é assim que se fala sem app conhecida. */
+  dados: string;
+  /** O que se ganha, só o que o código da app de facto usa (ver 6. acima). */
+  ganho: string;
+  /** Só faz sentido pedir este dado a uma corrida em que o relógio mediu FC. */
+  exigeFC: boolean;
+  /** Níveis a quem este dado é tema contraindicado (doutrina 6 #4). Com o
+   *  nível desconhecido também fica de fora: o lado seguro é não o sugerir. */
+  contraindicadoA?: string[];
+}
+
+const NIVEIS = ["iniciante", "basico", "medio", "avancado"];
+
+const GRUPOS_DE_DADOS: GrupoDeDados[] = [
+  {
+    id: "zonas",
+    campos: ["hr_zones"],
+    dados: "as zonas de frequência cardíaca (os minutos em cada zona)",
+    ganho: "a distribuição de intensidade (o 80/20 que tu lês no painel de indicadores e ele vê no painel de " +
+      "corrida só se calcula com elas) e os minutos por zona de cada corrida. E o Mestre da Z2: sem zonas esse " +
+      "badge não lhe pode cair, por bem feitos que sejam os treinos fáceis",
+    exigeFC: true,
+  },
+  {
+    id: "limiares",
+    campos: ["aerobic_threshold_bpm", "anaerobic_threshold_bpm"],
+    dados: "os limiares aeróbio e anaeróbio",
+    ganho: "ficam no cartão da corrida e passam a chegar-te em cada corrida, para veres como evoluem. " +
+      "Não recalibram as zonas que a app calcula (essas saem da FC máxima), por isso não lho prometas",
+    exigeFC: true,
+  },
+  {
+    id: "dinamica",
+    campos: ["ground_contact_time_ms", "vertical_oscillation_cm", "flight_time_ms", "leg_stiffness_kn_m", "regularity_score"],
+    dados: "a dinâmica de corrida (tempo de contacto com o solo, oscilação vertical, tempo de voo)",
+    ganho: "ficam no cartão da corrida, na secção de biomecânica, para ele acompanhar. Tu hoje não recebes estes " +
+      "números: não prometas uma análise da técnica",
+    exigeFC: false,
+    // 6 #4: "métricas avançadas (oscilação vertical, … GCT)" são tema
+    // contraindicado a iniciante. Sugerir o print era trazê-las à conversa.
+    contraindicadoA: ["iniciante"],
+  },
+];
+
+function temCampo(details: Record<string, unknown>, campo: string): boolean {
+  const v = details[campo];
+  if (v === null || v === undefined || v === "") return false;
+  if (Array.isArray(v)) return v.length > 0;
+  return true;
+}
+
+function gruposDoEcra(ecra: SourceScreen, nivel: string | null): GrupoDeDados[] {
+  return GRUPOS_DE_DADOS.filter((g) =>
+    g.campos.some((c) => ecra.campos.includes(c)) &&
+    !(g.contraindicadoA && (!nivel || !NIVEIS.includes(nivel) || g.contraindicadoA.includes(nivel)))
+  );
+}
+
+/**
+ * O padrão de ecrãs em falta nas corridas recentes, ou null se não houver
+ * padrão. `rows`: corridas com `date` e `details` (ou só as chaves de
+ * `details` que o catálogo usa — é o que `fetchChatMemoryBlocks` projeta).
+ * `nivel`: `profiles.experience_level`, para os temas contraindicados (6 #4).
+ * `apps` existe para os testes poderem usar um catálogo seu.
+ */
+export function buildCaptureCoverageContext(
+  rows: any[] | null | undefined,
+  opts: { nivel?: string | null; apps?: Record<string, SourceApp> } = {},
+): string | null {
+  const apps = opts.apps ?? SOURCE_APPS;
+  const nivel = typeof opts.nivel === "string" ? opts.nivel : null;
+  const appsDeCorrida = Object.keys(apps).sort()
+    .map((k) => ({ chave: k, app: apps[k] }))
+    .filter((a) => a.app?.dominio === "corrida" && Array.isArray(a.app.ecras));
+  if (!appsDeCorrida.length) return null;
+
+  // O que prova que uma corrida veio de print: os campos do resumo que vivem em details.
+  const camposDoResumo = new Set<string>();
+  for (const { app } of appsDeCorrida) {
+    for (const c of app.ecras[0]?.campos || []) if (!COLUNAS_DE_RUNS.has(c)) camposDoResumo.add(c);
+  }
+
+  const corridas = (rows || [])
+    .filter((r) => r && typeof r.date === "string")
+    .map((r) => ({ date: r.date.slice(0, 10), details: (r.details && typeof r.details === "object" ? r.details : {}) as Record<string, unknown> }))
+    .filter((r) => typeof r.details.source_app === "string" || [...camposDoResumo].some((c) => temCampo(r.details, c)))
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .slice(0, CAPTURA_MAX_REGISTOS);
+  if (corridas.length < CAPTURA_MIN_REGISTOS) return null;
+
+  // A app da corrida mais recente que a diga — conhecida ou não (ver 5. acima).
+  const chaveRecente = corridas.find((r) => typeof r.details.source_app === "string")?.details.source_app as string | undefined;
+  const appConhecida = chaveRecente && apps[chaveRecente]?.dominio === "corrida" ? apps[chaveRecente] : null;
+
+  // Os ecrãs a avaliar: os da app conhecida, ou — sem ela — os de todas as
+  // apps de corrida, com os grupos de dados repetidos contados uma vez só.
+  const candidatos: SourceScreen[] = [];
+  const vistos = new Set<string>();
+  for (const app of appConhecida ? [appConhecida] : appsDeCorrida.map((a) => a.app)) {
+    for (const ecra of app.ecras.slice(1)) {
+      const assinatura = gruposDoEcra(ecra, nivel).map((g) => g.id).join("+");
+      if (!assinatura || (!appConhecida && vistos.has(assinatura))) continue;
+      vistos.add(assinatura);
+      candidatos.push(ecra);
+    }
+  }
+
+  const linhas: string[] = [];
+  for (const ecra of candidatos) {
+    const grupos = gruposDoEcra(ecra, nivel);
+    const exigeFC = grupos.every((g) => g.exigeFC);
+    const elegiveis = exigeFC ? corridas.filter((r) => CAMPOS_DE_FC.some((c) => temCampo(r.details, c))) : corridas;
+    if (elegiveis.length < CAPTURA_MIN_REGISTOS) continue;
+    const semEcra = elegiveis.filter((r) => !ecra.campos.some((c) => temCampo(r.details, c)));
+    // Padrão = a maioria E a mais recente (ver 2. acima).
+    if (semEcra.length * 2 <= elegiveis.length || semEcra[0] !== elegiveis[0]) continue;
+
+    const quantas = semEcra.length === elegiveis.length ? "em todas as corridas recentes" : "na maioria das corridas recentes, incluindo a última";
+    const dados = grupos.map((g) => g.dados).join(" e ");
+    let onde: string;
+    if (!appConhecida) {
+      onde = "Não sabes de que app vêm os prints dele: fala dos dados, sem inventares o nome de uma app nem de um ecrã.";
+    } else if (ecra.confirmado) {
+      onde = `No ${appConhecida.nome}, estão no ecrã "${ecra.nome}".`;
+    } else {
+      onde = `No ${appConhecida.nome}, devem estar no ecrã "${ecra.nome}" — é onde contamos que estejam, mas ainda não ` +
+        `está confirmado com prints reais: sugere-o ("deve estar no ecrã…"), não o afirmes como certo.`;
+    }
+    linhas.push(`- ${dados[0].toUpperCase()}${dados.slice(1)}: faltaram ${quantas}. ${onde}\n` +
+      grupos.map((g) => `    o que ganha com ${g.dados.split(" (")[0]}: ${g.ganho}.`).join("\n"));
+  }
+  if (!linhas.length) return null;
+
+  return `PRINTS QUE COSTUMAM FALTAR NAS CORRIDAS (últimos ${CAPTURA_JANELA_DIAS} dias, só corridas registadas por print — ` +
+    `é sobre os dados que chegam à app, não sobre o treino dele):\n${linhas.join("\n")}\n` +
+    `COMO USAR (é uma sugestão a dar UMA vez, não um aviso):\n` +
+    `- Se já lhe falaste disto nas mensagens que tens desta conversa, não voltes ao assunto, a não ser que ele pergunte.\n` +
+    `- Nunca abras a conversa com isto nem o metas no meio de outro assunto. O sítio certo é quando ele falar de ` +
+    `uma corrida, de um registo, ou de alguma coisa que dependa destes dados.\n` +
+    `- É o padrão que comentas, não a contagem: "as tuas corridas têm chegado sem as zonas", nunca "faltam em N registos".\n` +
+    `- Se ele disser que o relógio ou a app dele não mostram isso, aceita e não voltes ao assunto.\n` +
+    `- Tom de informação útil, não de repreensão: diz o que acrescentar da próxima vez (o ecrã, se o souberes; ` +
+    `senão, os dados) e o que isso lhe dá, numa ` +
+    `ou duas frases. Ele não fez nada de errado — a app é que não lhe tinha dito que ecrãs valiam a pena.`;
 }
 
 // ── 5.2 — A proposta de objetivos por decidir ────────────────────────────
@@ -616,7 +995,7 @@ export async function fetchImpressionsBlock(sb: any, userId: string, todayISO: s
 // acima: um rótulo de apresentação, não lógica, o risco de divergir é baixo).
 const PUSH_TRIGGER_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
-  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos", week_review: "balanço da semana",
 };
 
 export function buildPushesContext(
@@ -680,7 +1059,7 @@ export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: str
     const from = addDaysISO(todayISO, -ADHERENCE_WINDOW_DAYS);
     const [itemsR, runsR, gymR, mealsR] = await Promise.all([
       sb.from("coach_plan_items")
-        .select("id, plan_id, planned_date, actual_date, kind, training_type, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
+        .select("id, plan_id, planned_date, actual_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
         .eq("user_id", userId).eq("coach_plans.status", "aceite")
         .gte("planned_date", from).lt("planned_date", todayISO),
       sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")
@@ -707,6 +1086,51 @@ export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: str
     console.warn("carolMemory: fetchAdherenceBlock falhou:", e);
     return null;
   }
+}
+
+/**
+ * O plano da semana revista no balanço de segunda-feira (week_review): a
+ * mesma régua da adesão (evaluatePrescriptions), mas só de segunda a domingo
+ * dessa semana, e com o veredicto já decidido — "cumprida a 100%" não fica a
+ * cargo do modelo contar linhas (revisão pré-deploy de 2026-09-24). null sem
+ * plano nessa semana ou se a leitura falhar.
+ */
+export async function fetchWeekAdherenceLine(sb: any, userId: string, weekStart: string): Promise<string | null> {
+  try {
+    const weekEnd = addDaysISO(weekStart, 6);
+    const dayAfter = addDaysISO(weekStart, 7);
+    const [itemsR, runsR, gymR] = await Promise.all([
+      sb.from("coach_plan_items")
+        .select("id, plan_id, planned_date, actual_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
+        .eq("user_id", userId).eq("coach_plans.status", "aceite")
+        .gte("planned_date", weekStart).lte("planned_date", weekEnd),
+      sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")
+        .eq("user_id", userId).gte("date", weekStart).lte("date", weekEnd),
+      sb.from("workout_sessions").select("id, date, duration_seconds, exertion")
+        .eq("user_id", userId).eq("status", "concluido").gte("date", weekStart).lte("date", weekEnd),
+    ]);
+    if (itemsR.error || runsR.error || gymR.error) {
+      warn("adesão da semana", itemsR.error ?? runsR.error ?? gymR.error);
+      return null;
+    }
+    const summary = evaluatePrescriptions({ items: itemsR.data || [], runs: runsR.data || [], gym: gymR.data || [], mealsByDate: {} }, dayAfter, 7);
+    return buildWeekAdherenceLine(summary, weekStart, weekEnd);
+  } catch (e) {
+    console.warn("carolMemory: fetchWeekAdherenceLine falhou:", e);
+    return null;
+  }
+}
+
+/** A linha do plano da semana, a partir da avaliação — pura, para os testes. */
+export function buildWeekAdherenceLine(
+  summary: { training: unknown[]; counts: Record<TrainingOutcome, number>; executionScore: number | null },
+  weekStart: string,
+  weekEnd: string,
+): string | null {
+  if (!summary.training.length) return null;
+  const full = summary.executionScore === 100;
+  return `Plano da semana de ${weekStart} a ${weekEnd} (só esta semana): ${trainingSummaryLine(summary.counts)}. ` +
+    `Cumprimento: ${String(summary.executionScore ?? 0).replace(".", ",")}%. Semana cumprida a 100%: ${full ? "sim" : "não"}.`;
 }
 
 const PORTRAIT_ROW_LIMIT = 1000; // config.toml max_rows — o PostgREST corta em silêncio acima disto.
@@ -797,7 +1221,11 @@ export async function fetchSharedMemoryBlock(
 export interface ChatMemoryBlocks {
   records: string | null;
   dailyCard: string | null;
-  palmares: string | null;
+  /** As últimas provas concluídas (tempo face ao objetivo, o teu balanço) —
+   *  não é o Palmarés (medalhas), substituído pelos badges a 2026-09-22. */
+  raceHistory: string | null;
+  /** A vitrina de badges já ganhos, com as regras do 6 #6 (fase 6). */
+  badges: string | null;
   portrait: string | null;
   checkin: string | null;
   impressions: string | null;
@@ -806,6 +1234,22 @@ export interface ChatMemoryBlocks {
   adherence: string | null;
   /** A proposta de objetivos por decidir (5.2). */
   proposals: string | null;
+  /** Os prints que costumam faltar nas corridas (1.9) — só quando há padrão. */
+  captureCoverage: string | null;
+}
+
+/* As chaves de `details` que `buildCaptureCoverageContext` lê: a fonte, a FC
+   (para saber se o relógio a mediu) e os campos de todos os ecrãs das apps
+   de corrida do catálogo. Projetadas uma a uma (`chave:details->chave`, o
+   precedente é o `details:details->splits` do retrato) em vez de `details`
+   inteiro. Derivadas do catálogo: uma app ou um campo novo entra sozinho. */
+function chavesDaCaptura(): string[] {
+  const chaves = new Set<string>(["source_app", ...CAMPOS_DE_FC]);
+  for (const app of Object.values(SOURCE_APPS)) {
+    if (app.dominio !== "corrida") continue;
+    for (const ecra of app.ecras) for (const c of ecra.campos) if (!COLUNAS_DE_RUNS.has(c)) chaves.add(c);
+  }
+  return [...chaves].sort();
 }
 
 /**
@@ -826,7 +1270,8 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     // O retrato da época (5.3) — extraído para fetchPortraitBlock, que o
     // cartão diário e o analyze-run também chamam via fetchSharedMemoryBlock.
     const portraitPromise = fetchPortraitBlock(sb, userId, todayISO);
-    const [runsR, gymR, mealsR, upcomingNotesR, cardR, medalsR, pastRacesR, bodyNotesR, goalsR] = await Promise.all([
+    const chavesCaptura = chavesDaCaptura();
+    const [runsR, gymR, mealsR, upcomingNotesR, cardR, badgesR, pastRacesR, bodyNotesR, goalsR, captureR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
         .eq("user_id", userId).gte("date", recordsFrom).lte("date", todayISO).or(hasText)
         .order("date", { ascending: false }).limit(RECORD_QUOTA.runs),
@@ -841,7 +1286,10 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
         .order("date", { ascending: true }).limit(5),
       sb.from("coach_daily_summary").select("date, recap, warnings, meal_suggestion, tomorrow_prep, race_readiness, daily_concept")
         .eq("user_id", userId).gte("date", addDaysISO(todayISO, -1)).lte("date", todayISO),
-      sb.from("medal_awards").select("medalhao, slot, period_key, value, awarded_at")
+      /* Só a conquista: `tier`, `period_key` e `awarded_at` chegam para dizer
+         o nível, as repetições e a última vez. O `value` fica DE FORA de
+         propósito — é o número que alimentaria um "faltam-te X" (6 #6, R1). */
+      sb.from("user_badges").select("badge_key, tier, period_key, awarded_at")
         .eq("user_id", userId).order("awarded_at", { ascending: false }).limit(200),
       sb.from("race_events").select("id, date, name, distance_km, race_priority, target_time_seconds, notes, race_type, elevation_gain_m, location, coach_balance")
         .eq("user_id", userId).eq("status", "concluida").lt("date", todayISO)
@@ -855,16 +1303,23 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       sb.from("coach_goal_proposals").select("status, goals, rationale, created_at")
         .eq("user_id", userId).eq("status", "proposto")
         .order("created_at", { ascending: false }).limit(1),
+      // 1.9: os prints que costumam faltar. Só a data e as chaves de details
+      // que o catálogo usa, nunca details inteiro (os splits entram por serem
+      // do ecrã de resumo — são prova de que a corrida veio de um print).
+      sb.from("runs").select(["date", ...chavesCaptura.map((c) => `${c}:details->${c}`)].join(", "))
+        .eq("user_id", userId).gte("date", addDaysISO(todayISO, -(CAPTURA_JANELA_DIAS - 1))).lte("date", todayISO)
+        .order("date", { ascending: false }).limit(CAPTURA_MAX_REGISTOS),
     ]);
     warn("runs(notas)", runsR.error);
     warn("workout_sessions(notas)", gymR.error);
     warn("meals(notas)", mealsR.error);
     warn("race_events(notas)", upcomingNotesR.error);
     warn("coach_daily_summary", cardR.error);
-    warn("medal_awards", medalsR.error);
+    warn("user_badges", badgesR.error);
     warn("race_events(concluídas)", pastRacesR.error);
     warn("body_assessments(notas)", bodyNotesR.error);
     warn("coach_goal_proposals", goalsR.error);
+    warn("runs(captura)", captureR.error);
 
     const entries = [
       ...toRecordEntries(runsR.data, runLabel),
@@ -894,16 +1349,22 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     return {
       records: [recordsBlock, upcomingBlock].filter(Boolean).join("\n\n") || null,
       dailyCard: buildDailyCardContext(cardR.data, todayISO),
-      palmares: buildPalmaresContext(medalsR.data, pastRaces, raceRuns),
+      raceHistory: buildRaceHistoryContext(pastRaces, raceRuns),
+      badges: buildBadgesContext(badgesR.data),
       portrait: await portraitPromise,
       checkin: await checkinPromise,
       impressions: await impressionsPromise,
       pushes: await pushesPromise,
       adherence: await adherencePromise,
       proposals: buildGoalProposalContext((goalsR.data || [])[0] ?? null),
+      // Cada linha volta com as chaves soltas; reagrupam-se em `details`.
+      captureCoverage: buildCaptureCoverageContext((captureR.data || []).map((r: any) => ({
+        date: r?.date,
+        details: Object.fromEntries(chavesCaptura.map((c) => [c, r?.[c]])),
+      })), { nivel: profile?.experience_level ?? null }),
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, palmares: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null };
+    return { records: null, dailyCard: null, raceHistory: null, badges: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null, captureCoverage: null };
   }
 }

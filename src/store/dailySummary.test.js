@@ -56,6 +56,21 @@ describe('loadDailySummary', () => {
     expect(mocks.invoke).toHaveBeenCalled();
   });
 
+  it('o assunto da carga aberto pelo servidor aparece logo no perfil', async () => {
+    useAppStore.setState({ profile: { id: 'u1', coach_intervention_status: 'resolved', coach_intervention_reason: null } });
+    const reason = '[carga] Carga de corrida: 30 km nos últimos 7 dias…';
+    mocks.invoke.mockResolvedValue({ data: { summary: SUMMARY, cached: false, intervention: { status: 'needed', reason } }, error: null });
+    await useAppStore.getState().loadDailySummary({ force: true });
+    expect(useAppStore.getState().profile).toMatchObject({ coach_intervention_status: 'needed', coach_intervention_reason: reason });
+  });
+
+  it('não pisa um assunto que já estava por resolver', async () => {
+    useAppStore.setState({ profile: { id: 'u1', coach_intervention_status: 'in_progress', coach_intervention_reason: 'Check-in de hoje: dor 7/10.' } });
+    mocks.invoke.mockResolvedValue({ data: { summary: SUMMARY, cached: false, intervention: { status: 'needed', reason: '[carga] …' } }, error: null });
+    await useAppStore.getState().loadDailySummary({ force: true });
+    expect(useAppStore.getState().profile.coach_intervention_reason).toBe('Check-in de hoje: dor 7/10.');
+  });
+
   it('em erro, devolve null e não mexe no resumo já guardado', async () => {
     useAppStore.setState({ dailySummary: null });
     mocks.invoke.mockResolvedValue({ data: null, error: 'falhou' });

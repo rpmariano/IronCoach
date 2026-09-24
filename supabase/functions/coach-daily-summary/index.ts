@@ -16,13 +16,15 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
 import { computeRaceEve, describeRaceEveShort, type RaceEve } from "../_shared/formulas/raceEve.ts";
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
+import { runLoadReading, runLoadInterventionToOpen, runLoadInterventionReason, type LoadPlanItem } from "../_shared/formulas/runLoadAlert.ts";
 import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { resolveMaxHR, resolveHrZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
-import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
+import { PAIN_ALARM_THRESHOLD } from "../_shared/formulas/checkinAlarms.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 
@@ -228,7 +230,8 @@ export function buildDailySummaryContext(params: {
   vesperaDaProva?: Record<string, unknown> | null;
   // deno-lint-ignore no-explicit-any
   bodyAssessments?: any[];
-  acwr?: { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null };
+  // O rácio e a leitura dele face ao plano e ao histórico (runLoadAlert.ts).
+  acwr?: { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null; [k: string]: unknown };
   tdee?: number | null;
 }) {
   const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva } = params;
@@ -306,7 +309,10 @@ export function buildDailySummaryContext(params: {
       })(),
     },
     objetivos_diarios_tdee_kcal: tdee ?? null,
-    corridas_ultimos_30_dias: recentRuns || [],
+    // created_at só serve para o assunto da carga (runLoadInterventionToOpen):
+    // não vai ao modelo, que o confundia com a hora da corrida.
+    // deno-lint-ignore no-explicit-any
+    corridas_ultimos_30_dias: (recentRuns || []).map(({ created_at: _criado, ...r }: any) => r),
     ginasio_ultimos_30_dias: recentGym || [],
     composicao_corporal_30_dias: (bodyAssessments || []).map((a: any) => ({
       date: a.date,
@@ -400,7 +406,6 @@ export function buildWarningsMessage(
   waterTotal: number,
   waterGoal: number | null,
   bodyMetrics?: { hasRedSRisk: boolean; latestBodyFat: number | null; gender: string | null; weeklyWeightChange: number | null; weightLossTooFast?: boolean; weightLossPct?: number | null },
-  acwr?: { ratio: number | null },
 ): string | null {
   const nonRest = (todayPlanItems || []).filter((i: any) => i.kind !== "descanso");
   let msg = "";
@@ -435,11 +440,11 @@ export function buildWarningsMessage(
     msg = msg ? `${msg}${wlMsg}` : wlMsg.trim();
   }
 
-  // Alerta ACWR elevado: carga aguda muito acima da crónica → risco de lesão
-  if (acwr?.ratio !== null && acwr?.ratio !== undefined && acwr.ratio > 1.5) {
-    const acwrMsg = ` Carga de treino desta semana muito elevada face às últimas 4 semanas (ACWR ${acwr.ratio.toFixed(2)}). Precisas de um dia de recuperação ativa.`;
-    msg = msg ? `${msg}${acwrMsg}` : acwrMsg.trim();
-  }
+  // A carga (ACWR) já não entra aqui (pedido 2026-09-24): "Considera um dia
+  // de recuperação ativa" era mudar o plano a partir do cartão, e dizia-o a
+  // quem só tinha feito o que o plano mandava. Quando a carga pede conversa,
+  // abre-se um assunto por resolver que leva ao chat — ver
+  // _shared/formulas/runLoadAlert.ts e o handler, mais abaixo.
 
   return msg || null;
 }
@@ -568,6 +573,32 @@ export function computeTDEE(profile: any, weeklyVolumeKm: number | null = null):
   return sharedComputeTDEE(bmr, weeklyVolumeKm, Number(weight_kg));
 }
 
+// O check-in de hoje como a Carol o lê no recap: as escalas em palavras (as
+// mesmas do cartão, src/utils/checkin.js) e o veredicto já decidido —
+// `dia_em_baixo` com sono ≤2 ou energia ≤2, `dor_alta` a partir do limiar
+// dos alarmes G2/G5 (PAIN_ALARM_THRESHOLD). O modelo não tem de adivinhar
+// onde fica a linha.
+const CHECKIN_WORDS: Record<string, string[]> = {
+  sono: ["péssimo", "mau", "razoável", "bom", "ótimo"],
+  energia: ["sem energia", "em baixo", "normal", "com energia", "cheio"],
+  stress: ["calmo", "tranquilo", "normal", "tenso", "muito tenso"],
+};
+// deno-lint-ignore no-explicit-any
+export function checkinForSummary(c: any): Record<string, unknown> | null {
+  const sleep = Number(c?.sleep), energy = Number(c?.energy), stress = Number(c?.stress);
+  if (![sleep, energy, stress].every((v) => v >= 1 && v <= 5)) return null;
+  const pain = Math.max(0, Number(c?.pain) || 0);
+  return {
+    sono: CHECKIN_WORDS.sono[sleep - 1],
+    energia: CHECKIN_WORDS.energia[energy - 1],
+    stress: CHECKIN_WORDS.stress[stress - 1],
+    dor: pain,
+    dor_local: pain > 0 ? (c?.pain_location || null) : null,
+    dia_em_baixo: sleep <= 2 || energy <= 2,
+    dor_alta: pain >= PAIN_ALARM_THRESHOLD,
+  };
+}
+
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -598,6 +629,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `conteúdos independentes para o cartão diário da Home, em primeira pessoa. Nunca genérico. ` +
     `Devolve null nos campos onde não tens nada útil a dizer.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
+    // Linguagem por nível (bug #40) — ctx.perfil.experience_level.
+    `${carolLanguageRule((ctx.perfil as { experience_level?: string | null } | undefined)?.experience_level ?? null)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
     `CAMPOS A PREENCHER:\n\n` +
@@ -605,13 +638,32 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `Combina: (a) balanço honesto dos treinos recentes — consistência, volume, tendências; ` +
     `(b) se "proxima_prova" existir, inclui uma observação concreta sobre a preparação para a prova ` +
     `(o que está bem, o que precisa de atenção — usa os dados de ACWR, pace, RPE/exertion, volume); ` +
-    `(c) uma sugestão prática para os próximos dias. ` +
+    `(c) uma dica prática para cumprir bem o que já está previsto nos próximos dias. ` +
+    `ESTE CARTÃO NÃO MUDA O PLANO: nunca sugiras trocar um treino por descanso, cortar volume ou mudar dias ` +
+    `(a única exceção é o check-in de hoje, abaixo). Mudanças ao plano discutem-se no chat — quando é preciso, ` +
+    `a app chama-o lá. ` +
+    `REGISTOS DE HOJE: se "corridas_ultimos_30_dias" ou "ginasio_ultimos_30_dias" tiverem um registo com a data de hoje, ` +
+    `esse treino JÁ ESTÁ FEITO — fala dele no passado e nunca como algo que ainda tem pela frente. ` +
+    `CARGA (ACWR): lê o bloco "acwr". Só é risco se "conta_como_risco" for true. Se "segue_o_plano" for true, a carga ` +
+    `é a que tu prescreveste — não a trates como excesso. Se "ratio" for null, há poucos registos nas últimas 4 semanas ` +
+    `("semanas_com_corridas_de_4") para o rácio dizer alguma coisa: não o cites nem tires conclusões dele. ` +
     `Se existir "semana_passada_plano" (só à segunda-feira) e com_registo for igual a itens, abres com UMA frase de ` +
     `reconhecimento — uma só, específica — e segues. Se ficou abaixo dos 100%, não elogias a parte cumprida: dizes o que ficou por fazer, sem sermão. ` +
     `Lê "fase_do_plano" e calibra o tom. Se existir "prescrito_vs_feito", usa-o no balanço: um padrão (treinos a meio, ` +
     `descanso não respeitado, proteína abaixo) diz-se com o número; um dia isolado não. ` +
     `Se existir "o_que_ja_viu_na_app", não repitas como novidade nem contradigas o que já lhe disseste ao abrir a app, ` +
     `e se lhe fizeste uma pergunta, retoma-a. Só preenches se houver histórico — caso contrário null.\n` +
+    `CHECK-IN DE HOJE — se existir "checkin_hoje", o recap abre por ele (mesmo sem histórico, aí preenches o recap):\n` +
+    `  - "dor_alta" true: hoje nada de impacto (corrida, saltos) — e pedes-lhe que fale contigo no chat. ` +
+    `Sem diagnosticar e sem prometer quando volta: isso decide-se no chat, pela hierarquia de alarmes.\n` +
+    `  - "dia_em_baixo" true: se "plano_treino_hoje" tiver corrida ou ginásio, baixas a intensidade de hoje — ` +
+    `séries/intervalos passam a rodagem fácil ou o treino encurta ~1/3 — e dizes PORQUÊ, com o que ele respondeu ` +
+    `("dormiste mal", "estás sem energia"). Sem treino hoje, uma frase sobre descansar bem. Nunca sermão. ` +
+    `EXCEÇÃO: se existir "vespera_da_prova" (a prova é hoje ou amanhã), não mexes na prova nem no treino da véspera — ` +
+    `uma noite mal dormida antes da prova é normal e não estraga a prova; diz-lho, com calma.\n` +
+    `  - Stress "tenso"/"muito tenso" sozinho: uma frase a lembrar que o treino leve também conta, sem mexer no plano.\n` +
+    `  - Tudo bem: uma frase curta a confirmar que o dia está a favor do treino previsto. Não repitas os valores todos.\n` +
+    `  Sem "checkin_hoje", não inventes como ele acordou hoje (os alarmes do bloco de memória continuam a valer).\n` +
     `ENQUADRAMENTO OBRIGATÓRIO — lê "modo_acompanhamento" antes de escrever:\n` +
     `  - PROVA_COM_PLANO: podes falar de plano, de dias previstos e de fase de preparação.\n` +
     `  - MANUTENCAO_COM_PLANO: há plano mas NÃO há prova. Fala do plano, mas nunca de taper, ` +
@@ -636,7 +688,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `paces (se disponíveis) dentro do intervalo necessário para o target_time, exertion controlada.\n` +
     `  "yellow" — 1-2 alertas: ex. volume ok mas paces longe do alvo, ACWR 1.3-1.5, ` +
     `semanas no limite, exertion elevada mas isolada.\n` +
-    `  "red" — múltiplos fatores em risco, ACWR > 1.5, tempo claramente insuficiente, ` +
+    `  "red" — múltiplos fatores em risco, ACWR > 1.5 com "conta_como_risco" true, tempo claramente insuficiente, ` +
     `ou exertion cronicamente muito alta.\n` +
     `  "race_date": copia de "proxima_prova.date" (formato yyyy-mm-dd).\n` +
     `  "reason": 1-2 frases com os fatores determinantes, usando números reais do contexto.\n\n` +
@@ -712,6 +764,10 @@ Deno.serve(async (req) => {
     const force = body?.force === true;
 
     const today = todayISO();
+    // A hora a que os dados foram lidos é a que o resumo grava: com a do fim
+    // (o Gemini leva até 40 s), uma corrida criada entretanto contava como já
+    // vista no resumo seguinte e o assunto da carga nunca a avaliava.
+    const snapshotAt = new Date().toISOString();
 
     // ── Cache: devolve já se existir e não for pedido forçado ──────────
     if (!force) {
@@ -734,14 +790,16 @@ Deno.serve(async (req) => {
       { data: profile },
       { data: todayMeals },
       { data: todayWater },
-      { data: recentRuns },
+      { data: loadRuns },
       { data: recentGym },
       { data: acceptedPlans },
       { data: upcomingRaces },
       { data: bodyAssessments },
+      { data: todayCheckin },
+      { data: previousSummary },
     ] = await Promise.all([
       sb.from("profiles")
-        .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, water_reminder_enabled, dietary_restrictions, dietary_notes, experience_level, weight_kg, height_cm, gender, birth_date, resting_hr_bpm")
+        .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, water_reminder_enabled, dietary_restrictions, dietary_notes, experience_level, weight_kg, height_cm, gender, birth_date, resting_hr_bpm, coach_intervention_status")
         .eq("id", userId).maybeSingle(),
       sb.from("meals").select("meal_type, meal_time, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
         .eq("user_id", userId).eq("date", today),
@@ -749,8 +807,11 @@ Deno.serve(async (req) => {
       // Janela alargada a 30 dias para calcular ACWR (precisa de 28 dias de histórico crónico)
       // start_time / assessment_time: as horas a que as coisas aconteceram
       // (pedido 2026-09-13) — a Carol lê-as tal como vêm, nas listas abaixo.
-      sb.from("runs").select("date, start_time, training_type, distance_km, duration_seconds, effort_rpe, details, kind")
-        .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
+      // 35 dias e não 30: o assunto da carga relê os 7 dias anteriores, cada
+      // um com a sua janela de 28 (runLoadInterventionToOpen). O resto do
+      // resumo só vê os 30 (recentRuns, abaixo).
+      sb.from("runs").select("date, start_time, training_type, distance_km, duration_seconds, effort_rpe, details, kind, created_at")
+        .eq("user_id", userId).gte("date", addDaysISO(today, -34)).lte("date", today).order("date", { ascending: false }),
       sb.from("workout_sessions").select("date, start_time, categories, duration_seconds, avg_hr, exertion")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
       sb.from("coach_plans")
@@ -765,14 +826,27 @@ Deno.serve(async (req) => {
       // Composição corporal: 30 dias para RED-S e tendência de peso
       sb.from("body_assessments").select("date, assessment_time, weight_kg, body_fat_pct, lean_body_mass_kg, visceral_fat, body_water_pct")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
+      // O check-in de hoje, para a regra explícita do recap (2026-09-23).
+      // Gravar um check-in regenera este resumo (saveDailyCheckin no store).
+      sb.from("daily_checkins").select("sleep, energy, stress, pain, pain_location")
+        .eq("user_id", userId).eq("date", today).maybeSingle(),
+      // Quando foi feito o resumo anterior: o assunto da carga só se abre
+      // pelas corridas registadas depois dele (runLoadInterventionToOpen).
+      sb.from("coach_daily_summary").select("generated_at")
+        .eq("user_id", userId).order("generated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
+    // deno-lint-ignore no-explicit-any
+    const recentRuns = (loadRuns || []).filter((r: any) => r.date >= addDaysISO(today, -29));
     const nextRace = upcomingRaces?.[0] ?? null;
 
     // Encontra os treinos de todos os planos aceites relevantes para os próximos dias
     const acceptedPlanIds = (acceptedPlans || []).map((p: any) => p.id);
     let planItems: any[] = [];
     let lastWeekItems: any[] = [];
+    // O plano aceite de 13 dias para trás até depois de amanhã: 7 de janela
+    // da carga e 7 de histórico para saber se o alerta já vinha de trás.
+    let loadPlanItems: LoadPlanItem[] = [];
     if (acceptedPlanIds.length > 0) {
       const { data: fetchedItems } = await sb
         .from("coach_plan_items")
@@ -781,13 +855,18 @@ Deno.serve(async (req) => {
         .in("plan_id", acceptedPlanIds)
         // Semana passada incluída só para a regra de segunda-feira (CAROL.md
         // §3: "semana cumprida a 100% → uma frase de reconhecimento"); o resto
-        // do resumo continua a olhar de hoje para a frente (planItems).
-        .gte("planned_date", addDaysISO(today, -7))
+        // do resumo continua a olhar de hoje para a frente (planItems). Os 13
+        // dias para trás são do assunto da carga (loadPlanItems, abaixo).
+        .gte("planned_date", addDaysISO(today, -13))
         .lte("planned_date", addDaysISO(today, 2))
         .neq("status", "cancelado");
       const allItems = fetchedItems || [];
       planItems = allItems.filter((i: any) => i.planned_date >= today);
-      lastWeekItems = allItems.filter((i: any) => i.planned_date < today);
+      lastWeekItems = allItems.filter((i: any) => i.planned_date >= addDaysISO(today, -7) && i.planned_date < today);
+      // Todos, também os de amanhã e depois: um plano cujas corridas ficam
+      // fora da janela continua a ser um plano de treino (runLoadReading
+      // recorta as janelas).
+      loadPlanItems = allItems;
     }
 
     const tomorrow = addDaysISO(today, 1);
@@ -797,6 +876,8 @@ Deno.serve(async (req) => {
 
     // Métricas calculadas para alertas determinísticos e contexto do Gemini
     const acwr        = computeACWR(recentRuns || [], today);
+    // O ACWR lido com o plano e o histórico (runLoadAlert.ts).
+    const load        = runLoadReading({ runs: recentRuns, planItems: loadPlanItems, today });
     const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null);
     // acute_km_per_day × 7 = km dos últimos 7 dias, para o TDEE somar o
     // custo do treino (ver computeTDEE acima).
@@ -846,7 +927,23 @@ Deno.serve(async (req) => {
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,
-      bodyAssessments: bodyAssessments || [], acwr, tdee,
+      bodyAssessments: bodyAssessments || [],
+      acwr: {
+        ...acwr,
+        // Com corridas em menos de 3 das 4 semanas a média crónica é falta
+        // de registos, não a forma dele: o rácio não vai ao modelo.
+        ratio: load.enoughHistory ? load.ratio : null,
+        semanas_com_corridas_de_4: load.historyWeeks,
+        km_ultimos_7_dias: load.acuteKm,
+        // A comparação com o plano é só dos dias dele: um plano que começou a
+        // meio da semana não responde pelas corridas de antes.
+        plano_desde: load.planFrom,
+        km_nos_dias_do_plano: load.kmOnPlanDays,
+        km_previstos_no_plano: load.prescribedKm,
+        segue_o_plano: load.followsPlan,
+        conta_como_risco: load.alert,
+      },
+      tdee,
       // Calculado logo acima mas nunca passado: a regra de segunda-feira
       // ("semana_passada_plano") era código morto e a janela extra de 7 dias
       // da query era lida em vão (apanhado na revisão pré-deploy 2026-09-12).
@@ -856,6 +953,8 @@ Deno.serve(async (req) => {
     if (raceWeather) (ctx as Record<string, unknown>).meteorologia_prova = raceWeather;
     if (adherence) (ctx as Record<string, unknown>).prescrito_vs_feito = adherence;
     if (impressions) (ctx as Record<string, unknown>).o_que_ja_viu_na_app = impressions;
+    const checkinHoje = checkinForSummary(todayCheckin);
+    if (checkinHoje) (ctx as Record<string, unknown>).checkin_hoje = checkinHoje;
 
     // No dia da prova o aviso é a prova (o cliente escreve-a): listar aqui
     // "Corrida (contínuo, 10 km)" era o item do plano a contradizer o dia. E
@@ -866,7 +965,6 @@ Deno.serve(async (req) => {
       waterTotal,
       profile?.water_reminder_enabled ? (profile?.water_goal_ml ?? null) : null,
       { ...bodyMetrics, gender: profile?.gender ?? null },
-      acwr,
     );
     // Na véspera, "Preparar amanhã" é a prova (horas da fórmula partilhada),
     // não o item do plano — o cliente também deixa de sobrepor este texto
@@ -912,8 +1010,31 @@ Deno.serve(async (req) => {
       daily_concept: generated.daily_concept_body
         ? { key: todayConcept.key, title: todayConcept.title, body: generated.daily_concept_body }
         : null,
-      generated_at: new Date().toISOString(),
+      generated_at: snapshotAt,
     };
+
+    // A carga que pede conversa vira assunto por resolver: o Início leva-o ao
+    // chat, onde a Carol discute o plano com ele (pedido 2026-09-24). O
+    // filtro no update repete a guarda de runLoadInterventionToOpen do lado
+    // da base de dados — um assunto aberto entretanto não é substituído.
+    let interventionOpened: { status: string; reason: string } | null = null;
+    const loadToOpen = runLoadInterventionToOpen({
+      runs: loadRuns || [],
+      planItems: loadPlanItems,
+      today,
+      previousSummaryAt: previousSummary?.generated_at ?? null,
+      interventionStatus: profile?.coach_intervention_status ?? null,
+    });
+    if (loadToOpen) {
+      const reason = runLoadInterventionReason(loadToOpen, today);
+      const { data: opened, error: openError } = await sb.from("profiles")
+        .update({ coach_intervention_status: "needed", coach_intervention_reason: reason })
+        .eq("id", userId)
+        .or("coach_intervention_status.is.null,coach_intervention_status.in.(none,resolved)")
+        .select("id");
+      if (openError) console.warn("coach-daily-summary: falha a abrir o assunto da carga:", openError);
+      else if (opened?.length) interventionOpened = { status: "needed", reason };
+    }
 
     const { data: saved, error: saveError } = await sb
       .from("coach_daily_summary")
@@ -922,7 +1043,7 @@ Deno.serve(async (req) => {
       .single();
     if (saveError) return jsonResponse({ error: `Falha a gravar resumo: ${saveError.message}` }, 500);
 
-    return jsonResponse({ summary: saved, cached: false, usage });
+    return jsonResponse({ summary: saved, cached: false, usage, intervention: interventionOpened });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);

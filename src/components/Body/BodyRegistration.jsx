@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
@@ -17,6 +18,7 @@ import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
+import { ecraPrincipal } from '../../../supabase/functions/_shared/sourceApps.ts';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -168,6 +170,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     // …ou a avaliação que atravessa uma meta do Corpo (utils/bodyGoal.js).
     const first = !isEditing && (firstRecordMoment('body', st, createdRecord)
       || bodyGoalMoment(createdRecord, st.bodyAssessments, st.profile));
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
@@ -244,7 +250,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   // sobrevive a um recarregamento da página (ver formDraftPersistence.js).
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
-  usePersistedFormDraft(draftStorageKey, { date, assessmentTime, notes, metrics, entryMethod }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  usePersistedFormDraft(draftStorageKey, { date, assessmentTime, notes, metrics, entryMethod }, { isDirty: isFormDirty && !confirmation });
 
   /* A hora grava-se por update à parte, como a da corrida e a da refeição:
      quem insere a linha é a analyze-body, e acrescentar-lhe um campo obriga
@@ -307,7 +315,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             notes: notes.trim() || null,
             metrics: payloadMetrics,
           },
-        });
+        }, ANALYZE_TIMEOUT_MS);
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedAssessment = data?.assessment;
@@ -324,7 +332,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
       savedAssessment = await persistAssessmentTime(savedAssessment);
       if (profile?.id) await loadInitialData(profile.id);
-      finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pelo Coach' : 'Avaliação atualizada');
+      finishCreateAndGoToCalendar(savedAssessment, needsReanalysis ? 'Avaliação reanalisada pela Carol' : 'Avaliação atualizada');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'Falha a guardar alterações. Tenta novamente.');
@@ -370,7 +378,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           date,
           notes: notes.trim() || null,
         },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
@@ -405,7 +413,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       }
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-body', {
         body: { mode: 'manual', date, notes: notes.trim() || null, metrics: payloadMetrics },
-      });
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
 
@@ -593,6 +601,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 <ImagePlus className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
                 <p className="text-xs text-[var(--text-3)] font-semibold">Escolhe os prints da app Renpho Health</p>
                 <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
+                {/* O ecrã que traz a pesagem toda, pelo nome que tem na app —
+                    vem do catálogo (supabase/functions/_shared/sourceApps.ts).
+                    Se a Renpho sair do catálogo, esta linha desaparece em vez
+                    de mentir. */}
+                {ecraPrincipal('renpho') && (
+                  <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">
+                    O ecrã <span className="font-bold">{ecraPrincipal('renpho').nome}</span> é o que traz todas as métricas de uma vez
+                  </p>
+                )}
               </label>
             )}
           </>

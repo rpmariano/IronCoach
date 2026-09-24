@@ -36,8 +36,8 @@ const DIALOG_MS = 220;
    visualmente) responde — por isso um único mecanismo de pilha, partilhado
    por quem quer que feche com Escape, e não um addEventListener por sítio.
    (2ª ronda, mesmo dia: promover a lista de registos a ecrã inteiro com o
-   seu PRÓPRIO listener, fora desta pilha, trouxe o bug de volta — a
-   MedalhaoSheet por baixo continuava no topo da pilha e respondia também.) */
+   seu PRÓPRIO listener, fora desta pilha, trouxe o bug de volta — a persiana
+   por baixo continuava no topo da pilha e respondia também.) */
 const closeStack = [];
 
 function pushCloseStack(requestClose) {
@@ -54,17 +54,36 @@ function pushCloseStack(requestClose) {
   };
 }
 
+/** Fecha o que está por cima de tudo (a última persiana, diálogo ou ecrã
+ *  inteiro a abrir). Devolve false se não houver nada aberto. O "voltar" do
+ *  telemóvel passa por aqui antes de mudar de separador — sem isto, voltar
+ *  de "Entrar nas tabelas" saía do Perfil para o Início (bug #43). */
+export function closeTopOverlay() {
+  const top = closeStack[closeStack.length - 1];
+  if (!top) return false;
+  top();
+  return true;
+}
+
 /* Para quem não é Sheet/Dialog mas ainda assim fecha com Escape e pode
    ficar por cima ou por baixo de um dos dois — os ecrãs inteiros
-   (RaceMuralSheet, RaceMemoriesSheet, MedalhaoContribSheet). Sem entrada/
+   (RaceMuralSheet, RaceMemoriesSheet, OndeEstasScreen). Sem entrada/
    saída animada: fecha logo, como o botão de recuar do cabeçalho. */
 export function useEscapeClose(onClose) {
-  useEffect(() => pushCloseStack(() => onClose?.()), [onClose]);
+  // Por ref e só ao montar: um onClose inline novo a cada render voltava a
+  // empilhar este ecrã, e ele passava para cima das persianas que abriu —
+  // o Escape/voltar fechava o ecrã inteiro em vez da persiana (revisão
+  // pré-deploy do bug #43).
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => pushCloseStack(() => onCloseRef.current?.()), []);
 }
 
 function useEnterExit(onClose, closeMs) {
   const [visible, setVisible] = useState(false);
   const closingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     const raf = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(raf);
@@ -74,8 +93,8 @@ function useEnterExit(onClose, closeMs) {
     closingRef.current = true;
     setVisible(false);
     const ms = prefersReducedMotion() ? 120 : closeMs;
-    setTimeout(() => onClose?.(), ms);
-  }, [onClose, closeMs]);
+    setTimeout(() => onCloseRef.current?.(), ms);
+  }, [closeMs]);
   useEffect(() => pushCloseStack(requestClose), [requestClose]);
   return { visible, requestClose };
 }

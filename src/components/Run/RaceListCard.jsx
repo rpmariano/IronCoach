@@ -38,8 +38,7 @@ function yearOf(dateIso) {
   return String(dateIso || '').slice(0, 4);
 }
 
-// Exportado também para a persiana dos registos de um medalhão
-// (Perfil/MedalhaoContribSheet.jsx), que usa a mesma linha.
+// Exportado: a mesma linha serve as listas de provas de outros ecrãs.
 export function DateTile({ date, muted }) {
   return (
     <span

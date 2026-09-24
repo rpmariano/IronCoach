@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { Bot, LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle } from 'lucide-react';
+import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle } from 'lucide-react';
+import CarolIcon from '../Coach/CarolIcon';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 
@@ -35,8 +36,8 @@ const GEMINI_COST_EVENT_MODULE = {
   'analyze-body': 'Corpo',
   'analyze-gym': 'Ginásio',
   'analyze-run': 'Corrida',
-  'coach-chat': 'Coach',
-  'coach-daily-summary': 'Coach',
+  'coach-chat': 'Carol',
+  'coach-daily-summary': 'Carol',
   'enrich-race-event': 'Corrida',
   'estimate-shoe-lifespan': 'Equipamento',
   // Eventos legado
@@ -49,8 +50,8 @@ const GEMINI_COST_EVENT_MODULE = {
   gym_reanalysis: 'Ginásio',
   run_analysis: 'Corrida',
   run_reanalysis: 'Corrida',
-  coach_message: 'Coach',
-  coach_daily_summary: 'Coach',
+  coach_message: 'Carol',
+  coach_daily_summary: 'Carol',
 };
 
 /* Limiares da sinalética "Cache do Coach" (separador Custos API).
@@ -479,8 +480,8 @@ export default function Admin() {
 
             <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
               <div className="flex items-center gap-2 mb-1.5 text-[var(--text-3)]">
-                <Bot size={16} />
-                <span className="text-xs">Mensagens ao Coach</span>
+                <CarolIcon size={16} />
+                <span className="text-xs">Mensagens à Carol</span>
               </div>
               <p className="text-2xl font-bold leading-none">{coachMsgs.filter(m => m.role === 'user').length}</p>
             </div>
@@ -534,8 +535,8 @@ export default function Admin() {
                     <span className="flex items-center gap-1 text-[11px] text-[var(--text-3)]" title="Refeições">
                       <Utensils size={10} /> {mealCount}
                     </span>
-                    <span className="flex items-center gap-1 text-[11px] text-[var(--text-3)]" title="Mensagens Coach">
-                      <Bot size={10} /> {msgCount}
+                    <span className="flex items-center gap-1 text-[11px] text-[var(--text-3)]" title="Mensagens à Carol">
+                      <CarolIcon size={10} /> {msgCount}
                     </span>
                   </div>
                 </div>
@@ -1018,7 +1019,7 @@ export default function Admin() {
               </div>
               <div className="card rounded-2xl p-3 text-center bg-[var(--surface-glass)] border border-[var(--border-glass)]">
                 <p className="text-lg font-bold">{scopeMsgs.length}</p>
-                <p className="text-[11px] text-[var(--text-3)] mt-0.5">Msgs Coach</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-0.5">Msgs Carol</p>
               </div>
               <div className="card rounded-2xl p-3 text-center bg-[var(--surface-glass)] border border-[var(--border-glass)]">
                 <p className="text-lg font-bold">{selectedUserId ? 1 : activeUsers}</p>
@@ -1091,7 +1092,7 @@ export default function Admin() {
           cacheSignal = {
             level: 'vale_a_pena',
             label: 'Vale a pena montar caching explícito',
-            detail: `${sustainedHours} hora(s) diferentes já tiveram ${COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}+ chamadas ao Coach — nessas horas, uma cache explícita já se teria pago sozinha.`,
+            detail: `${sustainedHours} hora(s) diferentes já tiveram ${COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}+ chamadas à Carol — nessas horas, uma cache explícita já se teria pago sozinha.`,
           };
         } else {
           cacheSignal = {
@@ -1156,7 +1157,7 @@ export default function Admin() {
                 <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold flex items-center gap-1.5">
-                      <Bot size={14} className="text-[var(--mod-coach-to)]" /> Cache do Coach
+                      <CarolIcon size={14} className="text-[var(--mod-coach-to)]" /> Cache da Carol
                     </p>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${cacheStyle.badge}`}>
                       {cacheSignal.label}

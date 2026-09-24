@@ -58,13 +58,14 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
   const loads = weeklyData.map(d => Number(d.acuteLoad || 0));
   const maxLoad = loads.length ? Math.max(...loads) : 0;
 
-  /* O rácio só ganha cor e etiqueta de estado com quatro semanas de carga
-     medida. Sem isso, um atleta com duas corridas via "Perigo" a vermelho
-     por causa de um rácio que a crónica ainda não sustenta — é o mesmo bug
-     que o acwrStatusLabel/`hasEnoughData` existe para evitar (ver
-     biEngine.js, auditoria de 23/08). Aqui o número mostra-se em branco e
-     a etiqueta diz "Sem dados". */
-  const hasEnoughData = loads.filter(v => v > 0).length >= 4;
+  /* O rácio só ganha cor e etiqueta de estado com histórico que o sustente —
+     corridas em 3 das 4 semanas, a regra única de runAcwr.ts, que
+     calculateACWRHistory já aplica semana a semana. Sem isso, um atleta com
+     duas corridas via "Perigo" a vermelho por causa de um rácio que a
+     crónica ainda não sustenta. Aqui o número fica "—" e a etiqueta diz
+     "Sem dados" (pedido 2026-09-24: "se a app não tem dados, não apresenta
+     dados"). */
+  const hasEnoughData = !!last?.hasEnoughData;
   const status = !hasEnoughData
     ? 'neutral'
     : ratio >= 1.5 ? 'danger' : ratio >= 1.3 ? 'caution' : ratio >= 0.8 ? 'safe' : 'neutral';
@@ -144,7 +145,7 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
     }
   };
 
-  const deltaRatio = last && prev ? Number(last.ratio) - Number(prev.ratio) : null;
+  const deltaRatio = last?.hasEnoughData && prev?.hasEnoughData ? Number(last.ratio) - Number(prev.ratio) : null;
 
   return (
     <ChartFrame

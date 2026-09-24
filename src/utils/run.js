@@ -244,3 +244,13 @@ export function parsePaceToSeconds(paceStr) {
 export function formatPace(secondsPerKm) {
   return sharedFormatPaceMinKm(secondsPerKm);
 }
+
+/** "3h20", "3h", "45min" — a duração curta das tabelas de nível. */
+export function formatHoursMinutes(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return null;
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0) return `${h}h${m > 0 ? String(m).padStart(2, '0') : ''}`;
+  return `${m}min`;
+}

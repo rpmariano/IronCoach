@@ -3,6 +3,7 @@ import { Camera, ImagePlus, X, Trash2, PencilLine, MessageSquare, Image as Image
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
@@ -188,6 +189,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
     const first = !isEditing && firstRecordMoment('meal', useAppStore.getState(), createdRecord);
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
@@ -272,7 +277,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
     date, mealTime, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
-  }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  }, { isDirty: isFormDirty && !confirmation });
 
   /* A hora grava-se por update à parte, a seguir, pela mesma razão da hora
      da corrida (RunRegistration.persistRunStartTime): quem insere a linha
@@ -350,7 +357,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         meal_type: mealType,
         notes: notes.trim() || null,
       },
-    });
+    }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
     if (data?.error) throw new Error(data.error);
 
@@ -406,7 +413,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         notes: notes.trim() || null,
         items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
       },
-    });
+    }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
     if (data?.error) throw new Error(data.error);
 
@@ -442,7 +449,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             notes: notes.trim() || null,
             items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
           },
-        });
+        }, ANALYZE_TIMEOUT_MS);
         if (error) throw new Error(error);
         if (data?.error) throw new Error(data.error);
         savedMeal = data?.meal;
@@ -459,7 +466,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
       savedMeal = await persistMealTime(savedMeal);
       if (profile?.id) await loadInitialData(profile.id);
-      finishCreateAndGoToCalendar(savedMeal, needsReanalysis ? 'Refeição reanalisada pelo Coach' : 'Refeição atualizada');
+      finishCreateAndGoToCalendar(savedMeal, needsReanalysis ? 'Refeição reanalisada pela Carol' : 'Refeição atualizada');
     }
   };
 
@@ -766,7 +773,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     />
                   </div>
                 </div>
-                <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">Sem gramas indicadas, o Coach estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
+                <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">Sem gramas indicadas, a Carol estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
                 <AddButton
                   onClick={handleAddItem}
                   disabled={!itemName.trim()}
@@ -802,7 +809,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     ) : (
                       <div className="flex-1">
                         <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
-                        <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pelo Coach'}</p>
+                        <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol'}</p>
                       </div>
                     )}
                     <button

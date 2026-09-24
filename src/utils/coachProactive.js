@@ -1,4 +1,6 @@
 /* As mensagens que a Carol manda por iniciativa própria — CAROL.md §3 e §7.
+   - Segunda (ou terça) → o balanço da semana que acabou, num dia sem mais
+     nenhum momento e só se houve registos nessa semana.
    - 3 dias sem qualquer registo → "Estás bem?" no chat, em nome dela.
    - Véspera da prova → o que fazer hoje e amanhã de manhã.
    - Manhã da prova → curta, duas frases, sem dados.
@@ -16,7 +18,8 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, weekReviewCandidate } from '@formulas/proactiveTriggers.ts';
+import { addDaysISO } from '../lib/utils';
 
 export const SILENCE_DAYS = 3;
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
@@ -36,24 +39,10 @@ function isoDay(d) {
 
 /** Data (yyyy-mm-dd) do registo mais recente entre corridas, refeições,
  *  ginásio e avaliações — ou null se nunca houve registo nenhum. */
-export function lastRecordDate({ runs, meals, gymSessions, bodyAssessments }) {
-  const dates = [];
-  for (const list of [runs, meals, gymSessions, bodyAssessments]) {
-    for (const r of list || []) {
-      const d = r?.date || r?.assessed_at;
-      if (typeof d === 'string' && d.length >= 10) dates.push(d.slice(0, 10));
-    }
-  }
+export function lastRecordDate(data) {
+  const dates = recordDates(data);
   if (dates.length === 0) return null;
   return dates.sort().pop();
-}
-
-/** O dia ISO como Date, ao meio-dia LOCAL. Meio-dia e não meia-noite para
- *  que isoDay() devolva sempre o mesmo dia de volta, sem o apanhar do lado
- *  errado numa mudança de hora. Serve para passar o "hoje" desta função a
- *  quem só aceita um Date (evaluateRace). */
-function dayAsDate(iso) {
-  return new Date(`${iso}T12:00:00`);
 }
 
 function daysBetween(fromIso, toIso) {
@@ -62,11 +51,14 @@ function daysBetween(fromIso, toIso) {
 
 /** Todos os momentos que se aplicam agora, pela ordem de prioridade do
  *  servidor: manhã da prova > véspera > depois da prova > fim de bloco >
- *  silêncio — o dia da prova manda em tudo o resto. `now` é injetável para
- *  os testes. Usada pelo efeito passivo do Coach (P.9) para saber a que
- *  candidato uma notificação tocada corresponde, mesmo que não seja o
- *  primeiro da lista; `pickProactiveTrigger` continua a ser só o primeiro. */
-export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [] }, now = new Date()) {
+ *  silêncio — o dia da prova manda em tudo o resto. O balanço da semana só
+ *  aparece num dia sem mais nenhum momento do servidor, incluindo o assunto
+ *  por resolver e o conflito de provas, que esta lista não mostra
+ *  (weekReviewCandidate). `now` é injetável para os testes. Usada pelo
+ *  efeito passivo do Coach (P.9) para saber a que candidato uma
+ *  notificação tocada corresponde, mesmo que não seja o primeiro da lista;
+ *  `pickProactiveTrigger` continua a ser só o primeiro. */
+export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [], dailyCheckins = [] }, now = new Date()) {
   const today = isoDay(now);
   const races = (raceEvents || []).filter((r) => r && typeof r.date === 'string');
   const scheduled = races.filter((r) => r.status !== 'concluida');
@@ -122,7 +114,81 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
       });
     }
   }
+
+  /* O balanço da semana (2026-09-24): à segunda e à terça, a semana de
+     segunda a domingo que acabou — com algum registo dentro dela, e só num
+     dia sem mais nenhum momento. A decisão é a do servidor, tal e qual
+     (weekReviewCandidate): com as provas, os planos e o assunto por
+     resolver do perfil, que esta lista não mostra (vivem no Início) mas que
+     também ficam com o dia. Assim a notificação e o chat nunca discordam. As
+     contagens vão no Contexto, para ela não as adivinhar. */
+  const week = weekReviewCandidate({
+    raceEvents: races,
+    runs,
+    lastRecordDate: last,
+    intervention: { status: profile?.coach_intervention_status ?? null, reason: profile?.coach_intervention_reason ?? null },
+    plans: (coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })),
+    weekRecordDates: recordDates({ runs, meals, gymSessions, bodyAssessments }),
+  }, today);
+  if (week) {
+    list.push({
+      trigger: 'week_review',
+      key: `week_review:${week.weekStart}`,
+      details: describeWeek({ runs, meals, gymSessions, dailyCheckins }, week.weekStart, week.weekEnd),
+    });
+  }
   return list;
+}
+
+/** As datas de todos os registos (corridas, refeições, ginásio, avaliações). */
+function recordDates({ runs, meals, gymSessions, bodyAssessments }) {
+  const dates = [];
+  for (const list of [runs, meals, gymSessions, bodyAssessments]) {
+    for (const r of list || []) {
+      const d = r?.date || r?.assessed_at;
+      if (typeof d === 'string' && d.length >= 10) dates.push(d.slice(0, 10));
+    }
+  }
+  return dates;
+}
+
+const inRange = (d, from, to) => typeof d === 'string' && d.slice(0, 10) >= from && d.slice(0, 10) <= to;
+// Vírgula decimal em todos os números do Contexto: o modelo copia o formato.
+const fmtNum = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
+
+function weekCounts({ runs, meals, gymSessions, dailyCheckins }, from, to) {
+  const weekRuns = (runs || []).filter((r) => inRange(r?.date, from, to));
+  const km = weekRuns.reduce((sum, r) => sum + (Number(r?.distance_km) || 0), 0);
+  const gym = (gymSessions || []).filter((g) => inRange(g?.date, from, to)).length;
+  const mealDays = new Set((meals || []).filter((m) => inRange(m?.date, from, to)).map((m) => m.date.slice(0, 10))).size;
+  const checkins = (dailyCheckins || []).filter((c) => inRange(c?.date, from, to));
+  return { runs: weekRuns.length, km, gym, mealDays, checkins };
+}
+
+function avg(list, field) {
+  const vals = list.map((c) => Number(c?.[field])).filter((v) => Number.isFinite(v) && v > 0);
+  return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+}
+
+/** O resumo da semana em números, para o Contexto do balanço. Só factos
+ *  contados dos registos: o que o plano previa vem do bloco O QUE
+ *  PRESCREVESTE do servidor. */
+export function describeWeek(data, weekStart, weekEnd) {
+  const w = weekCounts(data, weekStart, weekEnd);
+  const prevStart = addDaysISO(weekStart, -7);
+  const p = weekCounts(data, prevStart, addDaysISO(weekStart, -1));
+  const parts = [
+    `Semana de ${weekStart} a ${weekEnd}: ${w.runs} corrida${w.runs === 1 ? '' : 's'} (${fmtNum(w.km)} km)`,
+    `${w.gym} sess${w.gym === 1 ? 'ão' : 'ões'} de ginásio`,
+    `refeições registadas em ${w.mealDays} de 7 dias`,
+    `${w.checkins.length} check-in${w.checkins.length === 1 ? '' : 's'}`,
+  ];
+  const sleep = avg(w.checkins, 'sleep');
+  const energy = avg(w.checkins, 'energy');
+  const checkinLine = sleep != null || energy != null
+    ? ` Check-ins: sono médio ${sleep != null ? fmtNum(sleep) : '—'}/5, energia média ${energy != null ? fmtNum(energy) : '—'}/5.`
+    : '';
+  return `${parts.join(', ')}.${checkinLine} Semana anterior: ${p.runs} corrida${p.runs === 1 ? '' : 's'} (${fmtNum(p.km)} km), ${p.gym} de ginásio.`;
 }
 
 /** Escolhe a mensagem proativa para este momento, ou null — o primeiro de
@@ -163,14 +229,16 @@ export function buildRaceAfterCandidate({ race, run: givenRun, runs = [], raceEv
       ...buildRaceOutcomePayload(outcome, race, run),
       // As conquistas que esta prova acabou de dar, pela chave — a Carol
       // cita-as no balanço (specs/gamificacao-provas.md §4).
-      // `now` TEM de ir: evaluateRace usa-o para decidir o que é "novo"
+      // `today` TEM de ir: evaluateRace usa-o para decidir o que é "novo"
       // (a prova ter menos de 7 dias) e, sem ele, essa decisão caía no
-      // relógio real enquanto todo o resto desta função corre no `now`
+      // relógio real enquanto todo o resto desta função corre no `today`
       // injetado. As duas leituras discordavam na hora a seguir à
       // meia-noite local e em qualquer chamada com data simulada — a
       // Carol dava o balanço sem citar a conquista que a prova acabou de
-      // dar (apanhado 2026-09-18 por um teste que fixa o relógio).
-      achievements_new: achievementsForRace({ raceEvents, runs, profile, now: dayAsDate(today) }, race.id).filter((a) => a.isNew).map((a) => a.key),
+      // dar (apanhado 2026-09-18 por um teste que fixa o relógio). Desde a
+      // fusão dos motores (utils/premios.js) o relógio é OBRIGATÓRIO e já
+      // não é um Date: é o dia ISO, o mesmo que corre aqui.
+      achievements_new: achievementsForRace({ raceEvents, runs, profile, today }, race.id).filter((a) => a.isNew).map((a) => a.key),
     },
     raceId: race.id,
   };

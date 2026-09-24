@@ -131,7 +131,7 @@ describe('RaceLevelSuggestion', () => {
 
     expect(screen.getByText(/classificas-te como/i)).toBeInTheDocument();
     expect(screen.getByText('Básico')).toBeInTheDocument();
-    expect(screen.queryByText(/D\+\/semana/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/sobes .* por semana/)).not.toBeInTheDocument();
   });
 
   /* Voz única (P.7): é uma fórmula, e diz que o é — nunca passa por ela. */

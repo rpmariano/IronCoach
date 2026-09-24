@@ -111,4 +111,4 @@ export function experienceLevelCriteria(key) {
 // ainda não têm a maturidade que o motor tem.
 export const EXPERIENCE_TIEBREAK_HINT =
   'Se não encaixas em todos os critérios de um nível, escolhe o mais baixo. ' +
-  'O corpo adapta-se mais devagar que o fôlego, e o Coach prefere pecar por defeito.';
+  'O corpo adapta-se mais devagar que o fôlego, e a Carol prefere pecar por defeito.';

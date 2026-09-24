@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Flag, Medal, Plus, Target, Trophy } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Flag, Medal, Plus, Trophy } from 'lucide-react';
 import { todayISO } from '../../lib/utils';
 import { findRaceRun, formatDuration, formatPace } from '../../utils/run';
 import { classifyRaceOutcome } from '../../utils/raceOutcome';
@@ -16,6 +16,7 @@ import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { raceMilestoneLine, milestoneMomentKey, wasMilestoneSeen, markMilestoneSeen } from './raceMilestone';
 import useMomentOnce from '../../utils/useMomentOnce';
+import { triggerCarouselTick } from '../../utils/haptics';
 
 /* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
    fase atual, "semana 6 de 18", os dias em número grande, o trilho do
@@ -32,6 +33,11 @@ function DaysCount({ days, animate }) {
    enquanto não houver uma corrida ligada a ela (specs/prova-concluida.md §3).
    Depois disso sai — o sítio dela passa a ser o hub. */
 const DIAS_A_ESPERAR_PELO_REGISTO = 7;
+
+/* Deslocamento horizontal mínimo para um toque contar como swipe entre
+   provas — e tem de ser claramente mais horizontal do que vertical, para
+   não roubar o scroll da página. */
+const SWIPE_MIN_PX = 40;
 
 function diasEntre(a, b) {
   return Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86400000);
@@ -160,7 +166,7 @@ function RaceMilestoneLine({ raceId, days }) {
   if (!line) return null;
   return (
     <div data-testid="race-milestone" className="flex items-start gap-2.5 mt-3 pt-3" style={{ borderTop: '1px solid rgba(251,191,36,.18)' }}>
-      <CoachAvatar size={26} mood="neutral" breathing={moment} />
+      <CoachAvatar size={36} mood="neutral" breathing={moment} />
       <p className={`flex-1 min-w-0 text-[12.5px] font-semibold leading-[1.45]${moment ? ' race-milestone-line' : ''}`} style={{ margin: 0, color: 'var(--text-2)' }}>{line}</p>
     </div>
   );
@@ -189,6 +195,43 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
   const safeIndex = Math.min(index, Math.max(0, upcoming.length - 1));
   const race = upcoming[safeIndex];
 
+  /* Bug #39 (2026-09-21): com mais de uma prova, o cartão tinha setas e
+     pontos mas não deslizava com o dedo nem dava o tique tátil dos outros
+     carrosséis. O gesto muda de prova; setas, pontos e gesto passam todos
+     por goTo, que dispara o mesmo triggerCarouselTick. Um swipe não abre o
+     hub: o clique que o browser possa gerar a seguir é ignorado. */
+  const touchStartRef = useRef(null);
+  // Quando foi o último swipe: o clique que o browser gere a seguir (se
+  // gerar) ignora-se, mas só esse e só logo a seguir — uma flag sem prazo
+  // ficava presa e engolia o próximo clique de rato num aparelho híbrido.
+  const swipedAtRef = useRef(0);
+  const goTo = (i) => {
+    const next = Math.max(0, Math.min(upcoming.length - 1, i));
+    if (next === safeIndex) return;
+    setIndex(next);
+    triggerCarouselTick();
+  };
+  const onTouchStart = (e) => {
+    const t = e.touches?.[0];
+    touchStartRef.current = t ? { x: t.clientX, y: t.clientY } : null;
+    swipedAtRef.current = 0;
+  };
+  const onTouchEnd = (e) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    const t = e.changedTouches?.[0];
+    if (!start || !t || upcoming.length < 2) return;
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    swipedAtRef.current = Date.now();
+    goTo(safeIndex + (dx < 0 ? 1 : -1));
+  };
+  const openRace = () => {
+    if (swipedAtRef.current && Date.now() - swipedAtRef.current < 400) { swipedAtRef.current = 0; return; }
+    onOpenRace?.(race.id);
+  };
+
   /* O dia a seguir (specs/gamificacao-provas.md §3): a prova mais recente já
      registada fica aqui até se marcar a próxima ou até passarem 7 dias, o
      que vier primeiro. "Marcar a próxima" é precisamente ter de novo alguma
@@ -206,12 +249,12 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     if (!concluida) return null;
     const run = findRaceRun(runs, concluida);
     const outcome = classifyRaceOutcome({ race: concluida, run, runs, profile });
-    const conquistas = achievementsForRace({ raceEvents, runs, profile }, concluida.id);
-    // "Previsão batida" não é uma conquista do palmarés — é a leitura do
-    // treino (raceOutcome.vsTraining) e lê-se ao lado delas.
-    if (outcome?.vsTraining === 'acima') {
-      conquistas.push({ key: 'previsao_batida', name: 'Previsão batida', tone: 'ok', Icon: Target });
-    }
+    /* "Previsão batida" era um pseudo-chip acrescentado aqui, com a condição
+       `vsTraining === 'acima'`. Desde 2026-09-20 isso é a conquista
+       `acima_do_treino` do palmarés, com a mesma condição — e a prova passou
+       a mostrar os dois, "Acima do treino" e "Previsão batida", para o mesmo
+       facto (apanhado na revisão pré-deploy). Fica só a conquista. */
+    const conquistas = achievementsForRace({ raceEvents, runs, profile, today }, concluida.id);
     const ordem = (raceEvents || []).filter((e) => e?.date && e.status === 'concluida'
       && e.date <= concluida.date && estaRegistada(e.id)).length;
     return { run, outcome, conquistas, ordem, dias: diasEntre(today, concluida.date) };
@@ -269,18 +312,28 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
 
   return (
     <GlassCard glow tone="race" padding="16px 16px 12px" data-testid="race-card">
-      <div role="button" tabIndex={0} onClick={() => onOpenRace?.(race.id)} onKeyDown={(e) => { if (e.key === 'Enter') onOpenRace?.(race.id); }} className="cursor-pointer">
+      <div
+        role="button"
+        tabIndex={0}
+        data-testid="race-card-body"
+        onClick={openRace}
+        onKeyDown={(e) => { if (e.key === 'Enter') onOpenRace?.(race.id); }}
+        onTouchStart={upcoming.length > 1 ? onTouchStart : undefined}
+        onTouchEnd={upcoming.length > 1 ? onTouchEnd : undefined}
+        className="cursor-pointer"
+        style={upcoming.length > 1 ? { touchAction: 'pan-y' } : undefined}
+      >
         <div className="flex items-end justify-between gap-2.5">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1 -ml-1">
               {upcoming.length > 1 && (
-                <button type="button" aria-label="Prova anterior" disabled={safeIndex === 0} onClick={(e) => { e.stopPropagation(); setIndex(safeIndex - 1); }} className="flex items-center justify-center rounded-full disabled:opacity-30 -my-3" style={{ width: 44, height: 44, color: 'var(--race)' }}>
+                <button type="button" aria-label="Prova anterior" disabled={safeIndex === 0} onClick={(e) => { e.stopPropagation(); goTo(safeIndex - 1); }} className="flex items-center justify-center rounded-full disabled:opacity-30 -my-3" style={{ width: 44, height: 44, color: 'var(--race)' }}>
                   <ChevronLeft size={17} />
                 </button>
               )}
               <div className="text-[11px] font-extrabold uppercase truncate" style={{ color: 'var(--race)', letterSpacing: '.05em' }}>{race.name}</div>
               {upcoming.length > 1 && (
-                <button type="button" aria-label="Prova seguinte" disabled={safeIndex >= upcoming.length - 1} onClick={(e) => { e.stopPropagation(); setIndex(safeIndex + 1); }} className="flex items-center justify-center rounded-full disabled:opacity-30 -my-3" style={{ width: 44, height: 44, color: 'var(--race)' }}>
+                <button type="button" aria-label="Prova seguinte" disabled={safeIndex >= upcoming.length - 1} onClick={(e) => { e.stopPropagation(); goTo(safeIndex + 1); }} className="flex items-center justify-center rounded-full disabled:opacity-30 -my-3" style={{ width: 44, height: 44, color: 'var(--race)' }}>
                   <ChevronRight size={17} />
                 </button>
               )}
@@ -328,7 +381,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
       )}
       {upcoming.length > 1 && (
         <div className="flex justify-center mt-2.5 -mb-1 min-h-[24px] items-center">
-          <CarouselDots count={upcoming.length} currentIndex={safeIndex} onSelect={setIndex} ariaLabelPrefix="Ver prova" />
+          <CarouselDots count={upcoming.length} currentIndex={safeIndex} onSelect={goTo} ariaLabelPrefix="Ver prova" />
         </div>
       )}
       <AllRacesLink onOpen={onOpenAllRaces} />

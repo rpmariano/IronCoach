@@ -18,6 +18,14 @@ import { computeAcwr, classifyAcwrZone } from "./acwr.ts";
 const ACUTE_WINDOW_DAYS = 7;
 const CHRONIC_WINDOW_DAYS = 28;
 
+/** Semanas (das 4 da janela crónica) com pelo menos uma corrida para o
+ *  rácio valer alguma coisa (pedido 2026-09-24: "se a app não tem dados,
+ *  não apresenta dados"). Com 2, a média crónica é metade do que o atleta
+ *  corre de facto — ou é ele que não regista tudo — e o rácio sobe sozinho.
+ *  Antes bastava uma corrida qualquer antes da janela aguda. É a regra de
+ *  todos: ecrãs (biEngine), chat, resumo do dia e a guarda dos planos. */
+export const RUN_ACWR_MIN_HISTORY_WEEKS = 3;
+
 export interface RunForAcwr {
   date: string;
   distance_km?: number | null;
@@ -28,6 +36,8 @@ export interface RunAcwr {
   chronicWeeklyKm: number;
   ratio: number;
   status: ReturnType<typeof classifyAcwrZone> | "unknown";
+  /** Quantas das 4 semanas da janela crónica têm corridas. */
+  historyWeeks: number;
   hasEnoughData: boolean;
 }
 
@@ -52,13 +62,21 @@ export function computeRunAcwr(runs: RunForAcwr[], todayISO: string): RunAcwr {
 
   const chronicWeeklyKm = chronicKm / 4;
   const { ratio, zone } = computeAcwr(acuteKm, chronicWeeklyKm);
-  const hasEnoughData = (runs || []).some((r) => r.date && r.date < acuteStart);
+
+  // As 4 semanas da janela crónica, da mais antiga à de hoje.
+  let historyWeeks = 0;
+  for (let w = 0; w < 4; w++) {
+    const from = addDaysISO(chronicStart, w * 7);
+    const to = addDaysISO(chronicStart, w * 7 + 6);
+    if ((runs || []).some((r) => r.date && r.date >= from && r.date <= to && (Number(r.distance_km) || 0) > 0)) historyWeeks++;
+  }
 
   return {
     acuteKm,
     chronicWeeklyKm,
     ratio: ratio ?? 0,
     status: zone,
-    hasEnoughData,
+    historyWeeks,
+    hasEnoughData: historyWeeks >= RUN_ACWR_MIN_HISTORY_WEEKS,
   };
 }

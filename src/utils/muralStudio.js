@@ -68,13 +68,19 @@ export const STUDIO_GRAPHICS = [
   { key: 'classificacao', label: 'Classificação do diploma' },
   { key: 'ritmo', label: 'Linha do ritmo por km' },
   { key: 'conquistas', label: 'Fichas das conquistas' },
+  { key: 'badges', label: 'Badges desta prova' },
   { key: 'diploma', label: 'Cartão do diploma' },
   { key: 'medalhao', label: 'Medalhão da medalha' },
 ];
 
 /* Quando o texto não cabe no espaço do modelo, encolhe-se primeiro e só
-   depois saem grafismos, por esta ordem. O tempo nunca sai: é a imagem. */
-export const DROP_ORDER = ['diploma', 'conquistas', 'ritmo', 'classificacao', 'numeros', 'titulo'];
+   depois saem grafismos, por esta ordem. O tempo nunca sai: é a imagem.
+
+   Os `badges` saem logo a seguir ao diploma e ANTES das conquistas: um anel
+   com um número custa muito mais altura do que uma pílula de texto, e o que
+   ele diz ("Recorde pessoal") as fichas das conquistas já o dizem em duas
+   linhas de altura. Quando o espaço aperta, sai o que custa mais e repete. */
+export const DROP_ORDER = ['diploma', 'badges', 'conquistas', 'ritmo', 'classificacao', 'numeros', 'titulo'];
 
 /* O enquadramento de cada foto é arrastar e ampliar (pedido 2026-09-14):
    `zoom` é o quanto se aproxima além do mínimo que preenche o espaço (1 =
@@ -128,7 +134,7 @@ export function splitPaces(splits) {
 }
 
 /** Tudo o que o mural pode escrever, pela régua de sempre. */
-export function muralData({ race, run, seconds, classification = '', achievements = [] }) {
+export function muralData({ race, run, seconds, classification = '', achievements = [], badges = [] }) {
   const details = run?.details || {};
   const km = Number(run?.distance_km) || Number(race?.distance_km) || 0;
   const time = seconds > 0 ? formatDuration(Math.round(seconds)) : '';
@@ -158,6 +164,13 @@ export function muralData({ race, run, seconds, classification = '', achievement
     paces,
     fastestPace: paces.length ? paceLabel(Math.min(...paces)) : '',
     achievements: (achievements || []).map((a) => a?.name).filter(Boolean).slice(0, 4),
+    /* Os badges que esta prova deu (utils/badges.js, `badgesForRace`), com o
+       MESMO número que a Vitrina mostra dentro do anel: o badge do mural tem
+       de ser o mesmo objeto que o badge do Perfil, senão são dois badges. */
+    badges: (badges || [])
+      .filter((b) => b && b.name)
+      .map((b) => ({ key: b.key, name: b.name, centro: b.centro || '' }))
+      .slice(0, 3),
     diplomaCells,
     diplomaCellCount,
   };
@@ -172,6 +185,7 @@ export function graphicUnavailableReason(key, { data, candidates = [], template 
     case 'classificacao': return data.classification ? null : 'Sem classificação do diploma';
     case 'ritmo': return data.paces.length >= 2 ? null : 'Sem parciais por km';
     case 'conquistas': return data.achievements.length ? null : 'Sem conquistas nesta prova';
+    case 'badges': return data.badges.length ? null : 'Sem badges desta prova';
     case 'diploma':
       if (data.diplomaCells.length) return null;
       // Um dado só, e ele é o tempo: dizer "sem dados" seria falso.
@@ -370,6 +384,10 @@ export function defaultComposition({ candidates = [], data, template = DEFAULT_S
       classificacao: on('classificacao'),
       ritmo: on('ritmo'),
       conquistas: false,
+      /* Desligado por omissão, como as fichas das conquistas: é uma peça
+         que se acrescenta de propósito, e ligá-la sozinha mudava o mural de
+         quem já tinha o seu montado. */
+      badges: false,
       diploma: template === 'trofeu' && on('diploma'),
       medalhao: template !== 'trofeu' && on('medalhao'),
     },

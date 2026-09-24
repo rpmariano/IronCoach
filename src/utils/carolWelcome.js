@@ -17,10 +17,10 @@
 
 import { formatPace } from './run';
 import { normalizeGender } from '@formulas/vocabulary.ts';
-import { planItemTitle, raceNameForDate } from './homeModels';
+import { planItemTitle, raceNameForDate, hasAnyRecord } from './homeModels';
+import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
-export const WELCOME_AUTO_CLOSE_MS = 6000;
 
 /** Data e hora de Lisboa de um instante: { date: 'YYYY-MM-DD', hour, minute, weekday }. */
 export function lisbonParts(now = new Date()) {
@@ -136,8 +136,92 @@ function trainingOf(items) {
 
 function titleOf(items, raceEvents, dateISO) {
   const t = trainingOf(items);
-  if (!t.length) return items.length ? 'Descanso' : null;
+  if (!t.length) {
+    if (!items.length) return null;
+    // Um dia só com refeições sugeridas não é descanso decidido.
+    return items.every(isMealOnlyItem) ? MEAL_ONLY_DAY_LABEL : 'Descanso';
+  }
   return t.map((i) => planItemTitle(i, raceNameForDate(raceEvents, dateISO))).join(' + ');
+}
+
+const semTreino = (titulo) => titulo === 'Descanso' || titulo === MEAL_ONLY_DAY_LABEL;
+
+/** O primeiro dia do Início (Home.jsx): sem registos nem prova marcada. */
+function isFirstDay(data, hoje) {
+  const provaMarcada = (data.raceEvents || []).some((e) => e?.status !== 'concluida' && String(e?.date).slice(0, 10) >= hoje);
+  return !hasAnyRecord(data) && !provaMarcada;
+}
+
+/* ── variantes (pedido 2026-09-23) ──────────────────────────────────────────
+   As frases eram sempre as mesmas: a mesma situação, a mesma frase, todos os
+   dias. Cada situação tem agora um conjunto, e a frase escolhe-se pelo dia —
+   igual durante o dia (abrir a app duas vezes não a troca), diferente de um
+   dia para o outro. A voz é a de CAROL.md: afirma, frases curtas, sem
+   exclamação nem aplauso automático. */
+export const WELCOME_PHRASES = {
+  checkinFalta: [
+    'Ainda não me disseste como dormiste. Diz-me e eu ajusto o treino de hoje.',
+    'Como dormiste? Conta-me no check-in e eu acerto o dia contigo.',
+    'Antes de mais: como acordaste? Três perguntas no check-in e eu ajusto o treino.',
+  ],
+  // À tarde (pedido 2026-09-23): quem saltou o da manhã, ou só abriu a app
+  // depois do meio-dia, ainda vai a tempo de acertar o resto do dia.
+  checkinFaltaTarde: [
+    'Ainda não sei como estás hoje. Três perguntas no check-in e eu acerto o resto do dia.',
+    'Falta o check-in de hoje. Diz-me como dormiste e como te sentes, e eu ajusto o que falta.',
+    'Ainda vais a tempo do check-in de hoje. Com ele, afino o treino que falta.',
+  ],
+  dormiuBem: ['O check-in diz que dormiste bem.', 'Noite boa, pelo que me disseste. Hoje há margem para cumprir tudo.', 'Dormiste bem. Isso conta para o treino de hoje.'],
+  dormiuMal: ['Dormiste mal, pelo check-in. Hoje não se força nada.', 'Noite fraca. Hoje o treino é para cumprir, não para puxar.', 'Com pouco sono, hoje o treino é mais leve.'],
+  descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. É hoje que o treino da semana assenta.', 'Hoje não se treina. O descanso está no plano de propósito.'],
+  semTreinoHoje: ['Hoje não há treino planeado.', 'O plano não pede treino hoje.', 'Hoje não tens treino no plano.'],
+  treinoHoje: (t) => [`Hoje tens ${t}.`, `O treino de hoje: ${t}.`, `Para hoje, o plano pede ${t}.`],
+  corridaFeita: (k) => [`Já vi a corrida de hoje: ${k} km.`, `Corrida de hoje registada: ${k} km.`, `${k} km já feitos hoje.`],
+  semRefeicoes: ['Ainda não vi nenhuma refeição hoje. Uma foto chega.', 'Nenhuma refeição registada hoje. Tira uma foto ao próximo prato.', 'Ainda não sei o que comeste hoje. Uma foto e eu trato do resto.'],
+  treinoPorFazer: (t) => [`Ainda tens ${t} por fazer.`, `Ainda falta o treino de hoje: ${t}.`, `O treino de hoje continua por fazer: ${t}.`],
+  corridaDoDia: (k, r) => [`Hoje ficaram ${k} km${r}.`, `Fecho do dia: ${k} km${r}.`, `${k} km registados hoje${r}.`],
+  treinoNaoRegistado: ['Não vi o treino de hoje registado. Aconteceu alguma coisa?', 'O treino de hoje ainda não apareceu. Correu tudo bem?', 'Falta-me o registo do treino de hoje. Conta-me o que se passou.'],
+  amanhaDescanso: ['Amanhã é descanso.', 'Amanhã descansas.', 'Amanhã o plano pede descanso.'],
+  amanhaSemTreino: ['Amanhã não há treino planeado.', 'Amanhã o plano não pede treino.', 'Amanhã não tens treino no plano.'],
+  amanhaTreino: (t) => [`Amanhã tens ${t}.`, `Amanhã: ${t}.`, `Para amanhã, ${t}.`],
+  quando: (q, t) => [`${q} tens ${t}.`, `${q}: ${t}.`, `${q} o plano pede ${t}.`],
+  sono: ['A esta hora, o sono vale mais do que qualquer treino.', 'Vai dormir. O treino de amanhã começa a fazer-se agora.', 'O melhor treino a esta hora é dormir.'],
+  faltamDias: (n, nome) => [`Faltam ${n} dias para a prova: ${nome}.`, `${nome} está a ${n} dias.`, `A prova é daqui a ${n} dias: ${nome}.`],
+  ontem: (k) => [`Ontem ficaram ${k} km.`, `Ontem fizeste ${k} km.`, `Ainda conto os ${k} km de ontem.`],
+  semana: (k) => [`Esta semana já levas ${k} km.`, `${k} km nesta semana, até agora.`, `A semana vai em ${k} km.`],
+};
+
+const dayIndex = (iso) => Math.floor(Date.parse(`${iso}T00:00:00Z`) / 86400000);
+const saltOf = (s) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) % 997, 7);
+
+/** Uma frase do conjunto, pelo dia: igual durante o dia, outra no seguinte. */
+export function pickByDay(pool, dateISO, situation = '') {
+  if (!pool?.length) return null;
+  const i = (dayIndex(dateISO) + saltOf(situation)) % pool.length;
+  return pool[(i + pool.length) % pool.length];
+}
+
+/* Uma frase com os números do atleta, para quando o plano e o check-in não
+   enchem as duas linhas: dias até à próxima prova, a corrida de ontem, os km
+   da semana. Nunca inventa: sem dados, não há frase. */
+function dataLine(variant, data, hoje) {
+  const nextRace = (data.raceEvents || [])
+    .filter((r) => r?.date && r.status !== 'concluida' && String(r.date).slice(0, 10) > hoje)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)))[0];
+  const diasProva = nextRace ? dayIndex(String(nextRace.date).slice(0, 10)) - dayIndex(hoje) : null;
+  const provaLine = nextRace?.name && diasProva > 1 && diasProva <= 90
+    ? pickByDay(WELCOME_PHRASES.faltamDias(diasProva, nextRace.name), hoje, 'faltamDias') : null;
+  const ontem = runsOn(data.runs, addDays(hoje, -1)).reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
+  const ontemLine = km(ontem) ? pickByDay(WELCOME_PHRASES.ontem(km(ontem)), hoje, 'ontem') : null;
+  // Segunda-feira da semana de hoje (dia da semana em UTC da data de Lisboa).
+  const dow = (new Date(`${hoje}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const segunda = addDays(hoje, -dow);
+  const semanaKm = (data.runs || [])
+    .filter((r) => { const d = String(r?.date).slice(0, 10); return d >= segunda && d <= hoje; })
+    .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
+  const semanaLine = km(semanaKm) && dow > 0 ? pickByDay(WELCOME_PHRASES.semana(km(semanaKm)), hoje, 'semana') : null;
+  const ordem = variant === 'manha' ? [provaLine, ontemLine] : [semanaLine, provaLine];
+  return ordem.find(Boolean) || null;
 }
 
 function runsOn(runs, dateISO) {
@@ -187,22 +271,43 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     return { variant, greeting: GREETING.prova(nome), lines, chip, cta: depoisDaPartida ? 'Entrar' : CTA.prova, race: true };
   }
 
+  const P = WELCOME_PHRASES;
+  const pick = (pool, situation) => pickByDay(pool, hoje, situation);
+  const chipFor = (label, titulo, icon = 'run') => ({ label, value: titulo, icon: semTreino(titulo) ? 'moon' : icon });
+  let action = null;
+
   if (variant === 'manha') {
-    if (checkin && Number(checkin.sleep) >= 4) lines.push('O check-in diz que dormiste bem.');
-    else if (checkin && Number(checkin.sleep) > 0 && Number(checkin.sleep) <= 2) lines.push('Dormiste mal, pelo check-in. Hoje não se força nada.');
-    else if (!checkin) lines.push('Ainda não fizeste o check-in. Dez segundos, e eu ajusto o dia.');
-    if (tituloHoje === 'Descanso') lines.push('Hoje é descanso. A sério.');
-    else if (tituloHoje) lines.push(`Hoje tens ${lowerFirst(tituloHoje)}.`);
-    if (tituloHoje) chip = { label: 'Hoje', value: tituloHoje, icon: tituloHoje === 'Descanso' ? 'moon' : 'run' };
+    if (checkin && Number(checkin.sleep) >= 4) lines.push(pick(P.dormiuBem, 'dormiuBem'));
+    else if (checkin && Number(checkin.sleep) > 0 && Number(checkin.sleep) <= 2) lines.push(pick(P.dormiuMal, 'dormiuMal'));
+    else if (!checkin && !isFirstDay(data, hoje)) {
+      // O check-in é o cartão "Como estás hoje?" do Início: a frase diz o que
+      // é e o botão abre-o (pedido 2026-09-23 — "nem sei a que se refere").
+      // No primeiro dia o Início não mostra esse cartão — não se pede.
+      lines.push(pick(P.checkinFalta, 'checkinFalta'));
+      action = 'checkin';
+    }
+    if (tituloHoje === 'Descanso') lines.push(pick(P.descansoHoje, 'descansoHoje'));
+    else if (tituloHoje === MEAL_ONLY_DAY_LABEL) lines.push(pick(P.semTreinoHoje, 'semTreinoHoje'));
+    else if (tituloHoje) lines.push(pick(P.treinoHoje(lowerFirst(tituloHoje)), 'treinoHoje'));
+    if (tituloHoje) chip = chipFor('Hoje', tituloHoje);
   }
 
   if (variant === 'tarde') {
+    // O check-in que faltar volta a pedir-se à tarde — à noite já não, porque
+    // já não há treino do dia para ajustar.
+    if (!checkin && !isFirstDay(data, hoje)) {
+      lines.push(pick(P.checkinFaltaTarde, 'checkinFaltaTarde'));
+      action = 'checkin';
+    }
     const feita = corridasHoje[0];
-    if (feita && km(feita.distance_km)) lines.push(`Já vi a corrida de hoje: ${km(feita.distance_km)} km.`);
-    if (refeicoesHoje === 0) lines.push('Ainda não vi nenhuma refeição hoje. Uma foto chega.');
-    else if (!feita && tituloHoje && tituloHoje !== 'Descanso' && !treinoHojeFeito) lines.push(`Ainda tens ${lowerFirst(tituloHoje)} por fazer.`);
+    // Só cabem duas linhas: com o check-in por fazer e sem refeições, a das
+    // refeições ganha à da corrida (o chip "Por registar" fala delas).
+    const cabeCorrida = !(action === 'checkin' && refeicoesHoje === 0);
+    if (cabeCorrida && feita && km(feita.distance_km)) lines.push(pick(P.corridaFeita(km(feita.distance_km)), 'corridaFeita'));
+    if (refeicoesHoje === 0) lines.push(pick(P.semRefeicoes, 'semRefeicoes'));
+    else if (!feita && tituloHoje && !semTreino(tituloHoje) && !treinoHojeFeito) lines.push(pick(P.treinoPorFazer(lowerFirst(tituloHoje)), 'treinoPorFazer'));
     if (refeicoesHoje === 0) chip = { label: 'Por registar', value: 'Refeições de hoje', icon: 'plate' };
-    else if (tituloHoje) chip = { label: 'Hoje', value: tituloHoje, icon: tituloHoje === 'Descanso' ? 'moon' : 'run' };
+    else if (tituloHoje) chip = chipFor('Hoje', tituloHoje);
   }
 
   if (variant === 'noite') {
@@ -210,12 +315,13 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     const dist = feita ? km(feita.distance_km) : null;
     const ritmo = feita && Number(feita.distance_km) > 0 && Number(feita.duration_seconds) > 0
       ? formatPace(Number(feita.duration_seconds) / Number(feita.distance_km)) : null;
-    if (dist) lines.push(`Hoje ficaram ${dist} km${ritmo ? ` a ${ritmo} por km` : ''}.`);
+    if (dist) lines.push(pick(P.corridaDoDia(dist, ritmo ? ` a ${ritmo} por km` : ''), 'corridaDoDia'));
     // CAROL.md §3: um treino não registado pergunta-se, não se dá como falhado.
-    else if (tituloHoje && tituloHoje !== 'Descanso' && !treinoHojeFeito && !/^Prova/.test(tituloHoje)) lines.push('Não vi o treino de hoje registado. Aconteceu alguma coisa?');
-    if (tituloAmanha === 'Descanso') lines.push('Amanhã é descanso.');
-    else if (tituloAmanha) lines.push(`Amanhã tens ${lowerFirst(tituloAmanha)}.`);
-    if (tituloAmanha) chip = { label: 'Amanhã', value: tituloAmanha, icon: tituloAmanha === 'Descanso' ? 'moon' : 'run' };
+    else if (tituloHoje && !semTreino(tituloHoje) && !treinoHojeFeito && !/^Prova/.test(tituloHoje)) lines.push(pick(P.treinoNaoRegistado, 'treinoNaoRegistado'));
+    if (tituloAmanha === 'Descanso') lines.push(pick(P.amanhaDescanso, 'amanhaDescanso'));
+    else if (tituloAmanha === MEAL_ONLY_DAY_LABEL) lines.push(pick(P.amanhaSemTreino, 'amanhaSemTreino'));
+    else if (tituloAmanha) lines.push(pick(P.amanhaTreino(lowerFirst(tituloAmanha)), 'amanhaTreino'));
+    if (tituloAmanha) chip = chipFor('Amanhã', tituloAmanha);
   }
 
   if (variant === 'madrugada') {
@@ -223,10 +329,20 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     const depoisDaMeiaNoite = lisbonParts(now).hour < 5;
     const titulo = depoisDaMeiaNoite ? tituloHoje : tituloAmanha;
     const quando = depoisDaMeiaNoite ? 'Hoje' : 'Amanhã';
-    if (titulo && titulo !== 'Descanso') lines.push(`${quando} tens ${lowerFirst(titulo)}.`);
-    lines.push('A esta hora, o sono vale mais do que qualquer treino.');
-    if (titulo) chip = { label: quando, value: titulo, icon: titulo === 'Descanso' ? 'moon' : 'clock' };
+    if (titulo && !semTreino(titulo)) lines.push(pick(P.quando(quando, lowerFirst(titulo)), 'quando'));
+    lines.push(pick(P.sono, 'sono'));
+    if (titulo) chip = chipFor(quando, titulo, 'clock');
   }
 
+  // Sobra uma linha? Um número do atleta, se houver (nunca de madrugada:
+  // aí a única coisa a dizer é que vá dormir).
+  if (lines.length < 2 && variant !== 'madrugada') {
+    const extra = dataLine(variant, data, hoje);
+    if (extra) lines.push(extra);
+  }
+
+  if (action === 'checkin') {
+    return { variant, greeting: GREETING[variant](nome, data.profile?.gender), lines: lines.slice(0, 2), chip, cta: 'Fazer o check-in', action, race: false };
+  }
   return { variant, greeting: GREETING[variant](nome, data.profile?.gender), lines: lines.slice(0, 2), chip, cta: CTA[variant], race: false };
 }

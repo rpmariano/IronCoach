@@ -6,6 +6,7 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import RunAgenda from './RunAgenda';
 import { todayISO, addDaysISO } from '../../lib/utils';
+import { dispensarConfirmacao } from '../../test/recordConfirmation';
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -338,12 +339,31 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fillRequiredFields();
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await dispensarConfirmacao();
 
     await waitFor(() => {
       expect(useAppStore.getState().editingRaceId).toBe('race-nova');
     });
     // E não desvia para o Calendário pelo caminho.
     expect(useAppStore.getState().activeTab).toBe('holistica');
+    // A confirmação sai com o gesto: o ecrã fica montado (já no hub) e ela
+    // ficava presa por cima, sem se poder dispensar (revisão pré-deploy de
+    // 79c0bf9 — já acontecia em produção).
+    await waitFor(() => expect(screen.queryByTestId('record-confirmation-close')).toBeNull());
+  });
+
+  it('prova NOVA: gravada, o rascunho já não está guardado com a confirmação à vista', async () => {
+    const insertedRace = { ...EXISTING_RACE, id: 'race-nova', website: null, web_info: null };
+    vi.spyOn(supabase, 'from').mockReturnValue({
+      insert: () => ({ select: () => ({ single: () => Promise.resolve({ data: insertedRace, error: null }) }) }),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+    });
+    renderAgenda();
+    fillRequiredFields();
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await screen.findByTestId('record-confirmation-close');
+    await new Promise((r) => setTimeout(r, 900)); // mais do que o debounce do rascunho
+    expect(localStorage.getItem('ironcoach:prova-rascunho:nova')).toBeNull();
   });
 
   /* Sem linha devolvida pelo insert não há hub para abrir — aí o Calendário
@@ -356,6 +376,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     const expectedDate = dateInput.value;
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await dispensarConfirmacao();
 
     await waitFor(() => {
       expect(useAppStore.getState().activeTab).toBe('calendario');
@@ -382,6 +403,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await dispensarConfirmacao();
 
     await waitFor(() => {
       expect(useAppStore.getState().editingRaceId).toBeNull();
@@ -474,13 +496,13 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
       expect(comboboxes()[2].value).toBe('medio');
-      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou a subida/i)).not.toBeInTheDocument();
 
       fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } }); // 10k → meia
 
       // Não apaga uma resposta já gravada — só destaca para reconfirmação.
       expect(comboboxes()[2].value).toBe('medio');
-      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+      expect(screen.getByText(/Mudaste o tipo, a distância ou a subida/i)).toBeInTheDocument();
     });
 
     it('a EDITAR: reconfirmar o nível (reescolher no select) remove o aviso', () => {
@@ -489,12 +511,12 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
       fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
-      expect(screen.getByText(/Mudaste o tipo, a distância ou o D\+/i)).toBeInTheDocument();
+      expect(screen.getByText(/Mudaste o tipo, a distância ou a subida/i)).toBeInTheDocument();
 
       // O próprio atleta reconfirma o nível para a categoria atual (meia).
       fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
 
-      expect(screen.queryByText(/Mudaste o tipo, a distância ou o D\+/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Mudaste o tipo, a distância ou a subida/i)).not.toBeInTheDocument();
     });
   });
 
@@ -563,6 +585,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
 
       fillRequiredFields();
       fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+      await dispensarConfirmacao();
 
       await waitFor(() => {
         expect(useAppStore.getState().activeTab).toBe('calendario');

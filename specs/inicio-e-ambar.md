@@ -4,8 +4,10 @@ Decidido em 2026-09-14/15 sobre o canvas "IronCoach — Início e o âmbar da pr
 (https://claude.ai/artifact/NbHMkqfbCw2vBWdcPMvEea, pranchas "Início — proposta",
 "Provas — proposta", "Prova concluída — antes e depois"). Só interface: sem
 dados novos, sem Edge Functions, sem migrações. O Palmarés que aparece na
-prancha "Provas — proposta" é substituído pelos medalhões — ver
-`palmares-medalhoes.md`.
+prancha "Provas — proposta" foi substituído pelos medalhões — ver
+`palmares-medalhoes.md` — e estes, por sua vez, pelos badges a 2026-09-22
+(`src/utils/badges.js`, `src/components/Perfil/BadgesCard.jsx`); as
+referências a medalhões abaixo são já histórico.
 
 ## Porquê
 

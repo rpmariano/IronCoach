@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen } from './carolWelcome';
+import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, WELCOME_PHRASES, pickByDay } from './carolWelcome';
 import { expectCarolVoice } from '../test/carolVoice';
 
 /* As boas-vindas da Carol: aparecem na primeira abertura de cada faixa do
@@ -82,14 +82,15 @@ describe('buildWelcome — o que ela diz', () => {
       { id: 'i2', plan_id: 'p1', planned_date: '2026-09-20', kind: 'descanso', status: 'pendente' },
     ],
     dailyCheckins: [{ date: hoje, sleep: 4 }],
-    runs: [], meals: [], raceEvents: [],
+    // Um registo antigo: sem nenhum, é o primeiro dia (sem check-in no Início).
+    runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], raceEvents: [],
   };
 
   it('manhã: o sono do check-in e o treino do dia', () => {
     const w = buildWelcome('manha', base, at(`${hoje}T07:10:00`));
     expect(w.greeting).toBe('Bom dia, Rui.');
-    expect(w.lines[0]).toBe('O check-in diz que dormiste bem.');
-    expect(w.lines[1]).toMatch(/^Hoje tens rodagem/i);
+    expect(WELCOME_PHRASES.dormiuBem).toContain(w.lines[0]);
+    expect(w.lines[1]).toMatch(/rodagem/i);
     expect(w.chip).toMatchObject({ label: 'Hoje' });
   });
 
@@ -100,21 +101,43 @@ describe('buildWelcome — o que ela diz', () => {
 
   it('tarde sem refeições: pede uma foto', () => {
     const w = buildWelcome('tarde', base, at(`${hoje}T14:00:00`));
-    expect(w.lines.join(' ')).toMatch(/Uma foto chega/);
+    expect(WELCOME_PHRASES.semRefeicoes).toContain(w.lines[0]);
     expect(w.chip).toMatchObject({ label: 'Por registar' });
+  });
+
+  it('tarde sem check-in: volta a pedi-lo, com o botão que o abre', () => {
+    const w = buildWelcome('tarde', { ...base, dailyCheckins: [] }, at(`${hoje}T14:00:00`));
+    expect(WELCOME_PHRASES.checkinFaltaTarde).toContain(w.lines[0]);
+    expect(w.action).toBe('checkin');
+    expect(w.cta).toBe('Fazer o check-in');
+    // A segunda linha continua a ser a da tarde.
+    expect(WELCOME_PHRASES.semRefeicoes).toContain(w.lines[1]);
+  });
+
+  it('tarde sem check-in, sem refeições e com corrida feita: a linha das refeições não sai (o chip fala delas)', () => {
+    const w = buildWelcome('tarde', { ...base, dailyCheckins: [], runs: [...base.runs, { date: hoje, distance_km: 6 }] }, at(`${hoje}T14:00:00`));
+    expect(WELCOME_PHRASES.checkinFaltaTarde).toContain(w.lines[0]);
+    expect(WELCOME_PHRASES.semRefeicoes).toContain(w.lines[1]);
+    expect(w.chip).toMatchObject({ label: 'Por registar' });
+  });
+
+  it('noite sem check-in: já não o pede', () => {
+    const w = buildWelcome('noite', { ...base, dailyCheckins: [] }, at(`${hoje}T21:40:00`));
+    expect(w.action).toBeUndefined();
+    expect(w.lines.join(' ')).not.toMatch(/check-in/);
   });
 
   it('noite: a corrida do dia, com o ritmo, e o amanhã', () => {
     const w = buildWelcome('noite', { ...base, runs: [{ date: hoje, distance_km: 8, duration_seconds: 8 * 331 }] }, at(`${hoje}T21:40:00`));
-    expect(w.lines[0]).toMatch(/^Hoje ficaram 8 km a /);
-    expect(w.lines[1]).toBe('Amanhã é descanso.');
+    expect(w.lines[0]).toMatch(/8 km.* a \d/);
+    expect(WELCOME_PHRASES.amanhaDescanso).toContain(w.lines[1]);
   });
 
   it('madrugada: a treinadora manda dormir; depois da meia-noite, o treino é o de hoje', () => {
     const w = buildWelcome('madrugada', { ...base, profile: { display_name: 'Ana', gender: 'F' } }, at('2026-09-19T01:00:00'));
     expect(w.greeting).toBe('Ainda acordada, Ana?');
-    expect(w.lines[0]).toMatch(/^Hoje tens rodagem/i);
-    expect(w.lines[1]).toMatch(/sono/);
+    expect(w.lines[0]).toMatch(/^Hoje.*rodagem/i);
+    expect(WELCOME_PHRASES.sono).toContain(w.lines[1]);
   });
 
   it('dia de prova: nome, partida e o chip da distância', () => {
@@ -162,7 +185,8 @@ describe('revisão pré-master de 2026-09-19', () => {
       runs: [], meals: [], raceEvents: [],
     };
     const w = buildWelcome('noite', data, at(`${hoje}T21:00:00`));
-    expect(w.lines[0]).toBe('Não vi o treino de hoje registado. Aconteceu alguma coisa?');
+    expect(WELCOME_PHRASES.treinoNaoRegistado).toContain(w.lines[0]);
+    expect(w.lines[0]).not.toMatch(/falhaste|falhado/);
   });
 
   it('o género lê-se normalizado; o botão da prova não tem género', () => {
@@ -171,3 +195,58 @@ describe('revisão pré-master de 2026-09-19', () => {
     expect(buildWelcome('prova', { raceEvents }, at('2026-11-08T06:00:00')).cta).toBe('Vamos a isso');
   });
 });
+
+/* Pedido 2026-09-23: as frases eram sempre as mesmas, e o check-in da manhã
+   não dizia o que era. */
+describe('boas-vindas — variedade, dados e o check-in', () => {
+  const base = {
+    profile: { display_name: 'Rui' },
+    coachPlans: [{ id: 'p1', status: 'aceite' }],
+    coachPlanItems: [],
+    dailyCheckins: [], runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], raceEvents: [],
+  };
+
+  it('a mesma frase durante o dia; outra no dia seguinte', () => {
+    const d1 = buildWelcome('manha', base, at('2026-09-22T07:00:00')).lines[0];
+    expect(buildWelcome('manha', base, at('2026-09-22T11:30:00')).lines[0]).toBe(d1);
+    expect(buildWelcome('manha', base, at('2026-09-23T07:00:00')).lines[0]).not.toBe(d1);
+    expect(pickByDay(['a', 'b', 'c'], '2026-09-22', 'x')).not.toBe(pickByDay(['a', 'b', 'c'], '2026-09-23', 'x'));
+  });
+
+  it('sem check-in: diz o que é, e o botão abre-o', () => {
+    const w = buildWelcome('manha', base, at('2026-09-22T07:00:00'));
+    expect(WELCOME_PHRASES.checkinFalta).toContain(w.lines[0]);
+    expect(w.action).toBe('checkin');
+    expect(w.cta).toBe('Fazer o check-in');
+    // Com check-in feito, o botão volta a ser o de sempre.
+    const feito = buildWelcome('manha', { ...base, dailyCheckins: [{ date: '2026-09-22', sleep: 4 }] }, at('2026-09-22T07:00:00'));
+    expect(feito.action).toBeUndefined();
+    expect(feito.cta).toBe('Começar o dia');
+  });
+
+  it('sem plano, uma linha com os números dele: dias até à prova, ontem, a semana', () => {
+    const comProva = { ...base, dailyCheckins: [{ date: '2026-09-22', sleep: 4 }], raceEvents: [{ id: 'r', name: 'Meia de Lisboa', date: '2026-10-12', status: 'agendada' }] };
+    expect(buildWelcome('manha', comProva, at('2026-09-22T07:00:00')).lines[1]).toMatch(/20 dias|a 20 dias/);
+    const comOntem = { ...base, dailyCheckins: [{ date: '2026-09-22', sleep: 4 }], runs: [{ date: '2026-09-21', distance_km: 10 }] };
+    expect(buildWelcome('manha', comOntem, at('2026-09-22T07:00:00')).lines[1]).toMatch(/10 km/);
+    // Quarta-feira, 2026-09-23: a semana começou na segunda.
+    const semana = { ...base, runs: [{ date: '2026-09-22', distance_km: 8 }, { date: '2026-09-23', distance_km: 5.5 }], meals: [{ date: '2026-09-23' }] };
+    expect(buildWelcome('noite', semana, at('2026-09-23T21:00:00')).lines.join(' ')).toMatch(/13,5 km/);
+  });
+
+  it('um dia só com refeições não é "descanso"', () => {
+    const data = { ...base, dailyCheckins: [{ date: '2026-09-22', sleep: 4 }], coachPlanItems: [{ id: 'm', plan_id: 'p1', planned_date: '2026-09-22', kind: 'descanso', categories: ['so-refeicoes'], status: 'pendente' }] };
+    const w = buildWelcome('manha', data, at('2026-09-22T07:00:00'));
+    expect(WELCOME_PHRASES.semTreinoHoje).toContain(w.lines[1]);
+    expect(w.chip).toMatchObject({ value: 'Sem treino planeado' });
+  });
+
+  // Revisão pré-deploy: no primeiro dia o Início não mostra o cartão do
+  // check-in — o botão não teria o que abrir.
+  it('no primeiro dia (sem registos nem prova) não pede o check-in', () => {
+    const w = buildWelcome('manha', { ...base, coachPlans: [], runs: [], meals: [], raceEvents: [] }, at('2026-09-22T07:00:00'));
+    expect(w.action).toBeUndefined();
+    expect(w.lines.join(' ')).not.toMatch(/check-in/);
+  });
+});
+
