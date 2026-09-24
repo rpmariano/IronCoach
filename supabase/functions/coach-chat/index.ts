@@ -74,8 +74,10 @@ const GEMINI_ATTEMPT_MS = 100000;
 // folga para o limite rígido da plataforma (~150 s): passado ele, a função
 // era morta sem libertar o lock e sem resposta legível.
 const CHAT_BUDGET_MS = 125000;
-// A legenda da prova é curta: o limite de antes chega.
+// A legenda da prova é curta: o limite de antes chega, e o pedido inteiro
+// cabe nos 45 s que a app espera por ela.
 const CAPTION_TIMEOUT_MS = 40000;
+const CAPTION_BUDGET_MS = 43000;
 
 const NUTRITION_TOOL = {
   name: "get_nutrition_history",
@@ -1151,7 +1153,7 @@ ${facts.join("\n")}`
   );
 }
 
-async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null): Promise<string> {
+async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<string> {
   const res = await fetchGeminiWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
     {
@@ -1164,6 +1166,7 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
     },
     CAPTION_TIMEOUT_MS,
     1,
+    deadline,
   );
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
@@ -5305,6 +5308,9 @@ async function handler(req: Request): Promise<Response> {
   // deno-lint-ignore no-explicit-any
   let sb: any = null;
   let lockedUserId: string | null = null;
+  // O valor escrito ao reservar: o finally só liberta o lock se ainda for o
+  // deste pedido — não o de outro que o tenha reocupado entretanto.
+  let lockIso: string | null = null;
 
   try {
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
@@ -5332,11 +5338,16 @@ async function handler(req: Request): Promise<Response> {
     // UPDATE condicional otimista: só avança quem conseguir "reservar" o
     // campo; um lock com mais de LOCK_STALE_MS é tratado como órfão (função
     // anterior que morreu a meio) e pode ser reocupado.
-    const LOCK_STALE_MS = 120_000;
+    // Acima do que um pedido pode durar (CHAT_BUDGET_MS e o que vem depois
+    // dele): com 120 s, um pedido que usasse o prazo quase todo via o seu
+    // lock ser tomado como órfão enquanto ainda corria (revisão pré-deploy
+    // de bdc93cf).
+    const LOCK_STALE_MS = CHAT_BUDGET_MS + 35_000;
     const staleBeforeIso = new Date(Date.now() - LOCK_STALE_MS).toISOString();
+    const myLockIso = new Date().toISOString();
     const { data: lockRows, error: lockErr } = await sb
       .from("profiles")
-      .update({ coach_chat_busy_since: new Date().toISOString() })
+      .update({ coach_chat_busy_since: myLockIso })
       .eq("id", userId)
       .or(`coach_chat_busy_since.is.null,coach_chat_busy_since.lt.${staleBeforeIso}`)
       .select("id");
@@ -5357,6 +5368,7 @@ async function handler(req: Request): Promise<Response> {
       }, 409);
     } else {
       lockedUserId = userId;
+      lockIso = myLockIso;
     }
 
     const body = await req.json();
@@ -5418,7 +5430,9 @@ async function handler(req: Request): Promise<Response> {
       const captionOutcome = parseRaceOutcome(body.race_outcome);
       if (!captionOutcome || !captionOutcome.official_seconds) return jsonResponse({ error: "Prova sem tempo para legendar" }, 400);
       const { data: captionProfile } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
-      const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null);
+      // Dentro dos 45 s que a app espera pela legenda (requestRaceCaption),
+      // agora que o "ocupado" se repete com esperas.
+      const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
       return jsonResponse({ caption });
     }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
@@ -6388,6 +6402,35 @@ async function handler(req: Request): Promise<Response> {
     let raceWasUpdated = false;
     let interventionWasResolved = false;
 
+    /* Uma ferramenta de escrita já correu (o plano proposto, os objetivos, a
+       prova, a intervenção) e não há tempo ou resposta para o texto: sem
+       isto o atleta via "não foi possível obter uma resposta", a app não
+       recarregava o plano, e ao reenviar a Carol propunha tudo outra vez
+       (revisão pré-deploy de bdc93cf). Grava-se uma frase curta — a
+       sondagem da app apanha-a e recarrega o que mudou — e respondem-se as
+       flags como num turno normal. null quando nada foi escrito. */
+    const replyAfterWritesWithoutText = async (): Promise<Response | null> => {
+      if (!(planWasProposed || goalsWereUpdated || goalWasProposed || raceWasUpdated || interventionWasResolved)) return null;
+      const text = planWasProposed
+        ? "Deixei-te a proposta de plano no Início — abre-a e diz-me se te serve."
+        : goalWasProposed
+          ? "Deixei-te a proposta de objetivos no Início — vê se concordas."
+          : "Já está feito do meu lado. Se quiseres, diz-me o que achas.";
+      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral");
+      return jsonResponse({
+        user_message: userMsg,
+        model_message: fallbackMsg ?? { id: null, role: "model", content: text, mood: "neutral", created_at: new Date().toISOString() },
+        suggestions: [],
+        usage: totalUsage,
+        plan_proposed: planWasProposed,
+        goals_updated: goalsWereUpdated,
+        goal_proposed: goalWasProposed,
+        race_updated: raceWasUpdated,
+        intervention_resolved: interventionWasResolved,
+        proactive: proactiveTrigger,
+      });
+    };
+
     let geminiJson: Record<string, unknown> | undefined;
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
     // MAX_TOOL_ROUNDS é a final e vai SEM ferramentas, forçando texto — que é
@@ -6405,6 +6448,8 @@ async function handler(req: Request): Promise<Response> {
       // lock e sem resposta).
       if (round > 0 && !hasTimeFor(chatDeadline)) {
         console.error("coach-chat: sem tempo para mais uma ronda", JSON.stringify({ round, turnCase, elapsedMs: Date.now() - requestStartedAt }));
+        const fallback = await replyAfterWritesWithoutText();
+        if (fallback) return fallback;
         return jsonResponse({ error: "Demorei demasiado a pensar nesta resposta. Envia outra vez, por favor." }, 504);
       }
       try {
@@ -6413,6 +6458,8 @@ async function handler(req: Request): Promise<Response> {
         // O caminho que falhou a 2026-09-24 sem deixar rasto nos logs: só a
         // app registava o timeout.
         console.error("coach-chat: o Gemini não respondeu", JSON.stringify({ round, turnCase, elapsedMs: Date.now() - requestStartedAt, error: e instanceof Error ? e.message : String(e) }));
+        const fallback = round > 0 ? await replyAfterWritesWithoutText() : null;
+        if (fallback) return fallback;
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha ao contactar o coach." }, 504);
       }
 
@@ -6634,11 +6681,12 @@ async function handler(req: Request): Promise<Response> {
     // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava
     // bloqueado até ao timeout de LOCK_STALE_MS por um pedido que já tinha
     // terminado.
-    if (lockedUserId && sb) {
+    if (lockedUserId && lockIso && sb) {
       const { error: unlockErr } = await sb
         .from("profiles")
         .update({ coach_chat_busy_since: null })
-        .eq("id", lockedUserId);
+        .eq("id", lockedUserId)
+        .eq("coach_chat_busy_since", lockIso);
       if (unlockErr) console.error("Falha ao libertar lock do coach-chat:", unlockErr);
     }
   }

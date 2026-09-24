@@ -11,7 +11,12 @@
    - "ocupado" (GEMINI_RETRYABLE_STATUSES): até GEMINI_BUSY_BACKOFF_MS.length
      vezes, com esperas crescentes. O 429 (limite de pedidos) fica de fora de
      propósito: repetir logo a seguir só volta a bater no mesmo limite.
-   - sem resposta (timeout, rede): até `retries` vezes, logo a seguir.
+   - sem resposta por tempo (o nosso limite): até `retries` vezes, logo a
+     seguir. O chat passa 0 — recomeçar do zero uma resposta lenta só a
+     volta a cortar;
+   - falha de rede rápida (ligação cortada, TLS): uma vez, logo a seguir,
+     mesmo com `retries` a 0 — não é lentidão, é azar, e costuma passar à
+     segunda (revisão pré-deploy de bdc93cf).
    Nenhuma repetição começa se já não couber uma tentativa útil antes de
    `deadline` (epoch ms), e o limite de cada tentativa encolhe para lá caber.
    Ao fim, devolve a resposta como veio (o chamador decide a mensagem) ou
@@ -19,6 +24,8 @@
 
 export const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 export const GEMINI_BUSY_BACKOFF_MS: readonly number[] = [2000, 4000, 7000];
+/** Repetições de uma falha de rede rápida (não de tempo), sempre. */
+export const GEMINI_NETWORK_RETRIES = 1;
 /** Uma tentativa útil (uma leitura de prints demora ~5–10 s). */
 export const GEMINI_MIN_ATTEMPT_MS = 8000;
 
@@ -56,6 +63,7 @@ export async function fetchGeminiWithTimeout(
 ): Promise<Response> {
   let busyRetries = 0;
   let timeoutRetries = 0;
+  let networkRetries = 0;
   const fits = (waitMs: number) => Date.now() + waitMs + GEMINI_MIN_ATTEMPT_MS <= deadline;
   for (;;) {
     const controller = new AbortController();
@@ -77,13 +85,18 @@ export async function fetchGeminiWithTimeout(
       return res;
     } catch (_e) {
       clearTimeout(timer);
-      if (timeoutRetries < retries && fits(0)) {
-        timeoutRetries++;
-        continue;
+      const timedOut = controller.signal.aborted;
+      if (timedOut ? timeoutRetries < retries : networkRetries < GEMINI_NETWORK_RETRIES) {
+        if (fits(0)) {
+          if (timedOut) timeoutRetries++;
+          else networkRetries++;
+          continue;
+        }
       }
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
+      const tried = timeoutRetries + networkRetries > 0 ? " (mesmo depois de tentar de novo)" : "";
+      throw new Error(timedOut
+        ? `O Gemini demorou demasiado tempo a responder${tried}. Tenta outra vez daqui a pouco.`
+        : `Não consegui contactar o Gemini${tried}. Tenta outra vez daqui a pouco.`);
     }
   }
 }

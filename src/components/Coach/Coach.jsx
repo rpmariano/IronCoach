@@ -30,8 +30,9 @@ const COACH_CHAT_DRAFT_KEY = 'ironcoach:carol-chat-rascunho';
 // cliente), não sabemos se o pedido chegou ou não a ser processado no
 // servidor — um incidente investigado em 2026-08-20 mostrou que SIM: o
 // coach-chat pode legitimamente demorar mais de 45s quando encadeia várias
-// rondas de function-calling (até 4 rondas × 2 tentativas × 40s cada), só a
-// resposta é que não chegava a tempo ao cliente. Mostrar logo um erro
+// rondas de function-calling (desde 2026-09-24, até 125 s por pedido — ver
+// CHAT_BUDGET_MS no coach-chat), só a resposta é que não chegava a tempo ao
+// cliente. Mostrar logo um erro
 // definitivo e destravar o campo levava a reformular a mesma pergunta
 // enquanto o pedido original ainda estava em curso, gerando duas respostas
 // (e duas propostas de plano) concorrentes para a mesma pergunta. Por isso
@@ -668,9 +669,13 @@ export default function Coach() {
   // lock livre e nenhuma resposta quer dizer que não vem nenhuma. Antes
   // esperava-se sempre os 3 minutos — a 2026-09-24 o servidor desistiu aos
   // 80 s e a atleta só soube quase 2 minutos depois. Um lock que não se lê
-  // (erro) ou que ficou preso (a função morta a meio) mantém a sondagem.
+  // (erro) ou que ficou preso (a função morta a meio) mantém a sondagem, e
+  // só se desiste com DUAS leituras seguidas de lock livre sem resposta: um
+  // pedido que falhou a reservar o lock corre sem ele, e o que chegou tarde
+  // ao servidor ainda não o tinha reservado na primeira leitura.
   const waitForAsyncReply = async (afterIso) => {
     const deadline = Date.now() + POLL_MAX_MS;
+    let freeReads = 0;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
       const { data: lock } = await supabase
@@ -689,7 +694,8 @@ export default function Coach() {
         .order('created_at', { ascending: true })
         .limit(1);
       if (rows && rows.length > 0) return rows[0];
-      if (lock && lock.coach_chat_busy_since === null) return null;
+      freeReads = lock && lock.coach_chat_busy_since === null ? freeReads + 1 : 0;
+      if (freeReads >= 2) return null;
     }
     return null;
   };

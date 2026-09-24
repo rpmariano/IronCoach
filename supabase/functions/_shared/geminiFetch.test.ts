@@ -67,3 +67,55 @@ Deno.test("hasTimeFor: só com tempo para uma tentativa útil", () => {
   assertEquals(hasTimeFor(10000, 0), true);
   assertEquals(hasTimeFor(7999, 0), false);
 });
+
+// ── Falha de rede vs tempo (revisão pré-deploy de bdc93cf) ─────────────────
+Deno.test("fetchGeminiWithTimeout: uma falha de rede rápida repete uma vez, mesmo com retries a 0", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (() => {
+    calls++;
+    return calls === 1 ? Promise.reject(new TypeError("connection reset")) : Promise.resolve(new Response("{}", { status: 200 }));
+  }) as typeof fetch;
+  try {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 1000, 0, Number.POSITIVE_INFINITY, [1, 1, 1]);
+    assertEquals(res.status, 200);
+    assertEquals(calls, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("fetchGeminiWithTimeout: por tempo, com retries a 0, não repete e diz que demorou", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = ((_url: string, init?: RequestInit) => {
+    calls++;
+    return new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    });
+  }) as typeof fetch;
+  try {
+    let message = "";
+    // O limite de cada tentativa tem um mínimo de 8 s (GEMINI_MIN_ATTEMPT_MS):
+    // um prazo curto não o encurta abaixo disso — espera-se por ele.
+    try { await fetchGeminiWithTimeout("https://gemini.test", {}, 10, 0, Number.POSITIVE_INFINITY, [1, 1, 1]); } catch (e) { message = (e as Error).message; }
+    assertEquals(calls, 1);
+    assertEquals(message.startsWith("O Gemini demorou demasiado tempo a responder."), true);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+Deno.test("fetchGeminiWithTimeout: rede sempre em baixo — duas tentativas e a mensagem certa", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (() => { calls++; return Promise.reject(new TypeError("dns")); }) as typeof fetch;
+  try {
+    let message = "";
+    try { await fetchGeminiWithTimeout("https://gemini.test", {}, 1000, 0, Number.POSITIVE_INFINITY, [1, 1, 1]); } catch (e) { message = (e as Error).message; }
+    assertEquals(calls, 2);
+    assertEquals(message, "Não consegui contactar o Gemini (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.");
+  } finally {
+    globalThis.fetch = original;
+  }
+});

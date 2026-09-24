@@ -127,11 +127,39 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     });
     expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
 
-    // Uma volta da sondagem (4 s), não os 3 minutos.
+    // Duas voltas da sondagem (8 s), não os 3 minutos.
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).not.toContain('Não foi possível obter uma resposta da Carol. Tenta outra vez.');
     await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
     const contents = useAppStore.getState().coachMessages.map((m) => m.content);
     expect(contents).toContain('Não foi possível obter uma resposta da Carol. Tenta outra vez.');
     expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('um erro a ler o lock mantém a sondagem até à resposta', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    let polls = 0;
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        polls += 1;
+        return coachMessagesChain(polls < 4
+          ? { data: [], error: null }
+          : { data: [{ id: 'm2', role: 'model', content: 'Cheguei.', created_at: new Date().toISOString() }], error: null });
+      }
+      return profilesChain({ data: null, error: { message: 'rede' } });
+    });
+    vi.useFakeTimers();
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 4); });
+    const contents = useAppStore.getState().coachMessages.map((m) => m.content);
+    expect(contents).toContain('Cheguei.');
+    expect(contents).not.toContain('Não foi possível obter uma resposta da Carol. Tenta outra vez.');
   });
 
   it('com o servidor ainda a trabalhar (lock ocupado), continua a sondar e apanha a resposta', async () => {
