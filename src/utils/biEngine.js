@@ -25,7 +25,7 @@ import { computeMuscleGroupVolume as sharedComputeMuscleGroupVolume } from '@for
 import { computeMacroAdherence as sharedComputeMacroAdherence } from '@formulas/macroAdherence.ts';
 import { computeEnergyAvailabilityWindow } from '@formulas/energyAvailabilityWindow.ts';
 import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
-import { computeRunAcwr } from '@formulas/runAcwr.ts';
+import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from '@formulas/runAcwr.ts';
 import { computeCrossMetrics } from '@formulas/crossMetrics.ts';
 import { computeReadinessIndex as sharedComputeReadinessIndex } from '@formulas/readinessIndex.ts';
 
@@ -165,12 +165,17 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
 
       const chronicLoad = (w1 + w2 + w3 + w4) / 4;
       const { ratio } = computeAcwr(acuteLoad, chronicLoad);
+      // A mesma regra do ACWR de hoje (runAcwr.ts): sem corridas em 3 das 4
+      // semanas, o rácio dessa semana não existe — a linha do gráfico fica
+      // com um buraco em vez de um pico que só diz "registaste pouco".
+      const hasEnoughData = [w1, w2, w3, w4].filter((v) => v > 0).length >= RUN_ACWR_MIN_HISTORY_WEEKS;
 
       result.push({
         weekLabel: allWeeks[i].label,
         acuteLoad: Math.round(acuteLoad * 10) / 10,
         chronicLoad: Math.round(chronicLoad * 10) / 10,
-        ratio: ratio !== null ? Math.round(ratio * 100) / 100 : 0
+        ratio: hasEnoughData && ratio !== null ? Math.round(ratio * 100) / 100 : null,
+        hasEnoughData,
       });
     }
 

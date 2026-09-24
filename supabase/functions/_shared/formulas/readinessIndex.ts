@@ -110,24 +110,27 @@ export function computeReadinessIndex(
   const pillars: ReadinessPillar[] = [];
 
   // --- Pilar 1: ACWR ---
+  // Só com histórico (corridas em 3 das 4 semanas, runAcwr.ts). Sem ele o
+  // pilar não entra — como o tático sem prova e o do check-in sem check-in —
+  // em vez de dizer "Carga de risco (2,00)" a quem só registou duas corridas
+  // (pedido 2026-09-24: "se a app não tem dados, não apresenta dados").
   const acwr = computeRunAcwr(runs || [], todayISO);
   const acwrRatio = acwr.ratio || 0;
-  let acwrScore = 0;
-  let acwrDesc = "Sem dados de corrida suficientes.";
-  if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
-    acwrScore = 100;
-    acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
-  } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
-    acwrScore = 50;
-    acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
-  } else if (acwrRatio > 1.5) {
-    acwrScore = 0;
-    acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
-  } else if (acwrRatio > 0 && acwrRatio < 0.8) {
-    acwrScore = 60;
-    acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+  if (acwr.hasEnoughData && acwrRatio > 0) {
+    let acwrScore = 60;
+    let acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+    if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
+      acwrScore = 100;
+      acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
+    } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
+      acwrScore = 50;
+      acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
+    } else if (acwrRatio > 1.5) {
+      acwrScore = 0;
+      acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
+    }
+    pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
   }
-  pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
 
   // --- Pilar 2: Disponibilidade Energética ---
   const ea = computeEnergyAvailabilityWindow(meals || [], bodyAssessments || [], runs || [], gymSessions || [], todayISO, "semana");

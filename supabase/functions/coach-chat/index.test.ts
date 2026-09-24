@@ -1,5 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { buildAcwrLine, checkPlanLoad } from "./index.ts";
+import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -1641,6 +1643,49 @@ Deno.test("computeACWR zona destreino: aguda < 80% da crónica", () => {
   ];
   const r = computeACWR(runs, TODAY_ACWR);
   assertEquals(r?.zone, "possível_destreino(<0,80)");
+});
+
+Deno.test("computeACWR devolve null com corridas em só 2 das 4 semanas (pedido 2026-09-24)", () => {
+  // O caso real: 10 km, uma semana vazia, 7 + 5 km — rácio 2,17 que não quer dizer nada.
+  assertEquals(computeACWR([makeRun(11, 10), makeRun(3, 7), makeRun(0, 5)], TODAY_ACWR), null);
+});
+
+// ─── A linha de ACWR lida com o histórico e o plano (2026-09-24) ─────────────
+const planItem = (daysAgo: number, km: number) => ({ ...makeRun(daysAgo, km), planned_date: makeRun(daysAgo, km).date, kind: "corrida", status: "pendente", target_distance_km: km });
+
+Deno.test("buildAcwrLine: sem histórico diz que o rácio não existe (e não dá número)", () => {
+  const runs = [makeRun(11, 10), makeRun(3, 7), makeRun(0, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: [], today: TODAY_ACWR }), true, TODAY_ACWR);
+  assertStringIncludes(line ?? "", "SEM HISTÓRICO SUFICIENTE");
+  assertStringIncludes(line ?? "", "2 das últimas 4 semanas");
+  assertEquals(/\d,\d\d|\d\.\d\d/.test(line ?? ""), false);
+});
+
+Deno.test("buildAcwrLine: sem corridas nenhumas, sem linha", () => {
+  assertEquals(buildAcwrLine(null, runLoadReading({ runs: [], planItems: [], today: TODAY_ACWR }), false, TODAY_ACWR), null);
+});
+
+Deno.test("buildAcwrLine: em perigo mas DENTRO do plano que ela prescreveu", () => {
+  const runs = [makeRun(1, 30), makeRun(9, 5), makeRun(16, 5), makeRun(23, 5)];
+  const plan = [planItem(1, 28), planItem(9, 5), planItem(16, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: plan, today: TODAY_ACWR }), true, TODAY_ACWR) ?? "";
+  assertStringIncludes(line, "PERIGO(>1,50)");
+  assertStringIncludes(line, "DENTRO do plano que prescreveste");
+  assertStringIncludes(line, "Não a trates como excesso");
+});
+
+Deno.test("buildAcwrLine: em perigo e ACIMA do plano", () => {
+  const runs = [makeRun(1, 30), makeRun(9, 5), makeRun(16, 5), makeRun(23, 5)];
+  const plan = [planItem(1, 8), planItem(9, 5), planItem(16, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: plan, today: TODAY_ACWR }), true, TODAY_ACWR) ?? "";
+  assertStringIncludes(line, "ACIMA do plano (30 km feitos nos últimos 7 dias para 8 km previstos)");
+});
+
+Deno.test("o prompt não manda alertar para o ACWR dentro do plano nem sem histórico", () => {
+  const sys = sysCom(null, null);
+  assertStringIncludes(sys, "EXCETO se a linha disser que a carga está DENTRO do plano que prescreveste");
+  assertStringIncludes(sys, "ACWR >1,5 ACIMA do plano");
+  assertStringIncludes(sys, "Sem histórico suficiente não há ACWR e a app não verifica");
 });
 
 // ─── Bloco 2.1-2.2-2.4 — doutrina no system prompt ───────────────────────────
@@ -3972,4 +4017,44 @@ Deno.test("findAnsweredDuplicate: outra pergunta, fora da janela, ou ainda sem r
     { id: "m2", role: "model", content: "Plano fechado.", created_at: "2026-09-23T20:44:20.000Z" },
   ];
   assertEquals(await findAnsweredDuplicate(dupSb(aceites), "u", "Aceitei o plano.", t), null);
+});
+
+// ─── A guarda de carga dos planos (2026-09-24) ───────────────────────────────
+// deno-lint-ignore no-explicit-any
+function loadSb(runs: any[], activeItems: any[] = []) {
+  const chain = (data: unknown) => {
+    // deno-lint-ignore no-explicit-any
+    const c: any = { then: (resolve: (v: unknown) => void) => resolve({ data, error: null }) };
+    for (const m of ["select", "eq", "gte", "lte", "lt", "in"]) c[m] = () => c;
+    return c;
+  };
+  return { from: (t: string) => chain(t === "runs" ? runs : activeItems) };
+}
+const r = (date: string, km: number) => ({ date, distance_km: km, duration_seconds: km * 360 });
+const hist = [r("2026-08-29", 10), r("2026-09-05", 10), r("2026-09-12", 10), r("2026-09-19", 10)];
+const planRow = (planned_date: string, km: number, over: Record<string, unknown> = {}) => ({ planned_date, kind: "corrida", training_type: "continuo", target_distance_km: km, target_duration_min: null, ...over });
+
+Deno.test("checkPlanLoad: plano que leva o ACWR a perigo é recusado, com o dia e o teto", async () => {
+  const msg = await checkPlanLoad(loadSb(hist), "u1", [planRow("2026-09-25", 10), planRow("2026-09-26", 10), planRow("2026-09-27", 10)], [], "2026-09-25", "2026-09-24");
+  assertStringIncludes(msg ?? "", "O plano NÃO foi gravado");
+  assertStringIncludes(msg ?? "", "não podem passar de");
+});
+
+Deno.test("checkPlanLoad: sem histórico não há regra (3 corridas em 4 semanas)", async () => {
+  const few = [r("2026-09-13", 10.11), r("2026-09-21", 7.01), r("2026-09-24", 5.03)];
+  assertEquals(await checkPlanLoad(loadSb(few), "u1", [planRow("2026-09-25", 15), planRow("2026-09-27", 15)], [], "2026-09-25", "2026-09-24"), null);
+});
+
+Deno.test("checkPlanLoad: conta os treinos do plano ativo que ficam antes da proposta", async () => {
+  // A proposta sozinha (6 km a 28/09) passa; com os 2 × 12 km do plano em
+  // curso a 25 e 26/09 à frente dela, a semana dispara.
+  const rows = [planRow("2026-09-28", 6)];
+  assertEquals(await checkPlanLoad(loadSb(hist, []), "u1", rows, [{ id: "p1" }], "2026-09-28", "2026-09-24"), null);
+  const active = [planRow("2026-09-25", 12, { status: "pendente" }), planRow("2026-09-26", 12, { status: "pendente" })];
+  assertStringIncludes(await checkPlanLoad(loadSb(hist, active), "u1", rows, [{ id: "p1" }], "2026-09-28", "2026-09-24") ?? "", "PERIGO");
+});
+
+Deno.test("checkPlanLoad: uma falha a ler deixa passar", async () => {
+  const broken = { from: () => { throw new Error("rede"); } };
+  assertEquals(await checkPlanLoad(broken, "u1", [planRow("2026-09-25", 50)], [], "2026-09-25", "2026-09-24"), null);
 });

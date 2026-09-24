@@ -101,9 +101,13 @@ describe('detectCoachInsights', () => {
     // A partir da Fase C o ACWR usa km (distância), não sRPE (duração×RPE) —
     // ver specs/formulas-checklist.md Fase C / formulas-centralizacao.md §5.1.
     it('alerta crítico quando a carga aguda triplica a crónica', () => {
+      // Base crónica espalhada por 3 semanas: desde 2026-09-24 o rácio só
+      // existe com corridas em 3 das 4 semanas (runAcwr.ts).
       const runs = [
         { date: iso(3), distance_km: 30 },  // semana aguda (últimos 7 dias)
-        { date: iso(15), distance_km: 10 }, // só base crónica (8-28 dias)
+        { date: iso(10), distance_km: 4 },  // base crónica (8-28 dias)
+        { date: iso(17), distance_km: 3 },
+        { date: iso(24), distance_km: 3 },
       ];
       // acuteKm=30; chronicWeeklyKm=(30+10)/4=10; ratio=30/10=3.0 → danger
       const insights = detectCoachInsights({ runs }, { experience_level: 'medio' });
@@ -117,13 +121,26 @@ describe('detectCoachInsights', () => {
     it('alerta de cautela quando o rácio fica dentro da banda 1,31-1,50', () => {
       const runs = [
         { date: iso(3), distance_km: 42 },  // semana aguda
-        { date: iso(15), distance_km: 78 }, // só base crónica
+        { date: iso(10), distance_km: 26 }, // base crónica, 3 semanas
+        { date: iso(17), distance_km: 26 },
+        { date: iso(24), distance_km: 26 },
       ];
       // acuteKm=42; chronicWeeklyKm=(42+78)/4=30; ratio=42/30=1.4 → caution
       const insights = detectCoachInsights({ runs }, {});
       const acwr = insights.find((i) => i.id === 'acwr_caution');
       expect(acwr).toBeTruthy();
       expect(acwr.severity).toBe('warning');
+    });
+
+    it('não alerta com corridas em só 2 das 4 semanas (pedido 2026-09-24)', () => {
+      // O caso que motivou a regra: 10 km, uma semana vazia, e 12 km agora.
+      const runs = [
+        { date: iso(11), distance_km: 10 },
+        { date: iso(3), distance_km: 7 },
+        { date: iso(0), distance_km: 5 },
+      ];
+      const insights = detectCoachInsights({ runs }, {});
+      expect(insights.find((i) => i.id === 'acwr_danger' || i.id === 'acwr_caution')).toBeUndefined();
     });
 
     it('não alerta sem histórico suficiente (todas as corridas na última semana)', () => {
@@ -353,7 +370,9 @@ describe('detectCoachInsights', () => {
   it('ordena os insights por severidade: critical > warning > info', () => {
     const runs = [
       { date: iso(3), distance_km: 30 },
-      { date: iso(15), distance_km: 10 },
+      { date: iso(10), distance_km: 4 },
+      { date: iso(17), distance_km: 3 },
+      { date: iso(24), distance_km: 3 },
     ];
     const bodyAssessments = [{ date: iso(0), weight_kg: 70, body_fat_pct: 20, visceral_fat: 15 }];
     const insights = detectCoachInsights({ runs, bodyAssessments }, { gender: 'M' });

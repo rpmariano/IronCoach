@@ -108,9 +108,15 @@ export function computeCrossMetrics(
 
   // ACWR combinado — o maior dos dois, sobre TODO o histórico (não só o
   // `range` selecionado), tal como cada ACWR já faz individualmente.
+  // Cada um só conta com histórico que o sustente — sem ele, 0 (o chat e a
+  // Home não o mostram). Pedido 2026-09-24: "se a app não tem dados, não
+  // apresenta dados".
   const runACWR = computeRunAcwr(runs, todayISO);
   const gymVL = computeGymVolumeLoad(gymSessions, todayISO, "todos");
-  const combinedACWR = Math.max(runACWR.ratio, gymVL.acwr || 0);
+  const combinedACWR = Math.max(
+    runACWR.hasEnoughData ? runACWR.ratio : 0,
+    gymVL.acwrHasEnoughData ? gymVL.acwr || 0 : 0,
+  );
 
   return { weightVsPace, gymLoadVsRunRPE, combinedACWR };
 }

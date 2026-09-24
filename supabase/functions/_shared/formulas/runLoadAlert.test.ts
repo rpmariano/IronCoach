@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { runLoadReading, runLoadInterventionReason, runLoadInterventionToOpen, isRunLoadIntervention, runLoadInterventionKind, RUN_LOAD_INTERVENTION_TAG } from "./runLoadAlert.ts";
+import { planLoadViolation, runLoadReading, runLoadInterventionReason, runLoadInterventionToOpen, isRunLoadIntervention, runLoadInterventionKind, RUN_LOAD_INTERVENTION_TAG } from "./runLoadAlert.ts";
+import { computeRunAcwr } from "./runAcwr.ts";
 
 const TODAY = "2026-09-24";
 const run = (date: string, km: number, min = km * 6) => ({ date, distance_km: km, duration_seconds: min * 60 });
@@ -287,3 +288,42 @@ function addDaysT(d: string, n: number) {
   x.setUTCDate(x.getUTCDate() + n);
   return x.toISOString().slice(0, 10);
 }
+
+// ── A guarda de carga dos planos ─────────────────────────────────────────────
+
+Deno.test("guarda do plano: sem histórico não há regra (o caso do Rui)", () => {
+  const runs = [run("2026-09-13", 10.11), run("2026-09-21", 7.01), run("2026-09-24", 5.03)];
+  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-26", 20), item("2026-09-28", 20)], today: TODAY }), null);
+});
+
+Deno.test("guarda do plano: com histórico, um plano que dispara a carga é apontado, com o teto de km", () => {
+  // 4 semanas a 10 km; o plano mete 30 km nos próximos 3 dias.
+  const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)];
+  const v = planLoadViolation({ runs, planItems: [item("2026-09-25", 10), item("2026-09-26", 10), item("2026-09-27", 10)], today: TODAY });
+  assert(v !== null);
+  assert(v.ratio > 1.5);
+  // No dia apontado, com acuteKm no teto o rácio fica ≤1,50.
+  const older = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)]
+    .filter((r) => r.date >= addDaysT(v.date, -27) && r.date <= addDaysT(v.date, -7));
+  const atCap = computeRunAcwr([...older, run(v.date, v.maxAcuteKm)], v.date);
+  assert(atCap.ratio <= 1.5, `teto ${v.maxAcuteKm} dá ${atCap.ratio}`);
+});
+
+Deno.test("guarda do plano: um plano progressivo passa", () => {
+  const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)];
+  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-26", 6), item("2026-09-28", 5)], today: TODAY }), null);
+});
+
+Deno.test("guarda do plano: a prova não conta, e o que já vinha de trás também não", () => {
+  const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 10)];
+  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-27", 21.1, { training_type: "prova" })], today: TODAY }), null);
+  // Chegou sobrecarregado (30 km ontem): uma rodagem leve hoje não é o plano a levá-lo lá.
+  const loaded = [...runs, run("2026-09-23", 30)];
+  assertEquals(planLoadViolation({ runs: loaded, planItems: [item("2026-09-25", 4)], today: TODAY }), null);
+});
+
+Deno.test("guarda do plano: o item de hoje só conta se ainda não correu hoje", () => {
+  const runs = [run("2026-08-29", 10), run("2026-09-05", 10), run("2026-09-12", 10), run("2026-09-19", 8), run("2026-09-24", 8)];
+  // Já correu hoje 8 km; o item de hoje (8 km) não se soma outra vez.
+  assertEquals(planLoadViolation({ runs, planItems: [item("2026-09-24", 8)], today: TODAY }), null);
+});

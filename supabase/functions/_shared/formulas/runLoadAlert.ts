@@ -19,14 +19,14 @@
 // goalsIntervention.ts): sem coluna nova, sem migração. Vive em formulas/
 // para o frontend a importar pelo @formulas (utils/carolTopics.js).
 
-import { computeRunAcwr } from "./runAcwr.ts";
+import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "./runAcwr.ts";
 import { ACWR_DANGER, ACWR_SAFE_MAX } from "./acwr.ts";
 
 export const RUN_LOAD_INTERVENTION_TAG = "[carga]";
 
 /** Semanas (de 4) com pelo menos uma corrida para o rácio valer alguma
- *  coisa. Com 2, a média crónica é metade do que o atleta corre de facto. */
-export const LOAD_HISTORY_MIN_WEEKS = 3;
+ *  coisa — a regra única de runAcwr.ts, a mesma dos ecrãs e do chat. */
+export const LOAD_HISTORY_MIN_WEEKS = RUN_ACWR_MIN_HISTORY_WEEKS;
 
 /** Folga sobre o prescrito antes de a carga deixar de ser "a do plano" —
  *  uma rodagem de 6 km que dá 6,5 não é desvio. */
@@ -47,6 +47,7 @@ export interface LoadPlanItem {
   plan_id?: string | null;
   planned_date: string;
   kind: string;
+  training_type?: string | null;
   status?: string | null;
   target_distance_km?: number | string | null;
   target_duration_min?: number | string | null;
@@ -103,14 +104,7 @@ export function runLoadReading(
   const acwr = computeRunAcwr(list.map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0 })), today);
   const ratio = acwr.chronicWeeklyKm > 0 ? acwr.ratio : null;
 
-  // As 4 semanas da janela crónica, da mais antiga à de hoje.
-  let historyWeeks = 0;
-  for (let w = 0; w < 4; w++) {
-    const from = addDaysISO(today, -27 + w * 7);
-    const to = addDaysISO(today, -21 + w * 7);
-    if (list.some((r) => r.date.slice(0, 10) >= from && r.date.slice(0, 10) <= to && (Number(r.distance_km) || 0) > 0)) historyWeeks++;
-  }
-  const enoughHistory = historyWeeks >= LOAD_HISTORY_MIN_WEEKS;
+  const { historyWeeks, hasEnoughData: enoughHistory } = acwr;
 
   const acuteStart = addDaysISO(today, -6);
   const live = (planItems || []).filter((i) => i && i.status !== "cancelado" && typeof i.planned_date === "string");
@@ -272,4 +266,77 @@ export function runLoadInterventionToOpen(
     if (calmStreak >= LOAD_EPISODE_CALM_DAYS) break;
   }
   return now;
+}
+
+// ── A guarda de carga dos planos (pedido 2026-09-24) ─────────────────────────
+//
+// A doutrina da Carol manda respeitar o ACWR ao propor um plano, mas era só
+// uma instrução ao modelo: nada a verificava. Aqui fica a regra. Projeta a
+// carga dia a dia com o plano cumprido (as corridas registadas mais as do
+// plano) e aponta o primeiro dia em que o plano, e não o passado, leva o
+// ACWR acima de 1,50.
+//
+// - Sem histórico (corridas em menos de 3 das 4 semanas) não há regra: o
+//   rácio não existe e a app não o usa para nada.
+// - Se sem o plano esse dia já estaria acima de 1,50 (o atleta chegou
+//   sobrecarregado), não é o plano que o leva lá — a doutrina (descarga)
+//   trata disso na conversa.
+// - A prova não entra: é um dado, o plano não a pode encurtar, e uma meia
+//   maratona passa sozinha o 1,50 no dia dela.
+// - Um item de hoje só conta se ainda não houver corrida registada hoje.
+
+export interface PlanLoadViolation {
+  date: string;
+  ratio: number;
+  /** Km dos 7 dias até `date`, com o plano cumprido. */
+  acuteKm: number;
+  /** O máximo desses 7 dias para o rácio ficar ≤1,50, com o que vem antes. */
+  maxAcuteKm: number;
+}
+
+export function planLoadViolation(
+  { runs, planItems, today }: { runs: LoadRun[]; planItems: LoadPlanItem[]; today: string },
+): PlanLoadViolation | null {
+  const past = (runs || [])
+    .filter((r) => r && typeof r.date === "string" && r.date.slice(0, 10) <= today)
+    .map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0, duration_seconds: r.duration_seconds ?? null }));
+  if (!computeRunAcwr(past, today).hasEnoughData) return null;
+
+  const pace = athletePaceMinPerKm(past);
+  const ranToday = past.some((r) => r.date === today && r.distance_km > 0);
+  const planned = (planItems || [])
+    .filter((i) => i && i.kind === "corrida" && i.status !== "cancelado" && i.training_type !== "prova" &&
+      typeof i.planned_date === "string" && (i.planned_date > today || (i.planned_date === today && !ranToday)))
+    .map((i) => {
+      const km = Number(i.target_distance_km) || 0;
+      const min = Number(i.target_duration_min) || 0;
+      return { date: i.planned_date, distance_km: km > 0 ? km : min > 0 ? min / pace : 0 };
+    })
+    .filter((r) => r.distance_km > 0);
+  if (!planned.length) return null;
+
+  const projected = [...past, ...planned];
+  const last = planned.reduce((max, r) => (r.date > max ? r.date : max), today);
+  for (let d = today; d <= last; d = addDaysISO(d, 1)) {
+    const withPlan = computeRunAcwr(projected, d);
+    if (!(withPlan.chronicWeeklyKm > 0) || !(withPlan.ratio > ACWR_DANGER)) continue;
+    const without = computeRunAcwr(past, d);
+    if (without.chronicWeeklyKm > 0 && without.ratio > ACWR_DANGER) continue;
+    // rácio = aguda ÷ ((anterior + aguda) ÷ 4) ≤ L  ⇔  aguda ≤ L × anterior ÷ (4 − L)
+    // (0,6 × anterior com L = 1,5), com "anterior" os km dos 21 dias antes
+    // da janela aguda.
+    const olderFrom = addDaysISO(d, -27);
+    const olderTo = addDaysISO(d, -7);
+    const olderKm = projected
+      .filter((r) => r.date >= olderFrom && r.date <= olderTo)
+      .reduce((sum, r) => sum + r.distance_km, 0);
+    return {
+      date: d,
+      ratio: Math.round(withPlan.ratio * 100) / 100,
+      acuteKm: round1(withPlan.acuteKm),
+      // Arredondado para baixo: é um teto.
+      maxAcuteKm: Math.floor(((ACWR_DANGER * olderKm) / (4 - ACWR_DANGER)) * 10) / 10,
+    };
+  }
+  return null;
 }

@@ -381,6 +381,36 @@ prescritos) e com corridas em só 2 das 4 semanas. Regras novas, em
   dentro do plano); um pico depois disso é novo e abre outra vez. Um dia
   calmo sozinho não chega — o rácio oscila com 3 ou 4 corridas na janela.
 
+**Sem dados, sem ACWR — em toda a app (2026-09-24).** O atleta corre mais do
+que regista e não vai registar o histórico: "se a app não tem dados, não
+apresenta dados". A regra de histórico passou a ser uma só,
+`RUN_ACWR_MIN_HISTORY_WEEKS` em `_shared/formulas/runAcwr.ts` (corridas em 3
+das 4 semanas; antes bastava uma corrida antes da janela aguda), e todos a
+seguem:
+
+| Onde | Sem histórico |
+|---|---|
+| Dashboard de corrida, Visão geral, avisos (biEngine) | "Sem dados", sem número nem alerta |
+| Gráfico semanal do ACWR | a linha do rácio tem um buraco nessas semanas |
+| Índice de Prontidão (Home, hub da prova) | o pilar "Carga de Treino" não entra |
+| ACWR combinado (chat) | 0, a linha não aparece |
+| Chat da Carol | "ACWR: SEM HISTÓRICO SUFICIENTE — o rácio não existe" |
+| Resumo do dia | `acwr.ratio: null` |
+| Guarda dos planos | não se aplica |
+
+Com histórico, a linha de ACWR do chat diz se a carga está DENTRO ou ACIMA
+do plano que a Carol prescreveu (a mesma leitura do cartão), e a doutrina só
+manda alertar/descarregar quando está acima.
+
+**Guarda de carga dos planos (2026-09-24).** A doutrina mandava respeitar o
+ACWR ao propor um plano, mas nada o verificava. `propose_training_plan`
+projeta agora a carga dia a dia com o plano cumprido (`planLoadViolation`):
+se, com histórico, o plano levar o ACWR acima de 1,50 num dia em que sem ele
+ficaria abaixo, não é gravado e o modelo recebe o dia e o teto de km dos 7
+dias (aguda ≤ 1,5 × anterior ÷ 2,5). Contam as corridas registadas, os
+treinos por fazer do plano ativo antes da proposta e os da proposta; a
+prova não conta (é um dado). Uma falha a ler deixa passar.
+
 ### Modelo
 
 `coach_daily_summary` — uma linha por `(user_id, date)`, upsert na segunda
