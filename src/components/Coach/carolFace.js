@@ -2,8 +2,9 @@
    (CoachAvatar.jsx) e os testes partilharem exatamente o mesmo desenho.
 
    Um retrato de traço simples dentro do disco ciano dela: linha escura,
-   cara clara, bochechas coradas, e o cabelo como uma silhueta sólida na cor
-   da linha — franja reta, rabo-de-cavalo alto com as pontas desfiadas. Só
+   cara clara, bochechas coradas, e o cabelo escuro com estrutura — franja
+   varrida em madeixas, fios de luz a marcar o sentido do cabelo, rabo-de-
+   -cavalo alto com as pontas desfiadas. Só
    a cabeça: o pescoço sai pelo fundo do disco e os ombros nunca entram. As
    linhas do cabelo, do rabo-de-cavalo e do contorno são a "assinatura" —
    desenham-se quando ela aparece, e só depois o desenho ganha cor.
@@ -30,15 +31,24 @@ export const FACE_FILL_PATH = 'M 30.6 52 C 30.6 34, 39.5 27, 50 27 C 60.5 27, 69
 export const JAW_PATH = 'M 30.8 55 C 31.6 70.5, 41 79, 50 79 C 59 79, 68.4 70.5, 69.2 55';
 export const EARS_PATH = 'M 31 53.6 C 25.8 52, 25.2 61.4, 31.4 62.2 M 69 53.6 C 74.2 52, 74.8 61.4, 68.6 62.2';
 
-/** O cabelo: uma silhueta sólida, na cor da linha. Desce dos lados até ao
- *  alto das orelhas e acaba na testa numa franja reta, cortada a direito, com
- *  uma abertura estreita do lado direito. A franja fica acima das
- *  sobrancelhas — são elas que dizem metade das emoções. */
+/** O cabelo: silhueta escura com estrutura. Desce dos lados até ao alto
+ *  das orelhas e acaba numa franja varrida para a esquerda, em madeixas com
+ *  pontas — todas acima das sobrancelhas, que dizem metade das emoções. */
 export const HAIR_PATH =
   'M 30.4 55 C 25.4 44, 25.8 28.4, 35.6 20.6 C 43.6 14.4, 59.6 13.2, 69.2 20.6 ' +
-  'C 76.8 26.6, 77 44, 69.8 55 L 68.8 55 C 68.6 48.4, 68 43.4, 67.2 40.2 ' +
-  'L 61.6 40.3 L 58.4 32.6 L 55.8 40.5 L 32.8 40.8 ' +
-  'C 32 43.4, 31.4 48.4, 31.2 55 Z';
+  'C 76.8 26.6, 77 44, 69.8 55 L 68.8 55 C 68.6 49, 68.2 45, 67.6 41.6 ' +
+  'L 66.6 38.4 L 64 43 L 62.4 36 ' +
+  'C 58.4 37.6, 53 39.4, 48.4 41.8 C 49.4 39.6, 50.2 37.6, 50.6 35.4 ' +
+  'C 45.4 38, 40.2 40.2, 36.2 43 C 36.8 40.6, 37.4 38.4, 38 36.2 ' +
+  'C 35.4 38.6, 33 42, 31.6 46 C 31.2 49, 31.1 52, 31.2 55 Z';
+
+/** Os fios de luz que dão estrutura ao cabelo: partem da risca e seguem o
+ *  sentido das madeixas. */
+export const HAIR_STRANDS_PATH =
+  'M 58.6 17.6 C 54.4 24, 51 30, 49.2 37.4 ' +
+  'M 57.6 17.4 C 49.6 20.6, 42.6 27, 39.4 35 ' +
+  'M 60.8 18.6 C 64 24, 65.4 30, 65.4 36.4 ' +
+  'M 40.6 19.4 C 34 24.8, 30.6 33.4, 30.2 43';
 
 /** O rabo-de-cavalo: preso no alto, à direita, sobe um pouco e cai por trás
  *  da cabeça até à altura do queixo, com as pontas desfiadas. */
@@ -46,11 +56,10 @@ export const PONYTAIL_PATH =
   'M 60.6 16.8 C 64.6 10.6, 74.4 10, 80.2 16.2 C 86.8 23.4, 88.2 36.4, 86.2 48 ' +
   'L 88.6 55.6 L 83.8 52.6 L 84.6 62.6 L 79.8 56.4 L 78.4 65.2 ' +
   'C 76.2 56, 74.8 46.4, 73 38.4 C 71.2 30.4, 66.6 22.8, 60.6 16.8 Z';
-/** Os reflexos claros dentro do cabelo escuro: o elástico (um laço
- *  alongado na base do rabo-de-cavalo) e um fio de luz — este só nos
- *  tamanhos grandes. */
+/** O elástico: um laço claro, alongado, na base do rabo-de-cavalo. E os
+ *  fios de luz do rabo-de-cavalo, a seguir a queda. */
 export const PONYTAIL_TIE_PATH = 'M 60.4 20 C 61.6 15.4, 69.6 12.8, 73.2 16.6 C 70.6 16.4, 63.8 17.2, 60.4 20 Z';
-export const PONYTAIL_SHINE_PATH = 'M 77.4 21.6 C 82 27, 83.4 36.6, 82.2 46';
+export const PONYTAIL_STRANDS_PATH = 'M 66.4 15.8 C 74.4 16.4, 81.4 26, 82.8 40.4 M 72.8 21.6 C 77.4 29.6, 79.4 41.6, 79.8 54.2';
 
 /** O nariz: um gancho curto — só nos tamanhos grandes. */
 export const NOSE_PATH = 'M 50.6 58.6 Q 49.2 62.4 51.2 63.2';
@@ -244,10 +253,10 @@ export function rigPaths(rig) {
 /* O enquadramento muda com o tamanho, como um retrato próximo: a cabeça
    enche o disco e o queixo fica perto do fundo, para o pescoço sair pelo
    círculo — os ombros nunca entram. Pequeno, aproxima-se ainda mais da cara
-   (os olhos ganham espaço); grande, entra o nariz e o fio de luz do cabelo.
+   (os olhos ganham espaço); grande, entra o nariz.
    `strokePx` é a espessura da linha principal em píxeis. */
 export function frameFor(size) {
-  if (size < 32) return { viewBox: '14 12 74 74', detail: 'min', strokePx: 1.25 };
-  if (size < 56) return { viewBox: '10 7 82 82', detail: 'mid', strokePx: Math.max(1.4, size * 0.034) };
-  return { viewBox: '9 5 84 84', detail: 'full', strokePx: Math.min(3, size * 0.03) };
+  if (size < 32) return { viewBox: '15 11 72 72', detail: 'min', strokePx: 1.25 };
+  if (size < 56) return { viewBox: '11 6 80 80', detail: 'mid', strokePx: Math.max(1.4, size * 0.034) };
+  return { viewBox: '12 6 78 78', detail: 'full', strokePx: Math.min(3, size * 0.03) };
 }

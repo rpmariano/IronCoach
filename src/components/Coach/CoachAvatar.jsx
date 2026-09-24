@@ -3,7 +3,7 @@ import { normalizeMood } from '@formulas/carolMood.ts';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import {
   CHEEKS, EARS_PATH, FACE_FILL_PATH, HAIR_PATH, JAW_PATH, NECK_FILL_PATH, NECK_PATH, NOSE_PATH,
-  PONYTAIL_PATH, PONYTAIL_SHINE_PATH, PONYTAIL_TIE_PATH, SHINE_PATHS,
+  HAIR_STRANDS_PATH, PONYTAIL_PATH, PONYTAIL_STRANDS_PATH, PONYTAIL_TIE_PATH, SHINE_PATHS,
   frameFor, lerpRig, rigFor, rigPaths,
 } from './carolFace';
 
@@ -11,8 +11,8 @@ import {
    aparece.
 
    Um retrato de traço simples dentro do disco ciano dela: linha escura,
-   cara clara, bochechas coradas, e o cabelo numa silhueta sólida — franja
-   reta e rabo-de-cavalo alto. Só a cabeça — os ombros nunca aparecem. A geometria vive em
+   cara clara, bochechas coradas, e o cabelo escuro com estrutura — franja
+   varrida em madeixas e rabo-de-cavalo alto. Só a cabeça — os ombros nunca aparecem. A geometria vive em
    carolFace.js; aqui só se desenha e se dá vida.
 
    Seis emoções (`mood`, vocabulário em @formulas/carolMood.ts): neutral (por
@@ -154,10 +154,14 @@ export default function CoachAvatar({
             <path className="carol-feat" d={EARS_PATH} style={{ ...line, fill: 'var(--carol-skin)' }} strokeWidth={unit * 0.85} />
             <path className="carol-fill" d={HAIR_PATH} style={{ fill: 'var(--carol-hair)' }} />
             <path className="carol-sig" pathLength="1" d={HAIR_PATH} style={line} strokeWidth={unit} />
-            {/* Os reflexos: o elástico e, em grande, um fio de luz. */}
+            {/* A estrutura: os fios de luz das madeixas e o elástico. A 24–30 px
+                ficam só dois fios, senão o cabelo vira ruído. */}
             <g className="carol-feat" style={{ stroke: 'var(--carol-hair-light)' }}>
+              <g opacity=".55">
+                <path d={frame.detail === 'min' ? HAIR_STRANDS_PATH.split(' M ')[0] : HAIR_STRANDS_PATH} strokeWidth={unit * 0.45} />
+                {frame.detail !== 'min' && <path d={PONYTAIL_STRANDS_PATH} strokeWidth={unit * 0.45} />}
+              </g>
               <path d={PONYTAIL_TIE_PATH} strokeWidth={unit * 0.6} />
-              {frame.detail === 'full' && <path d={PONYTAIL_SHINE_PATH} strokeWidth={unit * 0.45} opacity=".45" />}
             </g>
 
             {/* O corado sobe e desce com a emoção. */}
