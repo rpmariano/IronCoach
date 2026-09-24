@@ -402,10 +402,10 @@ a[href]:not(.no-tap-scale):active {
 }
 
 /* ===== O rosto da Carol (CoachAvatar) =====
-   Um busto de traço simples dentro do disco ciano dela.
+   Um retrato de traço simples dentro do disco ciano dela.
 
-   A assinatura (`.carol-draw`): as linhas — contorno dos ombros, maxilar,
-   cabelo, e a franja a meio — desenham-se em --dur-sign, e só depois o
+   A assinatura (`.carol-draw`): as linhas — rabo-de-cavalo, cabelo,
+   maxilar, e a franja e o pescoço a meio — desenham-se em --dur-sign, e só depois o
    desenho ganha cor (`.carol-fill`) e acendem os olhos, as bochechas e a
    boca (`.carol-feat`). Toca uma vez, à entrada; com movimento reduzido o
    token vai a zero e o JSX nem põe a classe.

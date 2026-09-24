@@ -1,16 +1,16 @@
 /* A geometria do rosto da Carol — só números, sem React, para o avatar
    (CoachAvatar.jsx) e os testes partilharem exatamente o mesmo desenho.
 
-   Um busto ilustrado, na estética do traço simples: linha escura sobre
-   preenchimento claro, dentro do disco ciano dela. Cabeça, pescoço e
-   ombros; franja em madeixas; o cabelo apanhado numa trança que cai sobre o
-   ombro direito; bochechas coradas. As linhas do cabelo, do contorno e dos
-   ombros são a "assinatura" — desenham-se quando ela aparece, e só depois
-   o desenho ganha cor.
+   Um retrato de traço simples: linha escura sobre preenchimento claro,
+   dentro do disco ciano dela. Só a cabeça — o pescoço sai pelo fundo do
+   disco e os ombros nunca entram; franja em madeixas; o cabelo apanhado
+   num rabo-de-cavalo clássico, alto, a cair por trás do lado direito;
+   bochechas coradas. As linhas do cabelo, do rabo-de-cavalo e do contorno
+   são a "assinatura" — desenham-se quando ela aparece, e só depois o
+   desenho ganha cor.
 
-   Coordenadas: a cabeça vive em 0–100 (olhos a 55, queixo a 80,5); o corpo
-   continua para baixo até ~125, e o enquadramento (frameFor) decide quanto
-   dele entra no disco.
+   Coordenadas: a cabeça vive em 0–100 (olhos a 55, queixo a 79); o
+   enquadramento (frameFor) põe o queixo perto do fundo do disco.
 
    Cada emoção é um "rig": a posição de cada traço como uma curva quadrática
    (x1 y1, controlo, x2 y2) e a sua espessura, mais a inclinação da cabeça e
@@ -19,14 +19,11 @@
    arco, a boca abre-se, a cabeça inclina — em vez de trocar um desenho por
    outro. */
 
-/* ── O busto (fixo) ─────────────────────────────────────────────────────── */
+/* ── O retrato (fixo) ───────────────────────────────────────────────────── */
 
-/** Ombros e peito — a gola redonda por cima. */
-export const BODY_PATH = 'M 6 126 C 8 102, 23 91.5, 43 87 L 57 87 C 77 91.5, 92 102, 94 126 Z';
-export const COLLAR_PATH = 'M 41.8 87.6 Q 50 95.4 58.2 87.6';
-/** O pescoço: o preenchimento e os dois lados. */
-export const NECK_FILL_PATH = 'M 44.6 72 L 55.4 72 L 56 88.6 L 44 88.6 Z';
-export const NECK_PATH = 'M 44.8 76 L 44.3 87.6 M 55.2 76 L 55.7 87.6';
+/** O pescoço: continua até sair do disco — nunca acaba à vista. */
+export const NECK_FILL_PATH = 'M 43.8 72 L 56.2 72 L 56.8 112 L 43.2 112 Z';
+export const NECK_PATH = 'M 44 76 L 43.4 112 M 56 76 L 56.6 112';
 
 /** A cara: o preenchimento (o topo fica debaixo do cabelo) e a linha do
  *  maxilar. */
@@ -52,18 +49,13 @@ export const FRINGE_RIGHT_PATH = 'M 59.2 19 C 66 23, 70.2 31, 69.8 44.4 C 68.2 4
 /** Madeixas desenhadas dentro do cabelo — só nos tamanhos grandes. */
 export const HAIR_STRANDS_PATH = 'M 52 20.6 C 43.6 23, 37.6 28.6, 34.8 36.4 M 65.4 21.4 C 70.4 25.4, 73.4 31.4, 73.8 38';
 
-/** A trança: sai de trás da orelha direita e cai sobre o ombro, em gomos
- *  alternados, com o elástico e a ponta solta. [cx, cy, rx, ry, rotação]. */
-export const BRAID_LOBES = [
-  [70.2, 64.0, 4.9, 3, -34],
-  [72.8, 69.5, 4.9, 3, 34],
-  [71.3, 75.0, 4.9, 3, -34],
-  [73.9, 80.5, 4.9, 3, 34],
-  [72.4, 86.0, 4.9, 3, -34],
-  [75.0, 91.5, 4.9, 3, 34],
-];
-export const BRAID_TIE_PATH = 'M 71.4 94.6 L 76.4 94.2';
-export const BRAID_TUFT_PATH = 'M 71.8 94.8 C 70 97.6, 69.8 100.4, 71 103 C 72.6 101.4, 74 101, 75.2 103.2 C 77 100.6, 77.2 97.4, 76.2 94.4 Z';
+/** O rabo-de-cavalo: preso no alto, do lado direito, sai para fora e cai
+ *  por trás da cabeça. O elástico fica por cima do contorno do cabelo. */
+export const PONYTAIL_PATH =
+  'M 70.6 21.6 C 76.6 15.2, 85.8 17.4, 87.2 28 C 88.6 39.6, 85.6 52.4, 80.4 62.4 ' +
+  'C 81 52.6, 79.8 43.6, 76 36.4 C 74.2 33, 72.6 29.8, 70.4 28 Z';
+export const PONYTAIL_STRANDS_PATH = 'M 76 24.4 C 82 28.4, 84 39.6, 81.8 51.6';
+export const PONYTAIL_TIE_PATH = 'M 69.8 20.6 L 72.8 27.6';
 
 /** O nariz: um gancho curto — só nos tamanhos grandes. */
 export const NOSE_PATH = 'M 50.6 58.6 Q 49.2 62.4 51.2 63.2';
@@ -254,12 +246,13 @@ export function rigPaths(rig) {
   };
 }
 
-/* O enquadramento muda com o tamanho, como um retrato: pequeno, aproxima-se
-   da cara (os ombros saem de cena, os olhos ganham espaço); grande, vê-se o
-   busto inteiro, com o nariz e as madeixas. `strokePx` é a espessura da
-   linha principal em píxeis. */
+/* O enquadramento muda com o tamanho, como um retrato próximo: a cabeça
+   enche o disco e o queixo fica perto do fundo, para o pescoço sair pelo
+   círculo — os ombros nunca entram. Pequeno, aproxima-se ainda mais da cara
+   (os olhos ganham espaço); grande, entra o nariz e as madeixas.
+   `strokePx` é a espessura da linha principal em píxeis. */
 export function frameFor(size) {
-  if (size < 32) return { viewBox: '12 15 76 76', detail: 'min', strokePx: 1.25 };
-  if (size < 56) return { viewBox: '1 10 98 98', detail: 'mid', strokePx: Math.max(1.4, size * 0.034) };
-  return { viewBox: '-8 9 116 116', detail: 'full', strokePx: Math.min(3, size * 0.027) };
+  if (size < 32) return { viewBox: '14 12 74 74', detail: 'min', strokePx: 1.25 };
+  if (size < 56) return { viewBox: '10 7 82 82', detail: 'mid', strokePx: Math.max(1.4, size * 0.034) };
+  return { viewBox: '9 5 84 84', detail: 'full', strokePx: Math.min(3, size * 0.03) };
 }
