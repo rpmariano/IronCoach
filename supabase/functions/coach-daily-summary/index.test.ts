@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
 // Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
@@ -269,4 +269,24 @@ Deno.test("checkinForSummary: dormiu mal → dia_em_baixo; dor ≥4 → dor_alta
 Deno.test("checkinForSummary: sem check-in (ou incompleto) não há bloco", () => {
   assertEquals(checkinForSummary(null), null);
   assertEquals(checkinForSummary({ sleep: 4, energy: null, stress: 2 }), null);
+});
+
+// ── A carga no cartão (pedido 2026-09-24) ───────────────────────────────────
+
+Deno.test("o aviso de hoje nunca sugere mudar o plano por causa da carga", () => {
+  const msg = buildWarningsMessage([{ kind: "corrida", training_type: "continuo", target_distance_km: 6 }], 0, null,
+    { hasRedSRisk: false, latestBodyFat: null, gender: "M", weeklyWeightChange: null });
+  assertEquals(msg, "Para hoje tens agendado: Corrida (continuo, 6 km).");
+});
+
+Deno.test("o contexto leva a leitura da carga e não leva o created_at das corridas", () => {
+  const ctx = buildDailySummaryContext({
+    ...baseParams,
+    recentRuns: [{ date: "2026-09-24", distance_km: 5, created_at: "2026-09-24T15:36:19+00:00" }],
+    acwr: { acute_km_per_day: 1.7, chronic_km_per_day: 0.8, ratio: null, segue_o_plano: true, conta_como_risco: false },
+  });
+  const runs = ctx.corridas_ultimos_30_dias as Array<Record<string, unknown>>;
+  assertEquals(runs[0].created_at, undefined);
+  assertEquals(runs[0].distance_km, 5);
+  assertEquals((ctx.acwr as Record<string, unknown>).segue_o_plano, true);
 });

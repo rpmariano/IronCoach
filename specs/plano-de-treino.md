@@ -341,6 +341,98 @@ se o atleta treinar a meio do dia — aceitável para um resumo; os alarmes
 continuam a sair de `dayNutrientStatus`, calculado ao vivo. Um botão
 "Atualizar" no card força regeneração (`force: true`).
 
+**Revisto 2026-09-24:** a troca deixou de ser aceitável — registar a corrida
+às 16h deixava o recap da meia-noite a dizer "Tens hoje o último treino de
+corrida…". Agora o resumo refaz-se (`force: true`) quando entra, sai ou muda
+de distância/data uma corrida ou treino de ginásio dos últimos 7 dias
+(`src/utils/dailySummaryRefresh.js`, arrancado em `main.jsx`; a primeira
+lista de cada sessão é o ponto de partida, e registos seguidos juntam-se num
+pedido). Refeições não disparam — o custo de uma chamada ao modelo por
+refeição não compensa; ficam para o "Atualizar" e para o dia seguinte.
+
+**Carga (ACWR) — fora do cartão (2026-09-24).** O "Aviso de hoje" dizia
+"Carga de treino desta semana muito elevada (ACWR …). Considera um dia de
+recuperação ativa." a quem só tinha cumprido o plano (12 km feitos contra 17
+prescritos) e com corridas em só 2 das 4 semanas. Regras novas, em
+`_shared/formulas/runLoadAlert.ts`:
+
+- O rácio só conta como risco com corridas em pelo menos 3 das 4 semanas
+  **e** carga dos últimos 7 dias acima de 1,1× o que o plano aceite previa
+  para esses dias (ou sem corridas no plano). Sem histórico, o rácio nem vai
+  ao modelo (`acwr.ratio: null`).
+- O cartão não muda o plano (regra no prompt; a exceção é o check-in).
+  Quando a carga conta como risco, o `coach-daily-summary` abre um assunto
+  por resolver (`coach_intervention_status: 'needed'`, motivo com a etiqueta
+  `[carga]`) — o Início mostra-o e leva ao chat.
+- Abre-se na **passagem** para alerta, não enquanto dura
+  (`runLoadInterventionToOpen`): não abre se o resumo anterior de hoje já
+  via o alerta, nem se o alerta (com plano) já existia em algum dos 7 dias
+  anteriores — cada dia lido com a sua janela e só com as corridas
+  registadas até ao fim dele. Ler o passado com a janela de hoje reabria o
+  assunto quase todos os dias (revisão pré-deploy de 0743341, bloqueada).
+- Só com plano aceite nesses dias: a conversa do chat é de desvio ao plano.
+  Sem plano, o risco fica no recap (`conta_como_risco`).
+- Com outro assunto por resolver, este perde-se (não fica à espera): só há
+  um de cada vez, e no resumo seguinte as corridas já não são novas.
+- Um plano que começa a meio da janela só responde pelos seus dias; um
+  plano que já vinha de trás responde pela janela inteira (os descansos sem
+  nada a dizer não têm item). Um plano só de refeições não é plano de treino.
+- Um episódio fecha com 3 dias calmos seguidos (≤1,30, sem histórico ou
+  dentro do plano); um pico depois disso é novo e abre outra vez. Um dia
+  calmo sozinho não chega — o rácio oscila com 3 ou 4 corridas na janela.
+
+**Sem dados, sem ACWR — em toda a app (2026-09-24).** O atleta corre mais do
+que regista e não vai registar o histórico: "se a app não tem dados, não
+apresenta dados". A regra de histórico passou a ser uma só,
+`RUN_ACWR_MIN_HISTORY_WEEKS` em `_shared/formulas/runAcwr.ts` (corridas em 3
+das 4 semanas; antes bastava uma corrida antes da janela aguda), e todos a
+seguem:
+
+| Onde | Sem histórico |
+|---|---|
+| Dashboard de corrida, Visão geral, avisos (biEngine) | "Sem dados", sem número nem alerta |
+| Gráfico semanal do ACWR | a linha do rácio tem um buraco nessas semanas |
+| Índice de Prontidão (Home, hub da prova) | o pilar "Carga de Treino" não entra |
+| ACWR combinado (chat) | o de corrida conta 0; só aparece se o ginásio tiver histórico (regra própria do ginásio) |
+| Volume semanal (viabilidade da prova, avisos, hub) | desconhecido (`knownWeeklyVolume`): nem "volume insuficiente" nem "o teu volume é X km/semana" |
+| Chat da Carol | "ACWR: SEM HISTÓRICO SUFICIENTE — o rácio não existe" |
+| Resumo do dia | `acwr.ratio: null` |
+| Guarda dos planos | não se aplica |
+
+Com histórico, a linha de ACWR do chat diz se a carga está DENTRO ou ACIMA
+do plano que a Carol prescreveu (a mesma leitura do cartão), e a doutrina só
+manda alertar/descarregar quando está acima.
+
+Sem histórico, o volume de referência para planear é o do **nível do
+perfil** (`levelReferenceWeeklyKm`), e a Carol não pergunta ao atleta quanto
+corre ("ela já conhece o meu nível de experiência"):
+- **partida**: o limite inferior do intervalo do nível
+  (`LEVEL_WEEKLY_KM_RANGE`, Bloco 0 #1 — 15/25/40/60 km/semana, o mesmo do
+  formulário do perfil);
+- **alvo**: o pré-requisito da doutrina para o nível e a distância da prova
+  principal mais próxima (`MIN_VOLUME_KM`, Bloco 1 #2) — onde chegar, não de
+  onde partir. A primeira versão usava o alvo como partida: um iniciante com
+  maratona partia de 35 km/semana (revisão pré-deploy de 195bb0d).
+É um ponto de partida para calibrar, não uma medida: não bloqueia planos. A
+linha lembra também que uma semana pesada depois de semanas vazias pode ser
+regresso de uma paragem, e sem corridas nenhumas pergunta se tem corrido
+(não quantos km). A nutrição do chat continua a contar a energia das corridas
+registadas, com ou sem histórico.
+
+**Guarda de carga dos planos (2026-09-24).** A doutrina mandava respeitar o
+ACWR ao propor um plano, mas nada o verificava. `propose_training_plan`
+projeta agora a carga dia a dia com tudo cumprido (`planLoadViolations`): as
+corridas registadas, os treinos por fazer do plano em curso antes da
+proposta (fixos) e os da proposta. Com histórico, as janelas de 7 dias em que
+é **a proposta** que leva o ACWR acima de 1,50 (sem ela ficaria ≤1,50) fazem
+o plano não ser gravado, e o modelo recebe, por janela, as datas, os km já
+corridos + do plano em curso + da proposta e o máximo que cabe à proposta
+(aguda ≤ 1,5 × anterior ÷ 2,5). Avalia-se do primeiro dia da proposta até 6
+dias depois do último. A prova não conta (é um dado). Uma falha a ler deixa
+passar. A primeira versão comparava só com as corridas registadas e atribuía
+à proposta a carga do plano em curso — nem uma rodagem de 1 km passava
+(revisão pré-deploy de bf21a2b, bloqueada).
+
 ### Modelo
 
 `coach_daily_summary` — uma linha por `(user_id, date)`, upsert na segunda

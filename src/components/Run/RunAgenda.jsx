@@ -30,7 +30,7 @@ import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
 import { useToast } from '../shared/ToastProvider';
-import { assessRaceViability, recentWeeklyVolume } from '../../utils/raceViability';
+import { assessRaceViability, knownRecentWeeklyVolume } from '../../utils/raceViability';
 import { raceLabel } from '../../utils/planDivergence';
 import { getRecommendedPrepWeeks, computeEffectivePrepStartDate } from '../../utils/racePlanEngine';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -224,7 +224,7 @@ export default function RunAgenda({ onClose }) {
   const lastEditedTargetRef = useRef(null); // 'time' | 'pace' | null
 
   const todayIso = todayISO();
-  const weeklyVol = useMemo(() => recentWeeklyVolume(runs, todayIso), [runs, todayIso]);
+  const weeklyVol = useMemo(() => knownRecentWeeklyVolume(runs, todayIso), [runs, todayIso]);
 
   const viability = useMemo(() => {
     if (!draft.distance_km || !draft.date) return { flags: [], isViable: true };
@@ -255,7 +255,7 @@ export default function RunAgenda({ onClose }) {
       distanceKm,
       experienceLevel,
       weeksToRace: prepWeeksForViability >= 0 ? prepWeeksForViability : 0,
-      weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+      weeklyVolumeKm: weeklyVol,
       racePriority: draft.race_priority,
     });
   }, [draft.distance_km, draft.date, draft.experience_level, draft.race_priority, draft.created_at, editingEventId, profile?.experience_level, todayIso, weeklyVol]);

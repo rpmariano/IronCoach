@@ -237,3 +237,32 @@ describe('Home — os atalhos de registo respeitam a recusa do navGuard', () => 
     expect(setOpenCreationMode).toHaveBeenCalledWith('run');
   });
 });
+
+/* Arranque com dados ainda a chegar depois do prazo (dataPending, ver
+   loadInitialData): as listas vazias não querem dizer "primeiro dia". */
+describe('Home — dados ainda a chegar', () => {
+  const vazio = (dataPending) => {
+    window.localStorage.clear();
+    useAppStore.setState({
+      ...baseState,
+      meals: [],
+      dataPending,
+      setActiveTab: vi.fn(),
+      setOpenCreationMode: vi.fn(),
+      setCoachIntent: vi.fn(),
+      loadDailySummary: vi.fn().mockResolvedValue(null),
+    });
+  };
+
+  it('com dados pendentes não mostra o primeiro dia', () => {
+    vazio(true);
+    renderHome();
+    expect(screen.queryByText(/Já correste hoje\?/)).toBeNull();
+  });
+
+  it('com tudo carregado e sem registos, mostra-o', () => {
+    vazio(false);
+    renderHome();
+    expect(screen.getByText(/Já correste hoje\?/)).toBeTruthy();
+  });
+});

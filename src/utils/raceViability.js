@@ -14,7 +14,7 @@
 // specs/formulas-centralizacao.md §3.1, specs/formulas-checklist.md Fase B).
 import { MIN_PREP_WEEKS, MIN_VOLUME_KM, categorizeDistance } from '@formulas/vocabulary.ts';
 export { MIN_PREP_WEEKS, MIN_VOLUME_KM, categorizeDistance };
-import { computeRecentWeeklyVolume, assessRaceViability as sharedAssessRaceViability } from '@formulas/raceViability.ts';
+import { computeRecentWeeklyVolume, knownWeeklyVolume, assessRaceViability as sharedAssessRaceViability } from '@formulas/raceViability.ts';
 
 // ---------------------------------------------------------------------------
 // recentWeeklyVolume — volume médio semanal das últimas `weeks` semanas
@@ -28,6 +28,13 @@ import { computeRecentWeeklyVolume, assessRaceViability as sharedAssessRaceViabi
 // partilhada com a Carol (specs/formulas-checklist.md Fase E).
 export function recentWeeklyVolume(runs, todayISO, weeks = 4) {
   return computeRecentWeeklyVolume(runs, todayISO, weeks);
+}
+
+// O volume que a app conhece de facto — só com histórico (corridas em 3 das
+// 4 semanas); sem ele, null: nem "volume insuficiente" nem "o teu volume é
+// X km/semana" a partir de meia dúzia de registos (pedido 2026-09-24).
+export function knownRecentWeeklyVolume(runs, todayISO) {
+  return knownWeeklyVolume(runs || [], todayISO);
 }
 
 // ---------------------------------------------------------------------------

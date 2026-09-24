@@ -5,7 +5,7 @@
 import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenceInDays, differenceInCalendarDays, parseISO, isValid, format } from 'date-fns';
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
-import { assessRaceViability, recentWeeklyVolume } from './raceViability';
+import { assessRaceViability, knownRecentWeeklyVolume } from './raceViability';
 import { getRecommendedPrepWeeks, resolveExperienceLevel } from './racePlanEngine';
 import { getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from '@formulas/racePlanning.ts';
 import { todayISO } from '../lib/utils';
@@ -25,7 +25,7 @@ import { computeMuscleGroupVolume as sharedComputeMuscleGroupVolume } from '@for
 import { computeMacroAdherence as sharedComputeMacroAdherence } from '@formulas/macroAdherence.ts';
 import { computeEnergyAvailabilityWindow } from '@formulas/energyAvailabilityWindow.ts';
 import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
-import { computeRunAcwr } from '@formulas/runAcwr.ts';
+import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from '@formulas/runAcwr.ts';
 import { computeCrossMetrics } from '@formulas/crossMetrics.ts';
 import { computeReadinessIndex as sharedComputeReadinessIndex } from '@formulas/readinessIndex.ts';
 
@@ -165,12 +165,17 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
 
       const chronicLoad = (w1 + w2 + w3 + w4) / 4;
       const { ratio } = computeAcwr(acuteLoad, chronicLoad);
+      // A mesma regra do ACWR de hoje (runAcwr.ts): sem corridas em 3 das 4
+      // semanas, o rácio dessa semana não existe — a linha do gráfico fica
+      // com um buraco em vez de um pico que só diz "registaste pouco".
+      const hasEnoughData = [w1, w2, w3, w4].filter((v) => v > 0).length >= RUN_ACWR_MIN_HISTORY_WEEKS;
 
       result.push({
         weekLabel: allWeeks[i].label,
         acuteLoad: Math.round(acuteLoad * 10) / 10,
         chronicLoad: Math.round(chronicLoad * 10) / 10,
-        ratio: ratio !== null ? Math.round(ratio * 100) / 100 : 0
+        ratio: hasEnoughData && ratio !== null ? Math.round(ratio * 100) / 100 : null,
+        hasEnoughData,
       });
     }
 
@@ -593,7 +598,7 @@ export function detectCoachInsights(data, profile) {
 
         // 5b. Avaliação Tática Completa (Viabilidade + Ritmo)
         if (data.runs?.length > 0) {
-          const weeklyVol = recentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
+          const weeklyVol = knownRecentWeeklyVolume(data.runs, format(now, 'yyyy-MM-dd'));
           const expLevel = resolveExperienceLevel(next, profile);
           // dist em bruto para semanas de preparação e viabilidade — as
           // tabelas MIN_PREP_WEEKS/MIN_VOLUME_KM não têm categoria de trail
@@ -614,7 +619,7 @@ export function detectCoachInsights(data, profile) {
             distanceKm: dist,
             experienceLevel: expLevel,
             weeksToRace: prepWeeksForViability,
-            weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+            weeklyVolumeKm: weeklyVol,
             racePriority: next.race_priority || 'a',
           });
 
@@ -696,8 +701,9 @@ export function detectCoachInsights(data, profile) {
 }
 
 /**
- * Índice de Prontidão — composto de 4 pilares (sempre) + 1 pilar tático (só
- * com prova agendada) + o check-in de hoje, quando existe (`dailyCheckins`
+ * Índice de Prontidão — composto de 3 pilares (sempre) + o de carga (só com
+ * histórico de corrida) + 1 pilar tático (só com prova agendada) + o
+ * check-in de hoje, quando existe (`dailyCheckins`
  * do store; só se usa a linha de hoje). Delega em @formulas/readinessIndex.ts (T1.5) —
  * única implementação, partilhada com a Carol (specs/formulas-checklist.md
  * Fase E, o gap original que motivou toda a fase).

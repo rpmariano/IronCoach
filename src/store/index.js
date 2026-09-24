@@ -88,6 +88,11 @@ export const useAppStore = create((set, get) => ({
   // Ver specs/plano-de-treino.md §11.
   dailySummary: null,
   dailySummaryLoading: false,
+  // De que conta são as corridas e o ginásio que estão no store — posto
+  // quando chegam, no mesmo set. O dailySummaryRefresh espera por ele para
+  // tomar o ponto de partida: uma lista vazia de antes do carregamento não
+  // é "sem treinos" (revisão pré-deploy de 90bfa9b).
+  trainingLoadedFor: null,
   // Item do plano em vias de ser concluído — posto pelo Início mesmo antes de
   // navegar para o registo (RunRegistration/GymRegistration), que o consome
   // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
@@ -815,6 +820,14 @@ export const useAppStore = create((set, get) => ({
       try {
         const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
         if (error) { console.error('Error loading daily summary:', error); return null; }
+        // A carga que pede conversa abre um assunto por resolver no servidor
+        // (runLoadAlert.ts): o Início mostra-o já, sem esperar pela próxima
+        // carga do perfil.
+        const opened = data?.intervention;
+        const profile = get().profile;
+        if (opened?.status === 'needed' && profile && !['needed', 'in_progress'].includes(profile.coach_intervention_status)) {
+          set({ profile: { ...profile, coach_intervention_status: 'needed', coach_intervention_reason: opened.reason || null } });
+        }
         if (data?.summary) {
           set({ dailySummary: data.summary });
           return data.summary;
@@ -1128,82 +1141,197 @@ export const useAppStore = create((set, get) => ({
   },
 
   // Fetch initial user data (called after login)
-  loadInitialData: async (userId) => {
-    try {
-      // 1. Fetch Profile
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-        
-      if (profile) {
-        set({ profile, isAdmin: profile.is_admin });
-      }
+  /* O carregamento inicial (e o de cada regresso à app).
 
-      // 2. Fetch all app data concurrently
-      const today = new Date();
-      today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-      const todayStr = today.toISOString().slice(0, 10);
-
-      const [
-        { data: meals },
-        { data: runs },
-        { data: gymSessions },
-        { data: bodyAssessments },
-        { data: waterLogs },
-        { data: coachMsgs },
-        { data: raceEvents },
-        { data: coachPlans },
-        { data: coachPlanItems },
-        { data: shoes },
-        { data: dailySummary },
-        { data: dailyCheckins },
-        impressionsRes,
-      ] = await Promise.all([
-        supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
-        supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-        supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
-        supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
-        supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
-        supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-        supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle(),
-        // 120 dias: o ciclo precisa de 90 para dizer alguma coisa.
-        supabase.from('daily_checkins').select('*').eq('user_id', userId)
-          .gte('date', new Date(Date.now() - 119 * 86400000).toISOString().slice(0, 10))
-          .order('date', { ascending: true }),
-        // O que já foi mostrado e dispensado, em qualquer dispositivo (ação 5.1).
-        queryImpressionKeys(userId),
-      ]);
-
-      set({
-        meals: meals || [],
-        runs: runs || [],
-        gymSessions: gymSessions || [],
-        bodyAssessments: bodyAssessments || [],
-        waterLogs: waterLogs || [],
-        coachMessages: coachMsgs || [],
-        raceEvents: raceEvents || [],
-        coachPlans: coachPlans || [],
-        coachPlanItems: coachPlanItems || [],
-        shoes: shoes || [],
-        dailyCheckins: dailyCheckins || [],
-        ...(dailySummary && { dailySummary })
-      });
-      // Em erro ficam os conjuntos que já havia: um falhanço passageiro numa
-      // recarga não pode fazer a app esquecer o que já saudou.
-      if (impressionsRes?.error) console.warn('coach_impressions:', impressionsRes.error.message);
-      else applyImpressionRows(set, get, impressionsRes?.data);
-
-    } catch (err) {
-      console.error('Error loading initial data:', err);
-    }
+     Arranque preso no logo (relatado 2026-09-24, 19:36): um pedido
+     (coach_plan_items) ficou 37 s preso na rede do telemóvel; o servidor
+     respondeu em milissegundos quando o pedido lá chegou. Isto esperava por
+     tudo sem limite, o isInitializing não descia e o logo não saía — e a
+     rede de segurança de 30 s do index.html já estava desligada, porque a
+     app adota o logo. Agora:
+     - espera no máximo INITIAL_LOAD_BUDGET_MS; o que não chegou continua em
+       segundo plano e entra no store quando chegar (dataPending fica true
+       até lá — o Início, o onboarding e as boas-vindas não tiram conclusões
+       de listas que ainda não vieram);
+     - todos os pedidos saem juntos (o perfil ia primeiro, sozinho);
+     - num recarregamento do mesmo utilizador, um pedido que falha ou chega
+       atrasado mantém o que já lá estava; ao mudar de conta, as listas da
+       anterior limpam-se logo, para nada passar de uma conta para a outra;
+     - com { join: true } (arranque, eventos de sessão, regresso à app), uma
+       chamada para o mesmo utilizador enquanto outra corre junta-se a ela:
+       o INITIAL_SESSION e o getSession do arranque disparavam dois
+       carregamentos no mesmo segundo. Sem join (depois de gravar ou apagar
+       um registo) é sempre um carregamento novo — o que já corria pode ter
+       começado antes da gravação; o mais recente ganha, fatia a fatia. */
+  dataPending: false,
+  loadInitialData: (userId, { join = false } = {}) => {
+    if (join && initialLoad && initialLoad.userId === userId) return initialLoad.promise;
+    const promise = runInitialLoad(set, get, userId)
+      .catch((err) => console.error('Error loading initial data:', err))
+      .finally(() => { if (initialLoad?.promise === promise) initialLoad = null; });
+    initialLoad = { userId, promise };
+    return promise;
   }
 }));
+
+export const INITIAL_LOAD_BUDGET_MS = 10000;
+let initialLoad = null; // { userId, promise } — o carregamento em curso
+let loadedDataUserId = null; // de quem são as listas que estão no store
+let completeUserId = null; // de quem foi o último carregamento que chegou todo
+let loadSeq = 0;
+const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
+
+const EMPTY_DATA = {
+  profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [],
+  coachMessages: [], raceEvents: [], coachPlans: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
+  trainingLoadedFor: null,
+};
+/** O dataPending nunca dura mais do que isto: um pedido que nunca responde
+ *  não pode deixar o onboarding, as boas-vindas e o primeiro dia à espera
+ *  para sempre (revisão pré-deploy de 90bfa9b). */
+export const DATA_PENDING_MAX_MS = 45000;
+
+/** Resolve quando os dados do primeiro carregamento chegaram todos (ou o
+ *  dataPending passou do prazo). Para o que só pode decidir com tudo: o
+ *  ecrã reposto depois de o Android matar a app, a notificação que a abriu. */
+export function whenDataReady() {
+  return new Promise((resolve) => {
+    if (!useAppStore.getState().dataPending) { resolve(); return; }
+    const unsubscribe = useAppStore.subscribe((s) => {
+      if (!s.dataPending) { unsubscribe(); resolve(); }
+    });
+  });
+}
+
+async function runInitialLoad(set, get, userId) {
+  const seq = ++loadSeq;
+  // Só se limpa quando havia OUTRA conta carregada. No arranque a frio o
+  // store já está vazio, e um set de listas vazias (arrays novos) fazia o
+  // dailySummaryRefresh tomá-las como ponto de partida: as corridas que
+  // chegavam a seguir pareciam novas e cada arranque pedia um resumo novo,
+  // pago (revisão pré-deploy de 90bfa9b).
+  const switching = loadedDataUserId !== null && loadedDataUserId !== userId;
+  loadedDataUserId = userId;
+
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  const todayStr = today.toISOString().slice(0, 10);
+  const list = (data) => data || [];
+  const both = (a, b) => Promise.all([a, b]).then(([x, y]) => ({ data: [x.data, y.data], error: x.error || y.error }));
+
+  // [fatia, pedido, o que escrever com o resultado]. Um erro nunca escreve:
+  // fica o que já lá estava (vazio, se a conta mudou).
+  const jobs = [
+    ['profile', supabase.from('profiles').select('*').eq('id', userId).single(),
+      (data) => (data ? { profile: data, isAdmin: data.is_admin } : null)],
+    ['meals', supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
+      (data) => ({ meals: list(data) })],
+    // Corridas e ginásio juntos: o dailySummaryRefresh toma a primeira lista
+    // que chega como ponto de partida — uma sem a outra fazia a segunda
+    // parecer treinos novos e pedia um resumo ao modelo em vão.
+    ['training', both(
+      supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
+      supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
+    ), (data) => ({ runs: list(data[0]), gymSessions: list(data[1]), trainingLoadedFor: userId })],
+    ['bodyAssessments', supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
+      (data) => ({ bodyAssessments: list(data) })],
+    ['waterLogs', supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      (data) => ({ waterLogs: list(data) })],
+    ['coachMessages', supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+      (data) => ({ coachMessages: list(data) })],
+    ['raceEvents', supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
+      (data) => ({ raceEvents: list(data) })],
+    ['coachPlans', supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
+      (data) => ({ coachPlans: list(data) })],
+    ['coachPlanItems', supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
+      (data) => ({ coachPlanItems: list(data) })],
+    ['shoes', supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      (data) => ({ shoes: list(data) })],
+    ['dailySummary', supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle(),
+      (data) => (data ? { dailySummary: data } : null)],
+    // 120 dias: o ciclo precisa de 90 para dizer alguma coisa.
+    ['dailyCheckins', supabase.from('daily_checkins').select('*').eq('user_id', userId)
+      .gte('date', new Date(Date.now() - 119 * 86400000).toISOString().slice(0, 10))
+      .order('date', { ascending: true }),
+      (data) => ({ dailyCheckins: list(data) })],
+    // O que já foi mostrado e dispensado, em qualquer dispositivo (ação 5.1).
+    // Em erro ficam os conjuntos que já havia: um falhanço passageiro numa
+    // recarga não pode fazer a app esquecer o que já saudou.
+    ['impressions', queryImpressionKeys(userId), (data) => () => applyImpressionRows(set, get, data)],
+  ];
+
+  // dataPending só no primeiro carregamento completo de cada conta: num
+  // regresso à app os dados que já lá estão chegam para tirar conclusões, e
+  // fazê-lo subir e descer voltava a disparar o que espera por ele.
+  // Uma troca de conta é sempre um primeiro carregamento, mesmo que essa
+  // conta já tenha estado completa antes (A → B → A).
+  const firstForUser = completeUserId !== userId || switching;
+  if (switching || firstForUser) set({ ...(switching ? EMPTY_DATA : {}), ...(firstForUser ? { dataPending: true } : {}) });
+  if (firstForUser) {
+    setTimeout(() => {
+      if (seq !== loadSeq || !get().dataPending) return;
+      // Passado o prazo, a conta conta como carregada para o dataPending: um
+      // regresso à app com o pedido ainda preso não o volta a subir (o
+      // onboarding do primeiro uso desmontava-se e voltava a montar).
+      completeUserId = userId;
+      set({ dataPending: false });
+    }, DATA_PENDING_MAX_MS);
+  }
+  let pending = jobs.length;
+  let inTime = true;
+  const onTime = {};
+  const canWrite = (slice) => loadedDataUserId === userId && (sliceSeq[slice] || 0) <= seq;
+  const done = () => {
+    if (seq !== loadSeq) return {};
+    completeUserId = userId;
+    return firstForUser ? { dataPending: false } : {};
+  };
+  // Escreve uma fatia que chegou depois do prazo — se este carregamento
+  // ainda for o mais recente a escrevê-la e a conta não tiver mudado.
+  const writeLate = (slice, patch) => {
+    if (!patch || !canWrite(slice)) return;
+    sliceSeq[slice] = seq;
+    if (typeof patch === 'function') patch();
+    else set(patch);
+  };
+
+  const tasks = jobs.map(([slice, request, toPatch]) => Promise.resolve(request)
+    .then((res) => {
+      if (res?.error) {
+        console.warn(`Carregamento inicial (${slice}):`, res.error.message || res.error);
+        // Fica o que lá está — mas uma resposta atrasada de um carregamento
+        // anterior (pedida antes de uma gravação) já não a pode substituir.
+        if (canWrite(slice)) sliceSeq[slice] = seq;
+        return;
+      }
+      if (inTime) onTime[slice] = toPatch(res?.data);
+      else writeLate(slice, toPatch(res?.data));
+    })
+    .catch((err) => console.warn(`Carregamento inicial (${slice}):`, err))
+    .finally(() => {
+      pending -= 1;
+      if (!inTime && pending === 0) { const patch = done(); if (Object.keys(patch).length) set(patch); }
+    }));
+
+  let timer;
+  const budget = new Promise((resolve) => { timer = setTimeout(resolve, INITIAL_LOAD_BUDGET_MS); });
+  await Promise.race([Promise.all(tasks), budget]);
+  clearTimeout(timer);
+  inTime = false;
+
+  // O que chegou a tempo entra num só set, como antes (o dailySummaryRefresh
+  // e os ecrãs veem uma mudança, não treze).
+  const merged = {};
+  for (const [slice] of jobs) {
+    const patch = onTime[slice];
+    if (!patch || !canWrite(slice)) continue;
+    sliceSeq[slice] = seq;
+    if (typeof patch === 'function') patch();
+    else Object.assign(merged, patch);
+  }
+  if (pending === 0) Object.assign(merged, done());
+  set(merged);
+}
 
 // ── Seletores ────────────────────────────────────────────────────────────
 // "Assuntos a resolver" com a Carol (handoff 2026-09, State Management:

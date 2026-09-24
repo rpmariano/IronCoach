@@ -1,6 +1,7 @@
-// Índice de Prontidão — composto de 4 pilares (sempre) + 1 pilar tático
-// (só quando há prova agendada) + 1 pilar do check-in de hoje (só quando o
-// atleta o fez), score 0-100.
+// Índice de Prontidão — composto de 3 pilares (sempre) + o de carga (só com
+// histórico de corrida, runAcwr.ts) + 1 pilar tático (só quando há prova
+// agendada) + 1 pilar do check-in de hoje (só quando o atleta o fez), score
+// 0-100.
 //
 // @contexto Migrado de src/utils/biEngine.js calculateReadinessIndex
 // (specs/formulas-checklist.md Fase E) — o gap original que motivou toda
@@ -15,7 +16,7 @@ import { computeEnergyAvailabilityWindow, type MealForEA, type GymSessionForEA, 
 import { computeMacroAdherence, type MealForAdherence, type ProfileForAdherence, type BodyAssessmentForAdherence } from "./macroAdherence.ts";
 import { classifyCalorieCompliance } from "./nutritionCompliance.ts";
 import { computeVdotTrend, type RunForVdot } from "./vdotTrend.ts";
-import { computeRecentWeeklyVolume, assessRaceViability } from "./raceViability.ts";
+import { knownWeeklyVolume, assessRaceViability } from "./raceViability.ts";
 import { getRecommendedPrepWeeks, resolveExperienceLevel, getRacePrediction, type RaceForPlanning, type ProfileForPlanning } from "./racePlanning.ts";
 import type { RaceRun } from "./racePrediction.ts";
 import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
@@ -110,24 +111,27 @@ export function computeReadinessIndex(
   const pillars: ReadinessPillar[] = [];
 
   // --- Pilar 1: ACWR ---
+  // Só com histórico (corridas em 3 das 4 semanas, runAcwr.ts). Sem ele o
+  // pilar não entra — como o tático sem prova e o do check-in sem check-in —
+  // em vez de dizer "Carga de risco (2,00)" a quem só registou duas corridas
+  // (pedido 2026-09-24: "se a app não tem dados, não apresenta dados").
   const acwr = computeRunAcwr(runs || [], todayISO);
   const acwrRatio = acwr.ratio || 0;
-  let acwrScore = 0;
-  let acwrDesc = "Sem dados de corrida suficientes.";
-  if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
-    acwrScore = 100;
-    acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
-  } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
-    acwrScore = 50;
-    acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
-  } else if (acwrRatio > 1.5) {
-    acwrScore = 0;
-    acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
-  } else if (acwrRatio > 0 && acwrRatio < 0.8) {
-    acwrScore = 60;
-    acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+  if (acwr.hasEnoughData) {
+    let acwrScore = 60;
+    let acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+    if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
+      acwrScore = 100;
+      acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
+    } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
+      acwrScore = 50;
+      acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
+    } else if (acwrRatio > 1.5) {
+      acwrScore = 0;
+      acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
+    }
+    pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
   }
-  pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
 
   // --- Pilar 2: Disponibilidade Energética ---
   const ea = computeEnergyAvailabilityWindow(meals || [], bodyAssessments || [], runs || [], gymSessions || [], todayISO, "semana");
@@ -192,7 +196,8 @@ export function computeReadinessIndex(
     const distanceKm = parseFloat((nextRace.distance_km ?? "10").toString().replace(",", ".")) || 10;
     const daysToRace = daysBetweenISO(nextRace.date, todayISO);
     const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
-    const weeklyVol = computeRecentWeeklyVolume(runs || [], todayISO);
+    // Só o volume que a app conhece de facto (com histórico); sem ele, null.
+    const weeklyVol = knownWeeklyVolume(runs || [], todayISO);
     const expLevel = resolveExperienceLevel(nextRace, profile);
 
     // Se o plano já começou, a viabilidade de "tempo insuficiente" avalia o
@@ -207,7 +212,7 @@ export function computeReadinessIndex(
       distanceKm,
       experienceLevel: expLevel,
       weeksToRace: prepWeeksForViability,
-      weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+      weeklyVolumeKm: weeklyVol,
       racePriority: nextRace.race_priority || "a",
     });
 

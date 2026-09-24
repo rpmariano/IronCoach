@@ -93,6 +93,19 @@ export const MIN_PREP_WEEKS: Record<string, Record<RaceDistanceCategory, number 
   avancado:  { '5k': 4, '10k':  4, meia:  8, maratona: 12, ultra:   14 },
 };
 
+// ─── Bloco 0 #1 — Volume semanal típico de cada nível (km/semana) ────────
+// O intervalo com que o próprio nível se define (Daniels 2021, Pfitzinger
+// 2014, McMillan 2023; padronizado para 10 km a meia). É o que o formulário
+// do perfil mostra (src/utils/experience.js, em texto — um teste garante que
+// batem certo). O limite inferior é o volume de partida quando a app não
+// conhece o volume de facto (levelReferenceWeeklyKm, raceViability.ts).
+export const LEVEL_WEEKLY_KM_RANGE: Record<string, [number, number]> = {
+  iniciante: [15, 25],
+  basico: [25, 40],
+  medio: [40, 60],
+  avancado: [60, 85],
+};
+
 // ─── Bloco 1 #2 — Volume semanal pré-requisito por nível × distância ─────
 // Valor MÍNIMO da faixa em km/semana, pressupondo ≥80% em Z1/Z2.
 export const MIN_VOLUME_KM: Record<string, Record<RaceDistanceCategory, number>> = {

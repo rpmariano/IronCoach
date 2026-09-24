@@ -32,14 +32,15 @@ import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvail
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
 import { computeNutrientRangeTotals } from "../_shared/formulas/micronutrientTotals.ts";
 import { classifyCalorieCompliance } from "../_shared/formulas/nutritionCompliance.ts";
-import { computeRunAcwr } from "../_shared/formulas/runAcwr.ts";
+import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
+import { planLoadViolations, runLoadReading, type LoadPlanItem, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
 import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
 import { LOW_CONFIDENCE } from "../_shared/formulas/racePrediction.ts";
-import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume } from "../_shared/formulas/raceViability.ts";
+import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume, knownWeeklyVolume, levelReferenceWeeklyKm } from "../_shared/formulas/raceViability.ts";
 import { assessRaceLevelTriage } from "../_shared/formulas/raceLevelTriage.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
@@ -2231,12 +2232,13 @@ function buildRacePhasesPanel(runs: any[], race: any | null, profile: any, today
   // computeEffectivePrepStart em racePlanning.ts).
   const { effectiveStartISO, effectiveWeeksAvailable } = computeEffectivePrepStart(race.date, totalWeeks, race.created_at ?? null);
 
-  const weeklyVol = computeRecentWeeklyVolume(runs || [], todayISO);
+  // Só o volume que a app conhece de facto (com histórico); sem ele, null.
+  const weeklyVol = knownWeeklyVolume(runs || [], todayISO);
   const viability = sharedAssessRaceViability({
     distanceKm,
     experienceLevel: level,
     weeksToRace: effectiveWeeksAvailable,
-    weeklyVolumeKm: weeklyVol > 0 ? weeklyVol : null,
+    weeklyVolumeKm: weeklyVol,
     racePriority: race.race_priority ?? "a",
   });
 
@@ -2311,21 +2313,156 @@ export function computeACWR(
   todayISO: string,
 ): { acuteKm: number; chronicWeeklyKm: number; ratio: number; zone: string } | null {
   if (!runs || runs.length === 0) return null;
-  const { acuteKm, chronicWeeklyKm, ratio, status: zoneKey } = computeRunAcwr(runs, todayISO);
+  const { acuteKm, chronicWeeklyKm, ratio, status: zoneKey, hasEnoughData } = computeRunAcwr(runs, todayISO);
   // Com menos de 1 km/semana de média crónica o rácio é matematicamente inútil.
   if (chronicWeeklyKm < 1) return null;
-  const ZONE_LABELS: Record<string, string> = {
-    danger: "PERIGO(>1,50)",
-    caution: "risco_acrescido(1,31-1,50]",
-    undertrained: "possível_destreino(<0,80)",
-    safe: "seguro(0,80-1,30]",
-  };
+  // Sem corridas em 3 das 4 semanas também (runAcwr.ts): "se a app não tem
+  // dados, não apresenta dados" (pedido 2026-09-24). A Carol dizia "PERIGO"
+  // sobre o plano que ela própria tinha feito a quem só registou 3 corridas.
+  if (!hasEnoughData) return null;
   return {
     acuteKm:          Math.round(acuteKm          * 10) / 10,
     chronicWeeklyKm:  Math.round(chronicWeeklyKm  * 10) / 10,
     ratio:            Math.round((ratio ?? 0)      * 100) / 100,
     zone:             ZONE_LABELS[zoneKey] ?? "desconhecido",
   };
+}
+
+const ZONE_LABELS: Record<string, string> = {
+  danger: "PERIGO(>1,50)",
+  caution: "risco_acrescido(1,31-1,50]",
+  undertrained: "possível_destreino(<0,80)",
+  safe: "seguro(0,80-1,30]",
+};
+
+/** A linha de ACWR do contexto, lida com o histórico e o plano — a mesma
+ *  leitura do cartão do Início (runLoadAlert.ts). Sem histórico diz que o
+ *  rácio não existe, em vez de o calar: com a linha em falta o modelo
+ *  calculava-o à mão a partir das corridas. Com plano, diz se a carga é a
+ *  que ela prescreveu — era aí que a Carol se contradizia. Sem histórico, o
+ *  volume de referência é o do nível do perfil (pedido 2026-09-24: "ela já
+ *  conhece o meu nível de experiência") — não se pergunta ao atleta. */
+export function buildAcwrLine(
+  acwr: ReturnType<typeof computeACWR>,
+  load: RunLoadReading,
+  hasRuns: boolean,
+  todayISO: string,
+  reference: { level: string; start: number; range: [number, number]; target: number | null; category: string | null; raceName?: string | null } | null = null,
+): string | null {
+  const nivel = reference ? EXPERIENCE_LEVEL_LABELS[reference.level] || reference.level : "";
+  const referencia = reference
+    ? ` Volume de partida para planear: o do nível do perfil (${nivel}: ${reference.range[0]}-${reference.range[1]} km/semana) — ` +
+      `parte de ${reference.start} km/semana e sobe com o teto semanal da doutrina; não perguntes ao atleta quanto corre, o perfil já o diz.` +
+      (reference.target == null
+        ? ""
+        : reference.target > reference.start
+          ? ` Até à prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o mínimo da doutrina é ${reference.target} km/semana — ` +
+            `é onde chegar, não de onde partir.`
+          : ` Para a prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o nível já cobre o mínimo da doutrina ` +
+            `(${reference.target} km/semana): não é preciso subir volume por causa dela.`)
+    : "";
+  if (!acwr) {
+    if (load.enoughHistory) {
+      // Com histórico mas a média das 4 semanas quase a zero: não é falta de
+      // registos, é carga quase nula — sem rácio útil.
+      return `ACWR: carga das últimas 4 semanas quase nula — sem rácio útil.`;
+    }
+    if (!hasRuns) {
+      return reference
+        ? `ACWR: sem corridas registadas nas últimas 4 semanas. Pode ter estado parado (lesão, pausa) ou só não ter registado: ` +
+          `pergunta-lhe se tem corrido antes de planear — não quantos km, isso o nível diz.${referencia}`
+        : null;
+    }
+    return `ACWR: SEM HISTÓRICO SUFICIENTE — corridas registadas em ${load.historyWeeks} das últimas 4 semanas ` +
+      `(são precisas ${RUN_ACWR_MIN_HISTORY_WEEKS}). O rácio não existe: não o cites, não fales de carga aguda/crónica ` +
+      `e não tires dele conclusões de sobrecarga ou risco de lesão. O atleta pode correr mais do que regista — ou pode estar a ` +
+      `voltar de uma paragem: se a semana registada for bem mais pesada do que as anteriores, pergunta-lhe antes de subir o volume.` +
+      referencia;
+  }
+  let line = `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`;
+  const since = load.planFrom && load.planFrom > addDaysISO(todayISO, -6) ? ` desde ${load.planFrom}` : " nos últimos 7 dias";
+  if (load.prescribedKm !== null && load.prescribedKm > 0) {
+    line += load.followsPlan
+      ? ` — DENTRO do plano que prescreveste (${load.kmOnPlanDays} km feitos${since} para ${load.prescribedKm} km previstos): não é ` +
+        `excesso do atleta, não o trates como tal. Se ele se queixar de cansaço, a carga do plano é uma causa possível — ajustar o ` +
+        `teu plano é legítimo.`
+      : ` — ACIMA do plano (${load.kmOnPlanDays} km feitos${since} para ${load.prescribedKm} km previstos).`;
+  } else if (load.hasPlan) {
+    line += ` — o plano não tinha corridas nestes 7 dias.`;
+  }
+  return line;
+}
+
+/** A guarda de carga de runProposeTrainingPlan: as corridas registadas de
+ *  35 dias, os itens de corrida ainda por fazer dos planos de treino ativos
+ *  que ficam antes da proposta (o que ela substitui, a partir do início
+ *  dela, não conta), e as corridas da proposta. Devolve a mensagem de erro
+ *  para o modelo, ou null. */
+// deno-lint-ignore no-explicit-any
+export async function checkPlanLoad(sb: any, userId: string, rows: any[], trainingPlans: any[], periodStart: string, todayISO: string): Promise<string | null> {
+  try {
+    const { data: runs, error } = await sb.from("runs").select("date, distance_km, duration_seconds")
+      .eq("user_id", userId).gte("date", addDaysISO(todayISO, -34)).lte("date", todayISO);
+    if (error) { console.warn("checkPlanLoad: corridas não lidas:", error.message); return null; }
+    // deno-lint-ignore no-explicit-any
+    let before: any[] = [];
+    if (trainingPlans.length && periodStart > todayISO) {
+      const { data, error: itemsError } = await sb.from("coach_plan_items")
+        .select("planned_date, kind, training_type, status, target_distance_km, target_duration_min")
+        .eq("user_id", userId)
+        // deno-lint-ignore no-explicit-any
+        .in("plan_id", trainingPlans.map((p: any) => p.id))
+        .eq("status", "pendente")
+        .gte("planned_date", todayISO)
+        .lt("planned_date", periodStart);
+      if (itemsError) console.warn("checkPlanLoad: plano ativo não lido:", itemsError.message);
+      else before = data || [];
+    }
+    const violations = planLoadViolations({
+      runs: runs || [],
+      fixedItems: before,
+      proposedItems: rows.map((r) => ({ ...r, status: "pendente" })),
+      today: todayISO,
+    });
+    if (!violations.length) return null;
+    const fmt = (n: number) => String(n).replace(".", ",");
+    const janelas = violations.map((v) =>
+      `de ${v.from} a ${v.date}: ${fmt(v.doneKm)} km já corridos + ${fmt(v.fixedKm)} km do plano em curso + ${fmt(v.proposedKm)} km desta proposta ` +
+      `(ACWR ${fmt(v.ratio)}) — nesses dias a proposta pode ter no máximo ${fmt(v.maxProposedKm)} km`
+    );
+    return `Erro: com este plano cumprido, a carga de corrida chega a PERIGO (ACWR acima de 1,50) — ${janelas.join("; ")}. ` +
+      `O plano NÃO foi gravado. Reduz os km da proposta nesses dias (menos km, ou uma corrida a menos) até caberem, e volta a propor. ` +
+      `Se o que não cabe é o plano em curso, a proposta pode começar mais cedo e substituir esses dias. Não digas ao atleta que o plano está na Home.`;
+  } catch (e) {
+    console.warn("checkPlanLoad falhou:", e);
+    return null;
+  }
+}
+
+/** O plano aceite de 13 dias para trás até depois de amanhã — para a linha
+ *  de ACWR saber o que foi prescrito (runLoadReading recorta as janelas).
+ *  Numa falha, sem plano: a linha fica só com o rácio. */
+// deno-lint-ignore no-explicit-any
+export async function fetchLoadPlanItems(sb: any, userId: string, todayISO: string): Promise<LoadPlanItem[]> {
+  try {
+    const from = addDaysISO(todayISO, -13);
+    const { data: plans, error } = await sb.from("coach_plans").select("id")
+      .eq("user_id", userId).eq("status", "aceite").gte("period_end", from);
+    if (error || !plans?.length) return [];
+    const { data: items, error: itemsError } = await sb.from("coach_plan_items")
+      .select("plan_id, planned_date, kind, status, target_distance_km, target_duration_min")
+      .eq("user_id", userId)
+      // deno-lint-ignore no-explicit-any
+      .in("plan_id", plans.map((p: any) => p.id))
+      .gte("planned_date", from)
+      .lte("planned_date", addDaysISO(todayISO, 2))
+      .neq("status", "cancelado");
+    if (itemsError) return [];
+    return items || [];
+  } catch (e) {
+    console.warn("fetchLoadPlanItems falhou:", e);
+    return [];
+  }
 }
 
 // Executa a function call get_running_history: corridas num intervalo.
@@ -2755,6 +2892,18 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
           `Se o atleta quer mesmo que "${targetRace?.name ?? "esta prova"}" seja o objetivo, ela tem de passar a principal primeiro (update_race_event, race_priority="a") — e aí é o conflito de principais, que se fala com ele.`;
       }
     }
+  }
+
+  // ── A carga do plano (pedido 2026-09-24) ─────────────────────────────────
+  // A doutrina manda respeitar o ACWR, mas era só uma instrução ao modelo: a
+  // Carol chegava a propor planos que a própria linha de ACWR do contexto
+  // dava como PERIGO. Com histórico suficiente, um plano que, cumprido,
+  // leve o ACWR acima de 1,50 não é gravado — o erro diz o dia e o teto de
+  // km. Sem histórico não há regra (planLoadViolations). Antes de qualquer
+  // escrita, como as outras guardas. Uma falha a ler deixa passar.
+  {
+    const loadError = await checkPlanLoad(sb, userId, rows, trainingPlans, period_start, todayPlansISO);
+    if (loadError) return loadError;
   }
 
   // Nunca mais de UMA proposta de plano de treino pendente ao mesmo tempo —
@@ -4386,12 +4535,15 @@ export function buildSystemInstruction(
     `- Cita sempre os **valores exatos** dos dados do atleta — não arredondas nem parafraseias.\n` +
     `- Referencia explicitamente o histórico desta conversa quando relevante: "Há pouco disseste que...".\n` +
     `- Referencia conversas anteriores quando relevante para o tema: "Na semana passada mencionaste...".\n` +
-    `- Se detetares um padrão preocupante nos dados (volume decrescente ≥3 semanas, FC a subir, ACWR >1,5), aborda-o proativamente na próxima abertura.\n` +
+    `- Se detetares um padrão preocupante nos dados (volume decrescente ≥3 semanas, FC a subir, ACWR >1,5 fora do plano que prescreveste), aborda-o proativamente na próxima abertura.\n` +
     `- **FADIGA, CANSAÇO E CARGA DIÁRIA (REGRA CRÍTICA)**:\n` +
     `  Quando o atleta disser que se sente cansado, fatigado, dorido, ou questionar o rendimento/próximo treino:\n` +
     `  1. Analisa TODAS as atividades de hoje no contexto (soma de TODAS as corridas de hoje + sessões de ginásio). Se o atleta tiver feito múltiplas sessões (ex.: 3 corridas de 20 km ou corrida longa + ginásio intenso), CITA TODAS ELAS explicitamente pelo nome e volume/duração total acumulado!\n` +
-    `  2. Avalia SEMPRE a linha de ACWR fornecida no contexto. Se o ACWR estiver em PERIGO (≥1,50) ou risco acrescido (1,31-1,49), deves alertar com firmeza para o pico agudo de carga e perigo severo de lesão/sobrecarga.\n` +
-    `  3. Perante um dia de carga extrema ou ACWR em perigo, NÃO proponhas manter o treino normal planeado para o dia seguinte como se nada fosse; deves apontar que o volume de hoje comprometeu o planeamento e sugerir descanso ou ajuste do plano.\n\n` +
+    `  2. Avalia SEMPRE a linha de ACWR fornecida no contexto. Se o ACWR estiver em PERIGO (≥1,50) ou risco acrescido (1,31-1,49), deves alertar com firmeza para o pico agudo de carga e perigo severo de lesão/sobrecarga — ` +
+    `EXCETO se a linha disser que a carga está DENTRO do plano que prescreveste (então não é excesso dele — mas, se houver cansaço, a carga do teu ` +
+    `plano é uma causa possível, a par do sono, da alimentação e da intensidade, e ajustar o plano é legítimo) ` +
+    `ou que não há histórico suficiente (então não há ACWR e não o usas).\n` +
+    `  3. Perante um dia de carga extrema ou ACWR em perigo fora do plano, NÃO proponhas manter o treino normal planeado para o dia seguinte como se nada fosse; deves apontar que o volume de hoje comprometeu o planeamento e sugerir descanso ou ajuste do plano.\n\n` +
     // ── Plano Ativo ───────────────────────────────────────────────────────────
     `## Plano Ativo\n` +
     `Se houver um plano de treino aceite em curso, menciona-o na abertura quando relevante ` +
@@ -4449,7 +4601,7 @@ export function buildSystemInstruction(
     `- O atleta pede explicitamente para alterar, adaptar ou rever o plano\n` +
     `**Gatilhos proativos** (Carol deteta nos dados sem o atleta pedir — aborda na próxima abertura):\n` +
     `- ≥3 treinos planeados em atraso no plano ativo → abre a conversa com a sugestão de adaptação\n` +
-    `- ACWR >1,5 (overreaching) → sugere semana de descarga e redução de volume\n` +
+    `- ACWR >1,5 que não esteja DENTRO do plano (acima dele, ou sem plano — a linha de ACWR diz-to) → sugere semana de descarga e redução de volume\n` +
     `- Sem progressão de pace em ≥3 semanas + treinos de qualidade <15% do volume → sugere adicionar treino estruturado\n` +
     `- Prova A a ≤21 dias + plano atual sem modo taper → sugere entrada em taper\n` +
     `- Objetivos significativamente alterados (nova prova, novo peso-alvo) → sugere adaptar o plano ao novo contexto\n` +
@@ -4780,7 +4932,10 @@ export function buildSystemInstruction(
     `  Médio:     ≤10 % OU ≤+5-8 km/sem\n` +
     `  Avançado:  ≤10 % OU ≤+8-10 km/sem\n` +
     `  Nunca subir volume E intensidade (Z3-Z5) na mesma semana.\n` +
-    `ACWR (rácio aguda:crónica, Gabbett 2016): seguro 0,80-1,30 · risco_acrescido 1,31-1,49 · PERIGO ≥1,50 (risco exponencial de lesão/sobretreino). Se o contexto mostrar ACWR em zona de risco, reflete isso no plano antes de propor aumentos.\n` +
+    `ACWR (rácio aguda:crónica, Gabbett 2016): seguro 0,80-1,30 · risco_acrescido 1,31-1,49 · PERIGO ≥1,50 (risco exponencial de lesão/sobretreino). Se o contexto mostrar ACWR em zona de risco, reflete isso no plano antes de propor aumentos. ` +
+    `A app verifica: com histórico suficiente, um plano que, cumprido, leve o ACWR acima de 1,50 é recusado — a resposta diz o dia e o máximo de km. ` +
+    `Sem histórico suficiente não há ACWR e a app não verifica: parte do volume de referência do nível do perfil (vem na linha de ACWR) ` +
+    `e do teto semanal abaixo — não perguntes ao atleta quanto corre.\n` +
     `DESCARGA (semana de recuperação):\n` +
     `  Iniciante: de 2-3 em 2-3 sem · corte de 20-30 % do volume\n` +
     `  Básico:    de 3 em 3 sem     · corte de 20-25 %\n` +
@@ -5456,15 +5611,30 @@ async function handler(req: Request): Promise<Response> {
     // necessárias para a carga crónica). Incluído no contexto como valor pré-
     // calculado para o modelo não ter de o derivar a partir das linhas brutas.
     const acwr = computeACWR(recentRuns || [], todayISO);
+    const [loadPlanItems, nextRaceForLoad] = await Promise.all([
+      fetchLoadPlanItems(sb, userId, todayISO),
+      // A prova-objetivo, para o volume a atingir: a principal mais próxima,
+      // senão a próxima (uma de treino de 5 km antes da principal não é o alvo).
+      sb.from("race_events").select("name, distance_km, race_priority").eq("user_id", userId).gte("date", todayISO)
+        .neq("status", "concluida").order("date", { ascending: true }).limit(5)
+        // deno-lint-ignore no-explicit-any
+        .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
+    ]);
+    const loadReading = runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO });
+    const levelReference = !loadReading.enoughHistory
+      ? (() => {
+        const lvl = (profile?.experience_level as string | null) ?? null;
+        const ref = levelReferenceWeeklyKm(lvl, nextRaceForLoad?.distance_km != null ? Number(nextRaceForLoad.distance_km) : null);
+        return ref && lvl ? { level: lvl, ...ref, raceName: nextRaceForLoad?.name ?? null } : null;
+      })()
+      : null;
     // Até à Fase C isto dizia "ACWR atual (baseado em km)" — o insight de
     // ACWR do frontend (detectCoachInsights, biEngine.js) usava carga sRPE
     // até essa altura, uma grandeza diferente com o mesmo nome, e o rótulo
     // evitava confundi-las no mesmo prompt (P0-3, Fase A). A Fase C unificou
     // os dois em km (specs/formulas-centralizacao.md §5.1) — já não há
     // ambiguidade a desfazer.
-    const acwrLine = acwr
-      ? `ACWR atual: ${acwr.ratio} (aguda ${acwr.acuteKm} km/7d · crónica ${acwr.chronicWeeklyKm} km/sem) — zona: ${acwr.zone}`
-      : null;
+    const acwrLine = buildAcwrLine(acwr, loadReading, (recentRuns || []).length > 0, todayISO, levelReference);
 
     // ── Armário de sapatilhas ────────────────────────────────────────────
     // O acumulado e o desgaste de cada par delegam em ../_shared/formulas/
@@ -5527,8 +5697,15 @@ async function handler(req: Request): Promise<Response> {
     // `null` do caso "sem corridas nenhumas" é preservado de propósito: a
     // partilhada devolve 0, e 0 faria disparar a flag `volume_insuficiente`
     // em assessViability, enquanto `null` significa "sem dados para julgar".
+    // Desde 2026-09-24, só com histórico (corridas em 3 das 4 semanas,
+    // knownWeeklyVolume): com meia dúzia de registos a média dava ~5 km/sem e
+    // "OBJETIVO_INVIAVEL: volume insuficiente" a quem corre mais do que regista.
+    const weeklyVolumeKm = knownWeeklyVolume((recentRuns || []) as Array<{ date: string; distance_km: number }>, todayISO);
+    // A nutrição conta a energia das corridas registadas, com ou sem
+    // histórico: gastaram-se a sério (revisão pré-deploy de 195bb0d). Só a
+    // viabilidade precisa do volume "conhecido".
     const runs4w = (recentRuns || []) as Array<{ date: string; distance_km: number }>;
-    const weeklyVolumeKm = runs4w.length > 0 ? computeRecentWeeklyVolume(runs4w, todayISO, 4) : null;
+    const loggedWeeklyVolumeKm = runs4w.length > 0 ? computeRecentWeeklyVolume(runs4w, todayISO, 4) : null;
     const raceEventsContext = buildRaceEventsContext(
       upcomingRaces || [],
       todayISO,
@@ -5679,7 +5856,7 @@ async function handler(req: Request): Promise<Response> {
       waterGoalMl:   (profile?.water_goal_ml as number | null) ?? null,
       proteinGoal:   (profile?.protein_goal as number | null) ?? null,
       calorieGoal:   (profile?.calorie_goal as number | null) ?? null,
-      weeklyVolumeKm,
+      weeklyVolumeKm: loggedWeeklyVolumeKm,
     });
 
     // ── Treinos do plano ────────────────────────────────────────────────

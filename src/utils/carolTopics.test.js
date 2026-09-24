@@ -24,6 +24,14 @@ describe('pendingTopicLines', () => {
     expect(plano).not.toMatch(/ACWR/);
   });
 
+  it('carga de corrida (runLoadAlert.ts): acima do plano e sem plano, sem números nem ACWR', () => {
+    const acima = pendingTopicLines(comMotivo('[carga] Carga de corrida: 30 km nos últimos 7 dias, quando o plano previa 16 km; a média das últimas 4 semanas é 12,5 km/semana (ACWR 2,4).'))[0];
+    expect(acima).toMatch(/mais do que o plano previa/);
+    expect(acima).not.toMatch(/ACWR|km/);
+    const semPlano = pendingTopicLines(comMotivo('[carga] Carga de corrida: 30 km nos últimos 7 dias, sem corridas no plano para esses dias; …'))[0];
+    expect(semPlano).toMatch(/subiu muito face às últimas semanas/);
+  });
+
   it('propostas por decidir; nada pendente, nada a dizer', () => {
     expect(pendingTopicLines({ coachPlans: [{ status: 'proposto' }], coachGoalProposals: [{ status: 'proposto' }] }))
       .toEqual(['Tens um plano meu à espera que o aceites ou recuses.', 'Tens objetivos meus à espera da tua decisão.']);

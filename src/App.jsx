@@ -4,7 +4,7 @@ import { registerServiceWorker } from './lib/push';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
-import { useAppStore } from './store';
+import { useAppStore, whenDataReady } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
@@ -501,8 +501,11 @@ export default function App() {
        Carol" em Perfil · Coach. Conta como ecrã de topo, para o "voltar" do
        telemóvel o fechar em vez de sair da app. */
   const dadosAtleta = { profile, runs, meals, gymSessions, bodyAssessments, raceEvents };
-  const needsOnboarding = !isInitializing && shouldShowOnboarding(dadosAtleta);
-  const silentlyDone = !isInitializing && shouldSilentlyMarkDone(dadosAtleta);
+  // Com dados ainda a chegar depois do prazo do arranque (dataPending, ver
+  // loadInitialData), uma lista vazia não quer dizer "sem registos".
+  const dataPending = useAppStore((s) => s.dataPending);
+  const needsOnboarding = !isInitializing && !dataPending && shouldShowOnboarding(dadosAtleta);
+  const silentlyDone = !isInitializing && !dataPending && shouldSilentlyMarkDone(dadosAtleta);
   const showOnboarding = !!session && (needsOnboarding || onboardingOpen);
 
   useEffect(() => {
@@ -520,7 +523,9 @@ export default function App() {
      na URL) — guardada aqui porque só se consome depois de loadInitialData
      trazer os dados frescos (perfil, planos, provas); ver consumeProactiveKey. */
   const proactiveKeyRef = useRef(null);
-  const consumeProactiveKey = useCallback((key) => {
+  // `navigate: false` quando os dados chegaram tarde e o atleta já foi para
+  // outro lado: o assunto fica pedido ao Coach, mas não o arranca de onde está.
+  const consumeProactiveKey = useCallback((key, { navigate = true } = {}) => {
     if (!key) return;
     useAppStore.getState().logImpression({ kind: 'push', key, title: null });
     if (key.startsWith('intervention:')) {
@@ -531,7 +536,7 @@ export default function App() {
       const s = useAppStore.getState();
       if (s.profile?.coach_intervention_status === 'needed' || s.profile?.coach_intervention_status === 'in_progress') {
         s.setCoachIntent({ kind: 'proactive_intervention', reason: s.profile?.coach_intervention_reason || null });
-        setActiveTab('coach');
+        if (navigate) setActiveTab('coach');
       }
       return;
     }
@@ -544,7 +549,7 @@ export default function App() {
           races: conflict.races.map((r) => ({ id: r.id, name: r.name, date: r.date })),
           target: conflict.target ? { id: conflict.target.id, name: conflict.target.name, date: conflict.target.date } : null,
         });
-        setActiveTab('coach');
+        if (navigate) setActiveTab('coach');
       }
       return;
     }
@@ -554,7 +559,9 @@ export default function App() {
     // preferência sem lhe dar prioridade sobre um coachIntent explícito.
     useAppStore.getState().setProactiveKeyRequested(key);
   }, [setActiveTab]);
-  const welcomeReady = !showBootSplash && !!session && !showOnboarding;
+  // As boas-vindas esperam pelos dados todos: decidem pelas impressões (o
+  // que já foi saudado noutro dispositivo) e pelos registos.
+  const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending;
 
   // Com a app já à vista, os outros ecrãs carregam-se em tempo morto (ver
   // PREFETCH_WHEN_IDLE). Nos testes não: o import() tardio chegaria depois
@@ -683,7 +690,7 @@ export default function App() {
         sinceLastMs: Date.now() - lastVisibleReloadRef.current,
       })) return;
       lastVisibleReloadRef.current = Date.now();
-      loadInitialData(userId);
+      loadInitialData(userId, { join: true });
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
@@ -779,17 +786,28 @@ export default function App() {
         // ?tab= sem nada a meio; ver shouldRestoreNavigation).
         if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
         setNavigationDecided(true);
-        loadInitialData(existingSession.user.id)
-          .then(() => {
-            // O ecrã reposto aponta para uma corrida ou prova que já não
-            // existe (ou que não carregou)? Fecha-se.
-            dropMissingScreen(useAppStore);
-            if (proactiveKeyRef.current) {
-              consumeProactiveKey(proactiveKeyRef.current);
-              proactiveKeyRef.current = null;
-            }
-          })
-          .finally(() => setIsInitializing(false));
+        const loading = loadInitialData(existingSession.user.id, { join: true });
+        // O logo sai quando o carregamento devolve (no máximo 10 s)…
+        loading.finally(() => setIsInitializing(false));
+        // …mas fechar o ecrã reposto e abrir a notificação esperam pelos dados
+        // todos: com a rede lenta, as corridas ou as provas podem chegar
+        // depois, e o ecrã de edição reposto fechava-se por "não existir"
+        // (revisão pré-deploy de 90bfa9b).
+        let tabAtEntry = null;
+        loading.then(() => { tabAtEntry = useAppStore.getState().activeTab; }).then(whenDataReady).then(() => {
+          // O ecrã reposto aponta para uma corrida ou prova que já não
+          // existe (ou que não carregou)? Fecha-se.
+          dropMissingScreen(useAppStore);
+          if (proactiveKeyRef.current) {
+            // Com a rede lenta os dados podem chegar até 45 s depois: se o
+            // atleta entretanto mudou de separador ou abriu um ecrã, a
+            // notificação não o arranca de lá (revisão pré-deploy de 62976df).
+            const s = useAppStore.getState();
+            const moved = s.activeTab !== tabAtEntry || isScreenOpen(s) || isBusy(document);
+            consumeProactiveKey(proactiveKeyRef.current, { navigate: !moved });
+            proactiveKeyRef.current = null;
+          }
+        });
       } else if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);
@@ -861,9 +879,9 @@ export default function App() {
         // onboarding montava e desmontava logo a seguir. Enquanto os dados
         // carregam, é o loader que se vê.
         setIsInitializing(true);
-        Promise.resolve(loadInitialData(userId)).finally(() => setIsInitializing(false));
+        Promise.resolve(loadInitialData(userId, { join: true })).finally(() => setIsInitializing(false));
       } else {
-        loadInitialData(userId);
+        loadInitialData(userId, { join: true });
       }
     });
 
