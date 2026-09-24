@@ -52,8 +52,9 @@ function daysBetween(fromIso, toIso) {
 /** Todos os momentos que se aplicam agora, pela ordem de prioridade do
  *  servidor: manhã da prova > véspera > depois da prova > fim de bloco >
  *  silêncio — o dia da prova manda em tudo o resto. O balanço da semana só
- *  aparece quando a lista está vazia. `now` é injetável para
- *  os testes. Usada pelo efeito passivo do Coach (P.9) para saber a que
+ *  aparece num dia sem mais nenhum momento do servidor, incluindo o assunto
+ *  por resolver e o conflito de provas, que esta lista não mostra
+ *  (weekReviewCandidate). `now` é injetável para os testes. Usada pelo efeito passivo do Coach (P.9) para saber a que
  *  candidato uma notificação tocada corresponde, mesmo que não seja o
  *  primeiro da lista; `pickProactiveTrigger` continua a ser só o primeiro. */
 export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [], dailyCheckins = [] }, now = new Date()) {

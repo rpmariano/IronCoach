@@ -200,7 +200,10 @@ export type ServerProactiveInput = {
     /** P.5: os planos, para o conflito de provas e o fim de bloco. */
     plans?: TriggerPlan[] | null;
     /** P.6: os momentos que o atleta aceita. Um desligado não esconde os
-     *  seguintes — passa-se ao próximo da lista. Sem isto, todos contam. */
+     *  seguintes — passa-se ao próximo da lista. Sem isto, todos contam.
+     *  A exceção é o balanço da semana: só entra num dia sem mais nenhum
+     *  momento, ligado ou não. Um desligado que se aplique fica com o dia,
+     *  e nesse dia não sai notificação nenhuma (P.14). */
     allowed?: string[] | null;
     /** Balanço da semana: datas de registos que cubram a semana revista (o
      *  tick só as lê à segunda e à terça — weekToReviewBounds). */

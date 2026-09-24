@@ -156,7 +156,9 @@ async function handler(req: Request): Promise<Response> {
         lastRecordDate: last,
         intervention: interventionById.get(userId) ?? null,
         plans: triggerPlans,
-        // Um momento desligado no Perfil não esconde os seguintes.
+        // Um momento desligado no Perfil não esconde os seguintes — exceto o
+        // balanço da semana, que só sai num dia sem nenhum outro momento,
+        // ligado ou não (P.14).
         allowed: Array.isArray(prefsById.get(userId)?.types) ? prefsById.get(userId)!.types : null,
         weekRecordDates: weekDates,
       }, today);

@@ -284,7 +284,6 @@ export function evaluatePrescriptions(
   return { training, counts, executionScore: training.length ? executionScore(counts) : null, nutrition };
 }
 
-/** O bloco do prompt. null se não houve nada prescrito nos últimos 14 dias. */
 /** A linha de contas dos treinos ("N treinos prescritos: …; descanso …") —
  *  a mesma no bloco de 14 dias e no plano da semana do balanço. */
 export function trainingSummaryLine(counts: Record<TrainingOutcome, number>): string {
@@ -296,6 +295,7 @@ export function trainingSummaryLine(counts: Record<TrainingOutcome, number>): st
   ].filter(Boolean).join("; ");
 }
 
+/** O bloco do prompt. null se não houve nada prescrito nos últimos 14 dias. */
 export function buildPrescriptionAdherenceContext(summary: AdherenceSummary): string | null {
   const { training, counts, nutrition } = summary;
   if (!training.length && !nutrition.length) return null;
