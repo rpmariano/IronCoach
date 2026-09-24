@@ -16,16 +16,16 @@ describe('Layout — a barra inferior fecha "O plano"', () => {
     useAppStore.setState({ activeTab: 'home', openCreationMode: 'plano', navGuard: null });
   });
 
-  it('Home, o separador onde já se estava, fecha o plano', () => {
+  it('Início, o separador onde já se estava, fecha o plano', () => {
     render(<Layout><div /></Layout>);
-    fireEvent.click(screen.getByRole('button', { name: 'Home' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Início' }));
     expect(useAppStore.getState().openCreationMode).toBe(null);
     expect(useAppStore.getState().activeTab).toBe('home');
   });
 
   it('outro separador fecha o plano e muda para lá', () => {
     render(<Layout><div /></Layout>);
-    fireEvent.click(screen.getByRole('button', { name: 'Coach' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Carol' }));
     expect(useAppStore.getState().openCreationMode).toBe(null);
     expect(useAppStore.getState().activeTab).toBe('coach');
   });
@@ -33,7 +33,7 @@ describe('Layout — a barra inferior fecha "O plano"', () => {
   it('um registo aberto não é fechado pela barra', () => {
     useAppStore.setState({ openCreationMode: 'meal' });
     render(<Layout><div /></Layout>);
-    fireEvent.click(screen.getByRole('button', { name: 'Coach' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Carol' }));
     expect(useAppStore.getState().openCreationMode).toBe('meal');
   });
 });

@@ -110,7 +110,7 @@ describe('ReportIssueButton', () => {
       user_name: 'Atleta Teste',
       title: 'Botão de guardar sem resposta',
       description: 'O botão de guardar não responde.',
-      page: 'Coach',
+      page: 'Carol',
       user_agent: expect.any(String),
       attachment_urls: null,
     });

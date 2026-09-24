@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
-import { Bot, House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
+import { House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
+import CarolIcon from '../Coach/CarolIcon';
 import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import BrandMark from '../shared/BrandMark';
@@ -185,7 +186,7 @@ export default function Layout({ children }) {
       >
         <header className="px-4 pt-4 pb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <button type="button" aria-label="IronCoach, ir para a Home" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
+            <button type="button" aria-label="IronCoach, ir para o Início" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
               <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />
             </button>
             <div>
@@ -375,14 +376,17 @@ export default function Layout({ children }) {
           }}
         />
 
-        <VBarBtn tab="home" icon={<House size={20} />} label="Home" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(0)} />
+        {/* Os nomes em português (2026-09-24): Início, Provas, Evolução e Carol
+            — o separador dela tem o nome e o rosto dela (CarolIcon), não um
+            robô. As chaves internas (home, dashboard, coach) não mudam. */}
+        <VBarBtn tab="home" icon={<House size={20} />} label="Início" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(0)} />
         <VBarBtn tab="provas" icon={<Trophy size={20} />} label="Provas" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(1)} />
 
         {/* Espaço central reservado na grelha */}
         <div aria-hidden="true" className="h-full" />
 
         <DashboardVBarBtn activeTab={activeTab} setTab={goTab} lastDashboardTab={lastDashboardTab} pillRef={setNavItemRef(2)} />
-        <VBarBtn tab="coach" icon={<Bot size={20} />} label="Coach" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
+        <VBarBtn tab="coach" icon={<CarolIcon size={20} />} label="Carol" activeTab={activeTab} setTab={goTab} pillRef={setNavItemRef(3)} />
 
         {/* Botão "+" flutuante — filho direto do nav para top: -22px ser relativo ao topo da barra */}
         <button
@@ -477,14 +481,14 @@ function DashboardVBarBtn({ activeTab, setTab, lastDashboardTab, pillRef }) {
     <button
       onClick={() => setTab(active ? activeTab : (lastDashboardTab || 'hub'))}
       data-vert="dashboard"
-      aria-label="Dashboard"
+      aria-label="Evolução"
       aria-current={active ? 'page' : undefined}
       className="vbar-btn relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 py-1 active:scale-95 transition cursor-pointer"
       style={{ color: 'var(--brand)', fontWeight: active ? 700 : 500 }}
     >
       <NavPillAnchor pillRef={pillRef} />
       <LayoutDashboard size={20} />
-      <span className="text-[11px] leading-none whitespace-nowrap">Dashboard</span>
+      <span className="text-[11px] leading-none whitespace-nowrap">Evolução</span>
     </button>
   );
 }

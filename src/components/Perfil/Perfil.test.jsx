@@ -579,11 +579,11 @@ describe('Perfil — reorganização das Metas (#41)', () => {
     expect(separadorDe(screen.getByTestId('perfil-metas-coach-nota'))).toBe('Metas');
   });
 
-  it('as notificações (água e Carol) passaram para o separador Coach', () => {
+  it('as notificações (água e Carol) passaram para o separador Carol', () => {
     render(<Perfil />);
-    expect(separadorDe(screen.getByText('Lembretes de água'))).toBe('Coach');
-    expect(separadorDe(screen.getByTestId('perfil-carol-push'))).toBe('Coach');
-    expect(separadorDe(screen.getByTestId('perfil-notificacoes'))).toBe('Coach');
+    expect(separadorDe(screen.getByText('Lembretes de água'))).toBe('Carol');
+    expect(separadorDe(screen.getByTestId('perfil-carol-push'))).toBe('Carol');
+    expect(separadorDe(screen.getByTestId('perfil-notificacoes'))).toBe('Carol');
   });
 
   // Bug #42 (2026-09-22): "Comparar-me com o meu escalão" vive na Vitrina.

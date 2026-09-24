@@ -3,7 +3,8 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { Bot, User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Trophy, MessageSquare } from 'lucide-react';
+import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Trophy, MessageSquare } from 'lucide-react';
+import CarolIcon from '../Coach/CarolIcon';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
 import ExperienceLevelHelp from '../shared/ExperienceLevelHelp';
@@ -48,7 +49,7 @@ const TABS = [
   // O SubNav já tem o mecanismo (o Dashboard usa-o em "Geral" → "Visão
   // Geral"); faltava aqui.
   { key: 'equipamento', label: 'Equipa.', srLabel: 'Equipamento', icon: <Footprints size={14} />, tone: 'run' },
-  { key: 'coach', label: 'Coach', icon: <Bot size={14} />, tone: 'coach' },
+  { key: 'coach', label: 'Carol', icon: <CarolIcon size={14} />, tone: 'coach' },
 ];
 
 // Apenas os 4 objetivos corporais com intervenção direta via treino + nutrição.
@@ -620,7 +621,7 @@ export default function Perfil() {
               >
                 <span className="text-[11px] text-[var(--text-3)]">
                   Restrições alimentares e alergias agora vivem na aba{' '}
-                  <span className="font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Coach</span>
+                  <span className="font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Carol</span>
                   , junto da Memória do Coach.
                 </span>
                 <ChevronRight size={14} className="text-[var(--text-3)] shrink-0" />
@@ -775,7 +776,7 @@ export default function Perfil() {
                 nada, só obrigava a vir aqui ligar um interruptor. Fica a
                 regra que continua a valer. */}
             <p className="flex items-start gap-1.5 text-[11px] text-[var(--text-3)] mt-5 pt-4 border-t border-[var(--border-glass)]" data-testid="perfil-metas-coach-nota">
-              <Bot size={14} className="shrink-0 mt-px" style={{ color: 'var(--mod-coach-to)' }} />
+              <CarolIcon size={14} className="shrink-0 mt-px" style={{ color: 'var(--mod-coach-to)' }} />
               <span>
                 A Carol pode propor-te metas no chat; só mudam aqui se aceitares. As que vierem dela ficam
                 marcadas com "Coach" — editá-las à mão devolve-te o controlo.
@@ -844,7 +845,7 @@ export default function Perfil() {
       </div>
 
       <div ref={(el) => { pageRefs.current[4] = el; setPageRef(4)(el); }} className="tab-swipe-page space-y-4">
-          <h2 className="sr-only">Coach</h2>
+          <h2 className="sr-only">Carol</h2>
           {/* "Objetivos com o Coach" (botão "Pedir ao Coach para definir
               objetivos") foi removido — nunca chegou a chamar a Edge Function
               suggest-goals (era um placeholder com setTimeout, ver histórico
