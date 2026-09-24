@@ -786,12 +786,19 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       setPendingCreatedRun(run);
       const paths = Array.isArray(run.photo_paths) ? run.photo_paths : [];
       if (paths.length) {
+        const failed = () => {
+          if (createdRunRef.current?.run.id === run.id) {
+            setErrorMsg('Os prints desta corrida não carregaram. Ficam na corrida; os que juntares somam-se a eles.');
+          }
+        };
         supabase.storage.from('run-photos').createSignedUrls(paths, 3600).then(({ data, error }) => {
-          if (error || !Array.isArray(data) || createdRunRef.current?.run.id !== run.id) return;
+          if (createdRunRef.current?.run.id !== run.id) return;
+          if (error || !Array.isArray(data)) { failed(); return; }
           const loaded = data.map((d, i) => ({ url: d.signedUrl, dataUrl: d.signedUrl, path: paths[i] })).filter((p) => p.url && p.path);
           setRunPhotos((prev) => [...loaded, ...prev.filter((p) => !p.path)].slice(0, MAX_PHOTOS));
           if (loaded.length === paths.length) createdRunRef.current.photosShown = true;
-        }).catch(() => {});
+          else failed();
+        }).catch(failed);
       }
     }
     setIsFormDirty(true);
@@ -874,7 +881,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const files = Array.from(e.target.files || []);
     e.target.value = '';
     if (!files.length) return;
-    const remaining = MAX_PHOTOS - runPhotos.length;
+    // Os prints da corrida já gravada que não estão à vista (rascunho
+    // reaberto e ainda por carregar) contam para o limite: a reanálise
+    // mantém-nos, e o servidor recusa mais de MAX_PHOTOS no total.
+    const created = createdRunRef.current;
+    const hiddenKept = created && !created.photosShown ? (created.run.photo_paths?.length || 0) : 0;
+    const remaining = MAX_PHOTOS - runPhotos.length - hiddenKept;
     if (remaining <= 0) {
       setErrorMsg(`Máximo de ${MAX_PHOTOS} imagens.`);
       return;
@@ -1344,11 +1356,28 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     store.setRuns(exists ? store.runs.map((r) => (r.id === run.id ? run : r)) : [...store.runs, run]);
   };
 
+  /* A corrida deixa de estar "por fechar": sai do ref, do estado e do
+     rascunho JÁ. O rascunho grava com espera e só se apaga ao fechar o ecrã
+     (depois da confirmação); se a app morresse entretanto, o próximo registo
+     novo reabria sobre esta corrida e podia gravar-lhe por cima (revisão
+     pré-deploy de 7afdb01). */
+  const forgetCreatedRun = () => {
+    createdRunRef.current = null;
+    setPendingCreatedRun(null);
+    try {
+      const raw = localStorage.getItem(draftStorageKey);
+      const draft = raw ? JSON.parse(raw) : null;
+      if (draft?.createdRun) {
+        delete draft.createdRun;
+        localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+      }
+    } catch { /* sem storage: fica o que a próxima gravação do rascunho puser */ }
+  };
+
   // O fecho da corrida criada pela análise por foto (logo, ou depois do
   // aviso das métricas em falta).
   const finishCreatedRun = async (run) => {
-    createdRunRef.current = null;
-    setPendingCreatedRun(null);
+    forgetCreatedRun();
     upsertRunInStore(run);
     await completePlanItemForRun(run);
     await finishSavedRun(run, 'Corrida registada');
@@ -1358,20 +1387,24 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      imagem (nome, data, RPE, notas, sapatilhas, tipo)? Se o atleta mudou
      alguma coisa depois do aviso, a corrida não pode fechar como estava —
      essas mudanças perdiam-se sem aviso. */
-  const formMatchesRun = (run) => {
-    // Um campo que a corrida não traz (undefined) não se compara: não há
-    // nada a dizer que mudou. O servidor devolve a linha inteira.
-    const same = (fromRun, norm, fromForm) => fromRun === undefined || norm(fromRun) === fromForm;
-    const text = (v) => (v || '').trim();
-    return same(run.name, text, runName.trim())
-      && same(run.date, (v) => v, runDate)
-      && same(run.effort_rpe, (v) => Number(v || 0), Number(runEffortRpe || 0))
-      && same(run.notes, text, runNotes.trim())
-      && same(run.shoe_id, (v) => v ?? null, shoeId ?? null)
-      && same(run.kind, (v) => v, runKind)
-      && (runKind !== 'treino' || same(run.training_type, (v) => v ?? null, runTrainingType))
-      && (runKind !== 'competicao' || same(run.details?.race_type, (v) => v ?? null, completedRaceType));
-  };
+  // Um campo que a corrida não traz (undefined) não se compara: não há
+  // nada a dizer que mudou. O servidor devolve a linha inteira.
+  const sameAsRun = (fromRun, norm, fromForm) => fromRun === undefined || norm(fromRun) === fromForm;
+  const trimmed = (v) => (v || '').trim();
+  // O que mexe na análise (RPE, notas, tipo) — mudar isto pede reanálise.
+  const analysisMatchesRun = (run) => (
+    sameAsRun(run.effort_rpe, (v) => Number(v || 0), Number(runEffortRpe || 0))
+    && sameAsRun(run.notes, trimmed, runNotes.trim())
+    && sameAsRun(run.kind, (v) => v, runKind)
+    && (runKind !== 'treino' || sameAsRun(run.training_type, (v) => v ?? null, runTrainingType))
+    && (runKind !== 'competicao' || sameAsRun(run.details?.race_type, (v) => v ?? null, completedRaceType))
+  );
+  const formMatchesRun = (run) => (
+    analysisMatchesRun(run)
+    && sameAsRun(run.name, trimmed, runName.trim())
+    && sameAsRun(run.date, (v) => v, runDate)
+    && sameAsRun(run.shoe_id, (v) => v ?? null, shoeId ?? null)
+  );
 
   /* Os prints novos depois de a corrida já estar gravada: reanálise dela,
      com os prints que já lá estavam e ainda estão no formulário (keep_paths)
@@ -1384,6 +1417,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const samePhotos = !fresh.length && keep.length === runPaths.length && keep.every((p) => runPaths.includes(p));
     if (samePhotos && formMatchesRun(created.run)) {
       await finishCreatedRun(created.run);
+      return;
+    }
+    // Só o nome, a data ou as sapatilhas mudaram: não mexem na análise —
+    // update direto, sem voltar a ler os prints (como a editar, PRD 3.2).
+    if (samePhotos && analysisMatchesRun(created.run)) {
+      const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
+      const { error } = await supabase.from('runs').update(payload).eq('id', created.run.id);
+      if (error) throw new Error(error.message || 'Falha a gravar a corrida.');
+      await finishCreatedRun({ ...created.run, ...payload });
       return;
     }
     const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
@@ -1738,7 +1780,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (data?.error) throw new Error(data.error);
 
       newlySavedRun = data.run;
-      createdRunRef.current = null;
+      forgetCreatedRun();
       upsertRunInStore(newlySavedRun);
 
       // Se esta corrida vem do plano (ou bate com um treino de corrida

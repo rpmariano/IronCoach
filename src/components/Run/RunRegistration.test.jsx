@@ -197,6 +197,8 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
      das métricas em falta aparecer. "Mais prints" só fechava o aviso, e a
      análise seguinte criava uma segunda corrida igual. */
   describe('"Mais prints" depois de a corrida estar gravada', () => {
+    // O rascunho vive em localStorage: cada teste começa sem ele.
+    beforeEach(() => { localStorage.removeItem('ironcoach:corrida-rascunho:nova'); });
     const gravada = {
       id: 'run-1', name: 'Corrida de Hoje', date: todayISO(), kind: 'treino', training_type: 'continuo',
       effort_rpe: null, notes: null, shoe_id: null,
@@ -264,33 +266,45 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
     });
 
-    it('sem prints novos mas com o nome mudado, reanalisa — a mudança não se perde', async () => {
+    it('sem prints novos e só com o nome mudado, grava-o direto — sem voltar a ler os prints', async () => {
+      mocks.updateRun.mockResolvedValueOnce({ error: null });
       await chegarAoAviso();
       fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
       fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: 'Rodagem do Tejo' } });
-      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, name: 'Rodagem do Tejo' } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+      expect(mocks.updates.some((u) => u.table === 'runs' && u.id === 'run-1' && u.payload.name === 'Rodagem do Tejo')).toBe(true);
+      expect(useAppStore.getState().runs.map((r) => [r.id, r.name])).toEqual([['run-1', 'Rodagem do Tejo']]);
+    });
+
+    it('sem prints novos mas com as notas mudadas, reanalisa — a mudança chega à Carol', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      fireEvent.change(screen.getByPlaceholderText('Como te sentiste, dores, condições atmosféricas...'), { target: { value: 'Dor no joelho ao km 4' } });
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, notes: 'Dor no joelho ao km 4' } }, error: null });
       fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
 
       await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
       const [, { body }] = mocks.invoke.mock.calls[1];
       expect(body.run_id).toBe('run-1');
-      expect(body.name).toBe('Rodagem do Tejo');
+      expect(body.notes).toBe('Dor no joelho ao km 4');
       expect(body.keep_paths).toEqual(['user-1/a.jpg']);
       expect(body.images).toEqual([]);
     });
 
-    it('"Prosseguir" depois de mudar o nome reanalisa — a mudança não se perde', async () => {
+    it('"Prosseguir" depois de mudar o nome grava-o — a mudança não se perde', async () => {
+      mocks.updateRun.mockResolvedValueOnce({ error: null });
       await chegarAoAviso();
       // Fecha-se o aviso, muda-se o nome, reabre-se pelo botão flutuante e
       // prossegue-se.
       fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: 'Fechar' }));
       fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: 'Rodagem do Tejo' } });
       fireEvent.click(await screen.findByRole('button', { name: /Métricas em falta/ }));
-      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, name: 'Rodagem do Tejo' } }, error: null });
       fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
 
-      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-      expect(mocks.invoke.mock.calls[1][1].body).toMatchObject({ run_id: 'run-1', name: 'Rodagem do Tejo' });
       await dispensarConfirmacao();
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
       expect(useAppStore.getState().runs.map((r) => [r.id, r.name])).toEqual([['run-1', 'Rodagem do Tejo']]);
@@ -314,6 +328,22 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       expect(body.run_id).toBe('run-1');
       expect(body.keep_paths).toEqual(['user-1/a.jpg']);
       expect(body.images).toEqual(['AAA']);
+    });
+
+    it('fechada a corrida, o rascunho deixa de a guardar — o próximo registo não reabre sobre ela', async () => {
+      await chegarAoAviso();
+      // O rascunho grava com espera: aqui simula-se que já a tinha guardado.
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada, runName: 'Corrida de Hoje' }));
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      // Logo ao fechar a corrida — antes da confirmação e de o ecrã fechar
+      // (que apaga o rascunho inteiro): o resto do rascunho fica, sem ela.
+      await waitFor(() => {
+        const draft = JSON.parse(localStorage.getItem('ironcoach:corrida-rascunho:nova'));
+        expect(draft).not.toBeNull();
+        expect(draft.runName).toBe('Corrida de Hoje');
+        expect(draft.createdRun).toBeUndefined();
+      });
+      expect(onClose).not.toHaveBeenCalled();
     });
 
     it('"Manual" depois do aviso grava por cima da corrida (run_id), sem a duplicar', async () => {

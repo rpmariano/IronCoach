@@ -1134,9 +1134,6 @@ function shoeId(body: Record<string, unknown>): string | null {
   return typeof raw === "string" && UUID_RE.test(raw) ? raw : null;
 }
 
-/** Reanálise a editar (pedido 2026-09-13): dos prints já guardados, quais
- *  ficam (`keep_paths`, por omissão todos) e quais saem — só se aceitam
- *  caminhos que a corrida já tinha, nunca um caminho inventado. */
 /* O que só a leitura dos prints sabe e o formulário manual não traz: a app de
    origem (a Carol usa-a para dizer que ecrã falta — carolMemory, regra 5), a
    regularidade e a hidratação recomendada. Editar à mão reconstrói `details`
@@ -1161,6 +1158,9 @@ export function keepImageOnlyDetails(
   return next || kept ? out : null;
 }
 
+/** Reanálise a editar (pedido 2026-09-13): dos prints já guardados, quais
+ *  ficam (`keep_paths`, por omissão todos) e quais saem — só se aceitam
+ *  caminhos que a corrida já tinha, nunca um caminho inventado. */
 export function resolvePhotoPaths(existing: unknown, keepPaths: unknown): { kept: string[]; dropped: string[] } {
   const current = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === "string" && !!x) : [];
   if (!Array.isArray(keepPaths)) return { kept: current, dropped: [] };
