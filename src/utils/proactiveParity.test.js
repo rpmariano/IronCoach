@@ -190,6 +190,18 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     expect(listProactiveTriggers(prova, at('2026-09-29')).map((c) => c.trigger)).toEqual(['race_morning']);
   });
 
+  it('com um assunto por resolver, não há balanço — também no chat, onde o assunto não aparece na lista', () => {
+    const comDor = { ...semana, profile: { coach_intervention_status: 'needed', coach_intervention_reason: 'dor no joelho' } };
+    expect(listProactiveTriggers(comDor, at(MONDAY)).some((c) => c.trigger === 'week_review')).toBe(false);
+  });
+
+  it('o "Estás bem?" desligado continua a ficar com o dia: nem balanço na notificação, nem conversa diferente no chat', () => {
+    const calado = { ...semana, runs: [{ id: 'r1', date: '2026-09-23', distance_km: 8 }], meals: [], gymSessions: [] };
+    const server = listServerProactive({ raceEvents: [], runs: calado.runs, lastRecordDate: '2026-09-23', weekRecordDates: ['2026-09-23'], allowed: ['week_review'] }, MONDAY);
+    expect(server).toEqual([]);
+    expect(listProactiveTriggers(calado, at(MONDAY)).map((c) => c.trigger)).toEqual(['silence']);
+  });
+
   it('desligado no Perfil, não aparece no servidor', () => {
     expect(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-27', weekRecordDates: ['2026-09-25'], allowed: ['silence'] }, MONDAY)).toEqual([]);
   });

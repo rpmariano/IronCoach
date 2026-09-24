@@ -285,18 +285,24 @@ export function evaluatePrescriptions(
 }
 
 /** O bloco do prompt. null se não houve nada prescrito nos últimos 14 dias. */
+/** A linha de contas dos treinos ("N treinos prescritos: …; descanso …") —
+ *  a mesma no bloco de 14 dias e no plano da semana do balanço. */
+export function trainingSummaryLine(counts: Record<TrainingOutcome, number>): string {
+  const workouts = counts.cumprido + counts.a_menos + counts.a_mais + counts.falhado;
+  const rests = counts.descanso_respeitado + counts.descanso_nao_respeitado;
+  return [
+    workouts ? `${workouts} treinos prescritos: ${counts.cumprido} cumpridos, ${counts.a_menos} a menos, ${counts.a_mais} a mais, ${counts.falhado} não feitos` : null,
+    rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${rests} dias` : null,
+  ].filter(Boolean).join("; ");
+}
+
 export function buildPrescriptionAdherenceContext(summary: AdherenceSummary): string | null {
   const { training, counts, nutrition } = summary;
   if (!training.length && !nutrition.length) return null;
   const parts: string[] = [];
 
   if (training.length) {
-    const workouts = counts.cumprido + counts.a_menos + counts.a_mais + counts.falhado;
-    const rests = counts.descanso_respeitado + counts.descanso_nao_respeitado;
-    const summaryLine = [
-      workouts ? `${workouts} treinos prescritos: ${counts.cumprido} cumpridos, ${counts.a_menos} a menos, ${counts.a_mais} a mais, ${counts.falhado} não feitos` : null,
-      rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${rests} dias` : null,
-    ].filter(Boolean).join("; ");
+    const summaryLine = trainingSummaryLine(counts);
     parts.push(`Treinos (±${Math.round(ADHERENCE_TOLERANCE * 100)}% conta como cumprido) — ${summaryLine}:\n` +
       training.slice(-MAX_TRAINING_LINES).map((t) => `- ${t.text}`).join("\n"));
   }

@@ -22,7 +22,7 @@
 
 import { buildCheckinContext, type DailyCheckin } from "./formulas/checkinAlarms.ts";
 import { normalizeGender } from "./formulas/vocabulary.ts";
-import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, ADHERENCE_WINDOW_DAYS } from "./formulas/prescriptionAdherence.ts";
+import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, trainingSummaryLine, ADHERENCE_WINDOW_DAYS, type TrainingOutcome } from "./formulas/prescriptionAdherence.ts";
 import { computeBestPace, type BestPaceBucket } from "./formulas/bestPace.ts";
 import { computeVdotTrend } from "./formulas/vdotTrend.ts";
 import { formatPaceMinKm } from "./formulas/paceFormat.ts";
@@ -1095,7 +1095,6 @@ export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: str
  * cargo do modelo contar linhas (revisão pré-deploy de 2026-09-24). null sem
  * plano nessa semana ou se a leitura falhar.
  */
-// deno-lint-ignore no-explicit-any
 export async function fetchWeekAdherenceLine(sb: any, userId: string, weekStart: string): Promise<string | null> {
   try {
     const weekEnd = addDaysISO(weekStart, 6);
@@ -1124,20 +1123,13 @@ export async function fetchWeekAdherenceLine(sb: any, userId: string, weekStart:
 
 /** A linha do plano da semana, a partir da avaliação — pura, para os testes. */
 export function buildWeekAdherenceLine(
-  summary: { training: unknown[]; counts: Record<string, number>; executionScore: number | null },
+  summary: { training: unknown[]; counts: Record<TrainingOutcome, number>; executionScore: number | null },
   weekStart: string,
   weekEnd: string,
 ): string | null {
   if (!summary.training.length) return null;
-  const c = summary.counts;
-  const workouts = (c.cumprido || 0) + (c.a_menos || 0) + (c.a_mais || 0) + (c.falhado || 0);
-  const rests = (c.descanso_respeitado || 0) + (c.descanso_nao_respeitado || 0);
-  const parts = [
-    workouts ? `${workouts} treinos prescritos: ${c.cumprido || 0} cumpridos, ${c.a_menos || 0} a menos, ${c.a_mais || 0} a mais, ${c.falhado || 0} não feitos` : null,
-    rests ? `descanso respeitado em ${c.descanso_respeitado || 0} de ${rests} dias` : null,
-  ].filter(Boolean).join("; ");
   const full = summary.executionScore === 100;
-  return `Plano da semana de ${weekStart} a ${weekEnd} (só esta semana): ${parts}. ` +
+  return `Plano da semana de ${weekStart} a ${weekEnd} (só esta semana): ${trainingSummaryLine(summary.counts)}. ` +
     `Cumprimento: ${String(summary.executionScore ?? 0).replace(".", ",")}%. Semana cumprida a 100%: ${full ? "sim" : "não"}.`;
 }
 

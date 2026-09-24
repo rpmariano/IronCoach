@@ -18,7 +18,7 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock, findWeekToReview } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, weekReviewCandidate } from '@formulas/proactiveTriggers.ts';
 import { addDaysISO } from '../lib/utils';
 
 export const SILENCE_DAYS = 3;
@@ -39,14 +39,8 @@ function isoDay(d) {
 
 /** Data (yyyy-mm-dd) do registo mais recente entre corridas, refeições,
  *  ginásio e avaliações — ou null se nunca houve registo nenhum. */
-export function lastRecordDate({ runs, meals, gymSessions, bodyAssessments }) {
-  const dates = [];
-  for (const list of [runs, meals, gymSessions, bodyAssessments]) {
-    for (const r of list || []) {
-      const d = r?.date || r?.assessed_at;
-      if (typeof d === 'string' && d.length >= 10) dates.push(d.slice(0, 10));
-    }
-  }
+export function lastRecordDate(data) {
+  const dates = recordDates(data);
   if (dates.length === 0) return null;
   return dates.sort().pop();
 }
@@ -121,10 +115,19 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
 
   /* O balanço da semana (2026-09-24): à segunda e à terça, a semana de
      segunda a domingo que acabou — com algum registo dentro dela, e só num
-     dia sem mais nenhum momento (a prova, o "Estás bem?" e o fim de bloco
-     ficam com o dia). A régua é a do servidor, para a chave ser a da
-     notificação; as contagens vão no Contexto, para ela não as adivinhar. */
-  const week = list.length === 0 ? findWeekToReview(today, recordDates({ runs, meals, gymSessions, bodyAssessments })) : null;
+     dia sem mais nenhum momento. A decisão é a do servidor, tal e qual
+     (weekReviewCandidate): com as provas, os planos e o assunto por
+     resolver do perfil, que esta lista não mostra (vivem no Início) mas que
+     também ficam com o dia. Assim a notificação e o chat nunca discordam. As
+     contagens vão no Contexto, para ela não as adivinhar. */
+  const week = weekReviewCandidate({
+    raceEvents: races,
+    runs,
+    lastRecordDate: last,
+    intervention: { status: profile?.coach_intervention_status ?? null, reason: profile?.coach_intervention_reason ?? null },
+    plans: (coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })),
+    weekRecordDates: recordDates({ runs, meals, gymSessions, bodyAssessments }),
+  }, today);
   if (week) {
     list.push({
       trigger: 'week_review',

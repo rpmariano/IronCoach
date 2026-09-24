@@ -725,7 +725,7 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   week_review:
     `É o balanço da semana que acabou no domingo — as datas e as contagens estão no Contexto. Três bolhas curtas: ` +
     `(1) o que ele fez face ao que estava previsto — usa a linha "Plano da semana" do Contexto, que já traz as contas e o veredicto ` +
-    `(não recontes a partir do bloco O QUE PRESCREVESTE, que cobre 14 dias); sem essa linha, não havia plano: compara o volume com a semana anterior (no Contexto); ` +
+    `(não recontes a partir do bloco O QUE PRESCREVESTE, que cobre 14 dias); sem essa linha, não digas nada sobre o plano — pode não ter havido, ou não consegui lê-lo — e compara o volume com a semana anterior (no Contexto); ` +
     `(2) o que ficou bem e o que ficou a faltar, com um número concreto em cada — o sono e a energia dos check-ins contam, se os houver; ` +
     `(3) o foco da semana que começa, numa frase, a partir do plano em vigor e da próxima prova. ` +
     `Só se o Contexto disser "Semana cumprida a 100%: sim": uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +

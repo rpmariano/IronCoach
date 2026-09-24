@@ -203,6 +203,9 @@ Deno.test("listServerProactive: o balanço só num dia sem mais nenhum momento",
   assertEquals(issue.map((c) => c.trigger), ["intervention"]);
   // Desligado no Perfil: nada.
   assertEquals(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-27", weekRecordDates: ["2026-09-25"], allowed: ["silence"] }, "2026-09-28"), []);
+  // O "Estás bem?" desligado mas a aplicar-se continua a ficar com o dia: o
+  // balanço não sai no lugar dele (a notificação e o chat não discordam).
+  assertEquals(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-23", weekRecordDates: ["2026-09-23"], allowed: ["week_review"] }, "2026-09-28"), []);
   assertEquals(proactiveTab("week_review"), "coach");
   const msg = proactivePushMessage(alone[0]);
   assertEquals(msg.title, "Carol");

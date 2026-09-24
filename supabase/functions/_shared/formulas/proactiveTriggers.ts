@@ -226,19 +226,25 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   const scheduled = races.filter((r) => r.status !== "concluida");
   const base = { raceId: null, raceName: null, hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 
+  /* A lista monta-se com TODOS os momentos e só no fim se tiram os que o
+     atleta desligou (`allowed`). O balanço da semana decide-se sobre a lista
+     inteira: se o "Estás bem?" está desligado mas se aplica, o dia continua
+     a ser dele — senão a notificação prometia o balanço e o chat, ao abrir,
+     escrevia o "Estás bem?" (revisão pré-deploy de 2026-09-24). */
+
   // Um assunto por resolver passa à frente de tudo: é saúde ou um desvio
   // que ela já decidiu que precisa de conversa.
-  if (ok("intervention") && input.intervention?.status === "needed") {
+  if (input.intervention?.status === "needed") {
     out.push({ ...base, trigger: "intervention", key: `intervention:${shortHash(input.intervention.reason || "")}` });
   }
 
-  const morning = ok("race_morning") ? scheduled.find((r) => r.date.slice(0, 10) === todayISO) : undefined;
+  const morning = scheduled.find((r) => r.date.slice(0, 10) === todayISO);
   if (morning) out.push({ ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null });
 
-  const eve = ok("race_eve") ? scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1) : undefined;
+  const eve = scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1);
   if (eve) out.push({ ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null });
 
-  const conflict = ok("race_conflict") ? detectRaceConflictServer(input.plans, races, todayISO) : null;
+  const conflict = detectRaceConflictServer(input.plans, races, todayISO);
   if (conflict) {
     const target = races.find((r) => r.id === conflict.plan.race_id) ?? null;
     out.push({
@@ -252,7 +258,7 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     });
   }
 
-  const past = !ok("race_after") ? [] : races
+  const past = races
     .map((race) => ({ race, gap: daysBetween(race.date.slice(0, 10), todayISO) }))
     .filter(({ gap }) => gap >= 0 && gap <= RACE_AFTER_DAYS_WITH_RUN)
     .sort((a, b) => a.gap - b.gap);
@@ -269,24 +275,32 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     }
   }
 
-  const block = ok("block_end") ? findEndingBlock(input.plans, todayISO) : null;
+  const block = findEndingBlock(input.plans, todayISO);
   if (block) {
     out.push({ ...base, trigger: "block_end", key: `block_end:${block.id}`, planId: block.id, blockEnd: dayOf(block.period_end), anchorDate: dayOf(block.period_end) });
   }
 
-  const last = ok("silence") && input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
+  const last = input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
   if (last) {
     const gap = daysBetween(last, todayISO);
     if (gap >= SILENCE_DAYS) out.push({ ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last });
   }
 
   // O balanço da semana só entra num dia sem mais nada: o dia da prova, um
-  // assunto por resolver ou um "Estás bem?" ficam com o dia inteiro.
-  const week = ok("week_review") && out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
+  // assunto por resolver, o fim de bloco ou um "Estás bem?" ficam com o dia.
+  const week = out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
   if (week) {
     out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
   }
-  return out;
+  return out.filter((c) => ok(c.trigger));
+}
+
+/** O balanço da semana de hoje, pela mesma régua do servidor — é a função
+ *  que o cliente (src/utils/coachProactive.js) usa, para a regra "só num dia
+ *  sem mais nenhum momento" existir num sítio só. Ignora `allowed`: o
+ *  interruptor do Perfil só cala a notificação (decisão de produto). */
+export function weekReviewCandidate(input: ServerProactiveInput, todayISO: string): ServerProactiveCandidate | null {
+  return listServerProactive({ ...input, allowed: null }, todayISO).find((c) => c.trigger === "week_review") ?? null;
 }
 
 /* O texto da notificação, na voz dela (carolTone): sem emoji, sem ponto de
