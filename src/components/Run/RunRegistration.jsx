@@ -1387,7 +1387,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // com o formulário inteiro dava a um print novo o caminho de um antigo,
     // quando os antigos não estão à vista (revisão pré-deploy de 6e92d67).
     const fresh = runPhotos.filter((p) => p.base64);
-    const freshPaths = paths.slice(paths.length - fresh.length);
+    // Só se os novos foram mesmo enviados com ela: gravar em manual com
+    // run_id não mexe em photo_paths, e aí a cauda são prints antigos, já à
+    // vista (revisão pré-deploy de d3988d2) — os novos ficam por enviar.
+    const known = new Set(runPhotos.filter((p) => p.path).map((p) => p.path));
+    const tail = paths.length >= fresh.length ? paths.slice(paths.length - fresh.length) : [];
+    const freshPaths = tail.every((p) => !known.has(p)) ? tail : [];
     setRunPhotos((prev) => prev.map((p) => {
       const i = fresh.indexOf(p);
       return i >= 0 && freshPaths[i] ? { dataUrl: p.dataUrl, path: freshPaths[i] } : p;
