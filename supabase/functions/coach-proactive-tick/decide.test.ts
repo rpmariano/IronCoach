@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { choosePush, decidePush, lisbonDateOf } from "./decide.ts";
+import { choosePush, decidePush, lisbonDateOf, tickLogRow } from "./decide.ts";
 
 const candidate = { trigger: "race_eve" as const, key: "race_eve:r1", raceId: "r1", raceName: "Meia", hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 const NOW = Date.parse("2026-09-18T15:00:00Z");
@@ -111,4 +111,50 @@ Deno.test("choosePush: o balanço já feito é dessa prova, não dos outros mome
   const silence = { ...candidate, trigger: "silence" as const, key: "silence:2026-09-10", raceId: null, anchorDate: "2026-09-10" };
   const r = choosePush([after, silence], { ...ctx, balanceDoneFor: (c) => c.raceId === "r0" });
   assertEquals(r.candidate?.key, "silence:2026-09-10");
+});
+
+// ── P.10 ────────────────────────────────────────────────────────────────────
+
+Deno.test("P.10: a manhã da prova não sai depois da partida, e com partida marcada só a partir de 2 h antes", () => {
+  const morning = { ...candidate, trigger: "race_morning" as const, key: "race_morning:r1", startMinutes: 9 * 60 + 30 };
+  // 7:07 — ainda mais de 2 h antes da partida.
+  assertEquals(decidePush({ ...base, candidate: morning, lisbonHour: 7, minuteOfDay: 7 * 60 + 7 }), { send: false, reason: "fora_de_horas" });
+  assertEquals(decidePush({ ...base, candidate: morning, lisbonHour: 8, minuteOfDay: 8 * 60 + 7 }), { send: true });
+  // 9:37 — a prova já partiu.
+  assertEquals(decidePush({ ...base, candidate: morning, lisbonHour: 9, minuteOfDay: 9 * 60 + 37 }), { send: false, reason: "depois_da_partida" });
+  // Sem hora de partida, a regra de antes: das 6h.
+  assertEquals(decidePush({ ...base, candidate: { ...morning, startMinutes: null }, lisbonHour: 6, minuteOfDay: 6 * 60 + 7 }), { send: true });
+});
+
+Deno.test("P.10: o que o Início mostrou hoje não se notifica — e passa a vez ao momento seguinte", () => {
+  assertEquals(decidePush({ ...base, seenKeys: new Set(["race_eve:r1"]) }), { send: false, reason: "ja_visto" });
+  const silence = { ...candidate, trigger: "silence" as const, key: "silence:2026-09-14", raceId: null, raceName: null, silenceDays: 4, anchorDate: "2026-09-14" };
+  const picked = choosePush([candidate, silence], { ...base, seenKeys: new Set(["race_eve:r1"]) });
+  assertEquals(picked.candidate?.key, "silence:2026-09-14");
+  // Os dois vistos: o motivo é o do primeiro.
+  assertEquals(choosePush([candidate, silence], { ...base, seenKeys: new Set(["race_eve:r1", "silence:2026-09-14"]) }).decision, { send: false, reason: "ja_visto" });
+});
+
+Deno.test("P.10: o registo em app_logs — só com momento, custo no topo do meta, sem o ruído de hora a hora", () => {
+  const input = { userId: "u1", candidates: [candidate], candidate, reason: "enviada", lisbonHour: 16 };
+  // Sem nenhum momento não há decisão para registar.
+  assertEquals(tickLogRow({ ...input, candidates: [], candidate: null }), null);
+  // Com chamada ao modelo: 'success' com os tokens no topo, para o painel Custos.
+  const sent = tickLogRow({ ...input, usage: { input_tokens: 800, output_tokens: 40 }, generated: true })!;
+  assertEquals(sent.level, "success");
+  assertEquals(sent.event, "coach-proactive-tick");
+  assertEquals(sent.message, "enviada");
+  assertEquals(sent.meta.input_tokens, 800);
+  assertEquals(sent.meta.output_tokens, 40);
+  assertEquals(sent.meta.key, "race_eve:r1");
+  assertEquals(sent.meta.generated, true);
+  // Sem chamada: 'info', sem tokens.
+  const seen = tickLogRow({ ...input, reason: "ja_visto" })!;
+  assertEquals(seen.level, "info");
+  assertEquals("input_tokens" in seen.meta, false);
+  assertEquals(seen.meta.candidates, ["race_eve:r1"]);
+  // O que se repete de hora a hora sem novidade fica de fora.
+  for (const reason of ["fora_de_horas", "ja_notificado", "ja_entregue"]) assertEquals(tickLogRow({ ...input, reason }), null);
+  // …a não ser que tenha havido custo.
+  assertEquals(tickLogRow({ ...input, reason: "ja_notificado", usage: { input_tokens: 1, output_tokens: 1 } })?.level, "success");
 });

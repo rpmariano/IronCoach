@@ -119,21 +119,26 @@ export function extractText(json: any): string | null {
   return null;
 }
 
+export type PushUsage = { input_tokens: number; output_tokens: number };
+
 /**
  * O título e o corpo da notificação. Nunca rejeita: qualquer falha dá a frase
- * fixa. `fetchImpl` é injetável para os testes.
+ * fixa. `fetchImpl` é injetável para os testes. `usage` são os tokens da
+ * chamada ao modelo quando ela respondeu — mesmo que o texto não sirva e saia
+ * a frase fixa, o custo existiu (P.10, app_logs); null sem chamada ou sem
+ * resposta.
  */
 export async function composePushMessage(
   c: ServerProactiveCandidate,
   facts: PushFacts,
   geminiKey: string | null | undefined,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ title: string; body: string; generated: boolean }> {
+): Promise<{ title: string; body: string; generated: boolean; usage: PushUsage | null }> {
   const fallback = proactivePushMessage(c);
   /* O assunto por resolver nunca passa pelo gerador: o motivo pode ser de
      saúde (uma dor, um sinal de sobretreino) e não vai para o ecrã
      bloqueado. Sai sempre a frase genérica. */
-  if (!geminiKey || c.trigger === "intervention") return { ...fallback, generated: false };
+  if (!geminiKey || c.trigger === "intervention") return { ...fallback, generated: false, usage: null };
   try {
     const res = await fetchImpl(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
@@ -149,12 +154,20 @@ export async function composePushMessage(
     );
     if (!res.ok) {
       console.warn("coach-proactive-tick: texto gerado falhou", res.status);
-      return { ...fallback, generated: false };
+      return { ...fallback, generated: false, usage: null };
     }
-    const text = validatePushText(extractText(await res.json()));
-    return text ? { title: fallback.title, body: text, generated: true } : { ...fallback, generated: false };
+    const json = await res.json();
+    // Os mesmos campos das outras funções (input = prompt, output = candidatos).
+    const usage: PushUsage = {
+      input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
+      output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
+    };
+    const text = validatePushText(extractText(json));
+    return text
+      ? { title: fallback.title, body: text, generated: true, usage }
+      : { ...fallback, generated: false, usage };
   } catch (e) {
     console.warn("coach-proactive-tick: texto gerado falhou", e);
-    return { ...fallback, generated: false };
+    return { ...fallback, generated: false, usage: null };
   }
 }

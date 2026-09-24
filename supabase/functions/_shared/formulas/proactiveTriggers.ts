@@ -30,6 +30,8 @@ export interface TriggerRace {
   distance_km?: number | string | null;
   race_priority?: string | null;
   conflict_acknowledged_at?: string | null;
+  /** A hora de partida ("HH:MM" ou "HH:MM:SS"), para a manhã da prova (P.10). */
+  start_time?: string | null;
 }
 
 /** Um plano, com a informação de ter treinos (e não só refeições). */
@@ -76,6 +78,30 @@ export interface ServerProactiveCandidate {
   /** Balanço da semana: a semana revista (segunda e domingo). */
   weekStart?: string | null;
   weekEnd?: string | null;
+  /** Manhã da prova: a hora de partida em minutos desde a meia-noite de
+   *  Lisboa, ou null sem hora marcada (P.10). */
+  startMinutes?: number | null;
+}
+
+/** "08:30" / "08:30:00" → 510. null se não for uma hora válida. */
+export function startTimeMinutes(value: unknown): number | null {
+  const m = typeof value === "string" ? /^(\d{1,2}):(\d{2})/.exec(value.trim()) : null;
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h <= 23 && min <= 59 ? h * 60 + min : null;
+}
+
+/* As chaves que o Início também calcula (P.10): ao mostrar o aviso de um
+   assunto por resolver ou de um conflito de provas, regista a chave do
+   candidato, para o tick não notificar o que o atleta acabou de ver. Vivem
+   aqui para as duas pontas nunca discordarem. */
+export function interventionKey(reason: string | null | undefined): string {
+  return `intervention:${shortHash(reason || "")}`;
+}
+
+export function raceConflictKey(planId: string, raceIds: string[]): string {
+  return `race_conflict:${planId}:${[...raceIds].sort().join(",")}`;
 }
 
 const DAY_MS = 86400000;
@@ -239,11 +265,16 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // Um assunto por resolver passa à frente de tudo: é saúde ou um desvio
   // que ela já decidiu que precisa de conversa.
   if (input.intervention?.status === "needed") {
-    out.push({ ...base, trigger: "intervention", key: `intervention:${shortHash(input.intervention.reason || "")}` });
+    out.push({ ...base, trigger: "intervention", key: interventionKey(input.intervention.reason) });
   }
 
   const morning = scheduled.find((r) => r.date.slice(0, 10) === todayISO);
-  if (morning) out.push({ ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null });
+  if (morning) {
+    out.push({
+      ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null,
+      startMinutes: startTimeMinutes(morning.start_time),
+    });
+  }
 
   const eve = scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1);
   if (eve) out.push({ ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null });
@@ -254,7 +285,7 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     out.push({
       ...base,
       trigger: "race_conflict",
-      key: `race_conflict:${conflict.plan.id}:${conflict.races.map((r) => r.id).sort().join(",")}`,
+      key: raceConflictKey(conflict.plan.id, conflict.races.map((r) => r.id)),
       raceId: target?.id ?? null,
       raceName: target?.name ?? null,
       planId: conflict.plan.id,
@@ -352,6 +383,8 @@ export function proactiveTab(trigger: ProactiveTriggerName): "coach" | "home" {
 export const DEFAULT_PUSH_START_HOUR = 9;
 export const DEFAULT_PUSH_END_HOUR = 21;
 export const RACE_MORNING_EARLIEST_HOUR = 6;
+/** Com hora de partida, a manhã da prova sai no máximo 2 h antes dela (P.10). */
+export const RACE_MORNING_LEAD_MINUTES = 120;
 export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "week_review"];
 
 /** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
@@ -372,14 +405,32 @@ function inWindow(hour: number, start: number, end: number): boolean {
 
 /** Janela de envio, em horas de Lisboa, a do atleta (9h–21h por omissão). A
  *  manhã da prova é a exceção: a prova não espera, e pode sair a partir das
- *  6h mesmo que a janela dele comece mais tarde — nunca depois do fim dela. */
-export function isWithinProactiveWindow(trigger: ProactiveTriggerName, lisbonHour: number, prefs: PushPreferences = {}): boolean {
+ *  6h mesmo que a janela dele comece mais tarde — nunca depois do fim dela.
+ *
+ *  Com a hora de partida conhecida (P.10, confirmado pelo produto a
+ *  2026-09-24), a manhã da prova sai entre 2 h antes da partida (nunca antes
+ *  das 6h) e a própria partida — nem cedo de mais, nem a meio da prova —, e
+ *  nunca depois do fim da janela. `minuteOfDay` é a hora de Lisboa em
+ *  minutos; sem ele conta a hora certa. */
+export function isWithinProactiveWindow(
+  trigger: ProactiveTriggerName,
+  lisbonHour: number,
+  prefs: PushPreferences = {},
+  opts: { minuteOfDay?: number | null; raceStartMinutes?: number | null } = {},
+): boolean {
   let start = Number.isInteger(prefs.startHour) ? prefs.startHour! : DEFAULT_PUSH_START_HOUR;
   let end = Number.isInteger(prefs.endHour) ? prefs.endHour! : DEFAULT_PUSH_END_HOUR;
   /* Início igual ao fim é, quase sempre, um engano no Perfil — e na Carol
      não pode querer dizer "24 horas": um "Estás bem?" às 3h da manhã. Cai na
      janela por omissão (revisão pré-master da P.6). */
   if (start === end) { start = DEFAULT_PUSH_START_HOUR; end = DEFAULT_PUSH_END_HOUR; }
+  if (trigger === "race_morning" && opts.raceStartMinutes != null) {
+    const now = opts.minuteOfDay ?? lisbonHour * 60;
+    const earliest = Math.max(RACE_MORNING_EARLIEST_HOUR * 60, opts.raceStartMinutes - RACE_MORNING_LEAD_MINUTES);
+    // Uma janela que atravessa a meia-noite não tem "fim" de manhã.
+    const beforeWindowEnd = start < end ? lisbonHour < end : true;
+    return now >= earliest && now < opts.raceStartMinutes && beforeWindowEnd;
+  }
   if (inWindow(lisbonHour, start, end)) return true;
   if (trigger === "race_morning" && start < end && start > RACE_MORNING_EARLIEST_HOUR) {
     return lisbonHour >= RACE_MORNING_EARLIEST_HOUR && lisbonHour < end;

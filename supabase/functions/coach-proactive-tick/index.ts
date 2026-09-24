@@ -6,23 +6,26 @@
 // CRON_SECRET do send-water-reminders, e usa a service role para ler os
 // atletas que têm notificações ligadas.
 //
-// Para cada um: avalia os mesmos quatro momentos que o cliente
-// (_shared/formulas/proactiveTriggers.ts — manhã da prova, véspera, balanço,
-// silêncio, com as mesmas chaves), e envia uma notificação curta, na voz
-// dela, se:
-//   - estiver dentro da janela (6h–21h para a manhã da prova, 9h–21h o resto);
+// Para cada um: avalia os mesmos momentos que o cliente
+// (_shared/formulas/proactiveTriggers.ts, com as mesmas chaves), e envia uma
+// notificação curta, na voz dela, se:
+//   - estiver dentro da janela do atleta (a manhã da prova com hora de
+//     partida: de 2 h antes dela, nunca antes das 6h, até à partida — P.10);
 //   - a conversa ainda não tiver acontecido (coach_proactive_log);
 //   - esta chave ainda não tiver sido notificada (coach_proactive_pushes);
-//   - não tiver havido outra notificação dela hoje;
+//   - o Início não tiver mostrado hoje o aviso deste momento, nem o atleta o
+//     tiver dispensado hoje (coach_impressions, P.10);
+//   - não tiver passado o máximo de notificações dela hoje;
 //   - ela não tiver falado há menos de 6 horas.
 // Tocar na notificação abre o Coach, e é aí que o coach-chat escreve a
 // mensagem a sério, com o contexto todo (e a regista em coach_proactive_log).
+// Cada decisão sobre um atleta com algum momento fica em app_logs (P.10).
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
 import { listServerProactive, proactiveTab, weekToReviewBounds, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
-import { composePushMessage } from "./pushText.ts";
-import { choosePush } from "./decide.ts";
+import { composePushMessage, type PushUsage } from "./pushText.ts";
+import { choosePush, tickLogRow } from "./decide.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -32,6 +35,13 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function lisbonHour(date: Date): number {
   return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", hour12: false }).format(date)) % 24;
+}
+
+/** Minutos desde a meia-noite de Lisboa — a hora de partida conta ao minuto (P.10). */
+function lisbonMinuteOfDay(date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(date);
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? 0);
+  return (get("hour") % 24) * 60 + get("minute");
 }
 
 function lisbonDate(date: Date): string {
@@ -79,6 +89,7 @@ async function handler(req: Request): Promise<Response> {
   const sb = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
   const now = new Date();
   const hour = lisbonHour(now);
+  const minuteOfDay = lisbonMinuteOfDay(now);
   const today = lisbonDate(now);
   const reviewWeek = weekToReviewBounds(today);
 
@@ -164,12 +175,29 @@ async function handler(req: Request): Promise<Response> {
       }, today);
 
       const prefs = prefsById.get(userId) ?? {};
+      /* A decisão fica em app_logs (P.10) — só com algum momento, e nunca a
+         custo do envio: uma falha a gravar o log fica na consola. */
+      const logDecision = async (
+        reason: string,
+        pickedCandidate: typeof candidates[number] | null,
+        usage: PushUsage | null = null,
+        generated = false,
+      ) => {
+        const row = tickLogRow({ userId, candidates, candidate: pickedCandidate ?? candidates[0] ?? null, reason, usage, generated, lisbonHour: hour });
+        if (!row) return;
+        try {
+          const { error: logErr } = await sb.from("app_logs").insert(row);
+          if (logErr) console.warn("coach-proactive-tick: não gravou o log", userId, logErr.message);
+        } catch (e) {
+          console.warn("coach-proactive-tick: não gravou o log", userId, e);
+        }
+      };
       // Primeiro sem ir à base de dados: se nenhum momento passa sequer a
       // janela e os tipos, não vale a pena ler o resto.
-      let { candidate, decision } = choosePush(candidates, { lisbonHour: hour, deliveredKeys: new Set(), pushedKeys: new Set(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: now.getTime(), prefs });
+      let { candidate, decision } = choosePush(candidates, { lisbonHour: hour, minuteOfDay, deliveredKeys: new Set(), pushedKeys: new Set(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: now.getTime(), prefs });
       if (candidate && decision.send) {
         const keys = candidates.map((c) => c.key);
-        const [{ data: delivered }, { data: pushedKey }, { data: pushedToday }, { data: lastAny }, { data: lastModel }] = await Promise.all([
+        const [{ data: delivered }, { data: pushedKey }, { data: pushedToday }, { data: lastAny }, { data: lastModel }, { data: seen }] = await Promise.all([
           sb.from("coach_proactive_log").select("key").eq("user_id", userId).in("key", keys),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).in("key", keys),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("sent_date", today),
@@ -177,11 +205,16 @@ async function handler(req: Request): Promise<Response> {
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
           sb.from("coach_messages").select("created_at").eq("user_id", userId).eq("role", "model")
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+          // O que o Início mostrou ou o atleta dispensou HOJE (dia de Lisboa,
+          // como grava o logImpression): a chave do candidato (P.10).
+          sb.from("coach_impressions").select("key").eq("user_id", userId).eq("date", today).eq("kind", "alert").in("key", keys),
         ]);
         ({ candidate, decision } = choosePush(candidates, {
           lisbonHour: hour,
+          minuteOfDay,
           deliveredKeys: new Set((delivered || []).map((d: { key: string }) => d.key)),
           pushedKeys: new Set((pushedKey || []).map((p: { key: string }) => p.key)),
+          seenKeys: new Set((seen || []).map((s: { key: string }) => s.key)),
           pushedTodayCount: (pushedToday || []).length,
           prefs,
           lastMessage: lastAny ?? null,
@@ -191,14 +224,22 @@ async function handler(req: Request): Promise<Response> {
         }));
       }
       const reason = decision.send ? "enviada" : decision.reason;
-      if (!decision.send || !candidate) { tally[reason] = (tally[reason] || 0) + 1; continue; }
+      if (!decision.send || !candidate) {
+        tally[reason] = (tally[reason] || 0) + 1;
+        await logDecision(reason, null);
+        continue;
+      }
       const picked = candidate; // fixo, para os callbacks abaixo
 
       // Registar ANTES de enviar: se duas execuções se cruzarem, a segunda
       // bate na chave primária e não envia outra vez.
       const { error: claimErr } = await sb.from("coach_proactive_pushes")
         .insert({ user_id: userId, key: candidate.key, trigger: candidate.trigger, sent_date: today });
-      if (claimErr) { tally.ja_notificado = (tally.ja_notificado || 0) + 1; continue; }
+      if (claimErr) {
+        tally.ja_notificado = (tally.ja_notificado || 0) + 1;
+        await logDecision("ja_notificado", picked);
+        continue;
+      }
 
       /* O texto, escrito por ela com os dados do momento (P.4). Qualquer
          falha — sem chave, erro, texto que não passa a validação — dá a
@@ -246,10 +287,12 @@ async function handler(req: Request): Promise<Response> {
           .update({ body: message.body.slice(0, 200), generated: message.generated })
           .eq("user_id", userId).eq("key", candidate.key);
         if (bodyErr) console.error("coach-proactive-tick: não gravou o texto enviado", userId, candidate.key, bodyErr);
+        await logDecision("enviada", picked, message.usage, message.generated);
       } else {
         // Nenhuma subscrição aceitou: liberta a chave para a próxima hora.
         await sb.from("coach_proactive_pushes").delete().eq("user_id", userId).eq("key", candidate.key);
         tally.falhou = (tally.falhou || 0) + 1;
+        await logDecision("falhou", picked, message.usage, message.generated);
       }
     } catch (e) {
       console.error("coach-proactive-tick: atleta falhou", userId, e);

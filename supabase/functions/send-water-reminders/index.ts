@@ -15,6 +15,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
 import { waterReminderMessage } from "./message.ts";
+import { carolQuietSince, usersQuietAfterCarol } from "./afterCarol.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -133,7 +134,23 @@ async function handler(req: Request): Promise<Response> {
     let failed = 0;
     let usersNotified = 0;
 
+    /* Nos 30 minutos a seguir a uma notificação da Carol a água espera
+       (P.10, afterCarol.ts). Uma consulta só, para todos os que estão em
+       dia de lembrete. Se a leitura falhar, a água sai como antes — um
+       lembrete a mais é melhor do que nenhum. */
+    let quietAfterCarol = new Set<string>();
+    if (due.length) {
+      const { data: recentCarol, error: carolErr } = await sb
+        .from("coach_proactive_pushes")
+        .select("user_id, sent_at")
+        .in("user_id", due.map((p) => p.id))
+        .gte("sent_at", carolQuietSince(now));
+      if (carolErr) console.warn("send-water-reminders: não li as notificações da Carol", carolErr.message);
+      else quietAfterCarol = usersQuietAfterCarol(recentCarol, now);
+    }
+
     for (const profile of due) {
+      if (quietAfterCarol.has(profile.id)) continue;
       const { data: subs, error: subsErr } = await sb
         .from("push_subscriptions")
         .select("id, endpoint, p256dh, auth")
@@ -183,6 +200,7 @@ async function handler(req: Request): Promise<Response> {
     return jsonResponse({
       checked: profiles?.length || 0,
       due: due.length,
+      afterCarol: quietAfterCarol.size,
       usersNotified,
       sent,
       failed,

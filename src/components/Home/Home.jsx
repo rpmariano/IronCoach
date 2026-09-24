@@ -23,6 +23,7 @@ import CoachInsightModal from '../BI/CoachInsightModal';
 import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
 import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
+import { interventionKey, raceConflictKey } from '@formulas/proactiveTriggers.ts';
 import { pendingTopicLines } from '../../utils/carolTopics';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
@@ -190,11 +191,17 @@ export default function Home() {
      cabeçalho do cartão dela confundiam-se com o resumo do dia. Um de cada
      vez, pela mesma prioridade de sempre — assuntos por resolver, depois o
      ajuste do plano, depois o balanço da prova, por fim o fim do bloco —,
-     cada um com o seu "Falar com a Carol" na janela dos insights. */
+     cada um com o seu "Falar com a Carol" na janela dos insights.
+
+     `key` é a chave do momento no servidor (P.10), quando o aviso tem um:
+     abrir a janela regista-a como vista, e o coach-proactive-tick não
+     notifica hoje o que o atleta acabou de ler aqui. */
   const carolAlerts = [];
   if (pendingTopics > 0) {
     carolAlerts.push({
       id: 'assuntos',
+      // Só o assunto "needed" tem momento no servidor; um já em conversa não.
+      key: profile?.coach_intervention_status === 'needed' ? interventionKey(profile?.coach_intervention_reason) : null,
       severity: 'warning',
       // Na voz dela e a dizer o assunto (pedido 2026-09-23): "Tens 1 assunto
       // a resolver com ela" não dizia qual, e o popup repetia "Carol" 4 vezes.
@@ -208,6 +215,7 @@ export default function Home() {
     const nomes = raceConflict.races.map((r) => raceLabel(r)).join(', ');
     carolAlerts.push({
       id: 'conflito-provas',
+      key: raceConflict.plan?.id ? raceConflictKey(raceConflict.plan.id, raceConflict.races.map((r) => r.id)) : null,
       severity: 'warning',
       title: 'Preciso de falar contigo',
       // Sem onDismiss, de propósito: enquanto houver duas principais no mesmo
@@ -229,6 +237,7 @@ export default function Home() {
   } else if (raceBalance) {
     carolAlerts.push({
       id: 'balanco',
+      key: raceBalance.candidate.key,
       severity: 'info',
       title: 'O balanço da prova',
       message: `Correste a ${raceBalance.race.name || 'prova'}. Quero fazer o balanço contigo.`,
@@ -259,6 +268,7 @@ export default function Home() {
   } else if (blockEnd) {
     carolAlerts.push({
       id: 'fim-bloco',
+      key: blockEnd.candidate.key,
       severity: 'info',
       title: 'O bloco está a acabar',
       message: `O teu bloco de treino acaba ${blockEnd.when} e não há outro a seguir. Quero preparar o próximo contigo.`,
@@ -279,7 +289,11 @@ export default function Home() {
 
   /* Abrir a janela do botão flutuante é ver os avisos e os insights. */
   const openInsights = () => {
-    for (const a of carolAlerts) logImpression({ kind: 'alert', key: a.id, title: a.title });
+    for (const a of carolAlerts) {
+      logImpression({ kind: 'alert', key: a.id, title: a.title });
+      // A chave do momento, para o tick não o notificar hoje (P.10).
+      if (a.key) logImpression({ kind: 'alert', key: a.key, title: a.title });
+    }
     for (const i of homeInsights) logImpression({ kind: 'insights', key: i.id, title: i.title });
     setShowInsights(true);
   };

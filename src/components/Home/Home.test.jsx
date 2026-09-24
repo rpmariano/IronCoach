@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { ToastProvider } from '../shared/ToastProvider';
+import { interventionKey } from '@formulas/proactiveTriggers.ts';
 import Home from './Home';
 
 /* O Início chama pela Carol quando o plano precisa de um ajuste
@@ -184,6 +185,24 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     fireEvent.click(screen.getByTestId('carol-alert-dismiss-fim-bloco'));
     expect(logImpressionDismissed).toHaveBeenCalledWith({ kind: 'alert', key: 'block_end:b1', title: 'O bloco está a acabar' });
     expect(alertCount()).toBe(0);
+  });
+
+  it('abrir os avisos regista também a chave do momento no servidor, para o tick não o notificar hoje (P.10)', () => {
+    comFimDeBloco();
+    const logImpression = vi.fn();
+    useAppStore.setState({ logImpression });
+    renderHome();
+    openAlerts();
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'alert', key: 'fim-bloco', title: 'O bloco está a acabar' });
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'alert', key: 'block_end:b1', title: 'O bloco está a acabar' });
+  });
+
+  it('um assunto por resolver regista a chave da intervenção, a mesma do servidor (P.10)', () => {
+    const logImpression = vi.fn();
+    useAppStore.setState({ logImpression, profile: { id: 'user-1', coach_intervention_status: 'needed', coach_intervention_reason: 'carga a subir' } });
+    renderHome();
+    openAlerts();
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'alert', key: interventionKey('carga a subir'), title: 'Preciso de falar contigo' });
   });
 
   it('dispensado noutro dispositivo, o bloco a acabar não aparece', () => {

@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds } from "./proactiveTriggers.ts";
+import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds, startTimeMinutes, interventionKey, raceConflictKey } from "./proactiveTriggers.ts";
 import { assertCarolVoice } from "../carolTone.ts";
 
 const TODAY = "2026-09-18";
@@ -207,4 +207,60 @@ Deno.test("listServerProactive: o balanço só num dia sem mais nenhum momento",
   const msg = proactivePushMessage(alone[0]);
   assertEquals(msg.title, "Carol");
   assert(!msg.body.includes("!"));
+});
+
+// ── P.10: a manhã da prova com hora de partida ──────────────────────────────
+// Confirmado pelo produto a 2026-09-24: de 2 h antes da partida (nunca antes
+// das 6h) até à partida, e nunca depois do fim da janela do atleta.
+
+Deno.test("P.10: startTimeMinutes lê a hora de partida", () => {
+  assertEquals(startTimeMinutes("09:30:00"), 570);
+  assertEquals(startTimeMinutes("8:05"), 485);
+  assertEquals(startTimeMinutes("24:00"), null);
+  assertEquals(startTimeMinutes(null), null);
+  assertEquals(startTimeMinutes("manhã"), null);
+});
+
+Deno.test("P.10: a manhã da prova leva a hora de partida no candidato", () => {
+  const c = pickServerProactive({ raceEvents: [race({ start_time: "09:30:00" })], runs: [], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(c.trigger, "race_morning");
+  assertEquals(c.startMinutes, 570);
+  assertEquals(pickServerProactive({ raceEvents: [race()], runs: [], lastRecordDate: TODAY }, TODAY)!.startMinutes, null);
+});
+
+Deno.test("P.10: com partida às 9:30, entre as 7:30 e a partida — nem antes, nem a meio da prova", () => {
+  const at = (h: number, m: number) => ({ minuteOfDay: h * 60 + m, raceStartMinutes: 570 });
+  assert(!isWithinProactiveWindow("race_morning", 7, {}, at(7, 7)));
+  assert(isWithinProactiveWindow("race_morning", 8, {}, at(8, 7)));
+  assert(isWithinProactiveWindow("race_morning", 9, {}, at(9, 7)));
+  assert(!isWithinProactiveWindow("race_morning", 9, {}, at(9, 37)));
+  assert(!isWithinProactiveWindow("race_morning", 12, {}, at(12, 7)));
+});
+
+Deno.test("P.10: nunca antes das 6h, e a janela do atleta não a adianta mais do que 2 h", () => {
+  // Partida às 7:00: das 6h (não das 5h) à partida.
+  assert(!isWithinProactiveWindow("race_morning", 5, { startHour: 5, endHour: 22 }, { minuteOfDay: 5 * 60 + 7, raceStartMinutes: 420 }));
+  assert(isWithinProactiveWindow("race_morning", 6, { startHour: 5, endHour: 22 }, { minuteOfDay: 6 * 60 + 7, raceStartMinutes: 420 }));
+  // Partida às 14:00 com a janela das 9h: só a partir do meio-dia (era às 9h).
+  assert(!isWithinProactiveWindow("race_morning", 9, {}, { minuteOfDay: 9 * 60 + 7, raceStartMinutes: 840 }));
+  assert(isWithinProactiveWindow("race_morning", 12, {}, { minuteOfDay: 12 * 60 + 7, raceStartMinutes: 840 }));
+  // Partida às 6:00: não há um minuto antes dela a partir das 6h.
+  assert(!isWithinProactiveWindow("race_morning", 6, {}, { minuteOfDay: 6 * 60 + 7, raceStartMinutes: 360 }));
+});
+
+Deno.test("P.10: uma prova à noite respeita o fim da janela", () => {
+  // Partida às 22:00, janela até às 21h: das 20h às 21h.
+  assert(isWithinProactiveWindow("race_morning", 20, {}, { minuteOfDay: 20 * 60 + 7, raceStartMinutes: 22 * 60 }));
+  assert(!isWithinProactiveWindow("race_morning", 21, {}, { minuteOfDay: 21 * 60 + 7, raceStartMinutes: 22 * 60 }));
+});
+
+Deno.test("P.10: sem hora de partida fica a regra de antes", () => {
+  assert(isWithinProactiveWindow("race_morning", 6, {}, { minuteOfDay: 6 * 60 + 7, raceStartMinutes: null }));
+  assert(isWithinProactiveWindow("race_morning", 6));
+});
+
+Deno.test("P.10: as chaves que o Início calcula são as do servidor", () => {
+  const c = pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: TODAY, intervention: { status: "needed", reason: "Check-in: dor 6/10" } }, TODAY)!;
+  assertEquals(interventionKey("Check-in: dor 6/10"), c.key);
+  assertEquals(raceConflictKey("p1", ["r3", "r2"]), "race_conflict:p1:r2,r3");
 });
