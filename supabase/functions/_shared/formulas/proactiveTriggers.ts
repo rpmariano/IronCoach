@@ -10,8 +10,9 @@
 // duas funções com os mesmos dados.
 //
 // Prioridade, como no cliente: manhã da prova > véspera > depois da prova >
-// fim de bloco > silêncio. O servidor tem mais dois momentos que o cliente
-// trata pelo Início, não pelo chat (P.5): um assunto por resolver
+// fim de bloco > silêncio > balanço da semana — e o balanço só num dia sem
+// mais nenhum (ver findWeekToReview). O servidor tem mais dois momentos que
+// o cliente trata pelo Início, não pelo chat (P.5): um assunto por resolver
 // (intervenção — dor no check-in, desvio num registo) passa à frente de
 // tudo, e o conflito de provas vem logo a seguir à véspera.
 
@@ -148,14 +149,20 @@ export function findRaceRunServer(runs: TriggerRun[] | null | undefined, race: T
    que acabou no domingo: o que foi feito face ao plano, o que ficou bem e a
    faltar, e o foco da semana que começa. Vale também à terça, para quem não
    abriu a app na segunda; depois disso já não é "o balanço", é história.
-   Só com alguma coisa registada desde o início dessa semana — sem nada, o
-   momento certo é o silêncio ("Estás bem?"), não um balanço de uma semana
-   vazia. A chave é a segunda-feira da semana revista: uma por semana. */
+
+   Duas condições (revisão pré-deploy de 2026-09-24):
+   - tem de haver pelo menos um registo DENTRO da semana revista. Um registo
+     de hoje não conta: quem começa a usar a app numa segunda, ou volta de
+     uma ausência, não recebe o balanço de uma semana vazia;
+   - só quando não há mais nenhum momento. O dia da prova, a véspera, o
+     "como correu?", o fim de bloco, um assunto por resolver ou um "Estás
+     bem?" ficam com o dia inteiro: o balanço não lhes aparece por trás.
+   A chave é a segunda-feira da semana revista: uma por semana. */
 export const WEEK_REVIEW_DAYS = 2;
 
-/** A semana a rever hoje (segunda a domingo), ou null. `todayISO` é um dia
- *  de Lisboa; `lastRecordDate`, o registo mais recente do atleta. */
-export function findWeekToReview(todayISO: string, lastRecordDate: string | null | undefined): { weekStart: string; weekEnd: string } | null {
+/** A semana que se revê hoje (segunda a domingo), só pelas datas: null fora
+ *  de segunda e terça. `todayISO` é um dia de Lisboa. */
+export function weekToReviewBounds(todayISO: string): { weekStart: string; weekEnd: string } | null {
   const today = dayOf(todayISO);
   if (!today) return null;
   // Dia da semana do próprio dia (0 domingo … 6 sábado), sem fuso: a data já é de Lisboa.
@@ -163,10 +170,20 @@ export function findWeekToReview(todayISO: string, lastRecordDate: string | null
   const sinceMonday = (dow + 6) % 7; // 0 à segunda, 1 à terça…
   if (sinceMonday >= WEEK_REVIEW_DAYS) return null;
   const weekStart = addDaysISO(today, -sinceMonday - 7);
-  const weekEnd = addDaysISO(weekStart, 6);
-  const last = dayOf(lastRecordDate ?? null);
-  if (!last || last < weekStart) return null;
-  return { weekStart, weekEnd };
+  return { weekStart, weekEnd: addDaysISO(weekStart, 6) };
+}
+
+/** A semana a rever hoje, se houver algum registo dentro dela. `recordDates`
+ *  são datas de registos (corridas, refeições, ginásio, avaliações) — basta
+ *  que incluam as dessa semana. */
+export function findWeekToReview(todayISO: string, recordDates: Array<string | null | undefined> | null | undefined): { weekStart: string; weekEnd: string } | null {
+  const bounds = weekToReviewBounds(todayISO);
+  if (!bounds) return null;
+  const inWeek = (recordDates || []).some((d) => {
+    const day = dayOf(d ?? null);
+    return !!day && day >= bounds.weekStart && day <= bounds.weekEnd;
+  });
+  return inWeek ? bounds : null;
 }
 
 function addDaysISO(iso: string, n: number): string {
@@ -185,6 +202,9 @@ export type ServerProactiveInput = {
     /** P.6: os momentos que o atleta aceita. Um desligado não esconde os
      *  seguintes — passa-se ao próximo da lista. Sem isto, todos contam. */
     allowed?: string[] | null;
+    /** Balanço da semana: datas de registos que cubram a semana revista (o
+     *  tick só as lê à segunda e à terça — weekToReviewBounds). */
+    weekRecordDates?: Array<string | null | undefined> | null;
 };
 
 /** O momento mais importante agora, ou null. */
@@ -260,9 +280,9 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     if (gap >= SILENCE_DAYS) out.push({ ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last });
   }
 
-  // O balanço da semana é o último da lista: o dia da prova, um assunto por
-  // resolver ou um "Estás bem?" passam-lhe à frente.
-  const week = ok("week_review") ? findWeekToReview(todayISO, input.lastRecordDate) : null;
+  // O balanço da semana só entra num dia sem mais nada: o dia da prova, um
+  // assunto por resolver ou um "Estás bem?" ficam com o dia inteiro.
+  const week = ok("week_review") && out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
   if (week) {
     out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
   }
@@ -298,7 +318,7 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
     case "block_end":
       return { title, body: "O teu bloco de treino está a acabar. Vamos ver como correu e preparar o próximo." };
     case "week_review":
-      return { title, body: "A semana fechou. Fiz o balanço e já sei o que muda nesta." };
+      return { title, body: "A semana fechou. Vem ver comigo como correu e o que fica para esta." };
   }
 }
 

@@ -1,4 +1,6 @@
 /* As mensagens que a Carol manda por iniciativa própria — CAROL.md §3 e §7.
+   - Segunda (ou terça) → o balanço da semana que acabou, num dia sem mais
+     nenhum momento e só se houve registos nessa semana.
    - 3 dias sem qualquer registo → "Estás bem?" no chat, em nome dela.
    - Véspera da prova → o que fazer hoje e amanhã de manhã.
    - Manhã da prova → curta, duas frases, sem dados.
@@ -17,6 +19,7 @@ import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
 import { findEndingBlock, findWeekToReview } from '@formulas/proactiveTriggers.ts';
+import { addDaysISO } from '../lib/utils';
 
 export const SILENCE_DAYS = 3;
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
@@ -54,7 +57,8 @@ function daysBetween(fromIso, toIso) {
 
 /** Todos os momentos que se aplicam agora, pela ordem de prioridade do
  *  servidor: manhã da prova > véspera > depois da prova > fim de bloco >
- *  silêncio — o dia da prova manda em tudo o resto. `now` é injetável para
+ *  silêncio — o dia da prova manda em tudo o resto. O balanço da semana só
+ *  aparece quando a lista está vazia. `now` é injetável para
  *  os testes. Usada pelo efeito passivo do Coach (P.9) para saber a que
  *  candidato uma notificação tocada corresponde, mesmo que não seja o
  *  primeiro da lista; `pickProactiveTrigger` continua a ser só o primeiro. */
@@ -116,10 +120,11 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
   }
 
   /* O balanço da semana (2026-09-24): à segunda e à terça, a semana de
-     segunda a domingo que acabou. A régua é a do servidor, para a chave ser
-     a da notificação; as contagens vão no Contexto, para ela não as
-     adivinhar. O último da lista: tudo o resto passa-lhe à frente. */
-  const week = findWeekToReview(today, last);
+     segunda a domingo que acabou — com algum registo dentro dela, e só num
+     dia sem mais nenhum momento (a prova, o "Estás bem?" e o fim de bloco
+     ficam com o dia). A régua é a do servidor, para a chave ser a da
+     notificação; as contagens vão no Contexto, para ela não as adivinhar. */
+  const week = list.length === 0 ? findWeekToReview(today, recordDates({ runs, meals, gymSessions, bodyAssessments })) : null;
   if (week) {
     list.push({
       trigger: 'week_review',
@@ -130,9 +135,21 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
   return list;
 }
 
+/** As datas de todos os registos (corridas, refeições, ginásio, avaliações). */
+function recordDates({ runs, meals, gymSessions, bodyAssessments }) {
+  const dates = [];
+  for (const list of [runs, meals, gymSessions, bodyAssessments]) {
+    for (const r of list || []) {
+      const d = r?.date || r?.assessed_at;
+      if (typeof d === 'string' && d.length >= 10) dates.push(d.slice(0, 10));
+    }
+  }
+  return dates;
+}
+
 const inRange = (d, from, to) => typeof d === 'string' && d.slice(0, 10) >= from && d.slice(0, 10) <= to;
-const fmtKm = (km) => (Math.round(km * 10) / 10).toString().replace('.', ',');
-const addDaysIso = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+// Vírgula decimal em todos os números do Contexto: o modelo copia o formato.
+const fmtNum = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
 function weekCounts({ runs, meals, gymSessions, dailyCheckins }, from, to) {
   const weekRuns = (runs || []).filter((r) => inRange(r?.date, from, to));
@@ -153,10 +170,10 @@ function avg(list, field) {
  *  PRESCREVESTE do servidor. */
 export function describeWeek(data, weekStart, weekEnd) {
   const w = weekCounts(data, weekStart, weekEnd);
-  const prevStart = addDaysIso(weekStart, -7);
-  const p = weekCounts(data, prevStart, addDaysIso(weekStart, -1));
+  const prevStart = addDaysISO(weekStart, -7);
+  const p = weekCounts(data, prevStart, addDaysISO(weekStart, -1));
   const parts = [
-    `Semana de ${weekStart} a ${weekEnd}: ${w.runs} corrida${w.runs === 1 ? '' : 's'} (${fmtKm(w.km)} km)`,
+    `Semana de ${weekStart} a ${weekEnd}: ${w.runs} corrida${w.runs === 1 ? '' : 's'} (${fmtNum(w.km)} km)`,
     `${w.gym} sess${w.gym === 1 ? 'ão' : 'ões'} de ginásio`,
     `refeições registadas em ${w.mealDays} de 7 dias`,
     `${w.checkins.length} check-in${w.checkins.length === 1 ? '' : 's'}`,
@@ -164,9 +181,9 @@ export function describeWeek(data, weekStart, weekEnd) {
   const sleep = avg(w.checkins, 'sleep');
   const energy = avg(w.checkins, 'energy');
   const checkinLine = sleep != null || energy != null
-    ? ` Check-ins: sono médio ${sleep ?? '—'}/5, energia média ${energy ?? '—'}/5.`
+    ? ` Check-ins: sono médio ${sleep != null ? fmtNum(sleep) : '—'}/5, energia média ${energy != null ? fmtNum(energy) : '—'}/5.`
     : '';
-  return `${parts.join(', ')}.${checkinLine} Semana anterior: ${p.runs} corrida${p.runs === 1 ? '' : 's'} (${fmtKm(p.km)} km), ${p.gym} de ginásio.`;
+  return `${parts.join(', ')}.${checkinLine} Semana anterior: ${p.runs} corrida${p.runs === 1 ? '' : 's'} (${fmtNum(p.km)} km), ${p.gym} de ginásio.`;
 }
 
 /** Escolhe a mensagem proativa para este momento, ou null — o primeiro de

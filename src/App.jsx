@@ -510,7 +510,7 @@ export default function App() {
       }
       return;
     }
-    // Os outros momentos (race_morning/race_eve/race_after/block_end/silence)
+    // Os outros momentos (race_morning/race_eve/race_after/block_end/silence/week_review)
     // o cliente sabe montar sozinho (listProactiveTriggers), mas só o Coach
     // decide — o efeito passivo lá (Coach.jsx) percorre a lista e honra esta
     // preferência sem lhe dar prioridade sobre um coachIntent explícito.

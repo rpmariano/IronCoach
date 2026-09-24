@@ -111,7 +111,7 @@ export default function Coach() {
     respondToGoalProposal,
     coachIntent,
     setCoachIntent,
-    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes
+    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes, dailyCheckins
   } = useAppStore();
   const { showToast } = useToast();
   // Liga o halo do avatar (ponto 9, animação 7).
@@ -446,7 +446,7 @@ export default function Coach() {
   const proactiveAttempted = useRef(false);
   useEffect(() => {
     if (coachIntent || coachLoading || proactiveAttempted.current) return;
-    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems, dailyCheckins: useAppStore.getState().dailyCheckins })
+    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems, dailyCheckins })
       .filter((c) => !wasProactiveSent(profile?.id, c));
     if (!list.length) return;
     // Uma notificação tocada com a app já a carregar os dados (ação P.9):

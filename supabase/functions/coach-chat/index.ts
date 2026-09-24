@@ -22,7 +22,7 @@ import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
-import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, lisbonTodayISO } from "../_shared/carolMemory.ts";
+import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, fetchWeekAdherenceLine, lisbonTodayISO } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL } from "../_shared/carolTone.ts";
 import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
@@ -724,11 +724,11 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   // datas e as contagens vêm no Contexto, calculadas pela app.
   week_review:
     `É o balanço da semana que acabou no domingo — as datas e as contagens estão no Contexto. Três bolhas curtas: ` +
-    `(1) o que ele fez face ao que estava previsto — usa o bloco O QUE PRESCREVESTE vs O QUE ACONTECEU, só os dias dessa semana; ` +
-    `sem plano, compara o volume com a semana anterior (no Contexto); ` +
+    `(1) o que ele fez face ao que estava previsto — usa a linha "Plano da semana" do Contexto, que já traz as contas e o veredicto ` +
+    `(não recontes a partir do bloco O QUE PRESCREVESTE, que cobre 14 dias); sem essa linha, não havia plano: compara o volume com a semana anterior (no Contexto); ` +
     `(2) o que ficou bem e o que ficou a faltar, com um número concreto em cada — o sono e a energia dos check-ins contam, se os houver; ` +
     `(3) o foco da semana que começa, numa frase, a partir do plano em vigor e da próxima prova. ` +
-    `Semana cumprida a 100%: uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +
+    `Só se o Contexto disser "Semana cumprida a 100%: sim": uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +
     `Não inventes números que não estejam no Contexto ou nos blocos.`,
 };
 
@@ -5922,6 +5922,17 @@ async function handler(req: Request): Promise<Response> {
       userMsg = data;
     }
 
+    /* O balanço da semana: o plano de segunda a domingo da semana revista,
+       com o "cumprida a 100%" já decidido, junta-se ao Contexto do cliente.
+       A semana vem da chave (week_review:<segunda-feira>). */
+    const weekReviewStart = proactiveTrigger === "week_review"
+      ? (/^week_review:(\d{4}-\d{2}-\d{2})$/.exec(proactiveKey ?? "")?.[1] ?? null)
+      : null;
+    const weekAdherenceLine = weekReviewStart ? await fetchWeekAdherenceLine(sb, userId, weekReviewStart) : null;
+    const turnProactiveDetails = weekAdherenceLine
+      ? [proactiveDetails, weekAdherenceLine].filter(Boolean).join(" ")
+      : proactiveDetails;
+
     // ── Construir pedido ao Gemini ───────────────────────────────────────
     // 1º argumento (coachContext) fixo em null — "Contexto do Coach" foi
     // removido do Perfil a 2026-08-20 (substituído pela Memória do Coach,
@@ -5974,7 +5985,7 @@ async function handler(req: Request): Promise<Response> {
       suggestionAdherencePanel,
       lastExchangeHoursAgo,
       proactiveTrigger,
-      proactiveDetails,
+      turnProactiveDetails,
       raceOutcome,
       racePlanContext,
       splitsContext,

@@ -44,7 +44,7 @@ const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
   intervention: "Há um assunto por resolver.",
   race_conflict: "Ele tem duas provas principais no mesmo bloco de treino. A notificação chama-o para decidirem juntos qual é o objetivo.",
   block_end: "O bloco de treino dele está a acabar e não há outro a seguir. A notificação chama-o para fazerem o ponto e prepararem o próximo.",
-  week_review: "É segunda-feira e a semana dele fechou no domingo. A notificação chama-o para o balanço da semana: o que fez face ao plano e o foco da que começa.",
+  week_review: "A semana dele fechou no domingo. A notificação chama-o para verem juntos como correu, face ao plano, e o foco da que começa. Não digas o dia da semana de hoje nem que o balanço já está feito.",
 };
 
 /** Os dados do momento, em linhas — só o que existe; nada é inventado. */
