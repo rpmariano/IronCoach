@@ -113,6 +113,10 @@ export default function CoachAvatar({
   const vbW = Number(frame.viewBox.split(' ')[2]);
   const unit = (frame.strokePx * vbW) / size;
   const k = unit / 3.2;
+  // As feições que dizem a emoção, mais grossas nos tamanhos pequenos; os
+  // olhos só a meio caminho, senão fechavam-se em manchas.
+  const fk = k * frame.featBoost;
+  const ek = k * (1 + (frame.featBoost - 1) / 2);
   const line = { stroke: 'var(--carol-line)' };
 
   return (
@@ -178,13 +182,13 @@ export default function CoachAvatar({
               </g>
             )}
             <g className="carol-feat" style={line}>
-              <path data-part="browL" d={paths.browL} strokeWidth={rig.browW * k * 0.7} />
-              <path data-part="browR" d={paths.browR} strokeWidth={rig.browW * k * 0.7} />
+              <path data-part="browL" d={paths.browL} strokeWidth={rig.browW * fk * 0.7} />
+              <path data-part="browR" d={paths.browR} strokeWidth={rig.browW * fk * 0.7} />
             </g>
             <g className="carol-feat carol-eyes-in" style={line}>
               <g className={blinking ? 'carol-blink' : undefined}>
-                <path data-part="eyeL" d={paths.eyeL} strokeWidth={rig.eyeW * k} />
-                <path data-part="eyeR" d={paths.eyeR} strokeWidth={rig.eyeW * k} />
+                <path data-part="eyeL" d={paths.eyeL} strokeWidth={rig.eyeW * ek} />
+                <path data-part="eyeR" d={paths.eyeR} strokeWidth={rig.eyeW * ek} />
               </g>
             </g>
             <path
@@ -192,7 +196,7 @@ export default function CoachAvatar({
               className="carol-feat carol-mouth-in"
               d={paths.mouth}
               style={{ ...line, fill: 'var(--carol-line)' }}
-              strokeWidth={rig.mouthW * k * 0.8}
+              strokeWidth={rig.mouthW * fk * 0.8}
               fillOpacity={paths.mouthOpen}
             />
 

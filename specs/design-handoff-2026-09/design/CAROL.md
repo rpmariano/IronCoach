@@ -54,7 +54,7 @@ O avatar era um balão de fala — ícone de chat, não pessoa. Desde 2026-09-24
 - **A expressão acompanha o tom da mensagem em que aparece.** No chat é o modelo que a escolhe, na mesma resposta em que escreve o texto (campo `mood` do JSON estruturado do `coach-chat`), e fica gravada em `coach_messages.mood`. Nas mensagens antigas, ou quando falta, o cliente deduz do texto por marcadores fortes (`inferMoodFromText`); na dúvida, neutra. Um aviso ganha sempre: a cara nunca sorri por cima de uma dor.
 - **Nunca muda sem motivo.** Quando muda, passa de uma à outra em 360 ms (os traços deslizam, o corado sobe ou desce) e acena. No cabeçalho do chat fica "a pensar" enquanto ela escreve, depois a emoção da última mensagem; passadas 6 horas volta à neutra.
 - **Vida:** a assinatura — as linhas desenham-se como uma caneta e só depois o desenho ganha cor — nos momentos de chegada (boas-vindas, onboarding, chat); pisca os olhos a cada ~5 s, com compasso próprio por instância. Com `prefers-reduced-motion`, tudo parado.
-- **Tamanhos:** funciona de 24 px a 88 px. Abaixo de 32 px o enquadramento aproxima-se da cara; acima de 56 px entra o nariz.
+- **Tamanhos:** funciona de 24 px a 88 px. Abaixo de 32 px o enquadramento aproxima-se da cara; acima de 56 px entra o nariz. Nos tamanhos pequenos as sobrancelhas e a boca engrossam, porque são elas que dizem a emoção, e nunca ficam abaixo de 1,2 px. No Início e no chat, nunca menos de 36 px ao lado de uma mensagem dela e 56 px no cartão do Início.
 - **Onde aparece:** header do chat e ao lado de cada mensagem dela, cartão do Início (com a cara do resumo), cabeçalho de cada passo do onboarding, estados de análise ("a pensar"), balanço no hub de prova (a cara do veredicto), boas-vindas.
 
 ## 5. Ritmo humano na escrita

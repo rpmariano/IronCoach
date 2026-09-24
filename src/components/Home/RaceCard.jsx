@@ -166,7 +166,7 @@ function RaceMilestoneLine({ raceId, days }) {
   if (!line) return null;
   return (
     <div data-testid="race-milestone" className="flex items-start gap-2.5 mt-3 pt-3" style={{ borderTop: '1px solid rgba(251,191,36,.18)' }}>
-      <CoachAvatar size={26} mood="neutral" breathing={moment} />
+      <CoachAvatar size={36} mood="neutral" breathing={moment} />
       <p className={`flex-1 min-w-0 text-[12.5px] font-semibold leading-[1.45]${moment ? ' race-milestone-line' : ''}`} style={{ margin: 0, color: 'var(--text-2)' }}>{line}</p>
     </div>
   );

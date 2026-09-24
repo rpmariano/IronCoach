@@ -43,7 +43,7 @@ export default function CheckinCard() {
       {checkin ? (
         <GlassCard padding="12px 14px 12px 16px" data-testid="checkin-card-done">
           <div className="flex items-start gap-3">
-            <CoachAvatar key={justSaved ? 'acabado' : 'antes'} size={30} mood={reply?.mood} breathing={justSaved} style={{ marginTop: 1 }} />
+            <CoachAvatar key={justSaved ? 'acabado' : 'antes'} size={44} mood={reply?.mood} breathing={justSaved} style={{ marginTop: 1 }} />
             <div className="flex-1 min-w-0">
               <p
                 key={reply?.text}
