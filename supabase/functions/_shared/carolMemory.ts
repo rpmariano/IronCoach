@@ -23,6 +23,7 @@
 import { buildCheckinContext, type DailyCheckin } from "./formulas/checkinAlarms.ts";
 import { normalizeGender } from "./formulas/vocabulary.ts";
 import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, trainingSummaryLine, ADHERENCE_WINDOW_DAYS, type TrainingOutcome } from "./formulas/prescriptionAdherence.ts";
+import { interventionOutcomesLine, INTERVENTION_WINDOW_DAYS } from "./formulas/interventionOutcomes.ts";
 import { computeBestPace, type BestPaceBucket } from "./formulas/bestPace.ts";
 import { computeVdotTrend } from "./formulas/vdotTrend.ts";
 import { formatPaceMinKm } from "./formulas/paceFormat.ts";
@@ -1058,7 +1059,7 @@ export async function fetchPushesBlock(sb: any, userId: string, todayISO: string
 export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: string): Promise<string | null> {
   try {
     const from = addDaysISO(todayISO, -ADHERENCE_WINDOW_DAYS);
-    const [itemsR, runsR, gymR, mealsR] = await Promise.all([
+    const [itemsR, runsR, gymR, mealsR, interventionsR] = await Promise.all([
       sb.from("coach_plan_items")
         .select("id, plan_id, planned_date, actual_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
         .eq("user_id", userId).eq("coach_plans.status", "aceite")
@@ -1069,20 +1070,28 @@ export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: str
         .eq("user_id", userId).eq("status", "concluido").gte("date", from).lte("date", todayISO),
       sb.from("meals").select("date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
         .eq("user_id", userId).gte("date", from).lt("date", todayISO),
+      // Os avisos dela e como acabaram (5.5, coach_interventions): para
+      // calibrar quando chama por ele, nunca como assunto.
+      sb.from("coach_interventions").select("opened_at, closed_at, outcome, origin")
+        .eq("user_id", userId).gte("opened_at", `${addDaysISO(todayISO, -INTERVENTION_WINDOW_DAYS)}T00:00:00Z`)
+        .order("opened_at", { ascending: false }).limit(200),
     ]);
     warn("coach_plan_items(adesão)", itemsR.error);
     warn("runs(adesão)", runsR.error);
     warn("workout_sessions(adesão)", gymR.error);
     warn("meals(adesão)", mealsR.error);
+    warn("coach_interventions(adesão)", interventionsR.error);
+    const interventionsLine = interventionsR.error ? null : interventionOutcomesLine(interventionsR.data || [], todayISO);
     // Sem os itens não há nada a cruzar; sem os registos, os "não feitos"
-    // seriam falsos — nesse caso não se diz nada.
-    if (itemsR.error || runsR.error || gymR.error) return null;
-    return buildPrescriptionAdherenceContext(evaluatePrescriptions({
+    // seriam falsos — nesse caso não se diz nada sobre as prescrições (os
+    // avisos continuam a valer por si).
+    const adherence = itemsR.error || runsR.error || gymR.error ? null : buildPrescriptionAdherenceContext(evaluatePrescriptions({
       items: itemsR.data || [],
       runs: runsR.data || [],
       gym: gymR.data || [],
       mealsByDate: mealsR.error ? {} : mealTotalsByDate(mealsR.data || []),
     }, todayISO));
+    return [adherence, interventionsLine].filter(Boolean).join("\n\n") || null;
   } catch (e) {
     console.warn("carolMemory: fetchAdherenceBlock falhou:", e);
     return null;

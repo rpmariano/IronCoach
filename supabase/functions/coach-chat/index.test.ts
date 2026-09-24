@@ -4016,6 +4016,18 @@ Deno.test("resolve_intervention: numa intervenção de plano não há marca nenh
   assertEquals(calls.updates.length, 1);
 });
 
+Deno.test("resolve_intervention: o desfecho vai no update, para o trigger o guardar em coach_interventions (5.5)", async () => {
+  for (const action of ["plano_ajustado", "atleta_ignorou", "falso_positivo"]) {
+    const { sb, calls } = makeResolveSb("Falhou 3 treinos.");
+    await runResolveIntervention(sb, "u1", { action_taken: action });
+    assertEquals(calls.updates[0].row, { coach_intervention_status: "resolved", coach_intervention_reason: null, coach_intervention_outcome: action });
+  }
+  // Um desfecho inventado não fecha nada.
+  const { sb, calls } = makeResolveSb("Falhou 3 treinos.");
+  await runResolveIntervention(sb, "u1", { action_taken: "resolvido_sozinho" });
+  assertEquals(calls.updates.length, 0);
+});
+
 
 // ── Pedido repetido (incidente 2026-09-23) ──────────────────────────────
 // O mesmo POST chegou duas vezes (a resposta perdeu-se a caminho do

@@ -909,9 +909,12 @@ async function attachCoachNotes(
     }
     if (coachResult.intervention_needed && coachResult.intervention_reason) {
       await sb.from("profiles")
-        .update({ 
-          coach_intervention_status: "needed", 
-          coach_intervention_reason: coachResult.intervention_reason 
+        .update({
+          coach_intervention_status: "needed",
+          coach_intervention_reason: coachResult.intervention_reason,
+          // De onde veio o aviso (5.5): o trigger track_coach_intervention
+          // copia-a para coach_interventions e limpa-a.
+          coach_intervention_origin: "run",
         })
         .eq("id", userId);
       (run as any).coach_intervention_status = "needed";

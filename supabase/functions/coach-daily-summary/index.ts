@@ -1028,7 +1028,8 @@ Deno.serve(async (req) => {
     if (loadToOpen) {
       const reason = runLoadInterventionReason(loadToOpen, today);
       const { data: opened, error: openError } = await sb.from("profiles")
-        .update({ coach_intervention_status: "needed", coach_intervention_reason: reason })
+        // A origem vai com a abertura (5.5, coach_interventions).
+        .update({ coach_intervention_status: "needed", coach_intervention_reason: reason, coach_intervention_origin: "load" })
         .eq("id", userId)
         .or("coach_intervention_status.is.null,coach_intervention_status.in.(none,resolved)")
         .select("id");

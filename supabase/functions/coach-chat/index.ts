@@ -3420,9 +3420,11 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
 
   const { error } = await sb
     .from("profiles")
-    .update({ 
-      coach_intervention_status: "resolved", 
-      coach_intervention_reason: null 
+    .update({
+      coach_intervention_status: "resolved",
+      coach_intervention_reason: null,
+      // O desfecho fica em coach_interventions (5.5): a Carol calibra por ele.
+      coach_intervention_outcome: actionTaken,
     })
     .eq("id", userId);
 

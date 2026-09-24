@@ -327,7 +327,9 @@ export default function Home() {
     setDismissing(true);
     try {
       const { supabase } = await import('../../lib/supabase');
-      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null }).eq('id', profile.id);
+      // Dispensar é um desfecho (5.5): fica em coach_interventions, e a Carol
+      // calibra por ele. Só no update — o trigger consome-o.
+      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null, coach_intervention_outcome: 'dispensado' }).eq('id', profile.id);
       if (error) throw error;
       // Dispensar um convite para objetivos é dizer "agora não": fica
       // registado para a Carol não voltar a chamar na próxima pesagem

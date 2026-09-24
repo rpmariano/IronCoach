@@ -141,7 +141,7 @@ Com a Fase 2, O3 passa de 2 para 7 e O7 de 3 para 7. Contando também a ação 1
 
 A Carol lê o bloco "O que prescreveste vs o que aconteceu" no chat. Tem um resumo, por exemplo "8 treinos prescritos: 5 cumpridos, 2 a menos, 1 não feito; descanso respeitado em 3 de 4 dias", e a média de proteína. A instrução é usar os números para calibrar, e não para cobrar: um dia isolado não é um padrão, e um treino "não feito" pode ter sido registado noutro dia.
 
-**Diferença face ao plano:** o cartão diário ainda não lê este bloco, só o chat. As recomendações soltas que ela dá na conversa, fora do plano, também não entram, porque não ficam gravadas de forma estruturada.
+**Diferença face ao plano:** o cartão diário também lê este bloco (`fetchAdherenceBlock` no `coach-daily-summary`; a nota anterior, que dizia que só o chat o lia, estava errada — corrigida na ação 5.5). As recomendações soltas que ela dá na conversa, fora do plano, ainda não entram, porque não ficam gravadas de forma estruturada (5.5, push 2). Desde a 5.5 (push 1), o bloco traz também os avisos "Preciso de falar contigo" dos últimos 60 dias e como acabaram (`coach_interventions`).
 
 Com a Fase 3, O4 passa de 6 para 9. A omnisciência sobe para **7,5**.
 

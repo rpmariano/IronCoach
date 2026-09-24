@@ -745,9 +745,12 @@ async function attachMealCoachNotes(
     
     if (result.intervention_needed && result.intervention_reason) {
       await sb.from("profiles")
-        .update({ 
-          coach_intervention_status: "needed", 
-          coach_intervention_reason: result.intervention_reason 
+        .update({
+          coach_intervention_status: "needed",
+          coach_intervention_reason: result.intervention_reason,
+          // De onde veio o aviso (5.5): o trigger track_coach_intervention
+          // copia-a para coach_interventions e limpa-a.
+          coach_intervention_origin: "meal",
         })
         .eq("id", userId);
       (meal as any).coach_intervention_status = "needed";

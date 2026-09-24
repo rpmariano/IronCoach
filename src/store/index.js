@@ -501,7 +501,8 @@ export const useAppStore = create((set, get) => ({
         const resolved = { coach_intervention_status: 'resolved', coach_intervention_reason: null };
         const { data: rows, error: resolveError } = await supabase
           .from('profiles')
-          .update(resolved)
+          // O desfecho vai só no update (5.5): o trigger consome-o.
+          .update({ ...resolved, coach_intervention_outcome: 'objetivos_decididos' })
           .eq('id', profileId)
           .eq('coach_intervention_reason', fresh.coach_intervention_reason)
           .select('id');
@@ -973,7 +974,9 @@ export const useAppStore = create((set, get) => ({
       const reason = interventionReasonFor(alarms);
       const { error: upErr } = await supabase
         .from('profiles')
-        .update({ coach_intervention_status: 'needed', coach_intervention_reason: reason })
+        // A origem vai com a abertura (5.5): o trigger guarda-a em
+        // coach_interventions e limpa-a — não entra no perfil do store.
+        .update({ coach_intervention_status: 'needed', coach_intervention_reason: reason, coach_intervention_origin: 'checkin' })
         .eq('id', userId);
       if (upErr) console.error('Erro a abrir a intervenção do check-in:', upErr);
       else set({ profile: { ...get().profile, coach_intervention_status: 'needed', coach_intervention_reason: reason } });

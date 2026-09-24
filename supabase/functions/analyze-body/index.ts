@@ -230,6 +230,8 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
       if (intervencao) {
         patch.coach_intervention_status = "needed";
         patch.coach_intervention_reason = intervencao;
+        // De onde veio o aviso (5.5, coach_interventions).
+        patch.coach_intervention_origin = "body";
       }
     }
 
