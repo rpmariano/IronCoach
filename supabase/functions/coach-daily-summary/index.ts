@@ -839,8 +839,8 @@ Deno.serve(async (req) => {
     const acceptedPlanIds = (acceptedPlans || []).map((p: any) => p.id);
     let planItems: any[] = [];
     let lastWeekItems: any[] = [];
-    // O plano aceite até hoje, 13 dias para trás: 7 de janela da carga e 7
-    // de histórico para saber se o alerta já vinha de trás.
+    // O plano aceite de 13 dias para trás até depois de amanhã: 7 de janela
+    // da carga e 7 de histórico para saber se o alerta já vinha de trás.
     let loadPlanItems: LoadPlanItem[] = [];
     if (acceptedPlanIds.length > 0) {
       const { data: fetchedItems } = await sb
@@ -858,7 +858,10 @@ Deno.serve(async (req) => {
       const allItems = fetchedItems || [];
       planItems = allItems.filter((i: any) => i.planned_date >= today);
       lastWeekItems = allItems.filter((i: any) => i.planned_date >= addDaysISO(today, -7) && i.planned_date < today);
-      loadPlanItems = allItems.filter((i: any) => i.planned_date <= today);
+      // Todos, também os de amanhã e depois: um plano cujas corridas ficam
+      // fora da janela continua a ser um plano de treino (runLoadReading
+      // recorta as janelas).
+      loadPlanItems = allItems;
     }
 
     const tomorrow = addDaysISO(today, 1);
@@ -927,7 +930,11 @@ Deno.serve(async (req) => {
         ratio: load.enoughHistory ? load.ratio : null,
         semanas_com_corridas_de_4: load.historyWeeks,
         km_ultimos_7_dias: load.acuteKm,
-        km_previstos_no_plano_7_dias: load.prescribedKm,
+        // A comparação com o plano é só dos dias dele: um plano que começou a
+        // meio da semana não responde pelas corridas de antes.
+        plano_desde: load.planFrom,
+        km_nos_dias_do_plano: load.kmOnPlanDays,
+        km_previstos_no_plano: load.prescribedKm,
         segue_o_plano: load.followsPlan,
         conta_como_risco: load.alert,
       },
@@ -1014,7 +1021,7 @@ Deno.serve(async (req) => {
       interventionStatus: profile?.coach_intervention_status ?? null,
     });
     if (loadToOpen) {
-      const reason = runLoadInterventionReason(loadToOpen);
+      const reason = runLoadInterventionReason(loadToOpen, today);
       const { data: opened, error: openError } = await sb.from("profiles")
         .update({ coach_intervention_status: "needed", coach_intervention_reason: reason })
         .eq("id", userId)

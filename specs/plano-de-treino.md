@@ -374,7 +374,12 @@ prescritos) e com corridas em só 2 das 4 semanas. Regras novas, em
   Sem plano, o risco fica no recap (`conta_como_risco`).
 - Com outro assunto por resolver, este perde-se (não fica à espera): só há
   um de cada vez, e no resumo seguinte as corridas já não são novas.
-- Um plano que começa a meio da janela só responde pelos seus dias.
+- Um plano que começa a meio da janela só responde pelos seus dias; um
+  plano que já vinha de trás responde pela janela inteira (os descansos sem
+  nada a dizer não têm item). Um plano só de refeições não é plano de treino.
+- Um episódio fecha com 3 dias calmos seguidos (≤1,30, sem histórico ou
+  dentro do plano); um pico depois disso é novo e abre outra vez. Um dia
+  calmo sozinho não chega — o rácio oscila com 3 ou 4 corridas na janela.
 
 ### Modelo
 

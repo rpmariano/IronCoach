@@ -88,14 +88,14 @@ Deno.test("corridas com data no futuro não entram", () => {
 });
 
 Deno.test("o motivo leva a etiqueta, os números e o tipo certo", () => {
-  const comPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: 16, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true });
+  const comPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: 16, planFrom: "2026-09-18", kmOnPlanDays: 30, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true }, TODAY);
   assert(comPlano.startsWith(RUN_LOAD_INTERVENTION_TAG));
   assert(comPlano.includes("30 km nos últimos 7 dias"));
   assert(comPlano.includes("12,5 km/semana"));
   assert(comPlano.includes("ACWR 2,4"));
   assertEquals(runLoadInterventionKind(comPlano), "acima_do_plano");
 
-  const semPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: null, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true });
+  const semPlano = runLoadInterventionReason({ ratio: 2.4, acuteKm: 30, chronicWeeklyKm: 12.5, prescribedKm: null, planFrom: "2026-09-18", kmOnPlanDays: 30, hasPlan: true, historyWeeks: 4, enoughHistory: true, followsPlan: false, alert: true }, TODAY);
   assertEquals(runLoadInterventionKind(semPlano), "sem_plano");
 
   assertEquals(isRunLoadIntervention("Check-in de hoje: dor 7"), false);
@@ -128,7 +128,7 @@ Deno.test("abre na passagem para alerta, pela corrida registada depois do últim
     planItems: lightPlan, today: TODAY, previousSummaryAt: "2026-09-23T23:33:58.407+00:00", interventionStatus: "none",
   });
   assert(r !== null && r.alert);
-  assertEquals(runLoadInterventionKind(runLoadInterventionReason(r)), "acima_do_plano");
+  assertEquals(runLoadInterventionKind(runLoadInterventionReason(r, TODAY)), "acima_do_plano");
 });
 
 Deno.test("não reabre no mesmo dia: o resumo anterior já via o alerta", () => {
@@ -183,13 +183,14 @@ Deno.test("sem plano aceite nesses dias não abre (o chat falaria de um plano qu
 });
 
 Deno.test("plano sem corridas nesses dias (só descanso) e ele correu muito: abre, com o motivo 'sem_plano'", () => {
-  const rest = ["2026-09-18", "2026-09-19", "2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24"].map((d) => item(d, null, { kind: "descanso" }));
+  // O plano de treino tem corridas antes (e depois) — esta semana é só descanso.
+  const rest = [item("2026-09-10", 5), ...["2026-09-18", "2026-09-19", "2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24"].map((d) => item(d, null, { kind: "descanso" }))];
   const r = runLoadInterventionToOpen({
     runs: [...base, at("2026-09-20", 15), at("2026-09-24", 15)],
     planItems: rest, today: TODAY, previousSummaryAt: null, interventionStatus: "none",
   });
   assert(r !== null);
-  assertEquals(runLoadInterventionKind(runLoadInterventionReason(r)), "sem_plano");
+  assertEquals(runLoadInterventionKind(runLoadInterventionReason(r, TODAY)), "sem_plano");
 });
 
 Deno.test("não abre com outro assunto por resolver", () => {
@@ -234,3 +235,55 @@ Deno.test("o plano começa com a carga já alta: abre uma vez, no primeiro dia c
   }
   assertEquals(opened, [`${planStart} tarde`]);
 });
+
+// ── Revisão pré-deploy de aa00b8b ───────────────────────────────────────────
+Deno.test("descanso sem item à cabeça da janela: o plano já vinha de trás e responde pela janela inteira", () => {
+  // Plano ter/qui/sáb/dom (7 km cada) há semanas; na segunda (descanso, sem
+  // item) correu 26 km a mais. No domingo a segunda está à cabeça da janela.
+  const weeks = ["2026-08-25", "2026-09-01", "2026-09-08", "2026-09-15"];
+  const plan = weeks.flatMap((mon) => [1, 3, 5, 6].map((k) => item(addDaysT(mon, k), 7)));
+  const runs = plan.filter((i) => i.planned_date < "2026-09-22").map((i) => run(i.planned_date, 7));
+  runs.push(run("2026-09-15", 26));
+  const r = runLoadReading({ runs, planItems: plan, today: "2026-09-21" });
+  assertEquals(r.planFrom, "2026-09-15");
+  assertEquals(r.kmOnPlanDays, 54);
+  assertEquals(r.followsPlan, false);
+  assertEquals(r.alert, r.ratio !== null && r.ratio > 1.5);
+});
+
+Deno.test("plano só de refeições não é plano de treino", () => {
+  const meals = ["2026-09-18", "2026-09-20", "2026-09-22", "2026-09-24"].map((d) => item(d, null, { kind: "descanso", plan_id: "refeicoes" }));
+  const r = runLoadReading({ runs: [...steady, run("2026-09-20", 15), run("2026-09-23", 15)], planItems: meals, today: TODAY });
+  assertEquals(r.hasPlan, false);
+  assertEquals(r.planFrom, null);
+  assertEquals(runLoadInterventionToOpen({ runs: [...base, at("2026-09-20", 15), at("2026-09-24", 15)], planItems: meals, today: TODAY, previousSummaryAt: null, interventionStatus: "none" }), null);
+});
+
+Deno.test("episódio novo depois de dias calmos (≤1,30) abre outra vez", () => {
+  // Episódio 1 a 13/09 (aberto), depois dias calmos, e um pico novo a 24/09.
+  const hist = ["2026-08-16", "2026-08-23", "2026-08-30", "2026-09-06"].map((d) => at(d, 10));
+  const plan = Array.from({ length: 20 }, (_, k) => item(addDaysT("2026-09-06", k), k % 3 ? 0 : 3));
+  const runs = [...hist, at("2026-09-13", 24)];
+  assert(runLoadInterventionToOpen({ runs, planItems: plan, today: "2026-09-13", previousSummaryAt: "2026-09-13T06:00:00Z", interventionStatus: "none" }) !== null, "episódio 1");
+  const later = [...runs, at("2026-09-20", 8), at("2026-09-24", 20, "2026-09-24T15:00:00Z"), at("2026-09-23", 12, "2026-09-23T15:00:00Z")];
+  const calm = runLoadReading({ runs: later.filter((r) => r.date <= "2026-09-21"), planItems: plan, today: "2026-09-21" });
+  assert(calm.ratio !== null && calm.ratio <= 1.3, `dia calmo ${calm.ratio}`);
+  const r = runLoadInterventionToOpen({ runs: later, planItems: plan, today: TODAY, previousSummaryAt: "2026-09-24T06:00:00Z", interventionStatus: "resolved" });
+  assert(r !== null, "episódio 2 devia abrir");
+});
+
+Deno.test("o motivo usa os números da decisão (desde o início do plano)", () => {
+  const plan = [item("2026-09-22", 3), item("2026-09-24", 3)];
+  const r = runLoadReading({ runs: [...steady, run("2026-09-19", 20), run("2026-09-22", 8), run("2026-09-24", 8)], planItems: plan, today: TODAY });
+  assertEquals(r.planFrom, "2026-09-22");
+  assertEquals(r.kmOnPlanDays, 16);
+  const motivo = runLoadInterventionReason(r, TODAY);
+  assert(motivo.includes("16 km desde 2026-09-22"), motivo);
+  assert(motivo.includes("o plano previa 6 km"), motivo);
+});
+
+function addDaysT(d: string, n: number) {
+  const x = new Date(d + "T00:00:00Z");
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+}

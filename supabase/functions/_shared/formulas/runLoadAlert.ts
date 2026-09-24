@@ -20,7 +20,7 @@
 // para o frontend a importar pelo @formulas (utils/carolTopics.js).
 
 import { computeRunAcwr } from "./runAcwr.ts";
-import { ACWR_DANGER } from "./acwr.ts";
+import { ACWR_DANGER, ACWR_SAFE_MAX } from "./acwr.ts";
 
 export const RUN_LOAD_INTERVENTION_TAG = "[carga]";
 
@@ -43,6 +43,8 @@ export interface LoadRun {
 }
 
 export interface LoadPlanItem {
+  /** O plano a que pertence: um plano só de refeições não é plano de treino. */
+  plan_id?: string | null;
   planned_date: string;
   kind: string;
   status?: string | null;
@@ -57,7 +59,13 @@ export interface RunLoadReading {
   chronicWeeklyKm: number;
   /** Km que o plano aceite previa para os mesmos 7 dias; null sem corridas no plano. */
   prescribedKm: number | null;
-  /** Há itens do plano aceite (de qualquer tipo) nestes 7 dias. */
+  /** Desde quando o plano responde pela carga: o início da janela, ou o dia
+   *  em que um plano novo começou dentro dela. null sem plano. */
+  planFrom: string | null;
+  /** Km corridos desde planFrom — é isto que se compara com prescribedKm. */
+  kmOnPlanDays: number;
+  /** Há um plano de TREINO aceite (com corridas ou ginásio) nestes 7 dias,
+   *  mesmo que só com descanso nesses dias. */
   hasPlan: boolean;
   historyWeeks: number;
   enoughHistory: boolean;
@@ -105,9 +113,12 @@ export function runLoadReading(
   const enoughHistory = historyWeeks >= LOAD_HISTORY_MIN_WEEKS;
 
   const acuteStart = addDaysISO(today, -6);
-  const inPlanWindow = (planItems || []).filter((i) =>
-    i && i.status !== "cancelado" && typeof i.planned_date === "string" &&
-    i.planned_date >= acuteStart && i.planned_date <= today);
+  const live = (planItems || []).filter((i) => i && i.status !== "cancelado" && typeof i.planned_date === "string");
+  // Um plano só de refeições (itens de descanso com sugestões) não é plano
+  // de treino: não responde pela carga (revisão pré-deploy de aa00b8b).
+  const trainingPlans = new Set(live.filter((i) => i.kind === "corrida" || i.kind === "ginasio").map((i) => i.plan_id ?? null));
+  const training = live.filter((i) => trainingPlans.has(i.plan_id ?? null));
+  const inPlanWindow = training.filter((i) => i.planned_date >= acuteStart && i.planned_date <= today);
   const planned = inPlanWindow.filter((i) => i.kind === "corrida");
   let prescribedKm: number | null = null;
   if (planned.length) {
@@ -120,9 +131,18 @@ export function runLoadReading(
     }, 0);
   }
   // Um plano que começou a meio da semana só responde pelos dias dele: as
-  // corridas de antes não são "acima do que o plano previa".
-  const planFrom = inPlanWindow.reduce((min, i) => (i.planned_date < min ? i.planned_date : min), today);
-  const kmOnPlanDays = list
+  // corridas de antes não são "acima do que o plano previa". Mas os dias de
+  // descanso sem nada a dizer não têm item — com itens antes da janela, o
+  // plano já estava ativo e responde pela janela inteira; sem isto, uma
+  // corrida extra num descanso à cabeça da janela saía da conta
+  // (revisão pré-deploy de aa00b8b).
+  const activeBefore = training.some((i) => i.planned_date < acuteStart);
+  const planFrom = !inPlanWindow.length
+    ? null
+    : activeBefore
+      ? acuteStart
+      : inPlanWindow.reduce((min, i) => (i.planned_date < min ? i.planned_date : min), today);
+  const kmOnPlanDays = planFrom === null ? acwr.acuteKm : list
     .filter((r) => r.date.slice(0, 10) >= planFrom)
     .reduce((sum, r) => sum + (Number(r.distance_km) || 0), 0);
   const followsPlan = prescribedKm !== null && prescribedKm > 0 && kmOnPlanDays <= prescribedKm * LOAD_PLAN_TOLERANCE;
@@ -132,6 +152,8 @@ export function runLoadReading(
     acuteKm: round1(acwr.acuteKm),
     chronicWeeklyKm: round1(acwr.chronicWeeklyKm),
     prescribedKm: prescribedKm !== null ? round1(prescribedKm) : null,
+    planFrom,
+    kmOnPlanDays: round1(kmOnPlanDays),
     hasPlan: inPlanWindow.length > 0,
     historyWeeks,
     enoughHistory,
@@ -157,11 +179,13 @@ export function runLoadInterventionKind(reason: string | null | undefined): "aci
 const num = (n: number) => String(n).replace(".", ",");
 
 /** O motivo, escrito para a Carol (o atleta nunca o vê tal e qual). */
-export function runLoadInterventionReason(r: RunLoadReading): string {
-  const plano = r.prescribedKm !== null && r.prescribedKm > 0
-    ? `, quando ${ABOVE_PLAN_MARKER} ${num(r.prescribedKm)} km`
-    : `, sem corridas no plano para esses dias`;
-  return `${RUN_LOAD_INTERVENTION_TAG} Carga de corrida: ${num(r.acuteKm)} km nos últimos 7 dias${plano}; ` +
+export function runLoadInterventionReason(r: RunLoadReading, today: string): string {
+  // Os números da decisão (followsPlan), não outros: a Carol cita-os no chat.
+  const desde = r.planFrom && r.planFrom > addDaysISO(today, -6) ? `desde ${r.planFrom}, quando o plano começou` : "nos últimos 7 dias";
+  const feito = r.prescribedKm !== null && r.prescribedKm > 0
+    ? `${num(r.kmOnPlanDays)} km ${desde}, quando ${ABOVE_PLAN_MARKER} ${num(r.prescribedKm)} km`
+    : `${num(r.acuteKm)} km nos últimos 7 dias, sem corridas no plano para esses dias`;
+  return `${RUN_LOAD_INTERVENTION_TAG} Carga de corrida: ${feito}; ` +
     `a média das últimas 4 semanas é ${num(r.chronicWeeklyKm)} km/semana (ACWR ${num(r.ratio ?? 0)}). ` +
     `Vê com ele como se sente e se os próximos dias do plano devem mudar.`;
 }
@@ -170,19 +194,23 @@ const PENDING = ["needed", "in_progress"];
 
 /** Quantos dias para trás se procura um alerta que já tenha estado vivo. */
 export const LOAD_ALERT_LOOKBACK_DAYS = 7;
+/** Dias calmos seguidos que fecham um episódio de carga. */
+export const LOAD_EPISODE_CALM_DAYS = 3;
 
 type RunWithCreated = LoadRun & { created_at?: string | null };
 
-/** O assunto podia ter aberto em `day`, com as corridas registadas até
- *  `cutoffMs`? Um alerta sem plano nesse dia não conta: aí não se abre nada,
- *  e contá-lo calava o assunto na semana em que o plano começa. */
-function couldOpenAsOf(runs: RunWithCreated[], planItems: LoadPlanItem[], day: string, cutoffMs: number): boolean {
+/** A leitura tal como se via em `day`, com as corridas registadas até `cutoffMs`. */
+function readingAsOf(runs: RunWithCreated[], planItems: LoadPlanItem[], day: string, cutoffMs: number): RunLoadReading {
   const known = (runs || []).filter((r) => {
     const at = r?.created_at ? Date.parse(r.created_at) : NaN;
     return Number.isFinite(at) && at <= cutoffMs;
   });
-  const r = runLoadReading({ runs: known, planItems, today: day });
-  return r.alert && r.hasPlan;
+  return runLoadReading({ runs: known, planItems, today: day });
+}
+
+/** Carga sem nada a dizer: zona segura, sem histórico, ou a do plano. */
+function isCalm(r: RunLoadReading): boolean {
+  return r.ratio === null || !r.enoughHistory || r.followsPlan || r.ratio <= ACWR_SAFE_MAX;
 }
 
 /** Abre-se o assunto só na passagem para alerta, não enquanto o alerta dura.
@@ -191,9 +219,11 @@ function couldOpenAsOf(runs: RunWithCreated[], planItems: LoadPlanItem[], day: s
  *  outra vez. Não abre se:
  *  - já estava em alerta no resumo anterior de hoje (com as corridas que
  *    estavam registadas nessa altura);
- *  - esteve em alerta, com plano, em algum dos 7 dias anteriores, lido como
- *    se lia nesse dia: a janela de cada dia e só as corridas registadas até
- *    ao fim dele.
+ *  - o mesmo episódio já vinha de trás: para trás, dia a dia (até 7), cada
+ *    um lido como se lia nesse dia — a sua janela e só as corridas
+ *    registadas até ao fim dele —, um dia em alerta com plano cala; 3 dias
+ *    calmos seguidos (≤1,30, sem histórico ou dentro do plano) fecham o
+ *    episódio e um pico depois deles é novo.
  *    Ler o passado com a janela de hoje não serve — a janela avança, a
  *    corrida mais antiga sai e o "antes" parecia calmo todos os dias
  *    (revisão pré-deploy de 0743341);
@@ -222,11 +252,24 @@ export function runLoadInterventionToOpen(
   if (Number.isFinite(since) && new Date(since).toISOString().slice(0, 10) >= addDaysISO(today, -1)) {
     // O resumo anterior pode ser de ontem ao fim do dia (em UTC); a janela é
     // a de hoje, o que conta é se as corridas de então já davam alerta.
-    if (couldOpenAsOf(runs, planItems, today, since)) return null;
+    const before = readingAsOf(runs, planItems, today, since);
+    // Um alerta sem plano nesse dia não conta: aí não se abre nada, e
+    // contá-lo calava o assunto na semana em que o plano começa.
+    if (before.alert && before.hasPlan) return null;
   }
+  // Para trás, dia a dia: um dia em que o assunto podia ter aberto cala-o
+  // (o episódio é o mesmo); LOAD_EPISODE_CALM_DAYS dias calmos seguidos
+  // fecham o episódio anterior e um pico depois deles é novo. Um dia calmo
+  // sozinho não chega: quem corre dia sim, dia não tem 3 ou 4 corridas na
+  // janela conforme o dia, e o rácio oscila entre 1,25 e 1,55 sem nada ter
+  // mudado — cada descida reabria o assunto.
+  let calmStreak = 0;
   for (let back = 1; back <= LOAD_ALERT_LOOKBACK_DAYS; back++) {
     const day = addDaysISO(today, -back);
-    if (couldOpenAsOf(runs, planItems, day, Date.parse(`${day}T23:59:59Z`))) return null;
+    const r = readingAsOf(runs, planItems, day, Date.parse(`${day}T23:59:59Z`));
+    if (r.alert && r.hasPlan) return null;
+    calmStreak = isCalm(r) ? calmStreak + 1 : 0;
+    if (calmStreak >= LOAD_EPISODE_CALM_DAYS) break;
   }
   return now;
 }
