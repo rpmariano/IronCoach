@@ -104,7 +104,7 @@ export default function WaterSheet() {
           className="water-goal-moment w-full flex items-start gap-3 mt-4 text-left rounded-[16px]"
           style={{ padding: '14px 15px', background: 'var(--tint-run-bg)', border: '1px solid var(--tint-run-bd)' }}
         >
-          <CoachAvatar size={34} mood="happy" breathing />
+          <CoachAvatar size={36} mood="happy" breathing />
           <span className="flex-1 min-w-0">
             <span className="block text-[14.5px] font-black leading-[1.25]" style={{ color: 'var(--text-1)' }}>A água de hoje está feita.</span>
             <span className="block text-[12.5px] leading-[1.45] mt-1" style={{ color: 'var(--text-3)' }}>{litres(total)} L. O resto do dia é só manter.</span>
