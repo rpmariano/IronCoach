@@ -1,0 +1,265 @@
+/* A geometria do rosto da Carol — só números, sem React, para o avatar
+   (CoachAvatar.jsx) e os testes partilharem exatamente o mesmo desenho.
+
+   Um busto ilustrado, na estética do traço simples: linha escura sobre
+   preenchimento claro, dentro do disco ciano dela. Cabeça, pescoço e
+   ombros; franja em madeixas; o cabelo apanhado numa trança que cai sobre o
+   ombro direito; bochechas coradas. As linhas do cabelo, do contorno e dos
+   ombros são a "assinatura" — desenham-se quando ela aparece, e só depois
+   o desenho ganha cor.
+
+   Coordenadas: a cabeça vive em 0–100 (olhos a 55, queixo a 80,5); o corpo
+   continua para baixo até ~125, e o enquadramento (frameFor) decide quanto
+   dele entra no disco.
+
+   Cada emoção é um "rig": a posição de cada traço como uma curva quadrática
+   (x1 y1, controlo, x2 y2) e a sua espessura, mais a inclinação da cabeça e
+   o corado das bochechas. Todas as emoções têm a mesma forma de rig, por isso
+   passar de uma para outra é interpolar números — os olhos fecham-se num
+   arco, a boca abre-se, a cabeça inclina — em vez de trocar um desenho por
+   outro. */
+
+/* ── O busto (fixo) ─────────────────────────────────────────────────────── */
+
+/** Ombros e peito — a gola redonda por cima. */
+export const BODY_PATH = 'M 6 126 C 8 102, 23 91.5, 43 87 L 57 87 C 77 91.5, 92 102, 94 126 Z';
+export const COLLAR_PATH = 'M 41.8 87.6 Q 50 95.4 58.2 87.6';
+/** O pescoço: o preenchimento e os dois lados. */
+export const NECK_FILL_PATH = 'M 44.6 72 L 55.4 72 L 56 88.6 L 44 88.6 Z';
+export const NECK_PATH = 'M 44.8 76 L 44.3 87.6 M 55.2 76 L 55.7 87.6';
+
+/** A cara: o preenchimento (o topo fica debaixo do cabelo) e a linha do
+ *  maxilar. */
+export const FACE_FILL_PATH = 'M 30.6 52 C 30.6 34, 39.5 27, 50 27 C 60.5 27, 69.4 34, 69.4 52 C 69.4 69.5, 59.5 79, 50 79 C 40.5 79, 30.6 69.5, 30.6 52 Z';
+export const JAW_PATH = 'M 30.8 55 C 31.6 70.5, 41 79, 50 79 C 59 79, 68.4 70.5, 69.2 55';
+export const EARS_PATH = 'M 31 53.6 C 25.8 52, 25.2 61.4, 31.4 62.2 M 69 53.6 C 74.2 52, 74.8 61.4, 68.6 62.2';
+
+/** O cabelo, puxado para trás: uma calota de orelha a orelha. O contorno de
+ *  fora é o topo da cabeça; o de dentro é a linha do cabelo nas têmporas. */
+export const HAIR_PATH =
+  'M 30.8 60 C 24.4 45, 26.4 21, 50 16.5 C 73.6 12.5, 81.2 35, 69.2 60 ' +
+  'C 70.8 46, 66.4 33, 50 31 C 33.6 33, 29.2 46, 30.8 60 Z';
+
+/** A franja: varrida da risca para a têmpora esquerda, em madeixas com
+ *  pontas; e uma madeixa curta para a direita. */
+export const FRINGE_PATH =
+  'M 58.5 18.2 C 46.5 20, 34.5 27.5, 30.2 45.5 ' +
+  'C 33.6 42.2, 36.8 40, 39.8 38.4 C 40.2 41.2, 41.8 43, 44.4 44 ' +
+  'C 46.4 38.4, 50.8 34.2, 55.2 31.4 C 56.2 34.6, 58.4 36.6, 61.8 37.6 ' +
+  'C 63.6 31, 62.6 24, 58.5 18.2 Z';
+export const FRINGE_RIGHT_PATH = 'M 59.2 19 C 66 23, 70.2 31, 69.8 44.4 C 68.2 40.8, 66 38.4, 63.2 37 C 64.2 30.4, 62.8 24.4, 59.2 19 Z';
+
+/** Madeixas desenhadas dentro do cabelo — só nos tamanhos grandes. */
+export const HAIR_STRANDS_PATH = 'M 52 20.6 C 43.6 23, 37.6 28.6, 34.8 36.4 M 65.4 21.4 C 70.4 25.4, 73.4 31.4, 73.8 38';
+
+/** A trança: sai de trás da orelha direita e cai sobre o ombro, em gomos
+ *  alternados, com o elástico e a ponta solta. [cx, cy, rx, ry, rotação]. */
+export const BRAID_LOBES = [
+  [70.2, 64.0, 4.9, 3, -34],
+  [72.8, 69.5, 4.9, 3, 34],
+  [71.3, 75.0, 4.9, 3, -34],
+  [73.9, 80.5, 4.9, 3, 34],
+  [72.4, 86.0, 4.9, 3, -34],
+  [75.0, 91.5, 4.9, 3, 34],
+];
+export const BRAID_TIE_PATH = 'M 71.4 94.6 L 76.4 94.2';
+export const BRAID_TUFT_PATH = 'M 71.8 94.8 C 70 97.6, 69.8 100.4, 71 103 C 72.6 101.4, 74 101, 75.2 103.2 C 77 100.6, 77.2 97.4, 76.2 94.4 Z';
+
+/** O nariz: um gancho curto — só nos tamanhos grandes. */
+export const NOSE_PATH = 'M 50.6 58.6 Q 49.2 62.4 51.2 63.2';
+
+/** As bochechas: [cx, cy, rx, ry]. A cor e a intensidade vêm do rig. */
+export const CHEEKS = [
+  [36.6, 62.8, 4.3, 2.6],
+  [63.4, 62.8, 4.3, 2.6],
+];
+
+/* O brilho de "orgulhosa": três traços curtos a irradiar, no canto de cima.
+   Branco, não âmbar — o âmbar é da prova, e um recorde de ginásio também a
+   deixa orgulhosa. */
+export const SHINE_PATHS = [
+  'M 21.5 31 L 15.5 28',
+  'M 24.5 23 L 20 17.5',
+  'M 31.5 16.5 L 30 10',
+];
+
+/* Olhos abertos: um traço muito curto e grosso de pontas redondas — um ponto
+   alongado. Fechados de alegria: um arco fino. Mesma curva, números
+   diferentes, e é isso que deixa a transição ser contínua. */
+const EYE_OPEN_L = [41.5, 53.8, 41.5, 55, 41.5, 56.2];
+const EYE_OPEN_R = [58.5, 53.8, 58.5, 55, 58.5, 56.2];
+const EYE_OPEN_W = 5.4;
+
+const mirror = ([x1, y1, cx, cy, x2, y2]) => [100 - x2, y2, 100 - cx, cy, 100 - x1, y1];
+
+/* Boca: lábio de cima e lábio de baixo, cada um uma quadrática entre os
+   mesmos dois cantos. Iguais, é uma linha; afastados, é uma boca aberta
+   (preenchida). */
+function mouth(x1, y1, x2, y2, upperCy, lowerCy, cxShift = 0) {
+  const cx = (x1 + x2) / 2 + cxShift;
+  return { m: [x1, y1, cx, upperCy, x2, y2], lowerCy };
+}
+
+export const FACE_RIGS = {
+  /* Por defeito: atenta, calma, um quase-sorriso. É a treinadora que está ali. */
+  neutral: {
+    tilt: 0,
+    lift: 0,
+    browL: [35.5, 46.6, 40.5, 44.6, 46, 45.8],
+    browR: mirror([35.5, 46.6, 40.5, 44.6, 46, 45.8]),
+    browW: 3.2,
+    eyeL: EYE_OPEN_L,
+    eyeR: EYE_OPEN_R,
+    eyeW: EYE_OPEN_W,
+    ...mouth(44, 67.6, 56, 67.6, 69.8, 69.8),
+    mouthW: 3,
+    blush: 0.5,
+    shine: 0,
+    blink: true,
+  },
+  /* Contente: sobrancelhas soltas, o sorriso abre-se um pouco. */
+  happy: {
+    tilt: 0,
+    lift: -0.6,
+    browL: [35.5, 45.4, 40.5, 42.8, 46, 44.4],
+    browR: mirror([35.5, 45.4, 40.5, 42.8, 46, 44.4]),
+    browW: 3.2,
+    eyeL: [40.8, 54.2, 41.5, 53.2, 42.2, 54.2],
+    eyeR: [57.8, 54.2, 58.5, 53.2, 59.2, 54.2],
+    eyeW: 5.2,
+    ...mouth(42.5, 66.2, 57.5, 66.2, 70.2, 73),
+    mouthW: 3,
+    blush: 0.85,
+    shine: 0,
+    blink: true,
+  },
+  /* Orgulhosa: olhos fechados em arco, boca aberta, o queixo sobe e o brilho
+     acende. A expressão rara — recorde, prova, semana cumprida. */
+  proud: {
+    tilt: -2,
+    lift: -1.4,
+    browL: [35, 44.4, 40.5, 40.8, 46, 43],
+    browR: mirror([35, 44.4, 40.5, 40.8, 46, 43]),
+    browW: 3.2,
+    eyeL: [37.6, 56, 41.5, 50.4, 45.4, 56],
+    eyeR: [54.6, 56, 58.5, 50.4, 62.4, 56],
+    eyeW: 3.1,
+    ...mouth(41.5, 65.4, 58.5, 65.4, 66.2, 75),
+    mouthW: 2.8,
+    blush: 1,
+    shine: 1,
+    blink: false,
+  },
+  /* Preocupada: as pontas de dentro das sobrancelhas sobem, a boca desce.
+     Séria, não assustada — ela chama, não alarma. */
+  worried: {
+    tilt: 0,
+    lift: 0.4,
+    browL: [35.5, 47.6, 41, 46.2, 46.2, 43.4],
+    browR: mirror([35.5, 47.6, 41, 46.2, 46.2, 43.4]),
+    browW: 3.2,
+    eyeL: EYE_OPEN_L,
+    eyeR: EYE_OPEN_R,
+    eyeW: 5.2,
+    ...mouth(44.2, 69.4, 55.8, 69.4, 66.8, 66.8),
+    mouthW: 3,
+    blush: 0.15,
+    shine: 0,
+    blink: true,
+  },
+  /* Empática: a cabeça inclina, as sobrancelhas amolecem, o sorriso é
+     pequeno e fechado. Dia em baixo, dor, cansaço — "estou contigo". */
+  caring: {
+    tilt: -7,
+    lift: 0.2,
+    browL: [35.5, 47, 41, 45.6, 46.2, 44.2],
+    browR: mirror([35.5, 47, 41, 45.6, 46.2, 44.2]),
+    browW: 3.2,
+    eyeL: [41.5, 54.4, 41.5, 55.2, 41.5, 56],
+    eyeR: [58.5, 54.4, 58.5, 55.2, 58.5, 56],
+    eyeW: 5,
+    ...mouth(45, 67.6, 55, 67.6, 70, 70),
+    mouthW: 3,
+    blush: 0.65,
+    shine: 0,
+    blink: true,
+  },
+  /* A pensar: olhos para cima e para o lado, uma sobrancelha levantada, a
+     boca de lado. Enquanto escreve ou analisa. */
+  thinking: {
+    tilt: 4,
+    lift: 0,
+    browL: [35.5, 45.8, 40.8, 43.8, 46, 45],
+    browR: [54, 44.2, 59.4, 40.8, 64.8, 43],
+    browW: 3.2,
+    eyeL: [44, 50.8, 44, 51.9, 44, 53],
+    eyeR: [61, 50.8, 61, 51.9, 61, 53],
+    eyeW: EYE_OPEN_W,
+    ...mouth(47, 68, 54, 67.6, 67.4, 69.6, 0.4),
+    mouthW: 3,
+    blush: 0.4,
+    shine: 0,
+    blink: true,
+  },
+};
+
+export const FACE_MOODS = Object.keys(FACE_RIGS);
+
+export function rigFor(mood) {
+  return FACE_RIGS[mood] || FACE_RIGS.neutral;
+}
+
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpArr = (a, b, t) => a.map((v, i) => lerp(v, b[i], t));
+
+/** O rig a meio caminho entre `a` e `b` (t de 0 a 1). O `blink` só passa a
+ *  valer no fim — um olho a meio de fechar não pisca. */
+export function lerpRig(a, b, t) {
+  if (t <= 0) return a;
+  if (t >= 1) return b;
+  return {
+    tilt: lerp(a.tilt, b.tilt, t),
+    lift: lerp(a.lift, b.lift, t),
+    browL: lerpArr(a.browL, b.browL, t),
+    browR: lerpArr(a.browR, b.browR, t),
+    browW: lerp(a.browW, b.browW, t),
+    eyeL: lerpArr(a.eyeL, b.eyeL, t),
+    eyeR: lerpArr(a.eyeR, b.eyeR, t),
+    eyeW: lerp(a.eyeW, b.eyeW, t),
+    m: lerpArr(a.m, b.m, t),
+    lowerCy: lerp(a.lowerCy, b.lowerCy, t),
+    mouthW: lerp(a.mouthW, b.mouthW, t),
+    shine: lerp(a.shine, b.shine, t),
+    blush: lerp(a.blush, b.blush, t),
+    blink: false,
+  };
+}
+
+const r = (n) => Math.round(n * 100) / 100;
+const quad = ([x1, y1, cx, cy, x2, y2]) => `M ${r(x1)} ${r(y1)} Q ${r(cx)} ${r(cy)} ${r(x2)} ${r(y2)}`;
+
+/** Os `d` de cada traço para um rig. A boca é um caminho fechado (lábio de
+ *  cima para a direita, lábio de baixo de volta): com os dois lábios iguais
+ *  a área é zero e vê-se só a linha. */
+export function rigPaths(rig) {
+  const [x1, y1, cx, cy, x2, y2] = rig.m;
+  return {
+    browL: quad(rig.browL),
+    browR: quad(rig.browR),
+    eyeL: quad(rig.eyeL),
+    eyeR: quad(rig.eyeR),
+    mouth: `${quad(rig.m)} Q ${r(cx)} ${r(rig.lowerCy)} ${r(x1)} ${r(y1)} Z`,
+    // A boca abre-se quando os lábios se afastam — é aí que ganha cor.
+    mouthOpen: Math.max(0, Math.min(1, (rig.lowerCy - cy - 3) / 5)),
+  };
+}
+
+/* O enquadramento muda com o tamanho, como um retrato: pequeno, aproxima-se
+   da cara (os ombros saem de cena, os olhos ganham espaço); grande, vê-se o
+   busto inteiro, com o nariz e as madeixas. `strokePx` é a espessura da
+   linha principal em píxeis. */
+export function frameFor(size) {
+  if (size < 32) return { viewBox: '12 15 76 76', detail: 'min', strokePx: 1.25 };
+  if (size < 56) return { viewBox: '1 10 98 98', detail: 'mid', strokePx: Math.max(1.4, size * 0.034) };
+  return { viewBox: '-8 9 116 116', detail: 'full', strokePx: Math.min(3, size * 0.027) };
+}

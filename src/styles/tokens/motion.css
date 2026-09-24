@@ -17,6 +17,7 @@
   --dur-count: 1400ms;          /* números a contar */
   --dur-trail: 1600ms;          /* trilho do macrociclo */
   --dur-breathe: 2600ms;        /* halo da Carol, três ciclos e para */
+  --dur-sign: 1100ms;           /* a linha do rosto da Carol a desenhar-se */
 
   /* O momento do badge (shared/BadgeMoment.jsx, fase 4 da reforma da
      gamificação): toca UMA vez. Os marcos (o disco a assentar, o anel a
@@ -35,6 +36,6 @@
   :root {
     --dur-tab-content: 120ms; --dur-pill-sub: 120ms; --dur-sheet-open: 120ms; --dur-sheet-close: 120ms;
     --dur-confirm: 120ms; --dur-bars: 0ms; --dur-pill-nav-max: 120ms; --dur-rings: 0ms;
-    --dur-count: 0ms; --dur-trail: 0ms; --dur-badge-moment: 0ms; --dur-breathe: 0ms; --typing-min: 0ms; --typing-max: 0ms;
+    --dur-count: 0ms; --dur-trail: 0ms; --dur-badge-moment: 0ms; --dur-breathe: 0ms; --dur-sign: 0ms; --typing-min: 0ms; --typing-max: 0ms;
   }
 }

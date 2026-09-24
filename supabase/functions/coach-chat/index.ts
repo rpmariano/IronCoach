@@ -43,6 +43,7 @@ import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVo
 import { assessRaceLevelTriage } from "../_shared/formulas/raceLevelTriage.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
+import { MESSAGE_MOODS, normalizeMessageMood, type CarolMood } from "../_shared/formulas/carolMood.ts";
 import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
@@ -1195,7 +1196,9 @@ const corsHeaders = {
 // em vez de o modelo as misturar dentro do texto. `on_topic` deixa o
 // próprio modelo sinalizar perguntas fora do âmbito da app (ver
 // buildSystemInstruction) — o servidor devolve erro nesse caso em vez
-// de guardar/mostrar uma resposta.
+// de guardar/mostrar uma resposta. `mood` é a cara com que ela diz a
+// resposta (CAROL.md §4): escolhida na mesma decisão que escreve o texto,
+// para a cara nunca contradizer as palavras.
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -1206,9 +1209,31 @@ const RESPONSE_SCHEMA = {
       items: { type: "STRING" },
       maxItems: 3,
     },
+    mood: { type: "STRING", enum: [...MESSAGE_MOODS] },
   },
-  required: ["on_topic", "reply", "suggestions"],
+  required: ["on_topic", "reply", "suggestions", "mood"],
 };
+
+// Grava a resposta dela com a emoção. Sem a coluna `mood` (a migration
+// 20260924001000 ainda por aplicar) o PostgREST recusa o insert inteiro — e
+// perder a mensagem por causa da cara seria pior do que perder a cara. Por
+// isso, se o insert com a emoção falhar, seja porquê, grava-se sem ela; o
+// cliente deduz a emoção do texto.
+// deno-lint-ignore no-explicit-any
+async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null) {
+  if (mood) {
+    const withMood = await sb.from("coach_messages")
+      .insert({ user_id: userId, role: "model", content, mood })
+      .select()
+      .single();
+    if (!withMood.error) return withMood;
+    console.warn("Resposta gravada sem emoção (coach_messages.mood):", withMood.error.code, withMood.error.message);
+  }
+  return await sb.from("coach_messages")
+    .insert({ user_id: userId, role: "model", content })
+    .select()
+    .single();
+}
 
 // Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
 // vale a pena repetir estes, porque costumam resolver-se à segunda. O 429
@@ -4519,6 +4544,15 @@ export function buildSystemInstruction(
     `Propõe até 3 perguntas de seguimento curtas, escritas na primeira pessoa como se fosse o atleta a perguntar ` +
     `(ex.: "Queres um plano para esta semana?" → "Cria-me um plano para esta semana"). ` +
     `Não repitas no campo "reply" o convite para essas perguntas. Se não fizer sentido nenhuma, deixa o array vazio.\n\n` +
+    // ── Mood ──────────────────────────────────────────────────────────────────
+    `## Campo "mood"\n` +
+    `É a tua cara enquanto o atleta lê a resposta — o avatar mostra-a ao lado do texto. Escolhe a que corresponde ao tom do que escreveste, nunca uma que o contradiga:\n` +
+    `- "neutral": o normal. Informar, planear, responder a dúvidas. Na dúvida, é esta.\n` +
+    `- "happy": uma coisa boa e concreta — treino bem feito, melhoria, adesão ao plano.\n` +
+    `- "proud": o excecional — recorde pessoal, prova concluída, semana cumprida a 100%, um objetivo atingido. Rara: se aparece todas as semanas, deixa de valer.\n` +
+    `- "worried": dor, lesão, alarme G1–G5, sinais de RED-S ou sobretreino, objetivo inviável, discordância com um pedido arriscado, dias sem notícias.\n` +
+    `- "caring": o atleta está em baixo — dormiu mal, está cansado, frustrado, stressado, falhou um treino por motivos da vida. Quando lhe dizes "estou contigo" e baixas a carga.\n` +
+    `Um aviso ganha sempre: se a resposta tem um alerta de saúde, é "worried" mesmo que também elogies alguma coisa. Não uses "happy" nem "proud" por simpatia — o elogio automático tira-te credibilidade.\n\n` +
     `## Provas Próximas\n` +
     `Se houver "Próximas provas agendadas" no contexto, tem sempre em conta a proximidade e a "fase do plano" ao dar conselhos de treino ou nutrição, mesmo sem o atleta mencionar. Regras gerais:\n` +
     `- Fase "Não iniciado": o atleta está fora da janela oficial de preparação para a distância. Treinos de manutenção ou base.\n` +
@@ -6301,6 +6335,7 @@ async function handler(req: Request): Promise<Response> {
 
     let replyText: string;
     let suggestions: string[] = [];
+    let replyMood: CarolMood | null = null;
     try {
       const parsed = JSON.parse(rawText);
       // O modelo sinaliza perguntas ambíguas fora do âmbito via "on_topic".
@@ -6323,6 +6358,8 @@ async function handler(req: Request): Promise<Response> {
         });
       }
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
+      // Fora do vocabulário (ou em falta) fica null, e o cliente deduz do texto.
+      replyMood = normalizeMessageMood(parsed.mood);
       // Numa mensagem por iniciativa dela não há "perguntas de seguimento"
       // a oferecer — é ela que está à espera de resposta. A exceção é o
       // balanço "perto do objetivo": a pergunta ("para a próxima é para fazer
@@ -6342,11 +6379,7 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
-    const { data: modelMsg, error: modelMsgErr } = await sb
-      .from("coach_messages")
-      .insert({ user_id: userId, role: "model", content: replyText })
-      .select()
-      .single();
+    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
 
     // O balanço feito, a prova fica na memória de longo prazo dela (uma nota
     // "outro" com tempo, objetivo e veredicto) — é o que permite ao próximo
@@ -6382,7 +6415,7 @@ async function handler(req: Request): Promise<Response> {
       console.error("Falha a guardar resposta:", modelMsgErr);
       return jsonResponse({
         user_message: userMsg,
-        model_message: { id: null, role: "model", content: replyText, created_at: new Date().toISOString() },
+        model_message: { id: null, role: "model", content: replyText, mood: replyMood, created_at: new Date().toISOString() },
         suggestions,
         usage: totalUsage,
         plan_proposed: planWasProposed,
@@ -6396,7 +6429,8 @@ async function handler(req: Request): Promise<Response> {
 
     return jsonResponse({
       user_message: userMsg,
-      model_message: modelMsg,
+      // A emoção vai mesmo quando a coluna ainda não existe (gravada sem ela).
+      model_message: { ...modelMsg, mood: modelMsg?.mood ?? replyMood },
       suggestions,
       usage: totalUsage,
       plan_proposed: planWasProposed,
