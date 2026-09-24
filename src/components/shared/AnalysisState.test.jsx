@@ -70,3 +70,20 @@ describe('revisão pré-master de 2026-09-19', () => {
     expect(classifyAnalysisFailure('Invalid JWT')).toBe('session');
   });
 });
+
+describe('AnalysisFailure — à vista quando aparece', () => {
+  // O botão que lança a análise está na barra de baixo e o aviso no topo do
+  // formulário: sem isto a falha ficava fora do ecrã (relatado 2026-09-24).
+  it('traz o aviso à vista ao aparecer', () => {
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      render(<AnalysisFailure detail="Falha na análise." onRetry={() => {}}>Tenta outra vez.</AnalysisFailure>);
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.contexts[0]).toBe(screen.getByTestId('analysis-failure'));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});

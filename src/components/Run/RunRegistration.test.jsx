@@ -192,6 +192,74 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
     expect(screen.getByText('Métricas em falta')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  /* Relatado 2026-09-24: a primeira análise GRAVA a corrida antes de o aviso
+     das métricas em falta aparecer. "Mais prints" só fechava o aviso, e a
+     análise seguinte criava uma segunda corrida igual. */
+  describe('"Mais prints" depois de a corrida estar gravada', () => {
+    const gravada = { id: 'run-1', name: 'Corrida de Hoje', distance_km: 5, duration_seconds: 1800, photo_paths: ['user-1/a.jpg'], details: {} };
+
+    const chegarAoAviso = async () => {
+      mocks.invoke.mockResolvedValueOnce({ data: { run: gravada }, error: null });
+      render(<RunRegistration onClose={onClose} />);
+      await selectPhoto();
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await screen.findByTestId('missing-metrics-bottom-sheet');
+    };
+
+    it('a corrida gravada entra logo no store, uma vez só', async () => {
+      await chegarAoAviso();
+      expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
+    });
+
+    it('abre o seletor de prints, e a análise seguinte reanalisa ESSA corrida com os prints novos', async () => {
+      const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {});
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      expect(click).toHaveBeenCalled();
+      click.mockRestore();
+
+      // O print novo (o seletor está no bloco dos prints).
+      const input = document.querySelector('input[type="file"]');
+      await fireEvent.change(input, { target: { files: [new File(['fc'], 'fc.jpg', { type: 'image/jpeg' })] } });
+      await screen.findByAltText('Print 2');
+
+      const reanalisada = { ...gravada, photo_paths: ['user-1/a.jpg', 'user-1/b.jpg'], details: { avg_heart_rate_bpm: 150 } };
+      mocks.invoke.mockResolvedValueOnce({ data: { run: reanalisada }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const [fnName, { body }, timeout] = mocks.invoke.mock.calls[1];
+      expect(fnName).toBe('analyze-run');
+      expect(body.run_id).toBe('run-1');
+      expect(body.keep_paths).toEqual(['user-1/a.jpg']);
+      expect(body.images).toEqual(['AAA']);
+      expect(timeout).toBeGreaterThanOrEqual(90000);
+
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(useAppStore.getState().runs).toEqual([reanalisada]);
+    });
+
+    it('"Prosseguir sem estas métricas" fecha com a corrida gravada, sem a duplicar', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+      expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
+    });
+
+    it('sem prints novos, "Analisar" fecha com a corrida como está (não a reanalisa)', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+      expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['run-1']);
+    });
+  });
 });
 
 describe('RunRegistration — cartão único: alternar entre Foto e Manual', () => {

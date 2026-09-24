@@ -39,6 +39,23 @@ const corsHeaders = {
 const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
+/* Quando o Gemini responde "ocupado" (500/502/503/504), repete-se com
+   esperas crescentes. A 2026-09-24 houve um pico de 503 ("high demand") de
+   vários minutos: com uma só repetição 1,5 s depois, três análises seguidas
+   falharam em ~5 s — e a corrida gravada numa delas ficou sem o comentário
+   da Carol, que não repetia nenhuma vez. */
+const GEMINI_BUSY_BACKOFF_MS = [2000, 4000, 7000];
+/* Só se tenta de novo se ainda couber uma tentativa útil antes do prazo
+   (uma leitura de prints demora ~5–10 s). */
+const GEMINI_MIN_ATTEMPT_MS = 8000;
+/* Prazos, contados desde que o pedido chega. Têm de caber nos 100 s que a app
+   espera pela resposta (ANALYZE_RUN_TIMEOUT_MS em RunRegistration.jsx): se a
+   app desistisse antes e o servidor acabasse por gravar a corrida, o "Tentar
+   de novo" gravava-a outra vez. A extração tem prazo mais curto porque a
+   gravação e o comentário ainda vêm depois; o comentário é best-effort e
+   desiste no seu. */
+const EXTRACTION_BUDGET_MS = 60000;
+const COACH_BUDGET_MS = 88000;
 
 // Espelha RUN_TRAINING_TYPES / RACE_TYPES no cliente (index.html) — mantidos
 // sincronizados manualmente, já que o schema do Gemini precisa de um enum
@@ -221,26 +238,50 @@ function buildPrompt(
 
 const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 
-async function fetchGeminiWithTimeout(
+/* fetch ao Gemini com limite por tentativa e dois tipos de repetição:
+   - "ocupado" (GEMINI_RETRYABLE_STATUSES): até GEMINI_BUSY_BACKOFF_MS.length
+     vezes, com esperas crescentes;
+   - sem resposta (timeout, rede): até `retries` vezes, logo a seguir.
+   Nenhuma repetição começa se já não couber antes de `deadline` (epoch ms);
+   o limite de cada tentativa também encolhe para lá caber. Ao fim, devolve a
+   resposta como veio (o chamador decide a mensagem) ou lança um erro claro
+   se nem chegou a haver resposta. */
+export async function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
+  // Injetável para os testes não esperarem segundos a sério.
+  backoffMs: readonly number[] = GEMINI_BUSY_BACKOFF_MS,
 ): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
+  let busyRetries = 0;
+  let timeoutRetries = 0;
+  const fits = (waitMs: number) => Date.now() + waitMs + GEMINI_MIN_ATTEMPT_MS <= deadline;
+  for (;;) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const limit = Math.max(GEMINI_MIN_ATTEMPT_MS, Math.min(timeoutMs, deadline - Date.now()));
+    const timer = setTimeout(() => controller.abort(), limit);
     try {
       const res = await fetch(url, { ...options, signal: controller.signal });
       clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
+      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && busyRetries < backoffMs.length) {
+        const wait = backoffMs[busyRetries];
+        if (fits(wait)) {
+          busyRetries++;
+          console.warn(`Gemini ocupado (${res.status}); nova tentativa daqui a ${wait} ms (${busyRetries}/${backoffMs.length})`);
+          try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
+          await new Promise((r) => setTimeout(r, wait));
+          continue;
+        }
       }
       return res;
-    } catch (e) {
+    } catch (_e) {
       clearTimeout(timer);
-      if (attempt < retries) continue;
+      if (timeoutRetries < retries && fits(0)) {
+        timeoutRetries++;
+        continue;
+      }
       throw new Error(
         "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
       );
@@ -513,6 +554,8 @@ async function generateCoachNotes(
   hrZoneLine: string | null = null,
   // profiles.experience_level — calibra a linguagem (bug #40).
   experienceLevel: string | null = null,
+  // Até quando se pode tentar (ver COACH_BUDGET_MS).
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
 
@@ -691,6 +734,7 @@ async function generateCoachNotes(
       },
       45000,
       0,
+      deadline,
     );
 
     if (!res.ok) {
@@ -748,6 +792,7 @@ async function attachCoachNotes(
     details: Record<string, unknown> | null;
   },
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<void> {
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
@@ -903,6 +948,7 @@ async function attachCoachNotes(
       personalRecordKind,
       hrZoneLine,
       (hrProfile?.experience_level as string | null) ?? null,
+      deadline,
     );
 
     if (coachResult.text) {
@@ -932,6 +978,7 @@ async function analyzeWithGemini(
   raceType: string | null,
   notes: string | null,
   geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ extraction: RunExtraction; usage: GeminiUsage }> {
   const parts: unknown[] = [{ text: buildPrompt(kindHint, trainingType, raceType, notes) }];
   for (const b64 of images) {
@@ -951,6 +998,9 @@ async function analyzeWithGemini(
         },
       }),
     },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
   );
 
   if (!geminiRes.ok) {
@@ -959,6 +1009,12 @@ async function analyzeWithGemini(
     if (geminiRes.status === 429) {
       throw new Error(
         "O Gemini atingiu o limite de pedidos gratuitos neste momento. Espera um pouco e tenta novamente.",
+      );
+    }
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
+      // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
+      throw new Error(
+        "Estou com muita procura neste momento e não consegui ler os prints, mesmo depois de tentar de novo. Tenta outra vez daqui a um minuto.",
       );
     }
     throw new Error(`Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.`);
@@ -1163,6 +1219,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  const startedAt = Date.now();
+  const extractionDeadline = startedAt + EXTRACTION_BUDGET_MS;
+  const coachDeadline = startedAt + COACH_BUDGET_MS;
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado" }, 405);
   }
@@ -1249,7 +1308,7 @@ Deno.serve(async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey);
+        result = await analyzeWithGemini(images, "image/jpeg", kind, existingTrainingType, existingRaceType, rawNotes, geminiKey, extractionDeadline);
       } catch (e) {
         if (newPaths.length) await sb.storage.from("run-photos").remove(newPaths);
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
@@ -1300,7 +1359,7 @@ Deno.serve(async (req) => {
         duration_seconds: result.extraction.duration_seconds,
         effort_rpe: updated.effort_rpe ?? null,
         details,
-      }, geminiKey);
+      }, geminiKey, coachDeadline);
 
       return jsonResponse({ run: updated, usage: result.usage });
     }
@@ -1414,7 +1473,7 @@ Deno.serve(async (req) => {
           duration_seconds: extraction.duration_seconds,
           effort_rpe: effortRpe,
           details,
-        }, geminiKey);
+        }, geminiKey, coachDeadline);
 
         return jsonResponse({ run: updatedRun });
       }
@@ -1450,7 +1509,7 @@ Deno.serve(async (req) => {
         duration_seconds: extraction.duration_seconds,
         effort_rpe: effortRpe,
         details,
-      }, geminiKey);
+      }, geminiKey, coachDeadline);
 
       return jsonResponse({ run });
     }
@@ -1516,7 +1575,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey);
+      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey, extractionDeadline);
     } catch (e) {
       await sb.storage.from("run-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
@@ -1561,7 +1620,7 @@ Deno.serve(async (req) => {
       duration_seconds: result.extraction.duration_seconds,
       effort_rpe: effortRpe,
       details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
-    }, geminiKey);
+    }, geminiKey, coachDeadline);
 
     await checkAndLogAppImage(sb, userId, "run", images, mime, result.extraction as unknown as Record<string, unknown>);
 

@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildWeeklyVolumeLine, computeRunRecordContext, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
+import { buildWeeklyVolumeLine, computeRunRecordContext, fetchGeminiWithTimeout, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -119,4 +119,56 @@ Deno.test("buildWeeklyVolumeLine: a meio da semana (quinta, dia 4 de 7), soma s�
 
 Deno.test("buildWeeklyVolumeLine: sem corridas nenhumas, string vazia — sem crash", () => {
   assertEquals(buildWeeklyVolumeLine([], "2026-09-21"), "");
+});
+
+// ── fetchGeminiWithTimeout: o Gemini "ocupado" (incidente 2026-09-24) ──────
+// Três análises seguidas falharam com 503 em ~5 s: só havia uma repetição,
+// 1,5 s depois. Estes testes simulam o fetch e usam esperas de 1 ms.
+async function withFetch(statuses: number[], run: (calls: () => number) => Promise<void>) {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (() => {
+    const status = statuses[Math.min(calls, statuses.length - 1)];
+    calls++;
+    return Promise.resolve(new Response(status === 200 ? "{}" : "ocupado", { status }));
+  }) as typeof fetch;
+  try {
+    await run(() => calls);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
+Deno.test("fetchGeminiWithTimeout: 503 repete com espera e acaba por passar", async () => {
+  await withFetch([503, 503, 200], async (calls) => {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 1000, 1, Number.POSITIVE_INFINITY, [1, 1, 1]);
+    assertEquals(res.status, 200);
+    assertEquals(calls(), 3);
+  });
+});
+
+Deno.test("fetchGeminiWithTimeout: sempre ocupado, desiste ao fim das esperas e devolve o 503", async () => {
+  await withFetch([503], async (calls) => {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 1000, 1, Number.POSITIVE_INFINITY, [1, 1, 1]);
+    assertEquals(res.status, 503);
+    assertEquals(calls(), 4);
+  });
+});
+
+Deno.test("fetchGeminiWithTimeout: sem tempo antes do prazo, não repete", async () => {
+  await withFetch([503, 200], async (calls) => {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 1000, 1, Date.now() + 2000, [1, 1, 1]);
+    assertEquals(res.status, 503);
+    assertEquals(calls(), 1);
+  });
+});
+
+Deno.test("fetchGeminiWithTimeout: 429 e 400 não se repetem", async () => {
+  for (const status of [429, 400]) {
+    await withFetch([status, 200], async (calls) => {
+      const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 1000, 1, Number.POSITIVE_INFINITY, [1, 1, 1]);
+      assertEquals(res.status, status);
+      assertEquals(calls(), 1);
+    });
+  }
 });
