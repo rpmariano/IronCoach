@@ -32,6 +32,13 @@ describe('useAppNavigationHistory', () => {
     vi.restoreAllMocks();
   });
 
+  it('a app que arranca já dentro de um registo (reposto) — o "voltar" fecha-o, não sai da app', () => {
+    const { closeTopScreen } = setup({ activeTab: 'corrida', isCreatingOrEditing: true });
+    expect(window.history.pushState).toHaveBeenCalledTimes(1);
+    act(() => { firePopState(); });
+    expect(closeTopScreen).toHaveBeenCalledTimes(1);
+  });
+
   it('BUG CORRIGIDO — mudar de separador empilha uma entrada de histórico', () => {
     const { rerender } = setup();
     expect(window.history.pushState).not.toHaveBeenCalled();

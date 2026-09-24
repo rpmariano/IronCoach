@@ -50,6 +50,13 @@ export function useAppNavigationHistory({ activeTab, setActiveTab, isCreatingOrE
       // relevante (ex.: ?tab= da URL a mudar o separador por omissão).
       wasReadyRef.current = true;
       stackRef.current = [current];
+      // A app arrancou já dentro de um ecrã de topo (reposto depois de o
+      // Android a matar, utils/navigationRestore.js): o "voltar" fecha-o, em
+      // vez de sair da app — por baixo fica o separador.
+      if (current.editing) {
+        stackRef.current = [{ tab: activeTab, editing: false }, current];
+        window.history.pushState({ ironcoachNav: true }, '');
+      }
       return;
     }
 

@@ -1,8 +1,9 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam } from './lib/appUpdate';
+import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
+import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
@@ -481,6 +482,15 @@ export default function App() {
      Tratá-lo como um login novo punha o ecrã de carregamento e desmontava
      tudo — um registo a meio perdia as fotos (relatado 2026-09-13). */
   const loadedUserIdRef = useRef(null);
+  /* O ecrã onde se estava quando a app saiu (utils/navigationRestore.js) —
+     lido AQUI, no primeiro render, antes de qualquer mudança de separador o
+     reescrever. Repõe-se quando a sessão existe (abaixo). */
+  const [savedNavigation] = useState(() => readRecentNavigation());
+  /* Só se começa a guardar depois de decidida a reposição: uma escrita antes
+     (a app escondida durante o arranque, uma recarga logo a seguir) punha
+     por cima o estado de partida e o ecrã perdia-se. */
+  const [navigationDecided, setNavigationDecided] = useState(false);
+  useEffect(() => (navigationDecided ? startNavigationPersistence(useAppStore) : undefined), [navigationDecided]);
 
   /* Onboarding (ponto 8 do redesenho 2026-09). Duas entradas distintas:
      - PRIMEIRO ACESSO: decidido pela regra de utils/onboarding.js — perfil
@@ -567,7 +577,7 @@ export default function App() {
     /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento do
        badge, um campo com o foco (a mesma regra da atualização automática,
        lib/appUpdate.js). Fica para a próxima vez que se voltar à app. */
-    if (isBusy(document)) { clear(); return; }
+    if (isBusy(document) || isScreenOpen(s)) { clear(); return; }
     /* O que já foi saudado em qualquer dispositivo (ação 5.1): às chaves
        deste telemóvel (readSeen) juntam-se as impressões 'welcome', sem o
        prefixo. O merge fica aqui, porque readSeen e decideWelcome são puras
@@ -602,6 +612,9 @@ export default function App() {
   }, [showOnboarding, markCurrentSlotSeen]);
   useEffect(() => {
     if (!welcomeReady) return;
+    // A partir daqui o ?tab= de uma notificação já fez o seu papel: uma
+    // recarga técnica pode tirá-lo (lib/appUpdate.js, resumeParams).
+    markEntryWelcomeHandled();
     if (openedWithTabRef.current) {
       openedWithTabRef.current = false;
       markCurrentSlotSeen();
@@ -724,6 +737,7 @@ export default function App() {
     if (entryTab) {
       setActiveTab(entryTab);
     }
+    markEntryApplied();
     if (carolParam) {
       proactiveKeyRef.current = carolParam;
       // Sem o `carol=`: um F5 a seguir não repete a mesma conversa. O `tab`
@@ -759,8 +773,17 @@ export default function App() {
       if (existingSession?.user) {
         setSession(existingSession);
         loadedUserIdRef.current = existingSession.user.id;
+        // Voltar depois de o Android ter matado a app: o separador e o ecrã
+        // onde se estava, que reabre com o rascunho guardado — salvo quando
+        // o URL manda (uma notificação acabada de tocar, uma bancada, um
+        // ?tab= sem nada a meio; ver shouldRestoreNavigation).
+        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
+        setNavigationDecided(true);
         loadInitialData(existingSession.user.id)
           .then(() => {
+            // O ecrã reposto aponta para uma corrida ou prova que já não
+            // existe (ou que não carregou)? Fecha-se.
+            dropMissingScreen(useAppStore);
             if (proactiveKeyRef.current) {
               consumeProactiveKey(proactiveKeyRef.current);
               proactiveKeyRef.current = null;
@@ -795,9 +818,13 @@ export default function App() {
             : verProvas ? buildProvasDemoData()
               : buildDemoData(),
         );
+        // Também em demo, como com sessão: é onde isto se consegue ver sem conta.
+        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
+        setNavigationDecided(true);
         setIsInitializing(false);
       } else {
         setSession(null);
+        setNavigationDecided(true);
         setIsInitializing(false);
       }
     });
@@ -815,6 +842,12 @@ export default function App() {
       });
       if (action === 'signed-out') {
         loadedUserIdRef.current = null;
+        // O ecrã aberto e o guardado não passam para outra conta.
+        useAppStore.setState({
+          openCreationMode: null, editingRunId: null, editingRaceId: null,
+          planItemPrefill: null, runRacePrefill: null, racePrefill: null,
+        });
+        clearNavigation();
         setSession(null);
         return;
       }

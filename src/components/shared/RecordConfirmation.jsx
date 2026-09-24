@@ -3,6 +3,7 @@ import { Check, Trophy } from 'lucide-react';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { useEscapeClose } from './Sheet';
 import CoachAvatar from '../Coach/CoachAvatar';
+import { useAppStore } from '../../store';
 
 /**
  * "Registo confirmado" — animação 6 de `design/IronCoach - Animacoes.dc.html`:
@@ -80,6 +81,13 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
   const [showFirst, setShowFirst] = useState(() => !!first && prefersReducedMotion());
   const doneRef = useRef(false);
   const closeRef = useRef(null);
+  /* Com a confirmação à vista o registo já está gravado: o ecrã deixa de
+     contar como "aberto" para a reposição depois de o Android matar a app
+     (utils/navigationRestore.js) — senão reabria um registo já gravado. */
+  useEffect(() => {
+    useAppStore.getState().setRecordSaved?.(true);
+    return () => { useAppStore.getState().setRecordSaved?.(false); };
+  }, []);
   const finish = () => {
     if (doneRef.current) return;
     doneRef.current = true;

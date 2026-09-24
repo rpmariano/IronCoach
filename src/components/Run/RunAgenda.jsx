@@ -404,7 +404,9 @@ export default function RunAgenda({ onClose }) {
 
   // Grava o rascunho (com debounce) enquanto houver alterações por gravar
   // — sobrevive a um recarregamento da página (ver formDraftPersistence.js).
-  usePersistedFormDraft(draftStorageKey, draft, { isDirty: isDirty && !detailsLocked });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  usePersistedFormDraft(draftStorageKey, draft, { isDirty: isDirty && !detailsLocked && !confirmation });
 
   const handleCloseForm = () => {
     // Funil único por onde passa toda a saída "intencional" desta sessão
@@ -758,7 +760,18 @@ export default function RunAgenda({ onClose }) {
         handleCloseForm();
         return true;
       }
+      // Gravada: o rascunho apaga-se JÁ, não só ao dispensar a confirmação
+      // (revisão pré-deploy de 5ce5f31). E o prefill do arranque também sai:
+      // o efeito de carregamento volta a correr (setRaceEvents) e repunha o
+      // rascunho a partir dele.
+      racePrefillRef.current = null;
+      clearPersistedFormDraft(draftStorageKey);
       setConfirmation({ label: 'Prova guardada', done: () => {
+      // A confirmação sai do estado: numa prova nova, setEditingRaceId (mais
+      // abaixo) mantém ESTE ecrã montado, já no hub — sem isto, "Prova
+      // guardada" ficava presa por cima, sem se poder dispensar (revisão
+      // pré-deploy de 79c0bf9; já acontecia em produção).
+      setConfirmation(null);
       handleCloseForm();
       // Gravar uma prova NOVA aterra no HUB dessa prova (pedido do
       // utilizador): acabada de criar, o que o atleta quer é a página dela

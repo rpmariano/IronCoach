@@ -48,11 +48,12 @@ export async function fetchPublishedBuild(fetchImpl = globalThis.fetch, base = i
   }
 }
 
-/** Há alguma coisa a meio que uma recarga deitaria fora?
-    Os registos e edições abrem todos numa folha ou modal (role="dialog"); a
-    conversa com a Carol é uma textarea no ecrã. Um campo com o foco também
-    conta: o atleta está a escrever. O arranque também: o rascunho sobrevive
-    a uma recarga, o passo em que ia não. */
+/** Há alguma coisa a meio que uma recarga deitaria fora, pelo DOM?
+    Folhas e modais (role="dialog"); a conversa com a Carol, que é uma
+    textarea no ecrã; um campo com o foco (o atleta está a escrever); o
+    arranque (o rascunho sobrevive a uma recarga, o passo em que ia não).
+    Os registos e edições são ecrãs inteiros, não folhas: esses vêem-se pela
+    store (utils/navigationRestore.js, isScreenOpen), que main.jsx junta. */
 export function isBusy(doc = globalThis.document) {
   if (!doc) return true;
   if (doc.querySelector('[role="dialog"], [aria-modal="true"], [data-testid="onboarding"]')) return true;
@@ -70,7 +71,9 @@ export function isBusy(doc = globalThis.document) {
 export function freshUrl(href, build, extra = {}) {
   const url = new URL(href);
   for (const [k, v] of Object.entries(extra)) {
-    if (v) url.searchParams.set(k, v);
+    // null tira o parâmetro; um valor põe-no.
+    if (v === null) url.searchParams.delete(k);
+    else if (v) url.searchParams.set(k, v);
   }
   url.searchParams.set(VERSION_PARAM, build || String(Date.now()));
   return url.toString();
@@ -90,12 +93,39 @@ export function reloadFresh(build, loc = globalThis.location, extra = {}) {
    tira-o logo da barra de endereço (stripResumeParam). */
 const RESUME_PARAM = 'resume';
 
-/** Os parâmetros de uma recarga técnica para voltar a `tab`. O Início é o
-    separador por omissão, e as bancadas de teste já vêm no ?tab=. */
-export function resumeParams(tab) {
-  return typeof tab === 'string' && tab && !/^(home|design-system|audit-sandbox)$/.test(tab)
-    ? { [RESUME_PARAM]: tab }
-    : {};
+/** As bancadas de teste do design system (?tab=design-system /
+    ?tab=audit-sandbox): só se chegam por URL e não têm saída. */
+export function isBenchTab(tab) {
+  return tab === 'design-system' || tab === 'audit-sandbox';
+}
+
+/* O App já aplicou o separador de entrada do URL? Até lá o separador da
+   store ainda é o de partida ('home'), não o do ?tab= de uma notificação:
+   uma recarga nesse instante (o vigia verifica logo no arranque) tem de
+   deixar o URL como está. */
+let entryApplied = false;
+/** O App chama isto depois de aplicar o separador de entrada. */
+export function markEntryApplied() { entryApplied = true; }
+
+/* ...e já decidiu as boas-vindas? Até lá o ?tab= de uma notificação ainda
+   tem um papel: diz ao arranque para as saltar. Uma recarga antes disso (a
+   app aberta a frio por uma notificação, com um index.html da cache logo a
+   seguir a uma publicação) tem de o manter — senão as boas-vindas
+   apareciam por cima do Coach (revisão pré-deploy de 89e52e5). */
+let welcomeHandled = false;
+/** O App chama isto depois de decidir as boas-vindas da entrada. */
+export function markEntryWelcomeHandled() { welcomeHandled = true; }
+
+/** Os parâmetros de uma recarga técnica para voltar a `tab`: põe o
+    ?resume= e, com as boas-vindas já decididas, tira o ?tab= e o ?carol= de
+    uma notificação antiga — senão uma sessão aberta por notificação voltava
+    sempre a esse separador e sem boas-vindas (revisão pré-deploy de
+    7326011). Antes de o App aplicar o separador de entrada, e nas bancadas
+    de teste, o URL fica como está. */
+export function resumeParams(tab, applied = entryApplied, handled = welcomeHandled) {
+  if (!applied) return {};
+  if (typeof tab !== 'string' || !tab || isBenchTab(tab)) return {};
+  return handled ? { [RESUME_PARAM]: tab, tab: null, carol: null } : { [RESUME_PARAM]: tab };
 }
 
 /** O separador por onde a app entra: o da recarga técnica (é onde se

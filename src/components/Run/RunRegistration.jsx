@@ -411,6 +411,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // única corrida não é "a primeira", nem um recorde novo.
     const first = !runIdToEdit && (firstRecordMoment('run', useAppStore.getState(), createdRecord)
       || runRecordMoment(createdRecord, useAppStore.getState().runs));
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
@@ -827,7 +831,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     warmupMinutes, recoverySeconds, splits, hrZones,
     officialTime, position, completedRaceType,
     bibNumber, ageGroup, ageGroupPosition, genderPosition, participants, gunTimeSeconds, officialSplits,
-  }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  }, { isDirty: isFormDirty && !confirmation });
 
   /* As fotos do rascunho guardam-se à parte, em IndexedDB
      (draftMediaPersistence.js), para sobreviverem a sair da app e voltar
@@ -885,7 +891,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // reaberto e ainda por carregar) contam para o limite: a reanálise
     // mantém-nos, e o servidor recusa mais de MAX_PHOTOS no total.
     const created = createdRunRef.current;
-    const hiddenKept = created && !created.photosShown ? (created.run.photo_paths?.length || 0) : 0;
+    const shown = new Set(runPhotos.filter((p) => p.path).map((p) => p.path));
+    const hiddenKept = created && !created.photosShown
+      ? (created.run.photo_paths || []).filter((p) => !shown.has(p)).length
+      : 0;
     const remaining = MAX_PHOTOS - runPhotos.length - hiddenKept;
     if (remaining <= 0) {
       setErrorMsg(`Máximo de ${MAX_PHOTOS} imagens.`);
@@ -1231,8 +1240,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      do objetivo, o balanço da Carol e a galeria das memórias. */
   const finishRaceAndGoToHub = () => {
     const hadPendingNav = !!pendingNavTarget.current;
+    // Ligada e com as memórias: a corrida deixa de estar "por fechar".
+    forgetCreatedRun();
     // "Meia de Lisboa concluída · 1:53:42" — o nome dela e o tempo que conta.
     const finalSeconds = raceResultSeconds(savedRaceRunRef.current);
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({
       label: `${raceEvent?.name || 'Prova'} concluída${finalSeconds ? ` · ${formatDuration(finalSeconds)}` : ''}`,
       tone: 'race',
@@ -1293,6 +1308,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       await persistRaceLinkAndMemories();
     } catch (err) {
       console.error('Falha a ligar a corrida à prova ou a guardar as memórias', err);
+      // A corrida está gravada; falta a ligação ou as memórias. Fica como a
+      // corrida deste ecrã (e no rascunho): se o Android matar a app agora,
+      // reabrir e gravar outra vez retoma ESTA, não cria uma segunda ligada
+      // à mesma prova (revisão pré-deploy de 79c0bf9).
+      adoptCreatedRun(run);
       setMemoriesFailed(true);
       setIsSubmitting(false);
       return;
@@ -1356,6 +1376,29 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     store.setRuns(exists ? store.runs.map((r) => (r.id === run.id ? run : r)) : [...store.runs, run]);
   };
 
+  /* Esta corrida, já gravada, passa a ser a deste ecrã: os prints que foram
+     com ela passam a ser dela ({ path }, como a editar) e ela vai para o
+     rascunho (createdRun). Tudo o que se fizer a seguir é sobre ela — mais
+     prints, "Manual", ou reabrir depois de o Android matar a app. */
+  const adoptCreatedRun = (run) => {
+    const paths = run.photo_paths || [];
+    // Os prints novos (ainda em base64) são os últimos de photo_paths: a
+    // analyze-run grava [...os que ficaram, ...os novos]. Casar por índice
+    // com o formulário inteiro dava a um print novo o caminho de um antigo,
+    // quando os antigos não estão à vista (revisão pré-deploy de 6e92d67).
+    const fresh = runPhotos.filter((p) => p.base64);
+    const freshPaths = paths.slice(paths.length - fresh.length);
+    setRunPhotos((prev) => prev.map((p) => {
+      const i = fresh.indexOf(p);
+      return i >= 0 && freshPaths[i] ? { dataUrl: p.dataUrl, path: freshPaths[i] } : p;
+    }));
+    // À vista estão todos os prints da corrida? Senão, a reanálise mantém
+    // os que faltam (photosShown falso) em vez de os deitar fora.
+    const shown = new Set([...runPhotos.filter((p) => p.path).map((p) => p.path), ...freshPaths]);
+    createdRunRef.current = { run, photosShown: paths.every((p) => shown.has(p)) };
+    setPendingCreatedRun(run);
+  };
+
   /* A corrida deixa de estar "por fechar": sai do ref, do estado e do
      rascunho JÁ. O rascunho grava com espera e só se apaga ao fechar o ecrã
      (depois da confirmação); se a app morresse entretanto, o próximo registo
@@ -1387,6 +1430,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      imagem (nome, data, RPE, notas, sapatilhas, tipo)? Se o atleta mudou
      alguma coisa depois do aviso, a corrida não pode fechar como estava —
      essas mudanças perdiam-se sem aviso. */
+  /* O que não mexe na análise (nome, data, sapatilhas) — update direto,
+     como a editar. `fallback`: o que já estava gravado, se o campo ficou
+     vazio (o "Prosseguir" não passa pelas validações do "Analisar", e a
+     analyze-run ignorava um nome vazio ou uma data inválida). */
+  const plainFieldsPayload = (fallback = {}) => ({
+    date: runDate || fallback.date,
+    name: runName.trim() || fallback.name,
+    shoe_id: shoeId,
+  });
+
   // Um campo que a corrida não traz (undefined) não se compara: não há
   // nada a dizer que mudou. O servidor devolve a linha inteira.
   const sameAsRun = (fromRun, norm, fromForm) => fromRun === undefined || norm(fromRun) === fromForm;
@@ -1422,7 +1475,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // Só o nome, a data ou as sapatilhas mudaram: não mexem na análise —
     // update direto, sem voltar a ler os prints (como a editar, PRD 3.2).
     if (samePhotos && analysisMatchesRun(created.run)) {
-      const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
+      const payload = plainFieldsPayload(created.run);
       const { error } = await supabase.from('runs').update(payload).eq('id', created.run.id);
       if (error) throw new Error(error.message || 'Falha a gravar a corrida.');
       await finishCreatedRun({ ...created.run, ...payload });
@@ -1483,16 +1536,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds);
       if (missing.length > 0 && !userBypassedMissingSheet) {
         // A corrida JÁ está gravada: entra já no store (sair daqui não a
-        // esconde até recarregar), e os prints que levou passam a ser dela.
-        const paths = createdRun.photo_paths || [];
-        const sent = [...runPhotos];
-        setRunPhotos((prev) => prev.map((p) => {
-          const i = sent.indexOf(p);
-          return i >= 0 && paths[i] ? { dataUrl: p.dataUrl, path: paths[i] } : p;
-        }));
-        createdRunRef.current = { run: createdRun, photosShown: true };
+        // esconde até recarregar), e fica como a corrida deste ecrã.
+        adoptCreatedRun(createdRun);
         upsertRunInStore(createdRun);
-        setPendingCreatedRun(createdRun);
         setMissingKeysList(missing);
         setShowMissingMetricsSheet(true);
         return;
@@ -1720,7 +1766,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           useAppStore.getState().clearDismissedIntervention(runIdToEdit);
           await finishSavedRun(updatedRun, 'Corrida reanalisada pela Carol');
         } else {
-          const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
+          const payload = plainFieldsPayload(runs.find(r => r.id === runIdToEdit));
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);
           if (error) throw error;
           const currentRun = runs.find(r => r.id === runIdToEdit);

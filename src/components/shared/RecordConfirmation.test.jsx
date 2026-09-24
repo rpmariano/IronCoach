@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
 import RecordConfirmation, { DUR_FIRST_IN, DUR_CONFIRM_EXIT_FIRST } from './RecordConfirmation';
+import { useAppStore } from '../../store';
 
 /* "Registo confirmado" — animação 6 de `IronCoach - Animacoes.dc.html`:
    impulso elástico de 420 ms, sai aos 900 ms e devolve o atleta ao seu
@@ -236,5 +237,17 @@ describe('RecordConfirmation — o primeiro registo de um tipo', () => {
     expect(onDone).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('record-confirmation-close'));
     expect(onDone).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('RecordConfirmation — o registo já está gravado', () => {
+  // Com ela à vista, o ecrã deixa de contar como aberto para a reposição
+  // depois de o Android matar a app (utils/navigationRestore.js).
+  it('liga o recordSaved ao aparecer e desliga-o ao sair', () => {
+    useAppStore.setState({ recordSaved: false });
+    const { unmount } = render(<RecordConfirmation label="Refeição registada" onDone={() => {}} />);
+    expect(useAppStore.getState().recordSaved).toBe(true);
+    unmount();
+    expect(useAppStore.getState().recordSaved).toBe(false);
   });
 });

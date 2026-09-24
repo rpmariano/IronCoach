@@ -189,6 +189,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
     const first = !isEditing && firstRecordMoment('meal', useAppStore.getState(), createdRecord);
+    // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
+    // se o Android matasse a app com ela à vista, o registo reabria cheio e
+    // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
+    clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
       handleClose();
       if (!hadPendingNav) {
@@ -273,7 +277,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
     date, mealTime, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
-  }, { isDirty: isFormDirty });
+  // Com a confirmação à vista o registo está gravado: o rascunho já foi
+  // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
+  }, { isDirty: isFormDirty && !confirmation });
 
   /* A hora grava-se por update à parte, a seguir, pela mesma razão da hora
      da corrida (RunRegistration.persistRunStartTime): quem insere a linha

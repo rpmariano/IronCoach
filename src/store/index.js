@@ -219,7 +219,15 @@ export const useAppStore = create((set, get) => ({
     }
     return true;
   },
-  setOpenCreationMode: (mode) => set({ openCreationMode: mode }),
+  // Trocar de ecrã de topo larga a corrida em edição: só o registo de
+  // corrida a usa. Sem isto, o "+" a abrir outro registo por cima de uma
+  // corrida em edição deixava o editingRunId preso — e a app "ocupada" para
+  // sempre aos olhos da atualização (revisão pré-deploy de 5ce5f31).
+  setOpenCreationMode: (mode) => set(mode === 'run' ? { openCreationMode: mode } : { openCreationMode: mode, editingRunId: null }),
+  // A confirmação de gravação à vista (RecordConfirmation): o registo já
+  // está gravado, e o ecrã deixa de contar como aberto para a reposição.
+  recordSaved: false,
+  setRecordSaved: (v) => set({ recordSaved: !!v }),
   setEditingRaceId: (id) => set({ editingRaceId: id, openCreationMode: id ? 'race' : null }),
   /* Abre o registo de corrida em MODO PROVA (specs/prova-concluida.md §3).
      Ponto único das três entradas — hub da prova, cartão do Início e cartão
