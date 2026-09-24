@@ -1667,9 +1667,19 @@ Deno.test("buildAcwrLine: sem histórico, o volume de referência vem do nível 
     { level: "medio", start: 40, range: [40, 60], target: 35, category: "10k", raceName: "Volkswagen Run" }) ?? "";
   assertStringIncludes(line, "nível do perfil (Médio: 40-60 km/semana)");
   assertStringIncludes(line, "parte de 40 km/semana");
-  assertStringIncludes(line, "Até à prova \"Volkswagen Run\" (10k), o mínimo da doutrina é 35 km/semana — é onde chegar, não de onde partir");
+  // 35 < 40: o nível já cobre o mínimo do 10 km — nada de "onde chegar".
+  assertStringIncludes(line, "Para a prova \"Volkswagen Run\" (10k), o nível já cobre o mínimo da doutrina (35 km/semana)");
+  assertEquals(line.includes("é onde chegar"), false);
   assertStringIncludes(line, "não perguntes ao atleta quanto corre");
   assertStringIncludes(line, "voltar de uma paragem");
+});
+
+Deno.test("buildAcwrLine: com o alvo acima da partida (iniciante, maratona), o alvo é onde chegar", () => {
+  const runs = [makeRun(11, 10), makeRun(3, 7), makeRun(0, 5)];
+  const line = buildAcwrLine(computeACWR(runs, TODAY_ACWR), runLoadReading({ runs, planItems: [], today: TODAY_ACWR }), true, TODAY_ACWR,
+    { level: "iniciante", start: 15, range: [15, 25], target: 35, category: "maratona", raceName: null }) ?? "";
+  assertStringIncludes(line, "parte de 15 km/semana");
+  assertStringIncludes(line, "Até à prova (maratona), o mínimo da doutrina é 35 km/semana — é onde chegar, não de onde partir");
 });
 
 Deno.test("buildAcwrLine: sem corridas nas 4 semanas, pergunta se tem corrido (não quantos km)", () => {

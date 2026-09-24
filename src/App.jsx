@@ -523,7 +523,9 @@ export default function App() {
      na URL) — guardada aqui porque só se consome depois de loadInitialData
      trazer os dados frescos (perfil, planos, provas); ver consumeProactiveKey. */
   const proactiveKeyRef = useRef(null);
-  const consumeProactiveKey = useCallback((key) => {
+  // `navigate: false` quando os dados chegaram tarde e o atleta já foi para
+  // outro lado: o assunto fica pedido ao Coach, mas não o arranca de onde está.
+  const consumeProactiveKey = useCallback((key, { navigate = true } = {}) => {
     if (!key) return;
     useAppStore.getState().logImpression({ kind: 'push', key, title: null });
     if (key.startsWith('intervention:')) {
@@ -534,7 +536,7 @@ export default function App() {
       const s = useAppStore.getState();
       if (s.profile?.coach_intervention_status === 'needed' || s.profile?.coach_intervention_status === 'in_progress') {
         s.setCoachIntent({ kind: 'proactive_intervention', reason: s.profile?.coach_intervention_reason || null });
-        setActiveTab('coach');
+        if (navigate) setActiveTab('coach');
       }
       return;
     }
@@ -547,7 +549,7 @@ export default function App() {
           races: conflict.races.map((r) => ({ id: r.id, name: r.name, date: r.date })),
           target: conflict.target ? { id: conflict.target.id, name: conflict.target.name, date: conflict.target.date } : null,
         });
-        setActiveTab('coach');
+        if (navigate) setActiveTab('coach');
       }
       return;
     }
@@ -791,12 +793,18 @@ export default function App() {
         // todos: com a rede lenta, as corridas ou as provas podem chegar
         // depois, e o ecrã de edição reposto fechava-se por "não existir"
         // (revisão pré-deploy de 90bfa9b).
-        loading.then(whenDataReady).then(() => {
+        let tabAtEntry = null;
+        loading.then(() => { tabAtEntry = useAppStore.getState().activeTab; }).then(whenDataReady).then(() => {
           // O ecrã reposto aponta para uma corrida ou prova que já não
           // existe (ou que não carregou)? Fecha-se.
           dropMissingScreen(useAppStore);
           if (proactiveKeyRef.current) {
-            consumeProactiveKey(proactiveKeyRef.current);
+            // Com a rede lenta os dados podem chegar até 45 s depois: se o
+            // atleta entretanto mudou de separador ou abriu um ecrã, a
+            // notificação não o arranca de lá (revisão pré-deploy de 62976df).
+            const s = useAppStore.getState();
+            const moved = s.activeTab !== tabAtEntry || isScreenOpen(s) || isBusy(document);
+            consumeProactiveKey(proactiveKeyRef.current, { navigate: !moved });
             proactiveKeyRef.current = null;
           }
         });

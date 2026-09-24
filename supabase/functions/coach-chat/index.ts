@@ -2353,10 +2353,13 @@ export function buildAcwrLine(
   const referencia = reference
     ? ` Volume de partida para planear: o do nível do perfil (${nivel}: ${reference.range[0]}-${reference.range[1]} km/semana) — ` +
       `parte de ${reference.start} km/semana e sobe com o teto semanal da doutrina; não perguntes ao atleta quanto corre, o perfil já o diz.` +
-      (reference.target != null
-        ? ` Até à prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o mínimo da doutrina é ${reference.target} km/semana — ` +
-          `é onde chegar, não de onde partir.`
-        : "")
+      (reference.target == null
+        ? ""
+        : reference.target > reference.start
+          ? ` Até à prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o mínimo da doutrina é ${reference.target} km/semana — ` +
+            `é onde chegar, não de onde partir.`
+          : ` Para a prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o nível já cobre o mínimo da doutrina ` +
+            `(${reference.target} km/semana): não é preciso subir volume por causa dela.`)
     : "";
   if (!acwr) {
     if (load.enoughHistory) {

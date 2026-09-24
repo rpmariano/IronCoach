@@ -1263,11 +1263,18 @@ async function runInitialLoad(set, get, userId) {
   // dataPending só no primeiro carregamento completo de cada conta: num
   // regresso à app os dados que já lá estão chegam para tirar conclusões, e
   // fazê-lo subir e descer voltava a disparar o que espera por ele.
-  const firstForUser = completeUserId !== userId;
+  // Uma troca de conta é sempre um primeiro carregamento, mesmo que essa
+  // conta já tenha estado completa antes (A → B → A).
+  const firstForUser = completeUserId !== userId || switching;
   if (switching || firstForUser) set({ ...(switching ? EMPTY_DATA : {}), ...(firstForUser ? { dataPending: true } : {}) });
   if (firstForUser) {
     setTimeout(() => {
-      if (seq === loadSeq && get().dataPending) set({ dataPending: false });
+      if (seq !== loadSeq || !get().dataPending) return;
+      // Passado o prazo, a conta conta como carregada para o dataPending: um
+      // regresso à app com o pedido ainda preso não o volta a subir (o
+      // onboarding do primeiro uso desmontava-se e voltava a montar).
+      completeUserId = userId;
+      set({ dataPending: false });
     }, DATA_PENDING_MAX_MS);
   }
   let pending = jobs.length;

@@ -138,6 +138,22 @@ describe('loadInitialData com prazo', () => {
     expect(ready).toBe(true);
   });
 
+  it('passado o prazo, um regresso à app com o pedido ainda preso não volta a subir o dataPending', async () => {
+    net.plan.coach_plan_items = { delay: 10 * 60 * 1000 };
+    const p = useAppStore.getState().loadInitialData('u10');
+    await vi.advanceTimersByTimeAsync(INITIAL_LOAD_BUDGET_MS);
+    await p;
+    await vi.advanceTimersByTimeAsync(DATA_PENDING_MAX_MS);
+    expect(useAppStore.getState().dataPending).toBe(false);
+    const seen = [];
+    const unsub = useAppStore.subscribe((s) => seen.push(s.dataPending));
+    const q = useAppStore.getState().loadInitialData('u10', { join: true });
+    await vi.advanceTimersByTimeAsync(INITIAL_LOAD_BUDGET_MS);
+    await q;
+    unsub();
+    expect(seen.includes(true)).toBe(false);
+  });
+
   it('depois de um erro no carregamento novo, a resposta atrasada do anterior já não escreve', async () => {
     net.plan.runs = { data: [run('a')] };
     let p = useAppStore.getState().loadInitialData('u9');
