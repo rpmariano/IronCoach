@@ -33,6 +33,7 @@ import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts
 import { computeNutrientRangeTotals } from "../_shared/formulas/micronutrientTotals.ts";
 import { classifyCalorieCompliance } from "../_shared/formulas/nutritionCompliance.ts";
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
+import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
 import { planLoadViolations, runLoadReading, type LoadPlanItem, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
 import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
@@ -61,12 +62,20 @@ const GEMINI_MODEL = "gemini-flash-latest";
 const MAX_HISTORY   = 30;   // mensagens mais recentes enviadas ao Gemini
 const MAX_MSG_LEN   = 2000; // caracteres máximos por mensagem
 const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de forçar resposta final
-// Tempo máximo por chamada ao Gemini antes de desistir e tentar mais uma vez.
-// A API do Gemini (sobretudo no tier gratuito) tem latência muito variável —
-// isto evita que uma chamada presa arraste a função até ao limite rígido da
-// plataforma (~150s), o que produz um erro genérico e ilegível no cliente.
-const GEMINI_TIMEOUT_MS = 40000;
-const GEMINI_RETRIES = 1; // repetições automáticas após timeout, antes de desistir de vez
+// Uma tentativa ao Gemini pode demorar até isto: uma proposta de plano com as
+// refeições são milhares de tokens de saída. Eram 40 s com uma repetição a
+// partir do zero — uma resposta que precisava de 50 s era cortada aos 40,
+// recomeçava e voltava a ser cortada (incidente 2026-09-24, 20:25: a atleta
+// ficou sem resposta). Agora é uma tentativa longa, e só se repete quando o
+// Gemini diz que está ocupado (503), dentro do prazo do pedido
+// (_shared/geminiFetch.ts, o mesmo dos registos).
+const GEMINI_ATTEMPT_MS = 100000;
+// Prazo do pedido inteiro, todas as rondas de ferramentas incluídas, com
+// folga para o limite rígido da plataforma (~150 s): passado ele, a função
+// era morta sem libertar o lock e sem resposta legível.
+const CHAT_BUDGET_MS = 125000;
+// A legenda da prova é curta: o limite de antes chega.
+const CAPTION_TIMEOUT_MS = 40000;
 
 const NUTRITION_TOOL = {
   name: "get_nutrition_history",
@@ -1153,6 +1162,8 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
         generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
       }),
     },
+    CAPTION_TIMEOUT_MS,
+    1,
   );
   if (!res.ok) throw new Error(`Gemini ${res.status}`);
   const data = await res.json();
@@ -1247,14 +1258,6 @@ async function insertModelMessage(sb: any, userId: string, content: string, mood
     .single();
 }
 
-// Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
-// vale a pena repetir estes, porque costumam resolver-se à segunda. O 429
-// (limite de pedidos excedido) fica DE FORA de propósito: repetir logo a
-// seguir só volta a bater no mesmo limite por minuto — e até o acelera — por
-// isso passa já ao chamador com a mensagem própria de 429 (ver handler).
-// Erros "permanentes" (400, 401, 403...) também passam sempre à primeira.
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
-
 // ── Filtro de âmbito pré-Gemini ───────────────────────────────────────────────
 // Evita chamar a API para perguntas claramente fora do âmbito desportivo/saúde.
 // A lista é intencionalmente lata: é melhor deixar passar um falso-positivo
@@ -1308,41 +1311,6 @@ const OFF_TOPIC_CAROL_REPLY =
   "Essa não é bem a minha área. Estou aqui para te apoiar no treino, nutrição, " +
   "composição corporal e corrida — tudo o que te ajuda a chegar em melhor forma às tuas provas. " +
   "Em que posso ajudar-te?";
-
-// fetch com limite de tempo por tentativa + repetições automáticas quando a
-// chamada fica presa (AbortError), falha ao nível da rede, ou o Gemini
-// devolve um estado transitório (ver GEMINI_RETRYABLE_STATUSES) — por
-// exemplo, confirmámos em produção uma resposta 503 (sobrecarga momentânea)
-// que a app mostrava como erro imediato, mesmo sem qualquer problema de rede
-// ou timeout envolvido. Ao fim das tentativas, devolve a resposta tal como
-// veio (o chamador decide a mensagem) ou lança um erro claro se nem chegou
-// a haver resposta.
-async function fetchGeminiWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs = GEMINI_TIMEOUT_MS,
-  retries = GEMINI_RETRIES,
-): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
-    }
-  }
-}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -5328,6 +5296,9 @@ export function buildSystemInstruction(
 async function handler(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
+  // O prazo do pedido inteiro (CHAT_BUDGET_MS), contado desde que chega.
+  const requestStartedAt = Date.now();
+  const chatDeadline = requestStartedAt + CHAT_BUDGET_MS;
 
   // Declarados fora do try para ficarem visíveis no finally, que liberta o
   // lock de coach_chat_busy_since (ver abaixo) em QUALQUER caminho de saída.
@@ -6391,6 +6362,11 @@ async function handler(req: Request): Promise<Response> {
             },
           }),
         },
+        GEMINI_ATTEMPT_MS,
+        // Sem repetição por tempo: recomeçar do zero uma resposta lenta só
+        // a volta a cortar. As de "ocupado" (503) repetem-se dentro do prazo.
+        0,
+        chatDeadline,
       );
       return res;
     }
@@ -6424,9 +6400,19 @@ async function handler(req: Request): Promise<Response> {
     for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
       const isFinalRound = round === MAX_TOOL_ROUNDS;
       let geminiRes: Response;
+      // Uma ronda nova só começa se ainda couber uma tentativa útil no prazo
+      // do pedido; senão a plataforma matava a função a meio (sem libertar o
+      // lock e sem resposta).
+      if (round > 0 && !hasTimeFor(chatDeadline)) {
+        console.error("coach-chat: sem tempo para mais uma ronda", JSON.stringify({ round, turnCase, elapsedMs: Date.now() - requestStartedAt }));
+        return jsonResponse({ error: "Demorei demasiado a pensar nesta resposta. Envia outra vez, por favor." }, 504);
+      }
       try {
         geminiRes = await callGemini(!isFinalRound);
       } catch (e) {
+        // O caminho que falhou a 2026-09-24 sem deixar rasto nos logs: só a
+        // app registava o timeout.
+        console.error("coach-chat: o Gemini não respondeu", JSON.stringify({ round, turnCase, elapsedMs: Date.now() - requestStartedAt, error: e instanceof Error ? e.message : String(e) }));
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha ao contactar o coach." }, 504);
       }
 

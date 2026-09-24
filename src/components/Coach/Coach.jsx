@@ -661,10 +661,23 @@ export default function Coach() {
   // Sonda coach_messages à procura da resposta do modelo criada DEPOIS do
   // início deste pedido — usado quando o cliente não conseguiu resposta
   // síncrona mas o pedido pode ainda estar em processamento no servidor.
+  //
+  // Pára cedo quando o servidor já acabou sem resposta: ele liberta o lock
+  // (profiles.coach_chat_busy_since) no fim de qualquer pedido, DEPOIS de
+  // gravar a resposta. Por isso lê-se o lock primeiro e as mensagens depois:
+  // lock livre e nenhuma resposta quer dizer que não vem nenhuma. Antes
+  // esperava-se sempre os 3 minutos — a 2026-09-24 o servidor desistiu aos
+  // 80 s e a atleta só soube quase 2 minutos depois. Um lock que não se lê
+  // (erro) ou que ficou preso (a função morta a meio) mantém a sondagem.
   const waitForAsyncReply = async (afterIso) => {
     const deadline = Date.now() + POLL_MAX_MS;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      const { data: lock } = await supabase
+        .from('profiles')
+        .select('coach_chat_busy_since')
+        .eq('id', profile?.id)
+        .single();
       // '*' e não a lista das colunas: a `mood` pode ainda não existir na
       // base (migration por aplicar), e pedi-la pelo nome partia a sondagem.
       const { data: rows } = await supabase
@@ -676,6 +689,7 @@ export default function Coach() {
         .order('created_at', { ascending: true })
         .limit(1);
       if (rows && rows.length > 0) return rows[0];
+      if (lock && lock.coach_chat_busy_since === null) return null;
     }
     return null;
   };

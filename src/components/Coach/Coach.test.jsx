@@ -110,6 +110,56 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).toBeDisabled();
   });
 
+  it('INCIDENTE 2026-09-24 — com o servidor já acabado sem resposta (lock livre), avisa logo em vez de sondar 3 minutos', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: { coach_chat_busy_since: null }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
+
+    // Uma volta da sondagem (4 s), não os 3 minutos.
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
+    const contents = useAppStore.getState().coachMessages.map((m) => m.content);
+    expect(contents).toContain('Não foi possível obter uma resposta da Carol. Tenta outra vez.');
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('com o servidor ainda a trabalhar (lock ocupado), continua a sondar e apanha a resposta', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    let polls = 0;
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        polls += 1;
+        return coachMessagesChain(polls < 3
+          ? { data: [], error: null }
+          : { data: [{ id: 'm1', role: 'model', content: 'Aqui estou.', created_at: new Date().toISOString() }], error: null });
+      }
+      return profilesChain({ data: { id: 'user-1', coach_chat_busy_since: new Date().toISOString() }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+    expect(screen.getByText('Aqui estou.')).toBeInTheDocument();
+    expect(screen.queryByText(/Não foi possível obter uma resposta/)).not.toBeInTheDocument();
+  });
+
   it('INCIDENTE 2026-09-12 — o 409 "busy" do servidor mostra-se na voz da Carol, não como falha de rede', async () => {
     // A recusa "Calma Rui…" é escrita de propósito para o atleta a ler; o
     // cliente deitava-a fora e anunciava "A tua mensagem não saiu: falha de
