@@ -1260,7 +1260,7 @@ export default function RunAgenda({ onClose }) {
               {draft.distance_km && draft.date && new Date(draft.date) >= new Date(todayIso) && (
                 <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-faint)] flex flex-col gap-1.5 mt-1">
                   <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1.5">
-                    Avaliação do Coach
+                    Avaliação da Carol
                   </span>
                   {viability.flags.length > 0 ? (
                     viability.flags.map(flag => (

@@ -239,24 +239,24 @@ describe('Perfil — metas escritas pelo Coach', () => {
     useAppStore.setState({ profile: { ...PROFILE, protein_goal_set_by_coach: true } });
     render(<Perfil />);
     abrirMetas();
-    expect(screen.getByTitle('Meta definida pelo Coach')).toBeInTheDocument();
+    expect(screen.getByTitle('Meta definida pela Carol')).toBeInTheDocument();
   });
 
   it('não mostra selo nenhum quando nada foi definido pelo Coach', () => {
     render(<Perfil />);
     abrirMetas();
-    expect(screen.queryByTitle('Meta definida pelo Coach')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Meta definida pela Carol')).not.toBeInTheDocument();
   });
 
   it('editar à mão a proteína marcada pelo Coach desliga a origem e grava as duas mudanças', async () => {
     useAppStore.setState({ profile: { ...PROFILE, protein_goal_set_by_coach: true } });
     render(<Perfil />);
     abrirMetas();
-    expect(screen.getByTitle('Meta definida pelo Coach')).toBeInTheDocument();
+    expect(screen.getByTitle('Meta definida pela Carol')).toBeInTheDocument();
 
     fireEvent.change(screen.getByDisplayValue('155'), { target: { value: '160' } });
     // O selo desaparece assim que o atleta edita — o valor já não é "do coach".
-    expect(screen.queryByTitle('Meta definida pelo Coach')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('Meta definida pela Carol')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
     await waitFor(() => expect(mocks.updates.length).toBe(1));

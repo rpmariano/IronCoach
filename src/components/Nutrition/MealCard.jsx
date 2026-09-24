@@ -198,7 +198,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             <div className="bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-2 shadow-xs">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-1)]">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
-                Análise do Coach
+                Análise da Carol
               </div>
               <div className="text-xs text-[var(--text-2)] font-normal">
                 <CoachText>{coachCommentary}</CoachText>

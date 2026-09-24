@@ -1531,7 +1531,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           }
           setRuns(runs.map(r => (r.id === runIdToEdit ? updatedRun : r)));
           useAppStore.getState().clearDismissedIntervention(runIdToEdit);
-          await finishSavedRun(updatedRun, 'Corrida reanalisada pelo Coach');
+          await finishSavedRun(updatedRun, 'Corrida reanalisada pela Carol');
         } else {
           const payload = { date: runDate, name: runName.trim(), shoe_id: shoeId };
           const { error } = await supabase.from('runs').update(payload).eq('id', runIdToEdit);

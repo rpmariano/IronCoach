@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Trophy, MessageSquare } from 'lucide-react';
+import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Medal, MessageSquare } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
@@ -44,7 +44,8 @@ const TAB_KEYS = ['perfil', 'metas', 'vitrina', 'equipamento', 'coach'];
 const TABS = [
   { key: 'perfil', label: 'Pessoal', icon: <User size={14} />, tone: 'gym' },
   { key: 'metas', label: 'Metas', icon: <Target size={14} />, tone: 'race' },
-  { key: 'vitrina', label: 'Vitrina', icon: <Trophy size={14} />, tone: 'race' },
+  // Medalha, não troféu: o troféu é o símbolo das Provas em toda a app.
+  { key: 'vitrina', label: 'Vitrina', icon: <Medal size={14} />, tone: 'race' },
   // srLabel: "Equipa." lê-se "equipa" num leitor de ecrã, que é outra coisa.
   // O SubNav já tem o mecanismo (o Dashboard usa-o em "Geral" → "Visão
   // Geral"); faltava aqui.
@@ -82,13 +83,13 @@ const coachFieldStyle = {
 // NÃO está sob influência do Coach (coachFieldStyle, acima, fica intacto).
 const plainFieldStyle = { border: '1px solid rgba(255, 255, 255, 0.1)' };
 
-// Badge inline que assinala que um campo foi escrito pelo Coach.
+// Badge inline que assinala que um campo foi escrito pela Carol.
 function CoachBadge() {
   return (
-    <span title="Meta definida pelo Coach"
+    <span title="Meta definida pela Carol"
       className="px-1.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wide shrink-0 shadow-sm text-[var(--coach-ink)]"
       style={{ background: 'var(--grad-coach-legible)' }}>
-      Coach
+      Carol
     </span>
   );
 }
@@ -604,7 +605,7 @@ export default function Perfil() {
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {draft.experience_level
                     ? experienceLevelDescription(draft.experience_level)
-                    : 'Calibra a linguagem e os limiares de treino do Coach.'}
+                    : 'Calibra a linguagem e os limiares de treino da Carol.'}
                   {' '}Ao registares uma prova, podes indicar um nível diferente só
                   para essa prova — por exemplo, avançado em estrada mas iniciante
                   na primeira trail.
@@ -622,7 +623,7 @@ export default function Perfil() {
                 <span className="text-[11px] text-[var(--text-3)]">
                   Restrições alimentares e alergias agora vivem na aba{' '}
                   <span className="font-semibold" style={{ color: 'var(--mod-coach-to)' }}>Carol</span>
-                  , junto da Memória do Coach.
+                  , junto da Memória da Carol.
                 </span>
                 <ChevronRight size={14} className="text-[var(--text-3)] shrink-0" />
               </button>
@@ -641,7 +642,7 @@ export default function Perfil() {
                 />
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
-                  frequência cardíaca mais precisas e permite ao Coach detetar
+                  frequência cardíaca mais precisas e permite à Carol detetar
                   fadiga acumulada — uma subida sustentada face ao teu normal é
                   dos primeiros sinais de sobretreino.
                 </p>
@@ -779,7 +780,7 @@ export default function Perfil() {
               <CarolIcon size={14} className="shrink-0 mt-px" style={{ color: 'var(--mod-coach-to)' }} />
               <span>
                 A Carol pode propor-te metas no chat; só mudam aqui se aceitares. As que vierem dela ficam
-                marcadas com "Coach" — editá-las à mão devolve-te o controlo.
+                marcadas com "Carol" — editá-las à mão devolve-te o controlo.
               </span>
             </p>
 
@@ -1039,7 +1040,7 @@ export default function Perfil() {
               <h3 className="text-sm font-semibold">Restrições Alimentares</h3>
             </div>
             <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">
-              Regra absoluta que o Coach nunca contraria — ao contrário da Memória, aqui é a
+              Regra absoluta que a Carol nunca contraria — ao contrário da Memória, aqui é a
               Carol que calcula por trás as metas de nutrientes certas para cada restrição.
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -1067,7 +1068,7 @@ export default function Perfil() {
             </div>
             <p className="text-[11px] text-[var(--text-3)] mt-1">
               Podes escolher mais que uma. Vegetariano e vegano excluem-se —
-              escolher um desliga o outro. Sem nada selecionado, o Coach
+              escolher um desliga o outro. Sem nada selecionado, a Carol
               assume que comes de tudo.
             </p>
             <input
@@ -1079,7 +1080,7 @@ export default function Perfil() {
               className="w-full mt-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
             />
             <p className="text-[11px] text-[var(--text-3)] mt-1">
-              O Coach trata isto como regra absoluta e nunca sugere nada que
+              A Carol trata isto como regra absoluta e nunca sugere nada que
               a contrarie.
             </p>
           </div>

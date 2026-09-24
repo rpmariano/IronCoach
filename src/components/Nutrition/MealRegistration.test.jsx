@@ -189,7 +189,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
 
     expect(screen.getByText('1 fatia de fiambre')).toBeInTheDocument();
-    expect(screen.getByText('Porção estimada pelo Coach')).toBeInTheDocument();
+    expect(screen.getByText('Porção estimada pela Carol')).toBeInTheDocument();
     expect(mocks.invoke).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));

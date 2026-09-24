@@ -95,7 +95,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
       // deixa o handleSend correr até ao catch/erro e mostrar o aviso, antes
       // de qualquer avanço de temporizador.
       await Promise.resolve();
@@ -107,7 +107,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
     // Não é um erro definitivo — não deve aparecer o prefixo "Erro:".
     expect(screen.queryByText(/^\*\*Erro/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).toBeDisabled();
   });
 
   it('INCIDENTE 2026-09-12 — o 409 "busy" do servidor mostra-se na voz da Carol, não como falha de rede', async () => {
@@ -128,7 +128,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -182,7 +182,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -206,7 +206,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     // O botão só fica ativo com texto por enviar — testa o destravar do
     // campo (coachLoading) escrevendo de novo, não o estado "sem texto".
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Obrigada' } });
-    expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).not.toBeDisabled();
   });
 
   it('esgota a sondagem sem resposta: mostra erro final e destrava o campo', async () => {
@@ -224,7 +224,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -235,10 +235,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     });
 
     expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
-    expect(screen.getByText(/Não foi possível obter uma resposta do Coach/i)).toBeInTheDocument();
+    expect(screen.getByText(/Não foi possível obter uma resposta da Carol/i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
-    expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).not.toBeDisabled();
   }, 15000);
 
   it('em sucesso síncrono, comportamento normal mantém-se (regressão)', async () => {
@@ -249,7 +249,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     renderCoach();
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
     await waitFor(() => expect(screen.getByText(/Como posso ajudar/i)).toBeInTheDocument());
     expect(useAppStore.getState().coachLoading).toBe(false);
@@ -271,7 +271,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     renderCoach();
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Dieta para a recuperação?' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
     await waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
     const msgs = useAppStore.getState().coachMessages;
@@ -295,7 +295,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -321,7 +321,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
       await Promise.resolve();
       await Promise.resolve();
     });
@@ -352,7 +352,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
       // eslint-disable-next-line no-await-in-loop
       await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+        fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
         await Promise.resolve();
         await Promise.resolve();
       });
@@ -406,7 +406,7 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
 
     renderCoach();
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
     await waitFor(() => expect(screen.getByText(/falha de rede/i)).toBeInTheDocument());
     // Não é o aviso de demora (não faz sentido esperar por algo que nunca
@@ -418,7 +418,7 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     // escrevendo de novo, não o estado "sem texto".
     expect(useAppStore.getState().coachLoading).toBe(false);
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
-    expect(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).not.toBeDisabled();
     // Sem sondagem: nenhuma leitura a coach_messages foi despoletada.
     expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
   });
@@ -483,7 +483,7 @@ describe('Coach — BUG CORRIGIDO (2026-08-30) — rascunho da mensagem sobreviv
     const { unmount } = renderCoach();
     expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe('Rascunho Antigo');
 
-    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
     await waitFor(() => expect(screen.getByPlaceholderText('Escreve a tua pergunta...').value).toBe(''));
     expect(localStorage.getItem('ironcoach:carol-chat-rascunho')).toBeNull();
@@ -548,7 +548,7 @@ describe('Coach — CAROL.md §5: ritmo humano na escrita', () => {
     renderCoach();
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
       for (let i = 0; i < 6; i++) await Promise.resolve();
     });
 
@@ -578,7 +578,7 @@ describe('Coach — CAROL.md §5: ritmo humano na escrita', () => {
     });
     renderCoach();
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
     await waitFor(() => expect(screen.getByText(/Segunda ideia/)).toBeInTheDocument());
     expect(screen.getByText(/Primeira ideia/)).toBeInTheDocument();
     expect(screen.queryByTestId('coach-typing')).not.toBeInTheDocument();
@@ -933,7 +933,7 @@ describe('Coach — explicar um badge (coachIntent badge)', () => {
 
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'E o meu plano?' } });
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
     });
 
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
@@ -982,7 +982,7 @@ describe('Coach — CAROL.md §4: a cara acompanha o que ela diz', () => {
     invokeEdgeFunctionWithTimeout.mockReturnValue(new Promise((r) => { resolve = r; }));
     const { container } = renderCoach();
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Dormi mal.' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta ao Coach/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
     await waitFor(() => expect(headerMood(container)).toBe('thinking'));
 
     await act(async () => {

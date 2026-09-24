@@ -19,7 +19,7 @@ const DASHBOARD_TABS = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holis
 /* Índice de cada separador na minhoca da barra (0–3). Os ecrãs sem coluna
    própria (Perfil, Calendário, Admin, registos) devolvem -1 e escondem a
    pílula em vez de a deixarem a apontar para um separador onde o atleta já
-   não está. A barra é Início · Provas · Dashboard · Coach desde 2026-09-13
+   não está. A barra é Início · Provas · Evolução · Carol (nomes desde 2026-09-24)
    (opção A de "Onde vivem as provas"): a prova é o grande objetivo da app e
    ganhou coluna; o Calendário passou para o cabeçalho. */
 function navIndexFor(activeTab) {

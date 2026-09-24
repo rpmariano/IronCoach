@@ -266,7 +266,7 @@ export default function ExperienceLevelHelp({
               </div>
 
               <p className="text-[11px] leading-relaxed text-[var(--text-3)] text-center pb-2">
-                Valores de referência para provas de 10 km a meia maratona. Com objetivo de maratona, o volume semanal sobe. O Coach ajusta.
+                Valores de referência para provas de 10 km a meia maratona. Com objetivo de maratona, o volume semanal sobe. A Carol ajusta.
               </p>
             </>
           )}

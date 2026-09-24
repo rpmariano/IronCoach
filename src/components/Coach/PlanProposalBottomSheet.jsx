@@ -63,7 +63,7 @@ export function PlanProposalBottomSheet({
 
   const both = !!plan && !!goalProposal;
   const title = both
-    ? 'Propostas do Coach'
+    ? 'Propostas da Carol'
     : goalProposal
       ? 'Proposta de Objetivos'
       : 'Nova Proposta de Plano';

@@ -721,7 +721,7 @@ export default function Coach() {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Não foi possível obter uma resposta do Coach. Tenta outra vez.'
+        content: 'Não foi possível obter uma resposta da Carol. Tenta outra vez.'
       });
     }
     setCoachLoading(false);
@@ -1077,7 +1077,7 @@ export default function Coach() {
           <button
             onClick={() => handleSend()}
             disabled={!inputStr.trim() || coachLoading}
-            aria-label="Enviar pergunta ao Coach"
+            aria-label="Enviar pergunta à Carol"
             className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
               coachLoading || !inputStr.trim()
                 ? 'bg-[var(--surface-strong)] text-[var(--text-3)] cursor-not-allowed'

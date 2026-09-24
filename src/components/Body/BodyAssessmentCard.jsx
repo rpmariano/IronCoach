@@ -150,7 +150,7 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
             <div className="bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-2xl p-4 space-y-2 shadow-xs">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[var(--text-1)]">
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
-                Análise do Coach
+                Análise da Carol
               </div>
               <p className="text-xs text-[var(--text-2)] leading-relaxed font-normal">
                 {coachCommentary}

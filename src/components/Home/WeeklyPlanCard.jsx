@@ -322,7 +322,7 @@ export function PlanDayCard({
                     {item.notes && (
                       <div style={{ marginBottom: item.kind !== 'descanso' ? '12px' : 0 }}>
                         <div className={`wpc-info-box-header ${itemKindClass(item)}`}>
-                          <StickyNote size={13} /> Instruções do Coach
+                          <StickyNote size={13} /> Instruções da Carol
                         </div>
                         <p className="wpc-info-box-text">{item.notes}</p>
                       </div>
@@ -477,7 +477,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
       <div className="wpc-card">
         <div className="wpc-glow-coach"></div>
         <div className="wpc-content">
-          <h2 className="wpc-proposal-title">O Coach propôs um plano</h2>
+          <h2 className="wpc-proposal-title">A Carol propôs um plano</h2>
           {plan.summary && <p className="wpc-proposal-summary">{plan.summary}</p>}
 
           <div 
@@ -537,7 +537,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
     <button onClick={() => onNav('coach')} className="wpc-pending-banner tap-scale" type="button">
       <span className="flex items-start gap-1.5 flex-1">
         <MessageCircle size={14} className="mt-0.5 shrink-0" /> 
-        <span>Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} do Coach por rever</span>
+        <span>Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} da Carol por rever</span>
       </span>
       <span className="wpc-pending-link">
         Ver no chat <ChevronRight size={12} />
@@ -554,7 +554,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
           <div className="wpc-content">
             <h2 className="wpc-proposal-title">Plano</h2>
             <p className="text-xs font-semibold text-[var(--text-3)] mt-1">
-              Sem treinos acordados. Pede ao Coach um plano — as sugestões aparecem no chat para aceitares ou recusares.
+              Sem treinos acordados. Pede à Carol um plano — as sugestões aparecem no chat para aceitares ou recusares.
             </p>
           </div>
         </button>

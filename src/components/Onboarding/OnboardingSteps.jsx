@@ -198,7 +198,7 @@ export function CarolReply({ reaction, children, style }) {
 const PROMESSAS = [
   { icon: <Eye size={17} />, title: 'Vejo tudo o que registas', text: 'Corridas, ginásio, refeições, peso. É com isso que percebo se estás no caminho certo.' },
   { icon: <PenLine size={17} />, title: 'Escrevo o plano, tu decides', text: 'Proponho a semana de treino e as refeições. Aceitas, recusas ou pedes outra coisa.' },
-  { icon: <Clock size={17} />, title: 'Estou sempre a um toque', text: 'No separador Coach, a qualquer hora. Pergunta o que quiseres, mesmo a meio de uma corrida.' },
+  { icon: <Clock size={17} />, title: 'Estou sempre a um toque', text: 'No separador Carol, a qualquer hora. Pergunta o que quiseres, mesmo a meio de uma corrida.' },
 ];
 
 export function StepCarol() {
@@ -699,7 +699,7 @@ export function StepFecho({ titulo, resumo, semanas, raceName }) {
       </div>
 
       <CarolNote style={{ marginTop: 22 }}>
-        Podes rever ou mudar tudo isto em Perfil · Coach, quando quiseres.
+        Podes rever ou mudar tudo isto em Perfil · Carol, quando quiseres.
       </CarolNote>
     </>
   );
