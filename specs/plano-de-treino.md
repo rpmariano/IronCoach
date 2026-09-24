@@ -341,6 +341,32 @@ se o atleta treinar a meio do dia — aceitável para um resumo; os alarmes
 continuam a sair de `dayNutrientStatus`, calculado ao vivo. Um botão
 "Atualizar" no card força regeneração (`force: true`).
 
+**Revisto 2026-09-24:** a troca deixou de ser aceitável — registar a corrida
+às 16h deixava o recap da meia-noite a dizer "Tens hoje o último treino de
+corrida…". Agora o resumo refaz-se (`force: true`) quando entra, sai ou muda
+de distância/data uma corrida ou treino de ginásio dos últimos 7 dias
+(`src/utils/dailySummaryRefresh.js`, arrancado em `main.jsx`; a primeira
+lista de cada sessão é o ponto de partida, e registos seguidos juntam-se num
+pedido). Refeições não disparam — o custo de uma chamada ao modelo por
+refeição não compensa; ficam para o "Atualizar" e para o dia seguinte.
+
+**Carga (ACWR) — fora do cartão (2026-09-24).** O "Aviso de hoje" dizia
+"Carga de treino desta semana muito elevada (ACWR …). Considera um dia de
+recuperação ativa." a quem só tinha cumprido o plano (12 km feitos contra 17
+prescritos) e com corridas em só 2 das 4 semanas. Regras novas, em
+`_shared/formulas/runLoadAlert.ts`:
+
+- O rácio só conta como risco com corridas em pelo menos 3 das 4 semanas
+  **e** carga dos últimos 7 dias acima de 1,1× o que o plano aceite previa
+  para esses dias (ou sem corridas no plano). Sem histórico, o rácio nem vai
+  ao modelo (`acwr.ratio: null`).
+- O cartão não muda o plano (regra no prompt; a exceção é o check-in).
+  Quando a carga conta como risco, o `coach-daily-summary` abre um assunto
+  por resolver (`coach_intervention_status: 'needed'`, motivo com a etiqueta
+  `[carga]`) — o Início mostra-o e leva ao chat. Só se abre quando são as
+  corridas registadas depois do resumo anterior que levam ao alerta, e nunca
+  por cima de outro assunto pendente — não reabre todos os dias.
+
 ### Modelo
 
 `coach_daily_summary` — uma linha por `(user_id, date)`, upsert na segunda

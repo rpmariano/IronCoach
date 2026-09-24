@@ -815,6 +815,14 @@ export const useAppStore = create((set, get) => ({
       try {
         const { data, error } = await invokeEdgeFunctionWithTimeout('coach-daily-summary', { body: { force } });
         if (error) { console.error('Error loading daily summary:', error); return null; }
+        // A carga que pede conversa abre um assunto por resolver no servidor
+        // (runLoadAlert.ts): o Início mostra-o já, sem esperar pela próxima
+        // carga do perfil.
+        const opened = data?.intervention;
+        const profile = get().profile;
+        if (opened?.status === 'needed' && profile && !['needed', 'in_progress'].includes(profile.coach_intervention_status)) {
+          set({ profile: { ...profile, coach_intervention_status: 'needed', coach_intervention_reason: opened.reason || null } });
+        }
         if (data?.summary) {
           set({ dailySummary: data.summary });
           return data.summary;

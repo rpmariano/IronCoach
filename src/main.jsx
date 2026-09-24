@@ -6,6 +6,7 @@ import { useAppStore } from './store';
 import { trackPageVisibility } from './utils/pageVisibility';
 import { startAppUpdateWatcher, reloadFresh, resumeParams, isBusy } from './lib/appUpdate';
 import { isScreenOpen } from './utils/navigationRestore';
+import { startDailySummaryRefresh } from './utils/dailySummaryRefresh';
 import './styles/globals.css';
 
 window.useAppStore = useAppStore;
@@ -25,6 +26,10 @@ startAppUpdateWatcher({
   reload: (build) => reloadFresh(build, window.location, resumeParams(useAppStore.getState().activeTab)),
   busy: () => isBusy(document) || isScreenOpen(useAppStore.getState()),
 });
+
+// O cartão da Carol no Início refaz-se quando entra um treino — senão,
+// o resumo da meia-noite falava da corrida de hoje como estando por fazer.
+startDailySummaryRefresh(useAppStore);
 
 const container = document.getElementById('root');
 const root = createRoot(container);
