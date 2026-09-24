@@ -87,9 +87,9 @@ describe('CoachAvatar — as feições que dizem a emoção', () => {
   });
 
   it('o traço não afina ao mudar de enquadramento', () => {
-    // Aos 56 px entra o enquadramento grande: a sobrancelha não pode cair
-    // para menos do que tinha a 44 (o tamanho logo abaixo mais usado).
+    // Aos 32 e aos 56 px muda o enquadramento: o traço não pode descer.
     const at = (size) => px(render(<CoachAvatar mood="worried" size={size} />).container, 'browL', size);
-    expect(at(56)).toBeGreaterThanOrEqual(at(44) * 0.95);
+    expect(at(32)).toBeGreaterThanOrEqual(at(31) - 1e-9);
+    expect(at(56)).toBeGreaterThanOrEqual(at(55) - 1e-9);
   });
 });

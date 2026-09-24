@@ -11,10 +11,10 @@
 //
 // Prioridade, como no cliente: manhã da prova > véspera > depois da prova >
 // fim de bloco > silêncio > balanço da semana — e o balanço só num dia sem
-// mais nenhum (ver o fim de listServerProactive). O servidor tem mais dois momentos que
-// o cliente trata pelo Início, não pelo chat (P.5): um assunto por resolver
-// (intervenção — dor no check-in, desvio num registo) passa à frente de
-// tudo, e o conflito de provas vem logo a seguir à véspera.
+// mais nenhum (ver o fim de listServerProactive). O servidor tem mais dois
+// momentos que o cliente trata pelo Início, não pelo chat (P.5): um assunto
+// por resolver (intervenção — dor no check-in, desvio num registo) passa à
+// frente de tudo, e o conflito de provas vem logo a seguir à véspera.
 
 export const SILENCE_DAYS = 3;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
@@ -155,8 +155,9 @@ export function findRaceRunServer(runs: TriggerRun[] | null | undefined, race: T
      de hoje não conta: quem começa a usar a app numa segunda, ou volta de
      uma ausência, não recebe o balanço de uma semana vazia;
    - só quando não há mais nenhum momento. O dia da prova, a véspera, o
-     "como correu?", o fim de bloco, um assunto por resolver ou um "Estás
-     bem?" ficam com o dia inteiro: o balanço não lhes aparece por trás.
+     "como correu?", o conflito de provas, o fim de bloco, um assunto por
+     resolver ou um "Estás bem?" ficam com o dia inteiro: o balanço não lhes
+     aparece por trás.
    A chave é a segunda-feira da semana revista: uma por semana. */
 export const WEEK_REVIEW_DAYS = 2;
 
