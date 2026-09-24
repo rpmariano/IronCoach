@@ -11,7 +11,7 @@
 //
 // Prioridade, como no cliente: manhã da prova > véspera > depois da prova >
 // fim de bloco > silêncio > balanço da semana — e o balanço só num dia sem
-// mais nenhum (ver findWeekToReview). O servidor tem mais dois momentos que
+// mais nenhum (ver o fim de listServerProactive). O servidor tem mais dois momentos que
 // o cliente trata pelo Início, não pelo chat (P.5): um assunto por resolver
 // (intervenção — dor no check-in, desvio num registo) passa à frente de
 // tudo, e o conflito de provas vem logo a seguir à véspera.
@@ -202,8 +202,8 @@ export type ServerProactiveInput = {
     /** P.6: os momentos que o atleta aceita. Um desligado não esconde os
      *  seguintes — passa-se ao próximo da lista. Sem isto, todos contam.
      *  A exceção é o balanço da semana: só entra num dia sem mais nenhum
-     *  momento, ligado ou não. Um desligado que se aplique fica com o dia,
-     *  e nesse dia não sai notificação nenhuma (P.14). */
+     *  momento, ligado ou não. Um desligado que se aplique não é notificado,
+     *  e o balanço não sai no lugar dele (P.14). */
     allowed?: string[] | null;
     /** Balanço da semana: datas de registos que cubram a semana revista (o
      *  tick só as lê à segunda e à terça — weekToReviewBounds). */
@@ -289,8 +289,10 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     if (gap >= SILENCE_DAYS) out.push({ ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last });
   }
 
-  // O balanço da semana só entra num dia sem mais nada: o dia da prova, um
-  // assunto por resolver, o fim de bloco ou um "Estás bem?" ficam com o dia.
+  // O balanço da semana só entra num dia sem mais nada: a prova, a véspera,
+  // o "como correu?", o conflito de provas, um assunto por resolver, o fim
+  // de bloco ou um "Estás bem?" ficam com o dia — mesmo desligados no
+  // Perfil, porque o filtro das preferências só vem a seguir (P.14).
   const week = out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
   if (week) {
     out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
