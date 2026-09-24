@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied } from './lib/appUpdate';
+import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
@@ -602,6 +602,9 @@ export default function App() {
   }, [showOnboarding, markCurrentSlotSeen]);
   useEffect(() => {
     if (!welcomeReady) return;
+    // A partir daqui o ?tab= de uma notificação já fez o seu papel: uma
+    // recarga técnica pode tirá-lo (lib/appUpdate.js, resumeParams).
+    markEntryWelcomeHandled();
     if (openedWithTabRef.current) {
       openedWithTabRef.current = false;
       markCurrentSlotSeen();

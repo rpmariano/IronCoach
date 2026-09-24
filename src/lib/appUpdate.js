@@ -100,15 +100,25 @@ let entryApplied = false;
 /** O App chama isto depois de aplicar o separador de entrada. */
 export function markEntryApplied() { entryApplied = true; }
 
+/* ...e já decidiu as boas-vindas? Até lá o ?tab= de uma notificação ainda
+   tem um papel: diz ao arranque para as saltar. Uma recarga antes disso (a
+   app aberta a frio por uma notificação, com um index.html da cache logo a
+   seguir a uma publicação) tem de o manter — senão as boas-vindas
+   apareciam por cima do Coach (revisão pré-deploy de 89e52e5). */
+let welcomeHandled = false;
+/** O App chama isto depois de decidir as boas-vindas da entrada. */
+export function markEntryWelcomeHandled() { welcomeHandled = true; }
+
 /** Os parâmetros de uma recarga técnica para voltar a `tab`: põe o
-    ?resume= e tira o ?tab= e o ?carol= de uma notificação antiga — senão
-    uma sessão aberta por notificação voltava sempre a esse separador e sem
-    boas-vindas (revisão pré-deploy de 7326011). Antes de o App aplicar o
-    separador de entrada, e nas bancadas de teste, o URL fica como está. */
-export function resumeParams(tab, applied = entryApplied) {
+    ?resume= e, com as boas-vindas já decididas, tira o ?tab= e o ?carol= de
+    uma notificação antiga — senão uma sessão aberta por notificação voltava
+    sempre a esse separador e sem boas-vindas (revisão pré-deploy de
+    7326011). Antes de o App aplicar o separador de entrada, e nas bancadas
+    de teste, o URL fica como está. */
+export function resumeParams(tab, applied = entryApplied, handled = welcomeHandled) {
   if (!applied) return {};
   if (typeof tab !== 'string' || !tab || /^(design-system|audit-sandbox)$/.test(tab)) return {};
-  return { [RESUME_PARAM]: tab, tab: null, carol: null };
+  return handled ? { [RESUME_PARAM]: tab, tab: null, carol: null } : { [RESUME_PARAM]: tab };
 }
 
 /** O separador por onde a app entra: o da recarga técnica (é onde se
