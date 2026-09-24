@@ -449,6 +449,8 @@ export default function Perfil() {
   const carolEndHour = draft.carol_push_end_hour ?? DEFAULT_CAROL_PUSH_END_HOUR;
   const carolMaxPerDay = draft.carol_push_max_per_day ?? 1;
   const carolTypes = Array.isArray(draft.carol_push_types) ? draft.carol_push_types : ALL_CAROL_PUSH_TYPES;
+  // Sem a coluna (perfil antigo), as boas-vindas estão ligadas.
+  const welcomeOn = draft.carol_welcome_enabled !== false;
 
   const leaveModal = (
     <UnsavedChangesModal
@@ -1025,6 +1027,29 @@ export default function Perfil() {
                 </p>
               </div>
             )}
+
+            {/* As boas-vindas (ação P.11): sempre visível, porque não é uma
+                notificação — não depende do push nem da permissão do browser.
+                É rascunho como o resto, e o App lê-o com `=== false`. */}
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-[var(--border-glass)] dark:border-[var(--border-glass)]" data-testid="perfil-carol-welcome">
+              <div className="pr-4">
+                <p className="text-xs font-semibold flex items-center gap-1.5"><MessageSquare size={14} className="text-[var(--coach)]" /> Boas-vindas ao abrir a app</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
+                  A Carol recebe-te antes do Início, uma vez em cada parte do dia, e no dia e na véspera de uma prova.
+                </p>
+              </div>
+              <button onClick={() => updateDraft('carol_welcome_enabled', !welcomeOn)} type="button"
+                aria-label={welcomeOn ? 'Desativar boas-vindas ao abrir a app' : 'Ativar boas-vindas ao abrir a app'}
+                aria-pressed={welcomeOn}
+                className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
+                  welcomeOn ? '' : 'bg-[var(--surface-strong)]'
+                }`}
+                style={welcomeOn ? { background: 'var(--mod-coach-to)' } : undefined}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
+                  welcomeOn ? 'translate-x-5' : 'translate-x-0'
+                }`} style={{ backgroundColor: welcomeOn ? 'var(--coach-ink)' : 'var(--text-1)' }}></span>
+              </button>
+            </div>
           </div>
 
           <CoachMemoryCard />

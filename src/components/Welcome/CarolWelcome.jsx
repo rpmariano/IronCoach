@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Footprints, UtensilsCrossed, Moon, Clock, Trophy } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
-import { LOOK, ambientBackground, contourRings } from '../../utils/ambientWorld';
+import { LOOK, ambientBackground, contourRings, lookKeyForNow } from '../../utils/ambientWorld';
 import { useAppStore } from '../../store';
 
 /* A sala da Carol — as boas-vindas antes da Home (canvas de design
@@ -97,7 +97,8 @@ function lisbonClock(now) {
 
 export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
   const race = welcome.variant === 'prova';
-  const look = LOOK[welcome.variant] || LOOK.manha;
+  // A véspera não tem luz própria: é a da hora a que aparece.
+  const look = LOOK[welcome.variant] || LOOK[lookKeyForNow(now)] || LOOK.manha;
   const accent = race ? '#fbbf24' : '#22d3ee';
   const { data, hora, hourFloat } = useMemo(() => lisbonClock(now), [now]);
   const buttonRef = useRef(null);

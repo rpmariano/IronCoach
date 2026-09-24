@@ -65,6 +65,21 @@ describe('CarolWelcome', () => {
     expect(screen.getByTestId('carol-welcome')).toHaveAttribute('data-variant', 'prova');
     expect(screen.getByRole('button', { name: 'Estou pronto' })).toBeInTheDocument();
   });
+
+  it('na véspera (ação P.11), sem luz própria: desenha-se com a da hora', () => {
+    const vespera = {
+      variant: 'vespera',
+      greeting: 'Amanhã é dia de prova, Rui.',
+      lines: ['Meia de Lisboa, partida às 9:30.', 'Hoje é descanso.'],
+      chip: { label: '21,1 km', value: 'Partida às 09:30', icon: 'trophy' },
+      cta: 'Ver o meu dia',
+      race: false,
+    };
+    render(<CarolWelcome welcome={vespera} now={new Date('2026-09-19T21:10:00+01:00')} onClose={() => {}} />);
+    expect(screen.getByRole('dialog', { name: 'Amanhã é dia de prova, Rui.' })).toHaveAttribute('data-variant', 'vespera');
+    expect(screen.getByText('Partida às 09:30')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ver o meu dia' })).toHaveFocus();
+  });
 });
 
 describe('CarolWelcome — o foco (revisão pré-master de 2026-09-19)', () => {

@@ -345,6 +345,12 @@ export default function Coach() {
   // falado há menos de 6h, para não empilhar duas mensagens não pedidas),
   // isto é um pedido explícito do atleta — vai com `proactive_force` para
   // não ficar silenciosamente sem resposta nenhuma (bug 2026-09-14).
+  //
+  // O mesmo para o aviso "O bloco está a acabar" (ação P.11, coachIntent
+  // 'proactive_moment'): o servidor honra o force em qualquer momento. Um
+  // "already_sent" (a conversa já aconteceu noutro dispositivo) marca-se
+  // como dita, para o aviso do Início desaparecer em vez de ficar a pedir
+  // uma conversa que o chat já mostra.
   const handleRaceBalanceCheckin = (candidate) => sendCoachInitiatedPayload({
     message: '',
     proactive_trigger: candidate.trigger,
@@ -355,6 +361,7 @@ export default function Coach() {
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
   }).then((data) => {
+    if (data?.skipped && data.reason === 'already_sent') markProactiveSent(profile?.id, candidate);
     if (data && !data.skipped) {
       markProactiveSent(profile?.id, candidate);
       // O hub (RaceBalanceCard) tem o mesmo balanço — pedido lá, marca-se
@@ -378,7 +385,7 @@ export default function Coach() {
       handleProactiveIntervention(coachIntent);
       return;
     }
-    if (coachIntent && coachIntent.kind === 'race_balance') {
+    if (coachIntent && (coachIntent.kind === 'race_balance' || coachIntent.kind === 'proactive_moment')) {
       const { candidate } = coachIntent;
       setCoachIntent(null);
       handleRaceBalanceCheckin(candidate);

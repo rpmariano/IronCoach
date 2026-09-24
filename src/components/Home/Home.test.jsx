@@ -150,6 +150,48 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     fireEvent.click(screen.getByTestId('carol-alert-talk-assuntos'));
     expect(setCoachIntent).toHaveBeenCalledWith({ kind: 'proactive_intervention', reason: 'carga a subir' });
   });
+
+  // Ação P.11: um bloco sem prova que acaba depois de amanhã, sem outro a seguir.
+  const comFimDeBloco = () => useAppStore.setState({
+    coachPlans: [{ id: 'b1', status: 'aceite', period_start: addDaysISO(today, -27), period_end: addDaysISO(today, 2) }],
+    coachPlanItems: [{ id: 'i1', plan_id: 'b1', planned_date: tomorrow, kind: 'corrida', training_type: 'rodagem', status: 'pendente' }],
+  });
+
+  it('o bloco a acabar: o aviso na voz dela, e "Falar com a Carol" pede a conversa com o candidato do chat', () => {
+    comFimDeBloco();
+    renderHome();
+    expect(alertCount()).toBe(1);
+
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-fim-bloco');
+    expect(aviso).toHaveTextContent('O bloco está a acabar');
+    expect(aviso).toHaveTextContent('O teu bloco de treino acaba daqui a 2 dias e não há outro a seguir. Quero preparar o próximo contigo.');
+
+    fireEvent.click(screen.getByTestId('carol-alert-talk-fim-bloco'));
+    expect(setCoachIntent).toHaveBeenCalledWith({
+      kind: 'proactive_moment',
+      candidate: expect.objectContaining({ trigger: 'block_end', key: 'block_end:b1' }),
+    });
+    expect(setActiveTab).toHaveBeenCalledWith('coach');
+  });
+
+  it('o bloco a acabar dispensa-se, com a chave do candidato para os outros dispositivos', () => {
+    comFimDeBloco();
+    const logImpressionDismissed = vi.fn();
+    useAppStore.setState({ logImpressionDismissed });
+    renderHome();
+    openAlerts();
+    fireEvent.click(screen.getByTestId('carol-alert-dismiss-fim-bloco'));
+    expect(logImpressionDismissed).toHaveBeenCalledWith({ kind: 'alert', key: 'block_end:b1', title: 'O bloco está a acabar' });
+    expect(alertCount()).toBe(0);
+  });
+
+  it('dispensado noutro dispositivo, o bloco a acabar não aparece', () => {
+    comFimDeBloco();
+    useAppStore.setState({ impressionDismissed: new Set(['alert:block_end:b1']) });
+    renderHome();
+    expect(alertCount()).toBe(0);
+  });
 });
 
 /* A ordem dos cartões (2026-09-15): de perto para longe — quem me fala, o

@@ -3,7 +3,7 @@ import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
-import { pendingRaceBalanceCandidate, dismissProactiveAlert } from '../../utils/coachProactive';
+import { pendingRaceBalanceCandidate, pendingBlockEndAlert, dismissProactiveAlert } from '../../utils/coachProactive';
 import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
@@ -56,14 +56,15 @@ export default function Home() {
   const [showDismiss, setShowDismiss] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [mealDay, setMealDay] = useState(null);
-  // Dispensar o aviso do balanço grava a marca em localStorage, que não é
-  // estado do React — este contador faz o useMemo voltar a ler.
-  const [balanceDismissals, setBalanceDismissals] = useState(0);
+  // Dispensar o aviso do balanço (ou do fim de bloco) grava a marca em
+  // localStorage, que não é estado do React — este contador faz os useMemo
+  // voltarem a ler.
+  const [alertDismissals, setAlertDismissals] = useState(0);
   /* O momento do badge (fase 4 da reforma da gamificação) — a regra de
      quando aparece e em que escala vive no hook. É a única cerimónia de ecrã
-     inteiro do Início desde que os medalhões saíram (fase C): já não espera
-     por ninguém. Sem a migração `user_badges` aplicada não há `pending`
-     nenhum e isto não mostra nada. */
+     inteiro do Início desde que os medalhões saíram (fase C): só espera
+     pelas boas-vindas (ação P.11, a cancela `welcomeGate`). Sem a migração
+     `user_badges` aplicada não há `pending` nenhum e isto não mostra nada. */
   const badgeMoment = useBadgeMoment();
   const badgeVisivel = badgeMoment.grande || badgeMoment.medio;
 
@@ -145,7 +146,16 @@ export default function Home() {
     if (!candidate) return null;
     const race = (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
     return race ? { race, candidate } : null;
-  }, [pendingTopics, raceConflict, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, impressionDismissed, balanceDismissals]);
+  }, [pendingTopics, raceConflict, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, impressionDismissed, alertDismissals]);
+
+  /* O bloco está a acabar (ação P.11): o bloco de treino sem prova acaba e
+     não há outro a seguir. O candidato é o do chat e da notificação
+     (block_end:<plano>), para o toque e o botão não pedirem conversas
+     diferentes; conta como uma boa notícia a preparar, abaixo do balanço. */
+  const blockEnd = useMemo(() => {
+    if (pendingTopics > 0 || raceConflict) return null;
+    return pendingBlockEndAlert({ coachPlans, coachPlanItems, profile, impressionDismissed });
+  }, [pendingTopics, raceConflict, coachPlans, coachPlanItems, profile, impressionDismissed, alertDismissals]);
 
   /* O plano precisa de um ajuste (specs/plano-de-prova.md, "O plano tem de
      saber da prova"): a app deteta sozinha quando a realidade se afastou do
@@ -179,8 +189,8 @@ export default function Home() {
   /* Os avisos da Carol vivem no botão flutuante (pedido 2026-09-13): no
      cabeçalho do cartão dela confundiam-se com o resumo do dia. Um de cada
      vez, pela mesma prioridade de sempre — assuntos por resolver, depois o
-     ajuste do plano, depois o balanço da prova —, cada um com o seu "Falar
-     com a Carol" na janela dos insights. */
+     ajuste do plano, depois o balanço da prova, por fim o fim do bloco —,
+     cada um com o seu "Falar com a Carol" na janela dos insights. */
   const carolAlerts = [];
   if (pendingTopics > 0) {
     carolAlerts.push({
@@ -238,12 +248,31 @@ export default function Home() {
       // pensarem que a conversa já tinha acontecido e deixarem de a propor.
       onDismiss: () => {
         dismissProactiveAlert(profile?.id, raceBalance.candidate);
-        setBalanceDismissals((n) => n + 1);
+        setAlertDismissals((n) => n + 1);
         // Duas chaves na dispensa (ação 5.1): 'balanco', que o chat já lê,
         // e a do candidato (race_after:<raceId>:<runId>), que é a que serve
         // para o outro dispositivo saber que este balanço foi dispensado.
         logImpressionDismissed({ kind: 'alert', key: 'balanco', title: 'O balanço da prova' });
         logImpressionDismissed({ kind: 'alert', key: raceBalance.candidate.key, title: 'O balanço da prova' });
+      },
+    });
+  } else if (blockEnd) {
+    carolAlerts.push({
+      id: 'fim-bloco',
+      severity: 'info',
+      title: 'O bloco está a acabar',
+      message: `O teu bloco de treino acaba ${blockEnd.when} e não há outro a seguir. Quero preparar o próximo contigo.`,
+      // O mesmo contrato do balanço: um pedido explícito fura as quiet hours
+      // (`proactive_force`), senão o botão ficava sem resposta sempre que ela
+      // tivesse falado há menos de 6 h.
+      onTalk: () => {
+        setCoachIntent({ kind: 'proactive_moment', candidate: blockEnd.candidate });
+        setActiveTab('coach');
+      },
+      onDismiss: () => {
+        dismissProactiveAlert(profile?.id, blockEnd.candidate);
+        setAlertDismissals((n) => n + 1);
+        logImpressionDismissed({ kind: 'alert', key: blockEnd.candidate.key, title: 'O bloco está a acabar' });
       },
     });
   }

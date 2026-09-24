@@ -85,23 +85,9 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
   const afterCandidate = pickRaceAfter({ races, runs, profile, today });
   if (afterCandidate) list.push(afterCandidate);
 
-  /* O bloco de treino (sem prova) a acabar, sem outro a seguir (P.5). A
-     régua é a do servidor (@formulas/proactiveTriggers.ts), para a chave ser
-     a mesma da notificação. Um plano só de refeições não é um bloco. */
-  const trainingPlanIds = new Set((coachPlanItems || [])
-    .filter((i) => i?.kind === 'corrida' || i?.kind === 'ginasio')
-    .map((i) => i.plan_id));
-  const block = findEndingBlock((coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })), today);
-  if (block) {
-    const end = String(block.period_end).slice(0, 10);
-    const gap = daysBetween(today, end);
-    const when = gap <= 0 ? 'hoje' : gap === 1 ? 'amanhã' : `daqui a ${gap} dias`;
-    list.push({
-      trigger: 'block_end',
-      key: `block_end:${block.id}`,
-      details: `O bloco de treino acaba ${when} (${end}) e não há outro a seguir.`,
-    });
-  }
+  const trainingPlanIds = trainingPlanIdsOf(coachPlanItems);
+  const block = endingBlock({ coachPlans, coachPlanItems }, today);
+  if (block) list.push(block.candidate);
 
   const last = lastRecordDate({ runs, meals, gymSessions, bodyAssessments });
   if (last) {
@@ -138,6 +124,47 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
     });
   }
   return list;
+}
+
+function trainingPlanIdsOf(coachPlanItems) {
+  return new Set((coachPlanItems || [])
+    .filter((i) => i?.kind === 'corrida' || i?.kind === 'ginasio')
+    .map((i) => i.plan_id));
+}
+
+/* O bloco de treino (sem prova) a acabar, sem outro a seguir (P.5). A régua
+   é a do servidor (@formulas/proactiveTriggers.ts), para a chave ser a mesma
+   da notificação. Um plano só de refeições não é um bloco. Devolve o
+   candidato e o "quando" dito por extenso, que o aviso do Início também usa
+   (ação P.11); null sem bloco a acabar. */
+export function endingBlock({ coachPlans = [], coachPlanItems = [] }, today) {
+  const trainingPlanIds = trainingPlanIdsOf(coachPlanItems);
+  const block = findEndingBlock((coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })), today);
+  if (!block) return null;
+  const end = String(block.period_end).slice(0, 10);
+  const gap = daysBetween(today, end);
+  const when = gap <= 0 ? 'hoje' : gap === 1 ? 'amanhã' : `daqui a ${gap} dias`;
+  return {
+    when,
+    candidate: {
+      trigger: 'block_end',
+      key: `block_end:${block.id}`,
+      details: `O bloco de treino acaba ${when} (${end}) e não há outro a seguir.`,
+    },
+  };
+}
+
+/** O aviso "O bloco está a acabar" do Início (ação P.11): o mesmo candidato
+ *  do chat e da notificação, enquanto a conversa não tiver acontecido neste
+ *  dispositivo nem o aviso tiver sido dispensado em nenhum. null quando não
+ *  há. `now` é injetável para os testes. */
+export function pendingBlockEndAlert({ coachPlans, coachPlanItems, profile, impressionDismissed = null }, now = new Date()) {
+  const block = endingBlock({ coachPlans, coachPlanItems }, isoDay(now));
+  if (!block) return null;
+  const { candidate } = block;
+  if (wasProactiveSent(profile?.id, candidate) || wasProactiveDismissed(profile?.id, candidate)) return null;
+  if (impressionDismissed?.has(`alert:${candidate.key}`)) return null;
+  return block;
 }
 
 /** As datas de todos os registos (corridas, refeições, ginásio, avaliações). */

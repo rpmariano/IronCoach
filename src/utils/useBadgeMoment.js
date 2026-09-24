@@ -25,6 +25,11 @@ import { colapsarMedios, planBadgeMoments } from './badgeMoment';
    - Os MÉDIOS colapsados num cartão só, e à espera: enquanto houver um
      grande por dispensar, o cartão não entra. Duas cerimónias ao mesmo
      tempo não são duas cerimónias, são uma confusão.
+   - Nunca por baixo das boas-vindas (ação P.11): espera pela cancela
+     `welcomeGate` do store, como os momentos dos cartões (useMomentOnce).
+     Enquanto o App ainda decide ('pending') ou as boas-vindas estão abertas
+     ('open'), a animação corria tapada e o atleta só apanhava o fim. Nada
+     se gasta à espera: um badge só sai da fila quando é dispensado.
 
    ── SEM A MIGRAÇÃO APLICADA ─────────────────────────────────────────────
    `20260922120000_user_badges.sql` continua por aplicar: `syncBadgeAwards`
@@ -62,6 +67,7 @@ function demoPending(due = []) {
 export default function useBadgeMoment() {
   const { badges, due, pending, marcarVistos, demonstrar } = useBadges();
   const formOpen = useAppStore(isFormOpen);
+  const caminhoLivre = useAppStore((s) => s.welcomeGate === 'clear');
 
   useEffect(() => {
     if (demoSession.feito) return;
@@ -73,8 +79,9 @@ export default function useBadgeMoment() {
 
   const plano = useMemo(() => planBadgeMoments(pending, badges), [pending, badges]);
 
-  const grande = !formOpen && plano.grandes.length ? plano.grandes[0] : null;
-  const medio = !formOpen && plano.grandes.length === 0 ? colapsarMedios(plano.medios) : null;
+  const livre = !formOpen && caminhoLivre;
+  const grande = livre && plano.grandes.length ? plano.grandes[0] : null;
+  const medio = livre && plano.grandes.length === 0 ? colapsarMedios(plano.medios) : null;
 
   const fecharGrande = useCallback(() => {
     const id = plano.grandes[0]?.award?.id;

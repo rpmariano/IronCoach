@@ -12,7 +12,7 @@ import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 import CarolWelcome from './components/Welcome/CarolWelcome';
-import { decideWelcome, buildWelcome, readSeen, markSeen, slotKey } from './utils/carolWelcome';
+import { decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, slotKey } from './utils/carolWelcome';
 import { detectRaceConflict } from './utils/planDivergence';
 import { todayISO } from './lib/utils';
 
@@ -581,6 +581,9 @@ export default function App() {
     const uid = s.session?.user?.id;
     const clear = () => { if (useAppStore.getState().welcomeGate !== 'open') s.setWelcomeGate('clear'); };
     if (!uid) { clear(); return; }
+    // O interruptor do Perfil (ação P.11). `=== false` de propósito: um
+    // perfil sem a coluna continua a ver as boas-vindas.
+    if (s.profile?.carol_welcome_enabled === false) { clear(); return; }
     /* Nunca por cima de outra camada: uma persiana, um diálogo, o momento do
        badge, um campo com o foco (a mesma regra da atualização automática,
        lib/appUpdate.js). Fica para a próxima vez que se voltar à app. */
@@ -592,9 +595,13 @@ export default function App() {
     const seenElsewhere = [...(s.impressionShown || [])]
       .filter((k) => k.startsWith('welcome:'))
       .map((k) => k.slice('welcome:'.length));
-    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: [...readSeen(uid), ...seenElsewhere] });
+    // A última saudação, aqui ou noutro dispositivo — o intervalo mínimo
+    // entre saudações de faixa (ação P.11).
+    const lastShownAt = Math.max(readShownAt(uid) ?? 0, s.lastWelcomeAt ?? 0) || null;
+    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: [...readSeen(uid), ...seenElsewhere], lastShownAt });
     if (!decision) { clear(); return; }
     markSeen(uid, decision.markKeys);
+    markShownAt(uid);
     const text = buildWelcome(decision.variant, s);
     /* O que ela disse fica em coach_impressions (kind 'welcome', ação 5.1):
        o cartão diário e o chat leem-no para não repetir nem contradizer o
@@ -666,7 +673,12 @@ export default function App() {
            entretanto), a cancela abre-se aqui. */
         const s = useAppStore.getState();
         const uid = s.session?.user?.id;
-        const localDecision = uid ? decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid) }) : null;
+        // Com as boas-vindas desligadas no Perfil não há nada a decidir:
+        // tryWelcome só abre a cancela, sem ler as impressões.
+        const welcomeOff = s.profile?.carol_welcome_enabled === false;
+        const localDecision = uid && !welcomeOff
+          ? decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid), lastShownAt: readShownAt(uid) })
+          : null;
         if (!userId || !localDecision) {
           tryWelcome();
         } else {

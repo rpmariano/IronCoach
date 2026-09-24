@@ -956,6 +956,52 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
   });
 });
 
+/* Ação P.11: o aviso "O bloco está a acabar" do Início pede a conversa pelo
+   mesmo caminho do balanço (coachIntent 'proactive_moment'), com o
+   candidato do chat e da notificação. */
+describe('Coach — "O bloco está a acabar" pedido a partir do Início (coachIntent proactive_moment)', () => {
+  const CANDIDATE = {
+    trigger: 'block_end',
+    key: 'block_end:b1',
+    details: 'O bloco de treino acaba daqui a 2 dias (2026-09-26) e não há outro a seguir.',
+  };
+  const STORAGE_KEY = 'ironcoach:carol-proativa:user-1';
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+  });
+
+  it('pede o fim de bloco com proactive_force e marca-o como dito', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'O bloco acaba no sábado. Vamos preparar o próximo.' }, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'proactive_moment', candidate: CANDIDATE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body).toMatchObject({ proactive_trigger: 'block_end', proactive_key: 'block_end:b1', proactive_force: true, message: '' });
+    expect(body.race_outcome).toBeUndefined();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual({ block_end: 'block_end:b1' }));
+    expect(useAppStore.getState().coachIntent).toBeNull();
+  });
+
+  it('a conversa já aconteceu noutro dispositivo: marca-a como dita, para o aviso do Início se calar', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { skipped: true, reason: 'already_sent', proactive: 'block_end', model_message: null, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'proactive_moment', candidate: CANDIDATE } });
+    renderCoach();
+
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual({ block_end: 'block_end:b1' }));
+  });
+});
+
 
 /* O botão "Falar com a Carol" do ecrã de um badge (Perfil/BadgeDetailSheet).
    O atleta pediu-lhe que lhe explicasse o badge: a pergunta DELE entra no

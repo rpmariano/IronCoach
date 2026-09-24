@@ -30,25 +30,32 @@ let dailySummaryInFlight = null;
 const IMPRESSION_KEYS_DAYS = 14;
 function queryImpressionKeys(userId) {
   return supabase.from('coach_impressions')
-    .select('kind, key, dismissed_at')
+    .select('kind, key, dismissed_at, shown_at')
     .eq('user_id', userId)
     .gte('date', addDaysISO(lisbonTodayISO(), -IMPRESSION_KEYS_DAYS));
 }
 
 /* Das linhas aos dois conjuntos. A chave é composta, kind + ':' + key, para
    um 'alert' e um 'insights' com a mesma chave não se confundirem. O que foi
-   dispensado também foi mostrado, por isso entra nos dois. Pura, exportada
-   para os testes. */
+   dispensado também foi mostrado, por isso entra nos dois. `lastWelcomeAt`
+   (epoch ms, ou null) é a última vez que as boas-vindas apareceram, em
+   qualquer dispositivo — o intervalo mínimo entre saudações (ação P.11).
+   Pura, exportada para os testes. */
 export function impressionKeySets(rows) {
   const shown = new Set();
   const dismissed = new Set();
+  let lastWelcomeAt = null;
   for (const r of rows || []) {
     if (!r?.kind || !r?.key) continue;
     const k = `${r.kind}:${r.key}`;
     shown.add(k);
     if (r.dismissed_at) dismissed.add(k);
+    if (r.kind === 'welcome') {
+      const at = Date.parse(r.shown_at);
+      if (Number.isFinite(at) && (lastWelcomeAt == null || at > lastWelcomeAt)) lastWelcomeAt = at;
+    }
   }
-  return { shown, dismissed };
+  return { shown, dismissed, lastWelcomeAt };
 }
 
 /* Aplica as linhas ao store: os dois conjuntos e, para os insights
@@ -56,8 +63,8 @@ export function impressionKeySets(rows) {
    "Ignorar" (setInsightState) — sem isto a leitura era só de escrita. Nunca
    por cima de um estado que já exista. */
 function applyImpressionRows(set, get, rows) {
-  const { shown, dismissed } = impressionKeySets(rows);
-  set({ impressionShown: shown, impressionDismissed: dismissed });
+  const { shown, dismissed, lastWelcomeAt } = impressionKeySets(rows);
+  set({ impressionShown: shown, impressionDismissed: dismissed, lastWelcomeAt });
   for (const r of rows || []) {
     if (r?.kind !== 'insights' || !r.dismissed_at || !r.key) continue;
     if (!(r.key in (get().insightStates || {}))) get().setInsightState(r.key, 'ignored');
@@ -176,7 +183,7 @@ export const useAppStore = create((set, get) => ({
     try { localStorage.removeItem('ironcoach_insight_states'); } catch { /* sem storage */ }
     // proactiveKeyRequested (P.9): uma chave pedida antes do sign-out não é
     // para o próximo utilizador deste telemóvel.
-    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), insightStates: {}, proactiveKeyRequested: null });
+    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), lastWelcomeAt: null, insightStates: {}, proactiveKeyRequested: null });
   },
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
 
@@ -1085,6 +1092,7 @@ export const useAppStore = create((set, get) => ({
      decisores (boas-vindas, momentos, balanço) recebem-nos por parâmetro. */
   impressionShown: new Set(),
   impressionDismissed: new Set(),
+  lastWelcomeAt: null,
 
   logImpression: async ({ kind, key, title = null }) => {
     const userId = get().session?.user?.id || get().profile?.id;

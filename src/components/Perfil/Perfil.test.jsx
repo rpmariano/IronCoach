@@ -545,6 +545,29 @@ describe('Perfil — notificações da Carol (P.6)', () => {
     await waitFor(() => expect(screen.getByTestId('perfil-carol-push-prefs')).toBeInTheDocument());
     expect(screen.getByLabelText('Ativar lembretes de água')).toBeInTheDocument();
   });
+
+  it('as boas-vindas (ação P.11): sempre visíveis, ligadas sem a coluna, e desligar grava só isso', async () => {
+    render(<Perfil />);
+    abrirMetas();
+    // Com as notificações da Carol desligadas, o interruptor continua lá.
+    expect(screen.queryByTestId('perfil-carol-push-prefs')).not.toBeInTheDocument();
+    const interruptor = screen.getByLabelText('Desativar boas-vindas ao abrir a app');
+    expect(interruptor).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(interruptor);
+    expect(screen.getByLabelText('Ativar boas-vindas ao abrir a app')).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: /Guardar altera/ }));
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({ carol_welcome_enabled: false });
+  });
+
+  it('as boas-vindas desligadas no perfil aparecem desligadas', () => {
+    useAppStore.setState({ profile: { ...PROFILE, carol_welcome_enabled: false } });
+    render(<Perfil />);
+    abrirMetas();
+    expect(screen.getByLabelText('Ativar boas-vindas ao abrir a app')).toHaveAttribute('aria-pressed', 'false');
+  });
 });
 
 
