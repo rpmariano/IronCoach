@@ -1,6 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { useHeldWhile, holdForLogo, registerSkeletonLogo, LOGO_DRAW_MS, SKELETON_DELAY_MS } from './logoIntro';
+import { useHeldWhile, holdForLogo, registerSkeletonLogo, adoptBootSplash, releaseBootSplash, LOGO_DRAW_MS, LOGO_INTRO_MS, SKELETON_DELAY_MS } from './logoIntro';
 
 describe('useHeldWhile — o ecrã do logo só sai quando o desenho acaba', () => {
   beforeEach(() => vi.useFakeTimers());
@@ -122,5 +122,60 @@ describe('holdForLogo — casos-limite do logo do esqueleto', () => {
 describe('ScreenSkeleton — o atraso fica acima do do React', () => {
   it('SKELETON_DELAY_MS passa os 300 ms em que o React 19 segura o fallback', () => {
     expect(SKELETON_DELAY_MS).toBeGreaterThan(300);
+  });
+});
+
+describe('logo de arranque do index.html — a app adota-o, não o recomeça', () => {
+  const original = window.matchMedia;
+  afterEach(() => {
+    window.matchMedia = original;
+    document.getElementById('boot-splash')?.remove();
+    delete window.__bootSplashAdopted;
+    delete window.__bootSplashAt;
+    vi.useRealTimers();
+  });
+
+  function montarSplash(startedAt) {
+    const el = document.createElement('div');
+    el.id = 'boot-splash';
+    document.body.appendChild(el);
+    window.__bootSplashAt = startedAt;
+    return el;
+  }
+
+  it('sem logo no HTML (testes, recarga), não há nada a adotar', () => {
+    expect(adoptBootSplash()).toBeNull();
+  });
+
+  it('conta só o que falta do desenho, desde que ele começou', () => {
+    window.matchMedia = () => ({ matches: false });
+    montarSplash(performance.now() - 1000);
+    const { remainingMs } = adoptBootSplash();
+    expect(remainingMs).toBeGreaterThan(LOGO_INTRO_MS - 1100);
+    expect(remainingMs).toBeLessThanOrEqual(LOGO_INTRO_MS - 1000);
+    expect(window.__bootSplashAdopted).toBe(true);
+  });
+
+  it('com o desenho já acabado (JavaScript lento), não espera mais', () => {
+    window.matchMedia = () => ({ matches: false });
+    montarSplash(performance.now() - 9000);
+    expect(adoptBootSplash().remainingMs).toBe(0);
+  });
+
+  it('com movimento reduzido, não espera nada', () => {
+    window.matchMedia = () => ({ matches: true });
+    montarSplash(performance.now());
+    expect(adoptBootSplash().remainingMs).toBe(0);
+  });
+
+  it('ao sair, desvanece e desaparece', () => {
+    vi.useFakeTimers();
+    window.matchMedia = () => ({ matches: false });
+    const el = montarSplash(0);
+    releaseBootSplash();
+    expect(el.classList.contains('bs-out')).toBe(true);
+    expect(document.getElementById('boot-splash')).not.toBeNull();
+    vi.advanceTimersByTime(300);
+    expect(document.getElementById('boot-splash')).toBeNull();
   });
 });

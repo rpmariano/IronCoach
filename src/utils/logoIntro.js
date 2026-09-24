@@ -110,3 +110,37 @@ export function holdForLogo(load, { now = () => Date.now(), wait = (ms) => new P
     }
   });
 }
+
+/* ── O logo de arranque do index.html ──────────────────────────────────────
+   O primeiro desenho do logo não é do React: está no index.html (#boot-
+   splash), para começar no primeiro instante em que o Android entrega o
+   ecrã, antes de o JavaScript chegar. Sem isto havia três coisas seguidas:
+   o ecrã de abertura do sistema (o ícone parado), um intervalo escuro
+   enquanto a app carregava, e só então o desenho. A app adota-o — não o
+   recomeça — e tira-o quando pode entrar. */
+const BOOT_SPLASH_ID = 'boot-splash';
+const BOOT_SPLASH_FADE_MS = 260;
+
+/** Adota o logo do index.html, se ainda lá estiver: marca-o como da app (a
+ *  rede de segurança do HTML deixa de o tirar) e devolve quanto falta para o
+ *  desenho acabar, contado desde que ele começou. null se não houver. */
+export function adoptBootSplash() {
+  if (typeof document === 'undefined') return null;
+  const el = document.getElementById(BOOT_SPLASH_ID);
+  if (!el) return null;
+  window.__bootSplashAdopted = true;
+  if (prefersReducedMotion()) return { remainingMs: 0 };
+  const startedAt = typeof window.__bootSplashAt === 'number' ? window.__bootSplashAt : 0;
+  const elapsed = typeof performance !== 'undefined' ? performance.now() - startedAt : 0;
+  return { remainingMs: Math.max(0, Math.round(LOGO_INTRO_MS - elapsed)) };
+}
+
+/** Tira o logo do index.html com um fade curto — a Home aparece por baixo. */
+export function releaseBootSplash() {
+  if (typeof document === 'undefined') return;
+  const el = document.getElementById(BOOT_SPLASH_ID);
+  if (!el || el.dataset.leaving) return;
+  el.dataset.leaving = 'true';
+  el.classList.add('bs-out');
+  setTimeout(() => el.remove(), prefersReducedMotion() ? 0 : BOOT_SPLASH_FADE_MS);
+}

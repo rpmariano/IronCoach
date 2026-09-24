@@ -23,7 +23,7 @@ import { todayISO } from './lib/utils';
 // dinâmico — ver o bloco a seguir.
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
-import { holdForLogo, logoIntroMs, registerSkeletonLogo, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
+import { adoptBootSplash, holdForLogo, logoIntroMs, registerSkeletonLogo, releaseBootSplash, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -439,8 +439,14 @@ export default function App() {
   const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
   // O ecrã do logo fica enquanto os dados carregam E até o desenho acabar.
-  const [introMs] = useState(logoIntroMs);
-  const showBootSplash = useHeldWhile(isInitializing, introMs);
+  /* O primeiro logo é o do index.html (adoptBootSplash): já começou a
+     desenhar-se antes de o React chegar, por isso só falta o que resta do
+     desenho. Os seguintes (depois de um login) são do React e desenham-se
+     inteiros (logoIntroMs). */
+  const [htmlSplash] = useState(adoptBootSplash);
+  const [fullIntroMs] = useState(logoIntroMs);
+  const [firstBootDone, setFirstBootDone] = useState(!htmlSplash);
+  const showBootSplash = useHeldWhile(isInitializing, firstBootDone ? fullIntroMs : htmlSplash.remainingMs);
   /* O utilizador cujos dados já estão carregados. Ao voltar à app depois de
      ter estado noutra, o Supabase recupera a sessão e emite SIGNED_IN com o
      MESMO utilizador (auth-js, _onVisibilityChanged → _recoverAndRefresh).
@@ -792,6 +798,17 @@ export default function App() {
     };
   }, [setSession, setProfile, loadInitialData, setActiveTab, consumeProactiveKey]);
 
+  /* O logo do index.html sai quando a app pode entrar — ou logo, nas
+     bancadas de teste, que não passam pelo ecrã do logo. */
+  const benchTab = activeTab === 'design-system' || activeTab === 'audit-sandbox';
+  useEffect(() => {
+    if (firstBootDone) return;
+    if (!showBootSplash || benchTab) {
+      releaseBootSplash();
+      setFirstBootDone(true);
+    }
+  }, [showBootSplash, benchTab, firstBootDone]);
+
   if (activeTab === 'design-system') {
     return <Suspense fallback={<FullScreenLoader still />}><ButtonShowcase /></Suspense>;
   }
@@ -801,7 +818,10 @@ export default function App() {
   }
 
   if (showBootSplash) {
-    return <FullScreenLoader />;
+    /* No primeiro arranque quem se vê é o logo do index.html, por cima; por
+       baixo fica o mesmo logo já desenhado, que só aparece se o do HTML
+       tiver saído por outra razão (a rede de segurança dele). */
+    return <FullScreenLoader still={!firstBootDone} />;
   }
 
   if (!session) {
