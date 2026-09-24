@@ -4,7 +4,7 @@ import { registerServiceWorker } from './lib/push';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
-import { useAppStore } from './store';
+import { useAppStore, whenDataReady } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
 import Auth from './components/Auth/Auth';
 import Layout from './components/Layout/Layout';
@@ -784,17 +784,22 @@ export default function App() {
         // ?tab= sem nada a meio; ver shouldRestoreNavigation).
         if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
         setNavigationDecided(true);
-        loadInitialData(existingSession.user.id, { join: true })
-          .then(() => {
-            // O ecrã reposto aponta para uma corrida ou prova que já não
-            // existe (ou que não carregou)? Fecha-se.
-            dropMissingScreen(useAppStore);
-            if (proactiveKeyRef.current) {
-              consumeProactiveKey(proactiveKeyRef.current);
-              proactiveKeyRef.current = null;
-            }
-          })
-          .finally(() => setIsInitializing(false));
+        const loading = loadInitialData(existingSession.user.id, { join: true });
+        // O logo sai quando o carregamento devolve (no máximo 10 s)…
+        loading.finally(() => setIsInitializing(false));
+        // …mas fechar o ecrã reposto e abrir a notificação esperam pelos dados
+        // todos: com a rede lenta, as corridas ou as provas podem chegar
+        // depois, e o ecrã de edição reposto fechava-se por "não existir"
+        // (revisão pré-deploy de 90bfa9b).
+        loading.then(whenDataReady).then(() => {
+          // O ecrã reposto aponta para uma corrida ou prova que já não
+          // existe (ou que não carregou)? Fecha-se.
+          dropMissingScreen(useAppStore);
+          if (proactiveKeyRef.current) {
+            consumeProactiveKey(proactiveKeyRef.current);
+            proactiveKeyRef.current = null;
+          }
+        });
       } else if (isDemo) {
         const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
         setSession(demoSession);

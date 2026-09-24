@@ -88,6 +88,11 @@ export const useAppStore = create((set, get) => ({
   // Ver specs/plano-de-treino.md §11.
   dailySummary: null,
   dailySummaryLoading: false,
+  // De que conta são as corridas e o ginásio que estão no store — posto
+  // quando chegam, no mesmo set. O dailySummaryRefresh espera por ele para
+  // tomar o ponto de partida: uma lista vazia de antes do carregamento não
+  // é "sem treinos" (revisão pré-deploy de 90bfa9b).
+  trainingLoadedFor: null,
   // Item do plano em vias de ser concluído — posto pelo Início mesmo antes de
   // navegar para o registo (RunRegistration/GymRegistration), que o consome
   // ao montar para se pré-preencher. Ver specs/plano-de-treino.md §5.2.
@@ -1179,11 +1184,33 @@ const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
 const EMPTY_DATA = {
   profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [],
   coachMessages: [], raceEvents: [], coachPlans: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
+  trainingLoadedFor: null,
 };
+/** O dataPending nunca dura mais do que isto: um pedido que nunca responde
+ *  não pode deixar o onboarding, as boas-vindas e o primeiro dia à espera
+ *  para sempre (revisão pré-deploy de 90bfa9b). */
+export const DATA_PENDING_MAX_MS = 45000;
+
+/** Resolve quando os dados do primeiro carregamento chegaram todos (ou o
+ *  dataPending passou do prazo). Para o que só pode decidir com tudo: o
+ *  ecrã reposto depois de o Android matar a app, a notificação que a abriu. */
+export function whenDataReady() {
+  return new Promise((resolve) => {
+    if (!useAppStore.getState().dataPending) { resolve(); return; }
+    const unsubscribe = useAppStore.subscribe((s) => {
+      if (!s.dataPending) { unsubscribe(); resolve(); }
+    });
+  });
+}
 
 async function runInitialLoad(set, get, userId) {
   const seq = ++loadSeq;
-  if (loadedDataUserId !== userId) set({ ...EMPTY_DATA });
+  // Só se limpa quando havia OUTRA conta carregada. No arranque a frio o
+  // store já está vazio, e um set de listas vazias (arrays novos) fazia o
+  // dailySummaryRefresh tomá-las como ponto de partida: as corridas que
+  // chegavam a seguir pareciam novas e cada arranque pedia um resumo novo,
+  // pago (revisão pré-deploy de 90bfa9b).
+  const switching = loadedDataUserId !== null && loadedDataUserId !== userId;
   loadedDataUserId = userId;
 
   const today = new Date();
@@ -1205,7 +1232,7 @@ async function runInitialLoad(set, get, userId) {
     ['training', both(
       supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
       supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
-    ), (data) => ({ runs: list(data[0]), gymSessions: list(data[1]) })],
+    ), (data) => ({ runs: list(data[0]), gymSessions: list(data[1]), trainingLoadedFor: userId })],
     ['bodyAssessments', supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
       (data) => ({ bodyAssessments: list(data) })],
     ['waterLogs', supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
@@ -1237,7 +1264,12 @@ async function runInitialLoad(set, get, userId) {
   // regresso à app os dados que já lá estão chegam para tirar conclusões, e
   // fazê-lo subir e descer voltava a disparar o que espera por ele.
   const firstForUser = completeUserId !== userId;
-  if (firstForUser) set({ dataPending: true });
+  if (switching || firstForUser) set({ ...(switching ? EMPTY_DATA : {}), ...(firstForUser ? { dataPending: true } : {}) });
+  if (firstForUser) {
+    setTimeout(() => {
+      if (seq === loadSeq && get().dataPending) set({ dataPending: false });
+    }, DATA_PENDING_MAX_MS);
+  }
   let pending = jobs.length;
   let inTime = true;
   const onTime = {};
@@ -1258,7 +1290,13 @@ async function runInitialLoad(set, get, userId) {
 
   const tasks = jobs.map(([slice, request, toPatch]) => Promise.resolve(request)
     .then((res) => {
-      if (res?.error) { console.warn(`Carregamento inicial (${slice}):`, res.error.message || res.error); return; }
+      if (res?.error) {
+        console.warn(`Carregamento inicial (${slice}):`, res.error.message || res.error);
+        // Fica o que lá está — mas uma resposta atrasada de um carregamento
+        // anterior (pedida antes de uma gravação) já não a pode substituir.
+        if (canWrite(slice)) sliceSeq[slice] = seq;
+        return;
+      }
       if (inTime) onTime[slice] = toPatch(res?.data);
       else writeLate(slice, toPatch(res?.data));
     })

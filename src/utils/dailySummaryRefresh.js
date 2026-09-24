@@ -56,7 +56,10 @@ export function startDailySummaryRefresh(store, { delayMs = 3000, today = todayI
       timer = null;
     }
     if (!uid) return;
-    if (prev && state.runs === prev.runs && state.gymSessions === prev.gymSessions) return;
+    // As corridas desta conta ainda não chegaram: o que lá está (vazio, ou da
+    // conta anterior) não é ponto de partida nem novidade.
+    if (state.trainingLoadedFor !== uid) return;
+    if (known !== null && prev && state.runs === prev.runs && state.gymSessions === prev.gymSessions) return;
     const keys = trainingKeys(state);
     // Uma recarga falhada (a rede a acordar no regresso à app) põe as listas
     // vazias: não são treinos apagados, e a recarga seguinte traz tudo de

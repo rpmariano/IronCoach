@@ -23,9 +23,11 @@ vi.mock('../lib/supabase', () => ({
   invokeEdgeFunctionWithTimeout: vi.fn(),
 }));
 
-const { useAppStore, INITIAL_LOAD_BUDGET_MS } = await import('./index');
+const { useAppStore, INITIAL_LOAD_BUDGET_MS, DATA_PENDING_MAX_MS, whenDataReady } = await import('./index');
+const { startDailySummaryRefresh } = await import('../utils/dailySummaryRefresh');
 
-const run = (id) => ({ id, date: '2026-09-24', distance_km: 5 });
+const today = new Date().toISOString().slice(0, 10);
+const run = (id) => ({ id, date: today, distance_km: 5 });
 
 describe('loadInitialData com prazo', () => {
   beforeEach(() => {
@@ -122,4 +124,71 @@ describe('loadInitialData com prazo', () => {
     await q;
     expect(useAppStore.getState().runs).toEqual([]);
   });
+
+  it('um pedido que nunca responde não segura o dataPending para sempre', async () => {
+    net.plan.coach_plan_items = { delay: 10 * 60 * 1000 };
+    const p = useAppStore.getState().loadInitialData('u8');
+    await vi.advanceTimersByTimeAsync(INITIAL_LOAD_BUDGET_MS);
+    await p;
+    expect(useAppStore.getState().dataPending).toBe(true);
+    let ready = false;
+    whenDataReady().then(() => { ready = true; });
+    await vi.advanceTimersByTimeAsync(DATA_PENDING_MAX_MS);
+    expect(useAppStore.getState().dataPending).toBe(false);
+    expect(ready).toBe(true);
+  });
+
+  it('depois de um erro no carregamento novo, a resposta atrasada do anterior já não escreve', async () => {
+    net.plan.runs = { data: [run('a')] };
+    let p = useAppStore.getState().loadInitialData('u9');
+    await vi.runAllTimersAsync();
+    await p;
+    // Um regresso à app com as corridas lentas (pedidas antes de uma gravação)…
+    net.plan.runs = { data: [run('velha')], delay: 20000 };
+    const a = useAppStore.getState().loadInitialData('u9', { join: true });
+    // …e o carregamento de depois da gravação, com as corridas a falhar.
+    net.plan.runs = { data: null, error: { message: 'rede' } };
+    const b = useAppStore.getState().loadInitialData('u9');
+    await vi.runAllTimersAsync();
+    await Promise.all([a, b]);
+    expect(useAppStore.getState().runs.map((r) => r.id)).toEqual(['a']);
+  });
 });
+
+/* O store a sério com o dailySummaryRefresh (revisão pré-deploy de 90bfa9b):
+   cada arranque a frio pedia um resumo novo ao modelo. */
+describe('loadInitialData com o dailySummaryRefresh', () => {
+  let stop;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    net.plan = {};
+    net.calls = [];
+  });
+  afterEach(() => { stop?.(); vi.useRealTimers(); });
+
+  it('arranque a frio e troca de conta não pedem resumo nenhum; uma corrida nova pede', async () => {
+    const loadDailySummary = vi.fn(() => Promise.resolve(null));
+    useAppStore.setState({ loadDailySummary, session: null });
+    stop = startDailySummaryRefresh(useAppStore, { delayMs: 100 });
+    net.plan.runs = { data: [run('a'), run('b')] };
+    useAppStore.setState({ session: { user: { id: 'c1' } } });
+    let p = useAppStore.getState().loadInitialData('c1', { join: true });
+    await vi.runAllTimersAsync();
+    await p;
+    expect(loadDailySummary).not.toHaveBeenCalled();
+
+    // Outra conta neste telemóvel.
+    net.plan.runs = { data: [run('x')] };
+    useAppStore.setState({ session: { user: { id: 'c2' } } });
+    p = useAppStore.getState().loadInitialData('c2', { join: true });
+    await vi.runAllTimersAsync();
+    await p;
+    expect(loadDailySummary).not.toHaveBeenCalled();
+
+    // Uma corrida registada agora.
+    useAppStore.setState({ runs: [...useAppStore.getState().runs, run('nova')] });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(loadDailySummary).toHaveBeenCalledWith({ force: true });
+  });
+});
+

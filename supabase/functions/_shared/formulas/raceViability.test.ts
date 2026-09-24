@@ -24,10 +24,12 @@ Deno.test("knownWeeklyVolume: com histórico é a média das 4 semanas", () => {
   assertEquals(knownWeeklyVolume(runs, "2026-09-24"), 20);
 });
 
-Deno.test("levelReferenceWeeklyKm: o mínimo da doutrina para o nível e a distância da prova", () => {
-  assertEquals(levelReferenceWeeklyKm("medio", 10), { km: 35, category: "10k" });
-  assertEquals(levelReferenceWeeklyKm("medio", 21.0975), { km: 45, category: "meia" });
-  // Sem prova, a referência de 10 km.
-  assertEquals(levelReferenceWeeklyKm("iniciante", null), { km: 15, category: "10k" });
+Deno.test("levelReferenceWeeklyKm: parte do limite inferior do nível; o mínimo da prova é o alvo", () => {
+  assertEquals(levelReferenceWeeklyKm("medio", 10), { start: 40, range: [40, 60], target: 35, category: "10k" });
+  assertEquals(levelReferenceWeeklyKm("medio", 21.0975), { start: 40, range: [40, 60], target: 45, category: "meia" });
+  // O caso da revisão: um iniciante com uma maratona parte de 15, não de 35.
+  assertEquals(levelReferenceWeeklyKm("iniciante", 42.195), { start: 15, range: [15, 25], target: 35, category: "maratona" });
+  // Sem prova, só a partida.
+  assertEquals(levelReferenceWeeklyKm("basico", null), { start: 25, range: [25, 40], target: null, category: null });
   assertEquals(levelReferenceWeeklyKm(null, 10), null);
 });

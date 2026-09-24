@@ -404,12 +404,20 @@ do plano que a Carol prescreveu (a mesma leitura do cartão), e a doutrina só
 manda alertar/descarregar quando está acima.
 
 Sem histórico, o volume de referência para planear é o do **nível do
-perfil** (`levelReferenceWeeklyKm`: o mínimo da doutrina `MIN_VOLUME_KM` para
-o nível e a distância da próxima prova, 10 km sem prova) — vem na linha de
-ACWR do chat e a Carol não pergunta ao atleta quanto corre ("ela já conhece o
-meu nível de experiência"). É um ponto de partida para calibrar, não uma
-medida: não bloqueia planos. A linha lembra também que uma semana pesada
-depois de semanas vazias pode ser regresso de uma paragem — aí pergunta.
+perfil** (`levelReferenceWeeklyKm`), e a Carol não pergunta ao atleta quanto
+corre ("ela já conhece o meu nível de experiência"):
+- **partida**: o limite inferior do intervalo do nível
+  (`LEVEL_WEEKLY_KM_RANGE`, Bloco 0 #1 — 15/25/40/60 km/semana, o mesmo do
+  formulário do perfil);
+- **alvo**: o pré-requisito da doutrina para o nível e a distância da prova
+  principal mais próxima (`MIN_VOLUME_KM`, Bloco 1 #2) — onde chegar, não de
+  onde partir. A primeira versão usava o alvo como partida: um iniciante com
+  maratona partia de 35 km/semana (revisão pré-deploy de 195bb0d).
+É um ponto de partida para calibrar, não uma medida: não bloqueia planos. A
+linha lembra também que uma semana pesada depois de semanas vazias pode ser
+regresso de uma paragem, e sem corridas nenhumas pergunta se tem corrido
+(não quantos km). A nutrição do chat continua a contar a energia das corridas
+registadas, com ou sem histórico.
 
 **Guarda de carga dos planos (2026-09-24).** A doutrina mandava respeitar o
 ACWR ao propor um plano, mas nada o verificava. `propose_training_plan`

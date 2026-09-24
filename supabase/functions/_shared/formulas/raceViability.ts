@@ -32,7 +32,7 @@
 // é usado, de propósito. A variável local `hasBaseFitness` do original, que
 // era calculada e nunca lida, deixou de existir.
 
-import { categorizeDistance, MIN_PREP_WEEKS, MIN_VOLUME_KM } from "./vocabulary.ts";
+import { categorizeDistance, LEVEL_WEEKLY_KM_RANGE, MIN_PREP_WEEKS, MIN_VOLUME_KM } from "./vocabulary.ts";
 import { computeRunAcwr } from "./runAcwr.ts";
 
 export interface RunForVolume {
@@ -64,16 +64,26 @@ export function knownWeeklyVolume(runs: RunForVolume[], todayISO: string): numbe
   return v > 0 ? v : null;
 }
 
-/** O volume semanal de referência do nível do perfil: o mínimo da doutrina
- *  (MIN_VOLUME_KM, Bloco 1 #2) para a distância da próxima prova, ou 10 km
- *  sem prova. É o que a Carol usa para planear quando a app não conhece o
- *  volume de facto — o nível já diz quanto um atleta assim corre, e não se
- *  lhe pergunta o que o perfil já responde. null sem nível. */
-export function levelReferenceWeeklyKm(level: string | null | undefined, distanceKm: number | null | undefined): { km: number; category: string } | null {
-  if (!level || !MIN_VOLUME_KM[level]) return null;
-  const category = categorizeDistance(distanceKm ?? undefined) || "10k";
-  const km = MIN_VOLUME_KM[level][category as keyof typeof MIN_VOLUME_KM[string]];
-  return km != null ? { km, category } : null;
+/** O volume de referência do nível do perfil, para quando a app não conhece o
+ *  volume de facto (pedido 2026-09-24: "ela já conhece o meu nível de
+ *  experiência"). Duas coisas diferentes, que a primeira versão confundia
+ *  (revisão pré-deploy de 195bb0d):
+ *  - `start`: o volume de PARTIDA — o limite inferior do intervalo do nível
+ *    (LEVEL_WEEKLY_KM_RANGE, Bloco 0 #1). Um iniciante corre 15-25 km/semana;
+ *  - `target`: o volume a ATINGIR até à prova — o pré-requisito da doutrina
+ *    para o nível e a distância dela (MIN_VOLUME_KM, Bloco 1 #2). Com uma
+ *    maratona, 35 km/semana para um iniciante é onde chegar, não de onde
+ *    partir. null sem prova.
+ *  null sem nível. */
+export function levelReferenceWeeklyKm(
+  level: string | null | undefined,
+  raceDistanceKm: number | null | undefined,
+): { start: number; range: [number, number]; target: number | null; category: string | null } | null {
+  if (!level || !LEVEL_WEEKLY_KM_RANGE[level]) return null;
+  const range = LEVEL_WEEKLY_KM_RANGE[level];
+  const category = raceDistanceKm != null ? categorizeDistance(raceDistanceKm) : null;
+  const target = category ? MIN_VOLUME_KM[level]?.[category] ?? null : null;
+  return { start: range[0], range, target, category: category ?? null };
 }
 
 export type ViabilityFlag = "ultra_para_iniciante" | "tempo_insuficiente" | "volume_insuficiente";

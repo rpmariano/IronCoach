@@ -40,7 +40,7 @@ import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
 import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
 import { LOW_CONFIDENCE } from "../_shared/formulas/racePrediction.ts";
-import { assessRaceViability as sharedAssessRaceViability, knownWeeklyVolume, levelReferenceWeeklyKm } from "../_shared/formulas/raceViability.ts";
+import { assessRaceViability as sharedAssessRaceViability, computeRecentWeeklyVolume, knownWeeklyVolume, levelReferenceWeeklyKm } from "../_shared/formulas/raceViability.ts";
 import { assessRaceLevelTriage } from "../_shared/formulas/raceLevelTriage.ts";
 import { getRecoveryDaysAfterRace } from "../_shared/formulas/recovery.ts";
 import { assessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
@@ -2347,12 +2347,16 @@ export function buildAcwrLine(
   load: RunLoadReading,
   hasRuns: boolean,
   todayISO: string,
-  reference: { level: string; km: number; category: string } | null = null,
+  reference: { level: string; start: number; range: [number, number]; target: number | null; category: string | null; raceName?: string | null } | null = null,
 ): string | null {
+  const nivel = reference ? EXPERIENCE_LEVEL_LABELS[reference.level] || reference.level : "";
   const referencia = reference
-    ? ` Volume de referência para planear: o do nível do perfil (${EXPERIENCE_LEVEL_LABELS[reference.level] || reference.level}) — ` +
-      `${reference.km} km/semana, o mínimo da doutrina para ${reference.category} (a próxima prova, ou 10 km sem prova). ` +
-      `Usa-o como ponto de partida e não perguntes ao atleta quanto corre: o perfil já o diz.`
+    ? ` Volume de partida para planear: o do nível do perfil (${nivel}: ${reference.range[0]}-${reference.range[1]} km/semana) — ` +
+      `parte de ${reference.start} km/semana e sobe com o teto semanal da doutrina; não perguntes ao atleta quanto corre, o perfil já o diz.` +
+      (reference.target != null
+        ? ` Até à prova${reference.raceName ? ` "${reference.raceName}"` : ""} (${reference.category}), o mínimo da doutrina é ${reference.target} km/semana — ` +
+          `é onde chegar, não de onde partir.`
+        : "")
     : "";
   if (!acwr) {
     if (load.enoughHistory) {
@@ -2360,7 +2364,12 @@ export function buildAcwrLine(
       // registos, é carga quase nula — sem rácio útil.
       return `ACWR: carga das últimas 4 semanas quase nula — sem rácio útil.`;
     }
-    if (!hasRuns) return reference ? `ACWR: sem corridas registadas nas últimas 4 semanas.${referencia}` : null;
+    if (!hasRuns) {
+      return reference
+        ? `ACWR: sem corridas registadas nas últimas 4 semanas. Pode ter estado parado (lesão, pausa) ou só não ter registado: ` +
+          `pergunta-lhe se tem corrido antes de planear — não quantos km, isso o nível diz.${referencia}`
+        : null;
+    }
     return `ACWR: SEM HISTÓRICO SUFICIENTE — corridas registadas em ${load.historyWeeks} das últimas 4 semanas ` +
       `(são precisas ${RUN_ACWR_MIN_HISTORY_WEEKS}). O rácio não existe: não o cites, não fales de carga aguda/crónica ` +
       `e não tires dele conclusões de sobrecarga ou risco de lesão. O atleta pode correr mais do que regista — ou pode estar a ` +
@@ -5601,18 +5610,19 @@ async function handler(req: Request): Promise<Response> {
     const acwr = computeACWR(recentRuns || [], todayISO);
     const [loadPlanItems, nextRaceForLoad] = await Promise.all([
       fetchLoadPlanItems(sb, userId, todayISO),
-      // A distância da próxima prova, para o volume de referência do nível.
-      sb.from("race_events").select("distance_km").eq("user_id", userId).gte("date", todayISO)
-        .neq("status", "concluida").order("date", { ascending: true }).limit(1).maybeSingle()
+      // A prova-objetivo, para o volume a atingir: a principal mais próxima,
+      // senão a próxima (uma de treino de 5 km antes da principal não é o alvo).
+      sb.from("race_events").select("name, distance_km, race_priority").eq("user_id", userId).gte("date", todayISO)
+        .neq("status", "concluida").order("date", { ascending: true }).limit(5)
         // deno-lint-ignore no-explicit-any
-        .then((r: any) => r?.data ?? null, () => null),
+        .then((r: any) => { const list = r?.data || []; return list.find((x: any) => (x.race_priority || "a") === "a") ?? list[0] ?? null; }, () => null),
     ]);
     const loadReading = runLoadReading({ runs: recentRuns || [], planItems: loadPlanItems, today: todayISO });
     const levelReference = !loadReading.enoughHistory
       ? (() => {
         const lvl = (profile?.experience_level as string | null) ?? null;
         const ref = levelReferenceWeeklyKm(lvl, nextRaceForLoad?.distance_km != null ? Number(nextRaceForLoad.distance_km) : null);
-        return ref && lvl ? { level: lvl, ...ref } : null;
+        return ref && lvl ? { level: lvl, ...ref, raceName: nextRaceForLoad?.name ?? null } : null;
       })()
       : null;
     // Até à Fase C isto dizia "ACWR atual (baseado em km)" — o insight de
@@ -5688,6 +5698,11 @@ async function handler(req: Request): Promise<Response> {
     // knownWeeklyVolume): com meia dúzia de registos a média dava ~5 km/sem e
     // "OBJETIVO_INVIAVEL: volume insuficiente" a quem corre mais do que regista.
     const weeklyVolumeKm = knownWeeklyVolume((recentRuns || []) as Array<{ date: string; distance_km: number }>, todayISO);
+    // A nutrição conta a energia das corridas registadas, com ou sem
+    // histórico: gastaram-se a sério (revisão pré-deploy de 195bb0d). Só a
+    // viabilidade precisa do volume "conhecido".
+    const runs4w = (recentRuns || []) as Array<{ date: string; distance_km: number }>;
+    const loggedWeeklyVolumeKm = runs4w.length > 0 ? computeRecentWeeklyVolume(runs4w, todayISO, 4) : null;
     const raceEventsContext = buildRaceEventsContext(
       upcomingRaces || [],
       todayISO,
@@ -5838,7 +5853,7 @@ async function handler(req: Request): Promise<Response> {
       waterGoalMl:   (profile?.water_goal_ml as number | null) ?? null,
       proteinGoal:   (profile?.protein_goal as number | null) ?? null,
       calorieGoal:   (profile?.calorie_goal as number | null) ?? null,
-      weeklyVolumeKm,
+      weeklyVolumeKm: loggedWeeklyVolumeKm,
     });
 
     // ── Treinos do plano ────────────────────────────────────────────────
