@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
 import { RefreshCw, AlertTriangle } from 'lucide-react';
+import { releaseBootSplash } from '../../utils/logoIntro';
 
 /**
  * Rede de segurança de última instância. Antes disto, um erro de render não
@@ -26,6 +27,9 @@ export default class AppErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    // O logo de arranque do index.html fica por cima de tudo: um erro logo no
+    // arranque ficava escondido debaixo dele. Sai para o erro se ver.
+    releaseBootSplash();
     // eslint-disable-next-line no-console
     console.error('[AppErrorBoundary] Erro não apanhado no render:', error, info?.componentStack);
   }

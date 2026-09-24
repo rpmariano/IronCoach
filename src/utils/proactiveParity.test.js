@@ -145,45 +145,52 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     dailyCheckins: [{ date: '2026-09-22', sleep: 4, energy: 3 }, { date: '2026-09-25', sleep: 2, energy: 3 }],
   };
 
+  const weekDates = (d) => [...d.runs, ...d.meals, ...d.gymSessions].map((r) => r.date);
+
   it('segunda-feira: a semana de 21 a 27, com a chave do servidor', () => {
     const client = listProactiveTriggers(semana, at(MONDAY)).find((c) => c.trigger === 'week_review');
-    const server = listServerProactive({ raceEvents: [], runs: semana.runs, lastRecordDate: lastRecordDate(semana) }, MONDAY)
+    const server = listServerProactive({ raceEvents: [], runs: semana.runs, lastRecordDate: lastRecordDate(semana), weekRecordDates: weekDates(semana) }, MONDAY)
       .find((c) => c.trigger === 'week_review');
     expect(client.key).toBe('week_review:2026-09-21');
     expect(server.key).toBe(client.key);
     expect(server.weekEnd).toBe('2026-09-27');
   });
 
-  it('o Contexto leva as contagens da semana e as da anterior, sem inventar', () => {
-    const { details } = listProactiveTriggers(semana, at(MONDAY)).find((c) => c.trigger === 'week_review');
+  it('o Contexto leva as contagens da semana e as da anterior, com vírgula decimal', () => {
+    const comMeio = { ...semana, dailyCheckins: [{ date: '2026-09-22', sleep: 4, energy: 3 }, { date: '2026-09-25', sleep: 3, energy: 4 }] };
+    const { details } = listProactiveTriggers(comMeio, at(MONDAY)).find((c) => c.trigger === 'week_review');
     expect(details).toContain('Semana de 2026-09-21 a 2026-09-27: 2 corridas (20,5 km)');
     expect(details).toContain('1 sessão de ginásio');
     expect(details).toContain('refeições registadas em 2 de 7 dias');
     expect(details).toContain('2 check-ins');
-    expect(details).toContain('sono médio 3/5, energia média 3/5');
+    expect(details).toContain('sono médio 3,5/5, energia média 3,5/5');
     expect(details).toContain('Semana anterior: 1 corrida (6 km), 0 de ginásio.');
+    expect(details.length).toBeLessThanOrEqual(300);
   });
 
   it('terça ainda vale; quarta já não', () => {
     expect(listProactiveTriggers(semana, at('2026-09-29')).some((c) => c.key === 'week_review:2026-09-21')).toBe(true);
     expect(listProactiveTriggers(semana, at('2026-09-30')).some((c) => c.trigger === 'week_review')).toBe(false);
-    expect(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-27' }, '2026-09-30').some((c) => c.trigger === 'week_review')).toBe(false);
   });
 
-  it('sem nada registado desde o início dessa semana, não há balanço — o momento é o silêncio', () => {
-    const vazia = { ...semana, runs: [{ id: 'r0', date: '2026-09-16', distance_km: 6 }], meals: [], gymSessions: [] };
-    const list = listProactiveTriggers(vazia, at(MONDAY));
-    expect(list.some((c) => c.trigger === 'week_review')).toBe(false);
-    expect(list.map((c) => c.trigger)).toContain('silence');
+  it('só um registo de hoje não chega — a semana revista tem de ter registos', () => {
+    const soHoje = { ...semana, runs: [{ id: 'r9', date: MONDAY, distance_km: 5 }], meals: [], gymSessions: [] };
+    expect(listProactiveTriggers(soHoje, at(MONDAY)).some((c) => c.trigger === 'week_review')).toBe(false);
+    expect(listServerProactive({ raceEvents: [], runs: soHoje.runs, lastRecordDate: MONDAY, weekRecordDates: [] }, MONDAY)).toEqual([]);
   });
 
-  it('o balanço fica atrás de tudo — um "Estás bem?" passa-lhe à frente', () => {
-    const list = listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-23' }, MONDAY);
-    expect(list.map((c) => c.trigger)).toEqual(['silence', 'week_review']);
+  it('num dia com "Estás bem?", fica só o silêncio — nos dois lados', () => {
+    const calado = { ...semana, runs: [{ id: 'r1', date: '2026-09-23', distance_km: 8 }], meals: [], gymSessions: [] };
+    expect(listProactiveTriggers(calado, at(MONDAY)).map((c) => c.trigger)).toEqual(['silence']);
+    expect(listServerProactive({ raceEvents: [], runs: calado.runs, lastRecordDate: '2026-09-23', weekRecordDates: ['2026-09-23'] }, MONDAY).map((c) => c.trigger)).toEqual(['silence']);
+  });
+
+  it('no dia da prova, fica só a prova', () => {
+    const prova = { ...semana, raceEvents: [{ id: 'p1', name: 'Corrida', date: '2026-09-29', status: 'agendada' }] };
+    expect(listProactiveTriggers(prova, at('2026-09-29')).map((c) => c.trigger)).toEqual(['race_morning']);
   });
 
   it('desligado no Perfil, não aparece no servidor', () => {
-    const list = listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-27', allowed: ['silence'] }, MONDAY);
-    expect(list).toEqual([]);
+    expect(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-27', weekRecordDates: ['2026-09-25'], allowed: ['silence'] }, MONDAY)).toEqual([]);
   });
 });

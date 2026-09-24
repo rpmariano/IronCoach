@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview } from "./proactiveTriggers.ts";
+import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds } from "./proactiveTriggers.ts";
 
 const TODAY = "2026-09-18";
 const race = (over: Record<string, unknown> = {}) => ({ id: "r1", name: "Meia de Lisboa", date: TODAY, status: "agendada", ...over });
@@ -167,25 +167,44 @@ Deno.test("listServerProactive: todos os momentos que se aplicam, por prioridade
   assertEquals(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: null }, TODAY), []);
 });
 
-Deno.test("findWeekToReview: segunda e terça, a semana de segunda a domingo que acabou", () => {
+Deno.test("weekToReviewBounds: segunda e terça, a semana de segunda a domingo que acabou", () => {
   // 2026-09-28 é segunda-feira.
-  assertEquals(findWeekToReview("2026-09-28", "2026-09-27"), { weekStart: "2026-09-21", weekEnd: "2026-09-27" });
-  assertEquals(findWeekToReview("2026-09-29", "2026-09-22"), { weekStart: "2026-09-21", weekEnd: "2026-09-27" });
-  // Quarta: já é história.
-  assertEquals(findWeekToReview("2026-09-30", "2026-09-29"), null);
-  // Domingo: a semana ainda não acabou.
-  assertEquals(findWeekToReview("2026-09-27", "2026-09-27"), null);
-  // Nada registado desde o início da semana: o momento é o silêncio.
-  assertEquals(findWeekToReview("2026-09-28", "2026-09-20"), null);
+  assertEquals(weekToReviewBounds("2026-09-28"), { weekStart: "2026-09-21", weekEnd: "2026-09-27" });
+  assertEquals(weekToReviewBounds("2026-09-29"), { weekStart: "2026-09-21", weekEnd: "2026-09-27" });
+  assertEquals(weekToReviewBounds("2026-09-30"), null); // quarta: já é história
+  assertEquals(weekToReviewBounds("2026-09-27"), null); // domingo: a semana ainda não acabou
+});
+
+Deno.test("findWeekToReview: só com um registo DENTRO da semana revista", () => {
+  assertEquals(findWeekToReview("2026-09-28", ["2026-09-24"]), { weekStart: "2026-09-21", weekEnd: "2026-09-27" });
+  assertEquals(findWeekToReview("2026-09-28", ["2026-09-21"]), { weekStart: "2026-09-21", weekEnd: "2026-09-27" });
+  assertEquals(findWeekToReview("2026-09-28", ["2026-09-27"]), { weekStart: "2026-09-21", weekEnd: "2026-09-27" });
+  // Só um registo de hoje (quem começa numa segunda, ou volta de uma ausência): nada.
+  assertEquals(findWeekToReview("2026-09-28", ["2026-09-28"]), null);
+  assertEquals(findWeekToReview("2026-09-29", ["2026-09-28", "2026-09-29"]), null);
+  // Só antes da semana: nada.
+  assertEquals(findWeekToReview("2026-09-28", ["2026-09-20"]), null);
   assertEquals(findWeekToReview("2026-09-28", null), null);
 });
 
-Deno.test("listServerProactive: o balanço da semana é o último da lista, com a chave da segunda-feira", () => {
-  const list = listServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-23" }, "2026-09-28");
-  assertEquals(list.map((c) => c.trigger), ["silence", "week_review"]);
-  assertEquals(list[1].key, "week_review:2026-09-21");
+Deno.test("listServerProactive: o balanço só num dia sem mais nenhum momento", () => {
+  // Sozinho: sai, com a chave da segunda-feira da semana revista — também à terça.
+  const alone = listServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-27", weekRecordDates: ["2026-09-25"] }, "2026-09-29");
+  assertEquals(alone.map((c) => c.key), ["week_review:2026-09-21"]);
+  assertEquals(alone[0].weekEnd, "2026-09-27");
+  // Com um "Estás bem?" no mesmo dia: fica só o silêncio.
+  const silent = listServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-23", weekRecordDates: ["2026-09-23"] }, "2026-09-28");
+  assertEquals(silent.map((c) => c.trigger), ["silence"]);
+  // No dia da prova: fica só a prova.
+  const raceDay = listServerProactive({ raceEvents: [race({ id: "p1", date: "2026-09-29" })], runs: [], lastRecordDate: "2026-09-28", weekRecordDates: ["2026-09-25"] }, "2026-09-29");
+  assertEquals(raceDay.map((c) => c.trigger), ["race_morning"]);
+  // Um assunto por resolver também fica com o dia.
+  const issue = listServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-27", weekRecordDates: ["2026-09-25"], intervention: { status: "needed", reason: "dor" } }, "2026-09-28");
+  assertEquals(issue.map((c) => c.trigger), ["intervention"]);
+  // Desligado no Perfil: nada.
+  assertEquals(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-27", weekRecordDates: ["2026-09-25"], allowed: ["silence"] }, "2026-09-28"), []);
   assertEquals(proactiveTab("week_review"), "coach");
-  const msg = proactivePushMessage(list[1]);
+  const msg = proactivePushMessage(alone[0]);
   assertEquals(msg.title, "Carol");
   assert(!msg.body.includes("!"));
 });

@@ -20,7 +20,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { listServerProactive, proactiveTab, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
+import { listServerProactive, proactiveTab, weekToReviewBounds, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
 import { composePushMessage } from "./pushText.ts";
 import { choosePush } from "./decide.ts";
 
@@ -52,6 +52,19 @@ async function lastRecordDate(sb: any, userId: string): Promise<string | null> {
   return dates.length ? dates.sort().pop()! : null;
 }
 
+/* O balanço da semana (week_review) precisa de saber se houve algum registo
+   DENTRO da semana revista — o último registo não chega (um de hoje não
+   conta). Só se pergunta à segunda e à terça: uma linha por tabela. */
+// deno-lint-ignore no-explicit-any
+async function weekRecordDates(sb: any, userId: string, week: { weekStart: string; weekEnd: string } | null): Promise<string[]> {
+  if (!week) return [];
+  const tables = ["runs", "meals", "workout_sessions", "body_assessments"];
+  const results = await Promise.all(tables.map((t) =>
+    sb.from(t).select("date").eq("user_id", userId).gte("date", week.weekStart).lte("date", week.weekEnd).limit(1).maybeSingle()
+  ));
+  return results.map((r: { data: { date?: string } | null }) => r.data?.date).filter((d): d is string => typeof d === "string");
+}
+
 async function handler(req: Request): Promise<Response> {
   const cronSecret = Deno.env.get("CRON_SECRET");
   if (!cronSecret || req.headers.get("x-cron-secret") !== cronSecret) {
@@ -67,6 +80,7 @@ async function handler(req: Request): Promise<Response> {
   const now = new Date();
   const hour = lisbonHour(now);
   const today = lisbonDate(now);
+  const reviewWeek = weekToReviewBounds(today);
 
   const { data: subs, error: subsErr } = await sb.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth");
   if (subsErr) return jsonResponse({ error: subsErr.message }, 500);
@@ -106,7 +120,7 @@ async function handler(req: Request): Promise<Response> {
 
   for (const [userId, userSubs] of byUser) {
     try {
-      const [{ data: races, error: racesErr }, { data: runs, error: runsErr }, last, { data: plans, error: plansErr }] = await Promise.all([
+      const [{ data: races, error: racesErr }, { data: runs, error: runsErr }, last, { data: plans, error: plansErr }, weekDates] = await Promise.all([
         // Até 6 meses à frente: o conflito de provas olha para dentro do bloco.
         sb.from("race_events").select("id, name, date, status, distance_km, coach_balance, start_time, target_time_seconds, race_priority, conflict_acknowledged_at")
           .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 183)),
@@ -118,6 +132,7 @@ async function handler(req: Request): Promise<Response> {
         // é um bloco de treino).
         sb.from("coach_plans").select("id, status, period_start, period_end, race_id, coach_plan_items(kind)")
           .eq("user_id", userId).in("status", ["aceite", "proposto"]).gte("period_end", today),
+        weekRecordDates(sb, userId, reviewWeek),
       ]);
       // Sem as provas ou as corridas, o momento escolhido podia ser o errado
       // (a véspera a cair para o silêncio): salta-se o atleta nesta hora.
@@ -143,6 +158,7 @@ async function handler(req: Request): Promise<Response> {
         plans: triggerPlans,
         // Um momento desligado no Perfil não esconde os seguintes.
         allowed: Array.isArray(prefsById.get(userId)?.types) ? prefsById.get(userId)!.types : null,
+        weekRecordDates: weekDates,
       }, today);
 
       const prefs = prefsById.get(userId) ?? {};

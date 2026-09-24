@@ -9,9 +9,10 @@
 -- Um momento novo em que a Carol chama pelo atleta:
 --   week_review — à segunda-feira (ou terça), o balanço da semana que acabou
 --                 no domingo: o que fez face ao plano e o foco da seguinte.
--- As listas de momentos aceites alargam-se aos oito. Os atletas que já
--- existem passam a ter o balanço ligado: não escolheram excluí-lo, ele
--- simplesmente não existia (mesmo critério da migration da P.5). Podem
+-- As listas de momentos aceites alargam-se aos oito. TODOS os atletas que
+-- já existem passam a ter o balanço ligado, mesmo os que personalizaram a
+-- lista: não escolheram excluí-lo, ele simplesmente não existia. (A P.5 foi
+-- mais estreita: só mudou quem ainda tinha a lista por omissão.) Podem
 -- desligá-lo no Perfil.
 -- ============================================================================
 

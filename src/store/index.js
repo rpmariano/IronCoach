@@ -260,7 +260,7 @@ export const useAppStore = create((set, get) => ({
   coachIntent: null,
   setCoachIntent: (intent) => set({ coachIntent: intent }),
   /* A chave de uma notificação tocada (P.9) para um momento que o cliente
-     não sabe montar sozinho (só o servidor gera race_after/block_end/silence
+     não sabe montar sozinho (só o servidor gera race_after/block_end/silence/week_review
      com os dados todos) — NÃO é um coachIntent: o efeito passivo do Coach
      (Coach.jsx) cede a qualquer intent explícito, e isto é só uma preferência
      de ordem dentro da lista normal de candidatos (listProactiveTriggers).

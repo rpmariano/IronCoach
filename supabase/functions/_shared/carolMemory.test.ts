@@ -1,6 +1,7 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import {
   buildAthletePortrait,
+  buildWeekAdherenceLine,
   buildBodyGoalsContext,
   buildImpressionsContext,
   buildPushesContext,
@@ -443,3 +444,17 @@ Deno.test("proposta de objetivos por decidir: só a que está 'proposto', com os
   assertEquals(buildGoalProposalContext(null), null);
 });
 
+
+Deno.test("buildWeekAdherenceLine: as contas da semana e o veredicto já decidido", () => {
+  const counts = { cumprido: 4, a_menos: 0, a_mais: 0, falhado: 0, descanso_respeitado: 3, descanso_nao_respeitado: 0 };
+  const full = buildWeekAdherenceLine({ training: new Array(7).fill({}), counts, executionScore: 100 }, "2026-09-21", "2026-09-27");
+  assertStringIncludes(full!, "Plano da semana de 2026-09-21 a 2026-09-27 (só esta semana)");
+  assertStringIncludes(full!, "4 treinos prescritos: 4 cumpridos, 0 a menos, 0 a mais, 0 não feitos");
+  assertStringIncludes(full!, "descanso respeitado em 3 de 3 dias");
+  assertStringIncludes(full!, "Semana cumprida a 100%: sim.");
+  const partial = buildWeekAdherenceLine({ training: new Array(4).fill({}), counts: { ...counts, cumprido: 2, falhado: 2, descanso_respeitado: 0 }, executionScore: 50 }, "2026-09-21", "2026-09-27");
+  assertStringIncludes(partial!, "Cumprimento: 50%");
+  assertStringIncludes(partial!, "Semana cumprida a 100%: não.");
+  // Sem nada prescrito nessa semana: sem linha — ela compara o volume.
+  assertEquals(buildWeekAdherenceLine({ training: [], counts, executionScore: null }, "2026-09-21", "2026-09-27"), null);
+});
