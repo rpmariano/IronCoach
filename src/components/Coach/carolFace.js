@@ -1,13 +1,12 @@
 /* A geometria do rosto da Carol — só números, sem React, para o avatar
    (CoachAvatar.jsx) e os testes partilharem exatamente o mesmo desenho.
 
-   Um retrato de traço simples: linha escura sobre preenchimento claro,
-   dentro do disco ciano dela. Só a cabeça — o pescoço sai pelo fundo do
-   disco e os ombros nunca entram; franja em madeixas; o cabelo apanhado
-   num rabo-de-cavalo clássico, alto, a cair por trás do lado direito;
-   bochechas coradas. As linhas do cabelo, do rabo-de-cavalo e do contorno
-   são a "assinatura" — desenham-se quando ela aparece, e só depois o
-   desenho ganha cor.
+   Um retrato de traço simples dentro do disco ciano dela: linha escura,
+   cara clara, bochechas coradas, e o cabelo como uma silhueta sólida na cor
+   da linha — franja reta, rabo-de-cavalo alto com as pontas desfiadas. Só
+   a cabeça: o pescoço sai pelo fundo do disco e os ombros nunca entram. As
+   linhas do cabelo, do rabo-de-cavalo e do contorno são a "assinatura" —
+   desenham-se quando ela aparece, e só depois o desenho ganha cor.
 
    Coordenadas: a cabeça vive em 0–100 (olhos a 55, queixo a 79); o
    enquadramento (frameFor) põe o queixo perto do fundo do disco.
@@ -31,31 +30,27 @@ export const FACE_FILL_PATH = 'M 30.6 52 C 30.6 34, 39.5 27, 50 27 C 60.5 27, 69
 export const JAW_PATH = 'M 30.8 55 C 31.6 70.5, 41 79, 50 79 C 59 79, 68.4 70.5, 69.2 55';
 export const EARS_PATH = 'M 31 53.6 C 25.8 52, 25.2 61.4, 31.4 62.2 M 69 53.6 C 74.2 52, 74.8 61.4, 68.6 62.2';
 
-/** O cabelo, puxado para trás: uma calota de orelha a orelha. O contorno de
- *  fora é o topo da cabeça; o de dentro é a linha do cabelo nas têmporas. */
+/** O cabelo: uma silhueta sólida, na cor da linha. Desce dos lados até ao
+ *  alto das orelhas e acaba na testa numa franja reta, cortada a direito, com
+ *  uma abertura estreita do lado direito. A franja fica acima das
+ *  sobrancelhas — são elas que dizem metade das emoções. */
 export const HAIR_PATH =
-  'M 30.8 60 C 24.4 45, 26.4 21, 50 16.5 C 73.6 12.5, 81.2 35, 69.2 60 ' +
-  'C 70.8 46, 66.4 33, 50 31 C 33.6 33, 29.2 46, 30.8 60 Z';
+  'M 30.4 55 C 25.4 44, 25.8 28.4, 35.6 20.6 C 43.6 14.4, 59.6 13.2, 69.2 20.6 ' +
+  'C 76.8 26.6, 77 44, 69.8 55 L 68.8 55 C 68.6 48.4, 68 43.4, 67.2 40.2 ' +
+  'L 61.6 40.3 L 58.4 32.6 L 55.8 40.5 L 32.8 40.8 ' +
+  'C 32 43.4, 31.4 48.4, 31.2 55 Z';
 
-/** A franja: varrida da risca para a têmpora esquerda, em madeixas com
- *  pontas; e uma madeixa curta para a direita. */
-export const FRINGE_PATH =
-  'M 58.5 18.2 C 46.5 20, 34.5 27.5, 30.2 45.5 ' +
-  'C 33.6 42.2, 36.8 40, 39.8 38.4 C 40.2 41.2, 41.8 43, 44.4 44 ' +
-  'C 46.4 38.4, 50.8 34.2, 55.2 31.4 C 56.2 34.6, 58.4 36.6, 61.8 37.6 ' +
-  'C 63.6 31, 62.6 24, 58.5 18.2 Z';
-export const FRINGE_RIGHT_PATH = 'M 59.2 19 C 66 23, 70.2 31, 69.8 44.4 C 68.2 40.8, 66 38.4, 63.2 37 C 64.2 30.4, 62.8 24.4, 59.2 19 Z';
-
-/** Madeixas desenhadas dentro do cabelo — só nos tamanhos grandes. */
-export const HAIR_STRANDS_PATH = 'M 52 20.6 C 43.6 23, 37.6 28.6, 34.8 36.4 M 65.4 21.4 C 70.4 25.4, 73.4 31.4, 73.8 38';
-
-/** O rabo-de-cavalo: preso no alto, do lado direito, sai para fora e cai
- *  por trás da cabeça. O elástico fica por cima do contorno do cabelo. */
+/** O rabo-de-cavalo: preso no alto, à direita, sobe um pouco e cai por trás
+ *  da cabeça até à altura do queixo, com as pontas desfiadas. */
 export const PONYTAIL_PATH =
-  'M 70.6 21.6 C 76.6 15.2, 85.8 17.4, 87.2 28 C 88.6 39.6, 85.6 52.4, 80.4 62.4 ' +
-  'C 81 52.6, 79.8 43.6, 76 36.4 C 74.2 33, 72.6 29.8, 70.4 28 Z';
-export const PONYTAIL_STRANDS_PATH = 'M 76 24.4 C 82 28.4, 84 39.6, 81.8 51.6';
-export const PONYTAIL_TIE_PATH = 'M 69.8 20.6 L 72.8 27.6';
+  'M 60.6 16.8 C 64.6 10.6, 74.4 10, 80.2 16.2 C 86.8 23.4, 88.2 36.4, 86.2 48 ' +
+  'L 88.6 55.6 L 83.8 52.6 L 84.6 62.6 L 79.8 56.4 L 78.4 65.2 ' +
+  'C 76.2 56, 74.8 46.4, 73 38.4 C 71.2 30.4, 66.6 22.8, 60.6 16.8 Z';
+/** Os reflexos claros dentro do cabelo escuro: o elástico (um laço
+ *  alongado na base do rabo-de-cavalo) e um fio de luz — este só nos
+ *  tamanhos grandes. */
+export const PONYTAIL_TIE_PATH = 'M 60.4 20 C 61.6 15.4, 69.6 12.8, 73.2 16.6 C 70.6 16.4, 63.8 17.2, 60.4 20 Z';
+export const PONYTAIL_SHINE_PATH = 'M 77.4 21.6 C 82 27, 83.4 36.6, 82.2 46';
 
 /** O nariz: um gancho curto — só nos tamanhos grandes. */
 export const NOSE_PATH = 'M 50.6 58.6 Q 49.2 62.4 51.2 63.2';
@@ -249,7 +244,7 @@ export function rigPaths(rig) {
 /* O enquadramento muda com o tamanho, como um retrato próximo: a cabeça
    enche o disco e o queixo fica perto do fundo, para o pescoço sair pelo
    círculo — os ombros nunca entram. Pequeno, aproxima-se ainda mais da cara
-   (os olhos ganham espaço); grande, entra o nariz e as madeixas.
+   (os olhos ganham espaço); grande, entra o nariz e o fio de luz do cabelo.
    `strokePx` é a espessura da linha principal em píxeis. */
 export function frameFor(size) {
   if (size < 32) return { viewBox: '14 12 74 74', detail: 'min', strokePx: 1.25 };

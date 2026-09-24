@@ -51,14 +51,14 @@
   --coach-ink: #04252b;
   /* O rosto da Carol (CoachAvatar): um retrato de traço simples dentro do
      disco ciano dela — linha escura (a tinta da Carol), cara clara, cabelo
-     num branco tingido de ciano para se separar da cara, o elástico do
-     rabo-de-cavalo, e o corado das bochechas, que é o único tom quente e
-     sobe com a emoção. */
+     numa silhueta sólida da mesma tinta com reflexos claros (o elástico, um
+     fio de luz), e o corado das bochechas, que é o único tom quente e sobe
+     com a emoção. */
   --carol-face-bg: radial-gradient(circle at 50% 32%, #8af0fd 0%, var(--coach) 58%, #13b8d4 100%);
   --carol-line: #0b2e36;
   --carol-skin: #fffaf4;
-  --carol-hair: #d6f3f9;
-  --carol-tie: var(--coach-deep);
+  --carol-hair: #0b2e36;
+  --carol-hair-light: #9fe8f5;
   --carol-blush: #ff9f8a;
   --carol-shine: #ffffff;
   --run: #2ee0ff;              /* módulo corrida */

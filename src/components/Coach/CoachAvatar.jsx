@@ -2,9 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { normalizeMood } from '@formulas/carolMood.ts';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import {
-  CHEEKS, EARS_PATH, FACE_FILL_PATH, FRINGE_PATH, FRINGE_RIGHT_PATH, HAIR_PATH, HAIR_STRANDS_PATH,
-  JAW_PATH, NECK_FILL_PATH, NECK_PATH, NOSE_PATH, PONYTAIL_PATH, PONYTAIL_STRANDS_PATH,
-  PONYTAIL_TIE_PATH, SHINE_PATHS,
+  CHEEKS, EARS_PATH, FACE_FILL_PATH, HAIR_PATH, JAW_PATH, NECK_FILL_PATH, NECK_PATH, NOSE_PATH,
+  PONYTAIL_PATH, PONYTAIL_SHINE_PATH, PONYTAIL_TIE_PATH, SHINE_PATHS,
   frameFor, lerpRig, rigFor, rigPaths,
 } from './carolFace';
 
@@ -12,8 +11,8 @@ import {
    aparece.
 
    Um retrato de traço simples dentro do disco ciano dela: linha escura,
-   cara clara, bochechas coradas, franja em madeixas e o rabo-de-cavalo
-   clássico. Só a cabeça — os ombros nunca aparecem. A geometria vive em
+   cara clara, bochechas coradas, e o cabelo numa silhueta sólida — franja
+   reta e rabo-de-cavalo alto. Só a cabeça — os ombros nunca aparecem. A geometria vive em
    carolFace.js; aqui só se desenha e se dá vida.
 
    Seis emoções (`mood`, vocabulário em @formulas/carolMood.ts): neutral (por
@@ -24,8 +23,8 @@ import {
 
    Três camadas de vida, todas desligadas com prefers-reduced-motion:
    - `draw`: a assinatura. As linhas desenham-se como uma caneta — rabo-de-
-     -cavalo, cabelo, maxilar, franja — e só depois o desenho ganha cor e
-     acendem os olhos e a boca. Por defeito só nos tamanhos de palco (≥ 56 px: boas-
+     -cavalo, cabelo e franja, maxilar — e só depois o cabelo se enche de
+     cor e acendem os olhos e a boca. Por defeito só nos tamanhos de palco (≥ 56 px: boas-
      -vindas, onboarding, chat vazio); os outros pedem-na nos momentos de
      chegada.
    - `alive`: pisca os olhos, com um compasso diferente em cada instância
@@ -148,23 +147,18 @@ export default function CoachAvatar({
             {/* O rabo-de-cavalo, por trás da cabeça. */}
             <path className="carol-fill" d={PONYTAIL_PATH} style={{ fill: 'var(--carol-hair)' }} />
             <path className="carol-sig" pathLength="1" d={PONYTAIL_PATH} style={line} strokeWidth={unit} />
-            {frame.detail === 'full' && (
-              <g className="carol-feat">
-                <path d={PONYTAIL_STRANDS_PATH} style={line} strokeWidth={unit * 0.55} opacity=".55" />
-              </g>
-            )}
 
             <path className="carol-fill" d={FACE_FILL_PATH} style={{ fill: 'var(--carol-skin)' }} />
             <path className="carol-sig" pathLength="1" d={JAW_PATH} style={line} strokeWidth={unit} />
+            {/* As orelhas antes do cabelo: o cabelo tapa-lhes o alto. */}
+            <path className="carol-feat" d={EARS_PATH} style={{ ...line, fill: 'var(--carol-skin)' }} strokeWidth={unit * 0.85} />
             <path className="carol-fill" d={HAIR_PATH} style={{ fill: 'var(--carol-hair)' }} />
             <path className="carol-sig" pathLength="1" d={HAIR_PATH} style={line} strokeWidth={unit} />
-            <path className="carol-feat" d={PONYTAIL_TIE_PATH} style={{ stroke: 'var(--carol-tie)' }} strokeWidth={unit * 1.7} />
-            <path className="carol-feat" d={EARS_PATH} style={{ ...line, fill: 'var(--carol-skin)' }} strokeWidth={unit * 0.85} />
-            {frame.detail === 'full' && (
-              <g className="carol-feat">
-                <path d={HAIR_STRANDS_PATH} style={line} strokeWidth={unit * 0.55} opacity=".55" />
-              </g>
-            )}
+            {/* Os reflexos: o elástico e, em grande, um fio de luz. */}
+            <g className="carol-feat" style={{ stroke: 'var(--carol-hair-light)' }}>
+              <path d={PONYTAIL_TIE_PATH} strokeWidth={unit * 0.6} />
+              {frame.detail === 'full' && <path d={PONYTAIL_SHINE_PATH} strokeWidth={unit * 0.45} opacity=".45" />}
+            </g>
 
             {/* O corado sobe e desce com a emoção. */}
             <g className="carol-feat">
@@ -198,11 +192,6 @@ export default function CoachAvatar({
               fillOpacity={paths.mouthOpen}
             />
 
-            {/* A franja por cima de tudo: cai sobre a testa e as sobrancelhas. */}
-            <path className="carol-fill" d={FRINGE_RIGHT_PATH} style={{ fill: 'var(--carol-hair)' }} />
-            <path className="carol-fill" d={FRINGE_PATH} style={{ fill: 'var(--carol-hair)' }} />
-            <path className="carol-sig carol-sig-2" pathLength="1" d={FRINGE_RIGHT_PATH} style={line} strokeWidth={unit * 0.9} />
-            <path className="carol-sig carol-sig-2" pathLength="1" d={FRINGE_PATH} style={line} strokeWidth={unit * 0.9} />
           </g>
 
           <g data-part="shine" opacity={rig.shine.toFixed(3)} style={{ stroke: 'var(--carol-shine)' }}>
