@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker } from './lib/push';
-import { reloadFresh, isBusy, tabParams } from './lib/appUpdate';
+import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { useAppStore } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
@@ -55,7 +55,7 @@ function retryOnce(load) {
       // Sem passar pela cache do index.html (max-age=600 no GitHub Pages),
       // que ainda apontaria para os chunks que acabaram de desaparecer — e
       // de volta ao separador que se estava a abrir, não ao Início.
-      reloadFresh(undefined, window.location, tabParams(useAppStore.getState().activeTab));
+      reloadFresh(undefined, window.location, resumeParams(useAppStore.getState().activeTab));
       return new Promise(() => {});
     }
     throw err;
@@ -709,14 +709,20 @@ export default function App() {
 
     const params = new URLSearchParams(window.location.search);
     const tabParam = params.get('tab');
+    // O separador por onde entra: o de uma recarga técnica (?resume=, onde
+    // se estava) ou o do ?tab=. O ?resume= não é uma notificação — não mexe
+    // nas boas-vindas (openedWithTabRef só olha para ?tab=) — e sai já da
+    // barra de endereço.
+    const entryTab = entryTabFromSearch(window.location.search);
+    stripResumeParam();
     const isDemo = params.get('demo') === 'true';
     // A chave da notificação que abriu a app (ação P.9) — sem sessão ainda
     // não há a quem atribuir a impressão nem dados para decidir o ecrã;
     // fica à espera de loadInitialData, mais abaixo.
     const carolParam = params.get('carol');
 
-    if (tabParam) {
-      setActiveTab(tabParam);
+    if (entryTab) {
+      setActiveTab(entryTab);
     }
     if (carolParam) {
       proactiveKeyRef.current = carolParam;

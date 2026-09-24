@@ -19,13 +19,15 @@ export function prefetchScreensWhenIdle(loaders, {
 } = {}) {
   if (saveData || !loaders?.length) return () => {};
   let cancelled = false;
-  const timer = setTimeout(() => {
-    idle(async () => {
-      for (const load of loaders) {
-        if (cancelled) return;
-        try { await load(); } catch { /* fica para o pedido a sério */ }
-      }
-    });
+  const timer = setTimeout(async () => {
+    for (const load of loaders) {
+      // Cada ecrã espera pelo seu tempo morto — não só o primeiro: a
+      // avaliação de um ficheiro grande (gráficos) não pode calhar a meio
+      // de um scroll.
+      await new Promise((resolve) => idle(resolve));
+      if (cancelled) return;
+      try { await load(); } catch { /* fica para o pedido a sério */ }
+    }
   }, delayMs);
   return () => {
     cancelled = true;

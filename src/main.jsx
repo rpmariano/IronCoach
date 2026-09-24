@@ -4,7 +4,7 @@ import App from './App';
 import AppErrorBoundary from './components/shared/AppErrorBoundary';
 import { useAppStore } from './store';
 import { trackPageVisibility } from './utils/pageVisibility';
-import { startAppUpdateWatcher, reloadFresh, tabParams } from './lib/appUpdate';
+import { startAppUpdateWatcher, reloadFresh, resumeParams } from './lib/appUpdate';
 import './styles/globals.css';
 
 window.useAppStore = useAppStore;
@@ -17,7 +17,7 @@ trackPageVisibility();
 // src/lib/appUpdate.js. Só em produção (em dev o id do build é vazio).
 // A recarga volta ao separador onde se estava, em vez de cair no Início.
 startAppUpdateWatcher({
-  reload: (build) => reloadFresh(build, window.location, tabParams(useAppStore.getState().activeTab)),
+  reload: (build) => reloadFresh(build, window.location, resumeParams(useAppStore.getState().activeTab)),
 });
 
 const container = document.getElementById('root');

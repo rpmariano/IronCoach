@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { startAppUpdateWatcher, isBusy, freshUrl, fetchPublishedBuild, stripVersionParam, tabParams } from './appUpdate';
+import { startAppUpdateWatcher, isBusy, freshUrl, fetchPublishedBuild, stripVersionParam, resumeParams, entryTabFromSearch, stripResumeParam } from './appUpdate';
 
 /* A app recarrega-se sozinha depois de um deploy, mas só quando isso não
    deita nada fora. Aqui: quando recarrega, quando espera, e que nunca entra
@@ -159,17 +159,32 @@ describe('URLs', () => {
 
 describe('recarga técnica — volta ao separador onde se estava', () => {
   // Relatado 2026-09-24: "a app reinicia quando mudamos de menu" — a recarga
-  // caía sempre no Início.
-  it('freshUrl põe o separador pedido, e o ?v=', () => {
-    expect(freshUrl('https://x.io/IronCoach/', 'bbb', { tab: 'coach' })).toBe('https://x.io/IronCoach/?tab=coach&v=bbb');
-    // O separador atual ganha ao que estava no URL.
-    expect(freshUrl('https://x.io/IronCoach/?tab=home', 'bbb', { tab: 'perfil' })).toBe('https://x.io/IronCoach/?tab=perfil&v=bbb');
+  // caía sempre no Início. Com ?resume=, não ?tab=: esse é o da notificação,
+  // e saltava as boas-vindas da Carol (revisão pré-deploy de 639c495).
+  it('freshUrl junta o ?resume= e o ?v=, sem tocar no ?tab= de uma notificação', () => {
+    expect(freshUrl('https://x.io/IronCoach/', 'bbb', resumeParams('coach'))).toBe('https://x.io/IronCoach/?resume=coach&v=bbb');
+    expect(freshUrl('https://x.io/IronCoach/?tab=coach&carol=k1', 'bbb', resumeParams('home'))).toBe('https://x.io/IronCoach/?tab=coach&carol=k1&v=bbb');
   });
 
-  it('tabParams: os separadores sim, as bancadas de teste não', () => {
-    expect(tabParams('provas')).toEqual({ tab: 'provas' });
-    expect(tabParams('nutricao')).toEqual({ tab: 'nutricao' });
-    expect(tabParams('design-system')).toEqual({});
-    expect(tabParams(null)).toEqual({});
+  it('resumeParams: os separadores sim; o Início (por omissão) e as bancadas não', () => {
+    expect(resumeParams('provas')).toEqual({ resume: 'provas' });
+    expect(resumeParams('nutricao')).toEqual({ resume: 'nutricao' });
+    expect(resumeParams('home')).toEqual({});
+    expect(resumeParams('design-system')).toEqual({});
+    expect(resumeParams(null)).toEqual({});
+  });
+
+  it('entryTabFromSearch: a recarga técnica ganha ao ?tab= antigo; sem nada, null', () => {
+    expect(entryTabFromSearch('?resume=perfil')).toBe('perfil');
+    expect(entryTabFromSearch('?tab=coach&resume=perfil')).toBe('perfil');
+    expect(entryTabFromSearch('?tab=coach')).toBe('coach');
+    expect(entryTabFromSearch('?demo=true')).toBeNull();
+  });
+
+  it('stripResumeParam tira só o ?resume=', () => {
+    const replaceState = vi.fn();
+    const win = { location: { href: 'https://x.io/IronCoach/?demo=true&resume=coach' }, history: { state: null, replaceState } };
+    stripResumeParam(win);
+    expect(replaceState).toHaveBeenCalledWith(null, '', '/IronCoach/?demo=true');
   });
 });
