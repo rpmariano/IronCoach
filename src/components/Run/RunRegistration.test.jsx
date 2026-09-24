@@ -279,6 +279,43 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       expect(body.images).toEqual([]);
     });
 
+    it('"Prosseguir" depois de mudar o nome reanalisa — a mudança não se perde', async () => {
+      await chegarAoAviso();
+      // Fecha-se o aviso, muda-se o nome, reabre-se pelo botão flutuante e
+      // prossegue-se.
+      fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: 'Fechar' }));
+      fireEvent.change(screen.getByDisplayValue('Corrida de Hoje'), { target: { value: 'Rodagem do Tejo' } });
+      fireEvent.click(await screen.findByRole('button', { name: /Métricas em falta/ }));
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, name: 'Rodagem do Tejo' } }, error: null });
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      expect(mocks.invoke.mock.calls[1][1].body).toMatchObject({ run_id: 'run-1', name: 'Rodagem do Tejo' });
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(useAppStore.getState().runs.map((r) => [r.id, r.name])).toEqual([['run-1', 'Rodagem do Tejo']]);
+    });
+
+    it('o rascunho reaberto com a corrida já gravada junta-lhe os prints, sem a recriar', async () => {
+      // O Android matou a app com o seletor de prints aberto: o rascunho
+      // volta com a corrida que a primeira análise gravou.
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada }));
+      render(<RunRegistration onClose={onClose} />);
+      // O print dela volta do servidor.
+      await screen.findByAltText('Print 1');
+      const input = document.querySelector('input[type="file"]');
+      await fireEvent.change(input, { target: { files: [new File(['fc'], 'fc.jpg', { type: 'image/jpeg' })] } });
+      await screen.findByAltText('Print 2');
+
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, details: { avg_heart_rate_bpm: 150 } } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      const [, { body }] = mocks.invoke.mock.calls[0];
+      expect(body.run_id).toBe('run-1');
+      expect(body.keep_paths).toEqual(['user-1/a.jpg']);
+      expect(body.images).toEqual(['AAA']);
+    });
+
     it('"Manual" depois do aviso grava por cima da corrida (run_id), sem a duplicar', async () => {
       await chegarAoAviso();
       fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: /Manual/ }));

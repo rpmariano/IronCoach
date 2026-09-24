@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, Mes
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
-import { ANALYZE_RUN_TIMEOUT_MS } from '../../lib/edgeTimeouts';
+import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { useToast } from '../shared/ToastProvider';
 import { useAppStore } from '../../store';
 import CoachText from '../shared/CoachText';
@@ -125,7 +125,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
       // O mesmo limite do registo: com o Gemini ocupado a reanálise demora.
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: { run_id: run.id, notes: run.notes || null },
-      }, ANALYZE_RUN_TIMEOUT_MS);
+      }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
       setRuns(runs.map(r => (r.id === run.id ? { ...r, ...data.run } : r)));

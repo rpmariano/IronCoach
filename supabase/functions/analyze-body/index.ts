@@ -26,6 +26,13 @@ import {
 } from "./goalsReview.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import {
+  fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_RETRYABLE_STATUSES,
+  geminiBusyMessage,
+  hasTimeFor,
+  requestDeadlines,
+} from "../_shared/geminiFetch.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -114,47 +121,16 @@ const RESPONSE_SCHEMA = {
   required: ["metrics", "summary", "source_app"],
 };
 
-// Estados HTTP de sobrecarga momentânea do lado da Google (500/502/503/504) —
-// vale a pena repetir estes, porque costumam resolver-se à segunda. O 429
-// (limite de pedidos excedido) fica DE FORA de propósito: repetir logo a
-// seguir só volta a bater no mesmo limite por minuto — e até o acelera — por
-// isso passa já ao chamador com uma mensagem clara. Erros "permanentes"
-// (400, 401, 403...) também passam sempre à primeira.
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
-
-// fetch com limite de tempo por tentativa + repetições automáticas quando a
-// chamada fica presa (AbortError), falha ao nível da rede, ou o Gemini
-// devolve um estado transitório (ver GEMINI_RETRYABLE_STATUSES) — por
-// exemplo, confirmámos em produção uma resposta 503 (sobrecarga momentânea)
-// que a app mostrava como erro imediato, mesmo sem qualquer problema de rede
-// ou timeout envolvido. Ao fim das tentativas, devolve a resposta tal como
-// veio (o chamador decide a mensagem) ou lança um erro claro se nem chegou
-// a haver resposta.
-async function fetchGeminiWithTimeout(
+// Repetições quando o Gemini está ocupado ou sem resposta, e o prazo do
+// pedido: ver _shared/geminiFetch.ts. Os valores por omissão são os desta função.
+function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  for (let attempt = 0; ; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && attempt < retries) {
-        await new Promise((r) => setTimeout(r, 1500));
-        continue;
-      }
-      return res;
-    } catch (e) {
-      clearTimeout(timer);
-      if (attempt < retries) continue;
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
-    }
-  }
+  return fetchGemini(url, options, timeoutMs, retries, deadline);
 }
 
 /* ── Depois de gravar uma avaliação: o perfil acompanha ────────────────────
@@ -442,6 +418,7 @@ async function analyzeWithGemini(
   geminiKey: string,
   memoryBlock: string | null = null,
   goalsCtx: GoalsContext | null = null,
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<
   {
     metrics: Record<string, number | null>;
@@ -469,6 +446,9 @@ async function analyzeWithGemini(
         },
       }),
     },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
   );
 
   if (!geminiRes.ok) {
@@ -478,6 +458,10 @@ async function analyzeWithGemini(
       throw new Error(
         "O Gemini atingiu o limite de pedidos gratuitos neste momento. Espera um pouco e tenta novamente.",
       );
+    }
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
+      // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
+      throw new Error(geminiBusyMessage("ler a avaliação"));
     }
     throw new Error(`Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.`);
   }
@@ -552,9 +536,14 @@ async function generateBodySummaryFromMetrics(
   geminiKey: string,
   memoryBlock: string | null = null,
   goalsCtx: GoalsContext | null = null,
+  // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
+  deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ text: string | null; goalsReview: GoalsReview }> {
   const hasAny = Object.values(metrics).some((v) => v !== null && v !== undefined);
   if (!hasAny) return { text: null, goalsReview: null };
+  // Sem tempo para uma tentativa útil antes do prazo, grava-se sem resumo:
+  // é best-effort, e a resposta não pode passar o que a app espera.
+  if (!hasTimeFor(deadline)) return { text: null, goalsReview: null };
 
   const metricLines = METRIC_FIELDS
     .filter((f) => metrics[f.key] !== null && metrics[f.key] !== undefined)
@@ -599,6 +588,7 @@ async function generateBodySummaryFromMetrics(
       },
       45000,
       0,
+      deadline,
     );
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());
@@ -616,6 +606,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Prazos deste pedido (ver _shared/geminiFetch.ts).
+  const { extraction: extractionDeadline, coach: coachDeadline } = requestDeadlines();
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado" }, 405);
   }
@@ -707,7 +699,7 @@ Deno.serve(async (req) => {
       if (editingId) historyQuery = historyQuery.neq("id", editingId);
       const { data: history } = await historyQuery;
 
-      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise);
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline);
 
       if (editingId) {
         const { data: updated, error: updateError } = await sb
@@ -787,7 +779,7 @@ Deno.serve(async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise);
+        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -856,7 +848,7 @@ Deno.serve(async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);

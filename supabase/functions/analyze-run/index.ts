@@ -26,6 +26,13 @@ import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartR
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import {
+  fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_RETRYABLE_STATUSES,
+  geminiBusyMessage,
+  hasTimeFor,
+  requestDeadlines,
+} from "../_shared/geminiFetch.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -39,24 +46,6 @@ const corsHeaders = {
 const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
-/* Quando o Gemini responde "ocupado" (500/502/503/504), repete-se com
-   esperas crescentes. A 2026-09-24 houve um pico de 503 ("high demand") de
-   vários minutos: com uma só repetição 1,5 s depois, três análises seguidas
-   falharam em ~5 s — e a corrida gravada numa delas ficou sem o comentário
-   da Carol, que não repetia nenhuma vez. */
-const GEMINI_BUSY_BACKOFF_MS = [2000, 4000, 7000];
-/* Só se tenta de novo se ainda couber uma tentativa útil antes do prazo
-   (uma leitura de prints demora ~5–10 s). */
-const GEMINI_MIN_ATTEMPT_MS = 8000;
-/* Prazos, contados desde que o pedido chega. Têm de caber, com folga para o
-   arranque a frio e o envio dos prints, nos 130 s que a app espera pela
-   resposta (ANALYZE_RUN_TIMEOUT_MS em src/lib/edgeTimeouts.js): se a app
-   desistisse antes e o servidor acabasse por gravar a corrida, o "Tentar de
-   novo" gravava-a outra vez. A extração tem prazo mais curto porque a
-   gravação e o comentário ainda vêm depois; o comentário é best-effort e,
-   sem tempo para uma tentativa útil, nem começa. */
-const EXTRACTION_BUDGET_MS = 60000;
-const COACH_BUDGET_MS = 88000;
 
 // Espelha RUN_TRAINING_TYPES / RACE_TYPES no cliente (index.html) — mantidos
 // sincronizados manualmente, já que o schema do Gemini precisa de um enum
@@ -237,57 +226,16 @@ function buildPrompt(
   return prompt;
 }
 
-const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
-
-/* fetch ao Gemini com limite por tentativa e dois tipos de repetição:
-   - "ocupado" (GEMINI_RETRYABLE_STATUSES): até GEMINI_BUSY_BACKOFF_MS.length
-     vezes, com esperas crescentes;
-   - sem resposta (timeout, rede): até `retries` vezes, logo a seguir.
-   Nenhuma repetição começa se já não couber antes de `deadline` (epoch ms);
-   o limite de cada tentativa também encolhe para lá caber. Ao fim, devolve a
-   resposta como veio (o chamador decide a mensagem) ou lança um erro claro
-   se nem chegou a haver resposta. */
-export async function fetchGeminiWithTimeout(
+// Repetições quando o Gemini está ocupado ou sem resposta, e o prazo do
+// pedido: ver _shared/geminiFetch.ts. Os valores por omissão são os desta função.
+function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs = GEMINI_TIMEOUT_MS,
   retries = GEMINI_RETRIES,
   deadline = Number.POSITIVE_INFINITY,
-  // Injetável para os testes não esperarem segundos a sério.
-  backoffMs: readonly number[] = GEMINI_BUSY_BACKOFF_MS,
 ): Promise<Response> {
-  let busyRetries = 0;
-  let timeoutRetries = 0;
-  const fits = (waitMs: number) => Date.now() + waitMs + GEMINI_MIN_ATTEMPT_MS <= deadline;
-  for (;;) {
-    const controller = new AbortController();
-    const limit = Math.max(GEMINI_MIN_ATTEMPT_MS, Math.min(timeoutMs, deadline - Date.now()));
-    const timer = setTimeout(() => controller.abort(), limit);
-    try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
-      clearTimeout(timer);
-      if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && busyRetries < backoffMs.length) {
-        const wait = backoffMs[busyRetries];
-        if (fits(wait)) {
-          busyRetries++;
-          console.warn(`Gemini ocupado (${res.status}); nova tentativa daqui a ${wait} ms (${busyRetries}/${backoffMs.length})`);
-          try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
-          await new Promise((r) => setTimeout(r, wait));
-          continue;
-        }
-      }
-      return res;
-    } catch (_e) {
-      clearTimeout(timer);
-      if (timeoutRetries < retries && fits(0)) {
-        timeoutRetries++;
-        continue;
-      }
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
-    }
-  }
+  return fetchGemini(url, options, timeoutMs, retries, deadline);
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -555,13 +503,13 @@ async function generateCoachNotes(
   hrZoneLine: string | null = null,
   // profiles.experience_level — calibra a linguagem (bug #40).
   experienceLevel: string | null = null,
-  // Até quando se pode tentar (ver COACH_BUDGET_MS).
+  // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
   // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
   // corrida já está gravada e a resposta não pode passar o que a app espera.
-  if (Date.now() + GEMINI_MIN_ATTEMPT_MS > deadline) return { text: null, debug: { reason: "sem_tempo" } };
+  if (!hasTimeFor(deadline)) return { text: null, debug: { reason: "sem_tempo" } };
 
   const trainingTypeLabel = run.training_type
     ? TRAINING_TYPE_LABELS[run.training_type] || run.training_type
@@ -1017,9 +965,7 @@ async function analyzeWithGemini(
     }
     if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
       // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
-      throw new Error(
-        "Estou com muita procura neste momento e não consegui ler os prints, mesmo depois de tentar de novo. Tenta outra vez daqui a um minuto.",
-      );
+      throw new Error(geminiBusyMessage("ler os prints"));
     }
     throw new Error(`Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.`);
   }
@@ -1191,6 +1137,30 @@ function shoeId(body: Record<string, unknown>): string | null {
 /** Reanálise a editar (pedido 2026-09-13): dos prints já guardados, quais
  *  ficam (`keep_paths`, por omissão todos) e quais saem — só se aceitam
  *  caminhos que a corrida já tinha, nunca um caminho inventado. */
+/* O que só a leitura dos prints sabe e o formulário manual não traz: a app de
+   origem (a Carol usa-a para dizer que ecrã falta — carolMemory, regra 5), a
+   regularidade e a hidratação recomendada. Editar à mão reconstrói `details`
+   a partir do formulário e apagava-os; ficam os que já lá estavam. Pesa mais
+   desde 2026-09-24: "Manual" depois do aviso das métricas em falta grava por
+   cima da corrida que os prints acabaram de criar. */
+const IMAGE_ONLY_DETAILS = ["source_app", "regularity_score", "recommended_hydration_ml"] as const;
+
+export function keepImageOnlyDetails(
+  existing: unknown,
+  next: Record<string, unknown> | null,
+): Record<string, unknown> | null {
+  const prev = existing && typeof existing === "object" ? existing as Record<string, unknown> : {};
+  const out: Record<string, unknown> = { ...(next || {}) };
+  let kept = false;
+  for (const k of IMAGE_ONLY_DETAILS) {
+    if (out[k] == null && prev[k] != null) {
+      out[k] = prev[k];
+      kept = true;
+    }
+  }
+  return next || kept ? out : null;
+}
+
 export function resolvePhotoPaths(existing: unknown, keepPaths: unknown): { kept: string[]; dropped: string[] } {
   const current = Array.isArray(existing) ? existing.filter((x): x is string => typeof x === "string" && !!x) : [];
   if (!Array.isArray(keepPaths)) return { kept: current, dropped: [] };
@@ -1223,9 +1193,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
-  const startedAt = Date.now();
-  const extractionDeadline = startedAt + EXTRACTION_BUDGET_MS;
-  const coachDeadline = startedAt + COACH_BUDGET_MS;
+  // Prazos deste pedido (ver _shared/geminiFetch.ts).
+  const { extraction: extractionDeadline, coach: coachDeadline } = requestDeadlines();
   if (req.method !== "POST") {
     return jsonResponse({ error: "Método não suportado" }, 405);
   }
@@ -1442,12 +1411,13 @@ Deno.serve(async (req) => {
         const runId = body.run_id;
         const { data: existing, error: fetchError } = await sb
           .from("runs")
-          .select("id")
+          .select("id, details")
           .eq("id", runId)
           .eq("user_id", userId)
           .maybeSingle();
         if (fetchError) return jsonResponse({ error: `Falha a procurar corrida: ${fetchError.message}` }, 500);
         if (!existing) return jsonResponse({ error: "Corrida não encontrada" }, 404);
+        const editedDetails = keepImageOnlyDetails(existing.details, details);
 
         const { data: updatedRun, error: updateError } = await sb
           .from("runs")
@@ -1455,7 +1425,7 @@ Deno.serve(async (req) => {
             date: body.date,
             kind,
             training_type: trainingType,
-            details,
+            details: editedDetails,
             notes: rawNotes,
             name: clientName,
             effort_rpe: effortRpe,
@@ -1476,7 +1446,7 @@ Deno.serve(async (req) => {
           distance_km: extraction.distance_km,
           duration_seconds: extraction.duration_seconds,
           effort_rpe: effortRpe,
-          details,
+          details: editedDetails,
         }, geminiKey, coachDeadline);
 
         return jsonResponse({ run: updatedRun });
