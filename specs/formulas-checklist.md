@@ -922,6 +922,21 @@ anotados:
   nunca usados) — removidos ao migrar.
 - **`gradeLabel = 'Abaixo do Alvo'`** era inicializado mas sobrescrito por
   todos os ramos — nunca chegava a ser devolvido. Não portado.
+- **`minutesOfDay` em dois sítios, com regras diferentes** (analisado a
+  2026-09-25). `src/utils/dayOrder.js` passa por `normalizeStartTime`
+  (`src/utils/startTime.js`); `_shared/formulas/raceEve.ts` corta os 5
+  primeiros caracteres. Divergem em `"7:05"`/`"7:05:00"` e `" 07:05"`
+  (cliente 425, servidor null) e em `"07:05junk"` (cliente null, servidor
+  425). **Sem efeito hoje:** todas as horas lidas vêm de colunas `time` do
+  Postgres (sempre `HH:MM:SS`) ou de `<input type="time">` (sempre `HH:MM`).
+  **A fazer na próxima alteração que já toque `coach-chat`/
+  `coach-daily-summary`** (para não abrir um deploy de produção só para
+  isto): criar `_shared/formulas/timeOfDay.ts` com `normalizeStartTime` e
+  `minutesOfDay` (a regra do cliente, a mais correta nos dois sentidos),
+  e fazer `dayOrder.js`, `startTime.js` e `raceEve.ts` importarem de lá.
+  No mesmo commit: o comentário em `supabase/functions/coach-chat/index.ts`
+  (~linha 4078) ainda diz que `src/utils/body.js` mantém uma cópia de
+  `ageFromBirthDate` — desde 2026-09-25 reexporta `@formulas/age.ts`.
 
 ---
 
