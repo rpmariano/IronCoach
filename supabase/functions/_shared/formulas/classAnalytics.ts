@@ -13,6 +13,9 @@ export interface SessionForClassAnalytics {
   date: string;
   kind?: string | null;
   name?: string | null;
+  // A modalidade da aula (migration 20260925162654). `categories` são os
+  // grupos musculares e não entram aqui — uma aula conta pela modalidade.
+  class_types?: string[] | null;
   categories?: string[] | null;
   duration_seconds?: number | null;
   exertion?: number | null;
@@ -55,7 +58,7 @@ export function computeClassAnalytics(
       rpeCount++;
     }
 
-    const rawCats = s.categories && s.categories.length > 0 ? s.categories : s.name ? [s.name] : ["Aula de Grupo"];
+    const rawCats = s.class_types && s.class_types.length > 0 ? s.class_types : s.name ? [s.name] : ["Aula de Grupo"];
     for (const rawCat of rawCats) {
       const cat = rawCat.trim();
       if (!classMap[cat]) classMap[cat] = { name: cat, count: 0, totalSeconds: 0, rpeSum: 0, rpeCount: 0 };

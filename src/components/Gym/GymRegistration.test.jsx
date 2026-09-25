@@ -667,3 +667,88 @@ describe('GymRegistration — hora de início', () => {
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 });
+
+// Desde 2026-09-25 (migration 20260925162654) `categories` são sempre grupos
+// musculares; a modalidade de uma aula vai em `class_types`.
+describe('GymRegistration — aula: modalidade e grupos musculares à parte', () => {
+  const onClose = vi.fn();
+  const loadInitialData = vi.fn().mockResolvedValue();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
+    mocks.updateSession.mockReset().mockResolvedValue({ error: null });
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [], loadInitialData });
+  });
+
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+
+  it('numa aula há dois seletores, e a modalidade vai em class_types, os grupos em categories', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.click(screen.getByRole('button', { name: /Aula/ }));
+
+    expect(screen.getByText(/Tipo de aula/)).toBeInTheDocument();
+    expect(screen.getByText(/Grupos musculares \(opcional\)/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'HIIT' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Peito' }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.kind).toBe('aula');
+    expect(body.class_types).toEqual(['HIIT']);
+    expect(body.categories).toEqual(['Peito']);
+  });
+
+  it('num treino de força não há modalidade, e mudar o tipo não apaga os grupos musculares', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.click(screen.getByRole('button', { name: /Aula/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'HIIT' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Costas' }));
+    fireEvent.click(screen.getByRole('button', { name: /Força/ }));
+
+    expect(screen.queryByText(/Tipo de aula/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.kind).toBe('forca');
+    expect(body.class_types).toEqual([]);
+    expect(body.categories).toEqual(['Costas']);
+  });
+
+  it('sem grupos musculares escolhidos, avisa que a Carol os tira das observações', () => {
+    render(<GymRegistration onClose={onClose} />);
+    expect(screen.getByText('Se não escolheres, a Carol tira-os das observações.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Peito' }));
+    expect(screen.getByRole('button', { name: 'Peito' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Se não escolheres, a Carol tira-os das observações.')).not.toBeInTheDocument();
+  });
+
+  it('editar uma aula antiga (modalidade já em class_types) mantém-na e manda os grupos vazios para a Carol os inferir', async () => {
+    const AULA = {
+      id: 'sess-aula', date: '2026-09-25', kind: 'aula', name: 'Aula funcional',
+      class_types: ['Treino Funcional', 'CrossFit'], categories: [],
+      notes: 'Wall ball, peso morto com 20kg, remo na máquina', workout_session_sets: [],
+    };
+    useAppStore.setState({ profile: PROFILE, gymSessions: [AULA], loadInitialData });
+    render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-aula" />);
+
+    // Mudar só o nome não passa pela Carol — nem com os grupos vazios.
+    fireEvent.change(screen.getByDisplayValue('Aula funcional'), { target: { value: 'Funcional de sexta' } });
+    expect(screen.getByRole('button', { name: /Guardar alterações/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByDisplayValue(/Wall ball/), { target: { value: 'Wall ball, peso morto com 20kg, remo na máquina, flexões' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.mode).toBe('manual');
+    expect(body.session_id).toBe('sess-aula');
+    expect(body.class_types).toEqual(['Treino Funcional', 'CrossFit']);
+    expect(body.categories).toEqual([]);
+  });
+});

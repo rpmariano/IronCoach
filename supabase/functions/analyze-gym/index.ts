@@ -30,6 +30,21 @@ import {
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
 
+// Os vocabulários que a Carol usa. categories = grupos musculares, sempre;
+// class_types = modalidade, só nas aulas (migration 20260925162654).
+const MUSCLE_GROUPS = [
+  "Peito", "Costas", "Pernas Superiores", "Pernas Inferiores", "Ombros", "Bíceps", "Tríceps",
+  "Braços", "Core/Abdominais", "Glúteos", "Full Body", "Push", "Pull", "Cardio",
+];
+const CLASS_TYPES = [
+  "HIIT", "RPM/Cycling", "Pilates", "Yoga", "Body Pump", "Zumba", "CrossFit", "Treino Funcional", "Natação",
+];
+const MUSCLE_GROUPS_PROMPT =
+  "preenche categories com TODOS os grupos musculares trabalhados na sessão, não apenas " +
+  "um (ex.: um treino de elevações laterais e extensões de tríceps é [\"Ombros\", " +
+  `\"Tríceps\"]). Escolhe de entre: ${MUSCLE_GROUPS.join(", ")}. Se não for claro, devolve ` +
+  "categories vazio.";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -48,10 +63,13 @@ const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     session_name: { type: "STRING" },
-    // Grupos musculares (força) ou modalidades (aula). Array: uma sessão pode
-    // ser "Ombros" + "Tríceps". O cliente sugere uma lista; aceita-se texto
-    // livre porque a coluna não tem CHECK.
+    // Grupos musculares trabalhados, em qualquer tipo de sessão. Array: uma
+    // sessão pode ser "Ombros" + "Tríceps". O cliente sugere uma lista; aceita-se
+    // texto livre porque a coluna não tem CHECK.
     categories: { type: "ARRAY", items: { type: "STRING" } },
+    // Só numa aula: a modalidade (CrossFit, Treino Funcional…). Vive em
+    // workout_sessions.class_types desde 2026-09-25 — antes ia em categories.
+    class_types: { type: "ARRAY", items: { type: "STRING" } },
     // Métricas do relógio/app. Existem em qualquer tipo de sessão, mas numa
     // aula são tudo o que há para extrair.
     duration_seconds: { type: "NUMBER", nullable: true },
@@ -141,9 +159,12 @@ function buildPrompt(kind: string, notes: string | null): string {
       "vejas explicitamente exercícios com repetições e peso. " +
       METRICS_PROMPT +
       " Sugere um nome curto para a sessão (session_name) e, se conseguires identificar a " +
-      "modalidade, preenche categories com uma ou mais destas: HIIT, RPM/Cycling, Pilates, " +
-      "Yoga, Body Pump, Zumba, CrossFit, Treino Funcional, Natação. Se não for claro qual é, " +
-      "devolve categories vazio. Escreve em português de Portugal.";
+      `modalidade, preenche class_types com uma ou mais destas: ${CLASS_TYPES.join(", ")}. ` +
+      "Se não for claro qual é, devolve class_types vazio. Depois, a partir dos exercícios que " +
+      "vires nas imagens ou que o utilizador descrever na observação abaixo, " +
+      MUSCLE_GROUPS_PROMPT +
+      " Numa aula sem exercícios descritos, categories fica vazio — não o deduzas só da " +
+      "modalidade. Escreve em português de Portugal.";
   } else {
     prompt =
       "As imagens seguintes são capturas de ecrã (screenshots) de uma app de registo de " +
@@ -156,11 +177,7 @@ function buildPrompt(kind: string, notes: string | null): string {
       "reps ou carga visíveis/registados, devolve null nesse campo (não inventes valores). " +
       "Sugere também um nome curto para a sessão (session_name) com base no tipo de treino " +
       "(ex.: \"Peito e Tríceps\", \"Pernas Superiores\", \"Full Body\"), em português de Portugal, e " +
-      "preenche categories com TODOS os grupos musculares trabalhados na sessão, não apenas " +
-      "um (ex.: um treino de elevações laterais e extensões de tríceps é [\"Ombros\", " +
-      "\"Tríceps\"]). Escolhe de entre: Peito, Costas, Pernas Superiores, Pernas Inferiores, Ombros, Bíceps, Tríceps, " +
-      "Braços, Core/Abdominais, Glúteos, Full Body, Push, Pull, Cardio. Se não for claro, devolve " +
-      "categories vazio. " +
+      MUSCLE_GROUPS_PROMPT + " Devolve class_types vazio. " +
       METRICS_PROMPT +
       " Usa nomes de exercícios em português de Portugal quando o exercício for conhecido " +
       "por esse nome, mantendo o nome original da app quando não houver tradução óbvia.";
@@ -298,6 +315,7 @@ type GymExtraField = { label: string; value: string };
 type GymAnalysis = {
   sessionName: string;
   categories: string[];
+  classTypes: string[];
   exercises: GymExercise[];
   metrics: GymMetrics;
   extraFields: GymExtraField[];
@@ -412,10 +430,14 @@ async function analyzeWithGemini(
 
   // Máximos generosos mas finitos: isto vem de um modelo, e um array enorme não
   // pode inchar a linha da sessão nem o log.
-  const categories = (Array.isArray(parsed.categories) ? parsed.categories : [])
-    .map((c) => str(c, 60))
-    .filter((c): c is string => c !== null)
-    .slice(0, 8);
+  const strList = (v: unknown): string[] =>
+    (Array.isArray(v) ? v : [])
+      .map((c) => str(c, 60))
+      .filter((c): c is string => c !== null)
+      .slice(0, 8);
+  const categories = strList(parsed.categories);
+  // Um treino de força não tem modalidade, diga o modelo o que disser.
+  const classTypes = kind === "aula" ? strList(parsed.class_types) : [];
 
   const extraFields: GymExtraField[] = (Array.isArray(parsed.extra_fields) ? parsed.extra_fields : [])
     // deno-lint-ignore no-explicit-any
@@ -426,10 +448,89 @@ async function analyzeWithGemini(
   return {
     sessionName: str(parsed.session_name, 80) ?? "",
     categories,
+    classTypes,
     exercises,
     metrics,
     extraFields,
     usage,
+  };
+}
+
+// Registo sem fotos (manual ou edição) em que não se escolheu nenhum grupo
+// muscular, mas as observações descrevem os exercícios: a Carol lê-os e
+// preenche os grupos, como já faz no registo por foto (relatado 2026-09-25 —
+// uma aula funcional com 20 exercícios descritos ficava sem nenhum).
+// Best-effort: se o Gemini falhar ou não tiver a certeza, fica vazio e o
+// registo segue — nunca é por isto que um treino deixa de ser gravado.
+const INFER_TIMEOUT_MS = 15000;
+const INFER_SCHEMA = {
+  type: "OBJECT",
+  properties: { categories: { type: "ARRAY", items: { type: "STRING" } } },
+  required: ["categories"],
+};
+export async function inferMuscleGroupsFromNotes(
+  notes: string | null,
+  geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<string[]> {
+  if (!notes || !notes.trim() || !hasTimeFor(deadline)) return [];
+  try {
+    const res = await fetchGeminiWithTimeout(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text:
+                "Um atleta descreveu assim o treino de ginásio que fez: \"" + notes.trim() + "\". " +
+                "A partir dos exercícios descritos, " + MUSCLE_GROUPS_PROMPT +
+                " Usa só nomes dessa lista, exatamente como estão escritos. Se a descrição não " +
+                "falar de exercícios, devolve categories vazio. Responde apenas com JSON.",
+            }],
+          }],
+          generationConfig: { response_mime_type: "application/json", response_schema: INFER_SCHEMA },
+        }),
+      },
+      INFER_TIMEOUT_MS,
+      0,
+      deadline,
+    );
+    if (!res.ok) {
+      console.warn("inferMuscleGroupsFromNotes: Gemini", res.status);
+      return [];
+    }
+    const json = await res.json();
+    const parsed = JSON.parse(json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}");
+    return pickMuscleGroups(parsed?.categories);
+  } catch (e) {
+    console.warn("inferMuscleGroupsFromNotes failed:", e);
+    return [];
+  }
+}
+
+// Só entram nomes do vocabulário — o que vem do modelo não inventa grupos novos.
+export function pickMuscleGroups(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const c of raw) {
+    if (typeof c !== "string") continue;
+    const hit = MUSCLE_GROUPS.find((g) => g.toLowerCase() === c.trim().toLowerCase());
+    if (hit && !out.includes(hit)) out.push(hit);
+  }
+  return out.slice(0, 8);
+}
+
+// Cliente antigo (PWA em cache, antes de 2026-09-25) numa aula: ainda manda a
+// modalidade em `categories` e não conhece `class_types`. Separa o que é
+// modalidade do que é grupo muscular, para a linha não voltar a misturá-los.
+export function splitLegacyAulaCategories(categories: string[]): { classTypes: string[]; categories: string[] } {
+  // "Outro" também era uma modalidade no seletor antigo de aulas.
+  const isClass = (c: string) => [...CLASS_TYPES, "Outro"].some((t) => t.toLowerCase() === c.toLowerCase());
+  return {
+    classTypes: categories.filter(isClass),
+    categories: categories.filter((c) => !isClass(c)),
   };
 }
 
@@ -498,6 +599,7 @@ async function generateGymCoachNotes(
     date: string;
     kind: string;
     categories: string[];
+    classTypes?: string[];
     metrics: GymMetrics;
     notes: string | null;
   },
@@ -539,7 +641,8 @@ async function generateGymCoachNotes(
 
   const contextLines = [
     `Tipo: ${kindLabel}`,
-    session.categories.length ? `Grupos/modalidade: ${session.categories.join(", ")}` : null,
+    session.classTypes?.length ? `Modalidade: ${session.classTypes.join(", ")}` : null,
+    session.categories.length ? `Grupos musculares: ${session.categories.join(", ")}` : null,
     m.duration_seconds ? `Duração: ${Math.round(m.duration_seconds / 60)} min` : null,
     m.calories_kcal ? `Calorias: ${m.calories_kcal} kcal` : null,
     hrZoneLine ? hrZoneLine : m.avg_hr ? `FC média: ${m.avg_hr} bpm` : null,
@@ -644,7 +747,7 @@ async function attachGymCoachNotes(
   sb: any,
   userId: string,
   session: { id: string; coach_notes?: string | null },
-  ctx: { date: string; kind: string; categories: string[]; metrics: GymMetrics; notes: string | null },
+  ctx: { date: string; kind: string; categories: string[]; classTypes?: string[]; metrics: GymMetrics; notes: string | null },
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<void> {
@@ -723,7 +826,7 @@ async function attachGymCoachNotes(
     }
 
     const result = await generateGymCoachNotes(
-      { date: ctx.date, kind: ctx.kind, categories: ctx.categories, metrics: ctx.metrics, notes: ctx.notes },
+      { date: ctx.date, kind: ctx.kind, categories: ctx.categories, classTypes: ctx.classTypes, metrics: ctx.metrics, notes: ctx.notes },
       previous || [],
       planItems,
       hasUpcomingRace,
@@ -798,10 +901,30 @@ Deno.serve(async (req) => {
     const userText = (v: unknown, max: number): string | null =>
       typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
     const userName = userText(body.name, 80);
-    const userCategories = (Array.isArray(body.categories) ? body.categories : [])
-      .map((c: unknown) => userText(c, 60))
-      .filter((c: string | null): c is string => c !== null)
-      .slice(0, 8);
+    const userList = (v: unknown): string[] =>
+      (Array.isArray(v) ? v : [])
+        .map((c: unknown) => userText(c, 60))
+        .filter((c: string | null): c is string => c !== null)
+        .slice(0, 8);
+    const isAulaRequest = body.kind === "aula";
+    // categories = grupos musculares; class_types = modalidade (só aulas).
+    // Um cliente antigo não manda class_types e põe a modalidade de uma aula
+    // em categories — separa-se aqui (splitLegacyAulaCategories).
+    let userCategories = userList(body.categories);
+    let userClassTypes: string[] = [];
+    // Cliente que já conhece class_types. Um antigo não o manda — e, numa
+    // edição, não pode apagar a modalidade que a migration já tinha movido
+    // para class_types (ver o update da edição, abaixo).
+    const clientSendsClassTypes = Array.isArray(body.class_types);
+    if (isAulaRequest) {
+      if (clientSendsClassTypes) {
+        userClassTypes = userList(body.class_types);
+      } else {
+        const legacy = splitLegacyAulaCategories(userCategories);
+        userClassTypes = legacy.classTypes;
+        userCategories = legacy.categories;
+      }
+    }
     const userMetrics: GymMetrics = {
       duration_seconds: intInRange(body.duration_seconds, 1, 86400),
       calories_kcal: intInRange(body.calories_kcal, 0, 20000),
@@ -823,6 +946,8 @@ Deno.serve(async (req) => {
     // da IA, senão bastava ele desmarcar uma para ela voltar a aparecer.
     const mergeCategories = (ai: string[]): string[] =>
       userCategories.length ? userCategories : ai;
+    const mergeClassTypes = (ai: string[]): string[] =>
+      userClassTypes.length ? userClassTypes : ai;
 
     // ── Modo manual: registo sem fotos, com análise do Coach ───────────
     // Os valores já vêm todos do formulário (nada para o Gemini extrair de
@@ -838,8 +963,18 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const kind = body.kind === "aula" ? "aula" : "forca";
-      const finalName = userName ??
-        (userCategories.length ? userCategories.join(" e ") : null) ??
+      let classTypes = kind === "aula" ? userClassTypes : [];
+      // Nenhum grupo muscular escolhido mas as observações descrevem o treino:
+      // a Carol lê-as (inferMuscleGroupsFromNotes). O que ele escolheu ganha.
+      // Chama-se só depois das validações de cada caminho — um pedido que vai
+      // dar 404/400 não gasta uma chamada ao Gemini.
+      const resolveCategories = async (): Promise<string[]> =>
+        userCategories.length
+          ? userCategories
+          : await inferMuscleGroupsFromNotes(rawNotes, geminiKey, extractionDeadline);
+      const nameFor = (categories: string[]): string =>
+        userName ??
+        ((kind === "aula" ? classTypes : categories).join(" e ") || null) ??
         (kind === "aula" ? "Aula" : "Treino");
 
       // ── Edição de uma sessão existente (session_id presente) ─────────
@@ -853,12 +988,17 @@ Deno.serve(async (req) => {
         const sessionId = body.session_id;
         const { data: existing, error: fetchError } = await sb
           .from("workout_sessions")
-          .select("id")
+          .select("id, class_types")
           .eq("id", sessionId)
           .eq("user_id", userId)
           .maybeSingle();
         if (fetchError) return jsonResponse({ error: `Falha a procurar sessão: ${fetchError.message}` }, 500);
         if (!existing) return jsonResponse({ error: "Sessão não encontrada" }, 404);
+        // Cliente antigo a editar uma aula já migrada: abriu-a com categories
+        // vazio e não sabe de class_types — fica a modalidade que lá estava.
+        if (kind === "aula" && !clientSendsClassTypes && classTypes.length === 0) {
+          classTypes = Array.isArray(existing.class_types) ? existing.class_types : [];
+        }
 
         // deno-lint-ignore no-explicit-any
         const rawSets = Array.isArray(body.sets) ? body.sets : [];
@@ -883,13 +1023,16 @@ Deno.serve(async (req) => {
           })
           .filter((r: { exercise_name: string }) => r.exercise_name);
 
+        const categories = await resolveCategories();
+        const finalName = nameFor(categories);
         const { data: updatedSession, error: updateError } = await sb
           .from("workout_sessions")
           .update({
             date: body.date,
             name: finalName,
             kind,
-            categories: userCategories,
+            categories,
+            class_types: classTypes,
             ...userMetrics,
             notes: rawNotes,
           })
@@ -909,12 +1052,14 @@ Deno.serve(async (req) => {
         }
 
         await attachGymCoachNotes(sb, userId, updatedSession, {
-          date: body.date, kind, categories: userCategories, metrics: userMetrics, notes: rawNotes,
+          date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes,
         }, geminiKey, coachDeadline);
 
         return jsonResponse({ session: updatedSession, sets: savedSets });
       }
 
+      const categories = await resolveCategories();
+      const finalName = nameFor(categories);
       const { data: session, error: sessionError } = await sb
         .from("workout_sessions")
         .insert({
@@ -922,7 +1067,8 @@ Deno.serve(async (req) => {
           date: body.date,
           name: finalName,
           kind,
-          categories: userCategories,
+          categories,
+          class_types: classTypes,
           ...userMetrics,
           // A coluna é NOT NULL com default '{}' — null aqui rebentava o
           // insert (violação de not-null), como já visto em analyze-run/
@@ -936,7 +1082,7 @@ Deno.serve(async (req) => {
       if (sessionError) return jsonResponse({ error: `Falha a gravar sessão: ${sessionError.message}` }, 500);
 
       await attachGymCoachNotes(sb, userId, session, {
-        date: body.date, kind, categories: userCategories, metrics: userMetrics, notes: rawNotes,
+        date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes,
       }, geminiKey, coachDeadline);
 
       return jsonResponse({ session });
@@ -995,6 +1141,7 @@ Deno.serve(async (req) => {
 
       const mergedName = userName ?? (analysis.sessionName || null);
       const mergedCategories = mergeCategories(analysis.categories);
+      const mergedClassTypes = existingKind === "aula" ? mergeClassTypes(analysis.classTypes) : [];
       // Numa reanálise o que já estava gravado é o último recurso: se a IA não
       // voltar a ler uma métrica (e o utilizador não a tiver escrito), mantém-se
       // o valor anterior em vez de ser apagado.
@@ -1013,6 +1160,7 @@ Deno.serve(async (req) => {
           notes: rawNotes,
           ...(mergedName ? { name: mergedName } : {}),
           ...(mergedCategories.length ? { categories: mergedCategories } : {}),
+          ...(mergedClassTypes.length ? { class_types: mergedClassTypes } : {}),
           ...keptMetrics,
         })
         .eq("id", sessionId)
@@ -1079,11 +1227,12 @@ Deno.serve(async (req) => {
 
     // 3. Gravar sessão + séries
     const mergedCategories = mergeCategories(analysis.categories);
+    const mergedClassTypes = kind === "aula" ? mergeClassTypes(analysis.classTypes) : [];
     // Cascata do nome: o que o utilizador escreveu, a sugestão da IA, as
     // categorias, e só em último caso um rótulo genérico — para uma aula nunca
     // aparecer na lista como "Treino".
     const finalName = userName ?? (analysis.sessionName || null) ??
-      (mergedCategories.length ? mergedCategories.join(" e ") : null) ??
+      ((kind === "aula" ? mergedClassTypes : mergedCategories).join(" e ") || null) ??
       (kind === "aula" ? "Aula" : "Treino");
     const { data: session, error: sessionError } = await sb
       .from("workout_sessions")
@@ -1093,6 +1242,7 @@ Deno.serve(async (req) => {
         name: finalName,
         kind,
         categories: mergedCategories,
+        class_types: mergedClassTypes,
         ...mergeMetrics(analysis.metrics),
         photo_paths: photoPaths,
         status: "concluido",
@@ -1120,7 +1270,7 @@ Deno.serve(async (req) => {
 
     // 4. Comentário do Coach (best-effort — ver attachGymCoachNotes)
     await attachGymCoachNotes(sb, userId, session, {
-      date, kind, categories: mergedCategories, metrics: mergeMetrics(analysis.metrics), notes: rawNotes,
+      date, kind, categories: mergedCategories, classTypes: mergedClassTypes, metrics: mergeMetrics(analysis.metrics), notes: rawNotes,
     }, geminiKey, coachDeadline);
 
     await checkAndLogAppImage(sb, userId, "gym", images, mime, analysis as unknown as Record<string, unknown>);

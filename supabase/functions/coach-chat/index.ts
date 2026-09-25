@@ -1521,7 +1521,8 @@ export type GymSessionSummary = {
   date: string;
   name: string;
   kind: "forca" | "aula";
-  categories: string[];
+  categories: string[];   // grupos musculares, em qualquer tipo de sessão
+  classTypes?: string[];  // modalidade da aula (migration 20260925162654)
   volume: number;     // Σ reps × weight (kg) — só séries com ambos preenchidos
   sets: number;       // contagem de séries efetivas
   highRepSets: number; // séries com reps ≥ 15 (faixa desaconselhada para corredor)
@@ -1562,6 +1563,7 @@ export function summariseSessions(sessions: any[]): GymSessionSummary[] {
       name: s.name || "Treino",
       kind: s.kind === "aula" ? "aula" : "forca",
       categories: Array.isArray(s.categories) ? s.categories : [],
+      classTypes: s.kind === "aula" && Array.isArray(s.class_types) ? s.class_types : [],
       volume,
       sets,
       highRepSets,
@@ -1592,7 +1594,9 @@ export function formatSessionLine(r: GymSessionSummary): string {
   else if (r.maxHr) parts.push(`FC máx ${r.maxHr} bpm`);
   if (r.exertion) parts.push(`esforço ${r.exertion}/10`);
 
-  const kindLabel = r.kind === "aula" ? " (aula)" : "";
+  const kindLabel = r.kind === "aula"
+    ? (r.classTypes?.length ? ` (aula: ${r.classTypes.join(", ")})` : " (aula)")
+    : "";
   const cats = r.categories.length ? ` [${r.categories.join(", ")}]` : "";
   const detail = parts.length ? ` — ${parts.join(", ")}` : " — sem detalhes registados";
   return `- ${r.date}${r.startTime ? ` às ${hhmm(r.startTime)}` : ""}: ${r.name}${kindLabel}${cats}${detail}`;
@@ -5665,7 +5669,7 @@ async function handler(req: Request): Promise<Response> {
     const { data: gymSessions, error: err_gymSessions } = await sb
       .from("workout_sessions")
       .select(
-        "date, start_time, name, status, kind, categories, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
+        "date, start_time, name, status, kind, categories, class_types, duration_seconds, calories_kcal, avg_hr, max_hr, exertion, " +
           "workout_session_sets(exercise_name, reps, weight, one_rep_max_est)",
       )
       .eq("user_id", userId)
