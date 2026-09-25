@@ -68,7 +68,9 @@ describe('racePlanEngine — carolOverviewText, cada ramo na voz dela', () => {
     semRotina(text);
     // Terceira revisão (2026-09-25): o que a fase quer, sem repetir o cartão
     // da fase (as fáceis, o volume), e o volume com vírgula.
-    expect(text).toContain('A base é para aguentares volume');
+    // O que a base pede a este atleta (phaseGuidance): o volume da doutrina
+    // para os 10 km no nível dele, face ao que ele corre.
+    expect(text).toMatch(/Para os 10 km, quero que chegues aos 35 km por semana/);
     expect(text).not.toMatch(/contam como fáceis|conta como fácil/);
     expect(text).not.toMatch(/\d\.\d km por semana/);
   });

@@ -64,6 +64,9 @@ export interface PhaseEvaluationInput {
   distanceKm: number;
   experienceLevel: string;
   viabilityFlags: string[];
+  /** Hoje (dia de Lisboa). Numa fase a decorrer, a nota e o texto medem-se
+   *  pelas semanas que já passaram; sem ele, pela fase inteira (como antes). */
+  todayISO?: string | null;
 }
 
 // Tipos de treino que contam como baixa intensidade (Z1/Z2) — ver o
@@ -87,6 +90,10 @@ const HARD_TRAINING_TYPES = new Set(["intervalos", "fartlek"]);
 function isUnknownIntensity(r: RunForPhase): boolean {
   if (isLowIntensity(r) || r.effort_rpe != null) return false;
   return !(r.training_type && HARD_TRAINING_TYPES.has(r.training_type));
+}
+
+function daysBetween(fromISO: string, toISO: string): number {
+  return Math.round((Date.parse(`${toISO}T00:00:00Z`) - Date.parse(`${fromISO}T00:00:00Z`)) / 86400000);
 }
 
 function isLowIntensity(r: RunForPhase): boolean {
@@ -162,7 +169,7 @@ function buildCommentary(c: CommentaryInput): string {
         if (poucasSessoes) return `A base teve ${km} de ${alvo} km, mas poucas sessões: ${corridas}.`;
         return `A base teve ${corridas} e ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
       }
-      if (curto) return `Vais em ${km} de ${alvo} km desta fase. Acrescenta quilómetros fáceis, em Z1/Z2, para lá chegares.`;
+      if (curto) return `Vais em ${km} km nesta fase, e a esta altura queria ${alvo}. Acrescenta quilómetros fáceis, em Z1/Z2.`;
       if (faltaEsforco) {
         return `Não sei se as tuas corridas estão a ser fáceis: ${semEsforco} desta fase sem o esforço registado. Regista-o, que a base se faz quase toda em ritmo fácil (Z1/Z2).`;
       }
@@ -172,9 +179,9 @@ function buildCommentary(c: CommentaryInput): string {
           ? `Nenhuma das tuas corridas desta fase conta como fácil (Z1/Z2), e a base pede quase todas. Faz a maior parte em ritmo fácil, a conversar${esforco}.`
           : `${faceis.charAt(0).toUpperCase()}${faceis.slice(1)}, e a base pede quase todas. Abranda os treinos fáceis${esforco}.`;
       }
-      if (bom) return `A base está a ser bem feita: ${corridas}, ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
-      if (poucasSessoes) return `Vais em ${km} de ${alvo} km, mas com poucas sessões: ${corridas} nesta fase. A base quer regularidade, três por semana.`;
-      return `A base leva ${corridas} e ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
+      if (bom) return `A base está a ser bem feita: ${corridas}, ${km} km, quase tudo em ritmo fácil.`;
+      if (poucasSessoes) return `Vais em ${km} km, mas com poucas sessões: ${corridas} nesta fase. A base quer regularidade, três por semana.`;
+      return `A base leva ${corridas} e ${km} km, quase tudo em ritmo fácil.`;
     case "build":
       if (c.done) {
         if (curto) return `A construção ficou com pouco volume: ${km} km.`;
@@ -189,7 +196,7 @@ function buildCommentary(c: CommentaryInput): string {
     case "peak":
       if (c.done) return curto ? `O pico ficou com pouco volume: ${km} de ${alvo} km.` : `O pico teve ${km} km.`;
       return curto
-        ? `Estás no pico com pouco volume: ${km} de ${alvo} km. É nos longos daqui que o ritmo de prova se ensaia; não os saltes.`
+        ? `Estás no pico com pouco volume: ${km} km, e a esta altura queria ${alvo}. É nos longos daqui que o ritmo de prova se ensaia; não os saltes.`
         : `Estás no pico de carga: ${km} km nesta fase. É nos longos daqui que o ritmo de prova se ensaia.`;
     case "taper":
       return c.done
@@ -201,7 +208,7 @@ function buildCommentary(c: CommentaryInput): string {
 }
 
 export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvaluation {
-  const { phaseId, startDateStr, endDateStr, phaseState, phaseWeeks, runs, distanceKm, experienceLevel, viabilityFlags } = input;
+  const { phaseId, startDateStr, endDateStr, phaseState, phaseWeeks, runs, distanceKm, experienceLevel, viabilityFlags, todayISO } = input;
 
   if (phaseState === "upcoming") {
     return {
@@ -252,7 +259,43 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
 
   const distCategory = categorizeDistance(distanceKm) || "10k";
   const targetWeeklyKm = MIN_VOLUME_KM[experienceLevel]?.[distCategory] || FALLBACK_TARGET_WEEKLY_KM;
-  const expectedPhaseKm = targetWeeklyKm * Math.max(1, phaseWeeks);
+  const metrics = {
+    totalKm: Math.round(totalKm * 10) / 10,
+    runsCount,
+    polarizedZ1Z2Pct: runsCount > 0 ? polarizedPct : null,
+    avgPace: avgPaceSec ? formatPaceMinKm(avgPaceSec) : null,
+  };
+
+  /* O Bloco 1 desaconselha o ultra ao iniciante: a fase não se avalia (o
+     cartão pedia volume rumo aos 45 km/semana de um ultra que a doutrina
+     não prepara — quinta revisão pré-deploy, 2026-09-25). */
+  if (experienceLevel === "iniciante" && distCategory === "ultra") {
+    return {
+      score: null, stars: 0, gradeLabel: "Desaconselhada", statusColor: "slate",
+      summary: "Não avalio esta fase: um ultra é desaconselhado no teu nível.",
+      metrics,
+    };
+  }
+
+  /* Uma fase a decorrer mede-se pelo que já passou dela, ao dia, não pela
+     fase inteira: a meio da base, "41 de 180 km" mandava acrescentar
+     quilómetros a quem ia no ritmo certo (quarta revisão pré-deploy,
+     2026-09-25). Contar semanas inteiras fazia a nota cair no início de
+     cada semana (48% ao segundo dia a quem ia no alvo — quinta revisão),
+     por isso conta-se ao dia, e a primeira semana não se julga. */
+  const daysElapsed = phaseState === "active" && todayISO
+    ? Math.min(Math.max(1, daysBetween(startDateStr, todayISO) + 1), Math.max(1, phaseWeeks) * 7)
+    : null;
+  if (daysElapsed != null && daysElapsed < 7) {
+    const quando = daysElapsed === 1 ? "hoje" : daysElapsed === 2 ? "ontem" : `há ${daysElapsed - 1} dias`;
+    return {
+      score: null, stars: 0, gradeLabel: "Em Curso", statusColor: "slate",
+      summary: `Esta fase começou ${quando}: avalio-a ao fim da primeira semana.`,
+      metrics,
+    };
+  }
+  const weeksCounted = daysElapsed != null ? daysElapsed / 7 : Math.max(1, phaseWeeks);
+  const expectedPhaseKm = targetWeeklyKm * weeksCounted;
   const volumeRatio = Math.min(1.0, totalKm / expectedPhaseKm);
 
   if (runsCount === 0) {
@@ -270,7 +313,7 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
   }
 
   // Pontuação proporcional: volume 50%, polarização 30%, consistência 20%.
-  const expectedRunsCount = Math.max(1, phaseWeeks * EXPECTED_RUNS_PER_WEEK);
+  const expectedRunsCount = Math.max(1, weeksCounted * EXPECTED_RUNS_PER_WEEK);
   const frequencyRatio = Math.min(1.0, runsCount / expectedRunsCount);
   const polFactor = polarizedPct >= POLARIZATION_TARGET_PCT ? 1.0 : Math.max(0.4, polarizedPct / POLARIZATION_TARGET_PCT);
 
@@ -306,11 +349,6 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       phaseId, done: phaseState === "completed", score, volumeRatio, frequencyRatio,
       totalKm, expectedPhaseKm, runsCount, polarizedPct, unknownCount,
     }),
-    metrics: {
-      totalKm: Math.round(totalKm * 10) / 10,
-      runsCount,
-      polarizedZ1Z2Pct: polarizedPct,
-      avgPace: avgPaceSec ? formatPaceMinKm(avgPaceSec) : null,
-    },
+    metrics,
   };
 }

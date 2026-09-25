@@ -19,6 +19,7 @@ import { getRecoveryDaysAfterRace as sharedGetRecoveryDaysAfterRace } from '@for
 import { getRecommendedPrepWeeks as sharedGetRecommendedPrepWeeks, getEffectiveDistanceKm as sharedGetEffectiveDistanceKm, resolveExperienceLevel as sharedResolveExperienceLevel, computeEffectivePrepStart } from '@formulas/racePlanning.ts';
 import { computePhaseEvaluation } from '@formulas/racePhaseEvaluation.ts';
 import { computePhaseWindows, resolvePhaseState } from '@formulas/racePhases.ts';
+import { phaseGuidance } from './phaseGuidance';
 
 function getTodayISO() {
   const d = new Date();
@@ -308,6 +309,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       distanceKm,
       experienceLevel,
       viabilityFlags: viability.flags,
+      // Numa fase a decorrer, conta só o que já passou dela.
+      todayISO: today,
     });
 
   // ─── Construção dos Objetos das 5 Fases ──────────────────────────────────────
@@ -434,20 +437,23 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   } else if (daysToRace <= 7) {
     carolOverviewText = `${faltam(daysToRace)}: esta semana já não se ganha forma, só se perde se exagerares. Uma ou duas corridas curtas com umas acelerações; o resto é descansar e comer hidratos com regularidade.`;
   } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
-    /* Onde está e o que a fase quer. Como está a correr — as fáceis, o
-       volume — di-lo o cartão da fase, logo abaixo, e o parecer não o
-       repete: os dois diziam quase a mesma frase, um por baixo do outro
-       (terceira revisão, 2026-09-25). No polimento a carga desce. */
-    const semana = weeklyVol != null
-      ? `, com ${weeklyVol.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km por semana`
-      : '';
-    const PHASE_PURPOSE = {
-      base: 'A base é para aguentares volume sem te cansares; a velocidade vem depois.',
-      build: 'Aqui entram o limiar e o ritmo de prova; o longo continua fácil, e uma semana em cada três ou quatro é mais leve.',
-      peak: 'É a fase mais dura: os longos com ritmo de prova, e os dias leves entre eles para os absorveres.',
-      taper: 'É altura de guardar pernas para a prova: nada de treinos novos, nem de compensar o que ficou para trás.',
-    };
-    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}${semana}. ${PHASE_PURPOSE[currentPhase.id] ?? 'Mantém uma semana mais leve a cada três ou quatro — é assim que a carga sobe sem te lesionares.'}`;
+    /* Onde está e o que a fase pede a ESTE atleta (utils/phaseGuidance.js:
+       o nível, a distância, o volume dele, o ritmo-alvo, a prioridade e o
+       D+, com os números da doutrina). Como está a correr — as fáceis, o
+       volume da fase — di-lo o cartão da fase, logo abaixo, e o parecer
+       não o repete (terceira revisão, 2026-09-25). */
+    const guia = phaseGuidance({
+      phaseId: currentPhase.id,
+      experienceLevel,
+      distanceKm,
+      raceType,
+      elevationGainM,
+      racePriority,
+      weeklyVolumeKm: weeklyVol,
+      targetPaceSeconds: race?.target_pace_seconds_per_km ?? null,
+      daysToRace,
+    });
+    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}.${guia ? ` ${guia}` : ''}`;
   } else {
     // Sem uma única corrida registada nesta fase, "continua a proteger o
     // rácio 80/20"/"respeita a semana de descarga" presumem um histórico
