@@ -11,6 +11,15 @@ export function mapCategoriesToMuscles(categories = []) {
     'biceps': ['biceps'],
     'triceps': ['triceps'],
     'glúteos': ['gluteal'],
+    'gluteos': ['gluteal'],
+    // O vocabulário da Carol (analyze-gym, MUSCLE_GROUPS).
+    'pernas superiores': ['quadriceps', 'hamstring', 'adductor', 'abductors'],
+    'pernas inferiores': ['calves'],
+    'core/abdominais': ['abs', 'obliques'],
+    'braços': ['biceps', 'triceps', 'forearm'],
+    'bracos': ['biceps', 'triceps', 'forearm'],
+    'push': ['chest', 'front-deltoids', 'triceps'],
+    'pull': ['upper-back', 'trapezius', 'back-deltoids', 'biceps'],
     'core': ['abs', 'obliques'],
     'abdominais': ['abs', 'obliques'],
     'full body': ['chest', 'trapezius', 'upper-back', 'lower-back', 'quadriceps', 'hamstring', 'gluteal', 'calves', 'front-deltoids', 'back-deltoids', 'biceps', 'triceps', 'abs'],
@@ -28,11 +37,13 @@ export function mapCategoriesToMuscles(categories = []) {
     'natação': ['upper-back', 'trapezius', 'front-deltoids', 'back-deltoids', 'chest', 'triceps', 'quadriceps']
   };
 
+  // 'Bíceps' e 'Biceps' são o mesmo grupo — o seletor antigo não tinha acento.
+  const plain = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   categories.forEach(cat => {
-    const key = cat.toLowerCase();
-    if (mapping[key]) {
-      mapping[key].forEach(m => muscles.add(m));
-    }
+    if (typeof cat !== 'string') return;
+    const key = cat.trim().toLowerCase();
+    const hit = mapping[key] || mapping[plain(key)];
+    if (hit) hit.forEach(m => muscles.add(m));
   });
 
   return Array.from(muscles);

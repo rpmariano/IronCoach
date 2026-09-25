@@ -23,7 +23,7 @@ Deno.test("planningFrameSection: sem plano e sem prova deve retornar enquadramen
   assertStringIncludes(bloco, "quer MANTER os seus hábitos");
 });
 
-// ── Grupos musculares vs modalidade (migration 20260925160000) ─────────────
+// ── Grupos musculares vs modalidade (migration 20260925162654) ─────────────
 
 Deno.test("pickMuscleGroups só aceita nomes do vocabulário, com a grafia dele", () => {
   assertEquals(

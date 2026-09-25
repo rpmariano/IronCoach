@@ -13,7 +13,7 @@ export interface SessionForClassAnalytics {
   date: string;
   kind?: string | null;
   name?: string | null;
-  // A modalidade da aula (migration 20260925160000). `categories` são os
+  // A modalidade da aula (migration 20260925162654). `categories` são os
   // grupos musculares e não entram aqui — uma aula conta pela modalidade.
   class_types?: string[] | null;
   categories?: string[] | null;

@@ -31,7 +31,7 @@ const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
 
 // Os vocabulários que a Carol usa. categories = grupos musculares, sempre;
-// class_types = modalidade, só nas aulas (migration 20260925160000).
+// class_types = modalidade, só nas aulas (migration 20260925162654).
 const MUSCLE_GROUPS = [
   "Peito", "Costas", "Pernas Superiores", "Pernas Inferiores", "Ombros", "Bíceps", "Tríceps",
   "Braços", "Core/Abdominais", "Glúteos", "Full Body", "Push", "Pull", "Cardio",
@@ -526,7 +526,8 @@ export function pickMuscleGroups(raw: unknown): string[] {
 // modalidade em `categories` e não conhece `class_types`. Separa o que é
 // modalidade do que é grupo muscular, para a linha não voltar a misturá-los.
 export function splitLegacyAulaCategories(categories: string[]): { classTypes: string[]; categories: string[] } {
-  const isClass = (c: string) => CLASS_TYPES.some((t) => t.toLowerCase() === c.toLowerCase());
+  // "Outro" também era uma modalidade no seletor antigo de aulas.
+  const isClass = (c: string) => [...CLASS_TYPES, "Outro"].some((t) => t.toLowerCase() === c.toLowerCase());
   return {
     classTypes: categories.filter(isClass),
     categories: categories.filter((c) => !isClass(c)),
@@ -911,8 +912,12 @@ Deno.serve(async (req) => {
     // em categories — separa-se aqui (splitLegacyAulaCategories).
     let userCategories = userList(body.categories);
     let userClassTypes: string[] = [];
+    // Cliente que já conhece class_types. Um antigo não o manda — e, numa
+    // edição, não pode apagar a modalidade que a migration já tinha movido
+    // para class_types (ver o update da edição, abaixo).
+    const clientSendsClassTypes = Array.isArray(body.class_types);
     if (isAulaRequest) {
-      if (Array.isArray(body.class_types)) {
+      if (clientSendsClassTypes) {
         userClassTypes = userList(body.class_types);
       } else {
         const legacy = splitLegacyAulaCategories(userCategories);
@@ -958,13 +963,17 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const kind = body.kind === "aula" ? "aula" : "forca";
-      const classTypes = kind === "aula" ? userClassTypes : [];
+      let classTypes = kind === "aula" ? userClassTypes : [];
       // Nenhum grupo muscular escolhido mas as observações descrevem o treino:
       // a Carol lê-as (inferMuscleGroupsFromNotes). O que ele escolheu ganha.
-      const categories = userCategories.length
-        ? userCategories
-        : await inferMuscleGroupsFromNotes(rawNotes, geminiKey, extractionDeadline);
-      const finalName = userName ??
+      // Chama-se só depois das validações de cada caminho — um pedido que vai
+      // dar 404/400 não gasta uma chamada ao Gemini.
+      const resolveCategories = async (): Promise<string[]> =>
+        userCategories.length
+          ? userCategories
+          : await inferMuscleGroupsFromNotes(rawNotes, geminiKey, extractionDeadline);
+      const nameFor = (categories: string[]): string =>
+        userName ??
         ((kind === "aula" ? classTypes : categories).join(" e ") || null) ??
         (kind === "aula" ? "Aula" : "Treino");
 
@@ -979,12 +988,17 @@ Deno.serve(async (req) => {
         const sessionId = body.session_id;
         const { data: existing, error: fetchError } = await sb
           .from("workout_sessions")
-          .select("id")
+          .select("id, class_types")
           .eq("id", sessionId)
           .eq("user_id", userId)
           .maybeSingle();
         if (fetchError) return jsonResponse({ error: `Falha a procurar sessão: ${fetchError.message}` }, 500);
         if (!existing) return jsonResponse({ error: "Sessão não encontrada" }, 404);
+        // Cliente antigo a editar uma aula já migrada: abriu-a com categories
+        // vazio e não sabe de class_types — fica a modalidade que lá estava.
+        if (kind === "aula" && !clientSendsClassTypes && classTypes.length === 0) {
+          classTypes = Array.isArray(existing.class_types) ? existing.class_types : [];
+        }
 
         // deno-lint-ignore no-explicit-any
         const rawSets = Array.isArray(body.sets) ? body.sets : [];
@@ -1009,6 +1023,8 @@ Deno.serve(async (req) => {
           })
           .filter((r: { exercise_name: string }) => r.exercise_name);
 
+        const categories = await resolveCategories();
+        const finalName = nameFor(categories);
         const { data: updatedSession, error: updateError } = await sb
           .from("workout_sessions")
           .update({
@@ -1042,6 +1058,8 @@ Deno.serve(async (req) => {
         return jsonResponse({ session: updatedSession, sets: savedSets });
       }
 
+      const categories = await resolveCategories();
+      const finalName = nameFor(categories);
       const { data: session, error: sessionError } = await sb
         .from("workout_sessions")
         .insert({

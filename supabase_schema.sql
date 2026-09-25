@@ -381,7 +381,7 @@ create policy "admin read all" on workout_sessions for select using (public.is_a
 -- `categories` guarda os grupos musculares, num treino de força ou numa aula
 -- (ver MUSCLE_GROUPS em src/components/Gym/GymRegistration.jsx) — é o que
 -- permite calcular volume semanal por grupo muscular. A modalidade de uma aula
--- vive em `class_types` (migration 20260925160000).
+-- vive em `class_types` (migration 20260925162654).
 -- `exertion` é o RPE 1-10 da sessão, equivalente a runs.effort_rpe.
 alter table workout_sessions
   add column if not exists kind text not null default 'forca'

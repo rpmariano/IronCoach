@@ -236,7 +236,7 @@ Deno.test("formatSessionLine omite volume e séries numa aula", () => {
   assertStringIncludes(line, "esforço 6/10");
 });
 
-// Desde a migration 20260925160000 a modalidade vive em class_types e
+// Desde a migration 20260925162654 a modalidade vive em class_types e
 // categories são os grupos musculares, também numa aula.
 Deno.test("formatSessionLine mostra a modalidade e os grupos musculares de uma aula", () => {
   const [row] = summariseSessions([

@@ -1522,7 +1522,7 @@ export type GymSessionSummary = {
   name: string;
   kind: "forca" | "aula";
   categories: string[];   // grupos musculares, em qualquer tipo de sessão
-  classTypes?: string[];  // modalidade da aula (migration 20260925160000)
+  classTypes?: string[];  // modalidade da aula (migration 20260925162654)
   volume: number;     // Σ reps × weight (kg) — só séries com ambos preenchidos
   sets: number;       // contagem de séries efetivas
   highRepSets: number; // séries com reps ≥ 15 (faixa desaconselhada para corredor)

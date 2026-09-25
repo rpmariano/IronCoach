@@ -26,24 +26,29 @@ const GYM_KINDS = [
 
 /* `categories` são sempre grupos musculares, num treino de força ou numa
    aula; a modalidade da aula vive à parte, em `class_types` (migration
-   20260925160000 — antes a mesma coluna guardava as duas coisas). */
-const MUSCLE_GROUPS = ['Peito', 'Costas', 'Pernas Superiores', 'Pernas Inferiores', 'Ombros', 'Biceps', 'Triceps', 'Glúteos', 'Full Body', 'Cardio', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'];
+   20260925162654 — antes a mesma coluna guardava as duas coisas). */
+const MUSCLE_GROUPS = ['Peito', 'Costas', 'Pernas Superiores', 'Pernas Inferiores', 'Ombros', 'Bíceps', 'Tríceps', 'Glúteos', 'Core/Abdominais', 'Full Body', 'Cardio', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'];
 const CLASS_TYPES = ['HIIT', 'RPM/Cycling', 'Pilates', 'Yoga', 'Body Pump', 'Zumba', 'CrossFit', 'Treino Funcional', 'Natação', 'Outro'];
 const GYM_CATEGORIES_VISIBLE = 6;
 
 /* Um grupo de chips de escolha múltipla, com "+N mais" quando a lista é
    longa. Mostra sempre os escolhidos, mesmo os que não estão na lista (texto
    livre vindo da Carol ou de um registo antigo). */
-function ChipPicker({ label, hint, options, selected, onToggle }) {
+function ChipPicker({ id, label, hint, options, selected, onToggle }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? options : options.filter((c, i) => i < GYM_CATEGORIES_VISIBLE || selected.includes(c));
   const hiddenCount = options.length - visible.length;
   return (
     <div className="mb-4">
-      <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">{label}</label>
-      <div className="flex flex-wrap gap-1.5 mb-2">
+      <p id={`${id}-label`} className="text-[11px] text-[var(--text-3)] mb-1.5">{label}</p>
+      <div
+        role="group"
+        aria-labelledby={`${id}-label`}
+        aria-describedby={hint ? `${id}-hint` : undefined}
+        className="flex flex-wrap gap-1.5 mb-2"
+      >
         {visible.map(c => (
-          <Chip key={c} active={selected.includes(c)} variant="gym" onClick={() => onToggle(c)} type="button">
+          <Chip key={c} active={selected.includes(c)} aria-pressed={selected.includes(c)} variant="gym" onClick={() => onToggle(c)} type="button">
             {c}
           </Chip>
         ))}
@@ -66,12 +71,12 @@ function ChipPicker({ label, hint, options, selected, onToggle }) {
           </button>
         )}
         {selected.filter(c => !options.includes(c)).map(c => (
-          <Chip key={c} active variant="gym" onClick={() => onToggle(c)} type="button">
+          <Chip key={c} active aria-pressed variant="gym" onClick={() => onToggle(c)} type="button">
             {c}
           </Chip>
         ))}
       </div>
-      {hint && <p className="text-[11px] text-[var(--text-muted)] -mt-1">{hint}</p>}
+      {hint && <p id={`${id}-hint`} className="text-[11px] text-[var(--text-muted)] -mt-1">{hint}</p>}
     </div>
   );
 }
@@ -425,13 +430,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
   // ou o nome não justifica uma chamada ao Gemini.
-  /* …ou se não há grupo muscular nenhum mas as observações descrevem o
-     treino: guardar passa pela Carol, que os tira das observações
-     (inferMuscleGroupsFromNotes em analyze-gym). É o caminho para uma sessão
-     antiga, gravada antes disso, ganhar os seus grupos. */
+  // Sem grupos musculares escolhidos, a reanálise também os tira das
+  // observações (inferMuscleGroupsFromNotes em analyze-gym).
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && (currentSignature() !== originalSnapshot || (categories.length === 0 && notes.trim() !== ''));
+    && currentSignature() !== originalSnapshot;
 
   const toggleIn = (list, value) => (list.includes(value) ? list.filter(c => c !== value) : [...list, value]);
   const handleToggleCategory = (cat) => setCategories(prev => toggleIn(prev, cat));
@@ -848,6 +851,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
         {kind === 'aula' && (
           <ChipPicker
+            id="gr-tipo-aula"
             label="Tipo de aula — podes escolher vários"
             options={CLASS_TYPES}
             selected={classTypes}
@@ -855,6 +859,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           />
         )}
         <ChipPicker
+          id="gr-grupos-musculares"
           label={kind === 'aula' ? 'Grupos musculares (opcional) — podes escolher vários' : 'Grupos musculares — podes escolher vários'}
           hint={categories.length === 0 ? 'Se não escolheres, a Carol tira-os das observações.' : null}
           options={MUSCLE_GROUPS}

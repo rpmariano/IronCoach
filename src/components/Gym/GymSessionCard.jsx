@@ -169,7 +169,7 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
           )}
 
           {/* Anatomia Muscular — também numa aula, desde que `categories`
-              passou a ser só grupos musculares (migration 20260925160000). */}
+              passou a ser só grupos musculares (migration 20260925162654). */}
           {session.categories?.length > 0 && (
              <MuscleAnatomy2D activeMuscles={mapCategoriesToMuscles(session.categories)} naked />
           )}

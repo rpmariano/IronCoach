@@ -668,7 +668,7 @@ describe('GymRegistration — hora de início', () => {
   });
 });
 
-// Desde 2026-09-25 (migration 20260925160000) `categories` são sempre grupos
+// Desde 2026-09-25 (migration 20260925162654) `categories` são sempre grupos
 // musculares; a modalidade de uma aula vai em `class_types`.
 describe('GymRegistration — aula: modalidade e grupos musculares à parte', () => {
   const onClose = vi.fn();
@@ -724,10 +724,11 @@ describe('GymRegistration — aula: modalidade e grupos musculares à parte', ()
     render(<GymRegistration onClose={onClose} />);
     expect(screen.getByText('Se não escolheres, a Carol tira-os das observações.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Peito' }));
+    expect(screen.getByRole('button', { name: 'Peito' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByText('Se não escolheres, a Carol tira-os das observações.')).not.toBeInTheDocument();
   });
 
-  it('editar uma aula antiga sem grupos musculares mas com observações passa pela Carol, sem mudar nada', async () => {
+  it('editar uma aula antiga (modalidade já em class_types) mantém-na e manda os grupos vazios para a Carol os inferir', async () => {
     const AULA = {
       id: 'sess-aula', date: '2026-09-25', kind: 'aula', name: 'Aula funcional',
       class_types: ['Treino Funcional', 'CrossFit'], categories: [],
@@ -736,6 +737,11 @@ describe('GymRegistration — aula: modalidade e grupos musculares à parte', ()
     useAppStore.setState({ profile: PROFILE, gymSessions: [AULA], loadInitialData });
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-aula" />);
 
+    // Mudar só o nome não passa pela Carol — nem com os grupos vazios.
+    fireEvent.change(screen.getByDisplayValue('Aula funcional'), { target: { value: 'Funcional de sexta' } });
+    expect(screen.getByRole('button', { name: /Guardar alterações/ })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByDisplayValue(/Wall ball/), { target: { value: 'Wall ball, peso morto com 20kg, remo na máquina, flexões' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
