@@ -162,7 +162,7 @@ Deno.test("formatSplitsLine: o ritmo de cada volta, com o número da volta mesmo
       { distance_km: 1, time_seconds: 312 },
       { distance_km: 0.5, time_seconds: 160 },
     ]),
-    "Parciais (ritmo de cada volta, min/km): 1: 5.00 · 3: 5.12 · 4: 5.20",
+    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 3: 5'12\" · 4: 5'20\"",
   );
 });
 
@@ -178,4 +178,11 @@ Deno.test("formatHrZonesLine: minutos por zona, sem as zonas vazias", () => {
     "Tempo por zona de FC: Z1 5 min, Z2 31 min",
   );
   assertEquals(formatHrZonesLine(null), null);
+});
+
+Deno.test("formatSplitsLine: 4'59,6\" arredonda para 5'00\", não 4'60\"", () => {
+  assertEquals(
+    formatSplitsLine([{ distance_km: 1, time_seconds: 299.6 }, { distance_km: 1, time_seconds: 305 }]),
+    "Parciais (ritmo de cada volta, por km): 1: 5'00\" · 2: 5'05\"",
+  );
 });

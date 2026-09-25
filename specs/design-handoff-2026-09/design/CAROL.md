@@ -43,7 +43,9 @@ Cada treino, corrida, refeição ou avaliação corporal gravada recebe uma aná
 2. **O esforço** (ginásio, corrida) · **O prato** (refeição) · **Os números** (avaliação) — o que os dados dizem, face ao habitual do atleta.
 3. **O que esteve bem** — pontos concretos, cada um com a prova (o exercício, a carga, o alimento, a comparação) e o porquê de ser bom para este atleta.
 4. **O que corrigir** (**O que vigiar** na avaliação) — cada ponto com o porquê e a alternativa concreta.
-5. **Para a próxima** — uma ação; quando há intervenção no plano, o convite para "Falar com a Coach".
+5. **Para a próxima** — uma ação. Nos treinos e nas refeições, quando ela marca intervenção no plano, esta frase passa a ser o convite para "Falar com a Coach" — é o texto que faz aparecer o botão no cartão.
+
+A memória dela (`condenseCoachComment`, em `_shared/carolMemory.ts`) guarda de cada análise a abertura, o que mandou corrigir e a próxima ação — o que tem de manter coerente nas conversas seguintes. Sem plano, a análise não fala de plano (`planningFrameSection`).
 
 Porquê: a nota de uma aula funcional de 64 min, com vinte exercícios e cargas descritas pela atleta, saiu com três frases — todas de risco. Com "2 a 4 frases" e "o resto regista-se em silêncio", sobrava espaço para uma coisa só, e o aviso ganhava sempre. Empática e encorajadora não quer dizer branda: primeiro reconhece, depois corrige, e um aviso nunca apaga o esforço feito.
 

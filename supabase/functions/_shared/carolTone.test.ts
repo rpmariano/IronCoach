@@ -102,7 +102,16 @@ Deno.test("carolRecordAnalysisRules: abertura e os quatro blocos, pela ordem, co
   assertStringIncludes(r, "Olha para as cargas.");
   assertStringIncludes(r, "NÃO é elogio automático");
   assertStringIncludes(r, "primeiro reconheces, depois corriges");
-  assertStringIncludes(r, "Entre 6 e 10 frases");
+  assertStringIncludes(r, "Entre 6 e 9 frases");
+  // Sem plano, o enquadramento proíbe falar de plano — a regra não o pode exigir.
+  assertStringIncludes(r, "só se ele tiver plano");
+  assertEquals(r.includes("intervention_needed"), false);
+});
+
+Deno.test("carolRecordAnalysisRules: com intervenção, o bloco final é o convite para o botão (o cliente só o mostra se o texto o disser)", () => {
+  const r = carolRecordAnalysisRules({ readingLabel: "O esforço", readingHint: "", focusHint: "", interventionInvite: true });
+  assertStringIncludes(r, "Se marcaste intervention_needed=true");
+  assertStringIncludes(r, `"Falar com a Coach"`);
 });
 
 Deno.test("carolRecordAnalysisRules: rótulo de correção e tamanho próprios (avaliação corporal, refeição)", () => {

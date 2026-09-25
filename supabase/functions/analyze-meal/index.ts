@@ -491,6 +491,7 @@ const MEAL_ANALYSIS_RULES = carolRecordAnalysisRules({
     "treino feito, preparar um treino previsto. Para o que corrigir, olha para a proteína, os hidratos face ao treino, " +
     "a gordura e o alimento a trocar — sempre dentro das restrições alimentares dele.",
   sentences: "5 e 8",
+  interventionInvite: true,
 });
 
 /** Os alimentos da refeição, pelo nome e com a quantidade, para ela os poder

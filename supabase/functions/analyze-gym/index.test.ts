@@ -83,12 +83,15 @@ Deno.test("formatExerciseLines: cargas diferentes série a série; sem carga (0 
       { exercise_name: "Agachamento", set_index: 1, reps: 10, weight: 12.5 },
       { exercise_name: "Flexões", set_index: 0, reps: 15, weight: 0 },
       { exercise_name: "Prancha", set_index: 0, reps: null, weight: null },
+      // A edição grava Number(null) = 0 nas reps por preencher.
+      { exercise_name: "Remo", set_index: 0, reps: 0, weight: 20 },
       { exercise_name: "  ", set_index: 0, reps: 5, weight: 5 },
     ]),
     [
       "Agachamento — 2 séries: 12 reps a 10 kg, 10 reps a 12,5 kg",
       "Flexões — 1 série de 15 reps",
       "Prancha — 1 série de ? reps",
+      "Remo — 1 série de ? reps a 20 kg",
     ],
   );
   assertEquals(formatExerciseLines(null), []);

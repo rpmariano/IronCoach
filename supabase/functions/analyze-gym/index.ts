@@ -582,7 +582,8 @@ export function formatExerciseLines(rows: SetRow[] | null | undefined, maxExerci
     if (!byName.has(name)) byName.set(name, []);
     byName.get(name)!.push(r);
   }
-  const reps = (s: SetRow) => (s.reps == null ? "?" : fmtNum(s.reps));
+  // O mesmo para as repetições: 0 é um campo que ficou vazio, não uma série feita.
+  const reps = (s: SetRow) => (s.reps ? fmtNum(s.reps) : "?");
   // Sem carga, não se afirma nada: 0 tanto é peso do corpo como um campo que
   // ficou vazio (a edição grava Number(null), que é 0) — dizer "peso do
   // corpo" num peso morto sem carga preenchida seria inventar.
@@ -640,7 +641,8 @@ const GYM_ANALYSIS_RULES = carolRecordAnalysisRules({
     "face às sessões anteriores: uma carga que subiu, um exercício bem escolhido para o objetivo ou para a lesão dele, " +
     "uma boa distribuição dos grupos musculares. Para o que corrigir, olha para exercícios de risco face às lesões e " +
     "limitações que conheces (e dá o substituto), cargas ou volume desajustados, grupos musculares repetidos sem " +
-    "descanso e o encaixe no plano.",
+    "descanso e, só se ele tiver plano, o encaixe no plano.",
+  interventionInvite: true,
 });
 
 /* Enquadramento da análise conforme a situação do atleta.

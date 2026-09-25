@@ -66,8 +66,12 @@ export interface RecordAnalysisSpec {
   focusHint: string;
   /** "O que corrigir" por omissão; "O que vigiar" onde não há nada a corrigir à letra (avaliação corporal). */
   fixLabel?: string;
-  /** Tamanho total, em frases, a seguir a "Entre": "6 e 10" por omissão. */
+  /** Tamanho total, em frases, a seguir a "Entre": "6 e 9" por omissão (a soma dos blocos). */
   sentences?: string;
+  /** A análise pode marcar intervention_needed (ginásio, corrida, refeição): o
+   *  bloco final passa a ser o convite para o botão — o cliente só mostra o
+   *  botão "Falar com a Carol" se o texto o disser. Falso na avaliação corporal. */
+  interventionInvite?: boolean;
 }
 
 export function carolRecordAnalysisRules(spec: RecordAnalysisSpec): string {
@@ -83,9 +87,13 @@ export function carolRecordAnalysisRules(spec: RecordAnalysisSpec): string {
     `   - **${good}** (1-3 frases): pontos concretos, cada um com a prova — o nome, o número ou a comparação — e o ` +
     `porquê de ser bom PARA ESTE ATLETA, agora. ${spec.focusHint}\n` +
     `   - **${fix}** (1-2 frases): o que mudarias, cada ponto com o porquê (o risco ou o desperdício, ligado ao que ` +
-    `sabes deste atleta: lesões, plano, cansaço, o que fez nos últimos dias) e a alternativa concreta — o que fazer ` +
-    `em vez disso. Se não houver nada de relevante a corrigir, diz o que vais vigiar.\n` +
-    `   - **${next}** (1 frase): uma ação pequena e concreta para o próximo registo do mesmo tipo.\n` +
+    `sabes deste atleta: lesões, cansaço, o que fez nos últimos dias e, só se ele tiver plano, o plano) e a ` +
+    `alternativa concreta — o que fazer em vez disso. Se não houver nada de relevante a corrigir, diz o que vais vigiar.\n` +
+    `   - **${next}** (1 frase): uma ação pequena e concreta para o próximo registo do mesmo tipo.` +
+    (spec.interventionInvite
+      ? ` Se marcaste intervention_needed=true, esta frase é outra: o convite para o atleta carregar no botão ` +
+        `"Falar com a Coach" e adaptarem o plano juntos — sem prescreveres tu o treino seguinte.\n`
+      : `\n`) +
     `- Reconhecer um facto concreto (uma carga que subiu, uma boa escolha, uma evolução) NÃO é elogio automático: é ` +
     `leitura técnica, e aqui é obrigatória. Elogio automático é o genérico — esse continua proibido.\n` +
     `- Empática e encorajadora, sem perder a exigência. Se o atleta disse (na observação, no check-in ou na conversa) ` +
@@ -93,7 +101,7 @@ export function carolRecordAnalysisRules(spec: RecordAnalysisSpec): string {
     `esforço feito: primeiro reconheces, depois corriges — com o tom de quem quer ver o atleta voltar amanhã.\n` +
     `- Se o atleta escreveu o que fez (exercícios, cargas, alimentos, sensações), comenta-o pelo nome e com os ` +
     `números dele. Nunca inventes exercícios, cargas, séries ou valores que não estão nos dados.\n` +
-    `- Entre ${spec.sentences ?? "6 e 10"} frases curtas no total. Frases, não listas com marcadores. Sem títulos ` +
+    `- Entre ${spec.sentences ?? "6 e 9"} frases curtas no total. Frases, não listas com marcadores. Sem títulos ` +
     `além dos quatro rótulos.`;
 }
 

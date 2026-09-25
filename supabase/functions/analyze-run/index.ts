@@ -484,9 +484,14 @@ export function formatSplitsLine(splits: unknown): string | null {
   const paces = splits.slice(0, 45).map((s, i) => {
     const d = Number(s?.distance_km);
     const t = Number(s?.time_seconds);
-    return d > 0 && t > 0 ? `${i + 1}: ${formatPaceMinKm(t / d)}` : null;
+    if (!(d > 0 && t > 0)) return null;
+    // O formato do "Pace" deste prompt (5'20"), não o "5.20" do ecrã — no
+    // mesmo texto, os dois lado a lado liam-se como 5,2 minutos. Arredonda
+    // o total de segundos, para 4'59,6" dar 5'00" e não 4'60".
+    const sec = Math.round(t / d);
+    return `${i + 1}: ${Math.floor(sec / 60)}'${String(sec % 60).padStart(2, "0")}"`;
   }).filter((p): p is string => p !== null);
-  return paces.length >= 2 ? `Parciais (ritmo de cada volta, min/km): ${paces.join(" · ")}` : null;
+  return paces.length >= 2 ? `Parciais (ritmo de cada volta, por km): ${paces.join(" · ")}` : null;
 }
 
 /** O tempo passado em cada zona de frequência cardíaca, tal como o relógio o mostrou. */
@@ -510,7 +515,9 @@ const RUN_ANALYSIS_RULES = carolRecordAnalysisRules({
   focusHint:
     "Vai buscá-los ao ritmo, à gestão do esforço ao longo da corrida, à consistência do volume semanal e ao que o " +
     "atleta escreveu na nota. Para o que corrigir, olha para a gestão do ritmo, a intensidade face ao tipo de treino " +
-    "(um contínuo feito rápido demais, um longo sem controlo), a carga acumulada dos últimos dias e o encaixe no plano.",
+    "(um contínuo feito rápido demais, um longo sem controlo), a carga acumulada dos últimos dias e, só se ele tiver " +
+    "plano, o encaixe no plano.",
+  interventionInvite: true,
 });
 
 // Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
