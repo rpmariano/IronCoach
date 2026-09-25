@@ -122,9 +122,12 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
               )}
             </h4>
             {/* "05/09/2026 · 18:45 · Peito, Tríceps" — a hora só entra quando
-                existe (specs/plano-de-prova.md, "A véspera e a hora"). */}
+                existe (specs/plano-de-prova.md, "A véspera e a hora"). Numa
+                aula, a modalidade vem antes dos grupos musculares. */}
             <p className="text-xs text-[var(--text-3)] font-medium">
-              {[formattedDate, normalizeStartTime(session.start_time), session.categories?.length ? session.categories.join(', ') : null]
+              {[formattedDate, normalizeStartTime(session.start_time),
+                isAula && session.class_types?.length ? session.class_types.join(', ') : null,
+                session.categories?.length ? session.categories.join(', ') : null]
                 .filter(Boolean).join(' · ')}
             </p>
           </div>
@@ -165,8 +168,9 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
             </div>
           )}
 
-          {/* Anatomia Muscular */}
-          {!isAula && session.categories?.length > 0 && (
+          {/* Anatomia Muscular — também numa aula, desde que `categories`
+              passou a ser só grupos musculares (migration 20260925160000). */}
+          {session.categories?.length > 0 && (
              <MuscleAnatomy2D activeMuscles={mapCategoriesToMuscles(session.categories)} naked />
           )}
 

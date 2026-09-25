@@ -378,9 +378,10 @@ create policy "own rows" on workout_sessions for all
 create policy "admin read all" on workout_sessions for select using (public.is_admin());
 
 -- Métricas da sessão, todas opcionais (vêm do registo manual ou do print).
--- `categories` guarda os grupos musculares / tipo de aula escolhidos no cliente
--- (ver GYM_CATEGORIES em src/components/Gym/GymRegistration.jsx) — é o que
--- permite calcular volume semanal por grupo muscular.
+-- `categories` guarda os grupos musculares, num treino de força ou numa aula
+-- (ver MUSCLE_GROUPS em src/components/Gym/GymRegistration.jsx) — é o que
+-- permite calcular volume semanal por grupo muscular. A modalidade de uma aula
+-- vive em `class_types` (migration 20260925160000).
 -- `exertion` é o RPE 1-10 da sessão, equivalente a runs.effort_rpe.
 alter table workout_sessions
   add column if not exists kind text not null default 'forca'

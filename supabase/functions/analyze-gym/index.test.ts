@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { planningFrameSection } from "./index.ts";
+import { pickMuscleGroups, planningFrameSection, splitLegacyAulaCategories } from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -21,4 +21,25 @@ Deno.test("planningFrameSection: sem plano e sem prova deve retornar enquadramen
   const bloco = planningFrameSection(false, false);
   assertStringIncludes(bloco, "SEM PROVA E SEM PLANO");
   assertStringIncludes(bloco, "quer MANTER os seus hábitos");
+});
+
+// ── Grupos musculares vs modalidade (migration 20260925160000) ─────────────
+
+Deno.test("pickMuscleGroups só aceita nomes do vocabulário, com a grafia dele", () => {
+  assertEquals(
+    pickMuscleGroups(["pernas inferiores", "Ombros", "CrossFit", "Ombros", 3, "  costas "]),
+    ["Pernas Inferiores", "Ombros", "Costas"],
+  );
+});
+
+Deno.test("pickMuscleGroups devolve vazio para o que não é lista", () => {
+  assertEquals(pickMuscleGroups(null), []);
+  assertEquals(pickMuscleGroups("Peito"), []);
+});
+
+Deno.test("splitLegacyAulaCategories separa a modalidade dos grupos musculares (cliente antigo)", () => {
+  assertEquals(
+    splitLegacyAulaCategories(["Treino Funcional", "crossfit", "Pernas Inferiores"]),
+    { classTypes: ["Treino Funcional", "crossfit"], categories: ["Pernas Inferiores"] },
+  );
 });

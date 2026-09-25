@@ -218,7 +218,7 @@ Deno.test("summariseSessions assume 'forca' quando a sessão não tem tipo", () 
 Deno.test("formatSessionLine omite volume e séries numa aula", () => {
   const [row] = summariseSessions([
     makeAula("2026-07-25", "Aula de HIIT", {
-      categories: ["HIIT"],
+      class_types: ["HIIT"],
       duration_seconds: 2277,
       calories_kcal: 175,
       avg_hr: 100,
@@ -229,11 +229,31 @@ Deno.test("formatSessionLine omite volume e séries numa aula", () => {
   const line = formatSessionLine(row);
   assertEquals(line.includes("0 kg"), false);
   assertEquals(line.includes("0 séries"), false);
-  assertStringIncludes(line, "Aula de HIIT (aula) [HIIT]");
+  assertStringIncludes(line, "Aula de HIIT (aula: HIIT) —");
   assertStringIncludes(line, "38 min");
   assertStringIncludes(line, "175 kcal");
   assertStringIncludes(line, "FC média 100 / máx 139 bpm");
   assertStringIncludes(line, "esforço 6/10");
+});
+
+// Desde a migration 20260925160000 a modalidade vive em class_types e
+// categories são os grupos musculares, também numa aula.
+Deno.test("formatSessionLine mostra a modalidade e os grupos musculares de uma aula", () => {
+  const [row] = summariseSessions([
+    makeAula("2026-09-25", "Aula funcional", {
+      class_types: ["Treino Funcional", "CrossFit"],
+      categories: ["Pernas Inferiores", "Ombros"],
+      duration_seconds: 3600,
+    }),
+  ]);
+  assertStringIncludes(formatSessionLine(row), "Aula funcional (aula: Treino Funcional, CrossFit) [Pernas Inferiores, Ombros] — 60 min");
+});
+
+Deno.test("formatSessionLine ignora class_types num treino de força", () => {
+  const [row] = summariseSessions([
+    makeSession("2026-07-02", "Push", [{ reps: 10, weight: 50 }], { categories: ["Peito"], class_types: ["HIIT"] }),
+  ]);
+  assertStringIncludes(formatSessionLine(row), "Push [Peito] — 500 kg de volume, 1 séries");
 });
 
 Deno.test("formatSessionLine mantém volume e séries num treino de força", () => {

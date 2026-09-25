@@ -24,11 +24,57 @@ const GYM_KINDS = [
   { key: 'aula', label: 'Aula', icon: Users }
 ];
 
-const GYM_CATEGORIES = {
-  forca: ['Peito', 'Costas', 'Pernas Superiores', 'Pernas Inferiores', 'Ombros', 'Biceps', 'Triceps', 'Glúteos', 'Full Body', 'Cardio', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'],
-  aula:  ['HIIT', 'RPM/Cycling', 'Pilates', 'Yoga', 'Body Pump', 'Zumba', 'CrossFit', 'Treino Funcional', 'Natação', 'Outro'],
-};
+/* `categories` são sempre grupos musculares, num treino de força ou numa
+   aula; a modalidade da aula vive à parte, em `class_types` (migration
+   20260925160000 — antes a mesma coluna guardava as duas coisas). */
+const MUSCLE_GROUPS = ['Peito', 'Costas', 'Pernas Superiores', 'Pernas Inferiores', 'Ombros', 'Biceps', 'Triceps', 'Glúteos', 'Full Body', 'Cardio', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'];
+const CLASS_TYPES = ['HIIT', 'RPM/Cycling', 'Pilates', 'Yoga', 'Body Pump', 'Zumba', 'CrossFit', 'Treino Funcional', 'Natação', 'Outro'];
 const GYM_CATEGORIES_VISIBLE = 6;
+
+/* Um grupo de chips de escolha múltipla, com "+N mais" quando a lista é
+   longa. Mostra sempre os escolhidos, mesmo os que não estão na lista (texto
+   livre vindo da Carol ou de um registo antigo). */
+function ChipPicker({ label, hint, options, selected, onToggle }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? options : options.filter((c, i) => i < GYM_CATEGORIES_VISIBLE || selected.includes(c));
+  const hiddenCount = options.length - visible.length;
+  return (
+    <div className="mb-4">
+      <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">{label}</label>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {visible.map(c => (
+          <Chip key={c} active={selected.includes(c)} variant="gym" onClick={() => onToggle(c)} type="button">
+            {c}
+          </Chip>
+        ))}
+        {hiddenCount > 0 && !expanded && (
+          <button
+            onClick={() => setExpanded(true)}
+            type="button"
+            className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
+          >
+            +{hiddenCount} mais
+          </button>
+        )}
+        {expanded && options.length > GYM_CATEGORIES_VISIBLE && (
+          <button
+            onClick={() => setExpanded(false)}
+            type="button"
+            className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
+          >
+            Mostrar menos
+          </button>
+        )}
+        {selected.filter(c => !options.includes(c)).map(c => (
+          <Chip key={c} active variant="gym" onClick={() => onToggle(c)} type="button">
+            {c}
+          </Chip>
+        ))}
+      </div>
+      {hint && <p className="text-[11px] text-[var(--text-muted)] -mt-1">{hint}</p>}
+    </div>
+  );
+}
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
 
 function parseDurationInput(val) {
@@ -106,7 +152,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [startTime, setStartTime] = useState(startTimeInputValue(planItem?.start_time));
   const [kind, setKind] = useState('forca');
   const [categories, setCategories] = useState(planItem?.categories || []);
-  const [categoriesExpanded, setCategoriesExpanded] = useState(false);
+  const [classTypes, setClassTypes] = useState([]);
   const [customCategory, setCustomCategory] = useState('');
   const [name, setName] = useState('');
   const [notes, setNotes] = useState(planItem?.notes || '');
@@ -250,6 +296,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     date: v.date,
     kind: v.kind,
     categories: [...(v.categories || [])].sort(),
+    classTypes: [...(v.classTypes || [])].sort(),
     notes: (v.notes || '').trim(),
     duration: v.duration ?? null,
     calories: v.calories === '' || v.calories == null ? null : Number(v.calories),
@@ -261,7 +308,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   const currentSignature = () => analyticalSignature({
     date,
-    kind, categories, notes,
+    kind, categories, classTypes, notes,
     duration: parseDurationInput(durationStr),
     calories, avgHr, maxHr, exertion,
     sets: flattenExercises(exercises),
@@ -298,6 +345,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setKind(persisted?.kind ?? (session.kind === 'aula' ? 'aula' : 'forca'));
     setName(persisted?.name ?? (session.name || ''));
     setCategories(persisted?.categories ?? (session.categories || []));
+    setClassTypes(persisted?.classTypes ?? (session.class_types || []));
     setCustomCategory(persisted?.customCategory ?? '');
     setNotes(persisted?.notes ?? (session.notes || ''));
     setDurationStr(persisted?.durationStr ?? (session.duration_seconds ? formatDurationInput(session.duration_seconds) : ''));
@@ -315,6 +363,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       date: session.date,
       kind: session.kind === 'aula' ? 'aula' : 'forca',
       categories: session.categories || [],
+      classTypes: session.class_types || [],
       notes: session.notes || '',
       duration: session.duration_seconds ?? null,
       calories: session.calories_kcal,
@@ -342,6 +391,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     if (persisted.startTime !== undefined) setStartTime(persisted.startTime);
     if (persisted.kind) setKind(persisted.kind);
     if (persisted.categories) setCategories(persisted.categories);
+    if (persisted.classTypes) setClassTypes(persisted.classTypes);
     if (persisted.customCategory !== undefined) setCustomCategory(persisted.customCategory);
     if (persisted.name !== undefined) setName(persisted.name);
     if (persisted.notes !== undefined) setNotes(persisted.notes);
@@ -360,7 +410,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
-    date, startTime, kind, categories, customCategory, name, notes, entryMethod,
+    date, startTime, kind, categories, classTypes, customCategory, name, notes, entryMethod,
     durationStr, calories, avgHr, maxHr, exertion, exercises,
   // Com a confirmação à vista o registo está gravado: o rascunho já foi
   // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
@@ -375,17 +425,17 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   // Só regenera a análise se os dados analíticos mudaram; mudar apenas a data
   // ou o nome não justifica uma chamada ao Gemini.
+  /* …ou se não há grupo muscular nenhum mas as observações descrevem o
+     treino: guardar passa pela Carol, que os tira das observações
+     (inferMuscleGroupsFromNotes em analyze-gym). É o caminho para uma sessão
+     antiga, gravada antes disso, ganhar os seus grupos. */
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && currentSignature() !== originalSnapshot;
+    && (currentSignature() !== originalSnapshot || (categories.length === 0 && notes.trim() !== ''));
 
-  const handleToggleCategory = (cat) => {
-    if (categories.includes(cat)) {
-      setCategories(categories.filter(c => c !== cat));
-    } else {
-      setCategories([...categories, cat]);
-    }
-  };
+  const toggleIn = (list, value) => (list.includes(value) ? list.filter(c => c !== value) : [...list, value]);
+  const handleToggleCategory = (cat) => setCategories(prev => toggleIn(prev, cat));
+  const handleToggleClassType = (t) => setClassTypes(prev => toggleIn(prev, t));
 
   const handleAddCustomCategory = (e) => {
     if (e.key === 'Enter') {
@@ -398,10 +448,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     }
   };
 
+  // Os grupos musculares valem para os dois tipos e ficam; a modalidade só
+  // existe numa aula.
   const handleKindChange = (newKind) => {
     setKind(newKind);
-    setCategories([]);
-    setCategoriesExpanded(false);
+    if (newKind !== 'aula') setClassTypes([]);
   };
 
   // Handle Photo Selection — comprime e normaliza para JPEG (src/lib/image.js,
@@ -498,6 +549,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           kind,
           name: name.trim() || null,
           categories,
+          class_types: kind === 'aula' ? classTypes : [],
           notes: notes.trim() || null,
         },
       }, ANALYZE_TIMEOUT_MS);
@@ -539,6 +591,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           kind,
           name: name.trim() || null,
           categories,
+          class_types: kind === 'aula' ? classTypes : [],
           notes: notes.trim() || null,
           duration_seconds: parseDurationInput(durationStr),
           calories_kcal: calories ? parseInt(calories) : null,
@@ -584,7 +637,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setIsSaving(true);
     setErrorMsg('');
     try {
-      const finalName = name.trim() || (categories.length ? categories.join(' e ') : (kind === 'aula' ? 'Aula' : 'Treino'));
+      const nameParts = kind === 'aula' ? classTypes : categories;
+      const finalName = name.trim() || (nameParts.length ? nameParts.join(' e ') : (kind === 'aula' ? 'Aula' : 'Treino'));
 
       let savedSession = null;
       if (needsReanalysis) {
@@ -596,6 +650,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             kind,
             name: finalName,
             categories,
+            class_types: kind === 'aula' ? classTypes : [],
             notes: notes.trim() || null,
             duration_seconds: parseDurationInput(durationStr),
             calories_kcal: calories ? parseInt(calories) : null,
@@ -642,11 +697,6 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const removeSet = (exKey, setKey) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: e.sets.filter(s => s.key !== setKey) } : e)));
   const updateSet = (exKey, setKey, patch) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: e.sets.map(s => (s.key === setKey ? { ...s, ...patch } : s)) } : e)));
 
-  const availableCategories = GYM_CATEGORIES[kind] || GYM_CATEGORIES.forca;
-  const visibleCategories = categoriesExpanded
-    ? availableCategories
-    : availableCategories.filter((c, i) => i < GYM_CATEGORIES_VISIBLE || categories.includes(c));
-  const hiddenCount = availableCategories.length - visibleCategories.length;
 
   /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
      no fim do formulário, onde ficava abaixo da dobra. Rótulos inalterados. */
@@ -796,56 +846,21 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           />
         </div>
 
-        <div className="mb-4">
-          <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">
-            {kind === 'aula' ? 'Tipo de aula' : 'Grupos musculares'} — podes escolher vários
-          </label>
-          <div className="flex flex-wrap gap-1.5 mb-2">
-            {visibleCategories.map(c => (
-              <Chip
-                key={c}
-                active={categories.includes(c)}
-                variant="gym"
-                onClick={() => { handleToggleCategory(c); setIsFormDirty(true); }}
-                type="button"
-              >
-                {c}
-              </Chip>
-            ))}
-
-            {hiddenCount > 0 && !categoriesExpanded && (
-              <button
-                onClick={() => setCategoriesExpanded(true)}
-                type="button"
-                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
-              >
-                +{hiddenCount} mais
-              </button>
-            )}
-            {categoriesExpanded && availableCategories.length > GYM_CATEGORIES_VISIBLE && (
-              <button
-                onClick={() => setCategoriesExpanded(false)}
-                type="button"
-                className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
-              >
-                Mostrar menos
-              </button>
-            )}
-
-            {/* Custom categories not in the main list */}
-            {categories.filter(c => !availableCategories.includes(c)).map(c => (
-              <Chip
-                key={c}
-                active={true}
-                variant="gym"
-                onClick={() => { handleToggleCategory(c); setIsFormDirty(true); }}
-                type="button"
-              >
-                {c}
-              </Chip>
-            ))}
-          </div>
-        </div>
+        {kind === 'aula' && (
+          <ChipPicker
+            label="Tipo de aula — podes escolher vários"
+            options={CLASS_TYPES}
+            selected={classTypes}
+            onToggle={(t) => { handleToggleClassType(t); setIsFormDirty(true); }}
+          />
+        )}
+        <ChipPicker
+          label={kind === 'aula' ? 'Grupos musculares (opcional) — podes escolher vários' : 'Grupos musculares — podes escolher vários'}
+          hint={categories.length === 0 ? 'Se não escolheres, a Carol tira-os das observações.' : null}
+          options={MUSCLE_GROUPS}
+          selected={categories}
+          onToggle={(c) => { handleToggleCategory(c); setIsFormDirty(true); }}
+        />
 
         {/* Como queres registar? — escondido a editar: editar é sempre pelos
             campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
