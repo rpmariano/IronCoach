@@ -100,8 +100,8 @@ export async function fetchGeminiWithTimeout(
       }
       const tried = timeoutRetries + networkRetries > 0 ? " (mesmo depois de tentar de novo)" : "";
       throw new Error(timedOut
-        ? `O Gemini demorou demasiado tempo a responder${tried}. Tenta outra vez daqui a pouco.`
-        : `Não consegui contactar o Gemini${tried}. Tenta outra vez daqui a pouco.`);
+        ? `Não consegui responder a tempo${tried}. Tenta outra vez daqui a pouco.`
+        : `Não consegui ligar-me ao serviço de análise${tried}. Tenta outra vez daqui a pouco.`);
     }
   }
 }

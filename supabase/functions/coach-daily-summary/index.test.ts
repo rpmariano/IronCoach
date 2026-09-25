@@ -1,5 +1,6 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
+import { assertCarolVoice } from "../_shared/carolTone.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
 // Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
@@ -80,6 +81,33 @@ Deno.test("computeTDEE: soma o custo do treino quando weeklyVolumeKm > 0 (P0-4)"
   const withoutRuns = computeTDEE(base, 0)!;
   const withRuns = computeTDEE(base, 40)!;
   assertEquals(withRuns - withoutRuns, 429);
+});
+
+// Ação P.12: texto determinístico (nunca passa pelo modelo), sem "⚠️", sem
+// "Certifica-te", sem "Considera" — e as duas de água mantêm a palavra
+// "água" de propósito (CarolCard.jsx:169 usa-a para não duplicar a frase).
+Deno.test("buildWarningsMessage: as quatro frases, na voz dela — sem emoji, sem exclamação, sem frases de manual", () => {
+  const planItem = [{ kind: "corrida", training_type: "longo", target_distance_km: 16 }];
+  const semAgua = buildWarningsMessage(planItem, 0, 2500)!;
+  assertStringIncludes(semAgua, "Para hoje tens agendado:");
+  assertStringIncludes(semAgua, "Ainda não registaste água hoje.");
+  assertCarolVoice(semAgua);
+
+  const aguaParcial = buildWarningsMessage([], 800, 2500)!;
+  assertStringIncludes(aguaParcial, "Registaste 800 ml de água — ainda não é metade da tua meta.");
+  assertCarolVoice(aguaParcial);
+
+  const redS = buildWarningsMessage([], 0, null, { hasRedSRisk: true, latestBodyFat: 7, gender: "M", weeklyWeightChange: null })!;
+  assertStringIncludes(redS, "A tua gordura corporal (7%) está abaixo do limiar de segurança (8%). É risco de RED-S — fala com um profissional de saúde.");
+  assertCarolVoice(redS);
+
+  const perdaPeso = buildWarningsMessage([], 0, null, {
+    hasRedSRisk: false, latestBodyFat: null, gender: "M", weeklyWeightChange: -1.2, weightLossTooFast: true, weightLossPct: 1.6,
+  })!;
+  assertStringIncludes(perdaPeso, "Perda de peso rápida (1.2 kg/semana, 1.6% do peso). Não estás a comer o suficiente para o treino que fazes.");
+  assertCarolVoice(perdaPeso);
+
+  assertEquals(buildWarningsMessage([], 0, null), null);
 });
 
 Deno.test("addDaysISO avança dias e atravessa meses", () => {

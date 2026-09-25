@@ -11,7 +11,8 @@
 //
 // Prioridade, como no cliente: manhã da prova > véspera > depois da prova >
 // fim de bloco > silêncio > balanço da semana — e o balanço só num dia sem
-// mais nenhum (ver o fim de listServerProactive). O servidor tem mais dois
+// mais nenhum; sem balanço, o treino de ontem por registar (P.10) vem por
+// último (ver o fim de listServerProactive). O servidor tem mais dois
 // momentos que o cliente trata pelo Início, não pelo chat (P.5): um assunto
 // por resolver (intervenção — dor no check-in, desvio num registo) passa à
 // frente de tudo, e o conflito de provas vem logo a seguir à véspera.
@@ -20,7 +21,7 @@ export const SILENCE_DAYS = 3;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
 export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 
-export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "week_review";
+export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "missed_workout" | "week_review";
 
 export interface TriggerRace {
   id: string;
@@ -30,6 +31,8 @@ export interface TriggerRace {
   distance_km?: number | string | null;
   race_priority?: string | null;
   conflict_acknowledged_at?: string | null;
+  /** A hora de partida ("HH:MM" ou "HH:MM:SS"), para a manhã da prova (P.10). */
+  start_time?: string | null;
 }
 
 /** Um plano, com a informação de ter treinos (e não só refeições). */
@@ -40,6 +43,16 @@ export interface TriggerPlan {
   period_end?: string | null;
   race_id?: string | null;
   hasTraining?: boolean;
+}
+
+/** Um item de plano — para o treino de ontem por registar (P.10). */
+export interface TriggerPlanItem {
+  plan_id?: string | null;
+  planned_date?: string | null;
+  kind?: string | null;
+  status?: string | null;
+  training_type?: string | null;
+  created_at?: string | null;
 }
 
 /** Quantos dias antes do fim de um bloco a Carol chama por ele. */
@@ -76,6 +89,36 @@ export interface ServerProactiveCandidate {
   /** Balanço da semana: a semana revista (segunda e domingo). */
   weekStart?: string | null;
   weekEnd?: string | null;
+  /** Manhã da prova: a hora de partida em minutos desde a meia-noite de
+   *  Lisboa, ou null sem hora marcada (P.10). */
+  startMinutes?: number | null;
+  /** Silêncio (P.10): o último check-in, quando é DEPOIS do último registo —
+   *  ele está por cá, o que falta são os treinos. */
+  lastCheckinDate?: string | null;
+  /** Silêncio com check-in: dias desde o último treino (corrida ou ginásio),
+   *  ou null se não houver nenhum. */
+  trainingSilenceDays?: number | null;
+}
+
+/** "08:30" / "08:30:00" → 510. null se não for uma hora válida. */
+export function startTimeMinutes(value: unknown): number | null {
+  const m = typeof value === "string" ? /^(\d{1,2}):(\d{2})/.exec(value.trim()) : null;
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h <= 23 && min <= 59 ? h * 60 + min : null;
+}
+
+/* As chaves que o Início também calcula (P.10): ao mostrar o aviso de um
+   assunto por resolver ou de um conflito de provas, regista a chave do
+   candidato, para o tick não notificar o que o atleta acabou de ver. Vivem
+   aqui para as duas pontas nunca discordarem. */
+export function interventionKey(reason: string | null | undefined): string {
+  return `intervention:${shortHash(reason || "")}`;
+}
+
+export function raceConflictKey(planId: string, raceIds: string[]): string {
+  return `race_conflict:${planId}:${[...raceIds].sort().join(",")}`;
 }
 
 const DAY_MS = 86400000;
@@ -126,6 +169,55 @@ export function findEndingBlock(plans: TriggerPlan[] | null | undefined, todayIS
     if (!next) return plan;
   }
   return null;
+}
+
+/* ── O treino de ontem por registar (P.10) ──────────────────────────────────
+   Um treino do plano aceite (corrida ou ginásio) planeado para ontem, ainda
+   pendente, e sem nenhuma corrida nem sessão registada nesse dia (a data conta
+   pelo calendário, como em src/utils/planDivergence.js). A Carol pergunta o
+   que aconteceu — sem reagendar: pode ter treinado e não registado.
+   Fica de fora:
+   - num dia de prova: a prova manda no dia;
+   - o item que é a própria prova: esse é o "como correu?";
+   - o que foi planeado antes da última reescrita do plano (o dia do item mais
+     recente): ao reescrevê-lo ela já o teve à frente — a mesma guarda do
+     aviso de ajuste do Início.
+   Duas sessões falhadas numa semana continuam a ser o aviso "O plano precisa
+   de um ajuste" do Início, que leva a ajustar o plano; isto é só a pergunta. */
+
+/** O dia de Lisboa de um instante — a reescrita conta pelo dia em que aconteceu. */
+function lisbonDayOf(iso: string): string | null {
+  const t = Date.parse(iso);
+  return Number.isFinite(t) ? new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date(t)) : null;
+}
+
+export function isRacePlanItemServer(item: TriggerPlanItem): boolean {
+  return item?.kind === "corrida" && (item.training_type === "prova" || item.training_type === "competicao");
+}
+
+export function findMissedWorkout(
+  input: { plans?: TriggerPlan[] | null; planItems?: TriggerPlanItem[] | null; trainingDates?: Array<string | null | undefined> | null; raceEvents?: TriggerRace[] | null },
+  todayISO: string,
+): { date: string; items: TriggerPlanItem[] } | null {
+  const yesterday = addDaysISO(todayISO, -1);
+  if ((input.raceEvents || []).some((r) => r && r.status !== "concluida" && dayOf(r.date) === todayISO)) return null;
+  if ((input.trainingDates || []).some((d) => dayOf(d ?? null) === yesterday)) return null;
+  const accepted = new Set((input.plans || []).filter((p) => p?.status === "aceite").map((p) => p.id));
+  const items = (input.planItems || []).filter((i) => i && i.plan_id && accepted.has(i.plan_id));
+  const rewriteByPlan = new Map<string, string>();
+  for (const i of items) {
+    const day = i.created_at ? lisbonDayOf(i.created_at) : null;
+    if (!day) continue;
+    const prev = rewriteByPlan.get(i.plan_id!);
+    if (!prev || day > prev) rewriteByPlan.set(i.plan_id!, day);
+  }
+  const missed = items.filter((i) => {
+    if ((i.kind !== "corrida" && i.kind !== "ginasio") || i.status !== "pendente") return false;
+    if (dayOf(i.planned_date ?? null) !== yesterday || isRacePlanItemServer(i)) return false;
+    const rewrite = rewriteByPlan.get(i.plan_id!);
+    return !rewrite || yesterday >= rewrite;
+  });
+  return missed.length ? { date: yesterday, items: missed } : null;
 }
 
 function daysBetween(fromIso: string, toIso: string): number {
@@ -209,6 +301,14 @@ export type ServerProactiveInput = {
     /** Balanço da semana: datas de registos que cubram a semana revista (o
      *  tick só as lê à segunda e à terça — weekToReviewBounds). */
     weekRecordDates?: Array<string | null | undefined> | null;
+    /** P.10, treino de ontem por registar: os itens dos planos (basta que
+     *  incluam os dos planos aceites que cobrem ontem) e as datas das corridas
+     *  e sessões de ginásio (basta que incluam ontem). */
+    planItems?: TriggerPlanItem[] | null;
+    trainingDates?: Array<string | null | undefined> | null;
+    /** P.10, silêncio: o último check-in e o último treino (corrida ou ginásio). */
+    lastCheckinDate?: string | null;
+    lastTrainingDate?: string | null;
 };
 
 /** O momento mais importante agora, ou null. */
@@ -239,11 +339,16 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // Um assunto por resolver passa à frente de tudo: é saúde ou um desvio
   // que ela já decidiu que precisa de conversa.
   if (input.intervention?.status === "needed") {
-    out.push({ ...base, trigger: "intervention", key: `intervention:${shortHash(input.intervention.reason || "")}` });
+    out.push({ ...base, trigger: "intervention", key: interventionKey(input.intervention.reason) });
   }
 
   const morning = scheduled.find((r) => r.date.slice(0, 10) === todayISO);
-  if (morning) out.push({ ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null });
+  if (morning) {
+    out.push({
+      ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null,
+      startMinutes: startTimeMinutes(morning.start_time),
+    });
+  }
 
   const eve = scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1);
   if (eve) out.push({ ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null });
@@ -254,7 +359,7 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     out.push({
       ...base,
       trigger: "race_conflict",
-      key: `race_conflict:${conflict.plan.id}:${conflict.races.map((r) => r.id).sort().join(",")}`,
+      key: raceConflictKey(conflict.plan.id, conflict.races.map((r) => r.id)),
       raceId: target?.id ?? null,
       raceName: target?.name ?? null,
       planId: conflict.plan.id,
@@ -287,7 +392,18 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   const last = input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
   if (last) {
     const gap = daysBetween(last, todayISO);
-    if (gap >= SILENCE_DAYS) out.push({ ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last });
+    if (gap >= SILENCE_DAYS) {
+      /* Com check-ins depois do último registo, ele está por cá: o que falta
+         são os treinos, não notícias dele (P.10). Os dias contam então desde
+         o último treino — o último registo pode ter sido uma refeição. */
+      const checkin = dayOf(input.lastCheckinDate ?? null);
+      const checkinAfter = checkin && checkin > last ? checkin : null;
+      const training = dayOf(input.lastTrainingDate ?? null);
+      out.push({
+        ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last,
+        ...(checkinAfter ? { lastCheckinDate: checkinAfter, trainingSilenceDays: training ? daysBetween(training, todayISO) : null } : {}),
+      });
+    }
   }
 
   // O balanço da semana só entra num dia sem mais nada: a prova, a véspera,
@@ -297,6 +413,12 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   const week = out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
   if (week) {
     out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
+  } else {
+    /* O treino de ontem por registar (P.10) vem por último e não conta para
+       o balanço da semana: à segunda, o treino de domingo que ficou por
+       fazer é assunto do balanço, que fica com o dia. */
+    const missed = findMissedWorkout(input, todayISO);
+    if (missed) out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date });
   }
   return out.filter((c) => ok(c.trigger));
 }
@@ -328,7 +450,13 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
           : `Como correu a prova${name ? ` ${name}` : ""}? Conta-me, e regista a corrida.`,
       };
     case "silence":
-      return { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
+      // Com check-ins recentes ele está por cá: o que falta são os treinos (P.10).
+      return c.lastCheckinDate
+        ? { title, body: `Não vejo nenhum treino teu há ${c.trainingSilenceDays ?? c.silenceDays ?? SILENCE_DAYS} dias. Está tudo bem?` }
+        : { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
+    // A frase fixa de propósito (P.10): pergunta, não acusa — pode ter treinado e não registado.
+    case "missed_workout":
+      return { title, body: "Não vi o treino de ontem registado. Aconteceu alguma coisa?" };
     // Genérica de propósito: o motivo pode ser de saúde (uma dor), e o
     // ecrã bloqueado não é sítio para o dizer.
     case "intervention":
@@ -352,7 +480,9 @@ export function proactiveTab(trigger: ProactiveTriggerName): "coach" | "home" {
 export const DEFAULT_PUSH_START_HOUR = 9;
 export const DEFAULT_PUSH_END_HOUR = 21;
 export const RACE_MORNING_EARLIEST_HOUR = 6;
-export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "week_review"];
+/** Com hora de partida, a manhã da prova sai no máximo 2 h antes dela (P.10). */
+export const RACE_MORNING_LEAD_MINUTES = 120;
+export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "missed_workout", "week_review"];
 
 /** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
  *  por dia e os momentos que aceita. Tudo opcional, com os valores por omissão
@@ -372,14 +502,32 @@ function inWindow(hour: number, start: number, end: number): boolean {
 
 /** Janela de envio, em horas de Lisboa, a do atleta (9h–21h por omissão). A
  *  manhã da prova é a exceção: a prova não espera, e pode sair a partir das
- *  6h mesmo que a janela dele comece mais tarde — nunca depois do fim dela. */
-export function isWithinProactiveWindow(trigger: ProactiveTriggerName, lisbonHour: number, prefs: PushPreferences = {}): boolean {
+ *  6h mesmo que a janela dele comece mais tarde — nunca depois do fim dela.
+ *
+ *  Com a hora de partida conhecida (P.10, confirmado pelo produto a
+ *  2026-09-24), a manhã da prova sai entre 2 h antes da partida (nunca antes
+ *  das 6h) e a própria partida — nem cedo de mais, nem a meio da prova —, e
+ *  nunca depois do fim da janela. `minuteOfDay` é a hora de Lisboa em
+ *  minutos; sem ele conta a hora certa. */
+export function isWithinProactiveWindow(
+  trigger: ProactiveTriggerName,
+  lisbonHour: number,
+  prefs: PushPreferences = {},
+  opts: { minuteOfDay?: number | null; raceStartMinutes?: number | null } = {},
+): boolean {
   let start = Number.isInteger(prefs.startHour) ? prefs.startHour! : DEFAULT_PUSH_START_HOUR;
   let end = Number.isInteger(prefs.endHour) ? prefs.endHour! : DEFAULT_PUSH_END_HOUR;
   /* Início igual ao fim é, quase sempre, um engano no Perfil — e na Carol
      não pode querer dizer "24 horas": um "Estás bem?" às 3h da manhã. Cai na
      janela por omissão (revisão pré-master da P.6). */
   if (start === end) { start = DEFAULT_PUSH_START_HOUR; end = DEFAULT_PUSH_END_HOUR; }
+  if (trigger === "race_morning" && opts.raceStartMinutes != null) {
+    const now = opts.minuteOfDay ?? lisbonHour * 60;
+    const earliest = Math.max(RACE_MORNING_EARLIEST_HOUR * 60, opts.raceStartMinutes - RACE_MORNING_LEAD_MINUTES);
+    // Uma janela que atravessa a meia-noite não tem "fim" de manhã.
+    const beforeWindowEnd = start < end ? lisbonHour < end : true;
+    return now >= earliest && now < opts.raceStartMinutes && beforeWindowEnd;
+  }
   if (inWindow(lisbonHour, start, end)) return true;
   if (trigger === "race_morning" && start < end && start > RACE_MORNING_EARLIEST_HOUR) {
     return lisbonHour >= RACE_MORNING_EARLIEST_HOUR && lisbonHour < end;

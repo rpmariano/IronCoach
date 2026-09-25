@@ -10,6 +10,7 @@
 // A chave Gemini vive só aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { upstreamErrorText } from "../_shared/carolTone.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_RETRYABLE_STATUSES,
@@ -184,9 +185,11 @@ async function readDiplomaWithGemini(
   if (!res.ok) {
     const errText = await res.text();
     console.error("Gemini error:", res.status, errText);
-    if (res.status === 429) throw new Error("O Gemini atingiu o limite de pedidos neste momento. Espera um pouco e tenta de novo.");
-    if (GEMINI_RETRYABLE_STATUSES.has(res.status)) throw new Error(geminiBusyMessage("ler o diploma"));
-    throw new Error(`Leitura falhou (Gemini ${res.status}). Tenta de novo.`);
+    if (GEMINI_RETRYABLE_STATUSES.has(res.status)) {
+      // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
+      throw new Error(geminiBusyMessage("ler o diploma"));
+    }
+    throw new Error(upstreamErrorText(res.status));
   }
   const json = await res.json();
   const usage = {

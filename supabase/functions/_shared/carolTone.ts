@@ -35,6 +35,46 @@ export const CAROL_TONE_RULES_SHORT =
   `semana cumprida), o resto regista-se em silêncio. Sem frases de manual ("Lembra-te de te hidratar", "Ouve o teu corpo"). ` +
   `Nunca pedes desculpa pelo sistema: dizes o que aconteceu e o que fazer. Nunca te descreves como IA ou assistente.`;
 
+// ── Ação P.12 — quando o pedido a um serviço externo falha ───────────────
+//
+// As oito funções de análise (e o estimate-shoe-lifespan) chamam o mesmo
+// modelo por trás; até aqui, quando falhava, diziam-no ao atleta pelo nome
+// ("Gemini atingiu o limite...", "Falha (Gemini 500)"). A doutrina é que o
+// trabalho é DELA (CAROL_TONE_RULES: "Nunca dizes... como assistente nem
+// falas de modelos"): quem fala é sempre a Carol, nunca a infraestrutura por
+// trás. Texto determinístico, nunca passa pelo modelo — por isso não está em
+// CAROL_TONE_RULES, que é só para o que o modelo escreve.
+//
+// status null: timeout ou rede (AbortError, fetch falhou). 429: limite de
+// pedidos. Qualquer outro: falha genérica, com o código para quem reportar.
+export function upstreamErrorText(status: number | null): string {
+  if (status === 429) return "Estou com muitos pedidos neste momento. Espera um pouco e tenta outra vez.";
+  if (status === null) return "Não consegui responder a tempo. Tenta outra vez daqui a pouco.";
+  return `Não consegui processar isto agora (erro ${status}). Tenta outra vez.`;
+}
+
+// ── Ação P.12 — a régua que os testes verificam repetidamente ────────────
+//
+// Vários testes (proactiveTriggers.test.ts, send-water-reminders/
+// message.test.ts) reescreviam a mesma regex de emoji e a mesma checagem de
+// exclamação. Extraído para não divergir ao primeiro retoque — mesmo motivo
+// de MEAL_DOCTRINE no topo deste ficheiro. Só as regras mecanicamente
+// verificáveis; "opinião primeiro" ou "sem elogios automáticos" ficam só em
+// CAROL_TONE_RULES, para um humano ler o prompt.
+// Fronteiras por \p{L} (qualquer letra Unicode), não \b: \b usa \w, que não
+// inclui acentos — "consideração" tem "ç" logo a seguir a "considera", e
+// \b via \w trata essa transição como fronteira de palavra. "consideração"
+// não pode acender o aviso de "considera" a suavizar.
+const SOFTENING_WORDS = /(?<![\p{L}])(talvez|considera(s)?|pode ser que|se calhar)(?![\p{L}])/iu;
+const NAMES_INFRA = /(?<![\p{L}])gemini(?![\p{L}])/iu;
+
+export function assertCarolVoice(text: string): void {
+  if (/\p{Extended_Pictographic}/u.test(text)) throw new Error(`voz da Carol: tem emoji — "${text}"`);
+  if (text.includes("!")) throw new Error(`voz da Carol: tem exclamação — "${text}"`);
+  if (SOFTENING_WORDS.test(text)) throw new Error(`voz da Carol: suaviza com "talvez"/"considera" — "${text}"`);
+  if (NAMES_INFRA.test(text)) throw new Error(`voz da Carol: nomeia a infraestrutura — "${text}"`);
+}
+
 // ─── Linguagem por nível (bug #40, 2026-09-22) ──────────────────────────
 // «A Carol tem de ter um discurso que seja mais percetível para todos os
 // atletas. Níveis básicos não vão entender estas conversas.» O nível é

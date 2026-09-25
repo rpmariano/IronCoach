@@ -38,6 +38,8 @@ const GEMINI_COST_EVENT_MODULE = {
   'analyze-run': 'Corrida',
   'coach-chat': 'Carol',
   'coach-daily-summary': 'Carol',
+  // O texto das notificações da Carol, escrito pelo modelo no servidor (P.10).
+  'coach-proactive-tick': 'Carol',
   'enrich-race-event': 'Corrida',
   'estimate-shoe-lifespan': 'Equipamento',
   // Eventos legado

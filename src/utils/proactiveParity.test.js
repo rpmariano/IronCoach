@@ -20,6 +20,9 @@ function both(data) {
       runs: data.runs,
       lastRecordDate: lastRecordDate(data),
       plans: (data.coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })),
+      // P.10: o treino de ontem por registar lê os itens e as datas dos treinos.
+      planItems: data.coachPlanItems || [],
+      trainingDates: [...(data.runs || []), ...(data.gymSessions || [])].map((r) => r?.date ?? null),
     },
     TODAY,
   );
@@ -44,6 +47,9 @@ function bothLists(data) {
       runs: data.runs,
       lastRecordDate: lastRecordDate(data),
       plans: (data.coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })),
+      // P.10: o treino de ontem por registar lê os itens e as datas dos treinos.
+      planItems: data.coachPlanItems || [],
+      trainingDates: [...(data.runs || []), ...(data.gymSessions || [])].map((r) => r?.date ?? null),
     },
     TODAY,
   )
@@ -76,6 +82,20 @@ const CASES = {
     coachPlans: [{ id: 'b1', status: 'aceite', race_id: null, period_start: '2026-09-06', period_end: '2026-09-19' }],
     coachPlanItems: [{ plan_id: 'b1', kind: 'corrida' }],
   },
+  // P.10: o longo de ontem ficou pendente e sem corrida nesse dia.
+  'treino de ontem por registar': {
+    ...base,
+    meals: [{ date: TODAY }],
+    coachPlans: [{ id: 'p1', status: 'aceite', race_id: null, period_start: '2026-09-01', period_end: '2026-09-30' }],
+    coachPlanItems: [{ plan_id: 'p1', planned_date: '2026-09-17', kind: 'corrida', status: 'pendente', training_type: 'longo', created_at: '2026-09-01T10:00:00Z' }],
+  },
+  'treino de ontem feito (corrida nesse dia) não conta': {
+    ...base,
+    meals: [{ date: TODAY }],
+    runs: [{ id: 'r9', date: '2026-09-17', distance_km: 14, duration_seconds: 4800 }],
+    coachPlans: [{ id: 'p1', status: 'aceite', race_id: null, period_start: '2026-09-01', period_end: '2026-09-30' }],
+    coachPlanItems: [{ plan_id: 'p1', planned_date: '2026-09-17', kind: 'corrida', status: 'pendente', training_type: 'longo', created_at: '2026-09-01T10:00:00Z' }],
+  },
   'fim de um plano só de refeições não conta': {
     ...base,
     meals: [{ date: TODAY }],
@@ -98,6 +118,13 @@ it('o fim de bloco é mesmo o momento escolhido, dos dois lados', () => {
   expect(client).toEqual({ trigger: 'block_end', key: 'block_end:b1' });
   expect(server).toEqual(client);
   expect(both(CASES['fim de um plano só de refeições não conta']).client).toBeNull();
+});
+
+it('o treino de ontem por registar é o momento escolhido, dos dois lados (P.10)', () => {
+  const { client, server } = both(CASES['treino de ontem por registar']);
+  expect(client).toEqual({ trigger: 'missed_workout', key: 'missed_workout:2026-09-17' });
+  expect(server).toEqual(client);
+  expect(both(CASES['treino de ontem feito (corrida nesse dia) não conta']).client).toBeNull();
 });
 
 // Ação P.9: a lista inteira, não só o primeiro — para o efeito passivo do

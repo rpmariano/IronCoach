@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { planStartMoment } from './planStart';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* O plano aceite: o arranque do bloco dito por ela; um ajuste diz-se como tal. */
 
@@ -33,7 +34,7 @@ describe('planStartMoment', () => {
   it('sem plano, nada; e nunca exclamações', () => {
     expect(planStartMoment(null, [], TODAY)).toBeNull();
     const m = planStartMoment(plan, [item('2026-09-22')], TODAY);
-    expect(`${m.title} ${m.sub}`).not.toMatch(/!/);
+    expectCarolVoice(`${m.title} ${m.sub}`);
   });
 });
 

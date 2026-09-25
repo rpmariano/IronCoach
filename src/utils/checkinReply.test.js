@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { checkinReply, checkinStreak } from './checkinReply';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* A resposta da Carol ao check-in: o que preocupa primeiro, o raro só com
    motivo, e o dia normal curto — tem de aguentar a centésima vez. */
@@ -44,6 +45,6 @@ describe('checkinReply', () => {
 
   it('a voz dela: nunca exclamações', () => {
     const casos = [{ pain: 5 }, { sleep: 1 }, { stress: 5 }, { energy: 1 }, { pain: 2 }, { sleep: 5, energy: 5 }, {}];
-    for (const o of casos) expect(checkinReply([dia(HOJE, o)], HOJE).text).not.toMatch(/!/);
+    for (const o of casos) expectCarolVoice(checkinReply([dia(HOJE, o)], HOJE).text);
   });
 });

@@ -46,7 +46,8 @@ function fakeFetch(body: unknown, ok = true): typeof fetch {
 Deno.test("composePushMessage: usa o texto gerado quando serve; senão, a frase fixa", async () => {
   const good = { candidates: [{ content: { parts: [{ text: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app." }] } }] };
   const gen = await composePushMessage(eve, {}, "chave", fakeFetch(good));
-  assertEquals(gen, { title: "Carol", body: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app.", generated: true });
+  // Sem usageMetadata na resposta, os tokens contam a zero (mas a chamada existiu).
+  assertEquals(gen, { title: "Carol", body: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app.", generated: true, usage: { input_tokens: 0, output_tokens: 0 } });
 
   const fixed = "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã de manhã.";
   assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch({ candidates: [{ content: { parts: [{ text: "Força amanhã!" }] } }] }))).body, fixed);
@@ -56,9 +57,43 @@ Deno.test("composePushMessage: usa o texto gerado quando serve; senão, a frase 
   const fromError = await composePushMessage(eve, {}, "chave", throws);
   assert(!fromError.generated);
   assertEquals(fromError.body, fixed);
+  assertEquals(fromError.usage, null);
+});
+
+Deno.test("composePushMessage: os tokens da chamada vão com o texto — mesmo quando o texto não serve (P.10)", async () => {
+  const usageMetadata = { promptTokenCount: 812, candidatesTokenCount: 41 };
+  const good = { usageMetadata, candidates: [{ content: { parts: [{ text: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app." }] } }] };
+  assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch(good))).usage, { input_tokens: 812, output_tokens: 41 });
+  // Texto recusado (exclamação): sai a frase fixa, mas o custo existiu.
+  const bad = { usageMetadata, candidates: [{ content: { parts: [{ text: "Força amanhã!" }] } }] };
+  const fallback = await composePushMessage(eve, {}, "chave", fakeFetch(bad));
+  assertEquals(fallback.generated, false);
+  assertEquals(fallback.usage, { input_tokens: 812, output_tokens: 41 });
+  // Sem chamada (a intervenção nunca passa pelo gerador), sem tokens.
+  assertEquals((await composePushMessage({ ...eve, trigger: "intervention", key: "intervention:x" }, {}, "chave", fakeFetch(good))).usage, null);
+  // Erro do servidor: sem resposta para contar.
+  assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch({}, false))).usage, null);
 });
 
 Deno.test("describeFacts: o balanço da semana leva as datas da semana e nada de provas", () => {
   const week = { ...silence, trigger: "week_review" as const, key: "week_review:2026-09-21", silenceDays: null, weekStart: "2026-09-21", weekEnd: "2026-09-27" };
   assertEquals(describeFacts(week, { firstName: "Rui", raceName: "Meia" }), ["Nome do atleta: Rui", "Semana revista: 2026-09-21 a 2026-09-27"]);
+});
+
+Deno.test("P.10: o treino de ontem nunca passa pelo gerador — frase fixa, sem custo", async () => {
+  const missed = { ...silence, trigger: "missed_workout" as const, key: "missed_workout:2026-09-23", silenceDays: null, anchorDate: "2026-09-23" };
+  const good = { candidates: [{ content: { parts: [{ text: "Ontem ficou por fazer o longo. Conta-me o que se passou." }] } }] };
+  const msg = await composePushMessage(missed, {}, "chave", fakeFetch(good));
+  assertEquals(msg, { title: "Carol", body: "Não vi o treino de ontem registado. Aconteceu alguma coisa?", generated: false, usage: null });
+  assertEquals(describeFacts(missed, { firstName: "Rui", raceName: "Meia" }), ["Nome do atleta: Rui"]);
+});
+
+Deno.test("P.10: o silêncio com check-ins diz ao modelo que ele está por cá e conta os dias sem treino", () => {
+  const withCheckin = { ...silence, lastCheckinDate: "2026-09-17", trainingSilenceDays: 10 };
+  const facts = describeFacts(withCheckin, {});
+  assertEquals(facts[0], "Dias sem nenhum treino registado: 10");
+  assertStringIncludes(facts[1], "Último check-in: 2026-09-17");
+  assertStringIncludes(buildPushPrompt(withCheckin, {}), "Ele faz os check-ins mas não regista treinos");
+  // Sem check-in, como antes.
+  assertEquals(describeFacts(silence, {}), [`Dias sem registos: ${silence.silenceDays}`]);
 });

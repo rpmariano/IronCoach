@@ -3,7 +3,7 @@ import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
-import { pendingRaceBalanceCandidate, dismissProactiveAlert } from '../../utils/coachProactive';
+import { pendingRaceBalanceCandidate, pendingBlockEndAlert, dismissProactiveAlert } from '../../utils/coachProactive';
 import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
@@ -23,6 +23,7 @@ import CoachInsightModal from '../BI/CoachInsightModal';
 import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
 import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
+import { interventionKey, raceConflictKey } from '@formulas/proactiveTriggers.ts';
 import { pendingTopicLines } from '../../utils/carolTopics';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
@@ -56,14 +57,15 @@ export default function Home() {
   const [showDismiss, setShowDismiss] = useState(false);
   const [dismissing, setDismissing] = useState(false);
   const [mealDay, setMealDay] = useState(null);
-  // Dispensar o aviso do balanço grava a marca em localStorage, que não é
-  // estado do React — este contador faz o useMemo voltar a ler.
-  const [balanceDismissals, setBalanceDismissals] = useState(0);
+  // Dispensar o aviso do balanço (ou do fim de bloco) grava a marca em
+  // localStorage, que não é estado do React — este contador faz os useMemo
+  // voltarem a ler.
+  const [alertDismissals, setAlertDismissals] = useState(0);
   /* O momento do badge (fase 4 da reforma da gamificação) — a regra de
      quando aparece e em que escala vive no hook. É a única cerimónia de ecrã
-     inteiro do Início desde que os medalhões saíram (fase C): já não espera
-     por ninguém. Sem a migração `user_badges` aplicada não há `pending`
-     nenhum e isto não mostra nada. */
+     inteiro do Início desde que os medalhões saíram (fase C): só espera
+     pelas boas-vindas (ação P.11, a cancela `welcomeGate`). Sem a migração
+     `user_badges` aplicada não há `pending` nenhum e isto não mostra nada. */
   const badgeMoment = useBadgeMoment();
   const badgeVisivel = badgeMoment.grande || badgeMoment.medio;
 
@@ -145,7 +147,16 @@ export default function Home() {
     if (!candidate) return null;
     const race = (raceEvents || []).find((r) => r?.id === candidate.raceId) || null;
     return race ? { race, candidate } : null;
-  }, [pendingTopics, raceConflict, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, impressionDismissed, balanceDismissals]);
+  }, [pendingTopics, raceConflict, runs, meals, gymSessions, bodyAssessments, raceEvents, profile, impressionDismissed, alertDismissals]);
+
+  /* O bloco está a acabar (ação P.11): o bloco de treino sem prova acaba e
+     não há outro a seguir. O candidato é o do chat e da notificação
+     (block_end:<plano>), para o toque e o botão não pedirem conversas
+     diferentes; conta como uma boa notícia a preparar, abaixo do balanço. */
+  const blockEnd = useMemo(() => {
+    if (pendingTopics > 0 || raceConflict) return null;
+    return pendingBlockEndAlert({ coachPlans, coachPlanItems, profile, impressionDismissed });
+  }, [pendingTopics, raceConflict, coachPlans, coachPlanItems, profile, impressionDismissed, alertDismissals]);
 
   /* O plano precisa de um ajuste (specs/plano-de-prova.md, "O plano tem de
      saber da prova"): a app deteta sozinha quando a realidade se afastou do
@@ -179,12 +190,18 @@ export default function Home() {
   /* Os avisos da Carol vivem no botão flutuante (pedido 2026-09-13): no
      cabeçalho do cartão dela confundiam-se com o resumo do dia. Um de cada
      vez, pela mesma prioridade de sempre — assuntos por resolver, depois o
-     ajuste do plano, depois o balanço da prova —, cada um com o seu "Falar
-     com a Carol" na janela dos insights. */
+     ajuste do plano, depois o balanço da prova, por fim o fim do bloco —,
+     cada um com o seu "Falar com a Carol" na janela dos insights.
+
+     `key` é a chave do momento no servidor (P.10), quando o aviso tem um:
+     abrir a janela regista-a como vista, e o coach-proactive-tick não
+     notifica hoje o que o atleta acabou de ler aqui. */
   const carolAlerts = [];
   if (pendingTopics > 0) {
     carolAlerts.push({
       id: 'assuntos',
+      // Só o assunto "needed" tem momento no servidor; um já em conversa não.
+      key: profile?.coach_intervention_status === 'needed' ? interventionKey(profile?.coach_intervention_reason) : null,
       severity: 'warning',
       // Na voz dela e a dizer o assunto (pedido 2026-09-23): "Tens 1 assunto
       // a resolver com ela" não dizia qual, e o popup repetia "Carol" 4 vezes.
@@ -198,6 +215,7 @@ export default function Home() {
     const nomes = raceConflict.races.map((r) => raceLabel(r)).join(', ');
     carolAlerts.push({
       id: 'conflito-provas',
+      key: raceConflict.plan?.id ? raceConflictKey(raceConflict.plan.id, raceConflict.races.map((r) => r.id)) : null,
       severity: 'warning',
       title: 'Preciso de falar contigo',
       // Sem onDismiss, de propósito: enquanto houver duas principais no mesmo
@@ -219,6 +237,7 @@ export default function Home() {
   } else if (raceBalance) {
     carolAlerts.push({
       id: 'balanco',
+      key: raceBalance.candidate.key,
       severity: 'info',
       title: 'O balanço da prova',
       message: `Correste a ${raceBalance.race.name || 'prova'}. Quero fazer o balanço contigo.`,
@@ -238,7 +257,7 @@ export default function Home() {
       // pensarem que a conversa já tinha acontecido e deixarem de a propor.
       onDismiss: () => {
         dismissProactiveAlert(profile?.id, raceBalance.candidate);
-        setBalanceDismissals((n) => n + 1);
+        setAlertDismissals((n) => n + 1);
         // Duas chaves na dispensa (ação 5.1): 'balanco', que o chat já lê,
         // e a do candidato (race_after:<raceId>:<runId>), que é a que serve
         // para o outro dispositivo saber que este balanço foi dispensado.
@@ -246,11 +265,35 @@ export default function Home() {
         logImpressionDismissed({ kind: 'alert', key: raceBalance.candidate.key, title: 'O balanço da prova' });
       },
     });
+  } else if (blockEnd) {
+    carolAlerts.push({
+      id: 'fim-bloco',
+      key: blockEnd.candidate.key,
+      severity: 'info',
+      title: 'O bloco está a acabar',
+      message: `O teu bloco de treino acaba ${blockEnd.when} e não há outro a seguir. Quero preparar o próximo contigo.`,
+      // O mesmo contrato do balanço: um pedido explícito fura as quiet hours
+      // (`proactive_force`), senão o botão ficava sem resposta sempre que ela
+      // tivesse falado há menos de 6 h.
+      onTalk: () => {
+        setCoachIntent({ kind: 'proactive_moment', candidate: blockEnd.candidate });
+        setActiveTab('coach');
+      },
+      onDismiss: () => {
+        dismissProactiveAlert(profile?.id, blockEnd.candidate);
+        setAlertDismissals((n) => n + 1);
+        logImpressionDismissed({ kind: 'alert', key: blockEnd.candidate.key, title: 'O bloco está a acabar' });
+      },
+    });
   }
 
   /* Abrir a janela do botão flutuante é ver os avisos e os insights. */
   const openInsights = () => {
-    for (const a of carolAlerts) logImpression({ kind: 'alert', key: a.id, title: a.title });
+    for (const a of carolAlerts) {
+      logImpression({ kind: 'alert', key: a.id, title: a.title });
+      // A chave do momento, para o tick não o notificar hoje (P.10).
+      if (a.key) logImpression({ kind: 'alert', key: a.key, title: a.title });
+    }
     for (const i of homeInsights) logImpression({ kind: 'insights', key: i.id, title: i.title });
     setShowInsights(true);
   };
@@ -284,7 +327,9 @@ export default function Home() {
     setDismissing(true);
     try {
       const { supabase } = await import('../../lib/supabase');
-      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null }).eq('id', profile.id);
+      // Dispensar é um desfecho (5.5): fica em coach_interventions, e a Carol
+      // calibra por ele. Só no update — o trigger consome-o.
+      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null, coach_intervention_outcome: 'dispensado' }).eq('id', profile.id);
       if (error) throw error;
       // Dispensar um convite para objetivos é dizer "agora não": fica
       // registado para a Carol não voltar a chamar na próxima pesagem

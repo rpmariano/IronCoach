@@ -41,6 +41,8 @@ const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
   race_eve: "É a véspera da prova. A notificação chama-o para o plano de hoje à noite (jantar, sono) e de amanhã de manhã.",
   race_after: "A prova já foi. A notificação chama-o para o balanço contigo.",
   silence: "Ele não regista nada há vários dias. A notificação pergunta se está bem, sem sermão.",
+  // Nunca chega ao modelo (frase fixa, ver composePushMessage); fica pelo tipo.
+  missed_workout: "O treino de ontem não está registado. A notificação pergunta o que aconteceu, sem acusar.",
   intervention: "Há um assunto por resolver.",
   race_conflict: "Ele tem duas provas principais no mesmo bloco de treino. A notificação chama-o para decidirem juntos qual é o objetivo.",
   block_end: "O bloco de treino dele está a acabar e não há outro a seguir. A notificação chama-o para fazerem o ponto e prepararem o próximo.",
@@ -51,7 +53,13 @@ const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
 export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string[] {
   const lines: string[] = [];
   if (f.firstName) lines.push(`Nome do atleta: ${f.firstName}`);
-  if (c.trigger === "silence") lines.push(`Dias sem registos: ${c.silenceDays ?? "vários"}`);
+  if (c.trigger === "silence" && c.lastCheckinDate) {
+    // P.10: ele faz os check-ins — o que falta são os treinos, não notícias dele.
+    lines.push(`Dias sem nenhum treino registado: ${c.trainingSilenceDays ?? c.silenceDays ?? "vários"}`);
+    lines.push(`Último check-in: ${c.lastCheckinDate} — ele está por cá; não digas que não regista nada, fala dos treinos`);
+  } else if (c.trigger === "silence") {
+    lines.push(`Dias sem registos: ${c.silenceDays ?? "vários"}`);
+  }
   if (c.trigger === "block_end" && c.blockEnd) lines.push(`Último dia do bloco: ${c.blockEnd}`);
   if (c.trigger === "week_review" && c.weekStart && c.weekEnd) lines.push(`Semana revista: ${c.weekStart} a ${c.weekEnd}`);
   if (c.trigger === "race_conflict") {
@@ -59,7 +67,7 @@ export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string
     if (c.conflictRaceNames?.length) lines.push(`Outra(s) principal(is) no mesmo bloco: ${c.conflictRaceNames.join(", ")}`);
     return lines;
   }
-  if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention" && c.trigger !== "week_review") {
+  if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention" && c.trigger !== "week_review" && c.trigger !== "missed_workout") {
     const name = (f.raceName || c.raceName || "").trim();
     if (name) lines.push(`Prova: ${name}`);
     const km = Number(f.distanceKm);
@@ -93,7 +101,9 @@ export function buildPushPrompt(c: ServerProactiveCandidate, f: PushFacts): stri
     `- Sem emoji. Sem ponto de exclamação. Sem aspas.\n` +
     `- Específica para este momento, com os dados abaixo. Não uses números que não estejam nos dados.\n` +
     `- Não comeces pelo nome dele, e não assines.\n\n` +
-    `MOMENTO: ${MOMENT[c.trigger]}\n` +
+    `MOMENTO: ${c.trigger === "silence" && c.lastCheckinDate
+      ? "Ele faz os check-ins mas não regista treinos há vários dias. A notificação pergunta pelos treinos, sem sermão."
+      : MOMENT[c.trigger]}\n` +
     `DADOS:\n${describeFacts(c, f).map((l) => `- ${l}`).join("\n") || "- (sem dados adicionais)"}\n\n` +
     `Devolve só o texto da notificação.`
   );
@@ -119,21 +129,27 @@ export function extractText(json: any): string | null {
   return null;
 }
 
+export type PushUsage = { input_tokens: number; output_tokens: number };
+
 /**
  * O título e o corpo da notificação. Nunca rejeita: qualquer falha dá a frase
- * fixa. `fetchImpl` é injetável para os testes.
+ * fixa. `fetchImpl` é injetável para os testes. `usage` são os tokens da
+ * chamada ao modelo quando ela respondeu — mesmo que o texto não sirva e saia
+ * a frase fixa, o custo existiu (P.10, app_logs); null sem chamada ou sem
+ * resposta.
  */
 export async function composePushMessage(
   c: ServerProactiveCandidate,
   facts: PushFacts,
   geminiKey: string | null | undefined,
   fetchImpl: typeof fetch = fetch,
-): Promise<{ title: string; body: string; generated: boolean }> {
+): Promise<{ title: string; body: string; generated: boolean; usage: PushUsage | null }> {
   const fallback = proactivePushMessage(c);
   /* O assunto por resolver nunca passa pelo gerador: o motivo pode ser de
      saúde (uma dor, um sinal de sobretreino) e não vai para o ecrã
-     bloqueado. Sai sempre a frase genérica. */
-  if (!geminiKey || c.trigger === "intervention") return { ...fallback, generated: false };
+     bloqueado. Sai sempre a frase genérica. O treino de ontem também não
+     (P.10): a pergunta é fixa de propósito, para não acusar nem inventar. */
+  if (!geminiKey || c.trigger === "intervention" || c.trigger === "missed_workout") return { ...fallback, generated: false, usage: null };
   try {
     const res = await fetchImpl(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
@@ -149,12 +165,20 @@ export async function composePushMessage(
     );
     if (!res.ok) {
       console.warn("coach-proactive-tick: texto gerado falhou", res.status);
-      return { ...fallback, generated: false };
+      return { ...fallback, generated: false, usage: null };
     }
-    const text = validatePushText(extractText(await res.json()));
-    return text ? { title: fallback.title, body: text, generated: true } : { ...fallback, generated: false };
+    const json = await res.json();
+    // Os mesmos campos das outras funções (input = prompt, output = candidatos).
+    const usage: PushUsage = {
+      input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
+      output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
+    };
+    const text = validatePushText(extractText(json));
+    return text
+      ? { title: fallback.title, body: text, generated: true, usage }
+      : { ...fallback, generated: false, usage };
   } catch (e) {
     console.warn("coach-proactive-tick: texto gerado falhou", e);
-    return { ...fallback, generated: false };
+    return { ...fallback, generated: false, usage: null };
   }
 }

@@ -62,7 +62,27 @@ describe('useBadgeMoment', () => {
     useAppStore.setState({
       profile: { id: 'user-1' }, runs: [], raceEvents: [], coachPlans: [], coachPlanItems: [], gymSessions: [],
       openCreationMode: null, editingRaceId: null, editingRunId: null, navGuard: null, onboardingOpen: false,
+      // O caminho livre de boas-vindas; o teste da cancela muda-o.
+      welcomeGate: 'clear',
     });
+  });
+
+  it('espera pelas boas-vindas (ação P.11): nada enquanto o App decide ou elas estão abertas', async () => {
+    setBadges([badge('z2_mestre')]);
+    syncBadgeAwards.mockResolvedValue({ pending: [award('a-19', 'z2_mestre')], available: true });
+    useAppStore.setState({ welcomeGate: 'pending' });
+    render(<Probe />);
+    await waitFor(() => expect(syncBadgeAwards).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.getByTestId('probe')).toHaveTextContent('nada');
+
+    await act(async () => { useAppStore.setState({ welcomeGate: 'open' }); });
+    expect(screen.getByTestId('probe')).toHaveTextContent('nada');
+
+    // Fecharam-se as boas-vindas: o badge aparece, e à espera não se gastou.
+    await act(async () => { useAppStore.setState({ welcomeGate: 'clear' }); });
+    expect(screen.getByTestId('probe')).toHaveTextContent('grande:a-19+0');
+    expect(markBadgeAwardsSeen).not.toHaveBeenCalled();
   });
 
   it('os grandes entram em fila: um de cada vez, o seguinte só depois de dispensado', async () => {

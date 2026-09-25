@@ -40,9 +40,21 @@ describe('impressionKeySets', () => {
   });
 
   it('sem linhas, dois conjuntos vazios', () => {
-    const { shown, dismissed } = impressionKeySets(null);
+    const { shown, dismissed, lastWelcomeAt } = impressionKeySets(null);
     expect(shown.size).toBe(0);
     expect(dismissed.size).toBe(0);
+    expect(lastWelcomeAt).toBeNull();
+  });
+
+  it('a última saudação, em qualquer dispositivo, é o shown_at mais recente das boas-vindas (ação P.11)', () => {
+    const { lastWelcomeAt } = impressionKeySets([
+      { ...linha('welcome', '2026-09-20:manha'), shown_at: '2026-09-20T07:10:00Z' },
+      { ...linha('welcome', '2026-09-20:tarde'), shown_at: '2026-09-20T12:40:00Z' },
+      // Um momento mais recente não conta: não é uma saudação.
+      { ...linha('moment', 'weekdone:2026-09-14'), shown_at: '2026-09-20T13:00:00Z' },
+      { ...linha('welcome', '2026-09-19:noite'), shown_at: null },
+    ]);
+    expect(lastWelcomeAt).toBe(Date.parse('2026-09-20T12:40:00Z'));
   });
 });
 

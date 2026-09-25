@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pickProactiveTrigger, pendingRaceBalance, pendingRaceBalanceCandidate, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
+import { pickProactiveTrigger, listProactiveTriggers, pendingRaceBalance, pendingRaceBalanceCandidate, pendingBlockEndAlert, endingBlock, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
 
 const NOW = new Date('2026-09-11T09:00:00Z'); // sexta-feira
 
@@ -185,5 +185,83 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       markProactiveSent('u1', { trigger: 'silence', key: 'k' });
       expect(wasProactiveSent('u1', { trigger: 'silence', key: 'k' })).toBe(true);
     });
+  });
+});
+
+describe('o aviso "O bloco está a acabar" (ação P.11)', () => {
+  // Sexta, 11: um bloco sem prova que acaba no domingo, 13, sem outro a seguir.
+  const bloco = {
+    coachPlans: [{ id: 'b1', status: 'aceite', period_start: '2026-08-17', period_end: '2026-09-13' }],
+    coachPlanItems: [{ id: 'i1', plan_id: 'b1', planned_date: '2026-09-12', kind: 'corrida', status: 'pendente' }],
+    profile: { id: 'u1' },
+  };
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('o candidato é o do chat e da notificação, e o "quando" por extenso', () => {
+    const b = pendingBlockEndAlert(bloco, NOW);
+    expect(b.candidate).toEqual({
+      trigger: 'block_end',
+      key: 'block_end:b1',
+      details: 'O bloco de treino acaba daqui a 2 dias (2026-09-13) e não há outro a seguir.',
+    });
+    expect(b.when).toBe('daqui a 2 dias');
+    // O mesmo objeto que a lista do chat usa.
+    expect(endingBlock(bloco, '2026-09-11').candidate).toEqual(b.candidate);
+    expect(endingBlock(bloco, '2026-09-13').when).toBe('hoje');
+    expect(endingBlock(bloco, '2026-09-12').when).toBe('amanhã');
+  });
+
+  it('um plano só de refeições não é um bloco', () => {
+    expect(pendingBlockEndAlert({ ...bloco, coachPlanItems: [{ id: 'i1', plan_id: 'b1', planned_date: '2026-09-12', kind: 'refeicao' }] }, NOW)).toBeNull();
+  });
+
+  it('cala-se quando a conversa já aconteceu, ou quando foi dispensado — aqui ou noutro dispositivo', () => {
+    const { candidate } = pendingBlockEndAlert(bloco, NOW);
+    markProactiveSent('u1', candidate);
+    expect(pendingBlockEndAlert(bloco, NOW)).toBeNull();
+
+    window.localStorage.clear();
+    dismissProactiveAlert('u1', candidate);
+    expect(pendingBlockEndAlert(bloco, NOW)).toBeNull();
+
+    window.localStorage.clear();
+    expect(pendingBlockEndAlert({ ...bloco, impressionDismissed: new Set(['alert:block_end:b1']) }, NOW)).toBeNull();
+  });
+});
+
+describe('P.10 — o treino de ontem e o silêncio com check-ins, no chat', () => {
+  // NOW é sexta, 2026-09-11: não há balanço da semana.
+  const plano = {
+    coachPlans: [{ id: 'p1', status: 'aceite', race_id: null, period_start: '2026-09-01', period_end: '2026-09-30' }],
+    coachPlanItems: [{ plan_id: 'p1', planned_date: '2026-09-10', kind: 'corrida', status: 'pendente', training_type: 'longo', target_distance_km: 16, created_at: '2026-09-01T10:00:00Z' }],
+  };
+
+  it('o treino de ontem por registar vai para o chat com o que o plano pedia', () => {
+    const list = listProactiveTriggers(data({ ...plano, meals: [{ date: '2026-09-11' }] }), NOW);
+    expect(list).toEqual([{
+      trigger: 'missed_workout',
+      key: 'missed_workout:2026-09-10',
+      details: 'Treino de ontem (2026-09-10) por registar: corrida (longo, 16 km).',
+    }]);
+  });
+
+  it('com uma sessão de ginásio registada ontem, o treino conta como feito', () => {
+    const list = listProactiveTriggers(data({ ...plano, meals: [{ date: '2026-09-11' }], gymSessions: [{ date: '2026-09-10' }] }), NOW);
+    expect(list.some((c) => c.trigger === 'missed_workout')).toBe(false);
+  });
+
+  it('com check-in depois do último registo, o silêncio diz ao chat que faltam os treinos', () => {
+    const c = listProactiveTriggers(data({
+      meals: [{ date: '2026-09-05' }], runs: [{ id: 'r', date: '2026-09-01' }], dailyCheckins: [{ date: '2026-09-10' }],
+    }), NOW).find((x) => x.trigger === 'silence');
+    expect(c.key).toBe('silence:2026-09-05');
+    expect(c.details).toBe('Último registo: 2026-09-05 (há 6 dias). Fez check-in depois disso (último: 2026-09-10): está por cá, faltam os treinos — o último treino foi há 10 dias.');
+    expect(c.details.length).toBeLessThanOrEqual(300);
+  });
+
+  it('sem check-in depois do último registo, o silêncio de sempre', () => {
+    const c = listProactiveTriggers(data({ meals: [{ date: '2026-09-05' }], dailyCheckins: [{ date: '2026-09-04' }] }), NOW).find((x) => x.trigger === 'silence');
+    expect(c.details).toBe('Último registo: 2026-09-05 (há 6 dias).');
   });
 });

@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import { readCachedBalance } from '../../utils/raceBalance';
-import Coach from './Coach';
+import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_IMMEDIATE_FAILURE_TEXT } from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
 const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -129,10 +129,10 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
 
     // Duas voltas da sondagem (8 s), não os 3 minutos.
     await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
-    expect(useAppStore.getState().coachMessages.map((m) => m.content)).not.toContain('Não foi possível obter uma resposta da Carol. Tenta outra vez.');
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).not.toContain(COACH_ASYNC_FALLBACK_TEXT);
     await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
     const contents = useAppStore.getState().coachMessages.map((m) => m.content);
-    expect(contents).toContain('Não foi possível obter uma resposta da Carol. Tenta outra vez.');
+    expect(contents).toContain(COACH_ASYNC_FALLBACK_TEXT);
     expect(useAppStore.getState().coachLoading).toBe(false);
   });
 
@@ -159,7 +159,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 4); });
     const contents = useAppStore.getState().coachMessages.map((m) => m.content);
     expect(contents).toContain('Cheguei.');
-    expect(contents).not.toContain('Não foi possível obter uma resposta da Carol. Tenta outra vez.');
+    expect(contents).not.toContain(COACH_ASYNC_FALLBACK_TEXT);
   });
 
   it('com o servidor ainda a trabalhar (lock ocupado), continua a sondar e apanha a resposta', async () => {
@@ -185,18 +185,21 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
     expect(screen.getByText('Aqui estou.')).toBeInTheDocument();
-    expect(screen.queryByText(/Não foi possível obter uma resposta/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Não consegui responder. Tenta outra vez/)).not.toBeInTheDocument();
   });
 
   it('INCIDENTE 2026-09-12 — o 409 "busy" do servidor mostra-se na voz da Carol, não como falha de rede', async () => {
     // A recusa "Calma Rui…" é escrita de propósito para o atleta a ler; o
     // cliente deitava-a fora e anunciava "A tua mensagem não saiu: falha de
     // rede" — que não houve.
+    const busyText = 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)';
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null,
-      error: 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)',
+      error: busyText,
       isTimeout: false,
       isBusy: true,
+      // A frase veio do servidor (campo `error` do corpo): é para mostrar.
+      serverText: busyText,
     });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
@@ -313,7 +316,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     });
 
     expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
-    expect(screen.getByText(/Não foi possível obter uma resposta da Carol/i)).toBeInTheDocument();
+    expect(screen.getByText(/Não consegui responder/i)).toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
     expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).not.toBeDisabled();
@@ -476,6 +479,9 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
       data: null,
       error: 'Failed to send a request to the Edge Function',
       isTimeout: false,
+      // O pedido nunca chegou ao servidor (ação P.12) — isNetwork:true é o
+      // que faz o Coach mostrar o aviso genérico em vez deste texto bruto.
+      isNetwork: true,
     });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
@@ -499,6 +505,34 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).not.toBeDisabled();
     // Sem sondagem: nenhuma leitura a coach_messages foi despoletada.
     expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
+  });
+
+  // Revisão pré-deploy de 2026-09-25: um erro do gateway (546 WORKER_LIMIT,
+  // 503 BOOT_ERROR) responde sem frase dela — o `error` é o texto em inglês
+  // da supabase-js, que aparecia na bolha da Carol.
+  it('o servidor respondeu sem frase dela: aviso genérico, nunca o texto em inglês da supabase-js', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null,
+      error: 'Edge Function returned a non-2xx status code',
+      isTimeout: false,
+      isNetwork: false,
+      status: 546,
+      serverText: null,
+    });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+
+    // O aviso genérico (COACH_IMMEDIATE_FAILURE_TEXT) sai partido em bolhas.
+    expect(COACH_IMMEDIATE_FAILURE_TEXT).toMatch(/falha de rede/);
+    await waitFor(() => expect(screen.getByText(/falha de rede/i)).toBeInTheDocument());
+    expect(screen.queryByText(/non-2xx/)).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
   });
 });
 
@@ -803,11 +837,14 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     // não saiu, sozinha ao abrir o chat, era o que apareceu no incidente.
     const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    const busyText = 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)';
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null,
-      error: 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)',
+      error: busyText,
       isTimeout: false,
       isBusy: true,
+      // A frase veio do servidor (campo `error` do corpo): é para mostrar.
+      serverText: busyText,
     });
 
     renderCoach();
@@ -950,6 +987,52 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
     await act(async () => { await Promise.resolve(); });
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
     expect(readCachedBalance('race-1')).toBeNull();
+  });
+});
+
+/* Ação P.11: o aviso "O bloco está a acabar" do Início pede a conversa pelo
+   mesmo caminho do balanço (coachIntent 'proactive_moment'), com o
+   candidato do chat e da notificação. */
+describe('Coach — "O bloco está a acabar" pedido a partir do Início (coachIntent proactive_moment)', () => {
+  const CANDIDATE = {
+    trigger: 'block_end',
+    key: 'block_end:b1',
+    details: 'O bloco de treino acaba daqui a 2 dias (2026-09-26) e não há outro a seguir.',
+  };
+  const STORAGE_KEY = 'ironcoach:carol-proativa:user-1';
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+  });
+
+  it('pede o fim de bloco com proactive_force e marca-o como dito', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'O bloco acaba no sábado. Vamos preparar o próximo.' }, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'proactive_moment', candidate: CANDIDATE } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body).toMatchObject({ proactive_trigger: 'block_end', proactive_key: 'block_end:b1', proactive_force: true, message: '' });
+    expect(body.race_outcome).toBeUndefined();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual({ block_end: 'block_end:b1' }));
+    expect(useAppStore.getState().coachIntent).toBeNull();
+  });
+
+  it('a conversa já aconteceu noutro dispositivo: marca-a como dita, para o aviso do Início se calar', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { skipped: true, reason: 'already_sent', proactive: 'block_end', model_message: null, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'proactive_moment', candidate: CANDIDATE } });
+    renderCoach();
+
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual({ block_end: 'block_end:b1' }));
   });
 });
 

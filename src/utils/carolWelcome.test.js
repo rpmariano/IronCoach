@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, WELCOME_PHRASES, pickByDay } from './carolWelcome';
+import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, WELCOME_MIN_GAP_MS, WELCOME_PHRASES, pickByDay } from './carolWelcome';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* As boas-vindas da Carol: aparecem na primeira abertura de cada faixa do
    dia (hora de Lisboa); no dia da prova, a da prova aparece uma vez e ocupa
@@ -156,7 +157,7 @@ describe('buildWelcome — o que ela diz', () => {
     for (const v of ['manha', 'tarde', 'noite', 'madrugada']) {
       const w = buildWelcome(v, { ...base, profile: {} }, at(`${hoje}T10:00:00`));
       expect(w.lines.length).toBeLessThanOrEqual(2);
-      expect([w.greeting, ...w.lines].join(' ')).not.toMatch(/!/);
+      expectCarolVoice([w.greeting, ...w.lines].join(' '));
       expect(w.greeting).not.toMatch(/, \./);
     }
   });
@@ -249,3 +250,78 @@ describe('boas-vindas — variedade, dados e o check-in', () => {
   });
 });
 
+
+describe('ação P.11 — a véspera e o intervalo entre saudações', () => {
+  const raceEvents = [{ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-20', status: 'agendada', distance_km: 21.0975, start_time: '09:30:00' }];
+
+  it('na véspera, a da véspera uma vez, a ocupar a faixa; depois, as faixas normais', () => {
+    const tarde = decideWelcome({ now: at('2026-09-19T15:00:00'), raceEvents, seen: [] });
+    expect(tarde).toMatchObject({ variant: 'vespera', key: '2026-09-19:vespera' });
+    expect(tarde.markKeys).toEqual(['2026-09-19:vespera', '2026-09-19:tarde']);
+    expect(decideWelcome({ now: at('2026-09-19T21:00:00'), raceEvents, seen: tarde.markKeys })?.variant).toBe('noite');
+  });
+
+  it('de madrugada não há véspera: às 23h a madrugada já fala do treino de amanhã', () => {
+    expect(decideWelcome({ now: at('2026-09-19T23:30:00'), raceEvents, seen: [] })?.variant).toBe('madrugada');
+  });
+
+  it('uma prova hoje ganha à véspera de outra amanhã', () => {
+    const duas = [...raceEvents, { id: 'r0', name: 'Corrida da Manhã', date: '2026-09-19', status: 'agendada' }];
+    expect(decideWelcome({ now: at('2026-09-19T07:00:00'), raceEvents: duas, seen: [] })?.variant).toBe('prova');
+  });
+
+  it('menos de 2 h depois da última saudação, a faixa nova espera — sem se gastar', () => {
+    const last = at('2026-09-19T11:50:00').getTime();
+    const cedo = decideWelcome({ now: at('2026-09-19T12:30:00'), seen: ['2026-09-19:manha'], lastShownAt: last });
+    expect(cedo).toBeNull();
+    // A tarde continua por saudar: às 13:55 já passaram as 2 h.
+    const depois = decideWelcome({ now: at('2026-09-19T13:55:00'), seen: ['2026-09-19:manha'], lastShownAt: last });
+    expect(depois).toMatchObject({ variant: 'tarde', key: '2026-09-19:tarde' });
+    expect(WELCOME_MIN_GAP_MS).toBe(2 * 60 * 60 * 1000);
+  });
+
+  it('a prova e a véspera não esperam pelo intervalo', () => {
+    const last = at('2026-09-19T11:50:00').getTime();
+    expect(decideWelcome({ now: at('2026-09-19T12:10:00'), raceEvents, seen: ['2026-09-19:manha'], lastShownAt: last })?.variant).toBe('vespera');
+    const prova = [{ id: 'r1', name: 'Meia de Lisboa', date: '2026-09-19', status: 'agendada' }];
+    expect(decideWelcome({ now: at('2026-09-19T06:10:00'), raceEvents: prova, seen: ['2026-09-18:madrugada'], lastShownAt: at('2026-09-19T05:30:00').getTime() })?.variant).toBe('prova');
+  });
+
+  it('um relógio adiantado noutro dispositivo não cala as boas-vindas', () => {
+    const futuro = at('2026-09-19T18:00:00').getTime();
+    expect(decideWelcome({ now: at('2026-09-19T13:00:00'), seen: [], lastShownAt: futuro })?.variant).toBe('tarde');
+  });
+
+  it('o texto da véspera: a prova, a partida e o plano de hoje — nada de manual', () => {
+    const data = {
+      profile: { display_name: 'Rui Mariano', gender: 'M' },
+      coachPlans: [{ id: 'p1', status: 'aceite' }],
+      coachPlanItems: [{ id: 'i1', plan_id: 'p1', planned_date: '2026-09-19', kind: 'corrida', training_type: 'rodagem', target_distance_km: 4, status: 'pendente' }],
+      raceEvents, runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], dailyCheckins: [],
+    };
+    const w = buildWelcome('vespera', data, at('2026-09-19T15:00:00'));
+    expect(w.greeting).toBe('Amanhã é dia de prova, Rui.');
+    expect(w.lines[0]).toBe('Meia de Lisboa, partida às 9:30.');
+    expect(w.lines[1]).toMatch(/^Hoje ainda tens .*rodagem/i);
+    expect(w.chip).toMatchObject({ label: '21,1 km', value: 'Partida às 09:30', icon: 'trophy' });
+    expect(w.lines.length).toBeLessThanOrEqual(2);
+    expectCarolVoice([w.greeting, ...w.lines].join(' '));
+
+    const feito = buildWelcome('vespera', { ...data, coachPlanItems: [{ ...data.coachPlanItems[0], status: 'concluido' }] }, at('2026-09-19T19:30:00'));
+    expect(feito.lines[1]).toMatch(/^O treino de hoje já está feito/);
+    const descanso = buildWelcome('vespera', { ...data, coachPlanItems: [{ id: 'i2', plan_id: 'p1', planned_date: '2026-09-19', kind: 'descanso', status: 'pendente' }] }, at('2026-09-19T10:00:00'));
+    expect(descanso.lines[1]).toBe('Hoje é descanso.');
+    // Sem plano: só a prova, e sem nome fica sem nome.
+    const semPlano = buildWelcome('vespera', { ...data, profile: {}, coachPlans: [], coachPlanItems: [] }, at('2026-09-19T10:00:00'));
+    expect(semPlano.lines).toEqual(['Meia de Lisboa, partida às 9:30.']);
+    expect(semPlano.greeting).toBe('Amanhã é dia de prova.');
+  });
+
+  it('a hora da última saudação fica por utilizador', () => {
+    const st = memoryStorage();
+    expect(readShownAt('u1', st)).toBeNull();
+    markShownAt('u1', 1_700_000_000_000, st);
+    expect(readShownAt('u1', st)).toBe(1_700_000_000_000);
+    expect(readShownAt('u2', st)).toBeNull();
+  });
+});

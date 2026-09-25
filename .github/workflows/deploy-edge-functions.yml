@@ -72,7 +72,25 @@ jobs:
       # --project-ref é obrigatório aqui: o project_id em supabase/config.toml
       # ("Claude") é só o nome local do projeto, não a referência real do
       # Supabase — o CLI não a consegue inferir a partir do config.toml.
+      #
+      # Até 3 tentativas, com 60 s entre elas (2026-09-25): para empacotar as
+      # funções, o CLI descarrega a imagem do edge-runtime do registo público
+      # da AWS (public.ecr.aws), que limita os pedidos por IP — e os runners do
+      # GitHub partilham IPs. Um deploy falhou assim, logo na primeira função,
+      # com "docker: toomanyrequests: Rate exceeded", e nada foi publicado.
+      # Repetir é seguro: publicar o mesmo código outra vez não muda nada.
       - name: Deploy
-        run: supabase functions deploy --project-ref roxfzsiciizkevopgpnl
+        run: |
+          for attempt in 1 2 3; do
+            if supabase functions deploy --project-ref roxfzsiciizkevopgpnl; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Deploy falhou (tentativa $attempt de 3) — a repetir daqui a 60 s"
+              sleep 60
+            fi
+          done
+          echo "::error::Deploy falhou nas 3 tentativas"
+          exit 1
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

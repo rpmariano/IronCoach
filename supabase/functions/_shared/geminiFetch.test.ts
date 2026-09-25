@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
+import { assertCarolVoice } from "./carolTone.ts";
 import { COACH_BUDGET_MS, EXTRACTION_BUDGET_MS, fetchGeminiWithTimeout, hasTimeFor, requestDeadlines } from "./geminiFetch.ts";
 
 // ── fetchGeminiWithTimeout: o Gemini "ocupado" (incidente 2026-09-24) ──────
@@ -100,7 +101,8 @@ Deno.test("fetchGeminiWithTimeout: por tempo, com retries a 0, não repete e diz
     // um prazo curto não o encurta abaixo disso — espera-se por ele.
     try { await fetchGeminiWithTimeout("https://gemini.test", {}, 10, 0, Number.POSITIVE_INFINITY, [1, 1, 1]); } catch (e) { message = (e as Error).message; }
     assertEquals(calls, 1);
-    assertEquals(message.startsWith("O Gemini demorou demasiado tempo a responder."), true);
+    assertEquals(message.startsWith("Não consegui responder a tempo."), true);
+    assertCarolVoice(message);
   } finally {
     globalThis.fetch = original;
   }
@@ -114,7 +116,8 @@ Deno.test("fetchGeminiWithTimeout: rede sempre em baixo — duas tentativas e a 
     let message = "";
     try { await fetchGeminiWithTimeout("https://gemini.test", {}, 1000, 0, Number.POSITIVE_INFINITY, [1, 1, 1]); } catch (e) { message = (e as Error).message; }
     assertEquals(calls, 2);
-    assertEquals(message, "Não consegui contactar o Gemini (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.");
+    assertEquals(message, "Não consegui ligar-me ao serviço de análise (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.");
+    assertCarolVoice(message);
   } finally {
     globalThis.fetch = original;
   }

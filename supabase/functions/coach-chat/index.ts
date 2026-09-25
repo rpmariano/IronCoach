@@ -7,6 +7,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
+import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
@@ -23,8 +24,9 @@ import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, fetchWeekAdherenceLine, lisbonTodayISO } from "../_shared/carolMemory.ts";
-import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
-import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL } from "../_shared/carolTone.ts";
+import { fetchRaceWeatherContext, fetchRaceWeatherObserved } from "../_shared/raceWeatherFetch.ts";
+import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
+import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL, upstreamErrorText } from "../_shared/carolTone.ts";
 import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
 import { MEAL_ONLY_CATEGORY, MEAL_ONLY_DAY_LABEL, MEAL_TYPE_LABEL, isMealOnlyItem, mergeSingleMeal } from "../_shared/formulas/mealSuggestions.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
@@ -58,7 +60,9 @@ import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.
 // generationConfig podem mudar de geração para geração (ver thinkingConfig
 // abaixo) — por isso esta função evita depender de campos específicos de uma
 // geração de modelo.
-const GEMINI_MODEL = "gemini-flash-latest";
+// Exportado para a validação do esquema contra a API real
+// (scripts/probe-coach-chat-schema.ts) usar exatamente o mesmo modelo.
+export const GEMINI_MODEL = "gemini-flash-latest";
 const MAX_HISTORY   = 30;   // mensagens mais recentes enviadas ao Gemini
 const MAX_MSG_LEN   = 2000; // caracteres máximos por mensagem
 const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de forçar resposta final
@@ -638,8 +642,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "week_review";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "week_review"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -703,9 +707,19 @@ export async function recordProactiveDelivered(sb: any, userId: string, trigger:
 }
 
 const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
+  // P.10: com check-ins depois do último registo, ele está por cá — o que
+  // falta são os treinos. O Contexto (do cliente) diz se é o caso.
   silence:
-    `Está sem qualquer registo há 3 dias ou mais. Pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase de contexto no máximo. ` +
-    `Sem sermão, sem lista de treinos em atraso, sem reagendar nada: isso fica para quando ele responder.`,
+    `Está sem qualquer registo há 3 dias ou mais. Se o Contexto disser que fez check-in depois do último registo, ele está por cá: ` +
+    `não lhe perguntes se está bem em geral — diz que não vês nenhum treino dele há tantos dias (o número do Contexto) e pergunta o que se ` +
+    `passa com os treinos. Sem esse check-in, pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase de contexto no máximo. ` +
+    `Nos dois casos: sem sermão, sem lista de treinos em atraso, sem reagendar nada — isso fica para quando ele responder.`,
+  // P.10: o treino de ontem do plano ficou por registar. Pergunta e ouve —
+  // pode ter treinado e não registado; reagendar é outra conversa.
+  missed_workout:
+    `Ontem havia treino no plano e não há registo dele — o Contexto diz qual. Pergunta-lhe o que aconteceu, numa ou duas frases, ` +
+    `sem sermão e sem dar o treino como falhado: pode ter treinado e não registado. NÃO reagendes nem mexas no plano neste turno — ` +
+    `ouve primeiro. Se ele disser que treinou, pede-lhe que registe; se não treinou, pergunta o que o impediu e fica por aí.`,
   race_eve:
     `Amanhã é a prova. Primeiro, o PLANO PARA O DIA (bloco no contexto, se existir): apresenta-o na tua voz, troço a troço — o ritmo do ` +
     `primeiro km e porquê, onde controlar, onde aguentar, o ponto de decisão e o que o decide, o final, o abastecimento nos km certos — e cita ` +
@@ -1225,7 +1239,7 @@ const corsHeaders = {
 // de guardar/mostrar uma resposta. `mood` é a cara com que ela diz a
 // resposta (CAROL.md §4): escolhida na mesma decisão que escreve o texto,
 // para a cara nunca contradizer as palavras.
-const RESPONSE_SCHEMA = {
+export const RESPONSE_SCHEMA_BASE = {
   type: "OBJECT",
   properties: {
     on_topic: { type: "BOOLEAN" },
@@ -1239,6 +1253,66 @@ const RESPONSE_SCHEMA = {
   },
   required: ["on_topic", "reply", "suggestions", "mood"],
 };
+
+/* As recomendações soltas (5.5, push 2): o que ela recomenda na conversa,
+   fora do plano, num campo à parte — validado em
+   _shared/formulas/recommendations.ts e gravado em coach_recommendations.
+   A forma segue a lição de 2026-09-05 (ver MEAL_MACROS_SCHEMA_PROPERTIES):
+   um array ao nível de topo, OPCIONAL, SEM minItems/maxItems, de objetos
+   planos (sem arrays lá dentro). O limite de 5 é aplicado em código. E há
+   uma rede: se a API recusar este esquema (400 INVALID_ARGUMENT), o pedido
+   repete-se sem o campo — ver shouldRetryWithoutRecommendations. */
+export const RESPONSE_SCHEMA = {
+  ...RESPONSE_SCHEMA_BASE,
+  properties: {
+    ...RESPONSE_SCHEMA_BASE.properties,
+    recommendations: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          date: { type: "STRING", description: "O dia a que se refere, AAAA-MM-DD." },
+          kind: { type: "STRING", enum: ["descanso", "corrida", "ginasio", "proteina"] },
+          distance_km: { type: "NUMBER" },
+          duration_min: { type: "NUMBER" },
+          protein_g: { type: "NUMBER" },
+        },
+        required: ["date", "kind"],
+      },
+    },
+  },
+};
+
+/** A API recusou o esquema com as recomendações? Então repete-se sem elas
+ *  (uma vez), em vez de o chat ir abaixo como a 2026-09-05. */
+export function shouldRetryWithoutRecommendations(status: number, errText: string, usingRecommendations: boolean): boolean {
+  return usingRecommendations && status === 400 && /INVALID_ARGUMENT/.test(errText || "");
+}
+
+/* Esta instância deixa de enviar o campo depois de uma recusa: não vale a
+   pena pagar a ida e volta falhada em todos os pedidos até ao próximo
+   arranque a frio. */
+let recommendationsSchemaRejected = false;
+
+/* Grava as recomendações da resposta, validadas, depois da mensagem dela.
+   Best-effort: sem a tabela (migration por aplicar) ou com um erro, fica no
+   log — a mensagem já foi entregue. Devolve quantas ficaram gravadas. */
+// deno-lint-ignore no-explicit-any
+export async function saveRecommendations(sb: any, userId: string, messageId: string | null, raw: unknown, todayISO: string): Promise<number> {
+  const rows = parseRecommendations(raw, todayISO);
+  if (!rows.length) return 0;
+  try {
+    const { error } = await sb.from("coach_recommendations").upsert(
+      rows.map((r) => ({ ...r, user_id: userId, message_id: messageId })),
+      { onConflict: "user_id,date,kind" },
+    );
+    if (error) { console.warn("coach_recommendations: gravação falhou:", error.message ?? error); return 0; }
+    return rows.length;
+  } catch (e) {
+    console.warn("coach_recommendations: gravação falhou:", e);
+    return 0;
+  }
+}
 
 // Grava a resposta dela com a emoção. Sem a coluna `mood` (a migration
 // 20260924001000 ainda por aplicar) o PostgREST recusa o insert inteiro — e
@@ -1314,6 +1388,15 @@ const OFF_TOPIC_CAROL_REPLY =
   "Essa não é bem a minha área. Estou aqui para te apoiar no treino, nutrição, " +
   "composição corporal e corrida — tudo o que te ajuda a chegar em melhor forma às tuas provas. " +
   "Em que posso ajudar-te?";
+
+// As recusas que o chat mostra como fala dela (o `error` do corpo): diz o que
+// se passa e o que fazer, sem nomear a peça que falhou — essa vai em `detail`.
+export const CHAT_OWN_FAILURE_TEXT =
+  "Não consegui preparar a resposta por um problema do meu lado. Tenta outra vez daqui a pouco.";
+export const CHAT_SESSION_TEXT =
+  "Não consegui confirmar que és tu. Sai da app e volta a entrar, e continuamos.";
+export const CHAT_MESSAGE_NOT_SAVED_TEXT =
+  "A tua mensagem não ficou guardada, por isso não lhe respondi. Envia-a outra vez.";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1677,7 +1760,8 @@ const RUN_KIND_LABELS: Record<string, string> = {
 // Os momentos em que ela pode notificar (P.5/P.6), como se leem na bio.
 const PUSH_TYPE_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
-  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos", week_review: "balanço da semana",
+  race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
+  missed_workout: "treino por registar", week_review: "balanço da semana",
 };
 const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", tempo: "Tempo", recuperacao: "Recuperação",
@@ -1729,6 +1813,8 @@ export function summariseRuns(runs: any[]): string[] {
     // não inventa números que o relógio não deu.
     const maxHrStr = details.max_heart_rate_bpm != null ? `FC máx ${Math.round(details.max_heart_rate_bpm)} bpm` : null;
     const vo2Str = details.vo2_max != null ? `VO2 est. relógio ${details.vo2_max}` : null;
+    // A temperatura do relógio (5.6): o calor explica um ritmo mais lento ou uma FC mais alta.
+    const tempStr = typeof details.temperature_c === "number" ? `${String(details.temperature_c).replace(".", ",")} °C` : null;
     const thresholdParts = [
       details.aerobic_threshold_bpm != null ? `aeróbio ${Math.round(details.aerobic_threshold_bpm)}` : null,
       details.anaerobic_threshold_bpm != null ? `anaeróbio ${Math.round(details.anaerobic_threshold_bpm)}` : null,
@@ -1742,7 +1828,7 @@ export function summariseRuns(runs: any[]): string[] {
           .map((z: any) => `Z${z.zone} ${z.minutes}'`)
           .join(" · ")}`
       : null;
-    const parts = [distance, duration, pace, cadStr, hrStr, maxHrStr, vo2Str, thresholdStr, recoveryStr, zonesStr].filter(Boolean);
+    const parts = [distance, duration, pace, cadStr, hrStr, maxHrStr, vo2Str, thresholdStr, recoveryStr, zonesStr, tempStr].filter(Boolean);
     return `- ${r.date}${r.start_time ? ` às ${hhmm(r.start_time)}` : ""}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
   });
 }
@@ -3409,9 +3495,11 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
 
   const { error } = await sb
     .from("profiles")
-    .update({ 
-      coach_intervention_status: "resolved", 
-      coach_intervention_reason: null 
+    .update({
+      coach_intervention_status: "resolved",
+      coach_intervention_reason: null,
+      // O desfecho fica em coach_interventions (5.5): a Carol calibra por ele.
+      coach_intervention_outcome: actionTaken,
     })
     .eq("id", userId);
 
@@ -3834,7 +3922,20 @@ export function buildRaceEventsContext(
       }
     }
 
-    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${forecastSuffix}${triageSuffix}`;
+    /* O percurso segundo o site oficial (5.6): o route_summary já existia em
+       web_info, mas só o plano de ritmos o lia — a Carol não sabia que a
+       prova tinha "uma subida longa ao km 8" quando falava dela. E o D+ que
+       o site diz, ao lado do que o atleta marcou, se discordarem. */
+    const web = (e.web_info || {}) as Record<string, unknown>;
+    const siteDplus = Number(web.elevation_gain_site_m) > 0 ? Math.round(Number(web.elevation_gain_site_m)) : null;
+    const ownDplus = Number(e.elevation_gain_m) > 0 ? Math.round(Number(e.elevation_gain_m)) : null;
+    const routeBits = [
+      typeof web.route_summary === "string" && web.route_summary.trim() ? web.route_summary.trim().slice(0, 400) : null,
+      siteDplus ? `D+ segundo o site: ${siteDplus} m${ownDplus && ownDplus !== siteDplus ? ` (ele marcou ${ownDplus} m)` : ""}.` : null,
+    ].filter(Boolean);
+    const routeSuffix = daysUntil >= 0 && routeBits.length ? `\n  PERCURSO (site oficial): ${routeBits.join(" ")}` : "";
+
+    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${forecastSuffix}${triageSuffix}${routeSuffix}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
 }
@@ -4687,6 +4788,13 @@ export function buildSystemInstruction(
     `- "worried": dor, lesão, alarme G1–G5, sinais de RED-S ou sobretreino, objetivo inviável, discordância com um pedido arriscado, dias sem notícias.\n` +
     `- "caring": o atleta está em baixo — dormiu mal, está cansado, frustrado, stressado, falhou um treino por motivos da vida. Quando lhe dizes "estou contigo" e baixas a carga.\n` +
     `Um aviso ganha sempre: se a resposta tem um alerta de saúde, é "worried" mesmo que também elogies alguma coisa. Não uses "happy" nem "proud" por simpatia — o elogio automático tira-te credibilidade.\n\n` +
+    // ── Recommendations (5.5, push 2) ───────────────────────────────────────
+    `## Campo "recommendations"\n` +
+    `Só quando, NESTA resposta, recomendas uma coisa concreta para um dia fora do plano aceite (ou por cima dele): descanso, uma corrida ou ` +
+    `uma sessão de ginásio (com a distância ou a duração que disseste), ou uma quantidade de proteína para o dia. Uma entrada por recomendação: ` +
+    `a data (AAAA-MM-DD, contada a partir de "Hoje (…)" no contexto), o tipo e o número que está no texto — o mesmo, nunca outro. ` +
+    `Em tudo o resto o array fica vazio: conversa, explicações, conselhos gerais, e o que já está no plano. Não é um plano: para vários dias, ` +
+    `propõe o plano pela ferramenta.\n\n` +
     `## Provas Próximas\n` +
     `Se houver "Próximas provas agendadas" no contexto, tem sempre em conta a proximidade e a "fase do plano" ao dar conselhos de treino ou nutrição, mesmo sem o atleta mencionar. Regras gerais:\n` +
     `- Fase "Não iniciado": o atleta está fora da janela oficial de preparação para a distância. Treinos de manutenção ou base.\n` +
@@ -5313,11 +5421,18 @@ async function handler(req: Request): Promise<Response> {
   let lockIso: string | null = null;
 
   try {
+    // As recusas daqui aparecem no chat como fala dela (Coach.jsx mostra o
+    // `error` do corpo): na voz dela, sem a peça técnica, que vai em
+    // `detail` — o cliente só a põe no app_logs (revisão pré-deploy de
+    // 2026-09-25).
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiKey) return jsonResponse({ error: "GEMINI_API_KEY não configurada" }, 500);
+    if (!geminiKey) {
+      console.error("coach-chat: GEMINI_API_KEY não configurada");
+      return jsonResponse({ error: CHAT_OWN_FAILURE_TEXT, detail: "GEMINI_API_KEY não configurada" }, 500);
+    }
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return jsonResponse({ error: "Sem autorização" }, 401);
+    if (!authHeader) return jsonResponse({ error: CHAT_SESSION_TEXT, detail: "sem cabeçalho Authorization" }, 401);
 
     sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -5326,7 +5441,7 @@ async function handler(req: Request): Promise<Response> {
     );
 
     const { data: userData, error: userError } = await sb.auth.getUser();
-    if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
+    if (userError || !userData?.user) return jsonResponse({ error: CHAT_SESSION_TEXT, detail: "sessão inválida" }, 401);
     const userId = userData.user.id;
 
     // ── Lock por utilizador ───────────────────────────────────────────────
@@ -5737,19 +5852,27 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Balanço: os parciais registados face ao plano dessa prova ─────────
+    /* A prova do balanço, lida uma vez: o percurso serve os parciais, e o
+       resto o tempo que esteve (5.6) — pedido já, esperado ao montar o
+       prompt. Nunca rejeita: sem local ou sem resposta, não há bloco. */
+    // deno-lint-ignore no-explicit-any
+    let pastRace: any = null;
+    if (raceOutcome && raceOutcome.verdict !== "sem_registo" && raceOutcome.race_id) {
+      const { data } = await sb
+        .from("race_events")
+        .select("name, date, location, start_time, target_time_seconds, distance_km, web_info")
+        .eq("id", raceOutcome.race_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      pastRace = data ?? null;
+    }
+    const raceObservedWeatherPromise: Promise<string | null> = pastRace
+      ? fetchRaceWeatherObserved(pastRace, todayISO)
+      : Promise.resolve(null);
     let splitsContext: string | null = null;
     if (raceOutcome && raceOutcome.verdict !== "sem_registo" && raceOutcome.splits.length > 0) {
       // deno-lint-ignore no-explicit-any
-      let pastWebInfo: any = null;
-      if (raceOutcome.race_id) {
-        const { data: pastRace } = await sb
-          .from("race_events")
-          .select("web_info")
-          .eq("id", raceOutcome.race_id)
-          .eq("user_id", userId)
-          .maybeSingle();
-        pastWebInfo = pastRace?.web_info ?? null;
-      }
+      const pastWebInfo: any = pastRace?.web_info ?? null;
       const pastPlan = buildRacePacingPlan({
         distanceKm: raceOutcome.distance_km,
         raceType: raceOutcome.race_type,
@@ -5816,6 +5939,9 @@ async function handler(req: Request): Promise<Response> {
     // A meteorologia da prova (ação 4.2): só nos 7 dias antes, pedida já e
     // esperada ao montar o prompt. Nunca rejeita — sem previsão, não há bloco.
     const raceWeatherPromise = fetchRaceWeatherContext(nextUpcomingRace, todayISO);
+    // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6) — só
+    // com cidade no perfil e treino no plano; nunca rejeita.
+    const trainingWeatherPromise = fetchTrainingWeatherBlock(sb, userId, todayISO);
     const readinessPanel = buildReadinessPanel(
       recentRuns || [],
       weekMeals || [],
@@ -6080,7 +6206,11 @@ async function handler(req: Request): Promise<Response> {
         .select()
         .single();
       if (userMsgErr) {
-        return jsonResponse({ error: `Falha a guardar mensagem: ${userMsgErr.message}` }, 500);
+        console.error("coach-chat: falha a gravar a mensagem do atleta", userMsgErr);
+        return jsonResponse({
+          error: CHAT_MESSAGE_NOT_SAVED_TEXT,
+          detail: `coach_messages: ${userMsgErr.code ?? ""} ${userMsgErr.message}`.trim(),
+        }, 500);
       }
       userMsg = data;
     }
@@ -6166,6 +6296,10 @@ async function handler(req: Request): Promise<Response> {
       memoryBlocks.checkin,
       // O tempo previsto para a prova, se ela for nos próximos 7 dias.
       await raceWeatherPromise,
+      // No balanço, o tempo que esteve na prova (5.6).
+      await raceObservedWeatherPromise,
+      // O tempo para os treinos de hoje e amanhã (5.6).
+      await trainingWeatherPromise,
       memoryBlocks.portrait,
       memoryBlocks.raceHistory,
       // A vitrina de badges, logo a seguir às provas concluídas: é a mesma
@@ -6337,6 +6471,9 @@ async function handler(req: Request): Promise<Response> {
     // tools + response_schema coexistem: quando o modelo decide chamar uma
     // função devolve uma parte functionCall (ignora o schema), quando decide
     // responder ao utilizador segue o schema {reply, suggestions} como sempre.
+    // Com as recomendações no esquema, salvo se esta instância já as viu
+    // recusadas (5.5, push 2 — ver shouldRetryWithoutRecommendations).
+    let useRecommendationsSchema = !recommendationsSchemaRejected;
     async function callGemini(withTools = true) {
       const res = await fetchGeminiWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
@@ -6373,7 +6510,7 @@ async function handler(req: Request): Promise<Response> {
               // não conseguiu gerar uma resposta" sem pista nenhuma da causa.
               maxOutputTokens: 8192,
               response_mime_type: "application/json",
-              response_schema: RESPONSE_SCHEMA,
+              response_schema: useRecommendationsSchema ? RESPONSE_SCHEMA : RESPONSE_SCHEMA_BASE,
             },
           }),
         },
@@ -6463,23 +6600,34 @@ async function handler(req: Request): Promise<Response> {
         console.error("coach-chat: o Gemini não respondeu", JSON.stringify({ round, turnCase, elapsedMs: Date.now() - requestStartedAt, error: e instanceof Error ? e.message : String(e) }));
         const fallback = round > 0 ? await replyAfterWritesWithoutText() : null;
         if (fallback) return fallback;
-        return jsonResponse({ error: e instanceof Error ? e.message : "Falha ao contactar o coach." }, 504);
+        return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 504);
       }
 
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
         console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes }));
+        /* A rede da 5.5: o esquema com as recomendações recusado pela API.
+           Repete-se esta mesma ronda, uma vez, sem o campo — o atleta tem a
+           resposta na mesma, sem recomendações gravadas — e a instância
+           deixa de o enviar. Nunca mais o chat abaixo por causa do esquema. */
+        if (shouldRetryWithoutRecommendations(geminiRes.status, errText, useRecommendationsSchema)) {
+          console.error("coach-chat: RESPONSE_SCHEMA com recommendations recusado pela API — a repetir sem ele", JSON.stringify({ round, turnCase }));
+          useRecommendationsSchema = false;
+          recommendationsSchemaRejected = true;
+          round--;
+          continue;
+        }
         // Depois de uma escrita (ronda > 0), o erro não é "a mensagem não
         // saiu": o plano, a prova ou os objetivos já mudaram.
         const fallback = await replyAfterWritesWithoutText();
         if (fallback) return fallback;
         if (geminiRes.status === 429) {
-          return jsonResponse({
-            error: "O coach atingiu o limite de pedidos da API neste momento. Tenta novamente dentro de alguns minutos.",
-          }, 503);
+          // Voz dela, não a de upstreamErrorText: é uma conversa em curso,
+          // não uma análise avulsa — "dá-me uns minutos", não "tenta outra vez".
+          return jsonResponse({ error: "Estou com muitos pedidos. Dá-me uns minutos." }, 503);
         }
         return jsonResponse({
-          error: `Falha na resposta do coach (${geminiRes.status}). Tenta novamente.`,
+          error: upstreamErrorText(geminiRes.status),
           detail: errText.slice(0, 500),
         }, 502);
       }
@@ -6571,12 +6719,14 @@ async function handler(req: Request): Promise<Response> {
       console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
-      return jsonResponse({ error: "O coach não conseguiu gerar uma resposta. Tenta novamente." }, 502);
+      return jsonResponse({ error: "Não consegui gerar uma resposta. Tenta outra vez." }, 502);
     }
 
     let replyText: string;
     let suggestions: string[] = [];
     let replyMood: CarolMood | null = null;
+    // As recomendações soltas (5.5, push 2): gravam-se depois da mensagem.
+    let rawRecommendations: unknown = null;
     try {
       const parsed = JSON.parse(rawText);
       // O modelo sinaliza perguntas ambíguas fora do âmbito via "on_topic".
@@ -6601,6 +6751,7 @@ async function handler(req: Request): Promise<Response> {
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
       // Fora do vocabulário (ou em falta) fica null, e o cliente deduz do texto.
       replyMood = normalizeMessageMood(parsed.mood);
+      rawRecommendations = parsed.recommendations ?? null;
       // Numa mensagem por iniciativa dela não há "perguntas de seguimento"
       // a oferecer — é ela que está à espera de resposta. A exceção é o
       // balanço "perto do objetivo": a pergunta ("para a próxima é para fazer
@@ -6617,12 +6768,16 @@ async function handler(req: Request): Promise<Response> {
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       return jsonResponse({
-        error: "O coach teve um problema a gerar a resposta. Tenta novamente.",
+        error: "Tive um problema a gerar a resposta. Tenta outra vez.",
       }, 502);
     }
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
     const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
+
+    // Depois da mensagem, as recomendações soltas que ela deu (5.5, push 2):
+    // validadas, com a ligação à mensagem quando ela ficou gravada.
+    await saveRecommendations(sb, userId, modelMsg?.id ?? null, rawRecommendations, todayISO);
 
     // O balanço feito, a prova fica na memória de longo prazo dela (uma nota
     // "outro" com tempo, objetivo e veredicto) — é o que permite ao próximo
@@ -6686,7 +6841,7 @@ async function handler(req: Request): Promise<Response> {
 
   } catch (e) {
     console.error("Erro inesperado:", e);
-    return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
+    return jsonResponse({ error: CHAT_OWN_FAILURE_TEXT, detail: "erro inesperado" }, 500);
   } finally {
     // Liberta sempre o lock adquirido acima, seja qual for o caminho de
     // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava

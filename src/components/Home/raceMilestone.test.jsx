@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
+import { expectCarolVoice } from '../../test/carolVoice';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { raceMilestoneLine, RACE_MILESTONES, wasMilestoneSeen } from './raceMilestone';
 import RaceCard from './RaceCard';
@@ -14,7 +15,7 @@ describe('raceMilestoneLine', () => {
     expect(raceMilestoneLine(30)).toBe('Um mês. A forma que vais ter no dia está a ser feita agora.');
     expect(raceMilestoneLine(29)).toBeNull();
     expect(raceMilestoneLine(1)).toBeNull();
-    for (const d of RACE_MILESTONES) expect(raceMilestoneLine(d)).not.toMatch(/!/);
+    for (const d of RACE_MILESTONES) expectCarolVoice(raceMilestoneLine(d));
   });
 });
 

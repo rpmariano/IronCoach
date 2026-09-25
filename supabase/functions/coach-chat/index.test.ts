@@ -1,6 +1,9 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
+import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
+import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
+import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
@@ -3017,6 +3020,18 @@ Deno.test("proactiveTrigger: cada gatilho injeta a sua instrução, o contexto d
   assertEquals(buildProactiveInstruction("silence", null).includes("Contexto:"), false);
 });
 
+Deno.test("P.10: o treino de ontem pergunta e ouve, sem reagendar; o silêncio com check-ins pergunta pelos treinos", () => {
+  const missed = buildProactiveInstruction("missed_workout", "Treino de ontem (2026-09-23) por registar: corrida (longo, 16 km).");
+  assertStringIncludes(missed, "Contexto: Treino de ontem (2026-09-23) por registar");
+  assertStringIncludes(missed, "Pergunta-lhe o que aconteceu");
+  assertStringIncludes(missed, "NÃO reagendes");
+  assertStringIncludes(missed, "pode ter treinado e não registado");
+  const silence = buildProactiveInstruction("silence", "Último registo: 2026-09-14 (há 4 dias). Fez check-in depois disso (último: 2026-09-17).");
+  assertStringIncludes(silence, "fez check-in depois do último registo");
+  assertStringIncludes(silence, "não vês nenhum treino dele");
+  assertStringIncludes(silence, "Estás bem?");
+});
+
 Deno.test("shouldSkipProactive: salta se a Carol foi a última a falar há menos de 6h; não salta se o atleta já respondeu ou se passou o silêncio", () => {
   const now = Date.parse("2026-09-11T09:00:00Z");
   const recent = new Date(now - 2 * 3600000).toISOString();
@@ -4004,6 +4019,18 @@ Deno.test("resolve_intervention: numa intervenção de plano não há marca nenh
   assertEquals(calls.updates.length, 1);
 });
 
+Deno.test("resolve_intervention: o desfecho vai no update, para o trigger o guardar em coach_interventions (5.5)", async () => {
+  for (const action of ["plano_ajustado", "atleta_ignorou", "falso_positivo"]) {
+    const { sb, calls } = makeResolveSb("Falhou 3 treinos.");
+    await runResolveIntervention(sb, "u1", { action_taken: action });
+    assertEquals(calls.updates[0].row, { coach_intervention_status: "resolved", coach_intervention_reason: null, coach_intervention_outcome: action });
+  }
+  // Um desfecho inventado não fecha nada.
+  const { sb, calls } = makeResolveSb("Falhou 3 treinos.");
+  await runResolveIntervention(sb, "u1", { action_taken: "resolvido_sozinho" });
+  assertEquals(calls.updates.length, 0);
+});
+
 
 // ── Pedido repetido (incidente 2026-09-23) ──────────────────────────────
 // O mesmo POST chegou duas vezes (a resposta perdeu-se a caminho do
@@ -4102,4 +4129,107 @@ Deno.test("checkPlanLoad: a carga do plano em curso não cai em cima de uma prop
 Deno.test("checkPlanLoad: uma falha a ler deixa passar", async () => {
   const broken = { from: () => { throw new Error("rede"); } };
   assertEquals(await checkPlanLoad(broken, "u1", [planRow("2026-09-25", 50)], [], "2026-09-25", "2026-09-24"), null);
+});
+
+// ── 5.5, push 2: as recomendações soltas ─────────────────────────────────────
+
+Deno.test("RESPONSE_SCHEMA: as recomendações seguem a lição de 2026-09-05 — opcionais, ao nível de topo, sem limites de comprimento, objetos planos", () => {
+  // deno-lint-ignore no-explicit-any
+  const rec: any = (RESPONSE_SCHEMA.properties as any).recommendations;
+  assertEquals(rec.type, "ARRAY");
+  // Opcional: o modelo pode não o enviar, e a resposta continua válida.
+  assertEquals(RESPONSE_SCHEMA.required.includes("recommendations"), false);
+  // Sem minItems/maxItems em lado nenhum dentro dele (o padrão que deu 400).
+  const json = JSON.stringify(rec);
+  assertEquals(/minItems|maxItems/.test(json), false);
+  // Objetos planos: nenhuma propriedade é um array ou um objeto.
+  assertEquals(rec.items.type, "OBJECT");
+  for (const p of Object.values(rec.items.properties)) {
+    // deno-lint-ignore no-explicit-any
+    assert(["STRING", "NUMBER"].includes((p as any).type));
+  }
+  // O resto do esquema é exatamente o de antes.
+  assertEquals({ ...RESPONSE_SCHEMA.properties, recommendations: undefined }, { ...RESPONSE_SCHEMA_BASE.properties, recommendations: undefined });
+  assertEquals(RESPONSE_SCHEMA.required, RESPONSE_SCHEMA_BASE.required);
+});
+
+Deno.test("shouldRetryWithoutRecommendations: só um 400 INVALID_ARGUMENT com o campo novo no pedido", () => {
+  const invalid = '{"error":{"code":400,"message":"Invalid JSON payload","status":"INVALID_ARGUMENT"}}';
+  assertEquals(shouldRetryWithoutRecommendations(400, invalid, true), true);
+  // Já sem o campo: o problema é outro, não se repete.
+  assertEquals(shouldRetryWithoutRecommendations(400, invalid, false), false);
+  assertEquals(shouldRetryWithoutRecommendations(429, "RESOURCE_EXHAUSTED", true), false);
+  assertEquals(shouldRetryWithoutRecommendations(503, "UNAVAILABLE", true), false);
+  assertEquals(shouldRetryWithoutRecommendations(400, "", true), false);
+});
+
+function makeRecommendationsSb(error: unknown = null) {
+  // deno-lint-ignore no-explicit-any
+  const calls: any[] = [];
+  const sb = {
+    from: (table: string) => ({
+      // deno-lint-ignore no-explicit-any
+      upsert: (rows: any, opts: any) => { calls.push({ table, rows, opts }); return Promise.resolve({ error }); },
+    }),
+  };
+  return { sb, calls };
+}
+
+Deno.test("saveRecommendations: grava as validadas, ligadas à mensagem, uma por dia e tipo", async () => {
+  const { sb, calls } = makeRecommendationsSb();
+  const saved = await saveRecommendations(sb, "u1", "m1", [
+    { date: "2026-09-26", kind: "descanso" },
+    { date: "2026-09-25", kind: "proteina", protein_g: 140 },
+    { date: "2026-09-26", kind: "voar" },
+  ], "2026-09-25");
+  assertEquals(saved, 2);
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].table, "coach_recommendations");
+  assertEquals(calls[0].opts, { onConflict: "user_id,date,kind" });
+  assertEquals(calls[0].rows, [
+    { date: "2026-09-26", kind: "descanso", user_id: "u1", message_id: "m1" },
+    { date: "2026-09-25", kind: "proteina", protein_g: 140, user_id: "u1", message_id: "m1" },
+  ]);
+});
+
+Deno.test("saveRecommendations: sem nada válido não escreve; com erro, fica no log e não rebenta", async () => {
+  const empty = makeRecommendationsSb();
+  assertEquals(await saveRecommendations(empty.sb, "u1", "m1", null, "2026-09-25"), 0);
+  assertEquals(await saveRecommendations(empty.sb, "u1", "m1", [], "2026-09-25"), 0);
+  assertEquals(empty.calls.length, 0);
+  const failing = makeRecommendationsSb({ message: "relation does not exist" });
+  assertEquals(await saveRecommendations(failing.sb, "u1", null, [{ date: "2026-09-26", kind: "descanso" }], "2026-09-25"), 0);
+});
+
+// ── 5.6: o percurso segundo o site no bloco de provas ───────────────────────
+
+Deno.test("buildRaceEventsContext: o percurso e o D+ do site entram no bloco da prova (5.6)", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({
+      date: "2026-11-15",
+      web_info: { route_summary: "Percurso de montanha com uma subida longa ao km 8.", elevation_gain_site_m: 620 },
+    })],
+    TODAY_ISO, null, null, [],
+  )!;
+  assertStringIncludes(ctx, "PERCURSO (site oficial): Percurso de montanha com uma subida longa ao km 8. D+ segundo o site: 620 m (ele marcou 500 m).");
+});
+
+Deno.test("buildRaceEventsContext: sem web_info, ou com o mesmo D+, não diz nada a mais (5.6)", () => {
+  const semSite = buildRaceEventsContext([makeRaceEvent({ date: "2026-11-15" })], TODAY_ISO, null, null, [])!;
+  assertEquals(semSite.includes("PERCURSO (site oficial)"), false);
+  const igual = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", web_info: { elevation_gain_site_m: 500 } })],
+    TODAY_ISO, null, null, [],
+  )!;
+  assertStringIncludes(igual, "PERCURSO (site oficial): D+ segundo o site: 500 m.");
+  assertEquals(igual.includes("ele marcou"), false);
+});
+
+// Revisão pré-deploy de 2026-09-25: as recusas do chat aparecem como fala
+// dela — na voz dela, sem nomear a peça técnica (essa vai em `detail`).
+Deno.test("as recusas do chat falam como a Carol", () => {
+  for (const text of [CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT]) {
+    assertCarolVoice(text);
+    assertEquals(/servidor|sessão inválida|GEMINI|Postgres|erro inesperado/i.test(text), false, text);
+  }
 });

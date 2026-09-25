@@ -23,6 +23,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
+import { upstreamErrorText } from "../_shared/carolTone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -70,7 +71,7 @@ async function fetchGeminiWithTimeout(url: string, options: RequestInit): Promis
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
-      throw new Error("O pedido à Carol demorou demasiado tempo. Tenta novamente.");
+      throw new Error(upstreamErrorText(null));
     }
     throw e;
   } finally {
@@ -157,10 +158,7 @@ Deno.serve(async (req) => {
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
       console.error("Gemini error:", geminiRes.status, errText);
-      if (geminiRes.status === 429) {
-        return jsonResponse({ error: "A Carol atingiu o limite de pedidos neste momento. Tenta novamente daqui a pouco." }, 502);
-      }
-      return jsonResponse({ error: `A estimativa falhou (Gemini ${geminiRes.status}). Tenta novamente.` }, 502);
+      return jsonResponse({ error: upstreamErrorText(geminiRes.status) }, 502);
     }
 
     const geminiJson = await geminiRes.json();

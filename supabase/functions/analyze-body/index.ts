@@ -8,7 +8,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
 import {
   GOALS_REVIEW_SCHEMA,
   MANUAL_SUMMARY_SCHEMA,
@@ -230,6 +230,8 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
       if (intervencao) {
         patch.coach_intervention_status = "needed";
         patch.coach_intervention_reason = intervencao;
+        // De onde veio o aviso (5.5, coach_interventions).
+        patch.coach_intervention_origin = "body";
       }
     }
 
@@ -454,16 +456,11 @@ async function analyzeWithGemini(
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
     console.error("Gemini error:", geminiRes.status, errText);
-    if (geminiRes.status === 429) {
-      throw new Error(
-        "O Gemini atingiu o limite de pedidos gratuitos neste momento. Espera um pouco e tenta novamente.",
-      );
-    }
     if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
       // Já se tentou de novo (fetchGeminiWithTimeout) e continuou ocupado.
       throw new Error(geminiBusyMessage("ler a avaliação"));
     }
-    throw new Error(`Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.`);
+    throw new Error(upstreamErrorText(geminiRes.status));
   }
 
   const geminiJson = await geminiRes.json();

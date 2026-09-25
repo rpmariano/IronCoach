@@ -27,6 +27,7 @@ import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.
 import { PAIN_ALARM_THRESHOLD } from "../_shared/formulas/checkinAlarms.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
+import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -396,6 +397,11 @@ function formatWorkoutItemName(i: any): string {
   return "Descanso";
 }
 
+// Texto determinístico (nunca passa pelo modelo — CAROL_TONE_RULES é só
+// para o que ele escreve) — ação P.12: sem "⚠️", sem "Certifica-te", sem
+// "Considera" (frases de manual/suavizadas). As duas de água mantêm a
+// palavra "água" de propósito: CarolCard.jsx:169 usa-a para não duplicar
+// a frase local do cartão.
 export function buildWarningsMessage(
   todayPlanItems: any[],
   waterTotal: number,
@@ -411,18 +417,18 @@ export function buildWarningsMessage(
 
   if (waterGoal && waterTotal === 0) {
     // Nunca registou água hoje
-    const waterRem = ` Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.`;
+    const waterRem = ` Ainda não registaste água hoje.`;
     msg = msg ? `${msg}${waterRem}` : waterRem.trim();
   } else if (waterGoal && waterTotal < waterGoal / 2) {
     // Registou, mas ainda abaixo de metade da meta
-    const waterRem = ` Só registaste ${waterTotal} ml. Continua a hidratar-te para atingir a tua meta.`;
+    const waterRem = ` Registaste ${waterTotal} ml de água — ainda não é metade da tua meta.`;
     msg = msg ? `${msg}${waterRem}` : waterRem.trim();
   }
 
   // Alerta RED-S: gordura corporal abaixo do limiar de segurança (ACSM)
   if (bodyMetrics?.hasRedSRisk && bodyMetrics.latestBodyFat !== null) {
     const threshold = isFemale(bodyMetrics.gender) ? "16%" : "8%";
-    const redSMsg = ` ⚠️ Percentagem de gordura corporal (${bodyMetrics.latestBodyFat}%) abaixo do limiar de segurança (${threshold}). Risco RED-S — consulta um profissional de saúde.`;
+    const redSMsg = ` A tua gordura corporal (${bodyMetrics.latestBodyFat}%) está abaixo do limiar de segurança (${threshold}). É risco de RED-S — fala com um profissional de saúde.`;
     msg = msg ? `${msg}${redSMsg}` : redSMsg.trim();
   }
 
@@ -431,7 +437,7 @@ export function buildWarningsMessage(
   // (0,9 kg/semana para toda a gente); a doutrina é sempre relativa à
   // massa corporal e ao nível (ver specs/formulas-checklist.md Fase C).
   if (bodyMetrics?.weightLossTooFast && bodyMetrics.weightLossPct != null) {
-    const wlMsg = ` Perda de peso rápida detetada (${Math.abs(bodyMetrics.weeklyWeightChange ?? 0)} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Certifica-te que estás a comer o suficiente para suportar o treino.`;
+    const wlMsg = ` Perda de peso rápida (${Math.abs(bodyMetrics.weeklyWeightChange ?? 0)} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Não estás a comer o suficiente para o treino que fazes.`;
     msg = msg ? `${msg}${wlMsg}` : wlMsg.trim();
   }
 
@@ -647,7 +653,11 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `Lê "fase_do_plano" e calibra o tom. Se existir "prescrito_vs_feito", usa-o no balanço: um padrão (treinos a meio, ` +
     `descanso não respeitado, proteína abaixo) diz-se com o número; um dia isolado não. ` +
     `Se existir "o_que_ja_viu_na_app", não repitas como novidade nem contradigas o que já lhe disseste ao abrir a app, ` +
-    `e se lhe fizeste uma pergunta, retoma-a. Só preenches se houver histórico — caso contrário null.\n` +
+    `e se lhe fizeste uma pergunta, retoma-a. ` +
+    `Se existir "tempo_treinos" e o tempo mudar alguma coisa no treino de hoje ou de amanhã (calor, chuva, vento), ` +
+    `a dica prática (c) pode ser essa — roupa, água, a hora, abrandar com calor —, em palavras e com o número; o plano e ` +
+    `os ritmos não mudam por causa do tempo. Se não mudar nada, não fales do tempo. ` +
+    `Só preenches se houver histórico — caso contrário null.\n` +
     `CHECK-IN DE HOJE — se existir "checkin_hoje", o recap abre por ele (mesmo sem histórico, aí preenches o recap):\n` +
     `  - "dor_alta" true: hoje nada de impacto (corrida, saltos) — e pedes-lhe que fale contigo no chat. ` +
     `Sem diagnosticar e sem prometer quando volta: isso decide-se no chat, pela hierarquia de alarmes.\n` +
@@ -914,10 +924,12 @@ Deno.serve(async (req) => {
     // o que dispensou. As impressões levam o dia de Lisboa, como o cliente
     // as grava; `today` (todayISO acima) já o é. Ficam fora do
     // fetchSharedMemoryBlock de propósito: as quatro análises não as leem.
-    const [raceWeather, adherence, impressions] = await Promise.all([
+    const [raceWeather, adherence, impressions, trainingWeather] = await Promise.all([
       fetchRaceWeatherContext(nextRace, today),
       fetchAdherenceBlock(sb, userId, today),
       fetchImpressionsBlock(sb, userId, today),
+      // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6).
+      fetchTrainingWeatherBlock(sb, userId, today),
     ]);
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
@@ -946,6 +958,7 @@ Deno.serve(async (req) => {
       vesperaDaProva: raceEveForSummary,
     });
     if (raceWeather) (ctx as Record<string, unknown>).meteorologia_prova = raceWeather;
+    if (trainingWeather) (ctx as Record<string, unknown>).tempo_treinos = trainingWeather;
     if (adherence) (ctx as Record<string, unknown>).prescrito_vs_feito = adherence;
     if (impressions) (ctx as Record<string, unknown>).o_que_ja_viu_na_app = impressions;
     const checkinHoje = checkinForSummary(todayCheckin);
@@ -1023,7 +1036,8 @@ Deno.serve(async (req) => {
     if (loadToOpen) {
       const reason = runLoadInterventionReason(loadToOpen, today);
       const { data: opened, error: openError } = await sb.from("profiles")
-        .update({ coach_intervention_status: "needed", coach_intervention_reason: reason })
+        // A origem vai com a abertura (5.5, coach_interventions).
+        .update({ coach_intervention_status: "needed", coach_intervention_reason: reason, coach_intervention_origin: "load" })
         .eq("id", userId)
         .or("coach_intervention_status.is.null,coach_intervention_status.in.(none,resolved)")
         .select("id");

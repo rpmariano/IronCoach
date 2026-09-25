@@ -562,7 +562,7 @@ export function detectCoachInsights(data, profile) {
             id: `race_day_${next.id || 'next'}`,
             severity: 'info',
             title: `Dia da Prova: ${raceName}`,
-            message: `Chegou o grande dia de ${raceName} (${dist} km)! Executa o teu plano de ritmo e nutrição com confiança.`,
+            message: `Chegou o grande dia de ${raceName} (${dist} km). Executa o teu plano de ritmo e nutrição.`,
             metric: 'Prova', value: 'hoje', threshold: 0, module: 'corrida'
           });
         } else if (daysLeft >= 1 && daysLeft <= 7) {
@@ -570,7 +570,7 @@ export function detectCoachInsights(data, profile) {
             id: `race_final_week_${next.id || 'next'}`,
             severity: 'warning',
             title: `Reta Final: ${raceName}`,
-            message: `Faltam apenas ${daysLeft} ${daysLeft === 1 ? 'dia' : 'dias'} para ${raceName} (${dist} km)! Foco em treinos curtos de ativação, hidratação, sono e descanso.`,
+            message: `Faltam apenas ${daysLeft} ${daysLeft === 1 ? 'dia' : 'dias'} para ${raceName} (${dist} km). Foco em treinos curtos de ativação, hidratação, sono e descanso.`,
             metric: 'Prova', value: daysLeft, threshold: 7, module: 'corrida'
           });
         } else if (daysLeft >= 8 && daysLeft <= taperDaysForNext) {
@@ -583,7 +583,7 @@ export function detectCoachInsights(data, profile) {
             id: `race_tapering_${next.id || 'next'}`,
             severity: 'info',
             title: `Fase de Polimento (Tapering): ${raceName}`,
-            message: `Fase de carga máxima terminada para ${raceName}! Faltam ${Math.ceil(daysLeft / 7)} semanas (${daysLeft} dias). O volume vai descer para o corpo recuperar e supercompensar.`,
+            message: `Fase de carga máxima terminada para ${raceName}. Faltam ${Math.ceil(daysLeft / 7)} semanas (${daysLeft} dias). O volume vai descer para o corpo recuperar e supercompensar.`,
             metric: 'Tapering', value: daysLeft, threshold: taperDaysForNext, module: 'corrida'
           });
         } else if ((dist >= 35 && daysLeft >= 90 && daysLeft <= 126) || (dist >= 15 && dist < 35 && daysLeft >= 56 && daysLeft <= 84) || (dist < 15 && daysLeft >= 35 && daysLeft <= 56)) {
@@ -658,7 +658,7 @@ export function detectCoachInsights(data, profile) {
               insights.push({
                 id: 'race_tactic_pace', severity: 'warning',
                 title: `Ritmo-Alvo Irrealista: ${raceName}`,
-                message: `O teu alvo de ritmo é excessivamente otimista face ao teu VDOT atual. Aviso-te desde já: manter esse ritmo vai causar quebra a meio da prova. Recalcula o alvo!`,
+                message: `O teu alvo de ritmo é excessivamente otimista face ao teu VDOT atual. Aviso-te desde já: manter esse ritmo vai causar quebra a meio da prova. Recalcula o alvo.`,
                 metric: 'Pace', value: predictedPaceReal, threshold: targetPace, module: 'corrida'
               });
             }

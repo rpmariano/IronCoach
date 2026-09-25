@@ -6,7 +6,9 @@
    treinadora que o vê entrar: o nome, duas frases dela, e a coisa que
    interessa hoje. No dia de uma prova, a versão da prova aparece UMA vez, na
    primeira abertura do dia, e ocupa o lugar da saudação dessa faixa; as
-   faixas seguintes voltam à saudação normal.
+   faixas seguintes voltam à saudação normal. Na véspera, o mesmo com a
+   versão da véspera. Entre duas saudações de faixa passam pelo menos 2 h
+   (WELCOME_MIN_GAP_MS); a prova e a véspera não esperam.
 
    Tudo aqui é puro (data, dados, memória do que já se viu → decisão e texto),
    para os testes não precisarem de relógio nem de browser. As frases saem
@@ -66,12 +68,23 @@ export function raceToday(raceEvents, dateISO) {
     && r.date.slice(0, 10) === dateISO && r.status !== 'concluida') || null;
 }
 
+/** O intervalo mínimo entre duas saudações de faixa (ação P.11): quem abriu
+ *  a app às 11h50 não volta a ser saudado às 12h05 só porque a tarde
+ *  começou. A prova e a véspera passam sempre. */
+export const WELCOME_MIN_GAP_MS = 2 * 60 * 60 * 1000;
+
 /**
- * Deve aparecer agora? `seen` é a lista de chaves já mostradas neste
- * dispositivo. Devolve null, ou { variant, key, markKeys } — `markKeys` são
- * as chaves a gravar como vistas (a da prova ocupa também a da faixa).
+ * Deve aparecer agora? `seen` é a lista de chaves já mostradas; `lastShownAt`
+ * (epoch ms, ou null) é quando apareceram as últimas boas-vindas, em
+ * qualquer dispositivo. Devolve null, ou { variant, key, markKeys } —
+ * `markKeys` são as chaves a gravar como vistas (a da prova e a da véspera
+ * ocupam também a da faixa).
+ *
+ * Uma faixa adiada pelo intervalo mínimo não se gasta: devolve-se null sem
+ * chave nenhuma, e a saudação dela aparece na primeira abertura depois do
+ * intervalo, se ainda for a mesma faixa.
  */
-export function decideWelcome({ now = new Date(), raceEvents = [], seen = [] } = {}) {
+export function decideWelcome({ now = new Date(), raceEvents = [], seen = [], lastShownAt = null } = {}) {
   const { slot, key, date } = slotKey(now);
   const vistas = new Set(seen || []);
   // De madrugada, mesmo no dia da prova, é a madrugada: a versão da prova é
@@ -81,7 +94,18 @@ export function decideWelcome({ now = new Date(), raceEvents = [], seen = [] } =
     const raceKey = `${date}:prova`;
     if (!vistas.has(raceKey)) return { variant: 'prova', key: raceKey, markKeys: [raceKey, key], race };
   }
+  // A véspera (ação P.11): uma vez no dia anterior, também fora da
+  // madrugada — às 23h a madrugada já fala do treino de amanhã, que é a prova.
+  const eve = slot === 'madrugada' ? null : raceToday(raceEvents, addDays(date, 1));
+  if (eve) {
+    const eveKey = `${date}:vespera`;
+    if (!vistas.has(eveKey)) return { variant: 'vespera', key: eveKey, markKeys: [eveKey, key], race: eve };
+  }
   if (vistas.has(key)) return null;
+  // Um relógio adiantado noutro dispositivo (lastShownAt no futuro) não cala
+  // as boas-vindas: só conta o que já aconteceu.
+  const since = lastShownAt == null ? null : now.getTime() - lastShownAt;
+  if (since != null && since >= 0 && since < WELCOME_MIN_GAP_MS) return null;
   return { variant: slot, key, markKeys: [key], race: null };
 }
 
@@ -105,6 +129,24 @@ export function markSeen(userId, keys, storage = globalThis.localStorage) {
   } catch { /* sem storage: volta a aparecer, não faz mal */ }
 }
 
+/* Quando apareceram as últimas boas-vindas neste dispositivo (ação P.11),
+   para o intervalo mínimo. As dos outros dispositivos chegam pelas
+   impressões (store: lastWelcomeAt); esta cobre o caso de a impressão não
+   ter chegado a gravar-se. Separado de markSeen: uma faixa dada como vista
+   por uma notificação não é uma saudação. */
+const shownAtKey = (userId) => `ironcoach_welcome_shown_at_${userId || 'anon'}`;
+
+export function readShownAt(userId, storage = globalThis.localStorage) {
+  try {
+    const n = Number(storage?.getItem(shownAtKey(userId)));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  } catch { return null; }
+}
+
+export function markShownAt(userId, at = Date.now(), storage = globalThis.localStorage) {
+  try { storage?.setItem(shownAtKey(userId), String(at)); } catch { /* sem storage: fica o das impressões */ }
+}
+
 /* ── o que ela diz ──────────────────────────────────────────────────────── */
 
 const GREETING = {
@@ -113,9 +155,10 @@ const GREETING = {
   noite: (n) => `Boa noite${n ? `, ${n}` : ''}.`,
   madrugada: (n, g) => (n ? `Ainda ${normalizeGender(g) === 'F' ? 'acordada' : 'acordado'}, ${n}?` : 'Ainda por aqui?'),
   prova: (n) => `É hoje${n ? `, ${n}` : ''}.`,
+  vespera: (n) => `Amanhã é dia de prova${n ? `, ${n}` : ''}.`,
 };
 
-const CTA = { manha: 'Começar o dia', tarde: 'Entrar', noite: 'Ver o meu dia', madrugada: 'Entrar na mesma', prova: 'Vamos a isso' };
+const CTA = { manha: 'Começar o dia', tarde: 'Entrar', noite: 'Ver o meu dia', madrugada: 'Entrar na mesma', prova: 'Vamos a isso', vespera: 'Ver o meu dia' };
 
 const km = (v) => {
   const n = Number(v);
@@ -269,6 +312,23 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
       : 'Come o que ensaiámos e sai de casa com tempo. O trabalho está feito.');
     chip = { label: dist ? `${dist} km` : 'Hoje', value: hora ? `Partida às ${hora}` : (race.name || 'Dia de prova'), icon: 'trophy' };
     return { variant, greeting: GREETING.prova(nome), lines, chip, cta: depoisDaPartida ? 'Entrar' : CTA.prova, race: true };
+  }
+
+  if (variant === 'vespera') {
+    /* A véspera (ação P.11): a prova de amanhã e o que o plano pede HOJE, em
+       vez de uma frase de manual ("dorme bem, prepara o equipamento") — o
+       plano já é o que ela decidiu para a véspera. Sem plano para hoje, fica
+       só a prova. */
+    const race = raceToday(raceEvents, amanha) || {};
+    const dist = km(race.distance_km);
+    const hora = race.start_time ? String(race.start_time).slice(0, 5) : null;
+    lines.push(`${race.name || 'A tua prova'}${hora ? `, partida às ${hora.replace(/^0/, '')}` : ''}.`);
+    if (tituloHoje === 'Descanso') lines.push('Hoje é descanso.');
+    else if (tituloHoje === MEAL_ONLY_DAY_LABEL) lines.push('Hoje não há treino planeado.');
+    else if (tituloHoje && treinoHojeFeito) lines.push(`O treino de hoje já está feito: ${lowerFirst(tituloHoje)}.`);
+    else if (tituloHoje) lines.push(`Hoje ainda tens ${lowerFirst(tituloHoje)}.`);
+    chip = { label: dist ? `${dist} km` : 'Amanhã', value: hora ? `Partida às ${hora}` : (race.name || 'Dia de prova'), icon: 'trophy' };
+    return { variant, greeting: GREETING.vespera(nome), lines, chip, cta: CTA.vespera, race: false };
   }
 
   const P = WELCOME_PHRASES;

@@ -1,7 +1,10 @@
 /* As mensagens que a Carol manda por iniciativa própria — CAROL.md §3 e §7.
    - Segunda (ou terça) → o balanço da semana que acabou, num dia sem mais
      nenhum momento e só se houve registos nessa semana.
-   - 3 dias sem qualquer registo → "Estás bem?" no chat, em nome dela.
+   - 3 dias sem qualquer registo → "Estás bem?" no chat, em nome dela (com
+     check-ins entretanto, pergunta pelos treinos — P.10).
+   - O treino de ontem do plano por registar → pergunta o que aconteceu,
+     sem reagendar (P.10); nunca num dia de balanço da semana.
    - Véspera da prova → o que fazer hoje e amanhã de manhã.
    - Manhã da prova → curta, duas frases, sem dados.
    - Depois da prova → o balanço, com opinião (e com o veredicto calculado
@@ -18,7 +21,7 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock, weekReviewCandidate } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, findMissedWorkout, weekReviewCandidate } from '@formulas/proactiveTriggers.ts';
 import { addDaysISO } from '../lib/utils';
 
 export const SILENCE_DAYS = 3;
@@ -85,32 +88,26 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
   const afterCandidate = pickRaceAfter({ races, runs, profile, today });
   if (afterCandidate) list.push(afterCandidate);
 
-  /* O bloco de treino (sem prova) a acabar, sem outro a seguir (P.5). A
-     régua é a do servidor (@formulas/proactiveTriggers.ts), para a chave ser
-     a mesma da notificação. Um plano só de refeições não é um bloco. */
-  const trainingPlanIds = new Set((coachPlanItems || [])
-    .filter((i) => i?.kind === 'corrida' || i?.kind === 'ginasio')
-    .map((i) => i.plan_id));
-  const block = findEndingBlock((coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })), today);
-  if (block) {
-    const end = String(block.period_end).slice(0, 10);
-    const gap = daysBetween(today, end);
-    const when = gap <= 0 ? 'hoje' : gap === 1 ? 'amanhã' : `daqui a ${gap} dias`;
-    list.push({
-      trigger: 'block_end',
-      key: `block_end:${block.id}`,
-      details: `O bloco de treino acaba ${when} (${end}) e não há outro a seguir.`,
-    });
-  }
+  const trainingPlanIds = trainingPlanIdsOf(coachPlanItems);
+  const block = endingBlock({ coachPlans, coachPlanItems }, today);
+  if (block) list.push(block.candidate);
 
   const last = lastRecordDate({ runs, meals, gymSessions, bodyAssessments });
   if (last) {
     const gap = daysBetween(last, today);
     if (gap >= SILENCE_DAYS) {
+      /* Com check-ins depois do último registo, ele está por cá: o que falta
+         são os treinos (P.10) — o chat pergunta por eles em vez de "Estás
+         bem?". Os dias contam desde o último treino, não do último registo. */
+      const lastCheckin = latestDate(dailyCheckins);
+      const lastTraining = latestDate([...(runs || []), ...(gymSessions || [])]);
+      const trainingGap = lastTraining ? `o último treino foi há ${daysBetween(lastTraining, today)} dias` : 'não há treinos registados';
       list.push({
         trigger: 'silence',
         key: `silence:${last}`,
-        details: `Último registo: ${last} (há ${gap} dias).`,
+        details: lastCheckin && lastCheckin > last
+          ? `Último registo: ${last} (há ${gap} dias). Fez check-in depois disso (último: ${lastCheckin}): está por cá, faltam os treinos — ${trainingGap}.`
+          : `Último registo: ${last} (há ${gap} dias).`,
       });
     }
   }
@@ -136,8 +133,82 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
       key: `week_review:${week.weekStart}`,
       details: describeWeek({ runs, meals, gymSessions, dailyCheckins }, week.weekStart, week.weekEnd),
     });
+  } else {
+    /* O treino de ontem por registar (P.10): a régua do servidor
+       (findMissedWorkout), para a chave ser a da notificação. Vem por último
+       e só num dia sem balanço da semana — à segunda, o treino de domingo é
+       assunto do balanço. */
+    const missed = findMissedWorkout({
+      plans: coachPlans,
+      planItems: coachPlanItems,
+      trainingDates: [...(runs || []), ...(gymSessions || [])].map((r) => r?.date ?? null),
+      raceEvents: races,
+    }, today);
+    if (missed) {
+      list.push({
+        trigger: 'missed_workout',
+        key: `missed_workout:${missed.date}`,
+        details: `Treino de ontem (${missed.date}) por registar: ${missed.items.map(missedItemLabel).join(' + ')}.`,
+      });
+    }
   }
   return list;
+}
+
+const ITEM_KIND_LABEL = { corrida: 'corrida', ginasio: 'ginásio' };
+
+/** "corrida (longo, 16 km)" — o que o plano pedia, para o Contexto do chat. */
+function missedItemLabel(item) {
+  const km = Number(item?.target_distance_km);
+  const parts = [item?.training_type, Number.isFinite(km) && km > 0 ? `${String(km).replace('.', ',')} km` : null].filter(Boolean);
+  return `${ITEM_KIND_LABEL[item?.kind] || item?.kind}${parts.length ? ` (${parts.join(', ')})` : ''}`;
+}
+
+/** A data mais recente (yyyy-mm-dd) de uma lista de registos, ou null. */
+function latestDate(list) {
+  const dates = (list || []).map((r) => (typeof r?.date === 'string' ? r.date.slice(0, 10) : null)).filter(Boolean);
+  return dates.length ? dates.sort().pop() : null;
+}
+
+function trainingPlanIdsOf(coachPlanItems) {
+  return new Set((coachPlanItems || [])
+    .filter((i) => i?.kind === 'corrida' || i?.kind === 'ginasio')
+    .map((i) => i.plan_id));
+}
+
+/* O bloco de treino (sem prova) a acabar, sem outro a seguir (P.5). A régua
+   é a do servidor (@formulas/proactiveTriggers.ts), para a chave ser a mesma
+   da notificação. Um plano só de refeições não é um bloco. Devolve o
+   candidato e o "quando" dito por extenso, que o aviso do Início também usa
+   (ação P.11); null sem bloco a acabar. */
+export function endingBlock({ coachPlans = [], coachPlanItems = [] }, today) {
+  const trainingPlanIds = trainingPlanIdsOf(coachPlanItems);
+  const block = findEndingBlock((coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })), today);
+  if (!block) return null;
+  const end = String(block.period_end).slice(0, 10);
+  const gap = daysBetween(today, end);
+  const when = gap <= 0 ? 'hoje' : gap === 1 ? 'amanhã' : `daqui a ${gap} dias`;
+  return {
+    when,
+    candidate: {
+      trigger: 'block_end',
+      key: `block_end:${block.id}`,
+      details: `O bloco de treino acaba ${when} (${end}) e não há outro a seguir.`,
+    },
+  };
+}
+
+/** O aviso "O bloco está a acabar" do Início (ação P.11): o mesmo candidato
+ *  do chat e da notificação, enquanto a conversa não tiver acontecido neste
+ *  dispositivo nem o aviso tiver sido dispensado em nenhum. null quando não
+ *  há. `now` é injetável para os testes. */
+export function pendingBlockEndAlert({ coachPlans, coachPlanItems, profile, impressionDismissed = null }, now = new Date()) {
+  const block = endingBlock({ coachPlans, coachPlanItems }, isoDay(now));
+  if (!block) return null;
+  const { candidate } = block;
+  if (wasProactiveSent(profile?.id, candidate) || wasProactiveDismissed(profile?.id, candidate)) return null;
+  if (impressionDismissed?.has(`alert:${candidate.key}`)) return null;
+  return block;
 }
 
 /** As datas de todos os registos (corridas, refeições, ginásio, avaliações). */

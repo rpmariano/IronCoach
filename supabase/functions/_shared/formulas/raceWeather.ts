@@ -18,6 +18,8 @@ export interface HourlyForecast {
   apparent_temperature?: (number | null)[];
   relative_humidity_2m?: (number | null)[];
   precipitation_probability?: (number | null)[];
+  /** A chuva que caiu, em mm por hora — só no tempo que esteve (5.6). */
+  precipitation?: (number | null)[];
   wind_speed_10m?: (number | null)[];
 }
 
@@ -29,6 +31,8 @@ export interface RaceWeatherSummary {
   apparentMax: number;
   humidityAvg: number | null;
   rainProbMax: number | null;
+  /** mm de chuva nas horas da prova (o tempo que esteve), ou null sem o dado. */
+  rainMm: number | null;
   windMax: number | null;
 }
 
@@ -70,6 +74,7 @@ export function summarizeRaceWeather(h: HourlyForecast, dateISO: string, startHH
   const apparent = vals(h.apparent_temperature, idx);
   const hum = vals(h.relative_humidity_2m, idx);
   const rain = vals(h.precipitation_probability, idx);
+  const rainMm = vals(h.precipitation, idx);
   const wind = vals(h.wind_speed_10m, idx);
   const round = (n: number) => Math.round(n);
   return {
@@ -80,6 +85,7 @@ export function summarizeRaceWeather(h: HourlyForecast, dateISO: string, startHH
     apparentMax: round(Math.max(...(apparent.length ? apparent : temps))),
     humidityAvg: hum.length ? round(hum.reduce((a, b) => a + b, 0) / hum.length) : null,
     rainProbMax: rain.length ? round(Math.max(...rain)) : null,
+    rainMm: rainMm.length ? Math.round(rainMm.reduce((a, b) => a + b, 0) * 10) / 10 : null,
     windMax: wind.length ? round(Math.max(...wind)) : null,
   };
 }
@@ -102,13 +108,26 @@ const HEAT_ADVICE: Record<HeatLevel, string> = {
   calor_forte: "Calor forte: o objetivo de tempo deixa de ser realista. Corre por esforço, não pelo relógio, e para se aparecerem tonturas ou arrepios.",
 };
 
-/** O bloco do prompt. `assumed` diz o que não se sabia (hora, duração). */
+/* No balanço, o calor já não é um conselho: é uma leitura do resultado (5.6). */
+const HEAT_READING: Record<HeatLevel, string> = {
+  fresco: "Estava fresco: o tempo não explica um ritmo mais lento.",
+  ameno: "Condições boas: o tempo não explica a diferença para o objetivo.",
+  morno: "Já custava: 1 a 3% mais lento para o mesmo esforço era de esperar.",
+  calor: "Calor a sério: 3 a 6% mais lento para o mesmo esforço — conta isso ao ler o resultado.",
+  calor_forte: "Calor forte: o objetivo de tempo não era realista nestas condições; lê o resultado pelo esforço.",
+};
+
+/** O bloco do prompt. `assumed` diz o que não se sabia (hora, duração).
+ *  `mode`: a previsão antes da prova, ou o tempo que esteve no balanço
+ *  (5.6) — com o texto trocado para nunca lhe chamar previsão. */
 export function buildRaceWeatherContext(
   race: { name?: string | null; date: string; location?: string | null },
   s: RaceWeatherSummary,
   assumed: { startTime: boolean; duration: boolean },
+  mode: "previsao" | "observado" = "previsao",
 ): string {
   const level = heatLevel(s.apparentMax);
+  if (mode === "observado") return buildObservedWeatherContext(race, s, assumed, level);
   const lines = [
     `- Entre as ${s.fromHour} e as ${s.toHour}: ${s.tempMin === s.tempMax ? `${s.tempMin} °C` : `${s.tempMin} a ${s.tempMax} °C`}` +
       (s.apparentMax !== s.tempMax ? ` (sensação até ${s.apparentMax} °C)` : "") +
@@ -125,4 +144,28 @@ export function buildRaceWeatherContext(
     lines.join("\n") +
     `\nÉ uma previsão: muda de dia para dia, e a mais fiável é a da véspera. Usa-a no plano do dia, na véspera e na prontidão; ` +
     `se ela mudar o ritmo, diz porquê com o número. Não inventes condições que não estão aqui.`;
+}
+
+function buildObservedWeatherContext(
+  race: { name?: string | null; date: string; location?: string | null },
+  s: RaceWeatherSummary,
+  assumed: { startTime: boolean; duration: boolean },
+  level: HeatLevel,
+): string {
+  const lines = [
+    `- Entre as ${s.fromHour} e as ${s.toHour}: ${s.tempMin === s.tempMax ? `${s.tempMin} °C` : `${s.tempMin} a ${s.tempMax} °C`}` +
+      (s.apparentMax !== s.tempMax ? ` (sensação até ${s.apparentMax} °C)` : "") +
+      (s.humidityAvg !== null ? `, humidade ${s.humidityAvg}%` : ""),
+  ];
+  if (s.rainMm !== null) lines.push(s.rainMm > 0 ? `- Chuva: ${String(s.rainMm).replace(".", ",")} mm nessas horas` : "- Sem chuva");
+  if (s.windMax !== null) lines.push(`- Vento: até ${s.windMax} km/h`);
+  lines.push(`- ${HEAT_READING[level]}`);
+  const notes = [
+    assumed.startTime ? `sem hora de partida, assumi as ${DEFAULT_START}` : null,
+    assumed.duration ? "sem objetivo de tempo, a duração é uma estimativa" : null,
+  ].filter(Boolean);
+  return `O TEMPO QUE ESTEVE NA PROVA (${race.name || "prova"}, ${race.date}${race.location ? `, ${race.location}` : ""} — Open-Meteo${notes.length ? `; ${notes.join("; ")}` : ""}):\n` +
+    lines.join("\n") +
+    `\nÉ o tempo que esteve no local, segundo o modelo meteorológico (não o relógio dele). Usa-o para ler o resultado face ao ` +
+    `objetivo: diz se o calor, a chuva ou o vento explicam a diferença, com o número. Não inventes condições que não estão aqui.`;
 }

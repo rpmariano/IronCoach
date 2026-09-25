@@ -3,6 +3,7 @@ import {
   classifyRaceOutcome, previousBestSeconds, raceResultSeconds, describeRaceOutcome,
   buildRaceOutcomePayload, formatDelta, NEAR_TARGET_RATIO,
 } from './raceOutcome';
+import { expectCarolVoice } from '../test/carolVoice';
 
 // A história do canvas: Meia de Lisboa, objetivo 1:52:00, final 1:53:42.
 const RACE = { id: 'r1', name: 'Meia de Lisboa', date: '2027-03-08', race_type: 'estrada', distance_km: 21.1, target_time_seconds: 6720 };
@@ -136,7 +137,7 @@ describe('raceOutcome — a régua única do resultado da prova', () => {
     expect(text).toContain('Ficaste a 1:42 do objetivo');
     expect(text).toContain('Acima do que o treino perspetivava');
     expect(text).toContain('Recorde pessoal na meia, por 4:04');
-    expect(text).not.toContain('!');
+    expectCarolVoice(text);
 
     const beaten = classifyRaceOutcome({ race: { ...RACE, target_time_seconds: 6900 }, run: RACE_RUN, runs: [RACE_RUN], profile: PROFILE });
     expect(describeRaceOutcome(beaten, RACE)).toContain('Objetivo batido por 1:18');

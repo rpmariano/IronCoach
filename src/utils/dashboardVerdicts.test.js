@@ -8,6 +8,7 @@ import {
   streakDirection,
   NO_DATA_TEXT,
 } from './dashboardVerdicts';
+import { expectCarolVoice } from '../test/carolVoice';
 
 /* Ponto 6 do redesenho: as frases de veredicto dos dashboards de módulo.
    São funções puras — testam-se com números à mão. Três cenários mínimos
@@ -273,10 +274,6 @@ describe('bodyVerdict', () => {
       bodyVerdict({ weightTrend: trend(-0.3, 'descendo') }).text,
       NO_DATA_TEXT,
     ];
-    for (const f of frases) {
-      expect(f).not.toMatch(/!/);
-      expect(f.toLowerCase()).not.toContain('talvez');
-      expect(f).not.toMatch(/\p{Extended_Pictographic}/u);
-    }
+    for (const f of frases) expectCarolVoice(f);
   });
 });

@@ -72,18 +72,59 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
 
     expect(result.isTimeout).toBe(false);
     expect(result.error).toBe('Failed to send a request to the Edge Function');
+    // Ação P.12: isNetwork pela CLASSE do erro (FunctionsFetchError), nunca
+    // por navigator.onLine nem por procurar "Failed to fetch" no texto.
+    expect(result.isNetwork).toBe(true);
+    expect(result.status).toBeNull();
   });
 
   it('erro devolvido pelo próprio servidor mantém isTimeout:false (comportamento inalterado)', async () => {
     vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
       data: null,
-      error: { message: 'Falha na resposta do coach (503). Tenta novamente.' },
+      error: { message: 'Não consegui processar isto agora (erro 503). Tenta outra vez.' },
     });
 
     const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000);
 
     expect(result.isTimeout).toBe(false);
-    expect(result.error).toBe('Falha na resposta do coach (503). Tenta novamente.');
+    expect(result.error).toBe('Não consegui processar isto agora (erro 503). Tenta outra vez.');
+    // O servidor respondeu (nem que seja com erro) — não é falha de rede.
+    expect(result.isNetwork).toBe(false);
+  });
+
+  it('ação P.12: o código HTTP do servidor (error.context.status) vem no resultado, para o Coach mostrar o erro dela em vez do texto de rede', async () => {
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: { status: 502, json: async () => ({ error: 'Estou com muitos pedidos. Dá-me uns minutos.' }) },
+      },
+    });
+
+    const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000);
+
+    expect(result.status).toBe(502);
+    expect(result.isNetwork).toBe(false);
+    expect(result.error).toBe('Estou com muitos pedidos. Dá-me uns minutos.');
+    // A frase é dela (veio no campo `error`): o Coach pode mostrá-la.
+    expect(result.serverText).toBe('Estou com muitos pedidos. Dá-me uns minutos.');
+  });
+
+  it('revisão pré-deploy 2026-09-25: um erro do gateway sem frase dela não dá serverText (o texto em inglês fica só para o log)', async () => {
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: { status: 546, json: async () => ({ code: 'WORKER_LIMIT', message: 'Worker failed to boot' }) },
+      },
+    });
+
+    const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000);
+
+    expect(result.status).toBe(546);
+    expect(result.isNetwork).toBe(false);
+    expect(result.serverText).toBeNull();
+    expect(result.error).toBe('Edge Function returned a non-2xx status code');
   });
 
   it('sucesso continua a devolver os dados sem isTimeout', async () => {

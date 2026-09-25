@@ -69,6 +69,13 @@ function getFirstName(displayName) {
   return trimmed ? trimmed.split(/\s+/)[0] : null;
 }
 
+// As frases fixas de falha, na voz dela (ação P.12) — exportadas para o
+// teste de voz (src/utils/carolVoice.test.js) as verificar sem ter de
+// montar o componente inteiro e simular cada caminho de erro.
+export const COACH_ASYNC_FALLBACK_TEXT = 'Não consegui responder. Tenta outra vez.';
+export const COACH_IMMEDIATE_FAILURE_TEXT = 'Não consegui responder: falha de rede ou de ligação ao servidor. Tenta outra vez.';
+export const COACH_EMPTY_REPLY_TEXT = 'Não consegui responder agora. Tenta outra vez.';
+
 // Variantes do aviso de demora (handleAsyncFallback) — mesmo espírito do
 // "Banco de Humor" do system prompt da Carol: leve, situacional, nunca
 // sempre a mesma frase (antes era só a dos agachamentos, repetida em toda
@@ -143,7 +150,7 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const { data, error, isTimeout, isBusy } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, serverText } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -153,7 +160,11 @@ export default function Coach() {
         } else if (silent) {
           setCoachLoading(false);
         } else {
-          handleImmediateFailure(isBusy ? error : undefined);
+          // O servidor respondeu com uma frase dela (ação P.12): mostra-a
+          // (409 busy, 429, 5xx…). Sem frase — falha de rede, ou um erro do
+          // gateway que só traz o texto em inglês da supabase-js — cai no
+          // aviso genérico.
+          handleImmediateFailure(serverText || undefined);
         }
         return null;
       }
@@ -335,6 +346,12 @@ export default function Coach() {
   // falado há menos de 6h, para não empilhar duas mensagens não pedidas),
   // isto é um pedido explícito do atleta — vai com `proactive_force` para
   // não ficar silenciosamente sem resposta nenhuma (bug 2026-09-14).
+  //
+  // O mesmo para o aviso "O bloco está a acabar" (ação P.11, coachIntent
+  // 'proactive_moment'): o servidor honra o force em qualquer momento. Um
+  // "already_sent" (a conversa já aconteceu noutro dispositivo) marca-se
+  // como dita, para o aviso do Início desaparecer em vez de ficar a pedir
+  // uma conversa que o chat já mostra.
   const handleRaceBalanceCheckin = (candidate) => sendCoachInitiatedPayload({
     message: '',
     proactive_trigger: candidate.trigger,
@@ -345,6 +362,7 @@ export default function Coach() {
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
   }).then((data) => {
+    if (data?.skipped && data.reason === 'already_sent') markProactiveSent(profile?.id, candidate);
     if (data && !data.skipped) {
       markProactiveSent(profile?.id, candidate);
       // O hub (RaceBalanceCard) tem o mesmo balanço — pedido lá, marca-se
@@ -368,7 +386,7 @@ export default function Coach() {
       handleProactiveIntervention(coachIntent);
       return;
     }
-    if (coachIntent && coachIntent.kind === 'race_balance') {
+    if (coachIntent && (coachIntent.kind === 'race_balance' || coachIntent.kind === 'proactive_moment')) {
       const { candidate } = coachIntent;
       setCoachIntent(null);
       handleRaceBalanceCheckin(candidate);
@@ -742,7 +760,7 @@ export default function Coach() {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Não foi possível obter uma resposta da Carol. Tenta outra vez.'
+        content: COACH_ASYNC_FALLBACK_TEXT
       });
     }
     setCoachLoading(false);
@@ -756,14 +774,20 @@ export default function Coach() {
   // nunca vai chegar, e o aviso de "demora" (pensado para pedidos lentos mas
   // em curso) seria enganador aqui. Informa já e liberta o campo para o
   // atleta poder tentar de novo de imediato.
-  // `message` opcional: o texto do servidor quando ele recusou de propósito
-  // (409 `busy` — "Calma Rui, ainda estou a preparar a resposta…"), que é
-  // dela e para mostrar tal e qual; sem isso, o aviso genérico de rede.
+  // `message` opcional: o texto QUE ELA disse quando o servidor respondeu
+  // (mesmo com erro — 409 `busy`, 502, 503...), para mostrar tal e qual em
+  // vez de o esconder atrás de um aviso genérico (ação P.12: antes só o 409
+  // `busy` mostrava o texto do servidor; qualquer outra resposta HTTP, por
+  // exemplo "Estou com muitos pedidos. Dá-me uns minutos.", ficava presa
+  // atrás deste aviso). Sem `message` (pedido que nunca chegou ao
+  // servidor — rede, DNS) fica o genérico: nem sempre há "uma mensagem" —
+  // um pedido por iniciativa dela (balanço, plano) não é escrito pelo
+  // atleta, por isso o texto não presume isso.
   const handleImmediateFailure = (message) => {
     addCoachMessage({
       id: (Date.now() + 1).toString(),
       role: 'assistant',
-      content: message || 'A tua mensagem não saiu: falha de rede ou de ligação ao servidor. Verifica a ligação e envia outra vez.'
+      content: message || COACH_IMMEDIATE_FAILURE_TEXT
     });
     setCoachLoading(false);
   };
@@ -815,7 +839,7 @@ export default function Coach() {
         ...(extras && typeof extras === 'object' ? extras : null),
       };
 
-      const { data, error, isTimeout, isBusy } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, serverText } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -823,7 +847,11 @@ export default function Coach() {
         if (isTimeout) {
           await handleAsyncFallback(requestStartedAt);
         } else {
-          handleImmediateFailure(isBusy ? error : undefined);
+          // O servidor respondeu com uma frase dela (ação P.12): mostra-a,
+          // não só no caso 409 busy. Sem frase — falha de rede, ou um erro
+          // do gateway que só traz o texto em inglês da supabase-js — cai no
+          // aviso genérico.
+          handleImmediateFailure(serverText || undefined);
         }
         return;
       }
@@ -839,7 +867,7 @@ export default function Coach() {
       addCoachMessage({
         id: data?.model_message?.id || (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data?.model_message?.content || 'Não consegui responder agora. Tenta outra vez.',
+        content: data?.model_message?.content || COACH_EMPTY_REPLY_TEXT,
         mood: data?.model_message?.mood,
         live: true,
       });

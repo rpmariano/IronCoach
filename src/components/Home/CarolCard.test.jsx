@@ -172,13 +172,13 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     expect(screen.queryByText(/Ainda não registaste água hoje/)).not.toBeInTheDocument();
   });
 
-  it('não repete a água quando o aviso do servidor já fala dela', () => {
+  it('não repete a água quando o aviso do servidor já fala dela, mesmo com outra redação', () => {
     useAppStore.setState({
       profile: { id: 'u1', water_goal_ml: 2500, water_reminder_enabled: true },
-      dailySummary: { date: '2026-08-11', recap: null, warnings: 'Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.', meal_suggestion: null, tomorrow_prep: null },
+      dailySummary: { date: '2026-08-11', recap: null, warnings: 'Registaste 800 ml de água — ainda não é metade da tua meta.', meal_suggestion: null, tomorrow_prep: null },
     });
     render(<CarolCard />);
-    expect(screen.getByText('Ainda não registaste consumo de água hoje. Começa a hidratar-te desde já.')).toBeInTheDocument();
+    expect(screen.getByText('Registaste 800 ml de água — ainda não é metade da tua meta.')).toBeInTheDocument();
     expect(screen.queryByText(/Ainda não registaste água hoje\./)).not.toBeInTheDocument();
   });
 

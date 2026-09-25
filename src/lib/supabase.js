@@ -99,18 +99,41 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       // a distinguia de um erro de rede e escondia-a atrás de "A tua mensagem
       // não saiu" (incidente 2026-09-12).
       let isBusy = false;
+      /* O texto que o servidor escreveu para o atleta ler — só quando é mesmo
+         dele, uma string no campo `error`. Um erro do gateway (546
+         WORKER_LIMIT, 503 BOOT_ERROR) não o traz, e aí `detailedMsg` fica com
+         o error.message da supabase-js, em inglês ("Edge Function returned a
+         non-2xx status code"): serve para o log, nunca para a bolha da Carol
+         (revisão pré-deploy de 2026-09-25). `detail` é a causa técnica que o
+         servidor acrescenta à frase dela, só para o log. */
+      let serverText = null;
+      let detail = null;
       if (error.context && typeof error.context.json === 'function') {
         try {
           const bodyJson = await error.context.json();
           if (bodyJson?.error) detailedMsg = bodyJson.error;
+          if (typeof bodyJson?.error === 'string' && bodyJson.error.trim()) serverText = bodyJson.error;
+          if (typeof bodyJson?.detail === 'string') detail = bodyJson.detail;
           isBusy = bodyJson?.busy === true;
         } catch (_) {}
       }
-      console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, error);
-      logAppEvent('error', fnName, detailedMsg || 'Erro na execução', { fnName });
+      console.error(`[EdgeFunction:${fnName}] Erro na execução:`, detailedMsg, detail ?? '', error);
+      logAppEvent('error', fnName, detailedMsg || 'Erro na execução', detail ? { fnName, detail } : { fnName });
       // O servidor respondeu (mesmo que com erro) — não há timeout nem
-      // processamento em curso a aguardar.
-      return { data: null, error: detailedMsg || 'Erro ao processar o pedido no servidor.', isTimeout: false, isBusy };
+      // processamento em curso a aguardar. `status` e `isNetwork` (ação
+      // P.12) deixam quem chama distinguir "o servidor respondeu com um
+      // erro" (mostra detailedMsg, já na voz dela) de "nunca chegou lá"
+      // (FunctionsFetchError — classe fixa de @supabase/functions-js, nunca
+      // navigator.onLine nem procurar "Failed to fetch" pelo texto).
+      return {
+        data: null,
+        error: detailedMsg || 'Erro ao processar o pedido no servidor.',
+        isTimeout: false,
+        isBusy,
+        serverText,
+        status: error.context?.status ?? null,
+        isNetwork: error?.name === 'FunctionsFetchError',
+      };
     }
 
     if (data?.usage) {
@@ -133,6 +156,6 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
     // chegou a ser processado, por isso NÃO é um timeout.
     console.error(`[EdgeFunction:${fnName}] Exceção não tratada:`, err);
     logAppEvent('error', fnName, err.message || 'Exceção não tratada', { error: String(err) });
-    return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.', isTimeout: false };
+    return { data: null, error: err.message || 'Falha de rede ou de comunicação com o servidor.', isTimeout: false, status: null, isNetwork: true };
   }
 }

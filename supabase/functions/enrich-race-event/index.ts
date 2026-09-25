@@ -32,6 +32,7 @@
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { upstreamErrorText } from "../_shared/carolTone.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -84,9 +85,7 @@ async function fetchGeminiWithTimeout(
     } catch (e) {
       clearTimeout(timer);
       if (attempt < retries) continue;
-      throw new Error(
-        "O Gemini demorou demasiado tempo a responder (mesmo depois de tentar de novo). Tenta outra vez daqui a pouco.",
-      );
+      throw new Error(upstreamErrorText(null));
     }
   }
 }
@@ -282,6 +281,8 @@ const RESPONSE_SCHEMA = {
     gear_recommendations: { type: "STRING", nullable: true },
     logistics: { type: "STRING", nullable: true },
     route_summary: { type: "STRING", nullable: true },
+    // O D+ segundo o site (5.6) — ao lado do que o atleta escreveu no formulário.
+    elevation_gain_site_m: { type: "NUMBER", nullable: true },
     route_segments: {
       type: "ARRAY",
       nullable: true,
@@ -300,7 +301,7 @@ const RESPONSE_SCHEMA = {
   },
   required: [
     "found_relevant_info", "schedule", "required_documents", "category_info",
-    "gear_recommendations", "logistics", "route_summary", "route_segments", "caveats",
+    "gear_recommendations", "logistics", "route_summary", "elevation_gain_site_m", "route_segments", "caveats",
   ],
 };
 
@@ -334,6 +335,7 @@ function buildPrompt(
     `- gear_recommendations: equipamento recomendado ou obrigatório para a prova (ex.: chip, kit obrigatório de trail, calçado, hidratação).\n` +
     `- logistics: deslocação e logística — estacionamento, transportes públicos, acessos, alojamento próximo, ponto de encontro (diferente de where em schedule: aqui é sobre chegar ao local, não sobre o horário de um evento específico).\n` +
     `- route_summary: 2-4 frases descrevendo o perfil GERAL do percurso (ex.: terreno, se é maioritariamente plano ou tem subidas, zonas emblemáticas), só se o texto tiver essa informação.\n` +
+    `- elevation_gain_site_m: o desnível positivo acumulado (D+) do percurso segundo o site, em metros (ex.: "D+ 350 m", "350 m de desnível positivo") — só se o texto o disser; não confundas com a altitude máxima nem com o desnível negativo. Null se não estiver indicado.\n` +
     `- route_segments: reconstrução APROXIMADA do trajeto a partir de indicações em texto (nomes de ruas/troços, marcos de km, direções, indicações de subida/descida) — só preenche se ALGUMA das páginas descrever o trajeto com esse detalhe (procura especialmente numa página sobre "percurso"/"route"/"trajeto", se existir entre as páginas fornecidas). NÃO inventes um trajeto plausível a partir só do nome da prova ou da cidade; se nenhuma página descrever a rota com detalhe suficiente, devolve null neste campo. Cada segmento é qualitativo (não são coordenadas GPS reais), na ordem em que a prova percorre.\n` +
     `- caveats: nota curta (1-2 frases) se algo parecer desatualizado (ex.: menciona um ano anterior), incompleto, ou se as páginas remeterem para PDFs/imagens que não conseguiste ler em texto. Null se não houver nada a assinalar.\n` +
     `- found_relevant_info: false se as páginas não tiverem NENHUMA informação útil para os campos acima (ex.: é uma página de erro, login, ou completamente genérica).\n\n` +
@@ -356,6 +358,8 @@ type WebInfo = {
   gear_recommendations: string | null;
   logistics: string | null;
   route_summary: string | null;
+  /** O D+ segundo o site, em metros (5.6). */
+  elevation_gain_site_m: number | null;
   route_segments: RouteSegment[] | null;
   caveats: string | null;
   source_url: string;
@@ -473,16 +477,13 @@ Deno.serve(async (req) => {
         },
       );
     } catch (e) {
-      return jsonResponse({ error: e instanceof Error ? e.message : "Falha a contactar o Gemini." }, 502);
+      return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 502);
     }
 
     if (!geminiRes.ok) {
       const errText = await geminiRes.text();
       console.error("Gemini error:", geminiRes.status, errText);
-      if (geminiRes.status === 429) {
-        return jsonResponse({ error: "O Gemini atingiu o limite de pedidos gratuitos neste momento. Tenta novamente daqui a pouco." }, 502);
-      }
-      return jsonResponse({ error: `Análise falhou (Gemini ${geminiRes.status}). Tenta novamente.` }, 502);
+      return jsonResponse({ error: upstreamErrorText(geminiRes.status) }, 502);
     }
 
     const geminiJson = await geminiRes.json();
@@ -550,6 +551,9 @@ Deno.serve(async (req) => {
       gear_recommendations: str(parsed.gear_recommendations),
       logistics: str(parsed.logistics),
       route_summary: str(parsed.route_summary),
+      elevation_gain_site_m: typeof parsed.elevation_gain_site_m === "number" && parsed.elevation_gain_site_m > 0 && parsed.elevation_gain_site_m <= 10000
+        ? Math.round(parsed.elevation_gain_site_m)
+        : null,
       route_segments: routeSegments.length ? routeSegments : null,
       caveats: str(parsed.caveats),
       source_url: race.website,
