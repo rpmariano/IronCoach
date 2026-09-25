@@ -8,7 +8,8 @@
    número e um array.
 
    Espelha supabase/functions/_shared/formulas/percentileSegments.ts, que é
-   quem CALCULA as fronteiras (runtime diferente — se um mudar, muda o outro). */
+   quem CALCULA as fronteiras; a contagem de ventis vem de lá. */
+import { VENTILE_COUNT } from '@formulas/percentileSegments.ts';
 
 /* A faixa 5–95, e a truncatura é de propósito.
    "Estás no 100.º percentil" não descreve o atleta: descreve toda a gente que
@@ -20,7 +21,7 @@ export const PERCENTILE_FLOOR = 5;
 export const PERCENTILE_CEILING = 95;
 
 /** Quantas fronteiras há: os ventis, 5% a 95%. */
-export const VENTILE_COUNT = 19;
+export { VENTILE_COUNT };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
