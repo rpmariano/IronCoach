@@ -311,16 +311,17 @@ export default function Perfil() {
   const placeSearchSeq = useRef(0);
   /* Mudar, Cancelar, escolher e Tirar desmontam o botão que tinha o foco:
      sem isto o foco caía no body e quem usa teclado ou leitor de ecrã
-     perdia o sítio (revisão pré-deploy de 2026-09-25). */
-  const placeInputRef = useRef(null);
-  const placeChangeRef = useRef(null);
+     perdia o sítio (revisão pré-deploy de 2026-09-25). O foco dá-se no ref
+     do elemento que aparece, que corre na montagem, e não num useEffect: o
+     efeito podia correr depois de o teste olhar para o foco (no hook de
+     pre-push falhava, cá passava). */
   const placeFocusNext = useRef(null); // 'input' | 'change'
-  useEffect(() => {
-    const target = placeFocusNext.current;
-    if (!target) return;
-    placeFocusNext.current = null;
-    (target === 'input' ? placeInputRef.current : placeChangeRef.current)?.focus();
-  });
+  const focusWhenShown = (which) => (el) => {
+    if (el && placeFocusNext.current === which) {
+      placeFocusNext.current = null;
+      el.focus();
+    }
+  };
 
   const resetPlaceSearch = () => {
     placeSearchSeq.current += 1;
@@ -738,7 +739,7 @@ export default function Perfil() {
                       <MapPin size={14} className="text-[var(--gym)] shrink-0" aria-hidden="true" />
                       <span className="text-sm flex-1 min-w-0 truncate ml-1" data-testid="perfil-onde-treinas-cidade">{draft.training_city}</span>
                       <button
-                        ref={placeChangeRef}
+                        ref={focusWhenShown('change')}
                         type="button"
                         onClick={startPlaceEdit}
                         aria-label={`Mudar onde treinas (${draft.training_city})`}
@@ -765,7 +766,7 @@ export default function Perfil() {
                       className="flex gap-2"
                     >
                       <input
-                        ref={placeInputRef}
+                        ref={focusWhenShown('input')}
                         id="perfil-onde-treinas"
                         type="text"
                         value={placeQuery}
