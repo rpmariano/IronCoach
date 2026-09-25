@@ -4,6 +4,11 @@
 -- APLICADA EM PRODUÇÃO a 2026-09-24 23:47 UTC (version 20260924234725).
 -- Testada lá numa transação revertida: o upsert do mesmo dia e tipo fica com
 -- uma linha só, com o valor corrigido.
+-- Corrigido no ficheiro a 2026-09-25 (revisão pré-deploy): a política de admin
+-- passa a nascer `to authenticated`. Foi aplicada sem isso; em produção quem a
+-- corrigiu foi a 20260924235403_security_definer_rpc, e este ficheiro, se for
+-- reaplicado à mão, dá agora o mesmo estado — sem ela, as consultas anónimas a
+-- esta tabela davam erro (anon já não tem EXECUTE em is_admin()).
 -- ============================================================================
 --
 -- O que ela recomenda na conversa, fora do plano — "amanhã descansa", "hoje
@@ -52,4 +57,4 @@ create policy "own recommendations update" on public.coach_recommendations
 
 drop policy if exists "admin read all recommendations" on public.coach_recommendations;
 create policy "admin read all recommendations" on public.coach_recommendations
-  for select using (public.is_admin());
+  for select to authenticated using (public.is_admin());

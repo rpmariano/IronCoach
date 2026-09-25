@@ -67,12 +67,16 @@ export function upstreamErrorText(status: number | null): string {
 // não pode acender o aviso de "considera" a suavizar.
 const SOFTENING_WORDS = /(?<![\p{L}])(talvez|considera(s)?|pode ser que|se calhar)(?![\p{L}])/iu;
 const NAMES_INFRA = /(?<![\p{L}])gemini(?![\p{L}])/iu;
+// Ela nunca fala de si na terceira pessoa ("para a Carol poder avaliar") —
+// revisão pré-deploy de 2026-09-25, a P.12 que ficara por acabar.
+const THIRD_PERSON = /(?<![\p{L}])(a|da|à) Carol(?![\p{L}])/iu;
 
 export function assertCarolVoice(text: string): void {
   if (/\p{Extended_Pictographic}/u.test(text)) throw new Error(`voz da Carol: tem emoji — "${text}"`);
   if (text.includes("!")) throw new Error(`voz da Carol: tem exclamação — "${text}"`);
   if (SOFTENING_WORDS.test(text)) throw new Error(`voz da Carol: suaviza com "talvez"/"considera" — "${text}"`);
   if (NAMES_INFRA.test(text)) throw new Error(`voz da Carol: nomeia a infraestrutura — "${text}"`);
+  if (THIRD_PERSON.test(text)) throw new Error(`voz da Carol: fala de si na terceira pessoa — "${text}"`);
 }
 
 // ─── Linguagem por nível (bug #40, 2026-09-22) ──────────────────────────

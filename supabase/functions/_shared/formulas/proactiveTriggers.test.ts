@@ -340,9 +340,13 @@ Deno.test("P.10: com check-in depois do último registo, o silêncio fala dos tr
   const body = proactivePushMessage(c).body;
   assertEquals(body, "Não vejo nenhum treino teu há 10 dias. Está tudo bem?");
   assertCarolVoice(body);
-  // Sem nenhum treino registado, os dias do silêncio.
+  // Sem nenhum treino registado não há dias a contar: os 4 dias eram desde a
+  // última refeição, e o chat diz "não há treinos registados" (revisão
+  // pré-deploy de 2026-09-25).
   const semTreino = pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", lastCheckinDate: "2026-09-17", lastTrainingDate: null }, TODAY)!;
-  assertEquals(proactivePushMessage(semTreino).body, "Não vejo nenhum treino teu há 4 dias. Está tudo bem?");
+  assertEquals(semTreino.trainingSilenceDays, null);
+  assertEquals(proactivePushMessage(semTreino).body, "Ainda não vejo nenhum treino teu registado. Está tudo bem?");
+  assertCarolVoice(proactivePushMessage(semTreino).body);
 });
 
 Deno.test("P.10: um check-in antigo não muda nada", () => {

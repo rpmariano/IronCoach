@@ -13,43 +13,58 @@ import { COACH_ASYNC_FALLBACK_TEXT, COACH_IMMEDIATE_FAILURE_TEXT, COACH_EMPTY_RE
 
 const iso = (daysAgo) => format(subDays(new Date(), daysAgo), 'yyyy-MM-dd');
 
-describe('racePlanEngine — carolOverviewText, os quatro ramos', () => {
+describe('racePlanEngine — carolOverviewText, cada ramo na voz dela', () => {
   const raceBase = { id: 'r1', name: 'Corrida do Tejo', distance_km: 10, race_type: 'estrada', race_priority: 'a', experience_level: 'medio' };
+  const overview = (race, runs = []) => calculateRaceTrainingPlan({ race: { ...raceBase, ...race }, profile: {}, runs, todayISO: iso(0) }).carolAnalysis.overviewText;
+
+  /* Revisão pré-deploy de 2026-09-25 (a P.12 que ficara por acabar): sem
+     elogio automático — "Excelente dedicação" saía em qualquer prova
+     concluída —, sem "o trabalho duro está feito" dito a quem não treinou, e
+     sem falar de si na terceira pessoa (expectCarolVoice). */
+  const semRotina = (text) => {
+    expectCarolVoice(text);
+    expect(text).not.toMatch(/Excelente|trabalho duro|sono reparador/);
+  };
 
   it('prova já realizada (daysToRace < 0)', () => {
-    const plan = calculateRaceTrainingPlan({ race: { ...raceBase, date: iso(10) }, profile: {}, runs: [], todayISO: iso(0) });
-    expect(plan.carolAnalysis.overviewText).toContain('já foi realizada');
-    expectCarolVoice(plan.carolAnalysis.overviewText);
+    const text = overview({ date: iso(10) });
+    expect(text).toContain('A prova já foi');
+    semRotina(text);
   });
 
   it('antes do início do macrociclo (daysToStart > 0)', () => {
     // 6 semanas de preparação para um 10k nível médio — a prova a 120 dias
     // garante folga antes do início ideal do plano.
-    const plan = calculateRaceTrainingPlan({ race: { ...raceBase, date: iso(-120) }, profile: {}, runs: [], todayISO: iso(0) });
-    expect(plan.carolAnalysis.overviewText).toContain('Faltam');
-    expect(plan.carolAnalysis.overviewText).toContain('início oficial do macrociclo');
-    expectCarolVoice(plan.carolAnalysis.overviewText);
+    const text = overview({ date: iso(-120) });
+    expect(text).toMatch(/^Faltam \d+ dias para começarmos o ciclo/);
+    semRotina(text);
   });
 
-  it('semana decisiva da prova (0 < daysToRace <= 7)', () => {
-    const plan = calculateRaceTrainingPlan({ race: { ...raceBase, date: iso(-5) }, profile: {}, runs: [], todayISO: iso(0) });
-    expect(plan.carolAnalysis.overviewText).toContain('semana decisiva');
-    expectCarolVoice(plan.carolAnalysis.overviewText);
+  it('dia da prova (daysToRace = 0)', () => {
+    const text = overview({ date: iso(0) });
+    expect(text).toContain('A prova é hoje');
+    semRotina(text);
+  });
+
+  it('semana da prova (0 < daysToRace <= 7), com o singular a um dia', () => {
+    const text = overview({ date: iso(-5) });
+    expect(text).toMatch(/^Faltam 5 dias: esta semana já não se ganha forma/);
+    semRotina(text);
+    expect(overview({ date: iso(-1) })).toMatch(/^Falta 1 dia:/);
   });
 
   it('em plena preparação, com corridas registadas nesta fase', () => {
-    const raceDate = iso(-40); // dentro do macrociclo, fora da semana decisiva
+    const raceDate = iso(-40); // dentro do macrociclo, fora da semana da prova
     const runs = Array.from({ length: 6 }, (_, i) => ({ date: iso(i * 3), distance_km: 8, duration_seconds: 2700, kind: 'treino' }));
-    const plan = calculateRaceTrainingPlan({ race: { ...raceBase, date: raceDate }, profile: {}, runs, todayISO: iso(0) });
-    expect(plan.carolAnalysis.overviewText).toContain('Encontras-te na');
-    expectCarolVoice(plan.carolAnalysis.overviewText);
+    const text = overview({ date: raceDate }, runs);
+    expect(text).toMatch(/^Estás na /);
+    semRotina(text);
   });
 
   it('em plena preparação, ainda sem corridas registadas nesta fase', () => {
-    const raceDate = iso(-40);
-    const plan = calculateRaceTrainingPlan({ race: { ...raceBase, date: raceDate }, profile: {}, runs: [], todayISO: iso(0) });
-    expect(plan.carolAnalysis.overviewText).toContain('mas ainda sem corridas registadas');
-    expectCarolVoice(plan.carolAnalysis.overviewText);
+    const text = overview({ date: iso(-40) });
+    expect(text).toContain('ainda não tenho nenhuma corrida tua registada');
+    semRotina(text);
   });
 });
 

@@ -83,6 +83,12 @@ function isLowIntensity(r: RunForPhase): boolean {
   return r.effort_rpe != null && Number(r.effort_rpe) <= Z1Z2_MAX_RPE;
 }
 
+/* Os resumos de fase aparecem sob o avatar dela, em "Avaliação da Carol"
+   (RaceHubView): falam como ela (ação P.12, acabada na revisão pré-deploy
+   de 2026-09-25) — a opinião primeiro e o número como prova, sem elogio
+   automático ("Excelente disciplina" saía sempre que 75% das corridas eram
+   fáceis), sem frase de manual e sem afirmar o que não se verifica (o pico
+   dava os longos-chave por "concluídos" sem os olhar). */
 function buildCommentary(
   phaseId: PhaseId,
   volumeRatio: number,
@@ -93,19 +99,22 @@ function buildCommentary(
 ): string {
   switch (phaseId) {
     case "base":
-      return volumeRatio < 0.6
-        ? `Volume realizado (${Math.round(totalKm)} km) abaixo do alvo da fase (${Math.round(expectedPhaseKm)} km). Prioriza aumentar a quilometragem fácil em Z1/Z2.`
-        : `Base aeróbica com ${runsCount} corridas (${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km alvo). ${polarizedPct >= POLARIZATION_TARGET_PCT ? "Excelente disciplina nas zonas de baixa intensidade (Z1/Z2)." : "Atenção: reduz o ritmo nos treinos fáceis para proteger a base aeróbica."}`;
+      if (volumeRatio < 0.6) {
+        return `Estás curto de volume para esta fase: ${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km. Acrescenta quilómetros fáceis, em Z1/Z2.`;
+      }
+      return polarizedPct >= POLARIZATION_TARGET_PCT
+        ? `A base está a ser feita como deve ser: ${runsCount} corridas, ${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km, o grosso em ritmo fácil (Z1/Z2).`
+        : `Os treinos fáceis estão a sair rápidos demais: ${runsCount} corridas, ${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km, poucas em Z1/Z2. Abranda-os, que a base faz-se devagar.`;
     case "build":
       return volumeRatio < 0.6
-        ? `Volume de construção (${Math.round(totalKm)} km) abaixo do previsto para suportar o ritmo de prova. Reforça treinos de limiar e rodagem contínua.`
-        : `Fase de construção em bom ritmo (${runsCount} sessões, ${Math.round(totalKm)} km). Foco na tolerância ao limiar e manutenção da progressão semanal.`;
+        ? `A construção está curta para aguentares o ritmo de prova: ${Math.round(totalKm)} km nesta fase. Reforça o limiar e a rodagem contínua.`
+        : `A construção vai no sítio: ${runsCount} sessões, ${Math.round(totalKm)} km. Agora é aguentar o limiar e subir um pouco por semana.`;
     case "peak":
-      return `Pico de carga com simulação de ritmo de prova (${Math.round(totalKm)} km). Volume específico atingido com treinos longos chave concluídos.`;
+      return `Estás no pico de carga: ${Math.round(totalKm)} km nesta fase. É nos longos daqui que o ritmo de prova se ensaia.`;
     case "taper":
-      return `Polimento pré-prova. Redução controlada de volume para recarga total de glicogénio sem perda de sensações de ritmo.`;
+      return `Estás no polimento: menos volume para chegares fresco à prova, sem perder o ritmo. Não compenses agora o que ficou para trás.`;
     default:
-      return `Execução consistente e registo regular de esforço.`;
+      return `${runsCount} corridas registadas nesta fase.`;
   }
 }
 
@@ -118,7 +127,7 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       stars: 0,
       gradeLabel: "Planeada",
       statusColor: "slate",
-      summary: "Aguardar início da fase para cálculo de métricas em tempo real.",
+      summary: "Esta fase ainda não começou. Avalio-a quando lá chegares.",
       metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: null, avgPace: null },
     };
   }
@@ -133,7 +142,7 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       stars: 0,
       gradeLabel: "Não Realizada",
       statusColor: "slate",
-      summary: "Fase anterior ao início real da preparação — a prova foi registada tarde demais para cumprir todo o macrociclo recomendado.",
+      summary: "Esta fase ficou antes de começares a preparação: a prova entrou com menos tempo do que o ciclo completo pede. Não conta contra ti.",
       metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: null, avgPace: null },
     };
   }
@@ -171,7 +180,7 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       // "Mantém a consistência" presumia uma consistência que não existe
       // ainda — sem uma corrida registada, não há nada a manter. Ver bug
       // relatado 2026-08-30.
-      summary: "Sem treinos registados nesta fase. Começa a registar pelo menos 3 sessões semanais para a Carol poder avaliar a tua adaptação.",
+      summary: "Não tenho nenhum treino teu registado nesta fase. Regista pelo menos 3 por semana, para eu ver como te estás a adaptar.",
       metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: 0, avgPace: null },
     };
   }

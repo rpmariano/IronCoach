@@ -2326,7 +2326,9 @@ function buildRacePhasesPanel(runs: any[], race: any | null, profile: any, today
       `- ${PHASE_LABELS[w.id] ?? w.id} (semanas ${w.startWeek}-${w.endWeek}, ${w.startDate} a ${w.endDate}) — ${STATE_LABELS[state]}: ` +
         `${ev.score ?? "—"}/100 (${ev.gradeLabel}, ${ev.stars}★) · ${ev.metrics.totalKm} km em ${ev.metrics.runsCount} corrida(s)` +
         `${ev.metrics.polarizedZ1Z2Pct !== null ? ` · ${ev.metrics.polarizedZ1Z2Pct}% Z1/Z2` : ""}` +
-        `${ev.metrics.avgPace ? ` · ritmo médio ${ev.metrics.avgPace}/km` : ""}\n  · ${ev.summary}`,
+        // O resumo é o que o atleta lê no hub, sob o avatar dela, já na voz
+        // dela (P.12): vai rotulado como tal, para ela não o contradizer.
+        `${ev.metrics.avgPace ? ` · ritmo médio ${ev.metrics.avgPace}/km` : ""}\n  · no hub, sob o teu avatar: "${ev.summary}"`,
     );
   }
 

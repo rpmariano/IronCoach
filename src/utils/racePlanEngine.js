@@ -383,8 +383,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
         gradeLabel: daysToRace <= 0 ? 'Concluída' : 'Objetivo Final',
         statusColor: 'emerald',
         summary: daysToRace <= 0
-          ? `Prova terminada. Respeita os ${recoveryDays} dias de regeneração fisiológica ativa (só Z1/caminhadas).`
-          : `É dia de prova. 30-60g de hidratos por hora se passar de 75 minutos.`,
+          ? `A prova já foi. Agora são ${recoveryDays} dias de recuperação ativa: só corrida muito leve ou caminhadas.`
+          : `É dia de prova. Se passares dos 75 minutos, 30 a 60 g de hidratos por hora.`,
         metrics: { totalKm: distanceKm, runsCount: daysToRace <= 0 ? 1 : 0, polarizedZ1Z2Pct: 100, avgPace: null },
       },
     },
@@ -394,22 +394,32 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const currentPhase = phases.find(p => p.state === 'active') || 
                        (trainingStatus === 'completed' ? phases[phases.length - 1] : phases[0]);
 
-  // Gera parecer dinâmico da Carol
+  /* O parecer da prova, sob o avatar dela no hub e no cartão da prova: fala
+     como ela (ação P.12, acabada na revisão pré-deploy de 2026-09-25). Sem
+     elogio automático — "Excelente dedicação" saía em qualquer prova
+     concluída —, sem afirmar o que não se verifica ("o trabalho duro está
+     feito", mesmo sem um treino registado), sem frase de manual ("sono
+     reparador, a hidratação") e sem falar de si na terceira pessoa. */
   let carolOverviewText = '';
+  const faltam = (n) => (n === 1 ? 'Falta 1 dia' : `Faltam ${n} dias`);
+  // "Estás na Polimento" não: o pico e o polimento são masculinos.
+  const naFase = `${currentPhase.id === 'peak' || currentPhase.id === 'taper' ? 'no' : 'na'} ${currentPhase.name}`;
   if (daysToRace < 0) {
-    carolOverviewText = `Esta prova já foi realizada. Excelente dedicação ao longo do ciclo de ${totalWeeks} semanas. Mantém a recuperação ativa nos próximos ${recoveryDays} dias antes de iniciar um novo ciclo de preparação.`;
+    carolOverviewText = `A prova já foi. Agora são ${recoveryDays} dias de recuperação ativa, só corrida muito leve ou caminhadas, antes de começarmos outro ciclo.`;
   } else if (daysToStart > 0) {
-    carolOverviewText = `Faltam ${daysToStart} dias para o início oficial do macrociclo de ${totalWeeks} semanas. Nesta fase prévia, mantém uma rotina regular de corrida fácil (Z1/Z2) e trabalho de força no ginásio para entrar na Fase de Base com boa tolerância muscular.`;
+    carolOverviewText = `${faltam(daysToStart)} para começarmos o ciclo de ${totalWeeks} semanas. Até lá, corrida fácil (Z1/Z2) com regularidade e força no ginásio: quero-te a entrar na base com as pernas preparadas.`;
+  } else if (daysToRace === 0) {
+    carolOverviewText = `A prova é hoje. Parte controlado e segue o plano de ritmos: a primeira metade é para guardar.`;
   } else if (daysToRace <= 7) {
-    carolOverviewText = `Estamos na semana decisiva da prova (${daysToRace} dias restantes). O trabalho duro está feito. Prioriza sono reparador, a hidratação e uma recarga equilibrada de hidratos de carbono. Mantém apenas 1 ou 2 corridas curtas com algumas acelerações para ativação neuromuscular.`;
+    carolOverviewText = `${faltam(daysToRace)}: esta semana já não se ganha forma, só se perde se exagerares. Uma ou duas corridas curtas com umas acelerações; o resto é descansar e comer hidratos com regularidade.`;
   } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
-    carolOverviewText = `Encontras-te na ${currentPhase.name} (Semana ${currentWeek} de ${totalWeeks}). ${weeklyVol != null ? `O teu volume médio recente é de ${weeklyVol} km/semana. ` : ''}Continua a proteger o rácio 80/20 polarizado e respeita a semana de descarga a cada 3-4 semanas para garantir que a tua fadiga aguda (ACWR) se mantém em faixa segura.`;
+    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}${weeklyVol != null ? `, com ${weeklyVol} km por semana` : ''}. Quero oito em cada dez treinos em ritmo fácil, e uma semana mais leve a cada três ou quatro — é assim que a carga sobe sem te lesionares.`;
   } else {
     // Sem uma única corrida registada nesta fase, "continua a proteger o
     // rácio 80/20"/"respeita a semana de descarga" presumem um histórico
-    // que não existe — a Carol não pode avaliar (nem recomendar manter)
-    // algo que nunca começou a medir. Ver bug relatado 2026-08-30.
-    carolOverviewText = `Encontras-te na ${currentPhase.name} (Semana ${currentWeek} de ${totalWeeks}), mas ainda sem corridas registadas nesta fase${isCompressed ? ' — o macrociclo ficou comprimido porque a prova foi registada a poucos dias da corrida' : ''}. Regista os teus treinos para a Carol poder acompanhar a tua evolução real; sem dados, não há rácio 80/20 nem fadiga aguda (ACWR) para avaliar.`;
+    // que não existe — ela não pode avaliar (nem recomendar manter) algo
+    // que nunca começou a medir. Ver bug relatado 2026-08-30.
+    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}, e ainda não tenho nenhuma corrida tua registada nesta fase${isCompressed ? ' — o ciclo ficou comprimido, porque a prova entrou a poucos dias' : ''}. Regista os treinos, para eu poder acompanhar como estás a evoluir.`;
   }
 
   return {

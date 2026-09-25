@@ -145,7 +145,7 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     expect(basePhase.evaluation.metrics.totalKm).toBe(65);
     expect(basePhase.evaluation.score).toBeGreaterThanOrEqual(85);
     expect(basePhase.evaluation.stars).toBeGreaterThanOrEqual(4);
-    expect(basePhase.evaluation.summary).toContain('Base aeróbica');
+    expect(basePhase.evaluation.summary).toContain('A base está a ser feita como deve ser');
   });
 
   it('penaliza o score da fase quando o volume está muito abaixo do alvo e a prova tem tempo insuficiente', () => {
@@ -165,7 +165,7 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     const basePhase = plan.phases.find(p => p.id === 'base');
     expect(basePhase.evaluation.score).toBeLessThan(70);
     expect(basePhase.evaluation.gradeLabel).toMatch(/Abaixo do Alvo|Ajuste Recomendado/);
-    expect(basePhase.evaluation.summary).toContain('abaixo do alvo');
+    expect(basePhase.evaluation.summary).toContain('Estás curto de volume');
   });
 
   it('BUG CORRIGIDO (2026-08-29) — prova registada a poucos dias da corrida não fabrica fases "concluídas" nem esconde o alerta de tempo insuficiente', () => {
@@ -239,9 +239,11 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     const plan = calculateRaceTrainingPlan({ race, profile: {}, runs: [], todayISO: '2026-08-30' });
 
     expect(plan.currentPhase.evaluation.metrics.runsCount).toBe(0);
-    expect(plan.carolAnalysis.overviewText).not.toMatch(/Continua a proteger o rácio 80\/20/);
-    expect(plan.carolAnalysis.overviewText).toMatch(/ainda sem corridas registadas/);
-    expect(plan.carolAnalysis.overviewText).toMatch(/macrociclo ficou comprimido/);
+    expect(plan.carolAnalysis.overviewText).not.toMatch(/oito em cada dez treinos/);
+    expect(plan.carolAnalysis.overviewText).toMatch(/ainda não tenho nenhuma corrida tua registada/);
+    expect(plan.carolAnalysis.overviewText).toMatch(/o ciclo ficou comprimido/);
+    // O artigo pela fase (revisão pré-deploy de 2026-09-25): "no Polimento".
+    expect(plan.carolAnalysis.overviewText).toMatch(/^Estás no Polimento \(Taper\), semana /);
 
     // Com corridas na fase ativa, mantém o texto original (com dado real a citar).
     const withRuns = calculateRaceTrainingPlan({
@@ -250,7 +252,7 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
       runs: [{ date: '2026-08-30', distance_km: 5, duration_seconds: 1500, training_type: 'continuo', effort_rpe: 5 }],
       todayISO: '2026-08-30',
     });
-    expect(withRuns.carolAnalysis.overviewText).toMatch(/Continua a proteger o rácio 80\/20/);
+    expect(withRuns.carolAnalysis.overviewText).toMatch(/oito em cada dez treinos em ritmo fácil/);
   });
 
   it('lida graciosamente com provas no passado (concluídas)', () => {
@@ -265,6 +267,6 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     expect(plan.trainingStatus).toBe('completed');
     expect(plan.daysToRace).toBeLessThan(0);
     expect(plan.progressPercentage).toBe(100);
-    expect(plan.carolAnalysis.overviewText).toContain('já foi realizada');
+    expect(plan.carolAnalysis.overviewText).toContain('A prova já foi');
   });
 });

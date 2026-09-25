@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, WELCOME_MIN_GAP_MS, WELCOME_PHRASES, pickByDay } from './carolWelcome';
+import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, WELCOME_MIN_GAP_MS, WELCOME_PHRASES, pickByDay, welcomeReturnAction } from './carolWelcome';
 import { expectCarolVoice } from '../test/carolVoice';
 
 /* As boas-vindas da Carol: aparecem na primeira abertura de cada faixa do
@@ -323,5 +323,24 @@ describe('ação P.11 — a véspera e o intervalo entre saudações', () => {
     markShownAt('u1', 1_700_000_000_000, st);
     expect(readShownAt('u1', st)).toBe(1_700_000_000_000);
     expect(readShownAt('u2', st)).toBeNull();
+  });
+});
+
+/* Revisão pré-deploy de 2026-09-25: ao voltar à app numa faixa nova com o
+   momento do badge aberto, a cancela fechava ('pending') para ler as
+   impressões, o badge desmontava-se, e o tryWelcome, já sem o ver, saudava
+   no lugar dele. */
+describe('welcomeReturnAction — voltar à app', () => {
+  const decisao = { variant: 'tarde', key: '2026-09-25:tarde', markKeys: ['2026-09-25:tarde'] };
+
+  it('com uma camada aberta (o momento do badge) não se toca em nada, nem na cancela', () => {
+    expect(welcomeReturnAction({ busy: true, userLoaded: true, localDecision: decisao })).toBe('skip');
+    expect(welcomeReturnAction({ busy: true, userLoaded: false, localDecision: null })).toBe('skip');
+  });
+
+  it('com uma saudação possível, lê primeiro as impressões; sem ela, decide já', () => {
+    expect(welcomeReturnAction({ busy: false, userLoaded: true, localDecision: decisao })).toBe('refresh');
+    expect(welcomeReturnAction({ busy: false, userLoaded: true, localDecision: null })).toBe('try');
+    expect(welcomeReturnAction({ busy: false, userLoaded: false, localDecision: decisao })).toBe('try');
   });
 });

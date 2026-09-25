@@ -465,9 +465,16 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
       };
     case "silence":
       // Com check-ins recentes ele está por cá: o que falta são os treinos (P.10).
-      return c.lastCheckinDate
-        ? { title, body: `Não vejo nenhum treino teu há ${c.trainingSilenceDays ?? c.silenceDays ?? SILENCE_DAYS} dias. Está tudo bem?` }
-        : { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
+      if (c.lastCheckinDate) {
+        /* Sem nenhum treino registado, não há "há N dias": os dias do
+           silêncio contam desde o último registo (uma refeição), e o chat,
+           no mesmo caso, diz "não há treinos registados" (revisão pré-deploy
+           de 2026-09-25). */
+        return c.trainingSilenceDays == null
+          ? { title, body: "Ainda não vejo nenhum treino teu registado. Está tudo bem?" }
+          : { title, body: `Não vejo nenhum treino teu há ${c.trainingSilenceDays} dias. Está tudo bem?` };
+      }
+      return { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
     // A frase fixa de propósito (P.10): pergunta, não acusa — pode ter treinado e não registado.
     case "missed_workout":
       return { title, body: "Não vi o treino de ontem registado. Aconteceu alguma coisa?" };

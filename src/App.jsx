@@ -12,7 +12,7 @@ import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 import CarolWelcome from './components/Welcome/CarolWelcome';
-import { decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, slotKey } from './utils/carolWelcome';
+import { decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, slotKey, welcomeReturnAction } from './utils/carolWelcome';
 import { detectRaceConflict } from './utils/planDivergence';
 import { todayISO } from './lib/utils';
 
@@ -676,12 +676,16 @@ export default function App() {
         // Com as boas-vindas desligadas no Perfil não há nada a decidir:
         // tryWelcome só abre a cancela, sem ler as impressões.
         const welcomeOff = s.profile?.carol_welcome_enabled === false;
-        const localDecision = uid && !welcomeOff
+        // Uma camada aberta (o momento do badge, uma persiana) fica como está,
+        // e a cancela também — ver welcomeReturnAction.
+        const busy = isBusy(document) || isScreenOpen(s);
+        const localDecision = !busy && uid && !welcomeOff
           ? decideWelcome({ raceEvents: s.raceEvents, seen: readSeen(uid), lastShownAt: readShownAt(uid) })
           : null;
-        if (!userId || !localDecision) {
+        const action = welcomeReturnAction({ busy, userLoaded: !!userId, localDecision });
+        if (action === 'try') {
           tryWelcome();
-        } else {
+        } else if (action === 'refresh') {
           if (s.welcomeGate === 'clear') s.setWelcomeGate('pending');
           s.refreshImpressionKeys().then(() => {
             if (canWelcomeNow()) tryWelcome();
