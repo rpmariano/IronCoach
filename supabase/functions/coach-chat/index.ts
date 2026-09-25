@@ -1652,7 +1652,10 @@ function buildGymSummary(sessions: any[], windowDays: number): string {
 
 // Grupos de pernas reconhecidos. Capitalização é inconsistente nos registos —
 // comparamos em lowercase.
-const LEG_CATS = new Set(["pernas", "glúteos", "gluteos", "posterior", "quadríceps",
+// "Pernas Superiores/Inferiores" são o vocabulário da Carol (analyze-gym,
+// MUSCLE_GROUPS) e do seletor — até 2026-09-25 não contavam como pernas.
+const LEG_CATS = new Set(["pernas", "pernas superiores", "pernas inferiores", "membros inferiores",
+  "glúteos", "gluteos", "posterior", "quadríceps",
   "quadriceps", "isquiotibiais", "gémeos", "gemeos", "solear"]);
 
 function isLegSession(row: GymSessionSummary): boolean {

@@ -510,13 +510,23 @@ export async function inferMuscleGroupsFromNotes(
   }
 }
 
+// "Bíceps" e "Biceps" são o mesmo grupo: o seletor antigo não tinha acento, e
+// dois nomes partiam o volume por grupo muscular em dois.
+const plain = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
+// Um grupo escrito pelo cliente fica com a grafia do vocabulário quando é um
+// deles; texto livre que não é ("Membros Superiores") passa como está.
+export function canonicalMuscleGroup(c: string): string {
+  return MUSCLE_GROUPS.find((g) => plain(g) === plain(c)) ?? c;
+}
+
 // Só entram nomes do vocabulário — o que vem do modelo não inventa grupos novos.
 export function pickMuscleGroups(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const out: string[] = [];
   for (const c of raw) {
     if (typeof c !== "string") continue;
-    const hit = MUSCLE_GROUPS.find((g) => g.toLowerCase() === c.trim().toLowerCase());
+    const hit = MUSCLE_GROUPS.find((g) => plain(g) === plain(c));
     if (hit && !out.includes(hit)) out.push(hit);
   }
   return out.slice(0, 8);
@@ -910,7 +920,7 @@ Deno.serve(async (req) => {
     // categories = grupos musculares; class_types = modalidade (só aulas).
     // Um cliente antigo não manda class_types e põe a modalidade de uma aula
     // em categories — separa-se aqui (splitLegacyAulaCategories).
-    let userCategories = userList(body.categories);
+    let userCategories = [...new Set(userList(body.categories).map(canonicalMuscleGroup))];
     let userClassTypes: string[] = [];
     // Cliente que já conhece class_types. Um antigo não o manda — e, numa
     // edição, não pode apagar a modalidade que a migration já tinha movido
