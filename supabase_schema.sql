@@ -395,6 +395,8 @@ alter table workout_sessions
   add column if not exists max_hr integer
     check (max_hr is null or (max_hr > 0 and max_hr < 300)),
   add column if not exists categories text[] not null default '{}',
+  -- Modalidade de uma aula (migration 20260925162654); vazio num treino de força.
+  add column if not exists class_types text[] not null default '{}',
   add column if not exists exertion smallint
     check (exertion is null or (exertion between 1 and 10)),
   add column if not exists coach_notes text;

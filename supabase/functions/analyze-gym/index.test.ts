@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { pickMuscleGroups, planningFrameSection, splitLegacyAulaCategories } from "./index.ts";
+import { canonicalMuscleGroup, pickMuscleGroups, planningFrameSection, splitLegacyAulaCategories } from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -42,4 +42,15 @@ Deno.test("splitLegacyAulaCategories separa a modalidade dos grupos musculares (
     splitLegacyAulaCategories(["Treino Funcional", "crossfit", "Pernas Inferiores"]),
     { classTypes: ["Treino Funcional", "crossfit"], categories: ["Pernas Inferiores"] },
   );
+});
+
+Deno.test("canonicalMuscleGroup dá a grafia do vocabulário, com ou sem acento", () => {
+  assertEquals(canonicalMuscleGroup("Biceps"), "Bíceps");
+  assertEquals(canonicalMuscleGroup("triceps"), "Tríceps");
+  assertEquals(canonicalMuscleGroup("Gluteos"), "Glúteos");
+  assertEquals(canonicalMuscleGroup("Membros Superiores"), "Membros Superiores");
+});
+
+Deno.test("pickMuscleGroups aceita o nome sem acento", () => {
+  assertEquals(pickMuscleGroups(["Biceps", "Bíceps", "Triceps"]), ["Bíceps", "Tríceps"]);
 });
