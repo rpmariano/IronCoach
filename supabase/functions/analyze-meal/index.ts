@@ -10,6 +10,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { dayProgressSection, mealDayProgress } from "../_shared/formulas/mealDayProgress.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_RETRYABLE_STATUSES,
@@ -495,6 +496,8 @@ async function generateMealCoachNotes(
   experienceLevel: string | null = null,
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
+  // O dia até agora face ao que ela sugeriu (5.5, push 3) — dayProgressSection.
+  dayProgress: string | null = null,
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null };
   // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
@@ -568,6 +571,7 @@ async function generateMealCoachNotes(
     `Proteína: ${totals.protein.toFixed(1)}g · Hidratos: ${totals.carbs.toFixed(1)}g · Gordura: ${totals.fat.toFixed(1)}g\n` +
     (goalLine ? `${goalLine} (referência diária, esta é só uma refeição — não esperes que bata a meta toda).\n` : "") +
     `${avgLine}\n` +
+    (dayProgress ?? "") +
     (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
     restricoes +
     workoutsText +
@@ -705,7 +709,7 @@ async function attachMealCoachNotes(
     const hasUpcomingRace = (upcomingRaces || []).length > 0;
 
     const yesterdayISO = new Date(new Date(ctx.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const [{ data: actualRuns }, { data: actualGym }] = await Promise.all([
+    const [{ data: actualRuns }, { data: actualGym }, { data: todayOthers }, { data: daySuggestions }] = await Promise.all([
       sb
         .from("runs")
         .select("date, training_type, distance_km, duration_seconds, effort_rpe")
@@ -718,7 +722,32 @@ async function attachMealCoachNotes(
         .eq("user_id", userId)
         .gte("date", yesterdayISO)
         .lte("date", ctx.date),
+      // O dia até agora (5.5, push 3): as outras refeições de hoje…
+      sb
+        .from("meals")
+        .select("id, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+        .eq("user_id", userId)
+        .eq("date", ctx.date)
+        .neq("id", meal.id),
+      // …e o que ela sugeriu para hoje (as macros do dia num plano aceite).
+      sb
+        .from("coach_plan_items")
+        .select("meal_macros, coach_plans!inner(status)")
+        .eq("user_id", userId)
+        .eq("planned_date", ctx.date)
+        .eq("coach_plans.status", "aceite")
+        .not("meal_macros", "is", null)
+        .limit(5),
     ]);
+    // deno-lint-ignore no-explicit-any
+    const suggestion = (daySuggestions || []).map((i: any) => i?.meal_macros).find((m: any) => Number(m?.kcal) > 0 || Number(m?.protein_g) > 0) ?? null;
+    const dayProgress = dayProgressSection(mealDayProgress({
+      thisMeal: ctx.totals,
+      // deno-lint-ignore no-explicit-any
+      otherMeals: (todayOthers || []).map((m: any) => totalsFromItems(m.meal_items || [])),
+      suggestion,
+      goals: profile || {},
+    }));
 
     const result = await generateMealCoachNotes(
       { date: ctx.date, meal_type: ctx.meal_type, notes: ctx.notes },
@@ -736,6 +765,7 @@ async function attachMealCoachNotes(
       await memoryPromise,
       (profile?.experience_level as string | null) ?? null,
       deadline,
+      dayProgress,
     );
 
     if (result.text) {
