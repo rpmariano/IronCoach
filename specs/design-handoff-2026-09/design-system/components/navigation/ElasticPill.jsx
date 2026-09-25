@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 /** A minhoca. Pílula que estica a cobrir o trajeto (45% do tempo) e contrai no alvo com overshoot (55%).
- *  Porte do useElasticPillIndicator do repositório. nav = 420+130·dist ms (teto 950); sub = 320 ms fixos. */
+ *  Porte do useElasticPillIndicator do repositório. nav = 650+170·dist ms (teto 1300); sub = 480 ms fixos (abrandada 2026-09-13). */
 const lerp = (a, b, t) => a + (b - a) * t;
 const eOut = t => 1 - Math.pow(1 - t, 3);
 const eBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
@@ -12,7 +12,7 @@ export function useElasticPill(target, speed = 'nav') {
     if (!from || from.left === to.left && from.width === to.width) { cur.current = to; setBox(to); return; }
     const L = Math.min(from.left, to.left), R = Math.max(from.left + from.width, to.left + to.width);
     const dist = to.width > 0 ? Math.round(Math.abs(to.left - from.left) / to.width) : 1;
-    const dur = speed === 'sub' ? 320 : Math.min(950, 420 + dist * 130);
+    const dur = speed === 'sub' ? 480 : Math.min(1300, 650 + dist * 170);
     const t0 = performance.now();
     const tick = now => {
       const p = Math.min(1, (now - t0) / dur); let l, r;
