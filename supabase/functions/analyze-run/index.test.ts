@@ -1,5 +1,14 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildWeeklyVolumeLine, computeRunRecordContext, keepImageOnlyDetails, planningFrameSection, resolvePhotoPaths, resolveReanalysisTypes } from "./index.ts";
+import {
+  buildWeeklyVolumeLine,
+  computeRunRecordContext,
+  formatHrZonesLine,
+  formatSplitsLine,
+  keepImageOnlyDetails,
+  planningFrameSection,
+  resolvePhotoPaths,
+  resolveReanalysisTypes,
+} from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -141,4 +150,32 @@ Deno.test("keepImageOnlyDetails: a temperatura do relógio sobrevive a uma ediç
   assertEquals(keepImageOnlyDetails({ temperature_c: -3 }, null), { temperature_c: -3 });
   // Uma temperatura nova (reanálise) ganha à antiga.
   assertEquals(keepImageOnlyDetails({ temperature_c: 12 }, { temperature_c: 24 }), { temperature_c: 24 });
+});
+
+// ── A gestão do esforço ao longo da corrida (feedback de 2026-09-25) ──────
+
+Deno.test("formatSplitsLine: o ritmo de cada volta, com o número da volta mesmo quando uma falha", () => {
+  assertEquals(
+    formatSplitsLine([
+      { distance_km: 1, time_seconds: 300 },
+      { distance_km: 1, time_seconds: null },
+      { distance_km: 1, time_seconds: 312 },
+      { distance_km: 0.5, time_seconds: 160 },
+    ]),
+    "Parciais (ritmo de cada volta, min/km): 1: 5.00 · 3: 5.12 · 4: 5.20",
+  );
+});
+
+Deno.test("formatSplitsLine: sem parciais, ou com um só, não há nada a ler", () => {
+  assertEquals(formatSplitsLine(null), null);
+  assertEquals(formatSplitsLine([]), null);
+  assertEquals(formatSplitsLine([{ distance_km: 1, time_seconds: 300 }]), null);
+});
+
+Deno.test("formatHrZonesLine: minutos por zona, sem as zonas vazias", () => {
+  assertEquals(
+    formatHrZonesLine([{ zone: 1, minutes: 4.6 }, { zone: 2, minutes: 31 }, { zone: 3, minutes: 0 }, { zone: null, minutes: 3 }]),
+    "Tempo por zona de FC: Z1 5 min, Z2 31 min",
+  );
+  assertEquals(formatHrZonesLine(null), null);
 });

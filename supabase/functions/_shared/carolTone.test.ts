@@ -1,5 +1,14 @@
 import { assert, assertEquals, assertStringIncludes, assertThrows } from "jsr:@std/assert@1";
-import { CAROL_LANGUAGE_BY_LEVEL, CAROL_TONE_RULES_SHORT, assertCarolVoice, carolLanguageRule, fetchExperienceLevel, upstreamErrorText } from "./carolTone.ts";
+import {
+  CAROL_LANGUAGE_BY_LEVEL,
+  CAROL_TONE_RULES_SHORT,
+  assertCarolVoice,
+  carolLanguageRule,
+  carolRecordAnalysisRules,
+  fetchExperienceLevel,
+  RECORD_ANALYSIS_LABELS,
+  upstreamErrorText,
+} from "./carolTone.ts";
 
 Deno.test("upstreamErrorText: nunca nomeia o serviço por trás, e distingue limite/timeout/genérico", () => {
   assertStringIncludes(upstreamErrorText(429), "muitos pedidos");
@@ -69,4 +78,36 @@ Deno.test("fetchExperienceLevel — lê o nível e nunca rebenta", async () => {
   assertEquals(await fetchExperienceLevel(sb({ experience_level: "medio" }), "u"), "medio");
   assertEquals(await fetchExperienceLevel(sb(null), "u"), null);
   assert((await fetchExperienceLevel(sb(null, true), "u")) === null);
+});
+
+// Feedback de 2026-09-25: a análise de uma aula de 64 min saiu só com o aviso
+// de risco — «é esperado que ela faça também uma análise mais fina ao esforço
+// e critique positivamente e negativamente o que ele escreveu».
+
+Deno.test("CAROL_TONE_RULES_SHORT: proíbe o louvor genérico, não o reconhecimento com prova", () => {
+  assertStringIncludes(CAROL_TONE_RULES_SHORT, "louvor genérico");
+  assertStringIncludes(CAROL_TONE_RULES_SHORT, "reconheces com a prova");
+  // Era esta frase que se lia como "não digas nada de bom".
+  assertEquals(CAROL_TONE_RULES_SHORT.includes("regista-se em silêncio"), false);
+});
+
+Deno.test("carolRecordAnalysisRules: abertura e os quatro blocos, pela ordem, com o rótulo a negrito", () => {
+  const r = carolRecordAnalysisRules({ readingLabel: "O esforço", readingHint: "lê o esforço.", focusHint: "Olha para as cargas." });
+  const order = ["**O esforço**", `**${RECORD_ANALYSIS_LABELS.good}**`, `**${RECORD_ANALYSIS_LABELS.fix}**`, `**${RECORD_ANALYSIS_LABELS.next}**`]
+    .map((l) => r.indexOf(l));
+  assert(order.every((i) => i >= 0), "falta um rótulo");
+  assert(order.every((i, k) => k === 0 || i > order[k - 1]), "os rótulos não estão pela ordem");
+  assertStringIncludes(r, "Abertura: UMA frase");
+  assertStringIncludes(r, "lê o esforço.");
+  assertStringIncludes(r, "Olha para as cargas.");
+  assertStringIncludes(r, "NÃO é elogio automático");
+  assertStringIncludes(r, "primeiro reconheces, depois corriges");
+  assertStringIncludes(r, "Entre 6 e 10 frases");
+});
+
+Deno.test("carolRecordAnalysisRules: rótulo de correção e tamanho próprios (avaliação corporal, refeição)", () => {
+  const r = carolRecordAnalysisRules({ readingLabel: "Os números", readingHint: "", focusHint: "", fixLabel: "O que vigiar", sentences: "5 e 8" });
+  assertStringIncludes(r, "**O que vigiar**");
+  assertEquals(r.includes(`**${RECORD_ANALYSIS_LABELS.fix}**`), false);
+  assertStringIncludes(r, "Entre 5 e 8 frases");
 });

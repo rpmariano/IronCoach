@@ -1,5 +1,12 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { canonicalMuscleGroup, pickMuscleGroups, planningFrameSection, splitLegacyAulaCategories } from "./index.ts";
+import {
+  buildGymHistoryBlock,
+  canonicalMuscleGroup,
+  formatExerciseLines,
+  pickMuscleGroups,
+  planningFrameSection,
+  splitLegacyAulaCategories,
+} from "./index.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -53,4 +60,53 @@ Deno.test("canonicalMuscleGroup dá a grafia do vocabulário, com ou sem acento"
 
 Deno.test("pickMuscleGroups aceita o nome sem acento", () => {
   assertEquals(pickMuscleGroups(["Biceps", "Bíceps", "Triceps"]), ["Bíceps", "Tríceps"]);
+});
+
+// ── O que a Carol lê para comentar os exercícios (feedback de 2026-09-25) ──
+
+Deno.test("formatExerciseLines: uma linha por exercício, pela ordem das séries, com as cargas", () => {
+  assertEquals(
+    formatExerciseLines([
+      { exercise_name: "Peso morto", set_index: 1, reps: 10, weight: 20 },
+      { exercise_name: "Shoulder press", set_index: 0, reps: 8, weight: 20 },
+      { exercise_name: "Peso morto", set_index: 0, reps: 10, weight: 20 },
+      { exercise_name: "Peso morto", set_index: 2, reps: 8, weight: 20 },
+    ]),
+    ["Peso morto — 3 séries de 10/10/8 reps a 20 kg", "Shoulder press — 1 série de 8 reps a 20 kg"],
+  );
+});
+
+Deno.test("formatExerciseLines: cargas diferentes série a série; sem carga (0 ou vazia) não afirma nada", () => {
+  assertEquals(
+    formatExerciseLines([
+      { exercise_name: "Agachamento", set_index: 0, reps: 12, weight: 10 },
+      { exercise_name: "Agachamento", set_index: 1, reps: 10, weight: 12.5 },
+      { exercise_name: "Flexões", set_index: 0, reps: 15, weight: 0 },
+      { exercise_name: "Prancha", set_index: 0, reps: null, weight: null },
+      { exercise_name: "  ", set_index: 0, reps: 5, weight: 5 },
+    ]),
+    [
+      "Agachamento — 2 séries: 12 reps a 10 kg, 10 reps a 12,5 kg",
+      "Flexões — 1 série de 15 reps",
+      "Prancha — 1 série de ? reps",
+    ],
+  );
+  assertEquals(formatExerciseLines(null), []);
+});
+
+Deno.test("buildGymHistoryBlock: as sessões anteriores com séries e a nota do atleta", () => {
+  const block = buildGymHistoryBlock([
+    {
+      date: "2026-09-17", name: "Treino de Pernas", kind: "forca", categories: ["Pernas Inferiores"],
+      notes: "Tudo com banda \"7kg\"\n\nsem dor", workout_session_sets: [{ exercise_name: "Leg press", set_index: 0, reps: 8, weight: 40 }],
+    },
+    { date: "2026-09-10", name: null, kind: "aula", categories: [], notes: null, workout_session_sets: [] },
+  ])!;
+  assertStringIncludes(block, "SESSÕES DE GINÁSIO ANTERIORES");
+  assertStringIncludes(block, "- 2026-09-17 · Treino de Pernas (força; Pernas Inferiores): Leg press — 1 série de 8 reps a 40 kg");
+  // Aspas trocadas por plicas e espaços achatados: a nota vai entre aspas no prompt.
+  assertStringIncludes(block, `nota do atleta: "Tudo com banda '7kg' sem dor"`);
+  assertStringIncludes(block, "- 2026-09-10 · Treino (aula)");
+  assertEquals(buildGymHistoryBlock([]), null);
+  assertEquals(buildGymHistoryBlock(null), null);
 });

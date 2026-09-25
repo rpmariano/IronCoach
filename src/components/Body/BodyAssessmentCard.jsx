@@ -8,6 +8,7 @@ import { useToast } from '../shared/ToastProvider';
 import { getBodyIcon } from '../../utils/bodyIcons';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
+import CoachText from '../shared/CoachText';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → BodyRegistration, porque mexer nas métricas ou
@@ -152,9 +153,11 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
                 <Award size={16} className="text-[var(--mod-coach-from)] shrink-0" />
                 Análise da Carol
               </div>
-              <p className="text-xs text-[var(--text-2)] leading-relaxed font-normal">
-                {coachCommentary}
-              </p>
+              {/* CoachText, como nos cartões de corrida, ginásio e refeição: a
+                  análise vem em blocos com rótulo a negrito (2026-09-25). */}
+              <div className="text-xs text-[var(--text-2)] font-normal">
+                <CoachText>{coachCommentary}</CoachText>
+              </div>
             </div>
           )}
 

@@ -144,7 +144,9 @@ export function toRecordEntries(rows: any[] | null | undefined, labelOf: (r: any
       date: typeof r?.date === "string" ? r.date.slice(0, 10) : "",
       label: labelOf(r),
       athleteNote: clip(r?.notes, MAX_ATHLETE_NOTE_CHARS),
-      coachComment: clip(r?.[commentField], MAX_COACH_COMMENT_CHARS),
+      // Sem o negrito dos rótulos (**O esforço**…, desde 2026-09-25): os
+      // asteriscos gastavam o teto de caracteres sem dizer nada.
+      coachComment: clip(typeof r?.[commentField] === "string" ? r[commentField].replace(/\*\*/g, "") : null, MAX_COACH_COMMENT_CHARS),
     }))
     .filter((e) => e.date && (e.athleteNote || e.coachComment));
 }
