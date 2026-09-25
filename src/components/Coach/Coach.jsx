@@ -150,7 +150,7 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const { data, error, isTimeout, isNetwork } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, serverText } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -160,10 +160,11 @@ export default function Coach() {
         } else if (silent) {
           setCoachLoading(false);
         } else {
-          // O servidor respondeu, mesmo que com erro (ação P.12): mostra o
-          // que ELA disse (409 busy, 429, 5xx…), não só o caso 409. Só uma
-          // falha de rede genuína cai no aviso genérico.
-          handleImmediateFailure(isNetwork ? undefined : error);
+          // O servidor respondeu com uma frase dela (ação P.12): mostra-a
+          // (409 busy, 429, 5xx…). Sem frase — falha de rede, ou um erro do
+          // gateway que só traz o texto em inglês da supabase-js — cai no
+          // aviso genérico.
+          handleImmediateFailure(serverText || undefined);
         }
         return null;
       }
@@ -838,7 +839,7 @@ export default function Coach() {
         ...(extras && typeof extras === 'object' ? extras : null),
       };
 
-      const { data, error, isTimeout, isNetwork } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, serverText } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -846,10 +847,11 @@ export default function Coach() {
         if (isTimeout) {
           await handleAsyncFallback(requestStartedAt);
         } else {
-          // O servidor respondeu, mesmo que com erro (ação P.12): mostra o
-          // que ELA disse, não só o caso 409 busy. Só a falha de rede
-          // genuína cai no aviso genérico.
-          handleImmediateFailure(isNetwork ? undefined : error);
+          // O servidor respondeu com uma frase dela (ação P.12): mostra-a,
+          // não só no caso 409 busy. Sem frase — falha de rede, ou um erro
+          // do gateway que só traz o texto em inglês da supabase-js — cai no
+          // aviso genérico.
+          handleImmediateFailure(serverText || undefined);
         }
         return;
       }

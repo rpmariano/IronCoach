@@ -106,6 +106,25 @@ describe('invokeEdgeFunctionWithTimeout — deteção de timeout do cliente', ()
     expect(result.status).toBe(502);
     expect(result.isNetwork).toBe(false);
     expect(result.error).toBe('Estou com muitos pedidos. Dá-me uns minutos.');
+    // A frase é dela (veio no campo `error`): o Coach pode mostrá-la.
+    expect(result.serverText).toBe('Estou com muitos pedidos. Dá-me uns minutos.');
+  });
+
+  it('revisão pré-deploy 2026-09-25: um erro do gateway sem frase dela não dá serverText (o texto em inglês fica só para o log)', async () => {
+    vi.spyOn(functionsProto, 'invoke').mockResolvedValue({
+      data: null,
+      error: {
+        message: 'Edge Function returned a non-2xx status code',
+        context: { status: 546, json: async () => ({ code: 'WORKER_LIMIT', message: 'Worker failed to boot' }) },
+      },
+    });
+
+    const result = await invokeEdgeFunctionWithTimeout('coach-chat', {}, 45000);
+
+    expect(result.status).toBe(546);
+    expect(result.isNetwork).toBe(false);
+    expect(result.serverText).toBeNull();
+    expect(result.error).toBe('Edge Function returned a non-2xx status code');
   });
 
   it('sucesso continua a devolver os dados sem isTimeout', async () => {

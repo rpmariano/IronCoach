@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import { readCachedBalance } from '../../utils/raceBalance';
-import Coach, { COACH_ASYNC_FALLBACK_TEXT } from './Coach';
+import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_IMMEDIATE_FAILURE_TEXT } from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
 const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -192,11 +192,14 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     // A recusa "Calma Rui…" é escrita de propósito para o atleta a ler; o
     // cliente deitava-a fora e anunciava "A tua mensagem não saiu: falha de
     // rede" — que não houve.
+    const busyText = 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)';
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null,
-      error: 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)',
+      error: busyText,
       isTimeout: false,
       isBusy: true,
+      // A frase veio do servidor (campo `error` do corpo): é para mostrar.
+      serverText: busyText,
     });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
@@ -503,6 +506,34 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     // Sem sondagem: nenhuma leitura a coach_messages foi despoletada.
     expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
   });
+
+  // Revisão pré-deploy de 2026-09-25: um erro do gateway (546 WORKER_LIMIT,
+  // 503 BOOT_ERROR) responde sem frase dela — o `error` é o texto em inglês
+  // da supabase-js, que aparecia na bolha da Carol.
+  it('o servidor respondeu sem frase dela: aviso genérico, nunca o texto em inglês da supabase-js', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null,
+      error: 'Edge Function returned a non-2xx status code',
+      isTimeout: false,
+      isNetwork: false,
+      status: 546,
+      serverText: null,
+    });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+
+    // O aviso genérico (COACH_IMMEDIATE_FAILURE_TEXT) sai partido em bolhas.
+    expect(COACH_IMMEDIATE_FAILURE_TEXT).toMatch(/falha de rede/);
+    await waitFor(() => expect(screen.getByText(/falha de rede/i)).toBeInTheDocument());
+    expect(screen.queryByText(/non-2xx/)).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
 });
 
 // Bug relatado 2026-08-30: o texto por escrever perdia-se ao trocar de app e
@@ -806,11 +837,14 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     // não saiu, sozinha ao abrir o chat, era o que apareceu no incidente.
     const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
     useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    const busyText = 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)';
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null,
-      error: 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)',
+      error: busyText,
       isTimeout: false,
       isBusy: true,
+      // A frase veio do servidor (campo `error` do corpo): é para mostrar.
+      serverText: busyText,
     });
 
     renderCoach();

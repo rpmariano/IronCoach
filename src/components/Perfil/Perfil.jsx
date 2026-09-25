@@ -309,6 +309,18 @@ export default function Perfil() {
   const [placeEditing, setPlaceEditing] = useState(false);
   // Só a última procura conta: uma resposta atrasada não pisa a seguinte.
   const placeSearchSeq = useRef(0);
+  /* Mudar, Cancelar, escolher e Tirar desmontam o botão que tinha o foco:
+     sem isto o foco caía no body e quem usa teclado ou leitor de ecrã
+     perdia o sítio (revisão pré-deploy de 2026-09-25). */
+  const placeInputRef = useRef(null);
+  const placeChangeRef = useRef(null);
+  const placeFocusNext = useRef(null); // 'input' | 'change'
+  useEffect(() => {
+    const target = placeFocusNext.current;
+    if (!target) return;
+    placeFocusNext.current = null;
+    (target === 'input' ? placeInputRef.current : placeChangeRef.current)?.focus();
+  });
 
   const resetPlaceSearch = () => {
     placeSearchSeq.current += 1;
@@ -345,6 +357,7 @@ export default function Perfil() {
     for (const key of Object.keys(fields)) dirtyKeys.current.add(key);
     setIsDirty(true);
     resetPlaceSearch();
+    placeFocusNext.current = place ? 'change' : 'input';
   };
 
   const startPlaceEdit = () => {
@@ -352,6 +365,12 @@ export default function Perfil() {
     // "Lisboa, Portugal" → "Lisboa": o ponto de partida para procurar outro.
     setPlaceQuery(String(draft.training_city || '').split(',')[0].trim());
     setPlaceEditing(true);
+    placeFocusNext.current = 'input';
+  };
+
+  const cancelPlaceEdit = () => {
+    resetPlaceSearch();
+    placeFocusNext.current = 'change';
   };
 
   const toggleCarolPushType = (key) => {
@@ -719,9 +738,10 @@ export default function Perfil() {
                       <MapPin size={14} className="text-[var(--gym)] shrink-0" aria-hidden="true" />
                       <span className="text-sm flex-1 min-w-0 truncate ml-1" data-testid="perfil-onde-treinas-cidade">{draft.training_city}</span>
                       <button
+                        ref={placeChangeRef}
                         type="button"
                         onClick={startPlaceEdit}
-                        aria-label="Mudar onde treinas"
+                        aria-label={`Mudar onde treinas (${draft.training_city})`}
                         className="min-h-[44px] px-3 text-xs font-semibold rounded-lg hover:bg-[var(--surface-glass)] transition"
                       >
                         Mudar
@@ -745,6 +765,7 @@ export default function Perfil() {
                       className="flex gap-2"
                     >
                       <input
+                        ref={placeInputRef}
                         id="perfil-onde-treinas"
                         type="text"
                         value={placeQuery}
@@ -765,7 +786,7 @@ export default function Perfil() {
                       {placeEditing && (
                         <button
                           type="button"
-                          onClick={resetPlaceSearch}
+                          onClick={cancelPlaceEdit}
                           className="min-h-[44px] px-2 shrink-0 text-xs font-semibold text-[var(--text-3)] rounded-xl hover:bg-[var(--surface-glass)] transition"
                         >
                           Cancelar

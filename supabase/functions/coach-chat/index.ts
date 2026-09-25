@@ -1389,6 +1389,15 @@ const OFF_TOPIC_CAROL_REPLY =
   "composição corporal e corrida — tudo o que te ajuda a chegar em melhor forma às tuas provas. " +
   "Em que posso ajudar-te?";
 
+// As recusas que o chat mostra como fala dela (o `error` do corpo): diz o que
+// se passa e o que fazer, sem nomear a peça que falhou — essa vai em `detail`.
+export const CHAT_OWN_FAILURE_TEXT =
+  "Não consegui preparar a resposta por um problema do meu lado. Tenta outra vez daqui a pouco.";
+export const CHAT_SESSION_TEXT =
+  "Não consegui confirmar que és tu. Sai da app e volta a entrar, e continuamos.";
+export const CHAT_MESSAGE_NOT_SAVED_TEXT =
+  "A tua mensagem não ficou guardada, por isso não lhe respondi. Envia-a outra vez.";
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -5412,11 +5421,18 @@ async function handler(req: Request): Promise<Response> {
   let lockIso: string | null = null;
 
   try {
+    // As recusas daqui aparecem no chat como fala dela (Coach.jsx mostra o
+    // `error` do corpo): na voz dela, sem a peça técnica, que vai em
+    // `detail` — o cliente só a põe no app_logs (revisão pré-deploy de
+    // 2026-09-25).
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiKey) return jsonResponse({ error: "GEMINI_API_KEY não configurada" }, 500);
+    if (!geminiKey) {
+      console.error("coach-chat: GEMINI_API_KEY não configurada");
+      return jsonResponse({ error: CHAT_OWN_FAILURE_TEXT, detail: "GEMINI_API_KEY não configurada" }, 500);
+    }
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) return jsonResponse({ error: "Sem autorização" }, 401);
+    if (!authHeader) return jsonResponse({ error: CHAT_SESSION_TEXT, detail: "sem cabeçalho Authorization" }, 401);
 
     sb = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -5425,7 +5441,7 @@ async function handler(req: Request): Promise<Response> {
     );
 
     const { data: userData, error: userError } = await sb.auth.getUser();
-    if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
+    if (userError || !userData?.user) return jsonResponse({ error: CHAT_SESSION_TEXT, detail: "sessão inválida" }, 401);
     const userId = userData.user.id;
 
     // ── Lock por utilizador ───────────────────────────────────────────────
@@ -6190,7 +6206,11 @@ async function handler(req: Request): Promise<Response> {
         .select()
         .single();
       if (userMsgErr) {
-        return jsonResponse({ error: `Falha a guardar mensagem: ${userMsgErr.message}` }, 500);
+        console.error("coach-chat: falha a gravar a mensagem do atleta", userMsgErr);
+        return jsonResponse({
+          error: CHAT_MESSAGE_NOT_SAVED_TEXT,
+          detail: `coach_messages: ${userMsgErr.code ?? ""} ${userMsgErr.message}`.trim(),
+        }, 500);
       }
       userMsg = data;
     }
@@ -6821,7 +6841,7 @@ async function handler(req: Request): Promise<Response> {
 
   } catch (e) {
     console.error("Erro inesperado:", e);
-    return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
+    return jsonResponse({ error: CHAT_OWN_FAILURE_TEXT, detail: "erro inesperado" }, 500);
   } finally {
     // Liberta sempre o lock adquirido acima, seja qual for o caminho de
     // saída (sucesso, erro tratado ou exceção) — senão o utilizador ficava

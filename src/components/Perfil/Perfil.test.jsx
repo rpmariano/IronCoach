@@ -681,6 +681,8 @@ describe('Perfil — onde treinas (ação 5.6)', () => {
     expect(campo().getByText('Encontrei — é aqui?')).toBeInTheDocument();
     fireEvent.click(escolha);
     expect(screen.getByTestId('perfil-onde-treinas-cidade')).toHaveTextContent('Lisboa, Portugal');
+    // O foco não se perde: fica no "Mudar", que diz a cidade escolhida.
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Mudar onde treinas (Lisboa, Portugal)' }));
 
     fireEvent.click(guardar());
     await waitFor(() => expect(mocks.updates.length).toBe(1));
@@ -723,6 +725,7 @@ describe('Perfil — onde treinas (ação 5.6)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Tirar onde treinas' }));
     expect(screen.getByLabelText('Onde treinas')).toHaveValue('');
+    expect(document.activeElement).toBe(screen.getByLabelText('Onde treinas'));
     fireEvent.click(guardar());
     await waitFor(() => expect(mocks.updates.length).toBe(1));
     expect(mocks.updates[0]).toEqual({
@@ -733,10 +736,12 @@ describe('Perfil — onde treinas (ação 5.6)', () => {
   it('Mudar abre a procura com o nome; Cancelar volta à cidade sem sujar nada', () => {
     useAppStore.setState({ profile: COM_CIDADE });
     render(<Perfil />);
-    fireEvent.click(screen.getByRole('button', { name: 'Mudar onde treinas' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mudar onde treinas (Covilhã, Portugal)' }));
     expect(screen.getByLabelText('Onde treinas')).toHaveValue('Covilhã');
+    expect(document.activeElement).toBe(screen.getByLabelText('Onde treinas'));
     fireEvent.click(campo().getByRole('button', { name: 'Cancelar' }));
     expect(screen.getByTestId('perfil-onde-treinas-cidade')).toHaveTextContent('Covilhã, Portugal');
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Mudar onde treinas/ }));
     expect(guardar()).toBeDisabled();
   });
 });
