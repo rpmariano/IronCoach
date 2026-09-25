@@ -108,6 +108,8 @@ const RESPONSE_SCHEMA = {
     avg_heart_rate_bpm: { type: "NUMBER", nullable: true },
     max_heart_rate_bpm: { type: "NUMBER", nullable: true },
     vo2_max: { type: "NUMBER", nullable: true },
+    // A temperatura durante a atividade (5.6): do relógio ou do tempo na app.
+    temperature_c: { type: "NUMBER", nullable: true },
     hr_zones: {
       type: "ARRAY",
       nullable: true,
@@ -201,6 +203,8 @@ function buildPrompt(
     "cada linha como { zone, minutes } (zone = número da zona apresentado, ex: 1 a 5). Só devolve null se tiveres " +
     "a certeza de que NENHUMA das imagens mostra este ecrã.\n" +
     "- vo2_max: se houver um ecrã com o valor de VO2 máx (ou 'VO2max'/'VO2 Max') estimado para esta atividade, extrai-o.\n" +
+    "- temperature_c: se algum ecrã mostrar a temperatura durante a atividade (do relógio ou do tempo registado pela app, " +
+    "ex.: 'Temperatura 24 °C', 'Weather 18°'), extrai-a em graus Celsius; se estiver em °F, converte. Pode ser negativa.\n" +
     "- source_app: identifica de QUE APLICAÇÃO são estes prints, pelo cabeçalho, pelo nome visível, pelo " +
     "tipo de letra e pelo estilo do ecrã (cores, ícones, disposição dos cartões) — não pelos valores. " +
     "Devolve exatamente uma destas chaves: " + opcoesDeFonte("corrida").join(", ") + ". " +
@@ -342,6 +346,8 @@ type RunExtraction = {
   avg_heart_rate_bpm: number | null;
   max_heart_rate_bpm: number | null;
   vo2_max: number | null;
+  // Graus Celsius, pode ser negativa (5.6).
+  temperature_c?: number | null;
   hr_zones: HrZone[] | null;
   // Métricas avançadas
   max_pace_seconds_per_km?: number | null;
@@ -651,6 +657,9 @@ async function generateCoachNotes(
     `- Pace: ${paceStr}/km\n` +
     `- Esforço percebido (RPE): ${run.effort_rpe || "?"}/10\n` +
     (details.elevation_gain_m ? `- Desnível: ${details.elevation_gain_m}m\n` : "") +
+    // A temperatura do relógio (5.6): com calor, um ritmo mais lento ou uma
+    // FC mais alta não é forma a descer — diz-lho em palavras.
+    (typeof details.temperature_c === "number" ? `- Temperatura: ${String(details.temperature_c).replace(".", ",")} °C\n` : "") +
     (details.cadence_spm ? `- Cadência: ${details.cadence_spm}spm${details.max_cadence_spm ? ` (máx ${details.max_cadence_spm}spm)` : ""}\n` : "") +
     (hrZoneLine ? `- ${hrZoneLine}.\n` : details.avg_heart_rate_bpm ? `- FC média: ${details.avg_heart_rate_bpm} bpm\n` : "") +
     (details.max_heart_rate_bpm ? `- FC máxima: ${details.max_heart_rate_bpm} bpm\n` : "") +
@@ -1028,6 +1037,10 @@ async function analyzeWithGemini(
     avg_heart_rate_bpm: num(parsed.avg_heart_rate_bpm),
     max_heart_rate_bpm: num(parsed.max_heart_rate_bpm),
     vo2_max: num(parsed.vo2_max),
+    // Entre -30 e 55 °C: fora disso é uma leitura errada, não uma temperatura.
+    temperature_c: typeof parsed.temperature_c === "number" && isFinite(parsed.temperature_c) && parsed.temperature_c >= -30 && parsed.temperature_c <= 55
+      ? Math.round(parsed.temperature_c * 10) / 10
+      : null,
     hr_zones: hrZones.length ? hrZones : null,
     // Métricas avançadas
     max_pace_seconds_per_km: num(parsed.max_pace_seconds_per_km),
@@ -1057,6 +1070,7 @@ async function analyzeWithGemini(
     has_avg_hr: extraction.avg_heart_rate_bpm !== null,
     has_max_hr: extraction.max_heart_rate_bpm !== null,
     has_vo2max: extraction.vo2_max !== null,
+    has_temperature: extraction.temperature_c != null,
     has_sweat_loss: extraction.sweat_loss_ml !== null,
     has_thresholds: extraction.aerobic_threshold_bpm !== null || extraction.anaerobic_threshold_bpm !== null,
     has_biomechanics: extraction.ground_contact_time_ms !== null || extraction.vertical_oscillation_cm !== null,
@@ -1081,6 +1095,7 @@ function detailsFromExtraction(
   if (e.avg_heart_rate_bpm) d.avg_heart_rate_bpm = e.avg_heart_rate_bpm;
   if (e.max_heart_rate_bpm) d.max_heart_rate_bpm = e.max_heart_rate_bpm;
   if (e.vo2_max) d.vo2_max = e.vo2_max;
+  if (e.temperature_c !== null && e.temperature_c !== undefined) d.temperature_c = e.temperature_c;
   if (e.hr_zones && e.hr_zones.length) d.hr_zones = e.hr_zones;
 
   // Métricas avançadas
@@ -1138,7 +1153,8 @@ function shoeId(body: Record<string, unknown>): string | null {
    a partir do formulário e apagava-os; ficam os que já lá estavam. Pesa mais
    desde 2026-09-24: "Manual" depois do aviso das métricas em falta grava por
    cima da corrida que os prints acabaram de criar. */
-const IMAGE_ONLY_DETAILS = ["source_app", "regularity_score", "recommended_hydration_ml"] as const;
+// A temperatura do relógio (5.6) também só vem dos prints.
+const IMAGE_ONLY_DETAILS = ["source_app", "regularity_score", "recommended_hydration_ml", "temperature_c"] as const;
 
 export function keepImageOnlyDetails(
   existing: unknown,

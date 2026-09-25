@@ -4198,3 +4198,27 @@ Deno.test("saveRecommendations: sem nada válido não escreve; com erro, fica no
   const failing = makeRecommendationsSb({ message: "relation does not exist" });
   assertEquals(await saveRecommendations(failing.sb, "u1", null, [{ date: "2026-09-26", kind: "descanso" }], "2026-09-25"), 0);
 });
+
+// ── 5.6: o percurso segundo o site no bloco de provas ───────────────────────
+
+Deno.test("buildRaceEventsContext: o percurso e o D+ do site entram no bloco da prova (5.6)", () => {
+  const ctx = buildRaceEventsContext(
+    [makeRaceEvent({
+      date: "2026-11-15",
+      web_info: { route_summary: "Percurso de montanha com uma subida longa ao km 8.", elevation_gain_site_m: 620 },
+    })],
+    TODAY_ISO, null, null, [],
+  )!;
+  assertStringIncludes(ctx, "PERCURSO (site oficial): Percurso de montanha com uma subida longa ao km 8. D+ segundo o site: 620 m (ele marcou 500 m).");
+});
+
+Deno.test("buildRaceEventsContext: sem web_info, ou com o mesmo D+, não diz nada a mais (5.6)", () => {
+  const semSite = buildRaceEventsContext([makeRaceEvent({ date: "2026-11-15" })], TODAY_ISO, null, null, [])!;
+  assertEquals(semSite.includes("PERCURSO (site oficial)"), false);
+  const igual = buildRaceEventsContext(
+    [makeRaceEvent({ date: "2026-11-15", web_info: { elevation_gain_site_m: 500 } })],
+    TODAY_ISO, null, null, [],
+  )!;
+  assertStringIncludes(igual, "PERCURSO (site oficial): D+ segundo o site: 500 m.");
+  assertEquals(igual.includes("ele marcou"), false);
+});

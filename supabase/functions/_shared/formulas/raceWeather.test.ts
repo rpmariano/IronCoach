@@ -20,7 +20,7 @@ Deno.test("summarizeRaceWeather: só as horas da prova, desse dia", () => {
   // Partida às 9h, 2h40 de prova: 9h, 10h e 11h.
   assertEquals(summarizeRaceWeather(hourly, "2026-09-20", "09:00:00", 160), {
     fromHour: "09:00", toHour: "12:00", tempMin: 18, tempMax: 24, apparentMax: 26,
-    humidityAvg: 60, rainProbMax: 70, windMax: 28,
+    humidityAvg: 60, rainProbMax: 70, rainMm: null, windMax: 28,
   });
   // Uma prova curta: só a hora da partida.
   assertEquals(summarizeRaceWeather(hourly, "2026-09-20", "08:00", 30)?.toHour, "09:00");

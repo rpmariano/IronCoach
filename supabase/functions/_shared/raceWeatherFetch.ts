@@ -38,26 +38,38 @@ async function geocode(fetchImpl: typeof fetch, place: string, budget?: AbortSig
   return null;
 }
 
-export async function fetchRaceWeatherContext(
-  race: { name?: string | null; date?: string | null; location?: string | null; start_time?: string | null; target_time_seconds?: number | null; distance_km?: number | string | null } | null | undefined,
-  todayISO: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<string | null> {
+type WeatherRace = { name?: string | null; date?: string | null; location?: string | null; start_time?: string | null; target_time_seconds?: number | null; distance_km?: number | string | null } | null | undefined;
+
+/** A previsão, nos 7 dias antes da prova. */
+export function fetchRaceWeatherContext(race: WeatherRace, todayISO: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  return fetchRaceWeather(race, todayISO, "previsao", fetchImpl);
+}
+
+/** O tempo que esteve, para o balanço (5.6): do próprio dia da prova até 7
+ *  dias depois — a janela do balanço com a corrida registada. O mesmo pedido
+ *  ao Open-Meteo (dá as horas passadas com start/end_date), com a chuva que
+ *  caiu em vez da probabilidade. */
+export function fetchRaceWeatherObserved(race: WeatherRace, todayISO: string, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  return fetchRaceWeather(race, todayISO, "observado", fetchImpl);
+}
+
+async function fetchRaceWeather(race: WeatherRace, todayISO: string, mode: "previsao" | "observado", fetchImpl: typeof fetch): Promise<string | null> {
   try {
     const date = typeof race?.date === "string" ? race.date.slice(0, 10) : null;
     const place = (race?.location || "").trim();
     if (!date || !place) return null;
     const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${todayISO}T00:00:00Z`)) / 86400000);
-    if (days < 0 || days > WEATHER_WINDOW_DAYS) return null;
+    if (mode === "previsao" ? (days < 0 || days > WEATHER_WINDOW_DAYS) : (days > 0 || days < -WEATHER_WINDOW_DAYS)) return null;
 
     const budget = AbortSignal.timeout(TOTAL_BUDGET_MS);
     const coords = await geocode(fetchImpl, place, budget);
     if (!coords) return null;
     // timezone=auto: as horas vêm na hora do sítio da prova. Com Lisboa fixo,
     // uma prova em Madrid às 09:00 lia a janela das 10:00 locais.
+    const rainField = mode === "previsao" ? "precipitation_probability" : "precipitation";
     const forecast = await getJson(fetchImpl,
       `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}` +
-      `&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,wind_speed_10m` +
+      `&hourly=temperature_2m,apparent_temperature,relative_humidity_2m,${rainField},wind_speed_10m` +
       `&start_date=${date}&end_date=${date}&timezone=auto`, budget);
     if (!forecast?.hourly) return null;
 
@@ -68,9 +80,10 @@ export async function fetchRaceWeatherContext(
       { name: race?.name ?? null, date, location: place },
       summary,
       { startTime: !race?.start_time, duration: !(Number(race?.target_time_seconds) > 0) },
+      mode,
     );
   } catch (e) {
-    console.warn("raceWeather: previsão falhou", e);
+    console.warn(`raceWeather: ${mode === "previsao" ? "previsão" : "tempo que esteve"} falhou`, e);
     return null;
   }
 }

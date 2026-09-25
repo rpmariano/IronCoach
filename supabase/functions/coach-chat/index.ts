@@ -24,7 +24,7 @@ import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
 import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, fetchWeekAdherenceLine, lisbonTodayISO } from "../_shared/carolMemory.ts";
-import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
+import { fetchRaceWeatherContext, fetchRaceWeatherObserved } from "../_shared/raceWeatherFetch.ts";
 import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL, upstreamErrorText } from "../_shared/carolTone.ts";
 import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
 import { MEAL_ONLY_CATEGORY, MEAL_ONLY_DAY_LABEL, MEAL_TYPE_LABEL, isMealOnlyItem, mergeSingleMeal } from "../_shared/formulas/mealSuggestions.ts";
@@ -1803,6 +1803,8 @@ export function summariseRuns(runs: any[]): string[] {
     // não inventa números que o relógio não deu.
     const maxHrStr = details.max_heart_rate_bpm != null ? `FC máx ${Math.round(details.max_heart_rate_bpm)} bpm` : null;
     const vo2Str = details.vo2_max != null ? `VO2 est. relógio ${details.vo2_max}` : null;
+    // A temperatura do relógio (5.6): o calor explica um ritmo mais lento ou uma FC mais alta.
+    const tempStr = typeof details.temperature_c === "number" ? `${String(details.temperature_c).replace(".", ",")} °C` : null;
     const thresholdParts = [
       details.aerobic_threshold_bpm != null ? `aeróbio ${Math.round(details.aerobic_threshold_bpm)}` : null,
       details.anaerobic_threshold_bpm != null ? `anaeróbio ${Math.round(details.anaerobic_threshold_bpm)}` : null,
@@ -1816,7 +1818,7 @@ export function summariseRuns(runs: any[]): string[] {
           .map((z: any) => `Z${z.zone} ${z.minutes}'`)
           .join(" · ")}`
       : null;
-    const parts = [distance, duration, pace, cadStr, hrStr, maxHrStr, vo2Str, thresholdStr, recoveryStr, zonesStr].filter(Boolean);
+    const parts = [distance, duration, pace, cadStr, hrStr, maxHrStr, vo2Str, thresholdStr, recoveryStr, zonesStr, tempStr].filter(Boolean);
     return `- ${r.date}${r.start_time ? ` às ${hhmm(r.start_time)}` : ""}: ${kindLabel}${parts.length ? ` — ${parts.join(", ")}` : ""}`;
   });
 }
@@ -3910,7 +3912,20 @@ export function buildRaceEventsContext(
       }
     }
 
-    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${forecastSuffix}${triageSuffix}`;
+    /* O percurso segundo o site oficial (5.6): o route_summary já existia em
+       web_info, mas só o plano de ritmos o lia — a Carol não sabia que a
+       prova tinha "uma subida longa ao km 8" quando falava dela. E o D+ que
+       o site diz, ao lado do que o atleta marcou, se discordarem. */
+    const web = (e.web_info || {}) as Record<string, unknown>;
+    const siteDplus = Number(web.elevation_gain_site_m) > 0 ? Math.round(Number(web.elevation_gain_site_m)) : null;
+    const ownDplus = Number(e.elevation_gain_m) > 0 ? Math.round(Number(e.elevation_gain_m)) : null;
+    const routeBits = [
+      typeof web.route_summary === "string" && web.route_summary.trim() ? web.route_summary.trim().slice(0, 400) : null,
+      siteDplus ? `D+ segundo o site: ${siteDplus} m${ownDplus && ownDplus !== siteDplus ? ` (ele marcou ${ownDplus} m)` : ""}.` : null,
+    ].filter(Boolean);
+    const routeSuffix = daysUntil >= 0 && routeBits.length ? `\n  PERCURSO (site oficial): ${routeBits.join(" ")}` : "";
+
+    return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${forecastSuffix}${triageSuffix}${routeSuffix}`;
   });
   return `Próximas provas agendadas:\n${lines.join("\n")}`;
 }
@@ -5820,19 +5835,27 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Balanço: os parciais registados face ao plano dessa prova ─────────
+    /* A prova do balanço, lida uma vez: o percurso serve os parciais, e o
+       resto o tempo que esteve (5.6) — pedido já, esperado ao montar o
+       prompt. Nunca rejeita: sem local ou sem resposta, não há bloco. */
+    // deno-lint-ignore no-explicit-any
+    let pastRace: any = null;
+    if (raceOutcome && raceOutcome.verdict !== "sem_registo" && raceOutcome.race_id) {
+      const { data } = await sb
+        .from("race_events")
+        .select("name, date, location, start_time, target_time_seconds, distance_km, web_info")
+        .eq("id", raceOutcome.race_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      pastRace = data ?? null;
+    }
+    const raceObservedWeatherPromise: Promise<string | null> = pastRace
+      ? fetchRaceWeatherObserved(pastRace, todayISO)
+      : Promise.resolve(null);
     let splitsContext: string | null = null;
     if (raceOutcome && raceOutcome.verdict !== "sem_registo" && raceOutcome.splits.length > 0) {
       // deno-lint-ignore no-explicit-any
-      let pastWebInfo: any = null;
-      if (raceOutcome.race_id) {
-        const { data: pastRace } = await sb
-          .from("race_events")
-          .select("web_info")
-          .eq("id", raceOutcome.race_id)
-          .eq("user_id", userId)
-          .maybeSingle();
-        pastWebInfo = pastRace?.web_info ?? null;
-      }
+      const pastWebInfo: any = pastRace?.web_info ?? null;
       const pastPlan = buildRacePacingPlan({
         distanceKm: raceOutcome.distance_km,
         raceType: raceOutcome.race_type,
@@ -6249,6 +6272,8 @@ async function handler(req: Request): Promise<Response> {
       memoryBlocks.checkin,
       // O tempo previsto para a prova, se ela for nos próximos 7 dias.
       await raceWeatherPromise,
+      // No balanço, o tempo que esteve na prova (5.6).
+      await raceObservedWeatherPromise,
       memoryBlocks.portrait,
       memoryBlocks.raceHistory,
       // A vitrina de badges, logo a seguir às provas concluídas: é a mesma

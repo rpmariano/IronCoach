@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { fetchRaceWeatherContext } from "./raceWeatherFetch.ts";
+import { fetchRaceWeatherContext, fetchRaceWeatherObserved } from "./raceWeatherFetch.ts";
 
 const TODAY = "2026-09-18";
 const race = { name: "Meia de Lisboa", date: "2026-09-20", location: "Lisboa", start_time: "09:00:00", target_time_seconds: 6300, distance_km: 21.1 };
@@ -55,4 +55,42 @@ Deno.test("fetchRaceWeatherContext: fora da janela, sem local, sem rede ou sem p
   assertEquals(await fetchRaceWeatherContext(race, TODAY, none), null);                              // local não encontrado
   const throws = (() => Promise.reject(new Error("rede"))) as unknown as typeof fetch;
   assertEquals(await fetchRaceWeatherContext(race, TODAY, throws), null);
+});
+
+// ── 5.6: o tempo que esteve, no balanço ─────────────────────────────────────
+
+const observed = {
+  hourly: {
+    time: ["2026-09-20T09:00", "2026-09-20T10:00"],
+    temperature_2m: [24, 28], apparent_temperature: [25, 30], relative_humidity_2m: [55, 45],
+    precipitation: [0, 0.4], wind_speed_10m: [8, 14],
+  },
+};
+
+Deno.test("fetchRaceWeatherObserved: depois da prova, pede a chuva que caiu e nunca lhe chama previsão", async () => {
+  const { impl, calls } = fakeFetch([
+    [/geocoding.*countryCode=PT/, { results: [{ latitude: 38.72, longitude: -9.14 }] }],
+    [/api\.open-meteo\.com\/v1\/forecast/, observed],
+  ]);
+  // Dois dias depois da prova.
+  const text = (await fetchRaceWeatherObserved(race, "2026-09-22", impl))!;
+  assertStringIncludes(text, "O TEMPO QUE ESTEVE NA PROVA (Meia de Lisboa, 2026-09-20, Lisboa");
+  assertStringIncludes(text, "Entre as 09:00 e as 11:00: 24 a 28 °C (sensação até 30 °C), humidade 50%");
+  assertStringIncludes(text, "- Chuva: 0,4 mm nessas horas");
+  assertStringIncludes(text, "Calor forte: o objetivo de tempo não era realista");
+  assertEquals(/previs/i.test(text), false);
+  assertStringIncludes(calls[1], "precipitation,");
+  assertEquals(calls[1].includes("precipitation_probability"), false);
+});
+
+Deno.test("fetchRaceWeatherObserved: só do dia da prova até 7 dias depois", async () => {
+  const { impl, calls } = fakeFetch([
+    [/geocoding/, { results: [{ latitude: 38.72, longitude: -9.14 }] }],
+    [/api\.open-meteo\.com\/v1\/forecast/, observed],
+  ]);
+  assertEquals(await fetchRaceWeatherObserved(race, "2026-09-18", impl), null); // ainda não foi
+  assertEquals(await fetchRaceWeatherObserved(race, "2026-09-28", impl), null); // há 8 dias
+  assertEquals(calls.length, 0);
+  // E a previsão continua a não servir para depois da prova.
+  assertEquals(await fetchRaceWeatherContext(race, "2026-09-22", impl), null);
 });

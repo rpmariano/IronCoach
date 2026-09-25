@@ -135,3 +135,10 @@ Deno.test("keepImageOnlyDetails: editar à mão não apaga a app de origem nem o
   assertEquals(keepImageOnlyDetails({ source_app: "strava" }, null), { source_app: "strava" });
   assertEquals(keepImageOnlyDetails({}, null), null);
 });
+
+Deno.test("keepImageOnlyDetails: a temperatura do relógio sobrevive a uma edição manual — incluindo 0 °C (5.6)", () => {
+  assertEquals(keepImageOnlyDetails({ temperature_c: 0, source_app: "garmin" }, { cadence_spm: 170 }), { cadence_spm: 170, temperature_c: 0, source_app: "garmin" });
+  assertEquals(keepImageOnlyDetails({ temperature_c: -3 }, null), { temperature_c: -3 });
+  // Uma temperatura nova (reanálise) ganha à antiga.
+  assertEquals(keepImageOnlyDetails({ temperature_c: 12 }, { temperature_c: 24 }), { temperature_c: 24 });
+});
