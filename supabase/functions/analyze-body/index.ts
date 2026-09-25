@@ -9,7 +9,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import {
   GOALS_REVIEW_SCHEMA,
   MANUAL_SUMMARY_SCHEMA,
@@ -346,6 +346,23 @@ function historyContext(history: any[]): string {
     lines.join("\n");
 }
 
+// A estrutura comum às análises de registo (_shared/carolTone.ts), com o que
+// se lê numa avaliação corporal. "O que vigiar" em vez de "O que corrigir":
+// uma pesagem não se corrige, acompanha-se. Partilhada pelo resumo do modo
+// por foto (buildPrompt) e do modo manual (generateBodySummaryFromMetrics).
+const BODY_ANALYSIS_RULES = carolRecordAnalysisRules({
+  readingLabel: "Os números",
+  readingHint:
+    "a leitura dos valores desta avaliação e a evolução face à anterior — peso, gordura corporal, massa muscular, " +
+    "água — com o ritmo da mudança.",
+  focusHint:
+    "Vai buscá-los à evolução face ao histórico e ao objetivo dele: o que desceu ou subiu no sentido certo, e o " +
+    "que isso diz do treino e da alimentação das últimas semanas. Para o que vigiar, olha para o que piorou ou não " +
+    "mexeu face ao objetivo, sem alarmismos nem diagnósticos médicos.",
+  fixLabel: "O que vigiar",
+  sentences: "5 e 8",
+});
+
 function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null): string {
   const mapping = METRIC_FIELDS
     .map((f) => `- ${f.key} — na Renpho aparece como "${f.renpho}"${f.hint ? ` — ${f.hint}` : ""}`)
@@ -387,11 +404,12 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
         "A memória acima serve só para o campo \"summary\". Os valores de \"metrics\" vêm SEMPRE e só das imagens, " +
         "nunca do que o atleta disse no chat nem de notas antigas.\n\n"
       : "") +
-    "No campo \"summary\" escreve uma breve avaliação (2 a 4 frases, em português de Portugal) " +
-    "dos valores desta pesagem: o que está bom e o que merece atenção. " +
-    "Se existir histórico acima, compara com a avaliação mais recente e comenta a evolução " +
-    "(o que melhorou, o que piorou, ex.: peso, gordura corporal, massa muscular). " +
-    "Sê direto e prático, sem alarmismos e sem dar diagnósticos médicos. " +
+    "No campo \"summary\" és a Carol, a treinadora deste atleta, a comentar em primeira pessoa, em português de " +
+    "Portugal, os valores desta pesagem. Se existir histórico acima, compara com a avaliação mais recente e comenta a " +
+    "evolução (o que melhorou, o que piorou, ex.: peso, gordura corporal, massa muscular). " +
+    "Sê direta e prática, sem alarmismos e sem dar diagnósticos médicos.\n" +
+    CAROL_TONE_RULES_SHORT + "\n" +
+    BODY_ANALYSIS_RULES + "\n" +
     carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
     goalsReviewSection(goalsCtx?.goals ?? null);
   if (notes && notes.trim()) {
@@ -556,8 +574,9 @@ async function generateBodySummaryFromMetrics(
     `corporal (sem foto):\n${metricLines}\n\n` +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
-    "\n\nEscreve uma breve avaliação (2 a 4 frases, em português de Portugal) destes valores: " +
-    "o que está bom e o que merece atenção. Se existir histórico acima, compara com a avaliação " +
+    "\n\nEscreve a tua avaliação destes valores, em português de Portugal. " +
+    BODY_ANALYSIS_RULES + "\n" +
+    "Se existir histórico acima, compara com a avaliação " +
     "mais recente e comenta a evolução (o que melhorou, o que piorou, ex.: peso, gordura " +
     "corporal, massa muscular). Sê direta e prática, sem alarmismos e sem dar diagnósticos " +
     "médicos. Se o peso desceu mais de 1 kg face a uma avaliação de há cerca de uma semana (ou a um " +
@@ -577,7 +596,8 @@ async function generateBodySummaryFromMetrics(
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            maxOutputTokens: 4096,
+            // A análise estruturada é mais longa (feedback de 2026-09-25).
+            maxOutputTokens: 8192,
             thinkingConfig: { thinkingLevel: "minimal" },
             response_mime_type: "application/json",
             response_schema: MANUAL_SUMMARY_SCHEMA,
