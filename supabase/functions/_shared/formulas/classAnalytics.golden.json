@@ -5,9 +5,9 @@
       "todayISO": "2026-08-25",
       "range": "semana",
       "sessions": [
-        { "date": "2026-08-24", "kind": "aula", "name": "HIIT", "categories": [], "duration_seconds": 1800, "exertion": 8 },
-        { "date": "2026-08-22", "kind": "aula", "name": "Pilates", "categories": [], "duration_seconds": 3000, "exertion": 4 },
-        { "date": "2026-08-23", "kind": "aula", "name": "HIIT", "categories": [], "duration_seconds": 1500, "exertion": 6 },
+        { "date": "2026-08-24", "kind": "aula", "name": "HIIT", "class_types": [], "duration_seconds": 1800, "exertion": 8 },
+        { "date": "2026-08-22", "kind": "aula", "name": "Pilates", "class_types": [], "duration_seconds": 3000, "exertion": 4 },
+        { "date": "2026-08-23", "kind": "aula", "name": "HIIT", "class_types": [], "duration_seconds": 1500, "exertion": 6 },
         { "date": "2026-08-21", "kind": "forca", "name": "Pernas", "categories": ["Pernas"], "duration_seconds": 2400, "exertion": 9 }
       ]
     },
@@ -22,12 +22,12 @@
     }
   },
   {
-    "name": "categorias no lugar do nome quando presentes; sem categorias nem nome cai em 'Aula de Grupo'",
+    "name": "modalidades (class_types) no lugar do nome quando presentes; sem modalidade nem nome cai em 'Aula de Grupo'",
     "input": {
       "todayISO": "2026-08-25",
       "range": "mes",
       "sessions": [
-        { "date": "2026-08-20", "kind": "aula", "name": "Spin", "categories": ["RPM", "Cardio"], "duration_seconds": 2700, "exertion": null }
+        { "date": "2026-08-20", "kind": "aula", "name": "Spin", "class_types": ["RPM", "Cardio"], "duration_seconds": 2700, "exertion": null }
       ]
     },
     "expect": {
@@ -46,7 +46,7 @@
       "todayISO": "2026-08-25",
       "range": "semana",
       "sessions": [
-        { "date": "2026-08-24", "kind": "aula", "name": null, "categories": [], "duration_seconds": 1800, "exertion": null, "rpe": 5 }
+        { "date": "2026-08-24", "kind": "aula", "name": null, "class_types": [], "duration_seconds": 1800, "exertion": null, "rpe": 5 }
       ]
     },
     "expect": {
@@ -55,6 +55,27 @@
       "avgRpe": "5.0",
       "classList": [
         { "name": "Aula de Grupo", "count": 1, "totalSeconds": 1800, "avgRpe": "5.0" }
+      ]
+    }
+  },
+  {
+    "name": "os grupos musculares de uma aula (categories) não contam como modalidade",
+    "input": {
+      "todayISO": "2026-09-25",
+      "range": "semana",
+      "sessions": [
+        { "date": "2026-09-25", "kind": "aula", "name": "Aula funcional", "class_types": ["Treino Funcional", "CrossFit"], "categories": ["Pernas Inferiores", "Ombros"], "duration_seconds": 3600, "exertion": 7 },
+        { "date": "2026-09-24", "kind": "aula", "name": "Aula funcional", "class_types": [], "categories": ["Costas"], "duration_seconds": 3000, "exertion": null }
+      ]
+    },
+    "expect": {
+      "totalClasses": 2,
+      "totalClassSeconds": 6600,
+      "avgRpe": "7.0",
+      "classList": [
+        { "name": "Treino Funcional", "count": 1, "totalSeconds": 3600, "avgRpe": "7.0" },
+        { "name": "CrossFit", "count": 1, "totalSeconds": 3600, "avgRpe": "7.0" },
+        { "name": "Aula funcional", "count": 1, "totalSeconds": 3000, "avgRpe": null }
       ]
     }
   },
