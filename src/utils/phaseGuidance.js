@@ -17,7 +17,7 @@
 import { MIN_VOLUME_KM, categorizeDistance } from '@formulas/vocabulary.ts';
 import { getTaperDays } from '@formulas/taper.ts';
 import { longRunGuide } from '@formulas/longRun.ts';
-import { formatPace } from './run';
+import { formatHoursMinutes, formatPace } from './run';
 
 const LEVELS = ['iniciante', 'basico', 'medio', 'avancado'];
 const num = (n) => n.toLocaleString('pt-PT', { maximumFractionDigits: 1 });
@@ -49,6 +49,7 @@ const QUALITY_BY_LEVEL = {
  * @param {string} [o.racePriority]    'a' | 'b' | 'c'
  * @param {number|null} [o.weeklyVolumeKm]  o volume que a app lhe conhece (null sem histórico)
  * @param {number|null} [o.targetPaceSeconds]
+ * @param {number|null} [o.daysToRace]  para o polimento: quantos dias faltam
  */
 export function phaseGuidance(o) {
   const level = LEVELS.includes(o.experienceLevel) ? o.experienceLevel : 'iniciante';
@@ -56,6 +57,12 @@ export function phaseGuidance(o) {
   const cat = categorizeDistance(o.distanceKm) ?? '10k';
   const vol = typeof o.weeklyVolumeKm === 'number' && o.weeklyVolumeKm > 0 ? o.weeklyVolumeKm : null;
   const dMais = o.raceType === 'trail' && Number(o.elevationGainM) > 0 ? Math.round(Number(o.elevationGainM)) : null;
+
+  // O Bloco 1 desaconselha o ultra ao iniciante: os números da doutrina
+  // nunca servem para o habilitar, e o hub já mostra o alerta.
+  if (level === 'iniciante' && cat === 'ultra') {
+    return 'Um ultra é desaconselhado no teu nível, por isso não o preparo contigo assim. Fala comigo sobre uma distância mais curta para já.';
+  }
 
   switch (o.phaseId) {
     case 'base': {
@@ -67,11 +74,14 @@ export function phaseGuidance(o) {
       else if (vol == null) t = `Para ${prova}, quero que chegues aos ${alvo} km por semana, quase todos em ritmo fácil.`;
       else if (vol >= alvo) t = `Para ${prova}, quero que aguentes ${alvo} km por semana sem cansaço; já andas nos ${num(vol)}, por isso aqui é mantê-los fáceis.`;
       else t = `Para ${prova}, quero que chegues aos ${alvo} km por semana; andas nos ${num(vol)}. Sobe devagar: ${sobe}.`;
-      return dMais ? `${t} Com ${dMais} m de D+ na prova, as subidas entram já.` : t;
+      if (!dMais) return t;
+      return level === 'iniciante'
+        ? `${t} Com ${dMais} m de D+ na prova, as subidas curtas entram quando tiveres quatro a seis semanas seguidas de base.`
+        : `${t} Com ${dMais} m de D+ na prova, as subidas entram já.`;
     }
     case 'build': {
       let t = QUALITY_BY_LEVEL[level];
-      if (o.targetPaceSeconds && level !== 'iniciante') {
+      if (o.targetPaceSeconds && level === 'avancado') {
         t += ` O teu ritmo-alvo é ${formatPace(o.targetPaceSeconds)}/km: é esse que treinas nos blocos a ritmo de prova.`;
       }
       if (dMais) t += ` Com ${dMais} m de D+ na prova, as subidas contam como treino de qualidade.`;
@@ -79,15 +89,19 @@ export function phaseGuidance(o) {
     }
     case 'peak': {
       const g = longRunGuide({ experienceLevel: level, distanceKm: o.distanceKm, raceType: o.raceType, weeklyVolumeKm: vol });
+      // O teto também é em tempo: "2h30", "1h30".
+      const tempo = formatHoursMinutes(g.minutes * 60);
       let t;
       if (g.byTime) {
-        t = `No pico, o longo mede-se em tempo e não em distância: até ${g.minutes} minutos, com subida como a da prova.`;
+        t = dMais
+          ? `No pico, o longo mede-se em tempo e não em distância: até ${tempo} de corrida, com subida como a da prova.`
+          : `No pico, o longo mede-se em tempo e não em distância: até ${tempo} de corrida.`;
       } else if (g.byVolumeKm == null) {
-        t = `No pico, o teu longo mais comprido não passa dos ${g.km[0]} a ${g.km[1]} km, nem dos ${g.minutes} minutos.`;
+        t = `No pico, o teu longo mais comprido não passa dos ${g.km[0]} a ${g.km[1]} km, nem de ${tempo} de corrida: o que vier primeiro.`;
       } else if (g.byVolumeKm >= g.km[1]) {
-        t = `No pico, o teu longo mais comprido fica pelos ${g.km[1]} km: é o teto para o teu nível, mesmo com o volume que tens.`;
+        t = `No pico, o teu longo mais comprido fica pelos ${g.km[1]} km ou ${tempo} de corrida, o que vier primeiro: é o teto para o teu nível.`;
       } else {
-        t = `No pico, o teu longo mais comprido fica pelos ${g.byVolumeKm} km: ${g.pct[1]}% do que corres por semana.`;
+        t = `No pico, o teu longo mais comprido fica pelos ${g.byVolumeKm} km, ${g.pct[1]}% do que corres por semana, sem passar de ${tempo} de corrida.`;
       }
       // Nas provas longas, é nos longos que se ensaia o abastecimento.
       if (['meia', 'maratona', 'ultra'].includes(cat) || o.raceType === 'trail') {
@@ -96,11 +110,17 @@ export function phaseGuidance(o) {
       return t;
     }
     case 'taper': {
+      // Numa prova B ou C, o polimento (4 dias) cabe na última semana, que
+      // tem texto próprio no parecer: aqui não chega.
+      if (o.racePriority === 'b' || o.racePriority === 'c') return null;
       const dias = getTaperDays(o.distanceKm, o.racePriority, level, o.raceType);
-      if (o.racePriority === 'b' || o.racePriority === 'c') {
-        return `É uma prova secundária: o polimento é curto, de ${dias} dias, e o resto da semana é normal.`;
+      const faltam = Number.isFinite(o.daysToRace) ? o.daysToRace : null;
+      // A fase ocupa semanas inteiras; o polimento da doutrina são os
+      // últimos N dias, e pode ainda não ter começado.
+      if (faltam != null && faltam > dias) {
+        return `É a tua prova principal: o polimento são os últimos ${dias} dias, e ainda faltam ${faltam}. Até lá, treino normal, sem acrescentar nada.`;
       }
-      return `É a tua prova principal: ${dias} dias de polimento até à partida. Não compenses agora o que ficou para trás.`;
+      return `É a tua prova principal: estás nos últimos ${dias} dias, os do polimento. Nada de treinos novos.`;
     }
     default:
       return null;

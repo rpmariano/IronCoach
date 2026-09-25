@@ -309,6 +309,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       distanceKm,
       experienceLevel,
       viabilityFlags: viability.flags,
+      // Numa fase a decorrer, conta só o que já passou dela.
+      todayISO: today,
     });
 
   // ─── Construção dos Objetos das 5 Fases ──────────────────────────────────────
@@ -449,6 +451,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       racePriority,
       weeklyVolumeKm: weeklyVol,
       targetPaceSeconds: race?.target_pace_seconds_per_km ?? null,
+      daysToRace,
     });
     carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}.${guia ? ` ${guia}` : ''}`;
   } else {

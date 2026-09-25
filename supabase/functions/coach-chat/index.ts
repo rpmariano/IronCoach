@@ -2324,6 +2324,8 @@ function buildRacePhasesPanel(runs: any[], race: any | null, profile: any, today
       distanceKm,
       experienceLevel: level,
       viabilityFlags: viability.flags,
+      // Numa fase a decorrer, conta só o que já passou dela (como o hub).
+      todayISO,
     });
     lines.push(
       `- ${PHASE_LABELS[w.id] ?? w.id} (semanas ${w.startWeek}-${w.endWeek}, ${w.startDate} a ${w.endDate}) — ${STATE_LABELS[state]}: ` +

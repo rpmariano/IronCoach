@@ -20,6 +20,19 @@ const base = {
 // deno-lint-ignore no-explicit-any
 const corrida = (over: Record<string, any> = {}) => ({ date: "2026-09-02", distance_km: 12, duration_seconds: 3600, ...over });
 
+Deno.test("uma fase a decorrer mede-se pelas semanas que já passaram (com todayISO)", () => {
+  // Base de 4 semanas, na primeira: 3 corridas fáceis de 12 km (36 km) contra
+  // os 35 km de uma semana — não os 140 da fase inteira.
+  const quatro = { ...base, phaseWeeks: 4, endDateStr: "2026-09-28" };
+  const runs = [corrida({ training_type: "longo" }), corrida({ training_type: "recuperacao" }), corrida({ training_type: "longo" })];
+  const hoje = computePhaseEvaluation({ ...quatro, phaseState: "active", runs, todayISO: "2026-09-05" });
+  assertEquals(hoje.summary.includes("a esta altura queria"), false);
+  assertEquals((hoje.score ?? 0) >= 80, true);
+  // Sem todayISO, como antes: a fase inteira (e "Acrescenta quilómetros").
+  const antes = computePhaseEvaluation({ ...quatro, phaseState: "active", runs });
+  assertStringIncludes(antes.summary, "a esta altura queria 140");
+});
+
 Deno.test("resumo da base: com o esforço por registar, pede-o em vez de mandar abrandar", () => {
   const runs = [corrida({ training_type: "continuo" }), corrida({ training_type: "continuo" }), corrida({ training_type: "trail" })];
   const ativa = computePhaseEvaluation({ ...base, phaseState: "active", runs }).summary;
