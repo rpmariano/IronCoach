@@ -20,7 +20,9 @@ import {
   isTruncated,
   percentileFrom,
   percentileSentence,
+  sameSegment,
   segmentMedian,
+  segmentPhrase,
   segmentTopDecile,
   widerSegments,
 } from '../../utils/percentile';
@@ -217,7 +219,38 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
 
   const percentil = snapshot ? percentileFrom(meuIndice, snapshot.boundaries) : null;
   const frase = percentileSentence(percentil, segmento || {});
-  const alargamentos = segmento ? widerSegments(segmento) : [];
+  const ehProprio = sameSegment(segmento, segmentoProprio);
+
+  /* "Comparar com outro grupo" — relatado a 2026-09-25: «quando seleciono um
+     card, outro aparece no lugar dele». As opções eram calculadas a partir do
+     segmento que se estava a VER: tocar em "M35" sem dados trazia um ecrã
+     vazio igual, com as opções recentradas em M35 — o cartão tocado sumia e
+     apareciam outros, e "o escalão ao lado do teu" já não era ao lado do dele.
+     Agora partem sempre do segmento do PRÓPRIO atleta (a lista não se mexe),
+     e só se oferece o que tem distribuição publicada nesta janela — o resto
+     diz-se numa linha, em vez de ser um cartão que leva a outro beco. */
+  const temDados = (seg) => !!janela && (snapshots || []).some((s) => s.age_band === seg.ageBand
+    && s.gender === seg.gender && s.terrain === seg.terrain && s.window_start === janela.window_start);
+  const alternativas = (segmentoProprio ? widerSegments(segmentoProprio) : [])
+    .filter((p) => !sameSegment(p.segment, segmento));
+  const comDados = alternativas.filter((p) => temDados(p.segment));
+  const semDados = alternativas.filter((p) => !temDados(p.segment));
+  const listaPorExtenso = (itens) => {
+    const nomes = itens.map((p) => p.label.charAt(0).toLowerCase() + p.label.slice(1));
+    return nomes.length > 1 ? `${nomes.slice(0, -1).join(', ')} e ${nomes[nomes.length - 1]}` : nomes[0];
+  };
+
+  const voltarAoMeu = (
+    <button
+      type="button"
+      data-testid="onde-estas-voltar-meu"
+      onClick={() => setSegmento(segmentoProprio)}
+      className="w-full text-[12px] font-bold mt-2"
+      style={{ minHeight: 44, background: 'none', border: 'none', color: 'var(--text-4)' }}
+    >
+      Voltar ao meu escalão
+    </button>
+  );
 
   const conteudo = (
     <div
@@ -232,14 +265,15 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
         <button
           type="button"
           onClick={onClose}
-          aria-label="Voltar ao Palmarés"
+          aria-label="Voltar à Vitrina"
           className="shrink-0 flex items-center justify-center rounded-full"
           style={{ width: 44, height: 44, background: 'none', border: 'none', color: 'var(--text-3)' }}
         >
           <ChevronLeft size={22} />
         </button>
         <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>Palmarés</div>
+          {/* Abre-se da Vitrina, no Perfil, desde a fase C — o Palmarés já não existe. */}
+          <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>Vitrina</div>
           <div className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>Onde estás</div>
         </div>
       </div>
@@ -276,50 +310,72 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
           <p className="text-[12px] m-0 pt-2" style={{ color: 'var(--text-4)' }} role="status">A ler as distribuições…</p>
         ) : erro ? (
           <Warning tone="danger" title="Não foi possível ler as distribuições">Tenta outra vez daqui a pouco.</Warning>
+        ) : janelas.length === 0 ? (
+          /* NADA PUBLICADO — nenhum segmento chegou aos 20 atletas. Dizer "o
+             teu segmento é pequeno" e oferecer outros grupos era mandar o
+             atleta de beco em beco: nenhum tem dados. */
+          <GlassCard radius={24} padding={16} data-testid="onde-estas-sem-publicacoes">
+            <h3 className="m-0 text-[16px] font-black" style={{ letterSpacing: 'var(--tracking-tight)', color: 'var(--text-1)' }}>
+              Ainda não há distribuições publicadas
+            </h3>
+            <p className="m-0 text-[12.5px] mt-1.5" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
+              Só se publica um segmento com 20 atletas ou mais — abaixo disso, uma média já falava de pessoas em
+              concreto — e ainda nenhum lá chegou. O teu é {segmentPhrase(segmentoProprio)}: quando ele, ou um dos
+              grupos ao lado, tiver atletas suficientes, vês aqui onde estás.
+            </p>
+          </GlassCard>
         ) : !snapshot ? (
           /* SEGMENTO PEQUENO — dito, nunca escondido. Não se cola o atleta a
              outro grupo por conta própria para ter um número para mostrar. */
           <GlassCard radius={24} padding={16} data-testid="onde-estas-segmento-pequeno">
             <h3 className="m-0 text-[16px] font-black" style={{ letterSpacing: 'var(--tracking-tight)', color: 'var(--text-1)' }}>
-              O teu segmento ainda é pequeno
+              {ehProprio ? 'O teu segmento ainda é pequeno' : 'Este segmento ainda é pequeno'}
             </h3>
             <p className="m-0 text-[12.5px] mt-1.5" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
-              Não há distribuição publicada para {ageBandLabel(segmento?.ageBand)} em {TERRAIN_LABELS[segmento?.terrain]}.
+              Não há distribuição publicada para {segmentPhrase(segmento)}.
               Só se publica um segmento com 20 atletas ou mais — abaixo disso, uma média já falava de pessoas em concreto.
             </p>
-            <SectionLabel style={{ margin: '14px 2px 0' }}>Comparar com outro grupo</SectionLabel>
-            <div className="flex flex-col gap-2 mt-2">
-              {alargamentos.map((passo) => (
-                <button
-                  key={`${passo.step}-${passo.segment.ageBand}-${passo.segment.terrain}-${passo.segment.gender}`}
-                  type="button"
-                  data-testid={`onde-estas-alargar-${passo.step}`}
-                  onClick={() => setSegmento(passo.segment)}
-                  className="w-full flex items-center gap-2.5 text-left"
-                  style={{ ...CARD_SECUNDARIO, minHeight: 44, padding: '10px 12px' }}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[12.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{passo.label}</span>
-                    <span className="block text-[11px] mt-[2px]" style={{ color: 'var(--text-4)' }}>{passo.detail}</span>
-                  </span>
-                  <ChevronRight size={15} className="shrink-0" aria-hidden="true" style={{ color: 'var(--text-4)' }} />
-                </button>
-              ))}
-            </div>
-            {segmentoProprio && segmento && (segmento.ageBand !== segmentoProprio.ageBand
-              || segmento.gender !== segmentoProprio.gender || segmento.terrain !== segmentoProprio.terrain) && (
-              <button
-                type="button"
-                onClick={() => setSegmento(segmentoProprio)}
-                className="w-full text-[12px] font-bold mt-2"
-                style={{ minHeight: 44, background: 'none', border: 'none', color: 'var(--text-4)' }}
-              >
-                Voltar ao meu escalão
-              </button>
+            {comDados.length > 0 && (
+              <>
+                <SectionLabel style={{ margin: '14px 2px 0' }}>Comparar com outro grupo</SectionLabel>
+                <div className="flex flex-col gap-2 mt-2">
+                  {comDados.map((passo) => (
+                    <button
+                      key={`${passo.step}-${passo.segment.ageBand}-${passo.segment.terrain}-${passo.segment.gender}`}
+                      type="button"
+                      data-testid={`onde-estas-alargar-${passo.step}`}
+                      onClick={() => setSegmento(passo.segment)}
+                      className="w-full flex items-center gap-2.5 text-left"
+                      style={{ ...CARD_SECUNDARIO, minHeight: 44, padding: '10px 12px' }}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[12.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{passo.label}</span>
+                        <span className="block text-[11px] mt-[2px]" style={{ color: 'var(--text-4)' }}>{passo.detail}</span>
+                      </span>
+                      <ChevronRight size={15} className="shrink-0" aria-hidden="true" style={{ color: 'var(--text-4)' }} />
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
+            {semDados.length > 0 && (
+              <p className="m-0 text-[11.5px] mt-3" data-testid="onde-estas-sem-dados" style={{ color: 'var(--text-4)', lineHeight: 'var(--leading-normal)' }}>
+                {comDados.length > 0 ? 'Ainda sem dados' : 'Os grupos ao lado também ainda não chegaram lá'}: {listaPorExtenso(semDados)}.
+              </p>
+            )}
+            {!ehProprio && voltarAoMeu}
           </GlassCard>
         ) : (
           <>
+            {/* O denominador diz-se sempre — e quando não é o dele, diz-se que não é. */}
+            {!ehProprio && (
+              <div data-testid="onde-estas-outro-grupo" style={{ ...CARD_SECUNDARIO, padding: '10px 14px' }}>
+                <p className="m-0 text-[12px]" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
+                  Estás a comparar-te com {segmentPhrase(segmento)} — não é o teu escalão.
+                </p>
+                {voltarAoMeu}
+              </div>
+            )}
             <GlassCard radius={24} padding={16} data-testid="onde-estas-percentil">
               <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)' }}>
                 O teu percentil

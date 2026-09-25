@@ -94,7 +94,7 @@ export const AGE_BAND_LABELS = {
 };
 
 export const TERRAIN_LABELS = { estrada: 'estrada', trail: 'trail' };
-export const GENDER_LABELS = { F: 'femininos', M: 'masculinos' };
+export const GENDER_LABELS = { F: 'feminino', M: 'masculino' };
 
 /** A linha do tamanho do segmento. Nunca o `n` exato — o servidor nem o
  *  chega a enviar (ver os GRANTs por coluna da migração). */
@@ -106,6 +106,26 @@ export const N_BAND_LABELS = {
 
 export function ageBandLabel(band) {
   return AGE_BAND_LABELS[band] || band || '';
+}
+
+/** O escalão com o género quando o nome não o traz: "M35" já diz tudo, mas
+ *  "dos 23 aos 34" é igual nos dois — e a opção "o escalão dos 23 aos 34" no
+ *  outro género lia-se como o escalão em que o atleta já estava. */
+export function ageBandWithGender(band, gender) {
+  if ((band === 'sub23' || band === '23-34') && GENDER_LABELS[gender]) return `${GENDER_LABELS[gender]} ${ageBandLabel(band)}`;
+  return ageBandLabel(band);
+}
+
+/** "o escalão M35, em estrada" — o segmento por extenso, para as frases do
+ *  ecrã. Antes: "para dos 23 aos 34 em estrada". */
+export function segmentPhrase({ ageBand, gender, terrain } = {}) {
+  if (!ageBand) return '';
+  const modalidade = TERRAIN_LABELS[terrain] || terrain;
+  return `o escalão ${ageBandWithGender(ageBand, gender)}${modalidade ? `, em ${modalidade}` : ''}`;
+}
+
+export function sameSegment(a, b) {
+  return !!a && !!b && a.ageBand === b.ageBand && a.gender === b.gender && a.terrain === b.terrain;
 }
 
 /** O escalão equivalente no outro género — sub23 e 23-34 não têm letra. */
@@ -152,8 +172,8 @@ export function widerSegments({ ageBand, gender, terrain }) {
     {
       step: 'genero',
       segment: { ageBand: counterpartBand(ageBand, outroGenero), gender: outroGenero, terrain },
-      label: `O escalão ${ageBandLabel(counterpartBand(ageBand, outroGenero))}`,
-      detail: `Os atletas ${GENDER_LABELS[outroGenero]} da tua idade, na mesma modalidade.`,
+      label: `O escalão ${ageBandWithGender(counterpartBand(ageBand, outroGenero), outroGenero)}`,
+      detail: `O escalão ${GENDER_LABELS[outroGenero]} da tua idade, na mesma modalidade.`,
     },
   ];
 }
