@@ -44,10 +44,6 @@ function lisbonMinuteOfDay(date: Date): number {
   return (get("hour") % 24) * 60 + get("minute");
 }
 
-function lisbonDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(date);
-}
-
 function addDays(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 }
@@ -93,7 +89,8 @@ async function handler(req: Request): Promise<Response> {
   const now = new Date();
   const hour = lisbonHour(now);
   const minuteOfDay = lisbonMinuteOfDay(now);
-  const today = lisbonDate(now);
+  // O dia de Lisboa — a mesma função com que se leem as datas dos registos.
+  const today = lisbonDateOf(now.toISOString());
   const reviewWeek = weekToReviewBounds(today);
 
   const { data: subs, error: subsErr } = await sb.from("push_subscriptions").select("id, user_id, endpoint, p256dh, auth");

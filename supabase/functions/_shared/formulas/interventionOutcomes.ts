@@ -12,6 +12,40 @@
 // vezes" é cobrar, e o CAROL.md não cobra.
 
 export const INTERVENTION_WINDOW_DAYS = 60;
+
+/* O vocabulário dos avisos — de onde abrem e como fecham —, num sítio só:
+   o cliente, o coach-chat e as análises escreviam-no à mão (terceira
+   revisão pré-deploy, 2026-09-25). É o dos checks da migration
+   20260924233658_coach_interventions; o SQL não importa isto, por isso um
+   teste lê a migration e compara (interventionOutcomes.test.ts). */
+export const INTERVENTION_ORIGIN = {
+  RUN: "run",
+  GYM: "gym",
+  MEAL: "meal",
+  BODY: "body",
+  CHECKIN: "checkin",
+  LOAD: "load",
+} as const;
+
+export const INTERVENTION_OUTCOME = {
+  PLANO_AJUSTADO: "plano_ajustado",
+  ATLETA_IGNOROU: "atleta_ignorou",
+  FALSO_POSITIVO: "falso_positivo",
+  // O atleta dispensou o aviso no Início.
+  DISPENSADO: "dispensado",
+  // Aceitou ou recusou a proposta de objetivos.
+  OBJETIVOS_DECIDIDOS: "objetivos_decididos",
+  // Só o trigger escreve estes dois: outro aviso abriu por cima, ou fechou sem desfecho.
+  SUBSTITUIDO: "substituido",
+  RESOLVIDO: "resolvido",
+} as const;
+
+/** Os desfechos que a Carol pode dar no chat (resolve_intervention). */
+export const CHAT_RESOLVE_OUTCOMES: readonly string[] = [
+  INTERVENTION_OUTCOME.PLANO_AJUSTADO,
+  INTERVENTION_OUTCOME.ATLETA_IGNOROU,
+  INTERVENTION_OUTCOME.FALSO_POSITIVO,
+];
 const DAY_MS = 86400000;
 
 export interface InterventionRow {
@@ -22,16 +56,16 @@ export interface InterventionRow {
 }
 
 const ORIGIN_LABEL: Record<string, string> = {
-  run: "das corridas",
-  gym: "do ginásio",
-  meal: "das refeições",
-  body: "das avaliações",
-  checkin: "dos check-ins",
-  load: "da carga de treino",
+  [INTERVENTION_ORIGIN.RUN]: "das corridas",
+  [INTERVENTION_ORIGIN.GYM]: "do ginásio",
+  [INTERVENTION_ORIGIN.MEAL]: "das refeições",
+  [INTERVENTION_ORIGIN.BODY]: "das avaliações",
+  [INTERVENTION_ORIGIN.CHECKIN]: "dos check-ins",
+  [INTERVENTION_ORIGIN.LOAD]: "da carga de treino",
 };
 
 /** Ignorado: ele disse que não (atleta_ignorou) ou dispensou-o no Início. */
-const IGNORED = new Set(["atleta_ignorou", "dispensado"]);
+const IGNORED = new Set<string>([INTERVENTION_OUTCOME.ATLETA_IGNOROU, INTERVENTION_OUTCOME.DISPENSADO]);
 
 function addDays(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -47,7 +81,7 @@ export function interventionOutcomesLine(rows: InterventionRow[] | null | undefi
   const list = (rows || []).filter((r) => typeof r?.opened_at === "string" && r.opened_at.slice(0, 10) >= from);
   if (!list.length) return null;
   const ignored = list.filter((r) => IGNORED.has(r.outcome ?? ""));
-  const falsePositives = list.filter((r) => r.outcome === "falso_positivo");
+  const falsePositives = list.filter((r) => r.outcome === INTERVENTION_OUTCOME.FALSO_POSITIVO);
   const parts = [
     plural(list.length, "aberto", "abertos"),
     plural(ignored.length, "ignorado", "ignorados"),

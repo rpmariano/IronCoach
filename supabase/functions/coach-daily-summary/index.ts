@@ -12,6 +12,7 @@
 //
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
+import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS } from "../_shared/formulas/vocabulary.ts";
 import { computeRaceEve, describeRaceEveShort, type RaceEve } from "../_shared/formulas/raceEve.ts";
@@ -1037,7 +1038,7 @@ Deno.serve(async (req) => {
       const reason = runLoadInterventionReason(loadToOpen, today);
       const { data: opened, error: openError } = await sb.from("profiles")
         // A origem vai com a abertura (5.5, coach_interventions).
-        .update({ coach_intervention_status: "needed", coach_intervention_reason: reason, coach_intervention_origin: "load" })
+        .update({ coach_intervention_status: "needed", coach_intervention_reason: reason, coach_intervention_origin: INTERVENTION_ORIGIN.LOAD })
         .eq("id", userId)
         .or("coach_intervention_status.is.null,coach_intervention_status.in.(none,resolved)")
         .select("id");

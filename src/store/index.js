@@ -6,6 +6,7 @@ import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin } from '../utils/checkin';
 import { TABELAS_POLICY_VERSION } from '../utils/percentile';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
+import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
 
 const getInitialDashboardTab = () => {
   try {
@@ -502,7 +503,7 @@ export const useAppStore = create((set, get) => ({
         const { data: rows, error: resolveError } = await supabase
           .from('profiles')
           // O desfecho vai só no update (5.5): o trigger consome-o.
-          .update({ ...resolved, coach_intervention_outcome: 'objetivos_decididos' })
+          .update({ ...resolved, coach_intervention_outcome: INTERVENTION_OUTCOME.OBJETIVOS_DECIDIDOS })
           .eq('id', profileId)
           .eq('coach_intervention_reason', fresh.coach_intervention_reason)
           .select('id');
@@ -976,7 +977,7 @@ export const useAppStore = create((set, get) => ({
         .from('profiles')
         // A origem vai com a abertura (5.5): o trigger guarda-a em
         // coach_interventions e limpa-a — não entra no perfil do store.
-        .update({ coach_intervention_status: 'needed', coach_intervention_reason: reason, coach_intervention_origin: 'checkin' })
+        .update({ coach_intervention_status: 'needed', coach_intervention_reason: reason, coach_intervention_origin: INTERVENTION_ORIGIN.CHECKIN })
         .eq('id', userId);
       if (upErr) console.error('Erro a abrir a intervenção do check-in:', upErr);
       else set({ profile: { ...get().profile, coach_intervention_status: 'needed', coach_intervention_reason: reason } });

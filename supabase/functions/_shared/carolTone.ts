@@ -65,11 +65,13 @@ export function upstreamErrorText(status: number | null): string {
 // inclui acentos — "consideração" tem "ç" logo a seguir a "considera", e
 // \b via \w trata essa transição como fronteira de palavra. "consideração"
 // não pode acender o aviso de "considera" a suavizar.
-const SOFTENING_WORDS = /(?<![\p{L}])(talvez|considera(s)?|pode ser que|se calhar)(?![\p{L}])/iu;
-const NAMES_INFRA = /(?<![\p{L}])gemini(?![\p{L}])/iu;
+// Exportadas: o verificador do cliente (src/test/carolVoice.js) usa estas,
+// em vez de cópias (terceira revisão pré-deploy, 2026-09-25).
+export const SOFTENING_WORDS = /(?<![\p{L}])(talvez|considera(s)?|pode ser que|se calhar)(?![\p{L}])/iu;
+export const NAMES_INFRA = /(?<![\p{L}])gemini(?![\p{L}])/iu;
 // Ela nunca fala de si na terceira pessoa ("para a Carol poder avaliar") —
 // revisão pré-deploy de 2026-09-25, a P.12 que ficara por acabar.
-const THIRD_PERSON = /(?<![\p{L}])(a|da|à) Carol(?![\p{L}])/iu;
+export const THIRD_PERSON = /(?<![\p{L}])(a|da|à) Carol(?![\p{L}])/iu;
 
 export function assertCarolVoice(text: string): void {
   if (/\p{Extended_Pictographic}/u.test(text)) throw new Error(`voz da Carol: tem emoji — "${text}"`);

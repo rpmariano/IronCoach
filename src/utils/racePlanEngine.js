@@ -314,6 +314,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   const phases = [
     {
       id: 'base',
+      // "Estás na Base Aeróbica" — o artigo da fase, para o parecer.
+      em: 'na',
       number: 1,
       name: 'Base Aeróbica',
       subtitle: 'Adaptação Cardiovascular & Fortalecimento',
@@ -327,6 +329,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     },
     {
       id: 'build',
+      em: 'na',
       number: 2,
       name: 'Construção Específica',
       subtitle: 'Limiar Anaeróbico & Ritmo-Alvo',
@@ -340,6 +343,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     },
     {
       id: 'peak',
+      em: 'no',
       number: 3,
       name: 'Pico de Carga',
       subtitle: 'Treinos Longos Chave & Simulação',
@@ -353,6 +357,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     },
     {
       id: 'taper',
+      em: 'no',
       number: 4,
       name: 'Polimento (Taper)',
       subtitle: `Redução de Carga & Recarga Glicogénica (${racePriority === 'a' ? 'A-Race' : 'B/C-Race'})`,
@@ -368,6 +373,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     },
     {
       id: 'race_recovery',
+      em: 'na',
       number: 5,
       name: 'Prova & Recuperação',
       subtitle: `Competição & Regeneração Pós-Esforço (${recoveryDays} dias)`,
@@ -375,12 +381,16 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
       weeksCount: 1,
       startDate: raceDate,
       endDate: planEndDate,
-      state: daysToRace <= 0 ? 'active' : 'upcoming',
+      // Depois dos dias de recuperação, a fase acabou.
+      state: daysToRace < 0 && -daysToRace >= recoveryDays ? 'completed' : daysToRace <= 0 ? 'active' : 'upcoming',
       focus: `Competição a 100% seguida de ${recoveryDays} dias sem treinos de alta intensidade (Z4/Z5).`,
       evaluation: {
-        score: daysToRace <= 0 ? 95 : null,
-        stars: daysToRace <= 0 ? 5 : 0,
-        gradeLabel: daysToRace <= 0 ? 'Concluída' : 'Objetivo Final',
+        /* Na manhã da prova ainda não há nota: "Concluída · 95%" saía ao
+           lado de "É dia de prova" (terceira revisão, 2026-09-25). Sem
+           nota, a pílula não aparece. */
+        score: daysToRace < 0 ? 95 : null,
+        stars: daysToRace < 0 ? 5 : 0,
+        gradeLabel: daysToRace < 0 ? 'Concluída' : daysToRace === 0 ? 'Dia da Prova' : 'Objetivo Final',
         statusColor: 'emerald',
         /* Antes, durante e depois da prova — "É dia de prova" saía a 40 dias
            dela, e "A prova já foi" na própria manhã (segunda revisão
@@ -392,7 +402,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
           : daysToRace === 0
             ? `É dia de prova. Se passares dos 75 minutos, 30 a 60 g de hidratos por hora.`
             : `No dia da prova, se passares dos 75 minutos, 30 a 60 g de hidratos por hora. Depois, ${recoveryDays} dias de recuperação ativa.`,
-        metrics: { totalKm: distanceKm, runsCount: daysToRace <= 0 ? 1 : 0, polarizedZ1Z2Pct: 100, avgPace: null },
+        metrics: { totalKm: distanceKm, runsCount: daysToRace < 0 ? 1 : 0, polarizedZ1Z2Pct: 100, avgPace: null },
       },
     },
   ];
@@ -409,8 +419,7 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
      reparador, a hidratação") e sem falar de si na terceira pessoa. */
   let carolOverviewText = '';
   const faltam = (n) => (n === 1 ? 'Falta 1 dia' : `Faltam ${n} dias`);
-  // "Estás na Polimento" não: o pico e o polimento são masculinos.
-  const naFase = `${currentPhase.id === 'peak' || currentPhase.id === 'taper' ? 'no' : 'na'} ${currentPhase.name}`;
+  const naFase = `${currentPhase.em || 'na'} ${currentPhase.name}`;
   if (daysToRace < 0) {
     // Semanas depois, a recuperação já passou: não se repete "agora são N dias".
     carolOverviewText = -daysToRace < recoveryDays
@@ -425,22 +434,20 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   } else if (daysToRace <= 7) {
     carolOverviewText = `${faltam(daysToRace)}: esta semana já não se ganha forma, só se perde se exagerares. Uma ou duas corridas curtas com umas acelerações; o resto é descansar e comer hidratos com regularidade.`;
   } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
-    /* No polimento a carga desce — "é assim que a carga sobe" contradizia o
-       cartão da fase logo abaixo. Nas outras, a opinião vem da percentagem
-       de corridas fáceis da fase (o que a app classifica como fácil: com o
-       esforço por registar, a corrida não conta — por isso pede-se). */
-    const onde = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}${weeklyVol != null ? `, com ${weeklyVol} km por semana` : ''}.`;
-    const facil = currentPhase.evaluation?.metrics?.polarizedZ1Z2Pct;
-    if (currentPhase.id === 'taper') {
-      carolOverviewText = `${onde} O volume desce agora, para chegares à prova com as pernas frescas; umas acelerações curtas mantêm o ritmo.`;
-    } else if (facil != null && facil < 75) {
-      const quantas = facil === 0
-        ? 'Nenhuma das tuas corridas desta fase conta como fácil'
-        : `Só ${facil}% das tuas corridas desta fase contam como fáceis`;
-      carolOverviewText = `${onde} ${quantas}, e eu quero oito em cada dez: abranda os treinos fáceis e regista o esforço de cada corrida.`;
-    } else {
-      carolOverviewText = `${onde} O ritmo fácil está a ser respeitado. Mantém uma semana mais leve a cada três ou quatro — é assim que a carga sobe sem te lesionares.`;
-    }
+    /* Onde está e o que a fase quer. Como está a correr — as fáceis, o
+       volume — di-lo o cartão da fase, logo abaixo, e o parecer não o
+       repete: os dois diziam quase a mesma frase, um por baixo do outro
+       (terceira revisão, 2026-09-25). No polimento a carga desce. */
+    const semana = weeklyVol != null
+      ? `, com ${weeklyVol.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km por semana`
+      : '';
+    const PHASE_PURPOSE = {
+      base: 'A base é para aguentares volume sem te cansares; a velocidade vem depois.',
+      build: 'Aqui entram o limiar e o ritmo de prova; o longo continua fácil, e uma semana em cada três ou quatro é mais leve.',
+      peak: 'É a fase mais dura: os longos com ritmo de prova, e o descanso conta tanto como o treino.',
+      taper: 'O volume desce agora, para chegares à prova com as pernas frescas; umas acelerações curtas mantêm o ritmo.',
+    };
+    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}${semana}. ${PHASE_PURPOSE[currentPhase.id] ?? 'Mantém uma semana mais leve a cada três ou quatro — é assim que a carga sobe sem te lesionares.'}`;
   } else {
     // Sem uma única corrida registada nesta fase, "continua a proteger o
     // rácio 80/20"/"respeita a semana de descarga" presumem um histórico

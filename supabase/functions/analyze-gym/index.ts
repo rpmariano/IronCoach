@@ -13,6 +13,7 @@
 // reanálise não a regenera, mantém-se a mais antiga.
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
+import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, fetchExperienceLevel, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
@@ -746,7 +747,7 @@ async function attachGymCoachNotes(
           coach_intervention_reason: result.intervention_reason,
           // De onde veio o aviso (5.5): o trigger track_coach_intervention
           // copia-a para coach_interventions e limpa-a.
-          coach_intervention_origin: "gym",
+          coach_intervention_origin: INTERVENTION_ORIGIN.GYM,
         })
         .eq("id", userId);
       (session as any).coach_intervention_status = "needed";

@@ -78,6 +78,17 @@ const EXPECTED_RUNS_PER_WEEK = 3;
 // Volume semanal por omissão quando a tabela de doutrina não cobre o caso.
 const FALLBACK_TARGET_WEEKLY_KM = 20;
 
+// Sempre intensos: sem o esforço registado, um contínuo ou um trail pode ter
+// sido fácil; um intervalado ou um fartlek não.
+const HARD_TRAINING_TYPES = new Set(["intervalos", "fartlek"]);
+
+/** Sem esforço registado e de um tipo que tanto pode ser fácil como não: a
+ *  app não sabe se foi fácil (conta como não fácil na percentagem). */
+function isUnknownIntensity(r: RunForPhase): boolean {
+  if (isLowIntensity(r) || r.effort_rpe != null) return false;
+  return !(r.training_type && HARD_TRAINING_TYPES.has(r.training_type));
+}
+
 function isLowIntensity(r: RunForPhase): boolean {
   if (r.training_type && Z1Z2_TRAINING_TYPES.has(r.training_type)) return true;
   return r.effort_rpe != null && Number(r.effort_rpe) <= Z1Z2_MAX_RPE;
@@ -96,8 +107,10 @@ function isLowIntensity(r: RunForPhase): boolean {
      sessão a menos não é assunto; "poucas sessões" é menos de 3/4 das
      esperadas.
    - "Fáceis" é o que a app consegue classificar (recuperação, longo, ou
-     esforço até 4): com o esforço por registar, a corrida não conta — por isso
-     pede-se o esforço em vez de afirmar que os treinos saem rápidos demais.
+     esforço até 4): com o esforço por registar, a corrida não conta. Se é
+     isso que deixa a percentagem baixa, pede-se o esforço e não se manda
+     abrandar — seria presumir que as corridas foram rápidas (terceira
+     revisão, 2026-09-25).
    - Sem adjetivos com género ("curto", "fresco"): a app não sabe a quem fala. */
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
@@ -111,6 +124,8 @@ interface CommentaryInput {
   expectedPhaseKm: number;
   runsCount: number;
   polarizedPct: number;
+  /** Corridas sem esforço registado que tanto podiam ser fáceis como não. */
+  unknownCount: number;
 }
 
 function buildCommentary(c: CommentaryInput): string {
@@ -122,6 +137,10 @@ function buildCommentary(c: CommentaryInput): string {
   const poucasSessoes = c.frequencyRatio < 0.75;
   const bom = c.score >= 80;
   const poucoFacil = c.polarizedPct < POLARIZATION_TARGET_PCT;
+  // A percentagem baixa explica-se só pelas corridas sem esforço registado.
+  const faltaEsforco = poucoFacil && c.unknownCount > 0 && c.runsCount > 0
+    && c.polarizedPct + (c.unknownCount / c.runsCount) * 100 >= POLARIZATION_TARGET_PCT;
+  const semEsforco = count(c.unknownCount, "corrida", "corridas");
   const faceis = c.polarizedPct === 0
     ? "nenhuma das tuas corridas desta fase conta como fácil (Z1/Z2)"
     : `só ${c.polarizedPct}% das tuas corridas desta fase contam como fáceis (Z1/Z2)`;
@@ -129,6 +148,9 @@ function buildCommentary(c: CommentaryInput): string {
     case "base":
       if (c.done) {
         if (curto) return `A base ficou com pouco volume: ${km} de ${alvo} km.`;
+        if (faltaEsforco) {
+          return `Na base ficaram ${semEsforco} sem o esforço registado, por isso não sei se foram fáceis.`;
+        }
         if (poucoFacil) {
           return c.polarizedPct === 0
             ? "Na base, nenhuma das tuas corridas contou como fácil (Z1/Z2), e ela pedia quase todas."
@@ -139,8 +161,11 @@ function buildCommentary(c: CommentaryInput): string {
         return `A base teve ${corridas} e ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
       }
       if (curto) return `Vais em ${km} de ${alvo} km desta fase. Acrescenta quilómetros fáceis, em Z1/Z2, para lá chegares.`;
+      if (faltaEsforco) {
+        return `Não sei se os teus treinos fáceis estão a ser fáceis: ${semEsforco} desta fase sem o esforço registado. Regista-o, que a base se faz quase toda em ritmo fácil (Z1/Z2).`;
+      }
       if (poucoFacil) {
-        return `${faceis.charAt(0).toUpperCase()}${faceis.slice(1)}, e a base pede quase todas. Abranda os treinos fáceis e regista o esforço de cada corrida, para eu saber como foram.`;
+        return `${faceis.charAt(0).toUpperCase()}${faceis.slice(1)}, e a base pede quase todas. Abranda os treinos fáceis${c.unknownCount > 0 ? ", e regista o esforço das corridas que não o têm" : ""}.`;
       }
       if (bom) return `A base está a ser bem feita: ${corridas}, ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
       if (poucasSessoes) return `Vais em ${km} de ${alvo} km, mas com poucas sessões: ${corridas} nesta fase. A base quer regularidade, três por semana.`;
@@ -205,10 +230,12 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
   const runsCount = phaseRuns.length;
 
   let z1z2Count = 0;
+  let unknownCount = 0;
   let totalSeconds = 0;
   let totalPacedKm = 0;
   for (const r of phaseRuns) {
     if (isLowIntensity(r)) z1z2Count++;
+    else if (isUnknownIntensity(r)) unknownCount++;
     if (r.duration_seconds && r.distance_km) {
       totalSeconds += Number(r.duration_seconds);
       totalPacedKm += Number(r.distance_km);
@@ -272,7 +299,7 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
     statusColor,
     summary: buildCommentary({
       phaseId, done: phaseState === "completed", score, volumeRatio, frequencyRatio,
-      totalKm, expectedPhaseKm, runsCount, polarizedPct,
+      totalKm, expectedPhaseKm, runsCount, polarizedPct, unknownCount,
     }),
     metrics: {
       totalKm: Math.round(totalKm * 10) / 10,

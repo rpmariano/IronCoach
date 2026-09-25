@@ -44,6 +44,13 @@ describe('racePlanEngine — carolOverviewText, cada ramo na voz dela', () => {
     const text = overview({ date: iso(0) });
     expect(text).toContain('A prova é hoje');
     semRotina(text);
+    // Terceira revisão (2026-09-25): na manhã da prova, a fase da prova ainda
+    // não está "Concluída · 95%" — sem nota, a pílula não aparece.
+    const plan = calculateRaceTrainingPlan({ race: { ...raceBase, date: iso(0) }, profile: {}, runs: [], todayISO: iso(0) });
+    const fase = plan.phases.find((p) => p.id === 'race_recovery');
+    expect(fase.evaluation.score).toBeNull();
+    expect(fase.evaluation.gradeLabel).toBe('Dia da Prova');
+    expect(fase.evaluation.summary).toMatch(/^É dia de prova/);
   });
 
   it('semana da prova (0 < daysToRace <= 7), com o singular a um dia', () => {
@@ -57,8 +64,13 @@ describe('racePlanEngine — carolOverviewText, cada ramo na voz dela', () => {
     const raceDate = iso(-40); // dentro do macrociclo, fora da semana da prova
     const runs = Array.from({ length: 6 }, (_, i) => ({ date: iso(i * 3), distance_km: 8, duration_seconds: 2700, kind: 'treino' }));
     const text = overview({ date: raceDate }, runs);
-    expect(text).toMatch(/^Estás na /);
+    expect(text).toMatch(/^Estás na Base Aeróbica, semana /);
     semRotina(text);
+    // Terceira revisão (2026-09-25): o que a fase quer, sem repetir o cartão
+    // da fase (as fáceis, o volume), e o volume com vírgula.
+    expect(text).toContain('A base é para aguentares volume');
+    expect(text).not.toMatch(/contam como fáceis|conta como fácil/);
+    expect(text).not.toMatch(/\d\.\d km por semana/);
   });
 
   it('em plena preparação, ainda sem corridas registadas nesta fase', () => {
