@@ -1875,6 +1875,12 @@ Deno.test("computeGymMetrics deteta intervalo <48 h entre sessões de pernas", (
   assertStringIncludes(result!, "24 h");
 });
 
+// O vocabulário da Carol e do seletor — até 2026-09-25 isto não contava como pernas.
+Deno.test("computeGymMetrics reconhece Pernas Superiores/Inferiores como sessões de pernas", () => {
+  const rows = [makeGymRow(1, ["Pernas Inferiores", "Ombros"], 800), makeGymRow(2, ["Pernas Superiores"], 900)];
+  assertStringIncludes(computeGymMetrics(rows, TODAY_GYM)!, "INTERVALO PERNAS");
+});
+
 Deno.test("computeGymMetrics não sinaliza intervalo ≥48 h entre sessões de pernas", () => {
   // duas sessões separadas por 3 dias (72 h)
   const rows = [

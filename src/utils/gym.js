@@ -15,6 +15,8 @@ export function mapCategoriesToMuscles(categories = []) {
     // O vocabulário da Carol (analyze-gym, MUSCLE_GROUPS).
     'pernas superiores': ['quadriceps', 'hamstring', 'adductor', 'abductors'],
     'pernas inferiores': ['calves'],
+    'membros superiores': ['chest', 'upper-back', 'front-deltoids', 'back-deltoids', 'biceps', 'triceps'],
+    'membros inferiores': ['quadriceps', 'hamstring', 'gluteal', 'calves'],
     'core/abdominais': ['abs', 'obliques'],
     'braços': ['biceps', 'triceps', 'forearm'],
     'bracos': ['biceps', 'triceps', 'forearm'],
