@@ -465,7 +465,8 @@ export default function Coach() {
   const proactiveAttempted = useRef(false);
   useEffect(() => {
     if (coachIntent || coachLoading || proactiveAttempted.current) return;
-    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems, dailyCheckins })
+    const { percentileSnapshots, leaderboardEntries } = useAppStore.getState();
+    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems, dailyCheckins, percentileSnapshots, leaderboardEntries })
       .filter((c) => !wasProactiveSent(profile?.id, c));
     if (!list.length) return;
     // Uma notificação tocada com a app já a carregar os dados (ação P.9):

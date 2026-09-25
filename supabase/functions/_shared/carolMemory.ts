@@ -36,6 +36,8 @@ import {
   nomeDoBadge,
 } from "./badgeCatalog.ts";
 import { SOURCE_APPS, type SourceApp, type SourceScreen } from "./sourceApps.ts";
+import { PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom, type Segment, TERRAIN_LOOKBACK_DAYS, WINDOW_DAYS } from "./formulas/percentileSegments.ts";
+import { type LeaderboardEntryRow, ownSegmentFor, percentileAvailability, type SnapshotRow } from "./formulas/vitrina.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
 // Quota por tipo: as refeições são várias por dia e, com um teto só,
@@ -363,11 +365,17 @@ export function buildBadgesContext(rows: any[] | null | undefined): string | nul
   }
   if (!linhas.length) return null;
 
-  const proibidas = FAMILIAS_QUE_NAO_SE_SUGEREM.map((f) => FAMILIA_LABELS[f]).join(" e ");
-
   return `BADGES DE TREINO JÁ GANHOS (a vitrina do Perfil; só o que já está conquistado — ` +
-    `o que falta para o próximo NÃO te é dado, e isso é intencional):\n${linhas.join("\n")}\n` +
-    `REGRAS (valem em todos os canais e em todos os níveis de experiência):\n` +
+    `o que falta para o próximo NÃO te é dado, e isso é intencional):\n${linhas.join("\n")}\n` + badgeRules();
+}
+
+/** As regras do 6 #6 (R1-R3). Viajam com o bloco dos badges — e, desde
+ *  2026-09-25, também no bloco da Vitrina quando ainda não há badges ganhos:
+ *  "O que há para ganhar" existe na app, e a aceleração no fim do período não
+ *  espera pelo primeiro badge. */
+export function badgeRules(): string {
+  const proibidas = FAMILIAS_QUE_NAO_SE_SUGEREM.map((f) => FAMILIA_LABELS[f]).join(" e ");
+  return `REGRAS DOS BADGES (valem em todos os canais e em todos os níveis de experiência):\n` +
     `- ${proibidas}: reconhece depois de ganho, nunca proponhas antes. Não dizes ` +
     `"faltam-te X km/metros", não os usas como incentivo, não os trazes à conversa por iniciativa tua. ` +
     `Se ele PERGUNTAR diretamente quanto falta, responde com o número e sem nenhum encorajamento a ir buscá-lo hoje.\n` +
@@ -1026,6 +1034,7 @@ const PUSH_TRIGGER_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
   race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
   missed_workout: "treino por registar", week_review: "balanço da semana",
+  leaderboard: "entrar e sair das tabelas", percentile_ready: "números do Onde estás",
 };
 
 export function buildPushesContext(
@@ -1246,7 +1255,9 @@ export async function fetchPortraitBlock(sb: any, userId: string, todayISO: stri
 export async function fetchSharedMemoryBlock(
   sb: any,
   userId: string,
-  opts: { portrait?: boolean; todayISO?: string } = {},
+  // `vitrina` (2026-09-25): os badges, o percentil e as tabelas — ligado por
+  // omissão, é a mesma Carol em todos os sítios onde fala com ele.
+  opts: { portrait?: boolean; todayISO?: string; vitrina?: boolean } = {},
 ): Promise<string | null> {
   try {
     const today = lisbonTodayISO();
@@ -1263,7 +1274,8 @@ export async function fetchSharedMemoryBlock(
     // no check-in não pode ser igual à de uma corrida sem ela.
     const checkin = await fetchCheckinBlock(sb, userId, today);
     const portrait = opts.portrait ? await fetchPortraitBlock(sb, userId, opts.todayISO || today) : null;
-    return [checkin, portrait, shared].filter(Boolean).join("\n\n") || null;
+    const vitrina = opts.vitrina === false ? null : await fetchVitrinaBlock(sb, userId, opts.todayISO || today, { withBadges: true });
+    return [checkin, portrait, vitrina, shared].filter(Boolean).join("\n\n") || null;
   } catch (e) {
     console.warn("carolMemory: fetchSharedMemoryBlock falhou:", e);
     return null;
@@ -1280,6 +1292,8 @@ export interface ChatMemoryBlocks {
   raceHistory: string | null;
   /** A vitrina de badges já ganhos, com as regras do 6 #6 (fase 6). */
   badges: string | null;
+  /** O resto da Vitrina (2026-09-25): badges por ver, "Onde estás" e tabelas. */
+  vitrina: string | null;
   portrait: string | null;
   checkin: string | null;
   impressions: string | null;
@@ -1324,6 +1338,8 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     // O retrato da época (5.3) — extraído para fetchPortraitBlock, que o
     // cartão diário e o analyze-run também chamam via fetchSharedMemoryBlock.
     const portraitPromise = fetchPortraitBlock(sb, userId, todayISO);
+    // O resto da Vitrina (2026-09-25) — os badges ganhos já têm bloco aqui.
+    const vitrinaPromise = fetchVitrinaBlock(sb, userId, todayISO, { withBadges: false });
     const chavesCaptura = chavesDaCaptura();
     const [runsR, gymR, mealsR, upcomingNotesR, cardR, badgesR, pastRacesR, bodyNotesR, goalsR, captureR] = await Promise.all([
       sb.from("runs").select("date, kind, training_type, distance_km, notes, coach_notes")
@@ -1405,6 +1421,7 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
       dailyCard: buildDailyCardContext(cardR.data, todayISO),
       raceHistory: buildRaceHistoryContext(pastRaces, raceRuns),
       badges: buildBadgesContext(badgesR.data),
+      vitrina: await vitrinaPromise,
       portrait: await portraitPromise,
       checkin: await checkinPromise,
       impressions: await impressionsPromise,
@@ -1419,6 +1436,176 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
     };
   } catch (e) {
     console.warn("carolMemory: fetchChatMemoryBlocks falhou:", e);
-    return { records: null, dailyCard: null, raceHistory: null, badges: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null, captureCoverage: null };
+    return { records: null, dailyCard: null, raceHistory: null, badges: null, vitrina: null, portrait: null, checkin: null, impressions: null, pushes: null, adherence: null, proposals: null, captureCoverage: null };
+  }
+}
+
+// ── A Vitrina inteira, em todos os canais (2026-09-25) ───────────────────
+//
+// «Tens de garantir que a Carol reconhece toda a vitrine para que isso possa
+// ser referenciado nos diversos locais onde ela interage com o atleta.» Até
+// aqui só o chat via os badges ganhos; o percentil ("Onde estás") e as
+// tabelas com nomes não chegavam a lado nenhum. Este bloco vai para o chat
+// (sem os badges, que lá já têm bloco próprio), para o cartão diário e para
+// as análises dos registos. Nunca para as notificações: a posição e o
+// percentil dizem-se a ele, não ao ecrã bloqueado.
+//
+// O percentil é calculado aqui, no momento, com a mesma fórmula do ecrã
+// (evaluatePrescriptions + percentileFrom) e só com consentimento — nunca
+// gravado. É o índice DELE contra uma distribuição pública, dito só a ele.
+
+const GENERO_EXTENSO: Record<string, string> = { M: "masculino", F: "feminino" };
+
+/** "escalão masculino dos 23 aos 34, estrada" / "escalão M40, trail". */
+export function segmentoPorExtenso(s: Segment): string {
+  const semLetra = s.ageBand === "sub23" || s.ageBand === "23-34";
+  const faixa = s.ageBand === "sub23" ? "até aos 22" : s.ageBand === "23-34" ? "dos 23 aos 34" : s.ageBand;
+  return `escalão${semLetra ? ` ${GENERO_EXTENSO[s.gender] ?? ""}` : ""} ${faixa}, ${s.terrain}`;
+}
+
+const percentilExtenso = (p: number) =>
+  p >= PERCENTILE_CEILING ? `${PERCENTILE_CEILING} ou mais` : p <= PERCENTILE_FLOOR ? `${PERCENTILE_FLOOR} ou menos` : String(p);
+
+export interface VitrinaContextInput {
+  statsPoolConsent: boolean;
+  leaderboardConsent: boolean;
+  own: Segment | null;
+  snapshots: SnapshotRow[];
+  /** O índice (0-100) e o percentil dele na última janela do escalão, se há. */
+  percentile: { score: number; value: number } | null;
+  /** As linhas DELE nas tabelas (as mais recentes primeiro). */
+  leaderboardEntries: LeaderboardEntryRow[];
+  /** Badges ganhos que ainda não viu na app (nome). */
+  unseenBadges: string[];
+  /** Sem nenhum badge ganho, as regras do 6 #6 vêm aqui (senão vêm no bloco dos badges). */
+  includeBadgeRules: boolean;
+}
+
+export function buildVitrinaContext(v: VitrinaContextInput): string {
+  const linhas: string[] = [];
+  if (v.unseenBadges.length) {
+    linhas.push(`- Badges ganhos que ele ainda não abriu na app: ${v.unseenBadges.join(", ")}. A app mostra-lhe a cerimónia ` +
+      `quando abrir — não sejas tu a anunciar; depois de ele os ver, podes referi-los.`);
+  }
+
+  if (!v.statsPoolConsent) {
+    linhas.push(`- "Onde estás" e tabelas: ele NÃO entrou na média do escalão — é uma decisão dele. Não o empurres; se ` +
+      `perguntar, explica que é no Perfil, Vitrina, "Comparar-me com o meu escalão", e que ninguém vê o nome dele por isso.`);
+  } else {
+    const a = percentileAvailability(v.snapshots, v.own);
+    const seg = v.own ? segmentoPorExtenso(v.own) : null;
+    if (!v.own) {
+      linhas.push(`- "Onde estás": entrou na média, mas falta saber o segmento dele (data de nascimento, género ou uma prova marcada).`);
+    } else if (!v.snapshots.length) {
+      linhas.push(`- "Onde estás": entrou na média do ${seg}. Ainda não há números publicados — nenhum grupo chegou aos 20 atletas. ` +
+        `Não inventes onde ele estaria.`);
+    } else if (a?.own) {
+      linhas.push(`- "Onde estás": o ${seg} tem números da quinzena que começa a ${a.windowStart}.` +
+        (v.percentile
+          ? ` Percentil dele: ${percentilExtenso(v.percentile.value)} — cumpre mais do plano do que ${percentilExtenso(v.percentile.value)}% dos atletas do escalão (índice ${String(v.percentile.score).replace(".", ",")} de 100).`
+          : ` Nessa quinzena não teve plano, por isso não tem índice.`));
+    } else if (a?.near.length) {
+      linhas.push(`- "Onde estás": o ${seg} ainda não tem atletas suficientes; há números de: ` +
+        `${a.near.map((n) => segmentoPorExtenso(n.segment)).join("; ")}.`);
+    } else {
+      linhas.push(`- "Onde estás": nem o ${seg} nem os grupos ao lado têm ainda números publicados.`);
+    }
+
+    if (!v.leaderboardConsent) {
+      linhas.push(`- Tabelas com nomes: ele não aceitou aparecer nelas (decisão dele; e só as vê quem aparece). Não o empurres.`);
+    } else {
+      const latest = a?.windowStart ?? null;
+      const agora = latest ? v.leaderboardEntries.find((e) => e.window_start === latest) : null;
+      const anterior = v.leaderboardEntries.find((e) => latest && e.window_start < latest) ?? null;
+      if (agora) {
+        linhas.push(`- Tabelas com nomes (top 10 do escalão): está lá, em ${agora.rank}.º lugar, na quinzena que começa a ${latest}` +
+          (anterior ? ` (na anterior esteve em ${anterior.rank}.º)` : " (é a primeira vez)") + `.`);
+      } else if (a?.own) {
+        linhas.push(`- Tabelas com nomes (top 10 do escalão): nesta quinzena não ficou nos 10.` +
+          (anterior ? ` Na anterior esteve em ${anterior.rank}.º.` : ""));
+      } else {
+        linhas.push(`- Tabelas com nomes: aceitou aparecer, mas o escalão dele ainda não tem tabela (faltam atletas).`);
+      }
+    }
+  }
+
+  return `A VITRINA DO PERFIL (o que ele vê no separador Vitrina: os badges de treino, "O que há para ganhar", ` +
+    `"Onde estás" — o percentil no escalão — e as tabelas com nomes; podes referi-la pelo nome):\n` +
+    linhas.join("\n") + `\n` +
+    `REGRAS DA VITRINA: o percentil e a posição dizem-se só a ele e quando vêm a propósito (ele pergunta, um balanço, ` +
+    `um momento teu) — nunca como pressão: o índice mede quanto do plano ele cumpre, não quanto treina. Nunca nomes de ` +
+    `outros atletas, nunca quantos atletas tem um grupo.` +
+    (v.includeBadgeRules ? `\n${badgeRules()}` : "");
+}
+
+/**
+ * O bloco da Vitrina, lido da base de dados. `withBadges` junta o bloco dos
+ * badges ganhos (buildBadgesContext) — o chat já o tem à parte e passa false.
+ * Falha em silêncio: sem Vitrina a Carol continua a falar do resto.
+ */
+export async function fetchVitrinaBlock(
+  sb: any,
+  userId: string,
+  todayISO: string,
+  opts: { withBadges?: boolean } = {},
+): Promise<string | null> {
+  try {
+    const [profR, badgesR, racesR, snapsR, boardR] = await Promise.all([
+      sb.from("profiles").select("birth_date, gender, stats_pool_consent_at, leaderboard_consent_at").eq("id", userId).maybeSingle(),
+      sb.from("user_badges").select("badge_key, tier, period_key, awarded_at, seen_at").eq("user_id", userId)
+        .order("awarded_at", { ascending: false }).limit(200),
+      sb.from("race_events").select("date, race_type").eq("user_id", userId).gte("date", addDaysISO(todayISO, -TERRAIN_LOOKBACK_DAYS)),
+      sb.from("percentile_snapshots").select("age_band, gender, terrain, window_start, window_end, boundaries")
+        .eq("metric", "plan_execution").order("window_start", { ascending: false }).limit(400),
+      sb.from("leaderboard_entries").select("window_start, rank, age_band, gender, terrain")
+        .eq("user_id", userId).order("window_start", { ascending: false }).limit(4),
+    ]);
+    warn("profiles(vitrina)", profR.error);
+    warn("user_badges(vitrina)", badgesR.error);
+    warn("percentile_snapshots", snapsR.error);
+    warn("leaderboard_entries", boardR.error);
+    const profile = profR.data || {};
+    const snapshots: SnapshotRow[] = snapsR.data || [];
+    const statsPoolConsent = !!profile.stats_pool_consent_at;
+    const own = ownSegmentFor(profile, racesR.data || [], todayISO);
+
+    // O percentil, calculado aqui e só com consentimento — nunca gravado.
+    let percentile: VitrinaContextInput["percentile"] = null;
+    const a = statsPoolConsent ? percentileAvailability(snapshots, own) : null;
+    if (a?.own?.window_end) {
+      const [itens, corridas, ginasio] = await Promise.all([
+        sb.from("coach_plan_items").select("plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, actual_date")
+          .eq("user_id", userId).gte("planned_date", a.windowStart).lt("planned_date", a.own.window_end),
+        sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")
+          .eq("user_id", userId).gte("date", a.windowStart).lt("date", a.own.window_end),
+        sb.from("workout_sessions").select("id, date, duration_seconds")
+          .eq("user_id", userId).gte("date", a.windowStart).lt("date", a.own.window_end),
+      ]);
+      const resumo = evaluatePrescriptions({ items: itens.data || [], runs: corridas.data || [], gym: ginasio.data || [], mealsByDate: {} }, a.own.window_end, WINDOW_DAYS);
+      const value = percentileFrom(resumo.executionScore, a.own.boundaries);
+      if (value != null && resumo.executionScore != null) percentile = { score: resumo.executionScore, value };
+    }
+
+    const badges = badgesR.data || [];
+    const badgesBlock = opts.withBadges ? buildBadgesContext(badges) : null;
+    const unseen = [...new Set(badges
+      .filter((b: any) => !b?.seen_at && typeof b?.badge_key === "string" && familiaDoBadge(b.badge_key))
+      .map((b: any) => nomeDoBadge(b.badge_key)))] as string[];
+    const vitrina = buildVitrinaContext({
+      statsPoolConsent,
+      leaderboardConsent: statsPoolConsent && !!profile.leaderboard_consent_at,
+      own,
+      snapshots,
+      percentile,
+      leaderboardEntries: boardR.data || [],
+      unseenBadges: unseen,
+      // Sem nenhum badge ganho não há bloco dos badges (aqui nem no chat) — as
+      // regras do 6 #6 vêm então aqui, para nunca faltarem.
+      includeBadgeRules: !buildBadgesContext(badges),
+    });
+    return [badgesBlock, vitrina].filter(Boolean).join("\n\n") || null;
+  } catch (e) {
+    console.warn("carolMemory: fetchVitrinaBlock falhou:", e);
+    return null;
   }
 }

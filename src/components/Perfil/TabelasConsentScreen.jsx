@@ -156,7 +156,8 @@ export default function TabelasConsentScreen({ onClose }) {
           <p className="m-0 text-[12.5px] mt-1.5" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
             São duas escolhas, separadas. A primeira põe-te a contar para a média do teu escalão (idade e género)
             na tua modalidade, estrada ou trail, sem o teu nome — e é assim que ficas a saber onde estás. A segunda põe o teu nome abreviado na
-            tabela. Podes escolher só a primeira, e mudar de ideias quando quiseres.
+            tabela dos 10 que mais cumprem o plano no teu escalão, em cada quinzena. Podes escolher só a primeira, e
+            mudar de ideias quando quiseres.
           </p>
         </GlassCard>
 
@@ -192,7 +193,7 @@ export default function TabelasConsentScreen({ onClose }) {
           id="consent-leaderboard"
           testId="tabelas-switch-leaderboard"
           titulo="Aparecer nas tabelas com o meu nome abreviado"
-          descricao={`Apareces na tabela como "${nomeCurto}", com o escalão, o nível, a modalidade e quanto do plano cumpriste. É uma escolha à parte: ligar a de cima não liga esta.`}
+          descricao={`Se estiveres entre os 10 que mais cumprem o plano no teu escalão, apareces na tabela dessa quinzena como "${nomeCurto}", com o escalão, o nível, a modalidade e quanto do plano cumpriste. Só vê as tabelas quem também aparece nelas. É uma escolha à parte: ligar a de cima não liga esta.`}
           checked={nasTabelas}
           onChange={(on) => trocar('leaderboard', on)}
           disabled={aGravar !== null || !naMedia}

@@ -100,3 +100,14 @@ Deno.test("P.10: o silêncio com check-ins diz ao modelo que ele está por cá e
   // Sem check-in, como antes.
   assertEquals(describeFacts(silence, {}), [`Dias sem registos: ${silence.silenceDays}`]);
 });
+
+Deno.test("Vitrina: as notificações das tabelas e do percentil nunca passam pelo modelo (sem números no ecrã bloqueado)", async () => {
+  const base = { raceId: null, raceName: null, hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
+  let chamou = false;
+  const espiao = (() => { chamou = true; return Promise.resolve(new Response("{}")); }) as unknown as typeof fetch;
+  const board = await composePushMessage({ ...base, trigger: "leaderboard", key: "leaderboard:entrou:2026-08-31", vitrinaStage: "entrou", leaderboardRank: 1 }, {}, "chave", espiao);
+  const ready = await composePushMessage({ ...base, trigger: "percentile_ready", key: "percentile_ready:meu:M40.M.estrada", vitrinaStage: "meu" }, {}, "chave", espiao);
+  assertEquals(chamou, false);
+  assertEquals(board.generated, false);
+  assertEquals(ready.body, "O teu escalão já tem números publicados. Vem ver onde estás.");
+});

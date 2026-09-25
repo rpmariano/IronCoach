@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import useBadges from '../../utils/useBadges';
+import { useAppStore } from '../../store';
+import { todayISO } from '../../lib/utils';
+import { ownSegmentFor, percentileAvailability } from '@formulas/vitrina.ts';
 import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import GlassCard from '../shared/GlassCard';
 import BadgesGrelha from './BadgesGrelha';
@@ -8,6 +11,7 @@ import BadgeDetailSheet from './BadgeDetailSheet';
 import BadgesPorGanharSheet from './BadgesPorGanharSheet';
 import OndeEstasScreen from './OndeEstasScreen';
 import TabelasConsentScreen from './TabelasConsentScreen';
+import TabelasScreen from './TabelasScreen';
 
 /* A Vitrina dos badges de treino (reforma da gamificação, fase 2).
 
@@ -81,6 +85,25 @@ export default function BadgesCard() {
      percentil. */
   const [ondeEstasAberto, setOndeEstasAberto] = useState(false);
   const [tabelasAberto, setTabelasAberto] = useState(false);
+  // As tabelas com nomes (2026-09-25): { segment, windowStart, windowEnd }.
+  const [tabelasVer, setTabelasVer] = useState(null);
+  const { profile, raceEvents, percentileSnapshots } = useAppStore();
+  /* "Onde estás" só aparece quando há números para mostrar a ESTE atleta — o
+     escalão dele ou um dos grupos ao lado, na última quinzena publicada
+     (@formulas/vitrina.ts, a mesma régua do aviso da Carol). Antes aparecia
+     sempre e levava a um ecrã vazio: nenhum grupo tinha ainda 20 atletas. O
+     consentimento continua à vista no Perfil ("Comparar-me com o meu
+     escalão") — é ele que faz os grupos chegarem aos 20. */
+  const temOndeEstas = useMemo(
+    () => !!percentileAvailability(percentileSnapshots, ownSegmentFor(profile, raceEvents, todayISO())),
+    [percentileSnapshots, profile, raceEvents],
+  );
+  const nasTabelas = !!profile?.leaderboard_consent_at && !!profile?.stats_pool_consent_at;
+  // Quem aceitou aparecer vê o top 10; os outros vão ao consentimento.
+  const abrirTabelas = (segment, windowStart, windowEnd) => {
+    if (nasTabelas && segment && windowStart) setTabelasVer({ segment, windowStart, windowEnd });
+    else setTabelasAberto(true);
+  };
   const [novos, setNovos] = useState(() => new Set());
   const { ref, style, animate, playKey } = useRevealAnimation();
 
@@ -173,19 +196,21 @@ export default function BadgesCard() {
           </button>
         )}
 
-        <button
-          type="button"
-          data-testid="badges-onde-estas"
-          onClick={() => setOndeEstasAberto(true)}
-          className="w-full flex items-center gap-2.5 text-left"
-          style={LINHA}
-        >
-          <span className="flex-1 text-[12px] leading-[1.45]" style={{ color: 'var(--text-3)' }}>
-            <span className="font-extrabold" style={{ color: 'var(--text-2)' }}>Onde estás</span>
-            {' — o teu percentil no escalão'}
-          </span>
-          <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
-        </button>
+        {temOndeEstas && (
+          <button
+            type="button"
+            data-testid="badges-onde-estas"
+            onClick={() => setOndeEstasAberto(true)}
+            className="w-full flex items-center gap-2.5 text-left"
+            style={LINHA}
+          >
+            <span className="flex-1 text-[12px] leading-[1.45]" style={{ color: 'var(--text-3)' }}>
+              <span className="font-extrabold" style={{ color: 'var(--text-2)' }}>Onde estás</span>
+              {' — o teu percentil no escalão'}
+            </span>
+            <ChevronRight size={15} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+          </button>
+        )}
       </GlassCard>
 
       {aberto && (
@@ -203,7 +228,15 @@ export default function BadgesCard() {
       {ondeEstasAberto && (
         <OndeEstasScreen
           onClose={() => setOndeEstasAberto(false)}
-          onOpenTabelas={() => setTabelasAberto(true)}
+          onOpenTabelas={abrirTabelas}
+        />
+      )}
+
+      {tabelasVer && (
+        <TabelasScreen
+          {...tabelasVer}
+          onClose={() => setTabelasVer(null)}
+          onManageConsent={() => setTabelasAberto(true)}
         />
       )}
 

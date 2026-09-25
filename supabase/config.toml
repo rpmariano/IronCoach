@@ -429,3 +429,9 @@ enabled = true
 # e o gateway recusava todas as chamadas do cron com 401.
 [functions.coach-proactive-tick]
 verify_jwt = false
+
+# O compute-percentile-snapshots também é chamado pelo pg_cron (diário), com o
+# mesmo cabeçalho x-cron-secret e sem JWT — a mesma razão do tick acima
+# (2026-09-25: a função existia desde a Fase 5 mas nunca tinha sido agendada).
+[functions.compute-percentile-snapshots]
+verify_jwt = false

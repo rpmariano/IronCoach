@@ -47,6 +47,10 @@ const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
   race_conflict: "Ele tem duas provas principais no mesmo bloco de treino. A notificação chama-o para decidirem juntos qual é o objetivo.",
   block_end: "O bloco de treino dele está a acabar e não há outro a seguir. A notificação chama-o para fazerem o ponto e prepararem o próximo.",
   week_review: "A semana dele fechou no domingo. A notificação chama-o para verem juntos como correu, face ao plano, e o foco da que começa. Não digas o dia da semana de hoje nem que o balanço já está feito.",
+  // Nunca chegam ao modelo (frases fixas, ver composePushMessage): no ecrã
+  // bloqueado não vão posições nem percentis. Ficam pelo tipo.
+  leaderboard: "Ele entrou (ou saiu) das tabelas com nomes do escalão dele.",
+  percentile_ready: "Já há números publicados para ele ver onde está no escalão.",
 };
 
 /** Os dados do momento, em linhas — só o que existe; nada é inventado. */
@@ -70,7 +74,7 @@ export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string
     if (c.conflictRaceNames?.length) lines.push(`Outra(s) principal(is) no mesmo bloco: ${c.conflictRaceNames.join(", ")}`);
     return lines;
   }
-  if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention" && c.trigger !== "week_review" && c.trigger !== "missed_workout") {
+  if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention" && c.trigger !== "week_review" && c.trigger !== "missed_workout" && c.trigger !== "leaderboard" && c.trigger !== "percentile_ready") {
     const name = (f.raceName || c.raceName || "").trim();
     if (name) lines.push(`Prova: ${name}`);
     const km = Number(f.distanceKm);
@@ -151,8 +155,12 @@ export async function composePushMessage(
   /* O assunto por resolver nunca passa pelo gerador: o motivo pode ser de
      saúde (uma dor, um sinal de sobretreino) e não vai para o ecrã
      bloqueado. Sai sempre a frase genérica. O treino de ontem também não
-     (P.10): a pergunta é fixa de propósito, para não acusar nem inventar. */
-  if (!geminiKey || c.trigger === "intervention" || c.trigger === "missed_workout") return { ...fallback, generated: false, usage: null };
+     (P.10): a pergunta é fixa de propósito, para não acusar nem inventar.
+     Nem a Vitrina (2026-09-25): uma posição ou um percentil no ecrã
+     bloqueado é uma comparação com outros atletas à vista de quem pegar no
+     telemóvel — o número diz-se no chat, a ele. */
+  const fixa = c.trigger === "intervention" || c.trigger === "missed_workout" || c.trigger === "leaderboard" || c.trigger === "percentile_ready";
+  if (!geminiKey || fixa) return { ...fallback, generated: false, usage: null };
   try {
     const res = await fetchImpl(
       `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,

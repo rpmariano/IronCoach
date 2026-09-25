@@ -91,6 +91,12 @@ export const useAppStore = create((set, get) => ({
   // Check-ins diários (Fase 2 de specs/carol-omnisciencia-omnipresenca.md):
   // os últimos 120 dias, para o ciclo ter margem. Um por dia.
   dailyCheckins: [],
+  // A Vitrina (2026-09-25): as distribuições publicadas do "Onde estás" (só as
+  // colunas que o cliente pode ler — nunca o `n`) e as linhas DO PRÓPRIO
+  // atleta nas tabelas com nomes. Decidem se a entrada "Onde estás" aparece e
+  // os avisos da Carol "já há números" / "entraste nas tabelas".
+  percentileSnapshots: [],
+  leaderboardEntries: [],
   // Resumo diário do Coach (card rotativo do Início) — null até carregar,
   // depois {recap, warnings, meal_suggestion, tomorrow_prep, date, ...}.
   // Ver specs/plano-de-treino.md §11.
@@ -1196,6 +1202,7 @@ const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
 const EMPTY_DATA = {
   profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [],
   coachMessages: [], raceEvents: [], coachPlans: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
+  percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
 };
 /** O dataPending nunca dura mais do que isto: um pedido que nunca responde
@@ -1270,6 +1277,17 @@ async function runInitialLoad(set, get, userId) {
     // Em erro ficam os conjuntos que já havia: um falhanço passageiro numa
     // recarga não pode fazer a app esquecer o que já saudou.
     ['impressions', queryImpressionKeys(userId), (data) => () => applyImpressionRows(set, get, data)],
+    // A Vitrina. Separados: um erro nas tabelas (ex.: antes da migração) não
+    // pode apagar as distribuições. As colunas nomeadas são obrigatórias — os
+    // GRANTs por coluna recusam um select('*') em percentile_snapshots.
+    ['percentileSnapshots', supabase.from('percentile_snapshots')
+      .select('metric, age_band, gender, terrain, window_start, window_end, n_band, boundaries, computed_at')
+      .eq('metric', 'plan_execution').order('window_start', { ascending: false }).limit(400),
+      (data) => ({ percentileSnapshots: list(data) })],
+    ['leaderboardEntries', supabase.from('leaderboard_entries')
+      .select('window_start, window_end, rank, score, age_band, gender, terrain')
+      .eq('user_id', userId).order('window_start', { ascending: false }).limit(8),
+      (data) => ({ leaderboardEntries: list(data) })],
   ];
 
   // dataPending só no primeiro carregamento completo de cada conta: num

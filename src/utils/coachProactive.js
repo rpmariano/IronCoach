@@ -22,7 +22,9 @@ import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
 import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from '@formulas/proactiveTriggers.ts';
+import { leaderboardMoment, ownSegmentFor, percentileAvailability, percentileReadyMoment } from '@formulas/vitrina.ts';
 import { addDaysISO } from '../lib/utils';
+import { segmentPhrase } from './percentile';
 
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
  *  semana — depois disso já é história, não é "o balanço". Sem corrida
@@ -60,7 +62,7 @@ function daysBetween(fromIso, toIso) {
  *  efeito passivo do Coach (P.9) para saber a que candidato uma
  *  notificação tocada corresponde, mesmo que não seja o primeiro da lista;
  *  `pickProactiveTrigger` continua a ser só o primeiro. */
-export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [], dailyCheckins = [] }, now = new Date()) {
+export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans = [], coachPlanItems = [], dailyCheckins = [], percentileSnapshots = [], leaderboardEntries = [] }, now = new Date()) {
   const today = isoDay(now);
   const races = (raceEvents || []).filter((r) => r && typeof r.date === 'string');
   const scheduled = races.filter((r) => r.status !== 'concluida');
@@ -151,7 +153,43 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
       details: `Treino de ontem (${missed.date}) por registar: ${missed.items.map(missedItemLabel).join(' + ')}.`,
     });
   }
+  /* A Vitrina (2026-09-25), no fim e pela régua do servidor (@formulas/
+     vitrina.ts) — a mesma chave da notificação. As tabelas antes do
+     percentil. Sem consentimento, nenhum dos dois. */
+  const vitrina = vitrinaCandidates({ profile, raceEvents: races, percentileSnapshots, leaderboardEntries }, today);
+  list.push(...vitrina);
   return list;
+}
+
+/** Os momentos da Vitrina, com o Contexto que o chat precisa (o momento e
+ *  o segmento por extenso; os números vêm do bloco VITRINA do servidor). */
+function vitrinaCandidates({ profile, raceEvents, percentileSnapshots, leaderboardEntries }, today) {
+  const statsPool = !!profile?.stats_pool_consent_at;
+  if (!statsPool || !(percentileSnapshots || []).length) return [];
+  const own = ownSegmentFor(profile, raceEvents, today);
+  const out = [];
+  const board = leaderboardMoment(leaderboardEntries, percentileSnapshots, own, !!profile?.leaderboard_consent_at);
+  if (board) {
+    out.push({
+      trigger: 'leaderboard',
+      key: board.key,
+      details: board.stage === 'entrou'
+        ? `Momento: ENTROU nas tabelas do escalão dele (${segmentPhrase(own || {})}), na quinzena que começa a ${board.windowStart}, em ${board.rank}.º lugar.`
+        : `Momento: SAIU das tabelas do escalão dele (${segmentPhrase(own || {})}) na quinzena que começa a ${board.windowStart} — estava na anterior.`,
+    });
+  }
+  const ready = percentileReadyMoment(percentileSnapshots, own, statsPool);
+  if (ready) {
+    const near = percentileAvailability(percentileSnapshots, own)?.near || [];
+    out.push({
+      trigger: 'percentile_ready',
+      key: ready.key,
+      details: ready.stage === 'meu'
+        ? `Momento "meu": ${segmentPhrase(own)} já tem números publicados (quinzena que começa a ${ready.windowStart}).`
+        : `Momento "perto": ${segmentPhrase(own)} ainda não tem atletas suficientes, mas já há números de ${near.map((n) => segmentPhrase(n.segment)).join(', ')}.`,
+    });
+  }
+  return out;
 }
 
 const ITEM_KIND_LABEL = { corrida: 'corrida', ginasio: 'ginásio' };

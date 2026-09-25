@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { pickProactiveTrigger, listProactiveTriggers, lastRecordDate } from './coachProactive';
 import { pickServerProactive, listServerProactive } from '@formulas/proactiveTriggers.ts';
+import { ownSegmentFor } from '@formulas/vitrina.ts';
 
 /* O servidor decide de hora a hora se a Carol deve chamar pelo atleta
    (ação P.3, coach-proactive-tick); o cliente decide quando o Coach abre.
@@ -231,5 +232,65 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
 
   it('desligado no Perfil, não aparece no servidor', () => {
     expect(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-27', weekRecordDates: ['2026-09-25'], allowed: ['silence'] }, MONDAY)).toEqual([]);
+  });
+});
+
+/* A Vitrina (2026-09-25): "já há números" e "entraste/saíste das tabelas".
+   O tick monta a entrada a partir do perfil, das provas e das tabelas; o
+   cliente, do store. Mesmos dados, mesmas chaves, na mesma ordem. */
+describe('Vitrina — cliente e servidor, as mesmas chaves', () => {
+  const profile = {
+    id: 'u1', gender: 'M', birth_date: '1984-05-10',
+    stats_pool_consent_at: '2026-09-01T10:00:00Z', leaderboard_consent_at: '2026-09-01T10:00:00Z',
+  };
+  const raceEvents = [{ id: 'r1', name: 'Meia', date: '2026-10-20', status: 'agendada', race_type: 'estrada' }];
+  const snap = (age_band, window_start) => ({ age_band, gender: 'M', terrain: 'estrada', window_start, window_end: 'x', boundaries: [], n_band: '20-49' });
+
+  function vitrinaBoth(data) {
+    const client = listProactiveTriggers(data, now)
+      .filter((c) => c.trigger === 'leaderboard' || c.trigger === 'percentile_ready')
+      .map((c) => ({ trigger: c.trigger, key: c.key }));
+    const statsPoolConsent = !!data.profile.stats_pool_consent_at;
+    const server = listServerProactive({
+      raceEvents: data.raceEvents, runs: [], lastRecordDate: TODAY,
+      vitrina: {
+        snapshots: data.percentileSnapshots,
+        own: ownSegmentFor(data.profile, data.raceEvents, TODAY),
+        statsPoolConsent,
+        leaderboardConsent: statsPoolConsent && !!data.profile.leaderboard_consent_at,
+        leaderboardEntries: data.leaderboardEntries,
+      },
+    }, TODAY)
+      .filter((c) => c.trigger === 'leaderboard' || c.trigger === 'percentile_ready')
+      .map((c) => ({ trigger: c.trigger, key: c.key }));
+    return { client, server };
+  }
+
+  it('entrou nas tabelas e o escalão tem números: os dois momentos, tabelas primeiro', () => {
+    const { client, server } = vitrinaBoth({
+      profile, raceEvents, runs: [],
+      percentileSnapshots: [snap('M40', '2026-08-31')],
+      leaderboardEntries: [{ window_start: '2026-08-31', rank: 4 }],
+    });
+    expect(client).toEqual([
+      { trigger: 'leaderboard', key: 'leaderboard:entrou:2026-08-31' },
+      { trigger: 'percentile_ready', key: 'percentile_ready:meu:M40.M.estrada' },
+    ]);
+    expect(server).toEqual(client);
+  });
+
+  it('só há números ao lado: o momento "perto"', () => {
+    const { client, server } = vitrinaBoth({ profile, raceEvents, runs: [], percentileSnapshots: [snap('M45', '2026-08-31')], leaderboardEntries: [] });
+    expect(client).toEqual([{ trigger: 'percentile_ready', key: 'percentile_ready:perto:M40.M.estrada' }]);
+    expect(server).toEqual(client);
+  });
+
+  it('sem consentimento para a média, nenhum dos dois — nem a app nem o servidor', () => {
+    const { client, server } = vitrinaBoth({
+      profile: { ...profile, stats_pool_consent_at: null }, raceEvents, runs: [],
+      percentileSnapshots: [snap('M40', '2026-08-31')], leaderboardEntries: [{ window_start: '2026-08-31', rank: 1 }],
+    });
+    expect(client).toEqual([]);
+    expect(server).toEqual([]);
   });
 });
