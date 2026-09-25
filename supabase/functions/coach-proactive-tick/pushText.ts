@@ -55,7 +55,10 @@ export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string
   if (f.firstName) lines.push(`Nome do atleta: ${f.firstName}`);
   if (c.trigger === "silence" && c.lastCheckinDate) {
     // P.10: ele faz os check-ins — o que falta são os treinos, não notícias dele.
-    lines.push(`Dias sem nenhum treino registado: ${c.trainingSilenceDays ?? c.silenceDays ?? "vários"}`);
+    // Sem nenhum treino registado não há dias a contar (o chat diz o mesmo).
+    lines.push(c.trainingSilenceDays == null
+      ? "Treinos registados: nenhum até hoje"
+      : `Dias sem nenhum treino registado: ${c.trainingSilenceDays}`);
     lines.push(`Último check-in: ${c.lastCheckinDate} — ele está por cá; não digas que não regista nada, fala dos treinos`);
   } else if (c.trigger === "silence") {
     lines.push(`Dias sem registos: ${c.silenceDays ?? "vários"}`);

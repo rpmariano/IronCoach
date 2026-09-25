@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds, startTimeMinutes, interventionKey, raceConflictKey, findMissedWorkout, ALL_PROACTIVE_TRIGGERS } from "./proactiveTriggers.ts";
+import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds, startTimeMinutes, interventionKey, raceConflictKey, findMissedWorkout, missedWorkoutInReview, ALL_PROACTIVE_TRIGGERS } from "./proactiveTriggers.ts";
 import { assertCarolVoice } from "../carolTone.ts";
 
 const TODAY = "2026-09-18";
@@ -312,6 +312,19 @@ Deno.test("P.10: à segunda, o balanço da semana fica com o dia — o treino de
   assertEquals(listServerProactive({ ...domingo, weekRecordDates: [] }, monday).map((c) => c.trigger), ["missed_workout"]);
 });
 
+Deno.test("P.10: à terça, o treino de segunda entra a seguir ao balanço — já é da semana nova", () => {
+  // Revisão pré-deploy de 2026-09-25: à terça o balanço continuava na lista e
+  // tapava o treino de segunda, que à quarta já era de anteontem.
+  const tuesday = "2026-09-22";
+  // Registou uma refeição na segunda (sem silêncio), mas não o treino.
+  const segunda = missedInput({ lastRecordDate: "2026-09-21", planItems: [ontem({ planned_date: "2026-09-21" })], weekRecordDates: ["2026-09-16"] });
+  const list = listServerProactive(segunda, tuesday);
+  assertEquals(list.map((c) => c.key), ["week_review:2026-09-14", "missed_workout:2026-09-21"]);
+  assertEquals(missedWorkoutInReview("2026-09-20", { weekStart: "2026-09-14", weekEnd: "2026-09-20" }), true);
+  assertEquals(missedWorkoutInReview("2026-09-21", { weekStart: "2026-09-14", weekEnd: "2026-09-20" }), false);
+  assertEquals(missedWorkoutInReview("2026-09-20", null), false);
+});
+
 Deno.test("P.10: o silêncio vem antes do treino de ontem", () => {
   const list = listServerProactive(missedInput({ lastRecordDate: "2026-09-10" }), TODAY);
   assertEquals(list.map((c) => c.trigger), ["silence", "missed_workout"]);
@@ -327,9 +340,13 @@ Deno.test("P.10: com check-in depois do último registo, o silêncio fala dos tr
   const body = proactivePushMessage(c).body;
   assertEquals(body, "Não vejo nenhum treino teu há 10 dias. Está tudo bem?");
   assertCarolVoice(body);
-  // Sem nenhum treino registado, os dias do silêncio.
+  // Sem nenhum treino registado não há dias a contar: os 4 dias eram desde a
+  // última refeição, e o chat diz "não há treinos registados" (revisão
+  // pré-deploy de 2026-09-25).
   const semTreino = pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", lastCheckinDate: "2026-09-17", lastTrainingDate: null }, TODAY)!;
-  assertEquals(proactivePushMessage(semTreino).body, "Não vejo nenhum treino teu há 4 dias. Está tudo bem?");
+  assertEquals(semTreino.trainingSilenceDays, null);
+  assertEquals(proactivePushMessage(semTreino).body, "Ainda não vejo nenhum treino teu registado. Está tudo bem?");
+  assertCarolVoice(proactivePushMessage(semTreino).body);
 });
 
 Deno.test("P.10: um check-in antigo não muda nada", () => {

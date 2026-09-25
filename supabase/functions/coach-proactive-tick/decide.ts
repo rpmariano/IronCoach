@@ -129,8 +129,20 @@ export function choosePush(
    Três motivos ficam de fora: repetem-se de hora a hora sem dizer nada de
    novo (de noite, fora da janela; depois de notificado ou entregue, até ao
    fim do dia) e enchiam o app_logs, que o Admin lê pelas últimas 300 linhas.
-   O que se regista é o que explica um envio, ou a falta dele. */
+   O que se regista é o que explica um envio, ou a falta dele.
+
+   Os outros motivos também se repetem enquanto o momento existir (ja_visto,
+   limite_diario, falou_ha_pouco…): sem custo, cada decisão — atleta, momento
+   e motivo — fica uma vez por dia (`loggedToday`, lido pelo tick no
+   arranque). Só se viu isto quando o app_logs passou a aceitar 'info'
+   (revisão pré-deploy de 2026-09-25): até aí o check recusava estas linhas
+   todas e o registo ficava só com os envios. */
 const QUIET_LOG_REASONS = new Set(["fora_de_horas", "ja_notificado", "ja_entregue"]);
+
+/** A identidade de uma decisão sem custo no registo do dia. */
+export function tickLogSignature(userId: string, key: string | null | undefined, reason: string): string {
+  return `${userId}|${key ?? ""}|${reason}`;
+}
 
 export interface TickLogInput {
   userId: string;
@@ -141,6 +153,8 @@ export interface TickLogInput {
   usage?: { input_tokens: number; output_tokens: number } | null;
   generated?: boolean;
   lisbonHour: number;
+  /** As decisões sem custo já registadas hoje (tickLogSignature). */
+  loggedToday?: Set<string>;
 }
 
 export function tickLogRow(input: TickLogInput): {
@@ -150,6 +164,7 @@ export function tickLogRow(input: TickLogInput): {
   const usage = input.usage ?? null;
   // Com custo, regista-se sempre (o painel Custos tem de o contar).
   if (!usage && QUIET_LOG_REASONS.has(input.reason)) return null;
+  if (!usage && input.loggedToday?.has(tickLogSignature(input.userId, input.candidate?.key, input.reason))) return null;
   return {
     user_id: input.userId,
     level: usage ? "success" : "info",

@@ -1202,7 +1202,9 @@ export default function Admin() {
               'bg-[var(--bg-sheet)] border-[var(--border-glass)] text-[var(--text-3)]'
             }`}>
               <div className="flex justify-between items-start gap-2 mb-1">
-                <span className="font-bold opacity-75">[{l.module?.toUpperCase()}]</span>
+                {/* A coluna é `event` (app_logs não tem `module`): o cabeçalho
+                    saía "[]" em todas as linhas. */}
+                <span className="font-bold opacity-75">[{(l.event || '').toUpperCase()}]</span>
                 <span className="opacity-50 shrink-0">{new Date(l.created_at).toLocaleTimeString('pt-PT')}</span>
               </div>
               <p className="whitespace-pre-wrap break-words">{l.message}</p>

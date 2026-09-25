@@ -94,6 +94,9 @@ Deno.test("P.10: o silêncio com check-ins diz ao modelo que ele está por cá e
   assertEquals(facts[0], "Dias sem nenhum treino registado: 10");
   assertStringIncludes(facts[1], "Último check-in: 2026-09-17");
   assertStringIncludes(buildPushPrompt(withCheckin, {}), "Ele faz os check-ins mas não regista treinos");
+  // Nunca registou um treino: não há dias a contar (o chat diz o mesmo).
+  const neverTrained = { ...silence, lastCheckinDate: "2026-09-17", trainingSilenceDays: null };
+  assertEquals(describeFacts(neverTrained, {})[0], "Treinos registados: nenhum até hoje");
   // Sem check-in, como antes.
   assertEquals(describeFacts(silence, {}), [`Dias sem registos: ${silence.silenceDays}`]);
 });

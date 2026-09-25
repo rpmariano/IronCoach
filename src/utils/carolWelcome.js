@@ -109,6 +109,23 @@ export function decideWelcome({ now = new Date(), raceEvents = [], seen = [], la
   return { variant: slot, key, markKeys: [key], race: null };
 }
 
+/**
+ * Ao voltar à app (App.jsx, visibilitychange), o que fazer com as boas-vindas:
+ * - 'skip': há uma camada aberta — o momento do badge, uma persiana, um
+ *   diálogo. Não se toca em nada, e a cancela não fecha: fechá-la ('pending',
+ *   para ler as impressões) desmontava o momento do badge, e o tryWelcome, já
+ *   sem o ver, saudava no lugar dele (revisão pré-deploy de 2026-09-25). A
+ *   saudação fica para o próximo regresso, como no próprio tryWelcome;
+ * - 'try': decidir já (sem utilizador carregado, ou sem nada a saudar aqui);
+ * - 'refresh': há uma saudação possível — ler as impressões primeiro, com a
+ *   cancela em 'pending'.
+ */
+export function welcomeReturnAction({ busy, userLoaded, localDecision }) {
+  if (busy) return 'skip';
+  if (!userLoaded || !localDecision) return 'try';
+  return 'refresh';
+}
+
 /* ── memória por dispositivo ────────────────────────────────────────────── */
 
 const storageKey = (userId) => `ironcoach_welcome_seen_${userId || 'anon'}`;

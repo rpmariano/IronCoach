@@ -5,6 +5,11 @@
 -- Testada lá numa transação revertida: abrir com origem, trocar o motivo com o
 -- aviso aberto (o anterior fecha como 'substituido'), deduzir a origem do
 -- check-in pelo motivo e fechar com desfecho; as colunas de passagem ficam vazias.
+-- Corrigido no ficheiro a 2026-09-25 (revisão pré-deploy): a política de admin
+-- passa a nascer `to authenticated`. Foi aplicada sem isso; em produção quem a
+-- corrigiu foi a 20260924235403_security_definer_rpc, e este ficheiro, se for
+-- reaplicado à mão, dá agora o mesmo estado — sem ela, as consultas anónimas a
+-- esta tabela davam erro (anon já não tem EXECUTE em is_admin()).
 -- ============================================================================
 --
 -- Um "assunto por resolver" (profiles.coach_intervention_status 'needed') é o
@@ -59,7 +64,7 @@ create policy "own interventions select" on public.coach_interventions
 
 drop policy if exists "admin read all interventions" on public.coach_interventions;
 create policy "admin read all interventions" on public.coach_interventions
-  for select using (public.is_admin());
+  for select to authenticated using (public.is_admin());
 
 alter table public.profiles
   add column if not exists coach_intervention_origin text

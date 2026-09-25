@@ -274,7 +274,9 @@ grant execute on function public.admin_list_users() to authenticated;
 create table app_logs (
   id         uuid        primary key default gen_random_uuid(),
   user_id    uuid        references auth.users(id) on delete set null,
-  level      text        not null check (level in ('success','error')),
+  -- 'info': as decisões do coach-proactive-tick sem chamada ao modelo
+  -- (migration 20260925091616_app_logs_info_level).
+  level      text        not null check (level in ('success','error','info')),
   event      text        not null,
   message    text,
   meta       jsonb,

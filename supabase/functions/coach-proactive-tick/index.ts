@@ -25,7 +25,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
 import { listServerProactive, proactiveTab, weekToReviewBounds, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
 import { composePushMessage, type PushUsage } from "./pushText.ts";
-import { choosePush, tickLogRow } from "./decide.ts";
+import { choosePush, lisbonDateOf, tickLogRow, tickLogSignature } from "./decide.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -134,6 +134,27 @@ async function handler(req: Request): Promise<Response> {
 
   const yesterday = addDays(today, -1);
 
+  /* As decisões sem custo que o tick já registou hoje (P.10): cada uma —
+     atleta, momento e motivo — fica uma vez por dia (decide.ts, tickLogRow).
+     As últimas 26 horas cobrem o dia de Lisboa inteiro, com ou sem hora de
+     verão. Se a leitura falhar, regista-se de hora a hora, como antes. */
+  const loggedToday = new Set<string>();
+  if (byUser.size) {
+    // Só os atletas desta execução: sem o filtro, acima de 1000 linhas o
+    // PostgREST cortava a resposta e o registo voltava a ser de hora a hora.
+    const { data: loggedRows, error: loggedErr } = await sb.from("app_logs")
+      .select("user_id, meta, created_at")
+      .eq("event", "coach-proactive-tick").eq("level", "info")
+      .in("user_id", [...byUser.keys()])
+      .gte("created_at", new Date(now.getTime() - 26 * 3600000).toISOString());
+    if (loggedErr) console.warn("coach-proactive-tick: não leu o registo de hoje", loggedErr.message);
+    for (const r of loggedRows || []) {
+      if (typeof r?.created_at === "string" && lisbonDateOf(r.created_at) === today) {
+        loggedToday.add(tickLogSignature(r.user_id, r.meta?.key ?? null, String(r.meta?.reason ?? "")));
+      }
+    }
+  }
+
   for (const [userId, userSubs] of byUser) {
     try {
       const [
@@ -207,11 +228,12 @@ async function handler(req: Request): Promise<Response> {
         usage: PushUsage | null = null,
         generated = false,
       ) => {
-        const row = tickLogRow({ userId, candidates, candidate: pickedCandidate ?? candidates[0] ?? null, reason, usage, generated, lisbonHour: hour });
+        const row = tickLogRow({ userId, candidates, candidate: pickedCandidate ?? candidates[0] ?? null, reason, usage, generated, lisbonHour: hour, loggedToday });
         if (!row) return;
         try {
           const { error: logErr } = await sb.from("app_logs").insert(row);
           if (logErr) console.warn("coach-proactive-tick: não gravou o log", userId, logErr.message);
+          else if (row.level === "info") loggedToday.add(tickLogSignature(userId, row.meta.key as string | null, reason));
         } catch (e) {
           console.warn("coach-proactive-tick: não gravou o log", userId, e);
         }

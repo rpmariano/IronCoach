@@ -246,6 +246,21 @@ describe('P.10 — o treino de ontem e o silêncio com check-ins, no chat', () =
     }]);
   });
 
+  // Revisão pré-deploy de 2026-09-25: à terça o balanço da semana tapava o
+  // treino de segunda, que à quarta já era de anteontem.
+  it('à terça, o treino de segunda entra a seguir ao balanço; à segunda, o de domingo é do balanço', () => {
+    const terca = new Date('2026-09-15T09:00:00Z');
+    const segunda = new Date('2026-09-14T09:00:00Z');
+    const semana = { meals: [{ date: '2026-09-09' }, { date: '2026-09-14' }] };
+    const item = (planned_date) => ({ coachPlanItems: [{ ...plano.coachPlanItems[0], planned_date }] });
+
+    const naTerca = listProactiveTriggers(data({ ...plano, ...item('2026-09-14'), ...semana }), terca);
+    expect(naTerca.map((c) => c.key)).toEqual(['week_review:2026-09-07', 'missed_workout:2026-09-14']);
+
+    const naSegunda = listProactiveTriggers(data({ ...plano, ...item('2026-09-13'), meals: [{ date: '2026-09-09' }, { date: '2026-09-13' }] }), segunda);
+    expect(naSegunda.map((c) => c.key)).toEqual(['week_review:2026-09-07']);
+  });
+
   it('com uma sessão de ginásio registada ontem, o treino conta como feito', () => {
     const list = listProactiveTriggers(data({ ...plano, meals: [{ date: '2026-09-11' }], gymSessions: [{ date: '2026-09-10' }] }), NOW);
     expect(list.some((c) => c.trigger === 'missed_workout')).toBe(false);

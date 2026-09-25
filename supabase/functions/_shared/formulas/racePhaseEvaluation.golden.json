@@ -8,7 +8,7 @@
     },
     "expect": {
       "score": null, "stars": 0, "gradeLabel": "Planeada", "statusColor": "slate",
-      "summary": "Aguardar início da fase para cálculo de métricas em tempo real.",
+      "summary": "Esta fase ainda não começou. Avalio-a quando lá chegares.",
       "metrics": { "totalKm": 0, "runsCount": 0, "polarizedZ1Z2Pct": null, "avgPace": null }
     }
   },
@@ -21,7 +21,7 @@
     },
     "expect": {
       "score": 40, "stars": 1, "gradeLabel": "Sem Registos", "statusColor": "rose",
-      "summary": "Sem treinos registados nesta fase. Começa a registar pelo menos 3 sessões semanais para a Carol poder avaliar a tua adaptação.",
+      "summary": "Não tenho nenhuma corrida tua registada nesta fase. Regista pelo menos 3 por semana, para eu ver como te estás a adaptar.",
       "metrics": { "totalKm": 0, "runsCount": 0, "polarizedZ1Z2Pct": 0, "avgPace": null }
     }
   },
@@ -40,7 +40,7 @@
     },
     "expect": {
       "score": 51, "stars": 2, "gradeLabel": "Ajuste Recomendado", "statusColor": "rose",
-      "summary": "Volume realizado (50 km) abaixo do alvo da fase (180 km). Prioriza aumentar a quilometragem fácil em Z1/Z2.",
+      "summary": "A base ficou com pouco volume: 50 de 180 km.",
       "metrics": { "totalKm": 50, "runsCount": 4, "polarizedZ1Z2Pct": 75, "avgPace": "5.48" }
     }
   },
@@ -67,7 +67,7 @@
     },
     "expect": {
       "score": 98, "stars": 5, "gradeLabel": "Excelente", "statusColor": "emerald",
-      "summary": "Polimento pré-prova. Redução controlada de volume para recarga total de glicogénio sem perda de sensações de ritmo.",
+      "summary": "O polimento acabou com 180 km.",
       "metrics": { "totalKm": 180, "runsCount": 12, "polarizedZ1Z2Pct": 100, "avgPace": "6.00" }
     }
   },
@@ -80,7 +80,7 @@
     },
     "expect": {
       "score": null, "stars": 0, "gradeLabel": "Não Realizada", "statusColor": "slate",
-      "summary": "Fase anterior ao início real da preparação — a prova foi registada tarde demais para cumprir todo o macrociclo recomendado.",
+      "summary": "Esta fase ficou antes de começares a preparação: a prova entrou com menos tempo do que o ciclo completo pede. Não conta contra ti.",
       "metrics": { "totalKm": 0, "runsCount": 0, "polarizedZ1Z2Pct": null, "avgPace": null }
     }
   },
@@ -100,7 +100,7 @@
     },
     "expect": {
       "score": 39, "stars": 2, "gradeLabel": "Ajuste Recomendado", "statusColor": "rose",
-      "summary": "Pico de carga com simulação de ritmo de prova (50 km). Volume específico atingido com treinos longos chave concluídos.",
+      "summary": "O pico ficou com pouco volume: 50 de 180 km.",
       "metrics": { "totalKm": 50, "runsCount": 4, "polarizedZ1Z2Pct": 75, "avgPace": "5.48" }
     }
   }
