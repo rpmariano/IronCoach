@@ -21,7 +21,7 @@
     },
     "expect": {
       "score": 40, "stars": 1, "gradeLabel": "Sem Registos", "statusColor": "rose",
-      "summary": "Não tenho nenhum treino teu registado nesta fase. Regista pelo menos 3 por semana, para eu ver como te estás a adaptar.",
+      "summary": "Não tenho nenhuma corrida tua registada nesta fase. Regista pelo menos 3 por semana, para eu ver como te estás a adaptar.",
       "metrics": { "totalKm": 0, "runsCount": 0, "polarizedZ1Z2Pct": 0, "avgPace": null }
     }
   },
@@ -40,7 +40,7 @@
     },
     "expect": {
       "score": 51, "stars": 2, "gradeLabel": "Ajuste Recomendado", "statusColor": "rose",
-      "summary": "Estás curto de volume para esta fase: 50 km de 180 km. Acrescenta quilómetros fáceis, em Z1/Z2.",
+      "summary": "A base ficou com pouco volume: 50 de 180 km.",
       "metrics": { "totalKm": 50, "runsCount": 4, "polarizedZ1Z2Pct": 75, "avgPace": "5.48" }
     }
   },
@@ -67,7 +67,7 @@
     },
     "expect": {
       "score": 98, "stars": 5, "gradeLabel": "Excelente", "statusColor": "emerald",
-      "summary": "Estás no polimento: menos volume para chegares fresco à prova, sem perder o ritmo. Não compenses agora o que ficou para trás.",
+      "summary": "O polimento acabou com 180 km.",
       "metrics": { "totalKm": 180, "runsCount": 12, "polarizedZ1Z2Pct": 100, "avgPace": "6.00" }
     }
   },
@@ -100,7 +100,7 @@
     },
     "expect": {
       "score": 39, "stars": 2, "gradeLabel": "Ajuste Recomendado", "statusColor": "rose",
-      "summary": "Estás no pico de carga: 50 km nesta fase. É nos longos daqui que o ritmo de prova se ensaia.",
+      "summary": "O pico ficou com pouco volume: 50 de 180 km.",
       "metrics": { "totalKm": 50, "runsCount": 4, "polarizedZ1Z2Pct": 75, "avgPace": "5.48" }
     }
   }

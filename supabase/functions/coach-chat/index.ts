@@ -711,8 +711,10 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   // falta são os treinos. O Contexto (do cliente) diz se é o caso.
   silence:
     `Está sem qualquer registo há 3 dias ou mais. Se o Contexto disser que fez check-in depois do último registo, ele está por cá: ` +
-    `não lhe perguntes se está bem em geral — diz que não vês nenhum treino dele há tantos dias (o número do Contexto) e pergunta o que se ` +
-    `passa com os treinos. Sem esse check-in, pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase de contexto no máximo. ` +
+    `não lhe perguntes se está bem em geral — diz que não vês nenhum treino dele há tantos dias (os dias desde o último treino, do ` +
+    `Contexto; se o Contexto disser que não há treinos registados, diz que ainda não vês nenhum treino dele registado, sem número de ` +
+    `dias) e pergunta o que se passa com os treinos. Sem esse check-in, pergunta-lhe se está bem — é isso: "Estás bem?", com uma frase ` +
+    `de contexto no máximo. ` +
     `Nos dois casos: sem sermão, sem lista de treinos em atraso, sem reagendar nada — isso fica para quando ele responder.`,
   // P.10: o treino de ontem do plano ficou por registar. Pergunta e ouve —
   // pode ter treinado e não registado; reagendar é outra conversa.

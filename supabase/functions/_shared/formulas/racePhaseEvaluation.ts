@@ -84,37 +84,89 @@ function isLowIntensity(r: RunForPhase): boolean {
 }
 
 /* Os resumos de fase aparecem sob o avatar dela, em "Avaliação da Carol"
-   (RaceHubView): falam como ela (ação P.12, acabada na revisão pré-deploy
-   de 2026-09-25) — a opinião primeiro e o número como prova, sem elogio
-   automático ("Excelente disciplina" saía sempre que 75% das corridas eram
-   fáceis), sem frase de manual e sem afirmar o que não se verifica (o pico
-   dava os longos-chave por "concluídos" sem os olhar). */
-function buildCommentary(
-  phaseId: PhaseId,
-  volumeRatio: number,
-  totalKm: number,
-  expectedPhaseKm: number,
-  runsCount: number,
-  polarizedPct: number,
-): string {
-  switch (phaseId) {
+   (RaceHubView), e o chat recebe-os como o que o atleta leu: falam como ela
+   (ação P.12, acabada na revisão pré-deploy de 2026-09-25) — a opinião
+   primeiro e o número como prova, sem elogio automático, sem frase de manual
+   e sem afirmar o que não se verifica.
+   - Uma fase já acabada fala no passado: "Estás no pico de carga" numa fase
+     "Concluída" era falso (segunda revisão pré-deploy, 2026-09-25).
+   - O texto segue os mesmos números da nota (volume, frequência, fáceis), e o
+     "bem feita" só sai com a pílula a 80 ou mais — senão dizia "como deve ser"
+     com a pílula em "Ajuste Recomendado". Com a pílula a 80 ou mais, uma
+     sessão a menos não é assunto; "poucas sessões" é menos de 3/4 das
+     esperadas.
+   - "Fáceis" é o que a app consegue classificar (recuperação, longo, ou
+     esforço até 4): com o esforço por registar, a corrida não conta — por isso
+     pede-se o esforço em vez de afirmar que os treinos saem rápidos demais.
+   - Sem adjetivos com género ("curto", "fresco"): a app não sabe a quem fala. */
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+interface CommentaryInput {
+  phaseId: PhaseId;
+  done: boolean;
+  score: number;
+  volumeRatio: number;
+  frequencyRatio: number;
+  totalKm: number;
+  expectedPhaseKm: number;
+  runsCount: number;
+  polarizedPct: number;
+}
+
+function buildCommentary(c: CommentaryInput): string {
+  const km = Math.round(c.totalKm);
+  const alvo = Math.round(c.expectedPhaseKm);
+  const corridas = count(c.runsCount, "corrida", "corridas");
+  const sessoes = count(c.runsCount, "sessão", "sessões");
+  const curto = c.volumeRatio < 0.6;
+  const poucasSessoes = c.frequencyRatio < 0.75;
+  const bom = c.score >= 80;
+  const poucoFacil = c.polarizedPct < POLARIZATION_TARGET_PCT;
+  const faceis = c.polarizedPct === 0
+    ? "nenhuma das tuas corridas desta fase conta como fácil (Z1/Z2)"
+    : `só ${c.polarizedPct}% das tuas corridas desta fase contam como fáceis (Z1/Z2)`;
+  switch (c.phaseId) {
     case "base":
-      if (volumeRatio < 0.6) {
-        return `Estás curto de volume para esta fase: ${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km. Acrescenta quilómetros fáceis, em Z1/Z2.`;
+      if (c.done) {
+        if (curto) return `A base ficou com pouco volume: ${km} de ${alvo} km.`;
+        if (poucoFacil) {
+          return c.polarizedPct === 0
+            ? "Na base, nenhuma das tuas corridas contou como fácil (Z1/Z2), e ela pedia quase todas."
+            : `Na base, só ${c.polarizedPct}% das tuas corridas contaram como fáceis (Z1/Z2), e ela pedia quase todas.`;
+        }
+        if (bom) return `A base foi bem feita: ${corridas}, ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
+        if (poucasSessoes) return `A base teve ${km} de ${alvo} km, mas poucas sessões: ${corridas}.`;
+        return `A base teve ${corridas} e ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
       }
-      return polarizedPct >= POLARIZATION_TARGET_PCT
-        ? `A base está a ser feita como deve ser: ${runsCount} corridas, ${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km, o grosso em ritmo fácil (Z1/Z2).`
-        : `Os treinos fáceis estão a sair rápidos demais: ${runsCount} corridas, ${Math.round(totalKm)} km de ${Math.round(expectedPhaseKm)} km, poucas em Z1/Z2. Abranda-os, que a base faz-se devagar.`;
+      if (curto) return `Vais em ${km} de ${alvo} km desta fase. Acrescenta quilómetros fáceis, em Z1/Z2, para lá chegares.`;
+      if (poucoFacil) {
+        return `${faceis.charAt(0).toUpperCase()}${faceis.slice(1)}, e a base pede quase todas. Abranda os treinos fáceis e regista o esforço de cada corrida, para eu saber como foram.`;
+      }
+      if (bom) return `A base está a ser bem feita: ${corridas}, ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
+      if (poucasSessoes) return `Vais em ${km} de ${alvo} km, mas com poucas sessões: ${corridas} nesta fase. A base quer regularidade, três por semana.`;
+      return `A base leva ${corridas} e ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
     case "build":
-      return volumeRatio < 0.6
-        ? `A construção está curta para aguentares o ritmo de prova: ${Math.round(totalKm)} km nesta fase. Reforça o limiar e a rodagem contínua.`
-        : `A construção vai no sítio: ${runsCount} sessões, ${Math.round(totalKm)} km. Agora é aguentar o limiar e subir um pouco por semana.`;
+      if (c.done) {
+        if (curto) return `A construção ficou com pouco volume: ${km} km.`;
+        if (bom) return `A construção correu bem: ${sessoes}, ${km} km.`;
+        if (poucasSessoes) return `A construção teve ${km} km em ${sessoes}, menos sessões do que eu queria.`;
+        return `A construção teve ${sessoes} e ${km} km.`;
+      }
+      if (curto) return `Vais em ${km} km nesta fase, pouco para aguentares o ritmo de prova. Reforça o limiar e a rodagem contínua.`;
+      if (bom) return `A construção está a correr bem: ${sessoes}, ${km} km. Agora é aguentar o limiar e subir um pouco por semana.`;
+      if (poucasSessoes) return `Vais em ${km} km, mas com poucas sessões: ${sessoes} nesta fase. É a regularidade que te leva ao ritmo de prova.`;
+      return `A construção leva ${sessoes} e ${km} km. Agora é aguentar o limiar e subir um pouco por semana.`;
     case "peak":
-      return `Estás no pico de carga: ${Math.round(totalKm)} km nesta fase. É nos longos daqui que o ritmo de prova se ensaia.`;
+      if (c.done) return curto ? `O pico ficou com pouco volume: ${km} de ${alvo} km.` : `O pico teve ${km} km.`;
+      return curto
+        ? `Estás no pico com pouco volume: ${km} de ${alvo} km. É nos longos daqui que o ritmo de prova se ensaia; não os saltes.`
+        : `Estás no pico de carga: ${km} km nesta fase. É nos longos daqui que o ritmo de prova se ensaia.`;
     case "taper":
-      return `Estás no polimento: menos volume para chegares fresco à prova, sem perder o ritmo. Não compenses agora o que ficou para trás.`;
+      return c.done
+        ? `O polimento acabou com ${km} km.`
+        : `Estás no polimento: o volume desce para chegares à prova com as pernas frescas, e umas acelerações curtas mantêm o ritmo.`;
     default:
-      return `${runsCount} corridas registadas nesta fase.`;
+      return `${corridas} ${c.runsCount === 1 ? "registada" : "registadas"} nesta fase.`;
   }
 }
 
@@ -180,7 +232,7 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       // "Mantém a consistência" presumia uma consistência que não existe
       // ainda — sem uma corrida registada, não há nada a manter. Ver bug
       // relatado 2026-08-30.
-      summary: "Não tenho nenhum treino teu registado nesta fase. Regista pelo menos 3 por semana, para eu ver como te estás a adaptar.",
+      summary: "Não tenho nenhuma corrida tua registada nesta fase. Regista pelo menos 3 por semana, para eu ver como te estás a adaptar.",
       metrics: { totalKm: 0, runsCount: 0, polarizedZ1Z2Pct: 0, avgPace: null },
     };
   }
@@ -218,7 +270,10 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
     stars,
     gradeLabel,
     statusColor,
-    summary: buildCommentary(phaseId, volumeRatio, totalKm, expectedPhaseKm, runsCount, polarizedPct),
+    summary: buildCommentary({
+      phaseId, done: phaseState === "completed", score, volumeRatio, frequencyRatio,
+      totalKm, expectedPhaseKm, runsCount, polarizedPct,
+    }),
     metrics: {
       totalKm: Math.round(totalKm * 10) / 10,
       runsCount,

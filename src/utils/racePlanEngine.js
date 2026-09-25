@@ -382,9 +382,16 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
         stars: daysToRace <= 0 ? 5 : 0,
         gradeLabel: daysToRace <= 0 ? 'Concluída' : 'Objetivo Final',
         statusColor: 'emerald',
-        summary: daysToRace <= 0
-          ? `A prova já foi. Agora são ${recoveryDays} dias de recuperação ativa: só corrida muito leve ou caminhadas.`
-          : `É dia de prova. Se passares dos 75 minutos, 30 a 60 g de hidratos por hora.`,
+        /* Antes, durante e depois da prova — "É dia de prova" saía a 40 dias
+           dela, e "A prova já foi" na própria manhã (segunda revisão
+           pré-deploy de 2026-09-25). */
+        summary: daysToRace < 0
+          ? (-daysToRace < recoveryDays
+            ? `A prova já foi. Até ${recoveryDays} dias depois dela, recuperação ativa: só corrida muito leve ou caminhadas.`
+            : `A prova já foi, e os ${recoveryDays} dias de recuperação também.`)
+          : daysToRace === 0
+            ? `É dia de prova. Se passares dos 75 minutos, 30 a 60 g de hidratos por hora.`
+            : `No dia da prova, se passares dos 75 minutos, 30 a 60 g de hidratos por hora. Depois, ${recoveryDays} dias de recuperação ativa.`,
         metrics: { totalKm: distanceKm, runsCount: daysToRace <= 0 ? 1 : 0, polarizedZ1Z2Pct: 100, avgPace: null },
       },
     },
@@ -405,21 +412,41 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
   // "Estás na Polimento" não: o pico e o polimento são masculinos.
   const naFase = `${currentPhase.id === 'peak' || currentPhase.id === 'taper' ? 'no' : 'na'} ${currentPhase.name}`;
   if (daysToRace < 0) {
-    carolOverviewText = `A prova já foi. Agora são ${recoveryDays} dias de recuperação ativa, só corrida muito leve ou caminhadas, antes de começarmos outro ciclo.`;
+    // Semanas depois, a recuperação já passou: não se repete "agora são N dias".
+    carolOverviewText = -daysToRace < recoveryDays
+      ? `A prova já foi. Até ${recoveryDays} dias depois dela, recuperação ativa: só corrida muito leve ou caminhadas. Depois, começamos outro ciclo.`
+      : `A prova já foi, e a recuperação também. Quando quiseres, preparamos a próxima.`;
   } else if (daysToStart > 0) {
     carolOverviewText = `${faltam(daysToStart)} para começarmos o ciclo de ${totalWeeks} semanas. Até lá, corrida fácil (Z1/Z2) com regularidade e força no ginásio: quero-te a entrar na base com as pernas preparadas.`;
   } else if (daysToRace === 0) {
-    carolOverviewText = `A prova é hoje. Parte controlado e segue o plano de ritmos: a primeira metade é para guardar.`;
+    // Sem adjetivos com género ("controlado"), e sem prometer um plano de
+    // ritmos que só existe com objetivo ou previsão.
+    carolOverviewText = `A prova é hoje. Parte com calma: a primeira metade é para guardar.`;
   } else if (daysToRace <= 7) {
     carolOverviewText = `${faltam(daysToRace)}: esta semana já não se ganha forma, só se perde se exagerares. Uma ou duas corridas curtas com umas acelerações; o resto é descansar e comer hidratos com regularidade.`;
   } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
-    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}${weeklyVol != null ? `, com ${weeklyVol} km por semana` : ''}. Quero oito em cada dez treinos em ritmo fácil, e uma semana mais leve a cada três ou quatro — é assim que a carga sobe sem te lesionares.`;
+    /* No polimento a carga desce — "é assim que a carga sobe" contradizia o
+       cartão da fase logo abaixo. Nas outras, a opinião vem da percentagem
+       de corridas fáceis da fase (o que a app classifica como fácil: com o
+       esforço por registar, a corrida não conta — por isso pede-se). */
+    const onde = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}${weeklyVol != null ? `, com ${weeklyVol} km por semana` : ''}.`;
+    const facil = currentPhase.evaluation?.metrics?.polarizedZ1Z2Pct;
+    if (currentPhase.id === 'taper') {
+      carolOverviewText = `${onde} O volume desce agora, para chegares à prova com as pernas frescas; umas acelerações curtas mantêm o ritmo.`;
+    } else if (facil != null && facil < 75) {
+      const quantas = facil === 0
+        ? 'Nenhuma das tuas corridas desta fase conta como fácil'
+        : `Só ${facil}% das tuas corridas desta fase contam como fáceis`;
+      carolOverviewText = `${onde} ${quantas}, e eu quero oito em cada dez: abranda os treinos fáceis e regista o esforço de cada corrida.`;
+    } else {
+      carolOverviewText = `${onde} O ritmo fácil está a ser respeitado. Mantém uma semana mais leve a cada três ou quatro — é assim que a carga sobe sem te lesionares.`;
+    }
   } else {
     // Sem uma única corrida registada nesta fase, "continua a proteger o
     // rácio 80/20"/"respeita a semana de descarga" presumem um histórico
     // que não existe — ela não pode avaliar (nem recomendar manter) algo
     // que nunca começou a medir. Ver bug relatado 2026-08-30.
-    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}, e ainda não tenho nenhuma corrida tua registada nesta fase${isCompressed ? ' — o ciclo ficou comprimido, porque a prova entrou a poucos dias' : ''}. Regista os treinos, para eu poder acompanhar como estás a evoluir.`;
+    carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}, e ainda não tenho nenhuma corrida tua registada nesta fase${isCompressed ? ' — o ciclo ficou comprimido, porque a prova entrou com menos tempo do que o ciclo completo pede' : ''}. Regista os treinos, para eu poder acompanhar como estás a evoluir.`;
   }
 
   return {

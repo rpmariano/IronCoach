@@ -140,9 +140,12 @@ async function handler(req: Request): Promise<Response> {
      verão. Se a leitura falhar, regista-se de hora a hora, como antes. */
   const loggedToday = new Set<string>();
   if (byUser.size) {
+    // Só os atletas desta execução: sem o filtro, acima de 1000 linhas o
+    // PostgREST cortava a resposta e o registo voltava a ser de hora a hora.
     const { data: loggedRows, error: loggedErr } = await sb.from("app_logs")
       .select("user_id, meta, created_at")
       .eq("event", "coach-proactive-tick").eq("level", "info")
+      .in("user_id", [...byUser.keys()])
       .gte("created_at", new Date(now.getTime() - 26 * 3600000).toISOString());
     if (loggedErr) console.warn("coach-proactive-tick: não leu o registo de hoje", loggedErr.message);
     for (const r of loggedRows || []) {

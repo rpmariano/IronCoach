@@ -145,7 +145,8 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     expect(basePhase.evaluation.metrics.totalKm).toBe(65);
     expect(basePhase.evaluation.score).toBeGreaterThanOrEqual(85);
     expect(basePhase.evaluation.stars).toBeGreaterThanOrEqual(4);
-    expect(basePhase.evaluation.summary).toContain('A base está a ser feita como deve ser');
+    // A base já acabou: fala no passado (segunda revisão pré-deploy de 2026-09-25).
+    expect(basePhase.evaluation.summary).toContain('A base foi bem feita: 5 corridas, 65 de 70 km');
   });
 
   it('penaliza o score da fase quando o volume está muito abaixo do alvo e a prova tem tempo insuficiente', () => {
@@ -165,7 +166,7 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     const basePhase = plan.phases.find(p => p.id === 'base');
     expect(basePhase.evaluation.score).toBeLessThan(70);
     expect(basePhase.evaluation.gradeLabel).toMatch(/Abaixo do Alvo|Ajuste Recomendado/);
-    expect(basePhase.evaluation.summary).toContain('Estás curto de volume');
+    expect(basePhase.evaluation.summary).toContain('A base ficou com pouco volume: 5 de 70 km');
   });
 
   it('BUG CORRIGIDO (2026-08-29) — prova registada a poucos dias da corrida não fabrica fases "concluídas" nem esconde o alerta de tempo insuficiente', () => {
@@ -252,7 +253,9 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
       runs: [{ date: '2026-08-30', distance_km: 5, duration_seconds: 1500, training_type: 'continuo', effort_rpe: 5 }],
       todayISO: '2026-08-30',
     });
-    expect(withRuns.carolAnalysis.overviewText).toMatch(/oito em cada dez treinos em ritmo fácil/);
+    // No polimento a carga desce: o parecer já não diz que sobe.
+    expect(withRuns.carolAnalysis.overviewText).toMatch(/O volume desce agora/);
+    expect(withRuns.carolAnalysis.overviewText).not.toMatch(/a carga sobe/);
   });
 
   it('lida graciosamente com provas no passado (concluídas)', () => {
