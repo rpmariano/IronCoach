@@ -25,12 +25,26 @@ Deno.test("uma fase a decorrer mede-se pelas semanas que já passaram (com today
   // os 35 km de uma semana — não os 140 da fase inteira.
   const quatro = { ...base, phaseWeeks: 4, endDateStr: "2026-09-28" };
   const runs = [corrida({ training_type: "longo" }), corrida({ training_type: "recuperacao" }), corrida({ training_type: "longo" })];
-  const hoje = computePhaseEvaluation({ ...quatro, phaseState: "active", runs, todayISO: "2026-09-05" });
+  // Ao sétimo dia (2026-09-07): a primeira semana inteira, 36 km contra 35.
+  const hoje = computePhaseEvaluation({ ...quatro, phaseState: "active", runs, todayISO: "2026-09-07" });
   assertEquals(hoje.summary.includes("a esta altura queria"), false);
   assertEquals((hoje.score ?? 0) >= 80, true);
+  // No início da segunda semana, ao dia: não cai de repente.
+  const oitavo = computePhaseEvaluation({ ...quatro, phaseState: "active", runs: [...runs, corrida({ date: "2026-09-08", training_type: "recuperacao" })], todayISO: "2026-09-08" });
+  assertEquals((oitavo.score ?? 0) >= 80, true);
+  // Na primeira semana não se julga: sem nota (a pílula não aparece).
+  const segundo = computePhaseEvaluation({ ...quatro, phaseState: "active", runs: [runs[0]], todayISO: "2026-09-02" });
+  assertEquals(segundo.score, null);
+  assertEquals(segundo.summary, "Esta fase começou ontem: avalio-a ao fim da primeira semana.");
   // Sem todayISO, como antes: a fase inteira (e "Acrescenta quilómetros").
   const antes = computePhaseEvaluation({ ...quatro, phaseState: "active", runs });
   assertStringIncludes(antes.summary, "a esta altura queria 140");
+});
+
+Deno.test("o ultra do iniciante não se avalia: a doutrina desaconselha-o", () => {
+  const ev = computePhaseEvaluation({ ...base, distanceKm: 60, experienceLevel: "iniciante", phaseState: "completed", runs: [corrida()] });
+  assertEquals(ev.score, null);
+  assertEquals(ev.summary, "Não avalio esta fase: um ultra é desaconselhado no teu nível.");
 });
 
 Deno.test("resumo da base: com o esforço por registar, pede-o em vez de mandar abrandar", () => {

@@ -259,13 +259,42 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
 
   const distCategory = categorizeDistance(distanceKm) || "10k";
   const targetWeeklyKm = MIN_VOLUME_KM[experienceLevel]?.[distCategory] || FALLBACK_TARGET_WEEKLY_KM;
-  /* Uma fase a decorrer mede-se pelo que já passou dela, não pela fase
-     inteira: a meio da base, "41 de 180 km" mandava acrescentar
-     quilómetros a quem ia no ritmo certo, e a nota ficava injustamente
-     baixa (quarta revisão pré-deploy, 2026-09-25). */
-  const weeksCounted = phaseState === "active" && todayISO
-    ? Math.min(Math.max(1, Math.ceil((daysBetween(startDateStr, todayISO) + 1) / 7)), Math.max(1, phaseWeeks))
-    : Math.max(1, phaseWeeks);
+  const metrics = {
+    totalKm: Math.round(totalKm * 10) / 10,
+    runsCount,
+    polarizedZ1Z2Pct: runsCount > 0 ? polarizedPct : null,
+    avgPace: avgPaceSec ? formatPaceMinKm(avgPaceSec) : null,
+  };
+
+  /* O Bloco 1 desaconselha o ultra ao iniciante: a fase não se avalia (o
+     cartão pedia volume rumo aos 45 km/semana de um ultra que a doutrina
+     não prepara — quinta revisão pré-deploy, 2026-09-25). */
+  if (experienceLevel === "iniciante" && distCategory === "ultra") {
+    return {
+      score: null, stars: 0, gradeLabel: "Desaconselhada", statusColor: "slate",
+      summary: "Não avalio esta fase: um ultra é desaconselhado no teu nível.",
+      metrics,
+    };
+  }
+
+  /* Uma fase a decorrer mede-se pelo que já passou dela, ao dia, não pela
+     fase inteira: a meio da base, "41 de 180 km" mandava acrescentar
+     quilómetros a quem ia no ritmo certo (quarta revisão pré-deploy,
+     2026-09-25). Contar semanas inteiras fazia a nota cair no início de
+     cada semana (48% ao segundo dia a quem ia no alvo — quinta revisão),
+     por isso conta-se ao dia, e a primeira semana não se julga. */
+  const daysElapsed = phaseState === "active" && todayISO
+    ? Math.min(Math.max(1, daysBetween(startDateStr, todayISO) + 1), Math.max(1, phaseWeeks) * 7)
+    : null;
+  if (daysElapsed != null && daysElapsed < 7) {
+    const quando = daysElapsed === 1 ? "hoje" : daysElapsed === 2 ? "ontem" : `há ${daysElapsed - 1} dias`;
+    return {
+      score: null, stars: 0, gradeLabel: "Em Curso", statusColor: "slate",
+      summary: `Esta fase começou ${quando}: avalio-a ao fim da primeira semana.`,
+      metrics,
+    };
+  }
+  const weeksCounted = daysElapsed != null ? daysElapsed / 7 : Math.max(1, phaseWeeks);
   const expectedPhaseKm = targetWeeklyKm * weeksCounted;
   const volumeRatio = Math.min(1.0, totalKm / expectedPhaseKm);
 
@@ -320,11 +349,6 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
       phaseId, done: phaseState === "completed", score, volumeRatio, frequencyRatio,
       totalKm, expectedPhaseKm, runsCount, polarizedPct, unknownCount,
     }),
-    metrics: {
-      totalKm: Math.round(totalKm * 10) / 10,
-      runsCount,
-      polarizedZ1Z2Pct: polarizedPct,
-      avgPace: avgPaceSec ? formatPaceMinKm(avgPaceSec) : null,
-    },
+    metrics,
   };
 }

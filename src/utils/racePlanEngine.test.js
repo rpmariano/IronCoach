@@ -256,7 +256,7 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     // No polimento a carga desce: o parecer já não diz que sobe.
     // O parecer do polimento não repete o cartão da fase (quarta revisão).
     // Os dias de polimento desta prova (prioridade A), não uma frase genérica.
-    expect(withRuns.carolAnalysis.overviewText).toMatch(/É a tua prova principal: (estás nos últimos|o polimento são os últimos) \d+ dias/);
+    expect(withRuns.carolAnalysis.overviewText).toMatch(/É a tua prova principal: (estás nos últimos|o polimento a sério são os últimos) \d+ dias/);
     expect(withRuns.carolAnalysis.overviewText).not.toMatch(/pernas frescas/);
     expect(withRuns.carolAnalysis.overviewText).not.toMatch(/a carga sobe/);
   });

@@ -118,7 +118,7 @@ export function phaseGuidance(o) {
       // A fase ocupa semanas inteiras; o polimento da doutrina são os
       // últimos N dias, e pode ainda não ter começado.
       if (faltam != null && faltam > dias) {
-        return `É a tua prova principal: o polimento são os últimos ${dias} dias, e ainda faltam ${faltam}. Até lá, treino normal, sem acrescentar nada.`;
+        return `É a tua prova principal: o polimento a sério são os últimos ${dias} dias. Até lá, a semana já é mais leve, sem treinos novos.`;
       }
       return `É a tua prova principal: estás nos últimos ${dias} dias, os do polimento. Nada de treinos novos.`;
     }

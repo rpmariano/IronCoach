@@ -72,7 +72,7 @@ describe('phaseGuidance — polimento', () => {
       .toBe('É a tua prova principal: estás nos últimos 14 dias, os do polimento. Nada de treinos novos.');
     // A fase ocupa semanas inteiras: o polimento do iniciante na meia (10 dias) ainda não começou a 13 dias.
     expect(phaseGuidance({ ...meia, phaseId: 'taper', experienceLevel: 'iniciante', daysToRace: 13 }))
-      .toBe('É a tua prova principal: o polimento são os últimos 10 dias, e ainda faltam 13. Até lá, treino normal, sem acrescentar nada.');
+      .toBe('É a tua prova principal: o polimento a sério são os últimos 10 dias. Até lá, a semana já é mais leve, sem treinos novos.');
     // Numa prova B ou C, o polimento cabe na última semana, que tem texto próprio.
     expect(phaseGuidance({ ...meia, racePriority: 'b', phaseId: 'taper', experienceLevel: 'medio', daysToRace: 9 })).toBeNull();
   });
