@@ -25,6 +25,7 @@ import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, fetchWeekAdherenceLine, lisbonTodayISO } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext, fetchRaceWeatherObserved } from "../_shared/raceWeatherFetch.ts";
+import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL, upstreamErrorText } from "../_shared/carolTone.ts";
 import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
 import { MEAL_ONLY_CATEGORY, MEAL_ONLY_DAY_LABEL, MEAL_TYPE_LABEL, isMealOnlyItem, mergeSingleMeal } from "../_shared/formulas/mealSuggestions.ts";
@@ -5922,6 +5923,9 @@ async function handler(req: Request): Promise<Response> {
     // A meteorologia da prova (ação 4.2): só nos 7 dias antes, pedida já e
     // esperada ao montar o prompt. Nunca rejeita — sem previsão, não há bloco.
     const raceWeatherPromise = fetchRaceWeatherContext(nextUpcomingRace, todayISO);
+    // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6) — só
+    // com cidade no perfil e treino no plano; nunca rejeita.
+    const trainingWeatherPromise = fetchTrainingWeatherBlock(sb, userId, todayISO);
     const readinessPanel = buildReadinessPanel(
       recentRuns || [],
       weekMeals || [],
@@ -6274,6 +6278,8 @@ async function handler(req: Request): Promise<Response> {
       await raceWeatherPromise,
       // No balanço, o tempo que esteve na prova (5.6).
       await raceObservedWeatherPromise,
+      // O tempo para os treinos de hoje e amanhã (5.6).
+      await trainingWeatherPromise,
       memoryBlocks.portrait,
       memoryBlocks.raceHistory,
       // A vitrina de badges, logo a seguir às provas concluídas: é a mesma

@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Medal, MessageSquare } from 'lucide-react';
+import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Medal, MessageSquare, MapPin } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
@@ -23,6 +23,7 @@ import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
 import { todayISO } from '../../lib/utils';
+import { searchTrainingPlaces, trainingPlaceFields } from '../../utils/trainingPlace';
 
 const TAB_KEYS = ['perfil', 'metas', 'vitrina', 'equipamento', 'coach'];
 
@@ -298,6 +299,61 @@ export default function Perfil() {
     updateDraft('carol_push_enabled', true);
   };
 
+  /* Onde treinas (ação 5.6): a procura e a escolha vivem fora do rascunho; só
+     o sítio escolhido entra nele — as quatro colunas juntas — e fica com o
+     Guardar, como o resto do Perfil. */
+  const [placeQuery, setPlaceQuery] = useState('');
+  const [placeChoices, setPlaceChoices] = useState(null); // null: ainda não procurou
+  const [placeSearching, setPlaceSearching] = useState(false);
+  const [placeError, setPlaceError] = useState(null);
+  const [placeEditing, setPlaceEditing] = useState(false);
+  // Só a última procura conta: uma resposta atrasada não pisa a seguinte.
+  const placeSearchSeq = useRef(0);
+
+  const resetPlaceSearch = () => {
+    placeSearchSeq.current += 1;
+    setPlaceSearching(false);
+    setPlaceChoices(null);
+    setPlaceError(null);
+    setPlaceQuery('');
+    setPlaceEditing(false);
+  };
+
+  const searchPlace = async () => {
+    const query = placeQuery.trim();
+    if (query.length < 2) return;
+    const seq = ++placeSearchSeq.current;
+    setPlaceSearching(true);
+    setPlaceError(null);
+    try {
+      const found = await searchTrainingPlaces(query);
+      if (seq === placeSearchSeq.current) setPlaceChoices(found);
+    } catch (err) {
+      if (seq !== placeSearchSeq.current) return;
+      console.error('Error searching training place:', err);
+      setPlaceChoices(null);
+      setPlaceError('Não consegui procurar agora. Tenta daqui a pouco.');
+    } finally {
+      if (seq === placeSearchSeq.current) setPlaceSearching(false);
+    }
+  };
+
+  // Escolher um sítio, ou tirá-lo (null).
+  const setTrainingPlace = (place) => {
+    const fields = trainingPlaceFields(place);
+    setDraft(prev => ({ ...prev, ...fields }));
+    for (const key of Object.keys(fields)) dirtyKeys.current.add(key);
+    setIsDirty(true);
+    resetPlaceSearch();
+  };
+
+  const startPlaceEdit = () => {
+    resetPlaceSearch();
+    // "Lisboa, Portugal" → "Lisboa": o ponto de partida para procurar outro.
+    setPlaceQuery(String(draft.training_city || '').split(',')[0].trim());
+    setPlaceEditing(true);
+  };
+
   const toggleCarolPushType = (key) => {
     const current = Array.isArray(draft.carol_push_types) ? draft.carol_push_types : ALL_CAROL_PUSH_TYPES;
     const next = current.includes(key) ? current.filter((k) => k !== key) : [...current, key];
@@ -419,6 +475,7 @@ export default function Perfil() {
     const pending = leavePrompt;
     dirtyKeys.current.clear();
     setDraft(profile || {});
+    resetPlaceSearch();
     setIsDirty(false);
     isDirtyRef.current = false; // ver comentário junto de isDirtyRef, acima
     setLeavePrompt(null);
@@ -649,6 +706,109 @@ export default function Perfil() {
                   frequência cardíaca mais precisas e permite à Carol detetar
                   fadiga acumulada — uma subida sustentada face ao teu normal é
                   dos primeiros sinais de sobretreino.
+                </p>
+              </div>
+              {/* Onde treinas (ação 5.6): com a cidade, a Carol vê a previsão
+                  para os treinos de hoje e amanhã. Procura-se, escolhe-se da
+                  lista e fica com o Guardar. */}
+              <div data-testid="perfil-onde-treinas">
+                {draft.training_city && !placeEditing ? (
+                  <>
+                    <p className="text-[11px] text-[var(--text-3)] mb-1">Onde treinas</p>
+                    <div className="flex items-center gap-1 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl pl-3 pr-1">
+                      <MapPin size={14} className="text-[var(--gym)] shrink-0" aria-hidden="true" />
+                      <span className="text-sm flex-1 min-w-0 truncate ml-1" data-testid="perfil-onde-treinas-cidade">{draft.training_city}</span>
+                      <button
+                        type="button"
+                        onClick={startPlaceEdit}
+                        aria-label="Mudar onde treinas"
+                        className="min-h-[44px] px-3 text-xs font-semibold rounded-lg hover:bg-[var(--surface-glass)] transition"
+                      >
+                        Mudar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTrainingPlace(null)}
+                        aria-label="Tirar onde treinas"
+                        className="min-h-[44px] px-3 text-xs font-semibold text-[var(--text-3)] rounded-lg hover:bg-[var(--surface-glass)] transition"
+                      >
+                        Tirar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="perfil-onde-treinas" className="text-[11px] text-[var(--text-3)] block mb-1">Onde treinas</label>
+                    <form
+                      role="search"
+                      onSubmit={(e) => { e.preventDefault(); searchPlace(); }}
+                      className="flex gap-2"
+                    >
+                      <input
+                        id="perfil-onde-treinas"
+                        type="text"
+                        value={placeQuery}
+                        onChange={e => setPlaceQuery(e.target.value)}
+                        placeholder="Ex.: Lisboa"
+                        maxLength={80}
+                        enterKeyHint="search"
+                        autoComplete="address-level2"
+                        className="flex-1 min-w-0 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
+                      />
+                      <button
+                        type="submit"
+                        disabled={placeSearching || placeQuery.trim().length < 2}
+                        className="min-h-[44px] px-3 shrink-0 rounded-xl border border-[var(--border-glass)] bg-[var(--surface-soft)] text-xs font-semibold hover:bg-[var(--surface-glass)] disabled:opacity-50 transition"
+                      >
+                        {placeSearching ? 'A procurar…' : 'Procurar'}
+                      </button>
+                      {placeEditing && (
+                        <button
+                          type="button"
+                          onClick={resetPlaceSearch}
+                          className="min-h-[44px] px-2 shrink-0 text-xs font-semibold text-[var(--text-3)] rounded-xl hover:bg-[var(--surface-glass)] transition"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </form>
+                  </>
+                )}
+                <div aria-live="polite">
+                  {placeError && (
+                    <p className="text-[11px] text-[var(--danger)] mt-1.5">{placeError}</p>
+                  )}
+                  {placeChoices && placeChoices.length === 0 && (
+                    <p className="text-[11px] text-[var(--text-3)] mt-1.5">
+                      Não encontrei esse sítio. Experimenta a cidade ou a vila mais perto.
+                    </p>
+                  )}
+                  {placeChoices && placeChoices.length > 0 && (
+                    <div className="mt-2 space-y-1.5" data-testid="perfil-onde-treinas-escolhas">
+                      <p className="text-[11px] text-[var(--text-3)]">
+                        {placeChoices.length === 1 ? 'Encontrei — é aqui?' : 'Encontrei vários — qual é o teu?'}
+                      </p>
+                      {placeChoices.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setTrainingPlace(p)}
+                          className="w-full min-h-[44px] flex items-center gap-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--surface-glass)] transition"
+                        >
+                          <MapPin size={14} className="text-[var(--gym)] shrink-0" aria-hidden="true" />
+                          <span className="flex-1 min-w-0 truncate">{p.label}</span>
+                          {p.altitudeM != null && p.altitudeM >= 800 && (
+                            <span className="text-[11px] text-[var(--text-3)] shrink-0">{p.altitudeM} m</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[11px] text-[var(--text-3)] mt-1">
+                  A Carol vê a previsão para aqui, à hora a que costumas treinar, e
+                  só te fala do tempo quando muda alguma coisa no treino. Guardamos
+                  a cidade, nunca a tua localização.
                 </p>
               </div>
             </div>

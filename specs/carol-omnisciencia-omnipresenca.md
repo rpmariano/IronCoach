@@ -408,6 +408,8 @@ Sem relógio, O6 e P7 não passam de 4. O 10 não é o alvo.
 
 **5.6.** O perfil ganha a cidade de treino, geocodificada uma vez no Perfil (o atleta confirma "Encontrei: Lisboa, Portugal") com coordenadas e altitude guardadas, para o servidor fazer um só pedido. O tempo para o treino entra no chat e no cartão só quando há treino no plano hoje ou amanhã, à hora mediana das corridas recentes ou em duas janelas; o balanço da prova recebe "o tempo que esteve", com o rodapé trocado para não dizer "previsão"; o analyze-run extrai a temperatura do relógio e o resumo das corridas mostra-a; o `enrich-race-event` guarda o D+ segundo o site em `web_info` e o bloco da prova no chat passa a incluir o `route_summary` que já existia. A tabela km a km não muda com o calor: é a régua única com o hub; a Carol diz o ajuste em palavras, como já faz.
 
+Feita em dois pushes (2026-09-25). **A** (`6b19beb`): a temperatura do relógio, o percurso do site, o D+ e o tempo que esteve na prova. **B**: a cidade de treino (migration `20260925005244_profile_training_place`). Três desvios ao que está acima, todos pelo que os dados reais mostraram: o Perfil procura em Portugal e no mundo ao mesmo tempo e mostra até quatro sítios para escolher ("Madrid" tem cinco, nenhum português), em vez de um só "Encontrei"; a altitude vem do modelo de terreno da Open-Meteo e não da geocodificação, que dava 205 m à Covilhã (está a 703 m) — no servidor vence a altitude que a própria previsão devolve; e "as horas de hoje que ainda não passaram" contam-se na hora do sítio, não na de Lisboa.
+
 ## Omnipresença — P.9 a P.13
 
 | Ação | Dimensão | Esforço | Onde |

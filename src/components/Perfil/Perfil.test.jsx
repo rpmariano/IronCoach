@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import Perfil from './Perfil';
@@ -37,6 +37,13 @@ const push = vi.hoisted(() => ({ result: { ok: true, error: null } }));
 vi.mock('../../lib/push', () => ({
   ensurePushSubscription: () => Promise.resolve(push.result),
 }));
+
+// A procura da cidade de treino (ação 5.6) vai à Open-Meteo: aqui responde o teste.
+const lugar = vi.hoisted(() => ({ search: () => Promise.resolve([]) }));
+vi.mock('../../utils/trainingPlace', async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, searchTrainingPlaces: (...args) => lugar.search(...args) };
+});
 
 // Valores distintos entre si para as consultas por valor não serem ambíguas.
 const PROFILE = {
@@ -638,6 +645,99 @@ describe('Perfil — reorganização das Metas (#41)', () => {
     expect(useAppStore.getState().activeTab).toBe('perfil');
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(useAppStore.getState().coachIntent).toBeNull();
+  });
+});
+
+/* Onde treinas (ação 5.6, push B): a cidade de treino, para a Carol ver a
+   previsão dos treinos. Procura-se, escolhe-se da lista, e as quatro colunas
+   gravam-se juntas com o Guardar — procurar, só por si, não suja nada. */
+describe('Perfil — onde treinas (ação 5.6)', () => {
+  const LISBOA = { id: '2267057', label: 'Lisboa, Portugal', lat: 38.72509, lon: -9.1498, altitudeM: 54 };
+  const MADRID = { id: '3117735', label: 'Madrid, Espanha', lat: 40.4165, lon: -3.70256, altitudeM: 657 };
+  const COM_CIDADE = { ...PROFILE, training_city: 'Covilhã, Portugal', training_lat: 40.28106, training_lon: -7.50504, training_altitude_m: 703 };
+  const campo = () => within(screen.getByTestId('perfil-onde-treinas'));
+  const procurar = (texto) => {
+    fireEvent.change(screen.getByLabelText('Onde treinas'), { target: { value: texto } });
+    fireEvent.click(campo().getByRole('button', { name: 'Procurar' }));
+  };
+  const guardar = () => screen.getByRole('button', { name: /Guardar altera/ });
+
+  beforeEach(() => {
+    mocks.updates.length = 0;
+    lugar.search = vi.fn(() => Promise.resolve([LISBOA]));
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      navGuard: null,
+      activeTab: 'perfil',
+    });
+  });
+
+  it('procura, confirma o sítio e grava as quatro colunas juntas', async () => {
+    render(<Perfil />);
+    procurar('lisboa');
+    expect(lugar.search).toHaveBeenCalledWith('lisboa');
+    const escolha = await campo().findByRole('button', { name: 'Lisboa, Portugal' });
+    expect(campo().getByText('Encontrei — é aqui?')).toBeInTheDocument();
+    fireEvent.click(escolha);
+    expect(screen.getByTestId('perfil-onde-treinas-cidade')).toHaveTextContent('Lisboa, Portugal');
+
+    fireEvent.click(guardar());
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({
+      training_city: 'Lisboa, Portugal', training_lat: 38.72509, training_lon: -9.1498, training_altitude_m: 54,
+    });
+  });
+
+  it('com vários, escolhe-se o certo', async () => {
+    lugar.search = vi.fn(() => Promise.resolve([{ ...MADRID, id: 'co', label: 'Madrid, Colômbia' }, MADRID]));
+    render(<Perfil />);
+    procurar('madrid');
+    fireEvent.click(await campo().findByRole('button', { name: 'Madrid, Espanha' }));
+    expect(screen.getByTestId('perfil-onde-treinas-cidade')).toHaveTextContent('Madrid, Espanha');
+    fireEvent.click(guardar());
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0].training_city).toBe('Madrid, Espanha');
+  });
+
+  it('procurar não suja o rascunho; sem resultados ou com erro, diz-o', async () => {
+    const calado = vi.spyOn(console, 'error').mockImplementation(() => {});
+    lugar.search = vi.fn()
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('open-meteo 503'));
+    render(<Perfil />);
+    procurar('xqzwv');
+    expect(await campo().findByText(/Não encontrei esse sítio/)).toBeInTheDocument();
+    expect(guardar()).toBeDisabled();
+    procurar('lisboa');
+    expect(await campo().findByText('Não consegui procurar agora. Tenta daqui a pouco.')).toBeInTheDocument();
+    expect(guardar()).toBeDisabled();
+    calado.mockRestore();
+  });
+
+  it('com cidade no perfil mostra-a; Tirar limpa as quatro colunas', async () => {
+    useAppStore.setState({ profile: COM_CIDADE });
+    render(<Perfil />);
+    expect(screen.getByTestId('perfil-onde-treinas-cidade')).toHaveTextContent('Covilhã, Portugal');
+    expect(screen.queryByLabelText('Onde treinas')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tirar onde treinas' }));
+    expect(screen.getByLabelText('Onde treinas')).toHaveValue('');
+    fireEvent.click(guardar());
+    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    expect(mocks.updates[0]).toEqual({
+      training_city: null, training_lat: null, training_lon: null, training_altitude_m: null,
+    });
+  });
+
+  it('Mudar abre a procura com o nome; Cancelar volta à cidade sem sujar nada', () => {
+    useAppStore.setState({ profile: COM_CIDADE });
+    render(<Perfil />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mudar onde treinas' }));
+    expect(screen.getByLabelText('Onde treinas')).toHaveValue('Covilhã');
+    fireEvent.click(campo().getByRole('button', { name: 'Cancelar' }));
+    expect(screen.getByTestId('perfil-onde-treinas-cidade')).toHaveTextContent('Covilhã, Portugal');
+    expect(guardar()).toBeDisabled();
   });
 });
 

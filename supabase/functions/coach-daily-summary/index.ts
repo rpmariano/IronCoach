@@ -27,6 +27,7 @@ import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.
 import { PAIN_ALARM_THRESHOLD } from "../_shared/formulas/checkinAlarms.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
+import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -652,7 +653,11 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `Lê "fase_do_plano" e calibra o tom. Se existir "prescrito_vs_feito", usa-o no balanço: um padrão (treinos a meio, ` +
     `descanso não respeitado, proteína abaixo) diz-se com o número; um dia isolado não. ` +
     `Se existir "o_que_ja_viu_na_app", não repitas como novidade nem contradigas o que já lhe disseste ao abrir a app, ` +
-    `e se lhe fizeste uma pergunta, retoma-a. Só preenches se houver histórico — caso contrário null.\n` +
+    `e se lhe fizeste uma pergunta, retoma-a. ` +
+    `Se existir "tempo_treinos" e o tempo mudar alguma coisa no treino de hoje ou de amanhã (calor, chuva, vento), ` +
+    `a dica prática (c) pode ser essa — roupa, água, a hora, abrandar com calor —, em palavras e com o número; o plano e ` +
+    `os ritmos não mudam por causa do tempo. Se não mudar nada, não fales do tempo. ` +
+    `Só preenches se houver histórico — caso contrário null.\n` +
     `CHECK-IN DE HOJE — se existir "checkin_hoje", o recap abre por ele (mesmo sem histórico, aí preenches o recap):\n` +
     `  - "dor_alta" true: hoje nada de impacto (corrida, saltos) — e pedes-lhe que fale contigo no chat. ` +
     `Sem diagnosticar e sem prometer quando volta: isso decide-se no chat, pela hierarquia de alarmes.\n` +
@@ -919,10 +924,12 @@ Deno.serve(async (req) => {
     // o que dispensou. As impressões levam o dia de Lisboa, como o cliente
     // as grava; `today` (todayISO acima) já o é. Ficam fora do
     // fetchSharedMemoryBlock de propósito: as quatro análises não as leem.
-    const [raceWeather, adherence, impressions] = await Promise.all([
+    const [raceWeather, adherence, impressions, trainingWeather] = await Promise.all([
       fetchRaceWeatherContext(nextRace, today),
       fetchAdherenceBlock(sb, userId, today),
       fetchImpressionsBlock(sb, userId, today),
+      // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6).
+      fetchTrainingWeatherBlock(sb, userId, today),
     ]);
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
@@ -951,6 +958,7 @@ Deno.serve(async (req) => {
       vesperaDaProva: raceEveForSummary,
     });
     if (raceWeather) (ctx as Record<string, unknown>).meteorologia_prova = raceWeather;
+    if (trainingWeather) (ctx as Record<string, unknown>).tempo_treinos = trainingWeather;
     if (adherence) (ctx as Record<string, unknown>).prescrito_vs_feito = adherence;
     if (impressions) (ctx as Record<string, unknown>).o_que_ja_viu_na_app = impressions;
     const checkinHoje = checkinForSummary(todayCheckin);
