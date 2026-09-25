@@ -24,6 +24,7 @@ import BadgeMoment from '../shared/BadgeMoment';
 import useBadgeMoment from '../../utils/useBadgeMoment';
 import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { interventionKey, raceConflictKey } from '@formulas/proactiveTriggers.ts';
+import { INTERVENTION_OUTCOME } from '@formulas/interventionOutcomes.ts';
 import { pendingTopicLines } from '../../utils/carolTopics';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
@@ -329,7 +330,7 @@ export default function Home() {
       const { supabase } = await import('../../lib/supabase');
       // Dispensar é um desfecho (5.5): fica em coach_interventions, e a Carol
       // calibra por ele. Só no update — o trigger consome-o.
-      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null, coach_intervention_outcome: 'dispensado' }).eq('id', profile.id);
+      const { error } = await supabase.from('profiles').update({ coach_intervention_status: 'resolved', coach_intervention_reason: null, coach_intervention_outcome: INTERVENTION_OUTCOME.DISPENSADO }).eq('id', profile.id);
       if (error) throw error;
       // Dispensar um convite para objetivos é dizer "agora não": fica
       // registado para a Carol não voltar a chamar na próxima pesagem

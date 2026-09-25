@@ -278,32 +278,5 @@ export async function renderRacePlanFile(plan, race) {
   return canvasToFile(canvas, racePlanFileName(race));
 }
 
-/* ── guardar e partilhar ────────────────────────────────────────────────── */
-
-/** Descarrega o ficheiro (vai para as transferências / a galeria). */
-export function downloadFile(file) {
-  const url = URL.createObjectURL(file);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = file.name;
-  a.rel = 'noopener';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-}
-
-export function canShareFiles() {
-  return typeof navigator !== 'undefined' && typeof navigator.share === 'function';
-}
-
-/** Abre a partilha do sistema com o ficheiro; sem suporte para ficheiros,
- *  descarrega-o. Um cancelamento do atleta (AbortError) propaga-se. */
-export async function shareOrDownload(file, title) {
-  if (canShareFiles() && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-    await navigator.share({ files: [file], title });
-    return 'shared';
-  }
-  downloadFile(file);
-  return 'downloaded';
-}
+/* ── guardar e partilhar ── (em utils/shareFile.js, partilhado com o mural) */
+export { downloadFile, canShareFiles, shareOrDownload } from './shareFile';

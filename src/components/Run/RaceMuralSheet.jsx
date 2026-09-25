@@ -6,6 +6,7 @@ import Warning, { WarningAction } from '../shared/Warning';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { canvasToFile, muralFileName, muralCandidates } from '../../utils/raceMural';
+import { canShareFiles, downloadFile, shareOrDownload } from '../../utils/shareFile';
 import {
   STUDIO_FORMATS, STUDIO_TEMPLATES, STUDIO_THEMES, BRAND_CORNERS, MEDAL_CORNERS, STUDIO_GRAPHICS, MIN_STUDIO_ZOOM, MAX_STUDIO_ZOOM,
   studioLayout, muralData, defaultComposition, sanitizeComposition, switchTemplate, assignSlot, clearSlot,
@@ -189,9 +190,9 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
 
   // ── partilhar / guardar ──
   const [shareError, setShareError] = useState('');
-  const downloadRef = useRef(null);
   const fileName = muralFileName(race, composition.format);
-  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  // A mesma partilha do plano de ritmos como imagem (utils/shareFile.js).
+  const canShare = canShareFiles();
   const finalFile = async () => {
     const { canvas } = renderMuralStudio({ composition, data, candidates, images: assets.images, logo: assets.logo, scale: 1, placeholders: false });
     return canvasToFile(canvas, fileName);
@@ -199,13 +200,7 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   const download = async (givenFile) => {
     setShareError('');
     try {
-      const file = givenFile || await finalFile();
-      const url = URL.createObjectURL(file);
-      const a = downloadRef.current;
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      downloadFile(givenFile || await finalFile());
     } catch (err) {
       console.warn('Guardar o mural falhou', err);
       setShareError('Não consegui guardar a imagem.');
@@ -214,12 +209,7 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
   const share = async () => {
     setShareError('');
     try {
-      const file = await finalFile();
-      if (canShare && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-        await navigator.share({ files: [file], title: race?.name || 'A minha prova' });
-        return;
-      }
-      download(file);
+      await shareOrDownload(await finalFile(), race?.name || 'A minha prova');
     } catch (err) {
       if (err?.name === 'AbortError') return;
       console.warn('Partilha do mural falhou', err);
@@ -586,7 +576,6 @@ export default function RaceMuralSheet({ race, run, seconds, classification = ''
           </button>
         )}
       </div>
-      <a ref={downloadRef} href="#" hidden aria-hidden="true">guardar</a>
       </div>
     </div>
   );

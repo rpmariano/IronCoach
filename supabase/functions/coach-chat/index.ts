@@ -4,6 +4,7 @@
 // histórico de conversa) e chama o Gemini. Guarda pergunta e resposta
 // na tabela coach_messages para persistência entre sessões.
 
+import { CHAT_RESOLVE_OUTCOMES } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
@@ -554,7 +555,7 @@ const RESOLVE_INTERVENTION_TOOL = {
     properties: {
       action_taken: {
         type: "STRING",
-        enum: ["plano_ajustado", "atleta_ignorou", "falso_positivo"],
+        enum: [...CHAT_RESOLVE_OUTCOMES],
         description: "Qual foi o desfecho que permitiu resolver a intervenção."
       }
     },
@@ -3488,8 +3489,9 @@ export function buildGoalsInterventionInstruction(isStart: boolean, reason: stri
 
 export async function runResolveIntervention(sb: any, userId: string, args: any): Promise<string> {
   const actionTaken = args?.action_taken;
-  if (actionTaken !== "plano_ajustado" && actionTaken !== "atleta_ignorou" && actionTaken !== "falso_positivo") {
-    return "Erro: action_taken tem de ser 'plano_ajustado', 'atleta_ignorou' ou 'falso_positivo'. A intervenção não foi resolvida.";
+  if (!CHAT_RESOLVE_OUTCOMES.includes(actionTaken)) {
+    const opcoes = CHAT_RESOLVE_OUTCOMES.map((o) => `'${o}'`);
+    return `Erro: action_taken tem de ser ${opcoes.slice(0, -1).join(", ")} ou ${opcoes.at(-1)}. A intervenção não foi resolvida.`;
   }
 
   // Numa conversa sobre objetivos, "não quero agora" fica registado para a

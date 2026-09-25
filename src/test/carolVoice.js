@@ -1,22 +1,14 @@
 import { expect } from 'vitest';
+import { NAMES_INFRA, SOFTENING_WORDS, THIRD_PERSON } from '../../supabase/functions/_shared/carolTone.ts';
 
-/* A voz da Carol (ação P.12) — espelha assertCarolVoice em
-   supabase/functions/_shared/carolTone.ts, do lado do cliente: o servidor é
-   Deno, o cliente é bundlado pelo Vite, os dois lados não podem importar um
-   do outro. Mesmo risco de divergência que qualquer outra duplicação
-   _shared (MEAL_DOCTRINE, IMPRESSION_KIND_LABELS) — aceite porque é uma
-   regra pequena e só mecanicamente verificável (nunca "opinião primeiro" ou
-   "sem elogios automáticos", que só um humano lê no prompt).
-
-   Fronteiras por \p{L} (qualquer letra Unicode), não \b: \b usa \w, que não
-   inclui acentos — "consideração" tem "ç" logo a seguir a "considera", e \b
-   via \w trata essa transição como fronteira de palavra. Sem isto,
-   "consideração" acendia o aviso de "considera" a suavizar. */
-const SOFTENING_WORDS = /(?<![\p{L}])(talvez|considera(s)?|pode ser que|se calhar)(?![\p{L}])/iu;
-const NAMES_INFRA = /(?<![\p{L}])(gemini)(?![\p{L}])/iu;
-// Ela nunca fala de si na terceira pessoa ("para a Carol poder avaliar") —
-// revisão pré-deploy de 2026-09-25, a P.12 que ficara por acabar.
-const THIRD_PERSON = /(?<![\p{L}])(a|da|à) Carol(?![\p{L}])/iu;
+/* A voz da Carol (ação P.12) — o mesmo que assertCarolVoice em
+   supabase/functions/_shared/carolTone.ts, do lado do cliente: aqui falha
+   pelo expect do vitest, com a mensagem a dizer o quê. As expressões vêm de
+   lá (o Vite importa o .ts, como faz com @formulas) — eram cópias, e a da
+   terceira pessoa chegou a existir nos dois sítios (terceira revisão
+   pré-deploy, 2026-09-25). Só as regras mecanicamente verificáveis (nunca
+   "opinião primeiro" ou "sem elogios automáticos", que só um humano lê no
+   prompt). */
 
 /** Falha o teste (via expect, com a mensagem a dizer o quê) se `text` violar
  *  a voz da Carol: emoji, exclamação, "talvez"/"considera" a suavizar, o

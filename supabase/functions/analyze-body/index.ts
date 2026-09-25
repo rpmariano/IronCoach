@@ -7,6 +7,7 @@
 // dessa avaliação no Storage e volta a analisar, substituindo os valores.
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
+import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
 import {
@@ -231,7 +232,7 @@ export async function syncProfileAfterAssessment(sb: any, userId: string, assess
         patch.coach_intervention_status = "needed";
         patch.coach_intervention_reason = intervencao;
         // De onde veio o aviso (5.5, coach_interventions).
-        patch.coach_intervention_origin = "body";
+        patch.coach_intervention_origin = INTERVENTION_ORIGIN.BODY;
       }
     }
 
