@@ -21,15 +21,14 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, weekReviewCandidate } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from '@formulas/proactiveTriggers.ts';
 import { addDaysISO } from '../lib/utils';
 
-export const SILENCE_DAYS = 3;
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
  *  semana — depois disso já é história, não é "o balanço". Sem corrida
- *  registada, a Carol só pergunta como correu durante 3 dias. */
-export const RACE_AFTER_DAYS_WITH_RUN = 7;
-export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
+ *  registada, a Carol só pergunta como correu durante 3 dias. Os valores
+ *  vivem em @formulas/proactiveTriggers.ts, os mesmos que o tick do servidor usa. */
+export { SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN };
 const STORAGE_PREFIX = 'ironcoach:carol-proativa:';
 const DAY_MS = 86400000;
 

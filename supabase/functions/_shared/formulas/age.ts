@@ -6,8 +6,8 @@
 // tinha a versão de calendário e, mais abaixo no mesmo ficheiro, uma segunda
 // versão por milissegundos/365,25; coach-daily-summary/index.ts tinha uma
 // terceira, também por 365,25, dentro de computeTDEE) — a das zonas de FC
-// seria a quarta. Espelha ageFromBirthDate() em src/utils/body.js, que o
-// cliente mantém à parte (runtime diferente); se um mudar, mudar o outro.
+// seria a quarta. O cliente também a usa: src/utils/body.js reexporta-a via
+// @formulas (a cópia que lá havia saiu a 2026-09-25).
 export function ageFromBirthDate(birthDate: string | null | undefined): number | null {
   if (!birthDate) return null;
   const born = new Date(birthDate);
