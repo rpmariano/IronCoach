@@ -444,8 +444,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     const PHASE_PURPOSE = {
       base: 'A base é para aguentares volume sem te cansares; a velocidade vem depois.',
       build: 'Aqui entram o limiar e o ritmo de prova; o longo continua fácil, e uma semana em cada três ou quatro é mais leve.',
-      peak: 'É a fase mais dura: os longos com ritmo de prova, e o descanso conta tanto como o treino.',
-      taper: 'O volume desce agora, para chegares à prova com as pernas frescas; umas acelerações curtas mantêm o ritmo.',
+      peak: 'É a fase mais dura: os longos com ritmo de prova, e os dias leves entre eles para os absorveres.',
+      taper: 'É altura de guardar pernas para a prova: nada de treinos novos, nem de compensar o que ficou para trás.',
     };
     carolOverviewText = `Estás ${naFase}, semana ${currentWeek} de ${totalWeeks}${semana}. ${PHASE_PURPOSE[currentPhase.id] ?? 'Mantém uma semana mais leve a cada três ou quatro — é assim que a carga sobe sem te lesionares.'}`;
   } else {

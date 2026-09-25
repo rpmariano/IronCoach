@@ -149,7 +149,9 @@ function buildCommentary(c: CommentaryInput): string {
       if (c.done) {
         if (curto) return `A base ficou com pouco volume: ${km} de ${alvo} km.`;
         if (faltaEsforco) {
-          return `Na base ficaram ${semEsforco} sem o esforço registado, por isso não sei se foram fáceis.`;
+          return c.unknownCount === 1
+            ? "Na base ficou 1 corrida sem o esforço registado, por isso não sei se foi fácil."
+            : `Na base ficaram ${semEsforco} sem o esforço registado, por isso não sei se foram fáceis.`;
         }
         if (poucoFacil) {
           return c.polarizedPct === 0
@@ -162,10 +164,13 @@ function buildCommentary(c: CommentaryInput): string {
       }
       if (curto) return `Vais em ${km} de ${alvo} km desta fase. Acrescenta quilómetros fáceis, em Z1/Z2, para lá chegares.`;
       if (faltaEsforco) {
-        return `Não sei se os teus treinos fáceis estão a ser fáceis: ${semEsforco} desta fase sem o esforço registado. Regista-o, que a base se faz quase toda em ritmo fácil (Z1/Z2).`;
+        return `Não sei se as tuas corridas estão a ser fáceis: ${semEsforco} desta fase sem o esforço registado. Regista-o, que a base se faz quase toda em ritmo fácil (Z1/Z2).`;
       }
       if (poucoFacil) {
-        return `${faceis.charAt(0).toUpperCase()}${faceis.slice(1)}, e a base pede quase todas. Abranda os treinos fáceis${c.unknownCount > 0 ? ", e regista o esforço das corridas que não o têm" : ""}.`;
+        const esforco = c.unknownCount > 0 ? ", e regista o esforço das corridas que não o têm" : "";
+        return c.polarizedPct === 0
+          ? `Nenhuma das tuas corridas desta fase conta como fácil (Z1/Z2), e a base pede quase todas. Faz a maior parte em ritmo fácil, a conversar${esforco}.`
+          : `${faceis.charAt(0).toUpperCase()}${faceis.slice(1)}, e a base pede quase todas. Abranda os treinos fáceis${esforco}.`;
       }
       if (bom) return `A base está a ser bem feita: ${corridas}, ${km} de ${alvo} km, quase tudo em ritmo fácil.`;
       if (poucasSessoes) return `Vais em ${km} de ${alvo} km, mas com poucas sessões: ${corridas} nesta fase. A base quer regularidade, três por semana.`;

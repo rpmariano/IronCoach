@@ -28,13 +28,20 @@ Deno.test("resumo da base: com o esforço por registar, pede-o em vez de mandar 
   assertCarolVoice(ativa);
   const feita = computePhaseEvaluation({ ...base, phaseState: "completed", runs }).summary;
   assertEquals(feita, "Na base ficaram 3 corridas sem o esforço registado, por isso não sei se foram fáceis.");
+  // Com uma só, no singular (quarta revisão, 2026-09-25).
+  const uma = computePhaseEvaluation({
+    ...base, phaseState: "completed",
+    runs: [corrida({ training_type: "longo", distance_km: 25 }), corrida({ training_type: "continuo", distance_km: 15 })],
+  }).summary;
+  assertEquals(uma, "Na base ficou 1 corrida sem o esforço registado, por isso não sei se foi fácil.");
 });
 
 Deno.test("resumo da base: com as intensas registadas como tal, manda abrandar — e pede o esforço só às que não o têm", () => {
   const intensas = [corrida({ training_type: "intervalos" }), corrida({ training_type: "continuo", effort_rpe: 7 }), corrida({ training_type: "fartlek" })];
+  // Sem nenhuma fácil, não há treinos fáceis para abrandar: falta fazê-los.
   const s1 = computePhaseEvaluation({ ...base, phaseState: "active", runs: intensas }).summary;
-  assertStringIncludes(s1, "Abranda os treinos fáceis.");
-  assertEquals(s1.includes("esforço"), false);
+  assertStringIncludes(s1, "Faz a maior parte em ritmo fácil, a conversar.");
+  assertEquals(s1.includes("Abranda") || s1.includes("esforço"), false);
   const mistas = [corrida({ training_type: "intervalos" }), corrida({ training_type: "fartlek" }), corrida({ training_type: "continuo" }), corrida({ training_type: "recuperacao" })];
   const s2 = computePhaseEvaluation({ ...base, phaseState: "active", runs: mistas }).summary;
   assertStringIncludes(s2, "Só 25% das tuas corridas desta fase contam como fáceis");

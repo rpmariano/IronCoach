@@ -3490,7 +3490,8 @@ export function buildGoalsInterventionInstruction(isStart: boolean, reason: stri
 export async function runResolveIntervention(sb: any, userId: string, args: any): Promise<string> {
   const actionTaken = args?.action_taken;
   if (!CHAT_RESOLVE_OUTCOMES.includes(actionTaken)) {
-    return `Erro: action_taken tem de ser ${CHAT_RESOLVE_OUTCOMES.map((o) => `'${o}'`).join(", ")}. A intervenção não foi resolvida.`;
+    const opcoes = CHAT_RESOLVE_OUTCOMES.map((o) => `'${o}'`);
+    return `Erro: action_taken tem de ser ${opcoes.slice(0, -1).join(", ")} ou ${opcoes.at(-1)}. A intervenção não foi resolvida.`;
   }
 
   // Numa conversa sobre objetivos, "não quero agora" fica registado para a

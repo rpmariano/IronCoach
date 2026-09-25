@@ -254,7 +254,9 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
       todayISO: '2026-08-30',
     });
     // No polimento a carga desce: o parecer já não diz que sobe.
-    expect(withRuns.carolAnalysis.overviewText).toMatch(/O volume desce agora/);
+    // O parecer do polimento não repete o cartão da fase (quarta revisão).
+    expect(withRuns.carolAnalysis.overviewText).toMatch(/guardar pernas para a prova/);
+    expect(withRuns.carolAnalysis.overviewText).not.toMatch(/pernas frescas/);
     expect(withRuns.carolAnalysis.overviewText).not.toMatch(/a carga sobe/);
   });
 
