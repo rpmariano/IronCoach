@@ -21,7 +21,7 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock, findMissedWorkout, weekReviewCandidate } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, weekReviewCandidate } from '@formulas/proactiveTriggers.ts';
 import { addDaysISO } from '../lib/utils';
 
 export const SILENCE_DAYS = 3;
@@ -133,24 +133,24 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
       key: `week_review:${week.weekStart}`,
       details: describeWeek({ runs, meals, gymSessions, dailyCheckins }, week.weekStart, week.weekEnd),
     });
-  } else {
-    /* O treino de ontem por registar (P.10): a régua do servidor
-       (findMissedWorkout), para a chave ser a da notificação. Vem por último
-       e só num dia sem balanço da semana — à segunda, o treino de domingo é
-       assunto do balanço. */
-    const missed = findMissedWorkout({
-      plans: coachPlans,
-      planItems: coachPlanItems,
-      trainingDates: [...(runs || []), ...(gymSessions || [])].map((r) => r?.date ?? null),
-      raceEvents: races,
-    }, today);
-    if (missed) {
-      list.push({
-        trigger: 'missed_workout',
-        key: `missed_workout:${missed.date}`,
-        details: `Treino de ontem (${missed.date}) por registar: ${missed.items.map(missedItemLabel).join(' + ')}.`,
-      });
-    }
+  }
+  /* O treino de ontem por registar (P.10): a régua do servidor
+     (findMissedWorkout), para a chave ser a da notificação. Vem por último.
+     À segunda, o treino de domingo é da semana revista — assunto do balanço,
+     e não entra; à terça, o de segunda já é da semana nova e entra a seguir
+     ao balanço (missedWorkoutInReview, a mesma do servidor). */
+  const missed = findMissedWorkout({
+    plans: coachPlans,
+    planItems: coachPlanItems,
+    trainingDates: [...(runs || []), ...(gymSessions || [])].map((r) => r?.date ?? null),
+    raceEvents: races,
+  }, today);
+  if (missed && !missedWorkoutInReview(missed.date, week)) {
+    list.push({
+      trigger: 'missed_workout',
+      key: `missed_workout:${missed.date}`,
+      details: `Treino de ontem (${missed.date}) por registar: ${missed.items.map(missedItemLabel).join(' + ')}.`,
+    });
   }
   return list;
 }

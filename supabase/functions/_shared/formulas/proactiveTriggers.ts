@@ -279,6 +279,16 @@ export function findWeekToReview(todayISO: string, recordDates: Array<string | n
   return inWeek ? bounds : null;
 }
 
+/** O treino em falta é da semana que o balanço revê (à segunda, o de
+ *  domingo)? Então é assunto do balanço e não um momento à parte. À terça, o
+ *  de segunda já é da semana nova. Servidor e cliente usam esta régua. */
+export function missedWorkoutInReview(
+  missedDate: string,
+  week: { weekStart: string; weekEnd: string } | null | undefined,
+): boolean {
+  return !!week && missedDate >= week.weekStart && missedDate <= week.weekEnd;
+}
+
 function addDaysISO(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 }
@@ -413,12 +423,16 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   const week = out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
   if (week) {
     out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
-  } else {
-    /* O treino de ontem por registar (P.10) vem por último e não conta para
-       o balanço da semana: à segunda, o treino de domingo que ficou por
-       fazer é assunto do balanço, que fica com o dia. */
-    const missed = findMissedWorkout(input, todayISO);
-    if (missed) out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date });
+  }
+  /* O treino de ontem por registar (P.10) vem por último e não tira o dia ao
+     balanço da semana. À segunda, o treino de domingo que ficou por fazer é
+     da semana revista: é assunto do balanço, e não entra. À terça, o de
+     segunda já é da semana nova e entra a seguir ao balanço — quem já o
+     teve na segunda é perguntado; quem não abriu a app, tem o balanço
+     primeiro (revisão pré-deploy de 2026-09-25: à terça nunca saía). */
+  const missed = findMissedWorkout(input, todayISO);
+  if (missed && !missedWorkoutInReview(missed.date, week)) {
+    out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date });
   }
   return out.filter((c) => ok(c.trigger));
 }

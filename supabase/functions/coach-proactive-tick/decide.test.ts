@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { choosePush, decidePush, lisbonDateOf, tickLogRow } from "./decide.ts";
+import { choosePush, decidePush, lisbonDateOf, tickLogRow, tickLogSignature } from "./decide.ts";
 
 const candidate = { trigger: "race_eve" as const, key: "race_eve:r1", raceId: "r1", raceName: "Meia", hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null };
 const NOW = Date.parse("2026-09-18T15:00:00Z");
@@ -157,4 +157,24 @@ Deno.test("P.10: o registo em app_logs — só com momento, custo no topo do met
   for (const reason of ["fora_de_horas", "ja_notificado", "ja_entregue"]) assertEquals(tickLogRow({ ...input, reason }), null);
   // …a não ser que tenha havido custo.
   assertEquals(tickLogRow({ ...input, reason: "ja_notificado", usage: { input_tokens: 1, output_tokens: 1 } })?.level, "success");
+});
+
+Deno.test("P.10: sem custo, cada decisão (atleta, momento, motivo) fica uma vez por dia", () => {
+  // Revisão pré-deploy de 2026-09-25: com o app_logs a aceitar 'info', o
+  // ja_visto (e o limite do dia, o "falou há pouco"…) repetia-se de hora a hora.
+  const input = { userId: "u1", candidates: [candidate], candidate, reason: "ja_visto", lisbonHour: 16 };
+  const loggedToday = new Set([tickLogSignature("u1", "race_eve:r1", "ja_visto")]);
+  assertEquals(tickLogRow({ ...input, loggedToday }), null);
+  // Outro motivo, ou outro atleta, é outra decisão.
+  assertEquals(tickLogRow({ ...input, reason: "limite_diario", loggedToday })?.level, "info");
+  assertEquals(tickLogRow({ ...input, userId: "u2", loggedToday })?.level, "info");
+  // Com custo, regista-se sempre.
+  assertEquals(tickLogRow({ ...input, usage: { input_tokens: 5, output_tokens: 5 }, loggedToday })?.level, "success");
+});
+
+Deno.test("P.10: à terça, com o balanço já entregue na segunda, a notificação passa ao treino de segunda", () => {
+  const week = { ...candidate, trigger: "week_review" as const, key: "week_review:2026-09-14", raceId: null, raceName: null };
+  const missed = { ...candidate, trigger: "missed_workout" as const, key: "missed_workout:2026-09-21", raceId: null, raceName: null, anchorDate: "2026-09-21" };
+  const picked = choosePush([week, missed], { ...base, lisbonHour: 12, deliveredKeys: new Set(["week_review:2026-09-14"]) });
+  assertEquals(picked.candidate?.key, "missed_workout:2026-09-21");
 });
