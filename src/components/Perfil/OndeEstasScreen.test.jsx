@@ -83,13 +83,62 @@ describe('OndeEstasScreen', () => {
     expect(screen.getByTestId('onde-estas-como-se-le')).toHaveTextContent('Os 10% do topo');
   });
 
-  it('sem snapshot para o segmento diz que é pequeno e oferece alargar, por passos e por extenso', async () => {
+  it('nada publicado: diz que ainda nenhum segmento chegou lá, sem oferecer grupos que também estão vazios', async () => {
     linhas = [];
     render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-sem-publicacoes')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-sem-publicacoes')).toHaveTextContent('Ainda não há distribuições publicadas');
+    expect(screen.getByTestId('onde-estas-sem-publicacoes')).toHaveTextContent('o escalão M40, em estrada');
+    expect(screen.queryByTestId('onde-estas-alargar-modalidade')).toBeNull();
+  });
+
+  /* Relatado a 2026-09-25: «quando seleciono um card, outro aparece no lugar
+     dele». As opções recentravam-se no grupo que se estava a ver. */
+  it('segmento pequeno: só oferece grupos com dados, diz os outros numa linha, e a lista não se mexe', async () => {
+    const TRAIL = { ...SNAPSHOT, terrain: 'trail' };
+    linhas = [TRAIL];
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
     await waitFor(() => expect(screen.getByTestId('onde-estas-segmento-pequeno')).toBeInTheDocument());
-    expect(screen.getByTestId('onde-estas-segmento-pequeno')).toHaveTextContent('20 atletas ou mais');
+    const pequeno = screen.getByTestId('onde-estas-segmento-pequeno');
+    expect(pequeno).toHaveTextContent('O teu segmento ainda é pequeno');
+    expect(pequeno).toHaveTextContent('para o escalão M40, em estrada');
+    expect(pequeno).toHaveTextContent('20 atletas ou mais');
     expect(screen.getByTestId('onde-estas-alargar-modalidade')).toHaveTextContent('Quem prepara provas de trail');
-    expect(screen.getByTestId('onde-estas-alargar-genero')).toHaveTextContent('F40');
+    // Os que não têm distribuição não são cartões — são ditos, e não levam a lado nenhum.
+    expect(screen.queryByTestId('onde-estas-alargar-escalao')).toBeNull();
+    expect(screen.queryByTestId('onde-estas-alargar-genero')).toBeNull();
+    expect(screen.getByTestId('onde-estas-sem-dados')).toHaveTextContent('Ainda sem dados: o escalão M35, o escalão M45 e o escalão F40.');
+
+    // Tocar mostra o percentil desse grupo, e diz que não é o dele.
+    fireEvent.click(screen.getByTestId('onde-estas-alargar-modalidade'));
+    await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-outro-grupo')).toHaveTextContent('o escalão M40, em trail — não é o teu escalão');
+
+    // Voltar dá o mesmo ecrã de antes, com a mesma lista.
+    fireEvent.click(screen.getByTestId('onde-estas-voltar-meu'));
+    await waitFor(() => expect(screen.getByTestId('onde-estas-segmento-pequeno')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-alargar-modalidade')).toHaveTextContent('Quem prepara provas de trail');
+    expect(screen.queryByTestId('onde-estas-outro-grupo')).toBeNull();
+  });
+
+  it('noutro escalão sem dados, as opções continuam a partir do escalão do atleta, não do que está a ver', async () => {
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+    expect(screen.queryByTestId('onde-estas-outro-grupo')).toBeNull();
+    fireEvent.click(screen.getByTestId('onde-estas-seletor-escalao'));
+    fireEvent.click(screen.getByText('M50+'));
+    await waitFor(() => expect(screen.getByTestId('onde-estas-segmento-pequeno')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-segmento-pequeno')).toHaveTextContent('Este segmento ainda é pequeno');
+    // M35 é vizinho do M40 dele — do M50+ não era.
+    expect(screen.getByTestId('onde-estas-sem-dados')).toHaveTextContent('o escalão M35');
+    fireEvent.click(screen.getByTestId('onde-estas-voltar-meu'));
+    await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+  });
+
+  it('o cabeçalho volta para a Vitrina, de onde o ecrã se abre', () => {
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    expect(screen.getByLabelText('Voltar à Vitrina')).toBeInTheDocument();
+    expect(screen.getByTestId('onde-estas-screen')).not.toHaveTextContent('Palmarés');
   });
 
   it('sem escalão possível não se compara nada, e diz-se o que falta', async () => {

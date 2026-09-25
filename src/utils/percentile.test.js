@@ -12,6 +12,9 @@ import {
   segmentTopDecile,
   shortDisplayName,
   widerSegments,
+  ageBandWithGender,
+  segmentPhrase,
+  sameSegment,
 } from './percentile';
 
 /* Onde estás — o percentil dentro do escalão (gamificação, Fase 5). */
@@ -101,6 +104,13 @@ describe('widerSegments', () => {
       .toEqual(['modalidade', 'escalao', 'genero']);
   });
 
+  it('no outro género, o escalão sem letra diz o género — senão lia-se como o escalão em que já se está', () => {
+    const genero = widerSegments({ ageBand: '23-34', gender: 'M', terrain: 'estrada' }).find((p) => p.step === 'genero');
+    expect(genero.segment).toEqual({ ageBand: '23-34', gender: 'F', terrain: 'estrada' });
+    expect(genero.label).toBe('O escalão feminino dos 23 aos 34');
+    expect(genero.detail).toBe('O escalão feminino da tua idade, na mesma modalidade.');
+  });
+
   it('sem segmento não há nada a oferecer', () => {
     expect(widerSegments({})).toEqual([]);
     expect(widerSegments({ ageBand: 'M40', gender: 'M' })).toEqual([]);
@@ -140,5 +150,26 @@ describe('shortDisplayName', () => {
     expect(shortDisplayName('Ana')).toBe('Ana');
     expect(shortDisplayName('')).toBe('');
     expect(shortDisplayName(null)).toBe('');
+  });
+});
+
+describe('segmentPhrase / ageBandWithGender / sameSegment', () => {
+  it('o segmento por extenso, com artigo — antes saía "para dos 23 aos 34 em estrada"', () => {
+    expect(segmentPhrase({ ageBand: '23-34', gender: 'M', terrain: 'estrada' })).toBe('o escalão masculino dos 23 aos 34, em estrada');
+    expect(segmentPhrase({ ageBand: 'sub23', gender: 'F', terrain: 'trail' })).toBe('o escalão feminino até aos 22, em trail');
+    expect(segmentPhrase({ ageBand: 'M35', gender: 'M', terrain: 'estrada' })).toBe('o escalão M35, em estrada');
+    expect(segmentPhrase({})).toBe('');
+  });
+
+  it('o género só se acrescenta quando o nome do escalão não o traz', () => {
+    expect(ageBandWithGender('F40', 'F')).toBe('F40');
+    expect(ageBandWithGender('23-34', 'F')).toBe('feminino dos 23 aos 34');
+  });
+
+  it('sameSegment compara os três eixos', () => {
+    const a = { ageBand: 'M40', gender: 'M', terrain: 'estrada' };
+    expect(sameSegment(a, { ...a })).toBe(true);
+    expect(sameSegment(a, { ...a, terrain: 'trail' })).toBe(false);
+    expect(sameSegment(a, null)).toBe(false);
   });
 });
