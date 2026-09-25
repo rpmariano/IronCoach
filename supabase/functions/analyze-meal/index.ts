@@ -9,7 +9,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { CAROL_TONE_RULES_SHORT, carolLanguageRule, upstreamErrorText } from "../_shared/carolTone.ts";
+import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { dayProgressSection, mealDayProgress } from "../_shared/formulas/mealDayProgress.ts";
 import {
@@ -479,8 +479,41 @@ export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean)
 // para sinalizar inconsistência (ex.: almoço com muito mais gordura que o
 // habitual). Curto de propósito — é um comentário por refeição, não uma
 // análise do dia.
+// A estrutura comum às análises de registo (_shared/carolTone.ts), com o que
+// se lê numa refeição. Mais curta do que a de um treino: há várias por dia.
+const MEAL_ANALYSIS_RULES = carolRecordAnalysisRules({
+  readingLabel: "O prato",
+  readingHint:
+    "o que esta refeição entrega — calorias, proteína, hidratos e gordura — face ao tipo de refeição, ao que já comeu " +
+    "hoje e aos treinos feitos ou previstos.",
+  focusHint:
+    "Vai buscá-los aos alimentos concretos (pelo nome, com a quantidade) e ao papel da refeição no dia: recuperar um " +
+    "treino feito, preparar um treino previsto. Para o que corrigir, olha para a proteína, os hidratos face ao treino, " +
+    "a gordura e o alimento a trocar — sempre dentro das restrições alimentares dele.",
+  sentences: "5 e 8",
+  interventionInvite: true,
+});
+
+/** Os alimentos da refeição, pelo nome e com a quantidade, para ela os poder
+ *  comentar um a um — até 2026-09-25 só lhe chegavam os totais. */
+export function formatMealItemsLine(items: Array<{ name?: string | null; quantity_grams?: number | null }> | null | undefined): string | null {
+  const parts = (items || [])
+    .filter((it) => typeof it?.name === "string" && it.name.trim())
+    .slice(0, 20)
+    .map((it) => {
+      const g = Number(it.quantity_grams);
+      return g > 0 ? `${it.name!.trim()} (${Math.round(g)} g)` : it.name!.trim();
+    });
+  return parts.length ? `Alimentos: ${parts.join(", ")}` : null;
+}
+
 async function generateMealCoachNotes(
-  meal: { date: string; meal_type: string; notes: string | null },
+  meal: {
+    date: string;
+    meal_type: string;
+    notes: string | null;
+    items?: Array<{ name?: string | null; quantity_grams?: number | null }>;
+  },
   totals: MealTotals,
   goals: { calorie_goal?: number | null; protein_goal?: number | null; carbs_goal?: number | null; fat_goal?: number | null },
   previousMeals: Array<{ date: string } & MealTotals>,
@@ -507,6 +540,7 @@ async function generateMealCoachNotes(
   if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
 
   const typeLabel = MEAL_TYPE_LABELS[meal.meal_type] || meal.meal_type;
+  const itemsLine = formatMealItemsLine(meal.items);
 
   // Referência só para dar escala ao modelo (ex.: "isto é XX% da meta diária
   // de proteína") — não é uma meta por refeição real, o utilizador não a
@@ -563,11 +597,12 @@ async function generateMealCoachNotes(
 
   const prompt =
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a refeição que ele acabou de registar. ` +
-    `Escreve uma análise curta (2-4 frases), em português (PT), tom próximo.\n\n` +
+    `Escreve em português (PT), tom próximo.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
     `Refeição: ${typeLabel}, ${meal.date}\n` +
+    (itemsLine ? `${itemsLine}\n` : "") +
     `Calorias: ${totals.calories.toFixed(0)} kcal\n` +
     `Proteína: ${totals.protein.toFixed(1)}g · Hidratos: ${totals.carbs.toFixed(1)}g · Gordura: ${totals.fat.toFixed(1)}g\n` +
     (goalLine ? `${goalLine} (referência diária, esta é só uma refeição — não esperes que bata a meta toda).\n` : "") +
@@ -578,13 +613,14 @@ async function generateMealCoachNotes(
     workoutsText +
     planSection +
     `\nREGRAS CRÍTICAS:\n` +
-    `- Não repitas todos os números, escolhe os 2-3 mais relevantes.\n` +
+    `- Usa os números que provam o que dizes — não despejes a ficha toda.\n` +
     `- DISTINÇÃO ENTRE TREINOS FEITOS vs. PREVISTOS: NUNCA digas 'após o teu treino de X' de um treino que apenas está no plano para hoje e que ainda NÃO consta na lista de treinos REALIZADOS! Se o treino de hoje ainda não foi feito, refere-te a ele como 'o teu próximo treino de X' ou 'o treino que terás mais tarde'.\n` +
     `- CEIA / REFEIÇÕES ANTES DE DORMIR: A Ceia é uma refeição noturna tomada antes de ir dormir (mesmo que registada na madrugada). Numa Ceia, o treino do próprio dia da data ainda está por realizar mais tarde quando o atleta acordar. A Ceia foca-se no aporte proteico de absorção lenta (caseína, skyr, iogurte grego, queijo fresco) para manter a síntese proteica e regeneração muscular durante o sono.\n` +
     `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
-    `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num número concreto.\n` +
-    `- Termina com uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
+    `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num alimento ou num número concreto.\n` +
+    `- O bloco "Para a próxima" é uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
     (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`) +
+    `\n${MEAL_ANALYSIS_RULES}\n` +
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise), "intervention_needed" (boolean, true se justificar intervenção) e "intervention_reason" (string, justificação).\n` +
     `\n${MEAL_DOCTRINE}\n`;
 
@@ -597,7 +633,8 @@ async function generateMealCoachNotes(
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: { 
-            maxOutputTokens: 4096, 
+            // A análise estruturada é mais longa (feedback de 2026-09-25).
+            maxOutputTokens: 8192,
             response_mime_type: "application/json",
             response_schema: {
               type: "OBJECT",
@@ -648,7 +685,14 @@ async function attachMealCoachNotes(
   sb: any,
   userId: string,
   meal: { id: string; coach_notes?: string | null },
-  ctx: { date: string; meal_type: string; notes: string | null; totals: MealTotals },
+  ctx: {
+    date: string;
+    meal_type: string;
+    notes: string | null;
+    totals: MealTotals;
+    // As linhas de meal_items acabadas de gravar (nome + quantidade).
+    items?: Array<{ name?: string | null; quantity_grams?: number | null }>;
+  },
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<void> {
@@ -751,7 +795,7 @@ async function attachMealCoachNotes(
     }));
 
     const result = await generateMealCoachNotes(
-      { date: ctx.date, meal_type: ctx.meal_type, notes: ctx.notes },
+      { date: ctx.date, meal_type: ctx.meal_type, notes: ctx.notes, items: ctx.items },
       ctx.totals,
       profile || {},
       previousMeals,
@@ -909,6 +953,7 @@ Deno.serve(async (req) => {
 
         await attachMealCoachNotes(sb, userId, updatedMeal, {
           date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
+          items: savedItems || [],
         }, geminiKey, coachDeadline);
 
         return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: estimated.usage });
@@ -933,6 +978,7 @@ Deno.serve(async (req) => {
 
       await attachMealCoachNotes(sb, userId, meal, {
         date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
+        items: savedItems || [],
       }, geminiKey, coachDeadline);
 
       return jsonResponse({ meal: { ...meal, meal_items: savedItems }, usage: estimated.usage });
@@ -1069,6 +1115,7 @@ Deno.serve(async (req) => {
     // 4. Comentário do Coach (best-effort — ver attachMealCoachNotes)
     await attachMealCoachNotes(sb, userId, meal, {
       date, meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
+      items: savedItems || [],
     }, geminiKey, coachDeadline);
 
     return jsonResponse({ meal, items: savedItems, usage });

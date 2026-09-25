@@ -2,7 +2,7 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { dietaryRestrictionsPromptBlock, planningFrameSection } from "./index.ts";
+import { dietaryRestrictionsPromptBlock, formatMealItemsLine, planningFrameSection } from "./index.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
   assertEquals(dietaryRestrictionsPromptBlock(null, null), "");
@@ -65,4 +65,20 @@ Deno.test("planningFrameSection: sem plano e sem prova deve retornar enquadramen
   const bloco = planningFrameSection(false, false);
   assertStringIncludes(bloco, "SEM PROVA E SEM PLANO");
   assertStringIncludes(bloco, "quer MANTER os seus hábitos");
+});
+
+// Feedback de 2026-09-25: para comentar a refeição pelo nome dos alimentos,
+// ela tem de os ver — até aqui só lhe chegavam os totais.
+Deno.test("formatMealItemsLine: os alimentos pelo nome, com a quantidade quando a há", () => {
+  assertEquals(
+    formatMealItemsLine([
+      { name: "Arroz", quantity_grams: 150.4 },
+      { name: " Frango grelhado ", quantity_grams: 120 },
+      { name: "Azeite", quantity_grams: 0 },
+      { name: "", quantity_grams: 50 },
+    ]),
+    "Alimentos: Arroz (150 g), Frango grelhado (120 g), Azeite",
+  );
+  assertEquals(formatMealItemsLine([]), null);
+  assertEquals(formatMealItemsLine(null), null);
 });

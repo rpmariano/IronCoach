@@ -45,7 +45,9 @@ export const RECORD_MEMORY_DAYS = 14;
 // cujo comentário o chat não conhecia.
 const RECORD_QUOTA = { runs: 6, gym: 4, meals: 4, body: 2 };
 const MAX_RECORD_ENTRIES = RECORD_QUOTA.runs + RECORD_QUOTA.gym + RECORD_QUOTA.meals + RECORD_QUOTA.body;
-const MAX_COACH_COMMENT_CHARS = 320;
+// 420 desde 2026-09-25: a análise estruturada é condensada (condenseCoachComment)
+// na abertura + o que corrigir + a próxima ação, que não cabiam em 320.
+const MAX_COACH_COMMENT_CHARS = 420;
 const MAX_ATHLETE_NOTE_CHARS = 240;
 const MAX_CONVERSATION_MESSAGES = 6;
 const CONVERSATION_MAX_AGE_DAYS = 7;
@@ -136,6 +138,31 @@ export function bodyLabel(a: any): string {
   return w ? `Avaliação corporal (${w})` : "Avaliação corporal";
 }
 
+/** A análise estruturada de um registo (desde 2026-09-25: abertura e blocos
+ *  com rótulo a negrito, ver carolRecordAnalysisRules) condensada para a
+ *  memória: a opinião de abertura, o que ela mandou corrigir e a próxima ação
+ *  — o que tem de manter coerente. Cortada ao teto, perdia exatamente isto.
+ *  Um comentário antigo, sem rótulos, passa só sem asteriscos. */
+export function condenseCoachComment(text: unknown): string | null {
+  if (typeof text !== "string") return null;
+  const label = /^\s*\*\*([^*]+)\*\*\s*:?\s*/;
+  const blocks: { label: string | null; body: string[] }[] = [{ label: null, body: [] }];
+  for (const line of text.split("\n")) {
+    const m = line.match(label);
+    if (m) blocks.push({ label: m[1].trim().toLowerCase(), body: [line.slice(m[0].length)] });
+    else blocks[blocks.length - 1].body.push(line);
+  }
+  const plain = (b: { body: string[] }) => b.body.join(" ").replace(/\*\*/g, "").replace(/\s+/g, " ").trim();
+  if (blocks.length === 1) return plain(blocks[0]) || null;
+  const pick = (names: string[]) => blocks.filter((b) => b.label && names.includes(b.label)).map(plain).filter(Boolean).join(" ");
+  const parts = [
+    plain(blocks[0]),
+    pick(["o que corrigir", "o que vigiar"]) && `A corrigir: ${pick(["o que corrigir", "o que vigiar"])}`,
+    pick(["para a próxima"]) && `Para a próxima: ${pick(["para a próxima"])}`,
+  ].filter(Boolean);
+  return parts.join(" ") || null;
+}
+
 /** Converte as linhas de runs/workout_sessions/meals/body_assessments em entradas, sem as vazias.
  *  `commentField`: a coluna com o comentário dela (`coach_notes`; `ai_summary` nas avaliações). */
 export function toRecordEntries(rows: any[] | null | undefined, labelOf: (r: any) => string, commentField = "coach_notes"): RecordEntry[] {
@@ -144,7 +171,7 @@ export function toRecordEntries(rows: any[] | null | undefined, labelOf: (r: any
       date: typeof r?.date === "string" ? r.date.slice(0, 10) : "",
       label: labelOf(r),
       athleteNote: clip(r?.notes, MAX_ATHLETE_NOTE_CHARS),
-      coachComment: clip(r?.[commentField], MAX_COACH_COMMENT_CHARS),
+      coachComment: clip(condenseCoachComment(r?.[commentField]), MAX_COACH_COMMENT_CHARS),
     }))
     .filter((e) => e.date && (e.athleteNote || e.coachComment));
 }

@@ -20,7 +20,7 @@ import {
   gymLabel,
   mealLabel,
   runLabel,
-  toRecordEntries, bodyLabel, buildGoalProposalContext } from "./carolMemory.ts";
+  toRecordEntries, bodyLabel, buildGoalProposalContext, condenseCoachComment } from "./carolMemory.ts";
 
 Deno.test("clip: uma linha só, cortada com reticências; vazio é null", () => {
   assertEquals(clip("  dor   no\njoelho  ", 50), "dor no joelho");
@@ -457,4 +457,26 @@ Deno.test("buildWeekAdherenceLine: as contas da semana e o veredicto já decidid
   assertStringIncludes(partial!, "Semana cumprida a 100%: não.");
   // Sem nada prescrito nessa semana: sem linha — ela compara o volume.
   assertEquals(buildWeekAdherenceLine({ training: [], counts, executionScore: null }, "2026-09-21", "2026-09-27"), null);
+});
+
+// Desde 2026-09-25 a análise de um registo vem em blocos com rótulo (ver
+// carolRecordAnalysisRules). Cortada ao teto, a memória ficava só com a
+// abertura e o esforço — perdia o que ela mandou corrigir.
+Deno.test("condenseCoachComment: guarda a abertura, o que corrigir e a próxima ação; o resto sai", () => {
+  const nota = "Uma aula dura, bem aproveitada no tronco.\n**O esforço**\n64 minutos a 114 bpm.\n" +
+    "**O que esteve bem**\nPeso morto a 20 kg.\n**O que corrigir**\nSaltos para a caixa no dia a seguir à corrida.\n" +
+    "Troca por subidas com halteres.\n**Para a próxima**\nCarrega em \"Falar com a Coach\".";
+  assertEquals(
+    condenseCoachComment(nota),
+    "Uma aula dura, bem aproveitada no tronco. A corrigir: Saltos para a caixa no dia a seguir à corrida. " +
+      "Troca por subidas com halteres. Para a próxima: Carrega em \"Falar com a Coach\".",
+  );
+  // Na avaliação corporal o rótulo é "O que vigiar".
+  assertEquals(condenseCoachComment("Bom mês.\n**Os números**\n-1 kg.\n**O que vigiar**\nA água."), "Bom mês. A corrigir: A água.");
+  // Um comentário antigo, sem rótulos, passa como estava.
+  assertEquals(condenseCoachComment("Bom longo. Vigia o joelho."), "Bom longo. Vigia o joelho.");
+  assertEquals(condenseCoachComment(null), null);
+  const [e] = toRecordEntries([{ date: "2026-09-25", name: "Aula", notes: null, coach_notes: nota }], gymLabel);
+  assertEquals(e.coachComment?.includes("64 minutos"), false);
+  assertEquals(e.coachComment?.includes("Falar com a Coach"), true);
 });
