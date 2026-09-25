@@ -3,7 +3,8 @@
 //
 // Só com a cidade de treino no perfil (profiles.training_*, geocodificada
 // uma vez no Perfil: aqui não se procura nada, vai-se direto às coordenadas)
-// e só com treino no plano aceite hoje ou amanhã. Lê as suas próprias
+// e só com uma corrida por fazer no plano aceite, hoje ou amanhã — o ginásio
+// é dentro de portas, e as dicas daqui são de correr. Lê as suas próprias
 // colunas do perfil, numa consulta à parte: se alguma coisa falhar, a Carol
 // simplesmente não fala do tempo — nunca estraga a leitura do resto.
 //
@@ -23,7 +24,6 @@ function lisbonHour(now: Date): number {
 
 // deno-lint-ignore no-explicit-any
 function describeItem(i: any): string {
-  if (i?.kind === "ginasio") return "ginásio";
   const km = Number(i?.target_distance_km);
   return `corrida${i?.training_type ? ` ${i.training_type}` : ""}${Number.isFinite(km) && km > 0 ? ` ${String(km).replace(".", ",")} km` : ""}`;
 }
@@ -50,15 +50,17 @@ export async function fetchTrainingWeatherBlock(
       sb.from("coach_plan_items")
         .select("planned_date, kind, training_type, target_distance_km, status, coach_plans!inner(status)")
         .eq("user_id", userId).eq("coach_plans.status", "aceite")
-        .in("kind", ["corrida", "ginasio"])
+        .eq("kind", "corrida")
         .gte("planned_date", todayISO).lte("planned_date", tomorrow),
       sb.from("runs").select("start_time").eq("user_id", userId)
         .not("start_time", "is", null).order("date", { ascending: false }).limit(10),
     ]);
     if (itemsErr) return null;
-    // Só os treinos por fazer: o de hoje já feito não precisa de tempo.
+    // Só as corridas por fazer: a de hoje já feita não precisa de tempo.
     // deno-lint-ignore no-explicit-any
-    const pending = (items || []).filter((i: any) => i && i.status !== "concluido" && i.status !== "cancelado");
+    const pending = (items || []).filter((i: any) =>
+      i?.kind === "corrida" && i.status !== "concluido" && i.status !== "cancelado"
+    );
     if (!pending.length) return null;
 
     const hours = trainingHours((runs || []).map((r: { start_time?: string | null }) => r.start_time ?? null));

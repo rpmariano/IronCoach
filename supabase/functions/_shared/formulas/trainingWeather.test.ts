@@ -25,11 +25,11 @@ Deno.test("weatherAtHours: só as horas pedidas desse dia", () => {
 Deno.test("buildTrainingWeatherContext: hoje e amanhã, com o treino do plano, o que muda e nada de tabela", () => {
   const ctx = buildTrainingWeatherContext({ city: "Lisboa, Portugal", altitudeM: 45 }, [
     { date: "2026-09-25", label: "hoje", training: "corrida contínuo 8 km", weather: weatherAtHours(hourly, "2026-09-25", DEFAULT_TRAINING_HOURS) },
-    { date: "2026-09-26", label: "amanhã", training: "ginásio", weather: weatherAtHours(hourly, "2026-09-26", DEFAULT_TRAINING_HOURS) },
+    { date: "2026-09-26", label: "amanhã", training: "corrida fácil 6 km", weather: weatherAtHours(hourly, "2026-09-26", DEFAULT_TRAINING_HOURS) },
   ], false)!;
   assertStringIncludes(ctx, "TEMPO PARA OS TREINOS (Lisboa, Portugal — previsão Open-Meteo, de manhã e ao fim do dia");
   assertStringIncludes(ctx, "- hoje (corrida contínuo 8 km): às 08h 17 °C — bom para correr; às 19h 27 °C (sensação 29 °C) — calor: abranda e bebe mais");
-  assertStringIncludes(ctx, "- amanhã (ginásio): às 08h 16 °C (sensação 15 °C), chuva 60%, vento 30 km/h; às 19h 31 °C (sensação 33 °C) — calor forte");
+  assertStringIncludes(ctx, "- amanhã (corrida fácil 6 km): às 08h 16 °C (sensação 15 °C), chuva 60%, vento 30 km/h; às 19h 31 °C (sensação 33 °C) — calor forte");
   assertStringIncludes(ctx, "A tabela de ritmos não muda com o tempo.");
   assertCarolVoice(ctx.split("\n").pop()!);
 });

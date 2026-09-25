@@ -45,7 +45,7 @@ function fakeFetch(body: unknown = forecast) {
 const place = { training_city: "Lisboa, Portugal", training_lat: 38.72, training_lon: -9.14, training_altitude_m: 45 };
 const items = [
   { planned_date: "2026-09-25", kind: "corrida", training_type: "contínuo", target_distance_km: 8, status: "pendente" },
-  { planned_date: "2026-09-26", kind: "ginasio", status: "pendente" },
+  { planned_date: "2026-09-26", kind: "corrida", training_type: "fácil", target_distance_km: 6, status: "pendente" },
 ];
 
 Deno.test("fetchTrainingWeatherBlock: com cidade e treino no plano, o tempo às horas que ainda contam", async () => {
@@ -58,13 +58,18 @@ Deno.test("fetchTrainingWeatherBlock: com cidade e treino no plano, o tempo às 
   assertStringIncludes(calls[0], "start_date=2026-09-25&end_date=2026-09-26");
   // Hoje: só as 19h (as 08h já passaram). Amanhã: as duas janelas.
   assertStringIncludes(text, "- hoje (corrida contínuo 8 km): às 19h 27 °C (sensação 29 °C) — calor: abranda e bebe mais");
-  assertStringIncludes(text, "- amanhã (ginásio): às 08h 16 °C, chuva 70%; às 19h 22 °C — já custa");
+  assertStringIncludes(text, "- amanhã (corrida fácil 6 km): às 08h 16 °C, chuva 70%; às 19h 22 °C — já custa");
   assertEquals(text.includes("às 08h 17 °C"), false);
 });
 
-Deno.test("fetchTrainingWeatherBlock: sem cidade, sem treino por fazer, ou com erro — nada, e sem pedir o tempo", async () => {
+Deno.test("fetchTrainingWeatherBlock: sem cidade, sem corrida por fazer, ou com erro — nada, e sem pedir o tempo", async () => {
   const { impl, calls } = fakeFetch();
   assertEquals(await fetchTrainingWeatherBlock(fakeSb({ profiles: { data: { training_lat: null } } }), "u1", TODAY, impl, NOW), null);
+  // O ginásio é dentro de portas: sozinho no plano, não pede o tempo.
+  assertEquals(await fetchTrainingWeatherBlock(
+    fakeSb({ profiles: { data: place }, coach_plan_items: { data: [{ planned_date: TODAY, kind: "ginasio", status: "pendente" }] }, runs: { data: [] } }),
+    "u1", TODAY, impl, NOW,
+  ), null);
   assertEquals(await fetchTrainingWeatherBlock(
     fakeSb({ profiles: { data: place }, coach_plan_items: { data: [{ ...items[0], status: "concluido" }] }, runs: { data: [] } }),
     "u1", TODAY, impl, NOW,
@@ -97,6 +102,6 @@ Deno.test("fetchTrainingWeatherBlock: com a hora habitual (mediana das corridas)
     "u1", TODAY, impl, NOW,
   ))!;
   assertStringIncludes(text, "à hora a que ele costuma correr");
-  assertStringIncludes(text, "- amanhã (ginásio): às 19h 22 °C — já custa");
+  assertStringIncludes(text, "- amanhã (corrida fácil 6 km): às 19h 22 °C — já custa");
   assertEquals(text.includes("às 08h"), false);
 });
