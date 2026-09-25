@@ -19,7 +19,7 @@ function App(){ if(!BottomNav) return <div style={{color:'var(--text-4)',fontSiz
     <div style={{display:'flex',flexDirection:'column',gap:14}}>
       <SubNav width={280} active={sub} onChange={setSub} tones={['run','run','gym','nutrition','body']} items={[{icon:S('M3 3h7v9H3z'),label:'Geral'},{icon:S('M4 16v-2.38C4 11.5 2.97 10.5 3 8c.03-2.72 1.49-6 4.5-6C9.37 2 10 3.8 10 5.5c0 3.11-2 5.66-2 8.68V16'),label:'Corrida'},{icon:S('M14.4 14.4 9.6 9.6M18.657 21.485a2 2 0 1 1-2.829-2.828l-1.767 1.768a2 2 0 1 1-2.829-2.829'),label:'Ginásio'},{icon:S('M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2M7 2v20M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3'),label:'Nutrição'},{icon:S('M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8'),label:'Corpo'}]} />
       <SubNav width={280} active={p} onChange={setP} tones={['gym','race','run','coach']} items={[{label:'Perfil'},{label:'Metas'},{label:'Equipamento'},{label:'Coach'}]} />
-      <div style={{fontSize:11,color:'var(--text-4)',lineHeight:1.5}}>Nav: 420 + 130·distância ms, teto 950. Subnav: 320 ms. Nunca duas em movimento ao mesmo tempo.</div>
+      <div style={{fontSize:11,color:'var(--text-4)',lineHeight:1.5}}>Nav: 650 + 170·distância ms, teto 1300. Subnav: 480 ms. Nunca duas em movimento ao mesmo tempo.</div>
     </div>
   </div>; }
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
