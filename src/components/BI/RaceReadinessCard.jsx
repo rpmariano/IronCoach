@@ -18,7 +18,7 @@ const PILLAR_ICONS = {
   checkin: <Sunrise size={13} style={{ color: 'var(--coach)' }} />,
 };
 
-export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace }) {
+export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace, coachPlans, coachPlanItems }) {
   const [selectedPillar, setSelectedPillar] = useState(null);
   const today = new Date().toISOString().split('T')[0];
   const nextRace = useMemo(() => {
@@ -29,9 +29,16 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   }, [raceEvents, today]);
 
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
+  // Há treino previsto hoje (pedido 2026-09-26)? Para o pilar "Como
+  // acordaste" não dizer "hoje o treino é mais leve" num dia de descanso.
+  const trainingToday = useMemo(() => {
+    const aceites = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+    return (coachPlanItems || []).some((i) => i && aceites.has(i.plan_id) && i.planned_date === today
+      && (i.kind === 'corrida' || i.kind === 'ginasio') && i.status !== 'cancelado');
+  }, [coachPlans, coachPlanItems, today]);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins),
-    [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins]
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday),
+    [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday]
   );
 
   const daysLeft = nextRace ? differenceInDays(parseISO(nextRace.date), new Date()) : null;

@@ -254,7 +254,7 @@
           "key": "acwr",
           "label": "Carga de Treino",
           "score": 100,
-          "desc": "Carga ideal (1.28). Estás no sweet-spot de adaptação."
+          "desc": "Carga ideal (1,28). Estás no sweet-spot de adaptação."
         },
         {
           "key": "ea",
@@ -687,7 +687,7 @@
           "key": "acwr",
           "label": "Carga de Treino",
           "score": 0,
-          "desc": "Carga de risco (1.90). Risco de lesão aumentado."
+          "desc": "Carga de risco (1,90). Risco de lesão aumentado."
         },
         {
           "key": "ea",

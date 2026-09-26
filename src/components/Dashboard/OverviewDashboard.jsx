@@ -206,6 +206,8 @@ export default function OverviewDashboard({ scrollToTab }) {
             gymSessions={gymSessions}
             raceEvents={raceEvents}
             profile={profile}
+            coachPlans={coachPlans}
+            coachPlanItems={coachPlanItems}
             onClickRace={(id) => setEditingRaceId(id)}
           />
         )}
@@ -288,6 +290,8 @@ export default function OverviewDashboard({ scrollToTab }) {
         gymSessions={gymSessions}
         raceEvents={raceEvents}
         profile={profile}
+        coachPlans={coachPlans}
+        coachPlanItems={coachPlanItems}
         onClickRace={(id) => setEditingRaceId(id)}
       />
 

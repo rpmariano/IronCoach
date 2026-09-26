@@ -708,11 +708,11 @@ export function detectCoachInsights(data, profile) {
  * única implementação, partilhada com a Carol (specs/formulas-checklist.md
  * Fase E, o gap original que motivou toda a fase).
  */
-export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = []) {
+export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = [], trainingToday = undefined) {
   try {
     const today = todayISO();
     const todayCheckin = (dailyCheckins || []).find((c) => c?.date === today) || null;
-    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin);
+    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin, trainingToday);
   } catch (e) {
     return { score: 0, pillars: [], level: 'low' };
   }

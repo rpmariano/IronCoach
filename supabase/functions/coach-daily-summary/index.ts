@@ -135,6 +135,18 @@ function todayISO(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(new Date());
 }
 
+/* Minutos desde a meia-noite de Lisboa agora (0-1439) — para
+   describeRaceEveShort não repetir passos já passados (revisão de
+   2026-09-26): o resumo pode gerar-se a qualquer hora do dia (ao abrir a
+   app, ou refeito depois de um check-in), e às 22:40 da véspera o jantar
+   já lá vai. */
+function lisbonMinutesNow(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
+
 // Número do dia no ano (0-indexed) — usado para selecionar o conceito diário.
 function dayOfYear(isoDate: string): number {
   const d     = new Date(isoDate + "T00:00:00Z");
@@ -979,7 +991,7 @@ Deno.serve(async (req) => {
     // não o item do plano — o cliente também deixa de sobrepor este texto
     // com o plano nesse dia. No dia da prova, o aviso abre com ela.
     const tomorrowPrepMsg = raceEveObj && nextRace && raceEveDays === 1
-      ? describeRaceEveShort(raceEveObj, nextRace.name, nextRace.distance_km ? Number(nextRace.distance_km) : null)
+      ? describeRaceEveShort(raceEveObj, nextRace.name, nextRace.distance_km ? Number(nextRace.distance_km) : null, lisbonMinutesNow())
       : buildTomorrowPrepMessage(tomorrowPlanItems);
     // No dia da prova é o cliente que abre o aviso com a prova (tem o ritmo
     // do primeiro km, que aqui não há); prefixar também aqui duplicava a

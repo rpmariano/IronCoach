@@ -113,9 +113,33 @@ export function computeRaceEve(input: RaceEveInput): RaceEve {
   };
 }
 
-/** Uma frase curta para o cartão do Início na véspera: horas se as houver,
- *  senão o pedido da hora. */
-export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm: number | null): string {
+/** O jantar do horário ainda cai na véspera? Um jantar "depois" da partida
+ *  no relógio é da noite anterior (19:30 para uma partida às 09:00). Sem
+ *  isto, uma partida ao fim da tarde ou à noite (uma São Silvestre às 20:00)
+ *  dava "jantar até às 06:30, deitar às 09:00" — horas do PRÓPRIO dia da
+ *  prova, ditas como se fossem da véspera. A mesma regra do cartão do
+ *  Início (src/components/Home/carolCardLines.js, noiteDoHorario) — aqui
+ *  para o chat e o resumo diário lhe baterem certo (ver o cabeçalho deste
+ *  ficheiro: "Uma régua só"). */
+export function noiteDoHorario(s: RaceEveSchedule): boolean {
+  const jantar = minutesOfDay(s.dinnerBy);
+  const partida = minutesOfDay(s.start);
+  return jantar != null && partida != null && jantar > partida;
+}
+
+/**
+ * Uma frase curta para o cartão do Início, o chat e o resumo diário na
+ * véspera: horas se as houver, senão o pedido da hora.
+ *
+ * `nowMinutes` (revisão de 2026-09-26): minutos desde a meia-noite de
+ * Lisboa da véspera (0-1439), para não dizer passos já passados — às
+ * 22:40 o jantar e a hora de deitar já lá vão, e o que há a dizer é que se
+ * deite. Omitido (compatibilidade), devolve o horário inteiro, como
+ * sempre. Numa partida ao fim da tarde ou à noite (`noiteDoHorario`), a
+ * noite é sempre a de sempre — dorme-se ESTA noite, não a seguir à
+ * partida — e as horas que restam são as do dia da prova em si.
+ */
+export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm: number | null, nowMinutes: number | null = null): string {
   const name = raceName || "a prova";
   const dist = distanceKm ? `, ${distanceKm} km` : "";
   if (!eve.schedule) {
@@ -123,7 +147,28 @@ export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm:
   }
   const s = eve.schedule;
   const carbs = eve.dinnerCarbsG ? ` (${eve.dinnerCarbsG.low}-${eve.dinnerCarbsG.high} g de hidratos)` : "";
-  return `Amanhã é ${name}${dist}, partida às ${s.start}: jantar até às ${s.dinnerBy}${carbs}, deitar às ${s.bed}, acordar às ${s.wake}, pequeno-almoço às ${s.breakfast}, chegada às ${s.arrival}.`;
+
+  if (nowMinutes == null) {
+    return `Amanhã é ${name}${dist}, partida às ${s.start}: jantar até às ${s.dinnerBy}${carbs}, deitar às ${s.bed}, acordar às ${s.wake}, pequeno-almoço às ${s.breakfast}, chegada às ${s.arrival}.`;
+  }
+  const cabeca = `Amanhã é dia de prova: ${name}${dist}, partida às ${s.start}`;
+
+  if (!noiteDoHorario(s)) {
+    // "hidratos complexos (… g de hidratos)" repetia a palavra — aqui só as gramas.
+    const gramas = eve.dinnerCarbsG ? ` (${eve.dinnerCarbsG.low}-${eve.dinnerCarbsG.high} g)` : "";
+    const noite = nowMinutes >= 21 * 60 ? "Esta noite, 8 h de sono." : `Jantar de hidratos complexos${gramas}, pouca fibra, e 8 h de sono.`;
+    return `${cabeca}. ${noite} Antes da partida, comes às ${s.breakfast} e chegas às ${s.arrival}.`;
+  }
+
+  const dinnerMin = minutesOfDay(s.dinnerBy)!;
+  const bedMin = minutesOfDay(s.bed)!;
+  if (nowMinutes >= bedMin) {
+    return `${cabeca}. Deita-te já: acordas às ${s.wake}.`;
+  }
+  if (nowMinutes >= dinnerMin) {
+    return `${cabeca}: cama às ${s.bed}, acordar às ${s.wake}.`;
+  }
+  return `${cabeca}: jantar até às ${s.dinnerBy}${carbs}, deitar às ${s.bed}, acordar às ${s.wake}, pequeno-almoço às ${s.breakfast}, chegada às ${s.arrival}.`;
 }
 
 /** Uma frase curta para o cartão do Início no dia da prova. Um número solto

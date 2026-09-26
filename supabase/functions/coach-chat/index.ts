@@ -2250,10 +2250,14 @@ function buildReadinessPanel(
   todayISO: string,
   nextRace: any | null,
   todayCheckin: any | null = null,
+  // Há treino previsto hoje (revisão de 2026-09-26)? O chamador já tem os
+  // itens do plano (loadPlanItems) — evita o pilar do check-in dizer "hoje
+  // o treino é mais leve" num dia de descanso.
+  trainingToday: boolean | undefined = undefined,
 ): string | null {
   const bodyForShared = (bodyAssessments || []).map((a: any) => ({ ...a, date: a.assessed_at }));
 
-  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin);
+  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin, trainingToday);
   const cross = computeCrossMetrics(runs || [], gymSessions || [], bodyForShared, todayISO, "todos");
 
   if (readiness.pillars.length === 0) return null;
@@ -5817,7 +5821,7 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
     const { data: upcomingRaces, error: err_upcomingRaces } = await sb
       .from("race_events")
-      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info, start_time, conflict_acknowledged_at")
+      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info, start_time, conflict_acknowledged_at, created_at")
       .eq("user_id", userId)
       .gte("date", raceLookbackISO)
       .order("date", { ascending: true })
@@ -5973,6 +5977,11 @@ async function handler(req: Request): Promise<Response> {
     // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6) — só
     // com cidade no perfil e treino no plano; nunca rejeita.
     const trainingWeatherPromise = fetchTrainingWeatherBlock(sb, userId, todayISO);
+    // O mesmo `loadPlanItems` já pedido para a leitura de carga (runLoadReading,
+    // acima): um corrida/ginásio de hoje, ainda não cancelado.
+    const trainingTodayForReadiness = (loadPlanItems || []).some(
+      (i: any) => i?.planned_date === todayISO && (i.kind === "corrida" || i.kind === "ginasio"),
+    );
     const readinessPanel = buildReadinessPanel(
       recentRuns || [],
       weekMeals || [],
@@ -5982,6 +5991,7 @@ async function handler(req: Request): Promise<Response> {
       todayISO,
       nextUpcomingRace,
       todayCheckin ?? null,
+      trainingTodayForReadiness,
     );
     const racePhasesPanel = buildRacePhasesPanel(recentRuns || [], nextUpcomingRace, profile, todayISO);
 

@@ -48,26 +48,45 @@ export function windowProgress(hour: number, startHour: number | null, endHour: 
   return { fraction: clamped / length, hoursLeft: length - clamped };
 }
 
+/* Revisão de 2026-09-26: dois defeitos misturavam a hora da janela de
+   lembretes com a hora do dia.
+
+   1. Com nada registado, o "vai a meio" servia para qualquer hora depois
+      dos primeiros 25% da janela — incluindo as últimas duas horas dela,
+      onde a mesma frase que fala em "vai a meio" saía ao lado de "Bebe
+      agora": tarde de mais para "a meio", cedo de mais para "a acabar".
+      Agora são três frases, cada uma na sua fatia da janela.
+   2. Nas últimas duas horas da janela, "o dia está a acabar… não tudo antes
+      de dormir" pressupõe que são horas tardias do dia real — falso com uma
+      janela que acaba às 18h (são só as últimas duas horas DELA) ou que
+      atravessa a meia-noite (a 1h da manhã "o dia está a acabar" e "antes
+      de dormir" já não fazem sentido nenhum). A frase de deitar só entra a
+      partir das 19h de Lisboa; antes disso, diz-se a hora em que os
+      lembretes acabam; entre a meia-noite e as 6h, fica só o copo. */
 export function waterReminderMessage(input: WaterReminderInput): WaterReminderMessage {
   const total = Math.max(0, Number(input.totalMl) || 0);
   const goal = Math.max(1, Number(input.goalMl) || 2000);
   const remaining = Math.max(0, goal - total);
   const { fraction, hoursLeft } = windowProgress(input.hour, input.startHour, input.endHour);
+  const hour = ((Number(input.hour) % 24) + 24) % 24;
+  const endHour = input.endHour ?? DEFAULT_END_HOUR;
   const title = "Carol";
 
   if (total === 0) {
-    return {
-      title,
-      body: fraction < 0.25
-        ? "Ainda não bebeste água hoje. Um copo agora, antes de mais nada."
-        : "Nem um copo de água registado hoje, e o dia já vai a meio. Bebe agora.",
-    };
+    if (hoursLeft <= LATE_HOURS) {
+      return { title, body: "Nem um copo de água registado hoje, e o dia está a acabar. Um copo agora e outro ao jantar." };
+    }
+    if (fraction >= 0.5) {
+      return { title, body: "Nem um copo de água registado hoje, e já passou metade do dia. Bebe agora." };
+    }
+    return { title, body: "Ainda não vejo água registada hoje. Um copo agora." };
   }
   if (hoursLeft <= LATE_HOURS) {
-    return {
-      title,
-      body: `Faltam ${formatWater(remaining)} para a meta e o dia está a acabar. Bebe agora, não tudo antes de dormir.`,
-    };
+    if (hour >= 0 && hour < 6) return { title, body: "Um copo de água agora." };
+    if (hour >= 19) {
+      return { title, body: `Faltam ${formatWater(remaining)} para a meta e o dia está a acabar. Bebe agora, não tudo antes de dormir.` };
+    }
+    return { title, body: `Faltam ${formatWater(remaining)} para a meta e os lembretes acabam às ${endHour}h. Um copo agora.` };
   }
   if (total / goal < fraction - BEHIND_MARGIN) {
     return { title, body: `Estás atrás na água: ${formatWater(total)} de ${formatWater(goal)}. Bebe um copo agora.` };
