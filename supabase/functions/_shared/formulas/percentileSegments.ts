@@ -56,7 +56,8 @@ export function closedWindow(todayISO: string, anchor = WINDOW_ANCHOR, days = WI
 }
 
 /* A FOLGA DE PUBLICAÇÃO (2026-09-26). A quinzena fecha ao fim de domingo e a
-   tarefa corre de madrugada: publicar na segunda às 05:17 deixava de fora quem
+   tarefa corre de madrugada: publicar na segunda às 04:17 UTC (05:17 de Lisboa
+   no verão) deixava de fora quem
    regista o treino de domingo só na segunda — e o ecrã, que recalcula o
    índice dele ao vivo, mostrava-lhe um percentil que não batia com a média.
    Publica-se na terça: um dia inteiro para os registos atrasados. Não mexe
