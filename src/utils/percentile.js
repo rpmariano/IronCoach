@@ -13,6 +13,8 @@ import {
   AGE_BANDS_BY_GENDER,
   counterpartBand,
   neighbourSegments,
+  nextPublicationDate,
+  publicationDayOf,
   PERCENTILE_CEILING,
   PERCENTILE_FLOOR,
   percentileFrom,
@@ -105,6 +107,15 @@ export function formatPublicationDate(iso, hojeISO = null) {
   if (hojeISO && iso === hojeISO) return 'hoje, de manhã';
   const d = new Date(`${iso}T00:00:00Z`);
   return `${DIAS_SEMANA[d.getUTCDay()]}, ${d.getUTCDate()} ${MESES[d.getUTCMonth()]}`;
+}
+
+/** "terça, 13 out" ou, na madrugada da própria terça (antes do cron),
+ *  "hoje, de manhã" — a próxima atualização da média e das tabelas, pelo
+ *  INSTANTE e não só pelo calendário (publicationDayOf). `now` é injetável
+ *  para os testes; o "hoje" compara com o dia local do mesmo instante. */
+export function nextUpdateLabel(now = new Date()) {
+  const hoje = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return formatPublicationDate(nextPublicationDate(publicationDayOf(now.getTime())), hoje);
 }
 
 export function ageBandLabel(band) {

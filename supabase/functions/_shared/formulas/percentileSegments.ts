@@ -76,13 +76,16 @@ export function publishableWindow(todayISO: string, grace = PUBLISH_GRACE_DAYS):
    contar pelo calendário anunciava já a seguinte (+14 dias). O "dia de
    publicação" de um instante é o dia UTC desse instante menos esta margem
    (04:30, um quarto de hora de folga sobre o cron): antes dela, a terça ainda
-   conta como segunda, e a próxima atualização é "hoje". */
-export const PUBLISH_TIME_UTC_MINUTES = 4 * 60 + 30;
+   conta como segunda, e a próxima atualização é "hoje".
+   DEPENDE DO CRON, que vive em produção e não no repositório (job
+   compute-percentile-snapshots, '17 4 * * *'): mudar a hora de um obriga a
+   mudar a do outro — ver o cabeçalho da compute-percentile-snapshots. */
+export const PUBLICATION_CUTOFF_UTC_MINUTES = 4 * 60 + 30;
 
 /** O dia (YYYY-MM-DD) que conta para a publicação num instante `nowMs` — é
  *  este que se passa a nextPublicationDate quando se fala do "agora". */
 export function publicationDayOf(nowMs: number): string {
-  return new Date(nowMs - PUBLISH_TIME_UTC_MINUTES * 60000).toISOString().slice(0, 10);
+  return new Date(nowMs - PUBLICATION_CUTOFF_UTC_MINUTES * 60000).toISOString().slice(0, 10);
 }
 
 /** O dia (YYYY-MM-DD) em que sai a PRÓXIMA distribuição — o fim da quinzena

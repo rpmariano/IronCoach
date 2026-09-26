@@ -34,6 +34,14 @@
 //     agregado de 20+ pessoas que já não é dado pessoal de ninguém.
 // A função pode correr todos os dias — 13 dessas 14 vezes não escreve nada.
 // Refresca-se ao ritmo da janela, nunca mais depressa.
+//
+// ── O AGENDAMENTO (fora do repositório) ──
+// pg_cron em produção, job 'compute-percentile-snapshots', '17 4 * * *' (04:17
+// UTC), criado a 2026-09-26 com o comando do send-water-reminders (o
+// CRON_SECRET não entra no git). A data "Próxima atualização" do ecrã e da
+// Carol assume que ele corre antes das 04:30 UTC (PUBLICATION_CUTOFF_UTC_MINUTES,
+// em _shared/formulas/percentileSegments.ts): mudar a hora do cron obriga a
+// mudar essa constante.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
