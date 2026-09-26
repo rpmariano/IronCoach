@@ -141,6 +141,20 @@ describe('OndeEstasScreen', () => {
     expect(screen.getByTestId('onde-estas-screen')).not.toHaveTextContent('Palmarés');
   });
 
+  it('com uma métrica só, não há seletor (parecia um botão sem função)', async () => {
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /Plano/ })).toBeNull();
+  });
+
+  it('"As tabelas com nomes" leva o segmento e a quinzena que se estão a ver', async () => {
+    const onOpenTabelas = vi.fn();
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={onOpenTabelas} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('onde-estas-ver-tabelas'));
+    expect(onOpenTabelas).toHaveBeenCalledWith({ ageBand: 'M40', gender: 'M', terrain: 'estrada' }, '2026-08-31', '2026-09-14');
+  });
+
   it('sem escalão possível não se compara nada, e diz-se o que falta', async () => {
     semear({ profile: { birth_date: null }, raceEvents: [] });
     render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);

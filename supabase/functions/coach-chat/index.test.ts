@@ -4259,3 +4259,12 @@ Deno.test("as recusas do chat falam como a Carol", () => {
     assertEquals(/servidor|sessão inválida|GEMINI|Postgres|erro inesperado/i.test(text), false, text);
   }
 });
+
+Deno.test("Vitrina: o chat conhece os dois momentos novos, com a instrução certa", () => {
+  assert(PROACTIVE_TRIGGERS.includes("leaderboard") && PROACTIVE_TRIGGERS.includes("percentile_ready"));
+  const board = buildProactiveInstruction("leaderboard", "Momento: ENTROU nas tabelas do escalão dele, em 3.º lugar.");
+  assertStringIncludes(board, "ENTROU");
+  assertStringIncludes(board, "Nunca digas nomes de outros atletas");
+  const ready = buildProactiveInstruction("percentile_ready", 'Momento "perto": ainda não tem atletas suficientes.');
+  assertStringIncludes(ready, "nunca o número de atletas de um grupo");
+});

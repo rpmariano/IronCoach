@@ -118,6 +118,9 @@ const CAROL_PUSH_TYPES = [
   { key: 'silence', label: 'Dias sem registos' },
   { key: 'missed_workout', label: 'Treino por registar' },
   { key: 'week_review', label: 'Balanço da semana' },
+  // A Vitrina (2026-09-25): só chegam a quem entrou na média / nas tabelas.
+  { key: 'leaderboard', label: 'Entrar e sair das tabelas' },
+  { key: 'percentile_ready', label: 'Números do Onde estás' },
 ];
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 

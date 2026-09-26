@@ -9,16 +9,20 @@
 
    Espelha supabase/functions/_shared/formulas/percentileSegments.ts, que é
    quem CALCULA as fronteiras; a contagem de ventis vem de lá. */
-import { VENTILE_COUNT } from '@formulas/percentileSegments.ts';
+import {
+  AGE_BANDS_BY_GENDER,
+  counterpartBand,
+  neighbourSegments,
+  PERCENTILE_CEILING,
+  PERCENTILE_FLOOR,
+  percentileFrom,
+  VENTILE_COUNT,
+} from '@formulas/percentileSegments.ts';
 
-/* A faixa 5–95, e a truncatura é de propósito.
-   "Estás no 100.º percentil" não descreve o atleta: descreve toda a gente que
-   está abaixo dele — e num segmento de 20 pessoas o 100.º percentil é uma
-   pessoa só, identificável por quem esteja atento. O mesmo em baixo: o 0.º
-   percentil não é um número, é um dedo apontado. Por isso os extremos
-   dizem-se "5% ou menos" / "95% ou mais", e o número nunca sai daqui. */
-export const PERCENTILE_FLOOR = 5;
-export const PERCENTILE_CEILING = 95;
+/* A faixa 5–95 e o próprio percentil vivem em @formulas/percentileSegments.ts
+   desde 2026-09-25: a Carol passou a dizer o percentil ao próprio atleta, e o
+   servidor tem de contar exatamente como este ecrã conta. */
+export { PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom };
 
 /** Quantas fronteiras há: os ventis, 5% a 95%. */
 export { VENTILE_COUNT };
@@ -27,19 +31,6 @@ const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 function validBoundaries(boundaries) {
   return Array.isArray(boundaries) && boundaries.length === VENTILE_COUNT && boundaries.every(isNum);
-}
-
-/**
- * O percentil do atleta, truncado à faixa 5–95.
- * @param {number} value  o índice do atleta (0-100)
- * @param {number[]} boundaries  as 19 fronteiras de ventil do segmento
- * @returns {number|null} 5..95 em degraus de 5, ou null sem segmento válido
- */
-export function percentileFrom(value, boundaries) {
-  const nums = Array.isArray(boundaries) ? boundaries.map(Number) : null;
-  if (!isNum(value) || !validBoundaries(nums)) return null;
-  const passadas = nums.filter((b) => value >= b).length;
-  return Math.min(PERCENTILE_CEILING, Math.max(PERCENTILE_FLOOR, passadas * 5));
 }
 
 /** true quando o percentil foi truncado — a UI diz "ou mais"/"ou menos" em
@@ -79,10 +70,9 @@ export function densityCurve(boundaries) {
 
 /* ── Os segmentos ─────────────────────────────────────────────────────────── */
 
-export const AGE_BANDS_BY_GENDER = {
-  M: ['sub23', '23-34', 'M35', 'M40', 'M45', 'M50+'],
-  F: ['sub23', '23-34', 'F35', 'F40', 'F45', 'F50+'],
-};
+// Os escalões por género e o equivalente no outro género vivem em
+// @formulas/percentileSegments.ts (o servidor usa os mesmos vizinhos).
+export { AGE_BANDS_BY_GENDER, counterpartBand };
 
 export const AGE_BAND_LABELS = {
   sub23: 'até aos 22',
@@ -128,14 +118,6 @@ export function sameSegment(a, b) {
   return !!a && !!b && a.ageBand === b.ageBand && a.gender === b.gender && a.terrain === b.terrain;
 }
 
-/** O escalão equivalente no outro género — sub23 e 23-34 não têm letra. */
-export function counterpartBand(band, gender) {
-  if (band === 'sub23' || band === '23-34') return band;
-  return `${gender}${String(band).slice(1)}`;
-}
-
-const otherGender = (g) => (g === 'F' ? 'M' : 'F');
-const otherTerrain = (t) => (t === 'estrada' ? 'trail' : 'estrada');
 
 /* SEGMENTO PEQUENO — o que se oferece quando não há snapshot.
    Por ordem: largar a modalidade, alargar o escalão, largar o género. Cada
@@ -149,33 +131,31 @@ const otherTerrain = (t) => (t === 'estrada' ? 'trail' : 'estrada');
    mesmos dados com outro recorte, e é entre dois recortes do mesmo universo
    que a diferença entrega o indivíduo. Alargar aqui é MUDAR de segmento,
    não fundir segmentos. */
-export function widerSegments({ ageBand, gender, terrain }) {
-  if (!ageBand || !gender || !terrain) return [];
-  const bands = AGE_BANDS_BY_GENDER[gender] || [];
-  const i = bands.indexOf(ageBand);
-  const vizinhos = [bands[i - 1], bands[i + 1]].filter(Boolean);
-  const outroGenero = otherGender(gender);
-
-  return [
-    {
-      step: 'modalidade',
-      segment: { ageBand, gender, terrain: otherTerrain(terrain) },
-      label: `Quem prepara provas de ${TERRAIN_LABELS[otherTerrain(terrain)]}`,
-      detail: `Mesmo escalão, mas a modalidade muda — ${TERRAIN_LABELS[otherTerrain(terrain)]} em vez de ${TERRAIN_LABELS[terrain]}.`,
-    },
-    ...vizinhos.map((band) => ({
-      step: 'escalao',
-      segment: { ageBand: band, gender, terrain },
-      label: `O escalão ${ageBandLabel(band)}`,
-      detail: `O escalão ao lado do teu, na mesma modalidade.`,
-    })),
-    {
-      step: 'genero',
-      segment: { ageBand: counterpartBand(ageBand, outroGenero), gender: outroGenero, terrain },
-      label: `O escalão ${ageBandWithGender(counterpartBand(ageBand, outroGenero), outroGenero)}`,
-      detail: `O escalão ${GENDER_LABELS[outroGenero]} da tua idade, na mesma modalidade.`,
-    },
-  ];
+export function widerSegments(own) {
+  // Os segmentos vêm de @formulas (neighbourSegments) — os mesmos que o
+  // servidor usa para decidir o aviso "já há dados ao lado do teu". Aqui só
+  // se lhes dá nome.
+  return neighbourSegments(own || {}).map(({ step, segment }) => {
+    if (step === 'modalidade') {
+      return {
+        step, segment,
+        label: `Quem prepara provas de ${TERRAIN_LABELS[segment.terrain]}`,
+        detail: `Mesmo escalão, mas a modalidade muda — ${TERRAIN_LABELS[segment.terrain]} em vez de ${TERRAIN_LABELS[own.terrain]}.`,
+      };
+    }
+    if (step === 'escalao') {
+      return {
+        step, segment,
+        label: `O escalão ${ageBandLabel(segment.ageBand)}`,
+        detail: 'O escalão ao lado do teu, na mesma modalidade.',
+      };
+    }
+    return {
+      step, segment,
+      label: `O escalão ${ageBandWithGender(segment.ageBand, segment.gender)}`,
+      detail: `O escalão ${GENDER_LABELS[segment.gender]} da tua idade, na mesma modalidade.`,
+    };
+  });
 }
 
 /** "Cumpres mais do plano que 70% dos atletas M40 que preparam provas de
@@ -198,7 +178,9 @@ export function percentileSentence(percentile, { ageBand, terrain }) {
    o texto que o atleta lê mudar. v2 (2026-09-22, bug #43): o mesmo conteúdo
    em linguagem simples. É também o valor por omissão de setPrivacyConsent,
    para uma chamada sem versão nunca gravar um texto que já não existe. */
-export const TABELAS_POLICY_VERSION = 'v2';
+// v3 (2026-09-25): as tabelas passaram a existir — o top 10 de cada escalão
+// por quinzena, e só as vê quem aparece nelas. O texto diz isso agora.
+export const TABELAS_POLICY_VERSION = 'v3';
 
 export function shortDisplayName(full) {
   const partes = String(full || '').trim().split(/\s+/).filter(Boolean);

@@ -474,11 +474,11 @@ describe('Perfil — Vitrina', () => {
     });
   });
 
-  it('monta a Vitrina dos badges, com o "Onde estás" que herdou do Palmarés', () => {
+  it('monta a Vitrina dos badges; o "Onde estás" só aparece quando há números para ele (BadgesCard.test.jsx)', () => {
     render(<Perfil />);
     abrirVitrina();
     expect(screen.getByTestId('badges-card')).toBeInTheDocument();
-    expect(screen.getByTestId('badges-onde-estas')).toHaveTextContent('Onde estás');
+    expect(screen.queryByTestId('badges-onde-estas')).not.toBeInTheDocument();
   });
 
   it('a Vitrina não suja o rascunho: sair para outro separador não pede confirmação', () => {
@@ -530,7 +530,7 @@ describe('Perfil — notificações da Carol (P.6)', () => {
       carol_push_enabled: true,
       carol_push_max_per_day: 2,
       carol_push_start_hour: 8,
-      carol_push_types: ['intervention', 'race_morning', 'race_eve', 'race_conflict', 'race_after', 'block_end', 'missed_workout', 'week_review'],
+      carol_push_types: ['intervention', 'race_morning', 'race_eve', 'race_conflict', 'race_after', 'block_end', 'missed_workout', 'week_review', 'leaderboard', 'percentile_ready'],
     });
   });
 

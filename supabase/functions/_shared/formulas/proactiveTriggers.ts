@@ -17,11 +17,14 @@
 // por resolver (intervenção — dor no check-in, desvio num registo) passa à
 // frente de tudo, e o conflito de provas vem logo a seguir à véspera.
 
+import type { Segment } from "./percentileSegments.ts";
+import { type LeaderboardEntryRow, leaderboardMoment, percentileReadyMoment, type SnapshotRow } from "./vitrina.ts";
+
 export const SILENCE_DAYS = 3;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
 export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 
-export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "missed_workout" | "week_review";
+export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "missed_workout" | "week_review" | "leaderboard" | "percentile_ready";
 
 export interface TriggerRace {
   id: string;
@@ -98,6 +101,14 @@ export interface ServerProactiveCandidate {
   /** Silêncio com check-in: dias desde o último treino (corrida ou ginásio),
    *  ou null se não houver nenhum. */
   trainingSilenceDays?: number | null;
+  /** A Vitrina (2026-09-25). Tabelas: "entrou" ou "saiu" do top 10 do
+   *  escalão; percentil: "perto" (há dados ao lado do escalão dele) ou "meu"
+   *  (o escalão dele já tem). */
+  vitrinaStage?: "entrou" | "saiu" | "perto" | "meu";
+  /** Tabelas, ao entrar: a posição (1-10). Nunca vai para a notificação. */
+  leaderboardRank?: number | null;
+  /** A janela publicada de que o momento fala. */
+  windowStart?: string | null;
 }
 
 /** "08:30" / "08:30:00" → 510. null se não for uma hora válida. */
@@ -319,6 +330,15 @@ export type ServerProactiveInput = {
     /** P.10, silêncio: o último check-in e o último treino (corrida ou ginásio). */
     lastCheckinDate?: string | null;
     lastTrainingDate?: string | null;
+    /** A Vitrina (2026-09-25): as distribuições publicadas, o segmento do
+     *  atleta, os dois consentimentos e as linhas DELE nas tabelas. */
+    vitrina?: {
+      snapshots: SnapshotRow[] | null | undefined;
+      own: Segment | null;
+      statsPoolConsent: boolean;
+      leaderboardConsent: boolean;
+      leaderboardEntries: LeaderboardEntryRow[] | null | undefined;
+    } | null;
 };
 
 /** O momento mais importante agora, ou null. */
@@ -434,6 +454,21 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   if (missed && !missedWorkoutInReview(missed.date, week)) {
     out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date });
   }
+  /* A Vitrina (2026-09-25) vem no fim: é novidade, não urgência — espera
+     pelo dia em que não há mais nada, e não tira o dia ao balanço da semana
+     (entra depois dele ser decidido). As tabelas antes do percentil: é mais
+     pessoal. Sem consentimento, nenhum dos dois (vitrina.ts). */
+  const v = input.vitrina;
+  if (v) {
+    const board = leaderboardMoment(v.leaderboardEntries, v.snapshots, v.own, v.leaderboardConsent);
+    if (board) {
+      out.push({ ...base, trigger: "leaderboard", key: board.key, vitrinaStage: board.stage, leaderboardRank: board.rank ?? null, windowStart: board.windowStart, anchorDate: board.windowStart });
+    }
+    const ready = percentileReadyMoment(v.snapshots, v.own, v.statsPoolConsent);
+    if (ready) {
+      out.push({ ...base, trigger: "percentile_ready", key: ready.key, vitrinaStage: ready.stage, windowStart: ready.windowStart, anchorDate: ready.windowStart });
+    }
+  }
   return out.filter((c) => ok(c.trigger));
 }
 
@@ -488,6 +523,17 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
       return { title, body: "O teu bloco de treino está a acabar. Vamos ver como correu e preparar o próximo." };
     case "week_review":
       return { title, body: "A semana fechou. Vem ver comigo como correu e o que fica para esta." };
+    /* A Vitrina: frases fixas, sem posição nem percentil — o ecrã bloqueado
+       não é sítio para números de comparação com outros atletas. O número
+       diz-se no chat, a ele. */
+    case "leaderboard":
+      return c.vitrinaStage === "saiu"
+        ? { title, body: "Nesta quinzena saíste das tabelas do teu escalão. Vem ver comigo o que mudou." }
+        : { title, body: "Entraste nas tabelas do teu escalão. Vem ver onde ficaste." };
+    case "percentile_ready":
+      return c.vitrinaStage === "meu"
+        ? { title, body: "O teu escalão já tem números publicados. Vem ver onde estás." }
+        : { title, body: "Já há números publicados de grupos ao lado do teu escalão. Vem ver onde estás." };
   }
 }
 
@@ -503,7 +549,7 @@ export const DEFAULT_PUSH_END_HOUR = 21;
 export const RACE_MORNING_EARLIEST_HOUR = 6;
 /** Com hora de partida, a manhã da prova sai no máximo 2 h antes dela (P.10). */
 export const RACE_MORNING_LEAD_MINUTES = 120;
-export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "missed_workout", "week_review"];
+export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "missed_workout", "week_review", "leaderboard", "percentile_ready"];
 
 /** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
  *  por dia e os momentos que aceita. Tudo opcional, com os valores por omissão

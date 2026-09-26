@@ -9,7 +9,6 @@ import SectionLabel from '../shared/SectionLabel';
 import Warning from '../shared/Warning';
 import Button from '../shared/Button';
 import { Sheet, useEscapeClose } from '../shared/Sheet';
-import { ageFromBirthDate } from '../../utils/body';
 import { todayISO } from '../../lib/utils';
 import {
   AGE_BANDS_BY_GENDER,
@@ -27,7 +26,8 @@ import {
   widerSegments,
 } from '../../utils/percentile';
 import { evaluatePrescriptions } from '@formulas/prescriptionAdherence.ts';
-import { ageBandFor, terrainForAthlete, WINDOW_DAYS } from '@formulas/percentileSegments.ts';
+import { WINDOW_DAYS } from '@formulas/percentileSegments.ts';
+import { ownSegmentFor } from '@formulas/vitrina.ts';
 
 /* "Onde estás" — o percentil dentro do escalão (gamificação, Fase 5).
    Abre-se da Vitrina, no Perfil (Perfil/BadgesCard.jsx) — abria do Palmarés
@@ -38,9 +38,11 @@ import { ageBandFor, terrainForAthlete, WINDOW_DAYS } from '@formulas/percentile
 
    1. NÃO HÁ NOMES NESTE ECRÃ, nem sequer por baixo. O que se lê do servidor
       são linhas de percentile_snapshots — agregados de pelo menos 20 atletas,
-      sem user_id nenhum. O índice do PRÓPRIO atleta é calculado aqui, no
-      telemóvel dele, com a mesma fórmula que a tarefa de agregação usa
-      (@formulas/prescriptionAdherence.ts): nunca sai daqui para lado nenhum.
+      sem user_id nenhum. O índice do PRÓPRIO atleta é calculado aqui, com a
+      mesma fórmula que a tarefa de agregação usa (@formulas/prescriptionAdherence.ts).
+      Desde 2026-09-25 a Carol calcula-o também, no momento, para lho poder
+      dizer (carolMemory.ts, fetchVitrinaBlock) — só com consentimento, só a
+      ele, e sem o gravar. Os nomes vivem noutro ecrã (TabelasScreen).
 
    2. O DENOMINADOR DIZ-SE SEMPRE. O segmento aparece escrito na frase e na
       linha do tamanho, e alargá-lo é uma escolha explícita — a app nunca
@@ -166,11 +168,8 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
   // O segmento do próprio atleta, derivado do perfil. Continua a ser derivado
   // mesmo sem consentimento: é o que permite dizer-lhe, no ecrã de entrada, em
   // que segmento é que ele entraria.
-  const segmentoProprio = useMemo(() => {
-    const ageBand = ageBandFor(ageFromBirthDate(profile?.birth_date), profile?.gender);
-    const terrain = terrainForAthlete(raceEvents, todayISO());
-    return ageBand && terrain ? { ageBand, gender: profile.gender, terrain } : null;
-  }, [profile, raceEvents]);
+  // A mesma régua do aviso da Carol e da entrada na Vitrina (@formulas/vitrina.ts).
+  const segmentoProprio = useMemo(() => ownSegmentFor(profile, raceEvents, todayISO()), [profile, raceEvents]);
 
   const [segmento, setSegmento] = useState(null);
   const [janelaEscolhida, setJanelaEscolhida] = useState(null);
@@ -279,11 +278,15 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-2 [&>*]:shrink-0" style={{ padding: '12px 18px calc(26px + env(safe-area-inset-bottom, 0px))' }}>
-        <SubNav
-          items={METRICAS}
-          activeIndex={Math.max(0, METRICAS.findIndex((m) => m.key === metric))}
-          onChange={(_, item) => setMetric(item.key)}
-        />
+        {/* Um seletor com uma opção só parecia um botão sem função (2026-09-25):
+            aparece quando houver a segunda métrica. */}
+        {METRICAS.length > 1 && (
+          <SubNav
+            items={METRICAS}
+            activeIndex={Math.max(0, METRICAS.findIndex((m) => m.key === metric))}
+            onChange={(_, item) => setMetric(item.key)}
+          />
+        )}
 
         {!consentiu ? (
           /* Sem consentimento não se mostra percentil nenhum. Dava para
@@ -299,7 +302,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
               Para veres onde estás, o teu índice tem de contar para a média do teu escalão — e isso é uma decisão tua.
               Não passa a haver nome nenhum: entras num denominador, não numa lista.
             </p>
-            <Button variant="module" moduleColor="var(--ok)" className="w-full mt-3" onClick={onOpenTabelas}>Ver o que isso implica</Button>
+            <Button variant="module" moduleColor="var(--ok)" className="w-full mt-3" onClick={() => onOpenTabelas()}>Ver o que isso implica</Button>
           </GlassCard>
         ) : !segmentoProprio ? (
           <Warning tone="warn" title="Falta saber o teu segmento">
@@ -431,7 +434,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
             <button
               type="button"
               data-testid="onde-estas-ver-tabelas"
-              onClick={onOpenTabelas}
+              onClick={() => onOpenTabelas(segmento, janela?.window_start, janela?.window_end)}
               className="w-full flex items-center justify-between text-left text-[12.5px] font-bold"
               style={{ ...CARD_SECUNDARIO, minHeight: 52, padding: '4px 16px', color: 'var(--text-3)', marginTop: 4 }}
             >
