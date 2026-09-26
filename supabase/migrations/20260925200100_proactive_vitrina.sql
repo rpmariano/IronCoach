@@ -1,6 +1,9 @@
 -- ============================================================================
 -- A Vitrina chega à Carol: dois momentos novos em que ela chama pelo atleta
 -- (pedido de 2026-09-25)
+-- APLICADA EM PRODUÇÃO a 2026-09-26 00:14 UTC (version 20260926001423).
+-- Ensaiada lá antes numa transação revertida: os perfis existentes ficam com
+-- os dois momentos e as linhas que já existiam passam nas restrições novas.
 -- ============================================================================
 --
 --   percentile_ready — passou a haver números no "Onde estás". Dois momentos,

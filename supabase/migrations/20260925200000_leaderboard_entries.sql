@@ -28,8 +28,11 @@
 --     O próprio atleta lê as SUAS linhas diretamente (política "own rows"),
 --     que é o que a app e a Carol usam para saber se ele entrou ou saiu.
 --
--- A aplicar em produção ANTES do deploy das funções que escrevem aqui (a
--- compute-percentile-snapshots e o tick) — o DDL primeiro.
+-- APLICADA EM PRODUÇÃO a 2026-09-26 00:14 UTC (version 20260926001410), com
+-- autorização explícita, ANTES do deploy das funções que escrevem aqui (a
+-- compute-percentile-snapshots e o tick) — o DDL primeiro. Ensaiada lá antes
+-- numa transação revertida: inserir, ler sem sessão (0 linhas — a
+-- reciprocidade), e revogar (as linhas saem na hora).
 -- ============================================================================
 
 create table if not exists public.leaderboard_entries (
