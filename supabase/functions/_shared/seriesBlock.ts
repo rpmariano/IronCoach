@@ -25,8 +25,10 @@
 // Dois tipos de função, como em carolMemory.ts:
 //   - buildSeriesBlock: texto puro a partir das linhas já lidas (todo o texto
 //     sai daqui; os testes de texto correm sobre ela);
-//   - fetchSeriesBlock: as leituras, best-effort — qualquer erro dá null, e
-//     uma tabela da M1 em falta nem sequer vai ao log.
+//   - fetchSeriesBlock: as leituras, best-effort — um erro numa leitura de que
+//     os papéis dependem dá null; uma acessória (resultados, épocas
+//     anteriores, notas) fica vazia. Uma tabela da M1 em falta nem sequer vai
+//     ao log.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -133,12 +135,19 @@ export interface SeriesSummaryEditionRow {
 }
 
 export interface SeriesBlockInput {
-  /** O dia das contas (papéis, presenças, janelas): hoje, ou o da corrida
-   *  que se comenta. */
+  /** Hoje — ou, na análise de uma corrida (canal 'run'), a data dela. É o dia
+   *  das contas (papéis, presenças, janelas), menos numa corrida registada ou
+   *  reanalisada com atraso: aí as contas fazem-se em `statusTodayISO`. */
   todayISO: string;
-  /** O dia real contra o qual se decide a inscrição (ativa, ou saiu há ≤ 30
-   *  dias). Omisso = `todayISO`; só a análise de corrida os separa. */
+  /** O dia real: decide a inscrição (ativa, ou saiu há ≤ 30 dias) e, no
+   *  canal 'run', as contas. Omisso = `todayISO`; só a análise de corrida os
+   *  separa. */
   statusTodayISO?: string | null;
+  /** A leitura dos resultados confirmados falhou: sem eles não se sabe a
+   *  posição de referência — a Carol não fala de pontos (e não diz que não há
+   *  resultados). */
+  resultsUnknown?: boolean;
+
   channel: SeriesChannel;
   /** Todas as inscrições do próprio (a leitura-porteiro). */
   enrollments: SeriesEnrollmentRow[] | null | undefined;
@@ -306,6 +315,11 @@ function pointsLine(b: PointsBand): string {
       : `Pontos (${basis}): na posição de referência (${b.position}.º) valem ${b.points}; o lugar acima vale ${b.nextPoints}${prov}.`;
   }
   if (b.band === "patamar") {
+    // O patamar do topo não tem nada acima (nextPoints null): dizia "a 0
+    // lugares do patamar acima (10 → null pontos)" (revisão pré-deploy da Fase 2).
+    if (b.nextPoints == null) {
+      return `Pontos (${basis}): está no patamar do topo — do ${b.block?.from}.º ao ${b.block?.to}.º todos têm ${b.points}; atacar não muda os pontos${prov}.`;
+    }
     const d = b.placesToBoundary ?? 0;
     return d <= 3
       ? `Pontos (${basis}): está a ${d} ${d === 1 ? "lugar" : "lugares"} do patamar acima (${b.points} → ${b.nextPoints} pontos)${prov}.`
@@ -321,7 +335,16 @@ function pointsLine(b: PointsBand): string {
 export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
   const today = dayOf(input?.todayISO);
   if (!today) return null;
-  const pick = pickSeriesEnrollment(input.enrollments, dayOf(input.statusTodayISO) ?? today);
+  const statusDay = dayOf(input.statusTodayISO) ?? today;
+  const pick = pickSeriesEnrollment(input.enrollments, statusDay);
+  // O dia das contas (papéis, lista, provas, contador). É o `todayISO` — menos
+  // na análise de uma corrida registada ou reanalisada com atraso: aí
+  // `todayISO` é a data da corrida, e com ele a "seguinte" podia ser uma
+  // jornada que já passou, com o papel calculado como se ainda viesse aí.
+  // As contas fazem-se no dia REAL e a jornada da corrida fica dita numa
+  // linha à parte (revisão pré-deploy da Fase 2).
+  const asOf = input.channel === "run" && statusDay > today ? statusDay : today;
+  const lateRunDay = asOf !== today ? today : null;
   if (!pick) return null;
   const { enrollment } = pick;
   const edition = input.edition;
@@ -389,7 +412,7 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
     races,
     level: resolveExperienceLevel(null, profile),
     seasonGoal: enrollment.season_goal ?? null,
-    todayISO: today,
+    todayISO: asOf,
   });
   const roleOf = new Map(roles.map((o) => [o.roundId, o]));
   const roundNoById = new Map(rounds.map((r) => [r.id, r.round_no]));
@@ -409,7 +432,7 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
   for (const r of rounds) {
     const race = raceOfRound.get(r.id);
     const raceDay = dayOf(race?.date);
-    if (!race?.id || !raceDay || raceDay < today) continue;
+    if (!race?.id || !raceDay || raceDay < asOf) continue;
     const prio = racePriorityOf(race);
     if (prio !== "b" && prio !== "c") continue;
     const chosen = participationOf.get(r.id)?.intent;
@@ -417,7 +440,7 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
     if (value) intentByRaceId[race.id] = value;
   }
 
-  const hasCalendar = rounds.some((r) => r.date_status === "confirmada" && (dayOf(r.date) ?? "") >= today);
+  const hasCalendar = rounds.some((r) => r.date_status === "confirmada" && (dayOf(r.date) ?? "") >= asOf);
 
   const L: string[] = [];
   L.push(`--- COMPETIÇÃO POR JORNADAS (o atleta está inscrito) ---`);
@@ -426,12 +449,31 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
       `Inscrição: ${kind ? KIND_TEXT[kind] : "por confirmar"}. Objetivo da época: ${SEASON_GOAL_TEXT[seasonGoal] ?? SEASON_GOAL_TEXT.participar}.`,
   );
 
-  if (!hasCalendar) {
+  // A jornada do dia de uma corrida registada/reanalisada com atraso: só uma
+  // com data confirmada a que ele não disse que não ia — e em condicional,
+  // porque um treino nesse dia não é a jornada (revisão das correções da
+  // Fase 2).
+  if (lateRunDay) {
+    const own = rounds.find((r) => r.date_status === "confirmada" && dayOf(r.date) === lateRunDay &&
+      participationOf.get(r.id)?.decision !== "nao_vou" && participationOf.get(r.id)?.decision !== "nao_fui");
+    if (own) {
+      const next = hasCalendar ? "a seguinte é a primeira da lista abaixo" : `era a última com data confirmada`;
+      L.push(`Se esta corrida (${dayMonth(lateRunDay)}) foi a ${roundLabel} ${own.round_no ?? "?"} · ${own.name ?? `${roundLabel} ${own.round_no ?? ""}`.trim()}: já passou; ${next}.`);
+    }
+  }
+
+  // Sem jornadas confirmadas daqui para a frente: ou o calendário ainda não
+  // saiu, ou as que tinham data já passaram (fim de época, ou as seguintes
+  // ainda sem data) — "por publicar" seria falso aí.
+  const hadCalendar = rounds.some((r) => r.date_status === "confirmada" && !!dayOf(r.date));
+  if (!hasCalendar && hadCalendar) {
+    L.push(`Não há mais ${ls} com data confirmada daqui para a frente. Não inventes datas nem calcules papéis.`);
+  } else if (!hasCalendar) {
     L.push(`Calendário por publicar: ainda não há ${ls} com data confirmada. Não inventes datas nem calcules papéis; ajuda no que já se decide (as provas principais da época, a base, os dias de treino).`);
   } else {
     L.push(`Próximas ${ls} (o papel proposto sai das contas da app — é uma sugestão; ele decide):`);
     const upcoming = rounds
-      .filter((r) => r.date_status !== "cancelada" && (!dayOf(r.date) || dayOf(r.date)! >= today))
+      .filter((r) => r.date_status !== "cancelada" && (!dayOf(r.date) || dayOf(r.date)! >= asOf))
       .sort((a, b) => (a.round_no ?? 0) - (b.round_no ?? 0) || String(a.id).localeCompare(String(b.id)));
     for (const r of upcoming.slice(0, MAX_LISTED_ROUNDS)) {
       const day = dayOf(r.date);
@@ -463,7 +505,7 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
 
   // O contador só com o objetivo "ir a prémio" (§4.3).
   if (seasonGoal === "premio") {
-    const a = attendanceCount(edition, rounds, races, today, input.runs);
+    const a = attendanceCount(edition, rounds, races, asOf, input.runs);
     if (a?.rule === "pct_minima") {
       L.push(
         `Presenças para a classificação final: ${a.done} feitas, precisa de ${a.required} em ${a.total}` +
@@ -475,7 +517,11 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
     }
   }
 
-  L.push(pointsLine(band));
+  // Resultados por ler: só a faixa que dependia deles muda (sem eles dava
+  // "ainda não há resultados" — falso); as outras razões mantêm-se.
+  L.push(input.resultsUnknown && band.band === "desconhecida" && band.why === "sem_posicoes"
+    ? `Pontos: não fales de pontos agora (os resultados dele não foram lidos).`
+    : pointsLine(band));
   if (band.attendanceArgument) L.push(`Na classificação coletiva do clube contam todos os que comparecem: comparecer vale mais do que atacar.`);
 
   // As épocas anteriores (só com inscrição ativa) — presenças e o lugar dele,
@@ -556,7 +602,7 @@ export function buildCupMapTurn(block: SeriesBlock, first: boolean): string {
     withoutCalendar +
     `Os papéis são sugestões: ele decide. O que ele disser grava-se com set_cup_participation; se escolher outro papel, explica uma vez o custo e aceita sem julgar. ` +
     `Se houver um plano aceite e as ${ls} a que ele vai não estiverem nele, propõe nesta mesma conversa o plano ajustado com propose_training_plan ` +
-    `(replace_active_plan=true): cada ${l} como prova no dia dela, com os 2 dias fáceis antes, e as principais a mandar.`;
+    `(replace_active_plan=true): cada ${l} como prova no dia dela, com os dias fáceis do papel antes (3 antes de uma atacada, 2 antes das outras), e as principais a mandar.`;
   if (!first || !block.questions.length) return text;
   text += `\n\nDepois do mapa, e uma de cada vez (espera pela resposta antes da seguinte), faz as perguntas desta época que ainda faltam:`;
   for (const q of block.questions) {
@@ -629,11 +675,23 @@ function readFailed(error: any): null {
   return null;
 }
 
-/** O bloco do atleta, ou null (sem inscrição, ou em qualquer erro). Uma só
+/** Uma leitura acessória (resultados, épocas anteriores, notas) que falhou
+ *  não apaga o bloco todo — e com ele as SERIES_TOOLS: fica vazia, com um
+ *  aviso (revisão pré-deploy da Fase 2). As leituras de que os papéis
+ *  dependem continuam a dar null em erro. */
+function optionalFailed(r: any, what: string): boolean {
+  if (!r?.error) return false;
+  if (!isCupSchemaMissing(r.error)) console.warn(`seriesBlock: ${what} não lido(s):`, r.error?.message ?? String(r.error));
+  return true;
+}
+
+/** O bloco do atleta, ou null (sem inscrição, ou num erro de uma leitura de
+ *  que os papéis dependem; as acessórias ficam vazias). Uma só
  *  leitura para quem nunca se inscreveu; duas para quem saiu há ≤ 30 dias.
  *  `opts.statusTodayISO`: o dia real, quando `todayISO` não o é (a análise
- *  de uma corrida registada com atraso) — a inscrição decide-se contra ele,
- *  as contas contra `todayISO`. */
+ *  de uma corrida registada com atraso) — a inscrição decide-se contra ele;
+ *  no canal 'run' as contas também (a jornada da corrida fica numa linha à
+ *  parte). */
 export async function fetchSeriesBlock(
   sb: any,
   userId: string,
@@ -681,9 +739,15 @@ export async function fetchSeriesBlock(
         ? sb.from("coach_notes").select("note").eq("user_id", userId).eq("category", "disponibilidade")
         : Promise.resolve({ data: [], error: null }),
     ]);
-    for (const r of [edR, roundsR, partsR, catsR, teamsR, racesR, profR, resultsR, summariesR, notesR]) {
+    for (const r of [edR, roundsR, partsR, catsR, teamsR, racesR, profR]) {
       if (r?.error) return readFailed(r.error);
     }
+    const resultsFailed = optionalFailed(resultsR, "resultados");
+    const summariesFailed = optionalFailed(summariesR, "épocas anteriores");
+    // Notas por ler: a pergunta do clube faz-se na mesma — calá-la no 1.º
+    // mapa perdia-a para a edição inteira (as perguntas são uma vez por
+    // edição); repeti-la a quem já respondeu é o mal menor.
+    const notesFailed = optionalFailed(notesR, "notas");
     if (!edR.data) return null;
 
     const rounds: SeriesRoundRow[] = roundsR.data || [];
@@ -691,7 +755,7 @@ export async function fetchSeriesBlock(
     const roundIdSet = new Set(roundIds);
     const races: ArbitrationRace[] = racesR.data || [];
     const jornadaRaceIds = races.filter((r) => r.cup_round_id && roundIdSet.has(r.cup_round_id) && r.id).map((r) => r.id as string);
-    const summaries: SeriesSummaryRow[] = summariesR.data || [];
+    const summaries: SeriesSummaryRow[] = summariesFailed ? [] : summariesR.data || [];
     const summaryEditionIds = [...new Set(summaries.map((s) => s.edition_id).filter(Boolean))];
     const none = Promise.resolve({ data: [], error: null });
 
@@ -705,9 +769,10 @@ export async function fetchSeriesBlock(
         ? sb.from("cup_editions").select("id, season_label, competition:cup_competitions(short_name)").in("id", summaryEditionIds)
         : none,
     ]);
-    for (const r of [coursesR, overridesR, runsR, pastEdR]) {
+    for (const r of [coursesR, overridesR, runsR]) {
       if (r?.error) return readFailed(r.error);
     }
+    const pastEdFailed = optionalFailed(pastEdR, "edições anteriores");
 
     return buildSeriesBlock({
       todayISO: today,
@@ -723,11 +788,12 @@ export async function fetchSeriesBlock(
       overrides: overridesR.data || [],
       races,
       runs: runsR.data || [],
-      results: resultsR.data || [],
+      results: resultsFailed ? [] : resultsR.data || [],
+      resultsUnknown: resultsFailed,
       summaries,
-      summaryEditions: pastEdR.data || [],
+      summaryEditions: pastEdFailed ? [] : pastEdR.data || [],
       profile: profR.data ?? null,
-      notes: notesR.data || [],
+      notes: notesFailed ? [] : notesR.data || [],
     });
   } catch (e) {
     console.warn("seriesBlock: fetchSeriesBlock falhou:", (e as Error)?.message ?? e);
