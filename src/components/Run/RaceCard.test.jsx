@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import RaceCard from './RaceCard';
 import { useAppStore } from '../../store';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
@@ -121,11 +121,12 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
 
     // Verifica que os botões de ação continuam presentes
     expect(screen.getByRole('button', { name: /Concluída/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Editar/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
   });
 
-  it('invoca a callback de editar', () => {
+  // "Hub" e não "Editar" (pedido 2026-09-27): o botão abre o hub da prova.
+  it('o botão "Hub" abre o hub da prova (a mesma callback que antes se chamava "Editar")', () => {
     render(
       <RaceCard
         ev={sampleRace}
@@ -136,7 +137,8 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
     );
 
     fireEvent.click(screen.getByText('Corrida do Tejo'));
-    fireEvent.click(screen.getByRole('button', { name: /Editar/i }));
+    expect(screen.queryByRole('button', { name: /Editar/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Hub$/i }));
     expect(mockOnEdit).toHaveBeenCalledWith('race-1');
   });
 
@@ -384,5 +386,71 @@ describe('RaceCard — o parecer com o plano e o registo da prova', () => {
 
     expect(screen.getByText('Concluída · 95%')).toBeInTheDocument();
     expect(screen.queryByText('Por registar')).not.toBeInTheDocument();
+  });
+});
+
+/* "Adicionar ao calendário" também no cartão da agenda (pedido 2026-09-27),
+   com a regra do hub: só uma prova por fazer, de hoje em diante. */
+describe('RaceCard — adicionar ao calendário', () => {
+  const futura = {
+    id: 'race-9',
+    name: 'Volkswagen Run',
+    date: futureDateISO(29),
+    start_time: '09:00:00',
+    distance_km: 10,
+    race_type: 'estrada',
+    race_priority: 'b',
+    location: 'Palmela',
+    target_time: '50:00',
+    target_pace_seconds_per_km: 300,
+    status: 'agendada',
+  };
+
+  const abrir = (ev) => {
+    render(<RaceCard ev={ev} onEdit={vi.fn()} onToggleStatus={vi.fn()} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByText(ev.name));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAppStore.mockReturnValue({ profile: { experience_level: 'medio' }, runs: [] });
+  });
+
+  it('uma prova por fazer tem o botão, e a persiana abre com os destinos', async () => {
+    abrir(futura);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar ao calendário/i }));
+
+    const persiana = await screen.findByTestId('race-calendar-sheet');
+    expect(within(persiana).getByTestId('race-calendar-google').getAttribute('href')).toContain('calendar.google.com');
+    expect(within(persiana).getByTestId('race-calendar-outlook').getAttribute('href')).toContain('outlook.live.com');
+    expect(within(persiana).getByTestId('race-calendar-ics')).toBeInTheDocument();
+  });
+
+  it('tocar dentro da persiana não fecha o cartão (o portal sobe pela árvore do React)', async () => {
+    abrir(futura);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar ao calendário/i }));
+    const persiana = await screen.findByTestId('race-calendar-sheet');
+
+    fireEvent.click(within(persiana).getByText(/Fica uma cópia da prova/));
+
+    expect(screen.getByTestId('race-calendar-sheet')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
+  });
+
+  it('uma prova concluída não tem o botão', () => {
+    abrir({ ...futura, status: 'concluida' });
+    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Adicionar ao calendário/i })).not.toBeInTheDocument();
+  });
+
+  it('uma prova que já passou não tem o botão', () => {
+    abrir({ ...futura, date: addDaysISO(todayISO(), -3) });
+    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Adicionar ao calendário/i })).not.toBeInTheDocument();
+  });
+
+  it('no próprio dia da prova ainda tem o botão', () => {
+    abrir({ ...futura, date: todayISO() });
+    expect(screen.getByRole('button', { name: /Adicionar ao calendário/i })).toBeInTheDocument();
   });
 });

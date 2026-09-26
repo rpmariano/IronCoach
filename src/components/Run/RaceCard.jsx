@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import {
   RotateCcw,
   CheckCircle,
-  PencilLine,
+  LayoutDashboard,
   Trash2,
   Trophy,
   Eye,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import Button from '../shared/Button';
+import AddToCalendar from './AddToCalendar';
 import { pt } from 'date-fns/locale';
 import {
   raceDistanceLabel,
@@ -60,6 +61,9 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
   const raceRun = findRaceRun(runs, ev);
   const raceDayReached = ev.date <= todayIso;
   const canRegister = raceDayReached && !raceRun;
+  // "Adicionar ao calendário" também aqui (pedido 2026-09-27), com a mesma
+  // regra do hub: só para uma prova por fazer, de hoje em diante.
+  const canAddToCalendar = !done && ev.date >= todayIso;
 
   // Macrociclo e evolução da preparação através do motor unificado
   const plan = useMemo(() => {
@@ -256,6 +260,14 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               Registar a prova
             </Button>
           )}
+          {/* A persiana abre num portal, mas os cliques continuam a subir pela
+              árvore do React até ao onClick do cartão — sem este travão, cada
+              toque lá dentro fechava o cartão e a persiana com ele. */}
+          {canAddToCalendar && (
+            <div onClick={(e) => e.stopPropagation()}>
+              <AddToCalendar race={ev} raceEventId={ev.id} variant="card" />
+            </div>
+          )}
           {/* A ação de estado ocupa a largura toda: "Marcar como concluída"
               partido em duas linhas dentro de um terço do cartão lia-se pior
               do que a linha extra que ocupa aqui. */}
@@ -281,14 +293,17 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
           )}
 
           <div className="flex items-center gap-2 pt-1">
+            {/* "Hub" e não "Editar" (pedido 2026-09-27): o que abre é o hub
+                da prova — a preparação, o plano, o site —, e os detalhes
+                editam-se lá dentro, no separador "Detalhes da prova". */}
             {onEdit && (
               <Button
                 variant="light"
                 onClick={(e) => { e.stopPropagation(); onEdit(ev.id); }}
                 className="flex-1 text-xs"
-                icon={<PencilLine size={14} />}
+                icon={<LayoutDashboard size={14} />}
               >
-                Editar
+                Hub
               </Button>
             )}
             <Button

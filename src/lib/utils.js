@@ -58,10 +58,11 @@ const CREATION_PAGE_LABELS = {
    da app (ver useAppStore: activeTab, openCreationMode, editingRaceId). A
    Prova é um caso à parte (ver App.jsx) — não tem separador próprio, abre
    por cima do activeTab onde o atleta estava, por isso é sempre tratada
-   antes do resto, e distinguimos nova vs. edição. */
+   antes do resto, e distinguimos a nova do hub de uma já gravada (o ecrã
+   chama-se "Hub da prova" desde 2026-09-27). */
 export function currentPageLabel({ activeTab, openCreationMode, editingRaceId } = {}) {
   if (openCreationMode === 'race' || editingRaceId) {
-    return editingRaceId ? 'Prova · Edição' : 'Prova · Nova';
+    return editingRaceId ? 'Prova · Hub' : 'Prova · Nova';
   }
   if (openCreationMode) {
     return CREATION_PAGE_LABELS[openCreationMode] || `Registo · ${openCreationMode}`;

@@ -1,10 +1,10 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { useToast } from '../shared/ToastProvider';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import { pt } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, X } from 'lucide-react';
 
 import RunCard from '../Run/RunCard';
 import RaceCard from '../Run/RaceCard';
@@ -20,34 +20,109 @@ import CreatedRecordModal from '../shared/CreatedRecordModal';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
 import { Dialog } from '../shared/Sheet';
 import { orderDayRecords } from '../../utils/dayOrder';
+import {
+  CALENDAR_ALL,
+  CALENDAR_FILTER_ALL,
+  CALENDAR_RECORD_TYPES,
+  RACE_STATUS_FILTERS,
+  normalizeCalendarFilter,
+  filterCalendarRecords,
+  isCalendarFilterActive,
+  calendarFilterLabel,
+  emptyDayMessage,
+} from '../../utils/calendarFilter';
+
+const isoDay = (d) => format(d, 'yyyy-MM-dd');
+const fromIsoDay = (iso) => {
+  const d = new Date(`${iso}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/* Um botão do filtro da agenda: a cor do tipo (a mesma dos tracinhos da
+   grelha — o filtro é também a legenda) e o nome. Escolhido, pinta-se na
+   tinta dessa cor; "Tudo" não tem cor de registo e fica no neutro. */
+function FilterChip({ label, color, tone, active, onClick, testId }) {
+  const activeStyle = tone
+    ? { background: `var(--tint-${tone}-bg)`, borderColor: `var(--tint-${tone}-bd)`, color: `var(--${tone})` }
+    : { background: 'rgba(255,255,255,.08)', borderColor: 'var(--border-glass-strong)', color: 'var(--text-1)' };
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      data-testid={testId}
+      className="min-h-[44px] min-w-0 px-1.5 rounded-[12px] border inline-flex items-center justify-center gap-1.5 text-[11.5px] font-bold transition-colors"
+      style={active ? activeStyle : { background: 'transparent', borderColor: 'transparent', color: 'var(--text-3)' }}
+    >
+      {color && <span aria-hidden="true" className="w-3.5 h-1.5 rounded-[2px] shrink-0" style={{ background: color }} />}
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
 
 export default function Calendar() {
-  const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate } = useAppStore();
+  const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate, calendarView } = useAppStore();
   const { showToast } = useToast();
 
-  // Gravar uma prova nova (RunAgenda) deixa aqui a data da prova, para o
-  // Calendário abrir logo nesse dia/mês em vez do de hoje — ver
-  // pendingCalendarDate no store. Lido só na inicialização (lazy) porque só
-  // interessa no primeiro render a seguir a essa gravação; consumido uma
-  // única vez pelo useEffect abaixo, para não voltar a aplicar-se numa
-  // visita normal e futura ao Calendário.
-  const [currentDate, setCurrentDate] = useState(() =>
-    pendingCalendarDate ? new Date(`${pendingCalendarDate}T00:00:00`) : new Date()
-  );
-  const [selectedDate, setSelectedDate] = useState(() =>
-    pendingCalendarDate ? new Date(`${pendingCalendarDate}T00:00:00`) : new Date()
-  );
+  // Onde abrir. Gravar uma prova nova (RunAgenda) deixa aqui a data da
+  // prova, para o Calendário abrir logo nesse dia/mês em vez do de hoje —
+  // ver pendingCalendarDate no store; com ela o filtro volta a "Tudo", para
+  // o registo acabado de gravar não ficar escondido por ele. Sem ela, o
+  // sítio onde o Calendário estava antes de um ecrã de topo o tapar (o hub
+  // de uma prova, um registo — calendarView no store). Senão, hoje e sem
+  // filtro. Lido só na inicialização (lazy); pendingCalendarDate é
+  // consumido uma única vez pelo useEffect abaixo, para não voltar a
+  // aplicar-se numa visita normal e futura ao Calendário.
+  const [initialView] = useState(() => {
+    const pending = pendingCalendarDate ? fromIsoDay(pendingCalendarDate) : null;
+    if (pending) return { month: pending, selected: pending, filter: CALENDAR_FILTER_ALL };
+    const month = calendarView?.month ? fromIsoDay(calendarView.month) : null;
+    const selected = calendarView?.selected ? fromIsoDay(calendarView.selected) : null;
+    if (month && selected) return { month, selected, filter: normalizeCalendarFilter(calendarView.filter) };
+    const today = new Date();
+    return { month: today, selected: today, filter: CALENDAR_FILTER_ALL };
+  });
+  const [currentDate, setCurrentDate] = useState(initialView.month);
+  const [selectedDate, setSelectedDate] = useState(initialView.selected);
+  // O filtro da agenda (pedido 2026-09-27) — ver utils/calendarFilter.js.
+  const [filter, setFilter] = useState(initialView.filter);
 
   useEffect(() => {
     if (pendingCalendarDate) {
-      const d = new Date(`${pendingCalendarDate}T00:00:00`);
-      if (!isNaN(d.getTime())) {
+      const d = fromIsoDay(pendingCalendarDate);
+      if (d) {
         setCurrentDate(d);
         setSelectedDate(d);
+        setFilter(CALENDAR_FILTER_ALL);
       }
       clearPendingCalendarDate();
     }
   }, [pendingCalendarDate, clearPendingCalendarDate]);
+
+  // Desmontado por baixo de um ecrã de topo (o separador continua a ser o
+  // Calendário): guarda onde estava, para o "voltar" o repor tal e qual.
+  // Mudar de separador já apagou o calendarView (setActiveTab) e aqui não
+  // se volta a escrever — a próxima visita começa em hoje.
+  const viewRef = useRef(null);
+  viewRef.current = { month: isoDay(currentDate), selected: isoDay(selectedDate), filter };
+  useEffect(() => () => {
+    const s = useAppStore.getState();
+    if (s.activeTab === 'calendario') s.setCalendarView?.(viewRef.current);
+  }, []);
+
+  // Tocar no tipo que já está escolhido volta a "Tudo": o botão aceso é
+  // também a saída do filtro. O estado das provas só existe dentro de
+  // "Prova" (normalizeCalendarFilter).
+  const chooseType = (type) => setFilter((prev) => (
+    type === CALENDAR_ALL || prev.type === type
+      ? CALENDAR_FILTER_ALL
+      : normalizeCalendarFilter({ type, raceStatus: prev.raceStatus })
+  ));
+  const chooseRaceStatus = (raceStatus) => setFilter(normalizeCalendarFilter({ type: 'prova', raceStatus }));
+  const clearFilter = () => setFilter(CALENDAR_FILTER_ALL);
+  const filterActive = isCalendarFilterActive(filter);
+  const activeFilterLabel = calendarFilterLabel(filter);
+  const activeFilterTone = CALENDAR_RECORD_TYPES.find((t) => t.key === filter.type)?.tone;
 
   const [editingRunId, setEditingRunId] = useState(null);
   const [editingGymId, setEditingGymId] = useState(null);
@@ -66,7 +141,10 @@ export default function Calendar() {
     });
   }, [currentDate]);
 
+  // A grelha e a lista do dia leem os mesmos registos já filtrados: um dia
+  // só se acende com o que o filtro deixa ver.
   const { runsByDay, racesByDay, gymByDay, mealsByDay, bodyByDay } = useMemo(() => {
+    const visible = filterCalendarRecords({ runs, raceEvents, gymSessions, meals, bodyAssessments }, filter);
     const groupBy = (rows) => {
       const map = new Map();
       for (const row of rows || []) {
@@ -76,13 +154,13 @@ export default function Calendar() {
       return map;
     };
     return {
-      runsByDay: groupBy(runs),
-      racesByDay: groupBy(raceEvents),
-      gymByDay: groupBy(gymSessions),
-      mealsByDay: groupBy(meals),
-      bodyByDay: groupBy(bodyAssessments),
+      runsByDay: groupBy(visible.runs),
+      racesByDay: groupBy(visible.raceEvents),
+      gymByDay: groupBy(visible.gymSessions),
+      mealsByDay: groupBy(visible.meals),
+      bodyByDay: groupBy(visible.bodyAssessments),
     };
-  }, [runs, raceEvents, gymSessions, meals, bodyAssessments]);
+  }, [runs, raceEvents, gymSessions, meals, bodyAssessments, filter]);
 
   // Delete handlers
   const handleDeleteRun = async (id) => {
@@ -203,11 +281,11 @@ export default function Calendar() {
       {/* Calendar Card styled with Homepage aesthetic (Glassmorphism Light) */}
       <div className="rounded-[28px] p-5 bg-[var(--surface-dim)] backdrop-blur-[20px] border border-[var(--border-glass)] shadow-[0_12px_32px_rgba(0,0,0,0.3)]">
         <div className="flex items-center justify-between mb-5">
-          <button onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
+          <button type="button" aria-label="Mês anterior" onClick={() => setCurrentDate(subMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronLeft size={16} />
           </button>
           <span className="text-[15px] font-bold capitalize text-[var(--text-1)] tracking-tight">{format(currentDate, 'MMMM yyyy', { locale: pt })}</span>
-          <button onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
+          <button type="button" aria-label="Mês seguinte" onClick={() => setCurrentDate(addMonths(currentDate, 1))} className="tap-44 flex items-center justify-center text-[var(--text-3)] hover:text-[var(--text-1)] transition">
             <ChevronRight size={16} />
           </button>
         </div>
@@ -241,6 +319,8 @@ export default function Calendar() {
             return (
               <div className="flex justify-center items-center" key={dayStr}>
                 <button
+                  type="button"
+                  data-testid={`calendar-day-${dayStr}`}
                   onClick={() => setSelectedDate(date)}
                   className={`w-[44px] h-[46px] rounded-xl flex flex-col items-center justify-between py-1.5 border-[1.5px] transition cursor-pointer outline-none ${
                     isSelected 
@@ -268,41 +348,79 @@ export default function Calendar() {
           })}
         </div>
 
-        {/* Legend */}
-        <div className="mt-6 p-3 bg-[var(--surface-glass)] rounded-xl border border-white/60 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 text-[11px] font-semibold text-[var(--text-3)] shadow-sm">
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-prova)]"></span>
-            <span>Prova</span>
+        {/* Legenda e filtro num só (pedido 2026-09-27): cada tipo é a
+            legenda da sua cor na grelha e, ao toque, o filtro da agenda por
+            ele. Na "Prova" abre-se uma segunda linha com o estado — por
+            realizar ou concluídas. */}
+        <div
+          role="group"
+          aria-label="Filtrar a agenda"
+          data-testid="calendar-filter"
+          className="mt-6 p-1.5 bg-[var(--surface-glass)] rounded-[16px] border border-[var(--border-glass)]"
+        >
+          <div className="grid grid-cols-3 gap-1">
+            <FilterChip label="Tudo" active={filter.type === CALENDAR_ALL} onClick={() => chooseType(CALENDAR_ALL)} testId="calendar-filter-todos" />
+            {CALENDAR_RECORD_TYPES.map((t) => (
+              <FilterChip
+                key={t.key}
+                label={t.label}
+                color={t.color}
+                tone={t.tone}
+                active={filter.type === t.key}
+                onClick={() => chooseType(t.key)}
+                testId={`calendar-filter-${t.key}`}
+              />
+            ))}
           </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-corrida)]"></span>
-            <span>Corrida</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-ginasio)]"></span>
-            <span>Ginásio</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-nutricao)]"></span>
-            <span>Nutrição</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="w-3.5 h-1.5 rounded-[2px] bg-[var(--mod-corpo)]"></span>
-            <span>Corpo</span>
-          </div>
+          {filter.type === 'prova' && (
+            <div role="group" aria-label="Estado das provas" className="grid grid-cols-3 gap-1 mt-1 pt-1 border-t border-[var(--border-glass)] fade-in">
+              {RACE_STATUS_FILTERS.map((s) => (
+                <FilterChip
+                  key={s.key}
+                  label={s.label}
+                  tone="race"
+                  active={filter.raceStatus === s.key}
+                  onClick={() => chooseRaceStatus(s.key)}
+                  testId={`calendar-filter-prova-${s.key}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Selected Date Details */}
       <div className="space-y-3">
-        <h3 className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide px-1 pt-2">
-          {format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
-        </h3>
+        {/* Com um filtro ligado, o nome dele fica ao lado do dia — a lista
+            está lá em baixo, longe dos botões do filtro, e um dia "vazio"
+            tem de dizer porquê. Tocar tira o filtro. */}
+        <div className="flex items-center justify-between gap-2 px-1 pt-2">
+          <h3 className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide">
+            {format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
+          </h3>
+          {filterActive && (
+            <button
+              type="button"
+              onClick={clearFilter}
+              data-testid="calendar-filter-clear"
+              aria-label={`Tirar o filtro: ${activeFilterLabel}`}
+              className="inline-flex items-center min-h-[44px] -my-2 shrink-0"
+            >
+              <span
+                className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full border text-[11px] font-bold"
+                style={{ background: `var(--tint-${activeFilterTone}-bg)`, borderColor: `var(--tint-${activeFilterTone}-bd)`, color: `var(--${activeFilterTone})` }}
+              >
+                {activeFilterLabel}
+                <X size={12} aria-hidden="true" />
+              </span>
+            </button>
+          )}
+        </div>
 
         {!hasRecords && (
           <div className="rounded-2xl p-6 bg-[var(--surface-dim)] border border-white/15 border-dashed flex flex-col items-center justify-center text-[var(--text-3)]">
             <CalendarIcon size={24} className="opacity-40 mb-2" />
-            <p className="text-[11px]">Sem registos neste dia</p>
+            <p className="text-[11px]">{emptyDayMessage(filter)}</p>
           </div>
         )}
 

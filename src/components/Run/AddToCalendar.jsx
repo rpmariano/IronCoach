@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { CalendarPlus, ChevronRight, Loader2 } from 'lucide-react';
+import Button from '../shared/Button';
 import { Sheet } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
 import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -13,7 +14,11 @@ import { googleCalendarUrl, outlookCalendarUrl } from '../../utils/calendarLinks
    text/calendar abre a folha do calendário (ver o cabeçalho da função).
 
    Cópia única: se a prova mudar depois, o evento no calendário não muda —
-   dito na persiana para ninguém contar com isso. */
+   dito na persiana para ninguém contar com isso.
+
+   `variant="card"`: o mesmo botão no cartão da prova da agenda (pedido
+   2026-09-27), vestido como os outros botões desse cartão ("Marcar como
+   concluída", "Hub"). A persiana é a mesma. */
 
 const OPTION_STYLE = {
   background: 'var(--surface-glass)',
@@ -53,7 +58,7 @@ function Option({ href, onClick, busy, title, hint, testId }) {
   );
 }
 
-export default function AddToCalendar({ race, raceEventId }) {
+export default function AddToCalendar({ race, raceEventId, variant = 'hub' }) {
   const [open, setOpen] = useState(false);
   const [loadingIcs, setLoadingIcs] = useState(false);
   const { showToast } = useToast();
@@ -81,15 +86,27 @@ export default function AddToCalendar({ race, raceEventId }) {
 
   return (
     <>
-      <button
-        type="button"
-        data-testid="race-hub-add-calendar"
-        onClick={() => setOpen(true)}
-        className="w-full inline-flex items-center justify-center gap-2"
-        style={{ minHeight: 'var(--tap)', marginBottom: 12, borderRadius: 14, border: '1px solid var(--border-glass)', background: 'var(--surface-glass)', color: 'var(--text-2)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
-      >
-        <CalendarPlus size={16} aria-hidden="true" /> Adicionar ao calendário
-      </button>
+      {variant === 'card' ? (
+        <Button
+          variant="light"
+          data-testid="race-card-add-calendar"
+          onClick={() => setOpen(true)}
+          className="w-full text-xs"
+          icon={<CalendarPlus size={14} aria-hidden="true" />}
+        >
+          Adicionar ao calendário
+        </Button>
+      ) : (
+        <button
+          type="button"
+          data-testid="race-hub-add-calendar"
+          onClick={() => setOpen(true)}
+          className="w-full inline-flex items-center justify-center gap-2"
+          style={{ minHeight: 'var(--tap)', marginBottom: 12, borderRadius: 14, border: '1px solid var(--border-glass)', background: 'var(--surface-glass)', color: 'var(--text-2)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
+        >
+          <CalendarPlus size={16} aria-hidden="true" /> Adicionar ao calendário
+        </button>
+      )}
 
       {open && (
         <Sheet eyebrow="Calendário" eyebrowTone="race" title="Adicionar ao calendário" onClose={() => setOpen(false)} testId="race-calendar-sheet">

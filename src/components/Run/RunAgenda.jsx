@@ -7,7 +7,9 @@ import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import Warning from '../shared/Warning';
-import { CalendarPlus, CheckCircle, Trash2, Check, Loader2, AlertTriangle, X, Sparkles, Sliders } from 'lucide-react';
+import SubNav from '../shared/SubNav';
+import GlassCard from '../shared/GlassCard';
+import { CalendarPlus, CheckCircle, Trash2, Check, Loader2, AlertTriangle, X, Sparkles, Sliders, ChevronLeft } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -96,6 +98,30 @@ const EMPTY_DRAFT = {
 };
 
 const PAGE_KEYS = ['hub', 'details'];
+
+// O subnav partilhado (shared/SubNav), o mesmo do Perfil e da Evolução —
+// era uma cópia à parte, com o vidro antigo de borda branca.
+const PAGE_TABS = [
+  { key: 'hub', label: 'Treino e Evolução', icon: <Sparkles size={14} />, tone: 'race' },
+  { key: 'details', label: 'Detalhes da prova', icon: <Sliders size={14} />, tone: 'race' },
+];
+
+// O vidro âmbar do cartão do formulário da prova.
+const PROVA_CARD_BG = {
+  background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-prova) 3%, transparent), color-mix(in srgb, var(--mod-prova) 6%, transparent)), rgba(255, 255, 255, 0.05)',
+};
+
+/* A moldura da página "Detalhes da prova": no hub, um cartão de vidro — é a
+   única página que é um formulário, e sem ele os campos ficavam soltos no
+   fundo do ecrã. Na prova nova, nada: o cartão do ecrã já a envolve. */
+function DetailsFrame({ card, children }) {
+  if (!card) return <div className="space-y-4">{children}</div>;
+  return (
+    <GlassCard tone="race" radius={20}>
+      <div className="space-y-4">{children}</div>
+    </GlassCard>
+  );
+}
 
 export default function RunAgenda({ onClose }) {
   const { raceEvents, profile, runs, meals, bodyAssessments, gymSessions, coachPlans, setRaceEvents, setNavGuard, editingRaceId } = useAppStore();
@@ -936,12 +962,40 @@ export default function RunAgenda({ onClose }) {
 
   if (!isFormOpen) return null;
 
+  /* O hub de uma prova já gravada é um ecrã como os outros (pedido
+     2026-09-27): cabeçalho com "voltar" e o título, e o conteúdo direto na
+     página, como "O plano" (PlanoScreen). Era um cartão com "Editar Prova" e
+     um X no canto, com o hub encaixado lá dentro — lia-se como um modal por
+     cima da app. A página "Detalhes da prova" continua num cartão, porque é
+     um formulário. Uma prova NOVA fica como os outros registos (cartão com
+     "Nova Prova" e o X): ainda não tem hub. */
+  const isHubScreen = !!editingEventId;
+  /* "Guardar prova" só quando há o que guardar à vista: nos detalhes, ou em
+     qualquer página com alterações por gravar. Sobre o hub, que é só de
+     leitura, uma barra de gravar apagada era o resto de formulário que ainda
+     fazia do ecrã um modal. Uma prova nova tem-na sempre, como os outros
+     registos. */
+  const showSaveBar = !detailsLocked && (!isHubScreen || activePage === 'details' || isDirty);
+
+  // Prova concluída: só há o hub, e um subnav com uma página não faz sentido.
+  const subnav = !detailsLocked && (
+    <SubNav
+      items={PAGE_TABS}
+      activeIndex={activePageIndex >= 0 ? activePageIndex : 0}
+      onChange={(i, item) => {
+        setActivePage(item.key);
+        scrollTo(i);
+      }}
+    />
+  );
+
   return (
     // --focus-ring: anel de teclado na cor do contexto (handoff, "Fidelity").
     // A prova é dourada; paddingBottom abre espaço para a ActionBar fixa.
     <div
       className="w-full max-w-lg mx-auto fade-in"
-      style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
+      data-testid={isHubScreen ? 'race-hub-screen' : undefined}
+      style={{ '--focus-ring': 'var(--mod-prova)', paddingBottom: showSaveBar ? ACTION_BAR_SCROLL_PAD : undefined }}
     >
       {leaveModal}
       {validationModal}
@@ -956,71 +1010,53 @@ export default function RunAgenda({ onClose }) {
       />
 
       <div className="space-y-4">
-        {/* Cabeçalho + campos no MESMO cartão, como nos outros registos
-            (Avaliação/Refeição/Corrida/Treino) — antes era um cartão
+        {/* Prova nova: cabeçalho + campos no MESMO cartão, como nos outros
+            registos (Avaliação/Refeição/Corrida/Treino) — antes era um cartão
             module-card-contrast só para o título, separado do cartão dos
             campos, o que dava dois vidros foscos empilhados em vez de um só
-            ecrã coeso. */}
+            ecrã coeso. O hub é um ecrã sem cartão à volta (ver isHubScreen). */}
         <div
-          className="space-y-4 fade-in module-card-contrast"
-          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-prova) 3%, transparent), color-mix(in srgb, var(--mod-prova) 6%, transparent)), rgba(255, 255, 255, 0.05)' }}
+          className={isHubScreen ? 'flex flex-col gap-3' : 'space-y-4 fade-in module-card-contrast'}
+          style={isHubScreen ? undefined : PROVA_CARD_BG}
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <CalendarPlus size={16} style={{ color: 'var(--mod-prova)' }} />
-              <h2 className="text-sm font-semibold text-[var(--text-1)]">{editingEventId ? 'Editar Prova' : 'Nova Prova'}</h2>
-            </div>
-            <button
-              onClick={attemptCloseForm}
-              type="button"
-              // O circulo continua a desenhar-se com 32px; o que cresce para
-              // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
-              className="tap-44 shrink-0"
-              title="Fechar"
-              aria-label="Fechar"
-            >
-              <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
-                <X size={16} />
-              </span>
-            </button>
-          </div>
-
-          {/* Subnav AAA — idêntico ao Perfil / Dashboard. Prova concluída:
-              só há o hub, a subnav não faz sentido com uma página. */}
-          {!detailsLocked && (
-          <div className="relative flex gap-2 p-1.5 bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl mb-1 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)] overflow-hidden">
-            {/* Sliding indicator com tint translúcido e borda âmbar */}
-            <div
-              className="absolute top-1.5 bottom-1.5 rounded-xl transition-all duration-300 ease-in-out border"
-              style={{
-                width: 'calc((100% - 20px) / 2)',
-                transform: `translateX(calc(${activePageIndex >= 0 ? activePageIndex : 0} * 100% + ${(activePageIndex >= 0 ? activePageIndex : 0) * 8}px))`,
-                background: 'color-mix(in srgb, var(--mod-prova) 18%, transparent)',
-                borderColor: 'color-mix(in srgb, var(--mod-prova) 40%, transparent)',
-                boxShadow: '0 4px 14px rgba(0, 0, 0, 0.25)',
-              }}
-            />
-            {[
-              { key: 'hub', label: 'Treino e Evolução', icon: Sparkles },
-              { key: 'details', label: 'Detalhes da prova', icon: Sliders },
-            ].map(t => (
+          {isHubScreen ? (
+            <div className="flex items-center gap-2.5" style={{ minHeight: 44 }}>
               <button
-                key={t.key}
                 type="button"
-                onClick={() => {
-                  setActivePage(t.key);
-                  scrollTo(PAGE_KEYS.indexOf(t.key));
-                }}
-                style={activePage === t.key ? { color: 'var(--mod-prova)' } : undefined}
-                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 min-h-[44px] text-xs font-bold rounded-xl transition-colors duration-300 ${
-                  activePage === t.key ? '' : 'text-[var(--text-3)] hover:text-[var(--text-2)]'
-                }`}
+                aria-label="Voltar"
+                onClick={attemptCloseForm}
+                className="flex items-center justify-center shrink-0"
+                style={{ width: 44, height: 44, marginLeft: -10, color: 'var(--text-3)' }}
               >
-                <t.icon size={14} /> {t.label}
+                <ChevronLeft size={20} />
               </button>
-            ))}
-          </div>
+              <h2 className="min-w-0 truncate text-[16px] font-black" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
+                Hub da prova
+              </h2>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <CalendarPlus size={16} style={{ color: 'var(--mod-prova)' }} />
+                <h2 className="text-sm font-semibold text-[var(--text-1)]">Nova Prova</h2>
+              </div>
+              <button
+                onClick={attemptCloseForm}
+                type="button"
+                // O circulo continua a desenhar-se com 32px; o que cresce para
+                // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
+                className="tap-44 shrink-0"
+                title="Fechar"
+                aria-label="Fechar"
+              >
+                <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
+                  <X size={16} />
+                </span>
+              </button>
+            </div>
           )}
+
+          {subnav}
 
           {/* Páginas lado a lado no carrossel deslizável */}
           <div
@@ -1077,9 +1113,13 @@ export default function RunAgenda({ onClose }) {
               </div>
             </div>
 
-            {/* ─── PÁGINA 2: DETALHES DA PROVA (não existe com a prova concluída) ── */}
+            {/* ─── PÁGINA 2: DETALHES DA PROVA (não existe com a prova concluída) ──
+                No hub, o formulário vive num cartão (DetailsFrame): é a única
+                página que é um formulário. Na prova nova o cartão já é o ecrã
+                inteiro, e a página fica sem moldura própria. */}
             {!detailsLocked && (
-            <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page space-y-4">
+            <div ref={(el) => { pageRefs.current[1] = el; }} className="tab-swipe-page">
+            <DetailsFrame card={isHubScreen}>
               {/* 1.1 Data · 1.2 Hora de partida — a hora fica ao lado da data
                   porque é a mesma pergunta ("quando é?"), e é opcional: a
                   maioria das provas só a publica mais tarde
@@ -1392,6 +1432,7 @@ export default function RunAgenda({ onClose }) {
                   Cancelar
                 </Button>
               </div>
+            </DetailsFrame>
             </div>
             )}
           </div>
@@ -1401,8 +1442,9 @@ export default function RunAgenda({ onClose }) {
       {/* Barra de ação fixa (ponto 2 do handoff): "Guardar prova" era o
           terceiro botão de uma fila no fim de cada uma das duas páginas do
           carrossel — duas cópias da mesma ação, ambas abaixo da dobra. Agora
-          é uma só, sempre visível, seja qual for a página. */}
-      {!detailsLocked && (
+          é uma só, fixa — e, no hub, só quando há o que guardar à vista
+          (showSaveBar). */}
+      {showSaveBar && (
       <ActionBar>
         {/* Só há o que guardar quando algo mudou (isDirty): a barra também
             está por cima do Hub, que é só de leitura, e um "Guardar prova"

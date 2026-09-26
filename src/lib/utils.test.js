@@ -21,10 +21,10 @@ describe('currentPageLabel', () => {
     expect(currentPageLabel({ activeTab: 'corrida', openCreationMode: 'run' })).toBe('Registo · Corrida');
   });
 
-  it('trata a Prova como caso especial (nova vs. edição), com prioridade sobre o activeTab', () => {
+  it('trata a Prova como caso especial (nova vs. hub), com prioridade sobre o activeTab', () => {
     expect(currentPageLabel({ activeTab: 'home', openCreationMode: 'race' })).toBe('Prova · Nova');
-    expect(currentPageLabel({ activeTab: 'home', editingRaceId: 'race-123' })).toBe('Prova · Edição');
+    expect(currentPageLabel({ activeTab: 'home', editingRaceId: 'race-123' })).toBe('Prova · Hub');
     // editingRaceId implica openCreationMode 'race' no store, mas a função não deve depender disso
-    expect(currentPageLabel({ activeTab: 'home', openCreationMode: 'race', editingRaceId: 'race-123' })).toBe('Prova · Edição');
+    expect(currentPageLabel({ activeTab: 'home', openCreationMode: 'race', editingRaceId: 'race-123' })).toBe('Prova · Hub');
   });
 });

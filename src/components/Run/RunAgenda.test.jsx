@@ -384,15 +384,24 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     expect(useAppStore.getState().pendingCalendarDate).toBe(expectedDate);
   });
 
-  it('a editar uma prova sem mexer em nada, "Guardar prova" está desativado — inclusive sobre o Hub, que é só de leitura (relatado 2026-09-12)', () => {
+  /* Relatado 2026-09-12: um "Guardar prova" aceso sem alterações convidava a
+     gravar o nada. Desde 2026-09-27 o hub é um ecrã normal e, sem nada por
+     gravar, nem tem a barra: ela aparece nos detalhes (apagada até haver
+     alterações) e volta ao hub só se ficou alguma coisa por gravar. */
+  it('a editar uma prova sem mexer em nada, o hub não tem "Guardar prova"; nos detalhes está desativado até haver alterações', () => {
     useAppStore.setState({ editingRaceId: 'race-1', activeTab: 'holistica' });
     renderAgenda();
-    // Abre no Hub ("Treino e Evolução"): nada para gravar.
-    expect(screen.getByRole('button', { name: /Guardar prova/i })).toBeDisabled();
+    // Abre no Hub ("Treino e Evolução"): nada para gravar, nenhuma barra.
+    expect(screen.queryByRole('button', { name: /Guardar prova/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('action-bar')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
     expect(screen.getByRole('button', { name: /Guardar prova/i })).toBeDisabled();
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Corrida do Tejo (editada)' } });
+    expect(screen.getByRole('button', { name: /Guardar prova/i })).toBeEnabled();
+
+    // De volta ao hub com a alteração por gravar: a barra fica.
+    fireEvent.click(screen.getByRole('button', { name: /^Treino e Evolução$/i }));
     expect(screen.getByRole('button', { name: /Guardar prova/i })).toBeEnabled();
   });
 
@@ -784,7 +793,7 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(screen.queryByRole('button', { name: /Guardar prova/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
     // E fechar não avisa de alterações por gravar que já não se podem gravar.
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
     expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
   });
 
@@ -804,7 +813,7 @@ describe('RunAgenda — escrita local no store não apaga o rascunho', () => {
     expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
     // O rascunho antigo foi descartado: fechar não avisa, e o localStorage ficou limpo.
     expect(localStorage.getItem('ironcoach:prova-rascunho:race-1')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Fechar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
     expect(screen.queryByText('Tens alterações por gravar')).not.toBeInTheDocument();
   });
 
@@ -1004,5 +1013,74 @@ describe('RunAgenda — prova de uma jornada do Troféu', () => {
     expect(screen.getByLabelText(/^Local/)).not.toHaveAttribute('readonly');
     expect(screen.getByLabelText(/^Distância/)).not.toHaveAttribute('readonly');
     expect(screen.queryByTestId('ra-jornada-organizador')).not.toBeInTheDocument();
+  });
+});
+
+/* O hub é um ecrã normal (pedido 2026-09-27): cabeçalho com "Voltar" e
+   "Hub da prova", o conteúdo direto na página — sem o cartão "Editar Prova"
+   nem o X de modal. A prova nova continua a ser um registo como os outros:
+   cartão, "Nova Prova", o X e a barra de gravar. */
+describe('RunAgenda — o hub é um ecrã, não um modal', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [EXISTING_RACE],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: 'race-1',
+      activeTab: 'calendario',
+      pendingCalendarDate: null,
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+
+  it('prova gravada: cabeçalho "Voltar" + "Hub da prova", sem "Editar Prova" nem o X', () => {
+    renderAgenda();
+    expect(screen.getByTestId('race-hub-screen')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Hub da prova' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Voltar' })).toBeInTheDocument();
+    expect(screen.queryByText('Editar Prova')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Fechar' })).not.toBeInTheDocument();
+    // Os dois separadores continuam lá, no subnav partilhado.
+    expect(screen.getByRole('button', { name: /^Treino e Evolução$/i })).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByRole('button', { name: /^Detalhes da prova$/i })).toBeInTheDocument();
+  });
+
+  it('"Voltar" sem nada por gravar fecha o hub', () => {
+    const onClose = vi.fn();
+    render(<ToastProvider><RunAgenda onClose={onClose} /></ToastProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(onClose).toHaveBeenCalled();
+    expect(useAppStore.getState().editingRaceId).toBeNull();
+  });
+
+  it('"Voltar" com alterações por gravar pergunta antes de sair', () => {
+    const onClose = vi.fn();
+    render(<ToastProvider><RunAgenda onClose={onClose} /></ToastProvider>);
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    fireEvent.change(screen.getByPlaceholderText('Logística, nutrição planeada...'), { target: { value: 'Levar géis.' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(screen.getByText('Tens alterações por gravar')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('os detalhes da prova ficam num cartão, com "Guardar prova" na barra', () => {
+    renderAgenda();
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    expect(screen.getByTestId('action-bar')).toContainElement(screen.getByRole('button', { name: /Guardar prova/i }));
+  });
+
+  it('prova nova: continua a ser um registo, com "Nova Prova", o X e a barra de gravar', () => {
+    useAppStore.setState({ editingRaceId: null });
+    renderAgenda();
+    expect(screen.queryByTestId('race-hub-screen')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 2, name: 'Nova Prova' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fechar' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Voltar' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('action-bar')).toContainElement(screen.getByRole('button', { name: /Guardar prova/i }));
   });
 });

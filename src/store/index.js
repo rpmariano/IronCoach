@@ -172,6 +172,13 @@ export const useAppStore = create((set, get) => ({
   // hoje. Consumido uma vez por Calendar.jsx ao montar; ver
   // clearPendingCalendarDate.
   pendingCalendarDate: null,
+  // Onde o Calendário estava — mês, dia escolhido e filtro — quando um ecrã
+  // de topo o tapou (o hub de uma prova, um registo): ao voltar, o atleta
+  // encontra-o como o deixou, com o filtro ligado (pedido 2026-09-27). É o
+  // próprio Calendar.jsx que o guarda ao desmontar; sair do separador
+  // Calendário apaga-o (setActiveTab), por isso uma visita nova começa
+  // sempre em hoje e sem filtro.
+  calendarView: null,
   // Ecrãs com alterações por gravar registam aqui uma função que decide se a
   // navegação prossegue — devolve false para a travar e mostrar o seu aviso.
   navGuard: null,
@@ -198,7 +205,7 @@ export const useAppStore = create((set, get) => ({
     // para o próximo utilizador deste telemóvel.
     // A competição (cupSlice.js) também: a inscrição de quem saiu não passa
     // para quem entra.
-    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), lastWelcomeAt: null, insightStates: {}, proactiveKeyRequested: null, cup: CUP_EMPTY });
+    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), lastWelcomeAt: null, insightStates: {}, proactiveKeyRequested: null, cup: CUP_EMPTY, calendarView: null });
   },
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
 
@@ -222,6 +229,7 @@ export const useAppStore = create((set, get) => ({
     }
   },
   setNavGuard: (fn) => set({ navGuard: fn }),
+  setCalendarView: (view) => set({ calendarView: view || null }),
   requestCheckin: () => set({ checkinRequested: true }),
   clearCheckinRequest: () => set({ checkinRequested: false }),
   // Devolve false quando o guard recusa, para quem chama não seguir com
@@ -230,6 +238,9 @@ export const useAppStore = create((set, get) => ({
   setActiveTab: (tab) => {
     const guard = get().navGuard;
     if (guard && !guard(tab)) return false;
+    // Fora do Calendário, o sítio onde ele estava deixa de valer (ver
+    // calendarView, acima).
+    if (tab !== 'calendario' && get().calendarView) set({ calendarView: null });
     // 'hub' tem de constar aqui: é o que grava ironcoach_last_module, e
     // getInitialDashboardTab (acima) já aceita 'hub' de volta do localStorage.
     // Sem isto o Hub nunca chegava a ser o módulo memorizado — sair dele e
