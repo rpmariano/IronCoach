@@ -167,7 +167,8 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
     <button type="button" onClick={() => onNav?.('coach')} className="flex items-center gap-2 w-full min-h-[44px] px-3 rounded-[14px] text-left" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}>
       <MessageCircle size={14} style={{ color: 'var(--coach)' }} className="shrink-0" />
       <span className="flex-1 text-[12.5px] font-semibold" style={{ color: 'var(--coach-soft)' }}>
-        {pendingCount === 1 ? 'Tens 1 proposta da Carol por rever' : `Tens ${pendingCount} propostas da Carol por rever`}
+        {/* Na voz dela, como o resto do cartão (pedido 2026-09-26). */}
+        {pendingCount === 1 ? 'Tens uma proposta minha por rever' : `Tens ${EXTENSO[pendingCount] || pendingCount} propostas minhas por rever`}
       </span>
       <ChevronRight size={14} style={{ color: 'var(--coach)' }} className="shrink-0" />
     </button>

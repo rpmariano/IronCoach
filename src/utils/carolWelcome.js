@@ -343,6 +343,10 @@ export function carolDay(dateISO, data = {}) {
     prova,
     provaFeita,
     corrida: pendentes.some((i) => i.kind === 'corrida'),
+    // Os km que o plano pedia nas corridas dadas como feitas: uma corrida
+    // registada fecha o item do dia (RunRegistration), mesmo com 5 km num
+    // dia de 16 — e aí "fizeste a rodagem longa de 16 km" é falso.
+    kmPlaneadoFeito: feitos.filter((i) => i.kind === 'corrida').reduce((t, i) => t + (Number(i.target_distance_km) || 0), 0),
     qualidade: pendentes.some((i) => i.kind === 'corrida' && TREINOS_DE_QUALIDADE.has(i.training_type)),
   };
 }
@@ -365,7 +369,14 @@ const semTreino = (dia) => dia.tipo === 'descanso' || dia.tipo === 'semTreino';
 const horaDe = (race) => (race?.start_time ? String(race.start_time).slice(0, 5) : null);
 /** "09:30" → "9:30", como se diz — na frase e no chip. */
 const semZero = (hora) => hora.replace(/^0/, '');
-const partida = (race) => { const h = horaDe(race); return h ? `, partida às ${semZero(h)}` : ''; };
+/** "às 9:30", "à 1:00", "à meia-noite" — e não "às 0:00" (o mesmo que o
+ *  cartão da Carol diz, carolCardLines.js). */
+export function aHora(hhmm) {
+  const h = String(hhmm).slice(0, 5).replace(/^0(?=\d:)/, '');
+  if (h === '0:00') return 'à meia-noite';
+  return /^1:/.test(h) ? `à ${h}` : `às ${h}`;
+}
+const partida = (race) => { const h = horaDe(race); return h ? `, partida ${aHora(h)}` : ''; };
 /** Minutos de agora até uma hora "HH:MM" do mesmo dia (negativo se já passou). */
 const minutosAte = (hora, hour, minute) => {
   const [hh, mm] = hora.split(':').map(Number);
@@ -433,6 +444,7 @@ export const WELCOME_PHRASES = {
   semTreinoHoje: ['Hoje não há treino planeado.', 'O plano não pede treino hoje.', 'Hoje não tens treino no plano.'],
   treinoHoje: (t) => [`Hoje tens ${t}. Vamos a isso.`, `Para hoje, o plano pede ${t}.`, `Hoje o plano é ${t}. Quero ver como te sai.`],
   treinoFeito: (t) => [`Hoje já fizeste ${t}.`, 'O treino de hoje já está feito.', 'Já vi o treino de hoje registado.'],
+  treinoFeitoKm: (k) => [`Hoje já fizeste ${k} km.`, 'O treino de hoje já está registado.', `Já vi os ${k} km de hoje.`],
   corridaFeita: (k, n = 1) => (n > 1
     ? [`Já vi as ${extenso(n)} corridas de hoje, ${k} km ao todo.`, `Hoje já levas ${k} km, em ${extenso(n)} corridas.`, `${k} km já feitos hoje, em ${extenso(n)} corridas.`]
     : [`Já vi os ${k} km de hoje.`, `${k} km já feitos hoje.`, `Hoje já levas ${k} km.`]),
@@ -454,7 +466,7 @@ export const WELCOME_PHRASES = {
   treinoNaoRegistadoCansado: ['Hoje não vi treino registado, e pelo que me contaste faz sentido.'],
   restoNaoRegistadoComDor: ['O resto do treino de hoje não apareceu, e com a dor de que me falaste faz sentido. Como estás agora?'],
   restoNaoRegistadoCansado: ['O resto do treino de hoje não apareceu, e pelo que me contaste faz sentido.'],
-  provaAntes: (h) => [`A partida é às ${h}. Até lá, poupa as pernas.`],
+  provaAntes: (h) => [`A partida é ${aHora(h)}. Até lá, poupa as pernas.`],
   provaACorrer: ['Quando cortares a meta, regista a corrida. Quero fazer o balanço contigo.'],
   provaPorRegistar: ['Ainda não vi a prova de hoje registada. Como correu?', 'Já cortaste a meta? Regista a prova e fazemos o balanço.', 'Falta-me o registo da prova de hoje. Quero saber como correu.'],
   provaComCorrida: (k) => [`Vi ${k} km registados hoje. Quero saber como correu a prova.`],
@@ -570,6 +582,15 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     return momentoDaProva(race) === 'aCorrer' ? P.provaACorrer[0] : pick(P.provaPorRegistar, 'provaPorRegistar');
   };
 
+  /* O treino do dia dado como feito: pelo que o plano pedia, se a corrida
+     registada bate com ele (15% de folga); senão, pelos km que ele fez. */
+  const linhaDoFeito = () => {
+    const planeado = diaHoje.kmPlaneadoFeito;
+    const bate = !kHoje || !(planeado > 0) || Math.abs(kmHoje - planeado) <= planeado * 0.15;
+    if (!bate) return pick(P.treinoFeitoKm(kHoje), 'treinoFeito');
+    return diaHoje.feitoFalado ? pick(P.treinoFeito(diaHoje.feitoFalado), 'treinoFeito') : P.treinoFeito('')[1];
+  };
+
   if (variant === 'prova') {
     const race = raceToday(raceEvents, hoje) || {};
     const dist = km(race.distance_km);
@@ -589,7 +610,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
         : 'Sai de casa com tempo. O trabalho está feito.');
     } else lines.push('Sai de casa com tempo. Depois, quero saber como correu.');
     // O nome já está na primeira linha: o chip diz a hora, ou só que é o dia.
-    chip = { label: dist ? `${dist} km` : 'Hoje', value: hora ? `Partida às ${semZero(hora)}` : 'Dia de prova', icon: 'trophy' };
+    chip = { label: dist ? `${dist} km` : 'Hoje', value: hora ? `Partida ${aHora(hora)}` : 'Dia de prova', icon: 'trophy' };
     // Com a prova acabada, "É hoje" já não é a saudação: é a da hora do dia.
     const acabou = momento === 'depois' || (momento === 'aCorrer' && kHoje);
     const faixa = slotForHour(hour);
@@ -609,7 +630,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     if (dorForte) lines.push(P.dorVespera[0]);
     else if (diaHoje.tipo === 'descanso') lines.push('Hoje é descanso.');
     else if (diaHoje.tipo === 'semTreino') lines.push('Hoje não há treino planeado.');
-    else if (diaHoje.tipo === 'feito') lines.push(diaHoje.feitoFalado ? `Hoje já fizeste ${diaHoje.feitoFalado}.` : 'O treino de hoje já está feito.');
+    else if (diaHoje.tipo === 'feito') lines.push(linhaDoFeito());
     else if (diaHoje.tipo === 'treino') {
       if (kHoje) lines.push(pick(P.corridaFeita(kHoje, corridasHoje.length), 'corridaFeita'));
       // Às 21h já não se manda ninguém correr na véspera — nem se dá o treino
@@ -617,12 +638,12 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
       else if (hour >= 21) lines.push('Ainda não vi o treino de hoje registado. Se ficou por fazer, amanhã é que conta.');
       else lines.push(`Hoje ainda tens ${diaHoje.falado}.`);
     }
-    chip = { label: dist ? `${dist} km` : 'Amanhã', value: hora ? `Partida às ${semZero(hora)}` : 'Dia de prova', icon: 'trophy' };
+    chip = { label: dist ? `${dist} km` : 'Amanhã', value: hora ? `Partida ${aHora(hora)}` : 'Dia de prova', icon: 'trophy' };
     return { variant, greeting: GREETING.vespera(nome), lines, chip, cta: CTA.vespera, race: false };
   }
 
   const chipFor = (label, dia, icon = 'run') => ({ label, value: dia.titulo, icon: semTreino(dia) ? 'moon' : dia.tipo === 'provaFeita' ? 'trophy' : icon });
-  const chipDaProva = (label, race) => ({ label, value: horaDe(race) ? `Partida às ${semZero(horaDe(race))}` : (race?.name || 'Dia de prova'), icon: 'trophy' });
+  const chipDaProva = (label, race) => ({ label, value: horaDe(race) ? `Partida ${aHora(horaDe(race))}` : (race?.name || 'Dia de prova'), icon: 'trophy' });
   const chipDaProvaFeita = () => (diaHoje.titulo ? chipFor('Hoje', diaHoje) : { label: 'Hoje', value: diaHoje.provaFeita.name || 'Prova', icon: 'trophy' });
   const comTreino = diaHoje.tipo === 'treino';
   const provaHoje = diaHoje.tipo === 'prova';
@@ -658,7 +679,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     if (diaHoje.tipo === 'provaFeita') return linhaDaCorrida(() => null) || P.provaRegistada[0];
     const hora = horaDe(diaHoje.prova);
     if (momentoDaProva(diaHoje.prova) === 'antes') {
-      return hora ? pick(P.provaAntes(semZero(hora)), 'provaAntes') : `Hoje é ${diaHoje.prova.name ? `a prova: ${diaHoje.prova.name}` : 'dia de prova'}.`;
+      return hora ? pick(P.provaAntes(hora), 'provaAntes') : `Hoje é ${diaHoje.prova.name ? `a prova: ${diaHoje.prova.name}` : 'dia de prova'}.`;
     }
     return linhaDepoisDaPartida(diaHoje.prova);
   };
@@ -688,7 +709,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
       } else {
         if (diaHoje.tipo === 'descanso') lines.push(pick(P.descansoHoje, 'descansoHoje'));
         else if (diaHoje.tipo === 'semTreino') lines.push(pick(P.semTreinoHoje, 'semTreinoHoje'));
-        else if (diaHoje.tipo === 'feito') lines.push(diaHoje.feitoFalado ? pick(P.treinoFeito(diaHoje.feitoFalado), 'treinoFeito') : P.treinoFeito('')[1]);
+        else if (diaHoje.tipo === 'feito') lines.push(linhaDoFeito());
         else if (comTreino) lines.push(pick(P.treinoHoje(diaHoje.falado), 'treinoHoje'));
         if (diaHoje.titulo) chip = chipFor('Hoje', diaHoje);
       }

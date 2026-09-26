@@ -16,7 +16,7 @@
    cartão. Voz de CAROL.md: afirma, frases curtas, sem emoji nem exclamação,
    e nada que ela não saiba. */
 
-import { lisbonParts, pickByDay, carolDay, acordouParaAProva } from '../../utils/carolWelcome';
+import { lisbonParts, pickByDay, carolDay, acordouParaAProva, aHora } from '../../utils/carolWelcome';
 import { isRacePlanItem, formatWeekday } from '../../utils/homeModels';
 import { addDaysISO } from '../../lib/utils';
 import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
@@ -33,14 +33,12 @@ function minutosDe(hhmm) {
 /** "06:15" → "6:15", como se diz, e como o chip das boas-vindas escreve. */
 export const semZero = (hhmm) => String(hhmm).slice(0, 5).replace(/^0(?=\d:)/, '');
 
-/** A hora com a preposição que ela pede (revisão de 2026-09-26): "às 6:15",
- *  mas "à 1:00" (à uma) e "à meia-noite". «Deitar às 1:00» e «partida às
- *  0:00» saíam numa prova ao meio-dia e numa da meia-noite. */
-export function aHora(hhmm) {
-  const h = semZero(hhmm);
-  if (h === '0:00') return 'à meia-noite';
-  return /^1:/.test(h) ? `à ${h}` : `às ${h}`;
-}
+/* aHora — a hora com a preposição que ela pede (revisão de 2026-09-26):
+   "às 6:15", mas "à 1:00" (à uma) e "à meia-noite". «Deitar às 1:00» e
+   «partida às 0:00» saíam numa prova ao meio-dia e numa da meia-noite.
+   Vive em utils/carolWelcome.js, para o cartão e a saudação a dizerem da
+   mesma maneira. */
+export { aHora };
 
 /** 21.0975 → "21,1"; null sem distância. */
 export function kmFalado(v) {

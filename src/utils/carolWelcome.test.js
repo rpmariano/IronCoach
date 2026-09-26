@@ -706,3 +706,33 @@ describe('pedido 2026-09-26 — revisão', () => {
     expect(carolDay(d, plano([{ planned_date: d, kind: 'corrida', training_type: 'recuperacao', target_distance_km: 5 }])).titulo).toBe('Recuperação · 5 km');
   });
 });
+
+describe('pedido 2026-09-26 — a revisão do Lote 1, do lado das boas-vindas', () => {
+  const plano = (items, extra = {}) => ({
+    profile: { display_name: 'Rui', gender: 'M' },
+    coachPlans: [{ id: 'p', status: 'aceite' }],
+    coachPlanItems: items.map((i, n) => ({ id: `i${n}`, plan_id: 'p', status: 'pendente', ...i })),
+    runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], raceEvents: [], dailyCheckins: [], ...extra,
+  });
+
+  it('uma prova à meia-noite diz-se "à meia-noite", e a uma, "à 1:00" — como no cartão da Carol', () => {
+    const miut = { id: 'm', name: 'MIUT', date: '2026-09-27', status: 'agendada', start_time: '00:00:00' };
+    expect(buildWelcome('madrugada', plano([], { raceEvents: [miut] }), at('2026-09-26T23:10:00')).lines[0]).toBe('MIUT, partida à meia-noite.');
+    const vespera = buildWelcome('vespera', plano([], { raceEvents: [{ ...miut, start_time: '01:00:00' }] }), at('2026-09-26T15:00:00'));
+    expect(vespera.lines[0]).toBe('MIUT, partida à 1:00.');
+    expect(vespera.chip.value).toBe('Partida à 1:00');
+  });
+
+  it('5 km registados num dia de 16 km: "fizeste 5 km", não "fizeste a rodagem longa de 16 km"', () => {
+    const d = '2026-09-28';
+    const dados = plano([{ planned_date: d, kind: 'corrida', training_type: 'longo', target_distance_km: 16, status: 'concluido' }], {
+      runs: [{ date: d, distance_km: 5 }], dailyCheckins: [{ date: d, sleep: 3 }],
+    });
+    const w = buildWelcome('manha', dados, at(`${d}T09:00:00`));
+    expect(w.lines.join(' ')).not.toMatch(/rodagem longa de 16 km/);
+    expect(WELCOME_PHRASES.treinoFeitoKm('5')).toContain(w.lines[0]);
+    // A bater com o plano (16,4 km), diz-se o treino do plano.
+    const bate = buildWelcome('manha', { ...dados, runs: [{ date: d, distance_km: 16.4 }] }, at(`${d}T09:00:00`));
+    expect(WELCOME_PHRASES.treinoFeito('uma rodagem longa de 16 km')).toContain(bate.lines[0]);
+  });
+});

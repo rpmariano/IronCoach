@@ -202,7 +202,7 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
     expect(screen.getByText('A proposta está no chat')).toBeInTheDocument();
     expect(screen.getByText('Escrevi-te um plano. Vê-o e diz-me se serve, ou o que queres mudar.')).toBeInTheDocument();
     expect(screen.queryByText(/Pede-me um plano/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/proposta da Carol por rever/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/proposta minha por rever/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Ver a proposta'));
     expect(onNav).toHaveBeenCalledWith('coach');
   });
@@ -212,7 +212,7 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
     expect(screen.getByText('As propostas estão no chat')).toBeInTheDocument();
     expect(screen.getByText('Deixei-te duas propostas. Vê-as e diz-me o que serve.')).toBeInTheDocument();
     expect(screen.getByText('Ver as propostas')).toBeInTheDocument();
-    expect(screen.queryByText(/propostas da Carol por rever/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/propostas? minhas? por rever/)).not.toBeInTheDocument();
   });
 
   it('o último plano aceite já acabou: diz que acabou, e o botão leva a combinar o próximo', () => {
@@ -237,7 +237,7 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
     expect(card).toHaveTextContent('Hoje, o que conta é esta prova. O resto espera.');
     expect(card).not.toHaveTextContent(/Pede-me um plano|Sem plano acordado|proposta/);
     // A proposta continua à vista, no aviso de cima.
-    expect(screen.getByText('Tens 1 proposta da Carol por rever')).toBeInTheDocument();
+    expect(screen.getByText('Tens uma proposta minha por rever')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('day-plan-open-race'));
     expect(onOpenRace).toHaveBeenCalledWith('r1');
     expect(onNav).not.toHaveBeenCalled();
@@ -277,13 +277,13 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
   it('com plano a correr, as propostas novas continuam no aviso por cima do dia', () => {
     const onNav = vi.fn();
     render(<DayPlanCard plans={[plan, { id: 'p2', status: 'proposto' }, { id: 'p3', status: 'proposto' }]} planItems={[{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', status: 'pendente' }]} raceEvents={[]} onNav={onNav} />);
-    fireEvent.click(screen.getByText('Tens 2 propostas da Carol por rever'));
+    fireEvent.click(screen.getByText('Tens duas propostas minhas por rever'));
     expect(onNav).toHaveBeenCalledWith('coach');
     expect(screen.queryByTestId('day-plan-no-plan')).not.toBeInTheDocument();
     cleanup();
 
     render(<DayPlanCard plans={[plan, { id: 'p2', status: 'proposto' }]} planItems={[{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'corrida', training_type: 'longo', status: 'pendente' }]} raceEvents={[]} />);
-    expect(screen.getByText('Tens 1 proposta da Carol por rever')).toBeInTheDocument();
+    expect(screen.getByText('Tens uma proposta minha por rever')).toBeInTheDocument();
   });
 });
 

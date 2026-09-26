@@ -821,7 +821,8 @@ export const useAppStore = create((set, get) => ({
   // que o em curso acabe e pede-se de novo — o "Atualizar" não deve ficar
   // com a resposta de um pedido que já ia a meio.
   loadDailySummary: async ({ force = false, reload = false } = {}) => {
-    const today = todayISO();
+    // O dia de Lisboa, o que o servidor escreve no resumo.
+    const today = lisbonTodayISO();
     const current = get().dailySummary;
     if (!force && !reload && current?.date === today) return current;
 
@@ -1234,9 +1235,6 @@ async function runInitialLoad(set, get, userId) {
   const switching = loadedDataUserId !== null && loadedDataUserId !== userId;
   loadedDataUserId = userId;
 
-  const today = new Date();
-  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
-  const todayStr = today.toISOString().slice(0, 10);
   const list = (data) => data || [];
   const both = (a, b) => Promise.all([a, b]).then(([x, y]) => ({ data: [x.data, y.data], error: x.error || y.error }));
 
@@ -1268,8 +1266,11 @@ async function runInitialLoad(set, get, userId) {
       (data) => ({ coachPlanItems: list(data) })],
     ['shoes', supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
       (data) => ({ shoes: list(data) })],
-    ['dailySummary', supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', todayStr).maybeSingle(),
-      (data) => (data ? { dailySummary: data } : null)],
+    /* O resumo é o do dia de Lisboa, o mesmo que o servidor grava; sem o
+       de hoje, o de outro dia sai do store — não fica lá a passar por o de
+       hoje (pedido 2026-09-26; o cartão da Carol já o ignora). */
+    ['dailySummary', supabase.from('coach_daily_summary').select('*').eq('user_id', userId).eq('date', lisbonTodayISO()).maybeSingle(),
+      (data) => (data ? { dailySummary: data } : (get().dailySummary && get().dailySummary.date !== lisbonTodayISO() ? { dailySummary: null } : null))],
     // 120 dias: o ciclo precisa de 90 para dizer alguma coisa.
     ['dailyCheckins', supabase.from('daily_checkins').select('*').eq('user_id', userId)
       .gte('date', new Date(Date.now() - 119 * 86400000).toISOString().slice(0, 10))
