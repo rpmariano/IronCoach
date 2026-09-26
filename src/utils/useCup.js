@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useAppStore } from '../store';
 import { lisbonTodayISO } from '../lib/utils';
-import { pickCupEdition } from '../store/cupSlice';
+import { pickCupEdition, readCupEnrolledHint } from '../store/cupSlice';
 import {
   attendanceCount,
   classifyEnrollment,
@@ -133,6 +133,58 @@ export function useCup() {
   }, [editionId, hasCatalog, loadCupCatalog]);
 
   return view;
+}
+
+/* A competição para o Início (Fase 2, o mapa da época — specs/trofeu.md §5).
+   Só interessa a quem está INSCRITO: devolve a vista de useCup apenas com
+   inscrição ativa, e null em tudo o resto (convite, "Não me interessa",
+   quem saiu, M1 por aplicar, ainda a ler).
+
+   Ao contrário do useCup, não lê nada sem indício de inscrição: a pista
+   local que a fatia escreve (cupSlice.js, readCupEnrolledHint) ou uma prova
+   de jornada por correr nas provas que o store já tem. Sem indício, zero
+   leituras — quem não está inscrito não ganha queries no Início (§5). Se a
+   competição já estiver em memória (o ecrã de Provas leu-a), a vista monta-se
+   dela sem ler nada. O catálogo só se pede para a edição da inscrição.
+
+   Limite assumido: inscrito noutro dispositivo e sem nenhuma jornada "Vou"
+   com prova criada, só vê o mapa depois de abrir Provas uma vez. */
+export function useCupForHome() {
+  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id || null);
+  const cup = useAppStore((s) => s.cup);
+  const profile = useAppStore((s) => s.profile);
+  const raceEvents = useAppStore((s) => s.raceEvents);
+  const runs = useAppStore((s) => s.runs);
+  const loadCup = useAppStore((s) => s.loadCup);
+  const loadCupCatalog = useAppStore((s) => s.loadCupCatalog);
+
+  const today = lisbonTodayISO();
+  // Lida em cada render (é só um getItem): a pista não é estado do React e a
+  // leitura base reescreve-a.
+  const hinted = readCupEnrolledHint(userId)
+    || (raceEvents || []).some((r) => r?.cup_round_id && r.status !== 'concluida' && typeof r.date === 'string' && r.date.slice(0, 10) >= today);
+
+  const needsLoad = hinted && !!userId && (cup.userId !== userId || cup.status === 'idle');
+  useEffect(() => {
+    if (needsLoad) loadCup().catch(() => {});
+  }, [needsLoad, loadCup]);
+
+  const view = useMemo(
+    () => (userId && cup.userId === userId ? buildCupView({ cup, profile, raceEvents, runs, today }) : null),
+    [cup, userId, profile, raceEvents, runs, today],
+  );
+  const enrolled = view?.enrollment ? view : null;
+
+  // O catálogo da edição da inscrição, se ainda não estiver pedido (a leitura
+  // base e a inscrição já o pedem; isto é a rede). Um erro não repete, como
+  // no useCup.
+  const editionId = enrolled?.edition?.id || null;
+  const hasCatalog = !!(editionId && cup.catalog?.[editionId]);
+  useEffect(() => {
+    if (editionId && !hasCatalog) loadCupCatalog(editionId).catch(() => {});
+  }, [editionId, hasCatalog, loadCupCatalog]);
+
+  return enrolled;
 }
 
 /** O mesmo hook, pelo nome em português. */

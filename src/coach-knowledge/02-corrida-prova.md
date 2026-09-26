@@ -172,3 +172,53 @@ ajustar o plano para a integrar.
 quiser manter tudo como está, aceitar sem julgar e marcar a decisão como
 tomada — não voltar a levantar o assunto nessa prova. O objetivo nunca foi
 impor o plano certo; foi garantir que a escolha é informada.
+
+### #6 — Jornadas de uma competição ao lado das provas principais
+
+**Decisão de produto, 2026-09-26** (specs/trofeu.md §5, Fase 2). Não é uma
+pergunta de investigação: aplica o #1, o #2 e o #5 deste bloco a um circuito
+de provas curtas (11 jornadas de dezembro a junho, no 1.º caso). As janelas
+mínimas e as cadências são proposta de prática, não literatura — revêem-se com
+os dados da 1.ª época.
+
+**Uma jornada é uma prova secundária (b).** Nunca manda sobre uma principal:
+as principais de fora da competição mandam sempre (#5).
+
+**Quatro papéis**, escolhidos por ele: *atacar* (esforço máximo — é a sessão
+de qualidade do ciclo); *controlar* (RPE 6-7, segunda metade mais rápida;
+pontua na mesma e conta como a sessão de qualidade); *trote* (Z1, só para
+comparecer); *saltar* (não corre).
+
+**À volta de cada principal P** (d = dias da jornada até P):
+- dia de P, os 2 dias antes e os 4 depois: saltar;
+- polimento, de P−W a P−3: controlar. W é o taper de P (#1, limite superior)
+  e nunca menos de 7 dias em 5k/10k nem de 14 em meia, maratona, ultra ou
+  trail;
+- recuperação, de P+5 a P+R (R do #2): trote. Depois de uma maratona ou ultra,
+  o iniciante e o básico saltam a primeira jornada dessa janela.
+
+**Fora das janelas:** o médio e o avançado atacam, a não ser que a jornada caia
+ainda na recuperação (#2) de uma atacada — aí controlam. O iniciante e o básico
+controlam em progressão e atacam 1 em 3 (iniciante) ou 1 em 2 (básico),
+contando só as controladas; nunca duas atacadas a 7 dias ou menos, nem com a
+segunda ainda na recuperação (#2) da primeira; a contagem recomeça depois de
+cada principal; o objetivo "melhorar marcas" encurta a cadência em uma.
+
+**Afinação:** 3 dias fáceis antes de uma jornada atacada (dentro dos 2-4 dias
+B/C do #1), 2 antes de uma controlada ou a trote — nunca menos de 2 antes de
+qualquer prova.
+
+**Resolve a tensão entre o #5 e o #2.** O #5 diz para nunca sugerir que uma b/c
+seja removida; o #2 exclui nova prova na recuperação. Aqui: saltar só se propõe
+no dia e nos 2 antes/4 depois de uma principal, na primeira jornada depois de
+uma maratona (iniciante e básico), ou com dor, doença ou um alarme — e aí sem
+discussão. Na recuperação, o trote é comparecer, não é prova.
+
+**Sempre:** o papel é calculado, nunca de cabeça; sem data confirmada não há
+papel nem data inventada; é uma sugestão — ele decide, ela explica o custo uma
+vez e aceita sem julgar; os pontos nunca pesam contra um alarme (G1-G5); nunca a
+equipa como pressão, nunca terceiros nem o número de atletas de que o clube
+precisa.
+
+Implementação: `supabase/functions/_shared/formulas/seriesArbitration.ts`,
+com os golden das personas A-K em `seriesPersonas.golden.json`.

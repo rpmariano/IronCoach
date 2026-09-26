@@ -19,7 +19,7 @@ import { computeRaceEve, describeRaceEveShort, type RaceEve } from "../_shared/f
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { runLoadReading, runLoadInterventionToOpen, runLoadInterventionReason, type LoadPlanItem } from "../_shared/formulas/runLoadAlert.ts";
 import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
-import { getTaperDays as sharedGetTaperDays } from "../_shared/formulas/taper.ts";
+import { getTaperDays as sharedGetTaperDays, type SeriesIntent } from "../_shared/formulas/taper.ts";
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
@@ -30,6 +30,7 @@ import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, mem
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { selectRaces } from "../_shared/formulas/mainRace.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
+import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -178,13 +179,19 @@ const viabCatDist = sharedCategorizeDistance;
 // era um `daysUntil <= 14` fixo, igual para qualquer nível/distância/
 // prioridade (mesma correção de coach-chat/index.ts — ver
 // specs/formulas-checklist.md Fase C).
+// Uma jornada (prova b/c com papel, Fase 2 do Troféu): a afinação é a do
+// papel, sem macrociclo próprio — o mesmo texto do chat (seriesRacePhaseText).
 function getRacePhase(
   daysUntil: number,
   distanceKm: number | null,
   level: string | null,
   racePriority: string | null,
   raceType: string | null,
+  seriesIntent: SeriesIntent | null = null,
 ): string {
+  if (seriesIntent && (racePriority === "b" || racePriority === "c")) {
+    return seriesRacePhaseText(seriesIntent, daysUntil, sharedGetTaperDays(distanceKm, racePriority, level ?? "iniciante", raceType ?? "estrada", seriesIntent));
+  }
   if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
   const cat = viabCatDist(distanceKm);
   let minWeeks = 12; // defeito
@@ -240,8 +247,12 @@ export function buildDailySummaryContext(params: {
   // O rácio e a leitura dele face ao plano e ao histórico (runLoadAlert.ts).
   acwr?: { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null; [k: string]: unknown };
   tdee?: number | null;
+  /** O papel de cada prova de jornada (race_events.id → intenção), do bloco
+   *  da competição — só com inscrição ativa (Fase 2 do Troféu). null ou em
+   *  falta = o contexto de sempre. */
+  seriesIntents?: Record<string, SeriesIntent> | null;
 }) {
-  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva } = params;
+  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva, seriesIntents } = params;
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
 
@@ -360,6 +371,7 @@ export function buildDailySummaryContext(params: {
         nextRace.experience_level || profile?.experience_level || 'iniciante',
         nextRace.race_priority ?? null,
         nextRace.race_type ?? null,
+        seriesIntents?.[nextRace.id] ?? null,
       )
     } : null,
     /* Só quando há provas de preparação antes do objetivo: sem elas o
@@ -368,6 +380,8 @@ export function buildDailySummaryContext(params: {
     ...(racesBefore && racesBefore.length ? {
       provas_antes_do_objetivo: racesBefore.map((r) => ({
         name: r.name, date: r.date, distance_km: r.distance_km ?? null, race_priority: r.race_priority ?? null,
+        // O papel de uma jornada, só quando o há (inscrição ativa).
+        ...(seriesIntents?.[r.id] ? { papel: seriesIntents[r.id] } : {}),
       })),
     } : {}),
   };
@@ -637,8 +651,10 @@ const RESPONSE_SCHEMA = {
   required: ["recap", "meal_suggestion", "race_readiness", "daily_concept_body"],
 };
 
+// seriesBlock: o bloco da competição por jornadas (fetchSeriesBlock) — null
+// sem inscrição, e aí o prompt fica igual byte a byte.
 // deno-lint-ignore no-explicit-any
-async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string, memoryBlock: string | null = null): Promise<any> {
+async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, todayConceptTitle: string, memoryBlock: string | null = null, seriesBlock: string | null = null): Promise<any> {
   const prompt =
     `És a Carol, a treinadora deste atleta amador numa app de corrida/fitness/nutrição. Geras quatro ` +
     `conteúdos independentes para o cartão diário da Home, em primeira pessoa. Nunca genérico. ` +
@@ -647,6 +663,7 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     // Linguagem por nível (bug #40) — ctx.perfil.experience_level.
     `${carolLanguageRule((ctx.perfil as { experience_level?: string | null } | undefined)?.experience_level ?? null)}\n\n` +
     memoryPromptSection(memoryBlock) +
+    seriesPromptSection(seriesBlock) +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
     `CAMPOS A PREENCHER:\n\n` +
     `1. recap — mensagem do Coach ao atleta (máx. 3 frases). ` +
@@ -805,6 +822,9 @@ Deno.serve(async (req) => {
     // cartão não pode contradizer o que a Carol combinou ontem no chat. Com
     // o retrato da época (5.3): o cartão via só 30 dias de tendência.
     const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today });
+    // O bloco da competição por jornadas (specs/trofeu.md §5, Fase 2): uma
+    // leitura e null para quem não está inscrito. Nunca rejeita.
+    const seriesPromise = fetchSeriesBlock(sb, userId, today, { channel: "daily" });
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
     // `status`: ver RACE_COLUMNS no coach-chat (2026-09-26, revisão da Fase 0).
@@ -968,6 +988,7 @@ Deno.serve(async (req) => {
       // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6).
       fetchTrainingWeatherBlock(sb, userId, today),
     ]);
+    const series = await seriesPromise;
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
       recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace, racesBefore,
@@ -993,6 +1014,7 @@ Deno.serve(async (req) => {
       // da query era lida em vão (apanhado na revisão pré-deploy 2026-09-12).
       lastWeekPlan,
       vesperaDaProva: raceEveForSummary,
+      seriesIntents: series?.active ? series.intentByRaceId : null,
     });
     if (raceWeather) (ctx as Record<string, unknown>).meteorologia_prova = raceWeather;
     if (trainingWeather) (ctx as Record<string, unknown>).tempo_treinos = trainingWeather;
@@ -1036,7 +1058,7 @@ Deno.serve(async (req) => {
     let usage: { input_tokens: number; output_tokens: number } | null = null;
 
     try {
-      const result = await generateSummary(ctx, geminiKey, todayConcept.title, await memoryPromise);
+      const result = await generateSummary(ctx, geminiKey, todayConcept.title, await memoryPromise, series?.text ?? null);
       generated = result.parsed;
       usage = result.usage;
     } catch (e) {

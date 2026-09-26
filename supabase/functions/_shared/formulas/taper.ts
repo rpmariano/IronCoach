@@ -28,7 +28,7 @@
 // muito desnível. Um ultra de estrada (sem D+) também cai nesta categoria,
 // pela mesma doutrina.
 
-import { categorizeDistance } from './vocabulary.ts';
+import { categorizeDistance, PRE_RACE_EASY_DAYS } from './vocabulary.ts';
 
 export type TaperExperienceLevel = 'iniciante' | 'basico' | 'medio' | 'avancado';
 export type TaperCategory = '5k' | '10k' | 'meia' | 'maratona' | 'ultra_trail';
@@ -49,7 +49,29 @@ const TAPER_DAYS_A_RACE: Record<TaperExperienceLevel, Record<TaperCategory, numb
 // por célula da tabela.
 const TAPER_DAYS_BC_RACE = 4;
 
-function taperCategoryFor(distanceKm: number | null | undefined, raceType: string | null | undefined): TaperCategory {
+// ─── Jornadas de uma competição (specs/trofeu.md §5, Fase 2) ─────────────
+// Uma jornada é uma prova b; o papel que o atleta lhe dá (atacar, controlar,
+// ir a trote, saltar) decide a afinação dentro dos 2-4 dias B/C: 3 dias
+// fáceis antes de uma atacada, 2 antes das outras. O papel é calculado em
+// seriesArbitration.ts; aqui só se lê. Numa principal ('a') a intenção
+// ignora-se — uma jornada promovida a principal leva o taper A.
+export type SeriesIntent = 'atacar' | 'controlar' | 'trote' | 'saltar';
+
+export const SERIES_INTENTS: readonly SeriesIntent[] = ['atacar', 'controlar', 'trote', 'saltar'];
+
+// @doutrina src/coach-knowledge/02-corrida-prova.md Bloco 2.3 #6 — afinação de uma jornada por intenção.
+export const TAPER_DAYS_BY_SERIES_INTENT: Readonly<Record<SeriesIntent, number>> = {
+  atacar: 3,
+  controlar: 2,
+  trote: 2,
+  saltar: 2,
+};
+
+export function isSeriesIntent(v: unknown): v is SeriesIntent {
+  return typeof v === 'string' && Object.prototype.hasOwnProperty.call(TAPER_DAYS_BY_SERIES_INTENT, v);
+}
+
+export function taperCategoryFor(distanceKm: number | null | undefined, raceType: string | null | undefined): TaperCategory {
   if (raceType === 'trail') return 'ultra_trail';
   const cat = categorizeDistance(distanceKm);
   if (cat === 'ultra') return 'ultra_trail';
@@ -61,8 +83,15 @@ export function getTaperDays(
   racePriority: string | null | undefined = 'a',
   experienceLevel: string | null | undefined = 'iniciante',
   raceType: string | null | undefined = 'estrada',
+  seriesIntent?: SeriesIntent | string | null,
 ): number {
-  if (racePriority === 'b' || racePriority === 'c') return TAPER_DAYS_BC_RACE;
+  if (racePriority === 'b' || racePriority === 'c') {
+    // Sem intenção (ou com uma inválida) fica o de sempre: 4 dias. Com ela,
+    // nunca menos do que os 2 dias fáceis antes de qualquer prova.
+    return isSeriesIntent(seriesIntent)
+      ? Math.max(PRE_RACE_EASY_DAYS, TAPER_DAYS_BY_SERIES_INTENT[seriesIntent])
+      : TAPER_DAYS_BC_RACE;
+  }
   const cat = taperCategoryFor(distanceKm, raceType);
   const level = (TAPER_DAYS_A_RACE as Record<string, unknown>)[experienceLevel as string]
     ? (experienceLevel as TaperExperienceLevel)
@@ -78,6 +107,7 @@ export function getTaperWeeks(
   racePriority: string | null | undefined = 'a',
   experienceLevel: string | null | undefined = 'iniciante',
   raceType: string | null | undefined = 'estrada',
+  seriesIntent?: SeriesIntent | string | null,
 ): number {
-  return Math.max(1, Math.ceil(getTaperDays(distanceKm, racePriority, experienceLevel, raceType) / 7));
+  return Math.max(1, Math.ceil(getTaperDays(distanceKm, racePriority, experienceLevel, raceType, seriesIntent) / 7));
 }

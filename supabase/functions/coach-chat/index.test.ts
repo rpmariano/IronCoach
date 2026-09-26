@@ -3,6 +3,7 @@ import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
+import { runSetCupParticipation, runSetCupSeasonGoal, SERIES_TOOLS, SERIES_TOOL_NAMES } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
@@ -4336,4 +4337,338 @@ Deno.test("propose_training_plan: a descrição bate com as guardas do servidor"
   assertStringIncludes(tool.description, "treino forte ou ginásio");
   assertStringIncludes(tool.description, "ACWR acima de 1,50");
   assertStringIncludes(tool.description, "uma nova substitui a que ainda estiver por decidir");
+});
+
+// ─── Competição por jornadas (specs/trofeu.md §5, Fase 2, 2026-09-26) ──────
+// Sem inscrição, a Carol não muda NADA: o prompt e as ferramentas são os de
+// sempre, byte a byte. Com ela, o bloco entra na cauda (depois do contexto
+// do plano, antes de "Última troca") e as SERIES_TOOLS só no caso E.
+
+// Os 35 parâmetros de buildSystemInstruction antes de seriesBlock.
+const SYS_ARGC_BEFORE_SERIES = 35;
+// deno-lint-ignore no-explicit-any
+const sysAny = buildSystemInstruction as (...a: any[]) => string;
+// deno-lint-ignore no-explicit-any
+const padSys = (args: any[]) => [...args, ...new Array(SYS_ARGC_BEFORE_SERIES - args.length).fill(undefined)];
+/** Compara duas montagens do prompt; se o minuto virar entre as duas (a data
+ *  e hora estão no prompt), repete uma vez. */
+function assertSameSys(a: () => string, b: () => string, msg?: string) {
+  let x = a();
+  let y = b();
+  if (x !== y) { x = a(); y = b(); }
+  assertEquals(x, y, msg);
+}
+
+// deno-lint-ignore no-explicit-any
+const SYS_ARG_SETS: Record<string, any[]> = {
+  minimo: [null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null],
+  com_provas_e_plano: [null, { ...BIO_BASE, experience_level: "medio" }, "METAS", "CORPO", "NUTRIÇÃO", "ÁGUA", "GINÁSIO", "MÉTRICAS", "CORRIDAS", "ACWR", "PROVAS_CTX", "PLANO_CTX"],
+  tudo: [
+    null,
+    { ...BIO_BASE, experience_level: "basico", carol_push_enabled: true, carol_push_types: ["race_eve"], carol_push_start_hour: 8, carol_push_end_hour: 20, water_reminder_enabled: true },
+    "METAS", "CORPO", "NUTRIÇÃO", "ÁGUA", "GINÁSIO", "MÉTRICAS", "CORRIDAS", "ACWR", "PROVAS_CTX", "PLANO_CTX",
+    "NOTAS", "Rita", false, "none", null, "SAPATILHAS", "PROVA_COM_PLANO", "SEMANA", "PAINEL_CORRIDA", "PAINEL_GIN",
+    "PAINEL_NUT", "PRONTIDAO", "FASES", "HABITOS", "ADERENCIA", 30, null, null, null, "PLANO_DO_DIA", "PARCIAIS", "VESPERA", "SEGUIMENTO",
+  ],
+  proativo: [
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, "PROVAS_CTX", null,
+    null, null, false, null, null, null, "LIVRE", null, null, null, null, null, null, null, null,
+    null, "race_eve", "Prova amanhã", null, null, null, "VESPERA", null,
+  ],
+};
+
+Deno.test("invariância: sem inscrição, buildSystemInstruction é igual byte a byte (sem o argumento, null ou undefined)", () => {
+  for (const [name, args] of Object.entries(SYS_ARG_SETS)) {
+    assert(args.length <= SYS_ARGC_BEFORE_SERIES, name);
+    assertSameSys(() => sysAny(...args), () => sysAny(...padSys(args), null), `${name}: null`);
+    assertSameSys(() => sysAny(...args), () => sysAny(...padSys(args), undefined), `${name}: undefined`);
+    assertSameSys(() => sysAny(...args), () => sysAny(...padSys(args), ""), `${name}: vazio`);
+    // O prompt de quem não está inscrito não fala da competição.
+    const sys = sysAny(...args);
+    assertEquals(sys.includes("COMPETIÇÃO POR JORNADAS"), false, name);
+    assertEquals(sys.includes("set_cup_participation"), false, name);
+  }
+});
+
+Deno.test("com inscrição: o bloco entra na cauda — depois do plano, antes de 'Última troca' — e o prefixo estável não ganha um byte", () => {
+  const BLOCO = "--- COMPETIÇÃO POR JORNADAS (o atleta está inscrito) ---\nBLOCO_DE_TESTE";
+  for (const [name, args] of Object.entries(SYS_ARG_SETS)) {
+    let base = sysAny(...args);
+    let withBlock = sysAny(...padSys(args), BLOCO);
+    if (withBlock.replace(`\n\n${BLOCO}`, "") !== base) { base = sysAny(...args); withBlock = sysAny(...padSys(args), BLOCO); }
+    // A única diferença é o bloco.
+    assertEquals(withBlock.replace(`\n\n${BLOCO}`, ""), base, name);
+    const cut = base.indexOf("\n\nData e hora atual");
+    assert(cut > 0, name);
+    assertEquals(withBlock.slice(0, cut), base.slice(0, cut), name);
+    const at = withBlock.indexOf(BLOCO);
+    assert(at > cut, name);
+    for (const before of ["PROVAS_CTX", "PLANO_CTX"]) {
+      if (base.includes(before)) assert(withBlock.indexOf(before) < at, `${name}: ${before}`);
+    }
+    for (const after of ["\n\nÚltima troca nesta conversa", "PLANO_DO_DIA", "VESPERA", "SEGUIMENTO"]) {
+      if (base.includes(after)) assert(withBlock.indexOf(after) > at, `${name}: ${after}`);
+    }
+  }
+});
+
+Deno.test("invariância: sem inscrição, buildTools é igual byte a byte e não traz as SERIES_TOOLS", () => {
+  const sets: Array<Set<string> | null | undefined> = [undefined, null, ...ALL_TURN_CASES.map((k) => allowedToolsFor(k))];
+  for (const x of sets) {
+    assertEquals(JSON.stringify(buildTools(x)), JSON.stringify(buildTools(x, false)));
+    // deno-lint-ignore no-explicit-any
+    const names = ((buildTools(x)[0] as any).functionDeclarations as any[]).map((d) => d.name);
+    for (const n of SERIES_TOOL_NAMES) assertEquals(names.includes(n), false, n);
+  }
+  // O payload do caso E de quem não está inscrito: as 9 de sempre, pela ordem de sempre.
+  // deno-lint-ignore no-explicit-any
+  assertEquals(((buildTools(null)[0] as any).functionDeclarations as any[]).map((d) => d.name), [
+    "get_nutrition_history", "get_gym_history", "get_running_history", "propose_training_plan", "update_goals",
+    "update_race_event", "save_meal_suggestions", "save_coach_note", "resolve_intervention",
+  ]);
+});
+
+Deno.test("com inscrição: as SERIES_TOOLS só no caso E (nunca em A–D, F_* nem nos turnos proativos)", () => {
+  assertEquals(SERIES_TOOL_NAMES, ["set_cup_participation", "set_cup_season_goal"]);
+  for (const kind of ALL_TURN_CASES) {
+    // deno-lint-ignore no-explicit-any
+    const names = ((buildTools(allowedToolsFor(kind), true)[0] as any).functionDeclarations as any[]).map((d) => d.name);
+    for (const n of SERIES_TOOL_NAMES) assertEquals(names.includes(n), kind === "E", `caso ${kind}: ${n}`);
+  }
+  // Turno proativo: só leitura e notas (o conjunto dos casos B–D).
+  // deno-lint-ignore no-explicit-any
+  const proactive = ((buildTools(allowedToolsFor("B"), true)[0] as any).functionDeclarations as any[]).map((d) => d.name);
+  assertEquals(proactive.some((n: string) => SERIES_TOOL_NAMES.includes(n)), false);
+});
+
+Deno.test("schema das SERIES_TOOLS: planas (sem arrays), e a guarda estrutural também com elas", () => {
+  for (const kind of ALL_TURN_CASES) {
+    // deno-lint-ignore no-explicit-any
+    const decls = (buildTools(allowedToolsFor(kind), true)[0] as any).functionDeclarations;
+    const offenders: string[] = [];
+    for (const d of decls) findNestedBoundedArrays(d.parameters, d.name, null, offenders);
+    assertEquals(offenders, [], `caso ${kind}`);
+  }
+  for (const t of SERIES_TOOLS) {
+    assertEquals(JSON.stringify(t).includes('"ARRAY"'), false, t.name);
+    assertEquals(t.parameters.type, "OBJECT");
+  }
+  // deno-lint-ignore no-explicit-any
+  const p = (SERIES_TOOLS[0].parameters as any).properties;
+  assertEquals(p.decision.enum, ["vou", "nao_vou", "nao_sei", "nao_fui"]);
+  assertEquals(p.intent.enum, ["atacar", "controlar", "trote", "saltar"]);
+  assertEquals(SERIES_TOOLS[0].parameters.required, ["round_no"]);
+  // deno-lint-ignore no-explicit-any
+  assertEquals((SERIES_TOOLS[1].parameters as any).properties.season_goal.enum, ["participar", "premio", "pontos_clube", "marcas"]);
+  // Nenhum user_id nos argumentos: a identidade é a do pedido.
+  assertEquals(JSON.stringify(SERIES_TOOLS).includes("user_id"), false);
+});
+
+// Um cliente falso para as duas ferramentas: a inscrição ativa, a jornada
+// pelo número, e as RPCs registadas.
+// deno-lint-ignore no-explicit-any
+function makeCupSb(opts: { enrollment?: any; enrollmentError?: any; rounds?: any[]; rpc?: Record<string, { data?: any; error?: any }> } = {}) {
+  const selects: Array<{ table: string; cols: string; filters: unknown[][] }> = [];
+  const rpcs: Array<{ fn: string; args: unknown }> = [];
+  const sb = {
+    from(table: string) {
+      const entry = { table, cols: "", filters: [] as unknown[][] };
+      selects.push(entry);
+      // deno-lint-ignore no-explicit-any
+      const q: any = {
+        select: (cols: string) => { entry.cols = cols; return q; },
+        eq: (col: string, val: unknown) => { entry.filters.push([col, val]); return q; },
+        maybeSingle: () => {
+          if (table === "cup_enrollments") return Promise.resolve({ data: opts.enrollmentError ? null : opts.enrollment ?? null, error: opts.enrollmentError ?? null });
+          if (table === "cup_rounds") {
+            const n = entry.filters.find(([c]) => c === "round_no")?.[1];
+            return Promise.resolve({ data: (opts.rounds || []).find((r) => r.round_no === n) ?? null, error: null });
+          }
+          return Promise.resolve({ data: null, error: null });
+        },
+      };
+      return q;
+    },
+    rpc(fn: string, args: unknown) {
+      rpcs.push({ fn, args });
+      const r = opts.rpc?.[fn] ?? { data: null, error: null };
+      return Promise.resolve({ data: r.data ?? null, error: r.error ?? null });
+    },
+  };
+  return { sb, selects, rpcs };
+}
+
+const CUP_ENR = { id: "enr-1", edition_id: "ed-34", bib: "BIB-4321" };
+const CUP_ROUNDS = [
+  { id: "r3", round_no: 3, name: "Corrida do Clube", date: "2027-01-24", date_status: "confirmada" },
+  { id: "r4", round_no: 4, name: "GP da Vila", date: "2027-02-07", date_status: "provavel" },
+  { id: "r6", round_no: 6, name: "Corrida do Farol", date: "2027-03-07", date_status: "cancelada" },
+];
+
+Deno.test("set_cup_participation: validação antes de qualquer leitura", async () => {
+  for (const [args, expected] of [
+    [{}, "Erro: indica round_no (o número da jornada no bloco)."],
+    [{ round_no: 0, decision: "vou" }, "Erro: indica round_no (o número da jornada no bloco)."],
+    [{ round_no: 2.5, decision: "vou" }, "Erro: indica round_no (o número da jornada no bloco)."],
+    [{ round_no: 3, decision: "talvez" }, "Erro: decision ou intent inválido."],
+    [{ round_no: 3, intent: "sprintar" }, "Erro: decision ou intent inválido."],
+    [{ round_no: 3, decision: "vou", intent: "toString" }, "Erro: decision ou intent inválido."],
+    [{ round_no: 3 }, "Erro: nada para gravar — passa decision e/ou intent."],
+  ] as const) {
+    const { sb, selects, rpcs } = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS });
+    assertEquals(await runSetCupParticipation(sb, "u1", args), expected, JSON.stringify(args));
+    assertEquals(selects.length, 0);
+    assertEquals(rpcs.length, 0);
+  }
+});
+
+Deno.test("set_cup_participation: sem inscrição ativa, jornada inexistente ou cancelada → erro, sem gravar", async () => {
+  const none = makeCupSb({ enrollment: null, rounds: CUP_ROUNDS });
+  assertEquals(await runSetCupParticipation(none.sb, "u1", { round_no: 3, decision: "vou" }), "Erro: o atleta não tem inscrição ativa numa competição.");
+  assertEquals(none.rpcs, []);
+  // A inscrição lida é a ATIVA do próprio, pelas colunas precisas (nunca o dorsal).
+  assertEquals(none.selects[0], { table: "cup_enrollments", cols: "id, edition_id", filters: [["user_id", "u1"], ["status", "ativa"]] });
+
+  const missing = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS });
+  assertEquals(await runSetCupParticipation(missing.sb, "u1", { round_no: 9, decision: "vou" }), "Erro: não há jornada 9 nesta edição.");
+  assertEquals(missing.selects[1].filters, [["edition_id", "ed-34"], ["round_no", 9]]);
+  const cancelled = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS });
+  assertEquals(await runSetCupParticipation(cancelled.sb, "u1", { round_no: 6, intent: "saltar" }), "Erro: a jornada 6 foi cancelada.");
+  assertEquals([...missing.rpcs, ...cancelled.rpcs], []);
+
+  const schema = makeCupSb({ enrollmentError: { code: "42P01", message: 'relation "public.cup_enrollments" does not exist' } });
+  assertEquals(await runSetCupParticipation(schema.sb, "u1", { round_no: 3, decision: "vou" }), "Erro: a gravação das jornadas ainda não está disponível.");
+});
+
+Deno.test("set_cup_participation: o patch exato vai à RPC, sempre como escolha DELE; o resultado diz o que ficou gravado", async () => {
+  const { sb, rpcs } = makeCupSb({
+    enrollment: CUP_ENR, rounds: CUP_ROUNDS,
+    rpc: { set_participation: { data: { round_id: "r3", decision: "vou", decision_source: "atleta", intent: "atacar", intent_source: "atleta" } } },
+  });
+  const result = await runSetCupParticipation(sb, "u1", { round_no: 3, decision: "vou", intent: "atacar", reason: "quer ir com tudo" });
+  assertEquals(rpcs, [{ fn: "set_participation", args: { p_round_id: "r3", p_patch: { decision: "vou", decision_source: "atleta", intent: "atacar", intent_source: "atleta" } } }]);
+  assertEquals(result, "Jornada atualizada: 3 (Corrida do Clube, 24 jan) — decisão: vai, papel: atacar. Diz-lhe numa frase o que ficou gravado (quer ir com tudo).");
+  assertEquals(result.includes("4321"), false);
+
+  // 'saltar' escolhido por ele é não ir: grava também "não vai" (a prova sai
+  // do calendário) — nunca fica uma prova "que pelas contas se salta… se ele
+  // for" (revisão da Fase 2). "vai" + "saltar" contradiz-se e recusa-se.
+  const onlyIntent = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS, rpc: { set_participation: { data: { decision: "nao_vou", intent: "saltar" } } } });
+  assertEquals(await runSetCupParticipation(onlyIntent.sb, "u1", { round_no: 3, intent: "saltar" }), "Jornada atualizada: 3 (Corrida do Clube, 24 jan) — decisão: não vai, papel: saltar. Diz-lhe numa frase o que ficou gravado.");
+  assertEquals((onlyIntent.rpcs[0].args as { p_patch: unknown }).p_patch, { decision: "nao_vou", decision_source: "atleta", intent: "saltar", intent_source: "atleta" });
+  const contradiction = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS });
+  assertEquals(await runSetCupParticipation(contradiction.sb, "u1", { round_no: 3, decision: "vou", intent: "saltar" }), "Erro: 'saltar' é não ir — não se grava com decision 'vou'.");
+  assertEquals([contradiction.selects.length, contradiction.rpcs.length], [0, 0]);
+  // Uma decisão explícita diferente de "vou" mantém-se (ex.: "ainda não sabe").
+  const explicit = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS, rpc: { set_participation: { data: { decision: "nao_sei", intent: "saltar" } } } });
+  await runSetCupParticipation(explicit.sb, "u1", { round_no: 3, decision: "nao_sei", intent: "saltar" });
+  assertEquals((explicit.rpcs[0].args as { p_patch: unknown }).p_patch, { decision: "nao_sei", decision_source: "atleta", intent: "saltar", intent_source: "atleta" });
+
+  // "Vai" numa data provável fica à espera.
+  const provavel = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS, rpc: { set_participation: { data: { decision: "vou", decision_source: "atleta" } } } });
+  assertStringIncludes(await runSetCupParticipation(provavel.sb, "u1", { round_no: 4, decision: "vou" }), "Fica 'vai' à espera: a prova só entra no calendário quando a data for confirmada.");
+});
+
+Deno.test("set_cup_participation: colisão com uma principal — a principal manda; RPC em falta ou recusada", async () => {
+  const collision = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS, rpc: { set_participation: { data: { decision: null, decision_source: "colisao" } } } });
+  const r = await runSetCupParticipation(collision.sb, "u1", { round_no: 3, decision: "vou" });
+  assertEquals(r, 'Jornada 3 (Corrida do Clube, 24 jan) não ficou "vai": nesse dia há uma prova principal dele — a principal manda. Diz-lho numa frase; se ele quiser mesmo a jornada, essa prova tem de deixar de ser principal (update_race_event).');
+  assertEquals(r.startsWith("Erro"), false);
+
+  const missing = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS, rpc: { set_participation: { error: { code: "42883", message: "function public.set_participation(uuid, jsonb) does not exist" } } } });
+  assertEquals(await runSetCupParticipation(missing.sb, "u1", { round_no: 3, decision: "nao_vou" }), "Erro: a gravação das jornadas ainda não está disponível.");
+  const refused = makeCupSb({ enrollment: CUP_ENR, rounds: CUP_ROUNDS, rpc: { set_participation: { error: { code: "22023", message: '"Não fui" só numa jornada que já passou' } } } });
+  assertEquals(await runSetCupParticipation(refused.sb, "u1", { round_no: 3, decision: "nao_fui" }), 'Erro ao gravar: "Não fui" só numa jornada que já passou');
+});
+
+Deno.test("set_cup_season_goal: valida, grava pela RPC da inscrição e nunca devolve a linha (que tem o dorsal)", async () => {
+  const bad = makeCupSb({ enrollment: CUP_ENR });
+  assertEquals(await runSetCupSeasonGoal(bad.sb, "u1", { season_goal: "ganhar" }), "Erro: season_goal inválido.");
+  assertEquals(bad.rpcs, []);
+  const none = makeCupSb({ enrollment: null });
+  assertEquals(await runSetCupSeasonGoal(none.sb, "u1", { season_goal: "premio" }), "Erro: o atleta não tem inscrição ativa numa competição.");
+
+  const { sb, rpcs } = makeCupSb({ enrollment: CUP_ENR, rpc: { update_enrollment: { data: { id: "enr-1", season_goal: "premio", bib: "BIB-4321" } } } });
+  const result = await runSetCupSeasonGoal(sb, "u1", { season_goal: "premio" });
+  assertEquals(rpcs, [{ fn: "update_enrollment", args: { p_enrollment_id: "enr-1", p_patch: { season_goal: "premio" } } }]);
+  assertEquals(result, "Objetivo da época atualizado: ir a prémio (classificação final). A app passa a contar as presenças para a classificação final. Diz-lho numa frase.");
+  assertEquals(result.includes("4321"), false);
+  const marcas = makeCupSb({ enrollment: CUP_ENR });
+  assertEquals(await runSetCupSeasonGoal(marcas.sb, "u1", { season_goal: "marcas" }), "Objetivo da época atualizado: melhorar marcas. Diz-lho numa frase.");
+});
+
+Deno.test("buildRaceEventsContext: sem papéis é o texto de sempre; numa jornada, a fase é a do papel e sem objetivo inviável", () => {
+  const jornada = makeRaceEvent({ id: "rj3", name: "Corrida do Clube", date: "2026-09-06", race_type: "estrada", distance_km: 7.4, elevation_gain_m: null, race_priority: "b", experience_level: null });
+  const principal = makeRaceEvent({ id: "p1", name: "Meia do Tejo", date: "2026-11-15", race_type: "estrada", distance_km: 21.1, elevation_gain_m: null, race_priority: "a" });
+  const events = [jornada, principal];
+  const base = buildRaceEventsContext(events, TODAY_ISO, null, "iniciante", RUNS_MEDIDO_INICIANTE);
+  assertEquals(buildRaceEventsContext(events, TODAY_ISO, null, "iniciante", RUNS_MEDIDO_INICIANTE, null), base);
+  assertEquals(buildRaceEventsContext(events, TODAY_ISO, null, "iniciante", RUNS_MEDIDO_INICIANTE, {}), base);
+  // Uma intenção numa principal ignora-se (a principal leva sempre o taper A).
+  assertEquals(buildRaceEventsContext(events, TODAY_ISO, null, "iniciante", RUNS_MEDIDO_INICIANTE, { p1: "controlar" }), base);
+  assertStringIncludes(base!, "OBJETIVO_INVIAVEL");
+  assertStringIncludes(base!, "propõe-lhe um");
+
+  const withRole = buildRaceEventsContext(events, TODAY_ISO, null, "iniciante", RUNS_MEDIDO_INICIANTE, { rj3: "controlar" })!;
+  const line = withRole.split("\n").find((l) => l.includes("Corrida do Clube"))!;
+  assertStringIncludes(line, "fase do plano: Jornada de competição (papel: controlar); sem macrociclo próprio — 2 dias fáceis antes dela");
+  const jornadaBlock = withRole.split("\n- ")[1];
+  assertEquals(jornadaBlock.includes("OBJETIVO_INVIAVEL"), false);
+  assertEquals(jornadaBlock.includes("propõe-lhe um"), false);
+  assertStringIncludes(jornadaBlock, "numa jornada o tempo fica vazio até ele o marcar");
+  // A principal continua exatamente igual.
+  assertEquals(withRole.split("\n- ")[2], base!.split("\n- ")[2]);
+  // Na semana da jornada, a afinação do papel (atacar: 3 dias).
+  const eve = buildRaceEventsContext([{ ...jornada, date: "2026-08-30" }], TODAY_ISO, null, "iniciante", [], { rj3: "atacar" })!;
+  assertStringIncludes(eve, "fase do plano: Afinação para a jornada (papel: atacar; 3 dias fáceis antes; faltam 3)");
+});
+
+Deno.test("guarda de sempre aplicada a jornadas: nada de intervalos na véspera de uma prova 'b' de jornada", async () => {
+  const races = [{ id: "rj3", name: "Corrida do Clube", date: "2026-08-15", distance_km: 7.4, race_priority: "b", cup_round_id: "j3" }];
+  const hardEve = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-14", kind: "corrida", training_type: "intervalos", target_distance_km: 8 }],
+  });
+  assertStringIncludes(hardEve, "a 1 dia(s) da prova");
+  const twoDays = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-13", kind: "ginasio", categories: ["Pernas"], target_duration_min: 45 }],
+  });
+  assertStringIncludes(twoDays, "a 2 dia(s) da prova");
+});
+
+Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscrição ativa (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "const seriesToolsOn = seriesBlock?.active === true;");
+  assertStringIncludes(src, "const toolsBlock = buildTools(allowedTools, seriesToolsOn);");
+  assertStringIncludes(src, "const cupMapPrompt = cupMapFirst !== null && seriesBlock?.active ? buildCupMapTurn(seriesBlock, cupMapFirst) : null;");
+  assertStringIncludes(src, "raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0");
+  assertStringIncludes(src, "seriesBlock?.active ? seriesBlock.intentByRaceId : null,");
+  assertStringIncludes(src, "      seriesBlock?.text ?? null,\n    );");
+  // cup_updated só aparece quando é true — a resposta de quem não está inscrito fica igual.
+  assertEquals(src.includes("cup_updated: cupWasUpdated"), false);
+  assertEquals(src.includes("cup_updated: false"), false);
+  // O dorsal não é lido nem escrito pelo chat.
+  assertEquals(/\bbib\b/.test(src.replace(/\/\/.*$/gm, "")), false);
+});
+
+/* Revisão da Fase 2: pedido o mapa e sem bloco ativo (uma leitura da
+   competição falhou, ou a inscrição já não está ativa), o turno caía no guião
+   do "Adaptar Plano", o cliente dava o aviso por tratado e o mapa — e, no
+   primeiro, as perguntas da época — perdia-se sem ter sido mostrado. */
+Deno.test("handler: mapa pedido sem bloco ativo — não chama o Gemini nem se dá por tratado; cup_map_shown só no turno do mapa", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const skip = src.indexOf("if (cupMapFirst !== null && !cupMapPrompt && !message) {");
+  assert(skip > 0);
+  assertStringIncludes(src.slice(skip, skip + 700), 'skipped: true,\n        reason: "cup_map_unavailable",');
+  // Antes de se escolher o guião e de se falar com o Gemini.
+  assert(skip < src.indexOf("const planCheckinPrompt = "));
+  assert(skip < src.indexOf("async function callGemini("));
+  // O cliente só marca com a flag, e ela só existe no turno que foi mesmo o
+  // do mapa — nas duas respostas com o texto dela, e só quando é true (a
+  // resposta de quem não está inscrito fica igual).
+  assertStringIncludes(src, "const cupMapShown = cupMapPrompt !== null && !message && !body.is_intervention_start && !!body.is_plan_checkin &&\n      planCheckinPrompt === cupMapPrompt;");
+  assertEquals(src.split("...(cupMapShown ? { cup_map_shown: true } : {}),").length - 1, 2);
+  assertEquals(src.includes("cup_map_shown: cupMapShown"), false);
+  assertEquals(src.includes("cup_map_shown: false"), false);
 });

@@ -1,0 +1,11 @@
+[
+  { "name": "jornada b 7,4 km médio, atacar: 3 dias", "input": { "distanceKm": 7.4, "racePriority": "b", "experienceLevel": "medio", "raceType": "estrada", "seriesIntent": "atacar" }, "expect": { "days": 3, "weeks": 1 } },
+  { "name": "jornada b 7,4 km médio, controlar: 2 dias", "input": { "distanceKm": 7.4, "racePriority": "b", "experienceLevel": "medio", "raceType": "estrada", "seriesIntent": "controlar" }, "expect": { "days": 2, "weeks": 1 } },
+  { "name": "jornada b 7,4 km médio, trote: 2 dias", "input": { "distanceKm": 7.4, "racePriority": "b", "experienceLevel": "medio", "raceType": "estrada", "seriesIntent": "trote" }, "expect": { "days": 2, "weeks": 1 } },
+  { "name": "jornada b 7,4 km médio, saltar: 2 dias (se ele for)", "input": { "distanceKm": 7.4, "racePriority": "b", "experienceLevel": "medio", "raceType": "estrada", "seriesIntent": "saltar" }, "expect": { "days": 2, "weeks": 1 } },
+  { "name": "prova c 10 km iniciante, controlar: 2 dias", "input": { "distanceKm": 10, "racePriority": "c", "experienceLevel": "iniciante", "raceType": "estrada", "seriesIntent": "controlar" }, "expect": { "days": 2, "weeks": 1 } },
+  { "name": "jornada b trail 25 km básico, atacar: 3 dias (a intenção não olha a distância)", "input": { "distanceKm": 25, "racePriority": "b", "experienceLevel": "basico", "raceType": "trail", "seriesIntent": "atacar" }, "expect": { "days": 3, "weeks": 1 } },
+  { "name": "prova b 10 km, intenção inválida: os 4 dias de sempre", "input": { "distanceKm": 10, "racePriority": "b", "experienceLevel": "medio", "raceType": "estrada", "seriesIntent": "xyz" }, "expect": { "days": 4, "weeks": 1 } },
+  { "name": "prova b 10 km, intenção null: os 4 dias de sempre", "input": { "distanceKm": 10, "racePriority": "b", "experienceLevel": "medio", "raceType": "estrada", "seriesIntent": null }, "expect": { "days": 4, "weeks": 1 } },
+  { "name": "principal a meia médio, controlar: a intenção ignora-se (taper A)", "input": { "distanceKm": 21.1, "racePriority": "a", "experienceLevel": "medio", "raceType": "estrada", "seriesIntent": "controlar" }, "expect": { "days": 14, "weeks": 2 } }
+]

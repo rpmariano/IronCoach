@@ -1,6 +1,7 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
+import { seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
 // Antes desta correção, computeBodyMetrics/computeTDEE comparavam com
@@ -329,4 +330,56 @@ Deno.test("provas antes do objetivo: só aparecem quando existem, e a proxima_pr
   assertEquals(ctx.provas_antes_do_objetivo, [{ name: "Jornada 1", date: "2026-08-16", distance_km: 10, race_priority: "c" }]);
   assertEquals("provas_antes_do_objetivo" in (buildDailySummaryContext({ ...baseParams, nextRace: principal }) as Record<string, unknown>), false);
   assertEquals("provas_antes_do_objetivo" in (buildDailySummaryContext({ ...baseParams, nextRace: principal, racesBefore: [] }) as Record<string, unknown>), false);
+});
+
+// ── Competição por jornadas (specs/trofeu.md §5, Fase 2, 2026-09-26) ──────
+// Sem inscrição o contexto do cartão é o de sempre; com ela, a fase de uma
+// jornada é a do papel e as provas antes do objetivo levam o papel dela.
+
+Deno.test("jornadas: sem papéis (null, undefined ou {}), o contexto do cartão é igual ao de sempre", () => {
+  const principal = { id: "m1", name: "Maratona de Lisboa", date: "2026-10-11", distance_km: 42.195, race_priority: "a", race_type: "estrada" };
+  const jornada = { id: "j1", name: "Jornada 1", date: "2026-08-16", distance_km: 7.4, race_priority: "b", race_type: "estrada" };
+  for (const params of [
+    { ...baseParams },
+    { ...baseParams, nextRace: principal, racesBefore: [jornada] },
+    { ...baseParams, nextRace: jornada },
+  ]) {
+    const plain = buildDailySummaryContext(params);
+    assertEquals(buildDailySummaryContext({ ...params, seriesIntents: null }), plain);
+    assertEquals(buildDailySummaryContext({ ...params, seriesIntents: undefined }), plain);
+    assertEquals(buildDailySummaryContext({ ...params, seriesIntents: {} }), plain);
+    assertEquals(JSON.stringify(buildDailySummaryContext({ ...params, seriesIntents: null })), JSON.stringify(plain));
+  }
+});
+
+Deno.test("jornadas: a proxima_prova b com papel leva a fase do papel; as de preparação levam 'papel' só quando o há", () => {
+  const jornada = { id: "j1", name: "Jornada 1", date: "2026-08-14", distance_km: 7.4, race_priority: "b", race_type: "estrada" };
+  const ctx = buildDailySummaryContext({ ...baseParams, nextRace: jornada, seriesIntents: { j1: "atacar" } }) as Record<string, unknown>;
+  assertEquals((ctx.proxima_prova as { fase_do_plano: string }).fase_do_plano, seriesRacePhaseText("atacar", 3, 3));
+  assertEquals((ctx.proxima_prova as { fase_do_plano: string }).fase_do_plano, "Afinação para a jornada (papel: atacar; 3 dias fáceis antes; faltam 3)");
+
+  // Uma principal ignora qualquer papel (leva sempre o taper A).
+  const principal = { id: "m1", name: "Maratona de Lisboa", date: "2026-10-11", distance_km: 42.195, race_priority: "a", race_type: "estrada" };
+  assertEquals(
+    buildDailySummaryContext({ ...baseParams, nextRace: principal, seriesIntents: { m1: "controlar" } }),
+    buildDailySummaryContext({ ...baseParams, nextRace: principal }),
+  );
+
+  const j2 = { ...jornada, id: "j2", name: "Jornada 2", date: "2026-08-30" };
+  const withRoles = buildDailySummaryContext({ ...baseParams, nextRace: principal, racesBefore: [jornada, j2], seriesIntents: { j1: "controlar" } }) as Record<string, unknown>;
+  assertEquals(withRoles.provas_antes_do_objetivo, [
+    { name: "Jornada 1", date: "2026-08-14", distance_km: 7.4, race_priority: "b", papel: "controlar" },
+    { name: "Jornada 2", date: "2026-08-30", distance_km: 7.4, race_priority: "b" },
+  ]);
+});
+
+Deno.test("jornadas: o bloco da competição entra no prompt pela secção própria, logo a seguir à memória", async () => {
+  // generateSummary não é exportável sem refatorar: confirma-se a montagem no código.
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "memoryPromptSection(memoryBlock) +\n    seriesPromptSection(seriesBlock) +\n    `Contexto do atleta:");
+  assertStringIncludes(src, 'const seriesPromise = fetchSeriesBlock(sb, userId, today, { channel: "daily" });');
+  assertStringIncludes(src, "seriesIntents: series?.active ? series.intentByRaceId : null,");
+  assertStringIncludes(src, "await memoryPromise, series?.text ?? null);");
+  // Sem bloco, a secção é vazia: o prompt de quem não está inscrito não muda.
+  assertEquals(seriesPromptSection(null), "");
 });

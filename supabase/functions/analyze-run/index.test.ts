@@ -9,6 +9,7 @@ import {
   resolvePhotoPaths,
   resolveReanalysisTypes,
 } from "./index.ts";
+import { seriesPromptSection } from "../_shared/seriesBlock.ts";
 
 Deno.test("planningFrameSection: com plano e com prova deve retornar vazio", () => {
   assertEquals(planningFrameSection(true, true), "");
@@ -195,4 +196,19 @@ Deno.test("planningFrameSection: sem plano e com prova, diz qual é a prova de r
   assertStringIncludes(bloco, `A prova de referência é "Maratona de Lisboa" (2026-10-11, 42,2 km), a próxima prova principal.`);
   assertEquals(planningFrameSection(false, true, null), planningFrameSection(false, true));
   assertEquals(planningFrameSection(true, true, principal), "");
+});
+
+// ── Competição por jornadas (specs/trofeu.md §5, Fase 2, 2026-09-26) ──────
+// O comentário da corrida leva o bloco da competição logo a seguir à
+// memória — e, sem inscrição, uma secção vazia (o prompt fica igual).
+Deno.test("jornadas: o bloco da competição entra no prompt do comentário só quando existe", async () => {
+  assertEquals(seriesPromptSection(null), "");
+  assertEquals(seriesPromptSection(undefined), "");
+  // generateCoachNotes não é exportável sem refatorar: confirma-se a montagem no código.
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "memoryPromptSection(memoryBlock) + seriesPromptSection(seriesBlock) +\n    `REGRAS OBRIGATÓRIAS:");
+  assertStringIncludes(src, 'const seriesPromise = fetchSeriesBlock(sb, userId, ctx.date, { channel: "run", statusTodayISO: lisbonTodayISO() });');
+  // O bloco é o último argumento, DEPOIS do prazo (passado por posição).
+  assertStringIncludes(src, "      deadline,\n      (await seriesPromise)?.text ?? null,\n    );");
+  assertStringIncludes(src, "  deadline = Number.POSITIVE_INFINITY,\n  // O bloco da competição por jornadas");
 });

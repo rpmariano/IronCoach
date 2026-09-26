@@ -1,0 +1,3852 @@
+{
+ "_doc": "Golden da Fase 2 do Troféu (specs/trofeu.md §5, §10). Personas A–K: entradas de arbitrateSeries (seriesArbitration.ts), pointsBand (cupPoints.ts) e attendanceCount (cup.ts), e a saída esperada. Gerado por protótipo a 2026-09-26 e revisto à mão; a persona I não é inscrita (expect null: é o caso da invariância, testado no servidor e no cliente).",
+ "editions": {
+  "soma": {
+   "id": "ed-soma",
+   "points_mode": "tabela",
+   "points_table": [
+    20,
+    18,
+    16,
+    14,
+    12,
+    10,
+    10,
+    10,
+    10,
+    10,
+    5,
+    5,
+    5,
+    5,
+    5,
+    2
+   ],
+   "points_basis": "escalao",
+   "team_scoring": "soma_todos",
+   "counting_rule": "pct_minima",
+   "counting_value": 70
+  },
+  "melhores": {
+   "id": "ed-melhores",
+   "points_mode": "tabela",
+   "points_table": [
+    20,
+    18,
+    16,
+    14,
+    12,
+    10,
+    10,
+    10,
+    10,
+    10,
+    5,
+    5,
+    5,
+    5,
+    5,
+    2
+   ],
+   "points_basis": "geral",
+   "team_scoring": "melhores_n",
+   "counting_rule": "melhores_n",
+   "counting_value": 6
+  },
+  "baseNull": {
+   "id": "ed-base-null",
+   "points_mode": "tabela",
+   "points_table": [
+    15,
+    13,
+    11,
+    10,
+    9,
+    8,
+    7,
+    6,
+    5,
+    4,
+    3,
+    2,
+    1
+   ],
+   "points_basis": null,
+   "team_scoring": "soma_todos",
+   "counting_rule": "pct_minima",
+   "counting_value": 70
+  }
+ },
+ "personas": [
+  {
+   "id": "A",
+   "desc": "médio · clube elegível · prémio · soma_todos, base escalão · sem principais",
+   "level": "medio",
+   "seasonGoal": "premio",
+   "kind": "clube_elegivel",
+   "edition": "soma",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [],
+   "results": [
+    {
+     "round_id": "x1",
+     "round_date": "2026-05-10",
+     "position": 30,
+     "category_position": 4,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x2",
+     "round_date": "2026-05-24",
+     "position": 25,
+     "category_position": 3,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x3",
+     "round_date": "2026-06-07",
+     "position": 33,
+     "category_position": 5,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x0",
+     "round_date": "2026-04-12",
+     "position": 50,
+     "category_position": 9,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x4",
+     "round_date": "2026-06-14",
+     "position": 1,
+     "category_position": 1,
+     "match_status": "proposta"
+    }
+   ],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j3",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j4",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j5",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j8",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j9",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j10",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j11",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "escada",
+     "why": null,
+     "pointsKnown": true,
+     "attendanceArgument": true,
+     "basis": "escalao",
+     "position": 4,
+     "count": 3,
+     "provisional": false,
+     "points": 14,
+     "block": {
+      "from": 4,
+      "to": 4
+     },
+     "placesToBoundary": 1,
+     "nextPoints": 16
+    },
+    "attendance": {
+     "rule": "pct_minima",
+     "total": 11,
+     "required": 8,
+     "done": 0,
+     "missing": 8,
+     "ahead": 11,
+     "canMiss": 3,
+     "reachable": true,
+     "rounding": "a_confirmar"
+    }
+   }
+  },
+  {
+   "id": "B",
+   "desc": "básico · clube elegível · pontos_clube · piso · só uma prova 'b' (não conta)",
+   "level": "basico",
+   "seasonGoal": "pontos_clube",
+   "kind": "clube_elegivel",
+   "edition": "soma",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p-b",
+     "name": "Corrida de treino",
+     "date": "2027-01-17",
+     "distance_km": 10,
+     "race_type": "estrada",
+     "race_priority": "b",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "results": [
+    {
+     "round_id": "x1",
+     "round_date": "2026-05-10",
+     "position": 90,
+     "category_position": 31,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x2",
+     "round_date": "2026-05-24",
+     "position": 99,
+     "category_position": 40,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x3",
+     "round_date": "2026-06-07",
+     "position": 95,
+     "category_position": 18,
+     "match_status": "confirmada"
+    }
+   ],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j3",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j4",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j5",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j7",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j8",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j9",
+      "intent": "controlar",
+      "reason": "par_curto",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": 6,
+      "refRoundId": "j8",
+      "every": null
+     },
+     {
+      "roundId": "j10",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j11",
+      "intent": "controlar",
+      "reason": "par_curto",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": 7,
+      "refRoundId": "j10",
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "piso",
+     "why": null,
+     "pointsKnown": true,
+     "attendanceArgument": true,
+     "basis": "escalao",
+     "position": 31,
+     "count": 3,
+     "provisional": false,
+     "points": 2,
+     "block": {
+      "from": 16,
+      "to": null
+     },
+     "placesToBoundary": 16,
+     "nextPoints": 5
+    },
+    "attendance": null
+   }
+  },
+  {
+   "id": "C",
+   "desc": "avançado · individual elegível · marcas · melhores_n, base geral · principal 10 km num sábado, jornada no domingo",
+   "level": "avancado",
+   "seasonGoal": "marcas",
+   "kind": "individual_elegivel",
+   "edition": "melhores",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p-10k-sab",
+     "name": "10 km do Parque",
+     "date": "2027-03-06",
+     "distance_km": 10,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "results": [
+    {
+     "round_id": "x1",
+     "round_date": "2026-05-24",
+     "position": 9,
+     "category_position": 2,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x2",
+     "round_date": "2026-06-07",
+     "position": 12,
+     "category_position": 3,
+     "match_status": "confirmada"
+    }
+   ],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j3",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j4",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j5",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j6",
+      "intent": "saltar",
+      "reason": "encostada_a_principal",
+      "principalId": "p-10k-sab",
+      "offsetDays": 1,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j8",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j9",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j10",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j11",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "patamar",
+     "why": null,
+     "pointsKnown": true,
+     "attendanceArgument": false,
+     "basis": "geral",
+     "position": 11,
+     "count": 2,
+     "provisional": true,
+     "points": 5,
+     "block": {
+      "from": 11,
+      "to": 15
+     },
+     "placesToBoundary": 1,
+     "nextPoints": 10
+    },
+    "attendance": null
+   }
+  },
+  {
+   "id": "D",
+   "desc": "médio · clube aberto · participar · meia principal · base conhecida mas fora das finais",
+   "level": "medio",
+   "seasonGoal": "participar",
+   "kind": "clube_aberto",
+   "edition": "soma",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p-meia",
+     "name": "Meia da Marginal",
+     "date": "2027-02-14",
+     "distance_km": 21.1,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "results": [
+    {
+     "round_id": "x1",
+     "round_date": "2026-05-24",
+     "position": 12,
+     "category_position": 3,
+     "match_status": "confirmada"
+    }
+   ],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j3",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j4",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "p-meia",
+      "offsetDays": -7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j5",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "p-meia",
+      "offsetDays": 7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j8",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j9",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j10",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j11",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "desconhecida",
+     "why": "fora_da_classificacao",
+     "pointsKnown": true,
+     "attendanceArgument": false,
+     "basis": "escalao",
+     "position": null,
+     "count": 0,
+     "provisional": false,
+     "points": null,
+     "block": null,
+     "placesToBoundary": null,
+     "nextPoints": null
+    },
+    "attendance": null
+   }
+  },
+  {
+   "id": "E",
+   "desc": "iniciante · clube por confirmar · participar · sem principais",
+   "level": "iniciante",
+   "seasonGoal": "participar",
+   "kind": "clube_por_confirmar",
+   "edition": "baseNull",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [],
+   "results": [],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j2",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j3",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j4",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j5",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j7",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j8",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j9",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j10",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j11",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     }
+    ],
+    "band": {
+     "band": "desconhecida",
+     "why": "base_desconhecida",
+     "pointsKnown": false,
+     "attendanceArgument": false,
+     "basis": null,
+     "position": null,
+     "count": 0,
+     "provisional": false,
+     "points": null,
+     "block": null,
+     "placesToBoundary": null,
+     "nextPoints": null
+    },
+    "attendance": null
+   }
+  },
+  {
+   "id": "F",
+   "desc": "básico · clube por confirmar · prémio · maratona principal a meio da época",
+   "level": "basico",
+   "seasonGoal": "premio",
+   "kind": "clube_por_confirmar",
+   "edition": "baseNull",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p-maratona",
+     "name": "Maratona da Primavera",
+     "date": "2027-03-14",
+     "distance_km": 42.2,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "results": [],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j3",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j4",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j5",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "p-maratona",
+      "offsetDays": -21,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j6",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "p-maratona",
+      "offsetDays": -7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": "saltar",
+      "reason": "recuperacao_da_maratona",
+      "principalId": "p-maratona",
+      "offsetDays": 7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j8",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "p-maratona",
+      "offsetDays": 28,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j9",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j10",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j11",
+      "intent": "controlar",
+      "reason": "par_curto",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": 7,
+      "refRoundId": "j10",
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "desconhecida",
+     "why": "base_desconhecida",
+     "pointsKnown": false,
+     "attendanceArgument": false,
+     "basis": null,
+     "position": null,
+     "count": 0,
+     "provisional": false,
+     "points": null,
+     "block": null,
+     "placesToBoundary": null,
+     "nextPoints": null
+    },
+    "attendance": {
+     "rule": "pct_minima",
+     "total": 11,
+     "required": 8,
+     "done": 0,
+     "missing": 8,
+     "ahead": 11,
+     "canMiss": 3,
+     "reachable": true,
+     "rounding": "a_confirmar"
+    }
+   }
+  },
+  {
+   "id": "G",
+   "desc": "avançado · individual aberto · participar · meia principal",
+   "level": "avancado",
+   "seasonGoal": "participar",
+   "kind": "individual_aberto",
+   "edition": "soma",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p-meia",
+     "name": "Meia da Marginal",
+     "date": "2027-02-14",
+     "distance_km": 21.1,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "results": [],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j3",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j4",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "p-meia",
+      "offsetDays": -7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j5",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "p-meia",
+      "offsetDays": 7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j8",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j9",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j10",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j11",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "desconhecida",
+     "why": "fora_da_classificacao",
+     "pointsKnown": true,
+     "attendanceArgument": false,
+     "basis": "escalao",
+     "position": null,
+     "count": 0,
+     "provisional": false,
+     "points": null,
+     "block": null,
+     "placesToBoundary": null,
+     "nextPoints": null
+    },
+    "attendance": null
+   }
+  },
+  {
+   "id": "H",
+   "desc": "iniciante · clube elegível · marcas · muda de escalão a meio (percurso 7,4 km até à J5, 3,7 km a partir da J6) · sem resultados",
+   "level": "iniciante",
+   "seasonGoal": "marcas",
+   "kind": "clube_elegivel",
+   "edition": "soma",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 3.7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 3.7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 3.7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 3.7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 3.7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 3.7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [],
+   "results": [],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j3",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j4",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j5",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j7",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j8",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j9",
+      "intent": "controlar",
+      "reason": "par_curto",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": 6,
+      "refRoundId": "j8",
+      "every": null
+     },
+     {
+      "roundId": "j10",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j11",
+      "intent": "controlar",
+      "reason": "par_curto",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": 7,
+      "refRoundId": "j10",
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "desconhecida",
+     "why": "sem_posicoes",
+     "pointsKnown": true,
+     "attendanceArgument": true,
+     "basis": "escalao",
+     "position": null,
+     "count": 0,
+     "provisional": false,
+     "points": null,
+     "block": null,
+     "placesToBoundary": null,
+     "nextPoints": null
+    },
+    "attendance": null
+   }
+  },
+  {
+   "id": "I",
+   "desc": "não inscrito — nada muda (invariância: fetchSeriesBlock null com 1 leitura, buildSystemInstruction/buildTools iguais, nenhum aviso no Início)",
+   "enrolled": false,
+   "expect": null
+  },
+  {
+   "id": "J",
+   "desc": "médio · clube elegível · participar · melhores_n · principal 10 km no dia da J8 (colisão) + trail com race_priority null (conta como principal)",
+   "level": "medio",
+   "seasonGoal": "participar",
+   "kind": "clube_elegivel",
+   "edition": "melhores",
+   "today": "2026-11-20",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false,
+     "decision_source": "colisao"
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p-10k-j8",
+     "name": "10 km da Serra",
+     "date": "2027-04-11",
+     "distance_km": 10,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    },
+    {
+     "id": "p-null",
+     "name": "Trail das Lagoas",
+     "date": "2027-05-01",
+     "distance_km": 25,
+     "race_type": "trail",
+     "race_priority": null,
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "results": [
+    {
+     "round_id": "x1",
+     "round_date": "2026-05-10",
+     "position": 2,
+     "category_position": 1,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x2",
+     "round_date": "2026-05-24",
+     "position": 3,
+     "category_position": 1,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "x3",
+     "round_date": "2026-06-07",
+     "position": 2,
+     "category_position": 2,
+     "match_status": "confirmada"
+    }
+   ],
+   "attendanceRaces": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j2",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j3",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j4",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j5",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j8",
+      "intent": "saltar",
+      "reason": "dia_da_principal",
+      "principalId": "p-10k-j8",
+      "offsetDays": 0,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j9",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "p-null",
+      "offsetDays": -14,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j10",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "p-null",
+      "offsetDays": 8,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j11",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "p-null",
+      "offsetDays": 15,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "escada",
+     "why": null,
+     "pointsKnown": true,
+     "attendanceArgument": false,
+     "basis": "geral",
+     "position": 2,
+     "count": 3,
+     "provisional": false,
+     "points": 18,
+     "block": {
+      "from": 2,
+      "to": 2
+     },
+     "placesToBoundary": 1,
+     "nextPoints": 20
+    },
+    "attendance": null
+   }
+  },
+  {
+   "id": "K",
+   "desc": "básico · clube elegível · prémio · base null · a meio da época, com decisões e escolhas dele",
+   "level": "basico",
+   "seasonGoal": "premio",
+   "kind": "clube_elegivel",
+   "edition": "baseNull",
+   "today": "2027-02-01",
+   "rounds": [
+    {
+     "id": "j1",
+     "round_no": 1,
+     "date": "2026-12-06",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": "vou",
+     "intent": "controlar",
+     "intent_source": "atleta",
+     "done": true
+    },
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": "vou",
+     "intent": "atacar",
+     "intent_source": "atleta",
+     "done": true
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": "nao_vou",
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": "vou",
+     "intent": "atacar",
+     "intent_source": "atleta",
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": "vou",
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "cancelada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": null,
+     "date_status": "provavel",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-04-11",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": "vou",
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j9",
+     "round_no": 9,
+     "date": "2027-04-17",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": "nao_sei",
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j10",
+     "round_no": 10,
+     "date": "2027-05-09",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j11",
+     "round_no": 11,
+     "date": "2027-05-16",
+     "date_status": "adiada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p-meia",
+     "name": "Meia da Marginal",
+     "date": "2027-02-14",
+     "distance_km": 21.1,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "results": [
+    {
+     "round_id": "j1",
+     "round_date": "2026-12-06",
+     "position": 60,
+     "category_position": 20,
+     "match_status": "confirmada"
+    },
+    {
+     "round_id": "j2",
+     "round_date": "2027-01-10",
+     "position": 55,
+     "category_position": 17,
+     "match_status": "confirmada"
+    }
+   ],
+   "attendanceRaces": [
+    {
+     "id": "race-j1",
+     "cup_round_id": "j1",
+     "status": "concluida"
+    },
+    {
+     "id": "race-j2",
+     "cup_round_id": "j2",
+     "status": "concluida"
+    }
+   ],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j1",
+      "intent": null,
+      "reason": "passada",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j2",
+      "intent": null,
+      "reason": "passada",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j3",
+      "intent": null,
+      "reason": "passada",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j4",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "p-meia",
+      "offsetDays": -7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j5",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "p-meia",
+      "offsetDays": 7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j6",
+      "intent": null,
+      "reason": "cancelada",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": null,
+      "reason": "sem_data",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j8",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j9",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j10",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j11",
+      "intent": null,
+      "reason": "sem_data",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ],
+    "band": {
+     "band": "desconhecida",
+     "why": "base_desconhecida",
+     "pointsKnown": false,
+     "attendanceArgument": false,
+     "basis": null,
+     "position": null,
+     "count": 0,
+     "provisional": false,
+     "points": null,
+     "block": null,
+     "placesToBoundary": null,
+     "nextPoints": null
+    },
+    "attendance": {
+     "rule": "pct_minima",
+     "total": 10,
+     "required": 7,
+     "done": 2,
+     "missing": 5,
+     "ahead": 7,
+     "canMiss": 2,
+     "reachable": true,
+     "rounding": "a_confirmar"
+    }
+   }
+  }
+ ],
+ "extra": [
+  {
+   "id": "X1",
+   "desc": "jornada promovida a principal (race_priority 'a' na race_events dela): é 'atacar'/e_principal e as outras respeitam-na",
+   "level": "basico",
+   "seasonGoal": "participar",
+   "today": "2027-01-01",
+   "rounds": [
+    {
+     "id": "j4",
+     "round_no": 4,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 5,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j6",
+     "round_no": 6,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 10,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j7",
+     "round_no": 7,
+     "date": "2027-03-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j8",
+     "round_no": 8,
+     "date": "2027-03-28",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "race-j6",
+     "name": "Corrida do Farol",
+     "date": "2027-03-07",
+     "distance_km": 10,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": "j6"
+    }
+   ],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j4",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j5",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j6",
+      "intent": "atacar",
+      "reason": "e_principal",
+      "principalId": "race-j6",
+      "offsetDays": 0,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j7",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     },
+     {
+      "roundId": "j8",
+      "intent": "atacar",
+      "reason": "progressao_atacar",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 2
+     }
+    ]
+   }
+  },
+  {
+   "id": "X2",
+   "desc": "iniciante, maratona: a primeira jornada depois (+14, sem nenhuma a +7) salta-se; a seguinte é trote; depois recomeça a progressão",
+   "level": "iniciante",
+   "seasonGoal": "participar",
+   "today": "2027-01-01",
+   "rounds": [
+    {
+     "id": "a",
+     "round_no": 1,
+     "date": "2027-03-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "b",
+     "round_no": 2,
+     "date": "2027-03-28",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "c",
+     "round_no": 3,
+     "date": "2027-04-04",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "d",
+     "round_no": 4,
+     "date": "2027-04-25",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "mar",
+     "name": "Maratona",
+     "date": "2027-03-14",
+     "distance_km": 42.2,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "a",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "mar",
+      "offsetDays": -7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "b",
+      "intent": "saltar",
+      "reason": "recuperacao_da_maratona",
+      "principalId": "mar",
+      "offsetDays": 14,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "c",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "mar",
+      "offsetDays": 21,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "d",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     }
+    ]
+   }
+  },
+  {
+   "id": "X3",
+   "desc": "duas principais (10 km sáb. 30/01 e meia 14/02), iniciante: saltar ganha a controlar; janelas sobrepostas",
+   "level": "iniciante",
+   "seasonGoal": "participar",
+   "today": "2027-01-01",
+   "rounds": [
+    {
+     "id": "j2",
+     "round_no": 2,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3",
+     "round_no": 3,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 7.4,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j3b",
+     "round_no": 4,
+     "date": "2027-02-01",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j4",
+     "round_no": 5,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "j5",
+     "round_no": 6,
+     "date": "2027-02-21",
+     "date_status": "confirmada",
+     "distance_km": 7,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "p10",
+     "name": "10 km",
+     "date": "2027-01-30",
+     "distance_km": 10,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    },
+    {
+     "id": "pm",
+     "name": "Meia",
+     "date": "2027-02-14",
+     "distance_km": 21.1,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "agendada",
+     "cup_round_id": null
+    }
+   ],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "j2",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "j3",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "p10",
+      "offsetDays": -6,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j3b",
+      "intent": "saltar",
+      "reason": "encostada_a_principal",
+      "principalId": "p10",
+      "offsetDays": 2,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j4",
+      "intent": "controlar",
+      "reason": "polimento_da_principal",
+      "principalId": "pm",
+      "offsetDays": -7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "j5",
+      "intent": "trote",
+      "reason": "recuperacao_da_principal",
+      "principalId": "pm",
+      "offsetDays": 7,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "X4m",
+   "desc": "médio, circuito de meias a 7 dias: a segunda cai na recuperação da primeira (10 dias) → controlar",
+   "level": "medio",
+   "seasonGoal": "marcas",
+   "today": "2027-01-01",
+   "rounds": [
+    {
+     "id": "x",
+     "round_no": 1,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 21.1,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "y",
+     "round_no": 2,
+     "date": "2027-01-17",
+     "date_status": "confirmada",
+     "distance_km": 21.1,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "z",
+     "round_no": 3,
+     "date": "2027-01-31",
+     "date_status": "confirmada",
+     "distance_km": 21.1,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "x",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "y",
+      "intent": "controlar",
+      "reason": "recuperacao_da_jornada",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": 7,
+      "refRoundId": "x",
+      "every": null
+     },
+     {
+      "roundId": "z",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "X4a",
+   "desc": "avançado, o mesmo circuito: recuperação de meia = 7 dias, 7 ≤ 7 → controlar",
+   "level": "avancado",
+   "seasonGoal": "participar",
+   "today": "2027-01-01",
+   "rounds": [
+    {
+     "id": "x",
+     "round_no": 1,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 21.1,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "y",
+     "round_no": 2,
+     "date": "2027-01-17",
+     "date_status": "confirmada",
+     "distance_km": 21.1,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "z",
+     "round_no": 3,
+     "date": "2027-01-31",
+     "date_status": "confirmada",
+     "distance_km": 21.1,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "x",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "y",
+      "intent": "controlar",
+      "reason": "recuperacao_da_jornada",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": 7,
+      "refRoundId": "x",
+      "every": null
+     },
+     {
+      "roundId": "z",
+      "intent": "atacar",
+      "reason": "livre",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     }
+    ]
+   }
+  },
+  {
+   "id": "X5",
+   "desc": "nível em falta → iniciante; maratona concluída no passado ainda manda na recuperação",
+   "level": null,
+   "seasonGoal": null,
+   "today": "2027-01-05",
+   "rounds": [
+    {
+     "id": "q1",
+     "round_no": 1,
+     "date": "2027-01-10",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "q2",
+     "round_no": 2,
+     "date": "2027-01-24",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    },
+    {
+     "id": "q3",
+     "round_no": 3,
+     "date": "2027-02-07",
+     "date_status": "confirmada",
+     "distance_km": 8,
+     "decision": null,
+     "intent": null,
+     "intent_source": null,
+     "done": false
+    }
+   ],
+   "races": [
+    {
+     "id": "m",
+     "name": "Maratona do Porto",
+     "date": "2026-12-13",
+     "distance_km": 42.2,
+     "race_type": "estrada",
+     "race_priority": "a",
+     "status": "concluida",
+     "cup_round_id": null
+    }
+   ],
+   "expect": {
+    "roles": [
+     {
+      "roundId": "q1",
+      "intent": "saltar",
+      "reason": "recuperacao_da_maratona",
+      "principalId": "m",
+      "offsetDays": 28,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": null
+     },
+     {
+      "roundId": "q2",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     },
+     {
+      "roundId": "q3",
+      "intent": "controlar",
+      "reason": "progressao",
+      "principalId": null,
+      "offsetDays": null,
+      "gapDays": null,
+      "refRoundId": null,
+      "every": 3
+     }
+    ]
+   }
+  }
+ ],
+ "windows": [
+  {
+   "level": "iniciante",
+   "distance_km": 5,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 7,
+    "recoveryDays": 7,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "iniciante",
+   "distance_km": 10,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 7,
+    "recoveryDays": 7,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "iniciante",
+   "distance_km": 21.1,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 14,
+    "recoveryDays": 21,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "iniciante",
+   "distance_km": 42.2,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 14,
+    "recoveryDays": 35,
+    "skipNextAfter": true
+   }
+  },
+  {
+   "level": "iniciante",
+   "distance_km": 25,
+   "race_type": "trail",
+   "expect": {
+    "controlDays": 14,
+    "recoveryDays": 35,
+    "skipNextAfter": true
+   }
+  },
+  {
+   "level": "iniciante",
+   "distance_km": 60,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 14,
+    "recoveryDays": 42,
+    "skipNextAfter": true
+   }
+  },
+  {
+   "level": "basico",
+   "distance_km": 5,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 7,
+    "recoveryDays": 6,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "basico",
+   "distance_km": 10,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 7,
+    "recoveryDays": 6,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "basico",
+   "distance_km": 21.1,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 14,
+    "recoveryDays": 14,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "basico",
+   "distance_km": 42.2,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 28,
+    "skipNextAfter": true
+   }
+  },
+  {
+   "level": "basico",
+   "distance_km": 25,
+   "race_type": "trail",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 28,
+    "skipNextAfter": true
+   }
+  },
+  {
+   "level": "basico",
+   "distance_km": 60,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 35,
+    "skipNextAfter": true
+   }
+  },
+  {
+   "level": "medio",
+   "distance_km": 5,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 10,
+    "recoveryDays": 5,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "medio",
+   "distance_km": 10,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 10,
+    "recoveryDays": 5,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "medio",
+   "distance_km": 21.1,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 14,
+    "recoveryDays": 10,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "medio",
+   "distance_km": 42.2,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 21,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "medio",
+   "distance_km": 25,
+   "race_type": "trail",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 21,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "medio",
+   "distance_km": 60,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 28,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "avancado",
+   "distance_km": 5,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 10,
+    "recoveryDays": 3,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "avancado",
+   "distance_km": 10,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 10,
+    "recoveryDays": 3,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "avancado",
+   "distance_km": 21.1,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 14,
+    "recoveryDays": 7,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "avancado",
+   "distance_km": 42.2,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 26,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "avancado",
+   "distance_km": 25,
+   "race_type": "trail",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 26,
+    "skipNextAfter": false
+   }
+  },
+  {
+   "level": "avancado",
+   "distance_km": 60,
+   "race_type": "estrada",
+   "expect": {
+    "controlDays": 21,
+    "recoveryDays": 21,
+    "skipNextAfter": false
+   }
+  }
+ ]
+}

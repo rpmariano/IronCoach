@@ -25,7 +25,8 @@ import {
   RECORD_ANALYSIS_LABELS,
   upstreamErrorText,
 } from "../_shared/carolTone.ts";
-import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { fetchSeriesBlock, seriesPromptSection } from "../_shared/seriesBlock.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
 import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
@@ -573,6 +574,10 @@ async function generateCoachNotes(
   experienceLevel: string | null = null,
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
+  // O bloco da competição por jornadas (fetchSeriesBlock, specs/trofeu.md §5)
+  // — null sem inscrição, e aí o prompt fica igual byte a byte. Depois de
+  // `deadline` porque a chamada passa `deadline` por posição.
+  seriesBlock: string | null = null,
 ): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
   // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
@@ -704,7 +709,7 @@ async function generateCoachNotes(
     `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     `${carolLanguageRule(experienceLevel)}\n\n` +
-    memoryPromptSection(memoryBlock) +
+    memoryPromptSection(memoryBlock) + seriesPromptSection(seriesBlock) +
     `REGRAS OBRIGATÓRIAS:\n` +
     `- NUNCA inventes ou estimes números que não te foram dados explicitamente.\n` +
     `- Nunca uses frases genéricas de louvor sem conteúdo.\n` +
@@ -833,6 +838,13 @@ async function attachCoachNotes(
     // corrida registada com atraso não pode ver meses que ainda não tinham
     // acontecido nessa altura.
     const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: ctx.date });
+    // O bloco da competição por jornadas (Fase 2 do Troféu), com as contas
+    // na data da corrida, como a memória: uma leitura e null para quem não
+    // está inscrito. Nunca rejeita. A inscrição (ativa, ou saiu há ≤ 30
+    // dias) é a de HOJE, não a da corrida: com o dia de uma corrida antiga,
+    // anterior à saída, quem saiu há meses voltava a levar a linha "saiu"
+    // (revisão da Fase 2).
+    const seriesPromise = fetchSeriesBlock(sb, userId, ctx.date, { channel: "run", statusTodayISO: lisbonTodayISO() });
     // Segmentação do histórico usado na comparação:
     // - Competição: só compara com outras competições (não treinos) — e,
     //   dentro das competições, Trail só compara com Trail (terreno/esforço
@@ -976,6 +988,7 @@ async function attachCoachNotes(
       hrZoneLine,
       (hrProfile?.experience_level as string | null) ?? null,
       deadline,
+      (await seriesPromise)?.text ?? null,
     );
 
     if (coachResult.text) {

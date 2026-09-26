@@ -446,3 +446,45 @@ describe('detectPlanDivergence — o plano encurtou', () => {
     expect(a.signature).not.toBe(b.signature);
   });
 });
+
+/* As jornadas de uma competição (specs/trofeu.md §5, Fase 2): encaixá-las no
+   plano é a conversa do mapa da época, por isso a falta do item de prova de
+   uma jornada não é um aviso de ajuste. O treino no dia dela e o trabalho
+   forte na véspera continuam a sê-lo — é segurança. */
+describe('detectPlanDivergence — as jornadas de uma competição', () => {
+  const jornada = (over = {}) => race({ id: 'rj3', name: 'Corrida do Clube', distance_km: 7.4, race_priority: 'b', cup_round_id: 'r-j3', ...over });
+
+  it('uma jornada sem item no plano não dá "prova_sem_item"', () => {
+    expect(detect({ raceEvents: [jornada()] })).toEqual({ reasons: [], signature: null });
+  });
+
+  it('uma jornada promovida a principal fora do plano volta a dar "prova_sem_item"', () => {
+    const r = detect({ raceEvents: [jornada({ race_priority: 'a' })] });
+    expect(keys(r)).toEqual(['prova_sem_item']);
+  });
+
+  it('a mesma prova sem cup_round_id dá, como sempre', () => {
+    const r = detect({ raceEvents: [jornada({ cup_round_id: null })] });
+    expect(keys(r)).toEqual(['prova_sem_item']);
+    expect(r.reasons[0].text).toBe('A Corrida do Clube (13 set) não está no plano.');
+  });
+
+  it('o trabalho forte na véspera e o treino no dia continuam a valer numa jornada', () => {
+    const r = detect({
+      raceEvents: [jornada({ date: '2026-09-20' })],
+      coachPlanItems: [
+        item({ id: 'i-int', planned_date: '2026-09-19', training_type: 'intervalos' }),
+        item({ id: 'i-longo', planned_date: '2026-09-20', training_type: 'longo', target_distance_km: 16 }),
+      ],
+    });
+    expect(keys(r)).toEqual(['treino_no_dia_da_prova', 'treino_forte_na_vespera']);
+    expect(r.reasons[1].text).toBe('Corrida do Clube (20 set): Intervalos a 19 set, na véspera da prova.');
+  });
+
+  it('ao lado de uma prova normal, só a normal pede o item de prova', () => {
+    const r = detect({ raceEvents: [jornada(), race({ id: 'r2', name: 'Corrida do Tejo', date: '2026-09-20' })] });
+    expect(keys(r)).toEqual(['prova_sem_item']);
+    expect(r.reasons[0].text).toBe('A Corrida do Tejo (20 set) não está no plano.');
+    expect(r.signature).not.toContain('rj3');
+  });
+});

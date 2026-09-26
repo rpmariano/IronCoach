@@ -30,7 +30,8 @@ vi.mock('../lib/utils', async (importOriginal) => ({ ...(await importOriginal())
 
 const { useAppStore } = await import('../store');
 const { CUP_EMPTY, __resetCupModuleState } = await import('../store/cupSlice');
-const { useCup, useTaca, buildCupView } = await import('./useCup');
+const { useCup, useTaca, buildCupView, useCupForHome } = await import('./useCup');
+const { cupEnrolledHintKey } = await import('../store/cupSlice');
 const F = await import('@formulas/cup.fixtures.ts');
 
 const USER = 'u-hook';
@@ -231,5 +232,96 @@ describe('useCup — inscrito', () => {
     useAppStore.setState({ profile: { ...PROFILE, training_lat: 41.1496, training_lon: -8.6109 } });
     const { result } = renderHook(() => useCup());
     await waitFor(() => expect(result.current?.door?.kind).toBe('inscrito'));
+  });
+});
+
+/* useCupForHome — a competição para o mapa da época no Início (Fase 2). A
+   regra é a da spec §5: a quem não está inscrito, o Início não lê nenhuma
+   tabela cup_*. Só lê com indício (a pista local, ou uma prova de jornada por
+   correr) e só devolve alguma coisa com inscrição ativa. */
+describe('useCupForHome', () => {
+  const ENR = { id: 'enr1', user_id: USER, edition_id: F.CASCAIS_34.id, team_id: 't-naza', team_other: null, is_federated: false, season_goal: 'premio', status: 'ativa' };
+  const HINT = cupEnrolledHintKey(USER);
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('persona I (sem pista, sem provas de jornada): null e zero leituras — mesmo com uma edição aberta na área', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    catalogTables();
+    const before = nonCupSnapshot();
+    const { result } = renderHook(() => useCupForHome());
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current).toBeNull();
+    expect(net.calls).toEqual([]);
+    expect(useAppStore.getState().cup).toBe(CUP_EMPTY);
+    expectNothingElseChanged(before);
+  });
+
+  it('uma prova de jornada já corrida não é indício', async () => {
+    useAppStore.setState({ raceEvents: [MEIA, { id: 'x1', date: '2026-12-06', cup_round_id: 'r-c1', status: 'concluida', race_priority: 'b' }] });
+    const { result } = renderHook(() => useCupForHome());
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current).toBeNull();
+    expect(net.calls).toEqual([]);
+  });
+
+  it('com a pista: lê e devolve a vista da inscrição, com o catálogo', async () => {
+    window.localStorage.setItem(HINT, '1');
+    net.tables.cup_editions = ok([{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }]);
+    net.tables.cup_enrollments = ok([ENR]);
+    catalogTables();
+    const { result } = renderHook(() => useCupForHome());
+    await waitFor(() => expect(result.current?.catalogReady).toBe(true));
+    expect(result.current.enrollment.id).toBe('enr1');
+    expect(result.current.competition.short_name).toBe('Troféu de Cascais');
+    expect(net.calls).toContain('cup_enrollments');
+    expect(net.calls).toContain('cup_rounds');
+  });
+
+  it('com uma prova de jornada por correr (inscrito noutro dispositivo): lê', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([ENR]);
+    catalogTables();
+    useAppStore.setState({ raceEvents: [MEIA, { id: 'x3', date: '2027-01-24', cup_round_id: 'r-c3', status: 'agendada', race_priority: 'b' }] });
+    const { result } = renderHook(() => useCupForHome());
+    await waitFor(() => expect(result.current?.enrollment?.id).toBe('enr1'));
+    // E a leitura base deixa a pista posta, para a próxima vez.
+    expect(window.localStorage.getItem(HINT)).toBe('1');
+  });
+
+  it('pista velha de quem já saiu: uma leitura base, null, a pista cai — e o catálogo do convite não se lê', async () => {
+    window.localStorage.setItem(HINT, '1');
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([{ ...ENR, status: 'saiu' }]);
+    catalogTables();
+    const { result } = renderHook(() => useCupForHome());
+    await settle(result);
+    expect(result.current).toBeNull();
+    expect(net.calls.sort()).toEqual(['cup_edition_dismissals', 'cup_editions', 'cup_enrollments']);
+    expect(window.localStorage.getItem(HINT)).toBeNull();
+  });
+
+  it('a competição já em memória (o ecrã de Provas leu-a): a vista monta-se sem ler nada', async () => {
+    useAppStore.setState({ cup: {
+      ...CUP_EMPTY, status: 'ready', userId: USER,
+      editions: [{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }],
+      enrollments: [ENR],
+      catalog: { [F.CASCAIS_34.id]: { status: 'ready', rounds: F.CASCAIS_ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS } },
+    } });
+    const { result } = renderHook(() => useCupForHome());
+    expect(result.current?.enrollment?.id).toBe('enr1');
+    await act(async () => { await Promise.resolve(); });
+    expect(net.calls).toEqual([]);
+  });
+
+  it('em memória, não inscrito (a porta de convite): null, e o catálogo do convite não se pede', async () => {
+    useAppStore.setState({ cup: {
+      ...CUP_EMPTY, status: 'ready', userId: USER,
+      editions: [{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }],
+    } });
+    const { result } = renderHook(() => useCupForHome());
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current).toBeNull();
+    expect(net.calls).toEqual([]);
   });
 });

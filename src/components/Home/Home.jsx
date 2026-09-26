@@ -28,6 +28,8 @@ import { INTERVENTION_OUTCOME } from '@formulas/interventionOutcomes.ts';
 import { pendingTopicLines } from '../../utils/carolTopics';
 import { eventoDaVida } from '../../utils/carolVida';
 import { lisbonParts } from '../../utils/carolWelcome';
+import { useCupForHome } from '../../utils/useCup';
+import { cupMapCandidate, markCupMapHandled, CUP_MAP_TITLE } from '../../utils/cupMap';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
@@ -55,6 +57,10 @@ export default function Home() {
   } = useAppStore();
   const pendingTopics = useAppStore(selectCoachPendingTopics);
   const coachGoalProposals = useAppStore((s) => s.coachGoalProposals);
+  const impressionShown = useAppStore((s) => s.impressionShown);
+  // A competição por jornadas, só de quem está inscrito (Fase 2). Sem
+  // inscrição é null e não lê nada — o Início fica como era.
+  const cupView = useCupForHome();
 
   const [showInsights, setShowInsights] = useState(false);
   const [showDismiss, setShowDismiss] = useState(false);
@@ -184,6 +190,22 @@ export default function Home() {
     return found;
   }, [pendingTopics, raceConflict, coachPlans, coachPlanItems, raceEvents, runs, gymSessions, today, profile?.id]);
 
+  /* O mapa da época (specs/trofeu.md §5, Fase 2; utils/cupMap.js): ao
+     inscrever, e quando sai o calendário com jornadas por decidir, a Carol
+     quer ver com ele o papel de cada jornada ao lado das provas principais.
+     Só para inscritos (cupView é null para os outros). Com plano aceite, o
+     ajuste às jornadas propõe-se nessa mesma conversa, numa só — por isso o
+     `prova_sem_item` das jornadas já não é divergência (planDivergence.js).
+     O que sobra na divergência (um treino no dia de uma prova ou trabalho
+     forte na véspera — também de uma principal —, o plano sem a prova ou
+     encurtado, sessões falhadas) fica à FRENTE do mapa: o turno do mapa não
+     leva esses motivos, e com o mapa à frente ficavam escondidos enquanto
+     ele estivesse por tratar (revisão da Fase 2). */
+  const cupMap = useMemo(() => {
+    if (pendingTopics > 0 || raceConflict) return null;
+    return cupMapCandidate({ view: cupView, userId: profile?.id, impressionShown, impressionDismissed, today });
+  }, [pendingTopics, raceConflict, cupView, profile?.id, impressionShown, impressionDismissed, today, alertDismissals]);
+
   const openCoach = () => {
     if (interventionPending) {
       setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });
@@ -195,6 +217,8 @@ export default function Home() {
       });
     } else if (divergence) {
       setCoachIntent({ kind: 'adapt_plan', divergence: divergence.reasons.map((r) => r.text), signature: divergence.signature });
+    } else if (cupMap) {
+      setCoachIntent({ kind: 'cup_map', signature: cupMap.signature, first: cupMap.first });
     }
     setActiveTab('coach');
   };
@@ -202,7 +226,8 @@ export default function Home() {
   /* Os avisos da Carol vivem no botão flutuante (pedido 2026-09-13): no
      cabeçalho do cartão dela confundiam-se com o resumo do dia. Um de cada
      vez, pela mesma prioridade de sempre — assuntos por resolver, depois o
-     ajuste do plano, depois o balanço da prova, por fim o fim do bloco —,
+     conflito de principais, o ajuste do plano, o mapa da época (só inscritos
+     numa competição), o balanço da prova e, por fim, o fim do bloco —,
      cada um com o seu "Falar com a Carol" na janela dos insights.
 
      `key` é a chave do momento no servidor (P.10), quando o aviso tem um:
@@ -245,6 +270,28 @@ export default function Home() {
       title: 'O plano precisa de um ajuste',
       message: divergence.reasons.map((r) => r.text).join(' '),
       onTalk: openCoach,
+    });
+  } else if (cupMap) {
+    carolAlerts.push({
+      id: 'mapa-epoca',
+      key: cupMap.signature,
+      severity: 'info',
+      title: CUP_MAP_TITLE,
+      message: cupMap.message,
+      // O Coach pede o turno do mapa (is_plan_checkin + cup_map) e, quando o
+      // servidor confirma que foi esse o turno (cup_map_shown), marca a
+      // assinatura como tratada.
+      onTalk: () => {
+        setCoachIntent({ kind: 'cup_map', signature: cupMap.signature, first: cupMap.first });
+        setActiveTab('coach');
+      },
+      // Dispensar cala esta assinatura aqui e, pela impressão, nos outros
+      // dispositivos; volta só se o calendário mudar com jornadas por decidir.
+      onDismiss: () => {
+        markCupMapHandled(profile?.id, cupMap.signature);
+        setAlertDismissals((n) => n + 1);
+        logImpressionDismissed({ kind: 'alert', key: cupMap.signature, title: CUP_MAP_TITLE });
+      },
     });
   } else if (raceBalance) {
     carolAlerts.push({

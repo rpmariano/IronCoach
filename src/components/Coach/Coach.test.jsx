@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import { readCachedBalance } from '../../utils/raceBalance';
-import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_IMMEDIATE_FAILURE_TEXT } from './Coach';
+import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_EMPTY_REPLY_TEXT, COACH_IMMEDIATE_FAILURE_TEXT } from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
 const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -1164,5 +1164,140 @@ describe('Coach — CAROL.md §4: a cara acompanha o que ela diz', () => {
     const { container } = renderCoach();
     expect(headerMood(container)).toBe('neutral');
     expect(messageMoods()).toEqual(['worried']);
+  });
+});
+
+/* O mapa da época (specs/trofeu.md §5, Fase 2): o aviso do Início manda o
+   coachIntent 'cup_map' e isto pede ao servidor o turno do mapa pelo canal do
+   check-in do plano. Quando o servidor confirma que o turno foi o do mapa
+   (cup_map_shown), a assinatura fica tratada aqui (localStorage) e nos outros
+   dispositivos (impressão 'moment', sem título). */
+describe('Coach — "O mapa da época" pedido a partir do Início (coachIntent cup_map)', () => {
+  const SIGNATURE = 'cup_map:ed-cascais-34:1abc';
+  const STORAGE_KEY = 'ironcoach:mapa-epoca:user-1';
+  let logImpression;
+  let refreshCupAfterChat;
+  let loadCup;
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    logImpression = vi.fn();
+    refreshCupAfterChat = vi.fn().mockResolvedValue(undefined);
+    loadCup = vi.fn().mockResolvedValue(null);
+    useAppStore.setState({ ...baseCarolState(), logImpression, refreshCupAfterChat, loadCup });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Aqui vai o mapa da tua época.' }, suggestions: [], cup_map_shown: true },
+      error: null,
+    });
+  });
+
+  it('pede o check-in do plano com cup_map.first, e com a resposta marca a assinatura', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: true } });
+    renderCoach();
+
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    expect(invokeEdgeFunctionWithTimeout.mock.calls[0][0]).toBe('coach-chat');
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body).toMatchObject({ message: '', is_plan_checkin: true, cup_map: { first: true } });
+    // Nada de assinatura, de edição ou de motivos no corpo: o servidor monta
+    // o guião a partir do bloco da competição.
+    expect(JSON.stringify(body)).not.toContain('cup_map:');
+    expect(body.plan_divergence).toBeUndefined();
+    expect(useAppStore.getState().coachIntent).toBeNull();
+
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual([SIGNATURE]));
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: SIGNATURE, title: null });
+    expect(refreshCupAfterChat).not.toHaveBeenCalled();
+  });
+
+  it('depois do primeiro, first vai a false', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body).cup_map).toEqual({ first: false });
+  });
+
+  it('se o pedido falhar, nada fica marcado — o aviso volta', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'rede', isTimeout: false });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: true } });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(logImpression).not.toHaveBeenCalled();
+  });
+
+  it('se o servidor saltar o turno, também não', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, model_message: null, suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: true } });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(logImpression).not.toHaveBeenCalled();
+  });
+
+  /* Revisão da Fase 2: uma resposta dela que não foi a do mapa — um servidor
+     que não o conhece responde com o guião do "Adaptar Plano" — não o dá por
+     tratado; senão o mapa, e as perguntas da época, perdiam-se sem ter sido
+     mostrados. */
+  it('resposta sem cup_map_shown (não foi o turno do mapa): mostra-a, mas nada fica marcado', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Olá Rui! Queres mexer em alguma coisa do plano?' }, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: true } });
+    renderCoach();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Olá Rui! Queres mexer em alguma coisa do plano?'));
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(logImpression).not.toHaveBeenCalled();
+  });
+
+  it('cup_map_unavailable (sem bloco ativo no servidor): uma frase, nada marcado, e a competição relê-se', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { skipped: true, reason: 'cup_map_unavailable', model_message: null, suggestions: [] },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: true } });
+    renderCoach();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain(COACH_EMPTY_REPLY_TEXT));
+    expect(loadCup).toHaveBeenCalledWith({ force: true });
+    expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+    expect(logImpression).not.toHaveBeenCalled();
+  });
+
+  it('cup_updated na resposta do mapa: relê a competição e as provas', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Gravei a jornada como combinámos.' }, suggestions: [], cup_updated: true },
+      error: null,
+    });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: true } });
+    renderCoach();
+    await waitFor(() => expect(refreshCupAfterChat).toHaveBeenCalledTimes(1));
+  });
+
+  it('cup_updated numa mensagem normal: o mesmo refresh; sem a chave, nenhum', async () => {
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Vou à jornada 3.' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+    });
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await Promise.resolve(); });
+    expect(refreshCupAfterChat).not.toHaveBeenCalled();
+
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm2', content: 'Gravei: jornada 3, vais.' }, suggestions: [], cup_updated: true },
+      error: null,
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).toBeTruthy());
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'E quero atacar.' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+    });
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(refreshCupAfterChat).toHaveBeenCalledTimes(1));
   });
 });

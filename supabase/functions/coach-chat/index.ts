@@ -11,7 +11,7 @@ import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/for
 import { focusRace, isPrincipalRace, nextRaceByDate, selectRaces } from "../_shared/formulas/mainRace.ts";
 import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
-import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
+import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks, isSeriesIntent, SERIES_INTENTS, type SeriesIntent } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
@@ -54,6 +54,7 @@ import { computeSessionVolumeKg } from "../_shared/formulas/sessionVolumeKg.ts";
 import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from "../_shared/formulas/paceFormat.ts";
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
+import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -575,14 +576,67 @@ const RESOLVE_INTERVENTION_TOOL = {
   },
 };
 
+// ── Competição por jornadas (specs/trofeu.md §5, Fase 2) ─────────────────
+// SÓ com inscrição ativa: buildTools só as junta com withSeries (o handler
+// liga-o quando o bloco COMPETIÇÃO POR JORNADAS está ativo). Sem inscrição o
+// payload de ferramentas é o de sempre, byte a byte. Declarações planas, sem
+// arrays — a forma que o Gemini aceita (incidente de 2026-09-05).
+// As escritas vão pelas RPCs da M1 (set_participation, update_enrollment),
+// com o `sb` do pedido: auth.uid() é o atleta e a guarda da RPC aplica-se
+// como no cliente. Nenhum user_id vem dos argumentos do modelo.
+export const CUP_DECISIONS = ["vou", "nao_vou", "nao_sei", "nao_fui"] as const;
+export const CUP_SEASON_GOALS = ["participar", "premio", "pontos_clube", "marcas"] as const;
+
+const SET_CUP_PARTICIPATION_TOOL = {
+  name: "set_cup_participation",
+  description:
+    "Grava a decisão e/ou o papel do atleta numa jornada da competição em que está inscrito (bloco COMPETIÇÃO POR JORNADAS). " +
+    "Só com o que ELE disse ou aceitou nesta conversa — nunca por iniciativa tua. round_no é o número da jornada tal como aparece no bloco. " +
+    "decision: 'vou', 'nao_vou', 'nao_sei', ou 'nao_fui' (só numa jornada que já passou). " +
+    "intent: o papel que ele escolheu — 'atacar', 'controlar', 'trote' ou 'saltar'. Se for diferente do proposto, explica uma vez o custo antes e grava o dele. " +
+    "'saltar' é não ir: grava também 'não vai' (nunca com decision 'vou'). Com dor ou doença, 'saltar' grava-se sem discussão.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      round_no: { type: "INTEGER", description: "O número da jornada no bloco (3 para 'Jornada 3')." },
+      decision: { type: "STRING", enum: [...CUP_DECISIONS], description: "A decisão dele para esta jornada." },
+      intent: { type: "STRING", enum: [...SERIES_INTENTS], description: "O papel que ele escolheu." },
+      reason: { type: "STRING", description: "Porquê, numa frase curta (volta no resultado para lhe dizeres o que ficou gravado)." },
+    },
+    required: ["round_no"],
+  },
+};
+
+// A 2.ª ferramenta existe por causa da pergunta do prémio (§5): o "Gerir
+// inscrição" da Fase 1 não muda o objetivo, e a resposta tem de ficar gravada.
+const SET_CUP_SEASON_GOAL_TOOL = {
+  name: "set_cup_season_goal",
+  description:
+    "Muda o objetivo da época na inscrição da competição (bloco COMPETIÇÃO POR JORNADAS). Só quando ele o disser — " +
+    "por exemplo, ao responder à pergunta do prémio. 'premio' liga a contagem das presenças para a classificação final.",
+  parameters: {
+    type: "OBJECT",
+    properties: {
+      season_goal: { type: "STRING", enum: [...CUP_SEASON_GOALS], description: "O objetivo que ele escolheu." },
+    },
+    required: ["season_goal"],
+  },
+};
+
+export const SERIES_TOOLS = [SET_CUP_PARTICIPATION_TOOL, SET_CUP_SEASON_GOAL_TOOL];
+export const SERIES_TOOL_NAMES: readonly string[] = SERIES_TOOLS.map((t) => t.name);
+
 // Ferramentas que o Gemini pode invocar quando a pergunta do utilizador sai
 // das janelas já incluídas no contexto (ex: "compara Maio com hoje"), ou
 // quando pede um plano de treinos ou sugestões alimentares.
 // Exportada para o teste estrutural em index.test.ts poder inspecionar o
 // payload REAL que sai daqui — era a única forma de apanhar em CI a classe
 // de erro que rebentou duas vezes em produção a 2026-09-05.
-export function buildTools(allowed?: Set<string> | null) {
-  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, UPDATE_RACE_EVENT_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL, RESOLVE_INTERVENTION_TOOL];
+// `withSeries` (Fase 2 do Troféu): as SERIES_TOOLS só com inscrição ativa. O
+// filtro `allowed` aplica-se por cima — nos casos A–D, F_* e nos turnos
+// proativos elas ficam de fora como as outras de escrita.
+export function buildTools(allowed?: Set<string> | null, withSeries = false) {
+  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, UPDATE_RACE_EVENT_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL, RESOLVE_INTERVENTION_TOOL, ...(withSeries ? SERIES_TOOLS : [])];
   const decls = allowed ? all.filter((t) => allowed.has(t.name)) : all;
   return [{ functionDeclarations: decls }];
 }
@@ -3592,6 +3646,102 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
   return `Intervenção marcada como resolvida com motivo: ${actionTaken}. O botão flutuante de alerta na homepage vai desaparecer.`;
 }
 
+// ── set_cup_participation / set_cup_season_goal (Fase 2 do Troféu) ───────
+// Só chegam aqui com inscrição ativa (o despacho no handler recusa sem ela).
+// Cada escrita é a RPC da M1 que o cliente já usa, com o `sb` do pedido: a
+// guarda (inscrição ativa DELE, edição não encerrada, campos permitidos) e a
+// sincronização com race_events correm lá dentro, como no ecrã. As mensagens
+// de erro das RPCs já vêm em português e sem dados pessoais. O resultado
+// nunca leva a linha da inscrição (que tem o dorsal) — só o que ficou gravado.
+
+// deno-lint-ignore no-explicit-any
+async function readActiveCupEnrollment(sb: any, userId: string): Promise<{ enrollment: { id: string; edition_id: string } | null; error: string | null }> {
+  const { data, error } = await sb
+    .from("cup_enrollments")
+    .select("id, edition_id")
+    .eq("user_id", userId)
+    .eq("status", "ativa")
+    .maybeSingle();
+  if (error) {
+    return { enrollment: null, error: isCupSchemaMissing(error) ? "Erro: a gravação das jornadas ainda não está disponível." : `Erro ao ler a inscrição: ${error.message}` };
+  }
+  if (!data) return { enrollment: null, error: "Erro: o atleta não tem inscrição ativa numa competição." };
+  return { enrollment: data, error: null };
+}
+
+// deno-lint-ignore no-explicit-any
+function cupRpcError(error: any): string {
+  return isCupSchemaMissing(error) ? "Erro: a gravação das jornadas ainda não está disponível." : `Erro ao gravar: ${error?.message ?? error}`;
+}
+
+// deno-lint-ignore no-explicit-any
+export async function runSetCupParticipation(sb: any, userId: string, args: any): Promise<string> {
+  const n = Number(args?.round_no);
+  if (!Number.isInteger(n) || n < 1 || n > 99) return "Erro: indica round_no (o número da jornada no bloco).";
+  const decision = args?.decision ?? null;
+  const intent = args?.intent ?? null;
+  if ((decision !== null && !(CUP_DECISIONS as readonly string[]).includes(decision)) || (intent !== null && !isSeriesIntent(intent))) {
+    return "Erro: decision ou intent inválido.";
+  }
+  if (decision === null && intent === null) return "Erro: nada para gravar — passa decision e/ou intent.";
+  // 'saltar' escolhido por ELE é não ir: grava-se também "não vai", e a
+  // sincronização tira a prova do calendário. Sem isto a prova ficava, e o
+  // contexto das provas atribuía a escolha dele às contas ("pelas contas, se
+  // salta… se ele for") — a porta para discutir um salto por dor (spec §5,
+  // revisão da Fase 2). "vai" com "saltar" contradiz-se: recusa-se.
+  if (intent === "saltar" && decision === "vou") return "Erro: 'saltar' é não ir — não se grava com decision 'vou'.";
+  const effectiveDecision = intent === "saltar" && decision === null ? "nao_vou" : decision;
+
+  const { enrollment, error: enrError } = await readActiveCupEnrollment(sb, userId);
+  if (!enrollment) return enrError!;
+
+  const { data: round, error: roundError } = await sb
+    .from("cup_rounds")
+    .select("id, round_no, name, date, date_status")
+    .eq("edition_id", enrollment.edition_id)
+    .eq("round_no", n)
+    .maybeSingle();
+  if (roundError) return isCupSchemaMissing(roundError) ? "Erro: a gravação das jornadas ainda não está disponível." : `Erro ao ler a jornada: ${roundError.message}`;
+  if (!round) return `Erro: não há jornada ${n} nesta edição.`;
+  if (round.date_status === "cancelada") return `Erro: a jornada ${n} foi cancelada.`;
+
+  // Tudo o que vem daqui é a escolha DELE (nunca 'omissao' nem 'colisao').
+  const p_patch: Record<string, string> = {};
+  if (effectiveDecision !== null) Object.assign(p_patch, { decision: effectiveDecision, decision_source: "atleta" });
+  if (intent !== null) Object.assign(p_patch, { intent, intent_source: "atleta" });
+  const { data: row, error } = await sb.rpc("set_participation", { p_round_id: round.id, p_patch });
+  if (error) return cupRpcError(error);
+
+  const where = `${round.name}${round.date ? `, ${dayMonth(round.date)}` : ""}`;
+  // Com uma principal nesse dia a sincronização devolve o "vou" a null
+  // (colisão): as principais mandam sempre.
+  if (decision === "vou" && row && row.decision == null && row.decision_source === "colisao") {
+    return `Jornada ${n} (${where}) não ficou "vai": nesse dia há uma prova principal dele — a principal manda. ` +
+      `Diz-lho numa frase; se ele quiser mesmo a jornada, essa prova tem de deixar de ser principal (update_race_event).`;
+  }
+  const parts = [
+    effectiveDecision !== null ? `decisão: ${DECISION_TEXT[effectiveDecision]}` : null,
+    intent !== null ? `papel: ${intent}` : null,
+  ].filter(Boolean).join(", ");
+  const waiting = round.date_status !== "confirmada" && decision === "vou"
+    ? " Fica 'vai' à espera: a prova só entra no calendário quando a data for confirmada."
+    : "";
+  const why = typeof args?.reason === "string" && args.reason.trim() ? ` (${args.reason.trim().slice(0, 120)})` : "";
+  return `Jornada atualizada: ${n} (${where}) — ${parts}.${waiting} Diz-lhe numa frase o que ficou gravado${why}.`;
+}
+
+// deno-lint-ignore no-explicit-any
+export async function runSetCupSeasonGoal(sb: any, userId: string, args: any): Promise<string> {
+  const goal = args?.season_goal;
+  if (!(CUP_SEASON_GOALS as readonly string[]).includes(goal)) return "Erro: season_goal inválido.";
+  const { enrollment, error: enrError } = await readActiveCupEnrollment(sb, userId);
+  if (!enrollment) return enrError!;
+  const { error } = await sb.rpc("update_enrollment", { p_enrollment_id: enrollment.id, p_patch: { season_goal: goal } });
+  if (error) return cupRpcError(error);
+  return `Objetivo da época atualizado: ${SEASON_GOAL_TEXT[goal]}.` +
+    `${goal === "premio" ? " A app passa a contar as presenças para a classificação final." : ""} Diz-lho numa frase.`;
+}
+
 /** Formata as notas para o prompt. Cada linha leva o id, para o modelo poder
  *  indicar em replaces_note_id qual a nota a substituir. */
 // deno-lint-ignore no-explicit-any
@@ -3694,13 +3844,22 @@ const viabCatDist = sharedCategorizeDistance;
 // numa 10k que já estava em taper 7 dias antes do previsto, como dizia a um
 // avançado em maratona que só entrava em taper quando já devia ter 7 dias
 // de folga adicionais (ver specs/formulas-checklist.md Fase C).
+//
+// Uma jornada de uma competição (Fase 2 do Troféu, specs/trofeu.md §5): uma
+// prova b/c com papel (a intenção dele, senão o proposto) não tem macrociclo
+// próprio — a afinação é a do papel (3 dias fáceis antes de uma atacada, 2
+// antes das outras; doutrina 2.3 #6). Sem papel, o texto é o de sempre.
 function getRacePhase(
   daysUntil: number,
   distanceKm: number | null,
   level: string | null,
   racePriority: string | null,
   raceType: string | null,
+  seriesIntent: SeriesIntent | null = null,
 ): string {
+  if (seriesIntent && (racePriority === "b" || racePriority === "c")) {
+    return seriesRacePhaseText(seriesIntent, daysUntil, sharedGetTaperDays(distanceKm, racePriority, level ?? "iniciante", raceType ?? "estrada", seriesIntent));
+  }
   if (daysUntil <= 0) return "Dia da Prova (ou já passou)";
   const cat = viabCatDist(distanceKm);
   let minWeeks = 12; // defeito
@@ -3829,6 +3988,10 @@ export function buildRaceEventsContext(
   profileLevel: string | null,
   // deno-lint-ignore no-explicit-any
   runs: any[],
+  // O papel de cada prova de jornada (race_events.id → intenção), do bloco
+  // COMPETIÇÃO POR JORNADAS — só com inscrição ativa. null = o texto de
+  // sempre, byte a byte (Fase 2 do Troféu).
+  seriesIntents: Record<string, SeriesIntent> | null = null,
 ): string | null {
   if (events.length === 0) return null;
   // Mesma janela de 30 dias que o resto do contexto já usa (recentRuns) —
@@ -3865,6 +4028,8 @@ export function buildRaceEventsContext(
         ? formatPaceMinKm(Math.round(e.target_time_seconds / e.distance_km))
         : null);
     const effectiveLevel = e.experience_level || profileLevel;
+    // Só numa prova b/c: uma principal leva sempre o taper e a leitura de sempre.
+    const seriesIntent: SeriesIntent | null = e.race_priority === "b" || e.race_priority === "c" ? seriesIntents?.[e.id] ?? null : null;
     const extras = [
       /* O id TEM de vir no contexto: é o que o propose_training_plan pede
          em race_id para vincular o plano à prova, e a descrição da
@@ -3900,10 +4065,11 @@ export function buildRaceEventsContext(
       e.race_priority
         ? `prioridade: ${RACE_PRIORITY_LABELS[e.race_priority] || e.race_priority}`
         : null,
-      `fase do plano: ${getRacePhase(daysUntil, e.distance_km ?? null, effectiveLevel, e.race_priority ?? null, e.race_type ?? null)}`,
+      `fase do plano: ${getRacePhase(daysUntil, e.distance_km ?? null, effectiveLevel, e.race_priority ?? null, e.race_type ?? null, seriesIntent)}`,
     ].filter(Boolean).join(", ");
-    // Bloco 1 — Viabilidade do objetivo (objetivo_inviavel)
-    const viabFlags = daysUntil > 0
+    // Bloco 1 — Viabilidade do objetivo (objetivo_inviavel). Numa jornada não:
+    // é uma prova curta dentro da época, não um objetivo a preparar.
+    const viabFlags = daysUntil > 0 && !seriesIntent
       ? assessViability(e.distance_km ?? null, effectiveLevel, weeksUntil, weeklyVolumeKm)
       : [];
     const viabLines = viabFlags.map((f) => {
@@ -3970,6 +4136,10 @@ export function buildRaceEventsContext(
               ? `o objetivo está ${formatHms(Math.abs(delta))} ACIMA do que o treino aponta — há margem, propõe-lhe puxar o objetivo`
               : "o objetivo está alinhado com o que o treino aponta");
           parts.push(leitura);
+        } else if (seriesIntent) {
+          // O tempo de uma jornada fica vazio até ele o marcar (§2.6): a
+          // previsão é só a referência pelas contas, nunca um objetivo a propor.
+          parts.push("numa jornada o tempo fica vazio até ele o marcar — é só a referência pelas contas; não proponhas tempo-alvo a não ser que ele o peça");
         } else {
           parts.push("o atleta ainda não fixou tempo-alvo — propõe-lhe um a partir deste número");
         }
@@ -4495,6 +4665,10 @@ export function buildSystemInstruction(
   raceEveContext: string | null = null,
   // A resposta dele ao balanço "perto" — ver detectRaceFollowup.
   raceFollowupContext: string | null = null,
+  // O bloco COMPETIÇÃO POR JORNADAS (fetchSeriesBlock, specs/trofeu.md §5).
+  // Sem inscrição é null e o prompt fica igual byte a byte; com ela, entra
+  // na cauda, nunca no prefixo estável.
+  seriesBlock: string | null = null,
 ): string {
   const today = new Date().toLocaleString("pt-PT", {
     weekday: "long",
@@ -5436,6 +5610,7 @@ export function buildSystemInstruction(
   if (shoesContext) sys += `\n\n${shoesContext}`;
   if (raceEventsContext) sys += `\n\n${raceEventsContext}`;
   if (planContext) sys += `\n\n${planContext}`;
+  if (seriesBlock) sys += `\n\n${seriesBlock}`;
 
   if (lastExchangeHoursAgo !== undefined) {
     if (lastExchangeHoursAgo === null) {
@@ -5671,6 +5846,12 @@ async function handler(req: Request): Promise<Response> {
        abaixo): nesse caso só arranca depois, para não gastar as consultas. */
     let memoryBlocksPromise: ReturnType<typeof fetchChatMemoryBlocks> | null =
       proactiveTrigger && !bypassQuietHours ? null : fetchChatMemoryBlocks(sb, userId, todayISO, profile);
+    /* O bloco da competição por jornadas (specs/trofeu.md §5, Fase 2), no
+       mesmo molde: arranca já e só se espera por ele ao montar o prompt.
+       Nunca rejeita. Quem não está inscrito gasta uma leitura e recebe null
+       — o prompt e as ferramentas ficam iguais byte a byte. */
+    let seriesPromise: Promise<SeriesBlock | null> | null =
+      proactiveTrigger && !bypassQuietHours ? null : fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });
 
     const { data: weekMeals, error: err_weekMeals } = await sb
       .from("meals")
@@ -5920,13 +6101,9 @@ async function handler(req: Request): Promise<Response> {
     // viabilidade precisa do volume "conhecido".
     const runs4w = (recentRuns || []) as Array<{ date: string; distance_km: number }>;
     const loggedWeeklyVolumeKm = runs4w.length > 0 ? computeRecentWeeklyVolume(runs4w, todayISO, 4) : null;
-    const raceEventsContext = buildRaceEventsContext(
-      upcomingRaces || [],
-      todayISO,
-      weeklyVolumeKm,
-      (profile?.experience_level as string | null) ?? null,
-      recentRuns || [],
-    );
+    // O contexto das provas (buildRaceEventsContext) monta-se mais abaixo,
+    // mesmo antes do prompt: precisa do papel das jornadas, que vem do bloco
+    // da competição (seriesPromise).
 
     // ── Plano para o dia da prova mais próxima (specs/plano-de-prova.md) ──
     // Só na última semana: é quando o plano interessa (véspera, manhã, e
@@ -6349,6 +6526,18 @@ async function handler(req: Request): Promise<Response> {
       ? [proactiveDetails, weekAdherenceLine].filter(Boolean).join(" ")
       : proactiveDetails;
 
+    // O bloco da competição (null sem inscrição) e, com ele, o papel de cada
+    // prova de jornada no contexto das provas — só com inscrição ativa.
+    const seriesBlock = await (seriesPromise ??= fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" }));
+    const raceEventsContext = buildRaceEventsContext(
+      upcomingRaces || [],
+      todayISO,
+      weeklyVolumeKm,
+      (profile?.experience_level as string | null) ?? null,
+      recentRuns || [],
+      seriesBlock?.active ? seriesBlock.intentByRaceId : null,
+    );
+
     // ── Construir pedido ao Gemini ───────────────────────────────────────
     // 1º argumento (coachContext) fixo em null — "Contexto do Coach" foi
     // removido do Perfil a 2026-08-20 (substituído pela Memória do Coach,
@@ -6407,6 +6596,7 @@ async function handler(req: Request): Promise<Response> {
       splitsContext,
       raceEveContext,
       raceFollowupContext,
+      seriesBlock?.text ?? null,
     );
 
     let finalSystemInstruction = systemInstruction;
@@ -6539,7 +6729,36 @@ async function handler(req: Request): Promise<Response> {
         `Assim que tiveres o que precisas, propõe o plano com propose_training_plan.`
       : null;
 
-    const planCheckinPrompt = onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : planDivergence.length > 0
+    /* O mapa da época (specs/trofeu.md §5, Fase 2): o atleta abriu o chat a
+       partir do aviso do Início (coachIntent 'cup_map', pelo canal do
+       check-in do plano — as ferramentas de propor já estão abertas). */
+    const cupMapFirst: boolean | null = body.cup_map && typeof body.cup_map === "object"
+      ? (body.cup_map as { first?: unknown }).first === true
+      : null;
+    const cupMapPrompt = cupMapFirst !== null && seriesBlock?.active ? buildCupMapTurn(seriesBlock, cupMapFirst) : null;
+    /* Pedido o mapa sem bloco ativo — uma das leituras da competição falhou
+       (fetchSeriesBlock dá null em qualquer erro) ou a inscrição já não está
+       ativa —, o turno NÃO cai no guião do "Adaptar Plano": a Carol
+       responderia a outra coisa, o cliente dava o aviso por tratado e o
+       mapa (e, no primeiro, as perguntas da época) perdia-se sem nunca ter
+       sido apresentado (revisão da Fase 2). Não se chama o Gemini; o cliente
+       não marca nada e o aviso volta. */
+    if (cupMapFirst !== null && !cupMapPrompt && !message) {
+      console.warn("coach-chat: mapa da época pedido sem bloco ativo da competição — fica por mostrar");
+      return jsonResponse({
+        skipped: true,
+        reason: "cup_map_unavailable",
+        user_message: null,
+        model_message: null,
+        suggestions: [],
+        usage: null,
+        plan_proposed: false,
+        goals_updated: false,
+        goal_proposed: false,
+      });
+    }
+
+    const planCheckinPrompt = onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
         `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
@@ -6556,6 +6775,12 @@ async function handler(req: Request): Promise<Response> {
           `uma possível razão de ele te ter procurado, e perguntar se é sobre isso, mas como hipótese entre ` +
           `outras, nunca como confronto ou acusação: a iniciativa foi dele, não tua.`
         : ``);
+    // O turno foi mesmo o do mapa (a mesma escolha de `contents`, abaixo). Só
+    // com `cup_map_shown` na resposta o cliente dá o aviso por tratado: um
+    // servidor que não conheça o cup_map responde com o guião do "Adaptar
+    // Plano" e o mapa não se pode perder por isso (J.7 do desenho).
+    const cupMapShown = cupMapPrompt !== null && !message && !body.is_intervention_start && !!body.is_plan_checkin &&
+      planCheckinPrompt === cupMapPrompt;
 
     // deno-lint-ignore no-explicit-any
     const contents: any[] = [
@@ -6589,7 +6814,10 @@ async function handler(req: Request): Promise<Response> {
     // por trás do alias "-latest" nunca era registado, nem o caso de turno,
     // nem que declarações tinham seguido — e é o caso de turno que decide
     // quais seguem. Custa uma linha por chamada.
-    const toolsBlock = buildTools(allowedTools);
+    // As SERIES_TOOLS só com inscrição ativa (o filtro do caso aplica-se por
+    // cima). Sem ela, o payload é o de sempre, byte a byte.
+    const seriesToolsOn = seriesBlock?.active === true;
+    const toolsBlock = buildTools(allowedTools, seriesToolsOn);
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
@@ -6665,6 +6893,10 @@ async function handler(req: Request): Promise<Response> {
     // assunto a resolver" com a intervenção já resolvida (relatado 2026-09-13).
     let raceWasUpdated = false;
     let interventionWasResolved = false;
+    // Uma SERIES_TOOL gravou (a jornada ou o objetivo da época): o cliente
+    // relê a competição e as provas. Só vai na resposta quando é true — a
+    // resposta de quem não está inscrito fica igual.
+    let cupWasUpdated = false;
 
     /* Uma ferramenta de escrita já correu (o plano proposto, os objetivos, a
        prova, a intervenção) e não há tempo ou resposta para o texto: sem
@@ -6674,14 +6906,16 @@ async function handler(req: Request): Promise<Response> {
        sondagem da app apanha-a e recarrega o que mudou — e respondem-se as
        flags como num turno normal. null quando nada foi escrito. */
     const replyAfterWritesWithoutText = async (): Promise<Response | null> => {
-      if (!(planWasProposed || goalsWereUpdated || goalWasProposed || raceWasUpdated || interventionWasResolved)) return null;
+      if (!(planWasProposed || goalsWereUpdated || goalWasProposed || raceWasUpdated || interventionWasResolved || cupWasUpdated)) return null;
       const text = planWasProposed
         ? "Deixei-te a proposta de plano no Início — abre-a e diz-me se te serve."
         : goalWasProposed || goalsWereUpdated
           ? "Deixei-te a proposta de objetivos no Início — vê se concordas."
           : raceWasUpdated
             ? "Atualizei a prova como combinámos."
-            : "Fechei este assunto do meu lado.";
+            : cupWasUpdated
+              ? "Gravei a jornada como combinámos."
+              : "Fechei este assunto do meu lado.";
       const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral");
       return jsonResponse({
         user_message: userMsg,
@@ -6694,6 +6928,7 @@ async function handler(req: Request): Promise<Response> {
         race_updated: raceWasUpdated,
         intervention_resolved: interventionWasResolved,
         proactive: proactiveTrigger,
+        ...(cupWasUpdated ? { cup_updated: true } : {}),
       });
     };
 
@@ -6824,6 +7059,16 @@ async function handler(req: Request): Promise<Response> {
         } else if (name === "resolve_intervention") {
           result = await runResolveIntervention(sb, userId, args || {});
           interventionWasResolved = interventionWasResolved || !result.startsWith("Erro");
+        } else if (name === "set_cup_participation" || name === "set_cup_season_goal") {
+          // Só com inscrição ativa e se o caso as deixou seguir: sem isso é
+          // como se não existissem.
+          const cupToolOn = seriesToolsOn && (!allowedTools || allowedTools.has(name));
+          result = !cupToolOn
+            ? `Erro: função desconhecida "${name}".`
+            : name === "set_cup_participation"
+              ? await runSetCupParticipation(sb, userId, args || {})
+              : await runSetCupSeasonGoal(sb, userId, args || {});
+          cupWasUpdated = cupWasUpdated || (cupToolOn && !result.startsWith("Erro"));
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }
@@ -6872,6 +7117,8 @@ async function handler(req: Request): Promise<Response> {
           plan_proposed: false,
           goals_updated: false,
         goal_proposed: false,
+          // A jornada já ficou gravada nesta ronda: o cliente tem de a reler.
+          ...(cupWasUpdated ? { cup_updated: true } : {}),
         });
       }
       replyText = typeof parsed.reply === "string" && parsed.reply.trim() ? parsed.reply.trim() : rawText;
@@ -6948,6 +7195,8 @@ async function handler(req: Request): Promise<Response> {
         race_updated: raceWasUpdated,
         intervention_resolved: interventionWasResolved,
         proactive: proactiveTrigger,
+        ...(cupWasUpdated ? { cup_updated: true } : {}),
+        ...(cupMapShown ? { cup_map_shown: true } : {}),
       });
     }
 
@@ -6963,6 +7212,8 @@ async function handler(req: Request): Promise<Response> {
       race_updated: raceWasUpdated,
       intervention_resolved: interventionWasResolved,
       proactive: proactiveTrigger,
+      ...(cupWasUpdated ? { cup_updated: true } : {}),
+      ...(cupMapShown ? { cup_map_shown: true } : {}),
     });
 
   } catch (e) {

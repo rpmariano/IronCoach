@@ -19,6 +19,7 @@ import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS }
 import { listProactiveTriggers, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
 import { writeCachedBalance } from '../../utils/raceBalance';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
+import { markCupMapHandled } from '../../utils/cupMap';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 
 // Chave única — o chat da Carol é uma conversa só, não um registo por id
@@ -299,6 +300,10 @@ export default function Coach() {
       const { data: freshRaces } = await supabase.from('race_events').select('*').eq('user_id', profile.id).order('date', { ascending: true });
       if (freshRaces) useAppStore.getState().setRaceEvents(freshRaces);
     }
+    // A Carol gravou numa jornada ou no objetivo da época (set_cup_*, só a
+    // um inscrito — specs/trofeu.md §5): relê a competição, as provas (a
+    // sincronização mexe na prova da jornada) e, se mudaram, os planos.
+    if (data?.cup_updated) await useAppStore.getState().refreshCupAfterChat?.();
   };
 
   const handleAdaptPlanCheckin = ({ divergence = null, signature = null } = {}) => sendCoachInitiatedPayload({
@@ -338,6 +343,40 @@ export default function Coach() {
     race_conflict: { races, target },
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
+  });
+
+  /* Vindo do Início, aviso "O mapa da época" (specs/trofeu.md §5, Fase 2;
+     utils/cupMap.js): o atleta inscrito numa competição por jornadas abre a
+     conversa em que a Carol lhe mostra o papel de cada jornada ao lado das
+     provas principais. Vai pelo canal do check-in do plano — o do caso E,
+     onde propor o plano ajustado e gravar as jornadas estão abertos — e o
+     servidor monta o guião do mapa a partir do bloco da competição; `first`
+     (o mapa da inscrição) junta as perguntas da época que ainda faltem.
+     A assinatura só fica tratada — aqui e, pela impressão 'moment' (sem
+     título: fica fora do prompt), nos outros dispositivos — quando o
+     servidor diz que o turno foi mesmo o do mapa (`cup_map_shown`): sem
+     isso, uma leitura da competição que falhou ou um servidor que não
+     conhece o mapa (o guião do "Adaptar Plano") davam-no por tratado sem
+     nunca o ter mostrado, e as perguntas da época perdiam-se (revisão da
+     Fase 2). Sem bloco ativo o servidor salta o turno
+     (`cup_map_unavailable`): uma frase para o toque não ficar sem resposta,
+     e a competição relê-se — se a inscrição já não está ativa (saiu noutro
+     dispositivo), o aviso do Início desaparece. */
+  const handleCupMapCheckin = ({ signature = null, first = false } = {}) => sendCoachInitiatedPayload({
+    message: '',
+    is_plan_checkin: true,
+    cup_map: { first: !!first },
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  }).then((data) => {
+    if (data?.cup_map_shown === true && signature) {
+      markCupMapHandled(profile?.id, signature);
+      useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
+    } else if (data?.skipped && data.reason === 'cup_map_unavailable') {
+      addCoachMessage({ id: (Date.now() + 1).toString(), role: 'assistant', content: COACH_EMPTY_REPLY_TEXT });
+      useAppStore.getState().loadCup?.({ force: true })?.catch?.(() => {});
+    }
+    return data;
   });
 
   // Vindo do Início, botão "Falar com a Carol" no aviso "O balanço da
@@ -396,6 +435,12 @@ export default function Coach() {
       const { races, target } = coachIntent;
       setCoachIntent(null);
       handleRaceConflictCheckin({ races, target });
+      return;
+    }
+    if (coachIntent && coachIntent.kind === 'cup_map') {
+      const { signature, first } = coachIntent;
+      setCoachIntent(null);
+      handleCupMapCheckin({ signature, first });
       return;
     }
     if (coachIntent === 'onboarding_start' || (coachIntent && coachIntent.kind === 'onboarding_start')) {

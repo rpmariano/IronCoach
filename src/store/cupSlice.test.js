@@ -41,7 +41,7 @@ vi.mock('../lib/supabase', () => ({
 }));
 
 const { useAppStore } = await import('./index');
-const { CUP_EMPTY, isCupSchemaMissing, pickCupEdition, __resetCupModuleState } = await import('./cupSlice');
+const { CUP_EMPTY, isCupSchemaMissing, pickCupEdition, __resetCupModuleState, cupEnrolledHintKey, readCupEnrolledHint } = await import('./cupSlice');
 const F = await import('@formulas/cup.fixtures.ts');
 
 const USER = 'u-cup';
@@ -360,5 +360,108 @@ describe('"Não me interessa"', () => {
     const res = await useAppStore.getState().dismissCupEdition(F.CASCAIS_34.id);
     expect(res).toMatchObject({ ok: false, unavailable: true });
     expectNothingElseChanged(before);
+  });
+});
+
+/* A pista local de inscrição (Fase 2): é por ela que o Início sabe que pode
+   ler a competição sem ler nada a quem não está inscrito (useCupForHome). */
+describe('a pista local de inscrição', () => {
+  const HINT = cupEnrolledHintKey(USER);
+
+  beforeEach(() => window.localStorage.clear());
+
+  it('a chave é por conta', () => {
+    expect(HINT).toBe('ironcoach:competicao-inscrito:u-cup');
+    expect(cupEnrolledHintKey('outro')).not.toBe(HINT);
+  });
+
+  it('loadCup com inscrição ativa põe-na; sem inscrição tira-a', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([ENROLLMENT]);
+    catalogTables();
+    await useAppStore.getState().loadCup();
+    expect(window.localStorage.getItem(HINT)).toBe('1');
+    expect(readCupEnrolledHint(USER)).toBe(true);
+
+    net.tables.cup_enrollments = ok([{ ...ENROLLMENT, status: 'saiu' }]);
+    await useAppStore.getState().loadCup({ force: true });
+    expect(window.localStorage.getItem(HINT)).toBeNull();
+    expect(readCupEnrolledHint(USER)).toBe(false);
+  });
+
+  it('uma leitura falhada (M1 por aplicar, rede) não mexe nela', async () => {
+    window.localStorage.setItem(HINT, '1');
+    net.tables.cup_editions = missing;
+    await useAppStore.getState().loadCup();
+    expect(window.localStorage.getItem(HINT)).toBe('1');
+  });
+
+  it('enrollCup põe-na só quando o servidor aceita; leaveCup tira-a', async () => {
+    net.rpcs.enroll_cup = { data: null, error: { code: '22023', message: 'Faltam o género e a data de nascimento no perfil' } };
+    await useAppStore.getState().enrollCup(F.CASCAIS_34.id, {});
+    expect(window.localStorage.getItem(HINT)).toBeNull();
+
+    catalogTables();
+    net.rpcs.enroll_cup = ok(ENROLLMENT);
+    await useAppStore.getState().enrollCup(F.CASCAIS_34.id, { season_goal: 'premio' });
+    expect(window.localStorage.getItem(HINT)).toBe('1');
+
+    net.rpcs.leave_cup = ok({ ...ENROLLMENT, status: 'saiu', left_at: '2026-10-01T10:00:00Z' });
+    net.tables.race_events = ok(LOADED.raceEvents);
+    await useAppStore.getState().leaveCup('enr1');
+    expect(window.localStorage.getItem(HINT)).toBeNull();
+  });
+
+  it('sem storage (modo privado): tudo funciona na mesma', async () => {
+    const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('bloqueado'); });
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([ENROLLMENT]);
+    catalogTables();
+    await useAppStore.getState().loadCup();
+    expect(useAppStore.getState().cup.status).toBe('ready');
+    expect(readCupEnrolledHint(USER)).toBe(false);
+    set.mockRestore();
+    get.mockRestore();
+  });
+});
+
+/* Depois de a Carol gravar numa jornada ou no objetivo da época (o
+   coach-chat responde `cup_updated`, só a um inscrito): a competição e as
+   provas voltam a ler-se. */
+describe('refreshCupAfterChat', () => {
+  it('relê a competição (à força), as participações e as provas; os planos só se as jornadas mudaram', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([ENROLLMENT]);
+    net.tables.cup_participations = ok([]);
+    catalogTables();
+    await useAppStore.getState().loadCup();
+    net.calls = [];
+
+    const jornada = { id: 'rj3', date: '2027-01-24', race_priority: 'b', cup_round_id: 'r-c3', status: 'agendada' };
+    net.tables.cup_participations = ok([{ id: 'p3', enrollment_id: 'enr1', round_id: 'r-c3', decision: 'vou', decision_source: 'atleta', intent: 'controlar', intent_source: 'atleta' }]);
+    net.tables.race_events = ok([...LOADED.raceEvents, jornada]);
+    net.tables.coach_plans = ok([{ id: 'p1', status: 'aceite', race_lost_at: null }]);
+    await useAppStore.getState().refreshCupAfterChat();
+
+    const read = tablesRead();
+    for (const t of ['cup_editions', 'cup_enrollments', 'cup_edition_dismissals', 'cup_rounds', 'cup_participations', 'race_events']) expect(read).toContain(t);
+    const s = useAppStore.getState();
+    expect(s.cup.participations.map((p) => p.intent)).toEqual(['controlar']);
+    expect(s.raceEvents.map((r) => r.id)).toEqual(['meia', 'rj3']);
+    expect(read).toContain('coach_plans');
+
+    // Sem mudança nas provas das jornadas: os planos não se releem.
+    net.calls = [];
+    await useAppStore.getState().refreshCupAfterChat();
+    expect(tablesRead()).toContain('race_events');
+    expect(tablesRead()).not.toContain('coach_plans');
+  });
+
+  it('sem sessão não lê nada', async () => {
+    useAppStore.setState({ session: null, profile: null });
+    net.calls = [];
+    await useAppStore.getState().refreshCupAfterChat();
+    expect(net.calls).toEqual([]);
   });
 });

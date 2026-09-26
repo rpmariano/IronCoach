@@ -279,8 +279,11 @@ via `fetchSeriesBlock` (null em erro), no chat, no cartão diário e no
 `analyze-run`. Traz o tipo de inscrição, o objetivo da época, as próximas
 jornadas com decisão e intenção, o contador (só com prémio), a faixa de
 pontos e, só com inscrição ativa, uma linha por época anterior.
-`SERIES_TOOLS` (decisão e intenção de uma jornada) só entram no `buildTools`
-com inscrição.
+`SERIES_TOOLS` só entram no `buildTools` com inscrição: `set_cup_participation`
+(decisão e papel de uma jornada; "saltar" escolhido por ele grava também "não
+vai", e a prova sai do calendário) e `set_cup_season_goal` (a resposta à
+pergunta do prémio — o "Gerir inscrição" não muda o objetivo). Correm com o
+JWT do próprio pedido, pelas RPCs da M1.
 
 **Arbitragem com as principais** (`seriesArbitration.ts` em `@formulas`, só
 com datas confirmadas):
@@ -444,7 +447,7 @@ data (Fase 0 fecha-o); uma data provável errada disparar taper e push
 | **0. Correções neutras** | 16/10 | Próxima principal em vez de próxima por data (chat, cartão diário, `RaceReadinessCard`, "Reta Final", `terrainForAthlete`, `hasUpcomingRace`); véspera e manhã preferem a principal no mesmo dia; `RunRegistration` liga à prova do dia; `update_race_event` pelo nome exato; falso recorde (distância equivalente, com a folga do GPS para corridas sem prova e provas criadas pelo registo); distância livre no formulário de prova (pílulas de atalho); provas criadas pelo registo gravadas como secundárias ('b'); o balanço de uma prova já entregue deixa de tapar o balanço da semana. **Adiado de propósito:** o nível e o género por omissão ficam como no servidor ('medio' e o limiar masculino) — mudar exige mudar os três sítios ao mesmo tempo. Sem migrações. **Deploy:** `dev` e `master` seguidos (o tick novo e o cliente antigo divergem no balanço da semana e na prova do dia) | Testes existentes verdes; testes novos das escolhas; para quem tem só provas principais, as escolhas são as de antes |
 | **1. Dados e inscrição** | 13/11 | M1 (**em produção** a 26/09, com o 1b), `classifyEnrollment`, fixtures (personas + circuito fictício), `useCup()`, cartão em Provas, inscrição, jornadas, gerir/sair | Invariância sem inscrição: `buildSystemInstruction` igual byte a byte, `buildTools` sem ferramentas, zero candidatos proativos, snapshots de Provas/Perfil iguais; "Vou" confirmada cria `b`; "Não vou" e apagar no Calendário convergem |
 | **1b. Backoffice** | 13/11 | Separador "Competições" (§6) | Não-admin recebe erro da RLS; confirmar jornada exige pré-visualização; toda a escrita auditada |
-| **2. Carol e prioridades** | 27/11 | `seriesArbitration.ts` com golden tests, `pointsBand`, contador, `getTaperDays` por intenção, `fetchSeriesBlock`, `SERIES_TOOLS`, mapa da época, 3 perguntas, doutrina #6 em `02-corrida-prova.md` | Golden tests das personas A–K; a Carol cala pontos com base `null`; nenhuma frase proibida de §5 nos testes |
+| **2. Carol e prioridades** | 27/11 | (**em produção** a 26/09, sem migração) `seriesArbitration.ts` com golden tests, `pointsBand`, contador, `getTaperDays` por intenção, `fetchSeriesBlock`, `SERIES_TOOLS`, mapa da época, 3 perguntas, doutrina #6 em `02-corrida-prova.md` | Golden tests das personas A–K; a Carol cala pontos com base `null`; nenhuma frase proibida de §5 nos testes |
 | **3. Ecrã do Troféu e lista** | 27/11 | Ecrã do Troféu, bloco fixo na lista, "Para onde vou", hub com bloco Troféu, prazo no cartão diário | `groupRaces` sem `cup_round_id` igual a hoje; acessibilidade de §4.3 |
 | **4. Job da classificação** | antes da J2 | M2 se precisar, adaptador, `cupResults.ts`, cron, correspondência, 33.ª em `observar` | Teste de fuga verde; invariantes param a escrita; repetidos não ligam |
 | **5. Avisos** | antes da J2 | M3, tipos `cup_*`, preferências em Perfil › Carol, teto por jornada | Omissão tudo desligado; `carol_push_types` recusa `cup_*`; máximo 3 por jornada em teste |

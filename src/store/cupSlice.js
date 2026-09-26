@@ -6,9 +6,12 @@ import { supabase } from '../lib/supabase';
    INVARIÂNCIA. Quem não corre o circuito não pode notar diferença nenhuma
    (§1). Por isso tudo o que é da competição vive numa só fatia, `cup`, e:
    - NADA aqui corre no carregamento inicial: a primeira leitura sai do
-     useCup() (utils/useCup.js), quando o ecrã de Provas o monta;
+     useCup() (utils/useCup.js), quando o ecrã de Provas o monta, ou do
+     useCupForHome() no Início — e esse só lê com indício de inscrição
+     (a pista local, abaixo, ou uma prova de jornada por correr; Fase 2);
    - as leituras nunca escrevem noutra fatia. Só as ações de um INSCRITO que
-     fazem o servidor mexer em provas (set_participation, leave_cup) releem
+     fazem o servidor mexer em provas (set_participation, leave_cup, e o
+     refreshCupAfterChat depois de a Carol gravar numa jornada) releem
      `raceEvents` (e os planos, pelo race_lost_at) — sem inscrição, nunca
      chegam lá;
    - o catálogo (jornadas, percursos, escalões, clubes) só se lê para UMA
@@ -64,6 +67,35 @@ function warnMissing(error) {
 }
 
 const errorOf = (error) => ({ code: error?.code ?? null, message: error?.message ?? String(error ?? 'Erro') });
+
+/* A pista local de inscrição (Fase 2, o mapa da época no Início). O Início
+   não pode ler tabelas `cup_*` a quem não está inscrito (§5): lê a
+   competição só com esta pista, ou com uma prova de jornada por correr (ver
+   useCupForHome). Escreve-se em cada leitura base e em cada inscrição ou
+   saída; por conta, neste dispositivo. É só um indício — a vista confirma
+   sempre com a inscrição ativa — e tudo corre em try/catch: sem storage
+   (modo privado, quota) o Início fica como era. */
+export const cupEnrolledHintKey = (uid) => `ironcoach:competicao-inscrito:${uid || 'anon'}`;
+
+/** A pista local diz que esta conta está inscrita. */
+export function readCupEnrolledHint(userId) {
+  if (!userId) return false;
+  try {
+    return window.localStorage.getItem(cupEnrolledHintKey(userId)) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeCupEnrolledHint(userId, enrolled) {
+  if (!userId) return;
+  try {
+    if (enrolled) window.localStorage.setItem(cupEnrolledHintKey(userId), '1');
+    else window.localStorage.removeItem(cupEnrolledHintKey(userId));
+  } catch {
+    // Sem storage: o Início só descobre a inscrição pelas provas das jornadas.
+  }
+}
 
 let cupLoad = null; // { userId, promise } — a leitura base em curso
 const catalogLoads = new Map(); // editionId → promise
@@ -215,6 +247,7 @@ export const createCupSlice = (set, get) => {
           participations: active ? get().cup.participations : [],
         });
         if (!ok) return get().cup;
+        writeCupEnrolledHint(userId, !!active);
         if (active) {
           await Promise.all([
             get().loadCupCatalog(active.edition_id, { force }),
@@ -299,6 +332,7 @@ export const createCupSlice = (set, get) => {
       if (!res.ok) return res;
       const enrollment = res.data;
       patchCup(userId, (c) => ({ enrollments: upsertById(c.enrollments, enrollment), participations: [] }));
+      writeCupEnrolledHint(userId, true);
       await Promise.all([
         get().loadCupCatalog(editionId),
         enrollment?.id ? readParticipations(userId, enrollment.id) : null,
@@ -324,8 +358,20 @@ export const createCupSlice = (set, get) => {
       const res = await callRpc(userId, 'leave_cup', { p_enrollment_id: enrollmentId });
       if (!res.ok) return res;
       patchCup(userId, (c) => ({ enrollments: upsertById(c.enrollments, res.data), participations: [] }));
+      writeCupEnrolledHint(userId, false);
       await refreshRacesAfterSync(userId);
       return res;
+    },
+
+    /* Depois de um turno em que a Carol gravou na competição (resposta do
+       coach-chat com `cup_updated`, só possível a um inscrito — Fase 2):
+       relê a competição toda e as provas (a sincronização pode ter criado ou
+       apagado a prova de uma jornada) e, se estas mudaram, os planos. */
+    refreshCupAfterChat: async () => {
+      const userId = userIdOf(get);
+      if (!userId) return;
+      await get().loadCup({ force: true });
+      await refreshRacesAfterSync(userId);
     },
 
     /* A decisão, a intenção e o "Já me inscrevi" de UMA jornada. `patch`:

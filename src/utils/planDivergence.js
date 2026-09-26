@@ -6,7 +6,9 @@
    que ela própria devia corrigir:
 
    1. prova_sem_item          — há uma prova dentro do período de um plano
-                                aceite e o plano não tem lá o dia da prova;
+                                aceite e o plano não tem lá o dia da prova
+                                (menos as jornadas de uma competição: essas
+                                vão ao mapa da época, utils/cupMap.js);
    2. treino_no_dia_da_prova  — o plano marcou um treino no dia da prova;
    3. treino_forte_na_vespera — trabalho duro (ou ginásio) a um ou dois dias
                                 da prova, quando só cabe recuperação;
@@ -238,8 +240,15 @@ export function detectPlanDivergence({
     const date = dayOf(race.date);
     const onDay = upcoming.filter((i) => dayOf(i.planned_date) === date);
 
-    // 1. A prova não está no plano.
-    if (!onDay.some(isRacePlanItem)) {
+    // 1. A prova não está no plano. Menos numa jornada de uma competição
+    //    (cup_round_id — specs/trofeu.md §5, Fase 2): encaixá-las no plano é
+    //    a conversa do mapa da época, numa só, e não um aviso por jornada. O
+    //    treino no dia e o trabalho forte na véspera continuam a valer para
+    //    elas — isso é segurança. Sem inscrição não há provas por correr com
+    //    cup_round_id, por isso para os outros nada muda. Uma jornada
+    //    PROMOVIDA a principal ('a') volta a ser uma principal como as outras:
+    //    fora do plano, avisa (revisão da Fase 2).
+    if (!onDay.some(isRacePlanItem) && !(race.cup_round_id && race.race_priority !== 'a')) {
       push('prova_sem_item', `${race.id}:${date}`, `A ${raceLabel(race)} não está no plano.`);
     }
 
