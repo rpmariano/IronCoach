@@ -826,7 +826,9 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
   // Sobra uma linha? Um número do atleta, se houver (nunca de madrugada:
   // aí a única coisa a dizer é que vá dormir; nem no dia da prova, que só
   // fala dela).
-  if (lines.length < 2 && variant !== 'madrugada' && !provaHoje && diaHoje.tipo !== 'provaFeita') {
+  // Nem durante uma recuperação: "Esta semana já levas 6 km", de antes da
+  // cirurgia, no dia a seguir a ela, era encher a linha com um número.
+  if (lines.length < 2 && variant !== 'madrugada' && !provaHoje && diaHoje.tipo !== 'provaFeita' && !(vida && vida.dias >= 0)) {
     const extra = dataLine(variant, data, hoje, kmHoje);
     if (extra) lines.push(extra);
   }

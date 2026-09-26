@@ -111,6 +111,12 @@ describe('as boas-vindas à volta da cirurgia', () => {
     expect(buildWelcome('madrugada', data(), at('2026-09-25T01:00:00')).lines.join(' ')).toMatch(/^Hoje é o dia da cirurgia\./);
   });
 
+  it('na recuperação, a segunda linha não se enche com os km de antes da cirurgia', () => {
+    const tarde = buildWelcome('tarde', data({ saudadoHoje: true, meals: [{ date: '2026-09-26' }], dailyCheckins: [{ date: '2026-09-26', sleep: 3 }], runs: [{ date: '2026-09-23', distance_km: 6 }] }), at('2026-09-26T15:00:00'));
+    expect(tarde.lines.join(' ')).not.toMatch(/km/);
+    expect(tarde.lines).toHaveLength(1);
+  });
+
   it('se já perguntou de manhã, à tarde não volta a perguntar como correu', () => {
     const manha = buildWelcome('manha', data(), at('2026-09-26T08:30:00'));
     expect(manha.lines[0]).toMatch(/\?/);
