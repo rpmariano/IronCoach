@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { checkinReply, checkinStreak } from './checkinReply';
+import { checkinReply, checkinStreak, DIA_NORMAL } from './checkinReply';
 import { expectCarolVoice } from '../test/carolVoice';
 
 /* A resposta da Carol ao check-in: o que preocupa primeiro, o raro só com
@@ -13,8 +13,12 @@ describe('checkinReply', () => {
     expect(checkinReply([dia('2026-09-18')], HOJE)).toBeNull();
   });
 
-  it('o dia normal é curto e seco', () => {
-    expect(checkinReply([dia(HOJE)], HOJE)).toMatchObject({ text: 'Anotado. Dia normal.', mood: 'neutral' });
+  it('o dia normal é curto, cordial, e muda de um dia para o outro', () => {
+    const r = checkinReply([dia(HOJE)], HOJE);
+    expect(r.mood).toBe('neutral');
+    expect(DIA_NORMAL).toContain(r.text);
+    const dias = ['2026-09-19', '2026-09-20', '2026-09-21'].map((d) => checkinReply([dia(d)], d).text);
+    expect(new Set(dias).size).toBe(3);
   });
 
   it('a dor forte passa à frente de tudo, com o local', () => {
@@ -40,7 +44,7 @@ describe('checkinReply', () => {
     const semana = Array.from({ length: 7 }, (_, i) => dia(`2026-09-${String(13 + i).padStart(2, '0')}`));
     expect(checkinStreak(semana, HOJE)).toBe(7);
     expect(checkinReply(semana, HOJE).text).toMatch(/^7 dias seguidos/);
-    expect(checkinReply(semana.slice(1), HOJE).text).toBe('Anotado. Dia normal.');
+    expect(DIA_NORMAL).toContain(checkinReply(semana.slice(1), HOJE).text);
   });
 
   /* Pedido 2026-09-26: a resposta sabe o que o dia é. "Nem se olha para o
@@ -71,8 +75,8 @@ describe('checkinReply', () => {
   });
 
   it('o dia da prova e a véspera não são dias normais', () => {
-    expect(checkinReply([dia(HOJE)], HOJE, sem('prova')).text).toBe('Anotado. Hoje é dia de prova.');
-    expect(checkinReply([dia(HOJE)], HOJE, { tipo: 'descanso', corrida: false, vespera: true }).text).toBe('Anotado. Amanhã é dia de prova.');
+    expect(checkinReply([dia(HOJE)], HOJE, sem('prova')).text).toBe('Obrigada. Hoje é dia de prova: vamos a isso.');
+    expect(checkinReply([dia(HOJE)], HOJE, { tipo: 'descanso', corrida: false, vespera: true }).text).toMatch(/^Obrigada\. Amanhã é dia de prova/);
     expect(checkinReply([dia(HOJE, { sleep: 1 })], HOJE, sem('prova')).text).toBe('Dormir mal na noite antes da prova é normal. Não estraga a corrida.');
     // Na véspera não se diz que "a noite que conta é a de hoje": no dia a seguir ela diz que dormir mal é normal.
     expect(checkinReply([dia(HOJE, { sleep: 1 })], HOJE, { tipo: 'descanso', vespera: true }).text).not.toMatch(/a noite que conta/i);
@@ -85,7 +89,7 @@ describe('checkinReply', () => {
   });
 
   it('com a prova já feita, a resposta não passa a "dia normal"', () => {
-    expect(checkinReply([dia(HOJE)], HOJE, sem('provaFeita')).text).toBe('Anotado. Hoje foi dia de prova.');
+    expect(checkinReply([dia(HOJE)], HOJE, sem('provaFeita')).text).toMatch(/^Obrigada\. Hoje foi dia de prova/);
     expect(checkinReply([dia(HOJE, { energy: 1 })], HOJE, sem('provaFeita')).text).not.toMatch(/treino/);
   });
 
@@ -114,5 +118,17 @@ describe('checkinReply', () => {
   it('a voz dela: nunca exclamações', () => {
     const casos = [{ pain: 5 }, { sleep: 1 }, { stress: 5 }, { energy: 1 }, { pain: 2 }, { sleep: 5, energy: 5 }, {}];
     for (const o of casos) expectCarolVoice(checkinReply([dia(HOJE, o)], HOJE).text);
+  });
+
+  /* Pedido 2026-09-26: ela sabe da cirurgia (a memória dela, coach_notes) e
+     a resposta ao check-in parte daí nos dias da recuperação. */
+  it('depois de uma cirurgia de que ela sabe, a resposta parte daí', () => {
+    const vida = { tipo: 'cirurgia', dias: 1, recupera: 14, a: 'a cirurgia', da: 'da cirurgia', parte: 'o braço' };
+    const comVida = (o) => checkinReply([dia(HOJE, o)], HOJE, { tipo: 'descanso', corrida: false, vespera: false, vida });
+    expect(comVida({ sleep: 1 }).text).toBe('Dormiste mal. Nos primeiros dias depois da cirurgia é normal; hoje, descansar é o teu treino.');
+    expect(comVida({ pain: 6, pain_location: 'Braço' }).text).toBe('Uma dor de 6 (braço) depois da cirurgia não se ignora. Se não aliviar, fala com a equipa médica, e conta-me como estás.');
+    expect(comVida({ energy: 1 }).text).toMatch(/recuperação da cirurgia é normal/);
+    expect(comVida({}).text).toBe('Obrigada. Um dia de cada vez na recuperação da cirurgia.');
+    for (const o of [{ sleep: 1 }, { pain: 6 }, { energy: 1 }, {}]) expectCarolVoice(comVida(o).text);
   });
 });

@@ -22,6 +22,7 @@ import { normalizeGender } from '@formulas/vocabulary.ts';
 import { planItemTitle, raceForDate, raceNameForDate, hasAnyRecord, isRacePlanItem } from './homeModels';
 import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
 import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
+import { eventoDaVida, frasesDaVida } from './carolVida';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
 
@@ -350,7 +351,13 @@ export function carolDay(dateISO, data = {}) {
  *  as boas-vindas veem, mais a véspera de uma prova. */
 export function checkinDay(dateISO, data = {}) {
   const { tipo, corrida } = carolDay(dateISO, data);
-  return { tipo, corrida, vespera: !!raceToday(data.raceEvents, addDays(dateISO, 1)) };
+  return {
+    tipo,
+    corrida,
+    vespera: !!raceToday(data.raceEvents, addDays(dateISO, 1)),
+    // O que ela sabe da vida dele (utils/carolVida.js): uma cirurgia, uma lesão.
+    vida: eventoDaVida(data.coachNotes, dateISO),
+  };
 }
 
 const semTreino = (dia) => dia.tipo === 'descanso' || dia.tipo === 'semTreino';
@@ -406,12 +413,12 @@ export const WELCOME_PHRASES = {
     'Falta o check-in de hoje. Diz-me como dormiste e como te sentes.',
     'Ainda vais a tempo do check-in de hoje. Conta-me como estás.',
   ],
-  dormiuBem: ['Disseste-me que dormiste bem.', 'Noite boa, pelo que me disseste. Hoje há margem para cumprir tudo.', 'Dormiste bem. Isso conta para o treino de hoje.'],
-  dormiuBemSemTreino: ['Disseste-me que dormiste bem.', 'Noite boa, pelo que me disseste.', 'Dormiste bem. É assim que se recupera.'],
+  dormiuBem: ['Disseste-me que dormiste bem. É assim que se começa um dia de treino.', 'Noite boa, pelo que me disseste. Hoje há margem para cumprir tudo.', 'Dormiste bem. Isso conta para o treino de hoje.'],
+  dormiuBemSemTreino: ['Disseste-me que dormiste bem. Gosto de ouvir isso.', 'Noite boa, pelo que me disseste. O corpo agradece.', 'Dormiste bem. É assim que se recupera.'],
   dormiuBemProva: ['Dormiste bem. É assim que se chega a uma partida.'],
-  dormiuMal: ['Dormiste mal, pelo que me disseste. Hoje não se força nada.', 'Noite fraca. Hoje o treino é para cumprir, não para puxar.', 'Com pouco sono, o treino de hoje faz-se sem puxar.'],
+  dormiuMal: ['Dormiste mal, pelo que me disseste. Hoje não se força nada, e está tudo bem.', 'Noite fraca. Hoje o treino é para cumprir, não para puxar.', 'Com pouco sono, o treino de hoje faz-se sem puxar. Cumprir já é ganhar.'],
   dormiuMalQualidade: ['Dormiste mal, pelo que me disseste. Fala comigo antes do treino de hoje.'],
-  dormiuMalSemTreino: ['Dormiste mal, pelo que me disseste. Esta noite, cama mais cedo.', 'Noite fraca. Hoje é para recuperar.', 'Dormiste pouco. Esta noite deitas-te mais cedo.'],
+  dormiuMalSemTreino: ['Dormiste mal, pelo que me disseste. Hoje leva o dia com calma, e esta noite cama mais cedo.', 'Noite fraca. Hoje é para recuperar, sem culpas.', 'Dormiste pouco. Esta noite deitas-te mais cedo, combinado?'],
   dormiuMalProva: ['Dormir mal na noite antes da prova é normal. Não estraga a corrida.'],
   energiaBaixa: ['Acordaste com pouca energia, pelo que me disseste. O treino de hoje faz-se sem puxar.'],
   energiaBaixaQualidade: ['Acordaste com pouca energia, pelo que me disseste. Fala comigo antes do treino de hoje.'],
@@ -422,9 +429,9 @@ export const WELCOME_PHRASES = {
   dorForteSemTreino: ['A dor de que me falaste não se ignora. Quero falar contigo sobre ela.'],
   dorForteProva: ['Com a dor de que me falaste, quero falar contigo antes da partida.'],
   dorVespera: ['Com a dor de que me falaste, quero falar contigo antes da prova.'],
-  descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. É hoje que o treino da semana assenta.', 'Hoje não se treina. O descanso está no plano de propósito.'],
+  descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. É hoje que o corpo assimila o trabalho da semana.', 'Hoje não se treina. O descanso está no plano de propósito, aproveita-o.'],
   semTreinoHoje: ['Hoje não há treino planeado.', 'O plano não pede treino hoje.', 'Hoje não tens treino no plano.'],
-  treinoHoje: (t) => [`Hoje tens ${t}.`, `Para hoje, o plano pede ${t}.`, `Hoje o plano é ${t}.`],
+  treinoHoje: (t) => [`Hoje tens ${t}. Vamos a isso.`, `Para hoje, o plano pede ${t}.`, `Hoje o plano é ${t}. Quero ver como te sai.`],
   treinoFeito: (t) => [`Hoje já fizeste ${t}.`, 'O treino de hoje já está feito.', 'Já vi o treino de hoje registado.'],
   corridaFeita: (k, n = 1) => (n > 1
     ? [`Já vi as ${extenso(n)} corridas de hoje, ${k} km ao todo.`, `Hoje já levas ${k} km, em ${extenso(n)} corridas.`, `${k} km já feitos hoje, em ${extenso(n)} corridas.`]
@@ -433,7 +440,7 @@ export const WELCOME_PHRASES = {
   // pergunta-se, não se ralha.
   corridaEmDescanso: (k) => [`Hoje era descanso e vi ${k} km registados. Como está o corpo?`, `Hoje era dia de descanso e correste ${k} km. Como estão as pernas?`, `Vi ${k} km num dia de descanso. Conta-me como está o corpo.`],
   semRefeicoes: ['Ainda não vi nenhuma refeição hoje. Uma foto chega.', 'Nenhuma refeição registada hoje. Tira uma foto ao próximo prato.', 'Ainda não sei o que comeste hoje. Uma foto e eu trato do resto.'],
-  treinoPorFazer: (t) => [`Ainda tens ${t} por fazer.`, `Ainda te falta ${t}.`, `Hoje ainda falta ${t}.`],
+  treinoPorFazer: (t) => [`Ainda tens ${t} por fazer. Ainda vais bem a tempo.`, `Ainda te falta ${t}.`, `Hoje ainda falta ${t}. Conto contigo.`],
   treinoPorFazerSemPuxar: (t) => [`Ainda tens ${t} por fazer. Hoje, sem puxar.`],
   treinoPorFazerQualidade: (t) => [`Ainda tens ${t} por fazer. Pelo que me disseste hoje, fala comigo antes.`],
   corridaDoDia: (k, r) => [`Hoje ficaram ${k} km${r}.`, `O dia fecha com ${k} km${r}.`, `${k} km registados hoje${r}.`],
@@ -453,9 +460,9 @@ export const WELCOME_PHRASES = {
   provaComCorrida: (k) => [`Vi ${k} km registados hoje. Quero saber como correu a prova.`],
   provaFeita: (k) => [`Vi os ${k} km da prova de hoje. Quero fazer o balanço contigo.`],
   provaRegistada: ['A prova de hoje já está registada. Quero fazer o balanço contigo.'],
-  amanhaDescanso: ['Amanhã é descanso.', 'Amanhã descansas.', 'Amanhã o plano pede descanso.'],
+  amanhaDescanso: ['Amanhã é descanso.', 'Amanhã descansas. O corpo agradece.', 'Amanhã o plano pede descanso. Aproveita-o.'],
   amanhaSemTreino: ['Amanhã não há treino planeado.', 'Amanhã o plano não pede treino.', 'Amanhã não tens treino no plano.'],
-  amanhaTreino: (t) => [`Amanhã tens ${t}.`, `Para amanhã, o plano pede ${t}.`, `Amanhã o plano é ${t}.`],
+  amanhaTreino: (t) => [`Amanhã tens ${t}.`, `Para amanhã, o plano pede ${t}.`, `Amanhã o plano é ${t}. Chega lá com energia.`],
   amanhaDepoisDaDor: (t) => [`Amanhã o plano tem ${t}, mas antes falamos da dor.`],
   quando: (q, t) => [`${q} tens ${t}.`, `${q}, o plano pede ${t}.`, `${q} o plano é ${t}.`],
   // A madrugada (pedido 2026-09-26): a frase do sono é a do dia que aí vem —
@@ -537,6 +544,10 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
   const semEnergia = energia > 0 && energia <= 2;
   const emBaixo = (sono > 0 && sono <= 2) || semEnergia;
   const refeicoesHoje = (data.meals || []).filter((m) => String(m?.date).slice(0, 10) === hoje).length;
+  // O que ela sabe da vida dele (pedido 2026-09-26): uma cirurgia, uma lesão,
+  // uma doença que ele lhe contou, com data. Nos dias à volta disso, é a
+  // primeira coisa que ela diz — antes do plano e do check-in.
+  const vida = eventoDaVida(data.coachNotes, hoje);
 
   /* Em que ponto está a prova de hoje: 'antes' da partida, 'aCorrer' (a
      meta estimada pelo objetivo, ou 7 min/km; sem distância, 3 h), ou
@@ -750,6 +761,9 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     const dia = depoisDaMeiaNoite ? diaHoje : diaAmanha;
     const quando = depoisDaMeiaNoite ? 'Hoje' : 'Amanhã';
     const q = quando.toLowerCase();
+    // Com uma cirurgia ou uma lesão por perto, a frase do sono é sobre isso.
+    const sonoDaVida = frasesDaVida(vida, { momento: 'sono', depoisDaMeiaNoite });
+    const dormir = (pool, situation) => (sonoDaVida ? pick(sonoDaVida, 'sonoDaVida') : pick(pool, situation));
     if (dia.tipo === 'prova') {
       // Uma prova à meia-noite, a menos de 4 h, já não é para ir dormir.
       const hora = horaDe(dia.prova);
@@ -759,22 +773,30 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
         lines.push('Sai de casa com tempo. Depois, quero saber como correu.');
       } else {
         lines.push(`${quando} é ${dia.prova.name ? `a prova: ${dia.prova.name}` : 'dia de prova'}${partida(dia.prova)}.`);
-        lines.push(pick(P.sonoProva, 'sonoProva'));
+        lines.push(dormir(P.sonoProva, 'sonoProva'));
       }
       chip = chipDaProva(quando, dia.prova);
     } else if (dia.tipo === 'treino') {
       lines.push(pick(P.quando(quando, dia.falado), 'quando'));
-      lines.push(pick(P.sono(q), 'sono'));
+      lines.push(dormir(P.sono(q), 'sono'));
       chip = chipFor(quando, dia, 'clock');
     } else if (dia.tipo === 'descanso') {
-      lines.push(pick(P.sonoDescanso(q), 'sonoDescanso'));
+      lines.push(dormir(P.sonoDescanso(q), 'sonoDescanso'));
       chip = chipFor(quando, dia);
     } else {
       // Só refeições, sem plano, ou o treino (ou a prova) já feito: dormir,
       // sem treino nenhum na frase.
-      lines.push(pick(P.sonoLivre, 'sonoLivre'));
+      lines.push(dormir(P.sonoLivre, 'sonoLivre'));
       if (dia.titulo) chip = chipFor(quando, dia, 'clock');
     }
+  }
+
+  // O acontecimento da vida dele vai à frente: das duas linhas, a primeira é
+  // essa, e a segunda a primeira do dia (o check-in, a corrida, o plano). O
+  // chip continua a dizer o plano. No dia da prova, a prova manda.
+  if (variant !== 'madrugada' && !provaHoje && diaHoje.tipo !== 'provaFeita') {
+    const daVida = frasesDaVida(vida, { momento: 'dia', variant });
+    if (daVida) lines.unshift(pick(daVida, 'vida'));
   }
 
   // Sobra uma linha? Um número do atleta, se houver (nunca de madrugada:

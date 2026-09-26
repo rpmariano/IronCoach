@@ -587,7 +587,7 @@ describe('pedido 2026-09-26 — o dia da prova', () => {
   });
 
   it('checkinDay: o que a resposta ao check-in vê', () => {
-    expect(checkinDay('2026-09-26', { ...base, raceEvents: [meia] })).toEqual({ tipo: 'semPlano', corrida: false, vespera: true });
+    expect(checkinDay('2026-09-26', { ...base, raceEvents: [meia] })).toEqual({ tipo: 'semPlano', corrida: false, vespera: true, vida: null });
     expect(checkinDay('2026-09-27', { ...base, raceEvents: [meia] })).toMatchObject({ tipo: 'prova', vespera: false });
   });
 });
