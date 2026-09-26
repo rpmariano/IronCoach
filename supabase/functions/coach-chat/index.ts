@@ -2784,7 +2784,11 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
 }
 
 // deno-lint-ignore no-explicit-any
-export async function runProposeTrainingPlan(sb: any, userId: string, args: any): Promise<string> {
+// `seriesIntents` (Fase 2 do Troféu): o papel de cada jornada agendada, por
+// id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
+// jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
+// por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
+export async function runProposeTrainingPlan(sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
   const raceId = typeof args?.race_id === "string" && args.race_id.trim() ? args.race_id.trim() : null;
 
@@ -2803,7 +2807,14 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
   // uma prova logo a seguir ao plano): o dia da prova é a prova, e os dois
   // dias antes são leves. Numa falha da consulta o plano segue sem esta
   // guarda — é uma validação, não o registo.
-  const racesInPeriodOrAfter = await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, 2));
+  const easyDaysBefore = (r: ScheduledRace): number => {
+    const intent = seriesIntents?.[r.id];
+    return intent && (r.race_priority === "b" || r.race_priority === "c")
+      ? sharedGetTaperDays(r.distance_km, r.race_priority, null, null, intent)
+      : PRE_RACE_EASY_DAYS;
+  };
+  const maxEasyDays = Math.max(2, ...Object.values(seriesIntents || {}).map((i) => sharedGetTaperDays(null, "b", null, null, i)));
+  const racesInPeriodOrAfter = await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, maxEasyDays));
   const racesInPeriod = racesInPeriodOrAfter.filter((r) => r.date >= period_start && r.date <= period_end);
 
   // ── O plano é para uma prova (specs/plano-vinculado-a-prova.md §4.1) ─────
@@ -2892,9 +2903,10 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any)
     } else if (item.training_type === "prova") {
       return `Erro no treino ${n}: training_type=prova só num dia com prova agendada, e ${item.planned_date} não tem nenhuma.`;
     }
-    const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= PRE_RACE_EASY_DAYS);
+    const raceSoon = racesInPeriodOrAfter.find((r) => r.date > item.planned_date && daysBetweenISO(item.planned_date, r.date) <= easyDaysBefore(r));
     if (raceSoon && ((item.kind === "corrida" && HARD_RUN_TYPES.has(item.training_type)) || item.kind === "ginasio")) {
-      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}" — só recuperação curta ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
+      const attacked = easyDaysBefore(raceSoon) > PRE_RACE_EASY_DAYS ? ` (é uma jornada para atacar: ${easyDaysBefore(raceSoon)} dias fáceis antes)` : "";
+      return `Erro no treino ${n}: ${item.planned_date} está a ${daysBetweenISO(item.planned_date, raceSoon.date)} dia(s) da prova "${raceSoon.name}"${attacked} — só recuperação curta ou descanso; nada de ${item.kind === "ginasio" ? "ginásio" : item.training_type}.`;
     }
     const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
       ? item.meal_suggestion.trim()
@@ -7092,7 +7104,7 @@ async function handler(req: Request): Promise<Response> {
         } else if (name === "get_running_history") {
           result = await runGetRunningHistory(sb, userId, args || {});
         } else if (name === "propose_training_plan") {
-          result = await runProposeTrainingPlan(sb, userId, args || {});
+          result = await runProposeTrainingPlan(sb, userId, args || {}, seriesBlock?.active ? seriesBlock.intentByRaceId : null);
           planWasProposed = planWasProposed || result.startsWith("Plano criado");
         } else if (name === "update_goals" || name === "update_nutrition_goals") {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.

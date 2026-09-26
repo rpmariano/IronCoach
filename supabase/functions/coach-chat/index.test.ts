@@ -4646,6 +4646,30 @@ Deno.test("guarda de sempre aplicada a jornadas: nada de intervalos na véspera 
   assertStringIncludes(twoDays, "a 2 dia(s) da prova");
 });
 
+// Revisão pré-deploy da Fase 2: uma jornada para atacar pede 3 dias fáceis
+// antes (#6, getTaperDays por intenção), e a guarda do plano sabe-o; sem os
+// papéis (quem não está inscrito) é a guarda de sempre, com 2.
+Deno.test("guarda do plano: 3 dias fáceis antes de uma jornada para atacar; 2 antes das outras; sem papéis, a de sempre", async () => {
+  const races = [{ id: "rj3", name: "Corrida do Clube", date: "2026-08-15", distance_km: 7.4, race_priority: "b", cup_round_id: "j3" }];
+  const plan = (planned_date: string) => ({
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date, kind: "corrida", training_type: "intervalos", target_distance_km: 8 }],
+  });
+  const threeDays = plan("2026-08-12");
+  const attacked = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", threeDays, { rj3: "atacar" });
+  assertStringIncludes(attacked, 'a 3 dia(s) da prova "Corrida do Clube" (é uma jornada para atacar: 3 dias fáceis antes)');
+  for (const intents of [null, { rj3: "controlar" as const }, { rj3: "trote" as const }]) {
+    const r = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", threeDays, intents);
+    assertEquals(r.includes("dia(s) da prova"), false, JSON.stringify(intents));
+  }
+  // A 4 dias, nem a atacada trava.
+  const fourDays = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", plan("2026-08-11"), { rj3: "atacar" });
+  assertEquals(fourDays.includes("dia(s) da prova"), false);
+  // A 2 dias, a mensagem das outras fica igual à de sempre.
+  const twoDays = await runProposeTrainingPlan(makePlanSbWithRaces(races).sb, "user-1", plan("2026-08-13"), { rj3: "controlar" });
+  assertStringIncludes(twoDays, 'a 2 dia(s) da prova "Corrida do Clube" — só recuperação curta ou descanso');
+});
+
 Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscrição ativa (ligações no código)", async () => {
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertStringIncludes(src, "const seriesToolsOn = seriesBlock?.active === true;");

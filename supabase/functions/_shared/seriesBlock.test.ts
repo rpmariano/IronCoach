@@ -233,13 +233,24 @@ Deno.test("M1 em falta no porteiro (42P01, PGRST205) → null, sem exceção e s
   }
 });
 
-Deno.test("um erro em qualquer leitura das outras vagas → null; uma exceção no cliente também", async () => {
+// Revisão pré-deploy da Fase 2: as leituras acessórias (resultados, épocas
+// anteriores, notas) já não apagam o bloco todo — e com ele as SERIES_TOOLS.
+const OPTIONAL_TABLES = new Set(["cup_results", "cup_season_summaries", "coach_notes"]);
+
+Deno.test("um erro numa leitura de que os papéis dependem → null; numa acessória o bloco fica; uma exceção no cliente → null", async () => {
   const warn = console.warn;
   console.warn = () => {};
   try {
+    const full = (await fetchSeriesBlock(fakeSb(EX_TABLES), "u-f", "2026-11-20", { channel: "chat" }))!;
     for (const table of Object.keys(EX_TABLES).filter((t) => t !== "cup_enrollments")) {
       const sb = fakeSb({ ...EX_TABLES, [table]: { error: { code: "XX000", message: `falha em ${table}` } } });
-      assertEquals(await fetchSeriesBlock(sb, "u-f", "2026-11-20", { channel: "chat" }), null, table);
+      const block = await fetchSeriesBlock(sb, "u-f", "2026-11-20", { channel: "chat" });
+      if (OPTIONAL_TABLES.has(table)) {
+        assertEquals(block?.active, true, table);
+        assertEquals(block?.roles, full.roles, table);
+      } else {
+        assertEquals(block, null, table);
+      }
     }
     const throwing = { from() { throw new Error("rede em baixo"); } };
     assertEquals(await fetchSeriesBlock(throwing, "u1", "2026-11-20", { channel: "chat" }), null);
@@ -551,7 +562,7 @@ const MAP_BASE = (short: string, l: string, ls: string, semCal: string) =>
   `e o papel proposto de cada ${l} com data confirmada — os papéis são os da lista, calculados; não os refaças. ${semCal}` +
   `Os papéis são sugestões: ele decide. O que ele disser grava-se com set_cup_participation; se escolher outro papel, explica uma vez o custo e aceita sem julgar. ` +
   `Se houver um plano aceite e as ${ls} a que ele vai não estiverem nele, propõe nesta mesma conversa o plano ajustado com propose_training_plan ` +
-  `(replace_active_plan=true): cada ${l} como prova no dia dela, com os 2 dias fáceis antes, e as principais a mandar.`;
+  `(replace_active_plan=true): cada ${l} como prova no dia dela, com os dias fáceis do papel antes (3 antes de uma atacada, 2 antes das outras), e as principais a mandar.`;
 
 Deno.test("buildCupMapTurn: exato, com e sem calendário, com e sem perguntas", () => {
   const block = buildSeriesBlock(personaInput(persona("J")))!;
@@ -592,4 +603,55 @@ Deno.test("seriesPromptSection: vazio sem bloco (o prompt de quem não está ins
   assertEquals(seriesPromptSection(undefined), "");
   assertEquals(seriesPromptSection(""), "");
   assertEquals(seriesPromptSection("BLOCO"), "BLOCO\n\n");
+});
+
+// ── Revisão pré-deploy da Fase 2 (avisos 1–4) ─────────────────────────────
+
+Deno.test("pontos: o patamar do topo não tem patamar acima — nada de 'a 0 lugares (10 → null pontos)'", () => {
+  const c = persona("C");
+  const block = buildSeriesBlock(personaInput(c, "chat", {
+    edition: { ...personaInput(c).edition!, points_mode: "tabela", points_table: [10, 10, 8, 6, 4], points_basis: "geral" },
+    results: [
+      { round_id: "x1", round_date: "2026-05-24", position: 2, match_status: "confirmada" },
+      { round_id: "x2", round_date: "2026-06-07", position: 1, match_status: "confirmada" },
+      { round_id: "x3", round_date: "2026-06-21", position: 2, match_status: "confirmada" },
+    ],
+  }))!;
+  const line = block.text.split("\n").find((l) => l.startsWith("Pontos"));
+  assertEquals(line, "Pontos (na geral): está no patamar do topo — do 1.º ao 2.º todos têm 10; atacar não muda os pontos.");
+  assertEquals(block.text.includes("null"), false);
+});
+
+Deno.test("resultados por ler: com pontos conhecidos a Carol cala-os — e não diz que não há resultados", () => {
+  const line = (id: string, extra: Partial<SeriesBlockInput>) =>
+    buildSeriesBlock(personaInput(persona(id), "chat", extra))!.text.split("\n").find((l) => l.startsWith("Pontos"));
+  assertEquals(line("A", { results: [], resultsUnknown: true }), "Pontos: não fales de pontos agora (os resultados dele não foram lidos).");
+  // Sem pontos conhecidos, a razão é a de sempre (a leitura não muda nada).
+  assertEquals(line("D", { results: [], resultsUnknown: true }), "Pontos: não fales de pontos (a inscrição dele fica fora das classificações finais).");
+  assertEquals(line("K", { results: [], resultsUnknown: true }), line("K", {}));
+});
+
+Deno.test("notas por ler: a pergunta do treino com o clube não se faz desta vez", () => {
+  const keys = (extra: Partial<SeriesBlockInput>) => buildSeriesBlock(personaInput(persona("J"), "chat", extra))!.questions.map((q) => q.key);
+  assertEquals(keys({}), ["premio", "clube", "principais"]);
+  assertEquals(keys({ notes: [], notesUnknown: true }), ["premio", "principais"]);
+});
+
+Deno.test("corrida registada com atraso: as contas fazem-se no dia real, e a jornada da corrida fica dita à parte", () => {
+  const k = persona("K"); // hoje 01/02/2027; jornadas confirmadas a 10/01 e 24/01 já passaram
+  const sameDay = buildSeriesBlock(personaInput(k, "run"))!;
+  const late = buildSeriesBlock(personaInput(k, "run", { todayISO: "2027-01-10", statusTodayISO: k.today }))!;
+  // Os papéis e a lista são os do dia real — nenhuma jornada já passada aparece como "próxima".
+  assertEquals(late.roles, sameDay.roles);
+  assertEquals(late.intentByRaceId, sameDay.intentByRaceId);
+  const own = late.text.split("\n").filter((l) => l.startsWith("Esta corrida"));
+  assertEquals(own.length, 1);
+  assertStringIncludes(own[0], "Esta corrida (10 jan) foi a Jornada");
+  assertStringIncludes(own[0], "— já passou; a seguinte é a primeira da lista abaixo.");
+  assertEquals(late.text.split("\n").filter((l) => !l.startsWith("Esta corrida")).join("\n"), sameDay.text);
+  // No chat e no cartão diário o dia dado é o real: nada muda.
+  assertEquals(buildSeriesBlock(personaInput(k, "chat", { statusTodayISO: "2027-05-01" }))!.text, buildSeriesBlock(personaInput(k, "chat"))!.text);
+  // Numa corrida sem jornada nesse dia, não há linha à parte.
+  const noRound = buildSeriesBlock(personaInput(k, "run", { todayISO: "2027-01-12", statusTodayISO: k.today }))!;
+  assertEquals(noRound.text, sameDay.text);
 });
