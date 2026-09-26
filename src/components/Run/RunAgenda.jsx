@@ -154,6 +154,17 @@ export default function RunAgenda({ onClose }) {
      página "Detalhes da prova", sem "Guardar prova"; fica "Eliminar". */
   const detailsLocked = !!editingEventId && draft.status === 'concluida';
 
+  /* A prova de uma jornada do Troféu (race_events.cup_round_id, specs/
+     trofeu.md §3.4). Data, distância e local são do organizador: o servidor
+     recusa mudá-los (42501, guard_cup_race_columns) e a sincronização
+     mantém-nos. Aqui ficam só de leitura, com a razão à vista, e não vão no
+     payload — antes o atleta mudava-os e recebia o 42501 cru. O objetivo e
+     o nível ficam opcionais: o tempo da jornada fica vazio até o atleta o
+     marcar e o nível vale o do Perfil (§3.4). Sem inscrição, cup_round_id é
+     sempre null e nada disto muda o formulário (revisão da Fase 1,
+     2026-09-26). */
+  const isCupRound = !!editingEventId && !!draft.cup_round_id;
+
   /* Apagar a prova-objetivo de um plano deixa o plano sem objetivo
      (race_lost_at, migration 20260918074705) — e a Carol vai querer falar
      disso. O atleta pode fazê-lo, mas sabendo o que acontece a seguir; é o
@@ -372,6 +383,9 @@ export default function RunAgenda({ onClose }) {
           // rascunho, por isso tem de vir no canónico.
           coach_balance: ev.coach_balance || null,
           coach_balance_at: ev.coach_balance_at || null,
+          // A jornada do Troféu que esta prova representa (isCupRound): não
+          // é um campo do formulário e não entra no payload.
+          cup_round_id: ev.cup_round_id || null,
         };
         // Prova concluída: os detalhes estão trancados (detailsLocked), por
         // isso um rascunho por gravar já não tem onde ir — descarta-se, em
@@ -658,18 +672,21 @@ export default function RunAgenda({ onClose }) {
 
     // Autodeclarado, não herdado do Perfil: é a peça que permite a um atleta
     // avançado em estrada marcar-se como iniciante na primeira prova de trail.
-    if (!draft.experience_level) {
+    if (!draft.experience_level && !isCupRound) {
       setValidationError('Indica o teu nível para esta prova — o coach usa-o para calibrar o plano.');
       return false;
     }
 
     const targetTimeSecs = parseDurationToSeconds(draft.target_time);
     const targetPaceSecs = parsePaceToSeconds(draft.target_pace);
-    if (!targetTimeSecs || !targetPaceSecs) {
+    // Numa jornada, o objetivo é opcional — mas se o atleta escrever um, vale
+    // a mesma validação.
+    const semObjetivoNaJornada = isCupRound && !draft.target_time?.trim() && !draft.target_pace?.trim();
+    if (!semObjetivoNaJornada && (!targetTimeSecs || !targetPaceSecs)) {
       setValidationError('Indica o objetivo de tempo total ou o ritmo-alvo — o outro campo é calculado automaticamente a partir dele.');
       return false;
     }
-    if (draft.target_time.trim() && !TARGET_TIME_FORMAT_RE.test(draft.target_time.trim())) {
+    if (draft.target_time?.trim() && !TARGET_TIME_FORMAT_RE.test(draft.target_time.trim())) {
       setValidationError('O objetivo de tempo total tem de estar no formato mm:ss ou h:mm:ss (ex.: 50:00 ou 1:45:00).');
       return false;
     }
@@ -711,6 +728,18 @@ export default function RunAgenda({ onClose }) {
       web_info: draft.web_info || null,
       notes: draft.notes?.trim() || null,
     };
+    if (isCupRound) {
+      // Dados do organizador: não se enviam (ver isCupRound).
+      delete payload.date;
+      delete payload.distance_km;
+      delete payload.location;
+      payload.experience_level = draft.experience_level || null;
+      if (semObjetivoNaJornada) {
+        payload.target_time = null;
+        payload.target_time_seconds = null;
+        payload.target_pace_seconds_per_km = null;
+      }
+    }
 
     let createdRaceId = null;
     try {
@@ -1060,8 +1089,10 @@ export default function RunAgenda({ onClose }) {
                   <input id="ra-data"
                     type="date"
                     value={draft.date}
-                    onChange={e => { updateDraft('date', e.target.value) }}
-                    className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
+                    readOnly={isCupRound}
+                    aria-describedby={isCupRound ? 'ra-jornada-organizador' : undefined}
+                    onChange={e => { if (!isCupRound) updateDraft('date', e.target.value) }}
+                    className={"w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]" + (isCupRound ? ' opacity-70' : '')}
                   />
                 </div>
                 <div className="min-w-0">
@@ -1075,6 +1106,12 @@ export default function RunAgenda({ onClose }) {
                 </div>
               </div>
 
+              {isCupRound && (
+                <p id="ra-jornada-organizador" data-testid="ra-jornada-organizador" className="text-[11px] text-[var(--text-3)] -mt-2">
+                  Jornada do Troféu: a data, a distância e o local são dados do organizador — mudam no ecrã do Troféu quando ele os muda.
+                </p>
+              )}
+
               {/* 1.3 Local */}
               <div className="min-w-0">
                 <label htmlFor="ra-local" className="text-[11px] text-[var(--text-3)] mb-1 block">Local <span className="text-[var(--danger)]">*</span></label>
@@ -1083,8 +1120,10 @@ export default function RunAgenda({ onClose }) {
                   maxLength={120}
                   placeholder="Ex.: Lisboa"
                   value={draft.location}
-                  onChange={e => { updateDraft('location', e.target.value) }}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]"
+                  readOnly={isCupRound}
+                  aria-describedby={isCupRound ? 'ra-jornada-organizador' : undefined}
+                  onChange={e => { if (!isCupRound) updateDraft('location', e.target.value) }}
+                  className={"w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-prova)]" + (isCupRound ? ' opacity-70' : '')}
                 />
               </div>
 
@@ -1134,14 +1173,17 @@ export default function RunAgenda({ onClose }) {
                     list="ra-distancia-atalhos"
                     placeholder="Ex.: 10"
                     value={draft.distance_km}
-                    onChange={e => { updateDistance(e.target.value) }}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
+                    readOnly={isCupRound}
+                    aria-describedby={isCupRound ? 'ra-jornada-organizador' : undefined}
+                    onChange={e => { if (!isCupRound) updateDistance(e.target.value) }}
+                    className={"w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]" + (isCupRound ? ' opacity-70' : '')}
                   />
                   <datalist id="ra-distancia-atalhos">
                     {RACE_DISTANCE_OPTIONS.map(opt => (
                       <option key={opt.km} value={opt.km}>{opt.label}</option>
                     ))}
                   </datalist>
+                  {!isCupRound && (
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
                     {RACE_DISTANCE_OPTIONS.map(opt => (
                       <button
@@ -1154,6 +1196,7 @@ export default function RunAgenda({ onClose }) {
                       </button>
                     ))}
                   </div>
+                  )}
                 </div>
                 {draft.race_type === 'trail' && (
                   <div className="min-w-0">

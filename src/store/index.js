@@ -7,6 +7,7 @@ import { newCheckinAlarms, interventionReasonFor, mergeCheckin, readCheckinReaso
 import { TABELAS_POLICY_VERSION } from '../utils/percentile';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
+import { createCupSlice, CUP_EMPTY } from './cupSlice';
 
 const getInitialDashboardTab = () => {
   try {
@@ -177,6 +178,11 @@ export const useAppStore = create((set, get) => ({
   // O botão "Fazer o check-in" das boas-vindas pede ao cartão do Início
   // que abra a persiana do check-in (CheckinCard consome e limpa).
   checkinRequested: false,
+
+  // Competições por jornadas (specs/trofeu.md, Fase 1): a fatia `cup` e as
+  // ações que chamam as RPCs da M1. Vive à parte (cupSlice.js) e nunca é
+  // lida no carregamento inicial — sem inscrição, nada muda no resto.
+  ...createCupSlice(set, get),
   
   // Actions
   setSession: (session) => {
@@ -190,7 +196,9 @@ export const useAppStore = create((set, get) => ({
     try { localStorage.removeItem('ironcoach_insight_states'); } catch { /* sem storage */ }
     // proactiveKeyRequested (P.9): uma chave pedida antes do sign-out não é
     // para o próximo utilizador deste telemóvel.
-    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), lastWelcomeAt: null, insightStates: {}, proactiveKeyRequested: null });
+    // A competição (cupSlice.js) também: a inscrição de quem saiu não passa
+    // para quem entra.
+    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), lastWelcomeAt: null, insightStates: {}, proactiveKeyRequested: null, cup: CUP_EMPTY });
   },
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
 
@@ -1228,6 +1236,7 @@ const EMPTY_DATA = {
   coachMessages: [], raceEvents: [], coachPlans: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
   percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
+  cup: CUP_EMPTY,
 };
 /** O dataPending nunca dura mais do que isto: um pedido que nunca responde
  *  não pode deixar o onboarding, as boas-vindas e o primeiro dia à espera

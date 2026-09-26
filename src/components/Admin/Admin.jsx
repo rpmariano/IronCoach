@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
-import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle } from 'lucide-react';
+import { LayoutGrid, Users, BarChart3, CircleDollarSign, ScrollText, CheckCircle2, ShieldAlert, Utensils, Activity, FileQuestion, Eye, Check, Filter, Bug, RotateCcw, Send, User, Hourglass, XCircle, Trophy } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
+import CompetitionsTab from './Competitions';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
@@ -14,6 +15,10 @@ const ADMIN_TABS = [
   { key: 'metrics', label: 'Métricas', icon: BarChart3 },
   { key: 'costs', label: 'Custos API', icon: CircleDollarSign },
   { key: 'logs', label: 'Logs', icon: ScrollText },
+  // Backoffice do Troféu de Cascais e futuras competições por jornadas
+  // (specs/trofeu.md §6, Fase 1b) — só is_admin; bug_reviewer nunca vê esta
+  // lista (visibleTabs, abaixo, filtra tudo menos 'bug_reports' para ele).
+  { key: 'competitions', label: 'Competições', icon: Trophy },
 ];
 
 /* Preços por milhão de tokens, em USD. Estavam em 0,30/2,50 — desatualizados,
@@ -134,8 +139,18 @@ export default function Admin() {
   const [bugAttachmentUrls, setBugAttachmentUrls] = useState([]);
 
   useEffect(() => {
-    if (!profile?.is_admin) return;
-    loadAdminData();
+    if (profile?.is_admin) { loadAdminData(); return; }
+    // 2026-09-26: um bug_reviewer puro (sem is_admin) nunca chamava
+    // loadAdminData — o ecrã ficava preso no spinner de "A carregar dados
+    // de administração..." para sempre (canAccessAdmin deixa-o passar, mas
+    // `loading` nunca virava false). A aba dele é sempre 'bug_reports', que
+    // não olha para `data`; só precisa de `loading=false` para lá chegar,
+    // sem pedir dados de admin (users, app_logs, meals, coach_messages) a
+    // que não tem — nem devia ter — acesso.
+    if (profile?.bug_reviewer) {
+      setData({ users: [], logs: [], meals: [], coachMsgs: [] });
+      setLoading(false);
+    }
   }, [profile]);
 
   useEffect(() => {
@@ -1192,6 +1207,8 @@ export default function Admin() {
           </div>
         );
       })()}
+
+      {displayedTab === 'competitions' && <CompetitionsTab />}
 
       {displayedTab === 'logs' && (
         <div className="space-y-2 fade-in">
