@@ -12,7 +12,8 @@ No sábado, 2026-09-26, às 03:53 (dia de descanso no plano aceite), as boas-vin
 - Boas-vindas (`src/utils/carolWelcome.js`): cada frase é escolhida pelo que o dia é (`carolDay`: prova, treino, feito, descanso, só refeições, sem plano).
 - A madrugada usa a mesma palavra de dia que o chip; a manhã de prova começa às 04:00; dor e check-in em baixo são respeitados; os treinos são ditos como frase, com vírgula decimal.
 - Resposta ao check-in (`src/utils/checkinReply.js`): depende do dia (descanso, prova, véspera, treino por fazer ou já feito).
-- Cartão de check-in: deixa de perguntar «Como acordaste hoje?» entre as 00:00 e as 05:00.
+- Cartão de check-in: deixa de perguntar «Como acordaste hoje?» entre as 00:00 e as 05:00 (menos a quem já acordou para a prova).
+- Dia da prova (depois de uma revisão adversarial da própria correção): a versão da prova vista de madrugada ocupa também a manhã; a prova concluída tem frases próprias, e nenhuma frase fica a meio; «o que ensaiámos» só com um plano para essa prova; depois da partida, a meta ou o registo, e não «sai de casa com tempo».
 
 **A regra daqui em diante:**
 

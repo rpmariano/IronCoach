@@ -46,7 +46,7 @@ describe('checkinReply', () => {
   /* Pedido 2026-09-26: a resposta sabe o que o dia é. "Nem se olha para o
      relógio" num dia de descanso, ou "Dia normal" na manhã da prova, lembram
      ao atleta que está a falar com uma máquina. */
-  const TIPOS = ['treino', 'feito', 'descanso', 'semTreino', 'semPlano', 'prova'];
+  const TIPOS = ['treino', 'feito', 'descanso', 'semTreino', 'semPlano', 'prova', 'provaFeita'];
   const sem = (tipo) => ({ tipo, corrida: tipo === 'treino', vespera: false });
 
   it('num dia sem treino por fazer, nenhuma resposta fala do treino de hoje', () => {
@@ -73,9 +73,25 @@ describe('checkinReply', () => {
   it('o dia da prova e a véspera não são dias normais', () => {
     expect(checkinReply([dia(HOJE)], HOJE, sem('prova')).text).toBe('Anotado. Hoje é dia de prova.');
     expect(checkinReply([dia(HOJE)], HOJE, { tipo: 'descanso', corrida: false, vespera: true }).text).toBe('Anotado. Amanhã é dia de prova.');
-    expect(checkinReply([dia(HOJE, { sleep: 1 })], HOJE, sem('prova')).text).toBe('Dormiste mal. Na noite antes da prova é normal, e não estraga a corrida.');
+    expect(checkinReply([dia(HOJE, { sleep: 1 })], HOJE, sem('prova')).text).toBe('Dormir mal na noite antes da prova é normal. Não estraga a corrida.');
+    // Na véspera não se diz que "a noite que conta é a de hoje": no dia a seguir ela diz que dormir mal é normal.
+    expect(checkinReply([dia(HOJE, { sleep: 1 })], HOJE, { tipo: 'descanso', vespera: true }).text).not.toMatch(/a noite que conta/i);
+    // Na véspera, o que vem a seguir é a prova, não "o próximo treino".
+    for (const o of [{ pain: 6 }, { sleep: 5, energy: 5 }]) {
+      expect(checkinReply([dia(HOJE, o)], HOJE, { tipo: 'descanso', vespera: true }).text).not.toMatch(/próximo treino/);
+    }
     expect(checkinReply([dia(HOJE, { stress: 5 })], HOJE, sem('prova')).text).toMatch(/^Nervos de dia de prova/);
     expect(checkinReply([dia(HOJE, { pain: 6 })], HOJE, sem('prova')).text).toBe('Uma dor de 6 não se ignora. Quero falar contigo antes da partida.');
+  });
+
+  it('com a prova já feita, a resposta não passa a "dia normal"', () => {
+    expect(checkinReply([dia(HOJE)], HOJE, sem('provaFeita')).text).toBe('Anotado. Hoje foi dia de prova.');
+    expect(checkinReply([dia(HOJE, { energy: 1 })], HOJE, sem('provaFeita')).text).not.toMatch(/treino/);
+  });
+
+  it('mais de uma semana de noites más não começa por um algarismo', () => {
+    const noites = Array.from({ length: 9 }, (_, i) => dia(`2026-09-${String(11 + i).padStart(2, '0')}`, { sleep: 1 }));
+    expect(checkinReply(noites, HOJE).text).toMatch(/^Há mais de uma semana que dormes mal\./);
   });
 
   it('a terceira noite má seguida não se conta como a segunda', () => {

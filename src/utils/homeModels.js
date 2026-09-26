@@ -34,6 +34,11 @@ const TRAINING_TYPE_LABELS = {
   longo: 'Rodagem longa',
   continuo: 'Corrida contínua',
   regenerativo: 'Regenerativo',
+  // Como no registo da corrida (RunRegistration): sem estas, o chip dizia
+  // "Recuperacao" e "Tecnico", sem acento.
+  recuperacao: 'Recuperação',
+  trail: 'Trail',
+  tecnico: 'Técnico (trilho)',
   intervalos: 'Intervalos',
   tempo: 'Tempo',
   fartlek: 'Fartlek',

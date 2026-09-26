@@ -7,7 +7,7 @@ import { Sheet } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
 import { canTrackCycle, scaleLabel, summarizeCheckin, todaysCheckin } from '../../utils/checkin';
 import { checkinReply } from '../../utils/checkinReply';
-import { checkinDay, lisbonParts } from '../../utils/carolWelcome';
+import { checkinDay, lisbonParts, raceToday, acordouParaAProva } from '../../utils/carolWelcome';
 import CoachAvatar from '../Coach/CoachAvatar';
 
 /* O check-in diário (specs/carol-omnisciencia-omnipresenca.md, Fase 2). Vive
@@ -46,8 +46,10 @@ export default function CheckinCard() {
   const reply = useMemo(() => checkinReply(dailyCheckins, today, dia), [dailyCheckins, today, dia]);
   // Depois da meia-noite e antes das 5h, a noite ainda não acabou: "Como
   // acordaste hoje?" ao lado de "Ainda acordado?" das boas-vindas era a
-  // mesma fronteira da meia-noite que as boas-vindas tinham.
-  const madrugada = lisbonParts().hour < 5;
+  // mesma fronteira da meia-noite que as boas-vindas tinham. Menos para quem
+  // já acordou para a prova — a mesma regra que as boas-vindas usam.
+  const lisboa = lisbonParts();
+  const madrugada = lisboa.hour < 5 && !acordouParaAProva(raceToday(raceEvents, lisboa.date));
 
   return (
     <>

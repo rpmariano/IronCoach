@@ -16,7 +16,7 @@
    prova, é o tipo de frase que lembra ao atleta que está a falar com uma
    máquina. `dia` vem de checkinDay (utils/carolWelcome.js), o mesmo que dá
    as boas-vindas: { tipo: 'treino' | 'feito' | 'descanso' | 'semTreino' |
-   'semPlano' | 'prova', corrida, vespera }. Sem `dia`, as frases são as que
+   'semPlano' | 'prova' | 'provaFeita', corrida, vespera }. Sem `dia`, as frases são as que
    servem qualquer dia. */
 
 import { todaysCheckin } from './checkin';
@@ -69,6 +69,7 @@ export function checkinReply(checkins, today, dia = null) {
   const noLocal = onde ? ` (${onde.toLowerCase()})` : '';
   const tipo = dia?.tipo || null;
   const prova = tipo === 'prova';
+  const provaFeita = tipo === 'provaFeita';
   const treino = tipo === 'treino';
   const descanso = tipo === 'descanso';
   const feito = tipo === 'feito';
@@ -77,16 +78,21 @@ export function checkinReply(checkins, today, dia = null) {
   // 1. O que preocupa, primeiro.
   if (dor >= 4) {
     const depois = prova ? 'Quero falar contigo antes da partida.'
-      : treino || !tipo ? 'Hoje não se força, e quero falar contigo sobre ela.'
-        : 'Quero falar contigo sobre ela antes do próximo treino.';
+      : provaFeita ? 'Quero falar contigo sobre ela ainda hoje.'
+        : vespera ? 'Quero falar contigo sobre ela antes da prova de amanhã.'
+          : treino || !tipo ? 'Hoje não se força, e quero falar contigo sobre ela.'
+            : 'Quero falar contigo sobre ela antes do próximo treino.';
     return { mood: 'worried', tone: 'warn', text: `Uma dor de ${dor}${noLocal} não se ignora. ${depois}` };
   }
   if (sono != null && sono <= 2) {
+    // Na manhã da prova não se contam noites: a que conta é a de ontem, e é normal.
+    if (prova) return { mood: 'worried', tone: 'coach', text: 'Dormir mal na noite antes da prova é normal. Não estraga a corrida.' };
     const n = noitesMas(checkins, today);
-    const abertura = n >= 2 ? `${n === 2 ? 'Segunda noite má seguida' : `${EXTENSO[n] || n} noites más seguidas`}.` : 'Dormiste mal.';
+    const abertura = n > 7 ? 'Há mais de uma semana que dormes mal.'
+      : n >= 2 ? `${n === 2 ? 'Segunda noite má seguida' : `${EXTENSO[n]} noites más seguidas`}.` : 'Dormiste mal.';
     let resto;
-    if (prova) resto = 'Na noite antes da prova é normal, e não estraga a corrida.';
-    else if (vespera) resto = 'A noite que conta é a de hoje: deita-te cedo.';
+    if (provaFeita) resto = 'Esta noite, depois da prova, o sono é o que mais recupera.';
+    else if (vespera) resto = 'Esta noite deita-te cedo. Se os nervos não te deixarem dormir, não estraga a corrida.';
     else if (treino) resto = n >= 2 ? 'Hoje não se força nada, e esta noite deitas-te mais cedo.'
       : `Hoje não se força nada${dia?.corrida ? ', nem se olha para o relógio' : ''}.`;
     else if (descanso) resto = n >= 2 ? 'Ainda bem que hoje é descanso. Esta noite, cama mais cedo.' : 'Ainda bem que hoje é descanso.';
@@ -94,10 +100,10 @@ export function checkinReply(checkins, today, dia = null) {
     return { mood: 'worried', tone: 'coach', text: `${abertura} ${resto}` };
   }
   if (stress != null && stress >= 4) {
-    if (prova) return { mood: 'neutral', tone: 'coach', text: 'Nervos de dia de prova. São sinal de que te importa, e o aquecimento acalma-os.' };
+    if (prova) return { mood: 'neutral', tone: 'coach', text: 'Nervos de dia de prova. São sinal de que isto te importa, e o aquecimento acalma-os.' };
     const resto = treino ? 'O treino de hoje faz-se, mas sem puxar.'
       : descanso ? 'Hoje é descanso, e ainda bem.'
-        : feito ? 'O treino já está feito: o resto do dia é para baixar.'
+        : feito ? 'O treino já está feito. O resto do dia é para abrandar.'
           : 'Hoje não se soma mais nada em cima dele.';
     return { mood: 'neutral', tone: 'coach', text: `O stress também pesa como carga. ${resto}` };
   }
@@ -114,18 +120,20 @@ export function checkinReply(checkins, today, dia = null) {
   }
   if (energia === 5 && sono != null && sono >= 4 && dor === 0) {
     const resto = prova ? 'Para dia de prova, melhor não podia ser.'
-      : treino ? 'O treino de hoje apanha-te no dia certo.'
-        : descanso ? 'Hoje descansas na mesma: guarda-a para o próximo treino.'
-          : feito ? 'E o treino de hoje já está feito.'
-            : 'Bom sinal.';
+      : vespera && !treino ? 'Guarda-a para amanhã.'
+        : treino ? 'O treino de hoje apanha-te no dia certo.'
+          : descanso ? 'Hoje descansas na mesma: guarda-a para o próximo treino.'
+            : feito ? 'E o treino de hoje já está feito.'
+              : 'Bom sinal.';
     return { mood: 'happy', tone: 'coach', text: `Energia em cheio e sono em dia. ${resto}` };
   }
   if (energia != null && energia <= 2) {
     const text = prova ? 'Energia em baixo ao acordar é comum no dia da prova. O aquecimento muda isso.'
-      : treino ? 'Energia em baixo. O treino de hoje faz-se leve, sem provar nada a ninguém.'
-        : descanso ? 'Energia em baixo. Hoje é descanso, e é disso que precisas.'
-          : feito ? 'Energia em baixo, e o treino de hoje já está feito. O resto do dia é para recuperar.'
-            : 'Energia em baixo. Não é dia de provar nada a ninguém.';
+      : provaFeita ? 'Energia em baixo. Depois da prova, o resto do dia é para recuperar.'
+        : treino ? 'Energia em baixo. O treino de hoje faz-se leve, sem provar nada a ninguém.'
+          : descanso ? 'Energia em baixo. Hoje é descanso, e é disso que precisas.'
+            : feito ? 'Energia em baixo, e o treino de hoje já está feito. O resto do dia é para recuperar.'
+              : 'Energia em baixo. Não é dia de provar nada a ninguém.';
     return { mood: 'neutral', tone: 'coach', text };
   }
   if (dor > 0) {
@@ -135,6 +143,7 @@ export function checkinReply(checkins, today, dia = null) {
   // 4. O dia normal: curto e seco — é a centésima vez. Mas o dia da prova e
   // a véspera não são dias normais.
   if (prova) return { mood: 'neutral', tone: 'coach', text: 'Anotado. Hoje é dia de prova.' };
+  if (provaFeita) return { mood: 'neutral', tone: 'coach', text: 'Anotado. Hoje foi dia de prova.' };
   if (vespera) return { mood: 'neutral', tone: 'coach', text: 'Anotado. Amanhã é dia de prova.' };
   return { mood: 'neutral', tone: 'coach', text: 'Anotado. Dia normal.' };
 }
