@@ -41,7 +41,7 @@ describe('TabelasScreen', () => {
   it('diz quando sai a próxima tabela — uma terça', async () => {
     render(<TabelasScreen segment={SEG} windowStart="2026-08-31" onClose={() => {}} onManageConsent={() => {}} />);
     await waitFor(() => expect(screen.getByTestId('tabelas-vazia')).toBeInTheDocument());
-    expect(screen.getByTestId('tabelas-proxima')).toHaveTextContent(/^terça, \d{1,2} [a-z]{3}$/);
+    expect(screen.getByTestId('tabelas-proxima')).toHaveTextContent(/^(hoje, de manhã|terça, \d{1,2} [a-z]{3})$/);
   });
 
   it('gerir a presença leva ao consentimento', async () => {

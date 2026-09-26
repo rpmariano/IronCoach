@@ -65,7 +65,7 @@ Dois momentos novos em que ela chama pelo atleta (`@formulas/vitrina.ts`, a mesm
 | `percentile_ready` | Primeiro quando há números de grupos ao lado do escalão dele ("perto"); depois quando é o escalão dele ("meu"). Uma vez cada, por segmento. Só a quem entrou na média. | Frase fixa, sem números |
 | `leaderboard` | Entrou no top 10 do escalão nesta quinzena, ou saiu dele (com a tabela do escalão publicada). Só a quem aceitou aparecer. | Frase fixa, sem posição |
 
-A média e as tabelas atualizam de 14 em 14 dias, à terça: a quinzena fecha ao domingo e sai com um dia de folga, para os treinos de domingo registados na segunda ainda contarem (`publishableWindow`, `nextPublicationDate` em `@formulas/percentileSegments.ts`). O ecrã diz a data da próxima atualização, e a Carol também a sabe.
+A média e as tabelas atualizam de 14 em 14 dias, à terça: a quinzena fecha ao domingo e sai com um dia de folga, para os treinos de domingo registados na segunda ainda contarem (`publishableWindow`, `nextPublicationDate` em `@formulas/percentileSegments.ts`). O ecrã diz a data da próxima atualização, e a Carol também a sabe. A data conta pelo instante e não só pelo calendário: na terça, antes do cron (04:17 UTC, margem até às 04:30), ainda é "hoje, de manhã" (`publicationDayOf`).
 
 A posição e o percentil dizem-se no chat, a ele — nunca no ecrã bloqueado, nunca como pressão para treinar mais (o índice mede quanto do plano ele cumpre), nunca com nomes de outros atletas nem com o número de atletas de um grupo.
 

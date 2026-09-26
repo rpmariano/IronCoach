@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { ageBandFor, closedWindow, nBand, nextPublicationDate, PUBLISH_GRACE_DAYS, publishableWindow, segmentKey, terrainForAthlete, ventileBoundaries, VENTILE_COUNT } from "./percentileSegments.ts";
+import { ageBandFor, closedWindow, nBand, nextPublicationDate, publicationDayOf, PUBLISH_GRACE_DAYS, publishableWindow, segmentKey, terrainForAthlete, ventileBoundaries, VENTILE_COUNT } from "./percentileSegments.ts";
 
 Deno.test("closedWindow: só a janela que já fechou, alinhada à âncora", () => {
   // 2026-09-21: a janela corrente é 09-14 → 09-28 e ainda anda a andar; a
@@ -106,4 +106,16 @@ Deno.test("nextPublicationDate: o fim da quinzena em curso mais a folga — semp
   // A partir da terça, é a quinzena seguinte.
   assertEquals(nextPublicationDate("2026-09-29"), "2026-10-13");
   assertEquals(new Date("2026-10-13T00:00:00Z").getUTCDay(), 2);
+});
+
+// A madrugada da terça (2026-09-26): antes do cron (04:17 UTC, margem até às
+// 04:30), a quinzena ainda não saiu — a próxima atualização é HOJE, não daqui
+// a 14 dias.
+Deno.test("publicationDayOf: antes das 04:30 UTC, a terça ainda conta como segunda", () => {
+  assertEquals(publicationDayOf(Date.parse("2026-09-29T03:00:00Z")), "2026-09-28");
+  assertEquals(publicationDayOf(Date.parse("2026-09-29T04:29:00Z")), "2026-09-28");
+  assertEquals(publicationDayOf(Date.parse("2026-09-29T04:30:00Z")), "2026-09-29");
+  // A próxima atualização, na madrugada: hoje; depois do cron: daqui a 14 dias.
+  assertEquals(nextPublicationDate(publicationDayOf(Date.parse("2026-09-29T02:00:00Z"))), "2026-09-29");
+  assertEquals(nextPublicationDate(publicationDayOf(Date.parse("2026-09-29T05:00:00Z"))), "2026-10-13");
 });

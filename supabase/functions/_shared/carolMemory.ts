@@ -36,7 +36,7 @@ import {
   nomeDoBadge,
 } from "./badgeCatalog.ts";
 import { SOURCE_APPS, type SourceApp, type SourceScreen } from "./sourceApps.ts";
-import { nextPublicationDate, PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom, publishableWindow, type Segment, TERRAIN_LOOKBACK_DAYS, WINDOW_DAYS } from "./formulas/percentileSegments.ts";
+import { nextPublicationDate, PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom, publicationDayOf, publishableWindow, type Segment, TERRAIN_LOOKBACK_DAYS, WINDOW_DAYS } from "./formulas/percentileSegments.ts";
 import { type LeaderboardEntryRow, ownSegmentFor, percentileAvailability, type SnapshotRow } from "./formulas/vitrina.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
@@ -1562,7 +1562,9 @@ export async function fetchVitrinaBlock(
   sb: any,
   userId: string,
   todayISO: string,
-  opts: { withBadges?: boolean } = {},
+  // publicationDay: o dia que conta para a publicação — por omissão o de
+  // agora (publicationDayOf: antes das 04:30 UTC de terça ainda é segunda).
+  opts: { withBadges?: boolean; publicationDay?: string } = {},
 ): Promise<string | null> {
   try {
     const [profR, badgesR, racesR, snapsR, boardR] = await Promise.all([
@@ -1617,7 +1619,7 @@ export async function fetchVitrinaBlock(
       // Sem nenhum badge ganho não há bloco dos badges (aqui nem no chat) — as
       // regras do 6 #6 vêm então aqui, para nunca faltarem.
       includeBadgeRules: !buildBadgesContext(badges),
-      nextPublication: nextPublicationDate(todayISO),
+      nextPublication: nextPublicationDate(opts.publicationDay ?? publicationDayOf(Date.now())),
     });
     return [badgesBlock, vitrina].filter(Boolean).join("\n\n") || null;
   } catch (e) {
