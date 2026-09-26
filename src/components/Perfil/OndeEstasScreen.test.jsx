@@ -141,6 +141,26 @@ describe('OndeEstasScreen', () => {
     expect(screen.getByTestId('onde-estas-screen')).not.toHaveTextContent('Palmarés');
   });
 
+  it('diz quando é a próxima atualização da média — sempre uma terça, nos três estados', async () => {
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: terça, \d{1,2} [a-z]{3}/);
+  });
+
+  it('sem nada publicado, também diz quando sai a próxima', async () => {
+    linhas = [];
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-sem-publicacoes')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: terça, /);
+  });
+
+  it('no grupo pequeno, a mesma linha', async () => {
+    linhas = [{ ...SNAPSHOT, terrain: 'trail' }];
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-segmento-pequeno')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: terça, /);
+  });
+
   it('com uma métrica só, não há seletor (parecia um botão sem função)', async () => {
     render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
     await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());

@@ -16,6 +16,7 @@ import {
   TERRAIN_LABELS,
   ageBandLabel,
   densityCurve,
+  formatPublicationDate,
   isTruncated,
   percentileFrom,
   percentileSentence,
@@ -26,7 +27,7 @@ import {
   widerSegments,
 } from '../../utils/percentile';
 import { evaluatePrescriptions } from '@formulas/prescriptionAdherence.ts';
-import { WINDOW_DAYS } from '@formulas/percentileSegments.ts';
+import { nextPublicationDate, WINDOW_DAYS } from '@formulas/percentileSegments.ts';
 import { ownSegmentFor } from '@formulas/vitrina.ts';
 
 /* "Onde estás" — o percentil dentro do escalão (gamificação, Fase 5).
@@ -217,6 +218,16 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
   }, [coachPlanItems, runs, gymSessions, janela]);
 
   const percentil = snapshot ? percentileFrom(meuIndice, snapshot.boundaries) : null;
+  // A média muda de 14 em 14 dias, à terça (folga de um dia para os registos
+  // de domingo). Dizer quando evita a pergunta "porque é que não mexe?".
+  const proximaAtualizacao = formatPublicationDate(nextPublicationDate(todayISO()));
+  const linhaProxima = (
+    // "Próxima atualização", não "a próxima distribuição sai": num grupo com
+    // menos de 20 atletas nada sai nesse dia, mas os números voltam a ser vistos.
+    <p className="m-0 text-[11px] text-center" data-testid="onde-estas-proxima" style={{ color: 'var(--text-4)' }}>
+      Próxima atualização: {proximaAtualizacao}
+    </p>
+  );
   const frase = percentileSentence(percentil, segmento || {});
   const ehProprio = sameSegment(segmento, segmentoProprio);
 
@@ -326,6 +337,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
               concreto — e ainda nenhum lá chegou. O teu é {segmentPhrase(segmentoProprio)}: quando ele, ou um dos
               grupos ao lado, tiver atletas suficientes, vês aqui onde estás.
             </p>
+            <div className="mt-3">{linhaProxima}</div>
           </GlassCard>
         ) : !snapshot ? (
           /* SEGMENTO PEQUENO — dito, nunca escondido. Não se cola o atleta a
@@ -366,6 +378,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
                 {comDados.length > 0 ? 'Ainda sem dados' : 'Os grupos ao lado também ainda não chegaram lá'}: {listaPorExtenso(semDados)}.
               </p>
             )}
+            <div className="mt-3">{linhaProxima}</div>
             {!ehProprio && voltarAoMeu}
           </GlassCard>
         ) : (
@@ -430,6 +443,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
             <p className="m-0 text-[11px] text-center" data-testid="onde-estas-n-band" style={{ color: 'var(--text-4)' }}>
               {N_BAND_LABELS[snapshot.n_band] || snapshot.n_band} · {formatarJanela(snapshot.window_start, snapshot.window_end)}
             </p>
+            {linhaProxima}
 
             <button
               type="button"

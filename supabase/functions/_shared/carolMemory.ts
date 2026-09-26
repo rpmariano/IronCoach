@@ -36,7 +36,7 @@ import {
   nomeDoBadge,
 } from "./badgeCatalog.ts";
 import { SOURCE_APPS, type SourceApp, type SourceScreen } from "./sourceApps.ts";
-import { PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom, type Segment, TERRAIN_LOOKBACK_DAYS, WINDOW_DAYS } from "./formulas/percentileSegments.ts";
+import { nextPublicationDate, PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom, publishableWindow, type Segment, TERRAIN_LOOKBACK_DAYS, WINDOW_DAYS } from "./formulas/percentileSegments.ts";
 import { type LeaderboardEntryRow, ownSegmentFor, percentileAvailability, type SnapshotRow } from "./formulas/vitrina.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
@@ -1481,6 +1481,8 @@ export interface VitrinaContextInput {
   unseenBadges: string[];
   /** Sem nenhum badge ganho, as regras do 6 #6 vêm aqui (senão vêm no bloco dos badges). */
   includeBadgeRules: boolean;
+  /** O dia (YYYY-MM-DD) da próxima distribuição — nextPublicationDate. */
+  nextPublication?: string | null;
 }
 
 export function buildVitrinaContext(v: VitrinaContextInput): string {
@@ -1529,6 +1531,17 @@ export function buildVitrinaContext(v: VitrinaContextInput): string {
         linhas.push(`- Tabelas com nomes: aceitou aparecer, mas o escalão dele ainda não tem tabela (faltam atletas).`);
       }
     }
+  }
+
+  if (v.statsPoolConsent && v.nextPublication) {
+    /* Qual é a quinzena que sai nesse dia — à segunda de folga, a que sai na
+       terça é a que acabou ontem, não a que começou hoje (revisão pré-deploy
+       de 2026-09-26: "os treinos desta quinzena contam na terça" era falso). */
+    const w = publishableWindow(v.nextPublication);
+    const ultimoDia = w ? addDaysISO(w.end, -1) : null;
+    linhas.push(`- A média e as tabelas atualizam de 14 em 14 dias, à terça; a próxima atualização é a ${v.nextPublication}` +
+      (w ? ` e traz a quinzena de ${w.start} a ${ultimoDia}` : "") + `. Um treino conta na quinzena em que foi feito, e só ` +
+      `aparece no número quando essa quinzena sai — se ele perguntar porque é que o número não mexe, é isto.`);
   }
 
   return `A VITRINA DO PERFIL (o que ele vê no separador Vitrina: os badges de treino, "O que há para ganhar", ` +
@@ -1604,6 +1617,7 @@ export async function fetchVitrinaBlock(
       // Sem nenhum badge ganho não há bloco dos badges (aqui nem no chat) — as
       // regras do 6 #6 vêm então aqui, para nunca faltarem.
       includeBadgeRules: !buildBadgesContext(badges),
+      nextPublication: nextPublicationDate(todayISO),
     });
     return [badgesBlock, vitrina].filter(Boolean).join("\n\n") || null;
   } catch (e) {
