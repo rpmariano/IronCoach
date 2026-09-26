@@ -783,6 +783,15 @@ describe('revisão das boas-vindas de 2026-09-26 — a cara, o fuso e o descanso
       expect(buildWelcome('vespera', plano([], { raceEvents: [meia] }), at('2026-09-26T15:00:00')).mood).toBe('neutral');
       expect(buildWelcome('tarde', plano([]), at('2026-09-28T15:00:00')).mood).toBe('neutral');
     });
+
+    it('no dia da prova, com a dor acima do alarme, a versão da prova também é "worried"', () => {
+      const meia = { id: 'r', name: 'Meia da Nazaré', date: '2026-09-27', status: 'agendada', start_time: '09:30:00' };
+      const comDor = plano([], { raceEvents: [meia], dailyCheckins: [{ date: '2026-09-27', sleep: 4, pain: 8 }] });
+      expect(buildWelcome('prova', comDor, at('2026-09-27T06:00:00')).mood).toBe('worried');
+      expect(buildWelcome('tarde', comDor, at('2026-09-27T13:00:00')).mood).toBe('worried');
+      const semDor = plano([], { raceEvents: [meia], dailyCheckins: [{ date: '2026-09-27', sleep: 4, pain: 2 }] });
+      expect(buildWelcome('prova', semDor, at('2026-09-27T06:00:00')).mood).toBe('happy');
+    });
   });
 
   describe('o fuso do dispositivo', () => {

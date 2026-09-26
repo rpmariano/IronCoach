@@ -51,6 +51,12 @@ function dayPill(day, today) {
    dia cumprido dava "1/2 feitos" (pedido 2026-09-26). */
 const treinosVivos = (d) => trainingItems(liveItems(d.items));
 
+/* Nas contas, nenhum cancelado entra. liveItems devolve o treino que o
+   atleta cancelou quando é a única coisa no dia (para o dia se dizer
+   "Cancelado"), mas não é uma sessão por fazer: contava "1/2" com um só
+   treino vivo (revisão de 2026-09-26). */
+const treinosPorContar = (d) => treinosVivos(d).filter((i) => i.status !== 'cancelado');
+
 /* O resumo que fica no cabeçalho da semana fechada — é o que torna o
    colapso honesto: sem ele, fechar uma semana esconde informação em vez de
    a arrumar. "2/4" são as sessões dadas; uma semana sem nenhum treino
@@ -59,7 +65,7 @@ const treinosVivos = (d) => trainingItems(liveItems(d.items));
    diz isso, e não "Sem treinos", que soava a semana de folga decidida. */
 function weekSummary(week) {
   const days = week?.days || [];
-  const items = days.flatMap(treinosVivos);
+  const items = days.flatMap(treinosPorContar);
   if (items.length === 0) return days.some((d) => d.porPlanear) ? 'Por planear' : 'Sem treinos';
   const done = items.filter((i) => i.status === 'concluido').length;
   return `${done}/${items.length} feitos`;
@@ -239,7 +245,7 @@ export default function PlanoScreen({ onClose }) {
      alvo de 10 km cumprido com 14 km reais dizia "10 km esta semana"
      (pedido 2026-09-26). */
   const summary = useMemo(() => {
-    const items = (currentWeek?.days || []).flatMap(treinosVivos);
+    const items = (currentWeek?.days || []).flatMap(treinosPorContar);
     const done = items.filter((i) => i.status === 'concluido');
     const km = done.reduce((s, i) => {
       const run = (runs || []).find((r) => r?.id === i.completed_run_id);

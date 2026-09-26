@@ -366,7 +366,10 @@ export default function Onboarding({ reentry = false, onDone }) {
         target_time: draft.race_target_time.trim(),
         target_time_seconds: tempoSegundos,
         target_pace_seconds_per_km: Math.round(tempoSegundos / distancia),
-        experience_level: draft.experience_level || 'iniciante',
+        // Sem nível declarado fica null: 'iniciante' aqui tornava impossível
+        // distinguir quem saltou a pergunta (phaseGuidance), e os números já
+        // caem nele sozinhos (resolveExperienceLevel).
+        experience_level: draft.experience_level || null,
         race_priority: 'a',
         elevation_gain_m: draft.race_type === 'trail' ? parseNum(draft.race_elevation_gain_m) : null,
         /* Sem `status`: deixa o default da coluna ('agendada'). Marcá-la

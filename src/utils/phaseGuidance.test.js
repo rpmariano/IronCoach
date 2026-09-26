@@ -34,13 +34,26 @@ describe('phaseGuidance — base', () => {
       .toBe(`Para os 10 km, quero que chegues aos 15 km por semana; andas nos 8. Sobe devagar. ${pergunta}`);
     expect(phaseGuidance({ distanceKm: 25, raceType: 'trail', elevationGainM: 1200, phaseId: 'base', experienceLevel: null }))
       .toBe(`Para o trail, quero que chegues aos 35 km por semana, quase todos em ritmo fácil. Com 1200 m de D+ na prova, as subidas também vão entrar. ${pergunta}`);
+    // Nem o teto do longo (10 a 12 km, 1h30) nem os dias de polimento (10) do iniciante.
     for (const phaseId of ['base', 'build', 'peak', 'taper']) {
       for (const weeklyVolumeKm of [null, 8, 70]) {
-        const text = phaseGuidance({ ...meia, phaseId, experienceLevel: null, weeklyVolumeKm, daysToRace: 18 });
-        expect(text).not.toMatch(/teu nível|2 a 3 km|ainda não há limiar|quatro a seis semanas/);
-        expect(text).toContain(pergunta);
+        for (const daysToRace of [18, 9]) {
+          const text = phaseGuidance({ ...meia, phaseId, experienceLevel: null, weeklyVolumeKm, daysToRace });
+          expect(text).not.toMatch(/teu nível|2 a 3 km|ainda não há limiar|quatro a seis semanas|12 km|1h30|últimos 10 dias/);
+          expect(text.endsWith(pergunta)).toBe(true);
+        }
       }
     }
+    expect(phaseGuidance({ ...meia, phaseId: 'peak', experienceLevel: null, weeklyVolumeKm: 70 }))
+      .toBe(`No pico, o longo chega ao mais comprido do ciclo, e até onde vai depende da experiência que já tens. É nesses longos que testas o que vais comer e beber na prova. ${pergunta}`);
+    expect(phaseGuidance({ distanceKm: 25, raceType: 'trail', elevationGainM: 1200, phaseId: 'peak', experienceLevel: null }))
+      .toBe(`No pico, o longo mede-se em tempo e não em distância, com subida como a da prova, e a duração dele depende da experiência que já tens. É nesses longos que testas o que vais comer e beber na prova. ${pergunta}`);
+    expect(phaseGuidance({ distanceKm: 10, phaseId: 'peak', experienceLevel: null, weeklyVolumeKm: 70 }))
+      .toBe(`No pico, o longo chega ao mais comprido do ciclo, e até onde vai depende da experiência que já tens. ${pergunta}`);
+    expect(phaseGuidance({ ...meia, phaseId: 'taper', experienceLevel: null, daysToRace: 18 }))
+      .toBe(`É a tua prova principal: o polimento a sério são os últimos 10 a 14 dias, conforme a experiência que já tens. Até lá, cumpre o plano e não metas treinos novos. ${pergunta}`);
+    expect(phaseGuidance({ ...meia, phaseId: 'taper', experienceLevel: null, daysToRace: 9 }))
+      .toBe(`É a tua prova principal, e já estás no polimento. Nada de treinos novos. ${pergunta}`);
     // Um "iniciante" declarado continua a ouvir os limites dele.
     expect(phaseGuidance({ distanceKm: 10, phaseId: 'base', experienceLevel: 'iniciante', weeklyVolumeKm: 8 })).not.toContain(pergunta);
   });

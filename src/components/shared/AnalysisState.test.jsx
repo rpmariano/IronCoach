@@ -3,6 +3,7 @@ import { render, screen, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AnalysisSkeleton, AnalysisFailure, classifyAnalysisFailure, analysisLacksReference } from './AnalysisState';
 import { useAppStore } from '../../store';
+import { todayISO, addDaysISO } from '../../lib/utils';
 
 /* A espera com a Carol a dizer o que está a ler, e a falha a dizer a causa. */
 
@@ -96,7 +97,8 @@ describe('AnalysisFailure — à vista quando aparece', () => {
 /* A última frase dizia uma comparação que nem sempre existe, e a nota
    prometia um aviso no fim que a app não dá (revisão de 2026-09-26). */
 describe('AnalysisSkeleton — só compara quando há com quê', () => {
-  const PLANO = { id: 'p1', status: 'aceite' };
+  const hoje = todayISO();
+  const PLANO = { id: 'p1', status: 'aceite', period_start: addDaysISO(hoje, -7), period_end: addDaysISO(hoje, 7) };
   const CORRIDA = { id: 'i1', plan_id: 'p1', kind: 'corrida', status: 'pendente' };
   // Com movimento reduzido mostra logo o último passo — o que interessa aqui.
   const reduzido = () => { window.matchMedia = () => ({ matches: true }); };
@@ -119,6 +121,25 @@ describe('AnalysisSkeleton — só compara quando há com quê', () => {
     expect(analysisLacksReference('run', { coachPlans: [{ id: 'p1', status: 'proposto' }], coachPlanItems: [CORRIDA] })).toBe(true);
     expect(analysisLacksReference('run', { coachPlans: [PLANO], coachPlanItems: [{ ...CORRIDA, kind: 'descanso' }] })).toBe(true);
     expect(analysisLacksReference('run', { coachPlans: [PLANO], coachPlanItems: [{ ...CORRIDA, status: 'cancelado' }] })).toBe(true);
+  });
+
+  it('um plano aceite que já acabou, ou que ainda não começou, não conta como plano para comparar', () => {
+    const acabado = { id: 'p1', status: 'aceite', period_start: '2026-06-01', period_end: '2026-07-31' };
+    const futuro = { ...PLANO, period_start: addDaysISO(hoje, 14), period_end: addDaysISO(hoje, 70) };
+    const corridaFeita = { ...CORRIDA, status: 'concluido' };
+    expect(analysisLacksReference('run', { coachPlans: [acabado], coachPlanItems: [corridaFeita], today: '2026-09-26' })).toBe(true);
+    expect(analysisLacksReference('run', { coachPlans: [futuro], coachPlanItems: [CORRIDA] })).toBe(true);
+    expect(analysisLacksReference('run', { coachPlans: [PLANO], coachPlanItems: [CORRIDA] })).toBe(false);
+  });
+
+  it('corrida com um plano aceite que já acabou: não diz que compara com o plano', () => {
+    reduzido();
+    useAppStore.setState({
+      coachPlans: [{ ...PLANO, period_start: addDaysISO(hoje, -60), period_end: addDaysISO(hoje, -1) }],
+      coachPlanItems: [{ ...CORRIDA, status: 'concluido' }],
+    });
+    render(<AnalysisSkeleton kind="run" />);
+    expect(screen.getByTestId('analysis-step')).toHaveTextContent('A ver onde encaixa na tua semana…');
   });
 
   it('primeira avaliação corporal: guarda como ponto de partida, sem comparar', () => {

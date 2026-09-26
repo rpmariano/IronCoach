@@ -104,41 +104,54 @@ export function phaseGuidance(o) {
       return t + pergunta;
     }
     case 'peak': {
-      const g = longRunGuide({ experienceLevel: level, distanceKm: o.distanceKm, raceType: o.raceType, weeklyVolumeKm: vol });
-      // O teto também é em tempo: "2h30", "1h30".
-      const tempo = formatHoursMinutes(g.minutes * 60);
       let t;
-      if (g.byTime) {
-        t = dMais
-          ? `No pico, o longo mede-se em tempo e não em distância: até ${tempo} de corrida, com subida como a da prova.`
-          : `No pico, o longo mede-se em tempo e não em distância: até ${tempo} de corrida.`;
-      } else if (g.byVolumeKm == null) {
-        t = `No pico, o teu longo mais comprido não passa dos ${g.km[0]} a ${g.km[1]} km, nem de ${tempo} de corrida: o que vier primeiro.`;
-      } else if (g.byVolumeKm >= g.km[1]) {
-        t = `No pico, o teu longo mais comprido fica pelos ${g.km[1]} km ou ${tempo} de corrida, o que vier primeiro${declared ? ': é o teto para o teu nível' : ''}.`;
+      if (!declared) {
+        // O teto do longo (km e tempo) é por nível: sem ele declarado, seria
+        // o do iniciante dito como facto (revisão de 2026-09-26).
+        t = o.raceType === 'trail'
+          ? `No pico, o longo mede-se em tempo e não em distância${dMais ? ', com subida como a da prova' : ''}, e a duração dele depende da experiência que já tens.`
+          : 'No pico, o longo chega ao mais comprido do ciclo, e até onde vai depende da experiência que já tens.';
       } else {
-        t = `No pico, o teu longo mais comprido fica pelos ${g.byVolumeKm} km, ${g.pct[1]}% do que corres por semana, sem passar de ${tempo} de corrida.`;
+        const g = longRunGuide({ experienceLevel: level, distanceKm: o.distanceKm, raceType: o.raceType, weeklyVolumeKm: vol });
+        // O teto também é em tempo: "2h30", "1h30".
+        const tempo = formatHoursMinutes(g.minutes * 60);
+        if (g.byTime) {
+          t = dMais
+            ? `No pico, o longo mede-se em tempo e não em distância: até ${tempo} de corrida, com subida como a da prova.`
+            : `No pico, o longo mede-se em tempo e não em distância: até ${tempo} de corrida.`;
+        } else if (g.byVolumeKm == null) {
+          t = `No pico, o teu longo mais comprido não passa dos ${g.km[0]} a ${g.km[1]} km, nem de ${tempo} de corrida: o que vier primeiro.`;
+        } else if (g.byVolumeKm >= g.km[1]) {
+          t = `No pico, o teu longo mais comprido fica pelos ${g.km[1]} km ou ${tempo} de corrida, o que vier primeiro: é o teto para o teu nível.`;
+        } else {
+          t = `No pico, o teu longo mais comprido fica pelos ${g.byVolumeKm} km, ${g.pct[1]}% do que corres por semana, sem passar de ${tempo} de corrida.`;
+        }
       }
-      t += pergunta;
       // Nas provas longas, é nos longos que se ensaia o abastecimento.
       if (['meia', 'maratona', 'ultra'].includes(cat) || o.raceType === 'trail') {
         t += ' É nesses longos que testas o que vais comer e beber na prova.';
       }
-      return t;
+      return t + pergunta;
     }
     case 'taper': {
       // Numa prova B ou C, o polimento (4 dias) cabe na última semana, que
       // tem texto próprio no parecer: aqui não chega.
       if (o.racePriority === 'b' || o.racePriority === 'c') return null;
-      const dias = getTaperDays(o.distanceKm, o.racePriority, level, o.raceType);
+      // Os dias de polimento são por nível: sem ele declarado, a gama da
+      // doutrina para esta prova, e não os do iniciante (revisão de 2026-09-26).
+      const gama = (declared ? [level] : LEVELS).map((l) => getTaperDays(o.distanceKm, o.racePriority, l, o.raceType));
+      const dias = Math.min(...gama);
+      const ate = Math.max(...gama);
       const faltam = Number.isFinite(o.daysToRace) ? o.daysToRace : null;
       // A fase ocupa semanas inteiras; o polimento da doutrina são os
       // últimos N dias, e pode ainda não ter começado.
       if (faltam != null && faltam > dias) {
         // "Já é mais leve" só se o plano desta semana o for de facto.
         const ateLa = o.weekLighterThanLast ? 'a semana já é mais leve, sem treinos novos' : 'cumpre o plano e não metas treinos novos';
-        return `É a tua prova principal: o polimento a sério são os últimos ${dias} dias. Até lá, ${ateLa}.${pergunta}`;
+        const quantos = ate > dias ? `${dias} a ${ate} dias, conforme a experiência que já tens` : `${dias} dias`;
+        return `É a tua prova principal: o polimento a sério são os últimos ${quantos}. Até lá, ${ateLa}.${pergunta}`;
       }
+      if (!declared) return `É a tua prova principal, e já estás no polimento. Nada de treinos novos.${pergunta}`;
       return `É a tua prova principal: estás nos últimos ${dias} dias, os do polimento. Nada de treinos novos.${pergunta}`;
     }
     default:

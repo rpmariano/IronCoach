@@ -66,7 +66,7 @@ const EXTENSO = ['', 'Uma', 'Duas', 'Três', 'Quatro', 'Cinco', 'Seis', 'Sete'];
  * { text, mood, tone } para o check-in de hoje, ou null sem check-in.
  * mood: neutral | happy | worried (CAROL.md §4); tone: coach | warn.
  */
-export function checkinReply(checkins, today, dia = null) {
+export function checkinReply(checkins, today, dia = null, { conversaSobreADor } = {}) {
   const c = todaysCheckin(checkins, today);
   if (!c) return null;
   const ontem = todaysCheckin(checkins, addDays(today, -1));
@@ -93,6 +93,13 @@ export function checkinReply(checkins, today, dia = null) {
     // Depois de uma cirurgia, a dor é assunto da equipa médica primeiro.
     const quando = vida.tipo === 'cirurgia' ? `depois ${vida.da}` : `com ${vida.a}`;
     return { mood: 'worried', tone: 'warn', text: `Uma dor de ${dor}${noLocal} ${quando} não se ignora. Se não aliviar, fala com a equipa médica, e conta-me como estás.` };
+  }
+  // Sem assunto da dor por abrir — a conversa já aconteceu, ou o que está
+  // pendente é outro (a carga) — não se promete uma conversa que não vem
+  // (revisão de 2026-09-26). Sem se saber (undefined), fica a promessa.
+  if (dor >= 4 && conversaSobreADor === false) {
+    const depois = prova ? 'Se piorar antes da partida, diz-me.' : 'Hoje nada de impacto; se piorar, diz-me.';
+    return { mood: 'worried', tone: 'warn', text: `Uma dor de ${dor}${noLocal} não se ignora. ${depois}` };
   }
   if (dor >= 4) {
     const depois = prova ? 'Quero falar contigo antes da partida.'

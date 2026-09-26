@@ -104,10 +104,13 @@ const itemTitle = planItemTitle;
    PlanDayCard) — aqui serve para o aviso do nutricionista aparecer uma
    única vez por proposta, não por dia (pedido 2026-09-26): repetido em
    CADA dia com refeição, soava a aviso legal martelado. */
-const diaTemSugestao = (items) => (items || []).some((i) => i.meal_suggestion || i.meal_macros);
+export const diaTemSugestao = (items) => (items || []).some((i) => i.meal_suggestion || i.meal_macros);
 
-/* O aviso, uma única vez, abaixo da lista de dias — nunca por dia. */
-function DisclaimerNutricional() {
+/* O aviso, uma única vez, abaixo da lista de dias — nunca por dia. A
+   folha da proposta que o atleta vê de facto é a do chat
+   (PlanProposalBottomSheet), que monta os PlanDayCard sozinha: é lá que
+   este aviso tem de estar, senão desaparece (revisão de 2026-09-26). */
+export function DisclaimerNutricional() {
   return (
     <p className="wpc-info-box-disclaimer mt-2">
       Se alguma refeição não te cai bem, diz-me e troco. Em dúvidas clínicas, fala com um nutricionista.
@@ -524,9 +527,10 @@ export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_D
   return days;
 }
 
-/* Proposta ainda por aceitar — usada pelo chat do Coach (ver Coach.jsx),
-   não pela Home. Exportada para reutilização; sem sítio de aceitar/recusar
-   aqui na Home desde o redesenho — isso agora vive só no chat. */
+/* Proposta ainda por aceitar, em carrossel. Nenhum ecrã a usa hoje: a
+   proposta do chat abre em PlanProposalBottomSheet (Coach/), que monta os
+   PlanDayCard e o aviso das refeições diretamente — uma mudança feita só
+   aqui não chega ao atleta (revisão de 2026-09-26). */
 export function PlanProposalCard({ plan, items, onRespond }) {
   const its = useMemo(() => items.filter(i => i.plan_id === plan.id), [items, plan.id]);
   const days = useMemo(

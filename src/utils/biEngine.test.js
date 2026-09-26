@@ -378,8 +378,8 @@ describe('detectCoachInsights', () => {
 
       describe('calendário apertado', () => {
         const runs = [1, 8, 15, 22].map((daysAgo) => ({ date: iso(daysAgo), distance_km: 10, duration_seconds: 3600 }));
-        // Registada hoje a 30 dias: 4 semanas, contra as 24 de um iniciante.
-        const apertada = (over = {}) => race({ date: iso(-30), distance_km: 42.2, created_at: `${iso(0)}T09:00:00Z`, ...over });
+        // Registada hoje a 28 dias: 4 semanas, contra as 24 de um iniciante.
+        const apertada = (over = {}) => race({ date: iso(-28), distance_km: 42.2, created_at: `${iso(0)}T09:00:00Z`, ...over });
 
         it('sem objetivo de tempo não fala de expectativas de tempo', () => {
           const msg = find(detectCoachInsights({ runs, raceEvents: [apertada()] }, {}), 'race_tactic_time').message;
@@ -390,6 +390,25 @@ describe('detectCoachInsights', () => {
         it('com objetivo de tempo, o objetivo tem de baixar', () => {
           const msg = find(detectCoachInsights({ runs, raceEvents: [apertada({ target_time: '4:30:00' })] }, {}), 'race_tactic_time').message;
           expect(msg).toBe('Faltam 4 semanas para 42,2 km, menos do que a distância pede. O plano fica na adaptação, e o objetivo de tempo tem de baixar.');
+        });
+
+        it('semanas só quando são certas: fora disso, os dias (sem arredondar para baixo)', () => {
+          const trinta = find(detectCoachInsights({ runs, raceEvents: [apertada({ date: iso(-30) })] }, {}), 'race_tactic_time').message;
+          expect(trinta).toMatch(/^Faltam 30 dias para 42,2 km,/);
+          // 10 km de um iniciante: polimento de 7 dias, por isso aos 12 ainda aparece.
+          const doze = find(detectCoachInsights({ runs, raceEvents: [apertada({ date: iso(-12), distance_km: 10 })] }, {}), 'race_tactic_time').message;
+          expect(doze).toMatch(/^Faltam 12 dias para 10 km,/);
+          expect(doze).not.toMatch(/semana/);
+        });
+
+        it('dentro do polimento não diz que o plano fica na adaptação', () => {
+          // Maratona de um iniciante: polimento de 14 dias.
+          const treze = detectCoachInsights({ runs, raceEvents: [apertada({ date: iso(-13) })] }, {});
+          expect(find(treze, 'race_tapering_ev-9').message).toMatch(/^Faltam 13 dias para Corrida do Tejo: começou o polimento\./);
+          expect(find(treze, 'race_tactic_time')).toBeUndefined();
+          const cinco = detectCoachInsights({ runs, raceEvents: [apertada({ date: iso(-5) })] }, {});
+          expect(find(cinco, 'race_final_week_ev-9').message).toContain('Esta semana é polimento');
+          expect(find(cinco, 'race_tactic_time')).toBeUndefined();
         });
       });
     });
@@ -441,6 +460,13 @@ describe('detectCoachInsights', () => {
       const found = insights.find((i) => i.id === 'shoe_wear_shoe-1');
       expect(found.severity).toBe('warning');
       expect(found.title).toBe('Sapatilhas fora de prazo');
+    });
+
+    it('fora de prazo, os km também com vírgula decimal', () => {
+      const insights = detectCoachInsights({ shoes: [shoe()], runs: runsWith(812.3) }, { weight_kg: 70 });
+      const msg = insights.find((i) => i.id === 'shoe_wear_shoe-1').message;
+      expect(msg).toContain('já levam 812,3 km');
+      expect(msg).not.toContain('812.3');
     });
 
     it('o peso do atleta antecipa o aviso no mesmo par e nos mesmos km', () => {

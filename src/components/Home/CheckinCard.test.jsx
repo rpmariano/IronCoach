@@ -43,6 +43,44 @@ describe('CheckinCard', () => {
     expect(saveDailyCheckin.mock.calls[0][0]).toEqual({ sleep: 4, energy: 3, stress: 2, pain: 5, pain_location: 'gémeo direito', period_today: null });
   });
 
+  // Revisão de 2026-09-26: o aviso "Quero falar contigo sobre isto" só
+  // quando o check-in abriu mesmo a conversa (com outra pendente, não abre).
+  const guardarComDor = async () => {
+    renderCard();
+    fireEvent.click(screen.getByTestId('checkin-card'));
+    fireEvent.click(screen.getByRole('button', { name: /Como dormiste\? 4 de 5/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Como está a energia\? 3 de 5/ }));
+    fireEvent.click(screen.getByRole('button', { name: /E o stress\? 2 de 5/ }));
+    fireEvent.change(screen.getByLabelText('Dores?'), { target: { value: '5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(saveDailyCheckin).toHaveBeenCalledTimes(1));
+  };
+
+  it('o aviso da conversa só sai quando o check-in a abriu', async () => {
+    saveDailyCheckin.mockResolvedValue({ ok: true, alarms: [{ code: 'G2' }], opened: true });
+    await guardarComDor();
+    expect(await screen.findByText('Guardado. Quero falar contigo sobre isto.')).toBeInTheDocument();
+  });
+
+  it('com outra conversa já pendente, o alarme não abre nada e o aviso não a promete', async () => {
+    saveDailyCheckin.mockResolvedValue({ ok: true, alarms: [{ code: 'G2' }], opened: false });
+    await guardarComDor();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByText('Guardado. Quero falar contigo sobre isto.')).not.toBeInTheDocument();
+  });
+
+  it('a resposta à dor só promete a conversa com o assunto da dor por abrir', () => {
+    const c = [{ date: todayISO(), sleep: 4, energy: 3, stress: 2, pain: 5, pain_location: 'joelho' }];
+    useAppStore.setState({ dailyCheckins: c, profile: { id: 'u1', gender: 'M', coach_intervention_status: 'resolved', coach_intervention_reason: null } });
+    const { unmount } = renderCard();
+    expect(screen.getByTestId('checkin-reply')).toHaveTextContent('se piorar, diz-me.');
+    expect(screen.getByTestId('checkin-reply')).not.toHaveTextContent('quero falar contigo');
+    unmount();
+    useAppStore.setState({ profile: { id: 'u1', gender: 'M', coach_intervention_status: 'needed', coach_intervention_reason: `Check-in de ${todayISO()}: Dor 5/10 (joelho).` } });
+    renderCard();
+    expect(screen.getByTestId('checkin-reply')).toHaveTextContent(/[Qq]uero falar contigo/);
+  });
+
   it('o convite não promete ajustar o dia: o plano já está decidido, ela diz como fica', () => {
     renderCard();
     const convite = screen.getByTestId('checkin-card');

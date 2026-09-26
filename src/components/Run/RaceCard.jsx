@@ -37,7 +37,7 @@ function formatDatePT(isoStr) {
 }
 
 export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegisterRace, onViewRun }) {
-  const { profile, runs } = useAppStore();
+  const { profile, runs, coachPlans, coachPlanItems } = useAppStore();
   const [expanded, setExpanded] = useState(false);
   const todayIso = todayISO();
 
@@ -68,8 +68,10 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
       profile,
       runs,
       todayISO: todayIso,
+      coachPlans,
+      coachPlanItems,
     });
-  }, [ev, profile, runs, todayIso]);
+  }, [ev, profile, runs, todayIso, coachPlans, coachPlanItems]);
 
   return (
     <div 
@@ -214,11 +216,15 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
                   : (plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText)}
               </p>
 
-              {plan.trainingStatus !== 'not_started' && plan.currentPhase?.evaluation?.score != null && (
+              {/* Sem nota, só "Por registar" (a prova passou sem corrida
+                  registada) tem lugar aqui (revisão de 2026-09-26). */}
+              {plan.trainingStatus !== 'not_started' && (plan.currentPhase?.evaluation?.score != null || plan.currentPhase?.evaluation?.awaitingRecord) && (
                 <div className="flex items-center justify-between pt-1 border-t border-[var(--border-glass)] text-[11px] text-[var(--text-3)]">
                   <span>Classificação da Fase:</span>
                   <span className="font-bold text-[var(--text-2)]">
-                    {plan.currentPhase.evaluation.gradeLabel} · {plan.currentPhase.evaluation.score}%
+                    {plan.currentPhase.evaluation.score != null
+                      ? `${plan.currentPhase.evaluation.gradeLabel} · ${plan.currentPhase.evaluation.score}%`
+                      : plan.currentPhase.evaluation.gradeLabel}
                   </span>
                 </div>
               )}

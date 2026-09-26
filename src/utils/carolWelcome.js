@@ -88,7 +88,7 @@ export function slotKey(now = new Date(), timeZone = welcomeTimeZone()) {
   return { slot, key: `${slotDate}:${slot}`, date, hour };
 }
 
-/** A prova de hoje (dia de Lisboa), por concluir. */
+/** A prova do dia `dateISO` (no fuso de quem chama), por concluir. */
 export function raceToday(raceEvents, dateISO) {
   return (raceEvents || []).find((r) => r && typeof r.date === 'string'
     && r.date.slice(0, 10) === dateISO && r.status !== 'concluida') || null;
@@ -328,7 +328,7 @@ function tituloDoChip(items, raceName) {
    uma treinadora e um gerador de frases. */
 
 /**
- * O que um dia é, para a Carol (dia de Lisboa, plano aceite e agenda de provas):
+ * O que um dia é, para a Carol (a data no fuso de quem chama, plano aceite e agenda de provas):
  * - tipo: 'prova' (por fazer) | 'provaFeita' | 'treino' (há treino por
  *   fazer) | 'feito' (o treino todo feito) | 'descanso' | 'semTreino' (só
  *   refeições sugeridas) | 'semPlano';
@@ -549,7 +549,7 @@ function dataLine(variant, data, hoje, kmHoje = 0) {
     ? pickByDay(WELCOME_PHRASES.faltamDias(diasProva, nextRace.name), hoje, 'faltamDias') : null;
   const ontem = runsOn(data.runs, addDays(hoje, -1)).reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
   const ontemLine = km(ontem) ? pickByDay(WELCOME_PHRASES.ontem(km(ontem)), hoje, 'ontem') : null;
-  // Segunda-feira da semana de hoje (dia da semana em UTC da data de Lisboa).
+  // Segunda-feira da semana de hoje (dia da semana em UTC da data de hoje).
   const dow = (new Date(`${hoje}T00:00:00Z`).getUTCDay() + 6) % 7;
   const segunda = addDays(hoje, -dow);
   const semanaKm = (data.runs || [])
@@ -616,8 +616,10 @@ export function buildWelcome(variant, data = {}, now = new Date(), timeZone = we
   /* A cara dela (CoachAvatar) acompanha o que diz (revisão das boas-vindas
      de 2026-09-26): preocupada só com uma dor acima do alarme — às 23h05
      antes de um descanso não há nada que preocupe —; com cuidado depois de
-     uma noite mal dormida e de madrugada; contente no dia da prova. A
-     versão da prova é sempre 'happy': o texto dela só fala da prova. */
+     uma noite mal dormida e de madrugada; contente no dia da prova. A dor
+     passa à frente também na versão da prova: não sorri na primeira
+     abertura para, na faixa seguinte, pedir para falar da dor antes da
+     partida. */
   const mood = dorForte ? 'worried'
     : dormiuMal || variant === 'madrugada' ? 'caring'
       : diaHoje.tipo === 'prova' || diaHoje.tipo === 'provaFeita' ? 'happy'
@@ -676,7 +678,7 @@ export function buildWelcome(variant, data = {}, now = new Date(), timeZone = we
     const acabou = momento === 'depois' || (momento === 'aCorrer' && kHoje);
     const faixa = slotForHour(hour);
     const greeting = acabou && faixa !== 'madrugada' ? GREETING[faixa](nome) : GREETING.prova(nome);
-    return { variant, greeting, lines, chip, cta: momento === 'antes' ? CTA.prova : 'Entrar', race: true, mood: 'happy' };
+    return { variant, greeting, lines, chip, cta: momento === 'antes' ? CTA.prova : 'Entrar', race: true, mood: dorForte ? 'worried' : 'happy' };
   }
 
   if (variant === 'vespera') {

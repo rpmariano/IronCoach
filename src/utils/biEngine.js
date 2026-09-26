@@ -680,10 +680,13 @@ export function detectCoachInsights(data, profile) {
               metric: 'Viabilidade', value: 0, threshold: 0, module: 'corrida'
             });
           } else if (viability.flags.includes('tempo_insuficiente')) {
-            // No próprio dia já não há preparação para encurtar.
-            if (daysLeft > 0) {
-              const semanas = Math.floor(daysLeft / 7);
-              const quanto = semanas >= 2 ? `Faltam ${semanas} semanas` : semanas === 1 ? 'Falta 1 semana' : faltam(daysLeft);
+            // Dentro do polimento (e no próprio dia) já não há preparação
+            // para encurtar — "o plano fica na adaptação" contradizia o
+            // "começou o polimento" do insight ao lado.
+            if (daysLeft > taperDaysForNext) {
+              // Semanas só quando são certas: arredondar para baixo dava
+              // "Falta 1 semana" aos 13 dias, ao lado de "Faltam 13 dias".
+              const quanto = daysLeft >= 14 && daysLeft % 7 === 0 ? `Faltam ${daysLeft / 7} semanas` : faltam(daysLeft);
               // Sem objetivo de tempo não há expectativa nenhuma a baixar.
               const temObjetivo = targetSeconds > 0 || Number(next.target_pace_seconds_per_km) > 0;
               insights.push({
@@ -731,7 +734,7 @@ export function detectCoachInsights(data, profile) {
           severity: excedida ? 'warning' : 'info',
           title: excedida ? 'Sapatilhas fora de prazo' : 'Sapatilhas perto do fim',
           message: excedida
-            ? `As ${shoeLabel(worst.shoe)} já levam ${worst.wear.km} km — passaste os ${worst.wear.lifespanKm} km de vida útil estimada para o teu peso. A entressola já não absorve como devia; trocar de par é das formas mais baratas de evitar uma lesão.`
+            ? `As ${shoeLabel(worst.shoe)} já levam ${String(worst.wear.km).replace('.', ',')} km — passaste os ${worst.wear.lifespanKm} km de vida útil estimada para o teu peso. A entressola já não absorve como devia; trocar de par é das formas mais baratas de evitar uma lesão.`
             : `As ${shoeLabel(worst.shoe)} vão em ${String(worst.wear.km).replace('.', ',')} km dos ~${worst.wear.lifespanKm} km estimados para o teu peso. Faltam cerca de ${String(worst.wear.remainingKm).replace('.', ',')} km — compra já o par seguinte, para o amaciares antes de estas acabarem.`,
           metric: 'Km das sapatilhas', value: worst.wear.km, threshold: worst.wear.lifespanKm, module: 'corrida'
         });

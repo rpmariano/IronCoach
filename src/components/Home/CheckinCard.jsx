@@ -5,7 +5,7 @@ import { todayISO } from '../../lib/utils';
 import GlassCard from '../shared/GlassCard';
 import { Sheet } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
-import { canTrackCycle, scaleLabel, summarizeCheckin, todaysCheckin } from '../../utils/checkin';
+import { canTrackCycle, readCheckinReason, scaleLabel, summarizeCheckin, todaysCheckin } from '../../utils/checkin';
 import { checkinReply } from '../../utils/checkinReply';
 import { checkinDay, lisbonParts, raceToday, acordouParaAProva } from '../../utils/carolWelcome';
 import CoachAvatar from '../Coach/CoachAvatar';
@@ -45,7 +45,12 @@ export default function CheckinCard() {
   // E o que ela sabe da vida dele — uma cirurgia, uma lesão (utils/carolVida.js).
   const coachNotes = useAppStore((s) => s.coachNotes);
   const dia = useMemo(() => checkinDay(today, { coachPlans, coachPlanItems, raceEvents, coachNotes }), [today, coachPlans, coachPlanItems, raceEvents, coachNotes]);
-  const reply = useMemo(() => checkinReply(dailyCheckins, today, dia), [dailyCheckins, today, dia]);
+  // "Quero falar contigo sobre ela" só com o assunto da dor por abrir.
+  const interventionStatus = useAppStore((s) => s.profile?.coach_intervention_status ?? null);
+  const interventionReason = useAppStore((s) => s.profile?.coach_intervention_reason ?? null);
+  const conversaSobreADor = (interventionStatus === 'needed' || interventionStatus === 'in_progress')
+    && !!readCheckinReason(interventionReason)?.dor;
+  const reply = useMemo(() => checkinReply(dailyCheckins, today, dia, { conversaSobreADor }), [dailyCheckins, today, dia, conversaSobreADor]);
   // Depois da meia-noite e antes das 5h, a noite ainda não acabou: "Como
   // acordaste hoje?" ao lado de "Ainda acordado?" das boas-vindas era a
   // mesma fronteira da meia-noite que as boas-vindas tinham. Menos para quem
@@ -156,12 +161,12 @@ export function CheckinSheet({ initial = null, onClose, onSaved }) {
   const save = async () => {
     if (!ready || busy) return;
     setBusy(true);
-    const { ok, alarms } = await saveDailyCheckin(values);
+    const { ok, opened } = await saveDailyCheckin(values);
     setBusy(false);
     if (!ok) { showToast('Não consegui guardar o check-in. Tenta outra vez.', 'error'); return; }
     // A confirmação é a resposta dela no cartão; o aviso só fica para quando
-    // o check-in a chama para uma conversa.
-    if (alarms.length) showToast('Guardado. Quero falar contigo sobre isto.');
+    // o check-in abre mesmo uma conversa — com outra já pendente, não abre.
+    if (opened) showToast('Guardado. Quero falar contigo sobre isto.');
     onSaved?.();
     onClose();
   };

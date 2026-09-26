@@ -5507,14 +5507,14 @@ async function handler(req: Request): Promise<Response> {
       console.error("Falha ao adquirir lock do coach-chat:", lockErr);
     } else if (!lockRows || lockRows.length === 0) {
       // UPDATE não devolveu linhas (não passou no filtro is.null/lt) — outro
-      // pedido para este utilizador está mesmo em curso. Nome só para dar
-      // um tom descontraído à mensagem — não vale a pena falhar o pedido
-      // por causa disto, daí o fallback silencioso para "atleta".
+      // pedido para este utilizador está mesmo em curso. Sem exercícios (uma
+      // dor no gémeo, a madrugada, a manhã da prova), sem "pedido" e sem
+      // "atleta" como vocativo: o nome só quando o há (revisão de 2026-09-26).
       const { data: nameRow } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
       const firstName = firstNameOf(nameRow?.display_name as string | null | undefined);
       return jsonResponse({
         busy: true,
-        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso.`,
+        error: `${firstName ? `${firstName}, ainda` : "Ainda"} estou a acabar de te responder à mensagem anterior. Manda esta outra vez daqui a um instante.`,
       }, 409);
     } else {
       lockedUserId = userId;
@@ -6390,6 +6390,18 @@ async function handler(req: Request): Promise<Response> {
     const badgeQuestionContext = buildBadgeQuestionContext(body.badgeContext);
     if (badgeQuestionContext) {
       finalSystemInstruction += "\n\n--- PERGUNTA SOBRE UM BADGE (foi o atleta que a abriu) ---\n" + badgeQuestionContext;
+    }
+
+    /* Perfil > Memória: o atleta pediu para mudar uma nota. A bolha dele é
+       só o que ele diria; o pedido de a atualizar vem à parte, no mesmo
+       molde do badge (revisão de 2026-09-26). A instrução é a do servidor —
+       do cliente só se usa o texto da nota, com o teto das notas. */
+    const noteToChange = typeof body.noteDiscussion?.note === "string" ? body.noteDiscussion.note.trim().slice(0, 500) : "";
+    if (noteToChange) {
+      finalSystemInstruction += "\n\n--- NOTA DA MEMÓRIA A MUDAR (foi o atleta que a abriu, em Perfil > Memória) ---\n" +
+        `A nota: "${noteToChange}". Ele quer mudá-la: pergunta-lhe o que precisares para perceberes o que está errado e, ` +
+        "quando estiverem de acordo, substitui-a com save_coach_note e replaces_note_id (o id dela está na memória acima). " +
+        "Se ele disser que a nota já não se aplica de todo, diz-lho e não a substituas por uma nota vazia.";
     }
 
     // Texto injetado quando o atleta bateu à porta do "Adaptar Plano" (ver

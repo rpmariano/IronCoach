@@ -283,6 +283,19 @@ describe('PlanoScreen', () => {
     expect(dia).toHaveTextContent('Feito');
   });
 
+  /* Quando está errado: um dia só com o treino que o atleta cancelou
+     continuava a contar no denominador — liveItems devolve-o por ser a
+     única coisa no dia — e dava "1/2" sessões com um só treino vivo
+     (revisão de 2026-09-26). O dia continua a dizer-se "Cancelado". */
+  it('o treino que o atleta cancelou, sozinho no dia, não conta nas sessões da semana', () => {
+    const cancelado = { ...feito, id: 'c1', status: 'cancelado' };
+    const feitoHoje = { ...hoje, status: 'concluido' };
+    setup({ coachPlanItems: [cancelado, feitoHoje] });
+    expect(screen.getByTestId('plano-sessoes')).toHaveTextContent('1/1');
+    expect(screen.getByTestId(`plano-semana-${weekStartOf(today)}`)).toHaveTextContent('1/1 feitos');
+    expect(screen.getByTestId(`plano-dia-${outroDia}`)).toHaveTextContent('Cancelado');
+  });
+
   it('um dia com linha de descanso continua a dizer "Descanso", sem convite', () => {
     const amanha = addDaysISO(today, 1);
     const curto = { id: 'p1', status: 'aceite', period_start: today, period_end: amanha };

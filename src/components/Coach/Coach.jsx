@@ -87,6 +87,14 @@ export const COACH_EMPTY_REPLY_TEXT = 'Não consegui responder agora. Tenta outr
 export const COACH_INITIATED_FALLBACK_TEXT = 'Não consegui acabar o que te queria dizer. Volta a tocar em Falar com a Carol, no Início.';
 export const COACH_INITIATED_NETWORK_TEXT = 'A rede falhou. Volta a tocar em Falar com a Carol, no Início.';
 const HOME_ALERT_FAILURE = { timeout: COACH_INITIATED_FALLBACK_TEXT, network: COACH_INITIATED_NETWORK_TEXT };
+// As outras conversas que ela abre (insights, cartões e registos, o fim do
+// arranque, o "Adaptar Plano"): não houve pergunta, por isso nada de "Não
+// consegui responder", e não há um aviso no Início a que voltar — os
+// insights, por exemplo, saem de lá como entendidos ao abrir a conversa
+// (revisão de 2026-09-26). Na rede fica o genérico, que já não presume
+// pergunta.
+export const COACH_INITIATED_LATER_TEXT = 'Não consegui acabar o que te queria dizer. Tenta outra vez daqui a bocado.';
+const COACH_INITIATED_FAILURE = { timeout: COACH_INITIATED_LATER_TEXT };
 
 // Variantes do aviso de demora (handleAsyncFallback), escolhida ao acaso a
 // cada aviso. Na voz dela (CAROL.md): sem emoji, sem exclamação, e nunca a
@@ -143,6 +151,15 @@ export default function Coach() {
     reloadCoachGoalProposals();
   }, []);
 
+  // A conversa silenciosa ainda em curso (a mensagem proativa ao abrir o
+  // chat, abaixo): o que o atleta pedir entretanto espera a vez em vez de
+  // sair já — o servidor ainda a tem em mãos e recusava o pedido dele com
+  // 409 `busy`.
+  const silentRunRef = useRef(null);
+  const afterSilentRun = async () => {
+    while (silentRunRef.current) await silentRunRef.current.catch(() => null);
+  };
+
   // Motor partilhado das conversas que a própria Carol inicia sem o atleta
   // escrever nada (handleProactiveIntervention, handleAdaptPlanCheckin e a
   // mensagem proativa ao abrir o chat, abaixo) — só o payload muda.
@@ -152,13 +169,30 @@ export default function Coach() {
   // 2026-09-12 (o servidor recusou com 409 `busy` a segunda de duas chamadas
   // gémeas ao montar, e o cliente anunciou uma falha de rede que não houve).
   // Num timeout também: nem aviso de demora nem erro no fim, só a resposta
-  // se chegar (ver handleAsyncFallback).
-  // `failure`: as frases do fim quando o pedido veio de um aviso do Início
-  // (HOME_ALERT_FAILURE) — sem ele ficam as genéricas.
-  const sendCoachInitiatedPayload = async (payload, { silent = false, failure = null } = {}) => {
-    if (coachLoading) return null;
-    setCoachLoading(true);
-    setCoachSuggestions([]);
+  // se chegar (ver handleAsyncFallback). E não toma o ecrã enquanto espera:
+  // sem "a escrever…", com o ecrã vazio e as sugestões à vista e o campo
+  // livre — a revisão semanal que dava timeout deixava a bolha "a escrever…"
+  // até 3 minutos e depois sumia sem nada (revisão de 2026-09-26). Ela
+  // "escreve" quando a mensagem chega, como sempre (revealMessage).
+  // `failure`: as frases do fim — as de um aviso do Início
+  // (HOME_ALERT_FAILURE) só quando esse aviso lá está.
+  const sendCoachInitiatedPayload = (payload, options = {}) => {
+    if (coachLoading) return Promise.resolve(null);
+    const run = runCoachInitiatedPayload(payload, options);
+    if (options.silent) {
+      silentRunRef.current = run;
+      const release = () => { if (silentRunRef.current === run) silentRunRef.current = null; };
+      run.then(release, release);
+    }
+    return run;
+  };
+
+  const runCoachInitiatedPayload = async (payload, { silent = false, failure = COACH_INITIATED_FAILURE } = {}) => {
+    if (!silent) {
+      setCoachLoading(true);
+      setCoachSuggestions([]);
+      await afterSilentRun();
+    }
     const requestStartedAt = new Date().toISOString();
 
     try {
@@ -169,9 +203,7 @@ export default function Coach() {
       if (error) {
         if (isTimeout) {
           await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.timeout });
-        } else if (silent) {
-          setCoachLoading(false);
-        } else {
+        } else if (!silent) {
           // O servidor respondeu com uma frase dela (ação P.12): mostra-a
           // (409 busy, 429, 5xx…). Sem frase — falha de rede, ou um erro do
           // gateway que só traz o texto em inglês da supabase-js — cai no
@@ -193,6 +225,10 @@ export default function Coach() {
       }
       if (Array.isArray(data?.suggestions)) {
         setCoachSuggestions(data.suggestions);
+      } else if (silent && data?.model_message?.content) {
+        // Na silenciosa as sugestões não se limparam à partida: as que lá
+        // estavam eram da conversa anterior.
+        setCoachSuggestions([]);
       }
       if (data?.plan_proposed) {
         const freshPlans = await reloadCoachPlans();
@@ -209,7 +245,9 @@ export default function Coach() {
         }
       }
       await refreshAfterTurn(data);
-      setCoachLoading(false);
+      // A silenciosa não o ligou — e o pedido do atleta que esteja à espera
+      // dela ainda está em curso.
+      if (!silent) setCoachLoading(false);
       return data;
     } catch (err) {
       await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.timeout });
@@ -275,13 +313,26 @@ export default function Coach() {
     };
   };
 
+  /* Este intent chega de muitos lados: do aviso "Preciso de falar contigo" no
+     Início (e do toque na notificação desse assunto), mas também da janela
+     dos insights (que os deixa como entendidos, e o Início deixa de os
+     mostrar), dos cartões e dos ecrãs de registo. Só o primeiro tem no
+     Início um "Falar com a Carol" a que voltar — o assunto por resolver do
+     perfil, com o mesmo motivo e sem registo por trás (revisão de
+     2026-09-26). */
+  const interventionAlertOnHome = (intentData) => (
+    !intentData?.recordType
+    && (profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress')
+    && (intentData?.reason || null) === (profile?.coach_intervention_reason || null)
+  );
+
   const handleProactiveIntervention = (intentData) => sendCoachInitiatedPayload({
     message: '',
     is_intervention_start: true,
     intervention_details: intentData?.reason ? `Motivo/Análise: "${intentData.reason}"` : null,
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
-  }, { failure: HOME_ALERT_FAILURE });
+  }, interventionAlertOnHome(intentData) ? { failure: HOME_ALERT_FAILURE } : {});
 
   // "Adaptar Plano" (WeeklyPlanCard): o atleta é que veio ter com a Carol —
   // ao contrário da intervenção proativa acima (disparada por um alerta que
@@ -321,7 +372,7 @@ export default function Coach() {
     activeInsights: activeInsightsPayload(),
     // Só a divergência vem de um aviso do Início; o "Adaptar Plano" é um
     // botão do cartão do plano, e lá não há "Falar com a Carol" a que voltar.
-  }, { failure: divergence?.length ? HOME_ALERT_FAILURE : null }).then((data) => {
+  }, divergence?.length ? { failure: HOME_ALERT_FAILURE } : {}).then((data) => {
     if (data && signature) markDivergenceHandled(profile?.id, signature);
     return data;
   });
@@ -508,6 +559,9 @@ export default function Coach() {
     // candidato — não é ele que está errado, é o momento.
     (async () => {
       for (const candidate of ordered) {
+        // Ele escreveu entretanto (a silenciosa não trava o campo): a vez é
+        // dele, e os outros momentos ficam para a próxima abertura.
+        if (useAppStore.getState().coachLoading) return;
         const data = await sendCoachInitiatedPayload({
           message: '',
           proactive_trigger: candidate.trigger,
@@ -746,7 +800,9 @@ export default function Coach() {
   // `silent` (a mensagem proativa ao abrir o chat): ninguém pediu nada, por
   // isso nem aviso nem erro — só a resposta, se chegar. À segunda-feira, a
   // revisão semanal que dava timeout deixava as duas bolhas sozinhas no
-  // chat, sem contexto nenhum (revisão de 2026-09-26).
+  // chat, sem contexto nenhum (revisão de 2026-09-26). Também não mexe no
+  // coachLoading, que não é dela (ver sendCoachInitiatedPayload), e uma
+  // sondagem que falhe acaba calada.
   const handleAsyncFallback = async (requestStartedAt, { silent = false, failureText = COACH_ASYNC_FALLBACK_TEXT } = {}) => {
     const waitingId = `waiting-${Date.now()}`;
     if (!silent) {
@@ -757,11 +813,15 @@ export default function Coach() {
       });
     }
 
-    const modelRow = await waitForAsyncReply(requestStartedAt);
+    const modelRow = silent
+      ? await waitForAsyncReply(requestStartedAt).catch(() => null)
+      : await waitForAsyncReply(requestStartedAt);
     if (!silent) removeCoachMessage(waitingId);
 
     if (modelRow) {
       addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true });
+      // As da conversa anterior, que a silenciosa deixou ficar.
+      if (silent) setCoachSuggestions([]);
       // Chegados por sondagem, não temos os flags plan_proposed/goal_proposed/
       // goals_updated do payload síncrono (nem as sugestões rápidas, que só
       // vêm nesse payload e não ficam persistidas) — por isso verificamos
@@ -788,7 +848,7 @@ export default function Coach() {
         content: failureText
       });
     }
-    setCoachLoading(false);
+    if (!silent) setCoachLoading(false);
   };
 
   // Chamado quando invokeEdgeFunctionWithTimeout falha com isTimeout=false —
@@ -832,13 +892,17 @@ export default function Coach() {
       textareaRef.current.style.height = 'auto';
     }
 
-    const requestStartedAt = new Date().toISOString();
-
     // Add user message to state
     const localUserId = Date.now().toString();
     addCoachMessage({ id: localUserId, role: 'user', content: text });
     setCoachLoading(true);
     setCoachSuggestions([]);
+
+    // A pergunta dele fica à vista, mas só sai quando a conversa silenciosa
+    // dela acabar (silentRunRef) — e a hora do pedido conta a partir daí,
+    // para a sondagem não tomar a mensagem dela pela resposta a ele.
+    await afterSilentRun();
+    const requestStartedAt = new Date().toISOString();
 
     try {
       // Injeta os insights biométricos ativos no payload para a Carol

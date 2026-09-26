@@ -402,7 +402,7 @@ describe('o aviso do nutricionista aparece uma só vez, abaixo da lista de dias'
     expect(screen.queryByText(/nutricionista/)).not.toBeInTheDocument();
   });
 
-  it('na folha de propostas, com refeição em dois dias, o aviso aparece uma só vez', () => {
+  it('no cartão de proposta (PlanProposalCard), com refeição em dois dias, o aviso aparece uma só vez', () => {
     const plan = { id: 'p1', period_start: '2026-08-11', period_end: '2026-08-12' };
     const dia1 = item({ id: 'a', plan_id: 'p1', planned_date: '2026-08-11', kind: 'descanso', meal_suggestion: 'Jantar: arroz.' });
     const dia2 = item({ id: 'b', plan_id: 'p1', planned_date: '2026-08-12', kind: 'descanso', meal_suggestion: 'Jantar: peixe.' });
@@ -413,7 +413,7 @@ describe('o aviso do nutricionista aparece uma só vez, abaixo da lista de dias'
     expect(screen.getAllByText(AVISO)).toHaveLength(1);
   });
 
-  it('na folha de propostas sem nenhuma refeição, não há aviso nenhum', () => {
+  it('no cartão de proposta (PlanProposalCard) sem nenhuma refeição, não há aviso nenhum', () => {
     const plan = { id: 'p1', period_start: '2026-08-11', period_end: '2026-08-11' };
     const dia1 = item({ id: 'a', plan_id: 'p1', planned_date: '2026-08-11', kind: 'corrida', target_distance_km: 8 });
     render(<PlanProposalCard plan={plan} items={[dia1]} onRespond={() => {}} />);

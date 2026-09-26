@@ -201,3 +201,37 @@ describe('PlanProposalBottomSheet — a que prova o plano se refere', () => {
     expect(screen.queryByText(/para Meia dos Descobrimentos/)).not.toBeInTheDocument();
   });
 });
+
+/* O aviso das refeições, uma vez por proposta (revisão de 2026-09-26). Esta
+   é a folha que o atleta vê de facto: quando o aviso saiu de dentro de
+   cada dia (PlanDayCard) e só foi posto em cartões que nenhum ecrã monta,
+   aqui ficaram as caixas de sugestão sem aviso nenhum. */
+describe('PlanProposalBottomSheet — o aviso das refeições', () => {
+  const AVISO = 'Se alguma refeição não te cai bem, diz-me e troco. Em dúvidas clínicas, fala com um nutricionista.';
+  const plan = { id: 'plan-n', period_start: '2026-08-15', period_end: '2026-08-16' };
+  const dia = (id, planned_date, extra = {}) => ({ id, plan_id: 'plan-n', planned_date, kind: 'descanso', status: 'pendente', ...extra });
+
+  it('quando está errado: com refeição em dois dias, as duas caixas abertas e o aviso uma só vez', () => {
+    const items = [
+      dia('n1', '2026-08-15', { meal_suggestion: 'Jantar: arroz com legumes.' }),
+      dia('n2', '2026-08-16', { meal_suggestion: 'Jantar: peixe grelhado.' }),
+    ];
+    render(<PlanProposalBottomSheet plan={plan} items={items} onRespondPlan={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes do dia 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes do dia 2' }));
+    expect(screen.getAllByText('Sugestão alimentar e nutricional')).toHaveLength(2);
+    expect(screen.getAllByText(AVISO)).toHaveLength(1);
+  });
+
+  it('o aviso está lá mesmo com os dias fechados, abaixo da lista', () => {
+    const items = [dia('n1', '2026-08-15', { meal_suggestion: 'Jantar: arroz com legumes.' })];
+    render(<PlanProposalBottomSheet plan={plan} items={items} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.getByText(AVISO)).toBeInTheDocument();
+  });
+
+  it('sem nenhuma refeição na proposta, não há aviso', () => {
+    const items = [dia('n1', '2026-08-15', { kind: 'corrida', training_type: 'continuo', target_distance_km: 8 })];
+    render(<PlanProposalBottomSheet plan={plan} items={items} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.queryByText(/nutricionista/)).not.toBeInTheDocument();
+  });
+});

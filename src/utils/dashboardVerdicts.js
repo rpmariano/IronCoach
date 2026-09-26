@@ -24,6 +24,7 @@
  */
 
 import { addDaysISO } from '../lib/utils';
+import { segundaDe } from './badges';
 
 /** O que a Carol diz quando não tem nada para dizer. Nunca inventa. */
 export const NO_DATA_TEXT = 'Ainda não tenho dados suficientes para te dizer como estás.';
@@ -83,18 +84,12 @@ export function streakDirection(series) {
   return { direction, weeks };
 }
 
-/* Semanas de segunda a domingo, como no calculateACWRHistory. */
-function mondayOf(iso) {
-  const back = (new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7;
-  return addDaysISO(iso, -back);
-}
-
 /* Os km de corrida que o plano previa em cada uma das `count` semanas que
    acabam na semana de `today` (a última é a semana em curso). null quando o
    plano não diz nada dessa semana — sem plano não há descida planeada. */
 function plannedRunKmByWeek(planItems, today, count) {
   if (!today) return Array(count).fill(null);
-  const monday = mondayOf(today);
+  const monday = segundaDe(today);
   return Array.from({ length: count }, (_, i) => {
     const start = addDaysISO(monday, -7 * (count - 1 - i));
     const end = addDaysISO(start, 6);

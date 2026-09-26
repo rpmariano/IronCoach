@@ -34,11 +34,21 @@ Também feito no mesmo trabalho, fora do backlog:
 
 **Lote 2 feito** — as linhas médias e altas da secção 4 (servidor), no mesmo ramo. `raceEve.ts` (jantar/deitar depois da hora, provas à noite), `readinessIndex.ts` (check-in com o contexto do dia, viabilidade tática sem inventar dados, vírgula decimal), `send-water-reminders` (os lembretes tardios pela hora real), `proactiveTriggers.ts` (a corrida do dia da prova por ligar em vez de pedir um registo que já existe; o silêncio a contar os treinos do plano em vez de um número de dias cru, com limiar mais largo sem plano nenhum; a dor acima do alarme ou um assunto já aberto a calar o silêncio e o treino de ontem por registar, que passa a nomear o treino) e `coach-daily-summary` (a frase do plano cala-se com dor alta ou o dia em baixo, e já não conta um item concluído; a perda de peso só se atribui ao treino com as duas provas — treino nos últimos 7 dias e ingestão abaixo do gasto — senão fica neutra).
 
+**Lotes 3 e 4 feitos** — as altas e médias das secções 3 e 5 (chat, resultado da prova, BI, dashboards e registos) e todas as baixas, cliente e servidor, no mesmo ramo (commits `fccd7f8` a `a6dac22` e seguintes). Vinte grupos de ficheiros, cada um com implementação, testes e uma verificação adversarial; sete voltaram atrás para reparar o que a verificação apanhou. Os casos que atravessavam grupos ficaram fechados à parte:
+
+- A orientação da fase recebe do motor o nível declarado, as semanas de base feitas, o plano aceite da prova e a semana mais leve; o onboarding grava `null` quando o nível não é dito (sem isso, «no teu nível» e os limites do iniciante chegavam a quem nunca o disse).
+- O aviso das refeições aparece uma vez na folha de propostas que a app mostra de facto (`PlanProposalBottomSheet`).
+- O pedido de mudar uma nota da memória vai à parte para o `coach-chat`, que o injeta no prompt (a bolha do atleta deixou de ter a instrução).
+- O 409 «busy» do chat sem agachamentos nem «pedido».
+- `checkinReply.js:52`: a conversa sobre a dor só se promete com o assunto por abrir, e o aviso «Quero falar contigo sobre isto» só quando o check-in a abriu de facto.
+- O silêncio conta a água registada como presença (o tick passa a última).
+
 Fica para depois (baixo risco, confirmado por que o cliente já mitiga ou é raro):
 
 - `coach-daily-summary:421`: as frases de água em `buildWarningsMessage` continuam a gerar-se, mas o cliente já as ignora (`limparAvisoDoServidor`) e faz a sua a partir de `waterLogs` — sem efeito visível a limpá-las também no servidor.
 - Datas de Lisboa: `DayPlanCard`, `Home` e `WeeklyPlanCard` ainda usam a data do dispositivo (`todayISO`), e o cartão da Carol a de Lisboa. Só diverge num dispositivo fora do fuso de Lisboa, perto da meia-noite.
-- `checkinReply.js:52`, parcial: depois de a conversa sobre a dor acontecer (intervenção fechada no chat), o cartão do check-in ainda diz «quero falar contigo sobre ela».
+
+**Deploy**: tudo isto está só no ramo. O servidor dos Lotes 2 e 4 (`supabase/functions/**`) vai para produção no push a `dev`; o frontend só com o merge para `master`, que precisa de pedido explícito.
 
 ## 1. Início — cartão da Carol e plano
 

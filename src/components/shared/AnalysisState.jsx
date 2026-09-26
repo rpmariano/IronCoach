@@ -4,6 +4,7 @@ import Warning, { WarningAction } from './Warning';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { useAppStore } from '../../store';
+import { todayISO } from '../../lib/utils';
 
 /* A espera com a Carol a dizer o que está a ler (2026-09-19). Cada registo
    por foto são 5 a 15 s de espera; um esqueleto mudo não diz se está a
@@ -34,10 +35,15 @@ export function analysisSteps(kind, semReferencia = false) {
 }
 
 /** Se a análise deste tipo não tem com que comparar: corrida sem plano aceite
- *  com corridas, ou a primeira avaliação corporal. */
-export function analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments } = {}) {
+ *  em curso com corridas, ou a primeira avaliação corporal. */
+export function analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments, today = todayISO() } = {}) {
   if (kind === 'run') {
-    const aceites = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+    // Um plano acabado continua 'aceite', e o analyze-run só compara com o
+    // que cobre a data (period_start <= data <= period_end).
+    const dia = (v) => String(v || '').slice(0, 10);
+    const aceites = new Set((coachPlans || [])
+      .filter((p) => p?.status === 'aceite' && dia(p.period_start) <= today && today <= dia(p.period_end))
+      .map((p) => p.id));
     return !(coachPlanItems || []).some((i) => i && aceites.has(i.plan_id) && i.kind === 'corrida' && i.status !== 'cancelado');
   }
   if (kind === 'body') return !(bodyAssessments || []).length;

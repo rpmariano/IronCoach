@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Sparkles, Check, X, Target, Lightbulb } from 'lucide-react';
-import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
+import { buildPlanDays, diffDaysISO, PlanDayCard, DisclaimerNutricional, diaTemSugestao } from '../Home/WeeklyPlanCard';
 import { formatDayMonth } from '../../utils/homeModels';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
@@ -217,6 +217,10 @@ export function PlanProposalBottomSheet({
                   readOnly
                 />
               ))}
+              {/* Uma vez por proposta, abaixo dos dias — dentro de cada dia
+                  repetia-se em todos os que tinham refeição (revisão de
+                  2026-09-26). */}
+              {days.some((d) => diaTemSugestao(d.items)) && <DisclaimerNutricional />}
             </div>
 
             <div className="flex items-center gap-3">

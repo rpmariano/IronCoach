@@ -22,6 +22,20 @@ describe('checkinReply', () => {
     expect(new Set(dias).size).toBe(3);
   });
 
+  // Revisão de 2026-09-26: a conversa sobre a dor só se promete com o
+  // assunto por abrir; depois de ela acontecer, ou com outro pendente, não.
+  it('sem assunto da dor por abrir, a dor forte não promete conversa', () => {
+    const c = [dia(HOJE, { pain: 5, pain_location: 'joelho' })];
+    expect(checkinReply(c, HOJE, null, { conversaSobreADor: false }).text)
+      .toBe('Uma dor de 5 (joelho) não se ignora. Hoje nada de impacto; se piorar, diz-me.');
+    expect(checkinReply(c, HOJE, { tipo: 'prova' }, { conversaSobreADor: false }).text)
+      .toBe('Uma dor de 5 (joelho) não se ignora. Se piorar antes da partida, diz-me.');
+    expect(checkinReply(c, HOJE, null, { conversaSobreADor: true }).text).toMatch(/quero falar contigo sobre ela/);
+    // Sem se saber, fica a promessa de sempre.
+    expect(checkinReply(c, HOJE).text).toMatch(/quero falar contigo sobre ela/);
+    expectCarolVoice(checkinReply(c, HOJE, null, { conversaSobreADor: false }).text);
+  });
+
   it('a dor forte passa à frente de tudo, com o local', () => {
     const r = checkinReply([dia(HOJE, { pain: 6, pain_location: 'Canela', sleep: 1 })], HOJE);
     expect(r).toMatchObject({ mood: 'worried', tone: 'warn' });

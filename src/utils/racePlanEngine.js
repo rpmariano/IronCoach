@@ -10,18 +10,19 @@
 // - Minetti / ITRA / Naismith (Conversão D+)
 
 import { assessRaceViability, knownRecentWeeklyVolume } from './raceViability';
-import { formatPace, findRaceRun, parseDurationToSeconds } from './run';
+import { formatPace, findRaceRun } from './run';
 import { isTrainingPlan } from './planAcceptance';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { getTaperWeeks as sharedGetTaperWeeks } from '@formulas/taper.ts';
 import { calculateEquivalentFlatKm as sharedCalculateEquivalentFlatKm } from '@formulas/racePrediction.ts';
 import { getRecoveryDaysAfterRace as sharedGetRecoveryDaysAfterRace } from '@formulas/recovery.ts';
-import { getRecommendedPrepWeeks as sharedGetRecommendedPrepWeeks, getEffectiveDistanceKm as sharedGetEffectiveDistanceKm, resolveExperienceLevel as sharedResolveExperienceLevel, computeEffectivePrepStart, getRacePrediction } from '@formulas/racePlanning.ts';
+import { getRecommendedPrepWeeks as sharedGetRecommendedPrepWeeks, getEffectiveDistanceKm as sharedGetEffectiveDistanceKm, resolveExperienceLevel as sharedResolveExperienceLevel, computeEffectivePrepStart } from '@formulas/racePlanning.ts';
 import { computePhaseEvaluation } from '@formulas/racePhaseEvaluation.ts';
 import { computePhaseWindows, resolvePhaseState } from '@formulas/racePhases.ts';
 import { computeRaceEve } from '@formulas/raceEve.ts';
 import { phaseGuidance } from './phaseGuidance';
+import { addDaysISO } from '../lib/utils';
 
 function getTodayISO() {
   const d = new Date();
@@ -318,7 +319,10 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     });
 
   const raceRegistered = daysToRace < 0 && !!findRaceRun(runs, race);
-  const raceUnregistered = daysToRace < 0 && !raceRegistered;
+  // Fechada com "Marcar como concluída": o atleta já disse o que aconteceu,
+  // não se lhe volta a pedir (revisão de 2026-09-26).
+  const raceClosedWithoutRun = daysToRace < 0 && !raceRegistered && race?.status === 'concluida';
+  const raceUnregistered = daysToRace < 0 && !raceRegistered && !raceClosedWithoutRun;
 
   // ─── Construção dos Objetos das 5 Fases ──────────────────────────────────────
   const phases = [
@@ -403,12 +407,16 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
         score: raceRegistered ? 95 : null,
         stars: raceRegistered ? 5 : 0,
         gradeLabel: raceUnregistered ? 'Por registar' : daysToRace < 0 ? 'Concluída' : daysToRace === 0 ? 'Dia da Prova' : 'Objetivo Final',
-        statusColor: raceUnregistered ? 'slate' : 'emerald',
+        statusColor: raceUnregistered || raceClosedWithoutRun ? 'slate' : 'emerald',
+        // Sem nota, a pílula mostra-se só para este estado.
+        awaitingRecord: raceUnregistered,
         /* Antes, durante e depois da prova — "É dia de prova" saía a 40 dias
            dela, e "A prova já foi" na própria manhã (segunda revisão
            pré-deploy de 2026-09-25). */
         summary: raceUnregistered
           ? 'A prova já passou e não a tenho registada. Regista-a, ou diz-me o que aconteceu.'
+          : raceClosedWithoutRun
+          ? 'Ficou concluída sem a corrida registada, por isso fica sem nota. Se ainda a quiseres registar, vais a tempo.'
           : daysToRace < 0
           ? (-daysToRace < recoveryDays
             ? `A prova já foi. Até ${recoveryDays} dias depois dela, recuperação ativa: só corrida muito leve ou caminhadas.`
@@ -462,14 +470,15 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     // dentro do bloco que houver (revisão de 2026-09-26).
     carolOverviewText = `${faltam(daysToRace)}. É uma prova de preparação: corre-a como treino de qualidade; o resto da semana é o do plano.`;
   } else if (daysToRace <= 7) {
-    // Hidratos só numa prova acima de 90 minutos (a régua da véspera,
-    // raceEve.ts): pelo objetivo, senão pela previsão do treino, senão pela
-    // distância. Um 5 km não pede carga nenhuma (revisão de 2026-09-26).
-    const segundos = (v) => (Number(v) > 0 ? Number(v) : null);
-    const duracaoPrevista = segundos(race?.target_time_seconds)
-      ?? segundos(parseDurationToSeconds(race?.target_time))
-      ?? segundos(getRacePrediction(race, profile, runs).predictedSeconds);
-    const { longRace } = computeRaceEve({ plannedFinishSeconds: duracaoPrevista, distanceKm });
+    // Hidratos só numa prova acima de 90 minutos, pela régua da véspera
+    // (raceEve.ts) com as mesmas entradas do cartão do Início (CarolCard):
+    // o objetivo, senão a distância. Com a previsão do treino, uma meia sem
+    // objetivo ficava sem hidratos aqui e com eles no cartão. Um 5 km não
+    // pede carga nenhuma (revisão de 2026-09-26).
+    const { longRace } = computeRaceEve({
+      plannedFinishSeconds: Number(race?.target_time_seconds) > 0 ? Number(race.target_time_seconds) : null,
+      distanceKm: race?.distance_km ?? null,
+    });
     carolOverviewText = `${faltam(daysToRace)}: esta semana já não se ganha forma, só se perde se exagerares. Uma ou duas corridas curtas com umas acelerações; o resto é descansar${longRace ? ' e comer hidratos com regularidade' : ''}.`;
   } else if (currentPhase.evaluation?.metrics?.runsCount > 0) {
     /* Onde está e o que a fase pede a ESTE atleta (utils/phaseGuidance.js:
@@ -477,9 +486,33 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
        D+, com os números da doutrina). Como está a correr — as fáceis, o
        volume da fase — di-lo o cartão da fase, logo abaixo, e o parecer
        não o repete (terceira revisão, 2026-09-25). */
+    /* O que a orientação da fase lê além do nível resolvido (revisão de
+       2026-09-26): o nível DECLARADO — sem ele, resolveExperienceLevel cai
+       em 'iniciante' e ela dizia "no teu nível" a quem nunca o disse —, as
+       semanas de base de facto feitas (desde o início real, até hoje), o
+       plano aceite desta prova, e se a semana do plano é mais leve do que a
+       anterior. */
+    const nivelDeclarado = race?.experience_level || profile?.experience_level || null;
+    const diasEntre = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+    const baseDesde = effectiveStartDate > baseDates.startDate ? effectiveStartDate : baseDates.startDate;
+    const baseAte = today <= baseDates.endDate ? today : addDaysISO(baseDates.endDate, 1);
+    const baseWeeksDone = Math.max(0, Math.floor(diasEntre(baseDesde, baseAte) / 7));
+    const planosDaProva = (coachPlans || []).filter((p) => p?.status === 'aceite' && race?.id && p.race_id === race.id);
+    const idsDaProva = new Set(planosDaProva.map((p) => p.id));
+    const hasAcceptedPlan = planosDaProva.some((p) => isTrainingPlan({ coach_plan_items: (coachPlanItems || []).filter((i) => i?.plan_id === p.id) }));
+    const segunda = addDaysISO(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
+    const kmPlaneados = (de, ate) => (coachPlanItems || [])
+      .filter((i) => i && idsDaProva.has(i.plan_id) && i.kind === 'corrida' && i.status !== 'cancelado')
+      .filter((i) => { const d = String(i.planned_date || '').slice(0, 10); return d >= de && d < ate; })
+      .reduce((s, i) => s + (Number(i.target_distance_km) || 0), 0);
+    const kmEstaSemana = kmPlaneados(segunda, addDaysISO(segunda, 7));
+    const kmSemanaPassada = kmPlaneados(addDaysISO(segunda, -7), segunda);
     const guia = phaseGuidance({
       phaseId: currentPhase.id,
-      experienceLevel,
+      experienceLevel: nivelDeclarado,
+      baseWeeksDone,
+      hasAcceptedPlan,
+      weekLighterThanLast: kmSemanaPassada > 0 && kmEstaSemana < kmSemanaPassada,
       distanceKm,
       raceType,
       elevationGainM,
