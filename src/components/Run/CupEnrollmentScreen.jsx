@@ -182,7 +182,10 @@ export default function CupEnrollmentScreen({ view, onClose, onEnrolled }) {
       aria-modal="true"
       aria-label={`Inscrição em ${nome}`}
       data-testid="cup-enrollment-screen"
-      className="fixed inset-0 z-[80] flex flex-col fade-in"
+      // z-55: acima da nav (40) e do FAB (50), ABAIXO das persianas e popups
+      // (Sheet/Dialog, z-60/70, também em portal no body) que este ecrã abre —
+      // a z-80 abriam por baixo dele (revisão pré-deploy da Fase 1, 2026-09-26).
+      className="fixed inset-0 z-[55] flex flex-col fade-in"
       style={{ background: 'var(--bg-app)' }}
     >
       <div className="flex items-center gap-2.5 shrink-0" style={{ minHeight: 52, padding: '8px 14px', borderBottom: '1px solid var(--border-glass)' }}>
@@ -267,6 +270,7 @@ export default function CupEnrollmentScreen({ view, onClose, onEnrolled }) {
                 aria-label="Nome do teu clube"
                 placeholder="Nome do teu clube"
                 className="mt-2"
+                maxLength={120}
                 value={draft.teamOther}
                 onChange={(e) => set('teamOther', e.target.value)}
               />
@@ -309,6 +313,7 @@ export default function CupEnrollmentScreen({ view, onClose, onEnrolled }) {
               aria-label="Número de dorsal"
               placeholder="Número do dorsal"
               inputMode="numeric"
+              maxLength={20}
               disabled={draft.bibDesconhecido}
               value={draft.bib}
               onChange={(e) => set('bib', e.target.value)}
@@ -354,7 +359,7 @@ export default function CupEnrollmentScreen({ view, onClose, onEnrolled }) {
             <div className="flex flex-col gap-2 mt-1">
               <Opcao id="cup-entrada-eu" name="entrada" testId="cup-entrada-eu" titulo="Eu próprio" checked={draft.entryBy === 'atleta'} onChange={() => set('entryBy', 'atleta')} />
               <Opcao id="cup-entrada-clube" name="entrada" testId="cup-entrada-clube" titulo="O meu clube" checked={draft.entryBy === 'clube'} onChange={() => set('entryBy', 'clube')} />
-              <Opcao id="cup-entrada-nao-sei" name="entrada" testId="cup-entrada-nao-sei" titulo="Não sei" checked={draft.entryBy == null} onChange={() => set('entryBy', null)} />
+              <Opcao id="cup-entrada-nao-sei" name="entrada" testId="cup-entrada-nao-sei" titulo="Não sei" checked={draft.entryBy === 'nao_sei'} onChange={() => set('entryBy', 'nao_sei')} />
             </div>
           </>
         )}

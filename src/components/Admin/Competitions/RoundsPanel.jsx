@@ -46,20 +46,26 @@ export default function RoundsPanel({ edition, competition, readOnly }) {
   // Apagar ou fechar (Cancelar/X) tira o modal e relê a lista. Guardar (o
   // "Guardar" normal ou "Confirmar jornada") NÃO fecha o modal — só relê os
   // dados, para o admin continuar a mexer nos percursos sem reabrir tudo.
+  // O modal passa a editar a linha gravada (uma jornada acabada de criar
+  // deixa de ser 'new').
   const handleClosed = () => { setEditingRound(null); load(); };
-  const handleSaved = () => { load(); };
+  const handleSaved = (row) => { if (row) setEditingRound(row); load(); };
 
-  if (loading) {
+  // O ecrã de carregamento (e o de erro) só na 1.ª leitura: nas releituras
+  // depois de gravar, trocar o painel desmontava o RoundForm, que voltava a
+  // montar com a jornada de antes — um 2.º "Criar jornada" duplicava-a e um
+  // 2.º "Guardar" regravava os valores antigos (revisão pré-deploy da Fase 1,
+  // 2026-09-26).
+  if (rounds === null) {
+    if (error) return <p className="text-xs text-[var(--danger)] text-center py-8">{error}</p>;
     return <p className="text-xs text-[var(--text-3)] text-center py-8">A carregar jornadas...</p>;
-  }
-  if (error) {
-    return <p className="text-xs text-[var(--danger)] text-center py-8">{error}</p>;
   }
 
   const nextRoundNo = rounds.length ? Math.max(...rounds.map((r) => r.round_no || 0)) + 1 : 1;
 
   return (
-    <div className="space-y-2.5 fade-in">
+    <div className="space-y-2.5 fade-in" aria-busy={loading || undefined}>
+      {error && <p role="alert" className="text-xs text-[var(--danger)] text-center">{error}</p>}
       {!readOnly && (
         <button
           onClick={() => setEditingRound('new')}

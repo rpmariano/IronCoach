@@ -251,6 +251,56 @@ describe('CompetitionsTab — jornadas', () => {
     expect(mocks.previewRoundChange).not.toHaveBeenCalled();
   });
 
+  // Revisão pré-deploy da Fase 1 (2026-09-26): com a releitura a demorar (como
+  // na rede), o painel trocava-se por "A carregar jornadas..." e o RoundForm
+  // voltava a montar com a jornada de antes. Os mocks imediatos escondiam-no.
+  describe('com a releitura lenta (como na rede)', () => {
+    const lento = () => {
+      const rapido = mocks.listRounds.getMockImplementation();
+      mocks.listRounds.mockImplementation(async (...a) => {
+        await new Promise((r) => setTimeout(r, 30));
+        return rapido(...a);
+      });
+    };
+    const releuVezes = async (n) => {
+      await waitFor(() => expect(mocks.listRounds).toHaveBeenCalledTimes(n));
+      await new Promise((r) => setTimeout(r, 80));
+    };
+
+    it('depois de "Criar jornada" o modal edita a jornada criada — um 2.º toque não a duplica', async () => {
+      lento();
+      await openEdition('ed34');
+      fireEvent.click(await screen.findByText('Nova jornada'));
+      fireEvent.change(screen.getByLabelText('Nome da jornada'), { target: { value: 'Padroeira' } });
+      fireEvent.click(screen.getByText('Criar jornada'));
+      await waitFor(() => expect(mocks.createRound).toHaveBeenCalledTimes(1));
+      await releuVezes(2);
+      expect(screen.queryByText('Criar jornada')).not.toBeInTheDocument();
+      expect(screen.getByText('Novo percurso')).toBeInTheDocument();
+      expect(screen.getByLabelText('Nome da jornada')).toHaveValue('Padroeira');
+      fireEvent.click(screen.getByText('Guardar'));
+      await waitFor(() => expect(mocks.updateRound).toHaveBeenCalledTimes(1));
+      expect(mocks.createRound).toHaveBeenCalledTimes(1);
+    });
+
+    it('um 2.º "Guardar" não regrava os valores de antes do 1.º', async () => {
+      lento();
+      rounds.push({ id: 'r1', edition_id: 'ed34', round_no: 1, name: 'A', date: null, date_status: 'provavel', location: '' });
+      await openEdition('ed34');
+      fireEvent.click(await screen.findByText(/J1 · A/));
+      fireEvent.change(await screen.findByLabelText('Nome da jornada'), { target: { value: 'B' } });
+      fireEvent.click(screen.getByText('Guardar'));
+      await waitFor(() => expect(mocks.updateRound).toHaveBeenCalledTimes(1));
+      await releuVezes(2);
+      expect(screen.getByLabelText('Nome da jornada')).toHaveValue('B');
+      fireEvent.change(screen.getByLabelText('Local'), { target: { value: 'Cascais' } });
+      fireEvent.click(screen.getByText('Guardar'));
+      await waitFor(() => expect(mocks.updateRound).toHaveBeenCalledTimes(2));
+      expect(mocks.updateRound.mock.calls[1][1]).toMatchObject({ name: 'B', location: 'Cascais' });
+      expect(rounds[0].name).toBe('B');
+    });
+  });
+
   it('apagar uma jornada já corrida mostra o erro do servidor', async () => {
     rounds.push({ id: 'round-corrida', edition_id: 'ed34', round_no: 1, name: 'Padroeira', date: '2026-12-06', date_status: 'confirmada' });
     await openEdition('ed34');

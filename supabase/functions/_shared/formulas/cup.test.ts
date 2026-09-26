@@ -173,6 +173,12 @@ Deno.test("shouldShowCupDoor: inscrito vê sempre a porta da sua edição; quem 
   assertEquals(shouldShowCupDoor(CASCAIS_34_ABERTA, PERSONAS.porto, [], { edition_id: FICTICIA_1.id, status: "ativa" }), null);
   // Edição fechada: a inscrição concluída não abre porta.
   assertEquals(shouldShowCupDoor({ ...CASCAIS_34_ABERTA, status: "encerrada" }, PERSONAS.cascais, [], { ...ativa, status: "concluida" }), null);
+  // O admin voltou a edição a por_anunciar: o inscrito continua a chegar ao
+  // Troféu para gerir ou sair (revisão pré-deploy da Fase 1); quem não está
+  // inscrito continua sem porta. Encerrada nunca abre.
+  assertEquals(shouldShowCupDoor({ ...CASCAIS_34_ABERTA, status: "por_anunciar" }, PERSONAS.porto, [], ativa), "inscrito");
+  assertEquals(shouldShowCupDoor({ ...CASCAIS_34_ABERTA, status: "por_anunciar" }, PERSONAS.cascais, [], null), null);
+  assertEquals(shouldShowCupDoor({ ...CASCAIS_34_ABERTA, status: "encerrada" }, PERSONAS.cascais, [], ativa), null);
 });
 
 // ── §4.3 ────────────────────────────────────────────────────────────────

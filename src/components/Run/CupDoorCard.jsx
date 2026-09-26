@@ -115,6 +115,11 @@ export default function CupDoorCard({ view, onEnroll, onDismiss, onOpenTrofeu })
   const distancia = distanciaLabel(roundRow?.course?.distance_m);
   const dataLabel = nextRound?.date ? diaLabel(nextRound.date) : 'Data a anunciar';
   const provavel = nextRound?.date_status === 'provavel';
+  // Sem próxima jornada: ou o catálogo ainda está a chegar, ou já passaram
+  // todas, ou o calendário não saiu (revisão pré-deploy da Fase 1).
+  const semProximaLabel = !view.catalogReady
+    ? 'A carregar o calendário…'
+    : (door.span?.count ?? 0) > 0 ? 'Sem mais jornadas esta época' : 'Ainda não saiu o calendário';
 
   return (
     <button
@@ -138,7 +143,7 @@ export default function CupDoorCard({ view, onEnroll, onDismiss, onOpenTrofeu })
                 {distancia ? ` · ${distancia}` : ''}
               </p>
             ) : (
-              <p className="m-0 text-[13px] font-bold mt-1" style={{ color: 'var(--text-3)' }}>Ainda não saiu o calendário</p>
+              <p className="m-0 text-[13px] font-bold mt-1" style={{ color: 'var(--text-3)' }}>{semProximaLabel}</p>
             )}
           </div>
           {nextRound && (

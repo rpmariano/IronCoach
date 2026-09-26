@@ -75,6 +75,11 @@ describe('CupTrofeuScreen', () => {
 
     expect(screen.getByTestId('cup-jornada-r-c5')).toHaveTextContent('Data a anunciar');
     expect(screen.queryByTestId('cup-jornada-r-c5-vou')).not.toBeInTheDocument();
+
+    // Já passou (10/01, hoje 11/01): sem "Vou" depois do dia — criava uma
+    // prova agendada no passado (revisão pré-deploy da Fase 1).
+    expect(screen.getByTestId('cup-jornada-r-c2')).toHaveTextContent('(já passou)');
+    expect(screen.queryByTestId('cup-jornada-r-c2-vou')).not.toBeInTheDocument();
   });
 
   it('Confirmar grava as jornadas pendentes, uma vez cada, com decision_source atleta', async () => {

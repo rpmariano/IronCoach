@@ -47,6 +47,10 @@ function clubeLabel(enrollment, teams) {
 function JornadaRow({ round, decision, onChange, roundLabel }) {
   const semData = !round.date;
   const cancelada = round.date_status === 'cancelada';
+  // Já passou: não se decide "Vou" depois do dia — criava uma prova agendada
+  // no passado. O "Não fui"/"Registar" chega na Fase 3 (revisão pré-deploy
+  // da Fase 1, 2026-09-26).
+  const passada = !cancelada && round.suggestion?.reason === 'passada';
   const distancia = distanciaLabel(round.course?.distance_m);
   const groupName = `jornada-${round.id}`;
 
@@ -58,7 +62,7 @@ function JornadaRow({ round, decision, onChange, roundLabel }) {
             {roundLabel} {round.round_no ?? ''} · {round.name || 'Jornada'}
           </span>
           <span className="block text-[11px] mt-[2px]" style={{ color: 'var(--text-4)' }}>
-            {cancelada ? 'Cancelada' : semData ? 'Data a anunciar' : `${diaLabel(round.date)}${round.date_status === 'provavel' ? ' (provável)' : ''}`}
+            {cancelada ? 'Cancelada' : semData ? 'Data a anunciar' : `${diaLabel(round.date)}${passada ? ' (já passou)' : round.date_status === 'provavel' ? ' (provável)' : ''}`}
             {distancia ? ` · ${distancia}` : ''}
           </span>
         </span>
@@ -70,7 +74,7 @@ function JornadaRow({ round, decision, onChange, roundLabel }) {
         </p>
       )}
 
-      {!cancelada && !semData && (
+      {!cancelada && !semData && !passada && (
         <div role="radiogroup" aria-label={`Decisão para ${round.name || 'a jornada'} de ${diaLabel(round.date)}`} className="flex gap-1.5 mt-2.5">
           {DECISOES.map((d) => {
             const id = `${groupName}-${d.value}`;
@@ -168,10 +172,10 @@ function GerirInscricaoSheet({ view, onClose, onLeft }) {
             <span className="text-[12.5px] font-bold" style={{ color: 'var(--text-1)' }}>Não está na lista</span>
           </label>
         </div>
-        {outroClube && <Input aria-label="Nome do clube" placeholder="Nome do teu clube" value={teamOther} onChange={(e) => setTeamOther(e.target.value)} />}
+        {outroClube && <Input aria-label="Nome do clube" placeholder="Nome do teu clube" maxLength={120} value={teamOther} onChange={(e) => setTeamOther(e.target.value)} />}
 
         <SectionLabel style={{ margin: '10px 2px 0' }}>Dorsal</SectionLabel>
-        <Input data-testid="cup-gerir-dorsal" aria-label="Dorsal" placeholder="Número do dorsal" inputMode="numeric" value={bib} onChange={(e) => setBib(e.target.value)} />
+        <Input data-testid="cup-gerir-dorsal" aria-label="Dorsal" placeholder="Número do dorsal" inputMode="numeric" maxLength={20} value={bib} onChange={(e) => setBib(e.target.value)} />
 
         {erro && <Warning tone="danger" title="Não foi possível">{erro}</Warning>}
 
@@ -218,7 +222,7 @@ export default function CupTrofeuScreen({ view, onClose }) {
 
   const baseDecision = (round) => round.participation?.decision ?? round.suggestion?.decision ?? null;
   const efetiva = (round) => (round.id in draft ? draft[round.id] : baseDecision(round));
-  const aplicavel = (round) => !!round.date && round.date_status !== 'cancelada';
+  const aplicavel = (round) => !!round.date && round.date_status !== 'cancelada' && round.suggestion?.reason !== 'passada';
   const pendente = (round) => aplicavel(round) && efetiva(round) !== (round.participation?.decision ?? null);
 
   const pendentes = (rounds || []).filter(pendente);
@@ -276,7 +280,10 @@ export default function CupTrofeuScreen({ view, onClose }) {
       aria-modal="true"
       aria-label={`O teu ${nome}`}
       data-testid="cup-trofeu-screen"
-      className="fixed inset-0 z-[80] flex flex-col fade-in"
+      // z-55: acima da nav (40) e do FAB (50), ABAIXO das persianas e popups
+      // (Sheet/Dialog, z-60/70, também em portal no body) que este ecrã abre —
+      // a z-80 abriam por baixo dele (revisão pré-deploy da Fase 1, 2026-09-26).
+      className="fixed inset-0 z-[55] flex flex-col fade-in"
       style={{ background: 'var(--bg-app)' }}
     >
       <div className="flex items-center gap-2.5 shrink-0" style={{ minHeight: 52, padding: '8px 14px', borderBottom: '1px solid var(--border-glass)' }}>

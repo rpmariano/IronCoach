@@ -121,7 +121,8 @@ describe('CupEnrollmentScreen', () => {
     passo('cup-enrollment-submeter');
 
     await waitFor(() => expect(enrollCup).toHaveBeenCalledTimes(1));
-    expect(enrollCup.mock.calls[0][1]).toMatchObject({ team_id: 't-ind', entry_by: null });
+    // "Não sei" escolhido grava 'nao_sei'; null fica para quem não respondeu.
+    expect(enrollCup.mock.calls[0][1]).toMatchObject({ team_id: 't-ind', entry_by: 'nao_sei' });
   });
 
   it('federado vê "O meu clube não está na lista" e inscreve-se com ele (§4.2.2)', async () => {

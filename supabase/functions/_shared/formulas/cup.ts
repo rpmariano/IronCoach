@@ -259,10 +259,13 @@ export type CupDoorKind = "convite" | "inscrito";
  *  Devolve null (nada muda no ecrã), 'convite' (não inscrito: "Inscrever-me"
  *  / "Não me interessa") ou 'inscrito' (a próxima jornada).
  *
- *  - Só com a edição `aberta`. `por_anunciar` e `encerrada` não abrem porta.
- *  - Inscrição ATIVA nesta edição → 'inscrito', sempre: quem se inscreveu
- *    não perde o caminho para o Troféu por ter treinado noutra cidade ou por
- *    ter dito "Não me interessa" antes.
+ *  - Inscrição ATIVA nesta edição → 'inscrito', sempre (menos `encerrada`):
+ *    quem se inscreveu não perde o caminho para o Troféu — para gerir ou
+ *    sair — por ter treinado noutra cidade, por ter dito "Não me interessa"
+ *    antes, ou porque o admin voltou a edição a `por_anunciar` (revisão
+ *    pré-deploy da Fase 1, 2026-09-26: antes, o estado era visto primeiro).
+ *  - Sem inscrição, só com a edição `aberta`: `por_anunciar` e `encerrada`
+ *    não abrem porta.
  *  - Dispensa desta edição → null.
  *  - Local de treino a ≤ area_radius_km da área (haversine), OU sem local de
  *    treino no perfil → 'convite'.
@@ -280,8 +283,12 @@ export function shouldShowCupDoor(
   dismissals: Array<{ edition_id?: string | null } | string> | null | undefined,
   enrollment: { edition_id?: string | null; status?: string | null } | null | undefined,
 ): CupDoorKind | null {
-  if (!edition?.id || edition.status !== "aberta") return null;
-  if (enrollment && enrollment.status === "ativa" && enrollment.edition_id === edition.id) return "inscrito";
+  if (!edition?.id) return null;
+  if (
+    edition.status !== "encerrada" &&
+    enrollment && enrollment.status === "ativa" && enrollment.edition_id === edition.id
+  ) return "inscrito";
+  if (edition.status !== "aberta") return null;
   if (!profile) return null;
   const dismissed = (dismissals || []).some((d) => (typeof d === "string" ? d : d?.edition_id) === edition.id);
   if (dismissed) return null;
