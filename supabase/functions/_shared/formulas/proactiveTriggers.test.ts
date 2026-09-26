@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds, startTimeMinutes, interventionKey, raceConflictKey, findMissedWorkout, missedWorkoutInReview, missedWorkoutLabel, silenceCandidate, ALL_PROACTIVE_TRIGGERS, type TriggerRace } from "./proactiveTriggers.ts";
+import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds, startTimeMinutes, interventionKey, raceConflictKey, findMissedWorkout, findUnlinkedRaceDayRun, missedWorkoutInReview, missedWorkoutLabel, silenceCandidate, ALL_PROACTIVE_TRIGGERS, type TriggerRace } from "./proactiveTriggers.ts";
 import { assertCarolVoice } from "../carolTone.ts";
 
 const TODAY = "2026-09-18";
@@ -471,6 +471,27 @@ Deno.test("silenceCandidate: a mesma régua do servidor, para o cliente nunca di
   // Plano no período, mas nenhum treino previsto (descanso decidido): não é assunto.
   const descanso = silenceCandidate({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", plans, planItems: [] }, TODAY);
   assertEquals(descanso, null);
+});
+
+Deno.test("silêncio: um plano só de refeições não decide descansos — conta como sem plano", () => {
+  const refeicoes = [{ id: "m1", status: "aceite", period_start: "2026-09-01", period_end: "2026-09-30", hasTraining: false }];
+  // Sem treino no plano, o limiar é o de sem plano: 8 dias calado pergunta.
+  assert(silenceCandidate({ raceEvents: [], runs: [], lastRecordDate: "2026-09-10", plans: refeicoes, planItems: [] }, TODAY));
+  // Com treinos, 0 previstos no período continua a ser descanso decidido.
+  assertEquals(silenceCandidate({ raceEvents: [], runs: [], lastRecordDate: "2026-09-10", plans: [{ ...refeicoes[0], hasTraining: true }], planItems: [] }, TODAY), null);
+});
+
+Deno.test("corrida por ligar: no dia da prova, uma corrida antes da partida ainda não é a prova", () => {
+  const prova = race({ status: "agendada", date: TODAY, start_time: "18:00" });
+  const manha = { id: "aq", date: TODAY, kind: "normal", race_id: null, created_at: `${TODAY}T07:00:00Z` }; // 08:00 em Lisboa
+  const noite = { ...manha, id: "pv", created_at: `${TODAY}T19:30:00Z` }; // 20:30 em Lisboa
+  assertEquals(findUnlinkedRaceDayRun([manha], prova, TODAY), null);
+  assertEquals(findUnlinkedRaceDayRun([manha, noite], prova, TODAY)?.id, "pv");
+  assertEquals(listServerProactive({ raceEvents: [prova], runs: [manha], lastRecordDate: TODAY }, TODAY).some((c) => c.key.endsWith(":por-ligar")), false);
+  // No dia seguinte, a mesma corrida já conta: a hora só separa o próprio dia.
+  assertEquals(findUnlinkedRaceDayRun([manha], prova, "2026-09-19")?.id, "aq");
+  // Sem hora de partida marcada, não há como separar: conta.
+  assertEquals(findUnlinkedRaceDayRun([manha], { ...prova, start_time: null }, TODAY)?.id, "aq");
 });
 
 Deno.test("missedWorkoutLabel: nomeia o tipo, não só 'treino'", () => {

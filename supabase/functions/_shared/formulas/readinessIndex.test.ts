@@ -37,7 +37,7 @@ Deno.test("checkinPillar: dia de descanso não fala de um treino", () => {
 Deno.test("checkinPillar: na véspera ou no dia da prova, dormir mal não mexe na prova", () => {
   assertEquals(
     checkinPillar({ sleep: 1, energy: 5, stress: 1, pain: 0 }, { raceTodayOrTomorrow: true })!.desc,
-    "Dormiste mal. Na véspera de uma prova é normal; não mexe na prova.",
+    "Dormiste mal. Perto de uma prova é normal; não mexe na prova.",
   );
 });
 
@@ -69,4 +69,11 @@ Deno.test("checkinPillar: no dia ou na véspera da prova, nunca 'descanso'", () 
   assertEquals(normal, "Dia normal. Com a prova tão perto, não mudes nada.");
   assertEquals(baixo, "Hoje estás em baixo. Perto de uma prova é normal; não mexe na prova.");
   for (const d of [bem, normal, baixo]) assertEquals(/descanso/.test(d), false);
+});
+
+Deno.test("checkinPillar: energia em baixo com o sono bom não é 'Dormiste mal'", () => {
+  const c = { sleep: 4, energy: 2, stress: 2, pain: 0 };
+  assertEquals(checkinPillar(c, { raceTodayOrTomorrow: true })!.desc, "Estás sem energia. Perto de uma prova é normal; não mexe na prova.");
+  assertEquals(checkinPillar(c, { trainingToday: false })!.desc, "Estás sem energia. Ainda bem que hoje é descanso.");
+  assertEquals(checkinPillar(c, {})!.desc, "Estás sem energia. Hoje o treino é mais leve.");
 });

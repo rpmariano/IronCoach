@@ -490,7 +490,8 @@ export function buildWarningsMessage(
   // caso algum outro consumidor volte a lê-la tal como está.
   checkin?: { dorAlta: boolean; diaEmBaixo: boolean } | null,
   // A perda de peso só se atribui ao treino com as duas provas (revisão de
-  // 2026-09-26): treinou nos últimos 7 dias, e comeu abaixo do gasto hoje.
+  // 2026-09-26): treinou nos últimos 7 dias, e ontem (o último dia inteiro)
+  // comeu abaixo do gasto.
   weightLossEvidence?: { trainedRecently: boolean; ateBelowGasto: boolean } | null,
 ): string | null {
   // Concluído não é "para fazer": um item já registado no plano não devia

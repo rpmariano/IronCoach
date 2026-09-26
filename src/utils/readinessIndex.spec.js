@@ -85,7 +85,7 @@ describe('checkinPillar — o contexto do dia (revisão de 2026-09-26)', () => {
 
   it('na véspera ou no dia da prova, dormir mal não mexe na prova', () => {
     const ctx = { raceTodayOrTomorrow: true };
-    expect(checkinPillar({ sleep: 1, energy: 5, stress: 1, pain: 0 }, ctx).desc).toBe('Dormiste mal. Na véspera de uma prova é normal; não mexe na prova.');
+    expect(checkinPillar({ sleep: 1, energy: 5, stress: 1, pain: 0 }, ctx).desc).toBe('Dormiste mal. Perto de uma prova é normal; não mexe na prova.');
   });
 
   it('nenhum adjetivo com género no texto do dia normal', () => {

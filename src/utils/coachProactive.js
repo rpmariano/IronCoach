@@ -21,7 +21,7 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock, findMissedWorkout, knowsWhySilent, missedWorkoutInReview, silenceCandidate, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN, UNLINKED_RUN_DETAILS_PREFIX } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, findMissedWorkout, findUnlinkedRaceDayRun, knowsWhySilent, missedWorkoutInReview, silenceCandidate, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN, RACE_EVE_EARLIEST_HOUR, UNLINKED_RUN_DETAILS_PREFIX } from '@formulas/proactiveTriggers.ts';
 import { leaderboardMoment, ownSegmentFor, percentileAvailability, percentileReadyMoment } from '@formulas/vitrina.ts';
 import { pickRaceOfDay } from '@formulas/mainRace.ts';
 import { addDaysISO } from '../lib/utils';
@@ -160,7 +160,11 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
   const jaSabePorque = knowsWhySilent({
     intervention, lastCheckinPain: latestCheckinPain(dailyCheckins), lastCheckinDate: latestDate(dailyCheckins),
   }, today);
-  const missed = jaSabePorque ? null : findMissedWorkout({
+  // Antes das 6h, "ontem" ainda é o dia que o atleta está a viver — a mesma
+  // hora da notificação (isWithinProactiveWindow; segunda revisão
+  // pré-deploy de 2026-09-26).
+  const cedoDemais = now.getHours() < RACE_EVE_EARLIEST_HOUR;
+  const missed = jaSabePorque || cedoDemais ? null : findMissedWorkout({
     plans: coachPlans,
     planItems: coachPlanItems,
     trainingDates: [...(runs || []), ...(gymSessions || [])].map((r) => r?.date ?? null),
@@ -395,7 +399,7 @@ function pickRaceAfter({ races, runs, profile, today }) {
        servidor, listServerProactive): pergunta-se se foi ela, em vez de
        pedir o registo de uma corrida que já existe (revisão pré-deploy de
        2026-09-26). */
-    const porLigar = (runs || []).find((r) => r && !r.race_id && typeof r.date === 'string' && r.date.slice(0, 10) === race.date.slice(0, 10));
+    const porLigar = findUnlinkedRaceDayRun(runs, race, today);
     if (porLigar) {
       const km = Number(porLigar.distance_km) > 0 ? `${String(Math.round(Number(porLigar.distance_km) * 10) / 10).replace('.', ',')} km` : null;
       const tempo = Number(porLigar.duration_seconds) > 0 ? formatDuration(porLigar.duration_seconds) : null;

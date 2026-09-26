@@ -253,6 +253,14 @@ describe('P.10 — o treino de ontem e o silêncio com check-ins, no chat', () =
     }]);
   });
 
+  it('antes das 6h não pergunta pelo treino de ontem — ainda é o dia que o atleta está a viver', () => {
+    const madrugada = new Date(2026, 8, 11, 0, 30);
+    const cedo = listProactiveTriggers(data({ ...plano, meals: [{ date: '2026-09-11' }] }), madrugada);
+    expect(cedo.some((c) => c.trigger === 'missed_workout')).toBe(false);
+    const seisHoras = listProactiveTriggers(data({ ...plano, meals: [{ date: '2026-09-11' }] }), new Date(2026, 8, 11, 6, 0));
+    expect(seisHoras.some((c) => c.trigger === 'missed_workout')).toBe(true);
+  });
+
   // Revisão pré-deploy de 2026-09-25: à terça o balanço da semana tapava o
   // treino de segunda, que à quarta já era de anteontem.
   it('à terça, o treino de segunda entra a seguir ao balanço; à segunda, o de domingo é do balanço', () => {

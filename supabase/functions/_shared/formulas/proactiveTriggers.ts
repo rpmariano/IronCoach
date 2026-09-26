@@ -274,6 +274,34 @@ function lisbonDayOf(iso: string): string | null {
   return Number.isFinite(t) ? new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date(t)) : null;
 }
 
+/** Minutos desde a meia-noite de Lisboa de um instante. */
+function lisbonMinutesOf(iso: string): number | null {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t));
+  const h = Number(parts.find((x) => x.type === "hour")?.value);
+  const m = Number(parts.find((x) => x.type === "minute")?.value);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+}
+
+/** Uma corrida do dia da prova que não está ligada a ela (a "por ligar"),
+ *  a mesma régua nos dois lados. No próprio dia, com hora de partida, uma
+ *  corrida registada antes da partida — o aquecimento da manhã de uma prova
+ *  às 18h — ainda não é a prova: ela não pergunta "foi essa?" antes de a
+ *  prova começar (segunda revisão pré-deploy de 2026-09-26). */
+export function findUnlinkedRaceDayRun<R extends TriggerRun>(runs: R[] | null | undefined, race: TriggerRace, todayISO: string): R | null {
+  const day = race.date.slice(0, 10);
+  const start = day === todayISO ? startTimeMinutes(race.start_time) : null;
+  return (runs || []).find((r) => {
+    if (!r || r.race_id || dayOf(r.date ?? null) !== day) return false;
+    if (start == null || !r.created_at) return true;
+    const createdDay = lisbonDayOf(r.created_at);
+    const at = lisbonMinutesOf(r.created_at);
+    if (createdDay == null || at == null) return true;
+    return createdDay > day || (createdDay === day && at >= start);
+  }) ?? null;
+}
+
 export function isRacePlanItemServer(item: TriggerPlanItem): boolean {
   return item?.kind === "corrida" && (item.training_type === "prova" || item.training_type === "competicao");
 }
@@ -422,7 +450,9 @@ function plannedTrainingsBetween(
 ): { count: number; hasPlan: boolean } {
   const accepted = new Set((input.plans || []).filter((p) => p?.status === "aceite").map((p) => p.id));
   const hasPlan = (input.plans || []).some((p) => {
-    if (p?.status !== "aceite") return false;
+    // Um plano só de refeições (save_meal_suggestions) não decide descansos:
+    // não cala o silêncio (segunda revisão pré-deploy de 2026-09-26).
+    if (p?.status !== "aceite" || p.hasTraining === false) return false;
     const ps = dayOf(p.period_start ?? null);
     const pe = dayOf(p.period_end ?? null);
     // Em vigor até ontem, pelo menos — a régua da consulta do tick
@@ -575,7 +605,7 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
        `race_id`, e sem ser "competicao" — findRaceRunServer só apanha essa
        combinação): não se pede o registo de uma prova já registada — pede-se
        para a ligar (revisão de 2026-09-26). */
-    const unlinked = (input.runs || []).find((r) => r && !r.race_id && dayOf(r.date ?? null) === race.date.slice(0, 10));
+    const unlinked = findUnlinkedRaceDayRun(input.runs, race, todayISO);
     if (unlinked) {
       out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:por-ligar`, raceId: race.id, raceName: race.name ?? null, hasRun: true, unlinkedRun: true, raceDay, anchorDate: race.date.slice(0, 10), anchorAt: unlinked.created_at ?? null });
       break;
@@ -654,8 +684,12 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // já é avisada no log. Corrigir exigia dar ao cliente as chaves entregues
   // (coach_proactive_log), e isso não cabe na Fase 0.
   const delivered = new Set(input.deliveredKeys ?? []);
+  // A corrida por ligar também fica com o dia, como o "como correu?" sem
+  // registo: não grava coach_balance, e o cliente, sem as chaves entregues,
+  // não teria como a largar — a notificação prometia o balanço da semana que
+  // o chat não abria (segunda revisão pré-deploy de 2026-09-26).
   const holdsTheDay = (c: ServerProactiveCandidate) => {
-    if (c.trigger !== "race_after" || !c.hasRun) return true;
+    if (c.trigger !== "race_after" || !c.hasRun || c.unlinkedRun) return true;
     if (delivered.has(c.key)) return false;
     return !races.find((r) => r.id === c.raceId)?.coach_balance;
   };

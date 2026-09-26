@@ -56,8 +56,9 @@ export interface CheckinForReadiness {
 /** O que se sabe do dia, para o texto do pilar não falar de um treino que
  *  não há, nem tratar a véspera ou o dia de uma prova como um dia qualquer
  *  (revisão de 2026-09-26). `trainingToday`: true com treino previsto,
- *  false num dia de descanso/sem plano/já feito, omitido quando o chamador
- *  não sabe (mantém o texto genérico de sempre). */
+ *  false num dia de descanso ou já feito de um plano com treinos em vigor,
+ *  omitido sem plano ou quando o chamador não sabe (mantém o texto genérico
+ *  de sempre). */
 export interface ReadinessDayContext {
   trainingToday?: boolean;
   raceTodayOrTomorrow?: boolean;
@@ -102,9 +103,13 @@ export function checkinPillar(c: CheckinForReadiness | null | undefined, ctx: Re
   if (painAlarm) {
     desc = `Dor de ${pain}/10: hoje nada de impacto. Fala comigo no chat.`;
   } else if (emBaixo) {
-    if (raceTodayOrTomorrow) desc = "Dormiste mal. Na véspera de uma prova é normal; não mexe na prova.";
-    else if (trainingToday === false) desc = "Dormiste mal. Hoje é descanso: recupera o sono.";
-    else desc = sleep <= 2 ? "Dormiste mal. Hoje o treino é mais leve." : "Estás sem energia. Hoje o treino é mais leve.";
+    // "Dormiste mal" só quando foi o sono; energia em baixo com o sono bom é
+    // outra coisa (segunda revisão pré-deploy de 2026-09-26). "Perto de uma
+    // prova" serve a véspera e o próprio dia — "na véspera" não.
+    const abre = sleep <= 2 ? "Dormiste mal." : "Estás sem energia.";
+    if (raceTodayOrTomorrow) desc = `${abre} Perto de uma prova é normal; não mexe na prova.`;
+    else if (trainingToday === false) desc = sleep <= 2 ? "Dormiste mal. Hoje é descanso: recupera o sono." : "Estás sem energia. Ainda bem que hoje é descanso.";
+    else desc = `${abre} Hoje o treino é mais leve.`;
   } else if (raceTodayOrTomorrow) {
     // A prova manda sobre o plano do dia: sem plano aceite, trainingToday
     // vinha false e a véspera (ou o próprio dia) passava por "descanso"

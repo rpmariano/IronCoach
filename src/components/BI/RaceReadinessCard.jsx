@@ -41,9 +41,12 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   // Há treino previsto hoje (pedido 2026-09-26)? Para o pilar "Como
   // acordaste" não dizer "hoje o treino é mais leve" num dia de descanso.
   // Sem plano aceite em vigor hoje não se sabe se é descanso: undefined, e o
-  // pilar não o afirma (revisão pré-deploy de 2026-09-26).
+  // pilar não o afirma (revisão pré-deploy de 2026-09-26). Um plano só de
+  // refeições (dias de `descanso`, save_meal_suggestions) não conta: não
+  // decide descansos (segunda revisão).
   const trainingToday = useMemo(() => {
-    const emVigor = (coachPlans || []).filter((p) => p?.status === 'aceite'
+    const comTreino = new Set((coachPlanItems || []).filter((i) => i?.kind === 'corrida' || i?.kind === 'ginasio').map((i) => i.plan_id));
+    const emVigor = (coachPlans || []).filter((p) => p?.status === 'aceite' && comTreino.has(p.id)
       && String(p.period_start || '').slice(0, 10) <= today && String(p.period_end || '').slice(0, 10) >= today);
     if (!emVigor.length) return undefined;
     const aceites = new Set(emVigor.map((p) => p.id));

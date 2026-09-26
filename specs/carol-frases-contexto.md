@@ -51,6 +51,14 @@ Também feito no mesmo trabalho, fora do backlog:
 - Os factos do push gerado pelo Gemini levam as mesmas condições das frases fixas (plano do silêncio, água, nome próprio da prova, hora de partida, ritmo do primeiro km).
 - A água do dia da prova conta 30 min de folga na chegada; a perda de peso só se atribui à ingestão com as refeições de ontem abaixo do gasto; a nota da memória a mudar tem de existir.
 
+Segunda revisão (mesmo dia), também corrigida:
+
+- A corrida por ligar fica com o dia nos dois lados, mesmo já entregue — sem isso a notificação prometia o balanço da semana que o chat não abria.
+- No próprio dia da prova, uma corrida registada antes da partida (o aquecimento de manhã de uma prova à noite) ainda não é «a prova» (`findUnlinkedRaceDayRun`, partilhada).
+- Um plano só de refeições não decide descansos: não cala o «Estás bem?» nem faz o pilar dizer «Hoje é descanso».
+- «Dormiste mal» só quando foi o sono; com o sono bom e a energia em baixo, «Estás sem energia». «Perto de uma prova» em vez de «na véspera», que também era dito no próprio dia.
+- O chat também não pergunta pelo treino de ontem antes das 6h.
+
 Fica para depois (baixo risco, confirmado por que o cliente já mitiga ou é raro):
 
 - `coach-daily-summary:421`: as frases de água em `buildWarningsMessage` continuam a gerar-se, mas o cliente já as ignora (`limparAvisoDoServidor`) e faz a sua a partir de `waterLogs` — sem efeito visível a limpá-las também no servidor.

@@ -6084,9 +6084,15 @@ async function handler(req: Request): Promise<Response> {
     // acima): um corrida/ginásio de hoje, ainda não cancelado.
     // Sem plano aceite em vigor hoje (nenhum item de hoje em diante), não se
     // sabe se é descanso: undefined, e o pilar não diz "hoje é descanso"
-    // (revisão pré-deploy de 2026-09-26).
+    // (revisão pré-deploy de 2026-09-26). Só conta um plano com treinos: um
+    // só de refeições (dias de `descanso`) não decide descansos — a régua do
+    // RaceReadinessCard (segunda revisão).
+    const planosComTreino = new Set(
+      // deno-lint-ignore no-explicit-any
+      (loadPlanItems || []).filter((i: any) => i?.kind === "corrida" || i?.kind === "ginasio").map((i: any) => i.plan_id),
+    );
     // deno-lint-ignore no-explicit-any
-    const planoEmVigor = (loadPlanItems || []).some((i: any) => String(i?.planned_date || "") >= todayISO);
+    const planoEmVigor = (loadPlanItems || []).some((i: any) => planosComTreino.has(i?.plan_id) && String(i?.planned_date || "") >= todayISO);
     const trainingTodayForReadiness = planoEmVigor
       // deno-lint-ignore no-explicit-any
       ? (loadPlanItems || []).some((i: any) => i?.planned_date === todayISO && (i.kind === "corrida" || i.kind === "ginasio"))

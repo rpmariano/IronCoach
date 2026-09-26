@@ -307,6 +307,23 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     expect(serverOf(feito)).toEqual(clientOf(feito));
   });
 
+  /* Segunda revisão pré-deploy (2026-09-26): a corrida por ligar não grava
+     coach_balance, e o cliente não tem as chaves entregues — fica com o dia
+     nos dois lados, mesmo depois de a Carol a ter dito, para a notificação
+     nunca prometer um balanço da semana que o chat não abre. */
+  it('a corrida por ligar fica com o dia nos dois lados, mesmo já entregue', () => {
+    const prova = { id: 'p1', name: 'Corrida', date: '2026-09-26', status: 'concluida', distance_km: 10 };
+    const run = { id: 'rp', date: '2026-09-26', race_id: null, kind: 'normal', distance_km: 10, duration_seconds: 3000, created_at: '2026-09-26T12:00:00Z' };
+    const d = { ...semana, runs: [...semana.runs, run], raceEvents: [prova] };
+    const client = listProactiveTriggers(d, at(MONDAY)).map((c) => ({ trigger: c.trigger, key: c.key }));
+    expect(client).toEqual([{ trigger: 'race_after', key: 'race_after:p1:por-ligar' }]);
+    const server = listServerProactive({
+      raceEvents: d.raceEvents, runs: d.runs, lastRecordDate: lastRecordDate(d), weekRecordDates: weekDates(d),
+      deliveredKeys: ['race_after:p1:por-ligar'],
+    }, MONDAY).map((c) => ({ trigger: c.trigger, key: c.key }));
+    expect(server).toEqual(client);
+  });
+
   it('desligado no Perfil, não aparece no servidor', () => {
     expect(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-27', weekRecordDates: ['2026-09-25'], allowed: ['silence'] }, MONDAY)).toEqual([]);
   });
