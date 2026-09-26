@@ -1042,6 +1042,7 @@ export default function RunAgenda({ onClose }) {
                 fetchingWebInfo={fetchingWebInfo}
                 onMarkCompleted={editingEventId ? handleMarkCompleted : undefined}
                 onMemoriesSaved={editingEventId ? handleMemoriesSaved : undefined}
+                calendarRaceId={editingEventId && !isDirty ? editingEventId : undefined}
                 onGoToEdit={detailsLocked ? undefined : () => {
                   setActivePage('details');
                   scrollTo(1);

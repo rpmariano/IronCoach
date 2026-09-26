@@ -41,6 +41,7 @@ import RaceForecastCard from './RaceForecastCard';
 import RaceTimesBreakdown from './RaceTimesBreakdown';
 import { raceForecast, raceTimesBreakdown, targetLine } from '../../utils/raceTimes';
 import RaceMuralSheet from './RaceMuralSheet';
+import AddToCalendar from './AddToCalendar';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
@@ -65,6 +66,7 @@ export default function RaceHubView({
   onGoToEdit,
   onMarkCompleted,
   onMemoriesSaved,
+  calendarRaceId,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
@@ -847,6 +849,12 @@ export default function RaceHubView({
         >
           <Trophy size={16} /> Registar a prova
         </button>
+      )}
+
+      {/* Só para uma prova gravada e por fazer — o .ics lê a prova da BD
+          (RunAgenda não passa o id enquanto há alterações por gravar). */}
+      {calendarRaceId && daysToRace >= 0 && (
+        <AddToCalendar race={race} raceEventId={calendarRaceId} />
       )}
 
       {/* ─── 1b. Plano para o dia ───────────────────────────────────────────
