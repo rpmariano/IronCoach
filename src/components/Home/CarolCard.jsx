@@ -8,6 +8,7 @@ import { getRacePrediction } from '../../utils/biEngine';
 import { formatPace, parseDurationToSeconds } from '../../utils/run';
 import { isRacePlanItem } from '../../utils/homeModels';
 import { lisbonParts } from '../../utils/carolWelcome';
+import { eventoDaVida } from '../../utils/carolVida';
 import { todaysCheckin } from '../../utils/checkin';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
 import {
@@ -109,7 +110,7 @@ function buildEve(race, profile) {
  *  recapitulação, o aviso abre com o que o dia é (e sem aviso nenhum, é essa
  *  a mensagem, "Hoje"). `agora` é o instante do relógio do cartão. */
 export function useCoachDailyMessages(agora = new Date()) {
-  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs, gymSessions, dailyCheckins } = useAppStore();
+  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs, gymSessions, dailyCheckins, coachNotes } = useAppStore();
   /* O dia e a hora de Lisboa (pedido 2026-09-26), como as boas-vindas, o
      servidor do resumo e os registos de água: o "hoje" do cartão é o do chip
      do plano, dos dois lados da meia-noite. Ao minuto, para as frases que
@@ -123,6 +124,14 @@ export function useCoachDailyMessages(agora = new Date()) {
      de sexta — «Para hoje tens agendado: Corrida…» por cima do «Descanso»
      do plano. O cartão pede o de hoje quando o dia muda (CarolCard). */
   const summary = dailySummary?.date === today ? dailySummary : null;
+  /* O que ela sabe da vida dele (utils/carolVida.js; revisão de 2026-09-26):
+     uma cirurgia, uma lesão, uma doença, com data, na memória dela. A
+     memória lê-se desde a abertura da app (App.jsx) e as boas-vindas e o
+     check-in, logo abaixo, já partem dela; o cartão anunciava o treino do
+     plano no dia a seguir à cirurgia como num dia qualquer. Amanhã conta à
+     parte: na véspera da cirurgia, o treino de amanhã é o do dia dela. */
+  const vidaHoje = useMemo(() => eventoDaVida(coachNotes, today), [coachNotes, today]);
+  const vidaAmanha = useMemo(() => eventoDaVida(coachNotes, tomorrow), [coachNotes, tomorrow]);
 
   /* ── A prova de hoje e a de amanhã (specs/plano-de-prova.md, "O plano tem
      de saber da prova") ───────────────────────────────────────────────────
@@ -226,11 +235,14 @@ export function useCoachDailyMessages(agora = new Date()) {
       // partida, ao registo da prova: dizê-lo em texto não chega.
       action = prova.action;
     } else if (pendentes.length) {
-      cabeca = linhaDoTreinoDeHoje({ pendentes, feitos, agora: instante, checkin });
+      cabeca = linhaDoTreinoDeHoje({ pendentes, feitos, agora: instante, checkin, vida: vidaHoje });
     } else if (!recap && !raceTomorrow) {
       const propostas = (coachPlans || []).filter((p) => p.status === 'proposto').length;
+      // Um plano aceite que já acabou: o cartão do plano, logo abaixo, diz «O
+      // último plano acabou» — «Ainda não temos plano» desdizia-o.
+      const jaHouvePlano = (coachPlans || []).some((p) => p?.status === 'aceite');
       const tipo = tipoDoDia({ itens: itensHoje, pendentes, provaFeita, comPlano: activePlanItems.comPlano });
-      cabeca = linhaDoDia({ tipo, feitos, kmHoje, propostas, agora: instante });
+      cabeca = linhaDoDia({ tipo, feitos, kmHoje, propostas, jaHouvePlano, agora: instante });
       soODia = true;
     }
     const doServidor = limparAvisoDoServidor(summary?.warnings);
@@ -240,14 +252,6 @@ export function useCoachDailyMessages(agora = new Date()) {
     const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (Number(w.amount_ml) || 0), 0);
     const agua = raceToday ? null : linhaDaAgua({ totalMl: waterTotal, profile, agora: instante });
     const warning = [cabeca, doServidor, agua].filter(Boolean).join(' ');
-    if (warning) {
-      // Só o dia, sem nada a avisar, não é um aviso: vai com o rótulo "Hoje", em ciano.
-      if (soODia && !doServidor && !agua) list.push({ key: 'hoje', label: 'Hoje', color: 'var(--coach)', text: warning });
-      else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action });
-    }
-
-    const meal = clean(summary?.meal_suggestion);
-    if (meal) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: meal });
 
     /* Na véspera, "Preparar amanhã" é a prova. O item do plano de amanhã não
        entra: nesse dia ele É a prova, e repetir o item por cima das horas da
@@ -257,13 +261,31 @@ export function useCoachDailyMessages(agora = new Date()) {
        ("jantar até às 19:30" às 23:15); o cartão tem o plano e a prova. */
     const prep = raceTomorrow
       ? linhaDaVespera({ race: raceTomorrow, eve: eveTomorrow, agora: instante })
-      : linhaDeAmanha({ itens: activePlanItems.tomorrow, agora: instante });
-    if (prep) list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', color: 'var(--coach)', text: prep });
+      : linhaDeAmanha({ itens: activePlanItems.tomorrow, agora: instante, vida: vidaAmanha });
+    const prepMsg = prep ? { key: 'tomorrow_prep', label: 'Preparar amanhã', color: 'var(--coach)', text: prep } : null;
+    /* Na véspera, sem recapitulação nem treino por fazer, a prova é a
+       primeira linha do cartão (revisão de 2026-09-26): com os lembretes de
+       água ligados, a partir das 11h o aviso da água passava-lhe à frente —
+       «Ainda não vi água registada hoje.» era a primeira coisa que ela dizia
+       no dia antes da prova. */
+    const provaPrimeiro = !!(raceTomorrow && prepMsg && !recap && !cabeca);
+    if (provaPrimeiro) list.push(prepMsg);
+
+    if (warning) {
+      // Só o dia, sem nada a avisar, não é um aviso: vai com o rótulo "Hoje", em ciano.
+      if (soODia && !doServidor && !agua) list.push({ key: 'hoje', label: 'Hoje', color: 'var(--coach)', text: warning });
+      else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action });
+    }
+
+    const meal = clean(summary?.meal_suggestion);
+    if (meal) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: meal });
+
+    if (prepMsg && !provaPrimeiro) list.push(prepMsg);
 
     const concept = clean(summary?.daily_concept?.body);
     if (concept) list.push({ key: 'daily_concept', label: summary.daily_concept.title || 'Conceito do dia', color: 'var(--coach)', text: concept });
     return list;
-  }, [summary, activePlanItems, doneKindsToday, waterLogs, profile, today, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel, runs, dailyCheckins, coachPlans, instante]);
+  }, [summary, activePlanItems, doneKindsToday, waterLogs, profile, today, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel, runs, dailyCheckins, coachPlans, instante, vidaHoje, vidaAmanha]);
 }
 
 /* O cabeçalho é sempre a Carol. Os avisos "precisa de falar contigo" saíram

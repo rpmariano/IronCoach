@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { computeRaceEve } from '@formulas/raceEve.ts';
 import { expectCarolVoice } from '../../test/carolVoice';
+import { eventoDaVida } from '../../utils/carolVida';
 import {
   FRASES, treinoFalado, limparAvisoDoServidor, tipoDoDia, linhaDoTreinoDeHoje, linhaDoDia,
-  linhaDeAmanha, linhaDaAgua, momentoDaProva, linhaDaProvaDeHoje, linhaDaVespera, semZero, kmFalado,
+  linhaDeAmanha, linhaDaAgua, momentoDaProva, linhaDaProvaDeHoje, linhaDaVespera, semZero, kmFalado, aHora,
 } from './carolCardLines';
 
 /* As frases do cartão da Carol no Início (pedido 2026-09-26): cada uma
@@ -107,6 +108,60 @@ describe('o treino de hoje por fazer, à hora a que se lê', () => {
   it('sem nada por fazer, não há linha', () => {
     expect(linhaDoTreinoDeHoje({ pendentes: [], agora: at('2026-09-26T10:00:00') })).toBeNull();
   });
+
+  /* Revisão de 2026-09-26: a memória dela (coach_notes) lê-se desde a
+     abertura da app, e as boas-vindas e o check-in já partem do que ela sabe
+     da vida dele. O cartão anunciava «Hoje tens uma rodagem longa de 16 km.»
+     no dia a seguir à cirurgia, e às 21h perguntava «Aconteceu alguma
+     coisa?» a quem ela sabe que foi operado. */
+  describe('com uma cirurgia, uma lesão ou uma doença na memória dela', () => {
+    const NOTA = { category: 'saude', note: 'Cirurgia a rutura do bíceps direito a 2026-09-24; paragem de corrida de pelo menos 2 semanas no pós-operatório.' };
+
+    it('o treino do plano não se anuncia como num dia qualquer, nem a ausência se pergunta — em dias seguidos, a qualquer hora', () => {
+      for (const d of DIAS) {
+        const vida = eventoDaVida([NOTA], d);
+        expect(vida, d).toMatchObject({ tipo: 'cirurgia' });
+        for (const { hora, min } of horasDe(d)) {
+          const texto = linhaDoTreinoDeHoje({ pendentes: [LONGO], agora: at(hora), vida });
+          const esperado = min < 19 * 60 ? FRASES.treinoComVida('uma rodagem longa de 16 km', vida) : FRASES.naoRegistadoComVida(vida);
+          expect(texto, hora).toBe(esperado);
+          expect(texto, hora).not.toMatch(/Aconteceu alguma coisa|Correu tudo bem|o que se passou|^Hoje tens|Vamos a isso/);
+          expectCarolVoice(texto);
+        }
+      }
+      expect(linhaDoTreinoDeHoje({ pendentes: [LONGO], agora: at('2026-09-25T10:00:00'), vida: eventoDaVida([NOTA], '2026-09-25') }))
+        .toBe('Hoje o plano ainda tem uma rodagem longa de 16 km. Por causa da cirurgia, fala comigo antes de treinares.');
+      expect(linhaDoTreinoDeHoje({ pendentes: [PERNAS], feitos: [LONGO], agora: at('2026-09-25T21:30:00'), vida: eventoDaVida([NOTA], '2026-09-25') }))
+        .toBe('O resto do treino de hoje não apareceu, e com a cirurgia faz todo o sentido. Como te sentes?');
+    });
+
+    it('uma lesão e uma doença dizem-se pelo nome delas; a dor do check-in continua à frente', () => {
+      const lesao = eventoDaVida([{ note: 'Entorse no tornozelo esquerdo a 2026-09-25.' }], '2026-09-26');
+      expect(linhaDoTreinoDeHoje({ pendentes: [LONGO], agora: at('2026-09-26T10:00:00'), vida: lesao }))
+        .toBe('Hoje o plano ainda tem uma rodagem longa de 16 km. Por causa da lesão, fala comigo antes de treinares.');
+      const gripe = eventoDaVida([{ note: 'Com gripe desde 2026-09-25.' }], '2026-09-26');
+      expect(linhaDoTreinoDeHoje({ pendentes: [LONGO], agora: at('2026-09-26T21:30:00'), vida: gripe }))
+        .toBe('O treino de hoje não apareceu, e com a gripe faz todo o sentido. Como te sentes?');
+      const vida = eventoDaVida([NOTA], '2026-09-26');
+      expect(linhaDoTreinoDeHoje({ pendentes: [LONGO], agora: at('2026-09-26T10:00:00'), vida, checkin: { pain: 5 } }))
+        .toBe(FRASES.treinoComDor('uma rodagem longa de 16 km'));
+    });
+
+    it('na véspera da cirurgia o treino de hoje é o de sempre; o de amanhã, não', () => {
+      const vespera = eventoDaVida([NOTA], '2026-09-23');
+      expect(vespera).toMatchObject({ dias: -1 });
+      expect(FRASES.treinoHoje('uma rodagem longa de 16 km')).toContain(linhaDoTreinoDeHoje({ pendentes: [LONGO], agora: at('2026-09-23T10:00:00'), vida: vespera }));
+      // "Preparar amanhã" na véspera: amanhã é o dia da cirurgia.
+      const amanha = eventoDaVida([NOTA], '2026-09-24');
+      expect(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-23T18:00:00'), vida: amanha }))
+        .toBe('Amanhã o plano tem uma rodagem longa de 16 km. Por causa da cirurgia, fala comigo antes de treinares.');
+      // Depois da meia-noite, o dia da semana, e a mesma ressalva.
+      expect(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-23T00:40:00'), vida: amanha }))
+        .toBe('Quinta-feira o plano tem uma rodagem longa de 16 km. Por causa da cirurgia, fala comigo antes de treinares.');
+      // Sem nada na memória para amanhã, a frase de sempre.
+      expect(FRASES.amanhaTreino('uma rodagem longa de 16 km')).toContain(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-23T18:00:00'), vida: null }));
+    });
+  });
 });
 
 describe('o dia sem resumo (backlog CarolCard.jsx:275)', () => {
@@ -144,8 +199,40 @@ describe('o dia sem resumo (backlog CarolCard.jsx:275)', () => {
 
   it('um descanso com corrida registada pergunta-se; uma proposta à espera aponta-se', () => {
     expect(FRASES.corridaEmDescanso('8')).toContain(linhaDoDia({ tipo: 'descanso', kmHoje: 8.04, agora: at('2026-09-26T13:00:00') }));
-    expect(linhaDoDia({ tipo: 'semPlano', propostas: 1 })).toBe('Deixei-te uma proposta de plano no chat. Vê-a e diz-me se serve.');
-    expect(linhaDoDia({ tipo: 'semPlano', propostas: 2 })).toBe('Deixei-te 2 propostas de plano no chat. Vê-as e diz-me qual serve.');
+    // Revisão de 2026-09-26: sem repetir o «Vê-o e diz-me se serve» do cartão
+    // do plano logo abaixo; por extenso e "o que serve", como lá.
+    expect(linhaDoDia({ tipo: 'semPlano', propostas: 1 })).toBe('Tens a minha proposta de plano no chat. Quando estiver ao teu gosto, arrancamos.');
+    expect(linhaDoDia({ tipo: 'semPlano', propostas: 2 })).toBe('Tens duas propostas minhas no chat. Quando estiverem ao teu gosto, arrancamos.');
+    for (const n of [1, 2, 3]) expect(linhaDoDia({ tipo: 'semPlano', propostas: n })).not.toMatch(/diz-me se serve|qual serve|\d/);
+  });
+
+  /* Revisão de 2026-09-26: qualquer corrida do dia fecha o item de corrida
+     do plano (RunRegistration, completeMatchingPlanItem). 5 km corridos num
+     dia de rodagem longa de 16 km davam «Hoje já fizeste uma rodagem longa
+     de 16 km.». */
+  it('treino feito: o plano só se diz se a corrida registada bate com ele — em dias seguidos', () => {
+    const feito = { ...LONGO, status: 'concluido' };
+    for (const d of DIAS) {
+      const agora = at(`${d}T13:00:00`);
+      const curta = linhaDoDia({ tipo: 'feito', feitos: [feito], kmHoje: 5, agora });
+      expect(FRASES.treinoFeitoKm('5'), d).toContain(curta);
+      expect(curta, d).not.toMatch(/16 km|rodagem longa/);
+      expectCarolVoice(curta);
+      // 16,4 km numa rodagem de 16: é a do plano.
+      expect(FRASES.treinoFeito('uma rodagem longa de 16 km'), d).toContain(linhaDoDia({ tipo: 'feito', feitos: [feito], kmHoje: 16.4, agora }));
+      // Um ginásio feito não tem km para comparar.
+      expect(FRASES.treinoFeito('um treino de pernas de 40 minutos'), d).toContain(linhaDoDia({ tipo: 'feito', feitos: [{ ...PERNAS, status: 'concluido' }], agora }));
+    }
+  });
+
+  it('um plano aceite que já acabou não é "ainda não temos plano" (revisão de 2026-09-26)', () => {
+    // O cartão do plano, logo abaixo, diz «O último plano acabou».
+    expect(linhaDoDia({ tipo: 'semPlano', jaHouvePlano: true })).toBe(FRASES.planoAcabou);
+    expect(linhaDoDia({ tipo: 'semPlano', jaHouvePlano: true })).not.toMatch(/Ainda não temos/);
+    expect(linhaDoDia({ tipo: 'semPlano', jaHouvePlano: false })).toBe(FRASES.semPlano);
+    // Com uma proposta à espera, é para ela que se aponta, haja ou não plano antigo.
+    expect(linhaDoDia({ tipo: 'semPlano', jaHouvePlano: true, propostas: 1 })).toBe(FRASES.propostaPorVer(1));
+    expectCarolVoice(FRASES.planoAcabou);
   });
 
   it('a prova concluída: com a corrida, o balanço; sem ela, a pergunta', () => {
@@ -296,6 +383,50 @@ describe('o dia da prova (backlog CarolCard.jsx:201)', () => {
     expect(linhaDaProvaDeHoje({ race: r, eve, agora: at('2026-09-26T07:00:00') }).text).toMatch(/^Hoje é dia de prova: Corrida do Tejo\. Pequeno-almoço 2 h 45 antes da partida/);
     expect(FRASES.provaPorRegistar).toContain(linhaDaProvaDeHoje({ race: r, eve, agora: at('2026-09-26T13:00:00') }).text);
   });
+
+  /* Revisão de 2026-09-26: de madrugada, a frase manda dormir — e o botão
+     não pode pedir outra coisa. Sem hora marcada, às 00:30 davam-se os
+     conselhos do pequeno-almoço e pedia-se o objetivo de tempo. */
+  it('de madrugada, sem objetivo ou sem hora: dormir, e o botão não pede nada — em dias seguidos', () => {
+    for (const d of DIAS) {
+      for (const start of ['09:00', null]) {
+        const r = race({ start_time: start, target_time_seconds: null });
+        for (const hhmm of ['00:10', '01:30', '03:00', '03:59']) {
+          const { text, action } = linhaDaProvaDeHoje({ race: r, eve: eveDe(r), agora: at(`${d}T${hhmm}:00`) });
+          expect(text, `${d} ${hhmm} ${start}`).toMatch(/Agora, o que conta é dormir/);
+          expect(text).not.toMatch(/Marca o objetivo|Pequeno-almoço/);
+          expect(action, `${d} ${hhmm} ${start}`).toEqual({ label: 'Abrir a prova', raceId: 'r1' });
+          expectCarolVoice(text);
+        }
+      }
+    }
+    // Com o plano km a km, o botão continua a abri-lo.
+    const r = race({ start_time: '09:00' });
+    expect(linhaDaProvaDeHoje({ race: r, eve: eveDe(r), firstKmPaceLabel: '4.54', agora: at('2026-09-26T01:00:00') }).action.label).toBe('Abrir o plano da prova');
+    // Longe da partida e já de manhã, pede-se o objetivo como antes.
+    expect(linhaDaProvaDeHoje({ race: race({ start_time: '09:00', target_time_seconds: null }), eve: eveDe(race({ start_time: '09:00' })), agora: at('2026-09-26T06:30:00') }).action.label).toBe('Marcar o objetivo na prova');
+  });
+
+  /* Revisão de 2026-09-26: numa prova ao fim da tarde, o horário de
+     computeRaceEve põe a refeição antes da partida às 17:15 — e o cartão
+     chamava-lhe pequeno-almoço. */
+  it('prova ao fim da tarde: a refeição antes da partida não é pequeno-almoço, e de madrugada não se diz a hora de acordar', () => {
+    const r = race({ start_time: '20:00' });
+    const { text } = linhaDaProvaDeHoje({ race: r, eve: eveDe(r), firstKmPaceLabel: '4.54', agora: at('2026-09-26T10:00:00') });
+    expect(text).toBe('Hoje é dia de prova: Corrida do Tejo, partida às 20:00. Refeição antes da prova às 17:15, chegada às 19:00, água até às 19:15 e aquecimento às 19:35. O teu plano km a km está no hub da prova: arrancas a 4.54.');
+    expect(linhaDaProvaDeHoje({ race: r, eve: eveDe(r), agora: at('2026-09-26T02:00:00') }).text)
+      .toBe('Hoje é dia de prova: Corrida do Tejo, partida às 20:00. Agora, o que conta é dormir.');
+    for (const d of DIAS) {
+      for (const inicio of ['12:00', '14:00', '18:00', '20:00', '23:00']) {
+        const rr = race({ start_time: inicio });
+        for (const { hora } of horasDe(d, 10)) {
+          const t = linhaDaProvaDeHoje({ race: rr, eve: eveDe(rr), agora: at(hora) }).text;
+          for (const [, hh] of t.matchAll(/pequeno-almoço às (\d+):\d+/gi)) expect(Number(hh), `${hora} ${inicio}: ${t}`).toBeLessThan(11);
+          expectCarolVoice(t);
+        }
+      }
+    }
+  });
 });
 
 describe('a véspera da prova (backlog CarolCard.jsx:215)', () => {
@@ -338,6 +469,78 @@ describe('a véspera da prova (backlog CarolCard.jsx:215)', () => {
     const r = { ...race, distance_km: 21.0975 };
     expect(linhaDaVespera({ race: r, eve, agora: at('2026-09-26T12:00:00') })).toMatch(/Corrida do Tejo \(21,1 km\)/);
   });
+
+  it('uma partida ao meio-dia: "deitar à 1:00", e não "às 1:00"', () => {
+    const r = { ...race, start_time: '12:00' };
+    const e = computeRaceEve({ startTime: '12:00', weightKg: 70, plannedFinishSeconds: 2880, distanceKm: 10 });
+    expect(linhaDaVespera({ race: r, eve: e, agora: at('2026-09-26T12:00:00') }))
+      .toBe('Amanhã é dia de prova: Corrida do Tejo (10 km), partida às 12:00. Jantar até às 22:30 (140-280 g de hidratos), deitar à 1:00, acordar às 9:00, pequeno-almoço às 9:15 e chegada às 11:00.');
+  });
+
+  /* Revisão de 2026-09-26: numa prova ao fim da tarde, computeRaceEve dá
+     jantar às 6:30 e deitar às 9:00 do próprio dia da prova — e o cartão
+     dizia «Jantar até às 6:30 (…), deitar às 9:00, acordar às 17:00,
+     pequeno-almoço às 17:15» durante toda a véspera, também às 23:15. */
+  it('prova ao fim da tarde: a noite é a de sempre, e ficam a refeição e a chegada — minuto a minuto, em dias seguidos', () => {
+    const tarde = { ...race, start_time: '20:00' };
+    const eveTarde = computeRaceEve({ startTime: '20:00', weightKg: 70, plannedFinishSeconds: 2880, distanceKm: 10 });
+    expect(linhaDaVespera({ race: tarde, eve: eveTarde, agora: at('2026-09-26T12:00:00') }))
+      .toBe('Amanhã é dia de prova: Corrida do Tejo (10 km), partida às 20:00. Jantar de hidratos complexos (140-280 g), pouca fibra, e 8 h de sono. Antes da partida, comes às 17:15 e chegas às 19:00.');
+    expect(linhaDaVespera({ race: tarde, eve: eveTarde, agora: at('2026-09-26T23:15:00') }))
+      .toBe('Amanhã é dia de prova: Corrida do Tejo (10 km), partida às 20:00. Esta noite, 8 h de sono. Antes da partida, comes às 17:15 e chegas às 19:00.');
+    for (const d of DIAS) {
+      for (const inicio of ['14:00', '16:30', '18:00', '20:00', '23:00']) {
+        const r = { ...race, start_time: inicio };
+        const e = computeRaceEve({ startTime: inicio, weightKg: 70, plannedFinishSeconds: 2880, distanceKm: 10 });
+        for (const { hora } of horasDe(d, 10)) {
+          const texto = linhaDaVespera({ race: r, eve: e, agora: at(hora) });
+          expect(texto, `${hora} ${inicio}`).not.toMatch(/jantar até|deitar às|acordar às|acordas às|Deita-te já|pequeno-almoço/i);
+          expect(texto, `${hora} ${inicio}`).toMatch(/Antes da partida, comes às \d+:\d+ e chegas às \d+:\d+\.$/);
+          expectCarolVoice(texto);
+        }
+      }
+    }
+  });
+
+  /* Uma prova da meia-noite (a MIUT, na Madeira, parte às 0:00): o horário
+     põe o acordar às 21:00 da véspera. «Deita-te já: acordas às 21:00» às
+     21:30 era falso. */
+  it('prova da meia-noite: depois da hora de acordar, o que falta até à partida — nunca "deita-te" com o acordar já passado', () => {
+    const noite = { ...race, name: 'MIUT', distance_km: 85, start_time: '00:00' };
+    const e = computeRaceEve({ startTime: '00:00', weightKg: 70, plannedFinishSeconds: 14 * 3600, distanceKm: 85 });
+    expect(linhaDaVespera({ race: noite, eve: e, agora: at('2026-09-26T21:30:00') }))
+      .toBe('A prova é esta noite: MIUT (85 km), partida à meia-noite. Chegada às 23:00, água até às 23:15 e aquecimento às 23:35.');
+    expect(linhaDaVespera({ race: noite, eve: e, agora: at('2026-09-26T23:50:00') }))
+      .toBe('A prova é esta noite: MIUT (85 km), partida à meia-noite, daqui a 10 minutos.');
+    // A sesta do horário continua: das 13:00 às 21:00, deita-te.
+    expect(linhaDaVespera({ race: noite, eve: e, agora: at('2026-09-26T14:00:00') }))
+      .toBe('Amanhã é dia de prova: MIUT (85 km), partida à meia-noite. Deita-te já: acordas às 21:00.');
+    for (const d of DIAS) {
+      for (const inicio of ['00:00', '01:00', '02:30', '09:00']) {
+        const r = { ...race, start_time: inicio };
+        const ev = computeRaceEve({ startTime: inicio, weightKg: 70, plannedFinishSeconds: 2880, distanceKm: 10 });
+        const partida = 1440 + Number(inicio.slice(0, 2)) * 60 + Number(inicio.slice(3, 5));
+        for (const { hora, min } of horasDe(d, 10)) {
+          const texto = linhaDaVespera({ race: r, eve: ev, agora: at(hora) });
+          expectCarolVoice(texto);
+          // A hora de acordar dita tem de estar para vir (hoje ou amanhã, antes da partida).
+          const acorda = /acordas (?:às|à) (\d+):(\d+)/.exec(texto);
+          if (acorda) {
+            const m = Number(acorda[1]) * 60 + Number(acorda[2]);
+            const noRelogio = m + 1440 <= partida ? m + 1440 : m;
+            expect(noRelogio, `${hora} ${inicio}: ${texto}`).toBeGreaterThan(min);
+          }
+          // Qualquer passo dito já com a prova "esta noite" ainda está para vir.
+          if (/^A prova é esta noite/.test(texto)) {
+            for (const [, hh, mm] of texto.replace(/partida (?:às|à) [^.,]+/, '').matchAll(/(?:às|à) (\d+):(\d+)/g)) {
+              const m = Number(hh) * 60 + Number(mm);
+              expect(m + 1440 <= partida ? m + 1440 : m, `${hora} ${inicio}: ${texto}`).toBeGreaterThan(min);
+            }
+          }
+        }
+      }
+    }
+  });
 });
 
 describe('ferramentas', () => {
@@ -348,5 +551,16 @@ describe('ferramentas', () => {
     expect(kmFalado(21.0975)).toBe('21,1');
     expect(kmFalado(null)).toBeNull();
     expect(kmFalado(0)).toBeNull();
+  });
+
+  // Revisão de 2026-09-26: «deitar às 1:00», «partida às 0:00».
+  it('aHora: a preposição que a hora pede', () => {
+    expect(aHora('06:15')).toBe('às 6:15');
+    expect(aHora('01:00')).toBe('à 1:00');
+    expect(aHora('01:35:00')).toBe('à 1:35');
+    expect(aHora('00:00')).toBe('à meia-noite');
+    expect(aHora('00:30')).toBe('às 0:30');
+    expect(aHora('13:00')).toBe('às 13:00');
+    expect(aHora('21:00')).toBe('às 21:00');
   });
 });

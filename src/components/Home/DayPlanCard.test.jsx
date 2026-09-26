@@ -215,13 +215,63 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
     expect(screen.queryByText(/propostas da Carol por rever/)).not.toBeInTheDocument();
   });
 
-  it('o último plano aceite já acabou: ela diz que acabou e quer montar o próximo', () => {
+  it('o último plano aceite já acabou: diz que acabou, e o botão leva a combinar o próximo', () => {
     const acabado = { id: 'p0', status: 'aceite', period_start: addDaysISO(today, -14), period_end: addDaysISO(today, -1) };
     const feito = { id: 'i0', plan_id: 'p0', planned_date: addDaysISO(today, -1), kind: 'corrida', training_type: 'rodagem', status: 'concluido' };
     render(<DayPlanCard plans={[acabado]} planItems={[feito]} raceEvents={[]} />);
     expect(screen.getByText('O último plano acabou')).toBeInTheDocument();
     expect(screen.getByText('Combinar o próximo plano')).toBeInTheDocument();
     expect(screen.queryByText(/Pede-me um plano/)).not.toBeInTheDocument();
+  });
+
+  /* Revisão de 2026-09-26: quem marca provas sem aceitar plano nenhum abria
+     o Início no dia da prova e lia, em "O que faço hoje", «Sem plano
+     acordado · Pede-me um plano» — por baixo do cartão da Carol a dizer
+     «Hoje é dia de prova». Na véspera e no dia seguinte continua o convite. */
+  it('no dia da prova, sem plano aceite: o cartão é a prova, e o botão abre o hub', () => {
+    const onOpenRace = vi.fn();
+    const onNav = vi.fn();
+    render(<DayPlanCard plans={[{ id: 'p2', status: 'proposto' }]} planItems={[]} raceEvents={[race]} onOpenRace={onOpenRace} onNav={onNav} />);
+    const card = screen.getByTestId('day-plan-no-plan');
+    expect(card).toHaveTextContent('Corrida do Tejo');
+    expect(card).toHaveTextContent('Hoje, o que conta é esta prova. O resto espera.');
+    expect(card).not.toHaveTextContent(/Pede-me um plano|Sem plano acordado|proposta/);
+    // A proposta continua à vista, no aviso de cima.
+    expect(screen.getByText('Tens 1 proposta da Carol por rever')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('day-plan-open-race'));
+    expect(onOpenRace).toHaveBeenCalledWith('r1');
+    expect(onNav).not.toHaveBeenCalled();
+    cleanup();
+
+    for (const d of [-1, 1]) {
+      render(<DayPlanCard plans={[]} planItems={[]} raceEvents={[{ ...race, date: addDaysISO(today, d) }]} />);
+      expect(screen.getByText('Sem plano acordado')).toBeInTheDocument();
+      expect(screen.queryByTestId('day-plan-open-race')).not.toBeInTheDocument();
+      cleanup();
+    }
+  });
+
+  it('o dia da prova começa e acaba à meia-noite (dias seguidos, dos dois lados dela)', () => {
+    // O cartão conta o dia pelo relógio do telemóvel (todayISO), como o
+    // resto do "O que faço hoje"; os testes correm em UTC.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const prova = { ...race, date: '2026-09-27' };
+      const eProva = (iso) => {
+        vi.setSystemTime(new Date(iso));
+        const { unmount } = render(<DayPlanCard plans={[]} planItems={[]} raceEvents={[prova]} />);
+        const sim = !!screen.queryByTestId('day-plan-open-race');
+        unmount();
+        return sim;
+      };
+      expect(eProva('2026-09-26T12:00:00Z')).toBe(false);
+      expect(eProva('2026-09-26T23:59:00Z')).toBe(false);
+      expect(eProva('2026-09-27T00:00:00Z')).toBe(true);
+      expect(eProva('2026-09-27T23:59:00Z')).toBe(true);
+      expect(eProva('2026-09-28T00:00:00Z')).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('com plano a correr, as propostas novas continuam no aviso por cima do dia', () => {
@@ -249,8 +299,29 @@ describe('noPlanCopy — cada frase pela condição que a torna verdadeira', () 
     expect(noPlanCopy({ pendingCount: 7 }).body).toBe('Deixei-te 7 propostas. Vê-as e diz-me o que serve.');
   });
 
+  /* Revisão de 2026-09-26: por cima deste cartão, o da Carol (sem
+     recapitulação do dia) já fala do plano que acabou e de montar o
+     próximo; o corpo daqui repetia-o logo a seguir («Quero montar o próximo
+     contigo. Diz-me o que vem a seguir»). O pedido fica no botão, e o
+     corpo diz o que este cartão volta a mostrar. */
+  it('o plano que acabou: o corpo não repete o pedido do cartão da Carol', () => {
+    const c = noPlanCopy({ hadPlan: true });
+    expect(c.body).toBe('Com o plano novo, o que fazer em cada dia volta a aparecer aqui.');
+    expect(c.body).not.toMatch(/Quero|Diz-me|contigo/);
+    expect(c.cta).toBe('Combinar o próximo plano');
+  });
+
+  /* O dia de uma prova sem plano aceite: o que se faz hoje é a prova, e não
+     «Pede-me um plano» (revisão de 2026-09-26). */
+  it('no dia da prova, sem plano, o cartão é a prova e o botão abre-a', () => {
+    const c = noPlanCopy({ pendingCount: 1, hadPlan: true, raceToday: race });
+    expect(c).toMatchObject({ title: 'Corrida do Tejo', cta: 'Abrir a prova', raceId: 'r1', hideBanner: false });
+    expect(c.body).not.toMatch(/plano|proposta/i);
+    expect(noPlanCopy({ raceToday: { id: 'r9', name: '' } }).title).toBe('Dia de prova');
+  });
+
   it('na voz dela: sem exclamações, sem "talvez", sem se nomear na terceira pessoa', () => {
-    for (const args of [{ pendingCount: 1 }, { pendingCount: 2 }, { hadPlan: true }, {}]) {
+    for (const args of [{ pendingCount: 1 }, { pendingCount: 2 }, { hadPlan: true }, {}, { raceToday: race }]) {
       const c = noPlanCopy(args);
       expectCarolVoice(`${c.title}. ${c.body} ${c.cta}`);
     }

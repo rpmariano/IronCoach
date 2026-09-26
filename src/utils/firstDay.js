@@ -84,10 +84,37 @@ const SEM_OBJETIVO = {
   primary: 'talk',
 };
 
-/** { title, body, primary } para o cartão do primeiro dia. */
-export function firstDayAsk(goal, firstName) {
+/* O que ela sabe da vida do atleta passa à frente da corrida (revisão de
+   2026-09-26; CAROL.md §8, "O contexto primeiro"). Quem veio correr mais
+   rápido ou voltar de uma pausa — e "voltar de uma pausa" é muitas vezes
+   voltar de uma lesão ou de uma operação — ouvia «Primeiro preciso de te
+   ver correr. Regista as próximas corridas», com «Registar uma corrida» no
+   botão, no dia a seguir à cirurgia que lhe tinha contado no chat. O Início
+   já escondia a linha «Já correste?» nesses dias; o pedido principal do
+   cartão ficava. `vida` é o acontecimento de eventoDaVida (carolVida.js):
+   da véspera de uma cirurgia até ao fim da recuperação. Nesses dias o
+   pedido é saber como está, e o botão principal é falar com ela.
+   Sem "hoje" nem "amanhã" (vale a qualquer hora e dos dois lados da
+   meia-noite), sem género, e sem prometer nada sobre a recuperação. Os
+   outros objetivos não pedem corrida (a data da prova, uma refeição) e
+   ficam como estão. */
+const COM_VIDA = {
+  // "Voltamos com calma" já diz o que é preciso; "vamos pôr-te mais rápido" não.
+  title: (goal, n) => (goal === 'regresso'
+    ? PEDIDO.regresso.title(n)
+    : (n ? `${n}, uma coisa de cada vez.` : 'Uma coisa de cada vez.')),
+  body: (vida) => `Não me esqueci ${vida.da}. Antes de falarmos de corridas, quero saber como estás: conta-me, e começamos daí.`,
+};
+
+/** { title, body, primary } para o cartão do primeiro dia. `vida`: o
+ *  acontecimento de eventoDaVida (carolVida.js) para hoje, ou null. */
+export function firstDayAsk(goal, firstName, { vida = null } = {}) {
   const p = PEDIDO[goal] || SEM_OBJETIVO;
-  return { title: p.title(firstName || ''), body: p.body, primary: p.primary };
+  const n = firstName || '';
+  if (vida?.da && p.primary === 'run') {
+    return { title: COM_VIDA.title(goal, n), body: COM_VIDA.body(vida), primary: 'talk' };
+  }
+  return { title: p.title(n), body: p.body, primary: p.primary };
 }
 
 /* Quando é o primeiro dia (pedido 2026-09-26). Até aqui bastava não haver

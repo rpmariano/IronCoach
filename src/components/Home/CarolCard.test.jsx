@@ -32,7 +32,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     relogio('10:00');
     loadDailySummary.mockClear();
-    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' }, raceEvents: [], runs: [], gymSessions: [], dailyCheckins: [] });
+    useAppStore.setState({ dailySummary: null, dailySummaryLoading: false, loadDailySummary, coachPlans: [], coachPlanItems: [], waterLogs: [], profile: { id: 'u1' }, raceEvents: [], runs: [], gymSessions: [], dailyCheckins: [], coachNotes: [] });
   });
 
   afterEach(() => {
@@ -194,6 +194,42 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       render(<CarolCard />);
       expect(screen.getByText(FRASES.treinoComDor('uma rodagem longa de 16 km'))).toBeInTheDocument();
     });
+
+    /* Revisão de 2026-09-26: a memória dela lê-se desde a abertura (App.jsx),
+       e o check-in logo abaixo já diz «hoje, descansar é o teu treino» a quem
+       foi operado ontem. O cartão, por cima, dizia «Hoje tens uma rodagem
+       longa de 16 km.» — e às 21h perguntava «Aconteceu alguma coisa?». */
+    describe('o que ela sabe da vida dele passa à frente do plano', () => {
+      const CIRURGIA = { id: 'n1', category: 'saude', note: `Cirurgia a rutura do bíceps direito a ${ONTEM}; paragem de corrida de pelo menos 2 semanas no pós-operatório.` };
+
+      it('no dia a seguir à cirurgia, de manhã e à noite, e na véspera dela o treino de amanhã', () => {
+        relogio('10:00');
+        useAppStore.setState({ ...plano([LONGO]), coachNotes: [CIRURGIA] });
+        const { unmount } = render(<CarolCard />);
+        expect(textoDoCartao()).toBe(`Carol${FRASES.treinoComVida('uma rodagem longa de 16 km', { da: 'da cirurgia' })}`);
+        unmount();
+
+        relogio('21:30');
+        render(<CarolCard />);
+        expect(textoDoCartao()).toBe('CarolO treino de hoje não apareceu, e com a cirurgia faz todo o sentido. Como te sentes?');
+        expect(textoDoCartao()).not.toMatch(/Aconteceu alguma coisa|Correu tudo bem|o que se passou/);
+      });
+
+      it('na véspera da cirurgia, "Preparar amanhã" não anuncia o treino do dia dela', () => {
+        relogio('18:00');
+        useAppStore.setState({
+          coachNotes: [{ id: 'n1', note: `Cirurgia ao joelho marcada para ${AMANHA}.` }],
+          coachPlans: [{ id: 'p1', status: 'aceite', period_start: HOJE, period_end: AMANHA }],
+          coachPlanItems: [
+            { id: 'i1', plan_id: 'p1', planned_date: HOJE, kind: 'descanso', status: 'pendente' },
+            { id: 'i2', plan_id: 'p1', planned_date: AMANHA, status: 'pendente', ...LONGO },
+          ],
+        });
+        render(<CarolCard />);
+        abrir();
+        expect(secao('Preparar amanhã')).toBe('Preparar amanhãAmanhã o plano tem uma rodagem longa de 16 km. Por causa da cirurgia, fala comigo antes de treinares.');
+      });
+    });
   });
 
   /* Bug #38 (2026-09-21): o aviso é gerado uma vez por dia e fica em cache —
@@ -249,6 +285,15 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       expect(textoDoCartao()).not.toMatch(/Regista/);
     });
 
+    // Revisão de 2026-09-26: 5 km corridos fecham a rodagem de 16 km do dia,
+    // mas não se diz que ele fez 16.
+    it('sem resumo, com uma corrida bem mais curta do que a do plano: conta o que ele correu', () => {
+      useAppStore.setState({ ...plano([LONGO]), runs: [{ id: 'r1', date: HOJE, distance_km: 5 }] });
+      render(<CarolCard />);
+      expect(FRASES.treinoFeitoKm('5').some((f) => textoDoCartao() === `Carol${f}`)).toBe(true);
+      expect(textoDoCartao()).not.toMatch(/16 km|rodagem longa/);
+    });
+
     it('uma corrida de outro dia não conta', () => {
       useAppStore.setState({ ...plano([LONGO]), runs: [{ id: 'r1', date: ONTEM, distance_km: 16 }] });
       render(<CarolCard />);
@@ -299,6 +344,28 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       }
     });
 
+    /* Revisão de 2026-09-26: a linha do dia abre sempre com "Hoje"; a da água,
+       logo a seguir, também abria («Hoje é dia de descanso. Hoje ainda não vi
+       nenhum copo de água registado.») — duas frases coladas pelo mesmo molde. */
+    it('o dia e a água não abrem as duas com "Hoje" — em três semanas seguidas', () => {
+      for (let n = 0; n < 21; n++) {
+        const dia = addDaysISO(HOJE, n);
+        for (const itens of [[{ kind: 'descanso' }], [LONGO], []]) {
+          relogio('12:00', dia);
+          useAppStore.setState({
+            profile: COM_AGUA,
+            coachPlans: itens.length ? [{ id: 'p1', status: 'aceite', period_start: dia, period_end: dia }] : [],
+            coachPlanItems: itens.map((it, k) => ({ id: `i${k}`, plan_id: 'p1', planned_date: dia, status: 'pendente', ...it })),
+          });
+          const { unmount } = render(<CarolCard />);
+          const texto = textoDoCartao().replace(/^Carol/, '');
+          const inicios = texto.split(/(?<=\.)\s+/).map((f) => f.split(' ')[0]);
+          for (let k = 1; k < inicios.length; k++) expect(`${inicios[k - 1]} ${inicios[k]}`, `${dia}: ${texto}`).not.toBe('Hoje Hoje');
+          unmount();
+        }
+      }
+    });
+
     it('sem lembretes de água ligados não se cobra a água (pedido 2026-09-13)', () => {
       relogio('15:00');
       useAppStore.setState({ profile: { ...COM_AGUA, water_reminder_enabled: false }, dailySummary: resumo({ recap: 'Treinaste bem.' }) });
@@ -323,6 +390,19 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       useAppStore.setState({ coachPlans: [{ id: 'p9', status: 'proposto', period_start: HOJE, period_end: AMANHA }] });
       render(<CarolCard />);
       expect(screen.getByText(FRASES.propostaPorVer(1))).toBeInTheDocument();
+    });
+
+    /* Revisão de 2026-09-26: o cartão do plano, logo abaixo, diz «O último
+       plano acabou» (DayPlanCard, noPlanCopy) — «Ainda não temos plano»
+       desdizia-o. */
+    it('com um plano aceite que já acabou, não diz "ainda não temos plano"', () => {
+      useAppStore.setState({
+        coachPlans: [{ id: 'p0', status: 'aceite', period_start: '2026-09-01', period_end: '2026-09-20' }],
+        coachPlanItems: [{ id: 'i0', plan_id: 'p0', planned_date: '2026-09-20', kind: 'corrida', training_type: 'longo', target_distance_km: 14, status: 'concluido' }],
+      });
+      render(<CarolCard />);
+      expect(textoDoCartao()).toBe(`Carol${FRASES.planoAcabou}`);
+      expect(textoDoCartao()).not.toMatch(/Ainda não temos plano/);
     });
 
     it('descanso hoje, treino amanhã: primeiro o dia, depois o amanhã', () => {
@@ -398,6 +478,31 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       render(<CarolCard />);
       expect(screen.getByText('Amanhã é dia de prova: Corrida do Tejo (10 km), partida às 9:00. Deita-te já: acordas às 6:00.')).toBeInTheDocument();
       expect(textoDoCartao()).not.toMatch(/jantar|deitar às/);
+    });
+
+    /* Revisão de 2026-09-26: com os lembretes de água ligados e sem
+       recapitulação, a partir das 11h o aviso da água passava à frente da
+       prova — «Ainda não vi água registada hoje.» era a primeira coisa que
+       ela dizia na véspera. A água fica, mas depois. */
+    it('véspera com os lembretes de água: a prova continua a ser a primeira linha — em dias seguidos', () => {
+      for (let n = 0; n < 4; n++) {
+        const dia = addDaysISO(HOJE, n);
+        for (const hora of ['11:30', '16:00', '22:30']) {
+          relogio(hora, dia);
+          useAppStore.setState({
+            profile: { ...COM_AGUA, weight_kg: 70 },
+            raceEvents: [race(addDaysISO(dia, 1), { start_time: '09:00', target_time_seconds: 2880 })],
+            coachPlans: [{ id: 'p1', status: 'aceite', period_start: dia, period_end: dia }],
+            coachPlanItems: [{ id: 'i0', plan_id: 'p1', planned_date: dia, kind: 'descanso', status: 'pendente' }],
+          });
+          const { unmount } = render(<CarolCard />);
+          expect(textoDoCartao(), `${dia} ${hora}`).toMatch(/^CarolAmanhã é dia de prova: Corrida do Tejo/);
+          abrir();
+          // A água não se perdeu: vem a seguir.
+          expect(FRASES.semAgua.some((f) => secao('Aviso de hoje').includes(f)), `${dia} ${hora}`).toBe(true);
+          unmount();
+        }
+      }
     });
 
     it('véspera sem hora: pede a hora em vez de inventar horários', () => {

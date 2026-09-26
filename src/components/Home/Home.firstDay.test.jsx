@@ -135,3 +135,58 @@ describe('Home — a linha da corrida do primeiro dia', () => {
     }
   });
 });
+
+/* O contexto primeiro, no Início do primeiro dia (revisão de 2026-09-26):
+   quem veio voltar de uma pausa e contou à Carol a cirurgia não tem
+   «Registar uma corrida» como pedido principal, nem a linha «Já correste?»,
+   da véspera da cirurgia ao fim da recuperação. Dias seguidos, dos dois
+   lados da meia-noite de Lisboa (setembro e outubro até dia 25 são UTC+1). */
+describe('Home — o primeiro dia com uma cirurgia na memória dela', () => {
+  const notas = [
+    { category: 'objetivo_pessoal', note: 'Voltar depois de uma pausa — retomar sem me lesionar.' },
+    { category: 'saude', note: 'Cirurgia ao menisco do joelho direito a 2026-09-25; paragem de corrida de 2 semanas.' },
+  ];
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAppStore.setState({
+      ...baseState,
+      coachNotes: notas,
+      setActiveTab: vi.fn().mockReturnValue(true),
+      setOpenCreationMode: vi.fn(),
+      setCoachIntent: vi.fn(),
+      reloadCoachNotes: vi.fn(),
+      loadDailySummary: vi.fn().mockResolvedValue(null),
+    });
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const pedeCorrida = (iso) => {
+    vi.setSystemTime(new Date(iso));
+    const { unmount } = renderHome();
+    const card = screen.getByTestId('first-day-card');
+    const corre = !!screen.queryByRole('button', { name: /Registar uma corrida/ }) || !!screen.queryByText(/Já correste/);
+    const lembra = /Não me esqueci da cirurgia/.test(card.textContent);
+    unmount();
+    return { corre, lembra };
+  };
+
+  it('dias seguidos: da véspera ao último dia da recuperação, ela pergunta por ele e não pela corrida', () => {
+    for (const dia of ['2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-10-09']) {
+      for (const hora of ['10:00', '23:30']) {
+        expect(pedeCorrida(`${dia}T${hora}:00+01:00`), `${dia} ${hora}`).toEqual({ corre: false, lembra: true });
+      }
+    }
+  });
+
+  it('os dois lados da meia-noite nas pontas da janela', () => {
+    expect(pedeCorrida('2026-09-23T23:59:00+01:00')).toEqual({ corre: true, lembra: false });
+    expect(pedeCorrida('2026-09-24T00:00:00+01:00')).toEqual({ corre: false, lembra: true });
+    expect(pedeCorrida('2026-10-09T23:59:00+01:00')).toEqual({ corre: false, lembra: true });
+    expect(pedeCorrida('2026-10-10T00:00:00+01:00')).toEqual({ corre: true, lembra: false });
+  });
+});

@@ -33,6 +33,15 @@ function minutosDe(hhmm) {
 /** "06:15" → "6:15", como se diz, e como o chip das boas-vindas escreve. */
 export const semZero = (hhmm) => String(hhmm).slice(0, 5).replace(/^0(?=\d:)/, '');
 
+/** A hora com a preposição que ela pede (revisão de 2026-09-26): "às 6:15",
+ *  mas "à 1:00" (à uma) e "à meia-noite". «Deitar às 1:00» e «partida às
+ *  0:00» saíam numa prova ao meio-dia e numa da meia-noite. */
+export function aHora(hhmm) {
+  const h = semZero(hhmm);
+  if (h === '0:00') return 'à meia-noite';
+  return /^1:/.test(h) ? `à ${h}` : `às ${h}`;
+}
+
 /** 21.0975 → "21,1"; null sem distância. */
 export function kmFalado(v) {
   const n = Number(String(v ?? '').replace(',', '.'));
@@ -46,6 +55,34 @@ const litros = (ml) => `${String(Math.round(ml / 100) / 10).replace('.', ',')} L
 const juntar = (l) => (l.length <= 1 ? (l[0] || '') : `${l.slice(0, -1).join(', ')} e ${l[l.length - 1]}`);
 const maiuscula = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const ehTreino = (i) => !!i && (i.kind === 'corrida' || i.kind === 'ginasio');
+/** Números pequenos por extenso, como se dizem (e como o cartão do plano). */
+const EXTENSO = { 2: 'duas', 3: 'três', 4: 'quatro', 5: 'cinco' };
+
+/* ── a hora da prova, no cliente (revisão de 2026-09-26) ──────────────────
+   computeRaceEve (raceEve.ts, Lote 2 — não se mexe aqui) faz as contas para
+   trás a partir da partida: acordar 3 h antes, deitar 8 h antes disso,
+   jantar 2 h 30 antes de deitar, "pequeno-almoço" 2 h 45 antes da partida.
+   Numa partida da manhã está certo. Numa prova ao fim da tarde (uma São
+   Silvestre às 20:00) dava «Jantar até às 6:30, deitar às 9:00, acordar às
+   17:00, pequeno-almoço às 17:15» — e o cartão dizia-o. Aqui escolhe-se o
+   que se mostra: a noite do horário só vale quando o jantar ainda cai na
+   véspera (a partida até ao início da tarde, ou uma prova da meia-noite);
+   senão, a noite é a de sempre. E a refeição antes da partida só se chama
+   pequeno-almoço quando é de manhã. */
+
+/** O jantar do horário ainda é na véspera? Na hora do relógio, um jantar
+ *  "depois" da partida é da noite anterior (19:30 para uma partida às 9:00). */
+function noiteDoHorario(s) {
+  const jantar = minutosDe(s?.dinnerBy);
+  const partida = minutosDe(s?.start);
+  return jantar != null && partida != null && jantar > partida;
+}
+
+/** "pequeno-almoço" às 6:15; às 17:15 é a refeição antes da prova. */
+function rotuloDaRefeicao(hhmm) {
+  const m = minutosDe(hhmm);
+  return m != null && m >= 3 * 60 && m < 11 * 60 ? 'pequeno-almoço' : 'refeição antes da prova';
+}
 
 // Séries, ritmo, fartlek e subidas não se fazem "sem puxar": puxar é o treino
 // (o mesmo conjunto que as boas-vindas usam).
@@ -86,19 +123,36 @@ export const FRASES = {
   naoRegistadoCansado: 'Não vi o treino de hoje registado, e pelo que me contaste faz sentido.',
   restoNaoRegistadoCansado: 'O resto do treino de hoje não apareceu, e pelo que me contaste faz sentido.',
   treinoComDor: (t) => `Hoje tens ${t} no plano, mas com a dor de que me falaste quero falar contigo antes de treinares.`,
+  /* O que ela sabe da vida dele (utils/carolVida.js, revisão de 2026-09-26):
+     uma cirurgia, uma lesão, uma doença. As boas-vindas e o check-in já
+     partem daí, e a memória lê-se desde a abertura da app; o cartão, logo
+     por cima do check-in, dizia «Hoje tens uma rodagem longa de 16 km.» no
+     dia a seguir à cirurgia, e às 21h perguntava «Aconteceu alguma coisa?»
+     a quem ela sabe que foi operado. O plano não se dá como ordem, e o
+     treino que não apareceu não se pergunta: ela sabe porquê. `v` é o
+     evento de eventoDaVida ({ a: 'a cirurgia', da: 'da cirurgia' }). */
+  treinoComVida: (t, v) => `Hoje o plano ainda tem ${t}. Por causa ${v.da}, fala comigo antes de treinares.`,
+  naoRegistadoComVida: (v) => `O treino de hoje não apareceu, e com ${v.a} faz todo o sentido. Como te sentes?`,
+  restoNaoRegistadoComVida: (v) => `O resto do treino de hoje não apareceu, e com ${v.a} faz todo o sentido. Como te sentes?`,
+  amanhaComVida: (q, t, v) => `${q} o plano tem ${t}. Por causa ${v.da}, fala comigo antes de treinares.`,
   treinoEmBaixo: (t) => `Hoje tens ${t}. Pelo que me disseste no check-in, faz-se sem puxar.`,
   treinoEmBaixoQualidade: (t) => `Hoje tens ${t}. Pelo que me disseste no check-in, fala comigo antes de treinares.`,
   treinoFeito: (t) => (t
     ? [`Hoje já fizeste ${t}.`, 'O treino de hoje está feito.', 'Já vi o treino de hoje registado. O resto do dia é para recuperar.']
     : ['O treino de hoje está feito.', 'Já vi o treino de hoje registado. O resto do dia é para recuperar.']),
+  // Quando a corrida registada não bate com a do plano, conta o registo.
+  treinoFeitoKm: (k) => [`Hoje já fizeste ${k} km.`, 'O treino de hoje está feito.', `Já vi os ${k} km de hoje. O resto do dia é para recuperar.`],
   descanso: ['Hoje é dia de descanso.', 'Hoje o plano é descansar.', 'Hoje não há treino: é dia de descanso.'],
   // CAROL.md §3: um descanso não respeitado não passa em silêncio, mas
   // pergunta-se, não se ralha.
   corridaEmDescanso: (k) => [`Hoje era dia de descanso e vi ${k} km registados. Como está o corpo?`, `Hoje era dia de descanso e correste ${k} km. Como estão as pernas?`],
   semTreino: ['Hoje não há treino no plano.', 'O plano não pede treino hoje.', 'Hoje não tens treino no plano.'],
   amanhaTreino: (t) => [`Amanhã tens ${t}.`, `Para amanhã, o plano pede ${t}.`, `Amanhã o plano é ${t}.`],
-  // "vi" e não "bebeste": a app só sabe o que foi registado.
-  semAgua: ['Ainda não vi água registada hoje.', 'Ainda não vi água registada hoje. Um copo agora, e regista-o.', 'Hoje ainda não vi nenhum copo de água registado. Começa já por um.'],
+  // "vi" e não "bebeste": a app só sabe o que foi registado. Nenhuma abre
+  // com "Hoje" (revisão de 2026-09-26): vem logo a seguir à linha do dia, que
+  // abre sempre assim — «Hoje é dia de descanso. Hoje ainda não vi…» eram
+  // duas frases coladas pelo mesmo molde.
+  semAgua: ['Ainda não vi água registada hoje.', 'Ainda não vi água registada hoje. Um copo agora, e regista-o.', 'Ainda não vi nenhum copo de água registado hoje. Começa já por um.'],
   aguaAtras: (vais, devias) => `Vais em ${vais} de água, e a esta hora já devias ir em ${devias}. Um copo agora.`,
   provaACorrer: 'Quando cortares a meta, regista a prova. Quero fazer o balanço contigo.',
   provaComCorrida: (k) => `Vi ${k} km registados hoje. Quero saber como correu a prova.`,
@@ -108,9 +162,16 @@ export const FRASES = {
   provaFeita: (k) => `Vi os ${k} km da prova de hoje. Quero fazer o balanço contigo.`,
   provaFeitaSemCorrida: 'A prova de hoje já passou. Conta-me como correu.',
   semPlano: 'Ainda não temos plano. Diz-me o que queres preparar e monto-o contigo.',
+  /* Revisão de 2026-09-26: com um plano aceite que já acabou, «Ainda não
+     temos plano» negava o cartão do plano logo abaixo («O último plano
+     acabou»). E a proposta por ver repetia, quase palavra a palavra, o que
+     esse cartão diz por baixo («Vê-o e diz-me se serve»): aqui ela diz o que
+     vem depois, e o cartão do plano leva à proposta. Números por extenso e
+     "o que serve", como lá — podem ser uma de treino e outra de refeições. */
+  planoAcabou: 'O último plano chegou ao fim. Quero ouvir-te antes de montarmos o próximo.',
   propostaPorVer: (n) => (n === 1
-    ? 'Deixei-te uma proposta de plano no chat. Vê-a e diz-me se serve.'
-    : `Deixei-te ${n} propostas de plano no chat. Vê-as e diz-me qual serve.`),
+    ? 'Tens a minha proposta de plano no chat. Quando estiver ao teu gosto, arrancamos.'
+    : `Tens ${EXTENSO[n] || n} propostas minhas no chat. Quando estiverem ao teu gosto, arrancamos.`),
 };
 
 /* ── o aviso do servidor ────────────────────────────────────────────────────
@@ -157,8 +218,10 @@ export function tipoDoDia({ itens = [], pendentes = [], provaFeita = false, comP
  * check-in o pedir); das 19h às 21h o que falta registar; depois, a
  * pergunta. Entre a meia-noite e as 5h o dia de Lisboa já é o novo, e o
  * treino dele diz-se "hoje", como o chip do plano logo abaixo.
+ * `vida`: o acontecimento da vida dele de eventoDaVida (utils/carolVida.js),
+ * de hoje até ao fim da recuperação; passa à frente de tudo menos da dor.
  */
-export function linhaDoTreinoDeHoje({ pendentes = [], feitos = [], agora = new Date(), checkin = null }) {
+export function linhaDoTreinoDeHoje({ pendentes = [], feitos = [], agora = new Date(), checkin = null, vida = null }) {
   if (!pendentes.length) return null;
   const { date: hoje, hour } = lisbonParts(agora);
   const t = treinoFalado(pendentes, hoje);
@@ -170,14 +233,19 @@ export function linhaDoTreinoDeHoje({ pendentes = [], feitos = [], agora = new D
   const emBaixo = (sono > 0 && sono <= 2) || (energia > 0 && energia <= 2) || (Number(checkin?.stress) || 0) >= 4;
   const qualidade = pendentes.some((i) => i.kind === 'corrida' && TREINOS_DE_QUALIDADE.has(i.training_type));
   const parte = feitos.length > 0;
+  // A véspera de uma cirurgia (dias −1) não muda o treino de hoje.
+  const comVida = vida && vida.dias >= 0 ? vida : null;
 
   if (hour >= 19) {
     if (dor) return parte ? FRASES.restoNaoRegistadoComDor : FRASES.naoRegistadoComDor;
+    // Como com a dor: não se espera pelas 21h para dar sentido à ausência.
+    if (comVida) return parte ? FRASES.restoNaoRegistadoComVida(comVida) : FRASES.naoRegistadoComVida(comVida);
     if (hour < 21) return pick(FRASES.treinoPorRegistar(t), 'cartaoTreinoPorRegistar');
     if (emBaixo) return parte ? FRASES.restoNaoRegistadoCansado : FRASES.naoRegistadoCansado;
     return parte ? FRASES.parteNaoRegistada(t) : pick(FRASES.treinoNaoRegistado, 'cartaoTreinoNaoRegistado');
   }
   if (dor) return FRASES.treinoComDor(t);
+  if (comVida) return FRASES.treinoComVida(t, comVida);
   if (emBaixo) return qualidade ? FRASES.treinoEmBaixoQualidade(t) : FRASES.treinoEmBaixo(t);
   if (parte) return pick(FRASES.treinoPorFazer(t), 'cartaoTreinoPorFazer');
   return pick(FRASES.treinoHoje(t), 'cartaoTreinoHoje');
@@ -190,27 +258,43 @@ export function linhaDoTreinoDeHoje({ pendentes = [], feitos = [], agora = new D
  * um treino num dia de descanso e uma refeição às 03:53. Nenhuma destas
  * frases pede um registo, a nenhuma hora.
  */
-export function linhaDoDia({ tipo, feitos = [], kmHoje = 0, propostas = 0, agora = new Date() }) {
+export function linhaDoDia({ tipo, feitos = [], kmHoje = 0, propostas = 0, jaHouvePlano = false, agora = new Date() }) {
   const { date: hoje } = lisbonParts(agora);
   const pick = (pool, s) => pickByDay(pool, hoje, s);
   const k = kmFalado(kmHoje);
   if (tipo === 'provaFeita') return k ? FRASES.provaFeita(k) : FRASES.provaFeitaSemCorrida;
-  if (tipo === 'feito') return pick(FRASES.treinoFeito(treinoFalado(feitos, hoje)), 'cartaoTreinoFeito');
+  if (tipo === 'feito') {
+    /* Revisão de 2026-09-26: qualquer corrida registada no dia fecha o item
+       de corrida do plano (RunRegistration, completeMatchingPlanItem), e o
+       item fechado dizia-se como planeado — 5 km corridos davam «Hoje já
+       fizeste uma rodagem longa de 16 km.». Com os km do dia longe dos do
+       plano (mais de 15%), fala-se do que ele correu. */
+    const corridas = feitos.filter((i) => i.kind === 'corrida');
+    const planeado = corridas.reduce((s, i) => s + (Number(i.target_distance_km) || 0), 0);
+    const bate = !k || !corridas.length || !(planeado > 0) || Math.abs(kmHoje - planeado) <= planeado * 0.15;
+    return pick(bate ? FRASES.treinoFeito(treinoFalado(feitos, hoje)) : FRASES.treinoFeitoKm(k), 'cartaoTreinoFeito');
+  }
   if (tipo === 'descanso') return k ? pick(FRASES.corridaEmDescanso(k), 'cartaoCorridaEmDescanso') : pick(FRASES.descanso, 'cartaoDescanso');
   if (tipo === 'semTreino') return pick(FRASES.semTreino, 'cartaoSemTreino');
   // Sem plano aceite: com uma proposta à espera, é para ela que se aponta
-  // (o banner do cartão do plano diz o mesmo); sem nenhuma, oferece-se.
-  return propostas > 0 ? FRASES.propostaPorVer(propostas) : FRASES.semPlano;
+  // (o cartão do plano diz o mesmo); sem nenhuma, oferece-se — e, se já
+  // houve um plano aceite que acabou (`jaHouvePlano`), não se diz "ainda".
+  if (propostas > 0) return FRASES.propostaPorVer(propostas);
+  return jaHouvePlano ? FRASES.planoAcabou : FRASES.semPlano;
 }
 
 /** O treino de amanhã. Entre a meia-noite e as 5h, "amanhã" é ambíguo para
- *  quem ainda não dormiu: diz-se o dia da semana. */
-export function linhaDeAmanha({ itens = [], agora = new Date() }) {
+ *  quem ainda não dormiu: diz-se o dia da semana. `vida`: o acontecimento da
+ *  vida dele visto a partir de amanhã (eventoDaVida no dia de amanhã) — na
+ *  véspera de uma cirurgia, o treino de amanhã não se anuncia sem ressalva. */
+export function linhaDeAmanha({ itens = [], agora = new Date(), vida = null }) {
   const { date: hoje, hour } = lisbonParts(agora);
   const amanha = addDaysISO(hoje, 1);
   const t = treinoFalado((itens || []).filter((i) => i.status !== 'concluido'), amanha);
   if (!t) return null;
-  if (hour < 5) return `${maiuscula(formatWeekday(amanha))} tens ${t}.`;
+  const quando = hour < 5 ? maiuscula(formatWeekday(amanha)) : 'Amanhã';
+  if (vida && vida.dias >= 0) return FRASES.amanhaComVida(quando, t, vida);
+  if (hour < 5) return `${quando} tens ${t}.`;
   return pickByDay(FRASES.amanhaTreino(t), hoje, 'cartaoAmanha');
 }
 
@@ -299,28 +383,37 @@ export function linhaDaProvaDeHoje({ race, eve, firstKmPaceLabel = null, agora =
   const inicio = s ? minutosDe(s.start) : null;
   const falta = inicio != null ? inicio - agoraMin : null;
   const plano = firstKmPaceLabel ? ` O teu plano km a km está no hub da prova: arrancas a ${firstKmPaceLabel}.` : '';
+  const abrirPlano = { label: 'Abrir o plano da prova', raceId };
+
+  const cabeca = `Hoje é dia de prova${nome}${s ? `, partida ${aHora(s.start)}` : ''}`;
+  /* De madrugada, antes de ser hora de acordar para ela (a mesma regra das
+     boas-vindas), a única coisa a fazer pela prova é dormir — também sem
+     hora de partida marcada (revisão de 2026-09-26: às 00:30 dava os
+     conselhos do pequeno-almoço e pedia o objetivo de tempo). O botão não
+     pede nada: «Marcar o objetivo na prova» por baixo de «o que conta é
+     dormir» desdizia a frase. A hora de acordar só se diz quando a noite
+     do horário vale (noiteDoHorario): numa prova ao fim da tarde, a noite é
+     a de sempre. */
+  if (hour < 5 && !acordouParaAProva(race, agora)) {
+    const acorda = s && noiteDoHorario(s) ? minutosDe(s.wake) : null;
+    const quando = acorda != null && acorda > agoraMin && acorda < 12 * 60 ? `: acordas ${aHora(s.wake)}` : '';
+    return { text: `${cabeca}. Agora, o que conta é dormir${quando}.`, action: firstKmPaceLabel ? abrirPlano : abrir };
+  }
+
   // Sem objetivo não há plano km a km. Longe da partida pede-se o objetivo;
   // a menos de uma hora dela já não é altura (e o botão deixa de o oferecer).
   const pedeObjetivo = !firstKmPaceLabel && (falta == null || falta > 60);
   const objetivo = pedeObjetivo ? ' Marca o objetivo de tempo na prova para teres o plano km a km no hub.' : '';
-  const action = firstKmPaceLabel ? { label: 'Abrir o plano da prova', raceId }
+  const action = firstKmPaceLabel ? abrirPlano
     : pedeObjetivo ? { label: 'Marcar o objetivo na prova', raceId } : abrir;
 
-  if (!s) return { text: `Hoje é dia de prova${nome}. Pequeno-almoço 2 h 45 antes da partida, água aos goles até 45 min antes.${plano}${objetivo}`, action };
+  if (!s) return { text: `${cabeca}. Pequeno-almoço 2 h 45 antes da partida, água aos goles até 45 min antes.${plano}${objetivo}`, action };
 
-  const cabeca = `Hoje é dia de prova${nome}, partida às ${semZero(s.start)}`;
-  // De madrugada, antes de ser hora de acordar para ela (a mesma regra das
-  // boas-vindas), a única coisa a fazer pela prova é dormir.
-  if (hour < 5 && !acordouParaAProva(race, agora)) {
-    const acorda = minutosDe(s.wake);
-    const quando = acorda > agoraMin && acorda < 12 * 60 ? `: acordas às ${semZero(s.wake)}` : '';
-    return { text: `${cabeca}. Agora, o que conta é dormir${quando}.`, action };
-  }
   // Todos os passos antecedem a partida: um que no relógio fique depois dela
   // (numa partida à 01:00 o pequeno-almoço é às 22:15) é da véspera.
   const quandoE = (hhmm) => { const m = minutosDe(hhmm); return m > inicio ? m - 1440 : m; };
-  const passos = [[s.breakfast, 'pequeno-almoço às'], [s.arrival, 'chegada às'], [s.waterUntil, 'água até às'], [s.warmup, 'aquecimento às']]
-    .map(([h, rotulo]) => ({ t: quandoE(h), txt: `${rotulo} ${semZero(h)}` }))
+  const passos = [[s.breakfast, rotuloDaRefeicao(s.breakfast)], [s.arrival, 'chegada'], [s.waterUntil, 'água até'], [s.warmup, 'aquecimento']]
+    .map(([h, rotulo]) => ({ t: quandoE(h), txt: `${rotulo} ${aHora(h)}` }))
     .filter((p) => p.t > agoraMin)
     .sort((x, y) => x.t - y.t)
     .map((p) => p.txt);
@@ -333,10 +426,16 @@ export function linhaDaProvaDeHoje({ race, eve, firstKmPaceLabel = null, agora =
 /**
  * A véspera da prova, só com os passos por vir: às 23:15 o jantar e a hora
  * de deitar já passaram, e o que há a dizer é que se deite. Os passos
- * contam-se a partir da meia-noite da véspera, para uma partida ao fim da
- * tarde (deitar e jantar já no próprio dia da prova) não os dar como
- * passados. Entre a meia-noite e as 5h diz-se o dia da semana, e não
- * "amanhã".
+ * contam-se a partir da meia-noite da véspera; um passo que no relógio fique
+ * antes da partida é do próprio dia da prova. Entre a meia-noite e as 5h
+ * diz-se o dia da semana, e não "amanhã".
+ *
+ * Revisão de 2026-09-26 (ver noiteDoHorario): numa prova ao fim da tarde o
+ * horário punha o jantar às 6:30 e o deitar às 9:00 do próprio dia da prova,
+ * e o cartão dizia-o — agora a noite é a de sempre, e do horário fica a
+ * refeição antes da partida e a chegada. Numa prova da meia-noite (a MIUT,
+ * na Madeira), às 21:30 da véspera já passou a hora de acordar: «Deita-te já:
+ * acordas às 21:00» era falso; o que há a dizer é o que falta até à partida.
  */
 export function linhaDaVespera({ race, eve, agora = new Date() }) {
   const { date: hoje, hour, minute } = lisbonParts(agora);
@@ -346,6 +445,7 @@ export function linhaDaVespera({ race, eve, agora = new Date() }) {
   const k = kmFalado(race?.distance_km);
   const dist = k ? ` (${k} km)` : '';
   const s = eve?.schedule || null;
+  const hidratos = eve?.dinnerCarbsG ? ` (${eve.dinnerCarbsG.low}-${eve.dinnerCarbsG.high} g de hidratos)` : '';
   if (!s) {
     const noite = hour >= 21 ? 'Esta noite, 8 h de sono.' : 'Jantar de hidratos complexos, pouca fibra, e 8 h de sono.';
     return `${quando} é dia de prova${nome}${dist}. Sem hora de partida marcada não consigo dar horas: marca-a na prova. ${noite}`;
@@ -353,15 +453,35 @@ export function linhaDaVespera({ race, eve, agora = new Date() }) {
   const agoraMin = hour * 60 + minute;
   const inicio = 1440 + minutosDe(s.start);
   const quandoE = (hhmm) => { const m = minutosDe(hhmm); return m + 1440 <= inicio ? m + 1440 : m; };
-  const cabeca = `${quando} é dia de prova${nome}${dist}, partida às ${semZero(s.start)}`;
-  if (agoraMin >= quandoE(s.bed)) return `${cabeca}. Deita-te já: acordas às ${semZero(s.wake)}.`;
-  const hidratos = eve.dinnerCarbsG ? ` (${eve.dinnerCarbsG.low}-${eve.dinnerCarbsG.high} g de hidratos)` : '';
+  const cabeca = `${quando} é dia de prova${nome}${dist}, partida ${aHora(s.start)}`;
+
+  // Uma partida ao fim da tarde: a noite é a de sempre, e as horas que
+  // contam são as do dia da prova (as duas ainda por vir, em toda a véspera).
+  if (!noiteDoHorario(s)) {
+    const gramas = eve?.dinnerCarbsG ? ` (${eve.dinnerCarbsG.low}-${eve.dinnerCarbsG.high} g)` : '';
+    const noite = hour >= 21 ? 'Esta noite, 8 h de sono.' : `Jantar de hidratos complexos${gramas}, pouca fibra, e 8 h de sono.`;
+    return `${cabeca}. ${noite} Antes da partida, comes ${aHora(s.breakfast)} e chegas ${aHora(s.arrival)}.`;
+  }
+
+  // Uma prova da meia-noite: já é hora de estar acordado para ela.
+  if (agoraMin >= quandoE(s.wake)) {
+    const partida = `A prova é esta noite${nome}${dist}, partida ${aHora(s.start)}`;
+    const falta = inicio - agoraMin;
+    const antes = [[s.breakfast, rotuloDaRefeicao(s.breakfast)], [s.arrival, 'chegada'], [s.waterUntil, 'água até'], [s.warmup, 'aquecimento']]
+      .map(([h, rotulo]) => ({ t: quandoE(h), txt: `${rotulo} ${aHora(h)}` }))
+      .filter((p) => p.t > agoraMin && p.t < inicio)
+      .sort((x, y) => x.t - y.t)
+      .map((p) => p.txt);
+    if (!antes.length) return `${partida}, daqui a ${falta} ${falta === 1 ? 'minuto' : 'minutos'}.`;
+    return `${partida}. ${maiuscula(juntar(antes))}.`;
+  }
+  if (agoraMin >= quandoE(s.bed)) return `${cabeca}. Deita-te já: acordas ${aHora(s.wake)}.`;
   const passos = [
-    [s.dinnerBy, `jantar até às ${semZero(s.dinnerBy)}${hidratos}`],
-    [s.bed, `deitar às ${semZero(s.bed)}`],
-    [s.wake, `acordar às ${semZero(s.wake)}`],
-    [s.breakfast, `pequeno-almoço às ${semZero(s.breakfast)}`],
-    [s.arrival, `chegada às ${semZero(s.arrival)}`],
+    [s.dinnerBy, `jantar até ${aHora(s.dinnerBy)}${hidratos}`],
+    [s.bed, `deitar ${aHora(s.bed)}`],
+    [s.wake, `acordar ${aHora(s.wake)}`],
+    [s.breakfast, `${rotuloDaRefeicao(s.breakfast)} ${aHora(s.breakfast)}`],
+    [s.arrival, `chegada ${aHora(s.arrival)}`],
   ]
     .map(([h, txt]) => ({ t: quandoE(h), txt }))
     .filter((p) => p.t > agoraMin)

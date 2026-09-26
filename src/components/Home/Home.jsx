@@ -369,6 +369,7 @@ export default function Home() {
           firstName={firstNameOf(profile?.display_name)}
           goal={firstDayGoal}
           facts={firstDayFacts}
+          vida={vidaHoje}
           onTalk={() => setActiveTab('coach')}
           onCreateRace={createRace}
           onRegisterRun={registerRun}

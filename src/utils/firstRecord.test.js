@@ -84,6 +84,20 @@ describe('firstRecordMoment — o primeiro treino de ginásio', () => {
     expect(gym({ kind: 'forca' }).sub).toBe(m.sub);
   });
 
+  /* Revisão de 2026-09-26: o registo manual não tem campos de séries, e
+     quem o usa escreve os exercícios e as cargas no "Contexto do treino"
+     (a analyze-gym lê-os daí). Pedir-lhe que os registe era pedir o que
+     acabou de escrever. */
+  it('força sem séries mas com o treino escrito nas notas: não pede o que acabou de ser escrito', () => {
+    const m = gym({ kind: 'forca', workout_session_sets: [], notes: 'Agachamento 4x10 com 40 kg, supino 3x8 com 50 kg.' });
+    expect(m.title).toBe('O primeiro treino de ginásio.');
+    expect(m.sub).toBe('É o teu ponto de partida. Da próxima vez, já tenho com que comparar.');
+    expect(m.sub).not.toMatch(/regista|cargas/);
+    // Só espaços não é treino escrito: continua o pedido.
+    expect(gym({ kind: 'forca', workout_session_sets: [], notes: '   ' }).sub).toMatch(/^Da próxima vez, regista também/);
+    expectCarolVoice(`${m.title} ${m.sub}`);
+  });
+
   it('sem o registo à mão, a frase que serve a qualquer treino — nunca "já sei o que levantas"', () => {
     const m = firstRecordMoment('gym', vazio, null);
     expect(m.title).toBe('O primeiro treino de ginásio.');
