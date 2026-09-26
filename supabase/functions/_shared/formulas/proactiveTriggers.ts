@@ -684,12 +684,18 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // já é avisada no log. Corrigir exigia dar ao cliente as chaves entregues
   // (coach_proactive_log), e isso não cabe na Fase 0.
   const delivered = new Set(input.deliveredKeys ?? []);
-  // A corrida por ligar também fica com o dia, como o "como correu?" sem
-  // registo: não grava coach_balance, e o cliente, sem as chaves entregues,
-  // não teria como a largar — a notificação prometia o balanço da semana que
-  // o chat não abria (segunda revisão pré-deploy de 2026-09-26).
+  // A corrida por ligar fica com o dia como o "como correu?" sem registo, e
+  // pelo mesmo prazo (RACE_AFTER_DAYS_WITHOUT_RUN): não grava coach_balance,
+  // e o cliente, sem as chaves entregues, não teria como a largar — a
+  // notificação prometia o balanço da semana que o chat não abria. Passado o
+  // prazo larga o dia nos dois lados, para uma corrida que o atleta nunca
+  // liga ("não foi essa") não custar o balanço da semana (segunda e terceira
+  // revisões pré-deploy de 2026-09-26).
   const holdsTheDay = (c: ServerProactiveCandidate) => {
-    if (c.trigger !== "race_after" || !c.hasRun || c.unlinkedRun) return true;
+    if (c.trigger === "race_after" && c.unlinkedRun) {
+      return !!c.anchorDate && daysBetween(c.anchorDate, todayISO) <= RACE_AFTER_DAYS_WITHOUT_RUN;
+    }
+    if (c.trigger !== "race_after" || !c.hasRun) return true;
     if (delivered.has(c.key)) return false;
     return !races.find((r) => r.id === c.raceId)?.coach_balance;
   };

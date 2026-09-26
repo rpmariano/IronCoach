@@ -324,6 +324,24 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     expect(server).toEqual(client);
   });
 
+  // Terceira revisão: pelo prazo do "como correu?" sem registo (3 dias), não
+  // pelos 7 — uma corrida que nunca se liga não custa o balanço da semana.
+  it('passados 3 dias, a corrida por ligar larga o dia ao balanço da semana — nos dois lados', () => {
+    const prova = { id: 'w', name: 'Corrida', date: '2026-09-23', status: 'concluida', distance_km: 10 };
+    const run = { id: 'rw', date: '2026-09-23', race_id: null, kind: 'normal', distance_km: 10, duration_seconds: 3000, created_at: '2026-09-23T20:00:00Z' };
+    const d = { ...semana, runs: [...semana.runs, run], raceEvents: [prova] };
+    const client = listProactiveTriggers(d, at(MONDAY)).map((c) => ({ trigger: c.trigger, key: c.key }));
+    expect(client).toEqual([
+      { trigger: 'race_after', key: 'race_after:w:por-ligar' },
+      { trigger: 'week_review', key: 'week_review:2026-09-21' },
+    ]);
+    const server = listServerProactive({
+      raceEvents: d.raceEvents, runs: d.runs, lastRecordDate: lastRecordDate(d), weekRecordDates: weekDates(d),
+      deliveredKeys: ['race_after:w:por-ligar'],
+    }, MONDAY).map((c) => ({ trigger: c.trigger, key: c.key }));
+    expect(server).toEqual(client);
+  });
+
   it('desligado no Perfil, não aparece no servidor', () => {
     expect(listServerProactive({ raceEvents: [], runs: [], lastRecordDate: '2026-09-27', weekRecordDates: ['2026-09-25'], allowed: ['silence'] }, MONDAY)).toEqual([]);
   });

@@ -45,7 +45,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   // refeições (dias de `descanso`, save_meal_suggestions) não conta: não
   // decide descansos (segunda revisão).
   const trainingToday = useMemo(() => {
-    const comTreino = new Set((coachPlanItems || []).filter((i) => i?.kind === 'corrida' || i?.kind === 'ginasio').map((i) => i.plan_id));
+    const comTreino = new Set((coachPlanItems || []).filter((i) => (i?.kind === 'corrida' || i?.kind === 'ginasio') && i.status !== 'cancelado').map((i) => i.plan_id));
     const emVigor = (coachPlans || []).filter((p) => p?.status === 'aceite' && comTreino.has(p.id)
       && String(p.period_start || '').slice(0, 10) <= today && String(p.period_end || '').slice(0, 10) >= today);
     if (!emVigor.length) return undefined;
