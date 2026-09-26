@@ -7,7 +7,7 @@ const silence = { ...eve, trigger: "silence" as const, key: "silence:2026-09-14"
 
 Deno.test("describeFacts: só os dados que existem, em linhas", () => {
   assertEquals(describeFacts(eve, { firstName: "Rui", distanceKm: 21.0975, startTime: "09:30:00", targetSeconds: 6300 }), [
-    "Nome do atleta: Rui", "Prova: Meia de Lisboa", "Distância: 21.1 km", "Partida: 09:30", "Objetivo de tempo: 1:45:00",
+    "Nome do atleta: Rui", "Prova: Meia de Lisboa", "Distância: 21,1 km", "Partida: 09:30", "A partida é de manhã", "Objetivo de tempo: 1:45:00",
   ]);
   assertEquals(describeFacts(balance, { raceName: "Meia", runSeconds: 6200, targetSeconds: 6300 }), [
     "Prova: Meia", "Objetivo de tempo: 1:45:00", "Tempo feito: 1:43:20", "Bateu o objetivo por 1:40",
@@ -49,7 +49,8 @@ Deno.test("composePushMessage: usa o texto gerado quando serve; senão, a frase 
   // Sem usageMetadata na resposta, os tokens contam a zero (mas a chamada existiu).
   assertEquals(gen, { title: "Carol", body: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app.", generated: true, usage: { input_tokens: 0, output_tokens: 0 } });
 
-  const fixed = "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã de manhã.";
+  // Sem hora de partida no candidato, a frase fixa não diz "amanhã de manhã" (revisão de 2026-09-26).
+  const fixed = "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã.";
   assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch({ candidates: [{ content: { parts: [{ text: "Força amanhã!" }] } }] }))).body, fixed);
   assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch({}, false))).body, fixed);
   assertEquals((await composePushMessage(eve, {}, null)).generated, false);
@@ -110,4 +111,31 @@ Deno.test("Vitrina: as notificações das tabelas e do percentil nunca passam pe
   assertEquals(chamou, false);
   assertEquals(board.generated, false);
   assertEquals(ready.body, "O teu escalão já tem números publicados. Vem ver onde estás.");
+});
+
+/* Revisão pré-deploy de 2026-09-26: o texto gerado é o que sai quando o
+   Gemini responde — tem de levar as mesmas condições das frases fixas. */
+Deno.test("describeFacts: as condições das frases fixas chegam ao modelo", () => {
+  // Véspera: partida à tarde, e sem hora marcada.
+  const tarde = describeFacts({ ...eve, startMinutes: 1050 }, { startTime: "17:30:00" });
+  assert(tarde.some((l) => l.includes("nunca \"amanhã de manhã\"")));
+  assert(describeFacts(eve, {}).some((l) => l.startsWith("Hora de partida: por marcar")));
+  // Manhã da prova: sem plano de ritmo não se promete ritmo.
+  const manha = { ...eve, trigger: "race_morning" as const, key: "race_morning:r1" };
+  assert(describeFacts({ ...manha, hasFirstKmPace: true }, {}).includes("Deixaste-lhe o ritmo do primeiro km no hub da prova"));
+  assert(describeFacts({ ...manha, hasFirstKmPace: false }, {}).some((l) => l.startsWith("Não há plano de ritmo")));
+  assert(!buildPushPrompt(manha, {}).includes("duas coisas que lhe queres dizer"));
+  // Depois da prova: a corrida por ligar nunca é "ainda não está registada".
+  const porLigar = describeFacts({ ...balance, unlinkedRun: true }, { raceName: "Meia" });
+  assert(porLigar.some((l) => l.includes("ainda não está ligada")));
+  assert(!porLigar.includes("A corrida da prova ainda não está registada."));
+  // Nome por omissão não é nome: diz-se o dia.
+  const semNome = describeFacts({ ...balance, raceName: "Corrida de Hoje", raceDay: "domingo" }, { raceName: "Corrida de Hoje" });
+  assert(!semNome.includes("Prova: Corrida de Hoje"));
+  assert(semNome.some((l) => l.includes("a tua prova de domingo")));
+  // Silêncio: o plano e a água.
+  const comPlano = describeFacts({ ...silence, plannedTrainingsSince: 2, sinceWeekday: "segunda" }, {});
+  assert(comPlano.some((l) => l.includes("desde segunda: 2") && l.includes("não digas que ficaram por fazer")));
+  const comAgua = describeFacts({ ...silence, lastWaterDate: "2026-09-17" }, {});
+  assert(comAgua.some((l) => l.startsWith("Última água registada: 2026-09-17")));
 });

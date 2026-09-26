@@ -35,8 +35,18 @@ describe('detectPlanDivergence — quando a realidade se afastou do plano', () =
   it('prova dentro do plano sem item de prova nesse dia', () => {
     const r = detect({ raceEvents: [race()] });
     expect(keys(r)).toEqual(['prova_sem_item']);
-    expect(r.reasons[0].text).toBe('A Corrida do Tejo (13 set) não está no plano.');
+    expect(r.reasons[0].text).toBe('Corrida do Tejo (13 set) não está no plano.');
     expect(r.signature).toContain('p1|');
+  });
+
+  /* Revisão de 2026-09-26: era «A ${raceLabel} não está no plano.» — «A
+     Trail do Sico (13 set)», e sem nome «A a prova (13 set)». */
+  it('a prova sem item diz-se pelo nome, sem artigo à frente; sem nome, «A prova»', () => {
+    const texto = (over) => detect({ raceEvents: [race(over)] }).reasons[0].text;
+    expect(texto({ name: 'Trail do Sico' })).toBe('Trail do Sico (13 set) não está no plano.');
+    expect(texto({ name: '' })).toBe('A prova (13 set) não está no plano.');
+    expect(texto({ name: null })).not.toMatch(/A a prova/);
+    expectCarolVoice(texto({ name: 'Trail do Sico' }));
   });
 
   it('com o item de prova lá, não há motivo nenhum', () => {
@@ -64,7 +74,22 @@ describe('detectPlanDivergence — quando a realidade se afastou do plano', () =
       ],
     });
     expect(keys(r)).toEqual(['treino_no_dia_da_prova']);
-    expect(r.reasons[0].text).toBe('Corrida do Tejo (13 set): o plano tem Rodagem longa · 16 km no dia da prova.');
+    // Revisão de 2026-09-26: era «o plano tem Rodagem longa · 16 km no dia
+    // da prova» — o rótulo do chip a meio da frase.
+    expect(r.reasons[0].text).toBe('Corrida do Tejo (13 set): no dia da prova o plano ainda tem uma rodagem longa de 16 km.');
+    expect(r.reasons[0].text).not.toContain('·');
+    expectCarolVoice(r.reasons[0].text);
+  });
+
+  it('o treino no dia da prova sem nome e com ginásio também se diz como frase', () => {
+    const r = detect({
+      raceEvents: [race({ name: null })],
+      coachPlanItems: [
+        item({ id: 'i-prova', training_type: 'prova' }),
+        item({ id: 'i-gym', kind: 'ginasio', categories: ['Pernas'], target_duration_min: 45 }),
+      ],
+    });
+    expect(r.reasons[0].text).toBe('A prova (13 set): no dia da prova o plano ainda tem um treino de pernas de 45 minutos.');
   });
 
   it('descanso no dia da prova não é queixa (só a falta do item de prova é)', () => {
@@ -89,8 +114,50 @@ describe('detectPlanDivergence — quando a realidade se afastou do plano', () =
       ],
     });
     expect(keys(r)).toEqual(['treino_forte_na_vespera', 'treino_forte_na_vespera']);
-    expect(r.reasons[0].text).toBe('Corrida do Tejo (20 set): Intervalos a 19 set, na véspera da prova.');
-    expect(r.reasons[1].text).toBe('Corrida do Tejo (20 set): pernas a 18 set, a dois dias da prova.');
+    // Revisão de 2026-09-26: era «Intervalos a 19 set, na véspera da prova.»,
+    // sem dizer o que estava mal.
+    expect(r.reasons[0].text).toBe('Corrida do Tejo (20 set): a 19 set tens um treino intervalado. Na véspera da prova só cabe corrida leve.');
+    expect(r.reasons[1].text).toBe('Corrida do Tejo (20 set): a 18 set tens um treino de pernas. A dois dias da prova só cabe corrida leve.');
+    r.reasons.forEach((x) => expectCarolVoice(x.text));
+  });
+
+  /* Revisão de 2026-09-26: 20 minutos de mobilidade ligeira a dois dias de
+     uma prova de treino (c) contavam como «treino duro». */
+  it('ginásio leve a dois dias da prova não é trabalho duro', () => {
+    const r = detect({
+      raceEvents: [race({ date: '2026-09-20' })],
+      coachPlanItems: [
+        item({ id: 'i-prova', planned_date: '2026-09-20', training_type: 'prova' }),
+        item({ id: 'i-mob', planned_date: '2026-09-18', kind: 'ginasio', categories: ['Mobilidade'], target_duration_min: 20 }),
+        item({ id: 'i-yoga', planned_date: '2026-09-19', kind: 'ginasio', categories: ['Yoga', 'Alongamentos'] }),
+      ],
+    });
+    expect(r.reasons).toEqual([]);
+  });
+
+  it('ginásio sem categorias, ou com pernas ao lado da mobilidade, conta como antes', () => {
+    const r = detect({
+      raceEvents: [race({ date: '2026-09-20' })],
+      coachPlanItems: [
+        item({ id: 'i-prova', planned_date: '2026-09-20', training_type: 'prova' }),
+        item({ id: 'i-sem', planned_date: '2026-09-18', kind: 'ginasio' }),
+        item({ id: 'i-mix', planned_date: '2026-09-19', kind: 'ginasio', categories: ['Mobilidade', 'Pernas'] }),
+      ],
+    });
+    expect(keys(r)).toEqual(['treino_forte_na_vespera', 'treino_forte_na_vespera']);
+  });
+
+  it('antes de uma prova de treino (c) não há véspera a guardar', () => {
+    const items = [
+      item({ id: 'i-prova', planned_date: '2026-09-20', training_type: 'prova' }),
+      item({ id: 'i-int', planned_date: '2026-09-19', training_type: 'intervalos' }),
+      item({ id: 'i-mob', planned_date: '2026-09-18', kind: 'ginasio', categories: ['Mobilidade'], target_duration_min: 20 }),
+      item({ id: 'i-gym', planned_date: '2026-09-18', kind: 'ginasio', categories: ['Pernas'] }),
+    ];
+    expect(detect({ raceEvents: [race({ date: '2026-09-20', race_priority: 'c' })], coachPlanItems: items }).reasons).toEqual([]);
+    // Secundária (b) guarda-se como antes.
+    expect(keys(detect({ raceEvents: [race({ date: '2026-09-20', race_priority: 'b' })], coachPlanItems: items })))
+      .toEqual(['treino_forte_na_vespera', 'treino_forte_na_vespera']);
   });
 
   it('a três dias da prova já se pode treinar forte', () => {
@@ -424,9 +491,18 @@ describe('detectPlanDivergence — o plano encurtou', () => {
   it('avisa, com a prova e o porquê', () => {
     const r = detectPlanDivergence({ today: TODAY, coachPlans: [encurtado()], raceEvents: [objetivo] });
     const aviso = r.reasons.find((x) => x.key === 'plano_encurtou');
-    expect(aviso.text).toContain('Maratona do Porto');
-    expect(aviso.text).toContain('foi antecipada');
-    expect(aviso.text).toContain('foram cancelados');
+    // Revisão de 2026-09-26: era «A Maratona do Porto (20 set) foi
+    // antecipada e o plano encurtou até ela» — o artigo e o género a
+    // adivinhar pelo nome.
+    expect(aviso.text).toBe('Maratona do Porto (20 set) passou para mais cedo e o plano encurtou até lá: os treinos que ficavam depois foram cancelados.');
+    expectCarolVoice(aviso.text);
+  });
+
+  it('com um nome masculino, ou sem nome, a frase não pede género nem artigo', () => {
+    const texto = (nome) => detectPlanDivergence({ today: TODAY, coachPlans: [encurtado()], raceEvents: [{ ...objetivo, name: nome }] })
+      .reasons.find((x) => x.key === 'plano_encurtou').text;
+    expect(texto('Trail do Sico')).toMatch(/^Trail do Sico \(20 set\) passou para mais cedo e o plano encurtou até lá:/);
+    expect(texto(null)).toMatch(/^A prova \(20 set\) passou para mais cedo/);
   });
 
   it('vem antes do "a prova não está no plano" — é a causa dele', () => {
@@ -466,7 +542,7 @@ describe('detectPlanDivergence — as jornadas de uma competição', () => {
   it('a mesma prova sem cup_round_id dá, como sempre', () => {
     const r = detect({ raceEvents: [jornada({ cup_round_id: null })] });
     expect(keys(r)).toEqual(['prova_sem_item']);
-    expect(r.reasons[0].text).toBe('A Corrida do Clube (13 set) não está no plano.');
+    expect(r.reasons[0].text).toBe('Corrida do Clube (13 set) não está no plano.');
   });
 
   it('o trabalho forte na véspera e o treino no dia continuam a valer numa jornada', () => {
@@ -478,13 +554,13 @@ describe('detectPlanDivergence — as jornadas de uma competição', () => {
       ],
     });
     expect(keys(r)).toEqual(['treino_no_dia_da_prova', 'treino_forte_na_vespera']);
-    expect(r.reasons[1].text).toBe('Corrida do Clube (20 set): Intervalos a 19 set, na véspera da prova.');
+    expect(r.reasons[1].text).toBe('Corrida do Clube (20 set): a 19 set tens um treino intervalado. Na véspera da prova só cabe corrida leve.');
   });
 
   it('ao lado de uma prova normal, só a normal pede o item de prova', () => {
     const r = detect({ raceEvents: [jornada(), race({ id: 'r2', name: 'Corrida do Tejo', date: '2026-09-20' })] });
     expect(keys(r)).toEqual(['prova_sem_item']);
-    expect(r.reasons[0].text).toBe('A Corrida do Tejo (20 set) não está no plano.');
+    expect(r.reasons[0].text).toBe('Corrida do Tejo (20 set) não está no plano.');
     expect(r.signature).not.toContain('rj3');
   });
 });

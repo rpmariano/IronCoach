@@ -5,6 +5,7 @@
 // na tabela coach_messages para persistência entre sessões.
 
 import { CHAT_RESOLVE_OUTCOMES } from "../_shared/formulas/interventionOutcomes.ts";
+import { UNLINKED_RUN_DETAILS_PREFIX } from "../_shared/formulas/proactiveTriggers.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
@@ -831,7 +832,7 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   leaderboard:
     `É sobre as tabelas com nomes do escalão dele (o top 10 da quinzena, pelo quanto do plano cumpriu) — o Contexto diz se ENTROU ` +
     `ou SAIU. Entrou: reconhece-o com a prova — a posição e o índice do bloco VITRINA — numa frase, sem festa; depois uma frase ` +
-    `sobre o que o pôs lá (a consistência com o plano nestes 14 dias). Saiu: sem dramatismo e sem sermão — diz que nesta quinzena ` +
+    `sobre o que o pôs lá (a consistência com o plano nestes 14 dias). Saiu: sem dramatismo e sem sermão — diz que na quinzena que fechou ` +
     `ficou fora dos 10, o que mudou face à anterior se o bloco o disser, e uma coisa concreta para voltar (cumprir o plano, não ` +
     `treinar a mais). Nos dois casos, diz-lhe onde ver: Perfil, Vitrina, "Onde estás". Nunca digas nomes de outros atletas.`,
   percentile_ready:
@@ -1101,6 +1102,11 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
  *  pergunta-se se para a próxima é para fazer melhor; aquém levanta-se a
  *  cabeça, procura-se a explicação nas ocorrências do treino (memória e
  *  dados) e volta-se aos treinos. */
+export const RACE_AFTER_UNLINKED_INSTRUCTION =
+  `A prova já passou e há uma corrida registada nesse dia que ainda não está ligada a ela (os dados estão no Contexto). ` +
+  `Não lhe peças para registar a prova: a corrida já existe. Pergunta-lhe se foi essa a prova e, se foi, que a ligue à prova ` +
+  `para fazerem o balanço com os números certos. Sem balanço inventado e sem parabéns automáticos: ainda não sabes se foi ela.`;
+
 export function raceAfterInstruction(o: RaceOutcome | null): string {
   if (!o || o.verdict === "sem_registo") return PROACTIVE_INSTRUCTIONS.race_after;
   const common =
@@ -1279,7 +1285,12 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
  *  instrução por veredicto entram antes das regras do turno. */
 export function buildProactiveInstruction(trigger: ProactiveTrigger, details: string | null, raceOutcome: RaceOutcome | null = null): string {
   const withOutcome = trigger === "race_after" && !!raceOutcome && raceOutcome.verdict !== "sem_registo";
-  const instruction = trigger === "race_after" ? raceAfterInstruction(withOutcome ? raceOutcome : null) : PROACTIVE_INSTRUCTIONS[trigger];
+  // A corrida desse dia existe mas não está ligada à prova: nunca "regista a
+  // prova" (revisão pré-deploy de 2026-09-26; o prefixo é o do cliente).
+  const unlinkedRun = trigger === "race_after" && !withOutcome && !!details?.startsWith(UNLINKED_RUN_DETAILS_PREFIX);
+  const instruction = unlinkedRun
+    ? RACE_AFTER_UNLINKED_INSTRUCTION
+    : trigger === "race_after" ? raceAfterInstruction(withOutcome ? raceOutcome : null) : PROACTIVE_INSTRUCTIONS[trigger];
   // No "perto" a pergunta pede resposta — as duas sugestões são a resposta
   // (ver raceAfterInstruction); em todos os outros turnos dela não há
   // "perguntas de seguimento" a oferecer.
@@ -2316,10 +2327,14 @@ function buildReadinessPanel(
   todayISO: string,
   nextRace: any | null,
   todayCheckin: any | null = null,
+  // Há treino previsto hoje (revisão de 2026-09-26)? O chamador já tem os
+  // itens do plano (loadPlanItems) — evita o pilar do check-in dizer "hoje
+  // o treino é mais leve" num dia de descanso.
+  trainingToday: boolean | undefined = undefined,
 ): string | null {
   const bodyForShared = (bodyAssessments || []).map((a: any) => ({ ...a, date: a.assessed_at }));
 
-  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin);
+  const readiness = computeReadinessIndex(runs || [], meals || [], bodyForShared, gymSessions || [], profile, todayISO, nextRace, todayCheckin, trainingToday);
   const cross = computeCrossMetrics(runs || [], gymSessions || [], bodyForShared, todayISO, "todos");
 
   if (readiness.pillars.length === 0) return null;
@@ -5736,14 +5751,14 @@ async function handler(req: Request): Promise<Response> {
       console.error("Falha ao adquirir lock do coach-chat:", lockErr);
     } else if (!lockRows || lockRows.length === 0) {
       // UPDATE não devolveu linhas (não passou no filtro is.null/lt) — outro
-      // pedido para este utilizador está mesmo em curso. Nome só para dar
-      // um tom descontraído à mensagem — não vale a pena falhar o pedido
-      // por causa disto, daí o fallback silencioso para "atleta".
+      // pedido para este utilizador está mesmo em curso. Sem exercícios (uma
+      // dor no gémeo, a madrugada, a manhã da prova), sem "pedido" e sem
+      // "atleta" como vocativo: o nome só quando o há (revisão de 2026-09-26).
       const { data: nameRow } = await sb.from("profiles").select("display_name").eq("id", userId).maybeSingle();
       const firstName = firstNameOf(nameRow?.display_name as string | null | undefined);
       return jsonResponse({
         busy: true,
-        error: `Calma ${firstName ?? "atleta"}, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso.`,
+        error: `${firstName ? `${firstName}, ainda` : "Ainda"} estou a acabar de te responder à mensagem anterior. Manda esta outra vez daqui a um instante.`,
       }, 409);
     } else {
       lockedUserId = userId;
@@ -6063,7 +6078,7 @@ async function handler(req: Request): Promise<Response> {
     // `status` (2026-09-26, revisão da Fase 0): sem ele, o filtro das
     // concluídas de mainRace nunca atuava nestas linhas — uma prova de hoje já
     // corrida continuava a ser a "próxima", com plano do dia e véspera.
-    const RACE_COLUMNS = "id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, status, web_info, start_time, conflict_acknowledged_at";
+    const RACE_COLUMNS = "id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, status, web_info, start_time, conflict_acknowledged_at, created_at";
     const [{ data: firstRaces, error: err_upcomingRaces }, { data: principalRows, error: err_principalRace }] = await Promise.all([
       sb.from("race_events").select(RACE_COLUMNS)
         .eq("user_id", userId)
@@ -6242,6 +6257,23 @@ async function handler(req: Request): Promise<Response> {
     // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6) — só
     // com cidade no perfil e treino no plano; nunca rejeita.
     const trainingWeatherPromise = fetchTrainingWeatherBlock(sb, userId, todayISO);
+    // O mesmo `loadPlanItems` já pedido para a leitura de carga (runLoadReading,
+    // acima): um corrida/ginásio de hoje, ainda não cancelado.
+    // Sem plano aceite em vigor hoje (nenhum item de hoje em diante), não se
+    // sabe se é descanso: undefined, e o pilar não diz "hoje é descanso"
+    // (revisão pré-deploy de 2026-09-26). Só conta um plano com treinos: um
+    // só de refeições (dias de `descanso`) não decide descansos — a régua do
+    // RaceReadinessCard (segunda revisão).
+    const planosComTreino = new Set(
+      // deno-lint-ignore no-explicit-any
+      (loadPlanItems || []).filter((i: any) => i?.kind === "corrida" || i?.kind === "ginasio").map((i: any) => i.plan_id),
+    );
+    // deno-lint-ignore no-explicit-any
+    const planoEmVigor = (loadPlanItems || []).some((i: any) => planosComTreino.has(i?.plan_id) && String(i?.planned_date || "") >= todayISO);
+    const trainingTodayForReadiness = planoEmVigor
+      // deno-lint-ignore no-explicit-any
+      ? (loadPlanItems || []).some((i: any) => i?.planned_date === todayISO && (i.kind === "corrida" || i.kind === "ginasio"))
+      : undefined;
     const readinessPanel = buildReadinessPanel(
       recentRuns || [],
       weekMeals || [],
@@ -6251,6 +6283,7 @@ async function handler(req: Request): Promise<Response> {
       todayISO,
       nextUpcomingRace,
       todayCheckin ?? null,
+      trainingTodayForReadiness,
     );
     const racePhasesPanel = buildRacePhasesPanel(recentRuns || [], nextUpcomingRace, profile, todayISO);
 
@@ -6664,6 +6697,22 @@ async function handler(req: Request): Promise<Response> {
       finalSystemInstruction += "\n\n--- PERGUNTA SOBRE UM BADGE (foi o atleta que a abriu) ---\n" + badgeQuestionContext;
     }
 
+    /* Perfil > Memória: o atleta pediu para mudar uma nota. A bolha dele é
+       só o que ele diria; o pedido de a atualizar vem à parte, no mesmo
+       molde do badge (revisão de 2026-09-26). A instrução é a do servidor —
+       do cliente só se usa o texto da nota, com o teto das notas. */
+    // Só uma nota que existe mesmo na memória dele: o texto vem do cliente
+    // e entra na instrução de sistema (revisão pré-deploy de 2026-09-26).
+    const noteRequested = typeof body.noteDiscussion?.note === "string" ? body.noteDiscussion.note.trim() : "";
+    // deno-lint-ignore no-explicit-any
+    const noteToChange = noteRequested && (coachNotes || []).some((n: any) => String(n?.note || "").trim() === noteRequested) ? noteRequested : "";
+    if (noteToChange) {
+      finalSystemInstruction += "\n\n--- NOTA DA MEMÓRIA A MUDAR (foi o atleta que a abriu, em Perfil > Memória) ---\n" +
+        `A nota: "${noteToChange}". Ele quer mudá-la: pergunta-lhe o que precisares para perceberes o que está errado e, ` +
+        "quando estiverem de acordo, substitui-a com save_coach_note e replaces_note_id (o id dela está na memória acima). " +
+        "Se ele disser que a nota já não se aplica de todo, diz-lho e não a substituas por uma nota vazia.";
+    }
+
     // Texto injetado quando o atleta bateu à porta do "Adaptar Plano" (ver
     // is_plan_checkin abaixo) — distinto do de is_intervention_start: ali o
     // alerta surgiu sozinho da análise de um registo e a Carol tem de o
@@ -6984,8 +7033,9 @@ async function handler(req: Request): Promise<Response> {
         if (fallback) return fallback;
         if (geminiRes.status === 429) {
           // Voz dela, não a de upstreamErrorText: é uma conversa em curso,
-          // não uma análise avulsa — "dá-me uns minutos", não "tenta outra vez".
-          return jsonResponse({ error: "Estou com muitos pedidos. Dá-me uns minutos." }, 503);
+          // não uma análise avulsa — e sem a fila de atendimento de "estou
+          // com muitos pedidos" (specs/carol-frases-contexto.md).
+          return jsonResponse({ error: "Não consegui responder agora. Manda outra vez daqui a uns minutos." }, 503);
         }
         return jsonResponse({
           error: upstreamErrorText(geminiRes.status),
@@ -7090,7 +7140,9 @@ async function handler(req: Request): Promise<Response> {
       console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
-      return jsonResponse({ error: "Não consegui gerar uma resposta. Tenta outra vez." }, 502);
+      // "Gerar uma resposta" é vocabulário de modelo, não dela
+      // (specs/carol-frases-contexto.md).
+      return jsonResponse({ error: "Perdi o fio a meio. Manda outra vez." }, 502);
     }
 
     let replyText: string;
@@ -7141,7 +7193,7 @@ async function handler(req: Request): Promise<Response> {
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       return jsonResponse({
-        error: "Tive um problema a gerar a resposta. Tenta outra vez.",
+        error: "Perdi o fio a meio. Manda outra vez.",
       }, 502);
     }
 

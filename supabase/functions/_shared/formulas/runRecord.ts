@@ -22,9 +22,24 @@
 
 import { computeBestPace, type BestPaceBucket, type RunForBestPace } from "./bestPace.ts";
 import { formatPaceMinKm } from "./paceFormat.ts";
+import { PRE_RACE_HARD_RUN_TYPES } from "./vocabulary.ts";
 
 export interface RunForRecord extends RunForBestPace {
   id?: string | null;
+}
+
+export interface PlanItemForRecord {
+  planned_date?: string | null;
+  kind?: string | null;
+  training_type?: string | null;
+  status?: string | null;
+}
+
+export interface RunRecordContext {
+  /** O dia do atleta (AAAA-MM-DD). Sem ele não se sabe se a corrida é de hoje. */
+  todayISO?: string | null;
+  /** Os itens dos planos aceites; lê-se só o dia a seguir à corrida. */
+  planItems?: PlanItemForRecord[] | null;
 }
 
 export interface RunRecordMoment {
@@ -40,12 +55,33 @@ const MIN_GANHO_DISTANCIA = 0.5; // km
 const MIN_CORRIDAS_PARA_DISTANCIA = 3;
 
 const km = (v: number | string | null | undefined) => String(Math.round(Number(v) * 10) / 10).replace(".", ",");
+const DAY_MS = 86400000;
+
+function addDays(iso: string, n: number): string {
+  return new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
+}
+
+/* "Amanhã" só quando a corrida é mesmo de hoje: um longo de domingo registado
+   na segunda já não tem o amanhã de que a frase fala. E se o plano pede para
+   amanhã um dos treinos duros que não cabem na véspera de uma prova
+   (vocabulary.ts), "recuperar" contradizia-o (specs/carol-frases-contexto.md). */
+function fraseDeAmanha(run: RunForRecord, { todayISO, planItems }: RunRecordContext): string | null {
+  const dia = String(run.date || "").slice(0, 10);
+  if (!todayISO || !/^\d{4}-\d{2}-\d{2}$/.test(dia) || dia !== String(todayISO).slice(0, 10)) return null;
+  const amanha = addDays(dia, 1);
+  const duroAmanha = (planItems || []).some((i) =>
+    i && String(i.planned_date || "").slice(0, 10) === amanha && i.status !== "cancelado"
+    && i.kind === "corrida" && PRE_RACE_HARD_RUN_TYPES.includes(String(i.training_type)));
+  return duroAmanha ? "Amanhã, só o que está no plano." : "Amanhã é dia de recuperar, não de repetir.";
+}
 
 /**
  * `{ title, sub, kind }` quando `run` é um recorde; `null` nos outros.
- * `runs` pode ou não já incluir `run` — conta-se sem ele.
+ * `runs` pode ou não já incluir `run` — conta-se sem ele. `contexto` só
+ * mexe no que se diz de amanhã (ver fraseDeAmanha); sem `todayISO` fica
+ * por dizer.
  */
-export function runRecordMoment(run: RunForRecord | null | undefined, runs: RunForRecord[] = []): RunRecordMoment | null {
+export function runRecordMoment(run: RunForRecord | null | undefined, runs: RunForRecord[] = [], contexto: RunRecordContext = {}): RunRecordMoment | null {
   if (!run) return null;
   const outras = (runs || []).filter((r) => r && (!run.id || r.id !== run.id));
 
@@ -70,10 +106,11 @@ export function runRecordMoment(run: RunForRecord | null | undefined, runs: RunF
   if (Number.isFinite(dist) && dist > 0 && outras.length >= MIN_CORRIDAS_PARA_DISTANCIA) {
     const maior = Math.max(...outras.map((r) => Number(r.distance_km) || 0));
     if (dist - maior >= MIN_GANHO_DISTANCIA) {
+      const amanha = fraseDeAmanha(run, contexto || {});
       return {
         kind: "distance",
         title: "A tua corrida mais longa.",
-        sub: `${km(dist)} km, mais ${km(dist - maior)} do que alguma vez fizeste. Amanhã é dia de recuperar, não de repetir.`,
+        sub: `${km(dist)} km, mais ${km(dist - maior)} do que alguma vez fizeste.${amanha ? ` ${amanha}` : ""}`,
       };
     }
   }

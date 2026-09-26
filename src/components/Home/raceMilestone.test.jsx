@@ -63,6 +63,18 @@ describe('raceMilestoneLine — o marco pelo que a prova é', () => {
     }
     expectCarolVoice(curto);
   });
+
+  /* Revisão de 2026-09-26: a duas semanas da prova, «o que te vai levar lá
+     já está feito» a quem não tinha uma única corrida registada no ciclo. */
+  it('a duas semanas: «já está feito» só com corridas registadas no ciclo', () => {
+    expect(raceMilestoneLine(14, { comCorridas: true })).toBe('Duas semanas. O que te vai levar lá já está feito; agora é afinar.');
+    for (const contexto of [{ comCorridas: false }, {}]) {
+      const t = raceMilestoneLine(14, contexto);
+      expect(t).toBe('Duas semanas. Agora é chegar lá com as pernas frescas.');
+      expect(t).not.toMatch(/já está feito/);
+      expectCarolVoice(t);
+    }
+  });
 });
 
 /* Visto noutro dispositivo (ação 5.1): a impressão 'moment:milestone:<prova>:<dias>'
@@ -85,8 +97,8 @@ describe('RaceCard — o marco no cartão', () => {
     useAppStore.setState({ session: { user: { id: 'u1' } }, profile: { id: 'u1' }, welcomeGate: 'clear', logImpression, impressionShown: new Set() });
   });
 
-  const renderAt = (days) => render(
-    <RaceCard raceEvents={[{ id: 'r1', name: 'Meia de Lisboa', date: addDaysISO(todayISO(), days), status: 'agendada', distance_km: 21.1 }]} runs={[]} profile={{}} />,
+  const renderAt = (days, runs = []) => render(
+    <RaceCard raceEvents={[{ id: 'r1', name: 'Meia de Lisboa', date: addDaysISO(todayISO(), days), status: 'agendada', distance_km: 21.1 }]} runs={runs} profile={{}} />,
   );
 
   it('a 30 dias, a Carol diz o marco — com o momento só na primeira vez', () => {
@@ -107,6 +119,18 @@ describe('RaceCard — o marco no cartão', () => {
     expect(screen.getByTestId('race-milestone')).toHaveTextContent('Um mês.');
     expect(screen.getByTestId('race-milestone').querySelector('.race-milestone-line')).toBeNull();
     expect(logImpression).not.toHaveBeenCalled();
+  });
+
+  it('a 14 dias sem uma corrida registada no ciclo: nada de «já está feito»', () => {
+    const { unmount } = renderAt(14);
+    expect(screen.getByTestId('race-milestone')).toHaveTextContent('Duas semanas. Agora é chegar lá com as pernas frescas.');
+    unmount();
+    // Uma corrida de há mais de um ano não é deste ciclo.
+    const { unmount: fora } = renderAt(14, [{ id: 'x0', date: addDaysISO(todayISO(), -400), distance_km: 10 }]);
+    expect(screen.getByTestId('race-milestone')).not.toHaveTextContent(/já está feito/);
+    fora();
+    renderAt(14, [{ id: 'x1', date: addDaysISO(todayISO(), -3), distance_km: 10 }]);
+    expect(screen.getByTestId('race-milestone')).toHaveTextContent('Duas semanas. O que te vai levar lá já está feito; agora é afinar.');
   });
 
   it('a 29 dias, nada', () => {

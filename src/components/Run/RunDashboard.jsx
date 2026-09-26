@@ -22,6 +22,8 @@ import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calcul
 import { formatPace } from '../../utils/run';
 import { computeBestPace } from '@formulas/bestPace.ts';
 import { computeRunWatchMetrics } from '@formulas/runWatchMetrics.ts';
+import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
+import { todayISO } from '../../lib/utils';
 
 // Antes deste ecrã tinha o seu próprio formatPace, com um formato visível
 // diferente do resto da app ("5:20/km" em vez de "5.20") — unificado por
@@ -49,7 +51,7 @@ function getBestPaceData(allRuns, targetKm) {
 }
 
 export default function RunDashboard() {
-  const { runs, profile, raceEvents = [], setOpenCreationMode } = useAppStore();
+  const { runs, profile, raceEvents = [], setOpenCreationMode, coachPlans, coachPlanItems } = useAppStore();
   const [activeRange, setActiveRange] = useState('mes');
 
   // BI Data processing
@@ -199,13 +201,36 @@ export default function RunDashboard() {
      está bem ou mal antes de mostrar um único número (auditoria, achado 6).
      As regras vivem em utils/dashboardVerdicts.js — aqui só se juntam os
      dados que o biEngine já calculou acima. */
+  /* O que o plano previa (revisão de 2026-09-26): no polimento, ou numa
+     semana em que o próprio plano desce, a carga a baixar não é falta de
+     treino. A fase é a mesma do trilho do Início (calculateRaceTrainingPlan). */
+  const today = todayISO();
+  const taper = useMemo(() => {
+    const next = [...(raceEvents || [])]
+      .filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) >= today)
+      .sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (!next) return false;
+    try {
+      return calculateRaceTrainingPlan({ race: next, profile: profile || {}, runs: runs || [], todayISO: today })?.currentPhase?.id === 'taper';
+    } catch (e) {
+      return false;
+    }
+  }, [raceEvents, profile, runs, today]);
+  const planItems = useMemo(() => {
+    const aceites = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+    return (coachPlanItems || []).filter((i) => i && aceites.has(i.plan_id));
+  }, [coachPlans, coachPlanItems]);
+
   const verdict = useMemo(() => runVerdict({
     acwr: acwrData,
     weeklyVolume: acwrWeeklyData,
     vdotTrend,
     distribution,
     runCount: periodRuns.length,
-  }), [acwrData, acwrWeeklyData, vdotTrend, distribution, periodRuns.length]);
+    today,
+    taper,
+    planItems,
+  }), [acwrData, acwrWeeklyData, vdotTrend, distribution, periodRuns.length, today, taper, planItems]);
 
   const renderBucket = (label, b) => {
     if (!b) {

@@ -5,7 +5,7 @@ import { todayISO } from '../../lib/utils';
 import GlassCard from '../shared/GlassCard';
 import { Sheet } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
-import { canTrackCycle, scaleLabel, summarizeCheckin, todaysCheckin } from '../../utils/checkin';
+import { canTrackCycle, readCheckinReason, scaleLabel, summarizeCheckin, todaysCheckin } from '../../utils/checkin';
 import { checkinReply } from '../../utils/checkinReply';
 import { checkinDay, lisbonParts, raceToday, acordouParaAProva } from '../../utils/carolWelcome';
 import CoachAvatar from '../Coach/CoachAvatar';
@@ -45,7 +45,12 @@ export default function CheckinCard() {
   // E o que ela sabe da vida dele — uma cirurgia, uma lesão (utils/carolVida.js).
   const coachNotes = useAppStore((s) => s.coachNotes);
   const dia = useMemo(() => checkinDay(today, { coachPlans, coachPlanItems, raceEvents, coachNotes }), [today, coachPlans, coachPlanItems, raceEvents, coachNotes]);
-  const reply = useMemo(() => checkinReply(dailyCheckins, today, dia), [dailyCheckins, today, dia]);
+  // "Quero falar contigo sobre ela" só com o assunto da dor por abrir.
+  const interventionStatus = useAppStore((s) => s.profile?.coach_intervention_status ?? null);
+  const interventionReason = useAppStore((s) => s.profile?.coach_intervention_reason ?? null);
+  const conversaSobreADor = (interventionStatus === 'needed' || interventionStatus === 'in_progress')
+    && !!readCheckinReason(interventionReason)?.dor;
+  const reply = useMemo(() => checkinReply(dailyCheckins, today, dia, { conversaSobreADor }), [dailyCheckins, today, dia, conversaSobreADor]);
   // Depois da meia-noite e antes das 5h, a noite ainda não acabou: "Como
   // acordaste hoje?" ao lado de "Ainda acordado?" das boas-vindas era a
   // mesma fronteira da meia-noite que as boas-vindas tinham. Menos para quem
@@ -81,7 +86,10 @@ export default function CheckinCard() {
           <HeartPulse size={17} style={{ color: 'var(--coach)' }} className="shrink-0" aria-hidden="true" />
           <span className="flex-1 min-w-0">
             <span className="block text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{madrugada ? 'Quando acordares, diz-me como dormiste.' : 'Como acordaste hoje?'}</span>
-            <span className="block text-[12px] leading-[1.45] mt-0.5" style={{ color: 'var(--text-3)' }}>Sono, energia, stress e dores. Dez segundos, e eu ajusto o dia.</span>
+            {/* "E eu ajusto o dia" prometia o que o check-in não faz: o treino
+                do plano não muda com ele, muda o que ela diz do dia (revisão
+                de 2026-09-26). */}
+            <span className="block text-[12px] leading-[1.45] mt-0.5" style={{ color: 'var(--text-3)' }}>Sono, energia, stress e dores. Dez segundos, e digo-te como fica o dia.</span>
           </span>
           <ChevronRight size={16} style={{ color: 'var(--text-4)' }} className="shrink-0" aria-hidden="true" />
         </button>
@@ -153,12 +161,12 @@ export function CheckinSheet({ initial = null, onClose, onSaved }) {
   const save = async () => {
     if (!ready || busy) return;
     setBusy(true);
-    const { ok, alarms } = await saveDailyCheckin(values);
+    const { ok, opened } = await saveDailyCheckin(values);
     setBusy(false);
     if (!ok) { showToast('Não consegui guardar o check-in. Tenta outra vez.', 'error'); return; }
     // A confirmação é a resposta dela no cartão; o aviso só fica para quando
-    // o check-in a chama para uma conversa.
-    if (alarms.length) showToast('Guardado. Quero falar contigo sobre isto.');
+    // o check-in abre mesmo uma conversa — com outra já pendente, não abre.
+    if (opened) showToast('Guardado. Quero falar contigo sobre isto.');
     onSaved?.();
     onClose();
   };

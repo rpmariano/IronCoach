@@ -106,11 +106,22 @@ const COM_VIDA = {
   body: (vida) => `Não me esqueci ${vida.da}. Antes de falarmos de corridas, quero saber como estás: conta-me, e começamos daí.`,
 };
 
+/* Numa sessão nova, as notas do arranque chegam depois do primeiro ecrã
+   (Home.jsx lê-as só no primeiro dia), e até lá não há objetivo lido. O
+   cartão dizia logo «Vamos escolher a tua prova» a quem tinha dito que vinha
+   correr mais rápido, e mudava de pedido debaixo dos olhos dele (revisão de
+   2026-09-26). Enquanto as notas não chegam, ela só cumprimenta: sem texto
+   e sem botões. O pedido sem objetivo fica para quando chegarem sem ele. */
+const A_LER = { title: (n) => (n ? `Olá, ${n}.` : 'Olá.'), body: null, primary: null };
+
 /** { title, body, primary } para o cartão do primeiro dia. `vida`: o
- *  acontecimento de eventoDaVida (carolVida.js) para hoje, ou null. */
-export function firstDayAsk(goal, firstName, { vida = null } = {}) {
-  const p = PEDIDO[goal] || SEM_OBJETIVO;
+ *  acontecimento de eventoDaVida (carolVida.js) para hoje, ou null.
+ *  `notasLidas`: false enquanto as notas (coach_notes) não chegaram — sem
+ *  objetivo, só o cumprimento, com `body` e `primary` a null. */
+export function firstDayAsk(goal, firstName, { vida = null, notasLidas = true } = {}) {
   const n = firstName || '';
+  if (!PEDIDO[goal] && !notasLidas) return { ...A_LER, title: A_LER.title(n) };
+  const p = PEDIDO[goal] || SEM_OBJETIVO;
   if (vida?.da && p.primary === 'run') {
     return { title: COM_VIDA.title(goal, n), body: COM_VIDA.body(vida), primary: 'talk' };
   }

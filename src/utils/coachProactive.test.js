@@ -13,7 +13,14 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
   });
 
   it('3 dias sem qualquer registo → "Estás bem?"', () => {
-    const c = pickProactiveTrigger(data({ meals: [{ date: '2026-09-08' }] }), NOW);
+    // Um plano aceite no período, com um treino previsto entretanto, mantém
+    // o limiar de SILENCE_DAYS (3 dias) — sem plano nenhum, o limiar sobe
+    // para uma semana (revisão de 2026-09-26; ver o describe P.10 abaixo).
+    const comPlano = {
+      coachPlans: [{ id: 'sp1', status: 'aceite', period_start: '2026-09-01', period_end: '2026-09-30' }],
+      coachPlanItems: [{ plan_id: 'sp1', planned_date: '2026-09-09', kind: 'corrida', status: 'pendente' }],
+    };
+    const c = pickProactiveTrigger(data({ meals: [{ date: '2026-09-08' }], ...comPlano }), NOW);
     expect(c.trigger).toBe('silence');
     expect(c.key).toBe('silence:2026-09-08');
     expect(c.details).toContain('há 3 dias');
@@ -246,6 +253,14 @@ describe('P.10 — o treino de ontem e o silêncio com check-ins, no chat', () =
     }]);
   });
 
+  it('antes das 6h não pergunta pelo treino de ontem — ainda é o dia que o atleta está a viver', () => {
+    const madrugada = new Date(2026, 8, 11, 0, 30);
+    const cedo = listProactiveTriggers(data({ ...plano, meals: [{ date: '2026-09-11' }] }), madrugada);
+    expect(cedo.some((c) => c.trigger === 'missed_workout')).toBe(false);
+    const seisHoras = listProactiveTriggers(data({ ...plano, meals: [{ date: '2026-09-11' }] }), new Date(2026, 8, 11, 6, 0));
+    expect(seisHoras.some((c) => c.trigger === 'missed_workout')).toBe(true);
+  });
+
   // Revisão pré-deploy de 2026-09-25: à terça o balanço da semana tapava o
   // treino de segunda, que à quarta já era de anteontem.
   it('à terça, o treino de segunda entra a seguir ao balanço; à segunda, o de domingo é do balanço', () => {
@@ -266,17 +281,21 @@ describe('P.10 — o treino de ontem e o silêncio com check-ins, no chat', () =
     expect(list.some((c) => c.trigger === 'missed_workout')).toBe(false);
   });
 
+  // Sem plano nenhum passado (o caso destes testes), o limiar do silêncio é
+  // SILENCE_DAYS_SEM_PLANO (7 dias): um plano no período que cobre a janela
+  // conta os treinos previstos; sem ele, não se sabe se o período foi de
+  // descanso decidido, e o "Estás bem?" espera mais (revisão de 2026-09-26).
   it('com check-in depois do último registo, o silêncio diz ao chat que faltam os treinos', () => {
     const c = listProactiveTriggers(data({
-      meals: [{ date: '2026-09-05' }], runs: [{ id: 'r', date: '2026-09-01' }], dailyCheckins: [{ date: '2026-09-10' }],
+      meals: [{ date: '2026-09-04' }], runs: [{ id: 'r', date: '2026-09-01' }], dailyCheckins: [{ date: '2026-09-10' }],
     }), NOW).find((x) => x.trigger === 'silence');
-    expect(c.key).toBe('silence:2026-09-05');
-    expect(c.details).toBe('Último registo: 2026-09-05 (há 6 dias). Fez check-in depois disso (último: 2026-09-10): está por cá, faltam os treinos — o último treino foi há 10 dias.');
+    expect(c.key).toBe('silence:2026-09-04');
+    expect(c.details).toBe('Último registo: 2026-09-04 (há 7 dias). Fez check-in depois disso (último: 2026-09-10): está por cá, faltam os treinos — o último treino foi há 10 dias.');
     expect(c.details.length).toBeLessThanOrEqual(300);
   });
 
   it('sem check-in depois do último registo, o silêncio de sempre', () => {
-    const c = listProactiveTriggers(data({ meals: [{ date: '2026-09-05' }], dailyCheckins: [{ date: '2026-09-04' }] }), NOW).find((x) => x.trigger === 'silence');
-    expect(c.details).toBe('Último registo: 2026-09-05 (há 6 dias).');
+    const c = listProactiveTriggers(data({ meals: [{ date: '2026-09-04' }], dailyCheckins: [{ date: '2026-09-04' }] }), NOW).find((x) => x.trigger === 'silence');
+    expect(c.details).toBe('Último registo: 2026-09-04 (há 7 dias).');
   });
 });

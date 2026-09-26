@@ -409,8 +409,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // 5/10/21 km, a corrida mais longa): a Carol diz o que ele quer dizer
     // (utils/firstRecord.js, @formulas/runRecord.ts). Só ao criar — editar a
     // única corrida não é "a primeira", nem um recorde novo.
-    const first = !runIdToEdit && (firstRecordMoment('run', useAppStore.getState(), createdRecord)
-      || runRecordMoment(createdRecord, useAppStore.getState().runs));
+    // O dia e o plano aceite dizem se o "amanhã" do recorde se aplica: uma
+    // corrida de outro dia, ou um treino duro amanhã no plano, mudam a frase.
+    const st = useAppStore.getState();
+    const aceites = new Set((st.coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+    const first = !runIdToEdit && (firstRecordMoment('run', st, createdRecord)
+      || runRecordMoment(createdRecord, st.runs, {
+        todayISO: todayISO(),
+        planItems: (st.coachPlanItems || []).filter((i) => aceites.has(i?.plan_id)),
+      }));
     // Gravado: o rascunho apaga-se JÁ, não só ao dispensar a confirmação —
     // se o Android matasse a app com ela à vista, o registo reabria cheio e
     // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
@@ -2018,7 +2025,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           className="flex-1 py-2.5 gap-1.5"
           type="button"
         >
-          <Camera size={14} /> Foto (IA)
+          <Camera size={14} /> Foto
         </Chip>
         <Chip
           active={entryMethod === 'manual'}
@@ -2540,10 +2547,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {showToggle && renderEntryMethodChips()}
 
-          {/* Distância e duração são manuais — na opção "Foto (IA)" quem os
+          {/* Distância e duração são manuais — na opção "Foto" quem os
               dá é a análise do print, não o atleta. Estavam a renderizar-se
               sempre, antes da própria escolha do método, e apareciam mesmo
-              com "Foto (IA)" selecionada (bug #34, relatado 2026-09-21). O
+              com "Foto" selecionada (bug #34, relatado 2026-09-21). O
               modo prova, mais acima, já seguia este padrão correto. */}
           {showFotoBlock ? renderPhotoBlock() : (
             <>
@@ -2595,7 +2602,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input ref={addPhotoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
                   <ImagePlus className="w-7 h-7 text-[var(--text-3)] mx-auto mb-2" />
                   <p className="text-[11px] text-[var(--text-3)] font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
-                  <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">A IA lê a distância, duração, tipo de treino e splits automaticamente</p>
+                  <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Eu leio a distância, a duração, o tipo de treino e os splits. Podes corrigir depois de gravado.</p>
                   {/* Uma linha por app conhecida, com os ecrãs que um print do
                       resumo sozinho deixa de fora — vem do catálogo
                       (supabase/functions/_shared/sourceApps.ts), por isso uma

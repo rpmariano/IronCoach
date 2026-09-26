@@ -174,7 +174,7 @@ async function handler(req: Request): Promise<Response> {
     try {
       const [
         { data: races, error: racesErr }, { data: runs, error: runsErr }, { last, lastTraining }, { data: plans, error: plansErr }, weekDates,
-        { data: gymYesterday }, { data: lastCheckin },
+        { data: gymYesterday }, { data: lastCheckin }, { data: lastWater },
       ] = await Promise.all([
         // Até 6 meses à frente: o conflito de provas olha para dentro do bloco.
         // Ordem fixa (data, depois id): sem ela, com duas provas no mesmo dia
@@ -196,10 +196,16 @@ async function handler(req: Request): Promise<Response> {
           .eq("user_id", userId).in("status", ["aceite", "proposto"]).gte("period_end", yesterday),
         weekRecordDates(sb, userId, reviewWeek),
         // O treino de ontem conta como feito com qualquer sessão de ginásio
-        // nesse dia (as corridas já vêm acima) — P.10.
-        sb.from("workout_sessions").select("date").eq("user_id", userId).eq("date", yesterday).limit(1),
-        // O último check-in: ele está por cá, mesmo sem registos (P.10).
-        sb.from("daily_checkins").select("date").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
+        // nesse dia, ou hoje (feito de manhã pelo "+") — as corridas já vêm
+        // acima (P.10; revisão pré-deploy de 2026-09-26).
+        sb.from("workout_sessions").select("date").eq("user_id", userId).in("date", [yesterday, today]).limit(2),
+        // O último check-in: ele está por cá, mesmo sem registos (P.10). A
+        // dor (revisão de 2026-09-26): acima do alarme, ela já sabe porquê
+        // o silêncio ou o treino de ontem por registar — não pergunta.
+        sb.from("daily_checkins").select("date, pain").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
+        // A última água registada: quem só regista água está por cá, e o
+        // silêncio não lhe diz "não vejo nada teu" (revisão de 2026-09-26).
+        sb.from("water_logs").select("date").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
       ]);
       // Sem as provas ou as corridas, o momento escolhido podia ser o errado
       // (a véspera a cair para o silêncio): salta-se o atleta nesta hora.
@@ -262,6 +268,8 @@ async function handler(req: Request): Promise<Response> {
         lastRecordDate: last,
         lastTrainingDate: lastTraining,
         lastCheckinDate: lastCheckin?.date ?? null,
+        lastCheckinPain: lastCheckin?.pain ?? null,
+        lastWaterDate: lastWater?.date ?? null,
         planItems,
         trainingDates: [
           ...(runs || []).map((r: { date?: string | null }) => r.date ?? null),

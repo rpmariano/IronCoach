@@ -354,6 +354,22 @@ describe('Os badges semanais — o plano da Carol', () => {
     expect(dueDe(r, 'descanso_cumprido')[0]).toMatchObject({ periodKey: SEGUNDA, value: 2, valueUnit: 'count' });
   });
 
+  // Revisão de 2026-09-26: a linha já tem os dados, o lema de manual colado
+  // a seguir ("descansar também é treinar") sobrava.
+  it('Descanso cumprido: a linha diz só o facto, sem o lema', () => {
+    const r = compute({
+      planItems: [
+        item('2026-09-08'),
+        item('2026-09-09', { kind: 'descanso', target_distance_km: null }),
+        item('2026-09-11', { kind: 'descanso', target_distance_km: null }),
+      ],
+      runs: [treino('2026-09-08')],
+    });
+    const { line } = dueDe(r, 'descanso_cumprido')[0];
+    expect(line).toMatch(/^2 dias de descanso respeitados na .+, e nenhum trocado por treino\.$/);
+    expect(line).not.toMatch(/descansar também é treinar/);
+  });
+
   it('treinar no dia de descanso deita a semana abaixo', () => {
     const r = compute({
       planItems: [

@@ -249,6 +249,10 @@ export default function Onboarding({ reentry = false, onDone }) {
      com a prova gravada. Afirmá-lo às cegas seria pôr na boca da Carol uma
      garantia que ela ainda não tem — o oposto de CAROL.md §2. */
   const notaProva = useMemo(() => {
+    // Com menos de uma semana, "0 semanas até lá" não é conta que ela diga.
+    if (semanas === 0) {
+      return 'É já esta semana. Não há plano que caiba; preparo-te a véspera e o dia.';
+    }
     const km = parseNum(draft.weekly_km);
     if (km && semanas != null) {
       return `Com ${km} km por semana e ${semanas} ${semanas === 1 ? 'semana' : 'semanas'} até lá, já sei por onde começar o plano. Vou dizer-te se algo mudar.`;
@@ -362,7 +366,10 @@ export default function Onboarding({ reentry = false, onDone }) {
         target_time: draft.race_target_time.trim(),
         target_time_seconds: tempoSegundos,
         target_pace_seconds_per_km: Math.round(tempoSegundos / distancia),
-        experience_level: draft.experience_level || 'iniciante',
+        // Sem nível declarado fica null: 'iniciante' aqui tornava impossível
+        // distinguir quem saltou a pergunta (phaseGuidance), e os números já
+        // caem nele sozinhos (resolveExperienceLevel).
+        experience_level: draft.experience_level || null,
         race_priority: 'a',
         elevation_gain_m: draft.race_type === 'trail' ? parseNum(draft.race_elevation_gain_m) : null,
         /* Sem `status`: deixa o default da coluna ('agendada'). Marcá-la

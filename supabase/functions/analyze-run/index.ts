@@ -22,6 +22,7 @@ import {
   CAROL_TONE_RULES_SHORT,
   carolLanguageRule,
   carolRecordAnalysisRules,
+  INTERVENTION_INVITE,
   RECORD_ANALYSIS_LABELS,
   upstreamErrorText,
 } from "../_shared/carolTone.ts";
@@ -668,7 +669,7 @@ async function generateCoachNotes(
 
   const planSection = planItems.length > 0 
     ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, no bloco "${RECORD_ANALYSIS_LABELS.next}" aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano. O desvio vai no bloco "${RECORD_ANALYSIS_LABELS.fix}" e não substitui a análise da corrida que ele fez.\n` +
+      `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, o bloco "${RECORD_ANALYSIS_LABELS.next}" é ${INTERVENTION_INVITE} O desvio vai no bloco "${RECORD_ANALYSIS_LABELS.fix}" e não substitui a análise da corrida que ele fez.\n` +
       planningFrameSection(true, !!upcomingRace, upcomingRace)
     : planningFrameSection(false, !!upcomingRace, upcomingRace);
 
@@ -718,7 +719,7 @@ async function generateCoachNotes(
     `- Usa o volume semanal e a tendência de médio prazo para comentar sobre consistência ou risco de sobrecarga/undertraining, não só sobre a corrida isolada. O "Volume semanal" abaixo é sempre a semana de CALENDÁRIO (segunda a domingo) em curso, nunca uma janela rolante — se disser "ainda a decorrer", NUNCA a trates como cumprida, terminada ou fechada.\n` +
     `- CARGA ACUMULADA DOS DIAS RECENTES: Se o atleta fez múltiplas corridas ou ginásio no dia anterior, menciona SEMPRE o volume total somado de ontem e todas as atividades feitas.\n` +
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala-o no bloco "O esforço".\n` +
-    `- Se marcares intervention_needed=true, o bloco "${RECORD_ANALYSIS_LABELS.next}" é só o convite para carregar no botão "Falar com a Coach" e falares com ele sobre adaptar o plano.\n\n` +
+    `- Se marcares intervention_needed=true, o bloco "${RECORD_ANALYSIS_LABELS.next}" é só ${INTERVENTION_INVITE}\n\n` +
     `${RUN_ANALYSIS_RULES}\n\n` +
     `Corrida de hoje:\n` +
     `- Tipo: ${run.kind === "competicao" ? "Prova" : `Treino (${trainingTypeLabel})`}\n` +

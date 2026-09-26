@@ -29,6 +29,15 @@ describe('reactToGoal', () => {
   it('o regresso depois de uma pausa preocupa-a', () => {
     expect(reactToGoal({ goal: 'regresso' }).mood).toBe('worried');
   });
+
+  it('com a prova já marcada (reentrada), não promete perguntar o que já sabe', () => {
+    const r = reactToGoal({ goal: 'prova', race_name: 'Maratona do Porto', race_date: '2026-11-08', race_distance_km: '42.2' });
+    expect(r.text).toBe('Com a prova marcada, cada semana tem uma função. Daqui a três passos confirmamos a data.');
+    expect(r.text).not.toMatch(/pergunto-te/);
+    semEmojiNemExclamacao(r);
+    // Sem data, continua a prometer a pergunta.
+    expect(reactToGoal({ goal: 'prova', race_date: '' }).text).toMatch(/pergunto-te qual é/);
+  });
 });
 
 describe('reactToRunning', () => {
@@ -54,6 +63,30 @@ describe('reactToRunning', () => {
     expect(reactToRunning({ experience_level: 'avancado' }).mood).toBe('happy');
     expect(reactToRunning({ experience_level: 'iniciante' }).text).toMatch(/base/);
     expect(reactToRunning({})).toBeNull();
+  });
+
+  it('um a três anos com semana declarada: começa pela semana que já faz', () => {
+    expect(reactToRunning({ experience_level: 'medio', weekly_km: '20', days_per_week: '3' }).text)
+      .toMatch(/Começo pela semana que já fazes/);
+    expect(reactToRunning({ experience_level: 'medio', goal: 'regresso', weekly_km: '10', days_per_week: '2' }).text)
+      .toMatch(/Começo pela semana que já fazes/);
+  });
+
+  it('sem semana de treino (regresso sem números, ou 0), não presume uma', () => {
+    const esperado = 'Partimos do que o corpo aguenta hoje, não do que fazias antes. Depois subo.';
+    const casos = [
+      { experience_level: 'medio', goal: 'regresso', weekly_km: '', days_per_week: '' },
+      { experience_level: 'medio', goal: 'regresso', weekly_km: '0', days_per_week: '0' },
+      { experience_level: 'medio', goal: 'regresso' },
+      { experience_level: 'medio', goal: 'saude', weekly_km: '0', days_per_week: '' },
+      { experience_level: 'medio', goal: 'ritmo', weekly_km: '', days_per_week: '0' },
+    ];
+    for (const draft of casos) {
+      const r = reactToRunning(draft);
+      expect(r.text).toBe(esperado);
+      expect(r.text).not.toMatch(/semana que já fazes/);
+      semEmojiNemExclamacao(r);
+    }
   });
 });
 
@@ -87,5 +120,18 @@ describe('reactToRace', () => {
 
   it('sem prova completa, não diz nada', () => {
     expect(reactToRace({ ...prova, race_name: '' }, 2)).toBeNull();
+  });
+
+  it('"fresca" ou "fresco" só com o sexo conhecido; sem ele, frase neutra', () => {
+    const f = reactToRace({ ...prova, gender: 'F' }, 2);
+    expect(f.text).toMatch(/Dá para lá chegares fresca, e é nisso/);
+    expect(f.text).not.toMatch(/fresco/);
+    expect(reactToRace({ ...prova, gender: 'M' }, 2).text).toMatch(/Dá para lá chegares fresco, e é nisso/);
+    for (const gender of ['', undefined, null]) {
+      const r = reactToRace({ ...prova, gender }, 2);
+      expect(r.text).toMatch(/Dá para chegares lá com as pernas frescas, e é nisso que o plano se vai concentrar\.$/);
+      expect(r.text).not.toMatch(/fresc[oa],/);
+      semEmojiNemExclamacao(r);
+    }
   });
 });

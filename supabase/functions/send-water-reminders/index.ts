@@ -14,7 +14,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { waterReminderMessage } from "./message.ts";
+import { raceDayWaterPhase, waterReminderMessage, type RaceForWater } from "./message.ts";
 import { carolQuietSince, usersQuietAfterCarol } from "./afterCarol.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
@@ -33,6 +33,15 @@ function currentLisbonHour(date: Date): number {
   return Number(
     new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", hour12: false }).format(date),
   );
+}
+
+/** Minutos desde a meia-noite de Lisboa (0-1439): o corte da água antes da
+ *  prova é ao minuto ("água até às 08:15"), não à hora. */
+function currentLisbonMinutes(date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
 }
 
 /* Data do calendário em Lisboa, pelo mesmo motivo da hora: em horário de verão
@@ -83,11 +92,12 @@ async function handler(req: Request): Promise<Response> {
   try {
     const nowDate = new Date();
     const currentHour = currentLisbonHour(nowDate);
-    // Duas escalas, cada uma a bater com o que o frontend grava: o
-    // silenciamento é uma decisão sobre o dia do utilizador (Lisboa), enquanto
-    // water_logs.date continua a ser gravado em UTC.
+    const currentMinutes = currentLisbonMinutes(nowDate);
+    // Uma escala só, o dia de Lisboa (revisão de 2026-09-26): é nela que se
+    // grava o silenciamento e também water_logs.date (addWaterLog no store,
+    // o registo de água do Início). Com a data UTC, entre a meia-noite e a
+    // 1h de verão o total lido era o de ontem.
     const lisbonToday = currentLisbonDate(nowDate);
-    const todayISO = nowDate.toISOString().slice(0, 10);
 
     const { data: profiles, error: profilesErr } = await sb
       .from("profiles")
@@ -121,7 +131,7 @@ async function handler(req: Request): Promise<Response> {
         .from("water_logs")
         .select("amount_ml")
         .eq("user_id", profile.id)
-        .eq("date", todayISO);
+        .eq("date", lisbonToday);
       const todayTotal = (todayLogs || []).reduce((sum, l) => sum + (l.amount_ml || 0), 0);
       const goal = Number(profile.water_goal_ml) || 2000;
       if (todayTotal < goal) {
@@ -149,8 +159,33 @@ async function handler(req: Request): Promise<Response> {
       else quietAfterCarol = usersQuietAfterCarol(recentCarol, now);
     }
 
+    /* As provas de hoje com hora marcada (raceDayWaterPhase, message.ts): do
+       corte da água à chegada prevista não sai lembrete; logo a seguir, sai o
+       da prova acabada. Nada se grava ao calar, por isso o lembrete sai na
+       primeira execução depois da chegada. Se a leitura falhar, como acima,
+       a água sai como num dia qualquer. */
+    const racesById = new Map<string, RaceForWater[]>();
+    if (due.length) {
+      const { data: todayRaces, error: racesErr } = await sb
+        .from("race_events")
+        .select("user_id, start_time, target_time_seconds, distance_km")
+        .in("user_id", due.map((p) => p.id))
+        .eq("date", lisbonToday)
+        .not("start_time", "is", null);
+      if (racesErr) console.warn("send-water-reminders: não li as provas de hoje", racesErr.message);
+      for (const r of todayRaces || []) {
+        racesById.set(r.user_id, [...(racesById.get(r.user_id) || []), r]);
+      }
+    }
+    let duringRace = 0;
+
     for (const profile of due) {
       if (quietAfterCarol.has(profile.id)) continue;
+      const phases = (racesById.get(profile.id) || []).map((r) => raceDayWaterPhase(r, currentMinutes));
+      if (phases.includes("silencio")) {
+        duringRace++;
+        continue;
+      }
       const { data: subs, error: subsErr } = await sb
         .from("push_subscriptions")
         .select("id, endpoint, p256dh, auth")
@@ -166,6 +201,7 @@ async function handler(req: Request): Promise<Response> {
         hour: currentHour,
         startHour: profile.water_reminder_start_hour,
         endHour: profile.water_reminder_end_hour,
+        afterRace: phases.includes("depois"),
       }));
 
       for (const sub of subs) {
@@ -201,6 +237,7 @@ async function handler(req: Request): Promise<Response> {
       checked: profiles?.length || 0,
       due: due.length,
       afterCarol: quietAfterCarol.size,
+      duringRace,
       usersNotified,
       sent,
       failed,

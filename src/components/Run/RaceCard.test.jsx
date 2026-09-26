@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import RaceCard from './RaceCard';
 import { useAppStore } from '../../store';
+import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
+import { todayISO, addDaysISO } from '../../lib/utils';
 
 vi.mock('../../store', () => ({
   useAppStore: vi.fn(),
@@ -256,5 +258,131 @@ describe('RaceCard — a partir do dia da prova', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Ver registo/i }));
     expect(onViewRun).toHaveBeenCalledWith('run-7');
+  });
+});
+
+/* A contagem no singular e sem gritos (revisão de 2026-09-26): com a prova
+   amanhã dizia "Faltam 1 dias", e no dia "É HOJE!". */
+describe('RaceCard — a contagem', () => {
+  const profile = { experience_level: 'medio' };
+  const base = {
+    id: 'race-1',
+    name: 'Corrida do Tejo',
+    distance_km: 10,
+    race_type: 'estrada',
+    race_priority: 'a',
+    status: 'agendada',
+  };
+  // A data que dá o estado pedido segundo o próprio motor — sem adivinhar
+  // quantas semanas de preparação ele conta para 10 km/nível médio.
+  const dataOnde = (pred) => {
+    const hoje = todayISO();
+    for (let n = -400; n <= 400; n++) {
+      const date = addDaysISO(hoje, n);
+      if (pred(calculateRaceTrainingPlan({ race: { ...base, date }, profile, runs: [], todayISO: hoje }))) return date;
+    }
+    throw new Error('sem data para o estado pedido');
+  };
+  const abrir = (ev) => {
+    render(<RaceCard ev={ev} onEdit={vi.fn()} onToggleStatus={vi.fn()} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByText('Corrida do Tejo'));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAppStore.mockReturnValue({ profile, runs: [] });
+  });
+
+  it('com a prova amanhã, diz "Amanhã" e não "Faltam 1 dias"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === 1) });
+    expect(screen.getByText('Amanhã')).toBeInTheDocument();
+    expect(screen.queryByText(/Faltam 1 dias/)).not.toBeInTheDocument();
+  });
+
+  it('no dia da prova, "É hoje" sem exclamação', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === 0) });
+    expect(screen.getByText('É hoje')).toBeInTheDocument();
+    expect(screen.queryByText(/HOJE|!/)).not.toBeInTheDocument();
+  });
+
+  it('com o início do treino amanhã, diz "Amanhã" e não "Faltam 1 dias"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.trainingStatus === 'not_started' && p.daysToStart === 1) });
+    expect(screen.getByText('Início do Treino')).toBeInTheDocument();
+    expect(screen.getByText('Amanhã')).toBeInTheDocument();
+    expect(screen.queryByText(/Faltam 1 dias/)).not.toBeInTheDocument();
+  });
+
+  it('com a prova ontem, diz "Ontem" e não "1 dias atrás"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === -1) });
+    expect(screen.getByText('Ontem')).toBeInTheDocument();
+    expect(screen.queryByText(/1 dias atrás/)).not.toBeInTheDocument();
+  });
+
+  it('com mais de um dia, continua "Faltam N dias"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === 180) });
+    expect(screen.getByText('Faltam 180 dias')).toBeInTheDocument();
+  });
+});
+
+/* O parecer da prova com o que o store sabe (revisão de 2026-09-26): antes
+   do ciclo, com um plano de treino aceite, segue-se esse plano; depois da
+   prova, sem corrida registada, "Por registar" em vez de uma nota inventada. */
+describe('RaceCard — o parecer com o plano e o registo da prova', () => {
+  const base = {
+    id: 'race-1',
+    name: 'Corrida do Tejo',
+    distance_km: 10,
+    race_type: 'estrada',
+    race_priority: 'a',
+    status: 'agendada',
+  };
+  const abrir = (ev) => {
+    render(<RaceCard ev={ev} onEdit={vi.fn()} onToggleStatus={vi.fn()} onDelete={vi.fn()} onRegisterRace={vi.fn()} />);
+    fireEvent.click(screen.getByText('Corrida do Tejo'));
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('com um plano de manutenção aceite em vigor, antes do ciclo manda seguir o plano', () => {
+    const hoje = todayISO();
+    useAppStore.mockReturnValue({
+      profile: { experience_level: 'medio' },
+      runs: [],
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: addDaysISO(hoje, -3), period_end: addDaysISO(hoje, 10) }],
+      coachPlanItems: [{ id: 'i1', plan_id: 'p1', kind: 'corrida', training_type: 'intervalos', planned_date: addDaysISO(hoje, 1), status: 'pendente' }],
+    });
+    abrir({ ...base, date: addDaysISO(hoje, 180) });
+
+    expect(screen.getByText(/Até lá, segue o plano que acordámos\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Z1\/Z2|força no ginásio/)).not.toBeInTheDocument();
+  });
+
+  it('sem plano aceite, mantém o conselho de antes do ciclo', () => {
+    useAppStore.mockReturnValue({ profile: { experience_level: 'medio' }, runs: [] });
+    abrir({ ...base, date: addDaysISO(todayISO(), 180) });
+
+    expect(screen.getByText(/Até lá, corrida fácil \(Z1\/Z2\)/)).toBeInTheDocument();
+  });
+
+  it('prova de há 3 dias sem corrida registada: "Por registar", sem nota nem estrelas', () => {
+    useAppStore.mockReturnValue({ profile: { experience_level: 'medio' }, runs: [] });
+    abrir({ ...base, date: addDaysISO(todayISO(), -3) });
+
+    expect(screen.getByText('Classificação da Fase:')).toBeInTheDocument();
+    expect(screen.getByText('Por registar')).toBeInTheDocument();
+    expect(screen.getByText('A prova já passou e não a tenho registada. Regista-a, ou diz-me o que aconteceu.')).toBeInTheDocument();
+    expect(screen.queryByText(/95%|Concluída ·/)).not.toBeInTheDocument();
+  });
+
+  it('com a corrida da prova registada, a classificação continua com a nota', () => {
+    const date = addDaysISO(todayISO(), -3);
+    useAppStore.mockReturnValue({
+      profile: { experience_level: 'medio' },
+      runs: [{ id: 'run-7', kind: 'competicao', race_id: 'race-1', date, distance_km: 10, duration_seconds: 2950 }],
+    });
+    abrir({ ...base, date });
+
+    expect(screen.getByText('Concluída · 95%')).toBeInTheDocument();
+    expect(screen.queryByText('Por registar')).not.toBeInTheDocument();
   });
 });

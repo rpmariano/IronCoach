@@ -37,7 +37,7 @@ function formatDatePT(isoStr) {
 }
 
 export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegisterRace, onViewRun }) {
-  const { profile, runs } = useAppStore();
+  const { profile, runs, coachPlans, coachPlanItems } = useAppStore();
   const [expanded, setExpanded] = useState(false);
   const todayIso = todayISO();
 
@@ -68,8 +68,10 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
       profile,
       runs,
       todayISO: todayIso,
+      coachPlans,
+      coachPlanItems,
     });
-  }, [ev, profile, runs, todayIso]);
+  }, [ev, profile, runs, todayIso, coachPlans, coachPlanItems]);
 
   return (
     <div 
@@ -154,13 +156,14 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               </span>
             </div>
 
-            {/* 3. Tempo que Falta */}
+            {/* 3. Tempo que Falta — sem "Faltam 1 dias" nem o "É HOJE!" aos
+                gritos (revisão de 2026-09-26), como no RaceReadinessCard. */}
             <div className="p-2.5 rounded-xl bg-[var(--surface-soft)] border border-[var(--border-glass)] flex flex-col gap-0.5">
               <span className="text-[11px] font-bold text-[var(--text-3)] uppercase tracking-wider flex items-center gap-1">
                 <Calendar size={11} className="text-[var(--race)]" /> Contagem
               </span>
               <span className="text-xs font-bold text-[var(--text-1)]">
-                {done ? 'Concluída' : plan.daysToRace === 0 ? 'É HOJE!' : plan.daysToRace > 0 ? `Faltam ${plan.daysToRace} dias` : `${Math.abs(plan.daysToRace)} dias atrás`}
+                {done ? 'Concluída' : plan.daysToRace === 0 ? 'É hoje' : plan.daysToRace === 1 ? 'Amanhã' : plan.daysToRace > 0 ? `Faltam ${plan.daysToRace} dias` : plan.daysToRace === -1 ? 'Ontem' : `${Math.abs(plan.daysToRace)} dias atrás`}
               </span>
               <span className="text-[11px] font-medium text-[var(--text-3)] truncate">
                 {plan.trainingStatus === 'in_progress' ? `Semana ${plan.currentWeek} de ${plan.totalWeeks}` : `${plan.totalWeeks} semanas total`}
@@ -175,7 +178,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               </span>
               <span className="text-xs font-bold text-[var(--race)] truncate">
                 {plan.trainingStatus === 'not_started'
-                  ? `Faltam ${plan.daysToStart} dias`
+                  ? (plan.daysToStart === 1 ? 'Amanhã' : `Faltam ${plan.daysToStart} dias`)
                   : (plan.currentPhase?.name || 'Base Aeróbica')}
               </span>
               <span className="text-[11px] font-medium text-[var(--text-3)] truncate">
@@ -213,11 +216,15 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
                   : (plan.currentPhase?.evaluation?.summary || plan.carolAnalysis.overviewText)}
               </p>
 
-              {plan.trainingStatus !== 'not_started' && plan.currentPhase?.evaluation?.score != null && (
+              {/* Sem nota, só "Por registar" (a prova passou sem corrida
+                  registada) tem lugar aqui (revisão de 2026-09-26). */}
+              {plan.trainingStatus !== 'not_started' && (plan.currentPhase?.evaluation?.score != null || plan.currentPhase?.evaluation?.awaitingRecord) && (
                 <div className="flex items-center justify-between pt-1 border-t border-[var(--border-glass)] text-[11px] text-[var(--text-3)]">
                   <span>Classificação da Fase:</span>
                   <span className="font-bold text-[var(--text-2)]">
-                    {plan.currentPhase.evaluation.gradeLabel} · {plan.currentPhase.evaluation.score}%
+                    {plan.currentPhase.evaluation.score != null
+                      ? `${plan.currentPhase.evaluation.gradeLabel} · ${plan.currentPhase.evaluation.score}%`
+                      : plan.currentPhase.evaluation.gradeLabel}
                   </span>
                 </div>
               )}

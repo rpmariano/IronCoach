@@ -78,6 +78,16 @@ describe('GymRegistration — cartão único: alternar entre Foto e Manual', () 
     expect(screen.getByPlaceholderText('Ex: 45m')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeInTheDocument();
   });
+
+  /* O caso do backlog (specs/carol-frases-contexto.md, MealRegistration:710, mesma linha para o ginásio): o
+     registo por foto nomeava «a IA» ao lado da Carol — rótulo «Foto (IA)» e
+     dica «A IA lê…». Aqui fala só ela, na primeira pessoa. */
+  it('o registo por foto fala na voz da Carol, sem nomear a IA', () => {
+    render(<GymRegistration onClose={onClose} />);
+    expect(screen.getByRole('button', { name: /^Foto$/ })).toBeInTheDocument();
+    expect(screen.getByText('Junta os ecrãs da mesma sessão; eu leio os exercícios, as séries e as cargas. Podes corrigir depois de gravado.')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\bIA\b/);
+  });
 });
 
 describe('GymRegistration — Analisar treino por foto (analyze-gym)', () => {

@@ -14,11 +14,28 @@
 const LISTA = { run: 'runs', meal: 'meals', gym: 'gymSessions', body: 'bodyAssessments' };
 
 const FRASE = {
-  run: { title: 'A primeira corrida.', sub: 'Agora já sei por onde começar: o teu ritmo, a tua distância, o teu esforço.' },
+  run: (record) => primeiraCorrida(record),
   meal: { title: 'A primeira refeição.', sub: 'Os anéis começam a encher-se a partir daqui. É assim que percebo como comes.' },
   gym: (record) => primeiroGinasio(record),
   body: { title: 'A primeira avaliação.', sub: 'É o ponto de partida. Tudo o que o corpo mudar, vou medir contra isto.' },
 };
+
+/* A primeira corrida diz só o que o registo tem (revisão de 2026-09-26).
+   O "Continuar assim mesmo" da persiana das métricas em falta deixa gravar
+   sem tempo (ou sem distância): sem os dois não há ritmo nem esforço, e «o
+   teu ritmo, a tua distância, o teu esforço» afirmava os três. Sem o
+   registo à mão, a frase de sempre. */
+function primeiraCorrida(record) {
+  const title = 'A primeira corrida.';
+  const tempo = !record || Number(record.duration_seconds) > 0;
+  const distancia = !record || Number(record.distance_km) > 0;
+  if (tempo && distancia) {
+    return { title, sub: 'Agora já sei por onde começar: o teu ritmo, a tua distância, o teu esforço.' };
+  }
+  if (distancia) return { title, sub: 'Já sei a tua distância. Com o tempo, fico a saber o teu ritmo.' };
+  if (tempo) return { title, sub: 'Já sei quanto tempo correste. Com a distância, fico a saber o teu ritmo.' };
+  return { title, sub: 'É o teu ponto de partida. Com a distância e o tempo, fico a saber o teu ritmo.' };
+}
 
 /* O primeiro registo de ginásio diz-se pelo que ele é (pedido 2026-09-26).
    "Já sei o que levantas" era a frase de sempre — e era falsa quando o

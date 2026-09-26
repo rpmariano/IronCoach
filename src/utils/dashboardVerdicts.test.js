@@ -9,6 +9,7 @@ import {
   NO_DATA_TEXT,
 } from './dashboardVerdicts';
 import { expectCarolVoice } from '../test/carolVoice';
+import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
 
 /* Ponto 6 do redesenho: as frases de veredicto dos dashboards de módulo.
    São funções puras — testam-se com números à mão. Três cenários mínimos
@@ -20,6 +21,8 @@ import { expectCarolVoice } from '../test/carolVoice';
 
 const weeks = (...kms) => kms.map((km, i) => ({ weekLabel: `S${i}`, acuteLoad: km }));
 const gymWeeks = (...kgs) => kgs.map((kg, i) => ({ weekLabel: `S${i}`, volumeLoad: kg }));
+const SEGUNDA = '2026-09-21';
+const DOMINGO = '2026-09-27';
 
 describe('fmtNumber', () => {
   it('usa vírgula decimal e espaço de milhar', () => {
@@ -99,16 +102,104 @@ describe('runVerdict', () => {
     expect(v.text).toContain('Z3+');
   });
 
-  it('mal: volume a cair duas semanas seguidas', () => {
+  it('mal: volume a cair duas semanas seguidas (ao domingo a semana em curso já conta)', () => {
     const v = runVerdict({
       acwr: { ratio: 0.95, status: 'safe', hasEnoughData: true },
       weeklyVolume: weeks(42.6, 35, 28.1),
       distribution: { lowIntensityPct: 85, highIntensityPct: 15, targetLowPct: 80 },
       runCount: 8,
+      today: DOMINGO,
     });
     expect(v.tone).toBe('warn');
     expect(v.text).toContain('duas semanas seguidas');
     expect(v.text).toContain('28,1');
+    // "Ficaste curto" tinha género; "aquém" serve a qualquer atleta.
+    expect(v.text).toContain('Ficaste aquém');
+  });
+
+  /* Revisão de 2026-09-26: à segunda-feira a semana em curso tem 0 km
+     porque mal começou, e contava como semana curta — "desceu de 50,0
+     para 0,0 km". Só entra ao domingo, quando está praticamente fechada. */
+  describe('a semana em curso e o plano', () => {
+    const base = {
+      acwr: { ratio: 0.95, status: 'safe', hasEnoughData: true },
+      distribution: { lowIntensityPct: 85, highIntensityPct: 15, targetLowPct: 80 },
+      runCount: 8,
+    };
+
+    it('à segunda-feira, a semana que mal começou não é uma semana curta', () => {
+      const v = runVerdict({ ...base, weeklyVolume: weeks(50, 45, 0), today: SEGUNDA });
+      expect(v.text).not.toContain('semanas seguidas');
+      expect(v.text).not.toContain('0,0 km');
+    });
+
+    it('sem saber o dia, a semana em curso fica de fora', () => {
+      const v = runVerdict({ ...base, weeklyVolume: weeks(50, 45, 0) });
+      expect(v.text).not.toContain('semanas seguidas');
+    });
+
+    it('à segunda-feira conta as duas semanas fechadas que desceram', () => {
+      const v = runVerdict({ ...base, weeklyVolume: weeks(50, 45, 40, 3), today: SEGUNDA });
+      expect(v.tone).toBe('warn');
+      expect(v.text).toContain('duas semanas seguidas');
+      expect(v.text).toContain('de 50,0 para 40,0 km');
+    });
+
+    it('no polimento, o volume a descer não é ficar aquém', () => {
+      const v = runVerdict({ ...base, weeklyVolume: weeks(50, 40, 30, 5), today: SEGUNDA, taper: true });
+      expect(v.text).not.toContain('semanas seguidas');
+    });
+
+    // Semanas de 31 ago, 7, 14 e 21 set (a em curso). O plano previa 45 km
+    // na de 7 e 30 na de 14: a descida da de 14 é a descarga dele.
+    const plano = [
+      { plan_id: 'p', kind: 'corrida', status: 'concluido', planned_date: '2026-09-08', target_distance_km: 20 },
+      { plan_id: 'p', kind: 'corrida', status: 'concluido', planned_date: '2026-09-12', target_distance_km: 25 },
+      { plan_id: 'p', kind: 'corrida', status: 'concluido', planned_date: '2026-09-16', target_distance_km: 12 },
+      { plan_id: 'p', kind: 'corrida', status: 'concluido', planned_date: '2026-09-19', target_distance_km: 18 },
+    ];
+
+    it('uma semana em que o próprio plano também descia (descarga) não conta como curta', () => {
+      const v = runVerdict({ ...base, weeklyVolume: weeks(50, 45, 30, 0), today: SEGUNDA, planItems: plano });
+      expect(v.text).not.toContain('semanas seguidas');
+    });
+
+    it('sem essa descarga no plano, as mesmas semanas são curtas', () => {
+      const v = runVerdict({ ...base, weeklyVolume: weeks(50, 45, 30, 0), today: SEGUNDA });
+      expect(v.text).toContain('duas semanas seguidas');
+    });
+
+    it('um treino cancelado não faz o plano descer', () => {
+      const cancelado = [...plano.slice(0, 2), { plan_id: 'p', kind: 'corrida', status: 'cancelado', planned_date: '2026-09-15', target_distance_km: 40 }, ...plano.slice(2)];
+      const v = runVerdict({ ...base, weeklyVolume: weeks(50, 45, 30, 0), today: SEGUNDA, planItems: cancelado });
+      expect(v.text).not.toContain('semanas seguidas');
+    });
+  });
+
+  /* Revisão de 2026-09-26: no polimento antes da prova a carga desce de
+     propósito, e o veredicto mandava carregar mais. */
+  it('no polimento, a carga baixa é de propósito — não manda carregar', () => {
+    const v = runVerdict({
+      acwr: { ratio: 0.62, status: 'undertrained', hasEnoughData: true },
+      weeklyVolume: weeks(40, 42, 40, 20),
+      runCount: 10,
+      today: SEGUNDA,
+      taper: true,
+    });
+    expect(v.tone).toBe('ok');
+    expect(v.text).toBe('Estás no polimento: a carga baixa é de propósito.');
+    expectCarolVoice(v.text);
+  });
+
+  it('fora do polimento, a carga baixa continua a ser aviso', () => {
+    const v = runVerdict({
+      acwr: { ratio: 0.62, status: 'undertrained', hasEnoughData: true },
+      weeklyVolume: weeks(40, 42, 40, 20),
+      runCount: 10,
+      today: SEGUNDA,
+    });
+    expect(v.tone).toBe('warn');
+    expect(v.text).toContain('0,62');
   });
 
   it('com corridas mas sem quatro semanas de carga, não finge saber', () => {
@@ -174,6 +265,45 @@ describe('gymVerdict', () => {
     });
     expect(v.tone).toBe('warn');
     expect(v.text).toContain('O alvo são duas');
+    expect(v.text).toContain('uma vez por semana');
+  });
+
+  /* Revisão de 2026-09-26: 1,5 sessões por semana saía "uma sessão", e um
+     atleta só de ginásio ouvia falar de "volume de corrida". */
+  describe('o valor real e a corrida só para quem corre', () => {
+    const umaEMeia = { weeklyBreakdown: gymWeeks(4000, 4000, 4000), strengthSessions: 6, classes: 0, weeksInRange: 4, totalVolumeLoad: 12000 };
+
+    it('1,5 por semana diz 1,5, não "uma"', () => {
+      const v = gymVerdict(umaEMeia);
+      expect(v.tone).toBe('warn');
+      expect(v.text).toBe('Vais 1,5 vezes por semana. O alvo são duas.');
+      expectCarolVoice(v.text);
+    });
+
+    it('com corridas registadas, fala do volume de corrida', () => {
+      const v = gymVerdict({ ...umaEMeia, runCount: 12 });
+      expect(v.text).toContain('1,5 vezes por semana');
+      expect(v.text).toContain('volume de corrida');
+    });
+
+    it('só ginásio e poucas sessões: não fala de corrida', () => {
+      const v = gymVerdict({ weeklyBreakdown: gymWeeks(3000, 3200), strengthSessions: 2, weeksInRange: 4, totalVolumeLoad: 6200 });
+      expect(v.text).toContain('2 sessões em quatro semanas');
+      expect(v.text).not.toContain('corrida');
+      expect(gymVerdict({ weeklyBreakdown: gymWeeks(3000, 3200), strengthSessions: 2, weeksInRange: 4, runCount: 5 }).text)
+        .toContain('não seguram o volume de corrida');
+      expect(gymVerdict({ weeklyBreakdown: gymWeeks(3000), strengthSessions: 1, weeksInRange: 4, runCount: 5 }).text)
+        .toContain('1 sessão em quatro semanas não segura o volume de corrida');
+    });
+
+    it('2,5 por semana com carga a subir diz 2,5, não "três"', () => {
+      const subir = { weeklyBreakdown: gymWeeks(6200, 7100, 8400), strengthSessions: 10, weeksInRange: 4, totalVolumeLoad: 30000 };
+      const soGinasio = gymVerdict(subir);
+      expect(soGinasio.tone).toBe('ok');
+      expect(soGinasio.text).toContain('2,5 sessões por semana');
+      expect(soGinasio.text).not.toContain('corrida');
+      expect(gymVerdict({ ...subir, runCount: 3 }).text).toContain('aguentar o volume de corrida');
+    });
   });
 });
 
@@ -251,6 +381,54 @@ describe('bodyVerdict', () => {
     });
     expect(v.tone).toBe('warn');
     expect(v.text).toContain('massa magra');
+    expect(v.text).toContain('menos 1,3 kg');
+  });
+
+  /* Revisão de 2026-09-26: só com pesagens, sem nenhuma percentagem de
+     gordura, a massa magra era o próprio peso e saía "−1,2 kg de músculo". */
+  describe('sem gordura medida não há massa magra', () => {
+    const soPesagens = computeCompositionTrend([
+      { date: '2026-08-01', weight_kg: 73.1, body_fat_pct: null },
+      { date: '2026-08-08', weight_kg: 72.5, body_fat_pct: null },
+      { date: '2026-08-15', weight_kg: 71.9, body_fat_pct: null },
+    ]);
+
+    it('não afirma perda de músculo a partir do peso', () => {
+      const v = bodyVerdict({ weightTrend: trend(-0.4, 'descendo', [73.1, 72.5, 71.9]), composition: soPesagens, gymSessionCount: 4 });
+      expect(v.text).toBe('O peso desce 0,4 kg por semana. Sem gordura medida, não sei se é gordura ou músculo.');
+      expect(v.tone).toBe('neutral');
+      expect(v.text).not.toContain('massa magra');
+      expect(v.text).not.toContain('ginásio');
+      expectCarolVoice(v.text);
+    });
+
+    it('com uma só medição de gordura também não', () => {
+      const v = bodyVerdict({
+        weightTrend: trend(-0.4, 'descendo'),
+        composition: { dates: ['a', 'b', 'c'], leanMassKg: [64.2, 72.7, 72.4], fatMassKg: [8.9, 0, 0] },
+      });
+      expect(v.text).toContain('uma só medição de gordura');
+      expect(v.text).not.toContain('massa muscular');
+    });
+
+    it('o ginásio só entra na frase com sessões registadas', () => {
+      const perda = {
+        weightTrend: trend(-0.6, 'descendo'),
+        composition: { dates: ['a', 'b'], leanMassKg: [64.2, 62.9], fatMassKg: [8.9, 8.7] },
+      };
+      expect(bodyVerdict(perda).text).not.toContain('ginásio');
+      expect(bodyVerdict({ ...perda, gymSessionCount: 3 }).text).toContain('não cortes o ginásio');
+    });
+  });
+
+  /* Revisão de 2026-09-26: "o peso desce −0,4 kg" — o sinal a dobrar. */
+  it('a perda lenta diz o valor sem sinal: o verbo já diz que desce', () => {
+    const v = bodyVerdict({
+      weightTrend: trend(-0.4, 'descendo'),
+      composition: { dates: ['a', 'b'], leanMassKg: [64.2, 64.1], fatMassKg: [8.9, 8.3] },
+    });
+    expect(v.text).toContain('o peso desce 0,4 kg por semana');
+    expect(v.text).not.toContain('−');
   });
 
   it('estável: diz que estabilizou e cita o peso', () => {

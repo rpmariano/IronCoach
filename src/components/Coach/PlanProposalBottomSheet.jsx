@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Sparkles, Check, X, Target, Lightbulb } from 'lucide-react';
-import { buildPlanDays, diffDaysISO, PlanDayCard } from '../Home/WeeklyPlanCard';
+import { buildPlanDays, diffDaysISO, PlanDayCard, DisclaimerNutricional, diaTemSugestao } from '../Home/WeeklyPlanCard';
+import { formatDayMonth } from '../../utils/homeModels';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
 
@@ -181,11 +182,12 @@ export function PlanProposalBottomSheet({
                           costuma vir concreto, o resto define-se mais perto
                           da data. Sem isto, "69 dias com 8 corridas" lia-se
                           como o plano inteiro, e a conta não batia certo
-                          (relatado 2026-09-21). */}
+                          (relatado 2026-09-21). A data vai como "25 set", não
+                          em ISO cru (revisão de 2026-09-26). */}
                       {(() => {
                         const lastItemDate = planItems.reduce((max, i) => (i.planned_date > max ? i.planned_date : max), plan.period_start);
                         return lastItemDate < plan.period_end
-                          ? `, detalhados até ${lastItemDate} — o resto do bloco ainda vai ser definido`
+                          ? `, com os treinos detalhados até ${formatDayMonth(lastItemDate)}; o resto defino mais perto da data`
                           : '';
                       })()}.
                     </span>
@@ -215,6 +217,10 @@ export function PlanProposalBottomSheet({
                   readOnly
                 />
               ))}
+              {/* Uma vez por proposta, abaixo dos dias — dentro de cada dia
+                  repetia-se em todos os que tinham refeição (revisão de
+                  2026-09-26). */}
+              {days.some((d) => diaTemSugestao(d.items)) && <DisclaimerNutricional />}
             </div>
 
             <div className="flex items-center gap-3">

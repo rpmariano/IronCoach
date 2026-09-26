@@ -1007,6 +1007,9 @@ export const useAppStore = create((set, get) => ({
       else if ((rows || []).length > 0) { fechou = true; set({ profile: { ...get().profile, ...resolved } }); }
     }
     // Um alarme novo no mesmo check-in pode abrir a sua, depois de a antiga fechar.
+    // `opened`: se abriu de facto — com outra pendente, o alarme não abre
+    // conversa nenhuma, e o aviso não a pode prometer (revisão de 2026-09-26).
+    let opened = false;
     if (alarms.length && (!pending || fechou)) {
       // Com a data do check-in (pedido 2026-09-26): o popup lido na quinta
       // dizia "o teu check-in de hoje" de um check-in de terça.
@@ -1018,12 +1021,15 @@ export const useAppStore = create((set, get) => ({
         .update({ coach_intervention_status: 'needed', coach_intervention_reason: reason, coach_intervention_origin: INTERVENTION_ORIGIN.CHECKIN })
         .eq('id', userId);
       if (upErr) console.error('Erro a abrir a intervenção do check-in:', upErr);
-      else set({ profile: { ...get().profile, coach_intervention_status: 'needed', coach_intervention_reason: reason } });
+      else {
+        opened = true;
+        set({ profile: { ...get().profile, coach_intervention_status: 'needed', coach_intervention_reason: reason } });
+      }
     }
     // O cartão diário é gerado uma vez por dia, muitas vezes antes do
     // check-in: refaz-se para a Carol do Início saber como ele acordou.
     get().loadDailySummary({ force: true }).catch(() => {});
-    return { ok: true, alarms };
+    return { ok: true, alarms, opened };
   },
 
   /* O consentimento para registar o ciclo (ação 2.3). Retirá-lo apaga o

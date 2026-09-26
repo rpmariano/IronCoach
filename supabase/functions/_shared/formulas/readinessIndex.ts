@@ -17,9 +17,10 @@ import { computeMacroAdherence, type MealForAdherence, type ProfileForAdherence,
 import { classifyCalorieCompliance } from "./nutritionCompliance.ts";
 import { computeVdotTrend, type RunForVdot } from "./vdotTrend.ts";
 import { knownWeeklyVolume, assessRaceViability } from "./raceViability.ts";
-import { getRecommendedPrepWeeks, resolveExperienceLevel, getRacePrediction, type RaceForPlanning, type ProfileForPlanning } from "./racePlanning.ts";
+import { getRecommendedPrepWeeks, resolveExperienceLevel, getRacePrediction, computeEffectivePrepStart, type RaceForPlanning, type ProfileForPlanning } from "./racePlanning.ts";
 import type { RaceRun } from "./racePrediction.ts";
 import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
+import { getTaperDays } from "./taper.ts";
 
 export interface ReadinessPillar {
   key: "acwr" | "ea" | "calories" | "vdot" | "tactic" | "checkin";
@@ -38,6 +39,10 @@ export interface NextRaceForReadiness extends RaceForPlanning {
   date: string;
   target_pace_seconds_per_km?: number | null;
   race_priority?: string | null;
+  // Quando foi marcada — decide se a preparação teve o tempo ideal (T1,
+  // racePlanning.ts, computeEffectivePrepStart) ou se o macrociclo nasceu
+  // já comprimido. Sem ela, assume-se o início ideal (comportamento antigo).
+  created_at?: string | null;
 }
 
 /** O check-in de HOJE (daily_checkins): sono/energia/stress 1-5, dor 0-10. */
@@ -48,8 +53,23 @@ export interface CheckinForReadiness {
   pain?: number | null;
 }
 
+/** O que se sabe do dia, para o texto do pilar não falar de um treino que
+ *  não há, nem tratar a véspera ou o dia de uma prova como um dia qualquer
+ *  (revisão de 2026-09-26). `trainingToday`: true com treino previsto,
+ *  false num dia de descanso ou já feito de um plano com treinos em vigor,
+ *  omitido sem plano ou quando o chamador não sabe (mantém o texto genérico
+ *  de sempre). */
+export interface ReadinessDayContext {
+  trainingToday?: boolean;
+  raceTodayOrTomorrow?: boolean;
+}
+
 // Uma escala 1-5 em 0-100 (1 → 0, 5 → 100). No stress, 1 é "calmo": inverte-se.
 const scale5 = (v: number) => (v - 1) * 25;
+
+/** "0.65" → "0,65", como se escreve em português — em todas as frases fixas
+ *  deste ficheiro (revisão de 2026-09-26; toFixed nunca devolve vírgula). */
+const virgula = (n: number, casas = 2): string => n.toFixed(casas).replace(".", ",");
 
 /**
  * Pilar "Como acordaste" (2026-09-23): até aqui o atleta dizia que dormiu mal
@@ -62,8 +82,14 @@ const scale5 = (v: number) => (v - 1) * 25;
  * energia ≤2 é um dia em baixo, seja qual for a média — nunca "acordaste bem"
  * a quem dormiu mal. E é lido também pela Carol (buildReadinessPanel), por
  * isso fala na voz dela.
+ *
+ * Revisão de 2026-09-26: "Hoje o treino é mais leve." e "a favor do treino
+ * de hoje" presumiam um treino que num dia de descanso, sem plano, ou na
+ * véspera/dia de uma prova não existe — e o cartão do Início (que lê o
+ * mesmo check-in) já dizia o dia certo ao lado. `ctx` (ReadinessDayContext)
+ * é opcional: sem ele, o texto genérico de sempre.
  */
-export function checkinPillar(c: CheckinForReadiness | null | undefined): ReadinessPillar | null {
+export function checkinPillar(c: CheckinForReadiness | null | undefined, ctx: ReadinessDayContext = {}): ReadinessPillar | null {
   const sleep = Number(c?.sleep), energy = Number(c?.energy), stress = Number(c?.stress);
   if (![sleep, energy, stress].every((v) => v >= 1 && v <= 5)) return null;
   const base = (scale5(sleep) + scale5(energy) + scale5(6 - stress)) / 3;
@@ -71,13 +97,36 @@ export function checkinPillar(c: CheckinForReadiness | null | undefined): Readin
   const painAlarm = pain >= PAIN_ALARM_THRESHOLD;
   const score = Math.round(painAlarm ? Math.min(base, 20) : Math.max(0, base - pain * 5));
   const emBaixo = sleep <= 2 || energy <= 2;
+  const { trainingToday, raceTodayOrTomorrow } = ctx;
 
   let desc: string;
-  if (painAlarm) desc = `Dor de ${pain}/10: hoje nada de impacto. Fala comigo no chat.`;
-  else if (emBaixo) desc = sleep <= 2 ? "Dormiste mal. Hoje o treino é mais leve." : "Estás sem energia. Hoje o treino é mais leve.";
-  else if (score >= 75) desc = "Acordaste bem: sono, energia e cabeça a favor do treino de hoje.";
-  else if (score >= 50) desc = "Dia normal. Treina, mas atento a como te sentes.";
-  else desc = "Hoje estás em baixo. Um treino mais leve rende mais.";
+  if (painAlarm) {
+    desc = `Dor de ${pain}/10: hoje nada de impacto. Fala comigo no chat.`;
+  } else if (emBaixo) {
+    // "Dormiste mal" só quando foi o sono; energia em baixo com o sono bom é
+    // outra coisa (segunda revisão pré-deploy de 2026-09-26). "Perto de uma
+    // prova" serve a véspera e o próprio dia — "na véspera" não.
+    const abre = sleep <= 2 ? "Dormiste mal." : "Estás sem energia.";
+    if (raceTodayOrTomorrow) desc = `${abre} Perto de uma prova é normal; não mexe na prova.`;
+    else if (trainingToday === false) desc = sleep <= 2 ? "Dormiste mal. Hoje é descanso: recupera o sono." : "Estás sem energia. Ainda bem que hoje é descanso.";
+    else desc = `${abre} Hoje o treino é mais leve.`;
+  } else if (raceTodayOrTomorrow) {
+    // A prova manda sobre o plano do dia: sem plano aceite, trainingToday
+    // vinha false e a véspera (ou o próprio dia) passava por "descanso"
+    // (revisão pré-deploy de 2026-09-26).
+    desc = score >= 75 ? "Acordaste bem. Com a prova tão perto, é isto que se quer."
+      : score >= 50 ? "Dia normal. Com a prova tão perto, não mudes nada."
+        : "Hoje estás em baixo. Perto de uma prova é normal; não mexe na prova.";
+  } else if (score >= 75) {
+    desc = trainingToday === false
+      ? "Acordaste bem. Hoje é descanso; guarda isso para o próximo treino."
+      : "Acordaste bem: sono, energia e cabeça a favor do treino de hoje.";
+  } else if (score >= 50) {
+    // Sem o adjetivo com género ("atento"): "com atenção" serve qualquer atleta.
+    desc = trainingToday === false ? "Dia normal. Hoje é descanso." : "Dia normal. Treina, com atenção a como te sentes.";
+  } else {
+    desc = trainingToday === false ? "Hoje estás em baixo. Ainda bem que é dia de descanso." : "Hoje estás em baixo. Um treino mais leve rende mais.";
+  }
   return { key: "checkin", label: "Como acordaste", score, desc };
 }
 
@@ -107,8 +156,28 @@ export function computeReadinessIndex(
   todayISO: string,
   nextRace: NextRaceForReadiness | null = null,
   todayCheckin: CheckinForReadiness | null = null,
+  // Há treino previsto hoje (revisão de 2026-09-26)? Omitido quando o
+  // chamador não tem o plano à mão — o pilar do check-in fica com o texto
+  // genérico de sempre; `raceTodayOrTomorrow` já se sabe por `nextRace`.
+  trainingToday?: boolean,
 ): ReadinessIndex {
   const pillars: ReadinessPillar[] = [];
+  const raceTodayOrTomorrow = !!nextRace && (nextRace.date === todayISO || nextRace.date === addDaysISO(todayISO, 1));
+
+  // Viabilidade da prova (T1, racePlanning.ts): quantas semanas a preparação
+  // teve mesmo, e não as ideais — o mesmo cálculo do hub (effectiveWeeksAvailable,
+  // computeEffectivePrepStart). Calculado aqui, uma vez, para o pilar da
+  // carga (o polimento) e o tático (mais abaixo) não divergirem.
+  const distanceKm = nextRace ? (parseFloat((nextRace.distance_km ?? "10").toString().replace(",", ".")) || 10) : null;
+  const expLevel = nextRace ? resolveExperienceLevel(nextRace, profile) : null;
+  const daysToRace = nextRace ? daysBetweenISO(nextRace.date, todayISO) : null;
+  const totalWeeks = distanceKm != null && expLevel ? getRecommendedPrepWeeks(distanceKm, expLevel) : null;
+  const effectiveWeeksAvailable = nextRace && totalWeeks != null
+    ? computeEffectivePrepStart(nextRace.date, totalWeeks, nextRace.created_at ?? null).effectiveWeeksAvailable
+    : null;
+  // No polimento de uma prova A, a carga baixa é o plano, não um alerta.
+  const emPolimento = !!(nextRace && daysToRace != null && daysToRace >= 0
+    && daysToRace <= getTaperDays(distanceKm, nextRace.race_priority || "a", expLevel || "iniciante", nextRace.race_type ?? null));
 
   // --- Pilar 1: ACWR ---
   // Só com histórico (corridas em 3 das 4 semanas, runAcwr.ts). Sem ele o
@@ -119,16 +188,18 @@ export function computeReadinessIndex(
   const acwrRatio = acwr.ratio || 0;
   if (acwr.hasEnoughData) {
     let acwrScore = 60;
-    let acwrDesc = `Carga baixa (${acwrRatio.toFixed(2)}). Podes aumentar gradualmente.`;
+    let acwrDesc = emPolimento
+      ? `Carga baixa (${virgula(acwrRatio)}), como deve ser no polimento.`
+      : `Carga baixa (${virgula(acwrRatio)}). Podes aumentar gradualmente.`;
     if (acwrRatio >= 0.8 && acwrRatio <= 1.3) {
       acwrScore = 100;
-      acwrDesc = `Carga ideal (${acwrRatio.toFixed(2)}). Estás no sweet-spot de adaptação.`;
+      acwrDesc = `Carga ideal (${virgula(acwrRatio)}). Estás no sweet-spot de adaptação.`;
     } else if (acwrRatio > 1.3 && acwrRatio <= 1.5) {
       acwrScore = 50;
-      acwrDesc = `Carga elevada (${acwrRatio.toFixed(2)}). Zona de atenção — reduz um pouco.`;
+      acwrDesc = `Carga elevada (${virgula(acwrRatio)}). Zona de atenção — reduz um pouco.`;
     } else if (acwrRatio > 1.5) {
       acwrScore = 0;
-      acwrDesc = `Carga de risco (${acwrRatio.toFixed(2)}). Risco de lesão aumentado.`;
+      acwrDesc = `Carga de risco (${virgula(acwrRatio)}). Risco de lesão aumentado.`;
     }
     pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
   }
@@ -189,29 +260,23 @@ export function computeReadinessIndex(
   pillars.push({ key: "vdot", label: "Forma Aeróbica (VDOT)", score: vdotScore, desc: vdotDesc });
 
   // --- Pilar 5: Viabilidade Tática (só com prova agendada) ---
-  if (nextRace) {
+  if (nextRace && distanceKm != null && expLevel) {
     let tacticScore = 100;
     let tacticDesc = "Preparação alinhada com os objetivos da prova.";
 
-    const distanceKm = parseFloat((nextRace.distance_km ?? "10").toString().replace(",", ".")) || 10;
-    const daysToRace = daysBetweenISO(nextRace.date, todayISO);
-    const weeksToRace = Math.max(0, Math.floor(daysToRace / 7));
+    const weeksToRace = Math.max(0, Math.floor((daysToRace ?? 0) / 7));
     // Só o volume que a app conhece de facto (com histórico); sem ele, null.
     const weeklyVol = knownWeeklyVolume(runs || [], todayISO);
-    const expLevel = resolveExperienceLevel(nextRace, profile);
 
-    // Se o plano já começou, a viabilidade de "tempo insuficiente" avalia o
-    // macrociclo todo, não só o tempo que falta (ver comentário completo no
-    // original — senão dispara sempre na reta final).
-    const totalWeeks = getRecommendedPrepWeeks(distanceKm, expLevel);
-    const planStartISO = addDaysISO(nextRace.date, -totalWeeks * 7);
-    const inProgress = planStartISO <= todayISO;
-    const prepWeeksForViability = inProgress ? totalWeeks : weeksToRace;
-
+    // effectiveWeeksAvailable (calculado acima, T1) mede o macrociclo pelo
+    // que ele teve mesmo — a preparação de um plano em curso desde o início
+    // ideal, ou os dias reais de uma prova marcada tarde de mais (revisão
+    // de 2026-09-26: um iniciante com maratona a 8 semanas media aqui as 16
+    // semanas ideais, e nunca acusava tempo insuficiente).
     const viability = assessRaceViability({
       distanceKm,
       experienceLevel: expLevel,
-      weeksToRace: prepWeeksForViability,
+      weeksToRace: effectiveWeeksAvailable ?? weeksToRace,
       weeklyVolumeKm: weeklyVol,
       racePriority: nextRace.race_priority || "a",
     });
@@ -230,6 +295,8 @@ export function computeReadinessIndex(
       tacticScore = 50;
       tacticDesc = `Volume de treino (${weeklyVol}km/sem) insuficiente para a distância.`;
     } else if (targetPace && predictedPaceReal > 0) {
+      // Um ritmo-alvo avaliado contra corridas recentes é um sinal próprio,
+      // independente do volume semanal: mantém-se mesmo sem `weeklyVol`.
       const paceDiffPct = (predictedPaceReal - targetPace) / targetPace;
       if (paceDiffPct > 0.10) {
         tacticScore = 40;
@@ -241,6 +308,11 @@ export function computeReadinessIndex(
         tacticScore = 100;
         tacticDesc = "O ritmo-alvo está alinhado com a tua capacidade aeróbica.";
       }
+    } else if (weeklyVol == null) {
+      // Sem corridas que digam o volume, e sem ritmo-alvo para avaliar:
+      // dizer que "está adequado" (e pontuar 90) era inventar um dado que não há.
+      tacticScore = 0;
+      tacticDesc = "Ainda não tenho corridas para saber se o volume chega.";
     } else {
       tacticScore = 90;
       tacticDesc = "Volume e calendário de preparação adequados à distância.";
@@ -250,7 +322,7 @@ export function computeReadinessIndex(
   }
 
   // --- Pilar 6: Como acordaste (só com check-in de hoje) ---
-  const checkin = checkinPillar(todayCheckin);
+  const checkin = checkinPillar(todayCheckin, { trainingToday, raceTodayOrTomorrow });
   if (checkin) pillars.push(checkin);
 
   const totalScore = Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length);

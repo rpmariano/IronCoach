@@ -20,6 +20,7 @@ import {
   carolLanguageRule,
   carolRecordAnalysisRules,
   fetchExperienceLevel,
+  INTERVENTION_INVITE,
   RECORD_ANALYSIS_LABELS,
   upstreamErrorText,
 } from "../_shared/carolTone.ts";
@@ -782,7 +783,7 @@ async function generateGymCoachNotes(
 
   const planSection = planItems.length > 0 
     ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'ginasio' ? `Ginásio (${i.categories?.join('/') || ''})` : i.kind}`).join("\n") +
-      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta sessão desvia gravemente do que estava planeado (ex: era suposto treinar peito e treinou pernas, ou ignorou os últimos dias de treino). Se o plano estiver comprometido e precisar de intervenção, marca intervention_needed=true e indica a reason. SE intervieres, no bloco "${RECORD_ANALYSIS_LABELS.next}" aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano, em vez de prescreveres tu um treino para o dia seguinte. O desvio vai no bloco "${RECORD_ANALYSIS_LABELS.fix}" e não substitui a análise do treino que ele fez.\n` +
+      `\n\nAVALIAÇÃO DO PLANO: Verifica se esta sessão desvia gravemente do que estava planeado (ex: era suposto treinar peito e treinou pernas, ou ignorou os últimos dias de treino). Se o plano estiver comprometido e precisar de intervenção, marca intervention_needed=true e indica a reason. SE intervieres, o bloco "${RECORD_ANALYSIS_LABELS.next}" é ${INTERVENTION_INVITE} Não prescrevas tu um treino para o dia seguinte. O desvio vai no bloco "${RECORD_ANALYSIS_LABELS.fix}" e não substitui a análise do treino que ele fez.\n` +
       planningFrameSection(true, !!upcomingRace, upcomingRace)
     : planningFrameSection(false, !!upcomingRace, upcomingRace);
 

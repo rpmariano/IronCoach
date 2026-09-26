@@ -13,7 +13,7 @@
 // proactivePushMessage; e o prompt proíbe inventar números que não estão lá.
 
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
-import { proactivePushMessage, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
+import { kmTexto, nomeProprio, proactivePushMessage, RACE_EVE_AFTERNOON_MINUTES, startTimeMinutes, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
 
 export const PUSH_TEXT_MIN = 15;
 export const PUSH_TEXT_MAX = 140;
@@ -37,10 +37,14 @@ function hhmmss(total: number): string {
 }
 
 const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
-  race_morning: "É a manhã da prova. Ele vai abrir a app antes da partida: a notificação chama-o para as duas coisas que lhe queres dizer.",
-  race_eve: "É a véspera da prova. A notificação chama-o para o plano de hoje à noite (jantar, sono) e de amanhã de manhã.",
+  // As mesmas condições das frases fixas (proactivePushMessage), revisão
+  // pré-deploy de 2026-09-26: sem isco ("duas coisas"), sem "amanhã de
+  // manhã" numa partida à tarde, sem "não regista nada" a quem regista água,
+  // sem pedir o registo de uma corrida que já existe. O pormenor vem nos DADOS.
+  race_morning: "É a manhã da prova. A notificação chama-o antes da partida, sem prometer nada que não esteja nos dados e sem isco (nada de \"tenho duas coisas para te dizer\").",
+  race_eve: "É a véspera da prova. A notificação chama-o para o plano de hoje à noite (jantar, sono) e do dia da prova até à partida — diz \"de manhã\" só se os dados disserem que a partida é de manhã.",
   race_after: "A prova já foi. A notificação chama-o para o balanço contigo.",
-  silence: "Ele não regista nada há vários dias. A notificação pergunta se está bem, sem sermão.",
+  silence: "Há vários dias sem treinos nem refeições registados. A notificação pergunta se está tudo bem, sem sermão e sem acusar: pode ter treinado sem registar.",
   // Nunca chega ao modelo (frase fixa, ver composePushMessage); fica pelo tipo.
   missed_workout: "O treino de ontem não está registado. A notificação pergunta o que aconteceu, sem acusar.",
   intervention: "Há um assunto por resolver.",
@@ -57,6 +61,12 @@ const MOMENT: Record<ServerProactiveCandidate["trigger"], string> = {
 export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string[] {
   const lines: string[] = [];
   if (f.firstName) lines.push(`Nome do atleta: ${f.firstName}`);
+  if (c.trigger === "silence" && c.plannedTrainingsSince != null && c.plannedTrainingsSince > 0 && !c.lastCheckinDate) {
+    lines.push(`Treinos que o plano tinha${c.sinceWeekday ? ` desde ${c.sinceWeekday}` : ""}: ${c.plannedTrainingsSince}; nenhum registado — pergunta, não digas que ficaram por fazer`);
+  }
+  if (c.trigger === "silence" && c.lastWaterDate && !c.lastCheckinDate) {
+    lines.push(`Última água registada: ${c.lastWaterDate} — ele abre a app; não digas que não regista nada, fala dos treinos e das refeições`);
+  }
   if (c.trigger === "silence" && c.lastCheckinDate) {
     // P.10: ele faz os check-ins — o que falta são os treinos, não notícias dele.
     // Sem nenhum treino registado não há dias a contar (o chat diz o mesmo).
@@ -75,16 +85,36 @@ export function describeFacts(c: ServerProactiveCandidate, f: PushFacts): string
     return lines;
   }
   if (c.trigger !== "silence" && c.trigger !== "block_end" && c.trigger !== "intervention" && c.trigger !== "week_review" && c.trigger !== "missed_workout" && c.trigger !== "leaderboard" && c.trigger !== "percentile_ready") {
-    const name = (f.raceName || c.raceName || "").trim();
+    // "Corrida de Hoje" e "Prova" são nomes por omissão, não nomes: sem
+    // nome próprio, a prova diz-se pelo dia.
+    const name = nomeProprio(f.raceName || c.raceName);
     if (name) lines.push(`Prova: ${name}`);
-    const km = Number(f.distanceKm);
-    if (Number.isFinite(km) && km > 0) lines.push(`Distância: ${Math.round(km * 10) / 10} km`);
+    else if (c.trigger === "race_after" && c.raceDay) lines.push(`Prova: sem nome próprio — diz "a tua prova de ${c.raceDay}", nunca um nome inventado`);
+    else lines.push("Prova: sem nome próprio — não inventes um nome");
+    const km = Number(String(f.distanceKm ?? "").replace(",", "."));
+    if (Number.isFinite(km) && km > 0) lines.push(`Distância: ${kmTexto(km)}`);
     if ((c.trigger === "race_morning" || c.trigger === "race_eve") && f.startTime) lines.push(`Partida: ${String(f.startTime).slice(0, 5)}`);
+    if (c.trigger === "race_eve") {
+      const partida = c.startMinutes ?? startTimeMinutes(f.startTime);
+      lines.push(partida == null
+        ? "Hora de partida: por marcar — não digas \"de manhã\" nem nenhuma hora"
+        : partida >= RACE_EVE_AFTERNOON_MINUTES
+          ? "A partida é à tarde ou à noite: o plano é para hoje à noite e para amanhã até à partida — nunca \"amanhã de manhã\""
+          : "A partida é de manhã");
+    }
+    if (c.trigger === "race_morning") {
+      lines.push(c.hasFirstKmPace
+        ? "Deixaste-lhe o ritmo do primeiro km no hub da prova"
+        : "Não há plano de ritmo (sem objetivo de tempo): não prometas ritmos — pede-lhe que fale contigo antes da partida");
+    }
     const target = Number(f.targetSeconds);
     if (Number.isFinite(target) && target > 0) lines.push(`Objetivo de tempo: ${hhmmss(target)}`);
     if (c.trigger === "race_after") {
       const run = Number(f.runSeconds);
-      if (c.hasRun && Number.isFinite(run) && run > 0) {
+      if (c.unlinkedRun) {
+        // A corrida existe, só não está ligada à prova: não se pede o registo.
+        lines.push("Há uma corrida registada no dia da prova que ainda não está ligada a ela: pergunta se foi essa e pede para a ligar à prova; nunca digas que não está registada");
+      } else if (c.hasRun && Number.isFinite(run) && run > 0) {
         lines.push(`Tempo feito: ${hhmmss(run)}`);
         if (Number.isFinite(target) && target > 0) {
           const delta = run - target;

@@ -7,6 +7,7 @@ import { expectCarolVoice } from '../test/carolVoice';
 
 const HOJE = '2026-09-19';
 const dia = (date, o = {}) => ({ date, sleep: 3, energy: 3, stress: 2, pain: 0, ...o });
+const addDaysISO = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
 describe('checkinReply', () => {
   it('sem check-in hoje, nada', () => {
@@ -19,6 +20,20 @@ describe('checkinReply', () => {
     expect(DIA_NORMAL).toContain(r.text);
     const dias = ['2026-09-19', '2026-09-20', '2026-09-21'].map((d) => checkinReply([dia(d)], d).text);
     expect(new Set(dias).size).toBe(3);
+  });
+
+  // Revisão de 2026-09-26: a conversa sobre a dor só se promete com o
+  // assunto por abrir; depois de ela acontecer, ou com outro pendente, não.
+  it('sem assunto da dor por abrir, a dor forte não promete conversa', () => {
+    const c = [dia(HOJE, { pain: 5, pain_location: 'joelho' })];
+    expect(checkinReply(c, HOJE, null, { conversaSobreADor: false }).text)
+      .toBe('Uma dor de 5 (joelho) não se ignora. Hoje nada de impacto; se piorar, diz-me.');
+    expect(checkinReply(c, HOJE, { tipo: 'prova' }, { conversaSobreADor: false }).text)
+      .toBe('Uma dor de 5 (joelho) não se ignora. Se piorar antes da partida, diz-me.');
+    expect(checkinReply(c, HOJE, null, { conversaSobreADor: true }).text).toMatch(/quero falar contigo sobre ela/);
+    // Sem se saber, fica a promessa de sempre.
+    expect(checkinReply(c, HOJE).text).toMatch(/quero falar contigo sobre ela/);
+    expectCarolVoice(checkinReply(c, HOJE, null, { conversaSobreADor: false }).text);
   });
 
   it('a dor forte passa à frente de tudo, com o local', () => {
@@ -43,8 +58,32 @@ describe('checkinReply', () => {
   it('a sequência só se celebra nos números redondos', () => {
     const semana = Array.from({ length: 7 }, (_, i) => dia(`2026-09-${String(13 + i).padStart(2, '0')}`));
     expect(checkinStreak(semana, HOJE)).toBe(7);
-    expect(checkinReply(semana, HOJE).text).toMatch(/^7 dias seguidos/);
+    expect(checkinReply(semana, HOJE).text).toBe('Sete dias seguidos de check-in. Já começo a conhecer os teus dias.');
     expect(DIA_NORMAL).toContain(checkinReply(semana.slice(1), HOJE).text);
+  });
+
+  /* Revisão de 2026-09-26: aos 100 dias, "já começo a conhecer" era pouco, e
+     o número ia em algarismos. Por extenso, e o que ela sabe cresce com o marco. */
+  const seguidos = (n) => Array.from({ length: n }, (_, i) => dia(addDaysISO(HOJE, i - n + 1)));
+  it('cada marco da sequência diz-se por extenso, e o que ela sabe cresce com ele', () => {
+    const esperado = {
+      7: 'Sete dias seguidos de check-in. Já começo a conhecer os teus dias.',
+      14: 'Catorze dias seguidos de check-in. Já começo a conhecer os teus dias.',
+      30: 'Trinta dias seguidos de check-in. Já sei como são as tuas semanas.',
+      60: 'Sessenta dias seguidos de check-in. Já sei como são as tuas semanas.',
+      100: 'Cem dias seguidos de check-in. Já sei como são os teus meses.',
+    };
+    for (const [n, texto] of Object.entries(esperado)) {
+      const r = checkinReply(seguidos(Number(n)), HOJE);
+      expect(checkinStreak(seguidos(Number(n)), HOJE)).toBe(Number(n));
+      expect(r).toMatchObject({ mood: 'happy', text: texto });
+      expect(r.text).not.toMatch(/\d/);
+      expectCarolVoice(r.text);
+    }
+    // Aos 100 dias, nada de "já começo".
+    expect(checkinReply(seguidos(100), HOJE).text).not.toMatch(/começo/);
+    // Fora dos marcos, o dia normal.
+    for (const n of [8, 31, 99]) expect(DIA_NORMAL).toContain(checkinReply(seguidos(n), HOJE).text);
   });
 
   /* Pedido 2026-09-26: a resposta sabe o que o dia é. "Nem se olha para o

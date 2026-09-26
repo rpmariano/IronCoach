@@ -23,7 +23,7 @@ No sábado, 2026-09-26, às 03:53 (dia de descanso no plano aceite), as boas-vin
 
 Leitura das tabelas: **alta** contradiz o próprio ecrã ou afirma algo falso num caminho comum; média é falsa ou fora de hora numa situação plausível; baixa é rara, ou só soa a molde. **Parcial** marca o que já está meio corrigido e diz o que falta. As linhas de código são as de 2026-09-26; se tiverem mexido, procurar pela frase.
 
-## Estado (2026-09-26, fim do dia)
+## Estado (2026-09-26, fim do dia — em produção)
 
 **Lote 1 feito** — as 24 linhas altas e médias das secções 1 e 2 que só tocam no cliente, no ramo `claude/generic-phrase-issue-ar2vbb` (commits `f1870d9` a `f99aec1`). Cada grupo de ficheiros teve implementação e uma revisão adversarial, que encontrou e corrigiu mais 29 casos do mesmo tipo: provas ao fim do dia e à meia-noite no cartão da Carol, a proposta da tranche seguinte por aceitar, a semana cumprida com dias «Por planear», o check-in corrigido que não fechava a intervenção, entre outros. As linhas das tabelas abaixo ficam como registo do que estava errado; as do Lote 1 já não se verificam.
 
@@ -32,12 +32,44 @@ Também feito no mesmo trabalho, fora do backlog:
 - **A memória dela chega às frases fixas** (`src/utils/carolVida.js`): uma cirurgia, uma lesão ou uma doença que o atleta lhe contou, com data, é a primeira coisa que ela diz nos dias à volta — nas boas-vindas, na resposta ao check-in, no cartão da Carol, no primeiro dia e nos assuntos. A memória (`coach_notes`) passou a ler-se ao abrir a app; antes só se lia no primeiro dia.
 - **O tom**: frases mais cordiais e com energia, sem exclamações nem elogios automáticos (CAROL.md §8).
 
-Fica para o Lote 2 (servidor — faz deploy em produção no push a `dev`):
+**Lote 2 feito** — as linhas médias e altas da secção 4 (servidor), no mesmo ramo. `raceEve.ts` (jantar/deitar depois da hora, provas à noite), `readinessIndex.ts` (check-in com o contexto do dia, viabilidade tática sem inventar dados, vírgula decimal), `send-water-reminders` (os lembretes tardios pela hora real), `proactiveTriggers.ts` (a corrida do dia da prova por ligar em vez de pedir um registo que já existe; o silêncio a contar os treinos do plano em vez de um número de dias cru, com limiar mais largo sem plano nenhum; a dor acima do alarme ou um assunto já aberto a calar o silêncio e o treino de ontem por registar, que passa a nomear o treino) e `coach-daily-summary` (a frase do plano cala-se com dor alta ou o dia em baixo, e já não conta um item concluído; a perda de peso só se atribui ao treino com as duas provas — treino nos últimos 7 dias e ingestão abaixo do gasto — senão fica neutra).
 
-- `raceEve.ts`: uma partida a partir das ~13h30 dá jantar depois da meia-noite e «pequeno-almoço» às 17:15. O cartão já filtra no cliente; o chat e o resumo diário ainda o dizem.
-- `coach-daily-summary`: as frases de água e a do plano em enum. O cliente já as ignora.
+**Lotes 3 e 4 feitos** — as altas e médias das secções 3 e 5 (chat, resultado da prova, BI, dashboards e registos) e todas as baixas, cliente e servidor, no mesmo ramo (commits `fccd7f8` a `a6dac22` e seguintes). Vinte grupos de ficheiros, cada um com implementação, testes e uma verificação adversarial; sete voltaram atrás para reparar o que a verificação apanhou. Os casos que atravessavam grupos ficaram fechados à parte:
+
+- A orientação da fase recebe do motor o nível declarado, as semanas de base feitas, o plano aceite da prova e a semana mais leve; o onboarding grava `null` quando o nível não é dito (sem isso, «no teu nível» e os limites do iniciante chegavam a quem nunca o disse).
+- O aviso das refeições aparece uma vez na folha de propostas que a app mostra de facto (`PlanProposalBottomSheet`).
+- O pedido de mudar uma nota da memória vai à parte para o `coach-chat`, que o injeta no prompt (a bolha do atleta deixou de ter a instrução).
+- O 409 «busy» do chat sem agachamentos nem «pedido».
+- `checkinReply.js:52`: a conversa sobre a dor só se promete com o assunto por abrir, e o aviso «Quero falar contigo sobre isto» só quando o check-in a abriu de facto.
+- O silêncio conta a água registada como presença (o tick passa a última).
+
+**Revisão pré-deploy (2026-09-26)** — o `pre-deploy-reviewer` apanhou casos que os grupos, sozinhos, não viam, todos corrigidos no mesmo ramo:
+
+- Prontidão no dia ou na véspera da prova: sem plano aceite, o pilar do check-in dizia «Hoje é descanso»; a prova manda sobre o plano, e `trainingToday` só vale com um plano que cubra hoje.
+- A corrida do dia da prova por ligar chega também ao cliente, ao chat (instrução própria: pergunta se foi ela, nunca pede o registo) e aos factos do push.
+- Só uma dor recente (hoje ou ontem) cala o silêncio; um bloco que acabou antes de ontem já não conta como plano; o treino de ontem feito hoje não se pergunta, e nunca antes das 6h.
+- Os factos do push gerado pelo Gemini levam as mesmas condições das frases fixas (plano do silêncio, água, nome próprio da prova, hora de partida, ritmo do primeiro km).
+- A água do dia da prova conta 30 min de folga na chegada; a perda de peso só se atribui à ingestão com as refeições de ontem abaixo do gasto; a nota da memória a mudar tem de existir.
+
+Segunda revisão (mesmo dia), também corrigida:
+
+- A corrida por ligar fica com o dia nos dois lados, mesmo já entregue — sem isso a notificação prometia o balanço da semana que o chat não abria.
+- No próprio dia da prova, uma corrida registada antes da partida (o aquecimento de manhã de uma prova à noite) ainda não é «a prova» (`findUnlinkedRaceDayRun`, partilhada).
+- Um plano só de refeições não decide descansos: não cala o «Estás bem?» nem faz o pilar dizer «Hoje é descanso».
+- «Dormiste mal» só quando foi o sono; com o sono bom e a energia em baixo, «Estás sem energia». «Perto de uma prova» em vez de «na véspera», que também era dito no próprio dia.
+- O chat também não pergunta pelo treino de ontem antes das 6h.
+
+Fica para depois (baixo risco, confirmado por que o cliente já mitiga ou é raro):
+
+- `coach-daily-summary:421`: as frases de água em `buildWarningsMessage` continuam a gerar-se, mas o cliente já as ignora (`limparAvisoDoServidor`) e faz a sua a partir de `waterLogs` — sem efeito visível a limpá-las também no servidor.
 - Datas de Lisboa: `DayPlanCard`, `Home` e `WeeklyPlanCard` ainda usam a data do dispositivo (`todayISO`), e o cartão da Carol a de Lisboa. Só diverge num dispositivo fora do fuso de Lisboa, perto da meia-noite.
-- `checkinReply.js:52`, parcial: depois de a conversa sobre a dor acontecer (intervenção fechada no chat), o cartão do check-in ainda diz «quero falar contigo sobre ela».
+
+**Deploy (2026-09-26): em produção.** Lotes 1 a 4 e as correções das três revisões pré-deploy, num só avanço de `dev` e `master` para `e312817`, com autorização explícita:
+
+- Edge Functions às 20:43Z pelo push a `dev` (run #303: `deno test` 1119/1119 e deploy) e de novo, sem diferenças, pelo de `master` (run #304). O workflow republica todas as funções; com alterações diretas foram seis — `coach-proactive-tick`, `coach-chat`, `coach-daily-summary`, `send-water-reminders`, `analyze-run` e `analyze-gym` — e, pelo `_shared/carolTone.ts` alterado, também `analyze-meal`, `analyze-body`, `analyze-diploma`, `enrich-race-event` e `estimate-shoe-lifespan`. Sem migrações.
+- Frontend no GitHub Pages às 20:48Z (Vitest 2806/2806 e build no próprio workflow).
+- Primeiro tick com o código novo (`coach-proactive-tick` versão 40) às 21:07Z: 200, sem avisos nem erros, todas as consultas novas (`water_logs`, `daily_checkins.pain`, ginásio de ontem e de hoje) com 200 e as colunas confirmadas no schema de produção; nenhum dos 2 atletas com notificações tinha momento (`sem_momento: 2`), como antes do deploy.
+- A primeira prova a sério é o balanço da semana de segunda, 28/09: verificação marcada para depois dos ticks da manhã (decisões em `app_logs`, textos enviados contra o tom da Carol, paridade de chaves com o chat).
 
 ## 1. Início — cartão da Carol e plano
 

@@ -6,8 +6,8 @@
    2. Face ao que o TREINO perspetivava — a previsão de Riegel calculada só
       com as corridas ANTERIORES à prova (getRacePrediction, o mesmo ponto
       único do hub e do Dashboard): acima, dentro ou abaixo.
-   3. Face ao MELHOR ANTERIOR na mesma categoria de distância: recorde
-      pessoal ou não.
+   3. Face ao MELHOR ANTERIOR à mesma distância (±SAME_DISTANCE_RATIO) e no
+      mesmo terreno: recorde pessoal ou não.
 
    É daqui que saem o veredicto que a Carol recebe no `race_after`, a
    conquista "objetivo batido"/"recorde pessoal" (utils/achievements.js) e o
@@ -16,7 +16,8 @@
 
 import { getRacePrediction } from '@formulas/racePlanning.ts';
 import { categorizeDistance } from '@formulas/vocabulary.ts';
-import { findRaceRun, formatDuration, formatPace, parseDurationToSeconds } from './run';
+import { findRaceRun, formatDuration, formatPace, parseDurationToSeconds, RACE_DISTANCE_OPTIONS } from './run';
+import { formatDistanceKm } from './paceMath';
 
 /** Até 3% acima do objetivo ainda é "perto": numa meia a 1:52 são 3:22, num
  *  10 km a 50 min são 1:30 — o que uma treinadora chamaria "foi por pouco". */
@@ -24,6 +25,11 @@ export const NEAR_TARGET_RATIO = 0.03;
 /** ±2% em torno da previsão é "dentro do que o treino perspetivava"; abaixo
  *  disso o atleta correu acima do treino, acima disso correu abaixo dele. */
 export const TRAINING_BAND_RATIO = 0.02;
+/** ±2% na distância é "a mesma prova" para o recorde: a meia de 21,1 km
+ *  contra outra de 21,4 conta; um 15 km contra uma meia não, embora a
+ *  categoria ("meia", 11,1 a 22,5 km) seja a mesma (revisão das frases da
+ *  Carol, 2026-09-26). */
+export const SAME_DISTANCE_RATIO = 0.02;
 
 export const RACE_VERDICTS = ['sem_registo', 'concluida', 'superado', 'perto', 'aquem'];
 
@@ -36,6 +42,24 @@ function num(v) {
   const n = typeof v === 'string' ? parseFloat(v.replace(',', '.')) : Number(v);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
+
+const sameDistance = (a, b) => !!a && !!b && Math.abs(a - b) <= b * SAME_DISTANCE_RATIO;
+
+/** "nos 10 km", "na meia maratona", "nos 12,5 km" — o recorde diz-se pela
+ *  distância corrida, não pela categoria arredondada: "na meia" sobre uma
+ *  prova de 15 km era falso. */
+export function raceDistancePhrase(km) {
+  const d = num(km);
+  if (!d) return 'nesta distância';
+  const option = RACE_DISTANCE_OPTIONS.find((o) => sameDistance(d, o.km));
+  if (option && !option.label.endsWith(' km')) return `na ${option.label.toLowerCase()}`;
+  return `nos ${formatDistanceKm(option ? option.km : Math.round(d * 10) / 10)}`;
+}
+
+/* O terreno pela mesma regra de `terrenoDe` (utils/premios.js): só 'trail' é
+   trail, tudo o resto é estrada. Numa corrida anterior lê-se do registo
+   (runs.details.race_type), que é o que ela traz consigo. */
+const terrainOf = (raceType) => (raceType === 'trail' ? 'trail' : 'estrada');
 
 /** O tempo da prova é o do cronómetro da organização (details.official_time_seconds)
  *  quando existe; senão a duração registada. */
@@ -106,9 +130,10 @@ function sameRaceDistance(prevKm, prevGps, curKm, curGps) {
   return isEquivalentDistance(prevKm, curKm);
 }
 
-/** Melhor tempo ANTERIOR do atleta na mesma distância, entre corridas de
- *  competição (kind = 'competicao') anteriores ao dia da prova e que não
- *  sejam a própria corrida. `races` (race_events) dá a distância oficial das
+/** Melhor tempo ANTERIOR do atleta na mesma distância e no mesmo terreno
+ *  (um trail de 25 km não é recorde contra uma maratona de estrada), entre
+ *  corridas de competição (kind = 'competicao') anteriores ao dia da prova e
+ *  que não sejam a própria corrida. `races` (race_events) dá a distância oficial das
  *  corridas ligadas a uma prova; sem ela usa-se a do GPS com folga
  *  (GPS_OVERSHOOT_RATIO). null sem histórico comparável. */
 export function previousBestSeconds(runs, race, run, races = []) {
@@ -116,6 +141,7 @@ export function previousBestSeconds(runs, race, run, races = []) {
   const category = categorizeDistance(raceDistanceKm);
   if (!category || !raceDistanceKm || !race?.date) return null;
   const racesById = new Map((races || []).filter((x) => x?.id != null).map((x) => [x.id, x]));
+  const terrain = terrainOf(race.race_type ?? run?.details?.race_type);
   let best = null;
   for (const r of runs || []) {
     if (!r || r === run || (run?.id && r.id === run.id)) continue;
@@ -123,6 +149,7 @@ export function previousBestSeconds(runs, race, run, races = []) {
     if (typeof r.date !== 'string' || r.date.slice(0, 10) >= race.date.slice(0, 10)) continue;
     const { km: rDistanceKm, gps } = comparableDistance(r, racesById);
     if (!sameRaceDistance(rDistanceKm, gps, raceDistanceKm, isMeasuredRace(race))) continue;
+    if (terrainOf(racesById.get(r.race_id)?.race_type ?? r.details?.race_type) !== terrain) continue;
     const seconds = raceResultSeconds(r);
     if (!seconds) continue;
     if (!best || seconds < best.seconds) best = { seconds, date: r.date.slice(0, 10), distanceKm: rDistanceKm };
@@ -153,7 +180,17 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
   // escreveu (target_time, "47" / "1:52:00") é o recurso — é o que o hub
   // recebe no rascunho da agenda, que só converte ao gravar, e o que existe
   // nas provas anteriores às colunas numéricas.
-  const targetSeconds = num(race.target_time_seconds) ?? num(parseDurationToSeconds(race.target_time));
+  const statedTarget = num(race.target_time_seconds) ?? num(parseDurationToSeconds(race.target_time));
+  // A prova criada sozinha para uma competição fora da agenda
+  // (autoCreateRaceForCompetition, RunRegistration.jsx) grava como objetivo a
+  // duração da própria corrida, porque a coluna não admite "sem meta". Esse
+  // objetivo nunca existiu: lido como tal, dava "objetivo cumprido" — ou
+  // "batido por 0:08", o oficial contra o relógio — e o prémio "objetivo
+  // batido" a quem não marcou meta nenhuma (revisão das frases da Carol,
+  // 2026-09-26). Conta como sem objetivo.
+  const recordedSeconds = num(run?.duration_seconds);
+  const syntheticTarget = !!statedTarget && !!recordedSeconds && Math.round(statedTarget) === Math.round(recordedSeconds);
+  const targetSeconds = syntheticTarget ? null : statedTarget;
 
   const base = {
     raceId: race.id ?? null,
@@ -231,13 +268,18 @@ export function formatDelta(seconds) {
 export function describeRaceOutcome(outcome, race) {
   if (!outcome) return '';
   const name = race?.name || 'A prova';
-  if (outcome.verdict === 'sem_registo') return `${name} ainda não tem a corrida registada. Regista-a para fecharmos o ciclo com números reais.`;
+  if (outcome.verdict === 'sem_registo') {
+    // Corrida ligada mas gravada sem tempo ("Prosseguir sem estas métricas"):
+    // pedir para a registar era pedir o que já está feito.
+    if (outcome.runId) return 'Falta o tempo oficial desta prova. Põe-no na corrida e eu faço as contas.';
+    return `${name} ainda não tem a corrida registada. Regista-a para fecharmos o ciclo com números reais.`;
+  }
   const time = formatDuration(outcome.officialSeconds);
   const pace = outcome.distanceKm ? ` (${formatPace(outcome.officialSeconds / outcome.distanceKm)}/km)` : '';
   const parts = [`${time}${pace}.`];
   if (outcome.basis === 'objetivo') {
     const d = formatDelta(outcome.deltaTargetSeconds);
-    if (outcome.verdict === 'superado') parts.push(outcome.deltaTargetSeconds === 0 ? 'Objetivo cumprido em cima da hora.' : `Objetivo batido por ${d}.`);
+    if (outcome.verdict === 'superado') parts.push(outcome.deltaTargetSeconds === 0 ? 'Objetivo cumprido ao segundo.' : `Objetivo batido por ${d}.`);
     else if (outcome.verdict === 'perto') parts.push(`Ficaste a ${d} do objetivo — foi por pouco.`);
     else parts.push(`Ficaste a ${d} do objetivo.`);
   } else if (outcome.basis === 'previsao') {
@@ -249,7 +291,7 @@ export function describeRaceOutcome(outcome, race) {
   }
   if (outcome.vsTraining === 'acima' && outcome.basis === 'objetivo') parts.push(`Acima do que o treino perspetivava (${formatDelta(outcome.deltaPredictionSeconds)} mais rápido do que a previsão).`);
   else if (outcome.vsTraining === 'dentro' && outcome.basis === 'objetivo') parts.push('Dentro do que o treino perspetivava.');
-  if (outcome.isPersonalRecord) parts.push(`Recorde pessoal na ${raceCategoryLabel(outcome.category)}, por ${formatDelta(outcome.deltaBestSeconds)}.`);
+  if (outcome.isPersonalRecord) parts.push(`Recorde pessoal ${raceDistancePhrase(outcome.distanceKm)}, por ${formatDelta(outcome.deltaBestSeconds)}.`);
   return parts.join(' ');
 }
 

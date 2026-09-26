@@ -1444,7 +1444,7 @@ function descansoCumprido({ semanas }) {
     raceId: null,
     awardedOn: addDays(s.domingo, 1),
     title: 'Descanso cumprido',
-    line: `${s.counts.descanso_respeitado} ${plural(s.counts.descanso_respeitado, 'dia de descanso respeitado', 'dias de descanso respeitados')} na ${labelSemana(s.segunda)} — descansar também é treinar.`,
+    line: `${s.counts.descanso_respeitado} ${plural(s.counts.descanso_respeitado, 'dia de descanso respeitado', 'dias de descanso respeitados')} na ${labelSemana(s.segunda)}, e nenhum trocado por treino.`,
   }));
 
   const comum = {

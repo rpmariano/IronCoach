@@ -151,6 +151,16 @@ describe('MealRegistration — cartão único: alternar entre Foto e Manual', ()
     expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Analisar refeição/i })).toBeInTheDocument();
   });
+
+  /* O caso do backlog (specs/carol-frases-contexto.md, MealRegistration:710): o
+     registo por foto nomeava «a IA» ao lado da Carol — rótulo «Foto (IA)» e
+     dica «A IA lê…». Aqui fala só ela, na primeira pessoa. */
+  it('o registo por foto fala na voz da Carol, sem nomear a IA', () => {
+    render(<MealRegistration onClose={onClose} />);
+    expect(screen.getByRole('button', { name: /^Foto$/ })).toBeInTheDocument();
+    expect(screen.getByText('Tira foto ao prato; eu leio os alimentos e as quantidades. Podes corrigir depois de gravado.')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\bIA\b/);
+  });
 });
 
 describe('MealRegistration — registo manual: adicionar é local, análise só no fim (analyze-meal)', () => {

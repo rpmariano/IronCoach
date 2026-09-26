@@ -4339,6 +4339,15 @@ Deno.test("propose_training_plan: a descrição bate com as guardas do servidor"
   assertStringIncludes(tool.description, "uma nova substitui a que ainda estiver por decidir");
 });
 
+/* Revisão pré-deploy de 2026-09-26: a corrida do dia da prova existe mas não
+   está ligada — a Carol pergunta se foi ela, nunca pede o registo. */
+Deno.test("buildProactiveInstruction(race_after): corrida por ligar pede para a ligar, não o registo", () => {
+  const porLigar = buildProactiveInstruction("race_after", 'Corrida por ligar: a prova "Meia" foi ontem (2026-09-25), e há uma corrida registada nesse dia (21,3 km, 1:55:00) que não está ligada a ela.');
+  assertStringIncludes(porLigar, "Não lhe peças para registar a prova");
+  assertEquals(porLigar.includes("ainda não há corrida registada"), false);
+  assertStringIncludes(porLigar, "21,3 km");
+});
+
 // ─── Competição por jornadas (specs/trofeu.md §5, Fase 2, 2026-09-26) ──────
 // Sem inscrição, a Carol não muda NADA: o prompt e as ferramentas são os de
 // sempre, byte a byte. Com ela, o bloco entra na cauda (depois do contexto

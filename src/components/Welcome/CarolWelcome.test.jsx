@@ -126,3 +126,26 @@ describe('CarolWelcome — "Fazer o check-in"', () => {
   });
 });
 
+/* Revisão das boas-vindas de 2026-09-26: a cara vem do texto (buildWelcome,
+   `mood`). Antes, qualquer madrugada era 'worried' — às 23:05 antes de um
+   descanso —, e o "Dormiste mal" da manhã ficava com a cara neutra. */
+describe('CarolWelcome — a cara acompanha o que ela diz', () => {
+  const moodOf = (container) => container.querySelector('[data-mood]')?.getAttribute('data-mood');
+
+  it('desenha a cara que o texto pede', () => {
+    const { container, unmount } = render(<CarolWelcome welcome={{ ...welcome, lines: ['Dormiste mal, pelo que me disseste.'], mood: 'caring' }} now={NOW} onClose={() => {}} />);
+    expect(moodOf(container)).toBe('caring');
+    unmount();
+    const madrugada = { ...welcome, variant: 'madrugada', greeting: 'Ainda acordado, Rui?', mood: 'caring' };
+    const r = render(<CarolWelcome welcome={madrugada} now={new Date('2026-09-26T23:05:00+01:00')} onClose={() => {}} />);
+    expect(moodOf(r.container)).toBe('caring');
+  });
+
+  it('sem `mood`, a madrugada não é "worried": neutra, e contente só na prova', () => {
+    const { container, unmount } = render(<CarolWelcome welcome={{ ...welcome, variant: 'madrugada', greeting: 'Ainda a pé?' }} now={new Date('2026-09-26T23:05:00+01:00')} onClose={() => {}} />);
+    expect(moodOf(container)).toBe('neutral');
+    unmount();
+    const r = render(<CarolWelcome welcome={{ ...welcome, variant: 'prova', greeting: 'É hoje, Rui.', race: true }} now={NOW} onClose={() => {}} />);
+    expect(moodOf(r.container)).toBe('happy');
+  });
+});

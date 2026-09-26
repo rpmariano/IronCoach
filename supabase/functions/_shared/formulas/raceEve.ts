@@ -48,6 +48,7 @@ export const BREAKFAST_BEFORE_MIN = 165;
 export const ARRIVAL_BEFORE_MIN = 60;
 export const WARMUP_BEFORE_MIN = 25;
 export const LONG_RACE_SECONDS = 90 * 60;
+export const RACE_DURATION_FALLBACK_MIN = 180;
 
 export function hhmm(t: unknown): string {
   return typeof t === "string" ? t.slice(0, 5) : "";
@@ -113,23 +114,97 @@ export function computeRaceEve(input: RaceEveInput): RaceEve {
   };
 }
 
-/** Uma frase curta para o cartão do Início na véspera: horas se as houver,
- *  senão o pedido da hora. */
-export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm: number | null): string {
+/** O jantar do horário ainda cai na véspera? Um jantar "depois" da partida
+ *  no relógio é da noite anterior (19:30 para uma partida às 09:00). Sem
+ *  isto, uma partida ao fim da tarde ou à noite (uma São Silvestre às 20:00)
+ *  dava "jantar até às 06:30, deitar às 09:00" — horas do PRÓPRIO dia da
+ *  prova, ditas como se fossem da véspera. A mesma regra do cartão do
+ *  Início (src/components/Home/carolCardLines.js, noiteDoHorario) — aqui
+ *  para o chat e o resumo diário lhe baterem certo (ver o cabeçalho deste
+ *  ficheiro: "Uma régua só"). */
+export function noiteDoHorario(s: RaceEveSchedule): boolean {
+  const jantar = minutesOfDay(s.dinnerBy);
+  const partida = minutesOfDay(s.start);
+  return jantar != null && partida != null && jantar > partida;
+}
+
+/**
+ * Uma frase curta para o cartão do Início, o chat e o resumo diário na
+ * véspera: horas se as houver, senão o pedido da hora.
+ *
+ * `nowMinutes` (revisão de 2026-09-26): minutos desde a meia-noite de
+ * Lisboa da véspera (0-1439), para não dizer passos já passados — às
+ * 22:40 o jantar e a hora de deitar já lá vão, e o que há a dizer é que se
+ * deite. Omitido (compatibilidade), devolve o horário inteiro, como
+ * sempre. Numa partida ao fim da tarde ou à noite (`noiteDoHorario`), a
+ * noite é sempre a de sempre — dorme-se ESTA noite, não a seguir à
+ * partida — e as horas que restam são as do dia da prova em si.
+ */
+export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm: number | null, nowMinutes: number | null = null): string {
   const name = raceName || "a prova";
-  const dist = distanceKm ? `, ${distanceKm} km` : "";
+  // Com vírgula e uma casa: "21.0975 km" vinha tal e qual da base de dados.
+  const dist = distanceKm ? `, ${String(Math.round(distanceKm * 10) / 10).replace(".", ",")} km` : "";
   if (!eve.schedule) {
     return `Amanhã é ${name}${dist}. Sem hora de partida marcada não consigo dar horas: marca-a na prova. Jantar de hidratos complexos, pouca fibra, e 8 h de sono.`;
   }
   const s = eve.schedule;
   const carbs = eve.dinnerCarbsG ? ` (${eve.dinnerCarbsG.low}-${eve.dinnerCarbsG.high} g de hidratos)` : "";
-  return `Amanhã é ${name}${dist}, partida às ${s.start}: jantar até às ${s.dinnerBy}${carbs}, deitar às ${s.bed}, acordar às ${s.wake}, pequeno-almoço às ${s.breakfast}, chegada às ${s.arrival}.`;
+
+  if (nowMinutes == null) {
+    return `Amanhã é ${name}${dist}, partida às ${s.start}: jantar até às ${s.dinnerBy}${carbs}, deitar às ${s.bed}, acordar às ${s.wake}, pequeno-almoço às ${s.breakfast}, chegada às ${s.arrival}.`;
+  }
+  const cabeca = `Amanhã é dia de prova: ${name}${dist}, partida às ${s.start}`;
+
+  if (!noiteDoHorario(s)) {
+    // "hidratos complexos (… g de hidratos)" repetia a palavra — aqui só as gramas.
+    const gramas = eve.dinnerCarbsG ? ` (${eve.dinnerCarbsG.low}-${eve.dinnerCarbsG.high} g)` : "";
+    const noite = nowMinutes >= 21 * 60 ? "Esta noite, 8 h de sono." : `Jantar de hidratos complexos${gramas}, pouca fibra, e 8 h de sono.`;
+    return `${cabeca}. ${noite} Antes da partida, comes às ${s.breakfast} e chegas às ${s.arrival}.`;
+  }
+
+  /* As horas contam-se a partir da meia-noite da véspera: um passo que no
+     relógio fique antes da partida é do próprio dia da prova (a mesma régua
+     de linhaDaVespera, carolCardLines.js). Sem isto, numa partida entre as
+     11:00 e as 13:29 o deitar cai depois da meia-noite (00:00-02:29) e
+     "Deita-te já" saía a qualquer hora da véspera (revisão pré-deploy de
+     2026-09-26). */
+  const partida = 1440 + minutesOfDay(s.start)!;
+  const naVespera = (hhmm: string) => { const m = minutesOfDay(hhmm)!; return m + 1440 <= partida ? m + 1440 : m; };
+  // Uma prova da meia-noite: já passou a hora de acordar para ela, e não há
+  // deitar nem jantar a dizer.
+  if (nowMinutes >= naVespera(s.wake)) return `${cabeca}.`;
+  const dinnerMin = naVespera(s.dinnerBy);
+  const bedMin = naVespera(s.bed);
+  if (nowMinutes >= bedMin) {
+    return `${cabeca}. Deita-te já: acordas às ${s.wake}.`;
+  }
+  if (nowMinutes >= dinnerMin) {
+    return `${cabeca}: cama às ${s.bed}, acordar às ${s.wake}.`;
+  }
+  return `${cabeca}: jantar até às ${s.dinnerBy}${carbs}, deitar às ${s.bed}, acordar às ${s.wake}, pequeno-almoço às ${s.breakfast}, chegada às ${s.arrival}.`;
 }
 
 /** Uma frase curta para o cartão do Início no dia da prova. Um número solto
  *  ("primeiro km a 5.06") não sossega ninguém: o que o atleta precisa de
- *  saber é que o plano km a km existe e onde está. */
-export function describeRaceDayShort(eve: RaceEve, raceName: string, firstKmPaceLabel: string | null): string {
+ *  saber é que o plano km a km existe e onde está.
+ *
+ *  `nowMinutes` (revisão de 2026-09-26): minutos desde a meia-noite de
+ *  Lisboa do dia da prova (0-1439). Às 13:00, com a prova acabada mas por
+ *  registar, o horário pré-prova já não serve: depois da partida mais o
+ *  tempo previsto (`plannedFinishSeconds`; sem ele, 3 h), pede-se o registo.
+ *  Omitido (compatibilidade), devolve o horário, como sempre. */
+export function describeRaceDayShort(
+  eve: RaceEve,
+  raceName: string,
+  firstKmPaceLabel: string | null,
+  nowMinutes: number | null = null,
+  plannedFinishSeconds: number | null = null,
+): string {
+  const partida = eve.schedule ? minutesOfDay(eve.schedule.start) : null;
+  if (nowMinutes != null && partida != null) {
+    const duracao = plannedFinishSeconds != null && plannedFinishSeconds > 0 ? plannedFinishSeconds / 60 : RACE_DURATION_FALLBACK_MIN;
+    if (nowMinutes >= partida + duracao) return "A prova de hoje já foi. Regista-a e fazemos o balanço.";
+  }
   const name = raceName || "a prova";
   const plan = firstKmPaceLabel
     ? ` O teu plano km a km está no hub da prova: arrancas a ${firstKmPaceLabel}.`

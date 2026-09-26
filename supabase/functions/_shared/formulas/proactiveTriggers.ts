@@ -18,11 +18,23 @@
 // frente de tudo, e o conflito de provas vem logo a seguir à véspera.
 
 import type { Segment } from "./percentileSegments.ts";
-import { type LeaderboardEntryRow, leaderboardMoment, percentileReadyMoment, type SnapshotRow } from "./vitrina.ts";
+import { type LeaderboardEntryRow, leaderboardMoment, percentileAvailability, percentileReadyMoment, type SnapshotRow } from "./vitrina.ts";
+import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
+import { buildRacePacingPlan } from "./racePacing.ts";
+import { isRunLoadIntervention, runLoadInterventionKind } from "./runLoadAlert.ts";
+import { INTERVENTION_ORIGIN } from "./interventionOutcomes.ts";
 import { pickRaceOfDay } from "./mainRace.ts";
 
 export const SILENCE_DAYS = 3;
+// Sem plano nenhum a cobrir o período, um "está tudo bem?" só depois de uma
+// semana — três dias sem plano nem registo é normal (revisão de 2026-09-26).
+export const SILENCE_DAYS_SEM_PLANO = 7;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
+/** O início do Contexto do "depois da prova" quando a corrida desse dia
+ *  existe mas não está ligada à prova (chave `race_after:<id>:por-ligar`):
+ *  o chat escolhe a instrução por ele, para não pedir o registo de uma
+ *  corrida que já existe (revisão pré-deploy de 2026-09-26). */
+export const UNLINKED_RUN_DETAILS_PREFIX = "Corrida por ligar:";
 export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 
 export type ProactiveTriggerName = "intervention" | "race_morning" | "race_eve" | "race_conflict" | "race_after" | "block_end" | "silence" | "missed_workout" | "week_review" | "leaderboard" | "percentile_ready";
@@ -37,6 +49,8 @@ export interface TriggerRace {
   conflict_acknowledged_at?: string | null;
   /** A hora de partida ("HH:MM" ou "HH:MM:SS"), para a manhã da prova (P.10). */
   start_time?: string | null;
+  /** O objetivo de tempo: com a distância, há plano de ritmo para o dia. */
+  target_time_seconds?: number | string | null;
   /** O balanço que ela escreveu depois da prova (race_events.coach_balance):
    *  a prova de que o "como correu?" com corrida já foi entregue, em
    *  qualquer dispositivo — a mesma que decide.ts usa (balanceDone). */
@@ -97,9 +111,26 @@ export interface ServerProactiveCandidate {
   /** Balanço da semana: a semana revista (segunda e domingo). */
   weekStart?: string | null;
   weekEnd?: string | null;
-  /** Manhã da prova: a hora de partida em minutos desde a meia-noite de
-   *  Lisboa, ou null sem hora marcada (P.10). */
+  /** Manhã e véspera da prova: a hora de partida em minutos desde a
+   *  meia-noite de Lisboa, ou null sem hora marcada (P.10). */
   startMinutes?: number | null;
+  /** Manhã da prova: há plano de ritmo (e com ele o ritmo do primeiro km)
+   *  para lhe deixar (revisão de 2026-09-26). */
+  hasFirstKmPace?: boolean;
+  /** Depois da prova, com corrida (revisão de 2026-09-26): o dia da prova
+   *  ("hoje", "ontem" ou o dia da semana) e a distância, para a frase sem
+   *  nome próprio. */
+  raceDay?: string | null;
+  raceDistanceKm?: number | null;
+  /** Silêncio sem check-ins (revisão de 2026-09-26): a última água
+   *  registada, quando é DEPOIS do último registo — ele abre a app. */
+  lastWaterDate?: string | null;
+  /** O assunto por resolver: de onde veio, sem o motivo (revisão de
+   *  2026-09-26). */
+  interventionTopic?: "checkin" | "carga_acima_do_plano" | "carga" | null;
+  /** Percentil "perto": o primeiro grupo ao lado que já tem números, pela
+   *  ordem do "Onde estás" (neighbourSegments). */
+  nearSegment?: { step: "modalidade" | "escalao" | "genero"; terrain: string; gender: string } | null;
   /** Silêncio (P.10): o último check-in, quando é DEPOIS do último registo —
    *  ele está por cá, o que falta são os treinos. */
   lastCheckinDate?: string | null;
@@ -114,6 +145,19 @@ export interface ServerProactiveCandidate {
   leaderboardRank?: number | null;
   /** A janela publicada de que o momento fala. */
   windowStart?: string | null;
+  /** Depois da prova (revisão de 2026-09-26): há uma corrida nesse dia,
+   *  mas ainda não ligada à prova (kind diferente de "competicao", ou sem
+   *  o campo `race_id`) — pergunta-se se é ela, em vez de pedir um registo
+   *  que já existe. */
+  unlinkedRun?: boolean;
+  /** Silêncio (revisão de 2026-09-26): quantos treinos o plano tinha desde
+   *  o último registo, e desde que dia da semana — null sem plano nesse
+   *  período (o silêncio conta então a partir de SILENCE_DAYS_SEM_PLANO). */
+  plannedTrainingsSince?: number | null;
+  sinceWeekday?: string | null;
+  /** Treino de ontem por registar (revisão de 2026-09-26): "corrida (longo)"
+   *  em vez de um "treino" genérico — nomeia-se o que estava previsto. */
+  missedLabel?: string | null;
 }
 
 /** "08:30" / "08:30:00" → 510. null se não for uma hora válida. */
@@ -135,6 +179,29 @@ export function interventionKey(reason: string | null | undefined): string {
 
 export function raceConflictKey(planId: string, raceIds: string[]): string {
   return `race_conflict:${planId}:${[...raceIds].sort().join(",")}`;
+}
+
+/** De onde veio o assunto por resolver. A origem no perfil é de passagem (o
+ *  trigger track_coach_intervention limpa-a), por isso, sem ela, vale a
+ *  mesma dedução que o trigger faz pelo início do motivo ("Check-in…",
+ *  "[carga]…"). A carga distingue "acima do plano" de "sem plano nesses
+ *  dias": aí dizer "acima do plano" era falso. */
+export function interventionTopic(
+  intervention: { reason?: string | null; origin?: string | null } | null | undefined,
+): "checkin" | "carga_acima_do_plano" | "carga" | null {
+  const reason = intervention?.reason ?? "";
+  const origin = intervention?.origin
+    ?? (reason.startsWith("Check-in") ? INTERVENTION_ORIGIN.CHECKIN : isRunLoadIntervention(reason) ? INTERVENTION_ORIGIN.LOAD : null);
+  if (origin === INTERVENTION_ORIGIN.CHECKIN) return "checkin";
+  if (origin === INTERVENTION_ORIGIN.LOAD) return runLoadInterventionKind(reason) === "acima_do_plano" ? "carga_acima_do_plano" : "carga";
+  return null;
+}
+
+/** Há plano de ritmo para o dia (racePacing.ts)? O tick não tem a previsão
+ *  pelas corridas, só o objetivo: sem ele não se promete um ritmo que pode
+ *  não existir (revisão de 2026-09-26). */
+function hasFirstKmPace(race: TriggerRace): boolean {
+  return buildRacePacingPlan({ distanceKm: Number(race.distance_km) || null, targetSeconds: Number(race.target_time_seconds) || null }) !== null;
 }
 
 const DAY_MS = 86400000;
@@ -207,8 +274,66 @@ function lisbonDayOf(iso: string): string | null {
   return Number.isFinite(t) ? new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Lisbon" }).format(new Date(t)) : null;
 }
 
+/** Minutos desde a meia-noite de Lisboa de um instante. */
+function lisbonMinutesOf(iso: string): number | null {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Lisbon", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t));
+  const h = Number(parts.find((x) => x.type === "hour")?.value);
+  const m = Number(parts.find((x) => x.type === "minute")?.value);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+}
+
+/** Uma corrida do dia da prova que não está ligada a ela (a "por ligar"),
+ *  a mesma régua nos dois lados. No próprio dia, com hora de partida, uma
+ *  corrida registada antes da partida — o aquecimento da manhã de uma prova
+ *  às 18h — ainda não é a prova: ela não pergunta "foi essa?" antes de a
+ *  prova começar (segunda revisão pré-deploy de 2026-09-26). */
+export function findUnlinkedRaceDayRun<R extends TriggerRun>(runs: R[] | null | undefined, race: TriggerRace, todayISO: string): R | null {
+  const day = race.date.slice(0, 10);
+  const start = day === todayISO ? startTimeMinutes(race.start_time) : null;
+  return (runs || []).find((r) => {
+    if (!r || r.race_id || dayOf(r.date ?? null) !== day) return false;
+    if (start == null || !r.created_at) return true;
+    const createdDay = lisbonDayOf(r.created_at);
+    const at = lisbonMinutesOf(r.created_at);
+    if (createdDay == null || at == null) return true;
+    return createdDay > day || (createdDay === day && at >= start);
+  }) ?? null;
+}
+
 export function isRacePlanItemServer(item: TriggerPlanItem): boolean {
   return item?.kind === "corrida" && (item.training_type === "prova" || item.training_type === "competicao");
+}
+
+const MISSED_KIND_LABEL: Record<string, string> = { corrida: "corrida", ginasio: "ginásio" };
+
+/** "corrida (longo)" — o mesmo formato de src/utils/coachProactive.js
+ *  (missedItemLabel), aqui sem a distância: o servidor não a tem em
+ *  TriggerPlanItem, e o nome do tipo já basta para a notificação nomear o
+ *  treino em vez de dizer só "o treino" (revisão de 2026-09-26). */
+export function missedWorkoutLabel(items: TriggerPlanItem[]): string {
+  return items
+    .map((i) => {
+      const kind = MISSED_KIND_LABEL[i.kind ?? ""] || i.kind || "treino";
+      return i.training_type ? `${kind} (${i.training_type})` : kind;
+    })
+    .join(" + ");
+}
+
+/** A dor acima do alarme só explica o silêncio se for recente: o último
+ *  check-in de hoje ou de ontem. Uma dor de há semanas, sem nada depois,
+ *  calava o "Estás bem?" para sempre (revisão pré-deploy de 2026-09-26). Um
+ *  assunto por resolver aberto explica-o sempre. Exportada para o cliente
+ *  (coachProactive.js) decidir pela mesma régua. */
+export function knowsWhySilent(
+  input: { intervention?: { status?: string | null } | null; lastCheckinPain?: number | null; lastCheckinDate?: string | null },
+  todayISO: string,
+): boolean {
+  if (input.intervention?.status === "needed" || input.intervention?.status === "in_progress") return true;
+  const day = dayOf(input.lastCheckinDate ?? null);
+  const recent = !!day && day >= addDaysISO(todayISO, -1);
+  return recent && (Number(input.lastCheckinPain) || 0) >= PAIN_ALARM_THRESHOLD;
 }
 
 export function findMissedWorkout(
@@ -217,7 +342,9 @@ export function findMissedWorkout(
 ): { date: string; items: TriggerPlanItem[] } | null {
   const yesterday = addDaysISO(todayISO, -1);
   if ((input.raceEvents || []).some((r) => r && r.status !== "concluida" && dayOf(r.date) === todayISO)) return null;
-  if ((input.trainingDates || []).some((d) => dayOf(d ?? null) === yesterday)) return null;
+  // Ontem, ou hoje de manhã pelo "+" (o treino de ontem feito hoje): não se
+  // pergunta o que aconteceu (revisão pré-deploy de 2026-09-26).
+  if ((input.trainingDates || []).some((d) => { const day = dayOf(d ?? null); return day === yesterday || day === todayISO; })) return null;
   const accepted = new Set((input.plans || []).filter((p) => p?.status === "aceite").map((p) => p.id));
   const items = (input.planItems || []).filter((i) => i && i.plan_id && accepted.has(i.plan_id));
   const rewriteByPlan = new Map<string, string>();
@@ -305,6 +432,44 @@ export function missedWorkoutInReview(
   return !!week && missedDate >= week.weekStart && missedDate <= week.weekEnd;
 }
 
+const DIAS_DA_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+function diaCurto(iso: string): string {
+  return DIAS_DA_SEMANA[new Date(`${iso}T00:00:00Z`).getUTCDay()];
+}
+
+/** Quantos treinos (corrida/ginásio, não cancelados, de um plano aceite) o
+ *  plano tinha entre `fromExclusiveISO` e `toExclusiveISO` (os dias do
+ *  silêncio) — e se algum plano aceite cobria esse período. Sem plano no
+ *  período, o silêncio não sabe se houve descanso decidido ou nada: conta
+ *  só a partir de SILENCE_DAYS_SEM_PLANO (revisão de 2026-09-26; a mesma
+ *  ideia de liveItems, homeModels.js, do lado do cliente). */
+function plannedTrainingsBetween(
+  input: { plans?: TriggerPlan[] | null; planItems?: TriggerPlanItem[] | null },
+  fromExclusiveISO: string,
+  toExclusiveISO: string,
+): { count: number; hasPlan: boolean } {
+  const accepted = new Set((input.plans || []).filter((p) => p?.status === "aceite").map((p) => p.id));
+  const hasPlan = (input.plans || []).some((p) => {
+    // Um plano só de refeições (save_meal_suggestions) não decide descansos:
+    // não cala o silêncio (segunda revisão pré-deploy de 2026-09-26).
+    if (p?.status !== "aceite" || p.hasTraining === false) return false;
+    const ps = dayOf(p.period_start ?? null);
+    const pe = dayOf(p.period_end ?? null);
+    // Em vigor até ontem, pelo menos — a régua da consulta do tick
+    // (period_end >= ontem). Um bloco que acabou a meio do silêncio não o
+    // calava para sempre no cliente, que lê todos os planos (revisão
+    // pré-deploy de 2026-09-26).
+    return ps != null && pe != null && pe >= addDaysISO(toExclusiveISO, -1) && ps <= toExclusiveISO;
+  });
+  const count = (input.planItems || []).filter((i) => {
+    if (!i || !i.plan_id || !accepted.has(i.plan_id)) return false;
+    if ((i.kind !== "corrida" && i.kind !== "ginasio") || i.status === "cancelado") return false;
+    const d = dayOf(i.planned_date ?? null);
+    return d != null && d > fromExclusiveISO && d < toExclusiveISO;
+  }).length;
+  return { count, hasPlan };
+}
+
 function addDaysISO(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 }
@@ -314,8 +479,9 @@ export type ServerProactiveInput = {
     raceEvents: TriggerRace[] | null | undefined;
     runs: TriggerRun[] | null | undefined;
     lastRecordDate: string | null;
-    /** P.5: o assunto por resolver do perfil (coach_intervention_*). */
-    intervention?: { status?: string | null; reason?: string | null } | null;
+    /** P.5: o assunto por resolver do perfil (coach_intervention_*), e a
+     *  origem guardada em coach_interventions quando quem chama a tiver. */
+    intervention?: { status?: string | null; reason?: string | null; origin?: string | null } | null;
     /** P.5: os planos, para o conflito de provas e o fim de bloco. */
     plans?: TriggerPlan[] | null;
     /** P.6: os momentos que o atleta aceita. Um desligado não esconde os
@@ -339,6 +505,13 @@ export type ServerProactiveInput = {
     /** P.10, silêncio: o último check-in e o último treino (corrida ou ginásio). */
     lastCheckinDate?: string | null;
     lastTrainingDate?: string | null;
+    /** A dor desse último check-in (revisão de 2026-09-26): acima do
+     *  alarme, nem o silêncio nem o treino de ontem por registar se
+     *  perguntam — ela já sabe porquê. */
+    lastCheckinPain?: number | null;
+    /** Silêncio (revisão de 2026-09-26): a última água registada
+     *  (water_logs) — quem só regista água está por cá. */
+    lastWaterDate?: string | null;
     /** A Vitrina (2026-09-25): as distribuições publicadas, o segmento do
      *  atleta, os dois consentimentos e as linhas DELE nas tabelas. */
     vitrina?: {
@@ -378,7 +551,7 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // Um assunto por resolver passa à frente de tudo: é saúde ou um desvio
   // que ela já decidiu que precisa de conversa.
   if (input.intervention?.status === "needed") {
-    out.push({ ...base, trigger: "intervention", key: interventionKey(input.intervention.reason) });
+    out.push({ ...base, trigger: "intervention", key: interventionKey(input.intervention.reason), interventionTopic: interventionTopic(input.intervention) });
   }
 
   /* Num dia com mais do que uma prova, a véspera e a manhã são da PRINCIPAL
@@ -389,12 +562,14 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   if (morning) {
     out.push({
       ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null,
-      startMinutes: startTimeMinutes(morning.start_time),
+      startMinutes: startTimeMinutes(morning.start_time), hasFirstKmPace: hasFirstKmPace(morning),
     });
   }
 
   const eve = pickRaceOfDay(scheduled, addDaysISO(todayISO, 1));
-  if (eve) out.push({ ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null });
+  if (eve) {
+    out.push({ ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null, startMinutes: startTimeMinutes(eve.start_time) });
+  }
 
   const conflict = detectRaceConflictServer(input.plans, races, todayISO);
   if (conflict) {
@@ -417,12 +592,26 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // A prova mais recente ganha: um só "depois da prova" na lista.
   for (const { race, gap } of past) {
     const run = findRaceRunServer(input.runs, race);
+    const raceDay = gap === 0 ? "hoje" : gap === 1 ? "ontem" : diaCurto(race.date.slice(0, 10));
     if (run) {
-      out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:${run.id || "corrida"}`, raceId: race.id, raceName: race.name ?? null, hasRun: true, anchorDate: race.date.slice(0, 10), anchorAt: run.created_at ?? null });
+      out.push({
+        ...base, trigger: "race_after", key: `race_after:${race.id}:${run.id || "corrida"}`, raceId: race.id, raceName: race.name ?? null, hasRun: true, anchorDate: race.date.slice(0, 10), anchorAt: run.created_at ?? null,
+        raceDay,
+        raceDistanceKm: Number(race.distance_km) > 0 ? Number(race.distance_km) : null,
+      });
+      break;
+    }
+    /* Uma corrida nesse dia, registada pelo separador normal (sem
+       `race_id`, e sem ser "competicao" — findRaceRunServer só apanha essa
+       combinação): não se pede o registo de uma prova já registada — pede-se
+       para a ligar (revisão de 2026-09-26). */
+    const unlinked = findUnlinkedRaceDayRun(input.runs, race, todayISO);
+    if (unlinked) {
+      out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:por-ligar`, raceId: race.id, raceName: race.name ?? null, hasRun: true, unlinkedRun: true, raceDay, anchorDate: race.date.slice(0, 10), anchorAt: unlinked.created_at ?? null });
       break;
     }
     if (gap >= 1 && gap <= RACE_AFTER_DAYS_WITHOUT_RUN) {
-      out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:sem-registo`, raceId: race.id, raceName: race.name ?? null, anchorDate: race.date.slice(0, 10) });
+      out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:sem-registo`, raceId: race.id, raceName: race.name ?? null, raceDay, anchorDate: race.date.slice(0, 10) });
       break;
     }
   }
@@ -432,19 +621,35 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     out.push({ ...base, trigger: "block_end", key: `block_end:${block.id}`, planId: block.id, blockEnd: dayOf(block.period_end), anchorDate: dayOf(block.period_end) });
   }
 
+  // Uma dor acima do alarme, ou um assunto já aberto (P.5), explicam o
+  // silêncio e o treino de ontem por registar — ela já sabe porquê, e
+  // perguntar "está tudo bem?" ou "aconteceu alguma coisa?" ignorava o que
+  // o atleta já lhe tinha dito (revisão de 2026-09-26).
+  const jaSabePorque = knowsWhySilent(input, todayISO);
+
   const last = input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
-  if (last) {
+  if (last && !jaSabePorque) {
     const gap = daysBetween(last, todayISO);
-    if (gap >= SILENCE_DAYS) {
+    const { count: plannedCount, hasPlan } = plannedTrainingsBetween(input, last, todayISO);
+    const threshold = hasPlan ? SILENCE_DAYS : SILENCE_DAYS_SEM_PLANO;
+    // Com plano no período e nenhum treino previsto (só descanso decidido),
+    // o silêncio não é assunto: não se pergunta "está tudo bem?" a quem só
+    // teve dias de descanso.
+    if (gap >= threshold && !(hasPlan && plannedCount === 0)) {
       /* Com check-ins depois do último registo, ele está por cá: o que falta
          são os treinos, não notícias dele (P.10). Os dias contam então desde
          o último treino — o último registo pode ter sido uma refeição. */
       const checkin = dayOf(input.lastCheckinDate ?? null);
       const checkinAfter = checkin && checkin > last ? checkin : null;
       const training = dayOf(input.lastTrainingDate ?? null);
+      // Sem check-ins, a água depois do último registo também diz que ele
+      // abre a app: "não vejo nada teu" era falso (revisão de 2026-09-26).
+      const water = dayOf(input.lastWaterDate ?? null);
       out.push({
         ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last,
+        ...(hasPlan ? { plannedTrainingsSince: plannedCount, sinceWeekday: diaCurto(addDaysISO(last, 1)) } : {}),
         ...(checkinAfter ? { lastCheckinDate: checkinAfter, trainingSilenceDays: training ? daysBetween(training, todayISO) : null } : {}),
+        ...(!checkinAfter && water && water > last ? { lastWaterDate: water } : {}),
       });
     }
   }
@@ -479,7 +684,17 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // já é avisada no log. Corrigir exigia dar ao cliente as chaves entregues
   // (coach_proactive_log), e isso não cabe na Fase 0.
   const delivered = new Set(input.deliveredKeys ?? []);
+  // A corrida por ligar fica com o dia como o "como correu?" sem registo, e
+  // pelo mesmo prazo (RACE_AFTER_DAYS_WITHOUT_RUN): não grava coach_balance,
+  // e o cliente, sem as chaves entregues, não teria como a largar — a
+  // notificação prometia o balanço da semana que o chat não abria. Passado o
+  // prazo larga o dia nos dois lados, para uma corrida que o atleta nunca
+  // liga ("não foi essa") não custar o balanço da semana (segunda e terceira
+  // revisões pré-deploy de 2026-09-26).
   const holdsTheDay = (c: ServerProactiveCandidate) => {
+    if (c.trigger === "race_after" && c.unlinkedRun) {
+      return !!c.anchorDate && daysBetween(c.anchorDate, todayISO) <= RACE_AFTER_DAYS_WITHOUT_RUN;
+    }
     if (c.trigger !== "race_after" || !c.hasRun) return true;
     if (delivered.has(c.key)) return false;
     return !races.find((r) => r.id === c.raceId)?.coach_balance;
@@ -494,9 +709,9 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
      segunda já é da semana nova e entra a seguir ao balanço — quem já o
      teve na segunda é perguntado; quem não abriu a app, tem o balanço
      primeiro (revisão pré-deploy de 2026-09-25: à terça nunca saía). */
-  const missed = findMissedWorkout(input, todayISO);
+  const missed = jaSabePorque ? null : findMissedWorkout(input, todayISO);
   if (missed && !missedWorkoutInReview(missed.date, week)) {
-    out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date });
+    out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date, missedLabel: missedWorkoutLabel(missed.items) });
   }
   /* A Vitrina (2026-09-25) vem no fim: é novidade, não urgência — espera
      pelo dia em que não há mais nada, e não tira o dia ao balanço da semana
@@ -510,7 +725,11 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     }
     const ready = percentileReadyMoment(v.snapshots, v.own, v.statsPoolConsent);
     if (ready) {
-      out.push({ ...base, trigger: "percentile_ready", key: ready.key, vitrinaStage: ready.stage, windowStart: ready.windowStart, anchorDate: ready.windowStart });
+      const near = ready.stage === "perto" ? percentileAvailability(v.snapshots, v.own)?.near[0] ?? null : null;
+      out.push({
+        ...base, trigger: "percentile_ready", key: ready.key, vitrinaStage: ready.stage, windowStart: ready.windowStart, anchorDate: ready.windowStart,
+        ...(near ? { nearSegment: { step: near.step, terrain: near.segment.terrain, gender: near.segment.gender } } : {}),
+      });
     }
   }
   return out.filter((c) => ok(c.trigger));
@@ -524,22 +743,72 @@ export function weekReviewCandidate(input: ServerProactiveInput, todayISO: strin
   return listServerProactive({ ...input, allowed: null }, todayISO).find((c) => c.trigger === "week_review") ?? null;
 }
 
+/** O silêncio de hoje, pela mesma régua do servidor — para o cliente
+ *  (src/utils/coachProactive.js) nunca discordar do tick sobre quando um
+ *  "Estás bem?" faz sentido (plano no período, dor no check-in, assunto já
+ *  aberto — revisão de 2026-09-26). Ignora `allowed`, como weekReviewCandidate. */
+export function silenceCandidate(input: ServerProactiveInput, todayISO: string): ServerProactiveCandidate | null {
+  return listServerProactive({ ...input, allowed: null }, todayISO).find((c) => c.trigger === "silence") ?? null;
+}
+
+/* Os nomes que a app dá a uma prova sem nome (RunRegistration: "Corrida de
+   Hoje", "Prova"), e o que o conflito de provas põe no lugar de um nome em
+   falta, não são nomes: "Vi o registo da prova Corrida de Hoje", dias
+   depois, soava a formulário (revisão de 2026-09-26). */
+const NOMES_POR_OMISSAO = new Set(["corrida de hoje", "prova", "outra prova"]);
+export function nomeProprio(name: string | null | undefined): string {
+  const n = (name || "").trim().slice(0, 60);
+  return n && !NOMES_POR_OMISSAO.has(n.toLowerCase()) ? n : "";
+}
+
+export function kmTexto(v: number): string {
+  return `${String(Math.round(v * 10) / 10).replace(".", ",")} km`;
+}
+
+function horaDe(minutes: number): string {
+  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/** Na véspera, uma partida a partir desta hora já não é "amanhã de manhã". */
+export const RACE_EVE_AFTERNOON_MINUTES = 12 * 60;
+
+const GENERO_DO_GRUPO: Record<string, string> = { F: "feminino", M: "masculino" };
+
 /* O texto da notificação, na voz dela (carolTone): sem emoji, sem ponto de
    exclamação, sem frase de manual. É curto porque o que ela tem a dizer a
    sério é escrito no chat, com o contexto todo, quando o atleta abre. */
 export function proactivePushMessage(c: ServerProactiveCandidate): { title: string; body: string } {
-  const name = (c.raceName || "").trim().slice(0, 60);
+  const name = nomeProprio(c.raceName);
   const title = "Carol";
   switch (c.trigger) {
+    // "Tenho duas coisas para te dizer" era isco; agora diz o que deixou —
+    // o ritmo do primeiro km só quando há plano de ritmo (revisão de 2026-09-26).
     case "race_morning":
-      return { title, body: `Hoje é dia de prova${name ? `: ${name}` : ""}. Tenho duas coisas para te dizer antes da partida.` };
-    case "race_eve":
-      return { title, body: `Amanhã é dia de prova${name ? `: ${name}` : ""}. Tenho o plano para hoje à noite e para amanhã de manhã.` };
+      return {
+        title,
+        body: `Hoje é dia de prova${name ? `: ${name}` : ""}. ${c.hasFirstKmPace ? "Deixei-te o ritmo do primeiro km." : "Fala comigo antes da partida."}`,
+      };
+    // Uma partida à tarde não tem "amanhã de manhã" (a São Silvestre às
+    // 17:30), e sem hora marcada não se sabe (revisão de 2026-09-26).
+    case "race_eve": {
+      const tarde = c.startMinutes != null && c.startMinutes >= RACE_EVE_AFTERNOON_MINUTES;
+      const partida = tarde ? `, partida às ${horaDe(c.startMinutes!)}` : "";
+      const amanha = c.startMinutes == null ? "para amanhã" : tarde ? "para amanhã até à partida" : "para amanhã de manhã";
+      return { title, body: `Amanhã é dia de prova${name ? `: ${name}` : ""}${partida}. Tenho o plano para hoje à noite e ${amanha}.` };
+    }
     case "race_after":
+      if (c.unlinkedRun) {
+        return { title, body: `Vi uma corrida no dia da ${name ? `prova ${name}` : "tua prova"}. É ela? Vem confirmar e faço o balanço contigo.` };
+      }
+      if (c.hasRun && !name) {
+        const dia = c.raceDay ? ` de ${c.raceDay}` : "";
+        const km = c.raceDistanceKm ? `, ${kmTexto(c.raceDistanceKm)}` : "";
+        return { title, body: `Vi o registo da tua prova${dia}${km}. Quero fazer o balanço contigo.` };
+      }
       return {
         title,
         body: c.hasRun
-          ? `Vi o registo da prova${name ? ` ${name}` : ""}. Quero fazer o balanço contigo.`
+          ? `Vi o registo da prova ${name}. Quero fazer o balanço contigo.`
           : `Como correu a prova${name ? ` ${name}` : ""}? Conta-me, e regista a corrida.`,
       };
     case "silence":
@@ -553,16 +822,47 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
           ? { title, body: "Ainda não vejo nenhum treino teu registado. Está tudo bem?" }
           : { title, body: `Não vejo nenhum treino teu há ${c.trainingSilenceDays} dias. Está tudo bem?` };
       }
+      /* Com plano no período (revisão de 2026-09-26): nomear os treinos que
+         ficaram por fazer desde esse dia, em vez do "não vejo nada teu"
+         genérico — ela sabe o que estava previsto. */
+      if (c.plannedTrainingsSince != null && c.plannedTrainingsSince > 0) {
+        // Pergunta, não acusa (P.10): pode ter treinado sem registar.
+        const desde = c.sinceWeekday ? ` desde ${c.sinceWeekday}` : "";
+        return c.plannedTrainingsSince === 1
+          ? { title, body: `O plano tinha 1 treino${desde} e não o vejo registado. Está tudo bem?` }
+          : { title, body: `O plano tinha ${c.plannedTrainingsSince} treinos${desde} e não vejo nenhum registado. Está tudo bem?` };
+      }
+      if (c.lastWaterDate) {
+        return { title, body: `Vejo a água registada, mas nenhum treino nem refeição há ${c.silenceDays ?? SILENCE_DAYS} dias. Está tudo bem?` };
+      }
       return { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
     // A frase fixa de propósito (P.10): pergunta, não acusa — pode ter treinado e não registado.
+    // Nomear o treino (revisão de 2026-09-26): "o treino" genérico soava a automatismo.
     case "missed_workout":
-      return { title, body: "Não vi o treino de ontem registado. Aconteceu alguma coisa?" };
-    // Genérica de propósito: o motivo pode ser de saúde (uma dor), e o
-    // ecrã bloqueado não é sítio para o dizer.
+      return {
+        title,
+        body: c.missedLabel
+          ? `Não vi o treino de ontem (${c.missedLabel}) registado. Aconteceu alguma coisa?`
+          : "Não vi o treino de ontem registado. Aconteceu alguma coisa?",
+      };
+    /* Nunca o motivo: pode ser de saúde (uma dor), e o ecrã bloqueado não é
+       sítio para o dizer. Só de onde veio, e "antes do próximo treino" em vez
+       de "quando puderes" — uma dor no check-in não espera (revisão de
+       2026-09-26). */
     case "intervention":
-      return { title, body: "Preciso de falar contigo sobre uma coisa que vi. Abre a app quando puderes." };
-    case "race_conflict":
-      return { title, body: "Tens duas provas principais no mesmo bloco. Temos de decidir qual é o objetivo." };
+      if (c.interventionTopic === "checkin") return { title, body: "Li o teu check-in. Quero falar contigo antes do próximo treino." };
+      if (c.interventionTopic === "carga_acima_do_plano") return { title, body: "A carga destes dias subiu acima do plano. Quero ver isso contigo antes do próximo treino." };
+      if (c.interventionTopic === "carga") return { title, body: "A carga destes dias subiu acima do habitual. Quero ver isso contigo antes do próximo treino." };
+      return { title, body: "Quero falar contigo antes do próximo treino." };
+    case "race_conflict": {
+      const outras = c.conflictRaceNames ?? [];
+      if (outras.length >= 2) {
+        const quantas = ["duas", "três", "quatro"][outras.length - 2] ?? String(outras.length);
+        return { title, body: `Tens mais ${quantas} provas principais a meio deste bloco. Temos de decidir qual é o objetivo.` };
+      }
+      const outra = nomeProprio(outras[0]);
+      return { title, body: `Há outra prova principal a meio deste bloco${outra ? `: ${outra}` : ""}. Temos de decidir qual é o objetivo.` };
+    }
     case "block_end":
       return { title, body: "O teu bloco de treino está a acabar. Vamos ver como correu e preparar o próximo." };
     case "week_review":
@@ -570,14 +870,25 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
     /* A Vitrina: frases fixas, sem posição nem percentil — o ecrã bloqueado
        não é sítio para números de comparação com outros atletas. O número
        diz-se no chat, a ele. */
+    // Sai à terça, sobre a quinzena que fechou no domingo: "nesta quinzena"
+    // já era a nova (revisão de 2026-09-26).
     case "leaderboard":
       return c.vitrinaStage === "saiu"
-        ? { title, body: "Nesta quinzena saíste das tabelas do teu escalão. Vem ver comigo o que mudou." }
+        ? { title, body: "Na quinzena que fechou saíste das tabelas do teu escalão. Vem ver comigo o que mudou." }
         : { title, body: "Entraste nas tabelas do teu escalão. Vem ver onde ficaste." };
-    case "percentile_ready":
-      return c.vitrinaStage === "meu"
-        ? { title, body: "O teu escalão já tem números publicados. Vem ver onde estás." }
-        : { title, body: "Já há números publicados de grupos ao lado do teu escalão. Vem ver onde estás." };
+    // "Grupos ao lado" era vocabulário da app: diz-se qual é o grupo, como o
+    // "Onde estás" o oferece (revisão de 2026-09-26).
+    case "percentile_ready": {
+      if (c.vitrinaStage === "meu") return { title, body: "O teu escalão já tem números publicados. Vem ver onde estás." };
+      const near = c.nearSegment;
+      const grupo = near?.step === "modalidade" ? `o de ${near.terrain}`
+        : near?.step === "escalao" ? "o escalão ao lado"
+          : near?.step === "genero" && GENERO_DO_GRUPO[near.gender] ? `o ${GENERO_DO_GRUPO[near.gender]} da tua idade`
+            : null;
+      return grupo
+        ? { title, body: `O teu escalão ainda não tem números, mas ${grupo} já tem. Vem ver onde ficas nesse.` }
+        : { title, body: "O teu escalão ainda não tem números, mas já há outros com números publicados. Vem ver onde ficas." };
+    }
   }
 }
 
@@ -593,6 +904,12 @@ export const DEFAULT_PUSH_END_HOUR = 21;
 export const RACE_MORNING_EARLIEST_HOUR = 6;
 /** Com hora de partida, a manhã da prova sai no máximo 2 h antes dela (P.10). */
 export const RACE_MORNING_LEAD_MINUTES = 120;
+/** Sem hora de partida, a manhã da prova não sai a partir das 10h: a prova
+ *  pode já estar a decorrer (revisão de 2026-09-26). */
+export const RACE_MORNING_NO_START_LATEST_HOUR = 10;
+/** A véspera não sai de madrugada: às 0h30, para quem ainda está acordado,
+ *  "amanhã" é o dia que está a viver (revisão de 2026-09-26). */
+export const RACE_EVE_EARLIEST_HOUR = 6;
 export const ALL_PROACTIVE_TRIGGERS: ProactiveTriggerName[] = ["intervention", "race_morning", "race_eve", "race_conflict", "race_after", "block_end", "silence", "missed_workout", "week_review", "leaderboard", "percentile_ready"];
 
 /** As preferências do atleta (P.6): a janela em horas de Lisboa, o máximo
@@ -618,8 +935,9 @@ function inWindow(hour: number, start: number, end: number): boolean {
  *  Com a hora de partida conhecida (P.10, confirmado pelo produto a
  *  2026-09-24), a manhã da prova sai entre 2 h antes da partida (nunca antes
  *  das 6h) e a própria partida — nem cedo de mais, nem a meio da prova —, e
- *  nunca depois do fim da janela. `minuteOfDay` é a hora de Lisboa em
- *  minutos; sem ele conta a hora certa. */
+ *  nunca depois do fim da janela. Sem ela, nunca a partir das 10h. A véspera
+ *  nunca entre as 0h e as 6h, mesmo numa janela que atravesse a meia-noite.
+ *  `minuteOfDay` é a hora de Lisboa em minutos; sem ele conta a hora certa. */
 export function isWithinProactiveWindow(
   trigger: ProactiveTriggerName,
   lisbonHour: number,
@@ -632,6 +950,9 @@ export function isWithinProactiveWindow(
      não pode querer dizer "24 horas": um "Estás bem?" às 3h da manhã. Cai na
      janela por omissão (revisão pré-master da P.6). */
   if (start === end) { start = DEFAULT_PUSH_START_HOUR; end = DEFAULT_PUSH_END_HOUR; }
+  if (trigger === "race_eve" && lisbonHour < RACE_EVE_EARLIEST_HOUR) return false;
+  // Às 0h30, para quem ainda está acordado, "ontem" é o dia que está a viver.
+  if (trigger === "missed_workout" && lisbonHour < RACE_EVE_EARLIEST_HOUR) return false;
   if (trigger === "race_morning" && opts.raceStartMinutes != null) {
     const now = opts.minuteOfDay ?? lisbonHour * 60;
     const earliest = Math.max(RACE_MORNING_EARLIEST_HOUR * 60, opts.raceStartMinutes - RACE_MORNING_LEAD_MINUTES);
@@ -639,6 +960,7 @@ export function isWithinProactiveWindow(
     const beforeWindowEnd = start < end ? lisbonHour < end : true;
     return now >= earliest && now < opts.raceStartMinutes && beforeWindowEnd;
   }
+  if (trigger === "race_morning" && lisbonHour >= RACE_MORNING_NO_START_LATEST_HOUR) return false;
   if (inWindow(lisbonHour, start, end)) return true;
   if (trigger === "race_morning" && start < end && start > RACE_MORNING_EARLIEST_HOUR) {
     return lisbonHour >= RACE_MORNING_EARLIEST_HOUR && lisbonHour < end;

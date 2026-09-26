@@ -635,7 +635,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 className="flex-1 py-2.5 gap-1.5"
                 type="button"
               >
-                <Camera size={14} /> Foto (IA)
+                <Camera size={14} /> Foto
               </Chip>
               <Chip
                 active={entryMethod === 'manual'}
@@ -707,7 +707,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   </label>
                 </div>
                 <p className="text-[11px] text-[var(--text-3)] text-center -mt-2 mb-1">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
-                <p className="text-[11px] text-[var(--text-3)] text-center mb-5 leading-relaxed">A IA lê os valores nutricionais automaticamente — podes editar ou remover itens depois de gravado</p>
+                <p className="text-[11px] text-[var(--text-3)] text-center mb-5 leading-relaxed">Tira foto ao prato; eu leio os alimentos e as quantidades. Podes corrigir depois de gravado.</p>
               </>
             )}
           </>
@@ -715,7 +715,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           <div className="mb-4">
             {/* As fotos não se perdem ao cair para o modo manual (mock
                 "Refeição · análise falhou": "2 fotos guardadas"). Ficam à
-                vista, e voltar a "Foto (IA)" encontra-as lá. */}
+                vista, e voltar a "Foto" encontra-as lá. */}
             {photos.length > 0 && (
               <div
                 data-testid="saved-photos"

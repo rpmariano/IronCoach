@@ -6,8 +6,11 @@ import { subDays, subWeeks, subMonths, subYears, isAfter, startOfWeek, differenc
 import * as Constants from './biConstants';
 import { shoesNeedingAttention, shoeLabel } from './shoes';
 import { assessRaceViability, knownRecentWeeklyVolume } from './raceViability';
-import { getRecommendedPrepWeeks, resolveExperienceLevel } from './racePlanEngine';
+import { getRecommendedPrepWeeks, resolveExperienceLevel, calculateRaceTrainingPlan } from './racePlanEngine';
 import { getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from '@formulas/racePlanning.ts';
+import { buildRacePacingPlan } from '@formulas/racePacing.ts';
+import { formatDistanceKm } from './paceMath';
+import { parseDurationToSeconds } from './run';
 import { todayISO } from '../lib/utils';
 // mealNutrients removido daqui — as duas únicas chamadas migraram para
 // @formulas/macroAdherence.ts e @formulas/energyAvailabilityWindow.ts (Fase E).
@@ -453,7 +456,7 @@ export function detectCoachInsights(data, profile) {
           // prompt da Carol (P0-3, Fase A). A Fase C unificou os dois em km
           // (specs/formulas-centralizacao.md §5.1) — já não há grandezas
           // distintas para rotular.
-          message: `O teu ACWR está em ${acwr.ratio.toFixed(2)} — acima do limiar de ${Constants.ACWR_DANGER}. Risco elevado de lesão. Considera reduzir o volume esta semana.`,
+          message: `A carga desta semana está ${acwr.ratio.toFixed(2).replace('.', ',')} vezes acima do habitual. Esta semana, o próximo treino forte passa a fácil.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_DANGER, module: 'corrida'
         });
       } else if (acwr.hasEnoughData && acwr.status === 'caution') {
@@ -577,27 +580,52 @@ export function detectCoachInsights(data, profile) {
         // o grande dia" aparecia um dia antes (bug relatado 2026-09-12).
         const daysLeft = Math.max(0, differenceInCalendarDays(raceDate, now));
         const dist = Number(next.distance_km) || 10;
+        // Só a distância registada entra no texto — o 10 acima é um recurso
+        // de cálculo, e dito ao atleta inventava "(10 km)" (revisão de 2026-09-26).
+        const distLabel = formatDistanceKm(next.distance_km);
         const raceName = next.name || 'a prova';
+        const priority = next.race_priority || 'a';
+        const todayStr = format(now, 'yyyy-MM-dd');
+        const faltam = (n) => (n === 1 ? 'Falta 1 dia' : `Faltam ${n} dias`);
+        // A mesma cascata do hub (raceTimes.targetLine): a coluna numérica,
+        // e o texto livre da agenda como recurso.
+        const targetSeconds = Number(next.target_time_seconds) > 0
+          ? Number(next.target_time_seconds)
+          : (parseDurationToSeconds(next.target_time) || 0);
         // Usado no ramo de Tapering abaixo — calculado aqui para não
         // repetir a chamada (resolveExperienceLevel/getTaperDays são
         // baratas, mas uma só chamada é mais claro que duas).
-        const taperDaysForNext = getTaperDays(dist, next.race_priority || 'a', resolveExperienceLevel(next, profile), next.race_type || 'estrada');
+        const taperDaysForNext = getTaperDays(dist, priority, resolveExperienceLevel(next, profile), next.race_type || 'estrada');
 
         // 5a. Marcos Temporais da Preparação (Timeline da Prova)
         if (daysLeft === 0) {
+          // Sem objetivo nem previsão não há plano km a km no hub — a mesma
+          // régua (buildRacePacingPlan) que o hub e o CarolCard usam.
+          const prediction = getRacePrediction(next, profile, data.runs || []);
+          const pacingPlan = buildRacePacingPlan({
+            distanceKm: next.distance_km,
+            raceType: next.race_type,
+            targetSeconds: targetSeconds > 0 ? targetSeconds : null,
+            predictedSeconds: Number(prediction?.predictedSeconds) > 0 ? Math.round(prediction.predictedSeconds) : null,
+          });
           insights.push({
             id: `race_day_${next.id || 'next'}`,
             severity: 'info',
             title: `Dia da Prova: ${raceName}`,
-            message: `Chegou o grande dia de ${raceName} (${dist} km). Executa o teu plano de ritmo e nutrição.`,
+            message: `Hoje é dia de prova${next.name ? `: ${next.name}` : ''}. Parte com calma: a primeira metade é para guardar.${pacingPlan ? ' O plano km a km está no hub da prova.' : ''}`,
             metric: 'Prova', value: 'hoje', threshold: 0, module: 'corrida'
           });
         } else if (daysLeft >= 1 && daysLeft <= 7) {
+          // Prova C é treino: nem o destaque nem o polimento de uma A/B. Numa
+          // B o polimento só cobre os últimos dias (getTaperDays).
+          const polimento = priority !== 'c' && daysLeft <= taperDaysForNext
+            ? ' Esta semana é polimento: menos quilómetros e nada de novo.'
+            : '';
           insights.push({
             id: `race_final_week_${next.id || 'next'}`,
-            severity: 'warning',
+            severity: priority === 'c' ? 'info' : 'warning',
             title: `Reta Final: ${raceName}`,
-            message: `Faltam apenas ${daysLeft} ${daysLeft === 1 ? 'dia' : 'dias'} para ${raceName} (${dist} km). Foco em treinos curtos de ativação, hidratação, sono e descanso.`,
+            message: `${faltam(daysLeft)} para ${raceName}${distLabel ? ` (${distLabel})` : ''}.${polimento}`,
             metric: 'Prova', value: daysLeft, threshold: 7, module: 'corrida'
           });
         } else if (daysLeft >= 8 && daysLeft <= taperDaysForNext) {
@@ -606,21 +634,34 @@ export function detectCoachInsights(data, profile) {
           // nível/prioridade por completo (ver specs/formulas-checklist.md
           // Fase C). daysLeft 1-7 fica coberto pelo ramo "Reta Final" acima,
           // por isso o limiar inferior aqui mantém-se em 8.
+          // Sem corridas nas últimas 3 semanas não há carga que desça.
+          const desde = format(subDays(now, 21), 'yyyy-MM-dd');
+          const correuNoBloco = (data.runs || []).some((r) => {
+            const d = String(r?.date || '').slice(0, 10);
+            return d > desde && d <= todayStr;
+          });
           insights.push({
             id: `race_tapering_${next.id || 'next'}`,
             severity: 'info',
             title: `Fase de Polimento (Tapering): ${raceName}`,
-            message: `Fase de carga máxima terminada para ${raceName}. Faltam ${Math.ceil(daysLeft / 7)} semanas (${daysLeft} dias). O volume vai descer para o corpo recuperar e supercompensar.`,
+            message: `Faltam ${daysLeft} dias para ${raceName}: começou o polimento.${correuNoBloco ? ' O volume desce a partir daqui.' : ''}`,
             metric: 'Tapering', value: daysLeft, threshold: taperDaysForNext, module: 'corrida'
           });
-        } else if ((dist >= 35 && daysLeft >= 90 && daysLeft <= 126) || (dist >= 15 && dist < 35 && daysLeft >= 56 && daysLeft <= 84) || (dist < 15 && daysLeft >= 35 && daysLeft <= 56)) {
-          insights.push({
-            id: `race_cycle_start_${next.id || 'next'}`,
-            severity: 'info',
-            title: `Início da Preparação: ${raceName}`,
-            message: `Arranque do ciclo específico para ${raceName} (${dist} km) — faltam ~${Math.ceil(daysLeft / 7)} semanas. O foco principal é a base aeróbica e a consistência.`,
-            metric: 'Ciclo', value: daysLeft, threshold: 84, module: 'corrida'
-          });
+        } else {
+          // O início real do ciclo é o do hub (racePlanEngine): pela
+          // distância, um avançado a 100 dias de uma maratona recebia
+          // "Arranque" já na semana 10 do plano (revisão de 2026-09-26).
+          // Comprimido, nem são totalWeeks semanas nem começa pela base.
+          const plan = calculateRaceTrainingPlan({ race: next, profile: profile || {}, runs: data.runs || [], todayISO: todayStr });
+          if (!plan.isCompressed && plan.daysToStart <= 0 && plan.daysToStart >= -6) {
+            insights.push({
+              id: `race_cycle_start_${next.id || 'next'}`,
+              severity: 'info',
+              title: `Início da Preparação: ${raceName}`,
+              message: `O ciclo para ${raceName} começa esta semana: ${plan.totalWeeks} semanas, a começar pela base.`,
+              metric: 'Ciclo', value: daysLeft, threshold: plan.totalWeeks * 7, module: 'corrida'
+            });
+          }
         }
 
         // 5b. Avaliação Tática Completa (Viabilidade + Ritmo)
@@ -666,12 +707,22 @@ export function detectCoachInsights(data, profile) {
               metric: 'Viabilidade', value: 0, threshold: 0, module: 'corrida'
             });
           } else if (viability.flags.includes('tempo_insuficiente')) {
-            insights.push({
-              id: 'race_tactic_time', severity: 'warning',
-              title: `Calendário Apertado: ${raceName}`,
-              message: `O tempo de preparação restante é demasiado curto para a distância de ${dist}km. Sugiro-te focar os treinos apenas em adaptação e ajustar as tuas expectativas de tempo.`,
-              metric: 'Tempo', value: daysLeft, threshold: 0, module: 'corrida'
-            });
+            // Dentro do polimento (e no próprio dia) já não há preparação
+            // para encurtar — "o plano fica na adaptação" contradizia o
+            // "começou o polimento" do insight ao lado.
+            if (daysLeft > taperDaysForNext) {
+              // Semanas só quando são certas: arredondar para baixo dava
+              // "Falta 1 semana" aos 13 dias, ao lado de "Faltam 13 dias".
+              const quanto = daysLeft >= 14 && daysLeft % 7 === 0 ? `Faltam ${daysLeft / 7} semanas` : faltam(daysLeft);
+              // Sem objetivo de tempo não há expectativa nenhuma a baixar.
+              const temObjetivo = targetSeconds > 0 || Number(next.target_pace_seconds_per_km) > 0;
+              insights.push({
+                id: 'race_tactic_time', severity: 'warning',
+                title: `Calendário Apertado: ${raceName}`,
+                message: `${quanto} para ${distLabel || raceName}, menos do que a distância pede. O plano fica na adaptação${temObjetivo ? ', e o objetivo de tempo tem de baixar' : ''}.`,
+                metric: 'Tempo', value: daysLeft, threshold: 0, module: 'corrida'
+              });
+            }
           } else if (viability.flags.includes('volume_insuficiente')) {
             insights.push({
               id: 'race_volume', severity: 'warning',
@@ -710,8 +761,8 @@ export function detectCoachInsights(data, profile) {
           severity: excedida ? 'warning' : 'info',
           title: excedida ? 'Sapatilhas fora de prazo' : 'Sapatilhas perto do fim',
           message: excedida
-            ? `As ${shoeLabel(worst.shoe)} já levam ${worst.wear.km} km — passaste os ${worst.wear.lifespanKm} km de vida útil estimada para o teu peso. A entressola já não absorve como devia; trocar de par é das formas mais baratas de evitar uma lesão.`
-            : `As ${shoeLabel(worst.shoe)} vão em ${worst.wear.km} km dos ~${worst.wear.lifespanKm} km estimados para o teu peso. Faltam cerca de ${worst.wear.remainingKm} km — vai pensando no par seguinte para não seres apanhado a meio de um bloco de treino.`,
+            ? `As ${shoeLabel(worst.shoe)} já levam ${String(worst.wear.km).replace('.', ',')} km — passaste os ${worst.wear.lifespanKm} km de vida útil estimada para o teu peso. A entressola já não absorve como devia; trocar de par é das formas mais baratas de evitar uma lesão.`
+            : `As ${shoeLabel(worst.shoe)} vão em ${String(worst.wear.km).replace('.', ',')} km dos ~${worst.wear.lifespanKm} km estimados para o teu peso. Faltam cerca de ${String(worst.wear.remainingKm).replace('.', ',')} km — compra já o par seguinte, para o amaciares antes de estas acabarem.`,
           metric: 'Km das sapatilhas', value: worst.wear.km, threshold: worst.wear.lifespanKm, module: 'corrida'
         });
       }
@@ -735,11 +786,11 @@ export function detectCoachInsights(data, profile) {
  * única implementação, partilhada com a Carol (specs/formulas-checklist.md
  * Fase E, o gap original que motivou toda a fase).
  */
-export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = []) {
+export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace = null, dailyCheckins = [], trainingToday = undefined) {
   try {
     const today = todayISO();
     const todayCheckin = (dailyCheckins || []).find((c) => c?.date === today) || null;
-    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin);
+    return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin, trainingToday);
   } catch (e) {
     return { score: 0, pillars: [], level: 'low' };
   }

@@ -62,8 +62,28 @@ describe('Home/RaceCard — o CTA do dia da prova', () => {
     );
 
     expect(screen.getByText('Prova por registar')).toBeInTheDocument();
-    expect(screen.getByText('correste há 2 dias')).toBeInTheDocument();
+    // Sem corrida ligada (é isso que "por registar" quer dizer): não se
+    // afirma que ele correu, só que a prova foi há 2 dias.
+    expect(screen.getByText('a prova foi há 2 dias')).toBeInTheDocument();
+    expect(screen.queryByText(/correste/)).not.toBeInTheDocument();
     expect(screen.getByTestId('race-card-register')).toBeInTheDocument();
+  });
+
+  /* Quando está errado: um dia só ("ontem"), com rotuloDoDia, e nunca a
+     afirmação "correste" sem corrida ligada (pedido 2026-09-26). */
+  it('um dia depois, sem corrida ligada, diz "ontem" e não afirma que correu', () => {
+    render(
+      <RaceCard
+        raceEvents={[{ ...PROVA, date: emDias(-1) }]}
+        runs={[]}
+        profile={PROFILE}
+        onRegisterRace={() => {}}
+      />
+    );
+
+    expect(screen.getByText('a prova foi ontem')).toBeInTheDocument();
+    expect(screen.queryByText(/correste/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/há 1 dia/)).not.toBeInTheDocument();
   });
 
   it('passados mais de 7 dias sem registo, o Início desiste — o sítio dela é o hub', () => {

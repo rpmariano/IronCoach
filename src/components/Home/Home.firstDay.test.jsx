@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -188,5 +188,47 @@ describe('Home — o primeiro dia com uma cirurgia na memória dela', () => {
     expect(pedeCorrida('2026-09-24T00:00:00+01:00')).toEqual({ corre: false, lembra: true });
     expect(pedeCorrida('2026-10-09T23:59:00+01:00')).toEqual({ corre: false, lembra: true });
     expect(pedeCorrida('2026-10-10T00:00:00+01:00')).toEqual({ corre: true, lembra: false });
+  });
+});
+
+/* Numa sessão nova, as notas do arranque chegam depois do primeiro ecrã
+   (revisão de 2026-09-26): o cartão dizia logo «Vamos escolher a tua
+   prova», antes de saber se havia objetivo. */
+describe('Home — o primeiro dia com as notas ainda a chegar', () => {
+  let terminar;
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    useAppStore.setState({
+      ...baseState,
+      coachNotes: [],
+      setActiveTab: vi.fn().mockReturnValue(true),
+      setOpenCreationMode: vi.fn(),
+      setCoachIntent: vi.fn(),
+      reloadCoachNotes: vi.fn(() => new Promise((resolve) => { terminar = resolve; })),
+      loadDailySummary: vi.fn().mockResolvedValue(null),
+    });
+  });
+
+  const cartao = () => screen.getByTestId('first-day-card');
+
+  it('enquanto não chegam, só o olá; lidas e sem objetivo, escolher a prova', async () => {
+    renderHome();
+    expect(cartao()).toHaveTextContent(/^Olá, Rui\.$/);
+    expect(cartao().querySelector('button')).toBeNull();
+    await act(async () => { terminar([]); });
+    expect(cartao()).toHaveTextContent('Olá, Rui. Vamos escolher a tua prova.');
+  });
+
+  it('chegam com um objetivo: o pedido dele, sem passar pelo "sem objetivo"', async () => {
+    renderHome();
+    expect(cartao()).not.toHaveTextContent(/escolher a tua prova/);
+    const notas = [{ category: 'objetivo_pessoal', note: 'Correr mais rápido — sem prova, foco em ritmo.' }];
+    await act(async () => {
+      useAppStore.setState({ coachNotes: notas });
+      terminar(notas);
+    });
+    expect(cartao()).toHaveTextContent('Rui, vamos pôr-te mais rápido.');
+    expect(cartao()).not.toHaveTextContent(/escolher a tua prova/);
   });
 });

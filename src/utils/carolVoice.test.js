@@ -57,7 +57,9 @@ describe('racePlanEngine — carolOverviewText, cada ramo na voz dela', () => {
     const text = overview({ date: iso(-5) });
     expect(text).toMatch(/^Faltam 5 dias: esta semana já não se ganha forma/);
     semRotina(text);
-    expect(overview({ date: iso(-1) })).toMatch(/^Falta 1 dia:/);
+    // Na véspera, o trote curto (revisão de 2026-09-26).
+    expect(overview({ date: iso(-1) })).toMatch(/^A prova é amanhã\./);
+    expectCarolVoice(overview({ date: iso(-1) }));
   });
 
   it('em plena preparação, com corridas registadas nesta fase', () => {

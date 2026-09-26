@@ -41,6 +41,7 @@ import RaceForecastCard from './RaceForecastCard';
 import RaceTimesBreakdown from './RaceTimesBreakdown';
 import { raceForecast, raceTimesBreakdown, targetLine } from '../../utils/raceTimes';
 import RaceMuralSheet from './RaceMuralSheet';
+import AddToCalendar from './AddToCalendar';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
@@ -65,17 +66,24 @@ export default function RaceHubView({
   onGoToEdit,
   onMarkCompleted,
   onMemoriesSaved,
+  calendarRaceId,
 }) {
   const [expandedPhaseId, setExpandedPhaseId] = useState(null);
   const [confirmCompleted, setConfirmCompleted] = useState(false);
 
+  // Os planos aceites com a Carol: antes do ciclo, o parecer manda seguir
+  // o que está acordado em vez do conselho genérico (revisão de 2026-09-26).
+  const storePlans = useAppStore((s) => s.coachPlans);
+  const storePlanItems = useAppStore((s) => s.coachPlanItems);
   const plan = useMemo(() => {
     return calculateRaceTrainingPlan({
       race,
       profile,
       runs,
+      coachPlans: storePlans,
+      coachPlanItems: storePlanItems,
     });
-  }, [race, profile, runs]);
+  }, [race, profile, runs, storePlans, storePlanItems]);
 
   const {
     raceDate,
@@ -340,7 +348,6 @@ export default function RaceHubView({
      hub as conquistas já dizem o mesmo em fichas, e a Vitrina dos badges vive
      no Perfil. O plano e o ginásio entram porque o motor é o mesmo de sempre
      e calcula a lista toda; o filtro pelo `raceId` é que decide o que sai. */
-  const storePlanItems = useAppStore((s) => s.coachPlanItems);
   const storeGymSessions = useAppStore((s) => s.gymSessions);
   const raceBadges = useMemo(
     () => (raceRun && race?.id
@@ -844,6 +851,12 @@ export default function RaceHubView({
         </button>
       )}
 
+      {/* Só para uma prova gravada e por fazer — o .ics lê a prova da BD
+          (RunAgenda não passa o id enquanto há alterações por gravar). */}
+      {calendarRaceId && daysToRace >= 0 && (
+        <AddToCalendar race={race} raceEventId={calendarRaceId} />
+      )}
+
       {/* ─── 1b. Plano para o dia ───────────────────────────────────────────
           Abaixo do herói e da contagem, antes das fases: na última semana é
           esta a pergunta ("a que ritmo vou sair?"), não o macrociclo. */}
@@ -976,9 +989,11 @@ export default function RaceHubView({
                       pill "Prontidão" do cartão Evolução & Prontidão. Com
                       recuo ficava mais estreita e deslocada para a direita,
                       não lendo como a mesma peça visual. */}
-                  {evalData?.score != null && (
+                  {/* Sem nota, só a prova que passou sem corrida registada
+                      mostra a pílula: "Por registar" (revisão de 2026-09-26). */}
+                  {(evalData?.score != null || evalData?.awaitingRecord) && (
                     <span className={`rh-eval-badge rh-eval-${evalData.statusColor} whitespace-nowrap w-full`}>
-                      {evalData.gradeLabel} · {evalData.score}%
+                      {evalData.score != null ? `${evalData.gradeLabel} · ${evalData.score}%` : evalData.gradeLabel}
                     </span>
                   )}
                 </div>

@@ -86,3 +86,32 @@ describe('saveDailyCheckin — o check-in corrigido fecha a intervenção que ab
     expect(useAppStore.getState().profile.coach_intervention_status).toBe('needed');
   });
 });
+
+describe('saveDailyCheckin — diz se abriu a conversa', () => {
+  beforeEach(() => {
+    db.updates.length = 0;
+    db.rowsMatched = 1;
+  });
+
+  const estado = (profile) => useAppStore.setState({
+    session: { user: { id: 'u1' } },
+    profile: { id: 'u1', gender: 'M', ...profile },
+    dailyCheckins: [],
+    loadDailySummary: vi.fn(() => Promise.resolve(null)),
+  });
+
+  it('uma dor nova, sem nada pendente, abre a conversa', async () => {
+    estado({ coach_intervention_status: null, coach_intervention_reason: null });
+    const r = await useAppStore.getState().saveDailyCheckin({ date: D, sleep: 3, energy: 3, stress: 2, pain: 6, pain_location: 'joelho' });
+    expect(r).toMatchObject({ ok: true, opened: true });
+    expect(r.alarms.length).toBeGreaterThan(0);
+  });
+
+  it('com outra conversa em curso, o alarme não abre nada', async () => {
+    estado({ coach_intervention_status: 'in_progress', coach_intervention_reason: '[carga] Carga acima do plano.' });
+    const r = await useAppStore.getState().saveDailyCheckin({ date: D, sleep: 3, energy: 3, stress: 2, pain: 6, pain_location: 'joelho' });
+    expect(r.alarms.length).toBeGreaterThan(0);
+    expect(r.opened).toBe(false);
+    expect(useAppStore.getState().profile.coach_intervention_status).toBe('in_progress');
+  });
+});

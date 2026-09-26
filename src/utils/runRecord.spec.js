@@ -55,3 +55,38 @@ describe('revisão pré-master de 2026-09-19', () => {
     expect(runRecordMoment(run('n', 4.1, 1100), [run('a', 5, 1500)])).toBeNull();
   });
 });
+
+describe('o "amanhã" da corrida mais longa (specs/carol-frases-contexto.md)', () => {
+  const antigas = [run('a', 8, 2600), run('b', 12, 3900), run('c', 6, 2000)];
+  // Domingo, 13 de setembro de 2026.
+  const longo = run('n', 14.2, 4800, { date: '2026-09-13' });
+  const item = (planned_date, training_type, o = {}) => ({ planned_date, kind: 'corrida', training_type, status: 'planeado', ...o });
+
+  it('um longo de domingo registado na segunda não fala de amanhã', () => {
+    const m = runRecordMoment(longo, antigas, { todayISO: '2026-09-14', planItems: [] });
+    expect(m.sub).toBe('14,2 km, mais 2,2 do que alguma vez fizeste.');
+  });
+
+  it('sem saber que dia é hoje, também não', () => {
+    expect(runRecordMoment(longo, antigas).sub).toBe('14,2 km, mais 2,2 do que alguma vez fizeste.');
+  });
+
+  it('corrida de hoje, sem treino duro amanhã no plano: dia de recuperar', () => {
+    const m = runRecordMoment(longo, antigas, { todayISO: '2026-09-13', planItems: [item('2026-09-14', 'regenerativo')] });
+    expect(m.sub).toBe('14,2 km, mais 2,2 do que alguma vez fizeste. Amanhã é dia de recuperar, não de repetir.');
+    expectCarolVoice(`${m.title} ${m.sub}`);
+  });
+
+  it('corrida de hoje com intervalos amanhã no plano: não contradiz o plano', () => {
+    const m = runRecordMoment(longo, antigas, { todayISO: '2026-09-13', planItems: [item('2026-09-14T00:00:00', 'intervalos')] });
+    expect(m.sub).toBe('14,2 km, mais 2,2 do que alguma vez fizeste. Amanhã, só o que está no plano.');
+    expect(m.sub).not.toMatch(/recuperar/);
+    expectCarolVoice(`${m.title} ${m.sub}`);
+  });
+
+  it('intervalos cancelados, ou só depois de amanhã, não contam', () => {
+    const recuperar = /Amanhã é dia de recuperar, não de repetir\.$/;
+    expect(runRecordMoment(longo, antigas, { todayISO: '2026-09-13', planItems: [item('2026-09-14', 'intervalos', { status: 'cancelado' })] }).sub).toMatch(recuperar);
+    expect(runRecordMoment(longo, antigas, { todayISO: '2026-09-13', planItems: [item('2026-09-15', 'intervalos')] }).sub).toMatch(recuperar);
+  });
+});

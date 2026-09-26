@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target, Sunrise } from 'lucide-react';
-import { differenceInDays, parseISO } from 'date-fns';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
+import { todayISO } from '../../lib/utils';
 import { useAppStore } from '../../store';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { buildTrailModel } from '../../utils/homeModels';
@@ -19,9 +20,12 @@ const PILLAR_ICONS = {
   checkin: <Sunrise size={13} style={{ color: 'var(--coach)' }} />,
 };
 
-export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace }) {
+export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace, coachPlans, coachPlanItems }) {
   const [selectedPillar, setSelectedPillar] = useState(null);
-  const today = new Date().toISOString().split('T')[0];
+  // O dia de Lisboa, como o resto da app: a data UTC ainda é ontem entre a
+  // meia-noite e a 01:00, e a prova de ontem aparecia com "Faltam -1 dias"
+  // (revisão de 2026-09-26).
+  const today = todayISO();
   const nextRace = useMemo(() => {
     if (!raceEvents?.length) return null;
     // 2026-09-26 (Fase 0 do Troféu): igual ao ramo "Reta Final" de
@@ -34,12 +38,30 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   }, [raceEvents, today]);
 
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
+  // Há treino previsto hoje (pedido 2026-09-26)? Para o pilar "Como
+  // acordaste" não dizer "hoje o treino é mais leve" num dia de descanso.
+  // Sem plano aceite em vigor hoje não se sabe se é descanso: undefined, e o
+  // pilar não o afirma (revisão pré-deploy de 2026-09-26). Um plano só de
+  // refeições (dias de `descanso`, save_meal_suggestions) não conta: não
+  // decide descansos (segunda revisão).
+  const trainingToday = useMemo(() => {
+    const comTreino = new Set((coachPlanItems || []).filter((i) => (i?.kind === 'corrida' || i?.kind === 'ginasio') && i.status !== 'cancelado').map((i) => i.plan_id));
+    const emVigor = (coachPlans || []).filter((p) => p?.status === 'aceite' && comTreino.has(p.id)
+      && String(p.period_start || '').slice(0, 10) <= today && String(p.period_end || '').slice(0, 10) >= today);
+    if (!emVigor.length) return undefined;
+    const aceites = new Set(emVigor.map((p) => p.id));
+    return (coachPlanItems || []).some((i) => i && aceites.has(i.plan_id) && i.planned_date === today
+      && (i.kind === 'corrida' || i.kind === 'ginasio') && i.status !== 'cancelado');
+  }, [coachPlans, coachPlanItems, today]);
   const readiness = useMemo(() =>
-    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins),
-    [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins]
+    calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday),
+    [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday]
   );
 
-  const daysLeft = nextRace ? differenceInDays(parseISO(nextRace.date), new Date()) : null;
+  // Em dias de calendário, com a mesma função do biEngine, para os dois não
+  // discordarem: differenceInDays truncava as horas e, na véspera às 10:00,
+  // já dizia "É hoje" (revisão de 2026-09-26).
+  const daysLeft = nextRace ? differenceInCalendarDays(parseISO(nextRace.date), parseISO(today)) : null;
 
   /* Ponto 6 do redesenho: "Prontidão com o bloco da prova". O cartão dizia
      só o nome e os dias que faltam; passa a dizer também em que FASE do

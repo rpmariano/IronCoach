@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { Footprints, UtensilsCrossed, Moon, Clock, Trophy } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
-import { LOOK, ambientBackground, contourRings, lookKeyForNow } from '../../utils/ambientWorld';
+import { LOOK, ambientBackground, contourRings } from '../../utils/ambientWorld';
+import { slotForHour, welcomeTimeZone } from '../../utils/carolWelcome';
 import { useAppStore } from '../../store';
 
 /* A sala da Carol — as boas-vindas antes da Home (canvas de design
@@ -88,19 +89,22 @@ function DayArc({ disc, hourFloat, accent }) {
   );
 }
 
-function lisbonClock(now) {
-  const data = new Intl.DateTimeFormat('pt-PT', { timeZone: 'Europe/Lisbon', weekday: 'long', day: 'numeric', month: 'long' }).format(now);
-  const hora = new Intl.DateTimeFormat('pt-PT', { timeZone: 'Europe/Lisbon', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+/* O relógio no mesmo fuso do texto (welcomeTimeZone): senão, nos Açores, o
+   "Boa noite" das 22h30 de lá aparecia por cima de um 23:30. */
+function welcomeClock(now) {
+  const timeZone = welcomeTimeZone();
+  const data = new Intl.DateTimeFormat('pt-PT', { timeZone, weekday: 'long', day: 'numeric', month: 'long' }).format(now);
+  const hora = new Intl.DateTimeFormat('pt-PT', { timeZone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
   const [h, m] = hora.split(':').map(Number);
   return { data, hora, hourFloat: h + m / 60 };
 }
 
 export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
   const race = welcome.variant === 'prova';
+  const { data, hora, hourFloat } = useMemo(() => welcomeClock(now), [now]);
   // A véspera não tem luz própria: é a da hora a que aparece.
-  const look = LOOK[welcome.variant] || LOOK[lookKeyForNow(now)] || LOOK.manha;
+  const look = LOOK[welcome.variant] || LOOK[slotForHour(Math.floor(hourFloat))] || LOOK.manha;
   const accent = race ? '#fbbf24' : '#22d3ee';
-  const { data, hora, hourFloat } = useMemo(() => lisbonClock(now), [now]);
   const buttonRef = useRef(null);
   const closedRef = useRef(false);
 
@@ -168,7 +172,7 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
             <span className="welcome-halo absolute rounded-full" style={{ inset: -22, background: `radial-gradient(circle, ${race ? 'rgba(251,191,36,.28)' : 'rgba(34,211,238,.28)'}, transparent 68%)` }} />
             <CoachAvatar
               size={88}
-              mood={race ? 'happy' : welcome.variant === 'madrugada' ? 'worried' : 'neutral'}
+              mood={welcome.mood || (race ? 'happy' : 'neutral')}
               style={{ position: 'relative', boxShadow: race ? '0 0 0 10px rgba(251,191,36,.10), 0 18px 40px rgba(251,191,36,.30)' : '0 0 0 10px rgba(34,211,238,.08), 0 18px 40px rgba(34,211,238,.30)' }}
             />
           </div>

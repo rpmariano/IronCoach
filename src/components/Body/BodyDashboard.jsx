@@ -15,7 +15,7 @@ import { bodyVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateWeightTrend, calculateCompositionTrend } from '../../utils/biEngine';
 
 export default function BodyDashboard({ onGoToCalendar }) {
-  const { bodyAssessments, profile, setOpenCreationMode } = useAppStore();
+  const { bodyAssessments, gymSessions, profile, setOpenCreationMode } = useAppStore();
   const [timeRange, setTimeRange] = useState('trimestre');
   const [selectedMetricKey, setSelectedMetricKey] = useState('weight_kg');
 
@@ -137,7 +137,8 @@ export default function BodyDashboard({ onGoToCalendar }) {
     weightTrend: weightTrendData,
     composition: compositionData,
     assessmentCount: filteredAssessments.length,
-  }), [weightTrendData, compositionData, filteredAssessments.length]);
+    gymSessionCount: filterByDateRange(gymSessions, timeRange).length,
+  }), [weightTrendData, compositionData, filteredAssessments.length, gymSessions, timeRange]);
 
   /* Ponto 7 do redesenho. Este `return` antecipado era o caso que o ponto 6
      assinalou: saía ANTES da frase de veredicto e do filtro de período, por

@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import RaceHubView from './RaceHubView';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -152,6 +152,42 @@ describe('RaceHubView — hub depois da prova', () => {
     expect(screen.getByText('Contagem para a Prova')).toBeInTheDocument();
     // Ainda falta correr — não há nada para registar.
     expect(screen.queryByTestId('race-hub-register')).not.toBeInTheDocument();
+  });
+});
+
+/* O parecer antes do ciclo com os planos do store (revisão de 2026-09-26):
+   com uma manutenção aceite que já tem intervalos esta semana, "corrida fácil
+   e força no ginásio" contradizia o plano real. */
+describe('RaceHubView — o parecer antes do ciclo', () => {
+  const emDias = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const longe = { ...RACE, date: emDias(180), status: 'planeada' };
+  let originais;
+  beforeEach(() => {
+    const { coachPlans, coachPlanItems } = useAppStore.getState();
+    originais = { coachPlans, coachPlanItems };
+  });
+  afterEach(() => useAppStore.setState(originais)); // o store é partilhado pelos testes seguintes
+
+  it('com um plano de treino aceite em vigor, manda seguir o plano', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: emDias(-3), period_end: emDias(10) }],
+      coachPlanItems: [{ id: 'i1', plan_id: 'p1', kind: 'corrida', training_type: 'intervalos', planned_date: emDias(1), status: 'pendente' }],
+    });
+    render(<RaceHubView race={longe} runs={[]} profile={PROFILE} />);
+
+    expect(screen.getAllByText(/Até lá, segue o plano que acordámos\./).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Z1\/Z2\) com regularidade e força no ginásio/)).not.toBeInTheDocument();
+  });
+
+  it('sem plano aceite, o conselho de antes do ciclo', () => {
+    useAppStore.setState({ coachPlans: [], coachPlanItems: [] });
+    render(<RaceHubView race={longe} runs={[]} profile={PROFILE} />);
+
+    expect(screen.getAllByText(/Até lá, corrida fácil \(Z1\/Z2\)/).length).toBeGreaterThan(0);
   });
 });
 

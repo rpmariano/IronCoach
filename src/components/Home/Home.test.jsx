@@ -100,7 +100,8 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     openAlerts();
     const aviso = screen.getByTestId('carol-alert-plano');
     expect(aviso).toHaveTextContent('O plano precisa de um ajuste');
-    expect(aviso).toHaveTextContent(/A Corrida do Tejo \(.+\) não está no plano\./);
+    expect(aviso).toHaveTextContent(/Corrida do Tejo \(.+\) não está no plano\./);
+    expect(aviso).not.toHaveTextContent(/A Corrida do Tejo/);
   });
 
   it('"Falar com a Carol" entra no "Adaptar plano" com os motivos e a assinatura', () => {
@@ -115,8 +116,8 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     // Duas queixas de uma vez: a prova não está lá, e o que lá está é um
     // treino longo no dia dela.
     expect(intent.divergence).toHaveLength(2);
-    expect(intent.divergence[0]).toMatch(/^A Corrida do Tejo \(.+\) não está no plano\.$/);
-    expect(intent.divergence[1]).toMatch(/o plano tem Rodagem longa no dia da prova\.$/);
+    expect(intent.divergence[0]).toMatch(/^Corrida do Tejo \(.+\) não está no plano\.$/);
+    expect(intent.divergence[1]).toMatch(/: no dia da prova o plano ainda tem uma rodagem longa\.$/);
     expect(intent.signature).toContain('p1|');
     expect(setActiveTab).toHaveBeenCalledWith('coach');
   });
@@ -145,7 +146,7 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     // Na voz dela e a dizer o assunto, sem o motivo técnico (2026-09-23).
     const aviso = screen.getByTestId('carol-alert-assuntos');
     expect(aviso).toHaveTextContent('Preciso de falar contigo');
-    expect(aviso).toHaveTextContent('há uma coisa que quero ver contigo');
+    expect(aviso).toHaveTextContent('Há um registo teu que quero ver contigo.');
     expect(aviso).not.toHaveTextContent('carga a subir');
     expect(aviso.textContent.match(/Carol/g) || []).toHaveLength(0);
     expect(screen.queryByTestId('carol-alert-plano')).not.toBeInTheDocument();
@@ -213,6 +214,70 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     useAppStore.setState({ impressionDismissed: new Set(['alert:block_end:b1']) });
     renderHome();
     expect(alertCount()).toBe(0);
+  });
+
+  /* Revisão de 2026-09-26 (backlog, Home.jsx:227): "está marcada como
+     principal" tinha género (uma prova masculina, "o Trail...", não
+     concordava) e não tinha número (duas provas A no mesmo bloco pediam
+     "estão"). "principal"/"principais" não tem género, só número. */
+  it('duas provas principais no mesmo bloco: o aviso concorda em número e não flexiona "marcada" em género', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', race_id: 'alvo1', status: 'aceite', period_start: today, period_end: addDaysISO(today, 30) }],
+      raceEvents: [
+        { id: 'alvo1', name: 'Meia de Lisboa', date: addDaysISO(today, 20), status: 'agendada' },
+        { id: 'c1', name: 'Trail do Sico', date: addDaysISO(today, 5), status: 'agendada' },
+        { id: 'c2', name: 'Meia da Amadora', date: addDaysISO(today, 10), status: 'agendada' },
+      ],
+    });
+    renderHome();
+    expect(alertCount()).toBe(1);
+
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-conflito-provas');
+    expect(aviso).toHaveTextContent(/Trail do Sico \(.+\), Meia da Amadora \(.+\) estão como principais a meio do plano para Meia de Lisboa \(.+\)\./);
+    expect(aviso).not.toHaveTextContent(/marcad[oa]s?/);
+  });
+
+  it('uma só prova principal em conflito, sem a prova-alvo na agenda: singular e "plano atual"', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p2', race_id: 'nao-agendada', status: 'aceite', period_start: today, period_end: addDaysISO(today, 20) }],
+      raceEvents: [{ id: 'c1', name: 'Trail do Sico', date: addDaysISO(today, 5), status: 'agendada' }],
+    });
+    renderHome();
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-conflito-provas');
+    expect(aviso).toHaveTextContent(/Trail do Sico \(.+\) está como principal a meio do plano atual\./);
+    expect(aviso).not.toHaveTextContent(/marcad[oa]s?/);
+  });
+
+  /* Revisão de 2026-09-26 (backlog, Home.jsx:255): "Correste a ${nome}"
+     tinha preposição de género — uma prova masculina ("o Trail...") pedia
+     "correste o". */
+  it('o balanço da prova não usa preposição de género com o nome', () => {
+    const raceDate = addDaysISO(today, -2);
+    useAppStore.setState({
+      raceEvents: [{ id: 'r1', name: 'Trail do Almonda', date: raceDate, status: 'concluida', race_type: 'trail', distance_km: 21 }],
+      runs: [{ id: 'run-race', race_id: 'r1', kind: 'competicao', date: raceDate, distance_km: 21, duration_seconds: 7200, details: { official_time_seconds: 7200 } }],
+    });
+    renderHome();
+    expect(alertCount()).toBe(1);
+
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-balanco');
+    expect(aviso).toHaveTextContent('Trail do Almonda: quero fazer o balanço contigo.');
+    expect(aviso).not.toHaveTextContent(/Correste [ao] /);
+  });
+
+  it('o balanço da prova, sem nome guardado, fala em "A prova"', () => {
+    const raceDate = addDaysISO(today, -2);
+    useAppStore.setState({
+      raceEvents: [{ id: 'r1', name: '', date: raceDate, status: 'concluida', race_type: 'trail', distance_km: 21 }],
+      runs: [{ id: 'run-race', race_id: 'r1', kind: 'competicao', date: raceDate, distance_km: 21, duration_seconds: 7200, details: { official_time_seconds: 7200 } }],
+    });
+    renderHome();
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-balanco');
+    expect(aviso).toHaveTextContent('A prova: quero fazer o balanço contigo.');
   });
 });
 
@@ -462,7 +527,7 @@ describe('Home — o mapa da época', () => {
     expect(alertCount()).toBe(1);
     openAlerts();
     const aviso = screen.getByTestId('carol-alert-plano');
-    expect(aviso).toHaveTextContent(/Meia do Tejo.*véspera da prova\./);
+    expect(aviso).toHaveTextContent(/Meia do Tejo.*véspera da prova/);
     expect(screen.queryByTestId('carol-alert-mapa-epoca')).not.toBeInTheDocument();
 
     fireEvent.click(within(screen.getByTestId('carol-card')).getAllByRole('button', { name: /Carol/ })[0]);
