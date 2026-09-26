@@ -5,6 +5,7 @@ import { useAppStore } from '../../store';
 import { ToastProvider } from '../shared/ToastProvider';
 import { todayISO } from '../../lib/utils';
 import CheckinCard from './CheckinCard';
+import { DIA_NORMAL } from '../../utils/checkinReply';
 
 /* O check-in diário no Início (Fase 2 da omnisciência): dez segundos, três
    escalas, a dor com o local, e o ciclo só para quem se aplica e só depois de
@@ -47,7 +48,8 @@ describe('CheckinCard', () => {
     renderCard();
     expect(screen.getByTestId('checkin-card-done')).toHaveTextContent('Sono bom · Energia: normal · Stress: calmo · Sem dor');
     // Quem responde é ela, não um "guardado".
-    expect(screen.getByTestId('checkin-reply')).toHaveTextContent('Anotado. Dia normal.');
+    // O dia normal diz-se de três maneiras, uma por dia (pedido 2026-09-26: cordial, não seco).
+    expect(DIA_NORMAL).toContain(screen.getByTestId('checkin-reply').textContent);
     fireEvent.click(screen.getByRole('button', { name: 'Editar o check-in de hoje' }));
     expect(screen.getByRole('button', { name: /Como dormiste\? 4 de 5/ })).toHaveAttribute('aria-pressed', 'true');
   });

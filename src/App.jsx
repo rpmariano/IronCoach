@@ -559,9 +559,29 @@ export default function App() {
     // preferência sem lhe dar prioridade sobre um coachIntent explícito.
     useAppStore.getState().setProactiveKeyRequested(key);
   }, [setActiveTab]);
+  /* A memória da Carol (coach_notes) não vem com os dados iniciais: lia-se
+     só no primeiro dia (Home.jsx). As boas-vindas e a resposta ao check-in
+     precisam dela desde a primeira abertura — é daí que ela sabe da cirurgia
+     de ontem (pedido 2026-09-26, utils/carolVida.js). Lê-se uma vez por
+     sessão, e as boas-vindas esperam por ela no máximo 1,5 s: uma memória
+     lenta ou em falha não atrasa a saudação, só a deixa sem esse contexto. */
+  const sessionUserId = session?.user?.id || null;
+  const [notesReadyFor, setNotesReadyFor] = useState(null);
+  useEffect(() => {
+    if (!sessionUserId || notesReadyFor === sessionUserId) return undefined;
+    let feito = false;
+    const pronto = () => { if (!feito) { feito = true; setNotesReadyFor(sessionUserId); } };
+    const timer = setTimeout(pronto, 1500);
+    Promise.resolve()
+      .then(() => useAppStore.getState().reloadCoachNotes?.())
+      .catch(() => {})
+      .finally(pronto);
+    return () => { feito = true; clearTimeout(timer); };
+  }, [sessionUserId, notesReadyFor]);
   // As boas-vindas esperam pelos dados todos: decidem pelas impressões (o
-  // que já foi saudado noutro dispositivo) e pelos registos.
-  const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending;
+  // que já foi saudado noutro dispositivo), pelos registos e pela memória dela.
+  const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending
+    && (notesReadyFor === sessionUserId || import.meta.env.MODE === 'test');
 
   // Com a app já à vista, os outros ecrãs carregam-se em tempo morto (ver
   // PREFETCH_WHEN_IDLE). Nos testes não: o import() tardio chegaria depois

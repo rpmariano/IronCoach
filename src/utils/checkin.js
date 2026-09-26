@@ -44,9 +44,44 @@ export function newCheckinAlarms(before, after, today, profile) {
     .filter((a) => a.code !== 'G4' || sleptBadly);
 }
 
-/** O motivo da intervenção, como a Carol o lê no chat. */
-export function interventionReasonFor(alarms) {
-  return `Check-in de hoje: ${alarms.map((a) => a.reason).join(' ')}`.slice(0, 500);
+const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** O motivo da intervenção, como a Carol o lê no chat.
+ *
+ *  Com a data do check-in (pedido 2026-09-26): "Check-in de hoje:" só era
+ *  verdade no dia em que se gravava. O motivo fica no perfil até a conversa
+ *  acontecer, e o atleta que só abria a app na quinta lia, no popup, "o teu
+ *  check-in de hoje" sobre uma dor de terça — e a Carol, no chat, lia "no
+ *  check-in de hoje" sobre essa mesma dor. Agora o motivo diz o dia
+ *  ("Check-in de 2026-09-22: Dor 6/10 (gémeo)."), e o "no check-in de hoje"
+ *  das frases dos alarmes sai, porque deixa de ser verdade no dia seguinte.
+ *  Quem lê o motivo no servidor não depende do "hoje": o trigger de
+ *  coach_interventions só olha para o início ('Check-in%') e o
+ *  coach-proactive-tick só faz o hash (interventionKey). Sem data (quem ainda
+ *  chama sem ela), fica como era. */
+export function interventionReasonFor(alarms, date = null) {
+  const comData = typeof date === 'string' && DATA_ISO.test(date);
+  const razoes = alarms.map((a) => (comData ? String(a.reason).replace(/ no check-in de hoje/g, '') : a.reason));
+  return `Check-in de ${comData ? date : 'hoje'}: ${razoes.join(' ')}`.slice(0, 500);
+}
+
+const MOTIVO_DO_CHECKIN = /^Check-in de (hoje|\d{4}-\d{2}-\d{2}):/;
+
+/** O que um motivo de intervenção diz do check-in que a abriu, ou null se
+ *  não veio de um check-in. Lê-se aqui, ao lado de quem o escreve, para as
+ *  duas pontas não discordarem:
+ *  - date: 'YYYY-MM-DD', ou null nos motivos antigos ("Check-in de hoje:");
+ *  - dor / sono: que alarme o abriu (dor ≥ 4; sono mau persistente);
+ *  - repetida: a dor vinha já do dia anterior ("pelo segundo dia seguido"). */
+export function readCheckinReason(reason) {
+  const m = typeof reason === 'string' ? reason.match(MOTIVO_DO_CHECKIN) : null;
+  if (!m) return null;
+  return {
+    date: m[1] === 'hoje' ? null : m[1],
+    dor: /(?<!\p{L})dor \d+\/10/iu.test(reason),
+    sono: /(?<!\p{L})sono mau em \d+/iu.test(reason),
+    repetida: /pelo segundo dia seguido/iu.test(reason),
+  };
 }
 
 /** Substitui (ou acrescenta) o check-in desse dia na lista, por ordem de data. */

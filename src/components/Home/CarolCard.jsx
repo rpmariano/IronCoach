@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
-import { computeRaceEve, describeRaceEveShort, describeRaceDayShort } from '@formulas/raceEve.ts';
+import { computeRaceEve } from '@formulas/raceEve.ts';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { useAppStore } from '../../store';
-import { todayISO, addDaysISO } from '../../lib/utils';
+import { addDaysISO } from '../../lib/utils';
 import { getRacePrediction } from '../../utils/biEngine';
 import { formatPace, parseDurationToSeconds } from '../../utils/run';
-import { isRacePlanItem, raceNameForDate } from '../../utils/homeModels';
+import { isRacePlanItem } from '../../utils/homeModels';
+import { lisbonParts } from '../../utils/carolWelcome';
+import { todaysCheckin } from '../../utils/checkin';
 import { computeAcceptedWindow } from './WeeklyPlanCard';
+import {
+  limparAvisoDoServidor, tipoDoDia, linhaDoTreinoDeHoje, linhaDoDia, linhaDeAmanha,
+  linhaDaAgua, linhaDaProvaDeHoje, linhaDaVespera,
+} from './carolCardLines';
 import GlassCard from '../shared/GlassCard';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { inferMoodFromText } from '@formulas/carolMood.ts';
@@ -19,31 +25,38 @@ import { inferMoodFromText } from '@formulas/carolMood.ts';
    contigo" vivem no botão flutuante do Início desde 2026-09-13.
    Substitui o antigo CoachDailySummaryCard (carrossel de 4 mensagens),
    cuja composição do "aviso de hoje" (plano de hoje + água) se mantém em
-   useCoachDailyMessages. Ver specs/plano-de-treino.md §11. */
+   useCoachDailyMessages. Ver specs/plano-de-treino.md §11.
 
-function formatItemSummary(item, raceName = null) {
-  // O dia da prova é a prova, não "uma corrida do tipo prova"
-  // (specs/plano-de-prova.md, "O plano tem de saber da prova").
-  if (isRacePlanItem(item)) {
-    const details = [raceName, item.target_distance_km ? `${item.target_distance_km} km` : ''].filter(Boolean).join(', ');
-    return details ? `Prova (${details})` : 'Prova';
-  }
-  if (item.kind === 'corrida') {
-    const details = [item.training_type || 'corrida', item.target_distance_km ? `${item.target_distance_km} km` : '', item.target_duration_min ? `${item.target_duration_min} min` : ''].filter(Boolean).join(', ');
-    return `Corrida (${details})`;
-  }
-  if (item.kind === 'ginasio') {
-    const details = [item.categories?.length ? item.categories.join('/') : 'Geral', item.target_duration_min ? `${item.target_duration_min} min` : ''].filter(Boolean).join(', ');
-    return `Ginásio (${details})`;
-  }
-  return 'Descanso';
-}
+   Pedido 2026-09-26 — a Carol nunca pode parecer um autómato: o que o
+   cartão diz por conta própria (o plano de hoje, a água, a prova, a véspera,
+   o amanhã e a linha de um dia sem resumo) escreve-se em carolCardLines.js,
+   pelo dia e pela hora de Lisboa, e do resumo do servidor só se usa o que é
+   de hoje. */
 
 const clean = (s) => (typeof s === 'string' && s.trim() ? s.trim() : null);
 
-// A frase do plano com que o coach-daily-summary abre o aviso. Acaba no
-// primeiro ponto seguido de espaço ou do fim — "10.5 km" não a corta.
-const PLAN_SENTENCE_RE = /^Para hoje tens agendado:.*?\.(?=\s|$)\s*/;
+/* O relógio do cartão (pedido 2026-09-26). As frases dependem da hora de
+   Lisboa — a água só a partir das 11h, a prova antes e depois da partida, a
+   véspera antes e depois da hora de deitar — e do dia. Uma PWA fica dias em
+   segundo plano: sem isto, o cartão reaberto no sábado às 03:53 continuava
+   a ser o de sexta. Acerta ao minuto e sempre que a app volta a ficar à
+   vista. */
+function useAgora() {
+  const [agora, setAgora] = useState(() => new Date());
+  useEffect(() => {
+    const acertar = () => setAgora(new Date());
+    const aoVoltar = () => { if (document.visibilityState !== 'hidden') acertar(); };
+    const id = setInterval(acertar, 60 * 1000);
+    document.addEventListener('visibilitychange', aoVoltar);
+    window.addEventListener('focus', acertar);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', aoVoltar);
+      window.removeEventListener('focus', acertar);
+    };
+  }, []);
+  return agora;
+}
 
 /** A prova por correr marcada para esta data, ou null. Uma prova já
  *  concluída não tem véspera nem manhã — o que ela tem é balanço, e disso
@@ -55,11 +68,15 @@ function findScheduledRace(raceEvents, dateISO) {
 }
 
 /* O botão de uma secção do cartão — hoje só o do dia da prova, para o hub
-   onde vive o plano km a km. Âmbar porque é da prova. */
+   onde vive o plano km a km. Âmbar porque é da prova. Depois da partida
+   (pedido 2026-09-26) o botão é o registo da prova (`registar`), o mesmo que
+   o Início e o hub abrem: é o que a frase pede. */
 function MessageAction({ action, onOpenRace }) {
   if (!action?.raceId) return null;
   // Sem callback (o cartão montado sozinho), abre o hub pelo store.
-  const open = onOpenRace || ((id) => useAppStore.getState().setEditingRaceId(id));
+  const open = action.registar
+    ? (id) => useAppStore.getState().openRaceRun(id)
+    : onOpenRace || ((id) => useAppStore.getState().setEditingRaceId(id));
   // Um bloco a toda a largura: encavalitava-se no "Ler mais" quando era inline.
   return (
     <div className="mt-2">
@@ -88,11 +105,24 @@ function buildEve(race, profile) {
 }
 
 /** As mensagens do dia, por ordem: recapitulação, aviso de hoje (plano +
- *  água), estratégia nutricional, preparar amanhã, conceito do dia. */
-export function useCoachDailyMessages() {
-  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs, gymSessions } = useAppStore();
-  const today = todayISO();
+ *  água), estratégia nutricional, preparar amanhã, conceito do dia. Sem
+ *  recapitulação, o aviso abre com o que o dia é (e sem aviso nenhum, é essa
+ *  a mensagem, "Hoje"). `agora` é o instante do relógio do cartão. */
+export function useCoachDailyMessages(agora = new Date()) {
+  const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs, gymSessions, dailyCheckins } = useAppStore();
+  /* O dia e a hora de Lisboa (pedido 2026-09-26), como as boas-vindas, o
+     servidor do resumo e os registos de água: o "hoje" do cartão é o do chip
+     do plano, dos dois lados da meia-noite. Ao minuto, para as frases que
+     dependem da hora não se recalcularem a cada render. */
+  const minuto = Math.floor(agora.getTime() / 60000);
+  const instante = useMemo(() => new Date(minuto * 60000), [minuto]);
+  const today = lisbonParts(instante).date;
   const tomorrow = addDaysISO(today, 1);
+  /* O resumo só vale no dia para que foi gerado (pedido 2026-09-26). A PWA
+     reaberta no sábado às 03:53 depois de dias em segundo plano mostrava o
+     de sexta — «Para hoje tens agendado: Corrida…» por cima do «Descanso»
+     do plano. O cartão pede o de hoje quando o dia muda (CarolCard). */
+  const summary = dailySummary?.date === today ? dailySummary : null;
 
   /* ── A prova de hoje e a de amanhã (specs/plano-de-prova.md, "O plano tem
      de saber da prova") ───────────────────────────────────────────────────
@@ -133,13 +163,13 @@ export function useCoachDailyMessages() {
 
   const activePlanItems = useMemo(() => {
     const window = computeAcceptedWindow(coachPlans, coachPlanItems, today);
-    if (!window) return { today: [], tomorrow: [] };
+    if (!window) return { today: [], tomorrow: [], comPlano: false };
     const accepted = (coachPlans || []).filter((p) => p.status === 'aceite');
     const relevant = accepted.filter((p) => p.period_end >= today || (coachPlanItems || []).some((i) => i.plan_id === p.id && i.status === 'pendente'));
     const activePlan = [...relevant].sort((a, b) => a.period_start.localeCompare(b.period_start)).pop();
-    if (!activePlan) return { today: [], tomorrow: [] };
+    if (!activePlan) return { today: [], tomorrow: [], comPlano: false };
     const items = (coachPlanItems || []).filter((i) => i.plan_id === activePlan.id && i.status !== 'cancelado');
-    return { today: items.filter((i) => i.planned_date === today), tomorrow: items.filter((i) => i.planned_date === tomorrow) };
+    return { today: items.filter((i) => i.planned_date === today), tomorrow: items.filter((i) => i.planned_date === tomorrow), comPlano: true };
   }, [coachPlans, coachPlanItems, today, tomorrow]);
 
   /* O que já está registado hoje, por tipo. O aviso é gerado uma vez por dia
@@ -160,67 +190,80 @@ export function useCoachDailyMessages() {
     // seu módulo — o --gym (#9ec3d2) de "Preparar amanhã" tem quase a
     // luminância do texto corrido e desaparecia; o âmbar do conceito do dia
     // roubava a cor que é "da prova, só da prova" (bug relatado 2026-09-12).
-    if (clean(dailySummary?.recap)) list.push({ key: 'recap', label: 'Recapitulação', color: 'var(--coach)', text: clean(dailySummary.recap) });
+    const recap = clean(summary?.recap);
+    if (recap) list.push({ key: 'recap', label: 'Recapitulação', color: 'var(--coach)', text: recap });
 
-    // Aviso de hoje: o do servidor, senão o plano de hoje; a água junta-se.
-    const nonRest = activePlanItems.today.filter((i) => i.kind !== 'descanso');
-    const isDone = (i) => i.status === 'concluido' || doneKindsToday.has(i.kind);
-    const pending = nonRest.filter((i) => !isDone(i));
-    const raceTodayName = raceToday ? raceToday.name : raceNameForDate(raceEvents, today);
-    // No dia da prova a frase da prova (mais abaixo) já diz o que é o dia —
-    // acrescentar-lhe "Para hoje tens agendado: Prova (…)" era dizer duas
-    // vezes a mesma coisa. O aviso do servidor, esse, mantém-se: é dele.
-    const planSentence = !raceToday && pending.length ? `Para hoje tens agendado: ${pending.map((i) => formatItemSummary(i, raceTodayName)).join(' e ')}.` : '';
-    let warning = clean(dailySummary?.warnings);
-    // Depois de registada a atividade, a frase do plano do servidor passa a
-    // ser a do que ainda falta (ou nenhuma); água, RED-S e carga continuam.
-    if (warning && nonRest.some(isDone)) {
-      const rest = warning.replace(PLAN_SENTENCE_RE, '').trim();
-      if (rest !== warning) warning = [planSentence, rest].filter(Boolean).join(' ');
-    }
-    warning = warning || planSentence;
-    const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0);
-    // A água só se cobra a quem ligou os lembretes de água (perfil); sem
-    // eles o registo é opcional e a frase era ruído (pedido 2026-09-13).
-    const waterGoal = profile?.water_reminder_enabled ? profile?.water_goal_ml : null;
-    // O servidor vê os mesmos registos de água e muitas vezes já os comenta
-    // no aviso ("Ainda não registaste consumo de água hoje. Começa a
-    // hidratar-te…"); juntar-lhe a frase local dizia a mesma coisa duas
-    // vezes seguidas (bug relatado 2026-09-12). A frase local fica só para
-    // quando o aviso não fala de água — que é o caso sem resumo do dia.
-    // Sem \b antes de "água": em JavaScript \b é só ASCII e nunca casa entre
-    // um espaço e um "á" — apanhado na revisão pré-deploy; passava só porque
-    // o servidor escreve sempre "hidratar-te".
-    const mentionsWater = /água|\b(agua|hidrat)/i.test(warning);
-    if (waterGoal && !mentionsWater && waterTotal === 0) warning = `${warning} Ainda não registaste água hoje.`.trim();
-    else if (waterGoal && !mentionsWater && waterTotal < waterGoal / 2) warning = `${warning} Só registaste ${waterTotal} ml de água.`.trim();
-    // No dia da prova, o aviso abre com ela — o resto (a água, o que o
-    // servidor tenha a dizer) vem a seguir, não à frente.
-    // (O servidor não a prefixa: se algum dia o fizer, "Hoje é …" não se repete.)
-    if (raceToday && !/^Hoje é /.test(warning)) {
-      warning = [describeRaceDayShort(eveToday, raceToday.name, firstKmPaceLabel), warning].filter(Boolean).join(' ');
-    }
-    // No dia da prova o aviso leva o botão para o hub: é lá que está o plano
-    // km a km, e dizê-lo em texto não chega — tem de estar a um toque.
-    if (warning) list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action: raceToday ? { label: 'Abrir o plano da prova', raceId: raceToday.id } : null });
+    /* O dia, com o que já está registado. Um item conta como feito se está
+       concluído no plano, se já há registo desse tipo hoje (mesmo sem ligação
+       ao item — bug #38), ou, sendo o da prova, se a prova de hoje já está
+       concluída. */
+    const itensHoje = activePlanItems.today;
+    const treinoHoje = itensHoje.filter((i) => i.kind === 'corrida' || i.kind === 'ginasio');
+    const provaFeita = (raceEvents || []).some((r) => r?.status === 'concluida' && typeof r.date === 'string' && r.date.slice(0, 10) === today);
+    const isDone = (i) => i.status === 'concluido' || doneKindsToday.has(i.kind) || (provaFeita && isRacePlanItem(i));
+    const pendentes = treinoHoje.filter((i) => !isDone(i));
+    const feitos = treinoHoje.filter(isDone);
+    const corridasHoje = (runs || []).filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) === today);
+    const kmHoje = corridasHoje.reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
+    const checkin = todaysCheckin(dailyCheckins, today);
 
-    if (clean(dailySummary?.meal_suggestion)) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: clean(dailySummary.meal_suggestion) });
+    /* Aviso de hoje (pedido 2026-09-26): a frase do plano e a da água são
+       sempre do cartão, feitas agora a partir do store; do aviso do servidor
+       fica só o resto (RED-S, perda de peso). O texto do servidor é de
+       quando o resumo foi gerado: às 11:00 ainda dizia a água das 07:30, e o
+       plano em enum cru ("Corrida (continuo, 8 km)"). A cabeça do aviso é a
+       prova, no dia dela; senão o treino por fazer; e, sem recapitulação
+       (o modelo falhou, ou ainda não há resumo hoje), o que o dia é — menos
+       na véspera de uma prova, em que o que o dia é diz-se pela prova de
+       amanhã ("Preparar amanhã"), e ela tem de ser a primeira linha. */
+    let cabeca = null;
+    let action = null;
+    let soODia = false;
+    if (raceToday) {
+      const prova = linhaDaProvaDeHoje({ race: raceToday, eve: eveToday, firstKmPaceLabel, agora: instante, kmHoje });
+      cabeca = prova.text;
+      // O botão leva ao hub (o plano km a km, o objetivo) ou, depois da
+      // partida, ao registo da prova: dizê-lo em texto não chega.
+      action = prova.action;
+    } else if (pendentes.length) {
+      cabeca = linhaDoTreinoDeHoje({ pendentes, feitos, agora: instante, checkin });
+    } else if (!recap && !raceTomorrow) {
+      const propostas = (coachPlans || []).filter((p) => p.status === 'proposto').length;
+      const tipo = tipoDoDia({ itens: itensHoje, pendentes, provaFeita, comPlano: activePlanItems.comPlano });
+      cabeca = linhaDoDia({ tipo, feitos, kmHoje, propostas, agora: instante });
+      soODia = true;
+    }
+    const doServidor = limparAvisoDoServidor(summary?.warnings);
+    // Os registos de água são gravados com o dia de Lisboa (addWaterLog). No
+    // dia da prova a água é a do horário da prova (água até às …), não a do
+    // anel.
+    const waterTotal = (waterLogs || []).filter((w) => w.date === today).reduce((s, w) => s + (Number(w.amount_ml) || 0), 0);
+    const agua = raceToday ? null : linhaDaAgua({ totalMl: waterTotal, profile, agora: instante });
+    const warning = [cabeca, doServidor, agua].filter(Boolean).join(' ');
+    if (warning) {
+      // Só o dia, sem nada a avisar, não é um aviso: vai com o rótulo "Hoje", em ciano.
+      if (soODia && !doServidor && !agua) list.push({ key: 'hoje', label: 'Hoje', color: 'var(--coach)', text: warning });
+      else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action });
+    }
+
+    const meal = clean(summary?.meal_suggestion);
+    if (meal) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: meal });
 
     /* Na véspera, "Preparar amanhã" é a prova. O item do plano de amanhã não
-       entra: nesse dia ele É a prova, e repetir "Amanhã o plano aponta para:
-       Prova (…)" por cima das horas da véspera seria dizer duas vezes a
-       mesma coisa, a segunda pior. */
-    const tomorrowNonRest = activePlanItems.tomorrow.filter((i) => i.kind !== 'descanso');
+       entra: nesse dia ele É a prova, e repetir o item por cima das horas da
+       véspera seria dizer duas vezes a mesma coisa, a segunda pior. O
+       tomorrow_prep do servidor já não entra (pedido 2026-09-26): é texto
+       determinístico feito com os mesmos dados, mas em enum cru e sem a hora
+       ("jantar até às 19:30" às 23:15); o cartão tem o plano e a prova. */
     const prep = raceTomorrow
-      ? describeRaceEveShort(eveTomorrow, raceTomorrow.name, raceTomorrow.distance_km || null)
-      : tomorrowNonRest.length
-        ? `Amanhã o plano aponta para: ${tomorrowNonRest.map((i) => formatItemSummary(i, raceNameForDate(raceEvents, tomorrow))).join(' e ')}.`
-        : clean(dailySummary?.tomorrow_prep);
+      ? linhaDaVespera({ race: raceTomorrow, eve: eveTomorrow, agora: instante })
+      : linhaDeAmanha({ itens: activePlanItems.tomorrow, agora: instante });
     if (prep) list.push({ key: 'tomorrow_prep', label: 'Preparar amanhã', color: 'var(--coach)', text: prep });
 
-    if (clean(dailySummary?.daily_concept?.body)) list.push({ key: 'daily_concept', label: dailySummary.daily_concept.title || 'Conceito do dia', color: 'var(--coach)', text: clean(dailySummary.daily_concept.body) });
+    const concept = clean(summary?.daily_concept?.body);
+    if (concept) list.push({ key: 'daily_concept', label: summary.daily_concept.title || 'Conceito do dia', color: 'var(--coach)', text: concept });
     return list;
-  }, [dailySummary, activePlanItems, doneKindsToday, waterLogs, profile, today, tomorrow, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel]);
+  }, [summary, activePlanItems, doneKindsToday, waterLogs, profile, today, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel, runs, dailyCheckins, coachPlans, instante]);
 }
 
 /* O cabeçalho é sempre a Carol. Os avisos "precisa de falar contigo" saíram
@@ -230,20 +273,25 @@ export function useCoachDailyMessages() {
    subtítulo "a tua treinadora", o ícone Sparkles e o fio que separava o
    cabeçalho do resumo — eram três coisas a dizer "isto é a Carol" quando
    uma bastava. */
-const MOOD_KEYS = new Set(['recap', 'warnings', 'tomorrow_prep']);
+const MOOD_KEYS = new Set(['recap', 'warnings', 'hoje', 'tomorrow_prep']);
 
 export default function CarolCard({ onOpenCoach, onOpenRace }) {
   const { dailySummary, dailySummaryLoading, loadDailySummary } = useAppStore();
-  const messages = useCoachDailyMessages();
+  const agora = useAgora();
+  const hoje = lisbonParts(agora).date;
+  const messages = useCoachDailyMessages(agora);
   const [expanded, setExpanded] = useState(false);
 
+  // Ao montar e sempre que o dia de Lisboa muda com o cartão aberto (a PWA
+  // que volta do segundo plano noutro dia): o resumo de ontem não serve.
   useEffect(() => {
     loadDailySummary();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hoje]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const first = messages[0] || null;
   const canExpand = messages.length > 1 || (first && first.text.length > 120);
-  const loading = dailySummaryLoading && !dailySummary;
+  // A carregar o resumo de hoje, mesmo com o de outro dia ainda no store.
+  const loading = dailySummaryLoading && dailySummary?.date !== hoje;
 
   return (
     <GlassCard tone="coach" radius={20} padding="13px 15px" data-testid="carol-card">
@@ -271,9 +319,12 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
             <span className="block h-3 rounded-full w-2/3" style={{ background: 'rgba(255,255,255,.08)' }} />
           </div>
         ) : !first ? (
-          <p className="text-[13px] leading-[1.5] font-medium mt-[3px]" style={{ color: 'var(--text-1)' }}>
-            Sem nada a assinalar por agora. Regista uma refeição ou um treino e eu tenho o que comentar.
-          </p>
+          // Sem resumo, o dia diz-se na mesma (linhaDoDia): "Sem nada a
+          // assinalar por agora. Regista uma refeição ou um treino…" pedia um
+          // treino num dia de descanso e uma refeição às 03:53 (pedido
+          // 2026-09-26). Aqui só se chega sem mensagem nenhuma, o que não
+          // devia acontecer.
+          null
         ) : !expanded ? (
           <>
             <p className="text-[13px] leading-[1.5] font-medium mt-[3px]" style={{ color: 'var(--text-1)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

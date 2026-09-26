@@ -978,7 +978,9 @@ export const useAppStore = create((set, get) => ({
     const alarms = newCheckinAlarms(before, after, date, profile);
     const pending = ['needed', 'in_progress'].includes(profile?.coach_intervention_status);
     if (alarms.length && !pending) {
-      const reason = interventionReasonFor(alarms);
+      // Com a data do check-in (pedido 2026-09-26): o popup lido na quinta
+      // dizia "o teu check-in de hoje" de um check-in de terça.
+      const reason = interventionReasonFor(alarms, date);
       const { error: upErr } = await supabase
         .from('profiles')
         // A origem vai com a abertura (5.5): o trigger guarda-a em

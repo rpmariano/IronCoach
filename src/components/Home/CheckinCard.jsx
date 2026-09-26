@@ -42,7 +42,9 @@ export default function CheckinCard() {
   const coachPlans = useAppStore((s) => s.coachPlans);
   const coachPlanItems = useAppStore((s) => s.coachPlanItems);
   const raceEvents = useAppStore((s) => s.raceEvents);
-  const dia = useMemo(() => checkinDay(today, { coachPlans, coachPlanItems, raceEvents }), [today, coachPlans, coachPlanItems, raceEvents]);
+  // E o que ela sabe da vida dele — uma cirurgia, uma lesão (utils/carolVida.js).
+  const coachNotes = useAppStore((s) => s.coachNotes);
+  const dia = useMemo(() => checkinDay(today, { coachPlans, coachPlanItems, raceEvents, coachNotes }), [today, coachPlans, coachPlanItems, raceEvents, coachNotes]);
   const reply = useMemo(() => checkinReply(dailyCheckins, today, dia), [dailyCheckins, today, dia]);
   // Depois da meia-noite e antes das 5h, a noite ainda não acabou: "Como
   // acordaste hoje?" ao lado de "Ainda acordado?" das boas-vindas era a

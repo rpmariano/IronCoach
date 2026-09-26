@@ -7,7 +7,7 @@ import { pendingRaceBalanceCandidate, pendingBlockEndAlert, dismissProactiveAler
 import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
 import { todayISO } from '../../lib/utils';
-import { goalFromNotes, knownFacts } from '../../utils/firstDay';
+import { goalFromNotes, knownFacts, isFirstDay, firstRunLine } from '../../utils/firstDay';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
 import SectionLabel from '../shared/SectionLabel';
 import { Dialog } from '../shared/Sheet';
@@ -26,11 +26,13 @@ import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsInterve
 import { interventionKey, raceConflictKey } from '@formulas/proactiveTriggers.ts';
 import { INTERVENTION_OUTCOME } from '@formulas/interventionOutcomes.ts';
 import { pendingTopicLines } from '../../utils/carolTopics';
+import { eventoDaVida } from '../../utils/carolVida';
+import { lisbonParts } from '../../utils/carolWelcome';
 
 /* O Início (redesenho 2026-09, ponto 5 — mock "Início"): o cartão da
    Carol, "O que faço hoje" (plano do dia), "Como estou" (a órbita, só
    leitura) e "Para onde vou" (a prova com o trilho). Gap de 8px entre
-   cartões. No primeiro dia (sem registo e sem prova) a Carol abre a
+   cartões. No primeiro dia (sem registo, sem prova e sem plano) a Carol abre a
    conversa e o resto do ecrã convida a registar. Registar água vive no FAB.
 
    A ordem mudou a 2026-09-15: "Como estou" subiu para terceiro e a prova
@@ -86,7 +88,11 @@ export default function Home() {
   // Com dados ainda a chegar depois do prazo do arranque, vazio não é
   // "primeiro dia" (dataPending, ver loadInitialData no store).
   const dataPending = useAppStore((s) => s.dataPending);
-  const firstDay = !dataPending && !hasRecords && !hasUpcomingRace;
+  // Com plano aceite ou proposto também já não é o primeiro dia (pedido
+  // 2026-09-26): o cartão do primeiro dia negava o plano que a Carol tinha
+  // acabado de escrever, e escondia o "O que faço hoje" (utils/firstDay.js).
+  const acceptedWindow = useMemo(() => computeAcceptedWindow(coachPlans, coachPlanItems, today), [coachPlans, coachPlanItems, today]);
+  const firstDay = isFirstDay({ dataPending, hasRecords, hasUpcomingRace, planWindow: acceptedWindow, plans: coachPlans });
 
   /* No primeiro dia a Carol lembra-se do arranque (utils/firstDay.js): o
      objetivo e o que o atleta contou vêm da Memória do Coach, que o
@@ -99,6 +105,11 @@ export default function Home() {
     if (firstDay && notesEmpty) reloadCoachNotes?.();
   }, [firstDay, notesEmpty, reloadCoachNotes]);
   const firstDayGoal = firstDay ? goalFromNotes(coachNotes) : null;
+  // Quem foi operado ontem não ouve "Já correste?" (pedido 2026-09-26):
+  // o que ela sabe da vida dele passa à frente (utils/carolVida.js).
+  const vidaHoje = firstDay ? eventoDaVida(coachNotes, lisbonParts().date) : null;
+  // O popup dos assuntos lê o check-in e o plano de hoje (utils/carolTopics.js).
+  const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   const firstDayFacts = useMemo(() => (firstDay ? knownFacts({ profile, coachNotes }) : []), [firstDay, profile, coachNotes]);
 
   const rings = useMemo(() => buildOrbitRings({ meals, waterLogs, profile }), [meals, waterLogs, profile]);
@@ -207,7 +218,7 @@ export default function Home() {
       // Na voz dela e a dizer o assunto (pedido 2026-09-23): "Tens 1 assunto
       // a resolver com ela" não dizia qual, e o popup repetia "Carol" 4 vezes.
       title: 'Preciso de falar contigo',
-      message: pendingTopicLines({ profile, coachPlans, coachGoalProposals }).join(' ')
+      message: pendingTopicLines({ profile, coachPlans, coachGoalProposals, coachPlanItems, raceEvents, dailyCheckins, coachNotes }).join(' ')
         || (pendingTopics === 1 ? 'Tenho um assunto para ver contigo.' : `Tenho ${pendingTopics} assuntos para ver contigo.`),
       onTalk: openCoach,
       onDismiss: interventionPending ? () => setShowDismiss(true) : null,
@@ -366,10 +377,12 @@ export default function Home() {
         <SectionLabel style={{ marginTop: 4 }}>Entretanto, começa a registar</SectionLabel>
         <StatusCard empty onRegisterMeal={registerMeal} />
         {/* Quando o pedido dela já é a corrida, a linha repetia o botão. */}
-        {firstDayGoal !== 'ritmo' && firstDayGoal !== 'regresso' && (
+        {firstDayGoal !== 'ritmo' && firstDayGoal !== 'regresso' && !vidaHoje && (
         <button type="button" onClick={registerRun} className="flex items-center gap-2.5 w-full text-left rounded-[18px]" style={{ padding: '14px 16px', minHeight: 44, background: 'rgba(255,255,255,.04)', border: '1px solid var(--border-glass)' }}>
           <Footprints size={16} style={{ color: 'var(--run)' }} className="shrink-0" />
-          <span className="flex-1 text-[12.5px]" style={{ color: 'var(--text-3)' }}>Já correste hoje? Regista e eu ajusto o plano.</span>
+          {/* Sem "eu ajusto o plano" (no primeiro dia não há plano) e sem
+              "hoje" de madrugada — utils/firstDay.js, firstRunLine (2026-09-26). */}
+          <span className="flex-1 text-[12.5px]" style={{ color: 'var(--text-3)' }}>{firstRunLine()}</span>
           <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} className="shrink-0" />
         </button>
         )}

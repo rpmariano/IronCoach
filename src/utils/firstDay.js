@@ -12,6 +12,7 @@
    nível e as restrições. */
 
 import { dietaryRestrictionLabel } from './diet';
+import { lisbonParts } from './carolWelcome';
 
 const GOAL_BY_TITLE = [
   ['Preparar uma prova', 'prova'],
@@ -59,7 +60,10 @@ const PEDIDO = {
   },
   ritmo: {
     title: (n) => (n ? `${n}, vamos pôr-te mais rápido.` : 'Vamos pôr-te mais rápido.'),
-    body: 'Primeiro preciso de ver como corres hoje. Regista as próximas corridas e falamos do teu ritmo de base.',
+    // "Como corres hoje" queria dizer "hoje em dia", mas às 02:00 lia-se
+    // "hoje, dia do calendário" (pedido 2026-09-26): sem "hoje" não há lado
+    // errado da meia-noite.
+    body: 'Primeiro preciso de te ver correr. Regista as próximas corridas e falamos do teu ritmo de base.',
     primary: 'run',
   },
   saude: {
@@ -84,4 +88,46 @@ const SEM_OBJETIVO = {
 export function firstDayAsk(goal, firstName) {
   const p = PEDIDO[goal] || SEM_OBJETIVO;
   return { title: p.title(firstName || ''), body: p.body, primary: p.primary };
+}
+
+/* Quando é o primeiro dia (pedido 2026-09-26). Até aqui bastava não haver
+   registos nem prova — e o caminho principal do arranque partia-se ao
+   meio: o atleta acaba o onboarding, combina o plano no chat, aceita-o, e
+   de volta ao Início, ainda sem registos, a Carol dizia-lhe "Antes de te
+   dar volume, quero ver as primeiras saídas" — a negar o plano que tinha
+   escrito um minuto antes —, e o "O que faço hoje" não aparecia. O mesmo
+   com a proposta ainda por decidir (fechou a folha sem escolher): o
+   cartão do primeiro dia pedia uma prova "para montar um plano" com o
+   plano já escrito no chat.
+
+   Havendo plano, aceite (`planWindow`, de computeAcceptedWindow — o mesmo
+   que o "O que faço hoje" usa) ou proposto, o Início é o de todos os dias:
+   o cartão do plano mostra o treino de hoje, ou diz que a proposta está no
+   chat. O primeiro dia fica para quem ainda não tem nada: nem registos,
+   nem prova, nem plano. */
+export function isFirstDay({ dataPending = false, hasRecords = false, hasUpcomingRace = false, planWindow = null, plans = [] } = {}) {
+  if (dataPending || hasRecords || hasUpcomingRace || planWindow) return false;
+  return !(plans || []).some((p) => p?.status === 'proposto');
+}
+
+/* A linha que leva ao registo de corrida no primeiro dia (pedido
+   2026-09-26). Era "Já correste hoje? Regista e eu ajusto o plano." — no
+   primeiro dia não há plano nenhum para ajustar (é isso que o faz ser o
+   primeiro dia, ver isFirstDay), e a Carol prometia uma coisa que a app
+   não faz. O que a primeira corrida lhe dá é por onde começar — a mesma
+   promessa que ela cumpre ao gravá-la (firstRecord.js: "Agora já sei por
+   onde começar").
+
+   E o "hoje" só de dia: entre as 23h e as 6h (hora de Lisboa, lisbonParts)
+   quem abre a app ainda não se deitou, e "já correste hoje?" à 01:00
+   pergunta pelo dia que acabou de começar. De noite a pergunta fica sem
+   "hoje", e serve para a corrida que ele fez ao fim da tarde. */
+export const FIRST_RUN_LINE = {
+  dia: 'Já correste hoje? Regista a corrida e fico a saber por onde começar.',
+  noite: 'Já correste? Regista a corrida e fico a saber por onde começar.',
+};
+
+export function firstRunLine(now = new Date()) {
+  const { hour } = lisbonParts(now);
+  return hour >= 23 || hour < 6 ? FIRST_RUN_LINE.noite : FIRST_RUN_LINE.dia;
 }

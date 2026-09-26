@@ -2,7 +2,8 @@ import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
-import { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard } from './WeeklyPlanCard';
+import { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard, planeadoAte } from './WeeklyPlanCard';
+import { dayTitle } from '../../utils/homeModels';
 
 const item = (over = {}) => ({
   id: 'x', plan_id: 'p', kind: 'corrida', status: 'pendente',
@@ -443,7 +444,119 @@ describe('PlanDayCard — o dia da prova', () => {
     const { container } = render(
       <PlanDayCard {...dayProps} items={[item({ training_type: 'longo', target_distance_km: 16 })]} />
     );
-    expect(screen.getByText('Longo · 16 km')).toBeInTheDocument();
+    // O mesmo nome que o treino tem no resto da app (pedido 2026-09-26), e
+    // não o enum cru ("Longo · 16 km").
+    expect(screen.getByText('Rodagem longa · 16 km')).toBeInTheDocument();
     expect(container.querySelector('.wpc-day-card.race')).toBeFalsy();
+  });
+
+  /* A folha da proposta imprimia o valor da BD: "Prova · 21.0975 km",
+     "Continuo · 8 km" — e o mesmo treino, depois de aceite, chamava-se
+     "Corrida contínua · 8 km" e "21,1 km" no Início (pedido 2026-09-26). */
+  it('a distância da prova com uma casa decimal e vírgula, e o tipo pelo nome', () => {
+    useAppStore.setState({ raceEvents: [{ id: 'r1', date: '2026-08-11', name: 'Meia da Nazaré', status: 'agendada' }] });
+    render(<PlanDayCard {...dayProps} items={[item({ training_type: 'prova', target_distance_km: 21.0975 })]} />);
+    expect(screen.getByText('Prova · Meia da Nazaré · 21,1 km')).toBeInTheDocument();
+    expect(screen.queryByText(/21\.0975/)).toBeNull();
+  });
+
+  it('um treino contínuo diz-se como no Início', () => {
+    render(<PlanDayCard {...dayProps} items={[item({ training_type: 'continuo', target_distance_km: 8.5 })]} />);
+    expect(screen.getByText('Corrida contínua · 8,5 km')).toBeInTheDocument();
+  });
+});
+
+/* ── O dia vazio: decisão dela ou dia por escrever (pedido 2026-09-26) ──────
+   Um dia vazio dizia sempre "Sem plano" — também a quarta que a Carol deixou
+   livre de propósito a meio da "semana 3 de 8". O plano de uma prova escreve-
+   se por tranches (1-2 semanas de cada vez): antes do último dia que ele já
+   decidiu, um dia vazio é decisão dela; depois, está por escrever. */
+describe('buildPlanDays — porPlanear', () => {
+  // Um plano para uma prova a 18 out, escrito até 29 set.
+  const maratona = { id: 'p', status: 'aceite', race_id: 'r-porto', period_start: '2026-09-21', period_end: '2026-10-18' };
+  const itens = [
+    item({ id: 'a', plan_id: 'p', planned_date: '2026-09-21', status: 'concluido' }),
+    item({ id: 'b', plan_id: 'p', planned_date: '2026-09-26' }),
+    item({ id: 'c', plan_id: 'p', planned_date: '2026-09-29' }),
+  ];
+  const porDia = (days) => Object.fromEntries(days.map((d) => [d.dateISO, d]));
+
+  it('antes do último dia decidido é "Sem treino"; depois, "Por planear"', () => {
+    const d = porDia(buildPlanDays(itens, '2026-09-21', 28, { plans: [maratona], today: '2026-09-26' }));
+    // 27 e 28: livres a meio do plano — decisão dela.
+    expect(d['2026-09-27'].porPlanear).toBe(false);
+    expect(d['2026-09-28'].porPlanear).toBe(false);
+    expect(dayTitle(d['2026-09-27'].items, null, { porPlanear: d['2026-09-27'].porPlanear })).toBe('Sem treino');
+    // Depois de 29, até ao dia da prova: por escrever.
+    ['2026-09-30', '2026-10-01', '2026-10-11', '2026-10-18'].forEach((iso) => {
+      expect(d[iso].porPlanear).toBe(true);
+      expect(dayTitle(d[iso].items, null, { porPlanear: d[iso].porPlanear })).toBe('Por planear');
+    });
+    // Um dia com treino nunca está por planear.
+    expect(d['2026-09-29'].porPlanear).toBe(false);
+  });
+
+  /* Percorre dias seguidos, e o hoje de cada um: o que já passou nunca fica
+     "por planear" (ninguém planeia ontem), e o bloco por escrever começa
+     sempre no dia de hoje ou depois. */
+  it('dia a dia: um dia que já passou deixa de estar por planear', () => {
+    const soAte25 = [item({ id: 'x', plan_id: 'p', planned_date: '2026-09-25' })];
+    ['2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30'].forEach((hoje) => {
+      const days = buildPlanDays(soAte25, '2026-09-21', 14, { plans: [maratona], today: hoje });
+      days.forEach((d) => {
+        if (d.items.length) expect(d.porPlanear).toBe(false);
+        else expect(d.porPlanear).toBe(d.dateISO >= hoje);
+      });
+      const primeiro = days.find((d) => d.porPlanear);
+      expect(primeiro.dateISO).toBe(hoje);
+      expect(days.find((d) => d.dateISO === hoje).isToday).toBe(true);
+    });
+  });
+
+  it('um plano sem prova escreve-se inteiro: os dias vazios do fim são folgas, não dias por escrever', () => {
+    const semana = { id: 's', status: 'aceite', race_id: null, period_start: '2026-09-21', period_end: '2026-09-27' };
+    const doSemana = [item({ id: 'y', plan_id: 's', planned_date: '2026-09-25' })];
+    const d = porDia(buildPlanDays(doSemana, '2026-09-21', 7, { plans: [semana], today: '2026-09-26' }));
+    expect(d['2026-09-26'].porPlanear).toBe(false);
+    expect(d['2026-09-27'].porPlanear).toBe(false);
+    // Sem os planos à mão não se sabe: fica o último dia com treino.
+    const semPlanos = porDia(buildPlanDays(doSemana, '2026-09-21', 7, { today: '2026-09-26' }));
+    expect(semPlanos['2026-09-27'].porPlanear).toBe(true);
+  });
+
+  it('um plano que perdeu a prova continua a ser escrito por tranches', () => {
+    const perdida = { ...maratona, race_id: null, race_lost_at: '2026-09-24T10:00:00Z' };
+    expect(planeadoAte(itens, [perdida])).toBe('2026-09-29');
+    expect(planeadoAte(itens, [{ ...perdida, race_lost_at: null }])).toBe('2026-10-18');
+  });
+
+  it('as refeições sugeridas não decidem o treino de ninguém', () => {
+    const jantar = item({ id: 'j', plan_id: 'p', kind: 'descanso', categories: ['so-refeicoes'], planned_date: '2026-10-05' });
+    expect(planeadoAte([...itens, jantar], [maratona])).toBe('2026-09-29');
+    // Um plano só de refeições sem prova também não conta como escrito até ao fim.
+    const refeicoes = { id: 'm', status: 'aceite', race_id: null, period_start: '2026-09-21', period_end: '2026-10-10' };
+    expect(planeadoAte([...itens, { ...jantar, plan_id: 'm' }], [maratona, refeicoes])).toBe('2026-09-29');
+    // Um descanso a sério decide o dia.
+    const descanso = item({ id: 'd', plan_id: 'p', kind: 'descanso', planned_date: '2026-10-03' });
+    expect(planeadoAte([...itens, descanso], [maratona])).toBe('2026-10-03');
+  });
+
+  /* Um bloco novo aceite a meio do antigo: o antigo fecha na véspera e os
+     treinos dele dali em diante ficam cancelados. Não foi o atleta que os
+     cancelou — não podem aparecer como "Cancelado" ao lado do plano novo. */
+  it('com os planos à mão, o cancelado que o sistema arrumou sai do dia', () => {
+    const antigo = { id: 'old', status: 'aceite', race_id: null, period_start: '2026-09-14', period_end: '2026-09-25' };
+    const novo = { id: 'new', status: 'aceite', race_id: 'r-porto', period_start: '2026-09-26', period_end: '2026-10-18' };
+    const arrumado = item({ id: 'o1', plan_id: 'old', planned_date: '2026-09-27', training_type: 'intervalos', status: 'cancelado' });
+    const doAtleta = item({ id: 'o2', plan_id: 'old', planned_date: '2026-09-24', status: 'cancelado' });
+    const doNovo = item({ id: 'n1', plan_id: 'new', planned_date: '2026-09-28', training_type: 'longo' });
+    const d = porDia(buildPlanDays([arrumado, doAtleta, doNovo], '2026-09-21', 14, { plans: [antigo, novo], today: '2026-09-26' }));
+    expect(d['2026-09-27'].items).toEqual([]);
+    expect(d['2026-09-27'].porPlanear).toBe(false); // antes de 28, o último dia decidido
+    // O que o atleta cancelou dentro do período do plano dele fica.
+    expect(d['2026-09-24'].items.map((i) => i.id)).toEqual(['o2']);
+    // Sem os planos, nada sai (é o que o teste "mantém visíveis itens cancelados" já fixa).
+    const semPlanos = porDia(buildPlanDays([arrumado, doNovo], '2026-09-21', 14, { today: '2026-09-26' }));
+    expect(semPlanos['2026-09-27'].items.map((i) => i.id)).toEqual(['o1']);
   });
 });

@@ -31,3 +31,81 @@ describe('firstRecordMoment', () => {
     expect(firstRecordMoment('agua', {}, null)).toBeNull();
   });
 });
+
+/* O primeiro registo de ginásio diz-se pelo que ele é (pedido 2026-09-26):
+   "Já sei o que levantas" numa aula de pilates, ou num treino sem cargas, é
+   ela a afirmar uma coisa que o registo não tem. O registo é o que a
+   GymRegistration grava: a sessão da analyze-gym com as séries em
+   `workout_session_sets` ({ reps, weight }). */
+describe('firstRecordMoment — o primeiro treino de ginásio', () => {
+  const vazio = { runs: [], meals: [], gymSessions: [], bodyAssessments: [] };
+  const gym = (record) => firstRecordMoment('gym', vazio, record);
+
+  it('uma aula: é a primeira aula, com a modalidade, e nada de cargas', () => {
+    const m = gym({ id: 'g1', kind: 'aula', class_types: ['Pilates'], workout_session_sets: [] });
+    expect(m.title).toBe('A primeira aula de pilates.');
+    expect(m.sub).toBe('É o teu ponto de partida. Da próxima vez, já tenho com que comparar.');
+    expect(m.sub).not.toMatch(/levantas|cargas|subir/);
+    expect(m.everFirst).toBe(true);
+  });
+
+  it('a modalidade diz-se como se diz: siglas e marcas como estão, nomes comuns em minúscula', () => {
+    expect(gym({ kind: 'aula', class_types: ['HIIT'] }).title).toBe('A primeira aula de HIIT.');
+    expect(gym({ kind: 'aula', class_types: ['RPM/Cycling'] }).title).toBe('A primeira aula de RPM/Cycling.');
+    expect(gym({ kind: 'aula', class_types: ['Treino Funcional'] }).title).toBe('A primeira aula de treino funcional.');
+    // "Outro", nenhuma, ou duas de uma vez: sem modalidade na frase.
+    expect(gym({ kind: 'aula', class_types: ['Outro'] }).title).toBe('A primeira aula.');
+    expect(gym({ kind: 'aula', class_types: [] }).title).toBe('A primeira aula.');
+    expect(gym({ kind: 'aula', class_types: ['Yoga', 'Pilates'] }).title).toBe('A primeira aula.');
+  });
+
+  it('uma aula com cargas (Body Pump) continua a ser uma aula', () => {
+    const m = gym({ kind: 'aula', class_types: ['Body Pump'], workout_session_sets: [{ reps: 12, weight: 10 }] });
+    expect(m.title).toBe('A primeira aula de Body Pump.');
+    expect(m.sub).not.toMatch(/levantas/);
+  });
+
+  it('força com cargas: aí, sim, ela já sabe o que levantas', () => {
+    const m = gym({ kind: 'forca', workout_session_sets: [{ reps: 8, weight: 0 }, { reps: 8, weight: 60 }] });
+    expect(m.title).toBe('O primeiro treino de ginásio.');
+    expect(m.sub).toBe('Já sei o que levantas. Da próxima vez, digo-te se é para subir.');
+  });
+
+  it('força só com repetições (peso do corpo): as repetições, sem pedir cargas a quem faz flexões', () => {
+    const m = gym({ kind: 'forca', workout_session_sets: [{ reps: 15, weight: null }, { reps: 12, weight: null }] });
+    expect(m.sub).toBe('Já sei quantas repetições fazes. Da próxima vez, digo-te se é para subir.');
+  });
+
+  it('força sem séries nenhumas: pede os exercícios e as cargas, e diz porquê', () => {
+    const m = gym({ kind: 'forca', workout_session_sets: [] });
+    expect(m.sub).toBe('Da próxima vez, regista também os exercícios e as cargas: é com eles que te digo se é para subir.');
+    expect(m.sub).not.toMatch(/Já sei/);
+    // Sem o campo das séries também não há cargas para saber.
+    expect(gym({ kind: 'forca' }).sub).toBe(m.sub);
+  });
+
+  it('sem o registo à mão, a frase que serve a qualquer treino — nunca "já sei o que levantas"', () => {
+    const m = firstRecordMoment('gym', vazio, null);
+    expect(m.title).toBe('O primeiro treino de ginásio.');
+    expect(m.sub).not.toMatch(/levantas/);
+  });
+
+  it('o segundo registo de ginásio, aula ou força, já não é momento', () => {
+    expect(firstRecordMoment('gym', { gymSessions: [{ id: 'g0' }] }, { id: 'g1', kind: 'aula', class_types: ['Pilates'] })).toBeNull();
+  });
+
+  it('todas na voz dela', () => {
+    const casos = [
+      null,
+      { kind: 'aula', class_types: ['Zumba'] },
+      { kind: 'aula', class_types: [] },
+      { kind: 'forca', workout_session_sets: [{ reps: 5, weight: 100 }] },
+      { kind: 'forca', workout_session_sets: [{ reps: 5 }] },
+      { kind: 'forca', workout_session_sets: [] },
+    ];
+    for (const r of casos) {
+      const m = gym(r);
+      expectCarolVoice(`${m.title} ${m.sub}`);
+    }
+  });
+});

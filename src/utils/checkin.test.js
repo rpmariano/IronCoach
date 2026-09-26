@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canTrackCycle, checkinOptions, interventionReasonFor, mergeCheckin, newCheckinAlarms, scaleLabel, summarizeCheckin, todaysCheckin } from './checkin';
+import { canTrackCycle, checkinOptions, interventionReasonFor, mergeCheckin, newCheckinAlarms, readCheckinReason, scaleLabel, summarizeCheckin, todaysCheckin } from './checkin';
 
 const TODAY = '2026-09-18';
 
@@ -43,6 +43,29 @@ describe('checkin — quando um check-in chama a Carol', () => {
     const reason = interventionReasonFor([{ reason: 'Dor 5/10 (gémeo) no check-in de hoje.' }, { reason: 'x'.repeat(600) }]);
     expect(reason.startsWith('Check-in de hoje: Dor 5/10 (gémeo)')).toBe(true);
     expect(reason.length).toBe(500);
+  });
+
+  /* Pedido 2026-09-26: o motivo fica no perfil até a conversa acontecer, e
+     "Check-in de hoje" deixava de ser verdade no dia seguinte — no popup e
+     no chat. Com a data, o motivo diz de que dia é, e o "no check-in de
+     hoje" das frases dos alarmes sai. O servidor só lê o início
+     ('Check-in%', no trigger de coach_interventions): continua a bater. */
+  it('com a data do check-in, o motivo diz o dia e deixa de dizer "hoje"', () => {
+    const reason = interventionReasonFor([{ reason: 'Dor 6/10 (gémeo) no check-in de hoje, pelo segundo dia seguido.' }], '2026-09-22');
+    expect(reason).toBe('Check-in de 2026-09-22: Dor 6/10 (gémeo), pelo segundo dia seguido.');
+    expect(reason).not.toMatch(/hoje/);
+    expect(reason.startsWith('Check-in')).toBe(true);
+    // Uma data que não é uma data não entra no motivo.
+    expect(interventionReasonFor([{ reason: 'x.' }], 'amanhã')).toBe('Check-in de hoje: x.');
+  });
+
+  it('readCheckinReason lê o dia e o alarme, nos motivos novos e nos antigos', () => {
+    expect(readCheckinReason('Check-in de 2026-09-22: Dor 6/10 (gémeo), pelo segundo dia seguido.'))
+      .toEqual({ date: '2026-09-22', dor: true, sono: false, repetida: true });
+    expect(readCheckinReason('Check-in de hoje: Sono mau em 3 dos últimos 5 check-ins, com stress alto.'))
+      .toEqual({ date: null, dor: false, sono: true, repetida: false });
+    expect(readCheckinReason('[carga] Carga de corrida: 30 km nos últimos 7 dias.')).toBeNull();
+    expect(readCheckinReason(null)).toBeNull();
   });
 });
 
