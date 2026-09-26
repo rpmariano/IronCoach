@@ -189,8 +189,8 @@ describe('formatPublicationDate', () => {
 
 /* A madrugada da terça (2026-09-26): com o relógio fixado, não com regex que
    aceitam as duas respostas — um regresso a nextPublicationDate(todayISO())
-   tem de ficar vermelho. O fuso dos testes é o do ambiente; os instantes
-   escolhidos caem no mesmo dia local em Portugal e em UTC. */
+   tem de ficar vermelho. O fuso dos testes é UTC (src/test/globalSetup.js),
+   como no CI: o "hoje" compara com o dia local do instante. */
 describe('nextUpdateLabel — pelo instante, não pelo calendário', () => {
   it('terça antes do cron (03:00 UTC): "hoje, de manhã"', () => {
     expect(nextUpdateLabel(new Date('2026-09-29T03:00:00Z'))).toBe('hoje, de manhã');

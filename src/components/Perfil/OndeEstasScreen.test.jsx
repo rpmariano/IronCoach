@@ -141,24 +141,49 @@ describe('OndeEstasScreen', () => {
     expect(screen.getByTestId('onde-estas-screen')).not.toHaveTextContent('Palmarés');
   });
 
-  it('diz quando é a próxima atualização da média — sempre uma terça, nos três estados', async () => {
-    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
-    await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
-    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: (hoje, de manhã|terça, \d{1,2} [a-z]{3})/);
+  /* A próxima atualização, com o relógio FIXADO (2026-09-26): antes aceitavam
+     "hoje" ou uma terça qualquer, e um regresso à conta só pelo calendário
+     ficava verde. O fuso dos testes é UTC (src/test/globalSetup.js). */
+  async function comRelogio(iso, fn) {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date(iso));
+      await fn();
+    } finally {
+      vi.useRealTimers();
+    }
+  }
+
+  it('com percentil: na terça antes do cron é "hoje, de manhã"; depois, a terça seguinte', async () => {
+    await comRelogio('2026-09-29T03:00:00Z', async () => {
+      const { unmount } = render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+      await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+      expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent('Próxima atualização: hoje, de manhã');
+      unmount();
+    });
+    await comRelogio('2026-09-29T05:00:00Z', async () => {
+      render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+      await waitFor(() => expect(screen.getByTestId('onde-estas-percentil')).toBeInTheDocument());
+      expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent('Próxima atualização: terça, 13 out');
+    });
   });
 
-  it('sem nada publicado, também diz quando sai a próxima', async () => {
+  it('sem nada publicado, a mesma linha — num sábado, a terça que vem', async () => {
     linhas = [];
-    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
-    await waitFor(() => expect(screen.getByTestId('onde-estas-sem-publicacoes')).toBeInTheDocument());
-    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: (hoje|terça), /);
+    await comRelogio('2026-09-26T12:00:00Z', async () => {
+      render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+      await waitFor(() => expect(screen.getByTestId('onde-estas-sem-publicacoes')).toBeInTheDocument());
+      expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent('Próxima atualização: terça, 29 set');
+    });
   });
 
-  it('no grupo pequeno, a mesma linha', async () => {
+  it('no grupo pequeno, a mesma linha — na segunda à noite, é amanhã pelo nome', async () => {
     linhas = [{ ...SNAPSHOT, terrain: 'trail' }];
-    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
-    await waitFor(() => expect(screen.getByTestId('onde-estas-segmento-pequeno')).toBeInTheDocument());
-    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: (hoje|terça), /);
+    await comRelogio('2026-09-28T21:00:00Z', async () => {
+      render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+      await waitFor(() => expect(screen.getByTestId('onde-estas-segmento-pequeno')).toBeInTheDocument());
+      expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent('Próxima atualização: terça, 29 set');
+    });
   });
 
   it('com uma métrica só, não há seletor (parecia um botão sem função)', async () => {

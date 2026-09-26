@@ -85,6 +85,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/setupTests.js',
+    // O fuso dos testes é UTC, como no CI — ver src/test/globalSetup.js.
+    globalSetup: './src/test/globalSetup.js',
     // Estende-se a supabase/functions/_shared/** para que os testes de
     // paridade da biblioteca de fórmulas (vetores dourados) corram também
     // a partir do Vitest, não só do Deno test das Edge Functions. Só
