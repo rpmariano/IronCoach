@@ -42,7 +42,7 @@ export interface AthleteData {
   items: PlanItemRow[];
   runs: RunRow[];
   gym: GymRow[];
-  races: Array<{ date: string; race_type: string | null }>;
+  races: Array<{ id?: string | null; date: string; race_type: string | null; race_priority?: string | null }>;
 }
 
 export interface ScoredAthlete extends Athlete {

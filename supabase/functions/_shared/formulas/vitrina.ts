@@ -56,7 +56,7 @@ export const segmentId = (s: Segment) => `${s.ageBand}.${s.gender}.${s.terrain}`
  *  estás" usa; null quando falta a data de nascimento, o género ou uma prova. */
 export function ownSegmentFor(
   profile: { birth_date?: string | null; gender?: string | null } | null | undefined,
-  races: Array<{ date?: string | null; race_type?: string | null }> | null | undefined,
+  races: Array<{ id?: string | null; date?: string | null; race_type?: string | null; race_priority?: string | null }> | null | undefined,
   todayISO: string,
 ): Segment | null {
   const ageBand = ageBandFor(ageFromBirthDate(profile?.birth_date ?? null), profile?.gender ?? null);

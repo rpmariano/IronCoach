@@ -18,6 +18,7 @@ import {
 import GlassCard from '../shared/GlassCard';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { inferMoodFromText } from '@formulas/carolMood.ts';
+import { pickRaceOfDay } from '@formulas/mainRace.ts';
 
 /* O cartão da Carol no topo do Início (mock "Início": ciano, "Ler mais").
    Duas partes: o cabeçalho com o nome dela, que abre o chat, e uma linha do
@@ -63,9 +64,12 @@ function useAgora() {
  *  concluída não tem véspera nem manhã — o que ela tem é balanço, e disso
  *  trata o coachProactive. */
 function findScheduledRace(raceEvents, dateISO) {
-  return (raceEvents || []).find(
-    (r) => r && r.status !== 'concluida' && typeof r.date === 'string' && r.date.slice(0, 10) === dateISO,
-  ) || null;
+  // Com duas provas no mesmo dia, a principal — a mesma regra do servidor e
+  // do coachProactive (Fase 0 do Troféu, 2026-09-26).
+  return pickRaceOfDay(
+    (raceEvents || []).filter((r) => r && r.status !== 'concluida' && typeof r.date === 'string'),
+    dateISO,
+  );
 }
 
 /* O botão de uma secção do cartão — hoje só o do dia da prova, para o hub

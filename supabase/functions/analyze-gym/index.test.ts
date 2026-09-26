@@ -113,3 +113,13 @@ Deno.test("buildGymHistoryBlock: as sessões anteriores com séries e a nota do 
   assertEquals(buildGymHistoryBlock([]), null);
   assertEquals(buildGymHistoryBlock(null), null);
 });
+
+// Fase 0 do Troféu (2026-09-26): a prova de referência vai no enquadramento
+// "prova agendada, sem plano" — e só lá; sem ela, o texto fica igual.
+Deno.test("planningFrameSection: sem plano e com prova, diz qual é a prova de referência", () => {
+  const principal = { id: "m1", name: "Maratona de Lisboa", date: "2026-10-11", distance_km: 42.195, race_priority: "a" };
+  const bloco = planningFrameSection(false, true, principal);
+  assertStringIncludes(bloco, `A prova de referência é "Maratona de Lisboa" (2026-10-11, 42,2 km), a próxima prova principal.`);
+  assertEquals(planningFrameSection(false, true, null), planningFrameSection(false, true));
+  assertEquals(planningFrameSection(true, true, principal), "");
+});

@@ -19,6 +19,7 @@
 
 import type { Segment } from "./percentileSegments.ts";
 import { type LeaderboardEntryRow, leaderboardMoment, percentileReadyMoment, type SnapshotRow } from "./vitrina.ts";
+import { pickRaceOfDay } from "./mainRace.ts";
 
 export const SILENCE_DAYS = 3;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
@@ -36,6 +37,10 @@ export interface TriggerRace {
   conflict_acknowledged_at?: string | null;
   /** A hora de partida ("HH:MM" ou "HH:MM:SS"), para a manhã da prova (P.10). */
   start_time?: string | null;
+  /** O balanço que ela escreveu depois da prova (race_events.coach_balance):
+   *  a prova de que o "como correu?" com corrida já foi entregue, em
+   *  qualquer dispositivo — a mesma que decide.ts usa (balanceDone). */
+  coach_balance?: string | null;
 }
 
 /** Um plano, com a informação de ter treinos (e não só refeições). */
@@ -322,6 +327,10 @@ export type ServerProactiveInput = {
     /** Balanço da semana: datas de registos que cubram a semana revista (o
      *  tick só as lê à segunda e à terça — weekToReviewBounds). */
     weekRecordDates?: Array<string | null | undefined> | null;
+    /** As chaves já entregues (coach_proactive_log), quando quem chama as
+     *  tem — só o tick. Servem ao balanço da semana: um "como correu?" com
+     *  corrida já entregue não lhe tira o dia (ver `holdsTheDay`). */
+    deliveredKeys?: Iterable<string> | null;
     /** P.10, treino de ontem por registar: os itens dos planos (basta que
      *  incluam os dos planos aceites que cobrem ontem) e as datas das corridas
      *  e sessões de ginásio (basta que incluam ontem). */
@@ -372,7 +381,11 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     out.push({ ...base, trigger: "intervention", key: interventionKey(input.intervention.reason) });
   }
 
-  const morning = scheduled.find((r) => r.date.slice(0, 10) === todayISO);
+  /* Num dia com mais do que uma prova, a véspera e a manhã são da PRINCIPAL
+     (2026-09-26, Fase 0 do Troféu): uma prova de treino ou uma jornada de
+     taça no mesmo dia não pode ficar com o momento — e a escolha já não
+     depende da ordem em que o select devolveu as provas (pickRaceOfDay). */
+  const morning = pickRaceOfDay(scheduled, todayISO);
   if (morning) {
     out.push({
       ...base, trigger: "race_morning", key: `race_morning:${morning.id}`, raceId: morning.id, raceName: morning.name ?? null,
@@ -380,7 +393,7 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     });
   }
 
-  const eve = scheduled.find((r) => daysBetween(todayISO, r.date.slice(0, 10)) === 1);
+  const eve = pickRaceOfDay(scheduled, addDaysISO(todayISO, 1));
   if (eve) out.push({ ...base, trigger: "race_eve", key: `race_eve:${eve.id}`, raceId: eve.id, raceName: eve.name ?? null });
 
   const conflict = detectRaceConflictServer(input.plans, races, todayISO);
@@ -440,7 +453,38 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
   // o "como correu?", o conflito de provas, um assunto por resolver, o fim
   // de bloco ou um "Estás bem?" ficam com o dia — mesmo desligados no
   // Perfil, porque o filtro das preferências só vem a seguir (P.14).
-  const week = out.length === 0 ? findWeekToReview(todayISO, input.weekRecordDates) : null;
+  //
+  // A exceção é o "como correu?" COM corrida já entregue (2026-09-26, Fase
+  // 0 do Troféu). Esse candidato fica na lista durante os
+  // RACE_AFTER_DAYS_WITH_RUN dias seguintes à prova, mesmo depois de a
+  // conversa ter acontecido — quem o cala é decide.ts (ja_entregue,
+  // balanco_feito). Uma prova ao sábado com o balanço feito no domingo
+  // tapava o balanço da semana de segunda e de terça, e com uma prova (ou
+  // jornada) por fim de semana não havia balanço nunca. "Entregue" é o que
+  // decide.ts já lê: a chave no coach_proactive_log (só o tick a tem) ou o
+  // balanço gravado na prova (race_events.coach_balance — que o cliente
+  // também tem, e é por aí que a notificação e o chat continuam a concordar).
+  // O "como correu?" SEM registo continua a ficar com o dia: não há no
+  // cliente prova de que já foi dito, e a notificação prometia um balanço
+  // que o chat não escrevia.
+  //
+  // Caso conhecido e aceite (revisão da Fase 0, 2026-09-26): se a chave do
+  // race_after está no log mas a escrita de race_events.coach_balance falhou
+  // (coach-chat, ao gravar o balanço), só o servidor sabe que foi entregue.
+  // O tick envia então o balanço da semana, que a lista do cliente não tem
+  // (para ele, o "como correu?" ainda fica com o dia); o toque cai no
+  // race_after, que responde already_sent, e o loop do Coach.jsx não
+  // encontra o week_review a seguir. Efeito: uma notificação que abre o chat
+  // sem mensagem nova, só nesse dia e só depois de uma falha de escrita que
+  // já é avisada no log. Corrigir exigia dar ao cliente as chaves entregues
+  // (coach_proactive_log), e isso não cabe na Fase 0.
+  const delivered = new Set(input.deliveredKeys ?? []);
+  const holdsTheDay = (c: ServerProactiveCandidate) => {
+    if (c.trigger !== "race_after" || !c.hasRun) return true;
+    if (delivered.has(c.key)) return false;
+    return !races.find((r) => r.id === c.raceId)?.coach_balance;
+  };
+  const week = !out.some(holdsTheDay) ? findWeekToReview(todayISO, input.weekRecordDates) : null;
   if (week) {
     out.push({ ...base, trigger: "week_review", key: `week_review:${week.weekStart}`, anchorDate: week.weekEnd, weekStart: week.weekStart, weekEnd: week.weekEnd });
   }

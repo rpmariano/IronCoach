@@ -1571,7 +1571,8 @@ export async function fetchVitrinaBlock(
       sb.from("profiles").select("birth_date, gender, stats_pool_consent_at, leaderboard_consent_at").eq("id", userId).maybeSingle(),
       sb.from("user_badges").select("badge_key, tier, period_key, awarded_at, seen_at").eq("user_id", userId)
         .order("awarded_at", { ascending: false }).limit(200),
-      sb.from("race_events").select("date, race_type").eq("user_id", userId).gte("date", addDaysISO(todayISO, -TERRAIN_LOOKBACK_DAYS)),
+      // Com a prioridade: a modalidade é a da próxima principal (terrainForAthlete, 2026-09-26).
+      sb.from("race_events").select("id, date, race_type, race_priority").eq("user_id", userId).gte("date", addDaysISO(todayISO, -TERRAIN_LOOKBACK_DAYS)),
       sb.from("percentile_snapshots").select("age_band, gender, terrain, window_start, window_end, boundaries")
         .eq("metric", "plan_execution").order("window_start", { ascending: false }).limit(400),
       sb.from("leaderboard_entries").select("window_start, rank, age_band, gender, terrain")

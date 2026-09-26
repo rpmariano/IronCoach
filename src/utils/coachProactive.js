@@ -23,6 +23,7 @@ import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
 import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from '@formulas/proactiveTriggers.ts';
 import { leaderboardMoment, ownSegmentFor, percentileAvailability, percentileReadyMoment } from '@formulas/vitrina.ts';
+import { pickRaceOfDay } from '@formulas/mainRace.ts';
 import { addDaysISO } from '../lib/utils';
 import { segmentPhrase } from './percentile';
 
@@ -68,7 +69,9 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
   const scheduled = races.filter((r) => r.status !== 'concluida');
   const list = [];
 
-  const morning = scheduled.find((r) => r.date.slice(0, 10) === today);
+  // Num dia com mais do que uma prova, a principal (2026-09-26): a mesma
+  // régua do servidor (pickRaceOfDay), para a chave ser a da notificação.
+  const morning = pickRaceOfDay(scheduled, today);
   if (morning) {
     list.push({
       trigger: 'race_morning',
@@ -77,7 +80,7 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
     });
   }
 
-  const eve = scheduled.find((r) => daysBetween(today, r.date.slice(0, 10)) === 1);
+  const eve = pickRaceOfDay(scheduled, addDaysISO(today, 1));
   if (eve) {
     list.push({
       trigger: 'race_eve',
@@ -327,7 +330,7 @@ export function buildRaceAfterCandidate({ race, run: givenRun, runs = [], raceEv
   if (!run) return null;
   const gap = daysBetween(race.date.slice(0, 10), today);
   const dayLabel = gap <= 0 ? 'hoje' : `há ${gap} dia${gap === 1 ? '' : 's'}`;
-  const outcome = classifyRaceOutcome({ race, run, runs, profile });
+  const outcome = classifyRaceOutcome({ race, run, runs, profile, races: raceEvents });
   const time = outcome.officialSeconds ? formatDuration(outcome.officialSeconds) : null;
   return {
     trigger: 'race_after',

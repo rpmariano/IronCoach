@@ -97,6 +97,23 @@ const CASES = {
     coachPlans: [{ id: 'p1', status: 'aceite', race_id: null, period_start: '2026-09-01', period_end: '2026-09-30' }],
     coachPlanItems: [{ plan_id: 'p1', planned_date: '2026-09-17', kind: 'corrida', status: 'pendente', training_type: 'longo', created_at: '2026-09-01T10:00:00Z' }],
   },
+  // Fase 0 do Troféu (2026-09-26): duas provas no mesmo dia, a de treino
+  // primeiro na lista — a manhã e a véspera são da principal, dos dois lados.
+  'manhã da prova com uma prova de treino no mesmo dia': {
+    ...base,
+    raceEvents: [
+      { id: 'z-treino', name: 'Corrida do clube', date: TODAY, status: 'agendada', race_priority: 'c' },
+      { id: 'a-meia', name: 'Meia', date: TODAY, status: 'agendada', race_priority: 'a' },
+    ],
+  },
+  'véspera com uma jornada no mesmo dia da principal': {
+    ...base,
+    meals: [{ date: TODAY }],
+    raceEvents: [
+      { id: 'z-jornada', name: 'Jornada', date: '2026-09-19', status: 'agendada', race_priority: 'b' },
+      { id: 'a-meia', name: 'Meia', date: '2026-09-19', status: 'agendada', race_priority: null },
+    ],
+  },
   'fim de um plano só de refeições não conta': {
     ...base,
     meals: [{ date: TODAY }],
@@ -112,6 +129,11 @@ describe('P.3 — o servidor e o cliente escolhem a mesma mensagem, com a mesma 
       expect(server).toEqual(client);
     });
   }
+});
+
+it('com duas provas no mesmo dia, a manhã e a véspera são da principal, dos dois lados', () => {
+  expect(both(CASES['manhã da prova com uma prova de treino no mesmo dia']).client).toEqual({ trigger: 'race_morning', key: 'race_morning:a-meia' });
+  expect(both(CASES['véspera com uma jornada no mesmo dia da principal']).client).toEqual({ trigger: 'race_eve', key: 'race_eve:a-meia' });
 });
 
 it('o fim de bloco é mesmo o momento escolhido, dos dois lados', () => {
@@ -228,6 +250,30 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     const server = listServerProactive({ raceEvents: [], runs: calado.runs, lastRecordDate: '2026-09-23', weekRecordDates: ['2026-09-23'], allowed: ['week_review'] }, MONDAY);
     expect(server).toEqual([]);
     expect(listProactiveTriggers(calado, at(MONDAY)).map((c) => c.trigger)).toEqual(['silence']);
+  });
+
+  /* Fase 0 do Troféu (2026-09-26): o "como correu?" com corrida fica na
+     lista 7 dias. Com o balanço já gravado na prova (coach_balance, que os
+     dois lados leem), o balanço da semana sai a seguir — a notificação e o
+     chat continuam a concordar. */
+  it('o balanço de uma prova já feito não tapa o balanço da semana — nos dois lados', () => {
+    const prova = { id: 'p1', name: 'Corrida', date: '2026-09-26', status: 'concluida', distance_km: 10 };
+    const run = { id: 'rp', date: '2026-09-26', race_id: 'p1', kind: 'competicao', distance_km: 10, duration_seconds: 3000, created_at: '2026-09-26T12:00:00Z' };
+    const comProva = (race) => ({ ...semana, runs: [...semana.runs, run], raceEvents: [race] });
+    const serverOf = (d) => listServerProactive({ raceEvents: d.raceEvents, runs: d.runs, lastRecordDate: lastRecordDate(d), weekRecordDates: weekDates(d) }, MONDAY)
+      .map((c) => ({ trigger: c.trigger, key: c.key }));
+    const clientOf = (d) => listProactiveTriggers(d, at(MONDAY)).map((c) => ({ trigger: c.trigger, key: c.key }));
+
+    const porFazer = comProva(prova);
+    expect(clientOf(porFazer).map((c) => c.trigger)).toEqual(['race_after']);
+    expect(serverOf(porFazer)).toEqual(clientOf(porFazer));
+
+    const feito = comProva({ ...prova, coach_balance: 'Foi uma boa prova.' });
+    expect(clientOf(feito)).toEqual([
+      { trigger: 'race_after', key: 'race_after:p1:rp' },
+      { trigger: 'week_review', key: 'week_review:2026-09-21' },
+    ]);
+    expect(serverOf(feito)).toEqual(clientOf(feito));
   });
 
   it('desligado no Perfil, não aparece no servidor', () => {

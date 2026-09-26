@@ -63,7 +63,7 @@ export function groupRaces({ raceEvents = [], runs = [], profile = {}, today } =
       return {
         race,
         run,
-        outcome: classifyRaceOutcome({ race, run, runs, profile }),
+        outcome: classifyRaceOutcome({ race, run, runs, profile, races: valid }),
         achievements: achievementsForRace(data, race.id),
       };
     });

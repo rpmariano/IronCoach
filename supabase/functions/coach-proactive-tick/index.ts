@@ -23,7 +23,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { listServerProactive, proactiveTab, weekToReviewBounds, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
+import { listServerProactive, proactiveTab, RACE_AFTER_DAYS_WITH_RUN, weekToReviewBounds, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
 import { ownSegmentFor } from "../_shared/formulas/vitrina.ts";
 import { TERRAIN_LOOKBACK_DAYS } from "../_shared/formulas/percentileSegments.ts";
 import { composePushMessage, type PushUsage } from "./pushText.ts";
@@ -177,8 +177,13 @@ async function handler(req: Request): Promise<Response> {
         { data: gymYesterday }, { data: lastCheckin },
       ] = await Promise.all([
         // Até 6 meses à frente: o conflito de provas olha para dentro do bloco.
+        // Ordem fixa (data, depois id): sem ela, com duas provas no mesmo dia
+        // a escolha podia mudar de hora para hora conforme o Postgres
+        // devolvesse as linhas (2026-09-26). A principal ganha na mesma —
+        // pickRaceOfDay —, isto só tira o acaso do resto.
         sb.from("race_events").select("id, name, date, status, distance_km, coach_balance, start_time, target_time_seconds, race_priority, conflict_acknowledged_at")
-          .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 183)),
+          .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 183))
+          .order("date", { ascending: true }).order("id", { ascending: true }),
         sb.from("runs").select("id, date, race_id, kind, created_at, duration_seconds, distance_km")
           .eq("user_id", userId).gte("date", addDays(today, -8)),
         lastRecordDates(sb, userId),
@@ -223,7 +228,8 @@ async function handler(req: Request): Promise<Response> {
       let vitrina = null;
       if (snapshots.length && statsPoolConsent) {
         const [{ data: terrainRaces }, { data: boardRows }] = await Promise.all([
-          sb.from("race_events").select("date, race_type").eq("user_id", userId).gte("date", addDays(today, -TERRAIN_LOOKBACK_DAYS)),
+          // Com a prioridade: a modalidade é a da próxima principal (terrainForAthlete).
+          sb.from("race_events").select("id, date, race_type, race_priority, status").eq("user_id", userId).gte("date", addDays(today, -TERRAIN_LOOKBACK_DAYS)),
           leaderboardConsent
             ? sb.from("leaderboard_entries").select("window_start, rank, age_band, gender, terrain")
               .eq("user_id", userId).order("window_start", { ascending: false }).limit(4)
@@ -236,6 +242,19 @@ async function handler(req: Request): Promise<Response> {
           leaderboardConsent,
           leaderboardEntries: boardRows || [],
         };
+      }
+      /* À segunda e à terça, os "como correu?" já entregues (2026-09-26): um
+         balanço de prova já feito não tira o dia ao balanço da semana
+         (listServerProactive, holdsTheDay). Só nestes dois dias e só as
+         chaves race_after da última semana e meia — o resto dos dias não
+         precisa desta leitura. Falhando, fica como antes: o "como correu?"
+         continua a ficar com o dia. */
+      let deliveredRaceAfter: string[] = [];
+      if (reviewWeek) {
+        const { data: raceAfterRows, error: raceAfterErr } = await sb.from("coach_proactive_log").select("key")
+          .eq("user_id", userId).eq("trigger", "race_after").gte("sent_at", `${addDays(today, -(RACE_AFTER_DAYS_WITH_RUN + 2))}T00:00:00Z`);
+        if (raceAfterErr) console.warn("coach-proactive-tick: não leu os balanços de prova entregues", userId, raceAfterErr.message);
+        deliveredRaceAfter = (raceAfterRows || []).map((r: { key: string }) => r.key);
       }
       const candidates = listServerProactive({
         raceEvents: races || [],
@@ -255,6 +274,7 @@ async function handler(req: Request): Promise<Response> {
         // ligado ou não (P.14).
         allowed: Array.isArray(prefsById.get(userId)?.types) ? prefsById.get(userId)!.types : null,
         weekRecordDates: weekDates,
+        deliveredKeys: deliveredRaceAfter,
         vitrina,
       }, today);
 

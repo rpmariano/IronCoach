@@ -33,6 +33,7 @@ import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartR
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_RETRYABLE_STATUSES,
@@ -393,7 +394,11 @@ type RunExtraction = {
    não depende de plano, mas mantemos a supressão por simplicidade: sem plano
    nenhum, o botão vermelho não tem uma renegociação do outro lado na maioria
    dos casos. O aviso de risco continua a chegar ao atleta pelo texto da nota. */
-export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
+/* `race` (2026-09-26, Fase 0 do Troféu): a prova de referência — a próxima
+   principal quando existe (fetchFrameRace). Só entra no enquadramento "prova
+   agendada, sem plano", que é o que julga o registo contra a prova; sem ela
+   o texto fica igual ao de antes. */
+export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean, race: FrameRace | null = null): string {
   if (hasPlan) {
     return hasUpcomingRace
       ? ""
@@ -403,8 +408,9 @@ export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean)
         `sustentável, não um tempo-alvo.\n`;
   }
   if (hasUpcomingRace) {
+    const ref = frameRaceSentence(race);
     return `\nENQUADRAMENTO — PROVA AGENDADA, SEM PLANO: o atleta tem prova marcada mas NÃO tem ` +
-      `plano de treino. NUNCA digas que este registo está "fora do plano", "em atraso" ou que ` +
+      `plano de treino.${ref ? ` ${ref}` : ""} NUNCA digas que este registo está "fora do plano", "em atraso" ou que ` +
       `"o plano está comprometido" — não existe plano de que desviar. Julga-o pela adequação ao ` +
       `objetivo da prova e à fase de preparação, usando o histórico e o volume semanal como base ` +
       `de comparação. Se houver risco real (carga aguda, fadiga acumulada, progressão rápida ` +
@@ -542,7 +548,9 @@ async function generateCoachNotes(
   planItems: any[],
   // Há prova agendada? Decide o enquadramento quando não há plano — ver
   // planningFrameSection.
-  hasUpcomingRace: boolean,
+  // A prova de referência (fetchFrameRace): a próxima principal, senão a
+  // próxima — ou null sem prova agendada.
+  upcomingRace: FrameRace | null,
   // deno-lint-ignore no-explicit-any
   recentGym: any[],
   // deno-lint-ignore no-explicit-any
@@ -656,8 +664,8 @@ async function generateCoachNotes(
   const planSection = planItems.length > 0 
     ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
       `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, no bloco "${RECORD_ANALYSIS_LABELS.next}" aconselha o atleta a pressionar o botão "Falar com a Coach" para te pedir que adaptes o plano. O desvio vai no bloco "${RECORD_ANALYSIS_LABELS.fix}" e não substitui a análise da corrida que ele fez.\n` +
-      planningFrameSection(true, hasUpcomingRace)
-    : planningFrameSection(false, hasUpcomingRace);
+      planningFrameSection(true, !!upcomingRace, upcomingRace)
+    : planningFrameSection(false, !!upcomingRace, upcomingRace);
 
   const yesterdayISO = new Date(new Date(run.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
   const yesterdayRuns = previousRuns.filter((r) => r.date === yesterdayISO);
@@ -880,17 +888,11 @@ async function attachCoachNotes(
       planItems = items || [];
     }
 
-    /* Prova agendada? Só o facto de existir, não os detalhes — serve para
+    /* Prova agendada? A principal (ou a próxima), numa frase curta via frameRace — serve para
        escolher o enquadramento da análise (planningFrameSection). Inclui o
        próprio dia: uma prova hoje ainda enquadra o treino de hoje. */
-    const { data: upcomingRaces } = await sb
-      .from("race_events")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("status", "agendada")
-      .gte("date", ctx.date)
-      .limit(1);
-    const hasUpcomingRace = (upcomingRaces || []).length > 0;
+    // A próxima principal quando existe, senão a próxima (fetchFrameRace).
+    const frameRace = await fetchFrameRace(sb, userId, ctx.date);
     
     const sevenDaysAgoISO = new Date(new Date(ctx.date).getTime() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10);
     const [{ data: recentGym }, { data: sameDayRuns }, { data: hrProfile }] = await Promise.all([
@@ -964,7 +966,7 @@ async function attachCoachNotes(
       previousRuns || [],
       historyLabel,
       planItems,
-      hasUpcomingRace,
+      frameRace,
       recentGym || [],
       sameDayRuns || [],
       geminiKey,

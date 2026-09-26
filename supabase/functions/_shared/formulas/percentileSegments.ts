@@ -9,6 +9,8 @@
 // da tabela, de propósito; a constante abaixo é a cópia que evita ir buscar
 // dados que a base vai recusar guardar na mesma.
 
+import { compareByPriority, isPrincipalRace } from "./mainRace.ts";
+
 /** A janela é a mesma dos 14 dias da aderência (prescriptionAdherence.ts). */
 export const WINDOW_DAYS = 14;
 
@@ -148,15 +150,24 @@ export function ventileBoundaries(values: number[]): number[] {
    provas de estrada/trail", e sem prova a frase não seria verdade. */
 export const TERRAIN_LOOKBACK_DAYS = 90;
 
-/** A modalidade que o atleta prepara: a próxima prova marcada; sem nenhuma
- *  marcada, a última que correu nos 90 dias antes do fim da janela. */
+/** A modalidade que o atleta prepara: a próxima prova PRINCIPAL marcada; sem
+ *  principal à frente, a próxima marcada; sem nenhuma, a última que correu
+ *  nos 90 dias antes do fim da janela.
+ *
+ *  A principal primeiro (2026-09-26, Fase 0 do Troféu): quem prepara uma
+ *  maratona de estrada e tem um trail curto de treino pelo meio prepara
+ *  estrada — com a próxima por data, mudava de segmento durante semanas por
+ *  causa de uma prova de preparação (ou de uma jornada de taça). Sem
+ *  race_priority conta como principal, o default da coluna (mainRace.ts). */
 export function terrainForAthlete(
-  races: Array<{ date?: string | null; race_type?: string | null }> | null | undefined,
+  races: Array<{ id?: string | null; date?: string | null; race_type?: string | null; race_priority?: string | null }> | null | undefined,
   windowEnd: string,
 ): "estrada" | "trail" | null {
   const validas = (races || [])
-    .filter((r) => !!r?.date && (r.race_type === "estrada" || r.race_type === "trail")) as Array<{ date: string; race_type: "estrada" | "trail" }>;
-  const futuras = validas.filter((r) => r.date >= windowEnd).sort((a, b) => a.date.localeCompare(b.date));
+    .filter((r) => !!r?.date && (r.race_type === "estrada" || r.race_type === "trail")) as Array<{ id?: string | null; date: string; race_type: "estrada" | "trail"; race_priority?: string | null }>;
+  const futuras = validas.filter((r) => r.date >= windowEnd).sort((a, b) => a.date.localeCompare(b.date) || compareByPriority(a, b));
+  const principal = futuras.find(isPrincipalRace);
+  if (principal) return principal.race_type;
   if (futuras.length) return futuras[0].race_type;
   const desde = addDays(windowEnd, -TERRAIN_LOOKBACK_DAYS);
   const recentes = validas.filter((r) => r.date < windowEnd && r.date >= desde).sort((a, b) => b.date.localeCompare(a.date));

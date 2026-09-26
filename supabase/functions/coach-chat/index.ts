@@ -8,6 +8,7 @@ import { CHAT_RESOLVE_OUTCOMES } from "../_shared/formulas/interventionOutcomes.
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
+import { focusRace, isPrincipalRace, nextRaceByDate, selectRaces } from "../_shared/formulas/mainRace.ts";
 import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
 import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks } from "../_shared/formulas/taper.ts";
@@ -240,11 +241,19 @@ const PROPOSE_PLAN_TOOL = {
     "Escreve os treinos das próximas 1-2 semanas, diz ao atleta que o resto do bloco se detalha à medida que chega, e ajusta depois com replace_active_plan=true mantendo o mesmo race_id e o mesmo period_end. " +
     "Sem prova nenhuma agendada, o período e os treinos coincidem: pergunta-lhe se quer 7 ou 14 dias. Se pedir menos de 7, aceita mas aconselha a estender para 7 com o mesmo racional — a decisão final é sempre do atleta. " +
     "ADAPTAR PLANO ATIVO: se o contexto mostrar um plano em curso e o atleta pedir para o adaptar (ou se notares muitos treinos em atraso e sugerires tu próprio uma adaptação), " +
-    "chama esta função com replace_active_plan=true. Se o plano ativo tem prova-objetivo, o ajuste MANTÉM o mesmo race_id e o mesmo period_end — muda-se o que está lá dentro, não o objetivo nem o fim do bloco; propor um período mais curto sem race_id desvincularia o plano da prova e é recusado. " +
+    "chama esta função com replace_active_plan=true. Se o plano ativo prepara uma prova principal, qualquer proposta que se sobreponha a ele MANTÉM o mesmo race_id e o mesmo period_end — muda-se o que está lá dentro, não o objetivo nem o fim do bloco; uma proposta sobreposta sem race_id (mesmo sem replace_active_plan) desvincularia o plano da prova e é recusada. " +
     "A nova proposta irá sobrepor-se aos dias futuros do plano atual, mas o histórico passado do atleta será preservado. Podes avançar diretamente com a proposta de adaptação se for claro o que ajustar. " +
-    "O PLANO É PARA UMA PROVA: se o atleta tem provas agendadas, o plano prepara UMA delas — passa o race_id dessa prova e period_end = o dia dela, porque é nesse dia que o plano termina. " +
-    "Entre hoje e essa prova só pode haver UMA prova principal (a que é o objetivo). As provas pelo caminho marcadas como secundárias (b) ou de treino (c) são para enquadrares no plano como treino de qualidade — é assim que o atleta as quer. " +
-    "Se houver outra PRINCIPAL pelo caminho, não proponhas o plano: fala primeiro com o atleta e propõe-lhe as duas saídas — passar essa para secundária (ofereces-te para o fazer com update_race_event) ou fazer o plano até essa prova, que passa a ser o objetivo. A decisão é dele; tu explicas que dois polimentos seguidos são incompatíveis.",
+    "Só há UMA proposta de treino pendente de cada vez: uma nova substitui a que ainda estiver por decidir. " +
+    "O PLANO É PARA UMA PROVA PRINCIPAL: quando o plano serve uma prova, passa o race_id dessa prova e period_end = o dia dela, porque é nesse dia que o plano termina (a prova tem de estar por correr). " +
+    "Se houver uma prova PRINCIPAL dentro do período, o race_id é obrigatório e é o dela. Dentro do período só pode haver UMA principal (a que é o objetivo). " +
+    "As provas pelo caminho marcadas como secundárias (b) ou de treino (c) são para enquadrares no plano como treino de qualidade — é assim que o atleta as quer; um bloco sem objetivo (base aeróbica) pode atravessá-las sem race_id. " +
+    "Um plano com race_id de uma prova b/c não pode substituir o plano de uma principal em curso: a b/c entra no plano da principal. " +
+    "Se houver outra PRINCIPAL dentro do período, não proponhas o plano: fala primeiro com o atleta e propõe-lhe as duas saídas — passar essa para secundária (ofereces-te para o fazer com update_race_event) ou fazer o plano até essa prova, que passa a ser o objetivo. A decisão é dele; tu explicas que dois polimentos seguidos são incompatíveis. " +
+    // As guardas do servidor, ditas antes de ele as bater (2026-09-26): o
+    // modelo gastava uma volta a descobrir cada uma pelo erro.
+    "O SERVIDOR RECUSA (e o erro diz porquê): mais de 14 itens; um item fora do período; no dia de uma prova agendada, outra coisa que não a prova (kind=corrida — o servidor põe training_type=prova, e acrescenta o dia se o omitires); training_type=prova num dia sem prova; " +
+    "nos 2 dias antes de qualquer prova agendada (mesmo a 1-2 dias do fim do período), treino forte ou ginásio — só recuperação curta ou descanso; um descanso sem meal_suggestion nem notes; " +
+    "e, com histórico de corrida suficiente, um plano que cumprido leve o ACWR acima de 1,50 (o erro diz o dia e o teto de km).",
   parameters: {
     type: "OBJECT",
     properties: {
@@ -253,17 +262,20 @@ const PROPOSE_PLAN_TOOL = {
       race_id: {
         type: "STRING",
         description:
-          "Id (do contexto das provas) da prova-objetivo deste plano. Obrigatório sempre que houver " +
-          "uma prova agendada dentro do período. Só o omitas num plano sem prova nenhuma pelo caminho " +
-          "(base aeróbica, regresso de lesão).",
+          "Id (do contexto das provas) da prova-objetivo deste plano; com ele, period_end é o dia dessa " +
+          "prova. Obrigatório quando há uma prova PRINCIPAL dentro do período, ou quando a proposta se " +
+          "sobrepõe a um plano ativo que prepara uma principal (aí é o race_id desse plano). Omite-o num " +
+          "plano sem objetivo (base aeróbica, regresso de lesão), mesmo que passe por provas secundárias " +
+          "ou de treino — o dia delas entra no plano como prova.",
       },
       replace_active_plan: {
         type: "BOOLEAN",
         description:
           "true APENAS depois de o atleta confirmar explicitamente que quer substituir o " +
-          "plano de treino ativo em curso por este novo. Quando true, o plano ativo atual " +
-          "(com treinos reais, não um plano só de refeições) é automaticamente marcado como " +
-          "recusado antes de esta proposta ser criada. Default false/omitido.",
+          "plano de treino ativo em curso por este novo. Quando true, a proposta fica a saber que " +
+          "plano de treino ativo substitui (o que se sobrepõe a ela, de preferência o vinculado a " +
+          "uma prova; nunca um plano só de refeições), mas esse plano continua em vigor até o " +
+          "atleta ACEITAR a proposta — se a recusar, fica com o plano que tinha. Default false/omitido.",
       },
       summary: {
         type: "STRING",
@@ -297,7 +309,7 @@ const PROPOSE_PLAN_TOOL = {
               enum: PLAN_RUN_TRAINING_TYPES,
               description:
                 "Só para kind=corrida. Tipo de treino de corrida. \"prova\" é o dia de uma prova " +
-                "agendada (o servidor exige-o nesse dia e recusa treinos fortes na véspera e na antevéspera).",
+                "agendada (o servidor exige-o nesse dia e recusa treinos fortes e ginásio na véspera e na antevéspera).",
             },
             categories: {
               type: "ARRAY",
@@ -3077,6 +3089,31 @@ const GOAL_META: Record<string, { flag: string; label: string; unit: string }> =
 
 // Executa update_goals: cria uma proposta com qualquer combinação dos campos
 // acima, que o atleta aceita ou recusa.
+/* A prova pelo nome, no update_race_event (2026-09-26, Fase 0 do Troféu).
+   Até aqui era a primeira das 20 próximas cujo nome CONTINHA o que o modelo
+   escreveu: "Cascais" apanhava a primeira jornada do Troféu de Cascais em vez
+   da Meia de Cascais que ele queria, e gravava lá o objetivo sem ninguém
+   dar por isso. Agora:
+   - o nome exato (sem maiúsculas, acentos nem espaços a mais) ganha;
+   - só sem exato conta o "contém", e só com UM candidato;
+   - dois ou mais (exatos repetidos, ou vários "contém") são ambíguos: a
+     ferramenta devolve erro com as datas e os ids, e a Carol pergunta. */
+export function normalizeRaceName(value: unknown): string {
+  return String(value ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+}
+
+// deno-lint-ignore no-explicit-any
+export function matchRaceByName<T extends { name?: any }>(races: T[], name: string): { race: T | null; ambiguous: T[] } {
+  const wanted = normalizeRaceName(name);
+  if (!wanted) return { race: null, ambiguous: [] };
+  const exact = races.filter((r) => normalizeRaceName(r?.name) === wanted);
+  if (exact.length === 1) return { race: exact[0], ambiguous: [] };
+  if (exact.length > 1) return { race: null, ambiguous: exact };
+  const partial = races.filter((r) => normalizeRaceName(r?.name).includes(wanted));
+  if (partial.length === 1) return { race: partial[0], ambiguous: [] };
+  return { race: null, ambiguous: partial };
+}
+
 /** Grava na prova o que se acordou no chat. Devolve "Prova atualizada: …"
  *  em caso de sucesso (é o prefixo que o handler usa para avisar o cliente). */
 // deno-lint-ignore no-explicit-any
@@ -3092,9 +3129,18 @@ export async function runUpdateRaceEvent(sb: any, userId: string, args: any): Pr
   if (error) return `Erro ao ler as provas: ${error.message}`;
   // deno-lint-ignore no-explicit-any
   const list = (races || []) as any[];
-  const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  // deno-lint-ignore no-explicit-any
-  const race = raceId ? list.find((r: any) => r.id === raceId) : list.find((r: any) => norm(String(r.name || "")).includes(norm(raceName)));
+  let race = null;
+  if (raceId) {
+    // deno-lint-ignore no-explicit-any
+    race = list.find((r: any) => r.id === raceId) ?? null;
+  } else {
+    const match = matchRaceByName(list, raceName);
+    if (match.ambiguous.length) {
+      return `Erro: "${raceName}" serve a mais do que uma prova: ${match.ambiguous.map((r) => `"${r.name}" (${r.date}, id ${r.id})`).join("; ")}. ` +
+        `Pergunta ao atleta qual é e volta a chamar com o race_id dessa — não escolhas por ele.`;
+    }
+    race = match.race;
+  }
   if (!race) return `Erro: não encontrei nenhuma prova agendada${raceName ? ` com "${raceName}"` : ""}. Provas por correr: ${list.map((r) => r.name).join(", ") || "nenhuma"}.`;
 
   const patch: Record<string, unknown> = {};
@@ -3968,7 +4014,19 @@ export function buildRaceEventsContext(
 
     return `- ${e.date} (daqui a ${daysUntil} dia(s)): ${e.name} — ${typeLabel}${extras ? ` (${extras})` : ""}${viabSuffix}${forecastSuffix}${triageSuffix}${routeSuffix}`;
   });
-  return `Próximas provas agendadas:\n${lines.join("\n")}`;
+  /* A prova-objetivo, quando NÃO é a mais próxima (2026-09-26, Fase 0 do
+     Troféu). Com uma prova de treino ou uma jornada de taça antes da
+     principal, a lista por data punha-a em primeiro e a Carol tratava-a como
+     o objetivo — as fases, o taper e a meteorologia do prompt já são da
+     principal (focusRace), e esta linha diz-lho. Quando a mais próxima é a
+     principal, ou não há principal, o bloco fica igual ao de antes. */
+  const objective = focusRace(events, todayISO);
+  const nearest = nextRaceByDate(events, todayISO);
+  const objectiveLine = objective && nearest && objective.id !== nearest.id && isPrincipalRace(objective)
+    ? `\nOBJETIVO: a prova principal é "${objective.name}" (${objective.date}) — é por ela que contam as fases, o taper e a prontidão. ` +
+      `As provas antes dela têm prioridade b/c: são provas de preparação. Fala delas como provas (a véspera, o plano do dia, o balanço), não como o objetivo.`
+    : "";
+  return `Próximas provas agendadas:\n${lines.join("\n")}${objectiveLine}`;
 }
 
 // Contexto dos treinos que o coach já propôs e ainda estão por resolver —
@@ -5815,13 +5873,37 @@ async function handler(req: Request): Promise<Response> {
     const raceLookbackD = new Date();
     raceLookbackD.setUTCDate(raceLookbackD.getUTCDate() - 1);
     const raceLookbackISO = raceLookbackD.toISOString().slice(0, 10);
-    const { data: upcomingRaces, error: err_upcomingRaces } = await sb
-      .from("race_events")
-      .select("id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, web_info, start_time, conflict_acknowledged_at")
-      .eq("user_id", userId)
-      .gte("date", raceLookbackISO)
-      .order("date", { ascending: true })
-      .limit(5);
+    /* As 5 primeiras por data, e SEMPRE a próxima principal (2026-09-26, Fase
+       0 do Troféu): com três ou quatro provas de treino ou jornadas de taça à
+       frente, a principal ficava fora das 5 e a Carol não sabia que ela
+       existia. A segunda leitura é pequena (uma linha) e junta-se sem
+       repetir (withPrincipal). A ordem inclui o id: sem ele, duas provas no
+       mesmo dia vinham numa ordem ao acaso. */
+    // `status` (2026-09-26, revisão da Fase 0): sem ele, o filtro das
+    // concluídas de mainRace nunca atuava nestas linhas — uma prova de hoje já
+    // corrida continuava a ser a "próxima", com plano do dia e véspera.
+    const RACE_COLUMNS = "id, date, name, race_type, location, target_time, target_time_seconds, target_pace_seconds_per_km, distance_km, elevation_gain_m, experience_level, race_priority, status, web_info, start_time, conflict_acknowledged_at";
+    const [{ data: firstRaces, error: err_upcomingRaces }, { data: principalRows, error: err_principalRace }] = await Promise.all([
+      sb.from("race_events").select(RACE_COLUMNS)
+        .eq("user_id", userId)
+        .gte("date", raceLookbackISO)
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(5),
+      sb.from("race_events").select(RACE_COLUMNS)
+        .eq("user_id", userId)
+        .gte("date", todayISO)
+        .eq("race_priority", "a")
+        // `neq` sozinho deixava de fora um status a null.
+        .or("status.is.null,status.neq.concluida")
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(1),
+    ]);
+    warnIfQueryFailed("race_events(principal)", err_principalRace);
+    const raceSelection = selectRaces(firstRaces || [], principalRows?.[0] ?? null, todayISO);
+    // deno-lint-ignore no-explicit-any
+    const upcomingRaces: any[] = raceSelection.upcoming;
     // Volume médio semanal das últimas 4 semanas — usado pelo Bloco 1 para
     // avaliar a viabilidade do objetivo (flag volume_insuficiente).
     // Delega em @formulas/raceViability.ts (T1.5) — a mesma média de 4
@@ -5858,7 +5940,10 @@ async function handler(req: Request): Promise<Response> {
       elevation_gain_m: r.details?.elevation_gain_m ?? null,
     }));
     // deno-lint-ignore no-explicit-any
-    const nextRaceForPlan = (upcomingRaces || []).find((e: any) => typeof e.date === "string" && e.date >= todayISO);
+    // O plano do dia e a véspera são da prova mais PRÓXIMA, principal ou não:
+    // uma prova de treino também tem ritmos e véspera. Num empate de dia, a
+    // principal (nextRaceByDate).
+    const nextRaceForPlan = raceSelection.nearest;
     let racePlanContext: string | null = null;
     let raceEveContext: string | null = null;
     if (nextRaceForPlan) {
@@ -5966,10 +6051,17 @@ async function handler(req: Request): Promise<Response> {
 
     // Só provas que ainda vão acontecer (upcomingRaces inclui "ontem" para
     // o Coach poder perguntar "como correu?" — essa não conta como "próxima").
-    const nextUpcomingRace = (upcomingRaces || []).find((r: any) => r.date >= todayISO) ?? null;
+    // A prova-OBJETIVO, não a próxima por data (2026-09-26, Fase 0 do
+    // Troféu): as fases do macrociclo, a meteorologia da semana da prova e a
+    // prontidão ("Reta Final") são da próxima principal; sem principal, da
+    // próxima. Uma prova de treino à frente continua na lista de provas
+    // (buildRaceEventsContext), com o seu plano do dia e a sua véspera.
+    const nextUpcomingRace = raceSelection.focus;
     // A meteorologia da prova (ação 4.2): só nos 7 dias antes, pedida já e
     // esperada ao montar o prompt. Nunca rejeita — sem previsão, não há bloco.
-    const raceWeatherPromise = fetchRaceWeatherContext(nextUpcomingRace, todayISO);
+    // A do objetivo — exceto quando há prova hoje ou amanhã: essa, principal
+    // ou não, é a que ele vai correr (raceOfTheMoment).
+    const raceWeatherPromise = fetchRaceWeatherContext(raceSelection.moment, todayISO);
     // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6) — só
     // com cidade no perfil e treino no plano; nunca rejeita.
     const trainingWeatherPromise = fetchTrainingWeatherBlock(sb, userId, todayISO);

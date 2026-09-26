@@ -178,7 +178,12 @@ export default function RunAgenda({ onClose }) {
       if (!p || p.status !== 'aceite' || !p.race_id || p.race_id === editingEventId) return false;
       const start = String(p.period_start || '').slice(0, 10);
       const end = String(p.period_end || '').slice(0, 10);
-      return start && end && draft.date >= start && draft.date < end;
+      // 2026-09-26 (Fase 0 do Troféu): intervalo fechado — period_end é o
+      // ÚLTIMO dia do plano (inclusive), não um limite aberto. Com `< end`
+      // uma prova principal marcada exatamente no último dia do plano não
+      // entrava em conflito nenhum, quando é precisamente esse o dia que
+      // o plano ainda estava a preparar.
+      return start && end && draft.date >= start && draft.date <= end;
     });
     if (!plan) return null;
     const target = (raceEvents || []).find((r) => r?.id === plan.race_id);
@@ -1111,16 +1116,44 @@ export default function RunAgenda({ onClose }) {
               {/* Distância · D+ (só em Trail) */}
               <div className={`grid gap-2 ${draft.race_type === 'trail' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <div className="min-w-0">
-                  <label htmlFor="ra-distancia" className="text-[11px] text-[var(--text-3)] mb-1 block">Distância <span className="text-[var(--danger)]">*</span></label>
-                  <select id="ra-distancia"
+                  <label htmlFor="ra-distancia" className="text-[11px] text-[var(--text-3)] mb-1 block">Distância (km) <span className="text-[var(--danger)]">*</span></label>
+                  {/* 2026-09-26 (Fase 0 do Troféu): era um <select> só com
+                      RACE_DISTANCE_OPTIONS — uma prova de 3,3 km, 7,4 km ou
+                      uma milha (1,609 km) não tinha como ser registada.
+                      Passa a número livre; a lista fixa fica como atalhos
+                      (datalist + pílulas), não como as únicas escolhas.
+                      step="any" (revisão da Fase 0): com step="0.001" o
+                      atalho da meia (21.0975) ficava :invalid e as setas
+                      arredondavam-no. As pílulas têm 44px de altura mínima,
+                      a área de toque que a UI pede. */}
+                  <input id="ra-distancia"
+                    type="number"
+                    min="0.01"
+                    step="any"
+                    inputMode="decimal"
+                    list="ra-distancia-atalhos"
+                    placeholder="Ex.: 10"
                     value={draft.distance_km}
                     onChange={e => { updateDistance(e.target.value) }}
                     className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
-                  >
+                  />
+                  <datalist id="ra-distancia-atalhos">
                     {RACE_DISTANCE_OPTIONS.map(opt => (
                       <option key={opt.km} value={opt.km}>{opt.label}</option>
                     ))}
-                  </select>
+                  </datalist>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {RACE_DISTANCE_OPTIONS.map(opt => (
+                      <button
+                        key={opt.km}
+                        type="button"
+                        onClick={() => { updateDistance(String(opt.km)) }}
+                        className="inline-flex items-center min-h-[44px] px-3 rounded-full text-xs font-medium border border-[var(--border-glass)] text-[var(--text-3)] bg-[var(--surface-soft)] hover:border-[var(--mod-prova)] hover:text-[var(--text-1)] transition-colors"
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 {draft.race_type === 'trail' && (
                   <div className="min-w-0">

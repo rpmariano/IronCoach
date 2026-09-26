@@ -137,7 +137,8 @@ async function handler(req: Request): Promise<Response> {
       .select("user_id, id, date, duration_seconds")
       .in("user_id", ids).gte("date", janela.start).lt("date", janela.end),
     sb.from("race_events")
-      .select("user_id, date, race_type")
+      // Com a prioridade: a modalidade é a da próxima principal (terrainForAthlete, 2026-09-26).
+      .select("user_id, id, date, race_type, race_priority")
       .in("user_id", ids).gte("date", addDays(janela.end, -TERRAIN_LOOKBACK_DAYS)),
   ]);
   if (itensRes.error || corridasRes.error || ginasioRes.error || provasRes.error) {
@@ -157,7 +158,7 @@ async function handler(req: Request): Promise<Response> {
   const itensDe = porAtleta(itensRes.data as Array<PlanItemRow & { user_id: string }>);
   const corridasDe = porAtleta(corridasRes.data as Array<RunRow & { user_id: string }>);
   const ginasioDe = porAtleta(ginasioRes.data as Array<GymRow & { user_id: string }>);
-  const provasDe = porAtleta(provasRes.data as Array<{ user_id: string; date: string; race_type: string | null }>);
+  const provasDe = porAtleta(provasRes.data as Array<{ user_id: string; id: string; date: string; race_type: string | null; race_priority: string | null }>);
 
   // 4) a 7) — o índice de cada um, os segmentos com k ou mais, e as tabelas.
   const scored = scoreAthletes(atletas, (id) => ({

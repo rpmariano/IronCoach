@@ -44,21 +44,88 @@ export function raceResultSeconds(run) {
   return num(run?.details?.official_time_seconds) ?? num(run?.duration_seconds);
 }
 
-/** Melhor tempo ANTERIOR do atleta na mesma categoria de distância, entre
- *  corridas de competição (kind = 'competicao') anteriores ao dia da prova e
- *  que não sejam a própria corrida. null sem histórico comparável. */
-export function previousBestSeconds(runs, race, run) {
-  const category = categorizeDistance(num(race?.distance_km));
-  if (!category || !race?.date) return null;
+/* 2026-09-26: a categoria (categorizeDistance) é larga de propósito para o
+ * taper e o volume ("10k" vai de 5,5 a 11 km) — mas usada aqui dava "recorde
+ * pessoal" a comparar um 8 km com uma prova de 10 km só porque caíam na mesma
+ * categoria (Fase 0 do Troféu, specs/trofeu.md). O que faz sentido para
+ * "recorde pessoal" é a mesma distância, não a mesma categoria larga — por
+ * isso a comparação passa a ser por PROXIMIDADE da distância
+ * (±DISTANCE_MATCH_RATIO). */
+export const DISTANCE_MATCH_RATIO = 0.02;
+/* 2026-09-26 (revisão da Fase 0): o ±2% só é justo entre distâncias
+ * OFICIAIS. O distance_km de uma linha em runs é o do GPS/relógio, e numa
+ * prova de 10 km o relógio mede 10,2-10,4 km (5,1-5,2 km num 5 km) — por
+ * tangentes mal cortadas e desvios, quase sempre PARA CIMA. Com ±2% essas
+ * provas anteriores deixavam de contar e o recorde pessoal desaparecia (e com
+ * ele prémios e conquistas, retroativamente). Por isso: numa corrida ligada a
+ * uma prova (race_id) compara-se a distância oficial dessa prova; só numa
+ * competição sem prova ligada se usa a do GPS, com folga assimétrica — -2%
+ * para baixo, +GPS_OVERSHOOT_RATIO para cima. */
+export const GPS_OVERSHOOT_RATIO = 0.05;
+
+function isEquivalentDistance(a, b, upRatio = DISTANCE_MATCH_RATIO) {
+  if (!a || !b) return false;
+  return a >= b * (1 - DISTANCE_MATCH_RATIO) && a <= b * (1 + upRatio);
+}
+
+/** A distância medida pelo GPS (`gpsKm`) é a de uma prova oficial de
+ *  `officialKm`? -2% para baixo, +GPS_OVERSHOOT_RATIO para cima — a mesma
+ *  folga do recorde pessoal. Também serve ao registo para reconhecer a prova
+ *  agendada do dia (RunRegistration). */
+export function gpsMatchesOfficialDistance(gpsKm, officialKm) {
+  return isEquivalentDistance(num(gpsKm), num(officialKm), GPS_OVERSHOOT_RATIO);
+}
+
+/** A distância com que uma competição anterior entra na comparação: a
+ *  OFICIAL da prova a que está ligada, quando a conhecemos; senão a do GPS,
+ *  marcada como tal para levar a folga assimétrica. */
+function comparableDistance(r, racesById) {
+  const linked = r.race_id != null ? racesById.get(r.race_id) : null;
+  const official = num(linked?.distance_km);
+  if (official) return { km: official, gps: isMeasuredRace(linked) };
+  return { km: num(r.distance_km), gps: true };
+}
+
+/* Revisão pré-deploy de 2026-09-26: as provas criadas pelo registo de uma
+ * competição fora da agenda (RunRegistration.autoCreateRaceForCompetition)
+ * gravam como distance_km a distância do GPS — e deixam o local vazio, que é
+ * a marca delas. Tratá-las como oficiais (±2%) fazia desaparecer o recorde
+ * entre uma dessas (10,3 km) e uma prova da agenda de 10 km, nos dois
+ * sentidos. Uma prova assim leva a folga do GPS, como uma corrida sem prova.
+ * Só conta o local vazio de facto: a coluna é NOT NULL, por isso um local em
+ * falta num objeto parcial (rascunho, teste) não é essa marca. */
+function isMeasuredRace(race) {
+  return !!race && typeof race.location === 'string' && race.location.trim() === '';
+}
+
+/** As duas distâncias são a mesma prova? Entre oficiais, ±2%; se um dos lados
+ *  foi medido pelo GPS, esse lado pode passar até +GPS_OVERSHOOT_RATIO. */
+function sameRaceDistance(prevKm, prevGps, curKm, curGps) {
+  if (prevGps && isEquivalentDistance(prevKm, curKm, GPS_OVERSHOOT_RATIO)) return true;
+  if (curGps && isEquivalentDistance(curKm, prevKm, GPS_OVERSHOOT_RATIO)) return true;
+  return isEquivalentDistance(prevKm, curKm);
+}
+
+/** Melhor tempo ANTERIOR do atleta na mesma distância, entre corridas de
+ *  competição (kind = 'competicao') anteriores ao dia da prova e que não
+ *  sejam a própria corrida. `races` (race_events) dá a distância oficial das
+ *  corridas ligadas a uma prova; sem ela usa-se a do GPS com folga
+ *  (GPS_OVERSHOOT_RATIO). null sem histórico comparável. */
+export function previousBestSeconds(runs, race, run, races = []) {
+  const raceDistanceKm = num(race?.distance_km);
+  const category = categorizeDistance(raceDistanceKm);
+  if (!category || !raceDistanceKm || !race?.date) return null;
+  const racesById = new Map((races || []).filter((x) => x?.id != null).map((x) => [x.id, x]));
   let best = null;
   for (const r of runs || []) {
     if (!r || r === run || (run?.id && r.id === run.id)) continue;
     if (r.kind !== 'competicao') continue;
     if (typeof r.date !== 'string' || r.date.slice(0, 10) >= race.date.slice(0, 10)) continue;
-    if (categorizeDistance(num(r.distance_km)) !== category) continue;
+    const { km: rDistanceKm, gps } = comparableDistance(r, racesById);
+    if (!sameRaceDistance(rDistanceKm, gps, raceDistanceKm, isMeasuredRace(race))) continue;
     const seconds = raceResultSeconds(r);
     if (!seconds) continue;
-    if (!best || seconds < best.seconds) best = { seconds, date: r.date.slice(0, 10), distanceKm: num(r.distance_km) };
+    if (!best || seconds < best.seconds) best = { seconds, date: r.date.slice(0, 10), distanceKm: rDistanceKm };
   }
   return best;
 }
@@ -73,9 +140,10 @@ function bandAgainst(reference, actual) {
 /**
  * Classifica o resultado de uma prova. `run` é a corrida ligada (por omissão
  * findRaceRun); `runs` é o histórico completo, `profile` dá o nível de
- * experiência à previsão. Devolve null sem prova.
+ * experiência à previsão; `races` (race_events) dá a distância oficial às
+ * provas anteriores no recorde pessoal. Devolve null sem prova.
  */
-export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = {} } = {}) {
+export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = {}, races = [] } = {}) {
   if (!race) return null;
   const run = givenRun === undefined ? findRaceRun(runs, race) : givenRun;
   const distanceKm = num(race.distance_km) ?? num(run?.distance_km);
@@ -118,7 +186,7 @@ export function classifyRaceOutcome({ race, run: givenRun, runs = [], profile = 
   const prediction = trainingRuns.length ? getRacePrediction(race, profile, trainingRuns) : null;
   const predictedSeconds = prediction && prediction.predictedSeconds > 0 ? Math.round(prediction.predictedSeconds) : null;
 
-  const best = previousBestSeconds(runs, race, run);
+  const best = previousBestSeconds(runs, race, run, races);
 
   const reference = targetSeconds ?? predictedSeconds;
   let verdict = 'concluida';

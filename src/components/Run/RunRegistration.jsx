@@ -21,7 +21,7 @@ import {
 import { shoeLabel } from '../../utils/shoes';
 import { formatDatePTShort } from '../../utils/racePlanEngine';
 import { achievementsForRace } from '../../utils/achievements';
-import { raceResultSeconds } from '../../utils/raceOutcome';
+import { raceResultSeconds, gpsMatchesOfficialDistance } from '../../utils/raceOutcome';
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps.ts';
@@ -1030,11 +1030,86 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
      Sem distância ou duração não há prova válida (distance_km também exige
      > 0) — fica por ligar, como acontecia antes; é o mesmo caminho que uma
-     "Prova fora da agenda" sem race_id sempre teve para este caso raro. */
+     "Prova fora da agenda" sem race_id sempre teve para este caso raro.
+
+     2026-09-26 (Fase 0 do Troféu): dois ajustes.
+     1) `race_priority` ia por omissão (fica 'a', principal, ver
+        utils/run.js RACE_PRIORITIES) — uma prova que o próprio atleta nunca
+        marcou como principal passava a mandar no taper das outras (e a
+        "roubar" a Reta Final/prontidão a uma principal de verdade, ver
+        biEngine.js). Grava-se 'b' (secundária) explicitamente, como uma
+        prova "fora da agenda" sempre foi: importante, mas não o objetivo
+        da época.
+     2) Antes de criar, tenta-se ligar à prova AGENDADA desse dia — se o
+        atleta já a tinha na agenda mas não a escolheu em "Qual prova?"
+        (agenda desatualizada, prova esquecida no momento), criar outra
+        duplicava-a.
+
+     Revisão da Fase 0 (2026-09-26): esta ligação dispara precisamente quando
+     o atleta deixou "Prova fora da agenda" — uma escolha explícita. Por
+     isso só se liga com uma correspondência FORTE: status 'agendada' (a
+     mesma régua do seletor), a distância do registo a bater com a oficial
+     da prova (gpsMatchesOfficialDistance: -2%/+5%, o GPS mede a mais) e UMA
+     só candidata. Um parkrun de 5 km no dia de uma meia agendada já não
+     fecha a meia; com duas provas possíveis não se adivinha — cria-se, como
+     antes. A ordem é a do modo prova: primeiro liga-se a corrida, depois
+     conclui-se a prova; se concluir falhar, desfaz-se a ligação, para nunca
+     ficar uma prova "concluída" sem corrida nem uma corrida ligada a uma
+     prova ainda agendada. E o item de prova do plano nesse dia conclui-se
+     também, como em completeRacePlanItem. (As memórias — diploma, medalha,
+     fotos — só existem no modo prova; aqui não há nada a gravar.) */
+  const findScheduledRaceForCompetition = (run) => {
+    const store = useAppStore.getState();
+    const day = String(run?.date || '').slice(0, 10);
+    const candidates = (store.raceEvents || []).filter((r) =>
+      r?.id && String(r.date || '').slice(0, 10) === day && r.status === 'agendada'
+      && gpsMatchesOfficialDistance(run?.distance_km, r.distance_km));
+    return candidates.length === 1 ? candidates[0] : null;
+  };
+
+  const completeRacePlanItemForDate = async (raceDate, savedRun) => {
+    const store = useAppStore.getState();
+    const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
+    const item = (store.coachPlanItems || []).find(
+      i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === raceDate && isRacePlanItem(i),
+    );
+    if (!item) return;
+    try {
+      await store.completePlanItem(item.id, { actualDate: runDate, runId: savedRun?.id || null });
+    } catch (err) {
+      console.warn('Item de prova do plano não marcado como concluído', err);
+    }
+  };
+
   const autoCreateRaceForCompetition = async (run) => {
     const seconds = Math.round(Number(run?.duration_seconds) || 0);
     const km = Number(run?.distance_km) || 0;
     if (!run?.id || !seconds || !km) return run;
+
+    const existing = findScheduledRaceForCompetition(run);
+    if (existing) {
+      const { error: linkError } = await supabase.from('runs').update({ race_id: existing.id }).eq('id', run.id);
+      if (linkError) {
+        console.warn('Corrida não ligada à prova agendada do dia', linkError);
+        return run;
+      }
+      const { error: patchError } = await supabase
+        .from('race_events')
+        .update({ status: 'concluida' })
+        .eq('id', existing.id);
+      if (patchError) {
+        console.warn('Prova agendada não marcada como concluída — desfaz-se a ligação', patchError);
+        const { error: undoError } = await supabase.from('runs').update({ race_id: null }).eq('id', run.id);
+        if (undoError) console.warn('Ligação da corrida à prova não desfeita', undoError);
+        return run;
+      }
+      const store = useAppStore.getState();
+      store.setRaceEvents((store.raceEvents || []).map((e) => (e.id === existing.id ? { ...e, status: 'concluida' } : e)));
+      const linked = { ...run, race_id: existing.id };
+      await completeRacePlanItemForDate(String(existing.date).slice(0, 10), linked);
+      return linked;
+    }
+
     const pace = Math.round(seconds / km);
     const { data: newRace, error } = await supabase
       .from('race_events')
@@ -1049,6 +1124,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         target_pace_seconds_per_km: pace,
         distance_km: km,
         status: 'concluida',
+        race_priority: 'b',
       })
       .select()
       .single();
