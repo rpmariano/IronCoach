@@ -1,38 +1,61 @@
-import React, { useMemo, useState } from 'react';
-import { useAppStore } from '../../store';
-import { detectCoachInsights } from '../../utils/biEngine';
+import React, { useState } from 'react';
+import { Dialog } from '../shared/Sheet';
 import CoachInsightButton from './CoachInsightButton';
 import CoachInsightModal from './CoachInsightModal';
+import useCarolNotices from './useCarolNotices';
 
-/* O botão flutuante dos insights e o seu popup, prontos a montar em
-   qualquer ecrã.
+/* O botão flutuante da Carol e a sua janela, prontos a montar em qualquer
+   ecrã — em todos menos no Chat, que é onde o atleta já está a falar com
+   ela: ali um botão a chamá-lo para a conversa que já está aberta não faz
+   sentido nenhum.
 
-   Os avisos da Carol viviam só no Início e nos Dashboards, e o atleta que
-   estivesse no Calendário, nas Provas ou no Perfil não tinha como saber que
-   havia alguma coisa a dizer — foi o que o utilizador relatou ("só estão a
-   aparecer no dashboard"). Passam a acompanhá-lo em todo o lado menos no
-   Chat, que é onde ele já está a falar com ela: ali um botão a chamá-lo
-   para a conversa que já está aberta não faz sentido nenhum.
+   Desde 2026-09-27 o que mostram é o mesmo em todo o lado (useCarolNotices):
+   os avisos em que ela pede para falar e os insights todos. Antes o Início,
+   a Evolução e os restantes ecrãs tinham cada um a sua seleção, e o mesmo
+   botão dizia coisas diferentes consoante o separador.
 
-   O Início e os Dashboards NÃO usam este componente: têm a sua própria
-   seleção (o Início mostra os do módulo 'coach' mais os avisos dela; os
-   Dashboards mostram os dos outros módulos). Aqui, sem canal próprio, o
-   atleta vê tudo o que está por ver.
-
-   `bottom` sobe o botão nos ecrãs com barra de ação fixa. */
-export default function CoachInsightsDock({ bottom }) {
-  const { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates } = useAppStore();
+   `CarolNoticesDock` recebe a lista já feita — o Início usa-a, porque o
+   cartão da Carol precisa do mesmo `openCoach`. O `CoachInsightsDock` (o de
+   omissão) calcula-a sozinho. `bottom` sobe o botão nos ecrãs com barra de
+   ação fixa. */
+export function CarolNoticesDock({ notices, bottom }) {
   const [open, setOpen] = useState(false);
+  const { alerts, insights, logOpened, dismissDialog } = notices;
 
-  const insights = useMemo(() => (
-    detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile)
-      .filter((i) => insightStates[i.id] !== 'understood')
-  ), [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates]);
+  const openWindow = () => {
+    logOpened();
+    setOpen(true);
+  };
 
   return (
     <>
-      <CoachInsightButton insights={insights} onClick={() => setOpen(true)} bottom={bottom} />
-      {open && <CoachInsightModal insights={insights} onClose={() => setOpen(false)} />}
+      <CoachInsightButton insights={insights} alerts={alerts} onClick={openWindow} bottom={bottom} />
+      {open && <CoachInsightModal insights={insights} alerts={alerts} onClose={() => setOpen(false)} />}
+      {dismissDialog.open && (
+        <Dialog
+          title="Dispensar este aviso?"
+          onClose={dismissDialog.cancel}
+          actions={(
+            <>
+              <button type="button" disabled={dismissDialog.busy} onClick={dismissDialog.confirm} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-extrabold disabled:opacity-45" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
+                {dismissDialog.busy ? 'A dispensar…' : 'Dispensar'}
+              </button>
+              <button type="button" disabled={dismissDialog.busy} onClick={dismissDialog.cancel} className="flex-1 min-h-[44px] rounded-[11px] text-[13px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
+                Cancelar
+              </button>
+            </>
+          )}
+        >
+          <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
+            O aviso deixa de aparecer. Podes voltar a falar comigo no chat sempre que quiseres.
+          </p>
+        </Dialog>
+      )}
     </>
   );
+}
+
+export default function CoachInsightsDock({ bottom }) {
+  const notices = useCarolNotices();
+  return <CarolNoticesDock notices={notices} bottom={bottom} />;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { Utensils, Dumbbell, User, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
@@ -12,9 +12,7 @@ import Gym from '../Gym/Gym';
 import Nutrition from '../Nutrition/Nutrition';
 import Body from '../Body/Body';
 import OverviewDashboard from './OverviewDashboard';
-import CoachInsightButton from '../BI/CoachInsightButton';
-import CoachInsightModal from '../BI/CoachInsightModal';
-import { detectCoachInsights } from '../../utils/biEngine';
+import CoachInsightsDock from '../BI/CoachInsightsDock';
 
 /* Cinco separadores em 390px não cabem com "Visão Geral" por extenso a 11px
    (auditoria, achado 1) — o mock "Dashboard · Visão Geral" resolve-o a
@@ -30,15 +28,7 @@ const TABS = [
 ];
 
 export default function Dashboard({ activeModule }) {
-  const { setActiveTab, runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates, shoes } = useAppStore();
-  const [showInsights, setShowInsights] = useState(false);
-
-  const insights = useMemo(() => {
-    const all = detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile);
-    // Remove os que ja foram "Entendidos" (desativados).
-    // Filtra apenas os que não são relativos ao ecrã inicial (ex: adesão ao plano).
-    return all.filter(i => insightStates[i.id] !== 'understood' && i.module !== 'coach');
-  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, profile, insightStates]);
+  const { setActiveTab } = useAppStore();
 
   const currentIndex = TABS.findIndex(t => t.key === activeModule);
   const scrollRef = useRef(null);
@@ -164,11 +154,9 @@ export default function Dashboard({ activeModule }) {
         <div ref={setCarouselPageRef(4)} className="tab-swipe-page"><Body /></div>
       </div>
 
-      <CoachInsightButton insights={insights} onClick={() => setShowInsights(true)} />
-
-      {showInsights && (
-        <CoachInsightModal insights={insights} onClose={() => setShowInsights(false)} />
-      )}
+      {/* Os avisos da Carol: os mesmos de todos os ecrãs (pedido 2026-09-27).
+          Eram os insights todos menos o do plano, que só o Início mostrava. */}
+      <CoachInsightsDock />
     </div>
   );
 }

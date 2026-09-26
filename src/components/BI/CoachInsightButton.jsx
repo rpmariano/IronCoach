@@ -1,6 +1,6 @@
 import React from 'react';
-import { AlertTriangle, AlertCircle } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
+import { noticeTone, topSeverity } from './noticeTones';
 
 /* O botão flutuante dos insights (mock "Início": canto inferior direito,
    48px, gradiente da Carol, ondas na cor do alerta mais grave e o número
@@ -19,16 +19,18 @@ export default function CoachInsightButton({ insights = [], alerts = [], onClick
   const total = list.length + carolAlerts.length;
   if (total === 0) return null;
 
-  const all = [...carolAlerts, ...list];
-  const hasCritical = all.some((i) => i.severity === 'critical');
-  const hasWarning = all.some((i) => i.severity === 'warning');
-  // Ponto 3: a onda do aviso era âmbar (#f59e0b) — o âmbar é da prova.
-  const wave = hasCritical ? 'var(--danger)' : hasWarning ? 'var(--warn)' : 'var(--coach)';
-  const ring = hasCritical ? 'rgba(248,113,113,.5)' : hasWarning ? 'rgba(251,124,77,.5)' : 'rgba(34,211,238,.4)';
+  // A cor e o símbolo são os do aviso mais grave, pelo mesmo código dos
+  // cartões da janela (noticeTones.js). Ponto 3: a onda do aviso era âmbar
+  // (#f59e0b) — o âmbar é da prova. Sem nada grave fica a cara dela.
+  const severity = topSeverity([...carolAlerts, ...list]);
+  const tone = noticeTone(severity);
+  const urgent = severity !== 'info';
+  const wave = tone.color;
+  const ring = tone.ring;
   // Texto sobre a cor cheia é escuro (handoff, "Cor"): o branco sobre coral
   // não chegava a 4.5:1.
-  const waveInk = hasCritical ? 'var(--danger-ink)' : hasWarning ? 'var(--warn-ink)' : 'var(--coach-ink)';
-  const Icon = hasCritical ? AlertTriangle : hasWarning ? AlertCircle : null;
+  const waveInk = tone.ink;
+  const Icon = urgent ? tone.Icon : null;
 
   // Aviso 5 da revisão: com avisos e insights juntos, os insights não são
   // "assuntos" — cada um diz-se pelo seu nome.
@@ -44,8 +46,9 @@ export default function CoachInsightButton({ insights = [], alerts = [], onClick
       aria-label={label}
       data-testid="coach-insight-button"
       data-alerts={carolAlerts.length}
+      data-severity={severity}
       className="fixed right-4 z-[38] w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-      style={{ bottom, background: 'var(--grad-coach-legible)', animation: hasCritical || hasWarning ? 'coach-pulse-ring 2s infinite' : 'none' }}
+      style={{ bottom, background: 'var(--grad-coach-legible)', animation: urgent ? 'coach-pulse-ring 2s infinite' : 'none' }}
     >
       <span aria-hidden="true" className="coach-wave-ring" style={{ background: wave }} />
       <span aria-hidden="true" className="coach-wave-ring coach-wave-ring--delay" style={{ background: wave }} />

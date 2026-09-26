@@ -136,6 +136,16 @@ export const useAppStore = create((set, get) => ({
     localStorage.setItem('ironcoach_insight_states', JSON.stringify(next));
     return { insightStates: next };
   }),
+  // "Agora não" (pedido 2026-09-27): o insight sai do botão e da janela até
+  // amanhã, e volta se ainda se aplicar. O estado 'ignored' continua em
+  // insightStates — é o que a Carol lê ("posto de lado", Coach.jsx); aqui
+  // fica só o dia em que foi posto de lado. { [insightId]: 'YYYY-MM-DD' }
+  insightSnoozes: JSON.parse(localStorage.getItem('ironcoach_insight_snoozes') || '{}'),
+  snoozeInsight: (insightId, dayISO) => set((s) => {
+    const next = { ...s.insightSnoozes, [insightId]: dayISO };
+    try { localStorage.setItem('ironcoach_insight_snoozes', JSON.stringify(next)); } catch { /* sem storage */ }
+    return { insightSnoozes: next };
+  }),
   dismissedInterventions: JSON.parse(localStorage.getItem('ironcoach_dismissed_interventions') || '{}'),
   dismissIntervention: (recordId, notes) => set((s) => {
     if (!recordId) return {};
@@ -201,11 +211,12 @@ export const useAppStore = create((set, get) => ({
     // dispensou: sem a limpar, esse 'ignored' ficava para o utilizador
     // seguinte. Os 'ignored' do próprio voltam do servidor ao entrar.
     try { localStorage.removeItem('ironcoach_insight_states'); } catch { /* sem storage */ }
+    try { localStorage.removeItem('ironcoach_insight_snoozes'); } catch { /* sem storage */ }
     // proactiveKeyRequested (P.9): uma chave pedida antes do sign-out não é
     // para o próximo utilizador deste telemóvel.
     // A competição (cupSlice.js) também: a inscrição de quem saiu não passa
     // para quem entra.
-    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), lastWelcomeAt: null, insightStates: {}, proactiveKeyRequested: null, cup: CUP_EMPTY, calendarView: null });
+    set({ session, impressionShown: new Set(), impressionDismissed: new Set(), lastWelcomeAt: null, insightStates: {}, insightSnoozes: {}, proactiveKeyRequested: null, cup: CUP_EMPTY, calendarView: null });
   },
   setProfile: (profile) => set({ profile, isAdmin: profile?.is_admin || false }),
 

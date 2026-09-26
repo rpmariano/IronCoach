@@ -27,6 +27,10 @@ vi.mock('../../store', () => ({
   }),
 }));
 
+// Os avisos da Carol têm testes próprios (BI/CoachInsightsDock.test.jsx) e
+// leem do store o que este mock não tem — aqui testam-se os separadores.
+vi.mock('../BI/CoachInsightsDock', () => ({ default: () => null }));
+
 // O jsdom não tem canvas — sem isto os gráficos rebentavam ao montar.
 vi.mock('react-chartjs-2', () => ({
   Bar: () => <div data-testid="chart-bar" />,

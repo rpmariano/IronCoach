@@ -266,9 +266,9 @@ export default function Coach() {
       metric: i.metric,
       value: i.value,
       state: insightStates[i.id] === 'understood'
-        ? 'Entendido (resolvido pelo atleta)'
+        ? 'Percebido (o atleta carregou em "Percebi")'
         : insightStates[i.id] === 'ignored'
-          ? 'Ativo (ignorado temporariamente pelo atleta)'
+          ? 'Ativo, posto de lado pelo atleta até amanhã ("Agora não")'
           : 'Ativo (pendente)'
     }));
   };
@@ -961,9 +961,9 @@ export default function Coach() {
         metric: i.metric,
         value: i.value,
         state: insightStates[i.id] === 'understood'
-          ? 'Entendido (resolvido pelo atleta)'
+          ? 'Percebido (o atleta carregou em "Percebi")'
           : insightStates[i.id] === 'ignored'
-            ? 'Ativo (ignorado temporariamente pelo atleta)'
+            ? 'Ativo, posto de lado pelo atleta até amanhã ("Agora não")'
             : 'Ativo (pendente)'
       }));
 

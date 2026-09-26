@@ -148,7 +148,12 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     expect(aviso).toHaveTextContent('Preciso de falar contigo');
     expect(aviso).toHaveTextContent('Há um registo teu que quero ver contigo.');
     expect(aviso).not.toHaveTextContent('carga a subir');
-    expect(aviso.textContent.match(/Carol/g) || []).toHaveLength(0);
+    // Na voz dela: nem o título nem a mensagem dizem "Carol" (2026-09-23).
+    // O nome fica só no botão, que desde 2026-09-27 é o mesmo em todos os
+    // avisos ("Falar com a Carol").
+    const semBotoes = [...aviso.querySelectorAll('span, p')].map((n) => n.textContent).join(' ');
+    expect(semBotoes).toContain('Preciso de falar contigo');
+    expect(semBotoes).not.toMatch(/Carol/);
     expect(screen.queryByTestId('carol-alert-plano')).not.toBeInTheDocument();
     expect(screen.getByTestId('carol-alert-dismiss-assuntos')).toBeInTheDocument();
 

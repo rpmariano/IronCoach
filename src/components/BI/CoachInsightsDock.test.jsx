@@ -2,12 +2,14 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
+import { todayISO, addDaysISO } from '../../lib/utils';
 
 /* Os avisos da Carol viviam só no Início e nos Dashboards: quem estivesse
    no Calendário, nas Provas ou no Perfil não tinha como saber que havia
    alguma coisa a dizer (relatado pelo utilizador). Este componente é o que
    os leva a esses ecrãs — a todos menos ao Chat, onde a conversa já está
-   aberta.
+   aberta. Desde 2026-09-27 é também o do Início e da Evolução, e mostra o
+   mesmo em todo o lado (useCarolNotices).
 
    O motor de regras é mockado de propósito: o que aqui se testa é o dock
    (o que mostra, quando se cala, onde se põe), não que regra dispara — isso
@@ -18,18 +20,27 @@ const INSIGHTS = [
 ];
 vi.mock('../../utils/biEngine', () => ({ detectCoachInsights: vi.fn(() => INSIGHTS) }));
 
+const { detectCoachInsights } = await import('../../utils/biEngine');
 const { default: CoachInsightsDock } = await import('./CoachInsightsDock');
 
 const seed = (over = {}) => useAppStore.setState({
   runs: [], gymSessions: [], meals: [], bodyAssessments: [], raceEvents: [],
-  coachPlans: [], coachPlanItems: [], shoes: [],
+  coachPlans: [], coachPlanItems: [], coachGoalProposals: [], shoes: [],
   profile: { id: 'u1' },
   insightStates: {},
+  insightSnoozes: {},
+  impressionShown: new Set(),
+  impressionDismissed: new Set(),
+  logImpression: vi.fn(),
   ...over,
 });
 
 describe('CoachInsightsDock', () => {
-  beforeEach(() => { seed(); });
+  beforeEach(() => {
+    window.localStorage.clear();
+    detectCoachInsights.mockImplementation(() => INSIGHTS);
+    seed();
+  });
 
   it('mostra o botão com o número por ver, e abre o popup', () => {
     render(<CoachInsightsDock />);
@@ -39,13 +50,13 @@ describe('CoachInsightsDock', () => {
     expect(screen.getByTestId('insights-dialog')).toHaveTextContent('Calendário apertado');
   });
 
-  it('o que já foi entendido não conta', () => {
+  it('o que já foi percebido não conta', () => {
     seed({ insightStates: { i1: 'understood' } });
     render(<CoachInsightsDock />);
     expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('1');
   });
 
-  it('com tudo entendido, não ocupa espaço nenhum', () => {
+  it('com tudo percebido, não ocupa espaço nenhum', () => {
     seed({ insightStates: { i1: 'understood', i2: 'understood' } });
     render(<CoachInsightsDock />);
     expect(screen.queryByTestId('coach-insight-button')).not.toBeInTheDocument();
@@ -56,5 +67,102 @@ describe('CoachInsightsDock', () => {
   it('aceita uma altura, para não colidir com a barra de ação', () => {
     render(<CoachInsightsDock bottom={168} />);
     expect(screen.getByTestId('coach-insight-button')).toHaveStyle({ bottom: '168px' });
+  });
+
+  /* "Agora não" (pedido 2026-09-27): sai até amanhã e volta se ainda se
+     aplicar. */
+  it('posto de lado hoje não conta; de ontem, volta', () => {
+    seed({ insightStates: { i1: 'ignored' }, insightSnoozes: { i1: todayISO() } });
+    const { unmount } = render(<CoachInsightsDock />);
+    expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('1');
+    unmount();
+
+    seed({ insightStates: { i1: 'ignored' }, insightSnoozes: { i1: addDaysISO(todayISO(), -1) } });
+    render(<CoachInsightsDock />);
+    expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('2');
+  });
+
+  it('"Agora não" na janela tira-o do botão até amanhã', () => {
+    render(<CoachInsightsDock />);
+    fireEvent.click(screen.getByTestId('coach-insight-button'));
+    fireEvent.click(screen.getByTestId('insight-snooze-i1'));
+    expect(useAppStore.getState().insightSnoozes).toEqual({ i1: todayISO() });
+    expect(useAppStore.getState().insightStates.i1).toBe('ignored');
+    expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('1');
+  });
+
+  /* Pedido 2026-09-27: os mesmos avisos em todos os ecrãs. Antes este dock
+     (Provas, Calendário, Perfil) não tinha os avisos em que a Carol pede
+     para falar, e a Evolução não tinha o insight do plano. */
+  describe('o mesmo conteúdo em todos os ecrãs', () => {
+    it('inclui os avisos em que a Carol pede para falar', () => {
+      seed({ profile: { id: 'u1', coach_intervention_status: 'needed', coach_intervention_reason: 'carga a subir' } });
+      render(<CoachInsightsDock />);
+      const botao = screen.getByTestId('coach-insight-button');
+      expect(botao).toHaveAttribute('data-alerts', '1');
+      expect(botao).toHaveTextContent('3');
+      expect(botao).toHaveAccessibleName(/^A Carol quer falar contigo/);
+
+      fireEvent.click(botao);
+      expect(screen.getByTestId('carol-alert-assuntos')).toHaveTextContent('Preciso de falar contigo');
+      expect(screen.getByTestId('insight-i1')).toBeInTheDocument();
+    });
+
+    it('inclui o insight do plano, que antes só o Início mostrava', () => {
+      detectCoachInsights.mockImplementation(() => [
+        ...INSIGHTS,
+        { id: 'low_adherence', severity: 'warning', title: 'Adesão baixa ao plano', message: 'Falhaste metade das sessões.', module: 'coach' },
+      ]);
+      render(<CoachInsightsDock />);
+      expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('3');
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      expect(screen.getByTestId('insight-low_adherence')).toBeInTheDocument();
+    });
+
+    it('abrir a janela regista o que ela mostrou, em qualquer ecrã', () => {
+      const logImpression = vi.fn();
+      seed({ logImpression });
+      render(<CoachInsightsDock />);
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      expect(logImpression).toHaveBeenCalledWith({ kind: 'insights', key: 'i1', title: 'Calendário apertado' });
+      expect(logImpression).toHaveBeenCalledWith({ kind: 'insights', key: 'i2', title: 'Sapatilhas perto do fim' });
+    });
+
+    it('dispensar uma intervenção pede confirmação, também fora do Início', () => {
+      seed({ profile: { id: 'u1', coach_intervention_status: 'needed', coach_intervention_reason: 'carga a subir' } });
+      render(<CoachInsightsDock />);
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      fireEvent.click(screen.getByTestId('carol-alert-dismiss-assuntos'));
+      expect(screen.getByText('Dispensar este aviso?')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    });
+  });
+
+  /* Um só código de cores e símbolos (noticeTones.js): o botão pinta-se do
+     aviso mais grave, tal como o cartão dele na janela. */
+  describe('o código de cores e símbolos', () => {
+    it('a gravidade mais alta pinta o botão, com o símbolo no lugar da cara dela', () => {
+      render(<CoachInsightsDock />);
+      const botao = screen.getByTestId('coach-insight-button');
+      expect(botao).toHaveAttribute('data-severity', 'warning');
+      expect(botao.querySelector('.carol-face')).toBeNull();
+    });
+
+    it('um crítico passa à frente de tudo', () => {
+      detectCoachInsights.mockImplementation(() => [
+        ...INSIGHTS,
+        { id: 'acwr_danger', severity: 'critical', title: 'Carga excessiva', message: 'ACWR alto.', module: 'corrida' },
+      ]);
+      render(<CoachInsightsDock />);
+      expect(screen.getByTestId('coach-insight-button')).toHaveAttribute('data-severity', 'critical');
+    });
+
+    it('só informação: a cara da Carol, sem símbolo de aviso', () => {
+      detectCoachInsights.mockImplementation(() => [INSIGHTS[1]]);
+      render(<CoachInsightsDock />);
+      const botao = screen.getByTestId('coach-insight-button');
+      expect(botao).toHaveAttribute('data-severity', 'info');
+      expect(botao.querySelector('.carol-face')).not.toBeNull();
+    });
   });
 });
