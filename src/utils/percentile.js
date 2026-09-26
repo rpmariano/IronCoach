@@ -98,9 +98,11 @@ const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta'
 const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 /** "terça, 29 set" — o dia da próxima atualização da média, como o ecrã o diz.
- *  A data vem de nextPublicationDate (@formulas/percentileSegments.ts). */
-export function formatPublicationDate(iso) {
+ *  A data vem de nextPublicationDate (@formulas/percentileSegments.ts). Na
+ *  madrugada do próprio dia (antes do cron), é "hoje, de manhã". */
+export function formatPublicationDate(iso, hojeISO = null) {
   if (!iso) return '';
+  if (hojeISO && iso === hojeISO) return 'hoje, de manhã';
   const d = new Date(`${iso}T00:00:00Z`);
   return `${DIAS_SEMANA[d.getUTCDay()]}, ${d.getUTCDate()} ${MESES[d.getUTCMonth()]}`;
 }

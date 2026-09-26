@@ -71,6 +71,20 @@ export function publishableWindow(todayISO: string, grace = PUBLISH_GRACE_DAYS):
   return closedWindow(addDays(todayISO, -grace));
 }
 
+/* A HORA DA PUBLICAÇÃO (2026-09-26). O cron corre às 04:17 UTC: na terça de
+   publicação, entre a meia-noite e essa hora, a quinzena ainda não saiu — e
+   contar pelo calendário anunciava já a seguinte (+14 dias). O "dia de
+   publicação" de um instante é o dia UTC desse instante menos esta margem
+   (04:30, um quarto de hora de folga sobre o cron): antes dela, a terça ainda
+   conta como segunda, e a próxima atualização é "hoje". */
+export const PUBLISH_TIME_UTC_MINUTES = 4 * 60 + 30;
+
+/** O dia (YYYY-MM-DD) que conta para a publicação num instante `nowMs` — é
+ *  este que se passa a nextPublicationDate quando se fala do "agora". */
+export function publicationDayOf(nowMs: number): string {
+  return new Date(nowMs - PUBLISH_TIME_UTC_MINUTES * 60000).toISOString().slice(0, 10);
+}
+
 /** O dia (YYYY-MM-DD) em que sai a PRÓXIMA distribuição — o fim da quinzena
  *  que está a decorrer, mais a folga. É o que o ecrã diz ("próxima
  *  atualização") e o que a Carol responde se ele perguntar quando muda. */

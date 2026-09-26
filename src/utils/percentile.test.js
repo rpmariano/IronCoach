@@ -180,5 +180,8 @@ describe('formatPublicationDate', () => {
     expect(formatPublicationDate('2026-09-29')).toBe('terça, 29 set');
     expect(formatPublicationDate('2026-10-13')).toBe('terça, 13 out');
     expect(formatPublicationDate(null)).toBe('');
+    // Na madrugada do próprio dia (antes do cron), é hoje.
+    expect(formatPublicationDate('2026-09-29', '2026-09-29')).toBe('hoje, de manhã');
+    expect(formatPublicationDate('2026-10-13', '2026-09-29')).toBe('terça, 13 out');
   });
 });

@@ -544,7 +544,7 @@ Deno.test("fetchVitrinaBlock: lê tudo e calcula o percentil com a fórmula do e
     coach_plan_items: { data: [{ planned_date: "2026-09-01", kind: "corrida", target_distance_km: 10 }, { planned_date: "2026-09-02", kind: "corrida", target_distance_km: 10 }] },
     runs: { data: [{ id: "run1", date: "2026-09-01", distance_km: 10 }] },
   });
-  const t = (await fetchVitrinaBlock(sb, "u1", "2026-09-25", { withBadges: true }))!;
+  const t = (await fetchVitrinaBlock(sb, "u1", "2026-09-25", { withBadges: true, publicationDay: "2026-09-25" }))!;
   // 1 de 2 corridas cumpridas → índice 50 → percentil 50, como no ecrã.
   assertStringIncludes(t, "Percentil dele: 50");
   // Sexta 25 set: a próxima atualização é na terça 29, com a quinzena de 14 a 27.
