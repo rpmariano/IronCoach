@@ -66,7 +66,7 @@ Fica para depois (baixo risco, confirmado por que o cliente já mitiga ou é rar
 
 **Deploy (2026-09-26): em produção.** Lotes 1 a 4 e as correções das três revisões pré-deploy, num só avanço de `dev` e `master` para `e312817`, com autorização explícita:
 
-- Edge Functions às 20:43Z pelo push a `dev` (run #303: `deno test` 1119/1119 e deploy) e de novo, sem diferenças, pelo de `master` (run #304) — `coach-proactive-tick`, `coach-chat`, `coach-daily-summary`, `send-water-reminders`, `analyze-run` e `analyze-gym`. Sem migrações.
+- Edge Functions às 20:43Z pelo push a `dev` (run #303: `deno test` 1119/1119 e deploy) e de novo, sem diferenças, pelo de `master` (run #304). O workflow republica todas as funções; com alterações diretas foram seis — `coach-proactive-tick`, `coach-chat`, `coach-daily-summary`, `send-water-reminders`, `analyze-run` e `analyze-gym` — e, pelo `_shared/carolTone.ts` alterado, também `analyze-meal`, `analyze-body`, `analyze-diploma`, `enrich-race-event` e `estimate-shoe-lifespan`. Sem migrações.
 - Frontend no GitHub Pages às 20:48Z (Vitest 2806/2806 e build no próprio workflow).
 - Primeiro tick com o código novo (`coach-proactive-tick` versão 40) às 21:07Z: 200, sem avisos nem erros, todas as consultas novas (`water_logs`, `daily_checkins.pain`, ginásio de ontem e de hoje) com 200 e as colunas confirmadas no schema de produção; nenhum dos 2 atletas com notificações tinha momento (`sem_momento: 2`), como antes do deploy.
 - A primeira prova a sério é o balanço da semana de segunda, 28/09: verificação marcada para depois dos ticks da manhã (decisões em `app_logs`, textos enviados contra o tom da Carol, paridade de chaves com o chat).
