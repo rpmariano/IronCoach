@@ -7,6 +7,7 @@ import { Sheet } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
 import { canTrackCycle, scaleLabel, summarizeCheckin, todaysCheckin } from '../../utils/checkin';
 import { checkinReply } from '../../utils/checkinReply';
+import { checkinDay, lisbonParts } from '../../utils/carolWelcome';
 import CoachAvatar from '../Coach/CoachAvatar';
 
 /* O check-in diário (specs/carol-omnisciencia-omnipresenca.md, Fase 2). Vive
@@ -36,7 +37,17 @@ export default function CheckinCard() {
   }, [checkinRequested]);
   const today = todayISO();
   const checkin = todaysCheckin(dailyCheckins, today);
-  const reply = useMemo(() => checkinReply(dailyCheckins, today), [dailyCheckins, today]);
+  // A resposta dela sabe o que o dia é — descanso, prova, treino por fazer —
+  // tal como as boas-vindas (pedido 2026-09-26).
+  const coachPlans = useAppStore((s) => s.coachPlans);
+  const coachPlanItems = useAppStore((s) => s.coachPlanItems);
+  const raceEvents = useAppStore((s) => s.raceEvents);
+  const dia = useMemo(() => checkinDay(today, { coachPlans, coachPlanItems, raceEvents }), [today, coachPlans, coachPlanItems, raceEvents]);
+  const reply = useMemo(() => checkinReply(dailyCheckins, today, dia), [dailyCheckins, today, dia]);
+  // Depois da meia-noite e antes das 5h, a noite ainda não acabou: "Como
+  // acordaste hoje?" ao lado de "Ainda acordado?" das boas-vindas era a
+  // mesma fronteira da meia-noite que as boas-vindas tinham.
+  const madrugada = lisbonParts().hour < 5;
 
   return (
     <>
@@ -65,7 +76,7 @@ export default function CheckinCard() {
         <button type="button" onClick={() => setOpen(true)} data-testid="checkin-card" className="flex items-center gap-3 w-full text-left rounded-[18px]" style={{ padding: '13px 16px', minHeight: 44, background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}>
           <HeartPulse size={17} style={{ color: 'var(--coach)' }} className="shrink-0" aria-hidden="true" />
           <span className="flex-1 min-w-0">
-            <span className="block text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>Como acordaste hoje?</span>
+            <span className="block text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{madrugada ? 'Quando acordares, diz-me como dormiste.' : 'Como acordaste hoje?'}</span>
             <span className="block text-[12px] leading-[1.45] mt-0.5" style={{ color: 'var(--text-3)' }}>Sono, energia, stress e dores. Dez segundos, e eu ajusto o dia.</span>
           </span>
           <ChevronRight size={16} style={{ color: 'var(--text-4)' }} className="shrink-0" aria-hidden="true" />

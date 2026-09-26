@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, WELCOME_MIN_GAP_MS, WELCOME_PHRASES, pickByDay, welcomeReturnAction } from './carolWelcome';
+import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, WELCOME_MIN_GAP_MS, WELCOME_PHRASES, pickByDay, welcomeReturnAction, carolDay, checkinDay } from './carolWelcome';
 import { expectCarolVoice } from '../test/carolVoice';
 
 /* As boas-vindas da Carol: aparecem na primeira abertura de cada faixa do
@@ -116,7 +116,8 @@ describe('buildWelcome — o que ela diz', () => {
 
   it('tarde sem check-in, sem refeições e com corrida feita: a linha das refeições não sai (o chip fala delas)', () => {
     const w = buildWelcome('tarde', { ...base, dailyCheckins: [], runs: [...base.runs, { date: hoje, distance_km: 6 }] }, at(`${hoje}T14:00:00`));
-    expect(WELCOME_PHRASES.checkinFaltaTarde).toContain(w.lines[0]);
+    // A corrida já está feita: o check-in já não promete afinar o treino que falta.
+    expect(WELCOME_PHRASES.checkinFaltaTardeSemTreino).toContain(w.lines[0]);
     expect(WELCOME_PHRASES.semRefeicoes).toContain(w.lines[1]);
     expect(w.chip).toMatchObject({ label: 'Por registar' });
   });
@@ -136,8 +137,9 @@ describe('buildWelcome — o que ela diz', () => {
   it('madrugada: a treinadora manda dormir; depois da meia-noite, o treino é o de hoje', () => {
     const w = buildWelcome('madrugada', { ...base, profile: { display_name: 'Ana', gender: 'F' } }, at('2026-09-19T01:00:00'));
     expect(w.greeting).toBe('Ainda acordada, Ana?');
-    expect(w.lines[0]).toMatch(/^Hoje.*rodagem/i);
-    expect(WELCOME_PHRASES.sono).toContain(w.lines[1]);
+    expect(WELCOME_PHRASES.quando('Hoje', 'uma rodagem de 8 km')).toContain(w.lines[0]);
+    expect(WELCOME_PHRASES.sono('hoje')).toContain(w.lines[1]);
+    expect(w.lines.join(' ')).not.toMatch(/amanhã/i);
   });
 
   it('dia de prova: nome, partida e o chip da distância', () => {
@@ -215,7 +217,8 @@ describe('boas-vindas — variedade, dados e o check-in', () => {
 
   it('sem check-in: diz o que é, e o botão abre-o', () => {
     const w = buildWelcome('manha', base, at('2026-09-22T07:00:00'));
-    expect(WELCOME_PHRASES.checkinFalta).toContain(w.lines[0]);
+    // Sem nada no plano para hoje, o pedido não promete ajustar treino nenhum.
+    expect(WELCOME_PHRASES.checkinFaltaSemTreino).toContain(w.lines[0]);
     expect(w.action).toBe('checkin');
     expect(w.cta).toBe('Fazer o check-in');
     // Com check-in feito, o botão volta a ser o de sempre.
@@ -342,5 +345,234 @@ describe('welcomeReturnAction — voltar à app', () => {
     expect(welcomeReturnAction({ busy: false, userLoaded: true, localDecision: decisao })).toBe('refresh');
     expect(welcomeReturnAction({ busy: false, userLoaded: true, localDecision: null })).toBe('try');
     expect(welcomeReturnAction({ busy: false, userLoaded: false, localDecision: decisao })).toBe('try');
+  });
+});
+
+/* Pedido 2026-09-26: às 03:53 de um sábado de descanso, a madrugada disse
+   "Vai dormir. O treino de amanhã começa a fazer-se agora." — um treino que
+   não existia, e "amanhã" por cima de um chip "Hoje · Descanso". As frases
+   escolhiam-se pelo dia do calendário, sem olhar para o plano. Estes testes
+   percorrem os dias seguidos (a frase roda com a data) e todos os tipos de
+   dia, para nenhuma frase voltar a falar de um treino que não existe. */
+describe('pedido 2026-09-26 — nenhuma frase fala de um treino que não existe', () => {
+  const plano = (items) => ({
+    profile: { display_name: 'Rui Mariano', gender: 'M' },
+    coachPlans: [{ id: 'p', status: 'aceite' }],
+    coachPlanItems: items.map((i, n) => ({ id: `i${n}`, plan_id: 'p', status: 'pendente', ...i })),
+    runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], raceEvents: [], dailyCheckins: [],
+  });
+  const DIAS = ['2026-09-26', '2026-09-27', '2026-09-28'];
+  const noDia = (date, tipo) => {
+    if (tipo === 'treino') return [{ planned_date: date, kind: 'corrida', training_type: 'longo', target_distance_km: 16 }];
+    if (tipo === 'descanso') return [{ planned_date: date, kind: 'descanso' }];
+    if (tipo === 'semTreino') return [{ planned_date: date, kind: 'descanso', categories: ['so-refeicoes'] }];
+    if (tipo === 'feito') return [{ planned_date: date, kind: 'corrida', training_type: 'continuo', target_distance_km: 8, status: 'concluido' }];
+    return [];
+  };
+  // O que uma frase de um dia sem treino por fazer nunca pode dizer.
+  const PRESSUPOE_TREINO = /treino de (hoje|amanhã)|ajusto o treino|acerto o treino|afino o treino|treino que falta|cumprir tudo|o treino é|faz-se sem puxar|antes de treinar|qualquer treino|melhor treino|por fazer/i;
+
+  it('o caso do ecrã: sábado 26/09, 03:53, descanso', () => {
+    const w = buildWelcome('madrugada', plano(noDia('2026-09-26', 'descanso')), at('2026-09-26T03:53:00'));
+    expect(w.greeting).toBe('Ainda acordado, Rui?');
+    expect(w.lines).toHaveLength(1);
+    expect(WELCOME_PHRASES.sonoDescanso('hoje')).toContain(w.lines[0]);
+    expect(w.lines[0]).not.toMatch(PRESSUPOE_TREINO);
+    expect(w.lines[0]).not.toMatch(/amanhã/i);
+    expect(w.chip).toMatchObject({ label: 'Hoje', value: 'Descanso', icon: 'moon' });
+  });
+
+  it('madrugada: cada tipo de dia com o seu conjunto, e "hoje" depois da meia-noite', () => {
+    for (const d of DIAS) {
+      for (const tipo of ['treino', 'descanso', 'semTreino', 'semPlano', 'feito']) {
+        // 03:53 fala do próprio dia; 23:40 da véspera fala do dia seguinte.
+        for (const [hora, quando] of [[`${d}T03:53:00`, 'Hoje'], [`${d}T23:40:00`, 'Amanhã']]) {
+          const alvo = quando === 'Hoje' ? d : new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+          if (tipo === 'feito' && quando === 'Amanhã') continue; // amanhã ainda não se treinou
+          const w = buildWelcome('madrugada', plano(noDia(alvo, tipo)), at(hora));
+          const texto = w.lines.join(' ');
+          const q = quando.toLowerCase();
+          if (quando === 'Hoje') expect(texto, `${tipo} ${hora}`).not.toMatch(/amanhã/i);
+          if (tipo === 'treino') {
+            expect(WELCOME_PHRASES.quando(quando, 'uma rodagem longa de 16 km')).toContain(w.lines[0]);
+            expect(WELCOME_PHRASES.sono(q)).toContain(w.lines[1]);
+            expect(w.chip).toMatchObject({ label: quando, value: 'Rodagem longa · 16 km' });
+          } else {
+            expect(texto, `${tipo} ${hora}`).not.toMatch(PRESSUPOE_TREINO);
+            const pool = tipo === 'descanso' ? WELCOME_PHRASES.sonoDescanso(q) : WELCOME_PHRASES.sonoLivre;
+            expect(pool, `${tipo} ${hora}`).toContain(w.lines[0]);
+          }
+          expectCarolVoice([w.greeting, ...w.lines].join(' '));
+        }
+      }
+    }
+  });
+
+  it('madrugada na véspera da prova, mesmo sem a prova no plano: fala da prova, não de um treino', () => {
+    const data = { ...plano([]), coachPlans: [], raceEvents: [{ id: 'r', name: 'Meia da Nazaré', date: '2026-09-27', status: 'agendada', start_time: '09:30:00' }] };
+    for (const hora of ['2026-09-26T23:30:00', '2026-09-27T01:10:00']) {
+      const w = buildWelcome('madrugada', data, at(hora));
+      const quando = hora.includes('T23') ? 'Amanhã' : 'Hoje';
+      expect(w.lines[0]).toBe(`${quando} é a prova: Meia da Nazaré, partida às 9:30.`);
+      expect(WELCOME_PHRASES.sonoProva).toContain(w.lines[1]);
+      expect(w.lines.join(' ')).not.toMatch(/treino/);
+      expect(w.chip).toMatchObject({ label: quando, value: 'Partida às 09:30', icon: 'trophy' });
+    }
+  });
+
+  it('manhã: num dia sem treino por fazer, nem o check-in nem o sono falam de treino', () => {
+    for (const d of DIAS) {
+      for (const tipo of ['descanso', 'semTreino', 'semPlano', 'feito']) {
+        for (const checkin of [null, { sleep: 5, energy: 4 }, { sleep: 1, energy: 3 }]) {
+          const data = { ...plano(noDia(d, tipo)), dailyCheckins: checkin ? [{ date: d, ...checkin }] : [] };
+          const w = buildWelcome('manha', data, at(`${d}T07:30:00`));
+          // No dia do treino já feito, a única frase com treino é a que o dá como feito.
+          const feito = WELCOME_PHRASES.treinoFeito('uma corrida contínua de 8 km');
+          const outras = w.lines.filter((l) => !feito.includes(l));
+          expect(outras.join(' '), `${tipo} ${d} ${JSON.stringify(checkin)}`).not.toMatch(PRESSUPOE_TREINO);
+          expect(w.lines.length).toBeLessThanOrEqual(2);
+          expectCarolVoice([w.greeting, ...w.lines].join(' '));
+        }
+      }
+    }
+    // O treino já feito diz-se feito.
+    const feito = buildWelcome('manha', { ...plano(noDia('2026-09-28', 'feito')), dailyCheckins: [{ date: '2026-09-28', sleep: 3 }] }, at('2026-09-28T09:00:00'));
+    expect(WELCOME_PHRASES.treinoFeito('uma corrida contínua de 8 km')).toContain(feito.lines[0]);
+  });
+
+  it('manhã com treino: o check-in e o sono podem falar dele', () => {
+    const d = '2026-09-27';
+    const w = buildWelcome('manha', { ...plano(noDia(d, 'treino')), dailyCheckins: [{ date: d, sleep: 1 }] }, at(`${d}T07:30:00`));
+    expect(WELCOME_PHRASES.dormiuMal).toContain(w.lines[0]);
+    expect(WELCOME_PHRASES.treinoHoje('uma rodagem longa de 16 km')).toContain(w.lines[1]);
+    const sem = buildWelcome('manha', plano(noDia(d, 'treino')), at(`${d}T07:30:00`));
+    expect(WELCOME_PHRASES.checkinFalta).toContain(sem.lines[0]);
+  });
+
+  it('uma dor acima do alarme passa à frente do "dormiste bem"', () => {
+    const d = '2026-09-28';
+    const data = { ...plano([{ planned_date: d, kind: 'corrida', training_type: 'intervalos', target_distance_km: 8 }]), dailyCheckins: [{ date: d, sleep: 5, energy: 4, pain: 7 }] };
+    const w = buildWelcome('manha', data, at(`${d}T07:30:00`));
+    expect(w.lines[0]).toBe(WELCOME_PHRASES.dorForte[0]);
+    expect(w.lines.join(' ')).not.toMatch(/cumprir tudo/);
+    // À tarde, com uma refeição registada, o treino por fazer não se empurra.
+    const tarde = buildWelcome('tarde', { ...data, meals: [{ date: d }] }, at(`${d}T15:00:00`));
+    expect(tarde.lines.join(' ')).not.toMatch(/por fazer/);
+    expect(tarde.lines).toContain(WELCOME_PHRASES.dorForte[0]);
+    // À noite, o treino que não apareceu não se pergunta: a dor explica-o.
+    const noite = buildWelcome('noite', data, at(`${d}T21:30:00`));
+    expect(noite.lines[0]).toBe(WELCOME_PHRASES.treinoNaoRegistadoComDor[0]);
+  });
+
+  it('tarde num dia de descanso: o check-in sem promessa de treino, e uma corrida pergunta-se', () => {
+    const d = '2026-09-26';
+    const w = buildWelcome('tarde', { ...plano(noDia(d, 'descanso')), meals: [{ date: d }] }, at(`${d}T14:30:00`));
+    expect(WELCOME_PHRASES.checkinFaltaTardeSemTreino).toContain(w.lines[0]);
+    const correu = buildWelcome('tarde', { ...plano(noDia(d, 'descanso')), meals: [{ date: d }], dailyCheckins: [{ date: d, sleep: 3 }], runs: [{ date: d, distance_km: 8 }] }, at(`${d}T14:30:00`));
+    expect(WELCOME_PHRASES.corridaEmDescanso('8')).toContain(correu.lines[0]);
+    // E a semana não repete a corrida de hoje.
+    expect(correu.lines.join(' ')).not.toMatch(/semana/);
+  });
+
+  it('duas corridas no mesmo dia contam as duas', () => {
+    const d = '2026-09-28';
+    const w = buildWelcome('tarde', { ...plano([]), meals: [{ date: d }], dailyCheckins: [{ date: d, sleep: 3 }], runs: [{ date: d, distance_km: 5 }, { date: d, distance_km: 10 }] }, at(`${d}T15:00:00`));
+    expect(WELCOME_PHRASES.corridaFeita('15', 2)).toContain(w.lines[0]);
+  });
+
+  it('noite: antes das 21h diz o que falta registar; depois, pergunta', () => {
+    const d = '2026-09-28';
+    const data = plano([{ planned_date: d, kind: 'corrida', training_type: 'intervalos', target_distance_km: 8 }]);
+    expect(WELCOME_PHRASES.treinoPorRegistar('uma sessão de intervalos de 8 km')).toContain(buildWelcome('noite', data, at(`${d}T19:10:00`)).lines[0]);
+    expect(WELCOME_PHRASES.treinoNaoRegistado).toContain(buildWelcome('noite', data, at(`${d}T21:10:00`)).lines[0]);
+    // Com o ginásio feito e a corrida por registar, pergunta-se só pela corrida.
+    const parte = plano([
+      { planned_date: d, kind: 'corrida', training_type: 'continuo', target_distance_km: 8 },
+      { planned_date: d, kind: 'ginasio', categories: ['Pernas'], target_duration_min: 30, status: 'concluido' },
+    ]);
+    expect(buildWelcome('noite', parte, at(`${d}T21:10:00`)).lines[0]).toBe(WELCOME_PHRASES.treinoNaoRegistadoParte('uma corrida contínua de 8 km')[0]);
+  });
+
+  it('o treino dito numa frase: sem o separador do ecrã, e a distância com vírgula', () => {
+    const d = '2026-09-28';
+    const data = plano([
+      { planned_date: d, kind: 'corrida', training_type: 'longo', target_distance_km: 16.5 },
+      { planned_date: d, kind: 'ginasio', categories: ['Pernas', 'Core'], target_duration_min: 30 },
+    ]);
+    const dia = carolDay(d, data);
+    expect(dia.falado).toBe('uma rodagem longa de 16,5 km e um treino de pernas e core de 30 minutos');
+    expect(dia.titulo).toBe('Rodagem longa · 16,5 km + Pernas/Core · 30 min');
+    const w = buildWelcome('manha', { ...data, dailyCheckins: [{ date: d, sleep: 3 }] }, at(`${d}T07:30:00`));
+    expect(w.lines.join(' ')).not.toMatch(/·|\d\.\d/);
+    // O item da prova no plano, com a distância do servidor: "21,1 km", não "21.0975 km".
+    const prova = carolDay('2026-09-27', { ...plano([{ planned_date: '2026-09-27', kind: 'corrida', training_type: 'prova', target_distance_km: 21.0975 }]), raceEvents: [{ id: 'r', name: 'Meia da Nazaré', date: '2026-09-27', status: 'concluida' }] });
+    expect(prova.titulo).toBe('Prova · Meia da Nazaré · 21,1 km');
+  });
+
+  it('sem género no perfil, a saudação da madrugada não tem género', () => {
+    expect(buildWelcome('madrugada', { profile: { display_name: 'Ana' } }, at('2026-09-26T01:00:00')).greeting).toBe('Ainda por aqui, Ana?');
+  });
+
+  it('a véspera às 22h já não manda correr', () => {
+    const data = { ...plano([{ planned_date: '2026-09-26', kind: 'corrida', training_type: 'regenerativo', target_distance_km: 4 }]), raceEvents: [{ id: 'r', name: 'Meia da Nazaré', date: '2026-09-27', status: 'agendada', start_time: '09:30:00' }] };
+    expect(buildWelcome('vespera', data, at('2026-09-26T15:00:00')).lines[1]).toBe('Hoje ainda tens uma corrida regenerativa de 4 km.');
+    expect(buildWelcome('vespera', data, at('2026-09-26T22:00:00')).lines[1]).toBe('O treino de hoje ficou por fazer. Não faz mal: amanhã é que conta.');
+  });
+});
+
+describe('pedido 2026-09-26 — o dia da prova', () => {
+  const meia = { id: 'r', name: 'Meia da Nazaré', date: '2026-09-27', status: 'agendada', distance_km: 21.0975, start_time: '09:30:00' };
+  const base = { profile: { display_name: 'Rui' }, coachPlans: [], coachPlanItems: [], runs: [], meals: [], dailyCheckins: [] };
+
+  it('quem acorda para a prova não ouve "ainda acordado?"', () => {
+    // 04:40 no dia da prova: é a manhã da prova.
+    expect(decideWelcome({ now: at('2026-09-27T04:40:00'), raceEvents: [meia], seen: [] })?.variant).toBe('prova');
+    // 02:00 com partida às 9:30: ainda é madrugada.
+    expect(decideWelcome({ now: at('2026-09-27T02:00:00'), raceEvents: [meia], seen: [] })?.variant).toBe('madrugada');
+    // Um trail às 6:30: às 3:10 já se acordou para ele.
+    const trail = { ...meia, start_time: '06:30:00' };
+    expect(decideWelcome({ now: at('2026-09-27T03:10:00'), raceEvents: [trail], seen: [] })?.variant).toBe('prova');
+    // Às 23h da véspera continua a ser a madrugada (a véspera já passou).
+    expect(decideWelcome({ now: at('2026-09-26T23:30:00'), raceEvents: [meia], seen: [] })?.variant).toBe('madrugada');
+  });
+
+  it('sem plano, nada de "o que ensaiámos"; com plano para esta prova, sim', () => {
+    const sem = buildWelcome('prova', { ...base, raceEvents: [meia] }, at('2026-09-27T06:30:00'));
+    expect(sem.lines[1]).toBe('Sai de casa com tempo. Quero saber como correu.');
+    const com = buildWelcome('prova', { ...base, raceEvents: [meia], coachPlans: [{ id: 'p', status: 'aceite', race_id: 'r' }] }, at('2026-09-27T06:30:00'));
+    expect(com.lines[1]).toBe('Come o que ensaiámos e sai de casa com tempo. O trabalho está feito.');
+    const curta = buildWelcome('prova', { ...base, raceEvents: [{ ...meia, distance_km: 10 }], coachPlans: [{ id: 'p', status: 'aceite', race_id: 'r' }] }, at('2026-09-27T06:30:00'));
+    expect(curta.lines[1]).toBe('Sai de casa com tempo. O trabalho está feito.');
+  });
+
+  it('uma prova ao fim do dia, aberta de manhã: poupar as pernas, não sair de casa', () => {
+    const w = buildWelcome('prova', { ...base, raceEvents: [{ ...meia, start_time: '19:00:00' }] }, at('2026-09-27T07:00:00'));
+    expect(w.lines[1]).toBe('Até à partida, poupa as pernas.');
+  });
+
+  it('aberta muito depois da partida (ou sem hora, à tarde): já cortou a meta', () => {
+    const tarde = buildWelcome('prova', { ...base, raceEvents: [meia] }, at('2026-09-27T18:00:00'));
+    expect(tarde.lines[1]).toBe('Já cortaste a meta? Regista a corrida e fazemos o balanço.');
+    const aCorrer = buildWelcome('prova', { ...base, raceEvents: [meia] }, at('2026-09-27T10:30:00'));
+    expect(aCorrer.lines[1]).toMatch(/^Quando cortares a meta/);
+    const semHora = buildWelcome('prova', { ...base, raceEvents: [{ ...meia, start_time: null }] }, at('2026-09-27T14:00:00'));
+    expect(semHora.lines[1]).toBe('Já cortaste a meta? Regista a corrida e fazemos o balanço.');
+    expect(semHora.cta).toBe('Entrar');
+  });
+
+  it('à tarde do dia da prova, a prova não é "o treino por fazer"', () => {
+    const data = { ...base, raceEvents: [meia], coachPlans: [{ id: 'p', status: 'aceite' }], coachPlanItems: [{ id: 'i', plan_id: 'p', planned_date: '2026-09-27', kind: 'corrida', training_type: 'prova', target_distance_km: 21.0975, status: 'pendente' }], meals: [{ date: '2026-09-27' }], dailyCheckins: [{ date: '2026-09-27', sleep: 3 }] };
+    const w = buildWelcome('tarde', data, at('2026-09-27T15:00:00'));
+    expect(WELCOME_PHRASES.provaPorRegistar).toContain(w.lines[0]);
+    expect(w.lines.join(' ')).not.toMatch(/treino/);
+    expect(w.chip).toMatchObject({ icon: 'trophy' });
+    // Concluída e registada: diz-se pelo nome.
+    const feita = buildWelcome('tarde', { ...data, raceEvents: [{ ...meia, status: 'concluida' }], runs: [{ date: '2026-09-27', distance_km: 21.0975 }] }, at('2026-09-27T15:00:00'));
+    expect(feita.lines[0]).toBe('Vi a prova de hoje: Meia da Nazaré, 21,1 km. Quero fazer o balanço contigo.');
+  });
+
+  it('checkinDay: o que a resposta ao check-in vê', () => {
+    expect(checkinDay('2026-09-26', { ...base, raceEvents: [meia] })).toEqual({ tipo: 'semPlano', corrida: false, vespera: true });
+    expect(checkinDay('2026-09-27', { ...base, raceEvents: [meia] })).toMatchObject({ tipo: 'prova', vespera: false });
   });
 });
