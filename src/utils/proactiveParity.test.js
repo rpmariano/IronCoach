@@ -150,6 +150,19 @@ it('o treino de ontem por registar é o momento escolhido, dos dois lados (P.10)
   expect(both(CASES['treino de ontem feito (corrida nesse dia) não conta']).client).toBeNull();
 });
 
+it('uma corrida no dia da prova, sem ligação a ela, pede para a ligar — a mesma chave dos dois lados', () => {
+  const prova = { id: 'p1', name: 'Meia de Lisboa', date: '2026-09-16', status: 'concluida', distance_km: 21.1 };
+  const corrida = { id: 'run1', date: '2026-09-16', kind: 'normal', race_id: null, distance_km: 21.3, duration_seconds: 6900 };
+  const { client, server } = both({ runs: [corrida], meals: [{ date: TODAY }], raceEvents: [prova] });
+  expect(client).toEqual({ trigger: 'race_after', key: 'race_after:p1:por-ligar' });
+  expect(server).toEqual(client);
+  const c = pickProactiveTrigger({ runs: [corrida], meals: [{ date: TODAY }], raceEvents: [prova] }, now);
+  expect(c.details).toMatch(/^Corrida por ligar:/);
+  expect(c.details).toContain('21,3 km');
+  expect(c.details).not.toContain('Ainda não tem a corrida registada');
+  expect(c.raceOutcome).toBeNull();
+});
+
 // Ação P.9: a lista inteira, não só o primeiro — para o efeito passivo do
 // Coach encontrar um candidato tocado que já não é o primeiro da lista.
 describe('P.9 — a lista inteira de momentos é a mesma, na mesma ordem', () => {

@@ -43,6 +43,14 @@ Também feito no mesmo trabalho, fora do backlog:
 - `checkinReply.js:52`: a conversa sobre a dor só se promete com o assunto por abrir, e o aviso «Quero falar contigo sobre isto» só quando o check-in a abriu de facto.
 - O silêncio conta a água registada como presença (o tick passa a última).
 
+**Revisão pré-deploy (2026-09-26)** — o `pre-deploy-reviewer` apanhou casos que os grupos, sozinhos, não viam, todos corrigidos no mesmo ramo:
+
+- Prontidão no dia ou na véspera da prova: sem plano aceite, o pilar do check-in dizia «Hoje é descanso»; a prova manda sobre o plano, e `trainingToday` só vale com um plano que cubra hoje.
+- A corrida do dia da prova por ligar chega também ao cliente, ao chat (instrução própria: pergunta se foi ela, nunca pede o registo) e aos factos do push.
+- Só uma dor recente (hoje ou ontem) cala o silêncio; um bloco que acabou antes de ontem já não conta como plano; o treino de ontem feito hoje não se pergunta, e nunca antes das 6h.
+- Os factos do push gerado pelo Gemini levam as mesmas condições das frases fixas (plano do silêncio, água, nome próprio da prova, hora de partida, ritmo do primeiro km).
+- A água do dia da prova conta 30 min de folga na chegada; a perda de peso só se atribui à ingestão com as refeições de ontem abaixo do gasto; a nota da memória a mudar tem de existir.
+
 Fica para depois (baixo risco, confirmado por que o cliente já mitiga ou é raro):
 
 - `coach-daily-summary:421`: as frases de água em `buildWarningsMessage` continuam a gerar-se, mas o cliente já as ignora (`limparAvisoDoServidor`) e faz a sua a partir de `waterLogs` — sem efeito visível a limpá-las também no servidor.

@@ -5,6 +5,7 @@
 // na tabela coach_messages para persistência entre sessões.
 
 import { CHAT_RESOLVE_OUTCOMES } from "../_shared/formulas/interventionOutcomes.ts";
+import { UNLINKED_RUN_DETAILS_PREFIX } from "../_shared/formulas/proactiveTriggers.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
@@ -1047,6 +1048,11 @@ export function buildRaceOutcomeContext(o: RaceOutcome): string {
  *  pergunta-se se para a próxima é para fazer melhor; aquém levanta-se a
  *  cabeça, procura-se a explicação nas ocorrências do treino (memória e
  *  dados) e volta-se aos treinos. */
+export const RACE_AFTER_UNLINKED_INSTRUCTION =
+  `A prova já passou e há uma corrida registada nesse dia que ainda não está ligada a ela (os dados estão no Contexto). ` +
+  `Não lhe peças para registar a prova: a corrida já existe. Pergunta-lhe se foi essa a prova e, se foi, que a ligue à prova ` +
+  `para fazerem o balanço com os números certos. Sem balanço inventado e sem parabéns automáticos: ainda não sabes se foi ela.`;
+
 export function raceAfterInstruction(o: RaceOutcome | null): string {
   if (!o || o.verdict === "sem_registo") return PROACTIVE_INSTRUCTIONS.race_after;
   const common =
@@ -1225,7 +1231,12 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
  *  instrução por veredicto entram antes das regras do turno. */
 export function buildProactiveInstruction(trigger: ProactiveTrigger, details: string | null, raceOutcome: RaceOutcome | null = null): string {
   const withOutcome = trigger === "race_after" && !!raceOutcome && raceOutcome.verdict !== "sem_registo";
-  const instruction = trigger === "race_after" ? raceAfterInstruction(withOutcome ? raceOutcome : null) : PROACTIVE_INSTRUCTIONS[trigger];
+  // A corrida desse dia existe mas não está ligada à prova: nunca "regista a
+  // prova" (revisão pré-deploy de 2026-09-26; o prefixo é o do cliente).
+  const unlinkedRun = trigger === "race_after" && !withOutcome && !!details?.startsWith(UNLINKED_RUN_DETAILS_PREFIX);
+  const instruction = unlinkedRun
+    ? RACE_AFTER_UNLINKED_INSTRUCTION
+    : trigger === "race_after" ? raceAfterInstruction(withOutcome ? raceOutcome : null) : PROACTIVE_INSTRUCTIONS[trigger];
   // No "perto" a pergunta pede resposta — as duas sugestões são a resposta
   // (ver raceAfterInstruction); em todos os outros turnos dela não há
   // "perguntas de seguimento" a oferecer.
@@ -6071,9 +6082,15 @@ async function handler(req: Request): Promise<Response> {
     const trainingWeatherPromise = fetchTrainingWeatherBlock(sb, userId, todayISO);
     // O mesmo `loadPlanItems` já pedido para a leitura de carga (runLoadReading,
     // acima): um corrida/ginásio de hoje, ainda não cancelado.
-    const trainingTodayForReadiness = (loadPlanItems || []).some(
-      (i: any) => i?.planned_date === todayISO && (i.kind === "corrida" || i.kind === "ginasio"),
-    );
+    // Sem plano aceite em vigor hoje (nenhum item de hoje em diante), não se
+    // sabe se é descanso: undefined, e o pilar não diz "hoje é descanso"
+    // (revisão pré-deploy de 2026-09-26).
+    // deno-lint-ignore no-explicit-any
+    const planoEmVigor = (loadPlanItems || []).some((i: any) => String(i?.planned_date || "") >= todayISO);
+    const trainingTodayForReadiness = planoEmVigor
+      // deno-lint-ignore no-explicit-any
+      ? (loadPlanItems || []).some((i: any) => i?.planned_date === todayISO && (i.kind === "corrida" || i.kind === "ginasio"))
+      : undefined;
     const readinessPanel = buildReadinessPanel(
       recentRuns || [],
       weekMeals || [],
@@ -6488,7 +6505,11 @@ async function handler(req: Request): Promise<Response> {
        só o que ele diria; o pedido de a atualizar vem à parte, no mesmo
        molde do badge (revisão de 2026-09-26). A instrução é a do servidor —
        do cliente só se usa o texto da nota, com o teto das notas. */
-    const noteToChange = typeof body.noteDiscussion?.note === "string" ? body.noteDiscussion.note.trim().slice(0, 500) : "";
+    // Só uma nota que existe mesmo na memória dele: o texto vem do cliente
+    // e entra na instrução de sistema (revisão pré-deploy de 2026-09-26).
+    const noteRequested = typeof body.noteDiscussion?.note === "string" ? body.noteDiscussion.note.trim() : "";
+    // deno-lint-ignore no-explicit-any
+    const noteToChange = noteRequested && (coachNotes || []).some((n: any) => String(n?.note || "").trim() === noteRequested) ? noteRequested : "";
     if (noteToChange) {
       finalSystemInstruction += "\n\n--- NOTA DA MEMÓRIA A MUDAR (foi o atleta que a abriu, em Perfil > Memória) ---\n" +
         `A nota: "${noteToChange}". Ele quer mudá-la: pergunta-lhe o que precisares para perceberes o que está errado e, ` +

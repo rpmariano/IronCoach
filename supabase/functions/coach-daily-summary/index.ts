@@ -1086,11 +1086,21 @@ Deno.serve(async (req) => {
     // a água só se cobra a quem ligou os lembretes de água — sem eles, o
     // registo é opcional e o aviso era ruído (pedido 2026-09-13).
     // As duas provas da causa do peso: treinou nos últimos 7 dias (o mesmo
-    // km da carga, load.acuteKm) e comeu hoje abaixo do gasto estimado.
-    const todayCalories = (todayMeals || []).reduce((s: number, m: any) => s + totalsFromMeal(m).calories, 0);
+    // km da carga, load.acuteKm) e comeu abaixo do gasto estimado num dia
+    // COMPLETO — o de ontem. As refeições de hoje, a meio do dia, ficavam
+    // quase sempre abaixo (revisão pré-deploy de 2026-09-26). Só se lê
+    // quando o alerta de perda de peso vai mesmo sair.
+    let yesterdayCalories = 0;
+    if (bodyMetrics.weightLossTooFast && tdee != null) {
+      const { data: yesterdayMeals } = await sb.from("meals")
+        .select("meal_items(quantity_grams, calories_per_100g)")
+        .eq("user_id", userId).eq("date", addDaysISO(today, -1));
+      // deno-lint-ignore no-explicit-any
+      yesterdayCalories = (yesterdayMeals || []).reduce((s: number, m: any) => s + totalsFromMeal(m).calories, 0);
+    }
     const weightLossEvidence = {
       trainedRecently: (load.acuteKm || 0) > 0,
-      ateBelowGasto: tdee != null && todayCalories > 0 && todayCalories < tdee,
+      ateBelowGasto: tdee != null && yesterdayCalories > 0 && yesterdayCalories < tdee,
     };
     const warningsMsg = buildWarningsMessage(
       raceEveDays === 0 ? [] : todayPlanItems,

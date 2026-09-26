@@ -196,8 +196,9 @@ async function handler(req: Request): Promise<Response> {
           .eq("user_id", userId).in("status", ["aceite", "proposto"]).gte("period_end", yesterday),
         weekRecordDates(sb, userId, reviewWeek),
         // O treino de ontem conta como feito com qualquer sessão de ginásio
-        // nesse dia (as corridas já vêm acima) — P.10.
-        sb.from("workout_sessions").select("date").eq("user_id", userId).eq("date", yesterday).limit(1),
+        // nesse dia, ou hoje (feito de manhã pelo "+") — as corridas já vêm
+        // acima (P.10; revisão pré-deploy de 2026-09-26).
+        sb.from("workout_sessions").select("date").eq("user_id", userId).in("date", [yesterday, today]).limit(2),
         // O último check-in: ele está por cá, mesmo sem registos (P.10). A
         // dor (revisão de 2026-09-26): acima do alarme, ela já sabe porquê
         // o silêncio ou o treino de ontem por registar — não pergunta.

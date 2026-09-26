@@ -38,6 +38,8 @@ const ONE_GLASS_ML = 300;
 const BEDTIME_WARNING_ML = 1000;
 /** Depois da chegada prevista, o "Acabaste a prova" vale este tempo. */
 export const AFTER_RACE_MINUTES = 120;
+/** Depois da chegada estimada, este tempo ainda é "durante a prova". */
+export const ARRIVAL_SLACK_MINUTES = 30;
 /** Sem tempo-alvo, a chegada estima-se a 7 min/km (a régua do cartão do
  *  Início, momentoDaProva em carolCardLines.js). */
 const FALLBACK_MIN_PER_KM = 7;
@@ -63,7 +65,10 @@ export function raceDayWaterPhase(race: RaceForWater | null | undefined, nowMinu
   const alvo = Number(race?.target_time_seconds);
   const km = Number(String(race?.distance_km ?? "").replace(",", "."));
   const duracao = alvo > 0 ? alvo / 60 : km > 0 ? km * FALLBACK_MIN_PER_KM : RACE_DURATION_FALLBACK_MIN;
-  const chegada = partida + duracao;
+  // Folga para quem vai mais lento do que o objetivo: "Acabaste a prova" a
+  // quem ainda está a correr era a frase errada no pior momento (revisão
+  // pré-deploy de 2026-09-26).
+  const chegada = partida + duracao + ARRIVAL_SLACK_MINUTES;
   if (nowMinutes >= corte && nowMinutes < chegada) return "silencio";
   if (nowMinutes >= chegada && nowMinutes < chegada + AFTER_RACE_MINUTES) return "depois";
   return null;

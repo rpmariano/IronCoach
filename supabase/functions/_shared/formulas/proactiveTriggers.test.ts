@@ -371,8 +371,9 @@ Deno.test("P.10: com check-in depois do último registo, o silêncio fala dos tr
 Deno.test("P.10: um check-in antigo não muda nada", () => {
   const c = pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", lastCheckinDate: "2026-09-12", lastTrainingDate: "2026-09-14", ...planoDaJanela }, TODAY)!;
   assertEquals(c.lastCheckinDate, undefined);
-  // Com o plano da janela, nomeia o treino que ficou por fazer (revisão de 2026-09-26).
-  assertEquals(proactivePushMessage(c).body, "Ficou 1 treino por fazer desde terça. Está tudo bem?");
+  // Com o plano da janela, diz o treino que o plano tinha — pergunta, não
+  // acusa: pode ter treinado sem registar (revisão de 2026-09-26).
+  assertEquals(proactivePushMessage(c).body, "O plano tinha 1 treino desde terça e não o vejo registado. Está tudo bem?");
 });
 
 // ── A Vitrina (2026-09-25) ────────────────────────────────────────────────
@@ -466,7 +467,7 @@ Deno.test("silenceCandidate: a mesma régua do servidor, para o cliente nunca di
   const c = silenceCandidate({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", plans, planItems }, TODAY)!;
   assertEquals(c.plannedTrainingsSince, 2);
   assert(c.sinceWeekday);
-  assertEquals(proactivePushMessage(c).body, `Ficaram 2 treinos por fazer desde ${c.sinceWeekday}. Está tudo bem?`);
+  assertEquals(proactivePushMessage(c).body, `O plano tinha 2 treinos desde ${c.sinceWeekday} e não vejo nenhum registado. Está tudo bem?`);
   // Plano no período, mas nenhum treino previsto (descanso decidido): não é assunto.
   const descanso = silenceCandidate({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", plans, planItems: [] }, TODAY);
   assertEquals(descanso, null);
@@ -480,12 +481,16 @@ Deno.test("missedWorkoutLabel: nomeia o tipo, não só 'treino'", () => {
 
 Deno.test("jaSabePorque: dor acima do alarme, ou assunto já aberto, calam o silêncio e o treino de ontem por registar", () => {
   const semPlano = { raceEvents: [], runs: [], lastRecordDate: "2026-09-10" };
-  assertEquals(listServerProactive({ ...semPlano, lastCheckinPain: 6 }, TODAY).some((c) => c.trigger === "silence"), false);
+  // A dor conta se o check-in é de hoje ou de ontem.
+  assertEquals(listServerProactive({ ...semPlano, lastCheckinPain: 6, lastCheckinDate: "2026-09-17" }, TODAY).some((c) => c.trigger === "silence"), false);
+  // Uma dor de há semanas, sem nada depois, não cala o "Estás bem?" para sempre.
+  assertEquals(listServerProactive({ ...semPlano, lastCheckinPain: 6, lastCheckinDate: "2026-08-01" }, TODAY).some((c) => c.trigger === "silence"), true);
+  assertEquals(listServerProactive({ ...semPlano, lastCheckinPain: 6 }, TODAY).some((c) => c.trigger === "silence"), true);
   assertEquals(listServerProactive({ ...semPlano, intervention: { status: "in_progress", reason: "x" } }, TODAY).some((c) => c.trigger === "silence"), false);
   // Sem dor nem assunto, o silêncio continua a valer.
   assertEquals(listServerProactive(semPlano, TODAY).some((c) => c.trigger === "silence"), true);
 
-  const comMissed = missedInput({ lastCheckinPain: 5 });
+  const comMissed = missedInput({ lastCheckinPain: 5, lastCheckinDate: TODAY });
   assertEquals(listServerProactive(comMissed, TODAY).some((c) => c.trigger === "missed_workout"), false);
   assertEquals(listServerProactive(missedInput(), TODAY).some((c) => c.trigger === "missed_workout"), true);
 });
@@ -665,4 +670,24 @@ Deno.test("balanço da semana: o \"como correu?\" com corrida já entregue deixa
   // Outro momento no mesmo dia continua a mandar: um assunto por resolver tapa o balanço.
   const comDor = listServerProactive({ ...base, raceEvents: [prova], deliveredKeys: ["race_after:p1:run1"], intervention: { status: "needed", reason: "dor" } }, monday);
   assertEquals(comDor.map((c) => c.trigger), ["intervention", "race_after"]);
+});
+
+/* Revisão pré-deploy de 2026-09-26: o treino de ontem feito hoje de manhã
+   (pelo "+") não é "por registar", e de madrugada não se pergunta por
+   "ontem"; e um bloco que acabou a meio do silêncio não o cala para sempre. */
+Deno.test("treino de ontem: feito hoje não se pergunta, e nunca antes das 6h", () => {
+  assertEquals(findMissedWorkout(missedInput({ trainingDates: [TODAY] }), TODAY), null);
+  assert(!isWithinProactiveWindow("missed_workout", 0, { startHour: 22, endHour: 2 }));
+  assert(!isWithinProactiveWindow("missed_workout", 5, { startHour: 5, endHour: 22 }));
+  assert(isWithinProactiveWindow("missed_workout", 9));
+});
+
+Deno.test("silêncio: um plano que acabou antes de ontem não conta como plano em vigor", () => {
+  const acabou = [{ id: "velho", status: "aceite", period_start: "2026-08-15", period_end: "2026-09-14" }];
+  // Último registo a 14/09, hoje 18/09: o bloco não está em vigor — sem plano, 7 dias.
+  assertEquals(silenceCandidate({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", plans: acabou, planItems: [] }, TODAY), null);
+  // Doze dias depois, o "Estás bem?" sai (antes calava-se para sempre).
+  const c = silenceCandidate({ raceEvents: [], runs: [], lastRecordDate: "2026-09-06", plans: acabou, planItems: [] }, TODAY);
+  assertEquals(c?.trigger, "silence");
+  assertEquals(c?.plannedTrainingsSince, undefined);
 });

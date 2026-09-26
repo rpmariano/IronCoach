@@ -142,7 +142,8 @@ export function noiteDoHorario(s: RaceEveSchedule): boolean {
  */
 export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm: number | null, nowMinutes: number | null = null): string {
   const name = raceName || "a prova";
-  const dist = distanceKm ? `, ${distanceKm} km` : "";
+  // Com vírgula e uma casa: "21.0975 km" vinha tal e qual da base de dados.
+  const dist = distanceKm ? `, ${String(Math.round(distanceKm * 10) / 10).replace(".", ",")} km` : "";
   if (!eve.schedule) {
     return `Amanhã é ${name}${dist}. Sem hora de partida marcada não consigo dar horas: marca-a na prova. Jantar de hidratos complexos, pouca fibra, e 8 h de sono.`;
   }
@@ -161,8 +162,19 @@ export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm:
     return `${cabeca}. ${noite} Antes da partida, comes às ${s.breakfast} e chegas às ${s.arrival}.`;
   }
 
-  const dinnerMin = minutesOfDay(s.dinnerBy)!;
-  const bedMin = minutesOfDay(s.bed)!;
+  /* As horas contam-se a partir da meia-noite da véspera: um passo que no
+     relógio fique antes da partida é do próprio dia da prova (a mesma régua
+     de linhaDaVespera, carolCardLines.js). Sem isto, numa partida entre as
+     11:00 e as 13:29 o deitar cai depois da meia-noite (00:00-02:29) e
+     "Deita-te já" saía a qualquer hora da véspera (revisão pré-deploy de
+     2026-09-26). */
+  const partida = 1440 + minutesOfDay(s.start)!;
+  const naVespera = (hhmm: string) => { const m = minutesOfDay(hhmm)!; return m + 1440 <= partida ? m + 1440 : m; };
+  // Uma prova da meia-noite: já passou a hora de acordar para ela, e não há
+  // deitar nem jantar a dizer.
+  if (nowMinutes >= naVespera(s.wake)) return `${cabeca}.`;
+  const dinnerMin = naVespera(s.dinnerBy);
+  const bedMin = naVespera(s.bed);
   if (nowMinutes >= bedMin) {
     return `${cabeca}. Deita-te já: acordas às ${s.wake}.`;
   }

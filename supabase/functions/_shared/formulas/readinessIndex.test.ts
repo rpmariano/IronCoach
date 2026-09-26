@@ -57,3 +57,16 @@ Deno.test("computeReadinessIndex: sem nenhuma corrida registada, não pontua 90 
   const tactic = r.pillars.find((p) => p.key === "tactic")!;
   assertEquals(tactic.desc, "Ainda não tenho corridas para saber se o volume chega.");
 });
+
+/* Revisão pré-deploy de 2026-09-26: perto da prova, o pilar não diz "hoje é
+   descanso" — sem plano aceite, trainingToday vinha false no dia da prova. */
+Deno.test("checkinPillar: no dia ou na véspera da prova, nunca 'descanso'", () => {
+  const ctx = { trainingToday: false, raceTodayOrTomorrow: true };
+  const bem = checkinPillar({ sleep: 5, energy: 5, stress: 1, pain: 0 }, ctx)!.desc;
+  const normal = checkinPillar({ sleep: 3, energy: 3, stress: 3, pain: 0 }, ctx)!.desc;
+  const baixo = checkinPillar({ sleep: 3, energy: 3, stress: 5, pain: 0 }, ctx)!.desc;
+  assertEquals(bem, "Acordaste bem. Com a prova tão perto, é isto que se quer.");
+  assertEquals(normal, "Dia normal. Com a prova tão perto, não mudes nada.");
+  assertEquals(baixo, "Hoje estás em baixo. Perto de uma prova é normal; não mexe na prova.");
+  for (const d of [bem, normal, baixo]) assertEquals(/descanso/.test(d), false);
+});

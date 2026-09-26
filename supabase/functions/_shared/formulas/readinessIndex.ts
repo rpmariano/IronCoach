@@ -105,6 +105,13 @@ export function checkinPillar(c: CheckinForReadiness | null | undefined, ctx: Re
     if (raceTodayOrTomorrow) desc = "Dormiste mal. Na véspera de uma prova é normal; não mexe na prova.";
     else if (trainingToday === false) desc = "Dormiste mal. Hoje é descanso: recupera o sono.";
     else desc = sleep <= 2 ? "Dormiste mal. Hoje o treino é mais leve." : "Estás sem energia. Hoje o treino é mais leve.";
+  } else if (raceTodayOrTomorrow) {
+    // A prova manda sobre o plano do dia: sem plano aceite, trainingToday
+    // vinha false e a véspera (ou o próprio dia) passava por "descanso"
+    // (revisão pré-deploy de 2026-09-26).
+    desc = score >= 75 ? "Acordaste bem. Com a prova tão perto, é isto que se quer."
+      : score >= 50 ? "Dia normal. Com a prova tão perto, não mudes nada."
+        : "Hoje estás em baixo. Perto de uma prova é normal; não mexe na prova.";
   } else if (score >= 75) {
     desc = trainingToday === false
       ? "Acordaste bem. Hoje é descanso; guarda isso para o próximo treino."

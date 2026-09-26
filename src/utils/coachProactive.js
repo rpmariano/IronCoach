@@ -21,9 +21,8 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, silenceCandidate, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, findMissedWorkout, knowsWhySilent, missedWorkoutInReview, silenceCandidate, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN, UNLINKED_RUN_DETAILS_PREFIX } from '@formulas/proactiveTriggers.ts';
 import { leaderboardMoment, ownSegmentFor, percentileAvailability, percentileReadyMoment } from '@formulas/vitrina.ts';
-import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
 import { pickRaceOfDay } from '@formulas/mainRace.ts';
 import { addDaysISO } from '../lib/utils';
 import { segmentPhrase } from './percentile';
@@ -158,8 +157,9 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
      do alarme, ou um assunto já aberto, explicam-no — ela já sabe porquê, e
      não pergunta "aconteceu alguma coisa?" ao que já lhe disseram (a mesma
      guarda do silêncio, revisão de 2026-09-26). */
-  const jaSabePorque = intervention.status === 'needed' || intervention.status === 'in_progress'
-    || (Number(latestCheckinPain(dailyCheckins)) || 0) >= PAIN_ALARM_THRESHOLD;
+  const jaSabePorque = knowsWhySilent({
+    intervention, lastCheckinPain: latestCheckinPain(dailyCheckins), lastCheckinDate: latestDate(dailyCheckins),
+  }, today);
   const missed = jaSabePorque ? null : findMissedWorkout({
     plans: coachPlans,
     planItems: coachPlanItems,
@@ -390,6 +390,23 @@ function pickRaceAfter({ races, runs, profile, today }) {
     const dayLabel = gap === 0 ? 'hoje' : `há ${gap} dia${gap === 1 ? '' : 's'}`;
     if (run) {
       return buildRaceAfterCandidate({ race, run, runs, raceEvents: races, profile, today });
+    }
+    /* Uma corrida nesse dia, sem ligação à prova (a régua e a chave do
+       servidor, listServerProactive): pergunta-se se foi ela, em vez de
+       pedir o registo de uma corrida que já existe (revisão pré-deploy de
+       2026-09-26). */
+    const porLigar = (runs || []).find((r) => r && !r.race_id && typeof r.date === 'string' && r.date.slice(0, 10) === race.date.slice(0, 10));
+    if (porLigar) {
+      const km = Number(porLigar.distance_km) > 0 ? `${String(Math.round(Number(porLigar.distance_km) * 10) / 10).replace('.', ',')} km` : null;
+      const tempo = Number(porLigar.duration_seconds) > 0 ? formatDuration(porLigar.duration_seconds) : null;
+      const corrida = [km, tempo].filter(Boolean).join(', ');
+      return {
+        trigger: 'race_after',
+        key: `race_after:${race.id}:por-ligar`,
+        details: `${UNLINKED_RUN_DETAILS_PREFIX} a prova "${race.name}" foi ${dayLabel} (${race.date.slice(0, 10)}), e há uma corrida registada nesse dia${corrida ? ` (${corrida})` : ''} que não está ligada a ela.`,
+        raceOutcome: null,
+        raceId: race.id,
+      };
     }
     if (gap >= 1 && gap <= RACE_AFTER_DAYS_WITHOUT_RUN) {
       return {

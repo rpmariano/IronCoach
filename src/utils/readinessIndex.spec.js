@@ -137,3 +137,12 @@ describe('computeReadinessIndex — viabilidade e carga (revisão de 2026-09-26)
     if (acwr) { expect(acwr.desc).not.toMatch(/\d\.\d/); expect(acwr.desc).toMatch(/\d,\d/); }
   });
 });
+
+describe('checkinPillar — perto da prova, nunca "descanso" (revisão pré-deploy 2026-09-26)', () => {
+  it('no dia ou na véspera, mesmo com trainingToday false', () => {
+    const ctx = { trainingToday: false, raceTodayOrTomorrow: true };
+    for (const c of [{ sleep: 5, energy: 5, stress: 1 }, { sleep: 3, energy: 3, stress: 3 }, { sleep: 3, energy: 3, stress: 5 }]) {
+      expect(checkinPillar({ ...c, pain: 0 }, ctx).desc).not.toMatch(/descanso/);
+    }
+  });
+});

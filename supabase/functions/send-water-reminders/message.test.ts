@@ -132,18 +132,19 @@ Deno.test("raceDayWaterPhase: maratona às 9h com objetivo de 3h30 — calada du
   assertEquals(raceDayWaterPhase(maratona, 8 * 60 + 14), null);
   assertEquals(raceDayWaterPhase(maratona, 8 * 60 + 15), "silencio");
   assertEquals(raceDayWaterPhase(maratona, 9 * 60), "silencio");
-  assertEquals(raceDayWaterPhase(maratona, 12 * 60 + 29), "silencio");
-  assertEquals(raceDayWaterPhase(maratona, 12 * 60 + 30), "depois");
-  assertEquals(raceDayWaterPhase(maratona, 14 * 60 + 29), "depois");
-  assertEquals(raceDayWaterPhase(maratona, 14 * 60 + 30), null);
+  // Chegada prevista às 12:30, mais 30 min de folga para quem vai mais lento.
+  assertEquals(raceDayWaterPhase(maratona, 12 * 60 + 59), "silencio");
+  assertEquals(raceDayWaterPhase(maratona, 13 * 60), "depois");
+  assertEquals(raceDayWaterPhase(maratona, 14 * 60 + 59), "depois");
+  assertEquals(raceDayWaterPhase(maratona, 15 * 60), null);
 });
 
 Deno.test("raceDayWaterPhase: sem objetivo, a chegada estima-se a 7 min/km; sem distância, 3 h; sem hora, nada", () => {
   const dezK = { start_time: "10:00", target_time_seconds: null, distance_km: 10 };
-  assertEquals(raceDayWaterPhase(dezK, 11 * 60 + 9), "silencio");
-  assertEquals(raceDayWaterPhase(dezK, 11 * 60 + 10), "depois");
-  assertEquals(raceDayWaterPhase({ start_time: "10:00" }, 12 * 60 + 59), "silencio");
-  assertEquals(raceDayWaterPhase({ start_time: "10:00" }, 13 * 60), "depois");
+  assertEquals(raceDayWaterPhase(dezK, 11 * 60 + 39), "silencio");
+  assertEquals(raceDayWaterPhase(dezK, 11 * 60 + 40), "depois");
+  assertEquals(raceDayWaterPhase({ start_time: "10:00" }, 13 * 60 + 29), "silencio");
+  assertEquals(raceDayWaterPhase({ start_time: "10:00" }, 13 * 60 + 30), "depois");
   assertEquals(raceDayWaterPhase({ start_time: null, distance_km: 42.195 }, 10 * 60), null);
   assertEquals(raceDayWaterPhase(null, 10 * 60), null);
 });

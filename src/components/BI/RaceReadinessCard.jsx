@@ -40,8 +40,13 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);
   // Há treino previsto hoje (pedido 2026-09-26)? Para o pilar "Como
   // acordaste" não dizer "hoje o treino é mais leve" num dia de descanso.
+  // Sem plano aceite em vigor hoje não se sabe se é descanso: undefined, e o
+  // pilar não o afirma (revisão pré-deploy de 2026-09-26).
   const trainingToday = useMemo(() => {
-    const aceites = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+    const emVigor = (coachPlans || []).filter((p) => p?.status === 'aceite'
+      && String(p.period_start || '').slice(0, 10) <= today && String(p.period_end || '').slice(0, 10) >= today);
+    if (!emVigor.length) return undefined;
+    const aceites = new Set(emVigor.map((p) => p.id));
     return (coachPlanItems || []).some((i) => i && aceites.has(i.plan_id) && i.planned_date === today
       && (i.kind === 'corrida' || i.kind === 'ginasio') && i.status !== 'cancelado');
   }, [coachPlans, coachPlanItems, today]);

@@ -65,6 +65,31 @@ Deno.test("describeRaceEveShort: depois do jantar e depois de deitar, só os pas
   );
 });
 
+/* Revisão pré-deploy de 2026-09-26: numa partida entre as 11:00 e as 13:29 o
+   deitar cai depois da meia-noite (00:00-02:29). Lido no relógio cru, às
+   10:00 da véspera já tinha "passado" e saía "Deita-te já". Numa prova da
+   meia-noite, já acordado para ela, não há deitar a dizer. */
+Deno.test("describeRaceEveShort: um deitar depois da meia-noite é da noite da véspera, não de manhã", () => {
+  const onze = computeRaceEve({ startTime: "11:00:00", weightKg: 70, distanceKm: 10 });
+  assertEquals(
+    describeRaceEveShort(onze, "Corrida do Tejo", 10, minutesOfDay("10:00")),
+    "Amanhã é dia de prova: Corrida do Tejo, 10 km, partida às 11:00: jantar até às 21:30 (140-280 g de hidratos), deitar às 00:00, acordar às 08:00, pequeno-almoço às 08:15, chegada às 10:00.",
+  );
+  assertEquals(
+    describeRaceEveShort(onze, "Corrida do Tejo", 10, minutesOfDay("22:30")),
+    "Amanhã é dia de prova: Corrida do Tejo, 10 km, partida às 11:00: cama às 00:00, acordar às 08:00.",
+  );
+  const meiaNoite = computeRaceEve({ startTime: "00:30:00", weightKg: 70, distanceKm: 10 });
+  assertEquals(
+    describeRaceEveShort(meiaNoite, "Corrida do Tejo", 10, minutesOfDay("15:00")),
+    "Amanhã é dia de prova: Corrida do Tejo, 10 km, partida às 00:30. Deita-te já: acordas às 21:30.",
+  );
+  assertEquals(
+    describeRaceEveShort(meiaNoite, "Corrida do Tejo", 10, minutesOfDay("22:30")),
+    "Amanhã é dia de prova: Corrida do Tejo, 10 km, partida às 00:30.",
+  );
+});
+
 /* Uma partida ao fim da tarde ou à noite (uma São Silvestre às 20:00): o
    horário calculado por computeRaceEve (3 h de acordar antes da partida, 8 h
    de sono antes disso) dava "jantar até às 06:30, deitar às 09:00" — do
