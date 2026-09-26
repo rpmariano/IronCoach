@@ -7,9 +7,13 @@ vi.mock('../lib/supabase', () => ({
 }));
 
 const { useAppStore } = await import('./index');
-const { todayISO } = await import('../lib/utils');
+const { lisbonTodayISO } = await import('../lib/utils');
 
-const TODAY = todayISO();
+// O dia de Lisboa, como o store (loadDailySummary) e o servidor: com
+// todayISO() (o dia do processo, UTC no CI) o teste falhava entre as 23h e a
+// meia-noite UTC, quando Lisboa já vai no dia seguinte — e com ele o deploy
+// do Pages, que corre o Vitest.
+const TODAY = lisbonTodayISO();
 const SUMMARY = { date: TODAY, recap: 'Boa semana.', warnings: null, meal_suggestion: null, tomorrow_prep: null };
 
 describe('loadDailySummary', () => {
