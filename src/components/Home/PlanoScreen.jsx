@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { pt } from 'date-fns/locale';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Utensils } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
-import { planWeekLabel } from './DayPlanCard';
-import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRacePlanItem, isUnplannedDay, raceNameForDate, trainingItems } from '../../utils/homeModels';
+import { planWeekLabel, noPlanCopy } from './DayPlanCard';
+import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRacePlanItem, isUnplannedDay, liveItems, raceNameForDate, trainingItems } from '../../utils/homeModels';
+import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import MealSheet from './MealSheet';
 
 /* "O plano" — o plano acordado inteiro, dia a dia, em ecrã cheio
@@ -43,15 +46,71 @@ function dayPill(day, today) {
   return null;
 }
 
+/* Os treinos que contam num dia: os vivos (liveItems) — o cancelado do
+   bloco antigo ao lado do treino do novo não entra nas contas, senão um
+   dia cumprido dava "1/2 feitos" (pedido 2026-09-26). */
+const treinosVivos = (d) => trainingItems(liveItems(d.items));
+
 /* O resumo que fica no cabeçalho da semana fechada — é o que torna o
    colapso honesto: sem ele, fechar uma semana esconde informação em vez de
    a arrumar. "2/4" são as sessões dadas; uma semana sem nenhum treino
-   planeado diz-se pelo nome, para não se confundir com "0/0 feitos". */
+   planeado diz-se pelo nome, para não se confundir com "0/0 feitos". E a
+   semana que ainda está por escrever (as tranches do plano de uma prova)
+   diz isso, e não "Sem treinos", que soava a semana de folga decidida. */
 function weekSummary(week) {
-  const items = (week?.days || []).flatMap((d) => trainingItems(d.items));
-  if (items.length === 0) return 'Sem treinos';
+  const days = week?.days || [];
+  const items = days.flatMap(treinosVivos);
+  if (items.length === 0) return days.some((d) => d.porPlanear) ? 'Por planear' : 'Sem treinos';
   const done = items.filter((i) => i.status === 'concluido').length;
   return `${done}/${items.length} feitos`;
+}
+
+/* O convite no primeiro dia por planear: "este dia" quando é só um, "estes
+   dias" quando são vários — dantes era sempre o plural, mesmo para um dia
+   só (pedido 2026-09-26). Na voz dela e com energia: é ela a chamar o
+   atleta para o trabalho, e ele pode tocar como quem responde "vamos". */
+export function convitePlanear(dias) {
+  return dias > 1 ? 'Vamos planear estes dias' : 'Vamos planear este dia';
+}
+
+/* O que ele diz quando toca no convite (revisão de 2026-09-26). O botão
+   lê-se como a resposta dele ("Vamos planear estes dias"), e é isso que
+   entra no chat, com os dias por extenso, como se o tivesse escrito lá — o
+   `say` que o balanço da prova já usa (RaceBalanceCard). Num pedido dele,
+   ela tem as ferramentas todas e propõe o plano desses dias.
+   Dantes ia pelo canal dos desvios que a app deteta sozinha
+   (plan_divergence), e o servidor abria-lhe a conversa com "A app detetou
+   que o plano já não bate certo com a realidade e chamou-te — o atleta
+   abriu o chat a partir desse aviso", a pedir-lhe que explicasse o que
+   mudou e perguntasse se tinha havido algum motivo. Nada disso era
+   verdade: não houve aviso nenhum, foi ele que quis planear. Com o
+   contexto errado, a primeira frase dela saía a falar de um desvio que não
+   existiu. */
+const porExtenso = (iso) => format(parseISO(iso), "d 'de' MMMM", { locale: pt });
+
+export function pedidoPlanear(inicio, fim) {
+  if (!fim || fim === inicio) return `Vamos planear o dia ${porExtenso(inicio)}.`;
+  return `Vamos planear os dias de ${porExtenso(inicio)} a ${porExtenso(fim)}.`;
+}
+
+/* A proposta que já está no chat, por decidir, para os dias [inicio, fim]
+   (revisão de 2026-09-26). É o caso de todos os dias num plano de prova: ela
+   escreve a tranche seguinte, e até ele a aceitar esses dias continuam
+   vazios no plano aceite. O convite pedia-lhe então que planeasse o que ela
+   tinha acabado de planear, e ela escrevia outra proposta por cima da
+   primeira. Com uma proposta assim, o convite aponta para ela, com as
+   palavras do "O que faço hoje" para o mesmo caso (noPlanCopy). As
+   sugestões só de refeições não contam: não planeiam treino nenhum. Sem os
+   itens carregados, na dúvida, conta. */
+export function propostaNoChat(plans, items, inicio, fim) {
+  return (plans || []).some((p) => {
+    if (p?.status !== 'proposto') return false;
+    const ini = String(p.period_start || '').slice(0, 10);
+    const fimP = String(p.period_end || '').slice(0, 10);
+    if (!ini || !fimP || ini > fim || fimP < inicio) return false;
+    const dela = (items || []).filter((i) => i?.plan_id === p.id);
+    return dela.length === 0 || dela.some((i) => !isMealOnlyItem(i));
+  });
 }
 
 function StatTile({ value, suffix, label, testId }) {
@@ -71,11 +130,15 @@ export default function PlanoScreen({ onClose }) {
   const [mealDay, setMealDay] = useState(null);
 
   const planWindow = useMemo(() => computeAcceptedWindow(coachPlans, coachPlanItems, today), [coachPlans, coachPlanItems, today]);
+  /* Com os planos: um cancelado que o sistema arrumou (bloco antigo
+     fechado, prova antecipada) sai do dia, e um plano sem prova conta como
+     escrito até ao fim — ver buildPlanDays (pedido 2026-09-26). */
   const days = useMemo(() => {
     if (!planWindow) return [];
-    const acceptedIds = new Set((coachPlans || []).filter((p) => p.status === 'aceite').map((p) => p.id));
-    return buildPlanDays((coachPlanItems || []).filter((i) => acceptedIds.has(i.plan_id)), planWindow.start, planWindow.days);
-  }, [coachPlans, coachPlanItems, planWindow]);
+    const aceites = (coachPlans || []).filter((p) => p.status === 'aceite');
+    const acceptedIds = new Set(aceites.map((p) => p.id));
+    return buildPlanDays((coachPlanItems || []).filter((i) => acceptedIds.has(i.plan_id)), planWindow.start, planWindow.days, { plans: aceites, today });
+  }, [coachPlans, coachPlanItems, planWindow, today]);
 
   // Semanas de segunda a domingo, pela ordem em que os dias vêm.
   const weeks = useMemo(() => {
@@ -143,39 +206,63 @@ export default function PlanoScreen({ onClose }) {
     return () => cancelAnimationFrame(id);
   }, [currentWeek, weeks, openWeeks]);
 
-  /* Dias sem plano nenhum: o atleta tem de poder pedir à Carol que os
-     preencha. Um convite por dia vazio seria ruído num bloco de cinco dias
-     seguidos, por isso só aparece no PRIMEIRO dia de cada bloco contíguo —
-     e nunca no passado, que já não há plano a fazer para ontem. */
-  const askPlanDates = useMemo(() => {
-    const out = new Set();
-    let prevUnplanned = false;
+  /* Dias por planear: o atleta tem de poder pedir à Carol que os escreva.
+     Só os que estão mesmo por escrever (porPlanear, buildPlanDays) — um dia
+     que ela deixou livre dentro do plano não é um convite a planeá-lo
+     (pedido 2026-09-26). Um convite por dia seria ruído num bloco de cinco
+     dias seguidos, por isso só aparece no PRIMEIRO dia de cada bloco
+     contíguo, e diz quantos dias leva até ao fim dele. `porPlanear` já
+     nunca é verdade no passado, e por isso um bloco nunca começa em
+     ontem e perde o convite de hoje. */
+  const convites = useMemo(() => {
+    const out = new Map();
+    let aberto = null;
     days.forEach((d) => {
-      const unplanned = isUnplannedDay(d.items);
-      if (unplanned && !prevUnplanned && d.dateISO >= today) out.add(d.dateISO);
-      prevUnplanned = unplanned;
+      if (!d.porPlanear) { aberto = null; return; }
+      if (!aberto) {
+        aberto = { inicio: d.dateISO, fim: d.dateISO, dias: 0 };
+        out.set(d.dateISO, aberto);
+      }
+      aberto.fim = d.dateISO;
+      aberto.dias += 1;
     });
+    // Com a tranche seguinte já no chat, o convite aponta para ela (ver
+    // propostaNoChat).
+    out.forEach((c) => { c.proposta = propostaNoChat(coachPlans, coachPlanItems, c.inicio, c.fim); });
     return out;
-  }, [days, today]);
+  }, [days, coachPlans, coachPlanItems]);
 
   /* O resumo é sempre da semana em curso. Os quilómetros são os PLANEADOS
      dos treinos já dados — a distância real vive no registo da corrida, que
      este ecrã não carrega; para "quanto já fiz esta semana" o alvo cumprido
      chega, e não obriga a puxar o histórico todo para um cabeçalho. */
   const summary = useMemo(() => {
-    const items = (currentWeek?.days || []).flatMap((d) => trainingItems(d.items));
+    const items = (currentWeek?.days || []).flatMap(treinosVivos);
     const done = items.filter((i) => i.status === 'concluido');
     const km = done.reduce((s, i) => s + (Number(i.target_distance_km) || 0), 0);
     return { done: done.length, total: items.length, km: Math.round(km) };
   }, [currentWeek]);
 
-  // A prova a que este plano leva: a que cai dentro da janela acordada.
+  /* A prova a que este plano leva: a do race_id do plano aceite (pedido
+     2026-09-26). Era a primeira prova da agenda que caía dentro da janela —
+     num plano para a Maratona do Porto com a Meia de Lisboa a meio, o
+     subtítulo dizia "para a Meia de Lisboa"; um plano sem prova ganhava a
+     de qualquer prova de treino lá dentro; e o "para a" posto à frente de
+     qualquer nome dava "para a Trail do Sicó". Agora é a prova do plano,
+     pelo nome e sem artigo, e nenhuma quando o plano não tem prova. Entre
+     vários planos com prova na janela (um bloco que muda de objetivo), o
+     que cobre hoje; senão, o que acaba mais tarde. */
   const raceName = useMemo(() => {
     if (!planWindow) return null;
     const end = addDaysISO(planWindow.start, planWindow.days - 1);
-    const race = (raceEvents || []).find((r) => r && typeof r.date === 'string' && r.date.slice(0, 10) >= planWindow.start && r.date.slice(0, 10) <= end);
-    return race?.name || null;
-  }, [raceEvents, planWindow]);
+    const comProva = (coachPlans || []).filter((p) => p && p.status === 'aceite' && p.race_id
+      && String(p.period_start || '').slice(0, 10) <= end && String(p.period_end || '').slice(0, 10) >= planWindow.start);
+    const cobreHoje = (p) => String(p.period_start).slice(0, 10) <= today && String(p.period_end).slice(0, 10) >= today;
+    const plano = comProva.find(cobreHoje)
+      || comProva.slice().sort((a, b) => String(b.period_end).localeCompare(String(a.period_end)))[0];
+    if (!plano) return null;
+    return (raceEvents || []).find((r) => r && r.id === plano.race_id)?.name || null;
+  }, [coachPlans, raceEvents, planWindow, today]);
 
   const goCoach = (intent) => {
     if (intent) useAppStore.getState().setCoachIntent(intent);
@@ -196,16 +283,23 @@ export default function PlanoScreen({ onClose }) {
   );
 
   if (!planWindow) {
+    // O mesmo texto do "O que faço hoje" (DayPlanCard, noPlanCopy): com uma
+    // proposta por decidir, ela aponta para a proposta em vez de pedir outra,
+    // e fala sempre na primeira pessoa (pedido 2026-09-26).
+    const copy = noPlanCopy({
+      pendingCount: (coachPlans || []).filter((p) => p?.status === 'proposto').length,
+      hadPlan: (coachPlans || []).some((p) => p?.status === 'aceite'),
+    });
     return (
       <div className="flex flex-col gap-3 fade-in pb-2" data-testid="plano-screen">
         <Header />
         <div className="rounded-[24px]" style={{ background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', padding: 16 }}>
-          <h3 className="text-[16px] font-black leading-[1.15]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>Sem plano acordado</h3>
+          <h3 className="text-[16px] font-black leading-[1.15]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>{copy.title}</h3>
           <p className="text-[12.5px] leading-[1.45] mt-1.5" style={{ color: 'var(--text-3)' }}>
-            Pede-me um plano. As propostas aparecem no chat, para aceitares ou recusares.
+            {copy.body}
           </p>
           <button type="button" onClick={() => goCoach(null)} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
-            <MessageCircle size={15} /> Pedir plano à Carol
+            <MessageCircle size={15} /> {copy.cta}
           </button>
         </div>
       </div>
@@ -213,7 +307,7 @@ export default function PlanoScreen({ onClose }) {
   }
 
   const endISO = addDaysISO(planWindow.start, planWindow.days - 1);
-  const subtitle = [`${formatDayMonth(planWindow.start)} – ${formatDayMonth(endISO)}`, raceName ? `para a ${raceName}` : null].filter(Boolean).join(' · ');
+  const subtitle = [`${formatDayMonth(planWindow.start)} – ${formatDayMonth(endISO)}`, raceName].filter(Boolean).join(' · ');
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2" data-testid="plano-screen">
@@ -254,7 +348,8 @@ export default function PlanoScreen({ onClose }) {
               const pill = dayPill(d, today);
               const meals = mealsForDay(d.items);
               const unplanned = isUnplannedDay(d.items);
-              const notes = trainingItems(d.items).filter((it) => !isRacePlanItem(it) && typeof it.notes === 'string' && it.notes.trim());
+              const convite = convites.get(d.dateISO);
+              const notes = treinosVivos(d).filter((it) => !isRacePlanItem(it) && typeof it.notes === 'string' && it.notes.trim());
               return (
                 <div
                   key={d.dateISO}
@@ -272,20 +367,32 @@ export default function PlanoScreen({ onClose }) {
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="text-[13.5px] font-extrabold" style={{ color: unplanned ? 'var(--text-4)' : 'var(--text-1)' }}>{dayTitle(d.items, raceNameForDate(raceEvents, d.dateISO))}</div>
-                    {askPlanDates.has(d.dateISO) && (
+                    <div className="text-[13.5px] font-extrabold" style={{ color: unplanned ? 'var(--text-4)' : 'var(--text-1)' }}>{dayTitle(d.items, raceNameForDate(raceEvents, d.dateISO), { porPlanear: d.porPlanear })}</div>
+                    {convite && (convite.proposta ? (
                       <button
                         type="button"
-                        data-testid={`plano-pedir-${d.dateISO}`}
-                        onClick={() => goCoach('adapt_plan')}
+                        data-testid={`plano-proposta-${d.dateISO}`}
+                        onClick={() => goCoach(null)}
                         className="inline-flex items-center gap-1.5 min-h-[44px] -my-[7px] text-[11.5px] font-bold text-left"
                         style={{ color: 'var(--coach)' }}
                       >
                         <MessageCircle size={13} />
-                        Pedir-me um plano para estes dias
+                        A proposta está no chat
                         <ChevronRight size={12} />
                       </button>
-                    )}
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid={`plano-pedir-${d.dateISO}`}
+                        onClick={() => goCoach({ kind: 'say', text: pedidoPlanear(convite.inicio, convite.fim) })}
+                        className="inline-flex items-center gap-1.5 min-h-[44px] -my-[7px] text-[11.5px] font-bold text-left"
+                        style={{ color: 'var(--coach)' }}
+                      >
+                        <MessageCircle size={13} />
+                        {convitePlanear(convite.dias)}
+                        <ChevronRight size={12} />
+                      </button>
+                    ))}
                     {notes.map((it) => (
                       <p key={it.id} className="text-[12px] leading-[1.45] mt-[3px]" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>{it.notes.trim()}</p>
                     ))}

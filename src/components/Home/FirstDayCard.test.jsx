@@ -36,8 +36,32 @@ describe('FirstDayCard — a Carol lembra-se do arranque', () => {
     render(<FirstDayCard firstName="Rui" {...h} />);
     expect(screen.getByText('Olá, Rui. Vamos escolher a tua prova.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Falar com a Carol/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Marcar prova eu mesmo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar a prova à mão' }));
     expect(h.onTalk).toHaveBeenCalled();
     expect(h.onCreateRace).toHaveBeenCalled();
+  });
+
+  // Revisão de 2026-09-26 (backlog, FirstDayCard.jsx:30): "eu mesmo" tinha
+  // género, e uma atleta diria "eu mesma".
+  it('a segunda via não tem género', () => {
+    render(<FirstDayCard firstName="Ana" {...handlers()} />);
+    expect(screen.queryByText(/eu mesm[oa]/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Marcar a prova à mão' })).toBeInTheDocument();
+  });
+
+  /* O contexto primeiro (revisão de 2026-09-26): com a cirurgia de ontem na
+     memória dela, quem veio voltar de uma pausa tinha «Registar uma
+     corrida» como botão principal. */
+  it('com uma cirurgia na memória, o botão principal é falar com ela, não registar uma corrida', () => {
+    const h = handlers();
+    const vida = { tipo: 'cirurgia', dias: 1, a: 'a cirurgia', da: 'da cirurgia' };
+    render(<FirstDayCard firstName="Rui" goal="regresso" vida={vida} {...h} />);
+    expect(screen.getByText('Rui, voltamos com calma.')).toBeInTheDocument();
+    expect(screen.getByText(/^Não me esqueci da cirurgia\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Registar uma corrida/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('first-day-card')).not.toHaveTextContent(/te ver correr|primeiras saídas/);
+    fireEvent.click(screen.getAllByRole('button')[0]);
+    expect(h.onTalk).toHaveBeenCalled();
+    expect(h.onRegisterRun).not.toHaveBeenCalled();
   });
 });

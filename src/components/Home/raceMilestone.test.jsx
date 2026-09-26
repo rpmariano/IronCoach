@@ -19,6 +19,52 @@ describe('raceMilestoneLine', () => {
   });
 });
 
+/* Pedido 2026-09-26: cada marco escolhe-se pela condição que o torna
+   verdadeiro — a prioridade da prova, a viabilidade que o hub mostra, e se há
+   plano. No código antigo, cada um destes dizia a frase de sempre. */
+describe('raceMilestoneLine — o marco pelo que a prova é', () => {
+  it('prova B ou C: sem os marcos do polimento (14, 7, 3), dia a dia de 120 até à véspera', () => {
+    for (const prioridade of ['b', 'c']) {
+      const ditos = [];
+      for (let d = 120; d >= 1; d -= 1) if (raceMilestoneLine(d, { prioridade, flags: [], comPlano: true })) ditos.push(d);
+      expect(ditos).toEqual([100, 50, 30]);
+    }
+    // A principal tem-nos todos; sem prioridade, é a principal (o valor por omissão da coluna).
+    for (const contexto of [{ prioridade: 'a' }, { prioridade: 'A' }, { prioridade: null }, {}]) {
+      const ditos = [];
+      for (let d = 120; d >= 1; d -= 1) if (raceMilestoneLine(d, { flags: [], comPlano: true, ...contexto })) ditos.push(d);
+      expect(ditos).toEqual([100, 50, 30, 14, 7, 3]);
+    }
+  });
+
+  it('a uma semana de uma prova C a meio de um bloco: nada de «descansa a sério»', () => {
+    expect(raceMilestoneLine(7, { prioridade: 'c', comPlano: true })).toBeNull();
+  });
+
+  it('a uma semana da principal: com plano, o plano manda; sem plano, sem apontar para ele', () => {
+    const comPlano = raceMilestoneLine(7, { prioridade: 'a', comPlano: true });
+    expect(comPlano).toBe('Uma semana. Já não se ganha forma, só se perde frescura. Faz o que está no plano, e nada a mais.');
+    const semPlano = raceMilestoneLine(7, { prioridade: 'a' });
+    expect(semPlano).not.toMatch(/plano|Descansa a sério/);
+    for (const t of [comPlano, semPlano]) expectCarolVoice(t);
+  });
+
+  it('aos 100 dias, o que o hub diz do tempo: insuficiente, suficiente, ou por ler', () => {
+    const curto = raceMilestoneLine(100, { flags: ['tempo_insuficiente'] });
+    expect(curto).toBe('Faltam 100 dias. Para esta distância é menos do que eu queria; cada semana tem de contar.');
+    expect(raceMilestoneLine(100, { flags: [] })).toBe('Faltam 100 dias. Parece muito; é o tempo certo para construir sem pressa.');
+    expect(raceMilestoneLine(100, { flags: ['volume_insuficiente'] })).toMatch(/tempo certo/);
+    // Sem a viabilidade lida, ou a vermelho por outra razão: nem «tempo certo» nem «pouco».
+    for (const flags of [null, ['ultra_para_iniciante']]) {
+      const t = raceMilestoneLine(100, { flags });
+      expect(t).toMatch(/^Faltam 100 dias\./);
+      expect(t).not.toMatch(/tempo certo|menos do que eu queria/);
+      expectCarolVoice(t);
+    }
+    expectCarolVoice(curto);
+  });
+});
+
 /* Visto noutro dispositivo (ação 5.1): a impressão 'moment:milestone:<prova>:<dias>'
    lida do servidor conta como visto, mesmo sem a marca local. */
 describe('wasMilestoneSeen', () => {

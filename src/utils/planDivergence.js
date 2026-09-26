@@ -13,7 +13,9 @@
    4. sessoes_falhadas        — duas ou mais sessões pendentes que já
                                 passaram e não têm registo nenhum, planeadas
                                 DEPOIS da última reescrita do plano (ver
-                                lastRewriteDay, abaixo).
+                                lastRewriteDay, abaixo). A frase diz também
+                                as corridas (ou o ginásio) que viu a um ou
+                                dois dias delas, e pergunta se trocou os dias.
 
    Só planos ACEITES com período a cobrir hoje ou o futuro entram: um plano
    que já terminou não se ajusta, revê-se.
@@ -49,6 +51,77 @@ function addDays(iso, n) {
 }
 
 const EVE_LABEL = { 1: 'na véspera', 2: 'a dois dias' };
+
+/** A quantos dias de uma sessão falhada um registo do mesmo tipo pode ser
+ *  essa sessão feita noutro dia. */
+export const SWAP_WINDOW_DAYS = 2;
+
+const juntar = (xs) => (xs.length <= 1 ? (xs[0] || '') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`);
+
+/** "12 e 14 set", "30 set e 2 out" — os dias como se dizem, com o mês uma
+ *  vez por mês e não uma vez por dia. */
+export function listaDias(datesISO) {
+  const partes = [...new Set(datesISO)].sort().map((d) => formatDayMonth(d).split(' '));
+  return juntar(partes.map(([dia, mes], k) => (k === partes.length - 1 || partes[k + 1][1] !== mes ? `${dia} ${mes}` : dia)));
+}
+
+const diasEntre = (a, b) => Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 86400000);
+
+/** O que o coach-chat guarda de cada motivo (coach-chat, plan_divergence:
+ *  `.slice(0, 200)`). Uma frase maior chega-lhe cortada a meio. */
+const MOTIVO_MAX = 200;
+
+/* Os registos e os treinos ditos pelo que são (revisão de 2026-09-26): a
+   corrida como corrida, o ginásio como ginásio. «Vi treinos a 9 e 11 set»
+   ao lado de «não vi os treinos de 8 e 10 set» dizia duas vezes a mesma
+   palavra e nada sobre o que ela viu. */
+const REGISTO_DITO = {
+  corrida: (n) => (n === 1 ? 'uma corrida' : 'corridas'),
+  ginasio: (n) => (n === 1 ? 'uma sessão de ginásio' : 'sessões de ginásio'),
+};
+const TREINO_DITO = {
+  corrida: (n) => (n === 1 ? 'da corrida' : 'das corridas'),
+  ginasio: (n) => (n === 1 ? 'do ginásio' : 'das sessões de ginásio'),
+};
+const porTipo = (xs) => ['corrida', 'ginasio'].map((kind) => xs.filter((x) => x.kind === kind)).filter((g) => g.length);
+
+/* A frase das sessões falhadas (pedido 2026-09-26). Era «2 sessões do plano
+   ficaram por registar nos últimos 7 dias (9 set, 11 set).» — a abrir com um
+   número, em registo de sistema, e cega ao resto: os treinos de terça e
+   quinta feitos na quarta e na sexta, registados pelo separador Corrida,
+   apareciam no calendário e o aviso dizia que nada tinha sido registado.
+   A data continua a contar pelo calendário (o treino de terça feito à
+   quarta não fecha o de terça), mas ela diz o que viu e pergunta, como
+   CAROL.md §3 pede antes de reagendar: «Aconteceu alguma coisa?».
+   `trocas` são as falhadas com um registo do mesmo tipo por perto;
+   `semRegisto`, as outras.
+
+   Um dia com corrida e ginásio no plano pode ter um explicado e o outro
+   não (revisão de 2026-09-26): «Não vi o treino de 8 set nesse dia, mas vi
+   uma sessão de ginásio a 7 set. (…) E do treino de 8 set não vi registo
+   nenhum.» punha o mesmo dia dos dois lados, e lia-se como contradição.
+   Quando isso acontece, o resto diz-se pelo tipo: «E da corrida de 8 set
+   não vi registo nenhum.» */
+function frasesSessoesFalhadas(trocas, semRegisto) {
+  const dosTreinos = (n) => (n === 1 ? 'do treino' : 'dos treinos');
+  if (trocas.length === 0) {
+    return `Não vi registo ${dosTreinos(semRegisto.length)} de ${listaDias(semRegisto.map((m) => m.date))}. Aconteceu alguma coisa?`;
+  }
+  const n = trocas.length;
+  const diasTrocados = new Set(trocas.map((t) => t.date));
+  const oQueVi = juntar(porTipo(trocas.map((t) => t.registo))
+    .map((g) => `${REGISTO_DITO[g[0].kind](g.length)} a ${listaDias(g.map((r) => r.date))}`));
+  const texto = `Não vi ${n === 1 ? 'o treino' : 'os treinos'} de ${listaDias([...diasTrocados])} ${diasTrocados.size === 1 ? 'nesse dia' : 'nesses dias'}, mas vi ${oQueVi}. Trocaste os dias?`;
+  if (!semRegisto.length) return texto;
+  const partilhaDia = semRegisto.some((m) => diasTrocados.has(m.date));
+  const deQue = partilhaDia
+    ? juntar(porTipo(semRegisto).map((g) => `${TREINO_DITO[g[0].kind](g.length)} de ${listaDias(g.map((m) => m.date))}`))
+    : `${dosTreinos(semRegisto.length)} de ${listaDias(semRegisto.map((m) => m.date))}`;
+  const completo = `${texto} E ${deQue} não vi registo nenhum.`;
+  // Com muitos dias, os do fim cabem numa palavra: a pergunta que importa
+  // (trocaste os dias?) já ficou dita, com as datas.
+  return completo.length <= MOTIVO_MAX ? completo : `${texto} E dos outros não vi registo nenhum.`;
+}
 
 /** "Corrida do Tejo (13 set)" — o nome e o dia, como a Carol os diria. */
 export function raceLabel(race) {
@@ -198,7 +271,9 @@ export function detectPlanDivergence({
   // 4. Sessões que passaram e não têm registo nenhum. A data conta pelo
   //    calendário: um treino de terça registado à quarta não é o de terça.
   //    Só contam as planeadas desde a última reescrita do plano: as de antes
-  //    a Carol já as viu quando o ajustou.
+  //    a Carol já as viu quando o ajustou. A prova do plano não é uma
+  //    sessão: uma prova passada por registar é para registar (o cartão da
+  //    prova pede-o), não para reorganizar — e a frase fala de treinos.
   const from = addDays(today, -MISSED_LOOKBACK_DAYS);
   const rewriteByPlan = new Map(
     [...planIds].map((id) => [id, lastRewriteDay(items.filter((i) => i.plan_id === id))]),
@@ -208,7 +283,7 @@ export function detectPlanDivergence({
     ...(gymSessions || []).map((g) => dayOf(g?.date)),
   ].filter(Boolean));
   const missed = items
-    .filter((i) => (i.kind === 'corrida' || i.kind === 'ginasio') && i.status === 'pendente')
+    .filter((i) => (i.kind === 'corrida' || i.kind === 'ginasio') && i.status === 'pendente' && !isRacePlanItem(i))
     .filter((i) => {
       const d = dayOf(i.planned_date);
       const rewrite = rewriteByPlan.get(i.plan_id);
@@ -218,11 +293,45 @@ export function detectPlanDivergence({
 
   if (missed.length >= MISSED_MIN) {
     const dates = missed.map((i) => dayOf(i.planned_date));
-    push(
-      'sessoes_falhadas',
-      dates.join('+'),
-      `${missed.length} sessões do plano ficaram por registar nos últimos ${MISSED_LOOKBACK_DAYS} dias (${dates.map(formatDayMonth).join(', ')}).`,
-    );
+    // Os registos que podem ser uma destas sessões feita noutro dia: do
+    // mesmo tipo, a um ou dois dias, e num dia que não tinha treino seu no
+    // plano — a corrida de quarta num dia com treino marcado é o treino de
+    // quarta, não o de terça mudado. Um registo já ligado a um item
+    // (completed_run_id, completed_session_id) também é de outro treino.
+    // Cada registo explica uma sessão, no máximo: a mais próxima. Os pares
+    // escolhem-se do mais perto para o mais longe, e não pela ordem das
+    // falhadas (revisão de 2026-09-26): com treinos a 8 e 9 e uma corrida a
+    // 10, a de 10 é a de 9 feita um dia depois, não a de 8 feita dois.
+    const trainingDays = new Set(items.filter((i) => i.kind === 'corrida' || i.kind === 'ginasio').map((i) => dayOf(i.planned_date)));
+    const linked = new Set(items.flatMap((i) => [i.completed_run_id, i.completed_session_id]).filter(Boolean));
+    const records = [
+      ...(runs || []).map((r) => ({ id: r?.id, date: dayOf(r?.date), kind: 'corrida' })),
+      ...(gymSessions || []).map((g) => ({ id: g?.id, date: dayOf(g?.date), kind: 'ginasio' })),
+    ].filter((r) => r.date && r.date <= today && !trainingDays.has(r.date) && !(r.id && linked.has(r.id)));
+    const pares = [];
+    missed.forEach((item, k) => {
+      const date = dayOf(item.planned_date);
+      records.forEach((r, idx) => {
+        const gap = Math.abs(diasEntre(date, r.date));
+        if (r.kind === item.kind && gap >= 1 && gap <= SWAP_WINDOW_DAYS) pares.push({ k, idx, gap, date, r });
+      });
+    });
+    pares.sort((a, b) => a.gap - b.gap || a.date.localeCompare(b.date) || a.r.date.localeCompare(b.r.date));
+    const explicada = new Map();
+    const usados = new Set();
+    for (const p of pares) {
+      if (explicada.has(p.k) || usados.has(p.idx)) continue;
+      explicada.set(p.k, p.r);
+      usados.add(p.idx);
+    }
+    const trocas = [];
+    const semRegisto = [];
+    missed.forEach((item, k) => {
+      const date = dayOf(item.planned_date);
+      if (explicada.has(k)) trocas.push({ date, kind: item.kind, registo: explicada.get(k) });
+      else semRegisto.push({ date, kind: item.kind });
+    });
+    push('sessoes_falhadas', dates.join('+'), frasesSessoesFalhadas(trocas, semRegisto));
   }
 
   if (reasons.length === 0) return empty;

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatDayLabel, formatDayMonth, planItemTitle, dayTitle, dayStatus, pendingSession,
   parseMealSuggestion, mealsForDay, previewMeal, buildTrailModel, buildOrbitRings, hasAnyRecord,
-  isRacePlanItem, raceForDate, raceNameForDate,
+  isRacePlanItem, raceForDate, raceNameForDate, liveItems,
 } from './homeModels';
 
 describe('homeModels — o que o Início mostra (ponto 5)', () => {
@@ -16,9 +16,88 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
     expect(planItemTitle({ kind: 'corrida', training_type: 'intervalos' })).toBe('Intervalos');
     expect(planItemTitle({ kind: 'ginasio', categories: ['pernas', 'core'], target_duration_min: 45 })).toBe('pernas/core · 45 min');
     expect(planItemTitle({ kind: 'descanso' })).toBe('Descanso');
-    expect(planItemTitle({ isRace: true, title: 'Meia de Lisboa', target_distance_km: 21.1 })).toBe('Prova · Meia de Lisboa · 21.1 km');
+    // Com vírgula, como se escreve em português (pedido 2026-09-26).
+    expect(planItemTitle({ isRace: true, title: 'Meia de Lisboa', target_distance_km: 21.1 })).toBe('Prova · Meia de Lisboa · 21,1 km');
     expect(dayTitle([{ kind: 'descanso' }])).toBe('Descanso');
     expect(dayTitle([{ kind: 'corrida', training_type: 'longo', target_distance_km: 16 }, { kind: 'ginasio', categories: ['core'] }])).toBe('Rodagem longa · 16 km + core');
+  });
+
+  /* A distância como se escreve (pedido 2026-09-26): o título imprimia o
+     valor da BD — "Prova · Meia da Nazaré · 21.0975 km", "16.5 km" — ao
+     lado de chips com "21,1 km". */
+  it('a distância leva uma casa decimal no máximo, com vírgula', () => {
+    const corrida = (km) => planItemTitle({ kind: 'corrida', training_type: 'longo', target_distance_km: km });
+    expect(corrida(16.5)).toBe('Rodagem longa · 16,5 km');
+    expect(corrida(16)).toBe('Rodagem longa · 16 km');
+    expect(corrida(12.04)).toBe('Rodagem longa · 12 km');
+    expect(planItemTitle({ kind: 'corrida', training_type: 'prova', target_distance_km: 21.0975 }, 'Meia da Nazaré'))
+      .toBe('Prova · Meia da Nazaré · 21,1 km');
+    expect(planItemTitle({ kind: 'corrida', training_type: 'prova', target_distance_km: 42.195 })).toBe('Prova · 42,2 km');
+    // A BD às vezes devolve o numérico como texto: formata-se na mesma.
+    expect(corrida('16.5')).toBe('Rodagem longa · 16,5 km');
+    // As boas-vindas (carolWelcome.js) já mandam o texto formatado: passa como está.
+    expect(planItemTitle({ kind: 'corrida', training_type: 'prova', target_distance_km: '21,1' }, 'Meia da Nazaré'))
+      .toBe('Prova · Meia da Nazaré · 21,1 km');
+    // Sem distância (nula, zero, vazia, ou que arredonda a zero): sem " · km".
+    [null, undefined, 0, '', 0.02, -5].forEach((km) => expect(corrida(km)).toBe('Rodagem longa'));
+    expect(dayTitle([{ kind: 'corrida', training_type: 'continuo', target_distance_km: 8.25 }])).toBe('Corrida contínua · 8,3 km');
+  });
+
+  /* ── O dia vazio (pedido 2026-09-26) ──────────────────────────────────────
+     Era sempre "Sem plano" — também a quarta que a Carol deixou livre a meio
+     da "semana 3 de 8" do plano aceite. Agora: "Sem treino" (o que é sempre
+     verdade num dia vazio), e "Por planear" só quando buildPlanDays sabe que
+     o dia está depois do último dia que o plano já decidiu. */
+  it('um dia vazio diz "Sem treino"; "Por planear" só quando se sabe que está por escrever', () => {
+    expect(dayTitle([])).toBe('Sem treino');
+    expect(dayTitle(null)).toBe('Sem treino');
+    expect(dayTitle([], null, { porPlanear: false })).toBe('Sem treino');
+    expect(dayTitle([], null, { porPlanear: true })).toBe('Por planear');
+    // O rodapé do Início põe-no em minúscula a meio da frase: "amanhã: sem treino".
+    expect(dayTitle([]).toLowerCase()).not.toContain('sem plano');
+    expect(dayStatus({ dateISO: '2026-09-30', items: [] }, '2026-09-26')).toEqual({ label: 'Sem treino', tone: 'neutral' });
+    expect(dayStatus({ dateISO: '2026-09-30', items: [], porPlanear: true }, '2026-09-26')).toEqual({ label: 'Por planear', tone: 'neutral' });
+    // Um dia com linhas nunca está "por planear", mesmo que alguém o marque.
+    expect(dayTitle([{ kind: 'descanso' }], null, { porPlanear: true })).toBe('Descanso');
+  });
+
+  /* ── Os itens vivos (pedido 2026-09-26) ───────────────────────────────────
+     Um bloco novo aceite a meio do antigo: no mesmo dia, o treino cancelado
+     do bloco velho ao lado do treino do novo. */
+  it('o cancelado do bloco antigo não entra no título nem no estado do dia', () => {
+    const today = '2026-09-26';
+    const velho = { id: 'v', plan_id: 'antigo', kind: 'corrida', training_type: 'intervalos', target_distance_km: 8, status: 'cancelado' };
+    const novo = { id: 'n', plan_id: 'novo', kind: 'corrida', training_type: 'longo', target_distance_km: 12, status: 'pendente' };
+    expect(liveItems([velho, novo])).toEqual([novo]);
+    expect(dayTitle([velho, novo])).toBe('Rodagem longa · 12 km');
+    expect(dayStatus({ dateISO: today, items: [velho, novo] }, today)).toEqual({ label: 'Plano aceite', tone: 'ok' });
+    expect(pendingSession({ dateISO: today, items: [velho, novo] }, today)).toBe(novo);
+  });
+
+  it('o treino feito que passou para o bloco novo fecha o dia, mesmo com o redundante cancelado ao lado', () => {
+    // planAcceptance.js: o feito passa para o bloco novo e o pendente do mesmo
+    // tipo, no novo, é cancelado. O dia estava cumprido e deixava de o dizer.
+    const today = '2026-09-26';
+    const feito = { id: 'f', kind: 'corrida', training_type: 'continuo', target_distance_km: 8, status: 'concluido' };
+    const redundante = { id: 'r', kind: 'corrida', training_type: 'continuo', target_distance_km: 10, status: 'cancelado' };
+    expect(dayStatus({ dateISO: today, items: [feito, redundante] }, today)).toEqual({ label: 'Concluído', tone: 'ok' });
+    expect(dayTitle([feito, redundante])).toBe('Corrida contínua · 8 km');
+  });
+
+  it('um cancelado sozinho é o treino que o atleta cancelou, e diz-se', () => {
+    const today = '2026-09-26';
+    const cancelado = { kind: 'corrida', training_type: 'intervalos', target_distance_km: 8, status: 'cancelado' };
+    expect(liveItems([cancelado])).toEqual([cancelado]);
+    expect(dayTitle([cancelado])).toBe('Intervalos · 8 km');
+    expect(dayStatus({ dateISO: today, items: [cancelado] }, today)).toEqual({ label: 'Cancelado', tone: 'neutral' });
+    // As refeições sugeridas desse dia não o tapam: não dizem o que o dia é.
+    const jantar = { kind: 'descanso', categories: ['so-refeicoes'], meal_suggestion: 'Jantar: peixe.', status: 'pendente' };
+    expect(dayTitle([cancelado, jantar])).toBe('Intervalos · 8 km');
+    expect(dayStatus({ dateISO: today, items: [cancelado, jantar] }, today).label).toBe('Cancelado');
+    // Um descanso a sério do bloco novo, sim: o dia passou a ser de descanso.
+    const descanso = { kind: 'descanso', status: 'pendente' };
+    expect(dayTitle([cancelado, descanso])).toBe('Descanso');
+    expect(dayStatus({ dateISO: today, items: [cancelado, descanso] }, today).label).toBe('Descanso');
   });
 
   /* Refeições (2026-09-23): um dia do plano só com refeições sugeridas não é
