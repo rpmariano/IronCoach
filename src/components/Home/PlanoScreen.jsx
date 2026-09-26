@@ -125,7 +125,7 @@ function StatTile({ value, suffix, label, testId }) {
 }
 
 export default function PlanoScreen({ onClose }) {
-  const { coachPlans, coachPlanItems, raceEvents, setActiveTab } = useAppStore();
+  const { coachPlans, coachPlanItems, raceEvents, runs, setActiveTab } = useAppStore();
   const today = todayISO();
   const [mealDay, setMealDay] = useState(null);
 
@@ -232,16 +232,22 @@ export default function PlanoScreen({ onClose }) {
     return out;
   }, [days, coachPlans, coachPlanItems]);
 
-  /* O resumo é sempre da semana em curso. Os quilómetros são os PLANEADOS
-     dos treinos já dados — a distância real vive no registo da corrida, que
-     este ecrã não carrega; para "quanto já fiz esta semana" o alvo cumprido
-     chega, e não obriga a puxar o histórico todo para um cabeçalho. */
+  /* O resumo é sempre da semana em curso. Os quilómetros são os REALMENTE
+     corridos (o registo ligado por completed_run_id, o mesmo que fecha o
+     dia em dayDone.js) — o alvo do plano só entra quando o treino fechou
+     sem corrida ligada (ex.: ginásio, ou um registo antigo sem o campo). Um
+     alvo de 10 km cumprido com 14 km reais dizia "10 km esta semana"
+     (pedido 2026-09-26). */
   const summary = useMemo(() => {
     const items = (currentWeek?.days || []).flatMap(treinosVivos);
     const done = items.filter((i) => i.status === 'concluido');
-    const km = done.reduce((s, i) => s + (Number(i.target_distance_km) || 0), 0);
+    const km = done.reduce((s, i) => {
+      const run = (runs || []).find((r) => r?.id === i.completed_run_id);
+      const dist = Number(run?.distance_km);
+      return s + (dist > 0 ? dist : (Number(i.target_distance_km) || 0));
+    }, 0);
     return { done: done.length, total: items.length, km: Math.round(km) };
-  }, [currentWeek]);
+  }, [currentWeek, runs]);
 
   /* A prova a que este plano leva: a do race_id do plano aceite (pedido
      2026-09-26). Era a primeira prova da agenda que caía dentro da janela —

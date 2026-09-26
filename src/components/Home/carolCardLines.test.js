@@ -69,13 +69,15 @@ describe('o aviso do servidor sem as frases velhas (backlog CarolCard.jsx:194 e 
 });
 
 describe('o treino de hoje por fazer, à hora a que se lê', () => {
-  it('de dia é o que o plano pede; das 19h às 21h o registo; depois, a pergunta — em dias seguidos', () => {
+  it('de dia é o que o plano pede; das 19h às 21h o registo; das 21h às 22h a pergunta; depois das 22h, sempre a mesma — em dias seguidos', () => {
     for (const d of DIAS) {
       for (const { hora, min } of horasDe(d)) {
         const texto = linhaDoTreinoDeHoje({ pendentes: [LONGO], agora: at(hora) });
         const h = Math.floor(min / 60);
         const pool = h < 19 ? FRASES.treinoHoje('uma rodagem longa de 16 km')
-          : h < 21 ? FRASES.treinoPorRegistar('uma rodagem longa de 16 km') : FRASES.treinoNaoRegistado;
+          : h < 21 ? FRASES.treinoPorRegistar('uma rodagem longa de 16 km')
+          : h < 22 ? FRASES.treinoNaoRegistado
+          : [FRASES.treinoFicouPorRegistar];
         expect(pool, `${hora}`).toContain(texto);
         // Depois da meia-noite o treino é o do dia que começou: "hoje", como o chip.
         expect(texto, hora).not.toMatch(/amanhã|agendado|longo/i);
@@ -155,9 +157,9 @@ describe('o treino de hoje por fazer, à hora a que se lê', () => {
       const amanha = eventoDaVida([NOTA], '2026-09-24');
       expect(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-23T18:00:00'), vida: amanha }))
         .toBe('Amanhã o plano tem uma rodagem longa de 16 km. Por causa da cirurgia, fala comigo antes de treinares.');
-      // Depois da meia-noite, o dia da semana, e a mesma ressalva.
+      // Depois da meia-noite, o dia da semana com preposição, e a mesma ressalva.
       expect(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-23T00:40:00'), vida: amanha }))
-        .toBe('Quinta-feira o plano tem uma rodagem longa de 16 km. Por causa da cirurgia, fala comigo antes de treinares.');
+        .toBe('Na quinta-feira o plano tem uma rodagem longa de 16 km. Por causa da cirurgia, fala comigo antes de treinares.');
       // Sem nada na memória para amanhã, a frase de sempre.
       expect(FRASES.amanhaTreino('uma rodagem longa de 16 km')).toContain(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-23T18:00:00'), vida: null }));
     });
@@ -247,12 +249,13 @@ describe('o treino de amanhã (backlog CarolCard.jsx:217)', () => {
       const amanha = proximo(d);
       const antes = linhaDeAmanha({ itens: [{ ...LONGO, planned_date: amanha }], agora: at(`${d}T23:40:00`) });
       expect(FRASES.amanhaTreino('uma rodagem longa de 16 km')).toContain(antes);
-      // 00:40 do dia seguinte: o "amanhã" é o outro, e diz-se pelo nome.
+      // 00:40 do dia seguinte: o "amanhã" é o outro, e diz-se pelo nome, com
+      // a preposição de quem fala ("No domingo", "Na segunda-feira").
       const depois = linhaDeAmanha({ itens: [LONGO], agora: at(`${amanha}T00:40:00`) });
-      expect(depois).toMatch(/^(Segunda-feira|Terça-feira|Quarta-feira|Quinta-feira|Sexta-feira|Sábado|Domingo) tens uma rodagem longa de 16 km\.$/);
+      expect(depois).toMatch(/^(Na segunda-feira|Na terça-feira|Na quarta-feira|Na quinta-feira|Na sexta-feira|No sábado|No domingo) tens uma rodagem longa de 16 km\.$/);
       expect(depois).not.toMatch(/amanhã|aponta para/i);
     }
-    expect(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-26T00:40:00') })).toBe('Domingo tens uma rodagem longa de 16 km.');
+    expect(linhaDeAmanha({ itens: [LONGO], agora: at('2026-09-26T00:40:00') })).toBe('No domingo tens uma rodagem longa de 16 km.');
   });
 
   it('sem treino amanhã (ou já feito), não há linha', () => {
@@ -285,12 +288,12 @@ describe('a água (backlog CarolCard.jsx:194, :195 e :196)', () => {
   it('atrás do ritmo da janela dos lembretes: diz quanto vai e quanto devia ir, em litros', () => {
     // 16:00 na janela 8–22 → 8/14 da meta = 1,43 L; 0,8 L é menos de 70%.
     expect(linhaDaAgua({ totalMl: 800, profile, agora: at('2026-09-26T16:00:00') }))
-      .toBe('Vais em 0,8 L de água, e a esta hora já devias ir em 1,4 L. Um copo agora.');
+      .toBe('Vais em 0,8 L de água. A esta hora já devias ir em 1,4 L.');
     // 800 ml às 11:30 não é "só": está à frente do ritmo.
     expect(linhaDaAgua({ totalMl: 800, profile, agora: at('2026-09-26T11:30:00') })).toBeNull();
     // A janela dele (10–18) muda o ritmo: às 16:00 já devia ir em 1,9 L.
     expect(linhaDaAgua({ totalMl: 800, profile: { ...profile, water_reminder_start_hour: 10, water_reminder_end_hour: 18 }, agora: at('2026-09-26T16:00:00') }))
-      .toBe('Vais em 0,8 L de água, e a esta hora já devias ir em 1,9 L. Um copo agora.');
+      .toBe('Vais em 0,8 L de água. A esta hora já devias ir em 1,9 L.');
   });
 
   it('sem lembretes, ou silenciados hoje, não se cobra; silenciados ontem, sim', () => {

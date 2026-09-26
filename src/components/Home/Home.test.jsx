@@ -211,6 +211,70 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     renderHome();
     expect(alertCount()).toBe(0);
   });
+
+  /* Revisão de 2026-09-26 (backlog, Home.jsx:227): "está marcada como
+     principal" tinha género (uma prova masculina, "o Trail...", não
+     concordava) e não tinha número (duas provas A no mesmo bloco pediam
+     "estão"). "principal"/"principais" não tem género, só número. */
+  it('duas provas principais no mesmo bloco: o aviso concorda em número e não flexiona "marcada" em género', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', race_id: 'alvo1', status: 'aceite', period_start: today, period_end: addDaysISO(today, 30) }],
+      raceEvents: [
+        { id: 'alvo1', name: 'Meia de Lisboa', date: addDaysISO(today, 20), status: 'agendada' },
+        { id: 'c1', name: 'Trail do Sico', date: addDaysISO(today, 5), status: 'agendada' },
+        { id: 'c2', name: 'Meia da Amadora', date: addDaysISO(today, 10), status: 'agendada' },
+      ],
+    });
+    renderHome();
+    expect(alertCount()).toBe(1);
+
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-conflito-provas');
+    expect(aviso).toHaveTextContent(/Trail do Sico \(.+\), Meia da Amadora \(.+\) estão como principais a meio do plano para Meia de Lisboa \(.+\)\./);
+    expect(aviso).not.toHaveTextContent(/marcad[oa]s?/);
+  });
+
+  it('uma só prova principal em conflito, sem a prova-alvo na agenda: singular e "plano atual"', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p2', race_id: 'nao-agendada', status: 'aceite', period_start: today, period_end: addDaysISO(today, 20) }],
+      raceEvents: [{ id: 'c1', name: 'Trail do Sico', date: addDaysISO(today, 5), status: 'agendada' }],
+    });
+    renderHome();
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-conflito-provas');
+    expect(aviso).toHaveTextContent(/Trail do Sico \(.+\) está como principal a meio do plano atual\./);
+    expect(aviso).not.toHaveTextContent(/marcad[oa]s?/);
+  });
+
+  /* Revisão de 2026-09-26 (backlog, Home.jsx:255): "Correste a ${nome}"
+     tinha preposição de género — uma prova masculina ("o Trail...") pedia
+     "correste o". */
+  it('o balanço da prova não usa preposição de género com o nome', () => {
+    const raceDate = addDaysISO(today, -2);
+    useAppStore.setState({
+      raceEvents: [{ id: 'r1', name: 'Trail do Almonda', date: raceDate, status: 'concluida', race_type: 'trail', distance_km: 21 }],
+      runs: [{ id: 'run-race', race_id: 'r1', kind: 'competicao', date: raceDate, distance_km: 21, duration_seconds: 7200, details: { official_time_seconds: 7200 } }],
+    });
+    renderHome();
+    expect(alertCount()).toBe(1);
+
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-balanco');
+    expect(aviso).toHaveTextContent('Trail do Almonda: quero fazer o balanço contigo.');
+    expect(aviso).not.toHaveTextContent(/Correste [ao] /);
+  });
+
+  it('o balanço da prova, sem nome guardado, fala em "A prova"', () => {
+    const raceDate = addDaysISO(today, -2);
+    useAppStore.setState({
+      raceEvents: [{ id: 'r1', name: '', date: raceDate, status: 'concluida', race_type: 'trail', distance_km: 21 }],
+      runs: [{ id: 'run-race', race_id: 'r1', kind: 'competicao', date: raceDate, distance_km: 21, duration_seconds: 7200, details: { official_time_seconds: 7200 } }],
+    });
+    renderHome();
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-balanco');
+    expect(aviso).toHaveTextContent('A prova: quero fazer o balanço contigo.');
+  });
 });
 
 /* A ordem dos cartões (2026-09-15): de perto para longe — quem me fala, o

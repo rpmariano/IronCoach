@@ -105,6 +105,20 @@ describe('PlanoScreen', () => {
     expect(screen.getByTestId('plano-semana')).toHaveTextContent('1/1');
   });
 
+  /* Quando está errado: os km do resumo eram sempre o ALVO do plano, nunca
+     o que a corrida ligada diz de facto — 14 km reais contra um alvo de
+     10 km só contava 10 (pedido 2026-09-26). */
+  it('os km do resumo são os da corrida ligada, não o alvo, quando diferem', () => {
+    const feitoComCorrida = { ...feito, id: 'i3', target_distance_km: 10, completed_run_id: 'run-1' };
+    setup({ coachPlanItems: [feitoComCorrida, hoje], runs: [{ id: 'run-1', distance_km: 14 }] });
+    expect(screen.getByTestId('plano-km')).toHaveTextContent('14 km');
+  });
+
+  it('sem corrida ligada ao treino feito, os km do resumo caem no alvo do plano', () => {
+    setup({ runs: [{ id: 'run-outro', distance_km: 99 }] });
+    expect(screen.getByTestId('plano-km')).toHaveTextContent('6 km');
+  });
+
   it('cada dia leva o treino, a instrução da Carol e o estado', () => {
     setup();
     expect(screen.getByText('Esta semana')).toBeInTheDocument();

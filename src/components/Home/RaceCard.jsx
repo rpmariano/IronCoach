@@ -355,8 +355,13 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
               {porRegistar && jaPassou ? 'Prova por registar' : model.phaseName}
             </div>
             {porRegistar && jaPassou ? (
+              // `porRegistar` é precisamente "sem corrida ligada" — dizer
+              // "correste há X dias" aqui afirmava uma corrida que pode não
+              // ter existido (lesão, não chegou a partir). `rotuloDoDia`
+              // (o mesmo do cartão da prova concluída) só diz quando foi a
+              // prova, nunca que ele a correu (pedido 2026-09-26).
               <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>
-                {`correste há ${diasEntre(today, race.date)} ${diasEntre(today, race.date) === 1 ? 'dia' : 'dias'}`}
+                {`a prova foi ${rotuloDoDia(diasEntre(today, race.date))}`}
               </div>
             ) : model.weekLabel ? (
               <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>{model.weekLabel}</div>

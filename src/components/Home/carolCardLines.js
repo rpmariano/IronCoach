@@ -114,6 +114,9 @@ export const FRASES = {
   treinoPorRegistar: (t) => [`Ainda tens ${t} por registar.`, 'Ainda não vi o treino de hoje registado.', 'Falta-me o registo do treino de hoje.'],
   // CAROL.md §3: um treino não registado pergunta-se, não se dá como falhado.
   treinoNaoRegistado: ['Não vi o treino de hoje registado. Aconteceu alguma coisa?', 'O treino de hoje ainda não apareceu. Correu tudo bem?', 'Falta-me o registo do treino de hoje. Conta-me o que se passou.'],
+  // Depois das 22h já não é hora de variar a forma de perguntar (revisão de
+  // 2026-09-26): uma frase só, sem rodar por dia.
+  treinoFicouPorRegistar: 'O treino de hoje ficou por registar. Aconteceu alguma coisa?',
   parteNaoRegistada: (t) => `Ainda me falta o registo de ${t}. Aconteceu alguma coisa?`,
   // O check-in já explica o treino que não apareceu: não se pergunta outra vez.
   naoRegistadoComDor: 'Não vi o treino de hoje registado, e com a dor de que me falaste faz sentido. Como estás agora?',
@@ -151,7 +154,7 @@ export const FRASES = {
   // abre sempre assim — «Hoje é dia de descanso. Hoje ainda não vi…» eram
   // duas frases coladas pelo mesmo molde.
   semAgua: ['Ainda não vi água registada hoje.', 'Ainda não vi água registada hoje. Um copo agora, e regista-o.', 'Ainda não vi nenhum copo de água registado hoje. Começa já por um.'],
-  aguaAtras: (vais, devias) => `Vais em ${vais} de água, e a esta hora já devias ir em ${devias}. Um copo agora.`,
+  aguaAtras: (vais, devias) => `Vais em ${vais} de água. A esta hora já devias ir em ${devias}.`,
   provaACorrer: 'Quando cortares a meta, regista a prova. Quero fazer o balanço contigo.',
   provaComCorrida: (k) => `Vi ${k} km registados hoje. Quero saber como correu a prova.`,
   provaPorRegistar: ['Já cortaste a meta? Regista a prova e fazemos o balanço.', 'Ainda não vi a prova de hoje registada. Quero saber como correu.', 'Falta-me o registo da prova de hoje. Regista-a e fazemos o balanço.'],
@@ -240,7 +243,9 @@ export function linhaDoTreinoDeHoje({ pendentes = [], feitos = [], agora = new D
     if (comVida) return parte ? FRASES.restoNaoRegistadoComVida(comVida) : FRASES.naoRegistadoComVida(comVida);
     if (hour < 21) return pick(FRASES.treinoPorRegistar(t), 'cartaoTreinoPorRegistar');
     if (emBaixo) return parte ? FRASES.restoNaoRegistadoCansado : FRASES.naoRegistadoCansado;
-    return parte ? FRASES.parteNaoRegistada(t) : pick(FRASES.treinoNaoRegistado, 'cartaoTreinoNaoRegistado');
+    if (parte) return FRASES.parteNaoRegistada(t);
+    if (hour >= 22) return FRASES.treinoFicouPorRegistar;
+    return pick(FRASES.treinoNaoRegistado, 'cartaoTreinoNaoRegistado');
   }
   if (dor) return FRASES.treinoComDor(t);
   if (comVida) return FRASES.treinoComVida(t, comVida);
@@ -281,16 +286,23 @@ export function linhaDoDia({ tipo, feitos = [], kmHoje = 0, propostas = 0, jaHou
   return jaHouvePlano ? FRASES.planoAcabou : FRASES.semPlano;
 }
 
+// "no domingo", "na segunda-feira": só domingo e sábado são masculinos (a
+// mesma tabela de planStart.js, DIAS — duplicada aqui por não haver uma base
+// comum de datas faladas entre os dois ficheiros).
+const DIA_COM_PREPOSICAO = ['no domingo', 'na segunda-feira', 'na terça-feira', 'na quarta-feira', 'na quinta-feira', 'na sexta-feira', 'no sábado'];
+const diaComPreposicao = (dateISO) => maiuscula(DIA_COM_PREPOSICAO[new Date(`${dateISO}T00:00:00Z`).getUTCDay()]);
+
 /** O treino de amanhã. Entre a meia-noite e as 5h, "amanhã" é ambíguo para
- *  quem ainda não dormiu: diz-se o dia da semana. `vida`: o acontecimento da
- *  vida dele visto a partir de amanhã (eventoDaVida no dia de amanhã) — na
- *  véspera de uma cirurgia, o treino de amanhã não se anuncia sem ressalva. */
+ *  quem ainda não dormiu: diz-se o dia da semana, com preposição ("No
+ *  domingo tens..."), como se fala. `vida`: o acontecimento da vida dele
+ *  visto a partir de amanhã (eventoDaVida no dia de amanhã) — na véspera de
+ *  uma cirurgia, o treino de amanhã não se anuncia sem ressalva. */
 export function linhaDeAmanha({ itens = [], agora = new Date(), vida = null }) {
   const { date: hoje, hour } = lisbonParts(agora);
   const amanha = addDaysISO(hoje, 1);
   const t = treinoFalado((itens || []).filter((i) => i.status !== 'concluido'), amanha);
   if (!t) return null;
-  const quando = hour < 5 ? maiuscula(formatWeekday(amanha)) : 'Amanhã';
+  const quando = hour < 5 ? diaComPreposicao(amanha) : 'Amanhã';
   if (vida && vida.dias >= 0) return FRASES.amanhaComVida(quando, t, vida);
   if (hour < 5) return `${quando} tens ${t}.`;
   return pickByDay(FRASES.amanhaTreino(t), hoje, 'cartaoAmanha');

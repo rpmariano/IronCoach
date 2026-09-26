@@ -195,6 +195,16 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       expect(screen.getByText(FRASES.treinoComDor('uma rodagem longa de 16 km'))).toBeInTheDocument();
     });
 
+    // Quando está errado: às 22:45, com o treino ainda pendente, o cartão não
+    // pode ler a agenda do dia como se a hora não contasse.
+    it('às 22:45, com o treino ainda pendente, pergunta em vez de anunciar o plano', () => {
+      relogio('22:45');
+      useAppStore.setState({ ...plano([LONGO]) });
+      render(<CarolCard />);
+      expect(screen.getByText(FRASES.treinoFicouPorRegistar)).toBeInTheDocument();
+      expect(textoDoCartao()).not.toMatch(/agendado|tens uma rodagem/);
+    });
+
     /* Revisão de 2026-09-26: a memória dela lê-se desde a abertura (App.jsx),
        e o check-in logo abaixo já diz «hoje, descansar é o teu treino» a quem
        foi operado ontem. O cartão, por cima, dizia «Hoje tens uma rodagem
@@ -325,7 +335,7 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       });
       render(<CarolCard />);
       abrir();
-      expect(secao('Aviso de hoje')).toBe('Aviso de hojeVais em 0,8 L de água, e a esta hora já devias ir em 1,4 L. Um copo agora.');
+      expect(secao('Aviso de hoje')).toBe('Aviso de hojeVais em 0,8 L de água. A esta hora já devias ir em 1,4 L.');
     });
 
     it('sem água registada, nada de madrugada nem de manhã cedo; a partir das 11h, sim — e em dias seguidos', () => {
@@ -418,6 +428,23 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       abrir();
       expect(FRASES.amanhaTreino('uma rodagem longa de 16 km').map((f) => `Preparar amanhã${f}`)).toContain(secao('Preparar amanhã'));
       expect(textoDoCartao()).not.toMatch(/aponta para|Corrida \(|longo/);
+    });
+
+    // Quando está errado: a um sábado às 00:40, "amanhã" é ambíguo para quem
+    // ainda não dormiu — diz-se o dia da semana, com a preposição de quem fala.
+    it('à 00:40 de um sábado, "Preparar amanhã" diz o dia da semana, não "amanhã"', () => {
+      relogio('00:40');
+      useAppStore.setState({
+        coachPlans: [{ id: 'p1', status: 'aceite', period_start: HOJE, period_end: AMANHA }],
+        coachPlanItems: [
+          { id: 'i1', plan_id: 'p1', planned_date: HOJE, kind: 'descanso', status: 'pendente' },
+          { id: 'i2', plan_id: 'p1', planned_date: AMANHA, status: 'pendente', ...LONGO },
+        ],
+      });
+      render(<CarolCard />);
+      abrir();
+      expect(secao('Preparar amanhã')).toBe('Preparar amanhãNo domingo tens uma rodagem longa de 16 km.');
+      expect(textoDoCartao()).not.toMatch(/amanhã tens/i);
     });
 
     it('a qualquer hora do dia, em dias seguidos, nenhum tipo de dia pede um registo', () => {

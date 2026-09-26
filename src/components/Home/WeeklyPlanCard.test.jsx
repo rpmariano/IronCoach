@@ -1,8 +1,8 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
-import { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard, planeadoAte } from './WeeklyPlanCard';
+import WeeklyPlanCard, { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard, PlanProposalCard, planeadoAte } from './WeeklyPlanCard';
 import { dayTitle } from '../../utils/homeModels';
 
 const item = (over = {}) => ({
@@ -378,6 +378,56 @@ describe('PlanDayCard — sugestão alimentar', () => {
     expect(screen.getByText('Sugestão alimentar e nutricional')).toBeInTheDocument();
     expect(screen.getByText('2150')).toBeInTheDocument();
     expect(screen.getByText('Pequeno-almoço')).toBeInTheDocument();
+  });
+});
+
+/* O aviso do nutricionista, uma só vez por proposta (pedido 2026-09-26).
+   Repetia-se em cada dia com refeição — "Sugestão, não prescrição..." em
+   voz de aviso legal martelado a cada dia da folha de propostas. Agora é
+   do ecrã que lista os dias, não da caixa de cada dia. */
+describe('o aviso do nutricionista aparece uma só vez, abaixo da lista de dias', () => {
+  afterEach(() => useAppStore.setState({ raceEvents: [] }));
+
+  const AVISO = 'Se alguma refeição não te cai bem, diz-me e troco. Em dúvidas clínicas, fala com um nutricionista.';
+
+  it('quando está errado: a caixa de sugestão do dia já não traz o aviso — isso saiu de PlanDayCard', () => {
+    render(
+      <PlanDayCard
+        dateISO="2026-08-11" dayNumber={1} isToday={false} isOverdue={false}
+        onComplete={() => {}} onCancel={() => {}} expanded
+        items={[item({ kind: 'descanso', meal_suggestion: 'Jantar: arroz com legumes.' })]}
+      />
+    );
+    expect(screen.getByText('Sugestão alimentar e nutricional')).toBeInTheDocument();
+    expect(screen.queryByText(/nutricionista/)).not.toBeInTheDocument();
+  });
+
+  it('na folha de propostas, com refeição em dois dias, o aviso aparece uma só vez', () => {
+    const plan = { id: 'p1', period_start: '2026-08-11', period_end: '2026-08-12' };
+    const dia1 = item({ id: 'a', plan_id: 'p1', planned_date: '2026-08-11', kind: 'descanso', meal_suggestion: 'Jantar: arroz.' });
+    const dia2 = item({ id: 'b', plan_id: 'p1', planned_date: '2026-08-12', kind: 'descanso', meal_suggestion: 'Jantar: peixe.' });
+    const { container } = render(<PlanProposalCard plan={plan} items={[dia1, dia2]} onRespond={() => {}} />);
+    // Expande os dois dias — era ao ver as duas caixas abertas que o aviso
+    // se repetia.
+    container.querySelectorAll('.wpc-day-header').forEach((h) => fireEvent.click(h));
+    expect(screen.getAllByText(AVISO)).toHaveLength(1);
+  });
+
+  it('na folha de propostas sem nenhuma refeição, não há aviso nenhum', () => {
+    const plan = { id: 'p1', period_start: '2026-08-11', period_end: '2026-08-11' };
+    const dia1 = item({ id: 'a', plan_id: 'p1', planned_date: '2026-08-11', kind: 'corrida', target_distance_km: 8 });
+    render(<PlanProposalCard plan={plan} items={[dia1]} onRespond={() => {}} />);
+    expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
+  });
+
+  it('no plano já aceite, com refeição em dois dias, o aviso também aparece uma só vez', () => {
+    const plans = [{ id: 'p1', status: 'aceite', period_start: '2026-08-11', period_end: '2026-08-12' }];
+    const dia1 = item({ id: 'a', plan_id: 'p1', planned_date: '2026-08-11', kind: 'descanso', meal_suggestion: 'Jantar: arroz.' });
+    const dia2 = item({ id: 'b', plan_id: 'p1', planned_date: '2026-08-12', kind: 'descanso', meal_suggestion: 'Jantar: peixe.' });
+    const { container } = render(<WeeklyPlanCard plans={plans} planItems={[dia1, dia2]} onComplete={() => {}} onCancel={() => {}} onNav={() => {}} />);
+    // Aqui a expansão é partilhada por todos os dias (allExpanded): um clique chega.
+    fireEvent.click(container.querySelector('.wpc-day-header'));
+    expect(screen.getAllByText(AVISO)).toHaveLength(1);
   });
 });
 

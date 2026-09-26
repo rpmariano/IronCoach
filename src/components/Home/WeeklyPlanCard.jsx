@@ -99,6 +99,22 @@ export function computeAcceptedWindow(plans = [], items = [], today = todayISO()
    "Corrida contínua · 8 km" e "21,1 km" no Início. */
 const itemTitle = planItemTitle;
 
+/* Tem sugestão alimentar este dia (ou, juntando vários `days`, a proposta
+   inteira)? Mesma condição do indicador da linha fechada (`hasMeal` em
+   PlanDayCard) — aqui serve para o aviso do nutricionista aparecer uma
+   única vez por proposta, não por dia (pedido 2026-09-26): repetido em
+   CADA dia com refeição, soava a aviso legal martelado. */
+const diaTemSugestao = (items) => (items || []).some((i) => i.meal_suggestion || i.meal_macros);
+
+/* O aviso, uma única vez, abaixo da lista de dias — nunca por dia. */
+function DisclaimerNutricional() {
+  return (
+    <p className="wpc-info-box-disclaimer mt-2">
+      Se alguma refeição não te cai bem, diz-me e troco. Em dúvidas clínicas, fala com um nutricionista.
+    </p>
+  );
+}
+
 function itemIcon(item) {
   if (item.isRace || isRacePlanItem(item)) return Flag;
   if (item.kind === 'corrida') return RunIcon;
@@ -220,7 +236,7 @@ export function PlanDayCard({
   // não obrigatório — ver a mesma condição na caixa expandida abaixo) — o
   // indicador da linha fechada tem de acompanhar, senão o atleta não sabe
   // que há sugestão nutricional sem abrir o dia.
-  const hasMeal = items.some(i => i.meal_suggestion || i.meal_macros);
+  const hasMeal = diaTemSugestao(items);
   const empty = items.length === 0;
 
   // Um dia vazio não abre — não há detalhe nenhum por trás dele.
@@ -384,11 +400,6 @@ export function PlanDayCard({
                           <CoachText>{item.meal_suggestion}</CoachText>
                         </div>
                       )}
-
-                      <p className="wpc-info-box-disclaimer mt-2">
-                        Sugestão, não prescrição — ajusta ao que te cai bem. Em caso de
-                        dúvida clínica, fala com um nutricionista.
-                      </p>
                     </details>
                   </div>
                 )}
@@ -522,6 +533,7 @@ export function PlanProposalCard({ plan, items, onRespond }) {
     () => buildPlanDays(its, plan.period_start, diffDaysISO(plan.period_start, plan.period_end) + 1).filter(d => d.items.length > 0),
     [its, plan.period_start, plan.period_end],
   );
+  const hasMeal = useMemo(() => days.some((d) => diaTemSugestao(d.items)), [days]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
@@ -553,6 +565,8 @@ export function PlanProposalCard({ plan, items, onRespond }) {
               <PlanDayCard key={day.dateISO} dateISO={day.dateISO} dayNumber={day.dayNumber} items={day.items} isToday={false} isOverdue={false} readOnly />
             ))}
           </div>
+
+          {hasMeal && <DisclaimerNutricional />}
 
           <div className="wpc-actions" style={{ marginTop: '16px' }}>
             <button onClick={() => onRespond(plan.id, true)} className="wpc-btn wpc-btn-primary">
@@ -594,6 +608,7 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
     () => (window ? buildPlanDays(accepted, window.start, window.days, { plans }) : []),
     [accepted, window, plans],
   );
+  const hasMeal = useMemo(() => days.some((d) => diaTemSugestao(d.items)), [days]);
 
   const PendingBanner = () => pendingCount > 0 && (
     <button onClick={() => onNav('coach')} className="wpc-pending-banner tap-scale" type="button">
@@ -692,7 +707,9 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
               />
             ))}
           </div>
-          
+
+          {hasMeal && <DisclaimerNutricional />}
+
           <div style={{ height: '32px' }} className="shrink-0" />
         </div>
         

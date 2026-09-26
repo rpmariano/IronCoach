@@ -224,7 +224,13 @@ export default function Home() {
       onDismiss: interventionPending ? () => setShowDismiss(true) : null,
     });
   } else if (raceConflict) {
-    const nomes = raceConflict.races.map((r) => raceLabel(r)).join(', ');
+    const racesConflito = raceConflict.races.map((r) => raceLabel(r));
+    const nomes = racesConflito.join(', ');
+    // "marcada" tinha género — e nem sempre concordava com o nome da prova
+    // (masculino, "o Trail...") nem com o número (duas provas A no mesmo
+    // bloco) (revisão de 2026-09-26; backlog, Home.jsx:227). "principal" não
+    // tem género, só número.
+    const plural = racesConflito.length > 1;
     carolAlerts.push({
       id: 'conflito-provas',
       key: raceConflict.plan?.id ? raceConflictKey(raceConflict.plan.id, raceConflict.races.map((r) => r.id)) : null,
@@ -234,8 +240,8 @@ export default function Home() {
       // bloco não há plano certo, e a decisão é do atleta — mas tem de ser
       // tomada. A Carol grava-a e não volta a perguntar.
       message: raceConflict.target
-        ? `${nomes} está marcada como principal a meio do plano para ${raceLabel(raceConflict.target)}.`
-        : `${nomes} está marcada como principal a meio do plano atual.`,
+        ? `${nomes} ${plural ? 'estão como principais' : 'está como principal'} a meio do plano para ${raceLabel(raceConflict.target)}.`
+        : `${nomes} ${plural ? 'estão como principais' : 'está como principal'} a meio do plano atual.`,
       onTalk: openCoach,
     });
   } else if (divergence) {
@@ -252,7 +258,10 @@ export default function Home() {
       key: raceBalance.candidate.key,
       severity: 'info',
       title: 'O balanço da prova',
-      message: `Correste a ${raceBalance.race.name || 'prova'}. Quero fazer o balanço contigo.`,
+      // "Correste a ${nome}" tinha preposição de género — uma prova
+      // masculina ("o Trail...") pedia "correste o" (revisão de 2026-09-26;
+      // backlog, Home.jsx:255).
+      message: `${raceBalance.race.name || 'A prova'}: quero fazer o balanço contigo.`,
       // Bug 2026-09-14: só mudar de separador e esperar que o Coach apanhe o
       // momento sozinho falhava em silêncio sempre que a Carol tivesse
       // falado há menos de 6h por qualquer outro motivo (regra normal contra
