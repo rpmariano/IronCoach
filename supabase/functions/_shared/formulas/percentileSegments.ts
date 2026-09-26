@@ -124,3 +124,57 @@ export function terrainForAthlete(
 export function segmentKey(s: { ageBand: string; gender: string; terrain: string }): string {
   return `${s.ageBand}|${s.gender}|${s.terrain}`;
 }
+
+/* ── O percentil e os segmentos vizinhos (2026-09-25) ───────────────────────
+   Viviam só no cliente (src/utils/percentile.js). A Carol passou a poder dizer
+   o percentil ao próprio atleta e a avisá-lo quando há dados — o servidor
+   precisa exatamente da mesma conta e dos mesmos vizinhos, por isso moram
+   aqui e o cliente re-exporta. */
+
+/* A faixa 5–95, e a truncatura é de propósito: "estás no 100.º percentil"
+   num segmento de 20 pessoas é uma pessoa só, identificável. Os extremos
+   dizem-se "5% ou menos" / "95% ou mais". */
+export const PERCENTILE_FLOOR = 5;
+export const PERCENTILE_CEILING = 95;
+
+const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/** O percentil do atleta, truncado à faixa 5–95, em degraus de 5 — quantas
+ *  das 19 fronteiras ele já passou. null sem índice ou sem fronteiras válidas. */
+export function percentileFrom(value: unknown, boundaries: unknown): number | null {
+  const nums = Array.isArray(boundaries) ? boundaries.map(Number) : null;
+  if (!isNum(value) || !nums || nums.length !== VENTILE_COUNT || !nums.every(isNum)) return null;
+  const passadas = nums.filter((b) => value >= b).length;
+  return Math.min(PERCENTILE_CEILING, Math.max(PERCENTILE_FLOOR, passadas * 5));
+}
+
+export const AGE_BANDS_BY_GENDER: Record<string, string[]> = {
+  M: ["sub23", "23-34", "M35", "M40", "M45", "M50+"],
+  F: ["sub23", "23-34", "F35", "F40", "F45", "F50+"],
+};
+
+export interface Segment { ageBand: string; gender: string; terrain: string }
+
+/** O escalão equivalente no outro género — sub23 e 23-34 não têm letra. */
+export function counterpartBand(band: string, gender: string): string {
+  if (band === "sub23" || band === "23-34") return band;
+  return `${gender}${String(band).slice(1)}`;
+}
+
+/* Os grupos com que um atleta se pode comparar quando o dele é pequeno, por
+   ordem: largar a modalidade, alargar o escalão, largar o género. Cada passo é
+   um segmento CONCRETO — alargar é mudar de segmento, nunca fundir segmentos. */
+export function neighbourSegments(s: Partial<Segment>): Array<{ step: "modalidade" | "escalao" | "genero"; segment: Segment }> {
+  const { ageBand, gender, terrain } = s;
+  if (!ageBand || !gender || !terrain) return [];
+  const bands = AGE_BANDS_BY_GENDER[gender] || [];
+  const i = bands.indexOf(ageBand);
+  const vizinhos = i < 0 ? [] : [bands[i - 1], bands[i + 1]].filter(Boolean);
+  const outroGenero = gender === "F" ? "M" : "F";
+  const outraModalidade = terrain === "estrada" ? "trail" : "estrada";
+  return [
+    { step: "modalidade", segment: { ageBand, gender, terrain: outraModalidade } },
+    ...vizinhos.map((band) => ({ step: "escalao" as const, segment: { ageBand: band, gender, terrain } })),
+    { step: "genero", segment: { ageBand: counterpartBand(ageBand, outroGenero), gender: outroGenero, terrain } },
+  ];
+}

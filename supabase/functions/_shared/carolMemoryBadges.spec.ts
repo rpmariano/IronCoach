@@ -86,7 +86,7 @@ describe('buildBadgesContext — o que NUNCA mostra (6 #6)', () => {
      inteiro: o texto das regras contém de propósito as palavras proibidas
      ("não dizes 'faltam-te X km/metros'"), e é aí que elas têm de estar. O
      que não pode existir é um número por conquistar nas linhas de cima. */
-  const dados = (rows: unknown[]) => buildBadgesContext(rows)!.split('REGRAS (')[0];
+  const dados = (rows: unknown[]) => buildBadgesContext(rows)!.split('REGRAS DOS BADGES (')[0];
 
   it('não deixa entrar o `value` — é o número que faria um "faltam-te X"', () => {
     const texto = dados(todos.map((r) => ({ ...r, value: 12345, value_unit: 'metros' })));
@@ -215,7 +215,7 @@ describe('buildBadgeQuestionContext — a pergunta direta sobre UM badge', () =>
     const geral = buildBadgesContext([
       linha('escalada', { tier: 'bronze', value: 12345 }),
       linha('coruja'),
-    ])!.split('REGRAS (')[0];
+    ])!.split('REGRAS DOS BADGES (')[0];
     expect(geral).not.toContain('12345');
     expect(geral.toLowerCase()).not.toContain('faltam');
     expect(geral).not.toContain('PERGUNTA DIRETA');

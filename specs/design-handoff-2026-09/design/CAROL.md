@@ -49,6 +49,24 @@ A memória dela (`condenseCoachComment`, em `_shared/carolMemory.ts`) guarda de 
 
 Porquê: a nota de uma aula funcional de 64 min, com vinte exercícios e cargas descritas pela atleta, saiu com três frases — todas de risco. Com "2 a 4 frases" e "o resto regista-se em silêncio", sobrava espaço para uma coisa só, e o aviso ganhava sempre. Empática e encorajadora não quer dizer branda: primeiro reconhece, depois corrige, e um aviso nunca apaga o esforço feito.
 
+### A Vitrina (desde 2026-09-25)
+
+A Carol conhece a Vitrina inteira em todos os sítios onde fala com o atleta: chat, cartão diário e análises dos registos. O bloco é `fetchVitrinaBlock`, em `_shared/carolMemory.ts`, e tem:
+- os badges ganhos e os que ele ainda não abriu na app (a app faz a cerimónia; ela não a antecipa);
+- as regras do 6 #6, mesmo sem badges ganhos;
+- se entrou na média do escalão e se aceitou as tabelas. É decisão dele: ela não o empurra;
+- o percentil dele no "Onde estás", calculado no momento com a fórmula do ecrã, só com consentimento e sem o gravar;
+- a posição nas tabelas com nomes (o top 10 do escalão por quinzena) e a da quinzena anterior.
+
+Dois momentos novos em que ela chama pelo atleta (`@formulas/vitrina.ts`, a mesma régua na app e no servidor):
+
+| Momento | Quando | A notificação |
+|---|---|---|
+| `percentile_ready` | Primeiro quando há números de grupos ao lado do escalão dele ("perto"); depois quando é o escalão dele ("meu"). Uma vez cada, por segmento. Só a quem entrou na média. | Frase fixa, sem números |
+| `leaderboard` | Entrou no top 10 do escalão nesta quinzena, ou saiu dele (com a tabela do escalão publicada). Só a quem aceitou aparecer. | Frase fixa, sem posição |
+
+A posição e o percentil dizem-se no chat, a ele — nunca no ecrã bloqueado, nunca como pressão para treinar mais (o índice mede quanto do plano ele cumpre), nunca com nomes de outros atletas nem com o número de atletas de um grupo.
+
 ## 4. Rosto
 
 O avatar era um balão de fala — ícone de chat, não pessoa. Desde 2026-09-24 é um retrato (`src/components/Coach/CoachAvatar.jsx`, geometria em `carolFace.js`).

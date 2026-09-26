@@ -24,6 +24,8 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
 import { listServerProactive, proactiveTab, weekToReviewBounds, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
+import { ownSegmentFor } from "../_shared/formulas/vitrina.ts";
+import { TERRAIN_LOOKBACK_DAYS } from "../_shared/formulas/percentileSegments.ts";
 import { composePushMessage, type PushUsage } from "./pushText.ts";
 import { choosePush, lisbonDateOf, tickLogRow, tickLogSignature } from "./decide.ts";
 
@@ -101,7 +103,7 @@ async function handler(req: Request): Promise<Response> {
   const userIds = [...new Set((subs || []).map((s: { user_id: string }) => s.user_id))];
   const { data: enabled, error: profErr } = userIds.length
     ? await sb.from("profiles")
-      .select("id, display_name, carol_push_start_hour, carol_push_end_hour, carol_push_max_per_day, carol_push_types, coach_intervention_status, coach_intervention_reason")
+      .select("id, display_name, carol_push_start_hour, carol_push_end_hour, carol_push_max_per_day, carol_push_types, coach_intervention_status, coach_intervention_reason, birth_date, gender, stats_pool_consent_at, leaderboard_consent_at")
       .in("id", userIds).eq("carol_push_enabled", true)
     : { data: [], error: null };
   if (profErr) return jsonResponse({ error: profErr.message }, 500);
@@ -122,6 +124,11 @@ async function handler(req: Request): Promise<Response> {
     (enabled || []).map((p: { id: string; coach_intervention_status?: string | null; coach_intervention_reason?: string | null }) =>
       [p.id, { status: p.coach_intervention_status ?? null, reason: p.coach_intervention_reason ?? null }]),
   );
+  /* A Vitrina (2026-09-25): o segmento e os dois consentimentos de cada um,
+     para os avisos "já há dados" e "entraste/saíste das tabelas". A data de
+     nascimento só serve para o escalão, dentro de ownSegmentFor. */
+  // deno-lint-ignore no-explicit-any
+  const vitrinaProfileById = new Map<string, any>((enabled || []).map((p: any) => [p.id, p]));
   // deno-lint-ignore no-explicit-any
   const byUser = new Map<string, any[]>();
   for (const s of subs || []) if (allowed.has(s.user_id)) byUser.set(s.user_id, [...(byUser.get(s.user_id) || []), s]);
@@ -150,6 +157,17 @@ async function handler(req: Request): Promise<Response> {
         loggedToday.add(tickLogSignature(r.user_id, r.meta?.key ?? null, String(r.meta?.reason ?? "")));
       }
     }
+  }
+
+  /* As distribuições publicadas, uma vez por execução — são as mesmas para
+     toda a gente. Só as colunas que o cliente também pode ler (sem o `n`). */
+  let snapshots: Array<{ age_band: string; gender: string; terrain: string; window_start: string; window_end: string }> = [];
+  if (byUser.size) {
+    const { data: snapRows, error: snapErr } = await sb.from("percentile_snapshots")
+      .select("age_band, gender, terrain, window_start, window_end")
+      .eq("metric", "plan_execution").order("window_start", { ascending: false }).limit(1000);
+    if (snapErr) console.warn("coach-proactive-tick: não leu as distribuições", snapErr.message);
+    snapshots = snapRows || [];
   }
 
   for (const [userId, userSubs] of byUser) {
@@ -196,6 +214,29 @@ async function handler(req: Request): Promise<Response> {
       }));
       // deno-lint-ignore no-explicit-any
       const planItems = (plans || []).flatMap((p: any) => (p.coach_plan_items || []).map((i: any) => ({ ...i, plan_id: p.id })));
+
+      /* A Vitrina: só se há alguma coisa publicada e ele consentiu alguma
+         coisa — sem isso não há aviso possível, e poupam-se as leituras. */
+      const vp = vitrinaProfileById.get(userId);
+      const statsPoolConsent = !!vp?.stats_pool_consent_at;
+      const leaderboardConsent = !!vp?.leaderboard_consent_at && statsPoolConsent;
+      let vitrina = null;
+      if (snapshots.length && statsPoolConsent) {
+        const [{ data: terrainRaces }, { data: boardRows }] = await Promise.all([
+          sb.from("race_events").select("date, race_type").eq("user_id", userId).gte("date", addDays(today, -TERRAIN_LOOKBACK_DAYS)),
+          leaderboardConsent
+            ? sb.from("leaderboard_entries").select("window_start, rank, age_band, gender, terrain")
+              .eq("user_id", userId).order("window_start", { ascending: false }).limit(4)
+            : Promise.resolve({ data: [] }),
+        ]);
+        vitrina = {
+          snapshots,
+          own: ownSegmentFor(vp, terrainRaces || [], today),
+          statsPoolConsent,
+          leaderboardConsent,
+          leaderboardEntries: boardRows || [],
+        };
+      }
       const candidates = listServerProactive({
         raceEvents: races || [],
         runs: runs || [],
@@ -214,6 +255,7 @@ async function handler(req: Request): Promise<Response> {
         // ligado ou não (P.14).
         allowed: Array.isArray(prefsById.get(userId)?.types) ? prefsById.get(userId)!.types : null,
         weekRecordDates: weekDates,
+        vitrina,
       }, today);
 
       const prefs = prefsById.get(userId) ?? {};

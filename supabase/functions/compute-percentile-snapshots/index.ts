@@ -10,7 +10,12 @@
 //   3. deriva o ESCALÃO da data de nascimento e deita a data fora ali mesmo;
 //   4. calcula o índice de execução de cada um na janela (executionScore);
 //   5. agrupa por escalão × género × modalidade;
-//   6. grava o snapshot dos segmentos com n >= 20, e mais nenhum.
+//   6. grava o snapshot dos segmentos com n >= 20, e mais nenhum;
+//   7. e, desses segmentos, a tabela com nomes: o top 10 de quem aceitou
+//      aparecer (leaderboard_entries, 2026-09-25). A tabela é da janela, como
+//      o snapshot — escrita uma vez e nunca refeita.
+// O miolo (5, 6 e 7) é puro e vive em publish.ts, testado com uma população
+// sintética: com dois atletas em beta, nenhum segmento chega aos 20.
 //
 // ── O ATAQUE DE DIFERENCIAÇÃO, e porque é que esta função é preguiçosa ──
 // Refrescar diariamente uma janela FIXA é a forma mais fácil de entregar o
@@ -30,27 +35,15 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
-import {
-  evaluatePrescriptions,
-  executionBase,
-  executionScore,
-  type PlanItemRow,
-  type RunRow,
-  type GymRow,
-} from "../_shared/formulas/prescriptionAdherence.ts";
+import type { GymRow, PlanItemRow, RunRow } from "../_shared/formulas/prescriptionAdherence.ts";
 import {
   ageBandFor,
   closedWindow,
   MIN_SEGMENT_SIZE,
-  nBand,
-  segmentKey,
   TERRAIN_LOOKBACK_DAYS,
-  terrainForAthlete,
-  ventileBoundaries,
-  WINDOW_DAYS,
 } from "../_shared/formulas/percentileSegments.ts";
+import { type Athlete, buildPublication, METRIC, scoreAthletes } from "./publish.ts";
 
-const METRIC = "plan_execution";
 const DAY_MS = 86400000;
 const addDays = (iso: string, n: number) =>
   new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
@@ -58,20 +51,6 @@ const headers = { "Content-Type": "application/json" };
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers });
-}
-
-/** Um atleta do universo, JÁ sem data de nascimento: só o escalão derivado. */
-interface Athlete {
-  id: string;
-  ageBand: string;
-  gender: "F" | "M";
-}
-
-interface Segment {
-  ageBand: string;
-  gender: string;
-  terrain: string;
-  scores: number[];
 }
 
 async function handler(req: Request): Promise<Response> {
@@ -105,7 +84,7 @@ async function handler(req: Request): Promise<Response> {
   //    nenhuma para correr.
   const { data: perfis, error: erroPerfis } = await sb
     .from("profiles")
-    .select("id, birth_date, gender, stats_pool_consent_at")
+    .select("id, birth_date, gender, stats_pool_consent_at, leaderboard_consent_at, leaderboard_display_name")
     .not("stats_pool_consent_at", "is", null);
   if (erroPerfis) return jsonResponse({ error: "Não foi possível ler os perfis" }, 500);
 
@@ -116,7 +95,13 @@ async function handler(req: Request): Promise<Response> {
     .map((p) => {
       const ageBand = ageBandFor(ageFromBirthDate(p.birth_date), p.gender);
       return ageBand && (p.gender === "F" || p.gender === "M")
-        ? { id: p.id as string, ageBand, gender: p.gender as "F" | "M" }
+        ? {
+          id: p.id as string,
+          ageBand,
+          gender: p.gender as "F" | "M",
+          // Sem nome abreviado não há o que mostrar na tabela: não entra nela.
+          leaderboard: !!p.leaderboard_consent_at && !!p.leaderboard_display_name,
+        }
         : null;
     })
     .filter((a): a is Athlete => a !== null);
@@ -164,55 +149,32 @@ async function handler(req: Request): Promise<Response> {
   const ginasioDe = porAtleta(ginasioRes.data as Array<GymRow & { user_id: string }>);
   const provasDe = porAtleta(provasRes.data as Array<{ user_id: string; date: string; race_type: string | null }>);
 
-  // 4) e 5) — o índice de cada um, e o segmento onde ele conta.
-  const segmentos = new Map<string, Segment>();
-  for (const atleta of atletas) {
-    const terrain = terrainForAthlete(provasDe.get(atleta.id) || [], janela.end);
-    if (!terrain) continue;
+  // 4) a 7) — o índice de cada um, os segmentos com k ou mais, e as tabelas.
+  const scored = scoreAthletes(atletas, (id) => ({
+    items: itensDe.get(id) || [],
+    runs: corridasDe.get(id) || [],
+    gym: ginasioDe.get(id) || [],
+    races: provasDe.get(id) || [],
+  }), janela);
+  const { snapshots: linhas, entries, belowK: abaixoDoLimiar } = buildPublication(scored, janela);
 
-    const resumo = evaluatePrescriptions({
-      items: itensDe.get(atleta.id) || [],
-      runs: corridasDe.get(atleta.id) || [],
-      gym: ginasioDe.get(atleta.id) || [],
-      // A nutrição não entra no índice de execução: a métrica é o PLANO.
-      mealsByDate: {},
-    }, janela.end, WINDOW_DAYS);
-
-    // Sem plano nenhum na janela não há índice: um 0 aqui dizia "cumpriu
-    // nada" e puxava a distribuição toda para baixo com quem nem plano tinha.
-    if (executionBase(resumo.counts) <= 0) continue;
-
-    const chave = segmentKey({ ageBand: atleta.ageBand, gender: atleta.gender, terrain });
-    const segmento: Segment = segmentos.get(chave)
-      || { ageBand: atleta.ageBand, gender: atleta.gender, terrain, scores: [] as number[] };
-    segmento.scores.push(executionScore(resumo.counts));
-    segmentos.set(chave, segmento);
+  /* As tabelas antes dos snapshots: se a escrita dos snapshots falhar, a
+     próxima volta não os encontra, refaz a janela e volta a escrever as
+     tabelas (apaga-se o que tenha ficado, para as posições não colidirem).
+     Com os snapshots gravados, a janela fica fechada — nunca mais se toca. */
+  const { error: erroLimpar } = await sb.from("leaderboard_entries").delete()
+    .eq("metric", METRIC).eq("window_start", janela.start);
+  if (erroLimpar) return jsonResponse({ error: "Não foi possível preparar as tabelas" }, 500);
+  if (entries.length) {
+    const { error } = await sb.from("leaderboard_entries").insert(entries);
+    if (error) return jsonResponse({ error: "Não foi possível gravar as tabelas" }, 500);
   }
 
-  /* 6) Só os segmentos com pelo menos k pessoas lá dentro. O `check (n >= 20)`
-        da tabela recusaria os outros de qualquer maneira — filtra-se aqui
-        para não pedir à base que recuse, não para poder mudar de ideias. */
-  const linhas = [...segmentos.values()]
-    .filter((s) => s.scores.length >= MIN_SEGMENT_SIZE)
-    .map((s) => ({
-      metric: METRIC,
-      age_band: s.ageBand,
-      gender: s.gender,
-      terrain: s.terrain,
-      window_start: janela.start,
-      window_end: janela.end,
-      n_band: nBand(s.scores.length),
-      n: s.scores.length,
-      boundaries: ventileBoundaries(s.scores),
-      computed_at: new Date().toISOString(),
-    }));
-
-  const abaixoDoLimiar = segmentos.size - linhas.length;
-
   if (linhas.length) {
-    const { error } = await sb.from("percentile_snapshots").upsert(linhas, {
-      onConflict: "metric,age_band,gender,terrain,window_start",
-    });
+    const { error } = await sb.from("percentile_snapshots").upsert(
+      linhas.map((l) => ({ ...l, computed_at: new Date().toISOString() })),
+      { onConflict: "metric,age_band,gender,terrain,window_start" },
+    );
     if (error) return jsonResponse({ error: "Não foi possível gravar os snapshots" }, 500);
   }
 
@@ -226,6 +188,8 @@ async function handler(req: Request): Promise<Response> {
       metric: l.metric, age_band: l.age_band, gender: l.gender, terrain: l.terrain, n_band: l.n_band,
     })),
     segments_below_k: abaixoDoLimiar,
+    // Quantas tabelas saíram, não quem está nelas.
+    leaderboards: new Set(entries.map((e) => `${e.age_band}|${e.gender}|${e.terrain}`)).size,
   });
 }
 

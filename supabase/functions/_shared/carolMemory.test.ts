@@ -20,7 +20,8 @@ import {
   gymLabel,
   mealLabel,
   runLabel,
-  toRecordEntries, bodyLabel, buildGoalProposalContext, condenseCoachComment } from "./carolMemory.ts";
+  toRecordEntries, bodyLabel, buildGoalProposalContext, condenseCoachComment,
+  buildVitrinaContext, fetchVitrinaBlock, segmentoPorExtenso } from "./carolMemory.ts";
 
 Deno.test("clip: uma linha só, cortada com reticências; vazio é null", () => {
   assertEquals(clip("  dor   no\njoelho  ", 50), "dor no joelho");
@@ -479,4 +480,76 @@ Deno.test("condenseCoachComment: guarda a abertura, o que corrigir e a próxima 
   const [e] = toRecordEntries([{ date: "2026-09-25", name: "Aula", notes: null, coach_notes: nota }], gymLabel);
   assertEquals(e.coachComment?.includes("64 minutos"), false);
   assertEquals(e.coachComment?.includes("Falar com a Coach"), true);
+});
+
+// ── A Vitrina inteira (2026-09-25) ───────────────────────────────────────
+const M40 = { ageBand: "M40", gender: "M", terrain: "estrada" };
+const vitrinaBase = {
+  statsPoolConsent: true, leaderboardConsent: true, own: M40,
+  snapshots: [{ age_band: "M40", gender: "M", terrain: "estrada", window_start: "2026-08-31", window_end: "2026-09-14" }],
+  percentile: { score: 62.5, value: 70 }, leaderboardEntries: [], unseenBadges: [], includeBadgeRules: false,
+};
+
+Deno.test("buildVitrinaContext: sem consentimento, diz que é decisão dele e não empurra", () => {
+  const t = buildVitrinaContext({ ...vitrinaBase, statsPoolConsent: false, leaderboardConsent: false });
+  assertStringIncludes(t, "NÃO entrou na média");
+  assertStringIncludes(t, "Não o empurres");
+  assertEquals(t.includes("Percentil"), false);
+});
+
+Deno.test("buildVitrinaContext: escalão publicado — o percentil por extenso, o índice, e as regras de uso", () => {
+  const t = buildVitrinaContext(vitrinaBase);
+  assertStringIncludes(t, "o escalão M40, estrada tem números da quinzena que começa a 2026-08-31");
+  assertStringIncludes(t, "Percentil dele: 70");
+  assertStringIncludes(t, "índice 62,5 de 100");
+  assertStringIncludes(t, "Nunca nomes de outros atletas");
+  assertStringIncludes(t, "nesta quinzena não ficou nos 10");
+  // Os extremos dizem-se truncados, como no ecrã.
+  assertStringIncludes(buildVitrinaContext({ ...vitrinaBase, percentile: { score: 100, value: 95 } }), "Percentil dele: 95 ou mais");
+});
+
+Deno.test("buildVitrinaContext: nas tabelas, com a posição e a da quinzena anterior; badges por ver; regras dos badges quando não há badges", () => {
+  const t = buildVitrinaContext({
+    ...vitrinaBase,
+    leaderboardEntries: [{ window_start: "2026-08-31", rank: 3 }, { window_start: "2026-08-17", rank: 6 }],
+    unseenBadges: ["A Escalada"],
+    includeBadgeRules: true,
+  });
+  assertStringIncludes(t, "está lá, em 3.º lugar");
+  assertStringIncludes(t, "na anterior esteve em 6.º");
+  assertStringIncludes(t, "ainda não abriu na app: A Escalada");
+  assertStringIncludes(t, "REGRAS DOS BADGES");
+});
+
+Deno.test("buildVitrinaContext: nada publicado — não inventa onde ele estaria", () => {
+  const t = buildVitrinaContext({ ...vitrinaBase, snapshots: [], percentile: null });
+  assertStringIncludes(t, "Ainda não há números publicados");
+  assertStringIncludes(t, "Não inventes");
+  assertEquals(segmentoPorExtenso({ ageBand: "23-34", gender: "F", terrain: "trail" }), "escalão feminino dos 23 aos 34, trail");
+});
+
+Deno.test("fetchVitrinaBlock: lê tudo e calcula o percentil com a fórmula do ecrã (sem o gravar)", async () => {
+  const sb = fakeSb({
+    profiles: { data: [{ birth_date: "1984-05-10", gender: "M", stats_pool_consent_at: "2026-09-01T10:00:00Z", leaderboard_consent_at: "2026-09-01T10:00:00Z" }] },
+    user_badges: { data: [{ badge_key: "escalada", tier: "bronze", period_key: "", awarded_at: "2026-09-20T08:00:00Z", seen_at: null }] },
+    race_events: { data: [{ date: "2026-10-20", race_type: "estrada" }] },
+    percentile_snapshots: { data: [{ age_band: "M40", gender: "M", terrain: "estrada", window_start: "2026-08-31", window_end: "2026-09-14", boundaries: Array.from({ length: 19 }, (_, i) => (i + 1) * 5) }] },
+    leaderboard_entries: { data: [{ window_start: "2026-08-31", rank: 3 }] },
+    coach_plan_items: { data: [{ planned_date: "2026-09-01", kind: "corrida", target_distance_km: 10 }, { planned_date: "2026-09-02", kind: "corrida", target_distance_km: 10 }] },
+    runs: { data: [{ id: "run1", date: "2026-09-01", distance_km: 10 }] },
+  });
+  const t = (await fetchVitrinaBlock(sb, "u1", "2026-09-25", { withBadges: true }))!;
+  // 1 de 2 corridas cumpridas → índice 50 → percentil 50, como no ecrã.
+  assertStringIncludes(t, "Percentil dele: 50");
+  assertStringIncludes(t, "em 3.º lugar");
+  assertStringIncludes(t, "ainda não abriu na app: A Escalada");
+  // Com badges ganhos, o bloco dos badges vem junto e as regras vão lá.
+  assertStringIncludes(t, "BADGES DE TREINO JÁ GANHOS");
+  assertEquals(t.match(/REGRAS DOS BADGES/g)?.length, 1);
+});
+
+Deno.test("fetchSharedMemoryBlock: a Vitrina chega às análises e ao cartão diário (e sai com vitrina: false)", async () => {
+  const sb = fakeSb({ profiles: { data: [{ stats_pool_consent_at: null }] } });
+  assertStringIncludes((await fetchSharedMemoryBlock(sb, "u1", { todayISO: "2026-09-25" }))!, "A VITRINA DO PERFIL");
+  assertEquals((await fetchSharedMemoryBlock(sb, "u1", { todayISO: "2026-09-25", vitrina: false }))?.includes("VITRINA") ?? false, false);
 });

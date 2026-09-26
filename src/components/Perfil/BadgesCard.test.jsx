@@ -137,11 +137,27 @@ describe('BadgesCard — a Vitrina só mostra o que já foi ganho', () => {
   });
 
   /* O "Onde estás" não é um badge e não se gere como um: não depende de
-     haver ganhos nem de faltar alguma coisa, porque a pergunta que responde
-     ("onde é que isto me põe ao pé dos outros") nenhum badge responde. Por
-     isso está lá com tudo ganho, como está com tudo por ganhar. */
-  it('o "Onde estás" está sempre na Vitrina, e abre o ecrã do percentil', () => {
+     haver ganhos nem de faltar alguma coisa. Desde 2026-09-25 depende de
+     outra coisa — de haver números para mostrar a ESTE atleta (o escalão
+     dele ou um grupo ao lado, na última quinzena publicada). Antes estava
+     sempre lá e levava a um ecrã vazio: nenhum grupo tinha 20 atletas. */
+  const DAQUI_A_60_DIAS = new Date(Date.now() + 60 * 86400000).toISOString().slice(0, 10);
+  const comSegmento = (snapshots) => useAppStore.setState({
+    profile: { id: 'u1', gender: 'M', birth_date: '1984-05-10' },
+    raceEvents: [{ id: 'r1', date: DAQUI_A_60_DIAS, race_type: 'estrada' }],
+    percentileSnapshots: snapshots,
+  });
+
+  it('sem números publicados para ele, o "Onde estás" não aparece — com ou sem badges', () => {
     badges = BADGES.map((b) => ({ ...b, state: 'won', ring: 1, count: 1 }));
+    comSegmento([]);
+    render(<BadgesCard />);
+    expect(screen.queryByTestId('badges-onde-estas')).not.toBeInTheDocument();
+  });
+
+  it('com números do escalão dele (ou de um grupo ao lado), aparece e abre o ecrã do percentil', () => {
+    badges = BADGES.map((b) => ({ ...b, state: 'won', ring: 1, count: 1 }));
+    comSegmento([{ age_band: 'M45', gender: 'M', terrain: 'estrada', window_start: '2026-08-31', window_end: '2026-09-14' }]);
     render(<BadgesCard />);
 
     const linha = screen.getByTestId('badges-onde-estas');

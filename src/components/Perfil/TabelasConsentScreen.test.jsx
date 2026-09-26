@@ -124,6 +124,6 @@ describe('TabelasConsentScreen', () => {
     expect(ecra).toHaveTextContent('estrada ou trail');
     expect(screen.getByTestId('tabelas-switch-stats-pool').textContent).not.toMatch(/nível/);
     expect(ecra).toHaveTextContent('nada disto chega a ninguém');
-    expect(TABELAS_POLICY_VERSION).toBe('v2');
+    expect(TABELAS_POLICY_VERSION).toBe('v3');
   });
 });

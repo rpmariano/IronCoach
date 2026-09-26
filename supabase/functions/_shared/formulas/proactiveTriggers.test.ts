@@ -354,3 +354,66 @@ Deno.test("P.10: um check-in antigo não muda nada", () => {
   assertEquals(c.lastCheckinDate, undefined);
   assertEquals(proactivePushMessage(c).body, "Não vejo nada teu há 4 dias. Estás bem?");
 });
+
+// ── A Vitrina (2026-09-25) ────────────────────────────────────────────────
+const RUI_SEG = { ageBand: "M40", gender: "M", terrain: "estrada" };
+const vsnap = (age_band: string, window_start: string) =>
+  ({ age_band, gender: "M", terrain: "estrada", window_start, window_end: "x" });
+const vitrinaInput = (over: Record<string, unknown> = {}) => ({
+  snapshots: [vsnap("M40", "2026-08-31")],
+  own: RUI_SEG,
+  statsPoolConsent: true,
+  leaderboardConsent: true,
+  leaderboardEntries: [{ window_start: "2026-08-31", rank: 2 }],
+  ...over,
+});
+
+Deno.test("Vitrina: tabelas e percentil entram no fim, depois do treino por registar, com frases fixas na voz dela", () => {
+  const list = listServerProactive(missedInput({ vitrina: vitrinaInput() }), TODAY);
+  assertEquals(list.map((c) => c.key), [
+    "missed_workout:2026-09-17",
+    "leaderboard:entrou:2026-08-31",
+    "percentile_ready:meu:M40.M.estrada",
+  ]);
+  const board = list[1];
+  assertEquals(board.vitrinaStage, "entrou");
+  assertEquals(board.leaderboardRank, 2);
+  // A posição fica no candidato (para o chat), nunca na notificação.
+  const body = proactivePushMessage(board).body;
+  assertEquals(body, "Entraste nas tabelas do teu escalão. Vem ver onde ficaste.");
+  assert(!/\d/.test(body));
+  for (const c of list.slice(1)) assertCarolVoice(proactivePushMessage(c).body);
+  assertEquals(proactiveTab("leaderboard"), "coach");
+  assert(ALL_PROACTIVE_TRIGGERS.includes("leaderboard") && ALL_PROACTIVE_TRIGGERS.includes("percentile_ready"));
+});
+
+Deno.test("Vitrina: não tira o dia ao balanço da semana (entra depois de ele ser decidido)", () => {
+  // Segunda-feira 2026-09-21, com registos na semana revista: o balanço sai, e a Vitrina a seguir.
+  const list = listServerProactive({
+    raceEvents: [], runs: [], lastRecordDate: "2026-09-20", weekRecordDates: ["2026-09-16"],
+    vitrina: vitrinaInput({ leaderboardEntries: [] }),
+  }, "2026-09-21");
+  assertEquals(list.map((c) => c.trigger), ["week_review", "percentile_ready"]);
+});
+
+Deno.test("Vitrina: saiu das tabelas e 'perto' — as outras frases fixas, sem números", () => {
+  const saiu = listServerProactive({
+    raceEvents: [], runs: [], lastRecordDate: TODAY,
+    vitrina: vitrinaInput({ snapshots: [vsnap("M40", "2026-09-14")], leaderboardEntries: [{ window_start: "2026-08-31", rank: 9 }] }),
+  }, TODAY).find((c) => c.trigger === "leaderboard")!;
+  assertEquals(saiu.key, "leaderboard:saiu:2026-09-14");
+  assertEquals(proactivePushMessage(saiu).body, "Nesta quinzena saíste das tabelas do teu escalão. Vem ver comigo o que mudou.");
+
+  const perto = listServerProactive({
+    raceEvents: [], runs: [], lastRecordDate: TODAY,
+    vitrina: vitrinaInput({ snapshots: [vsnap("M45", "2026-09-14")], leaderboardEntries: [] }),
+  }, TODAY);
+  assertEquals(perto.map((c) => c.key), ["percentile_ready:perto:M40.M.estrada"]);
+  assertCarolVoice(proactivePushMessage(perto[0]).body);
+});
+
+Deno.test("Vitrina: desligados no Perfil, não entram; sem consentimento, nem existem", () => {
+  const base = { raceEvents: [], runs: [], lastRecordDate: TODAY };
+  assertEquals(listServerProactive({ ...base, vitrina: vitrinaInput(), allowed: ["silence"] }, TODAY), []);
+  assertEquals(listServerProactive({ ...base, vitrina: vitrinaInput({ statsPoolConsent: false, leaderboardConsent: false }) }, TODAY), []);
+});

@@ -643,8 +643,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review" | "leaderboard" | "percentile_ready";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review", "leaderboard", "percentile_ready"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -759,6 +759,21 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `(3) o foco da semana que começa, numa frase, a partir do plano em vigor e da próxima prova. ` +
     `Só se o Contexto disser "Semana cumprida a 100%: sim": uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +
     `Não inventes números que não estejam no Contexto ou nos blocos.`,
+  // A Vitrina (2026-09-25): as tabelas com nomes e o "Onde estás". O
+  // Contexto diz o momento (entrou/saiu, meu/perto); os números vêm do bloco
+  // VITRINA — a notificação não os leva, di-los tu aqui.
+  leaderboard:
+    `É sobre as tabelas com nomes do escalão dele (o top 10 da quinzena, pelo quanto do plano cumpriu) — o Contexto diz se ENTROU ` +
+    `ou SAIU. Entrou: reconhece-o com a prova — a posição e o índice do bloco VITRINA — numa frase, sem festa; depois uma frase ` +
+    `sobre o que o pôs lá (a consistência com o plano nestes 14 dias). Saiu: sem dramatismo e sem sermão — diz que nesta quinzena ` +
+    `ficou fora dos 10, o que mudou face à anterior se o bloco o disser, e uma coisa concreta para voltar (cumprir o plano, não ` +
+    `treinar a mais). Nos dois casos, diz-lhe onde ver: Perfil, Vitrina, "Onde estás". Nunca digas nomes de outros atletas.`,
+  percentile_ready:
+    `É sobre o "Onde estás" (Perfil, Vitrina): passou a haver números publicados. O Contexto diz qual o caso. ` +
+    `"meu" — o escalão dele já tem distribuição: diz-lho e, se o bloco VITRINA trouxer o percentil dele, di-lo numa frase com o que ` +
+    `quer dizer (quanto do plano cumpre face aos atletas do escalão), sem o transformar em competição. ` +
+    `"perto" — o escalão dele ainda não tem atletas suficientes, mas há grupos ao lado com números: diz-lho e convida-o a ver onde ` +
+    `fica nesses. Nos dois casos, uma ou duas frases e onde ver — nunca o número de atletas de um grupo.`,
 };
 
 // ── Balanço da prova (race_after com a corrida registada) ─────────────────
@@ -1772,6 +1787,7 @@ const PUSH_TYPE_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
   race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
   missed_workout: "treino por registar", week_review: "balanço da semana",
+  leaderboard: "entrar e sair das tabelas", percentile_ready: "números do Onde estás",
 };
 const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", tempo: "Tempo", recuperacao: "Recuperação",
@@ -6321,6 +6337,9 @@ async function handler(req: Request): Promise<Response> {
       // pergunta ("o que ele já fez/conquistou") noutra escala — e as
       // regras do 6 #6 viajam dentro do bloco, não num sítio à parte.
       memoryBlocks.badges,
+      // O resto da Vitrina (2026-09-25): badges por ver, "Onde estás" e as
+      // tabelas com nomes — a mesma vitrina, as mesmas regras.
+      memoryBlocks.vitrina,
       memoryBlocks.proposals,
       buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
       memoryBlocks.records,
