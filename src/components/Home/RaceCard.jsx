@@ -276,9 +276,13 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     const plano = calculateRaceTrainingPlan({ race, profile, runs, todayISO: today });
     return { model: buildTrailModel(plano), flags: plano?.viability?.flags || null };
   }, [race, profile, runs, today]);
+  // "Com plano" é um plano aceite que cobre os dias daqui até à prova — um
+  // plano de base que acaba no domingo não é "o que está no plano" da
+  // semana da prova (raceMilestone.js).
   const coachPlans = useAppStore((s) => s.coachPlans);
-  const comPlano = (coachPlans || []).some((p) => p?.status === 'aceite'
-    && String(p.period_start).slice(0, 10) <= today && String(p.period_end).slice(0, 10) >= today);
+  const raceDay = race ? String(race.date).slice(0, 10) : null;
+  const comPlano = !!raceDay && (coachPlans || []).some((p) => p?.status === 'aceite'
+    && String(p.period_start).slice(0, 10) <= today && String(p.period_end).slice(0, 10) >= raceDay);
 
   if (!race && concluida) {
     return (

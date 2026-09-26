@@ -21,8 +21,16 @@
    momento já tinha sido gasto, e quando a semana acabava mesmo não havia
    nada. Por isso a semana só se dá por cumprida quando está toda escrita
    (o plano já decidiu até ao último dia dela, ou até ao fim do bloco, se o
-   bloco acaba a meio — a semana da prova acaba na prova), ou no último dia
-   dela: aí já terminou, escrita ou não.
+   bloco acaba a meio — a semana da prova acaba na prova).
+
+   O último dia sozinho não chega (revisão de 2026-09-26): na terça, com a
+   tranche escrita só até domingo, o cartão de hoje diz «Por planear» — e
+   por cima dele a fita dizia «Semana 1 cumprida». Se a tranche seguinte
+   chegasse nesse dia com um treino para terça, a fita desaparecia e o
+   momento já estava gasto: o mesmo erro, um dia mais tarde. O último dia
+   fecha a semana quando está decidido — com a prova, que é o que ele é na
+   semana da prova —, ou quando já passou. Uma semana que nunca chegou a
+   ficar toda escrita não se celebra: parte dela ficou sem plano.
 
    A prova do plano (o item com training_type 'prova') não é um treino: não
    entra na conta de «N treinos, N feitos». Mas a semana da prova só está
@@ -72,6 +80,23 @@ function escritoAte(plans, items, inicio, fim) {
   return ate;
 }
 
+/* A semana está toda escrita quando CADA plano aceite que a cobre já está
+   escrito até ao fim da parte dele nela (revisão de 2026-09-26). Um máximo
+   sobre todos os planos juntos deixava um plano de recuperação já aceite
+   para depois da prova, escrito inteiro de uma vez, "escrever" os dias que
+   o plano da prova ainda não escreveu — e a semana 1 cumpria-se ao sábado,
+   com sábado e domingo «Por planear» no ecrã do plano. A mesma regra, por
+   plano, que o "Por planear" usa (porEscrever, WeeklyPlanCard.jsx). */
+function semanaEscrita(plans, items, desde, ultimoDia) {
+  const cobrem = (plans || []).filter((p) => p?.status === 'aceite' && dia(p.period_start) <= ultimoDia && dia(p.period_end) >= desde);
+  return cobrem.length > 0 && cobrem.every((p) => {
+    const ini = dia(p.period_start);
+    const fimP = dia(p.period_end);
+    const ate = escritoAte([p], (items || []).filter((i) => i?.plan_id === p.id), ini, fimP);
+    return ate != null && ate >= (fimP < ultimoDia ? fimP : ultimoDia);
+  });
+}
+
 /**
  * { week, count, prova, weekStart, days: [{ dateISO, initial, state: 'done'|'rest', isToday }] }
  * quando a semana do plano em que hoje cai está toda cumprida; null nos outros.
@@ -96,11 +121,16 @@ export function weekDone({ plans = [], planItems = [], today }) {
 
   // A semana ainda pode ganhar treinos? Não, se o plano já está escrito até
   // ao último dia dela (os dias vazios pelo meio são descanso decidido), ou
-  // se hoje é esse último dia. Com o bloco a acabar a meio da semana, o
-  // último dia dela é o fim do bloco — a semana da prova acaba na prova.
+  // se esse último dia já passou. Com o bloco a acabar a meio da semana, o
+  // último dia dela é o fim do bloco — a semana da prova acaba na prova, e
+  // no dia dela o item da prova decide o dia (escritoAte não o conta, por
+  // vir logo na primeira tranche). Um último dia ainda «Por planear» não
+  // fecha nada: a tranche seguinte ainda lhe pode pôr um treino.
   const ultimoDia = blockEnd < weekEnd ? blockEnd : weekEnd;
-  const escrita = escritoAte(plans, planItems, win.start, blockEnd);
-  const fechada = today >= ultimoDia || (escrita != null && escrita >= ultimoDia);
+  const provaNoUltimoDia = (planItems || []).some((i) => i && aceites.has(i.plan_id) && isRacePlanItem(i)
+    && i.status !== 'cancelado' && dia(i.planned_date) === ultimoDia);
+  const fechada = semanaEscrita(plans, planItems, weekStart, ultimoDia) || today > ultimoDia
+    || (today === ultimoDia && provaNoUltimoDia);
   if (!fechada) return null;
   // Um treino sozinho não faz uma semana; a prova com um treino, sim.
   if (treinos.length + provas.length < 2 || !daSemana.every((i) => i.status === 'concluido')) return null;

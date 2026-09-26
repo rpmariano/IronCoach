@@ -1,10 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { format, parseISO } from 'date-fns';
+import { pt } from 'date-fns/locale';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Utensils } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
 import { planWeekLabel, noPlanCopy } from './DayPlanCard';
 import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRacePlanItem, isUnplannedDay, liveItems, raceNameForDate, trainingItems } from '../../utils/homeModels';
+import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import MealSheet from './MealSheet';
 
 /* "O plano" — o plano acordado inteiro, dia a dia, em ecrã cheio
@@ -70,17 +73,44 @@ export function convitePlanear(dias) {
   return dias > 1 ? 'Vamos planear estes dias' : 'Vamos planear este dia';
 }
 
-/* O que ela fica a saber quando o atleta toca no convite: que dias estão
-   por escrever e que foi ele que os pediu. Vai pelo mesmo canal dos
-   motivos que a app deteta (plan_divergence, ver Home.jsx), que é o que a
-   põe a propor o plano logo na primeira mensagem — pelo "Adaptar plano"
-   genérico, ela abria a perguntar o que ele queria mudar, como se não
-   soubesse para que é que ele tinha vindo. */
-export function motivoPlanear(inicio, fim) {
-  if (!fim || fim === inicio) {
-    return `O dia ${formatDayMonth(inicio)} ainda não tem treino escrito, e o atleta pediu-te o plano deste dia.`;
-  }
-  return `Os dias de ${formatDayMonth(inicio)} a ${formatDayMonth(fim)} ainda não têm treino escrito, e o atleta pediu-te o plano destes dias.`;
+/* O que ele diz quando toca no convite (revisão de 2026-09-26). O botão
+   lê-se como a resposta dele ("Vamos planear estes dias"), e é isso que
+   entra no chat, com os dias por extenso, como se o tivesse escrito lá — o
+   `say` que o balanço da prova já usa (RaceBalanceCard). Num pedido dele,
+   ela tem as ferramentas todas e propõe o plano desses dias.
+   Dantes ia pelo canal dos desvios que a app deteta sozinha
+   (plan_divergence), e o servidor abria-lhe a conversa com "A app detetou
+   que o plano já não bate certo com a realidade e chamou-te — o atleta
+   abriu o chat a partir desse aviso", a pedir-lhe que explicasse o que
+   mudou e perguntasse se tinha havido algum motivo. Nada disso era
+   verdade: não houve aviso nenhum, foi ele que quis planear. Com o
+   contexto errado, a primeira frase dela saía a falar de um desvio que não
+   existiu. */
+const porExtenso = (iso) => format(parseISO(iso), "d 'de' MMMM", { locale: pt });
+
+export function pedidoPlanear(inicio, fim) {
+  if (!fim || fim === inicio) return `Vamos planear o dia ${porExtenso(inicio)}.`;
+  return `Vamos planear os dias de ${porExtenso(inicio)} a ${porExtenso(fim)}.`;
+}
+
+/* A proposta que já está no chat, por decidir, para os dias [inicio, fim]
+   (revisão de 2026-09-26). É o caso de todos os dias num plano de prova: ela
+   escreve a tranche seguinte, e até ele a aceitar esses dias continuam
+   vazios no plano aceite. O convite pedia-lhe então que planeasse o que ela
+   tinha acabado de planear, e ela escrevia outra proposta por cima da
+   primeira. Com uma proposta assim, o convite aponta para ela, com as
+   palavras do "O que faço hoje" para o mesmo caso (noPlanCopy). As
+   sugestões só de refeições não contam: não planeiam treino nenhum. Sem os
+   itens carregados, na dúvida, conta. */
+export function propostaNoChat(plans, items, inicio, fim) {
+  return (plans || []).some((p) => {
+    if (p?.status !== 'proposto') return false;
+    const ini = String(p.period_start || '').slice(0, 10);
+    const fimP = String(p.period_end || '').slice(0, 10);
+    if (!ini || !fimP || ini > fim || fimP < inicio) return false;
+    const dela = (items || []).filter((i) => i?.plan_id === p.id);
+    return dela.length === 0 || dela.some((i) => !isMealOnlyItem(i));
+  });
 }
 
 function StatTile({ value, suffix, label, testId }) {
@@ -196,8 +226,11 @@ export default function PlanoScreen({ onClose }) {
       aberto.fim = d.dateISO;
       aberto.dias += 1;
     });
+    // Com a tranche seguinte já no chat, o convite aponta para ela (ver
+    // propostaNoChat).
+    out.forEach((c) => { c.proposta = propostaNoChat(coachPlans, coachPlanItems, c.inicio, c.fim); });
     return out;
-  }, [days]);
+  }, [days, coachPlans, coachPlanItems]);
 
   /* O resumo é sempre da semana em curso. Os quilómetros são os PLANEADOS
      dos treinos já dados — a distância real vive no registo da corrida, que
@@ -335,11 +368,23 @@ export default function PlanoScreen({ onClose }) {
 
                   <div className="flex-1 min-w-0">
                     <div className="text-[13.5px] font-extrabold" style={{ color: unplanned ? 'var(--text-4)' : 'var(--text-1)' }}>{dayTitle(d.items, raceNameForDate(raceEvents, d.dateISO), { porPlanear: d.porPlanear })}</div>
-                    {convite && (
+                    {convite && (convite.proposta ? (
+                      <button
+                        type="button"
+                        data-testid={`plano-proposta-${d.dateISO}`}
+                        onClick={() => goCoach(null)}
+                        className="inline-flex items-center gap-1.5 min-h-[44px] -my-[7px] text-[11.5px] font-bold text-left"
+                        style={{ color: 'var(--coach)' }}
+                      >
+                        <MessageCircle size={13} />
+                        A proposta está no chat
+                        <ChevronRight size={12} />
+                      </button>
+                    ) : (
                       <button
                         type="button"
                         data-testid={`plano-pedir-${d.dateISO}`}
-                        onClick={() => goCoach({ kind: 'adapt_plan', divergence: [motivoPlanear(convite.inicio, convite.fim)] })}
+                        onClick={() => goCoach({ kind: 'say', text: pedidoPlanear(convite.inicio, convite.fim) })}
                         className="inline-flex items-center gap-1.5 min-h-[44px] -my-[7px] text-[11.5px] font-bold text-left"
                         style={{ color: 'var(--coach)' }}
                       >
@@ -347,7 +392,7 @@ export default function PlanoScreen({ onClose }) {
                         {convitePlanear(convite.dias)}
                         <ChevronRight size={12} />
                       </button>
-                    )}
+                    ))}
                     {notes.map((it) => (
                       <p key={it.id} className="text-[12px] leading-[1.45] mt-[3px]" style={{ color: 'var(--text-3)', whiteSpace: 'pre-line' }}>{it.notes.trim()}</p>
                     ))}

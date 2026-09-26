@@ -116,13 +116,17 @@ export function doneLine(item, { runs = [], gymSessions = [] } = {}) {
     if (!s) return { text: 'Feito.', verdict: null };
     const series = s.workout_session_sets?.length || 0;
     const volume = computeSessionVolumeKg(s);
-    const feitoMin = Number(s.duration_seconds) / 60;
+    // Os minutos que se dizem são os que se comparam (revisão de
+    // 2026-09-26): uns segundos soltos — «0:20» lido como minutos:segundos
+    // — davam «0 min.» e «Ficaste nos 0 de 60 min.»; e 47,6 min saíam
+    // «Ficaste nos 48 de 60 min.», curto com o número de quem cumpriu.
+    const feitoMin = Math.round(Number(s.duration_seconds) / 60) || 0;
     const alvoMin = Number(item.target_duration_min);
     const temDuracao = feitoMin > 0 && alvoMin > 0;
     // Uma aula sem séries tem, quase sempre, a duração: é isso que se diz.
     let text;
     if (series) text = `${series} ${series === 1 ? 'série' : 'séries'}${volume > 0 ? ` · ${milhares(volume)} kg levantados` : ''}.`;
-    else if (feitoMin > 0) text = `${Math.round(feitoMin)} min.`;
+    else if (feitoMin > 0) text = `${feitoMin} min.`;
     else return { text: 'Feito.', verdict: null };
 
     const grupos = compararGrupos(item.categories, s.categories);
@@ -131,7 +135,7 @@ export function doneLine(item, { runs = [], gymSessions = [] } = {}) {
       return { text, verdict: `O plano pedia ${lista(item.categories)}; fizeste ${lista(s.categories)}.` };
     }
     if (temDuracao && feitoMin / alvoMin < GINASIO_CURTO) {
-      return { text, verdict: `Ficaste nos ${Math.round(feitoMin)} de ${Math.round(alvoMin)} min.` };
+      return { text, verdict: `Ficaste nos ${feitoMin} de ${Math.round(alvoMin)} min.` };
     }
     return { text, verdict: temDuracao || grupos === 'igual' ? 'Cumprido.' : null };
   }

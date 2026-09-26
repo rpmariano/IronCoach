@@ -560,3 +560,67 @@ describe('buildPlanDays — porPlanear', () => {
     expect(semPlanos['2026-09-27'].items.map((i) => i.id)).toEqual(['o1']);
   });
 });
+
+/* ── O dia por escrever conta-se pelo plano que o cobre (revisão 2026-09-26) ─
+   A conta era o último dia escrito de TODOS os planos juntos. Com outro plano
+   aceite mais à frente — a semana de recuperação depois da prova, já aceite,
+   noutro bloco ou logo a seguir a este —, esse "último dia" passava para lá
+   do plano de agora, e os dias que ela ainda não escreveu ficavam todos "Sem
+   treino", sem convite para os planear. */
+describe('buildPlanDays — o dia por escrever é o do plano que o cobre', () => {
+  // A maratona a 18 out, escrita só até sexta, 25 set.
+  const maratona = { id: 'm', status: 'aceite', race_id: 'r-porto', period_start: '2026-09-21', period_end: '2026-10-18' };
+  const sexta = item({ id: 's', plan_id: 'm', planned_date: '2026-09-25', status: 'concluido' });
+  const prova = item({ id: 'pr', plan_id: 'm', planned_date: '2026-10-18', training_type: 'prova', target_distance_km: 42.195 });
+  const porDia = (days) => Object.fromEntries(days.map((d) => [d.dateISO, d]));
+
+  it('um plano aceite noutro bloco, mais à frente, não esconde os dias por escrever do de agora', () => {
+    const recuperacao = { id: 'rec', status: 'aceite', race_id: null, period_start: '2026-10-25', period_end: '2026-10-31' };
+    const rodagem = item({ id: 'r1', plan_id: 'rec', planned_date: '2026-10-26', training_type: 'regenerativo' });
+    const itens = [sexta, prova, rodagem];
+    // Dias seguidos, cada um com o seu hoje: o bloco por escrever começa hoje
+    // e vai até à véspera da prova.
+    ['2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01'].forEach((hoje) => {
+      const d = porDia(buildPlanDays(itens, '2026-09-21', 28, { plans: [maratona, recuperacao], today: hoje }));
+      expect(d[hoje].porPlanear).toBe(true);
+      expect(dayTitle(d[hoje].items, null, { porPlanear: d[hoje].porPlanear })).toBe('Por planear');
+      expect(d['2026-10-17'].porPlanear).toBe(true);
+      // O dia da prova tem a prova; o que já passou não se planeia.
+      expect(d['2026-10-18'].porPlanear).toBe(false);
+      Object.values(d).filter((x) => x.dateISO < hoje).forEach((x) => expect(x.porPlanear).toBe(false));
+    });
+  });
+
+  it('um plano logo a seguir à prova, no mesmo bloco, também não', () => {
+    // A prova a 4 out; a semana de recuperação, sem prova, aceite de 5 a 11.
+    const meia = { id: 'm', status: 'aceite', race_id: 'r-meia', period_start: '2026-09-21', period_end: '2026-10-04' };
+    const provaMeia = item({ id: 'pr', plan_id: 'm', planned_date: '2026-10-04', training_type: 'prova', target_distance_km: 21.0975 });
+    const recuperacao = { id: 'rec', status: 'aceite', race_id: null, period_start: '2026-10-05', period_end: '2026-10-11' };
+    const rodagem = item({ id: 'r1', plan_id: 'rec', planned_date: '2026-10-07', training_type: 'regenerativo' });
+    const d = porDia(buildPlanDays([sexta, provaMeia, rodagem], '2026-09-21', 21, { plans: [meia, recuperacao], today: '2026-09-26' }));
+    // A meia ainda tem de 26 set a 3 out por escrever.
+    ['2026-09-26', '2026-09-30', '2026-10-03'].forEach((iso) => expect(d[iso].porPlanear).toBe(true));
+    // A semana de recuperação foi escrita inteira: os dias vazios são folgas.
+    ['2026-10-05', '2026-10-06', '2026-10-11'].forEach((iso) => expect(d[iso].porPlanear).toBe(false));
+  });
+
+  /* Um dia que nenhum plano aceite cobre fica pela conta de todos juntos: o
+     hoje de um plano que só começa amanhã (o cartão "O que faço hoje" mostra
+     hoje e amanhã) é um dia livre, não um dia por planear. */
+  it('o hoje antes de um plano que começa amanhã não está por planear', () => {
+    const plano = { id: 'm', status: 'aceite', race_id: 'r-porto', period_start: '2026-09-27', period_end: '2026-10-18' };
+    const domingo = item({ id: 'd1', plan_id: 'm', planned_date: '2026-09-27', training_type: 'longo' });
+    const [hoje, amanha] = buildPlanDays([domingo], '2026-09-26', 2, { plans: [plano], today: '2026-09-26' });
+    expect(hoje.porPlanear).toBe(false);
+    expect(dayTitle(hoje.items, null, { porPlanear: hoje.porPlanear })).toBe('Sem treino');
+    expect(amanha.porPlanear).toBe(false);
+  });
+
+  it('o amanhã depois do fim de um plano sem prova está por planear', () => {
+    const semana = { id: 's', status: 'aceite', race_id: null, period_start: '2026-09-20', period_end: '2026-09-26' };
+    const hojeItem = item({ id: 'h', plan_id: 's', planned_date: '2026-09-26' });
+    const [hoje, amanha] = buildPlanDays([hojeItem], '2026-09-26', 2, { plans: [semana], today: '2026-09-26' });
+    expect(hoje.porPlanear).toBe(false);
+    expect(amanha.porPlanear).toBe(true);
+  });
+});

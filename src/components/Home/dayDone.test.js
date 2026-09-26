@@ -72,6 +72,18 @@ describe('doneLine', () => {
       expect(l).toEqual({ text: '50 min.', verdict: 'Cumprido.' });
     });
 
+    /* Revisão de 2026-09-26: os minutos ditos são os comparados. No código
+       anterior, 20 segundos davam «0 min.» e «Ficaste nos 0 de 60 min.», e
+       47,6 min eram curtos com «Ficaste nos 48 de 60 min.». */
+    it('uns segundos não são «0 min.», e o número dito é o que se compara', () => {
+      const segundos = doneLine(ginasio(), { gymSessions: [sessao({ categories: [], workout_session_sets: [], duration_seconds: 20 })] });
+      expect(segundos).toEqual({ text: 'Feito.', verdict: null });
+      const comSeries = doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 20 })] });
+      expect(comSeries).toEqual({ text: '3 séries · 360 kg levantados.', verdict: 'Cumprido.' });
+      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 2856 })] }).verdict).toBe('Cumprido.');
+      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 2820 })] }).verdict).toBe('Ficaste nos 47 de 60 min.');
+    });
+
     it('6 km de corrida contínua contra intervalos de 6 km: bate nos km, não é o treino pedido', () => {
       const l = doneLine(corrida({ training_type: 'intervalos', target_distance_km: 6 }), { runs: [{ ...run(6, 6 * 330), training_type: 'continuo' }] });
       expect(l.verdict).toBe('O plano pedia intervalos; ficou registada como corrida contínua.');

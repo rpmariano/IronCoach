@@ -3,7 +3,7 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { planAcceptanceMode, closeOldBlock, isTrainingPlan, doneItemKeys } from '../utils/planAcceptance';
 import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
-import { newCheckinAlarms, interventionReasonFor, mergeCheckin } from '../utils/checkin';
+import { newCheckinAlarms, interventionReasonFor, mergeCheckin, readCheckinReason, checkinReasonNow } from '../utils/checkin';
 import { TABELAS_POLICY_VERSION } from '../utils/percentile';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
@@ -978,7 +978,28 @@ export const useAppStore = create((set, get) => ({
 
     const alarms = newCheckinAlarms(before, after, date, profile);
     const pending = ['needed', 'in_progress'].includes(profile?.coach_intervention_status);
-    if (alarms.length && !pending) {
+    /* Corrigido o check-in que abriu a intervenção — uma dor 5 posta por
+       engano e corrigida para 0 —, a intervenção fecha-se: o chat já não
+       abre sobre uma dor que o atleta retirou (revisão de 2026-09-26). Só a
+       deste dia e ainda por falar ('needed'): uma conversa já em curso fica.
+       A régua é a do popup (checkinReasonNow), e o update só pega se o
+       motivo ainda for o mesmo, como no fecho das metas. */
+    let fechou = false;
+    const aberto = profile?.coach_intervention_status === 'needed' ? readCheckinReason(profile?.coach_intervention_reason) : null;
+    if (aberto?.date === date && checkinReasonNow(aberto, after, date, profile).corrigido) {
+      const resolved = { coach_intervention_status: 'resolved', coach_intervention_reason: null };
+      const { data: rows, error: fechoErr } = await supabase
+        .from('profiles')
+        // O desfecho vai só no update (5.5): o trigger consome-o.
+        .update({ ...resolved, coach_intervention_outcome: INTERVENTION_OUTCOME.FALSO_POSITIVO })
+        .eq('id', userId)
+        .eq('coach_intervention_reason', profile.coach_intervention_reason)
+        .select('id');
+      if (fechoErr) console.error('Erro a fechar a intervenção do check-in corrigido:', fechoErr);
+      else if ((rows || []).length > 0) { fechou = true; set({ profile: { ...get().profile, ...resolved } }); }
+    }
+    // Um alarme novo no mesmo check-in pode abrir a sua, depois de a antiga fechar.
+    if (alarms.length && (!pending || fechou)) {
       // Com a data do check-in (pedido 2026-09-26): o popup lido na quinta
       // dizia "o teu check-in de hoje" de um check-in de terça.
       const reason = interventionReasonFor(alarms, date);

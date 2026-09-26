@@ -459,11 +459,34 @@ function arrumadoPeloSistema(it, planoPorId) {
   return d < inicio || d > fim;
 }
 
+/* O dia ainda está por escrever? Conta-se pelo plano que o cobre, e não pelo
+   último dia escrito de todos os planos juntos (revisão de 2026-09-26): com
+   um plano aceite mais à frente — a semana de recuperação depois da prova,
+   já aceite noutro bloco, ou um bloco a seguir a este —, o "último dia"
+   passava para lá do plano de agora, e os dias que ela ainda não escreveu
+   ficavam todos "Sem treino", sem convite para os planear. Um dia que
+   nenhum plano aceite cobre — o hoje antes de um plano que começa amanhã,
+   ou o amanhã depois do fim dele, no cartão de hoje — fica pela conta de
+   todos juntos, como dantes: antes do plano, "Sem treino"; depois dele,
+   por planear. Sem os planos à mão, é essa conta para todos os dias. */
+function porEscrever(items, plans) {
+  const ateTodos = planeadoAte(items, plans);
+  const pelaContaDeTodos = (d) => !ateTodos || d > ateTodos;
+  if (!Array.isArray(plans)) return pelaContaDeTodos;
+  const aceites = plans.filter((p) => p && p.status === 'aceite');
+  const ateDe = new Map(aceites.map((p) => [p.id, planeadoAte(items.filter((it) => it.plan_id === p.id), [p])]));
+  return (d) => {
+    const cobrem = aceites.filter((p) => dia(p.period_start) <= d && d <= dia(p.period_end));
+    if (cobrem.length === 0) return pelaContaDeTodos(d);
+    return cobrem.every((p) => { const ate = ateDe.get(p.id); return !ate || d > ate; });
+  };
+}
+
 /* Constrói os dias do plano a partir de `from`, ao longo de `horizon` dias.
    Cada dia inclui dayNumber (1-indexed) para a numeração "Dia N", e
    `porPlanear` — vazio, de hoje em diante, e depois do último dia que o
-   plano já decidiu (ver planeadoAte). Um dia que já passou nunca está "por
-   planear": ninguém planeia ontem.
+   plano dele já decidiu (ver planeadoAte e porEscrever). Um dia que já
+   passou nunca está "por planear": ninguém planeia ontem.
    `plans` (opcional) são os planos dos itens: com eles, os cancelados que
    o sistema arrumou saem, e um plano sem prova conta como escrito até ao
    fim. `today` (opcional) é o hoje de quem chama, para o ecrã e os dias
@@ -472,7 +495,7 @@ export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_D
   const days = [];
   const planoPorId = Array.isArray(plans) ? new Map(plans.filter(Boolean).map((p) => [p.id, p])) : null;
   const visiveis = (items || []).filter((it) => it && !arrumadoPeloSistema(it, planoPorId));
-  const ate = planeadoAte(visiveis, plans);
+  const aEscrever = porEscrever(visiveis, plans);
   for (let i = 0; i < horizon; i++) {
     const dateISO = addDaysISO(from, i);
     const dayItems = visiveis
@@ -483,7 +506,7 @@ export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_D
       dayNumber: i + 1,
       isToday: dateISO === today,
       isOverdue: dateISO < today && dayItems.some(it => it.kind !== 'descanso' && it.status === 'pendente'),
-      porPlanear: dayItems.length === 0 && dateISO >= today && (!ate || dateISO > ate),
+      porPlanear: dayItems.length === 0 && dateISO >= today && aEscrever(dateISO),
       items: dayItems,
     });
   }

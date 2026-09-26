@@ -67,6 +67,24 @@ export function listaDias(datesISO) {
 
 const diasEntre = (a, b) => Math.round((new Date(`${b}T00:00:00Z`) - new Date(`${a}T00:00:00Z`)) / 86400000);
 
+/** O que o coach-chat guarda de cada motivo (coach-chat, plan_divergence:
+ *  `.slice(0, 200)`). Uma frase maior chega-lhe cortada a meio. */
+const MOTIVO_MAX = 200;
+
+/* Os registos e os treinos ditos pelo que são (revisão de 2026-09-26): a
+   corrida como corrida, o ginásio como ginásio. «Vi treinos a 9 e 11 set»
+   ao lado de «não vi os treinos de 8 e 10 set» dizia duas vezes a mesma
+   palavra e nada sobre o que ela viu. */
+const REGISTO_DITO = {
+  corrida: (n) => (n === 1 ? 'uma corrida' : 'corridas'),
+  ginasio: (n) => (n === 1 ? 'uma sessão de ginásio' : 'sessões de ginásio'),
+};
+const TREINO_DITO = {
+  corrida: (n) => (n === 1 ? 'da corrida' : 'das corridas'),
+  ginasio: (n) => (n === 1 ? 'do ginásio' : 'das sessões de ginásio'),
+};
+const porTipo = (xs) => ['corrida', 'ginasio'].map((kind) => xs.filter((x) => x.kind === kind)).filter((g) => g.length);
+
 /* A frase das sessões falhadas (pedido 2026-09-26). Era «2 sessões do plano
    ficaram por registar nos últimos 7 dias (9 set, 11 set).» — a abrir com um
    número, em registo de sistema, e cega ao resto: os treinos de terça e
@@ -76,26 +94,33 @@ const diasEntre = (a, b) => Math.round((new Date(`${b}T00:00:00Z`) - new Date(`$
    quarta não fecha o de terça), mas ela diz o que viu e pergunta, como
    CAROL.md §3 pede antes de reagendar: «Aconteceu alguma coisa?».
    `trocas` são as falhadas com um registo do mesmo tipo por perto;
-   `semRegisto`, as outras. */
+   `semRegisto`, as outras.
+
+   Um dia com corrida e ginásio no plano pode ter um explicado e o outro
+   não (revisão de 2026-09-26): «Não vi o treino de 8 set nesse dia, mas vi
+   uma sessão de ginásio a 7 set. (…) E do treino de 8 set não vi registo
+   nenhum.» punha o mesmo dia dos dois lados, e lia-se como contradição.
+   Quando isso acontece, o resto diz-se pelo tipo: «E da corrida de 8 set
+   não vi registo nenhum.» */
 function frasesSessoesFalhadas(trocas, semRegisto) {
   const dosTreinos = (n) => (n === 1 ? 'do treino' : 'dos treinos');
   if (trocas.length === 0) {
     return `Não vi registo ${dosTreinos(semRegisto.length)} de ${listaDias(semRegisto.map((m) => m.date))}. Aconteceu alguma coisa?`;
   }
   const n = trocas.length;
-  const umDia = new Set(trocas.map((t) => t.date)).size === 1;
-  const vistos = trocas.map((t) => t.registo);
-  const diasVistos = listaDias(vistos.map((r) => r.date));
-  const tipos = new Set(vistos.map((r) => r.kind));
-  const um = vistos.length === 1;
-  const oQueVi = tipos.size > 1 ? `treinos a ${diasVistos}`
-    : tipos.has('ginasio') ? `${um ? 'uma sessão' : 'sessões'} de ginásio a ${diasVistos}`
-      : `${um ? 'uma corrida' : 'corridas'} a ${diasVistos}`;
-  let texto = `Não vi ${n === 1 ? 'o treino' : 'os treinos'} de ${listaDias(trocas.map((t) => t.date))} ${umDia ? 'nesse dia' : 'nesses dias'}, mas vi ${oQueVi}. Trocaste os dias?`;
-  if (semRegisto.length) {
-    texto += ` E ${dosTreinos(semRegisto.length)} de ${listaDias(semRegisto.map((m) => m.date))} não vi registo nenhum.`;
-  }
-  return texto;
+  const diasTrocados = new Set(trocas.map((t) => t.date));
+  const oQueVi = juntar(porTipo(trocas.map((t) => t.registo))
+    .map((g) => `${REGISTO_DITO[g[0].kind](g.length)} a ${listaDias(g.map((r) => r.date))}`));
+  const texto = `Não vi ${n === 1 ? 'o treino' : 'os treinos'} de ${listaDias([...diasTrocados])} ${diasTrocados.size === 1 ? 'nesse dia' : 'nesses dias'}, mas vi ${oQueVi}. Trocaste os dias?`;
+  if (!semRegisto.length) return texto;
+  const partilhaDia = semRegisto.some((m) => diasTrocados.has(m.date));
+  const deQue = partilhaDia
+    ? juntar(porTipo(semRegisto).map((g) => `${TREINO_DITO[g[0].kind](g.length)} de ${listaDias(g.map((m) => m.date))}`))
+    : `${dosTreinos(semRegisto.length)} de ${listaDias(semRegisto.map((m) => m.date))}`;
+  const completo = `${texto} E ${deQue} não vi registo nenhum.`;
+  // Com muitos dias, os do fim cabem numa palavra: a pergunta que importa
+  // (trocaste os dias?) já ficou dita, com as datas.
+  return completo.length <= MOTIVO_MAX ? completo : `${texto} E dos outros não vi registo nenhum.`;
 }
 
 /** "Corrida do Tejo (13 set)" — o nome e o dia, como a Carol os diria. */
@@ -273,29 +298,39 @@ export function detectPlanDivergence({
     // plano — a corrida de quarta num dia com treino marcado é o treino de
     // quarta, não o de terça mudado. Um registo já ligado a um item
     // (completed_run_id, completed_session_id) também é de outro treino.
-    // Cada registo explica uma sessão, no máximo: a mais próxima.
+    // Cada registo explica uma sessão, no máximo: a mais próxima. Os pares
+    // escolhem-se do mais perto para o mais longe, e não pela ordem das
+    // falhadas (revisão de 2026-09-26): com treinos a 8 e 9 e uma corrida a
+    // 10, a de 10 é a de 9 feita um dia depois, não a de 8 feita dois.
     const trainingDays = new Set(items.filter((i) => i.kind === 'corrida' || i.kind === 'ginasio').map((i) => dayOf(i.planned_date)));
     const linked = new Set(items.flatMap((i) => [i.completed_run_id, i.completed_session_id]).filter(Boolean));
     const records = [
       ...(runs || []).map((r) => ({ id: r?.id, date: dayOf(r?.date), kind: 'corrida' })),
       ...(gymSessions || []).map((g) => ({ id: g?.id, date: dayOf(g?.date), kind: 'ginasio' })),
     ].filter((r) => r.date && r.date <= today && !trainingDays.has(r.date) && !(r.id && linked.has(r.id)));
-    const used = new Set();
+    const pares = [];
+    missed.forEach((item, k) => {
+      const date = dayOf(item.planned_date);
+      records.forEach((r, idx) => {
+        const gap = Math.abs(diasEntre(date, r.date));
+        if (r.kind === item.kind && gap >= 1 && gap <= SWAP_WINDOW_DAYS) pares.push({ k, idx, gap, date, r });
+      });
+    });
+    pares.sort((a, b) => a.gap - b.gap || a.date.localeCompare(b.date) || a.r.date.localeCompare(b.r.date));
+    const explicada = new Map();
+    const usados = new Set();
+    for (const p of pares) {
+      if (explicada.has(p.k) || usados.has(p.idx)) continue;
+      explicada.set(p.k, p.r);
+      usados.add(p.idx);
+    }
     const trocas = [];
     const semRegisto = [];
-    for (const item of missed) {
+    missed.forEach((item, k) => {
       const date = dayOf(item.planned_date);
-      const registo = records
-        .map((r, idx) => ({ r, idx, gap: Math.abs(diasEntre(date, r.date)) }))
-        .filter(({ r, idx, gap }) => !used.has(idx) && r.kind === item.kind && gap >= 1 && gap <= SWAP_WINDOW_DAYS)
-        .sort((a, b) => a.gap - b.gap || a.r.date.localeCompare(b.r.date))[0];
-      if (registo) {
-        used.add(registo.idx);
-        trocas.push({ date, registo: registo.r });
-      } else {
-        semRegisto.push({ date });
-      }
-    }
+      if (explicada.has(k)) trocas.push({ date, kind: item.kind, registo: explicada.get(k) });
+      else semRegisto.push({ date, kind: item.kind });
+    });
     push('sessoes_falhadas', dates.join('+'), frasesSessoesFalhadas(trocas, semRegisto));
   }
 

@@ -17,7 +17,7 @@
 import { goalsInterventionKind } from '@formulas/goalsIntervention.ts';
 import { runLoadInterventionKind } from '@formulas/runLoadAlert.ts';
 import { evaluateCheckinAlarms } from '@formulas/checkinAlarms.ts';
-import { checkinOptions, readCheckinReason } from './checkin';
+import { checkinOptions, checkinReasonNow, readCheckinReason } from './checkin';
 import { carolDay, lisbonParts, raceToday } from './carolWelcome';
 import { eventoDaVida } from './carolVida';
 
@@ -56,30 +56,56 @@ function quandoFoi(data, hoje, depoisDaMeiaNoite) {
   return { dias, quando: `a ${dia}`, de: `de ${dia}` };
 }
 
+/* Até quantos dias para trás se relê um check-in para saber o que ele
+   disse. O store só carrega 119 dias (store/index.js), e o sono mau (G4)
+   precisa dos 7 dias antes: um motivo de junho, relido em setembro sem
+   esses dias, dava "Vi que corrigiste o check-in" a quem não corrigiu nada
+   (revisão de 2026-09-26). Dentro de 30 dias, os check-ins estão lá todos. */
+const HORIZONTE_DIAS = 30;
+
+const ehDor = (a) => a.code === 'G2' || a.code === 'G5';
+const ehSono = (a) => a.code === 'G4';
+/** O check-in de hoje diz "Sem dor" (dor 0, dita — não em branco). */
+const semDorHoje = (checkins, hoje) => {
+  const c = (checkins || []).find((x) => String(x?.date || '').slice(0, 10) === hoje);
+  return !!c && c.pain !== null && c.pain !== undefined && c.pain !== '' && Number(c.pain) === 0;
+};
+
 /** Um motivo antigo ("Check-in de hoje:", sem data) foi escrito com as frases
  *  que evaluateCheckinAlarms dá para o dia do check-in. O dia mais recente
  *  cujos alarmes, com os check-ins de agora, estão escritos no motivo é um
  *  dia em que o atleta lhe contou exatamente isso — dizê-lo é verdade. Sem
- *  check-ins carregados, ou com o check-in já editado, não se sabe: null. */
-function dataDoMotivoAntigo(reason, checkins, hoje, opts) {
+ *  check-ins carregados, ou com o check-in já editado, não se sabe: null.
+ *
+ *  Revisão de 2026-09-26: procura-se o dia do alarme de que ela vai falar
+ *  (a dor primeiro, depois o sono), e não o de um alarme qualquer. A frase
+ *  do sono ("Sono mau em 3 dos últimos 4 check-ins…") repete-se tal e qual
+ *  no dia seguinte quando a janela de 7 dias perde um dia mau e ganha
+ *  outro: o motivo de terça (dor e sono) era lido como de quarta, e ela
+ *  dizia "A dor que me contaste hoje" a quem na quarta não tinha dor. */
+function dataDoMotivoAntigo(reason, motivo, checkins, hoje, opts) {
   const datas = [...new Set((checkins || []).map((c) => String(c?.date || '').slice(0, 10)))]
-    .filter((d) => d && d <= hoje && dayIndex(hoje) - dayIndex(d) <= 30)
+    .filter((d) => d && d <= hoje && dayIndex(hoje) - dayIndex(d) <= HORIZONTE_DIAS)
     .sort()
     .reverse();
-  return datas.find((d) => evaluateCheckinAlarms(checkins, d, opts).some((a) => reason.includes(a.reason))) || null;
+  const procurar = (qual) => datas.find((d) => evaluateCheckinAlarms(checkins, d, opts)
+    .some((a) => qual(a) && reason.includes(a.reason))) || null;
+  return (motivo.dor && procurar(ehDor)) || (motivo.sono && procurar(ehSono)) || procurar(() => true);
 }
 
-/** O check-in desse dia foi corrigido e já não dá o alarme que abriu a
- *  intervenção (uma dor 5 posta por engano e corrigida para 0): o cartão diz
- *  "Sem dor" e o popup não pode continuar preocupado. Só com o check-in
- *  desse dia carregado — sem ele, não se sabe, e não se diz. */
-function checkinCorrigido(motivo, data, checkins, opts) {
-  if (!data || !(motivo.dor || motivo.sono)) return false;
-  if (!(checkins || []).some((c) => String(c?.date || '').slice(0, 10) === data)) return false;
-  const agora = evaluateCheckinAlarms(checkins, data, opts);
-  const aindaDor = agora.some((a) => a.code === 'G2' || a.code === 'G5');
-  const aindaSono = agora.some((a) => a.code === 'G4');
-  return !(motivo.dor && aindaDor) && !(motivo.sono && aindaSono);
+/** O que ainda é verdade no check-in desse dia, visto agora: o atleta pode
+ *  ter corrigido o check-in depois de a intervenção abrir (uma dor 5 posta
+ *  por engano e corrigida para 0), e o cartão diz então "Sem dor". Com o
+ *  check-in desse dia carregado, ela só fala do alarme que ainda se
+ *  verifica — com a dor corrigida e as noites mal dormidas por corrigir,
+ *  fala das noites (revisão de 2026-09-26: antes continuava a dizer "A dor
+ *  que me contaste"); sem nenhum, a intervenção fica por um check-in
+ *  corrigido. A régua é a de checkin.js (checkinReasonNow). Sem o check-in
+ *  desse dia, ou para lá de HORIZONTE_DIAS, não se sabe: fica o que o
+ *  motivo diz. */
+function oQueAindaHa(motivo, data, checkins, profile, hoje) {
+  if (!data || dayIndex(hoje) - dayIndex(data) > HORIZONTE_DIAS) return { dor: motivo.dor, sono: motivo.sono, corrigido: false };
+  return checkinReasonNow(motivo, checkins, data, profile);
 }
 
 /** A prova de hoje ainda está por partir? A mesma régua das boas-vindas
@@ -92,19 +118,38 @@ function antesDaPartida(prova, hour, minute) {
   return hh * 60 + mm > hour * 60 + minute;
 }
 
+/* Até que horas o treino por fazer ainda é "o treino de hoje", à frente
+   (revisão de 2026-09-26). O cartão da Carol, no mesmo Início
+   (carolCardLines.linhaDoTreinoDeHoje), deixa de o dar por fazer às 19h:
+   daí em diante diz o que falta registar, e com a dor do check-in diz "Não
+   vi o treino de hoje registado, e com a dor de que me falaste faz
+   sentido." — com o popup, às 19h30, ainda a dizer "Antes de treinares
+   hoje". Das 19h em diante, a frase que serve com o treino feito, a meio ou
+   deixado para amanhã: antes do próximo. */
+const FIM_DO_TREINO_DE_HOJE = 19;
+
 /** Quando ela quer falar, pelo que o dia é. Sem o plano (`dia` null), a
- *  frase que é verdade em qualquer dia. Às 23h o treino que ficou por fazer
- *  já não é "hoje", e depois da meia-noite "amanhã" não se diz. */
-function quandoFalar(dia, { hoje, hour, minute, raceEvents, depoisDaMeiaNoite }) {
+ *  frase que é verdade em qualquer dia. Das 19h, o treino que ficou por
+ *  fazer já não é "hoje" (FIM_DO_TREINO_DE_HOJE); das 23h, o dia sem treino
+ *  já não é "a altura certa para falarmos"; depois da meia-noite "amanhã"
+ *  não se diz. `hojeDito`: a frase de antes já disse "hoje" ("A dor que me
+ *  contaste hoje…"), e esta não o repete — "hoje… Antes de treinares hoje"
+ *  eram duas frases coladas, não uma pessoa a falar (revisão de 2026-09-26;
+ *  o cartão da Carol já evita o mesmo, carolCardLines.js). */
+function quandoFalar(dia, { hoje, hour, minute, raceEvents, depoisDaMeiaNoite, hojeDito }) {
   const tarde = hour >= 23 || depoisDaMeiaNoite;
   // A prova de hoje conta mesmo sem o plano: vem da agenda.
   const prova = dia ? (dia.tipo === 'prova' ? dia.prova : null) : raceToday(raceEvents, hoje);
   if (prova && antesDaPartida(prova, hour, minute)) return 'Quero falar contigo antes da partida.';
-  if (dia?.tipo === 'treino' && !tarde) return 'Antes de treinares hoje, quero falar contigo.';
+  if (dia?.tipo === 'treino' && !depoisDaMeiaNoite && hour < FIM_DO_TREINO_DE_HOJE) {
+    return hojeDito ? 'Antes de treinares, quero falar contigo.' : 'Antes de treinares hoje, quero falar contigo.';
+  }
   if (!depoisDaMeiaNoite && raceToday(raceEvents, addDays(hoje, 1))) {
     return 'Antes da prova de amanhã, quero falar contigo.';
   }
-  if ((dia?.tipo === 'descanso' || dia?.tipo === 'semTreino') && !tarde) return 'Hoje não há treino: é a altura certa para falarmos.';
+  if ((dia?.tipo === 'descanso' || dia?.tipo === 'semTreino') && !tarde) {
+    return hojeDito ? 'Como não tens treino, é a altura certa para falarmos.' : 'Hoje não há treino: é a altura certa para falarmos.';
+  }
   return 'Quero falar contigo antes do próximo treino.';
 }
 
@@ -121,29 +166,47 @@ function linhaDoCheckin(motivo, reason, ctx) {
   const { date: hoje, hour, minute } = lisbonParts(now);
   const depoisDaMeiaNoite = hour < 5;
   const opts = checkinOptions(profile);
-  const data = motivo.date || dataDoMotivoAntigo(reason, dailyCheckins, hoje, opts);
+  const data = motivo.date || dataDoMotivoAntigo(reason, motivo, dailyCheckins, hoje, opts);
   const q = quandoFoi(data, hoje, depoisDaMeiaNoite);
+  const ainda = oQueAindaHa(motivo, data, dailyCheckins, profile, hoje);
 
-  if (motivo.date && checkinCorrigido(motivo, motivo.date, dailyCheckins, opts)) {
+  // Só com a data no motivo: num motivo antigo, o dia só se encontra por um
+  // alarme que ainda lá está.
+  if (motivo.date && ainda.corrigido) {
     return `Vi que corrigiste o check-in${q?.de ? ` ${q.de}` : ''}. Quero confirmar contigo que está tudo bem.`;
   }
 
   const vida = pesoDaVida(eventoDaVida(coachNotes, hoje));
   let preocupacao;
-  if (motivo.dor) {
+  let hojeDito = false;
+  if (ainda.dor && q?.dias >= 1 && !depoisDaMeiaNoite && semDorHoje(dailyCheckins, hoje)) {
+    /* A dor foi noutro dia, e o check-in de hoje, no mesmo Início, diz "Sem
+       dor" — com a resposta dela por baixo ("Tudo dentro do normal: é
+       seguir."). Continuar com "A dor que me contaste ontem preocupa-me"
+       era não ter lido o que ele lhe disse hoje (revisão de 2026-09-26). A
+       conversa continua de pé: uma dor que vai e vem também se vê. */
+    hojeDito = true;
+    const rep = motivo.repetida ? ', pelo segundo dia seguido,' : '';
+    // Com a cirurgia pelo meio, duas frases: numa só eram quatro orações.
+    preocupacao = vida
+      ? `A dor que me contaste ${q.quando}${rep} preocupou-me${vida}. Hoje dizes-me que já passou.`
+      : `A dor que me contaste ${q.quando}${rep} preocupou-me, e hoje dizes-me que já passou.`;
+  } else if (ainda.dor) {
     const quando = q?.quando ? ` ${q.quando}` : ' no check-in';
+    hojeDito = q?.quando === 'hoje';
     preocupacao = `A dor que me contaste${quando}${motivo.repetida ? ', pelo segundo dia seguido,' : ''} preocupa-me${vida}.`;
-  } else if (motivo.sono) {
+  } else if (ainda.sono) {
     // "Tens contado" só enquanto o check-in é o de agora; depois, "contaste".
     const recente = q && (q.quando === 'hoje' || (depoisDaMeiaNoite && q.dias <= 1));
     preocupacao = `As noites mal dormidas que me ${recente ? 'tens contado' : 'contaste'} preocupam-me${vida}.`;
   } else {
+    hojeDito = q?.de === 'de hoje';
     preocupacao = `O teu check-in${q?.de ? ` ${q.de}` : ''} preocupou-me${vida}.`;
   }
 
   // Sem os itens do plano, não se sabe o que o dia é: a frase de qualquer dia.
   const dia = Array.isArray(coachPlanItems) ? carolDay(hoje, { coachPlans, coachPlanItems, raceEvents }) : null;
-  return `${preocupacao} ${quandoFalar(dia, { hoje, hour, minute, raceEvents, depoisDaMeiaNoite })}`;
+  return `${preocupacao} ${quandoFalar(dia, { hoje, hour, minute, raceEvents, depoisDaMeiaNoite, hojeDito })}`;
 }
 
 /**

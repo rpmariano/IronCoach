@@ -84,6 +84,24 @@ export function readCheckinReason(reason) {
   };
 }
 
+/** O que o motivo de um check-in (readCheckinReason) ainda diz, relido nos
+ *  check-ins de agora (revisão de 2026-09-26): o atleta pode ter corrigido o
+ *  check-in depois de a intervenção abrir — uma dor 5 posta por engano e
+ *  corrigida para 0. Devolve { dor, sono, corrigido }: dor e sono, o alarme
+ *  do motivo que ainda se verifica nesse dia; corrigido, o motivo tinha dor
+ *  ou sono e já nenhum se verifica. Sem o check-in desse dia na lista, não se
+ *  sabe: fica o que o motivo diz. Vive aqui, ao lado de quem escreve e lê o
+ *  motivo, para o popup (carolTopics.js) e quem fechar a intervenção
+ *  decidirem pela mesma régua. */
+export function checkinReasonNow(motivo, checkins, date, profile) {
+  const temODia = !!date && (checkins || []).some((c) => String(c?.date || '').slice(0, 10) === date);
+  if (!motivo || !temODia) return { dor: !!motivo?.dor, sono: !!motivo?.sono, corrigido: false };
+  const agora = evaluateCheckinAlarms(checkins, date, checkinOptions(profile));
+  const dor = motivo.dor && agora.some((a) => a.code === 'G2' || a.code === 'G5');
+  const sono = motivo.sono && agora.some((a) => a.code === 'G4');
+  return { dor, sono, corrigido: (motivo.dor || motivo.sono) && !dor && !sono };
+}
+
 /** Substitui (ou acrescenta) o check-in desse dia na lista, por ordem de data. */
 export function mergeCheckin(checkins, row) {
   const rest = (checkins || []).filter((c) => c?.date !== row.date);

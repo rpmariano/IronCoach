@@ -268,6 +268,56 @@ describe('detectPlanDivergence — as sessões falhadas, ditas por quem viu o ca
     expect(r.signature).toContain('sessoes_falhadas:2026-09-06+2026-09-08+2026-09-10+2026-09-12');
   });
 
+  /* Revisão de 2026-09-26. No código anterior: o registo ia para a primeira
+     falhada da lista, e não para a mais perto; um dia com corrida e ginásio,
+     só um explicado, aparecia dos dois lados da frase; e os registos de
+     tipos diferentes eram «treinos a 9 e 11 set». */
+  it('cada registo explica a falhada mais perto dele, não a primeira da lista', () => {
+    // Treinos a 8 e 9, uma corrida a 10: é o de 9 feito um dia depois, não o de 8 feito dois.
+    const r = detect({ coachPlanItems: [item({ id: 'a', planned_date: '2026-09-08' }), item({ id: 'b', planned_date: '2026-09-09' })], runs: [corrida('r10', '2026-09-10')] });
+    expect(falhadas(r)).toBe('Não vi o treino de 9 set nesse dia, mas vi uma corrida a 10 set. Trocaste os dias? E do treino de 8 set não vi registo nenhum.');
+  });
+
+  it('corrida e ginásio no mesmo dia, só um explicado: o outro diz-se pelo tipo — dia a dia, e dos dois lados da meia-noite', () => {
+    const items = [item({ id: 'c8', planned_date: '2026-09-08' }), item({ id: 'g8', planned_date: '2026-09-08', kind: 'ginasio' })];
+    const ginasio7 = [{ id: 's7', date: '2026-09-07' }];
+    const noInstante = (instante) => falhadas(detect({ today: lisbonParts(new Date(instante)).date, coachPlanItems: items, gymSessions: ginasio7 }));
+    const frase = 'Não vi o treino de 8 set nesse dia, mas vi uma sessão de ginásio a 7 set. Trocaste os dias? E da corrida de 8 set não vi registo nenhum.';
+    // Segunda, 8, às 23:59: os dois ainda são de hoje.
+    expect(noInstante('2026-09-08T22:59:00Z')).toBeNull();
+    // Terça, 00:01, e cada dia até ao último da janela de 7 dias: a mesma frase.
+    expect(noInstante('2026-09-08T23:01:00Z')).toBe(frase);
+    for (let d = 10; d <= 15; d += 1) expect(noInstante(`2026-09-${d}T10:00:00Z`), `dia ${d}`).toBe(frase);
+    // Terça seguinte, 00:01: o dia 8 saiu da janela.
+    expect(noInstante('2026-09-15T23:01:00Z')).toBeNull();
+    expectCarolVoice(frase);
+  });
+
+  it('uma corrida e uma sessão de ginásio vistas: cada uma pelo que é', () => {
+    const r = detect({
+      coachPlanItems: [item({ id: 'c8', planned_date: '2026-09-08' }), item({ id: 'g10', planned_date: '2026-09-10', kind: 'ginasio' })],
+      runs: [corrida('r9', '2026-09-09')],
+      gymSessions: [{ id: 's11', date: '2026-09-11' }],
+    });
+    expect(falhadas(r)).toBe('Não vi os treinos de 8 e 10 set nesses dias, mas vi uma corrida a 9 set e uma sessão de ginásio a 11 set. Trocaste os dias?');
+  });
+
+  it('com muitos dias por explicar, o resto cabe em «dos outros»: a frase nunca passa dos 200 caracteres', () => {
+    const r = detect({
+      coachPlanItems: [
+        item({ id: 'c6', planned_date: '2026-09-06' }), item({ id: 'g6', planned_date: '2026-09-06', kind: 'ginasio' }),
+        item({ id: 'c9', planned_date: '2026-09-09' }), item({ id: 'g9', planned_date: '2026-09-09', kind: 'ginasio' }),
+        item({ id: 'g10', planned_date: '2026-09-10', kind: 'ginasio' }),
+      ],
+      runs: [corrida('r7', '2026-09-07')],
+      gymSessions: [{ id: 's12', date: '2026-09-12' }],
+    });
+    const t = falhadas(r);
+    expect(t).toBe('Não vi os treinos de 6 e 10 set nesses dias, mas vi uma corrida a 7 set e uma sessão de ginásio a 12 set. Trocaste os dias? E dos outros não vi registo nenhum.');
+    expect(t.length).toBeLessThanOrEqual(200);
+    expectCarolVoice(t);
+  });
+
   it('os dias dizem-se com o mês uma vez por mês', () => {
     expect(listaDias(['2026-09-14', '2026-09-12'])).toBe('12 e 14 set');
     expect(listaDias(['2026-09-29', '2026-09-30', '2026-10-02'])).toBe('29, 30 set e 2 out');

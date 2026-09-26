@@ -3,7 +3,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
-import PlanoScreen, { convitePlanear } from './PlanoScreen';
+import PlanoScreen, { convitePlanear, pedidoPlanear, propostaNoChat } from './PlanoScreen';
 import { expectCarolVoice } from '../../test/carolVoice';
 
 /* "O plano" — o ecrã cheio que herdou o trabalho do carrossel que vivia
@@ -182,14 +182,15 @@ describe('PlanoScreen', () => {
     expect(screen.getByTestId(`plano-pedir-${amanha}`)).toHaveTextContent('Vamos planear estes dias');
     expect(screen.queryByTestId(`plano-pedir-${depois}`)).not.toBeInTheDocument();
 
-    // Ela fica a saber que dias são e que foi ele que os pediu: abre a
-    // propor, e não a perguntar o que ele quer mudar.
+    // O pedido entra no chat como dele, com os dias (o `say`): ela propõe o
+    // plano desses dias, e não abre a falar de um desvio que a app não
+    // detetou (revisão de 2026-09-26 — era o canal plan_divergence).
     fireEvent.click(screen.getByTestId(`plano-pedir-${amanha}`));
     expect(setCoachIntent).toHaveBeenCalledTimes(1);
     const intent = setCoachIntent.mock.calls[0][0];
-    expect(intent.kind).toBe('adapt_plan');
-    expect(intent.divergence).toHaveLength(1);
-    expect(intent.divergence[0]).toMatch(/^Os dias de .+ a .+ ainda não têm treino escrito, e o atleta pediu-te o plano destes dias\.$/);
+    expect(intent.kind).toBe('say');
+    expect(intent.divergence).toBeUndefined();
+    expect(intent.text).toMatch(/^Vamos planear os dias de \d{1,2} de [a-zç]+ a \d{1,2} de [a-zç]+\.$/);
     expect(setActiveTab).toHaveBeenCalledWith('coach');
   });
 
@@ -199,6 +200,13 @@ describe('PlanoScreen', () => {
     expect(convitePlanear(3)).toBe('Vamos planear estes dias');
   });
 
+  // O que entra no chat, como dele, quando toca no convite (revisão de 2026-09-26).
+  it('o pedido que entra no chat diz os dias por extenso, no singular e no plural', () => {
+    expect(pedidoPlanear('2026-09-30', '2026-09-30')).toBe('Vamos planear o dia 30 de setembro.');
+    expect(pedidoPlanear('2026-09-30')).toBe('Vamos planear o dia 30 de setembro.');
+    expect(pedidoPlanear('2026-09-30', '2026-10-17')).toBe('Vamos planear os dias de 30 de setembro a 17 de outubro.');
+  });
+
   it('um só dia por planear: o convite no singular', () => {
     const amanha = addDaysISO(today, 1);
     const curto = { id: 'p1', status: 'aceite', race_id: 'r1', period_start: today, period_end: amanha };
@@ -206,7 +214,7 @@ describe('PlanoScreen', () => {
     abrirSemanaDe(amanha);
     expect(screen.getByTestId(`plano-pedir-${amanha}`)).toHaveTextContent('Vamos planear este dia');
     fireEvent.click(screen.getByTestId(`plano-pedir-${amanha}`));
-    expect(setCoachIntent.mock.calls[0][0].divergence[0]).toMatch(/^O dia .+ ainda não tem treino escrito, e o atleta pediu-te o plano deste dia\.$/);
+    expect(setCoachIntent.mock.calls[0][0]).toEqual({ kind: 'say', text: expect.stringMatching(/^Vamos planear o dia \d{1,2} de [a-zç]+\.$/) });
   });
 
   /* A quarta deixada livre de propósito a meio do plano: ela não se oferece
@@ -298,6 +306,9 @@ describe('PlanoScreen', () => {
       expect(sabado).toHaveTextContent('Por planear');
       expect(sabado).toHaveTextContent('Hoje');
       expect(screen.getByTestId('plano-pedir-2026-09-26')).toHaveTextContent('Vamos planear estes dias');
+      // O que entra no chat quando ele toca: o pedido dele, com os dias.
+      fireEvent.click(screen.getByTestId('plano-pedir-2026-09-26'));
+      expect(setCoachIntent).toHaveBeenCalledWith({ kind: 'say', text: 'Vamos planear os dias de 26 de setembro a 11 de outubro.' });
     });
 
     it('às 00:01 de domingo, sábado já passou: "Sem treino", e o convite passa para domingo', () => {
@@ -308,6 +319,9 @@ describe('PlanoScreen', () => {
       expect(screen.queryByTestId('plano-pedir-2026-09-26')).not.toBeInTheDocument();
       expect(screen.getByTestId('plano-dia-2026-09-27')).toHaveTextContent('Hoje');
       expect(screen.getByTestId('plano-pedir-2026-09-27')).toBeInTheDocument();
+      // E o pedido começa em domingo: sábado já não se planeia.
+      fireEvent.click(screen.getByTestId('plano-pedir-2026-09-27'));
+      expect(setCoachIntent).toHaveBeenCalledWith({ kind: 'say', text: 'Vamos planear os dias de 27 de setembro a 11 de outubro.' });
     });
 
     /* Dias seguidos, ao meio-dia de Lisboa: o convite está sempre no dia de
@@ -327,6 +341,65 @@ describe('PlanoScreen', () => {
         cleanup();
       });
     });
+
+    /* A tranche seguinte já escrita e por decidir no chat (revisão de
+       2026-09-26): é o estado normal de um plano de prova entre a proposta e
+       o aceite. O convite pedia-lhe que planeasse o que ela tinha acabado de
+       planear, e o motivo que seguia fazia-a escrever outra proposta por cima.
+       Aponta para a que lá está — dia a dia, e dos dois lados da meia-noite. */
+    it('com a tranche seguinte por decidir no chat, o convite aponta para a proposta', () => {
+      const proposta = { id: 'pp', status: 'proposto', race_id: 'porto', supersedes_plan_id: 'm', period_start: '2026-09-26', period_end: '2026-10-11' };
+      const longo = { id: 'pl', plan_id: 'pp', planned_date: '2026-09-27', kind: 'corrida', training_type: 'longo', target_distance_km: 16, status: 'pendente' };
+      [
+        ['2026-09-26T22:59:00Z', '2026-09-26'], // 23:59 de sábado em Lisboa
+        ['2026-09-26T23:01:00Z', '2026-09-27'], // 00:01 de domingo
+        ['2026-09-28T12:00:00+01:00', '2026-09-28'],
+        ['2026-09-29T12:00:00+01:00', '2026-09-29'],
+        ['2026-09-30T12:00:00+01:00', '2026-09-30'],
+      ].forEach(([instante, hojeLx]) => {
+        vi.setSystemTime(new Date(instante));
+        setup({ coachPlans: [maratona, proposta], coachPlanItems: [sexta, longo] });
+        abrirSemanaDe(hojeLx);
+        expect(screen.getByTestId(`plano-dia-${hojeLx}`)).toHaveTextContent('Por planear');
+        expect(screen.queryAllByTestId(/^plano-pedir-/)).toHaveLength(0);
+        expect(screen.getAllByTestId(/^plano-proposta-/).map((b) => b.dataset.testid)).toEqual([`plano-proposta-${hojeLx}`]);
+        const link = screen.getByTestId(`plano-proposta-${hojeLx}`);
+        expect(link).toHaveTextContent('A proposta está no chat');
+        expectCarolVoice(link.textContent);
+        // Leva ao chat, onde a proposta está, sem lhe pedir outro plano.
+        fireEvent.click(link);
+        expect(setCoachIntent).not.toHaveBeenCalled();
+        expect(setActiveTab).toHaveBeenCalledWith('coach');
+        cleanup();
+      });
+    });
+
+    /* O último dia escrito conta-se pelo plano que cobre o dia (revisão de
+       2026-09-26): um plano aceite mais à frente, noutro bloco, fazia a conta
+       de todos juntos passar para lá da prova, e o convite desaparecia. */
+    it('um plano aceite mais à frente, noutro bloco, não apaga o convite', () => {
+      const recuperacao = { id: 'rec', status: 'aceite', race_id: null, period_start: '2026-10-19', period_end: '2026-10-25' };
+      const rodagem = { id: 'rr', plan_id: 'rec', planned_date: '2026-10-20', kind: 'corrida', training_type: 'regenerativo', target_distance_km: 6, status: 'pendente' };
+      vi.setSystemTime(new Date('2026-09-26T12:00:00+01:00'));
+      setup({ coachPlans: [maratona, recuperacao], coachPlanItems: [sexta, rodagem] });
+      expect(screen.getByTestId('plano-dia-2026-09-26')).toHaveTextContent('Por planear');
+      expect(screen.getByTestId('plano-pedir-2026-09-26')).toHaveTextContent('Vamos planear estes dias');
+    });
+  });
+
+  // As sugestões só de refeições não planeiam treino nenhum: não tiram o convite.
+  it('só uma proposta de treino que toque nos dias conta como "a proposta está no chat"', () => {
+    const proposta = { id: 'pp', status: 'proposto', period_start: '2026-09-26', period_end: '2026-10-11' };
+    const longo = { id: 'a', plan_id: 'pp', planned_date: '2026-09-27', kind: 'corrida', training_type: 'longo', status: 'pendente' };
+    const jantar = { id: 'b', plan_id: 'pp', planned_date: '2026-09-27', kind: 'descanso', categories: ['so-refeicoes'], meal_suggestion: 'Jantar: arroz.', status: 'pendente' };
+    expect(propostaNoChat([proposta], [longo, jantar], '2026-09-30', '2026-10-10')).toBe(true);
+    expect(propostaNoChat([proposta], [jantar], '2026-09-30', '2026-10-10')).toBe(false);
+    // Sem os itens carregados, na dúvida, conta.
+    expect(propostaNoChat([proposta], [], '2026-09-30', '2026-10-10')).toBe(true);
+    // Fora dos dias do bloco, ou já decidida, não conta.
+    expect(propostaNoChat([proposta], [longo], '2026-10-12', '2026-10-17')).toBe(false);
+    expect(propostaNoChat([{ ...proposta, status: 'recusado' }], [longo], '2026-09-30', '2026-10-10')).toBe(false);
+    expect(propostaNoChat([{ ...proposta, status: 'aceite' }], [longo], '2026-09-30', '2026-10-10')).toBe(false);
   });
 
   it('sem plano aceite não há lista nenhuma — há o convite a pedir um', () => {

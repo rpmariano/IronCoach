@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canTrackCycle, checkinOptions, interventionReasonFor, mergeCheckin, newCheckinAlarms, readCheckinReason, scaleLabel, summarizeCheckin, todaysCheckin } from './checkin';
+import { canTrackCycle, checkinOptions, checkinReasonNow, interventionReasonFor, mergeCheckin, newCheckinAlarms, readCheckinReason, scaleLabel, summarizeCheckin, todaysCheckin } from './checkin';
 
 const TODAY = '2026-09-18';
 
@@ -66,6 +66,26 @@ describe('checkin — quando um check-in chama a Carol', () => {
       .toEqual({ date: null, dor: false, sono: true, repetida: false });
     expect(readCheckinReason('[carga] Carga de corrida: 30 km nos últimos 7 dias.')).toBeNull();
     expect(readCheckinReason(null)).toBeNull();
+  });
+
+  /* Revisão de 2026-09-26: a régua do check-in corrigido, num sítio só —
+     o popup (carolTopics.js) lê-a, e é a que o store deve usar para fechar a
+     intervenção de um check-in corrigido. */
+  it('checkinReasonNow: o alarme do motivo que ainda se verifica, e o check-in corrigido', () => {
+    const dias = [
+      { date: '2026-09-19', sleep: 2, energy: 2, stress: 3 },
+      { date: '2026-09-20', sleep: 1, energy: 2, stress: 3 },
+    ];
+    const motivo = readCheckinReason('Check-in de 2026-09-22: Dor 5/10 (joelho). Sono mau em 3 dos últimos 3 check-ins, com energia em baixo.');
+    const dia = (extra) => [...dias, { date: '2026-09-22', sleep: 2, energy: 2, stress: 3, ...extra }];
+    expect(checkinReasonNow(motivo, dia({ pain: 5 }), '2026-09-22', {})).toEqual({ dor: true, sono: true, corrigido: false });
+    // A dor corrigida para 0, as noites por corrigir: fica o sono.
+    expect(checkinReasonNow(motivo, dia({ pain: 0 }), '2026-09-22', {})).toEqual({ dor: false, sono: true, corrigido: false });
+    // Os dois corrigidos: o check-in foi corrigido.
+    expect(checkinReasonNow(motivo, dia({ pain: 0, sleep: 4, energy: 4 }), '2026-09-22', {}).corrigido).toBe(true);
+    // Sem o check-in desse dia, não se sabe: fica o que o motivo diz.
+    expect(checkinReasonNow(motivo, dias, '2026-09-22', {})).toEqual({ dor: true, sono: true, corrigido: false });
+    expect(checkinReasonNow(null, dias, '2026-09-22', {})).toEqual({ dor: false, sono: false, corrigido: false });
   });
 });
 
