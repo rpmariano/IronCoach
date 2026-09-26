@@ -275,7 +275,7 @@ outras provas). Sem inscrição, `groupRaces` dá a saída de hoje.
 voltar".
 
 **Inscrito:** bloco TROFÉU na cauda do prompt (nunca no prefixo estável),
-via `fetchSeriesBlock` (null em erro), no chat, no cartão diário e no
+via `fetchSeriesBlock` (null num erro das leituras de que os papéis dependem; resultados, épocas anteriores e notas ficam vazios), no chat, no cartão diário e no
 `analyze-run`. Traz o tipo de inscrição, o objetivo da época, as próximas
 jornadas com decisão e intenção, o contador (só com prémio), a faixa de
 pontos e, só com inscrição ativa, uma linha por época anterior.

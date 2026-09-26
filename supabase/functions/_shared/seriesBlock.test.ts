@@ -631,10 +631,17 @@ Deno.test("resultados por ler: com pontos conhecidos a Carol cala-os — e não 
   assertEquals(line("K", { results: [], resultsUnknown: true }), line("K", {}));
 });
 
-Deno.test("notas por ler: a pergunta do treino com o clube não se faz desta vez", () => {
-  const keys = (extra: Partial<SeriesBlockInput>) => buildSeriesBlock(personaInput(persona("J"), "chat", extra))!.questions.map((q) => q.key);
-  assertEquals(keys({}), ["premio", "clube", "principais"]);
-  assertEquals(keys({ notes: [], notesUnknown: true }), ["premio", "principais"]);
+Deno.test("notas por ler: a pergunta do treino com o clube faz-se na mesma (calá-la no 1.º mapa perdia-a para a edição)", async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const failed = (await fetchSeriesBlock(fakeSb({ ...EX_TABLES, coach_notes: { error: { code: "XX000", message: "falha" } } }), "u-f", "2026-11-20", { channel: "chat" }))!;
+    const ok = (await fetchSeriesBlock(fakeSb(EX_TABLES), "u-f", "2026-11-20", { channel: "chat" }))!;
+    assertEquals(failed.questions.map((q) => q.key), ok.questions.map((q) => q.key));
+    assert(failed.questions.some((q) => q.key === "clube"));
+  } finally {
+    console.warn = warn;
+  }
 });
 
 Deno.test("corrida registada com atraso: as contas fazem-se no dia real, e a jornada da corrida fica dita à parte", () => {
@@ -644,14 +651,28 @@ Deno.test("corrida registada com atraso: as contas fazem-se no dia real, e a jor
   // Os papéis e a lista são os do dia real — nenhuma jornada já passada aparece como "próxima".
   assertEquals(late.roles, sameDay.roles);
   assertEquals(late.intentByRaceId, sameDay.intentByRaceId);
-  const own = late.text.split("\n").filter((l) => l.startsWith("Esta corrida"));
-  assertEquals(own.length, 1);
-  assertStringIncludes(own[0], "Esta corrida (10 jan) foi a Jornada");
-  assertStringIncludes(own[0], "— já passou; a seguinte é a primeira da lista abaixo.");
-  assertEquals(late.text.split("\n").filter((l) => !l.startsWith("Esta corrida")).join("\n"), sameDay.text);
+  const own = late.text.split("\n").filter((l) => l.startsWith("Se esta corrida ("));
+  assertEquals(own, ["Se esta corrida (10 jan) foi a Jornada 2 · Prova 2: já passou; a seguinte é a primeira da lista abaixo."]);
+  assertEquals(late.text.split("\n").filter((l) => !l.startsWith("Se esta corrida (")).join("\n"), sameDay.text);
+  // Uma jornada a que ele disse "não vai" (a J3, 24/01) não é a desta corrida: sem linha.
+  const naoVai = buildSeriesBlock(personaInput(k, "run", { todayISO: "2027-01-24", statusTodayISO: k.today }))!;
+  assertEquals(naoVai.text, sameDay.text);
   // No chat e no cartão diário o dia dado é o real: nada muda.
   assertEquals(buildSeriesBlock(personaInput(k, "chat", { statusTodayISO: "2027-05-01" }))!.text, buildSeriesBlock(personaInput(k, "chat"))!.text);
   // Numa corrida sem jornada nesse dia, não há linha à parte.
   const noRound = buildSeriesBlock(personaInput(k, "run", { todayISO: "2027-01-12", statusTodayISO: k.today }))!;
   assertEquals(noRound.text, sameDay.text);
+});
+
+Deno.test("corrida atrasada da última jornada: 'era a última com data confirmada', e nada de 'calendário por publicar'", () => {
+  const k = persona("K"); // a última confirmada é a J10 (09/05); a J11 está adiada
+  const late = buildSeriesBlock(personaInput(k, "run", { todayISO: "2027-05-09", statusTodayISO: "2027-06-01" }))!;
+  const lines = late.text.split("\n");
+  assert(lines.includes("Se esta corrida (9 mai) foi a Jornada 10 · Prova 10: já passou; era a última com data confirmada."));
+  assert(lines.includes("Não há mais jornadas com data confirmada daqui para a frente. Não inventes datas nem calcules papéis."));
+  assertEquals(late.text.includes("Calendário por publicar"), false);
+  assertEquals(late.text.includes("a primeira da lista abaixo"), false);
+  // Sem nenhuma jornada confirmada, continua a ser "por publicar".
+  const semCal = buildSeriesBlock(personaInput(k, "chat", { rounds: personaInput(k).rounds!.map((r) => ({ ...r, date_status: "provavel" })) }))!;
+  assertStringIncludes(semCal.text, "Calendário por publicar: ainda não há jornadas com data confirmada.");
 });

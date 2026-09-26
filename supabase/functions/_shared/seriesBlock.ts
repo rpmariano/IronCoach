@@ -25,8 +25,10 @@
 // Dois tipos de função, como em carolMemory.ts:
 //   - buildSeriesBlock: texto puro a partir das linhas já lidas (todo o texto
 //     sai daqui; os testes de texto correm sobre ela);
-//   - fetchSeriesBlock: as leituras, best-effort — qualquer erro dá null, e
-//     uma tabela da M1 em falta nem sequer vai ao log.
+//   - fetchSeriesBlock: as leituras, best-effort — um erro numa leitura de que
+//     os papéis dependem dá null; uma acessória (resultados, épocas
+//     anteriores, notas) fica vazia. Uma tabela da M1 em falta nem sequer vai
+//     ao log.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -133,19 +135,19 @@ export interface SeriesSummaryEditionRow {
 }
 
 export interface SeriesBlockInput {
-  /** O dia das contas (papéis, presenças, janelas): hoje, ou o da corrida
-   *  que se comenta. */
+  /** Hoje — ou, na análise de uma corrida (canal 'run'), a data dela. É o dia
+   *  das contas (papéis, presenças, janelas), menos numa corrida registada ou
+   *  reanalisada com atraso: aí as contas fazem-se em `statusTodayISO`. */
   todayISO: string;
-  /** O dia real contra o qual se decide a inscrição (ativa, ou saiu há ≤ 30
-   *  dias). Omisso = `todayISO`; só a análise de corrida os separa. */
+  /** O dia real: decide a inscrição (ativa, ou saiu há ≤ 30 dias) e, no
+   *  canal 'run', as contas. Omisso = `todayISO`; só a análise de corrida os
+   *  separa. */
   statusTodayISO?: string | null;
   /** A leitura dos resultados confirmados falhou: sem eles não se sabe a
    *  posição de referência — a Carol não fala de pontos (e não diz que não há
    *  resultados). */
   resultsUnknown?: boolean;
-  /** A leitura das notas falhou: não se sabe se ele já disse quando treina
-   *  com o clube — a pergunta não se faz desta vez. */
-  notesUnknown?: boolean;
+
   channel: SeriesChannel;
   /** Todas as inscrições do próprio (a leitura-porteiro). */
   enrollments: SeriesEnrollmentRow[] | null | undefined;
@@ -447,14 +449,26 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
       `Inscrição: ${kind ? KIND_TEXT[kind] : "por confirmar"}. Objetivo da época: ${SEASON_GOAL_TEXT[seasonGoal] ?? SEASON_GOAL_TEXT.participar}.`,
   );
 
+  // A jornada do dia de uma corrida registada/reanalisada com atraso: só uma
+  // com data confirmada a que ele não disse que não ia — e em condicional,
+  // porque um treino nesse dia não é a jornada (revisão das correções da
+  // Fase 2).
   if (lateRunDay) {
-    const own = rounds.find((r) => r.date_status !== "cancelada" && dayOf(r.date) === lateRunDay);
+    const own = rounds.find((r) => r.date_status === "confirmada" && dayOf(r.date) === lateRunDay &&
+      participationOf.get(r.id)?.decision !== "nao_vou" && participationOf.get(r.id)?.decision !== "nao_fui");
     if (own) {
-      L.push(`Esta corrida (${dayMonth(lateRunDay)}) foi a ${roundLabel} ${own.round_no ?? "?"} · ${own.name ?? `${roundLabel} ${own.round_no ?? ""}`.trim()} — já passou; a seguinte é a primeira da lista abaixo.`);
+      const next = hasCalendar ? "a seguinte é a primeira da lista abaixo" : `era a última com data confirmada`;
+      L.push(`Se esta corrida (${dayMonth(lateRunDay)}) foi a ${roundLabel} ${own.round_no ?? "?"} · ${own.name ?? `${roundLabel} ${own.round_no ?? ""}`.trim()}: já passou; ${next}.`);
     }
   }
 
-  if (!hasCalendar) {
+  // Sem jornadas confirmadas daqui para a frente: ou o calendário ainda não
+  // saiu, ou as que tinham data já passaram (fim de época, ou as seguintes
+  // ainda sem data) — "por publicar" seria falso aí.
+  const hadCalendar = rounds.some((r) => r.date_status === "confirmada" && !!dayOf(r.date));
+  if (!hasCalendar && hadCalendar) {
+    L.push(`Não há mais ${ls} com data confirmada daqui para a frente. Não inventes datas nem calcules papéis.`);
+  } else if (!hasCalendar) {
     L.push(`Calendário por publicar: ainda não há ${ls} com data confirmada. Não inventes datas nem calcules papéis; ajuda no que já se decide (as provas principais da época, a base, os dias de treino).`);
   } else {
     L.push(`Próximas ${ls} (o papel proposto sai das contas da app — é uma sugestão; ele decide):`);
@@ -541,7 +555,7 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
   const questions: CupQuestion[] = [];
   if (input.channel === "chat") {
     if ((kind === "clube_elegivel" || kind === "individual_elegivel") && seasonGoal === "participar") questions.push({ key: "premio" });
-    if (kind?.startsWith("clube_") && !input.notesUnknown && !(input.notes || []).some((n) => /\bclube\b/i.test(String(n?.note ?? "")))) {
+    if (kind?.startsWith("clube_") && !(input.notes || []).some((n) => /\bclube\b/i.test(String(n?.note ?? "")))) {
       questions.push({ key: "clube" });
     }
     const lastRound = rounds.map((r) => dayOf(r.date)).filter((d): d is string => !!d).sort().at(-1) ?? null;
@@ -665,14 +679,14 @@ function readFailed(error: any): null {
  *  não apaga o bloco todo — e com ele as SERIES_TOOLS: fica vazia, com um
  *  aviso (revisão pré-deploy da Fase 2). As leituras de que os papéis
  *  dependem continuam a dar null em erro. */
-// deno-lint-ignore no-explicit-any
 function optionalFailed(r: any, what: string): boolean {
   if (!r?.error) return false;
   if (!isCupSchemaMissing(r.error)) console.warn(`seriesBlock: ${what} não lido(s):`, r.error?.message ?? String(r.error));
   return true;
 }
 
-/** O bloco do atleta, ou null (sem inscrição, ou em qualquer erro). Uma só
+/** O bloco do atleta, ou null (sem inscrição, ou num erro de uma leitura de
+ *  que os papéis dependem; as acessórias ficam vazias). Uma só
  *  leitura para quem nunca se inscreveu; duas para quem saiu há ≤ 30 dias.
  *  `opts.statusTodayISO`: o dia real, quando `todayISO` não o é (a análise
  *  de uma corrida registada com atraso) — a inscrição decide-se contra ele;
@@ -730,6 +744,9 @@ export async function fetchSeriesBlock(
     }
     const resultsFailed = optionalFailed(resultsR, "resultados");
     const summariesFailed = optionalFailed(summariesR, "épocas anteriores");
+    // Notas por ler: a pergunta do clube faz-se na mesma — calá-la no 1.º
+    // mapa perdia-a para a edição inteira (as perguntas são uma vez por
+    // edição); repeti-la a quem já respondeu é o mal menor.
     const notesFailed = optionalFailed(notesR, "notas");
     if (!edR.data) return null;
 
@@ -777,7 +794,6 @@ export async function fetchSeriesBlock(
       summaryEditions: pastEdFailed ? [] : pastEdR.data || [],
       profile: profR.data ?? null,
       notes: notesFailed ? [] : notesR.data || [],
-      notesUnknown: notesFailed,
     });
   } catch (e) {
     console.warn("seriesBlock: fetchSeriesBlock falhou:", (e as Error)?.message ?? e);

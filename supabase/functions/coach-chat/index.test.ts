@@ -3424,17 +3424,26 @@ Deno.test("detectRaceFollowup: só depois da pergunta dela, e só com um sim ou 
 // Duas leituras diferentes: a lista das provas do período (then) e a
 // prova-objetivo por id (maybeSingle, filtrada pelo eq("id", ...)).
 // deno-lint-ignore no-explicit-any
-function makePlanSbWithRaces(races: any[]) {
+// `windows`: regista a janela (gte/lte) de cada consulta e respeita-a — por
+// omissão o falso devolve todas as provas, como sempre.
+// deno-lint-ignore no-explicit-any
+function makePlanSbWithRaces(races: any[], windows?: Array<{ gte: string | null; lte: string | null }>) {
   const { sb, calls } = makePlanSb();
   // deno-lint-ignore no-explicit-any
   const withDefaults = (races || []).map((r: any) => ({ race_priority: "a", status: "agendada", ...r }));
   const chain = () => {
     let byId: string | null = null;
+    const w = { gte: null as string | null, lte: null as string | null };
     const q = {
       eq: (col: string, val: string) => { if (col === "id") byId = val; return q; },
-      gte: () => q, lte: () => q,
+      gte: (_c: string, v: string) => { w.gte = v; return q; },
+      lte: (_c: string, v: string) => { w.lte = v; return q; },
       maybeSingle: () => Promise.resolve({ data: withDefaults.find((r) => r.id === byId) ?? null, error: null }),
-      then: (resolve: (v: { data: unknown; error: null }) => void) => resolve({ data: withDefaults, error: null }),
+      then: (resolve: (v: { data: unknown; error: null }) => void) => {
+        if (!windows) return resolve({ data: withDefaults, error: null });
+        windows.push({ ...w });
+        return resolve({ data: withDefaults.filter((r) => (!w.gte || r.date >= w.gte) && (!w.lte || r.date <= w.lte)), error: null });
+      },
     };
     return q;
   };
@@ -4646,6 +4655,28 @@ Deno.test("guarda de sempre aplicada a jornadas: nada de intervalos na véspera 
   assertStringIncludes(twoDays, "a 2 dia(s) da prova");
 });
 
+// Revisão das correções da Fase 2: a janela da consulta. Sem papéis é a de
+// sempre (period_end + 2); só uma jornada para atacar a alarga (+ 3) — e é
+// assim que uma atacada logo a seguir ao plano trava o último dia.
+Deno.test("guarda do plano: a janela da consulta é a de sempre sem papéis; +3 só com uma jornada para atacar", async () => {
+  const races = [{ id: "rj9", name: "Corrida do Farol", date: "2026-08-19", distance_km: 7, race_priority: "b", cup_round_id: "j9" }];
+  const plan = {
+    period_start: "2026-08-10", period_end: "2026-08-16", summary: "x",
+    items: [{ planned_date: "2026-08-16", kind: "corrida", training_type: "intervalos", target_distance_km: 8 }],
+  };
+  const cases: Array<Record<string, "controlar" | "trote" | "saltar"> | null> = [null, {}, { rj9: "controlar" }, { rj9: "trote" }, { rj9: "saltar" }];
+  for (const intents of cases) {
+    const windows: Array<{ gte: string | null; lte: string | null }> = [];
+    const r = await runProposeTrainingPlan(makePlanSbWithRaces(races, windows).sb, "user-1", plan, intents);
+    assertEquals(windows[0], { gte: "2026-08-10", lte: "2026-08-18" }, JSON.stringify(intents));
+    assertEquals(r.includes("dia(s) da prova"), false, JSON.stringify(intents));
+  }
+  const windows: Array<{ gte: string | null; lte: string | null }> = [];
+  const attacked = await runProposeTrainingPlan(makePlanSbWithRaces(races, windows).sb, "user-1", plan, { rj9: "atacar" });
+  assertEquals(windows[0], { gte: "2026-08-10", lte: "2026-08-19" });
+  assertStringIncludes(attacked, 'a 3 dia(s) da prova "Corrida do Farol" (é uma jornada para atacar: 3 dias fáceis antes)');
+});
+
 // Revisão pré-deploy da Fase 2: uma jornada para atacar pede 3 dias fáceis
 // antes (#6, getTaperDays por intenção), e a guarda do plano sabe-o; sem os
 // papéis (quem não está inscrito) é a guarda de sempre, com 2.
@@ -4677,6 +4708,10 @@ Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscriçã
   assertStringIncludes(src, "const cupMapPrompt = cupMapFirst !== null && seriesBlock?.active ? buildCupMapTurn(seriesBlock, cupMapFirst) : null;");
   assertStringIncludes(src, "raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0");
   assertStringIncludes(src, "seriesBlock?.active ? seriesBlock.intentByRaceId : null,");
+  // A guarda do plano relê os papéis se uma ferramenta da competição gravou
+  // neste pedido (revisão das correções da Fase 2).
+  assertStringIncludes(src, "planSeriesIntentsStale = planSeriesIntentsStale || (cupToolOn && !result.startsWith(\"Erro\"));");
+  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents);");
   assertStringIncludes(src, "      seriesBlock?.text ?? null,\n    );");
   // cup_updated só aparece quando é true — a resposta de quem não está inscrito fica igual.
   assertEquals(src.includes("cup_updated: cupWasUpdated"), false);

@@ -2783,11 +2783,11 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
   }
 }
 
-// deno-lint-ignore no-explicit-any
 // `seriesIntents` (Fase 2 do Troféu): o papel de cada jornada agendada, por
 // id da prova (SeriesBlock.intentByRaceId) — só com inscrição ativa. Uma
 // jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
 // por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
+// deno-lint-ignore no-explicit-any
 export async function runProposeTrainingPlan(sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
   const raceId = typeof args?.race_id === "string" && args.race_id.trim() ? args.race_id.trim() : null;
@@ -2803,9 +2803,9 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
     return `Erro: demasiados treinos no plano (máximo ${MAX_PLAN_ITEMS}).`;
   }
 
-  // As provas agendadas no período (e até 2 dias depois, para a véspera de
-  // uma prova logo a seguir ao plano): o dia da prova é a prova, e os dois
-  // dias antes são leves. Numa falha da consulta o plano segue sem esta
+  // As provas agendadas no período (e até 2 dias depois — 3 com uma jornada
+  // para atacar —, para a véspera de uma prova logo a seguir ao plano): o dia
+  // da prova é a prova, e os dias antes são leves. Numa falha da consulta o plano segue sem esta
   // guarda — é uma validação, não o registo.
   const easyDaysBefore = (r: ScheduledRace): number => {
     const intent = seriesIntents?.[r.id];
@@ -2813,7 +2813,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
       ? sharedGetTaperDays(r.distance_km, r.race_priority, null, null, intent)
       : PRE_RACE_EASY_DAYS;
   };
-  const maxEasyDays = Math.max(2, ...Object.values(seriesIntents || {}).map((i) => sharedGetTaperDays(null, "b", null, null, i)));
+  const maxEasyDays = Math.max(PRE_RACE_EASY_DAYS, ...Object.values(seriesIntents || {}).map((i) => sharedGetTaperDays(null, "b", null, null, i)));
   const racesInPeriodOrAfter = await fetchScheduledRaces(sb, userId, period_start, addDaysISO(period_end, maxEasyDays));
   const racesInPeriod = racesInPeriodOrAfter.filter((r) => r.date >= period_start && r.date <= period_end);
 
@@ -6958,6 +6958,12 @@ async function handler(req: Request): Promise<Response> {
     // relê a competição e as provas. Só vai na resposta quando é true — a
     // resposta de quem não está inscrito fica igual.
     let cupWasUpdated = false;
+    // Os papéis das jornadas para a guarda dos dias fáceis do plano: os lidos
+    // no início do pedido — relidos se uma ferramenta da competição gravou
+    // entretanto, para a escolha dele contar já neste turno (revisão das
+    // correções da Fase 2). null sem inscrição ativa: a guarda de sempre.
+    let planSeriesIntents: Record<string, SeriesIntent> | null = seriesBlock?.active ? seriesBlock.intentByRaceId : null;
+    let planSeriesIntentsStale = false;
 
     /* Uma ferramenta de escrita já correu (o plano proposto, os objetivos, a
        prova, a intervenção) e não há tempo ou resposta para o texto: sem
@@ -7104,7 +7110,12 @@ async function handler(req: Request): Promise<Response> {
         } else if (name === "get_running_history") {
           result = await runGetRunningHistory(sb, userId, args || {});
         } else if (name === "propose_training_plan") {
-          result = await runProposeTrainingPlan(sb, userId, args || {}, seriesBlock?.active ? seriesBlock.intentByRaceId : null);
+          if (planSeriesIntentsStale) {
+            const fresh = await fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });
+            if (fresh?.active) planSeriesIntents = fresh.intentByRaceId;
+            planSeriesIntentsStale = false;
+          }
+          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents);
           planWasProposed = planWasProposed || result.startsWith("Plano criado");
         } else if (name === "update_goals" || name === "update_nutrition_goals") {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
@@ -7131,6 +7142,7 @@ async function handler(req: Request): Promise<Response> {
               ? await runSetCupParticipation(sb, userId, args || {})
               : await runSetCupSeasonGoal(sb, userId, args || {});
           cupWasUpdated = cupWasUpdated || (cupToolOn && !result.startsWith("Erro"));
+          planSeriesIntentsStale = planSeriesIntentsStale || (cupToolOn && !result.startsWith("Erro"));
         } else {
           result = `Erro: função desconhecida "${name}".`;
         }

@@ -839,12 +839,12 @@ async function attachCoachNotes(
     // corrida registada com atraso não pode ver meses que ainda não tinham
     // acontecido nessa altura.
     const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: ctx.date });
-    // O bloco da competição por jornadas (Fase 2 do Troféu), com as contas
-    // na data da corrida, como a memória: uma leitura e null para quem não
-    // está inscrito. Nunca rejeita. A inscrição (ativa, ou saiu há ≤ 30
-    // dias) é a de HOJE, não a da corrida: com o dia de uma corrida antiga,
-    // anterior à saída, quem saiu há meses voltava a levar a linha "saiu"
-    // (revisão da Fase 2).
+    // O bloco da competição por jornadas (Fase 2 do Troféu): uma leitura e
+    // null para quem não está inscrito. Nunca rejeita. A data da corrida
+    // serve para reconhecer a jornada dela; a inscrição (ativa, ou saiu há
+    // ≤ 30 dias) e as contas (papéis, a "seguinte") são as de HOJE — uma
+    // corrida antiga não traz de volta a linha "saiu" nem uma jornada que já
+    // passou como a seguinte (revisões da Fase 2).
     const seriesPromise = fetchSeriesBlock(sb, userId, ctx.date, { channel: "run", statusTodayISO: lisbonTodayISO() });
     // Segmentação do histórico usado na comparação:
     // - Competição: só compara com outras competições (não treinos) — e,
