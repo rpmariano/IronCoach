@@ -23,7 +23,7 @@ No sábado, 2026-09-26, às 03:53 (dia de descanso no plano aceite), as boas-vin
 
 Leitura das tabelas: **alta** contradiz o próprio ecrã ou afirma algo falso num caminho comum; média é falsa ou fora de hora numa situação plausível; baixa é rara, ou só soa a molde. **Parcial** marca o que já está meio corrigido e diz o que falta. As linhas de código são as de 2026-09-26; se tiverem mexido, procurar pela frase.
 
-## Estado (2026-09-26, fim do dia)
+## Estado (2026-09-26, fim do dia — em produção)
 
 **Lote 1 feito** — as 24 linhas altas e médias das secções 1 e 2 que só tocam no cliente, no ramo `claude/generic-phrase-issue-ar2vbb` (commits `f1870d9` a `f99aec1`). Cada grupo de ficheiros teve implementação e uma revisão adversarial, que encontrou e corrigiu mais 29 casos do mesmo tipo: provas ao fim do dia e à meia-noite no cartão da Carol, a proposta da tranche seguinte por aceitar, a semana cumprida com dias «Por planear», o check-in corrigido que não fechava a intervenção, entre outros. As linhas das tabelas abaixo ficam como registo do que estava errado; as do Lote 1 já não se verificam.
 
@@ -64,7 +64,12 @@ Fica para depois (baixo risco, confirmado por que o cliente já mitiga ou é rar
 - `coach-daily-summary:421`: as frases de água em `buildWarningsMessage` continuam a gerar-se, mas o cliente já as ignora (`limparAvisoDoServidor`) e faz a sua a partir de `waterLogs` — sem efeito visível a limpá-las também no servidor.
 - Datas de Lisboa: `DayPlanCard`, `Home` e `WeeklyPlanCard` ainda usam a data do dispositivo (`todayISO`), e o cartão da Carol a de Lisboa. Só diverge num dispositivo fora do fuso de Lisboa, perto da meia-noite.
 
-**Deploy**: tudo isto está só no ramo. O servidor dos Lotes 2 e 4 (`supabase/functions/**`) vai para produção no push a `dev`; o frontend só com o merge para `master`, que precisa de pedido explícito.
+**Deploy (2026-09-26): em produção.** Lotes 1 a 4 e as correções das três revisões pré-deploy, num só avanço de `dev` e `master` para `e312817`, com autorização explícita:
+
+- Edge Functions às 20:43Z pelo push a `dev` (run #303: `deno test` 1119/1119 e deploy) e de novo, sem diferenças, pelo de `master` (run #304) — `coach-proactive-tick`, `coach-chat`, `coach-daily-summary`, `send-water-reminders`, `analyze-run` e `analyze-gym`. Sem migrações.
+- Frontend no GitHub Pages às 20:48Z (Vitest 2806/2806 e build no próprio workflow).
+- Primeiro tick com o código novo (`coach-proactive-tick` versão 40) às 21:07Z: 200, sem avisos nem erros, todas as consultas novas (`water_logs`, `daily_checkins.pain`, ginásio de ontem e de hoje) com 200 e as colunas confirmadas no schema de produção; nenhum dos 2 atletas com notificações tinha momento (`sem_momento: 2`), como antes do deploy.
+- A primeira prova a sério é o balanço da semana de segunda, 28/09: verificação marcada para depois dos ticks da manhã (decisões em `app_logs`, textos enviados contra o tom da Carol, paridade de chaves com o chat).
 
 ## 1. Início — cartão da Carol e plano
 
