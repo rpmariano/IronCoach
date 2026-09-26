@@ -269,7 +269,10 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
       aria-modal="true"
       aria-label="Onde estás — o teu percentil"
       data-testid="onde-estas-screen"
-      className="fixed inset-0 z-[80] flex flex-col fade-in"
+      // z-55: acima da nav (40) e do FAB (50), ABAIXO das persianas e popups
+      // (Sheet/Dialog, z-60/70, também em portal no body) que este ecrã abre —
+      // a z-80 abriam por baixo dele (revisão pré-deploy da Fase 1, 2026-09-26).
+      className="fixed inset-0 z-[55] flex flex-col fade-in"
       style={{ background: 'var(--bg-app)' }}
     >
       <div className="flex items-center gap-2.5 shrink-0" style={{ minHeight: 52, padding: '8px 14px', borderBottom: '1px solid var(--border-glass)' }}>

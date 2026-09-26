@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAppStore } from '../../store';
 import RaceCard from '../Home/RaceCard';
 import RaceListCard from './RaceListCard';
 import SectionLabel from '../shared/SectionLabel';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
+import CupDoorCard from './CupDoorCard';
+import CupEnrollmentScreen from './CupEnrollmentScreen';
+import CupTrofeuScreen from './CupTrofeuScreen';
+import { useCup } from '../../utils/useCup';
 
 /* "As tuas provas" — o separador Provas da barra (2026-09-13, opção A de
    "Onde vivem as provas"). A prova é o grande objetivo da app e estava
@@ -23,11 +27,19 @@ import CoachInsightsDock from '../BI/CoachInsightsDock';
 
    Sem estado próprio: tudo vem do store e dos componentes que já existiam. */
 export default function RacesScreen() {
-  const { raceEvents, runs, profile, setEditingRaceId, setOpenCreationMode } = useAppStore();
+  const { raceEvents, runs, profile, setEditingRaceId, setOpenCreationMode, dismissCupEdition } = useAppStore();
   const createRace = () => setOpenCreationMode('race');
   // Registar a prova é abrir o registo de corrida em modo prova (specs/
   // prova-concluida.md §3) — o mesmo ponto do store que o Início usa.
   const registerRace = (raceId) => useAppStore.getState().openRaceRun(raceId);
+
+  // O Troféu (specs/trofeu.md §4.1, Fase 1): useCup() só lê alguma coisa
+  // quando ESTE ecrã monta (é o ponto de entrada do hook, ver utils/useCup.js)
+  // e devolve null para quase toda a gente — nesse caso `cupScreen` nunca
+  // chega a ter para onde abrir, e nada abaixo desta linha muda o ecrã de
+  // hoje (teste de invariância em RacesScreen.test.jsx).
+  const cup = useCup();
+  const [cupScreen, setCupScreen] = useState(null); // null | 'inscricao' | 'trofeu'
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2" data-testid="races-screen">
@@ -47,9 +59,30 @@ export default function RacesScreen() {
         <RaceListCard />
       </div>
 
+      {/* O cartão do Troféu vive no FIM do ecrã (§4.1) — depois de tudo o
+          que já existia, nunca antes. */}
+      <CupDoorCard
+        view={cup}
+        onEnroll={() => setCupScreen('inscricao')}
+        onDismiss={(editionId) => dismissCupEdition(editionId)}
+        onOpenTrofeu={() => setCupScreen('trofeu')}
+      />
+
       {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
           Chat (pedido do utilizador). */}
       <CoachInsightsDock />
+
+      {cupScreen === 'inscricao' && (
+        <CupEnrollmentScreen
+          view={cup}
+          onClose={() => setCupScreen(null)}
+          // Logo a seguir à inscrição o atleta vê a lista de jornadas (§4.2).
+          onEnrolled={() => setCupScreen('trofeu')}
+        />
+      )}
+      {cupScreen === 'trofeu' && cup?.enrollment && (
+        <CupTrofeuScreen view={cup} onClose={() => setCupScreen(null)} />
+      )}
     </div>
   );
 }

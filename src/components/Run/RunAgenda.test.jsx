@@ -926,3 +926,83 @@ describe('RunAgenda — aviso "Vai chocar com o plano" (intervalo fechado)', () 
     expect(screen.queryByText(/Vai chocar com o plano/i)).not.toBeInTheDocument();
   });
 });
+
+/* A prova de uma jornada do Troféu (race_events.cup_round_id, specs/
+   trofeu.md §3.4). Revisão da Fase 1 (2026-09-26): data, distância e local
+   são do organizador — o servidor recusa mudá-los (42501) e o formulário
+   deixava editá-los e mostrava o erro cru. Ficam só de leitura e fora do
+   payload; o objetivo e o nível ficam opcionais (o tempo da jornada fica
+   vazio até o atleta o marcar). Uma prova normal não muda nada. */
+describe('RunAgenda — prova de uma jornada do Troféu', () => {
+  const JORNADA = {
+    ...EXISTING_RACE,
+    id: 'race-j',
+    name: 'Corrida CCD Cascais',
+    location: 'Cascais',
+    distance_km: 7.4,
+    race_priority: 'b',
+    experience_level: null,
+    target_time: null,
+    target_time_seconds: null,
+    target_pace_seconds_per_km: null,
+    website: null,
+    cup_round_id: 'round-ccd',
+  };
+
+  const montar = (race) => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [race],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: race.id,
+      activeTab: 'holistica',
+      pendingCalendarDate: null,
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+    renderAgenda();
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+  };
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('data, distância e local ficam só de leitura, com a razão à vista', () => {
+    montar(JORNADA);
+    expect(screen.getByLabelText(/^Data/)).toHaveAttribute('readonly');
+    expect(screen.getByLabelText(/^Local/)).toHaveAttribute('readonly');
+    expect(screen.getByLabelText(/^Distância/)).toHaveAttribute('readonly');
+    expect(screen.getByTestId('ra-jornada-organizador')).toHaveTextContent('dados do organizador');
+  });
+
+  it('grava as notas sem objetivo nem nível, e sem enviar data, distância ou local', async () => {
+    let payload = null;
+    vi.spyOn(supabase, 'from').mockReturnValue({
+      update: (p) => { payload = p; return { eq: () => Promise.resolve({ error: null }) }; },
+    });
+    montar(JORNADA);
+    fireEvent.change(screen.getByLabelText('Notas (opcional)'), { target: { value: 'ir com calma' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+    await waitFor(() => expect(payload).not.toBeNull());
+    expect(payload).toMatchObject({
+      notes: 'ir com calma',
+      experience_level: null,
+      target_time: null,
+      target_time_seconds: null,
+      target_pace_seconds_per_km: null,
+    });
+    expect(payload).not.toHaveProperty('date');
+    expect(payload).not.toHaveProperty('distance_km');
+    expect(payload).not.toHaveProperty('location');
+  });
+
+  it('uma prova normal continua igual: campos editáveis, sem a nota do organizador', () => {
+    montar(EXISTING_RACE);
+    expect(screen.getByLabelText(/^Data/)).not.toHaveAttribute('readonly');
+    expect(screen.getByLabelText(/^Local/)).not.toHaveAttribute('readonly');
+    expect(screen.getByLabelText(/^Distância/)).not.toHaveAttribute('readonly');
+    expect(screen.queryByTestId('ra-jornada-organizador')).not.toBeInTheDocument();
+  });
+});

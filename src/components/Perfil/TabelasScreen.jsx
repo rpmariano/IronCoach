@@ -53,8 +53,9 @@ export default function TabelasScreen({ segment, windowStart, windowEnd, onClose
       aria-modal="true"
       aria-label="As tabelas com nomes"
       data-testid="tabelas-screen"
-      // A mesma camada do "Onde estás" e do consentimento (z-80): quem monta
-      // depois fica por cima — o consentimento aberto daqui tapa as tabelas.
+      // A mesma camada do consentimento (z-80): quem monta depois fica por
+      // cima — o consentimento aberto daqui tapa as tabelas. Acima do "Onde
+      // estás" (z-55), de onde se abre.
       className="fixed inset-0 z-[80] flex flex-col fade-in"
       style={{ background: 'var(--bg-app)' }}
     >
