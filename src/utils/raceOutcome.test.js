@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyRaceOutcome, previousBestSeconds, raceResultSeconds, describeRaceOutcome,
-  buildRaceOutcomePayload, formatDelta, NEAR_TARGET_RATIO,
+  buildRaceOutcomePayload, formatDelta, raceDistancePhrase, NEAR_TARGET_RATIO,
 } from './raceOutcome';
+import { bateuObjetivo } from './premios';
 import { expectCarolVoice } from '../test/carolVoice';
 
 // A história do canvas: Meia de Lisboa, objetivo 1:52:00, final 1:53:42.
@@ -136,7 +137,7 @@ describe('raceOutcome — a régua única do resultado da prova', () => {
     expect(text).toContain('1:53:42');
     expect(text).toContain('Ficaste a 1:42 do objetivo');
     expect(text).toContain('Acima do que o treino perspetivava');
-    expect(text).toContain('Recorde pessoal na meia, por 4:04');
+    expect(text).toContain('Recorde pessoal na meia maratona, por 4:04');
     expectCarolVoice(text);
 
     const beaten = classifyRaceOutcome({ race: { ...RACE, target_time_seconds: 6900 }, run: RACE_RUN, runs: [RACE_RUN], profile: PROFILE });
@@ -172,5 +173,149 @@ describe('raceOutcome — a régua única do resultado da prova', () => {
     const run = { ...RACE_RUN, details: { official_time_seconds: 6822, splits: [{ distance_km: 5, time_seconds: 1600 }, { distance_km: '10', time_seconds: '3210' }, { distance_km: null, time_seconds: 100 }, { distance_km: 15, time_seconds: 0 }] } };
     const out = classifyRaceOutcome({ race: RACE, run, runs: [run], profile: PROFILE });
     expect(buildRaceOutcomePayload(out, RACE, run).splits).toEqual([{ distance_km: 5, time_seconds: 1600 }, { distance_km: 10, time_seconds: 3210 }]);
+  });
+});
+
+/* A prova criada sozinha para uma competição fora da agenda
+   (autoCreateRaceForCompetition) grava como objetivo a duração da própria
+   corrida: 47:30 no relógio dá uma prova com objetivo 47:30. */
+const AUTO_RUN = { id: 'run-auto', race_id: 'r-auto', kind: 'competicao', date: '2027-05-02', distance_km: 10, duration_seconds: 2850, details: { race_type: 'estrada' } };
+const AUTO_RACE = { id: 'r-auto', name: 'Corrida de São João', date: '2027-05-02', race_type: 'estrada', distance_km: 10, target_time: '47:30', target_time_seconds: 2850, target_pace_seconds_per_km: 285, status: 'concluida' };
+
+describe('raceOutcome — o objetivo sintético da prova automática não é objetivo', () => {
+  it('sem tempo oficial: não há "objetivo cumprido" nem prémio de objetivo batido', () => {
+    const out = classifyRaceOutcome({ race: AUTO_RACE, runs: [AUTO_RUN], profile: PROFILE });
+    expect(out.runId).toBe('run-auto');
+    expect(out.targetSeconds).toBeNull();
+    expect(out.deltaTargetSeconds).toBeNull();
+    expect(out.basis).toBeNull();
+    expect(out.verdict).toBe('concluida');
+    expect(bateuObjetivo(out)).toBe(false);
+    const text = describeRaceOutcome(out, AUTO_RACE);
+    expect(text).toMatch(/^47:30 \(.+\/km\)\. Prova concluída\.$/);
+    expect(text).not.toContain('Objetivo');
+    expect(text).not.toContain('em cima da hora');
+    expect(buildRaceOutcomePayload(out, AUTO_RACE, AUTO_RUN).target_seconds).toBeNull();
+  });
+
+  it('o objetivo em texto (target_time) também se reconhece como sintético', () => {
+    const out = classifyRaceOutcome({ race: { ...AUTO_RACE, target_time_seconds: null }, run: AUTO_RUN, runs: [AUTO_RUN], profile: PROFILE });
+    expect(out.targetSeconds).toBeNull();
+    expect(out.basis).toBeNull();
+  });
+
+  it('com tempo oficial 47:22 e relógio 47:30: nada de "objetivo batido por 0:08" — cai para "Prova concluída." ou para a previsão', () => {
+    const run = { ...AUTO_RUN, details: { race_type: 'estrada', official_time_seconds: 2842 } };
+    const bare = classifyRaceOutcome({ race: AUTO_RACE, run, runs: [run], profile: PROFILE });
+    expect(bare.officialSeconds).toBe(2842);
+    expect(bare.targetSeconds).toBeNull();
+    expect(bare.verdict).toBe('concluida');
+    expect(bateuObjetivo(bare)).toBe(false);
+    const bareText = describeRaceOutcome(bare, AUTO_RACE);
+    expect(bareText).toMatch(/^47:22 \(.+\/km\)\. Prova concluída\.$/);
+
+    // Com treino anterior, a régua passa a ser a previsão, como em qualquer
+    // prova sem objetivo marcado.
+    const withTraining = classifyRaceOutcome({ race: AUTO_RACE, run, runs: [run, { ...SLOW_TENK, date: '2027-04-10' }], profile: PROFILE });
+    expect(withTraining.basis).toBe('previsao');
+    expect(bateuObjetivo(withTraining)).toBe(false);
+    const text = describeRaceOutcome(withTraining, AUTO_RACE);
+    expect(text).toContain('Sem objetivo marcado');
+    expect(text).not.toContain('Objetivo batido');
+    expect(text).not.toContain('do objetivo');
+    expectCarolVoice(text);
+  });
+
+  it('um objetivo verdadeiro batido ao segundo diz-se assim, e conta como objetivo batido', () => {
+    const race = { ...AUTO_RACE, target_time: '47:00', target_time_seconds: 2820 };
+    const run = { ...AUTO_RUN, duration_seconds: 2826, details: { race_type: 'estrada', official_time_seconds: 2820 } };
+    const out = classifyRaceOutcome({ race, run, runs: [run], profile: PROFILE });
+    expect(out.targetSeconds).toBe(2820);
+    expect(out.basis).toBe('objetivo');
+    expect(out.verdict).toBe('superado');
+    expect(out.deltaTargetSeconds).toBe(0);
+    expect(bateuObjetivo(out)).toBe(true);
+    const text = describeRaceOutcome(out, race);
+    expect(text).toContain('Objetivo cumprido ao segundo.');
+    expect(text).not.toContain('em cima da hora');
+    expectCarolVoice(text);
+  });
+});
+
+describe('raceOutcome — o recorde pessoal só contra a mesma distância e o mesmo terreno', () => {
+  const RACE_15 = { id: 'r15', name: 'Corrida das Pontes', date: '2027-04-10', race_type: 'estrada', distance_km: 15, target_time_seconds: 4800 };
+  const RUN_15 = { id: 'run-15', race_id: 'r15', kind: 'competicao', date: '2027-04-10', distance_km: 15, duration_seconds: 4700 };
+
+  it('um 15 km não bate recorde nenhum contra uma meia, embora caiam na mesma categoria', () => {
+    expect(previousBestSeconds([RUN_15, OLD_HALF], RACE_15, RUN_15)).toBeNull();
+    const out = classifyRaceOutcome({ race: RACE_15, run: RUN_15, runs: [RUN_15, OLD_HALF], profile: PROFILE });
+    expect(out.category).toBe('meia');
+    expect(out.isPersonalRecord).toBe(false);
+    expect(out.previousBestSeconds).toBeNull();
+    expect(describeRaceOutcome(out, RACE_15)).not.toContain('Recorde pessoal');
+  });
+
+  it('dentro de ±2% da distância conta; fora, não', () => {
+    const race = { ...RACE, distance_km: 21.0975 };
+    const within = { id: 'w', kind: 'competicao', date: '2026-11-01', distance_km: 21.5, duration_seconds: 7000 };   // +1,9%
+    const outside = { id: 'o', kind: 'competicao', date: '2026-11-08', distance_km: 21.6, duration_seconds: 6900 };  // +2,4%
+    expect(previousBestSeconds([RACE_RUN, within, outside], race, RACE_RUN)).toEqual({ seconds: 7000, date: '2026-11-01', distanceKm: 21.5 });
+  });
+
+  it('um trail não se compara com a estrada, na mesma distância', () => {
+    const trailRace = { id: 'rt', name: 'Trail da Serra', date: '2027-06-05', race_type: 'trail', distance_km: 25, target_time_seconds: 12000 };
+    const trailRun = { id: 'run-t', race_id: 'rt', kind: 'competicao', date: '2027-06-05', distance_km: 25, duration_seconds: 11000, details: { race_type: 'trail' } };
+    const roadSame = { id: 'road-25', kind: 'competicao', date: '2026-12-01', distance_km: 25, duration_seconds: 7500, details: { race_type: 'estrada' } };
+    const roadMarathon = { id: 'road-42', kind: 'competicao', date: '2026-11-01', distance_km: 42.195, duration_seconds: 14400 };
+    expect(previousBestSeconds([trailRun, roadSame, roadMarathon], trailRace, trailRun)).toBeNull();
+    const out = classifyRaceOutcome({ race: trailRace, run: trailRun, runs: [trailRun, roadSame, roadMarathon], profile: PROFILE });
+    expect(out.isPersonalRecord).toBe(false);
+
+    const oldTrail = { id: 'trail-old', kind: 'competicao', date: '2026-10-04', distance_km: 25.3, duration_seconds: 11600, details: { race_type: 'trail' } };
+    const record = classifyRaceOutcome({ race: trailRace, run: trailRun, runs: [trailRun, roadSame, oldTrail], profile: PROFILE });
+    expect(record.isPersonalRecord).toBe(true);
+    expect(record.previousBestSeconds).toBe(11600);
+    expect(describeRaceOutcome(record, trailRace)).toContain('Recorde pessoal nos 25 km, por 10:00.');
+
+    // E ao contrário: a estrada não se compara com um trail anterior.
+    const roadRace = { ...trailRace, id: 'rr', race_type: 'estrada' };
+    const roadRun = { ...trailRun, id: 'run-r', race_id: 'rr', details: { race_type: 'estrada' } };
+    expect(previousBestSeconds([roadRun, oldTrail], roadRace, roadRun)).toBeNull();
+  });
+
+  it('o rótulo é a distância real: "nos 10 km", "na meia maratona", "nos 12,5 km"', () => {
+    expect(raceDistancePhrase(10)).toBe('nos 10 km');
+    expect(raceDistancePhrase(10.12)).toBe('nos 10 km');
+    expect(raceDistancePhrase(15)).toBe('nos 15 km');
+    expect(raceDistancePhrase(21.0975)).toBe('na meia maratona');
+    expect(raceDistancePhrase(21.1)).toBe('na meia maratona');
+    expect(raceDistancePhrase(42.195)).toBe('na maratona');
+    expect(raceDistancePhrase(12.5)).toBe('nos 12,5 km');
+    expect(raceDistancePhrase(13.04)).toBe('nos 13 km');
+
+    const tenk = { id: 'r10', name: 'São Silvestre', date: '2027-12-31', race_type: 'estrada', distance_km: 10, target_time_seconds: 3000 };
+    const run = { id: 'run-10', race_id: 'r10', kind: 'competicao', date: '2027-12-31', distance_km: 10.05, duration_seconds: 2700 };
+    const old = { id: 'old-10', kind: 'competicao', date: '2027-06-01', distance_km: 9.95, duration_seconds: 2760 };
+    const text = describeRaceOutcome(classifyRaceOutcome({ race: tenk, run, runs: [run, old], profile: PROFILE }), tenk);
+    expect(text).toContain('Recorde pessoal nos 10 km, por 1:00.');
+    expectCarolVoice(text);
+  });
+});
+
+describe('raceOutcome — prova com a corrida ligada mas sem tempo', () => {
+  it('a corrida existe e está ligada: pede o tempo oficial, não o registo', () => {
+    const noTime = { id: 'run-sem-tempo', race_id: 'r1', kind: 'competicao', date: '2027-03-08', distance_km: 21.1, duration_seconds: null, details: {} };
+    const out = classifyRaceOutcome({ race: RACE, runs: [noTime, SLOW_TENK], profile: PROFILE });
+    expect(out.verdict).toBe('sem_registo');
+    expect(out.runId).toBe('run-sem-tempo');
+    const text = describeRaceOutcome(out, RACE);
+    expect(text).toBe('Falta o tempo oficial desta prova. Põe-no na corrida e eu faço as contas.');
+    expect(text).not.toContain('ainda não tem a corrida registada');
+    expectCarolVoice(text);
+  });
+
+  it('sem corrida nenhuma, mantém o pedido de registo', () => {
+    const text = describeRaceOutcome(classifyRaceOutcome({ race: RACE, runs: [SLOW_TENK], profile: PROFILE }), RACE);
+    expect(text).toBe('Meia de Lisboa ainda não tem a corrida registada. Regista-a para fecharmos o ciclo com números reais.');
   });
 });

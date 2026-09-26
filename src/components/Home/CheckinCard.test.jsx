@@ -43,6 +43,13 @@ describe('CheckinCard', () => {
     expect(saveDailyCheckin.mock.calls[0][0]).toEqual({ sleep: 4, energy: 3, stress: 2, pain: 5, pain_location: 'gémeo direito', period_today: null });
   });
 
+  it('o convite não promete ajustar o dia: o plano já está decidido, ela diz como fica', () => {
+    renderCard();
+    const convite = screen.getByTestId('checkin-card');
+    expect(convite).toHaveTextContent('Sono, energia, stress e dores. Dez segundos, e digo-te como fica o dia.');
+    expect(convite).not.toHaveTextContent(/ajusto/);
+  });
+
   it('com o check-in de hoje feito, mostra o resumo e deixa editar', () => {
     useAppStore.setState({ dailyCheckins: [{ date: todayISO(), sleep: 4, energy: 3, stress: 1, pain: 0 }] });
     renderCard();

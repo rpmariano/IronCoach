@@ -145,10 +145,10 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
 /* O marco da contagem (raceMilestone.js): nos dias que não são iguais aos
    outros — 100, 50, 30, 14, 7 e 3 —, a Carol diz o que ele quer dizer.
    Na primeira vez que se vê nesse dia, ela respira e a frase entra. */
-function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano }) {
+function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano, comCorridas }) {
   // Com o contexto da prova: sem marcos de polimento numa prova B ou C, e o
   // dos 100 dias pela viabilidade (raceMilestone.js).
-  const line = raceMilestoneLine(days, { prioridade, flags, comPlano });
+  const line = raceMilestoneLine(days, { prioridade, flags, comPlano, comCorridas });
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
   const logImpression = useAppStore((s) => s.logImpression);
   const impressionShown = useAppStore((s) => s.impressionShown);
@@ -270,11 +270,18 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
 
   // O plano da prova dá também a viabilidade (as mesmas flags que o hub
   // mostra), para o marco dos 100 dias não dizer "é o tempo certo" quando o
-  // hub diz "tempo insuficiente" (pedido 2026-09-26).
-  const { model, flags } = useMemo(() => {
-    if (!race) return { model: null, flags: null };
+  // hub diz "tempo insuficiente" (pedido 2026-09-26). E o início real do
+  // ciclo (o mesmo do trilho): aos 14 dias, «já está feito» só com corridas
+  // registadas desde aí (revisão de 2026-09-26).
+  const { model, flags, comCorridas } = useMemo(() => {
+    if (!race) return { model: null, flags: null, comCorridas: false };
     const plano = calculateRaceTrainingPlan({ race, profile, runs, todayISO: today });
-    return { model: buildTrailModel(plano), flags: plano?.viability?.flags || null };
+    const inicio = plano?.effectiveStartDate || plano?.planStartDate;
+    return {
+      model: buildTrailModel(plano),
+      flags: plano?.viability?.flags || null,
+      comCorridas: !!inicio && (runs || []).some((r) => r?.date && r.date >= inicio && r.date <= today),
+    };
   }, [race, profile, runs, today]);
   // "Com plano" é um plano aceite que cobre os dias daqui até à prova — um
   // plano de base que acaba no domingo não é "o que está no plano" da
@@ -381,7 +388,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
           )}
         </div>
         <RaceTrail raceId={race.id} weeks={model.weeks} current={model.current} phases={model.phases} startLabel={model.startLabel} endLabel={model.endLabel} />
-        {!porRegistar && <RaceMilestoneLine key={`${race.id}-${model.days}`} raceId={race.id} days={model.days} prioridade={race.race_priority} flags={flags} comPlano={comPlano} />}
+        {!porRegistar && <RaceMilestoneLine key={`${race.id}-${model.days}`} raceId={race.id} days={model.days} prioridade={race.race_priority} flags={flags} comPlano={comPlano} comCorridas={comCorridas} />}
       </div>
 
       {/* A ação do dia da prova: âmbar cheio, porque é a única coisa que

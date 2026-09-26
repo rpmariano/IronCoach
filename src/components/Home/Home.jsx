@@ -101,9 +101,17 @@ export default function Home() {
   const coachNotes = useAppStore((s) => s.coachNotes);
   const reloadCoachNotes = useAppStore((s) => s.reloadCoachNotes);
   const notesEmpty = !(coachNotes || []).length;
+  // Vazio antes de acabar a leitura é "ainda não chegou", não "sem
+  // objetivo": o cartão só pede a prova depois de a ler (utils/firstDay.js,
+  // revisão de 2026-09-26).
+  const [notesRead, setNotesRead] = useState(false);
   useEffect(() => {
-    if (firstDay && notesEmpty) reloadCoachNotes?.();
+    if (!firstDay || !notesEmpty) return undefined;
+    let vivo = true;
+    Promise.resolve(reloadCoachNotes?.()).catch(() => null).then(() => { if (vivo) setNotesRead(true); });
+    return () => { vivo = false; };
   }, [firstDay, notesEmpty, reloadCoachNotes]);
+  const notesLoaded = !notesEmpty || notesRead;
   const firstDayGoal = firstDay ? goalFromNotes(coachNotes) : null;
   // Quem foi operado ontem não ouve "Já correste?" (pedido 2026-09-26):
   // o que ela sabe da vida dele passa à frente (utils/carolVida.js).
@@ -379,6 +387,7 @@ export default function Home() {
           goal={firstDayGoal}
           facts={firstDayFacts}
           vida={vidaHoje}
+          notesLoaded={notesLoaded}
           onTalk={() => setActiveTab('coach')}
           onCreateRace={createRace}
           onRegisterRun={registerRun}

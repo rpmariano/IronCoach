@@ -56,6 +56,27 @@ describe('firstDayAsk', () => {
   });
 });
 
+/* Revisão de 2026-09-26: numa sessão nova, com as notas do arranque ainda
+   a chegar, o cartão dizia logo «Vamos escolher a tua prova» — antes de
+   saber se havia objetivo, e a quem tinha dito que vinha correr mais rápido. */
+describe('firstDayAsk — com as notas ainda a chegar', () => {
+  it('só o cumprimento: nem o pedido sem objetivo, nem ação', () => {
+    const a = firstDayAsk(null, 'Rui', { notasLidas: false });
+    expect(a).toEqual({ title: 'Olá, Rui.', body: null, primary: null });
+    expect(a.title).not.toMatch(/prova/);
+    expect(firstDayAsk(null, '', { notasLidas: false }).title).toBe('Olá.');
+    expectCarolVoice(a.title);
+  });
+
+  it('lidas e sem objetivo: aí, sim, escolher a prova', () => {
+    expect(firstDayAsk(null, 'Rui', { notasLidas: true })).toMatchObject({ title: 'Olá, Rui. Vamos escolher a tua prova.', primary: 'talk' });
+  });
+
+  it('com o objetivo já lido, o pedido dele', () => {
+    expect(firstDayAsk('ritmo', 'Rui', { notasLidas: false })).toEqual(firstDayAsk('ritmo', 'Rui'));
+  });
+});
+
 /* O contexto primeiro (revisão de 2026-09-26; CAROL.md §8): com uma
    cirurgia, uma lesão ou uma doença na memória dela, quem veio correr mais
    rápido ou voltar de uma pausa ouvia «Primeiro preciso de te ver correr»

@@ -81,7 +81,10 @@ export default function CheckinCard() {
           <HeartPulse size={17} style={{ color: 'var(--coach)' }} className="shrink-0" aria-hidden="true" />
           <span className="flex-1 min-w-0">
             <span className="block text-[13px] font-extrabold" style={{ color: 'var(--text-1)' }}>{madrugada ? 'Quando acordares, diz-me como dormiste.' : 'Como acordaste hoje?'}</span>
-            <span className="block text-[12px] leading-[1.45] mt-0.5" style={{ color: 'var(--text-3)' }}>Sono, energia, stress e dores. Dez segundos, e eu ajusto o dia.</span>
+            {/* "E eu ajusto o dia" prometia o que o check-in não faz: o treino
+                do plano não muda com ele, muda o que ela diz do dia (revisão
+                de 2026-09-26). */}
+            <span className="block text-[12px] leading-[1.45] mt-0.5" style={{ color: 'var(--text-3)' }}>Sono, energia, stress e dores. Dez segundos, e digo-te como fica o dia.</span>
           </span>
           <ChevronRight size={16} style={{ color: 'var(--text-4)' }} className="shrink-0" aria-hidden="true" />
         </button>

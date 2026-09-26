@@ -36,7 +36,17 @@ export function checkinStreak(checkins, today) {
 }
 
 // Até 100: o store só carrega 119 dias de check-ins, mais do que isso nunca se contava.
-const MARCOS = new Set([7, 14, 30, 60, 100]);
+// Por extenso, e o que ela sabe cresce com o marco: aos 100 dias, "já começo
+// a conhecer" era pouco (revisão de 2026-09-26).
+const DIAS = 'Já começo a conhecer os teus dias.';
+const SEMANAS = 'Já sei como são as tuas semanas.';
+const MARCOS = new Map([
+  [7, `Sete dias seguidos de check-in. ${DIAS}`],
+  [14, `Catorze dias seguidos de check-in. ${DIAS}`],
+  [30, `Trinta dias seguidos de check-in. ${SEMANAS}`],
+  [60, `Sessenta dias seguidos de check-in. ${SEMANAS}`],
+  [100, 'Cem dias seguidos de check-in. Já sei como são os teus meses.'],
+]);
 const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
 
 /** Quantas noites más seguidas, a acabar hoje (sono ≤ 2). */
@@ -122,7 +132,7 @@ export function checkinReply(checkins, today, dia = null) {
   // 2. O raro: uma sequência redonda — mas não por cima de um dia em baixo.
   const seguidos = checkinStreak(checkins, today);
   if (MARCOS.has(seguidos) && dor === 0 && !(energia != null && energia <= 2)) {
-    return { mood: 'happy', tone: 'coach', text: `${seguidos} dias seguidos de check-in. Já começo a conhecer os teus dias.` };
+    return { mood: 'happy', tone: 'coach', text: MARCOS.get(seguidos) };
   }
 
   // 3. O que mudou para melhor.

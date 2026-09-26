@@ -41,6 +41,17 @@ describe('FirstDayCard — a Carol lembra-se do arranque', () => {
     expect(h.onCreateRace).toHaveBeenCalled();
   });
 
+  // Revisão de 2026-09-26: com as notas ainda a chegar, o "sem objetivo"
+  // saía antes de se saber se havia objetivo.
+  it('com as notas ainda a chegar: só o avatar e o olá', () => {
+    render(<FirstDayCard firstName="Rui" notesLoaded={false} facts={['Corres há 1 a 3 anos']} {...handlers()} />);
+    const card = screen.getByTestId('first-day-card');
+    expect(screen.getByText('Olá, Rui.')).toBeInTheDocument();
+    expect(card).not.toHaveTextContent(/escolher a tua prova|Sem uma prova marcada/);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByRole('list')).not.toBeInTheDocument();
+  });
+
   // Revisão de 2026-09-26 (backlog, FirstDayCard.jsx:30): "eu mesmo" tinha
   // género, e uma atleta diria "eu mesma".
   it('a segunda via não tem género', () => {

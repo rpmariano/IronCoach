@@ -32,6 +32,44 @@ describe('firstRecordMoment', () => {
   });
 });
 
+/* Revisão de 2026-09-26: a primeira corrida gravada sem tempo (o
+   "Continuar assim mesmo" da persiana das métricas em falta) não tem ritmo
+   nem esforço, e a Carol dizia que já sabia os três. O registo é a linha de
+   `runs` que a RunRegistration acabou de gravar. */
+describe('firstRecordMoment — a primeira corrida diz só o que o registo tem', () => {
+  const vazio = { runs: [], meals: [], gymSessions: [], bodyAssessments: [] };
+  const corrida = (record) => firstRecordMoment('run', vazio, { id: 'r1', ...record });
+
+  it('com distância e tempo: o ritmo, a distância e o esforço', () => {
+    expect(corrida({ distance_km: 5.2, duration_seconds: 1800 }).sub)
+      .toBe('Agora já sei por onde começar: o teu ritmo, a tua distância, o teu esforço.');
+  });
+
+  it('sem tempo: só a distância, e o ritmo fica para quando houver tempo', () => {
+    for (const duration_seconds of [null, undefined, 0]) {
+      const m = corrida({ distance_km: 5.2, duration_seconds });
+      expect(m.title).toBe('A primeira corrida.');
+      expect(m.sub).toBe('Já sei a tua distância. Com o tempo, fico a saber o teu ritmo.');
+      expect(m.sub).not.toMatch(/já sei por onde começar|o teu esforço/);
+    }
+  });
+
+  it('sem distância, ou sem nenhum dos dois: nunca afirma o que não tem', () => {
+    const semDistancia = corrida({ distance_km: null, duration_seconds: 1800 });
+    expect(semDistancia.sub).toBe('Já sei quanto tempo correste. Com a distância, fico a saber o teu ritmo.');
+    const semNada = corrida({ distance_km: null, duration_seconds: null });
+    expect(semNada.sub).toBe('É o teu ponto de partida. Com a distância e o tempo, fico a saber o teu ritmo.');
+    for (const m of [semDistancia, semNada]) expect(m.sub).not.toMatch(/Já sei a tua distância|o teu esforço/);
+  });
+
+  it('todas na voz dela', () => {
+    for (const r of [{ distance_km: 5, duration_seconds: 1500 }, { distance_km: 5 }, { duration_seconds: 1500 }, {}]) {
+      const m = corrida(r);
+      expectCarolVoice(`${m.title} ${m.sub}`);
+    }
+  });
+});
+
 /* O primeiro registo de ginásio diz-se pelo que ele é (pedido 2026-09-26):
    "Já sei o que levantas" numa aula de pilates, ou num treino sem cargas, é
    ela a afirmar uma coisa que o registo não tem. O registo é o que a

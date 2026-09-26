@@ -27,7 +27,8 @@
    utilizador, como em coachProactive.js. */
 
 import { todayISO } from '../lib/utils';
-import { formatDayMonth, planItemTitle, isRacePlanItem } from './homeModels';
+import { formatDayMonth, isRacePlanItem } from './homeModels';
+import { treinoFalado } from '../components/Home/carolCardLines';
 import { PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from '@formulas/vocabulary.ts';
 
 /** Trabalho duro que não tem lugar nos dois dias antes de uma prova — a
@@ -50,7 +51,18 @@ function addDays(iso, n) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-const EVE_LABEL = { 1: 'na véspera', 2: 'a dois dias' };
+const EVE_LABEL = { 1: 'Na véspera', 2: 'A dois dias' };
+
+/* Mobilidade, alongamentos, ioga ou pilates não pesam nas pernas da prova —
+   a doutrina tira a mobilidade leve da interferência (03-ginasio.md #4).
+   20 minutos de mobilidade a dois dias da prova contavam como treino duro
+   (revisão de 2026-09-26). Sem categorias, ou com outra qualquer, não se
+   sabe se é leve e conta como antes. */
+const GINASIO_LEVE = /mobilidade|alongament|yoga|ioga|pilates/i;
+const ginasioLeve = (item) => {
+  const cats = (item.categories || []).map((c) => String(c).trim()).filter(Boolean);
+  return cats.length > 0 && cats.every((c) => GINASIO_LEVE.test(c));
+};
 
 /** A quantos dias de uma sessão falhada um registo do mesmo tipo pode ser
  *  essa sessão feita noutro dia. */
@@ -126,6 +138,13 @@ function frasesSessoesFalhadas(trocas, semRegisto) {
 /** "Corrida do Tejo (13 set)" — o nome e o dia, como a Carol os diria. */
 export function raceLabel(race) {
   return `${race.name || 'a prova'} (${formatDayMonth(dayOf(race.date))})`;
+}
+
+/* O mesmo a abrir a frase, sem artigo à frente (revisão de 2026-09-26):
+   «A Trail do Sico (13 set)» não se diz, e sem nome dava «A a prova». */
+function raceLabelAAbrir(race) {
+  const s = raceLabel(race);
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** O dia em que a Carol reescreveu este plano pela última vez: o dia do item
@@ -223,13 +242,14 @@ export function detectPlanDivergence({
   for (const plan of plans) {
     if (!plan.race_id || !plan.trimmed_at) continue;
     const race = (raceEvents || []).find((r) => r && r.id === plan.race_id);
-    const quando = race ? raceLabel(race) : formatDayMonth(dayOf(plan.period_end));
+    // «passou para mais cedo» e «até lá» não pedem género: «Trail do Sico
+    // foi antecipada» não concordava com o nome.
     push(
       'plano_encurtou',
       `${plan.id}:${String(plan.trimmed_at).slice(0, 10)}`,
       race
-        ? `A ${quando} foi antecipada e o plano encurtou até ela: os treinos que ficavam depois foram cancelados.`
-        : `A prova foi antecipada para ${quando} e o plano encurtou até lá: os treinos que ficavam depois foram cancelados.`,
+        ? `${raceLabelAAbrir(race)} passou para mais cedo e o plano encurtou até lá: os treinos que ficavam depois foram cancelados.`
+        : `A prova foi antecipada para ${formatDayMonth(dayOf(plan.period_end))} e o plano encurtou até lá: os treinos que ficavam depois foram cancelados.`,
     );
   }
 
@@ -240,29 +260,34 @@ export function detectPlanDivergence({
 
     // 1. A prova não está no plano.
     if (!onDay.some(isRacePlanItem)) {
-      push('prova_sem_item', `${race.id}:${date}`, `A ${raceLabel(race)} não está no plano.`);
+      push('prova_sem_item', `${race.id}:${date}`, `${raceLabelAAbrir(race)} não está no plano.`);
     }
 
-    // 2. E o que lá está no dia dela é um treino.
+    // 2. E o que lá está no dia dela é um treino. O treino dito numa frase
+    //    (treinoFalado), e não o rótulo do chip a meio dela.
     for (const item of onDay) {
       if (isRacePlanItem(item) || item.kind === 'descanso') continue;
       push(
         'treino_no_dia_da_prova',
         `${race.id}:${item.id}`,
-        `${raceLabel(race)}: o plano tem ${planItemTitle(item)} no dia da prova.`,
+        `${raceLabelAAbrir(race)}: no dia da prova o plano ainda tem ${treinoFalado([item], date)}.`,
       );
     }
 
-    // 3. Trabalho duro na véspera e na antevéspera.
+    // 3. Trabalho duro na véspera e na antevéspera. Não antes de uma prova
+    //    de treino (c): entra no plano como treino de qualidade, com taper
+    //    curto (02-corrida-prova.md), e não se guarda como uma principal.
+    if (race.race_priority === 'c') continue;
     for (let gap = 1; gap <= RACE_EVE_DAYS; gap += 1) {
       const eve = addDays(date, -gap);
       for (const item of upcoming.filter((i) => dayOf(i.planned_date) === eve)) {
         const hardRun = item.kind === 'corrida' && HARD_RUN_TYPES.includes(item.training_type);
-        if (!hardRun && item.kind !== 'ginasio') continue;
+        const ginasio = item.kind === 'ginasio' && !ginasioLeve(item);
+        if (!hardRun && !ginasio) continue;
         push(
           'treino_forte_na_vespera',
           `${race.id}:${item.id}`,
-          `${raceLabel(race)}: ${planItemTitle(item)} a ${formatDayMonth(eve)}, ${EVE_LABEL[gap]} da prova.`,
+          `${raceLabelAAbrir(race)}: a ${formatDayMonth(eve)} tens ${treinoFalado([item], eve)}. ${EVE_LABEL[gap]} da prova só cabe corrida leve.`,
         );
       }
     }

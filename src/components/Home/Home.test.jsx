@@ -97,7 +97,8 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     openAlerts();
     const aviso = screen.getByTestId('carol-alert-plano');
     expect(aviso).toHaveTextContent('O plano precisa de um ajuste');
-    expect(aviso).toHaveTextContent(/A Corrida do Tejo \(.+\) não está no plano\./);
+    expect(aviso).toHaveTextContent(/Corrida do Tejo \(.+\) não está no plano\./);
+    expect(aviso).not.toHaveTextContent(/A Corrida do Tejo/);
   });
 
   it('"Falar com a Carol" entra no "Adaptar plano" com os motivos e a assinatura', () => {
@@ -112,8 +113,8 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     // Duas queixas de uma vez: a prova não está lá, e o que lá está é um
     // treino longo no dia dela.
     expect(intent.divergence).toHaveLength(2);
-    expect(intent.divergence[0]).toMatch(/^A Corrida do Tejo \(.+\) não está no plano\.$/);
-    expect(intent.divergence[1]).toMatch(/o plano tem Rodagem longa no dia da prova\.$/);
+    expect(intent.divergence[0]).toMatch(/^Corrida do Tejo \(.+\) não está no plano\.$/);
+    expect(intent.divergence[1]).toMatch(/: no dia da prova o plano ainda tem uma rodagem longa\.$/);
     expect(intent.signature).toContain('p1|');
     expect(setActiveTab).toHaveBeenCalledWith('coach');
   });
@@ -142,7 +143,7 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     // Na voz dela e a dizer o assunto, sem o motivo técnico (2026-09-23).
     const aviso = screen.getByTestId('carol-alert-assuntos');
     expect(aviso).toHaveTextContent('Preciso de falar contigo');
-    expect(aviso).toHaveTextContent('há uma coisa que quero ver contigo');
+    expect(aviso).toHaveTextContent('Há um registo teu que quero ver contigo.');
     expect(aviso).not.toHaveTextContent('carga a subir');
     expect(aviso.textContent.match(/Carol/g) || []).toHaveLength(0);
     expect(screen.queryByTestId('carol-alert-plano')).not.toBeInTheDocument();

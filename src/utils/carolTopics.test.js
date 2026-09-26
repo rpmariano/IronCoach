@@ -152,6 +152,24 @@ describe('pendingTopicLines — o check-in diz de que dia é (2026-09-26)', () =
     expect(linha({ dailyCheckins: [], now: lisboa(TERCA, 11) })).toMatch(/^A dor que me contaste hoje preocupa-me/);
   });
 
+  /* Uma dor 5 posta por engano e corrigida para 0 no mesmo dia: o store
+     fecha a intervenção como falso positivo quando ainda está por falar
+     (saveDailyCheckin). Com a conversa já em curso, ou com o fecho por
+     fazer, o popup continua — mas já não preocupado com uma dor que o
+     cartão diz "Sem dor". */
+  it('a conversa já em curso e o check-in corrigido no mesmo dia: não volta a falar da dor', () => {
+    const corrigido = { ...DOR_TERCA, pain: 0, pain_location: null };
+    const t = pendingTopicLines({
+      profile: { coach_intervention_status: 'in_progress', coach_intervention_reason: motivoDaDor },
+      coachPlans: PLANO,
+      coachPlanItems: [corrida(TERCA)],
+      dailyCheckins: [corrigido],
+      now: lisboa(TERCA, 11),
+    })[0];
+    expect(t).toBe('Vi que corrigiste o check-in de hoje. Quero confirmar contigo que está tudo bem.');
+    expect(t).not.toMatch(/dor|preocup/i);
+  });
+
   it('ela sabe da cirurgia (coach_notes) e di-lo', () => {
     const notas = [{ category: 'saude', note: 'Cirurgia a rutura do bíceps direito a 2026-09-25; paragem de corrida de pelo menos 2 semanas no pós-operatório.' }];
     const motivo = interventionReasonFor([{ reason: 'Dor 5/10 (braço) no check-in de hoje.' }], '2026-09-26');
@@ -317,8 +335,24 @@ describe('pendingTopicLines — o check-in diz de que dia é (2026-09-26)', () =
 
   it('um registo sem origem conhecida não é "o último registo"', () => {
     const t = pendingTopicLines({ profile: { coach_intervention_status: 'needed', coach_intervention_reason: 'Almoço muito abaixo das proteínas do plano.' } })[0];
-    expect(t).toBe('Num registo teu, há uma coisa que quero ver contigo.');
+    expect(t).toBe('Há um registo teu que quero ver contigo.');
     expect(t).not.toMatch(/último registo/);
+    expectCarolVoice(t);
+  });
+
+  /* Aberta por uma refeição de segunda e vista na quarta, depois de uma
+     corrida registada nesse dia: o último registo já é a corrida, e a frase
+     não pode apontar para ele. O motivo das análises não diz de que registo
+     veio, e ela não inventa qual foi. */
+  it('aberta na segunda por uma refeição e vista na quarta, com uma corrida pelo meio, não fala do último registo', () => {
+    const t = pendingTopicLines({
+      profile: { coach_intervention_status: 'needed', coach_intervention_reason: 'Almoço muito abaixo das proteínas do plano.' },
+      coachPlans: PLANO,
+      coachPlanItems: [corrida('2026-09-23', { status: 'feito' })],
+      now: lisboa('2026-09-23', 20),
+    })[0];
+    expect(t).toBe('Há um registo teu que quero ver contigo.');
+    expect(t).not.toMatch(/último|corrida|almoço|segunda/i);
   });
 });
 

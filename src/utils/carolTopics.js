@@ -239,9 +239,10 @@ export function pendingTopicLines({
     else if (carga === 'acima_do_plano') lines.push('Nos últimos dias correste bem mais do que o plano previa. Quero ver contigo como ficam os próximos.');
     else if (carga === 'sem_plano') lines.push('A tua carga de corrida subiu muito face às últimas semanas. Quero ver contigo como ficam os próximos dias.');
     // Aberta por uma refeição de segunda e vista na quarta, "o teu último
-    // registo" já era a corrida de quarta (2026-09-26): sem a origem no
-    // perfil, não se diz qual.
-    else lines.push('Num registo teu, há uma coisa que quero ver contigo.');
+    // registo" já era a corrida de quarta (2026-09-26). O motivo das análises
+    // é texto livre para ela, e a origem vai para coach_interventions sem
+    // ficar no perfil: não se sabe qual foi, e não se diz.
+    else lines.push('Há um registo teu que quero ver contigo.');
   }
   const planos = (coachPlans || []).filter((p) => p?.status === 'proposto').length;
   if (planos === 1) lines.push('Tens um plano meu à espera que o aceites ou recuses.');

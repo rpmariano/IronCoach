@@ -44,6 +44,14 @@ export function planStartMoment(plan, items = [], today) {
     };
   }
 
+  // Um plano só de refeições não é um bloco de treino a arrancar (revisão de
+  // 2026-09-26): dizia «Semana 1 de 4. Começa hoje. Eu vou estar a ver.».
+  // Sem refeições nos itens não se sabe o que o plano é, e fica a do bloco.
+  const doPlano = (items || []).filter((i) => i?.plan_id === plan.id && i.status !== 'cancelado');
+  if (doPlano.some((i) => i.meal_suggestion) && !doPlano.some((i) => i.kind === 'corrida' || i.kind === 'ginasio')) {
+    return { title: 'As refeições estão no plano.', sub: 'Vês cada dia em Como estou.' };
+  }
+
   const semanas = Math.max(1, Math.ceil((diff(plan.period_start, plan.period_end) + 1) / 7));
   const titulo = semanas === 1 ? 'Uma semana de plano.' : `Semana 1 de ${semanas}.`;
   return {

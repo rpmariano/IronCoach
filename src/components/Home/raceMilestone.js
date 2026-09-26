@@ -42,6 +42,11 @@ const CEM_DIAS_CURTO = 'Faltam 100 dias. Para esta distância é menos do que eu
 const CEM_DIAS = 'Faltam 100 dias. Isto constrói-se uma semana de cada vez.';
 /* Aos 7 dias, sem plano aceite: o que fazer, sem apontar para um plano que não há. */
 const SETE_DIAS_SEM_PLANO = 'Uma semana. Já não se ganha forma, só se perde frescura. Treinos curtos e leves, e nada a mais.';
+/* Aos 14 dias, sem uma corrida registada no ciclo desta prova (revisão de
+   2026-09-26): «o que te vai levar lá já está feito» afirmava um trabalho
+   que ela nunca viu — o mesmo cuidado do parecer do hub, que já não diz
+   «o trabalho duro está feito» sem um treino registado. */
+const CATORZE_DIAS_SEM_CORRIDAS = 'Duas semanas. Agora é chegar lá com as pernas frescas.';
 
 /* Os marcos do polimento: só numa prova principal (race_priority 'a'). */
 const POLIMENTO = new Set([14, 7, 3]);
@@ -60,8 +65,11 @@ export const RACE_MILESTONES = [100, 50, 30, 14, 7, 3];
  *                dias sai a frase que não afirma nada sobre o tempo.
  *   comPlano   — há um plano aceite a cobrir os dias até à prova. Por
  *                omissão false: sem saber, não se aponta para um plano.
+ *   comCorridas — há corridas registadas no ciclo desta prova, do início
+ *                real da preparação até hoje. Por omissão false: sem as
+ *                ver, não se diz que o trabalho está feito.
  */
-export function raceMilestoneLine(daysToRace, { prioridade = 'a', flags = null, comPlano = false } = {}) {
+export function raceMilestoneLine(daysToRace, { prioridade = 'a', flags = null, comPlano = false, comCorridas = false } = {}) {
   if (!Object.prototype.hasOwnProperty.call(FRASE, daysToRace)) return null;
   if (POLIMENTO.has(daysToRace) && String(prioridade || 'a').toLowerCase() !== 'a') return null;
   if (daysToRace === 100) {
@@ -71,6 +79,7 @@ export function raceMilestoneLine(daysToRace, { prioridade = 'a', flags = null, 
     if (flags.includes('ultra_para_iniciante')) return CEM_DIAS;
     return FRASE[100];
   }
+  if (daysToRace === 14 && !comCorridas) return CATORZE_DIAS_SEM_CORRIDAS;
   if (daysToRace === 7 && !comPlano) return SETE_DIAS_SEM_PLANO;
   return FRASE[daysToRace];
 }

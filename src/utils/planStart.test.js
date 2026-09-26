@@ -38,6 +38,34 @@ describe('planStartMoment', () => {
   });
 });
 
+/* Revisão de 2026-09-26: um plano só de refeições dizia «Semana 1 de 12.
+   Começa na segunda-feira.» / «Eu vou estar a ver.» — o arranque de um
+   bloco de treino que não existe. */
+describe('um plano só de refeições', () => {
+  const refeicao = (planned_date, o = {}) => ({ id: `m-${planned_date}`, plan_id: 'p1', planned_date, kind: 'descanso', categories: ['so-refeicoes'], meal_suggestion: 'Almoço: arroz com frango', status: 'pendente', ...o });
+
+  it('diz que as refeições estão no plano e onde se veem, sem semanas nem treino', () => {
+    const m = planStartMoment(plan, [refeicao('2026-09-21'), refeicao('2026-09-22')], TODAY);
+    expect(m).toEqual({ title: 'As refeições estão no plano.', sub: 'Vês cada dia em Como estou.' });
+    expectCarolVoice(`${m.title} ${m.sub}`);
+  });
+
+  it('um treino cancelado não faz dele um bloco de treino', () => {
+    const m = planStartMoment(plan, [refeicao('2026-09-21'), item('2026-09-22', { status: 'cancelado' })], TODAY);
+    expect(m.title).toBe('As refeições estão no plano.');
+  });
+
+  it('com corrida ou ginásio ao lado das refeições, continua a ser o arranque do bloco', () => {
+    expect(planStartMoment(plan, [refeicao('2026-09-21'), item('2026-09-22')], TODAY).title).toBe('Semana 1 de 12. Começa na segunda-feira.');
+    expect(planStartMoment(plan, [refeicao('2026-09-21'), item('2026-09-22', { kind: 'ginasio', categories: ['Pernas'] })], TODAY).title)
+      .toBe('Semana 1 de 12. Começa na segunda-feira.');
+  });
+
+  it('as refeições de outro plano não contam', () => {
+    expect(planStartMoment(plan, [refeicao('2026-09-21', { plan_id: 'p0' })], TODAY).title).toBe('Semana 1 de 12. Começa na segunda-feira.');
+  });
+});
+
 describe('revisão pré-master de 2026-09-19', () => {
   it('o ajuste diz o dia sem "a partir de na…"', () => {
     const m = planStartMoment({ ...plan, supersedes_plan_id: 'p0' }, [], TODAY);
