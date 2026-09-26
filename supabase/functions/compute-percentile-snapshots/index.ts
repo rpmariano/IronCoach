@@ -5,7 +5,9 @@
 // send-water-reminders: não é invocada por um utilizador autenticado.
 //
 // O que faz, por esta ordem:
-//   1. escolhe a última janela de 14 dias JÁ FECHADA (percentileSegments.ts);
+//   1. escolhe a última janela de 14 dias JÁ FECHADA há pelo menos um dia
+//      (publishableWindow — a folga para os registos de domingo feitos na
+//      segunda; percentileSegments.ts);
 //   2. lê os atletas com consentimento 'stats_pool' ativo — e só esses;
 //   3. deriva o ESCALÃO da data de nascimento e deita a data fora ali mesmo;
 //   4. calcula o índice de execução de cada um na janela (executionScore);
@@ -38,7 +40,7 @@ import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import type { GymRow, PlanItemRow, RunRow } from "../_shared/formulas/prescriptionAdherence.ts";
 import {
   ageBandFor,
-  closedWindow,
+  publishableWindow,
   MIN_SEGMENT_SIZE,
   TERRAIN_LOOKBACK_DAYS,
 } from "../_shared/formulas/percentileSegments.ts";
@@ -65,7 +67,7 @@ async function handler(req: Request): Promise<Response> {
   );
 
   const hoje = new Date().toISOString().slice(0, 10);
-  const janela = closedWindow(hoje);
+  const janela = publishableWindow(hoje);
   if (!janela) return jsonResponse({ skipped: "ainda não fechou nenhuma janela" });
 
   // Já publicada? Não se toca, aconteça o que acontecer entretanto — ver o

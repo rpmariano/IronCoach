@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { ageBandFor, closedWindow, nBand, segmentKey, terrainForAthlete, ventileBoundaries, VENTILE_COUNT } from "./percentileSegments.ts";
+import { ageBandFor, closedWindow, nBand, nextPublicationDate, PUBLISH_GRACE_DAYS, publishableWindow, segmentKey, terrainForAthlete, ventileBoundaries, VENTILE_COUNT } from "./percentileSegments.ts";
 
 Deno.test("closedWindow: só a janela que já fechou, alinhada à âncora", () => {
   // 2026-09-21: a janela corrente é 09-14 → 09-28 e ainda anda a andar; a
@@ -86,4 +86,24 @@ Deno.test("terrainForAthlete: manda a prova que vem a seguir; sem nenhuma marcad
   assertEquals(terrainForAthlete([], fim), null);
   assertEquals(terrainForAthlete(null, fim), null);
   assertEquals(terrainForAthlete([{ date: "2026-09-20", race_type: null }], fim), null);
+});
+
+// A folga de publicação (2026-09-26): a quinzena de 14 a 27 set sai na
+// terça 29, não na segunda 28 — os treinos de domingo registados na segunda
+// ainda contam.
+Deno.test("publishableWindow: a quinzena só sai um dia depois de fechar", () => {
+  // Segunda 28 set: a de 14 a 27 set já fechou, mas ainda não sai.
+  assertEquals(publishableWindow("2026-09-28"), { start: "2026-08-31", end: "2026-09-14" });
+  // Terça 29 set: sai.
+  assertEquals(publishableWindow("2026-09-29"), { start: "2026-09-14", end: "2026-09-28" });
+  assertEquals(PUBLISH_GRACE_DAYS, 1);
+});
+
+Deno.test("nextPublicationDate: o fim da quinzena em curso mais a folga — sempre uma terça", () => {
+  assertEquals(nextPublicationDate("2026-09-26"), "2026-09-29");
+  // Na segunda da publicação ainda é essa terça.
+  assertEquals(nextPublicationDate("2026-09-28"), "2026-09-29");
+  // A partir da terça, é a quinzena seguinte.
+  assertEquals(nextPublicationDate("2026-09-29"), "2026-10-13");
+  assertEquals(new Date("2026-10-13T00:00:00Z").getUTCDay(), 2);
 });

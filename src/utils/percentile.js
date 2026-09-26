@@ -94,6 +94,17 @@ export const N_BAND_LABELS = {
   '200+': '200 ou mais atletas neste segmento',
 };
 
+const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** "terça, 29 set" — o dia da próxima atualização da média, como o ecrã o diz.
+ *  A data vem de nextPublicationDate (@formulas/percentileSegments.ts). */
+export function formatPublicationDate(iso) {
+  if (!iso) return '';
+  const d = new Date(`${iso}T00:00:00Z`);
+  return `${DIAS_SEMANA[d.getUTCDay()]}, ${d.getUTCDate()} ${MESES[d.getUTCMonth()]}`;
+}
+
 export function ageBandLabel(band) {
   return AGE_BAND_LABELS[band] || band || '';
 }

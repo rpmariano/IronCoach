@@ -521,6 +521,11 @@ Deno.test("buildVitrinaContext: nas tabelas, com a posição e a da quinzena ant
   assertStringIncludes(t, "REGRAS DOS BADGES");
 });
 
+Deno.test("buildVitrinaContext: diz quando é a próxima atualização (só a quem entrou na média)", () => {
+  assertStringIncludes(buildVitrinaContext({ ...vitrinaBase, nextPublication: "2026-09-29" }), "a próxima sai a 2026-09-29");
+  assertEquals(buildVitrinaContext({ ...vitrinaBase, statsPoolConsent: false, nextPublication: "2026-09-29" }).includes("próxima sai"), false);
+});
+
 Deno.test("buildVitrinaContext: nada publicado — não inventa onde ele estaria", () => {
   const t = buildVitrinaContext({ ...vitrinaBase, snapshots: [], percentile: null });
   assertStringIncludes(t, "Ainda não há números publicados");
@@ -541,6 +546,8 @@ Deno.test("fetchVitrinaBlock: lê tudo e calcula o percentil com a fórmula do e
   const t = (await fetchVitrinaBlock(sb, "u1", "2026-09-25", { withBadges: true }))!;
   // 1 de 2 corridas cumpridas → índice 50 → percentil 50, como no ecrã.
   assertStringIncludes(t, "Percentil dele: 50");
+  // Sábado 26 set: a próxima distribuição sai na terça 29.
+  assertStringIncludes(t, "a próxima sai a 2026-09-29");
   assertStringIncludes(t, "em 3.º lugar");
   assertStringIncludes(t, "ainda não abriu na app: A Escalada");
   // Com badges ganhos, o bloco dos badges vem junto e as regras vão lá.

@@ -5,7 +5,9 @@ import { supabase } from '../../lib/supabase';
 import GlassCard from '../shared/GlassCard';
 import Warning from '../shared/Warning';
 import { useEscapeClose } from '../shared/Sheet';
-import { segmentPhrase } from '../../utils/percentile';
+import { formatPublicationDate, segmentPhrase } from '../../utils/percentile';
+import { nextPublicationDate } from '@formulas/percentileSegments.ts';
+import { todayISO } from '../../lib/utils';
 
 /* As tabelas com nomes — o top 10 de um escalão numa quinzena (2026-09-25).
 
@@ -126,7 +128,8 @@ export default function TabelasScreen({ segment, windowStart, windowEnd, onClose
 
         <Warning tone="ok" title="Como se lê">
           A percentagem é a parte do plano que cada um cumpriu nesta quinzena — não quanto treinou. A tabela é
-          fechada no fim de cada quinzena e não se refaz; quem deixa de aceitar sai dela na hora.
+          fechada no fim de cada quinzena e não se refaz; quem deixa de aceitar sai dela na hora. A próxima sai{' '}
+          <span data-testid="tabelas-proxima">{formatPublicationDate(nextPublicationDate(todayISO()))}</span>.
         </Warning>
 
         <button
