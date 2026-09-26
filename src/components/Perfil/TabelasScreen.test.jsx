@@ -38,10 +38,21 @@ describe('TabelasScreen', () => {
     await waitFor(() => expect(screen.getByTestId('tabelas-vazia')).toBeInTheDocument());
   });
 
-  it('diz quando sai a próxima tabela — uma terça', async () => {
-    render(<TabelasScreen segment={SEG} windowStart="2026-08-31" onClose={() => {}} onManageConsent={() => {}} />);
-    await waitFor(() => expect(screen.getByTestId('tabelas-vazia')).toBeInTheDocument());
-    expect(screen.getByTestId('tabelas-proxima')).toHaveTextContent(/^terça, \d{1,2} [a-z]{3}$/);
+  it('diz quando sai a próxima tabela — e na terça antes do cron, "hoje, de manhã"', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-09-29T03:00:00Z'));
+      const { unmount } = render(<TabelasScreen segment={SEG} windowStart="2026-08-31" onClose={() => {}} onManageConsent={() => {}} />);
+      await waitFor(() => expect(screen.getByTestId('tabelas-vazia')).toBeInTheDocument());
+      expect(screen.getByTestId('tabelas-proxima')).toHaveTextContent('hoje, de manhã');
+      unmount();
+      vi.setSystemTime(new Date('2026-09-29T05:00:00Z'));
+      render(<TabelasScreen segment={SEG} windowStart="2026-08-31" onClose={() => {}} onManageConsent={() => {}} />);
+      await waitFor(() => expect(screen.getByTestId('tabelas-vazia')).toBeInTheDocument());
+      expect(screen.getByTestId('tabelas-proxima')).toHaveTextContent('terça, 13 out');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('gerir a presença leva ao consentimento', async () => {

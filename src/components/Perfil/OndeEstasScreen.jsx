@@ -16,8 +16,8 @@ import {
   TERRAIN_LABELS,
   ageBandLabel,
   densityCurve,
-  formatPublicationDate,
   isTruncated,
+  nextUpdateLabel,
   percentileFrom,
   percentileSentence,
   sameSegment,
@@ -27,7 +27,7 @@ import {
   widerSegments,
 } from '../../utils/percentile';
 import { evaluatePrescriptions } from '@formulas/prescriptionAdherence.ts';
-import { nextPublicationDate, WINDOW_DAYS } from '@formulas/percentileSegments.ts';
+import { WINDOW_DAYS } from '@formulas/percentileSegments.ts';
 import { ownSegmentFor } from '@formulas/vitrina.ts';
 
 /* "Onde estás" — o percentil dentro do escalão (gamificação, Fase 5).
@@ -220,7 +220,8 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
   const percentil = snapshot ? percentileFrom(meuIndice, snapshot.boundaries) : null;
   // A média muda de 14 em 14 dias, à terça (folga de um dia para os registos
   // de domingo). Dizer quando evita a pergunta "porque é que não mexe?".
-  const proximaAtualizacao = formatPublicationDate(nextPublicationDate(todayISO()));
+  // Pelo instante, não pelo calendário: na terça antes do cron, é "hoje".
+  const proximaAtualizacao = nextUpdateLabel();
   const linhaProxima = (
     // "Próxima atualização", não "a próxima distribuição sai": num grupo com
     // menos de 20 atletas nada sai nesse dia, mas os números voltam a ser vistos.

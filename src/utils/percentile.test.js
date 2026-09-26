@@ -16,6 +16,7 @@ import {
   segmentPhrase,
   sameSegment,
   formatPublicationDate,
+  nextUpdateLabel,
 } from './percentile';
 
 /* Onde estás — o percentil dentro do escalão (gamificação, Fase 5). */
@@ -180,5 +181,24 @@ describe('formatPublicationDate', () => {
     expect(formatPublicationDate('2026-09-29')).toBe('terça, 29 set');
     expect(formatPublicationDate('2026-10-13')).toBe('terça, 13 out');
     expect(formatPublicationDate(null)).toBe('');
+    // Na madrugada do próprio dia (antes do cron), é hoje.
+    expect(formatPublicationDate('2026-09-29', '2026-09-29')).toBe('hoje, de manhã');
+    expect(formatPublicationDate('2026-10-13', '2026-09-29')).toBe('terça, 13 out');
+  });
+});
+
+/* A madrugada da terça (2026-09-26): com o relógio fixado, não com regex que
+   aceitam as duas respostas — um regresso a nextPublicationDate(todayISO())
+   tem de ficar vermelho. O fuso dos testes é o do ambiente; os instantes
+   escolhidos caem no mesmo dia local em Portugal e em UTC. */
+describe('nextUpdateLabel — pelo instante, não pelo calendário', () => {
+  it('terça antes do cron (03:00 UTC): "hoje, de manhã"', () => {
+    expect(nextUpdateLabel(new Date('2026-09-29T03:00:00Z'))).toBe('hoje, de manhã');
+  });
+  it('terça depois do cron (05:00 UTC): a terça seguinte', () => {
+    expect(nextUpdateLabel(new Date('2026-09-29T05:00:00Z'))).toBe('terça, 13 out');
+  });
+  it('segunda à noite: amanhã, pelo nome', () => {
+    expect(nextUpdateLabel(new Date('2026-09-28T21:00:00Z'))).toBe('terça, 29 set');
   });
 });
