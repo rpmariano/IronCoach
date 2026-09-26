@@ -519,7 +519,8 @@ function runsOn(runs, dateISO) {
 
 /**
  * O texto das boas-vindas: { greeting, lines: [≤2], chip: {label, value, icon} | null, cta }.
- * `data`: { profile, dailyCheckins, coachPlans, coachPlanItems, runs, meals, raceEvents }.
+ * `data`: { profile, dailyCheckins, coachPlans, coachPlanItems, runs, meals, raceEvents,
+ * coachNotes (a memória dela), saudadoHoje (já houve uma saudação hoje, noutra faixa) }.
  */
 export function buildWelcome(variant, data = {}, now = new Date()) {
   const nome = String(data.profile?.display_name || data.profile?.full_name || '').trim().split(/\s+/)[0] || '';
@@ -795,7 +796,9 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
   // essa, e a segunda a primeira do dia (o check-in, a corrida, o plano). O
   // chip continua a dizer o plano. No dia da prova, a prova manda.
   if (variant !== 'madrugada' && !provaHoje && diaHoje.tipo !== 'provaFeita') {
-    const daVida = frasesDaVida(vida, { momento: 'dia', variant });
+    // `saudadoHoje` (App.jsx): já houve uma saudação hoje — a pergunta
+    // ("Como correu a cirurgia?") não se repete na seguinte.
+    const daVida = frasesDaVida(vida, { momento: 'dia', variant, jaFalouHoje: !!data.saudadoHoje });
     if (daVida) lines.unshift(pick(daVida, 'vida'));
   }
 

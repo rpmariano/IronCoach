@@ -49,14 +49,24 @@ const PARTES = [
 
 const SEMANAS = { uma: 1, duas: 2, 'três': 3, tres: 3, quatro: 4, cinco: 5, seis: 6, oito: 8 };
 
-/** A data escrita na nota: "2026-09-25" (como ela as escreve) ou "25/09/2026". */
-function dataDaNota(texto) {
-  const iso = texto.match(/(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const pt = texto.match(/(?<!\d)(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?!\d)/);
-  if (pt) return `${pt[3]}-${pt[2].padStart(2, '0')}-${pt[1].padStart(2, '0')}`;
-  return null;
+/** A data do acontecimento escrita na nota: "2026-09-25" (como ela as
+ *  escreve) ou "25/09/2026". Com mais do que uma ("retoma a 2026-10-09,
+ *  depois da cirurgia de 2026-09-25"), a mais perto da palavra que diz o que
+ *  foi. */
+function dataDaNota(texto, onde = 0) {
+  const datas = [];
+  for (const m of texto.matchAll(/(\d{4})-(\d{2})-(\d{2})/g)) datas.push({ i: m.index, iso: `${m[1]}-${m[2]}-${m[3]}` });
+  for (const m of texto.matchAll(/(?<!\d)(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})(?!\d)/g)) {
+    datas.push({ i: m.index, iso: `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` });
+  }
+  if (!datas.length) return null;
+  datas.sort((x, y) => Math.abs(x.i - onde) - Math.abs(y.i - onde));
+  return datas[0].iso;
 }
+
+/* "Chegar à maratona sem lesões", "evitar lesões", "prevenir uma lesão":
+   a palavra está lá, o acontecimento não. */
+const NEGA = /(?<!\p{L})(sem|evitar|evita|prevenir|previne|preven[çc][ãa]o|risco)(?!\p{L})[^.;]{0,20}$/iu;
 
 /** Quantos dias de recuperação a nota diz ("2 semanas", "duas semanas", "10 dias"). */
 function recuperacaoDaNota(texto) {
@@ -89,7 +99,10 @@ export function eventoDaVida(notes, hoje) {
     const texto = String(n?.note || '').trim();
     if (!texto) continue;
     const t = TIPOS.find((x) => x.re.test(texto));
-    const data = t && dataDaNota(texto);
+    if (!t) continue;
+    const onde = texto.search(t.re);
+    if (NEGA.test(texto.slice(0, onde))) continue;
+    const data = dataDaNota(texto, onde);
     if (!data) continue;
     const dias = dayIndex(hoje) - dayIndex(data);
     const recupera = recuperacaoDaNota(texto) || t.recupera;
@@ -113,7 +126,7 @@ const maiuscula = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
  * energia — sem exclamações, sem adjetivos com género, e sem prometer nada
  * sobre a cirurgia ("vai correr bem") que ela não sabe.
  */
-export function frasesDaVida(evento, { momento = 'dia', variant = 'manha', depoisDaMeiaNoite = false } = {}) {
+export function frasesDaVida(evento, { momento = 'dia', variant = 'manha', depoisDaMeiaNoite = false, jaFalouHoje = false } = {}) {
   if (!evento) return null;
   const { tipo, dias, a, da, parte, recupera } = evento;
   const cirurgia = tipo === 'cirurgia';
@@ -123,9 +136,11 @@ export function frasesDaVida(evento, { momento = 'dia', variant = 'manha', depoi
     // Depois da meia-noite, "amanhã" é ambíguo para quem ainda não dormiu:
     // a véspera só se diz antes dela.
     if (dias === -1) return depoisDaMeiaNoite ? null : [`Amanhã é ${a}. Vai dormir: uma noite bem dormida ajuda mais do que parece.`];
-    if (dias === 0) {
+    // No dia da cirurgia não se sabe a hora dela (a do atleta foi à noite):
+    // nada de "correu" nem de "foi" antes de ele o dizer.
+    if (dias === 0 && cirurgia) {
       if (depoisDaMeiaNoite) return [`Hoje é o dia ${da}. Vai dormir, que é disso que o corpo precisa.`];
-      return [`Hoje foi o dia ${da}. O corpo recupera a dormir: vai descansar, e de manhã contas-me como correu.`];
+      return [`Hoje é o dia ${da}, e penso em ti. Descansa assim que puderes, e depois conta-me como correu.`];
     }
     // A primeira noite depois da cirurgia — o caso das 03:53 de 2026-09-26.
     if (dias === 1 && cirurgia && depoisDaMeiaNoite) {
@@ -138,6 +153,21 @@ export function frasesDaVida(evento, { momento = 'dia', variant = 'manha', depoi
     ];
   }
 
+  /* Já perguntou hoje (numa saudação anterior do mesmo dia): não repete a
+     pergunta — uma pessoa não pergunta "como correu?" de manhã e outra vez à
+     tarde. Diz que continua atenta, sem pedir outra vez. */
+  if (jaFalouHoje && dias <= 3) {
+    if (dias === -1) return [`Amanhã é ${a}. Hoje, descanso e cabeça tranquila; estou contigo.`];
+    if (dias === 0 && cirurgia) return [`Continuo a pensar em ti. Quando puderes, conta-me como correu ${a === 'a operação' ? 'a operação' : 'a cirurgia'}.`];
+    if (doenca) return ['Espero que o dia esteja a correr melhor. Descansa o que puderes.'];
+    if (dias === 1 && cirurgia) {
+      return variant === 'noite'
+        ? [`O primeiro dia depois ${da} está quase feito. Esta noite, descanso a sério.`]
+        : [`No primeiro dia depois ${da}, o teu único treino é recuperar.`];
+    }
+    return [parte ? `${maiuscula(parte)} continua a recuperar. Hoje, paciência e descanso.` : 'Estou a acompanhar a tua recuperação, um dia de cada vez.'];
+  }
+
   if (dias === -1) {
     return [
       `Amanhã é ${a}. Hoje, calma e descanso; depois conta-me como correu.`,
@@ -145,11 +175,8 @@ export function frasesDaVida(evento, { momento = 'dia', variant = 'manha', depoi
     ];
   }
   if (dias === 0) {
-    if (cirurgia) {
-      return variant === 'noite'
-        ? [`Hoje foi o dia ${da}. Penso em ti: quando puderes, conta-me como correu.`]
-        : [`Hoje é o dia ${da}. Penso em ti: quando puderes, dá-me notícias.`];
-    }
+    // Também à noite no presente: a cirurgia pode ainda não ter sido.
+    if (cirurgia) return [`Hoje é o dia ${da}. Penso em ti: quando puderes, dá-me notícias.`];
     return doenca ? ['Soube que não estás bem. Como te sentes agora?'] : [`Soube ${da}. Como está ${parte || 'isso'} agora?`];
   }
   if (dias === 1 && cirurgia) {
@@ -162,8 +189,10 @@ export function frasesDaVida(evento, { momento = 'dia', variant = 'manha', depoi
       'Estou a acompanhar a tua recuperação. Como te sentes hoje?',
     ];
   }
-  // Até ao fim da recuperação, uma linha de manhã: ela não se esqueceu.
-  if (variant !== 'manha' || dias > recupera) return null;
+  /* Na recuperação, uma linha de manhã: ela não se esqueceu. Só nas duas
+     primeiras semanas — uma imobilização de seis semanas não é assunto de
+     todas as manhãs (à noite e no check-in, a recuperação conta toda). */
+  if (variant !== 'manha' || dias > Math.min(recupera, 14)) return null;
   return [
     `Continuamos na recuperação ${da}. Um dia de cada vez.`,
     parte ? `${maiuscula(parte)} ainda está a recuperar. Cada dia de paciência conta.` : 'A recuperação também é treino. Cada dia de paciência conta.',

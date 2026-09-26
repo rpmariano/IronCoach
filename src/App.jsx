@@ -618,11 +618,18 @@ export default function App() {
     // A última saudação, aqui ou noutro dispositivo — o intervalo mínimo
     // entre saudações de faixa (ação P.11).
     const lastShownAt = Math.max(readShownAt(uid) ?? 0, s.lastWelcomeAt ?? 0) || null;
-    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: [...readSeen(uid), ...seenElsewhere], lastShownAt });
+    const vistas = [...readSeen(uid), ...seenElsewhere];
+    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: vistas, lastShownAt });
     if (!decision) { clear(); return; }
+    /* Já houve hoje uma saudação de outra faixa (a da madrugada conta para a
+       véspera): o que ela perguntou nessa não volta a perguntar-se nesta —
+       "Como correu a cirurgia?" de manhã não se repete à tarde (pedido
+       2026-09-26, utils/carolVida.js). Lido antes de marcar esta. */
+    const hojeLisboa = slotKey().date;
+    const saudadoHoje = vistas.some((k) => new RegExp(`^${hojeLisboa}:(manha|tarde|noite|prova|vespera)$`).test(k));
     markSeen(uid, decision.markKeys);
     markShownAt(uid);
-    const text = buildWelcome(decision.variant, s);
+    const text = buildWelcome(decision.variant, { ...s, saudadoHoje });
     /* O que ela disse fica em coach_impressions (kind 'welcome', ação 5.1):
        o cartão diário e o chat leem-no para não repetir nem contradizer o
        que ela já disse hoje, e o outro telemóvel fica a saber que esta faixa

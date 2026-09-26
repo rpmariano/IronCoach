@@ -43,6 +43,37 @@ describe('eventoDaVida — o que ela sabe', () => {
   });
 });
 
+describe('eventoDaVida — o que não é um acontecimento', () => {
+  it('"sem lesões", "evitar uma lesão", "risco de lesão" não são lesões', () => {
+    expect(eventoDaVida([{ note: 'Objetivo: chegar à maratona de 2026-09-26 sem lesão.' }], '2026-09-26')).toBeNull();
+    expect(eventoDaVida([{ note: 'Evitar uma lesão no joelho até 2026-09-26.' }], '2026-09-26')).toBeNull();
+    expect(eventoDaVida([{ note: 'Risco de lesão alto; prova a 2026-09-26.' }], '2026-09-26')).toBeNull();
+    // Uma negação noutra frase não conta.
+    expect(eventoDaVida([{ note: 'Sem dores na corrida. Cirurgia ao joelho a 2026-09-25.' }], '2026-09-26')).toMatchObject({ tipo: 'cirurgia', parte: 'o joelho' });
+  });
+
+  it('com duas datas, vale a que está perto do que aconteceu', () => {
+    const e = eventoDaVida([{ note: 'Retoma prevista a 2026-10-09, depois da cirurgia ao ombro de 2026-09-25.' }], '2026-09-26');
+    expect(e).toMatchObject({ data: '2026-09-25', dias: 1, parte: 'o ombro' });
+  });
+
+  it('uma lesão com a data de hoje não é "o dia da lesão" de madrugada', () => {
+    const e = eventoDaVida([{ note: 'Entorse no tornozelo a 2026-09-26.' }], '2026-09-26');
+    for (const depoisDaMeiaNoite of [true, false]) {
+      for (const f of frasesDaVida(e, { momento: 'sono', depoisDaMeiaNoite })) expect(f).not.toMatch(/dia da lesão/);
+    }
+  });
+
+  it('uma imobilização longa não é assunto de todas as manhãs, mas conta à noite', () => {
+    const nota = [{ note: 'Cirurgia ao ombro a 2026-09-01; 6 semanas de imobilização.' }];
+    const e = eventoDaVida(nota, '2026-09-26');
+    expect(e).toMatchObject({ dias: 25, recupera: 42 });
+    expect(frasesDaVida(e, { variant: 'manha' })).toBeNull();
+    expect(frasesDaVida(e, { momento: 'sono' })).not.toBeNull();
+    expect(frasesDaVida(eventoDaVida(nota, '2026-09-12'), { variant: 'manha' })).not.toBeNull();
+  });
+});
+
 describe('as boas-vindas à volta da cirurgia', () => {
   const data = (extra = {}) => ({
     profile: { display_name: 'Rui Mariano', gender: 'M' },
@@ -72,10 +103,23 @@ describe('as boas-vindas à volta da cirurgia', () => {
   it('na véspera e no próprio dia, ela sabe que é amanhã / hoje', () => {
     expect(buildWelcome('tarde', data({ meals: [{ date: '2026-09-24' }] }), at('2026-09-24T15:00:00')).lines[0]).toMatch(/^Amanhã é a cirurgia\./);
     expect(buildWelcome('manha', data(), at('2026-09-25T08:00:00')).lines[0]).toMatch(/^Hoje é o dia da cirurgia\./);
-    expect(buildWelcome('noite', data(), at('2026-09-25T20:00:00')).lines[0]).toMatch(/^Hoje foi o dia da cirurgia\./);
+    // À noite também no presente: a cirurgia do atleta foi à noite, e às 20h ainda não tinha sido.
+    expect(buildWelcome('noite', data(), at('2026-09-25T20:00:00')).lines[0]).toMatch(/^Hoje é o dia da cirurgia\./);
+    expect(buildWelcome('madrugada', data(), at('2026-09-25T23:40:00')).lines.join(' ')).not.toMatch(/foi o dia|correu bem/);
     // Às 23h40 da véspera, a madrugada fala da cirurgia de amanhã; depois da meia-noite, não se diz "amanhã".
     expect(buildWelcome('madrugada', data(), at('2026-09-24T23:40:00')).lines.join(' ')).toMatch(/^Amanhã é a cirurgia\./);
     expect(buildWelcome('madrugada', data(), at('2026-09-25T01:00:00')).lines.join(' ')).toMatch(/^Hoje é o dia da cirurgia\./);
+  });
+
+  it('se já perguntou de manhã, à tarde não volta a perguntar como correu', () => {
+    const manha = buildWelcome('manha', data(), at('2026-09-26T08:30:00'));
+    expect(manha.lines[0]).toMatch(/\?/);
+    const tarde = buildWelcome('tarde', data({ saudadoHoje: true, meals: [{ date: '2026-09-26' }], dailyCheckins: [{ date: '2026-09-26', sleep: 3 }] }), at('2026-09-26T15:00:00'));
+    expect(tarde.lines[0]).toBe('No primeiro dia depois da cirurgia, o teu único treino é recuperar.');
+    const noite = buildWelcome('noite', data({ saudadoHoje: true }), at('2026-09-26T21:00:00'));
+    expect(noite.lines[0]).toBe('O primeiro dia depois da cirurgia está quase feito. Esta noite, descanso a sério.');
+    // Sem saudação antes (a primeira abertura do dia é à tarde), pergunta.
+    expect(buildWelcome('tarde', data({ meals: [{ date: '2026-09-26' }] }), at('2026-09-26T15:00:00')).lines[0]).toMatch(/cirurgia\?|correu\./);
   });
 
   it('durante a recuperação, de manhã, ela não se esquece; à noite, o sono é pela recuperação', () => {
