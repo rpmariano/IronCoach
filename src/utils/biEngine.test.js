@@ -121,6 +121,20 @@ describe('detectCoachInsights', () => {
       expect(acwr.message).not.toMatch(/considera|\d\.\d/i);
     });
 
+    // Revisão da Fase 0 (2026-09-26): sem nível declarado, a distribuição
+    // usa 'medio' — a mesma omissão da Carol (coach-chat chama
+    // computeTrainingDistribution(runs, experienceLevel || "medio")).
+    it('sem nível declarado, a distribuição 80/20 usa o alvo de "medio" (o mesmo da Carol)', () => {
+      const runs = Array.from({ length: 5 }, (_, i) => ({
+        date: iso(i + 1), distance_km: 8, duration_seconds: 40 * 60,
+        details: { hr_zones: [{ zone: 4, minutes: 40 }] }, // toda a alta intensidade
+      }));
+      const insights = detectCoachInsights({ runs }, {});
+      const intensity = insights.find((i) => i.id === 'intensity_imbalance');
+      // 'medio' → targetLowPct 80 → "no máximo 20%"; 'iniciante' diria 5%.
+      expect(intensity?.message).toContain('no máximo 20%');
+    });
+
     it('alerta de cautela quando o rácio fica dentro da banda 1,31-1,50', () => {
       const runs = [
         { date: iso(3), distance_km: 42 },  // semana aguda
@@ -170,6 +184,17 @@ describe('detectCoachInsights', () => {
       const bodyAssessments = [{ date: iso(0), weight_kg: 60, body_fat_pct: 15 }];
       expect(detectCoachInsights({ bodyAssessments }, { gender: 'M' }).find((i) => i.id === 'bf_low')).toBeUndefined();
       expect(detectCoachInsights({ bodyAssessments }, { gender: 'F' }).find((i) => i.id === 'bf_low')).toBeTruthy();
+    });
+
+    // Revisão da Fase 0 (2026-09-26): sem género declarado, o piso é o
+    // masculino — o mesmo do coach-chat e do coach-daily-summary. Um alerta
+    // crítico que só o BI dá, e a Carol não, é pior do que nenhum.
+    it('sem género declarado, usa o limiar masculino (paridade com o servidor)', () => {
+      const bodyAssessments = [{ date: iso(0), weight_kg: 60, body_fat_pct: 12 }];
+      expect(detectCoachInsights({ bodyAssessments }, {}).find((i) => i.id === 'bf_low')).toBeUndefined();
+      expect(detectCoachInsights({ bodyAssessments }, { gender: null }).find((i) => i.id === 'bf_low')).toBeUndefined();
+      const low = [{ date: iso(0), weight_kg: 60, body_fat_pct: 7 }];
+      expect(detectCoachInsights({ bodyAssessments: low }, {}).find((i) => i.id === 'bf_low')).toBeTruthy();
     });
 
     it('alerta crítico quando a gordura visceral está em risco elevado (≥15)', () => {
@@ -411,6 +436,28 @@ describe('detectCoachInsights', () => {
           expect(find(cinco, 'race_tactic_time')).toBeUndefined();
         });
       });
+    });
+
+    // Fase 0 do Troféu (2026-09-26): a "Reta Final" seguia a próxima prova
+    // por DATA — uma prova de treino amanhã escondia a maratona-objetivo
+    // de daqui a 9 dias, que é a que precisa mesmo do aviso.
+    it('a "Reta Final" prefere a próxima prova PRINCIPAL, mesmo que não seja a mais próxima por data', () => {
+      const raceEvents = [
+        { id: 'treino-amanha', status: 'agendada', date: iso(-1), distance_km: 10, name: 'Corrida de treino', race_priority: 'c' },
+        { id: 'objetivo', status: 'agendada', date: iso(-9), distance_km: 21, name: 'Meia Maratona', race_priority: 'a' },
+      ];
+      const insights = detectCoachInsights({ runs: [], raceEvents }, {});
+      expect(insights.find((i) => i.id?.includes('treino-amanha'))).toBeUndefined();
+      expect(insights.find((i) => i.id === 'race_tapering_objetivo')).toBeTruthy();
+    });
+
+    it('sem nenhuma prova principal no futuro, mantém-se a mais próxima por data', () => {
+      const raceEvents = [
+        { id: 'perto', status: 'agendada', date: iso(-5), distance_km: 21, name: 'Meia B', race_priority: 'b' },
+        { id: 'longe', status: 'agendada', date: iso(-20), distance_km: 42, name: 'Maratona C', race_priority: 'c' },
+      ];
+      const insights = detectCoachInsights({ runs: [], raceEvents }, {});
+      expect(insights.find((i) => i.id === 'race_final_week_perto')).toBeTruthy();
     });
 
     it('não alerta quando não há provas futuras agendadas', () => {

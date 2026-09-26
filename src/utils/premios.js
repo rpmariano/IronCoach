@@ -134,7 +134,7 @@ export function completedRaces({ raceEvents = [], runs = [], profile = {}, today
     .filter((race) => race && dayOf(race.date) && dayOf(race.date) <= hoje && race.status === 'concluida')
     .map((race) => ({ race, run: findRaceRun(runs, race) }))
     .filter(({ run }) => !!run)
-    .map(({ race, run }) => ({ race, run, outcome: classifyRaceOutcome({ race, run, runs, profile }) }))
+    .map(({ race, run }) => ({ race, run, outcome: classifyRaceOutcome({ race, run, runs, profile, races: raceEvents }) }))
     .sort((a, b) => dayOf(b.race.date).localeCompare(dayOf(a.race.date)));
 }
 
@@ -147,8 +147,9 @@ export function completedRaces({ raceEvents = [], runs = [], profile = {}, today
  *  É o que A Superação conta e o que a conquista `objetivo_batido` diz. */
 export const bateuObjetivo = (outcome) => outcome?.verdict === 'superado' && outcome?.basis === 'objetivo';
 
-/* Recorde pessoal: o melhor tempo DE SEMPRE do atleta naquela categoria de
-   distância (`outcome.isPersonalRecord`).
+/* Recorde pessoal: o melhor tempo DE SEMPRE do atleta na mesma distância —
+   não na categoria larga que o taper usa (`outcome.isPersonalRecord`;
+   raceOutcome.js DISTANCE_MATCH_RATIO, 2026-09-26).
 
    NÃO é a mesma coisa que o medalhão "Os Níveis", e é por isso que os nomes
    mudaram: aquilo é uma escala de aptidão (VDOT — bronze, prata, ouro), que

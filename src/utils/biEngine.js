@@ -15,6 +15,7 @@ import { todayISO } from '../lib/utils';
 // mealNutrients removido daqui — as duas únicas chamadas migraram para
 // @formulas/macroAdherence.ts e @formulas/energyAvailabilityWindow.ts (Fase E).
 import { normalizeGender } from '@formulas/vocabulary.ts';
+import { focusRace } from '@formulas/mainRace.ts';
 import { computeAcwr, classifyAcwrZone } from '@formulas/acwr.ts';
 import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN } from '@formulas/bodyComposition.ts';
 import { computeWeightTrend } from '@formulas/weightTrend.ts';
@@ -193,6 +194,13 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
  */
 // Delega em @formulas/trainingDistribution.ts (T1.5) — única implementação,
 // partilhada com a Carol (specs/formulas-checklist.md Fase E).
+// A omissão é 'medio', a mesma do servidor PARA A DISTRIBUIÇÃO: coach-chat
+// chama computeTrainingDistribution(runs, experienceLevel || "medio") e o
+// default de trainingDistribution.ts é 'medio'. (2026-09-26, revisão da Fase
+// 0: tinha passado a 'iniciante' por analogia com resolveExperienceLevel de
+// racePlanning.ts — mas essa omissão é a da PREVISÃO, não a do 80/20, e o BI
+// e a Carol passavam a dar alvos diferentes a quem não tem nível declarado.
+// Mudar esta omissão é mudar os três sítios no mesmo commit.)
 export function calculateTrainingDistribution(runs, level = 'medio') {
   try {
     return computeTrainingDistribution(runs, level);
@@ -392,7 +400,17 @@ export function calculateCrossMetrics(runs, gymSessions, meals, bodyAssessments,
 export function detectCoachInsights(data, profile) {
   try {
     const insights = [];
+    // Sem nível declarado, 'medio' — o mesmo que a Carol usa na distribuição
+    // 80/20 (ver calculateTrainingDistribution acima).
     const level = profile?.experience_level || 'medio';
+    // Sem género declarado, o piso de gordura corporal é o masculino, IGUAL
+    // ao do servidor (coach-chat: isFem só com 'F'; coach-daily-summary:
+    // isFemale(...) ? 16 : 8). 2026-09-26, revisão da Fase 0: o cliente tinha
+    // passado sozinho ao limiar feminino sem género — e um homem sem género
+    // declarado com 10-15% (normal num corredor) via no BI um alerta CRÍTICO
+    // de RED-S que a Carol e o cartão diário não davam. Se o limiar mais
+    // sensível vier a ser a decisão de produto, muda-se nos três sítios de
+    // uma vez (idealmente numa regra única em @formulas).
     const gender = normalizeGender(profile?.gender) || 'M';
 
     // 0. Adesão ao Plano (Treinos em atraso)
@@ -546,7 +564,16 @@ export function detectCoachInsights(data, profile) {
         .sort((a, b) => a.date.localeCompare(b.date));
 
       if (futureRaces.length > 0) {
-        const next = futureRaces[0];
+        // 2026-09-26 (Fase 0 do Troféu): a "Reta Final" seguia sempre a
+        // próxima prova por DATA — uma prova de treino (race_priority 'c')
+        // marcada para amanhã escondia a maratona-objetivo de daqui a 10
+        // dias, que é a que precisa mesmo do aviso de tapering. Quando há
+        // uma PRINCIPAL no futuro, é ela que conta; sem nenhuma principal,
+        // mantém-se a mais próxima por data (comportamento anterior). A régua
+        // é a de @formulas/mainRace.ts (focusRace), a mesma do servidor —
+        // incluindo race_priority em falta contar como 'a', o default da
+        // coluna (revisão da Fase 0: antes reimplementava-se aqui à mão).
+        const next = focusRace(futureRaces, format(now, 'yyyy-MM-dd')) || futureRaces[0];
         const raceDate = parseISO(next.date);
         // Em DIAS DE CALENDÁRIO: differenceInDays truncava as horas, e na
         // véspera às 10h (14 h para a meia-noite da prova) dava 0 — "Chegou

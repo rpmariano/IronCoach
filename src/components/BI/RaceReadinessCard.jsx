@@ -6,6 +6,7 @@ import { todayISO } from '../../lib/utils';
 import { useAppStore } from '../../store';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { buildTrailModel } from '../../utils/homeModels';
+import { focusRace } from '@formulas/mainRace.ts';
 
 /* Ponto 3 do redesenho: os pilares tinham emoji (🏃 ⚡ 🥗 📈 🎯). Passam a
    lucide, cada um na cor do que mede — os dois de nutrição/energia no roxo
@@ -27,9 +28,13 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   const today = todayISO();
   const nextRace = useMemo(() => {
     if (!raceEvents?.length) return null;
-    return [...raceEvents]
-      .filter(r => r.date >= today)
-      .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+    // 2026-09-26 (Fase 0 do Troféu): igual ao ramo "Reta Final" de
+    // biEngine.js detectCoachInsights — entre as provas futuras, a
+    // PRINCIPAL manda sobre a mais próxima por data, senão uma prova de
+    // treino marcada para amanhã "roubava" a prontidão à prova-objetivo.
+    // A régua é focusRace de @formulas/mainRace.ts (revisão da Fase 0: uma
+    // só régua para o cliente e o servidor, em vez de a reimplementar aqui).
+    return focusRace(raceEvents, today);
   }, [raceEvents, today]);
 
   const dailyCheckins = useAppStore((s) => s.dailyCheckins);

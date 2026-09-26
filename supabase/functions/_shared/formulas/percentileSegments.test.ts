@@ -119,3 +119,23 @@ Deno.test("publicationDayOf: antes das 04:30 UTC, a terça ainda conta como segu
   assertEquals(nextPublicationDate(publicationDayOf(Date.parse("2026-09-29T02:00:00Z"))), "2026-09-29");
   assertEquals(nextPublicationDate(publicationDayOf(Date.parse("2026-09-29T05:00:00Z"))), "2026-10-13");
 });
+
+// Fase 0 do Troféu (2026-09-26): a modalidade é a da próxima PRINCIPAL — um
+// trail de treino (ou uma jornada) antes da maratona não muda o segmento.
+Deno.test("terrainForAthlete: a próxima principal manda, mesmo com uma prova de treino antes", () => {
+  const fim = "2026-09-14";
+  assertEquals(terrainForAthlete([
+    { id: "t", date: "2026-09-20", race_type: "trail", race_priority: "c" },
+    { id: "m", date: "2026-11-15", race_type: "estrada", race_priority: "a" },
+  ], fim), "estrada");
+  // Sem race_priority conta como principal.
+  assertEquals(terrainForAthlete([
+    { id: "t", date: "2026-09-20", race_type: "trail", race_priority: "b" },
+    { id: "m", date: "2026-11-15", race_type: "estrada" },
+  ], fim), "estrada");
+  // Sem principal à frente, a próxima por data.
+  assertEquals(terrainForAthlete([
+    { id: "t", date: "2026-09-20", race_type: "trail", race_priority: "c" },
+    { id: "e", date: "2026-11-15", race_type: "estrada", race_priority: "b" },
+  ], fim), "trail");
+});

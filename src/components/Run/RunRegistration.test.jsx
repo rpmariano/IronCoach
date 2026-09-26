@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi, onTestFinished } from 'vitest';
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
 import { draftMediaStore } from '../../utils/draftMediaPersistence';
@@ -1574,6 +1574,10 @@ describe('RunRegistration — a prova cria-se sozinha quando é "fora da agenda"
     expect(provaGravada).toMatchObject({
       name: 'Corrida da Ponte', date: '2026-09-20', distance_km: 10, status: 'concluida', race_type: 'estrada',
       target_time_seconds: 3000, target_pace_seconds_per_km: 300,
+      // 2026-09-26 (Fase 0 do Troféu): explícito 'b' (secundária) — sem
+      // isto ficava 'a' (principal) por omissão do schema, "roubando" o
+      // taper e a Reta Final a uma prova principal de verdade.
+      race_priority: 'b',
     });
 
     // E a corrida ficou ligada à prova que acabou de nascer.
@@ -1617,6 +1621,81 @@ describe('RunRegistration — a prova cria-se sozinha quando é "fora da agenda"
     await waitFor(() => expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(true));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(mocks.updates.some(u => u.table === 'runs' && u.payload.race_id)).toBe(false);
+  });
+
+  // Fase 0 do Troféu (2026-09-26): sem escolher nada em "Qual prova?", mas
+  // já havendo a prova AGENDADA desse dia, com a mesma distância — ligar em
+  // vez de duplicar. Revisão da Fase 0: só com correspondência forte
+  // (agendada, distância a bater, uma só candidata), e primeiro a ligação,
+  // depois o status.
+  async function registarCompeticao(run) {
+    mocks.invoke.mockResolvedValue({ data: { run }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+  }
+
+  it('a prova agendada do mesmo dia e da mesma distância (GPS a 10,3 km num 10 km): liga-se a ela e conclui-a, em vez de duplicar', async () => {
+    const jaAgendada = { id: 'race-mesmo-dia', name: 'Corrida da Ponte', date: '2026-09-20', race_type: 'estrada', distance_km: 10, status: 'agendada' };
+    const planItem = { id: 'item-prova', plan_id: 'plano-1', status: 'pendente', planned_date: '2026-09-20', kind: 'corrida', training_type: 'prova' };
+    const completePlanItem = vi.fn().mockResolvedValue(undefined);
+    const originalComplete = useAppStore.getState().completePlanItem;
+    onTestFinished(() => useAppStore.setState({ completePlanItem: originalComplete }));
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [jaAgendada], runRacePrefill: null, shoes: [], coachPlans: [{ id: 'plano-1', status: 'aceite' }], coachPlanItems: [planItem], completePlanItem });
+    await registarCompeticao({ id: 'run-auto-5', kind: 'competicao', name: 'Corrida da Ponte', date: '2026-09-20', distance_km: 10.3, duration_seconds: 3000 });
+
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'race_events' && u.id === 'race-mesmo-dia' && u.payload.status === 'concluida'),
+    ).toBe(true));
+    // Nenhuma prova nova — ligou-se à que já existia no mesmo dia.
+    expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(false);
+    // Primeiro a ligação da corrida, depois o status da prova.
+    const linkAt = mocks.updates.findIndex(u => u.table === 'runs' && u.payload.race_id === 'race-mesmo-dia');
+    const statusAt = mocks.updates.findIndex(u => u.table === 'race_events' && u.payload.status === 'concluida');
+    expect(linkAt).toBeGreaterThanOrEqual(0);
+    expect(linkAt).toBeLessThan(statusAt);
+    expect(useAppStore.getState().raceEvents.find(e => e.id === 'race-mesmo-dia').status).toBe('concluida');
+    // O item de prova do plano nesse dia conclui-se, como no modo prova.
+    await waitFor(() => expect(completePlanItem).toHaveBeenCalledWith('item-prova', expect.objectContaining({ runId: 'run-auto-5' })));
+  });
+
+  it('um parkrun de 5 km no dia de uma meia agendada NÃO fecha a meia: cria a sua própria prova', async () => {
+    const meia = { id: 'race-meia', name: 'Meia de Lisboa', date: '2026-09-20', race_type: 'estrada', distance_km: 21.0975, status: 'agendada', race_priority: 'a' };
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [meia], runRacePrefill: null, shoes: [], coachPlans: [], coachPlanItems: [] });
+    mocks.insertResult = { data: { id: 'race-parkrun', name: 'parkrun', date: '2026-09-20', distance_km: 5, status: 'concluida' }, error: null };
+    await registarCompeticao({ id: 'run-parkrun', kind: 'competicao', name: 'parkrun', date: '2026-09-20', distance_km: 5.1, duration_seconds: 1500 });
+
+    await waitFor(() => expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(true));
+    expect(mocks.updates.some(u => u.table === 'race_events' && u.id === 'race-meia')).toBe(false);
+    expect(mocks.updates.some(u => u.table === 'runs' && u.payload.race_id === 'race-meia')).toBe(false);
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'runs' && u.payload.race_id === 'race-parkrun')).toBe(true));
+  });
+
+  it('com duas provas agendadas possíveis no mesmo dia não adivinha: cria a sua própria prova', async () => {
+    const a = { id: 'race-a', name: 'Corrida A', date: '2026-09-20', race_type: 'estrada', distance_km: 10, status: 'agendada' };
+    const b = { id: 'race-b', name: 'Corrida B', date: '2026-09-20', race_type: 'estrada', distance_km: 10, status: 'agendada' };
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [a, b], runRacePrefill: null, shoes: [], coachPlans: [], coachPlanItems: [] });
+    mocks.insertResult = { data: { id: 'race-nova', name: 'Corrida', date: '2026-09-20', distance_km: 10, status: 'concluida' }, error: null };
+    await registarCompeticao({ id: 'run-dupla', kind: 'competicao', name: 'Corrida', date: '2026-09-20', distance_km: 10.1, duration_seconds: 3000 });
+
+    await waitFor(() => expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(true));
+    expect(mocks.updates.some(u => u.table === 'race_events')).toBe(false);
+  });
+
+  it('se concluir a prova falhar, a ligação da corrida desfaz-se — nunca fica ligada a uma prova ainda agendada', async () => {
+    const jaAgendada = { id: 'race-mesmo-dia', name: 'Corrida da Ponte', date: '2026-09-20', race_type: 'estrada', distance_km: 10, status: 'agendada' };
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [jaAgendada], runRacePrefill: null, shoes: [], coachPlans: [], coachPlanItems: [] });
+    mocks.updateRun.mockImplementation((payload) => Promise.resolve({ error: payload?.status === 'concluida' ? { message: 'falhou' } : null }));
+    await registarCompeticao({ id: 'run-auto-6', kind: 'competicao', name: 'Corrida da Ponte', date: '2026-09-20', distance_km: 10, duration_seconds: 3000 });
+
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.id === 'run-auto-6' && u.payload.race_id === null),
+    ).toBe(true));
+    expect(useAppStore.getState().raceEvents.find(e => e.id === 'race-mesmo-dia').status).toBe('agendada');
   });
 
   it('escolher uma prova já agendada continua a ligar-se a ela — não cria uma segunda', async () => {

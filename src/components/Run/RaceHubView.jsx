@@ -325,8 +325,8 @@ export default function RaceHubView({
   }, [storeRaceEvents, race]);
 
   const raceOutcome = useMemo(
-    () => (raceRun ? classifyRaceOutcome({ race, run: raceRun, runs, profile }) : null),
-    [race, raceRun, runs, profile],
+    () => (raceRun ? classifyRaceOutcome({ race, run: raceRun, runs, profile, races: palmaresRaces }) : null),
+    [race, raceRun, runs, profile, palmaresRaces],
   );
   // O motor dos prémios exige o dia injetado (utils/premios.js): o hub lê-o
   // aqui uma vez, para as conquistas desta prova e o Palmarés não poderem

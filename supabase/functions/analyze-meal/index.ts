@@ -12,6 +12,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { dayProgressSection, mealDayProgress } from "../_shared/formulas/mealDayProgress.ts";
+import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_RETRYABLE_STATUSES,
@@ -446,7 +447,11 @@ function totalsFromItems(items: any[]): MealTotals {
    não depende de plano, mas mantemos a supressão por simplicidade: sem plano
    nenhum, o botão vermelho não tem uma renegociação do outro lado na maioria
    dos casos. O aviso de risco continua a chegar ao atleta pelo texto da nota. */
-export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean): string {
+/* `race` (2026-09-26, Fase 0 do Troféu): a prova de referência — a próxima
+   principal quando existe (fetchFrameRace). Só entra no enquadramento "prova
+   agendada, sem plano", que é o que julga o registo contra a prova; sem ela
+   o texto fica igual ao de antes. */
+export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean, race: FrameRace | null = null): string {
   if (hasPlan) {
     return hasUpcomingRace
       ? ""
@@ -456,8 +461,9 @@ export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean)
         `sustentável, não um tempo-alvo.\n`;
   }
   if (hasUpcomingRace) {
+    const ref = frameRaceSentence(race);
     return `\nENQUADRAMENTO — PROVA AGENDADA, SEM PLANO: o atleta tem prova marcada mas NÃO tem ` +
-      `plano de treino. NUNCA digas que este registo está "fora do plano", "em atraso" ou que ` +
+      `plano de treino.${ref ? ` ${ref}` : ""} NUNCA digas que este registo está "fora do plano", "em atraso" ou que ` +
       `"o plano está comprometido" — não existe plano de que desviar. Julga-o pela adequação ao ` +
       `objetivo da prova e à fase de preparação, usando o histórico e o volume semanal como base ` +
       `de comparação. Se houver risco real (carga aguda, fadiga acumulada, progressão rápida ` +
@@ -521,7 +527,9 @@ async function generateMealCoachNotes(
   planItems: any[],
   // Há prova agendada? Decide o enquadramento quando não há plano — ver
   // planningFrameSection.
-  hasUpcomingRace: boolean,
+  // A prova de referência (fetchFrameRace): a próxima principal, senão a
+  // próxima — ou null sem prova agendada.
+  upcomingRace: FrameRace | null,
   recentCompletedWorkouts: { runs: any[]; gym: any[] } = { runs: [], gym: [] },
   geminiKey: string,
   diet: { dietary_restrictions?: string[] | null; dietary_notes?: string | null } = {},
@@ -592,8 +600,8 @@ async function generateMealCoachNotes(
     ? `\nPlano de treino PREVISTO/FUTURO (o que está agendado mas ainda não foi feito a menos que conste em 'Treinos REALIZADOS' acima):\n` +
       planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
       `\n\nAVALIAÇÃO DO PLANO E NUTRIÇÃO: Avalia se os alimentos e macros desta refeição estão adequados para a recuperação dos treinos já feitos OU como preparação para os treinos previstos. Se o plano estiver gravemente comprometido e justificar que a Carol intervenha para propor um novo plano, marca intervention_needed=true e indica a reason.\n` +
-      planningFrameSection(true, hasUpcomingRace)
-    : planningFrameSection(false, hasUpcomingRace);
+      planningFrameSection(true, !!upcomingRace, upcomingRace)
+    : planningFrameSection(false, !!upcomingRace, upcomingRace);
 
   const prompt =
     `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a refeição que ele acabou de registar. ` +
@@ -741,17 +749,11 @@ async function attachMealCoachNotes(
       planItems = items || [];
     }
 
-    /* Prova agendada? Só o facto de existir, não os detalhes — serve para
+    /* Prova agendada? A principal (ou a próxima), numa frase curta via frameRace — serve para
        escolher o enquadramento da análise (planningFrameSection). Inclui o
        próprio dia: uma prova hoje ainda enquadra o registo de hoje. */
-    const { data: upcomingRaces } = await sb
-      .from("race_events")
-      .select("id")
-      .eq("user_id", userId)
-      .eq("status", "agendada")
-      .gte("date", ctx.date)
-      .limit(1);
-    const hasUpcomingRace = (upcomingRaces || []).length > 0;
+    // A próxima principal quando existe, senão a próxima (fetchFrameRace).
+    const frameRace = await fetchFrameRace(sb, userId, ctx.date);
 
     const yesterdayISO = new Date(new Date(ctx.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
     const [{ data: actualRuns }, { data: actualGym }, { data: todayOthers }, { data: daySuggestions }] = await Promise.all([
@@ -800,7 +802,7 @@ async function attachMealCoachNotes(
       profile || {},
       previousMeals,
       planItems,
-      hasUpcomingRace,
+      frameRace,
       { runs: actualRuns || [], gym: actualGym || [] },
       geminiKey,
       {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyRaceOutcome, previousBestSeconds, raceResultSeconds, describeRaceOutcome,
-  buildRaceOutcomePayload, formatDelta, raceDistancePhrase, NEAR_TARGET_RATIO,
+  buildRaceOutcomePayload, formatDelta, raceDistancePhrase, NEAR_TARGET_RATIO, DISTANCE_MATCH_RATIO, GPS_OVERSHOOT_RATIO,
 } from './raceOutcome';
 import { bateuObjetivo } from './premios';
 import { expectCarolVoice } from '../test/carolVoice';
@@ -119,6 +119,88 @@ describe('raceOutcome — a régua única do resultado da prova', () => {
     expect(previousBestSeconds(runs, RACE, RACE_RUN)).toEqual({ seconds: 7066, date: '2026-10-11', distanceKm: 21.1 });
     expect(previousBestSeconds([], RACE, RACE_RUN)).toBeNull();
     expect(previousBestSeconds(runs, { ...RACE, distance_km: null }, RACE_RUN)).toBeNull();
+  });
+
+  // Fase 0 do Troféu (2026-09-26): "recorde pessoal" caía numa categoria
+  // larga ("10k" = 5,5 a 11 km) — um 8 km dava "recorde nos 10 km" contra
+  // uma prova de 10 km. Passa a exigir distância equivalente (±2%).
+  it('recorde pessoal só compara distâncias equivalentes (±2%), não a categoria larga inteira', () => {
+    const race10k = { id: 'r10k', date: '2027-01-10', distance_km: 10 };
+    const run10k = { id: 'run-10k-race', race_id: 'r10k', kind: 'competicao', date: '2027-01-10', distance_km: 10, duration_seconds: 3000 };
+    const old8k = { id: 'a', kind: 'competicao', date: '2026-12-01', distance_km: 8, duration_seconds: 2000 };
+    // 8 km está dentro da mesma categoria larga ("10k": 5,5-11 km) que uma
+    // prova de 10 km, mas 8 vs 10 é 20% de diferença — bem acima do ±2%.
+    expect(previousBestSeconds([run10k, old8k], race10k, run10k)).toBeNull();
+
+    const old98 = { id: 'b', kind: 'competicao', date: '2026-12-05', distance_km: 9.8, duration_seconds: 2900 };
+    // 9,8 vs 10 km é 2% — na fronteira, ainda equivalente.
+    expect(previousBestSeconds([run10k, old98], race10k, run10k)).toEqual({ seconds: 2900, date: '2026-12-05', distanceKm: 9.8 });
+
+    const old89 = { id: 'c', kind: 'competicao', date: '2026-12-08', distance_km: 8.9, duration_seconds: 2500 };
+    // 8,9 vs 10 km é 11% — mesma categoria larga, mas fora do ±2%.
+    expect(previousBestSeconds([run10k, old89], race10k, run10k)).toBeNull();
+  });
+
+  it('DISTANCE_MATCH_RATIO é 2%', () => {
+    expect(DISTANCE_MATCH_RATIO).toBe(0.02);
+    expect(GPS_OVERSHOOT_RATIO).toBe(0.05);
+  });
+
+  // Revisão da Fase 0 (2026-09-26): o distance_km de uma corrida é o do GPS,
+  // e num 10 km o relógio mede 10,2-10,4 km. Com ±2% simétrico esse 10 km
+  // anterior deixava de contar e o recorde pessoal desaparecia.
+  it('um 10 km anterior medido a 10,3 km pelo GPS continua a contar para o recorde', () => {
+    const race10k = { id: 'r10k', date: '2027-01-10', distance_km: 10 };
+    const run10k = { id: 'run-10k-race', race_id: 'r10k', kind: 'competicao', date: '2027-01-10', distance_km: 10.25, duration_seconds: 2900 };
+    // Sem prova ligada: vale a distância do GPS, com folga de +5% para cima.
+    const gpsOnly = { id: 'g', kind: 'competicao', date: '2026-11-01', distance_km: 10.3, duration_seconds: 3000 };
+    expect(previousBestSeconds([run10k, gpsOnly], race10k, run10k)).toEqual({ seconds: 3000, date: '2026-11-01', distanceKm: 10.3 });
+    const out = classifyRaceOutcome({ race: race10k, run: run10k, runs: [run10k, gpsOnly], profile: PROFILE });
+    expect(out.isPersonalRecord).toBe(true);
+    expect(out.deltaBestSeconds).toBe(-100);
+    // Para baixo a folga continua a ser 2%: 9,7 km não é um 10 km.
+    const short = { ...gpsOnly, id: 's', distance_km: 9.7 };
+    expect(previousBestSeconds([run10k, short], race10k, run10k)).toBeNull();
+    // E +5% é o teto: 10,6 km já não é o mesmo 10 km.
+    const long = { ...gpsOnly, id: 'l', distance_km: 10.6 };
+    expect(previousBestSeconds([run10k, long], race10k, run10k)).toBeNull();
+  });
+
+  it('uma prova criada pelo registo (local vazio, distância do GPS) compara-se com a folga do GPS, nos dois sentidos', () => {
+    // A prova de agora foi criada pelo registo com os 10,3 km do relógio; a
+    // anterior é um 10 km oficial da agenda.
+    const measured = { id: 'm', date: '2027-01-10', distance_km: 10.3, location: '' };
+    const runNow = { id: 'now', race_id: 'm', kind: 'competicao', date: '2027-01-10', distance_km: 10.3, duration_seconds: 2900 };
+    const oldRace = { id: 'old', date: '2026-11-01', distance_km: 10, location: 'Lisboa' };
+    const oldRun = { id: 'o', race_id: 'old', kind: 'competicao', date: '2026-11-01', distance_km: 10.2, duration_seconds: 3000 };
+    expect(previousBestSeconds([runNow, oldRun], measured, runNow, [measured, oldRace])?.seconds).toBe(3000);
+    // E ao contrário: a anterior foi criada pelo registo, a de agora é oficial.
+    const official = { id: 'n', date: '2027-01-10', distance_km: 10, location: 'Cascais' };
+    const runOff = { id: 'now2', race_id: 'n', kind: 'competicao', date: '2027-01-10', distance_km: 10.1, duration_seconds: 2900 };
+    const oldMeasured = { id: 'old2', date: '2026-11-01', distance_km: 10.3, location: '' };
+    const oldRun2 = { id: 'o2', race_id: 'old2', kind: 'competicao', date: '2026-11-01', distance_km: 10.3, duration_seconds: 3000 };
+    expect(previousBestSeconds([runOff, oldRun2], official, runOff, [official, oldMeasured])?.seconds).toBe(3000);
+    // Entre duas oficiais continua a ser ±2%.
+    const off103 = { ...oldMeasured, location: 'Oeiras' };
+    expect(previousBestSeconds([runOff, oldRun2], official, runOff, [official, off103])).toBeNull();
+  });
+
+  it('numa corrida ligada a uma prova manda a distância OFICIAL dessa prova, não a do GPS', () => {
+    const race10k = { id: 'r10k', date: '2027-01-10', distance_km: 10 };
+    const run10k = { id: 'run-10k-race', race_id: 'r10k', kind: 'competicao', date: '2027-01-10', distance_km: 10, duration_seconds: 2900 };
+    const oldRace = { id: 'old10k', date: '2026-11-01', distance_km: 10 };
+    // O relógio mediu 10,8 km (+8%, fora até da folga do GPS), mas a prova
+    // era um 10 km oficial.
+    const linked = { id: 'o', race_id: 'old10k', kind: 'competicao', date: '2026-11-01', distance_km: 10.8, duration_seconds: 3000 };
+    expect(previousBestSeconds([run10k, linked], race10k, run10k)).toBeNull();
+    expect(previousBestSeconds([run10k, linked], race10k, run10k, [race10k, oldRace]))
+      .toEqual({ seconds: 3000, date: '2026-11-01', distanceKm: 10 });
+    expect(classifyRaceOutcome({ race: race10k, run: run10k, runs: [run10k, linked], profile: PROFILE, races: [race10k, oldRace] }).isPersonalRecord).toBe(true);
+    // E a oficial também exclui: um 8 km oficial medido a 10,1 km pelo GPS
+    // não passa a contar como 10 km.
+    const race8k = { id: 'r8k', date: '2026-10-01', distance_km: 8 };
+    const linked8 = { id: 'e', race_id: 'r8k', kind: 'competicao', date: '2026-10-01', distance_km: 10.1, duration_seconds: 2400 };
+    expect(previousBestSeconds([run10k, linked8], race10k, run10k, [race10k, race8k])).toBeNull();
   });
 
   it('sem objetivo, a régua passa a ser a previsão; sem previsão, é só "concluída"', () => {
@@ -255,11 +337,14 @@ describe('raceOutcome — o recorde pessoal só contra a mesma distância e o me
     expect(describeRaceOutcome(out, RACE_15)).not.toContain('Recorde pessoal');
   });
 
-  it('dentro de ±2% da distância conta; fora, não', () => {
+  // Sem prova ligada, a distância é a do GPS: -2% para baixo e a folga do
+  // relógio para cima (GPS_OVERSHOOT_RATIO, a regra da Fase 0 do Troféu).
+  it('sem prova ligada, a distância do GPS conta com a folga do relógio; fora dela, não', () => {
     const race = { ...RACE, distance_km: 21.0975 };
-    const within = { id: 'w', kind: 'competicao', date: '2026-11-01', distance_km: 21.5, duration_seconds: 7000 };   // +1,9%
-    const outside = { id: 'o', kind: 'competicao', date: '2026-11-08', distance_km: 21.6, duration_seconds: 6900 };  // +2,4%
-    expect(previousBestSeconds([RACE_RUN, within, outside], race, RACE_RUN)).toEqual({ seconds: 7000, date: '2026-11-01', distanceKm: 21.5 });
+    const gpsLonga = { id: 'w', kind: 'competicao', date: '2026-11-01', distance_km: 21.6, duration_seconds: 7000 };  // +2,4%: o relógio mede a mais
+    const muitoLonga = { id: 'o', kind: 'competicao', date: '2026-11-08', distance_km: 22.3, duration_seconds: 6800 }; // +5,7%: outra distância
+    const curta = { id: 'c', kind: 'competicao', date: '2026-11-15', distance_km: 20.6, duration_seconds: 6700 };     // -2,4%: outra distância
+    expect(previousBestSeconds([RACE_RUN, gpsLonga, muitoLonga, curta], race, RACE_RUN)).toEqual({ seconds: 7000, date: '2026-11-01', distanceKm: 21.6 });
   });
 
   it('um trail não se compara com a estrada, na mesma distância', () => {

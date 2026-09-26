@@ -42,8 +42,12 @@ export function findRaceRun(runs, race) {
   return list.find(r => !r?.race_id && r?.kind === 'competicao' && r?.date === race.date) || null;
 }
 
-// Distâncias fixas que o utilizador escolhe — a mesma lista alimenta o select
-// e a pílula do cartão em RunAgenda. 21.0975/42.195 usam a distância oficial
+// Atalhos de distância — não são as únicas escolhas possíveis (Fase 0 do
+// Troféu, 2026-09-26: há provas de 3,3 km, 7,4 km, milhas de 1,609 km, etc.
+// — RunAgenda passou a aceitar qualquer distância num campo numérico livre,
+// com esta lista só como pílulas de atalho). Continuam a alimentar
+// raceDistanceLabel (o "nome bonito" quando a distância bate certo com uma
+// destas) e a pílula do cartão. 21.0975/42.195 usam a distância oficial
 // (não 21/42 redondos) e têm o nome próprio da prova em vez de "X km".
 export const RACE_DISTANCE_OPTIONS = [
   { km: 5, label: '5 km' },

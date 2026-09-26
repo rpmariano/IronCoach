@@ -439,11 +439,16 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
   // distância e D+ são os três antecessores da pergunta de nível; mudar de
   // categoria depois de já ter respondido invalida a resposta.
   describe('invalidação do nível ao mudar tipo/distância/D+', () => {
-    // Ordem estável dos <select> em "Detalhes da prova": Tipo, Distância,
-    // Nível, Prioridade — o D+ é <input type="number">, não combobox, por
-    // isso não desloca os índices entre estrada e trail.
+    // Ordem estável dos <select> em "Detalhes da prova": Tipo, Nível,
+    // Prioridade — a Distância deixou de ser <select> (Fase 0 do Troféu,
+    // 2026-09-26: passou a número livre, ver distanceInput() abaixo) e o D+
+    // é <input type="number">, nenhum dos dois é combobox, por isso não
+    // desloca os índices entre estrada e trail.
     function comboboxes() {
       return screen.getAllByRole('combobox');
+    }
+    function distanceInput() {
+      return screen.getByLabelText(/Distância \(km\)/i);
     }
 
     it('prova NOVA: mudar a distância de categoria limpa o nível em silêncio', () => {
@@ -452,13 +457,25 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
       // Distância por omissão é '10' (10k) — escolhe o nível para essa categoria.
-      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
-      expect(comboboxes()[2].value).toBe('medio');
+      fireEvent.change(comboboxes()[1], { target: { value: 'medio' } });
+      expect(comboboxes()[1].value).toBe('medio');
 
       // Muda para meia maratona — categoria diferente (10k → meia).
-      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
+      fireEvent.change(distanceInput(), { target: { value: '21.0975' } });
 
-      expect(comboboxes()[2].value).toBe('');
+      expect(comboboxes()[1].value).toBe('');
+    });
+
+    // Revisão da Fase 0 (2026-09-26): com step="0.001", o atalho da meia
+    // (21.0975) deixava o campo :invalid.
+    it('o atalho "Meia Maratona" deixa o campo de distância válido', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+      expect(distanceInput().getAttribute('step')).toBe('any');
+      fireEvent.click(screen.getByRole('button', { name: /^Meia Maratona$/ }));
+      expect(distanceInput().value).toBe('21.0975');
+      expect(distanceInput().validity.valid).toBe(true);
     });
 
     it('prova NOVA: mudar a distância DENTRO da mesma categoria não limpa o nível', () => {
@@ -466,11 +483,11 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       renderAgenda();
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
-      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      fireEvent.change(comboboxes()[1], { target: { value: 'medio' } });
       // 8 km continua categoria "10k" (categorizeDistance: km ≤ 11 → 10k).
-      fireEvent.change(comboboxes()[1], { target: { value: '8' } });
+      fireEvent.change(distanceInput(), { target: { value: '8' } });
 
-      expect(comboboxes()[2].value).toBe('medio');
+      expect(comboboxes()[1].value).toBe('medio');
     });
 
     it('prova NOVA, trail: mudar o D+ de banda limpa o nível em silêncio', () => {
@@ -481,13 +498,13 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       fireEvent.change(comboboxes()[0], { target: { value: 'trail' } });
       // 10 km com 200 m D+ → 20 m/km → banda "rolante".
       fireEvent.change(screen.getByPlaceholderText('Ex.: 1200'), { target: { value: '200' } });
-      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
-      expect(comboboxes()[2].value).toBe('medio');
+      fireEvent.change(comboboxes()[1], { target: { value: 'medio' } });
+      expect(comboboxes()[1].value).toBe('medio');
 
       // 10 km com 600 m D+ → 60 m/km → banda "montanha": categoria mudou.
       fireEvent.change(screen.getByPlaceholderText('Ex.: 1200'), { target: { value: '600' } });
 
-      expect(comboboxes()[2].value).toBe('');
+      expect(comboboxes()[1].value).toBe('');
     });
 
     it('a EDITAR uma prova gravada: mudar a distância NÃO limpa o nível, só avisa para reconfirmar', () => {
@@ -495,13 +512,13 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       renderAgenda();
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
-      expect(comboboxes()[2].value).toBe('medio');
+      expect(comboboxes()[1].value).toBe('medio');
       expect(screen.queryByText(/Mudaste o tipo, a distância ou a subida/i)).not.toBeInTheDocument();
 
-      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } }); // 10k → meia
+      fireEvent.change(distanceInput(), { target: { value: '21.0975' } }); // 10k → meia
 
       // Não apaga uma resposta já gravada — só destaca para reconfirmação.
-      expect(comboboxes()[2].value).toBe('medio');
+      expect(comboboxes()[1].value).toBe('medio');
       expect(screen.getByText(/Mudaste o tipo, a distância ou a subida/i)).toBeInTheDocument();
     });
 
@@ -510,13 +527,34 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
       renderAgenda();
       fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
 
-      fireEvent.change(comboboxes()[1], { target: { value: '21.0975' } });
+      fireEvent.change(distanceInput(), { target: { value: '21.0975' } });
       expect(screen.getByText(/Mudaste o tipo, a distância ou a subida/i)).toBeInTheDocument();
 
       // O próprio atleta reconfirma o nível para a categoria atual (meia).
-      fireEvent.change(comboboxes()[2], { target: { value: 'medio' } });
+      fireEvent.change(comboboxes()[1], { target: { value: 'medio' } });
 
       expect(screen.queryByText(/Mudaste o tipo, a distância ou a subida/i)).not.toBeInTheDocument();
+    });
+
+    // Fase 0 do Troféu (2026-09-26): a Distância deixou de ser lista fixa —
+    // agora qualquer distância é aceite (ex.: 8 km numa "10k", 7,4 km numa
+    // prova livre), mantendo os atalhos da lista como pílulas/datalist.
+    it('aceita uma distância livre fora da lista fixa (ex.: 7,4 km)', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.change(distanceInput(), { target: { value: '7.4' } });
+      expect(distanceInput().value).toBe('7.4');
+    });
+
+    it('as pílulas de atalho continuam a preencher a distância com um clique', () => {
+      useAppStore.setState({ editingRaceId: null });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+
+      fireEvent.click(screen.getByRole('button', { name: 'Meia Maratona' }));
+      expect(distanceInput().value).toBe('21.0975');
     });
   });
 
@@ -847,5 +885,44 @@ describe('RunAgenda — eliminar a prova-objetivo de um plano', () => {
     abrirEliminar();
     expect(screen.getByText(/Tens a certeza que queres eliminar esta prova/i)).toBeInTheDocument();
     expect(screen.queryByText(/é o objetivo do teu plano/i)).not.toBeInTheDocument();
+  });
+});
+
+/* Fase 0 do Troféu (2026-09-26): o intervalo do plano era aberto (`< end`)
+   — uma prova PRINCIPAL marcada exatamente no ÚLTIMO dia (period_end) de um
+   plano em curso, a preparar OUTRA prova, não disparava o aviso "Vai
+   chocar com o plano", quando é precisamente esse o dia que o plano ainda
+   preparava. Passa a intervalo fechado (`<= end`). */
+describe('RunAgenda — aviso "Vai chocar com o plano" (intervalo fechado)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.setState({
+      raceEvents: [EXISTING_RACE, { id: 'outra-prova', date: EXISTING_RACE.date, name: 'Outra Prova', status: 'agendada' }],
+      profile: { id: 'user-1' },
+      runs: [],
+      editingRaceId: 'race-1', // EXISTING_RACE: race_priority 'a', principal
+      setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+      setNavGuard: () => {},
+      setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+    });
+  });
+
+  it('a prova cai exatamente no ÚLTIMO dia (period_end) de um plano que prepara outra prova: avisa', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', status: 'aceite', race_id: 'outra-prova', period_start: todayISO(), period_end: EXISTING_RACE.date }],
+    });
+    renderAgenda();
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    expect(screen.getByText(/Vai chocar com o plano/i)).toBeInTheDocument();
+    expect(screen.getByText(/Outra Prova/i)).toBeInTheDocument();
+  });
+
+  it('a prova cai um dia DEPOIS do fim do plano: não avisa', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', status: 'aceite', race_id: 'outra-prova', period_start: todayISO(), period_end: addDaysISO(EXISTING_RACE.date, -1) }],
+    });
+    renderAgenda();
+    fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+    expect(screen.queryByText(/Vai chocar com o plano/i)).not.toBeInTheDocument();
   });
 });

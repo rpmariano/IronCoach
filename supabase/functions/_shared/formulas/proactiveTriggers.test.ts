@@ -618,3 +618,51 @@ Deno.test("Vitrina 'perto': diz qual é o grupo que já tem números, sem 'grupo
     assertCarolVoice(b);
   }
 });
+
+/* Fase 0 do Troféu (2026-09-26): duas provas no mesmo dia — uma de treino ou
+   uma jornada de taça e a principal. A véspera e a manhã são da principal,
+   seja qual for a ordem em que as provas chegam. */
+Deno.test("véspera e manhã: com duas provas no mesmo dia, a principal ganha (em qualquer ordem)", () => {
+  const treino = race({ id: "z-treino", name: "Corrida do clube", race_priority: "c" });
+  const principal = race({ id: "a-principal", name: "Meia de Lisboa", race_priority: "a" });
+  for (const raceEvents of [[treino, principal], [principal, treino]]) {
+    assertEquals(pickServerProactive({ raceEvents, runs: [], lastRecordDate: TODAY }, TODAY)?.key, "race_morning:a-principal");
+    const amanha = raceEvents.map((r) => ({ ...r, date: "2026-09-19" }));
+    assertEquals(pickServerProactive({ raceEvents: amanha, runs: [], lastRecordDate: TODAY }, TODAY)?.key, "race_eve:a-principal");
+  }
+  // Sem race_priority conta como principal (o default da coluna): contra uma 'b', ganha.
+  const semPrioridade = race({ id: "z-sem", race_priority: null });
+  const b = race({ id: "a-b", race_priority: "b" });
+  assertEquals(pickServerProactive({ raceEvents: [b, semPrioridade], runs: [], lastRecordDate: TODAY }, TODAY)?.key, "race_morning:z-sem");
+  // Duas do mesmo nível: pelo id, sem depender da ordem do select.
+  const b2 = race({ id: "b-b", race_priority: "b" });
+  assertEquals(pickServerProactive({ raceEvents: [b2, b], runs: [], lastRecordDate: TODAY }, TODAY)?.key, "race_morning:a-b");
+  // Uma principal já concluída não conta: fica a outra do dia.
+  assertEquals(pickServerProactive({ raceEvents: [{ ...principal, status: "concluida" }, treino], runs: [], lastRecordDate: TODAY }, TODAY)?.key, "race_morning:z-treino");
+});
+
+/* Fase 0 do Troféu (2026-09-26): o "como correu?" com corrida fica na lista
+   7 dias, mesmo depois de dito. Já entregue, não tira o dia ao balanço da
+   semana; por entregar, continua a tirar. */
+Deno.test("balanço da semana: o \"como correu?\" com corrida já entregue deixa-o sair", () => {
+  const monday = "2026-09-28";
+  const prova = race({ id: "p1", date: "2026-09-26", status: "concluida" });
+  const runs = [{ id: "run1", race_id: "p1", date: "2026-09-26", created_at: "2026-09-26T12:00:00Z" }];
+  const base = { runs, lastRecordDate: "2026-09-27", weekRecordDates: ["2026-09-26"] };
+  // Por entregar: fica só o balanço da prova, como antes.
+  assertEquals(listServerProactive({ ...base, raceEvents: [prova] }, monday).map((c) => c.trigger), ["race_after"]);
+  // Entregue pelo log (só o tick o tem): os dois, o da prova primeiro (decide.ts cala-o).
+  const pelaChave = listServerProactive({ ...base, raceEvents: [prova], deliveredKeys: ["race_after:p1:run1"] }, monday);
+  assertEquals(pelaChave.map((c) => c.key), ["race_after:p1:run1", "week_review:2026-09-21"]);
+  // Entregue pelo balanço gravado na prova (o que o cliente também vê).
+  const peloBalanco = listServerProactive({ ...base, raceEvents: [{ ...prova, coach_balance: "Foi uma boa prova." }] }, monday);
+  assertEquals(peloBalanco.map((c) => c.trigger), ["race_after", "week_review"]);
+  // A chave de outra corrida não conta como entregue.
+  assertEquals(listServerProactive({ ...base, raceEvents: [prova], deliveredKeys: ["race_after:p1:outra"] }, monday).map((c) => c.trigger), ["race_after"]);
+  // O "como correu?" SEM registo continua a ficar com o dia, mesmo com a chave entregue.
+  const semRegisto = listServerProactive({ runs: [], lastRecordDate: "2026-09-27", weekRecordDates: ["2026-09-25"], raceEvents: [race({ id: "p2", date: "2026-09-27" })], deliveredKeys: ["race_after:p2:sem-registo"] }, monday);
+  assertEquals(semRegisto.map((c) => c.trigger), ["race_after"]);
+  // Outro momento no mesmo dia continua a mandar: um assunto por resolver tapa o balanço.
+  const comDor = listServerProactive({ ...base, raceEvents: [prova], deliveredKeys: ["race_after:p1:run1"], intervention: { status: "needed", reason: "dor" } }, monday);
+  assertEquals(comDor.map((c) => c.trigger), ["intervention", "race_after"]);
+});

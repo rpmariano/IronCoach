@@ -28,6 +28,7 @@ import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.
 import { PAIN_ALARM_THRESHOLD } from "../_shared/formulas/checkinAlarms.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
+import { selectRaces } from "../_shared/formulas/mainRace.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 
 const corsHeaders = {
@@ -306,6 +307,10 @@ export function buildDailySummaryContext(params: {
   lastWeekPlan?: { itens: number; com_registo: number } | null;
   // deno-lint-ignore no-explicit-any
   nextRace: any;
+  /** As provas de preparação (b/c, jornadas) que vêm antes do objetivo —
+   *  continuam a ser provas, só não são a "proxima_prova" (2026-09-26). */
+  // deno-lint-ignore no-explicit-any
+  racesBefore?: any[];
   // A véspera/dia da prova com horas e gramas (fórmula partilhada raceEve.ts),
   // só quando a prova é amanhã ou hoje.
   vesperaDaProva?: Record<string, unknown> | null;
@@ -315,7 +320,7 @@ export function buildDailySummaryContext(params: {
   acwr?: { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null; [k: string]: unknown };
   tdee?: number | null;
 }) {
-  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva } = params;
+  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva } = params;
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
 
@@ -436,6 +441,14 @@ export function buildDailySummaryContext(params: {
         nextRace.race_type ?? null,
       )
     } : null,
+    /* Só quando há provas de preparação antes do objetivo: sem elas o
+       contexto fica igual ao de antes. O objetivo é a "proxima_prova"; estas
+       são provas a caminho dele (prioridade b/c ou jornadas), não o alvo. */
+    ...(racesBefore && racesBefore.length ? {
+      provas_antes_do_objetivo: racesBefore.map((r) => ({
+        name: r.name, date: r.date, distance_km: r.distance_km ?? null, race_priority: r.race_priority ?? null,
+      })),
+    } : {}),
   };
 }
 
@@ -720,6 +733,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `Combina: (a) balanço honesto dos treinos recentes — consistência, volume, tendências; ` +
     `(b) se "proxima_prova" existir, inclui uma observação concreta sobre a preparação para a prova ` +
     `(o que está bem, o que precisa de atenção — usa os dados de ACWR, pace, RPE/exertion, volume); ` +
+    // Só com provas de preparação antes do objetivo (2026-09-26): a lista vem no contexto.
+    (ctx.provas_antes_do_objetivo ? `"proxima_prova" é o objetivo (a próxima prova principal); as de "provas_antes_do_objetivo" são provas de preparação a caminho dele — podes referi-las, nunca como o objetivo; ` : "") +
     `(c) uma dica prática para cumprir bem o que já está previsto nos próximos dias. ` +
     `ESTE CARTÃO NÃO MUDA O PLANO: nunca sugiras trocar um treino por descanso, cortar volume ou mudar dias ` +
     `(a única exceção é o check-in de hoje, abaixo). Mudanças ao plano discutem-se no chat — quando é preciso, ` +
@@ -872,6 +887,8 @@ Deno.serve(async (req) => {
     const memoryPromise = fetchSharedMemoryBlock(sb, userId, { portrait: true, todayISO: today });
 
     // ── Contexto: perfil, refeições/água de hoje, atividade recente, plano ──
+    // `status`: ver RACE_COLUMNS no coach-chat (2026-09-26, revisão da Fase 0).
+    const DAILY_RACE_COLUMNS = "id, name, date, race_type, distance_km, race_priority, status, target_time, target_time_seconds, target_pace_seconds_per_km, start_time, location";
     const [
       { data: profile },
       { data: todayMeals },
@@ -879,7 +896,8 @@ Deno.serve(async (req) => {
       { data: loadRuns },
       { data: recentGym },
       { data: acceptedPlans },
-      { data: upcomingRaces },
+      { data: firstRaces },
+      { data: principalRows },
       { data: bodyAssessments },
       { data: todayCheckin },
       { data: previousSummary },
@@ -906,9 +924,15 @@ Deno.serve(async (req) => {
         .eq("status", "aceite")
         .order("created_at", { ascending: false }),
       // 3 próximas provas com prioridade e distância para alertas de taper corretos
-      sb.from("race_events").select("name, date, race_type, distance_km, race_priority, target_time, target_time_seconds, target_pace_seconds_per_km, start_time, location")
+      sb.from("race_events").select(DAILY_RACE_COLUMNS)
         .eq("user_id", userId).gte("date", today)
-        .order("date", { ascending: true }).limit(3),
+        .order("date", { ascending: true }).order("id", { ascending: true }).limit(3),
+      // E SEMPRE a próxima principal (2026-09-26, Fase 0 do Troféu): com três
+      // provas de treino ou jornadas à frente, ficava fora das 3.
+      sb.from("race_events").select(DAILY_RACE_COLUMNS)
+        .eq("user_id", userId).gte("date", today).eq("race_priority", "a")
+        .or("status.is.null,status.neq.concluida")
+        .order("date", { ascending: true }).order("id", { ascending: true }).limit(1),
       // Composição corporal: 30 dias para RED-S e tendência de peso
       sb.from("body_assessments").select("date, assessment_time, weight_kg, body_fat_pct, lean_body_mass_kg, visceral_fat, body_water_pct")
         .eq("user_id", userId).gte("date", addDaysISO(today, -29)).lte("date", today).order("date", { ascending: false }),
@@ -924,7 +948,18 @@ Deno.serve(async (req) => {
 
     // deno-lint-ignore no-explicit-any
     const recentRuns = (loadRuns || []).filter((r: any) => r.date >= addDaysISO(today, -29));
-    const nextRace = upcomingRaces?.[0] ?? null;
+    /* A prova-objetivo é a próxima PRINCIPAL, não a próxima por data
+       (2026-09-26, Fase 0 do Troféu): o modo, a "proxima_prova" com a fase do
+       plano e a prontidão são dela. A véspera e o dia da prova são da mais
+       próxima, principal ou não (nearestRace) — uma prova de treino amanhã
+       continua a ter as horas e os gramas. As provas de preparação antes do
+       objetivo vão à parte, como provas. */
+    const raceSelection = selectRaces(firstRaces || [], principalRows?.[0] ?? null, today);
+    // deno-lint-ignore no-explicit-any
+    const upcomingRaces: any[] = raceSelection.upcoming;
+    const nextRace = raceSelection.focus;
+    const nearestRace = raceSelection.nearest;
+    const racesBefore = raceSelection.before;
 
     // Encontra os treinos de todos os planos aceites relevantes para os próximos dias
     const acceptedPlanIds = (acceptedPlans || []).map((p: any) => p.id);
@@ -975,15 +1010,15 @@ Deno.serve(async (req) => {
     let raceEveForSummary: Record<string, unknown> | null = null;
     let raceEveObj: RaceEve | null = null;
     let raceEveDays: number | null = null;
-    if (nextRace?.date) {
-      const daysToRace = Math.round((Date.parse(nextRace.date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
+    if (nearestRace?.date) {
+      const daysToRace = Math.round((Date.parse(nearestRace.date + "T00:00:00Z") - Date.parse(today + "T00:00:00Z")) / 86400000);
       if (daysToRace >= 0 && daysToRace <= 1) {
-        const eve = computeRaceEve({ startTime: nextRace.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds: nextRace.target_time_seconds ?? null, distanceKm: nextRace.distance_km ?? null });
+        const eve = computeRaceEve({ startTime: nearestRace.start_time ?? null, weightKg: profile?.weight_kg ?? null, plannedFinishSeconds: nearestRace.target_time_seconds ?? null, distanceKm: nearestRace.distance_km ?? null });
         raceEveObj = eve;
         raceEveDays = daysToRace;
         raceEveForSummary = {
           quando: daysToRace === 0 ? "hoje" : "amanhã",
-          prova: nextRace.name,
+          prova: nearestRace.name,
           partida: eve.schedule?.start ?? "hora por marcar",
           horario: eve.schedule,
           jantar_hidratos_g: eve.dinnerCarbsG,
@@ -1006,7 +1041,8 @@ Deno.serve(async (req) => {
     // as grava; `today` (todayISO acima) já o é. Ficam fora do
     // fetchSharedMemoryBlock de propósito: as quatro análises não as leem.
     const [raceWeather, adherence, impressions, trainingWeather] = await Promise.all([
-      fetchRaceWeatherContext(nextRace, today),
+      // A do objetivo, ou a de hoje/amanhã quando há uma (raceOfTheMoment).
+      fetchRaceWeatherContext(raceSelection.moment, today),
       fetchAdherenceBlock(sb, userId, today),
       fetchImpressionsBlock(sb, userId, today),
       // O tempo para os treinos de hoje e amanhã, na cidade dele (5.6).
@@ -1014,7 +1050,7 @@ Deno.serve(async (req) => {
     ]);
     const ctx = buildDailySummaryContext({
       today, profile, todayMeals: todayMeals || [], todayWater: todayWater || [],
-      recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace,
+      recentRuns: recentRuns || [], recentGym: recentGym || [], planItems, nextRace, racesBefore,
       bodyAssessments: bodyAssessments || [],
       acwr: {
         ...acwr,
@@ -1067,8 +1103,8 @@ Deno.serve(async (req) => {
     // Na véspera, "Preparar amanhã" é a prova (horas da fórmula partilhada),
     // não o item do plano — o cliente também deixa de sobrepor este texto
     // com o plano nesse dia. No dia da prova, o aviso abre com ela.
-    const tomorrowPrepMsg = raceEveObj && nextRace && raceEveDays === 1
-      ? describeRaceEveShort(raceEveObj, nextRace.name, nextRace.distance_km ? Number(nextRace.distance_km) : null, lisbonMinutesNow())
+    const tomorrowPrepMsg = raceEveObj && nearestRace && raceEveDays === 1
+      ? describeRaceEveShort(raceEveObj, nearestRace.name, nearestRace.distance_km ? Number(nearestRace.distance_km) : null, lisbonMinutesNow())
       : buildTomorrowPrepMessage(tomorrowPlanItems);
     // No dia da prova é o cliente que abre o aviso com a prova (tem o ritmo
     // do primeiro km, que aqui não há); prefixar também aqui duplicava a

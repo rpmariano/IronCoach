@@ -411,3 +411,15 @@ Deno.test("buildTomorrowPrepMessage: a dica é do treino de amanhã, não uma fr
     assertCarolVoice(t);
   }
 });
+
+// Fase 0 do Troféu (2026-09-26): a "proxima_prova" é o objetivo (a próxima
+// principal); as provas de preparação antes dela vão à parte, como provas.
+Deno.test("provas antes do objetivo: só aparecem quando existem, e a proxima_prova é a principal", () => {
+  const principal = { id: "m1", name: "Maratona de Lisboa", date: "2026-10-11", distance_km: 42.195, race_priority: "a", race_type: "estrada" };
+  const jornada = { id: "j1", name: "Jornada 1", date: "2026-08-16", distance_km: 10, race_priority: "c", race_type: "estrada" };
+  const ctx = buildDailySummaryContext({ ...baseParams, nextRace: principal, racesBefore: [jornada] }) as Record<string, unknown>;
+  assertEquals((ctx.proxima_prova as { id: string }).id, "m1");
+  assertEquals(ctx.provas_antes_do_objetivo, [{ name: "Jornada 1", date: "2026-08-16", distance_km: 10, race_priority: "c" }]);
+  assertEquals("provas_antes_do_objetivo" in (buildDailySummaryContext({ ...baseParams, nextRace: principal }) as Record<string, unknown>), false);
+  assertEquals("provas_antes_do_objetivo" in (buildDailySummaryContext({ ...baseParams, nextRace: principal, racesBefore: [] }) as Record<string, unknown>), false);
+});

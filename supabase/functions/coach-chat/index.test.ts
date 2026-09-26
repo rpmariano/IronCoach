@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -2552,6 +2552,19 @@ const RUNS_MEDIDO_INICIANTE: any[] = [
 
 const TODAY_ISO = "2026-08-27";
 
+// Fase 0 do Troféu (2026-09-26): com uma prova de treino antes da principal,
+// o bloco diz qual é o objetivo; sem isso, fica igual ao de antes.
+Deno.test("buildRaceEventsContext: a principal depois de uma prova de treino é dita como o objetivo", () => {
+  const treino = makeRaceEvent({ id: "t1", name: "Corrida do clube", date: "2026-09-06", race_priority: "c" });
+  const principal = makeRaceEvent({ id: "m1", name: "Maratona do Porto", date: "2026-11-01", race_priority: "a" });
+  const ctx = buildRaceEventsContext([treino, principal], TODAY_ISO, null, null, [])!;
+  assertStringIncludes(ctx, 'OBJETIVO: a prova principal é "Maratona do Porto" (2026-11-01)');
+  assertStringIncludes(ctx, "Corrida do clube");
+  // A principal à frente, ou sem principal nenhuma: o bloco não ganha a linha.
+  assertEquals(buildRaceEventsContext([principal, { ...treino, date: "2026-11-20" }], TODAY_ISO, null, null, [])!.includes("OBJETIVO:"), false);
+  assertEquals(buildRaceEventsContext([treino, { ...principal, race_priority: "b" }], TODAY_ISO, null, null, [])!.includes("OBJETIVO:"), false);
+});
+
 Deno.test("buildRaceEventsContext: nível declarado bate certo com o medido — sem ⚠", () => {
   // date sobreposta ao defeito do makeRaceEvent (+18 dias): um "iniciante"
   // numa 10k precisa de 10 semanas mínimas de preparação (Bloco 1,
@@ -3621,6 +3634,39 @@ Deno.test("update_race_event: ritmo, hora, prioridade e nível; recusa o que nã
   assertStringIncludes(await runUpdateRaceEvent(makeRaceSb([TEJO]).sb, "user-1", {}), "indica race_id ou race_name");
 });
 
+// Fase 0 do Troféu (2026-09-26): pelo nome exato primeiro; o "contém" só com
+// um candidato; mais do que um devolve erro a pedir para desambiguar.
+Deno.test("update_race_event: o nome exato ganha ao \"contém\" (sem maiúsculas nem acentos)", async () => {
+  const jornada = { id: "j1", name: "Troféu de Cascais — Jornada 1", date: "2099-10-04", distance_km: 10 };
+  const meia = { id: "m1", name: "Meia de Cascais", date: "2099-10-25", distance_km: 21.1 };
+  const cascais = { id: "c1", name: "Cascais", date: "2099-11-08", distance_km: 10 };
+  const { sb, updates } = makeRaceSb([jornada, meia, cascais]);
+  const result = await runUpdateRaceEvent(sb, "user-1", { race_name: "  cáscais ", target_time_seconds: 3000 });
+  assertStringIncludes(result, 'Prova atualizada: "Cascais" (2099-11-08)');
+  assertEquals(updates[0].id, "c1");
+  assertEquals(matchRaceByName([jornada, meia], "MEIA DE CASCAIS").race?.id, "m1");
+  assertEquals(normalizeRaceName("  Troféu   de CASCAIS "), "trofeu de cascais");
+});
+
+Deno.test("update_race_event: vários candidatos pelo \"contém\" — erro com datas e ids, não grava nada", async () => {
+  const j1 = { id: "j1", name: "Troféu de Cascais — Jornada 1", date: "2099-10-04", distance_km: 10 };
+  const meia = { id: "m1", name: "Meia de Cascais", date: "2099-10-25", distance_km: 21.1 };
+  const { sb, updates } = makeRaceSb([j1, meia]);
+  const result = await runUpdateRaceEvent(sb, "user-1", { race_name: "cascais", target_time_seconds: 3000 });
+  assertStringIncludes(result, "Erro:");
+  assertStringIncludes(result, "mais do que uma prova");
+  assertStringIncludes(result, "(2099-10-04, id j1)");
+  assertStringIncludes(result, "(2099-10-25, id m1)");
+  assertStringIncludes(result, "race_id");
+  assertEquals(updates.length, 0);
+  // Dois nomes exatamente iguais também são ambíguos.
+  const j2 = { ...j1, id: "j2", date: "2099-11-01" };
+  assertEquals(matchRaceByName([j1, j2], "troféu de cascais — jornada 1").ambiguous.map((r) => r.id), ["j1", "j2"]);
+  // Um só "contém" continua a servir.
+  assertEquals(matchRaceByName([j1, meia], "meia").race?.id, "m1");
+  assertEquals(matchRaceByName([j1, meia], "   ").race, null);
+});
+
 // ── a legenda do mural: na primeira pessoa do atleta, com os factos ─────────
 Deno.test("buildRaceCaptionPrompt: primeira pessoa do atleta, factos certos, #IronCoach no fim", () => {
   const o = {
@@ -4267,4 +4313,27 @@ Deno.test("Vitrina: o chat conhece os dois momentos novos, com a instrução cer
   assertStringIncludes(board, "Nunca digas nomes de outros atletas");
   const ready = buildProactiveInstruction("percentile_ready", 'Momento "perto": ainda não tem atletas suficientes.');
   assertStringIncludes(ready, "nunca o número de atletas de um grupo");
+});
+
+// Fase 0 do Troféu (2026-09-26): a descrição do propose_training_plan diz o
+// que as guardas do servidor fazem — e já não diz o que elas não fazem.
+Deno.test("propose_training_plan: a descrição bate com as guardas do servidor", () => {
+  // deno-lint-ignore no-explicit-any
+  const decls = (buildTools(null)[0] as any).functionDeclarations as any[];
+  const tool = decls.find((d) => d.name === "propose_training_plan");
+  const all = JSON.stringify(tool);
+  // replace_active_plan só marca o plano a substituir; o antigo vale até ele aceitar.
+  assertEquals(all.includes("automaticamente marcado como recusado"), false);
+  assertStringIncludes(tool.parameters.properties.replace_active_plan.description, "continua em vigor até o atleta ACEITAR");
+  // race_id: obrigatório só com uma PRINCIPAL no período (ou um plano vinculado); b/c não obrigam.
+  assertStringIncludes(tool.parameters.properties.race_id.description, "PRINCIPAL dentro do período");
+  assertStringIncludes(tool.parameters.properties.race_id.description, "mesmo que passe por provas secundárias");
+  // A regra das principais é dentro do período, não "entre hoje e a prova".
+  assertEquals(tool.description.includes("Entre hoje e essa prova"), false);
+  assertStringIncludes(tool.description, "Dentro do período só pode haver UMA principal");
+  // As recusas por item e a de carga, ditas antes.
+  assertStringIncludes(tool.description, "mais de 14 itens");
+  assertStringIncludes(tool.description, "treino forte ou ginásio");
+  assertStringIncludes(tool.description, "ACWR acima de 1,50");
+  assertStringIncludes(tool.description, "uma nova substitui a que ainda estiver por decidir");
 });
