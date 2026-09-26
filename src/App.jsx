@@ -569,6 +569,8 @@ export default function App() {
   const [notesReadyFor, setNotesReadyFor] = useState(null);
   useEffect(() => {
     if (!sessionUserId || notesReadyFor === sessionUserId) return undefined;
+    // Em demo (?demo=true) não há memória no servidor para ler.
+    if (sessionUserId === 'demo-user') { setNotesReadyFor(sessionUserId); return undefined; }
     let feito = false;
     const pronto = () => { if (!feito) { feito = true; setNotesReadyFor(sessionUserId); } };
     const timer = setTimeout(pronto, 1500);
