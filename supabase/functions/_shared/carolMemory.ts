@@ -1451,8 +1451,10 @@ export async function fetchChatMemoryBlocks(sb: any, userId: string, todayISO: s
 // percentil dizem-se a ele, não ao ecrã bloqueado.
 //
 // O percentil é calculado aqui, no momento, com a mesma fórmula do ecrã
-// (evaluatePrescriptions + percentileFrom) e só com consentimento — nunca
-// gravado. É o índice DELE contra uma distribuição pública, dito só a ele.
+// (evaluatePrescriptions + percentileFrom) e só com consentimento — não é
+// guardado como dado em lado nenhum (pode, claro, ficar escrito no que ela
+// lhe diz, no chat ou num comentário dele). É o índice DELE contra uma
+// distribuição pública, dito só a ele.
 
 const GENERO_EXTENSO: Record<string, string> = { M: "masculino", F: "feminino" };
 
@@ -1518,7 +1520,7 @@ export function buildVitrinaContext(v: VitrinaContextInput): string {
       const agora = latest ? v.leaderboardEntries.find((e) => e.window_start === latest) : null;
       const anterior = v.leaderboardEntries.find((e) => latest && e.window_start < latest) ?? null;
       if (agora) {
-        linhas.push(`- Tabelas com nomes (top 10 do escalão): está lá, em ${agora.rank}.º lugar, na quinzena que começa a ${latest}` +
+        linhas.push(`- Tabelas com nomes (top 10 do escalão): está lá, em ${agora.rank}.º lugar à data da publicação (o ecrã reconta se alguém sair entretanto), na quinzena que começa a ${latest}` +
           (anterior ? ` (na anterior esteve em ${anterior.rank}.º)` : " (é a primeira vez)") + `.`);
       } else if (a?.own) {
         linhas.push(`- Tabelas com nomes (top 10 do escalão): nesta quinzena não ficou nos 10.` +

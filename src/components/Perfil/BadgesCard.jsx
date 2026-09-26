@@ -98,7 +98,8 @@ export default function BadgesCard() {
     () => !!percentileAvailability(percentileSnapshots, ownSegmentFor(profile, raceEvents, todayISO())),
     [percentileSnapshots, profile, raceEvents],
   );
-  const nasTabelas = !!profile?.leaderboard_consent_at && !!profile?.stats_pool_consent_at;
+  // A mesma régua da função leaderboard_top: sem nome abreviado não se aparece, e não se vê.
+  const nasTabelas = !!profile?.leaderboard_consent_at && !!profile?.stats_pool_consent_at && !!profile?.leaderboard_display_name;
   // Quem aceitou aparecer vê o top 10; os outros vão ao consentimento.
   const abrirTabelas = (segment, windowStart, windowEnd) => {
     if (nasTabelas && segment && windowStart) setTabelasVer({ segment, windowStart, windowEnd });

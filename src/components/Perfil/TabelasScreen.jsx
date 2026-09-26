@@ -53,7 +53,9 @@ export default function TabelasScreen({ segment, windowStart, windowEnd, onClose
       aria-modal="true"
       aria-label="As tabelas com nomes"
       data-testid="tabelas-screen"
-      className="fixed inset-0 z-[85] flex flex-col fade-in"
+      // A mesma camada do "Onde estás" e do consentimento (z-80): quem monta
+      // depois fica por cima — o consentimento aberto daqui tapa as tabelas.
+      className="fixed inset-0 z-[80] flex flex-col fade-in"
       style={{ background: 'var(--bg-app)' }}
     >
       <div className="flex items-center gap-2.5 shrink-0" style={{ minHeight: 52, padding: '8px 14px', borderBottom: '1px solid var(--border-glass)' }}>

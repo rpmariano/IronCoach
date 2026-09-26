@@ -125,12 +125,14 @@ as $$
     and p.leaderboard_consent_at is not null
     and p.stats_pool_consent_at is not null
     and p.leaderboard_display_name is not null
-    -- Reciprocidade: só vê quem também aparece.
+    -- Reciprocidade: só vê quem também aparece — e sem nome abreviado não se
+    -- aparece (a agregação deixa-o de fora), por isso também não se vê.
     and exists (
       select 1 from public.profiles eu
       where eu.id = auth.uid()
         and eu.leaderboard_consent_at is not null
         and eu.stats_pool_consent_at is not null
+        and eu.leaderboard_display_name is not null
     )
   order by e.rank
 $$;
