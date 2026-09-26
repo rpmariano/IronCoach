@@ -151,7 +151,14 @@ describe('OndeEstasScreen', () => {
     linhas = [];
     render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
     await waitFor(() => expect(screen.getByTestId('onde-estas-sem-publicacoes')).toBeInTheDocument());
-    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/A próxima distribuição sai terça, /);
+    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: terça, /);
+  });
+
+  it('no grupo pequeno, a mesma linha', async () => {
+    linhas = [{ ...SNAPSHOT, terrain: 'trail' }];
+    render(<OndeEstasScreen onClose={() => {}} onOpenTabelas={() => {}} />);
+    await waitFor(() => expect(screen.getByTestId('onde-estas-segmento-pequeno')).toBeInTheDocument());
+    expect(screen.getByTestId('onde-estas-proxima')).toHaveTextContent(/Próxima atualização: terça, /);
   });
 
   it('com uma métrica só, não há seletor (parecia um botão sem função)', async () => {

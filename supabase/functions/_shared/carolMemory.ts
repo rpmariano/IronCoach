@@ -36,7 +36,7 @@ import {
   nomeDoBadge,
 } from "./badgeCatalog.ts";
 import { SOURCE_APPS, type SourceApp, type SourceScreen } from "./sourceApps.ts";
-import { nextPublicationDate, PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom, type Segment, TERRAIN_LOOKBACK_DAYS, WINDOW_DAYS } from "./formulas/percentileSegments.ts";
+import { nextPublicationDate, PERCENTILE_CEILING, PERCENTILE_FLOOR, percentileFrom, publishableWindow, type Segment, TERRAIN_LOOKBACK_DAYS, WINDOW_DAYS } from "./formulas/percentileSegments.ts";
 import { type LeaderboardEntryRow, ownSegmentFor, percentileAvailability, type SnapshotRow } from "./formulas/vitrina.ts";
 
 export const RECORD_MEMORY_DAYS = 14;
@@ -1534,8 +1534,14 @@ export function buildVitrinaContext(v: VitrinaContextInput): string {
   }
 
   if (v.statsPoolConsent && v.nextPublication) {
-    linhas.push(`- A média e as tabelas atualizam de 14 em 14 dias, à terça; a próxima sai a ${v.nextPublication}. ` +
-      `Os treinos desta quinzena só contam nessa altura — se ele perguntar porque é que o número não mexe, é isto.`);
+    /* Qual é a quinzena que sai nesse dia — à segunda de folga, a que sai na
+       terça é a que acabou ontem, não a que começou hoje (revisão pré-deploy
+       de 2026-09-26: "os treinos desta quinzena contam na terça" era falso). */
+    const w = publishableWindow(v.nextPublication);
+    const ultimoDia = w ? addDaysISO(w.end, -1) : null;
+    linhas.push(`- A média e as tabelas atualizam de 14 em 14 dias, à terça; a próxima atualização é a ${v.nextPublication}` +
+      (w ? ` e traz a quinzena de ${w.start} a ${ultimoDia}` : "") + `. Um treino conta na quinzena em que foi feito, e só ` +
+      `aparece no número quando essa quinzena sai — se ele perguntar porque é que o número não mexe, é isto.`);
   }
 
   return `A VITRINA DO PERFIL (o que ele vê no separador Vitrina: os badges de treino, "O que há para ganhar", ` +

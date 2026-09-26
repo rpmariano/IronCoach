@@ -222,6 +222,8 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
   // de domingo). Dizer quando evita a pergunta "porque é que não mexe?".
   const proximaAtualizacao = formatPublicationDate(nextPublicationDate(todayISO()));
   const linhaProxima = (
+    // "Próxima atualização", não "a próxima distribuição sai": num grupo com
+    // menos de 20 atletas nada sai nesse dia, mas os números voltam a ser vistos.
     <p className="m-0 text-[11px] text-center" data-testid="onde-estas-proxima" style={{ color: 'var(--text-4)' }}>
       Próxima atualização: {proximaAtualizacao}
     </p>
@@ -335,9 +337,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
               concreto — e ainda nenhum lá chegou. O teu é {segmentPhrase(segmentoProprio)}: quando ele, ou um dos
               grupos ao lado, tiver atletas suficientes, vês aqui onde estás.
             </p>
-            <p className="m-0 text-[11.5px] mt-3" data-testid="onde-estas-proxima" style={{ color: 'var(--text-4)' }}>
-              A próxima distribuição sai {proximaAtualizacao}.
-            </p>
+            <div className="mt-3">{linhaProxima}</div>
           </GlassCard>
         ) : !snapshot ? (
           /* SEGMENTO PEQUENO — dito, nunca escondido. Não se cola o atleta a
@@ -378,9 +378,7 @@ export default function OndeEstasScreen({ onClose, onOpenTabelas }) {
                 {comDados.length > 0 ? 'Ainda sem dados' : 'Os grupos ao lado também ainda não chegaram lá'}: {listaPorExtenso(semDados)}.
               </p>
             )}
-            <p className="m-0 text-[11.5px] mt-3" data-testid="onde-estas-proxima" style={{ color: 'var(--text-4)' }}>
-              A próxima distribuição sai {proximaAtualizacao}.
-            </p>
+            <div className="mt-3">{linhaProxima}</div>
             {!ehProprio && voltarAoMeu}
           </GlassCard>
         ) : (
