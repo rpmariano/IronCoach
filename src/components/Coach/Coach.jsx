@@ -20,6 +20,8 @@ import { listProactiveTriggers, wasProactiveSent, markProactiveSent } from '../.
 import { writeCachedBalance } from '../../utils/raceBalance';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
+import { hasAnyRecord } from '../../utils/homeModels';
+import { isOnboardingDoneLocally } from '../../utils/onboarding';
 
 // Chave única — o chat da Carol é uma conversa só, não um registo por id
 // como os formulários (RunAgenda, MealRegistration, ...), por isso não há
@@ -73,28 +75,34 @@ function getFirstName(displayName) {
 // teste de voz (src/utils/carolVoice.test.js) as verificar sem ter de
 // montar o componente inteiro e simular cada caminho de erro.
 export const COACH_ASYNC_FALLBACK_TEXT = 'Não consegui responder. Tenta outra vez.';
-export const COACH_IMMEDIATE_FAILURE_TEXT = 'Não consegui responder: falha de rede ou de ligação ao servidor. Tenta outra vez.';
+// Sem "responder" (nem sempre houve pergunta — um "Falar com a Carol" não é
+// uma) e sem "ligação ao servidor" (revisão de 2026-09-26).
+export const COACH_IMMEDIATE_FAILURE_TEXT = 'A rede falhou e não te consegui dizer nada. Tenta outra vez daqui a bocado.';
 export const COACH_EMPTY_REPLY_TEXT = 'Não consegui responder agora. Tenta outra vez.';
 
-// Variantes do aviso de demora (handleAsyncFallback) — mesmo espírito do
-// "Banco de Humor" do system prompt da Carol: leve, situacional, nunca
-// sempre a mesma frase (antes era só a dos agachamentos, repetida em toda
-// a demora de resposta). Escolhida ao acaso a cada aviso. Na voz dela
-// (CAROL.md): sem emoji, sem exclamação, e nunca a pedir desculpa pelo
-// sistema — diz o que se passa e o que fazer entretanto.
+// A conversa que ela pediu a partir de um aviso do Início (assunto por
+// resolver, conflito de provas, ajuste do plano, balanço, fim de bloco): o
+// aviso fica lá até a conversa acontecer, por isso é aí que se volta a
+// tentar — "Tenta outra vez" não dizia onde (revisão de 2026-09-26).
+export const COACH_INITIATED_FALLBACK_TEXT = 'Não consegui acabar o que te queria dizer. Volta a tocar em Falar com a Carol, no Início.';
+export const COACH_INITIATED_NETWORK_TEXT = 'A rede falhou. Volta a tocar em Falar com a Carol, no Início.';
+const HOME_ALERT_FAILURE = { timeout: COACH_INITIATED_FALLBACK_TEXT, network: COACH_INITIATED_NETWORK_TEXT };
+
+// Variantes do aviso de demora (handleAsyncFallback), escolhida ao acaso a
+// cada aviso. Na voz dela (CAROL.md): sem emoji, sem exclamação, e nunca a
+// pedir desculpa pelo sistema. Nenhuma sugere um movimento — saíam à sorte
+// "alonga os gémeos" com uma dor no gémeo em aberto, ou uma prancha à 01:30
+// — nem fala de servidor, ligação ou dados, nem promete que a resposta "vem
+// a caminho" (revisão de 2026-09-26). Sem nome não há vocativo: "atleta,
+// isto está a demorar" lia-se como um formulário.
 const WAITING_MESSAGES = [
-  (name) => `${name}, isto está a demorar mais do que o costume. Aproveita para fazer uns agachamentos enquanto termino.`,
-  (name) => `${name}, a ligação está hoje ao ritmo de um treino regenerativo. Alonga os gémeos enquanto acabo de pensar.`,
-  (name) => `Um segundo, ${name}. Estou a rever os teus dados com mais calma do que o habitual. Bebe água entretanto.`,
-  (name) => `${name}, isto está a demorar tanto como o último quilómetro de um treino longo. Já não falta muito.`,
-  (name) => `${name}, hoje até o servidor precisou de um dia de descanso ativo. A resposta vem a caminho.`,
-  (name) => `${name}, estou a processar tudo com mais cuidado do que o costume. Faz uma prancha de 30 segundos enquanto esperas.`,
+  (n) => `${n ? `${n}, isto` : 'Isto'} está a levar mais tempo do que devia. Fico nisto e respondo-te aqui.`,
+  (n) => `${n ? `${n}, estou` : 'Estou'} a pensar nisto com mais tempo. Respondo-te aqui.`,
 ];
 
 function pickWaitingMessage(firstName) {
-  const name = firstName ?? 'atleta';
   const variant = WAITING_MESSAGES[Math.floor(Math.random() * WAITING_MESSAGES.length)];
-  return variant(name);
+  return variant(firstName);
 }
 
 export default function Coach() {
@@ -143,7 +151,11 @@ export default function Coach() {
   // aparecer sozinha ao abrir o chat era exatamente o incidente de
   // 2026-09-12 (o servidor recusou com 409 `busy` a segunda de duas chamadas
   // gémeas ao montar, e o cliente anunciou uma falha de rede que não houve).
-  const sendCoachInitiatedPayload = async (payload, { silent = false } = {}) => {
+  // Num timeout também: nem aviso de demora nem erro no fim, só a resposta
+  // se chegar (ver handleAsyncFallback).
+  // `failure`: as frases do fim quando o pedido veio de um aviso do Início
+  // (HOME_ALERT_FAILURE) — sem ele ficam as genéricas.
+  const sendCoachInitiatedPayload = async (payload, { silent = false, failure = null } = {}) => {
     if (coachLoading) return null;
     setCoachLoading(true);
     setCoachSuggestions([]);
@@ -156,7 +168,7 @@ export default function Coach() {
 
       if (error) {
         if (isTimeout) {
-          await handleAsyncFallback(requestStartedAt);
+          await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.timeout });
         } else if (silent) {
           setCoachLoading(false);
         } else {
@@ -164,7 +176,7 @@ export default function Coach() {
           // (409 busy, 429, 5xx…). Sem frase — falha de rede, ou um erro do
           // gateway que só traz o texto em inglês da supabase-js — cai no
           // aviso genérico.
-          handleImmediateFailure(serverText || undefined);
+          handleImmediateFailure(serverText || failure?.network);
         }
         return null;
       }
@@ -200,7 +212,7 @@ export default function Coach() {
       setCoachLoading(false);
       return data;
     } catch (err) {
-      await handleAsyncFallback(requestStartedAt);
+      await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.timeout });
       return null;
     }
   };
@@ -269,7 +281,7 @@ export default function Coach() {
     intervention_details: intentData?.reason ? `Motivo/Análise: "${intentData.reason}"` : null,
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
-  });
+  }, { failure: HOME_ALERT_FAILURE });
 
   // "Adaptar Plano" (WeeklyPlanCard): o atleta é que veio ter com a Carol —
   // ao contrário da intervenção proativa acima (disparada por um alerta que
@@ -307,7 +319,9 @@ export default function Coach() {
     ...(divergence?.length ? { plan_divergence: divergence.slice(0, MAX_DIVERGENCE_TEXTS) } : {}),
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
-  }).then((data) => {
+    // Só a divergência vem de um aviso do Início; o "Adaptar Plano" é um
+    // botão do cartão do plano, e lá não há "Falar com a Carol" a que voltar.
+  }, { failure: divergence?.length ? HOME_ALERT_FAILURE : null }).then((data) => {
     if (data && signature) markDivergenceHandled(profile?.id, signature);
     return data;
   });
@@ -338,7 +352,7 @@ export default function Coach() {
     race_conflict: { races, target },
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
-  });
+  }, { failure: HOME_ALERT_FAILURE });
 
   // Vindo do Início, botão "Falar com a Carol" no aviso "O balanço da
   // prova" (utils/coachProactive.js, pendingRaceBalanceCandidate): ao
@@ -361,7 +375,7 @@ export default function Coach() {
     proactive_force: true,
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
-  }).then((data) => {
+  }, { failure: HOME_ALERT_FAILURE }).then((data) => {
     if (data?.skipped && data.reason === 'already_sent') markProactiveSent(profile?.id, candidate);
     if (data && !data.skipped) {
       markProactiveSent(profile?.id, candidate);
@@ -438,14 +452,19 @@ export default function Coach() {
     }
     // Vindo de Perfil > Memória do Coach: o atleta não edita por cima do
     // que a Carol escreveu — pede-lhe que altere, e a conversa abre já
-    // centrada nessa nota para ele explicar o que está errado.
+    // centrada nessa nota para ele explicar o que está errado. A bolha é o
+    // que ele diria; o pedido de atualizar a nota vai à parte, no corpo do
+    // pedido — "atualiza a nota" era vocabulário de implementação na boca
+    // do atleta (revisão de 2026-09-26).
     if (coachIntent && coachIntent.kind === 'discuss_note') {
       const { note } = coachIntent;
       setCoachIntent(null);
-      handleSend(
-        `Sobre o que tens registado na tua memória: "${note}". Queria mudar isto — ` +
-        `pergunta-me o que precisares e atualiza a nota quando estivermos de acordo.`,
-      );
+      handleSend(`Há uma coisa que tens anotada sobre mim que já não está certa: "${note}"`, {
+        noteDiscussion: {
+          note,
+          instruction: 'O atleta quer mudar esta nota da memória: pergunta-lhe o que precisares e atualiza-a quando estiverem de acordo.',
+        },
+      });
     }
   }, [coachIntent]);
 
@@ -724,17 +743,22 @@ export default function Coach() {
   // grande sobre POLL_MAX_MS acima. Mostra um aviso de demora (sem
   // destravar o campo, para não convidar a reformular a mesma pergunta) e
   // só desiste de vez se a sondagem não encontrar nada no prazo.
-  const handleAsyncFallback = async (requestStartedAt) => {
+  // `silent` (a mensagem proativa ao abrir o chat): ninguém pediu nada, por
+  // isso nem aviso nem erro — só a resposta, se chegar. À segunda-feira, a
+  // revisão semanal que dava timeout deixava as duas bolhas sozinhas no
+  // chat, sem contexto nenhum (revisão de 2026-09-26).
+  const handleAsyncFallback = async (requestStartedAt, { silent = false, failureText = COACH_ASYNC_FALLBACK_TEXT } = {}) => {
     const waitingId = `waiting-${Date.now()}`;
-    const firstName = getFirstName(profile?.display_name);
-    addCoachMessage({
-      id: waitingId,
-      role: 'assistant',
-      content: pickWaitingMessage(firstName)
-    });
+    if (!silent) {
+      addCoachMessage({
+        id: waitingId,
+        role: 'assistant',
+        content: pickWaitingMessage(getFirstName(profile?.display_name))
+      });
+    }
 
     const modelRow = await waitForAsyncReply(requestStartedAt);
-    removeCoachMessage(waitingId);
+    if (!silent) removeCoachMessage(waitingId);
 
     if (modelRow) {
       addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true });
@@ -757,11 +781,11 @@ export default function Coach() {
         const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
         if (freshProfile) setProfile(freshProfile);
       }
-    } else {
+    } else if (!silent) {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: COACH_ASYNC_FALLBACK_TEXT
+        content: failureText
       });
     }
     setCoachLoading(false);
@@ -794,7 +818,8 @@ export default function Coach() {
   };
 
   /* `extras`: campos que vão para o corpo do pedido a acompanhar esta
-     mensagem — hoje só o `badgeContext` (ver badgeContextPayload). Fica de
+     mensagem — o `badgeContext` (ver badgeContextPayload) e o
+     `noteDiscussion` (a nota da memória a mudar). Fica de
      fora da mensagem de propósito: o que o atleta escreve tem de ser o que
      ele diria, e o contexto é do servidor. */
   const handleSend = async (textToSend, extras) => {
@@ -911,9 +936,24 @@ export default function Coach() {
       ? carolMoodOf(lastCarolMsg)
       : 'neutral';
 
+  // O ecrã vazio conforme o que já existe: "uma meia maratona" fixa saía a
+  // quem tinha marcado um 10 km, e "ou a prova" a quem não tinha prova
+  // nenhuma; e depois dos seis ecrãs do arranque, onde ela já se
+  // apresentou, não volta a dizer quem é (revisão de 2026-09-26).
+  const hoje = todayISO();
+  const temPlanoAceite = (coachPlans || []).some((p) => p?.status === 'aceite' && String(p.period_end || '').slice(0, 10) >= hoje);
+  const temProva = (raceEvents || []).some((e) => e.status !== 'concluida' && e.date >= hoje);
+  const temRegistos = hasAnyRecord({ runs, meals, gymSessions, bodyAssessments });
+  const jaSeApresentou = profile?.onboarding_done === true || isOnboardingDoneLocally(profile?.id);
+  const emptyStateText = !temRegistos
+    ? 'Ainda não tenho registos teus. Diz-me o que queres preparar e começamos por aí.'
+    : `Tenho os teus dados de hoje e o teu perfil à frente. Pergunta-me sobre ${temProva ? 'o treino, a alimentação ou a prova' : 'o treino ou a alimentação'}.`;
+
   const defaultSuggestions = [
     'Como está a minha nutrição hoje?',
-    'Cria-me um plano de treino para uma meia maratona',
+    temPlanoAceite
+      ? 'Como está a correr o meu plano?'
+      : temProva ? 'Cria-me um plano para a minha prova' : 'Cria-me um plano de treino',
     'Que alimentos devo comer antes de treinar?'
   ];
 
@@ -940,9 +980,9 @@ export default function Coach() {
         {coachMessages.length === 0 && !coachLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8">
             <CoachAvatar size={64} radius={24} className="mb-4" />
-            <h3 className="text-sm font-bold text-white mb-1">Sou a Carol, a tua treinadora.</h3>
+            <h3 className="text-sm font-bold text-white mb-1">{jaSeApresentou ? 'Estou aqui.' : 'Sou a Carol, a tua treinadora.'}</h3>
             <p className="text-xs text-[var(--text-3)] leading-relaxed mb-5 max-w-xs">
-              Tenho os teus dados de hoje e o teu perfil à frente. Pergunta-me sobre o treino, a alimentação ou a prova.
+              {emptyStateText}
             </p>
             <div className="space-y-2 w-full max-w-xs text-left">
               {defaultSuggestions.map((s, idx) => (

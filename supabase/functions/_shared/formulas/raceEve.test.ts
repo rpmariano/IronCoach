@@ -90,3 +90,30 @@ Deno.test("noiteDoHorario: partida de manhã tem a noite da véspera; ao fim da 
   assertEquals(noiteDoHorario(manha.schedule!), true);
   assertEquals(noiteDoHorario(tarde.schedule!), false);
 });
+
+/* Revisão de 2026-09-26: às 13:00 do dia da prova, acabada mas por registar,
+   dava ainda "pequeno-almoço às 06:15, aquecimento às 08:35". Depois da
+   partida mais o tempo previsto (ou 3 h sem ele), pede-se o registo.
+   `nowMinutes` são os minutos desde a meia-noite de Lisboa do dia da prova. */
+Deno.test("describeRaceDayShort: depois da prova, o registo e o balanço em vez do horário pré-prova", () => {
+  const eve = computeRaceEve({ startTime: "09:00:00", weightKg: 70 });
+  const jaFoi = "A prova de hoje já foi. Regista-a e fazemos o balanço.";
+  // Com tempo previsto (48 min): acaba às 09:48.
+  assertEquals(describeRaceDayShort(eve, "Corrida do Tejo", "4.42", minutesOfDay("13:00"), 2880), jaFoi);
+  assertEquals(describeRaceDayShort(eve, "Corrida do Tejo", "4.42", minutesOfDay("09:48"), 2880), jaFoi);
+  assertEquals(describeRaceDayShort(eve, "Corrida do Tejo", "4.42", minutesOfDay("09:47"), 2880).includes("já foi"), false);
+  // Sem tempo previsto: 3 h depois da partida.
+  assertEquals(describeRaceDayShort(eve, "Corrida do Tejo", null, minutesOfDay("11:59")).includes("já foi"), false);
+  assertEquals(describeRaceDayShort(eve, "Corrida do Tejo", null, minutesOfDay("12:00")), jaFoi);
+  // Antes da partida, o horário como sempre.
+  assertEquals(
+    describeRaceDayShort(eve, "Corrida do Tejo", "4.42", minutesOfDay("06:00"), 2880),
+    "Hoje é Corrida do Tejo, partida às 09:00: pequeno-almoço às 06:15, água até às 08:15, chegada às 08:00, aquecimento às 08:35. O teu plano km a km está no hub da prova: arrancas a 4.42.",
+  );
+  // Sem "agora" conhecido, ou sem hora de partida, nada muda.
+  assertStringIncludes(describeRaceDayShort(eve, "Corrida do Tejo", "4.42", null, 2880), "pequeno-almoço às 06:15");
+  assertStringIncludes(describeRaceDayShort(computeRaceEve({}), "X", null, minutesOfDay("23:00")), "2 h 45 antes da partida");
+  // Uma partida à noite (22:00 + 3 h) acaba depois da meia-noite: nunca "já foi" no próprio dia.
+  const noite = computeRaceEve({ startTime: "22:00:00" });
+  assertEquals(describeRaceDayShort(noite, "São Silvestre", null, minutesOfDay("23:59")).includes("já foi"), false);
+});

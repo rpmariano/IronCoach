@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target, Sunrise } from 'lucide-react';
-import { differenceInDays, parseISO } from 'date-fns';
+import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
+import { todayISO } from '../../lib/utils';
 import { useAppStore } from '../../store';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { buildTrailModel } from '../../utils/homeModels';
@@ -20,7 +21,10 @@ const PILLAR_ICONS = {
 
 export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace, coachPlans, coachPlanItems }) {
   const [selectedPillar, setSelectedPillar] = useState(null);
-  const today = new Date().toISOString().split('T')[0];
+  // O dia de Lisboa, como o resto da app: a data UTC ainda é ontem entre a
+  // meia-noite e a 01:00, e a prova de ontem aparecia com "Faltam -1 dias"
+  // (revisão de 2026-09-26).
+  const today = todayISO();
   const nextRace = useMemo(() => {
     if (!raceEvents?.length) return null;
     return [...raceEvents]
@@ -41,7 +45,10 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
     [runs, meals, bodyAssessments, gymSessions, profile, nextRace, dailyCheckins, trainingToday]
   );
 
-  const daysLeft = nextRace ? differenceInDays(parseISO(nextRace.date), new Date()) : null;
+  // Em dias de calendário, com a mesma função do biEngine, para os dois não
+  // discordarem: differenceInDays truncava as horas e, na véspera às 10:00,
+  // já dizia "É hoje" (revisão de 2026-09-26).
+  const daysLeft = nextRace ? differenceInCalendarDays(parseISO(nextRace.date), parseISO(today)) : null;
 
   /* Ponto 6 do redesenho: "Prontidão com o bloco da prova". O cartão dizia
      só o nome e os dias que faltam; passa a dizer também em que FASE do

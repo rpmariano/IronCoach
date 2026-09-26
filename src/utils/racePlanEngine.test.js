@@ -276,3 +276,105 @@ describe('racePlanEngine — calculateRaceTrainingPlan', () => {
     expect(plan.carolAnalysis.overviewText).toContain('A prova já foi');
   });
 });
+
+describe('racePlanEngine — frases que olham para o contexto (revisão de 2026-09-26)', () => {
+  const race = {
+    id: 'race-10k',
+    name: 'Corrida do Tejo',
+    date: '2026-10-15',
+    distance_km: 10,
+    race_type: 'estrada',
+    race_priority: 'a',
+    experience_level: 'medio',
+  };
+  const plano = (overrides = {}, extra = {}) => calculateRaceTrainingPlan({
+    race: { ...race, ...overrides },
+    profile: { experience_level: 'medio' },
+    runs: [],
+    ...extra,
+  });
+
+  it('prova há 3 dias sem corrida ligada: sem nota, «Por registar», e pede o registo', () => {
+    const plan = plano({}, { todayISO: '2026-10-18' });
+    const fase = plan.phases.find((p) => p.id === 'race_recovery');
+    expect(fase.evaluation.score).toBeNull();
+    expect(fase.evaluation.stars).toBe(0);
+    expect(fase.evaluation.gradeLabel).toBe('Por registar');
+    expect(fase.evaluation.metrics.runsCount).toBe(0);
+    expect(fase.evaluation.summary).toBe('A prova já passou e não a tenho registada. Regista-a, ou diz-me o que aconteceu.');
+    expect(plan.currentPhase.evaluation.summary).not.toMatch(/95|Concluída/);
+  });
+
+  it('prova há 3 dias com a corrida ligada (race_id): mantém a avaliação', () => {
+    const plan = plano({}, {
+      todayISO: '2026-10-18',
+      runs: [{ date: '2026-10-15', distance_km: 10, duration_seconds: 2950, kind: 'competicao', race_id: 'race-10k' }],
+    });
+    const fase = plan.phases.find((p) => p.id === 'race_recovery');
+    expect(fase.evaluation.score).toBe(95);
+    expect(fase.evaluation.gradeLabel).toBe('Concluída');
+    expect(fase.evaluation.metrics.runsCount).toBe(1);
+    expect(fase.evaluation.summary).toMatch(/^A prova já foi/);
+  });
+
+  it('prova amanhã: só um trote curto, sem «uma ou duas corridas curtas»', () => {
+    const text = plano({}, { todayISO: '2026-10-14' }).carolAnalysis.overviewText;
+    expect(text).toBe('A prova é amanhã. Hoje, no máximo 15 a 20 minutos muito fáceis.');
+    // Também numa prova C: a véspera é a véspera.
+    expect(plano({ race_priority: 'c' }, { todayISO: '2026-10-14' }).carolAnalysis.overviewText)
+      .toBe('A prova é amanhã. Hoje, no máximo 15 a 20 minutos muito fáceis.');
+  });
+
+  it('prova B ou C na semana: prova de preparação, sem semana de polimento', () => {
+    for (const prioridade of ['b', 'c']) {
+      const text = plano({ race_priority: prioridade }, { todayISO: '2026-10-11' }).carolAnalysis.overviewText;
+      expect(text).toBe('Faltam 4 dias. É uma prova de preparação: corre-a como treino de qualidade; o resto da semana é o do plano.');
+      expect(text).not.toMatch(/já não se ganha forma|hidratos/);
+    }
+  });
+
+  it('prova A na semana: hidratos só acima de 90 minutos previstos', () => {
+    const semana = (overrides) => plano(overrides, { todayISO: '2026-10-11' }).carolAnalysis.overviewText;
+    // 5 km, sem objetivo nem corridas: curta demais para carga de hidratos.
+    const cinco = semana({ distance_km: 5 });
+    expect(cinco).toBe('Faltam 4 dias: esta semana já não se ganha forma, só se perde se exagerares. Uma ou duas corridas curtas com umas acelerações; o resto é descansar.');
+    // 10 km com objetivo de 50 minutos.
+    expect(semana({ target_time: '50:00' })).not.toMatch(/hidratos/);
+    // Maratona com objetivo de 3:30:00 — pela coluna numérica e pelo texto.
+    expect(semana({ distance_km: 42.195, target_time_seconds: 12600 })).toMatch(/o resto é descansar e comer hidratos com regularidade\.$/);
+    expect(semana({ distance_km: 42.195, target_time: '3:30:00' })).toMatch(/comer hidratos/);
+    // Meia sem objetivo nem corridas: a régua da véspera cai na distância.
+    expect(semana({ distance_km: 21.0975 })).toMatch(/comer hidratos/);
+    // 10 km sem objetivo, mas com uma previsão do treino acima de 90 minutos.
+    const lento = plano({}, {
+      todayISO: '2026-10-11',
+      runs: [{ date: '2026-10-01', distance_km: 10, duration_seconds: 5700, training_type: 'continuo', effort_rpe: 4 }],
+    }).carolAnalysis.overviewText;
+    expect(lento).toMatch(/comer hidratos/);
+  });
+
+  describe('antes do ciclo começar', () => {
+    const hoje = '2026-08-01';
+    const planoAceite = { id: 'p1', status: 'aceite', period_start: '2026-07-27', period_end: '2026-08-09' };
+    const intervalos = { id: 'i1', plan_id: 'p1', kind: 'corrida', training_type: 'intervalos', planned_date: '2026-08-02', status: 'pendente' };
+
+    it('com um plano de treino aceite em vigor: segue o plano, sem o conselho genérico', () => {
+      const text = plano({}, { todayISO: hoje, coachPlans: [planoAceite], coachPlanItems: [intervalos] }).carolAnalysis.overviewText;
+      expect(text).toMatch(/^Faltam \d+ dias para começarmos o ciclo de 6 semanas\. Até lá, segue o plano que acordámos\.$/);
+      expect(text).not.toMatch(/Z1\/Z2|ginásio/);
+    });
+
+    it('sem plano aceite, com um plano só proposto, já acabado ou só de refeições: o conselho genérico', () => {
+      const casos = [
+        { coachPlans: [], coachPlanItems: [] },
+        { coachPlans: [{ ...planoAceite, status: 'proposto' }], coachPlanItems: [intervalos] },
+        { coachPlans: [{ ...planoAceite, period_start: '2026-07-13', period_end: '2026-07-26' }], coachPlanItems: [intervalos] },
+        { coachPlans: [planoAceite], coachPlanItems: [{ id: 'i2', plan_id: 'p1', kind: 'descanso', planned_date: '2026-08-02', meal_suggestion: 'Arroz' }] },
+      ];
+      for (const extra of casos) {
+        const text = plano({}, { todayISO: hoje, ...extra }).carolAnalysis.overviewText;
+        expect(text).toMatch(/Até lá, corrida fácil \(Z1\/Z2\) com regularidade e força no ginásio/);
+      }
+    });
+  });
+});

@@ -415,8 +415,8 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
      registo manual, mesmo estando escolhido a opção de análise do coach.
      Esses campos só deveriam surgir na opção manual." Distância e duração
      (renderCoreMetrics) renderizavam-se sempre, antes da própria escolha do
-     método — mostravam-se mesmo com "Foto (IA)" selecionada. */
-  it('com "Foto (IA)" selecionada (por omissão), não mostra distância nem duração — só a IA os dá', () => {
+     método — mostravam-se mesmo com "Foto" selecionada. */
+  it('com "Foto" selecionada (por omissão), não mostra distância nem duração — só a IA os dá', () => {
     render(<RunRegistration onClose={onClose} />);
     expect(screen.queryByPlaceholderText('0.00')).not.toBeInTheDocument(); // Distância
     expect(screen.queryByPlaceholderText('00:00')).not.toBeInTheDocument(); // Duração
@@ -431,6 +431,16 @@ describe('RunRegistration — cartão único: alternar entre Foto e Manual', () 
     expect(screen.getByPlaceholderText('0.00')).toBeInTheDocument(); // Distância
     expect(screen.getByPlaceholderText('00:00')).toBeInTheDocument(); // Duração
     expect(screen.getByRole('button', { name: /Analisar corrida/i })).toBeInTheDocument();
+  });
+
+  /* O caso do backlog (specs/carol-frases-contexto.md, MealRegistration:710, mesma linha para a corrida): o
+     registo por foto nomeava «a IA» ao lado da Carol — rótulo «Foto (IA)» e
+     dica «A IA lê…». Aqui fala só ela, na primeira pessoa. */
+  it('o registo por foto fala na voz da Carol, sem nomear a IA', () => {
+    render(<RunRegistration onClose={onClose} />);
+    expect(screen.getByRole('button', { name: /^Foto$/ })).toBeInTheDocument();
+    expect(screen.getByText('Eu leio a distância, a duração, o tipo de treino e os splits. Podes corrigir depois de gravado.')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\bIA\b/);
   });
 
   it('esconde o seletor e vai direto aos campos manuais quando está a editar', () => {

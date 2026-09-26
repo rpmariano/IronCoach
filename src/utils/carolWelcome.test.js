@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, WELCOME_MIN_GAP_MS, WELCOME_PHRASES, pickByDay, welcomeReturnAction, carolDay, checkinDay } from './carolWelcome';
+import { describe, it, expect, vi } from 'vitest';
+import { slotForHour, slotKey, decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, WELCOME_MIN_GAP_MS, WELCOME_PHRASES, pickByDay, welcomeReturnAction, carolDay, checkinDay, welcomeTimeZone } from './carolWelcome';
 import { expectCarolVoice } from '../test/carolVoice';
 
 /* As boas-vindas da Carol: aparecem na primeira abertura de cada faixa do
@@ -25,7 +25,7 @@ describe('faixas', () => {
     expect(slotKey(at('2026-09-20T07:00:00')).key).toBe('2026-09-20:manha');
   });
 
-  it('conta a hora de Lisboa, não a do relógio do sistema', () => {
+  it('sem fuso no dispositivo (os testes correm em UTC), conta a hora de Lisboa', () => {
     // 11:30 UTC são 12:30 em Lisboa: já é tarde.
     expect(slotKey(new Date('2026-09-19T11:30:00Z')).slot).toBe('tarde');
   });
@@ -734,5 +734,147 @@ describe('pedido 2026-09-26 — a revisão do Lote 1, do lado das boas-vindas', 
     // A bater com o plano (16,4 km), diz-se o treino do plano.
     const bate = buildWelcome('manha', { ...dados, runs: [{ date: d, distance_km: 16.4 }] }, at(`${d}T09:00:00`));
     expect(WELCOME_PHRASES.treinoFeito('uma rodagem longa de 16 km')).toContain(bate.lines[0]);
+  });
+});
+
+/* Revisão das boas-vindas de 2026-09-26 ("Outros" do backlog): a cara dela,
+   o fuso do dispositivo e as duas frases do descanso que diziam mais do que
+   os dados sustentavam. */
+describe('revisão das boas-vindas de 2026-09-26 — a cara, o fuso e o descanso', () => {
+  const plano = (items, extra = {}) => ({
+    profile: { display_name: 'Rui' },
+    coachPlans: [{ id: 'p', status: 'aceite' }],
+    coachPlanItems: items.map((i, n) => ({ id: `i${n}`, plan_id: 'p', status: 'pendente', ...i })),
+    runs: [{ date: '2026-09-01', distance_km: 5 }], gymSessions: [], meals: [], raceEvents: [], dailyCheckins: [], ...extra,
+  });
+  const menos = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) - n * 86400000).toISOString().slice(0, 10);
+  // Três dias seguidos passam pelas três frases do conjunto (pickByDay).
+  const TRES_DIAS = ['2026-09-28', '2026-09-29', '2026-09-30'];
+  const SEMANA = 'Dia de descanso. É hoje que o corpo assimila o trabalho da semana.';
+  const A_SERIO = 'Hoje é descanso. A sério.';
+
+  describe('a cara dela', () => {
+    it('às 23:05 antes de um dia de descanso não há nada que preocupe: cuidado, não "worried"', () => {
+      const w = buildWelcome('madrugada', plano([{ planned_date: '2026-09-27', kind: 'descanso' }]), at('2026-09-26T23:05:00'));
+      expect(w.mood).toBe('caring');
+      for (const hora of ['2026-09-26T23:05:00', '2026-09-27T02:30:00']) {
+        expect(buildWelcome('madrugada', plano([]), at(hora)).mood).not.toBe('worried');
+      }
+    });
+
+    it('de manhã, depois de "Dormiste mal", a cara mostra cuidado', () => {
+      const d = '2026-09-28';
+      const w = buildWelcome('manha', plano([{ planned_date: d, kind: 'corrida', training_type: 'rodagem', target_distance_km: 8 }], { dailyCheckins: [{ date: d, sleep: 1 }] }), at(`${d}T07:30:00`));
+      expect(WELCOME_PHRASES.dormiuMal).toContain(w.lines[0]);
+      expect(w.mood).toBe('caring');
+    });
+
+    it('"worried" só com a dor acima do alarme', () => {
+      const d = '2026-09-28';
+      const data = plano([{ planned_date: d, kind: 'corrida', training_type: 'rodagem', target_distance_km: 8 }], { dailyCheckins: [{ date: d, sleep: 5, pain: 7 }] });
+      expect(buildWelcome('manha', data, at(`${d}T07:30:00`)).mood).toBe('worried');
+      expect(buildWelcome('manha', { ...data, dailyCheckins: [{ date: d, sleep: 5, pain: 2 }] }, at(`${d}T07:30:00`)).mood).toBe('neutral');
+    });
+
+    it('contente no dia da prova; neutra no resto', () => {
+      const meia = { id: 'r', name: 'Meia da Nazaré', date: '2026-09-27', status: 'agendada', start_time: '09:30:00' };
+      expect(buildWelcome('prova', plano([], { raceEvents: [meia] }), at('2026-09-27T06:30:00')).mood).toBe('happy');
+      expect(buildWelcome('manha', plano([], { raceEvents: [meia], dailyCheckins: [{ date: '2026-09-27', sleep: 4 }] }), at('2026-09-27T06:30:00')).mood).toBe('happy');
+      expect(buildWelcome('vespera', plano([], { raceEvents: [meia] }), at('2026-09-26T15:00:00')).mood).toBe('neutral');
+      expect(buildWelcome('tarde', plano([]), at('2026-09-28T15:00:00')).mood).toBe('neutral');
+    });
+  });
+
+  describe('o fuso do dispositivo', () => {
+    // 23:30 nos Açores (UTC+0 no verão) são 00:30 do dia seguinte em Lisboa.
+    const acores2330 = new Date('2026-09-26T23:30:00Z');
+
+    it('usa o fuso do dispositivo; sem ele, ou só "UTC", fica Lisboa', () => {
+      const spy = vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions');
+      try {
+        spy.mockReturnValue({ timeZone: 'Atlantic/Azores' });
+        expect(welcomeTimeZone()).toBe('Atlantic/Azores');
+        // Sem fuso passado (como em App.jsx), decide o do dispositivo.
+        expect(slotKey(acores2330)).toMatchObject({ date: '2026-09-26', hour: 23 });
+        spy.mockReturnValue({ timeZone: 'UTC' });
+        expect(welcomeTimeZone()).toBe('Europe/Lisbon');
+        spy.mockReturnValue({});
+        expect(welcomeTimeZone()).toBe('Europe/Lisbon');
+      } finally {
+        spy.mockRestore();
+      }
+      expect(slotKey(acores2330)).toMatchObject({ date: '2026-09-27', hour: 0 });
+    });
+
+    it('nos Açores às 23:30, "hoje" ainda é o dia de lá: o treino do dia seguinte é "amanhã"', () => {
+      const data = plano([
+        { planned_date: '2026-09-26', kind: 'descanso' },
+        { planned_date: '2026-09-27', kind: 'corrida', training_type: 'longo', target_distance_km: 16 },
+      ]);
+      const acores = buildWelcome('madrugada', data, acores2330, 'Atlantic/Azores');
+      expect(WELCOME_PHRASES.quando('Amanhã', 'uma rodagem longa de 16 km')).toContain(acores.lines[0]);
+      expect(acores.lines.join(' ')).not.toMatch(/hoje/i);
+      expect(acores.chip).toMatchObject({ label: 'Amanhã' });
+      // Em Lisboa já passou a meia-noite: aí, sim, é "hoje".
+      const lisboa = buildWelcome('madrugada', data, acores2330, 'Europe/Lisbon');
+      expect(WELCOME_PHRASES.quando('Hoje', 'uma rodagem longa de 16 km')).toContain(lisboa.lines[0]);
+    });
+
+    it('a faixa e o check-in leem-se pela data do dispositivo, a mesma com que o check-in se grava', () => {
+      const acores2240 = new Date('2026-09-26T22:40:00Z');
+      expect(decideWelcome({ now: acores2240, seen: [], timeZone: 'Atlantic/Azores' })?.variant).toBe('noite');
+      expect(decideWelcome({ now: acores2240, seen: [], timeZone: 'Europe/Lisbon' })?.variant).toBe('madrugada');
+      // O check-in do dia 26 (data do telemóvel nos Açores), com dor: ainda é o de hoje.
+      const data = plano([], { dailyCheckins: [{ date: '2026-09-26', sleep: 4, pain: 7 }] });
+      expect(buildWelcome('madrugada', data, acores2330, 'Atlantic/Azores').mood).toBe('worried');
+    });
+  });
+
+  describe('as frases do descanso', () => {
+    const manhaDeDescanso = (d, { runs = [], gymSessions = [], items = [] } = {}) => {
+      const data = plano([{ planned_date: d, kind: 'descanso' }, ...items], { runs, gymSessions, dailyCheckins: [{ date: d, sleep: 3 }] });
+      const w = buildWelcome('manha', data, at(`${d}T07:30:00`));
+      expectCarolVoice([w.greeting, ...w.lines].join(' '));
+      return w.lines;
+    };
+
+    it('num plano novo, sem registos, não há "trabalho da semana" nem "a sério"', () => {
+      for (const d of TRES_DIAS) {
+        const lines = manhaDeDescanso(d);
+        expect(lines, d).not.toContain(SEMANA);
+        expect(lines, d).not.toContain(A_SERIO);
+        expect(['Hoje é descanso.', WELCOME_PHRASES.descansoHoje()[2]], d).toContain(lines[0]);
+      }
+    });
+
+    it('"o trabalho da semana" só com corridas ou ginásio nos últimos 7 dias', () => {
+      // Uma semana inteira sem registos (o último há 8 dias).
+      for (const d of TRES_DIAS) expect(manhaDeDescanso(d, { runs: [{ date: menos(d, 8), distance_km: 10 }] }), d).not.toContain(SEMANA);
+      const comCorrida = TRES_DIAS.map((d) => manhaDeDescanso(d, { runs: [{ date: menos(d, 2), distance_km: 10 }] }));
+      expect(comCorrida.some((l) => l.includes(SEMANA))).toBe(true);
+      const comGinasio = TRES_DIAS.map((d) => manhaDeDescanso(d, { gymSessions: [{ date: menos(d, 3) }] }));
+      expect(comGinasio.some((l) => l.includes(SEMANA))).toBe(true);
+    });
+
+    it('"a sério" só a quem treinou num descanso do plano nas últimas 4 semanas', () => {
+      const planoPassado = (d, diasAtras) => [
+        { planned_date: menos(d, diasAtras), kind: 'descanso' },
+        { planned_date: menos(d, diasAtras - 1), kind: 'corrida', training_type: 'rodagem', target_distance_km: 8, status: 'concluido' },
+      ];
+      // Treinou sempre nos dias de treino: nada que sustente o "a sério".
+      for (const d of TRES_DIAS) {
+        expect(manhaDeDescanso(d, { items: planoPassado(d, 10), runs: [{ date: menos(d, 9), distance_km: 8 }] }), d).not.toContain(A_SERIO);
+      }
+      // Correu num descanso há 10 dias: aparece no dia em que calha.
+      const trocou = TRES_DIAS.map((d) => manhaDeDescanso(d, { items: planoPassado(d, 10), runs: [{ date: menos(d, 10), distance_km: 6 }] }));
+      expect(trocou.some((l) => l.includes(A_SERIO))).toBe(true);
+      // O ginásio num descanso também conta.
+      const ginasio = TRES_DIAS.map((d) => manhaDeDescanso(d, { items: planoPassado(d, 12), gymSessions: [{ date: menos(d, 12) }] }));
+      expect(ginasio.some((l) => l.includes(A_SERIO))).toBe(true);
+      // Há mais de 4 semanas já não conta.
+      for (const d of TRES_DIAS) {
+        expect(manhaDeDescanso(d, { items: planoPassado(d, 35), runs: [{ date: menos(d, 35), distance_km: 6 }] }), d).not.toContain(A_SERIO);
+      }
+    });
   });
 });

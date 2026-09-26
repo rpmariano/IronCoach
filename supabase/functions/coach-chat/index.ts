@@ -765,7 +765,7 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   leaderboard:
     `É sobre as tabelas com nomes do escalão dele (o top 10 da quinzena, pelo quanto do plano cumpriu) — o Contexto diz se ENTROU ` +
     `ou SAIU. Entrou: reconhece-o com a prova — a posição e o índice do bloco VITRINA — numa frase, sem festa; depois uma frase ` +
-    `sobre o que o pôs lá (a consistência com o plano nestes 14 dias). Saiu: sem dramatismo e sem sermão — diz que nesta quinzena ` +
+    `sobre o que o pôs lá (a consistência com o plano nestes 14 dias). Saiu: sem dramatismo e sem sermão — diz que na quinzena que fechou ` +
     `ficou fora dos 10, o que mudou face à anterior se o bloco o disser, e uma coisa concreta para voltar (cumprir o plano, não ` +
     `treinar a mais). Nos dois casos, diz-lhe onde ver: Perfil, Vitrina, "Onde estás". Nunca digas nomes de outros atletas.`,
   percentile_ready:
@@ -6667,8 +6667,9 @@ async function handler(req: Request): Promise<Response> {
         if (fallback) return fallback;
         if (geminiRes.status === 429) {
           // Voz dela, não a de upstreamErrorText: é uma conversa em curso,
-          // não uma análise avulsa — "dá-me uns minutos", não "tenta outra vez".
-          return jsonResponse({ error: "Estou com muitos pedidos. Dá-me uns minutos." }, 503);
+          // não uma análise avulsa — e sem a fila de atendimento de "estou
+          // com muitos pedidos" (specs/carol-frases-contexto.md).
+          return jsonResponse({ error: "Não consegui responder agora. Manda outra vez daqui a uns minutos." }, 503);
         }
         return jsonResponse({
           error: upstreamErrorText(geminiRes.status),
@@ -6763,7 +6764,9 @@ async function handler(req: Request): Promise<Response> {
       console.error("Gemini resposta vazia:", JSON.stringify(geminiJson));
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
-      return jsonResponse({ error: "Não consegui gerar uma resposta. Tenta outra vez." }, 502);
+      // "Gerar uma resposta" é vocabulário de modelo, não dela
+      // (specs/carol-frases-contexto.md).
+      return jsonResponse({ error: "Perdi o fio a meio. Manda outra vez." }, 502);
     }
 
     let replyText: string;
@@ -6812,7 +6815,7 @@ async function handler(req: Request): Promise<Response> {
       const fallback = await replyAfterWritesWithoutText();
       if (fallback) return fallback;
       return jsonResponse({
-        error: "Tive um problema a gerar a resposta. Tenta outra vez.",
+        error: "Perdi o fio a meio. Manda outra vez.",
       }, 502);
     }
 

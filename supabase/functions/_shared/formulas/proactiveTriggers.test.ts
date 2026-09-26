@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
-import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds, startTimeMinutes, interventionKey, raceConflictKey, findMissedWorkout, missedWorkoutInReview, missedWorkoutLabel, silenceCandidate, ALL_PROACTIVE_TRIGGERS } from "./proactiveTriggers.ts";
+import { findRaceRunServer, isWithinProactiveWindow, pickServerProactive, listServerProactive, proactivePushMessage, proactiveTab, shortHash, findEndingBlock, detectRaceConflictServer, findWeekToReview, weekToReviewBounds, startTimeMinutes, interventionKey, raceConflictKey, findMissedWorkout, missedWorkoutInReview, missedWorkoutLabel, silenceCandidate, ALL_PROACTIVE_TRIGGERS, type TriggerRace } from "./proactiveTriggers.ts";
 import { assertCarolVoice } from "../carolTone.ts";
 
 const TODAY = "2026-09-18";
@@ -54,8 +54,9 @@ Deno.test("o texto da notificação: com e sem nome, sem emoji nem exclamação"
   ];
   const bodies = all.map((c) => proactivePushMessage(c).body);
   assertEquals(bodies, [
-    "Hoje é dia de prova: Meia de Lisboa. Tenho duas coisas para te dizer antes da partida.",
-    "Amanhã é dia de prova. Tenho o plano para hoje à noite e para amanhã de manhã.",
+    // Sem plano de ritmo nem hora de partida (revisão de 2026-09-26).
+    "Hoje é dia de prova: Meia de Lisboa. Fala comigo antes da partida.",
+    "Amanhã é dia de prova. Tenho o plano para hoje à noite e para amanhã.",
     "Vi o registo da prova Meia de Lisboa. Quero fazer o balanço contigo.",
     "Como correu a prova? Conta-me, e regista a corrida.",
     "Não vejo nada teu há 8 dias. Estás bem?",
@@ -161,7 +162,8 @@ Deno.test("listServerProactive: todos os momentos que se aplicam, por prioridade
     lastRecordDate: "2026-09-10",
     intervention: { status: "needed", reason: "dor no joelho" },
   }, TODAY);
-  assertEquals(list.map((c) => c.trigger), ["intervention", "race_eve", "race_after", "silence"]);
+  // Sem o silêncio: o assunto aberto já explica a falta de registos (jaSabePorque, revisão de 2026-09-26).
+  assertEquals(list.map((c) => c.trigger), ["intervention", "race_eve", "race_after"]);
   // Só a prova mais recente conta para o "depois da prova".
   assertEquals(list[2].raceId, "r0");
   assertEquals(pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: null }, TODAY), null);
@@ -369,7 +371,8 @@ Deno.test("P.10: com check-in depois do último registo, o silêncio fala dos tr
 Deno.test("P.10: um check-in antigo não muda nada", () => {
   const c = pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: "2026-09-14", lastCheckinDate: "2026-09-12", lastTrainingDate: "2026-09-14", ...planoDaJanela }, TODAY)!;
   assertEquals(c.lastCheckinDate, undefined);
-  assertEquals(proactivePushMessage(c).body, "Não vejo nada teu há 4 dias. Estás bem?");
+  // Com o plano da janela, nomeia o treino que ficou por fazer (revisão de 2026-09-26).
+  assertEquals(proactivePushMessage(c).body, "Ficou 1 treino por fazer desde terça. Está tudo bem?");
 });
 
 // ── A Vitrina (2026-09-25) ────────────────────────────────────────────────
@@ -419,13 +422,15 @@ Deno.test("Vitrina: saiu das tabelas e 'perto' — as outras frases fixas, sem n
     vitrina: vitrinaInput({ snapshots: [vsnap("M40", "2026-09-14")], leaderboardEntries: [{ window_start: "2026-08-31", rank: 9 }] }),
   }, TODAY).find((c) => c.trigger === "leaderboard")!;
   assertEquals(saiu.key, "leaderboard:saiu:2026-09-14");
-  assertEquals(proactivePushMessage(saiu).body, "Nesta quinzena saíste das tabelas do teu escalão. Vem ver comigo o que mudou.");
+  // Sai à terça, sobre a quinzena que fechou — "nesta" já era a nova (revisão de 2026-09-26).
+  assertEquals(proactivePushMessage(saiu).body, "Na quinzena que fechou saíste das tabelas do teu escalão. Vem ver comigo o que mudou.");
 
   const perto = listServerProactive({
     raceEvents: [], runs: [], lastRecordDate: TODAY,
     vitrina: vitrinaInput({ snapshots: [vsnap("M45", "2026-09-14")], leaderboardEntries: [] }),
   }, TODAY);
   assertEquals(perto.map((c) => c.key), ["percentile_ready:perto:M40.M.estrada"]);
+  assertEquals(proactivePushMessage(perto[0]).body, "O teu escalão ainda não tem números, mas o escalão ao lado já tem. Vem ver onde ficas nesse.");
   assertCarolVoice(proactivePushMessage(perto[0]).body);
 });
 
@@ -483,4 +488,133 @@ Deno.test("jaSabePorque: dor acima do alarme, ou assunto já aberto, calam o sil
   const comMissed = missedInput({ lastCheckinPain: 5 });
   assertEquals(listServerProactive(comMissed, TODAY).some((c) => c.trigger === "missed_workout"), false);
   assertEquals(listServerProactive(missedInput(), TODAY).some((c) => c.trigger === "missed_workout"), true);
+});
+
+// ── Revisão de 2026-09-26: as frases das notificações ──────────────────────
+// specs/carol-frases-contexto.md: cada frase diz o que o contexto já sabe, e
+// não sai quando deixou de ser verdade.
+
+Deno.test("manhã da prova: o ritmo do primeiro km só com plano de ritmo; sem hora de partida, não sai a partir das 10h", () => {
+  const comPlano = pickServerProactive({ raceEvents: [race({ start_time: "09:30:00", distance_km: 21.1, target_time_seconds: 6300 })], runs: [], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(comPlano.hasFirstKmPace, true);
+  assertEquals(proactivePushMessage(comPlano).body, "Hoje é dia de prova: Meia de Lisboa. Deixei-te o ritmo do primeiro km.");
+  // Sem objetivo não há plano de ritmo: não se promete o ritmo.
+  const semPlano = pickServerProactive({ raceEvents: [race({ start_time: "09:30:00", distance_km: 21.1 })], runs: [], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(semPlano.hasFirstKmPace, false);
+  assertEquals(proactivePushMessage(semPlano).body, "Hoje é dia de prova: Meia de Lisboa. Fala comigo antes da partida.");
+  for (const c of [comPlano, semPlano]) assertCarolVoice(proactivePushMessage(c).body);
+  // Sem hora de partida: às 9h ainda sai; às 10h a prova pode já estar a decorrer.
+  assert(isWithinProactiveWindow("race_morning", 9));
+  assert(!isWithinProactiveWindow("race_morning", 10));
+  assert(!isWithinProactiveWindow("race_morning", 10, { startHour: 10, endHour: 22 }));
+  assert(!isWithinProactiveWindow("race_morning", 23, { startHour: 22, endHour: 2 }));
+  // Com hora de partida manda a partida: uma prova às 14h recebe-a ao meio-dia.
+  assert(isWithinProactiveWindow("race_morning", 12, {}, { minuteOfDay: 12 * 60 + 7, raceStartMinutes: 840 }));
+});
+
+Deno.test("véspera: a partida à tarde entra na frase, sem hora não há 'de manhã', e de madrugada não sai", () => {
+  const tarde = pickServerProactive({ raceEvents: [race({ name: "São Silvestre", date: "2026-09-19", start_time: "17:30:00" })], runs: [], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(tarde.startMinutes, 1050);
+  assertEquals(proactivePushMessage(tarde).body, "Amanhã é dia de prova: São Silvestre, partida às 17:30. Tenho o plano para hoje à noite e para amanhã até à partida.");
+  const manha = pickServerProactive({ raceEvents: [race({ date: "2026-09-19", start_time: "09:00" })], runs: [], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(proactivePushMessage(manha).body, "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã de manhã.");
+  const semHora = pickServerProactive({ raceEvents: [race({ date: "2026-09-19" })], runs: [], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(semHora.startMinutes, null);
+  assertEquals(proactivePushMessage(semHora).body, "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã.");
+  for (const c of [tarde, manha, semHora]) assertCarolVoice(proactivePushMessage(c).body);
+  // Nem numa janela que atravessa a meia-noite, nem numa que começa às 5h.
+  assert(isWithinProactiveWindow("race_eve", 23, { startHour: 22, endHour: 2 }));
+  assert(!isWithinProactiveWindow("race_eve", 0, { startHour: 22, endHour: 2 }));
+  assert(!isWithinProactiveWindow("race_eve", 5, { startHour: 5, endHour: 22 }));
+  assert(isWithinProactiveWindow("race_eve", 6, { startHour: 5, endHour: 22 }));
+});
+
+Deno.test("depois da prova: o nome por omissão não é nome — diz-se o dia e a distância", () => {
+  // TODAY (2026-09-18) é sexta; 2026-09-13 foi domingo.
+  const corrida = { id: "run9", race_id: "r1", date: "2026-09-13" };
+  for (const nome of ["Corrida de Hoje", "Prova", " ", null]) {
+    const c = pickServerProactive({ raceEvents: [race({ name: nome, date: "2026-09-13", distance_km: 10 })], runs: [corrida], lastRecordDate: TODAY }, TODAY)!;
+    assertEquals(proactivePushMessage(c).body, "Vi o registo da tua prova de domingo, 10 km. Quero fazer o balanço contigo.");
+  }
+  const ontem = pickServerProactive({ raceEvents: [race({ name: "corrida de hoje", date: "2026-09-17", distance_km: 21.1 })], runs: [{ ...corrida, date: "2026-09-17" }], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(proactivePushMessage(ontem).body, "Vi o registo da tua prova de ontem, 21,1 km. Quero fazer o balanço contigo.");
+  assertCarolVoice(proactivePushMessage(ontem).body);
+  // Com nome próprio, fica o nome.
+  const nomeada = pickServerProactive({ raceEvents: [race({ date: "2026-09-13", distance_km: 10 })], runs: [corrida], lastRecordDate: TODAY }, TODAY)!;
+  assertEquals(proactivePushMessage(nomeada).body, "Vi o registo da prova Meia de Lisboa. Quero fazer o balanço contigo.");
+});
+
+Deno.test("silêncio: com água registada depois do último registo, não é 'nada teu'", () => {
+  const semPlano = { raceEvents: [], runs: [], lastRecordDate: "2026-09-10" };
+  const c = pickServerProactive({ ...semPlano, lastWaterDate: "2026-09-17" }, TODAY)!;
+  assertEquals(c.key, "silence:2026-09-10");
+  assertEquals(c.lastWaterDate, "2026-09-17");
+  assertEquals(proactivePushMessage(c).body, "Vejo a água registada, mas nenhum treino nem refeição há 8 dias. Está tudo bem?");
+  assertCarolVoice(proactivePushMessage(c).body);
+  // Água de antes do último registo não diz nada de novo.
+  const antiga = pickServerProactive({ ...semPlano, lastWaterDate: "2026-09-09" }, TODAY)!;
+  assertEquals(antiga.lastWaterDate, undefined);
+  assertEquals(proactivePushMessage(antiga).body, "Não vejo nada teu há 8 dias. Estás bem?");
+  // Com um check-in depois do último registo, manda o check-in.
+  const comCheckin = pickServerProactive({ ...semPlano, lastWaterDate: "2026-09-17", lastCheckinDate: "2026-09-16", lastTrainingDate: "2026-09-08" }, TODAY)!;
+  assertEquals(proactivePushMessage(comCheckin).body, "Não vejo nenhum treino teu há 10 dias. Está tudo bem?");
+});
+
+Deno.test("assunto por resolver: a frase diz de onde veio, nunca o motivo, e não espera por 'quando puderes'", () => {
+  const msg = (reason: string, origin?: string) =>
+    proactivePushMessage(pickServerProactive({ raceEvents: [], runs: [], lastRecordDate: TODAY, intervention: { status: "needed", reason, origin } }, TODAY)!).body;
+  const bodies = [
+    msg("Check-in de 2026-09-17: Dor 7/10 (joelho)."),
+    msg("[carga] Carga de corrida: 30 km nos últimos 7 dias, quando o plano previa 16 km; a média das últimas 4 semanas é 12,5 km/semana (ACWR 2,4)."),
+    msg("[carga] Carga de corrida: 30 km nos últimos 7 dias, sem corridas no plano para esses dias; a média das últimas 4 semanas é 12,5 km/semana (ACWR 2,4)."),
+    msg("[objetivos] Os objetivos precisam de revisão."),
+    // A origem guardada, quando vem, manda.
+    msg("Dor no joelho", "checkin"),
+  ];
+  assertEquals(bodies, [
+    "Li o teu check-in. Quero falar contigo antes do próximo treino.",
+    "A carga destes dias subiu acima do plano. Quero ver isso contigo antes do próximo treino.",
+    "A carga destes dias subiu acima do habitual. Quero ver isso contigo antes do próximo treino.",
+    "Quero falar contigo antes do próximo treino.",
+    "Li o teu check-in. Quero falar contigo antes do próximo treino.",
+  ]);
+  for (const b of bodies) {
+    assert(!/dor|joelho|quando puderes/i.test(b));
+    assertCarolVoice(b);
+  }
+});
+
+Deno.test("conflito de provas: nomeia a outra principal; com mais do que uma, conta-as", () => {
+  const plans = [{ id: "p1", status: "aceite", race_id: "alvo", period_start: "2026-09-01", period_end: "2026-10-20" }];
+  const alvo = { id: "alvo", name: "Maratona", date: "2026-10-20", status: "agendada", race_priority: "a" };
+  const meia = { id: "meio", name: "Meia", date: "2026-10-04", status: "agendada", race_priority: "a" };
+  const body = (raceEvents: TriggerRace[]) =>
+    proactivePushMessage(pickServerProactive({ raceEvents, runs: [], lastRecordDate: TODAY, plans }, TODAY)!).body;
+  assertEquals(body([alvo, meia]), "Há outra prova principal a meio deste bloco: Meia. Temos de decidir qual é o objetivo.");
+  assertEquals(body([alvo, { ...meia, name: null }]), "Há outra prova principal a meio deste bloco. Temos de decidir qual é o objetivo.");
+  assertEquals(body([alvo, meia, { ...meia, id: "meio2", name: "10K do Porto", date: "2026-10-11" }]), "Tens mais duas provas principais a meio deste bloco. Temos de decidir qual é o objetivo.");
+});
+
+Deno.test("Vitrina 'perto': diz qual é o grupo que já tem números, sem 'grupos ao lado'", () => {
+  const perto = (snapshots: Record<string, string>[], own = RUI_SEG) => listServerProactive({
+    raceEvents: [], runs: [], lastRecordDate: TODAY,
+    vitrina: vitrinaInput({ own, snapshots, leaderboardEntries: [] }),
+  }, TODAY).find((c) => c.trigger === "percentile_ready")!;
+  // Prepara trail; o escalão dele em estrada já tem.
+  const trail = perto([vsnap("M40", "2026-09-14")], { ...RUI_SEG, terrain: "trail" });
+  assertEquals(trail.nearSegment, { step: "modalidade", terrain: "estrada", gender: "M" });
+  const bodies = [
+    proactivePushMessage(trail).body,
+    proactivePushMessage(perto([vsnap("M45", "2026-09-14")])).body,
+    proactivePushMessage(perto([{ age_band: "F40", gender: "F", terrain: "estrada", window_start: "2026-09-14", window_end: "x" }])).body,
+  ];
+  assertEquals(bodies, [
+    "O teu escalão ainda não tem números, mas o de estrada já tem. Vem ver onde ficas nesse.",
+    "O teu escalão ainda não tem números, mas o escalão ao lado já tem. Vem ver onde ficas nesse.",
+    "O teu escalão ainda não tem números, mas o feminino da tua idade já tem. Vem ver onde ficas nesse.",
+  ]);
+  for (const b of bodies) {
+    assert(!b.includes("grupos ao lado"));
+    assertCarolVoice(b);
+  }
 });

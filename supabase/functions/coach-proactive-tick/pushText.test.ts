@@ -49,7 +49,8 @@ Deno.test("composePushMessage: usa o texto gerado quando serve; senão, a frase 
   // Sem usageMetadata na resposta, os tokens contam a zero (mas a chamada existiu).
   assertEquals(gen, { title: "Carol", body: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app.", generated: true, usage: { input_tokens: 0, output_tokens: 0 } });
 
-  const fixed = "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã de manhã.";
+  // Sem hora de partida no candidato, a frase fixa não diz "amanhã de manhã" (revisão de 2026-09-26).
+  const fixed = "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã.";
   assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch({ candidates: [{ content: { parts: [{ text: "Força amanhã!" }] } }] }))).body, fixed);
   assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch({}, false))).body, fixed);
   assertEquals((await composePushMessage(eve, {}, null)).generated, false);

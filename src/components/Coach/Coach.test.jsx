@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
 import { readCachedBalance } from '../../utils/raceBalance';
-import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_IMMEDIATE_FAILURE_TEXT } from './Coach';
+import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_IMMEDIATE_FAILURE_TEXT, COACH_INITIATED_FALLBACK_TEXT, COACH_INITIATED_NETWORK_TEXT } from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
 const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -397,7 +397,9 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(screen.getByTestId('coach-waiting-message')).toHaveTextContent(/Patrícia/i);
   });
 
-  it('sem nome no perfil, recua para "atleta" no aviso de demora', async () => {
+  // Revisão de 2026-09-26: sem nome, "atleta, isto está a demorar..." —
+  // vocativo genérico, e com minúscula a abrir a frase.
+  it('sem nome no perfil, o aviso de demora não tem vocativo nenhum e abre com maiúscula', async () => {
     useAppStore.setState({ profile: { id: 'user-1', display_name: null } });
     // isTimeout=true: o CLIENTE desistiu de esperar (AbortError), mas o
     // pedido pode legitimamente ainda estar em processamento no servidor —
@@ -418,7 +420,45 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       await Promise.resolve();
     });
 
-    expect(screen.getByTestId('coach-waiting-message')).toHaveTextContent(/atleta/i);
+    const aviso = screen.getByTestId('coach-waiting-message').textContent;
+    expect(aviso).not.toMatch(/atleta/i);
+    expect(aviso).toMatch(/^(Isto|Estou) /);
+  });
+
+  // Revisão de 2026-09-26: as variantes antigas mandavam alongar os gémeos
+  // (com uma dor no gémeo em aberto), fazer uma prancha (à 01:30) ou
+  // agachamentos, e falavam de servidor, ligação e dados — uma prometia que
+  // "a resposta vem a caminho".
+  it('nenhuma variante do aviso de demora sugere exercício, fala de sistema ou promete que a resposta vem a caminho', async () => {
+    useAppStore.setState({ profile: { id: 'user-1', display_name: 'Rui Costa' } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: null });
+    });
+    vi.useFakeTimers();
+    const randomSpy = vi.spyOn(Math, 'random');
+    const vistos = new Set();
+    for (const r of [0, 0.99]) {
+      randomSpy.mockReturnValue(r);
+      const { unmount } = renderCoach();
+      fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+      // eslint-disable-next-line no-await-in-loop
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      vistos.add(screen.getByTestId('coach-waiting-message').textContent);
+      unmount();
+      useAppStore.setState({ coachMessages: [], coachLoading: false });
+    }
+    randomSpy.mockRestore();
+    expect(vistos.size).toBe(2);
+    for (const aviso of vistos) {
+      expect(aviso).toMatch(/^Rui, /);
+      expect(aviso).not.toMatch(/agachament|gémeo|prancha|along|água|bebe|servidor|ligação|dados|process|vem a caminho/i);
+    }
   });
 
   it('varia o texto do aviso de demora entre pedidos (não é sempre a mesma frase)', async () => {
@@ -439,7 +479,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     const seenTexts = new Set();
 
     for (let i = 0; i < 3; i++) {
-      randomSpy.mockReturnValue(i / 3); // espalha por índices diferentes do array de 6 variantes
+      randomSpy.mockReturnValue(i / 3); // espalha pelos índices do array de 2 variantes
       const { unmount } = renderCoach();
       fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
       // eslint-disable-next-line no-await-in-loop
@@ -503,7 +543,7 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
-    await waitFor(() => expect(screen.getByText(/falha de rede/i)).toBeInTheDocument());
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain(COACH_IMMEDIATE_FAILURE_TEXT));
     // Não é o aviso de demora (não faz sentido esperar por algo que nunca
     // vai chegar — o pedido nunca saiu).
     expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
@@ -540,10 +580,18 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
 
     // O aviso genérico (COACH_IMMEDIATE_FAILURE_TEXT) sai partido em bolhas.
-    expect(COACH_IMMEDIATE_FAILURE_TEXT).toMatch(/falha de rede/);
-    await waitFor(() => expect(screen.getByText(/falha de rede/i)).toBeInTheDocument());
+    expect(COACH_IMMEDIATE_FAILURE_TEXT).toMatch(/A rede falhou/);
+    await waitFor(() => expect(screen.getByText(/A rede falhou/i)).toBeInTheDocument());
     expect(screen.queryByText(/non-2xx/)).not.toBeInTheDocument();
     expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  // Revisão de 2026-09-26: "Não consegui responder: falha de rede ou de
+  // ligação ao servidor" — "responder" pressupõe uma pergunta que num
+  // "Falar com a Carol" não houve, e "ligação ao servidor" é de sistema.
+  it('o aviso genérico de rede não presume pergunta nem fala do servidor', () => {
+    expect(COACH_IMMEDIATE_FAILURE_TEXT).toBe('A rede falhou e não te consegui dizer nada. Tenta outra vez daqui a bocado.');
+    expect(COACH_IMMEDIATE_FAILURE_TEXT).not.toMatch(/responder|servidor|ligação/i);
   });
 });
 
@@ -1178,5 +1226,187 @@ describe('Coach — CAROL.md §4: a cara acompanha o que ela diz', () => {
     const { container } = renderCoach();
     expect(headerMood(container)).toBe('neutral');
     expect(messageMoods()).toEqual(['worried']);
+  });
+});
+
+/* Revisão de 2026-09-26 (backlog, Coach.jsx): o que o chat diz quando a
+   conversa foi aberta por ela, ou pela app, e não pelo atleta. */
+describe('Coach — conversas que o atleta não escreveu', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Segunda-feira, a revisão semanal pedida em silêncio ao abrir o chat dá
+  // timeout: apareciam o aviso de demora e, no fim, "Não consegui
+  // responder" — sem o atleta ter escrito nada.
+  it('mensagem proativa silenciosa com timeout e sem resposta: nem aviso de demora nem erro', async () => {
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }], ...planoDoSilencio(fiveDaysAgo) });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: { coach_chat_busy_since: null }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(8200); });
+    expect(useAppStore.getState().coachMessages).toHaveLength(0);
+    expect(screen.queryByText(/Não consegui/)).not.toBeInTheDocument();
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('mensagem proativa silenciosa com timeout: se a resposta chegar pela sondagem, mostra-a (e só ela)', async () => {
+    const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }], ...planoDoSilencio(fiveDaysAgo) });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    let polls = 0;
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        polls += 1;
+        return coachMessagesChain(polls < 2
+          ? { data: [], error: null }
+          : { data: [{ id: 'w1', role: 'model', content: 'A semana ficou curta nos longos.', created_at: new Date().toISOString() }], error: null });
+      }
+      return profilesChain({ data: { coach_chat_busy_since: new Date().toISOString() }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(8200 + 2000); });
+    const contents = useAppStore.getState().coachMessages.map((m) => m.content);
+    expect(contents).toEqual(['A semana ficou curta nos longos.']);
+  });
+
+  it('"Falar com a Carol" de uma intervenção, timeout sem resposta: diz onde voltar a tocar', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'proactive_intervention', reason: 'Dor 6 no gémeo.' } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: { coach_chat_busy_since: null }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(8200); });
+    const contents = useAppStore.getState().coachMessages.map((m) => m.content);
+    expect(contents).toEqual([COACH_INITIATED_FALLBACK_TEXT]);
+    expect(COACH_INITIATED_FALLBACK_TEXT).toBe('Não consegui acabar o que te queria dizer. Volta a tocar em Falar com a Carol, no Início.');
+  });
+
+  it('"Falar com a Carol" de uma intervenção, falha de rede: sem "responder" nem "servidor", e diz onde voltar a tocar', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'proactive_intervention', reason: 'Dor 6 no gémeo.' } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null, error: 'Failed to send a request to the Edge Function', isTimeout: false, isNetwork: true, serverText: null,
+    });
+
+    renderCoach();
+    await waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual([COACH_INITIATED_NETWORK_TEXT]));
+    expect(COACH_INITIATED_NETWORK_TEXT).toBe('A rede falhou. Volta a tocar em Falar com a Carol, no Início.');
+  });
+
+  it('o "Adaptar Plano" do cartão do plano não manda voltar a um "Falar com a Carol" que lá não há', async () => {
+    useAppStore.setState({ coachIntent: 'adapt_plan' });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null, error: 'Failed to send a request to the Edge Function', isTimeout: false, isNetwork: true, serverText: null,
+    });
+
+    renderCoach();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual([COACH_IMMEDIATE_FAILURE_TEXT]));
+  });
+
+  // A bolha do atleta dizia "atualiza a nota quando estivermos de acordo" —
+  // o mecanismo, na boca dele. O pedido vai no corpo, fora da mensagem.
+  it('mudar uma nota da memória: a bolha é o que o atleta diria; o pedido de atualizar vai à parte', async () => {
+    const note = 'Prefere correr de manhã.';
+    useAppStore.setState({ coachIntent: { kind: 'discuss_note', note } });
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'n1', content: 'Diz-me o que mudou.' }, suggestions: [] },
+      error: null,
+    });
+
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.message).toBe(`Há uma coisa que tens anotada sobre mim que já não está certa: "${note}"`);
+    expect(body.message).not.toMatch(/atualiz|memória|registad/i);
+    expect(body.noteDiscussion).toMatchObject({ note });
+    expect(body.noteDiscussion.instruction).toMatch(/atualiza/);
+    expect(useAppStore.getState().coachMessages.find((m) => m.role === 'user').content).toBe(body.message);
+  });
+});
+
+describe('Coach — o ecrã vazio conforme o que já existe', () => {
+  const hoje = () => localISO(new Date());
+  const daqui = (dias) => localISO(new Date(Date.now() + dias * 86400000));
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+    // Se algum momento proativo disparar, salta logo — o ecrã vazio volta.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true }, error: null });
+  });
+
+  it('conta nova sem prova nem registos: sem "meia maratona", sem "ou a prova", e diz que ainda não há registos', async () => {
+    renderCoach();
+    await waitFor(() => expect(screen.getByText('Ainda não tenho registos teus. Diz-me o que queres preparar e começamos por aí.')).toBeInTheDocument());
+    expect(screen.getByText('Cria-me um plano de treino')).toBeInTheDocument();
+    expect(screen.queryByText(/meia maratona/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ou a prova/)).not.toBeInTheDocument();
+    expect(screen.getByText('Sou a Carol, a tua treinadora.')).toBeInTheDocument();
+  });
+
+  it('com o arranque feito (ela já se apresentou), não repete a apresentação', async () => {
+    useAppStore.setState({ profile: { id: 'user-1', display_name: 'Rui', onboarding_done: true } });
+    renderCoach();
+    await waitFor(() => expect(screen.getByText('Estou aqui.')).toBeInTheDocument());
+    expect(screen.queryByText(/Sou a Carol/)).not.toBeInTheDocument();
+  });
+
+  it('com registos e sem prova: sem "ou a prova"', async () => {
+    useAppStore.setState({ runs: [{ id: 'r1', date: hoje(), distance_km: 8, duration_seconds: 2400 }] });
+    renderCoach();
+    await waitFor(() => expect(screen.getByText('Tenho os teus dados de hoje e o teu perfil à frente. Pergunta-me sobre o treino ou a alimentação.')).toBeInTheDocument());
+    expect(screen.getByText('Cria-me um plano de treino')).toBeInTheDocument();
+  });
+
+  it('com um 10 km marcado: o plano é para a prova dele, não para uma meia maratona', async () => {
+    useAppStore.setState({
+      runs: [{ id: 'r1', date: hoje(), distance_km: 8, duration_seconds: 2400 }],
+      raceEvents: [{ id: 'e1', name: 'Corrida do Tejo', date: daqui(40), distance_km: 10, status: 'agendada' }],
+    });
+    renderCoach();
+    await waitFor(() => expect(screen.getByText('Cria-me um plano para a minha prova')).toBeInTheDocument());
+    expect(screen.queryByText(/meia maratona/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/o treino, a alimentação ou a prova\./)).toBeInTheDocument();
+  });
+
+  it('com um plano já aceite: pergunta pelo plano em vez de pedir outro', async () => {
+    useAppStore.setState({
+      runs: [{ id: 'r1', date: hoje(), distance_km: 8, duration_seconds: 2400 }],
+      raceEvents: [{ id: 'e1', name: 'Corrida do Tejo', date: daqui(40), distance_km: 10, status: 'agendada' }],
+      coachPlans: [{ id: 'p1', status: 'aceite', race_id: 'e1', period_start: localISO(new Date(Date.now() - 10 * 86400000)), period_end: daqui(40) }],
+    });
+    renderCoach();
+    await waitFor(() => expect(screen.getByText('Como está a correr o meu plano?')).toBeInTheDocument());
+    expect(screen.queryByText(/Cria-me um plano/)).not.toBeInTheDocument();
   });
 });

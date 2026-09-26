@@ -65,6 +65,16 @@ describe('BodyRegistration — cartão único: alternar entre Foto e Manual', ()
     expect(screen.getByText('Peso (kg)')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Analisar avaliação/i })).toBeInTheDocument();
   });
+
+  /* O caso do backlog (specs/carol-frases-contexto.md, MealRegistration:710, mesma linha para o corpo): o
+     registo por foto nomeava «a IA» ao lado da Carol — rótulo «Foto (IA)» e
+     dica «A IA lê…». Aqui fala só ela, na primeira pessoa. */
+  it('o registo por foto fala na voz da Carol, sem nomear a IA', () => {
+    render(<BodyRegistration onClose={onClose} />);
+    expect(screen.getByRole('button', { name: /^Foto$/ })).toBeInTheDocument();
+    expect(screen.getByText('Junta os ecrãs da mesma pesagem; eu leio e comento os valores. Podes corrigir depois de gravado.')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/\bIA\b/);
+  });
 });
 
 describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', () => {

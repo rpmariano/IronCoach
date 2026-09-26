@@ -33,7 +33,7 @@ function formatDurationMinutes(seconds) {
 }
 
 export default function GymDashboard() {
-  const { gymSessions, setOpenCreationMode } = useAppStore();
+  const { gymSessions, runs, setOpenCreationMode } = useAppStore();
   const [timeRange, setTimeRange] = useState('mes');
   const rangeKey = timeRange;
 
@@ -135,7 +135,8 @@ export default function GymDashboard() {
     classes: classAnalytics.totalClasses,
     weeksInRange: WEEKS_BY_RANGE[rangeKey] || 4,
     totalVolumeLoad: volumeData.totalVolumeLoad,
-  }), [volumeData, strengthSessions.length, classAnalytics.totalClasses, rangeKey]);
+    runCount: (runs || []).length,
+  }), [volumeData, strengthSessions.length, classAnalytics.totalClasses, rangeKey, runs]);
 
   // Ponto 6: os ticks deixam de escrever dentro da tela — os valores atuais
   // e os extremos dos eixos passam a HTML no ChartFrame.

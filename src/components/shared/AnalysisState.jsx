@@ -3,6 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import Warning, { WarningAction } from './Warning';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
+import { useAppStore } from '../../store';
 
 /* A espera com a Carol a dizer o que está a ler (2026-09-19). Cada registo
    por foto são 5 a 15 s de espera; um esqueleto mudo não diz se está a
@@ -17,11 +18,30 @@ const PASSOS = {
   gym: ['A ler o treino…', 'A contar séries, repetições e cargas…', 'A juntar ao teu histórico…'],
   body: ['A ler a avaliação…', 'A tirar o peso e a composição…', 'A comparar com a última avaliação…'],
 };
+/* Sem plano aceite não há o que o plano pedia, e na primeira avaliação não há
+   avaliação anterior: a última frase dizia uma comparação que não acontece
+   (revisão de 2026-09-26). Listas fixas, não montadas a cada render — o
+   useSteps recomeça os passos sempre que a lista muda. */
+const PASSOS_SEM_REFERENCIA = {
+  run: [...PASSOS.run.slice(0, -1), 'A ver onde encaixa na tua semana…'],
+  body: [...PASSOS.body.slice(0, -1), 'A guardar como ponto de partida…'],
+};
 const PASSO_MS = 2400;
 const DEMORA_MS = 12000;
 
-export function analysisSteps(kind) {
-  return PASSOS[kind] || null;
+export function analysisSteps(kind, semReferencia = false) {
+  return (semReferencia && PASSOS_SEM_REFERENCIA[kind]) || PASSOS[kind] || null;
+}
+
+/** Se a análise deste tipo não tem com que comparar: corrida sem plano aceite
+ *  com corridas, ou a primeira avaliação corporal. */
+export function analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments } = {}) {
+  if (kind === 'run') {
+    const aceites = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
+    return !(coachPlanItems || []).some((i) => i && aceites.has(i.plan_id) && i.kind === 'corrida' && i.status !== 'cancelado');
+  }
+  if (kind === 'body') return !(bodyAssessments || []).length;
+  return false;
 }
 
 /** A causa de uma falha, a partir da mensagem técnica — para a Carol dizer o
@@ -74,15 +94,20 @@ function useSteps(steps) {
  * que escreveu.
  *
  * Props:
- *   note  string — a linha por baixo ("Podes continuar a usar a app…")
+ *   note  string — a linha por baixo ("Isto leva uns segundos…")
  *   label string — rótulo acessível da região em espera
  */
 export function AnalysisSkeleton({
-  note = 'Podes continuar a usar a app — aviso-te quando estiver pronto.',
+  // Não há aviso nenhum no fim da análise: prometê-lo deixava o atleta à
+  // espera de uma coisa que não vem (revisão de 2026-09-26).
+  note = 'Isto leva uns segundos. O que escreveste não se perde.',
   label = 'A analisar',
   kind = null,
 }) {
-  const steps = analysisSteps(kind);
+  const coachPlans = useAppStore((s) => s.coachPlans);
+  const coachPlanItems = useAppStore((s) => s.coachPlanItems);
+  const bodyAssessments = useAppStore((s) => s.bodyAssessments);
+  const steps = analysisSteps(kind, analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments }));
   const step = useSteps(steps);
   const line = (width, height = 12) => (
     <span

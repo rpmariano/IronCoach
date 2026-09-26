@@ -48,6 +48,7 @@ export const BREAKFAST_BEFORE_MIN = 165;
 export const ARRIVAL_BEFORE_MIN = 60;
 export const WARMUP_BEFORE_MIN = 25;
 export const LONG_RACE_SECONDS = 90 * 60;
+export const RACE_DURATION_FALLBACK_MIN = 180;
 
 export function hhmm(t: unknown): string {
   return typeof t === "string" ? t.slice(0, 5) : "";
@@ -173,8 +174,25 @@ export function describeRaceEveShort(eve: RaceEve, raceName: string, distanceKm:
 
 /** Uma frase curta para o cartão do Início no dia da prova. Um número solto
  *  ("primeiro km a 5.06") não sossega ninguém: o que o atleta precisa de
- *  saber é que o plano km a km existe e onde está. */
-export function describeRaceDayShort(eve: RaceEve, raceName: string, firstKmPaceLabel: string | null): string {
+ *  saber é que o plano km a km existe e onde está.
+ *
+ *  `nowMinutes` (revisão de 2026-09-26): minutos desde a meia-noite de
+ *  Lisboa do dia da prova (0-1439). Às 13:00, com a prova acabada mas por
+ *  registar, o horário pré-prova já não serve: depois da partida mais o
+ *  tempo previsto (`plannedFinishSeconds`; sem ele, 3 h), pede-se o registo.
+ *  Omitido (compatibilidade), devolve o horário, como sempre. */
+export function describeRaceDayShort(
+  eve: RaceEve,
+  raceName: string,
+  firstKmPaceLabel: string | null,
+  nowMinutes: number | null = null,
+  plannedFinishSeconds: number | null = null,
+): string {
+  const partida = eve.schedule ? minutesOfDay(eve.schedule.start) : null;
+  if (nowMinutes != null && partida != null) {
+    const duracao = plannedFinishSeconds != null && plannedFinishSeconds > 0 ? plannedFinishSeconds / 60 : RACE_DURATION_FALLBACK_MIN;
+    if (nowMinutes >= partida + duracao) return "A prova de hoje já foi. Regista-a e fazemos o balanço.";
+  }
   const name = raceName || "a prova";
   const plan = firstKmPaceLabel
     ? ` O teu plano km a km está no hub da prova: arrancas a ${firstKmPaceLabel}.`

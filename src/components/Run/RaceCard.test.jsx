@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import RaceCard from './RaceCard';
 import { useAppStore } from '../../store';
+import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
+import { todayISO, addDaysISO } from '../../lib/utils';
 
 vi.mock('../../store', () => ({
   useAppStore: vi.fn(),
@@ -256,5 +258,68 @@ describe('RaceCard — a partir do dia da prova', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Ver registo/i }));
     expect(onViewRun).toHaveBeenCalledWith('run-7');
+  });
+});
+
+/* A contagem no singular e sem gritos (revisão de 2026-09-26): com a prova
+   amanhã dizia "Faltam 1 dias", e no dia "É HOJE!". */
+describe('RaceCard — a contagem', () => {
+  const profile = { experience_level: 'medio' };
+  const base = {
+    id: 'race-1',
+    name: 'Corrida do Tejo',
+    distance_km: 10,
+    race_type: 'estrada',
+    race_priority: 'a',
+    status: 'agendada',
+  };
+  // A data que dá o estado pedido segundo o próprio motor — sem adivinhar
+  // quantas semanas de preparação ele conta para 10 km/nível médio.
+  const dataOnde = (pred) => {
+    const hoje = todayISO();
+    for (let n = -400; n <= 400; n++) {
+      const date = addDaysISO(hoje, n);
+      if (pred(calculateRaceTrainingPlan({ race: { ...base, date }, profile, runs: [], todayISO: hoje }))) return date;
+    }
+    throw new Error('sem data para o estado pedido');
+  };
+  const abrir = (ev) => {
+    render(<RaceCard ev={ev} onEdit={vi.fn()} onToggleStatus={vi.fn()} onDelete={vi.fn()} />);
+    fireEvent.click(screen.getByText('Corrida do Tejo'));
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useAppStore.mockReturnValue({ profile, runs: [] });
+  });
+
+  it('com a prova amanhã, diz "Amanhã" e não "Faltam 1 dias"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === 1) });
+    expect(screen.getByText('Amanhã')).toBeInTheDocument();
+    expect(screen.queryByText(/Faltam 1 dias/)).not.toBeInTheDocument();
+  });
+
+  it('no dia da prova, "É hoje" sem exclamação', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === 0) });
+    expect(screen.getByText('É hoje')).toBeInTheDocument();
+    expect(screen.queryByText(/HOJE|!/)).not.toBeInTheDocument();
+  });
+
+  it('com o início do treino amanhã, diz "Amanhã" e não "Faltam 1 dias"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.trainingStatus === 'not_started' && p.daysToStart === 1) });
+    expect(screen.getByText('Início do Treino')).toBeInTheDocument();
+    expect(screen.getByText('Amanhã')).toBeInTheDocument();
+    expect(screen.queryByText(/Faltam 1 dias/)).not.toBeInTheDocument();
+  });
+
+  it('com a prova ontem, diz "Ontem" e não "1 dias atrás"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === -1) });
+    expect(screen.getByText('Ontem')).toBeInTheDocument();
+    expect(screen.queryByText(/1 dias atrás/)).not.toBeInTheDocument();
+  });
+
+  it('com mais de um dia, continua "Faltam N dias"', () => {
+    abrir({ ...base, date: dataOnde((p) => p.daysToRace === 180) });
+    expect(screen.getByText('Faltam 180 dias')).toBeInTheDocument();
   });
 });

@@ -69,10 +69,21 @@ export interface RecordAnalysisSpec {
   /** Tamanho total, em frases, a seguir a "Entre": "6 e 9" por omissão (a soma dos blocos). */
   sentences?: string;
   /** A análise pode marcar intervention_needed (ginásio, corrida, refeição): o
-   *  bloco final passa a ser o convite para o botão — o cliente só mostra o
-   *  botão "Falar com a Carol" se o texto o disser. Falso na avaliação corporal. */
+   *  bloco final passa a ser o convite para falarem sobre o plano
+   *  (INTERVENTION_INVITE). Falso na avaliação corporal. */
   interventionInvite?: boolean;
 }
+
+// O convite do bloco final quando a análise marca intervention_needed — aqui
+// e nos prompts do analyze-run e do analyze-gym. Dizia "carrega no botão
+// 'Falar com a Coach'": um botão que não existe (é «Falar com a Carol») e ela
+// a falar de si como de outra pessoa (revisão de 2026-09-26). Sem nomear
+// botão nenhum; mas os cartões só mostram o «Falar com a Carol» se o texto
+// tiver "adaptar o plano" (a regex de RunCard, GymSessionCard, MealCard), por
+// isso a expressão vai à letra.
+export const INTERVENTION_INVITE =
+  `o convite, na tua voz, para falares com o atleta sobre o plano, com a expressão "adaptar o plano" à letra ` +
+  `(por exemplo: "Fala comigo e vemos como adaptar o plano a esta semana."). Não nomeies nenhum botão.`;
 
 export function carolRecordAnalysisRules(spec: RecordAnalysisSpec): string {
   const { good, next } = RECORD_ANALYSIS_LABELS;
@@ -91,8 +102,8 @@ export function carolRecordAnalysisRules(spec: RecordAnalysisSpec): string {
     `alternativa concreta — o que fazer em vez disso. Se não houver nada de relevante a corrigir, diz o que vais vigiar.\n` +
     `   - **${next}** (1 frase): uma ação pequena e concreta para o próximo registo do mesmo tipo.` +
     (spec.interventionInvite
-      ? ` Se marcaste intervention_needed=true, esta frase é outra: o convite para o atleta carregar no botão ` +
-        `"Falar com a Coach" e adaptarem o plano juntos — sem prescreveres tu o treino seguinte.\n`
+      ? ` Se marcaste intervention_needed=true, esta frase é outra: ${INTERVENTION_INVITE} ` +
+        `Não prescrevas tu o treino seguinte.\n`
       : `\n`) +
     `- Reconhecer um facto concreto (uma carga que subiu, uma boa escolha, uma evolução) NÃO é elogio automático: é ` +
     `leitura técnica, e aqui é obrigatória. Elogio automático é o genérico — esse continua proibido.\n` +
@@ -116,11 +127,13 @@ export function carolRecordAnalysisRules(spec: RecordAnalysisSpec): string {
 // CAROL_TONE_RULES, que é só para o que o modelo escreve.
 //
 // status null: timeout ou rede (AbortError, fetch falhou). 429: limite de
-// pedidos. Qualquer outro: falha genérica, com o código para quem reportar.
+// pedidos. Qualquer outro: falha genérica. O código HTTP e "processar" eram
+// linguagem de sistema na voz dela (revisão de 2026-09-26): o código fica só
+// no log do servidor, que quem chama já escreve (console.error) antes disto.
 export function upstreamErrorText(status: number | null): string {
-  if (status === 429) return "Estou com muitos pedidos neste momento. Espera um pouco e tenta outra vez.";
+  if (status === 429) return "Não consegui responder agora. Tenta daqui a uns minutos.";
   if (status === null) return "Não consegui responder a tempo. Tenta outra vez daqui a pouco.";
-  return `Não consegui processar isto agora (erro ${status}). Tenta outra vez.`;
+  return "Não consegui ler isto agora. Tenta outra vez daqui a pouco.";
 }
 
 // ── Ação P.12 — a régua que os testes verificam repetidamente ────────────

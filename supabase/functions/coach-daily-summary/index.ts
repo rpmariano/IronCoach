@@ -159,12 +159,79 @@ export function addDaysISO(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 10.5 → "10,5" — no máximo uma casa, com vírgula, como no resto da app. */
+const virgula = (n: number): string => String(Math.round(n * 10) / 10).replace(".", ",");
+
+/** "18", "10,5"; null sem distância (0, vazio ou lixo). */
+function kmFalado(v: unknown): string | null {
+  const n = Number(String(v ?? "").replace(",", "."));
+  return Number.isFinite(n) && n > 0 ? virgula(n) : null;
+}
+
+/** "a", "a e b", "a, b e c". */
+const juntar = (l: string[]): string => (l.length <= 1 ? (l[0] || "") : `${l.slice(0, -1).join(", ")} e ${l[l.length - 1]}`);
+
+// O treino dito numa frase, com as palavras das boas-vindas (CORRIDA_FALADA,
+// AULA_FALADA e GRUPO_FALADO em src/utils/carolWelcome.js — cópia, pela
+// mesma razão da nota em analyze-meal/index.ts: a Edge Function não importa
+// do cliente). Era o enum cru, "Corrida (continuo, 10 km)", "Corrida
+// (corrida, 8 km)" e "10.5 km" (revisão de 2026-09-26). O artigo vai à
+// parte para a mesma palavra servir "tens uma rodagem longa" e "Amanhã:
+// rodagem longa".
+const CORRIDA_FALADA: Record<string, [string, string]> = {
+  longo: ["uma", "rodagem longa"],
+  continuo: ["uma", "corrida contínua"],
+  rodagem: ["uma", "rodagem"],
+  recuperacao: ["uma", "corrida de recuperação"],
+  regenerativo: ["uma", "corrida regenerativa"],
+  tempo: ["um", "treino de ritmo"],
+  fartlek: ["um", "fartlek"],
+  intervalos: ["um", "treino intervalado"],
+  subidas: ["um", "treino de subidas"],
+  trail: ["uma", "corrida em trilho"],
+  tecnico: ["um", "treino em trilho técnico"],
+  prova: ["a", "prova"],
+  competicao: ["a", "prova"],
+};
+const AULA_FALADA: Record<string, [string, string]> = {
+  hiit: ["um", "HIIT"],
+  "rpm/cycling": ["uma", "aula de RPM"],
+  pilates: ["uma", "aula de pilates"],
+  yoga: ["uma", "aula de ioga"],
+  "body pump": ["uma", "aula de Body Pump"],
+  zumba: ["uma", "aula de zumba"],
+  crossfit: ["um", "treino de CrossFit"],
+  "treino funcional": ["um", "treino funcional"],
+  "natação": ["um", "treino de natação"],
+};
+const GRUPO_FALADO: Record<string, string> = { "core/abdominais": "core", "full body": "corpo inteiro" };
+
+// deno-lint-ignore no-explicit-any
+export function treinoFalado(i: any, comArtigo = true): string {
+  let artigo: string, nome: string, medida = "";
+  const min = Math.round(Number(i?.target_duration_min));
+  if (i?.kind === "ginasio") {
+    const cats = (i.categories || []).map((c: unknown) => String(c).trim()).filter((c: string) => c && c.toLowerCase() !== "outro");
+    const aula = cats.map((c: string) => AULA_FALADA[c.toLowerCase()]).find(Boolean);
+    const grupos = cats.map((c: string) => GRUPO_FALADO[c.toLowerCase()] || (/^[A-Z0-9]{2,}$/.test(c) ? c : c.toLowerCase()));
+    [artigo, nome] = aula ?? ["um", `treino de ${grupos.length ? juntar([...new Set<string>(grupos)]) : "ginásio"}`];
+    if (min > 0) medida = ` de ${min} minutos`;
+  } else {
+    [artigo, nome] = CORRIDA_FALADA[i?.training_type] ?? ["uma", "corrida"];
+    const k = kmFalado(i?.target_distance_km);
+    if (k) medida = ` de ${k} km`;
+    else if (min > 0) medida = ` de ${min} minutos`;
+  }
+  return comArtigo ? `${artigo} ${nome}${medida}` : `${nome}${medida}`;
+}
+
 function formatPlanItemsSummary(items: any[]): string {
   if (!items || items.length === 0) return "Descanso (sem treinos planeados)";
   return items.map((i: any) => {
     if (i.kind === "corrida") {
       const typeStr = i.training_type ? i.training_type : "corrida";
-      const distStr = i.target_distance_km ? `${i.target_distance_km} km` : "";
+      const km = kmFalado(i.target_distance_km);
+      const distStr = km ? `${km} km` : "";
       const durStr = i.target_duration_min ? `${i.target_duration_min} min` : "";
       const details = [typeStr, distStr, durStr].filter(Boolean).join(", ");
       return `Corrida (${details})`;
@@ -393,23 +460,6 @@ export function computeLastWeekAdherence(
   return { itens: items.length, com_registo: done };
 }
 
-function formatWorkoutItemName(i: any): string {
-  if (i.kind === "corrida") {
-    const typeStr = i.training_type ? i.training_type : "corrida";
-    const distStr = i.target_distance_km ? `${i.target_distance_km} km` : "";
-    const durStr = i.target_duration_min ? `${i.target_duration_min} min` : "";
-    const details = [typeStr, distStr, durStr].filter(Boolean).join(", ");
-    return `Corrida (${details})`;
-  }
-  if (i.kind === "ginasio") {
-    const catStr = i.categories?.length ? i.categories.join("/") : "Geral";
-    const durStr = i.target_duration_min ? `${i.target_duration_min} min` : "";
-    const details = [catStr, durStr].filter(Boolean).join(", ");
-    return `Ginásio (${details})`;
-  }
-  return "Descanso";
-}
-
 // Texto determinístico (nunca passa pelo modelo — CAROL_TONE_RULES é só
 // para o que ele escreve) — ação P.12: sem "⚠️", sem "Certifica-te", sem
 // "Considera" (frases de manual/suavizadas). As duas de água mantêm a
@@ -435,8 +485,9 @@ export function buildWarningsMessage(
   const nonRest = (todayPlanItems || []).filter((i: any) => i.kind !== "descanso" && i.status !== "concluido");
   let msg = "";
   if (nonRest.length > 0 && !checkin?.dorAlta && !checkin?.diaEmBaixo) {
-    const itemsDesc = nonRest.map(formatWorkoutItemName).join(" e ");
-    msg = `Para hoje tens agendado: ${itemsDesc}.`;
+    // A abertura fica: é por ela que o cartão reconhece esta frase para a
+    // trocar pela sua (carolCardLines.js, FRASE_DO_PLANO).
+    msg = `Para hoje tens agendado: ${juntar(nonRest.map((i: any) => treinoFalado(i)))}.`;
   }
 
   if (waterGoal && waterTotal === 0) {
@@ -451,8 +502,8 @@ export function buildWarningsMessage(
 
   // Alerta RED-S: gordura corporal abaixo do limiar de segurança (ACSM)
   if (bodyMetrics?.hasRedSRisk && bodyMetrics.latestBodyFat !== null) {
-    const threshold = isFemale(bodyMetrics.gender) ? "16%" : "8%";
-    const redSMsg = ` A tua gordura corporal (${bodyMetrics.latestBodyFat}%) está abaixo do limiar de segurança (${threshold}). É risco de RED-S — fala com um profissional de saúde.`;
+    const threshold = isFemale(bodyMetrics.gender) ? 16 : 8;
+    const redSMsg = ` A tua gordura corporal está em ${virgula(bodyMetrics.latestBodyFat)}%, abaixo dos ${threshold}% de segurança. É risco de RED-S. Fala com um profissional de saúde.`;
     msg = msg ? `${msg}${redSMsg}` : redSMsg.trim();
   }
 
@@ -465,11 +516,12 @@ export function buildWarningsMessage(
   // parado) ou com refeições acima do gasto, a perda tem outra causa que a
   // app não conhece; a frase fica neutra, para o chat.
   if (bodyMetrics?.weightLossTooFast && bodyMetrics.weightLossPct != null) {
-    const kg = Math.abs(bodyMetrics.weeklyWeightChange ?? 0);
+    const kg = virgula(Math.abs(bodyMetrics.weeklyWeightChange ?? 0));
+    const pct = virgula(bodyMetrics.weightLossPct);
     const causaDoTreino = !!weightLossEvidence?.trainedRecently && !!weightLossEvidence?.ateBelowGasto;
     const wlMsg = causaDoTreino
-      ? ` Perda de peso rápida (${kg} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Não estás a comer o suficiente para o treino que fazes.`
-      : ` Estás a perder ${kg} kg por semana, ${bodyMetrics.weightLossPct}% do peso. É rápido demais. Vemos a alimentação no chat.`;
+      ? ` Perda de peso rápida (${kg} kg/semana, ${pct}% do peso). Não estás a comer o suficiente para o treino que fazes.`
+      : ` Estás a perder ${kg} kg por semana, ${pct}% do peso. É rápido demais. Vemos a alimentação no chat.`;
     msg = msg ? `${msg}${wlMsg}` : wlMsg.trim();
   }
 
@@ -482,22 +534,19 @@ export function buildWarningsMessage(
   return msg || null;
 }
 
-function buildTomorrowPrepMessage(tomorrowPlanItems: any[]): string | null {
-  const nonRest = (tomorrowPlanItems || []).filter((i: any) => i.kind !== "descanso");
-  if (nonRest.length === 0) return null;
+// A partir daqui uma rodagem longa já pede abastecimento a meio.
+const LONGA_COM_ABASTECIMENTO_KM = 15;
 
-  const itemsDesc = nonRest.map(formatWorkoutItemName).join(" e ");
-  const hasRun = nonRest.some((i: any) => i.kind === "corrida");
-  const hasGym = nonRest.some((i: any) => i.kind === "ginasio");
-
-  let tip = "Deixa o equipamento já organizado hoje à noite.";
-  if (hasRun && !hasGym) {
-    tip = "Deixa o teu equipamento de corrida pronto.";
-  } else if (hasGym && !hasRun) {
-    tip = "Deixa a tua sacola de treino pronta para o ginásio.";
-  }
-
-  return `Amanhã o plano aponta para: ${itemsDesc}. ${tip}`;
+// A dica só quando o treino a pede (revisão de 2026-09-26): "Deixa o teu
+// equipamento de corrida pronto." escolhia-se só por haver corrida amanhã,
+// sem dizer nada do treino.
+// deno-lint-ignore no-explicit-any
+export function buildTomorrowPrepMessage(tomorrowPlanItems: any[]): string | null {
+  const treino = (tomorrowPlanItems || []).filter((i: any) => i.kind !== "descanso" && i.status !== "concluido");
+  if (treino.length === 0) return null;
+  const longa = treino.some((i: any) =>
+    i.kind === "corrida" && i.training_type === "longo" && Number(String(i.target_distance_km ?? "").replace(",", ".")) >= LONGA_COM_ABASTECIMENTO_KM);
+  return `Amanhã: ${juntar(treino.map((i: any) => treinoFalado(i, false)))}.${longa ? " Leva água ou um gel." : ""}`;
 }
 
 // ── Métricas calculadas ──────────────────────────────────────────────────────

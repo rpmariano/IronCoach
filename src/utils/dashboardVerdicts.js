@@ -23,6 +23,8 @@
  * ganha — só sai UMA frase.
  */
 
+import { addDaysISO } from '../lib/utils';
+
 /** O que a Carol diz quando não tem nada para dizer. Nunca inventa. */
 export const NO_DATA_TEXT = 'Ainda não tenho dados suficientes para te dizer como estás.';
 
@@ -52,6 +54,14 @@ export function capitalize(word) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/* "duas", mas "1,5": só um número redondo se escreve por extenso. O
+   spellFem arredondava 1,5 sessões por semana para "uma" (revisão de
+   2026-09-26). */
+function countFem(n) {
+  const r = Math.round(Number(n) * 10) / 10;
+  return Number.isInteger(r) ? spellFem(r) : fmtNumber(r, 1);
+}
+
 /**
  * Quantas leituras seguidas, a contar do fim, se mantiveram a subir (+1) ou
  * a descer (−1). Devolve 0 se a última variação é nula ou a série é curta.
@@ -73,6 +83,41 @@ export function streakDirection(series) {
   return { direction, weeks };
 }
 
+/* Semanas de segunda a domingo, como no calculateACWRHistory. */
+function mondayOf(iso) {
+  const back = (new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7;
+  return addDaysISO(iso, -back);
+}
+
+/* Os km de corrida que o plano previa em cada uma das `count` semanas que
+   acabam na semana de `today` (a última é a semana em curso). null quando o
+   plano não diz nada dessa semana — sem plano não há descida planeada. */
+function plannedRunKmByWeek(planItems, today, count) {
+  if (!today) return Array(count).fill(null);
+  const monday = mondayOf(today);
+  return Array.from({ length: count }, (_, i) => {
+    const start = addDaysISO(monday, -7 * (count - 1 - i));
+    const end = addDaysISO(start, 6);
+    const km = (planItems || [])
+      .filter((it) => it && it.kind === 'corrida' && it.status !== 'cancelado'
+        && typeof it.planned_date === 'string' && it.planned_date >= start && it.planned_date <= end)
+      .reduce((sum, it) => sum + (Number(it.target_distance_km) || 0), 0);
+    return km > 0 ? km : null;
+  });
+}
+
+/* Quantas semanas seguidas, a contar do fim, o volume desceu SEM que o
+   plano também descesse. Uma descarga planeada não é ficar aquém. */
+function unplannedDropStreak(weeks, planned) {
+  let n = 0;
+  for (let i = weeks.length - 1; i > 0; i--) {
+    if (!(weeks[i] < weeks[i - 1])) break;
+    if (planned[i] !== null && planned[i - 1] !== null && planned[i] < planned[i - 1]) break;
+    n++;
+  }
+  return n;
+}
+
 /* ─────────────────────────── Corrida ─────────────────────────── */
 
 /**
@@ -85,8 +130,13 @@ export function streakDirection(series) {
  * @param {{lowIntensityPct:number,highIntensityPct:number,targetLowPct:number}} [input.distribution]
  *   calculateTrainingDistribution(runs, nivel)
  * @param {number} [input.runCount] corridas no período mostrado
+ * @param {string} [input.today] todayISO() — a última semana de
+ *   `weeklyVolume` é a semana em curso; sem `today` não se sabe se já fechou
+ * @param {boolean} [input.taper] hoje é polimento da próxima prova
+ *   (calculateRaceTrainingPlan → currentPhase.id === 'taper')
+ * @param {Array} [input.planItems] coach_plan_items dos planos aceites
  */
-export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distribution, runCount = 0 } = {}) {
+export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distribution, runCount = 0, today = null, taper = false, planItems = [] } = {}) {
   const weeks = (weeklyVolume || []).map(w => Number(w?.acuteLoad ?? w?.km ?? 0));
   const nonZeroWeeks = weeks.filter(v => v > 0).length;
   if (runCount <= 0 && nonZeroWeeks === 0) return NO_DATA;
@@ -120,19 +170,31 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
     };
   }
 
-  // 4. Volume a cair duas ou mais semanas seguidas.
-  const vol = streakDirection(weeks);
-  if (vol.direction < 0 && vol.weeks >= 2) {
-    const last = weeks[weeks.length - 1];
-    const before = weeks[weeks.length - 1 - vol.weeks];
+  /* 4. Volume a cair duas ou mais semanas seguidas. A semana em curso só
+     conta ao domingo: à segunda tem 0 km porque mal começou, e dava
+     "desceu de 45,0 para 0,0 km". No polimento a descida é o objetivo, e
+     uma semana em que o próprio plano também descia (descarga) não é ficar
+     aquém (revisão de 2026-09-26). */
+  const isSunday = !!today && new Date(`${today}T00:00:00Z`).getUTCDay() === 0;
+  const closedWeeks = isSunday ? weeks : weeks.slice(0, -1);
+  const shortWeeks = taper
+    ? 0
+    : unplannedDropStreak(closedWeeks, plannedRunKmByWeek(planItems, today, weeks.length));
+  if (shortWeeks >= 2) {
+    const last = closedWeeks[closedWeeks.length - 1];
+    const before = closedWeeks[closedWeeks.length - 1 - shortWeeks];
     return {
-      text: `Ficaste curto ${spellFem(vol.weeks)} semanas seguidas. O volume desceu de ${fmtNumber(before, 1)} para ${fmtNumber(last, 1)} km.`,
+      text: `Ficaste aquém ${spellFem(shortWeeks)} semanas seguidas. O volume desceu de ${fmtNumber(before, 1)} para ${fmtNumber(last, 1)} km.`,
       tone: 'warn',
     };
   }
 
-  // 5. Carga demasiado baixa para o que se quer fazer.
+  // 5. Carga demasiado baixa para o que se quer fazer — no polimento é o
+  //    plano a funcionar, não falta de treino (revisão de 2026-09-26).
   if (hasAcwr && acwr.status === 'undertrained') {
+    if (taper) {
+      return { text: 'Estás no polimento: a carga baixa é de propósito.', tone: 'ok' };
+    }
     return {
       text: `A carga está baixa para o que queres fazer. O rácio desta semana é ${fmtNumber(ratio, 2)}, contra os 0,8 mínimos para evoluir.`,
       tone: 'warn',
@@ -140,6 +202,7 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
   }
 
   // 6. Volume a subir com a carga em zona segura — o cenário bom.
+  const vol = streakDirection(weeks);
   if (vol.direction > 0 && vol.weeks >= 3) {
     return {
       text: `O volume subiu ${spellFem(vol.weeks)} semanas seguidas e a carga está em zona segura. Podes manter o ritmo.`,
@@ -180,6 +243,8 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
  * @param {number} [input.classes] aulas no período
  * @param {number} [input.weeksInRange] semanas cobertas pelo período
  * @param {number} [input.totalVolumeLoad] kg totais no período
+ * @param {number} [input.runCount] corridas registadas — sem nenhuma, o
+ *   volume de corrida não entra na frase
  */
 export function gymVerdict({
   weeklyBreakdown = [],
@@ -187,6 +252,7 @@ export function gymVerdict({
   classes = 0,
   weeksInRange = 4,
   totalVolumeLoad = 0,
+  runCount = 0,
 } = {}) {
   const totalSessions = Number(strengthSessions) + Number(classes);
   if (totalSessions <= 0) return NO_DATA;
@@ -195,11 +261,14 @@ export function gymVerdict({
   const perWeek = totalSessions / weeks;
   const loads = (weeklyBreakdown || []).map(w => Number(w?.volumeLoad || 0));
   const load = streakDirection(loads);
+  // Um atleta só de ginásio não tem volume de corrida para aguentar
+  // (revisão de 2026-09-26).
+  const runs = Number(runCount) > 0;
 
   // 1. Frequência a menos — o ginásio só protege a corrida se for regular.
   if (perWeek < 1) {
     return {
-      text: `Vais ao ginásio a menos para isto contar. ${fmtNumber(totalSessions, 0)} ${totalSessions === 1 ? 'sessão' : 'sessões'} em ${spellFem(weeks)} semanas não seguram o volume de corrida; o alvo são duas por semana.`,
+      text: `Vais ao ginásio a menos para isto contar. ${fmtNumber(totalSessions, 0)} ${totalSessions === 1 ? 'sessão' : 'sessões'} em ${spellFem(weeks)} semanas${runs ? ` não ${totalSessions === 1 ? 'segura' : 'seguram'} o volume de corrida` : ''}; o alvo são duas por semana.`,
       tone: 'warn',
     };
   }
@@ -216,8 +285,10 @@ export function gymVerdict({
 
   // 3. Frequência entre uma e duas — vai lá, mas não chega.
   if (perWeek < 1.7) {
+    const n = countFem(perWeek);
+    const vezes = n === 'uma' ? 'uma vez' : `${n} vezes`;
     return {
-      text: `Uma sessão por semana é pouco para aguentares o volume de corrida. O alvo são duas.`,
+      text: `Vais ${vezes} por semana${runs ? ', pouco para aguentares o volume de corrida' : ''}. O alvo são duas.`,
       tone: 'warn',
     };
   }
@@ -225,7 +296,7 @@ export function gymVerdict({
   // 4. Duas por semana com carga a subir — o cenário bom.
   if (load.direction > 0) {
     return {
-      text: `${capitalize(spellFem(perWeek))} sessões por semana com carga a subir — suficiente para aguentar o volume de corrida.`,
+      text: `${capitalize(countFem(perWeek))} sessões por semana com carga a subir${runs ? ' — suficiente para aguentar o volume de corrida.' : '. Podes manter o ritmo.'}`,
       tone: 'ok',
     };
   }
@@ -322,8 +393,10 @@ export function nutritionVerdict({ adherence, ea } = {}) {
  * @param {{dates:string[],fatMassKg:number[],leanMassKg:number[]}} [input.composition]
  *   calculateCompositionTrend(bodyAssessments)
  * @param {number} [input.assessmentCount] avaliações no período
+ * @param {number} [input.gymSessionCount] sessões de ginásio registadas no
+ *   período — sem nenhuma, a frase não fala do ginásio
  */
-export function bodyVerdict({ weightTrend, composition, assessmentCount = 0 } = {}) {
+export function bodyVerdict({ weightTrend, composition, assessmentCount = 0, gymSessionCount = 0 } = {}) {
   const points = weightTrend?.rawPoints || [];
   if (!weightTrend || points.length === 0) {
     if (assessmentCount <= 0) return NO_DATA;
@@ -341,7 +414,12 @@ export function bodyVerdict({ weightTrend, composition, assessmentCount = 0 } = 
   }
 
   const rate = Number(weightTrend.weeklyRate ?? 0);
-  const lean = (composition?.leanMassKg || []).filter(v => isFinite(Number(v)));
+  /* Massa magra só das avaliações com a gordura medida (revisão de
+     2026-09-26): sem percentagem de gordura, calculateCompositionTrend dá
+     gordura 0 e a massa magra passa a ser o próprio peso — o "−1,2 kg de
+     músculo" era só o peso a descer. */
+  const fat = composition?.fatMassKg || [];
+  const lean = (composition?.leanMassKg || []).filter((v, i) => isFinite(Number(v)) && Number(fat[i]) > 0);
   const leanDelta = lean.length >= 2 ? Number(lean[lean.length - 1]) - Number(lean[0]) : null;
   const latest = weightTrend.movingAverage?.length
     ? Number(weightTrend.movingAverage[weightTrend.movingAverage.length - 1].weight)
@@ -355,23 +433,38 @@ export function bodyVerdict({ weightTrend, composition, assessmentCount = 0 } = 
     };
   }
 
-  // 2. A perder peso e massa magra ao mesmo tempo.
+  // 2. A perder peso e massa magra ao mesmo tempo. O ginásio só entra na
+  //    frase de quem tem sessões registadas.
   if (weightTrend.trend === 'descendo' && leanDelta !== null && leanDelta <= -0.5) {
     return {
-      text: `Estás a perder peso, mas também massa magra: ${fmtNumber(leanDelta, 1)} kg de músculo no período. Come mais proteína e não cortes o ginásio.`,
+      text: `Estás a perder peso, mas também massa magra: menos ${fmtNumber(-leanDelta, 1)} kg no período. Come mais proteína${Number(gymSessionCount) > 0 ? ' e não cortes o ginásio' : ''}.`,
       tone: 'warn',
     };
   }
 
-  // 3. A perder peso com o músculo seguro — o cenário bom.
   if (weightTrend.trend === 'descendo') {
+    // O verbo já diz o sentido: "desce 0,4 kg", não "desce −0,4 kg". Sem
+    // ritmo semanal medido, não se inventa um "0,0 kg".
+    const desce = Math.abs(rate) >= 0.05
+      ? `o peso desce ${fmtNumber(Math.abs(rate), 1)} kg por semana`
+      : 'o peso está a descer';
+
+    // 3. A perder peso com o músculo seguro — o cenário bom.
+    if (leanDelta !== null) {
+      return {
+        text: `Perda lenta e magra: ${desce} e a massa muscular mantém-se.`,
+        tone: 'ok',
+      };
+    }
+
+    // 4. Sem gordura medida, o peso não diz o que está a sair.
     return {
-      text: `Perda lenta e magra: o peso desce ${fmtNumber(rate, 1)} kg por semana e a massa muscular mantém-se.`,
-      tone: 'ok',
+      text: `${capitalize(desce)}. ${lean.length === 1 ? 'Com uma só medição de gordura, ainda' : 'Sem gordura medida,'} não sei se é gordura ou músculo.`,
+      tone: 'neutral',
     };
   }
 
-  // 4. A ganhar peso sem que seja isso que se quer.
+  // 5. A ganhar peso sem que seja isso que se quer.
   if (weightTrend.trend === 'subindo') {
     return {
       text: `O peso está a subir ${fmtNumber(rate, 1)} kg por semana. Estás em ${fmtNumber(latest, 1)} kg.`,
@@ -379,7 +472,7 @@ export function bodyVerdict({ weightTrend, composition, assessmentCount = 0 } = 
     };
   }
 
-  // 5. Estável.
+  // 6. Estável.
   return {
     text: `O peso estabilizou nas últimas semanas, em ${fmtNumber(latest, 1)} kg.`,
     tone: 'ok',

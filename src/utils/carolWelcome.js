@@ -2,8 +2,8 @@
    "Boas-vindas da Carol", 2026-09-19).
 
    Antes da Home, na primeira abertura da app dentro de cada uma das quatro
-   faixas do dia (hora de Lisboa), a Carol recebe o atleta como uma
-   treinadora que o vê entrar: o nome, duas frases dela, e a coisa que
+   faixas do dia (hora do dispositivo, welcomeTimeZone), a Carol recebe o
+   atleta como uma treinadora que o vê entrar: o nome, duas frases dela, e a coisa que
    interessa hoje. No dia de uma prova, a versão da prova aparece UMA vez, na
    primeira abertura do dia, e ocupa o lugar da saudação dessa faixa; as
    faixas seguintes voltam à saudação normal. Na véspera, o mesmo com a
@@ -22,14 +22,17 @@ import { normalizeGender } from '@formulas/vocabulary.ts';
 import { planItemTitle, raceForDate, raceNameForDate, hasAnyRecord, isRacePlanItem } from './homeModels';
 import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
 import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
+import { evaluatePrescriptions } from '@formulas/prescriptionAdherence.ts';
 import { eventoDaVida, frasesDaVida } from './carolVida';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
 
-/** Data e hora de Lisboa de um instante: { date: 'YYYY-MM-DD', hour, minute, weekday }. */
-export function lisbonParts(now = new Date()) {
+const LISBOA = 'Europe/Lisbon';
+
+/** Data e hora de um instante num fuso: { date: 'YYYY-MM-DD', hour, minute }. */
+function partsIn(now, timeZone) {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Lisbon', year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
   }).formatToParts(now);
   const get = (t) => parts.find((p) => p.type === t)?.value;
@@ -38,6 +41,27 @@ export function lisbonParts(now = new Date()) {
     hour: Number(get('hour')),
     minute: Number(get('minute')),
   };
+}
+
+/** Data e hora de Lisboa de um instante: { date: 'YYYY-MM-DD', hour, minute }. */
+export function lisbonParts(now = new Date()) {
+  return partsIn(now, LISBOA);
+}
+
+/* O fuso das boas-vindas (revisão de 2026-09-26): o do dispositivo. Nos
+   Açores, às 23h30 (00h30 em Lisboa), "Hoje tens" já falava do dia seguinte,
+   e o check-in, gravado com a data do telemóvel, lia-se pela de Lisboa. Sem
+   essa informação — sem Intl, ou só "UTC", que é o que dizem os browsers
+   que escondem o fuso e os sistemas sem fuso configurado —, fica Lisboa.
+   Limitação: o resto da app (o Início, o cartão da Carol) continua na hora
+   de Lisboa; nos Açores, entre as 23h e a meia-noite, o Início já está no
+   dia seguinte e as boas-vindas ainda não. */
+export function welcomeTimeZone() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && !/^(Etc\/)?(UTC|UCT|GMT|Universal|Zulu)$/i.test(tz)) return tz;
+  } catch { /* sem Intl: fica Lisboa */ }
+  return LISBOA;
 }
 
 const addDays = (iso, n) => {
@@ -57,8 +81,8 @@ export function slotForHour(hour) {
 /** A chave da faixa em que se está. A madrugada é UMA faixa mesmo passando a
  *  meia-noite: das 0h às 5h pertence à noite do dia anterior (23h de sábado e
  *  2h de domingo dão a mesma chave). */
-export function slotKey(now = new Date()) {
-  const { date, hour } = lisbonParts(now);
+export function slotKey(now = new Date(), timeZone = welcomeTimeZone()) {
+  const { date, hour } = partsIn(now, timeZone);
   const slot = slotForHour(hour);
   const slotDate = slot === 'madrugada' && hour < 5 ? addDays(date, -1) : date;
   return { slot, key: `${slotDate}:${slot}`, date, hour };
@@ -75,9 +99,9 @@ export function raceToday(raceEvents, dateISO) {
  *  4h, só a menos de 4 h da partida (um trail às 6h acorda-se às 3h), ou com
  *  ela já a decorrer (uma prova da meia-noite). Quem está acordado às 4h30
  *  antes de uma prova às 18h ainda não se deitou. */
-export function acordouParaAProva(race, now = new Date()) {
+export function acordouParaAProva(race, now = new Date(), timeZone = LISBOA) {
   if (!race) return false;
-  const { hour, minute } = lisbonParts(now);
+  const { hour, minute } = partsIn(now, timeZone);
   if (hour >= 5) return false;
   const hora = race.start_time ? String(race.start_time).slice(0, 5) : null;
   const [hh, mm] = hora ? hora.split(':').map(Number) : [];
@@ -102,15 +126,15 @@ export const WELCOME_MIN_GAP_MS = 2 * 60 * 60 * 1000;
  * chave nenhuma, e a saudação dela aparece na primeira abertura depois do
  * intervalo, se ainda for a mesma faixa.
  */
-export function decideWelcome({ now = new Date(), raceEvents = [], seen = [], lastShownAt = null } = {}) {
-  const { slot, key, date } = slotKey(now);
+export function decideWelcome({ now = new Date(), raceEvents = [], seen = [], lastShownAt = null, timeZone = welcomeTimeZone() } = {}) {
+  const { slot, key, date } = slotKey(now, timeZone);
   const vistas = new Set(seen || []);
   // De madrugada, mesmo no dia da prova, é a madrugada: a versão da prova é
   // para quando o dia começa (a partir das 5h), não para as 00:30. Menos
   // para quem já acordou para ela (acordouParaAProva): a quem abre a app às
   // 4h40 no dia da maratona não se pergunta se ainda está acordado.
   const provaHoje = raceToday(raceEvents, date);
-  const race = slot === 'madrugada' && !acordouParaAProva(provaHoje, now) ? null : provaHoje;
+  const race = slot === 'madrugada' && !acordouParaAProva(provaHoje, now, timeZone) ? null : provaHoje;
   if (race) {
     const raceKey = `${date}:prova`;
     // Vista ainda de madrugada, a da prova ocupa também a manhã desse dia:
@@ -216,11 +240,15 @@ const km = (v) => {
   return String(Math.round(n * 10) / 10).replace('.', ',');
 };
 
-/** Os itens do plano ACEITE para um dia, sem os cancelados. */
-function planFor(dateISO, { coachPlans = [], coachPlanItems = [] }) {
+/** Os itens dos planos ACEITES. */
+function itensAceites({ coachPlans = [], coachPlanItems = [] }) {
   const aceites = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
-  return (coachPlanItems || []).filter((i) => i && aceites.has(i.plan_id)
-    && String(i.planned_date).slice(0, 10) === dateISO && i.status !== 'cancelado');
+  return (coachPlanItems || []).filter((i) => i && aceites.has(i.plan_id));
+}
+
+/** Os itens do plano ACEITE para um dia, sem os cancelados. */
+function planFor(dateISO, data) {
+  return itensAceites(data).filter((i) => String(i.planned_date).slice(0, 10) === dateISO && i.status !== 'cancelado');
 }
 
 function trainingOf(items) {
@@ -440,7 +468,15 @@ export const WELCOME_PHRASES = {
   dorForteSemTreino: ['A dor de que me falaste não se ignora. Quero falar contigo sobre ela.'],
   dorForteProva: ['Com a dor de que me falaste, quero falar contigo antes da partida.'],
   dorVespera: ['Com a dor de que me falaste, quero falar contigo antes da prova.'],
-  descansoHoje: ['Hoje é descanso. A sério.', 'Dia de descanso. É hoje que o corpo assimila o trabalho da semana.', 'Hoje não se treina. O descanso está no plano de propósito, aproveita-o.'],
+  // "A sério" só a quem trocou um descanso por treino nas últimas 4 semanas,
+  // e "o trabalho da semana" só com treino registado nos últimos 7 dias: sem
+  // isso, era uma acusação sem dados, e uma semana que não houve (revisão
+  // das boas-vindas de 2026-09-26).
+  descansoHoje: ({ trocouDescanso, treinouNaSemana } = {}) => [
+    trocouDescanso ? 'Hoje é descanso. A sério.' : 'Hoje é descanso.',
+    treinouNaSemana ? 'Dia de descanso. É hoje que o corpo assimila o trabalho da semana.' : 'Hoje é descanso.',
+    'Hoje não se treina. O descanso está no plano de propósito, aproveita-o.',
+  ],
   semTreinoHoje: ['Hoje não há treino planeado.', 'O plano não pede treino hoje.', 'Hoje não tens treino no plano.'],
   treinoHoje: (t) => [`Hoje tens ${t}. Vamos a isso.`, `Para hoje, o plano pede ${t}.`, `Hoje o plano é ${t}. Quero ver como te sai.`],
   treinoFeito: (t) => [`Hoje já fizeste ${t}.`, 'O treino de hoje já está feito.', 'Já vi o treino de hoje registado.'],
@@ -529,14 +565,29 @@ function runsOn(runs, dateISO) {
   return (runs || []).filter((r) => String(r?.date).slice(0, 10) === dateISO);
 }
 
+/** O que sustenta as frases do descanso: um descanso do plano trocado por
+ *  treino nas últimas 4 semanas (a régua de @formulas/prescriptionAdherence,
+ *  a mesma do badge "Descanso cumprido"), e corridas ou ginásio registados
+ *  nos últimos 7 dias. */
+function historicoDoDescanso(data, hoje) {
+  const runs = (data.runs || []).filter(Boolean);
+  const gym = (data.gymSessions || []).filter(Boolean);
+  const { counts } = evaluatePrescriptions({ items: itensAceites(data), runs, gym, mealsByDate: {} }, hoje, 28);
+  const semana = addDays(hoje, -7);
+  return {
+    trocouDescanso: counts.descanso_nao_respeitado > 0,
+    treinouNaSemana: [...runs, ...gym].some((r) => { const d = String(r.date).slice(0, 10); return d >= semana && d < hoje; }),
+  };
+}
+
 /**
- * O texto das boas-vindas: { greeting, lines: [≤2], chip: {label, value, icon} | null, cta }.
- * `data`: { profile, dailyCheckins, coachPlans, coachPlanItems, runs, meals, raceEvents,
+ * O texto das boas-vindas: { greeting, lines: [≤2], chip: {label, value, icon} | null, cta, mood }.
+ * `data`: { profile, dailyCheckins, coachPlans, coachPlanItems, runs, gymSessions, meals, raceEvents,
  * coachNotes (a memória dela), saudadoHoje (já houve uma saudação hoje, noutra faixa) }.
  */
-export function buildWelcome(variant, data = {}, now = new Date()) {
+export function buildWelcome(variant, data = {}, now = new Date(), timeZone = welcomeTimeZone()) {
   const nome = String(data.profile?.display_name || data.profile?.full_name || '').trim().split(/\s+/)[0] || '';
-  const { date: hoje, hour, minute } = lisbonParts(now);
+  const { date: hoje, hour, minute } = partsIn(now, timeZone);
   const amanha = addDays(hoje, 1);
   const raceEvents = data.raceEvents || [];
   const lines = [];
@@ -555,12 +606,22 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
   const dorForte = (Number(checkin?.pain) || 0) >= PAIN_ALARM_THRESHOLD;
   const stressAlto = (Number(checkin?.stress) || 0) >= 4;
   const semEnergia = energia > 0 && energia <= 2;
-  const emBaixo = (sono > 0 && sono <= 2) || semEnergia;
+  const dormiuMal = sono > 0 && sono <= 2;
+  const emBaixo = dormiuMal || semEnergia;
   const refeicoesHoje = (data.meals || []).filter((m) => String(m?.date).slice(0, 10) === hoje).length;
   // O que ela sabe da vida dele (pedido 2026-09-26): uma cirurgia, uma lesão,
   // uma doença que ele lhe contou, com data. Nos dias à volta disso, é a
   // primeira coisa que ela diz — antes do plano e do check-in.
   const vida = eventoDaVida(data.coachNotes, hoje);
+  /* A cara dela (CoachAvatar) acompanha o que diz (revisão das boas-vindas
+     de 2026-09-26): preocupada só com uma dor acima do alarme — às 23h05
+     antes de um descanso não há nada que preocupe —; com cuidado depois de
+     uma noite mal dormida e de madrugada; contente no dia da prova. A
+     versão da prova é sempre 'happy': o texto dela só fala da prova. */
+  const mood = dorForte ? 'worried'
+    : dormiuMal || variant === 'madrugada' ? 'caring'
+      : diaHoje.tipo === 'prova' || diaHoje.tipo === 'provaFeita' ? 'happy'
+        : 'neutral';
 
   /* Em que ponto está a prova de hoje: 'antes' da partida, 'aCorrer' (a
      meta estimada pelo objetivo, ou 7 min/km; sem distância, 3 h), ou
@@ -615,7 +676,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     const acabou = momento === 'depois' || (momento === 'aCorrer' && kHoje);
     const faixa = slotForHour(hour);
     const greeting = acabou && faixa !== 'madrugada' ? GREETING[faixa](nome) : GREETING.prova(nome);
-    return { variant, greeting, lines, chip, cta: momento === 'antes' ? CTA.prova : 'Entrar', race: true };
+    return { variant, greeting, lines, chip, cta: momento === 'antes' ? CTA.prova : 'Entrar', race: true, mood: 'happy' };
   }
 
   if (variant === 'vespera') {
@@ -639,7 +700,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
       else lines.push(`Hoje ainda tens ${diaHoje.falado}.`);
     }
     chip = { label: dist ? `${dist} km` : 'Amanhã', value: hora ? `Partida ${aHora(hora)}` : 'Dia de prova', icon: 'trophy' };
-    return { variant, greeting: GREETING.vespera(nome), lines, chip, cta: CTA.vespera, race: false };
+    return { variant, greeting: GREETING.vespera(nome), lines, chip, cta: CTA.vespera, race: false, mood };
   }
 
   const chipFor = (label, dia, icon = 'run') => ({ label, value: dia.titulo, icon: semTreino(dia) ? 'moon' : dia.tipo === 'provaFeita' ? 'trophy' : icon });
@@ -692,7 +753,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
     } else {
       if (checkin) {
         if (dorForte) lines.push(pick(doDia('dorForte'), 'dorForte'));
-        else if (sono > 0 && sono <= 2) lines.push(pick(doDia('dormiuMal'), 'dormiuMal'));
+        else if (dormiuMal) lines.push(pick(doDia('dormiuMal'), 'dormiuMal'));
         else if (semEnergia) lines.push(pick(doDia('energiaBaixa'), 'energiaBaixa'));
         // Com o stress em cima, "há margem para cumprir tudo" desdizia o cartão do check-in.
         else if (sono >= 4 && !stressAlto) lines.push(pick(doDia('dormiuBem'), 'dormiuBem'));
@@ -707,7 +768,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
         lines.push(`Hoje é ${diaHoje.prova.name ? `a prova: ${diaHoje.prova.name}` : 'dia de prova'}${partida(diaHoje.prova)}.`);
         chip = chipDeHoje();
       } else {
-        if (diaHoje.tipo === 'descanso') lines.push(pick(P.descansoHoje, 'descansoHoje'));
+        if (diaHoje.tipo === 'descanso') lines.push(pick(P.descansoHoje(historicoDoDescanso(data, hoje)), 'descansoHoje'));
         else if (diaHoje.tipo === 'semTreino') lines.push(pick(P.semTreinoHoje, 'semTreinoHoje'));
         else if (diaHoje.tipo === 'feito') lines.push(linhaDoFeito());
         else if (comTreino) lines.push(pick(P.treinoHoje(diaHoje.falado), 'treinoHoje'));
@@ -834,7 +895,7 @@ export function buildWelcome(variant, data = {}, now = new Date()) {
   }
 
   if (action === 'checkin') {
-    return { variant, greeting: GREETING[variant](nome, data.profile?.gender), lines: lines.slice(0, 2), chip, cta: 'Fazer o check-in', action, race: false };
+    return { variant, greeting: GREETING[variant](nome, data.profile?.gender), lines: lines.slice(0, 2), chip, cta: 'Fazer o check-in', action, race: false, mood };
   }
-  return { variant, greeting: GREETING[variant](nome, data.profile?.gender), lines: lines.slice(0, 2), chip, cta: CTA[variant], race: false };
+  return { variant, greeting: GREETING[variant](nome, data.profile?.gender), lines: lines.slice(0, 2), chip, cta: CTA[variant], race: false, mood };
 }

@@ -116,6 +116,9 @@ describe('detectCoachInsights', () => {
       expect(acwr.severity).toBe('critical');
       expect(acwr.module).toBe('corrida');
       expect(acwr.value).toBeCloseTo(3.0, 1);
+      // Revisão de 2026-09-26: vírgula decimal e sem "Considera" (CAROL.md).
+      expect(acwr.message).toBe('A carga desta semana está 3,00 vezes acima do habitual. Esta semana, o próximo treino forte passa a fácil.');
+      expect(acwr.message).not.toMatch(/considera|\d\.\d/i);
     });
 
     it('alerta de cautela quando o rácio fica dentro da banda 1,31-1,50', () => {
@@ -257,7 +260,7 @@ describe('detectCoachInsights', () => {
       expect(hoje.find((i) => i.id === 'race_day_ev-1').value).toBe('hoje');
       const vespera = detectCoachInsights({ runs: [], raceEvents: [{ id: 'ev-1', status: 'agendada', date: iso(-1), distance_km: 10, name: 'Corrida do Tejo' }] }, {});
       expect(vespera.find((i) => i.id === 'race_day_ev-1')).toBeUndefined();
-      expect(vespera.find((i) => i.id === 'race_final_week_ev-1').message).toContain('Faltam apenas 1 dia');
+      expect(vespera.find((i) => i.id === 'race_final_week_ev-1').message).toMatch(/^Falta 1 dia para Corrida do Tejo \(10 km\)\./);
     });
 
     it('alerta sobre a reta final quando faltam poucos dias para a prova', () => {
@@ -293,6 +296,104 @@ describe('detectCoachInsights', () => {
       expect(taper.title).toContain('Polimento');
     });
 
+    /* Revisão de 2026-09-26: o texto de cada marco diz só o que se sabe —
+       sem distância inventada, sem plano de ritmo que não existe, sem
+       "carga máxima" sem corridas, sem objetivo de tempo que não há. */
+    describe('texto dos marcos da prova', () => {
+      const race = (over = {}) => ({ id: 'ev-9', status: 'agendada', name: 'Corrida do Tejo', ...over });
+      const find = (insights, id) => insights.find((i) => i.id === id);
+
+      it('dia da prova sem objetivo nem previsão: sem plano km a km e sem distância inventada', () => {
+        const insights = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(0) })] }, {});
+        const msg = find(insights, 'race_day_ev-9').message;
+        expect(msg).toBe('Hoje é dia de prova: Corrida do Tejo. Parte com calma: a primeira metade é para guardar.');
+        expect(msg).not.toMatch(/10 km|ritmo e nutrição/);
+      });
+
+      it('dia da prova com objetivo de tempo: aponta para o plano km a km do hub', () => {
+        const insights = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(0), distance_km: 10, target_time: '50:00' })] }, {});
+        expect(find(insights, 'race_day_ev-9').message).toBe('Hoje é dia de prova: Corrida do Tejo. Parte com calma: a primeira metade é para guardar. O plano km a km está no hub da prova.');
+      });
+
+      it('reta final sem distância registada não inventa "(10 km)"', () => {
+        const insights = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-3) })] }, {});
+        const msg = find(insights, 'race_final_week_ev-9').message;
+        expect(msg).toMatch(/^Faltam 3 dias para Corrida do Tejo\./);
+        expect(msg).not.toMatch(/km\)|apenas|Foco em/);
+      });
+
+      it('reta final de uma prova A: é polimento', () => {
+        const insights = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-5), distance_km: 21.1 })] }, {});
+        const found = find(insights, 'race_final_week_ev-9');
+        expect(found.message).toBe('Faltam 5 dias para Corrida do Tejo (21,1 km). Esta semana é polimento: menos quilómetros e nada de novo.');
+        expect(found.severity).toBe('warning');
+      });
+
+      it('reta final de uma prova C: sem polimento nem o destaque de uma A', () => {
+        const insights = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-2), distance_km: 10, race_priority: 'c' })] }, {});
+        const found = find(insights, 'race_final_week_ev-9');
+        expect(found.message).toBe('Faltam 2 dias para Corrida do Tejo (10 km).');
+        expect(found.severity).toBe('info');
+      });
+
+      it('reta final de uma prova B: o polimento só nos últimos 4 dias', () => {
+        const seis = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-6), distance_km: 10, race_priority: 'b' })] }, {});
+        expect(find(seis, 'race_final_week_ev-9').message).not.toContain('polimento');
+        const tres = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-3), distance_km: 10, race_priority: 'b' })] }, {});
+        expect(find(tres, 'race_final_week_ev-9').message).toContain('Esta semana é polimento');
+      });
+
+      it('polimento a 8 dias diz os dias, não "2 semanas", e sem corridas não fala de volume a descer', () => {
+        const insights = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-8), distance_km: 42.2 })] }, {});
+        const msg = find(insights, 'race_tapering_ev-9').message;
+        expect(msg).toBe('Faltam 8 dias para Corrida do Tejo: começou o polimento.');
+        expect(msg).not.toMatch(/semanas|carga máxima/);
+      });
+
+      it('polimento com corridas nas últimas 3 semanas: o volume desce a partir daqui', () => {
+        const runs = [{ date: iso(4), distance_km: 12, duration_seconds: 4200 }];
+        const insights = detectCoachInsights({ runs, raceEvents: [race({ date: iso(-9), distance_km: 21.1 })] }, {});
+        expect(find(insights, 'race_tapering_ev-9').message).toBe('Faltam 9 dias para Corrida do Tejo: começou o polimento. O volume desce a partir daqui.');
+      });
+
+      it('início do ciclo só à volta do início real (racePlanEngine), não pela distância', () => {
+        // Avançado, maratona: 12 semanas (84 dias). A 100 dias o ciclo ainda
+        // não começou — o hub diz "Faltam 16 dias para começarmos o ciclo".
+        const avancado = { experience_level: 'avancado' };
+        const cedo = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-100), distance_km: 42.2 })] }, avancado);
+        expect(find(cedo, 'race_cycle_start_ev-9')).toBeUndefined();
+        const agora = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-81), distance_km: 42.2 })] }, avancado);
+        expect(find(agora, 'race_cycle_start_ev-9').message).toBe('O ciclo para Corrida do Tejo começa esta semana: 12 semanas, a começar pela base.');
+        const passou = detectCoachInsights({ runs: [], raceEvents: [race({ date: iso(-77), distance_km: 42.2 })] }, avancado);
+        expect(find(passou, 'race_cycle_start_ev-9')).toBeUndefined();
+      });
+
+      it('ciclo comprimido (prova registada tarde) não anuncia o início da base', () => {
+        const insights = detectCoachInsights(
+          { runs: [], raceEvents: [race({ date: iso(-81), distance_km: 42.2, created_at: `${iso(0)}T09:00:00Z` })] },
+          { experience_level: 'avancado' },
+        );
+        expect(find(insights, 'race_cycle_start_ev-9')).toBeUndefined();
+      });
+
+      describe('calendário apertado', () => {
+        const runs = [1, 8, 15, 22].map((daysAgo) => ({ date: iso(daysAgo), distance_km: 10, duration_seconds: 3600 }));
+        // Registada hoje a 30 dias: 4 semanas, contra as 24 de um iniciante.
+        const apertada = (over = {}) => race({ date: iso(-30), distance_km: 42.2, created_at: `${iso(0)}T09:00:00Z`, ...over });
+
+        it('sem objetivo de tempo não fala de expectativas de tempo', () => {
+          const msg = find(detectCoachInsights({ runs, raceEvents: [apertada()] }, {}), 'race_tactic_time').message;
+          expect(msg).toBe('Faltam 4 semanas para 42,2 km, menos do que a distância pede. O plano fica na adaptação.');
+          expect(msg).not.toMatch(/objetivo|expectativa/);
+        });
+
+        it('com objetivo de tempo, o objetivo tem de baixar', () => {
+          const msg = find(detectCoachInsights({ runs, raceEvents: [apertada({ target_time: '4:30:00' })] }, {}), 'race_tactic_time').message;
+          expect(msg).toBe('Faltam 4 semanas para 42,2 km, menos do que a distância pede. O plano fica na adaptação, e o objetivo de tempo tem de baixar.');
+        });
+      });
+    });
+
     it('não alerta quando não há provas futuras agendadas', () => {
       const runs = [{ date: iso(1), distance_km: 5, duration_seconds: 1800 }];
       const insights = detectCoachInsights({ runs, raceEvents: [] }, {});
@@ -323,6 +424,16 @@ describe('detectCoachInsights', () => {
       expect(found).toBeTruthy();
       expect(found.severity).toBe('info');
       expect(found.message).toContain('Nike Pegasus 40');
+      // Revisão de 2026-09-26: sem "apanhado" (masculino) a quem não sabemos o género.
+      expect(found.message).toContain('compra já o par seguinte, para o amaciares antes de estas acabarem.');
+      expect(found.message).not.toMatch(/apanhad/);
+    });
+
+    it('perto do fim, os km com vírgula decimal', () => {
+      const insights = detectCoachInsights({ shoes: [shoe()], runs: runsWith(650.5) }, { weight_kg: 70 });
+      const msg = insights.find((i) => i.id === 'shoe_wear_shoe-1').message;
+      expect(msg).toContain('vão em 650,5 km');
+      expect(msg).toContain('Faltam cerca de 49,5 km');
     });
 
     it('sobe a severidade quando a vida útil já foi excedida', () => {

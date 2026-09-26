@@ -174,7 +174,7 @@ async function handler(req: Request): Promise<Response> {
     try {
       const [
         { data: races, error: racesErr }, { data: runs, error: runsErr }, { last, lastTraining }, { data: plans, error: plansErr }, weekDates,
-        { data: gymYesterday }, { data: lastCheckin },
+        { data: gymYesterday }, { data: lastCheckin }, { data: lastWater },
       ] = await Promise.all([
         // Até 6 meses à frente: o conflito de provas olha para dentro do bloco.
         sb.from("race_events").select("id, name, date, status, distance_km, coach_balance, start_time, target_time_seconds, race_priority, conflict_acknowledged_at")
@@ -197,6 +197,9 @@ async function handler(req: Request): Promise<Response> {
         // dor (revisão de 2026-09-26): acima do alarme, ela já sabe porquê
         // o silêncio ou o treino de ontem por registar — não pergunta.
         sb.from("daily_checkins").select("date, pain").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
+        // A última água registada: quem só regista água está por cá, e o
+        // silêncio não lhe diz "não vejo nada teu" (revisão de 2026-09-26).
+        sb.from("water_logs").select("date").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
       ]);
       // Sem as provas ou as corridas, o momento escolhido podia ser o errado
       // (a véspera a cair para o silêncio): salta-se o atleta nesta hora.
@@ -246,6 +249,7 @@ async function handler(req: Request): Promise<Response> {
         lastTrainingDate: lastTraining,
         lastCheckinDate: lastCheckin?.date ?? null,
         lastCheckinPain: lastCheckin?.pain ?? null,
+        lastWaterDate: lastWater?.date ?? null,
         planItems,
         trainingDates: [
           ...(runs || []).map((r: { date?: string | null }) => r.date ?? null),

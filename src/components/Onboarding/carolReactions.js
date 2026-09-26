@@ -13,6 +13,8 @@
    Cada função devolve `{ text, mood }` ou null (fica a nota por omissão do
    passo). `mood` segue CAROL.md §4: neutral, happy ou worried. */
 
+import { normalizeGender } from '@formulas/vocabulary.ts';
+
 const num = (v) => {
   const n = parseFloat(String(v ?? '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
@@ -37,6 +39,11 @@ const SOBRE_OBJETIVO = {
 };
 
 export function reactToGoal(draft) {
+  // Na reentrada pelo Perfil a data já vem semeada (seedDraftFrom): prometer
+  // perguntá-la seria mostrar que não leu o que já sabe.
+  if (draft?.goal === 'prova' && draft?.race_date) {
+    return { mood: 'happy', text: 'Com a prova marcada, cada semana tem uma função. Daqui a três passos confirmamos a data.' };
+  }
   return SOBRE_OBJETIVO[draft?.goal] || null;
 }
 
@@ -62,6 +69,11 @@ export function reactToRunning(draft) {
     return { mood: 'happy', text: 'Então já sabes o que é um bloco e uma semana de descarga. Vou falar contigo nessa língua.' };
   }
   if (nivel === 'medio') {
+    // Quem volta de uma pausa sem números, ou declara 0, não tem "a semana
+    // que já fazes" por onde ela começar.
+    if (km === 0 || dias === 0 || (draft?.goal === 'regresso' && !km && !dias)) {
+      return { mood: 'neutral', text: 'Partimos do que o corpo aguenta hoje, não do que fazias antes. Depois subo.' };
+    }
     return { mood: 'neutral', text: 'Dá para misturar séries com rodagens longas. Começo pela semana que já fazes e só depois mexo.' };
   }
   if (nivel === 'iniciante') {
@@ -104,7 +116,12 @@ export function reactToRace(draft, semanas) {
   const temProva = String(draft?.race_name || '').trim() && draft?.race_date && num(draft?.race_distance_km);
   if (!temProva || semanas == null) return null;
   if (semanas < 4) {
-    return { mood: 'worried', text: `Com ${semanas === 0 ? 'menos de uma semana' : semanas === 1 ? 'uma semana' : `${semanas} semanas`} não dá para construir forma nova. Dá para lá chegares fresco, e é nisso que o plano se vai concentrar.` };
+    // "fresco"/"fresca" só com o sexo dito no passo 2; sem ele, frase neutra.
+    const genero = normalizeGender(draft?.gender);
+    const chegar = genero === 'F' ? 'Dá para lá chegares fresca'
+      : genero === 'M' ? 'Dá para lá chegares fresco'
+        : 'Dá para chegares lá com as pernas frescas';
+    return { mood: 'worried', text: `Com ${semanas === 0 ? 'menos de uma semana' : semanas === 1 ? 'uma semana' : `${semanas} semanas`} não dá para construir forma nova. ${chegar}, e é nisso que o plano se vai concentrar.` };
   }
   return null;
 }

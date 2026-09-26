@@ -548,7 +548,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 className="flex-1 py-2.5 gap-1.5"
                 type="button"
               >
-                <Camera size={14} /> Foto (IA)
+                <Camera size={14} /> Foto
               </Chip>
               <Chip
                 active={entryMethod === 'manual'}
@@ -600,7 +600,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
                 <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
                 <ImagePlus className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
                 <p className="text-xs text-[var(--text-3)] font-semibold">Escolhe os prints da app Renpho Health</p>
-                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Podes juntar vários ecrãs da mesma pesagem — a IA lê e comenta os valores automaticamente</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Junta os ecrãs da mesma pesagem; eu leio e comento os valores. Podes corrigir depois de gravado.</p>
                 {/* O ecrã que traz a pesagem toda, pelo nome que tem na app —
                     vem do catálogo (supabase/functions/_shared/sourceApps.ts).
                     Se a Renpho sair do catálogo, esta linha desaparece em vez

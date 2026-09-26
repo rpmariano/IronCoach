@@ -177,7 +177,15 @@ describe('PlanProposalBottomSheet — a que prova o plano se refere', () => {
 
   it('quando os itens não cobrem o bloco todo, diz até quando estão detalhados', () => {
     render(<PlanProposalBottomSheet plan={planParaProvaA} items={itensParciais} raceEvents={raceEvents} onRespondPlan={() => {}} onClose={() => {}} />);
-    expect(screen.getByText(/detalhados até 2026-09-25 — o resto do bloco ainda vai ser definido/)).toBeInTheDocument();
+    expect(screen.getByText(/com os treinos detalhados até 25 set; o resto defino mais perto da data\./)).toBeInTheDocument();
+  });
+
+  // Revisão de 2026-09-26: a data saía em ISO cru ("2026-09-25") e o
+  // particípio ("detalhados") não concordava com "corridas".
+  it('a data dos treinos detalhados não sai em ISO cru', () => {
+    render(<PlanProposalBottomSheet plan={planParaProvaA} items={itensParciais} raceEvents={raceEvents} onRespondPlan={() => {}} onClose={() => {}} />);
+    expect(screen.queryByText(/2026-09-25/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/corridas, detalhados/)).not.toBeInTheDocument();
   });
 
   it('sem prova vinculada, mantém a frase de sempre — sem "até" nem prova nenhuma', () => {

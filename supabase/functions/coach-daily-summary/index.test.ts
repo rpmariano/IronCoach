@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, buildTomorrowPrepMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary, treinoFalado } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 
 // P0-1 (specs/formulas-checklist.md): profiles.gender só grava 'M'/'F'.
@@ -98,7 +98,7 @@ Deno.test("buildWarningsMessage: as quatro frases, na voz dela — sem emoji, se
   assertCarolVoice(aguaParcial);
 
   const redS = buildWarningsMessage([], 0, null, { hasRedSRisk: true, latestBodyFat: 7, gender: "M", weeklyWeightChange: null })!;
-  assertStringIncludes(redS, "A tua gordura corporal (7%) está abaixo do limiar de segurança (8%). É risco de RED-S — fala com um profissional de saúde.");
+  assertStringIncludes(redS, "A tua gordura corporal está em 7%, abaixo dos 8% de segurança. É risco de RED-S. Fala com um profissional de saúde.");
   assertCarolVoice(redS);
 
   const bodyMetricsPerda = {
@@ -107,11 +107,11 @@ Deno.test("buildWarningsMessage: as quatro frases, na voz dela — sem emoji, se
   // A causa (revisão de 2026-09-26): só se afirma com as duas provas — treino
   // recente e ingestão abaixo do gasto. Sem elas, a frase fica neutra.
   const perdaPeso = buildWarningsMessage([], 0, null, bodyMetricsPerda, null, { trainedRecently: true, ateBelowGasto: true })!;
-  assertStringIncludes(perdaPeso, "Perda de peso rápida (1.2 kg/semana, 1.6% do peso). Não estás a comer o suficiente para o treino que fazes.");
+  assertStringIncludes(perdaPeso, "Perda de peso rápida (1,2 kg/semana, 1,6% do peso). Não estás a comer o suficiente para o treino que fazes.");
   assertCarolVoice(perdaPeso);
 
   const perdaPesoSemCausa = buildWarningsMessage([], 0, null, bodyMetricsPerda)!;
-  assertStringIncludes(perdaPesoSemCausa, "Estás a perder 1.2 kg por semana, 1.6% do peso. É rápido demais. Vemos a alimentação no chat.");
+  assertStringIncludes(perdaPesoSemCausa, "Estás a perder 1,2 kg por semana, 1,6% do peso. É rápido demais. Vemos a alimentação no chat.");
   assertCarolVoice(perdaPesoSemCausa);
   // Sem treinos recentes (ex.: 30 dias parado), mesmo com pouca comida: neutra.
   const semTreino = buildWarningsMessage([], 0, null, bodyMetricsPerda, null, { trainedRecently: false, ateBelowGasto: true })!;
@@ -331,7 +331,7 @@ Deno.test("checkinForSummary: sem check-in (ou incompleto) não há bloco", () =
 Deno.test("o aviso de hoje nunca sugere mudar o plano por causa da carga", () => {
   const msg = buildWarningsMessage([{ kind: "corrida", training_type: "continuo", target_distance_km: 6 }], 0, null,
     { hasRedSRisk: false, latestBodyFat: null, gender: "M", weeklyWeightChange: null });
-  assertEquals(msg, "Para hoje tens agendado: Corrida (continuo, 6 km).");
+  assertEquals(msg, "Para hoje tens agendado: uma corrida contínua de 6 km.");
 });
 
 Deno.test("o contexto leva a leitura da carga e não leva o created_at das corridas", () => {
@@ -344,4 +344,70 @@ Deno.test("o contexto leva a leitura da carga e não leva o created_at das corri
   assertEquals(runs[0].created_at, undefined);
   assertEquals(runs[0].distance_km, 5);
   assertEquals((ctx.acwr as Record<string, unknown>).segue_o_plano, true);
+});
+
+// ── Números e treinos ditos como se dizem (revisão de 2026-09-26) ───────────
+
+Deno.test("buildWarningsMessage: vírgula decimal no RED-S e na perda de peso, nunca ponto", () => {
+  const redS = buildWarningsMessage([], 0, null, { hasRedSRisk: true, latestBodyFat: 7.5, gender: "M", weeklyWeightChange: null })!;
+  assertEquals(redS, "A tua gordura corporal está em 7,5%, abaixo dos 8% de segurança. É risco de RED-S. Fala com um profissional de saúde.");
+  const redSF = buildWarningsMessage([], 0, null, { hasRedSRisk: true, latestBodyFat: 14.2, gender: "F", weeklyWeightChange: null })!;
+  assertStringIncludes(redSF, "está em 14,2%, abaixo dos 16% de segurança.");
+  const perda = buildWarningsMessage([], 0, null, {
+    hasRedSRisk: false, latestBodyFat: null, gender: "M", weeklyWeightChange: -0.9, weightLossTooFast: true, weightLossPct: 1.3,
+  })!;
+  assertEquals(perda, "Estás a perder 0,9 kg por semana, 1,3% do peso. É rápido demais. Vemos a alimentação no chat.");
+  for (const t of [redS, redSF, perda]) {
+    assertEquals(/\d\.\d/.test(t), false);
+    assertCarolVoice(t);
+  }
+});
+
+Deno.test("treinoFalado: o treino numa frase, com acentos e vírgula — nunca o enum cru", () => {
+  assertEquals(treinoFalado({ kind: "corrida", training_type: "longo", target_distance_km: 18 }), "uma rodagem longa de 18 km");
+  assertEquals(treinoFalado({ kind: "corrida", training_type: "continuo", target_distance_km: "10.5" }), "uma corrida contínua de 10,5 km");
+  // Sem tipo, "Corrida (corrida, 8 km)" repetia a palavra.
+  assertEquals(treinoFalado({ kind: "corrida", target_distance_km: 8 }), "uma corrida de 8 km");
+  assertEquals(treinoFalado({ kind: "corrida", training_type: "recuperacao", target_duration_min: 30 }), "uma corrida de recuperação de 30 minutos");
+  assertEquals(treinoFalado({ kind: "ginasio", categories: [] }), "um treino de ginásio");
+  assertEquals(treinoFalado({ kind: "ginasio", categories: ["Pernas", "Core/Abdominais"], target_duration_min: 45 }), "um treino de pernas e core de 45 minutos");
+  assertEquals(treinoFalado({ kind: "ginasio", categories: ["Pilates"] }), "uma aula de pilates");
+  assertEquals(treinoFalado({ kind: "corrida", training_type: "intervalos", target_distance_km: 8 }, false), "treino intervalado de 8 km");
+});
+
+Deno.test("buildWarningsMessage: o plano de hoje sai em frase, sem enum nem ponto decimal", () => {
+  const msg = buildWarningsMessage([
+    { kind: "corrida", training_type: "longo", target_distance_km: 18.5 },
+    { kind: "ginasio", categories: [], target_duration_min: 40 },
+  ], 0, null)!;
+  assertEquals(msg, "Para hoje tens agendado: uma rodagem longa de 18,5 km e um treino de ginásio de 40 minutos.");
+  assertEquals(/continuo|Geral|\(corrida/.test(msg), false);
+  assertCarolVoice(msg);
+});
+
+Deno.test("buildTomorrowPrepMessage: a dica é do treino de amanhã, não uma frase de manual", () => {
+  assertEquals(
+    buildTomorrowPrepMessage([{ kind: "corrida", training_type: "longo", target_distance_km: 18 }]),
+    "Amanhã: rodagem longa de 18 km. Leva água ou um gel.",
+  );
+  // Abaixo de 15 km, uma longa não pede abastecimento.
+  assertEquals(
+    buildTomorrowPrepMessage([{ kind: "corrida", training_type: "longo", target_distance_km: 12 }]),
+    "Amanhã: rodagem longa de 12 km.",
+  );
+  assertEquals(
+    buildTomorrowPrepMessage([{ kind: "corrida", training_type: "intervalos", target_distance_km: 8 }]),
+    "Amanhã: treino intervalado de 8 km.",
+  );
+  assertEquals(
+    buildTomorrowPrepMessage([{ kind: "ginasio", categories: ["Peito"], target_duration_min: 45 }]),
+    "Amanhã: treino de peito de 45 minutos.",
+  );
+  assertEquals(buildTomorrowPrepMessage([{ kind: "descanso" }]), null);
+  assertEquals(buildTomorrowPrepMessage([{ kind: "corrida", training_type: "longo", target_distance_km: 18, status: "concluido" }]), null);
+  for (const items of [[{ kind: "corrida", training_type: "continuo", target_distance_km: 8 }], [{ kind: "ginasio", categories: [] }]]) {
+    const t = buildTomorrowPrepMessage(items)!;
+    assertEquals(/Deixa|equipamento|sacola/.test(t), false);
+    assertCarolVoice(t);
+  }
 });

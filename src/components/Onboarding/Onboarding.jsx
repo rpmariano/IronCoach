@@ -249,6 +249,10 @@ export default function Onboarding({ reentry = false, onDone }) {
      com a prova gravada. Afirmá-lo às cegas seria pôr na boca da Carol uma
      garantia que ela ainda não tem — o oposto de CAROL.md §2. */
   const notaProva = useMemo(() => {
+    // Com menos de uma semana, "0 semanas até lá" não é conta que ela diga.
+    if (semanas === 0) {
+      return 'É já esta semana. Não há plano que caiba; preparo-te a véspera e o dia.';
+    }
     const km = parseNum(draft.weekly_km);
     if (km && semanas != null) {
       return `Com ${km} km por semana e ${semanas} ${semanas === 1 ? 'semana' : 'semanas'} até lá, já sei por onde começar o plano. Vou dizer-te se algo mudar.`;

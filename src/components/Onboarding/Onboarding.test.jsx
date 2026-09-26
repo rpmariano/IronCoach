@@ -545,4 +545,34 @@ describe('Onboarding — a Carol responde', () => {
     percorrerTudo();
     expect(screen.queryByTestId('onboarding-semanas')).not.toBeInTheDocument();
   });
+
+  it('prova a menos de uma semana, ainda sem nome: não diz "0 semanas até lá"', () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    clicar('Continuar');
+    fireEvent.change(screen.getByLabelText(/Km por semana/), { target: { value: '30' } });
+    clicar('Continuar');
+    clicar('Continuar');
+    const d = new Date();
+    d.setDate(d.getDate() + 5);
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    fireEvent.change(screen.getByLabelText(/^Data/), { target: { value: iso } });
+    const nota = screen.getByTestId('carol-note');
+    expect(nota).toHaveTextContent('É já esta semana. Não há plano que caiba; preparo-te a véspera e o dia.');
+    expect(nota).not.toHaveTextContent(/0 semanas/);
+  });
+
+  it('na reentrada com a prova já marcada, o objetivo não promete perguntar a data', () => {
+    useAppStore.setState({
+      coachNotes: [{ id: 'n1', category: 'objetivo_pessoal', note: 'Preparar uma prova — estrada ou trail, com data marcada.' }],
+      raceEvents: [{ id: 'r1', name: 'Meia de Lisboa', date: '2099-03-08', distance_km: 21.1, race_type: 'estrada' }],
+    });
+    renderOnboarding({ reentry: true });
+    clicar('Vamos a isso');
+    clicar('Continuar');
+    const nota = screen.getByTestId('carol-note');
+    expect(nota).toHaveTextContent('Com a prova marcada, cada semana tem uma função. Daqui a três passos confirmamos a data.');
+    expect(nota).not.toHaveTextContent(/pergunto-te/);
+  });
 });
