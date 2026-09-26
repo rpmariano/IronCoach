@@ -55,6 +55,31 @@ export function closedWindow(todayISO: string, anchor = WINDOW_ANCHOR, days = WI
   return { start, end: addDays(start, days) };
 }
 
+/* A FOLGA DE PUBLICAÇÃO (2026-09-26). A quinzena fecha ao fim de domingo e a
+   tarefa corre de madrugada: publicar na segunda às 05:17 deixava de fora quem
+   regista o treino de domingo só na segunda — e o ecrã, que recalcula o
+   índice dele ao vivo, mostrava-lhe um percentil que não batia com a média.
+   Publica-se na terça: um dia inteiro para os registos atrasados. Não mexe
+   nas janelas (continuam fixas, sem sobreposição, e nunca se refazem) — só
+   no dia em que cada uma sai. */
+export const PUBLISH_GRACE_DAYS = 1;
+
+/** A janela que a tarefa de agregação pode publicar HOJE: a última fechada
+ *  há pelo menos PUBLISH_GRACE_DAYS dias. */
+export function publishableWindow(todayISO: string, grace = PUBLISH_GRACE_DAYS): Window | null {
+  return closedWindow(addDays(todayISO, -grace));
+}
+
+/** O dia (YYYY-MM-DD) em que sai a PRÓXIMA distribuição — o fim da quinzena
+ *  que está a decorrer, mais a folga. É o que o ecrã diz ("próxima
+ *  atualização") e o que a Carol responde se ele perguntar quando muda. */
+export function nextPublicationDate(todayISO: string, grace = PUBLISH_GRACE_DAYS): string {
+  const w = publishableWindow(todayISO, grace);
+  // Antes da primeira janela fechar, a primeira publicação é o fim dela.
+  const nextEnd = w ? addDays(w.end, WINDOW_DAYS) : addDays(WINDOW_ANCHOR, WINDOW_DAYS);
+  return addDays(nextEnd, grace);
+}
+
 /* O escalão. Recebe a IDADE já derivada — a data de nascimento não passa
    daqui para cima (minimização): quem chama converte com ageFromBirthDate()
    e deita fora o resto. Dos 35 para cima segue a convenção do atletismo

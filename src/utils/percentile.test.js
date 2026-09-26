@@ -15,6 +15,7 @@ import {
   ageBandWithGender,
   segmentPhrase,
   sameSegment,
+  formatPublicationDate,
 } from './percentile';
 
 /* Onde estás — o percentil dentro do escalão (gamificação, Fase 5). */
@@ -171,5 +172,13 @@ describe('segmentPhrase / ageBandWithGender / sameSegment', () => {
     expect(sameSegment(a, { ...a })).toBe(true);
     expect(sameSegment(a, { ...a, terrain: 'trail' })).toBe(false);
     expect(sameSegment(a, null)).toBe(false);
+  });
+});
+
+describe('formatPublicationDate', () => {
+  it('o dia da semana e a data curta, em português', () => {
+    expect(formatPublicationDate('2026-09-29')).toBe('terça, 29 set');
+    expect(formatPublicationDate('2026-10-13')).toBe('terça, 13 out');
+    expect(formatPublicationDate(null)).toBe('');
   });
 });
