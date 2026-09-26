@@ -19,8 +19,12 @@
 
 import type { Segment } from "./percentileSegments.ts";
 import { type LeaderboardEntryRow, leaderboardMoment, percentileReadyMoment, type SnapshotRow } from "./vitrina.ts";
+import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
 
 export const SILENCE_DAYS = 3;
+// Sem plano nenhum a cobrir o período, um "está tudo bem?" só depois de uma
+// semana — três dias sem plano nem registo é normal (revisão de 2026-09-26).
+export const SILENCE_DAYS_SEM_PLANO = 7;
 export const RACE_AFTER_DAYS_WITH_RUN = 7;
 export const RACE_AFTER_DAYS_WITHOUT_RUN = 3;
 
@@ -109,6 +113,19 @@ export interface ServerProactiveCandidate {
   leaderboardRank?: number | null;
   /** A janela publicada de que o momento fala. */
   windowStart?: string | null;
+  /** Depois da prova (revisão de 2026-09-26): há uma corrida nesse dia,
+   *  mas ainda não ligada à prova (kind diferente de "competicao", ou sem
+   *  o campo `race_id`) — pergunta-se se é ela, em vez de pedir um registo
+   *  que já existe. */
+  unlinkedRun?: boolean;
+  /** Silêncio (revisão de 2026-09-26): quantos treinos o plano tinha desde
+   *  o último registo, e desde que dia da semana — null sem plano nesse
+   *  período (o silêncio conta então a partir de SILENCE_DAYS_SEM_PLANO). */
+  plannedTrainingsSince?: number | null;
+  sinceWeekday?: string | null;
+  /** Treino de ontem por registar (revisão de 2026-09-26): "corrida (longo)"
+   *  em vez de um "treino" genérico — nomeia-se o que estava previsto. */
+  missedLabel?: string | null;
 }
 
 /** "08:30" / "08:30:00" → 510. null se não for uma hora válida. */
@@ -206,6 +223,21 @@ export function isRacePlanItemServer(item: TriggerPlanItem): boolean {
   return item?.kind === "corrida" && (item.training_type === "prova" || item.training_type === "competicao");
 }
 
+const MISSED_KIND_LABEL: Record<string, string> = { corrida: "corrida", ginasio: "ginásio" };
+
+/** "corrida (longo)" — o mesmo formato de src/utils/coachProactive.js
+ *  (missedItemLabel), aqui sem a distância: o servidor não a tem em
+ *  TriggerPlanItem, e o nome do tipo já basta para a notificação nomear o
+ *  treino em vez de dizer só "o treino" (revisão de 2026-09-26). */
+export function missedWorkoutLabel(items: TriggerPlanItem[]): string {
+  return items
+    .map((i) => {
+      const kind = MISSED_KIND_LABEL[i.kind ?? ""] || i.kind || "treino";
+      return i.training_type ? `${kind} (${i.training_type})` : kind;
+    })
+    .join(" + ");
+}
+
 export function findMissedWorkout(
   input: { plans?: TriggerPlan[] | null; planItems?: TriggerPlanItem[] | null; trainingDates?: Array<string | null | undefined> | null; raceEvents?: TriggerRace[] | null },
   todayISO: string,
@@ -300,6 +332,38 @@ export function missedWorkoutInReview(
   return !!week && missedDate >= week.weekStart && missedDate <= week.weekEnd;
 }
 
+const DIAS_DA_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+function diaCurto(iso: string): string {
+  return DIAS_DA_SEMANA[new Date(`${iso}T00:00:00Z`).getUTCDay()];
+}
+
+/** Quantos treinos (corrida/ginásio, não cancelados, de um plano aceite) o
+ *  plano tinha entre `fromExclusiveISO` e `toExclusiveISO` (os dias do
+ *  silêncio) — e se algum plano aceite cobria esse período. Sem plano no
+ *  período, o silêncio não sabe se houve descanso decidido ou nada: conta
+ *  só a partir de SILENCE_DAYS_SEM_PLANO (revisão de 2026-09-26; a mesma
+ *  ideia de liveItems, homeModels.js, do lado do cliente). */
+function plannedTrainingsBetween(
+  input: { plans?: TriggerPlan[] | null; planItems?: TriggerPlanItem[] | null },
+  fromExclusiveISO: string,
+  toExclusiveISO: string,
+): { count: number; hasPlan: boolean } {
+  const accepted = new Set((input.plans || []).filter((p) => p?.status === "aceite").map((p) => p.id));
+  const hasPlan = (input.plans || []).some((p) => {
+    if (p?.status !== "aceite") return false;
+    const ps = dayOf(p.period_start ?? null);
+    const pe = dayOf(p.period_end ?? null);
+    return ps != null && pe != null && pe >= fromExclusiveISO && ps <= toExclusiveISO;
+  });
+  const count = (input.planItems || []).filter((i) => {
+    if (!i || !i.plan_id || !accepted.has(i.plan_id)) return false;
+    if ((i.kind !== "corrida" && i.kind !== "ginasio") || i.status === "cancelado") return false;
+    const d = dayOf(i.planned_date ?? null);
+    return d != null && d > fromExclusiveISO && d < toExclusiveISO;
+  }).length;
+  return { count, hasPlan };
+}
+
 function addDaysISO(iso: string, n: number): string {
   return new Date(Date.parse(`${iso}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 }
@@ -330,6 +394,10 @@ export type ServerProactiveInput = {
     /** P.10, silêncio: o último check-in e o último treino (corrida ou ginásio). */
     lastCheckinDate?: string | null;
     lastTrainingDate?: string | null;
+    /** A dor desse último check-in (revisão de 2026-09-26): acima do
+     *  alarme, nem o silêncio nem o treino de ontem por registar se
+     *  perguntam — ela já sabe porquê. */
+    lastCheckinPain?: number | null;
     /** A Vitrina (2026-09-25): as distribuições publicadas, o segmento do
      *  atleta, os dois consentimentos e as linhas DELE nas tabelas. */
     vitrina?: {
@@ -408,6 +476,15 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
       out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:${run.id || "corrida"}`, raceId: race.id, raceName: race.name ?? null, hasRun: true, anchorDate: race.date.slice(0, 10), anchorAt: run.created_at ?? null });
       break;
     }
+    /* Uma corrida nesse dia, registada pelo separador normal (sem
+       `race_id`, e sem ser "competicao" — findRaceRunServer só apanha essa
+       combinação): não se pede o registo de uma prova já registada — pede-se
+       para a ligar (revisão de 2026-09-26). */
+    const unlinked = (input.runs || []).find((r) => r && !r.race_id && dayOf(r.date ?? null) === race.date.slice(0, 10));
+    if (unlinked) {
+      out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:por-ligar`, raceId: race.id, raceName: race.name ?? null, hasRun: true, unlinkedRun: true, anchorDate: race.date.slice(0, 10), anchorAt: unlinked.created_at ?? null });
+      break;
+    }
     if (gap >= 1 && gap <= RACE_AFTER_DAYS_WITHOUT_RUN) {
       out.push({ ...base, trigger: "race_after", key: `race_after:${race.id}:sem-registo`, raceId: race.id, raceName: race.name ?? null, anchorDate: race.date.slice(0, 10) });
       break;
@@ -419,10 +496,22 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
     out.push({ ...base, trigger: "block_end", key: `block_end:${block.id}`, planId: block.id, blockEnd: dayOf(block.period_end), anchorDate: dayOf(block.period_end) });
   }
 
+  // Uma dor acima do alarme, ou um assunto já aberto (P.5), explicam o
+  // silêncio e o treino de ontem por registar — ela já sabe porquê, e
+  // perguntar "está tudo bem?" ou "aconteceu alguma coisa?" ignorava o que
+  // o atleta já lhe tinha dito (revisão de 2026-09-26).
+  const jaSabePorque = input.intervention?.status === "needed" || input.intervention?.status === "in_progress"
+    || (Number(input.lastCheckinPain) || 0) >= PAIN_ALARM_THRESHOLD;
+
   const last = input.lastRecordDate ? input.lastRecordDate.slice(0, 10) : null;
-  if (last) {
+  if (last && !jaSabePorque) {
     const gap = daysBetween(last, todayISO);
-    if (gap >= SILENCE_DAYS) {
+    const { count: plannedCount, hasPlan } = plannedTrainingsBetween(input, last, todayISO);
+    const threshold = hasPlan ? SILENCE_DAYS : SILENCE_DAYS_SEM_PLANO;
+    // Com plano no período e nenhum treino previsto (só descanso decidido),
+    // o silêncio não é assunto: não se pergunta "está tudo bem?" a quem só
+    // teve dias de descanso.
+    if (gap >= threshold && !(hasPlan && plannedCount === 0)) {
       /* Com check-ins depois do último registo, ele está por cá: o que falta
          são os treinos, não notícias dele (P.10). Os dias contam então desde
          o último treino — o último registo pode ter sido uma refeição. */
@@ -431,6 +520,7 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
       const training = dayOf(input.lastTrainingDate ?? null);
       out.push({
         ...base, trigger: "silence", key: `silence:${last}`, silenceDays: gap, anchorDate: last,
+        ...(hasPlan ? { plannedTrainingsSince: plannedCount, sinceWeekday: diaCurto(addDaysISO(last, 1)) } : {}),
         ...(checkinAfter ? { lastCheckinDate: checkinAfter, trainingSilenceDays: training ? daysBetween(training, todayISO) : null } : {}),
       });
     }
@@ -450,9 +540,9 @@ export function listServerProactive(input: ServerProactiveInput, todayISO: strin
      segunda já é da semana nova e entra a seguir ao balanço — quem já o
      teve na segunda é perguntado; quem não abriu a app, tem o balanço
      primeiro (revisão pré-deploy de 2026-09-25: à terça nunca saía). */
-  const missed = findMissedWorkout(input, todayISO);
+  const missed = jaSabePorque ? null : findMissedWorkout(input, todayISO);
   if (missed && !missedWorkoutInReview(missed.date, week)) {
-    out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date });
+    out.push({ ...base, trigger: "missed_workout", key: `missed_workout:${missed.date}`, anchorDate: missed.date, missedLabel: missedWorkoutLabel(missed.items) });
   }
   /* A Vitrina (2026-09-25) vem no fim: é novidade, não urgência — espera
      pelo dia em que não há mais nada, e não tira o dia ao balanço da semana
@@ -480,6 +570,14 @@ export function weekReviewCandidate(input: ServerProactiveInput, todayISO: strin
   return listServerProactive({ ...input, allowed: null }, todayISO).find((c) => c.trigger === "week_review") ?? null;
 }
 
+/** O silêncio de hoje, pela mesma régua do servidor — para o cliente
+ *  (src/utils/coachProactive.js) nunca discordar do tick sobre quando um
+ *  "Estás bem?" faz sentido (plano no período, dor no check-in, assunto já
+ *  aberto — revisão de 2026-09-26). Ignora `allowed`, como weekReviewCandidate. */
+export function silenceCandidate(input: ServerProactiveInput, todayISO: string): ServerProactiveCandidate | null {
+  return listServerProactive({ ...input, allowed: null }, todayISO).find((c) => c.trigger === "silence") ?? null;
+}
+
 /* O texto da notificação, na voz dela (carolTone): sem emoji, sem ponto de
    exclamação, sem frase de manual. É curto porque o que ela tem a dizer a
    sério é escrito no chat, com o contexto todo, quando o atleta abre. */
@@ -492,6 +590,9 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
     case "race_eve":
       return { title, body: `Amanhã é dia de prova${name ? `: ${name}` : ""}. Tenho o plano para hoje à noite e para amanhã de manhã.` };
     case "race_after":
+      if (c.unlinkedRun) {
+        return { title, body: `Vi uma corrida no dia da prova${name ? ` ${name}` : ""}. É ela? Vem confirmar e faço o balanço contigo.` };
+      }
       return {
         title,
         body: c.hasRun
@@ -509,10 +610,24 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
           ? { title, body: "Ainda não vejo nenhum treino teu registado. Está tudo bem?" }
           : { title, body: `Não vejo nenhum treino teu há ${c.trainingSilenceDays} dias. Está tudo bem?` };
       }
+      /* Com plano no período (revisão de 2026-09-26): nomear os treinos que
+         ficaram por fazer desde esse dia, em vez do "não vejo nada teu"
+         genérico — ela sabe o que estava previsto. */
+      if (c.plannedTrainingsSince != null && c.plannedTrainingsSince > 0) {
+        const treinos = c.plannedTrainingsSince === 1 ? "1 treino" : `${c.plannedTrainingsSince} treinos`;
+        const desde = c.sinceWeekday ? ` desde ${c.sinceWeekday}` : "";
+        return { title, body: `Ficaram ${treinos} por fazer${desde}. Está tudo bem?` };
+      }
       return { title, body: `Não vejo nada teu há ${c.silenceDays ?? SILENCE_DAYS} dias. Estás bem?` };
     // A frase fixa de propósito (P.10): pergunta, não acusa — pode ter treinado e não registado.
+    // Nomear o treino (revisão de 2026-09-26): "o treino" genérico soava a automatismo.
     case "missed_workout":
-      return { title, body: "Não vi o treino de ontem registado. Aconteceu alguma coisa?" };
+      return {
+        title,
+        body: c.missedLabel
+          ? `Não vi o treino de ontem (${c.missedLabel}) registado. Aconteceu alguma coisa?`
+          : "Não vi o treino de ontem registado. Aconteceu alguma coisa?",
+      };
     // Genérica de propósito: o motivo pode ser de saúde (uma dor), e o
     // ecrã bloqueado não é sítio para o dizer.
     case "intervention":

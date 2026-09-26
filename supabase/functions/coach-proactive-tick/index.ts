@@ -193,8 +193,10 @@ async function handler(req: Request): Promise<Response> {
         // O treino de ontem conta como feito com qualquer sessão de ginásio
         // nesse dia (as corridas já vêm acima) — P.10.
         sb.from("workout_sessions").select("date").eq("user_id", userId).eq("date", yesterday).limit(1),
-        // O último check-in: ele está por cá, mesmo sem registos (P.10).
-        sb.from("daily_checkins").select("date").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
+        // O último check-in: ele está por cá, mesmo sem registos (P.10). A
+        // dor (revisão de 2026-09-26): acima do alarme, ela já sabe porquê
+        // o silêncio ou o treino de ontem por registar — não pergunta.
+        sb.from("daily_checkins").select("date, pain").eq("user_id", userId).order("date", { ascending: false }).limit(1).maybeSingle(),
       ]);
       // Sem as provas ou as corridas, o momento escolhido podia ser o errado
       // (a véspera a cair para o silêncio): salta-se o atleta nesta hora.
@@ -243,6 +245,7 @@ async function handler(req: Request): Promise<Response> {
         lastRecordDate: last,
         lastTrainingDate: lastTraining,
         lastCheckinDate: lastCheckin?.date ?? null,
+        lastCheckinPain: lastCheckin?.pain ?? null,
         planItems,
         trainingDates: [
           ...(runs || []).map((r: { date?: string | null }) => r.date ?? null),

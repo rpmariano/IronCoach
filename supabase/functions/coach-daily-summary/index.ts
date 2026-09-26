@@ -420,10 +420,21 @@ export function buildWarningsMessage(
   waterTotal: number,
   waterGoal: number | null,
   bodyMetrics?: { hasRedSRisk: boolean; latestBodyFat: number | null; gender: string | null; weeklyWeightChange: number | null; weightLossTooFast?: boolean; weightLossPct?: number | null },
+  // O check-in de hoje (revisão de 2026-09-26): com dor alta ou o dia em
+  // baixo, o cartão já decide o que dizer do treino a partir disso (o
+  // cliente descarta esta frase — ver carolCardLines.js,
+  // limparAvisoDoServidor); aqui é só para nunca a construir às cegas,
+  // caso algum outro consumidor volte a lê-la tal como está.
+  checkin?: { dorAlta: boolean; diaEmBaixo: boolean } | null,
+  // A perda de peso só se atribui ao treino com as duas provas (revisão de
+  // 2026-09-26): treinou nos últimos 7 dias, e comeu abaixo do gasto hoje.
+  weightLossEvidence?: { trainedRecently: boolean; ateBelowGasto: boolean } | null,
 ): string | null {
-  const nonRest = (todayPlanItems || []).filter((i: any) => i.kind !== "descanso");
+  // Concluído não é "para fazer": um item já registado no plano não devia
+  // continuar a pedir-se (o cliente já salta este caso, CarolCard.jsx).
+  const nonRest = (todayPlanItems || []).filter((i: any) => i.kind !== "descanso" && i.status !== "concluido");
   let msg = "";
-  if (nonRest.length > 0) {
+  if (nonRest.length > 0 && !checkin?.dorAlta && !checkin?.diaEmBaixo) {
     const itemsDesc = nonRest.map(formatWorkoutItemName).join(" e ");
     msg = `Para hoje tens agendado: ${itemsDesc}.`;
   }
@@ -449,8 +460,16 @@ export function buildWarningsMessage(
   // ../_shared/formulas/weightLossRate.ts (T1). Era um valor absoluto fixo
   // (0,9 kg/semana para toda a gente); a doutrina é sempre relativa à
   // massa corporal e ao nível (ver specs/formulas-checklist.md Fase C).
+  // A causa (revisão de 2026-09-26): "não comes o suficiente para o treino"
+  // pressupõe treino recente E pouca comida — sem treinos (ex.: 30 dias
+  // parado) ou com refeições acima do gasto, a perda tem outra causa que a
+  // app não conhece; a frase fica neutra, para o chat.
   if (bodyMetrics?.weightLossTooFast && bodyMetrics.weightLossPct != null) {
-    const wlMsg = ` Perda de peso rápida (${Math.abs(bodyMetrics.weeklyWeightChange ?? 0)} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Não estás a comer o suficiente para o treino que fazes.`;
+    const kg = Math.abs(bodyMetrics.weeklyWeightChange ?? 0);
+    const causaDoTreino = !!weightLossEvidence?.trainedRecently && !!weightLossEvidence?.ateBelowGasto;
+    const wlMsg = causaDoTreino
+      ? ` Perda de peso rápida (${kg} kg/semana, ${bodyMetrics.weightLossPct}% do peso). Não estás a comer o suficiente para o treino que fazes.`
+      : ` Estás a perder ${kg} kg por semana, ${bodyMetrics.weightLossPct}% do peso. É rápido demais. Vemos a alimentação no chat.`;
     msg = msg ? `${msg}${wlMsg}` : wlMsg.trim();
   }
 
@@ -981,11 +1000,20 @@ Deno.serve(async (req) => {
     // "Corrida (contínuo, 10 km)" era o item do plano a contradizer o dia. E
     // a água só se cobra a quem ligou os lembretes de água — sem eles, o
     // registo é opcional e o aviso era ruído (pedido 2026-09-13).
+    // As duas provas da causa do peso: treinou nos últimos 7 dias (o mesmo
+    // km da carga, load.acuteKm) e comeu hoje abaixo do gasto estimado.
+    const todayCalories = (todayMeals || []).reduce((s: number, m: any) => s + totalsFromMeal(m).calories, 0);
+    const weightLossEvidence = {
+      trainedRecently: (load.acuteKm || 0) > 0,
+      ateBelowGasto: tdee != null && todayCalories > 0 && todayCalories < tdee,
+    };
     const warningsMsg = buildWarningsMessage(
       raceEveDays === 0 ? [] : todayPlanItems,
       waterTotal,
       profile?.water_reminder_enabled ? (profile?.water_goal_ml ?? null) : null,
       { ...bodyMetrics, gender: profile?.gender ?? null },
+      checkinHoje ? { dorAlta: !!checkinHoje.dor_alta, diaEmBaixo: !!checkinHoje.dia_em_baixo } : null,
+      weightLossEvidence,
     );
     // Na véspera, "Preparar amanhã" é a prova (horas da fórmula partilhada),
     // não o item do plano — o cliente também deixa de sobrepor este texto

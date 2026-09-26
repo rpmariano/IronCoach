@@ -10,6 +10,17 @@ import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_IMMEDIATE_FAILURE_TEXT } from '
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
 const localISO = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+/* Um plano aceite no período, com um treino previsto entretanto: mantém o
+   limiar do silêncio em SILENCE_DAYS (3 dias) — sem ele, sobe para uma
+   semana (SILENCE_DAYS_SEM_PLANO, revisão de 2026-09-26). O fim do plano
+   fica longe (30 dias) para não acionar também o "fim de bloco". */
+function planoDoSilencio(fromISO) {
+  return {
+    coachPlans: [{ id: 'sp1', status: 'aceite', race_id: null, period_start: fromISO, period_end: localISO(new Date(Date.now() + 30 * 86400000)) }],
+    coachPlanItems: [{ plan_id: 'sp1', planned_date: localISO(new Date(Date.now() - 2 * 86400000)), kind: 'corrida', status: 'pendente' }],
+  };
+}
+
 
 // Mesmo padrão de mock usado em RunAgenda.test.jsx: supabase.from é um
 // vi.fn() reconfigurável por teste (mockImplementation), em vez de uma
@@ -725,7 +736,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
 
   it('3 dias sem registo: ao abrir o chat a Carol escreve primeiro ("Estás bem?") — e só uma vez', async () => {
     const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
-    useAppStore.setState({ runs: [{ id: 'r1', date: fiveDaysAgo, distance_km: 8, duration_seconds: 2400 }] });
+    useAppStore.setState({ runs: [{ id: 'r1', date: fiveDaysAgo, distance_km: 8, duration_seconds: 2400 }], ...planoDoSilencio(fiveDaysAgo) });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: { model_message: { id: 'p1', content: 'Estás bem? Não vejo nada teu há cinco dias.' }, suggestions: [], proactive: 'silence' },
       error: null,
@@ -750,7 +761,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
 
   it('se o servidor saltar (ela falou há pouco), não fica marcado — volta a tentar na abertura seguinte', async () => {
     const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
-    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }], ...planoDoSilencio(fiveDaysAgo) });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, proactive: 'silence', model_message: null, suggestions: [] }, error: null });
 
     const { unmount } = renderCoach();
@@ -766,7 +777,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
 
   it('se outro dispositivo já recebeu a mensagem (already_sent), fica marcada — não volta a pedir', async () => {
     const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
-    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }], ...planoDoSilencio(fiveDaysAgo) });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, reason: 'already_sent', proactive: 'silence', model_message: null, suggestions: [] }, error: null });
 
     const { unmount } = renderCoach();
@@ -789,7 +800,10 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     useAppStore.setState({
       meals: [{ id: 'm1', date: fiveDaysAgo }],
       coachPlans: [{ id: 'b1', status: 'aceite', race_id: null, period_start: fiveDaysAgo, period_end: today }],
-      coachPlanItems: [{ plan_id: 'b1', kind: 'corrida' }],
+      // planned_date dentro da janela do silêncio: sem nenhum treino previsto
+      // no período, o plano aceite lia-se como descanso decidido e calava o
+      // "Estás bem?" (revisão de 2026-09-26).
+      coachPlanItems: [{ plan_id: 'b1', planned_date: localISO(new Date(Date.now() - 2 * 86400000)), kind: 'corrida' }],
     });
     invokeEdgeFunctionWithTimeout
       .mockResolvedValueOnce({ data: { skipped: true, reason: 'already_sent', proactive: 'block_end', model_message: null, suggestions: [] }, error: null })
@@ -814,7 +828,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     useAppStore.setState({
       meals: [{ id: 'm1', date: fiveDaysAgo }],
       coachPlans: [{ id: 'b1', status: 'aceite', race_id: null, period_start: fiveDaysAgo, period_end: today }],
-      coachPlanItems: [{ plan_id: 'b1', kind: 'corrida' }],
+      coachPlanItems: [{ plan_id: 'b1', planned_date: localISO(new Date(Date.now() - 2 * 86400000)), kind: 'corrida' }],
       proactiveKeyRequested: `silence:${fiveDaysAgo}`,
     });
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
@@ -836,7 +850,7 @@ describe('Coach — CAROL.md §3/§7: mensagens por iniciativa dela', () => {
     // O atleta não escreveu nada — uma bolha a dizer que a mensagem dele
     // não saiu, sozinha ao abrir o chat, era o que apareceu no incidente.
     const fiveDaysAgo = localISO(new Date(Date.now() - 5 * 86400000));
-    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }] });
+    useAppStore.setState({ meals: [{ id: 'm1', date: fiveDaysAgo }], ...planoDoSilencio(fiveDaysAgo) });
     const busyText = 'Calma Rui, ainda estou a preparar a resposta ao teu pedido anterior — aproveita para fazer uns agachamentos enquanto isso :)';
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null,

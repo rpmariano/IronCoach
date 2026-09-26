@@ -144,7 +144,10 @@ describe('P.9 — a lista inteira de momentos é a mesma, na mesma ordem', () =>
       meals: [{ date: '2026-09-12' }],
       runs: [],
       coachPlans: [{ id: 'b1', status: 'aceite', race_id: null, period_start: '2026-08-20', period_end: '2026-09-19' }],
-      coachPlanItems: [{ plan_id: 'b1', kind: 'corrida' }],
+      // planned_date dentro da janela do silêncio: sem nenhum treino previsto
+      // no período, um plano aceite passava a ler-se como descanso decidido
+      // e calava o "Estás bem?" (revisão de 2026-09-26) — aqui há um por fazer.
+      coachPlanItems: [{ plan_id: 'b1', planned_date: '2026-09-14', kind: 'corrida' }],
     };
     const { client, server } = bothLists(data);
     expect(client).toEqual([
@@ -207,10 +210,22 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     expect(listServerProactive({ raceEvents: [], runs: soHoje.runs, lastRecordDate: MONDAY, weekRecordDates: [] }, MONDAY)).toEqual([]);
   });
 
+  // Um plano aceite no período, com um treino previsto entre o último registo
+  // e hoje: mantém o limiar de SILENCE_DAYS (3 dias) — sem ele, sem saber se
+  // o período foi de descanso decidido, o limiar sobe para uma semana
+  // (SILENCE_DAYS_SEM_PLANO, revisão de 2026-09-26).
+  const planoDoSilencio = {
+    coachPlans: [{ id: 'sp1', status: 'aceite', period_start: '2026-09-01', period_end: '2026-10-05' }],
+    coachPlanItems: [{ plan_id: 'sp1', planned_date: '2026-09-25', kind: 'corrida', status: 'pendente' }],
+  };
+
   it('num dia com "Estás bem?", fica só o silêncio — nos dois lados', () => {
-    const calado = { ...semana, runs: [{ id: 'r1', date: '2026-09-23', distance_km: 8 }], meals: [], gymSessions: [] };
+    const calado = { ...semana, ...planoDoSilencio, runs: [{ id: 'r1', date: '2026-09-23', distance_km: 8 }], meals: [], gymSessions: [] };
     expect(listProactiveTriggers(calado, at(MONDAY)).map((c) => c.trigger)).toEqual(['silence']);
-    expect(listServerProactive({ raceEvents: [], runs: calado.runs, lastRecordDate: '2026-09-23', weekRecordDates: ['2026-09-23'] }, MONDAY).map((c) => c.trigger)).toEqual(['silence']);
+    expect(listServerProactive({
+      raceEvents: [], runs: calado.runs, lastRecordDate: '2026-09-23', weekRecordDates: ['2026-09-23'],
+      plans: planoDoSilencio.coachPlans, planItems: planoDoSilencio.coachPlanItems,
+    }, MONDAY).map((c) => c.trigger)).toEqual(['silence']);
   });
 
   it('no dia da prova, fica só a prova', () => {
@@ -224,8 +239,11 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
   });
 
   it('o "Estás bem?" desligado continua a ficar com o dia: nem balanço na notificação, nem conversa diferente no chat', () => {
-    const calado = { ...semana, runs: [{ id: 'r1', date: '2026-09-23', distance_km: 8 }], meals: [], gymSessions: [] };
-    const server = listServerProactive({ raceEvents: [], runs: calado.runs, lastRecordDate: '2026-09-23', weekRecordDates: ['2026-09-23'], allowed: ['week_review'] }, MONDAY);
+    const calado = { ...semana, ...planoDoSilencio, runs: [{ id: 'r1', date: '2026-09-23', distance_km: 8 }], meals: [], gymSessions: [] };
+    const server = listServerProactive({
+      raceEvents: [], runs: calado.runs, lastRecordDate: '2026-09-23', weekRecordDates: ['2026-09-23'], allowed: ['week_review'],
+      plans: planoDoSilencio.coachPlans, planItems: planoDoSilencio.coachPlanItems,
+    }, MONDAY);
     expect(server).toEqual([]);
     expect(listProactiveTriggers(calado, at(MONDAY)).map((c) => c.trigger)).toEqual(['silence']);
   });

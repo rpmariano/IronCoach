@@ -101,13 +101,40 @@ Deno.test("buildWarningsMessage: as quatro frases, na voz dela — sem emoji, se
   assertStringIncludes(redS, "A tua gordura corporal (7%) está abaixo do limiar de segurança (8%). É risco de RED-S — fala com um profissional de saúde.");
   assertCarolVoice(redS);
 
-  const perdaPeso = buildWarningsMessage([], 0, null, {
+  const bodyMetricsPerda = {
     hasRedSRisk: false, latestBodyFat: null, gender: "M", weeklyWeightChange: -1.2, weightLossTooFast: true, weightLossPct: 1.6,
-  })!;
+  };
+  // A causa (revisão de 2026-09-26): só se afirma com as duas provas — treino
+  // recente e ingestão abaixo do gasto. Sem elas, a frase fica neutra.
+  const perdaPeso = buildWarningsMessage([], 0, null, bodyMetricsPerda, null, { trainedRecently: true, ateBelowGasto: true })!;
   assertStringIncludes(perdaPeso, "Perda de peso rápida (1.2 kg/semana, 1.6% do peso). Não estás a comer o suficiente para o treino que fazes.");
   assertCarolVoice(perdaPeso);
 
+  const perdaPesoSemCausa = buildWarningsMessage([], 0, null, bodyMetricsPerda)!;
+  assertStringIncludes(perdaPesoSemCausa, "Estás a perder 1.2 kg por semana, 1.6% do peso. É rápido demais. Vemos a alimentação no chat.");
+  assertCarolVoice(perdaPesoSemCausa);
+  // Sem treinos recentes (ex.: 30 dias parado), mesmo com pouca comida: neutra.
+  const semTreino = buildWarningsMessage([], 0, null, bodyMetricsPerda, null, { trainedRecently: false, ateBelowGasto: true })!;
+  assertStringIncludes(semTreino, "Vemos a alimentação no chat.");
+
   assertEquals(buildWarningsMessage([], 0, null), null);
+});
+
+// Revisão de 2026-09-26: o check-in de hoje (dor alta ou dia em baixo) cala
+// a frase do plano — o cliente já a substitui pela sua (carolCardLines.js,
+// linhaDoTreinoDeHoje), esta é só para nunca a construir às cegas. E um item
+// já concluído não é "para fazer".
+Deno.test("buildWarningsMessage: com dor alta ou dia em baixo no check-in, sem a frase do plano; concluído não conta", () => {
+  const planItem = [{ kind: "corrida", training_type: "longo", target_distance_km: 16 }];
+  const comDor = buildWarningsMessage(planItem, 0, null, undefined, { dorAlta: true, diaEmBaixo: false });
+  assertEquals(comDor, null);
+  const emBaixo = buildWarningsMessage(planItem, 0, null, undefined, { dorAlta: false, diaEmBaixo: true });
+  assertEquals(emBaixo, null);
+  const semCheckin = buildWarningsMessage(planItem, 0, null)!;
+  assertStringIncludes(semCheckin, "Para hoje tens agendado:");
+
+  const concluido = buildWarningsMessage([{ ...planItem[0], status: "concluido" }], 0, null);
+  assertEquals(concluido, null);
 });
 
 Deno.test("addDaysISO avança dias e atravessa meses", () => {

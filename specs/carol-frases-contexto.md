@@ -32,10 +32,11 @@ Também feito no mesmo trabalho, fora do backlog:
 - **A memória dela chega às frases fixas** (`src/utils/carolVida.js`): uma cirurgia, uma lesão ou uma doença que o atleta lhe contou, com data, é a primeira coisa que ela diz nos dias à volta — nas boas-vindas, na resposta ao check-in, no cartão da Carol, no primeiro dia e nos assuntos. A memória (`coach_notes`) passou a ler-se ao abrir a app; antes só se lia no primeiro dia.
 - **O tom**: frases mais cordiais e com energia, sem exclamações nem elogios automáticos (CAROL.md §8).
 
-Fica para o Lote 2 (servidor — faz deploy em produção no push a `dev`):
+**Lote 2 feito** — as linhas médias e altas da secção 4 (servidor), no mesmo ramo. `raceEve.ts` (jantar/deitar depois da hora, provas à noite), `readinessIndex.ts` (check-in com o contexto do dia, viabilidade tática sem inventar dados, vírgula decimal), `send-water-reminders` (os lembretes tardios pela hora real), `proactiveTriggers.ts` (a corrida do dia da prova por ligar em vez de pedir um registo que já existe; o silêncio a contar os treinos do plano em vez de um número de dias cru, com limiar mais largo sem plano nenhum; a dor acima do alarme ou um assunto já aberto a calar o silêncio e o treino de ontem por registar, que passa a nomear o treino) e `coach-daily-summary` (a frase do plano cala-se com dor alta ou o dia em baixo, e já não conta um item concluído; a perda de peso só se atribui ao treino com as duas provas — treino nos últimos 7 dias e ingestão abaixo do gasto — senão fica neutra).
 
-- `raceEve.ts`: uma partida a partir das ~13h30 dá jantar depois da meia-noite e «pequeno-almoço» às 17:15. O cartão já filtra no cliente; o chat e o resumo diário ainda o dizem.
-- `coach-daily-summary`: as frases de água e a do plano em enum. O cliente já as ignora.
+Fica para depois (baixo risco, confirmado por que o cliente já mitiga ou é raro):
+
+- `coach-daily-summary:421`: as frases de água em `buildWarningsMessage` continuam a gerar-se, mas o cliente já as ignora (`limparAvisoDoServidor`) e faz a sua a partir de `waterLogs` — sem efeito visível a limpá-las também no servidor.
 - Datas de Lisboa: `DayPlanCard`, `Home` e `WeeklyPlanCard` ainda usam a data do dispositivo (`todayISO`), e o cartão da Carol a de Lisboa. Só diverge num dispositivo fora do fuso de Lisboa, perto da meia-noite.
 - `checkinReply.js:52`, parcial: depois de a conversa sobre a dor acontecer (intervenção fechada no chat), o cartão do check-in ainda diz «quero falar contigo sobre ela».
 

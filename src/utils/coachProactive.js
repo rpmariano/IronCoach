@@ -21,8 +21,9 @@
 import { findRaceRun, formatDuration } from './run';
 import { classifyRaceOutcome, buildRaceOutcomePayload } from './raceOutcome';
 import { achievementsForRace } from './achievements';
-import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from '@formulas/proactiveTriggers.ts';
+import { findEndingBlock, findMissedWorkout, missedWorkoutInReview, silenceCandidate, weekReviewCandidate, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from '@formulas/proactiveTriggers.ts';
 import { leaderboardMoment, ownSegmentFor, percentileAvailability, percentileReadyMoment } from '@formulas/vitrina.ts';
+import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
 import { addDaysISO } from '../lib/utils';
 import { segmentPhrase } from './percentile';
 
@@ -90,27 +91,34 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
   if (afterCandidate) list.push(afterCandidate);
 
   const trainingPlanIds = trainingPlanIdsOf(coachPlanItems);
+  const plansComTreino = (coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) }));
   const block = endingBlock({ coachPlans, coachPlanItems }, today);
   if (block) list.push(block.candidate);
 
   const last = lastRecordDate({ runs, meals, gymSessions, bodyAssessments });
-  if (last) {
-    const gap = daysBetween(last, today);
-    if (gap >= SILENCE_DAYS) {
-      /* Com check-ins depois do último registo, ele está por cá: o que falta
-         são os treinos (P.10) — o chat pergunta por eles em vez de "Estás
-         bem?". Os dias contam desde o último treino, não do último registo. */
-      const lastCheckin = latestDate(dailyCheckins);
-      const lastTraining = latestDate([...(runs || []), ...(gymSessions || [])]);
-      const trainingGap = lastTraining ? `o último treino foi há ${daysBetween(lastTraining, today)} dias` : 'não há treinos registados';
-      list.push({
-        trigger: 'silence',
-        key: `silence:${last}`,
-        details: lastCheckin && lastCheckin > last
-          ? `Último registo: ${last} (há ${gap} dias). Fez check-in depois disso (último: ${lastCheckin}): está por cá, faltam os treinos — ${trainingGap}.`
-          : `Último registo: ${last} (há ${gap} dias).`,
-      });
-    }
+  const intervention = { status: profile?.coach_intervention_status ?? null, reason: profile?.coach_intervention_reason ?? null };
+  /* O silêncio, pela régua do servidor (silenceCandidate): plano no período,
+     dor no check-in ou assunto já aberto decidem se e como se pergunta — a
+     mesma que o tick usa, para o chat e a notificação nunca discordarem
+     (revisão de 2026-09-26). */
+  const s = silenceCandidate({
+    runs, lastRecordDate: last, intervention,
+    lastCheckinPain: latestCheckinPain(dailyCheckins),
+    lastCheckinDate: latestDate(dailyCheckins),
+    lastTrainingDate: latestDate([...(runs || []), ...(gymSessions || [])]),
+    plans: plansComTreino,
+    planItems: coachPlanItems,
+  }, today);
+  if (s) {
+    const trainingGap = s.trainingSilenceDays == null ? 'não há treinos registados' : `o último treino foi há ${s.trainingSilenceDays} dias`;
+    const plano = s.plannedTrainingsSince != null ? ` O plano tinha ${s.plannedTrainingsSince} treino(s) previstos desde ${s.sinceWeekday || 'então'}.` : '';
+    list.push({
+      trigger: 'silence',
+      key: s.key,
+      details: (s.lastCheckinDate
+        ? `Último registo: ${last} (há ${s.silenceDays} dias). Fez check-in depois disso (último: ${s.lastCheckinDate}): está por cá, faltam os treinos — ${trainingGap}.`
+        : `Último registo: ${last} (há ${s.silenceDays} dias).`) + plano,
+    });
   }
 
   /* O balanço da semana (2026-09-24): à segunda e à terça, a semana de
@@ -124,8 +132,12 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
     raceEvents: races,
     runs,
     lastRecordDate: last,
-    intervention: { status: profile?.coach_intervention_status ?? null, reason: profile?.coach_intervention_reason ?? null },
-    plans: (coachPlans || []).map((p) => ({ ...p, hasTraining: trainingPlanIds.has(p.id) })),
+    intervention,
+    lastCheckinPain: latestCheckinPain(dailyCheckins),
+    lastCheckinDate: latestDate(dailyCheckins),
+    lastTrainingDate: latestDate([...(runs || []), ...(gymSessions || [])]),
+    plans: plansComTreino,
+    planItems: coachPlanItems,
     weekRecordDates: recordDates({ runs, meals, gymSessions, bodyAssessments }),
   }, today);
   if (week) {
@@ -139,8 +151,13 @@ export function listProactiveTriggers({ runs, meals, gymSessions, bodyAssessment
      (findMissedWorkout), para a chave ser a da notificação. Vem por último.
      À segunda, o treino de domingo é da semana revista — assunto do balanço,
      e não entra; à terça, o de segunda já é da semana nova e entra a seguir
-     ao balanço (missedWorkoutInReview, a mesma do servidor). */
-  const missed = findMissedWorkout({
+     ao balanço (missedWorkoutInReview, a mesma do servidor). Uma dor acima
+     do alarme, ou um assunto já aberto, explicam-no — ela já sabe porquê, e
+     não pergunta "aconteceu alguma coisa?" ao que já lhe disseram (a mesma
+     guarda do silêncio, revisão de 2026-09-26). */
+  const jaSabePorque = intervention.status === 'needed' || intervention.status === 'in_progress'
+    || (Number(latestCheckinPain(dailyCheckins)) || 0) >= PAIN_ALARM_THRESHOLD;
+  const missed = jaSabePorque ? null : findMissedWorkout({
     plans: coachPlans,
     planItems: coachPlanItems,
     trainingDates: [...(runs || []), ...(gymSessions || [])].map((r) => r?.date ?? null),
@@ -205,6 +222,14 @@ function missedItemLabel(item) {
 function latestDate(list) {
   const dates = (list || []).map((r) => (typeof r?.date === 'string' ? r.date.slice(0, 10) : null)).filter(Boolean);
   return dates.length ? dates.sort().pop() : null;
+}
+
+/** A dor do check-in mais recente, ou null sem nenhum — a mesma guarda do
+ *  servidor (lastCheckinPain), para o silêncio e o treino de ontem por
+ *  registar não perguntarem o que a dor já respondeu. */
+function latestCheckinPain(dailyCheckins) {
+  const sorted = (dailyCheckins || []).filter((c) => typeof c?.date === 'string').sort((a, b) => a.date.localeCompare(b.date));
+  return sorted.length ? sorted[sorted.length - 1]?.pain ?? null : null;
 }
 
 function trainingPlanIdsOf(coachPlanItems) {
