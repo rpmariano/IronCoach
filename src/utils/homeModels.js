@@ -80,19 +80,38 @@ export function raceNameForDate(raceEvents, dateISO) {
   return raceForDate(raceEvents, dateISO)?.name || null;
 }
 
+/* A distância como se escreve em português (pedido 2026-09-26): no máximo
+   uma casa decimal, com vírgula — "16,5 km", "21,1 km", "10 km". O título
+   imprimia o valor da BD tal e qual: "21.0975 km" no dia de uma meia, e
+   "16.5 km" ao lado de chips que já diziam "21,1 km". Um número (ou um
+   texto que é um número com ponto, como a BD às vezes o devolve)
+   formata-se; um texto que não é número passa como está — as boas-vindas
+   (carolWelcome.js) já mandam "21,1" formatado, e formatá-lo outra vez
+   estragava-o. Zero, negativo ou vazio: sem distância. */
+function distanciaKm(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (Number.isFinite(n)) {
+    const arredondado = Math.round(n * 10) / 10;
+    return arredondado > 0 ? `${String(arredondado).replace('.', ',')} km` : null;
+  }
+  const texto = String(v).trim();
+  return texto ? `${texto} km` : null;
+}
+
 /** Título de um item do plano, como o mock: "Rodagem longa · 16 km".
  *  `raceName` é o nome da prova desse dia, quando o item é o da prova. */
 export function planItemTitle(item, raceName = null) {
   if (!item) return '';
   if (item.isRace) {
-    return ['Prova', item.title, item.target_distance_km ? `${item.target_distance_km} km` : null].filter(Boolean).join(' · ');
+    return ['Prova', item.title, distanciaKm(item.target_distance_km)].filter(Boolean).join(' · ');
   }
   if (isRacePlanItem(item)) {
-    return ['Prova', raceName, item.target_distance_km ? `${item.target_distance_km} km` : null].filter(Boolean).join(' · ');
+    return ['Prova', raceName, distanciaKm(item.target_distance_km)].filter(Boolean).join(' · ');
   }
   if (item.kind === 'corrida') {
     const type = item.training_type ? (TRAINING_TYPE_LABELS[item.training_type] || capitalize(item.training_type)) : 'Corrida';
-    return [type, item.target_distance_km ? `${item.target_distance_km} km` : null].filter(Boolean).join(' · ');
+    return [type, distanciaKm(item.target_distance_km)].filter(Boolean).join(' · ');
   }
   if (item.kind === 'ginasio') {
     const cats = item.categories?.length ? item.categories.join('/') : 'Ginásio';
@@ -107,36 +126,75 @@ export function trainingItems(items = []) {
   return (items || []).filter((i) => i.kind !== 'descanso');
 }
 
-/** Um dia SEM nenhuma linha do plano não é descanso planeado — é ausência de
- *  plano. A Carol é instruída a não escrever linhas para dias sem nada a
- *  dizer (coach-chat: "Dias sem treino e sem nada a dizer não devem entrar
- *  de todo"), e `buildPlanDays` fabrica na mesma o dia para a lista ficar
- *  contínua. O resultado era o ecrã dizer "Descanso" a um dia que ninguém
- *  planeou — indistinguível de um descanso a sério (bug reportado na app,
- *  "Registo · plano"). Quem distingue é esta função. */
+/* ── Os itens que dizem o que o dia é (pedido 2026-09-26) ───────────────────
+   Quando um bloco novo é aceite a meio do antigo (planAcceptance.js), os
+   treinos do antigo a partir desse dia passam a `cancelado` — e o dia
+   ficava com os dois: "Intervalos · 8 km + Rodagem longa · 12 km", um deles
+   de um plano que já não existe. O mesmo no sentido contrário: o treino já
+   feito passa para o bloco novo e o item redundante do novo é cancelado, e
+   o "todos feitos" deixava de ser verdade — o dia cumprido perdia o
+   "Concluído" (e o "Cumprido." do cartão de hoje). Um cancelado só conta
+   quando não sobra mais nada que diga o que o dia é: sozinho, é o treino
+   que o atleta cancelou, e isso diz-se. As refeições sugeridas não chegam
+   para o tapar — não dizem o que o dia é, e uma corrida cancelada ao lado
+   da sugestão do jantar continua a ser o dia da corrida cancelada.
+   `mealsForDay` não passa por aqui de propósito: lá vale a sugestão mais
+   recente, mesmo a de um item cancelado. `pendingSession` também não
+   precisa: só procura pendentes, e esses nunca saem. */
+export function liveItems(items = []) {
+  const todos = (items || []).filter(Boolean);
+  const vivos = todos.filter((i) => i.status !== 'cancelado');
+  return vivos.some((i) => !isMealOnlyItem(i)) ? vivos : todos;
+}
+
+/** Um dia SEM nenhuma linha do plano. Não é descanso planeado: a Carol é
+ *  instruída a não escrever linhas para dias sem nada a dizer (coach-chat:
+ *  "Dias sem treino e sem nada a dizer não devem entrar de todo"), e
+ *  `buildPlanDays` fabrica na mesma o dia para a lista ficar contínua.
+ *  Dizer-lhe "Descanso" confundia-o com um descanso a sério (bug reportado
+ *  na app, "Registo · plano"). O que ele é depende de onde cai — ver
+ *  `dayTitle`. */
 export function isUnplannedDay(items = []) {
   return (items || []).length === 0;
 }
 
+/* O dia vazio diz-se pelo que se sabe dele (pedido 2026-09-26). Era sempre
+   "Sem plano" — e na "semana 3 de 8" de um plano aceite, uma quarta que a
+   Carol deixou livre de propósito aparecia, no mesmo cartão, como um dia
+   sem plano. Agora:
+   - antes do último dia que o plano já decidiu (ou num plano escrito
+     inteiro de uma vez): "Sem treino" — é o que ela decidiu, e é sempre
+     verdade num dia vazio;
+   - depois dele, de hoje em diante (`porPlanear`, calculado por
+     buildPlanDays, WeeklyPlanCard.jsx): "Por planear" — o plano de uma
+     prova escreve-se por tranches, e esses dias ainda estão por escrever.
+   Sem essa informação, "Sem treino": na dúvida, a frase que não pode estar
+   errada. */
+const DIA_VAZIO = 'Sem treino';
+const DIA_POR_PLANEAR = 'Por planear';
+
 /** Título do dia inteiro: os treinos separados por " + ", "Descanso" quando o
  *  plano marcou descanso, "Sem treino planeado" quando o dia só tem
- *  refeições sugeridas, ou "Sem plano" quando não há plano nenhum. */
-export function dayTitle(items = [], raceName = null) {
-  if (isUnplannedDay(items)) return 'Sem plano';
-  const t = trainingItems(items);
+ *  refeições sugeridas, e "Sem treino" / "Por planear" quando o dia está
+ *  vazio (ver acima). */
+export function dayTitle(items = [], raceName = null, { porPlanear = false } = {}) {
+  const vivos = liveItems(items);
+  if (isUnplannedDay(vivos)) return porPlanear ? DIA_POR_PLANEAR : DIA_VAZIO;
+  const t = trainingItems(vivos);
   if (t.length) return t.map((i) => planItemTitle(i, raceName)).join(' + ');
-  return items.every(isMealOnlyItem) ? MEAL_ONLY_DAY_LABEL : 'Descanso';
+  return vivos.every(isMealOnlyItem) ? MEAL_ONLY_DAY_LABEL : 'Descanso';
 }
 
-/** Estado do dia para o badge: tom e texto. */
+/** Estado do dia para o badge: tom e texto. `day.porPlanear` vem de
+ *  buildPlanDays. */
 export function dayStatus(day, today) {
-  const items = day?.items || [];
+  const items = liveItems(day?.items);
   const t = trainingItems(items);
   if (items.some((i) => i.isRace && i.status !== 'concluido')) return { label: 'Prova', tone: 'race' };
   // O dia da prova no plano vale o mesmo badge âmbar que a prova da agenda.
   if (items.some((i) => isRacePlanItem(i) && i.status === 'pendente')) return { label: 'Prova', tone: 'race' };
   if (t.length === 0) {
-    if (isUnplannedDay(items)) return { label: 'Sem plano', tone: 'neutral' };
+    if (isUnplannedDay(items)) return { label: day?.porPlanear ? DIA_POR_PLANEAR : DIA_VAZIO, tone: 'neutral' };
     return { label: items.every(isMealOnlyItem) ? 'Sem treino' : 'Descanso', tone: 'neutral' };
   }
   if (t.every((i) => i.status === 'concluido')) return { label: 'Concluído', tone: 'ok' };

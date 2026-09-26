@@ -145,8 +145,10 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
 /* O marco da contagem (raceMilestone.js): nos dias que não são iguais aos
    outros — 100, 50, 30, 14, 7 e 3 —, a Carol diz o que ele quer dizer.
    Na primeira vez que se vê nesse dia, ela respira e a frase entra. */
-function RaceMilestoneLine({ raceId, days }) {
-  const line = raceMilestoneLine(days);
+function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano }) {
+  // Com o contexto da prova: sem marcos de polimento numa prova B ou C, e o
+  // dos 100 dias pela viabilidade (raceMilestone.js).
+  const line = raceMilestoneLine(days, { prioridade, flags, comPlano });
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
   const logImpression = useAppStore((s) => s.logImpression);
   const impressionShown = useAppStore((s) => s.impressionShown);
@@ -266,10 +268,21 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
      conta — é a mesma leitura. */
   const daysReveal = useRevealAnimation();
 
-  const model = useMemo(() => {
-    if (!race) return null;
-    return buildTrailModel(calculateRaceTrainingPlan({ race, profile, runs, todayISO: today }));
+  // O plano da prova dá também a viabilidade (as mesmas flags que o hub
+  // mostra), para o marco dos 100 dias não dizer "é o tempo certo" quando o
+  // hub diz "tempo insuficiente" (pedido 2026-09-26).
+  const { model, flags } = useMemo(() => {
+    if (!race) return { model: null, flags: null };
+    const plano = calculateRaceTrainingPlan({ race, profile, runs, todayISO: today });
+    return { model: buildTrailModel(plano), flags: plano?.viability?.flags || null };
   }, [race, profile, runs, today]);
+  // "Com plano" é um plano aceite que cobre os dias daqui até à prova — um
+  // plano de base que acaba no domingo não é "o que está no plano" da
+  // semana da prova (raceMilestone.js).
+  const coachPlans = useAppStore((s) => s.coachPlans);
+  const raceDay = race ? String(race.date).slice(0, 10) : null;
+  const comPlano = !!raceDay && (coachPlans || []).some((p) => p?.status === 'aceite'
+    && String(p.period_start).slice(0, 10) <= today && String(p.period_end).slice(0, 10) >= raceDay);
 
   if (!race && concluida) {
     return (
@@ -363,7 +376,7 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
           )}
         </div>
         <RaceTrail raceId={race.id} weeks={model.weeks} current={model.current} phases={model.phases} startLabel={model.startLabel} endLabel={model.endLabel} />
-        {!porRegistar && <RaceMilestoneLine key={`${race.id}-${model.days}`} raceId={race.id} days={model.days} />}
+        {!porRegistar && <RaceMilestoneLine key={`${race.id}-${model.days}`} raceId={race.id} days={model.days} prioridade={race.race_priority} flags={flags} comPlano={comPlano} />}
       </div>
 
       {/* A ação do dia da prova: âmbar cheio, porque é a única coisa que

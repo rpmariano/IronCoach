@@ -9,8 +9,8 @@ import CoachText from '../shared/CoachText';
 import CarouselDots from '../shared/CarouselDots';
 import { useCarouselHaptics } from '../../utils/haptics';
 import { todayISO, addDaysISO } from '../../lib/utils';
-import { isRacePlanItem, raceNameForDate } from '../../utils/homeModels';
-import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
+import { isRacePlanItem, raceNameForDate, planItemTitle } from '../../utils/homeModels';
+import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import './WeeklyPlanCard.css';
 
 // Mesmos valores por omissão de computeMacroAdherence
@@ -92,40 +92,12 @@ export function computeAcceptedWindow(plans = [], items = [], today = todayISO()
   return { start: current.start, days: diffDaysISO(current.start, current.end) + 1 };
 }
 
-/* Título curto de um item, usado na linha fechada. `raceName` é o nome da
-   prova desse dia, quando o item é o da prova (specs/plano-de-prova.md). */
-function itemTitle(item, raceName = null) {
-  if (item.isRace) {
-    return [
-      'Prova',
-      item.title,
-      item.target_distance_km ? `${item.target_distance_km} km` : null,
-    ].filter(Boolean).join(' · ');
-  }
-  if (isRacePlanItem(item)) {
-    return [
-      'Prova',
-      raceName,
-      item.target_distance_km ? `${item.target_distance_km} km` : null,
-    ].filter(Boolean).join(' · ');
-  }
-  if (item.kind === 'corrida') {
-    return [
-      item.training_type
-        ? item.training_type[0].toUpperCase() + item.training_type.slice(1)
-        : 'Corrida',
-      item.target_distance_km ? `${item.target_distance_km} km` : null,
-    ].filter(Boolean).join(' · ');
-  }
-  if (item.kind === 'ginasio') {
-    return [
-      item.categories?.length ? item.categories.join('/') : 'Ginásio',
-      item.target_duration_min ? `${item.target_duration_min} min` : null,
-    ].filter(Boolean).join(' · ');
-  }
-  if (isMealOnlyItem(item)) return MEAL_ONLY_DAY_LABEL;
-  return 'Descanso';
-}
+/* Título curto de um item, usado na linha fechada: o mesmo `planItemTitle`
+   do resto da app (pedido 2026-09-26). Esta cópia imprimia o enum cru e a
+   distância da BD — "Continuo · 8 km", "Longo · 16 km", "Prova · 21.0975 km"
+   na folha da proposta — e, depois de aceite, o mesmo treino chamava-se
+   "Corrida contínua · 8 km" e "21,1 km" no Início. */
+const itemTitle = planItemTitle;
 
 function itemIcon(item) {
   if (item.isRace || isRacePlanItem(item)) return Flag;
@@ -430,14 +402,103 @@ export function PlanDayCard({
   );
 }
 
+const dia = (v) => (v ? String(v).slice(0, 10) : null);
+
+/* ── Até onde o plano já está escrito (pedido 2026-09-26) ───────────────────
+   Um dia vazio dentro do plano aceite dizia "Sem plano" e trazia um convite
+   para a Carol o planear — também a quarta que ela deixou livre de
+   propósito, a meio da "semana 3 de 8". Mas o plano de uma prova vai até ao
+   dia dela e os treinos entram por tranches (specs/plano-vinculado-a-
+   prova.md, §5 ponto 3: ela escreve as próximas 1-2 semanas e detalha o
+   resto à medida que chega). Por isso um dia vazio ANTES do último dia
+   que o plano já decidiu é decisão dela ("Sem treino"); DEPOIS dele, está
+   por escrever ("Por planear").
+
+   O último dia decidido é o último com um treino ou um descanso, de
+   qualquer estado — as refeições sugeridas sozinhas não decidem o treino
+   de ninguém. Com os planos à mão, um plano de treino sem prova conta como
+   escrito até ao fim do período: esse escreve-se inteiro de uma vez (um
+   período maior do que 14 dias encurta-se, não se deixa a meio), e os
+   dias vazios do fim são folgas dela, não dias por escrever. Um plano que
+   perdeu a prova (race_lost_at) continua a ser um plano por tranches.
+   Na dúvida, fica mais cedo "Sem treino" do que um convite para planear o
+   que ela já planeou. */
+export function planeadoAte(items, plans = null) {
+  let ate = null;
+  const empurra = (d) => { if (d && (!ate || d > ate)) ate = d; };
+  (items || []).forEach((it) => {
+    // O item da prova entra no plano logo na primeira tranche, no dia da
+    // prova (coach-chat): não conta como dia já decidido, senão o "Por
+    // planear" nunca aparecia num plano de prova.
+    if (!it || isMealOnlyItem(it) || isRacePlanItem(it)) return;
+    empurra(dia(it.planned_date));
+    if (it.status === 'concluido') empurra(dia(it.actual_date));
+  });
+  if (Array.isArray(plans)) {
+    const comTreino = new Set((items || []).filter((it) => it && (it.kind === 'corrida' || it.kind === 'ginasio')).map((it) => it.plan_id));
+    plans.forEach((p) => {
+      if (p && p.status === 'aceite' && !p.race_id && !p.race_lost_at && comTreino.has(p.id)) empurra(dia(p.period_end));
+    });
+  }
+  return ate;
+}
+
+/* Um cancelado fora do período do seu plano não é um treino que o atleta
+   cancelou: é o sistema a arrumar — o bloco antigo que fechou na véspera de
+   um novo (planAcceptance.js, closeOldBlock) ou uma prova antecipada
+   (migration plan_race_binding). Ficava no dia como "Cancelado", a
+   vermelho, ao lado do plano novo (pedido 2026-09-26). Só se sabe com os
+   planos à mão; sem eles, o item fica. */
+function arrumadoPeloSistema(it, planoPorId) {
+  if (!planoPorId || it.status !== 'cancelado') return false;
+  const p = planoPorId.get(it.plan_id);
+  const inicio = dia(p?.period_start);
+  const fim = dia(p?.period_end);
+  const d = dia(it.planned_date);
+  if (!inicio || !fim || !d) return false;
+  return d < inicio || d > fim;
+}
+
+/* O dia ainda está por escrever? Conta-se pelo plano que o cobre, e não pelo
+   último dia escrito de todos os planos juntos (revisão de 2026-09-26): com
+   um plano aceite mais à frente — a semana de recuperação depois da prova,
+   já aceite noutro bloco, ou um bloco a seguir a este —, o "último dia"
+   passava para lá do plano de agora, e os dias que ela ainda não escreveu
+   ficavam todos "Sem treino", sem convite para os planear. Um dia que
+   nenhum plano aceite cobre — o hoje antes de um plano que começa amanhã,
+   ou o amanhã depois do fim dele, no cartão de hoje — fica pela conta de
+   todos juntos, como dantes: antes do plano, "Sem treino"; depois dele,
+   por planear. Sem os planos à mão, é essa conta para todos os dias. */
+function porEscrever(items, plans) {
+  const ateTodos = planeadoAte(items, plans);
+  const pelaContaDeTodos = (d) => !ateTodos || d > ateTodos;
+  if (!Array.isArray(plans)) return pelaContaDeTodos;
+  const aceites = plans.filter((p) => p && p.status === 'aceite');
+  const ateDe = new Map(aceites.map((p) => [p.id, planeadoAte(items.filter((it) => it.plan_id === p.id), [p])]));
+  return (d) => {
+    const cobrem = aceites.filter((p) => dia(p.period_start) <= d && d <= dia(p.period_end));
+    if (cobrem.length === 0) return pelaContaDeTodos(d);
+    return cobrem.every((p) => { const ate = ateDe.get(p.id); return !ate || d > ate; });
+  };
+}
+
 /* Constrói os dias do plano a partir de `from`, ao longo de `horizon` dias.
-   Cada dia inclui dayNumber (1-indexed) para a numeração "Dia N". */
-export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_DAYS) {
+   Cada dia inclui dayNumber (1-indexed) para a numeração "Dia N", e
+   `porPlanear` — vazio, de hoje em diante, e depois do último dia que o
+   plano dele já decidiu (ver planeadoAte e porEscrever). Um dia que já
+   passou nunca está "por planear": ninguém planeia ontem.
+   `plans` (opcional) são os planos dos itens: com eles, os cancelados que
+   o sistema arrumou saem, e um plano sem prova conta como escrito até ao
+   fim. `today` (opcional) é o hoje de quem chama, para o ecrã e os dias
+   dizerem o mesmo. */
+export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_DAYS, { plans = null, today = todayISO() } = {}) {
   const days = [];
-  const today = todayISO();
+  const planoPorId = Array.isArray(plans) ? new Map(plans.filter(Boolean).map((p) => [p.id, p])) : null;
+  const visiveis = (items || []).filter((it) => it && !arrumadoPeloSistema(it, planoPorId));
+  const aEscrever = porEscrever(visiveis, plans);
   for (let i = 0; i < horizon; i++) {
     const dateISO = addDaysISO(from, i);
-    const dayItems = (items || [])
+    const dayItems = visiveis
       .filter(it => (it.status === 'concluido' ? (it.actual_date || it.planned_date) : it.planned_date) === dateISO)
       .sort((a, b) => a.kind.localeCompare(b.kind));
     days.push({
@@ -445,6 +506,7 @@ export function buildPlanDays(items, from = todayISO(), horizon = PLAN_HORIZON_D
       dayNumber: i + 1,
       isToday: dateISO === today,
       isOverdue: dateISO < today && dayItems.some(it => it.kind !== 'descanso' && it.status === 'pendente'),
+      porPlanear: dayItems.length === 0 && dateISO >= today && aEscrever(dateISO),
       items: dayItems,
     });
   }
@@ -529,8 +591,8 @@ export default function WeeklyPlanCard({ plans = [], planItems = [], profile, on
     [planItems, acceptedIds],
   );
   const days = useMemo(
-    () => (window ? buildPlanDays(accepted, window.start, window.days) : []),
-    [accepted, window],
+    () => (window ? buildPlanDays(accepted, window.start, window.days, { plans }) : []),
+    [accepted, window, plans],
   );
 
   const PendingBanner = () => pendingCount > 0 && (

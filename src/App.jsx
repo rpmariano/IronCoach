@@ -559,9 +559,31 @@ export default function App() {
     // preferência sem lhe dar prioridade sobre um coachIntent explícito.
     useAppStore.getState().setProactiveKeyRequested(key);
   }, [setActiveTab]);
+  /* A memória da Carol (coach_notes) não vem com os dados iniciais: lia-se
+     só no primeiro dia (Home.jsx). As boas-vindas e a resposta ao check-in
+     precisam dela desde a primeira abertura — é daí que ela sabe da cirurgia
+     de ontem (pedido 2026-09-26, utils/carolVida.js). Lê-se uma vez por
+     sessão, e as boas-vindas esperam por ela no máximo 1,5 s: uma memória
+     lenta ou em falha não atrasa a saudação, só a deixa sem esse contexto. */
+  const sessionUserId = session?.user?.id || null;
+  const [notesReadyFor, setNotesReadyFor] = useState(null);
+  useEffect(() => {
+    if (!sessionUserId || notesReadyFor === sessionUserId) return undefined;
+    // Em demo (?demo=true) não há memória no servidor para ler.
+    if (sessionUserId === 'demo-user') { setNotesReadyFor(sessionUserId); return undefined; }
+    let feito = false;
+    const pronto = () => { if (!feito) { feito = true; setNotesReadyFor(sessionUserId); } };
+    const timer = setTimeout(pronto, 1500);
+    Promise.resolve()
+      .then(() => useAppStore.getState().reloadCoachNotes?.())
+      .catch(() => {})
+      .finally(pronto);
+    return () => { feito = true; clearTimeout(timer); };
+  }, [sessionUserId, notesReadyFor]);
   // As boas-vindas esperam pelos dados todos: decidem pelas impressões (o
-  // que já foi saudado noutro dispositivo) e pelos registos.
-  const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending;
+  // que já foi saudado noutro dispositivo), pelos registos e pela memória dela.
+  const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending
+    && (notesReadyFor === sessionUserId || import.meta.env.MODE === 'test');
 
   // Com a app já à vista, os outros ecrãs carregam-se em tempo morto (ver
   // PREFETCH_WHEN_IDLE). Nos testes não: o import() tardio chegaria depois
@@ -598,11 +620,18 @@ export default function App() {
     // A última saudação, aqui ou noutro dispositivo — o intervalo mínimo
     // entre saudações de faixa (ação P.11).
     const lastShownAt = Math.max(readShownAt(uid) ?? 0, s.lastWelcomeAt ?? 0) || null;
-    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: [...readSeen(uid), ...seenElsewhere], lastShownAt });
+    const vistas = [...readSeen(uid), ...seenElsewhere];
+    const decision = decideWelcome({ raceEvents: s.raceEvents, seen: vistas, lastShownAt });
     if (!decision) { clear(); return; }
+    /* Já houve hoje uma saudação de outra faixa (a da madrugada conta para a
+       véspera): o que ela perguntou nessa não volta a perguntar-se nesta —
+       "Como correu a cirurgia?" de manhã não se repete à tarde (pedido
+       2026-09-26, utils/carolVida.js). Lido antes de marcar esta. */
+    const hojeLisboa = slotKey().date;
+    const saudadoHoje = vistas.some((k) => new RegExp(`^${hojeLisboa}:(manha|tarde|noite|prova|vespera)$`).test(k));
     markSeen(uid, decision.markKeys);
     markShownAt(uid);
-    const text = buildWelcome(decision.variant, s);
+    const text = buildWelcome(decision.variant, { ...s, saudadoHoje });
     /* O que ela disse fica em coach_impressions (kind 'welcome', ação 5.1):
        o cartão diário e o chat leem-no para não repetir nem contradizer o
        que ela já disse hoje, e o outro telemóvel fica a saber que esta faixa

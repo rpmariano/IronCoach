@@ -284,7 +284,7 @@ describe('Home — os atalhos de registo respeitam a recusa do navGuard', () => 
     primeiroDia();
     setActiveTab.mockReturnValue(false);
     renderHome();
-    fireEvent.click(screen.getByText(/Já correste hoje\?/));
+    fireEvent.click(screen.getByText(/Já correste( hoje)?\?/));
     expect(setActiveTab).toHaveBeenCalledWith('corrida');
     expect(setOpenCreationMode).not.toHaveBeenCalled();
   });
@@ -293,7 +293,7 @@ describe('Home — os atalhos de registo respeitam a recusa do navGuard', () => 
     primeiroDia();
     setActiveTab.mockReturnValue(true);
     renderHome();
-    fireEvent.click(screen.getByText(/Já correste hoje\?/));
+    fireEvent.click(screen.getByText(/Já correste( hoje)?\?/));
     expect(setActiveTab).toHaveBeenCalledWith('corrida');
     expect(setOpenCreationMode).toHaveBeenCalledWith('run');
   });
@@ -318,12 +318,12 @@ describe('Home — dados ainda a chegar', () => {
   it('com dados pendentes não mostra o primeiro dia', () => {
     vazio(true);
     renderHome();
-    expect(screen.queryByText(/Já correste hoje\?/)).toBeNull();
+    expect(screen.queryByText(/Já correste( hoje)?\?/)).toBeNull();
   });
 
   it('com tudo carregado e sem registos, mostra-o', () => {
     vazio(false);
     renderHome();
-    expect(screen.getByText(/Já correste hoje\?/)).toBeTruthy();
+    expect(screen.getByText(/Já correste( hoje)?\?/)).toBeTruthy();
   });
 });

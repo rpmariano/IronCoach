@@ -21,13 +21,17 @@ const ACAO = {
   talk: { label: 'Falar com a Carol', Icon: Sparkles, tone: 'coach' },
 };
 
-export default function FirstDayCard({ firstName, goal = null, facts = [], onTalk, onCreateRace, onRegisterRun, onRegisterMeal }) {
-  const ask = firstDayAsk(goal, firstName);
+export default function FirstDayCard({ firstName, goal = null, facts = [], vida = null, onTalk, onCreateRace, onRegisterRun, onRegisterMeal }) {
+  // Com uma cirurgia, uma lesão ou uma doença na memória dela (`vida`,
+  // carolVida.js), o pedido não é a corrida (firstDayAsk, 2026-09-26).
+  const ask = firstDayAsk(goal, firstName, { vida });
   const acao = ACAO[ask.primary] || ACAO.talk;
   const onPrimary = { race: onCreateRace, run: onRegisterRun, meal: onRegisterMeal, talk: onTalk }[ask.primary] || onTalk;
   // A segunda via: falar com ela — ou, quando falar já é a primeira, marcar a prova à mão.
+  // "Marcar prova eu mesmo" tinha género (revisão de 2026-09-26; backlog,
+  // FirstDayCard.jsx:30): uma atleta diria "eu mesma".
   const secundaria = ask.primary === 'talk'
-    ? { label: 'Marcar prova eu mesmo', onClick: onCreateRace }
+    ? { label: 'Marcar a prova à mão', onClick: onCreateRace }
     : { label: 'Falar com a Carol', onClick: onTalk };
 
   return (

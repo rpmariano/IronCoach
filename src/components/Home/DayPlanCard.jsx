@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { ChevronRight, ChevronDown, ChevronUp, Check, X as XIcon, MessageCircle } from 'lucide-react';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays, diffDaysISO } from './WeeklyPlanCard';
-import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, raceForDate, raceNameForDate, trainingItems, planItemTitle } from '../../utils/homeModels';
+import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, raceForDate, raceNameForDate, trainingItems, planItemTitle, liveItems } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
 import WeekDoneRibbon from './WeekDoneRibbon';
 import { useAppStore } from '../../store';
@@ -48,6 +48,85 @@ export function planWeekLabel(planWindow, today = todayISO()) {
   return { current, total, text: `semana ${current} de ${total}` };
 }
 
+/* O cartão sem plano aceite, dito pelo que é verdade agora (pedido
+   2026-09-26). Era sempre "Pede-me um plano. As propostas aparecem no chat,
+   para aceitares ou recusares." — e o estado mais comum de todos, logo a
+   seguir à primeira proposta (ou com a folha fechada sem escolher), é haver
+   uma proposta por decidir: ela pedia que lhe pedissem o plano que já tinha
+   escrito, por baixo de um "Tens 1 proposta da Carol por rever" que mudava
+   da terceira para a primeira pessoa. Agora:
+   - proposta por decidir: a proposta está no chat, e o botão leva a ela
+     (o aviso de cima sai, que dizia o mesmo pela boca de outro);
+   - já houve um plano aceite, e acabou (computeAcceptedWindow não dá janela
+     nenhuma: nenhum aceite chega a hoje nem tem treinos por fazer): o
+     último acabou, e ela quer montar o próximo;
+   - nunca houve plano: o convite de sempre, na voz dela.
+   Sem exclamações e sem género; frases curtas, verbos ativos. O aviso de
+   cima só fica quando há plano (propostas novas por cima de um plano que
+   já corre) — aí não há frase dela no cartão para contradizer.
+
+   Revisão de 2026-09-26: com um plano que acabou, o corpo diz o que ESTE
+   cartão volta a mostrar, e não repete o pedido. O cartão da Carol logo
+   por cima (sem recapitulação do dia, carolCardLines.linhaDoDia) já fala
+   do plano que acabou e de montar o próximo; «Quero montar o próximo
+   contigo. Diz-me o que vem a seguir» a seguir era a mesma frase duas
+   vezes, que é o que soa a máquina. O pedido fica no botão.
+
+   No dia de uma prova, sem plano aceite, o que se faz hoje é a prova
+   (`raceToday`): nada de «Pede-me um plano» por baixo de um cartão da
+   Carol que diz «Hoje é dia de prova». O botão abre a prova, como no
+   cartão com plano. A prova passa à frente das propostas (o aviso delas
+   fica por cima). */
+const EXTENSO = { 2: 'duas', 3: 'três', 4: 'quatro', 5: 'cinco' };
+
+export function noPlanCopy({ pendingCount = 0, hadPlan = false, raceToday = null } = {}) {
+  if (raceToday) {
+    return {
+      title: raceToday.name || 'Dia de prova',
+      // Verdade a qualquer hora do dia da prova, antes ou depois da partida.
+      body: 'Hoje, o que conta é esta prova. O resto espera.',
+      cta: 'Abrir a prova',
+      hideBanner: false,
+      raceId: raceToday.id,
+    };
+  }
+  if (pendingCount === 1) {
+    return {
+      title: 'A proposta está no chat',
+      body: 'Escrevi-te um plano. Vê-o e diz-me se serve, ou o que queres mudar.',
+      cta: 'Ver a proposta',
+      hideBanner: true,
+    };
+  }
+  if (pendingCount > 1) {
+    return {
+      title: 'As propostas estão no chat',
+      // Podem ser uma de treino e outra de refeições: "o que serve", e não "qual".
+      body: `Deixei-te ${EXTENSO[pendingCount] || pendingCount} propostas. Vê-as e diz-me o que serve.`,
+      cta: 'Ver as propostas',
+      hideBanner: true,
+    };
+  }
+  if (hadPlan) {
+    return {
+      title: 'O último plano acabou',
+      // Sem "Quero montar o próximo… diz-me o que vem a seguir": é o que o
+      // cartão dela diz logo acima. Aqui, o que este cartão volta a mostrar.
+      body: 'Com o plano novo, o que fazer em cada dia volta a aparecer aqui.',
+      cta: 'Combinar o próximo plano',
+      hideBanner: false,
+    };
+  }
+  return {
+    title: 'Sem plano acordado',
+    body: 'Pede-me um plano. Escrevo-o no chat, e és tu que decides se serve.',
+    // Não "Pedir plano à Carol": por baixo de "Pede-me", o botão voltava a
+    // falar dela na terceira pessoa, dentro do mesmo cartão.
+    cta: 'Pedir um plano',
+    hideBanner: false,
+  };
+}
+
 export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [], onComplete, onNav, onOpenRace, onOpenPlano }) {
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
@@ -65,8 +144,11 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
      constrói-se no ecrã "O plano", com a mesma função. */
   const days = useMemo(() => {
     if (!planWindow) return [];
-    const acceptedIds = new Set((plans || []).filter((p) => p.status === 'aceite').map((p) => p.id));
-    return buildPlanDays((planItems || []).filter((i) => acceptedIds.has(i.plan_id)), today, 2);
+    // Com os planos, buildPlanDays sabe que dias vazios estão por planear
+    // ("Por planear") e quais a Carol deixou livres ("Sem treino").
+    const aceites = (plans || []).filter((p) => p.status === 'aceite');
+    const acceptedIds = new Set(aceites.map((p) => p.id));
+    return buildPlanDays((planItems || []).filter((i) => acceptedIds.has(i.plan_id)), today, 2, { plans: aceites, today });
   }, [plans, planItems, planWindow, today]);
 
   const day = days[0];
@@ -77,7 +159,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   // O título de amanhã em minúscula, porque entra a meio da frase do rodapé
   // ("Ver o plano · amanhã: rodagem longa · 14 km").
   const tomorrowPreview = useMemo(() => {
-    const title = dayTitle(days[1]?.items || [], raceNameForDate(raceEvents, tomorrow));
+    const title = dayTitle(days[1]?.items || [], raceNameForDate(raceEvents, tomorrow), { porPlanear: !!days[1]?.porPlanear });
     return title.charAt(0).toLowerCase() + title.slice(1);
   }, [days, raceEvents, tomorrow]);
 
@@ -85,7 +167,8 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
     <button type="button" onClick={() => onNav?.('coach')} className="flex items-center gap-2 w-full min-h-[44px] px-3 rounded-[14px] text-left" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}>
       <MessageCircle size={14} style={{ color: 'var(--coach)' }} className="shrink-0" />
       <span className="flex-1 text-[12.5px] font-semibold" style={{ color: 'var(--coach-soft)' }}>
-        {pendingCount === 1 ? 'Tens 1 proposta da Carol por rever' : `Tens ${pendingCount} propostas da Carol por rever`}
+        {/* Na voz dela, como o resto do cartão (pedido 2026-09-26). */}
+        {pendingCount === 1 ? 'Tens uma proposta minha por rever' : `Tens ${EXTENSO[pendingCount] || pendingCount} propostas minhas por rever`}
       </span>
       <ChevronRight size={14} style={{ color: 'var(--coach)' }} className="shrink-0" />
     </button>
@@ -95,7 +178,8 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
      momento decide-se ao montar — que é quando se volta do registo que
      fechou o dia — e marca-se como visto logo a seguir. */
   const todayDone = useMemo(() => {
-    const t = trainingItems(day?.items || []).filter((i) => !i.isRace && !isRacePlanItem(i));
+    // O redundante cancelado ao lado do treino feito não tira o "Cumprido.".
+    const t = trainingItems(liveItems(day?.items || [])).filter((i) => !i.isRace && !isRacePlanItem(i));
     return t.length > 0 && t.every((i) => i.status === 'concluido');
   }, [day]);
   // A chave deste momento em coach_impressions (kind 'moment', ação 5.1),
@@ -113,17 +197,29 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   );
 
   if (!planWindow || !day) {
+    const copy = noPlanCopy({
+      pendingCount,
+      hadPlan: (plans || []).some((p) => p?.status === 'aceite'),
+      // A prova da agenda para hoje (a mesma que o cartão com plano lê).
+      raceToday: raceForDate(raceEvents, today),
+    });
     return (
       <div className="flex flex-col gap-2">
-        <PendingBanner />
-        <GlassCard tone="gym" glow>
-          <h2 className="text-[20px] font-black leading-[1.15]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>Sem plano acordado</h2>
+        {!copy.hideBanner && <PendingBanner />}
+        <GlassCard tone="gym" glow data-testid="day-plan-no-plan">
+          <h2 className="text-[20px] font-black leading-[1.15]" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>{copy.title}</h2>
           <p className="text-[12.5px] leading-[1.45] mt-1.5" style={{ color: 'var(--text-3)' }}>
-            Pede-me um plano. As propostas aparecem no chat, para aceitares ou recusares.
+            {copy.body}
           </p>
-          <button type="button" onClick={() => onNav?.('coach')} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
-            <MessageCircle size={15} /> Pedir plano à Carol
-          </button>
+          {copy.raceId ? (
+            <button type="button" data-testid="day-plan-open-race" onClick={() => onOpenRace?.(copy.raceId)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
+              {copy.cta}
+            </button>
+          ) : (
+            <button type="button" onClick={() => onNav?.('coach')} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
+              <MessageCircle size={15} /> {copy.cta}
+            </button>
+          )}
         </GlassCard>
       </div>
     );
@@ -143,10 +239,11 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
   const openRaceId = race ? String(race.id).replace('race-', '') : (racePlanItem && dayRace ? dayRace.id : null);
 
   const session = pendingSession(day, today);
-  const instructions = trainingItems(day.items).filter((i) => !isRacePlanItem(i) && typeof i.notes === 'string' && i.notes.trim());
+  const vivos = liveItems(day.items);
+  const instructions = trainingItems(vivos).filter((i) => !isRacePlanItem(i) && typeof i.notes === 'string' && i.notes.trim());
   // Os treinos "normais" do dia — os que o botão de registo (ou o estado
   // que ficou no lugar dele) representa.
-  const trainings = trainingItems(day.items).filter((i) => !i.isRace && !isRacePlanItem(i));
+  const trainings = trainingItems(vivos).filter((i) => !i.isRace && !isRacePlanItem(i));
   const done = trainings.length > 0 && trainings.every((i) => i.status === 'concluido');
   const cancelled = trainings.length > 0 && trainings.every((i) => i.status === 'cancelado');
 
@@ -174,7 +271,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
         </div>
 
         <h2 className="text-[20px] font-black leading-[1.15] mt-2" style={{ color: 'var(--text-1)', letterSpacing: '-.02em' }}>
-          {race ? race.title : dayTitle(day.items, dayRace?.name || null)}
+          {race ? race.title : dayTitle(day.items, dayRace?.name || null, { porPlanear: day.porPlanear })}
         </h2>
 
         {done && (

@@ -74,8 +74,16 @@ export function checkinReply(checkins, today, dia = null) {
   const descanso = tipo === 'descanso';
   const feito = tipo === 'feito';
   const vespera = !prova && !!dia?.vespera;
+  // Uma cirurgia, uma lesão ou uma doença de que ela sabe (utils/carolVida.js),
+  // de hoje até ao fim da recuperação: a resposta parte daí.
+  const vida = dia?.vida && dia.vida.dias >= 0 ? dia.vida : null;
 
   // 1. O que preocupa, primeiro.
+  if (dor >= 4 && vida && vida.tipo !== 'doenca') {
+    // Depois de uma cirurgia, a dor é assunto da equipa médica primeiro.
+    const quando = vida.tipo === 'cirurgia' ? `depois ${vida.da}` : `com ${vida.a}`;
+    return { mood: 'worried', tone: 'warn', text: `Uma dor de ${dor}${noLocal} ${quando} não se ignora. Se não aliviar, fala com a equipa médica, e conta-me como estás.` };
+  }
   if (dor >= 4) {
     const depois = prova ? 'Quero falar contigo antes da partida.'
       : provaFeita ? 'Quero falar contigo sobre ela ainda hoje.'
@@ -83,6 +91,9 @@ export function checkinReply(checkins, today, dia = null) {
           : treino || !tipo ? 'Hoje não se força, e quero falar contigo sobre ela.'
             : 'Quero falar contigo sobre ela antes do próximo treino.';
     return { mood: 'worried', tone: 'warn', text: `Uma dor de ${dor}${noLocal} não se ignora. ${depois}` };
+  }
+  if (sono != null && sono <= 2 && vida && vida.dias <= 7) {
+    return { mood: 'worried', tone: 'coach', text: `Dormiste mal. Nos primeiros dias depois ${vida.da} é normal; hoje, descansar é o teu treino.` };
   }
   if (sono != null && sono <= 2) {
     // Na manhã da prova não se contam noites: a que conta é a de ontem, e é normal.
@@ -127,6 +138,9 @@ export function checkinReply(checkins, today, dia = null) {
               : 'Bom sinal.';
     return { mood: 'happy', tone: 'coach', text: `Energia em cheio e sono em dia. ${resto}` };
   }
+  if (energia != null && energia <= 2 && vida) {
+    return { mood: 'neutral', tone: 'coach', text: `Energia em baixo durante a recuperação ${vida.da} é normal. Hoje, sem pressas.` };
+  }
   if (energia != null && energia <= 2) {
     const text = prova ? 'Energia em baixo ao acordar é comum no dia da prova. O aquecimento muda isso.'
       : provaFeita ? 'Energia em baixo. Depois da prova, o resto do dia é para recuperar.'
@@ -140,10 +154,17 @@ export function checkinReply(checkins, today, dia = null) {
     return { mood: 'neutral', tone: 'coach', text: `Uma dor ligeira${noLocal}. Fica anotada; se subir, diz-me.` };
   }
 
-  // 4. O dia normal: curto e seco — é a centésima vez. Mas o dia da prova e
-  // a véspera não são dias normais.
-  if (prova) return { mood: 'neutral', tone: 'coach', text: 'Anotado. Hoje é dia de prova.' };
-  if (provaFeita) return { mood: 'neutral', tone: 'coach', text: 'Anotado. Hoje foi dia de prova.' };
-  if (vespera) return { mood: 'neutral', tone: 'coach', text: 'Anotado. Amanhã é dia de prova.' };
-  return { mood: 'neutral', tone: 'coach', text: 'Anotado. Dia normal.' };
+  // 4. O dia normal: curto — é a centésima vez —, mas não seco (pedido
+  // 2026-09-26: cordial, com energia), e diferente de um dia para o outro.
+  // O dia da prova, a véspera e a recuperação não são dias normais.
+  if (prova) return { mood: 'neutral', tone: 'coach', text: 'Obrigada. Hoje é dia de prova: vamos a isso.' };
+  if (provaFeita) return { mood: 'neutral', tone: 'coach', text: 'Obrigada. Hoje foi dia de prova, e quero saber tudo.' };
+  if (vespera) return { mood: 'neutral', tone: 'coach', text: 'Obrigada. Amanhã é dia de prova: hoje, pernas leves e cabeça tranquila.' };
+  if (vida) return { mood: 'neutral', tone: 'coach', text: `Obrigada. Um dia de cada vez na recuperação ${vida.da}.` };
+  return { mood: 'neutral', tone: 'coach', text: pelaData(DIA_NORMAL, today) };
 }
+
+/* O dia normal, dito de três maneiras — a frase muda de um dia para o
+   outro e fica igual durante o dia, como nas boas-vindas. */
+export const DIA_NORMAL = ['Anotado. Dia normal, e isso é bom sinal.', 'Obrigada. Tudo dentro do normal: é seguir.', 'Anotado. Nada a assinalar, e ainda bem.'];
+const pelaData = (lista, iso) => lista[Math.abs(Math.floor(Date.parse(`${iso}T00:00:00Z`) / 86400000)) % lista.length];
