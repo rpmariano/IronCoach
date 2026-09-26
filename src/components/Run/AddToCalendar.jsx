@@ -30,6 +30,8 @@ function Option({ href, onClick, busy, title, hint, testId }) {
       <span className="flex-1 min-w-0">
         <span className="block text-[13px] font-extrabold">{title}</span>
         <span className="block text-[11.5px] font-semibold" style={{ color: 'var(--text-4)' }}>{hint}</span>
+        {href && <span className="sr-only"> (abre numa nova janela)</span>}
+        {busy && <span className="sr-only"> A preparar o ficheiro…</span>}
       </span>
       {busy
         ? <Loader2 size={15} className="shrink-0 animate-spin" aria-hidden="true" style={{ color: 'var(--text-4)' }} />

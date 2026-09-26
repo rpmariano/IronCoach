@@ -54,6 +54,20 @@ describe('calendarLinks', () => {
     expect(personal.searchParams.get('allday')).toBe('false');
   });
 
+  it('o objetivo em texto do rascunho (sem target_time_seconds) dá a mesma duração que o da BD', () => {
+    const { target_time_seconds, ...draft } = RACE;
+    const ev = raceCalendarEvent({ ...draft, target_time: '1:45:00' });
+    expect(ev.durationMinutes).toBe(raceCalendarEvent(RACE).durationMinutes);
+    expect(new URL(googleCalendarUrl(ev)).searchParams.get('dates')).toBe('20261011T090000/20261011T104500');
+  });
+
+  it('espaços como %20, não +', () => {
+    const ev = raceCalendarEvent(RACE);
+    expect(outlookCalendarUrl(ev)).toContain('subject=Meia%20Maratona%20de%20Lisboa');
+    expect(outlookCalendarUrl(ev)).not.toContain('+Maratona');
+    expect(googleCalendarUrl(ev)).toContain('text=Meia%20Maratona');
+  });
+
   it('Outlook: dia inteiro vai de um dia ao seguinte', () => {
     const url = new URL(outlookCalendarUrl(raceCalendarEvent({ ...RACE, start_time: '' })));
     expect(url.searchParams.get('startdt')).toBe('2026-10-11');

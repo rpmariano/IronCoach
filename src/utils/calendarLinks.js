@@ -10,6 +10,12 @@ import { basicDate, basicDateTimeRange } from '@formulas/raceCalendar.ts';
    fuso à parte (ctz); o Outlook quer um instante, por isso leva o desvio
    do fuso deste dispositivo (+01:00). */
 
+/* %20 e não +: o URLSearchParams.toString() codifica os espaços como +, e
+   o compose do Outlook mostra-os tal e qual no assunto ("Meia+Maratona"). */
+function toQuery(params) {
+  return Array.from(params, ([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
+}
+
 function deviceTimeZone() {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
@@ -28,7 +34,7 @@ export function googleCalendarUrl(ev) {
   }
   params.set('details', ev.description);
   if (ev.location) params.set('location', ev.location);
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  return `https://calendar.google.com/calendar/render?${toQuery(params)}`;
 }
 
 function localIsoWithOffset(date, time, plusMinutes = 0) {
@@ -61,5 +67,5 @@ export function outlookCalendarUrl(ev, account = 'personal') {
   }
   params.set('body', ev.description);
   if (ev.location) params.set('location', ev.location);
-  return `https://${host}/calendar/0/deeplink/compose?${params.toString()}`;
+  return `https://${host}/calendar/0/deeplink/compose?${toQuery(params)}`;
 }

@@ -48,12 +48,24 @@ function kmLabel(km: number): string {
   return `${String(Math.round(km * 100) / 100).replace(".", ",")} km`;
 }
 
+/** 'H:MM:SS' ou 'MM:SS' → segundos; 0 se não for um tempo. */
+function targetTextSeconds(text: string | null | undefined): number {
+  const m = /^(?:(\d{1,2}):)?(\d{1,2}):([0-5]\d)$/.exec((text || "").trim());
+  if (!m) return 0;
+  return Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
+}
+
 /** Duração estimada da prova em minutos, só para o bloco no calendário:
  *  o objetivo do atleta quando existe; senão um ritmo folgado (6 min/km em
  *  estrada, 9 em trail, com 100 m D+ a contar como 1 km a mais) — é melhor
- *  o bloco sobrar do que acabar antes da meta. Arredonda aos 15 min acima. */
+ *  o bloco sobrar do que acabar antes da meta. Arredonda aos 15 min acima.
+ *
+ *  O objetivo vem de target_time_seconds (a linha da BD, na Edge Function)
+ *  ou do texto target_time (o rascunho do RunAgenda, que só converte para
+ *  segundos ao gravar) — sem o segundo, os links do cliente e o .ics da
+ *  função davam durações diferentes para a mesma prova. */
 export function raceDurationMinutes(race: RaceForCalendar): number {
-  const target = num(race.target_time_seconds);
+  const target = num(race.target_time_seconds) || targetTextSeconds(race.target_time);
   let minutes: number;
   if (target > 0) {
     minutes = target / 60;
@@ -113,13 +125,17 @@ export function basicDateTimeRange(ev: RaceCalendarEvent): { start: string; end:
 
 // ─── .ics (RFC 5545) ──────────────────────────────────────────────────────
 
-/** Escapa um valor TEXT: barra, ponto e vírgula, vírgula e mudança de linha. */
+/** Escapa um valor TEXT: barra, ponto e vírgula, vírgula e mudança de linha
+ *  (incluindo um \r sozinho, de texto colado); outros caracteres de controlo
+ *  saem — partiam a linha do .ics. */
 export function icsEscape(text: string): string {
   return text
     .replace(/\\/g, "\\\\")
     .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
-    .replace(/\r?\n/g, "\\n");
+    .replace(/\r\n|\r|\n/g, "\\n")
+    // deno-lint-ignore no-control-regex
+    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, "");
 }
 
 /** Dobra uma linha em pedaços de ≤75 octetos (RFC 5545 §3.1), sem partir um

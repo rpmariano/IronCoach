@@ -113,13 +113,16 @@ async function createLink(req: Request): Promise<Response> {
   const { data: userData, error: userError } = await sb.auth.getUser();
   if (userError || !userData?.user) return jsonResponse({ error: "Sessão inválida" }, 401);
 
-  const body = await req.json().catch(() => ({}));
+  const body = (await req.json().catch(() => null)) ?? {};
   const id = typeof body.race_event_id === "string" ? body.race_event_id : "";
   if (!UUID_RE.test(id)) return jsonResponse({ error: "race_event_id em falta" }, 400);
 
   // Pela RLS ("own rows"): só encontra a prova se for deste atleta.
   const { data: race, error } = await sb.from("race_events").select("id").eq("id", id).maybeSingle();
-  if (error) return jsonResponse({ error: error.message }, 500);
+  if (error) {
+    console.error("Erro a ler a prova:", error.message);
+    return jsonResponse({ error: "Não foi possível ler a prova" }, 500);
+  }
   if (!race) return jsonResponse({ error: "Prova não encontrada" }, 404);
 
   const exp = Math.floor(Date.now() / 1000) + LINK_TTL_SECONDS;

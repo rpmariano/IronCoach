@@ -42,6 +42,10 @@ Deno.test("raceDurationMinutes: objetivo quando existe; senão ritmo folgado, tr
   // 30 km + 1500 m D+ = 45 km equiv. × 9 min = 405 min
   assertEquals(raceDurationMinutes({ distance_km: 30, elevation_gain_m: 1500, race_type: "trail" }), 405);
   assertEquals(raceDurationMinutes({ distance_km: 3 }), 30);
+  // o rascunho do RunAgenda só traz o texto
+  assertEquals(raceDurationMinutes({ target_time: "1:45:00", distance_km: 21.0975 }), 105);
+  assertEquals(raceDurationMinutes({ target_time: "47:00" }), 60);
+  assertEquals(raceDurationMinutes({ target_time: "abc", distance_km: 10 }), 60);
 });
 
 Deno.test("basicDate / basicDateTimeRange: sem fuso, e o fim pode passar a meia-noite", () => {
@@ -77,6 +81,7 @@ Deno.test("raceIcs: sem hora é um evento de dia inteiro", () => {
 
 Deno.test("icsEscape / icsFold: barras e mudanças de linha; dobra sem partir acentos", () => {
   assertEquals(icsEscape("a\\b\nc"), "a\\\\b\\nc");
+  assertEquals(icsEscape("a\rb\u0007c"), "a\\nbc");
   const long = "SUMMARY:" + "ã".repeat(60); // 8 + 120 octetos
   const folded = icsFold(long);
   const enc = new TextEncoder();
