@@ -23,6 +23,22 @@ No sábado, 2026-09-26, às 03:53 (dia de descanso no plano aceite), as boas-vin
 
 Leitura das tabelas: **alta** contradiz o próprio ecrã ou afirma algo falso num caminho comum; média é falsa ou fora de hora numa situação plausível; baixa é rara, ou só soa a molde. **Parcial** marca o que já está meio corrigido e diz o que falta. As linhas de código são as de 2026-09-26; se tiverem mexido, procurar pela frase.
 
+## Estado (2026-09-26, fim do dia)
+
+**Lote 1 feito** — as 24 linhas altas e médias das secções 1 e 2 que só tocam no cliente, no ramo `claude/generic-phrase-issue-ar2vbb` (commits `f1870d9` a `f99aec1`). Cada grupo de ficheiros teve implementação e uma revisão adversarial, que encontrou e corrigiu mais 29 casos do mesmo tipo: provas ao fim do dia e à meia-noite no cartão da Carol, a proposta da tranche seguinte por aceitar, a semana cumprida com dias «Por planear», o check-in corrigido que não fechava a intervenção, entre outros. As linhas das tabelas abaixo ficam como registo do que estava errado; as do Lote 1 já não se verificam.
+
+Também feito no mesmo trabalho, fora do backlog:
+
+- **A memória dela chega às frases fixas** (`src/utils/carolVida.js`): uma cirurgia, uma lesão ou uma doença que o atleta lhe contou, com data, é a primeira coisa que ela diz nos dias à volta — nas boas-vindas, na resposta ao check-in, no cartão da Carol, no primeiro dia e nos assuntos. A memória (`coach_notes`) passou a ler-se ao abrir a app; antes só se lia no primeiro dia.
+- **O tom**: frases mais cordiais e com energia, sem exclamações nem elogios automáticos (CAROL.md §8).
+
+Fica para o Lote 2 (servidor — faz deploy em produção no push a `dev`):
+
+- `raceEve.ts`: uma partida a partir das ~13h30 dá jantar depois da meia-noite e «pequeno-almoço» às 17:15. O cartão já filtra no cliente; o chat e o resumo diário ainda o dizem.
+- `coach-daily-summary`: as frases de água e a do plano em enum. O cliente já as ignora.
+- Datas de Lisboa: `DayPlanCard`, `Home` e `WeeklyPlanCard` ainda usam a data do dispositivo (`todayISO`), e o cartão da Carol a de Lisboa. Só diverge num dispositivo fora do fuso de Lisboa, perto da meia-noite.
+- `checkinReply.js:52`, parcial: depois de a conversa sobre a dor acontecer (intervenção fechada no chat), o cartão do check-in ainda diz «quero falar contigo sobre ela».
+
 ## 1. Início — cartão da Carol e plano
 
 | Sev. | Onde | O que diz | Quando está errado | Correção proposta |
@@ -192,7 +208,7 @@ O que sobrou nas boas-vindas depois da correção.
 
 | Lote | Âmbito | Linhas | Deploy |
 |---|---|---|---|
-| 1 | **alta** e média das secções 1 e 2 que só tocam no cliente: o que o atleta vê todos os dias no Início e no check-in | 24 (6 alta, 18 média) | Não. O frontend só publica a partir de `master`. |
+| 1 — **feito** | **alta** e média das secções 1 e 2 que só tocam no cliente: o que o atleta vê todos os dias no Início e no check-in | 24 (6 alta, 18 média) | Não. O frontend só publica a partir de `master`. |
 | 2 | **alta** e média da secção 4, mais as 4 médias de `readinessIndex.ts` da secção 2 | 14 (1 alta, 13 média) | **Sim, no push a `dev`.** Um só push, `deno test` antes, e `dev` e `master` sem divergir nestes ficheiros (o merge para `master` continua a precisar de pedido explícito). |
 | 3 | **alta** e média das secções 3 e 5: chat, resultado da prova, dashboards e registos | 16 (4 alta, 12 média) | Não. |
 | 4 | Todas as baixas | 75 (53 no cliente, 22 no servidor) | A parte do servidor sim; fazê-la num push à parte. |
