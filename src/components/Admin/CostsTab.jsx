@@ -87,7 +87,9 @@ async function fetchUsageRows(fromIso, toIso) {
       .gte('created_at', fromIso);
     if (toIso) q = q.lt('created_at', toIso);
     const { data, error } = await q
-      .order('created_at', { ascending: false })
+      // Ascendente: uma linha inserida durante a paginação cai no fim, em vez
+      // de empurrar as seguintes e repetir a da fronteira entre páginas.
+      .order('created_at', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
     rows.push(...(data || []));
@@ -130,6 +132,7 @@ export default function CostsTab({ users = [] }) {
   const [loadError, setLoadError] = useState(null);
   const [settings, setSettings] = useState(loadSettings);
   const [balance, setBalance] = useState(null);
+  const [balanceTick, setBalanceTick] = useState(0);
 
   const period = useMemo(() => periodFor(preset, from, to), [preset, from, to]);
   const rate = Number(settings.usdToEur) || DEFAULT_USD_TO_EUR;
@@ -176,17 +179,17 @@ export default function CostsTab({ users = [] }) {
         if (cancelled) return;
         const agg = aggregateCosts(res.rows);
         const hours = Math.max(1, (Date.now() - since.getTime()) / 3600000);
-        setBalance({ spentUsd: agg.total.cost, calls: agg.total.calls, perDayUsd: (agg.total.cost / hours) * 24, hours });
+        setBalance({ spentUsd: agg.total.cost, calls: agg.total.calls, perDayUsd: (agg.total.cost / hours) * 24, hours, truncated: res.truncated });
       } catch (err) {
         console.error(err);
         if (!cancelled) setBalance(null);
       }
     })();
     return () => { cancelled = true; };
-  }, [settings.topUpAt, rows]);
+  }, [settings.topUpAt, balanceTick]);
 
   const filtered = useMemo(() => rows.filter(r =>
-    (!userId || r.user_id === userId)
+    (!userId || (userId === '—' ? !r.user_id : r.user_id === userId))
     && (!moduleKey || moduleOf(r.event) === moduleKey)
     && (!eventKey || r.event === eventKey)), [rows, userId, moduleKey, eventKey]);
 
@@ -194,13 +197,19 @@ export default function CostsTab({ users = [] }) {
   // A simulação de preço olha para TODOS os módulos (o que um utilizador
   // custa por mês), mas respeita o período e o filtro de utilizador.
   const aggAllModules = useMemo(() => aggregateCosts(
-    rows.filter(r => !userId || r.user_id === userId), { period, users },
+    rows.filter(r => !userId || (userId === '—' ? !r.user_id : r.user_id === userId)), { period, users },
   ), [rows, userId, period, users]);
   const stats = useMemo(() => pricingStats(aggAllModules.perUser), [aggAllModules]);
 
   const moduleOptions = useMemo(() => [...new Set(Object.values(COST_EVENT_MODULE))].sort(), []);
   const eventOptions = useMemo(() => [...new Set(rows.map(r => r.event))]
     .filter(e => !moduleKey || moduleOf(e) === moduleKey).sort(), [rows, moduleKey]);
+
+  // O período mudou e a função escolhida deixou de existir nele: limpa o
+  // filtro em vez de deixar o painel vazio sem nada visível no select.
+  useEffect(() => {
+    if (eventKey && !loading && !eventOptions.includes(eventKey)) setEventKey('');
+  }, [eventKey, eventOptions, loading]);
 
   const priceOpts = { margin: (Number(settings.margin) || 0) / 100, commission: (Number(settings.commission) || 0) / 100, vat: (Number(settings.vat) || 0) / 100 };
   const priceMean = suggestedPrice(stats.mean * rate, priceOpts);
@@ -242,7 +251,7 @@ export default function CostsTab({ users = [] }) {
   const maxDayCost = Math.max(0, ...agg.perDay.map(d => d.cost));
   const topUpEur = Number(settings.topUpEur) || 0;
   const remainingEur = balance ? topUpEur - balance.spentUsd * rate : null;
-  const daysLeft = balance && balance.perDayUsd > 0 ? remainingEur / (balance.perDayUsd * rate) : null;
+  const daysLeft = balance && balance.perDayUsd > 0 ? Math.max(0, remainingEur / (balance.perDayUsd * rate)) : null;
   const currentPrice = GEMINI_PRICING.find(p => localDay(new Date().toISOString()) >= p.from);
 
   return (
@@ -296,7 +305,7 @@ export default function CostsTab({ users = [] }) {
           <div className={`${cardCls} text-center`}>
             <p className="text-[11px] text-[var(--text-3)] uppercase tracking-wide mb-1">Custo estimado (Gemini)</p>
             <p className="text-3xl font-extrabold">{eur(total.cost, rate)}</p>
-            <p className="text-[11px] text-[var(--text-3)] mt-0.5">{usdFmt(total.cost)} · {total.calls} chamada(s) · {total.calls ? eur(total.cost / total.calls, rate, 4) : '—'}/chamada</p>
+            <p className="text-[11px] text-[var(--text-3)] mt-0.5">{usdFmt(total.cost)} · {total.calls} registo(s) · {total.geminiCalls} chamada(s) ao Gemini · {total.calls ? eur(total.cost / total.calls, rate, 4) : '—'}/registo</p>
             <div className="grid grid-cols-4 gap-1 mt-3 text-center">
               {[['Input', total.input - total.cached], ['Cache', total.cached], ['Output', total.output], ['Raciocínio', total.thoughts]].map(([l, v]) => (
                 <div key={l}><p className="text-xs font-bold">{int(v)}</p><p className="text-[10px] text-[var(--text-3)]">{l}</p></div>
@@ -304,7 +313,7 @@ export default function CostsTab({ users = [] }) {
             </div>
             {total.legacyCalls > 0 && (
               <p className="text-[11px] text-[var(--warn)] mt-3 leading-relaxed">
-                {total.legacyCalls} de {total.calls} chamada(s) são anteriores à correção da contagem (27-09-2026): não incluem o raciocínio do modelo
+                {total.legacyCalls} de {total.calls} registo(s) são anteriores à correção da contagem (27-09-2026): não incluem o raciocínio do modelo
                 nem o comentário da Carol nos registos. O custo real desse período foi maior do que o mostrado.
               </p>
             )}
@@ -328,12 +337,14 @@ export default function CostsTab({ users = [] }) {
                 <div className="grid grid-cols-3 gap-2 text-center">
                   <div><p className="text-sm font-bold">{eur(balance.spentUsd, rate)}</p><p className="text-[11px] text-[var(--text-3)]">gasto estimado</p></div>
                   <div><p className={`text-sm font-bold ${remainingEur < topUpEur * 0.2 ? 'text-[var(--warn)]' : ''}`}>{eur(remainingEur, 1)}</p><p className="text-[11px] text-[var(--text-3)]">restante</p></div>
-                  <div><p className="text-sm font-bold">{daysLeft == null ? '—' : daysLeft > 999 ? '999+' : Math.floor(daysLeft)}</p><p className="text-[11px] text-[var(--text-3)]">dias ao ritmo atual</p></div>
+                  <div><p className="text-sm font-bold">{remainingEur <= 0 ? 'esgotado' : daysLeft == null ? '—' : daysLeft > 999 ? '999+' : Math.floor(daysLeft)}</p><p className="text-[11px] text-[var(--text-3)]">dias ao ritmo atual</p></div>
                 </div>
                 <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
-                  {balance.calls} chamada(s) · {eur(balance.perDayUsd, rate)}/dia. Compara o restante com o saldo real no AI Studio: se divergir muito,
+                  {balance.calls} registo(s) · {eur(balance.perDayUsd, rate)}/dia. Compara o restante com o saldo real no AI Studio: se divergir muito,
                   os preços ou o câmbio abaixo estão desatualizados.
+                  {' '}<button onClick={() => setBalanceTick(t => t + 1)} className="underline font-semibold">Atualizar</button>
                 </p>
+                {balance.truncated && <p className="text-[11px] text-[var(--warn)]">Mais de {int(MAX_ROWS)} registos desde o carregamento — o gasto está subestimado.</p>}
               </>
             ) : (
               <p className="text-[11px] text-[var(--text-3)]">A calcular…</p>
@@ -346,14 +357,14 @@ export default function CostsTab({ users = [] }) {
             {agg.perUser.length === 0 ? (
               <p className="text-xs text-[var(--text-3)] text-center py-4">Sem chamadas com dados de tokens neste período.</p>
             ) : agg.perUser.map(u => (
-              <button key={u.userId} onClick={() => setUserId(userId === u.userId ? '' : u.userId)}
+              <button key={u.userId} disabled={u.userId === '—'} onClick={() => setUserId(userId === u.userId ? '' : u.userId)}
                 className="w-full text-left rounded-xl p-3 border border-[var(--border-glass)] hover:bg-[var(--surface-strong)] transition">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-semibold truncate">{u.name}</p>
                   <p className="text-xs font-bold text-[var(--coach)] whitespace-nowrap">{eur(u.cost, rate)}</p>
                 </div>
                 <p className="text-[11px] text-[var(--text-3)] mt-0.5">
-                  {u.calls} chamada(s) · {u.activeDays} dia(s) ativo(s) · {total.cost ? Math.round((u.cost / total.cost) * 100) : 0}% do total
+                  {u.calls} registo(s) · {u.activeDays} dia(s) ativo(s) · {total.cost ? Math.round((u.cost / total.cost) * 100) : 0}% do total
                 </p>
                 <p className="text-[11px] text-[var(--text-3)]">
                   {eur(u.costPerActiveDay, rate)}/dia ativo · projeção <span className="font-semibold text-[var(--text-2)]">{eur(u.monthlyCost, rate)}/mês</span>
@@ -380,7 +391,7 @@ export default function CostsTab({ users = [] }) {
             {agg.perEvent.map(e => (
               <div key={e.key} className="flex items-center justify-between gap-2 text-[11px]">
                 <span className="truncate">{e.key}</span>
-                <span className="text-[var(--text-3)] whitespace-nowrap">{e.calls}× · {eur(e.calls ? e.cost / e.calls : 0, rate, 4)}/chamada · <span className="font-semibold text-[var(--text-2)]">{eur(e.cost, rate)}</span></span>
+                <span className="text-[var(--text-3)] whitespace-nowrap">{e.calls}× · {eur(e.calls ? e.cost / e.calls : 0, rate, 4)}/registo · <span className="font-semibold text-[var(--text-2)]">{eur(e.cost, rate)}</span></span>
               </div>
             ))}
           </div>

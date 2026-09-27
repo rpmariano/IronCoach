@@ -77,6 +77,9 @@ export function tokensOf(meta) {
     cached,
     output: Number(m.output_tokens) || 0,
     thoughts: Number(m.thoughts_tokens) || 0,
+    // Chamadas ao Gemini somadas neste registo (comentário da Carol, voltas
+    // de function calling…). Linhas antigas não têm o campo: 1.
+    geminiCalls: m.calls === undefined ? 1 : Number(m.calls) || 0,
     // As linhas gravadas antes da auditoria não trazem o campo.
     legacy: !('thoughts_tokens' in m),
   };
@@ -90,11 +93,12 @@ export function rowCostUsd(row) {
 }
 
 function emptyBucket() {
-  return { calls: 0, input: 0, cached: 0, output: 0, thoughts: 0, cost: 0, legacyCalls: 0 };
+  return { calls: 0, geminiCalls: 0, input: 0, cached: 0, output: 0, thoughts: 0, cost: 0, legacyCalls: 0 };
 }
 
 function addTo(bucket, t, cost) {
   bucket.calls += 1;
+  bucket.geminiCalls += t.geminiCalls;
   bucket.input += t.input;
   bucket.cached += t.cached;
   bucket.output += t.output;
@@ -173,6 +177,7 @@ export function aggregateCosts(rows, { period, users = [] } = {}) {
       name: info?.display_name || info?.email || (u.userId === '—' ? 'Sem utilizador' : u.userId.slice(0, 8)),
       email: info?.email || null,
       calls: u.calls,
+      geminiCalls: u.geminiCalls,
       input: u.input,
       cached: u.cached,
       output: u.output,

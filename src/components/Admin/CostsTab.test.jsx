@@ -54,7 +54,7 @@ describe('CostsTab', () => {
     expect(screen.getByRole('button', { name: /Ana/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Bruno/ })).toBeInTheDocument();
     // A linha do Bruno não tem thoughts_tokens: é anterior à correção.
-    expect(screen.getByText(/1 de 2 chamada\(s\) são anteriores/)).toBeInTheDocument();
+    expect(screen.getByText(/1 de 2 registo\(s\) são anteriores/)).toBeInTheDocument();
     expect(screen.getByText(/Amostra de 2 utilizador/)).toBeInTheDocument();
   });
 
