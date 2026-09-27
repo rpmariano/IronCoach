@@ -58,6 +58,7 @@ import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
 import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -7393,5 +7394,7 @@ async function handler(req: Request): Promise<Response> {
 }
 
 if (import.meta.main) {
-  Deno.serve(handler);
+  // O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+  // servidor (_shared/usageRecorder.ts), não pela app.
+  Deno.serve(withUsageRecording("coach-chat", handler));
 }

@@ -76,14 +76,27 @@ function periodFor(preset, from, to) {
   return { start: addDays(today, -(days - 1)), end: today };
 }
 
-// Linhas de app_logs com tokens entre dois instantes (ISO), paginadas.
+// Linhas de ai_usage entre dois instantes (ISO), paginadas, no formato que
+// utils/aiCosts.js lê ({ user_id, event, created_at, meta }). ai_usage é
+// gravada pelo servidor (supabase/functions/_shared/usageRecorder.ts); as
+// linhas 'client_backfill' vêm do app_logs antigo e não têm thoughts_tokens
+// (NULL) — ficam de fora do meta para o painel as marcar como incompletas.
+export function usageRowToLog(r) {
+  const meta = {
+    input_tokens: r.input_tokens,
+    cached_tokens: r.cached_tokens,
+    output_tokens: r.output_tokens,
+    calls: r.calls,
+  };
+  if (r.thoughts_tokens !== null && r.thoughts_tokens !== undefined) meta.thoughts_tokens = r.thoughts_tokens;
+  return { user_id: r.user_id, event: r.function, created_at: r.created_at, model: r.model || null, meta };
+}
+
 async function fetchUsageRows(fromIso, toIso) {
   const rows = [];
   for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
-    let q = supabase.from('app_logs')
-      .select('user_id, event, meta, created_at')
-      .eq('level', 'success')
-      .not('meta->input_tokens', 'is', null)
+    let q = supabase.from('ai_usage')
+      .select('user_id, function, model, created_at, input_tokens, cached_tokens, output_tokens, thoughts_tokens, calls')
       .gte('created_at', fromIso);
     if (toIso) q = q.lt('created_at', toIso);
     const { data, error } = await q
@@ -92,7 +105,7 @@ async function fetchUsageRows(fromIso, toIso) {
       .order('created_at', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
-    rows.push(...(data || []));
+    rows.push(...(data || []).map(usageRowToLog));
     if (!data || data.length < PAGE_SIZE) return { rows, truncated: false };
   }
   return { rows, truncated: true };
@@ -387,6 +400,16 @@ export default function CostsTab({ users = [] }) {
                 </div>
               </div>
             ))}
+            <p className="text-xs font-semibold pt-2">Por modelo</p>
+            {agg.perModel.map(m => (
+              <div key={m.key} className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="truncate">{m.key}</span>
+                <span className="text-[var(--text-3)] whitespace-nowrap">{m.calls}× · <span className="font-semibold text-[var(--text-2)]">{eur(m.cost, rate)}</span></span>
+              </div>
+            ))}
+            <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
+              Os preços assumem a linha Flash. Se aparecer aqui um modelo de outra família, o custo desse modelo está errado — atualiza a tabela em utils/aiCosts.js.
+            </p>
             <p className="text-xs font-semibold pt-2">Por função</p>
             {agg.perEvent.map(e => (
               <div key={e.key} className="flex items-center justify-between gap-2 text-[11px]">

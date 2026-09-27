@@ -44,6 +44,7 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -1284,7 +1285,9 @@ export function resolveReanalysisTypes(
   };
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("analyze-run", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -1702,5 +1705,4 @@ Deno.serve(async (req) => {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
-});
-
+}));

@@ -25,6 +25,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,7 +100,9 @@ function buildPrompt(brand: string, model: string): string {
   ].join("\n");
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -210,4 +213,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: e instanceof Error ? e.message : "Erro inesperado." }, 500);
   }
-});
+}));

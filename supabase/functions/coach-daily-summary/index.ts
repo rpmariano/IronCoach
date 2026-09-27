@@ -32,6 +32,7 @@ import { selectRaces } from "../_shared/formulas/mainRace.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -852,7 +853,9 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
   };
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
 
@@ -1214,4 +1217,4 @@ Deno.serve(async (req) => {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
-});
+}));

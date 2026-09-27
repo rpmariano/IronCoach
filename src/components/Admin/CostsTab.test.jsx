@@ -12,10 +12,10 @@ const net = { rows: [], queries: [] };
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
-    from: () => {
-      const q = { filters: [] };
+    from: (table) => {
+      const q = { table, filters: [] };
       const b = {};
-      for (const m of ['select', 'eq', 'not', 'gte', 'lt', 'order']) {
+      for (const m of ['select', 'gte', 'lt', 'order']) {
         b[m] = (...args) => { q.filters.push([m, ...args]); return b; };
       }
       b.range = (a, z) => {
@@ -40,16 +40,19 @@ describe('CostsTab', () => {
     net.queries = [];
     try { localStorage.clear(); } catch { /* sem storage */ }
     net.rows = [
-      { user_id: 'u1', event: 'coach-chat', created_at: iso(2), meta: { input_tokens: 20000, output_tokens: 500, thoughts_tokens: 1500, cached_tokens: 5000 } },
-      { user_id: 'u2', event: 'analyze-meal', created_at: iso(3), meta: { input_tokens: 2000, output_tokens: 300 } },
+      { user_id: 'u1', function: 'coach-chat', model: 'gemini-3.8-flash', created_at: iso(3), input_tokens: 20000, output_tokens: 500, thoughts_tokens: 1500, cached_tokens: 5000, calls: 2 },
+      // Linha recuperada de app_logs: sem thoughts_tokens (NULL).
+      { user_id: 'u2', function: 'analyze-meal', model: null, created_at: iso(2), input_tokens: 2000, output_tokens: 300, thoughts_tokens: null, cached_tokens: 0, calls: 1 },
     ];
   });
 
-  it('pede só linhas com tokens e mostra custo por utilizador e aviso de legado', async () => {
+  it('lê ai_usage e mostra custo por utilizador, modelo e aviso de legado', async () => {
     render(<CostsTab users={users} />);
     expect(await screen.findByText('Por utilizador')).toBeInTheDocument();
     const q = net.queries[0];
-    expect(q.filters).toContainEqual(['not', 'meta->input_tokens', 'is', null]);
+    expect(q.table).toBe('ai_usage');
+    expect(screen.getByText('gemini-3.8-flash')).toBeInTheDocument();
+    expect(screen.getByText(/3 chamada\(s\) ao Gemini/)).toBeInTheDocument();
     expect(q.range).toEqual([0, 999]);
     expect(screen.getByRole('button', { name: /Ana/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Bruno/ })).toBeInTheDocument();

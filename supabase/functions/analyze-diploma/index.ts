@@ -11,13 +11,14 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
-import { usageFromGemini } from "../_shared/geminiUsage.ts";
+import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_RETRYABLE_STATUSES,
   geminiBusyMessage,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -168,7 +169,7 @@ async function readDiplomaWithGemini(
   mime: string,
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
-): Promise<{ reading: DiplomaReading; usage: Record<string, number> }> {
+): Promise<{ reading: DiplomaReading; usage: GeminiUsage }> {
   const res = await fetchGeminiWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
     {
@@ -206,7 +207,9 @@ async function readDiplomaWithGemini(
   return { reading, usage };
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("analyze-diploma", async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   // Só lê (não grava nada), mas também tem prazo: a app deve ter a resposta
   // antes de desistir (ver _shared/geminiFetch.ts).
@@ -235,4 +238,4 @@ Deno.serve(async (req) => {
     console.error("analyze-diploma:", e);
     return jsonResponse({ error: e instanceof Error ? e.message : "Falha a ler o diploma." }, 502);
   }
-});
+}));

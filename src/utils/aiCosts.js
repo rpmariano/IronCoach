@@ -1,4 +1,4 @@
-/* Custos da API Gemini a partir de app_logs — o que o Admin → Custos API
+/* Custos da API Gemini a partir de ai_usage (gravada pelo servidor; antes app_logs) — o que o Admin → Custos API
    mostra e o que alimenta a simulação de preço por utilizador.
 
    Auditoria de 2026-09-27 (depois de os créditos pré-pagos esgotarem sem
@@ -137,6 +137,7 @@ export function aggregateCosts(rows, { period, users = [] } = {}) {
   const byModule = new Map();
   const byEvent = new Map();
   const byDay = new Map();
+  const byModel = new Map();
 
   for (const row of rows || []) {
     const t = tokensOf(row.meta);
@@ -157,6 +158,11 @@ export function aggregateCosts(rows, { period, users = [] } = {}) {
 
     if (!byEvent.has(row.event)) byEvent.set(row.event, emptyBucket());
     addTo(byEvent.get(row.event), t, cost);
+
+    // O modelo real (modelVersion) — só nas linhas gravadas pelo servidor.
+    const model = row.model || 'desconhecido';
+    if (!byModel.has(model)) byModel.set(model, emptyBucket());
+    addTo(byModel.get(model), t, cost);
 
     if (day) {
       if (!byDay.has(day)) byDay.set(day, emptyBucket());
@@ -194,7 +200,7 @@ export function aggregateCosts(rows, { period, users = [] } = {}) {
   const sortByCost = (m) => [...m.entries()].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.cost - a.cost);
   const perDay = [...byDay.entries()].map(([day, v]) => ({ day, ...v })).sort((a, b) => a.day.localeCompare(b.day));
 
-  return { total, perUser, perModule: sortByCost(byModule), perEvent: sortByCost(byEvent), perDay, periodDays };
+  return { total, perUser, perModule: sortByCost(byModule), perEvent: sortByCost(byEvent), perModel: sortByCost(byModel), perDay, periodDays };
 }
 
 /** Percentil (0–1) por interpolação linear; 0 para lista vazia. */

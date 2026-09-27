@@ -34,6 +34,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -382,7 +383,9 @@ const ELEVATION_VALUES = new Set(["sobe", "desce", "plano"]);
 const RACE_TYPE_VALUES = new Set(["estrada", "trail"]);
 const EXPERIENCE_LEVEL_VALUES = new Set(["iniciante", "basico", "medio", "avancado"]);
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -582,4 +585,4 @@ Deno.serve(async (req) => {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
-});
+}));

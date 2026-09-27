@@ -26,6 +26,8 @@ export type GeminiUsage = {
   cached_tokens: number;
   thoughts_tokens: number;
   calls: number;
+  /** modelVersion da resposta (o alias "-latest" muda de modelo e de preço). */
+  model?: string | null;
 };
 
 export function emptyUsage(): GeminiUsage {
@@ -41,6 +43,7 @@ export function usageFromGemini(json: any): GeminiUsage {
     cached_tokens: Number(m.cachedContentTokenCount) || 0,
     thoughts_tokens: Number(m.thoughtsTokenCount) || 0,
     calls: 1,
+    model: typeof json?.modelVersion === "string" ? json.modelVersion : null,
   };
 }
 
@@ -54,5 +57,7 @@ export function addUsage(a: GeminiUsage | null | undefined, b: GeminiUsage | nul
     cached_tokens: x.cached_tokens + y.cached_tokens,
     thoughts_tokens: x.thoughts_tokens + y.thoughts_tokens,
     calls: x.calls + y.calls,
+    // O modelo mais recente que respondeu (numa soma é quase sempre o mesmo).
+    model: y.model ?? x.model ?? null,
   };
 }
