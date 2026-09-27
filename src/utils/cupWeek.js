@@ -27,7 +27,10 @@ function dayOf(value) {
 
 // A linha da semana vai de D−7 a D−2: a véspera (D−1) e o dia (D0) já têm
 // as linhas próprias do cartão (pickRaceOfDay devolve a jornada quando é a
-// única prova desse dia).
+// única prova desse dia). A janela é a mesma do aviso de prazo (7 dias); a
+// D−7 a jornada cai no MESMO dia da semana de hoje, e "Domingo, …" dito num
+// domingo lia-se como hoje — por isso aí o dia leva " da próxima semana"
+// (revisão da Fase 3, aviso [d]).
 export const CUP_WEEK_FROM_DAYS = 2;
 export const CUP_WEEK_TO_DAYS = 7;
 
@@ -66,7 +69,8 @@ function capitalize(text) {
 }
 
 /** A linha da semana da jornada no cartão diário (A.6 do desenho):
- *  { roundId, raceId, text, lead, calc } ou null.
+ *  { roundId, raceId, text, lead, calc } ou null. A D−7: "Domingo da
+ *  próxima semana, …".
  *
  *  Só com inscrição, para a primeira jornada com "Vou", data confirmada e a
  *  prova no calendário que caia entre D−7 e D−2 (e cuja prova não esteja em
@@ -91,6 +95,7 @@ export function cupWeekLine({ view, today, profile = null, runs = [], skipRaceId
 
   let weekday = '';
   try { weekday = capitalize(format(parseISO(dayOf(round.date)), 'EEEE', { locale: pt })); } catch { weekday = ''; }
+  if (weekday && daysUntil(dayOf(round.date), t) === CUP_WEEK_TO_DAYS) weekday = `${weekday} da próxima semana`;
   const km = kmLabel(roundKm(round));
   const hora = horaLabel(round.course?.start_time);
   const where = km && hora ? `${km} às ${hora}` : km || (hora ? `às ${hora}` : null);

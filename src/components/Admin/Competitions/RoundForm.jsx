@@ -8,6 +8,7 @@ import {
   createCourse, updateCourse, deleteCourse,
   createRaceSeries,
 } from '../../../utils/cupAdmin';
+import { CUP_ADAPTER_URLS, cupResultsUrlError } from '@formulas/cupResults.ts';
 
 /* O formulário de UMA jornada (specs/trofeu.md §6.2), 2026-09-26.
 
@@ -24,7 +25,13 @@ import {
    nos planos deles — o mesmo risco de "mover uma jornada de muitos atletas"
    (§9). Antes de apagar pede-se preview_round_change com date_status
    'cancelada' (o efeito nas provas é o mesmo) e sugere-se cancelar: uma
-   jornada cancelada fica no histórico. */
+   jornada cancelada fica no histórico.
+
+   O LINK DOS RESULTADOS (Fase 4, §7). É o que o job lê: com um adaptador na
+   edição (`adapter` = results_adapter), só se aceita o formato dele (o
+   /Resultados/{id} do site do Troféu) — validado ao sair do campo e ao
+   gravar, com o erro por baixo do campo; "Guardar" recusa. O da coletiva
+   fica livre (o site não a dá por GET). */
 
 const DATE_STATUS = [
   { value: 'provavel', label: 'Provável' },
@@ -202,7 +209,7 @@ function CoursesEditor({ roundId, courses, onChange, readOnly }) {
 
 export default function RoundForm({
   round, editionId, competitionId, nextRoundNo, seriesOptions, courses,
-  onClose, onSaved, onDeleted, onCoursesChanged, readOnly,
+  onClose, onSaved, onDeleted, onCoursesChanged, readOnly, adapter = null,
 }) {
   const isNew = !round;
   const [savedRound, setSavedRound] = useState(round || null);
@@ -213,6 +220,8 @@ export default function RoundForm({
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [resultsUrlError, setResultsUrlError] = useState(null);
+  const exemploJornada = adapter ? CUP_ADAPTER_URLS[adapter]?.exemploJornada || null : null;
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   const [deletePreview, setDeletePreview] = useState(null); // bandas | null
@@ -249,7 +258,15 @@ export default function RoundForm({
     setAddingSeries(false);
   };
 
+  const checkResultsUrl = () => {
+    const err = cupResultsUrlError(adapter, 'jornada', form.results_url);
+    setResultsUrlError(err);
+    return err;
+  };
+
   const handleSave = async () => {
+    // Um link fora do formato do adaptador não se grava (o job não o lia).
+    if (checkResultsUrl()) return;
     setSaving(true);
     setSaveError(null);
     if (isNew && !savedRound) {
@@ -433,7 +450,20 @@ export default function RoundForm({
 
         <div className="space-y-1">
           <label className={labelCls}>Link — resultados individuais</label>
-          <input aria-label="Link dos resultados individuais" className={inputCls} value={form.results_url} onChange={(e) => setField('results_url', e.target.value)} disabled={readOnly} placeholder="https://…" />
+          <input
+            aria-label="Link dos resultados individuais"
+            className={inputCls}
+            value={form.results_url}
+            onChange={(e) => { setField('results_url', e.target.value); if (resultsUrlError) setResultsUrlError(null); }}
+            onBlur={checkResultsUrl}
+            disabled={readOnly}
+            placeholder={exemploJornada ? `Ex.: ${exemploJornada}` : 'https://…'}
+            aria-invalid={resultsUrlError ? true : undefined}
+            aria-describedby={resultsUrlError ? 'round-results-url-erro' : undefined}
+          />
+          {resultsUrlError && (
+            <p id="round-results-url-erro" role="alert" className="text-[11px] text-[var(--danger)]">{resultsUrlError}</p>
+          )}
         </div>
         <div className="space-y-1">
           <label className={labelCls}>Link — resultados por equipas</label>

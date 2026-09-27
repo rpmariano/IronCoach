@@ -11,12 +11,15 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
+import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_RETRYABLE_STATUSES,
   geminiBusyMessage,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,7 +27,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
 const MAX_IMAGE_B64_LENGTH = 6_000_000; // ~4,5 MB de imagem — mais do que o cliente alguma vez envia
@@ -167,20 +169,27 @@ async function readDiplomaWithGemini(
   mime: string,
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
-): Promise<{ reading: DiplomaReading; usage: Record<string, number> }> {
-  const res = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildDiplomaPrompt() }, { inline_data: { mime_type: mime, data: imageB64 } }] }],
-        generationConfig: { temperature: 0, response_mime_type: "application/json", response_schema: RESPONSE_SCHEMA },
-      }),
-    },
-    GEMINI_TIMEOUT_MS,
-    GEMINI_RETRIES,
-    deadline,
+): Promise<{ reading: DiplomaReading; usage: GeminiUsage }> {
+  const res = await geminiWithFallback((geminiModel, withThinking) =>
+    fetchGeminiWithTimeout(
+      geminiUrl(geminiModel),
+      {
+        method: "POST",
+        headers: geminiHeaders(geminiKey),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: buildDiplomaPrompt() }, { inline_data: { mime_type: mime, data: imageB64 } }] }],
+          generationConfig: {
+            temperature: 0,
+            response_mime_type: "application/json",
+            response_schema: RESPONSE_SCHEMA,
+            ...thinkingConfig("low", withThinking),
+          },
+        }),
+      },
+      GEMINI_TIMEOUT_MS,
+      GEMINI_RETRIES,
+      deadline,
+    )
   );
   if (!res.ok) {
     const errText = await res.text();
@@ -192,10 +201,8 @@ async function readDiplomaWithGemini(
     throw new Error(upstreamErrorText(res.status));
   }
   const json = await res.json();
-  const usage = {
-    input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
-    output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
-  };
+  // Inclui cache e raciocínio interno (thoughts) — ver _shared/geminiUsage.ts.
+  const usage = usageFromGemini(json);
   let parsed: unknown;
   try {
     parsed = JSON.parse(json?.candidates?.[0]?.content?.parts?.[0]?.text);
@@ -207,7 +214,9 @@ async function readDiplomaWithGemini(
   return { reading, usage };
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("analyze-diploma", async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   // Só lê (não grava nada), mas também tem prazo: a app deve ter a resposta
   // antes de desistir (ver _shared/geminiFetch.ts).
@@ -236,4 +245,4 @@ Deno.serve(async (req) => {
     console.error("analyze-diploma:", e);
     return jsonResponse({ error: e instanceof Error ? e.message : "Falha a ler o diploma." }, 502);
   }
-});
+}));

@@ -33,6 +33,9 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
+import { usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,7 +43,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 55000;
 const GEMINI_RETRIES = 1;
 
@@ -381,7 +383,9 @@ const ELEVATION_VALUES = new Set(["sobe", "desce", "plano"]);
 const RACE_TYPE_VALUES = new Set(["estrada", "trail"]);
 const EXPERIENCE_LEVEL_VALUES = new Set(["iniciante", "basico", "medio", "avancado"]);
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -461,21 +465,22 @@ Deno.serve(async (req) => {
 
     let geminiRes: Response;
     try {
-      geminiRes = await fetchGeminiWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+      geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+        geminiUrl(model),
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: geminiHeaders(geminiKey),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {
               response_mime_type: "application/json",
               response_schema: RESPONSE_SCHEMA,
               maxOutputTokens: 4096,
+              ...thinkingConfig("low", withThinking),
             },
           }),
         },
-      );
+      ));
     } catch (e) {
       return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 502);
     }
@@ -491,11 +496,8 @@ Deno.serve(async (req) => {
     // invokeEdgeFunctionWithTimeout (src/lib/supabase.js), que grava sempre
     // que a resposta traz `usage`. Sem isto esta função ficava invisível no
     // painel de Custos API do Admin.
-    const usage = {
-      input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-      output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-      cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-    };
+    // Inclui o raciocínio interno (thoughts) — ver _shared/geminiUsage.ts.
+    const usage = usageFromGemini(geminiJson);
     const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
     let parsed: Record<string, unknown>;
     try {
@@ -584,4 +586,4 @@ Deno.serve(async (req) => {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
-});
+}));

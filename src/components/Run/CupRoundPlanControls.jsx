@@ -16,7 +16,12 @@ import { entryDeadlineNotice } from '@formulas/cup.ts';
    - O papel proposto sai do mesmo cálculo da Carol (cupRoundRoles, na
      vista); o atleta aceita-o ou escolhe outro — a escolha dele manda
      (intent_source 'atleta'). "Saltar" é também "Não vou": a prova sai do
-     calendário, por isso pede confirmação.
+     calendário, por isso pede confirmação — também no "Aceitar: saltar".
+     No hub, o salto fecha o hub: `canLeave` corre ANTES de abrir a
+     confirmação (como "Não vou"/"Não fui" no CupRaceBlock — revisão da Fase
+     3, aviso [c]): com os "Detalhes da prova" por gravar o navGuard pergunta
+     "sair sem gravar?" e devolve false — nada abre, nada se grava. Confirmado
+     o salto, `onLeave` fecha o hub antes de gravar.
    - ESCOLHER NÃO É GRAVAR (revisão da Fase 3). Nos rádios nativos as setas
      mudam a seleção e disparam `change`: gravar aí fazia de cada papel por
      onde o teclado ou o leitor de ecrã passava uma escrita com aviso, e ao
@@ -50,7 +55,7 @@ export function jornadaDe(view, round) {
   return `${String(view?.roundLabel || 'Jornada').toLowerCase()} ${round?.round_no ?? ''}`.trim();
 }
 
-export default function CupRoundPlanControls({ view, round, onBeforeLeave }) {
+export default function CupRoundPlanControls({ view, round, canLeave, onLeave }) {
   const setCupRoundIntent = useAppStore((s) => s.setCupRoundIntent);
   const markCupEntryDone = useAppStore((s) => s.markCupEntryDone);
   const profile = useAppStore((s) => s.profile);
@@ -96,18 +101,26 @@ export default function CupRoundPlanControls({ view, round, onBeforeLeave }) {
     mudarRef.current?.focus();
   };
 
+  // O salto (no hub) fecha o hub: pergunta-se primeiro se pode sair —
+  // recusado, a confirmação nem abre.
+  const pedirSaltar = () => {
+    if (canLeave && canLeave() === false) return;
+    setConfirmarSaltar(true);
+  };
+
   const guardarEscolha = () => {
     if (!escolha || busy) return;
-    if (escolha === 'saltar') setConfirmarSaltar(true);
+    if (escolha === 'saltar') pedirSaltar();
     else gravarPapel(escolha);
   };
 
   const saltar = async () => {
     setBusy('saltar');
-    // No hub, a prova vai sair do calendário: fecha-se antes de gravar.
-    onBeforeLeave?.();
+    // No hub, a prova vai sair do calendário: fecha-se antes de gravar (já
+    // se perguntou se podia, antes de abrir a confirmação).
+    onLeave?.();
     const res = await setCupRoundIntent(round.id, 'saltar');
-    if (!onBeforeLeave) { setBusy(null); setConfirmarSaltar(false); }
+    if (!onLeave) { setBusy(null); setConfirmarSaltar(false); }
     if (!res?.ok) { showToast(res?.error?.message || 'Não foi possível gravar.', 'error'); return; }
     showToast(`A ${which} ficou como «Não vou».`, 'success');
   };
@@ -176,7 +189,9 @@ export default function CupRoundPlanControls({ view, round, onBeforeLeave }) {
             style={BOTAO}
             data-testid="cup-aceitar-papel"
             isLoading={busy === 'papel' && !mudar}
-            onClick={() => gravarPapel(proposto)}
+            // "Saltar" é também "Não vou": aceitá-lo passa pela mesma
+            // confirmação do "Mudar o papel" (revisão da Fase 3, aviso [a]).
+            onClick={() => (proposto === 'saltar' ? pedirSaltar() : gravarPapel(proposto))}
           >
             Aceitar: {intentLabel(proposto)}
           </Button>

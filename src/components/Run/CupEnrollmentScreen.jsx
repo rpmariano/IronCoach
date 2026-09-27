@@ -35,6 +35,18 @@ export const SEASON_GOALS = [
   { value: 'marcas', label: 'Melhorar marcas', desc: 'Usas as jornadas para testar forma, sem contar presenças.' },
 ];
 
+/* O dorsal e a classificação oficial (Fase 4, specs/trofeu.md §7). Sem
+   consentimento novo: o dorsal é opcional e dado por ele, a 1.ª linha de
+   cada edição só fica com o "sim" dele, e "não sou eu" nunca volta — o
+   texto di-lo aqui e no "Gerir inscrição", junto do dorsal. E não promete
+   mais do que é verdade: até ele confirmar, a linha achada pelo dorsal
+   (lugar, escalão, marca) fica guardada na linha DELE e pode ser de outra
+   pessoa, se o dorsal estiver errado — "Não sou eu" apaga-a (revisão da
+   Fase 4, 2026-09-27: o texto anterior dizia "nunca dados de outros
+   atletas"). */
+export const CUP_DORSAL_AJUDA = 'Com o dorsal, a app procura a tua linha na classificação oficial de cada jornada e, da primeira vez, pergunta-te se és tu.';
+export const CUP_CLASSIFICACAO_PRIVACIDADE = 'Da classificação oficial só guardamos a linha do teu dorsal — lugar, escalão, marca e pontos, sem nomes — e o total do teu clube. Até confirmares que és tu, essa linha pode ser de outra pessoa (basta um dígito trocado no dorsal): «Não sou eu» apaga-a.';
+
 const KIND_TEXT = {
   clube_elegivel: { tone: 'ok', text: 'O teu clube conta, por agora, para o prémio coletivo.' },
   individual_elegivel: { tone: 'ok', text: 'Como individual, contas para o prémio individual.' },
@@ -307,9 +319,12 @@ export default function CupEnrollmentScreen({ view, onClose, onEnrolled }) {
         {step === 'dorsal' && (
           <>
             <SectionLabel style={{ margin: '2px 2px 0' }}>O teu dorsal</SectionLabel>
-            <p className="text-[11.5px] mt-1 mb-2" style={{ color: 'var(--text-4)' }}>Opcional — dá para dizer mais tarde.</p>
+            <p id="cup-dorsal-ajuda" data-testid="cup-dorsal-ajuda" className="text-[11.5px] mt-1 mb-2" style={{ color: 'var(--text-4)', lineHeight: 'var(--leading-normal)' }}>
+              Opcional — dá para dizer mais tarde. {CUP_DORSAL_AJUDA}
+            </p>
             <Input
               data-testid="cup-dorsal-input"
+              aria-describedby="cup-dorsal-ajuda"
               aria-label="Número de dorsal"
               placeholder="Número do dorsal"
               inputMode="numeric"
@@ -383,7 +398,7 @@ export default function CupEnrollmentScreen({ view, onClose, onEnrolled }) {
               administrador da app, que já vê as provas de todos, consegue por aí saber que corres o Troféu e em
               que jornadas vais. Se escreveres um clube que não está na lista, vê esse nome, sem saber quem o
               escreveu. O teu perfil, os registos da app e os teus consentimentos de privacidade já eram visíveis
-              para ele antes — isso não muda.
+              para ele antes — isso não muda. {CUP_CLASSIFICACAO_PRIVACIDADE}
             </Warning>
           </>
         )}

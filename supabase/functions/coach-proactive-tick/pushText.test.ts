@@ -47,7 +47,7 @@ Deno.test("composePushMessage: usa o texto gerado quando serve; senão, a frase 
   const good = { candidates: [{ content: { parts: [{ text: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app." }] } }] };
   const gen = await composePushMessage(eve, {}, "chave", fakeFetch(good));
   // Sem usageMetadata na resposta, os tokens contam a zero (mas a chamada existiu).
-  assertEquals(gen, { title: "Carol", body: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app.", generated: true, usage: { input_tokens: 0, output_tokens: 0 } });
+  assertEquals(gen, { title: "Carol", body: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app.", generated: true, usage: { input_tokens: 0, output_tokens: 0, cached_tokens: 0, thoughts_tokens: 0, calls: 1, model: null } });
 
   // Sem hora de partida no candidato, a frase fixa não diz "amanhã de manhã" (revisão de 2026-09-26).
   const fixed = "Amanhã é dia de prova: Meia de Lisboa. Tenho o plano para hoje à noite e para amanhã.";
@@ -62,14 +62,14 @@ Deno.test("composePushMessage: usa o texto gerado quando serve; senão, a frase 
 });
 
 Deno.test("composePushMessage: os tokens da chamada vão com o texto — mesmo quando o texto não serve (P.10)", async () => {
-  const usageMetadata = { promptTokenCount: 812, candidatesTokenCount: 41 };
+  const usageMetadata = { promptTokenCount: 812, candidatesTokenCount: 41, thoughtsTokenCount: 300 };
   const good = { usageMetadata, candidates: [{ content: { parts: [{ text: "Amanhã é a Meia de Lisboa. Jantar até às 20h e o plano da manhã está na app." }] } }] };
-  assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch(good))).usage, { input_tokens: 812, output_tokens: 41 });
+  assertEquals((await composePushMessage(eve, {}, "chave", fakeFetch(good))).usage, { input_tokens: 812, output_tokens: 41, cached_tokens: 0, thoughts_tokens: 300, calls: 1, model: null });
   // Texto recusado (exclamação): sai a frase fixa, mas o custo existiu.
   const bad = { usageMetadata, candidates: [{ content: { parts: [{ text: "Força amanhã!" }] } }] };
   const fallback = await composePushMessage(eve, {}, "chave", fakeFetch(bad));
   assertEquals(fallback.generated, false);
-  assertEquals(fallback.usage, { input_tokens: 812, output_tokens: 41 });
+  assertEquals(fallback.usage, { input_tokens: 812, output_tokens: 41, cached_tokens: 0, thoughts_tokens: 300, calls: 1, model: null });
   // Sem chamada (a intervenção nunca passa pelo gerador), sem tokens.
   assertEquals((await composePushMessage({ ...eve, trigger: "intervention", key: "intervention:x" }, {}, "chave", fakeFetch(good))).usage, null);
   // Erro do servidor: sem resposta para contar.

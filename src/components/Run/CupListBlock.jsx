@@ -195,7 +195,10 @@ export function CupListBlock({ listing, onOpenRace, onOpenTrofeu }) {
       {next ? (
         <ProximaRow round={next} view={view} onOpenRace={onOpenRace} onOpenTrofeu={onOpenTrofeu} />
       ) : todasNasLinhas ? null : (
+        // Um estado ("A ler o calendário…", "Não consegui ler…", "Sem mais
+        // jornadas…"): role="status" (revisão da Fase 3, aviso [e]).
         <p
+          role="status"
           data-testid="cup-list-sem-proxima"
           className="m-0 flex items-center text-[12.5px] font-bold"
           style={{ minHeight: 44, padding: '0 10px', color: 'var(--text-3)' }}

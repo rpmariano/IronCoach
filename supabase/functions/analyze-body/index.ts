@@ -9,6 +9,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import {
   GOALS_REVIEW_SCHEMA,
@@ -34,6 +35,8 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -45,9 +48,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Alias que segue sempre o modelo flash estável mais recente — evita 404s
-// quando a Google descontinua modelos para contas novas.
-const GEMINI_MODEL = "gemini-flash-latest";
+// Modelo fixo + nível de raciocínio por chamada vêm de _shared/geminiModel.ts
+// (antes era o alias "gemini-flash-latest", para evitar 404s quando a Google
+// descontinua modelos para contas novas — o alias continua lá como fallback
+// automático, via geminiWithFallback).
 // Tempo máximo por chamada ao Gemini antes de desistir e tentar mais uma vez.
 // A API do Gemini (sobretudo no tier gratuito) tem latência muito variável —
 // isto evita que uma chamada presa arraste a função até ao limite rígido da
@@ -421,13 +425,6 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
   return prompt;
 }
 
-// Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
-// usada para estimar o custo real da API — ver admin_logs/painel de custos.
-// cached_tokens: tokens deste pedido servidos por caching implícito
-// (automático, sem custo de armazenamento) — instrumentado para decidir
-// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
-type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
-
 // Chama o Gemini com as imagens (base64) + histórico + observações, devolve as
 // métricas normalizadas, o resumo e os tokens consumidos (ou lança um erro
 // com mensagem amigável).
@@ -454,14 +451,15 @@ async function analyzeWithGemini(
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
-  const geminiRes = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    geminiUrl(model),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
+          ...thinkingConfig("low", withThinking),
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
         },
@@ -470,7 +468,7 @@ async function analyzeWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  );
+  ));
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -483,11 +481,8 @@ async function analyzeWithGemini(
   }
 
   const geminiJson = await geminiRes.json();
-  const usage: GeminiUsage = {
-    input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-    output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-  };
+  // Tokens desta chamada, incl. thoughts (ver _shared/geminiUsage.ts).
+  const usage: GeminiUsage = usageFromGemini(geminiJson);
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: {
     metrics?: Record<string, unknown>;
@@ -554,12 +549,14 @@ async function generateBodySummaryFromMetrics(
   goalsCtx: GoalsContext | null = null,
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
-): Promise<{ text: string | null; goalsReview: GoalsReview }> {
+  // `usage`: tokens desta chamada (null se não houve resposta do Gemini) —
+  // antes não era devolvido, e o registo manual não contava para os custos.
+): Promise<{ text: string | null; goalsReview: GoalsReview; usage: GeminiUsage | null }> {
   const hasAny = Object.values(metrics).some((v) => v !== null && v !== undefined);
-  if (!hasAny) return { text: null, goalsReview: null };
+  if (!hasAny) return { text: null, goalsReview: null, usage: null };
   // Sem tempo para uma tentativa útil antes do prazo, grava-se sem resumo:
   // é best-effort, e a resposta não pode passar o que a app espera.
-  if (!hasTimeFor(deadline)) return { text: null, goalsReview: null };
+  if (!hasTimeFor(deadline)) return { text: null, goalsReview: null, usage: null };
 
   const metricLines = METRIC_FIELDS
     .filter((f) => metrics[f.key] !== null && metrics[f.key] !== undefined)
@@ -588,17 +585,17 @@ async function generateBodySummaryFromMetrics(
     (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
 
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
             // A análise estruturada é mais longa (feedback de 2026-09-25).
             maxOutputTokens: 8192,
-            thinkingConfig: { thinkingLevel: "minimal" },
+            ...thinkingConfig("low", withThinking),
             response_mime_type: "application/json",
             response_schema: MANUAL_SUMMARY_SCHEMA,
           },
@@ -607,20 +604,24 @@ async function generateBodySummaryFromMetrics(
       45000,
       0,
       deadline,
-    );
+    ));
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());
-      return { text: null, goalsReview: null };
+      return { text: null, goalsReview: null, usage: null };
     }
     const json = await res.json();
-    return parseManualSummary(json?.candidates?.[0]?.content?.parts?.[0]?.text);
+    // Contado logo aqui: os tokens pagam-se mesmo que o texto não se aproveite.
+    const usage = usageFromGemini(json);
+    return { ...parseManualSummary(json?.candidates?.[0]?.content?.parts?.[0]?.text), usage };
   } catch (e) {
     console.warn("Body manual summary generation error:", e);
-    return { text: null, goalsReview: null };
+    return { text: null, goalsReview: null, usage: null };
   }
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("analyze-body", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -734,7 +735,9 @@ Deno.serve(async (req) => {
           .single();
         if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
         await syncProfileAfterAssessment(sb, userId, updated, summaryResult.goalsReview);
-        return jsonResponse({ assessment: updated });
+        // O modo manual só faz esta chamada ao Gemini; o cliente regista o
+        // `usage` em app_logs (porquê: _shared/geminiUsage.ts). null = sem chamada.
+        return jsonResponse({ assessment: updated, usage: summaryResult.usage });
       }
 
       const { data: assessment, error: insertError } = await sb
@@ -756,7 +759,7 @@ Deno.serve(async (req) => {
       if (insertError) return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
 
       await syncProfileAfterAssessment(sb, userId, assessment, summaryResult.goalsReview);
-      return jsonResponse({ assessment });
+      return jsonResponse({ assessment, usage: summaryResult.usage });
     }
 
     // ── Modo reanálise por foto: assessment_id presente sem mode manual ─
@@ -903,5 +906,4 @@ Deno.serve(async (req) => {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
-});
-
+}));

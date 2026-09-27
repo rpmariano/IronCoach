@@ -57,6 +57,10 @@ import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePac
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
 import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
+import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
+// Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
+import { geminiHeaders } from "../_shared/geminiModel.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -1258,12 +1262,12 @@ ${facts.join("\n")}`
   );
 }
 
-async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<string> {
+async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<{ caption: string; usage: GeminiUsage }> {
   const res = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: buildRaceCaptionPrompt(o, firstName) }] }],
         generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
@@ -1278,7 +1282,9 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
   // deno-lint-ignore no-explicit-any
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("").trim();
   if (!text) throw new Error("Legenda vazia");
-  return text.slice(0, 1200);
+  // O consumo vai na resposta para o cliente o registar em app_logs — até
+  // aqui a legenda era a única chamada do coach-chat sem custo contado.
+  return { caption: text.slice(0, 1200), usage: usageFromGemini(data) };
 }
 
 /** Bloco injetado no fim do prompt do sistema num turno por iniciativa dela.
@@ -1319,7 +1325,6 @@ export function buildProactiveUserTurn(trigger: ProactiveTrigger): string {
 // sem custo de armazenamento — Google deteta prefixos repetidos sozinho).
 // Instrumentado para decidir se compensa passar a caching explícito: ver
 // a sinalética "Cache do Coach" no painel Custos API/Admin.
-type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -3688,24 +3693,42 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
 /* O aviso que esta conversa fechou (closeInterventionOnTalk), para os
    turnos seguintes: sem isto, a partir da segunda mensagem a Carol já não
    tinha o motivo nem as regras do aviso (o perfil já está fechado), e quase
-   nunca chegava a registar o desfecho. É a última linha fechada como
-   'resolvido' — o fecho sem desfecho, que é o da conversa — nas últimas
-   TALKED_INTERVENTION_HOURS; a de objetivos não fecha assim. null sem ela. */
-export const TALKED_INTERVENTION_HOURS = 12;
+   nunca chegava a registar o desfecho. É a última linha fechada nas
+   últimas TALKED_INTERVENTION_HOURS, e só se fechou como 'resolvido' — o
+   fecho sem desfecho, que é o da conversa. Registado o desfecho, sai: não
+   se volta a um aviso anterior do mesmo dia. A janela é curta de propósito
+   (revisão de d45453d2): é a conversa sobre o aviso, não o resto do dia.
+   A de objetivos não fecha assim. null sem ela. A RPC
+   record_intervention_outcome usa a mesma janela, escrita no SQL. */
+export const TALKED_INTERVENTION_HOURS = 2;
 
 export async function readTalkedIntervention(sb: any, userId: string, nowMs = Date.now()): Promise<string | null> {
   const since = new Date(nowMs - TALKED_INTERVENTION_HOURS * 3600000).toISOString();
   const { data, error } = await sb
     .from("coach_interventions")
-    .select("reason")
+    .select("reason, outcome")
     .eq("user_id", userId)
-    .eq("outcome", INTERVENTION_OUTCOME.RESOLVIDO)
     .gte("closed_at", since)
     .order("closed_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error || !data?.reason || isGoalsIntervention(data.reason)) return null;
+  if (error || data?.outcome !== INTERVENTION_OUTCOME.RESOLVIDO || !data?.reason || isGoalsIntervention(data.reason)) return null;
   return data.reason;
+}
+
+/* O bloco para os turnos depois da abertura (readTalkedIntervention). Não
+   é o da intervenção: esse manda confrontar e não aceitar promessas, e aqui
+   o aviso já foi dito — uma dor no check-in com o plano já em repouso não
+   tem nada a confrontar (revisão de d45453d2). Dá o motivo e pede só o
+   desfecho, se ele aparecer. */
+export function buildTalkedInterventionInstruction(reason: string): string {
+  return `\n\n=== AVISO JÁ FALADO NESTA CONVERSA ===\n` +
+    `Abriste esta conversa a partir do teu aviso "Preciso de falar contigo", e ele já fechou na app. ` +
+    `O motivo era: "${reason.replace(GOALS_INTERVENTION_TAG, "").trim()}".\n` +
+    `Segue a conversa naturalmente, sem repetir o aviso; se o assunto voltar, continua direta. Se a conversa chegar a um destes ` +
+    `desfechos, regista-o com resolve_intervention: o plano ajustado e aceite ('plano_ajustado'), o atleta a ` +
+    `dizer explicitamente que prefere manter tudo como está ('atleta_ignorou'), ou o aviso a revelar-se um erro de ` +
+    `registo ('falso_positivo'). Se não chegar a nenhum, não chames a ferramenta.\n`;
 }
 
 /* O aviso "Preciso de falar contigo" fecha quando a conversa acontece
@@ -5902,8 +5925,8 @@ async function handler(req: Request): Promise<Response> {
       // Dentro dos 45 s que a app espera pela legenda (requestRaceCaption),
       // agora que o "ocupado" se repete com esperas — com folga para o
       // arranque a frio, que a app conta e este relógio não.
-      const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
-      return jsonResponse({ caption });
+      const { caption, usage } = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
+      return jsonResponse({ caption, usage });
     }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
@@ -5918,7 +5941,8 @@ async function handler(req: Request): Promise<Response> {
       .maybeSingle();
 
     // O aviso que a conversa fechou ao abrir (readTalkedIntervention): nas
-    // respostas do atleta a Carol continua com o motivo e as regras dele.
+    // respostas do atleta a Carol continua com o motivo, sem o modo de
+    // confronto (buildTalkedInterventionInstruction).
     const interventionOpen = ["needed", "in_progress"].includes(profile?.coach_intervention_status as string);
     const talkedReason = !interventionOpen && message ? await readTalkedIntervention(sb, userId) : null;
 
@@ -6689,8 +6713,8 @@ async function handler(req: Request): Promise<Response> {
       coachNotesContext,
       firstNameOf(profile?.display_name as string | null | undefined),
       body.is_intervention_start === true,
-      talkedReason ? "in_progress" : profile?.coach_intervention_status ?? null,
-      talkedReason ?? profile?.coach_intervention_reason ?? null,
+      profile?.coach_intervention_status ?? null,
+      profile?.coach_intervention_reason ?? null,
       shoesContext,
       coachingMode,
       weeklyRunningContext,
@@ -6712,7 +6736,8 @@ async function handler(req: Request): Promise<Response> {
       seriesBlock?.text ?? null,
     );
 
-    let finalSystemInstruction = systemInstruction;
+    let finalSystemInstruction = systemInstruction +
+      (talkedReason ? buildTalkedInterventionInstruction(talkedReason) : "");
 
     // Do mais largo para o mais próximo: a época, o que já conquistou, as
     // metas, o que se disse em cada registo, e o cartão de hoje.
@@ -6941,10 +6966,10 @@ async function handler(req: Request): Promise<Response> {
     let useRecommendationsSchema = !recommendationsSchemaRejected;
     async function callGemini(withTools = true) {
       const res = await fetchGeminiWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: geminiHeaders(geminiKey!),
           body: JSON.stringify({
             system_instruction: { parts: [{ text: finalSystemInstruction }] },
             contents,
@@ -6991,7 +7016,7 @@ async function handler(req: Request): Promise<Response> {
     // Soma tokens de TODAS as chamadas ao Gemini neste pedido — o loop de
     // function calling pode fazer várias idas-e-voltas (cada uma consome
     // tokens) antes de chegar à resposta final que o utilizador vê.
-    const totalUsage: GeminiUsage = { input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
+    let totalUsage: GeminiUsage = emptyUsage();
 
     // Sinaliza ao cliente que esta resposta criou um plano — o Início tem de
     // recarregar os itens para a proposta aparecer sem refrescar a página.
@@ -7113,9 +7138,9 @@ async function handler(req: Request): Promise<Response> {
 
       // deno-lint-ignore no-explicit-any
       const parsedRes: any = await geminiRes.json();
-      totalUsage.input_tokens += Number(parsedRes?.usageMetadata?.promptTokenCount) || 0;
-      totalUsage.output_tokens += Number(parsedRes?.usageMetadata?.candidatesTokenCount) || 0;
-      totalUsage.cached_tokens += Number(parsedRes?.usageMetadata?.cachedContentTokenCount) || 0;
+      // Inclui o raciocínio interno (thoughts), cobrado como output — ver
+      // _shared/geminiUsage.ts.
+      totalUsage = addUsage(totalUsage, usageFromGemini(parsedRes));
       // deno-lint-ignore no-explicit-any
       const parts: any[] = parsedRes?.candidates?.[0]?.content?.parts || [];
       // deno-lint-ignore no-explicit-any
@@ -7371,5 +7396,7 @@ async function handler(req: Request): Promise<Response> {
 }
 
 if (import.meta.main) {
-  Deno.serve(handler);
+  // O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+  // servidor (_shared/usageRecorder.ts), não pela app.
+  Deno.serve(withUsageRecording("coach-chat", handler));
 }

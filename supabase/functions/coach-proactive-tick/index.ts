@@ -28,6 +28,7 @@ import { ownSegmentFor } from "../_shared/formulas/vitrina.ts";
 import { TERRAIN_LOOKBACK_DAYS } from "../_shared/formulas/percentileSegments.ts";
 import { composePushMessage, type PushUsage } from "./pushText.ts";
 import { choosePush, lisbonDateOf, tickLogRow, tickLogSignature } from "./decide.ts";
+import { recordUsage } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -295,6 +296,9 @@ async function handler(req: Request): Promise<Response> {
         usage: PushUsage | null = null,
         generated = false,
       ) => {
+        // O custo vai para ai_usage (_shared/usageRecorder.ts), com o
+        // utilizador a quem se escreveu; recordUsage nunca rejeita.
+        if (usage) await recordUsage("coach-proactive-tick", userId, usage, async (r) => await sb.from("ai_usage").insert(r));
         const row = tickLogRow({ userId, candidates, candidate: pickedCandidate ?? candidates[0] ?? null, reason, usage, generated, lisbonHour: hour, loggedToday });
         if (!row) return;
         try {

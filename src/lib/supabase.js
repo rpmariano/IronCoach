@@ -6,7 +6,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /**
- * Regista um evento em app_logs para auditoria e cálculo de custos de tokens
+ * Regista um evento em app_logs para auditoria (os custos de tokens vivem em
+ * ai_usage, gravados pelo servidor)
  */
 export async function logAppEvent(level, event, message = null, meta = {}) {
   try {
@@ -136,9 +137,9 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
       };
     }
 
-    if (data?.usage) {
-      logAppEvent('success', fnName, null, data.usage);
-    }
+    // O custo (data.usage) já não se regista aqui: desde 2026-09-27 é o
+    // servidor que o grava em ai_usage (supabase/functions/_shared/
+    // usageRecorder.ts) — a app perdia-o num timeout ou com a app fechada.
 
     return { data, error: null };
   } catch (err) {

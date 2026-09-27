@@ -24,6 +24,9 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
+import { usageFromGemini } from "../_shared/geminiUsage.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,7 +34,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 30000;
 
 // Peso a que a estimativa se reporta — importado de ../_shared/formulas/
@@ -98,7 +100,9 @@ function buildPrompt(brand: string, model: string): string {
   ].join("\n");
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -136,20 +140,24 @@ Deno.serve(async (req) => {
 
     let geminiRes: Response;
     try {
-      geminiRes = await fetchGeminiWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: buildPrompt(brand, model) }] }],
-            generationConfig: {
-              response_mime_type: "application/json",
-              response_schema: RESPONSE_SCHEMA,
-              maxOutputTokens: 512,
-            },
-          }),
-        },
+      // geminiModel, e não model: "model" aqui é o modelo da sapatilha.
+      geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+        fetchGeminiWithTimeout(
+          geminiUrl(geminiModel),
+          {
+            method: "POST",
+            headers: geminiHeaders(geminiKey),
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: buildPrompt(brand, model) }] }],
+              generationConfig: {
+                response_mime_type: "application/json",
+                response_schema: RESPONSE_SCHEMA,
+                maxOutputTokens: 512,
+                ...thinkingConfig("low", withThinking),
+              },
+            }),
+          },
+        )
       );
     } catch (e) {
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha a contactar a Carol." }, 502);
@@ -175,11 +183,8 @@ Deno.serve(async (req) => {
     // app_logs é feito num único sítio, o invokeEdgeFunctionWithTimeout
     // (src/lib/supabase.js), que grava sempre que a resposta traz `usage`.
     // Fazê-lo aqui duplicava o mecanismo e gastava um INSERT por chamada.
-    const usage = {
-      input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-      output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-      cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-    };
+    // Inclui o raciocínio interno (thoughts) — ver _shared/geminiUsage.ts.
+    const usage = usageFromGemini(geminiJson);
 
     if (parsed.recognized !== true) {
       return jsonResponse({
@@ -212,4 +217,4 @@ Deno.serve(async (req) => {
     console.error(e);
     return jsonResponse({ error: e instanceof Error ? e.message : "Erro inesperado." }, 500);
   }
-});
+}));

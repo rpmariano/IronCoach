@@ -11,8 +11,16 @@ import { formatDuration } from '../../utils/run';
    confirmada do PRÓPRIO (cup_results, RLS "own rows") e o total do SEU clube
    (cup_team_results) — nunca nomes, lugares ou totais de outros atletas nem
    de outros clubes. O resto da classificação está no site oficial, e é para
-   lá que os links levam. A linha "proposta" ("És tu? 41.º M40…") é da
-   Fase 4: aqui só entram as confirmadas (useCup.js já as filtra). */
+   lá que os links levam. Aqui só entram as confirmadas (useCup.js já as
+   filtra); a linha por confirmar ("És tu? 41.º M40…") é do CupMatchPrompt.
+
+   FASE 4 (2026-09-27). Os pontos dizem de onde vêm: os calculados pela app a
+   partir da página da prova são um mínimo (os atletas de fora do concelho
+   não ocupam lugar na classificação de Cascais) e dizem-se "provisórios";
+   os oficiais da geral substituem-nos. Com a linha dele na geral oficial, o
+   "A tua:" é o lugar e o total dela, com a data em que foi lida. A coletiva
+   por jornada é uma conta da app sobre a geral oficial (o site não a dá) e
+   diz-o. */
 
 /** O clube dele, como a inscrição o diz (o da lista, ou o que escreveu). */
 export function clubeLabel(enrollment, teams) {
@@ -33,32 +41,59 @@ export function temClube(enrollment, teams) {
 const positivo = (v) => { const x = Number(v); return Number.isFinite(x) && x > 0 ? x : null; };
 const numero = (v) => { const x = Number(v); return v != null && Number.isFinite(x) ? x : null; };
 
-/** "5 pontos" / "1 ponto". null sem pontos. */
-export function pontosLabel(points) {
+/** "5 pontos" / "1 ponto"; com a fonte 'calculado' (Fase 4), "7 pontos
+ *  (provisórios)" / "1 ponto (provisório)". null sem pontos. */
+export function pontosLabel(points, source = null) {
   const p = numero(points);
   if (p == null) return null;
-  return `${String(p).replace('.', ',')} ${p === 1 ? 'ponto' : 'pontos'}`;
+  const um = p === 1;
+  const base = `${String(p).replace('.', ',')} ${um ? 'ponto' : 'pontos'}`;
+  return source === 'calculado' ? `${base} (${um ? 'provisório' : 'provisórios'})` : base;
+}
+
+/** O tempo oficial de uma linha: "36:12". null sem ele. */
+export function tempoOficial(result) {
+  const t = positivo(result?.official_time_s);
+  return t ? formatDuration(Math.round(t)) : null;
+}
+
+/** O lugar de uma linha: "29.º M45" (ou "29.º no escalão M45" com
+ *  `escalao`), senão "120.º na geral". null sem lugar. */
+export function lugarOficial(result, { escalao = false } = {}) {
+  const cat = positivo(result?.category_position);
+  const pos = positivo(result?.position);
+  if (cat) {
+    const code = result.category_code ? String(result.category_code) : null;
+    return escalao ? `${cat}.º no escalão${code ? ` ${code}` : ''}` : `${cat}.º ${code || 'no escalão'}`;
+  }
+  return pos ? `${pos}.º na geral` : null;
 }
 
 /** As partes da linha oficial de uma jornada: "Tempo oficial 36:12", "29.º
- *  M45" (ou "29.º no escalão M45" com `escalao`), "5 pontos". Cada parte só
- *  existe se a linha a tiver. Nunca o dorsal. */
+ *  M45" (ou "29.º no escalão M45" com `escalao`), "5 pontos" (ou "5 pontos
+ *  (provisórios)"). Cada parte só existe se a linha a tiver. Nunca o
+ *  dorsal. */
 export function resultadoOficialPartes(result, { escalao = false } = {}) {
   if (!result) return [];
   const parts = [];
-  const t = positivo(result.official_time_s);
-  if (t) parts.push(`Tempo oficial ${formatDuration(Math.round(t))}`);
-  const cat = positivo(result.category_position);
-  const pos = positivo(result.position);
-  if (cat) {
-    const code = result.category_code ? String(result.category_code) : null;
-    parts.push(escalao ? `${cat}.º no escalão${code ? ` ${code}` : ''}` : `${cat}.º ${code || 'no escalão'}`);
-  } else if (pos) {
-    parts.push(`${pos}.º na geral`);
-  }
-  const pts = pontosLabel(result.points);
+  const t = tempoOficial(result);
+  if (t) parts.push(`Tempo oficial ${t}`);
+  const lugar = lugarOficial(result, { escalao });
+  if (lugar) parts.push(lugar);
+  const pts = pontosLabel(result.points, result.points_source);
   if (pts) parts.push(pts);
   return parts;
+}
+
+/** "24/01" — o dia em que a geral oficial foi lida. */
+function diaMesCurto(iso) {
+  const d = typeof iso === 'string' ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return null;
+  try {
+    return new Intl.DateTimeFormat('pt-PT', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Lisbon' }).format(d);
+  } catch {
+    return null;
+  }
 }
 
 /** Um link para o site oficial: 44 px, abre noutra janela, e o leitor de
@@ -97,10 +132,23 @@ export function classificacaoDe(view) {
 
   const rotulo = String(view.roundLabel || 'Jornada').toLowerCase();
   let tua = null;
-  if (summary.count > 0) {
+  let geral = null;
+  const standing = results.standing || null;
+  const rank = positivo(standing?.category_rank);
+  if (rank) {
+    // A linha dele na geral oficial (Fase 4): o lugar no escalão e o total.
+    const code = standing.category_code || view.category?.code || null;
+    const pts = pontosLabel(standing.total_points);
+    tua = `${rank}.º ${code ? `${code} ` : ''}na geral${pts ? ` · ${pts}` : ''}`;
+    const lida = diaMesCurto(standing.source_checked_at);
+    geral = lida ? `Classificação geral oficial, lida a ${lida}.` : 'Classificação geral oficial.';
+  } else if (summary.count > 0) {
     const n = summary.count;
     const pts = pontosLabel(summary.points);
     tua = `${n} ${n === 1 ? rotulo : `${rotulo}s`} com resultado oficial${pts ? ` · ${pts}` : ''}`;
+    // A geral achada pela chave alternativa ainda por confirmar (o "És tu?"
+    // da geral, no topo do ecrã): não é dele até ele dizer que sim.
+    if (results.standingProposal) geral = 'A tua linha na classificação geral está por confirmar.';
   } else if (results.status === 'erro') {
     tua = 'Não consegui ler a tua classificação agora.';
   } else {
@@ -116,6 +164,9 @@ export function classificacaoDe(view) {
       const nome = clubeLabel(enrollment, teams);
       const cabeca = pos ? `${nome} ficou em ${pos}.º na ${r.chip}` : `${nome} na ${r.chip}`;
       coletiva = [cabeca, pontosLabel(r.teamResult.points)].filter(Boolean).join(' · ');
+      // A do job é uma conta da app sobre a geral oficial (o site não dá a
+      // coletiva por jornada) — diz-se.
+      if (r.teamResult.points_source === 'calculado') coletiva = `${coletiva} (conta da app a partir da geral oficial)`;
     }
   }
 
@@ -130,20 +181,31 @@ export function classificacaoDe(view) {
     comColetiva ? { key: 'coletiva', href: comColetiva.team_results_url, label: `Coletiva da ${comColetiva.chip}` } : null,
   ].filter(Boolean);
 
-  if (summary.count === 0 && results.status !== 'erro' && !coletiva && links.length === 0) return null;
-  return { tua, coletiva, links };
+  if (!rank && summary.count === 0 && results.status !== 'erro' && !coletiva && links.length === 0) return null;
+  return { tua, geral, coletiva, links };
 }
+
+/** O id do título "Classificação" (o foco depois de confirmar um resultado). */
+export const CUP_CLASSIFICACAO_TITULO_ID = 'cup-classificacao-titulo';
 
 export default function CupClassificacao({ view }) {
   const c = classificacaoDe(view);
   if (!c) return null;
   return (
     <>
-      <SectionLabel style={{ margin: '10px 2px 0' }}>Classificação</SectionLabel>
+      {/* O título recebe o foco depois de um "Sim, sou eu" (CupMatchPrompt):
+          a pergunta desaparece e o resultado confirmado está aqui. */}
+      <h2 id={CUP_CLASSIFICACAO_TITULO_ID} tabIndex={-1} className="m-0 shrink-0" style={{ margin: '10px 2px 0', fontSize: 'inherit' }}>
+        {/* span (e não div) dentro do h2: HTML válido. */}
+        <SectionLabel as="span" style={{ margin: 0, display: 'block' }}>Classificação</SectionLabel>
+      </h2>
       <GlassCard radius={20} padding={14} data-testid="cup-trofeu-classificacao">
         <p className="m-0 text-[12.5px]" data-testid="cup-classificacao-tua" style={{ color: 'var(--text-2)', lineHeight: 'var(--leading-normal)' }}>
           <span className="font-extrabold" style={{ color: 'var(--text-1)' }}>A tua:</span> {c.tua}
         </p>
+        {c.geral && (
+          <p className="m-0 text-[11px] mt-0.5" data-testid="cup-classificacao-geral" style={{ color: 'var(--text-4)' }}>{c.geral}</p>
+        )}
         {c.coletiva && (
           <p className="m-0 text-[12.5px] mt-1.5" data-testid="cup-classificacao-coletiva" style={{ color: 'var(--text-2)', lineHeight: 'var(--leading-normal)' }}>
             <span className="font-extrabold" style={{ color: 'var(--text-1)' }}>Coletiva:</span> {c.coletiva}

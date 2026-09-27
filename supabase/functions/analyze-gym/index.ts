@@ -15,6 +15,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import {
   CAROL_TONE_RULES_SHORT,
   carolLanguageRule,
@@ -35,6 +36,8 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -60,10 +63,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Alias que segue sempre o modelo flash estável mais recente — evita 404s
-// quando a Google descontinua modelos para contas novas (mesmo alias usado
-// em analyze-meal/analyze-body).
-const GEMINI_MODEL = "gemini-flash-latest";
+// Modelo fixo + nível de raciocínio por chamada vêm de _shared/geminiModel.ts
+// (antes era o alias "gemini-flash-latest", para evitar 404s quando a Google
+// descontinua modelos para contas novas — o alias continua lá como fallback
+// automático, via geminiWithFallback).
 // Tempo máximo por chamada ao Gemini antes de desistir e tentar mais uma vez.
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
@@ -298,13 +301,6 @@ async function checkAndLogAppImage(
 }
 
 
-// Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
-// usada para estimar o custo real da API — ver admin_logs/painel de custos.
-// cached_tokens: tokens deste pedido servidos por caching implícito
-// (automático, sem custo de armazenamento) — instrumentado para decidir
-// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
-type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
-
 type GymSet = { reps: number | null; weight: number | null; one_rep_max_est: number | null };
 type GymExercise = { name: string; sets: GymSet[] };
 // Métricas do relógio. Os limites espelham os CHECKs da tabela
@@ -353,14 +349,15 @@ async function analyzeWithGemini(
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
 
-  const geminiRes = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    geminiUrl(model),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
+          ...thinkingConfig("low", withThinking),
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
         },
@@ -369,7 +366,7 @@ async function analyzeWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  );
+  ));
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -382,11 +379,8 @@ async function analyzeWithGemini(
   }
 
   const geminiJson = await geminiRes.json();
-  const usage: GeminiUsage = {
-    input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-    output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-  };
+  // Tokens consumidos (custo da API — ver _shared/geminiUsage.ts).
+  const usage = usageFromGemini(geminiJson);
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: Record<string, unknown>;
   try {
@@ -471,6 +465,8 @@ async function analyzeWithGemini(
 // uma aula funcional com 20 exercícios descritos ficava sem nenhum).
 // Best-effort: se o Gemini falhar ou não tiver a certeza, fica vazio e o
 // registo segue — nunca é por isto que um treino deixa de ser gravado.
+// usage: os tokens da resposta, se houve uma (null se não) — ver
+// _shared/geminiUsage.ts.
 const INFER_TIMEOUT_MS = 15000;
 const INFER_SCHEMA = {
   type: "OBJECT",
@@ -481,14 +477,15 @@ export async function inferMuscleGroupsFromNotes(
   notes: string | null,
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
-): Promise<string[]> {
-  if (!notes || !notes.trim() || !hasTimeFor(deadline)) return [];
+): Promise<{ categories: string[]; usage: GeminiUsage | null }> {
+  let usage: GeminiUsage | null = null;
+  if (!notes || !notes.trim() || !hasTimeFor(deadline)) return { categories: [], usage };
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{
             parts: [{
@@ -499,23 +496,24 @@ export async function inferMuscleGroupsFromNotes(
                 "falar de exercícios, devolve categories vazio. Responde apenas com JSON.",
             }],
           }],
-          generationConfig: { response_mime_type: "application/json", response_schema: INFER_SCHEMA },
+          generationConfig: { response_mime_type: "application/json", response_schema: INFER_SCHEMA, ...thinkingConfig("low", withThinking) },
         }),
       },
       INFER_TIMEOUT_MS,
       0,
       deadline,
-    );
+    ));
     if (!res.ok) {
       console.warn("inferMuscleGroupsFromNotes: Gemini", res.status);
-      return [];
+      return { categories: [], usage };
     }
     const json = await res.json();
+    usage = usageFromGemini(json);
     const parsed = JSON.parse(json?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}");
-    return pickMuscleGroups(parsed?.categories);
+    return { categories: pickMuscleGroups(parsed?.categories), usage };
   } catch (e) {
     console.warn("inferMuscleGroupsFromNotes failed:", e);
-    return [];
+    return { categories: [], usage };
   }
 }
 
@@ -736,7 +734,13 @@ async function generateGymCoachNotes(
   gymHistory: string | null = null,
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
-): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
+): Promise<{
+  text: string | null;
+  intervention_needed?: boolean;
+  intervention_reason?: string | null;
+  // Tokens da resposta do Gemini, se houve uma (ver _shared/geminiUsage.ts).
+  usage?: GeminiUsage | null;
+}> {
   if (!geminiKey) return { text: null };
   // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
   // sessão já está gravada e a resposta não pode passar o que a app espera.
@@ -810,14 +814,15 @@ async function generateGymCoachNotes(
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA inicie uma intervenção) e "intervention_reason" (string, justificação curta). Se não houver nada para comentar sobre a sessão, "text" pode ser null.`;
 
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
+            ...thinkingConfig("low", withThinking),
             // A análise estruturada tem o dobro do texto de antes (feedback
             // de 2026-09-25) — o mesmo teto do analyze-run.
             maxOutputTokens: 8192,
@@ -837,14 +842,15 @@ async function generateGymCoachNotes(
       45000,
       0,
       deadline,
-    );
+    ));
     if (!res.ok) {
       console.warn("Gym coach generation failed:", res.status, await res.text());
       return { text: null };
     }
     const json = await res.json();
+    const usage = usageFromGemini(json);
     const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
-    if (!rawText) return { text: null };
+    if (!rawText) return { text: null, usage };
     
     let parsed: any = {};
     try {
@@ -855,7 +861,8 @@ async function generateGymCoachNotes(
     return { 
       text: parsed.text?.trim() || null, 
       intervention_needed: parsed.intervention_needed,
-      intervention_reason: parsed.intervention_reason
+      intervention_reason: parsed.intervention_reason,
+      usage,
     };
   } catch (e) {
     console.warn("Gym coach generation error:", e);
@@ -865,7 +872,8 @@ async function generateGymCoachNotes(
 
 // Busca sessões anteriores do mesmo tipo, gera o comentário e grava-o — best-
 // effort, tal como em analyze-run/analyze-meal: uma falha aqui nunca desfaz a
-// sessão já gravada, só fica sem comentário.
+// sessão já gravada, só fica sem comentário. Devolve os tokens da chamada ao
+// Gemini (null se não chegou a haver resposta) — ver _shared/geminiUsage.ts.
 async function attachGymCoachNotes(
   // deno-lint-ignore no-explicit-any
   sb: any,
@@ -874,7 +882,8 @@ async function attachGymCoachNotes(
   ctx: { date: string; kind: string; categories: string[]; classTypes?: string[]; metrics: GymMetrics; notes: string | null; sets?: SetRow[] },
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
-): Promise<void> {
+): Promise<GeminiUsage | null> {
+  let usage: GeminiUsage | null = null;
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
     // Carol que comenta este registo é a mesma que falou com ele ontem.
@@ -969,6 +978,7 @@ async function attachGymCoachNotes(
       buildGymHistoryBlock(recentAny),
       deadline,
     );
+    usage = result.usage ?? null;
 
     if (result.text) {
       await sb.from("workout_sessions").update({ coach_notes: result.text }).eq("id", session.id);
@@ -991,9 +1001,12 @@ async function attachGymCoachNotes(
   } catch (e) {
     console.warn("attachGymCoachNotes failed:", e);
   }
+  return usage;
 }
 
-Deno.serve(async (req) => {
+// O consumo do Gemini que a resposta traz fica gravado em ai_usage pelo
+// servidor (_shared/usageRecorder.ts), não pela app.
+Deno.serve(withUsageRecording("analyze-gym", async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -1100,10 +1113,15 @@ Deno.serve(async (req) => {
       // a Carol lê-as (inferMuscleGroupsFromNotes). O que ele escolheu ganha.
       // Chama-se só depois das validações de cada caminho — um pedido que vai
       // dar 404/400 não gasta uma chamada ao Gemini.
-      const resolveCategories = async (): Promise<string[]> =>
+      const resolveCategories = async (): Promise<{ categories: string[]; usage: GeminiUsage | null }> =>
         userCategories.length
-          ? userCategories
+          ? { categories: userCategories, usage: null }
           : await inferMuscleGroupsFromNotes(rawNotes, geminiKey, extractionDeadline);
+      // Tokens de todas as chamadas ao Gemini deste registo (inferência dos
+      // grupos + comentário da Carol) — ver _shared/geminiUsage.ts. Só vai na
+      // resposta se houve pelo menos uma: o cliente regista em app_logs
+      // qualquer `usage` que receba, e um zero seria uma linha a mais.
+      const usageField = (u: GeminiUsage) => (u.calls ? { usage: u } : {});
       const nameFor = (categories: string[]): string =>
         userName ??
         ((kind === "aula" ? classTypes : categories).join(" e ") || null) ??
@@ -1155,7 +1173,7 @@ Deno.serve(async (req) => {
           })
           .filter((r: { exercise_name: string }) => r.exercise_name);
 
-        const categories = await resolveCategories();
+        const { categories, usage: inferUsage } = await resolveCategories();
         const finalName = nameFor(categories);
         const { data: updatedSession, error: updateError } = await sb
           .from("workout_sessions")
@@ -1183,14 +1201,18 @@ Deno.serve(async (req) => {
           savedSets = data ?? [];
         }
 
-        await attachGymCoachNotes(sb, userId, updatedSession, {
+        const coachUsage = await attachGymCoachNotes(sb, userId, updatedSession, {
           date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes, sets: setRows,
         }, geminiKey, coachDeadline);
 
-        return jsonResponse({ session: updatedSession, sets: savedSets });
+        return jsonResponse({
+          session: updatedSession,
+          sets: savedSets,
+          ...usageField(addUsage(inferUsage, coachUsage)),
+        });
       }
 
-      const categories = await resolveCategories();
+      const { categories, usage: inferUsage } = await resolveCategories();
       const finalName = nameFor(categories);
       const { data: session, error: sessionError } = await sb
         .from("workout_sessions")
@@ -1213,11 +1235,11 @@ Deno.serve(async (req) => {
         .single();
       if (sessionError) return jsonResponse({ error: `Falha a gravar sessão: ${sessionError.message}` }, 500);
 
-      await attachGymCoachNotes(sb, userId, session, {
+      const coachUsage = await attachGymCoachNotes(sb, userId, session, {
         date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes,
       }, geminiKey, coachDeadline);
 
-      return jsonResponse({ session });
+      return jsonResponse({ session, ...usageField(addUsage(inferUsage, coachUsage)) });
     }
 
     // ── Modo reanálise por foto: session_id presente sem mode manual ───
@@ -1401,7 +1423,7 @@ Deno.serve(async (req) => {
     }
 
     // 4. Comentário do Coach (best-effort — ver attachGymCoachNotes)
-    await attachGymCoachNotes(sb, userId, session, {
+    const coachUsage = await attachGymCoachNotes(sb, userId, session, {
       date, kind, categories: mergedCategories, classTypes: mergedClassTypes, metrics: mergeMetrics(analysis.metrics), notes: rawNotes,
       sets: setRows,
     }, geminiKey, coachDeadline);
@@ -1412,11 +1434,11 @@ Deno.serve(async (req) => {
       session,
       sets: savedSets,
       extra_fields: analysis.extraFields,
-      usage: analysis.usage,
+      // Extração + comentário da Carol — ver _shared/geminiUsage.ts.
+      usage: addUsage(analysis.usage, coachUsage),
     });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);
   }
-});
-
+}));

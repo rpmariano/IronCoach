@@ -100,6 +100,15 @@ describe('cupWeekLine', () => {
     expect(trote).toMatchObject({ lead: 'Domingo, Corrida CCD Cascais, 7,4 km às 9h30. O teu papel: em trote', calc: null });
   });
 
+  // Revisão da Fase 3, aviso [d]: a D−7 é o mesmo dia da semana de hoje —
+  // "Domingo, …" num domingo lia-se como hoje.
+  it('a D−7 o dia diz "da próxima semana"; de D−6 a D−2, só o dia', () => {
+    expect(line('2027-01-17').lead).toBe('Domingo da próxima semana, Corrida CCD Cascais, 7,4 km às 9h30. Pelas contas: atacar');
+    expect(line('2027-01-17').text).toMatch(/^Domingo da próxima semana, Corrida CCD Cascais, 7,4 km às 9h30\. Pelas contas: atacar/);
+    expect(line('2027-01-18').lead).toMatch(/^Domingo, Corrida CCD Cascais/);
+    expect(line('2027-01-22').lead).toMatch(/^Domingo, Corrida CCD Cascais/);
+  });
+
   it('só de D−7 a D−2 (a véspera e o dia são das linhas que já existem)', () => {
     expect(line('2027-01-16')).toBeNull(); // D−8
     expect(line('2027-01-17')).not.toBeNull(); // D−7

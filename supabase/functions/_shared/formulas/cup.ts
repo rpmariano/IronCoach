@@ -11,10 +11,12 @@
 //
 // ESPELHO DA BD. cupCategoryFor + courseFor repetem, no cliente, a escolha que
 // a sincronização faz no servidor (cup_resolve_course na migração
-// 20260926152856_cup_competitions.sql): o que o ecrã mostra como "o teu
-// percurso" tem de ser a distância da prova que o servidor cria. Se uma das
-// duas mudar, muda a outra — os testes de cup.test.ts fixam os mesmos casos
-// que o ensaio da migração.
+// 20260926152856_cup_competitions.sql, refeita na M2
+// 20260927200000_cup_results.sql com a regra `fim_ano_epoca`): o que o ecrã
+// mostra como "o teu percurso" tem de ser a distância da prova que o servidor
+// cria. Se uma das duas mudar, muda a outra — os testes de cup.test.ts fixam
+// os mesmos casos que o ensaio da migração (AGE_PARITY_CASES em
+// cup.fixtures.ts; seasonRefYear = cup_season_ref_year).
 
 import { racePriorityOf } from "./mainRace.ts";
 
@@ -36,7 +38,8 @@ export interface CupEdition {
   status?: EditionStatus | string | null;
   counting_rule?: "pct_minima" | "melhores_n" | "todas" | string | null;
   counting_value?: number | string | null;
-  age_rule?: "data_prova" | "fim_ano_civil" | string | null;
+  age_rule?: "data_prova" | "fim_ano_civil" | "fim_ano_epoca" | string | null;
+  season_label?: string | null;
   area_lat?: number | null;
   area_lon?: number | null;
   area_radius_km?: number | string | null;
@@ -172,13 +175,41 @@ export function classifyEnrollment(
 
 // ── §3.5: escalão e percurso ──────────────────────────────────────────────
 
-/** A data de referência da idade: o dia da prova, ou 31/12 desse ano com
- *  `age_rule = 'fim_ano_civil'`. `null` = no dia da prova (decisão da M1;
- *  só decide o percurso, a classificação por escalão vem da fonte oficial). */
+/** O ano de referência de uma época: o 2.º ano ("2026/27" → 2027,
+ *  "2026/2027" → 2027, "1999/00" → 2000) ou o único ("2027" → 2027). Outro
+ *  formato, ou um fim que não é o início nem o ano seguinte ("2026/25") →
+ *  null. Gémea de cup_season_ref_year (M2) — mesmos casos nos dois lados. */
+export function seasonRefYear(label: unknown): number | null {
+  if (typeof label !== "string") return null;
+  const m = /^\s*(\d{4})\s*(?:\/\s*(\d{2}|\d{4}))?\s*$/.exec(label);
+  if (!m) return null;
+  const a = Number(m[1]);
+  let y: number;
+  if (m[2] == null) y = a;
+  else if (m[2].length === 4) y = Number(m[2]);
+  else {
+    const yy = Number(m[2]);
+    y = Math.floor(a / 100) * 100 + yy + (yy < a % 100 ? 100 : 0);
+  }
+  return y >= a && y <= a + 1 ? y : null;
+}
+
+/** A data de referência da idade:
+ *  - `data_prova` ou null → o dia da prova (decisão da M1);
+ *  - `fim_ano_civil` → 31/12 do ano da prova;
+ *  - `fim_ano_epoca` → 31/12 do 2.º ano da época (`season_label`): os
+ *    escalões por ano de nascimento do regulamento de Cascais (2026/27 →
+ *    31/12/2027). É a única que acerta numa jornada de dezembro (M2).
+ *    Época ilegível → null: sem idade, só batem escalões sem limites. */
 export function ageReferenceDate(edition: CupEdition | null | undefined, onDate: string | null | undefined): string | null {
   const d = dayOf(onDate);
   if (!d) return null;
-  return edition?.age_rule === "fim_ano_civil" ? `${d.slice(0, 4)}-12-31` : d;
+  if (edition?.age_rule === "fim_ano_civil") return `${d.slice(0, 4)}-12-31`;
+  if (edition?.age_rule === "fim_ano_epoca") {
+    const y = seasonRefYear(edition?.season_label);
+    return y == null ? null : `${y}-12-31`;
+  }
+  return d;
 }
 
 /** O escalão do atleta numa data (§3.5, espelho de cup_resolve_course): o

@@ -56,10 +56,13 @@ export default function CupNextLine({ view, round = null, loading = false, onOpe
   const shortName = view?.shortName || 'Troféu';
   const ready = !!view?.catalogReady;
 
-  // A ler: a linha diz-o, sem ser botão (ainda não há para onde ir).
+  // A ler: a linha diz-o, sem ser botão (ainda não há para onde ir). É um
+  // estado: role="status" (revisão da Fase 3, aviso [e]) — o leitor de
+  // ecrã ouve-o sem o foco lá ir.
   if (!view || (loading && !ready)) {
     return (
       <div
+        role="status"
         data-testid="race-card-cup-line"
         data-state="loading"
         className="w-full flex items-center mt-2.5 text-[12px] font-bold"
@@ -95,16 +98,21 @@ export default function CupNextLine({ view, round = null, loading = false, onOpe
   }
 
   const l = (view.roundLabel || 'Jornada').toLowerCase();
+  // A mudança de data não se vê nesta linha curta, e o aria-label tapava-a:
+  // vai para a descrição do botão (revisão da Fase 3, aviso [e]).
+  const mudancaId = round.dateChange?.label ? `race-card-cup-line-${round.id}-mudanca` : undefined;
   return (
     <button
       type="button"
       data-testid="race-card-cup-line"
       data-state="proxima"
       aria-label={ariaOf(view, round)}
+      aria-describedby={mudancaId}
       onClick={(e) => { e.stopPropagation(); onOpen?.(round); }}
       className="w-full flex items-center gap-2 mt-2.5 text-left"
       style={{ ...lineStyle, minHeight: 56, paddingTop: 8 }}
     >
+      {mudancaId && <span id={mudancaId} className="sr-only">{round.dateChange.label}</span>}
       <span className="min-w-0 flex-1">
         <span className="block text-[11px] font-extrabold uppercase truncate" style={{ color: 'var(--text-4)', letterSpacing: '.05em' }}>
           {`${shortName} · próxima ${l}`}
@@ -129,12 +137,16 @@ export function CupNextCard({ view, round = null, onOpen, footer = null }) {
   const days = day && view.today ? Math.max(0, daysUntil(day, view.today)) : null;
   const sub = [roundDateText(round, view.today), courseLine(round)].filter(Boolean).join(' · ');
   const base = baseStatusOf(round, view);
+  // A mudança de data vê-se no cartão, mas o aria-label tapava-a: entra na
+  // descrição do botão (revisão da Fase 3, aviso [e]).
+  const mudancaId = round.dateChange?.label ? `race-card-cup-${round.id}-mudanca` : undefined;
   return (
     <GlassCard glow tone="race" padding="16px 16px 12px" data-testid="race-card-cup">
       <button
         type="button"
         data-testid="race-card-cup-body"
         aria-label={ariaOf(view, round)}
+        aria-describedby={mudancaId}
         onClick={() => onOpen?.(round)}
         className="w-full text-left"
         style={{ minHeight: 56, background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
@@ -163,8 +175,8 @@ export function CupNextCard({ view, round = null, onOpen, footer = null }) {
         <span className="block text-[12px] mt-2.5">
           <CupStatus status={base} />
         </span>
-        {round.dateChange && (
-          <span className="block text-[11.5px] mt-1" style={{ color: 'var(--warn)' }}>{round.dateChange.label}</span>
+        {mudancaId && (
+          <span id={mudancaId} className="block text-[11.5px] mt-1" style={{ color: 'var(--warn)' }}>{round.dateChange.label}</span>
         )}
       </button>
       {footer}

@@ -1,5 +1,6 @@
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import GOLDEN_FASE3 from './useCup.fase3.golden.json';
 
 /* useCup — a competição do atleta pronta a mostrar (specs/trofeu.md §4.1–4.3,
    Fase 1, 2026-09-26). O que se guarda aqui, acima de tudo, é a
@@ -30,7 +31,7 @@ vi.mock('../lib/utils', async (importOriginal) => ({ ...(await importOriginal())
 
 const { useAppStore } = await import('../store');
 const { CUP_EMPTY, __resetCupModuleState } = await import('../store/cupSlice');
-const { useCup, useTaca, buildCupView, useCupForHome, useCupForRace, useCupListing } = await import('./useCup');
+const { useCup, useTaca, buildCupView, selectCupView, cupContextOf, cupResultsOf, cupRoundsOf, cupViewOf, useCupForHome, useCupForRace, useCupListing } = await import('./useCup');
 const { cupRoundRoles } = await import('@formulas/cupRoles.ts');
 const { cupEnrolledHintKey } = await import('../store/cupSlice');
 const F = await import('@formulas/cup.fixtures.ts');
@@ -526,5 +527,175 @@ describe('useCupListing — a lista de Provas e o "Para onde vou"', () => {
     await waitFor(() => expect(useAppStore.getState().cup.status).toBe('ready'));
     await act(async () => { await Promise.resolve(); });
     expect(result.current).toEqual({ view: null, listing: null });
+  });
+});
+
+/* ── Fase 4 (2026-09-27): a divisão da vista (aviso [f]) e a correspondência
+   com a classificação oficial (specs/trofeu.md §7). ─────────────────────── */
+
+describe('buildCupView — a divisão não muda nada (aviso [f])', () => {
+  // As vistas da Fase 3 guardadas ANTES de a função se dividir (7 estados:
+  // inscrito em janeiro e em março, convite, quem saiu, catálogo por ler,
+  // clube fora da lista, e o circuito fictício). Os campos novos da Fase 4
+  // tiram-se antes de comparar — o resto tem de ser igual, valor a valor.
+  const golden = GOLDEN_FASE3;
+  const semFase4 = (view) => {
+    if (!view) return view;
+    const tira = (r) => (r ? (({ proposal, matchIssue, ...rest }) => rest)(r) : r);
+    const { pending, standing, standingProposal, m2, ...results } = view.results;
+    return {
+      ...view,
+      results,
+      rounds: view.rounds.map(tira),
+      nextRound: tira(view.nextRound),
+      door: view.door ? { ...view.door, nextRound: tira(view.door.nextRound) } : null,
+    };
+  };
+
+  for (const s of golden.scenarios) {
+    it(`igual à da Fase 3 — ${s.name}`, () => {
+      const view = buildCupView(s.input);
+      expect(JSON.parse(JSON.stringify(semFase4(view)))).toEqual(s.view);
+      // A composição dos quatro passos é a própria buildCupView.
+      const ctx = cupContextOf(s.input);
+      const res = cupResultsOf(ctx, s.input.cup);
+      expect(cupViewOf(ctx, res, cupRoundsOf(ctx, res, s.input), s.input)).toEqual(view);
+    });
+  }
+
+  it('sem campos novos a aparecer onde não há inscrição', () => {
+    const convite = golden.scenarios.find((s) => s.name === 'convite');
+    const v = buildCupView(convite.input);
+    expect(v.results).toMatchObject({ pending: [], standing: null, standingProposal: null, m2: false });
+    expect(v.rounds.every((r) => r.proposal === null && r.matchIssue === null)).toBe(true);
+  });
+});
+
+describe('selectCupView — o seletor partilhado', () => {
+  const input = () => {
+    return structuredClone(GOLDEN_FASE3.scenarios[0].input);
+  };
+
+  it('as mesmas cinco entradas devolvem o MESMO objeto; uma que mude, um novo', () => {
+    const { cup, profile, raceEvents, runs, today } = input();
+    const a = selectCupView(cup, profile, raceEvents, runs, today);
+    expect(selectCupView(cup, profile, raceEvents, runs, today)).toBe(a);
+    expect(a).toEqual(buildCupView({ cup, profile, raceEvents, runs, today }));
+    const b = selectCupView({ ...cup }, profile, raceEvents, runs, today);
+    expect(b).not.toBe(a);
+    expect(b).toEqual(a);
+    expect(selectCupView({ ...cup }, profile, [...raceEvents], runs, today)).not.toBe(b);
+    const c = selectCupView(cup, profile, raceEvents, runs, today);
+    expect(selectCupView(cup, profile, raceEvents, runs, '2027-01-12')).not.toBe(c);
+  });
+
+  it('com Provas, o Início e o hub montados, uma mudança do store calcula a vista uma vez', async () => {
+    const ENR = { id: 'enr1', user_id: USER, edition_id: F.CASCAIS_34.id, team_id: 't-naza', team_other: null, is_federated: false, season_goal: 'premio', status: 'ativa' };
+    const X3 = { id: 'x3', date: '2027-01-24', cup_round_id: 'r-c3', status: 'agendada', race_priority: 'b' };
+    const cup = {
+      ...CUP_EMPTY, status: 'ready', userId: USER,
+      editions: [{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }],
+      enrollments: [ENR],
+      catalog: { [F.CASCAIS_34.id]: { status: 'ready', rounds: F.CASCAIS_ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS } },
+    };
+    useAppStore.setState({ cup, raceEvents: [MEIA, X3] });
+    const { result } = renderHook(() => ({ provas: useCup(), inicio: useCupForHome(), hub: useCupForRace(X3) }));
+    expect(result.current.provas).not.toBeNull();
+    expect(result.current.inicio).toBe(result.current.provas);
+    expect(result.current.hub.view).toBe(result.current.provas);
+    const antes = result.current.provas;
+    act(() => { useAppStore.setState({ raceEvents: [MEIA, { ...X3, status: 'concluida' }] }); });
+    const depois = result.current.provas;
+    expect(depois).not.toBe(antes);
+    expect(result.current.inicio).toBe(depois);
+    expect(result.current.hub.view).toBe(depois);
+    expect(net.calls).toEqual([]);
+  });
+});
+
+describe('buildCupView — a correspondência (Fase 4)', () => {
+  const ENR = { id: 'enr1', user_id: USER, edition_id: F.CASCAIS_34.id, team_id: 't-naza', team_other: null, is_federated: false, season_goal: 'premio', status: 'ativa', bib: '412' };
+  const RACES = [
+    MEIA,
+    { id: 'x1', date: '2026-12-06', cup_round_id: 'r-c1', status: 'concluida', race_priority: 'b', distance_km: 7 },
+    { id: 'x2', date: '2027-01-10', cup_round_id: 'r-c2', status: 'agendada', race_priority: 'b', distance_km: 8 },
+  ];
+  const linha = (roundId, status, extra = {}) => ({ round_id: roundId, position: 41, category_code: 'M35', category_position: 12, points: 5, official_time_s: 2172, match_status: status, points_source: 'calculado', ...extra });
+  const vista = ({ rows = [], publication = {}, standing = null, m2 = true, syncMode = 'publicar', enrollment = ENR, participations = [{ id: 'p2', enrollment_id: 'enr1', round_id: 'r-c2', decision: 'vou' }], status = 'ready' } = {}) => buildCupView({
+    cup: {
+      ...CUP_EMPTY, status: 'ready', userId: USER,
+      editions: [{ ...F.CASCAIS_34_ABERTA, sync_mode: syncMode, competition: F.CASCAIS_COMPETITION }],
+      enrollments: [enrollment],
+      participations,
+      catalog: { [F.CASCAIS_34.id]: { status: 'ready', rounds: F.CASCAIS_ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS } },
+      results: { status, enrollmentId: 'enr1', teamId: 't-naza', rows, teamRows: [], standing, publication, m2 },
+    },
+    profile: PROFILE, raceEvents: RACES, runs: [], today: '2027-01-11',
+  });
+  const J = (v, id) => v.rounds.find((r) => r.id === id);
+
+  it('proposta e perdida com dados → `proposal` e `pending` pela data; a confirmada é o resultado', () => {
+    const v = vista({ rows: [linha('r-c2', 'proposta'), linha('r-c1', 'perdida', { position: 40 }), linha('r-c3', 'confirmada')] });
+    expect(v.results.pending.map((r) => r.id)).toEqual(['r-c1', 'r-c2']);
+    expect(J(v, 'r-c2').proposal).toMatchObject({ match_status: 'proposta' });
+    expect(J(v, 'r-c2').result).toBeNull();
+    expect(J(v, 'r-c1').proposal).toMatchObject({ match_status: 'perdida', position: 40 });
+    expect(J(v, 'r-c3').result).toMatchObject({ match_status: 'confirmada' });
+    expect(J(v, 'r-c3').proposal).toBeNull();
+    // Só as confirmadas contam no resumo.
+    expect(v.results.summary).toEqual({ count: 1, points: 5 });
+  });
+
+  it('uma perdida SEM dados não é proposta: é a frase de falha', () => {
+    const v = vista({ rows: [{ round_id: 'r-c2', position: null, official_time_s: null, match_status: 'perdida' }], publication: { 'r-c2': '2027-01-10T18:37:00Z' } });
+    expect(J(v, 'r-c2').proposal).toBeNull();
+    expect(v.results.pending).toEqual([]);
+    expect(J(v, 'r-c2').matchIssue).toBe('rever_dorsal');
+  });
+
+  it('matchIssue: as quatro condições (publicar, classificação saída, feita ou "Vou", sem linha)', () => {
+    const saiu = { 'r-c1': '2026-12-06T18:00:00Z', 'r-c2': '2027-01-10T18:37:00Z' };
+    const v = vista({ publication: saiu });
+    // J1 feita (prova concluída), J2 "Vou" já passada: as duas falham.
+    expect(J(v, 'r-c1').matchIssue).toBe('rever_dorsal');
+    expect(J(v, 'r-c2').matchIssue).toBe('rever_dorsal');
+    // Sem dorsal: a outra frase.
+    expect(J(vista({ publication: saiu, enrollment: { ...ENR, bib: null } }), 'r-c2').matchIssue).toBe('sem_dorsal');
+    expect(J(vista({ publication: saiu, enrollment: { ...ENR, bib: '  ' } }), 'r-c2').matchIssue).toBe('sem_dorsal');
+    // Com linha (confirmada ou por confirmar): nada.
+    expect(J(vista({ publication: saiu, rows: [linha('r-c2', 'confirmada')] }), 'r-c2').matchIssue).toBeNull();
+    expect(J(vista({ publication: saiu, rows: [linha('r-c2', 'proposta')] }), 'r-c2').matchIssue).toBeNull();
+    // Classificação por sair: nada.
+    expect(J(vista({ publication: {} }), 'r-c2').matchIssue).toBeNull();
+    // Nem feita nem "Vou" (disse "Não sei"): nada.
+    expect(J(vista({ publication: saiu, participations: [{ id: 'p2', enrollment_id: 'enr1', round_id: 'r-c2', decision: 'nao_sei' }] }), 'r-c2').matchIssue).toBeNull();
+    // Observar, desligado, sem M2, ou a leitura falhou: sempre null.
+    for (const extra of [{ syncMode: 'observar' }, { syncMode: 'desligado' }, { m2: false }, { status: 'erro' }]) {
+      const w = vista({ publication: saiu, ...extra });
+      expect(w.rounds.map((r) => r.matchIssue).filter(Boolean)).toEqual([]);
+    }
+  });
+
+  it('a geral oficial: o total dela manda nos pontos do resumo', () => {
+    const standing = { category_code: 'M35', category_rank: 12, total_points: 43, rounds_scored: 4, source_checked_at: '2027-01-24T18:00:00Z' };
+    const v = vista({ rows: [linha('r-c1', 'confirmada')], standing });
+    expect(v.results.standing).toEqual(standing);
+    expect(v.results.summary).toEqual({ count: 1, points: 43 });
+    expect(vista({ rows: [linha('r-c1', 'confirmada')] }).results.summary).toEqual({ count: 1, points: 5 });
+  });
+
+  it('a classificação de outra inscrição não entra, nem as propostas dela', () => {
+    const v = buildCupView({
+      cup: {
+        ...CUP_EMPTY, status: 'ready', userId: USER,
+        editions: [{ ...F.CASCAIS_34_ABERTA, sync_mode: 'publicar', competition: F.CASCAIS_COMPETITION }],
+        enrollments: [ENR],
+        catalog: { [F.CASCAIS_34.id]: { status: 'ready', rounds: F.CASCAIS_ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS } },
+        results: { status: 'ready', enrollmentId: 'enr-velha', rows: [linha('r-c2', 'proposta')], teamRows: [], standing: { total_points: 99 }, publication: { 'r-c2': 'x' }, m2: true },
+      },
+      profile: PROFILE, raceEvents: RACES, runs: [], today: '2027-01-11',
+    });
+    expect(v.results).toMatchObject({ status: 'idle', pending: [], standing: null, m2: false, summary: { count: 0, points: null } });
+    expect(v.rounds.every((r) => r.proposal === null && r.matchIssue === null)).toBe(true);
   });
 });

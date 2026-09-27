@@ -13,11 +13,12 @@
 // proactivePushMessage; e o prompt proíbe inventar números que não estão lá.
 
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { kmTexto, nomeProprio, proactivePushMessage, RACE_EVE_AFTERNOON_MINUTES, startTimeMinutes, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
 
 export const PUSH_TEXT_MIN = 15;
 export const PUSH_TEXT_MAX = 140;
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 10000;
 
 export interface PushFacts {
@@ -166,7 +167,9 @@ export function extractText(json: any): string | null {
   return null;
 }
 
-export type PushUsage = { input_tokens: number; output_tokens: number };
+// Mesmo formato das outras funções (_shared/geminiUsage.ts), com o raciocínio
+// interno (thoughts) incluído.
+export type PushUsage = GeminiUsage;
 
 /**
  * O título e o corpo da notificação. Nunca rejeita: qualquer falha dá a frase
@@ -192,28 +195,24 @@ export async function composePushMessage(
   const fixa = c.trigger === "intervention" || c.trigger === "missed_workout" || c.trigger === "leaderboard" || c.trigger === "percentile_ready";
   if (!geminiKey || fixa) return { ...fallback, generated: false, usage: null };
   try {
-    const res = await fetchImpl(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchImpl(
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: buildPushPrompt(c, facts) }] }],
-          generationConfig: { maxOutputTokens: 1024, temperature: 0.8 },
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.8, ...thinkingConfig("low", withThinking) },
         }),
         signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       },
-    );
+    ));
     if (!res.ok) {
       console.warn("coach-proactive-tick: texto gerado falhou", res.status);
       return { ...fallback, generated: false, usage: null };
     }
     const json = await res.json();
-    // Os mesmos campos das outras funções (input = prompt, output = candidatos).
-    const usage: PushUsage = {
-      input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
-      output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
-    };
+    const usage: PushUsage = usageFromGemini(json);
     const text = validatePushText(extractText(json));
     return text
       ? { title: fallback.title, body: text, generated: true, usage }
