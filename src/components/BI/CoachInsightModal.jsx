@@ -22,14 +22,18 @@ import { noticeSeverity, noticeTone } from './noticeTones';
      para a Carol e o outro telemóvel saberem que foi posto de lado.
 
    Os avisos em que ela pede para falar não têm "Percebi": são uma conversa
-   por ter, não um dado a perceber, e saem quando o assunto se resolve. O
-   "Agora não" só aparece nos que se podem dispensar. Formato de um aviso:
+   por ter, não um dado a perceber, e saem quando o assunto se resolve. No
+   lugar do "Agora não" têm "Dispensar" (pedido 2026-09-27), porque aí a
+   dispensa é de vez — o balanço, o fim do bloco e o mapa da época não
+   voltam, e o "Preciso de falar contigo" pede confirmação e fecha o
+   assunto. Só aparece nos que se podem dispensar: o conflito de provas e o
+   ajuste do plano saem quando se resolvem. Formato de um aviso:
    { id, severity, title, message, onTalk, onDismiss? } */
 
 const PRIMARY_STYLE = { background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)' };
 const NOT_NOW_STYLE = { background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' };
 
-function NoticeCard({ testId, severity, title, message, children, onTalk, talkTestId, onUnderstood, understoodTestId, onNotNow, notNowTestId, notNowLabel }) {
+function NoticeCard({ testId, severity, title, message, children, onTalk, talkTestId, onUnderstood, understoodTestId, onNotNow, notNowTestId, notNowLabel, notNowText = 'Agora não' }) {
   const t = noticeTone(severity);
   const titleId = useId();
   return (
@@ -74,7 +78,7 @@ function NoticeCard({ testId, severity, title, message, children, onTalk, talkTe
                 className="flex-1 min-h-[44px] rounded-[11px] text-[12.5px] font-bold"
                 style={NOT_NOW_STYLE}
               >
-                Agora não
+                {notNowText}
               </button>
             )}
           </div>
@@ -146,7 +150,8 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
           talkTestId={`carol-alert-talk-${alert.id}`}
           onTalk={() => { alert.onTalk?.(); onClose(); }}
           notNowTestId={`carol-alert-dismiss-${alert.id}`}
-          notNowLabel="Agora não — dispensar este aviso"
+          notNowText="Dispensar"
+          notNowLabel="Dispensar este aviso"
           onNotNow={alert.onDismiss ? () => { alert.onDismiss(); onClose(); } : null}
         />
       ))}

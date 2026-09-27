@@ -154,14 +154,24 @@ describe('CoachInsightModal', () => {
       expect(mockOnClose).toHaveBeenCalled();
     });
 
-    it('"Agora não" só aparece quando o aviso se pode dispensar', () => {
+    /* Pedido 2026-09-27: nos avisos dela a dispensa é de vez, por isso o
+       botão diz "Dispensar" — o "Agora não" (até amanhã) é só dos insights. */
+    it('"Dispensar" só aparece quando o aviso se pode dispensar', () => {
       const onDismiss = vi.fn();
       render(<CoachInsightModal alerts={[alerta({ id: 'assuntos', onDismiss })]} onClose={mockOnClose} />);
-      const agoraNao = screen.getByTestId('carol-alert-dismiss-assuntos');
-      expect(agoraNao).toHaveTextContent('Agora não');
-      fireEvent.click(agoraNao);
+      const dispensar = screen.getByTestId('carol-alert-dismiss-assuntos');
+      expect(dispensar).toHaveTextContent('Dispensar');
+      expect(dispensar).toHaveAccessibleName('Dispensar este aviso');
+      expect(screen.queryByRole('button', { name: /Agora não/ })).not.toBeInTheDocument();
+      fireEvent.click(dispensar);
       expect(onDismiss).toHaveBeenCalledTimes(1);
       expect(mockOnClose).toHaveBeenCalled();
+    });
+
+    it('com avisos e insights: "Dispensar" no aviso, "Agora não" no insight', () => {
+      render(<CoachInsightModal alerts={[alerta({ id: 'balanco', severity: 'info', onDismiss: vi.fn() })]} insights={[acwr]} onClose={mockOnClose} />);
+      expect(screen.getByTestId('carol-alert-dismiss-balanco')).toHaveTextContent('Dispensar');
+      expect(screen.getByTestId('insight-snooze-insight-1')).toHaveTextContent('Agora não');
     });
 
     it('com avisos e insights, cada cartão tem o seu "Falar com a Carol"', () => {
