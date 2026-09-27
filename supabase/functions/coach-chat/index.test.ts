@@ -3423,7 +3423,6 @@ Deno.test("detectRaceFollowup: só depois da pergunta dela, e só com um sim ou 
 // Um cliente falso que responde a race_events e delega o resto no de sempre.
 // Duas leituras diferentes: a lista das provas do período (then) e a
 // prova-objetivo por id (maybeSingle, filtrada pelo eq("id", ...)).
-// deno-lint-ignore no-explicit-any
 // `windows`: regista a janela (gte/lte) de cada consulta e respeita-a — por
 // omissão o falso devolve todas as provas, como sempre.
 // deno-lint-ignore no-explicit-any
@@ -4707,6 +4706,11 @@ Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscriçã
   assertStringIncludes(src, "const toolsBlock = buildTools(allowedTools, seriesToolsOn);");
   assertStringIncludes(src, "const cupMapPrompt = cupMapFirst !== null && seriesBlock?.active ? buildCupMapTurn(seriesBlock, cupMapFirst) : null;");
   assertStringIncludes(src, "raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0");
+  // O guião do race_conflict sai de _shared/raceConflictPrompt.ts; a inversão
+  // (jornada promovida vs. principal de fora) só com inscrição ativa (Fase 3).
+  assertStringIncludes(src, "const raceConflictPrompt = buildRaceConflictPrompt(");
+  assertStringIncludes(src, "seriesBlock?.active\n        ? { jornadaRaceIds: seriesBlock.jornadaRaceIds, competitionName: seriesBlock.competitionName, roundLabel: seriesBlock.roundLabel }\n        : null,");
+  assertEquals(src.includes("const rcRaces"), false);
   assertStringIncludes(src, "seriesBlock?.active ? seriesBlock.intentByRaceId : null,");
   // A guarda do plano relê os papéis se uma ferramenta da competição gravou
   // neste pedido (revisão das correções da Fase 2).

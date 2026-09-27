@@ -69,6 +69,14 @@ export interface SeriesBlock {
   roundLabel: string;
   /** Há pelo menos uma jornada confirmada de hoje em diante. */
   hasCalendar: boolean;
+  /** Já houve jornadas com data confirmada (mesmo que todas já tenham
+   *  passado): distingue "já não há mais" de "ainda não saiu". false no ramo
+   *  de quem saiu. */
+  hadCalendar: boolean;
+  /** As provas (race_events.id) ligadas a jornadas desta edição, de
+   *  qualquer prioridade — uma jornada promovida a principal inverte o guião
+   *  do race_conflict (raceConflictPrompt.ts). [] se !active. */
+  jornadaRaceIds: string[];
   /** Um por jornada; [] se !active. */
   roles: RoundRole[];
   /** race_events.id → a intenção da jornada (a dele, senão o papel proposto).
@@ -147,7 +155,6 @@ export interface SeriesBlockInput {
    *  posição de referência — a Carol não fala de pontos (e não diz que não há
    *  resultados). */
   resultsUnknown?: boolean;
-
   channel: SeriesChannel;
   /** Todas as inscrições do próprio (a leitura-porteiro). */
   enrollments: SeriesEnrollmentRow[] | null | undefined;
@@ -365,6 +372,8 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
       competitionName,
       roundLabel,
       hasCalendar: false,
+      hadCalendar: false,
+      jornadaRaceIds: [],
       roles: [],
       intentByRaceId: {},
       questions: [],
@@ -441,6 +450,14 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
   }
 
   const hasCalendar = rounds.some((r) => r.date_status === "confirmada" && (dayOf(r.date) ?? "") >= asOf);
+  // Sem jornadas confirmadas daqui para a frente: ou o calendário ainda não
+  // saiu, ou as que tinham data já passaram (fim de época, ou as seguintes
+  // ainda sem data) — "por publicar" seria falso aí.
+  const hadCalendar = rounds.some((r) => r.date_status === "confirmada" && !!dayOf(r.date));
+  const roundIdSet = new Set(rounds.map((r) => r.id));
+  const jornadaRaceIds = [...new Set(
+    races.filter((r) => r.id != null && r.cup_round_id != null && roundIdSet.has(r.cup_round_id)).map((r) => String(r.id)),
+  )];
 
   const L: string[] = [];
   L.push(`--- COMPETIÇÃO POR JORNADAS (o atleta está inscrito) ---`);
@@ -457,15 +474,28 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
     const own = rounds.find((r) => r.date_status === "confirmada" && dayOf(r.date) === lateRunDay &&
       participationOf.get(r.id)?.decision !== "nao_vou" && participationOf.get(r.id)?.decision !== "nao_fui");
     if (own) {
-      const next = hasCalendar ? "a seguinte é a primeira da lista abaixo" : `era a última com data confirmada`;
+      // "A seguinte" é a seguinte a ESTA jornada — que numa corrida registada
+      // com muito atraso pode também já ter passado (a lista abaixo começa
+      // hoje e não a mostra). Revisão pré-deploy da Fase 2, aviso (a).
+      const confirmedAfter = (d: string) => rounds
+        .filter((r) => r.date_status === "confirmada" && (dayOf(r.date) ?? "") > d)
+        .sort((a, b) => dayOf(a.date)!.localeCompare(dayOf(b.date)!) || (a.round_no ?? 0) - (b.round_no ?? 0));
+      const tag = (r: SeriesRoundRow) => `${roundLabel} ${r.round_no ?? "?"}`;
+      const nextAfter = confirmedAfter(lateRunDay)[0] ?? null;
+      const nextAhead = rounds
+        .filter((r) => r.date_status === "confirmada" && (dayOf(r.date) ?? "") >= asOf)
+        .sort((a, b) => dayOf(a.date)!.localeCompare(dayOf(b.date)!) || (a.round_no ?? 0) - (b.round_no ?? 0))[0] ?? null;
+      const next = !nextAfter
+        ? "era a última com data confirmada"
+        : dayOf(nextAfter.date)! >= asOf
+        ? `a seguinte é a ${tag(nextAfter)} (${dayMonth(nextAfter.date)})`
+        : nextAhead
+        ? `a seguinte (${tag(nextAfter)}, ${dayMonth(nextAfter.date)}) também já passou; a próxima por correr é a ${tag(nextAhead)} (${dayMonth(nextAhead.date)})`
+        : `a seguinte (${tag(nextAfter)}, ${dayMonth(nextAfter.date)}) também já passou`;
       L.push(`Se esta corrida (${dayMonth(lateRunDay)}) foi a ${roundLabel} ${own.round_no ?? "?"} · ${own.name ?? `${roundLabel} ${own.round_no ?? ""}`.trim()}: já passou; ${next}.`);
     }
   }
 
-  // Sem jornadas confirmadas daqui para a frente: ou o calendário ainda não
-  // saiu, ou as que tinham data já passaram (fim de época, ou as seguintes
-  // ainda sem data) — "por publicar" seria falso aí.
-  const hadCalendar = rounds.some((r) => r.date_status === "confirmada" && !!dayOf(r.date));
   if (!hasCalendar && hadCalendar) {
     L.push(`Não há mais ${ls} com data confirmada daqui para a frente. Não inventes datas nem calcules papéis.`);
   } else if (!hasCalendar) {
@@ -578,6 +608,8 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
     competitionName,
     roundLabel,
     hasCalendar,
+    hadCalendar,
+    jornadaRaceIds,
     roles,
     intentByRaceId,
     questions,
@@ -592,8 +624,12 @@ export function buildSeriesBlock(input: SeriesBlockInput): SeriesBlock | null {
 export function buildCupMapTurn(block: SeriesBlock, first: boolean): string {
   const l = block.roundLabel.toLowerCase();
   const ls = `${l}s`;
+  // Quem se inscreve a meio da época já teve calendário: "ainda não há" era
+  // falso aí (revisão pré-deploy da Fase 2, aviso (b)).
   const withoutCalendar = block.hasCalendar
     ? ""
+    : block.hadCalendar
+    ? `Já não há ${ls} com data confirmada daqui para a frente: di-lo, não inventes datas nem papéis, e fica pelas principais. `
     : `Ainda não há ${ls} com data confirmada: di-lo, não inventes datas nem papéis, e fica pelas principais. `;
   let text =
     `A app mostrou-lhe no Início o mapa da época de ${block.competitionName} e ele abriu o chat a partir daí. ` +

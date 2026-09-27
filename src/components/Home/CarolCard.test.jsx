@@ -1,9 +1,13 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { addDaysISO } from '../../lib/utils';
-import CarolCard from './CarolCard';
+import { supabase } from '../../lib/supabase';
+import { CUP_EMPTY, cupEnrolledHintKey, __resetCupModuleState } from '../../store/cupSlice';
+import * as F from '@formulas/cup.fixtures.ts';
+import CarolCard, { useCoachDailyMessages } from './CarolCard';
+import CarolCardAntesDaFase3, { useCoachDailyMessagesAntesDaFase3 } from '../../test/CarolCardAntesDaFase3';
 import { FRASES } from './carolCardLines';
 import { expectCarolVoice } from '../../test/carolVoice';
 
@@ -610,6 +614,251 @@ describe('CarolCard — o cartão da Carol no Início', () => {
       render(<CarolCard />);
       expect(screen.getByText(FRASES.provaFeitaSemCorrida)).toBeInTheDocument();
       expect(textoDoCartao()).not.toMatch(/agendado|Hoje tens/);
+    });
+  });
+
+  /* ── O Troféu no cartão (specs/trofeu.md §4.4, Fase 3, 2026-09-27) ────
+     O prazo de inscrição numa jornada (com [Inscrever-me ↗] e [Já me
+     inscrevi]) e a linha da semana da jornada (D−7 a D−2, com a previsão
+     calculada). Sem inscrição, a lista é exatamente a de hoje — e o cartão
+     não lê nada da competição. */
+  describe('o Troféu', () => {
+    const USER = 'u1';
+    // Nasceu a 24/1/1982: na J3 (24/01/2027) faz 45 — M45, percurso longo (7,4 km às 9h30).
+    const PERFIL = { id: USER, gender: 'M', birth_date: '1982-01-24', experience_level: 'medio' };
+    const ENR = { id: 'enr1', user_id: USER, edition_id: F.CASCAIS_34.id, team_id: 't-naza', season_goal: 'premio', status: 'ativa', entry_by: 'atleta', bib: '4321' };
+    const X3 = { id: 'x3', name: 'Corrida CCD Cascais', date: '2027-01-24', distance_km: 7.4, race_type: 'estrada', race_priority: 'b', status: 'agendada', cup_round_id: 'r-c3' };
+    // 10 km em 45:00 → 7,4 km em 32:42 (a mesma conta do hub).
+    const CORRIDAS = [{ id: 'run1', date: '2027-01-10', distance_km: 10, duration_seconds: 2700 }];
+    const ROUNDS = F.CASCAIS_ROUNDS.map((r) => (r.id === 'r-c3' ? { ...r, entry_deadline_at: '2027-01-21T00:00:00+00:00' } : r));
+    const catalogo = { [F.CASCAIS_34.id]: { status: 'ready', rounds: ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS } };
+    const inscrito = ({ enrollment = ENR, participation = { decision: 'vou' }, edition = { entry_url: 'https://example.org/inscricao' } } = {}) => ({
+      ...CUP_EMPTY,
+      status: 'ready', userId: USER, dismissals: [],
+      editions: [{ ...F.CASCAIS_34_ABERTA, ...edition, competition: F.CASCAIS_COMPETITION }],
+      enrollments: [enrollment],
+      participations: participation ? [{ id: 'p3', enrollment_id: 'enr1', round_id: 'r-c3', decision_source: 'atleta', ...participation }] : [],
+      catalog: catalogo,
+      results: { status: 'ready', enrollmentId: 'enr1', rows: [], teamRows: [] },
+    });
+    const REAL_MARK = useAppStore.getState().markCupEntryDone;
+    let markCupEntryDone;
+    let from;
+
+    beforeEach(() => {
+      markCupEntryDone = vi.fn().mockResolvedValue({ ok: true, data: {} });
+      from = vi.spyOn(supabase, 'from').mockImplementation(() => { throw new Error('sem rede nos testes'); });
+      useAppStore.setState({ markCupEntryDone, cup: CUP_EMPTY, session: null });
+    });
+
+    afterEach(() => {
+      from.mockRestore();
+      useAppStore.setState({ cup: CUP_EMPTY, markCupEntryDone: REAL_MARK });
+    });
+
+    const leituras = () => from.mock.calls.map(([t]) => t).filter((t) => String(t).startsWith('cup_'));
+
+    function mensagens() {
+      let out = null;
+      function Sonda() {
+        out = useCoachDailyMessages(new Date());
+        return null;
+      }
+      const { unmount } = render(<Sonda />);
+      unmount();
+      return JSON.stringify(out);
+    }
+
+    /* INVARIÂNCIA (§10; revisão da Fase 3). A régua é o cartão de ANTES da
+       Fase 3 (CarolCardAntesDaFase3, src/test/ — cópia congelada de ef3c4af,
+       com as mesmas frases), não o cartão novo sem inscrição comparado
+       consigo próprio: uma mudança igual para todos os não inscritos (a
+       ordem das mensagens, um invólucro no texto, o MessageText) passava. */
+    function mensagensAntes() {
+      let out = null;
+      function Sonda() {
+        out = useCoachDailyMessagesAntesDaFase3(new Date());
+        return null;
+      }
+      const { unmount } = render(<Sonda />);
+      unmount();
+      return JSON.stringify(out);
+    }
+    // O piscar da Carol é sorteado a cada montagem (CoachAvatar): fora da
+    // comparação.
+    const semPiscar = (h) => h.replace(/--carol-blink-(dur|delay): -?[\d.]+s;/g, '--carol-blink-$1: :s;');
+    // O cartão aberto ("Ler mais"), para comparar todas as mensagens desenhadas.
+    function cartaoAberto(Cartao) {
+      const r = render(<Cartao />);
+      if (screen.queryByText('Ler mais')) abrir();
+      const out = semPiscar(r.container.innerHTML);
+      r.unmount();
+      return out;
+    }
+    const ESTADOS = [
+      ['nada lido (idle)', () => CUP_EMPTY],
+      ['lido, sem edição', () => ({ ...CUP_EMPTY, status: 'ready', userId: USER, editions: [], enrollments: [], dismissals: [] })],
+      ['convite na área', () => ({ ...inscrito(), enrollments: [], participations: [] })],
+      ['saiu desta edição', () => ({ ...inscrito(), enrollments: [{ ...ENR, status: 'saiu' }], participations: [] })],
+      ['M1 por aplicar', () => ({ ...CUP_EMPTY, status: 'indisponivel', userId: USER })],
+    ];
+    const diaComTudo = () => {
+      relogio('12:00');
+      try { window.localStorage.removeItem(cupEnrolledHintKey(USER)); } catch { /* sem storage */ }
+      useAppStore.setState({
+        profile: { ...PERFIL, ...COM_AGUA },
+        dailySummary: resumo({ recap: 'Treinaste 4x esta semana.', meal_suggestion: 'Almoço com arroz.', daily_concept: { title: 'Limiar', body: 'O limiar é…' } }),
+        raceEvents: [race(AMANHA, { start_time: '09:00' }), { ...X3, date: '2026-01-10', status: 'concluida' }],
+        runs: CORRIDAS,
+        ...plano([LONGO]),
+      });
+    };
+
+    it('invariância: sem inscrição, em todos os estados da competição, as mensagens e o cartão são os de antes da Fase 3 — e nada se lê', () => {
+      diaComTudo();
+      useAppStore.setState({ cup: CUP_EMPTY });
+      const antes = mensagensAntes();
+      // A régua não pode ser uma lista vazia por engano.
+      expect(JSON.parse(antes).map((m) => m.key)).toEqual(['recap', 'warnings', 'meal_suggestion', 'tomorrow_prep', 'daily_concept']);
+      const cartaoAntes = cartaoAberto(CarolCardAntesDaFase3);
+      expect(cartaoAntes).toContain('Almoço com arroz.');
+
+      for (const [estado, cup] of ESTADOS) {
+        useAppStore.setState({ cup: cup() });
+        expect(mensagens(), estado).toBe(antes);
+        expect(cartaoAberto(CarolCard), estado).toBe(cartaoAntes);
+      }
+      expect(leituras()).toEqual([]);
+    });
+
+    /* O único caminho em que o código novo corre para quem não está
+       inscrito: a pista local velha (inscrito neste telemóvel noutra época,
+       ou noutra conta). Lê-se a competição — e, a ler e depois de lida sem
+       inscrição, o cartão é o de antes. */
+    it('invariância com a pista local velha: a ler e depois de lida sem inscrição, o cartão é o de antes', async () => {
+      diaComTudo();
+      useAppStore.setState({ cup: CUP_EMPTY });
+      const antes = mensagensAntes();
+      const cartaoAntes = cartaoAberto(CarolCardAntesDaFase3);
+
+      __resetCupModuleState();
+      const vazio = () => {
+        const b = {};
+        for (const m of ['select', 'eq', 'in', 'order']) b[m] = () => b;
+        b.then = (res, rej) => Promise.resolve({ data: [], error: null }).then(res, rej);
+        return b;
+      };
+      from.mockImplementation(() => vazio());
+      window.localStorage.setItem(cupEnrolledHintKey(USER), '1');
+
+      const r = render(<CarolCard />);
+      abrir();
+      // A ler (a vista ainda não existe): o cartão é o de antes.
+      expect(useAppStore.getState().cup.status).toBe('loading');
+      expect(semPiscar(r.container.innerHTML)).toBe(cartaoAntes);
+      await waitFor(() => expect(useAppStore.getState().cup.status).toBe('ready'));
+      expect(semPiscar(r.container.innerHTML)).toBe(cartaoAntes);
+      r.unmount();
+      expect(mensagens()).toBe(antes);
+      // Lida sem inscrição, a pista apaga-se: o Início deixa de ler.
+      expect(window.localStorage.getItem(cupEnrolledHintKey(USER))).toBeNull();
+      expect(leituras()).toContain('cup_enrollments');
+    });
+
+    // Uma prova qualquer (a "Preparar amanhã" da invariância).
+    function race(date, extra = {}) {
+      return { id: 'r1', date, name: 'Corrida do Tejo', status: 'agendada', race_type: 'estrada', distance_km: 10, experience_level: 'medio', ...extra };
+    }
+
+    describe('inscrito', () => {
+      beforeEach(() => {
+        // Segunda, 18/01/2027: a J3 é no domingo (D−6); a inscrição fecha à
+        // meia-noite de quinta — "quarta às 24h".
+        relogio('10:00', '2027-01-18');
+        useAppStore.setState({ profile: PERFIL, raceEvents: [X3], runs: CORRIDAS, cup: inscrito() });
+        try { window.localStorage.setItem(cupEnrolledHintKey(USER), '1'); } catch { /* sem storage */ }
+      });
+
+      it('o prazo: a frase, [Inscrever-me ↗] (noutra janela) e [Já me inscrevi]', async () => {
+        render(<CarolCard />);
+        abrir();
+        expect(secao('Inscrição')).toBe('InscriçãoA inscrição na jornada 3 (Corrida CCD Cascais) fecha quarta às 24h.Inscrever-me Já me inscrevi');
+        const link = screen.getByTestId('carol-card-link');
+        expect(link.getAttribute('href')).toBe('https://example.org/inscricao');
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+        expect(link.getAttribute('aria-label')).toBe('Inscrever-me na jornada 3 (abre o site oficial)');
+        expect(parseInt(link.style.minHeight, 10)).toBe(44);
+        const btn = screen.getByTestId('carol-card-entry-done');
+        expect(parseInt(btn.style.minHeight, 10)).toBe(44);
+        await act(async () => { fireEvent.click(btn); });
+        expect(markCupEntryDone).toHaveBeenCalledWith('r-c3', true);
+        // O aviso é da inscrição: âmbar não, coral (--warn), como os avisos.
+        expect(screen.getByText('Inscrição').style.color).toBe('var(--warn)');
+      });
+
+      it('sem o link do organizador, só [Já me inscrevi]', () => {
+        useAppStore.setState({ cup: inscrito({ edition: {} }) });
+        render(<CarolCard />);
+        abrir();
+        expect(screen.getByText('A inscrição na jornada 3 (Corrida CCD Cascais) fecha quarta às 24h.')).toBeInTheDocument();
+        expect(screen.queryByTestId('carol-card-link')).not.toBeInTheDocument();
+        expect(screen.getByTestId('carol-card-entry-done')).toBeInTheDocument();
+      });
+
+      it('nada de prazo a quem respondeu "o meu clube", a quem já se inscreveu, nem sem "Vou"', () => {
+        for (const cup of [
+          inscrito({ enrollment: { ...ENR, entry_by: 'clube' } }),
+          inscrito({ participation: { decision: 'vou', entry_done_at: '2027-01-17T20:00:00Z' } }),
+          inscrito({ participation: { decision: 'nao_sei' } }),
+        ]) {
+          useAppStore.setState({ cup });
+          const { unmount } = render(<CarolCard />);
+          expect(screen.queryByText(/A inscrição na jornada/)).not.toBeInTheDocument();
+          if (screen.queryByText('Ler mais')) {
+            abrir();
+            expect(screen.queryByText('Inscrição')).not.toBeInTheDocument();
+          }
+          unmount();
+        }
+      });
+
+      it('a semana da jornada: o dia, a prova, a distância e a hora, o papel e a previsão com o ícone de cálculo', () => {
+        const onOpenRace = vi.fn();
+        render(<CarolCard onOpenRace={onOpenRace} />);
+        abrir();
+        expect(secao('Troféu de Cascais')).toBe('Troféu de CascaisDomingo, Corrida CCD Cascais, 7,4 km às 9h30. Pelas contas: atacar, previsão calculada: 32:42.Ver a jornada');
+        const prev = screen.getByTestId('cup-previsao');
+        expect(prev.querySelector('svg').getAttribute('aria-hidden')).toBe('true');
+        expect(prev.getAttribute('title')).toBe('Previsão calculada pelo teu treino — não fica gravada');
+        fireEvent.click(screen.getByText('Ver a jornada'));
+        expect(onOpenRace).toHaveBeenCalledWith('x3');
+        // A previsão não se grava (§2.6).
+        expect(useAppStore.getState().raceEvents[0].target_time).toBeUndefined();
+      });
+
+      it('a semana só de D−7 a D−2 (a véspera e o dia são das linhas da prova)', () => {
+        const temSemana = (dia) => {
+          relogio('10:00', dia);
+          let msgs = null;
+          function Sonda() { msgs = useCoachDailyMessages(new Date()); return null; }
+          const { unmount } = render(<Sonda />);
+          unmount();
+          return msgs.some((m) => m.key === 'cup_week');
+        };
+        expect(temSemana('2027-01-16')).toBe(false); // D−8
+        expect(temSemana('2027-01-17')).toBe(true); // D−7
+        expect(temSemana('2027-01-22')).toBe(true); // D−2
+        expect(temSemana('2027-01-23')).toBe(false); // D−1: "Preparar amanhã" é a prova
+        expect(temSemana('2027-01-24')).toBe(false); // D0
+      });
+
+      it('o texto do cartão nunca tem o dorsal', () => {
+        render(<CarolCard />);
+        abrir();
+        expect(textoDoCartao()).not.toContain('4321');
+        expect(textoDoCartao()).not.toMatch(/dorsal/i);
+      });
     });
   });
 });

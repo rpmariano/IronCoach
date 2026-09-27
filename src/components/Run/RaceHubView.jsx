@@ -42,6 +42,7 @@ import RaceTimesBreakdown from './RaceTimesBreakdown';
 import { raceForecast, raceTimesBreakdown, targetLine } from '../../utils/raceTimes';
 import RaceMuralSheet from './RaceMuralSheet';
 import AddToCalendar from './AddToCalendar';
+import CupRaceBlock from './CupRaceBlock';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { calculateRaceTrainingPlan, formatDatePTShort, formatDateDayMonth } from '../../utils/racePlanEngine';
 import { calculateReadinessIndex, getRacePrediction, getVDOTTrend } from '../../utils/biEngine';
@@ -523,6 +524,8 @@ export default function RaceHubView({
           </div>
         </div>
 
+        <CupRaceBlock race={race} />
+
         {/* 1b. As memórias do dia — medalha em destaque, diploma e as
             fotografias. Sem nada guardado fica o convite, discreto: é uma
             oferta, não uma tarefa por cumprir. */}
@@ -856,6 +859,8 @@ export default function RaceHubView({
       {calendarRaceId && daysToRace >= 0 && (
         <AddToCalendar race={race} raceEventId={calendarRaceId} />
       )}
+
+      <CupRaceBlock race={race} />
 
       {/* ─── 1b. Plano para o dia ───────────────────────────────────────────
           Abaixo do herói e da contagem, antes das fases: na última semana é

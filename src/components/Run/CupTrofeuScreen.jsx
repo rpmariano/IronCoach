@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ExternalLink, Settings } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { useAppStore } from '../../store';
@@ -12,15 +12,36 @@ import { Input } from '../shared/Input';
 import { Sheet, Dialog, useEscapeClose } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
 import { SEASON_GOALS } from './CupEnrollmentScreen';
-import { distanciaLabel } from './CupDoorCard';
+import { distanciaLabel, editionTitle } from './CupDoorCard';
+import { CupNaoFuiDialog, CupStatus, JornadaChip } from './CupBits';
+import CupClassificacao, { CupLink, clubeLabel } from './CupClassificacao';
+import CupJornadaSheet from './CupJornadaSheet';
+import { roundDateText } from '../../utils/cupCalendar';
 import { enrollmentChoiceError } from '@formulas/cup.ts';
 
-/* O ecrã do Troféu — mínimo da Fase 1 (specs/trofeu.md §4.3 e TAREFA da
-   Fase 1: cabeçalho, a lista de jornadas pré-marcada onde só "Confirmar"
-   grava, o contador dos 70% e "Gerir inscrição"). O calendário completo com
-   os ícones ✓ ▸ ✕ ⋯ e a classificação ficam para a Fase 3 (§10) — aqui cada
-   jornada mostra a mesma informação, só que com três opções em vez de um
-   histórico. 2026-09-26. */
+/* O ecrã do Troféu (specs/trofeu.md §4.3). Fase 1 (2026-09-26): cabeçalho,
+   a lista de jornadas pré-marcada onde só "Confirmar" grava, o contador dos
+   70% e "Gerir inscrição". Fase 3 (2026-09-27): o calendário e a
+   classificação.
+
+   DOIS MODOS.
+   - 'decidir' — a lista pré-marcada da Fase 1, tal como estava (três
+     opções por jornada, só "Confirmar" grava). Abre-se aqui logo a seguir à
+     inscrição e sempre que há jornadas pré-marcadas por confirmar (§4.3:
+     "logo a seguir à inscrição e sempre que sai o calendário"). "Decidir
+     depois", ou um "Confirmar" que não deixa nada pendente, passam ao
+     calendário.
+   - 'calendario' — uma linha por jornada, com o estado SEMPRE em texto e
+     num de quatro ícones (✓ ▸ ✕ ⋯, nunca só cor), uma frase por linha para
+     o leitor de ecrã e alvos de 56/44 px (§4.3). A régua do estado é a de
+     utils/cupCalendar.js, a mesma da lista de Provas, do hub e do Início.
+     Tocar numa linha abre a folha da jornada (CupJornadaSheet); nas que já
+     passaram, "Registar" e "Não fui" ficam à mão, fora do botão da linha.
+     Por baixo, a classificação — só a linha dele e o total do clube dele.
+
+   `initialMode` e `focusRoundId` chegam de Provas (o "+N no calendário", a
+   migalha do hub, a linha do Início): o modo com que abre e a jornada cuja
+   folha abre logo. */
 
 const CARD = { background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', borderRadius: 18 };
 
@@ -34,11 +55,16 @@ const DECISOES = [
   { value: 'nao_sei', label: 'Ainda não sei', icon: '?', color: 'var(--text-3)' },
 ];
 
-function clubeLabel(enrollment, teams) {
-  if (!enrollment) return '';
-  if (enrollment.team_other) return enrollment.team_other;
-  const team = (teams || []).find((t) => t.id === enrollment.team_id);
-  return team?.short_name || team?.name || 'Clube por confirmar';
+const baseDecision = (round) => round.participation?.decision ?? round.suggestion?.decision ?? null;
+// Só se decide "Vou" numa jornada com data, não cancelada e que não passou
+// (depois do dia criava uma prova agendada no passado — revisão pré-deploy
+// da Fase 1; o "Registar" das passadas é outra coisa, ver CalendarioRow).
+const aplicavel = (round) => !!round.date && round.date_status !== 'cancelada' && round.suggestion?.reason !== 'passada';
+
+/** As jornadas com uma escolha por gravar (rascunho ou pré-marcação). */
+function pendentesDe(rounds, draft) {
+  const efetiva = (r) => (r.id in draft ? draft[r.id] : baseDecision(r));
+  return (rounds || []).filter((r) => aplicavel(r) && efetiva(r) !== (r.participation?.decision ?? null));
 }
 
 /* Uma jornada da lista pré-marcada. `decision` é o valor EFETIVO (rascunho
@@ -107,6 +133,107 @@ function JornadaRow({ round, decision, onChange, roundLabel }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* Uma linha do calendário (§4.3): um botão só (56 px) que abre a folha da
+   jornada, com a frase inteira para o leitor de ecrã; o estado vai em texto
+   e num dos quatro ícones — o círculo à volta é decoração. "Registar" e
+   "Não fui" (só nas que já passaram) ficam numa fila à parte: nunca um
+   botão dentro de outro. */
+function CalendarioRow({ round, today, roundLabel, onOpen, onRegistar, onNaoFui, registando }) {
+  const s = round.status;
+  if (!s) return null;
+  const acoes = s.actions || [];
+  // "a jornada 2, Corta-mato do NAZA" — o botão fora da linha diz de qual é.
+  const qual = [`${String(roundLabel || 'Jornada').toLowerCase()} ${round.round_no ?? ''}`.trim(), round.name].filter(Boolean).join(', ');
+  return (
+    <div style={{ ...CARD }} data-testid={`cup-cal-${round.id}`} data-status={s.key}>
+      <button
+        type="button"
+        onClick={() => onOpen(round.id)}
+        aria-label={s.ariaLabel}
+        data-testid={`cup-cal-${round.id}-abrir`}
+        className="w-full text-left flex items-start gap-2.5"
+        style={{ minHeight: 56, padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
+      >
+        <span
+          aria-hidden="true"
+          className="shrink-0 flex items-center justify-center rounded-full"
+          style={{ width: 28, height: 28, border: `1.5px solid ${s.color}`, color: s.color, fontWeight: 900, fontSize: 13, marginTop: 1 }}
+        >
+          {s.icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2 min-w-0">
+            <JornadaChip chip={round.chip} roundNo={round.round_no} />
+            <span className="shrink-0 text-[12px] font-bold" style={{ color: 'var(--text-3)' }}>{roundDateText(round, today)}</span>
+            <span className="min-w-0 truncate text-[12.5px] font-extrabold" style={{ color: s.key === 'cancelada' ? 'var(--text-4)' : 'var(--text-1)' }}>
+              {round.name || ''}
+            </span>
+          </span>
+          <span className="block text-[11.5px] mt-1">
+            <CupStatus status={s} />
+          </span>
+          {round.dateChange && (
+            <span className="block text-[11px] font-bold mt-0.5" style={{ color: 'var(--warn)' }}>{round.dateChange.label}</span>
+          )}
+        </span>
+        <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--text-4)', flexShrink: 0, marginTop: 6 }} />
+      </button>
+      {acoes.length > 0 && (
+        <div className="flex gap-2" style={{ padding: '0 12px 12px 50px' }}>
+          {acoes.includes('registar') && (
+            <Button
+              variant="module"
+              moduleColor="var(--race)"
+              size="sm"
+              style={{ minHeight: 44 }}
+              data-testid={`cup-cal-${round.id}-registar`}
+              aria-label={`Registar a ${qual}`}
+              isLoading={registando}
+              onClick={() => onRegistar(round)}
+            >
+              Registar
+            </Button>
+          )}
+          {acoes.includes('nao_fui') && (
+            <Button
+              variant="light"
+              size="sm"
+              style={{ minHeight: 44 }}
+              data-testid={`cup-cal-${round.id}-nao-fui`}
+              aria-label={`Não fui à ${qual}`}
+              onClick={() => onNaoFui(round)}
+            >
+              Não fui
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* O calendário ainda não saiu: diz-se, e "Avisa-me quando sair" liga só
+   esse aviso (§4.2). */
+function SemCalendario({ enrollment, onToggle }) {
+  return (
+    <GlassCard radius={20} padding={14} data-testid="cup-trofeu-sem-calendario">
+      <p className="m-0 text-[12.5px]" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
+        Ainda não saiu o calendário desta edição.
+      </p>
+      <label htmlFor="cup-notify-calendar" className="flex items-center gap-2.5 mt-3" style={{ ...CARD, padding: 12, minHeight: 44 }}>
+        <input
+          id="cup-notify-calendar"
+          type="checkbox"
+          checked={!!enrollment.notify_calendar}
+          onChange={(e) => onToggle(e.target.checked)}
+          style={{ width: 20, height: 20, accentColor: 'var(--race)' }}
+        />
+        <span className="text-[12.5px] font-bold" style={{ color: 'var(--text-2)' }}>Avisa-me quando sair</span>
+      </label>
+    </GlassCard>
   );
 }
 
@@ -205,33 +332,65 @@ function GerirInscricaoSheet({ view, onClose, onLeft }) {
   );
 }
 
-export default function CupTrofeuScreen({ view, onClose }) {
-  const { updateEnrollment, setCupParticipations } = useAppStore();
+export default function CupTrofeuScreen({ view, onClose, initialMode = null, focusRoundId = null }) {
+  const { updateEnrollment, setCupParticipations, registerCupRound, markCupRoundNotAttended } = useAppStore();
   const { showToast } = useToast();
   useEscapeClose(onClose);
   const [gerirAberto, setGerirAberto] = useState(false);
   const [draft, setDraft] = useState({});
-  const [adiado, setAdiado] = useState(false);
   const [aConfirmar, setAConfirmar] = useState(false);
+  const [confirmou, setConfirmou] = useState(false);
+  // O modo com que abre: o pedido de quem abriu; senão "decidir" se há
+  // jornadas pré-marcadas por confirmar. Com o catálogo ainda a chegar, fica
+  // por escolher (null, mostra o calendário) até ele chegar.
+  const [modo, setModo] = useState(() => (
+    initialMode === 'decidir' || initialMode === 'calendario'
+      ? initialMode
+      : view?.catalogReady ? (pendentesDe(view.rounds, {}).length > 0 ? 'decidir' : 'calendario') : null
+  ));
+  const [folha, setFolha] = useState(focusRoundId || null);
+  const [naoFui, setNaoFui] = useState(null); // a jornada do diálogo "Não fui"
+  const [aMarcarNaoFui, setAMarcarNaoFui] = useState(false);
+  const [registando, setRegistando] = useState(null); // roundId
+
+  const rounds = view?.rounds || [];
+  const pendentes = pendentesDe(rounds, draft);
+
+  useEffect(() => {
+    if (modo == null && view?.catalogReady) setModo(pendentes.length > 0 ? 'decidir' : 'calendario');
+  }, [modo, view?.catalogReady, pendentes.length]);
+
+  // Um "Confirmar" que não deixou nada pendente passa ao calendário.
+  useEffect(() => {
+    if (!confirmou) return;
+    setConfirmou(false);
+    if (pendentes.length === 0) setModo('calendario');
+  }, [confirmou, pendentes.length]);
+
+  // Um pedido novo com o ecrã já aberto: o modo e a folha que ele pede.
+  useEffect(() => {
+    if (initialMode === 'decidir' || initialMode === 'calendario') setModo(initialMode);
+  }, [initialMode]);
+  useEffect(() => {
+    if (focusRoundId) setFolha(focusRoundId);
+  }, [focusRoundId]);
 
   if (!view?.enrollment) return null;
-  const { enrollment, edition, rounds, teams, category, attendance, showCounter, catalogReady } = view;
-  const nome = view.competition?.short_name || view.competition?.name || 'Troféu';
-  const roundLabel = view.competition?.round_label || 'Jornada';
+  const { enrollment, edition, teams, category, attendance, showCounter, catalogReady } = view;
+  const nome = view.shortName || view.competition?.short_name || view.competition?.name || 'Troféu';
+  const titulo = view.title || editionTitle(edition, view.competition);
+  const roundLabel = view.roundLabel || view.competition?.round_label || 'Jornada';
+  const rotulo = roundLabel.toLowerCase();
   const objetivo = SEASON_GOALS.find((g) => g.value === enrollment.season_goal)?.label || 'Só participar';
+  const modoAtual = modo ?? 'calendario';
+  const percurso = view.nextRound?.course ? (view.nextRound.course.name || view.nextRound.course.code || null) : null;
 
-  const baseDecision = (round) => round.participation?.decision ?? round.suggestion?.decision ?? null;
   const efetiva = (round) => (round.id in draft ? draft[round.id] : baseDecision(round));
-  const aplicavel = (round) => !!round.date && round.date_status !== 'cancelada' && round.suggestion?.reason !== 'passada';
-  const pendente = (round) => aplicavel(round) && efetiva(round) !== (round.participation?.decision ?? null);
-
-  const pendentes = (rounds || []).filter(pendente);
   const contarVou = pendentes.filter((r) => efetiva(r) === 'vou').length;
   const contarNaoVou = pendentes.filter((r) => efetiva(r) === 'nao_vou').length;
 
   const mudarDecisao = (roundId, valor) => {
     setDraft((d) => ({ ...d, [roundId]: valor }));
-    setAdiado(false);
   };
 
   /* Revisão da Fase 1 (2026-09-26): o resultado de cada jornada conta.
@@ -261,6 +420,7 @@ export default function CupTrofeuScreen({ view, onClose }) {
         : `${falhadas.size} jornadas não gravaram — as tuas escolhas ficaram; tenta outra vez.`, 'error');
       return;
     }
+    setConfirmou(true);
     if (colisoes > 0) {
       showToast(colisoes === 1
         ? '1 jornada ficou por decidir: é o dia de uma prova principal.'
@@ -274,12 +434,49 @@ export default function CupTrofeuScreen({ view, onClose }) {
     await updateEnrollment(enrollment.id, { notify_calendar: on });
   };
 
+  /* "Registar" uma jornada que já passou (§4.5): com a prova no calendário
+     abre o registo nela; sem ela, grava "Vou" e a sincronização cria-a (ou
+     liga a que ele já lá tinha). O registo abre-se noutro separador, por
+     isso o ecrã fecha primeiro. */
+  const registar = async (round) => {
+    setRegistando(round.id);
+    const res = await registerCupRound(round.id);
+    setRegistando(null);
+    if (!res?.ok || !res.data?.raceId) {
+      showToast(res?.error?.message || 'Não foi possível abrir o registo desta jornada.', 'error');
+      return;
+    }
+    setFolha(null);
+    onClose();
+    useAppStore.getState().openRaceRun(res.data.raceId);
+  };
+
+  const confirmarNaoFui = async () => {
+    if (!naoFui) return;
+    setAMarcarNaoFui(true);
+    const res = await markCupRoundNotAttended(naoFui.id);
+    setAMarcarNaoFui(false);
+    setNaoFui(null);
+    if (!res?.ok) { showToast(res?.error?.message || 'Não foi possível gravar.', 'error'); return; }
+    showToast('Ficou como «Não fui».', 'success');
+  };
+
+  const abrirProva = (raceId) => {
+    setFolha(null);
+    onClose();
+    useAppStore.getState().setEditingRaceId(raceId);
+  };
+
+  const folhaRound = folha ? rounds.find((r) => r.id === folha) || null : null;
+  const porDecidir = view.undecidedCount || 0;
+
   const conteudo = (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`O teu ${nome}`}
       data-testid="cup-trofeu-screen"
+      data-modo={modoAtual}
       // z-55: acima da nav (40) e do FAB (50), ABAIXO das persianas e popups
       // (Sheet/Dialog, z-60/70, também em portal no body) que este ecrã abre —
       // a z-80 abriam por baixo dele (revisão pré-deploy da Fase 1, 2026-09-26).
@@ -292,38 +489,31 @@ export default function CupTrofeuScreen({ view, onClose }) {
         </button>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>Troféu</div>
-          <div className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{nome}</div>
+          <div className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{titulo}</div>
         </div>
-        <button
-          type="button"
-          data-testid="cup-abrir-gerir"
-          aria-label="Gerir inscrição"
-          onClick={() => setGerirAberto(true)}
-          className="shrink-0 flex items-center justify-center rounded-full"
-          style={{ width: 44, height: 44, background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}
-        >
-          <Settings size={17} />
-        </button>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-2 [&>*]:shrink-0" style={{ padding: '12px 18px calc(96px + env(safe-area-inset-bottom, 0px))' }}>
         <GlassCard tone="race" radius={24} padding={16} data-testid="cup-trofeu-cabecalho">
           <p className="m-0 text-[12.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{clubeLabel(enrollment, teams)}</p>
-          <p className="m-0 text-[11.5px] mt-1" style={{ color: 'var(--text-3)' }}>
-            Escalão {category?.code || 'por confirmar'} · {objetivo}
+          <p className="m-0 text-[11.5px] mt-1" data-testid="cup-trofeu-escalao" style={{ color: 'var(--text-3)' }}>
+            Escalão {category?.code || 'por confirmar'}{percurso ? ` · ${percurso}` : ''}
           </p>
-          {edition?.regulation_url && (
-            <a
-              href={edition.regulation_url}
-              target="_blank"
-              rel="noreferrer"
-              data-testid="cup-trofeu-regulamento"
-              className="inline-flex items-center gap-1 text-[11.5px] font-extrabold mt-2"
-              style={{ color: 'var(--race)', minHeight: 44 }}
+          <p className="m-0 text-[11.5px] mt-0.5" style={{ color: 'var(--text-4)' }}>Objetivo: {objetivo}</p>
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5">
+            {edition?.regulation_url
+              ? <CupLink href={edition.regulation_url} label="Regulamento" testId="cup-trofeu-regulamento" />
+              : <span />}
+            <button
+              type="button"
+              data-testid="cup-abrir-gerir"
+              onClick={() => setGerirAberto(true)}
+              className="inline-flex items-center text-[12px] font-extrabold"
+              style={{ minHeight: 44, padding: '0 4px', background: 'none', border: 'none', color: 'var(--text-2)', cursor: 'pointer' }}
             >
-              Regulamento <ExternalLink size={12} aria-hidden="true" />
-            </a>
-          )}
+              Gerir inscrição
+            </button>
+          </div>
         </GlassCard>
 
         {showCounter && attendance && (
@@ -338,47 +528,115 @@ export default function CupTrofeuScreen({ view, onClose }) {
             <p className="m-0 text-[12px] mt-1" style={{ color: 'var(--text-3)' }}>
               feitas {attendance.done} · ainda podes faltar a {attendance.canMiss}
             </p>
+            {attendance.reachable === false && (
+              <p className="m-0 text-[12px] font-bold mt-1" data-testid="cup-trofeu-inalcancavel" style={{ color: 'var(--warn)' }}>
+                Já não dá para chegar ao mínimo.
+              </p>
+            )}
           </GlassCard>
         )}
 
-        <SectionLabel style={{ margin: '4px 2px 0' }}>As tuas jornadas</SectionLabel>
+        {modoAtual === 'decidir' ? (
+          <>
+            <div className="flex items-center justify-between gap-2" style={{ margin: '4px 2px 0' }}>
+              <SectionLabel style={{ margin: 0 }}>As tuas jornadas</SectionLabel>
+              <button
+                type="button"
+                data-testid="cup-ver-calendario"
+                onClick={() => setModo('calendario')}
+                className="inline-flex items-center gap-0.5 text-[12px] font-extrabold"
+                style={{ minHeight: 44, padding: '0 4px', background: 'none', border: 'none', color: 'var(--race)', cursor: 'pointer' }}
+              >
+                Ver o calendário <ChevronRight size={14} aria-hidden="true" />
+              </button>
+            </div>
 
-        {!catalogReady ? (
-          <p className="text-[12px] m-0 pt-1" style={{ color: 'var(--text-4)' }} role="status">A ler o calendário…</p>
-        ) : (rounds || []).length === 0 ? (
-          <GlassCard radius={20} padding={14} data-testid="cup-trofeu-sem-calendario">
-            <p className="m-0 text-[12.5px]" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
-              Ainda não saiu o calendário desta edição.
-            </p>
-            <label htmlFor="cup-notify-calendar" className="flex items-center gap-2.5 mt-3" style={{ ...CARD, padding: 12, minHeight: 44 }}>
-              <input
-                id="cup-notify-calendar"
-                type="checkbox"
-                checked={!!enrollment.notify_calendar}
-                onChange={(e) => avisarCalendario(e.target.checked)}
-                style={{ width: 20, height: 20, accentColor: 'var(--race)' }}
-              />
-              <span className="text-[12.5px] font-bold" style={{ color: 'var(--text-2)' }}>Avisa-me quando sair</span>
-            </label>
-          </GlassCard>
+            {!catalogReady ? (
+              <p className="text-[12px] m-0 pt-1" style={{ color: 'var(--text-4)' }} role="status">A ler o calendário…</p>
+            ) : rounds.length === 0 ? (
+              <SemCalendario enrollment={enrollment} onToggle={avisarCalendario} />
+            ) : (
+              <div className="flex flex-col gap-2">
+                {rounds.map((r) => (
+                  <JornadaRow key={r.id} round={r} decision={efetiva(r)} onChange={mudarDecisao} roundLabel={roundLabel} />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
-          <div className="flex flex-col gap-2">
-            {rounds.map((r) => (
-              <JornadaRow key={r.id} round={r} decision={efetiva(r)} onChange={mudarDecisao} roundLabel={roundLabel} />
-            ))}
-          </div>
+          <>
+            {porDecidir > 0 && (
+              <GlassCard radius={20} padding={14} data-testid="cup-trofeu-por-decidir">
+                <div className="flex items-center justify-between gap-2.5">
+                  <p className="m-0 text-[12.5px] font-bold" style={{ color: 'var(--text-2)' }}>
+                    Tens {porDecidir} {porDecidir === 1 ? rotulo : `${rotulo}s`} por decidir.
+                  </p>
+                  <Button variant="module" moduleColor="var(--race)" size="sm" style={{ minHeight: 44 }} data-testid="cup-decidir-agora" onClick={() => setModo('decidir')}>
+                    Decidir agora
+                  </Button>
+                </div>
+              </GlassCard>
+            )}
+
+            <SectionLabel style={{ margin: '4px 2px 0' }}>Calendário</SectionLabel>
+
+            {!catalogReady ? (
+              <p className="text-[12px] m-0 pt-1" style={{ color: 'var(--text-4)' }} role="status">A ler o calendário…</p>
+            ) : rounds.length === 0 ? (
+              <SemCalendario enrollment={enrollment} onToggle={avisarCalendario} />
+            ) : (
+              <div className="flex flex-col gap-2" data-testid="cup-calendario">
+                {rounds.map((r) => (
+                  <CalendarioRow
+                    key={r.id}
+                    round={r}
+                    today={view.today}
+                    roundLabel={roundLabel}
+                    onOpen={setFolha}
+                    onRegistar={registar}
+                    onNaoFui={setNaoFui}
+                    registando={registando === r.id}
+                  />
+                ))}
+              </div>
+            )}
+
+            <CupClassificacao view={view} />
+          </>
         )}
       </div>
 
-      {pendentes.length > 0 && !adiado && (
+      {modoAtual === 'decidir' && pendentes.length > 0 && (
         <div className="shrink-0 flex items-center gap-2" style={{ padding: '10px 18px calc(14px + env(safe-area-inset-bottom, 0px))', borderTop: '1px solid var(--border-glass)', background: 'var(--bg-app)' }}>
           <Button variant="module" moduleColor="var(--race)" className="flex-1" data-testid="cup-confirmar" isLoading={aConfirmar} onClick={confirmar}>
             Confirmar: {contarVou} vou, {contarNaoVou} não vou
           </Button>
-          <Button variant="ghost" data-testid="cup-decidir-depois" onClick={() => setAdiado(true)}>
+          <Button variant="ghost" data-testid="cup-decidir-depois" onClick={() => setModo('calendario')}>
             Decidir depois
           </Button>
         </div>
+      )}
+
+      {folhaRound && (
+        <CupJornadaSheet
+          view={view}
+          round={folhaRound}
+          onClose={() => setFolha(null)}
+          onRegistar={registar}
+          onNaoFui={setNaoFui}
+          onOpenRace={abrirProva}
+          registando={registando === folhaRound.id}
+        />
+      )}
+
+      {naoFui && (
+        <CupNaoFuiDialog
+          round={naoFui}
+          roundLabel={roundLabel}
+          busy={aMarcarNaoFui}
+          onConfirm={confirmarNaoFui}
+          onClose={() => setNaoFui(null)}
+        />
       )}
 
       {gerirAberto && (

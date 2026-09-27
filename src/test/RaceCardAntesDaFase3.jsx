@@ -1,56 +1,40 @@
+/* "Para onde vou" (Home/RaceCard.jsx) ANTES da Fase 3 do Troféu, tal e
+   qual (git ef3c4af, sem os comentários e com os caminhos dos imports
+   acertados a esta pasta). Com os MESMOS componentes e utilitários
+   partilhados (GlassCard, RaceTrail, CarouselDots, raceMilestone, o plano da
+   prova…): o que muda neles para toda a gente muda nos dois lados.
+
+   NÃO É CÓDIGO DA APP e NÃO se atualiza para acompanhar o Troféu: é a régua
+   da invariância (specs/trofeu.md §10, "sem inscrição, o cartão é o de
+   hoje") de Home/RaceCard.test.jsx, como RaceListCardAntesDaFase3 em
+   RaceListCard.test.jsx. Mudar o cartão por outra razão obriga a mudar esta
+   cópia no mesmo commit — é de propósito. */
 import React, { useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Flag, Medal, Plus, Trophy } from 'lucide-react';
-import { todayISO } from '../../lib/utils';
-import { findRaceRun, formatDuration, formatPace } from '../../utils/run';
-import { classifyRaceOutcome } from '../../utils/raceOutcome';
-import { achievementsForRace } from '../../utils/achievements';
-import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
-import { buildTrailModel } from '../../utils/homeModels';
-import GlassCard from '../shared/GlassCard';
-import RaceTrail from '../shared/RaceTrail';
-import CarouselDots from '../shared/CarouselDots';
-import { AchievementChip } from '../shared/AchievementCard';
-import { useRevealAnimation } from '../../utils/useRevealAnimation';
-import { useCountUpText } from '../../utils/useCountUp';
-import { useAppStore } from '../../store';
-import CoachAvatar from '../Coach/CoachAvatar';
-import { raceMilestoneLine, milestoneMomentKey, wasMilestoneSeen, markMilestoneSeen } from './raceMilestone';
-import useMomentOnce from '../../utils/useMomentOnce';
-import { triggerCarouselTick } from '../../utils/haptics';
-import { useCupListing } from '../../utils/useCup';
-import { nextRoundApart } from '../../utils/cupCalendar';
-import CupNextLine, { CupNextCard } from './CupNextLine';
+import { todayISO } from '../lib/utils';
+import { findRaceRun, formatDuration, formatPace } from '../utils/run';
+import { classifyRaceOutcome } from '../utils/raceOutcome';
+import { achievementsForRace } from '../utils/achievements';
+import { calculateRaceTrainingPlan } from '../utils/racePlanEngine';
+import { buildTrailModel } from '../utils/homeModels';
+import GlassCard from '../components/shared/GlassCard';
+import RaceTrail from '../components/shared/RaceTrail';
+import CarouselDots from '../components/shared/CarouselDots';
+import { AchievementChip } from '../components/shared/AchievementCard';
+import { useRevealAnimation } from '../utils/useRevealAnimation';
+import { useCountUpText } from '../utils/useCountUp';
+import { useAppStore } from '../store';
+import CoachAvatar from '../components/Coach/CoachAvatar';
+import { raceMilestoneLine, milestoneMomentKey, wasMilestoneSeen, markMilestoneSeen } from '../components/Home/raceMilestone';
+import useMomentOnce from '../utils/useMomentOnce';
+import { triggerCarouselTick } from '../utils/haptics';
 
-/* "Para onde vou" — o cartão da prova (mock "Início"): nome em âmbar, a
-   fase atual, "semana 6 de 18", os dias em número grande, o trilho do
-   macrociclo e, com mais de uma prova, setas e pontos. Toca-se para abrir
-   o hub. O âmbar é da prova e só da prova.
-
-   O TROFÉU (specs/trofeu.md §4.3, Fase 3, 2026-09-27). Com inscrição
-   (useCupListing), as jornadas que não foram promovidas a principal saem do
-   carrossel e do "dia a seguir" e ficam numa linha no fundo — "Troféu ·
-   próxima jornada" (CupNextLine.jsx); sem outra prova nenhuma, o cartão é a
-   própria jornada. Exceções: a jornada do próprio dia e uma que já passou e
-   ainda está por registar ficam no carrossel, como qualquer prova — é o
-   "Registar a prova" do dia e dos 7 dias seguintes, e o Início não o pode
-   perder. A linha nunca repete uma prova que já está no cartão (a do dia,
-   uma promovida a principal): mostra a jornada seguinte. Sem inscrição o
-   `listing` é null e nada disto corre. */
-/* Os dias que faltam, a contar (--dur-count). Em componente próprio para o
-   rAF viver depois do `if (!race)` do cartão. */
 function DaysCount({ days, animate }) {
   return <>{useCountUpText(days, { animate })}</>;
 }
 
-/* A partir do dia da prova, o cartão deixa de ser "para onde vou" e passa a
-   ser "o que ficou por registar": a prova mantém-se aqui até 7 dias depois
-   enquanto não houver uma corrida ligada a ela (specs/prova-concluida.md §3).
-   Depois disso sai — o sítio dela passa a ser o hub. */
 const DIAS_A_ESPERAR_PELO_REGISTO = 7;
 
-/* Deslocamento horizontal mínimo para um toque contar como swipe entre
-   provas — e tem de ser claramente mais horizontal do que vertical, para
-   não roubar o scroll da página. */
 const SWIPE_MIN_PX = 40;
 
 function diasEntre(a, b) {
@@ -63,14 +47,6 @@ function rotuloDoDia(dias) {
   return `há ${dias} dias`;
 }
 
-/* O dia a seguir à prova (specs/gamificacao-provas.md §3). Com a corrida já
-   ligada não há nada a registar nem contagem nenhuma para a frente: o cartão
-   passa a olhar para trás por uns dias — o tempo, a ordem da prova no
-   palmarés, as conquistas que ela deu — e dá as duas saídas que fazem
-   sentido, as memórias e a próxima prova. Sem trilho: o ciclo fechou. */
-/* "Todas as provas e o Palmarés" — a porta do Início para o separador Provas
-   (2026-09-13). Só aparece quando quem monta o cartão passa `onOpenAllRaces`:
-   no próprio separador Provas não faz sentido apontar para onde já se está. */
 function AllRacesLink({ onOpen }) {
   if (!onOpen) return null;
   return (
@@ -86,7 +62,7 @@ function AllRacesLink({ onOpen }) {
   );
 }
 
-function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpenRace, onCreateRace, onOpenAllRaces, cupLine = null }) {
+function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpenRace, onCreateRace, onOpenAllRaces }) {
   const tempo = outcome?.officialSeconds ? formatDuration(outcome.officialSeconds) : null;
   const ritmo = outcome?.officialSeconds && outcome?.distanceKm
     ? `${formatPace(Math.round(outcome.officialSeconds / outcome.distanceKm))}/km`
@@ -151,27 +127,17 @@ function ProvaConcluidaCard({ race, run, outcome, ordem, conquistas, dias, onOpe
           <Plus size={15} /> Próxima prova
         </button>
       </div>
-      {cupLine}
       <AllRacesLink onOpen={onOpenAllRaces} />
     </GlassCard>
   );
 }
 
-/* O marco da contagem (raceMilestone.js): nos dias que não são iguais aos
-   outros — 100, 50, 30, 14, 7 e 3 —, a Carol diz o que ele quer dizer.
-   Na primeira vez que se vê nesse dia, ela respira e a frase entra. */
 function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano, comCorridas }) {
-  // Com o contexto da prova: sem marcos de polimento numa prova B ou C, e o
-  // dos 100 dias pela viabilidade (raceMilestone.js).
   const line = raceMilestoneLine(days, { prioridade, flags, comPlano, comCorridas });
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id);
   const logImpression = useAppStore((s) => s.logImpression);
   const impressionShown = useAppStore((s) => s.impressionShown);
-  // A chave deste momento em coach_impressions (kind 'moment', ação 5.1),
-  // sem título: o servidor já sabe quantos dias faltam para a prova. Na
-  // leitura, visto no outro telemóvel conta como visto aqui.
   const momentKey = milestoneMomentKey(raceId, days);
-  // Só quando se vê: nunca por baixo das boas-vindas (utils/useMomentOnce).
   const moment = useMomentOnce(
     !!line,
     () => wasMilestoneSeen(userId, raceId, days, impressionShown),
@@ -189,13 +155,8 @@ function RaceMilestoneLine({ raceId, days, prioridade, flags, comPlano, comCorri
   );
 }
 
-export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace, onRegisterRace, onOpenAllRaces }) {
+export default function RaceCardAntesDaFase3({ raceEvents = [], runs = [], profile = {}, onOpenRace, onCreateRace, onRegisterRace, onOpenAllRaces }) {
   const today = todayISO();
-  // O Troféu: null sem inscrição (nem pista dela) — e então nada muda.
-  const { view: cupView, listing: cupListing } = useCupListing();
-  const cupFixed = cupListing ? cupListing.isFixed : null;
-  // Uma prova está registada quando há uma corrida ligada a ela — por
-  // race_id, ou pela data nos registos antigos (ver findRaceRun).
   const estaRegistada = useMemo(() => {
     const registadas = new Set((raceEvents || []).filter((e) => findRaceRun(runs, e)).map((e) => e.id));
     return (id) => registadas.has(id);
@@ -204,28 +165,18 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     () => (raceEvents || [])
       .filter((e) => {
         if (!e?.date) return false;
-        // A jornada de hoje fica: é o dia do "Registar a prova" (só as
-        // futuras saem para a linha do Troféu).
-        if (e.date >= today) return e.status !== 'concluida' && !(e.date > today && cupFixed?.(e));
+        if (e.date >= today) return e.status !== 'concluida';
         return diasEntre(today, e.date) <= DIAS_A_ESPERAR_PELO_REGISTO && !estaRegistada(e.id);
       })
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 5),
-    [raceEvents, today, estaRegistada, cupFixed],
+    [raceEvents, today, estaRegistada],
   );
   const [index, setIndex] = useState(0);
   const safeIndex = Math.min(index, Math.max(0, upcoming.length - 1));
   const race = upcoming[safeIndex];
 
-  /* Bug #39 (2026-09-21): com mais de uma prova, o cartão tinha setas e
-     pontos mas não deslizava com o dedo nem dava o tique tátil dos outros
-     carrosséis. O gesto muda de prova; setas, pontos e gesto passam todos
-     por goTo, que dispara o mesmo triggerCarouselTick. Um swipe não abre o
-     hub: o clique que o browser possa gerar a seguir é ignorado. */
   const touchStartRef = useRef(null);
-  // Quando foi o último swipe: o clique que o browser gere a seguir (se
-  // gerar) ignora-se, mas só esse e só logo a seguir — uma flag sem prazo
-  // ficava presa e engolia o próximo clique de rato num aparelho híbrido.
   const swipedAtRef = useRef(0);
   const goTo = (i) => {
     const next = Math.max(0, Math.min(upcoming.length - 1, i));
@@ -254,45 +205,26 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
     onOpenRace?.(race.id);
   };
 
-  /* O dia a seguir (specs/gamificacao-provas.md §3): a prova mais recente já
-     registada fica aqui até se marcar a próxima ou até passarem 7 dias, o
-     que vier primeiro. "Marcar a próxima" é precisamente ter de novo alguma
-     coisa em `upcoming` — uma prova por correr, ou outra por registar; nesse
-     caso o Início volta a olhar para a frente, que é a função dele. */
   const concluida = useMemo(() => {
     if (upcoming.length) return null;
     return (raceEvents || [])
       .filter((e) => e?.date && e.date <= today && e.status === 'concluida'
-        && diasEntre(today, e.date) <= DIAS_A_ESPERAR_PELO_REGISTO && estaRegistada(e.id) && !cupFixed?.(e))
+        && diasEntre(today, e.date) <= DIAS_A_ESPERAR_PELO_REGISTO && estaRegistada(e.id))
       .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
-  }, [raceEvents, today, estaRegistada, upcoming.length, cupFixed]);
+  }, [raceEvents, today, estaRegistada, upcoming.length]);
 
   const concluidaModel = useMemo(() => {
     if (!concluida) return null;
     const run = findRaceRun(runs, concluida);
     const outcome = classifyRaceOutcome({ race: concluida, run, runs, profile });
-    /* "Previsão batida" era um pseudo-chip acrescentado aqui, com a condição
-       `vsTraining === 'acima'`. Desde 2026-09-20 isso é a conquista
-       `acima_do_treino` do palmarés, com a mesma condição — e a prova passou
-       a mostrar os dois, "Acima do treino" e "Previsão batida", para o mesmo
-       facto (apanhado na revisão pré-deploy). Fica só a conquista. */
     const conquistas = achievementsForRace({ raceEvents, runs, profile, today }, concluida.id);
     const ordem = (raceEvents || []).filter((e) => e?.date && e.status === 'concluida'
       && e.date <= concluida.date && estaRegistada(e.id)).length;
     return { run, outcome, conquistas, ordem, dias: diasEntre(today, concluida.date) };
   }, [concluida, raceEvents, runs, profile, today, estaRegistada]);
 
-  /* Ponto 9, animação 2: os dias que faltam contam quando o número aparece
-     no ecrã, e outra vez ao voltar ao Início ou ao separador Provas
-     (useRevealAnimation, 2026-09-13). Ao trocar de prova nas setas não
-     conta — é a mesma leitura. */
   const daysReveal = useRevealAnimation();
 
-  // O plano da prova dá também a viabilidade (as mesmas flags que o hub
-  // mostra), para o marco dos 100 dias não dizer "é o tempo certo" quando o
-  // hub diz "tempo insuficiente" (pedido 2026-09-26). E o início real do
-  // ciclo (o mesmo do trilho): aos 14 dias, «já está feito» só com corridas
-  // registadas desde aí (revisão de 2026-09-26).
   const { model, flags, comCorridas } = useMemo(() => {
     if (!race) return { model: null, flags: null, comCorridas: false };
     const plano = calculateRaceTrainingPlan({ race, profile, runs, todayISO: today });
@@ -303,36 +235,10 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
       comCorridas: !!inicio && (runs || []).some((r) => r?.date && r.date >= inicio && r.date <= today),
     };
   }, [race, profile, runs, today]);
-  // "Com plano" é um plano aceite que cobre os dias daqui até à prova — um
-  // plano de base que acaba no domingo não é "o que está no plano" da
-  // semana da prova (raceMilestone.js).
   const coachPlans = useAppStore((s) => s.coachPlans);
   const raceDay = race ? String(race.date).slice(0, 10) : null;
   const comPlano = !!raceDay && (coachPlans || []).some((p) => p?.status === 'aceite'
     && String(p.period_start).slice(0, 10) <= today && String(p.period_end).slice(0, 10) >= raceDay);
-
-  /* A jornada do Troféu: com prova, abre o hub dela (como qualquer prova);
-     sem prova, a jornada no calendário do ecrã do Troféu; sem jornada
-     nenhuma pela frente, o ecrã sem modo — ele decide (a lista pré-marcada
-     quando há jornadas por decidir, §4.3). O ecrã vive em Provas (o pedido
-     fica no store até lá chegar). */
-  const openCupRound = (round) => {
-    if (round?.race?.id) { onOpenRace?.(round.race.id); return; }
-    const store = useAppStore.getState();
-    if (store.setActiveTab('provas') === false) return;
-    store.requestCupScreen({ roundId: round?.id ?? null, mode: round ? 'calendario' : null });
-  };
-  /* A jornada da linha (e do cartão, sem outras provas): a próxima que ainda
-     não está no cartão. A do próprio dia e uma promovida a principal já lá
-     estão, como provas normais — a linha passa à seguinte. */
-  const cupRound = useMemo(() => {
-    if (!cupListing || !cupView?.catalogReady) return null;
-    const noCartao = new Set([...upcoming.map((e) => e.id), concluida?.id].filter(Boolean));
-    return nextRoundApart(cupView, (r) => noCartao.has(r.id) || !cupListing.isFixed(r));
-  }, [cupListing, cupView, upcoming, concluida]);
-  const cupLine = cupListing
-    ? <CupNextLine view={cupView} round={cupRound} loading={cupListing.loading} onOpen={openCupRound} />
-    : null;
 
   if (!race && concluida) {
     return (
@@ -346,14 +252,8 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
         onOpenRace={onOpenRace}
         onCreateRace={onCreateRace}
         onOpenAllRaces={onOpenAllRaces}
-        cupLine={cupLine}
       />
     );
-  }
-
-  // Sem outra prova nenhuma: o cartão é a próxima jornada do Troféu.
-  if (!race && cupListing && cupView?.catalogReady && cupRound) {
-    return <CupNextCard view={cupView} round={cupRound} onOpen={openCupRound} footer={<AllRacesLink onOpen={onOpenAllRaces} />} />;
   }
 
   if (!race) {
@@ -369,14 +269,11 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
         <button type="button" onClick={onCreateRace} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
           Marcar a próxima prova
         </button>
-        {cupLine}
         <AllRacesLink onOpen={onOpenAllRaces} />
       </GlassCard>
     );
   }
 
-  // A prova já chegou (é hoje ou já passou) e não tem corrida ligada: o que
-  // falta aqui é o registo, não a contagem decrescente.
   const porRegistar = race.date <= today && !estaRegistada(race.id);
   const jaPassou = race.date < today;
 
@@ -412,11 +309,6 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
               {porRegistar && jaPassou ? 'Prova por registar' : model.phaseName}
             </div>
             {porRegistar && jaPassou ? (
-              // `porRegistar` é precisamente "sem corrida ligada" — dizer
-              // "correste há X dias" aqui afirmava uma corrida que pode não
-              // ter existido (lesão, não chegou a partir). `rotuloDoDia`
-              // (o mesmo do cartão da prova concluída) só diz quando foi a
-              // prova, nunca que ele a correu (pedido 2026-09-26).
               <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>
                 {`a prova foi ${rotuloDoDia(diasEntre(today, race.date))}`}
               </div>
@@ -424,8 +316,6 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
               <div className="text-[11.5px] mt-[3px] whitespace-nowrap" style={{ color: 'var(--text-3)' }}>{model.weekLabel}</div>
             ) : null}
           </div>
-          {/* Um "0 dias" grande numa prova que já foi corrida não diz nada —
-              o troféu diz. */}
           {porRegistar && jaPassou ? (
             <div className="shrink-0 flex items-center justify-center" style={{ width: 44, height: 44, borderRadius: '50%', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' }}>
               <Trophy size={20} />
@@ -441,8 +331,6 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
         {!porRegistar && <RaceMilestoneLine key={`${race.id}-${model.days}`} raceId={race.id} days={model.days} prioridade={race.race_priority} flags={flags} comPlano={comPlano} comCorridas={comCorridas} />}
       </div>
 
-      {/* A ação do dia da prova: âmbar cheio, porque é a única coisa que
-          interessa fazer a partir daqui. */}
       {porRegistar && (
         <button
           type="button"
@@ -459,7 +347,6 @@ export default function RaceCard({ raceEvents = [], runs = [], profile = {}, onO
           <CarouselDots count={upcoming.length} currentIndex={safeIndex} onSelect={goTo} ariaLabelPrefix="Ver prova" />
         </div>
       )}
-      {cupLine}
       <AllRacesLink onOpen={onOpenAllRaces} />
     </GlassCard>
   );

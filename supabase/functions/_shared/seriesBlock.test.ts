@@ -12,6 +12,7 @@ import {
   type SeriesChannel,
 } from "./seriesBlock.ts";
 import type { RoundRole } from "./formulas/seriesArbitration.ts";
+import { cupRoundRoles } from "./formulas/cupRoles.ts";
 
 /* O bloco COMPETIÇÃO POR JORNADAS (specs/trofeu.md §5, Fase 2, 2026-09-26).
    Os textos correm sobre buildSeriesBlock (puro), montado a partir das
@@ -652,7 +653,11 @@ Deno.test("corrida registada com atraso: as contas fazem-se no dia real, e a jor
   assertEquals(late.roles, sameDay.roles);
   assertEquals(late.intentByRaceId, sameDay.intentByRaceId);
   const own = late.text.split("\n").filter((l) => l.startsWith("Se esta corrida ("));
-  assertEquals(own, ["Se esta corrida (10 jan) foi a Jornada 2 · Prova 2: já passou; a seguinte é a primeira da lista abaixo."]);
+  // A seguinte à J2 (a J3, 24/01) também já passou a 01/02: dizê-lo, e qual é
+  // a próxima por correr (revisão pré-deploy da Fase 2, aviso (a) — antes
+  // dizia "a primeira da lista abaixo", que era a J4 e não "a seguinte").
+  assertEquals(own, ["Se esta corrida (10 jan) foi a Jornada 2 · Prova 2: já passou; a seguinte (Jornada 3, 24 jan) também já passou; a próxima por correr é a Jornada 4 (7 fev)."]);
+  assertEquals(late.text.includes("a primeira da lista abaixo"), false);
   assertEquals(late.text.split("\n").filter((l) => !l.startsWith("Se esta corrida (")).join("\n"), sameDay.text);
   // Uma jornada a que ele disse "não vai" (a J3, 24/01) não é a desta corrida: sem linha.
   const naoVai = buildSeriesBlock(personaInput(k, "run", { todayISO: "2027-01-24", statusTodayISO: k.today }))!;
@@ -675,4 +680,100 @@ Deno.test("corrida atrasada da última jornada: 'era a última com data confirma
   // Sem nenhuma jornada confirmada, continua a ser "por publicar".
   const semCal = buildSeriesBlock(personaInput(k, "chat", { rounds: personaInput(k).rounds!.map((r) => ({ ...r, date_status: "provavel" })) }))!;
   assertStringIncludes(semCal.text, "Calendário por publicar: ainda não há jornadas com data confirmada.");
+});
+
+Deno.test("corrida atrasada cuja seguinte ainda não passou: 'a seguinte é a Jornada 3 (24 jan)' (aviso (a))", () => {
+  const k = persona("K");
+  const late = buildSeriesBlock(personaInput(k, "run", { todayISO: "2027-01-10", statusTodayISO: "2027-01-20" }))!;
+  const own = late.text.split("\n").filter((l) => l.startsWith("Se esta corrida ("));
+  assertEquals(own, ["Se esta corrida (10 jan) foi a Jornada 2 · Prova 2: já passou; a seguinte é a Jornada 3 (24 jan)."]);
+  // Em nenhum dos casos a frase aponta para "a primeira da lista abaixo".
+  for (const [day, status] of [["2027-01-10", "2027-01-20"], ["2027-01-10", "2027-02-01"], ["2027-05-09", "2027-06-01"], ["2026-12-06", "2027-02-01"]]) {
+    const b = buildSeriesBlock(personaInput(k, "run", { todayISO: day, statusTodayISO: status }))!;
+    assertEquals(b.text.includes("a primeira da lista abaixo"), false, `${day}/${status}`);
+  }
+});
+
+Deno.test("hadCalendar: 'já não há' a quem já teve calendário, 'ainda não há' a quem nunca teve (aviso (b))", () => {
+  const k = persona("K");
+  const fim = buildSeriesBlock(personaInput(k, "chat", { todayISO: "2027-06-01" }))!;
+  assertEquals(fim.hasCalendar, false);
+  assertEquals(fim.hadCalendar, true);
+  assertEquals(
+    buildCupMapTurn(fim, false),
+    MAP_BASE("Troféu de Teste", "jornada", "jornadas", "Já não há jornadas com data confirmada daqui para a frente: di-lo, não inventes datas nem papéis, e fica pelas principais. "),
+  );
+  // Com calendário por diante, os dois a true; sem nenhuma data confirmada, os dois a false.
+  const meio = buildSeriesBlock(personaInput(k))!;
+  assertEquals([meio.hasCalendar, meio.hadCalendar], [true, true]);
+  const p = persona("E");
+  const semCal = buildSeriesBlock(personaInput({ ...p, rounds: p.rounds.map((r: Json) => ({ ...r, date: null, date_status: "provavel" })) }))!;
+  assertEquals([semCal.hasCalendar, semCal.hadCalendar], [false, false]);
+  assertStringIncludes(buildCupMapTurn(semCal, false), "Ainda não há jornadas com data confirmada: di-lo,");
+  // Quem saiu: false (não há calendário a dizer).
+  const saiu = buildSeriesBlock({
+    ...personaInput(persona("A")),
+    enrollments: [{ id: "enr-A", edition_id: "ed-soma", status: "saiu", left_at: "2026-11-15T10:00:00Z", season_goal: "premio" }],
+  })!;
+  assertEquals(saiu.active, false);
+  assertEquals(saiu.hadCalendar, false);
+  assertEquals(saiu.jornadaRaceIds, []);
+});
+
+Deno.test("jornadaRaceIds: as provas das jornadas desta edição, de qualquer prioridade; nunca as de fora", () => {
+  const k = personaInput(persona("K"));
+  const block = buildSeriesBlock({
+    ...k,
+    races: [
+      ...k.races!,
+      { id: "race-j4", name: "Prova 4", date: "2027-02-07", distance_km: 8, race_priority: "a", status: "agendada", cup_round_id: "j4" },
+      { id: "race-outra-ed", name: "Outra", date: "2027-02-08", distance_km: 8, race_priority: "b", status: "agendada", cup_round_id: "j-de-outra-edicao" },
+    ],
+  })!;
+  assertEquals(block.jornadaRaceIds, ["race-j1", "race-j2", "race-j4"]);
+  // A principal de fora (a Meia) não é jornada.
+  assertEquals(block.jornadaRaceIds.includes("p-meia"), false);
+});
+
+/* A paridade (Fase 3): o cliente calcula os papéis com cupRoundRoles, a
+   partir das mesmas linhas; tem de dar EXATAMENTE os papéis do bloco. Se a
+   montagem de buildSeriesBlock mudar sem cupRoles.ts (ou vice-versa), isto
+   parte. */
+Deno.test("paridade: cupRoundRoles dá os mesmos papéis do bloco, nas personas A–K", () => {
+  const rolesOf = (inp: SeriesBlockInput) => cupRoundRoles({
+    edition: inp.edition,
+    rounds: inp.rounds,
+    participations: inp.participations,
+    categories: inp.categories,
+    courses: inp.courses,
+    overrides: inp.overrides,
+    races: inp.races,
+    runs: inp.runs,
+    profile: inp.profile,
+    seasonGoal: inp.enrollments?.[0]?.season_goal ?? null,
+    todayISO: inp.todayISO,
+  });
+  for (const p of ENROLLED) {
+    const inp = personaInput(p, "chat");
+    assertEquals(rolesOf(inp), buildSeriesBlock(inp)!.roles, p.id);
+  }
+  // Com escalões e percursos a sério (o percurso depende da idade na data),
+  // e uma corrida ligada a uma jornada: o exemplo das leituras.
+  const ex = EX_TABLES;
+  const inp: SeriesBlockInput = {
+    todayISO: "2026-11-20",
+    channel: "chat",
+    enrollments: ex.cup_enrollments.data as Json,
+    edition: (ex.cup_editions.data as Json)[0],
+    rounds: ex.cup_rounds.data as Json,
+    participations: ex.cup_participations.data as Json,
+    categories: [],
+    teams: ex.cup_teams.data as Json,
+    courses: ex.cup_round_courses.data as Json,
+    overrides: [],
+    races: ex.race_events.data as Json,
+    runs: [{ race_id: "race-j1" }],
+    profile: ex.profiles.data as Json,
+  };
+  assertEquals(rolesOf(inp), buildSeriesBlock(inp)!.roles);
 });

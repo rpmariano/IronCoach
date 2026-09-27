@@ -30,7 +30,8 @@ vi.mock('../lib/utils', async (importOriginal) => ({ ...(await importOriginal())
 
 const { useAppStore } = await import('../store');
 const { CUP_EMPTY, __resetCupModuleState } = await import('../store/cupSlice');
-const { useCup, useTaca, buildCupView, useCupForHome } = await import('./useCup');
+const { useCup, useTaca, buildCupView, useCupForHome, useCupForRace, useCupListing } = await import('./useCup');
+const { cupRoundRoles } = await import('@formulas/cupRoles.ts');
 const { cupEnrolledHintKey } = await import('../store/cupSlice');
 const F = await import('@formulas/cup.fixtures.ts');
 
@@ -323,5 +324,207 @@ describe('useCupForHome', () => {
     await act(async () => { await Promise.resolve(); });
     expect(result.current).toBeNull();
     expect(net.calls).toEqual([]);
+  });
+});
+
+/* ── Fase 3 (2026-09-27): os campos novos da vista e os hooks do hub e da
+   lista. Nada do que já existia muda de nome nem de valor (os testes acima
+   continuam iguais). */
+describe('buildCupView — os campos da Fase 3', () => {
+  const ENR = { id: 'enr1', user_id: USER, edition_id: F.CASCAIS_34.id, team_id: 't-naza', team_other: null, is_federated: false, season_goal: 'premio', status: 'ativa' };
+  const ROUNDS = F.CASCAIS_ROUNDS.map((r) => (r.id === 'r-c3' ? { ...r, previous_date: '2027-01-17' } : r));
+  const CATALOG = { status: 'ready', rounds: ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS };
+  const RACES = [
+    MEIA,
+    { id: 'x1', date: '2026-12-06', cup_round_id: 'r-c1', status: 'concluida', race_priority: 'b', distance_km: 7 },
+    { id: 'x2', date: '2027-01-10', cup_round_id: 'r-c2', status: 'agendada', race_priority: 'b', distance_km: 8 },
+    { id: 'x3', date: '2027-01-24', cup_round_id: 'r-c3', status: 'agendada', race_priority: 'b', distance_km: 7.4 },
+  ];
+  const cupState = (extra = {}) => ({
+    ...CUP_EMPTY, status: 'ready', userId: USER,
+    editions: [{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }],
+    enrollments: [ENR],
+    participations: [
+      { id: 'p2', enrollment_id: 'enr1', round_id: 'r-c2', decision: 'vou' },
+      { id: 'p3', enrollment_id: 'enr1', round_id: 'r-c3', decision: 'vou', intent: 'controlar', intent_source: 'atleta' },
+    ],
+    catalog: { [F.CASCAIS_34.id]: CATALOG },
+    results: {
+      status: 'ready', enrollmentId: 'enr1', teamId: 't-naza',
+      rows: [{ round_id: 'r-c1', position: 41, category_code: 'M35', category_position: 12, points: 5, official_time_s: 1900, match_status: 'confirmada' }],
+      teamRows: [{ round_id: 'r-c1', position: 6, points: 412 }],
+    },
+    ...extra,
+  });
+  const RUNS = [{ id: 'run-x1', race_id: 'x1', date: '2026-12-06', distance_km: 7, duration_seconds: 1900, details: { age_group_position: 11 } }];
+  const view = () => buildCupView({ cup: cupState(), profile: PROFILE, raceEvents: RACES, runs: RUNS, today: '2027-01-11' });
+
+  it('nomes, rótulos, progresso e contagens', () => {
+    const v = view();
+    expect(v).toMatchObject({
+      shortName: 'Troféu de Cascais',
+      title: '34.º Troféu de Atletismo de Cascais',
+      roundLabel: 'Jornada',
+      roundInitial: 'J',
+      today: '2027-01-11',
+      catalogStatus: 'ready',
+      // 5 que contam (a 6.ª foi cancelada); feita a 1.ª.
+      progress: { done: 1, total: 5 },
+      // Por correr: a 3.ª, a 4.ª e a 5.ª (sem data).
+      aheadCount: 3,
+      // Futuras COM data e sem decisão: só a 4.ª.
+      undecidedCount: 1,
+    });
+    expect(v.courses).toBe(F.CASCAIS_COURSES);
+    expect(v.overrides).toBe(F.CASCAIS_OVERRIDES);
+  });
+
+  it('a classificação: a linha do próprio e a coletiva do clube, por jornada', () => {
+    const v = view();
+    expect(v.results.status).toBe('ready');
+    expect(Object.keys(v.results.byRound)).toEqual(['r-c1']);
+    expect(v.results.teamByRound['r-c1']).toEqual({ round_id: 'r-c1', position: 6, points: 412 });
+    expect(v.results.summary).toEqual({ count: 1, points: 5 });
+    const r1 = v.rounds.find((r) => r.id === 'r-c1');
+    expect(r1.result.category_position).toBe(12);
+    expect(r1.teamResult.points).toBe(412);
+    // Sem pontos em nenhuma linha: null (não 0).
+    const semPontos = buildCupView({ cup: cupState({ results: { status: 'ready', enrollmentId: 'enr1', rows: [{ round_id: 'r-c1', position: 41, match_status: 'confirmada' }], teamRows: [] } }), profile: PROFILE, raceEvents: RACES, runs: RUNS, today: '2027-01-11' });
+    expect(semPontos.results.summary).toEqual({ count: 1, points: null });
+    // A classificação de outra inscrição (ou de ninguém) não entra; nem a coletiva sem clube da lista.
+    const outra = buildCupView({ cup: cupState({ results: { ...cupState().results, enrollmentId: 'enr-velha' } }), profile: PROFILE, raceEvents: RACES, runs: RUNS, today: '2027-01-11' });
+    expect(outra.results).toMatchObject({ status: 'idle', byRound: {}, teamByRound: {}, summary: { count: 0, points: null } });
+    const semClube = buildCupView({ cup: cupState({ enrollments: [{ ...ENR, team_id: null, team_other: 'Os Amigos' }] }), profile: PROFILE, raceEvents: RACES, runs: RUNS, today: '2027-01-11' });
+    expect(semClube.results.teamByRound).toEqual({});
+    // Mudou de clube e a coletiva ainda é a lida para o antigo: não passa
+    // para o novo (a linha do próprio fica — é da inscrição, não do clube).
+    const mudouDeClube = buildCupView({ cup: cupState({ enrollments: [{ ...ENR, team_id: 't-ccd' }] }), profile: PROFILE, raceEvents: RACES, runs: RUNS, today: '2027-01-11' });
+    expect(mudouDeClube.results.teamByRound).toEqual({});
+    expect(mudouDeClube.rounds.find((r) => r.id === 'r-c1').teamResult).toBeNull();
+    expect(mudouDeClube.results.summary).toEqual({ count: 1, points: 5 });
+  });
+
+  it('cada jornada: papel (o mesmo cálculo da Carol), intenção, feita, corrida, chip, mudança de data e estado', () => {
+    const v = view();
+    const roles = cupRoundRoles({
+      edition: v.edition, rounds: [...ROUNDS].sort((a, b) => a.round_no - b.round_no), participations: v.participations,
+      categories: F.CASCAIS_CATEGORIES, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES,
+      races: RACES, runs: RUNS, profile: PROFILE, seasonGoal: 'premio', todayISO: '2027-01-11',
+    });
+    expect(v.rounds.map((r) => r.role)).toEqual(roles);
+    const by = Object.fromEntries(v.rounds.map((r) => [r.id, r]));
+    expect(by['r-c1']).toMatchObject({ done: true, chip: 'J1', dateChange: null });
+    expect(by['r-c1'].run.id).toBe('run-x1');
+    expect(by['r-c1'].status).toMatchObject({ key: 'feita', label: 'Feita', detail: '12.º M35' });
+    expect(by['r-c2']).toMatchObject({ done: false, run: null });
+    expect(by['r-c2'].status).toMatchObject({ key: 'por_registar', actions: ['registar', 'nao_fui'] });
+    // A escolha dele manda; a fonte diz-se.
+    expect(by['r-c3']).toMatchObject({ intent: 'controlar', intentSource: 'atleta', chip: 'J3' });
+    expect(by['r-c3'].dateChange).toEqual({ from: '2027-01-17', to: '2027-01-24', label: 'mudou de 17 para 24 jan' });
+    expect(by['r-c3'].status).toMatchObject({ key: 'proxima', detail: 'Vou · controlar · daqui a 13 dias' });
+    // Sem escolha: o papel proposto, como 'sugerida'. A 4.ª é no dia da Meia: saltar.
+    expect(by['r-c4']).toMatchObject({ intent: 'saltar', intentSource: 'sugerida' });
+    expect(by['r-c4'].status).toMatchObject({ key: 'por_decidir', detail: 'é o dia da tua Meia de Lisboa (principal)' });
+    expect(by['r-c5']).toMatchObject({ intent: null, intentSource: null });
+    expect(by['r-c6'].status.key).toBe('cancelada');
+    // nextRound é a jornada enriquecida (a mesma de `rounds`).
+    expect(v.nextRound).toBe(by['r-c3']);
+    expect(v.door.nextRound).toBe(by['r-c3']);
+  });
+
+  it('sem inscrição (o convite): sem papéis, sem classificação e sem jornadas por decidir', () => {
+    const v = buildCupView({ cup: cupState({ enrollments: [] }), profile: PROFILE, raceEvents: RACES, runs: RUNS, today: '2027-01-11' });
+    expect(v.door.kind).toBe('convite');
+    expect(v.rounds.every((r) => r.role === null)).toBe(true);
+    expect(v.undecidedCount).toBe(0);
+    expect(v.results).toMatchObject({ status: 'idle', summary: { count: 0, points: null } });
+  });
+
+  it('com o catálogo por ler: os campos novos existem, vazios', () => {
+    const v = buildCupView({ cup: cupState({ catalog: {} }), profile: PROFILE, raceEvents: RACES, runs: RUNS, today: '2027-01-11' });
+    expect(v).toMatchObject({ catalogReady: false, catalogStatus: 'idle', rounds: [], nextRound: null, progress: { done: 0, total: 0 }, aheadCount: 0, undecidedCount: 0 });
+  });
+});
+
+describe('useCupForRace — o bloco Troféu do hub', () => {
+  const ENR = { id: 'enr1', user_id: USER, edition_id: F.CASCAIS_34.id, team_id: 't-naza', team_other: null, is_federated: false, season_goal: 'premio', status: 'ativa' };
+  beforeEach(() => window.localStorage.clear());
+
+  it('uma prova sem cup_round_id: null e ZERO leituras (mesmo com uma edição aberta na área)', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    const before = nonCupSnapshot();
+    const { result } = renderHook(() => useCupForRace(MEIA));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current).toBeNull();
+    expect(net.calls).toEqual([]);
+    expect(useAppStore.getState().cup).toBe(CUP_EMPTY);
+    expectNothingElseChanged(before);
+    const semProva = renderHook(() => useCupForRace(null));
+    expect(semProva.result.current).toBeNull();
+    expect(net.calls).toEqual([]);
+  });
+
+  it('uma prova de jornada, inscrito: a vista e a jornada dessa prova', async () => {
+    net.tables.cup_editions = ok([{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }]);
+    net.tables.cup_enrollments = ok([ENR]);
+    catalogTables();
+    const X3 = { id: 'x3', date: '2027-01-24', cup_round_id: 'r-c3', status: 'agendada', race_priority: 'b' };
+    useAppStore.setState({ raceEvents: [MEIA, X3] });
+    const { result } = renderHook(() => useCupForRace(X3));
+    await waitFor(() => expect(result.current?.round?.id).toBe('r-c3'));
+    expect(result.current.view.enrollment.id).toBe('enr1');
+    expect(result.current.round.race.id).toBe('x3');
+    expect(result.current.round.chip).toBe('J3');
+  });
+
+  it('uma prova de jornada de quem já saiu: uma leitura base, e null', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([{ ...ENR, status: 'saiu' }]);
+    const velha = { id: 'x1', date: '2026-12-06', cup_round_id: 'r-c1', status: 'concluida', race_priority: 'b' };
+    const { result } = renderHook(() => useCupForRace(velha));
+    await settle(result);
+    expect(result.current).toBeNull();
+    expect(net.calls).not.toContain('cup_rounds');
+  });
+});
+
+describe('useCupListing — a lista de Provas e o "Para onde vou"', () => {
+  const ENR = { id: 'enr1', user_id: USER, edition_id: F.CASCAIS_34.id, team_id: 't-naza', team_other: null, is_federated: false, season_goal: 'premio', status: 'ativa' };
+  const HINT = cupEnrolledHintKey(USER);
+  beforeEach(() => window.localStorage.clear());
+
+  it('sem vista nem pista: listing null e zero leituras (groupRaces fica como era)', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    const { result } = renderHook(() => useCupListing());
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current).toEqual({ view: null, listing: null });
+    expect(net.calls).toEqual([]);
+  });
+
+  it('com a pista: a ler, as jornadas já contam como fixas; lida a vista, o listing é o dela', async () => {
+    window.localStorage.setItem(HINT, '1');
+    net.tables.cup_editions = ok([{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }]);
+    net.tables.cup_enrollments = ok([ENR]);
+    catalogTables();
+    const X3 = { id: 'x3', date: '2027-01-24', cup_round_id: 'r-c3', status: 'agendada', race_priority: 'b' };
+    const { result } = renderHook(() => useCupListing());
+    expect(result.current.view).toBeNull();
+    expect(result.current.listing.loading).toBe(true);
+    expect(result.current.listing.isFixed(X3)).toBe(true);
+    expect(result.current.listing.tag(X3)).toBeNull();
+    await waitFor(() => expect(result.current.view?.catalogReady).toBe(true));
+    expect(result.current.listing.loading).toBe(false);
+    expect(result.current.listing.tag(X3)).toMatchObject({ roundId: 'r-c3', chip: 'J3' });
+    expect(result.current.listing.isFixed({ ...X3, race_priority: 'a' })).toBe(false);
+  });
+
+  it('pista velha de quem saiu: lida a base, o listing volta a null', async () => {
+    window.localStorage.setItem(HINT, '1');
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([{ ...ENR, status: 'saiu' }]);
+    const { result } = renderHook(() => useCupListing());
+    await waitFor(() => expect(useAppStore.getState().cup.status).toBe('ready'));
+    await act(async () => { await Promise.resolve(); });
+    expect(result.current).toEqual({ view: null, listing: null });
   });
 });

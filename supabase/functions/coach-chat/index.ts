@@ -56,6 +56,7 @@ import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
+import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -6738,35 +6739,17 @@ async function handler(req: Request): Promise<Response> {
       ? (body.plan_divergence as unknown[]).filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim().slice(0, 200)).slice(0, 6)
       : [];
     /* Duas provas principais no mesmo bloco — o conflito que exige decisão
-       (specs/plano-vinculado-a-prova.md §4.4). Chega pelo mesmo canal do
-       check-in do plano (as ferramentas de propor já estão abertas), mas com
-       um guião próprio: não é "o plano desviou-se", é "há uma escolha por
-       fazer e sou eu que a tenho de pôr à frente dele".
-       O tom está fixado aqui e não só na doutrina porque é o único sítio
-       onde a Carol sabe QUAIS são as duas provas. */
-    // deno-lint-ignore no-explicit-any
-    const rc: any = body.race_conflict && typeof body.race_conflict === "object" ? body.race_conflict : null;
-    // deno-lint-ignore no-explicit-any
-    const rcRaces: any[] = Array.isArray(rc?.races) ? rc.races.slice(0, 4) : [];
-    // deno-lint-ignore no-explicit-any
-    // O id vai junto pela mesma razão do contexto das provas: as duas saídas
-    // que a Carol tem de propor (update_race_event, propose_training_plan)
-    // precisam dele, e sem o ter à frente ficava a adivinhar.
-    const rcName = (r: any) => `"${String(r?.name || "prova").slice(0, 80)}" (${String(r?.date || "").slice(0, 10)}, id: ${String(r?.id || "?").slice(0, 40)})`;
-    const raceConflictPrompt = rc && rcRaces.length > 0
-      ? `A app detetou um conflito de calendário e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
-        `${rcRaces.length === 1 ? "A prova" : "As provas"} ${rcRaces.map(rcName).join(", ")} ` +
-        `${rcRaces.length === 1 ? "está marcada" : "estão marcadas"} como PRINCIPAL e ` +
-        `${rcRaces.length === 1 ? "cai" : "caem"} a meio do plano que prepara ${rc.target ? rcName(rc.target) : "a prova-objetivo"}. ` +
-        `Explica-lhe em duas frases porque é que isto não pode ficar assim: uma prova principal pede 10 a 21 dias de polimento, ` +
-        `e dois polimentos dentro do mesmo bloco são incompatíveis — treinar a sério para uma é chegar mal à outra. ` +
-        `Põe-lhe as duas saídas, por esta ordem e sem escolher por ele: ` +
-        `(1) passar ${rcRaces.length === 1 ? "essa prova" : "essas provas"} a secundária e ela entra no plano como treino de qualidade — ofereces-te para a mudares já tu (update_race_event, race_priority="b") e propões o plano ajustado; ` +
-        `(2) mudar o objetivo para ${rcRaces.length === 1 ? "essa prova" : "a primeira delas"}, e então propões um plano novo até ao dia dela (propose_training_plan com o race_id dela, period_end no dia dela, replace_active_plan=true). ` +
-        `Tenta, mas não insistas mais do que uma vez: se ele disser que quer mesmo manter tudo como está, aceita sem julgar, ` +
-        `garante que percebeu o custo e chama update_race_event com conflict_acknowledged=true para eu parar de perguntar. ` +
-        `A decisão é dele; o teu trabalho é que seja informada.`
-      : null;
+       (specs/plano-vinculado-a-prova.md §4.4). O guião vive em
+       _shared/raceConflictPrompt.ts; com uma jornada promovida a principal e
+       uma principal de fora a meio do plano, inverte as saídas (as de fora
+       mandam — specs/trofeu.md §4.3, Fase 3). Sem inscrição, o texto é o de
+       sempre, byte a byte. */
+    const raceConflictPrompt = buildRaceConflictPrompt(
+      body.race_conflict && typeof body.race_conflict === "object" ? body.race_conflict : null,
+      seriesBlock?.active
+        ? { jornadaRaceIds: seriesBlock.jornadaRaceIds, competitionName: seriesBlock.competitionName, roundLabel: seriesBlock.roundLabel }
+        : null,
+    );
 
     /* O fim do arranque (onboarding). A Carol promete lá um plano — "escrevo
        o plano, tu decides" — e o arranque acabava sem plano nenhum e sem

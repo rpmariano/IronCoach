@@ -7,6 +7,8 @@ import { ToastProvider } from '../shared/ToastProvider';
 import RunAgenda from './RunAgenda';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { dispensarConfirmacao } from '../../test/recordConfirmation';
+import { CUP_EMPTY } from '../../store/cupSlice';
+import * as F from '@formulas/cup.fixtures.ts';
 
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -1005,6 +1007,97 @@ describe('RunAgenda — prova de uma jornada do Troféu', () => {
     expect(payload).not.toHaveProperty('date');
     expect(payload).not.toHaveProperty('distance_km');
     expect(payload).not.toHaveProperty('location');
+  });
+
+  /* Revisão da Fase 3: o seletor "Prioridade desta prova" gravava 'a' numa
+     jornada sem o custo que a ação "Promover" do Troféu diz antes (o taper,
+     as outras jornadas que mudam de papel). Agora "Principal" abre o mesmo
+     diálogo (CupPromoteDialog); só o "Promover" dele põe a 'a' no rascunho,
+     que se grava com o formulário. */
+  describe('promover a jornada pelo seletor de prioridade', () => {
+    const PERFIL = { id: 'user-1', gender: 'M', birth_date: '1982-01-24', experience_level: 'medio' };
+    const X3 = { ...JORNADA, id: 'x3', date: '2027-01-24', cup_round_id: 'r-c3', race_priority: 'b' };
+    const CUP = {
+      ...CUP_EMPTY,
+      status: 'ready', userId: 'user-1', dismissals: [],
+      editions: [{ ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION }],
+      enrollments: [{ id: 'enr1', user_id: 'user-1', edition_id: F.CASCAIS_34.id, team_id: 't-ccd', season_goal: 'participar', status: 'ativa', entry_by: 'atleta' }],
+      participations: [{ id: 'p3', enrollment_id: 'enr1', round_id: 'r-c3', decision: 'vou', decision_source: 'atleta' }],
+      catalog: { [F.CASCAIS_34.id]: { status: 'ready', rounds: F.CASCAIS_ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS } },
+      results: { status: 'ready', enrollmentId: 'enr1', rows: [], teamRows: [] },
+    };
+    const montarJornada = (race = X3) => {
+      localStorage.clear();
+      useAppStore.setState({
+        session: { user: { id: 'user-1' } }, cup: CUP, coachPlans: [],
+        raceEvents: [race], profile: PERFIL, runs: [], editingRaceId: 'x3', activeTab: 'holistica', pendingCalendarDate: null,
+        setRaceEvents: (events) => useAppStore.setState({ raceEvents: events }),
+        setNavGuard: () => {},
+        setEditingRaceId: (id) => useAppStore.setState({ editingRaceId: id }),
+      });
+      renderAgenda();
+      fireEvent.click(screen.getByRole('button', { name: /^Detalhes da prova$/i }));
+      return screen.getByLabelText(/^Prioridade desta prova/);
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2027-01-19T10:00:00Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      useAppStore.setState({ session: null, cup: CUP_EMPTY });
+    });
+
+    it('"Principal" mostra primeiro o custo; "Cancelar" não muda nada', async () => {
+      const select = montarJornada();
+      expect(select).toHaveValue('b');
+      fireEvent.change(select, { target: { value: 'a' } });
+      const dialogo = screen.getByTestId('cup-promover-dialog');
+      expect(dialogo).toHaveTextContent('Promover a jornada 3 a principal?');
+      expect(screen.getAllByTestId('cup-promover-linha')[0]).toHaveTextContent(/^Uma prova principal muda o treino à volta dela/);
+      // Ainda nada no rascunho.
+      expect(select).toHaveValue('b');
+      fireEvent.click(screen.getByTestId('cup-promover-cancelar'));
+      await waitFor(() => expect(screen.queryByTestId('cup-promover-dialog')).not.toBeInTheDocument());
+      expect(select).toHaveValue('b');
+    });
+
+    it('"Promover" põe a principal no rascunho, sem gravar; grava-se com "Guardar prova"', async () => {
+      let payload = null;
+      const writes = [];
+      vi.spyOn(supabase, 'from').mockImplementation((t) => ({
+        update: (p) => { writes.push(t); payload = p; return { eq: () => Promise.resolve({ error: null }) }; },
+      }));
+      const select = montarJornada();
+      fireEvent.change(select, { target: { value: 'a' } });
+      fireEvent.click(screen.getByTestId('cup-promover-confirmar'));
+      await waitFor(() => expect(screen.queryByTestId('cup-promover-dialog')).not.toBeInTheDocument());
+      expect(select).toHaveValue('a');
+      expect(writes).toEqual([]);
+      fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
+      await waitFor(() => expect(payload).not.toBeNull());
+      expect(payload.race_priority).toBe('a');
+    });
+
+    it('voltar a secundária, ou passar a treino, continua direto (sem diálogo)', () => {
+      const select = montarJornada({ ...X3, race_priority: 'a' });
+      expect(select).toHaveValue('a');
+      fireEvent.change(select, { target: { value: 'b' } });
+      expect(screen.queryByTestId('cup-promover-dialog')).not.toBeInTheDocument();
+      expect(select).toHaveValue('b');
+      fireEvent.change(select, { target: { value: 'c' } });
+      expect(screen.queryByTestId('cup-promover-dialog')).not.toBeInTheDocument();
+      expect(select).toHaveValue('c');
+    });
+  });
+
+  it('numa prova normal, "Principal" continua direto', () => {
+    montar({ ...EXISTING_RACE, race_priority: 'b' });
+    const select = screen.getByLabelText(/^Prioridade desta prova/);
+    fireEvent.change(select, { target: { value: 'a' } });
+    expect(screen.queryByTestId('cup-promover-dialog')).not.toBeInTheDocument();
+    expect(select).toHaveValue('a');
   });
 
   it('uma prova normal continua igual: campos editáveis, sem a nota do organizador', () => {
