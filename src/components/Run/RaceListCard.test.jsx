@@ -15,6 +15,7 @@ import { Sheet } from '../shared/Sheet';
 import { AchievementIcon } from '../shared/AchievementCard';
 import RaceListCard from './RaceListCard';
 import * as F from '@formulas/cup.fixtures.ts';
+import { __resetCupDateChangeSeen } from '../../utils/useCupDateChangeSeen';
 
 /* "As tuas provas" no módulo Corrida (pedido 2026-09-13): todas as provas num
    sítio só, cada uma a um toque do hub.
@@ -503,10 +504,22 @@ describe('RaceListCard — com inscrição: o bloco fixo do Troféu (§4.3)', ()
   });
 
   it('com a data mudada, a linha diz "mudou de 17 para 24 jan" (e o leitor de ecrã também)', () => {
-    const rounds = F.CASCAIS_ROUNDS.map((r) => (r.id === 'r-c3' ? { ...r, previous_date: '2027-01-17' } : r));
-    montarInscrito({ cup: enrolledCup({ catalog: { [EDITION.id]: { ...CATALOG[EDITION.id], rounds } } }) });
-    expect(screen.getByTestId('cup-list-mudou')).toHaveTextContent('mudou de 17 para 24 jan');
-    expect(screen.getByTestId('cup-list-proxima')).toHaveAccessibleDescription('daqui a 4 dias · 7,4 km às 9h30 · controlar mudou de 17 para 24 jan');
+    // Fase 5 (specs/trofeu.md §8): à vista, a mudança conta como vista — uma
+    // impressão 'moment' sem título, e o tick já não manda cup_date_change.
+    const real = useAppStore.getState().logImpression;
+    const logImpression = vi.fn();
+    __resetCupDateChangeSeen();
+    useAppStore.setState({ logImpression });
+    try {
+      const rounds = F.CASCAIS_ROUNDS.map((r) => (r.id === 'r-c3' ? { ...r, previous_date: '2027-01-17' } : r));
+      montarInscrito({ cup: enrolledCup({ catalog: { [EDITION.id]: { ...CATALOG[EDITION.id], rounds } } }) });
+      expect(screen.getByTestId('cup-list-mudou')).toHaveTextContent('mudou de 17 para 24 jan');
+      expect(screen.getByTestId('cup-list-proxima')).toHaveAccessibleDescription('daqui a 4 dias · 7,4 km às 9h30 · controlar mudou de 17 para 24 jan');
+      expect(logImpression).toHaveBeenCalledTimes(1);
+      expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: 'cup_date_change:r-c3:2027-01-24', title: null });
+    } finally {
+      useAppStore.setState({ logImpression: real });
+    }
   });
 
   it('tocar na próxima abre o hub da prova dela; o cabeçalho pede o Troféu sem modo (o ecrã decide) e "+N" o calendário', () => {

@@ -1727,3 +1727,41 @@ describe('Coach — "O mapa da época" pedido a partir do Início (coachIntent c
     await waitFor(() => expect(refreshCupAfterChat).toHaveBeenCalledTimes(1));
   });
 });
+
+/* A classificação de uma jornada (specs/trofeu.md §8, Fase 5): o toque na
+   notificação "Saiu a classificação" chega como coachIntent 'cup_results'
+   (App.jsx, cupPushRoute) e pede ao servidor esse turno — só a chave; a linha
+   do atleta lê-a o servidor. */
+describe('Coach — "Saiu a classificação" (coachIntent cup_results)', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState(baseCarolState());
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: { model_message: { id: 'm1', content: 'Saiu a classificação da jornada 3. Vamos ver.' }, suggestions: [] },
+      error: null,
+    });
+  });
+
+  it('um pedido, com o trigger, a chave e proactive_force — e nada da linha dele', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'cup_results', key: 'cup_results:rd-3', roundId: 'rd-3' } });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    expect(invokeEdgeFunctionWithTimeout.mock.calls[0][0]).toBe('coach-chat');
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body).toMatchObject({ message: '', proactive_trigger: 'cup_results', proactive_key: 'cup_results:rd-3', proactive_force: true });
+    expect(body.proactive_details).toBeUndefined();
+    expect(body.race_outcome).toBeUndefined();
+    expect(useAppStore.getState().coachIntent).toBeNull();
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Saiu a classificação da jornada 3. Vamos ver.'));
+  });
+
+  it('uma chave que não é de classificação não pede nada', async () => {
+    useAppStore.setState({ coachIntent: { kind: 'cup_results', key: 'race_after:r1:run1' } });
+    renderCoach();
+    await act(async () => { await Promise.resolve(); });
+    expect(useAppStore.getState().coachIntent).toBeNull();
+    expect(invokeEdgeFunctionWithTimeout).not.toHaveBeenCalled();
+  });
+});

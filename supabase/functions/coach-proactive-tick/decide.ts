@@ -1,7 +1,8 @@
 // A decisão de notificar um atleta — pura, para os testes não precisarem de
 // rede (specs/carol-omnisciencia-omnipresenca.md, ação P.3).
 
-import { ALL_PROACTIVE_TRIGGERS, isWithinProactiveWindow, type PushPreferences, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
+import { ALL_PROACTIVE_TRIGGERS, isWithinProactiveWindow, type ProactiveTriggerName, type PushPreferences } from "../_shared/formulas/proactiveTriggers.ts";
+import { isCupNoticeTrigger, type TickCandidate } from "../_shared/formulas/cupNotices.ts";
 
 /** A mesma regra do coach-chat (PROACTIVE_QUIET_HOURS): se ela falou há menos
  *  de 6 horas, o chat recusava a mensagem ao abrir — e a notificação ficava a
@@ -19,7 +20,7 @@ export type PushDecision =
   | { send: false; reason: "sem_momento" | "tipo_desligado" | "depois_da_partida" | "fora_de_horas" | "ja_entregue" | "ja_notificado" | "ja_visto" | "limite_diario" | "falou_ha_pouco" | "ja_falou_depois" | "balanco_feito" };
 
 export function decidePush(input: {
-  candidate: ServerProactiveCandidate | null;
+  candidate: TickCandidate | null;
   lisbonHour: number;
   /** A hora de Lisboa em minutos desde a meia-noite — para a partida da
    *  prova (P.10). Sem ela, conta a hora certa. */
@@ -48,13 +49,17 @@ export function decidePush(input: {
   if (!c) return { send: false, reason: "sem_momento" };
   const prefs = input.prefs ?? {};
   const types = Array.isArray(prefs.types) ? prefs.types : ALL_PROACTIVE_TRIGGERS;
-  if (!types.includes(c.trigger)) return { send: false, reason: "tipo_desligado" };
+  // Os avisos do Troféu (cup_*) não passam por carol_push_types — a BD nem
+  // os aceita lá: a preferência deles é a da inscrição (cup_enrollments.
+  // notify_*, specs/trofeu.md §8). O resto vale para eles como para todos.
+  if (!isCupNoticeTrigger(c.trigger) && !types.includes(c.trigger)) return { send: false, reason: "tipo_desligado" };
   // A manhã da prova não sai depois da partida: a meio da prova só distrai.
   const minuteOfDay = input.minuteOfDay ?? null;
   if (c.trigger === "race_morning" && c.startMinutes != null && minuteOfDay != null && minuteOfDay >= c.startMinutes) {
     return { send: false, reason: "depois_da_partida" };
   }
-  if (!isWithinProactiveWindow(c.trigger, input.lisbonHour, prefs, { minuteOfDay, raceStartMinutes: c.startMinutes ?? null })) {
+  // Um cup_* não tem ramo próprio em isWithinProactiveWindow: cai na janela do atleta.
+  if (!isWithinProactiveWindow(c.trigger as ProactiveTriggerName, input.lisbonHour, prefs, { minuteOfDay, raceStartMinutes: c.startMinutes ?? null })) {
     return { send: false, reason: "fora_de_horas" };
   }
   if (input.deliveredKeys.has(c.key)) return { send: false, reason: "ja_entregue" };
@@ -93,18 +98,21 @@ export function decidePush(input: {
    "ela falou há pouco". Com um destes, nenhum momento da lista sai agora. */
 const GLOBAL_REASONS = new Set(["limite_diario", "falou_ha_pouco"]);
 
+/** O contexto da escolha: tudo o que decidePush lê, menos o momento. */
+export type ChooseCtx = Omit<Parameters<typeof decidePush>[0], "candidate" | "balanceDone"> & {
+  balanceDoneFor?: (c: TickCandidate) => boolean;
+};
+
 /** Percorre os momentos por ordem de prioridade (listServerProactive) e fica
  *  com o primeiro que pode sair. Um momento já notificado, já entregue,
  *  desligado ou fora da sua janela passa a vez ao seguinte; o limite do dia e
  *  a regra das 6 horas param a lista toda (e são esse o motivo). Sem nenhum,
  *  o motivo devolvido é o do primeiro — o mais importante — para a contagem
  *  do tick. */
-export function choosePush(
-  candidates: ServerProactiveCandidate[],
-  ctx: Omit<Parameters<typeof decidePush>[0], "candidate" | "balanceDone"> & {
-    balanceDoneFor?: (c: ServerProactiveCandidate) => boolean;
-  },
-): { candidate: ServerProactiveCandidate | null; decision: PushDecision } {
+export function choosePush<C extends TickCandidate>(
+  candidates: C[],
+  ctx: ChooseCtx,
+): { candidate: C | null; decision: PushDecision } {
   if (!candidates.length) return { candidate: null, decision: { send: false, reason: "sem_momento" } };
   let first: PushDecision | null = null;
   for (const candidate of candidates) {
@@ -146,8 +154,8 @@ export function tickLogSignature(userId: string, key: string | null | undefined,
 
 export interface TickLogInput {
   userId: string;
-  candidates: ServerProactiveCandidate[];
-  candidate: ServerProactiveCandidate | null;
+  candidates: TickCandidate[];
+  candidate: TickCandidate | null;
   /** "enviada", "falhou", ou o motivo de não enviar. */
   reason: string;
   usage?: { input_tokens: number; output_tokens: number; cached_tokens?: number; thoughts_tokens?: number } | null;

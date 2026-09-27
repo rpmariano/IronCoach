@@ -18,6 +18,7 @@ import CupClassificacao, { CUP_CLASSIFICACAO_TITULO_ID, CupLink, clubeLabel } fr
 import CupJornadaSheet from './CupJornadaSheet';
 import CupMatchPrompt, { CupStandingPrompt, MATCH_ISSUE_TEXT } from './CupMatchPrompt';
 import { roundDateText } from '../../utils/cupCalendar';
+import { useCupDateChangeSeen } from '../../utils/useCupDateChangeSeen';
 import { enrollmentChoiceError } from '@formulas/cup.ts';
 
 /* O ecrã do Troféu (specs/trofeu.md §4.3). Fase 1 (2026-09-26): cabeçalho,
@@ -396,6 +397,9 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
 
   const rounds = view?.rounds || [];
   const pendentes = pendentesDe(rounds, draft);
+  // Fase 5: a mudança de data que o calendário mostra conta como vista — o
+  // aviso cup_date_change já não sai (utils/useCupDateChangeSeen.js).
+  useCupDateChangeSeen(view?.enrollment && view.catalogReady && (modo ?? 'calendario') === 'calendario' ? rounds : null);
 
   useEffect(() => {
     if (modo == null && view?.catalogReady) setModo(pendentes.length > 0 ? 'decidir' : 'calendario');

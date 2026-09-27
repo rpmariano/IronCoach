@@ -56,6 +56,8 @@ import { formatPaceMinKm as sharedFormatPaceMinKm, formatPaceFromDistance } from
 import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePacingPlan, type SplitInput, type SplitComparison } from "../_shared/formulas/racePacing.ts";
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
+import { fetchCupResultFacts } from "../_shared/cupResultFacts.ts";
+import { cupNoticeRoundId, raceIdOfRaceKey } from "../_shared/formulas/cupNotices.ts";
 import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
@@ -713,8 +715,8 @@ export function allowedToolsFor(kind: TurnCase): Set<string> | null {
 // última mensagem da conversa é dela e tem menos de 6 horas, não se empilha
 // outra em cima (PROACTIVE_QUIET_HOURS). Sem ferramentas de escrita nestes
 // turnos: não é altura de propor planos.
-export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review" | "leaderboard" | "percentile_ready";
-export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review", "leaderboard", "percentile_ready"];
+export type ProactiveTrigger = "silence" | "race_eve" | "race_morning" | "race_after" | "block_end" | "missed_workout" | "week_review" | "leaderboard" | "percentile_ready" | "cup_results";
+export const PROACTIVE_TRIGGERS: readonly ProactiveTrigger[] = ["silence", "race_eve", "race_morning", "race_after", "block_end", "missed_workout", "week_review", "leaderboard", "percentile_ready", "cup_results"];
 export const PROACTIVE_QUIET_HOURS = 6;
 
 export function shouldSkipProactive(
@@ -844,6 +846,16 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `quer dizer (quanto do plano cumpre face aos atletas do escalão), sem o transformar em competição. ` +
     `"perto" — o escalão dele ainda não tem atletas suficientes, mas há grupos ao lado com números: diz-lho e convida-o a ver onde ` +
     `fica nesses. Nos dois casos, uma ou duas frases e onde ver — nunca o número de atletas de um grupo.`,
+  // O toque em "Saiu a classificação" (specs/trofeu.md §8, Fase 5): a
+  // notificação não disse números; aqui ela diz-lhe a linha DELE, se estiver
+  // confirmada (_shared/cupResultFacts.ts).
+  cup_results:
+    `Saiu a classificação oficial de uma jornada da competição que ele correu. O Contexto traz a linha DELE, se estiver confirmada. ` +
+    `Duas ou três frases: o lugar no escalão e o tempo oficial, e o que isso diz face ao papel que a jornada tinha (bloco da ` +
+    `competição); os pontos só se o Contexto os trouxer, e "provisórios" se o Contexto o disser. Se o Contexto disser que a linha está ` +
+    `por confirmar, pede-lhe que a confirme no ecrã do Troféu, sem dizer números. Sem linha dele, diz que saiu e onde a ver, sem ` +
+    `inventar lugar nem tempo. Nunca fales de outros atletas, do clube, da posição do clube nem do dorsal. Fecha com o papel da ` +
+    `próxima jornada, se o bloco da competição o tiver.`,
 };
 
 // ── Balanço da prova (race_after com a corrida registada) ─────────────────
@@ -6664,6 +6676,20 @@ async function handler(req: Request): Promise<Response> {
     // O bloco da competição (null sem inscrição) e, com ele, o papel de cada
     // prova de jornada no contexto das provas — só com inscrição ativa.
     const seriesBlock = await (seriesPromise ??= fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" }));
+    /* A classificação de uma jornada (specs/trofeu.md §8, Fase 5): o turno
+       cup_results, e o balanço de uma jornada com a classificação já saída (a
+       junção — só com o aviso ligado). Fora destes dois casos, e num balanço
+       que não é de jornada, nenhuma leitura: o prompt fica igual. */
+    const cupRoundId = proactiveTrigger === "cup_results" ? cupNoticeRoundId(proactiveKey) : null;
+    const cupRaceId = proactiveTrigger === "race_after" && seriesBlock?.active ? raceIdOfRaceKey(proactiveKey) : null;
+    const cupFacts = cupRoundId
+      ? await fetchCupResultFacts(sb, userId, { roundId: cupRoundId })
+      : cupRaceId && seriesBlock?.jornadaRaceIds.includes(cupRaceId)
+      ? await fetchCupResultFacts(sb, userId, { raceId: cupRaceId }, { requireNotify: true })
+      : null;
+    const turnDetails = proactiveTrigger === "cup_results"
+      ? [turnProactiveDetails, cupFacts ?? "Os números não foram lidos: diz só que saiu e onde a ver (ecrã do Troféu)."].filter(Boolean).join(" ")
+      : cupFacts ? [turnProactiveDetails, cupFacts].filter(Boolean).join(" ") : turnProactiveDetails;
     const raceEventsContext = buildRaceEventsContext(
       upcomingRaces || [],
       todayISO,
@@ -6725,7 +6751,7 @@ async function handler(req: Request): Promise<Response> {
       suggestionAdherencePanel,
       lastExchangeHoursAgo,
       proactiveTrigger,
-      turnProactiveDetails,
+      turnDetails,
       raceOutcome,
       racePlanContext,
       splitsContext,

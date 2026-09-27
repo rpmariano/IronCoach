@@ -4438,6 +4438,32 @@ Deno.test("Vitrina: o chat conhece os dois momentos novos, com a instrução cer
   assertStringIncludes(ready, "nunca o número de atletas de um grupo");
 });
 
+// Fase 5 do Troféu (specs/trofeu.md §8): o toque em "Saiu a classificação".
+Deno.test("Troféu: o chat conhece o turno cup_results — a linha dele, nunca clube, dorsal ou terceiros", () => {
+  assert(PROACTIVE_TRIGGERS.includes("cup_results"));
+  const conf = buildProactiveInstruction("cup_results", "Classificação oficial da jornada 3 (Corrida CCD), 24 jan — a linha dele: 12.º no escalão M40.");
+  assertStringIncludes(conf, "=== MENSAGEM POR INICIATIVA TUA (cup_results) ===");
+  assertStringIncludes(conf, "Contexto: Classificação oficial da jornada 3");
+  assertStringIncludes(conf, "Nunca fales de outros atletas, do clube, da posição do clube nem do dorsal");
+  assertStringIncludes(conf, "por confirmar, pede-lhe que a confirme no ecrã do Troféu, sem dizer números");
+  assertStringIncludes(conf, "os pontos só se o Contexto os trouxer");
+  assertStringIncludes(conf, "não chames ferramentas");
+  assertStringIncludes(buildProactiveUserTurn("cup_results"), "cup_results");
+});
+
+Deno.test("Troféu: a classificação só se lê no turno cup_results e no balanço de uma jornada com inscrição ativa", async () => {
+  const src = (await Deno.readTextFile(new URL("./index.ts", import.meta.url))).replace(/\r\n/g, "\n");
+  const i = src.indexOf("const cupRoundId = ");
+  assert(i > 0);
+  const glue = src.slice(i, i + 900);
+  assertStringIncludes(glue, 'proactiveTrigger === "cup_results" ? cupNoticeRoundId(proactiveKey) : null');
+  assertStringIncludes(glue, 'proactiveTrigger === "race_after" && seriesBlock?.active ? raceIdOfRaceKey(proactiveKey) : null');
+  assertStringIncludes(glue, "seriesBlock?.jornadaRaceIds.includes(cupRaceId)");
+  assertStringIncludes(glue, "{ requireNotify: true }");
+  // O Contexto do turno leva a linha; o resto da chamada fica igual.
+  assertEquals(src.split("      turnDetails,\n").length - 1, 1);
+});
+
 // Fase 0 do Troféu (2026-09-26): a descrição do propose_training_plan diz o
 // que as guardas do servidor fazem — e já não diz o que elas não fazem.
 Deno.test("propose_training_plan: a descrição bate com as guardas do servidor", () => {

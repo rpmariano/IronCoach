@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act, waitFor, within } from '@testing-librar
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import Perfil from './Perfil';
+import { CUP_EMPTY } from '../../store/cupSlice';
 
 // A Vitrina (separador novo — ver TABS em Perfil.jsx) monta a BadgesCard em
 // todos os testes deste ficheiro, porque os separadores do Perfil ficam
@@ -10,24 +11,29 @@ import Perfil from './Perfil';
 // têm os testes delas em utils/badges.test.js; aqui só interessa a UI.
 
 // Captura o payload de cada UPDATE para se poder afirmar o que é enviado.
-const mocks = vi.hoisted(() => ({ updates: [] }));
+// `from` guarda as tabelas lidas (os avisos do Troféu não podem ler nada a
+// quem não está inscrito).
+const mocks = vi.hoisted(() => ({ updates: [], from: [] }));
 // Os 3 separadores ficam sempre montados (carrossel de swipe — ver
 // Perfil.jsx), por isso o efeito da Memória do Coach dispara em todos os
 // testes, não só nos que abrem a aba Coach. select() tem de responder algo,
 // senão fica uma rejeição por apanhar.
 vi.mock('../../lib/supabase', () => ({
   supabase: {
-    from: () => ({
-      update: (payload) => {
-        mocks.updates.push(payload);
-        return { eq: () => Promise.resolve({ error: null }) };
-      },
-      select: () => ({
-        eq: () => ({
-          order: () => Promise.resolve({ data: [], error: null }),
+    from: (table) => {
+      mocks.from.push(table);
+      return {
+        update: (payload) => {
+          mocks.updates.push(payload);
+          return { eq: () => Promise.resolve({ error: null }) };
+        },
+        select: () => ({
+          eq: () => ({
+            order: () => Promise.resolve({ data: [], error: null }),
+          }),
         }),
-      }),
-    }),
+      };
+    },
     auth: { signOut: () => Promise.resolve({ error: null }) },
   },
 }));
@@ -574,6 +580,54 @@ describe('Perfil — notificações da Carol (P.6)', () => {
     render(<Perfil />);
     abrirMetas();
     expect(screen.getByLabelText('Ativar boas-vindas ao abrir a app')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  /* Os avisos do Troféu (specs/trofeu.md §8, Fase 5): só a inscritos. Sem
+     inscrição o separador fica como era — nem o bloco nem nenhuma leitura de
+     tabelas da competição (CupNoticePrefs.test.jsx cobre o bloco). */
+  it('avisos do Troféu: sem inscrição, nada — nem bloco nem leituras cup_*', () => {
+    mocks.from.length = 0;
+    render(<Perfil />);
+    expect(screen.queryByTestId('perfil-cup-avisos')).not.toBeInTheDocument();
+    expect(mocks.from.filter((t) => String(t).startsWith('cup_'))).toEqual([]);
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
+  it('avisos do Troféu: inscrito, o bloco entre as Notificações da Carol e as boas-vindas, fora do rascunho', async () => {
+    const realUpdate = useAppStore.getState().updateEnrollment;
+    const updateEnrollment = vi.fn().mockResolvedValue({ ok: true, data: {} });
+    useAppStore.setState({
+      updateEnrollment,
+      session: { user: { id: 'user-1', email: 'atleta@ironhealth.app' } },
+      cup: {
+        ...CUP_EMPTY, status: 'ready', userId: 'user-1',
+        editions: [{ id: 'ed-1', status: 'aberta', entry_mode: 'por_jornada', results_source: 'adaptador', notifications_enabled: false, competition: { short_name: 'Troféu de Cascais', round_label: 'Jornada' } }],
+        enrollments: [{ id: 'enr-1', edition_id: 'ed-1', status: 'ativa', entry_by: 'atleta', notify_results: true }],
+        catalog: { 'ed-1': { status: 'ready', rounds: [], courses: [], overrides: [], categories: [], teams: [] } },
+      },
+    });
+    try {
+      render(<Perfil />);
+      const bloco = screen.getByTestId('perfil-cup-avisos');
+      expect(bloco).toHaveAccessibleName('Avisos · Troféu de Cascais');
+      const push = screen.getByTestId('perfil-carol-push');
+      const welcome = screen.getByTestId('perfil-carol-welcome');
+      expect(push.compareDocumentPosition(bloco) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(bloco.compareDocumentPosition(welcome) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      // As Notificações da Carol estão desligadas (rascunho): a nota di-lo.
+      expect(within(bloco).getByTestId('perfil-cup-avisos-sem-push')).toBeInTheDocument();
+      const classificacao = within(bloco).getByRole('switch', { name: 'Classificação' });
+      expect(classificacao).toBeChecked();
+      // Fora do rascunho: grava logo pela inscrição, e o Perfil não fica com nada por gravar.
+      fireEvent.click(classificacao);
+      await waitFor(() => expect(updateEnrollment).toHaveBeenCalledWith('enr-1', { notify_results: false }));
+      expect(mocks.updates).toEqual([]);
+      let permitido;
+      act(() => { permitido = useAppStore.getState().setActiveTab('ginasio'); });
+      expect(permitido).toBe(true);
+    } finally {
+      useAppStore.setState({ cup: CUP_EMPTY, updateEnrollment: realUpdate });
+    }
   });
 });
 

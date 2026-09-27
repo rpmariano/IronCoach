@@ -16,6 +16,7 @@ import TabelasConsentScreen from './TabelasConsentScreen';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
 import BadgesCard from './BadgesCard';
+import CupNoticePrefs from './CupNoticePrefs';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
@@ -1213,6 +1214,9 @@ export default function Perfil() {
                 </p>
               </div>
             )}
+
+            {/* Os avisos do Troféu (specs/trofeu.md §8): só a inscritos; gravam ao tocar. */}
+            <CupNoticePrefs pushEnabled={!!draft.carol_push_enabled} />
 
             {/* As boas-vindas (ação P.11): sempre visível, porque não é uma
                 notificação — não depende do push nem da permissão do browser.

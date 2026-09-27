@@ -269,6 +269,26 @@ describe('cupAdmin — os links e o modo (Fase 4)', () => {
     await cupAdmin.setEditionSyncMode('e34', 'observar');
     expect(lastCall()).toEqual({ table: 'cup_editions', op: 'update', filters: [['eq', 'id', 'e34']], payload: { sync_mode: 'observar' } });
   });
+
+  it('setEditionNotifications (Fase 5): só a coluna notifications_enabled, sempre booleana', async () => {
+    net.tables.cup_editions = okRes({ id: 'e34', notifications_enabled: true });
+    const res = await cupAdmin.setEditionNotifications('e34', true);
+    expect(res).toEqual({ ok: true, data: { id: 'e34', notifications_enabled: true } });
+    expect(lastCall()).toEqual({ table: 'cup_editions', op: 'update', filters: [['eq', 'id', 'e34']], payload: { notifications_enabled: true } });
+    await cupAdmin.setEditionNotifications('e34', 0);
+    expect(lastCall().payload).toEqual({ notifications_enabled: false });
+    await cupAdmin.setEditionNotifications('e34', 'sim');
+    expect(lastCall().payload).toEqual({ notifications_enabled: true });
+  });
+
+  it('setEditionNotifications: o erro do servidor (RLS) volta como está; a M1 em falta, unavailable', async () => {
+    net.tables.cup_editions = { data: null, error: { code: '42501', message: 'new row violates row-level security policy for table "cup_editions"' } };
+    expect(await cupAdmin.setEditionNotifications('e34', true)).toEqual({
+      ok: false, error: { code: '42501', message: 'new row violates row-level security policy for table "cup_editions"' }, unavailable: false,
+    });
+    net.tables.cup_editions = missing;
+    expect((await cupAdmin.setEditionNotifications('e34', true)).unavailable).toBe(true);
+  });
 });
 
 describe('cupAdmin — o estado do job (Fase 4)', () => {

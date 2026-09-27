@@ -5,6 +5,7 @@ import { cupRoundStatus, horaLabel, intentLabel, kmLabel, nextRoundApart } from 
 import { raceDistanceLabel, findRaceRun } from '../../utils/run';
 import { CupStatus } from './CupBits';
 import { DateTile } from './DateTile';
+import { useCupDateChangeSeen } from '../../utils/useCupDateChangeSeen';
 
 /* O Troféu na lista de Provas (specs/trofeu.md §4.3, "bloco fixo por
    edição" — Fase 3, 2026-09-27). Só se monta com inscrição (ou com a pista
@@ -103,6 +104,8 @@ function semProximaTexto(view, loading) {
 function ProximaRow({ round, view, onOpenRace, onOpenTrofeu }) {
   const metaId = useId();
   const changeId = useId();
+  // Fase 5: a mudança de data à vista conta como vista (sem o aviso cup_date_change).
+  useCupDateChangeSeen([round]);
   const base = baseStatusOf(round, view);
   const meta = [
     roundWhenLabel(round, view.today),

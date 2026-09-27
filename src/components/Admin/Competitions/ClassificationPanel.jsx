@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, Link2, FlaskConical, AlertTriangle, Check } from 'lucide-react';
+import { RefreshCw, Link2, FlaskConical, AlertTriangle, Check, Bell } from 'lucide-react';
 import PremiumModal from '../../shared/PremiumModal';
 import Button from '../../shared/Button';
 import {
   listRounds, listTeams, listSyncState, listRoundPublication, listAliases, linkAlias,
-  listSyncAlerts, markRoundPublished, updateEditionLinks, setEditionSyncMode,
+  listSyncAlerts, markRoundPublished, updateEditionLinks, setEditionSyncMode, setEditionNotifications,
   runCupSync, runCupEnsaio, ensaioLinks, editionTodayISO,
 } from '../../../utils/cupAdmin';
 import { CUP_ADAPTER_URLS, cupResultsUrlError } from '@formulas/cupResults.ts';
@@ -27,6 +27,9 @@ import { CUP_ADAPTER_URLS, cupResultsUrlError } from '@formulas/cupResults.ts';
    8. O ensaio sem gravar (ex.: a 33.ª inteira): só números. Só o admin o
       corre (a função exige o JWT dele; o cron nunca), e corre sem a M2 —
       não grava nada que um atleta leia (1 registo agregado em app_logs).
+   9. Fase 5 (§8): os avisos aos inscritos (notifications_enabled). Ligar
+      pede confirmação (começa a mandar notificações e muda a véspera das
+      jornadas a quem os escolheu); desligar grava logo.
 
    PRIVACIDADE. Nada aqui mostra atletas: o estado do job e os alertas só têm
    códigos e contagens (o job nunca guarda nomes, dorsais ou clubes de
@@ -286,6 +289,11 @@ export default function ClassificationPanel({ edition, readOnly = false, onEditi
   const [ensaioRunning, setEnsaioRunning] = useState(false);
   const [ensaioResult, setEnsaioResult] = useState(null);
 
+  const avisosOn = edition.notifications_enabled === true;
+  const [confirmAvisos, setConfirmAvisos] = useState(false);
+  const [savingAvisos, setSavingAvisos] = useState(false);
+  const [avisosError, setAvisosError] = useState(null);
+
   useEffect(() => { setStandingsUrl(edition.standings_url || ''); }, [edition.standings_url]);
   useEffect(() => { setMode(edition.sync_mode || 'desligado'); }, [edition.sync_mode]);
 
@@ -344,6 +352,22 @@ export default function ClassificationPanel({ edition, readOnly = false, onEditi
     if (mode === savedMode) return;
     if (mode === 'publicar') { setConfirmPublicar(true); return; }
     gravarModo();
+  };
+
+  // ── 9. Os avisos aos inscritos (Fase 5)
+  const gravarAvisos = async (on) => {
+    setSavingAvisos(true);
+    setAvisosError(null);
+    const res = await setEditionNotifications(edition.id, on);
+    setSavingAvisos(false);
+    setConfirmAvisos(false);
+    if (!res.ok) { setAvisosError(res.error?.message || 'Falha ao gravar os avisos.'); return; }
+    onEditionChanged?.({ ...edition, ...res.data });
+  };
+  const mudarAvisos = (on) => {
+    if (on === avisosOn) return;
+    if (on) { setAvisosError(null); setConfirmAvisos(true); return; }
+    gravarAvisos(false);
   };
 
   // ── 3. Ler agora
@@ -491,6 +515,35 @@ export default function ClassificationPanel({ edition, readOnly = false, onEditi
         )}
       </section>
 
+      {/* 9. Os avisos aos inscritos (Fase 5, §8) */}
+      <section className={cardCls} aria-labelledby="cup-class-avisos-titulo" data-testid="cup-avisos">
+        <h3 id="cup-class-avisos-titulo" className={titleCls}>Avisos aos inscritos</h3>
+        <p className={noteCls} id="cup-avisos-nota">
+          Liga as notificações da competição (calendário, mudanças de data, prazo de inscrição, classificação) a quem as
+          escolheu no Perfil. Com os avisos ligados, a véspera das jornadas deixa de ser notificada a esses atletas, nada
+          lhes chega das jornadas em trote ou a saltar, e cada jornada tem no máximo 3 notificações. Precisa da M3
+          aplicada e do tick novo em produção.
+        </p>
+        <label htmlFor={`cup-avisos-${edition.id}`} className="flex items-center gap-2 min-h-[44px] cursor-pointer">
+          <input
+            id={`cup-avisos-${edition.id}`}
+            data-testid="cup-avisos-toggle"
+            type="checkbox"
+            role="switch"
+            checked={avisosOn}
+            onChange={(e) => mudarAvisos(e.target.checked)}
+            disabled={readOnly || savingAvisos}
+            aria-describedby="cup-avisos-nota"
+            aria-busy={savingAvisos || undefined}
+            style={{ width: 18, height: 18, accentColor: 'var(--race)' }}
+          />
+          <span className="text-xs font-semibold text-[var(--text-1)]">
+            Enviar os avisos desta edição{savingAvisos ? ' (a gravar…)' : ''}
+          </span>
+        </label>
+        {avisosError && <p role="alert" className="text-[11px] text-[var(--danger)] m-0">{avisosError}</p>}
+      </section>
+
       {/* 4. Estado por jornada */}
       <section className={cardCls} aria-labelledby="cup-class-estado-titulo">
         <h3 id="cup-class-estado-titulo" className={titleCls}>Estado por jornada</h3>
@@ -619,6 +672,31 @@ export default function ClassificationPanel({ edition, readOnly = false, onEditi
           </Button>
           <RelatorioEnsaio data={ensaioResult} />
         </section>
+      )}
+
+      {confirmAvisos && (
+        <PremiumModal
+          isOpen={confirmAvisos}
+          onClose={() => !savingAvisos && setConfirmAvisos(false)}
+          title="Ligar os avisos?"
+          subtitle={`${edition.edition_no}.ª edição · ${edition.season_label || ''}`}
+          icon={Bell}
+          theme="warning"
+          variant="dialog"
+          maxWidth="max-w-sm"
+        >
+          <div className="p-6 space-y-4 bg-[var(--bg-sheet)] text-[var(--text-2)]" data-testid="cup-avisos-ligar-dialog">
+            <p className="text-xs leading-relaxed">
+              Os inscritos com avisos ligados começam a recebê-los a partir da próxima hora. Só depois de a M3 estar aplicada.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Button variant="light" className="flex-1" onClick={() => setConfirmAvisos(false)} disabled={savingAvisos}>Cancelar</Button>
+              <Button variant="module" moduleColor="var(--grad-race)" className="flex-1" onClick={() => gravarAvisos(true)} disabled={savingAvisos} data-testid="cup-avisos-ligar-confirmar">
+                {savingAvisos ? 'A gravar…' : 'Ligar'}
+              </Button>
+            </div>
+          </div>
+        </PremiumModal>
       )}
 
       {confirmPublicar && (

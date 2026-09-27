@@ -46,6 +46,8 @@ vi.mock('../../../utils/cupAdmin', async (importOriginal) => {
   // Fase 4 (Classificação).
   updateEditionLinks: (...a) => mocks.updateEditionLinks(...a),
   setEditionSyncMode: (...a) => mocks.setEditionSyncMode(...a),
+  // Fase 5 (os avisos aos inscritos).
+  setEditionNotifications: (...a) => mocks.setEditionNotifications(...a),
   listSyncState: (...a) => mocks.listSyncState(...a),
   listRoundPublication: (...a) => mocks.listRoundPublication(...a),
   listAliases: (...a) => mocks.listAliases(...a),
@@ -182,6 +184,11 @@ beforeEach(() => {
   mocks.setEditionSyncMode = vi.fn(async (id, mode) => {
     const e = editions.find((x) => x.id === id);
     Object.assign(e, { sync_mode: mode });
+    return { ok: true, data: { ...e } };
+  });
+  mocks.setEditionNotifications = vi.fn(async (id, on) => {
+    const e = editions.find((x) => x.id === id);
+    Object.assign(e, { notifications_enabled: !!on });
     return { ok: true, data: { ...e } };
   });
   mocks.listSyncState = vi.fn(async () => ({ ok: true, data: [] }));
@@ -691,6 +698,56 @@ describe('CompetitionsTab — Classificação', () => {
     expect(screen.getByTestId('cup-ensaio-chave-geral')).toHaveTextContent('98% · ligam pela exata 414, pela alternativa 22 (por confirmar), não ligam 2');
   });
 
+  /* Fase 5 (specs/trofeu.md §8): os avisos aos inscritos. Ligar muda o que
+     chega aos atletas que os escolheram — pede confirmação; desligar não. */
+  describe('os avisos aos inscritos (Fase 5)', () => {
+    it('desligados por omissão; ligar abre o diálogo e só grava ao confirmar', async () => {
+      await abrirClassificacao();
+      const toggle = screen.getByTestId('cup-avisos-toggle');
+      expect(toggle).toHaveAttribute('role', 'switch');
+      expect(toggle).not.toBeChecked();
+      expect(toggle).toHaveAccessibleName('Enviar os avisos desta edição');
+      expect(toggle).toHaveAccessibleDescription(/a véspera das jornadas deixa de ser notificada.*no máximo 3 notificações.*Precisa da M3 aplicada/);
+
+      fireEvent.click(toggle);
+      const dialog = await screen.findByTestId('cup-avisos-ligar-dialog');
+      expect(dialog).toHaveTextContent('Os inscritos com avisos ligados começam a recebê-los a partir da próxima hora. Só depois de a M3 estar aplicada.');
+      expect(mocks.setEditionNotifications).not.toHaveBeenCalled();
+      expect(toggle).not.toBeChecked();
+
+      // Cancelar: nada gravado.
+      fireEvent.click(within(dialog).getByText('Cancelar'));
+      await waitFor(() => expect(screen.queryByTestId('cup-avisos-ligar-dialog')).not.toBeInTheDocument());
+      expect(mocks.setEditionNotifications).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByTestId('cup-avisos-toggle'));
+      fireEvent.click(await screen.findByTestId('cup-avisos-ligar-confirmar'));
+      await waitFor(() => expect(mocks.setEditionNotifications).toHaveBeenCalledWith('ed34', true));
+      await waitFor(() => expect(screen.getByTestId('cup-avisos-toggle')).toBeChecked());
+      expect(screen.queryByTestId('cup-avisos-ligar-dialog')).not.toBeInTheDocument();
+    });
+
+    it('desligar grava logo, sem diálogo', async () => {
+      Object.assign(editions[0], { notifications_enabled: true });
+      await abrirClassificacao();
+      const toggle = screen.getByTestId('cup-avisos-toggle');
+      expect(toggle).toBeChecked();
+      fireEvent.click(toggle);
+      expect(screen.queryByTestId('cup-avisos-ligar-dialog')).not.toBeInTheDocument();
+      await waitFor(() => expect(mocks.setEditionNotifications).toHaveBeenCalledWith('ed34', false));
+      await waitFor(() => expect(screen.getByTestId('cup-avisos-toggle')).not.toBeChecked());
+    });
+
+    it('o erro do servidor aparece como alerta, e o interruptor fica como estava', async () => {
+      mocks.setEditionNotifications = vi.fn(async () => ({ ok: false, error: { code: '42501', message: 'Sem permissão para mudar a edição.' }, unavailable: false }));
+      await abrirClassificacao();
+      fireEvent.click(screen.getByTestId('cup-avisos-toggle'));
+      fireEvent.click(await screen.findByTestId('cup-avisos-ligar-confirmar'));
+      expect(await screen.findByRole('alert')).toHaveTextContent('Sem permissão para mudar a edição.');
+      expect(screen.getByTestId('cup-avisos-toggle')).not.toBeChecked();
+    });
+  });
+
   it('numa edição encerrada, só consulta: nada se grava nem se corre', async () => {
     Object.assign(editions[0], { status: 'encerrada', closed_at: '2026-06-30T00:00:00Z' });
     await abrirClassificacao();
@@ -700,6 +757,8 @@ describe('CompetitionsTab — Classificação', () => {
     expect(screen.queryByTestId('cup-sync-ler-agora')).not.toBeInTheDocument();
     expect(screen.queryByTestId('cup-ensaio-correr')).not.toBeInTheDocument();
     expect(screen.queryByTestId('cup-class-publicada-r1')).not.toBeInTheDocument();
+    // Fase 5: os avisos também.
+    expect(screen.getByTestId('cup-avisos-toggle')).toBeDisabled();
   });
 });
 

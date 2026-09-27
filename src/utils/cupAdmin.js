@@ -282,6 +282,16 @@ export async function setEditionSyncMode(editionId, mode) {
   return ok(data);
 }
 
+/** Os avisos aos inscritos (cup_editions.notifications_enabled — specs/
+ *  trofeu.md §8, Fase 5): ligados, o tick manda as notificações da
+ *  competição a quem as escolheu no Perfil. Escrita direta (RLS admin),
+ *  auditada pelo trigger da edição; só esta coluna. */
+export async function setEditionNotifications(editionId, on) {
+  const { data, error } = await supabase.from('cup_editions').update({ notifications_enabled: !!on }).eq('id', editionId).select().single();
+  if (error) return bad(error);
+  return ok(data);
+}
+
 // ── Fase 4: o estado do job (só agregados) ──────────────────────────────────
 
 const m2Missing = (error) => ({ ok: false, error: errorOf(error), unavailable: false, m2Missing: true });

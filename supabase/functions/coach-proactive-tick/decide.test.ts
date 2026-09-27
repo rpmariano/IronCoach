@@ -178,3 +178,33 @@ Deno.test("P.10: à terça, com o balanço já entregue na segunda, a notificaç
   const picked = choosePush([week, missed], { ...base, lisbonHour: 12, deliveredKeys: new Set(["week_review:2026-09-14"]) });
   assertEquals(picked.candidate?.key, "missed_workout:2026-09-21");
 });
+
+/* Os avisos do Troféu (specs/trofeu.md §8, Fase 5): a preferência deles é a
+   da inscrição (notify_*), não carol_push_types — que a BD nem deixa ter
+   cup_*. Tudo o resto vale como para os outros momentos. */
+Deno.test("Troféu: os cup_* não passam por carol_push_types, mas passam por tudo o resto", () => {
+  const cup = {
+    ...candidate, trigger: "cup_entry_deadline" as const, key: "cup_entry_deadline:rd-3", raceId: null,
+    cup: { editionId: "ed-1", roundId: "rd-3", body: "A inscrição na jornada 3 (Corrida CCD) fecha amanhã às 24h.", tab: "home" as const },
+  };
+  for (const types of [["silence"], [], null]) {
+    assertEquals(decidePush({ ...base, candidate: cup, prefs: { types, maxPerDay: 3 } }), { send: true });
+  }
+  assertEquals(decidePush({ ...base, candidate: cup, lisbonHour: 22 }), { send: false, reason: "fora_de_horas" });
+  assertEquals(decidePush({ ...base, candidate: cup, lisbonHour: 7 }), { send: false, reason: "fora_de_horas" });
+  assertEquals(decidePush({ ...base, candidate: cup, prefs: { startHour: 7, endHour: 22 }, lisbonHour: 7 }), { send: true });
+  assertEquals(decidePush({ ...base, candidate: cup, pushedTodayCount: 1 }), { send: false, reason: "limite_diario" });
+  assertEquals(decidePush({ ...base, candidate: cup, lastMessage: { role: "model", created_at: "2026-09-18T11:00:00Z" } }), { send: false, reason: "falou_ha_pouco" });
+  assertEquals(decidePush({ ...base, candidate: cup, pushedKeys: new Set([cup.key]) }), { send: false, reason: "ja_notificado" });
+  assertEquals(decidePush({ ...base, candidate: cup, deliveredKeys: new Set([cup.key]) }), { send: false, reason: "ja_entregue" });
+  assertEquals(decidePush({ ...base, candidate: cup, seenKeys: new Set([cup.key]) }), { send: false, reason: "ja_visto" });
+  // Uma manhã de jornada (race_morning com frase fixa) obedece aos tipos, como qualquer manhã de prova.
+  const morning = { ...candidate, trigger: "race_morning" as const, key: "race_morning:race-3", cup: { ...cup.cup, tab: "coach" as const } };
+  assertEquals(decidePush({ ...base, candidate: morning, lisbonHour: 7, prefs: { types: ["silence"] } }), { send: false, reason: "tipo_desligado" });
+  assertEquals(decidePush({ ...base, candidate: morning, lisbonHour: 7 }), { send: true });
+  // Na lista, um cup_* desligado não existe: o seguinte sai; o limite do dia cala todos.
+  const r = choosePush([cup, candidate], { ...base, prefs: { types: ["race_eve"], maxPerDay: 3 } });
+  assertEquals(r.candidate?.key, "cup_entry_deadline:rd-3");
+  assertEquals(choosePush([cup, candidate], { ...base, pushedKeys: new Set([cup.key]) }).candidate?.key, "race_eve:r1");
+  assertEquals(choosePush([cup, candidate], { ...base, pushedTodayCount: 1 }), { candidate: null, decision: { send: false, reason: "limite_diario" } });
+});

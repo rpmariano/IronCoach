@@ -372,6 +372,25 @@ Deno.test("buildPushesContext: cada notificação, o dia, o texto e se foi tocad
   assertEquals(buildPushesContext(null, null, "2026-09-18"), null);
 });
 
+// Os avisos do Troféu (specs/trofeu.md §8, Fase 5): cada um com o seu rótulo.
+Deno.test("buildPushesContext: os avisos do Troféu têm rótulo próprio", () => {
+  const text = buildPushesContext(
+    [
+      { key: "cup_results:rd-3", trigger: "cup_results", sent_date: "2026-09-18", sent_at: "2026-09-18T10:00:00Z", body: "Saiu a classificação da jornada 3 (Corrida CCD). Vem ver comigo." },
+      { key: "cup_calendar:ed-1", trigger: "cup_calendar", sent_date: "2026-09-18", sent_at: "2026-09-18T09:00:00Z", body: null },
+      { key: "cup_date_change:rd-3:2027-01-24", trigger: "cup_date_change", sent_date: "2026-09-17", sent_at: "2026-09-17T09:00:00Z", body: null },
+      { key: "cup_entry_deadline:rd-3", trigger: "cup_entry_deadline", sent_date: "2026-09-17", sent_at: "2026-09-17T08:00:00Z", body: null },
+    ],
+    new Set(["cup_results:rd-3"]),
+    "2026-09-18",
+  )!;
+  assertStringIncludes(text, `- Hoje, classificação de uma jornada: "Saiu a classificação da jornada 3 (Corrida CCD). Vem ver comigo." (tocou).`);
+  assertStringIncludes(text, "- Hoje, calendário da competição (não abriu).");
+  assertStringIncludes(text, "- Ontem, mudança de data de uma jornada (não abriu).");
+  assertStringIncludes(text, "- Ontem, prazo de inscrição numa jornada (não abriu).");
+  assertEquals(/cup_/.test(text), false);
+});
+
 Deno.test("fetchPushesBlock: cruza os envios com as impressões 'push' para saber o que foi tocado", async () => {
   const sb = fakeSb({
     coach_proactive_pushes: { data: [{ key: "block_end:p1", trigger: "block_end", sent_date: "2026-09-18", sent_at: "2026-09-18T09:00:00Z", body: "O plano acaba amanhã." }] },

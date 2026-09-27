@@ -481,6 +481,22 @@ export default function Coach() {
     return data;
   });
 
+  /* O toque na notificação "Saiu a classificação" do Troféu (specs/trofeu.md
+     §8, Fase 5; App.jsx, cupPushRoute): a conversa da classificação dessa
+     jornada. Só a chave vai ao servidor — é ele que lê a linha do atleta
+     (nada de lugar, pontos ou clube sai do telemóvel) — e com
+     `proactive_force`, como os outros toques numa notificação: prometeu-se
+     uma conversa. Se ela já aconteceu (outro dispositivo), o servidor diz
+     `already_sent` e o chat já a mostra. */
+  const handleCupResultsCheckin = ({ key }) => sendCoachInitiatedPayload({
+    message: '',
+    proactive_trigger: 'cup_results',
+    proactive_key: key,
+    proactive_force: true,
+    userData: profile || {},
+    activeInsights: activeInsightsPayload(),
+  });
+
   useEffect(() => {
     if (coachIntent && coachIntent.kind === 'proactive_intervention') {
       setCoachIntent(null);
@@ -497,6 +513,12 @@ export default function Coach() {
       const { races, target } = coachIntent;
       setCoachIntent(null);
       handleRaceConflictCheckin({ races, target });
+      return;
+    }
+    if (coachIntent && coachIntent.kind === 'cup_results') {
+      const { key } = coachIntent;
+      setCoachIntent(null);
+      if (typeof key === 'string' && key.startsWith('cup_results:')) handleCupResultsCheckin({ key });
       return;
     }
     if (coachIntent && coachIntent.kind === 'cup_map') {

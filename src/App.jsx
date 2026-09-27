@@ -15,6 +15,7 @@ import CarolWelcome from './components/Welcome/CarolWelcome';
 import { decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, slotKey, welcomeReturnAction } from './utils/carolWelcome';
 import { detectRaceConflict } from './utils/planDivergence';
 import { todayISO } from './lib/utils';
+import { cupPushRoute } from './utils/cupPushRoute';
 
 // O primeiro ecrã — estático de propósito. A PWA tem como princípio arrancar
 // instantânea (é por isso que usa fontes de sistema); o Início e a moldura
@@ -528,6 +529,23 @@ export default function App() {
   const consumeProactiveKey = useCallback((key, { navigate = true } = {}) => {
     if (!key) return;
     useAppStore.getState().logImpression({ kind: 'push', key, title: null });
+    /* Os avisos do Troféu (specs/trofeu.md §8, Fase 5; utils/cupPushRoute.js):
+       o calendário abre o ecrã do Troféu (vive em Provas — o pedido fica no
+       store até lá chegar); a mudança de data e o prazo ficam no Início, onde
+       a linha da jornada e o cartão do dia já os dizem; a classificação é
+       uma conversa com ela. */
+    const cupRoute = cupPushRoute(key);
+    if (cupRoute?.kind === 'trofeu') {
+      const s = useAppStore.getState();
+      if (navigate && s.setActiveTab('provas') !== false) s.requestCupScreen({ roundId: null, mode: null });
+      return;
+    }
+    if (cupRoute?.kind === 'inicio') return;
+    if (cupRoute?.kind === 'chat') {
+      useAppStore.getState().setCoachIntent({ kind: 'cup_results', key, roundId: cupRoute.roundId });
+      if (navigate) setActiveTab('coach');
+      return;
+    }
     if (key.startsWith('intervention:')) {
       // Só abre o Coach se o assunto ainda estiver por resolver — resolvido
       // entretanto (noutro dispositivo, ou nesta app antes de o toque

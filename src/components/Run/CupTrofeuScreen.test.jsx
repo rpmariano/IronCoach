@@ -7,6 +7,7 @@ import CupTrofeuScreen from './CupTrofeuScreen';
 import { buildCupView } from '../../utils/useCup';
 import { CUP_STATUS_ICONS, promotionPreview } from '../../utils/cupCalendar';
 import * as F from '@formulas/cup.fixtures.ts';
+import { __resetCupDateChangeSeen } from '../../utils/useCupDateChangeSeen';
 
 /* O ecrã do Troféu (specs/trofeu.md §4.3). A vista vem de buildCupView (a
    mesma função pura do hook, ver useCup.test.jsx) sobre as fixtures da 34.ª
@@ -381,6 +382,37 @@ describe('CupTrofeuScreen', () => {
       expect(document.getElementById(btn.getAttribute('aria-describedby'))).toHaveTextContent('mudou de 17 para 24 jan');
       // Sem mudança, sem descrição.
       expect(screen.getByTestId('cup-cal-r-c4-abrir').hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    /* Fase 5 (specs/trofeu.md §8): a mudança de data que o calendário mostra
+       conta como vista — o tick já não manda o aviso cup_date_change. Uma
+       impressão 'moment' sem título, com a chave do contrato. */
+    describe('a mudança de data vista (Fase 5)', () => {
+      let logImpression;
+      const mudada = () => F.CASCAIS_ROUNDS.map((r) => (r.id === 'r-c3' ? { ...r, previous_date: '2027-01-17' } : r));
+      beforeEach(() => {
+        __resetCupDateChangeSeen();
+        logImpression = vi.fn();
+        useAppStore.setState({ logImpression });
+      });
+      afterEach(() => useAppStore.setState({ logImpression: REAL.logImpression }));
+
+      it('jornada "Vou" com mudança: 1 impressão no calendário; nenhuma na lista por decidir', () => {
+        const view = makeView({ seasonGoal: 'participar', rounds: mudada(), participations: [part('r-c3', 'vou')] });
+        const { unmount } = montar(view, () => {}, { initialMode: 'decidir' });
+        expect(logImpression).not.toHaveBeenCalled();
+        unmount();
+        montar(view, () => {}, { initialMode: 'calendario' });
+        expect(logImpression).toHaveBeenCalledTimes(1);
+        expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: 'cup_date_change:r-c3:2027-01-24', title: null });
+      });
+
+      it('"Não vou", ou sem mudança: nenhuma', () => {
+        const { unmount } = montar(makeView({ seasonGoal: 'participar', rounds: mudada(), participations: [part('r-c3', 'nao_vou')] }), () => {}, { initialMode: 'calendario' });
+        unmount();
+        montar(makeView({ seasonGoal: 'participar', participations: [part('r-c3', 'vou')] }), () => {}, { initialMode: 'calendario' });
+        expect(logImpression).not.toHaveBeenCalled();
+      });
     });
 
     it('sem calendário publicado: diz-se, e "Avisa-me quando sair" liga só esse aviso', () => {

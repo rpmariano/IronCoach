@@ -23,12 +23,16 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { listServerProactive, proactiveTab, RACE_AFTER_DAYS_WITH_RUN, weekToReviewBounds, type PushPreferences, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
+import { listServerProactive, RACE_AFTER_DAYS_WITH_RUN, weekToReviewBounds, type PushPreferences, type ServerProactiveCandidate, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
 import { ownSegmentFor } from "../_shared/formulas/vitrina.ts";
 import { TERRAIN_LOOKBACK_DAYS } from "../_shared/formulas/percentileSegments.ts";
 import { composePushMessage, type PushUsage } from "./pushText.ts";
 import { choosePush, lisbonDateOf, tickLogRow, tickLogSignature } from "./decide.ts";
 import { recordUsage } from "../_shared/usageRecorder.ts";
+import { cupNoticeMessage, cupTickCandidates, tickTab } from "../_shared/formulas/cupNotices.ts";
+import { loadCupNoticeState } from "./cupNoticeState.ts";
+import { claimWithCupFallback } from "./claim.ts";
+import type { ChooseCtx } from "./decide.ts";
 
 const corsHeaders = { "Content-Type": "application/json" };
 
@@ -171,6 +175,11 @@ async function handler(req: Request): Promise<Response> {
     snapshots = snapRows || [];
   }
 
+  /* Os avisos do Troféu (specs/trofeu.md §8, Fase 5): em lote, só das edições
+     com os avisos ligados e de quem ligou algum. Sem isso — hoje, toda a
+     gente —, uma leitura (cup_editions) e tudo como era. Nunca rejeita. */
+  const cupState = await loadCupNoticeState(sb, [...byUser.keys()], now, today);
+
   for (const [userId, userSubs] of byUser) {
     try {
       const [
@@ -263,7 +272,7 @@ async function handler(req: Request): Promise<Response> {
         if (raceAfterErr) console.warn("coach-proactive-tick: não leu os balanços de prova entregues", userId, raceAfterErr.message);
         deliveredRaceAfter = (raceAfterRows || []).map((r: { key: string }) => r.key);
       }
-      const candidates = listServerProactive({
+      let candidates = cupTickCandidates(listServerProactive({
         raceEvents: races || [],
         runs: runs || [],
         lastRecordDate: last,
@@ -285,7 +294,7 @@ async function handler(req: Request): Promise<Response> {
         weekRecordDates: weekDates,
         deliveredKeys: deliveredRaceAfter,
         vitrina,
-      }, today);
+      }, today), cupState.byUser.get(userId), now, today, { notices: !cupState.noticesOff });
 
       const prefs = prefsById.get(userId) ?? {};
       /* A decisão fica em app_logs (P.10) — só com algum momento, e nunca a
@@ -312,6 +321,7 @@ async function handler(req: Request): Promise<Response> {
       // Primeiro sem ir à base de dados: se nenhum momento passa sequer a
       // janela e os tipos, não vale a pena ler o resto.
       let { candidate, decision } = choosePush(candidates, { lisbonHour: hour, minuteOfDay, deliveredKeys: new Set(), pushedKeys: new Set(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: now.getTime(), prefs });
+      let fullCtx: ChooseCtx | null = null;
       if (candidate && decision.send) {
         const keys = candidates.map((c) => c.key);
         const [{ data: delivered }, { data: pushedKey }, { data: pushedToday }, { data: lastAny }, { data: lastModel }, { data: seen }] = await Promise.all([
@@ -326,7 +336,7 @@ async function handler(req: Request): Promise<Response> {
           // como grava o logImpression): a chave do candidato (P.10).
           sb.from("coach_impressions").select("key").eq("user_id", userId).eq("date", today).eq("kind", "alert").in("key", keys),
         ]);
-        ({ candidate, decision } = choosePush(candidates, {
+        fullCtx = {
           lisbonHour: hour,
           minuteOfDay,
           deliveredKeys: new Set((delivered || []).map((d: { key: string }) => d.key)),
@@ -338,7 +348,8 @@ async function handler(req: Request): Promise<Response> {
           lastModelMessageAt: lastModel?.created_at ?? null,
           nowMs: now.getTime(),
           balanceDoneFor: (c) => !!(races || []).find((r: { id: string; coach_balance?: string | null }) => r.id === c.raceId)?.coach_balance,
-        }));
+        };
+        ({ candidate, decision } = choosePush(candidates, fullCtx));
       }
       const reason = decision.send ? "enviada" : decision.reason;
       if (!decision.send || !candidate) {
@@ -346,13 +357,26 @@ async function handler(req: Request): Promise<Response> {
         await logDecision(reason, null);
         continue;
       }
-      const picked = candidate; // fixo, para os callbacks abaixo
 
       // Registar ANTES de enviar: se duas execuções se cruzarem, a segunda
-      // bate na chave primária e não envia outra vez.
-      const { error: claimErr } = await sb.from("coach_proactive_pushes")
-        .insert({ user_id: userId, key: candidate.key, trigger: candidate.trigger, sent_date: today });
-      if (claimErr) {
+      // bate na chave primária e não envia outra vez. Um aviso do Troféu
+      // recusado pela BD (a M3 por aplicar) passa a vez ao momento seguinte.
+      const claimed = await claimWithCupFallback(candidates, fullCtx!, candidate, (c) =>
+        sb.from("coach_proactive_pushes").insert({ user_id: userId, key: c.key, trigger: c.trigger, sent_date: today }));
+      if (claimed.cupRefused) {
+        if (!cupState.noticesOff) console.warn("coach-proactive-tick: avisos do Troféu recusados pela BD (M3?) — calados nesta execução");
+        cupState.noticesOff = true;
+        candidates = claimed.candidates;
+      }
+      if (!claimed.candidate || !claimed.decision.send) {
+        const r = claimed.decision.send ? "sem_momento" : claimed.decision.reason;
+        tally[r] = (tally[r] || 0) + 1;
+        await logDecision(r, null);
+        continue;
+      }
+      candidate = claimed.candidate;
+      const picked = candidate; // fixo, para os callbacks abaixo
+      if (claimed.claimErr) {
         tally.ja_notificado = (tally.ja_notificado || 0) + 1;
         await logDecision("ja_notificado", picked);
         continue;
@@ -367,7 +391,9 @@ async function handler(req: Request): Promise<Response> {
       const raceRun: any = candidate.hasRun && race
         ? (runs || []).find((r: { race_id?: string | null }) => r.race_id === race.id) ?? null
         : null;
-      const message = await composePushMessage(candidate, {
+      // Os avisos do Troféu e as provas de jornada no regime: frase fixa, sem Gemini.
+      const fixed = cupNoticeMessage(picked);
+      const message = fixed ? { ...fixed, generated: false, usage: null } : await composePushMessage(picked as ServerProactiveCandidate, {
         firstName: firstNameById.get(userId) ?? null,
         raceName: race?.name ?? null,
         distanceKm: race?.distance_km ?? null,
@@ -380,7 +406,7 @@ async function handler(req: Request): Promise<Response> {
       // A chave viaja no payload (P.9): o sw.js guarda-a e o cliente, ao vê-la
       // coincidir com um candidato calculado localmente, sabe que conversa
       // prometeu — o `trigger` não vai, é o prefixo da própria chave.
-      const payload = JSON.stringify({ title: message.title, body: message.body, tag: "carol-proactive", tab: proactiveTab(candidate.trigger), key: candidate.key });
+      const payload = JSON.stringify({ title: message.title, body: message.body, tag: "carol-proactive", tab: tickTab(candidate), key: candidate.key });
       let anySuccess = false;
       for (const sub of userSubs) {
         try {
