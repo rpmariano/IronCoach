@@ -31,6 +31,7 @@ import {
   tickTab,
 } from "./cupNotices.ts";
 import type { ServerProactiveCandidate } from "./proactiveTriggers.ts";
+import { cupRoundRoles } from "./cupRoles.ts";
 import { validatePushText } from "../../coach-proactive-tick/pushText.ts";
 
 // ── O estado de teste ────────────────────────────────────────────────────
@@ -151,6 +152,12 @@ Deno.test("omissão: com os notify_* todos desligados não há regime, e a lista
   // época) também não: o Perfil mostra-lho desligado e parado, ou nem o mostra.
   assertEquals(cupRegimeOn(state({ enrollment: { ...only("notifyEntryDeadline"), entryBy: "clube" } })), false);
   assertEquals(cupRegimeOn(state({ edition: { entryMode: "epoca" }, enrollment: only("notifyEntryDeadline") })), false);
+  // A mesma régua, só das preferências (o loader lê o papel sugerido só a estes).
+  assertEquals(cupRegimeWanted("por_jornada", { entryBy: "atleta", ...only("notifyEntryDeadline") }), true);
+  assertEquals(cupRegimeWanted("por_jornada", { entryBy: "clube", ...only("notifyEntryDeadline") }), false);
+  assertEquals(cupRegimeWanted("epoca", { entryBy: null, ...only("notifyEntryDeadline") }), false);
+  assertEquals(cupRegimeWanted("epoca", { entryBy: "clube", ...only("notifyResults") }), true);
+  assertEquals(cupRegimeWanted("por_jornada", { entryBy: null, ...only("notifyCalendar") }), false);
 });
 
 // ── 1b. Só o calendário ("Avisa-me quando sair", §4.2) ───────────────────
@@ -159,6 +166,7 @@ Deno.test("só o calendário: sem calendário novo, a MESMA lista; as provas de 
   // A inscrição sem calendário grava notify_calendar=true sozinha; depois de
   // o calendário sair, o atleta que nunca tocou em nada não pode perder a
   // véspera, nem ficar com o teto ou as frases fixas.
+  // Fora do regime o loader nem lê o papel sugerido (roleInputs null).
   const cal = state({
     enrollment: { notifyCalendar: true, notifyDateChanges: false, notifyEntryDeadline: false, notifyResults: false },
     edition: { calendarOutAt: "2026-11-02T18:00:00Z" },
@@ -166,6 +174,7 @@ Deno.test("só o calendário: sem calendário novo, a MESMA lista; as provas de 
     part3: { intent: "trote" },
     ranRaceIds: ["race-3"],
     roundPushCounts: { "rd-3": 9 },
+    roleInputs: null,
   });
   for (const [base, today, now] of [
     [[eve(), silence], "2027-01-23", at("2027-01-23")],
@@ -225,17 +234,124 @@ Deno.test("véspera: sai numa jornada com regime; fica sem regime e numa jornada
 
 // ── 4. Trote, saltar, Não vou ────────────────────────────────────────────
 
-Deno.test("trote/saltar/não vou: sem manhã, sem balanço e sem avisos dessa jornada; intenção por decidir conta", () => {
-  for (const part3 of [{ intent: "trote" }, { intent: "saltar" }, { decision: "nao_vou" }, { decision: null }, { decision: "nao_sei" }]) {
+Deno.test("trote/saltar/não vou: sem manhã, sem balanço e sem avisos dessa jornada — só o prazo fica em trote", () => {
+  for (const part3 of [{ intent: "trote" }, { intent: "saltar" }, { decision: "nao_vou" }, { decision: null }, { decision: "nao_sei" }] as Array<Over["part3"]>) {
     const s = state({ part3, round3: { resultsReadyAt: `${D3}T15:00:00Z` }, ranRaceIds: ["race-3"] });
     assertEquals(keys(cupTickCandidates([morning(), silence], s, at(D3, "07:30"), D3)), ["silence:2027-01-10"], JSON.stringify(part3));
     assertEquals(keys(cupTickCandidates([after(), silence], s, at("2027-01-25"), "2027-01-25")), ["silence:2027-01-10"], JSON.stringify(part3));
-    // Nem o prazo (47 h antes) nem a classificação.
-    assertEquals(listCupNotices(s, at("2027-01-19", "01:00"), "2027-01-19").filter((c) => c.cup.roundId === "rd-3"), []);
+    // O prazo (47 h antes) só em trote (decisão do dono, ver 4c); a classificação nunca.
+    const deadline = listCupNotices(s, at("2027-01-19", "01:00"), "2027-01-19").filter((c) => c.cup.roundId === "rd-3");
+    assertEquals(keys(deadline), part3?.intent === "trote" ? [cupEntryDeadlineKey("rd-3")] : [], JSON.stringify(part3));
     assertEquals(listCupNotices(s, at("2027-01-26"), "2027-01-26"), []);
   }
+  // Por decidir: conta a intenção sugerida, a que a app mostra (aqui
+  // "controlar") — ver 4b.
   const undecided = state({ part3: { intent: null } });
   assertEquals(keys(cupTickCandidates([morning()], undecided, at(D3, "07:30"), D3)), ["race_morning:race-3"]);
+});
+
+// ── 4b. A intenção sugerida (a que a app mostra) ─────────────────────────
+
+/** A jornada 3 sem intenção gravada; `principal`: a data de uma meia
+ *  principal (null, sem ela). */
+const sug = (principal: string | null, o: Over = {}) =>
+  state({ ...o, part3: { intent: null, ...o.part3 }, roleInputs: principal ? withRaces(meia(principal)) : ROLE_INPUTS });
+
+Deno.test("intenção sugerida: sem a gravada, conta a de cupRoundRoles, a mesma função do ecrã — trote e saltar calam", () => {
+  // A meia principal a 10 jan: a jornada 3 (24 jan, d = 14) cai na
+  // recuperação dela — "trote" pelas contas; a 22 jan (d = 2), "saltar";
+  // sem ela, "controlar" (iniciante, progressão).
+  assertEquals(effectiveIntentOf(sug("2027-01-10"), D3)("rd-3"), "trote");
+  assertEquals(effectiveIntentOf(sug("2027-01-22"), D3)("rd-3"), "saltar");
+  assertEquals(effectiveIntentOf(sug(null), D3)("rd-3"), "controlar");
+  // A gravada manda sobre a sugerida (useCup.js: participation.intent ?? role.intent).
+  assertEquals(effectiveIntentOf(sug("2027-01-10", { part3: { intent: "atacar" } }), D3)("rd-3"), "atacar");
+  // Paridade com a vista do cliente: as mesmas linhas, a mesma função, o mesmo papel.
+  const today = "2027-01-11";
+  const s = sug("2027-01-10");
+  const roles = cupRoundRoles({
+    edition: { id: "ed-1", age_rule: null, season_label: "2026/27" },
+    rounds: [{ id: "rd-3", round_no: 3, date: D3, date_status: "confirmada" }, { id: "rd-4", round_no: 4, date: "2027-02-14", date_status: "confirmada" }],
+    participations: [{ round_id: "rd-3", decision: "vou", intent: null }, { round_id: "rd-4", decision: "vou", intent: null }],
+    races: s.roleInputs!.races,
+    runs: [],
+    profile: null,
+    seasonGoal: "participar",
+    todayISO: today,
+  });
+  assertEquals(roles.map((r) => r.intent), ["trote", "controlar"]);
+  for (const r of roles) assertEquals(effectiveIntentOf(s, today)(r.roundId), r.intent, r.roundId);
+
+  const changed: Over = { round3: { previousDate: "2027-01-17", dateChangedAt: "2027-01-10T09:00:00Z" }, part3: { entryDoneAt: "2027-01-05T10:00:00Z" } };
+  for (const principal of ["2027-01-10", "2027-01-22"]) {
+    // Sem manhã nem balanço de jornada, sem aviso de mudança de data.
+    assertEquals(keys(cupTickCandidates([morning(), silence], sug(principal), at(D3, "07:30"), D3)), ["silence:2027-01-10"], principal);
+    assertEquals(keys(cupTickCandidates([after(), silence], sug(principal), at("2027-01-25"), "2027-01-25")), ["silence:2027-01-10"], principal);
+    assertEquals(listCupNotices(sug(principal, changed), at("2027-01-11"), "2027-01-11"), [], principal);
+  }
+  // Pelas contas "controlar": tudo como com a gravada.
+  assertEquals(keys(cupTickCandidates([morning(), silence], sug(null), at(D3, "07:30"), D3)), ["race_morning:race-3", "silence:2027-01-10"]);
+  assertEquals(keys(listCupNotices(sug(null, changed), at("2027-01-11"), "2027-01-11")), [cupDateChangeKey("rd-3", D3)]);
+});
+
+Deno.test("intenção por saber: sem a gravada e sem o papel calculável, nem manhã de regime nem avisos dessa jornada", () => {
+  const changed: Over = { round3: { previousDate: "2027-01-17", dateChangedAt: "2027-01-10T09:00:00Z", resultsReadyAt: "2027-01-26T10:00:00Z" }, ranRaceIds: ["race-3"] };
+  // Sem as leituras do papel (fora do regime, ou falhadas) ou sem as corridas (o "feita").
+  for (const blind of [{ roleInputs: null }, { parts: { roles: false } }, { parts: { runs: false } }] as Over[]) {
+    const what = JSON.stringify(blind);
+    const s = state({ ...changed, ...blind, part3: { intent: null } });
+    assertEquals(effectiveIntentOf(s, D3)("rd-3"), null, what);
+    assertEquals(keys(cupTickCandidates([morning(), silence], s, at(D3, "07:30"), D3)), ["silence:2027-01-10"], what);
+    assertEquals(keys(cupTickCandidates([after(), silence], s, at("2027-01-26", "12:00"), "2027-01-26")), ["silence:2027-01-10"], what);
+    assertEquals(listCupNotices(s, at("2027-01-11"), "2027-01-11"), [], what); // a data
+    assertEquals(listCupNotices(s, at("2027-01-19", "01:00"), "2027-01-19"), [], what); // o prazo
+    assertEquals(listCupNotices(s, at("2027-01-26", "12:00"), "2027-01-26"), [], what); // a classificação
+    // Com a intenção gravada, tudo como sempre.
+    const chosen = state({ ...changed, ...blind, part3: { intent: "controlar" } });
+    assertEquals(keys(cupTickCandidates([morning()], chosen, at(D3, "07:30"), D3)), ["race_morning:race-3"], what);
+    assertEquals(keys(listCupNotices(chosen, at("2027-01-11"), "2027-01-11")), [cupDateChangeKey("rd-3", D3)], what);
+    assertEquals(keys(listCupNotices(chosen, at("2027-01-19", "01:00"), "2027-01-19")), [cupEntryDeadlineKey("rd-3")], what);
+  }
+});
+
+Deno.test("jornada passada: a intenção é a do dia dela — a classificação e o balanço de uma jornada a trote não saem", () => {
+  const today = "2027-01-26";
+  const now = at(today, "12:00");
+  const base: Over = { round3: { resultsReadyAt: "2027-01-26T10:00:00Z" }, ranRaceIds: ["race-3"], part3: { entryDoneAt: "2027-01-15T10:00:00Z" } };
+  // Depois do dia, a app já não sugere nada (o papel de uma passada é null);
+  // o que conta é o que lhe mostrava a 24 jan: "controlar" → a classificação
+  // sai, e o balanço leva a frase que a junta.
+  const ok = sug(null, base);
+  assertEquals(effectiveIntentOf(ok, today)("rd-3"), "controlar");
+  assertEquals(keys(listCupNotices(ok, now, today)), [cupResultsKey("rd-3")]);
+  assertEquals(keys(cupTickCandidates([after()], ok, now, today)), ["race_after:race-3:run-1", "cup_results:rd-3"]);
+  // Nesse dia era "trote" (a meia de 10 jan): nem a classificação nem o balanço de regime.
+  const trote = sug("2027-01-10", base);
+  assertEquals(effectiveIntentOf(trote, today)("rd-3"), "trote");
+  assertEquals(listCupNotices(trote, now, today), []);
+  assertEquals(keys(cupTickCandidates([after(), silence], trote, now, today)), ["silence:2027-01-10"]);
+  // Só até CUP_INTENT_PAST_DAYS: nada do tick olha para uma mais antiga.
+  assertEquals(effectiveIntentOf(ok, "2027-02-07")("rd-3"), "controlar");
+  assertEquals(effectiveIntentOf(ok, "2027-02-08")("rd-3"), null);
+});
+
+// ── 4c. O prazo em trote (decisão do dono, 2026-09-27) ───────────────────
+
+Deno.test("prazo em trote: sai também numa jornada a trote, gravada ou sugerida; em saltar ou sem intenção que se saiba, não", () => {
+  const today = "2027-01-19";
+  const now = at(today, "01:00");
+  assertEquals(keys(listCupNotices(state({ part3: { intent: "trote" } }), now, today)), [cupEntryDeadlineKey("rd-3")]);
+  assertEquals(keys(listCupNotices(sug("2027-01-10"), now, today)), [cupEntryDeadlineKey("rd-3")]);
+  assertEquals(effectiveIntentOf(sug("2027-01-10"), today)("rd-3"), "trote");
+  assertEquals(listCupNotices(state({ part3: { intent: "saltar" } }), now, today), []);
+  assertEquals(listCupNotices(sug("2027-01-22"), now, today), []);
+  assertEquals(listCupNotices(state({ part3: { intent: null }, roleInputs: null }), now, today), []);
+  // A frase é a de sempre.
+  assertEquals(listCupNotices(state({ part3: { intent: "trote" } }), now, today)[0].cup.body, "A inscrição na jornada 3 (Corrida CCD) fecha amanhã às 24h.");
+  // Só o prazo: a manhã, a data e a classificação de uma jornada a trote continuam caladas.
+  assertEquals(keys(cupTickCandidates([morning()], state({ part3: { intent: "trote" } }), at(D3, "07:30"), D3)), []);
+  const changed: Over = { round3: { previousDate: "2027-01-17", dateChangedAt: "2027-01-10T09:00:00Z" }, part3: { intent: "trote", entryDoneAt: "2027-01-05T10:00:00Z" } };
+  assertEquals(listCupNotices(state(changed), at("2027-01-11"), "2027-01-11"), []);
 });
 
 // ── 5. O teto por jornada ────────────────────────────────────────────────
@@ -466,6 +582,30 @@ Deno.test("calendário: saiu depois da inscrição e há ≤ 14 dias; não conta
   assertEquals(listCupNotices(state({ enrollment: on, edition: { calendarOutAt: "2026-11-02T18:00:00Z" }, parts: { calendar: false } }), at("2026-11-03"), "2026-11-03"), []);
   // Sem nome da competição, a frase não fica a meio.
   assertEquals(listCupNotices(state({ enrollment: on, edition: { calendarOutAt: "2026-11-02T18:00:00Z", competitionName: null, seasonLabel: null } }), at("2026-11-03"), "2026-11-03")[0].cup.body, "Saiu o calendário da tua competição.");
+});
+
+Deno.test("calendário: não sai se ele já decidiu jornadas depois de sair (o aviso atrasado); a janela de 14 dias fica", () => {
+  const on = { notifyCalendar: true, notifyDateChanges: false, notifyEntryDeadline: false, notifyResults: false };
+  const out = "2026-11-02T18:00:00Z";
+  const cal = (participations: CupNoticeState["participations"]) => state({ enrollment: on, edition: { calendarOutAt: out }, participations });
+  const p = (decision: string | null, decidedAt: string | null, roundId = "rd-3") => ({ roundId, decision, intent: null, entryDoneAt: null, decidedAt });
+  const day = "2026-11-10";
+  // O admin liga os avisos a 10 nov, 8 dias depois de sair; ele já tinha
+  // decidido jornadas na lista: já o viu, não é notícia.
+  assertEquals(listCupNotices(cal([p("vou", "2026-11-05T09:00:00Z")]), at(day), day), []);
+  assertEquals(listCupNotices(cal([p(null, null), p("nao_vou", "2026-11-03T09:00:00Z", "rd-4")]), at(day), day), []);
+  assertEquals(listCupNotices(cal([p("nao_sei", out)]), at(day), day), []);
+  // Sem decided_at, na dúvida calado.
+  assertEquals(listCupNotices(cal([p("vou", null)]), at(day), day), []);
+  // Sem decisão nenhuma (nem linhas, ou só a colisão que o servidor marcou,
+  // decision null): sai, ainda nos 14 dias.
+  assertEquals(keys(listCupNotices(cal([]), at(day), day)), [cupCalendarKey("ed-1")]);
+  assertEquals(keys(listCupNotices(cal([p(null, "2026-11-05T09:00:00Z")]), at(day), day)), [cupCalendarKey("ed-1")]);
+  // Uma decisão de ANTES de sair (numa jornada ainda provável) não é tê-lo
+  // visto — é a quem pediu "Avisa-me quando sair" que o aviso faz falta.
+  assertEquals(keys(listCupNotices(cal([p("vou", "2026-10-20T09:00:00Z")]), at(day), day)), [cupCalendarKey("ed-1")]);
+  // A janela dos 14 dias fica.
+  assertEquals(listCupNotices(cal([]), at("2026-11-17"), "2026-11-17"), []);
 });
 
 // ── 9. A classificação e a junção ao balanço ─────────────────────────────

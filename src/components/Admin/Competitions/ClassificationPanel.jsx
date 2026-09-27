@@ -521,7 +521,8 @@ export default function ClassificationPanel({ edition, readOnly = false, onEditi
         <p className={noteCls} id="cup-avisos-nota">
           Liga as notificações da competição (calendário, mudanças de data, prazo de inscrição, classificação) a quem as
           escolheu no Perfil. Com os avisos ligados, a véspera das jornadas deixa de ser notificada a esses atletas, nada
-          lhes chega das jornadas em trote ou a saltar, e cada jornada tem no máximo 3 notificações. Precisa da M3
+          lhes chega das jornadas a saltar e, das de trote, só o prazo de inscrição, e cada jornada tem no máximo 3
+          notificações. Precisa da M3
           aplicada e do tick novo em produção.
         </p>
         <label htmlFor={`cup-avisos-${edition.id}`} className="flex items-center gap-2 min-h-[44px] cursor-pointer">

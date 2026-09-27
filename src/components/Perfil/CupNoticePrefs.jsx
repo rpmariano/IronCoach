@@ -26,7 +26,7 @@ import { useToast } from '../shared/ToastProvider';
    Notificações da Carol, a janela e o máximo por dia valem por cima — é o que
    diz a nota quando estão desligadas. */
 
-const TEXTO = 'A Carol avisa-te por notificação do que muda nas tuas jornadas. Valem as Notificações da Carol, acima — a mesma janela e o mesmo máximo por dia — e nunca mais de 3 avisos por jornada, contando a manhã e o balanço da prova. Com um aviso de jornada ligado (mudanças de data, prazo ou classificação), a véspera de uma jornada fica no chat e no cartão do dia, sem notificação, e as jornadas em trote ou a saltar não têm notificações. Cada aviso grava-se ao tocar.';
+const TEXTO = 'A Carol avisa-te por notificação do que muda nas tuas jornadas. Valem as Notificações da Carol, acima — a mesma janela e o mesmo máximo por dia — e nunca mais de 3 avisos por jornada, contando a manhã e o balanço da prova. Com um aviso de jornada ligado (mudanças de data, prazo ou classificação), a véspera de uma jornada fica no chat e no cartão do dia, sem notificação; as jornadas a saltar não têm notificações e as de trote só têm a do prazo de inscrição. Cada aviso grava-se ao tocar.';
 
 export const CUP_NOTICE_SAVE_ERROR = 'Não consegui gravar o aviso. Tenta outra vez.';
 

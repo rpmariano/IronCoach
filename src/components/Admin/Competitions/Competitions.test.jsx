@@ -708,6 +708,8 @@ describe('CompetitionsTab — Classificação', () => {
       expect(toggle).not.toBeChecked();
       expect(toggle).toHaveAccessibleName('Enviar os avisos desta edição');
       expect(toggle).toHaveAccessibleDescription(/a véspera das jornadas deixa de ser notificada.*no máximo 3 notificações.*Precisa da M3 aplicada/);
+      // O prazo de inscrição sai também em trote (decisão do dono, 2026-09-27).
+      expect(toggle).toHaveAccessibleDescription(/nada lhes chega das jornadas a saltar e, das de trote, só o prazo de inscrição/);
 
       fireEvent.click(toggle);
       const dialog = await screen.findByTestId('cup-avisos-ligar-dialog');

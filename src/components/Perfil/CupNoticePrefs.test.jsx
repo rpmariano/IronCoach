@@ -97,6 +97,9 @@ describe('CupNoticePrefs — inscrito', () => {
     expect(bloco).toHaveAccessibleName('Avisos · Troféu de Cascais');
     expect(bloco).toHaveTextContent('nunca mais de 3 avisos por jornada, contando a manhã e o balanço da prova');
     expect(bloco).toHaveTextContent('a véspera de uma jornada fica no chat e no cartão do dia, sem notificação');
+    // O prazo de inscrição sai também em trote (decisão do dono, 2026-09-27); em saltar, nada.
+    expect(bloco).toHaveTextContent('as jornadas a saltar não têm notificações e as de trote só têm a do prazo de inscrição');
+    expect(bloco).not.toHaveTextContent('em trote ou a saltar');
     const switches = within(bloco).getAllByRole('switch');
     expect(switches.map((s) => s.getAttribute('aria-labelledby') && document.getElementById(s.getAttribute('aria-labelledby')).textContent))
       .toEqual(['Mudanças de data', 'Prazo de inscrição', 'Classificação']);

@@ -79,12 +79,16 @@ const U2 = "u-2";
 
 const EDITION = {
   id: "ed-1", status: "aberta", season_label: "2026/27", entry_mode: "por_jornada", time_zone: "Europe/Lisbon", notifications_enabled: true,
-  competition: { short_name: "Troféu de Cascais", round_label: "Jornada" },
+  age_rule: "data_prova", competition: { short_name: "Troféu de Cascais", round_label: "Jornada" },
 };
 const ENR = (o: any = {}) => ({
-  id: "enr-1", user_id: U1, edition_id: "ed-1", status: "ativa", joined_at: "2026-10-01T10:00:00Z", entry_by: "atleta",
+  id: "enr-1", user_id: U1, edition_id: "ed-1", status: "ativa", joined_at: "2026-10-01T10:00:00Z", entry_by: "atleta", season_goal: "participar",
   notify_calendar: true, notify_date_changes: true, notify_entry_deadline: true, notify_results: true, ...o,
 });
+/** A meia principal de U1 a 10 jan: a jornada 3 (24 jan) cai na recuperação — "trote" pelas contas. */
+const MEIA = { id: "meia", user_id: U1, date: "2027-01-10", distance_km: 21.1, race_type: null, race_priority: "a", status: "concluida", cup_round_id: null };
+/** As tabelas que só o papel sugerido lê (só no regime). */
+const ROLE_TABLES = ["cup_categories", "cup_round_courses", "cup_round_course_overrides", "profiles"];
 
 function fullTables(over: Record<string, TableResult> = {}): Record<string, TableResult> {
   return {
@@ -98,16 +102,16 @@ function fullTables(over: Record<string, TableResult> = {}): Record<string, Tabl
     },
     cup_participations: {
       data: [
-        { enrollment_id: "enr-1", round_id: "rd-3", decision: "vou", intent: "controlar", entry_done_at: null, decided_at: "2026-10-01T10:00:00Z" },
-        { enrollment_id: "enr-2", round_id: "rd-3", decision: "nao_vou", intent: null, entry_done_at: null, decided_at: "2026-10-01T10:00:00Z" },
+        { enrollment_id: "enr-1", round_id: "rd-3", decision: "vou", intent: "controlar", intent_source: "atleta", entry_done_at: null, decided_at: "2026-10-01T10:00:00Z" },
+        { enrollment_id: "enr-2", round_id: "rd-3", decision: "nao_vou", intent: null, intent_source: null, entry_done_at: null, decided_at: "2026-10-01T10:00:00Z" },
       ],
     },
     race_events: {
       data: [
-        { id: "race-3", user_id: U1, cup_round_id: "rd-3", race_priority: "b" },
+        { id: "race-3", user_id: U1, cup_round_id: "rd-3", race_priority: "b", date: "2027-01-24", distance_km: 7.4, race_type: null, status: "planeada" },
         // Uma prova ligada a uma jornada de outra edição: não entra.
-        { id: "race-z", user_id: U1, cup_round_id: "rd-outra", race_priority: "b" },
-        { id: "race-3b", user_id: U2, cup_round_id: "rd-3", race_priority: "b" },
+        { id: "race-z", user_id: U1, cup_round_id: "rd-outra", race_priority: "b", date: "2026-03-01", distance_km: 7, race_type: null, status: "concluida" },
+        { id: "race-3b", user_id: U2, cup_round_id: "rd-3", race_priority: "b", date: "2027-01-24", distance_km: 7.4, race_type: null, status: "planeada" },
       ],
     },
     coach_proactive_pushes: {
@@ -122,6 +126,10 @@ function fullTables(over: Record<string, TableResult> = {}): Record<string, Tabl
     cup_audit_log: { data: [{ at: "2026-11-02T18:00:00Z" }] },
     cup_round_publication: { data: [{ round_id: "rd-3", results_ready_at: "2027-01-26T10:00:00Z" }] },
     runs: { data: [{ user_id: U1, race_id: "race-3" }, { user_id: U2, race_id: "race-3b" }] },
+    cup_categories: { data: [{ id: "cat-1", edition_id: "ed-1", code: "SEN-M", gender: "M", min_age: 20, max_age: 34, course_code: "L" }] },
+    cup_round_courses: { data: [{ id: "co-1", round_id: "rd-3", code: "L", distance_m: 7400 }, { id: "co-2", round_id: "rd-outra", code: "L", distance_m: 5000 }] },
+    cup_round_course_overrides: { data: [{ round_id: "rd-4", category_code: "SEN-M", course_code: "C" }] },
+    profiles: { data: [{ id: U1, birth_date: "1990-05-01", gender: "M", experience_level: "iniciante" }, { id: U2, birth_date: null, gender: null, experience_level: null }] },
     ...over,
   };
 }
@@ -178,14 +186,29 @@ Deno.test("loadCupNoticeState: monta o estado de cada um, sem linhas de outros a
   });
   assertEquals(s.enrollment.notifyResults, true);
   assertEquals(s.rounds.map((r) => [r.id, r.resultsReadyAt, r.previousDate]), [["rd-3", "2027-01-26T10:00:00Z", "2027-01-17"], ["rd-4", null, null]]);
-  assertEquals(s.participations, [{ roundId: "rd-3", decision: "vou", intent: "controlar", entryDoneAt: null, decidedAt: "2026-10-01T10:00:00Z" }]);
+  assertEquals(s.participations, [
+    { roundId: "rd-3", decision: "vou", intent: "controlar", intentSource: "atleta", entryDoneAt: null, decidedAt: "2026-10-01T10:00:00Z" },
+  ]);
   assertEquals(s.races, [{ id: "race-3", roundId: "rd-3", priority: "b" }]);
   assertEquals(s.ranRaceIds, ["race-3"]);
   assertEquals(s.roundPushCounts, { "rd-3": 2 });
   // O último balanço que lhe chegou: a conversa das 20h, depois da notificação.
   assertEquals(s.raceAfterReachedAt, { "race-3": "2027-01-24T20:00:00Z" });
   assertEquals(s.seenKeys, ["cup_date_change:rd-3:2027-01-24"]);
-  assertEquals(s.parts, { pushes: true, log: true, seen: true, calendar: true, publication: true, runs: true });
+  assertEquals(s.parts, { pushes: true, log: true, seen: true, calendar: true, publication: true, runs: true, roles: true });
+  // No regime: o que o papel sugerido precisa — só as linhas dele e desta
+  // edição. As provas são todas as dele que mexem nos papéis (com jornada de
+  // qualquer edição, como no cliente e na Carol).
+  const { races: roleRaces, ...roleRest } = s.roleInputs!;
+  assertEquals(roleRest, {
+    ageRule: "data_prova",
+    seasonGoal: "participar",
+    categories: [{ id: "cat-1", edition_id: "ed-1", code: "SEN-M", gender: "M", min_age: 20, max_age: 34, course_code: "L" }],
+    courses: [{ id: "co-1", round_id: "rd-3", code: "L", distance_m: 7400 }],
+    overrides: [{ round_id: "rd-4", category_code: "SEN-M", course_code: "C" }],
+    profile: { birth_date: "1990-05-01", gender: "M", experience_level: "iniciante" },
+  });
+  assertEquals(roleRaces.map((r) => r.id), ["race-3", "race-z"]);
   const s2 = byUser.get(U2)!;
   assertEquals(s2.races, [{ id: "race-3b", roundId: "rd-3", priority: "b" }]);
   assertEquals(s2.participations.map((p) => p.decision), ["nao_vou"]);
@@ -210,6 +233,7 @@ Deno.test("loadCupNoticeState: uma leitura acessória que falha cala só o que d
   const cases: Array<[string, keyof import("../_shared/formulas/cupNotices.ts").CupNoticeState["parts"]]> = [
     ["coach_proactive_pushes", "pushes"], ["coach_proactive_log", "log"], ["coach_impressions", "seen"],
     ["cup_audit_log", "calendar"], ["cup_round_publication", "publication"], ["runs", "runs"],
+    ...ROLE_TABLES.map((t) => [t, "roles"] as [string, "roles"]),
   ];
   for (const [table, part] of cases) {
     const r = await quietly(() => loadCupNoticeState(fakeSb(fullTables({ [table]: { error: { code: "57014", message: "timeout" } } })), [U1, U2], NOW, TODAY));
@@ -230,17 +254,88 @@ Deno.test("loadCupNoticeState: uma leitura acessória que falha cala só o que d
 });
 
 Deno.test("loadCupNoticeState: só lê o que os avisos ligados pedem", async () => {
-  // Só o prazo ligado: sem balanços, vistas, auditoria, publicação nem corridas.
+  // Só o prazo ligado: sem balanços, vistas, auditoria nem publicação. É o
+  // regime (o prazo aplica-se a ele): lê o que o papel sugerido precisa e as
+  // corridas das provas de jornada (o "feita").
   const sb = fakeSb(fullTables({
     cup_enrollments: { data: [ENR({ notify_calendar: false, notify_date_changes: false, notify_results: false })] },
   }));
   const { byUser } = await loadCupNoticeState(sb, [U1], NOW, TODAY);
-  assertEquals(sb.calls.map((c) => c.table).sort(), ["coach_proactive_pushes", "cup_editions", "cup_enrollments", "cup_participations", "cup_rounds", "race_events"]);
-  assert(byUser.get(U1));
+  assertEquals(sb.calls.map((c) => c.table).sort(), [
+    "coach_proactive_pushes", "cup_categories", "cup_editions", "cup_enrollments", "cup_participations", "cup_round_course_overrides",
+    "cup_round_courses", "cup_rounds", "profiles", "race_events", "race_events", "runs",
+  ]);
+  assert(byUser.get(U1)?.roleInputs);
   // As notificações enviadas: só os tipos que contam para o teto e a junção, desde a inscrição.
   const pushes = sb.calls.find((c) => c.table === "coach_proactive_pushes")!;
   assert(pushes.filters.some((f) => f[0] === "in" && f[1] === "trigger" && (f[2] as string[]).includes("cup_results") && (f[2] as string[]).includes("race_after")));
   assert(pushes.filters.some((f) => f[0] === "gte" && f[1] === "sent_date" && f[2] === "2026-09-30"));
+});
+
+Deno.test("loadCupNoticeState: fora do regime (só o calendário, ou o prazo que é do clube) não lê nada do papel sugerido", async () => {
+  for (const enr of [
+    ENR({ notify_date_changes: false, notify_entry_deadline: false, notify_results: false }),
+    ENR({ notify_calendar: false, notify_date_changes: false, notify_results: false, entry_by: "clube" }),
+  ]) {
+    const sb = fakeSb(fullTables({ cup_enrollments: { data: [enr] } }));
+    const { byUser } = await loadCupNoticeState(sb, [U1], NOW, TODAY);
+    const tables = sb.calls.map((c) => c.table);
+    for (const t of [...ROLE_TABLES, "runs"]) assertEquals(tables.includes(t), false, `${enr.entry_by}: ${t}`);
+    // Uma só leitura de provas (as destas jornadas), como antes.
+    assertEquals(tables.filter((t) => t === "race_events").length, 1);
+    const s = byUser.get(U1)!;
+    assertEquals(s.roleInputs, null);
+    assertEquals(s.parts.roles, true);
+    assertEquals(s.ranRaceIds, []);
+  }
+});
+
+Deno.test("loadCupNoticeState: as provas do papel — as dele, com jornada ou desde o corte; o perfil só dos do regime", async () => {
+  const sb = fakeSb(fullTables());
+  await loadCupNoticeState(sb, [U1, U2], NOW, TODAY);
+  const [core, role] = sb.calls.filter((c) => c.table === "race_events");
+  assert(core.filters.some((f) => f[0] === "in" && f[1] === "cup_round_id"));
+  assertEquals(role.select, "id, user_id, date, distance_km, race_type, race_priority, status, cup_round_id");
+  // 60 dias do corte de cupRoundRoles, contados da jornada mais antiga que ainda conta (hoje − 14).
+  assert(role.filters.some((f) => f[0] === "or" && f[1] === "cup_round_id.not.is.null,date.gte.2026-11-13"), JSON.stringify(role.filters));
+  assert(role.filters.some((f) => f[0] === "in" && f[1] === "user_id" && JSON.stringify(f[2]) === JSON.stringify([U1, U2])));
+  const profiles = sb.calls.find((c) => c.table === "profiles")!;
+  assertEquals(profiles.select, "id, birth_date, gender, experience_level");
+  // U2 no regime só pelo prazo; um terceiro, só com o calendário, não entra.
+  const three = fakeSb(fullTables({
+    cup_enrollments: { data: [ENR(), ENR({ id: "enr-3", user_id: "u-3", notify_date_changes: false, notify_entry_deadline: false, notify_results: false })] },
+  }));
+  await loadCupNoticeState(three, [U1, "u-3"], NOW, TODAY);
+  for (const t of ["profiles", "runs"]) {
+    const c = three.calls.find((x) => x.table === t)!;
+    assert(c.filters.some((f) => f[0] === "in" && JSON.stringify(f[2]) === JSON.stringify([U1])), t);
+  }
+});
+
+Deno.test("loadCupNoticeState: a intenção sugerida sai destas linhas — uma jornada a trote pelas contas não tem classificação", async () => {
+  // Sem intenção gravada na jornada 3. Com a meia principal a 10 jan, nesse
+  // dia a jornada era "trote": a classificação não sai. Sem a meia,
+  // "controlar": sai.
+  const undecided = {
+    data: [{ enrollment_id: "enr-1", round_id: "rd-3", decision: "vou", intent: null, intent_source: null, entry_done_at: null, decided_at: "2026-10-01T10:00:00Z" }],
+  };
+  const races = fullTables().race_events.data as any[];
+  const withMeia = await loadCupNoticeState(fakeSb(fullTables({ cup_participations: undecided, race_events: { data: [...races, MEIA] } })), [U1], NOW, TODAY);
+  const trote = withMeia.byUser.get(U1)!;
+  assertEquals(trote.roleInputs!.races.map((r) => r.id), ["race-3", "race-z", "meia"]);
+  assertEquals(listCupNotices(trote, NOW, TODAY), []);
+  const plain = await loadCupNoticeState(fakeSb(fullTables({ cup_participations: undecided })), [U1], NOW, TODAY);
+  assertEquals(listCupNotices(plain.byUser.get(U1)!, NOW, TODAY).map((c) => c.key), ["cup_results:rd-3"]);
+  // Uma leitura do papel que falha: só a intenção gravada conta — sem ela, calado.
+  for (const t of ROLE_TABLES) {
+    const r = await quietly(() => loadCupNoticeState(fakeSb(fullTables({ cup_participations: undecided, [t]: { error: { code: "57014", message: "timeout" } } })), [U1], NOW, TODAY));
+    const s = r.value.byUser.get(U1)!;
+    assertEquals([s.parts.roles, s.roleInputs], [false, null], t);
+    assertEquals(listCupNotices(s, NOW, TODAY), [], t);
+    assertEquals(r.warns.length, 1, t);
+  }
+  const failedRoles = await quietly(() => loadCupNoticeState(fakeSb(fullTables({ profiles: { error: { message: "x" } } })), [U1], NOW, TODAY));
+  assertEquals(listCupNotices(failedRoles.value.byUser.get(U1)!, NOW, TODAY).map((c) => c.key), ["cup_results:rd-3"]);
 });
 
 Deno.test("loadCupNoticeState: as leituras que crescem vão por páginas, com ordem, até esgotar — o teto conta tudo", async () => {

@@ -528,8 +528,10 @@ bio e os chips do Perfil não mudam (a BD recusa `cup_*` em
 | `cup_results` | Correu, `results_ready_at` existe, antes de +14 d e da véspera da seguinte | "Saiu a classificação da {prova}. Vem ver comigo." → chat; sem posição, pontos nem clube |
 
 - **Máximo 3 por jornada**, contando os `race_*`. Sem push de véspera em
-  jornadas (fica no chat e no cartão). Nada em `trote`, `saltar`, "Não vou"
-  ou "Não fui".
+  jornadas (fica no chat e no cartão). Nada em `saltar`, "Não vou" ou "Não
+  fui"; em `trote` só o prazo de inscrição (quem vai a trote também tem de se
+  inscrever — decisão do dono, 2026-09-27). A intenção é a gravada ou, sem
+  ela, a sugerida (`cupRoundRoles`, a mesma da app e da Carol).
 - `cup_results` junta-se ao balanço (`race_after`) se ainda não foi entregue
   e `ready_at` ≤ hora do balanço; se a classificação sair depois, o aviso
   sai (é informação nova).
