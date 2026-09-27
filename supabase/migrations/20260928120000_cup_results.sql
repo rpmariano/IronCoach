@@ -13,6 +13,10 @@
 --      põe `fim_ano_epoca` na 34.ª, e um cup.ts antigo lia-a como "no dia da
 --      prova" (M35 em vez de M40 numa jornada de dezembro). Sem jornadas nem
 --      inscritos na 34.ª a janela não tem efeito, mas a ordem mantém-se.
+--      Com inscrições ATIVAS na 34.ª e age_rule ainda null, a M2 falha
+--      inteira (nada aplicado) com a frase da guarda da regra de idade (§1):
+--      o escalão das provas "Vou" já criadas ficava errado — decidir antes.
+--      Em 2026-09-27 (SELECT): 34.ª "2026/27", age_rule null, 0 inscrições.
 --   2. Corre inteira numa transação (begin/commit abaixo) com lock_timeout de
 --      5 s. Só toca em tabelas cup_* (nada em race_events nem em profiles).
 --      Com o limite, um pedido longo a segurar uma cup_* faz a migração
@@ -33,7 +37,8 @@
 --      ano da época (2026/27 → idade a 31/12/2027). Nenhuma regra da M1
 --      acerta numa jornada de dezembro. Sem coluna nova: o ano sai do
 --      season_label (cup_season_ref_year, gémea de seasonRefYear em
---      @formulas/cup.ts), e o CHECK garante que o rótulo se lê.
+--      @formulas/cup.ts), e o CHECK garante que o rótulo se lê (2.º ano =
+--      1.º + 1). Com inscrições ativas, a regra e a época não mudam (guarda).
 --      cup_resolve_course refeita com a regra (o resto do corpo é o da M1).
 --   2. O dorsal como chave: cup_norm_bib/cup_bib_key (gémeas de
 --      normBib/bibKeyInput+sha256Hex em @formulas/cupResults.ts), colunas
@@ -44,7 +49,9 @@
 --   3. cup_standings (a linha DELE na classificação geral; own rows) e
 --      cup_sync_state (o estado do job por página; só o admin lê; só
 --      agregados — nunca nomes, dorsais ou clubes). cup_team_aliases passa
---      a ser lida só pelo admin (a M1 dava-a a quem tem sessão).
+--      a ser lida só pelo admin (a M1 dava-a a quem tem sessão), e
+--      cup_team_results só pelo admin e por quem tem inscrição ativa nesse
+--      clube (lida por todos, dizia que clubes têm atletas da app).
 --   4. RPCs do atleta: confirm_cup_result ("Sim, sou eu") e
 --      reject_cup_result ("Não sou eu").
 --   5. close_edition com a guarda do dono (não fecha sem jornadas nem antes

@@ -675,6 +675,8 @@ describe('RaceListCard — com inscrição: o bloco fixo do Troféu (§4.3)', ()
     useAppStore.setState({ session: { user: { id: USER } }, profile: CUP_PROFILE, raceEvents: [J3, MEIA], runs: [], cup: CUP_EMPTY });
     render(<RaceListCard />);
     expect(screen.getByTestId('cup-list-sem-proxima')).toHaveTextContent('A ler o calendário…');
+    // Um estado: o leitor de ecrã ouve-o (revisão da Fase 3, aviso [e]).
+    expect(screen.getByRole('status')).toBe(screen.getByTestId('cup-list-sem-proxima'));
     expect(screen.queryByTestId('race-list-race-j3')).not.toBeInTheDocument();
 
     await waitFor(() => expect(useAppStore.getState().cup.status).toBe('ready'));
@@ -687,6 +689,7 @@ describe('RaceListCard — com inscrição: o bloco fixo do Troféu (§4.3)', ()
     montarInscrito({ cup: enrolledCup({ catalog: { [EDITION.id]: { status: 'erro', rounds: [], courses: [], overrides: [], categories: [], teams: [] } } }) });
     expect(screen.getByTestId('race-list-race-j3')).toBeInTheDocument();
     expect(screen.getByTestId('cup-list-sem-proxima')).toHaveTextContent('Não consegui ler o calendário.');
+    expect(screen.getByTestId('cup-list-sem-proxima')).toHaveAttribute('role', 'status');
   });
 
   it('nunca mostra o dorsal', () => {

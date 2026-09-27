@@ -66,4 +66,18 @@ describe('CupNextLine — a mudança de data chega ao leitor de ecrã', () => {
     render(<CupNextCard view={v} round={r3} onOpen={() => {}} />);
     expect(screen.getByTestId('race-card-cup-body').hasAttribute('aria-describedby')).toBe(false);
   });
+
+  // Revisão da Fase 3, aviso [e]: "a ler o calendário…" é um estado — o
+  // leitor de ecrã ouve-o (role="status"), sem ser botão.
+  it('a ler o calendário: role="status", não é botão', () => {
+    const { unmount } = render(<CupNextLine view={null} loading onOpen={() => {}} />);
+    const linha = screen.getByRole('status');
+    expect(linha).toBe(screen.getByTestId('race-card-cup-line'));
+    expect(linha).toHaveTextContent('Troféu · a ler o calendário…');
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    unmount();
+    const v = { ...view(), catalogReady: false };
+    render(<CupNextLine view={v} loading onOpen={() => {}} />);
+    expect(screen.getByRole('status')).toHaveTextContent('a ler o calendário…');
+  });
 });

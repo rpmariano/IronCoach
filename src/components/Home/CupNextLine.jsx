@@ -56,10 +56,13 @@ export default function CupNextLine({ view, round = null, loading = false, onOpe
   const shortName = view?.shortName || 'Troféu';
   const ready = !!view?.catalogReady;
 
-  // A ler: a linha diz-o, sem ser botão (ainda não há para onde ir).
+  // A ler: a linha diz-o, sem ser botão (ainda não há para onde ir). É um
+  // estado: role="status" (revisão da Fase 3, aviso [e]) — o leitor de
+  // ecrã ouve-o sem o foco lá ir.
   if (!view || (loading && !ready)) {
     return (
       <div
+        role="status"
         data-testid="race-card-cup-line"
         data-state="loading"
         className="w-full flex items-center mt-2.5 text-[12px] font-bold"

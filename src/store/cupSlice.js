@@ -281,7 +281,10 @@ export const createCupSlice = (set, get) => {
     const mineQuery = (m2) => (m2
       ? supabase.from('cup_results').select(CUP_RESULT_COLUMNS_M2).eq('enrollment_id', enrollmentId).in('match_status', CUP_VISIBLE_MATCH)
       : supabase.from('cup_results').select(CUP_RESULT_COLUMNS).eq('enrollment_id', enrollmentId).eq('match_status', 'confirmada'));
-    // Só um clube da lista tem coletiva (os de "não está na lista" não).
+    // Só um clube da lista tem coletiva (os de "não está na lista" não). Com
+    // a M2 o RLS só dá a coletiva ao admin e a quem tem inscrição ATIVA nessa
+    // edição com esse team_id — é esta leitura (o clube da inscrição ativa);
+    // o ensaio da M2 (T5) corre-a tal e qual.
     const teamQuery = (m2) => (teamId
       ? supabase.from('cup_team_results').select(m2 ? CUP_TEAM_RESULT_COLUMNS_M2 : CUP_TEAM_RESULT_COLUMNS).eq('team_id', teamId)
       : Promise.resolve({ data: [], error: null }));

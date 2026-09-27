@@ -22,6 +22,7 @@ vi.mock('../../lib/supabase', () => ({
 const { useAppStore } = await import('../../store');
 const { CUP_EMPTY } = await import('../../store/cupSlice');
 const { default: CupRaceBlock } = await import('./CupRaceBlock');
+const { default: CupRoundPlanControls } = await import('./CupRoundPlanControls');
 const F = await import('@formulas/cup.fixtures.ts');
 
 const USER = 'u1';
@@ -343,17 +344,60 @@ describe('CupRaceBlock — o bloco Troféu no hub', () => {
       expect(calls).toEqual([]);
     });
 
-    it('"Saltar": confirmado o salto, o navGuard recusa — o diálogo fecha, nada grava, o hub fica', async () => {
+    // Revisão da Fase 4 (aviso [c] da Fase 3): o "Saltar" pedia o navGuard
+    // só DEPOIS de confirmado o salto — perguntava "saltar?" e a seguir
+    // "sair sem gravar?". Agora, como "Não vou"/"Não fui", pergunta antes.
+    it('"Saltar": pede o navGuard ANTES da confirmação — recusado, nada abre, nada grava, o hub fica', () => {
       hoje('2027-01-19');
       render(<CupRaceBlock race={X3} />);
       fireEvent.click(screen.getByTestId('cup-mudar-papel'));
       fireEvent.click(screen.getByLabelText(/^Saltar/));
+      expect(guard).not.toHaveBeenCalled(); // escolher não pede nada
       fireEvent.click(screen.getByTestId('cup-papel-guardar'));
-      fireEvent.click(screen.getByTestId('cup-saltar-confirmar'));
-      await waitFor(() => expect(screen.queryByTestId('cup-saltar-dialog')).not.toBeInTheDocument());
-      expect(guard).toHaveBeenCalled();
+      expect(guard).toHaveBeenCalledWith('calendario');
+      expect(screen.queryByTestId('cup-saltar-dialog')).not.toBeInTheDocument();
       expect(actions.setCupRoundIntent).not.toHaveBeenCalled();
       expect(actions.setEditingRaceId).not.toHaveBeenCalled();
+      expect(calls).toEqual([]);
+    });
+
+    it('"Saltar" com o navGuard a aceitar: abre a confirmação e, confirmado, fecha o hub e só depois grava (sem voltar a perguntar)', async () => {
+      hoje('2027-01-19');
+      guard.mockReturnValue(true);
+      render(<CupRaceBlock race={X3} />);
+      fireEvent.click(screen.getByTestId('cup-mudar-papel'));
+      fireEvent.click(screen.getByLabelText(/^Saltar/));
+      fireEvent.click(screen.getByTestId('cup-papel-guardar'));
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('cup-saltar-dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('cup-saltar-confirmar'));
+      await waitFor(() => expect(actions.setCupRoundIntent).toHaveBeenCalled());
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(calls).toEqual([
+        ['setEditingRaceId', null],
+        ['setCupRoundIntent', 'r-c3', 'saltar'],
+      ]);
+    });
+
+    it('"Aceitar: saltar" (o papel proposto é saltar): também pergunta ANTES de abrir a confirmação', () => {
+      const canLeave = vi.fn(() => false);
+      const onLeave = vi.fn();
+      const view = { enrollment: ENR, roundLabel: 'Jornada', edition: { entry_mode: 'epoca' }, today: '2027-01-19', rounds: [] };
+      const round = { id: 'r-c3', round_no: 3, date: '2027-01-24', date_status: 'confirmada', role: { intent: 'saltar' }, participation: { decision: 'vou' } };
+      render(<CupRoundPlanControls view={view} round={round} canLeave={canLeave} onLeave={onLeave} />);
+      fireEvent.click(screen.getByTestId('cup-aceitar-papel'));
+      expect(canLeave).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('cup-saltar-dialog')).not.toBeInTheDocument();
+      expect(onLeave).not.toHaveBeenCalled();
+      expect(actions.setCupRoundIntent).not.toHaveBeenCalled();
+      // Pode sair: abre; confirmado, sai (onLeave) e grava.
+      canLeave.mockReturnValue(true);
+      fireEvent.click(screen.getByTestId('cup-aceitar-papel'));
+      expect(screen.getByTestId('cup-saltar-dialog')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('cup-saltar-confirmar'));
+      expect(onLeave).toHaveBeenCalledTimes(1);
+      expect(actions.setCupRoundIntent).toHaveBeenCalledWith('r-c3', 'saltar');
+      expect(canLeave).toHaveBeenCalledTimes(2);
     });
 
     it('sem nada por gravar (navGuard que aceita): segue como antes', async () => {

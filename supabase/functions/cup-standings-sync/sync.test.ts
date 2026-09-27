@@ -205,6 +205,17 @@ Deno.test("publicar: a linha dela só depois de pronta (proposta); coletiva só 
   await cron(db, site, clock.plusHours(1));
   assertEquals(athleteWritesSince(db, n), []);
   assert(db.writes.length > n); // só o estado do job
+
+  // E a geral relida (≥ 6 h depois da última, a mesma página, ainda D+1):
+  // liga outra vez a mesma linha — zero escritas em cup_standings, nos pontos
+  // oficiais (cup_results) e na coletiva.
+  const geralAntes = site.calls.filter((c) => c.url === GERAL_URL).length;
+  const m = db.writes.length;
+  const r = await cron(db, site, clock.plusHours(6));
+  assertEquals(site.calls.filter((c) => c.url === GERAL_URL).length, geralAntes + 1);
+  assertEquals([r.edicoes[0].geral?.estado, r.edicoes[0].geral?.pronta, r.edicoes[0].geral?.ligacao?.ligadas], ["ok", true, "1–19"]);
+  assertEquals(db.writes.slice(m).filter((w) => ["cup_standings", "cup_results", "cup_team_results"].includes(w.table)), []);
+  assertEquals(athleteWritesSince(db, m), []);
 });
 
 Deno.test("publicar com bib_scope ≠ 'epoca': a correspondência não corre (alerta bib_scope uma vez) e fica como observar", async () => {

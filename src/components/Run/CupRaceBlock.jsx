@@ -148,7 +148,8 @@ export default function CupRaceBlock({ race }) {
           <CupRoundPlanControls
             view={view}
             round={round}
-            onBeforeLeave={() => { if (!podeSair()) return false; fecharHub(); return true; }}
+            canLeave={podeSair}
+            onLeave={fecharHub}
           />
           <Button
             variant="ghost"
