@@ -7,7 +7,11 @@
 
    "Por realizar" é o estado da prova, não a data: tudo o que ainda não está
    concluído (status 'agendada'), incluindo uma prova que já passou e ficou
-   por registar — é o que o atleta ainda tem de fechar. */
+   por registar — é o que o atleta ainda tem de fechar.
+
+   Na "Prova" há só os dois estados, sem "Todas" (pedido 2026-09-27), e a
+   agenda deixa de mostrar o dia escolhido: lista todas as provas desse
+   estado, 5 de cada vez (listRacesByStatus, pageOf). */
 
 export const CALENDAR_ALL = 'todos';
 
@@ -21,26 +25,31 @@ export const CALENDAR_RECORD_TYPES = [
   { key: 'corpo', label: 'Corpo', tone: 'body', color: 'var(--mod-corpo)' },
 ];
 
+// Só fora da "Prova": o estado não se aplica e todas as provas passam.
 export const RACE_STATUS_ALL = 'todas';
 
 export const RACE_STATUS_FILTERS = [
-  { key: RACE_STATUS_ALL, label: 'Todas' },
   { key: 'por_realizar', label: 'Por realizar' },
   { key: 'concluida', label: 'Concluídas' },
 ];
+
+// Escolher "Prova" abre nas por realizar — é o que está pela frente.
+export const RACE_STATUS_DEFAULT = 'por_realizar';
+
+export const RACE_LIST_PAGE_SIZE = 5;
 
 export const CALENDAR_FILTER_ALL = Object.freeze({ type: CALENDAR_ALL, raceStatus: RACE_STATUS_ALL });
 
 const TYPE_KEYS = new Set(CALENDAR_RECORD_TYPES.map((t) => t.key));
 const STATUS_KEYS = new Set(RACE_STATUS_FILTERS.map((s) => s.key));
 
-/* O estado das provas só vale com o tipo "Prova": fora dele fica em
-   "Todas", para nunca esconder provas às escondidas numa vista "Tudo". */
+/* O estado das provas só vale com o tipo "Prova" — e aí é sempre um dos
+   dois; fora dele fica em "todas", para nunca esconder provas às
+   escondidas numa vista "Tudo". */
 export function normalizeCalendarFilter(filter) {
   const type = TYPE_KEYS.has(filter?.type) ? filter.type : CALENDAR_ALL;
-  const raceStatus = type === 'prova' && STATUS_KEYS.has(filter?.raceStatus)
-    ? filter.raceStatus
-    : RACE_STATUS_ALL;
+  if (type !== 'prova') return { type, raceStatus: RACE_STATUS_ALL };
+  const raceStatus = STATUS_KEYS.has(filter?.raceStatus) ? filter.raceStatus : RACE_STATUS_DEFAULT;
   return { type, raceStatus };
 }
 
@@ -69,6 +78,31 @@ export function filterCalendarRecords(
   };
 }
 
+function dayOf(race) {
+  const d = typeof race?.date === 'string' ? race.date.slice(0, 10) : '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+}
+
+/* Todas as provas de um estado, pela ordem em que interessam: as por
+   realizar da mais próxima para a mais distante (uma que já passou e ficou
+   por registar vem primeiro, é a mais atrasada), as concluídas da mais
+   recente para a mais antiga. Sem data válida não entram — não há onde as
+   pôr na lista nem na grelha. */
+export function listRacesByStatus(raceEvents = [], raceStatus = RACE_STATUS_DEFAULT) {
+  const asc = raceStatus !== 'concluida';
+  return (raceEvents || [])
+    .filter((race) => dayOf(race) && raceMatchesStatus(race, raceStatus))
+    .sort((a, b) => (asc ? dayOf(a).localeCompare(dayOf(b)) : dayOf(b).localeCompare(dayOf(a))));
+}
+
+/** Uma página da lista: `page` começa em 0 e fica sempre dentro dos
+ *  limites (uma prova apagada na última página não a deixa vazia). */
+export function pageOf(items = [], page = 0, size = RACE_LIST_PAGE_SIZE) {
+  const pages = Math.max(1, Math.ceil((items || []).length / size));
+  const current = Math.min(Math.max(0, Number.isInteger(page) ? page : 0), pages - 1);
+  return { items: (items || []).slice(current * size, current * size + size), page: current, pages, total: (items || []).length };
+}
+
 const ACTIVE_LABELS = {
   corrida: 'Corridas',
   ginasio: 'Ginásio',
@@ -77,7 +111,6 @@ const ACTIVE_LABELS = {
 };
 
 const RACE_LABELS = {
-  [RACE_STATUS_ALL]: 'Provas',
   por_realizar: 'Provas por realizar',
   concluida: 'Provas concluídas',
 };
@@ -98,13 +131,13 @@ const EMPTY_BY_TYPE = {
 };
 
 const EMPTY_RACES = {
-  [RACE_STATUS_ALL]: 'Sem provas neste dia',
-  por_realizar: 'Sem provas por realizar neste dia',
-  concluida: 'Sem provas concluídas neste dia',
+  por_realizar: 'Sem provas por realizar',
+  concluida: 'Ainda sem provas concluídas',
 };
 
-/** O dia vazio diz o que falta à luz do filtro — "Sem registos" com um
- *  filtro ligado fazia crer que o dia estava mesmo vazio. */
+/** O vazio diz o que falta à luz do filtro — "Sem registos" com um filtro
+ *  ligado fazia crer que o dia estava mesmo vazio. Na "Prova" a lista é de
+ *  todas as provas desse estado, não de um dia. */
 export function emptyDayMessage(filter) {
   const { type, raceStatus } = normalizeCalendarFilter(filter);
   if (type === CALENDAR_ALL) return 'Sem registos neste dia';
