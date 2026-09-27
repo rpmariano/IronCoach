@@ -29,6 +29,10 @@ Deno.test("geminiWithFallback: 404 (modelo descontinuado) repete no alias sem th
 
 Deno.test("geminiWithFallback: 400 por causa do thinking repete; outro 400 não", async () => {
   const bad = recorder([new Response('{"error":{"message":"Unknown name \\"thinkingLevel\\""}}', { status: 400 }), new Response("{}")]);
+  const budget = recorder([new Response('{"error":{"message":"thinking_budget is not supported"}}', { status: 400 }), new Response("{}")]);
+  assertEquals((await geminiWithFallback(budget.send)).status, 200);
+  const vague = recorder([new Response('{"error":{"message":"stop thinking about it"}}', { status: 400 })]);
+  assertEquals((await geminiWithFallback(vague.send)).status, 400);
   assertEquals((await geminiWithFallback(bad.send)).status, 200);
   assertEquals(bad.calls.length, 2);
 

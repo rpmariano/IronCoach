@@ -24,6 +24,8 @@ describe('rowCostUsd', () => {
     expect(pricingFor('gemini-3.8-flash', '2026-09-27')).toMatchObject({ input: 0.75, output: 3.75, cached: 0.075, confirmed: true });
     expect(pricingFor(null, '2026-09-27')).toMatchObject({ input: 0.75, confirmed: false });
     expect(pricingFor('gemini-30-flash', '2026-09-27').confirmed).toBe(false);
+    // Variante lite desconhecida não herda o preço confirmado do Flash.
+    expect(pricingFor('gemini-3.8-flash-lite', '2026-09-27').confirmed).toBe(false);
   });
 
   it('a linha Flash 3.x duplica a 01-01-2027, por data da chamada', () => {

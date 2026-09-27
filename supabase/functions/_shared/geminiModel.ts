@@ -18,7 +18,9 @@
    modelo fixo der 404, ou 400 a queixar-se do thinking, repete-se uma vez no
    alias e sem thinkingConfig (geminiWithFallback). O registo continua a
    funcionar; fica um console.warn "[gemini] fallback" para se ver nos logs
-   que é altura de atualizar GEMINI_MODEL, e o ai_usage.model mostra-o. */
+   que é altura de atualizar GEMINI_MODEL. Num 404 o ai_usage.model passa a
+   mostrar o modelo do alias; num 400 de thinking o modelo é provavelmente o
+   mesmo, e só o aviso nos logs diz que o raciocínio deixou de estar limitado. */
 
 /** O modelo que o alias apontava a 2026-09-27 (ai_usage.model). */
 export const GEMINI_MODEL = "gemini-3.8-flash";
@@ -46,7 +48,9 @@ export async function needsFallback(res: Response): Promise<boolean> {
   if (res.status !== 400) return false;
   try {
     const text = await res.clone().text();
-    return /thinking/i.test(text);
+    // Só os nomes dos campos de raciocínio — um 400 que fale de "thinking"
+    // por outro motivo não deve mudar de modelo.
+    return /thinking[_ ]?(config|level|budget)/i.test(text);
   } catch {
     return false;
   }

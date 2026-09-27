@@ -55,7 +55,10 @@ export function pricingFor(model, isoDate = new Date().toISOString()) {
   const m = String(model || '').toLowerCase().replace(/^models\//, '');
   const day = String(isoDate || '').slice(0, 10);
   const applies = (p) => !p.from || day >= p.from;
-  const hit = m && MODEL_PRICING.find(p => (m === p.match || m.startsWith(`${p.match}-`)) && applies(p));
+  // Um "-lite" só casa com uma entrada que também seja lite: um futuro
+  // gemini-3.8-flash-lite não pode herdar o preço (nem o "confirmado") do Flash.
+  const sameFamily = (p) => m === p.match || (m.startsWith(`${p.match}-`) && (p.match.includes('-lite') || !m.includes('-lite')));
+  const hit = m && MODEL_PRICING.find(p => sameFamily(p) && applies(p));
   if (hit) return hit;
   return applies(DEFAULT_PRICING_2027) ? DEFAULT_PRICING_2027 : DEFAULT_PRICING_2026;
 }
