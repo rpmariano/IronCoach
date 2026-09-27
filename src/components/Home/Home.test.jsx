@@ -241,6 +241,9 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     const aviso = screen.getByTestId('carol-alert-conflito-provas');
     expect(aviso).toHaveTextContent(/Trail do Sico \(.+\), Meia da Amadora \(.+\) estão como principais a meio do plano para Meia de Lisboa \(.+\)\./);
     expect(aviso).not.toHaveTextContent(/marcad[oa]s?/);
+    // Não se dispensa: a decisão é do atleta, mas tem de ser tomada.
+    expect(screen.queryByTestId('carol-alert-dismiss-conflito-provas')).not.toBeInTheDocument();
+    expect(aviso).not.toHaveTextContent(/Dispensar|Agora não/);
   });
 
   it('uma só prova principal em conflito, sem a prova-alvo na agenda: singular e "plano atual"', () => {

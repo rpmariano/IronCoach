@@ -121,7 +121,9 @@ describe('CoachInsightModal', () => {
 
   it('"Agora não" diz a quem usa leitor de ecrã que volta amanhã', () => {
     render(<CoachInsightModal insights={[acwr]} onClose={mockOnClose} />);
-    expect(screen.getByTestId('insight-snooze-insight-1')).toHaveAccessibleName('Agora não — volta amanhã, se ainda se aplicar');
+    const agoraNao = screen.getByTestId('insight-snooze-insight-1');
+    expect(agoraNao.textContent).toBe('Agora não');
+    expect(agoraNao).toHaveAccessibleName('Agora não — volta amanhã, se ainda se aplicar');
   });
 
   /* Um só código de cores e símbolos (pedido 2026-09-27, noticeTones.js):
@@ -156,12 +158,13 @@ describe('CoachInsightModal', () => {
 
     /* Pedido 2026-09-27: nos avisos dela a dispensa é de vez, por isso o
        botão diz "Dispensar" — o "Agora não" (até amanhã) é só dos insights. */
-    it('"Dispensar" só aparece quando o aviso se pode dispensar', () => {
+    it('"Dispensar" nos avisos que se podem dispensar, com o nome certo', () => {
       const onDismiss = vi.fn();
       render(<CoachInsightModal alerts={[alerta({ id: 'assuntos', onDismiss })]} onClose={mockOnClose} />);
       const dispensar = screen.getByTestId('carol-alert-dismiss-assuntos');
-      expect(dispensar).toHaveTextContent('Dispensar');
+      expect(dispensar.textContent).toBe('Dispensar');
       expect(dispensar).toHaveAccessibleName('Dispensar este aviso');
+      expect(screen.getByTestId('carol-alert-assuntos')).not.toHaveTextContent('Agora não');
       expect(screen.queryByRole('button', { name: /Agora não/ })).not.toBeInTheDocument();
       fireEvent.click(dispensar);
       expect(onDismiss).toHaveBeenCalledTimes(1);
@@ -170,8 +173,8 @@ describe('CoachInsightModal', () => {
 
     it('com avisos e insights: "Dispensar" no aviso, "Agora não" no insight', () => {
       render(<CoachInsightModal alerts={[alerta({ id: 'balanco', severity: 'info', onDismiss: vi.fn() })]} insights={[acwr]} onClose={mockOnClose} />);
-      expect(screen.getByTestId('carol-alert-dismiss-balanco')).toHaveTextContent('Dispensar');
-      expect(screen.getByTestId('insight-snooze-insight-1')).toHaveTextContent('Agora não');
+      expect(screen.getByTestId('carol-alert-dismiss-balanco').textContent).toBe('Dispensar');
+      expect(screen.getByTestId('insight-snooze-insight-1').textContent).toBe('Agora não');
     });
 
     it('com avisos e insights, cada cartão tem o seu "Falar com a Carol"', () => {
