@@ -72,7 +72,7 @@ export async function geminiWithFallback(
   // O motivo do Google vai no aviso: sem ele não se sabia porquê (o 400 de
   // "minimal" em 27-09-2026 só se diagnosticou por exclusão).
   let reason = "";
-  try { reason = (await res.clone().text()).slice(0, 300).replace(/\s+/g, " "); } catch (_) { /* sem corpo */ }
+  try { reason = (await res.clone().text()).replace(/\s+/g, " ").slice(0, 300); } catch (_) { /* sem corpo */ }
   console.warn(`[gemini] fallback: ${GEMINI_MODEL} respondeu ${res.status}; a repetir em ${GEMINI_FALLBACK_MODEL} sem thinkingConfig — atualizar GEMINI_MODEL/nível em _shared/geminiModel.ts. Motivo: ${reason}`);
   try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
   return await send(GEMINI_FALLBACK_MODEL, false);
