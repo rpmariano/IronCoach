@@ -4212,7 +4212,7 @@ Deno.test("buildTalkedInterventionInstruction: dá o motivo e pede só o desfech
   assertStringIncludes(txt, "Dor 6/10 (braço direito)");
   assertStringIncludes(txt, "resolve_intervention");
   assertStringIncludes(txt, "Se não chegar a nenhum, não chames a ferramenta.");
-  assertEquals(/confront(a|o)\b|NÃO aceites/i.test(txt.replace("sem voltar a confrontar", "")), false);
+  assertEquals(/confront|NÃO aceites/i.test(txt), false);
 });
 
 Deno.test("handler: o aviso já falado entra como bloco próprio, não como intervenção aberta (ligações no código)", async () => {

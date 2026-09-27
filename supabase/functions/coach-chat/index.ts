@@ -3693,7 +3693,8 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
    fecho sem desfecho, que é o da conversa. Registado o desfecho, sai: não
    se volta a um aviso anterior do mesmo dia. A janela é curta de propósito
    (revisão de d45453d2): é a conversa sobre o aviso, não o resto do dia.
-   A de objetivos não fecha assim. null sem ela. */
+   A de objetivos não fecha assim. null sem ela. A RPC
+   record_intervention_outcome usa a mesma janela, escrita no SQL. */
 export const TALKED_INTERVENTION_HOURS = 2;
 
 export async function readTalkedIntervention(sb: any, userId: string, nowMs = Date.now()): Promise<string | null> {
@@ -3719,7 +3720,7 @@ export function buildTalkedInterventionInstruction(reason: string): string {
   return `\n\n=== AVISO JÁ FALADO NESTA CONVERSA ===\n` +
     `Abriste esta conversa a partir do teu aviso "Preciso de falar contigo", e ele já fechou na app. ` +
     `O motivo era: "${reason.replace(GOALS_INTERVENTION_TAG, "").trim()}".\n` +
-    `Segue a conversa naturalmente, sem voltar a confrontar nem insistir. Se a conversa chegar a um destes ` +
+    `Segue a conversa naturalmente, sem repetir o aviso; se o assunto voltar, continua direta. Se a conversa chegar a um destes ` +
     `desfechos, regista-o com resolve_intervention: o plano ajustado e aceite ('plano_ajustado'), o atleta a ` +
     `dizer explicitamente que prefere manter tudo como está ('atleta_ignorou'), ou o aviso a revelar-se um erro de ` +
     `registo ('falso_positivo'). Se não chegar a nenhum, não chames a ferramenta.\n`;

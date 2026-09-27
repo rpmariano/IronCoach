@@ -408,7 +408,7 @@ Sem relógio, O6 e P7 não passam de 4. O 10 não é o alvo.
 
 *Atualização 2026-09-27 — o aviso fecha com a conversa.* Até aqui só a Carol fechava o aviso, e só com um dos três desfechos; uma dor no check-in com o plano já em repouso não cabia em nenhum, e o aviso voltava ao Início depois de o atleta ter falado com ela. Agora:
 - **Fecho.** O aviso fecha quando a mensagem de abertura dela fica gravada (`closeInterventionOnTalk`, no `coach-chat`), só se o motivo ainda for o mesmo, e sem desfecho — o trigger grava `resolvido`. A de objetivos fica de fora: fecha-se pela decisão na proposta.
-- **Desfecho depois do fecho.** Com o perfil já fechado, o `resolve_intervention` grava o desfecho pela RPC `record_intervention_outcome` (security definer, só a linha do próprio fechada como `resolvido` nas últimas 12 h, só os três desfechos do chat). Os números da calibração continuam a contar.
+- **Desfecho depois do fecho.** Com o perfil já fechado, o `resolve_intervention` grava o desfecho pela RPC `record_intervention_outcome` (security definer, só a linha do próprio fechada como `resolvido` nas últimas 2 h — a mesma janela do contexto abaixo —, só os três desfechos do chat). Os números da calibração continuam a contar.
 - **Contexto nos turnos seguintes.** Durante 2 h, se o último aviso fechado foi o da conversa, as mensagens do atleta levam um bloco próprio (`buildTalkedInterventionInstruction`): o motivo e o pedido de desfecho, sem o modo de confronto da intervenção aberta.
 
 Feito assim (revisão pré-deploy de 2026-09-25): o cruzamento das recomendações com o que aconteceu vive em `_shared/formulas/recommendations.ts`, ao lado da validação, e não dentro de `evaluatePrescriptions` — as duas lêem-se juntas no bloco de adesão.
