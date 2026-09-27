@@ -18,14 +18,20 @@ describe('rowCostUsd', () => {
   it('preço por modelo real, do prefixo mais específico para o geral', () => {
     const row = (model) => ({ model, created_at: '2026-09-27', meta: { input_tokens: 1_000_000, output_tokens: 1_000_000, thoughts_tokens: 0 } });
     expect(rowCostUsd(row('gemini-3-flash'))).toBeCloseTo(0.5 + 3.0, 10);
+    expect(rowCostUsd(row('gemini-3.5-flash'))).toBeCloseTo(1.5 + 9.0, 10);
     expect(rowCostUsd(row('gemini-2.5-flash-lite-preview-06-17'))).toBeCloseTo(0.1 + 0.4, 10);
-    expect(rowCostUsd(row('gemini-2.5-flash'))).toBeCloseTo(0.3 + 2.5, 10);
-    expect(pricingFor('models/gemini-3.1-pro').input).toBe(2.0);
-    // 3.8 e sem modelo: estimativa não confirmada.
-    expect(pricingFor('gemini-3.8-flash')).toMatchObject({ input: 0.75, confirmed: false });
-    expect(pricingFor(null).confirmed).toBe(false);
-    expect(pricingFor('gemini-3-flash-x').confirmed).toBe(true);
-    expect(pricingFor('gemini-30-flash').confirmed).toBe(false);
+    expect(pricingFor('models/gemini-3.1-pro', '2026-09-27').input).toBe(2.0);
+    expect(pricingFor('gemini-3.8-flash', '2026-09-27')).toMatchObject({ input: 0.75, output: 3.75, cached: 0.075, confirmed: true });
+    expect(pricingFor(null, '2026-09-27')).toMatchObject({ input: 0.75, confirmed: false });
+    expect(pricingFor('gemini-30-flash', '2026-09-27').confirmed).toBe(false);
+  });
+
+  it('a linha Flash 3.x duplica a 01-01-2027, por data da chamada', () => {
+    const row = (created_at) => ({ model: 'gemini-3.8-flash', created_at, meta: { input_tokens: 1_000_000, output_tokens: 1_000_000, thoughts_tokens: 0 } });
+    expect(rowCostUsd(row('2026-12-31T23:00:00Z'))).toBeCloseTo(0.75 + 3.75, 10);
+    expect(rowCostUsd(row('2027-01-01T00:00:00Z'))).toBeCloseTo(1.5 + 7.5, 10);
+    expect(pricingFor('gemini-3.7-flash', '2027-02-01').cached).toBe(0.15);
+    expect(pricingFor(null, '2027-02-01')).toMatchObject({ input: 1.5, confirmed: false });
   });
 
   it('linha antiga sem thoughts_tokens é marcada como legado', () => {

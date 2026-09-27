@@ -401,7 +401,7 @@ export default function CostsTab({ users = [] }) {
             ))}
             <p className="text-xs font-semibold pt-2">Por modelo</p>
             {agg.perModel.map(m => {
-              const p = pricingFor(m.key === 'desconhecido' ? null : m.key);
+              const p = pricingFor(m.key === 'desconhecido' ? null : m.key);  // preço de hoje
               return (
                 <div key={m.key} className="text-[11px]">
                   <div className="flex items-center justify-between gap-2">
@@ -495,7 +495,7 @@ export default function CostsTab({ users = [] }) {
 
           <p className="text-[11px] text-[var(--text-3)] text-center px-2">
             Custo calculado com o preço do modelo real de cada chamada (ver "Por modelo"). Raciocínio cobrado como output; cache a ~10% do input.
-            Os preços estão em utils/aiCosts.js — os marcados "não confirmado" são estimativas.
+            A linha Flash 3.7/3.8 duplica a 01-01-2027 (já previsto, por data de cada chamada). Os preços estão em utils/aiCosts.js.
           </p>
         </>
       )}
