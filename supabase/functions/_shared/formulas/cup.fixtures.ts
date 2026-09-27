@@ -194,7 +194,7 @@ export const PERSONAS = {
 // O regulamento geral da 33.ª (2025/26) dá os escalões por ANO DE
 // NASCIMENTO, com referência ao 2.º ano da época; a 34.ª é o mesmo
 // deslocado um ano (2026/27 → idade a 31/12/2027). É o seed da M2
-// (20260928120000_cup_results.sql §7) — os 32 escalões, os mesmos códigos,
+// (20260927200000_cup_results.sql §7) — os 32 escalões, os mesmos códigos,
 // idades e percursos. CASCAIS_34 (acima) fica como estava: a regra antiga e
 // os testes dela não mudam.
 

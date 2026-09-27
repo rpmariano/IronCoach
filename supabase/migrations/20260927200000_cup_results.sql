@@ -2,10 +2,16 @@
 -- Competições por jornadas — M2: o job da classificação (specs/trofeu.md §7,
 -- §4.5–4.6, §6.4, §10 Fase 4)
 --
--- POR APLICAR — precisa de autorização explícita do dono, depois do ensaio
--- revertido (scratchpad/ensaio_m2.sql, montado por build_ensaio_m2.sh a
--- partir DESTE texto: tem de acabar em "ENSAIO OK … 0 falhas"). Nome
--- provisório: ao aplicar, renomeia-se para a `version` real (como a M1).
+-- APLICADA EM PRODUÇÃO a 2026-09-27 20:00 UTC (version 20260927200000), com
+-- autorização do dono, depois do ensaio revertido em produção ("ENSAIO OK
+-- (tudo revertido): 116 verificações, 0 falhas"). O 1.º ensaio em produção
+-- falhou (revertido, nada aplicado): no locale de produção (ICU en-US) o \d
+-- aceita dígitos não ASCII e «2026/٢٧» rebentava no ::int da guarda —
+-- corrigido para [0-9], e o ensaio local passou a correr em ICU en-US.
+-- Aplicou-se o texto sem comentários nem linhas em branco e sem begin/commit
+-- (o apply_migration já é uma transação): md5 dos statements guardados =
+-- md5 do texto ensaiado (b0e01930f7ca8ae179404eaa632b9b5b). Não voltar a
+-- correr: é o registo do que está em produção.
 --
 -- PROCEDIMENTO DE APLICAÇÃO. Não há staging:
 --   1. O código da Fase 4 (pacote 1: @formulas/cup.ts com a regra
@@ -84,6 +90,8 @@ set local statement_timeout = '60s';
 -- "2026/27" → 2027, "2026/2027" → 2027, "1999/00" → 2000, "2027" → 2027;
 -- outro formato, ou um fim que não é o início nem o ano seguinte → null.
 -- Os mesmos casos que seasonRefYear (SEASON_REF_YEAR_CASES, cup.fixtures.ts).
+-- [0-9] e não \d: em produção (ICU, en-US) o \d aceita dígitos não ASCII
+-- («2026/٢٧»), que o ::int recusa — e o \d do JS só lê ASCII.
 create or replace function public.cup_season_ref_year(p_label text)
 returns integer
 language sql
@@ -97,7 +105,7 @@ as $$
                     else (m[1]::int / 100) * 100 + m[2]::int
                          + case when m[2]::int < m[1]::int % 100 then 100 else 0 end end as y
           from (select regexp_match(coalesce(p_label, ''),
-                  '^\s*(\d{4})\s*(?:/\s*(\d{2}|\d{4}))?\s*$') as m) s
+                  '^\s*([0-9]{4})\s*(?:/\s*([0-9]{2}|[0-9]{4}))?\s*$') as m) s
          where m is not null) t
 $$;
 
@@ -259,14 +267,14 @@ end $$;
 -- ────────────────────────────────────────────────────────────────────────────
 
 -- Gémea de normBib (@formulas/cupResults.ts): sem espaços, maiúsculas, sem
--- zeros à esquerda antes de um dígito; vazio → null.
+-- zeros à esquerda antes de um dígito ASCII ([0-9], como o \d do JS); vazio → null.
 create or replace function public.cup_norm_bib(p text)
 returns text
 language sql
 immutable
 set search_path = pg_catalog, pg_temp
 as $$
-  select nullif(regexp_replace(upper(regexp_replace(coalesce(p, ''), '\s+', '', 'g')), '^0+(?=\d)', ''), '')
+  select nullif(regexp_replace(upper(regexp_replace(coalesce(p, ''), '\s+', '', 'g')), '^0+(?=[0-9])', ''), '')
 $$;
 
 -- sha256(edição:dorsal) — gémea de sha256Hex(bibKeyInput(edição, dorsal)).

@@ -12,7 +12,7 @@
 // ESPELHO DA BD. cupCategoryFor + courseFor repetem, no cliente, a escolha que
 // a sincronização faz no servidor (cup_resolve_course na migração
 // 20260926152856_cup_competitions.sql, refeita na M2
-// 20260928120000_cup_results.sql com a regra `fim_ano_epoca`): o que o ecrã
+// 20260927200000_cup_results.sql com a regra `fim_ano_epoca`): o que o ecrã
 // mostra como "o teu percurso" tem de ser a distância da prova que o servidor
 // cria. Se uma das duas mudar, muda a outra — os testes de cup.test.ts fixam
 // os mesmos casos que o ensaio da migração (AGE_PARITY_CASES em

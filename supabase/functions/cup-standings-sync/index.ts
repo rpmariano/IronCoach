@@ -8,7 +8,7 @@
 // dados de terceiros). O ensaio (admin) lê uma época inteira e devolve só
 // números.
 //
-// INERTE ATÉ SER LIGADO: sem a M2 (20260928120000_cup_results.sql) o cron e
+// INERTE ATÉ SER LIGADO: sem a M2 (20260927200000_cup_results.sql) o cron e
 // o "Ler agora" não fazem nada (nem pedidos ao site); a 34.ª nasce com
 // sync_mode 'desligado'; e o cron só se cria à mão depois da M2 (hora a hora
 // aos :37, copiando o comando do compute-percentile-snapshots — o
