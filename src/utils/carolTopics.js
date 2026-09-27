@@ -210,15 +210,6 @@ function linhaDoCheckin(motivo, reason, ctx) {
 }
 
 /**
- * Uma frase por assunto por resolver, pela ordem em que interessam.
- *
- * Para o assunto do check-in falar do dia certo (2026-09-26), o Início passa
- * também o que ela precisa de saber: `coachPlanItems` e `raceEvents` (o que
- * o dia de hoje é), `dailyCheckins` (o dia de um motivo antigo, e se o
- * check-in foi corrigido), `coachNotes` (a vida dele) e `now` (o relógio,
- * para os testes). Sem eles, as frases são as que servem qualquer dia.
- */
-/**
  * A frase da intervenção por resolver, ou null sem nenhuma. À parte de
  * pendingTopicLines porque é a única que "Dispensar" fecha: a confirmação
  * cita-a pelo nome, sem depender da ordem da lista (revisão pré-deploy
@@ -247,6 +238,15 @@ export function interventionTopicLine({
   return 'Há um registo teu que quero ver contigo.';
 }
 
+/**
+ * Uma frase por assunto por resolver, pela ordem em que interessam.
+ *
+ * Para o assunto do check-in falar do dia certo (2026-09-26), o Início passa
+ * também o que ela precisa de saber: `coachPlanItems` e `raceEvents` (o que
+ * o dia de hoje é), `dailyCheckins` (o dia de um motivo antigo, e se o
+ * check-in foi corrigido), `coachNotes` (a vida dele) e `now` (o relógio,
+ * para os testes). Sem eles, as frases são as que servem qualquer dia.
+ */
 export function pendingTopicLines({
   profile, coachPlans = [], coachGoalProposals = [],
   coachPlanItems, raceEvents = [], dailyCheckins = [], coachNotes = [], now = new Date(),

@@ -166,6 +166,10 @@ describe('CoachInsightsDock', () => {
       pedirDispensa();
       act(() => { useAppStore.setState({ profile: { id: 'u1', coach_intervention_status: 'resolved' } }); });
       expect(screen.queryByRole('dialog', { name: 'Dispensar este assunto?' })).not.toBeInTheDocument();
+
+      // Uma intervenção nova não a reabre sozinha: só o "Dispensar" a abre.
+      act(() => { useAppStore.setState({ profile: { id: 'u1', coach_intervention_status: 'needed', coach_intervention_reason: 'outra' } }); });
+      expect(screen.queryByRole('dialog', { name: 'Dispensar este assunto?' })).not.toBeInTheDocument();
     });
   });
 

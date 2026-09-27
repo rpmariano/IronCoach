@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAppStore, selectCoachPendingTopics } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { detectCoachInsights } from '../../utils/biEngine';
@@ -68,6 +68,13 @@ export default function useCarolNotices() {
   ), [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates, insightSnoozes, today]);
 
   const interventionPending = profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress';
+
+  // Resolvida a intervenção com a confirmação aberta, a confirmação fecha
+  // de vez: só esconder deixava-a pronta a reabrir sozinha se chegasse
+  // outra intervenção sem o atleta ter carregado em "Dispensar".
+  useEffect(() => {
+    if (!interventionPending) setShowDismiss(false);
+  }, [interventionPending]);
 
   /* Duas provas principais no mesmo bloco (specs/plano-vinculado-a-prova.md
      §2.4): o taper de cada uma são 10-21 dias de polimento, e treinar para
