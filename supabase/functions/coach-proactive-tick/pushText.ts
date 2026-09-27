@@ -14,11 +14,11 @@
 
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { kmTexto, nomeProprio, proactivePushMessage, RACE_EVE_AFTERNOON_MINUTES, startTimeMinutes, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
 
 export const PUSH_TEXT_MIN = 15;
 export const PUSH_TEXT_MAX = 140;
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 10000;
 
 export interface PushFacts {
@@ -195,18 +195,18 @@ export async function composePushMessage(
   const fixa = c.trigger === "intervention" || c.trigger === "missed_workout" || c.trigger === "leaderboard" || c.trigger === "percentile_ready";
   if (!geminiKey || fixa) return { ...fallback, generated: false, usage: null };
   try {
-    const res = await fetchImpl(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchImpl(
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: buildPushPrompt(c, facts) }] }],
-          generationConfig: { maxOutputTokens: 1024, temperature: 0.8 },
+          generationConfig: { maxOutputTokens: 1024, temperature: 0.8, ...thinkingConfig("low", withThinking) },
         }),
         signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       },
-    );
+    ));
     if (!res.ok) {
       console.warn("coach-proactive-tick: texto gerado falhou", res.status);
       return { ...fallback, generated: false, usage: null };

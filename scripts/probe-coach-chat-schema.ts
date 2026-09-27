@@ -26,7 +26,8 @@ if (!key) {
   Deno.exit(2);
 }
 
-const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
+// A chave vai no header (x-goog-api-key), nunca na URL — ver _shared/geminiModel.ts.
+const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 async function probe(label: string, schema: unknown, withTools: boolean): Promise<boolean> {
   const body = {
@@ -45,7 +46,7 @@ async function probe(label: string, schema: unknown, withTools: boolean): Promis
       response_schema: schema,
     },
   };
-  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key! }, body: JSON.stringify(body) });
   const text = await res.text();
   console.log(`${res.ok ? "OK " : "ERRO"}  ${label}: HTTP ${res.status}`);
   if (!res.ok) {

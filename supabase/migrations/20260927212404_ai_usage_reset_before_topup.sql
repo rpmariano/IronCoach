@@ -1,0 +1,22 @@
+-- ============================================================================
+-- ai_usage: apaga o consumo anterior ao carregamento de créditos de 27-09-2026
+-- APLICADA EM PRODUÇÃO a 2026-09-27 21:24 UTC (version 20260927212404).
+-- 483 linhas apagadas (21-07 a 27-09 17:51, todas client_backfill); ficaram 9.
+-- ============================================================================
+--
+-- Pedido do dono do projeto: o histórico anterior ao carregamento (bug #45,
+-- créditos esgotados) foi contado pela app, sem raciocínio do modelo nem as
+-- segundas chamadas (comentário da Carol), e com o modelo em alias sem
+-- limite de raciocínio. Misturado com o consumo novo distorcia as médias por
+-- utilizador e a simulação de preço.
+--
+-- Corte às 19:46:00 UTC: o último 402 (créditos esgotados) foi às 19:38:51 e
+-- a primeira chamada paga a seguir às 19:46:01; não há registos entre os dois.
+--
+-- ATENÇÃO: os dados de origem continuam em app_logs (meta.input_tokens…). O
+-- backfill de 20260927203409_ai_usage.sql só pára na primeira linha
+-- 'server' (20:43:21) — voltar a corrê-lo REPÕE estas linhas. Não o correr
+-- outra vez; para recuperar o histórico de propósito, é exatamente isso.
+-- ============================================================================
+
+delete from public.ai_usage where created_at < '2026-09-27 19:46:00+00';

@@ -14,16 +14,54 @@
    3. Os tokens servidos por cache (cached_tokens) eram cobrados a preço
       cheio — aqui o erro era para cima. Passam ao preço de leitura em cache.
 
-   Preços por milhão de tokens, em USD, por data de início. A linha Flash
-   está em preço promocional até 31-12-2026 (0,75 / 3,75); a 01-01-2027
-   passa ao padrão (1,50 / 7,50). A cache é 10x mais barata que o input.
-   Ressalva que já existia: GEMINI_MODEL é "gemini-flash-latest", um alias —
-   se rodar para uma variante com outra tabela, estes números derrapam.
+   Preços por milhão de tokens, em USD, POR MODELO — o modelo real vem em
+   ai_usage.model (modelVersion da resposta). A partir de 2026-09-27 as
+   funções fixam "gemini-3.8-flash" (supabase/functions/_shared/
+   geminiModel.ts), com fallback para o alias "gemini-flash-latest".
+
+   `confirmed`: preço confirmado pelo dono do projeto na página oficial
+   (ai.google.dev/gemini-api/docs/pricing, 27-09-2026; prompts ≤ 200k
+   tokens — os nossos ficam muito abaixo).
+   Linha Flash 3.7/3.8: tarifa introdutória até 31-12-2026 (0,75 / 3,75,
+   cache 0,075), que DUPLICA a 01-01-2027 (1,50 / 7,50, cache 0,15) — o
+   `from` de cada entrada trata disso sozinho, por data de cada chamada.
+   2.5 Flash: duas tabelas recebidas no mesmo dia davam output 2,50 e 1,20;
+   ficou 2,50 e não confirmado (não é usado).
+   Cache: ~10% do input quando a tabela não a dá.
+   Raciocínio (thoughts): ao preço de OUTPUT em todos os modelos com thinking.
+   Ordem: do prefixo mais específico para o mais geral (flash-lite antes de
+   flash) e, dentro do mesmo modelo, da data mais recente para a mais antiga.
    Confirmar SEMPRE contra o saldo real do AI Studio (painel "Saldo"). */
-export const GEMINI_PRICING = [
-  { from: '2027-01-01', input: 1.50, output: 7.50, cached: 0.15 },
-  { from: '0000-01-01', input: 0.75, output: 3.75, cached: 0.075 },
+const FLASH_3X_2026 = { input: 0.75, output: 3.75, cached: 0.075, confirmed: true };
+const FLASH_3X_2027 = { from: '2027-01-01', input: 1.50, output: 7.50, cached: 0.15, confirmed: true };
+export const MODEL_PRICING = [
+  { match: 'gemini-2.5-flash-lite', input: 0.10, output: 0.40, cached: 0.01, confirmed: true },
+  { match: 'gemini-2.5-flash', input: 0.30, output: 2.50, cached: 0.03, confirmed: false },
+  { match: 'gemini-2.5-pro', input: 1.25, output: 10.00, cached: 0.125, confirmed: true },
+  { match: 'gemini-3.1-pro', input: 2.00, output: 12.00, cached: 0.20, confirmed: true },
+  { match: 'gemini-3.5-flash', input: 1.50, output: 9.00, cached: 0.15, confirmed: true },
+  { match: 'gemini-3.8-flash', ...FLASH_3X_2027 },
+  { match: 'gemini-3.8-flash', ...FLASH_3X_2026 },
+  { match: 'gemini-3.7-flash', ...FLASH_3X_2027 },
+  { match: 'gemini-3.7-flash', ...FLASH_3X_2026 },
+  { match: 'gemini-3-flash', input: 0.50, output: 3.00, cached: 0.05, confirmed: true },
 ];
+// Linhas sem modelo e modelos fora da tabela: a linha Flash 3.8 (o modelo
+// fixo em _shared/geminiModel.ts), mas marcado como estimativa.
+export const DEFAULT_PRICING_2026 = { match: null, ...FLASH_3X_2026, confirmed: false };
+export const DEFAULT_PRICING_2027 = { match: null, ...FLASH_3X_2027, confirmed: false };
+
+export function pricingFor(model, isoDate = new Date().toISOString()) {
+  const m = String(model || '').toLowerCase().replace(/^models\//, '');
+  const day = String(isoDate || '').slice(0, 10);
+  const applies = (p) => !p.from || day >= p.from;
+  // Um "-lite" só casa com uma entrada que também seja lite: um futuro
+  // gemini-3.8-flash-lite não pode herdar o preço (nem o "confirmado") do Flash.
+  const sameFamily = (p) => m === p.match || (m.startsWith(`${p.match}-`) && (p.match.includes('-lite') || !m.includes('-lite')));
+  const hit = m && MODEL_PRICING.find(p => sameFamily(p) && applies(p));
+  if (hit) return hit;
+  return applies(DEFAULT_PRICING_2027) ? DEFAULT_PRICING_2027 : DEFAULT_PRICING_2026;
+}
 
 /* Câmbio USD→EUR para mostrar em euros (o carregamento no AI Studio é em
    euros, a tabela de preços em dólares). Editável no painel; este é só o
@@ -61,11 +99,6 @@ export function moduleOf(event) {
   return COST_EVENT_MODULE[event] || 'Outro';
 }
 
-export function pricingAt(isoDate) {
-  const day = String(isoDate || '').slice(0, 10);
-  return GEMINI_PRICING.find(p => day >= p.from) || GEMINI_PRICING[GEMINI_PRICING.length - 1];
-}
-
 /** Tokens de uma linha de app_logs, normalizados. */
 export function tokensOf(meta) {
   const m = meta || {};
@@ -88,7 +121,7 @@ export function tokensOf(meta) {
 /** Custo em USD de uma linha: input não-cache + cache + (output + raciocínio). */
 export function rowCostUsd(row) {
   const t = tokensOf(row?.meta);
-  const p = pricingAt(row?.created_at);
+  const p = pricingFor(row?.model, row?.created_at);
   return ((t.input - t.cached) * p.input + t.cached * p.cached + (t.output + t.thoughts) * p.output) / 1e6;
 }
 

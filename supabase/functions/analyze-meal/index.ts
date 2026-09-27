@@ -20,6 +20,7 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
@@ -34,9 +35,6 @@ const corsHeaders = {
 
 const MEAL_TYPES = ["pequeno-almoco", "lanche-manha", "almoco", "lanche", "jantar", "ceia"];
 
-// Alias que segue sempre o modelo flash estável mais recente — evita 404s
-// quando a Google descontinua modelos para contas novas.
-const GEMINI_MODEL = "gemini-flash-latest";
 // Tempo máximo por chamada ao Gemini antes de desistir e tentar mais uma vez.
 // A API do Gemini (sobretudo no tier gratuito) tem latência muito variável —
 // isto evita que uma chamada presa arraste a função até ao limite rígido da
@@ -202,22 +200,25 @@ async function runGeminiItemsRequest(
   deadline = Number.POSITIVE_INFINITY,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage }> {
-  const geminiRes = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: {
-          response_mime_type: "application/json",
-          response_schema: RESPONSE_SCHEMA,
-        },
-      }),
-    },
-    timeoutMs,
-    retries,
-    deadline,
+  const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+    fetchGeminiWithTimeout(
+      geminiUrl(geminiModel),
+      {
+        method: "POST",
+        headers: geminiHeaders(geminiKey),
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            response_schema: RESPONSE_SCHEMA,
+            ...thinkingConfig("low", withThinking),
+          },
+        }),
+      },
+      timeoutMs,
+      retries,
+      deadline,
+    )
   );
 
   if (!geminiRes.ok) {
@@ -628,32 +629,35 @@ async function generateMealCoachNotes(
     `\n${MEAL_DOCTRINE}\n`;
 
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: { 
-            // A análise estruturada é mais longa (feedback de 2026-09-25).
-            maxOutputTokens: 8192,
-            response_mime_type: "application/json",
-            response_schema: {
-              type: "OBJECT",
-              properties: {
-                text: { type: "STRING" },
-                intervention_needed: { type: "BOOLEAN" },
-                intervention_reason: { type: "STRING" }
+    const res = await geminiWithFallback((geminiModel, withThinking) =>
+      fetchGeminiWithTimeout(
+        geminiUrl(geminiModel),
+        {
+          method: "POST",
+          headers: geminiHeaders(geminiKey),
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              // A análise estruturada é mais longa (feedback de 2026-09-25).
+              maxOutputTokens: 8192,
+              response_mime_type: "application/json",
+              response_schema: {
+                type: "OBJECT",
+                properties: {
+                  text: { type: "STRING" },
+                  intervention_needed: { type: "BOOLEAN" },
+                  intervention_reason: { type: "STRING" }
+                },
+                required: ["text", "intervention_needed"]
               },
-              required: ["text", "intervention_needed"]
-            }
-          },
-        }),
-      },
-      45000,
-      0,
-      deadline,
+              ...thinkingConfig("low", withThinking),
+            },
+          }),
+        },
+        45000,
+        0,
+        deadline,
+      )
     );
     if (!res.ok) {
       console.warn("Meal coach generation failed:", res.status, await res.text());

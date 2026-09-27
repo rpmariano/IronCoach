@@ -45,6 +45,7 @@ import {
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -55,7 +56,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
 
@@ -745,11 +745,11 @@ async function generateCoachNotes(
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA de chat inicie uma intervenção) e "intervention_reason" (string, justificação curta se a intervenção for necessária).`;
 
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -763,14 +763,15 @@ async function generateCoachNotes(
                 intervention_reason: { type: "STRING" }
               },
               required: ["text", "intervention_needed"]
-            }
+            },
+            ...thinkingConfig("low", withThinking),
           },
         }),
       },
       45000,
       0,
       deadline,
-    );
+    ));
 
     if (!res.ok) {
       const bodyText = await res.text();
@@ -1035,23 +1036,24 @@ async function analyzeWithGemini(
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
 
-  const geminiRes = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    geminiUrl(model),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
+          ...thinkingConfig("low", withThinking),
         },
       }),
     },
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  );
+  ));
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
