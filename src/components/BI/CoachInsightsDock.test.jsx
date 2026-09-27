@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -135,7 +135,8 @@ describe('CoachInsightsDock', () => {
     const pedirDispensa = () => {
       render(<CoachInsightsDock />);
       fireEvent.click(screen.getByTestId('coach-insight-button'));
-      fireEvent.click(screen.getByTestId('carol-alert-dismiss-assuntos'));
+      // Pelo nome que o leitor de ecrã ouve — o dismissLabel real do hook.
+      fireEvent.click(screen.getByRole('button', { name: 'Dispensar este assunto' }));
       return screen.getByRole('dialog', { name: 'Dispensar este assunto?' });
     };
 
@@ -155,7 +156,16 @@ describe('CoachInsightsDock', () => {
       comIntervencao({ coachPlans: [{ id: 'p1', status: 'proposto' }] });
       const dialogo = pedirDispensa();
       expect(dialogo).toHaveTextContent('O que tens à espera da tua decisão continua no aviso.');
+      // Cita a intervenção — a que sai —, não a frase do plano, que fica.
+      expect(screen.getByTestId('dismiss-topic').textContent).toBe('«Há um registo teu que quero ver contigo.»');
       fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
+    });
+
+    it('resolvida a intervenção com a confirmação aberta, a confirmação fecha-se', () => {
+      comIntervencao();
+      pedirDispensa();
+      act(() => { useAppStore.setState({ profile: { id: 'u1', coach_intervention_status: 'resolved' } }); });
+      expect(screen.queryByRole('dialog', { name: 'Dispensar este assunto?' })).not.toBeInTheDocument();
     });
   });
 

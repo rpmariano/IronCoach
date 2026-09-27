@@ -30,7 +30,9 @@ import { noticeSeverity, noticeTone } from './noticeTones';
    aviso; e a intervenção dentro de "Preciso de falar contigo" ('assuntos')
    pede confirmação e fecha-se — é um assunto, por isso esse botão diz
    "Dispensar este assunto" ao leitor de ecrã. Noutro dispositivo, a
-   dispensa chega pelas impressões dos últimos 14 dias (store/index.js).
+   dispensa da intervenção chega pelo perfil (coach_intervention_status); a
+   do balanço, do fim do bloco e do mapa, pelas impressões dos últimos 14
+   dias (store/index.js).
 
    Sem dispensa ficam: o conflito de provas (sai quando o atleta decide), o
    ajuste do plano (sai quando é levado à Carol, markDivergenceHandled) e um

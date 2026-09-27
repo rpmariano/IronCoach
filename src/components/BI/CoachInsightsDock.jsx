@@ -57,9 +57,8 @@ export function CarolNoticesDock({ notices, bottom }) {
             </p>
           )}
           <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
-            {dismissDialog.othersWaiting
-              ? 'Deixo de te chamar por isto. O que tens à espera da tua decisão continua no aviso. '
-              : 'Deixo de te chamar por isto. '}
+            Deixo de te chamar por isto.{' '}
+            {dismissDialog.othersWaiting && 'O que tens à espera da tua decisão continua no aviso. '}
             Podes voltar a falar comigo no chat sempre que quiseres.
           </p>
         </Dialog>

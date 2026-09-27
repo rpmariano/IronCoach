@@ -135,7 +135,7 @@ export default function Calendar() {
   // Prova cuja eliminação está por confirmar. Era um window.confirm — o
   // popup do sistema não fala a língua da app, não diz o que se perde e
   // não respeita os 44px de toque (auditoria a11y). Passa pelo Dialog
-  // partilhado, como "Dispensar o aviso da Carol?" no Início.
+  // partilhado, como a confirmação de dispensar um assunto da Carol.
   const [raceToDelete, setRaceToDelete] = useState(null);
 
   const daysInMonth = useMemo(() => {

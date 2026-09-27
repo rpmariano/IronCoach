@@ -9,7 +9,7 @@ import { isInsightHidden } from '../../utils/insightState';
 import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { interventionKey, raceConflictKey } from '@formulas/proactiveTriggers.ts';
 import { INTERVENTION_OUTCOME } from '@formulas/interventionOutcomes.ts';
-import { pendingTopicLines } from '../../utils/carolTopics';
+import { pendingTopicLines, interventionTopicLine } from '../../utils/carolTopics';
 import { useCupForHome } from '../../utils/useCup';
 import { cupMapCandidate, markCupMapHandled, CUP_MAP_TITLE } from '../../utils/cupMap';
 
@@ -160,7 +160,9 @@ export default function useCarolNotices() {
   const topicLines = pendingTopics > 0
     ? pendingTopicLines({ profile, coachPlans, coachGoalProposals, coachPlanItems, raceEvents, dailyCheckins, coachNotes })
     : [];
-  const interventionLine = interventionPending ? topicLines[0] || null : null;
+  const interventionLine = interventionPending
+    ? interventionTopicLine({ profile, coachPlans, coachPlanItems, raceEvents, dailyCheckins, coachNotes })
+    : null;
   const othersWaiting = interventionPending && pendingTopics > 1;
 
   /* Um de cada vez, pela mesma prioridade de sempre. `key` é a chave do
@@ -336,7 +338,9 @@ export default function useCarolNotices() {
     openCoach,
     logOpened,
     dismissDialog: {
-      open: showDismiss,
+      // Resolvida entretanto (outro ecrã, outro dispositivo), já não há o
+      // que confirmar: a confirmação fecha-se em vez de falar de "isto".
+      open: showDismiss && interventionPending,
       busy: dismissing,
       confirm: dismissIntervention,
       cancel: () => setShowDismiss(false),
