@@ -221,7 +221,15 @@ function RelatorioEnsaio({ data }) {
                 <td className={td}>{c.escaloes_que_batem_so_com_pontos ?? '—'} / {c.escaloes_que_batem_todos ?? '—'}{c.escaloes != null ? ` de ${c.escaloes}` : ''}</td>
                 <td className={td}>{c.base_provavel || '—'}</td>
                 <td className={td}>{sim(c.fora_ocupam_lugar)}</td>
-                <td className={td}>{pct(c.chave_da_geral?.com_par_unico_na_pagina, c.chave_da_geral?.linhas_com_pontos)}</td>
+                <td className={td} data-testid="cup-ensaio-chave-geral">
+                  {pct(c.chave_da_geral?.com_par_unico_na_pagina, c.chave_da_geral?.linhas_com_pontos)}
+                  {c.chave_da_geral?.ligam_exata != null && (
+                    <>
+                      {' · '}ligam pela exata {c.chave_da_geral.ligam_exata}, pela alternativa {c.chave_da_geral.ligam_alternativa ?? 0}
+                      {' (por confirmar)'}, não ligam {c.chave_da_geral.nao_ligam ?? 0}
+                    </>
+                  )}
+                </td>
                 <td className={td}>{c.coletiva?.equipas_elegiveis ?? '—'}</td>
               </tr>
             ))}

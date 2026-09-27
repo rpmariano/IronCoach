@@ -39,8 +39,10 @@ import {
   seasonRefYear,
   sha256Hex,
   stableFor,
+  standingsAltKeyInput,
   standingsContentInput,
   standingsKeyInput,
+  standingsRowAltKeys,
   standingsRowKeys,
   standingsSummary,
   standingsDue,
@@ -57,6 +59,8 @@ import {
   comData,
   comDorsalRepetidoNaPagina,
   comDuasLinhasDaPropriaNaGeral,
+  comHomonimaAlternativaNaGeral,
+  comNomeDoMeioNaGeral,
   comEpoca,
   comEscalao,
   comLinhaDaPropria,
@@ -677,7 +681,8 @@ Deno.test("roundWrites: a linha muda de identidade → perdida; só o lugar ou a
   const h0 = (await outcomeHashes(match())).get(PROPRIA.enrollmentId)!;
   const conf: ExistingResult = {
     enrollment_id: PROPRIA.enrollmentId, round_id: J1, match_status: "confirmada", bib_key: K412, match_hash: h0.matchHash,
-    standings_key: h0.standingsKey, position: 12, category_code: "F40", category_position: 2, official_time_s: 1471, points: 13, points_source: "calculado",
+    standings_key: h0.standingsKey, standings_alt_key: h0.altKey, position: 12, category_code: "F40", category_position: 2,
+    official_time_s: 1471, points: 13, points_source: "calculado",
   };
   // Mesmo conteúdo: nada.
   assertEquals(await writesFor(match(), [conf]), []);
@@ -785,11 +790,29 @@ async function standingsKeyOfPropria(): Promise<string> {
   return (await outcomeHashes(match())).get(PROPRIA.enrollmentId)!.standingsKey;
 }
 
-async function link(page = SINT_GERAL_PAGE, birthYear: number | null = 1987, key?: string | null) {
+async function altKeyOfPropria(): Promise<string> {
+  return (await outcomeHashes(match())).get(PROPRIA.enrollmentId)!.altKey!;
+}
+
+async function link(
+  page = SINT_GERAL_PAGE,
+  birthYear: number | null = 1987,
+  key?: string | null,
+  alt: { refused?: string[]; confirmed?: string | null; noAlt?: boolean } = {},
+) {
   const check = checkStandingsPage(page, sintStandingsCtx());
   const rowKeys = await standingsRowKeys(ED, check, SINT_TEAMS as never, []);
+  const rowAltKeys = await standingsRowAltKeys(ED, check, SINT_TEAMS as never, []);
   const standingsKey = key === undefined ? await standingsKeyOfPropria() : key;
-  return linkStandings({ check, rowKeys, enrollments: [{ id: PROPRIA.enrollmentId, userId: PROPRIA.userId, standingsKey, birthYear }] });
+  return linkStandings({
+    check,
+    rowKeys,
+    rowAltKeys,
+    enrollments: [{
+      id: PROPRIA.enrollmentId, userId: PROPRIA.userId, standingsKey, birthYear,
+      altKey: alt.noAlt ? null : await altKeyOfPropria(), refusedAltKeys: alt.refused ?? [], confirmedKey: alt.confirmed ?? null,
+    }],
+  });
 }
 
 Deno.test("linkStandings: a chave da linha confirmada + o ano do perfil ligam a linha dela na geral", async () => {
@@ -811,6 +834,88 @@ Deno.test("linkStandings: ano diferente não liga; duas linhas iguais não ligam
   // Uma geral que não passou nas invariantes: não liga nada.
   const check = checkStandingsPage(comTotalErrado(SINT_GERAL_PAGE), sintStandingsCtx());
   assertEquals(linkStandings({ check, rowKeys: [], enrollments: [] }).ok, false);
+});
+
+Deno.test("chave alternativa: 1.º e último nome + escalão + clube, da linha confirmada dela (hash; null sem nome)", async () => {
+  assertEquals(await altKeyOfPropria(), await sha256Hex(standingsAltKeyInput(ED, normText(PROPRIA.pageName), "F40", `team:${SINT_TEAM_NAZA}`)!));
+  assertEquals(standingsAltKeyInput(ED, "ana maria propria teste", "F40", "t"), standingsAltKeyInput(ED, "Ana Própria Teste", "F40", "t"));
+  assert(standingsAltKeyInput(ED, "ana propria teste", "F40", "t") !== standingsAltKeyInput(ED, "ana propria outra", "F40", "t"));
+  assertEquals(standingsAltKeyInput(ED, "  ", "F40", "t"), null);
+  // A linha dela na J1 grava a chave alternativa com a exata (roundWrites).
+  const w = await writesFor(match());
+  const ins = w[0] as Extract<ResultWrite, { op: "insert" }>;
+  assertEquals(ins.row.standings_alt_key, await altKeyOfPropria());
+  // E não sai num JSON (é uma propriedade não enumerável).
+  assert(!JSON.stringify(match()).includes("|alt|"));
+});
+
+Deno.test("linkStandings, alternativa: o nome do meio diferente liga como PROPOSTA — sem pontos oficiais até ela confirmar", async () => {
+  const meio = comNomeDoMeioNaGeral(SINT_GERAL_PAGE);
+  const alt = await altKeyOfPropria();
+  const l = await link(meio);
+  assertEquals([l.byEnrollment[0].outcome, l.byEnrollment[0].via, l.byEnrollment[0].keyHash], ["proposta", "alternativa", alt]);
+  assertEquals(l.byEnrollment[0].standing, { category_code: "F40", category_rank: 1, total_points: 26, rounds_scored: 2 });
+  assertEquals(l.counts.proposta, 1);
+  // Os provisórios ficam: nada de pontos oficiais numa proposta.
+  const conf: ExistingResult = { enrollment_id: PROPRIA.enrollmentId, round_id: SINT_J1.id, match_status: "confirmada", bib_key: K412, match_hash: "h", points: 13, points_source: "calculado" };
+  assertEquals(officialPointsWrites(l, [conf]), []);
+  // Grava-se 'proposta'.
+  const now = at("2027-01-11T12:00:00Z");
+  const w = standingsWrites(l, [], ED, now);
+  assertEquals(w.map((x) => [x.op, (x as Extract<typeof x, { op: "insert" }>).row?.match_status, (x as Extract<typeof x, { op: "insert" }>).row?.key_hash]), [["insert", "proposta", alt]]);
+  const row = (w[0] as Extract<typeof w[0], { op: "insert" }>).row;
+  assertEquals(standingsWrites(l, [{ ...row }], ED, at("2027-01-11T13:00:00Z")), []);
+  // Ela confirma (confirm_cup_standing): 'alternativa' — os oficiais entram, a linha fica confirmada.
+  const c = await link(meio, 1987, undefined, { confirmed: alt });
+  assertEquals(c.byEnrollment[0].outcome, "alternativa");
+  assertEquals(officialPointsWrites(c, [conf]), [
+    { op: "update", enrollment_id: PROPRIA.enrollmentId, round_id: SINT_J1.id, set: { points: 15, points_source: "oficial" } },
+  ]);
+  assertEquals(standingsWrites(c, [{ ...row, match_status: "confirmada" }], ED, at("2027-01-11T13:00:00Z")), []);
+  assertEquals(standingsWrites(c, [{ ...row }], ED, at("2027-01-11T13:00:00Z")), [
+    { op: "update", enrollment_id: PROPRIA.enrollmentId, set: { match_status: "confirmada", source_checked_at: "2027-01-11T13:00:00.000Z" } },
+  ]);
+});
+
+Deno.test("linkStandings, alternativa: homónima (2 linhas) não liga; ano diferente não liga; a recusa não volta; sem ela nada", async () => {
+  const alt = await altKeyOfPropria();
+  const now = at("2027-01-11T12:00:00Z");
+  const proposta = { enrollment_id: PROPRIA.enrollmentId, key_hash: alt, match_status: "proposta", category_rank: 1, total_points: 26 };
+  const exata = { enrollment_id: PROPRIA.enrollmentId, key_hash: await standingsKeyOfPropria(), match_status: "confirmada", category_rank: 1, total_points: 26 };
+  // Homónima pela alternativa (o mesmo 1.º e último nome, escalão, equipa e ano).
+  const homo = await link(comNomeDoMeioNaGeral(comHomonimaAlternativaNaGeral(SINT_GERAL_PAGE)));
+  assertEquals([homo.byEnrollment[0].outcome, homo.byEnrollment[0].via, homo.byEnrollment[0].standing], ["repetida", "alternativa", undefined]);
+  // Apaga a proposta dessa chave; uma linha doutra chave (a exata de antes) fica.
+  assertEquals(standingsWrites(homo, [proposta], ED, now), [{ op: "delete", enrollment_id: PROPRIA.enrollmentId }]);
+  assertEquals(standingsWrites(homo, [exata], ED, now), []);
+  // Ano diferente.
+  const ano = await link(comNomeDoMeioNaGeral(SINT_GERAL_PAGE), 1986);
+  assertEquals([ano.byEnrollment[0].outcome, ano.byEnrollment[0].via], ["ano", "alternativa"]);
+  assertEquals((await link(comLinhaDaPropriaNaGeral(SINT_GERAL_PAGE, { name: PROPRIA.geralNameMeio, year: "1986" }))).byEnrollment[0].outcome, "ano");
+  // "Não sou eu" na geral: a chave recusada nunca volta a ser proposta.
+  const rec = await link(comNomeDoMeioNaGeral(SINT_GERAL_PAGE), 1987, undefined, { refused: ["outra", alt] });
+  assertEquals([rec.byEnrollment[0].outcome, rec.byEnrollment[0].standing], ["recusada", undefined]);
+  assertEquals(standingsWrites(rec, [proposta], ED, now), [{ op: "delete", enrollment_id: PROPRIA.enrollmentId }]);
+  assertEquals(standingsWrites(rec, [], ED, now), []);
+  assertEquals(officialPointsWrites(rec, []), []);
+  // Sem a chave alternativa (linhas de antes da M2): fica como a exata dizia.
+  assertEquals((await link(comNomeDoMeioNaGeral(SINT_GERAL_PAGE), 1987, undefined, { noAlt: true })).byEnrollment[0].outcome, "sem_linha");
+  // Outro 1.º/último nome: nenhuma linha pela alternativa → sem_linha (fica o que havia).
+  const outra = await link(comLinhaDaPropriaNaGeral(SINT_GERAL_PAGE, { name: "ANA PROPRIA OUTRA" }));
+  assertEquals([outra.byEnrollment[0].outcome, outra.byEnrollment[0].via], ["sem_linha", "exata"]);
+  assertEquals(standingsWrites(outra, [exata], ED, now), []);
+});
+
+Deno.test("linkStandings: a alternativa SÓ quando a exata não acha nenhuma linha — com homónimos exatos ou ano diferente, não se tenta", async () => {
+  const dupla = await link(comDuasLinhasDaPropriaNaGeral(SINT_GERAL_PAGE));
+  assertEquals([dupla.byEnrollment[0].outcome, dupla.byEnrollment[0].via], ["repetida", "exata"]);
+  const ano = await link(SINT_GERAL_PAGE, 1986);
+  assertEquals([ano.byEnrollment[0].outcome, ano.byEnrollment[0].via], ["ano", "exata"]);
+  const ok = await link();
+  assertEquals([ok.byEnrollment[0].outcome, ok.byEnrollment[0].via, ok.byEnrollment[0].keyHash], ["ligada", "exata", await standingsKeyOfPropria()]);
+  // A exata grava-se confirmada.
+  const w = standingsWrites(ok, [], ED, at("2027-01-11T12:00:00Z"));
+  assertEquals((w[0] as Extract<typeof w[0], { op: "insert" }>).row.match_status, "confirmada");
 });
 
 Deno.test("standingsWrites: insere; igual não escreve (a data refresca 1×/dia); repetida/ano apaga; sem linha fica", async () => {
@@ -934,7 +1039,18 @@ Deno.test("crossCheck: a base é o escalão e os de fora não ocupam lugar; a ch
   assertEquals(r.por_escalao.find((c) => c.escalao === "F40"), {
     escalao: "F40", na_pagina: 4, com_pontos: 3, soma_oficial: 39, esperado_todos: 49, esperado_so_com_pontos: 39,
   });
-  assertEquals(r.chave_da_geral, { linhas_com_pontos: 34, com_par_unico_na_pagina: 34 });
+  assertEquals(r.chave_da_geral, { linhas_com_pontos: 34, com_par_unico_na_pagina: 34, ligam_exata: 34, ligam_alternativa: 0, nao_ligam: 0 });
+  // O nome do meio na geral: a exata falha, a alternativa liga (por confirmar).
+  const meio = crossCheck(checkRoundPage(SINT_J1_PAGE, sintRoundCtx()), checkStandingsPage(comNomeDoMeioNaGeral(SINT_GERAL_PAGE), sintStandingsCtx()), 1, SINT_POINTS_TABLE);
+  assertEquals(meio.chave_da_geral, { linhas_com_pontos: 34, com_par_unico_na_pagina: 33, ligam_exata: 33, ligam_alternativa: 1, nao_ligam: 0 });
+  // E com uma homónima pela alternativa: nenhuma das duas liga.
+  const homo = crossCheck(
+    checkRoundPage(SINT_J1_PAGE, sintRoundCtx()),
+    checkStandingsPage(comNomeDoMeioNaGeral(comHomonimaAlternativaNaGeral(SINT_GERAL_PAGE)), sintStandingsCtx()),
+    1,
+    SINT_POINTS_TABLE,
+  );
+  assertEquals(homo.chave_da_geral, { linhas_com_pontos: 35, com_par_unico_na_pagina: 33, ligam_exata: 33, ligam_alternativa: 0, nao_ligam: 2 });
   // A coletiva da conta: a Equipa da geral como clube (a ASC conta aqui), Individual fora.
   assertEquals(r.coletiva, { equipas_elegiveis: 3, top3_pontos: [148, 120, 116] });
   // Uma página partida: sem números.
@@ -959,6 +1075,13 @@ Deno.test("fuga: check → correspondência → escritas → geral → coletiva 
   outputs.push(standingsSummary(g, { unmappedTeams: 1 }), g.stats, [...g.legendMap]);
   const l = await link();
   outputs.push(l, standingsWrites(l, [], ED, at("2027-01-11T12:00:00Z")), officialPointsWrites(l, []));
+  // A chave alternativa: proposta, homónima, recusada, e o cruzamento dela.
+  const meio = comNomeDoMeioNaGeral(SINT_GERAL_PAGE);
+  const homoPage = comNomeDoMeioNaGeral(comHomonimaAlternativaNaGeral(SINT_GERAL_PAGE));
+  for (const lx of [await link(meio), await link(homoPage), await link(meio, 1987, undefined, { refused: [await altKeyOfPropria()] })]) {
+    outputs.push(lx, standingsWrites(lx, [], ED, at("2027-01-11T12:00:00Z")), officialPointsWrites(lx, []));
+  }
+  outputs.push(crossCheck(checkRoundPage(SINT_J1_PAGE, sintRoundCtx()), checkStandingsPage(homoPage, sintStandingsCtx()), 1, SINT_POINTS_TABLE));
   const totals = teamTotals(g.rows, 1, { team_min_athletes: 4, pointsTable: SINT_POINTS_TABLE }, makeTeamResolver(SINT_TEAMS as never, []));
   outputs.push(totals, teamResultWrites(totals, [], J1, SINT_TEAMS as never, new Set([SINT_TEAM_NAZA])));
   outputs.push(crossCheck(checkRoundPage(SINT_J1_PAGE, sintRoundCtx()), g, 1, SINT_POINTS_TABLE));
@@ -979,6 +1102,7 @@ Deno.test("fuga: check → correspondência → escritas → geral → coletiva 
   }
   // Nem o nome nem o dorsal DELA: só hashes (o clube novo dela é organização).
   assert(!lower.includes(normText(PROPRIA.pageName)) && !json.includes(PROPRIA.geralName));
+  assert(!lower.includes(normText(PROPRIA.geralNameMeio)) && !lower.includes("ana|teste") && !lower.includes("|alt|"));
   assert(!/\b0?412\b/.test(json));
   // E as linhas oficiais em si nunca passam por um JSON.
   assertThrows(() => JSON.stringify(checkRoundPage(SINT_J1_PAGE, sintRoundCtx()).rows));

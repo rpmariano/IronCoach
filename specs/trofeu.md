@@ -118,12 +118,16 @@ uma 2.ª competição fictícia com valores diferentes em todas as colunas.
   `category_code`, `category_position`, `points`, `official_time_s`,
   `match_status` (`proposta`/`confirmada`/`rejeitada`/`perdida`),
   `match_hash`; na M2, `bib_key` (hash edição:dorsal), `standings_key` (a
-  chave da linha na geral, hash) e `points_source` (`calculado` =
+  chave da linha na geral, hash), `standings_alt_key` (a chave alternativa:
+  1.º e último nome, escalão e clube, hash) e `points_source` (`calculado` =
   provisórios, da página da prova; `oficial` = da geral). Fica enquanto
   houver conta; o atleta pode apagá-la. A recusa ("não sou eu") vive em
   `cup_enrollments.match_refused_key` (a `bib_key` recusada).
 - **`cup_standings`** (M2): a linha **do próprio** na classificação geral
-  oficial (escalão, lugar, total, provas com pontos, quando foi lida).
+  oficial (escalão, lugar, total, provas com pontos, quando foi lida) e o
+  `match_status`: `confirmada` (pela chave exata, ou a alternativa que ele
+  confirmou) ou `proposta` (pela alternativa, por confirmar). A recusa da
+  geral ("não sou eu") vive em `cup_enrollments.standings_refused_keys`.
 - **`cup_season_summaries`**: resumo final por inscrição (presenças, pontos,
   lugar no escalão, clube, fonte `app`/`oficial`), gravado ao fechar a edição.
 
@@ -185,7 +189,10 @@ lê, responde em bandas, `is_admin()` lá dentro), `unmatched_team_names`
 recusa sem jornadas, com a última sem data ou antes de ela passar), e na M2
 `confirm_cup_result(round_id)` ("Sim, sou eu"; confirma com ela as outras
 propostas do mesmo dorsal **e da mesma linha** — a mesma `standings_key`) e
-`reject_cup_result(round_id)` ("Não sou eu").
+`reject_cup_result(round_id)` ("Não sou eu"), e as da geral pela chave
+alternativa, `confirm_cup_standing(enrollment_id)` e
+`reject_cup_standing(enrollment_id)` (só a linha `proposta` da inscrição
+ativa dele).
 Todas `security definer` com EXECUTE a `authenticated` e a guarda dentro —
 nunca EXECUTE revogado numa função usada por políticas.
 
@@ -293,9 +300,10 @@ outras provas). Sem inscrição, `groupRaces` dá a saída de hoje.
 - "Épocas anteriores" em modo consulta.
 - Retenção: os resultados do próprio ficam enquanto houver conta
   (apagáveis); `bib`, `match_hash` e os dados de correspondência (`bib_key`,
-  `standings_key`, `match_refused_key`, `key_hash` da geral e as linhas nunca
-  confirmadas) apagam-se no `close_edition`; de terceiros nunca se guardou
-  nada.
+  `standings_key`, `standings_alt_key`, `match_refused_key`,
+  `standings_refused_keys`, `key_hash` da geral, as linhas nunca confirmadas
+  e a geral por confirmar) apagam-se no `close_edition`; o resumo só usa a
+  geral confirmada; de terceiros nunca se guardou nada.
 
 ## 5. A Carol
 
@@ -474,6 +482,23 @@ porque não lê nem grava nada que um atleta leia.
   **sua** linha confirmada de uma jornada (nome como o site o escreve +
   escalão + clube) **e** pelo ano de nascimento do perfil; zero → fica o que
   havia; duas, ou ano diferente → não liga.
+  - **Chave alternativa** (decisão do dono, 2026-09-27: a exata só dá linha
+    única em 94,5% dos casos na 33.ª, e 22 das 24 falhas são nomes do meio
+    diferentes entre a página da prova e a geral). Só se tenta quando a
+    exata não acha **nenhuma** linha — com 2 ou mais (homónimos), ou com o
+    ano diferente, não liga, como sempre. É o 1.º e o último nome
+    (normalizados) da mesma linha confirmada + escalão + clube, com o ano do
+    perfil igual ao "Ano" da geral; só vale com **exatamente 1** linha na
+    página inteira (0 ou 2+ não liga).
+  - Nunca fica confirmada sozinha: grava-se `proposta` em `cup_standings` e
+    pergunta-se "És tu? 12.º M40 na geral · 43 pontos" (sem nomes; a mesma
+    acessibilidade do "És tu?" das jornadas). "Sim" confirma-a
+    (`confirm_cup_standing`); "Não sou eu" (`reject_cup_standing`) apaga-a e
+    guarda a recusa dessa chave, que nunca mais volta a ser proposta. Até ao
+    "sim", os pontos oficiais dessa geral não substituem os provisórios nas
+    jornadas e o resumo do fecho não a usa. A chave exata fica como está.
+  - O ensaio diz, por prova, quantas linhas da geral ligariam pela exata,
+    quantas pela alternativa e quantas não ligam — só números.
 - **Sem consentimento novo:** o dorsal é opcional e dado por ele, a 1.ª linha
   só fica com o "sim" dele e "não sou eu" nunca volta; o texto da inscrição
   explica-o.

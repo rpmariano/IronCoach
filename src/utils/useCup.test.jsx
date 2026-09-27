@@ -542,7 +542,7 @@ describe('buildCupView — a divisão não muda nada (aviso [f])', () => {
   const semFase4 = (view) => {
     if (!view) return view;
     const tira = (r) => (r ? (({ proposal, matchIssue, ...rest }) => rest)(r) : r);
-    const { pending, standing, m2, ...results } = view.results;
+    const { pending, standing, standingProposal, m2, ...results } = view.results;
     return {
       ...view,
       results,
@@ -566,7 +566,7 @@ describe('buildCupView — a divisão não muda nada (aviso [f])', () => {
   it('sem campos novos a aparecer onde não há inscrição', () => {
     const convite = golden.scenarios.find((s) => s.name === 'convite');
     const v = buildCupView(convite.input);
-    expect(v.results).toMatchObject({ pending: [], standing: null, m2: false });
+    expect(v.results).toMatchObject({ pending: [], standing: null, standingProposal: null, m2: false });
     expect(v.rounds.every((r) => r.proposal === null && r.matchIssue === null)).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { ToastProvider } from '../shared/ToastProvider';
-import CupMatchPrompt, { MATCH_ISSUE_TEXT, perguntaDe } from './CupMatchPrompt';
+import CupMatchPrompt, { CupStandingPrompt, MATCH_ISSUE_TEXT, perguntaDe, perguntaGeralDe } from './CupMatchPrompt';
 
 /* "És tu?" — a 1.ª correspondência de cada edição com a classificação
    oficial (specs/trofeu.md §7, Fase 4, 2026-09-27). O texto é só a linha
@@ -138,5 +138,94 @@ describe('CupMatchPrompt', () => {
       rever_dorsal: 'Não consegui confirmar. Revê o dorsal ou fala com o suporte.',
       sem_dorsal: 'Sem dorsal não consigo ler o teu resultado oficial. Junta-o em «Gerir inscrição».',
     });
+  });
+});
+
+/* A geral pela chave alternativa (tarefa 9, 2026-09-27): quando o nome
+   inteiro não acha a linha dele na geral, o job tenta o 1.º e o último nome
+   e deixa-a por confirmar. Pergunta-se só com o lugar no escalão e o total
+   ("És tu? 12.º M40 na geral · 43 pontos."), com a mesma acessibilidade da
+   pergunta das jornadas. Nomes e chaves daqui são inventados. */
+describe('CupStandingPrompt — "És tu?" da classificação geral', () => {
+  const STANDING = {
+    category_code: 'M40', category_rank: 12, total_points: 43, rounds_scored: 4, match_status: 'proposta',
+    source_checked_at: '2027-01-12T10:00:00Z',
+    // Espúrios que a leitura nunca pede — se aparecerem, é fuga.
+    name: 'Terceiro Sintético Inventado', key_hash: 'abc123', team: 'Clube Inventado de Fora 07',
+  };
+  let confirmCupStanding;
+  let rejectCupStanding;
+  const montarGeral = (props = {}) =>
+    render(<ToastProvider><CupStandingPrompt standing={STANDING} enrollmentId="enr1" idPrefix="cup-geral-x" {...props} /></ToastProvider>);
+
+  beforeEach(() => {
+    confirmCupStanding = vi.fn().mockResolvedValue({ ok: true, data: { enrollment_id: 'enr1', match_status: 'confirmada' } });
+    rejectCupStanding = vi.fn().mockResolvedValue({ ok: true, data: { enrollment_id: 'enr1', rejected: true } });
+    useAppStore.setState({ confirmCupStanding, rejectCupStanding });
+  });
+
+  afterEach(() => {
+    useAppStore.setState({ confirmCupStanding: REAL.confirmCupStanding, rejectCupStanding: REAL.rejectCupStanding });
+  });
+
+  it('a pergunta: "És tu?" com o lugar no escalão e o total da geral — e o porquê', () => {
+    montarGeral();
+    const sec = screen.getByRole('region', { name: 'És tu?' });
+    expect(sec).toBe(screen.getByTestId('cup-match-geral'));
+    expect(screen.getByTestId('cup-match-geral-linha')).toHaveTextContent('12.º M40 na geral · 43 pontos.');
+    expect(sec).toHaveTextContent('com o nome escrito de outra forma');
+    expect(sec).toHaveTextContent('até lá, os pontos das jornadas ficam provisórios');
+    expect(perguntaGeralDe(STANDING)).toEqual({ titulo: 'És tu?', linha: '12.º M40 na geral · 43 pontos.' });
+  });
+
+  it('só uma proposta pergunta: confirmada, sem lugar ou sem inscrição, nada', () => {
+    expect(perguntaGeralDe({ ...STANDING, match_status: 'confirmada' })).toBeNull();
+    expect(perguntaGeralDe({ ...STANDING, category_rank: null })).toBeNull();
+    expect(perguntaGeralDe(null)).toBeNull();
+    const { container } = render(<ToastProvider><CupStandingPrompt standing={STANDING} enrollmentId={null} /></ToastProvider>);
+    expect(container.querySelector('[data-testid="cup-match-geral"]')).toBeNull();
+  });
+
+  it('a11y como a das jornadas: título h2, os dois botões descrevem-se pela linha e têm 44 px', () => {
+    montarGeral();
+    const sec = screen.getByTestId('cup-match-geral');
+    expect(sec.getAttribute('aria-labelledby')).toBe('cup-geral-x-titulo');
+    expect(document.getElementById('cup-geral-x-titulo').tagName).toBe('H2');
+    for (const id of ['cup-match-geral-sim', 'cup-match-geral-nao']) {
+      const b = screen.getByTestId(id);
+      expect(b).toHaveAccessibleDescription('12.º M40 na geral · 43 pontos.');
+      expect(parseInt(b.style.minHeight, 10)).toBe(44);
+    }
+  });
+
+  it('"Sim, sou eu" confirma a geral desta inscrição e chama onConfirmed', async () => {
+    const onConfirmed = vi.fn();
+    montarGeral({ onConfirmed });
+    fireEvent.click(screen.getByTestId('cup-match-geral-sim'));
+    expect(screen.getByTestId('cup-match-geral').getAttribute('aria-busy')).toBe('true');
+    await waitFor(() => expect(onConfirmed).toHaveBeenCalled());
+    expect(confirmCupStanding).toHaveBeenCalledWith('enr1');
+    expect(rejectCupStanding).not.toHaveBeenCalled();
+    expect(await screen.findByText('Classificação geral confirmada.')).toBeInTheDocument();
+  });
+
+  it('"Não sou eu" pede confirmação; só o botão do diálogo recusa (e não volta a ser proposta)', async () => {
+    const onRejected = vi.fn();
+    montarGeral({ onRejected });
+    fireEvent.click(screen.getByTestId('cup-match-geral-nao'));
+    const dialog = screen.getByTestId('cup-match-geral-nao-dialog');
+    expect(dialog).toHaveTextContent('Apagamos esta linha da classificação geral e não a voltamos a propor.');
+    expect(rejectCupStanding).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('cup-match-geral-nao-confirmar'));
+    await waitFor(() => expect(onRejected).toHaveBeenCalled());
+    expect(rejectCupStanding).toHaveBeenCalledWith('enr1');
+    expect(confirmCupStanding).not.toHaveBeenCalled();
+  });
+
+  it('privacidade: nunca um nome, um clube ou uma chave — nem os que viessem por engano', () => {
+    montarGeral();
+    fireEvent.click(screen.getByTestId('cup-match-geral-nao'));
+    const text = document.body.textContent;
+    for (const t of ['Terceiro', 'Sintético', 'Inventado', 'abc123', 'Clube']) expect(text).not.toContain(t);
   });
 });

@@ -53,7 +53,11 @@
 --      cup_team_results só pelo admin e por quem tem inscrição ativa nesse
 --      clube (lida por todos, dizia que clubes têm atletas da app).
 --   4. RPCs do atleta: confirm_cup_result ("Sim, sou eu") e
---      reject_cup_result ("Não sou eu").
+--      reject_cup_result ("Não sou eu"); e as da geral pela chave
+--      alternativa (1.º e último nome, quando a exata não acha nenhuma
+--      linha): confirm_cup_standing / reject_cup_standing — a ligação fica
+--      'proposta' em cup_standings até ele dizer que sim, e a recusa
+--      (cup_enrollments.standings_refused_keys) nunca mais volta.
 --   5. close_edition com a guarda do dono (não fecha sem jornadas nem antes
 --      de passar a última) e o resumo com a geral oficial quando há; apaga
 --      também os dados de correspondência novos.
@@ -287,6 +291,9 @@ alter table public.cup_results
   add column if not exists bib_key text,
   -- A chave da linha na classificação geral (hash; nunca o nome).
   add column if not exists standings_key text,
+  -- A chave ALTERNATIVA da geral (hash do 1.º e último nome, escalão e
+  -- clube; nunca o nome): só se tenta quando a exata não acha nenhuma linha.
+  add column if not exists standings_alt_key text,
   -- 'calculado' pela app a partir da página da prova (um mínimo: "provisórios")
   -- ou 'oficial' da classificação geral.
   add column if not exists points_source text check (points_source in ('oficial', 'calculado'));
@@ -298,13 +305,19 @@ comment on column public.cup_results.bib_key is
 comment on column public.cup_results.standings_key is
   'Chave da linha dele na classificação geral (hash do nome como o site o escreve, escalão e clube). '
   'Apaga-se no close_edition.';
+comment on column public.cup_results.standings_alt_key is
+  'Chave alternativa da geral (hash do 1.º e último nome, escalão e clube): liga como proposta quando a '
+  'exata não acha nenhuma linha (nome do meio). Apaga-se no close_edition.';
 
 create index if not exists cup_results_round_idx on public.cup_results (round_id);
 
 -- "Não sou eu": a bib_key recusada. A correspondência nunca mais liga esse
 -- dorsal nesta edição; só mudar de dorsal desbloqueia.
 alter table public.cup_enrollments
-  add column if not exists match_refused_key text;
+  add column if not exists match_refused_key text,
+  -- "Não sou eu" na GERAL: as chaves alternativas recusadas (hashes), que
+  -- nunca mais se propõem. Só mudam pela RPC reject_cup_standing.
+  add column if not exists standings_refused_keys text[] not null default '{}';
 
 -- A coletiva por jornada é uma conta da app sobre a geral oficial
 -- ('calculado'); o site não a dá por GET.
@@ -350,8 +363,13 @@ create table if not exists public.cup_standings (
   category_rank     integer check (category_rank > 0),
   total_points      numeric check (total_points >= 0),
   rounds_scored     integer check (rounds_scored >= 0),
-  -- A chave com que se ligou (hash). Apaga-se no close_edition.
+  -- A chave com que se ligou (hash: a exata, ou a alternativa). Apaga-se no
+  -- close_edition.
   key_hash          text,
+  -- 'confirmada' (pela chave exata, ou a alternativa que ele confirmou) ou
+  -- 'proposta' (pela alternativa, por confirmar: o "És tu?" da geral — os
+  -- pontos oficiais não entram nas jornadas e o resumo do fecho não a usa).
+  match_status      text not null default 'confirmada' check (match_status in ('confirmada', 'proposta')),
   -- Quando a geral foi lida (e bateu) pela última vez.
   source_checked_at timestamptz,
   created_at        timestamptz not null default now(),
@@ -556,6 +574,84 @@ revoke execute on function public.reject_cup_result(uuid) from public, anon;
 grant execute on function public.confirm_cup_result(uuid) to authenticated, service_role;
 grant execute on function public.reject_cup_result(uuid) to authenticated, service_role;
 
+-- A geral pela chave ALTERNATIVA (§7): quando a exata (o nome inteiro) não
+-- acha nenhuma linha, o job tenta o 1.º e o último nome com o escalão, o
+-- clube e o ano do perfil; com exatamente uma linha, grava-a 'proposta' e
+-- pergunta-se ("És tu? 12.º M40 na geral · 43 pontos"). Nunca se confirma
+-- sozinha. Só a linha dele (a inscrição ATIVA dele).
+--
+-- "Sim, sou eu" na geral: passa a confirmada (os pontos oficiais entram nas
+-- jornadas na leitura seguinte da geral).
+create or replace function public.confirm_cup_standing(p_enrollment_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception 'Sem sessão' using errcode = '42501';
+  end if;
+  update cup_standings cs
+  set match_status = 'confirmada'
+  from cup_enrollments e
+  where cs.enrollment_id = p_enrollment_id
+    and e.id = cs.enrollment_id
+    and cs.user_id = v_uid
+    and e.user_id = v_uid
+    and e.status = 'ativa'
+    and cs.match_status = 'proposta';
+  if not found then
+    raise exception 'Não há nada para confirmar na classificação geral' using errcode = 'P0002';
+  end if;
+  return jsonb_build_object('enrollment_id', p_enrollment_id, 'match_status', 'confirmada');
+end $$;
+
+-- "Não sou eu" na geral: guarda a chave (nunca mais se propõe) e apaga a
+-- proposta. A chave exata continua como está.
+create or replace function public.reject_cup_standing(p_enrollment_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_row cup_standings%rowtype;
+begin
+  if v_uid is null then
+    raise exception 'Sem sessão' using errcode = '42501';
+  end if;
+  select cs.* into v_row
+  from cup_standings cs
+  join cup_enrollments e on e.id = cs.enrollment_id
+  where cs.enrollment_id = p_enrollment_id
+    and cs.user_id = v_uid
+    and e.user_id = v_uid
+    and e.status = 'ativa'
+    and cs.match_status = 'proposta'
+  for update of cs;
+  if not found then
+    raise exception 'Não há nada para recusar na classificação geral' using errcode = 'P0002';
+  end if;
+
+  if v_row.key_hash is not null then
+    update cup_enrollments
+    set standings_refused_keys = array_append(standings_refused_keys, v_row.key_hash)
+    where id = p_enrollment_id and not (v_row.key_hash = any(standings_refused_keys));
+  end if;
+  delete from cup_standings where enrollment_id = p_enrollment_id and match_status = 'proposta';
+
+  return jsonb_build_object('enrollment_id', p_enrollment_id, 'rejected', true);
+end $$;
+
+revoke execute on function public.confirm_cup_standing(uuid) from public, anon;
+revoke execute on function public.reject_cup_standing(uuid) from public, anon;
+grant execute on function public.confirm_cup_standing(uuid) to authenticated, service_role;
+grant execute on function public.reject_cup_standing(uuid) to authenticated, service_role;
+
 
 -- ────────────────────────────────────────────────────────────────────────────
 -- 5. close_edition com a guarda do dono e a geral oficial no resumo
@@ -565,11 +661,14 @@ grant execute on function public.reject_cup_result(uuid) to authenticated, servi
 --   · a guarda (decisão do dono, 2026-09-27): não se fecha sem jornadas, com
 --     a última (não cancelada) ainda sem data, nem antes de ela passar — no
 --     próprio dia ainda não passou. As canceladas não contam;
---   · o resumo usa a linha dele na geral oficial (cup_standings) quando há:
+--   · o resumo usa a linha dele na geral oficial (cup_standings) quando há
+--     e está CONFIRMADA (uma 'proposta' da chave alternativa não conta):
 --     pontos e lugar no escalão oficiais, fonte 'oficial'; senão a soma das
 --     confirmadas, fonte 'app'. Um resumo 'oficial' não é reescrito por um
 --     'app';
---   · apaga também bib_key, standings_key, match_refused_key e key_hash.
+--   · apaga também bib_key, standings_key, standings_alt_key,
+--     match_refused_key, standings_refused_keys, key_hash e as linhas da
+--     geral por confirmar.
 create or replace function public.close_edition(p_edition_id uuid)
 returns jsonb
 language plpgsql
@@ -650,7 +749,7 @@ begin
          now()
   from cup_enrollments e
   left join cup_teams t on t.id = e.team_id
-  left join cup_standings cs on cs.enrollment_id = e.id
+  left join cup_standings cs on cs.enrollment_id = e.id and cs.match_status = 'confirmada'
   where e.edition_id = p_edition_id
     and e.status in ('concluida', 'saiu')
   on conflict (enrollment_id) do update
@@ -664,17 +763,21 @@ begin
         computed_at = excluded.computed_at
     where cup_season_summaries.source = 'app' or excluded.source = 'oficial';
 
-  update cup_enrollments set bib = null, match_refused_key = null
-  where edition_id = p_edition_id and (bib is not null or match_refused_key is not null);
+  update cup_enrollments set bib = null, match_refused_key = null, standings_refused_keys = '{}'
+  where edition_id = p_edition_id
+    and (bib is not null or match_refused_key is not null or cardinality(standings_refused_keys) > 0);
 
   delete from cup_results cr
   using cup_rounds r
   where r.id = cr.round_id and r.edition_id = p_edition_id and cr.match_status <> 'confirmada';
 
-  update cup_results cr set match_hash = null, bib_key = null, standings_key = null
+  update cup_results cr set match_hash = null, bib_key = null, standings_key = null, standings_alt_key = null
   from cup_rounds r
   where r.id = cr.round_id and r.edition_id = p_edition_id
-    and (cr.match_hash is not null or cr.bib_key is not null or cr.standings_key is not null);
+    and (cr.match_hash is not null or cr.bib_key is not null or cr.standings_key is not null
+         or cr.standings_alt_key is not null);
+
+  delete from cup_standings where edition_id = p_edition_id and match_status <> 'confirmada';
 
   update cup_standings set key_hash = null
   where edition_id = p_edition_id and key_hash is not null;
@@ -830,16 +933,17 @@ begin
   where n.nspname = 'public'
     and p.proname in ('enroll_cup', 'update_enrollment', 'leave_cup', 'set_participation',
                       'preview_round_change', 'unmatched_team_names', 'close_edition',
-                      'confirm_cup_result', 'reject_cup_result')
+                      'confirm_cup_result', 'reject_cup_result', 'confirm_cup_standing', 'reject_cup_standing')
     and (has_function_privilege('anon', p.oid, 'execute')
          or not has_function_privilege('authenticated', p.oid, 'execute'));
   if v_bad is not null then
     raise exception 'RPCs cup com EXECUTE errado (anon sim ou authenticated não): %', v_bad;
   end if;
   select count(*) into v_n from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and p.proname in ('confirm_cup_result', 'reject_cup_result');
-  if v_n <> 2 then
-    raise exception 'Faltam as RPCs confirm_cup_result/reject_cup_result';
+  where n.nspname = 'public' and p.proname in ('confirm_cup_result', 'reject_cup_result',
+                                                'confirm_cup_standing', 'reject_cup_standing');
+  if v_n <> 4 then
+    raise exception 'Faltam RPCs do atleta (confirm/reject_cup_result, confirm/reject_cup_standing)';
   end if;
 
   -- search_path fixo nas funções que os advisors apontaram.

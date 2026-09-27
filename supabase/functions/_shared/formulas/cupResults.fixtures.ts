@@ -108,6 +108,9 @@ export const PROPRIA = {
   pageTime: "24:31",
   /** Como a geral a escreve. */
   geralName: "ANA PROPRIA TESTE",
+  /** Como uma geral a escreve com um nome do meio que a página não tem: a
+   *  chave exata falha, a alternativa (1.º e último nome) acha-a. */
+  geralNameMeio: "ANA MARIA PROPRIA TESTE",
   geralYear: "1987",
   geralTeam: "Núcleo de Atletismo da Zona da Abóboda (NAZA)",
 };
@@ -299,9 +302,14 @@ export const SINT_J1_PAGE: SourceRoundPage = deepFreeze(buildJ1());
  *  pontos), Totais certos, legenda P1 (06-12) e P2 (10-01). */
 export const SINT_GERAL_PAGE: SourceStandingsPage = deepFreeze(buildGeral());
 
+/** Uma homónima dela pela chave ALTERNATIVA (o mesmo 1.º e último nome, o
+ *  escalão, a equipa e o ano; outra pessoa, inventada): só entra na geral
+ *  com comHomonimaAlternativaNaGeral. */
+export const HOMONIMA_ALT = "Ana Segunda Teste";
+
 /** Tudo o que é de terceiros (nomes, dorsais, clubes de fora). */
 export const TOKENS_TERCEIROS: { nomes: string[]; dorsais: string[]; clubes: string[] } = deepFreeze({
-  nomes: ROSTER.filter((a) => a.name !== PROPRIA.pageName).map((a) => a.name),
+  nomes: [...ROSTER.filter((a) => a.name !== PROPRIA.pageName).map((a) => a.name), HOMONIMA_ALT],
   dorsais: ROSTER.filter((a) => a.bib && a.bib !== PROPRIA.bib).map((a) => a.bib!),
   clubes: ROSTER.filter((a) => a.pageClub?.startsWith("Clube Inventado")).map((a) => a.pageClub!),
 });
@@ -487,6 +495,22 @@ export function comLinhaDaPropriaNaGeral(g: GeralPage, f: { year?: string; team?
   if (f.year !== undefined) t.rows[i].year = f.year;
   if (f.team !== undefined) t.rows[i].team = f.team;
   if (f.name !== undefined) t.rows[i].name = f.name;
+  return c;
+}
+
+/** O nome dela na geral com um nome do meio (PROPRIA.geralNameMeio). */
+export function comNomeDoMeioNaGeral(g: GeralPage): GeralPage {
+  return comLinhaDaPropriaNaGeral(g, { name: PROPRIA.geralNameMeio });
+}
+
+/** Uma homónima pela chave alternativa (HOMONIMA_ALT), logo a seguir a ela:
+ *  o mesmo escalão, equipa e ano, com os mesmos pontos (o aviso da soma do
+ *  escalão, como em comDuasLinhasDaPropriaNaGeral). */
+export function comHomonimaAlternativaNaGeral(g: GeralPage): GeralPage {
+  const c = copy(g);
+  const { t, i } = findPropriaGeral(c);
+  t.rows.splice(i + 1, 0, { ...t.rows[i], name: HOMONIMA_ALT.toUpperCase(), points: [...t.rows[i].points] });
+  t.rows = rerank(t.rows);
   return c;
 }
 

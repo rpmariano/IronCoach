@@ -20,7 +20,9 @@
 //     mudanças, agregados) e cup_team_aliases (a coluna Equipa da geral: a
 //     lista oficial de coletividades). NADA que um atleta leia.
 //   · publicar — + cup_round_publication, cup_results e cup_standings (a
-//     linha DELE) e cup_team_results (só clubes com inscritos), e o clube da
+//     linha DELE: pela chave exata; sem nenhuma linha com ela, pela
+//     alternativa — 1.º e último nome —, 'proposta' até ele confirmar e sem
+//     pontos oficiais até lá) e cup_team_results (só clubes com inscritos), e o clube da
 //     linha DELE nos aliases — só depois de ele ter confirmado essa linha
 //     (roundAliases: antes, a linha achada pelo dorsal pode ser de outra
 //     pessoa). Só com a página "pronta" (o mesmo conteúdo em
@@ -84,6 +86,7 @@ import {
   type StandingsCheck,
   standingsContentInput,
   standingsDue,
+  standingsRowAltKeys,
   standingsRowKeys,
   standingsSummary,
   standingsWrites,
@@ -188,13 +191,14 @@ const ALIAS_COLS = "alias_norm, team_id";
 const STATE_COLS =
   "edition_id, target, round_id, last_checked_at, last_status, last_codes, content_hash, hash_seen_at, ready_at, " +
   "stable_at, stable_mode, fail_since, rows_total, rows_by_category";
-const ENROLLMENT_COLS = "id, user_id, bib, team_id, team_other, match_refused_key";
+const ENROLLMENT_COLS = "id, user_id, bib, team_id, team_other, match_refused_key, standings_refused_keys";
 const ENROLLMENT_TEAM_COLS = "enrollment_id, team_id, team_other, from_date";
 const PROFILE_COLS = "id, birth_date, gender";
 const RESULT_COLS =
-  "enrollment_id, round_id, match_status, match_hash, bib_key, standings_key, points_source, position, category_code, " +
-  "category_position, official_time_s, points";
-const STANDING_COLS = "enrollment_id, category_code, category_rank, total_points, rounds_scored, key_hash, source_checked_at";
+  "enrollment_id, round_id, match_status, match_hash, bib_key, standings_key, standings_alt_key, points_source, position, " +
+  "category_code, category_position, official_time_s, points";
+const STANDING_COLS =
+  "enrollment_id, category_code, category_rank, total_points, rounds_scored, key_hash, match_status, source_checked_at";
 const TEAM_RESULT_COLS = "round_id, team_id, team_name, position, points, athletes_count, points_source";
 const PUBLICATION_COLS = "round_id, results_ready_at, source, stable_at, content_hash";
 
@@ -243,6 +247,8 @@ type EnrollmentRow = {
   team_id: string | null;
   team_other: string | null;
   match_refused_key: string | null;
+  /** As chaves alternativas da geral que ele recusou ("não sou eu" na geral). */
+  standings_refused_keys?: string[] | null;
 };
 type EnrollmentTeamRow = { enrollment_id: string; team_id: string | null; team_other: string | null; from_date: string };
 type ProfileRow = { id: string; birth_date: string | null; gender: string | null };
@@ -835,15 +841,18 @@ class EditionRun {
   }
 
   /** "Não sou eu" dado DEPOIS de a volta ler as inscrições: relê a recusa
-   *  antes de cada jornada, para a correspondência não voltar a propor a
-   *  linha recusada nesta mesma volta. */
+   *  antes de cada jornada (e da geral), para a correspondência não voltar a
+   *  propor a linha recusada nesta mesma volta. */
   async refreshRefusals(): Promise<void> {
     if (!this.enrollments.length) return;
-    const fresh = await selectIn<{ id: string; match_refused_key: string | null }>(
-      this.sb, "cup_enrollments", "id, match_refused_key", "id", this.enrollments.map((e) => e.id), "id",
+    const fresh = await selectIn<{ id: string; match_refused_key: string | null; standings_refused_keys: string[] | null }>(
+      this.sb, "cup_enrollments", "id, match_refused_key, standings_refused_keys", "id", this.enrollments.map((e) => e.id), "id",
     );
-    const byId = new Map(fresh.map((x) => [x.id, x.match_refused_key ?? null]));
-    this.enrollments = this.enrollments.map((e) => (byId.has(e.id) ? { ...e, match_refused_key: byId.get(e.id)! } : e));
+    const byId = new Map(fresh.map((x) => [x.id, x]));
+    this.enrollments = this.enrollments.map((e) => {
+      const f = byId.get(e.id);
+      return f ? { ...e, match_refused_key: f.match_refused_key ?? null, standings_refused_keys: f.standings_refused_keys ?? [] } : e;
+    });
   }
 
   /** As não confirmadas com a chave recusada, em toda a edição (1× por
@@ -1130,33 +1139,52 @@ class EditionRun {
   }
 
   /** A linha DELE na geral (B.5): pela chave da SUA linha confirmada e o ano
-   *  do perfil; os pontos oficiais nas confirmadas; a coletiva dos clubes
+   *  do perfil — ou, sem nenhuma linha com ela, pela chave alternativa (1.º e
+   *  último nome), que fica 'proposta' até ele confirmar; os pontos oficiais
+   *  nas confirmadas (nunca com a geral por confirmar); a coletiva dos clubes
    *  com inscritos (conta da app sobre a geral oficial). */
   async linkStandings(check: StandingsCheck): Promise<{ writes: number; meta: Record<string, string> }> {
     const roundById = new Map(this.rounds.map((r) => [r.id, r]));
+    // O "Sim"/"Não sou eu" da geral pode ter chegado a meio da volta.
+    await this.refreshRefusals();
+    this.standings = await selectAll<ExistingStanding>(() =>
+      this.sb.from("cup_standings").select(STANDING_COLS).eq("edition_id", this.ed.id).order("enrollment_id")
+    );
     // A chave da confirmada mais recente dele. Todas as confirmadas levam uma
     // chave que ELE confirmou: o job só confirma sozinho com a mesma
     // standings_key de uma confirmada dele (roundWrites), e o "Sim, sou eu"
     // só arrasta as propostas com a mesma chave (confirm_cup_result, M2) —
     // uma linha de outra pessoa com o dorsal dele fica 'proposta' e não
     // entra aqui.
-    const latestKey = (enrollmentId: string): string | null => {
+    const latest = (enrollmentId: string): ResultDbRow | null => {
       const mine = this.results
         .filter((x) => x.enrollment_id === enrollmentId && x.match_status === "confirmada" && x.standings_key)
         .sort((a, b) =>
           String(roundById.get(b.round_id)?.date ?? "").localeCompare(String(roundById.get(a.round_id)?.date ?? "")) ||
           Number(roundById.get(b.round_id)?.round_no ?? 0) - Number(roundById.get(a.round_id)?.round_no ?? 0)
         );
-      return mine[0]?.standings_key ?? null;
+      return mine[0] ?? null;
     };
     const rowKeys = await standingsRowKeys(this.ed.id, check, this.teams, this.aliases);
+    const rowAltKeys = await standingsRowAltKeys(this.ed.id, check, this.teams, this.aliases);
     const link = linkStandings({
       check,
       rowKeys,
+      rowAltKeys,
       enrollments: this.enrollments.map((e) => {
         const birth = this.profiles.get(e.user_id)?.birth_date;
         const y = birth && /^\d{4}/.test(birth) ? Number(birth.slice(0, 4)) : null;
-        return { id: e.id, userId: e.user_id, standingsKey: latestKey(e.id), birthYear: y };
+        const row = latest(e.id);
+        const st = this.standings.find((x) => x.enrollment_id === e.id);
+        return {
+          id: e.id,
+          userId: e.user_id,
+          standingsKey: row?.standings_key ?? null,
+          altKey: row?.standings_alt_key ?? null,
+          birthYear: y,
+          refusedAltKeys: e.standings_refused_keys ?? [],
+          confirmedKey: st && (st.match_status ?? "confirmada") === "confirmada" ? st.key_hash ?? null : null,
+        };
       }),
     });
     let writes = 0;
@@ -1187,6 +1215,9 @@ class EditionRun {
       writes,
       meta: {
         ligadas: band(link.counts.ligada),
+        ligadas_alternativa: band(link.counts.alternativa),
+        propostas_geral: band(link.counts.proposta),
+        recusadas_geral: band(link.counts.recusada),
         sem_linha: band(link.counts.sem_linha),
         repetidas: band(link.counts.repetida),
         ano_diferente: band(link.counts.ano),
@@ -1417,6 +1448,9 @@ export async function runEnsaio(deps: SyncDeps, input: EnsaioInput): Promise<Ens
         escaloes: c.escaloes,
         batem_so_com_pontos: c.escaloes_que_batem_so_com_pontos,
         fora_ocupam_lugar: c.fora_ocupam_lugar,
+        geral_exata: c.chave_da_geral.ligam_exata,
+        geral_alternativa: c.chave_da_geral.ligam_alternativa,
+        geral_nao_ligam: c.chave_da_geral.nao_ligam,
       })),
     },
   }]);

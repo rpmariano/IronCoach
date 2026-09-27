@@ -16,7 +16,7 @@ import { distanciaLabel, editionTitle } from './CupDoorCard';
 import { CupNaoFuiDialog, CupStatus, JornadaChip } from './CupBits';
 import CupClassificacao, { CUP_CLASSIFICACAO_TITULO_ID, CupLink, clubeLabel } from './CupClassificacao';
 import CupJornadaSheet from './CupJornadaSheet';
-import CupMatchPrompt, { MATCH_ISSUE_TEXT } from './CupMatchPrompt';
+import CupMatchPrompt, { CupStandingPrompt, MATCH_ISSUE_TEXT } from './CupMatchPrompt';
 import { roundDateText } from '../../utils/cupCalendar';
 import { enrollmentChoiceError } from '@formulas/cup.ts';
 
@@ -51,7 +51,10 @@ import { enrollmentChoiceError } from '@formulas/cup.ts';
    da jornada diz "Resultado por confirmar — és tu?" ou a frase de falha.
    Ao abrir, o foco vai para o título (e volta, ao fechar, para onde
    estava); a mudança de data de cada linha entra na descrição do botão
-   (aria-describedby), porque o aria-label da linha a tapava. */
+   (aria-describedby), porque o aria-label da linha a tapava. A linha dele
+   na classificação GERAL achada pela chave alternativa (o nome do meio)
+   também se pergunta aqui ("És tu? 12.º M40 na geral · 43 pontos",
+   CupStandingPrompt). */
 
 const CARD = { background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', borderRadius: 18 };
 
@@ -606,6 +609,18 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
             idPrefix="cup-match-topo"
             onConfirmed={() => focarDepois('classificacao')}
             onRejected={() => focarDepois('gerir')}
+          />
+        )}
+
+        {/* A geral pela chave alternativa, por confirmar (tarefa 9). Depois de
+            responder, o foco vai para a Classificação (ali está o resultado). */}
+        {view.results?.standingProposal && (
+          <CupStandingPrompt
+            standing={view.results.standingProposal}
+            enrollmentId={view.enrollment?.id}
+            idPrefix="cup-match-geral-topo"
+            onConfirmed={() => focarDepois('classificacao')}
+            onRejected={() => focarDepois('classificacao')}
           />
         )}
 

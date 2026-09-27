@@ -829,6 +829,38 @@ describe('CupTrofeuScreen', () => {
       expect(screen.getByTestId('cup-jornada-resultado')).toHaveTextContent('Tempo oficial 36:12 · 29.º M35 · 5 pontos (provisórios)');
     });
 
+    /* A geral pela chave alternativa (tarefa 9): a linha dela achada pelo
+       1.º e último nome pergunta-se ("És tu? 12.º M35 na geral · 43
+       pontos."); até ao "sim" não é a linha dela — a Classificação continua
+       com a soma das confirmadas e diz que a geral está por confirmar. */
+    it('a geral por confirmar: "És tu?" da geral no topo; "Sim" confirma a da inscrição e o foco vai para "Classificação"', async () => {
+      const proposta = { category_code: 'M35', category_rank: 12, total_points: 43, rounds_scored: 4, match_status: 'proposta', source_checked_at: '2027-01-24T18:00:00Z' };
+      const confirmada = { ...PROPOSTA, match_status: 'confirmada', category_position: 29 };
+      const v = comResultados({ rows: [confirmada], standing: proposta });
+      expect(v.results.standing).toBeNull();
+      expect(v.results.standingProposal).toMatchObject({ category_rank: 12 });
+      const confirmCupStanding = vi.fn();
+      useAppStore.setState({ confirmCupStanding });
+      const ecra = (view) => <ToastProvider><CupTrofeuScreen view={view} onClose={() => {}} initialMode="calendario" /></ToastProvider>;
+      const { rerender } = montar(v, () => {}, { initialMode: 'calendario' });
+      const prompt = screen.getByTestId('cup-match-geral');
+      expect(screen.getByTestId('cup-match-geral-linha')).toHaveTextContent('12.º M35 na geral · 43 pontos.');
+      expect(prompt).toHaveAccessibleName('És tu?');
+      // Até ao "sim", a Classificação é a das jornadas confirmadas.
+      expect(screen.getByTestId('cup-classificacao-tua')).toHaveTextContent('A tua: 1 jornada com resultado oficial · 5 pontos');
+      expect(screen.getByTestId('cup-classificacao-geral')).toHaveTextContent('A tua linha na classificação geral está por confirmar.');
+      confirmCupStanding.mockImplementation(async () => {
+        rerender(ecra(comResultados({ rows: [confirmada], standing: { ...proposta, match_status: 'confirmada' } })));
+        return { ok: true, data: { enrollment_id: 'enr-1', match_status: 'confirmada' } };
+      });
+      fireEvent.click(screen.getByTestId('cup-match-geral-sim'));
+      await waitFor(() => expect(confirmCupStanding).toHaveBeenCalledWith('enr-1'));
+      expect(screen.queryByTestId('cup-match-geral')).not.toBeInTheDocument();
+      expect(screen.getByTestId('cup-classificacao-tua')).toHaveTextContent('A tua: 12.º M35 na geral · 43 pontos');
+      await waitFor(() => expect(document.activeElement).toBe(document.getElementById('cup-classificacao-titulo')));
+      useAppStore.setState({ confirmCupStanding: REAL.confirmCupStanding });
+    });
+
     it('a coletiva calculada pela app diz que é uma conta da app', () => {
       const v = makeView({
         seasonGoal: 'participar',

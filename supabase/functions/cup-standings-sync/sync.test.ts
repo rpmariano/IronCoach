@@ -24,8 +24,11 @@ import {
   comDorsalRepetidoNaPagina,
   comEpoca,
   comEscalao,
+  comHomonimaAlternativaNaGeral,
   comLinhaDaPropria,
+  comLinhaDaPropriaNaGeral,
   comMarcaIlegivel,
+  comNomeDoMeioNaGeral,
   comPontoForaDaTabela,
   comRankingErrado,
   comTotalErrado,
@@ -156,7 +159,7 @@ Deno.test("publicar: a linha dela só depois de pronta (proposta); coletiva só 
   const r2 = await cron(db, site, clock.plusHours(7));
   const res = db.rows("cup_results");
   assertEquals(res.length, 1);
-  const { match_hash, standings_key, ...rest } = res[0];
+  const { match_hash, standings_key, standings_alt_key, ...rest } = res[0];
   assertEquals(rest, {
     enrollment_id: PROPRIA.enrollmentId,
     user_id: PROPRIA.userId,
@@ -170,7 +173,8 @@ Deno.test("publicar: a linha dela só depois de pronta (proposta); coletiva só 
     points: 13,
     points_source: "calculado",
   });
-  assert(/^[0-9a-f]{64}$/.test(String(match_hash)) && /^[0-9a-f]{64}$/.test(String(standings_key)));
+  assert([match_hash, standings_key, standings_alt_key].every((h) => /^[0-9a-f]{64}$/.test(String(h))));
+  assert(standings_alt_key !== standings_key);
   const pub = db.rows("cup_round_publication");
   assertEquals(pub.map((p) => [p.round_id, p.results_ready_at, p.source, p.stable_at]), [[J1, clock.now.toISOString(), "job", null]]);
   // A coletiva (conta da app sobre a geral): só o clube dela, nas jornadas da legenda.
@@ -196,6 +200,7 @@ Deno.test("publicar: a linha dela só depois de pronta (proposta); coletiva só 
     category_rank: 1,
     total_points: 26,
     rounds_scored: 2,
+    match_status: "confirmada",
     key: true,
   }]);
   assertEquals([res[0].points, res[0].points_source], [15, "oficial"]);
@@ -216,6 +221,63 @@ Deno.test("publicar: a linha dela só depois de pronta (proposta); coletiva só 
   assertEquals([r.edicoes[0].geral?.estado, r.edicoes[0].geral?.pronta, r.edicoes[0].geral?.ligacao?.ligadas], ["ok", true, "1–19"]);
   assertEquals(db.writes.slice(m).filter((w) => ["cup_standings", "cup_results", "cup_team_results"].includes(w.table)), []);
   assertEquals(athleteWritesSince(db, m), []);
+});
+
+// ── A geral pela chave alternativa (o nome do meio) ────────────────────────
+
+/** Publicar até à J1 confirmada e a geral (com o nome do meio) lida e pronta. */
+async function geralAlternativa(geral = comNomeDoMeioNaGeral(SINT_GERAL_PAGE)) {
+  const db = scenario();
+  const site = siteWith(SINT_J1_PAGE, geral);
+  const clock = new Clock(new Date(T1));
+  await cron(db, site, clock);
+  await cron(db, site, clock.plusHours(7));
+  const res = db.rows("cup_results");
+  res[0].match_status = "confirmada"; // "Sim, sou eu" na J1
+  const r = await cron(db, site, clock.set("2026-12-07T05:00:00Z"));
+  return { db, site, clock, res, r };
+}
+
+Deno.test("geral pela chave alternativa: o nome do meio liga como PROPOSTA — os provisórios ficam; 'Sim' → confirmada e os oficiais entram", async () => {
+  const { db, site, clock, res, r } = await geralAlternativa();
+  const alt = res[0].standings_alt_key;
+  assert(typeof alt === "string" && alt !== res[0].standings_key);
+  assertEquals(db.rows("cup_standings").map((x) => [x.match_status, x.key_hash === alt, x.category_rank, x.total_points]), [["proposta", true, 1, 26]]);
+  assertEquals([res[0].points, res[0].points_source], [13, "calculado"]);
+  assertEquals([r.edicoes[0].geral?.ligacao?.ligadas, r.edicoes[0].geral?.ligacao?.propostas_geral], ["0", "1–19"]);
+  // A mesma geral, 7 h depois: continua proposta, nada se reescreve.
+  const n = db.writes.length;
+  await cron(db, site, clock.plusHours(7));
+  assertEquals(db.writes.slice(n).filter((w) => ["cup_standings", "cup_results"].includes(w.table)), []);
+  // "Sim, sou eu" na geral (a RPC confirm_cup_standing).
+  db.rows("cup_standings")[0].match_status = "confirmada";
+  const r2 = await cron(db, site, clock.plusHours(7));
+  assertEquals(r2.edicoes[0].geral?.ligacao?.ligadas_alternativa, "1–19");
+  assertEquals(db.rows("cup_standings").map((x) => [x.match_status, x.key_hash === alt]), [["confirmada", true]]);
+  assertEquals([res[0].points, res[0].points_source], [15, "oficial"]);
+});
+
+Deno.test("geral pela chave alternativa: 'Não sou eu' nunca volta; a homónima pela alternativa não liga; ano diferente não liga", async () => {
+  const a = await geralAlternativa();
+  // "Não sou eu" na geral (reject_cup_standing): apaga a proposta e guarda a chave.
+  const alt = a.db.rows("cup_standings")[0].key_hash as string;
+  a.db.tables.cup_standings = [];
+  a.db.rows("cup_enrollments")[0].standings_refused_keys = [alt];
+  const r = await cron(a.db, a.site, a.clock.plusHours(7));
+  assertEquals(a.db.rows("cup_standings"), []);
+  assertEquals(r.edicoes[0].geral?.ligacao?.recusadas_geral, "1–19");
+  await cron(a.db, a.site, a.clock.set("2026-12-09T05:00:00Z"));
+  assertEquals(a.db.rows("cup_standings"), []);
+  assertEquals([a.res[0].points, a.res[0].points_source], [13, "calculado"]);
+
+  const b = await geralAlternativa(comNomeDoMeioNaGeral(comHomonimaAlternativaNaGeral(SINT_GERAL_PAGE)));
+  assertEquals(b.db.rows("cup_standings"), []);
+  assertEquals(b.r.edicoes[0].geral?.ligacao?.repetidas, "1–19");
+  assertEquals([b.res[0].points, b.res[0].points_source], [13, "calculado"]);
+
+  const c = await geralAlternativa(comLinhaDaPropriaNaGeral(SINT_GERAL_PAGE, { name: PROPRIA.geralNameMeio, year: "1986" }));
+  assertEquals(c.db.rows("cup_standings"), []);
+  assertEquals(c.r.edicoes[0].geral?.ligacao?.ano_diferente, "1–19");
 });
 
 Deno.test("publicar com bib_scope ≠ 'epoca': a correspondência não corre (alerta bib_scope uma vez) e fica como observar", async () => {
@@ -686,9 +748,15 @@ Deno.test("ensaio: lê os links, não grava nada além de 1 linha em app_logs, e
   assertEquals([c.jornada, c.k, c.escaloes, c.escaloes_que_batem_so_com_pontos, c.escaloes_que_batem_todos, c.base_provavel, c.fora_ocupam_lugar], [
     1, 1, 32, 32, 0, "escalao", false,
   ]);
-  assertEquals(db.writes.map((w) => [w.table, w.op]), [["app_logs", "insert"]]);
+  // Quantas linhas da geral ligam pela chave exata, pela alternativa e quantas não (só números).
+  assertEquals(c.chave_da_geral, { linhas_com_pontos: 34, com_par_unico_na_pagina: 34, ligam_exata: 34, ligam_alternativa: 0, nao_ligam: 0 });
+  site.serveGeral(GERAL_URL, comNomeDoMeioNaGeral(SINT_GERAL_PAGE));
+  const out2 = await runEnsaio(syncDeps(db, site, clock), { jornadas: [J1_URL], geral: GERAL_URL });
+  assert(out2.status === "ok");
+  assertEquals(out2.report.cruzamento[0].chave_da_geral, { linhas_com_pontos: 34, com_par_unico_na_pagina: 33, ligam_exata: 33, ligam_alternativa: 1, nao_ligam: 0 });
+  assertEquals(db.writes.map((w) => [w.table, w.op]), [["app_logs", "insert"], ["app_logs", "insert"]]);
   assertEquals(logs(db)[0].meta.modo, "ensaio");
-  assertEquals(site.pageCalls(), 2);
+  assertEquals(site.pageCalls(), 4);
 });
 
 // ── Fuga (ponta a ponta) ────────────────────────────────────────────────
@@ -719,6 +787,23 @@ Deno.test("fuga: consola, todas as escritas (incl. app_logs), estado e respostas
       site.serveRound(J1_URL, semLinhaDaPropria(SINT_J1_PAGE));
       outputs.push(await runSync(syncDeps(db, site, clock.plusHours(1)), { modo: "correr", editionId: ED }));
       outputs.push(await runSync(syncDeps(db, site, clock.plusHours(7)), { modo: "correr", editionId: ED }));
+    }
+    // 1b. A geral pela chave alternativa (o nome do meio; e com a homónima):
+    //     proposta, confirmada, e "não sou eu" na geral.
+    for (const geral of [comNomeDoMeioNaGeral(SINT_GERAL_PAGE), comNomeDoMeioNaGeral(comHomonimaAlternativaNaGeral(SINT_GERAL_PAGE))]) {
+      const db = scenario();
+      dbs.push(db);
+      const site = siteWith(SINT_J1_PAGE, geral);
+      const clock = new Clock(new Date(T1));
+      outputs.push(await cron(db, site, clock), await cron(db, site, clock.plusHours(7)));
+      db.rows("cup_results")[0].match_status = "confirmada";
+      outputs.push(await cron(db, site, clock.set("2026-12-07T05:00:00Z")));
+      const st = db.rows("cup_standings")[0];
+      if (st) st.match_status = "confirmada";
+      outputs.push(await cron(db, site, clock.plusHours(7)));
+      db.rows("cup_enrollments")[0].standings_refused_keys = [String(st?.key_hash ?? "x")];
+      db.tables.cup_standings = [];
+      outputs.push(await cron(db, site, clock.plusHours(7)));
     }
     // 2. Observar, repetidos, recusado, páginas partidas, falha da BD.
     const variants: { over: Parameters<typeof scenario>[0]; round?: typeof SINT_J1_PAGE; fail?: boolean }[] = [
@@ -790,10 +875,13 @@ Deno.test("fuga: consola, todas as escritas (incl. app_logs), estado e respostas
   }
   // Nem o nome nem o dorsal DELA (só hashes).
   assert(!lower.includes(normText(PROPRIA.pageName)) && !blob.includes(PROPRIA.geralName), "nome dela");
+  assert(!lower.includes(normText(PROPRIA.geralNameMeio)) && !blob.includes(PROPRIA.geralNameMeio), "o nome dela com o do meio");
+  assert(!lower.includes("|alt|") && !lower.includes("ana|teste"), "a entrada da chave alternativa");
   assert(!/\b0?412\b/.test(blob), "dorsal dela");
   // E nunca o HTML.
   assert(!/"html"\s*:/.test(blob) && !/<table|<td|<tr/i.test(blob), "html");
   // (Sanidade: o teste viu mesmo as escritas.)
   assert(blob.includes('"proposta"') && blob.includes('"cup_standings"') && captured.length === 0);
+  assert(dbs.some((db) => db.writes.some((w) => w.table === "cup_standings" && JSON.stringify(w.payload).includes('"proposta"'))), "o caminho da alternativa");
   assertEquals(band(0), "0");
 });

@@ -656,7 +656,7 @@ describe('CompetitionsTab — Classificação', () => {
       modo: 'ensaio',
       jornadas: [{ url: 'https://trofeuatletismocascais.pt/Resultados/727', estado: 'ok', falhas: [], avisos: [], data: '2025-12-08', k: 1, tabelas: [{}, {}], linhas: 596 }],
       geral: { estado: 'ok', falhas: [], tabelas: 32, linhas: 908, colunas_p: 11, total_igual_soma: 908, ranking_ok: 32, equipas_por_ligar: 27 },
-      cruzamento: [{ k: 1, escaloes_que_batem_so_com_pontos: 32, escaloes_que_batem_todos: 2, base_provavel: 'escalao', fora_ocupam_lugar: false, chave_da_geral: { linhas_com_pontos: 438, com_par_unico_na_pagina: 431 }, coletiva: { equipas_elegiveis: 14 } }],
+      cruzamento: [{ k: 1, escaloes_que_batem_so_com_pontos: 32, escaloes_que_batem_todos: 2, base_provavel: 'escalao', fora_ocupam_lugar: false, chave_da_geral: { linhas_com_pontos: 438, com_par_unico_na_pagina: 431, ligam_exata: 414, ligam_alternativa: 22, nao_ligam: 2 }, coletiva: { equipas_elegiveis: 14 } }],
     } }));
     await abrirClassificacao();
     fireEvent.change(screen.getByTestId('cup-ensaio-jornadas'), { target: { value: 'https://trofeuatletismocascais.pt/Resultados/727\nhttps://example.org/x' } });
@@ -677,6 +677,8 @@ describe('CompetitionsTab — Classificação', () => {
     expect(rel).toHaveTextContent('32 / 2');
     expect(rel).toHaveTextContent('escalao');
     expect(rel).toHaveTextContent('98%');
+    // A chave da geral: quantas ligam pela exata, pela alternativa e quantas não (só números).
+    expect(screen.getByTestId('cup-ensaio-chave-geral')).toHaveTextContent('98% · ligam pela exata 414, pela alternativa 22 (por confirmar), não ligam 2');
   });
 
   it('numa edição encerrada, só consulta: nada se grava nem se corre', async () => {

@@ -878,7 +878,7 @@ describe('Fase 4 — a classificação com a M2', () => {
     net.tables.cup_round_publication = ok([{ round_id: 'r-c2', results_ready_at: '2027-01-10T18:37:00Z' }, { round_id: 'r-c1', results_ready_at: null }]);
     catalogTables();
     await useAppStore.getState().loadCup();
-    expect(readsOf('cup_standings')).toEqual([{ table: 'cup_standings', op: 'select', columns: 'category_code, category_rank, total_points, rounds_scored, source_checked_at', filters: [['eq', 'enrollment_id', 'enr1']] }]);
+    expect(readsOf('cup_standings')).toEqual([{ table: 'cup_standings', op: 'select', columns: 'category_code, category_rank, total_points, rounds_scored, match_status, source_checked_at', filters: [['eq', 'enrollment_id', 'enr1']] }]);
     // Só as jornadas desta edição que já passaram (hoje 20/01: a 1.ª e a 2.ª; a 6.ª foi cancelada).
     expect(readsOf('cup_round_publication')).toEqual([{ table: 'cup_round_publication', op: 'select', columns: 'round_id, results_ready_at', filters: [['in', 'round_id', ['r-c1', 'r-c2']]] }]);
     for (const c of net.selects.filter((x) => /^cup_(results|team_results|standings|round_publication)$/.test(x.table))) {
@@ -1010,7 +1010,45 @@ describe('Fase 4 — a classificação com a M2', () => {
     it('sem sessão: nada sai', async () => {
       useAppStore.setState({ session: null, profile: null });
       expect((await useAppStore.getState().confirmCupResult('r-c2')).ok).toBe(false);
+      expect((await useAppStore.getState().confirmCupStanding('enr1')).ok).toBe(false);
       expect(net.calls).toEqual([]);
+    });
+
+    /* A geral pela chave alternativa (tarefa 9): a linha 'proposta' lê-se
+       com o estado; não conta nos pontos até ele confirmar; "Sim"/"Não sou
+       eu" da geral são RPCs da inscrição, e relêem a classificação. */
+    it('a geral por confirmar: lê-se, mas não é a linha dele — nem nos pontos — até ao "sim"', async () => {
+      net.tables.cup_editions = ok([PUBLICAR]);
+      net.tables.cup_enrollments = ok([ENROLLMENT]);
+      net.tables.cup_results = ok([{ ...PROPOSTA, match_status: 'confirmada', points: 5 }]);
+      net.tables.cup_standings = ok({ ...STANDING, match_status: 'proposta' });
+      catalogTables();
+      await useAppStore.getState().loadCup();
+      const v = buildCupView({ cup: useAppStore.getState().cup, profile: LOADED.profile, raceEvents: [], runs: [], today: '2027-01-20' });
+      expect(v.results.standing).toBeNull();
+      expect(v.results.standingProposal).toMatchObject({ match_status: 'proposta', category_rank: STANDING.category_rank });
+      expect(v.results.summary.points).toBe(5);
+    });
+
+    it('confirmCupStanding / rejectCupStanding: a RPC com a inscrição, e a classificação relida', async () => {
+      await inscrito();
+      net.rpcs.confirm_cup_standing = ok({ enrollment_id: 'enr1', match_status: 'confirmada' });
+      net.tables.cup_standings = ok({ ...STANDING, match_status: 'confirmada' });
+      const res = await useAppStore.getState().confirmCupStanding('enr1');
+      expect(res).toEqual({ ok: true, data: { enrollment_id: 'enr1', match_status: 'confirmada' } });
+      expect(net.calls.filter((c) => c.rpc)).toEqual([{ rpc: 'confirm_cup_standing', args: { p_enrollment_id: 'enr1' } }]);
+      expect(useAppStore.getState().cup.results.standing).toMatchObject({ match_status: 'confirmada' });
+
+      net.calls = [];
+      net.rpcs.reject_cup_standing = ok({ enrollment_id: 'enr1', rejected: true });
+      net.tables.cup_standings = ok(null);
+      expect((await useAppStore.getState().rejectCupStanding('enr1')).ok).toBe(true);
+      expect(net.calls.filter((c) => c.rpc)).toEqual([{ rpc: 'reject_cup_standing', args: { p_enrollment_id: 'enr1' } }]);
+      expect(useAppStore.getState().cup.results.standing).toBeNull();
+      // Sem a RPC (M2 por aplicar): "Ainda não está disponível.", e nada mais muda.
+      net.rpcs.confirm_cup_standing = { data: null, error: { code: 'PGRST202', message: 'Could not find the function public.confirm_cup_standing(p_enrollment_id) in the schema cache' } };
+      expect(await useAppStore.getState().confirmCupStanding('enr1')).toEqual({ ok: false, error: { code: 'PGRST202', message: 'Ainda não está disponível.' }, unavailable: true });
+      expect(useAppStore.getState().cup.status).toBe('ready');
     });
 
     it('mudar o dorsal com uma linha por confirmar relê a classificação (o servidor apagou a do dorsal antigo)', async () => {

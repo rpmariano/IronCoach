@@ -978,12 +978,14 @@ export interface EnrollmentMatch {
   /** Só com 'linha'. */
   line?: ResultData;
   /** NÃO ENUMERÁVEIS (um JSON.stringify não os leva). Com 'linha':
-   *  identityInput → match_hash; standingsInput → standings_key. Com
+   *  identityInput → match_hash; standingsInput → standings_key;
+   *  standingsAltInput → standings_alt_key (a chave alternativa da geral). Com
    *  'clube_desconhecido': newAlias (o clube da linha achada pelo dorsal) e
    *  standingsInput — até se saber que a linha é DELE, o clube pode ser de
    *  outra pessoa (um dígito trocado): só roundAliases o deixa sair. */
   readonly identityInput?: string;
   readonly standingsInput?: string;
+  readonly standingsAltInput?: string | null;
   readonly newAlias?: string;
 }
 
@@ -1102,6 +1104,10 @@ export function matchRoundLines(input: MatchInput): MatchOutcome {
               value: standingsKeyInput(input.editionId, row.nameNorm, row.categoryCode, teamToken(e.team)),
               enumerable: false,
             });
+            Object.defineProperty(m, "standingsAltInput", {
+              value: standingsAltKeyInput(input.editionId, row.nameNorm, row.categoryCode, teamToken(e.team)),
+              enumerable: false,
+            });
           }
         }
       }
@@ -1113,8 +1119,9 @@ export function matchRoundLines(input: MatchInput): MatchOutcome {
 }
 
 export interface LineHashes {
-  /** Por inscrição com 'linha': sha256Hex(identityInput) e sha256Hex(standingsInput). */
-  byEnrollment: Map<string, { matchHash: string; standingsKey: string }>;
+  /** Por inscrição com 'linha': sha256Hex(identityInput), sha256Hex(standingsInput)
+   *  e sha256Hex(standingsAltInput) (null sem nome). */
+  byEnrollment: Map<string, { matchHash: string; standingsKey: string; altKey?: string | null }>;
   /** confirmedKey(…) de cada linha 'confirmada' da edição (confirmedKeysOf). */
   confirmedKeys: Set<string>;
 }
@@ -1159,11 +1166,17 @@ export async function roundAliases(outcome: MatchOutcome, confirmedKeys: Set<str
 
 /** Os hashes das linhas encontradas (o job chama-a entre matchRoundLines e
  *  roundWrites). */
-export async function outcomeHashes(outcome: MatchOutcome): Promise<Map<string, { matchHash: string; standingsKey: string }>> {
-  const map = new Map<string, { matchHash: string; standingsKey: string }>();
+export async function outcomeHashes(
+  outcome: MatchOutcome,
+): Promise<Map<string, { matchHash: string; standingsKey: string; altKey: string | null }>> {
+  const map = new Map<string, { matchHash: string; standingsKey: string; altKey: string | null }>();
   for (const m of outcome?.byEnrollment || []) {
     if (m.outcome !== "linha" || !m.identityInput || !m.standingsInput) continue;
-    map.set(m.enrollmentId, { matchHash: await sha256Hex(m.identityInput), standingsKey: await sha256Hex(m.standingsInput) });
+    map.set(m.enrollmentId, {
+      matchHash: await sha256Hex(m.identityInput),
+      standingsKey: await sha256Hex(m.standingsInput),
+      altKey: m.standingsAltInput ? await sha256Hex(m.standingsAltInput) : null,
+    });
   }
   return map;
 }
@@ -1176,6 +1189,7 @@ export interface ExistingResult {
   bib_key: string | null;
   match_hash: string | null;
   standings_key?: string | null;
+  standings_alt_key?: string | null;
   points_source?: string | null;
   position?: number | string | null;
   category_code?: string | null;
@@ -1192,6 +1206,7 @@ export interface ResultRow extends ResultData {
   bib_key: string | null;
   match_hash: string | null;
   standings_key: string | null;
+  standings_alt_key?: string | null;
 }
 
 export type ResultWrite =
@@ -1283,7 +1298,7 @@ export function roundWrites(outcome: MatchOutcome, existing: ExistingResult[], h
       const h = hashes?.byEnrollment?.get(m.enrollmentId);
       if (!h) continue; // sem hash não se escreve (defensivo)
       const confirmedBefore = K != null && !!hashes.confirmedKeys?.has(confirmedKey(m.enrollmentId, K, h.standingsKey));
-      const fresh = { match_hash: h.matchHash, standings_key: h.standingsKey, ...m.line };
+      const fresh = { match_hash: h.matchHash, standings_key: h.standingsKey, standings_alt_key: h.altKey ?? null, ...m.line };
       if (!e) {
         writes.push({
           op: "insert",
@@ -1352,6 +1367,33 @@ export function standingsKeyInput(editionId: string, nameNorm: string, categoryC
   return `${editionId}|${normText(nameNorm)}|${categoryCode}|${teamTok}`;
 }
 
+/** A chave ALTERNATIVA da geral: o 1.º e o último nome (normalizados) em vez
+ *  do nome inteiro, com o escalão e o clube. Tirada também da linha
+ *  CONFIRMADA dele numa jornada. Serve para o nome do meio que a página da
+ *  prova e a geral escrevem de maneira diferente (22 das 24 falhas da chave
+ *  exata na 33.ª). null sem nome. O ano do perfil confere-se à parte. */
+export function standingsAltKeyInput(editionId: string, nameNorm: string, categoryCode: string, teamTok: string): string | null {
+  const t = normText(nameNorm).split(" ").filter(Boolean);
+  if (!t.length) return null;
+  return `${editionId}|alt|${t[0]}|${t[t.length - 1]}|${categoryCode}|${teamTok}`;
+}
+
+/** As chaves alternativas (hash, ou null) de todas as linhas da geral, pela
+ *  ordem de check.rows. Em memória, como standingsRowKeys. */
+export async function standingsRowAltKeys(
+  editionId: string,
+  check: StandingsCheck,
+  teams: TeamLike[],
+  aliases: AliasLike[],
+): Promise<(string | null)[]> {
+  const out: (string | null)[] = [];
+  for (const r of check?.rows || []) {
+    const input = standingsAltKeyInput(editionId, r.nameNorm, r.categoryCode, standingsTeamToken(r.teamNorm, teams, aliases));
+    out.push(input ? await sha256Hex(input) : null);
+  }
+  return out;
+}
+
 /** As chaves (hash) de todas as linhas da geral, pela mesma ordem de
  *  check.rows. Em memória: comparam-se com a chave dele e esquecem-se. */
 export async function standingsRowKeys(
@@ -1406,17 +1448,33 @@ export interface LinkEnrollment {
   standingsKey: string | null;
   /** O ano de profiles.birth_date. */
   birthYear: number | null;
+  /** A standings_alt_key dessa MESMA linha confirmada (null = sem ela). */
+  altKey?: string | null;
+  /** As chaves alternativas que ele recusou ("não sou eu" na geral:
+   *  cup_enrollments.standings_refused_keys) — nunca mais se propõem. */
+  refusedAltKeys?: string[] | null;
+  /** A key_hash da linha dele em cup_standings, se CONFIRMADA (a exata, ou
+   *  uma alternativa que ele já confirmou). */
+  confirmedKey?: string | null;
 }
 
 export interface LinkInput {
   check: StandingsCheck;
   /** standingsRowKeys(…), alinhadas com check.rows. */
   rowKeys: string[];
+  /** standingsRowAltKeys(…), alinhadas com check.rows (sem elas, não há
+   *  alternativa). */
+  rowAltKeys?: (string | null)[];
   enrollments: LinkEnrollment[];
 }
 
-export type LinkKind = "ligada" | "sem_chave" | "sem_linha" | "repetida" | "ano";
-export const LINK_KINDS: readonly LinkKind[] = ["ligada", "sem_chave", "sem_linha", "repetida", "ano"];
+/** ligada = pela chave exata; alternativa = pela alternativa, que ele já
+ *  confirmou; proposta = pela alternativa, por confirmar ("És tu?" da
+ *  geral); recusada = a alternativa que ele recusou. */
+export type LinkKind = "ligada" | "alternativa" | "proposta" | "recusada" | "sem_chave" | "sem_linha" | "repetida" | "ano";
+export const LINK_KINDS: readonly LinkKind[] = [
+  "ligada", "alternativa", "proposta", "recusada", "sem_chave", "sem_linha", "repetida", "ano",
+];
 
 export interface StandingData {
   category_code: string;
@@ -1429,10 +1487,14 @@ export interface EnrollmentLink {
   enrollmentId: string;
   userId: string;
   outcome: LinkKind;
+  /** A chave com que se ligou (ou tentou): a exata, ou a alternativa. */
   keyHash: string | null;
-  /** Só com 'ligada'. */
+  /** Por que chave: 'alternativa' só quando a exata não achou nenhuma linha. */
+  via?: "exata" | "alternativa";
+  /** Com 'ligada', 'alternativa' e 'proposta'. */
   standing?: StandingData;
-  /** Só com 'ligada': round_id → pontos oficiais (officialPointsByRound). */
+  /** Idem: round_id → pontos oficiais (officialPointsByRound). Só se
+   *  gravam com a ligação confirmada (ligada/alternativa). */
   pointsByRound?: Record<string, number>;
 }
 
@@ -1441,7 +1503,14 @@ export interface LinkOutcome { ok: boolean; byEnrollment: EnrollmentLink[]; coun
 /** A linha dele na geral: exatamente 1 linha com a chave E com o ano de
  *  nascimento dele → liga; nenhuma com a chave → mantém o que havia
  *  (desatualizado); com a chave mas ano diferente, ou ≥ 2 → não liga e
- *  apaga (repetidos não ligam; nunca dados de outro). */
+ *  apaga (repetidos não ligam; nunca dados de outro).
+ *
+ *  A CHAVE ALTERNATIVA (1.º e último nome, escalão, clube, e o ano) só se
+ *  tenta quando a exata não acha NENHUMA linha — com 2 ou mais (homónimos)
+ *  não liga, como sempre. Só vale com exatamente 1 linha com ela e o ano na
+ *  página inteira; nunca fica confirmada sozinha: 'proposta' (o "És tu?" da
+ *  geral) até ele dizer que sim ('alternativa' = a que ele já confirmou);
+ *  uma recusada nunca volta ('recusada'). */
 export function linkStandings(input: LinkInput): LinkOutcome {
   const counts = emptyCounts(LINK_KINDS);
   const out: LinkOutcome = { ok: false, byEnrollment: [], counts };
@@ -1449,23 +1518,43 @@ export function linkStandings(input: LinkInput): LinkOutcome {
   out.ok = true;
   const rows = input.check.rows;
   const keys = input.rowKeys || [];
+  const altKeys = input.rowAltKeys || [];
   const published = publishedPointColumns(rows);
+  const fill = (l: EnrollmentLink, r: CanonStandingRow) => {
+    l.standing = {
+      category_code: r.categoryCode,
+      category_rank: r.pos,
+      total_points: r.total,
+      rounds_scored: r.points.filter((p) => (p ?? 0) > 0).length,
+    };
+    l.pointsByRound = Object.fromEntries(officialPointsByRound(r, input.check.legendMap, published));
+  };
+  const ofYear = (e: LinkEnrollment) => (r: CanonStandingRow) => e.birthYear != null && r.year === e.birthYear;
   for (const e of input.enrollments || []) {
     const l: EnrollmentLink = { enrollmentId: e.id, userId: e.userId, outcome: "sem_chave", keyHash: e.standingsKey ?? null };
     if (e.standingsKey) {
+      l.via = "exata";
       const withKey = rows.filter((_, i) => keys[i] === e.standingsKey);
-      const mine = withKey.filter((r) => e.birthYear != null && r.year === e.birthYear);
-      if (!withKey.length) l.outcome = "sem_linha";
-      else if (mine.length === 1) {
-        const r = mine[0];
+      const mine = withKey.filter(ofYear(e));
+      if (!withKey.length) {
+        l.outcome = "sem_linha";
+        const alt = e.altKey ?? null;
+        if (alt) {
+          const altWith = rows.filter((_, i) => altKeys[i] === alt);
+          const altMine = altWith.filter(ofYear(e));
+          if (altWith.length) {
+            l.via = "alternativa";
+            l.keyHash = alt;
+            if ((e.refusedAltKeys || []).includes(alt)) l.outcome = "recusada";
+            else if (altMine.length === 1) {
+              l.outcome = e.confirmedKey === alt ? "alternativa" : "proposta";
+              fill(l, altMine[0]);
+            } else l.outcome = altMine.length >= 2 ? "repetida" : "ano";
+          }
+        }
+      } else if (mine.length === 1) {
         l.outcome = "ligada";
-        l.standing = {
-          category_code: r.categoryCode,
-          category_rank: r.pos,
-          total_points: r.total,
-          rounds_scored: r.points.filter((p) => (p ?? 0) > 0).length,
-        };
-        l.pointsByRound = Object.fromEntries(officialPointsByRound(r, input.check.legendMap, published));
+        fill(l, mine[0]);
       } else l.outcome = mine.length >= 2 ? "repetida" : "ano";
     }
     counts[l.outcome] += 1;
@@ -1481,7 +1570,9 @@ export function officialPointsWrites(link: LinkOutcome, existing: ExistingResult
   const writes: ResultWrite[] = [];
   if (!link?.ok) return writes;
   for (const l of link.byEnrollment) {
-    if (l.outcome !== "ligada" || !l.pointsByRound) continue;
+    // Só com a ligação confirmada: uma 'proposta' (a alternativa por
+    // confirmar) não troca os provisórios pelos oficiais.
+    if ((l.outcome !== "ligada" && l.outcome !== "alternativa") || !l.pointsByRound) continue;
     for (const [roundId, pts] of Object.entries(l.pointsByRound)) {
       const e = (existing || []).find((x) => x.enrollment_id === l.enrollmentId && x.round_id === roundId);
       if (!e || e.match_status !== "confirmada") continue;
@@ -1499,6 +1590,8 @@ export interface ExistingStanding {
   total_points?: number | string | null;
   rounds_scored?: number | string | null;
   key_hash?: string | null;
+  /** 'confirmada' (a exata, ou a alternativa que ele confirmou) | 'proposta'. */
+  match_status?: string | null;
   source_checked_at?: string | null;
 }
 
@@ -1507,6 +1600,7 @@ export interface StandingRow extends StandingData {
   user_id: string;
   edition_id: string;
   key_hash: string | null;
+  match_status: "confirmada" | "proposta";
   source_checked_at: string;
 }
 
@@ -1515,9 +1609,11 @@ export type StandingWrite =
   | { op: "update"; enrollment_id: string; set: Partial<StandingRow> }
   | { op: "delete"; enrollment_id: string };
 
-/** O que se escreve em cup_standings: ligada → a linha dele (só se mudou,
- *  ou para refrescar a data da leitura uma vez por `refreshAfterH`);
- *  repetida/ano → apaga; sem linha/sem chave → fica como estava. */
+/** O que se escreve em cup_standings: ligada/alternativa → a linha dele,
+ *  confirmada; proposta → a linha, 'proposta' (só se mudou, ou para
+ *  refrescar a data da leitura uma vez por `refreshAfterH`); repetida/ano →
+ *  apaga (pela alternativa, só a que veio dela); recusada → apaga a linha
+ *  dessa chave; sem linha/sem chave → fica como estava. */
 export function standingsWrites(
   link: LinkOutcome,
   existing: ExistingStanding[],
@@ -1530,8 +1626,8 @@ export function standingsWrites(
   const nowIso = now.toISOString();
   for (const l of link.byEnrollment) {
     const e = (existing || []).find((x) => x.enrollment_id === l.enrollmentId);
-    if (l.outcome === "ligada" && l.standing) {
-      const want = { ...l.standing, key_hash: l.keyHash };
+    if ((l.outcome === "ligada" || l.outcome === "alternativa" || l.outcome === "proposta") && l.standing) {
+      const want = { ...l.standing, key_hash: l.keyHash, match_status: l.outcome === "proposta" ? "proposta" as const : "confirmada" as const };
       if (!e) {
         writes.push({
           op: "insert",
@@ -1551,7 +1647,9 @@ export function standingsWrites(
       if (n || !Number.isFinite(last) || now.getTime() - last >= refreshAfterH * H) {
         writes.push({ op: "update", enrollment_id: l.enrollmentId, set: { ...set, source_checked_at: nowIso } });
       }
-    } else if ((l.outcome === "repetida" || l.outcome === "ano") && e) {
+    } else if ((l.outcome === "repetida" || l.outcome === "ano") && e && (l.via !== "alternativa" || e.key_hash === l.keyHash)) {
+      writes.push({ op: "delete", enrollment_id: l.enrollmentId });
+    } else if (l.outcome === "recusada" && e && e.key_hash === l.keyHash) {
       writes.push({ op: "delete", enrollment_id: l.enrollmentId });
     }
   }
@@ -1761,7 +1859,16 @@ export interface CrossReport {
   base_provavel: "escalao" | "indeterminada";
   /** false = os de fora não ocupam lugar; null = não dá para distinguir. */
   fora_ocupam_lugar: boolean | null;
-  chave_da_geral: { linhas_com_pontos: number; com_par_unico_na_pagina: number };
+  /** Das linhas da geral com Pk > 0: com par único (nome, escalão) na
+   *  página; e a ligação simulada — quantas ligam pela chave exata, quantas
+   *  pela alternativa (por confirmar, na app) e quantas não ligam. */
+  chave_da_geral: {
+    linhas_com_pontos: number;
+    com_par_unico_na_pagina: number;
+    ligam_exata: number;
+    ligam_alternativa: number;
+    nao_ligam: number;
+  };
   coletiva: { equipas_elegiveis: number; top3_pontos: number[] };
 }
 
@@ -1771,7 +1878,10 @@ export interface CrossReport {
  *  - por escalão, Σ Pk oficial contra a tabela aplicada a todos os da
  *    página e só aos m com pontos;
  *  - chave da geral: das linhas com Pk > 0, quantas têm exatamente um par
- *    (nome como o site o escreve, escalão) na página;
+ *    (nome como o site o escreve, escalão) na página; e, simulando que cada
+ *    uma é de um inscrito (a linha dele na página, o clube e o ano da
+ *    própria linha da geral), quantas ligam pela chave exata, quantas pela
+ *    alternativa (só quando a exata não acha nenhuma linha) e quantas não;
  *  - coletiva: equipas elegíveis e os 3 maiores totais (a Equipa da geral
  *    como clube; o Individual fora). */
 export function crossCheck(
@@ -1784,7 +1894,7 @@ export function crossCheck(
   const report: CrossReport = {
     k, disponivel: false, por_escalao: [], escaloes: 0, escaloes_que_batem_so_com_pontos: 0,
     escaloes_que_batem_todos: 0, base_provavel: "indeterminada", fora_ocupam_lugar: null,
-    chave_da_geral: { linhas_com_pontos: 0, com_par_unico_na_pagina: 0 },
+    chave_da_geral: { linhas_com_pontos: 0, com_par_unico_na_pagina: 0, ligam_exata: 0, ligam_alternativa: 0, nao_ligam: 0 },
     coletiva: { equipas_elegiveis: 0, top3_pontos: [] },
   };
   if (!round?.ok || !standings?.ok || !Array.isArray(pointsTable) || !pointsTable.length) return report;
@@ -1828,9 +1938,43 @@ export function crossCheck(
     const key = `${r.nameNorm}|${r.categoryCode}`;
     pairs.set(key, (pairs.get(key) ?? 0) + 1);
   }
+  // A ligação simulada (só contagens; os nomes ficam nestes mapas locais).
+  const ends = (n: string) => {
+    const t = normText(n).split(" ").filter(Boolean);
+    return t.length ? `${t[0]}|${t[t.length - 1]}` : "";
+  };
+  const countBy = <T>(xs: T[], key: (x: T) => string) => {
+    const m = new Map<string, number>();
+    for (const x of xs) m.set(key(x), (m.get(key(x)) ?? 0) + 1);
+    return m;
+  };
+  const geralExact = countBy(standings.rows, (r) => `${r.nameNorm}|${r.categoryCode}|${r.teamNorm}|${r.year}`);
+  const geralExactAnyYear = countBy(standings.rows, (r) => `${r.nameNorm}|${r.categoryCode}|${r.teamNorm}`);
+  const geralAlt = countBy(standings.rows, (r) => `${ends(r.nameNorm)}|${r.categoryCode}|${r.teamNorm}|${r.year}`);
+  let exata = 0, alternativa = 0, nao = 0;
+  for (const r of withPoints) {
+    const onPage = pairs.get(`${r.nameNorm}|${r.categoryCode}`) ?? 0;
+    if (onPage >= 1) {
+      // A exata acha linha(s) na geral: a alternativa não se tenta.
+      if (onPage === 1 && geralExact.get(`${r.nameNorm}|${r.categoryCode}|${r.teamNorm}|${r.year}`) === 1) exata += 1;
+      else nao += 1;
+      continue;
+    }
+    const e = ends(r.nameNorm);
+    const lines = e ? round.rows.filter((x) => x.categoryCode === r.categoryCode && ends(x.nameNorm) === e) : [];
+    if (lines.length !== 1 || (geralExactAnyYear.get(`${lines[0].nameNorm}|${r.categoryCode}|${r.teamNorm}`) ?? 0) > 0) {
+      nao += 1;
+      continue;
+    }
+    if (geralAlt.get(`${e}|${r.categoryCode}|${r.teamNorm}|${r.year}`) === 1) alternativa += 1;
+    else nao += 1;
+  }
   report.chave_da_geral = {
     linhas_com_pontos: withPoints.length,
     com_par_unico_na_pagina: withPoints.filter((r) => pairs.get(`${r.nameNorm}|${r.categoryCode}`) === 1).length,
+    ligam_exata: exata,
+    ligam_alternativa: alternativa,
+    nao_ligam: nao,
   };
 
   const totals = teamTotals(

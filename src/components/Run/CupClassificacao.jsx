@@ -146,6 +146,9 @@ export function classificacaoDe(view) {
     const n = summary.count;
     const pts = pontosLabel(summary.points);
     tua = `${n} ${n === 1 ? rotulo : `${rotulo}s`} com resultado oficial${pts ? ` · ${pts}` : ''}`;
+    // A geral achada pela chave alternativa ainda por confirmar (o "És tu?"
+    // da geral, no topo do ecrã): não é dele até ele dizer que sim.
+    if (results.standingProposal) geral = 'A tua linha na classificação geral está por confirmar.';
   } else if (results.status === 'erro') {
     tua = 'Não consegui ler a tua classificação agora.';
   } else {

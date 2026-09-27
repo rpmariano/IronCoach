@@ -107,7 +107,11 @@ export function cupResultsOf(ctx, cup) {
   const roundIds = new Set((ctx?.sortedRounds || []).map((r) => r.id));
   const ownRows = Object.values(byRound).filter((r) => roundIds.has(r.round_id));
   const withPoints = ownRows.filter((r) => r.points != null && Number.isFinite(Number(r.points)));
-  const standing = res?.standing || null;
+  // A geral por confirmar (a chave alternativa) não é a linha dele até ele
+  // dizer que sim: não conta nos pontos nem aparece como oficial.
+  const standingRow = res?.standing || null;
+  const standingProposal = standingRow?.match_status === 'proposta' ? standingRow : null;
+  const standing = standingRow && !standingProposal ? standingRow : null;
   const standingPoints = numberOrNull(standing?.total_points);
   return {
     status: enrollment ? (res?.status ?? 'idle') : 'idle',
@@ -120,6 +124,7 @@ export function cupResultsOf(ctx, cup) {
         : withPoints.length ? withPoints.reduce((t, r) => t + Number(r.points), 0) : null,
     },
     standing,
+    standingProposal,
     m2: !!res?.m2,
     proposalByRound,
     readyAtByRound: res?.publication || {},
@@ -270,6 +275,9 @@ export function cupViewOf(ctx, results, rounds, { profile, raceEvents, runs, tod
       // se a M2 já existe (sem ela, a vista é a da Fase 3).
       pending,
       standing: results.standing,
+      // A linha dele na geral pela chave alternativa, por confirmar (o "És
+      // tu?" da geral), ou null.
+      standingProposal: results.standingProposal ?? null,
       m2: results.m2,
     },
     // Sem estes, o servidor recusa a inscrição (§4.2.6): o ecrã pede-os antes.

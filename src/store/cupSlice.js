@@ -92,7 +92,9 @@ export const CUP_TEAM_RESULT_COLUMNS = 'round_id, position, points';
 // match_refused_key: as chaves da correspondência não saem do servidor.
 export const CUP_RESULT_COLUMNS_M2 = `${CUP_RESULT_COLUMNS}, points_source`;
 export const CUP_TEAM_RESULT_COLUMNS_M2 = `${CUP_TEAM_RESULT_COLUMNS}, points_source`;
-export const CUP_STANDING_COLUMNS = 'category_code, category_rank, total_points, rounds_scored, source_checked_at';
+// match_status: 'confirmada' ou 'proposta' (a geral pela chave alternativa —
+// o nome do meio —, por confirmar: o "És tu?" da geral).
+export const CUP_STANDING_COLUMNS = 'category_code, category_rank, total_points, rounds_scored, match_status, source_checked_at';
 export const CUP_PUBLICATION_COLUMNS = 'round_id, results_ready_at';
 // As linhas que o atleta vê: a confirmada, a por confirmar e a que mudou.
 const CUP_VISIBLE_MATCH = ['proposta', 'confirmada', 'perdida'];
@@ -368,13 +370,13 @@ export const createCupSlice = (set, get) => {
      disponível", e o resto fica como estava. Com resposta do servidor (ok,
      ou uma recusa como "Não há nada para confirmar"), relê-se a
      classificação: o ecrã deixa de perguntar o que já não existe. */
-  const callResultRpc = async (fn, roundId) => {
+  const callResultRpc = async (fn, args) => {
     const userId = userIdOf(get);
     if (!userId) return noSession();
     ensureOwner(userId);
     let res;
     try {
-      res = await supabase.rpc(fn, { p_round_id: roundId });
+      res = await supabase.rpc(fn, args);
     } catch (err) {
       return { ok: false, error: errorOf(err), unavailable: false };
     }
@@ -723,8 +725,17 @@ export const createCupSlice = (set, get) => {
        sou eu": apaga as não confirmadas desse dorsal e guarda a recusa — a
        correspondência nunca mais o liga nesta edição (só mudar de dorsal
        desbloqueia). As duas releem a classificação. */
-    confirmCupResult: (roundId) => callResultRpc('confirm_cup_result', roundId),
-    rejectCupResult: (roundId) => callResultRpc('reject_cup_result', roundId),
+    confirmCupResult: (roundId) => callResultRpc('confirm_cup_result', { p_round_id: roundId }),
+    rejectCupResult: (roundId) => callResultRpc('reject_cup_result', { p_round_id: roundId }),
+
+    /* A geral pela chave alternativa (Fase 4, tarefa 9): quando o nome
+       inteiro não acha a linha dele na geral, o job tenta o 1.º e o último
+       nome (com o escalão, o clube e o ano) e deixa-a por confirmar. "Sim,
+       sou eu" confirma-a (os pontos oficiais entram na leitura seguinte);
+       "Não sou eu" apaga-a e essa ligação nunca mais se propõe. Só a
+       inscrição ativa dele (o servidor confere). Relêem a classificação. */
+    confirmCupStanding: (enrollmentId) => callResultRpc('confirm_cup_standing', { p_enrollment_id: enrollmentId }),
+    rejectCupStanding: (enrollmentId) => callResultRpc('reject_cup_standing', { p_enrollment_id: enrollmentId }),
 
     /* Promover a jornada a principal ('a') ou voltar a secundária ('b')
        (§4.3). É um update normal da prova do próprio (RLS), SÓ da
