@@ -15,9 +15,12 @@ import {
   cupNoticesOn,
   type CupNoticeState,
   cupRegimeOn,
+  cupRegimeWanted,
+  type CupRoleInputs,
   cupResultsKey,
   cupRoundText,
   cupTickCandidates,
+  effectiveIntentOf,
   isCupNoticeTrigger,
   listCupNotices,
   mergeCupCandidates,
@@ -34,6 +37,24 @@ import { validatePushText } from "../../coach-proactive-tick/pushText.ts";
 // A jornada 3 (Corrida CCD) é a 24 jan 2027, um domingo; a 4 a 14 fev.
 
 const D3 = "2027-01-24";
+
+// O que o papel sugerido precisa (no regime): sem principais nem perfil
+// (nível iniciante), as duas jornadas saem "controlar" (progressão).
+const ROLE_INPUTS: CupRoleInputs = {
+  ageRule: null,
+  seasonGoal: "participar",
+  categories: [],
+  courses: [],
+  overrides: [],
+  races: [
+    { id: "race-3", date: D3, distance_km: 7.4, race_type: null, race_priority: "b", status: "planeada", cup_round_id: "rd-3" },
+    { id: "race-4", date: "2027-02-14", distance_km: 8, race_type: null, race_priority: "b", status: "planeada", cup_round_id: "rd-4" },
+  ],
+  profile: null,
+};
+/** Uma meia principal (iniciante: 21 dias de recuperação). */
+const meia = (date: string) => ({ id: "meia", date, distance_km: 21.1, race_type: null, race_priority: "a", status: "planeada", cup_round_id: null });
+const withRaces = (...extra: ReturnType<typeof meia>[]): CupRoleInputs => ({ ...ROLE_INPUTS, races: [...ROLE_INPUTS.races, ...extra] });
 
 type Over = {
   edition?: Partial<CupNoticeState["edition"]>;
@@ -73,7 +94,8 @@ function state(o: Over = {}): CupNoticeState {
     roundPushCounts: {},
     raceAfterReachedAt: {},
     seenKeys: [],
-    parts: { pushes: true, log: true, seen: true, calendar: true, publication: true, runs: true, ...parts },
+    roleInputs: ROLE_INPUTS,
+    parts: { pushes: true, log: true, seen: true, calendar: true, publication: true, runs: true, roles: true, ...parts },
     ...rest,
   };
 }

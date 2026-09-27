@@ -19,6 +19,21 @@
 // ordem total, até esgotar (readAll) — uma contagem cortada deixava passar o
 // teto. Acima de CUP_READ_MAX_PAGES páginas, é uma leitura falhada.
 //
+// O papel sugerido (só no regime). As regras de jornada e os avisos usam a
+// intenção EFETIVA — a gravada ou, sem ela, a que cupRoundRoles sugere, como
+// a app (cupNotices.ts, effectiveIntentOf). Para a calcular, e só para quem
+// está no regime (cupRegimeWanted), lê-se mais: os escalões e os percursos
+// das jornadas (cup_categories, cup_round_courses,
+// cup_round_course_overrides), as provas dele que mexem nos papéis
+// (race_events com jornada, ou desde hoje − CUP_ROLE_RACES_FROM_DAYS), o
+// perfil (nascimento, género, nível) e as corridas das provas de jornada
+// (runs — o "feita"; antes só com a classificação ligada). A edição e a
+// inscrição levam mais uma coluna cada (age_rule, season_goal) e a
+// participação o intent_source — sem leituras novas. Uma destas leituras que
+// falhe (parts.roles; ou runs) deixa só a intenção gravada: as jornadas sem
+// ela ficam sem manhã de regime nem avisos. Quem só tem o calendário ligado
+// não lê nada disto.
+//
 // Privacidade: colunas uma a uma, nunca `*`, nunca o dorsal, a posição, os
 // pontos nem o clube — o tick nem lê cup_results. Os logs levam só a
 // mensagem do erro: nunca ids, nomes ou linhas.
@@ -28,7 +43,9 @@ import { isCupSchemaMissing } from "../_shared/seriesBlock.ts";
 import {
   CUP_DATE_CHANGE_SEEN_DAYS,
   CUP_NOTICE_TRIGGERS,
+  CUP_ROLE_RACES_FROM_DAYS,
   type CupNoticeState,
+  cupRegimeWanted,
   raceAfterReachedAtOf,
   roundPushCountsOf,
 } from "../_shared/formulas/cupNotices.ts";
@@ -48,13 +65,22 @@ export const CUP_READ_PAGE = 1000;
 /** Mais do que isto numa leitura é anormal: trata-se como falhada. */
 export const CUP_READ_MAX_PAGES = 20;
 
-const EDITION_COLUMNS = "id, status, season_label, entry_mode, time_zone, notifications_enabled, competition:cup_competitions(short_name, round_label)";
-const ENROLLMENT_COLUMNS = "id, user_id, edition_id, status, joined_at, entry_by, notify_calendar, notify_date_changes, notify_entry_deadline, notify_results";
+const EDITION_COLUMNS =
+  "id, status, season_label, entry_mode, time_zone, notifications_enabled, age_rule, competition:cup_competitions(short_name, round_label)";
+const ENROLLMENT_COLUMNS =
+  "id, user_id, edition_id, status, joined_at, entry_by, season_goal, notify_calendar, notify_date_changes, notify_entry_deadline, notify_results";
 const ROUND_COLUMNS = "id, edition_id, round_no, name, date, date_status, previous_date, date_changed_at, entry_deadline_at";
-const PARTICIPATION_COLUMNS = "enrollment_id, round_id, decision, intent, entry_done_at, decided_at";
+const PARTICIPATION_COLUMNS = "enrollment_id, round_id, decision, intent, intent_source, entry_done_at, decided_at";
 // As colunas da ordem vão todas no select: a ordem total é a chave primária
 // (ou a única) de cada tabela.
 const RACE_COLUMNS = "id, user_id, cup_round_id, race_priority";
+// O papel sugerido (só no regime): as colunas que cupRoundRoles lê — as
+// mesmas do bloco da Carol (seriesBlock.ts), sem o nome das provas.
+const ROLE_RACE_COLUMNS = "id, user_id, date, distance_km, race_type, race_priority, status, cup_round_id";
+const CATEGORY_COLUMNS = "id, edition_id, code, gender, min_age, max_age, course_code";
+const COURSE_COLUMNS = "id, round_id, code, distance_m";
+const OVERRIDE_COLUMNS = "round_id, category_code, course_code";
+const PROFILE_COLUMNS = "id, birth_date, gender, experience_level";
 const NOTIFY_ANY = "notify_calendar.eq.true,notify_date_changes.eq.true,notify_entry_deadline.eq.true,notify_results.eq.true";
 
 function addDaysISO(iso: string, n: number): string {
@@ -114,6 +140,19 @@ export async function loadCupNoticeState(sb: any, userIds: string[], now: Date, 
     if (!enrollments.length) return out;
 
     const users = [...new Set(enrollments.map((e) => e.user_id as string))];
+    const editionById = new Map(editions.map((e) => [e.id as string, e]));
+    // No regime (um aviso de jornada que se aplique a ele): só a esses se lê
+    // o que o papel sugerido precisa.
+    const inRegime = (e: any) =>
+      cupRegimeWanted(editionById.get(e.edition_id)?.entry_mode ?? null, {
+        entryBy: e.entry_by ?? null,
+        notifyDateChanges: e.notify_date_changes === true,
+        notifyEntryDeadline: e.notify_entry_deadline === true,
+        notifyResults: e.notify_results === true,
+      });
+    const regime = enrollments.filter(inRegime);
+    const regimeUsers = [...new Set(regime.map((e) => e.user_id as string))];
+    const regimeEditions = new Set(regime.map((e) => e.edition_id as string));
     const someone = (f: string) => enrollments.some((e) => e[f] === true);
     const wantResults = someone("notify_results");
     const wantDates = someone("notify_date_changes");
@@ -156,16 +195,35 @@ export async function loadCupNoticeState(sb: any, userIds: string[], now: Date, 
     }
     const rounds: any[] = (roundsR.data || []).filter((r: any) => r?.id && r.edition_id);
     const roundIds = rounds.map((r) => r.id as string);
+    const regimeRoundIds = rounds.filter((r) => regimeEditions.has(r.edition_id)).map((r) => r.id as string);
+    // O papel só se calcula com jornadas: sem nenhuma, não se lê nada dele.
+    const wantRoles = regimeUsers.length > 0 && regimeRoundIds.length > 0;
 
     // Q3 — as provas destes atletas ligadas a ESTAS jornadas (não as de todas
     // as épocas), e a publicação só com alguém com a classificação ligada.
-    const [racesR, pubR] = await Promise.all([
+    // No regime, também o que o papel sugerido precisa (ver o cabeçalho).
+    const [racesR, pubR, catsR, coursesR, overridesR, roleRacesR, profilesR] = await Promise.all([
       roundIds.length
         ? readAll(() => sb.from("race_events").select(RACE_COLUMNS).in("user_id", users).in("cup_round_id", roundIds), ["id"])
         : EMPTY,
       wantResults && roundIds.length
         ? readAll(() => sb.from("cup_round_publication").select("round_id, results_ready_at").in("round_id", roundIds), ["round_id"])
         : EMPTY,
+      wantRoles
+        ? readAll(() => sb.from("cup_categories").select(CATEGORY_COLUMNS).in("edition_id", [...regimeEditions]), ["id"])
+        : EMPTY,
+      wantRoles ? readAll(() => sb.from("cup_round_courses").select(COURSE_COLUMNS).in("round_id", regimeRoundIds), ["id"]) : EMPTY,
+      wantRoles
+        ? readAll(() => sb.from("cup_round_course_overrides").select(OVERRIDE_COLUMNS).in("round_id", regimeRoundIds), ["round_id", "category_code"])
+        : EMPTY,
+      // As principais mandam nos papéis: com jornada (de qualquer edição, como
+      // no cliente e na Carol) ou com data a partir do corte.
+      wantRoles
+        ? readAll(() =>
+          sb.from("race_events").select(ROLE_RACE_COLUMNS).in("user_id", regimeUsers)
+            .or(`cup_round_id.not.is.null,date.gte.${addDaysISO(todayISO, -CUP_ROLE_RACES_FROM_DAYS)}`), ["id"])
+        : EMPTY,
+      wantRoles ? readAll(() => sb.from("profiles").select(PROFILE_COLUMNS).in("id", regimeUsers), ["id"]) : EMPTY,
     ]);
     if (racesR?.error) {
       warnRead("provas", racesR.error);
@@ -188,18 +246,33 @@ export async function loadCupNoticeState(sb: any, userIds: string[], now: Date, 
 
     const roundEdition = new Map(rounds.map((r) => [r.id as string, r.edition_id as string]));
     const races: any[] = (racesR.data || []).filter((r: any) => r?.id && r.user_id && roundEdition.has(r.cup_round_id));
-    const jornadaRaceIds = races.map((r) => r.id as string);
+    // As provas de jornada de quem está no regime (a classificação é uma
+    // delas: notify_results põe-no no regime).
+    const regimeUserSet = new Set(regimeUsers);
+    const regimeRaceIds = races.filter((r) => regimeUserSet.has(r.user_id) && regimeEditions.has(roundEdition.get(r.cup_round_id)!))
+      .map((r) => r.id as string);
 
-    // Q4 — as corridas destas provas, só com alguém com a classificação ligada.
-    const runsR = wantResults && jornadaRaceIds.length
-      ? await readAll(() => sb.from("runs").select("id, user_id, race_id").in("user_id", users).in("race_id", jornadaRaceIds), ["id"])
+    // Q4 — as corridas destas provas, só no regime: a classificação ("correu")
+    // e o "feita" do papel sugerido.
+    const runsR = regimeRaceIds.length
+      ? await readAll(() => sb.from("runs").select("id, user_id, race_id").in("user_id", regimeUsers).in("race_id", regimeRaceIds), ["id"])
       : EMPTY;
     const pubFailed = failed(pubR, "publicação");
     const runsFailed = failed(runsR, "corridas");
     const readyAt = new Map<string, string | null>((pubFailed ? [] : pubR.data || []).map((p: any) => [p.round_id, p.results_ready_at ?? null]));
+    // Cada leitura do papel que falhe avisa (só a mensagem); qualquer uma cala
+    // o papel sugerido de toda a gente nesta execução (parts.roles).
+    const roleFails = [
+      failed(catsR, "escalões"),
+      failed(coursesR, "percursos"),
+      failed(overridesR, "exceções de percurso"),
+      failed(roleRacesR, "provas do papel"),
+      failed(profilesR, "perfis"),
+    ];
+    const rolesFailed = roleFails.some(Boolean);
+    const profileOf = new Map<string, any>((profilesR.data || []).filter((p: any) => p?.id).map((p: any) => [p.id as string, p]));
 
     const byUserRows = (rows: any[] | null | undefined, userId: string): any[] => (rows || []).filter((r) => r?.user_id === userId);
-    const editionById = new Map(editions.map((e) => [e.id as string, e]));
 
     for (const enr of enrollments) {
       const ed = editionById.get(enr.edition_id);
@@ -212,6 +285,8 @@ export async function loadCupNoticeState(sb: any, userIds: string[], now: Date, 
         .map((r) => ({ id: r.id as string, roundId: r.cup_round_id as string, priority: (r.race_priority ?? null) as string | null }));
       const myRaceIds = new Set(myRaces.map((r) => r.id));
       const pushRows = pushesFailed ? [] : byUserRows(pushesR.data, enr.user_id);
+      const wantsRoles = inRegime(enr);
+      const prof = profileOf.get(enr.user_id) ?? null;
       out.byUser.set(enr.user_id, {
         edition: {
           id: ed.id,
@@ -251,6 +326,7 @@ export async function loadCupNoticeState(sb: any, userIds: string[], now: Date, 
             roundId: p.round_id,
             decision: p.decision ?? null,
             intent: p.intent ?? null,
+            intentSource: p.intent_source ?? null,
             entryDoneAt: p.entry_done_at ?? null,
             decidedAt: p.decided_at ?? null,
           })),
@@ -259,6 +335,20 @@ export async function loadCupNoticeState(sb: any, userIds: string[], now: Date, 
         roundPushCounts: roundPushCountsOf(pushRows, myRaces),
         raceAfterReachedAt: raceAfterReachedAtOf(logFailed ? [] : byUserRows(logR.data, enr.user_id), pushRows),
         seenKeys: seenFailed ? [] : byUserRows(seenR.data, enr.user_id).map((r: any) => String(r.key ?? "")).filter(Boolean),
+        // Fora do regime não se lê (nem é preciso): null.
+        roleInputs: wantsRoles && !rolesFailed
+          ? {
+            ageRule: ed.age_rule ?? null,
+            seasonGoal: enr.season_goal ?? null,
+            categories: (catsR.data || []).filter((c: any) => c?.edition_id === ed.id),
+            courses: (coursesR.data || []).filter((c: any) => myRoundIds.has(c?.round_id)),
+            overrides: (overridesR.data || []).filter((o: any) => myRoundIds.has(o?.round_id)),
+            races: byUserRows(roleRacesR.data, enr.user_id),
+            profile: prof
+              ? { birth_date: prof.birth_date ?? null, gender: prof.gender ?? null, experience_level: prof.experience_level ?? null }
+              : null,
+          }
+          : null,
         parts: {
           pushes: !pushesFailed,
           log: !logFailed,
@@ -266,6 +356,7 @@ export async function loadCupNoticeState(sb: any, userIds: string[], now: Date, 
           calendar: !enr.notify_calendar || calendarAt.has(ed.id),
           publication: !pubFailed,
           runs: !runsFailed,
+          roles: !wantsRoles || !rolesFailed,
         },
       });
     }

@@ -18,6 +18,13 @@
 //   - as provas de jornada (race_events.cup_round_id desta edição, sem ser
 //     principal) perdem a véspera (fica no chat e no cartão do dia), não têm
 //     nada em trote/saltar/"Não vou", e a manhã diz a hora do percurso;
+//   - "em trote" é a intenção EFETIVA, a que a app mostra: a que ele gravou
+//     ou, sem ela, a sugerida por cupRoundRoles — a mesma função do ecrã
+//     (useCup.js) e da Carol (seriesBlock.ts). Sem nenhuma das duas (as
+//     leituras do papel falharam), não há manhã de regime nem avisos dessa
+//     jornada (effectiveIntentOf);
+//   - o prazo de inscrição sai também em trote (decisão do dono, 2026-09-27:
+//     quem vai a trote também tem de se inscrever); em saltar, não;
 //   - máximo 3 notificações por jornada, contando as race_* dessa prova
 //     (CUP_ROUND_PUSH_CAP), seja qual for a prioridade dela: chegado ao teto
 //     — ou sem saber quantas saíram (leitura falhada) —, tudo o que é dessa
@@ -29,7 +36,9 @@
 // pontos dizem-se no chat, a ele (coach-chat, turno cup_results).
 
 import { nomeProprio, proactiveTab, type ServerProactiveCandidate } from "./proactiveTriggers.ts";
-import { entryDeadlineNotice } from "./cup.ts";
+import { entryDeadlineNotice, type CupCategory, type CupCourse, type CupCourseOverride } from "./cup.ts";
+import { CUP_ROLES_RACE_LOOKBACK_DAYS, cupRoundRoles } from "./cupRoles.ts";
+import { type ArbitrationRace, isSeriesIntent, type SeriesIntent } from "./seriesArbitration.ts";
 
 export const CUP_NOTICE_TRIGGERS = ["cup_calendar", "cup_date_change", "cup_entry_deadline", "cup_results"] as const;
 export type CupNoticeTrigger = typeof CUP_NOTICE_TRIGGERS[number];
@@ -50,6 +59,14 @@ export const CUP_CALENDAR_NEWS_DAYS = 14;
 export const CUP_RESULTS_MAX_DAYS = 14;
 /** Uma mudança de data vista na app (coach_impressions 'moment') nesta janela não se notifica. */
 export const CUP_DATE_CHANGE_SEEN_DAYS = 7;
+/** Uma jornada que já passou tem a intenção do dia dela (effectiveIntentOf),
+ *  só até aqui: nada do tick olha para uma jornada mais antiga (a
+ *  classificação vai até D + 13, o balanço até D + 7). */
+export const CUP_INTENT_PAST_DAYS = CUP_RESULTS_MAX_DAYS;
+/** As provas sem jornada que o loader lê para o papel: as de hoje − isto em
+ *  diante. É o corte de cupRoundRoles (60 dias) contado a partir do dia da
+ *  jornada mais antiga que ainda conta (hoje − CUP_INTENT_PAST_DAYS). */
+export const CUP_ROLE_RACES_FROM_DAYS = CUP_ROLES_RACE_LOOKBACK_DAYS + CUP_INTENT_PAST_DAYS;
 
 // ── As chaves (contrato com o cliente: src/utils/cupPushRoute.js) ─────────
 // O id da jornada é sempre o 2.º segmento; a data da mudança é a NOVA data —
@@ -112,11 +129,24 @@ export interface CupNoticeState {
     /** cup_round_publication.results_ready_at (job ou manual, tanto faz). */
     resultsReadyAt: string | null;
   }>;
-  participations: Array<{ roundId: string; decision: string | null; intent: string | null; entryDoneAt: string | null; decidedAt: string | null }>;
+  participations: Array<{
+    roundId: string;
+    decision: string | null;
+    intent: string | null;
+    /** 'atleta' | 'sugerida' | null — entra na sequência do papel das seguintes. */
+    intentSource?: string | null;
+    entryDoneAt: string | null;
+    decidedAt: string | null;
+  }>;
   /** As provas dele ligadas a jornadas DESTA edição, de qualquer prioridade. */
   races: Array<{ id: string; roundId: string; priority: string | null }>;
-  /** As dessas provas que têm corrida ligada (runs.race_id). */
+  /** As dessas provas que têm corrida ligada (runs.race_id). No regime, é
+   *  também o "feita" do papel sugerido. */
   ranRaceIds: string[];
+  /** O que o papel sugerido de cada jornada precisa (cupRoundRoles), lido só
+   *  para quem está no regime. null fora do regime, ou com uma dessas
+   *  leituras falhada (parts.roles): aí só conta a intenção que ele gravou. */
+  roleInputs: CupRoleInputs | null;
   /** Notificações já enviadas por jornada (roundPushCountsOf). */
   roundPushCounts: Record<string, number>;
   /** raceId → o ÚLTIMO instante em que um balanço dessa prova lhe chegou
@@ -126,8 +156,28 @@ export interface CupNoticeState {
   seenKeys: string[];
   /** Que leituras acessórias correram bem. Uma que falhou cala só os avisos
    *  que dependem dela: sem as notificações enviadas não se sabe o teto — não
-   *  há avisos, e as race_* de jornada ficam como no teto (fora da lista). */
-  parts: { pushes: boolean; log: boolean; seen: boolean; calendar: boolean; publication: boolean; runs: boolean };
+   *  há avisos, e as race_* de jornada ficam como no teto (fora da lista).
+   *  Sem as do papel (`roles`) ou sem as corridas (`runs`), a intenção
+   *  sugerida não se calcula: as jornadas sem intenção gravada ficam sem
+   *  manhã de regime e sem avisos (effectiveIntentOf). */
+  parts: { pushes: boolean; log: boolean; seen: boolean; calendar: boolean; publication: boolean; runs: boolean; roles: boolean };
+}
+
+/** As linhas de que cupRoundRoles precisa além das jornadas e participações
+ *  (as mesmas que o cliente lhe passa em useCup.js, cupRoundsOf). */
+export interface CupRoleInputs {
+  /** cup_editions.age_rule — o escalão na data de cada jornada. */
+  ageRule: string | null;
+  /** cup_enrollments.season_goal */
+  seasonGoal: string | null;
+  categories: CupCategory[];
+  courses: CupCourse[];
+  overrides: CupCourseOverride[];
+  /** As race_events dele com jornada (de qualquer edição) ou com data de
+   *  hoje − CUP_ROLE_RACES_FROM_DAYS em diante — as principais mandam nos
+   *  papéis. cupRoundRoles corta-as como o servidor da Carol. */
+  races: ArbitrationRace[];
+  profile: { birth_date?: string | null; gender?: string | null; experience_level?: string | null } | null;
 }
 
 // ── Os candidatos ─────────────────────────────────────────────────────────
@@ -145,8 +195,12 @@ export type CupNoticeCandidate = Omit<ServerProactiveCandidate, "trigger"> & { t
 export type TickCandidate = (ServerProactiveCandidate & { cup?: CupInfo }) | CupNoticeCandidate;
 
 const RACE_TRIGGERS = new Set<string>(["race_morning", "race_eve", "race_after"]);
-/** "Nada em trote, saltar, Não vou ou Não fui" (§8). */
-const SKIP_INTENTS = new Set<string>(["trote", "saltar"]);
+/** "Nada em trote, saltar, Não vou ou Não fui" (§8): só "Vou" a atacar ou a
+ *  controlar — pela intenção efetiva (effectiveIntentOf). */
+const SERIOUS_INTENTS = new Set<string>(["atacar", "controlar"]);
+/** O prazo de inscrição sai também em trote (decisão do dono, 2026-09-27:
+ *  quem vai a trote também tem de se inscrever). Em saltar, não. */
+const ENTRY_DEADLINE_INTENTS = new Set<string>(["atacar", "controlar", "trote"]);
 const DAY_MS = 86400000;
 const NAME_MAX = 40;
 
@@ -180,8 +234,18 @@ export function cupNoticesOn(s: CupNoticeState | null | undefined): boolean {
 
 /** O prazo de inscrição é dele: inscrição por jornada e não é o clube que o
  *  inscreve (o Perfil mostra-lhe esse interruptor desligado e parado). */
-function entryDeadlineApplies(s: CupNoticeState): boolean {
-  return s.edition.entryMode === "por_jornada" && s.enrollment.entryBy !== "clube";
+function entryDeadlineApplies(entryMode: string | null | undefined, entryBy: string | null | undefined): boolean {
+  return entryMode === "por_jornada" && entryBy !== "clube";
+}
+
+/** Os avisos ligados de uma inscrição pedem o regime (ver cupRegimeOn). Só as
+ *  preferências: a edição ligada e a inscrição ativa ficam para cupNoticesOn.
+ *  O loader usa-a para só ler o papel sugerido a quem está no regime. */
+export function cupRegimeWanted(
+  entryMode: string | null | undefined,
+  e: Pick<CupNoticeState["enrollment"], "entryBy" | "notifyDateChanges" | "notifyEntryDeadline" | "notifyResults">,
+): boolean {
+  return !!(e.notifyDateChanges || e.notifyResults || (e.notifyEntryDeadline && entryDeadlineApplies(entryMode, e.entryBy)));
 }
 
 /** O regime do Troféu — as regras de jornada nos race_* (ver o cabeçalho):
@@ -190,8 +254,7 @@ function entryDeadlineApplies(s: CupNoticeState): boolean {
  *  Perfil como aviso de jornada, e não o podiam prender às regras. */
 export function cupRegimeOn(s: CupNoticeState | null | undefined): boolean {
   if (!s || !cupNoticesOn(s)) return false;
-  const e = s.enrollment;
-  return !!(e.notifyDateChanges || e.notifyResults || (e.notifyEntryDeadline && entryDeadlineApplies(s)));
+  return cupRegimeWanted(s.edition.entryMode, s.enrollment);
 }
 
 /** Quantas notificações já saíram de cada jornada: as cup_* com a jornada na
@@ -289,8 +352,77 @@ function jornadaAfterBody(c: ServerProactiveCandidate): string {
 type Round = CupNoticeState["rounds"][number];
 type Participation = CupNoticeState["participations"][number];
 
-function notGoing(p: Participation | undefined): boolean {
-  return !p || p.decision !== "vou" || (!!p.intent && SKIP_INTENTS.has(p.intent));
+/** A intenção EFETIVA de cada jornada — a que a app mostra (useCup.js,
+ *  cupRoundsOf: `participation.intent ?? role.intent`): a que ele gravou ou,
+ *  sem ela, a sugerida por cupRoundRoles, a mesma função do ecrã e da Carol,
+ *  com as mesmas linhas (CupRoleInputs). null = não se sabe, e o tick fica
+ *  calado nessa jornada (sem manhã de regime nem avisos): sem intenção
+ *  gravada, sem as leituras do papel (fora do regime, ou falhadas) ou sem
+ *  papel (sem data confirmada, "Não vou").
+ *
+ *  Uma jornada que já passou tem a intenção do DIA DELA — o papel calculado
+ *  com hoje = a data da jornada, o que a app lhe mostrava nesse dia. Depois
+ *  disso a app já não sugere nada (o papel de uma passada é null), mas o
+ *  balanço e a classificação são dessa manhã: uma jornada feita a trote não
+ *  ganha um aviso por ter passado. Só até CUP_INTENT_PAST_DAYS (o loader lê
+ *  as provas até aí); mais antiga, null. Um cálculo por dia, em cache. */
+export function effectiveIntentOf(s: CupNoticeState, todayISO: string): (roundId: string) => SeriesIntent | null {
+  const partOf = new Map<string, Participation>();
+  for (const p of s.participations || []) if (p?.roundId) partOf.set(p.roundId, p);
+  const rounds = (s.rounds || []).filter((r) => r?.id);
+  const dayOfRound = new Map(rounds.map((r) => [r.id, dayOf(r.date)]));
+  const inputs = s.roleInputs ?? null;
+  const known = !!inputs && s.parts?.roles !== false && s.parts?.runs !== false;
+  const byDay = new Map<string, Map<string, SeriesIntent | null>>();
+  const rolesOn = (day: string): Map<string, SeriesIntent | null> => {
+    let roles = byDay.get(day);
+    if (!roles) {
+      const list = cupRoundRoles({
+        edition: { id: s.edition.id, age_rule: inputs!.ageRule, season_label: s.edition.seasonLabel },
+        rounds: rounds.map((r) => ({ id: r.id, edition_id: s.edition.id, round_no: r.roundNo, date: r.date, date_status: r.dateStatus })),
+        participations: (s.participations || []).filter((p) => p?.roundId).map((p) => ({
+          round_id: p.roundId,
+          decision: p.decision,
+          intent: p.intent,
+          intent_source: p.intentSource ?? null,
+        })),
+        categories: inputs!.categories,
+        courses: inputs!.courses,
+        overrides: inputs!.overrides,
+        races: inputs!.races,
+        runs: (s.ranRaceIds || []).map((id) => ({ race_id: id })),
+        profile: inputs!.profile,
+        seasonGoal: inputs!.seasonGoal,
+        todayISO: day,
+      });
+      roles = new Map(list.map((r) => [r.roundId, r.intent]));
+      byDay.set(day, roles);
+    }
+    return roles;
+  };
+  return (roundId: string) => {
+    const chosen = partOf.get(roundId)?.intent;
+    if (isSeriesIntent(chosen)) return chosen;
+    if (!known) return null;
+    const d = dayOfRound.get(roundId) ?? null;
+    if (d && d < todayISO) {
+      if (d < addDaysISO(todayISO, -CUP_INTENT_PAST_DAYS)) return null;
+      return rolesOn(d).get(roundId) ?? null;
+    }
+    return rolesOn(todayISO).get(roundId) ?? null;
+  };
+}
+
+/** Disse "Vou" e a intenção efetiva é uma destas (só se calcula com "Vou"). */
+function goingAs(
+  p: Participation | undefined,
+  roundId: string,
+  intentOf: (roundId: string) => SeriesIntent | null,
+  allowed: Set<string>,
+): boolean {
+  if (!p || p.decision !== "vou") return false;
+  const intent = intentOf(roundId);
+  return !!intent && allowed.has(intent);
 }
 
 /** A classificação ainda é notícia: até D + 13 e antes da véspera da
@@ -305,12 +437,28 @@ function resultsWindowOpen(s: CupNoticeState, round: Round, todayISO: string): b
   return !next || todayISO < addDaysISO(next, -1);
 }
 
+/** Ele já viu o calendário: tem uma decisão ("Vou", "Não vou", "Não sei"…)
+ *  numa jornada desta edição que não é de antes de o calendário sair. Assim
+ *  não sai um "Saiu o calendário" atrasado — o admin a ligar os avisos dias
+ *  depois, ou ele já a decidir jornadas na lista. Uma decisão comprovadamente
+ *  ANTERIOR (decided_at < a 1.ª confirmação) não conta: foi numa jornada
+ *  ainda provável, sem calendário, e é a quem pediu "Avisa-me quando sair"
+ *  que o aviso faz falta. Sem decided_at, conta (calado na dúvida). A
+ *  decisão null de uma colisão (o servidor, não ele) não conta. */
+function calendarSeen(s: CupNoticeState, calendarOutMs: number): boolean {
+  return (s.participations || []).some((p) => {
+    if (p?.decision == null) return false;
+    const at = ms(p.decidedAt);
+    return at == null || at >= calendarOutMs;
+  });
+}
+
 function resultsReady(round: Round | undefined, now: Date): boolean {
   const at = ms(round?.resultsReadyAt ?? null);
   return at != null && at <= now.getTime();
 }
 
-function indexState(s: CupNoticeState) {
+function indexState(s: CupNoticeState, todayISO: string) {
   const partOf = new Map<string, Participation>();
   for (const p of s.participations || []) if (p?.roundId) partOf.set(p.roundId, p);
   const roundOf = new Map<string, Round>();
@@ -318,7 +466,10 @@ function indexState(s: CupNoticeState) {
   // Sem a contagem (leitura falhada) não se sabe quantas saíram: a jornada
   // fica como no teto — nunca uma 4.ª por não se ter lido.
   const capped = (roundId: string) => !s.parts?.pushes || (s.roundPushCounts?.[roundId] ?? 0) >= CUP_ROUND_PUSH_CAP;
-  return { partOf, roundOf, capped };
+  const intentOf = effectiveIntentOf(s, todayISO);
+  /** "Vou" a atacar ou a controlar (§8: nada em trote, saltar, Não vou ou Não fui). */
+  const serious = (roundId: string) => goingAs(partOf.get(roundId), roundId, intentOf, SERIOUS_INTENTS);
+  return { partOf, roundOf, capped, intentOf, serious };
 }
 
 /** Os avisos cup_* que se aplicam agora, por esta ordem: prazo, data,
@@ -327,7 +478,7 @@ function indexState(s: CupNoticeState) {
  *  acessória em falta cala só os avisos que dependem dela. */
 export function listCupNotices(s: CupNoticeState, now: Date, todayISO: string): CupNoticeCandidate[] {
   if (!cupNoticesOn(s) || !s.parts?.pushes) return [];
-  const { partOf, capped } = indexState(s);
+  const { partOf, capped, intentOf, serious } = indexState(s, todayISO);
   const e = s.enrollment;
   const rounds = [...(s.rounds || [])].filter((r) => r?.id).sort((a, b) => (a.roundNo ?? 0) - (b.roundNo ?? 0));
   const out: CupNoticeCandidate[] = [];
@@ -349,11 +500,12 @@ export function listCupNotices(s: CupNoticeState, now: Date, todayISO: string): 
   };
   const text = (r: Round) => cupRoundText(s.edition.roundLabel, r.roundNo, r.name);
 
-  // O prazo de inscrição (§4.4): a régua do cartão do dia, a 48 h.
+  // O prazo de inscrição (§4.4): a régua do cartão do dia, a 48 h. Também
+  // numa jornada a trote (ENTRY_DEADLINE_INTENTS); em saltar, não.
   if (e.notifyEntryDeadline) {
     for (const round of rounds) {
       const p = partOf.get(round.id);
-      if (capped(round.id) || notGoing(p)) continue;
+      if (capped(round.id) || !goingAs(p, round.id, intentOf, ENTRY_DEADLINE_INTENTS)) continue;
       const notice = entryDeadlineNotice({
         entryMode: s.edition.entryMode,
         entryBy: e.entryBy,
@@ -379,7 +531,7 @@ export function listCupNotices(s: CupNoticeState, now: Date, todayISO: string): 
       const date = dayOf(round.date);
       const prev = dayOf(round.previousDate);
       const changedAt = ms(round.dateChangedAt);
-      if (capped(round.id) || notGoing(p) || round.dateStatus !== "confirmada") continue;
+      if (capped(round.id) || !serious(round.id) || round.dateStatus !== "confirmada") continue;
       if (!date || !prev || prev === date || changedAt == null || date < todayISO) continue;
       if (changedAt > nowMs || nowMs - changedAt > CUP_DATE_CHANGE_NEWS_HOURS * 3600000) continue;
       const decidedAt = ms(p!.decidedAt);
@@ -398,9 +550,8 @@ export function listCupNotices(s: CupNoticeState, now: Date, todayISO: string): 
   if (e.notifyResults && s.parts.publication && s.parts.runs && s.parts.log) {
     const ran = new Set(s.ranRaceIds || []);
     for (const round of rounds) {
-      const p = partOf.get(round.id);
       const raceId = raceOfRound.get(round.id);
-      if (capped(round.id) || notGoing(p) || !raceId || !ran.has(raceId)) continue;
+      if (capped(round.id) || !serious(round.id) || !raceId || !ran.has(raceId)) continue;
       if (!resultsReady(round, now) || !resultsWindowOpen(s, round, todayISO)) continue;
       const reached = ms(s.raceAfterReachedAt?.[raceId] ?? null);
       if (reached != null && ms(round.resultsReadyAt)! <= reached) continue;
@@ -409,11 +560,15 @@ export function listCupNotices(s: CupNoticeState, now: Date, todayISO: string): 
   }
 
   // O calendário ("Avisa-me quando sair", §4.2): saiu depois de ele se
-  // inscrever, há ≤ 14 dias. É da edição: não conta para nenhuma jornada.
+  // inscrever, há ≤ 14 dias, e ele ainda não o viu. É da edição: não conta
+  // para nenhuma jornada.
   if (e.notifyCalendar && s.parts.calendar) {
     const out1 = ms(s.edition.calendarOutAt);
     const joined = ms(e.joinedAt);
-    if (out1 != null && joined != null && out1 > joined && out1 <= nowMs && nowMs - out1 <= CUP_CALENDAR_NEWS_DAYS * DAY_MS) {
+    if (
+      out1 != null && joined != null && out1 > joined && out1 <= nowMs && nowMs - out1 <= CUP_CALENDAR_NEWS_DAYS * DAY_MS &&
+      !calendarSeen(s, out1)
+    ) {
       const name = [clipName(s.edition.competitionName), clipName(s.edition.seasonLabel)].filter(Boolean).join(" ");
       push("cup_calendar", cupCalendarKey(s.edition.id), null, name ? `Saiu o calendário: ${name}.` : "Saiu o calendário da tua competição.", "home");
     }
@@ -463,7 +618,7 @@ export function cupTickCandidates(
   if (!s || !cupNoticesOn(s)) return base;
   const notices = opts.notices === false ? [] : listCupNotices(s, now, todayISO);
   if (!cupRegimeOn(s)) return mergeCupCandidates(base, notices);
-  const { partOf, roundOf, capped } = indexState(s);
+  const { partOf, roundOf, capped, serious } = indexState(s, todayISO);
   const roundOfRace = new Map<string, { roundId: string; promoted: boolean }>();
   for (const r of s.races || []) if (r?.id && r.roundId) roundOfRace.set(r.id, { roundId: r.roundId, promoted: r.priority === "a" });
   const kept: TickCandidate[] = [];
@@ -484,9 +639,11 @@ export function cupTickCandidates(
       continue;
     }
     // Sem véspera numa jornada (fica no chat e no cartão do dia); nada em
-    // trote, saltar ou sem "Vou"; e nada depois do teto.
+    // trote, saltar ou sem "Vou" — nem sem intenção que se saiba, gravada ou
+    // sugerida (effectiveIntentOf); e nada depois do teto. Uma prova de
+    // jornada sem participação (não devia haver) fica como estava.
     const p = partOf.get(roundId);
-    if (c.trigger === "race_eve" || (p && notGoing(p)) || capped(roundId)) {
+    if (c.trigger === "race_eve" || (p && !serious(roundId)) || capped(roundId)) {
       changed = true;
       continue;
     }
