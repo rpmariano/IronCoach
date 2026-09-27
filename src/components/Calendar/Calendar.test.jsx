@@ -134,6 +134,7 @@ describe('Calendário — filtro', () => {
       calendarView: null,
       activeTab: 'calendario',
       navGuard: null,
+      session: { user: { id: 'u1' } },
     });
   });
 
@@ -242,6 +243,14 @@ describe('Calendário — filtro', () => {
 
     // Mudar de separador esquece o sítio: a visita seguinte começa em hoje.
     expect(useAppStore.getState().setActiveTab('home')).toBe(true);
+    expect(useAppStore.getState().calendarView).toBeNull();
+  });
+
+  it('sem sessão (saiu-se da conta com o Calendário aberto), não guarda nada', () => {
+    const { unmount } = renderCalendario();
+    fireEvent.click(screen.getByTestId('calendar-filter-corrida'));
+    useAppStore.setState({ session: null });
+    unmount();
     expect(useAppStore.getState().calendarView).toBeNull();
   });
 

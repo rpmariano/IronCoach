@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Lightbulb, Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
@@ -31,15 +31,18 @@ const NOT_NOW_STYLE = { background: 'transparent', border: '1px solid var(--bord
 
 function NoticeCard({ testId, severity, title, message, children, onTalk, talkTestId, onUnderstood, understoodTestId, onNotNow, notNowTestId, notNowLabel }) {
   const t = noticeTone(severity);
+  const titleId = useId();
   return (
     <div data-testid={testId} data-severity={noticeSeverity(severity)} className="rounded-[14px]" style={{ background: t.bg, border: `1px solid ${t.bd}`, padding: 14 }}>
       <div className="flex items-center gap-2">
         <t.Icon size={14} aria-hidden="true" style={{ color: t.color }} className="shrink-0" />
-        <span className="text-[11px] font-extrabold uppercase" style={{ color: t.color, letterSpacing: '.08em' }}>{title}</span>
+        <span id={titleId} className="text-[11px] font-extrabold uppercase" style={{ color: t.color, letterSpacing: '.08em' }}>{title}</span>
       </div>
       {message && <p className="text-[12.5px] leading-[1.5] mt-2" style={{ color: t.text }}>{message}</p>}
       {children}
-      <div className="flex flex-col gap-2 mt-3">
+      {/* Cada cartão tem os mesmos três botões: o grupo diz de que aviso
+          são, para o leitor de ecrã não ouvir três "Percebi" iguais. */}
+      <div role="group" aria-labelledby={titleId} className="flex flex-col gap-2 mt-3">
         <button
           type="button"
           data-testid={talkTestId}
@@ -111,10 +114,12 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
     settle(insight);
   };
 
+  // setActiveTab devolve false quando um ecrã com alterações por gravar
+  // trava a saída (Perfil): aí a conversa ainda não aconteceu, e o insight
+  // não se dá por tratado.
   const talkAbout = (insight) => {
-    setInsightState(insight.id, 'understood');
     setCoachIntent({ kind: 'proactive_intervention', reason: `O atleta abriu o chat a partir do insight "${insight.title}". Aborda-o proativamente: ${insight.message}` });
-    setActiveTab('coach');
+    if (setActiveTab('coach') !== false) setInsightState(insight.id, 'understood');
     onClose();
   };
 

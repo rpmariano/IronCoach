@@ -57,8 +57,9 @@ export default function Home() {
 
   /* O que o Início mostrou (ação 2.4): a Carol lê-o para não repetir como
      novidade o que o atleta já viu. O cartão dela conta quando existe para
-     hoje; os avisos e os insights contam quando a janela deles abre (ver
-     abaixo) — antes disso são só um número no botão. */
+     hoje; os avisos e os insights contam quando a janela deles abre
+     (BI/useCarolNotices.js, logOpened) — antes disso são só um número no
+     botão. */
   const cardDate = dailySummary?.date === today ? dailySummary.date : null;
   useEffect(() => {
     if (cardDate) logImpression({ kind: 'daily_card', key: cardDate });

@@ -40,10 +40,12 @@ const fromIsoDay = (iso) => {
 
 /* Um botão do filtro da agenda: a cor do tipo (a mesma dos tracinhos da
    grelha — o filtro é também a legenda) e o nome. Escolhido, pinta-se na
-   tinta dessa cor; "Tudo" não tem cor de registo e fica no neutro. */
+   tinta dessa cor; "Tudo" não tem cor de registo e fica no neutro. O nome
+   escolhido fica em --text-1: na cor do tipo, por cima da tinta e dos dois
+   vidros, "Nutrição" e "Corpo" ficavam em 4,3:1 (revisão pré-deploy). */
 function FilterChip({ label, color, tone, active, onClick, testId }) {
   const activeStyle = tone
-    ? { background: `var(--tint-${tone}-bg)`, borderColor: `var(--tint-${tone}-bd)`, color: `var(--${tone})` }
+    ? { background: `var(--tint-${tone}-bg)`, borderColor: `var(--tint-${tone}-bd)`, color: 'var(--text-1)' }
     : { background: 'rgba(255,255,255,.08)', borderColor: 'var(--border-glass-strong)', color: 'var(--text-1)' };
   return (
     <button
@@ -102,12 +104,14 @@ export default function Calendar() {
   // Desmontado por baixo de um ecrã de topo (o separador continua a ser o
   // Calendário): guarda onde estava, para o "voltar" o repor tal e qual.
   // Mudar de separador já apagou o calendarView (setActiveTab) e aqui não
-  // se volta a escrever — a próxima visita começa em hoje.
+  // se volta a escrever — a próxima visita começa em hoje. Sem sessão
+  // (saiu-se da conta com o Calendário aberto) também não: quem entrar a
+  // seguir neste telemóvel não herda o sítio de quem saiu.
   const viewRef = useRef(null);
   viewRef.current = { month: isoDay(currentDate), selected: isoDay(selectedDate), filter };
   useEffect(() => () => {
     const s = useAppStore.getState();
-    if (s.activeTab === 'calendario') s.setCalendarView?.(viewRef.current);
+    if (s.activeTab === 'calendario' && s.session) s.setCalendarView?.(viewRef.current);
   }, []);
 
   // Tocar no tipo que já está escolhido volta a "Tudo": o botão aceso é

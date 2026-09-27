@@ -15,6 +15,7 @@ import { messageMood } from '@formulas/carolMood.ts';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { planStartMoment } from '../../utils/planStart';
 import { todayISO } from '../../lib/utils';
+import { insightStateForCarol } from '../../utils/insightState';
 import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
 import { listProactiveTriggers, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
 import { writeCachedBalance } from '../../utils/raceBalance';
@@ -136,7 +137,7 @@ export default function Coach() {
     respondToGoalProposal,
     coachIntent,
     setCoachIntent,
-    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, shoes, dailyCheckins
+    runs, gymSessions, meals, bodyAssessments, raceEvents, insightStates, insightSnoozes, shoes, dailyCheckins
   } = useAppStore();
   const { showToast } = useToast();
   // Liga o halo do avatar (ponto 9, animação 7).
@@ -265,11 +266,7 @@ export default function Coach() {
       message: i.message,
       metric: i.metric,
       value: i.value,
-      state: insightStates[i.id] === 'understood'
-        ? 'Percebido (o atleta carregou em "Percebi")'
-        : insightStates[i.id] === 'ignored'
-          ? 'Ativo, posto de lado pelo atleta até amanhã ("Agora não")'
-          : 'Ativo (pendente)'
+      state: insightStateForCarol(i.id, { states: insightStates, snoozes: insightSnoozes, today: todayISO() }),
     }));
   };
 
@@ -960,11 +957,7 @@ export default function Coach() {
         message: i.message,
         metric: i.metric,
         value: i.value,
-        state: insightStates[i.id] === 'understood'
-          ? 'Percebido (o atleta carregou em "Percebi")'
-          : insightStates[i.id] === 'ignored'
-            ? 'Ativo, posto de lado pelo atleta até amanhã ("Agora não")'
-            : 'Ativo (pendente)'
+        state: insightStateForCarol(i.id, { states: insightStates, snoozes: insightSnoozes, today: todayISO() }),
       }));
 
       const payload = {

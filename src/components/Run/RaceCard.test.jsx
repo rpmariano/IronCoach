@@ -121,7 +121,7 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
 
     // Verifica que os botões de ação continuam presentes
     expect(screen.getByRole('button', { name: /Concluída/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir o hub da prova' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Eliminar/i })).toBeInTheDocument();
   });
 
@@ -138,7 +138,7 @@ describe('RaceCard — Detalhe da Prova no Calendário', () => {
 
     fireEvent.click(screen.getByText('Corrida do Tejo'));
     expect(screen.queryByRole('button', { name: /Editar/i })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^Hub$/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir o hub da prova' }));
     expect(mockOnEdit).toHaveBeenCalledWith('race-1');
   });
 
@@ -434,18 +434,18 @@ describe('RaceCard — adicionar ao calendário', () => {
     fireEvent.click(within(persiana).getByText(/Fica uma cópia da prova/));
 
     expect(screen.getByTestId('race-calendar-sheet')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir o hub da prova' })).toBeInTheDocument();
   });
 
   it('uma prova concluída não tem o botão', () => {
     abrir({ ...futura, status: 'concluida' });
-    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir o hub da prova' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Adicionar ao calendário/i })).not.toBeInTheDocument();
   });
 
   it('uma prova que já passou não tem o botão', () => {
     abrir({ ...futura, date: addDaysISO(todayISO(), -3) });
-    expect(screen.getByRole('button', { name: /^Hub$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abrir o hub da prova' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Adicionar ao calendário/i })).not.toBeInTheDocument();
   });
 

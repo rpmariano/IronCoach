@@ -8,6 +8,10 @@ import { AlertTriangle, AlertCircle, Lightbulb } from 'lucide-react';
    - atenção: coral, com o "!" num círculo;
    - informação: ciano, a cor dela, com a lâmpada.
 
+   No botão flutuante a informação não leva símbolo nenhum: fica a cara da
+   Carol, na cor dela — o símbolo só aparece quando há alguma coisa a pedir
+   atenção.
+
    Antes eram três códigos: o botão usava o círculo para a atenção e os
    cartões o triângulo; a informação era ciana no botão e verde no cartão; e
    os avisos em que ela pede para falar eram sempre cianos, com um balão —

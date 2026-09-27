@@ -138,8 +138,8 @@ export const useAppStore = create((set, get) => ({
   }),
   // "Agora não" (pedido 2026-09-27): o insight sai do botão e da janela até
   // amanhã, e volta se ainda se aplicar. O estado 'ignored' continua em
-  // insightStates — é o que a Carol lê ("posto de lado", Coach.jsx); aqui
-  // fica só o dia em que foi posto de lado. { [insightId]: 'YYYY-MM-DD' }
+  // insightStates — a Carol lê-o (utils/insightState.js); aqui fica só o
+  // dia em que foi posto de lado. { [insightId]: 'YYYY-MM-DD' }
   insightSnoozes: JSON.parse(localStorage.getItem('ironcoach_insight_snoozes') || '{}'),
   snoozeInsight: (insightId, dayISO) => set((s) => {
     const next = { ...s.insightSnoozes, [insightId]: dayISO };

@@ -300,6 +300,7 @@ export default function RaceCard({ ev, onEdit, onToggleStatus, onDelete, onRegis
               <Button
                 variant="light"
                 onClick={(e) => { e.stopPropagation(); onEdit(ev.id); }}
+                aria-label="Abrir o hub da prova"
                 className="flex-1 text-xs"
                 icon={<LayoutDashboard size={14} />}
               >

@@ -5,6 +5,7 @@ import { detectCoachInsights } from '../../utils/biEngine';
 import { pendingRaceBalanceCandidate, pendingBlockEndAlert, dismissProactiveAlert } from '../../utils/coachProactive';
 import { detectPlanDivergence, detectRaceConflict, raceLabel, wasDivergenceHandled } from '../../utils/planDivergence';
 import { todayISO } from '../../lib/utils';
+import { isInsightHidden } from '../../utils/insightState';
 import { goalsDeclinedMarker, isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { interventionKey, raceConflictKey } from '@formulas/proactiveTriggers.ts';
 import { INTERVENTION_OUTCOME } from '@formulas/interventionOutcomes.ts';
@@ -59,12 +60,11 @@ export default function useCarolNotices() {
 
   const today = todayISO();
 
-  const insights = useMemo(() => {
-    const states = insightStates || {};
-    const snoozes = insightSnoozes || {};
-    return detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile)
-      .filter((i) => states[i.id] !== 'understood' && snoozes[i.id] !== today);
-  }, [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates, insightSnoozes, today]);
+  // A régua é a mesma do banner da Evolução · Geral (utils/insightState.js).
+  const insights = useMemo(() => (
+    detectCoachInsights({ runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes }, profile)
+      .filter((i) => !isInsightHidden(i.id, { states: insightStates, snoozes: insightSnoozes, today }))
+  ), [runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes, profile, insightStates, insightSnoozes, today]);
 
   const interventionPending = profile?.coach_intervention_status === 'needed' || profile?.coach_intervention_status === 'in_progress';
 

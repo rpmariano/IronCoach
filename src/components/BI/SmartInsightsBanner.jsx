@@ -1,27 +1,30 @@
 import React, { useMemo } from 'react';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { useAppStore } from '../../store';
-import { AlertCircle, Zap, ShieldAlert } from 'lucide-react';
+import { todayISO } from '../../lib/utils';
+import { isInsightHidden } from '../../utils/insightState';
 import Warning from '../shared/Warning';
+import { noticeSeverity, noticeTone } from './noticeTones';
 
 /* Ponto 3 do redesenho: o aviso era âmbar (bg-amber-100) — o âmbar é da
    prova. Coral para aviso, vermelho para crítico, ciano da Carol para o
-   informativo (era azul genérico). Ver src/components/shared/Warning.jsx. */
-const SEVERITY_CONFIG = {
-  critical: { tone: 'danger', Icon: ShieldAlert },
-  warning: { tone: 'warn', Icon: AlertCircle },
-  info: { tone: 'coach', Icon: Zap }
-};
+   informativo (era azul genérico). Ver src/components/shared/Warning.jsx.
+
+   Desde 2026-09-27 os símbolos são os do código único dos avisos da Carol
+   (noticeTones.js) — eram o escudo e o raio, só aqui — e um insight posto
+   de lado hoje ("Agora não") sai também deste banner, não só do botão. */
+const WARNING_TONE = { critical: 'danger', warning: 'warn', info: 'coach' };
 
 export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) {
-  const { insightStates } = useAppStore();
+  const { insightStates, insightSnoozes } = useAppStore();
+  const today = todayISO();
   const insights = useMemo(() => {
     // Retorna todos os insights cruzados (RED-S, ACWR, etc) ordenados por severidade,
-    // filtrando aqueles já entendidos/desativados ou visíveis noutros painéis.
+    // filtrando aqueles já percebidos, postos de lado hoje ou visíveis noutros painéis.
     return detectCoachInsights(data, profile).filter(
-      i => insightStates[i.id] !== 'understood' && !excludeIds.includes(i.id)
+      i => !isInsightHidden(i.id, { states: insightStates, snoozes: insightSnoozes, today }) && !excludeIds.includes(i.id)
     );
-  }, [data, profile, excludeIds, insightStates]);
+  }, [data, profile, excludeIds, insightStates, insightSnoozes, today]);
 
   if (!insights || insights.length === 0) {
     return null; // Nenhum insight, não mostra nada
@@ -33,13 +36,13 @@ export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) 
   return (
     <div className="space-y-3">
       {topInsights.map(insight => {
-        const config = SEVERITY_CONFIG[insight.severity] || SEVERITY_CONFIG.info;
-        const { Icon } = config;
+        const severity = noticeSeverity(insight.severity);
+        const { Icon } = noticeTone(severity);
 
         return (
           <Warning
             key={insight.id}
-            tone={config.tone}
+            tone={WARNING_TONE[severity]}
             title={insight.title}
             icon={<Icon size={14} />}
           >

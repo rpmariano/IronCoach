@@ -1,6 +1,7 @@
 import React from 'react';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { noticeTone, topSeverity } from './noticeTones';
+import { prefersReducedMotion } from '../../utils/coachBubbles';
 
 /* O botão flutuante dos insights (mock "Início": canto inferior direito,
    48px, gradiente da Carol, ondas na cor do alerta mais grave e o número
@@ -48,7 +49,9 @@ export default function CoachInsightButton({ insights = [], alerts = [], onClick
       data-alerts={carolAlerts.length}
       data-severity={severity}
       className="fixed right-4 z-[38] w-12 h-12 rounded-full flex items-center justify-center active:scale-95 transition-transform"
-      style={{ bottom, background: 'var(--grad-coach-legible)', animation: urgent ? 'coach-pulse-ring 2s infinite' : 'none' }}
+      // O pulso é infinito: com "menos movimento" pedido ao sistema, não
+      // pulsa (as ondas já se calam em globals.css; este vivia inline).
+      style={{ bottom, background: 'var(--grad-coach-legible)', animation: urgent && !prefersReducedMotion() ? 'coach-pulse-ring 2s infinite' : 'none' }}
     >
       <span aria-hidden="true" className="coach-wave-ring" style={{ background: wave }} />
       <span aria-hidden="true" className="coach-wave-ring coach-wave-ring--delay" style={{ background: wave }} />
