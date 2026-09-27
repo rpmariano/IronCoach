@@ -1720,6 +1720,59 @@ describe('RunRegistration — a prova cria-se sozinha quando é "fora da agenda"
   });
 });
 
+/* Troféu, Fase 3 (specs/trofeu.md §4.5, 2026-09-27): a confirmação de que a
+   ligação da Fase 0 já serve as jornadas — a prova de uma jornada é uma
+   race_events 'b' com cup_round_id, e "Prova fora da agenda" nesse dia, com
+   a distância certa, liga-se a ELA (runs.race_id) em vez de criar outra; e
+   "Registar" (openRaceRun) numa jornada abre o registo em modo prova. Só
+   teste: nenhum código de RunRegistration mudou. */
+describe('RunRegistration — a prova de uma jornada do Troféu (§4.5)', () => {
+  const onClose = vi.fn();
+  const JORNADA = { id: 'race-j3', name: 'Corrida CCD Cascais', date: '2026-09-20', race_type: 'estrada', distance_km: 7.4, status: 'agendada', race_priority: 'b', cup_round_id: 'r-c3', location: 'Cascais' };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    mocks.updateRun.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, shoes: [], coachPlans: [], coachPlanItems: [] });
+  });
+
+  it('"Prova fora da agenda" no dia de uma jornada b com a distância certa: liga-se à prova da jornada e não cria outra', async () => {
+    useAppStore.setState({ raceEvents: [JORNADA] });
+    mocks.invoke.mockResolvedValue({ data: { run: { id: 'run-j3', kind: 'competicao', name: 'Corrida CCD', date: '2026-09-20', distance_km: 7.5, duration_seconds: 1950 } }, error: null });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }).catch(() => null);
+    if (prosseguir) fireEvent.click(prosseguir);
+    await dispensarConfirmacao();
+
+    await waitFor(() => expect(
+      mocks.updates.some(u => u.table === 'runs' && u.id === 'run-j3' && u.payload.race_id === 'race-j3'),
+    ).toBe(true));
+    // Nenhuma prova nova (nem uma 'a' duplicada da jornada).
+    expect(mocks.inserts.some(i => i.table === 'race_events')).toBe(false);
+    // Da prova da jornada só muda o estado — a data, a distância e o local são
+    // da competição (o trigger guard_cup_race_columns recusaria).
+    await waitFor(() => expect(mocks.updates.some(u => u.table === 'race_events' && u.id === 'race-j3')).toBe(true));
+    for (const u of mocks.updates.filter(x => x.table === 'race_events')) expect(u.payload).toEqual({ status: 'concluida' });
+  });
+
+  it('"Registar" numa jornada (openRaceRun) abre o registo em modo prova, nessa prova', () => {
+    useAppStore.setState({ raceEvents: [{ ...JORNADA, date: todayISO() }] });
+    expect(useAppStore.getState().openRaceRun('race-j3')).toBe(true);
+    render(<RunRegistration onClose={onClose} />);
+    const cabecalho = screen.getByTestId('race-mode-header');
+    expect(cabecalho).toHaveTextContent('Corrida CCD Cascais');
+    expect(screen.queryByLabelText(/Nome da corrida/)).not.toBeInTheDocument();
+  });
+});
+
 /* Hora de início da corrida (specs/plano-de-prova.md, "A véspera e a hora").
    Opcional, ao lado da data, e sem valor por omissão. Quem insere a linha em
    `runs` é a Edge Function analyze-run, que não a conhece — a hora é um

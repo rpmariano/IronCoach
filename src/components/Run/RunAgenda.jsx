@@ -15,6 +15,7 @@ import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import RaceHubView from './RaceHubView';
 import RaceLevelSuggestion, { predictRaceSeconds } from './RaceLevelSuggestion';
+import { useCupPromoteGuard } from './CupPromoteDialog';
 import {
   RACE_TERRAIN_TYPES,
   RACE_DISTANCE_OPTIONS,
@@ -521,6 +522,10 @@ export default function RunAgenda({ onClose }) {
     setIsDirty(true);
     setDraft(prev => ({ ...prev, [key]: val }));
   };
+
+  // Numa jornada do Troféu, "Principal" mostra primeiro o custo (specs/
+  // trofeu.md §4.3, CupPromoteDialog.jsx); só o "Promover" dele o põe aqui.
+  const promoverJornada = useCupPromoteGuard(isCupRound ? draft : null, () => updateDraft('race_priority', 'a'));
 
   // Tipo, distância e (em trail) D+ são os três antecessores da pergunta
   // "qual o teu nível para esta prova" (ver specs/nivel-por-prova.md,
@@ -1311,7 +1316,7 @@ export default function RunAgenda({ onClose }) {
                 <label htmlFor="ra-prioridade-desta-prova" className="text-[11px] text-[var(--text-3)] mb-1 block">Prioridade desta prova <span className="text-[var(--danger)]">*</span></label>
                 <select id="ra-prioridade-desta-prova"
                   value={draft.race_priority}
-                  onChange={e => { updateDraft('race_priority', e.target.value) }}
+                  onChange={e => { if (promoverJornada.intercept(e.target.value, draft.race_priority)) return; updateDraft('race_priority', e.target.value) }}
                   className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-lg px-3 py-2 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-prova)]"
                 >
                   {RACE_PRIORITIES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
@@ -1319,6 +1324,7 @@ export default function RunAgenda({ onClose }) {
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   {racePriorityDescription(draft.race_priority)}
                 </p>
+                {promoverJornada.dialog}
                 {/* Marcar esta prova como principal a meio de um plano que
                     prepara outra é uma escolha legítima — mas com um custo
                     (dois polimentos incompatíveis, ver

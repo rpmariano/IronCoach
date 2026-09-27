@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { CUP_EMPTY, __resetCupModuleState } from '../../store/cupSlice';
@@ -48,6 +48,35 @@ vi.mock('../../lib/supabase', () => ({
   },
   invokeEdgeFunctionWithTimeout: () => Promise.resolve({ data: null, error: null }),
 }));
+
+/* Fase 3 (2026-09-27): o ecrã do Troféu e o da inscrição são de outros
+   testes (CupTrofeuScreen.test.jsx, CupEnrollmentScreen.test.jsx). Aqui só
+   interessa QUE se abrem e COMO (os props): no lugar deles, uma marca. */
+vi.mock('./CupTrofeuScreen', () => ({
+  default: ({ initialMode, focusRoundId, onClose }) => (
+    <div data-testid="cup-trofeu-screen" data-mode={initialMode ?? ''} data-round={focusRoundId ?? ''}>
+      <button type="button" data-testid="cup-trofeu-fechar" onClick={onClose}>Fechar</button>
+    </div>
+  ),
+}));
+vi.mock('./CupEnrollmentScreen', () => ({
+  SEASON_GOALS: [],
+  default: ({ onEnrolled }) => (
+    <div data-testid="cup-enrollment-screen">
+      <button type="button" data-testid="cup-enrollment-feita" onClick={onEnrolled}>Inscrito</button>
+    </div>
+  ),
+}));
+// O dia: o do relógio, ou um fixo nos testes da Fase 3.
+const clock = vi.hoisted(() => ({ today: null }));
+vi.mock('../../lib/utils', async (importOriginal) => {
+  const orig = await importOriginal();
+  return {
+    ...orig,
+    todayISO: () => clock.today ?? orig.todayISO(),
+    lisbonTodayISO: () => clock.today ?? orig.lisbonTodayISO(),
+  };
+});
 
 /* O ecrã de Provas ANTES da Fase 1 do Troféu, tal e qual (git 35913b9,
    src/components/Run/RacesScreen.jsx, sem os comentários). NÃO atualizar
@@ -190,5 +219,141 @@ describe('Provas — o ecrã junta a próxima prova e a lista', () => {
 
     fireEvent.click(screen.getByTestId('cup-door-nao-interessa'));
     expect(useAppStore.getState().dismissCupEdition).toHaveBeenCalledWith(editionId);
+  });
+});
+
+/* Fase 3 do Troféu (specs/trofeu.md §4.3): o bloco fixo na lista, e o ecrã
+   do Troféu aberto de outros ecrãs por um pedido no store. */
+describe('Provas — o Troféu com inscrição (Fase 3)', () => {
+  const EDITION = { ...F.CASCAIS_34_ABERTA, competition: F.CASCAIS_COMPETITION };
+  const CATALOG = {
+    [EDITION.id]: {
+      status: 'ready', rounds: F.CASCAIS_ROUNDS, courses: F.CASCAIS_COURSES,
+      overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS,
+    },
+  };
+  const ENROLLMENT = { id: 'en-1', user_id: PROFILE.id, edition_id: EDITION.id, status: 'ativa', season_goal: 'participar', team_id: 't-ccd', entry_by: 'atleta' };
+  const CUP_PROFILE = { ...PROFILE, ...F.PERSONAS.cascais, id: PROFILE.id };
+  const J3 = {
+    id: 'race-j3', user_id: PROFILE.id, name: 'Corrida CCD Cascais', date: '2027-01-24', cup_round_id: 'r-c3',
+    race_priority: 'b', race_type: 'estrada', distance_km: 7.4, status: 'agendada',
+  };
+  const inscrito = (overrides = {}) => cupReady({
+    editions: [EDITION], enrollments: [ENROLLMENT], catalog: CATALOG,
+    participations: [{ id: 'pa-3', enrollment_id: ENROLLMENT.id, round_id: 'r-c3', decision: 'vou', decision_source: 'atleta' }],
+    ...overrides,
+  });
+  const convite = () => cupReady({ editions: [EDITION], catalog: CATALOG });
+  // Um pedido de outro ecrã, como o store o grava (requestCupScreen): com o
+  // instante e o dono.
+  const pedido = (extra = {}) => ({ roundId: 'r-c3', mode: 'calendario', at: Date.now(), userId: PROFILE.id, ...extra });
+
+  beforeEach(() => {
+    net.tables = {};
+    __resetCupModuleState();
+    clock.today = '2027-01-20';
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    useAppStore.setState({
+      session: null, profile: CUP_PROFILE, raceEvents: [MEIA, J3], runs: [], coachPlans: [], coachPlanItems: [],
+      editingRaceId: null, openCreationMode: null, cupScreenRequest: null,
+      cup: inscrito(), dismissCupEdition: vi.fn(),
+    });
+  });
+
+  it('inscrito: a lista tem o bloco fixo e a porta do fim do ecrã sai (seria a mesma jornada duas vezes)', () => {
+    render(<RacesScreen />);
+    expect(screen.getByTestId('cup-list-block')).toBeInTheDocument();
+    expect(screen.queryByTestId('cup-door-card')).not.toBeInTheDocument();
+    // A jornada não aparece nas linhas normais nem no carrossel.
+    expect(screen.queryByTestId('race-list-race-j3')).not.toBeInTheDocument();
+    expect(screen.getByTestId('race-card')).toHaveTextContent('Meia de Lisboa');
+    expect(screen.getByTestId('race-card-cup-line')).toHaveTextContent('J3 Corrida CCD Cascais');
+  });
+
+  it('o convite continua igual: a porta no fim, sem bloco', () => {
+    useAppStore.setState({ cup: convite() });
+    render(<RacesScreen />);
+    expect(screen.getByTestId('cup-door-card')).toHaveTextContent('34.º Troféu de Atletismo de Cascais');
+    expect(screen.queryByTestId('cup-list-block')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('race-card-cup-line')).not.toBeInTheDocument();
+  });
+
+  it('um pedido de outro ecrã (a migalha do hub, a linha do Início) abre o Troféu onde foi pedido e limpa-se', async () => {
+    useAppStore.setState({ cupScreenRequest: pedido() });
+    render(<RacesScreen />);
+    const ecra = await screen.findByTestId('cup-trofeu-screen');
+    expect(ecra).toHaveAttribute('data-mode', 'calendario');
+    expect(ecra).toHaveAttribute('data-round', 'r-c3');
+    expect(useAppStore.getState().cupScreenRequest).toBeNull();
+
+    fireEvent.click(screen.getByTestId('cup-trofeu-fechar'));
+    expect(screen.queryByTestId('cup-trofeu-screen')).not.toBeInTheDocument();
+  });
+
+  /* Revisão da Fase 3 (§4.3: a lista pré-marcada "logo a seguir à
+     inscrição e sempre que sai o calendário"): o cabeçalho do bloco abre o
+     Troféu SEM modo — o ecrã decide, e com jornadas por decidir é a lista
+     pré-marcada. Só o "+N no calendário" força o calendário. */
+  it('o cabeçalho do bloco abre o Troféu sem modo (o ecrã decide); "+N no calendário" abre-o no calendário', async () => {
+    render(<RacesScreen />);
+    fireEvent.click(screen.getByTestId('cup-list-cabecalho'));
+    const ecra = await screen.findByTestId('cup-trofeu-screen');
+    expect(ecra).toHaveAttribute('data-mode', '');
+    expect(ecra).toHaveAttribute('data-round', '');
+    expect(useAppStore.getState().cupScreenRequest).toBeNull();
+
+    fireEvent.click(screen.getByTestId('cup-trofeu-fechar'));
+    fireEvent.click(screen.getByTestId('cup-list-mais'));
+    expect(await screen.findByTestId('cup-trofeu-screen')).toHaveAttribute('data-mode', 'calendario');
+  });
+
+  /* Revisão da Fase 3: o pedido não fica pendurado. Um toque no Início de
+     quem saiu de Provas antes de a leitura acabar abria o Troféu sozinho
+     horas depois; e a conta seguinte no mesmo telemóvel herdava-o. */
+  it('um pedido velho (mais de 30 s) ou de outra conta deita-se fora sem abrir nada', async () => {
+    useAppStore.setState({ cupScreenRequest: pedido({ at: Date.now() - 31 * 1000 }) });
+    const { unmount } = render(<RacesScreen />);
+    await waitFor(() => expect(useAppStore.getState().cupScreenRequest).toBeNull());
+    expect(screen.queryByTestId('cup-trofeu-screen')).not.toBeInTheDocument();
+    unmount();
+
+    useAppStore.setState({ cupScreenRequest: pedido({ userId: 'outra-conta' }) });
+    render(<RacesScreen />);
+    await waitFor(() => expect(useAppStore.getState().cupScreenRequest).toBeNull());
+    expect(screen.queryByTestId('cup-trofeu-screen')).not.toBeInTheDocument();
+  });
+
+  it('sem inscrição, lida a competição, o pedido limpa-se e nada abre', async () => {
+    useAppStore.setState({ cup: convite(), cupScreenRequest: pedido() });
+    render(<RacesScreen />);
+    await waitFor(() => expect(useAppStore.getState().cupScreenRequest).toBeNull());
+    expect(screen.queryByTestId('cup-trofeu-screen')).not.toBeInTheDocument();
+  });
+
+  it('com a leitura ainda a correr, o pedido espera por ela', async () => {
+    net.tables.cup_editions = { data: [EDITION], error: null };
+    net.tables.cup_enrollments = { data: [ENROLLMENT], error: null };
+    net.tables.cup_participations = { data: [], error: null };
+    net.tables.cup_rounds = { data: F.CASCAIS_ROUNDS, error: null };
+    net.tables.cup_categories = { data: F.CASCAIS_CATEGORIES, error: null };
+    net.tables.cup_teams = { data: F.CASCAIS_TEAMS, error: null };
+    net.tables.cup_round_courses = { data: F.CASCAIS_COURSES, error: null };
+    net.tables.cup_round_course_overrides = { data: F.CASCAIS_OVERRIDES, error: null };
+    useAppStore.setState({ cup: CUP_EMPTY, cupScreenRequest: pedido({ roundId: null }) });
+    render(<RacesScreen />);
+    expect(useAppStore.getState().cupScreenRequest).not.toBeNull();
+    expect(await screen.findByTestId('cup-trofeu-screen')).toHaveAttribute('data-mode', 'calendario');
+    expect(useAppStore.getState().cupScreenRequest).toBeNull();
+  });
+
+  it('logo a seguir à inscrição, o Troféu abre em "decidir" (§4.2)', () => {
+    useAppStore.setState({ cup: convite() });
+    render(<RacesScreen />);
+    fireEvent.click(screen.getByTestId('cup-door-inscrever'));
+    expect(screen.getByTestId('cup-enrollment-screen')).toBeInTheDocument();
+    // A inscrição gravou-se (o store já a tem) e o ecrã da inscrição avisa.
+    act(() => { useAppStore.setState({ cup: inscrito() }); });
+    fireEvent.click(screen.getByTestId('cup-enrollment-feita'));
+    expect(screen.getByTestId('cup-trofeu-screen')).toHaveAttribute('data-mode', 'decidir');
   });
 });

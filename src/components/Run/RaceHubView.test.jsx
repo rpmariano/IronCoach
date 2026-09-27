@@ -8,9 +8,12 @@ import { todayISO } from '../../lib/utils';
 // A galeria assina as URLs do bucket privado race-memories na hora; o
 // balanço da Carol pede-se ao coach-chat (RaceBalanceCard) — aqui responde
 // com um balanço fixo, para os testes do hub não dependerem dele.
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), from: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
+    // Só para contar: o hub não lê tabelas (as da competição só na prova de
+    // uma jornada de quem está inscrito — ver "o bloco Troféu", no fim).
+    from: (...args) => mocks.from(...args),
     storage: {
       from: () => ({
         createSignedUrl: (path) => Promise.resolve({ data: { signedUrl: `https://signed/${path}` }, error: null }),
@@ -20,6 +23,7 @@ vi.mock('../../lib/supabase', () => ({
   invokeEdgeFunctionWithTimeout: (...args) => mocks.invoke(...args),
 }));
 beforeEach(() => {
+  mocks.from.mockReset().mockImplementation(() => { throw new Error('sem rede nos testes'); });
   mocks.invoke.mockReset().mockResolvedValue({ data: { model_message: { id: 'm1', content: 'Balanço de teste.' }, suggestions: [] }, error: null });
 });
 
@@ -675,5 +679,81 @@ describe('RaceHubView — o objetivo do rascunho da agenda', () => {
        e não pode dizer "Regista corridas" a quem tem corridas. */
     expect(screen.getByTestId('race-forecast-delta')).toBeInTheDocument();
     expect(bloco.textContent).not.toContain('Regista corridas');
+  });
+});
+
+/* O bloco Troféu (specs/trofeu.md §4.5, Fase 3, 2026-09-27): só na prova de
+   uma jornada de quem está inscrito. Em qualquer outra prova o hub é o de
+   sempre — o mesmo HTML — e não lê nada da competição. O conteúdo do bloco
+   está em CupRaceBlock.test.jsx; aqui, onde entra e o que não muda. */
+describe('RaceHubView — o bloco Troféu', () => {
+  const inDays = (days) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const EDITION = { id: 'ed-t', edition_no: 34, status: 'aberta', entry_mode: 'por_jornada', counting_rule: 'pct_minima', counting_value: 70, time_zone: 'Europe/Lisbon', competition: { id: 'c-t', name: 'Troféu de Teste', short_name: 'Troféu de Teste', round_label: 'Jornada' } };
+  const USER = 'u-hub';
+  const jornada = (date) => ({ id: 'race-j', name: 'Corrida da Jornada', date, distance_km: 8, race_type: 'estrada', race_priority: 'b', status: 'agendada', cup_round_id: 'rj' });
+  const inscrito = (date) => ({
+    status: 'ready', userId: USER, dismissals: [],
+    editions: [EDITION],
+    enrollments: [{ id: 'enr-h', user_id: USER, edition_id: 'ed-t', team_id: null, season_goal: 'participar', status: 'ativa', bib: '4321' }],
+    participations: [{ id: 'p-h', enrollment_id: 'enr-h', round_id: 'rj', decision: 'vou', decision_source: 'atleta' }],
+    catalog: { 'ed-t': { status: 'ready', rounds: [{ id: 'rj', edition_id: 'ed-t', round_no: 3, name: 'Corrida da Jornada', date, date_status: 'confirmada', terrain: 'estrada' }], courses: [{ round_id: 'rj', code: 'UNICO', distance_m: 8000, start_time: '10:00:00' }], overrides: [], categories: [], teams: [] } },
+    results: { status: 'ready', enrollmentId: 'enr-h', rows: [], teamRows: [] },
+  });
+  const original = useAppStore.getState();
+
+  afterEach(() => {
+    useAppStore.setState({ session: original.session, profile: original.profile, cup: original.cup, raceEvents: original.raceEvents });
+  });
+
+  it('numa prova sem jornada, o hub é o mesmo com e sem inscrição (noutra prova), e não lê nada da competição', () => {
+    const outra = { ...RACE, id: 'race-normal', date: inDays(20), status: 'agendada' };
+    const j = jornada(inDays(3));
+    useAppStore.setState({ session: { user: { id: USER } }, profile: { id: USER }, raceEvents: [outra, j] });
+
+    // A cara da Carol pisca com uma duração ao acaso: fora da comparação.
+    const html = (el) => el.innerHTML.replace(/--carol-blink-(dur|delay): [^;]+;/g, '');
+    const sem = render(<RaceHubView race={outra} runs={[RACE_RUN]} profile={PROFILE} />);
+    const antes = html(sem.container);
+    sem.unmount();
+
+    useAppStore.setState({ cup: inscrito(inDays(3)) });
+    const com = render(<RaceHubView race={outra} runs={[RACE_RUN]} profile={PROFILE} />);
+    expect(html(com.container)).toBe(antes);
+    expect(screen.queryByTestId('cup-race-block')).not.toBeInTheDocument();
+    expect(mocks.from.mock.calls.filter(([t]) => String(t).startsWith('cup_'))).toEqual([]);
+  });
+
+  it('sem inscrição nenhuma e numa prova normal, zero leituras da competição', () => {
+    useAppStore.setState({ session: { user: { id: USER } }, profile: { id: USER }, cup: original.cup });
+    render(<RaceHubView race={{ ...RACE, date: inDays(20), status: 'agendada' }} runs={[]} profile={PROFILE} />);
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it('numa jornada por correr, o bloco entra a seguir ao herói e antes do plano para o dia', () => {
+    const j = jornada(inDays(3));
+    useAppStore.setState({ session: { user: { id: USER } }, profile: { id: USER }, raceEvents: [j], cup: inscrito(j.date) });
+    render(<RaceHubView race={j} runs={[RACE_RUN]} profile={PROFILE} />);
+    const bloco = screen.getByTestId('cup-race-block');
+    expect(screen.getByTestId('cup-race-migalha')).toHaveTextContent('Troféu de Teste · J3 de 1');
+    const plano = screen.getByTestId('race-pacing-card');
+    expect(bloco.compareDocumentPosition(plano) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // O dorsal nunca aparece no hub.
+    expect(document.body.textContent).not.toContain('4321');
+  });
+
+  it('numa jornada já corrida, o bloco entra logo a seguir ao herói, antes das memórias', () => {
+    const j = { ...jornada(pastDateISO(10)), status: 'concluida' };
+    useAppStore.setState({ session: { user: { id: USER } }, profile: { id: USER }, raceEvents: [j], cup: inscrito(j.date) });
+    render(<RaceHubView race={j} runs={[{ ...RACE_RUN, date: j.date, distance_km: 8, race_id: 'race-j' }]} profile={PROFILE} />);
+    const bloco = screen.getByTestId('cup-race-block');
+    const heroi = screen.getByTestId('race-final-time');
+    const memorias = screen.getByTestId('race-memories-invite');
+    expect(heroi.compareDocumentPosition(bloco) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bloco.compareDocumentPosition(memorias) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bloco).toHaveTextContent('Ainda sem classificação oficial.');
   });
 });

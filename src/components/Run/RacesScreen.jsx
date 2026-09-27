@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../../store';
 import RaceCard from '../Home/RaceCard';
 import RaceListCard from './RaceListCard';
@@ -8,6 +8,7 @@ import CupDoorCard from './CupDoorCard';
 import CupEnrollmentScreen from './CupEnrollmentScreen';
 import CupTrofeuScreen from './CupTrofeuScreen';
 import { useCup } from '../../utils/useCup';
+import { cupScreenRequestValid } from '../../store/cupSlice';
 
 /* "As tuas provas" — o separador Provas da barra (2026-09-13, opção A de
    "Onde vivem as provas"). A prova é o grande objetivo da app e estava
@@ -27,7 +28,7 @@ import { useCup } from '../../utils/useCup';
 
    Sem estado próprio: tudo vem do store e dos componentes que já existiam. */
 export default function RacesScreen() {
-  const { raceEvents, runs, profile, setEditingRaceId, setOpenCreationMode, dismissCupEdition } = useAppStore();
+  const { raceEvents, runs, profile, setEditingRaceId, setOpenCreationMode, dismissCupEdition, cupScreenRequest, clearCupScreenRequest } = useAppStore();
   const createRace = () => setOpenCreationMode('race');
   // Registar a prova é abrir o registo de corrida em modo prova (specs/
   // prova-concluida.md §3) — o mesmo ponto do store que o Início usa.
@@ -39,7 +40,32 @@ export default function RacesScreen() {
   // chega a ter para onde abrir, e nada abaixo desta linha muda o ecrã de
   // hoje (teste de invariância em RacesScreen.test.jsx).
   const cup = useCup();
-  const [cupScreen, setCupScreen] = useState(null); // null | 'inscricao' | 'trofeu'
+  // null | 'inscricao' | { kind: 'trofeu', mode, roundId } — `mode` e
+  // `roundId` dizem ao ecrã do Troféu onde abrir (null: ele decide).
+  const [cupScreen, setCupScreen] = useState(null);
+
+  /* Fase 3 (§4.3): o Troféu também se abre de fora deste ecrã — o bloco da
+     lista, a linha do "Para onde vou", a migalha do hub — por um pedido no
+     store (cupScreenRequest). Só com inscrição se abre; lida a competição
+     sem inscrição, o pedido já não tem para onde ir e limpa-se. Enquanto a
+     leitura corre, espera. Um pedido velho (quem o fez saiu daqui antes de
+     a leitura acabar) ou de outra conta deita-se fora sem abrir nada
+     (cupScreenRequestValid, cupSlice.js). */
+  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id || null);
+  const cupRead = useAppStore((s) => ['ready', 'indisponivel', 'erro'].includes(s.cup.status)
+    && s.cup.userId === (s.session?.user?.id || s.profile?.id || null));
+  const cupEnrolled = !!cup?.enrollment;
+  useEffect(() => {
+    if (!cupScreenRequest) return;
+    if (!cupScreenRequestValid(cupScreenRequest, userId)) {
+      clearCupScreenRequest();
+    } else if (cupEnrolled) {
+      setCupScreen({ kind: 'trofeu', mode: cupScreenRequest.mode ?? null, roundId: cupScreenRequest.roundId ?? null });
+      clearCupScreenRequest();
+    } else if (cupRead) {
+      clearCupScreenRequest();
+    }
+  }, [cupScreenRequest, cupEnrolled, cupRead, userId, clearCupScreenRequest]);
 
   return (
     <div className="flex flex-col gap-2 fade-in pb-2" data-testid="races-screen">
@@ -60,12 +86,14 @@ export default function RacesScreen() {
       </div>
 
       {/* O cartão do Troféu vive no FIM do ecrã (§4.1) — depois de tudo o
-          que já existia, nunca antes. */}
+          que já existia, nunca antes. Com inscrição, a lista tem o bloco
+          fixo da edição (Fase 3) e a porta seria a mesma próxima jornada
+          duas vezes: fica só o convite. */}
       <CupDoorCard
-        view={cup}
+        view={cupEnrolled ? null : cup}
         onEnroll={() => setCupScreen('inscricao')}
         onDismiss={(editionId) => dismissCupEdition(editionId)}
-        onOpenTrofeu={() => setCupScreen('trofeu')}
+        onOpenTrofeu={() => setCupScreen({ kind: 'trofeu', mode: null, roundId: null })}
       />
 
       {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
@@ -77,11 +105,16 @@ export default function RacesScreen() {
           view={cup}
           onClose={() => setCupScreen(null)}
           // Logo a seguir à inscrição o atleta vê a lista de jornadas (§4.2).
-          onEnrolled={() => setCupScreen('trofeu')}
+          onEnrolled={() => setCupScreen({ kind: 'trofeu', mode: 'decidir', roundId: null })}
         />
       )}
-      {cupScreen === 'trofeu' && cup?.enrollment && (
-        <CupTrofeuScreen view={cup} onClose={() => setCupScreen(null)} />
+      {cupScreen?.kind === 'trofeu' && cup?.enrollment && (
+        <CupTrofeuScreen
+          view={cup}
+          onClose={() => setCupScreen(null)}
+          initialMode={cupScreen.mode ?? undefined}
+          focusRoundId={cupScreen.roundId ?? undefined}
+        />
       )}
     </div>
   );

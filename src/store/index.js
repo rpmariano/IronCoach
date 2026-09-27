@@ -204,6 +204,9 @@ export const useAppStore = create((set, get) => ({
   // Actions
   setSession: (session) => {
     if (session) { set({ session }); return; }
+    // O pedido de abrir o ecrã do Troféu (cupSlice.js) também não passa para
+    // quem entra a seguir.
+    set({ cupScreenRequest: null });
     // Sem sessão não há de quem ler impressões (ação 5.1): os conjuntos
     // voltam a vazios, para quem entrar a seguir neste telemóvel não herdar
     // os de quem saiu. O mesmo para a cache dos insights, que a sementeira

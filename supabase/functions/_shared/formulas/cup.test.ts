@@ -7,6 +7,8 @@ import {
   cupCategoryFor,
   defaultDecision,
   enrollmentChoiceError,
+  entryDeadlineNotice,
+  type EntryDeadlineInput,
   haversineKm,
   nextCupRound,
   shouldShowCupDoor,
@@ -284,4 +286,66 @@ Deno.test("nextCupRound: a próxima por número, sem canceladas nem passadas; se
   assertEquals(nextCupRound(CASCAIS_ROUNDS, "2027-03-01")?.id, "r-c5");
   assertEquals(nextCupRound(CASCAIS_ROUNDS.filter((r) => r.id !== "r-c5"), "2027-03-01"), null);
   assertEquals(nextCupRound([], "2027-03-01"), null);
+});
+
+// ── §4.4: o prazo de inscrição ────────────────────────────────────────────
+
+// Cascais: "quarta anterior às 24h", no fuso de Lisboa. A J3 é domingo,
+// 24/01/2027 → o prazo é a meia-noite de quinta, 21/01 (inverno, UTC+0).
+const PRAZO: EntryDeadlineInput = {
+  entryMode: CASCAIS_34.entry_mode as string,
+  entryBy: "atleta",
+  decision: "vou",
+  entryDoneAt: null,
+  dateStatus: "confirmada",
+  deadlineAt: "2027-01-21T00:00:00+00:00",
+  now: "2027-01-17T10:00:00Z",
+  timeZone: CASCAIS_34.time_zone as string,
+};
+
+Deno.test("entryDeadlineNotice: 'quarta às 24h' no inverno (UTC+0) e no verão (UTC+1)", () => {
+  assertEquals(entryDeadlineNotice(PRAZO), { deadlineAt: "2027-01-21T00:00:00+00:00", whenLabel: "quarta às 24h", hoursLeft: 86 });
+  // Verão: a meia-noite de Lisboa é 23:00 UTC. Lido em UTC dava "quarta às 23h".
+  const verao = entryDeadlineNotice({ ...PRAZO, deadlineAt: "2027-05-05T23:00:00Z", now: "2027-05-02T10:00:00Z" });
+  assertEquals(verao?.whenLabel, "quarta às 24h");
+});
+
+Deno.test("entryDeadlineNotice: hoje, amanhã, 18h30, e a uma semana sem ambiguidade", () => {
+  assertEquals(entryDeadlineNotice({ ...PRAZO, now: "2027-01-20T09:00:00Z" })?.whenLabel, "hoje às 24h");
+  assertEquals(entryDeadlineNotice({ ...PRAZO, now: "2027-01-19T21:00:00Z" })?.whenLabel, "amanhã às 24h");
+  assertEquals(entryDeadlineNotice({ ...PRAZO, deadlineAt: "2027-01-20T18:30:00Z" })?.whenLabel, "quarta às 18h30");
+  assertEquals(entryDeadlineNotice({ ...PRAZO, deadlineAt: "2027-01-20T18:00:00Z" })?.whenLabel, "quarta às 18h");
+  // Quarta às 20h, com o prazo na quarta seguinte às 18h (6 dias e 22 horas):
+  // "quarta" sozinho lia-se como hoje.
+  assertEquals(entryDeadlineNotice({ ...PRAZO, deadlineAt: "2027-01-20T18:00:00Z", now: "2027-01-13T20:00:00Z" })?.whenLabel, "quarta da próxima semana às 18h");
+  // No fuso da EDIÇÃO: a fictícia é dos Açores (UTC−1) — sexta às 18h locais.
+  const ilha = entryDeadlineNotice({ ...PRAZO, entryMode: "por_jornada", timeZone: FICTICIA_1.time_zone as string, deadlineAt: "2027-03-05T19:00:00Z", now: "2027-03-01T10:00:00Z" });
+  assertEquals(ilha?.whenLabel, "sexta às 18h");
+  // Um fuso inválido cai no de Lisboa, sem rebentar.
+  assertEquals(entryDeadlineNotice({ ...PRAZO, timeZone: "Marte/Olimpo" })?.whenLabel, "quarta às 24h");
+});
+
+Deno.test("entryDeadlineNotice: fora da janela, depois do prazo, prazo inválido → null; a janela configura-se", () => {
+  assertEquals(entryDeadlineNotice({ ...PRAZO, now: "2027-01-13T23:59:00Z" }), null); // 7 dias e 1 minuto
+  assertEquals(entryDeadlineNotice({ ...PRAZO, now: "2027-01-21T00:00:00Z" }), null); // no instante do prazo
+  assertEquals(entryDeadlineNotice({ ...PRAZO, now: "2027-01-22T10:00:00Z" }), null);
+  assertEquals(entryDeadlineNotice({ ...PRAZO, deadlineAt: null }), null);
+  assertEquals(entryDeadlineNotice({ ...PRAZO, deadlineAt: "amanhã" }), null);
+  // O push da Fase 5: 48 horas.
+  assertEquals(entryDeadlineNotice({ ...PRAZO, windowHours: 48 }), null);
+  assertEquals(entryDeadlineNotice({ ...PRAZO, windowHours: 48, now: "2027-01-19T10:00:00Z" })?.hoursLeft, 38);
+  assertEquals(entryDeadlineNotice({ ...PRAZO, now: new Date("2027-01-17T10:00:00Z") })?.whenLabel, "quarta às 24h");
+});
+
+Deno.test("entryDeadlineNotice: só 'por_jornada', 'Vou', data confirmada, sem 'Já me inscrevi' e sem 'o meu clube'", () => {
+  assertEquals(entryDeadlineNotice({ ...PRAZO, entryMode: FICTICIA_1.entry_mode as string }), null); // 'epoca'
+  assertEquals(entryDeadlineNotice({ ...PRAZO, entryMode: null }), null);
+  assertEquals(entryDeadlineNotice({ ...PRAZO, entryBy: "clube" }), null);
+  assertEquals(entryDeadlineNotice({ ...PRAZO, entryDoneAt: "2027-01-18T08:00:00Z" }), null);
+  for (const decision of ["nao_sei", "nao_vou", "nao_fui", null]) assertEquals(entryDeadlineNotice({ ...PRAZO, decision }), null, String(decision));
+  for (const dateStatus of ["provavel", "adiada", "cancelada", null]) assertEquals(entryDeadlineNotice({ ...PRAZO, dateStatus }), null, String(dateStatus));
+  // "Não sei" e sem resposta a "quem te inscreve?" contam como ele.
+  assert(entryDeadlineNotice({ ...PRAZO, entryBy: "nao_sei" }));
+  assert(entryDeadlineNotice({ ...PRAZO, entryBy: null }));
+  assertEquals(entryDeadlineNotice(null), null);
 });

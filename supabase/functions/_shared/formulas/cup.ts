@@ -457,3 +457,109 @@ export function nextCupRound<T extends CupRound>(rounds: T[] | null | undefined,
     (a.round_no ?? 0) - (b.round_no ?? 0) || (dayOf(a.date) ?? "9999").localeCompare(dayOf(b.date) ?? "9999")
   )[0];
 }
+
+// ── §4.4: o prazo de inscrição em cada prova ──────────────────────────────
+
+export interface EntryDeadlineInput {
+  /** cup_editions.entry_mode */
+  entryMode: string | null | undefined;
+  /** cup_enrollments.entry_by ('atleta' | 'clube' | 'nao_sei' | null) */
+  entryBy: string | null | undefined;
+  /** cup_participations.decision */
+  decision: string | null | undefined;
+  /** cup_participations.entry_done_at */
+  entryDoneAt: string | null | undefined;
+  /** cup_rounds.date_status */
+  dateStatus: string | null | undefined;
+  /** cup_rounds.entry_deadline_at (timestamptz) */
+  deadlineAt: string | null | undefined;
+  now: string | Date;
+  /** cup_editions.time_zone; omissão 'Europe/Lisbon'. */
+  timeZone?: string | null;
+  /** A janela do aviso; omissão 168 (7 dias). O push da Fase 5 usa 48. */
+  windowHours?: number | null;
+}
+
+export interface EntryDeadlineNotice {
+  deadlineAt: string;
+  /** "quarta às 24h", "hoje às 18h", "amanhã às 18h30" — no fuso da edição. */
+  whenLabel: string;
+  /** Horas inteiras até ao prazo (arredondadas para baixo). */
+  hoursLeft: number;
+}
+
+export const ENTRY_DEADLINE_WINDOW_HOURS = 168;
+const DEFAULT_TIME_ZONE = "Europe/Lisbon";
+const WEEKDAY_PT = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+
+/** Dia, hora e minuto de um instante num fuso. Um fuso inválido cai no de
+ *  Lisboa (o default da coluna) em vez de rebentar o cartão. */
+function zonedParts(at: Date, timeZone: string): { day: string; hour: number; minute: number } {
+  let fmt: Intl.DateTimeFormat;
+  try {
+    fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    });
+  } catch {
+    fmt = new Intl.DateTimeFormat("en-CA", {
+      timeZone: DEFAULT_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+    });
+  }
+  const p = Object.fromEntries(fmt.formatToParts(at).map((x) => [x.type, x.value]));
+  return { day: `${p.year}-${p.month}-${p.day}`, hour: Number(p.hour) % 24, minute: Number(p.minute) };
+}
+
+function shiftDay(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** O aviso "A inscrição fecha quarta às 24h" (§4.4) — a régua da app e do
+ *  push `cup_entry_deadline` da Fase 5 (com `windowHours: 48`).
+ *
+ *  null salvo se TUDO isto for verdade: a edição inscreve prova a prova
+ *  (`entry_mode = 'por_jornada'`), ele disse "Vou", ainda não carregou em
+ *  "Já me inscrevi", não respondeu "o meu clube" a "quem te inscreve?"
+ *  (§4.2.7 — "não sei" e sem resposta contam como ele), a data está
+ *  confirmada, e o prazo é válido, ainda não passou e cai dentro da janela.
+ *
+ *  O rótulo diz-se no fuso da EDIÇÃO: o prazo "quarta anterior às 24h" é a
+ *  meia-noite de quinta, que se diz "quarta às 24h". O dia é "hoje",
+ *  "amanhã" ou o nome do dia sem "-feira"; a uma semana, "da próxima
+ *  semana" (o nome do dia de hoje, sozinho, era ambíguo). */
+export function entryDeadlineNotice(i: EntryDeadlineInput | null | undefined): EntryDeadlineNotice | null {
+  if (!i) return null;
+  if (i.entryMode !== "por_jornada") return null;
+  if (i.decision !== "vou") return null;
+  if (i.entryDoneAt) return null;
+  if (i.entryBy === "clube") return null;
+  if (i.dateStatus !== "confirmada") return null;
+  if (!i.deadlineAt) return null;
+  const deadline = new Date(i.deadlineAt);
+  const now = i.now instanceof Date ? i.now : new Date(i.now);
+  if (Number.isNaN(deadline.getTime()) || Number.isNaN(now.getTime())) return null;
+  const windowHours = num(i.windowHours) != null && num(i.windowHours)! > 0 ? num(i.windowHours)! : ENTRY_DEADLINE_WINDOW_HOURS;
+  const ms = deadline.getTime() - now.getTime();
+  if (ms <= 0 || ms > windowHours * 3600000) return null;
+
+  const tz = String(i.timeZone || "").trim() || DEFAULT_TIME_ZONE;
+  const at = zonedParts(deadline, tz);
+  const today = zonedParts(now, tz).day;
+  // Meia-noite = "às 24h" do dia anterior (é assim que o regulamento o diz).
+  const midnight = at.hour === 0 && at.minute === 0;
+  const day = midnight ? shiftDay(at.day, -1) : at.day;
+  const hour = midnight
+    ? "24h"
+    : at.minute
+    ? `${at.hour}h${String(at.minute).padStart(2, "0")}`
+    : `${at.hour}h`;
+  const diff = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+  const weekday = WEEKDAY_PT[new Date(`${day}T00:00:00Z`).getUTCDay()];
+  const dayText = diff <= 0 ? "hoje" : diff === 1 ? "amanhã" : diff >= 7 ? `${weekday} da próxima semana` : weekday;
+  return {
+    deadlineAt: String(i.deadlineAt),
+    whenLabel: `${dayText} às ${hour}`,
+    hoursLeft: Math.floor(ms / 3600000),
+  };
+}

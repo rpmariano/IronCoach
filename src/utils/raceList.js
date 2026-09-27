@@ -40,7 +40,37 @@ export function countdownLabel(days) {
   return `daqui a ${days} dias`;
 }
 
-export function groupRaces({ raceEvents = [], runs = [], profile = {}, today } = {}) {
+/* Com inscrição no Troféu (specs/trofeu.md §4.3, Fase 3), `cup` é o
+   `listing` de useCupListing (cupListingOf em cupCalendar.js): as provas das
+   jornadas que não foram promovidas a principal saem das próximas e das por
+   registar e vão para `trofeu` (o bloco fixo da lista), pela mesma ordem; as
+   entradas das provas de jornadas desta edição ganham `jornada` (o chip
+   "J3"), também nas concluídas, que ficam todas onde estavam.
+
+   Sem `cup` (null — quase toda a gente), é o código de sempre e a saída de
+   sempre: as mesmas quatro chaves e as mesmas entradas, sem um campo a mais
+   (raceList.test.js guarda uma cópia congelada para o provar). */
+export function groupRaces({ raceEvents = [], runs = [], profile = {}, today, cup = null } = {}) {
+  const base = groupRacesBase({ raceEvents, runs, profile, today });
+  if (!cup) return base;
+  const withTag = (entry) => {
+    const jornada = cup.tag?.(entry.race) ?? null;
+    return jornada ? { ...entry, jornada } : entry;
+  };
+  const fixed = (entry) => !!cup.isFixed?.(entry.race);
+  return {
+    proximas: base.proximas.filter((e) => !fixed(e)).map(withTag),
+    porRegistar: base.porRegistar.filter((e) => !fixed(e)).map(withTag),
+    concluidas: base.concluidas.map(withTag),
+    total: base.total,
+    trofeu: {
+      proximas: base.proximas.filter(fixed).map(withTag),
+      porRegistar: base.porRegistar.filter(fixed).map(withTag),
+    },
+  };
+}
+
+function groupRacesBase({ raceEvents = [], runs = [], profile = {}, today } = {}) {
   const valid = (raceEvents || []).filter((race) => race?.id && dayOf(race.date));
 
   const proximas = valid

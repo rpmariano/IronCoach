@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { lisbonTodayISO } from '../lib/utils';
 
 /* Competições por jornadas — os dados do atleta no store (specs/trofeu.md
    §4.1–4.3 e §10, Fase 1). 2026-09-26.
@@ -26,9 +27,21 @@ import { supabase } from '../lib/supabase';
 
    AS ESCRITAS vão pelas RPCs da M1 (enroll_cup, update_enrollment, leave_cup,
    set_participation) — as políticas só deixam o cliente escrever diretamente
-   o "Não me interessa" (cup_edition_dismissals). Cada ação devolve
-   { ok: true, data } ou { ok: false, error: { code, message }, unavailable },
-   com a mensagem do servidor (já em português) para o ecrã. */
+   o "Não me interessa" (cup_edition_dismissals) e, na prova do próprio, a
+   prioridade (promover uma jornada a principal, Fase 3: o trigger
+   guard_cup_race_columns só guarda a data, a distância, o local e a
+   ligação). Cada ação devolve { ok: true, data } ou { ok: false, error:
+   { code, message }, unavailable }, com a mensagem do servidor (já em
+   português) para o ecrã.
+
+   FASE 3 (2026-09-27). Com inscrição ativa lê-se também a classificação: a
+   linha oficial confirmada do próprio (cup_results, RLS "own rows") e a
+   coletiva do SEU clube (cup_team_results, só o total do clube). Coluna a
+   coluna — nunca match_hash, team_name nem athletes_count. É uma leitura
+   acessória: falhar não mexe em mais nada. E as ações do calendário do
+   Troféu: o papel, "Não fui", "Já me inscrevi", "Registar" uma jornada que
+   já passou, promover a principal, e o pedido para abrir o ecrã do Troféu a
+   partir de outro ecrã (cupScreenRequest). */
 
 export const CUP_EMPTY = Object.freeze({
   // 'idle' (nada lido) | 'loading' | 'ready' | 'indisponivel' (M1 por
@@ -47,7 +60,19 @@ export const CUP_EMPTY = Object.freeze({
   catalog: {},
   // As participações da inscrição ativa.
   participations: [],
+  // A classificação da inscrição ativa (Fase 3): 'idle' | 'ready' | 'erro';
+  // `rows` = cup_results confirmados do próprio, `teamRows` = a coletiva do
+  // clube dele (vazia sem clube da lista), lida para o clube `teamId` — quem
+  // muda de clube a meio da época não fica com a coletiva do antigo.
+  results: Object.freeze({ status: 'idle', enrollmentId: null, teamId: null, rows: [], teamRows: [] }),
 });
+
+// As colunas da classificação, uma a uma (nunca match_hash, team_name,
+// athletes_count — nem nada de outros atletas ou de outros clubes).
+export const CUP_RESULT_COLUMNS = 'round_id, position, category_code, category_position, points, official_time_s, match_status';
+export const CUP_TEAM_RESULT_COLUMNS = 'round_id, position, points';
+
+const SERIES_INTENTS = ['atacar', 'controlar', 'trote', 'saltar'];
 
 const MISSING_CODES = new Set(['42P01', 'PGRST205', 'PGRST202', '42883', 'PGRST200']);
 
@@ -101,6 +126,22 @@ let cupLoad = null; // { userId, promise } — a leitura base em curso
 const catalogLoads = new Map(); // editionId → promise
 
 const userIdOf = (get) => get().session?.user?.id || get().profile?.id || null;
+
+/* O pedido de abrir o ecrã do Troféu a partir de outro ecrã
+   (cupScreenRequest) vale só uns segundos e só para quem o fez (revisão da
+   Fase 3). Sem prazo, um pedido feito no Início por quem saiu de Provas
+   antes de a leitura acabar ficava pendurado e, horas depois, o Troféu
+   abria sozinho; sem o dono, passava para a conta seguinte no mesmo
+   telemóvel. */
+export const CUP_SCREEN_REQUEST_TTL_MS = 30 * 1000;
+
+/** O pedido ainda vale: da conta `userId` e com menos de
+ *  CUP_SCREEN_REQUEST_TTL_MS. Pura (RacesScreen consome-o). */
+export function cupScreenRequestValid(req, userId, now = Date.now()) {
+  if (!req || !userId || req.userId !== userId) return false;
+  const at = Number(req.at);
+  return Number.isFinite(at) && now - at >= 0 && now - at <= CUP_SCREEN_REQUEST_TTL_MS;
+}
 
 /** A edição da porta ou da inscrição (a primeira que interessa). Pura, para
  *  o hook e os testes: a da inscrição ativa, se houver; senão a primeira
@@ -174,6 +215,58 @@ export const createCupSlice = (set, get) => {
     patchCup(userId, { participations: data || [] });
     return data || [];
   };
+
+  /* A classificação da inscrição ativa (Fase 3). Acessória: uma tabela em
+     falta fica vazia sem marcar a competição indisponível; outro erro marca
+     só `results.status = 'erro'` (a mensagem vai à consola, nada mais). */
+  const readResults = async (userId, enrollment) => {
+    if (!enrollment?.id) return null;
+    const enrollmentId = enrollment.id;
+    const teamId = enrollment.team_id ?? null;
+    // Mudou de clube enquanto esta leitura corria: a leitura do clube novo
+    // é que vale (não se escreve por cima dela).
+    const stale = () => {
+      const cur = (get().cup.enrollments || []).find((e) => e?.id === enrollmentId);
+      return !!cur && (cur.team_id ?? null) !== teamId;
+    };
+    let mine, team;
+    try {
+      [mine, team] = await Promise.all([
+        supabase.from('cup_results').select(CUP_RESULT_COLUMNS).eq('enrollment_id', enrollmentId).eq('match_status', 'confirmada'),
+        // Só um clube da lista tem coletiva (os de "não está na lista" não).
+        teamId
+          ? supabase.from('cup_team_results').select(CUP_TEAM_RESULT_COLUMNS).eq('team_id', teamId)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+    } catch (err) {
+      console.warn('Competição: resultados:', err?.message || String(err));
+      if (!stale()) patchCup(userId, { results: { status: 'erro', enrollmentId, teamId, rows: [], teamRows: [] } });
+      return null;
+    }
+    const failed = [mine, team].map((r) => r?.error).find((e) => e && !isCupSchemaMissing(e));
+    if (failed) console.warn('Competição: resultados:', failed.message || String(failed));
+    const results = {
+      status: failed ? 'erro' : 'ready',
+      enrollmentId,
+      teamId,
+      rows: mine?.error ? [] : mine?.data || [],
+      teamRows: team?.error ? [] : team?.data || [],
+    };
+    if (stale()) return null;
+    patchCup(userId, { results });
+    return results;
+  };
+
+  const noSession = () => ({ ok: false, error: { code: null, message: 'Sem sessão' }, unavailable: false });
+  const refused = (code, message) => ({ ok: false, error: { code, message }, unavailable: false });
+  const roundOf = (roundId) => {
+    for (const entry of Object.values(get().cup.catalog || {})) {
+      const r = (entry?.rounds || []).find((x) => x.id === roundId);
+      if (r) return r;
+    }
+    return null;
+  };
+  const raceOfRound = (roundId) => (get().raceEvents || []).find((r) => r?.cup_round_id === roundId) || null;
 
   const callRpc = async (userId, fn, args) => {
     ensureOwner(userId);
@@ -252,7 +345,10 @@ export const createCupSlice = (set, get) => {
           await Promise.all([
             get().loadCupCatalog(active.edition_id, { force }),
             readParticipations(userId, active.id),
+            readResults(userId, active),
           ]);
+        } else if (get().cup.results?.enrollmentId) {
+          patchCup(userId, { results: CUP_EMPTY.results });
         }
         return get().cup;
       })();
@@ -336,17 +432,26 @@ export const createCupSlice = (set, get) => {
       await Promise.all([
         get().loadCupCatalog(editionId),
         enrollment?.id ? readParticipations(userId, enrollment.id) : null,
+        enrollment?.id ? readResults(userId, enrollment) : null,
       ]);
       return { ok: true, data: enrollment };
     },
 
-    /* Clube, dorsal, objetivo da época, "quem te inscreve", avisos. */
+    /* Clube, dorsal, objetivo da época, "quem te inscreve", avisos. Mudar
+       de clube a meio da época (§4.2) relê a classificação: a coletiva lida
+       é a do clube antigo e não passa para o novo (buildCupView também só a
+       usa com o mesmo `teamId`). */
     updateEnrollment: async (enrollmentId, patch) => {
       const userId = userIdOf(get);
       if (!userId) return { ok: false, error: { code: null, message: 'Sem sessão' }, unavailable: false };
+      const before = (get().cup.enrollments || []).find((e) => e?.id === enrollmentId) || null;
       const res = await callRpc(userId, 'update_enrollment', { p_enrollment_id: enrollmentId, p_patch: patch || {} });
       if (!res.ok) return res;
       patchCup(userId, (c) => ({ enrollments: upsertById(c.enrollments, res.data) }));
+      const after = res.data;
+      if (after?.id && after.status === 'ativa' && (before?.team_id ?? null) !== (after.team_id ?? null)) {
+        await readResults(userId, after);
+      }
       return res;
     },
 
@@ -357,7 +462,7 @@ export const createCupSlice = (set, get) => {
       if (!userId) return { ok: false, error: { code: null, message: 'Sem sessão' }, unavailable: false };
       const res = await callRpc(userId, 'leave_cup', { p_enrollment_id: enrollmentId });
       if (!res.ok) return res;
-      patchCup(userId, (c) => ({ enrollments: upsertById(c.enrollments, res.data), participations: [] }));
+      patchCup(userId, (c) => ({ enrollments: upsertById(c.enrollments, res.data), participations: [], results: CUP_EMPTY.results }));
       writeCupEnrolledHint(userId, false);
       await refreshRacesAfterSync(userId);
       return res;
@@ -382,6 +487,15 @@ export const createCupSlice = (set, get) => {
     setCupParticipation: async (roundId, patch, { refreshRaces = true } = {}) => {
       const userId = userIdOf(get);
       if (!userId) return { ok: false, error: { code: null, message: 'Sem sessão' }, unavailable: false };
+      // "Vou" depois de "Saltar": o papel 'saltar' gravado contradiz-se com
+      // o "Vou" (o set_cup_participation da Carol recusa o mesmo par) e
+      // chegaria ao calendário, ao hub, ao taper e à Carol. Limpa-se aqui,
+      // para todos os caminhos que gravam "Vou" (a folha, o "Confirmar", o
+      // "Registar"); `intent: null` limpa também o intent_source no servidor.
+      if (patch?.decision === 'vou' && !('intent' in patch)) {
+        const cur = (get().cup.participations || []).find((p) => p?.round_id === roundId);
+        if (cur?.intent === 'saltar') patch = { ...patch, intent: null };
+      }
       const res = await callRpc(userId, 'set_participation', { p_round_id: roundId, p_patch: patch || {} });
       if (!res.ok) return res;
       const participation = res.data;
@@ -407,6 +521,104 @@ export const createCupSlice = (set, get) => {
       if (touchedDecision && userId) await refreshRacesAfterSync(userId);
       return { ok: results.length === (items || []).length && results.every((r) => r.ok), results };
     },
+
+    /* ── Fase 3: o calendário do Troféu (specs/trofeu.md §4.3–§4.5) ───── */
+
+    /* O papel de uma jornada, escolhido por ele (intent_source 'atleta').
+       "Saltar" é também "Não vou" (§5): a sincronização tira a prova do
+       calendário, por isso as provas releem-se. Os outros papéis não mexem
+       em provas. */
+    setCupRoundIntent: async (roundId, intent) => {
+      if (!userIdOf(get)) return noSession();
+      if (!SERIES_INTENTS.includes(intent)) return refused('22023', 'Papel inválido');
+      if (intent === 'saltar') {
+        return get().setCupParticipation(roundId, { decision: 'nao_vou', decision_source: 'atleta', intent: 'saltar', intent_source: 'atleta' });
+      }
+      return get().setCupParticipation(roundId, { intent, intent_source: 'atleta' });
+    },
+
+    /* "Não fui" (§4.5) — só numa jornada que já passou (o servidor recusa
+       as outras; aqui nem se pergunta). A sincronização apaga a prova que
+       não chegou a ser corrida, por isso as provas releem-se. */
+    markCupRoundNotAttended: async (roundId) => {
+      if (!userIdOf(get)) return noSession();
+      const round = roundOf(roundId);
+      const day = typeof round?.date === 'string' ? round.date.slice(0, 10) : null;
+      if (!day || day >= lisbonTodayISO()) return refused('22023', '"Não fui" só numa jornada que já passou');
+      return get().setCupParticipation(roundId, { decision: 'nao_fui', decision_source: 'atleta' });
+    },
+
+    /* "Já me inscrevi" no site do organizador (§4.4) — e o "Desfazer". Não
+       mexe em provas. */
+    markCupEntryDone: async (roundId, done = true) => {
+      if (!userIdOf(get)) return noSession();
+      return get().setCupParticipation(roundId, { entry_done: !!done });
+    },
+
+    /* "Registar" uma jornada que já passou (§4.5). Com a prova da jornada no
+       calendário, é só abrir o registo nela (ok com o raceId, sem RPC). Sem
+       ela (disse "Não sei", ou não chegou a decidir), grava-se "Vou": a
+       sincronização cria a prova nesse dia — ou liga a que ele já lá tinha
+       — e devolve-se o raceId dela. */
+    registerCupRound: async (roundId) => {
+      const userId = userIdOf(get);
+      if (!userId) return noSession();
+      const existing = raceOfRound(roundId);
+      if (existing) return { ok: true, data: { raceId: existing.id } };
+      const round = roundOf(roundId);
+      const day = typeof round?.date === 'string' ? round.date.slice(0, 10) : null;
+      if (!day || day >= lisbonTodayISO() || round.date_status !== 'confirmada') {
+        return refused('22023', 'Só se regista aqui uma jornada que já passou, com data confirmada.');
+      }
+      const res = await get().setCupParticipation(roundId, { decision: 'vou', decision_source: 'atleta' });
+      if (!res.ok) return res;
+      const created = raceOfRound(roundId);
+      if (!created) {
+        return refused('sem_prova', 'Não consegui criar a prova desta jornada (falta a distância do teu percurso). Regista a corrida como «Prova fora da agenda» e volta a carregar em «Registar» aqui para a ligar.');
+      }
+      return { ok: true, data: { raceId: created.id } };
+    },
+
+    /* Promover a jornada a principal ('a') ou voltar a secundária ('b')
+       (§4.3). É um update normal da prova do próprio (RLS), SÓ da
+       prioridade: a data, a distância e o local são da competição (o trigger
+       recusaria, 42501). O custo diz-se ANTES, no ecrã (promotionPreview). */
+    setCupRoundPriority: async (roundId, priority) => {
+      const userId = userIdOf(get);
+      if (!userId) return noSession();
+      if (priority !== 'a' && priority !== 'b') return refused('22023', 'Prioridade inválida');
+      const race = raceOfRound(roundId);
+      if (!race?.id) return refused('sem_prova', 'Esta jornada ainda não tem prova no teu calendário.');
+      let res;
+      try {
+        res = await supabase.from('race_events').update({ race_priority: priority }).eq('id', race.id).eq('user_id', userId).select().maybeSingle();
+      } catch (err) {
+        return { ok: false, error: errorOf(err), unavailable: false };
+      }
+      if (res?.error) {
+        console.warn('Competição: prioridade da prova:', res.error.message || res.error);
+        return { ok: false, error: errorOf(res.error), unavailable: false };
+      }
+      const row = res?.data;
+      if (!row?.id) return refused('PGRST116', 'Não consegui mudar a prova.');
+      if (userIdOf(get) === userId) {
+        const next = (get().raceEvents || []).map((r) => (r?.id === row.id ? row : r));
+        if (typeof get().setRaceEvents === 'function') get().setRaceEvents(next);
+        else set({ raceEvents: next });
+      }
+      return { ok: true, data: row };
+    },
+
+    /* Pedir o ecrã do Troféu a partir de outro ecrã (o "+N no calendário" da
+       lista, a migalha do hub, a linha do Início). O ecrã vive em Provas
+       (RacesScreen): consome o pedido e limpa-o — e deita fora, sem abrir
+       nada, um pedido velho ou de outra conta (cupScreenRequestValid). O
+       logout também o limpa (setSession, store/index.js). */
+    cupScreenRequest: null,
+    requestCupScreen: ({ roundId = null, mode = null } = {}) => {
+      set({ cupScreenRequest: { roundId, mode, at: Date.now(), userId: userIdOf(get) } });
+    },
+    clearCupScreenRequest: () => set({ cupScreenRequest: null }),
 
     /* "Não me interessa" — o cartão de Provas não volta para esta edição. */
     dismissCupEdition: async (editionId) => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ChevronRight, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, RefreshCw, ExternalLink } from 'lucide-react';
 import { computeRaceEve } from '@formulas/raceEve.ts';
 import { buildRacePacingPlan } from '@formulas/racePacing.ts';
 import { useAppStore } from '../../store';
@@ -19,6 +19,10 @@ import GlassCard from '../shared/GlassCard';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { inferMoodFromText } from '@formulas/carolMood.ts';
 import { pickRaceOfDay } from '@formulas/mainRace.ts';
+import { useCupForHome } from '../../utils/useCup';
+import { cupEntryNotices, cupWeekLine } from '../../utils/cupWeek';
+import { CupPrevisao } from '../Run/CupBits';
+import { useToast } from '../shared/ToastProvider';
 
 /* O cartão da Carol no topo do Início (mock "Início": ciano, "Ler mais").
    Duas partes: o cabeçalho com o nome dela, que abre o chat, e uma linha do
@@ -98,6 +102,53 @@ function MessageAction({ action, onOpenRace }) {
   );
 }
 
+/* As ações das linhas do Troféu (Fase 3, specs/trofeu.md §4.4): o prazo de
+   inscrição leva [Inscrever-me ↗] (o site do organizador, noutra janela) e
+   [Já me inscrevi] (grava entry_done; a linha some quando a vista
+   atualiza). Uma mensagem com `actions` desenha-as todas, 44 px cada; as
+   outras continuam com a `action` de sempre (MessageAction, acima). */
+function MessageActions({ actions, onOpenRace }) {
+  const { showToast } = useToast();
+  const [busy, setBusy] = useState(null);
+  const estilo = { minHeight: 44, padding: '0 14px', background: 'var(--tint-race-bg)', border: '1px solid var(--tint-race-bd)', color: 'var(--race)' };
+  const classe = 'flex-1 inline-flex items-center justify-center gap-1.5 rounded-[11px] text-[12.5px] font-extrabold';
+  const inscrevi = async (a) => {
+    setBusy(a.roundId);
+    const res = await useAppStore.getState().markCupEntryDone(a.roundId, true);
+    setBusy(null);
+    if (!res?.ok) showToast(res?.error?.message || 'Não foi possível gravar.', 'error');
+  };
+  return (
+    <div className="mt-2 flex flex-wrap gap-2">
+      {actions.map((a) => {
+        if (a.kind === 'link') {
+          return (
+            <a key={`link:${a.href}`} href={a.href} target="_blank" rel="noopener noreferrer" data-testid="carol-card-link" aria-label={`${a.ariaLabel || a.label} (abre o site oficial)`} className={classe} style={{ ...estilo, textDecoration: 'none' }}>
+              {a.label} <ExternalLink size={12} aria-hidden="true" />
+            </a>
+          );
+        }
+        if (a.kind === 'entry_done') {
+          return (
+            <button key={`entry:${a.roundId}`} type="button" data-testid="carol-card-entry-done" disabled={busy === a.roundId} onClick={() => inscrevi(a)} className={classe} style={estilo}>
+              {a.label}
+            </button>
+          );
+        }
+        return <MessageAction key={`race:${a.raceId}`} action={a} onOpenRace={onOpenRace} />;
+      })}
+    </div>
+  );
+}
+
+/* O texto de uma mensagem. A linha da semana do Troféu leva a previsão com
+   o ícone de cálculo (CupPrevisao — nunca gravada, §2.6): o `lead` e, a
+   seguir, o número. */
+function MessageText({ m }) {
+  if (m.calc && m.lead) return <>{m.lead}, <CupPrevisao label={m.calc} />.</>;
+  return m.text;
+}
+
 /** A véspera/manhã calculadas para uma prova, pela régua partilhada. */
 function buildEve(race, profile) {
   if (!race) return null;
@@ -115,6 +166,10 @@ function buildEve(race, profile) {
  *  a mensagem, "Hoje"). `agora` é o instante do relógio do cartão. */
 export function useCoachDailyMessages(agora = new Date()) {
   const { coachPlans, coachPlanItems, dailySummary, waterLogs, profile, raceEvents, runs, gymSessions, dailyCheckins, coachNotes } = useAppStore();
+  /* O Troféu (Fase 3, specs/trofeu.md §4.4): só a quem está inscrito — sem
+     indício de inscrição, useCupForHome não lê nada e devolve null, e a
+     lista fica exatamente a de hoje. */
+  const cup = useCupForHome();
   /* O dia e a hora de Lisboa (pedido 2026-09-26), como as boas-vindas, o
      servidor do resumo e os registos de água: o "hoje" do cartão é o do chip
      do plano, dos dois lados da meia-noite. Ao minuto, para as frases que
@@ -184,6 +239,16 @@ export function useCoachDailyMessages(agora = new Date()) {
     const items = (coachPlanItems || []).filter((i) => i.plan_id === activePlan.id && i.status !== 'cancelado');
     return { today: items.filter((i) => i.planned_date === today), tomorrow: items.filter((i) => i.planned_date === tomorrow), comPlano: true };
   }, [coachPlans, coachPlanItems, today, tomorrow]);
+
+  /* O prazo de inscrição (§4.4: "por jornada", "Vou", sem "Já me inscrevi",
+     sem "o meu clube", nos próximos 7 dias) e a linha da semana da jornada
+     (D−7 a D−2; a véspera e o dia são das linhas da prova, acima). A
+     previsão é calculada, nunca gravada. */
+  const cupEntry = useMemo(() => (cup ? cupEntryNotices({ view: cup, now: instante }) : []), [cup, instante]);
+  const cupWeek = useMemo(
+    () => (cup ? cupWeekLine({ view: cup, today, profile, runs, skipRaceIds: [raceToday?.id, raceTomorrow?.id].filter(Boolean) }) : null),
+    [cup, today, profile, runs, raceToday, raceTomorrow],
+  );
 
   /* O que já está registado hoje, por tipo. O aviso é gerado uma vez por dia
      e fica em cache: sem isto, "Para hoje tens agendado: Corrida…" ficava lá
@@ -281,15 +346,34 @@ export function useCoachDailyMessages(agora = new Date()) {
       else list.push({ key: 'warnings', label: 'Aviso de hoje', color: 'var(--warn)', text: warning, action });
     }
 
+    // O prazo de inscrição numa jornada, logo a seguir ao aviso de hoje.
+    for (const n of cupEntry) {
+      const actions = [];
+      const round = (cup?.rounds || []).find((r) => r.id === n.roundId);
+      const which = `${String(cup?.roundLabel || 'Jornada').toLowerCase()} ${round?.round_no ?? ''}`.trim();
+      if (n.entryUrl) actions.push({ kind: 'link', href: n.entryUrl, label: 'Inscrever-me', ariaLabel: `Inscrever-me na ${which}` });
+      actions.push({ kind: 'entry_done', roundId: n.roundId, label: 'Já me inscrevi' });
+      list.push({ key: `cup_entry:${n.roundId}`, label: 'Inscrição', color: 'var(--warn)', text: n.text, actions });
+    }
+
     const meal = clean(summary?.meal_suggestion);
     if (meal) list.push({ key: 'meal_suggestion', label: 'Estratégia nutricional', color: 'var(--coach)', text: meal });
 
     if (prepMsg && !provaPrimeiro) list.push(prepMsg);
 
+    // A semana da jornada, depois de "Preparar amanhã".
+    if (cupWeek) {
+      list.push({
+        key: 'cup_week', label: cup?.shortName || 'Troféu', color: 'var(--coach)',
+        text: cupWeek.text, lead: cupWeek.lead, calc: cupWeek.calc,
+        action: { raceId: cupWeek.raceId, label: 'Ver a jornada' },
+      });
+    }
+
     const concept = clean(summary?.daily_concept?.body);
     if (concept) list.push({ key: 'daily_concept', label: summary.daily_concept.title || 'Conceito do dia', color: 'var(--coach)', text: concept });
     return list;
-  }, [summary, activePlanItems, doneKindsToday, waterLogs, profile, today, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel, runs, dailyCheckins, coachPlans, instante, vidaHoje, vidaAmanha]);
+  }, [summary, activePlanItems, doneKindsToday, waterLogs, profile, today, raceEvents, raceToday, raceTomorrow, eveToday, eveTomorrow, firstKmPaceLabel, runs, dailyCheckins, coachPlans, instante, vidaHoje, vidaAmanha, cup, cupEntry, cupWeek]);
 }
 
 /* O cabeçalho é sempre a Carol. Os avisos "precisa de falar contigo" saíram
@@ -354,9 +438,11 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
         ) : !expanded ? (
           <>
             <p className="text-[13px] leading-[1.5] font-medium mt-[3px]" style={{ color: 'var(--text-1)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-              {first.text}
+              <MessageText m={first} />
             </p>
-            {first.action && <MessageAction action={first.action} onOpenRace={onOpenRace} />}
+            {first.actions?.length
+              ? <MessageActions actions={first.actions} onOpenRace={onOpenRace} />
+              : first.action && <MessageAction action={first.action} onOpenRace={onOpenRace} />}
           </>
         ) : (
           <div className="flex flex-col mt-[3px]">
@@ -365,8 +451,10 @@ export default function CarolCard({ onOpenCoach, onOpenRace }) {
             {messages.map((m, i) => (
               <div key={m.key} style={i ? { borderTop: '1px solid rgba(34,211,238,.12)', marginTop: 10, paddingTop: 10 } : undefined}>
                 <div className="text-[11px] font-extrabold uppercase" style={{ color: m.color, letterSpacing: 'var(--tracking-label)' }}>{m.label}</div>
-                <p className="text-[12.5px] leading-[1.5] font-medium mt-0.5" style={{ color: 'var(--text-2)' }}>{m.text}</p>
-                {m.action && <MessageAction action={m.action} onOpenRace={onOpenRace} />}
+                <p className="text-[12.5px] leading-[1.5] font-medium mt-0.5" style={{ color: 'var(--text-2)' }}><MessageText m={m} /></p>
+                {m.actions?.length
+                  ? <MessageActions actions={m.actions} onOpenRace={onOpenRace} />
+                  : m.action && <MessageAction action={m.action} onOpenRace={onOpenRace} />}
               </div>
             ))}
           </div>
