@@ -1,5 +1,5 @@
 /* Regista em public.ai_usage o consumo do Gemini de cada pedido — do lado do
-   servidor, que é quem paga a chamada (migração 20260927210000_ai_usage).
+   servidor, que é quem paga a chamada (migração 20260927203409_ai_usage).
 
    Porquê (auditoria de custos de 2026-09-27): até aqui era a app que gravava
    o custo (invokeEdgeFunctionWithTimeout → app_logs) quando recebia a

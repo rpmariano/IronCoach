@@ -19,6 +19,8 @@
 -- modelo; o painel assinala-as como incompletas.
 -- model: o modelVersion que a Google devolve — o GEMINI_MODEL é um alias
 -- ("-latest") que muda de modelo, e com ele a tabela de preços.
+-- APLICADA EM PRODUÇÃO a 2026-09-27 20:34 UTC (version 20260927203409).
+-- Ensaiada antes numa transação revertida (491 linhas de backfill).
 -- ============================================================================
 
 create table if not exists public.ai_usage (
