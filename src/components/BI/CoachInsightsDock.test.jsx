@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -128,13 +128,34 @@ describe('CoachInsightsDock', () => {
       expect(logImpression).toHaveBeenCalledWith({ kind: 'insights', key: 'i2', title: 'Sapatilhas perto do fim' });
     });
 
-    it('dispensar uma intervenção pede confirmação, também fora do Início', () => {
-      seed({ profile: { id: 'u1', coach_intervention_status: 'needed', coach_intervention_reason: 'carga a subir' } });
+    const comIntervencao = (over = {}) => seed({
+      profile: { id: 'u1', coach_intervention_status: 'needed', coach_intervention_reason: 'carga a subir' },
+      ...over,
+    });
+    const pedirDispensa = () => {
       render(<CoachInsightsDock />);
       fireEvent.click(screen.getByTestId('coach-insight-button'));
       fireEvent.click(screen.getByTestId('carol-alert-dismiss-assuntos'));
-      expect(screen.getByText('Dispensar este aviso?')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+      return screen.getByRole('dialog', { name: 'Dispensar este assunto?' });
+    };
+
+    /* Revisão pré-deploy 2026-09-27: a confirmação diz qual é o assunto e
+       o que fica — "O aviso deixa de aparecer" não era verdade com planos
+       ou objetivos à espera. */
+    it('dispensar uma intervenção pede confirmação e diz qual é o assunto', () => {
+      comIntervencao();
+      const dialogo = pedirDispensa();
+      expect(screen.getByTestId('dismiss-topic').textContent).toBe('«Há um registo teu que quero ver contigo.»');
+      expect(dialogo).toHaveTextContent('Deixo de te chamar por isto. Podes voltar a falar comigo no chat sempre que quiseres.');
+      expect(dialogo).not.toHaveTextContent('continua no aviso');
+      fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
+    });
+
+    it('com um plano à espera, a confirmação diz que ele fica no aviso', () => {
+      comIntervencao({ coachPlans: [{ id: 'p1', status: 'proposto' }] });
+      const dialogo = pedirDispensa();
+      expect(dialogo).toHaveTextContent('O que tens à espera da tua decisão continua no aviso.');
+      fireEvent.click(within(dialogo).getByRole('button', { name: 'Cancelar' }));
     });
   });
 

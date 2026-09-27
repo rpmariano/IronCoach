@@ -33,7 +33,7 @@ export function CarolNoticesDock({ notices, bottom }) {
       {open && <CoachInsightModal insights={insights} alerts={alerts} onClose={() => setOpen(false)} />}
       {dismissDialog.open && (
         <Dialog
-          title="Dispensar este aviso?"
+          title="Dispensar este assunto?"
           onClose={dismissDialog.cancel}
           actions={(
             <>
@@ -46,8 +46,21 @@ export function CarolNoticesDock({ notices, bottom }) {
             </>
           )}
         >
+          {/* Diz qual é o assunto e o que fica (revisão pré-deploy
+              2026-09-27). O texto do handoff (specs/design-handoff-2026-09),
+              "O aviso deixa de aparecer no Início", deixou de ser verdade: o
+              aviso já não vive só no Início, e com planos ou objetivos à
+              espera fica, só sem a intervenção. */}
+          {dismissDialog.topic && (
+            <p data-testid="dismiss-topic" className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-2)' }}>
+              «{dismissDialog.topic}»
+            </p>
+          )}
           <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
-            Deixo de te chamar por este assunto. Podes voltar a falar comigo no chat sempre que quiseres.
+            {dismissDialog.othersWaiting
+              ? 'Deixo de te chamar por isto. O que tens à espera da tua decisão continua no aviso. '
+              : 'Deixo de te chamar por isto. '}
+            Podes voltar a falar comigo no chat sempre que quiseres.
           </p>
         </Dialog>
       )}

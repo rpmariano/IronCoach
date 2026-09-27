@@ -241,9 +241,25 @@ describe('Home — os avisos da Carol no botão flutuante', () => {
     const aviso = screen.getByTestId('carol-alert-conflito-provas');
     expect(aviso).toHaveTextContent(/Trail do Sico \(.+\), Meia da Amadora \(.+\) estão como principais a meio do plano para Meia de Lisboa \(.+\)\./);
     expect(aviso).not.toHaveTextContent(/marcad[oa]s?/);
-    // Não se dispensa: a decisão é do atleta, mas tem de ser tomada.
-    expect(screen.queryByTestId('carol-alert-dismiss-conflito-provas')).not.toBeInTheDocument();
-    expect(aviso).not.toHaveTextContent(/Dispensar|Agora não/);
+  });
+
+  /* Não se dispensa: a decisão é do atleta, mas tem de ser tomada. O único
+     botão do cartão é "Falar com a Carol" — nem "Dispensar", nem "Agora
+     não", nem outro que apareça com outro nome. */
+  it('o conflito de provas não se dispensa: o cartão só tem "Falar com a Carol"', () => {
+    useAppStore.setState({
+      coachPlans: [{ id: 'p1', race_id: 'alvo1', status: 'aceite', period_start: today, period_end: addDaysISO(today, 30) }],
+      raceEvents: [
+        { id: 'alvo1', name: 'Meia de Lisboa', date: addDaysISO(today, 20), status: 'agendada' },
+        { id: 'c1', name: 'Trail do Sico', date: addDaysISO(today, 5), status: 'agendada' },
+      ],
+    });
+    renderHome();
+    openAlerts();
+    const aviso = screen.getByTestId('carol-alert-conflito-provas');
+    const botoes = within(aviso).getAllByRole('button');
+    expect(botoes).toHaveLength(1);
+    expect(botoes[0]).toHaveAccessibleName('Falar com a Carol');
   });
 
   it('uma só prova principal em conflito, sem a prova-alvo na agenda: singular e "plano atual"', () => {

@@ -34,7 +34,8 @@ import { cupMapCandidate, markCupMapHandled, CUP_MAP_TITLE } from '../../utils/c
    `openCoach` é o toque genérico no cartão da Carol no Início: leva ao
    assunto mais importante. `logOpened` regista o que a janela mostrou (ação
    2.4), agora a partir de qualquer ecrã. `dismissDialog` é a confirmação de
-   dispensar uma intervenção. */
+   dispensar uma intervenção, com a frase do assunto que sai (`topic`) e se
+   fica mais alguma coisa no aviso (`othersWaiting`). */
 export default function useCarolNotices() {
   const { showToast } = useToast();
   const {
@@ -151,6 +152,17 @@ export default function useCarolNotices() {
     setActiveTab('coach');
   };
 
+  /* As frases dos assuntos por resolver (utils/carolTopics.js). Com uma
+     intervenção, a primeira é a dela — a única que "Dispensar" fecha; as
+     outras (planos ou objetivos propostos) só saem quando o atleta os aceita
+     ou recusa, e o aviso fica com elas. A confirmação diz qual é o assunto
+     e o que fica (revisão pré-deploy 2026-09-27). */
+  const topicLines = pendingTopics > 0
+    ? pendingTopicLines({ profile, coachPlans, coachGoalProposals, coachPlanItems, raceEvents, dailyCheckins, coachNotes })
+    : [];
+  const interventionLine = interventionPending ? topicLines[0] || null : null;
+  const othersWaiting = interventionPending && pendingTopics > 1;
+
   /* Um de cada vez, pela mesma prioridade de sempre. `key` é a chave do
      momento no servidor (P.10), quando o aviso tem um: abrir a janela
      regista-a como vista, e o coach-proactive-tick não notifica hoje o que o
@@ -165,10 +177,12 @@ export default function useCarolNotices() {
       // Na voz dela e a dizer o assunto (pedido 2026-09-23): "Tens 1 assunto
       // a resolver com ela" não dizia qual, e o popup repetia "Carol" 4 vezes.
       title: 'Preciso de falar contigo',
-      message: pendingTopicLines({ profile, coachPlans, coachGoalProposals, coachPlanItems, raceEvents, dailyCheckins, coachNotes }).join(' ')
+      message: topicLines.join(' ')
         || (pendingTopics === 1 ? 'Tenho um assunto para ver contigo.' : `Tenho ${pendingTopics} assuntos para ver contigo.`),
       onTalk: openCoach,
+      // Só a intervenção se dispensa, e é um assunto, não o aviso todo.
       onDismiss: interventionPending ? () => setShowDismiss(true) : null,
+      dismissLabel: 'Dispensar este assunto',
     });
   } else if (raceConflict) {
     const racesConflito = raceConflict.races.map((r) => raceLabel(r));
@@ -307,10 +321,10 @@ export default function useCarolNotices() {
       setProfile({ ...profile, coach_intervention_status: 'resolved', coach_intervention_reason: null });
       logImpressionDismissed({ kind: 'alert', key: 'assuntos', title: 'A Carol precisa de falar contigo' });
       setShowDismiss(false);
-      showToast('Aviso dispensado.', 'success');
+      showToast('Assunto dispensado.', 'success');
     } catch (err) {
       console.error('Erro ao dispensar intervenção:', err);
-      showToast('Não foi possível dispensar o aviso. Tenta outra vez.', 'error');
+      showToast('Não foi possível dispensar o assunto. Tenta outra vez.', 'error');
     } finally {
       setDismissing(false);
     }
@@ -326,6 +340,10 @@ export default function useCarolNotices() {
       busy: dismissing,
       confirm: dismissIntervention,
       cancel: () => setShowDismiss(false),
+      // O que se dispensa (a frase da intervenção) e se fica mais alguma
+      // coisa no aviso (planos ou objetivos à espera).
+      topic: interventionLine,
+      othersWaiting,
     },
   };
 }
