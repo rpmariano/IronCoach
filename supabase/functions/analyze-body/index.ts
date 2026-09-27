@@ -9,7 +9,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import {
   GOALS_REVIEW_SCHEMA,
@@ -452,10 +452,10 @@ async function analyzeWithGemini(
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
   const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-    geminiUrl(model, geminiKey),
+    geminiUrl(model),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
@@ -586,10 +586,10 @@ async function generateBodySummaryFromMetrics(
 
   try {
     const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-      geminiUrl(model, geminiKey),
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {

@@ -15,7 +15,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import {
   CAROL_TONE_RULES_SHORT,
   carolLanguageRule,
@@ -350,10 +350,10 @@ async function analyzeWithGemini(
   }
 
   const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-    geminiUrl(model, geminiKey),
+    geminiUrl(model),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
@@ -482,10 +482,10 @@ export async function inferMuscleGroupsFromNotes(
   if (!notes || !notes.trim() || !hasTimeFor(deadline)) return { categories: [], usage };
   try {
     const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-      geminiUrl(model, geminiKey),
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{
             parts: [{
@@ -815,10 +815,10 @@ async function generateGymCoachNotes(
 
   try {
     const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-      geminiUrl(model, geminiKey),
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {

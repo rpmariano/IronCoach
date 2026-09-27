@@ -45,7 +45,7 @@ import {
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -746,10 +746,10 @@ async function generateCoachNotes(
 
   try {
     const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-      geminiUrl(model, geminiKey),
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -1037,10 +1037,10 @@ async function analyzeWithGemini(
   }
 
   const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-    geminiUrl(model, geminiKey),
+    geminiUrl(model),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {

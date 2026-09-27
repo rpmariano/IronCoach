@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { GEMINI_FALLBACK_MODEL, GEMINI_MODEL, geminiUrl, geminiWithFallback, thinkingConfig } from "./geminiModel.ts";
+import { GEMINI_FALLBACK_MODEL, GEMINI_MODEL, geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "./geminiModel.ts";
 
 // Modelo fixo com rede (auditoria de custos de 2026-09-27) — ver o
 // cabeçalho de geminiModel.ts.
@@ -52,5 +52,7 @@ Deno.test("geminiWithFallback: 429/503 não mudam de modelo (quem chama decide)"
 Deno.test("thinkingConfig e geminiUrl", () => {
   assertEquals(thinkingConfig("low", true), { thinkingConfig: { thinkingLevel: "low" } });
   assertEquals(thinkingConfig("low", false), {});
-  assertEquals(geminiUrl("m", "k"), "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent?key=k");
+  // A chave nunca vai na URL (acabava nos logs num erro de rede).
+  assertEquals(geminiUrl("m"), "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent");
+  assertEquals(geminiHeaders("k"), { "Content-Type": "application/json", "x-goog-api-key": "k" });
 });

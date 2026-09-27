@@ -33,7 +33,7 @@ import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -819,10 +819,10 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     MEAL_DOCTRINE;
 
   const res = await geminiWithFallback((model, withThinking) => fetch(
-    geminiUrl(model, geminiKey),
+    geminiUrl(model),
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {

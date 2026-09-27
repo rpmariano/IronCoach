@@ -25,7 +25,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
@@ -143,10 +143,10 @@ Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
       // geminiModel, e não model: "model" aqui é o modelo da sapatilha.
       geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
         fetchGeminiWithTimeout(
-          geminiUrl(geminiModel, geminiKey),
+          geminiUrl(geminiModel),
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: geminiHeaders(geminiKey),
             body: JSON.stringify({
               contents: [{ parts: [{ text: buildPrompt(brand, model) }] }],
               generationConfig: {

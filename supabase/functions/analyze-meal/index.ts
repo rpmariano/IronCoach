@@ -20,7 +20,7 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
@@ -202,10 +202,10 @@ async function runGeminiItemsRequest(
 ): Promise<{ items: any[]; usage: GeminiUsage }> {
   const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
     fetchGeminiWithTimeout(
-      geminiUrl(geminiModel, geminiKey),
+      geminiUrl(geminiModel),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts }],
           generationConfig: {
@@ -631,10 +631,10 @@ async function generateMealCoachNotes(
   try {
     const res = await geminiWithFallback((geminiModel, withThinking) =>
       fetchGeminiWithTimeout(
-        geminiUrl(geminiModel, geminiKey),
+        geminiUrl(geminiModel),
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: geminiHeaders(geminiKey),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {

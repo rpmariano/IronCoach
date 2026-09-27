@@ -18,7 +18,7 @@ import {
   geminiBusyMessage,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
@@ -172,10 +172,10 @@ async function readDiplomaWithGemini(
 ): Promise<{ reading: DiplomaReading; usage: GeminiUsage }> {
   const res = await geminiWithFallback((geminiModel, withThinking) =>
     fetchGeminiWithTimeout(
-      geminiUrl(geminiModel, geminiKey),
+      geminiUrl(geminiModel),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: buildDiplomaPrompt() }, { inline_data: { mime_type: mime, data: imageB64 } }] }],
           generationConfig: {

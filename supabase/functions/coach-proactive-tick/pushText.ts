@@ -14,7 +14,7 @@
 
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { kmTexto, nomeProprio, proactivePushMessage, RACE_EVE_AFTERNOON_MINUTES, startTimeMinutes, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
 
 export const PUSH_TEXT_MIN = 15;
@@ -196,10 +196,10 @@ export async function composePushMessage(
   if (!geminiKey || fixa) return { ...fallback, generated: false, usage: null };
   try {
     const res = await geminiWithFallback((model, withThinking) => fetchImpl(
-      geminiUrl(model, geminiKey),
+      geminiUrl(model),
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: geminiHeaders(geminiKey),
         body: JSON.stringify({
           contents: [{ parts: [{ text: buildPushPrompt(c, facts) }] }],
           generationConfig: { maxOutputTokens: 1024, temperature: 0.8, ...thinkingConfig("low", withThinking) },

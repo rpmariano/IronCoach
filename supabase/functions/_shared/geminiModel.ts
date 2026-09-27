@@ -35,8 +35,16 @@ export const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
    documentação que o modelo fixo o aceita. */
 export type ThinkingLevel = "low";
 
-export function geminiUrl(model: string, key: string): string {
-  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+/* A chave vai no header x-goog-api-key, nunca na URL (?key=): quando a rede
+   falha, a mensagem de erro do fetch do Deno traz a URL completa, e vários
+   catch registam o erro inteiro — a chave acabava nos logs das Edge
+   Functions (revisão pré-deploy de 27-09-2026). */
+export function geminiUrl(model: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
+
+export function geminiHeaders(key: string): Record<string, string> {
+  return { "Content-Type": "application/json", "x-goog-api-key": key };
 }
 
 /** O pedaço de generationConfig com o raciocínio — vazio no fallback. */

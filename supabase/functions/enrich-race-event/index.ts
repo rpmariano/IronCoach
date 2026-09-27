@@ -35,7 +35,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
-import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -466,10 +466,10 @@ Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
     let geminiRes: Response;
     try {
       geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
-        geminiUrl(model, geminiKey),
+        geminiUrl(model),
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: geminiHeaders(geminiKey),
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: {

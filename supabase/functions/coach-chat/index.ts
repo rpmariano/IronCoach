@@ -59,6 +59,8 @@ import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchema
 import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+// Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
+import { geminiHeaders } from "../_shared/geminiModel.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -1262,10 +1264,10 @@ ${facts.join("\n")}`
 
 async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<{ caption: string; usage: GeminiUsage }> {
   const res = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: geminiHeaders(geminiKey!),
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: buildRaceCaptionPrompt(o, firstName) }] }],
         generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
@@ -6964,10 +6966,10 @@ async function handler(req: Request): Promise<Response> {
     let useRecommendationsSchema = !recommendationsSchemaRejected;
     async function callGemini(withTools = true) {
       const res = await fetchGeminiWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: geminiHeaders(geminiKey!),
           body: JSON.stringify({
             system_instruction: { parts: [{ text: finalSystemInstruction }] },
             contents,
