@@ -3688,24 +3688,41 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
 /* O aviso que esta conversa fechou (closeInterventionOnTalk), para os
    turnos seguintes: sem isto, a partir da segunda mensagem a Carol já não
    tinha o motivo nem as regras do aviso (o perfil já está fechado), e quase
-   nunca chegava a registar o desfecho. É a última linha fechada como
-   'resolvido' — o fecho sem desfecho, que é o da conversa — nas últimas
-   TALKED_INTERVENTION_HOURS; a de objetivos não fecha assim. null sem ela. */
-export const TALKED_INTERVENTION_HOURS = 12;
+   nunca chegava a registar o desfecho. É a última linha fechada nas
+   últimas TALKED_INTERVENTION_HOURS, e só se fechou como 'resolvido' — o
+   fecho sem desfecho, que é o da conversa. Registado o desfecho, sai: não
+   se volta a um aviso anterior do mesmo dia. A janela é curta de propósito
+   (revisão de d45453d2): é a conversa sobre o aviso, não o resto do dia.
+   A de objetivos não fecha assim. null sem ela. */
+export const TALKED_INTERVENTION_HOURS = 2;
 
 export async function readTalkedIntervention(sb: any, userId: string, nowMs = Date.now()): Promise<string | null> {
   const since = new Date(nowMs - TALKED_INTERVENTION_HOURS * 3600000).toISOString();
   const { data, error } = await sb
     .from("coach_interventions")
-    .select("reason")
+    .select("reason, outcome")
     .eq("user_id", userId)
-    .eq("outcome", INTERVENTION_OUTCOME.RESOLVIDO)
     .gte("closed_at", since)
     .order("closed_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error || !data?.reason || isGoalsIntervention(data.reason)) return null;
+  if (error || data?.outcome !== INTERVENTION_OUTCOME.RESOLVIDO || !data?.reason || isGoalsIntervention(data.reason)) return null;
   return data.reason;
+}
+
+/* O bloco para os turnos depois da abertura (readTalkedIntervention). Não
+   é o da intervenção: esse manda confrontar e não aceitar promessas, e aqui
+   o aviso já foi dito — uma dor no check-in com o plano já em repouso não
+   tem nada a confrontar (revisão de d45453d2). Dá o motivo e pede só o
+   desfecho, se ele aparecer. */
+export function buildTalkedInterventionInstruction(reason: string): string {
+  return `\n\n=== AVISO JÁ FALADO NESTA CONVERSA ===\n` +
+    `Abriste esta conversa a partir do teu aviso "Preciso de falar contigo", e ele já fechou na app. ` +
+    `O motivo era: "${reason.replace(GOALS_INTERVENTION_TAG, "").trim()}".\n` +
+    `Segue a conversa naturalmente, sem voltar a confrontar nem insistir. Se a conversa chegar a um destes ` +
+    `desfechos, regista-o com resolve_intervention: o plano ajustado e aceite ('plano_ajustado'), o atleta a ` +
+    `dizer explicitamente que prefere manter tudo como está ('atleta_ignorou'), ou o aviso a revelar-se um erro de ` +
+    `registo ('falso_positivo'). Se não chegar a nenhum, não chames a ferramenta.\n`;
 }
 
 /* O aviso "Preciso de falar contigo" fecha quando a conversa acontece
@@ -5918,7 +5935,8 @@ async function handler(req: Request): Promise<Response> {
       .maybeSingle();
 
     // O aviso que a conversa fechou ao abrir (readTalkedIntervention): nas
-    // respostas do atleta a Carol continua com o motivo e as regras dele.
+    // respostas do atleta a Carol continua com o motivo, sem o modo de
+    // confronto (buildTalkedInterventionInstruction).
     const interventionOpen = ["needed", "in_progress"].includes(profile?.coach_intervention_status as string);
     const talkedReason = !interventionOpen && message ? await readTalkedIntervention(sb, userId) : null;
 
@@ -6689,8 +6707,8 @@ async function handler(req: Request): Promise<Response> {
       coachNotesContext,
       firstNameOf(profile?.display_name as string | null | undefined),
       body.is_intervention_start === true,
-      talkedReason ? "in_progress" : profile?.coach_intervention_status ?? null,
-      talkedReason ?? profile?.coach_intervention_reason ?? null,
+      profile?.coach_intervention_status ?? null,
+      profile?.coach_intervention_reason ?? null,
       shoesContext,
       coachingMode,
       weeklyRunningContext,
@@ -6712,7 +6730,8 @@ async function handler(req: Request): Promise<Response> {
       seriesBlock?.text ?? null,
     );
 
-    let finalSystemInstruction = systemInstruction;
+    let finalSystemInstruction = systemInstruction +
+      (talkedReason ? buildTalkedInterventionInstruction(talkedReason) : "");
 
     // Do mais largo para o mais próximo: a época, o que já conquistou, as
     // metas, o que se disse em cada registo, e o cartão de hoje.

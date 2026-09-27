@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -4176,7 +4176,7 @@ Deno.test("resolve_intervention: sem aviso recente por registar, diz-lho em vez 
   assertStringIncludes(await runResolveIntervention(sbErr, "u1", { action_taken: "atleta_ignorou" }), "Erro");
 });
 
-function makeTalkedSb(row: { reason: string } | null, error: unknown = null) {
+function makeTalkedSb(row: { reason: string; outcome?: string } | null, error: unknown = null) {
   const filters: Array<[string, unknown]> = [];
   const chain = {
     select: () => chain,
@@ -4189,17 +4189,36 @@ function makeTalkedSb(row: { reason: string } | null, error: unknown = null) {
   return { sb: { from: () => chain }, filters };
 }
 
-Deno.test("readTalkedIntervention: o último aviso fechado pela conversa nas últimas 12 h", async () => {
+Deno.test("readTalkedIntervention: o último aviso fechado, se foi pela conversa, nas últimas 2 h", async () => {
   const now = Date.parse("2026-09-27T16:00:00Z");
-  const { sb, filters } = makeTalkedSb({ reason: "Check-in de 2026-09-27: Dor 6/10 (braço direito)." });
+  const { sb, filters } = makeTalkedSb({ reason: "Check-in de 2026-09-27: Dor 6/10 (braço direito).", outcome: "resolvido" });
   assertEquals(await readTalkedIntervention(sb, "u1", now), "Check-in de 2026-09-27: Dor 6/10 (braço direito).");
-  assertEquals(filters, [["user_id", "u1"], ["outcome", "resolvido"], ["closed_at", "2026-09-27T04:00:00.000Z"]]);
+  assertEquals(filters, [["user_id", "u1"], ["closed_at", "2026-09-27T14:00:00.000Z"]]);
+});
+
+Deno.test("readTalkedIntervention: com desfecho já registado não volta a um aviso anterior", async () => {
+  // O último fecho tem desfecho: é esse que conta, e não o 'resolvido' de antes.
+  assertEquals(await readTalkedIntervention(makeTalkedSb({ reason: "Falhou 3 treinos.", outcome: "falso_positivo" }).sb, "u1"), null);
 });
 
 Deno.test("readTalkedIntervention: nenhum, de objetivos ou com erro dá null", async () => {
   assertEquals(await readTalkedIntervention(makeTalkedSb(null).sb, "u1"), null);
-  assertEquals(await readTalkedIntervention(makeTalkedSb({ reason: "[objetivos] Sem objetivos." }).sb, "u1"), null);
+  assertEquals(await readTalkedIntervention(makeTalkedSb({ reason: "[objetivos] Sem objetivos.", outcome: "resolvido" }).sb, "u1"), null);
   assertEquals(await readTalkedIntervention(makeTalkedSb(null, { message: "x" }).sb, "u1"), null);
+});
+
+Deno.test("buildTalkedInterventionInstruction: dá o motivo e pede só o desfecho, sem confronto", () => {
+  const txt = buildTalkedInterventionInstruction("Check-in de 2026-09-27: Dor 6/10 (braço direito).");
+  assertStringIncludes(txt, "Dor 6/10 (braço direito)");
+  assertStringIncludes(txt, "resolve_intervention");
+  assertStringIncludes(txt, "Se não chegar a nenhum, não chames a ferramenta.");
+  assertEquals(/confront(a|o)\b|NÃO aceites/i.test(txt.replace("sem voltar a confrontar", "")), false);
+});
+
+Deno.test("handler: o aviso já falado entra como bloco próprio, não como intervenção aberta (ligações no código)", async () => {
+  const src = (await Deno.readTextFile(new URL("./index.ts", import.meta.url))).replace(/\r\n/g, "\n");
+  assertStringIncludes(src, "(talkedReason ? buildTalkedInterventionInstruction(talkedReason) : \"\")");
+  assertStringIncludes(src, "      profile?.coach_intervention_status ?? null,\n      profile?.coach_intervention_reason ?? null,");
 });
 
 Deno.test("closeInterventionOnTalk: um erro da base de dados não rebenta o turno", async () => {
