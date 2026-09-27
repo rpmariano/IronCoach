@@ -552,7 +552,7 @@ const SAVE_NOTE_TOOL = {
 const RESOLVE_INTERVENTION_TOOL = {
   name: "resolve_intervention",
   description:
-    "Zera o estado de intervenção proativa do atleta, removendo o botão flutuante de alerta da app. " +
+    "Regista o desfecho da intervenção proativa do atleta (o aviso no Início já fecha sozinho quando ele abre a conversa). " +
     "SÓ DEVES CHAMAR ESTA FUNÇÃO num destes três desfechos:\n" +
     "1) O plano foi efetivamente ajustado (propose_training_plan) e o atleta aceitou o novo plano → 'plano_ajustado'.\n" +
     "2) O atleta respondeu de forma EXPLÍCITA que compreendeu os riscos apontados mas quer ignorá-los e manter " +
@@ -3674,6 +3674,34 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
   return `Intervenção marcada como resolvida com motivo: ${actionTaken}. O botão flutuante de alerta na homepage vai desaparecer.`;
 }
 
+/* O aviso "Preciso de falar contigo" fecha quando a conversa acontece
+   (pedido 2026-09-27). Até aqui só a Carol o fechava, e só com plano
+   ajustado, atleta a ignorar ou falso positivo — uma dor no check-in com o
+   plano já em repouso não cabia em nenhum, e o aviso voltava ao Início
+   depois de ele ter falado com ela. Agora fecha-se quando a mensagem de
+   abertura dela fica gravada: o aviso pedia uma conversa e teve-a.
+   Sem desfecho: o trigger grava 'resolvido' em coach_interventions.
+   A de objetivos fica de fora — fecha-se pela decisão na proposta
+   (respondToGoalProposal) e o "não quero agora" precisa do motivo ainda
+   aberto para deixar a marca da recusa (runResolveIntervention).
+   Só pega se o motivo ainda for o que abriu esta conversa: um aviso novo
+   entretanto é outro assunto. Devolve se fechou. */
+export async function closeInterventionOnTalk(sb: any, userId: string, reason: string | null): Promise<boolean> {
+  if (!reason || isGoalsIntervention(reason)) return false;
+  const { data, error } = await sb
+    .from("profiles")
+    .update({ coach_intervention_status: "resolved", coach_intervention_reason: null })
+    .eq("id", userId)
+    .in("coach_intervention_status", ["needed", "in_progress"])
+    .eq("coach_intervention_reason", reason)
+    .select("id");
+  if (error) {
+    console.warn("Falha a fechar o aviso depois da conversa:", error.message);
+    return false;
+  }
+  return (data || []).length > 0;
+}
+
 // ── set_cup_participation / set_cup_season_goal (Fase 2 do Troféu) ───────
 // Só chegam aqui com inscrição ativa (o despacho no handler recusa sem ela).
 // Cada escrita é a RPC da M1 que o cliente já usa, com o `sb` do pedido: a
@@ -5690,7 +5718,7 @@ export function buildSystemInstruction(
            `1) Propores um plano ajustado (propose_training_plan) E o atleta O ACEITAR. Nesse caso, deverás chamar a ferramenta 'resolve_intervention' indicando 'plano_ajustado'.\n` +
            `2) O atleta afirmar EXPLÍCITAMENTE que percebeu mas quer ignorar o aviso e manter o plano como está. Nesse caso, deverás chamar a ferramenta 'resolve_intervention' indicando 'atleta_ignorou'.\n` +
            `3) O desvio sinalizado se revelar um FALSO POSITIVO — o atleta esclarece que foi um erro de registo (ex.: caminhada gravada como corrida, distância/duração trocada, sessão duplicada) e não há, de facto, desvio nenhum a ajustar no plano. Nesse caso, chama 'resolve_intervention' indicando 'falso_positivo'. NÃO confundas isto com uma desculpa para o desvio real (ex.: "estava cansado" não é falso positivo — o treino aconteceu como registado).\n` +
-           `NÃO aceites meras promessas de "vou melhorar amanhã" para resolver a intervenção. Mantém o rigor e insiste que o plano ficou comprometido e precisa de revisão, EXCETO no caso 3, em que não há desvio real para insistir. Enquanto não resolveres a intervenção (chamando a ferramenta), o botão de alerta continuará ativo na app do atleta.\n`;
+           `NÃO aceites meras promessas de "vou melhorar amanhã" para resolver a intervenção. Mantém o rigor e insiste que o plano ficou comprometido e precisa de revisão, EXCETO no caso 3, em que não há desvio real para insistir. O aviso no Início fecha sozinho quando o atleta abre esta conversa; a ferramenta serve para registar o desfecho quando ele acontecer.\n`;
   }
 
   return sys;
@@ -7206,6 +7234,15 @@ async function handler(req: Request): Promise<Response> {
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
     const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
+
+    // A abertura da conversa pedida pelo aviso foi dita: o aviso fecha
+    // (closeInterventionOnTalk). Com a mensagem por gravar não — o atleta
+    // pode nunca a ver, e o aviso é o caminho de volta.
+    if (!modelMsgErr && body.is_intervention_start === true && !interventionWasResolved) {
+      if (await closeInterventionOnTalk(sb, userId, (profile?.coach_intervention_reason as string | null) ?? null)) {
+        interventionWasResolved = true;
+      }
+    }
 
     // Depois da mensagem, as recomendações soltas que ela deu (5.5, push 2):
     // validadas, com a ligação à mensagem quando ela ficou gravada.
