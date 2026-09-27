@@ -25,6 +25,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
+import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
@@ -33,7 +34,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 30000;
 
 // Peso a que a estimativa se reporta — importado de ../_shared/formulas/
@@ -140,20 +140,24 @@ Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
 
     let geminiRes: Response;
     try {
-      geminiRes = await fetchGeminiWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: buildPrompt(brand, model) }] }],
-            generationConfig: {
-              response_mime_type: "application/json",
-              response_schema: RESPONSE_SCHEMA,
-              maxOutputTokens: 512,
-            },
-          }),
-        },
+      // geminiModel, e não model: "model" aqui é o modelo da sapatilha.
+      geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+        fetchGeminiWithTimeout(
+          geminiUrl(geminiModel, geminiKey),
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: buildPrompt(brand, model) }] }],
+              generationConfig: {
+                response_mime_type: "application/json",
+                response_schema: RESPONSE_SCHEMA,
+                maxOutputTokens: 512,
+                ...thinkingConfig("minimal", withThinking),
+              },
+            }),
+          },
+        )
       );
     } catch (e) {
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha a contactar a Carol." }, 502);

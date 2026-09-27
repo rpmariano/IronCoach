@@ -18,6 +18,7 @@ import {
   geminiBusyMessage,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const corsHeaders = {
@@ -26,7 +27,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
 const MAX_IMAGE_B64_LENGTH = 6_000_000; // ~4,5 MB de imagem — mais do que o cliente alguma vez envia
@@ -170,19 +170,26 @@ async function readDiplomaWithGemini(
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<{ reading: DiplomaReading; usage: GeminiUsage }> {
-  const res = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: buildDiplomaPrompt() }, { inline_data: { mime_type: mime, data: imageB64 } }] }],
-        generationConfig: { temperature: 0, response_mime_type: "application/json", response_schema: RESPONSE_SCHEMA },
-      }),
-    },
-    GEMINI_TIMEOUT_MS,
-    GEMINI_RETRIES,
-    deadline,
+  const res = await geminiWithFallback((geminiModel, withThinking) =>
+    fetchGeminiWithTimeout(
+      geminiUrl(geminiModel, geminiKey),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: buildDiplomaPrompt() }, { inline_data: { mime_type: mime, data: imageB64 } }] }],
+          generationConfig: {
+            temperature: 0,
+            response_mime_type: "application/json",
+            response_schema: RESPONSE_SCHEMA,
+            ...thinkingConfig("minimal", withThinking),
+          },
+        }),
+      },
+      GEMINI_TIMEOUT_MS,
+      GEMINI_RETRIES,
+      deadline,
+    )
   );
   if (!res.ok) {
     const errText = await res.text();

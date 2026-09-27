@@ -33,6 +33,7 @@ import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,7 +41,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 40000;
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -818,8 +818,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `Inclui um exemplo prático ou número concreto. Termina com uma dica de aplicação imediata.\n\n` +
     MEAL_DOCTRINE;
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+  const res = await geminiWithFallback((model, withThinking) => fetch(
+    geminiUrl(model, geminiKey),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -828,15 +828,15 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
         generationConfig: {
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
-          // Sem thinkingConfig de propósito: o campo para desativar/limitar
-          // o raciocínio interno varia de geração para geração e causa 400 em
-          // modelos que não o suportam (ex: gemini-flash-latest → 1.x/2.0).
-          // Deixar sem o campo funciona em todas as gerações.
+          // O raciocínio define-se em _shared/geminiModel.ts, com fallback
+          // que repete sem thinkingConfig se o modelo o recusar (o 400 entre
+          // gerações era a razão para antes não se mandar o campo).
+          ...thinkingConfig("low", withThinking),
         },
       }),
       signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
     },
-  );
+  ));
   if (!res.ok) {
     throw new Error(`Gemini ${res.status}: ${await res.text()}`);
   }

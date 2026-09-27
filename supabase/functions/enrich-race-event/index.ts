@@ -35,6 +35,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
 import { usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
+import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -42,7 +43,6 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-const GEMINI_MODEL = "gemini-flash-latest";
 const GEMINI_TIMEOUT_MS = 55000;
 const GEMINI_RETRIES = 1;
 
@@ -465,8 +465,8 @@ Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
 
     let geminiRes: Response;
     try {
-      geminiRes = await fetchGeminiWithTimeout(
-        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+      geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+        geminiUrl(model, geminiKey),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -476,10 +476,11 @@ Deno.serve(withUsageRecording("enrich-race-event", async (req) => {
               response_mime_type: "application/json",
               response_schema: RESPONSE_SCHEMA,
               maxOutputTokens: 4096,
+              ...thinkingConfig("low", withThinking),
             },
           }),
         },
-      );
+      ));
     } catch (e) {
       return jsonResponse({ error: e instanceof Error ? e.message : upstreamErrorText(null) }, 502);
     }
