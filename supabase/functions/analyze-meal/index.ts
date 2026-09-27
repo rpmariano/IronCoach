@@ -211,7 +211,7 @@ async function runGeminiItemsRequest(
           generationConfig: {
             response_mime_type: "application/json",
             response_schema: RESPONSE_SCHEMA,
-            ...thinkingConfig("minimal", withThinking),
+            ...thinkingConfig("low", withThinking),
           },
         }),
       },

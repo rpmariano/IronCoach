@@ -26,12 +26,14 @@
 export const GEMINI_MODEL = "gemini-3.8-flash";
 export const GEMINI_FALLBACK_MODEL = "gemini-flash-latest";
 
-/* Níveis:
-   - "minimal": extração de prints/fotos para um esquema JSON fixo, e
-     estimativas numéricas curtas. Ler números não ganha nada em pensar.
-   - "low": texto curto da Carol (comentários, resumo do dia, notificações,
-     enriquecimento de provas) que cruza vários dados. */
-export type ThinkingLevel = "minimal" | "low";
+/* Níveis: todas as chamadas usam "low".
+   "minimal" seria o natural para a extração de prints (ler números não ganha
+   nada em pensar), mas o gemini-3.8-flash recusou-o com 400 em produção logo
+   após o deploy de 27-09-2026 (analyze-meal: a extração caía sempre no
+   fallback, sem limite nenhum), enquanto "low" passou no resumo diário e
+   nos comentários da Carol. Só voltar a "minimal" depois de confirmar na
+   documentação que o modelo fixo o aceita. */
+export type ThinkingLevel = "low";
 
 export function geminiUrl(model: string, key: string): string {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
@@ -67,7 +69,11 @@ export async function geminiWithFallback(
 ): Promise<Response> {
   const res = await send(GEMINI_MODEL, true);
   if (!(await needsFallback(res))) return res;
-  console.warn(`[gemini] fallback: ${GEMINI_MODEL} respondeu ${res.status}; a repetir em ${GEMINI_FALLBACK_MODEL} sem thinkingConfig — atualizar GEMINI_MODEL em _shared/geminiModel.ts`);
+  // O motivo do Google vai no aviso: sem ele não se sabia porquê (o 400 de
+  // "minimal" em 27-09-2026 só se diagnosticou por exclusão).
+  let reason = "";
+  try { reason = (await res.clone().text()).slice(0, 300).replace(/\s+/g, " "); } catch (_) { /* sem corpo */ }
+  console.warn(`[gemini] fallback: ${GEMINI_MODEL} respondeu ${res.status}; a repetir em ${GEMINI_FALLBACK_MODEL} sem thinkingConfig — atualizar GEMINI_MODEL/nível em _shared/geminiModel.ts. Motivo: ${reason}`);
   try { await res.body?.cancel(); } catch (_) { /* nada a libertar */ }
   return await send(GEMINI_FALLBACK_MODEL, false);
 }

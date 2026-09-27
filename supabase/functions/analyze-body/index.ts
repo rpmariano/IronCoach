@@ -459,7 +459,7 @@ async function analyzeWithGemini(
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
-          ...thinkingConfig("minimal", withThinking),
+          ...thinkingConfig("low", withThinking),
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
         },
@@ -595,7 +595,7 @@ async function generateBodySummaryFromMetrics(
           generationConfig: {
             // A análise estruturada é mais longa (feedback de 2026-09-25).
             maxOutputTokens: 8192,
-            ...thinkingConfig("minimal", withThinking),
+            ...thinkingConfig("low", withThinking),
             response_mime_type: "application/json",
             response_schema: MANUAL_SUMMARY_SCHEMA,
           },

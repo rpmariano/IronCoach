@@ -50,7 +50,7 @@ Deno.test("geminiWithFallback: 429/503 não mudam de modelo (quem chama decide)"
 });
 
 Deno.test("thinkingConfig e geminiUrl", () => {
-  assertEquals(thinkingConfig("minimal", true), { thinkingConfig: { thinkingLevel: "minimal" } });
+  assertEquals(thinkingConfig("low", true), { thinkingConfig: { thinkingLevel: "low" } });
   assertEquals(thinkingConfig("low", false), {});
   assertEquals(geminiUrl("m", "k"), "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent?key=k");
 });

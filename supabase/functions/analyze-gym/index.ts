@@ -357,7 +357,7 @@ async function analyzeWithGemini(
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
-          ...thinkingConfig("minimal", withThinking),
+          ...thinkingConfig("low", withThinking),
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
         },
@@ -496,7 +496,7 @@ export async function inferMuscleGroupsFromNotes(
                 "falar de exercícios, devolve categories vazio. Responde apenas com JSON.",
             }],
           }],
-          generationConfig: { response_mime_type: "application/json", response_schema: INFER_SCHEMA, ...thinkingConfig("minimal", withThinking) },
+          generationConfig: { response_mime_type: "application/json", response_schema: INFER_SCHEMA, ...thinkingConfig("low", withThinking) },
         }),
       },
       INFER_TIMEOUT_MS,

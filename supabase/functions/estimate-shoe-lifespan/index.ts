@@ -153,7 +153,7 @@ Deno.serve(withUsageRecording("estimate-shoe-lifespan", async (req) => {
                 response_mime_type: "application/json",
                 response_schema: RESPONSE_SCHEMA,
                 maxOutputTokens: 512,
-                ...thinkingConfig("minimal", withThinking),
+                ...thinkingConfig("low", withThinking),
               },
             }),
           },
