@@ -57,6 +57,7 @@ import { buildRacePacingPlan, compareSplitsToPlan, AMBITIOUS_RATIO, type RacePac
 import { computeRaceEve, hhmm as sharedHhmm } from "../_shared/formulas/raceEve.ts";
 import { buildCupMapTurn, dayMonth, DECISION_TEXT, fetchSeriesBlock, isCupSchemaMissing, SEASON_GOAL_TEXT, seriesRacePhaseText, type SeriesBlock } from "../_shared/seriesBlock.ts";
 import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
+import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -1258,7 +1259,7 @@ ${facts.join("\n")}`
   );
 }
 
-async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<string> {
+async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName: string | null, deadline = Number.POSITIVE_INFINITY): Promise<{ caption: string; usage: GeminiUsage }> {
   const res = await fetchGeminiWithTimeout(
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
     {
@@ -1278,7 +1279,9 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
   // deno-lint-ignore no-explicit-any
   const text = (data?.candidates?.[0]?.content?.parts || []).map((p: any) => p?.text || "").join("").trim();
   if (!text) throw new Error("Legenda vazia");
-  return text.slice(0, 1200);
+  // O consumo vai na resposta para o cliente o registar em app_logs — até
+  // aqui a legenda era a única chamada do coach-chat sem custo contado.
+  return { caption: text.slice(0, 1200), usage: usageFromGemini(data) };
 }
 
 /** Bloco injetado no fim do prompt do sistema num turno por iniciativa dela.
@@ -1319,7 +1322,6 @@ export function buildProactiveUserTurn(trigger: ProactiveTrigger): string {
 // sem custo de armazenamento — Google deteta prefixos repetidos sozinho).
 // Instrumentado para decidir se compensa passar a caching explícito: ver
 // a sinalética "Cache do Coach" no painel Custos API/Admin.
-type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -5920,8 +5922,8 @@ async function handler(req: Request): Promise<Response> {
       // Dentro dos 45 s que a app espera pela legenda (requestRaceCaption),
       // agora que o "ocupado" se repete com esperas — com folga para o
       // arranque a frio, que a app conta e este relógio não.
-      const caption = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
-      return jsonResponse({ caption });
+      const { caption, usage } = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
+      return jsonResponse({ caption, usage });
     }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
@@ -7011,7 +7013,7 @@ async function handler(req: Request): Promise<Response> {
     // Soma tokens de TODAS as chamadas ao Gemini neste pedido — o loop de
     // function calling pode fazer várias idas-e-voltas (cada uma consome
     // tokens) antes de chegar à resposta final que o utilizador vê.
-    const totalUsage: GeminiUsage = { input_tokens: 0, output_tokens: 0, cached_tokens: 0 };
+    let totalUsage: GeminiUsage = emptyUsage();
 
     // Sinaliza ao cliente que esta resposta criou um plano — o Início tem de
     // recarregar os itens para a proposta aparecer sem refrescar a página.
@@ -7133,9 +7135,9 @@ async function handler(req: Request): Promise<Response> {
 
       // deno-lint-ignore no-explicit-any
       const parsedRes: any = await geminiRes.json();
-      totalUsage.input_tokens += Number(parsedRes?.usageMetadata?.promptTokenCount) || 0;
-      totalUsage.output_tokens += Number(parsedRes?.usageMetadata?.candidatesTokenCount) || 0;
-      totalUsage.cached_tokens += Number(parsedRes?.usageMetadata?.cachedContentTokenCount) || 0;
+      // Inclui o raciocínio interno (thoughts), cobrado como output — ver
+      // _shared/geminiUsage.ts.
+      totalUsage = addUsage(totalUsage, usageFromGemini(parsedRes));
       // deno-lint-ignore no-explicit-any
       const parts: any[] = parsedRes?.candidates?.[0]?.content?.parts || [];
       // deno-lint-ignore no-explicit-any

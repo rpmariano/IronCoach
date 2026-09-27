@@ -150,7 +150,7 @@ export interface TickLogInput {
   candidate: ServerProactiveCandidate | null;
   /** "enviada", "falhou", ou o motivo de não enviar. */
   reason: string;
-  usage?: { input_tokens: number; output_tokens: number } | null;
+  usage?: { input_tokens: number; output_tokens: number; cached_tokens?: number; thoughts_tokens?: number } | null;
   generated?: boolean;
   lisbonHour: number;
   /** As decisões sem custo já registadas hoje (tickLogSignature). */
@@ -171,7 +171,14 @@ export function tickLogRow(input: TickLogInput): {
     event: "coach-proactive-tick",
     message: input.reason,
     meta: {
-      ...(usage ? { input_tokens: usage.input_tokens, output_tokens: usage.output_tokens } : {}),
+      // cached/thoughts entram no custo (src/utils/aiCosts.js) — ver
+      // _shared/geminiUsage.ts.
+      ...(usage ? {
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cached_tokens: usage.cached_tokens ?? 0,
+        thoughts_tokens: usage.thoughts_tokens ?? 0,
+      } : {}),
       reason: input.reason,
       trigger: input.candidate?.trigger ?? null,
       key: input.candidate?.key ?? null,

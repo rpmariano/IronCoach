@@ -11,6 +11,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
+import { usageFromGemini } from "../_shared/geminiUsage.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_RETRYABLE_STATUSES,
@@ -192,10 +193,8 @@ async function readDiplomaWithGemini(
     throw new Error(upstreamErrorText(res.status));
   }
   const json = await res.json();
-  const usage = {
-    input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
-    output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
-  };
+  // Inclui cache e raciocínio interno (thoughts) — ver _shared/geminiUsage.ts.
+  const usage = usageFromGemini(json);
   let parsed: unknown;
   try {
     parsed = JSON.parse(json?.candidates?.[0]?.content?.parts?.[0]?.text);

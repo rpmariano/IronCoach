@@ -33,6 +33,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
+import { usageFromGemini } from "../_shared/geminiUsage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -491,11 +492,8 @@ Deno.serve(async (req) => {
     // invokeEdgeFunctionWithTimeout (src/lib/supabase.js), que grava sempre
     // que a resposta traz `usage`. Sem isto esta função ficava invisível no
     // painel de Custos API do Admin.
-    const usage = {
-      input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-      output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-      cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-    };
+    // Inclui o raciocínio interno (thoughts) — ver _shared/geminiUsage.ts.
+    const usage = usageFromGemini(geminiJson);
     const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
     let parsed: Record<string, unknown>;
     try {

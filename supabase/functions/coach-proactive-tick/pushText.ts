@@ -13,6 +13,7 @@
 // proactivePushMessage; e o prompt proíbe inventar números que não estão lá.
 
 import { CAROL_TONE_RULES_SHORT } from "../_shared/carolTone.ts";
+import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { kmTexto, nomeProprio, proactivePushMessage, RACE_EVE_AFTERNOON_MINUTES, startTimeMinutes, type ServerProactiveCandidate } from "../_shared/formulas/proactiveTriggers.ts";
 
 export const PUSH_TEXT_MIN = 15;
@@ -166,7 +167,9 @@ export function extractText(json: any): string | null {
   return null;
 }
 
-export type PushUsage = { input_tokens: number; output_tokens: number };
+// Mesmo formato das outras funções (_shared/geminiUsage.ts), com o raciocínio
+// interno (thoughts) incluído.
+export type PushUsage = GeminiUsage;
 
 /**
  * O título e o corpo da notificação. Nunca rejeita: qualquer falha dá a frase
@@ -209,11 +212,7 @@ export async function composePushMessage(
       return { ...fallback, generated: false, usage: null };
     }
     const json = await res.json();
-    // Os mesmos campos das outras funções (input = prompt, output = candidatos).
-    const usage: PushUsage = {
-      input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
-      output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
-    };
+    const usage: PushUsage = usageFromGemini(json);
     const text = validatePushText(extractText(json));
     return text
       ? { title: fallback.title, body: text, generated: true, usage }

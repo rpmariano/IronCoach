@@ -20,6 +20,7 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -184,12 +185,8 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-// Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
-// usada para estimar o custo real da API — ver admin_logs/painel de custos.
-export // cached_tokens: tokens deste pedido servidos por caching implícito
-// (automático, sem custo de armazenamento) — instrumentado para decidir
-// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
-type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
+// Contagem de tokens de uma chamada ao Gemini: GeminiUsage/usageFromGemini em
+// _shared/geminiUsage.ts (inclui thoughtsTokenCount, cobrado como output).
 
 // Chama o Gemini com as partes de conteúdo dadas (imagens e/ou texto) e devolve
 // os itens já normalizados a partir do RESPONSE_SCHEMA (ou lança um erro com
@@ -233,11 +230,7 @@ async function runGeminiItemsRequest(
   }
 
   const geminiJson = await geminiRes.json();
-  const usage: GeminiUsage = {
-    input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-    output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-  };
+  const usage: GeminiUsage = usageFromGemini(geminiJson);
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: { items?: unknown[] };
   try {
@@ -540,12 +533,13 @@ async function generateMealCoachNotes(
   deadline = Number.POSITIVE_INFINITY,
   // O dia até agora face ao que ela sugeriu (5.5, push 3) — dayProgressSection.
   dayProgress: string | null = null,
-): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null }> {
-  if (!geminiKey) return { text: null };
+  // usage: o consumo desta chamada (null se não chegou a haver resposta).
+): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null; usage: GeminiUsage | null }> {
+  if (!geminiKey) return { text: null, usage: null };
   // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
   // refeição já está gravada e a resposta não pode passar o que a app espera.
-  if (!hasTimeFor(deadline)) return { text: null };
-  if (totals.calories <= 0) return { text: null }; // sem itens, nada para comentar
+  if (!hasTimeFor(deadline)) return { text: null, usage: null };
+  if (totals.calories <= 0) return { text: null, usage: null }; // sem itens, nada para comentar
 
   const typeLabel = MEAL_TYPE_LABELS[meal.meal_type] || meal.meal_type;
   const itemsLine = formatMealItemsLine(meal.items);
@@ -662,11 +656,13 @@ async function generateMealCoachNotes(
     );
     if (!res.ok) {
       console.warn("Meal coach generation failed:", res.status, await res.text());
-      return { text: null };
+      return { text: null, usage: null };
     }
     const json = await res.json();
+    // Os tokens foram cobrados mesmo que o texto venha vazio/inválido.
+    const usage = usageFromGemini(json);
     const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!rawText) return { text: null };
+    if (!rawText) return { text: null, usage };
 
     let parsed: any = {};
     try {
@@ -677,17 +673,19 @@ async function generateMealCoachNotes(
     return { 
       text: parsed.text?.trim() || null, 
       intervention_needed: parsed.intervention_needed,
-      intervention_reason: parsed.intervention_reason
+      intervention_reason: parsed.intervention_reason,
+      usage,
     };
   } catch (e) {
     console.warn("Meal coach generation error:", e);
-    return { text: null };
+    return { text: null, usage: null };
   }
 }
 
 // Busca metas + refeições recentes do mesmo tipo, gera o comentário e grava-o
 // — best-effort, tal como em analyze-run: uma falha aqui nunca desfaz a
-// refeição já gravada, só fica sem comentário.
+// refeição já gravada, só fica sem comentário. Devolve o consumo de tokens do
+// comentário (null se a chamada não chegou a acontecer) para somar ao usage.
 async function attachMealCoachNotes(
   // deno-lint-ignore no-explicit-any
   sb: any,
@@ -703,7 +701,10 @@ async function attachMealCoachNotes(
   },
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
-): Promise<void> {
+): Promise<GeminiUsage | null> {
+  // Fora do try: se a gravação depois da chamada falhar, os tokens já foram
+  // cobrados e continuam a contar.
+  let usage: GeminiUsage | null = null;
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
     // Carol que comenta este registo é a mesma que falou com ele ontem.
@@ -814,6 +815,7 @@ async function attachMealCoachNotes(
       deadline,
       dayProgress,
     );
+    usage = result.usage;
 
     if (result.text) {
       await sb.from("meals").update({ coach_notes: result.text }).eq("id", meal.id);
@@ -836,6 +838,7 @@ async function attachMealCoachNotes(
   } catch (e) {
     console.warn("attachMealCoachNotes failed:", e);
   }
+  return usage;
 }
 
 Deno.serve(async (req) => {
@@ -953,12 +956,14 @@ Deno.serve(async (req) => {
           .select();
         if (itemsError) return jsonResponse({ error: `Falha a gravar alimentos: ${itemsError.message}` }, 500);
 
-        await attachMealCoachNotes(sb, userId, updatedMeal, {
+        // Soma o comentário da Carol ao usage da extração — senão esses tokens
+        // nunca chegam ao app_logs (ver _shared/geminiUsage.ts).
+        const coachUsage = await attachMealCoachNotes(sb, userId, updatedMeal, {
           date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
           items: savedItems || [],
         }, geminiKey, coachDeadline);
 
-        return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: estimated.usage });
+        return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: addUsage(estimated.usage, coachUsage) });
       }
 
       const { data: meal, error: mealError } = await sb
@@ -978,12 +983,13 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: `Falha a gravar alimentos: ${itemsError.message}` }, 500);
       }
 
-      await attachMealCoachNotes(sb, userId, meal, {
+      // Comentário da Carol somado ao usage (ver _shared/geminiUsage.ts).
+      const coachUsage = await attachMealCoachNotes(sb, userId, meal, {
         date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
         items: savedItems || [],
       }, geminiKey, coachDeadline);
 
-      return jsonResponse({ meal: { ...meal, meal_items: savedItems }, usage: estimated.usage });
+      return jsonResponse({ meal: { ...meal, meal_items: savedItems }, usage: addUsage(estimated.usage, coachUsage) });
     }
 
     // ── Modo reanálise: meal_id presente ──────────────────────────────
@@ -1114,13 +1120,14 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `Falha a gravar itens: ${itemsError.message}` }, 500);
     }
 
-    // 4. Comentário do Coach (best-effort — ver attachMealCoachNotes)
-    await attachMealCoachNotes(sb, userId, meal, {
+    // 4. Comentário do Coach (best-effort — ver attachMealCoachNotes); os seus
+    // tokens somam-se ao usage da extração (ver _shared/geminiUsage.ts).
+    const coachUsage = await attachMealCoachNotes(sb, userId, meal, {
       date, meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
       items: savedItems || [],
     }, geminiKey, coachDeadline);
 
-    return jsonResponse({ meal, items: savedItems, usage });
+    return jsonResponse({ meal, items: savedItems, usage: addUsage(usage, coachUsage) });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);

@@ -34,6 +34,7 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
+import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -421,13 +422,6 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
   return prompt;
 }
 
-// Contagem de tokens de uma chamada ao Gemini (usageMetadata da resposta),
-// usada para estimar o custo real da API — ver admin_logs/painel de custos.
-// cached_tokens: tokens deste pedido servidos por caching implícito
-// (automático, sem custo de armazenamento) — instrumentado para decidir
-// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
-type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
-
 // Chama o Gemini com as imagens (base64) + histórico + observações, devolve as
 // métricas normalizadas, o resumo e os tokens consumidos (ou lança um erro
 // com mensagem amigável).
@@ -483,11 +477,8 @@ async function analyzeWithGemini(
   }
 
   const geminiJson = await geminiRes.json();
-  const usage: GeminiUsage = {
-    input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-    output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-  };
+  // Tokens desta chamada, incl. thoughts (ver _shared/geminiUsage.ts).
+  const usage: GeminiUsage = usageFromGemini(geminiJson);
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: {
     metrics?: Record<string, unknown>;
@@ -554,12 +545,14 @@ async function generateBodySummaryFromMetrics(
   goalsCtx: GoalsContext | null = null,
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
-): Promise<{ text: string | null; goalsReview: GoalsReview }> {
+  // `usage`: tokens desta chamada (null se não houve resposta do Gemini) —
+  // antes não era devolvido, e o registo manual não contava para os custos.
+): Promise<{ text: string | null; goalsReview: GoalsReview; usage: GeminiUsage | null }> {
   const hasAny = Object.values(metrics).some((v) => v !== null && v !== undefined);
-  if (!hasAny) return { text: null, goalsReview: null };
+  if (!hasAny) return { text: null, goalsReview: null, usage: null };
   // Sem tempo para uma tentativa útil antes do prazo, grava-se sem resumo:
   // é best-effort, e a resposta não pode passar o que a app espera.
-  if (!hasTimeFor(deadline)) return { text: null, goalsReview: null };
+  if (!hasTimeFor(deadline)) return { text: null, goalsReview: null, usage: null };
 
   const metricLines = METRIC_FIELDS
     .filter((f) => metrics[f.key] !== null && metrics[f.key] !== undefined)
@@ -610,13 +603,15 @@ async function generateBodySummaryFromMetrics(
     );
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());
-      return { text: null, goalsReview: null };
+      return { text: null, goalsReview: null, usage: null };
     }
     const json = await res.json();
-    return parseManualSummary(json?.candidates?.[0]?.content?.parts?.[0]?.text);
+    // Contado logo aqui: os tokens pagam-se mesmo que o texto não se aproveite.
+    const usage = usageFromGemini(json);
+    return { ...parseManualSummary(json?.candidates?.[0]?.content?.parts?.[0]?.text), usage };
   } catch (e) {
     console.warn("Body manual summary generation error:", e);
-    return { text: null, goalsReview: null };
+    return { text: null, goalsReview: null, usage: null };
   }
 }
 
@@ -734,7 +729,9 @@ Deno.serve(async (req) => {
           .single();
         if (updateError) return jsonResponse({ error: `Falha a atualizar avaliação: ${updateError.message}` }, 500);
         await syncProfileAfterAssessment(sb, userId, updated, summaryResult.goalsReview);
-        return jsonResponse({ assessment: updated });
+        // O modo manual só faz esta chamada ao Gemini; o cliente regista o
+        // `usage` em app_logs (porquê: _shared/geminiUsage.ts). null = sem chamada.
+        return jsonResponse({ assessment: updated, usage: summaryResult.usage });
       }
 
       const { data: assessment, error: insertError } = await sb
@@ -756,7 +753,7 @@ Deno.serve(async (req) => {
       if (insertError) return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
 
       await syncProfileAfterAssessment(sb, userId, assessment, summaryResult.goalsReview);
-      return jsonResponse({ assessment });
+      return jsonResponse({ assessment, usage: summaryResult.usage });
     }
 
     // ── Modo reanálise por foto: assessment_id presente sem mode manual ─

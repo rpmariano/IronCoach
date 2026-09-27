@@ -24,6 +24,7 @@
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { REFERENCE_WEIGHT_KG } from "../_shared/formulas/shoes.ts";
 import { upstreamErrorText } from "../_shared/carolTone.ts";
+import { usageFromGemini } from "../_shared/geminiUsage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -175,11 +176,8 @@ Deno.serve(async (req) => {
     // app_logs é feito num único sítio, o invokeEdgeFunctionWithTimeout
     // (src/lib/supabase.js), que grava sempre que a resposta traz `usage`.
     // Fazê-lo aqui duplicava o mecanismo e gastava um INSERT por chamada.
-    const usage = {
-      input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-      output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-      cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-    };
+    // Inclui o raciocínio interno (thoughts) — ver _shared/geminiUsage.ts.
+    const usage = usageFromGemini(geminiJson);
 
     if (parsed.recognized !== true) {
       return jsonResponse({

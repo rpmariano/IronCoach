@@ -6,6 +6,7 @@ import CarolIcon from '../Coach/CarolIcon';
 import PremiumModal from '../shared/PremiumModal';
 import Button from '../shared/Button';
 import CompetitionsTab from './Competitions';
+import CostsTab from './CostsTab';
 
 const ADMIN_TABS = [
   { key: 'overview', label: 'Visão Geral', icon: LayoutGrid },
@@ -20,70 +21,6 @@ const ADMIN_TABS = [
   // lista (visibleTabs, abaixo, filtra tudo menos 'bug_reports' para ele).
   { key: 'competitions', label: 'Competições', icon: Trophy },
 ];
-
-/* Preços por milhão de tokens, em USD. Estavam em 0,30/2,50 — desatualizados,
-   o que fazia o painel subestimar o custo real em ~2,5x no input.
-   Valores atuais da linha Flash: 0,75 input / 3,75 output, promocionais até
-   31-12-2026; a 01-01-2027 passam ao padrão de 1,50 / 7,50 (é preciso vir cá
-   mudar nessa altura, ou o painel volta a mentir, agora para baixo).
-   Ressalva: GEMINI_MODEL é "gemini-flash-latest", um alias — se apontar para
-   uma variante com outra tabela (a Flash-Lite é bem mais barata, a 3.5 Flash
-   bem mais cara), estes números derrapam. Confirmar contra a fatura real. */
-const GEMINI_PRICE_PER_M_INPUT = 0.75;
-const GEMINI_PRICE_PER_M_OUTPUT = 3.75;
-// (Para referência futura: tokens de prefixo reaproveitado via context
-//  caching custam 0,075 — 10x menos que input normal. Só passa a haver o que
-//  contar quando o coach-chat declarar cache e a resposta separar os
-//  cached_tokens do input; acrescentar a constante nessa altura.)
-const GEMINI_COST_EVENT_MODULE = {
-  // Edge Functions (novas e atuais)
-  'analyze-meal': 'Nutrição',
-  'analyze-body': 'Corpo',
-  'analyze-gym': 'Ginásio',
-  'analyze-run': 'Corrida',
-  'coach-chat': 'Carol',
-  'coach-daily-summary': 'Carol',
-  // O texto das notificações da Carol, escrito pelo modelo no servidor (P.10).
-  'coach-proactive-tick': 'Carol',
-  'enrich-race-event': 'Corrida',
-  'estimate-shoe-lifespan': 'Equipamento',
-  // Eventos legado
-  meal_analysis: 'Nutrição',
-  meal_reanalysis: 'Nutrição',
-  meal_item_estimate: 'Nutrição',
-  body_analysis: 'Corpo',
-  body_reanalysis: 'Corpo',
-  gym_analysis: 'Ginásio',
-  gym_reanalysis: 'Ginásio',
-  run_analysis: 'Corrida',
-  run_reanalysis: 'Corrida',
-  coach_message: 'Carol',
-  coach_daily_summary: 'Carol',
-};
-
-/* Limiares da sinalética "Cache do Coach" (separador Custos API).
-   Contas feitas com os preços reais da linha Flash (0,75 input / 3,75
-   output / 0,075 leitura em cache / 0,50 armazenamento por hora): manter
-   uma cache explícita viva só se paga a si própria se houver pelo menos
-   ~2 pedidos nessa mesma hora — abaixo disso a poupança na leitura não
-   cobre o custo de a ter criado. É invariante ao tamanho do prompt (a conta
-   dá o mesmo com 15 mil ou com 200 mil tokens), por isso o número fica fixo
-   aqui em vez de derivado do tamanho do prompt do momento. */
-const COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR = 2;
-// Menos chamadas registadas que isto e a amostra ainda é demasiado pequena
-// para o padrão de horas-com-tráfego significar alguma coisa.
-const COACH_CACHE_MIN_CALLS_FOR_SIGNAL = 20;
-// % de tokens de input já servidos pelo caching IMPLÍCITO (automático, sem
-// custo de armazenamento — o Google deteta sozinho o prefixo repetido).
-// Acima disto, a explícita já não teria muito a acrescentar.
-const COACH_CACHE_ALREADY_SAVING_PCT = 25;
-// Nº de horas distintas que já bateram o break-even — exige um padrão
-// sustentado, não uma rajada isolada de um teste manual.
-const COACH_CACHE_SUSTAINED_HOURS = 3;
-
-function geminiCost(inputTokens, outputTokens) {
-  return (inputTokens / 1e6) * GEMINI_PRICE_PER_M_INPUT + (outputTokens / 1e6) * GEMINI_PRICE_PER_M_OUTPUT;
-}
 
 // Identificador curto e legível do bug ("Bug-001"), a partir do número
 // sequencial atribuído pela BD (bug_reports.bug_number) — mais fácil de
@@ -112,9 +49,6 @@ export default function Admin() {
   const [metricsRange, setMetricsRange] = useState('mes');
   const [selectedUserId, setSelectedUserId] = useState('');
   
-  const [costRange, setCostRange] = useState('mes');
-  const [costLogs, setCostLogs] = useState([]);
-  const [costLoading, setCostLoading] = useState(false);
 
   // States for Unknown Apps Image Logs
   const [unknownLogs, setUnknownLogs] = useState([]);
@@ -152,11 +86,6 @@ export default function Admin() {
       setLoading(false);
     }
   }, [profile]);
-
-  useEffect(() => {
-    if (!profile?.is_admin || activeTab !== 'costs') return;
-    loadAdminCostData();
-  }, [activeTab, costRange, profile]);
 
   useEffect(() => {
     if (!profile?.is_admin || activeTab !== 'unknown_apps') return;
@@ -346,26 +275,6 @@ export default function Admin() {
       alert('Falha ao guardar alterações no log.');
     } finally {
       setSavingLog(false);
-    }
-  };
-
-  const loadAdminCostData = async () => {
-    setCostLoading(true);
-    try {
-      const { start } = rangeBounds(costRange);
-      const { data: logs, error } = await supabase.from('app_logs')
-        .select('event, meta, created_at')
-        .eq('level', 'success')
-        .gte('created_at', `${start}T00:00:00.000Z`)
-        .order('created_at', { ascending: false })
-        .limit(5000);
-      if (error) throw error;
-      setCostLogs(logs || []);
-    } catch (err) {
-      console.error(err);
-      setCostLogs([]);
-    } finally {
-      setCostLoading(false);
     }
   };
 
@@ -1055,158 +964,9 @@ export default function Admin() {
         );
       })()}
 
-      {displayedTab === 'costs' && (() => {
-        const byModule = {};
-        let totalIn = 0, totalOut = 0, totalCalls = 0;
-        for (const l of costLogs) {
-          const meta = l.meta || {};
-          const inTok = Number(meta.input_tokens) || 0;
-          const outTok = Number(meta.output_tokens) || 0;
-          if (!inTok && !outTok) continue;
-          const mod = GEMINI_COST_EVENT_MODULE[l.event] || 'Outro';
-          if (!byModule[mod]) byModule[mod] = { input: 0, output: 0, calls: 0 };
-          byModule[mod].input += inTok;
-          byModule[mod].output += outTok;
-          byModule[mod].calls += 1;
-          totalIn += inTok; totalOut += outTok; totalCalls += 1;
-        }
-        const totalCost = geminiCost(totalIn, totalOut);
-        const modules = Object.entries(byModule).sort((a, b) => geminiCost(b[1].input, b[1].output) - geminiCost(a[1].input, a[1].output));
-
-        // ── Sinalética "Cache do Coach" ─────────────────────────────────
-        // Decide, com dados reais em vez de estimativa, se compensa passar
-        // o prompt do coach-chat a caching explícito. Ver constantes acima
-        // para a matemática do break-even (COACH_CACHE_*).
-        const coachLogs = costLogs.filter(l => l.event === 'coach-chat');
-        const coachCalls = coachLogs.length;
-        let coachInput = 0, coachCached = 0;
-        const hourBuckets = {};
-        for (const l of coachLogs) {
-          const meta = l.meta || {};
-          coachInput += Number(meta.input_tokens) || 0;
-          coachCached += Number(meta.cached_tokens) || 0;
-          const hour = (l.created_at || '').slice(0, 13); // YYYY-MM-DDTHH
-          if (hour) hourBuckets[hour] = (hourBuckets[hour] || 0) + 1;
-        }
-        const cacheHitPct = coachInput > 0 ? Math.round((coachCached / coachInput) * 100) : 0;
-        const activeHourCounts = Object.values(hourBuckets);
-        const sustainedHours = activeHourCounts.filter(c => c >= COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR).length;
-
-        let cacheSignal;
-        if (coachCalls < COACH_CACHE_MIN_CALLS_FOR_SIGNAL) {
-          cacheSignal = {
-            level: 'insuficiente',
-            label: 'Ainda sem dados suficientes',
-            detail: `${coachCalls} chamada(s) registadas — volta aqui daqui a uns dias, a partir de ${COACH_CACHE_MIN_CALLS_FOR_SIGNAL} já dá para ler um padrão.`,
-          };
-        } else if (cacheHitPct >= COACH_CACHE_ALREADY_SAVING_PCT) {
-          cacheSignal = {
-            level: 'ja_poupa',
-            label: 'O caching implícito já está a poupar',
-            detail: `${cacheHitPct}% dos tokens de input já vêm de cache automática, sem custo de armazenamento — não parece valer a pena montar caching explícito agora.`,
-          };
-        } else if (sustainedHours >= COACH_CACHE_SUSTAINED_HOURS) {
-          cacheSignal = {
-            level: 'vale_a_pena',
-            label: 'Vale a pena montar caching explícito',
-            detail: `${sustainedHours} hora(s) diferentes já tiveram ${COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}+ chamadas à Carol — nessas horas, uma cache explícita já se teria pago sozinha.`,
-          };
-        } else {
-          cacheSignal = {
-            level: 'ainda_nao',
-            label: 'Tráfego ainda baixo para compensar',
-            detail: `Só ${sustainedHours} hora(s) com ${COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}+ chamadas em ${activeHourCounts.length} hora(s) com atividade — o custo de armazenamento ainda não se pagaria com regularidade.`,
-          };
-        }
-        const CACHE_SIGNAL_STYLES = {
-          insuficiente: { badge: 'bg-[var(--surface-strong)] text-[var(--text-3)] border-[var(--border-glass)]', text: 'text-[var(--text-3)]' },
-          ja_poupa: { badge: 'bg-[var(--tint-run-bg)] text-[var(--run)] border-[var(--tint-run-bd)]', text: 'text-[var(--run)]' },
-          vale_a_pena: { badge: 'bg-[var(--tint-warn-bg)] text-[var(--warn)] border-[var(--tint-warn-bd)]', text: 'text-[var(--warn)]' },
-          ainda_nao: { badge: 'bg-[var(--surface-strong)] text-[var(--text-3)] border-[var(--border-glass)]', text: 'text-[var(--text-3)]' },
-        };
-        const cacheStyle = CACHE_SIGNAL_STYLES[cacheSignal.level];
-
-        return (
-          <div className="space-y-3 fade-in">
-            <div className="flex gap-2">
-              {['hoje', 'semana', 'mes'].map(r => (
-                <button key={r} onClick={() => setCostRange(r)}
-                  className={`flex-1 min-h-[44px] border border-[var(--border-glass-strong)] rounded-xl py-2 text-xs font-semibold transition ${costRange === r ? 'bg-[var(--coach)] text-[var(--coach-ink)]' : 'text-[var(--text-3)]'}`}
-                >
-                  {r === 'hoje' ? 'Hoje' : r === 'semana' ? 'Esta Semana' : 'Este Mês'}
-                </button>
-              ))}
-            </div>
-
-            {costLoading ? (
-              <div className="flex items-center justify-center py-10 text-[var(--text-3)] text-xs gap-2">
-                <div className="w-4 h-4 border-2 border-[var(--border-glass)] border-t-slate-400 rounded-full animate-spin" /> A carregar...
-              </div>
-            ) : (
-              <>
-                <div className="card rounded-2xl p-4 text-center bg-[var(--surface-glass)] border border-[var(--border-glass)]">
-                  <p className="text-[11px] text-[var(--text-3)] uppercase tracking-wide mb-1">Custo estimado (Gemini)</p>
-                  <p className="text-3xl font-extrabold">${totalCost.toFixed(4)}</p>
-                  <p className="text-[11px] text-[var(--text-3)] mt-1">{totalCalls} chamada(s) · {(totalIn + totalOut).toLocaleString('pt-PT')} tokens</p>
-                </div>
-
-                <div className="space-y-2">
-                  {modules.length === 0 ? (
-                    <p className="text-xs text-[var(--text-3)] text-center py-6">Sem chamadas com dados de tokens neste período.</p>
-                  ) : modules.map(([mod, v]) => (
-                    <div key={mod} className="card rounded-xl p-3 bg-[var(--surface-glass)] border border-[var(--border-glass)]">
-                      <div className="flex items-center justify-between mb-1.5">
-                        <p className="text-xs font-semibold">{mod}</p>
-                        <p className="text-xs font-bold text-[var(--coach)]">${geminiCost(v.input, v.output).toFixed(4)}</p>
-                      </div>
-                      <p className="text-[11px] text-[var(--text-3)]">{v.calls} chamada(s) · {v.input.toLocaleString('pt-PT')} in / {v.output.toLocaleString('pt-PT')} out tokens</p>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Sinalética de decisão: caching explícito do prompt do Coach.
-                    Só o coach-chat entra nesta análise — é o único caminho
-                    onde o prefixo do prompt é grande (~15,6 mil tokens) e
-                    idêntico entre TODOS os atletas, ver commit da
-                    reestruturação do prompt. Nos outros módulos o prompt é
-                    pequeno e específico de cada pedido — caching não se
-                    aplica. */}
-                <div className="card rounded-2xl p-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] space-y-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold flex items-center gap-1.5">
-                      <CarolIcon size={14} className="text-[var(--mod-coach-to)]" /> Cache da Carol
-                    </p>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded border whitespace-nowrap ${cacheStyle.badge}`}>
-                      {cacheSignal.label}
-                    </span>
-                  </div>
-                  <p className={`text-[11px] leading-relaxed ${cacheStyle.text}`}>{cacheSignal.detail}</p>
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <div className="text-center">
-                      <p className="text-sm font-bold">{coachCalls}</p>
-                      <p className="text-[11px] text-[var(--text-3)]">chamadas</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold">{cacheHitPct}%</p>
-                      <p className="text-[11px] text-[var(--text-3)]">já em cache</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold">{sustainedHours}<span className="text-[var(--text-3)]">/{activeHourCounts.length}</span></p>
-                      <p className="text-[11px] text-[var(--text-3)]">horas ≥{COACH_CACHE_BREAKEVEN_CALLS_PER_HOUR}/h</p>
-                    </div>
-                  </div>
-                </div>
-
-                <p className="text-[11px] text-[var(--text-3)] text-center px-2">
-                  Preços de referência: ${GEMINI_PRICE_PER_M_INPUT.toFixed(2)} / milhão tokens input,
-                  ${GEMINI_PRICE_PER_M_OUTPUT.toFixed(2)} / milhão output (gemini-flash-latest).
-                  Tarifa promocional até 31-12-2026 — duplica a 01-01-2027.
-                </p>
-              </>
-            )}
-          </div>
-        );
-      })()}
+      {/* Custos API — filtros, custo por utilizador e simulação de preço
+          (auditoria de 2026-09-27, ver utils/aiCosts.js). */}
+      {displayedTab === 'costs' && <CostsTab users={users} />}
 
       {displayedTab === 'competitions' && <CompetitionsTab />}
 

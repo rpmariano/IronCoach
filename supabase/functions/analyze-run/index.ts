@@ -28,6 +28,7 @@ import {
 } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchSeriesBlock, seriesPromptSection } from "../_shared/seriesBlock.ts";
+import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
 import { runRecordMoment } from "../_shared/formulas/runRecord.ts";
 import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
@@ -335,10 +336,6 @@ async function checkAndLogAppImage(
 }
 
 
-// cached_tokens: tokens deste pedido servidos por caching implícito
-// (automático, sem custo de armazenamento) — instrumentado para decidir
-// se vale a pena passar a caching explícito. Ver painel Custos API/Admin.
-type GeminiUsage = { input_tokens: number; output_tokens: number; cached_tokens: number };
 type RunSplit = { distance_km: number | null; time_seconds: number | null };
 type HrZone = { zone: number | null; minutes: number | null };
 type RunExtraction = {
@@ -579,7 +576,7 @@ async function generateCoachNotes(
   // — null sem inscrição, e aí o prompt fica igual byte a byte. Depois de
   // `deadline` porque a chamada passa `deadline` por posição.
   seriesBlock: string | null = null,
-): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null }> {
+): Promise<{ text: string | null; debug: unknown; intervention_needed?: boolean; intervention_reason?: string | null; usage?: GeminiUsage | null }> {
   if (!geminiKey) return { text: null, debug: { reason: "no_gemini_key" } };
   // Sem tempo para uma tentativa útil antes do prazo, nem se começa: a
   // corrida já está gravada e a resposta não pode passar o que a app espera.
@@ -781,12 +778,14 @@ async function generateCoachNotes(
     }
 
     const json = await res.json();
+    // Contado mesmo que o texto não sirva: os tokens já foram cobrados.
+    const usage = usageFromGemini(json);
     const candidate = json?.candidates?.[0];
     const rawText = candidate?.content?.parts?.[0]?.text;
     if (!rawText) {
       const debugInfo = { finishReason: candidate?.finishReason, promptFeedback: json?.promptFeedback, usageMetadata: json?.usageMetadata };
       console.warn("Coach generation returned no text:", JSON.stringify(debugInfo).slice(0, 2000));
-      return { text: null, debug: debugInfo };
+      return { text: null, debug: debugInfo, usage };
     }
     
     let parsed: any = {};
@@ -799,7 +798,8 @@ async function generateCoachNotes(
       text: parsed.text?.trim() || null, 
       intervention_needed: parsed.intervention_needed,
       intervention_reason: parsed.intervention_reason,
-      debug: null 
+      debug: null,
+      usage,
     };
   } catch (e) {
     console.warn("Coach generation error:", e);
@@ -831,7 +831,10 @@ async function attachCoachNotes(
   },
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
-): Promise<void> {
+): Promise<GeminiUsage | null> {
+  // O consumo da chamada da Carol (null se não houve resposta) — somado ao
+  // da extração em cada jsonResponse; ver _shared/geminiUsage.ts.
+  let usage: GeminiUsage | null = null;
   try {
     // A memória durável e a conversa recente do chat (Fase 1, ação 1.3): a
     // Carol que comenta este registo é a mesma que falou com ele ontem. Com
@@ -991,6 +994,7 @@ async function attachCoachNotes(
       deadline,
       (await seriesPromise)?.text ?? null,
     );
+    usage = coachResult.usage ?? null;
 
     if (coachResult.text) {
       await sb.from("runs").update({ coach_notes: coachResult.text }).eq("id", run.id);
@@ -1012,6 +1016,7 @@ async function attachCoachNotes(
   } catch (e) {
     console.warn("Coach generation failed:", e);
   }
+  return usage;
 }
 
 async function analyzeWithGemini(
@@ -1058,11 +1063,7 @@ async function analyzeWithGemini(
   }
 
   const geminiJson = await geminiRes.json();
-  const usage: GeminiUsage = {
-    input_tokens: Number(geminiJson?.usageMetadata?.promptTokenCount) || 0,
-    output_tokens: Number(geminiJson?.usageMetadata?.candidatesTokenCount) || 0,
-    cached_tokens: Number(geminiJson?.usageMetadata?.cachedContentTokenCount) || 0,
-  };
+  const usage = usageFromGemini(geminiJson);
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
   let parsed: Record<string, unknown>;
   try {
@@ -1417,7 +1418,7 @@ Deno.serve(async (req) => {
       }
 
       // A análise mudou: a nota do Coach refaz-se (best-effort, ver attachCoachNotes).
-      await attachCoachNotes(sb, userId, updated, {
+      const coachUsage = await attachCoachNotes(sb, userId, updated, {
         date: updated.date,
         kind,
         training_type: existingTrainingType,
@@ -1428,7 +1429,8 @@ Deno.serve(async (req) => {
         details,
       }, geminiKey, coachDeadline);
 
-      return jsonResponse({ run: updated, usage: result.usage });
+      // Extração + comentário da Carol (ver _shared/geminiUsage.ts).
+      return jsonResponse({ run: updated, usage: addUsage(result.usage, coachUsage) });
     }
 
     // ── Modo manual: registo sem fotos, com análise do Coach ───────────
@@ -1532,7 +1534,7 @@ Deno.serve(async (req) => {
           .single();
         if (updateError) return jsonResponse({ error: `Falha a atualizar corrida: ${updateError.message}` }, 500);
 
-        await attachCoachNotes(sb, userId, updatedRun, {
+        const coachUsage = await attachCoachNotes(sb, userId, updatedRun, {
           date: body.date,
           kind,
           training_type: trainingType,
@@ -1543,7 +1545,8 @@ Deno.serve(async (req) => {
           details: editedDetails,
         }, geminiKey, coachDeadline);
 
-        return jsonResponse({ run: updatedRun });
+        // Só o comentário da Carol gasta tokens aqui (ver _shared/geminiUsage.ts).
+        return jsonResponse({ run: updatedRun, usage: coachUsage });
       }
 
       const { data: run, error: insertError } = await sb
@@ -1568,7 +1571,7 @@ Deno.serve(async (req) => {
         .single();
       if (insertError) return jsonResponse({ error: `Falha a gravar corrida: ${insertError.message}` }, 500);
 
-      await attachCoachNotes(sb, userId, run, {
+      const coachUsage = await attachCoachNotes(sb, userId, run, {
         date: body.date,
         kind,
         training_type: trainingType,
@@ -1579,7 +1582,8 @@ Deno.serve(async (req) => {
         details,
       }, geminiKey, coachDeadline);
 
-      return jsonResponse({ run });
+      // Só o comentário da Carol gasta tokens aqui (ver _shared/geminiUsage.ts).
+      return jsonResponse({ run, usage: coachUsage });
     }
 
     // ── Modo normal: nova corrida a partir de imagens ─────────────────
@@ -1679,7 +1683,7 @@ Deno.serve(async (req) => {
     }
 
     // 4. Gerar análise do Coach (best-effort — ver attachCoachNotes)
-    await attachCoachNotes(sb, userId, run, {
+    const coachUsage = await attachCoachNotes(sb, userId, run, {
       date,
       kind,
       training_type: trainingType,
@@ -1692,7 +1696,8 @@ Deno.serve(async (req) => {
 
     await checkAndLogAppImage(sb, userId, "run", images, mime, result.extraction as unknown as Record<string, unknown>);
 
-    return jsonResponse({ run, usage: result.usage });
+    // Extração + comentário da Carol (ver _shared/geminiUsage.ts).
+    return jsonResponse({ run, usage: addUsage(result.usage, coachUsage) });
   } catch (e) {
     console.error("Erro inesperado:", e);
     return jsonResponse({ error: "Erro inesperado no servidor" }, 500);

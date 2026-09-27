@@ -31,6 +31,7 @@ import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { selectRaces } from "../_shared/formulas/mainRace.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
+import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -846,11 +847,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
   // em src/lib/supabase.js — regista sempre que a resposta traz `usage`).
   return {
     parsed: JSON.parse(text),
-    usage: {
-      input_tokens: Number(json?.usageMetadata?.promptTokenCount) || 0,
-      output_tokens: Number(json?.usageMetadata?.candidatesTokenCount) || 0,
-      cached_tokens: Number(json?.usageMetadata?.cachedContentTokenCount) || 0,
-    },
+    // Inclui o raciocínio interno (thoughts) — ver _shared/geminiUsage.ts.
+    usage: usageFromGemini(json),
   };
 }
 
@@ -1155,7 +1153,7 @@ Deno.serve(async (req) => {
 
     // Fica a null quando o Gemini falha ou quando a resposta vem da cache —
     // nesses casos não houve chamada, e não há consumo para registar.
-    let usage: { input_tokens: number; output_tokens: number } | null = null;
+    let usage: GeminiUsage | null = null;
 
     try {
       const result = await generateSummary(ctx, geminiKey, todayConcept.title, await memoryPromise, series?.text ?? null);
