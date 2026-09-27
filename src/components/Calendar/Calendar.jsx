@@ -30,6 +30,8 @@ import {
   isCalendarFilterActive,
   calendarFilterLabel,
   emptyDayMessage,
+  listRacesByStatus,
+  pageOf,
 } from '../../utils/calendarFilter';
 
 const isoDay = (d) => format(d, 'yyyy-MM-dd');
@@ -77,17 +79,21 @@ export default function Calendar() {
   // aplicar-se numa visita normal e futura ao Calendário.
   const [initialView] = useState(() => {
     const pending = pendingCalendarDate ? fromIsoDay(pendingCalendarDate) : null;
-    if (pending) return { month: pending, selected: pending, filter: CALENDAR_FILTER_ALL };
+    if (pending) return { month: pending, selected: pending, filter: CALENDAR_FILTER_ALL, racePage: 0 };
     const month = calendarView?.month ? fromIsoDay(calendarView.month) : null;
     const selected = calendarView?.selected ? fromIsoDay(calendarView.selected) : null;
-    if (month && selected) return { month, selected, filter: normalizeCalendarFilter(calendarView.filter) };
+    if (month && selected) {
+      return { month, selected, filter: normalizeCalendarFilter(calendarView.filter), racePage: Number.isInteger(calendarView.racePage) ? calendarView.racePage : 0 };
+    }
     const today = new Date();
-    return { month: today, selected: today, filter: CALENDAR_FILTER_ALL };
+    return { month: today, selected: today, filter: CALENDAR_FILTER_ALL, racePage: 0 };
   });
   const [currentDate, setCurrentDate] = useState(initialView.month);
   const [selectedDate, setSelectedDate] = useState(initialView.selected);
   // O filtro da agenda (pedido 2026-09-27) — ver utils/calendarFilter.js.
   const [filter, setFilter] = useState(initialView.filter);
+  // A página da lista de provas (na "Prova", 5 de cada vez).
+  const [racePage, setRacePage] = useState(initialView.racePage);
 
   useEffect(() => {
     if (pendingCalendarDate) {
@@ -96,6 +102,7 @@ export default function Calendar() {
         setCurrentDate(d);
         setSelectedDate(d);
         setFilter(CALENDAR_FILTER_ALL);
+        setRacePage(0);
       }
       clearPendingCalendarDate();
     }
@@ -108,7 +115,7 @@ export default function Calendar() {
   // (saiu-se da conta com o Calendário aberto) também não: quem entrar a
   // seguir neste telemóvel não herda o sítio de quem saiu.
   const viewRef = useRef(null);
-  viewRef.current = { month: isoDay(currentDate), selected: isoDay(selectedDate), filter };
+  viewRef.current = { month: isoDay(currentDate), selected: isoDay(selectedDate), filter, racePage };
   useEffect(() => () => {
     const s = useAppStore.getState();
     if (s.activeTab === 'calendario' && s.session) s.setCalendarView?.(viewRef.current);
@@ -117,13 +124,23 @@ export default function Calendar() {
   // Tocar no tipo que já está escolhido volta a "Tudo": o botão aceso é
   // também a saída do filtro. O estado das provas só existe dentro de
   // "Prova" (normalizeCalendarFilter).
-  const chooseType = (type) => setFilter((prev) => (
-    type === CALENDAR_ALL || prev.type === type
-      ? CALENDAR_FILTER_ALL
-      : normalizeCalendarFilter({ type, raceStatus: prev.raceStatus })
-  ));
-  const chooseRaceStatus = (raceStatus) => setFilter(normalizeCalendarFilter({ type: 'prova', raceStatus }));
-  const clearFilter = () => setFilter(CALENDAR_FILTER_ALL);
+  // Mudar de filtro volta sempre à primeira página da lista de provas.
+  const chooseType = (type) => {
+    setRacePage(0);
+    setFilter((prev) => (
+      type === CALENDAR_ALL || prev.type === type
+        ? CALENDAR_FILTER_ALL
+        : normalizeCalendarFilter({ type, raceStatus: prev.raceStatus })
+    ));
+  };
+  const chooseRaceStatus = (raceStatus) => {
+    setRacePage(0);
+    setFilter(normalizeCalendarFilter({ type: 'prova', raceStatus }));
+  };
+  const clearFilter = () => {
+    setRacePage(0);
+    setFilter(CALENDAR_FILTER_ALL);
+  };
   const filterActive = isCalendarFilterActive(filter);
   const activeFilterLabel = calendarFilterLabel(filter);
   const activeFilterTone = CALENDAR_RECORD_TYPES.find((t) => t.key === filter.type)?.tone;
@@ -135,7 +152,7 @@ export default function Calendar() {
   // Prova cuja eliminação está por confirmar. Era um window.confirm — o
   // popup do sistema não fala a língua da app, não diz o que se perde e
   // não respeita os 44px de toque (auditoria a11y). Passa pelo Dialog
-  // partilhado, como "Dispensar o aviso da Carol?" no Início.
+  // partilhado, como a confirmação de dispensar um assunto da Carol.
   const [raceToDelete, setRaceToDelete] = useState(null);
 
   const daysInMonth = useMemo(() => {
@@ -144,6 +161,40 @@ export default function Calendar() {
       end: endOfMonth(currentDate)
     });
   }, [currentDate]);
+
+  /* Na "Prova" (pedido 2026-09-27) a agenda deixa de mostrar o dia
+     escolhido e lista todas as provas do estado escolhido — por realizar ou
+     concluídas —, 5 de cada vez. A grelha continua a acender os dias delas. */
+  const isRaceList = filter.type === 'prova';
+  const raceList = useMemo(
+    () => (isRaceList ? listRacesByStatus(raceEvents, filter.raceStatus) : []),
+    [isRaceList, raceEvents, filter.raceStatus],
+  );
+  const racePageInfo = pageOf(raceList, racePage);
+  // A lista encolheu (uma prova apagada ou concluída) e a página guardada
+  // ficou para lá do fim: o estado acompanha a página que se vê, para não
+  // ficar guardado no calendarView um número que já não existe.
+  useEffect(() => {
+    if (isRaceList && racePageInfo.page !== racePage) setRacePage(racePageInfo.page);
+  }, [isRaceList, racePageInfo.page, racePage]);
+  const raceListRef = useRef(null);
+  const raceListTitleRef = useRef(null);
+  const goToRacePage = (next) => {
+    setRacePage(next);
+    // A página nova começa no topo da lista, não onde estava o botão. O
+    // foco vai para o título: na última página o "Seguintes" desativa-se, e
+    // com o foco nele o teclado e o leitor de ecrã ficavam sem sítio.
+    raceListRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    raceListTitleRef.current?.focus?.({ preventScroll: true });
+  };
+  // "3 provas por realizar", "1 prova concluída": o título diz o que a lista
+  // é — tocar num dia da grelha não a muda.
+  const raceListTitle = (() => {
+    const n = racePageInfo.total;
+    const provas = n === 1 ? 'prova' : 'provas';
+    if (filter.raceStatus === 'concluida') return `${n} ${provas} ${n === 1 ? 'concluída' : 'concluídas'}`;
+    return `${n} ${provas} por realizar`;
+  })();
 
   // A grelha e a lista do dia leem os mesmos registos já filtrados: um dia
   // só se acende com o que o filtro deixa ver.
@@ -377,7 +428,7 @@ export default function Calendar() {
             ))}
           </div>
           {filter.type === 'prova' && (
-            <div role="group" aria-label="Estado das provas" className="grid grid-cols-3 gap-1 mt-1 pt-1 border-t border-[var(--border-glass)] fade-in">
+            <div role="group" aria-label="Estado das provas" className="grid grid-cols-2 gap-1 mt-1 pt-1 border-t border-[var(--border-glass)] fade-in">
               {RACE_STATUS_FILTERS.map((s) => (
                 <FilterChip
                   key={s.key}
@@ -398,9 +449,14 @@ export default function Calendar() {
         {/* Com um filtro ligado, o nome dele fica ao lado do dia — a lista
             está lá em baixo, longe dos botões do filtro, e um dia "vazio"
             tem de dizer porquê. Tocar tira o filtro. */}
-        <div className="flex items-center justify-between gap-2 px-1 pt-2">
-          <h3 className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide">
-            {format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
+        <div ref={raceListRef} className="flex items-center justify-between gap-2 px-1 pt-2" style={{ scrollMarginTop: 'calc(var(--header-h) + 8px)' }}>
+          <h3
+            ref={raceListTitleRef}
+            tabIndex={isRaceList ? -1 : undefined}
+            className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide outline-none"
+            data-testid="calendar-list-title"
+          >
+            {isRaceList ? raceListTitle : format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
           </h3>
           {filterActive && (
             <button
@@ -421,14 +477,50 @@ export default function Calendar() {
           )}
         </div>
 
-        {!hasRecords && (
+        {(isRaceList ? racePageInfo.total === 0 : !hasRecords) && (
           <div className="rounded-2xl p-6 bg-[var(--surface-dim)] border border-white/15 border-dashed flex flex-col items-center justify-center text-[var(--text-3)]">
             <CalendarIcon size={24} className="opacity-40 mb-2" />
             <p className="text-[11px]">{emptyDayMessage(filter)}</p>
           </div>
         )}
 
-        {selectedRaces.map(race => (
+        {isRaceList && racePageInfo.items.map(race => (
+          <RaceCard
+            key={race.id}
+            ev={race}
+            onEdit={setEditingRaceId}
+            onRegisterRace={handleRegisterRace}
+            onViewRun={setEditingRunId}
+            onToggleStatus={handleToggleRaceStatus}
+            onDelete={() => setRaceToDelete(race)}
+          />
+        ))}
+
+        {isRaceList && racePageInfo.pages > 1 && (
+          <nav aria-label="Páginas das provas" data-testid="race-list-pager" className="flex items-center justify-between gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => goToRacePage(racePageInfo.page - 1)}
+              disabled={racePageInfo.page === 0}
+              className="inline-flex items-center gap-1 min-h-[44px] px-3 rounded-[12px] text-[12px] font-bold border border-[var(--border-glass)] text-[var(--text-2)] disabled:opacity-40"
+            >
+              <ChevronLeft size={14} aria-hidden="true" /> Anteriores
+            </button>
+            <span className="text-[11.5px] font-bold text-[var(--text-3)]" aria-live="polite">
+              Página {racePageInfo.page + 1} de {racePageInfo.pages}
+            </span>
+            <button
+              type="button"
+              onClick={() => goToRacePage(racePageInfo.page + 1)}
+              disabled={racePageInfo.page === racePageInfo.pages - 1}
+              className="inline-flex items-center gap-1 min-h-[44px] px-3 rounded-[12px] text-[12px] font-bold border border-[var(--border-glass)] text-[var(--text-2)] disabled:opacity-40"
+            >
+              Seguintes <ChevronRight size={14} aria-hidden="true" />
+            </button>
+          </nav>
+        )}
+
+        {!isRaceList && selectedRaces.map(race => (
           <RaceCard
             key={race.id}
             ev={race}
@@ -442,7 +534,7 @@ export default function Calendar() {
         {/* Os registos do dia pela hora (utils/dayOrder.js), não por tipo —
             o treino das 07:00 antes do almoço, a corrida das 18:30 depois
             (pedido 2026-09-13). As provas ficam em cima: são o dia. */}
-        {orderDayRecords({ runs: selectedRuns, gym: selectedGym, meals: selectedMeals, body: selectedBody }).map(({ kind, item }) => {
+        {!isRaceList && orderDayRecords({ runs: selectedRuns, gym: selectedGym, meals: selectedMeals, body: selectedBody }).map(({ kind, item }) => {
           if (kind === 'run') return <RunCard key={`run-${item.id}`} run={item} onEdit={setEditingRunId} onDelete={handleDeleteRun} />;
           if (kind === 'gym') return <GymSessionCard key={`gym-${item.id}`} session={item} onEdit={setEditingGymId} onDelete={handleDeleteGym} />;
           if (kind === 'meal') return <MealCard key={`meal-${item.id}`} meal={item} onEdit={setEditingMealId} onDelete={handleDeleteMeal} />;

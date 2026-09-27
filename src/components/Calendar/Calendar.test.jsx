@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { format, addMonths } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -162,28 +162,75 @@ describe('Calendário — filtro', () => {
     expect(screen.getByText('Almoço')).toBeInTheDocument();
   });
 
-  it('"Prova" abre o estado das provas: por realizar ou concluídas', () => {
+  /* Pedido 2026-09-27: na "Prova" só há "Por realizar" e "Concluídas" —
+     abre em "Por realizar" — e a agenda lista todas as provas desse estado
+     em vez das do dia escolhido. */
+  it('"Prova" tem só "Por realizar" e "Concluídas", e abre em "Por realizar"', () => {
     renderCalendario();
     expect(screen.queryByTestId('calendar-filter-prova-concluida')).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('calendar-filter-prova'));
-    expect(screen.getByText('Prova por fazer')).toBeInTheDocument();
-    expect(screen.getByText('Prova feita')).toBeInTheDocument();
-    expect(screen.queryByText('Corrida da tarde')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('calendar-filter-prova-por_realizar'));
+    expect(screen.getByTestId('calendar-filter-prova-por_realizar')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('calendar-filter-prova-concluida')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByTestId('calendar-filter-prova-todas')).not.toBeInTheDocument();
     expect(screen.getByText('Prova por fazer')).toBeInTheDocument();
     expect(screen.queryByText('Prova feita')).not.toBeInTheDocument();
+    expect(screen.queryByText('Corrida da tarde')).not.toBeInTheDocument();
     expect(screen.getByTestId('calendar-filter-clear')).toHaveTextContent('Provas por realizar');
 
     fireEvent.click(screen.getByTestId('calendar-filter-prova-concluida'));
     expect(screen.queryByText('Prova por fazer')).not.toBeInTheDocument();
     expect(screen.getByText('Prova feita')).toBeInTheDocument();
 
-    // Sair da "Prova" esquece o estado: voltar a ela começa em "Todas".
+    // Sair da "Prova" esquece o estado: voltar a ela começa em "Por realizar".
     fireEvent.click(screen.getByTestId('calendar-filter-corrida'));
     fireEvent.click(screen.getByTestId('calendar-filter-prova'));
-    expect(screen.getByTestId('calendar-filter-prova-todas')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('calendar-filter-prova-por_realizar')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('lista todas as provas do estado, não só as do dia, 5 de cada vez', () => {
+    // 7 por realizar em meses diferentes e 2 concluídas.
+    const porFazer = Array.from({ length: 7 }, (_, i) => ({
+      id: `pf-${i}`, name: `Prova futura ${i + 1}`, date: iso(addMonths(HOJE, i + 1)), distance_km: 10, status: 'agendada', race_type: 'estrada',
+    }));
+    const feitas = [
+      { id: 'f-1', name: 'Feita antiga', date: iso(addMonths(HOJE, -6)), distance_km: 10, status: 'concluida', race_type: 'estrada' },
+      { id: 'f-2', name: 'Feita recente', date: iso(addMonths(HOJE, -1)), distance_km: 10, status: 'concluida', race_type: 'estrada' },
+    ];
+    useAppStore.setState({ raceEvents: [...porFazer, ...feitas] });
+    renderCalendario();
+    fireEvent.click(screen.getByTestId('calendar-filter-prova'));
+
+    expect(screen.getByTestId('calendar-list-title').textContent).toBe('7 provas por realizar');
+    // Da mais próxima para a mais distante: as 5 primeiras.
+    // Só o nome (o primeiro nó de texto): o resto do parágrafo são as pílulas.
+    const nomes = () => screen.queryAllByText(/^Prova futura \d$/).map((n) => n.firstChild.textContent);
+    expect(nomes()).toEqual(['Prova futura 1', 'Prova futura 2', 'Prova futura 3', 'Prova futura 4', 'Prova futura 5']);
+    expect(screen.getByTestId('race-list-pager')).toHaveTextContent('Página 1 de 2');
+    expect(screen.getByRole('button', { name: /Anteriores/ })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Seguintes/ }));
+    expect(nomes()).toEqual(['Prova futura 6', 'Prova futura 7']);
+    expect(screen.getByTestId('race-list-pager')).toHaveTextContent('Página 2 de 2');
+    expect(screen.getByRole('button', { name: /Seguintes/ })).toBeDisabled();
+    // O "Seguintes" desativou-se: o foco foi para o título da lista.
+    expect(screen.getByTestId('calendar-list-title')).toHaveFocus();
+
+    // Mudar de estado volta à primeira página; as concluídas, da mais recente.
+    fireEvent.click(screen.getByTestId('calendar-filter-prova-concluida'));
+    expect(screen.getByTestId('calendar-list-title').textContent).toBe('2 provas concluídas');
+    expect(screen.queryAllByText(/^Feita /).map((n) => n.firstChild.textContent)).toEqual(['Feita recente', 'Feita antiga']);
+    // Até 5 não há paginação.
+    expect(screen.queryByTestId('race-list-pager')).not.toBeInTheDocument();
+  });
+
+  it('sem provas no estado, o vazio diz qual', () => {
+    useAppStore.setState({ raceEvents: [PROVAS[0]] });
+    renderCalendario();
+    fireEvent.click(screen.getByTestId('calendar-filter-prova'));
+    fireEvent.click(screen.getByTestId('calendar-filter-prova-concluida'));
+    expect(screen.getByText('Ainda sem provas concluídas')).toBeInTheDocument();
+    expect(screen.getByTestId('calendar-list-title').textContent).toBe('0 provas concluídas');
   });
 
   it('o dia vazio diz porquê, e o nome do filtro ao lado do dia tira-o', () => {
@@ -224,26 +271,58 @@ describe('Calendário — filtro', () => {
     const { unmount } = renderCalendario();
     fireEvent.click(screen.getByRole('button', { name: 'Mês seguinte' }));
     fireEvent.click(screen.getByTestId(`calendar-day-${dia15}`));
-    fireEvent.click(screen.getByTestId('calendar-filter-prova'));
-    fireEvent.click(screen.getByTestId('calendar-filter-prova-concluida'));
+    fireEvent.click(screen.getByTestId('calendar-filter-corrida'));
 
     // O hub tapa o Calendário: o separador continua a ser o Calendário.
     unmount();
     expect(useAppStore.getState().calendarView).toEqual({
       month: iso(proximoMes),
       selected: dia15,
-      filter: { type: 'prova', raceStatus: 'concluida' },
+      filter: { type: 'corrida', raceStatus: 'todas' },
+      racePage: 0,
     });
 
     renderCalendario();
     expect(screen.getByText(format(proximoMes, 'MMMM yyyy', { locale: pt }))).toBeInTheDocument();
     expect(screen.getByText(format(new Date(`${dia15}T00:00:00`), 'dd MMMM yyyy', { locale: pt }))).toBeInTheDocument();
-    expect(screen.getByTestId('calendar-filter-prova-concluida')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('calendar-filter-clear')).toHaveTextContent('Provas concluídas');
+    expect(screen.getByTestId('calendar-filter-corrida')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('calendar-filter-clear')).toHaveTextContent('Corridas');
 
     // Mudar de separador esquece o sítio: a visita seguinte começa em hoje.
     expect(useAppStore.getState().setActiveTab('home')).toBe(true);
     expect(useAppStore.getState().calendarView).toBeNull();
+  });
+
+  it('voltar do hub repõe também a página da lista de provas', () => {
+    const porFazer = Array.from({ length: 7 }, (_, i) => ({
+      id: `pf-${i}`, name: `Prova futura ${i + 1}`, date: iso(addMonths(HOJE, i + 1)), distance_km: 10, status: 'agendada', race_type: 'estrada',
+    }));
+    useAppStore.setState({ raceEvents: porFazer });
+    const { unmount } = renderCalendario();
+    fireEvent.click(screen.getByTestId('calendar-filter-prova'));
+    fireEvent.click(screen.getByRole('button', { name: /Seguintes/ }));
+    unmount();
+    expect(useAppStore.getState().calendarView).toMatchObject({ filter: { type: 'prova', raceStatus: 'por_realizar' }, racePage: 1 });
+
+    renderCalendario();
+    expect(screen.getByTestId('race-list-pager')).toHaveTextContent('Página 2 de 2');
+    expect(screen.getByText('Prova futura 6')).toBeInTheDocument();
+  });
+
+  it('a lista encolheu: a página guardada acompanha a que se vê', () => {
+    const porFazer = Array.from({ length: 6 }, (_, i) => ({
+      id: `pf-${i}`, name: `Prova futura ${i + 1}`, date: iso(addMonths(HOJE, i + 1)), distance_km: 10, status: 'agendada', race_type: 'estrada',
+    }));
+    useAppStore.setState({ raceEvents: porFazer });
+    const { unmount } = renderCalendario();
+    fireEvent.click(screen.getByTestId('calendar-filter-prova'));
+    fireEvent.click(screen.getByRole('button', { name: /Seguintes/ }));
+    // A única prova da página 2 sai (concluída noutro ecrã).
+    act(() => { useAppStore.setState({ raceEvents: porFazer.slice(0, 5) }); });
+    expect(screen.queryByTestId('race-list-pager')).not.toBeInTheDocument();
+    expect(screen.getByText('Prova futura 1')).toBeInTheDocument();
+    unmount();
+    expect(useAppStore.getState().calendarView.racePage).toBe(0);
   });
 
   it('sem sessão (saiu-se da conta com o Calendário aberto), não guarda nada', () => {

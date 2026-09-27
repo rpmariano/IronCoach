@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -4070,12 +4070,14 @@ Deno.test("arranque da intervenção: objetivos convida; plano confronta; a etiq
 
 // "Não quero objetivos agora" no chat tem de travar a próxima pesagem: fica
 // uma proposta recusada e vazia (revisão pré-deploy do #41, M1).
-function makeResolveSb(reason: string | null) {
+function makeResolveSb(reason: string | null, status: string | null = "needed", rpcResult: { data: unknown; error: unknown } = { data: true, error: null }) {
   // deno-lint-ignore no-explicit-any
-  const calls = { inserts: [] as any[], updates: [] as any[] };
+  const calls = { inserts: [] as any[], updates: [] as any[], rpcs: [] as any[] };
   const sb = {
+    // deno-lint-ignore no-explicit-any
+    rpc: (fn: string, args: any) => { calls.rpcs.push({ fn, args }); return Promise.resolve(rpcResult); },
     from: (table: string) => ({
-      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { coach_intervention_reason: reason } }) }) }),
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { coach_intervention_status: status, coach_intervention_reason: reason } }) }) }),
       // deno-lint-ignore no-explicit-any
       update: (row: any) => { calls.updates.push({ table, row }); return { eq: () => Promise.resolve({ error: null }) }; },
       // deno-lint-ignore no-explicit-any
@@ -4110,6 +4112,118 @@ Deno.test("resolve_intervention: o desfecho vai no update, para o trigger o guar
   const { sb, calls } = makeResolveSb("Falhou 3 treinos.");
   await runResolveIntervention(sb, "u1", { action_taken: "resolvido_sozinho" });
   assertEquals(calls.updates.length, 0);
+});
+
+// ── O aviso fecha quando a conversa acontece (pedido 2026-09-27) ────────
+// Uma dor no check-in com o plano já em repouso não cabia em nenhum dos
+// desfechos da Carol, e o aviso voltava ao Início depois da conversa.
+function makeCloseSb(rowsMatched: number, error: { message: string } | null = null) {
+  // deno-lint-ignore no-explicit-any
+  const calls = { updates: [] as any[], filters: [] as Array<[string, unknown]> };
+  const sb = {
+    from: (table: string) => ({
+      // deno-lint-ignore no-explicit-any
+      update: (row: any) => {
+        calls.updates.push({ table, row });
+        const chain = {
+          eq: (c: string, v: unknown) => { calls.filters.push([c, v]); return chain; },
+          in: (c: string, v: unknown) => { calls.filters.push([c, v]); return chain; },
+          select: () => Promise.resolve({ data: error ? null : Array.from({ length: rowsMatched }, () => ({ id: "u1" })), error }),
+        };
+        return chain;
+      },
+    }),
+  };
+  return { sb, calls };
+}
+
+Deno.test("closeInterventionOnTalk: fecha o aviso sem desfecho, só se o motivo for ainda o mesmo", async () => {
+  const motivo = "Check-in de 2026-09-27: Dor 6/10 (braço direito).";
+  const { sb, calls } = makeCloseSb(1);
+  assertEquals(await closeInterventionOnTalk(sb, "u1", motivo), true);
+  // Sem coach_intervention_outcome: o trigger grava 'resolvido'.
+  assertEquals(calls.updates[0].row, { coach_intervention_status: "resolved", coach_intervention_reason: null });
+  assertEquals(calls.filters, [["id", "u1"], ["coach_intervention_status", ["needed", "in_progress"]], ["coach_intervention_reason", motivo]]);
+});
+
+Deno.test("closeInterventionOnTalk: um aviso novo entretanto (motivo diferente) não fecha", async () => {
+  const { sb } = makeCloseSb(0);
+  assertEquals(await closeInterventionOnTalk(sb, "u1", "Falhou 3 treinos."), false);
+});
+
+Deno.test("closeInterventionOnTalk: a de objetivos e sem motivo não se tocam", async () => {
+  for (const motivo of ["[objetivos] Ainda não tem objetivos.", null]) {
+    const { sb, calls } = makeCloseSb(1);
+    assertEquals(await closeInterventionOnTalk(sb, "u1", motivo), false);
+    assertEquals(calls.updates.length, 0);
+  }
+});
+
+// Revisão pré-deploy de 752f5a13: fechado o aviso ao abrir a conversa, o
+// desfecho que a Carol dá depois perdia-se (o trigger não via transição).
+Deno.test("resolve_intervention: com o aviso já fechado pela conversa, o desfecho vai pela RPC", async () => {
+  const { sb, calls } = makeResolveSb(null, "resolved");
+  const out = await runResolveIntervention(sb, "u1", { action_taken: "falso_positivo" });
+  assertEquals(calls.updates.length, 0);
+  assertEquals(calls.rpcs, [{ fn: "record_intervention_outcome", args: { p_outcome: "falso_positivo" } }]);
+  assertStringIncludes(out, "Desfecho registado");
+});
+
+Deno.test("resolve_intervention: sem aviso recente por registar, diz-lho em vez de fingir sucesso", async () => {
+  const { sb } = makeResolveSb(null, "resolved", { data: false, error: null });
+  assertStringIncludes(await runResolveIntervention(sb, "u1", { action_taken: "atleta_ignorou" }), "Não há nenhum aviso recente");
+  const { sb: sbErr } = makeResolveSb(null, null, { data: null, error: { message: "falhou" } });
+  assertStringIncludes(await runResolveIntervention(sbErr, "u1", { action_taken: "atleta_ignorou" }), "Erro");
+});
+
+function makeTalkedSb(row: { reason: string; outcome?: string } | null, error: unknown = null) {
+  const filters: Array<[string, unknown]> = [];
+  const chain = {
+    select: () => chain,
+    eq: (c: string, v: unknown) => { filters.push([c, v]); return chain; },
+    gte: (c: string, v: unknown) => { filters.push([c, v]); return chain; },
+    order: () => chain,
+    limit: () => chain,
+    maybeSingle: () => Promise.resolve({ data: row, error }),
+  };
+  return { sb: { from: () => chain }, filters };
+}
+
+Deno.test("readTalkedIntervention: o último aviso fechado, se foi pela conversa, nas últimas 2 h", async () => {
+  const now = Date.parse("2026-09-27T16:00:00Z");
+  const { sb, filters } = makeTalkedSb({ reason: "Check-in de 2026-09-27: Dor 6/10 (braço direito).", outcome: "resolvido" });
+  assertEquals(await readTalkedIntervention(sb, "u1", now), "Check-in de 2026-09-27: Dor 6/10 (braço direito).");
+  assertEquals(filters, [["user_id", "u1"], ["closed_at", "2026-09-27T14:00:00.000Z"]]);
+});
+
+Deno.test("readTalkedIntervention: com desfecho já registado não volta a um aviso anterior", async () => {
+  // O último fecho tem desfecho: é esse que conta, e não o 'resolvido' de antes.
+  assertEquals(await readTalkedIntervention(makeTalkedSb({ reason: "Falhou 3 treinos.", outcome: "falso_positivo" }).sb, "u1"), null);
+});
+
+Deno.test("readTalkedIntervention: nenhum, de objetivos ou com erro dá null", async () => {
+  assertEquals(await readTalkedIntervention(makeTalkedSb(null).sb, "u1"), null);
+  assertEquals(await readTalkedIntervention(makeTalkedSb({ reason: "[objetivos] Sem objetivos.", outcome: "resolvido" }).sb, "u1"), null);
+  assertEquals(await readTalkedIntervention(makeTalkedSb(null, { message: "x" }).sb, "u1"), null);
+});
+
+Deno.test("buildTalkedInterventionInstruction: dá o motivo e pede só o desfecho, sem confronto", () => {
+  const txt = buildTalkedInterventionInstruction("Check-in de 2026-09-27: Dor 6/10 (braço direito).");
+  assertStringIncludes(txt, "Dor 6/10 (braço direito)");
+  assertStringIncludes(txt, "resolve_intervention");
+  assertStringIncludes(txt, "Se não chegar a nenhum, não chames a ferramenta.");
+  assertEquals(/confront|NÃO aceites/i.test(txt), false);
+});
+
+Deno.test("handler: o aviso já falado entra como bloco próprio, não como intervenção aberta (ligações no código)", async () => {
+  const src = (await Deno.readTextFile(new URL("./index.ts", import.meta.url))).replace(/\r\n/g, "\n");
+  assertStringIncludes(src, "(talkedReason ? buildTalkedInterventionInstruction(talkedReason) : \"\")");
+  assertStringIncludes(src, "      profile?.coach_intervention_status ?? null,\n      profile?.coach_intervention_reason ?? null,");
+});
+
+Deno.test("closeInterventionOnTalk: um erro da base de dados não rebenta o turno", async () => {
+  const { sb } = makeCloseSb(0, { message: "falhou" });
+  assertEquals(await closeInterventionOnTalk(sb, "u1", "Falhou 3 treinos."), false);
 });
 
 

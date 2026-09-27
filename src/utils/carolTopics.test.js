@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pendingTopicLines } from './carolTopics';
+import { pendingTopicLines, interventionTopicLine } from './carolTopics';
 import { interventionReasonFor, newCheckinAlarms } from './checkin';
 import { linhaDoTreinoDeHoje } from '../components/Home/carolCardLines';
 import { expectCarolVoice } from '../test/carolVoice';
@@ -359,3 +359,27 @@ describe('pendingTopicLines — o check-in diz de que dia é (2026-09-26)', () =
 function comMotivoCarga() {
   return { profile: { coach_intervention_status: 'needed', coach_intervention_reason: '[carga] Carga de corrida: 30 km nos últimos 7 dias, quando o plano previa 16 km; a média das últimas 4 semanas é 12,5 km/semana (ACWR 2,4).' } };
 }
+
+/* A frase da intervenção à parte (revisão pré-deploy 2026-09-27): é a que
+   "Dispensar" fecha, e a confirmação cita-a pelo nome, sem depender da
+   ordem da lista. */
+describe('interventionTopicLine', () => {
+  const intervencao = { coach_intervention_status: 'needed', coach_intervention_reason: 'carga a subir' };
+
+  it('é a frase da intervenção, e a primeira da lista mesmo com propostas à espera', () => {
+    const args = {
+      profile: intervencao,
+      coachPlans: [{ id: 'p1', status: 'proposto' }],
+      coachGoalProposals: [{ id: 'g1', status: 'proposto' }],
+    };
+    const linha = interventionTopicLine(args);
+    expect(linha).toBe('Há um registo teu que quero ver contigo.');
+    const linhas = pendingTopicLines(args);
+    expect(linhas).toHaveLength(3);
+    expect(linhas[0]).toBe(linha);
+  });
+
+  it('sem intervenção pendente, nenhuma — mesmo com propostas', () => {
+    expect(interventionTopicLine({ profile: { coach_intervention_status: 'resolved' }, coachPlans: [{ id: 'p1', status: 'proposto' }] })).toBeNull();
+  });
+});

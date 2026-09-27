@@ -210,6 +210,35 @@ function linhaDoCheckin(motivo, reason, ctx) {
 }
 
 /**
+ * A frase da intervenção por resolver, ou null sem nenhuma. À parte de
+ * pendingTopicLines porque é a única que "Dispensar" fecha: a confirmação
+ * cita-a pelo nome, sem depender da ordem da lista (revisão pré-deploy
+ * 2026-09-27).
+ */
+export function interventionTopicLine({
+  profile, coachPlans = [], coachPlanItems, raceEvents = [], dailyCheckins = [], coachNotes = [], now = new Date(),
+} = {}) {
+  if (!INTERVENCAO_PENDENTE.includes(profile?.coach_intervention_status)) return null;
+  const reason = profile?.coach_intervention_reason || '';
+  const objetivos = goalsInterventionKind(reason);
+  const carga = runLoadInterventionKind(reason);
+  const checkin = readCheckinReason(reason);
+  if (objetivos === 'definir') return 'Vi a tua avaliação corporal. Quero definir contigo os teus objetivos.';
+  if (objetivos === 'rever') return 'A tua última avaliação mostra que os teus objetivos já não servem. Quero revê-los contigo.';
+  if (checkin) return linhaDoCheckin(checkin, reason, { now, profile, dailyCheckins, coachPlans, coachPlanItems, raceEvents, coachNotes });
+  // A carga conta-se numa janela de 7 dias, não na semana do calendário
+  // (2026-09-26): aberta ao domingo e vista na terça, "esta semana" era
+  // uma semana com uma corrida.
+  if (carga === 'acima_do_plano') return 'Nos últimos dias correste bem mais do que o plano previa. Quero ver contigo como ficam os próximos.';
+  if (carga === 'sem_plano') return 'A tua carga de corrida subiu muito face às últimas semanas. Quero ver contigo como ficam os próximos dias.';
+  // Aberta por uma refeição de segunda e vista na quarta, "o teu último
+  // registo" já era a corrida de quarta (2026-09-26). O motivo das análises
+  // é texto livre para ela, e a origem vai para coach_interventions sem
+  // ficar no perfil: não se sabe qual foi, e não se diz.
+  return 'Há um registo teu que quero ver contigo.';
+}
+
+/**
  * Uma frase por assunto por resolver, pela ordem em que interessam.
  *
  * Para o assunto do check-in falar do dia certo (2026-09-26), o Início passa
@@ -223,27 +252,8 @@ export function pendingTopicLines({
   coachPlanItems, raceEvents = [], dailyCheckins = [], coachNotes = [], now = new Date(),
 } = {}) {
   const lines = [];
-  if (INTERVENCAO_PENDENTE.includes(profile?.coach_intervention_status)) {
-    const reason = profile?.coach_intervention_reason || '';
-    const objetivos = goalsInterventionKind(reason);
-    const carga = runLoadInterventionKind(reason);
-    const checkin = readCheckinReason(reason);
-    if (objetivos === 'definir') lines.push('Vi a tua avaliação corporal. Quero definir contigo os teus objetivos.');
-    else if (objetivos === 'rever') lines.push('A tua última avaliação mostra que os teus objetivos já não servem. Quero revê-los contigo.');
-    else if (checkin) {
-      lines.push(linhaDoCheckin(checkin, reason, { now, profile, dailyCheckins, coachPlans, coachPlanItems, raceEvents, coachNotes }));
-    }
-    // A carga conta-se numa janela de 7 dias, não na semana do calendário
-    // (2026-09-26): aberta ao domingo e vista na terça, "esta semana" era
-    // uma semana com uma corrida.
-    else if (carga === 'acima_do_plano') lines.push('Nos últimos dias correste bem mais do que o plano previa. Quero ver contigo como ficam os próximos.');
-    else if (carga === 'sem_plano') lines.push('A tua carga de corrida subiu muito face às últimas semanas. Quero ver contigo como ficam os próximos dias.');
-    // Aberta por uma refeição de segunda e vista na quarta, "o teu último
-    // registo" já era a corrida de quarta (2026-09-26). O motivo das análises
-    // é texto livre para ela, e a origem vai para coach_interventions sem
-    // ficar no perfil: não se sabe qual foi, e não se diz.
-    else lines.push('Há um registo teu que quero ver contigo.');
-  }
+  const intervencao = interventionTopicLine({ profile, coachPlans, coachPlanItems, raceEvents, dailyCheckins, coachNotes, now });
+  if (intervencao) lines.push(intervencao);
   const planos = (coachPlans || []).filter((p) => p?.status === 'proposto').length;
   if (planos === 1) lines.push('Tens um plano meu à espera que o aceites ou recuses.');
   else if (planos > 1) lines.push(`Tens ${planos} planos meus à espera que os aceites ou recuses.`);

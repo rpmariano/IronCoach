@@ -27,18 +27,31 @@ import { noticeSeverity, noticeTone } from './noticeTones';
    lugar do "Agora não" há "Dispensar" (pedido 2026-09-27), porque aí a
    dispensa é de vez: o balanço e o fim do bloco não voltam; o mapa da época
    só volta se o calendário mudar com jornadas por decidir, e então é outro
-   aviso; uma intervenção por resolver ('assuntos') pede confirmação e
-   fecha-se. O conflito de provas e o ajuste do plano não se dispensam:
-   saem quando se resolvem. Formato de um aviso:
-   { id, severity, title, message, onTalk, onDismiss? } */
+   aviso; e a intervenção dentro de "Preciso de falar contigo" ('assuntos')
+   pede confirmação e fecha-se — é um assunto, por isso esse botão diz
+   "Dispensar este assunto" ao leitor de ecrã. Noutro dispositivo, a
+   dispensa da intervenção chega pelo perfil (coach_intervention_status); a
+   do balanço, do fim do bloco e do mapa, pelas impressões dos últimos 14
+   dias (store/index.js).
+
+   Sem dispensa ficam: o conflito de provas (sai quando o atleta decide), o
+   ajuste do plano (sai quando é levado à Carol, markDivergenceHandled) e um
+   'assuntos' só com planos ou objetivos propostos (sai quando os aceita ou
+   recusa). Formato de um aviso:
+   { id, severity, title, message, onTalk, onDismiss?, dismissLabel? } */
 
 const PRIMARY_STYLE = { background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)' };
 const SECONDARY_STYLE = { background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' };
 
-/* `dismiss` é o botão de pôr de lado — "Agora não" nos insights,
-   "Dispensar" nos avisos dela — ou null quando o aviso não se dispensa:
-   { text, ariaLabel, testId, onClick }. */
-function NoticeCard({ testId, severity, title, message, children, onTalk, talkTestId, onUnderstood, understoodTestId, dismiss }) {
+/* Os três botões do cartão, cada um um objeto: `talk` (sempre) e
+   `understood` ({ testId, onClick }), e `setAside` ({ text, ariaLabel,
+   testId, onClick }) — pôr de lado, que nos insights é "Agora não" (até
+   amanhã) e nos avisos dela "Dispensar" (de vez). `understood` e `setAside`
+   são null quando o aviso não os tem. Eram
+   props soltas (onNotNow, notNowTestId, notNowLabel…): o nome dizia "agora
+   não" num botão que, nos avisos, dispensa de vez, e cada botão opcional
+   marcava-se de uma maneira (revisão pré-deploy 2026-09-27). */
+function NoticeCard({ testId, severity, title, message, children, talk, understood, setAside }) {
   const t = noticeTone(severity);
   const titleId = useId();
   return (
@@ -55,36 +68,36 @@ function NoticeCard({ testId, severity, title, message, children, onTalk, talkTe
       <div role="group" aria-labelledby={titleId} className="flex flex-col gap-2 mt-3">
         <button
           type="button"
-          data-testid={talkTestId}
-          onClick={onTalk}
+          data-testid={talk.testId}
+          onClick={talk.onClick}
           className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] rounded-[11px] text-[12.5px] font-extrabold"
           style={PRIMARY_STYLE}
         >
           <Sparkles size={14} aria-hidden="true" /> Falar com a Carol
         </button>
-        {(onUnderstood || dismiss) && (
+        {(understood || setAside) && (
           <div className="flex gap-2">
-            {onUnderstood && (
+            {understood && (
               <button
                 type="button"
-                data-testid={understoodTestId}
-                onClick={onUnderstood}
+                data-testid={understood.testId}
+                onClick={understood.onClick}
                 className="flex-1 min-h-[44px] rounded-[11px] text-[12.5px] font-extrabold"
                 style={{ background: t.btnBg, color: t.btnColor }}
               >
                 Percebi
               </button>
             )}
-            {dismiss && (
+            {setAside && (
               <button
                 type="button"
-                data-testid={dismiss.testId}
-                aria-label={dismiss.ariaLabel}
-                onClick={dismiss.onClick}
+                data-testid={setAside.testId}
+                aria-label={setAside.ariaLabel}
+                onClick={setAside.onClick}
                 className="flex-1 min-h-[44px] rounded-[11px] text-[12.5px] font-bold"
                 style={SECONDARY_STYLE}
               >
-                {dismiss.text}
+                {setAside.text}
               </button>
             )}
           </div>
@@ -112,7 +125,7 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
   };
 
   // "Percebi" não é dispensar, por isso não grava dispensa nenhuma.
-  const understood = (insight) => {
+  const markUnderstood = (insight) => {
     setInsightState(insight.id, 'understood');
     settle(insight);
   };
@@ -153,11 +166,11 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
           severity={alert.severity}
           title={alert.title}
           message={alert.message}
-          talkTestId={`carol-alert-talk-${alert.id}`}
-          onTalk={() => { alert.onTalk?.(); onClose(); }}
-          dismiss={alert.onDismiss ? {
+          talk={{ testId: `carol-alert-talk-${alert.id}`, onClick: () => { alert.onTalk?.(); onClose(); } }}
+          understood={null}
+          setAside={alert.onDismiss ? {
             text: 'Dispensar',
-            ariaLabel: 'Dispensar este aviso',
+            ariaLabel: alert.dismissLabel || 'Dispensar este aviso',
             testId: `carol-alert-dismiss-${alert.id}`,
             onClick: () => { alert.onDismiss(); onClose(); },
           } : null}
@@ -172,11 +185,9 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
             severity={insight.severity}
             title={insight.title}
             message={insight.message}
-            talkTestId={`insight-talk-${insight.id}`}
-            onTalk={() => talkAbout(insight)}
-            understoodTestId={`insight-understood-${insight.id}`}
-            onUnderstood={() => understood(insight)}
-            dismiss={{
+            talk={{ testId: `insight-talk-${insight.id}`, onClick: () => talkAbout(insight) }}
+            understood={{ testId: `insight-understood-${insight.id}`, onClick: () => markUnderstood(insight) }}
+            setAside={{
               text: 'Agora não',
               ariaLabel: 'Agora não — volta amanhã, se ainda se aplicar',
               testId: `insight-snooze-${insight.id}`,

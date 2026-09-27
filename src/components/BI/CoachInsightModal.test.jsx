@@ -156,23 +156,40 @@ describe('CoachInsightModal', () => {
       expect(mockOnClose).toHaveBeenCalled();
     });
 
+    const balanco = (over = {}) => alerta({
+      id: 'balanco', severity: 'info', title: 'O balanço da prova',
+      message: 'Corrida do Tejo: quero fazer o balanço contigo.', onDismiss: vi.fn(), ...over,
+    });
+    const assuntos = (over = {}) => alerta({
+      id: 'assuntos', title: 'Preciso de falar contigo',
+      message: 'Há um registo teu que quero ver contigo.', onDismiss: vi.fn(), dismissLabel: 'Dispensar este assunto', ...over,
+    });
+
     /* Pedido 2026-09-27: nos avisos dela a dispensa é de vez, por isso o
        botão diz "Dispensar" — o "Agora não" (até amanhã) é só dos insights. */
-    it('"Dispensar" nos avisos que se podem dispensar, com o nome certo', () => {
-      const onDismiss = vi.fn();
-      render(<CoachInsightModal alerts={[alerta({ id: 'assuntos', onDismiss })]} onClose={mockOnClose} />);
-      const dispensar = screen.getByTestId('carol-alert-dismiss-assuntos');
+    it('"Dispensar" nos avisos que se podem dispensar: o aviso todo', () => {
+      const a = balanco();
+      render(<CoachInsightModal alerts={[a]} onClose={mockOnClose} />);
+      const dispensar = screen.getByTestId('carol-alert-dismiss-balanco');
       expect(dispensar.textContent).toBe('Dispensar');
       expect(dispensar).toHaveAccessibleName('Dispensar este aviso');
-      expect(screen.getByTestId('carol-alert-assuntos')).not.toHaveTextContent('Agora não');
-      expect(screen.queryByRole('button', { name: /Agora não/ })).not.toBeInTheDocument();
+      expect(screen.getByTestId('carol-alert-balanco')).not.toHaveTextContent('Agora não');
       fireEvent.click(dispensar);
-      expect(onDismiss).toHaveBeenCalledTimes(1);
+      expect(a.onDismiss).toHaveBeenCalledTimes(1);
       expect(mockOnClose).toHaveBeenCalled();
     });
 
+    /* Revisão pré-deploy 2026-09-27: em "Preciso de falar contigo" só a
+       intervenção se dispensa — um assunto, não o aviso todo. */
+    it('"Dispensar" na intervenção diz ao leitor de ecrã que é um assunto', () => {
+      render(<CoachInsightModal alerts={[assuntos()]} onClose={mockOnClose} />);
+      const dispensar = screen.getByTestId('carol-alert-dismiss-assuntos');
+      expect(dispensar.textContent).toBe('Dispensar');
+      expect(dispensar).toHaveAccessibleName('Dispensar este assunto');
+    });
+
     it('com avisos e insights: "Dispensar" no aviso, "Agora não" no insight', () => {
-      render(<CoachInsightModal alerts={[alerta({ id: 'balanco', severity: 'info', onDismiss: vi.fn() })]} insights={[acwr]} onClose={mockOnClose} />);
+      render(<CoachInsightModal alerts={[balanco()]} insights={[acwr]} onClose={mockOnClose} />);
       expect(screen.getByTestId('carol-alert-dismiss-balanco').textContent).toBe('Dispensar');
       expect(screen.getByTestId('insight-snooze-insight-1').textContent).toBe('Agora não');
     });
