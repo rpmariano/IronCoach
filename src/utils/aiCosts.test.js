@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  aggregateCosts, daysInclusive, percentile, pricingAt, pricingStats, rowCostUsd, suggestedPrice, tokensOf,
+  aggregateCosts, daysInclusive, percentile, pricingFor, pricingStats, rowCostUsd, suggestedPrice, tokensOf,
 } from './aiCosts';
 
 /* Auditoria de custos de 2026-09-27 — ver o cabeçalho de aiCosts.js. */
@@ -15,10 +15,17 @@ describe('rowCostUsd', () => {
     expect(rowCostUsd(row)).toBeCloseTo(0.45 + 0.03 + 1.125, 10);
   });
 
-  it('a partir de 2027 usa a tabela padrão', () => {
-    const row = { created_at: '2027-01-02T00:00:00Z', meta: { input_tokens: 1_000_000, output_tokens: 1_000_000, thoughts_tokens: 0 } };
-    expect(rowCostUsd(row)).toBeCloseTo(1.5 + 7.5, 10);
-    expect(pricingAt('2026-12-31').input).toBe(0.75);
+  it('preço por modelo real, do prefixo mais específico para o geral', () => {
+    const row = (model) => ({ model, created_at: '2026-09-27', meta: { input_tokens: 1_000_000, output_tokens: 1_000_000, thoughts_tokens: 0 } });
+    expect(rowCostUsd(row('gemini-3-flash'))).toBeCloseTo(0.5 + 3.0, 10);
+    expect(rowCostUsd(row('gemini-2.5-flash-lite-preview-06-17'))).toBeCloseTo(0.1 + 0.4, 10);
+    expect(rowCostUsd(row('gemini-2.5-flash'))).toBeCloseTo(0.3 + 2.5, 10);
+    expect(pricingFor('models/gemini-3.1-pro').input).toBe(2.0);
+    // 3.8 e sem modelo: estimativa não confirmada.
+    expect(pricingFor('gemini-3.8-flash')).toMatchObject({ input: 0.75, confirmed: false });
+    expect(pricingFor(null).confirmed).toBe(false);
+    expect(pricingFor('gemini-3-flash-x').confirmed).toBe(true);
+    expect(pricingFor('gemini-30-flash').confirmed).toBe(false);
   });
 
   it('linha antiga sem thoughts_tokens é marcada como legado', () => {

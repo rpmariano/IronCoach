@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import CarolIcon from '../Coach/CarolIcon';
 import {
-  aggregateCosts, COST_EVENT_MODULE, DEFAULT_USD_TO_EUR, GEMINI_PRICING, localDay, moduleOf, pricingStats, suggestedPrice,
+  aggregateCosts, COST_EVENT_MODULE, DEFAULT_USD_TO_EUR, localDay, moduleOf, pricingFor, pricingStats, suggestedPrice,
 } from '../../utils/aiCosts';
 
 /* Separador "Custos API" do Admin. Extraído de Admin.jsx na auditoria de
@@ -265,7 +265,6 @@ export default function CostsTab({ users = [] }) {
   const topUpEur = Number(settings.topUpEur) || 0;
   const remainingEur = balance ? topUpEur - balance.spentUsd * rate : null;
   const daysLeft = balance && balance.perDayUsd > 0 ? Math.max(0, remainingEur / (balance.perDayUsd * rate)) : null;
-  const currentPrice = GEMINI_PRICING.find(p => localDay(new Date().toISOString()) >= p.from);
 
   return (
     <div className="space-y-3 fade-in">
@@ -401,15 +400,20 @@ export default function CostsTab({ users = [] }) {
               </div>
             ))}
             <p className="text-xs font-semibold pt-2">Por modelo</p>
-            {agg.perModel.map(m => (
-              <div key={m.key} className="flex items-center justify-between gap-2 text-[11px]">
-                <span className="truncate">{m.key}</span>
-                <span className="text-[var(--text-3)] whitespace-nowrap">{m.calls}× · <span className="font-semibold text-[var(--text-2)]">{eur(m.cost, rate)}</span></span>
-              </div>
-            ))}
-            <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
-              Os preços assumem a linha Flash. Se aparecer aqui um modelo de outra família, o custo desse modelo está errado — atualiza a tabela em utils/aiCosts.js.
-            </p>
+            {agg.perModel.map(m => {
+              const p = pricingFor(m.key === 'desconhecido' ? null : m.key);
+              return (
+                <div key={m.key} className="text-[11px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate">{m.key}</span>
+                    <span className="text-[var(--text-3)] whitespace-nowrap">{m.calls}× · <span className="font-semibold text-[var(--text-2)]">{eur(m.cost, rate)}</span></span>
+                  </div>
+                  <p className={p.confirmed ? 'text-[var(--text-3)]' : 'text-[var(--warn)]'}>
+                    ${p.input.toFixed(2)} input · ${p.output.toFixed(2)} output e raciocínio / milhão{p.confirmed ? '' : ' — preço estimado, não confirmado'}
+                  </p>
+                </div>
+              );
+            })}
             <p className="text-xs font-semibold pt-2">Por função</p>
             {agg.perEvent.map(e => (
               <div key={e.key} className="flex items-center justify-between gap-2 text-[11px]">
@@ -490,8 +494,8 @@ export default function CostsTab({ users = [] }) {
           </div>
 
           <p className="text-[11px] text-[var(--text-3)] text-center px-2">
-            Preços (USD / milhão de tokens, gemini-flash-latest): input ${currentPrice.input.toFixed(2)}, cache ${currentPrice.cached.toFixed(3)},
-            output e raciocínio ${currentPrice.output.toFixed(2)}. Promocionais até 31-12-2026 — duplicam a 01-01-2027 (já previsto no cálculo).
+            Custo calculado com o preço do modelo real de cada chamada (ver "Por modelo"). Raciocínio cobrado como output; cache a ~10% do input.
+            Os preços estão em utils/aiCosts.js — os marcados "não confirmado" são estimativas.
           </p>
         </>
       )}

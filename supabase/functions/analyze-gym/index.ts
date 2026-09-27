@@ -15,6 +15,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import {
   CAROL_TONE_RULES_SHORT,
   carolLanguageRule,
@@ -62,10 +63,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Alias que segue sempre o modelo flash estável mais recente — evita 404s
-// quando a Google descontinua modelos para contas novas (mesmo alias usado
-// em analyze-meal/analyze-body).
-const GEMINI_MODEL = "gemini-flash-latest";
+// Modelo fixo + nível de raciocínio por chamada vêm de _shared/geminiModel.ts
+// (antes era o alias "gemini-flash-latest", para evitar 404s quando a Google
+// descontinua modelos para contas novas — o alias continua lá como fallback
+// automático, via geminiWithFallback).
 // Tempo máximo por chamada ao Gemini antes de desistir e tentar mais uma vez.
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1;
@@ -348,14 +349,15 @@ async function analyzeWithGemini(
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
 
-  const geminiRes = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    geminiUrl(model, geminiKey),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
+          ...thinkingConfig("minimal", withThinking),
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
         },
@@ -364,7 +366,7 @@ async function analyzeWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  );
+  ));
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -479,8 +481,8 @@ export async function inferMuscleGroupsFromNotes(
   let usage: GeminiUsage | null = null;
   if (!notes || !notes.trim() || !hasTimeFor(deadline)) return { categories: [], usage };
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiUrl(model, geminiKey),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -494,13 +496,13 @@ export async function inferMuscleGroupsFromNotes(
                 "falar de exercícios, devolve categories vazio. Responde apenas com JSON.",
             }],
           }],
-          generationConfig: { response_mime_type: "application/json", response_schema: INFER_SCHEMA },
+          generationConfig: { response_mime_type: "application/json", response_schema: INFER_SCHEMA, ...thinkingConfig("minimal", withThinking) },
         }),
       },
       INFER_TIMEOUT_MS,
       0,
       deadline,
-    );
+    ));
     if (!res.ok) {
       console.warn("inferMuscleGroupsFromNotes: Gemini", res.status);
       return { categories: [], usage };
@@ -812,14 +814,15 @@ async function generateGymCoachNotes(
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise do treinador), "intervention_needed" (boolean, true se o desvio do plano justificar que a IA inicie uma intervenção) e "intervention_reason" (string, justificação curta). Se não houver nada para comentar sobre a sessão, "text" pode ser null.`;
 
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiUrl(model, geminiKey),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
+            ...thinkingConfig("low", withThinking),
             // A análise estruturada tem o dobro do texto de antes (feedback
             // de 2026-09-25) — o mesmo teto do analyze-run.
             maxOutputTokens: 8192,
@@ -839,7 +842,7 @@ async function generateGymCoachNotes(
       45000,
       0,
       deadline,
-    );
+    ));
     if (!res.ok) {
       console.warn("Gym coach generation failed:", res.status, await res.text());
       return { text: null };

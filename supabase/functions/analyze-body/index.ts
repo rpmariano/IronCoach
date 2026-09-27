@@ -9,6 +9,7 @@
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import {
   GOALS_REVIEW_SCHEMA,
@@ -47,9 +48,10 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Alias que segue sempre o modelo flash estável mais recente — evita 404s
-// quando a Google descontinua modelos para contas novas.
-const GEMINI_MODEL = "gemini-flash-latest";
+// Modelo fixo + nível de raciocínio por chamada vêm de _shared/geminiModel.ts
+// (antes era o alias "gemini-flash-latest", para evitar 404s quando a Google
+// descontinua modelos para contas novas — o alias continua lá como fallback
+// automático, via geminiWithFallback).
 // Tempo máximo por chamada ao Gemini antes de desistir e tentar mais uma vez.
 // A API do Gemini (sobretudo no tier gratuito) tem latência muito variável —
 // isto evita que uma chamada presa arraste a função até ao limite rígido da
@@ -449,14 +451,15 @@ async function analyzeWithGemini(
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
-  const geminiRes = await fetchGeminiWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    geminiUrl(model, geminiKey),
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         contents: [{ parts }],
         generationConfig: {
+          ...thinkingConfig("minimal", withThinking),
           response_mime_type: "application/json",
           response_schema: RESPONSE_SCHEMA,
         },
@@ -465,7 +468,7 @@ async function analyzeWithGemini(
     GEMINI_TIMEOUT_MS,
     GEMINI_RETRIES,
     deadline,
-  );
+  ));
 
   if (!geminiRes.ok) {
     const errText = await geminiRes.text();
@@ -582,8 +585,8 @@ async function generateBodySummaryFromMetrics(
     (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
 
   try {
-    const res = await fetchGeminiWithTimeout(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiKey}`,
+    const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+      geminiUrl(model, geminiKey),
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -592,7 +595,7 @@ async function generateBodySummaryFromMetrics(
           generationConfig: {
             // A análise estruturada é mais longa (feedback de 2026-09-25).
             maxOutputTokens: 8192,
-            thinkingConfig: { thinkingLevel: "minimal" },
+            ...thinkingConfig("minimal", withThinking),
             response_mime_type: "application/json",
             response_schema: MANUAL_SUMMARY_SCHEMA,
           },
@@ -601,7 +604,7 @@ async function generateBodySummaryFromMetrics(
       45000,
       0,
       deadline,
-    );
+    ));
     if (!res.ok) {
       console.warn("Body manual summary generation failed:", res.status, await res.text());
       return { text: null, goalsReview: null, usage: null };
