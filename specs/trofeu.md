@@ -167,10 +167,11 @@ EXECUTE revogado numa função usada por políticas.
 
 ### 4.1 Descoberta em Provas
 
-- Cartão no **fim** do ecrã de Provas, tom `--race`, só se houver edição
-  `aberta` e (`profiles.training_lat/lon` a ≤ `area_radius_km` da área, por
-  haversine no cliente, **ou** sem local de treino) e sem dispensa para esta
-  edição.
+- Cartão no **fim** do ecrã de Provas, tom `--race`. O convite só com a
+  edição `aberta` e (`profiles.training_lat/lon` a ≤ `area_radius_km` da área,
+  por haversine no cliente, **ou** sem local de treino) e sem dispensa para
+  esta edição; quem está inscrito vê-o com a edição `aberta` ou `por_anunciar`
+  (o admin pode voltar a escondê-la — §6.1), nunca `encerrada`.
 - Não inscrito: "34.º Troféu de Atletismo de Cascais · 11 provas de dezembro a
   junho" + [Inscrever-me] + "Não me interessa".
 - Inscrito: a próxima jornada (data, percurso, decisão) e toca para o ecrã do

@@ -106,7 +106,7 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
 
         {edition.status === 'aberta' && (
           <div className="flex flex-wrap gap-2">
-            <Button variant="light" size="sm" onClick={() => setConfirmUnpublish(true)} icon={<EyeOff size={14} />}>
+            <Button variant="light" size="sm" onClick={() => { setUnpublishError(null); setConfirmUnpublish(true); }} icon={<EyeOff size={14} />}>
               Voltar a "por anunciar"
             </Button>
             <Button variant="danger-outline" size="sm" onClick={() => setConfirmClose(true)} icon={<Lock size={14} />}>
@@ -155,7 +155,8 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
             <p className="text-xs leading-relaxed">
               O convite deixa de aparecer a quem ainda não se inscreveu e as inscrições novas
               ficam fechadas. Quem já está inscrito continua a ver o Troféu, as jornadas e a
-              Carol — nada se apaga. Podes voltar a publicar quando quiseres.
+              Carol — nada se apaga. Quem sair entretanto só se volta a inscrever quando
+              publicares de novo.
             </p>
             {unpublishError && <p className="text-[11px] text-[var(--danger)]">{unpublishError}</p>}
             <div className="flex gap-2 pt-1">

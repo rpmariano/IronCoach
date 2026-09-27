@@ -199,8 +199,8 @@ describe('CompetitionsTab — estado da edição', () => {
     expect(mocks.setEditionStatus).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('Voltar a "por anunciar"'));
-    const dialog = (await screen.findByText(/Quem já está inscrito continua a ver o Troféu/)).closest('div');
-    fireEvent.click(within(dialog.parentElement).getAllByText('Voltar a "por anunciar"').at(-1));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Voltar a "por anunciar"/ }));
     await waitFor(() => expect(mocks.setEditionStatus).toHaveBeenCalledWith('ed34', 'por_anunciar'));
     expect(await screen.findByText('Publicar edição')).toBeInTheDocument();
     expect(screen.queryByText('Fechar edição')).not.toBeInTheDocument();

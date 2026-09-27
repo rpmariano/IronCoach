@@ -324,7 +324,7 @@ function GerirInscricaoSheet({ view, onClose, onLeft }) {
         )}>
           <p className="m-0 text-[12.5px]" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
             As jornadas futuras por correr saem do calendário. As que já correste ficam como provas normais — não se
-            perdem. Podes voltar a inscrever-te nesta época quando quiseres.
+            perdem. Podes voltar a inscrever-te nesta época enquanto as inscrições estiverem abertas.
           </p>
         </Dialog>
       )}
