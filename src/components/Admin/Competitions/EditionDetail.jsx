@@ -1,22 +1,33 @@
 import React, { useState } from 'react';
-import { Flag, Users, Lock, Megaphone, ExternalLink, EyeOff } from 'lucide-react';
+import { Flag, Users, Lock, Megaphone, ExternalLink, EyeOff, ListOrdered } from 'lucide-react';
 import PremiumModal from '../../shared/PremiumModal';
 import Button from '../../shared/Button';
-import { setEditionStatus, closeEdition } from '../../../utils/cupAdmin';
+import { setEditionStatus, closeEdition, closeEditionBlocker, editionTodayISO } from '../../../utils/cupAdmin';
 import { StatusBadge } from './index';
 import RoundsPanel from './RoundsPanel';
 import TeamsPanel from './TeamsPanel';
+import ClassificationPanel from './ClassificationPanel';
 
 const SUB_TABS = [
   { key: 'jornadas', label: 'Jornadas', icon: Flag },
   { key: 'clubes', label: 'Clubes', icon: Users },
+  { key: 'classificacao', label: 'Classificação', icon: ListOrdered },
 ];
 
 /* Cabeçalho da edição (competição, edição, época, estado) + as ações de
    estado (§6.1: "Publicar edição", "Voltar a 'por anunciar'" e "Fechar
    edição", as duas últimas com confirmação) + os separadores internos
-   Jornadas/Clubes. Aberta ↔ Por anunciar alterna-se quantas vezes for
-   preciso (pedido do dono, 2026-09-27); Encerrada não tem volta. */
+   Jornadas/Clubes/Classificação. Aberta ↔ Por anunciar alterna-se quantas
+   vezes for preciso (pedido do dono, 2026-09-27); Encerrada não tem volta.
+
+   A GUARDA DO FECHO (decisão do dono, 2026-09-27; Fase 4): "Fechar edição"
+   fica desativado — com o porquê à vista e ligado ao botão — enquanto a
+   edição não tiver jornadas, a última não tiver data ou ainda não tiver
+   passado (closeEditionBlocker, a mesma regra do close_edition da M2; o
+   servidor recusa na mesma, e o erro dele aparece no diálogo). As jornadas
+   chegam do separador Jornadas (o que abre primeiro), a cada leitura dele.
+   Classificação (§6.4, §7): o link da geral, a leitura automática, o estado
+   do job, os clubes por ligar e o ensaio (ClassificationPanel). */
 export default function EditionDetail({ edition, competition, onEditionChanged }) {
   const [subTab, setSubTab] = useState('jornadas');
   const [publishing, setPublishing] = useState(false);
@@ -27,6 +38,10 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
   const [unpublishing, setUnpublishing] = useState(false);
   const [unpublishError, setUnpublishError] = useState(null);
   const [confirmUnpublish, setConfirmUnpublish] = useState(false);
+  // As jornadas, para a guarda do fecho (null = ainda por ler). Chegam do
+  // separador Jornadas (o de abertura), a cada leitura dele — sem uma
+  // leitura a mais só para isto.
+  const [rounds, setRounds] = useState(null);
 
   const handlePublish = async () => {
     setPublishing(true);
@@ -62,6 +77,10 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
   };
 
   const isClosed = edition.status === 'encerrada';
+  const roundLabel = competition?.round_label || 'Jornada';
+  // Sem as jornadas lidas (a ler, ou a leitura falhou), o botão fica ativo:
+  // o servidor tem a mesma guarda e diz o porquê no diálogo.
+  const closeBlocker = rounds ? closeEditionBlocker(rounds, editionTodayISO(edition.time_zone), roundLabel) : null;
 
   return (
     <div className="space-y-4">
@@ -109,10 +128,23 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
             <Button variant="light" size="sm" onClick={() => { setUnpublishError(null); setConfirmUnpublish(true); }} icon={<EyeOff size={14} />}>
               Voltar a "por anunciar"
             </Button>
-            <Button variant="danger-outline" size="sm" onClick={() => setConfirmClose(true)} icon={<Lock size={14} />}>
+            <Button
+              variant="danger-outline"
+              size="sm"
+              onClick={() => { setCloseError(null); setConfirmClose(true); }}
+              icon={<Lock size={14} />}
+              disabled={!!closeBlocker}
+              aria-describedby={closeBlocker ? 'edition-close-blocker' : undefined}
+              data-testid="edition-close"
+            >
               Fechar edição
             </Button>
           </div>
+        )}
+        {edition.status === 'aberta' && closeBlocker && (
+          <p id="edition-close-blocker" data-testid="edition-close-blocker" className="text-[11px] text-[var(--text-3)]">
+            Ainda não dá para fechar: {closeBlocker}.
+          </p>
         )}
 
         {isClosed && edition.closed_at && (
@@ -135,10 +167,19 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
       </div>
 
       {subTab === 'jornadas' && (
-        <RoundsPanel edition={edition} competition={competition} readOnly={isClosed} />
+        <RoundsPanel
+          edition={edition}
+          competition={competition}
+          readOnly={isClosed}
+          adapter={edition.results_source === 'adaptador' ? edition.results_adapter || null : null}
+          onRoundsChanged={setRounds}
+        />
       )}
       {subTab === 'clubes' && (
         <TeamsPanel edition={edition} readOnly={isClosed} />
+      )}
+      {subTab === 'classificacao' && (
+        <ClassificationPanel edition={edition} readOnly={isClosed} onEditionChanged={onEditionChanged} />
       )}
 
       {confirmUnpublish && (
@@ -188,6 +229,10 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
               Isto marca a edição como <strong>encerrada</strong>, passa as inscrições ativas a
               concluídas, grava o resumo da época de cada uma e apaga os dorsais e os dados de
               correspondência com a classificação oficial. Não há volta atrás.
+            </p>
+            <p className="text-xs leading-relaxed">
+              A classificação geral fica como estiver agora: fecha depois de a da última jornada estar estável (vê
+              em Classificação).
             </p>
             {closeError && <p className="text-[11px] text-[var(--danger)]">{closeError}</p>}
             <div className="flex gap-2 pt-1">

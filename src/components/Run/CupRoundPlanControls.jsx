@@ -16,7 +16,9 @@ import { entryDeadlineNotice } from '@formulas/cup.ts';
    - O papel proposto sai do mesmo cálculo da Carol (cupRoundRoles, na
      vista); o atleta aceita-o ou escolhe outro — a escolha dele manda
      (intent_source 'atleta'). "Saltar" é também "Não vou": a prova sai do
-     calendário, por isso pede confirmação.
+     calendário, por isso pede confirmação — também no "Aceitar: saltar".
+     `onBeforeLeave` (o hub) corre antes de gravar o salto e pode recusar
+     (devolve false): nada se grava.
    - ESCOLHER NÃO É GRAVAR (revisão da Fase 3). Nos rádios nativos as setas
      mudam a seleção e disparam `change`: gravar aí fazia de cada papel por
      onde o teclado ou o leitor de ecrã passava uma escrita com aviso, e ao
@@ -104,8 +106,14 @@ export default function CupRoundPlanControls({ view, round, onBeforeLeave }) {
 
   const saltar = async () => {
     setBusy('saltar');
-    // No hub, a prova vai sair do calendário: fecha-se antes de gravar.
-    onBeforeLeave?.();
+    // No hub, a prova vai sair do calendário: fecha-se antes de gravar. O hub
+    // pode recusar (alterações por gravar: o navGuard pergunta "sair sem
+    // gravar?" — revisão da Fase 3, aviso [c]); aí nada se grava.
+    if (onBeforeLeave && onBeforeLeave() === false) {
+      setBusy(null);
+      setConfirmarSaltar(false);
+      return;
+    }
     const res = await setCupRoundIntent(round.id, 'saltar');
     if (!onBeforeLeave) { setBusy(null); setConfirmarSaltar(false); }
     if (!res?.ok) { showToast(res?.error?.message || 'Não foi possível gravar.', 'error'); return; }
@@ -176,7 +184,9 @@ export default function CupRoundPlanControls({ view, round, onBeforeLeave }) {
             style={BOTAO}
             data-testid="cup-aceitar-papel"
             isLoading={busy === 'papel' && !mudar}
-            onClick={() => gravarPapel(proposto)}
+            // "Saltar" é também "Não vou": aceitá-lo passa pela mesma
+            // confirmação do "Mudar o papel" (revisão da Fase 3, aviso [a]).
+            onClick={() => (proposto === 'saltar' ? setConfirmarSaltar(true) : gravarPapel(proposto))}
           >
             Aceitar: {intentLabel(proposto)}
           </Button>

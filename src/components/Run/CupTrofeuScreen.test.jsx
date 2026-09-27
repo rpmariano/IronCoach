@@ -29,7 +29,7 @@ const X3 = { id: 'x3', name: 'Corrida CCD Cascais', date: '2027-01-24', distance
 
 function makeView({
   seasonGoal = 'premio', participations = [], isFederated = false, today = TODAY, races = [], runs = [],
-  results = null, enrollment = {}, edition = {}, rounds = F.CASCAIS_ROUNDS,
+  results = null, enrollment = {}, edition = {}, rounds = F.CASCAIS_ROUNDS, courses = F.CASCAIS_COURSES,
 } = {}) {
   const cup = {
     status: 'ready',
@@ -43,7 +43,7 @@ function makeView({
     dismissals: [],
     catalog: {
       [EDITION_ID]: {
-        status: 'ready', rounds, courses: F.CASCAIS_COURSES,
+        status: 'ready', rounds, courses,
         overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS,
       },
     },
@@ -69,6 +69,8 @@ describe('CupTrofeuScreen', () => {
   let setCupRoundPriority;
   let openRaceRun;
   let setEditingRaceId;
+  let confirmCupResult;
+  let rejectCupResult;
 
   beforeEach(() => {
     setCupParticipations = vi.fn().mockResolvedValue({ ok: true, results: [] });
@@ -82,9 +84,11 @@ describe('CupTrofeuScreen', () => {
     setCupRoundPriority = vi.fn().mockResolvedValue({ ok: true, data: {} });
     openRaceRun = vi.fn();
     setEditingRaceId = vi.fn();
+    confirmCupResult = vi.fn().mockResolvedValue({ ok: true, data: { round_id: 'r-c2', match_status: 'confirmada', also_confirmed: 0 } });
+    rejectCupResult = vi.fn().mockResolvedValue({ ok: true, data: { round_id: 'r-c2', rejected: true } });
     useAppStore.setState({
       setCupParticipations, setCupParticipation, updateEnrollment, leaveCup, registerCupRound, markCupRoundNotAttended,
-      setCupRoundIntent, markCupEntryDone, setCupRoundPriority, openRaceRun, setEditingRaceId,
+      setCupRoundIntent, markCupEntryDone, setCupRoundPriority, openRaceRun, setEditingRaceId, confirmCupResult, rejectCupResult,
       profile: PROFILE, raceEvents: [], runs: [], coachPlans: [],
     });
   });
@@ -97,6 +101,7 @@ describe('CupTrofeuScreen', () => {
       markCupRoundNotAttended: REAL.markCupRoundNotAttended, setCupRoundIntent: REAL.setCupRoundIntent,
       markCupEntryDone: REAL.markCupEntryDone, setCupRoundPriority: REAL.setCupRoundPriority,
       openRaceRun: REAL.openRaceRun, setEditingRaceId: REAL.setEditingRaceId,
+      confirmCupResult: REAL.confirmCupResult, rejectCupResult: REAL.rejectCupResult,
       profile: null, raceEvents: [], runs: [], coachPlans: [],
     });
   });
@@ -313,14 +318,45 @@ describe('CupTrofeuScreen', () => {
       expect(onClose).toHaveBeenCalled();
     });
 
-    it('"Registar" sem prova possível: a mensagem do servidor, e o ecrã fica', async () => {
+    /* Revisão da Fase 3, aviso [b]: a frase de "sem prova" só culpa a
+       distância quando falta mesmo a do percurso dele nesta jornada. */
+    it('"Registar" sem prova possível: a causa certa, e o ecrã fica', async () => {
       registerCupRound.mockResolvedValue({ ok: false, error: { code: 'sem_prova', message: 'Não consegui criar a prova desta jornada.' } });
+      const onClose = vi.fn();
+      // Com percurso (J2, longo, 8 km): não é a distância.
+      const { unmount } = montar(view(), onClose);
+      fireEvent.click(screen.getByTestId('cup-cal-r-c2-registar'));
+      expect(await screen.findByText('Não consegui criar a prova desta jornada. Tenta outra vez daqui a pouco.')).toBeInTheDocument();
+      expect(openRaceRun).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      unmount();
+
+      // Sem percurso nesta jornada: falta a distância, e o caminho alternativo.
+      montar(makeView({ seasonGoal: 'participar', courses: F.CASCAIS_COURSES.filter((c) => c.round_id !== 'r-c2') }), onClose);
+      fireEvent.click(screen.getByTestId('cup-cal-r-c2-registar'));
+      expect(await screen.findByText('Falta a distância do teu percurso nesta jornada. Regista a corrida como «Prova fora da agenda» e volta a carregar em «Registar» para a ligar.')).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('"Registar" num dia de principal: a frase da colisão, tal como vem', async () => {
+      registerCupRound.mockResolvedValue({ ok: false, error: { code: 'colisao', message: 'Nesse dia tens uma prova principal: a jornada ficou por decidir. Regista a corrida nessa prova.' } });
+      montar(view());
+      fireEvent.click(screen.getByTestId('cup-cal-r-c2-registar'));
+      expect(await screen.findByText('Nesse dia tens uma prova principal: a jornada ficou por decidir. Regista a corrida nessa prova.')).toBeInTheDocument();
+    });
+
+    /* Aviso [b]: depois de "Prova fora da agenda", o "Registar" liga a
+       jornada a uma prova que já tem corrida — abre-se o hub, nunca outra
+       vez o registo. */
+    it('"Registar" numa jornada cuja prova já tem corrida: fecha o ecrã, abre o hub e diz "Ligada à jornada."', async () => {
+      registerCupRound.mockResolvedValue({ ok: true, data: { raceId: 'fora', done: true } });
       const onClose = vi.fn();
       montar(view(), onClose);
       fireEvent.click(screen.getByTestId('cup-cal-r-c2-registar'));
-      expect(await screen.findByText('Não consegui criar a prova desta jornada.')).toBeInTheDocument();
+      await waitFor(() => expect(setEditingRaceId).toHaveBeenCalledWith('fora'));
+      expect(onClose).toHaveBeenCalled();
       expect(openRaceRun).not.toHaveBeenCalled();
-      expect(onClose).not.toHaveBeenCalled();
+      expect(await screen.findByText('Ligada à jornada.')).toBeInTheDocument();
     });
 
     it('"Não fui" pede confirmação e só depois grava, uma vez', async () => {
@@ -335,10 +371,16 @@ describe('CupTrofeuScreen', () => {
       expect(await screen.findByText('Ficou como «Não fui».')).toBeInTheDocument();
     });
 
-    it('a mudança de data diz-se na linha ("mudou de 17 para 24 jan")', () => {
+    it('a mudança de data diz-se na linha ("mudou de 17 para 24 jan") — e na descrição do botão (aviso [e])', () => {
       const rounds = F.CASCAIS_ROUNDS.map((r) => (r.id === 'r-c3' ? { ...r, previous_date: '2027-01-17' } : r));
       montar(makeView({ seasonGoal: 'participar', rounds }));
       expect(screen.getByTestId('cup-cal-r-c3')).toHaveTextContent('mudou de 17 para 24 jan');
+      // O aria-label da linha tapava-a: vai no aria-describedby.
+      const btn = screen.getByTestId('cup-cal-r-c3-abrir');
+      expect(btn).toHaveAccessibleDescription('mudou de 17 para 24 jan');
+      expect(document.getElementById(btn.getAttribute('aria-describedby'))).toHaveTextContent('mudou de 17 para 24 jan');
+      // Sem mudança, sem descrição.
+      expect(screen.getByTestId('cup-cal-r-c4-abrir').hasAttribute('aria-describedby')).toBe(false);
     });
 
     it('sem calendário publicado: diz-se, e "Avisa-me quando sair" liga só esse aviso', () => {
@@ -689,6 +731,169 @@ describe('CupTrofeuScreen', () => {
       expect(res).toHaveTextContent('Ainda sem classificação oficial.');
       expect(res).toHaveTextContent('Lugar no escalão (registado por ti): 31.º');
       expect(document.body.textContent).not.toContain('4321');
+    });
+  });
+
+  /* ── Fase 4: a correspondência com a classificação oficial (§7) ─────── */
+
+  describe('Fase 4 — "És tu?" e a classificação oficial', () => {
+    const PROPOSTA = { round_id: 'r-c2', position: 120, category_code: 'M35', category_position: 41, points: 5, official_time_s: 2172, match_status: 'proposta', points_source: 'calculado' };
+    const comResultados = ({ rows = [], standing = null, publication = {}, extra = {} } = {}) => makeView({
+      seasonGoal: 'participar',
+      races: [{ ...X2, status: 'concluida' }],
+      edition: { sync_mode: 'publicar' },
+      results: { status: 'ready', enrollmentId: 'enr-1', teamId: 't-ccd', rows, teamRows: [], standing, publication, m2: true },
+      ...extra,
+    });
+
+    it('a mais antiga por confirmar logo a seguir ao cabeçalho, com quantas mais há — nos dois modos', () => {
+      const v = comResultados({ rows: [PROPOSTA, { ...PROPOSTA, round_id: 'r-c3', match_status: 'proposta' }] });
+      expect(v.results.pending.map((r) => r.id)).toEqual(['r-c2', 'r-c3']);
+      montar(v, () => {}, { initialMode: 'decidir' });
+      const prompt = screen.getByTestId('cup-match');
+      expect(prompt).toHaveTextContent('És tu?');
+      expect(screen.getByTestId('cup-match-linha')).toHaveTextContent('J2 · Corta-mato do NAZA: 41.º no escalão M35, 36:12.');
+      expect(screen.getByTestId('cup-match-mais')).toHaveTextContent('E mais 1 por confirmar.');
+      // Logo a seguir ao cabeçalho.
+      expect(screen.getByTestId('cup-trofeu-cabecalho').nextElementSibling).toBe(prompt);
+      fireEvent.click(screen.getByTestId('cup-ver-calendario'));
+      expect(screen.getByTestId('cup-match')).toBeInTheDocument();
+    });
+
+    it('"Sim, sou eu" confirma e o foco vai para "Classificação"; "Não sou eu" só depois do diálogo, e o foco vai para "Gerir inscrição"', async () => {
+      const v = comResultados({ rows: [PROPOSTA] });
+      const ecra = (view) => <ToastProvider><CupTrofeuScreen view={view} onClose={() => {}} initialMode="calendario" /></ToastProvider>;
+      const { rerender } = montar(v, () => {}, { initialMode: 'calendario' });
+      // Como no store: a RPC relê a classificação antes de responder — a
+      // vista nova (a linha confirmada, sem pergunta) chega antes do foco.
+      confirmCupResult.mockImplementation(async () => {
+        rerender(ecra(comResultados({ rows: [{ ...PROPOSTA, match_status: 'confirmada' }] })));
+        return { ok: true, data: { round_id: 'r-c2', match_status: 'confirmada', also_confirmed: 0 } };
+      });
+      fireEvent.click(screen.getByTestId('cup-match-sim'));
+      await waitFor(() => expect(confirmCupResult).toHaveBeenCalledWith('r-c2'));
+      expect(await screen.findByText('Resultado confirmado.')).toBeInTheDocument();
+      expect(screen.queryByTestId('cup-match')).not.toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(document.getElementById('cup-classificacao-titulo')));
+      expect(document.activeElement).toHaveTextContent('Classificação');
+
+      rerender(ecra(v));
+      rejectCupResult.mockImplementation(async () => {
+        rerender(ecra(comResultados()));
+        return { ok: true, data: { round_id: 'r-c2', rejected: true } };
+      });
+      fireEvent.click(screen.getByTestId('cup-match-nao'));
+      expect(rejectCupResult).not.toHaveBeenCalled();
+      const dialog = screen.getByTestId('cup-match-nao-dialog');
+      expect(dialog).toHaveTextContent('Não és tu?');
+      expect(dialog).toHaveTextContent('Apagamos esta linha e deixamos de procurar resultados com este dorsal. Se o dorsal estiver errado, corrige-o em «Gerir inscrição».');
+      fireEvent.click(screen.getByTestId('cup-match-nao-confirmar'));
+      await waitFor(() => expect(rejectCupResult).toHaveBeenCalledWith('r-c2'));
+      expect(await screen.findByText('Apagado. Revê o dorsal em «Gerir inscrição».')).toBeInTheDocument();
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('cup-abrir-gerir')));
+    });
+
+    it('a linha da jornada: "Resultado por confirmar — és tu?", também na descrição do botão; a folha pergunta', () => {
+      montar(comResultados({ rows: [PROPOSTA] }), () => {}, { initialMode: 'calendario' });
+      expect(screen.getByTestId('cup-cal-r-c2-correspondencia')).toHaveTextContent('Resultado por confirmar — és tu?');
+      const btn = screen.getByTestId('cup-cal-r-c2-abrir');
+      expect(btn).toHaveAccessibleDescription('Resultado por confirmar — és tu?');
+      fireEvent.click(btn);
+      const folha = screen.getByTestId('cup-jornada-sheet');
+      expect(within(folha).getByTestId('cup-match')).toHaveTextContent('J2 · Corta-mato do NAZA: 41.º no escalão M35, 36:12.');
+    });
+
+    it('a falha: a frase única na linha e na folha (sem nunca mostrar outro dorsal)', () => {
+      const saiu = { 'r-c2': '2027-01-10T18:37:00Z' };
+      montar(comResultados({ publication: saiu, extra: { enrollment: { bib: '412' } } }), () => {}, { initialMode: 'calendario' });
+      expect(screen.getByTestId('cup-cal-r-c2-correspondencia')).toHaveTextContent('Não consegui confirmar. Revê o dorsal ou fala com o suporte.');
+      expect(screen.getByTestId('cup-cal-r-c2-abrir')).toHaveAccessibleDescription('Não consegui confirmar. Revê o dorsal ou fala com o suporte.');
+      fireEvent.click(screen.getByTestId('cup-cal-r-c2-abrir'));
+      expect(screen.getByTestId('cup-jornada-correspondencia')).toHaveTextContent('Não consegui confirmar. Revê o dorsal ou fala com o suporte.');
+      expect(document.body.textContent).not.toMatch(/\b41[0-9]\b/);
+    });
+
+    it('sem dorsal: a outra frase', () => {
+      montar(comResultados({ publication: { 'r-c2': '2027-01-10T18:37:00Z' }, extra: { enrollment: { bib: null } } }), () => {}, { initialMode: 'calendario' });
+      expect(screen.getByTestId('cup-cal-r-c2-correspondencia')).toHaveTextContent('Sem dorsal não consigo ler o teu resultado oficial. Junta-o em «Gerir inscrição».');
+    });
+
+    it('a linha dele na geral oficial: o lugar, o total e quando foi lida; pontos calculados "(provisórios)"', () => {
+      const standing = { category_code: 'M35', category_rank: 12, total_points: 43, rounds_scored: 4, source_checked_at: '2027-01-24T18:00:00Z' };
+      const confirmada = { ...PROPOSTA, match_status: 'confirmada', category_position: 29 };
+      montar(comResultados({ rows: [confirmada], standing }), () => {}, { initialMode: 'calendario' });
+      expect(screen.getByTestId('cup-classificacao-tua')).toHaveTextContent('A tua: 12.º M35 na geral · 43 pontos');
+      expect(screen.getByTestId('cup-classificacao-geral')).toHaveTextContent('Classificação geral oficial, lida a 24/01.');
+      // A folha da jornada: os pontos calculados pela app dizem-se provisórios.
+      fireEvent.click(screen.getByTestId('cup-cal-r-c2-abrir'));
+      expect(screen.getByTestId('cup-jornada-resultado')).toHaveTextContent('Tempo oficial 36:12 · 29.º M35 · 5 pontos (provisórios)');
+    });
+
+    it('a coletiva calculada pela app diz que é uma conta da app', () => {
+      const v = makeView({
+        seasonGoal: 'participar',
+        races: [{ ...X2, status: 'concluida' }],
+        results: { status: 'ready', enrollmentId: 'enr-1', teamId: 't-ccd', rows: [], teamRows: [{ round_id: 'r-c2', position: 6, points: 412, points_source: 'calculado' }], m2: true },
+      });
+      montar(v, () => {}, { initialMode: 'calendario' });
+      expect(screen.getByTestId('cup-classificacao-coletiva')).toHaveTextContent('Coletiva: CCD Cascais ficou em 6.º na J2 · 412 pontos (conta da app a partir da geral oficial)');
+    });
+
+    it('"gerir" (o "Rever o dorsal" do hub): o calendário com o "Gerir inscrição" aberto, e o texto do dorsal', () => {
+      montar(comResultados(), () => {}, { initialMode: 'gerir' });
+      expect(screen.getByTestId('cup-trofeu-screen').getAttribute('data-modo')).toBe('calendario');
+      const gerir = screen.getByTestId('cup-gerir-sheet');
+      expect(within(gerir).getByTestId('cup-gerir-dorsal-ajuda')).toHaveTextContent('Com o dorsal, a app procura a tua linha na classificação oficial de cada jornada e, da primeira vez, pergunta-te se és tu.');
+      expect(within(gerir).getByTestId('cup-gerir-dorsal-ajuda')).toHaveTextContent('Até confirmares que és tu, essa linha pode ser de outra pessoa');
+    expect(within(gerir).getByTestId('cup-gerir-dorsal-ajuda')).toHaveTextContent('«Não sou eu» apaga-a.');
+    expect(within(gerir).getByTestId('cup-gerir-dorsal-ajuda')).not.toHaveTextContent('nunca dados de outros atletas');
+      expect(screen.getByTestId('cup-gerir-dorsal')).toHaveAccessibleDescription(/Com o dorsal, a app procura a tua linha/);
+    });
+  });
+
+  /* ── Revisão da Fase 3: [a] "Aceitar: saltar" e [e] o foco ─────────── */
+
+  describe('avisos da revisão da Fase 3', () => {
+    // A 4.ª jornada é no dia da Meia de Lisboa (principal): pelas contas, saltar.
+    const MEIA = { id: 'meia', name: 'Meia de Lisboa', date: '2027-02-21', race_priority: 'a', status: 'agendada', distance_km: 21.1, race_type: 'estrada', cup_round_id: null };
+    const X4 = { id: 'x4', name: 'GP Monte Real', date: '2027-02-21', distance_km: 7, race_type: 'estrada', race_priority: 'b', status: 'agendada', cup_round_id: 'r-c4' };
+
+    it('[a] "Aceitar: saltar" abre a confirmação de saltar e não grava antes dela', async () => {
+      const v = makeView({ seasonGoal: 'participar', participations: [part('r-c4', 'vou')], races: [MEIA, X4] });
+      expect(v.rounds.find((r) => r.id === 'r-c4').role?.intent).toBe('saltar');
+      useAppStore.setState({ raceEvents: [MEIA, X4] });
+      montar(v, () => {}, { initialMode: 'calendario' });
+      fireEvent.click(screen.getByTestId('cup-cal-r-c4-abrir'));
+      const aceitar = screen.getByTestId('cup-aceitar-papel');
+      expect(aceitar).toHaveTextContent('Aceitar: saltar');
+      fireEvent.click(aceitar);
+      expect(screen.getByTestId('cup-saltar-dialog')).toHaveTextContent('Saltar a jornada 4?');
+      expect(setCupRoundIntent).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTestId('cup-saltar-cancelar'));
+      expect(setCupRoundIntent).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByTestId('cup-aceitar-papel'));
+      fireEvent.click(screen.getByTestId('cup-saltar-confirmar'));
+      await waitFor(() => expect(setCupRoundIntent).toHaveBeenCalledWith('r-c4', 'saltar'));
+    });
+
+    it('[e] ao abrir, o foco vai para o título; ao fechar, volta para onde estava', () => {
+      const origem = document.createElement('button');
+      origem.textContent = 'Abrir o Troféu';
+      document.body.appendChild(origem);
+      origem.focus();
+      const { unmount } = montar(makeView({ seasonGoal: 'participar' }));
+      const titulo = screen.getByTestId('cup-trofeu-titulo');
+      expect(titulo.tagName).toBe('H1');
+      expect(document.activeElement).toBe(titulo);
+      unmount();
+      expect(document.activeElement).toBe(origem);
+      origem.remove();
+    });
+
+    it('[e] "A ler o calendário…" é um estado anunciado', () => {
+      const v = makeView({ seasonGoal: 'participar' });
+      montar({ ...v, catalogReady: false }, () => {}, { initialMode: 'calendario' });
+      expect(screen.getAllByRole('status').some((el) => el.textContent === 'A ler o calendário…')).toBe(true);
     });
   });
 });

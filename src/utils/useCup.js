@@ -29,19 +29,23 @@ import { cupListingOf, cupRoundStatus, dateChangeLabel, roundChip } from './cupC
    outra fatia do store. As regras saem de @formulas/cup.ts — as mesmas que a
    Carol vai usar na Fase 2. */
 
-/** A vista a partir do estado do store. Pura (exportada para os testes e
- *  para quem já tem os dados na mão).
- *
- *  Fase 3 (2026-09-27) — o ecrã do Troféu, a lista de Provas, o hub e o
- *  cartão diário leem daqui, sem nada mudar de nome nem de valor:
- *  `shortName`, `title`, `roundLabel`/`roundInitial`, `today`, `progress`
- *  (feitas / jornadas que contam), `aheadCount`, `undecidedCount`, `results`
- *  (a linha oficial do próprio e a coletiva do clube, por jornada), e em cada
- *  jornada `role`/`intent`/`intentSource` (o papel — cupRoundRoles, o mesmo
- *  cálculo da Carol, só com inscrição), `done`/`run`, `result`/`teamResult`,
- *  `chip` ("J3"), `dateChange` ("mudou de 17 para 24 jan") e `status` (a
- *  régua de cupCalendar.js). `nextRound` é a jornada enriquecida. */
-export function buildCupView({ cup, profile, raceEvents, runs, today }) {
+/* ── A vista, em quatro passos puros (Fase 4, aviso [f] da revisão da Fase 3)
+   Antes era uma só função de ~150 linhas, chamada no useMemo de cada hook:
+   com o ecrã de Provas, o Início e o hub montados, cada mudança do store
+   calculava a vista três vezes. Agora buildCupView compõe quatro passos
+   (cupContextOf → cupResultsOf → cupRoundsOf → cupViewOf), com a MESMA saída
+   da Fase 3 (useCup.fase3.golden.json, guardado antes da divisão), e os
+   hooks partilham um seletor memoizado (selectCupView) — uma mudança do
+   store calcula a vista uma vez. */
+
+const hasOfficialData = (row) => row?.official_time_s != null || row?.position != null;
+const numberOrNull = (v) => { const x = Number(v); return v != null && v !== '' && Number.isFinite(x) ? x : null; };
+
+/** O contexto da vista: a edição que interessa (a da inscrição ativa, ou a
+ *  da porta), a inscrição nela, o tipo de porta, o catálogo e os rótulos.
+ *  null = nada a mostrar (sem edição aberta na área, "Não me interessa", sem
+ *  inscrição, M1 por aplicar, ainda a ler). Pura. */
+export function cupContextOf({ cup, profile } = {}) {
   if (!cup || cup.status !== 'ready') return null;
   const enrollments = cup.enrollments || [];
   const active = enrollments.find((e) => e?.status === 'ativa') || null;
@@ -56,48 +60,107 @@ export function buildCupView({ cup, profile, raceEvents, runs, today }) {
   if (!doorKind && !enrollment) return null;
 
   const catalog = cup.catalog?.[edition.id] || null;
-  const catalogReady = catalog?.status === 'ready';
-  const categories = catalog?.categories || [];
-  const overrides = catalog?.overrides || [];
-  const allCourses = catalog?.courses || [];
-  const teams = catalog?.teams || [];
-  const participations = enrollment ? (cup.participations || []).filter((p) => p.enrollment_id === enrollment.id) : [];
-  const races = raceEvents || [];
   const competition = edition.competition || null;
-  const roundLabel = String(competition?.round_label || '').trim() || 'Jornada';
-  const sortedRounds = [...(catalog?.rounds || [])].sort((a, b) => (a.round_no ?? 0) - (b.round_no ?? 0));
+  return {
+    enrollments,
+    edition,
+    doorKind,
+    enrollment,
+    catalog,
+    catalogReady: catalog?.status === 'ready',
+    categories: catalog?.categories || [],
+    overrides: catalog?.overrides || [],
+    courses: catalog?.courses || [],
+    teams: catalog?.teams || [],
+    participations: enrollment ? (cup.participations || []).filter((p) => p.enrollment_id === enrollment.id) : [],
+    competition,
+    roundLabel: String(competition?.round_label || '').trim() || 'Jornada',
+    sortedRounds: [...(catalog?.rounds || [])].sort((a, b) => (a.round_no ?? 0) - (b.round_no ?? 0)),
+  };
+}
+
+/** A classificação da inscrição (lida só com inscrição ativa —
+ *  cupSlice.readResults), por jornada. Da inscrição certa, e em `byRound` só
+ *  as confirmadas (como na Fase 3). A coletiva só a do clube com que foi
+ *  lida: quem mudou de clube não fica com o resultado do antigo com o nome
+ *  do novo.
+ *
+ *  Fase 4: `proposalByRound` (a linha 'proposta', ou 'perdida' com dados —
+ *  o "És tu?"), `readyAtByRound` (cup_round_publication.results_ready_at),
+ *  `standing` (a linha dele na geral oficial) e `m2`. Com a geral, os pontos
+ *  do resumo são os dela; sem ela, a soma das confirmadas. Os dois mapas
+ *  são internos: cupViewOf publica `results` sem eles. */
+export function cupResultsOf(ctx, cup) {
+  const enrollment = ctx?.enrollment || null;
+  const res = enrollment && cup?.results?.enrollmentId === enrollment.id ? cup.results : null;
+  const byRound = {};
+  const proposalByRound = {};
+  for (const row of res?.rows || []) {
+    if (!row?.round_id) continue;
+    if (row.match_status === 'confirmada') byRound[row.round_id] = row;
+    else if ((row.match_status === 'proposta' || row.match_status === 'perdida') && hasOfficialData(row)) proposalByRound[row.round_id] = row;
+  }
+  const teamByRound = {};
+  if (enrollment?.team_id && res?.teamId === enrollment.team_id) {
+    for (const row of res.teamRows || []) if (row?.round_id) teamByRound[row.round_id] = row;
+  }
+  const roundIds = new Set((ctx?.sortedRounds || []).map((r) => r.id));
+  const ownRows = Object.values(byRound).filter((r) => roundIds.has(r.round_id));
+  const withPoints = ownRows.filter((r) => r.points != null && Number.isFinite(Number(r.points)));
+  const standing = res?.standing || null;
+  const standingPoints = numberOrNull(standing?.total_points);
+  return {
+    status: enrollment ? (res?.status ?? 'idle') : 'idle',
+    byRound,
+    teamByRound,
+    summary: {
+      count: ownRows.length,
+      points: standingPoints != null
+        ? standingPoints
+        : withPoints.length ? withPoints.reduce((t, r) => t + Number(r.points), 0) : null,
+    },
+    standing,
+    m2: !!res?.m2,
+    proposalByRound,
+    readyAtByRound: res?.publication || {},
+  };
+}
+
+/** O que falhou na correspondência de uma jornada, para a frase única do
+ *  ecrã (§7: "Não consegui confirmar. Revê o dorsal ou fala com o suporte."):
+ *  'rever_dorsal' | 'sem_dorsal' | null. Só com a edição a PUBLICAR (com
+ *  'observar' o atleta nunca vê nada), a M2 lida, a classificação da jornada
+ *  dada como saída (results_ready_at), a jornada feita ou com "Vou", e sem
+ *  linha confirmada nem por confirmar (uma 'perdida' sem dados conta como
+ *  falha). O vizinho de 1 dígito cai aqui como outra falha qualquer — nunca
+ *  há uma frase diferente, e nunca se mostra o dorsal de outro. */
+function matchIssueOf(ctx, results, round, { done, proposal }) {
+  if (!ctx.enrollment || ctx.edition?.sync_mode !== 'publicar') return null;
+  if (!results.m2 || results.status !== 'ready') return null;
+  if (!results.readyAtByRound[round.id]) return null;
+  const decision = ctx.participations.find((p) => p.round_id === round.id)?.decision ?? null;
+  if (!done && decision !== 'vou') return null;
+  if (results.byRound[round.id] || proposal) return null;
+  return String(ctx.enrollment.bib ?? '').trim() ? 'rever_dorsal' : 'sem_dorsal';
+}
+
+/** As jornadas enriquecidas, cada uma com o estado (a régua de
+ *  cupCalendar.js). Pura. */
+export function cupRoundsOf(ctx, results, { profile, raceEvents, runs, today } = {}) {
+  const { edition, enrollment, categories, overrides, participations, sortedRounds, roundLabel } = ctx;
+  const allCourses = ctx.courses;
+  const races = raceEvents || [];
 
   // O papel de cada jornada — só com inscrição (a quem não está inscrito não
   // se calcula nada). As mesmas linhas e a mesma função que o bloco da Carol.
   const roleOf = new Map();
-  if (enrollment && catalogReady) {
+  if (enrollment && ctx.catalogReady) {
     const roles = cupRoundRoles({
       edition, rounds: sortedRounds, participations, categories, courses: allCourses, overrides,
       races, runs, profile, seasonGoal: enrollment.season_goal ?? null, todayISO: today,
     });
     for (const r of roles) roleOf.set(r.roundId, r);
   }
-
-  // A linha oficial do próprio e a coletiva do clube (lidas só com inscrição
-  // ativa — cupSlice.readResults). Da inscrição certa, e só as confirmadas.
-  // A coletiva só a do clube com que foi lida: quem mudou de clube não fica
-  // com o resultado do antigo com o nome do novo.
-  const res = enrollment && cup.results?.enrollmentId === enrollment.id ? cup.results : null;
-  const byRound = {};
-  for (const row of res?.rows || []) if (row?.round_id && row.match_status === 'confirmada') byRound[row.round_id] = row;
-  const teamByRound = {};
-  if (enrollment?.team_id && res?.teamId === enrollment.team_id) {
-    for (const row of res.teamRows || []) if (row?.round_id) teamByRound[row.round_id] = row;
-  }
-  const roundIds = new Set(sortedRounds.map((r) => r.id));
-  const ownRows = Object.values(byRound).filter((r) => roundIds.has(r.round_id));
-  const withPoints = ownRows.filter((r) => r.points != null && Number.isFinite(Number(r.points)));
-  const results = {
-    status: enrollment ? (res?.status ?? 'idle') : 'idle',
-    byRound,
-    teamByRound,
-    summary: { count: ownRows.length, points: withPoints.length ? withPoints.reduce((t, r) => t + Number(r.points), 0) : null },
-  };
 
   const withRun = new Set((runs || []).map((r) => r?.race_id).filter(Boolean));
   const enriched = sortedRounds.map((round) => {
@@ -108,6 +171,9 @@ export function buildCupView({ cup, profile, raceEvents, runs, today }) {
     const race = races.find((r) => r?.cup_round_id === round.id) || null;
     const role = roleOf.get(round.id) || null;
     const change = dateChangeLabel(round.previous_date, round.date, today);
+    // Feita: a régua de attendanceCount (concluída, ou com corrida ligada).
+    const done = !!race && (race.status === 'concluida' || (race.id != null && withRun.has(race.id)));
+    const proposal = results.proposalByRound[round.id] || null;
     return {
       ...round,
       courses,
@@ -121,23 +187,35 @@ export function buildCupView({ cup, profile, raceEvents, runs, today }) {
       // A escolha dele manda; sem ela, o papel proposto.
       intent: participation?.intent ?? role?.intent ?? null,
       intentSource: participation?.intent != null ? (participation.intent_source ?? null) : role?.intent ? 'sugerida' : null,
-      // Feita: a régua de attendanceCount (concluída, ou com corrida ligada).
-      done: !!race && (race.status === 'concluida' || (race.id != null && withRun.has(race.id))),
+      done,
       run: race ? findRaceRun(runs, race) : null,
-      result: byRound[round.id] || null,
-      teamResult: teamByRound[round.id] || null,
+      result: results.byRound[round.id] || null,
+      teamResult: results.teamByRound[round.id] || null,
       chip: roundChip(round.round_no, roundLabel),
       dateChange: change ? { from: round.previous_date, to: round.date, label: change } : null,
+      // Fase 4: a linha por confirmar ("És tu?") e a falha da correspondência.
+      proposal,
+      matchIssue: matchIssueOf(ctx, results, round, { done, proposal }),
     };
   });
   const next = nextCupRound(enriched, today);
-  const rounds = enriched.map((r) => ({ ...r, status: cupRoundStatus(r, { today, nextRoundId: next?.id ?? null, roundLabel }) }));
+  return enriched.map((r) => ({ ...r, status: cupRoundStatus(r, { today, nextRoundId: next?.id ?? null, roundLabel }) }));
+}
 
+/** O objeto final da vista. Pura. */
+export function cupViewOf(ctx, results, rounds, { profile, raceEvents, runs, today } = {}) {
+  const { edition, enrollment, enrollments, doorKind, competition, teams, categories, participations, catalog, roundLabel } = ctx;
+  const races = raceEvents || [];
+  const next = nextCupRound(rounds, today);
   const nextRound = next ? rounds.find((r) => r.id === next.id) || null : null;
   const dated = rounds.filter((r) => r.date && r.date_status !== 'cancelada').map((r) => r.date).sort();
   const attendance = enrollment ? attendanceCount(edition, rounds, races, today, runs) : null;
   const previous = !enrollment ? enrollments.find((e) => e.edition_id === edition.id && e.status === 'saiu') || null : null;
   const counted = rounds.filter((r) => r.date_status !== 'cancelada');
+  // As jornadas com uma linha por confirmar, pela data (a mais antiga
+  // primeiro: é essa que o ecrã do Troféu pergunta).
+  const pending = rounds.filter((r) => r.proposal)
+    .sort((a, b) => String(a.date || '9999').localeCompare(String(b.date || '9999')) || (a.round_no ?? 0) - (b.round_no ?? 0));
 
   return {
     edition,
@@ -162,13 +240,13 @@ export function buildCupView({ cup, profile, raceEvents, runs, today }) {
     attendance,
     // O contador só com objetivo prémio (§4.3).
     showCounter: !!attendance && enrollment?.season_goal === 'premio',
-    catalogReady,
+    catalogReady: ctx.catalogReady,
     // 'idle' | 'loading' | 'ready' | 'erro' — o bloco de Provas distingue "a
     // ler" de "não deu".
     catalogStatus: catalog?.status ?? 'idle',
     // O catálogo inteiro da edição (para promotionPreview refazer os papéis).
-    courses: allCourses,
-    overrides,
+    courses: ctx.courses,
+    overrides: ctx.overrides,
     shortName: competition?.short_name || competition?.name || 'Troféu',
     title: editionTitle(edition, competition),
     roundLabel,
@@ -183,7 +261,17 @@ export function buildCupView({ cup, profile, raceEvents, runs, today }) {
     undecidedCount: enrollment
       ? counted.filter((r) => r.date && r.date >= today && r.participation?.decision == null).length
       : 0,
-    results,
+    results: {
+      status: results.status,
+      byRound: results.byRound,
+      teamByRound: results.teamByRound,
+      summary: results.summary,
+      // Fase 4: as jornadas por confirmar, a linha dele na geral oficial, e
+      // se a M2 já existe (sem ela, a vista é a da Fase 3).
+      pending,
+      standing: results.standing,
+      m2: results.m2,
+    },
     // Sem estes, o servidor recusa a inscrição (§4.2.6): o ecrã pede-os antes.
     profileMissing: {
       gender: !(profile?.gender === 'F' || profile?.gender === 'M'),
@@ -192,33 +280,83 @@ export function buildCupView({ cup, profile, raceEvents, runs, today }) {
   };
 }
 
-export function useCup() {
+/** A vista a partir do estado do store. Pura (exportada para os testes e
+ *  para quem já tem os dados na mão).
+ *
+ *  Fase 3 (2026-09-27) — o ecrã do Troféu, a lista de Provas, o hub e o
+ *  cartão diário leem daqui, sem nada mudar de nome nem de valor:
+ *  `shortName`, `title`, `roundLabel`/`roundInitial`, `today`, `progress`
+ *  (feitas / jornadas que contam), `aheadCount`, `undecidedCount`, `results`
+ *  (a linha oficial do próprio e a coletiva do clube, por jornada), e em cada
+ *  jornada `role`/`intent`/`intentSource` (o papel — cupRoundRoles, o mesmo
+ *  cálculo da Carol, só com inscrição), `done`/`run`, `result`/`teamResult`,
+ *  `chip` ("J3"), `dateChange` ("mudou de 17 para 24 jan") e `status` (a
+ *  régua de cupCalendar.js). `nextRound` é a jornada enriquecida.
+ *
+ *  Fase 4 (2026-09-27) — a correspondência com a classificação oficial:
+ *  `results.pending` (jornadas com uma linha por confirmar, pela data),
+ *  `results.standing` (a linha dele na geral oficial, ou null), `results.m2`,
+ *  e em cada jornada `proposal` (a linha 'proposta' — ou 'perdida' com dados
+ *  — por confirmar, ou null) e `matchIssue` ('rever_dorsal' | 'sem_dorsal' |
+ *  null). Nada disto existe sem inscrição. */
+export function buildCupView(input) {
+  const ctx = cupContextOf(input);
+  if (!ctx) return null;
+  const results = cupResultsOf(ctx, input.cup);
+  const rounds = cupRoundsOf(ctx, results, input);
+  return cupViewOf(ctx, results, rounds, input);
+}
+
+/* O seletor partilhado pelos hooks: guarda a última vista e as cinco
+   entradas com que foi feita, e devolve o MESMO objeto enquanto nenhuma
+   mudar (por referência; `today` por valor). Com o ecrã de Provas, o Início
+   e o hub montados, uma mudança do store calcula a vista uma vez. */
+let lastView = null; // { cup, profile, raceEvents, runs, today, view }
+
+/** buildCupView memoizado numa entrada. */
+export function selectCupView(cup, profile, raceEvents, runs, today) {
+  const m = lastView;
+  if (m && m.cup === cup && m.profile === profile && m.raceEvents === raceEvents && m.runs === runs && m.today === today) {
+    return m.view;
+  }
+  const view = buildCupView({ cup, profile, raceEvents, runs, today });
+  lastView = { cup, profile, raceEvents, runs, today, view };
+  return view;
+}
+
+/* As entradas da vista, do store (as mesmas em todos os hooks). */
+function useCupInputs() {
   const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id || null);
   const cup = useAppStore((s) => s.cup);
   const profile = useAppStore((s) => s.profile);
   const raceEvents = useAppStore((s) => s.raceEvents);
   const runs = useAppStore((s) => s.runs);
+  return { userId, cup, profile, raceEvents, runs, today: lisbonTodayISO() };
+}
+
+/* As leituras que os hooks disparam: a leitura base (loadCup) quando
+   `enabled` e ainda não lida para esta conta, e o catálogo de `editionId`
+   (uma vez: um erro não repete). */
+function useCupLoads({ enabled, userId, cup, editionId }) {
   const loadCup = useAppStore((s) => s.loadCup);
   const loadCupCatalog = useAppStore((s) => s.loadCupCatalog);
 
-  const needsLoad = !!userId && (cup.userId !== userId || cup.status === 'idle');
+  const needsLoad = !!enabled && !!userId && (cup.userId !== userId || cup.status === 'idle');
   useEffect(() => {
     if (needsLoad) loadCup().catch(() => {});
   }, [needsLoad, loadCup]);
 
-  const today = lisbonTodayISO();
-  const view = useMemo(
-    () => (cup.userId === userId ? buildCupView({ cup, profile, raceEvents, runs, today }) : null),
-    [cup, userId, profile, raceEvents, runs, today],
-  );
-
-  // O catálogo da edição que a porta mostra, uma vez (um erro não repete).
-  const editionId = view?.edition?.id || null;
   const hasCatalog = !!(editionId && cup.catalog?.[editionId]);
   useEffect(() => {
     if (editionId && !hasCatalog) loadCupCatalog(editionId).catch(() => {});
   }, [editionId, hasCatalog, loadCupCatalog]);
+}
 
+export function useCup() {
+  const { userId, cup, profile, raceEvents, runs, today } = useCupInputs();
+  const view = cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
+  // O catálogo da edição que a porta mostra, uma vez (um erro não repete).
+  useCupLoads({ enabled: true, userId, cup, editionId: view?.edition?.id || null });
   return view;
 }
 
@@ -237,39 +375,16 @@ export function useCup() {
    Limite assumido: inscrito noutro dispositivo e sem nenhuma jornada "Vou"
    com prova criada, só vê o mapa depois de abrir Provas uma vez. */
 export function useCupForHome() {
-  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id || null);
-  const cup = useAppStore((s) => s.cup);
-  const profile = useAppStore((s) => s.profile);
-  const raceEvents = useAppStore((s) => s.raceEvents);
-  const runs = useAppStore((s) => s.runs);
-  const loadCup = useAppStore((s) => s.loadCup);
-  const loadCupCatalog = useAppStore((s) => s.loadCupCatalog);
-
-  const today = lisbonTodayISO();
+  const { userId, cup, profile, raceEvents, runs, today } = useCupInputs();
   // Lida em cada render (é só um getItem): a pista não é estado do React e a
   // leitura base reescreve-a.
   const hinted = cupHomeHint(userId, raceEvents, today);
-
-  const needsLoad = hinted && !!userId && (cup.userId !== userId || cup.status === 'idle');
-  useEffect(() => {
-    if (needsLoad) loadCup().catch(() => {});
-  }, [needsLoad, loadCup]);
-
-  const view = useMemo(
-    () => (userId && cup.userId === userId ? buildCupView({ cup, profile, raceEvents, runs, today }) : null),
-    [cup, userId, profile, raceEvents, runs, today],
-  );
+  const view = userId && cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
   const enrolled = view?.enrollment ? view : null;
-
   // O catálogo da edição da inscrição, se ainda não estiver pedido (a leitura
   // base e a inscrição já o pedem; isto é a rede). Um erro não repete, como
   // no useCup.
-  const editionId = enrolled?.edition?.id || null;
-  const hasCatalog = !!(editionId && cup.catalog?.[editionId]);
-  useEffect(() => {
-    if (editionId && !hasCatalog) loadCupCatalog(editionId).catch(() => {});
-  }, [editionId, hasCatalog, loadCupCatalog]);
-
+  useCupLoads({ enabled: hinted, userId, cup, editionId: enrolled?.edition?.id || null });
   return enrolled;
 }
 
@@ -291,31 +406,10 @@ function cupHomeHint(userId, raceEvents, today) {
    é desta edição — uma prova de uma época anterior). */
 export function useCupForRace(race) {
   const roundId = race?.cup_round_id || null;
-  const userId = useAppStore((s) => s.session?.user?.id || s.profile?.id || null);
-  const cup = useAppStore((s) => s.cup);
-  const profile = useAppStore((s) => s.profile);
-  const raceEvents = useAppStore((s) => s.raceEvents);
-  const runs = useAppStore((s) => s.runs);
-  const loadCup = useAppStore((s) => s.loadCup);
-  const loadCupCatalog = useAppStore((s) => s.loadCupCatalog);
-
-  const needsLoad = !!roundId && !!userId && (cup.userId !== userId || cup.status === 'idle');
-  useEffect(() => {
-    if (needsLoad) loadCup().catch(() => {});
-  }, [needsLoad, loadCup]);
-
-  const today = lisbonTodayISO();
-  const view = useMemo(
-    () => (roundId && userId && cup.userId === userId ? buildCupView({ cup, profile, raceEvents, runs, today }) : null),
-    [roundId, cup, userId, profile, raceEvents, runs, today],
-  );
+  const { userId, cup, profile, raceEvents, runs, today } = useCupInputs();
+  const view = roundId && userId && cup.userId === userId ? selectCupView(cup, profile, raceEvents, runs, today) : null;
   const enrolled = view?.enrollment ? view : null;
-
-  const editionId = enrolled?.edition?.id || null;
-  const hasCatalog = !!(editionId && cup.catalog?.[editionId]);
-  useEffect(() => {
-    if (editionId && !hasCatalog) loadCupCatalog(editionId).catch(() => {});
-  }, [editionId, hasCatalog, loadCupCatalog]);
+  useCupLoads({ enabled: !!roundId, userId, cup, editionId: enrolled?.edition?.id || null });
 
   const round = enrolled ? enrolled.rounds.find((r) => r.id === roundId) || null : null;
   return useMemo(() => (round ? { view: enrolled, round } : null), [enrolled, round]);

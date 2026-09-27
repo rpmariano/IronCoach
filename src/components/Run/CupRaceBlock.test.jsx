@@ -35,11 +35,11 @@ const ROUNDS = F.CASCAIS_ROUNDS.map((r) => (r.id === 'r-c3'
   : r));
 const REAL = useAppStore.getState();
 
-function cupState({ participations = [{ id: 'p3', enrollment_id: 'enr1', round_id: 'r-c3', decision: 'vou', decision_source: 'atleta' }], results = null, enrollment = ENR } = {}) {
+function cupState({ participations = [{ id: 'p3', enrollment_id: 'enr1', round_id: 'r-c3', decision: 'vou', decision_source: 'atleta' }], results = null, enrollment = ENR, edition = {} } = {}) {
   return {
     ...CUP_EMPTY,
     status: 'ready', userId: USER, dismissals: [],
-    editions: [{ ...F.CASCAIS_34_ABERTA, standings_url: 'https://example.org/geral', competition: F.CASCAIS_COMPETITION }],
+    editions: [{ ...F.CASCAIS_34_ABERTA, standings_url: 'https://example.org/geral', ...edition, competition: F.CASCAIS_COMPETITION }],
     enrollments: [enrollment],
     participations,
     catalog: { [F.CASCAIS_34.id]: { status: 'ready', rounds: ROUNDS, courses: F.CASCAIS_COURSES, overrides: F.CASCAIS_OVERRIDES, categories: F.CASCAIS_CATEGORIES, teams: F.CASCAIS_TEAMS } },
@@ -66,6 +66,8 @@ describe('CupRaceBlock — o bloco Troféu no hub', () => {
       markCupRoundNotAttended: log('markCupRoundNotAttended', Promise.resolve({ ok: true, data: {} })),
       setCupRoundIntent: log('setCupRoundIntent', Promise.resolve({ ok: true, data: {} })),
       markCupEntryDone: log('markCupEntryDone', Promise.resolve({ ok: true, data: {} })),
+      confirmCupResult: log('confirmCupResult', Promise.resolve({ ok: true, data: {} })),
+      rejectCupResult: log('rejectCupResult', Promise.resolve({ ok: true, data: {} })),
     };
     useAppStore.setState({ session: { user: { id: USER } }, profile: PROFILE, cup: cupState(), raceEvents: [X3], runs: RUNS, ...actions });
   });
@@ -77,6 +79,8 @@ describe('CupRaceBlock — o bloco Troféu no hub', () => {
       setEditingRaceId: REAL.setEditingRaceId, setActiveTab: REAL.setActiveTab, requestCupScreen: REAL.requestCupScreen,
       setCupParticipation: REAL.setCupParticipation, markCupRoundNotAttended: REAL.markCupRoundNotAttended,
       setCupRoundIntent: REAL.setCupRoundIntent, markCupEntryDone: REAL.markCupEntryDone,
+      confirmCupResult: REAL.confirmCupResult, rejectCupResult: REAL.rejectCupResult,
+      navGuard: null,
     });
   });
 
@@ -308,6 +312,155 @@ describe('CupRaceBlock — o bloco Troféu no hub', () => {
       const text = screen.getByTestId('cup-race-block').textContent;
       expect(text).not.toContain('4321');
       expect(text).not.toMatch(/dorsal/i);
+    });
+  });
+
+  /* Revisão da Fase 3, aviso [c]: "Não vou", "Não fui" e "Saltar" fecham o
+     hub — com os "Detalhes da prova" por gravar, o navGuard pergunta
+     primeiro, e recusado nada abre, nada se grava e o hub fica. */
+  describe('com alterações por gravar no hub (navGuard que recusa)', () => {
+    let guard;
+    beforeEach(() => {
+      guard = vi.fn(() => false);
+      useAppStore.setState({ navGuard: guard, activeTab: 'calendario' });
+    });
+
+    it('"Não vou": pede o navGuard antes do diálogo — recusado, nada abre, nada grava, o hub fica', () => {
+      hoje('2027-01-19');
+      render(<CupRaceBlock race={X3} />);
+      fireEvent.click(screen.getByTestId('cup-race-nao-vou'));
+      expect(guard).toHaveBeenCalledWith('calendario');
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(calls).toEqual([]);
+    });
+
+    it('"Não fui": o mesmo', () => {
+      hoje('2027-01-25');
+      render(<CupRaceBlock race={X3} />);
+      fireEvent.click(screen.getByTestId('cup-race-nao-fui'));
+      expect(guard).toHaveBeenCalled();
+      expect(screen.queryByTestId('cup-nao-fui-dialog')).not.toBeInTheDocument();
+      expect(calls).toEqual([]);
+    });
+
+    it('"Saltar": confirmado o salto, o navGuard recusa — o diálogo fecha, nada grava, o hub fica', async () => {
+      hoje('2027-01-19');
+      render(<CupRaceBlock race={X3} />);
+      fireEvent.click(screen.getByTestId('cup-mudar-papel'));
+      fireEvent.click(screen.getByLabelText(/^Saltar/));
+      fireEvent.click(screen.getByTestId('cup-papel-guardar'));
+      fireEvent.click(screen.getByTestId('cup-saltar-confirmar'));
+      await waitFor(() => expect(screen.queryByTestId('cup-saltar-dialog')).not.toBeInTheDocument());
+      expect(guard).toHaveBeenCalled();
+      expect(actions.setCupRoundIntent).not.toHaveBeenCalled();
+      expect(actions.setEditingRaceId).not.toHaveBeenCalled();
+    });
+
+    it('sem nada por gravar (navGuard que aceita): segue como antes', async () => {
+      hoje('2027-01-19');
+      guard.mockReturnValue(true);
+      render(<CupRaceBlock race={X3} />);
+      fireEvent.click(screen.getByTestId('cup-race-nao-vou'));
+      fireEvent.click(screen.getByTestId('cup-race-nao-vou-confirmar'));
+      await waitFor(() => expect(actions.setCupParticipation).toHaveBeenCalled());
+      expect(calls).toEqual([
+        ['setEditingRaceId', null],
+        ['setCupParticipation', 'r-c3', { decision: 'nao_vou', decision_source: 'atleta' }],
+      ]);
+    });
+  });
+
+  /* ── Fase 4 (2026-09-27): a correspondência com a classificação oficial ── */
+  describe('Fase 4 — "És tu?" e a frase de falha', () => {
+    const DONE = { ...X3, status: 'concluida' };
+    const PROPOSTA = { round_id: 'r-c3', position: 120, category_code: 'M45', category_position: 29, points: 5, official_time_s: 2172, match_status: 'proposta', points_source: 'calculado' };
+    const publicar = (results, extra = {}) => cupState({
+      edition: { sync_mode: 'publicar' },
+      results: { status: 'ready', enrollmentId: 'enr1', teamId: 't-ccd', teamRows: [], standing: null, publication: {}, m2: true, rows: [], ...results },
+      ...extra,
+    });
+
+    beforeEach(() => {
+      hoje('2027-01-25');
+      useAppStore.setState({ raceEvents: [DONE], runs: [...RUNS, { id: 'run3', race_id: 'x3', date: '2027-01-24', distance_km: 7.4, duration_seconds: 2180 }] });
+    });
+
+    it('com uma linha por confirmar: o "És tu?" no lugar da linha oficial', async () => {
+      useAppStore.setState({ cup: publicar({ rows: [PROPOSTA] }) });
+      render(<CupRaceBlock race={DONE} />);
+      expect(screen.getByTestId('cup-match')).toHaveTextContent('J3 · Corrida CCD Cascais: 29.º no escalão M45, 36:12.');
+      expect(screen.getByTestId('cup-race-resultado')).not.toHaveTextContent('Ainda sem classificação oficial.');
+      expect(screen.getByTestId('cup-race-resultado')).not.toHaveTextContent('Tempo oficial');
+      fireEvent.click(screen.getByTestId('cup-match-sim'));
+      await waitFor(() => expect(actions.confirmCupResult).toHaveBeenCalledWith('r-c3'));
+      // O foco fica na migalha (a pergunta sai).
+      await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('cup-race-migalha')));
+    });
+
+    it('a pergunta aparece mesmo com a prova por registar (o "Registar" do hub continua)', () => {
+      useAppStore.setState({ raceEvents: [X3], runs: RUNS, cup: publicar({ rows: [PROPOSTA] }) });
+      render(<CupRaceBlock race={X3} />);
+      expect(screen.getByTestId('cup-match')).toBeInTheDocument();
+      expect(screen.getByTestId('cup-race-nao-fui')).toBeInTheDocument();
+    });
+
+    it('confirmada: os pontos calculados pela app dizem-se provisórios', () => {
+      useAppStore.setState({ cup: publicar({ rows: [{ ...PROPOSTA, match_status: 'confirmada' }], teamRows: [{ round_id: 'r-c3', position: 6, points: 412, points_source: 'calculado' }] }) });
+      render(<CupRaceBlock race={DONE} />);
+      expect(screen.getByTestId('cup-race-resultado')).toHaveTextContent('Tempo oficial 36:12 · 29.º no escalão M45 · 5 pontos (provisórios)');
+      expect(screen.getByTestId('cup-race-coletiva')).toHaveTextContent('O teu clube ficou em 6.º na coletiva desta jornada · 412 pontos (conta da app a partir da geral oficial)');
+    });
+
+    it('confirmada com os pontos oficiais da geral: sem a marca de provisórios', () => {
+      useAppStore.setState({ cup: publicar({ rows: [{ ...PROPOSTA, match_status: 'confirmada', points: 7, points_source: 'oficial' }] }) });
+      render(<CupRaceBlock race={DONE} />);
+      const res = screen.getByTestId('cup-race-resultado');
+      expect(res).toHaveTextContent('Tempo oficial 36:12 · 29.º no escalão M45 · 7 pontos');
+      expect(res).not.toHaveTextContent('provisórios');
+    });
+
+    it('rever_dorsal: a frase exata e [Rever o dorsal] → o Troféu com o "Gerir inscrição" aberto, pelo caminho da migalha', () => {
+      useAppStore.setState({ cup: publicar({ publication: { 'r-c3': '2027-01-24T18:37:00Z' } }) });
+      render(<CupRaceBlock race={DONE} />);
+      expect(screen.getByTestId('cup-race-correspondencia')).toHaveTextContent('Não consegui confirmar. Revê o dorsal ou fala com o suporte.');
+      // Nunca o dorsal dele nem outro.
+      expect(screen.getByTestId('cup-race-block').textContent).not.toContain('4321');
+      const btn = screen.getByTestId('cup-race-rever-dorsal');
+      expect(parseInt(btn.style.minHeight, 10)).toBe(44);
+      fireEvent.click(btn);
+      expect(calls).toEqual([
+        ['setActiveTab', 'provas'],
+        ['setEditingRaceId', null],
+        ['requestCupScreen', { mode: 'gerir' }],
+      ]);
+    });
+
+    it('[Rever o dorsal] com o separador recusado (alterações por gravar): o hub fica e não fica pedido nenhum', () => {
+      actions.setActiveTab.mockImplementation((...a) => { calls.push(['setActiveTab', ...a]); return false; });
+      useAppStore.setState({ cup: publicar({ publication: { 'r-c3': '2027-01-24T18:37:00Z' } }) });
+      render(<CupRaceBlock race={DONE} />);
+      fireEvent.click(screen.getByTestId('cup-race-rever-dorsal'));
+      expect(actions.requestCupScreen).not.toHaveBeenCalled();
+      expect(actions.setEditingRaceId).not.toHaveBeenCalled();
+    });
+
+    it('sem_dorsal: a outra frase', () => {
+      useAppStore.setState({ cup: publicar({ publication: { 'r-c3': '2027-01-24T18:37:00Z' } }, { enrollment: { ...ENR, bib: null } }) });
+      render(<CupRaceBlock race={DONE} />);
+      expect(screen.getByTestId('cup-race-correspondencia')).toHaveTextContent('Sem dorsal não consigo ler o teu resultado oficial. Junta-o em «Gerir inscrição».');
+    });
+
+    it('a observar (ou sem a M2): nem pergunta nem frase de falha', () => {
+      for (const cup of [
+        cupState({ edition: { sync_mode: 'observar' }, results: { status: 'ready', enrollmentId: 'enr1', rows: [], teamRows: [], publication: { 'r-c3': '2027-01-24T18:37:00Z' }, m2: true } }),
+        publicar({ publication: { 'r-c3': '2027-01-24T18:37:00Z' }, m2: false }),
+      ]) {
+        useAppStore.setState({ cup });
+        const { unmount } = render(<CupRaceBlock race={DONE} />);
+        expect(screen.queryByTestId('cup-race-correspondencia')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('cup-match')).not.toBeInTheDocument();
+        unmount();
+      }
     });
   });
 });

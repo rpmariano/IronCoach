@@ -7,6 +7,7 @@ import { useToast } from '../shared/ToastProvider';
 import { CupStatus } from './CupBits';
 import CupRoundPlanControls from './CupRoundPlanControls';
 import CupPromoteDialog from './CupPromoteDialog';
+import CupMatchPrompt, { MATCH_ISSUE_TEXT } from './CupMatchPrompt';
 import { CupLink, resultadoOficialPartes, temClube } from './CupClassificacao';
 import { dataLonga, horaLabel, kmLabel } from '../../utils/cupCalendar';
 import { racePriorityOf } from '@formulas/mainRace.ts';
@@ -19,7 +20,13 @@ import { racePriorityOf } from '@formulas/mainRace.ts';
    confirmada), a prova no calendário e promovê-la a principal (com o custo
    dito antes, CupPromoteDialog). Depois: o resultado oficial ou o lugar que
    ele próprio registou, os links oficiais, e — se ainda não registou —
-   "Registar" e "Não fui". O dorsal nunca aparece. */
+   "Registar" e "Não fui". O dorsal nunca aparece.
+
+   Fase 4 (2026-09-27): com uma linha por confirmar, o "És tu?"
+   (CupMatchPrompt) logo a seguir ao estado; com uma falha da
+   correspondência, a frase única. "Sim" deixa a folha aberta (o foco vai
+   para a linha de dados); "Não sou eu" pede ao ecrã que a feche e leve o
+   foco ao "Gerir inscrição" (`onMatchRejected`). */
 
 const DECISOES = [
   { value: 'vou', label: 'Vou', icon: '✓', color: 'var(--ok)' },
@@ -47,7 +54,7 @@ export function linhaDeDados(round, today) {
   return [quando, onde, round?.location ? String(round.location) : null].filter(Boolean).join(' · ');
 }
 
-export default function CupJornadaSheet({ view, round, onClose, onRegistar, onNaoFui, onOpenRace, registando = false }) {
+export default function CupJornadaSheet({ view, round, onClose, onRegistar, onNaoFui, onOpenRace, onMatchRejected, registando = false }) {
   const setCupParticipation = useAppStore((s) => s.setCupParticipation);
   const setCupRoundPriority = useAppStore((s) => s.setCupRoundPriority);
   const { showToast } = useToast();
@@ -109,7 +116,7 @@ export default function CupJornadaSheet({ view, round, onClose, onRegistar, onNa
     >
       <div className="flex flex-col gap-3 pt-2 pb-1">
         <div className="flex flex-col gap-1">
-          <p className="m-0 text-[12.5px]" data-testid="cup-jornada-dados" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
+          <p id={`cup-jornada-${round.id}-dados`} tabIndex={-1} className="m-0 text-[12.5px]" data-testid="cup-jornada-dados" style={{ color: 'var(--text-3)', lineHeight: 'var(--leading-normal)' }}>
             {linhaDeDados(round, today)}
           </p>
           {round.dateChange && (
@@ -124,7 +131,21 @@ export default function CupJornadaSheet({ view, round, onClose, onRegistar, onNa
               {principalNome ? `É o dia da tua ${principalNome} (principal)` : 'É o dia de uma prova principal tua'} — as principais mandam.
             </p>
           )}
+          {!round.proposal && round.matchIssue && MATCH_ISSUE_TEXT[round.matchIssue] && (
+            <p className="m-0 text-[12px] font-bold" data-testid="cup-jornada-correspondencia" style={{ color: 'var(--warn)' }}>
+              {MATCH_ISSUE_TEXT[round.matchIssue]}
+            </p>
+          )}
         </div>
+
+        {round.proposal && (
+          <CupMatchPrompt
+            round={round}
+            idPrefix={`cup-match-folha-${round.id}`}
+            onConfirmed={() => setTimeout(() => document.getElementById(`cup-jornada-${round.id}-dados`)?.focus(), 0)}
+            onRejected={() => onMatchRejected?.()}
+          />
+        )}
 
         {aplicavel && (
           <>
@@ -198,7 +219,8 @@ export default function CupJornadaSheet({ view, round, onClose, onRegistar, onNa
 
         {round.done && (
           <div className="flex flex-col gap-1.5" data-testid="cup-jornada-resultado">
-            {oficiais.length > 0 ? (
+            {/* Com a linha por confirmar, a pergunta (acima) está no lugar dela. */}
+            {round.proposal ? null : oficiais.length > 0 ? (
               <p className="m-0 text-[13px] font-bold" style={{ color: 'var(--text-1)' }}>{oficiais.join(' · ')}</p>
             ) : (
               <>

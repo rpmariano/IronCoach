@@ -13,8 +13,10 @@ const DATE_STATUS_STYLE = {
 
 /* As jornadas de uma edição (specs/trofeu.md §6.2), 2026-09-26. Lista +
    modal de criar/editar (RoundForm, que trata do "Confirmar jornada" e dos
-   percursos). */
-export default function RoundsPanel({ edition, competition, readOnly }) {
+   percursos). Fase 4: `adapter` (o results_adapter da edição) valida o link
+   dos resultados no RoundForm; `onRoundsChanged` recebe as jornadas a cada
+   leitura (a guarda do "Fechar edição", no detalhe da edição). */
+export default function RoundsPanel({ edition, competition, readOnly, adapter = null, onRoundsChanged }) {
   const [rounds, setRounds] = useState(null);
   const [coursesByRound, setCoursesByRound] = useState({});
   const [series, setSeries] = useState([]);
@@ -32,6 +34,8 @@ export default function RoundsPanel({ edition, competition, readOnly }) {
     if (!roundsRes.ok) { setError(roundsRes.error?.message || 'Falha ao carregar jornadas.'); setLoading(false); return; }
     setSeries(seriesRes.ok ? seriesRes.data : []);
     setRounds(roundsRes.data);
+    // O detalhe da edição usa-as na guarda do "Fechar edição" (Fase 4).
+    onRoundsChanged?.(roundsRes.data);
     const coursesRes = await listCourses(roundsRes.data.map((r) => r.id));
     const grouped = {};
     for (const c of (coursesRes.ok ? coursesRes.data : [])) {
@@ -39,6 +43,9 @@ export default function RoundsPanel({ edition, competition, readOnly }) {
     }
     setCoursesByRound(grouped);
     setLoading(false);
+    // onRoundsChanged fica fora das dependências: mudar a função não pede
+    // outra leitura.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [edition.id, competition?.id]);
 
   useEffect(() => { load(); }, [load]);
@@ -132,6 +139,7 @@ export default function RoundsPanel({ edition, competition, readOnly }) {
           onDeleted={handleClosed}
           onCoursesChanged={load}
           readOnly={readOnly}
+          adapter={adapter}
         />
       )}
     </div>

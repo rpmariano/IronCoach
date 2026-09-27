@@ -505,13 +505,14 @@ describe('Fase 3 — a classificação (cup_results / cup_team_results)', () => 
     net.tables.cup_team_results = ok([{ round_id: 'r-c2', position: 6, points: 412 }]);
     catalogTables();
     await useAppStore.getState().loadCup();
-    expect(readsOf('cup_results')).toEqual([{ table: 'cup_results', op: 'select', columns: CUP_RESULT_COLUMNS, filters: [['eq', 'enrollment_id', 'enr1'], ['eq', 'match_status', 'confirmada']] }]);
-    expect(readsOf('cup_team_results')).toEqual([{ table: 'cup_team_results', op: 'select', columns: CUP_TEAM_RESULT_COLUMNS, filters: [['eq', 'team_id', 't-naza']] }]);
+    // Com a M2 (Fase 4): também as linhas por confirmar, e a fonte dos pontos.
+    expect(readsOf('cup_results')).toEqual([{ table: 'cup_results', op: 'select', columns: `${CUP_RESULT_COLUMNS}, points_source`, filters: [['eq', 'enrollment_id', 'enr1'], ['in', 'match_status', ['proposta', 'confirmada', 'perdida']]] }]);
+    expect(readsOf('cup_team_results')).toEqual([{ table: 'cup_team_results', op: 'select', columns: `${CUP_TEAM_RESULT_COLUMNS}, points_source`, filters: [['eq', 'team_id', 't-naza']] }]);
     for (const c of [...readsOf('cup_results'), ...readsOf('cup_team_results')]) {
-      expect(c.columns).not.toMatch(/match_hash|team_name|athletes_count|\*/);
+      expect(c.columns).not.toMatch(/match_hash|team_name|athletes_count|bib_key|standings_key|\*/);
     }
     const { results } = useAppStore.getState().cup;
-    expect(results).toMatchObject({ status: 'ready', enrollmentId: 'enr1', teamId: 't-naza' });
+    expect(results).toMatchObject({ status: 'ready', enrollmentId: 'enr1', teamId: 't-naza', m2: true });
     expect(results.rows).toHaveLength(1);
     expect(results.teamRows).toEqual([{ round_id: 'r-c2', position: 6, points: 412 }]);
   });
@@ -534,7 +535,7 @@ describe('Fase 3 — a classificação (cup_results / cup_team_results)', () => 
     net.rpcs.update_enrollment = ok({ ...ENROLLMENT, team_id: 't-ccd' });
     const res = await useAppStore.getState().updateEnrollment('enr1', { team_id: 't-ccd' });
     expect(res.ok).toBe(true);
-    expect(readsOf('cup_team_results')).toEqual([{ table: 'cup_team_results', op: 'select', columns: CUP_TEAM_RESULT_COLUMNS, filters: [['eq', 'team_id', 't-ccd']] }]);
+    expect(readsOf('cup_team_results')).toEqual([{ table: 'cup_team_results', op: 'select', columns: `${CUP_TEAM_RESULT_COLUMNS}, points_source`, filters: [['eq', 'team_id', 't-ccd']] }]);
     const { results } = useAppStore.getState().cup;
     expect(results).toMatchObject({ status: 'ready', enrollmentId: 'enr1', teamId: 't-ccd', teamRows: [] });
     // A linha do próprio continua (é da inscrição, não do clube).
@@ -722,25 +723,53 @@ describe('Fase 3 — as ações do calendário do Troféu', () => {
   it('registerCupRound com a prova da jornada no calendário: o raceId, sem RPC', async () => {
     useAppStore.setState({ raceEvents: [...LOADED.raceEvents, JORNADA_2] });
     const res = await useAppStore.getState().registerCupRound('r-c2');
-    expect(res).toEqual({ ok: true, data: { raceId: 'x2' } });
+    expect(res).toEqual({ ok: true, data: { raceId: 'x2', done: false } });
     expect(net.calls).toEqual([]);
+  });
+
+  /* Revisão da Fase 3, aviso [b]: "Registar" numa jornada cuja prova já tem
+     corrida (a "Prova fora da agenda" que a sincronização ligou, ou uma
+     concluída) não pode reabrir o registo — `done` diz ao ecrã que abra o
+     hub. */
+  it('registerCupRound com a prova já feita (concluída ou com corrida ligada): done', async () => {
+    useAppStore.setState({ raceEvents: [...LOADED.raceEvents, { ...JORNADA_2, status: 'concluida' }] });
+    expect(await useAppStore.getState().registerCupRound('r-c2')).toEqual({ ok: true, data: { raceId: 'x2', done: true } });
+    useAppStore.setState({ raceEvents: [...LOADED.raceEvents, JORNADA_2], runs: [...LOADED.runs, { id: 'run-x2', race_id: 'x2', date: '2027-01-10' }] });
+    expect(await useAppStore.getState().registerCupRound('r-c2')).toEqual({ ok: true, data: { raceId: 'x2', done: true } });
+    expect(net.calls).toEqual([]);
+  });
+
+  it('registerCupRound depois de "Prova fora da agenda": grava "Vou", a sincronização liga a prova com corrida — done', async () => {
+    const foraDaAgenda = { id: 'fora', date: '2027-01-10', race_priority: 'b', cup_round_id: 'r-c2', status: 'agendada' };
+    net.tables.race_events = ok([...LOADED.raceEvents, foraDaAgenda]);
+    net.tables.coach_plans = ok([]);
+    useAppStore.setState({ runs: [...LOADED.runs, { id: 'run-fora', race_id: 'fora', date: '2027-01-10' }] });
+    const res = await useAppStore.getState().registerCupRound('r-c2');
+    expect(res).toEqual({ ok: true, data: { raceId: 'fora', done: true } });
+  });
+
+  it('registerCupRound num dia de principal: a colisão, com a frase certa (não a da distância)', async () => {
+    net.tables.race_events = ok(LOADED.raceEvents);
+    net.rpcs.set_participation = (args) => ok({ id: `p-${args.p_round_id}`, enrollment_id: 'enr1', round_id: args.p_round_id, decision: null, decision_source: 'colisao' });
+    const res = await useAppStore.getState().registerCupRound('r-c2');
+    expect(res).toEqual({ ok: false, error: { code: 'colisao', message: 'Nesse dia tens uma prova principal: a jornada ficou por decidir. Regista a corrida nessa prova.' }, unavailable: false });
   });
 
   it('registerCupRound sem prova (passada, confirmada): grava "Vou", relê as provas e devolve a que a sincronização criou', async () => {
     net.tables.race_events = ok([...LOADED.raceEvents, JORNADA_2]);
     net.tables.coach_plans = ok([]);
     const res = await useAppStore.getState().registerCupRound('r-c2');
-    expect(res).toEqual({ ok: true, data: { raceId: 'x2' } });
+    expect(res).toEqual({ ok: true, data: { raceId: 'x2', done: false } });
     expect(rpcCalls()).toEqual([{ rpc: 'set_participation', args: { p_round_id: 'r-c2', p_patch: { decision: 'vou', decision_source: 'atleta' } } }]);
     expect(useAppStore.getState().raceEvents.map((r) => r.id)).toEqual(['meia', 'x2']);
   });
 
-  it('registerCupRound sem prova depois da sincronização: "sem_prova", com o caminho alternativo', async () => {
+  // A causa (falta a distância, ou outra) di-la o ecrã, que conhece o
+  // percurso da jornada (aviso [b]): aqui a frase não culpa ninguém.
+  it('registerCupRound sem prova depois da sincronização: "sem_prova"', async () => {
     net.tables.race_events = ok(LOADED.raceEvents);
     const res = await useAppStore.getState().registerCupRound('r-c2');
-    expect(res.ok).toBe(false);
-    expect(res.error.code).toBe('sem_prova');
-    expect(res.error.message).toContain('«Prova fora da agenda»');
+    expect(res).toEqual({ ok: false, error: { code: 'sem_prova', message: 'Não consegui criar a prova desta jornada.' }, unavailable: false });
   });
 
   it('registerCupRound numa jornada que ainda não passou (ou provável): recusa sem RPC', async () => {
@@ -817,5 +846,180 @@ describe('Fase 3 — as ações do calendário do Troféu', () => {
     expect(useAppStore.getState().cupScreenRequest).not.toBeNull();
     useAppStore.getState().setSession(null);
     expect(useAppStore.getState().cupScreenRequest).toBeNull();
+  });
+});
+
+/* ── Fase 4 (2026-09-27): a correspondência com a classificação oficial ──
+   A linha por confirmar ("És tu?"), a fonte dos pontos, a linha na geral e
+   a publicação — e a M2 por aplicar, que nunca é "Troféu indisponível". */
+describe('Fase 4 — a classificação com a M2', () => {
+  const readsOf = (t) => net.selects.filter((c) => c.table === t);
+  const PUBLICAR = { ...F.CASCAIS_34_ABERTA, sync_mode: 'publicar' };
+  const PROPOSTA = { round_id: 'r-c2', position: 41, category_code: 'M35', category_position: 12, points: 5, official_time_s: 1900, match_status: 'proposta', points_source: 'calculado' };
+  const STANDING = { category_code: 'M35', category_rank: 12, total_points: 43, rounds_scored: 4, source_checked_at: '2027-01-12T18:00:00Z' };
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2027-01-20T12:00:00Z'));
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('quem não está inscrito: nenhuma leitura da geral nem da publicação', async () => {
+    net.tables.cup_editions = ok([PUBLICAR]);
+    await useAppStore.getState().loadCup();
+    expect(tablesRead().sort()).toEqual(['cup_edition_dismissals', 'cup_editions', 'cup_enrollments']);
+  });
+
+  it('a publicar: as linhas por confirmar, a geral e a publicação das jornadas que já passaram — coluna a coluna', async () => {
+    net.tables.cup_editions = ok([PUBLICAR]);
+    net.tables.cup_enrollments = ok([ENROLLMENT]);
+    net.tables.cup_results = ok([PROPOSTA]);
+    net.tables.cup_standings = ok(STANDING);
+    net.tables.cup_round_publication = ok([{ round_id: 'r-c2', results_ready_at: '2027-01-10T18:37:00Z' }, { round_id: 'r-c1', results_ready_at: null }]);
+    catalogTables();
+    await useAppStore.getState().loadCup();
+    expect(readsOf('cup_standings')).toEqual([{ table: 'cup_standings', op: 'select', columns: 'category_code, category_rank, total_points, rounds_scored, source_checked_at', filters: [['eq', 'enrollment_id', 'enr1']] }]);
+    // Só as jornadas desta edição que já passaram (hoje 20/01: a 1.ª e a 2.ª; a 6.ª foi cancelada).
+    expect(readsOf('cup_round_publication')).toEqual([{ table: 'cup_round_publication', op: 'select', columns: 'round_id, results_ready_at', filters: [['in', 'round_id', ['r-c1', 'r-c2']]] }]);
+    for (const c of net.selects.filter((x) => /^cup_(results|team_results|standings|round_publication)$/.test(x.table))) {
+      expect(c.columns).not.toMatch(/bib_key|standings_key|match_hash|key_hash|match_refused_key|\*/);
+    }
+    const { results } = useAppStore.getState().cup;
+    expect(results).toMatchObject({ status: 'ready', m2: true, standing: STANDING, publication: { 'r-c2': '2027-01-10T18:37:00Z' } });
+    const v = buildCupView({ cup: useAppStore.getState().cup, profile: LOADED.profile, raceEvents: [], runs: [], today: '2027-01-20' });
+    expect(v.results.pending.map((r) => r.id)).toEqual(['r-c2']);
+    expect(v.results.summary.points).toBe(43);
+  });
+
+  it('sem publicar (desligado/observar): a publicação não se lê', async () => {
+    for (const sync_mode of ['desligado', 'observar']) {
+      __resetCupModuleState();
+      net.selects = [];
+      net.tables.cup_editions = ok([{ ...F.CASCAIS_34_ABERTA, sync_mode }]);
+      net.tables.cup_enrollments = ok([ENROLLMENT]);
+      catalogTables();
+      useAppStore.setState({ cup: CUP_EMPTY });
+      await useAppStore.getState().loadCup();
+      expect(readsOf('cup_round_publication')).toEqual([]);
+      expect(useAppStore.getState().cup.results.publication).toEqual({});
+    }
+  });
+
+  it('M2 por aplicar (42703 na coluna nova): uma vez a leitura da Fase 3 — nunca "indisponível" — e não se volta a perguntar', async () => {
+    net.tables.cup_editions = ok([PUBLICAR]);
+    net.tables.cup_enrollments = ok([ENROLLMENT]);
+    net.tables.cup_participations = ok([{ id: 'p3', enrollment_id: 'enr1', round_id: 'r-c3', decision: 'vou' }]);
+    const semM2 = { data: null, error: { code: '42703', message: 'column cup_results.points_source does not exist' } };
+    net.tables.cup_results = (q) => (q.columns.includes('points_source') ? semM2 : ok([{ round_id: 'r-c1', position: 41, category_code: 'M35', category_position: 12, points: 5, official_time_s: 1900, match_status: 'confirmada' }]));
+    net.tables.cup_team_results = (q) => (q.columns.includes('points_source') ? { data: null, error: { code: '42703', message: 'column does not exist' } } : ok([{ round_id: 'r-c1', position: 6, points: 412 }]));
+    net.tables.cup_standings = { data: null, error: { code: '42P01', message: 'relation "public.cup_standings" does not exist' } };
+    catalogTables();
+    const before = nonCupSnapshot();
+    await useAppStore.getState().loadCup();
+    const cup = useAppStore.getState().cup;
+    expect(cup.status).toBe('ready');
+    expect(cup.catalog[F.CASCAIS_34.id].status).toBe('ready');
+    expect(cup.participations).toHaveLength(1);
+    expect(cup.results).toMatchObject({ status: 'ready', m2: false, standing: null });
+    expect(cup.results.rows).toHaveLength(1);
+    expect(cup.results.teamRows).toEqual([{ round_id: 'r-c1', position: 6, points: 412 }]);
+    // A 2.ª tentativa é a da Fase 3, tal e qual.
+    expect(readsOf('cup_results').map((c) => [c.columns, c.filters])).toEqual([
+      ['round_id, position, category_code, category_position, points, official_time_s, match_status, points_source', [['eq', 'enrollment_id', 'enr1'], ['in', 'match_status', ['proposta', 'confirmada', 'perdida']]]],
+      ['round_id, position, category_code, category_position, points, official_time_s, match_status', [['eq', 'enrollment_id', 'enr1'], ['eq', 'match_status', 'confirmada']]],
+    ]);
+    expectNothingElseChanged(before);
+    // A vista é a da Fase 3: a confirmada, e nenhuma frase de falha.
+    const v = buildCupView({ cup, profile: LOADED.profile, raceEvents: [], runs: [], today: '2027-01-20' });
+    expect(Object.keys(v.results.byRound)).toEqual(['r-c1']);
+    expect(v.results.m2).toBe(false);
+    expect(v.rounds.every((r) => r.matchIssue === null && r.proposal === null)).toBe(true);
+
+    // A leitura seguinte vai direta à da Fase 3.
+    net.selects = [];
+    await useAppStore.getState().loadCup({ force: true });
+    expect(readsOf('cup_results').map((c) => c.columns)).toEqual(['round_id, position, category_code, category_position, points, official_time_s, match_status']);
+    expect(readsOf('cup_standings')).toEqual([]);
+  });
+
+  it('só a coletiva sem a coluna nova: a linha dele fica com a M2, a coletiva lê-se como na Fase 3', async () => {
+    net.tables.cup_editions = ok([F.CASCAIS_34_ABERTA]);
+    net.tables.cup_enrollments = ok([ENROLLMENT]);
+    net.tables.cup_results = ok([PROPOSTA]);
+    net.tables.cup_team_results = (q) => (q.columns.includes('points_source') ? { data: null, error: { code: 'PGRST204', message: "Could not find the 'points_source' column" } } : ok([{ round_id: 'r-c1', position: 6, points: 412 }]));
+    catalogTables();
+    await useAppStore.getState().loadCup();
+    expect(useAppStore.getState().cup.results).toMatchObject({ status: 'ready', m2: true, teamRows: [{ round_id: 'r-c1', position: 6, points: 412 }] });
+  });
+
+  describe('"Sim, sou eu" e "Não sou eu"', () => {
+    async function inscrito() {
+      net.tables.cup_editions = ok([PUBLICAR]);
+      net.tables.cup_enrollments = ok([ENROLLMENT]);
+      net.tables.cup_results = ok([PROPOSTA]);
+      catalogTables();
+      await useAppStore.getState().loadCup();
+      net.calls = [];
+      net.selects = [];
+    }
+
+    it('confirmCupResult: a RPC com a jornada, e a classificação relida', async () => {
+      await inscrito();
+      net.rpcs.confirm_cup_result = ok({ round_id: 'r-c2', match_status: 'confirmada', also_confirmed: 0 });
+      net.tables.cup_results = ok([{ ...PROPOSTA, match_status: 'confirmada' }]);
+      const res = await useAppStore.getState().confirmCupResult('r-c2');
+      expect(res).toEqual({ ok: true, data: { round_id: 'r-c2', match_status: 'confirmada', also_confirmed: 0 } });
+      expect(net.calls.filter((c) => c.rpc)).toEqual([{ rpc: 'confirm_cup_result', args: { p_round_id: 'r-c2' } }]);
+      expect(tablesRead()).toContain('cup_results');
+      expect(useAppStore.getState().cup.results.rows[0].match_status).toBe('confirmada');
+    });
+
+    it('rejectCupResult: a RPC com a jornada, e a linha some depois de reler', async () => {
+      await inscrito();
+      net.rpcs.reject_cup_result = ok({ round_id: 'r-c2', rejected: true });
+      net.tables.cup_results = ok([]);
+      const res = await useAppStore.getState().rejectCupResult('r-c2');
+      expect(res.ok).toBe(true);
+      expect(net.calls.filter((c) => c.rpc)).toEqual([{ rpc: 'reject_cup_result', args: { p_round_id: 'r-c2' } }]);
+      expect(useAppStore.getState().cup.results.rows).toEqual([]);
+    });
+
+    it('"Não há nada para confirmar" (P0002): a frase do servidor, e relê-se na mesma (a pergunta já não existe)', async () => {
+      await inscrito();
+      net.rpcs.confirm_cup_result = { data: null, error: { code: 'P0002', message: 'Não há nada para confirmar nesta jornada' } };
+      net.tables.cup_results = ok([]);
+      const res = await useAppStore.getState().confirmCupResult('r-c2');
+      expect(res).toEqual({ ok: false, error: { code: 'P0002', message: 'Não há nada para confirmar nesta jornada' }, unavailable: false });
+      expect(useAppStore.getState().cup.results.rows).toEqual([]);
+      expect(useAppStore.getState().cup.status).toBe('ready');
+    });
+
+    it('a RPC ainda não existe (M2 por aplicar): "Ainda não está disponível." — e a competição NÃO fica indisponível', async () => {
+      await inscrito();
+      for (const [fn, action] of [['confirm_cup_result', 'confirmCupResult'], ['reject_cup_result', 'rejectCupResult']]) {
+        net.rpcs[fn] = { data: null, error: { code: 'PGRST202', message: `Could not find the function public.${fn}(p_round_id) in the schema cache` } };
+        const res = await useAppStore.getState()[action]('r-c2');
+        expect(res).toEqual({ ok: false, error: { code: 'PGRST202', message: 'Ainda não está disponível.' }, unavailable: true });
+      }
+      const cup = useAppStore.getState().cup;
+      expect(cup.status).toBe('ready');
+      expect(cup.enrollments).toHaveLength(1);
+      expect(cup.results.rows).toHaveLength(1);
+    });
+
+    it('sem sessão: nada sai', async () => {
+      useAppStore.setState({ session: null, profile: null });
+      expect((await useAppStore.getState().confirmCupResult('r-c2')).ok).toBe(false);
+      expect(net.calls).toEqual([]);
+    });
+
+    it('mudar o dorsal com uma linha por confirmar relê a classificação (o servidor apagou a do dorsal antigo)', async () => {
+      await inscrito();
+      net.rpcs.update_enrollment = ok({ ...ENROLLMENT, bib: '413' });
+      net.tables.cup_results = ok([]);
+      await useAppStore.getState().updateEnrollment('enr1', { bib: '413' });
+      expect(tablesRead()).toContain('cup_results');
+      expect(useAppStore.getState().cup.results.rows).toEqual([]);
+    });
   });
 });

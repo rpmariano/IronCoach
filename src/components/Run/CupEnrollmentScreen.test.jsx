@@ -66,6 +66,10 @@ describe('CupEnrollmentScreen', () => {
 
     passo('cup-enrollment-continuar'); // objetivo (participar por omissão) → dorsal
 
+    // Fase 4 (§7): o que o dorsal faz, dito antes de o pedir (sem
+    // consentimento novo — o texto explica).
+    expect(screen.getByTestId('cup-dorsal-ajuda')).toHaveTextContent('Opcional — dá para dizer mais tarde. Com o dorsal, a app procura a tua linha na classificação oficial de cada jornada e, da primeira vez, pergunta-te se és tu.');
+    expect(screen.getByTestId('cup-dorsal-input')).toHaveAccessibleDescription(/Com o dorsal, a app procura a tua linha/);
     fireEvent.change(screen.getByTestId('cup-dorsal-input'), { target: { value: '123' } });
     passo('cup-enrollment-continuar'); // dorsal → quem_inscreve (entry_mode por_jornada)
 
@@ -73,6 +77,7 @@ describe('CupEnrollmentScreen', () => {
     passo('cup-enrollment-continuar'); // quem_inscreve → privacidade
 
     expect(screen.getByTestId('cup-privacidade')).toBeInTheDocument();
+    expect(screen.getByTestId('cup-privacidade')).toHaveTextContent('Da classificação oficial só guardamos a linha do teu dorsal — lugar, escalão, marca e pontos, sem nomes — e o total do teu clube. Até confirmares que és tu, essa linha pode ser de outra pessoa (basta um dígito trocado no dorsal): «Não sou eu» apaga-a.');
     passo('cup-enrollment-submeter');
 
     await waitFor(() => expect(enrollCup).toHaveBeenCalledTimes(1));

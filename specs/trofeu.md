@@ -72,23 +72,31 @@ produção desde 2026-09-26 15:28 UTC
 | `cup_round_course_overrides` | `(round_id, category_code, course_code)` — exceções por escalão |
 | `cup_categories` | `edition_id`, `code`, `gender`, `min_age`, `max_age`, `course_code` |
 | `cup_teams` | `edition_id`, `name`, `short_name`, `kind` (`clube`/`individual`), `eligible_final`; `unique(edition_id, id)` |
-| `cup_team_aliases` | nomes vistos na fonte oficial → equipa (alerta "clube novo") |
+| `cup_team_aliases` | nomes vistos na fonte oficial → equipa (alerta "clube novo"); na M2, **só o admin lê** (o único leitor é o backoffice) |
 
 **Regras em `cup_editions`** (`null` = não sabemos, e a Carol cala esse
 argumento): `points_mode`, `points_table jsonb`, `points_basis`
 (`escalao`/`geral`), `team_scoring` (`soma_todos`/`melhores_n`),
 `team_min_athletes`, `team_counting_n`, `counting_rule`
 (`pct_minima`/`melhores_n`/`todas`), `counting_value`, `entry_mode`
-(`por_jornada`/`epoca`), `bib_scope` (`epoca`/`jornada`), `age_rule`,
+(`por_jornada`/`epoca`), `bib_scope` (`epoca`/`jornada`), `age_rule`
+(`data_prova`/`fim_ano_civil`/`fim_ano_epoca` — o último, da M2, é 31/12 do
+2.º ano da época, tirado do `season_label`; com ele, o CHECK só aceita
+épocas legíveis: "2026/27", "2026/2027" ou "2027", com o 2.º ano = 1.º + 1.
+Com inscrições ativas, a M2 recusa mudar `age_rule` ou `season_label`: o
+escalão e o percurso das provas "Vou" já criadas ficavam errados),
 `results_source` (`nenhuma`/`manual`/`adaptador`), `results_adapter`,
 `area_lat`, `area_lon`, `area_radius_km`, e os interruptores sem deploy
 `sync_mode` (`desligado`/`observar`/`publicar`) e `notifications_enabled`.
 
-Cascais 34.ª (provável): tabela 15-13-11-10-9-8-7-6-5-4, depois 3/2/1, base
-`null` até ao regulamento; `soma_todos` com mínimo de 4; `pct_minima` 70;
-`por_jornada`; dorsal `epoca`; área Cascais, 25 km; adaptador
-`trofeu_cascais`. Os testes levam uma 2.ª competição fictícia com valores
-diferentes em todas as colunas.
+Cascais 34.ª (regulamento geral da 33.ª, deslocado um ano): tabela
+15-13-11-10-9-8-7-6-5-4, 11.º–20.º 3, 21.º–30.º 2, 31.º em diante 1, base
+`escalao`; `soma_todos` com mínimo de 4; `pct_minima` 70; `por_jornada`;
+dorsal `epoca` (o mesmo toda a época); escalões **por ano de nascimento** com
+referência ao 2.º ano da época (`fim_ano_epoca`: 32 escalões de Sub-12 a
+M80, seed da M2 — nenhuma das regras da M1 acerta numa jornada de
+dezembro); área Cascais, 25 km; adaptador `trofeu_cascais`. Os testes levam
+uma 2.ª competição fictícia com valores diferentes em todas as colunas.
 
 ### 3.2 Por atleta (RLS "own rows", **sem** "admin read all")
 
@@ -109,7 +117,13 @@ diferentes em todas as colunas.
 - **`cup_results`**: a linha oficial **do próprio** — `round_id`, `position`,
   `category_code`, `category_position`, `points`, `official_time_s`,
   `match_status` (`proposta`/`confirmada`/`rejeitada`/`perdida`),
-  `match_hash`. Fica enquanto houver conta; o atleta pode apagá-la.
+  `match_hash`; na M2, `bib_key` (hash edição:dorsal), `standings_key` (a
+  chave da linha na geral, hash) e `points_source` (`calculado` =
+  provisórios, da página da prova; `oficial` = da geral). Fica enquanto
+  houver conta; o atleta pode apagá-la. A recusa ("não sou eu") vive em
+  `cup_enrollments.match_refused_key` (a `bib_key` recusada).
+- **`cup_standings`** (M2): a linha **do próprio** na classificação geral
+  oficial (escalão, lugar, total, provas com pontos, quando foi lida).
 - **`cup_season_summaries`**: resumo final por inscrição (presenças, pontos,
   lugar no escalão, clube, fonte `app`/`oficial`), gravado ao fechar a edição.
 
@@ -120,7 +134,15 @@ diferentes em todas as colunas.
   `authenticated`. Fica fora das tabelas auditadas para o job não sujar a
   auditoria.
 - **`cup_team_results`**: totais por clube e jornada (dado público do
-  organizador). Leitura `authenticated`.
+  organizador). Na M2, `points_source`: a coletiva por jornada é uma conta
+  da app sobre a geral oficial (`calculado`), gravada só para clubes com
+  inscritos — por isso a M2 fecha a leitura: o admin, e quem tem inscrição
+  **ativa** nessa edição com esse `team_id` (a coletiva do SEU clube, a única
+  que o cliente lê). Aberta a todos, a lista de clubes com linhas dizia que
+  clubes têm atletas da app.
+- **`cup_sync_state`** (M2): o estado do job por edição e página (hash,
+  pronta/estável e o modo em que ficou estável, códigos, contagens por
+  escalão, o trinco da volta). **Só agregados**; só o admin lê.
 - **`cup_audit_log`**: triggers `AFTER INSERT/UPDATE/DELETE` em
   `cup_editions`, `cup_rounds`, `cup_round_courses`, `cup_teams`; guarda
   `auth.uid()` e `current_user` (o SQL direto também fica registado).
@@ -159,9 +181,13 @@ Os triggers levam `WHEN` nas colunas que interessam.
 as jornadas futuras e por registar sem corrida; as corridas ficam como provas
 normais), `set_participation`, `preview_round_change(round_id, patch)` (só
 lê, responde em bandas, `is_admin()` lá dentro), `unmatched_team_names`
-(textos normalizados, sem `user_id` nem contagens), `close_edition`. Todas
-`security definer` com EXECUTE a `authenticated` e a guarda dentro — nunca
-EXECUTE revogado numa função usada por políticas.
+(textos normalizados, sem `user_id` nem contagens), `close_edition` (na M2,
+recusa sem jornadas, com a última sem data ou antes de ela passar), e na M2
+`confirm_cup_result(round_id)` ("Sim, sou eu"; confirma com ela as outras
+propostas do mesmo dorsal **e da mesma linha** — a mesma `standings_key`) e
+`reject_cup_result(round_id)` ("Não sou eu").
+Todas `security definer` com EXECUTE a `authenticated` e a guarda dentro —
+nunca EXECUTE revogado numa função usada por políticas.
 
 ## 4. Fluxos do atleta
 
@@ -266,8 +292,10 @@ outras provas). Sem inscrição, `groupRaces` dá a saída de hoje.
   a classificação final oficial.
 - "Épocas anteriores" em modo consulta.
 - Retenção: os resultados do próprio ficam enquanto houver conta
-  (apagáveis); `bib`, `match_hash` e os dados de correspondência apagam-se no
-  `close_edition`; de terceiros nunca se guardou nada.
+  (apagáveis); `bib`, `match_hash` e os dados de correspondência (`bib_key`,
+  `standings_key`, `match_refused_key`, `key_hash` da geral e as linhas nunca
+  confirmadas) apagam-se no `close_edition`; de terceiros nunca se guardou
+  nada.
 
 ## 5. A Carol
 
@@ -337,8 +365,11 @@ calculado.
 1. **Edições:** estado, "Publicar edição" e "Voltar a 'por anunciar'" (alternam
    quantas vezes for preciso; esconder fecha as inscrições novas e o convite, e
    quem já está inscrito mantém tudo), **"Fechar edição"** (`close_edition`:
-   `encerrada`, inscrições a `concluida`, grava os resumos, apaga dorsais e
-   dados de correspondência). As regras da edição ficam por SQL em 2026/27.
+   `encerrada`, inscrições a `concluida`, grava os resumos — com a geral
+   oficial quando há —, apaga dorsais e dados de correspondência). Recusa,
+   no cliente e no servidor, sem jornadas ou antes de passar a última
+   (decisão do dono, 2026-09-27). As regras da edição ficam por SQL em
+   2026/27.
 2. **Jornadas:** data e `date_status`, local, terreno, percursos com metros e
    hora, exceções por escalão, prazo, links, `source_ref`, `series_id`.
    "Confirmar jornada" é um botão à parte e **pede sempre** a
@@ -355,39 +386,102 @@ calculado.
 
 ## 7. Job da classificação e privacidade
 
-`cup-standings-sync` (Edge Function), por `pg_cron` (criado à mão, com
-`x-cron-secret` verificado dentro da função; `verify_jwt = false` no
-`config.toml` **no mesmo commit**) ou por POST de admin.
+`cup-standings-sync` (Edge Function), por `pg_cron` (criado à mão depois da
+M2, com `x-cron-secret` verificado dentro da função; `verify_jwt = false` no
+`config.toml` **no mesmo commit**) ou por POST de admin. O cron e o "Ler
+agora" ficam inertes sem a M2 (sonda das tabelas novas → nenhum pedido ao
+site, nenhuma escrita) e com a edição `desligado`. A exceção é o **ensaio**
+(abaixo): só o admin o corre (JWT de admin; o cron nunca) e corre sem a M2,
+porque não lê nem grava nada que um atleta leia.
 
-- **Plano:** edições com `results_source = 'adaptador'` e `sync_mode <>
-  'desligado'`; jornadas em [D, D+10] ainda não estáveis e com algum inscrito
-  "Vou" ou com corrida ligada.
+- **Fonte:** o admin cola o link de cada prova (`/Resultados/{id}`) em
+  `cup_rounds.results_url` e o da geral (`/Trofeu/{id}`) em
+  `cup_editions.standings_url`; só se aceitam os formatos do adaptador
+  (`CUP_ADAPTER_URLS`). **Só GET**, nunca postbacks.
+- **Plano:** edições com `results_source = 'adaptador'`, `sync_mode <>
+  'desligado'` e não encerradas; jornadas confirmadas em [D, D+10] ainda não
+  estáveis (D e D+1 a cada volta, depois 1×/dia) e, em `publicar`, com algum
+  inscrito "Vou" ou com corrida ligada. A geral lê-se com as jornadas. A
+  marca de estável guarda o modo em que foi obtida
+  (`cup_sync_state.stable_mode`) e a de `observar` não conta em `publicar`:
+  ao passar a publicar, as jornadas já lidas voltam ao plano e publicam-se
+  logo se a página não mudou; depois de D+10 relêem-se de 6 em 6 h até
+  ficarem prontas (48 h a falhar, ou sem interessados, fecham). Nenhuma
+  jornada fica presa sem uma leitura em `publicar`.
 - **Leitura:** `adapters/trofeuCascais.ts` é o único ficheiro que conhece o
-  site. User-Agent identificado, `robots.txt` respeitado, máximo de páginas,
-  sem Gemini. O HTML e as linhas de terceiros vivem só em memória.
-- **Validação** (`@formulas/cupResults.ts`): cabeçalhos, posições contíguas,
-  pontos = `points_table[posição]`, >0 linhas. Falha, timeout ou regressão
-  (−20% de linhas, escalão que desaparece) → não escreve nada e alerta.
-  **Pronta** = mesmo hash em 2 voltas com ≥6 h; **estável** = 48 h sem
-  mudanças ou D+10.
-- **Escreve:** `cup_round_publication`, `cup_team_results` e, para cada
-  inscrição ativa **com dorsal**, a linha desse dorsal se o escalão bater com
-  o calculado para a jornada e o clube com o da inscrição.
+  site. User-Agent identificado, `robots.txt` respeitado, timeout, limite de
+  tamanho e de páginas por volta, sem Gemini. O HTML e as linhas de
+  terceiros vivem só em memória (as linhas canónicas nem se serializam).
+- **Validação** (`@formulas/cupResults.ts`): página de erro, data da página
+  ≠ data da jornada (apanha o link de outra prova), época da geral,
+  colunas por nome, posições em ranking, marcas e dorsais legíveis, escalões
+  conhecidos, Total = Σ P, pontos da tabela, linhas plausíveis, regressão
+  (−20% de linhas, escalão que desaparece) → **não escreve nada dessa
+  página** e alerta. **Pronta** = mesmo hash (só colunas não pessoais) em 2
+  voltas com ≥6 h; **estável** = 48 h sem mudanças ou fim de D+10. Só se
+  escreve com a página pronta.
+- **Modos:** `observar` escreve só o estado do job (`cup_sync_state`), os
+  alertas agregados (`app_logs`) e os nomes da coluna Equipa da geral
+  (`cup_team_aliases` — a lista oficial de coletividades; só o admin a lê);
+  **nada que um atleta leia**. O clube de uma página de prova só entra nos
+  aliases (em `publicar`) quando a linha já é **dele** — o dorsal, o nome
+  como o site o escreve e o escalão de uma linha que ele confirmou; antes
+  disso, a linha achada pelo dorsal pode ser de outra pessoa. `publicar` escreve `cup_round_publication`, as linhas
+  próprias (`cup_results`, `cup_standings`) e a coletiva dos clubes com
+  inscritos. **Ensaio** (POST do admin com os links de uma época inteira, ex.
+  a 33.ª; só com o JWT de um admin — o cron nunca o corre): lê e valida sem
+  gravar nada que um atleta leia (na BD, só 1 linha agregada em `app_logs`)
+  e devolve só números — valida o adaptador contra os totais oficiais e
+  responde à base dos pontos e a "os de fora ocupam lugar?". Por isso corre
+  mesmo sem a M2.
+- **Escreve** (em `publicar`), para cada inscrição ativa **com dorsal**, a
+  linha desse dorsal se o escalão bater com o calculado para a jornada e o
+  clube com o da inscrição nessa data. **Pontos:** os calculados da página
+  são um mínimo (os atletas de fora não ocupam lugar na classificação de
+  Cascais) e mostram-se "provisórios"; os **oficiais** da geral
+  substituem-nos nas linhas confirmadas — só quando a coluna Pk já saiu
+  (alguma linha da geral com pontos; a legenda pode chegar antes) e a célula
+  dele tem um número: uma célula vazia nunca vira 0 oficial. **Coletiva:** o
+  site não a dá por GET — é uma conta da app sobre a geral oficial (≥
+  `team_min_athletes`, desempate por mais 1.ºs lugares, 2.ºs, …), gravada só
+  para clubes com inscritos, só nas colunas que já saíram, e dita "conta da
+  app".
 - **Correspondência:**
-  - a 1.ª linha de cada edição fica `proposta` e pergunta-se ao atleta ("És
-    tu? 41.º M40, 36:12"); "não sou eu" apaga-a e guarda a recusa; as
-    seguintes confirmam-se sozinhas enquanto escalão e clube baterem;
-  - dorsal repetido entre inscrições da mesma edição: nenhuma se liga, o
-    admin vê;
+  - a 1.ª linha de cada edição e dorsal fica `proposta` e pergunta-se ao
+    atleta ("És tu? 41.º M40, 36:12"); as seguintes (e as outras propostas do
+    mesmo dorsal) confirmam-se sozinhas enquanto o nome como o site o
+    escreve, o escalão e o clube baterem com uma linha que ele confirmou (a
+    `standings_key`) — o dorsal sozinho não chega: se o organizador trocar
+    os dorsais de duas colegas, a linha da outra fica `proposta`;
+  - "não sou eu" apaga as não confirmadas e guarda a recusa **do dorsal**
+    nessa edição (`match_refused_key`): nunca volta; só mudar de dorsal
+    desbloqueia. O job relê a recusa antes de cada jornada e, 1× por volta,
+    apaga as não confirmadas com a chave recusada em toda a edição;
+  - dorsal repetido entre inscrições da mesma edição, ou em duas linhas da
+    página: nenhuma se liga, o admin vê a contagem; as confirmadas ficam como
+    estavam (outra inscrição com o mesmo dorsal não apaga o que ele já
+    confirmou);
   - nunca se procura pelo nome, nunca se propõe outro dorsal (o vizinho do
-    mesmo escalão e clube tende a ser colega de equipa);
+    mesmo escalão e clube tende a ser colega de equipa — só conta em
+    agregado);
   - todas as falhas dão a mesma frase: "Não consegui confirmar. Revê o dorsal
     ou fala com o suporte.";
-  - se a linha muda numa volta seguinte, passa a `perdida` e pergunta-se de
-    novo; presente numa jornada "Não vou", conta.
-- **Teste de fuga:** falha se algum nome ou dorsal da fixture aparecer na
-  consola, em `app_logs` ou na resposta do job. Fixtures = páginas reais
-  anonimizadas por script; as reais nunca entram no git.
+  - se a identidade da linha muda (escalão, clube, nome como o site o
+    escreve) numa volta seguinte, passa a `perdida` e pergunta-se de novo;
+    uma correção de lugar ou marca atualiza sem perguntar; presente numa
+    jornada "Não vou", conta.
+- **Geral** (sem dorsal): a linha do próprio liga-se só pela chave tirada da
+  **sua** linha confirmada de uma jornada (nome como o site o escreve +
+  escalão + clube) **e** pelo ano de nascimento do perfil; zero → fica o que
+  havia; duas, ou ano diferente → não liga.
+- **Sem consentimento novo:** o dorsal é opcional e dado por ele, a 1.ª linha
+  só fica com o "sim" dele e "não sou eu" nunca volta; o texto da inscrição
+  explica-o.
+- **Teste de fuga:** falha se algum nome, dorsal ou clube de terceiros da
+  fixture aparecer na consola, em `app_logs`, nas escritas ou na resposta do
+  job (nem o nome e o dorsal do próprio — só hashes). Fixtures
+  **sintéticas**, escritas à mão (nomes, dorsais e clubes inventados); as
+  páginas reais nunca entram no git.
 
 ## 8. Avisos
 
@@ -455,7 +549,7 @@ data (Fase 0 fecha-o); uma data provável errada disparar taper e push
 | **1b. Backoffice** | 13/11 | Separador "Competições" (§6) | Não-admin recebe erro da RLS; confirmar jornada exige pré-visualização; toda a escrita auditada |
 | **2. Carol e prioridades** | 27/11 | (**em produção** a 26/09, sem migração) `seriesArbitration.ts` com golden tests, `pointsBand`, contador, `getTaperDays` por intenção, `fetchSeriesBlock`, `SERIES_TOOLS`, mapa da época, 3 perguntas, doutrina #6 em `02-corrida-prova.md` | Golden tests das personas A–K; a Carol cala pontos com base `null`; nenhuma frase proibida de §5 nos testes |
 | **3. Ecrã do Troféu e lista** | 27/11 | (**em produção** a 27/09, sem migração) Ecrã do Troféu, bloco fixo na lista, "Para onde vou", hub com bloco Troféu, prazo no cartão diário | `groupRaces` sem `cup_round_id` igual a hoje; acessibilidade de §4.3 |
-| **4. Job da classificação** | antes da J2 | M2 se precisar, adaptador, `cupResults.ts`, cron, correspondência, 33.ª em `observar` | Teste de fuga verde; invariantes param a escrita; repetidos não ligam |
+| **4. Job da classificação** | antes da J2 | M2 (`20260928120000_cup_results.sql`, por aplicar: idade pela época, correspondência, `cup_standings`, `cup_sync_state`, guarda do fecho), adaptador, `cupResults.ts`, cron, correspondência, 33.ª em ensaio/`observar` | Teste de fuga verde; invariantes param a escrita; repetidos não ligam |
 | **5. Avisos** | antes da J2 | M3, tipos `cup_*`, preferências em Perfil › Carol, teto por jornada | Omissão tudo desligado; `carol_push_types` recusa `cup_*`; máximo 3 por jornada em teste |
 
 **Não pode cair:** a RPC de impacto antes de sair o calendário e as guardas
@@ -468,8 +562,12 @@ Troféu reduzido a calendário e links.
    for para adultos (recomendado).
 2. **Pontos:** a Carol cala os pontos até o regulamento da 34.ª dizer a base
    (escalão ou geral) e o critério de "individual" (recomendado).
-3. **Por confirmar com a Câmara:** regulamento e equipas da 34.ª, idades por
-   escalão e data de referência, se o dorsal é da época, se os atletas de
-   clubes de fora ocupam lugar, distâncias por escalão das outras provas.
+3. **Por confirmar com a Câmara:** regulamento e equipas da 34.ª, distâncias
+   por escalão das outras provas. O regulamento geral da 33.ª já responde às
+   idades (por ano de nascimento, referência no 2.º ano da época), ao dorsal
+   (o mesmo toda a época) e à base dos pontos (escalão). **Os atletas de
+   clubes de fora não ocupam lugar** — provável pela J1 da 33.ª, em agregado
+   (a soma oficial de cada escalão bate com a tabela aplicada só aos de
+   Cascais em 32/32); o ensaio das 11 provas confirma.
 4. **Omissões aprendidas:** duas escolhas seguidas contra a intenção proposta
    passam a ser a omissão, dentro das guardas (proposta, não decidida).

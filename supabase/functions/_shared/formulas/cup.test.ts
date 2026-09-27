@@ -1,6 +1,7 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
   ageOn,
+  ageReferenceDate,
   attendanceCount,
   classifyEnrollment,
   courseFor,
@@ -11,13 +12,19 @@ import {
   type EntryDeadlineInput,
   haversineKm,
   nextCupRound,
+  seasonRefYear,
   shouldShowCupDoor,
   type CupRound,
 } from "./cup.ts";
 import {
   CASCAIS_34,
+  AGE_PARITY_CASES,
   CASCAIS_34_ABERTA,
+  CASCAIS_34_REG,
   CASCAIS_CATEGORIES,
+  CASCAIS_REG_CATEGORIES,
+  CASCAIS_REG_COURSES,
+  CASCAIS_REG_ROUNDS,
   CASCAIS_COURSES,
   CASCAIS_OVERRIDES,
   CASCAIS_ROUNDS,
@@ -29,6 +36,7 @@ import {
   FICTICIA_ROUNDS,
   FICTICIA_TEAMS,
   PERSONAS,
+  SEASON_REF_YEAR_CASES,
 } from "./cup.fixtures.ts";
 
 /* Competições por jornadas, as regras do atleta (specs/trofeu.md §4.1–4.3,
@@ -111,6 +119,69 @@ Deno.test("cupCategoryFor (fictícia, idade a 31/12): a regra da edição decide
   assertEquals(cupCategoryFor(FICTICIA_1, FICTICIA_CATEGORIES, null, null, "2027-03-06")?.code, "ABS");
   // Escalões de outra edição não entram.
   assertEquals(cupCategoryFor(FICTICIA_1, CASCAIS_CATEGORIES, "1972-01-01", "M", "2027-03-06"), null);
+});
+
+// ── A idade pela época (M2, 2026-09-27) ───────────────────────────────────
+// O regulamento de Cascais dá os escalões por ano de nascimento com
+// referência ao 2.º ano da época. Nenhuma das regras da M1 acerta numa
+// jornada de dezembro: 'data_prova' e 'fim_ano_civil' leem 2026 onde o
+// regulamento lê 2027.
+
+Deno.test("seasonRefYear: o 2.º ano da época, os mesmos casos de cup_season_ref_year", () => {
+  for (const [label, want] of SEASON_REF_YEAR_CASES) assertEquals(seasonRefYear(label), want, String(label));
+  assertEquals(seasonRefYear(2027), null);
+  assertEquals(seasonRefYear(undefined), null);
+});
+
+Deno.test("ageReferenceDate: fim_ano_epoca → 31/12 do 2.º ano da época; as regras antigas intactas", () => {
+  assertEquals(ageReferenceDate(CASCAIS_34_REG, "2026-12-06"), "2027-12-31");
+  assertEquals(ageReferenceDate(CASCAIS_34_REG, "2027-06-13"), "2027-12-31");
+  assertEquals(ageReferenceDate({ ...CASCAIS_34_REG, age_rule: "fim_ano_civil" }, "2026-12-06"), "2026-12-31");
+  assertEquals(ageReferenceDate({ ...CASCAIS_34_REG, age_rule: null }, "2026-12-06"), "2026-12-06");
+  assertEquals(ageReferenceDate({ ...CASCAIS_34_REG, age_rule: "data_prova" }, "2026-12-06"), "2026-12-06");
+  // Época ilegível → sem data de referência (sem idade: só escalões sem limites).
+  assertEquals(ageReferenceDate({ ...CASCAIS_34_REG, season_label: "época" }, "2026-12-06"), null);
+  assertEquals(ageReferenceDate(CASCAIS_34_REG, null), null);
+});
+
+Deno.test("cupCategoryFor + courseFor (34.ª, regulamento): os casos de paridade com cup_resolve_course", () => {
+  const roundOn = (d: string) => CASCAIS_REG_ROUNDS.find((r) => r.date === d)!;
+  for (const c of AGE_PARITY_CASES) {
+    const ed = c.ageRule === undefined ? CASCAIS_34_REG : { ...CASCAIS_34_REG, age_rule: c.ageRule };
+    const cat = cupCategoryFor(ed, CASCAIS_REG_CATEGORIES, c.birth, c.gender, c.roundDate);
+    const label = `${c.birth} ${c.gender} ${c.roundDate} ${c.ageRule ?? "fim_ano_epoca"}`;
+    assertEquals(cat?.code ?? null, c.category, label);
+    assertEquals(courseFor(roundOn(c.roundDate), CASCAIS_REG_COURSES, [], cat)?.code ?? null, c.course, label);
+  }
+});
+
+Deno.test("cupCategoryFor: a jornada de dezembro — M40 pela época, M35 pelas regras antigas", () => {
+  const born = "1987-06-01";
+  assertEquals(cupCategoryFor(CASCAIS_34_REG, CASCAIS_REG_CATEGORIES, born, "M", "2026-12-06")?.code, "M40");
+  assertEquals(cupCategoryFor({ ...CASCAIS_34_REG, age_rule: "fim_ano_civil" }, CASCAIS_REG_CATEGORIES, born, "M", "2026-12-06")?.code, "M35");
+  assertEquals(cupCategoryFor({ ...CASCAIS_34_REG, age_rule: null }, CASCAIS_REG_CATEGORIES, born, "M", "2026-12-06")?.code, "M35");
+  // Pela época, o escalão não muda a meio: o mesmo em dezembro e em junho.
+  assertEquals(cupCategoryFor(CASCAIS_34_REG, CASCAIS_REG_CATEGORIES, born, "M", "2027-06-13")?.code, "M40");
+  // Por ano de nascimento: 1/1/1988 já é M35 a época toda; 31/12/1987 é M40.
+  assertEquals(cupCategoryFor(CASCAIS_34_REG, CASCAIS_REG_CATEGORIES, "1988-01-01", "M", "2026-12-06")?.code, "M35");
+  assertEquals(cupCategoryFor(CASCAIS_34_REG, CASCAIS_REG_CATEGORIES, "1987-12-31", "M", "2026-12-06")?.code, "M40");
+  // Época ilegível: sem idade, nenhum escalão de Cascais (todos têm limites).
+  assertEquals(cupCategoryFor({ ...CASCAIS_34_REG, season_label: "época" }, CASCAIS_REG_CATEGORIES, born, "M", "2026-12-06"), null);
+});
+
+Deno.test("CASCAIS_REG_CATEGORIES: 32 escalões, sem buracos nem sobreposições por género", () => {
+  assertEquals(CASCAIS_REG_CATEGORIES.length, 32);
+  assertEquals(new Set(CASCAIS_REG_CATEGORIES.map((c) => c.code)).size, 32);
+  for (const g of ["F", "M"]) {
+    // Dos 9 anos ao fim: cada idade bate em exatamente um escalão.
+    for (let age = 9; age <= 100; age++) {
+      const n = CASCAIS_REG_CATEGORIES.filter((c) =>
+        c.gender === g && (c.min_age ?? 0) <= age && (c.max_age ?? 200) >= age
+      ).length;
+      assertEquals(n, 1, `${g} ${age}`);
+    }
+    assertEquals(CASCAIS_REG_CATEGORIES.some((c) => c.gender === g && (c.min_age ?? 0) <= 8), false);
+  }
 });
 
 Deno.test("courseFor: exceção da jornada → percurso do escalão → percurso único → null", () => {

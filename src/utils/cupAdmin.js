@@ -1,5 +1,6 @@
-import { supabase } from '../lib/supabase';
-import { isCupSchemaMissing } from '../store/cupSlice';
+import { invokeEdgeFunctionWithTimeout, supabase } from '../lib/supabase';
+import { isCupM2Missing, isCupSchemaMissing } from '../store/cupSlice';
+import { cupResultsUrlError } from '@formulas/cupResults.ts';
 
 /* Competições por jornadas — ações do backoffice "Competições" (specs/trofeu.md
    §6, Fase 1b). 2026-09-26.
@@ -21,7 +22,18 @@ import { isCupSchemaMissing } from '../store/cupSlice';
    servidor (já em português — as RPCs e os triggers da M1 escrevem
    RAISE EXCEPTION em português). `unavailable` marca a M1 por aplicar
    (42P01/PGRST205/...): o ecrã mostra "Competições por jornadas ainda não
-   disponível" em vez de um erro vermelho — não há nada de admin sem M1. */
+   disponível" em vez de um erro vermelho — não há nada de admin sem M1.
+
+   FASE 4 (2026-09-27) — a classificação oficial (§6.1, §6.4, §7): os links
+   da geral e das jornadas validados pelo formato do adaptador
+   (CUP_ADAPTER_URLS, @formulas/cupResults.ts — o job re-valida), o modo da
+   leitura automática, o estado do job (cup_sync_state, só agregados), os
+   clubes vistos na geral por ligar (cup_team_aliases), "Classificação
+   publicada" à mão, os alertas do job (app_logs), "Ler agora" e o ensaio
+   sem gravar (a Edge Function cup-standings-sync), e a guarda do "Fechar
+   edição" — a mesma regra do servidor (close_edition, M2). Sem a M2, o que
+   é dela devolve `m2Missing` (o ecrã diz "precisa da migração M2") em vez
+   de um erro. */
 
 const errorOf = (error) => ({ code: error?.code ?? null, message: error?.message ?? String(error ?? 'Erro') });
 const ok = (data) => ({ ok: true, data });
@@ -206,4 +218,187 @@ export async function deleteTeam(teamId) {
   const { error } = await supabase.from('cup_teams').delete().eq('id', teamId);
   if (error) return bad(error);
   return ok(null);
+}
+
+// ── Fase 4: a guarda do "Fechar edição" (decisão do dono, 2026-09-27) ──────
+
+/** O dia de hoje no fuso da edição ("2027-06-14"). */
+export function editionTodayISO(timeZone = 'Europe/Lisbon', now = new Date()) {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: timeZone || 'Europe/Lisbon' }).format(now);
+  } catch {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Lisbon' }).format(now);
+  }
+}
+
+/** Porque ainda não dá para fechar a edição — ou null (dá). A MESMA regra do
+ *  servidor (close_edition, M2): não se fecha sem jornadas, nem com a
+ *  última sem data, nem antes de ela passar; as canceladas não contam. A
+ *  "última" é a de data mais tarde (uma sem data conta como a mais tarde),
+ *  e no empate a de número mais alto. Pura. */
+export function closeEditionBlocker(rounds, todayISO, roundLabel = 'Jornada') {
+  const rotulo = String(roundLabel || 'Jornada').toLowerCase();
+  const dayOf = (v) => (typeof v === 'string' && v.length >= 10 ? v.slice(0, 10) : null);
+  const live = (rounds || []).filter((r) => r && r.date_status !== 'cancelada');
+  if (!live.length) return 'a edição não tem jornadas';
+  const last = [...live].sort((a, b) => {
+    const da = dayOf(a.date);
+    const db = dayOf(b.date);
+    if (!da !== !db) return da ? 1 : -1; // sem data primeiro (nulls first)
+    if (da && db && da !== db) return db.localeCompare(da);
+    return (b.round_no ?? 0) - (a.round_no ?? 0);
+  })[0];
+  const day = dayOf(last.date);
+  if (!day) return `a ${rotulo} ${last.round_no ?? ''} ainda não tem data`.replace(/ {2}/g, ' ');
+  if (!todayISO || day >= todayISO) {
+    return `a última ${rotulo} (${last.round_no ?? '?'}, ${day.slice(8, 10)}/${day.slice(5, 7)}) ainda não passou`;
+  }
+  return null;
+}
+
+// ── Fase 4: os links da classificação e o modo da leitura ───────────────────
+
+const refusedUrl = (message) => ({ ok: false, error: { code: 'url', message }, unavailable: false });
+
+/** O link da classificação geral da edição (cup_editions.standings_url).
+ *  Recusa no cliente um link fora do formato do adaptador (`adapter` =
+ *  edition.results_adapter); vazio apaga o link. */
+export async function updateEditionLinks(editionId, { standings_url } = {}, { adapter = null } = {}) {
+  const url = typeof standings_url === 'string' ? standings_url.trim() : '';
+  const err = cupResultsUrlError(adapter, 'geral', url);
+  if (err) return refusedUrl(err);
+  const { data, error } = await supabase.from('cup_editions').update({ standings_url: url || null }).eq('id', editionId).select().single();
+  if (error) return bad(error);
+  return ok(data);
+}
+
+/** O modo da leitura automática: 'desligado' | 'observar' | 'publicar'. */
+export const CUP_SYNC_MODES = Object.freeze(['desligado', 'observar', 'publicar']);
+
+export async function setEditionSyncMode(editionId, mode) {
+  if (!CUP_SYNC_MODES.includes(mode)) return bad({ code: '22023', message: 'Modo inválido.' });
+  const { data, error } = await supabase.from('cup_editions').update({ sync_mode: mode }).eq('id', editionId).select().single();
+  if (error) return bad(error);
+  return ok(data);
+}
+
+// ── Fase 4: o estado do job (só agregados) ──────────────────────────────────
+
+const m2Missing = (error) => ({ ok: false, error: errorOf(error), unavailable: false, m2Missing: true });
+
+// Sem rows_by_category (contagens por escalão — agregadas, mas o ecrã não as
+// mostra) e sem o trinco.
+const SYNC_STATE_COLUMNS = 'target, round_id, url, last_checked_at, last_status, last_codes, hash_seen_at, ready_at, stable_at, fail_since, rows_total, summary, updated_at';
+
+/** O estado do job por página desta edição (cup_sync_state, só o admin lê).
+ *  Sem a M2: { ok: false, m2Missing: true }. */
+export async function listSyncState(editionId) {
+  const { data, error } = await supabase.from('cup_sync_state').select(SYNC_STATE_COLUMNS).eq('edition_id', editionId);
+  if (error) return isCupM2Missing(error) ? m2Missing(error) : bad(error);
+  return ok(data || []);
+}
+
+/** Quando saiu a classificação de cada jornada (cup_round_publication, M1). */
+export async function listRoundPublication(roundIds) {
+  const ids = (roundIds || []).filter(Boolean);
+  if (!ids.length) return ok([]);
+  const { data, error } = await supabase.from('cup_round_publication').select('round_id, results_ready_at, source, stable_at').in('round_id', ids);
+  if (error) return bad(error);
+  return ok(data || []);
+}
+
+/** "Classificação publicada" à mão (§6.4, o recurso quando o job não a vê):
+ *  results_ready_at = agora, source 'manual'. */
+export async function markRoundPublished(roundId) {
+  const { data, error } = await supabase
+    .from('cup_round_publication')
+    .upsert({ round_id: roundId, results_ready_at: new Date().toISOString(), source: 'manual' }, { onConflict: 'round_id' })
+    .select()
+    .single();
+  if (error) return bad(error);
+  return ok(data);
+}
+
+/** Os nomes de clubes vistos na classificação (a coluna Equipa da geral —
+ *  organizações, não pessoas), ligados ou por ligar a um clube da edição. */
+export async function listAliases(editionId) {
+  const { data, error } = await supabase
+    .from('cup_team_aliases')
+    .select('id, alias_norm, team_id, first_seen_at, last_seen_at')
+    .eq('edition_id', editionId)
+    .order('alias_norm', { ascending: true });
+  if (error) return bad(error);
+  return ok(data || []);
+}
+
+/** "Ligar a…": o nome visto passa a contar como este clube. */
+export async function linkAlias(aliasId, teamId) {
+  const { data, error } = await supabase.from('cup_team_aliases').update({ team_id: teamId || null }).eq('id', aliasId).select().single();
+  if (error) return bad(error);
+  return ok(data);
+}
+
+/** Os alertas recentes do job (app_logs, event 'cup-standings-sync'; só
+ *  códigos e contagens — o job nunca regista nomes, dorsais ou clubes). */
+export async function listSyncAlerts(limit = 20) {
+  const { data, error } = await supabase
+    .from('app_logs')
+    .select('id, level, message, meta, created_at')
+    .eq('event', 'cup-standings-sync')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) return bad(error);
+  return ok(data || []);
+}
+
+// ── Fase 4: a Edge Function cup-standings-sync (C.1 do desenho) ─────────────
+
+export const CUP_SYNC_FUNCTION = 'cup-standings-sync';
+export const CUP_SYNC_TIMEOUT_MS = 90000;
+export const CUP_ENSAIO_MAX_ROUNDS = 12;
+
+async function invokeSync(body) {
+  const res = await invokeEdgeFunctionWithTimeout(CUP_SYNC_FUNCTION, { body }, CUP_SYNC_TIMEOUT_MS);
+  if (res?.error) {
+    return { ok: false, error: { code: res.status ?? null, message: res.error }, unavailable: false, isTimeout: !!res.isTimeout };
+  }
+  return ok(res?.data ?? null);
+}
+
+/** "Ler agora": uma volta já, no modo da edição (o job recusa com 409 uma
+ *  edição desligada). `roundIds` limita às jornadas dadas. */
+export async function runCupSync(editionId, roundIds = null) {
+  const ids = (roundIds || []).filter(Boolean);
+  return invokeSync({ modo: 'correr', edition_id: editionId, ...(ids.length ? { round_ids: ids } : {}) });
+}
+
+/** Os links do ensaio, validados como o job os valida: 1 a 12 jornadas e,
+ *  opcional, a geral. { jornadas, geral, erro } — `erro` é a 1.ª frase que
+ *  falhar (null se tudo serve). Pura. */
+export function ensaioLinks({ jornadas, geral } = {}, adapter = 'trofeu_cascais') {
+  const lista = (Array.isArray(jornadas) ? jornadas : String(jornadas || '').split(/\s+/))
+    .map((u) => String(u || '').trim())
+    .filter(Boolean);
+  const g = String(geral || '').trim() || null;
+  if (!lista.length) return { jornadas: lista, geral: g, erro: 'Cola pelo menos o link de uma prova.' };
+  if (lista.length > CUP_ENSAIO_MAX_ROUNDS) return { jornadas: lista, geral: g, erro: `No máximo ${CUP_ENSAIO_MAX_ROUNDS} provas por ensaio.` };
+  for (const u of lista) {
+    const e = cupResultsUrlError(adapter, 'jornada', u);
+    if (e) return { jornadas: lista, geral: g, erro: e };
+  }
+  if (g) {
+    const e = cupResultsUrlError(adapter, 'geral', g);
+    if (e) return { jornadas: lista, geral: g, erro: e };
+  }
+  return { jornadas: lista, geral: g, erro: null };
+}
+
+/** O ensaio sem gravar (C.6): lê e valida as páginas dadas (ex.: as 11 da
+ *  33.ª e a geral) e devolve só agregados. Links inválidos → recusado aqui,
+ *  sem pedido. */
+export async function runCupEnsaio({ jornadas, geral = null, pointsTable = null, adapter = 'trofeu_cascais' } = {}) {
+  const v = ensaioLinks({ jornadas, geral }, adapter);
+  if (v.erro) return refusedUrl(v.erro);
+  const table = Array.isArray(pointsTable) && pointsTable.length ? pointsTable : null;
+  return invokeSync({ modo: 'ensaio', jornadas: v.jornadas, ...(v.geral ? { geral: v.geral } : {}), ...(table ? { points_table: table } : {}) });
 }

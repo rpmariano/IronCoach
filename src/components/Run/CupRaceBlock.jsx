@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ChevronRight, Trophy } from 'lucide-react';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
@@ -8,6 +8,7 @@ import { useCupForRace } from '../../utils/useCup';
 import { CupNaoFuiDialog, CupStatus, provaDoAtleta } from './CupBits';
 import CupRoundPlanControls, { jornadaDe } from './CupRoundPlanControls';
 import { CupLink, pontosLabel, resultadoOficialPartes, temClube } from './CupClassificacao';
+import CupMatchPrompt, { MATCH_ISSUE_TEXT } from './CupMatchPrompt';
 
 /* O bloco Troféu no hub da prova (specs/trofeu.md §4.4–§4.5, Fase 3).
    2026-09-27.
@@ -35,7 +36,16 @@ import { CupLink, pontosLabel, resultadoOficialPartes, temClube } from './CupCla
    A migalha pede primeiro o separador e só depois fecha o hub: com os
    "Detalhes da prova" alterados e por gravar, o navGuard do hub (RunAgenda)
    recusa a mudança e pergunta "sair sem gravar?" — fechar antes deixava as
-   alterações para trás sem a pergunta. */
+   alterações para trás sem a pergunta. "Não vou", "Não fui" e "Saltar"
+   também fecham o hub: pedem o navGuard ANTES de abrir a confirmação
+   (revisão da Fase 3, aviso [c]) — recusado, nada abre e fica a pergunta
+   dele.
+
+   Fase 4 (2026-09-27): com uma linha por confirmar, o "És tu?"
+   (CupMatchPrompt) — esteja ou não a prova registada; com uma falha da
+   correspondência, a frase única e [Rever o dorsal] (o ecrã do Troféu com o
+   "Gerir inscrição" aberto, pelo mesmo caminho da migalha). Os pontos
+   calculados pela app dizem-se "provisórios". */
 
 const BLOCO = {
   borderRadius: 20,
@@ -53,6 +63,7 @@ export default function CupRaceBlock({ race }) {
   const { showToast } = useToast();
   const [confirmarNaoVou, setConfirmarNaoVou] = useState(false);
   const [confirmarNaoFui, setConfirmarNaoFui] = useState(false);
+  const migalhaRef = useRef(null);
 
   if (!cup) return null;
   const { view, round } = cup;
@@ -68,13 +79,21 @@ export default function CupRaceBlock({ race }) {
 
   const fecharHub = () => useAppStore.getState().setEditingRaceId(null);
 
-  const abrirTrofeu = () => {
+  // O hub pode fechar? Com os "Detalhes da prova" por gravar, o navGuard
+  // (RunAgenda) diz que não e pergunta "sair sem gravar?" — a mesma pergunta
+  // da migalha, pedida antes de qualquer confirmação.
+  const podeSair = () => {
+    const s = useAppStore.getState();
+    return !s.navGuard || s.navGuard(s.activeTab) !== false;
+  };
+
+  const abrirTrofeu = (pedido = { roundId: round.id }) => {
     const store = useAppStore.getState();
     // O separador primeiro: recusado (alterações por gravar), o hub fica
     // aberto com a pergunta do navGuard e não fica nenhum pedido pendurado.
     if (store.setActiveTab('provas') === false) return;
     store.setEditingRaceId(null);
-    store.requestCupScreen({ roundId: round.id });
+    store.requestCupScreen(pedido);
   };
 
   const naoVou = async () => {
@@ -92,19 +111,25 @@ export default function CupRaceBlock({ race }) {
   };
 
   const oficiais = resultadoOficialPartes(round.result, { escalao: true });
+  // A pergunta desaparece depois de responder: o foco fica na migalha (o
+  // resultado confirmado aparece logo abaixo dela).
+  const focarMigalha = () => setTimeout(() => migalhaRef.current?.focus(), 0);
   const lugarProprio = Number(round.run?.details?.age_group_position) > 0 ? Number(round.run.details.age_group_position) : null;
   const team = round.teamResult && clube ? round.teamResult : null;
   const teamPos = Number(team?.position) > 0 ? Number(team.position) : null;
   const linhaClube = team
     ? [teamPos ? `O teu clube ficou em ${teamPos}.º na coletiva desta ${rotulo}` : `A coletiva desta ${rotulo} já saiu`, pontosLabel(team.points)].filter(Boolean).join(' · ')
+      + (team.points_source === 'calculado' ? ' (conta da app a partir da geral oficial)' : '')
     : null;
+  const falha = !round.proposal && round.matchIssue ? MATCH_ISSUE_TEXT[round.matchIssue] || null : null;
 
   return (
     <div data-testid="cup-race-block" style={BLOCO}>
       <button
+        ref={migalhaRef}
         type="button"
         data-testid="cup-race-migalha"
-        onClick={abrirTrofeu}
+        onClick={() => abrirTrofeu()}
         aria-label={`Abrir o ${view.shortName}: ${which}${total ? ` de ${total}` : ''}`}
         className="w-full flex items-center gap-2 text-left"
         style={{ minHeight: 44, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--race)' }}
@@ -120,14 +145,18 @@ export default function CupRaceBlock({ race }) {
 
       {!round.done && !passada && !cancelada && (
         <div className="flex flex-col gap-2 mt-2.5">
-          <CupRoundPlanControls view={view} round={round} onBeforeLeave={fecharHub} />
+          <CupRoundPlanControls
+            view={view}
+            round={round}
+            onBeforeLeave={() => { if (!podeSair()) return false; fecharHub(); return true; }}
+          />
           <Button
             variant="ghost"
             size="sm"
             className="self-start"
             style={{ minHeight: 44 }}
             data-testid="cup-race-nao-vou"
-            onClick={() => setConfirmarNaoVou(true)}
+            onClick={() => { if (podeSair()) setConfirmarNaoVou(true); }}
           >
             Não vou
           </Button>
@@ -136,15 +165,43 @@ export default function CupRaceBlock({ race }) {
 
       {!round.done && passada && (status?.actions || []).includes('nao_fui') && (
         <div className="mt-2.5">
-          <Button variant="light" size="sm" style={{ minHeight: 44 }} data-testid="cup-race-nao-fui" onClick={() => setConfirmarNaoFui(true)}>
+          <Button variant="light" size="sm" style={{ minHeight: 44 }} data-testid="cup-race-nao-fui" onClick={() => { if (podeSair()) setConfirmarNaoFui(true); }}>
             Não fui
+          </Button>
+        </div>
+      )}
+
+      {round.proposal && (
+        <div className="mt-2.5">
+          <CupMatchPrompt
+            round={round}
+            idPrefix={`cup-match-hub-${round.id}`}
+            onConfirmed={focarMigalha}
+            onRejected={focarMigalha}
+          />
+        </div>
+      )}
+
+      {falha && (
+        <div className="flex flex-col gap-1.5 mt-2.5" data-testid="cup-race-correspondencia">
+          <p className="m-0 text-[12.5px] font-bold" style={{ color: 'var(--warn)', lineHeight: 'var(--leading-normal)' }}>{falha}</p>
+          <Button
+            variant="light"
+            size="sm"
+            className="self-start"
+            style={{ minHeight: 44 }}
+            data-testid="cup-race-rever-dorsal"
+            onClick={() => abrirTrofeu({ mode: 'gerir' })}
+          >
+            Rever o dorsal
           </Button>
         </div>
       )}
 
       {round.done && (
         <div className="flex flex-col gap-1 mt-2" data-testid="cup-race-resultado">
-          {oficiais.length > 0 ? (
+          {/* Com a linha por confirmar, a pergunta (acima) está no lugar dela. */}
+          {round.proposal ? null : oficiais.length > 0 ? (
             <>
               <p className="m-0 text-[13px] font-bold" style={{ color: 'var(--text-1)' }}>{oficiais.join(' · ')}</p>
               {round.results_url

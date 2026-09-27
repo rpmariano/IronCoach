@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -11,11 +11,12 @@ import Button from '../shared/Button';
 import { Input } from '../shared/Input';
 import { Sheet, Dialog, useEscapeClose } from '../shared/Sheet';
 import { useToast } from '../shared/ToastProvider';
-import { SEASON_GOALS } from './CupEnrollmentScreen';
+import { CUP_CLASSIFICACAO_PRIVACIDADE, CUP_DORSAL_AJUDA, SEASON_GOALS } from './CupEnrollmentScreen';
 import { distanciaLabel, editionTitle } from './CupDoorCard';
 import { CupNaoFuiDialog, CupStatus, JornadaChip } from './CupBits';
-import CupClassificacao, { CupLink, clubeLabel } from './CupClassificacao';
+import CupClassificacao, { CUP_CLASSIFICACAO_TITULO_ID, CupLink, clubeLabel } from './CupClassificacao';
 import CupJornadaSheet from './CupJornadaSheet';
+import CupMatchPrompt, { MATCH_ISSUE_TEXT } from './CupMatchPrompt';
 import { roundDateText } from '../../utils/cupCalendar';
 import { enrollmentChoiceError } from '@formulas/cup.ts';
 
@@ -41,7 +42,16 @@ import { enrollmentChoiceError } from '@formulas/cup.ts';
 
    `initialMode` e `focusRoundId` chegam de Provas (o "+N no calendário", a
    migalha do hub, a linha do Início): o modo com que abre e a jornada cuja
-   folha abre logo. */
+   folha abre logo. `initialMode` 'gerir' (Fase 4: o "Rever o dorsal" do
+   hub) abre o calendário com o "Gerir inscrição" aberto.
+
+   FASE 4 (2026-09-27). A 1.ª correspondência de cada edição com a
+   classificação oficial pergunta-se logo a seguir ao cabeçalho ("És tu?",
+   CupMatchPrompt — a mais antiga por confirmar, e quantas mais há); a linha
+   da jornada diz "Resultado por confirmar — és tu?" ou a frase de falha.
+   Ao abrir, o foco vai para o título (e volta, ao fechar, para onde
+   estava); a mudança de data de cada linha entra na descrição do botão
+   (aria-describedby), porque o aria-label da linha a tapava. */
 
 const CARD = { background: 'var(--surface-glass)', border: '1px solid var(--border-glass)', borderRadius: 18 };
 
@@ -147,12 +157,21 @@ function CalendarioRow({ round, today, roundLabel, onOpen, onRegistar, onNaoFui,
   const acoes = s.actions || [];
   // "a jornada 2, Corta-mato do NAZA" — o botão fora da linha diz de qual é.
   const qual = [`${String(roundLabel || 'Jornada').toLowerCase()} ${round.round_no ?? ''}`.trim(), round.name].filter(Boolean).join(', ');
+  // O que o aria-label da linha não diz: a mudança de data e a
+  // correspondência com a classificação oficial (Fase 4).
+  const mudancaId = round.dateChange ? `cup-cal-${round.id}-mudanca` : null;
+  const correspondencia = round.proposal
+    ? 'Resultado por confirmar — és tu?'
+    : round.matchIssue ? MATCH_ISSUE_TEXT[round.matchIssue] || null : null;
+  const correspondenciaId = correspondencia ? `cup-cal-${round.id}-correspondencia` : null;
+  const describedBy = [mudancaId, correspondenciaId].filter(Boolean).join(' ') || undefined;
   return (
     <div style={{ ...CARD }} data-testid={`cup-cal-${round.id}`} data-status={s.key}>
       <button
         type="button"
         onClick={() => onOpen(round.id)}
         aria-label={s.ariaLabel}
+        aria-describedby={describedBy}
         data-testid={`cup-cal-${round.id}-abrir`}
         className="w-full text-left flex items-start gap-2.5"
         style={{ minHeight: 56, padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit' }}
@@ -176,7 +195,17 @@ function CalendarioRow({ round, today, roundLabel, onOpen, onRegistar, onNaoFui,
             <CupStatus status={s} />
           </span>
           {round.dateChange && (
-            <span className="block text-[11px] font-bold mt-0.5" style={{ color: 'var(--warn)' }}>{round.dateChange.label}</span>
+            <span id={mudancaId} className="block text-[11px] font-bold mt-0.5" style={{ color: 'var(--warn)' }}>{round.dateChange.label}</span>
+          )}
+          {correspondencia && (
+            <span
+              id={correspondenciaId}
+              data-testid={`cup-cal-${round.id}-correspondencia`}
+              className="block text-[11px] font-bold mt-0.5"
+              style={{ color: round.proposal ? 'var(--race)' : 'var(--warn)' }}
+            >
+              {correspondencia}
+            </span>
           )}
         </span>
         <ChevronRight size={16} aria-hidden="true" style={{ color: 'var(--text-4)', flexShrink: 0, marginTop: 6 }} />
@@ -302,7 +331,10 @@ function GerirInscricaoSheet({ view, onClose, onLeft }) {
         {outroClube && <Input aria-label="Nome do clube" placeholder="Nome do teu clube" maxLength={120} value={teamOther} onChange={(e) => setTeamOther(e.target.value)} />}
 
         <SectionLabel style={{ margin: '10px 2px 0' }}>Dorsal</SectionLabel>
-        <Input data-testid="cup-gerir-dorsal" aria-label="Dorsal" placeholder="Número do dorsal" inputMode="numeric" maxLength={20} value={bib} onChange={(e) => setBib(e.target.value)} />
+        <p id="cup-gerir-dorsal-ajuda" data-testid="cup-gerir-dorsal-ajuda" className="m-0 text-[11.5px]" style={{ color: 'var(--text-4)', lineHeight: 'var(--leading-normal)' }}>
+          {CUP_DORSAL_AJUDA} {CUP_CLASSIFICACAO_PRIVACIDADE}
+        </p>
+        <Input data-testid="cup-gerir-dorsal" aria-label="Dorsal" aria-describedby="cup-gerir-dorsal-ajuda" placeholder="Número do dorsal" inputMode="numeric" maxLength={20} value={bib} onChange={(e) => setBib(e.target.value)} />
 
         {erro && <Warning tone="danger" title="Não foi possível">{erro}</Warning>}
 
@@ -336,7 +368,11 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
   const { updateEnrollment, setCupParticipations, registerCupRound, markCupRoundNotAttended } = useAppStore();
   const { showToast } = useToast();
   useEscapeClose(onClose);
-  const [gerirAberto, setGerirAberto] = useState(false);
+  // 'gerir' (o "Rever o dorsal" do hub, Fase 4): o calendário, com o "Gerir
+  // inscrição" já aberto.
+  const [gerirAberto, setGerirAberto] = useState(initialMode === 'gerir');
+  const tituloRef = useRef(null);
+  const gerirRef = useRef(null);
   const [draft, setDraft] = useState({});
   const [aConfirmar, setAConfirmar] = useState(false);
   const [confirmou, setConfirmou] = useState(false);
@@ -346,7 +382,9 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
   const [modo, setModo] = useState(() => (
     initialMode === 'decidir' || initialMode === 'calendario'
       ? initialMode
-      : view?.catalogReady ? (pendentesDe(view.rounds, {}).length > 0 ? 'decidir' : 'calendario') : null
+      : initialMode === 'gerir'
+        ? 'calendario'
+        : view?.catalogReady ? (pendentesDe(view.rounds, {}).length > 0 ? 'decidir' : 'calendario') : null
   ));
   const [folha, setFolha] = useState(focusRoundId || null);
   const [naoFui, setNaoFui] = useState(null); // a jornada do diálogo "Não fui"
@@ -370,7 +408,23 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
   // Um pedido novo com o ecrã já aberto: o modo e a folha que ele pede.
   useEffect(() => {
     if (initialMode === 'decidir' || initialMode === 'calendario') setModo(initialMode);
+    if (initialMode === 'gerir') { setModo('calendario'); setGerirAberto(true); }
   }, [initialMode]);
+
+  // O foco (revisão da Fase 3, aviso [e]): ao abrir, no título do ecrã — o
+  // leitor de ecrã começa aqui e não no botão que ficou por baixo; ao
+  // fechar, volta para onde estava, se ainda existir. Com uma folha aberta
+  // logo de início (o "Gerir inscrição", ou a folha de uma jornada), o título
+  // fica por baixo dela: não se lhe dá o foco.
+  useEffect(() => {
+    const antes = typeof document !== 'undefined' ? document.activeElement : null;
+    if (initialMode !== 'gerir' && !focusRoundId) tituloRef.current?.focus();
+    return () => {
+      if (antes && antes !== document.body && typeof antes.focus === 'function' && document.contains(antes)) antes.focus();
+    };
+    // Só ao montar e desmontar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (focusRoundId) setFolha(focusRoundId);
   }, [focusRoundId]);
@@ -437,19 +491,45 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
   /* "Registar" uma jornada que já passou (§4.5): com a prova no calendário
      abre o registo nela; sem ela, grava "Vou" e a sincronização cria-a (ou
      liga a que ele já lá tinha). O registo abre-se noutro separador, por
-     isso o ecrã fecha primeiro. */
+     isso o ecrã fecha primeiro.
+
+     Revisão da Fase 3, aviso [b]: com a prova já feita (a "Prova fora da
+     agenda" que a sincronização acabou de ligar, ou uma concluída), abre-se
+     o hub dela — nunca outra vez o registo de uma prova com corrida. Sem
+     prova, a frase diz a causa certa: só culpa a distância quando falta
+     mesmo a distância do percurso dele nesta jornada. */
   const registar = async (round) => {
     setRegistando(round.id);
     const res = await registerCupRound(round.id);
     setRegistando(null);
     if (!res?.ok || !res.data?.raceId) {
-      showToast(res?.error?.message || 'Não foi possível abrir o registo desta jornada.', 'error');
+      let msg = res?.error?.message || 'Não foi possível abrir o registo desta jornada.';
+      if (res?.error?.code === 'sem_prova') {
+        msg = Number(round.course?.distance_m) > 0
+          ? 'Não consegui criar a prova desta jornada. Tenta outra vez daqui a pouco.'
+          : 'Falta a distância do teu percurso nesta jornada. Regista a corrida como «Prova fora da agenda» e volta a carregar em «Registar» para a ligar.';
+      }
+      showToast(msg, 'error');
       return;
     }
     setFolha(null);
     onClose();
+    if (res.data.done) {
+      useAppStore.getState().setEditingRaceId(res.data.raceId);
+      showToast('Ligada à jornada.', 'success');
+      return;
+    }
     useAppStore.getState().openRaceRun(res.data.raceId);
   };
+
+  // Depois de "Sim, sou eu", o resultado confirmado está na Classificação;
+  // depois de "Não sou eu", o sítio para rever o dorsal é o "Gerir
+  // inscrição". A pergunta desaparece: o foco vai para lá (a seguir ao
+  // render que a tira).
+  const focarDepois = (alvo) => setTimeout(() => {
+    const el = alvo === 'gerir' ? gerirRef.current : document.getElementById(CUP_CLASSIFICACAO_TITULO_ID);
+    (el || tituloRef.current)?.focus?.();
+  }, 0);
 
   const confirmarNaoFui = async () => {
     if (!naoFui) return;
@@ -469,6 +549,7 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
 
   const folhaRound = folha ? rounds.find((r) => r.id === folha) || null : null;
   const porDecidir = view.undecidedCount || 0;
+  const pendentesResultado = view.results?.pending || [];
 
   const conteudo = (
     <div
@@ -489,7 +570,7 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
         </button>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--race)' }}>Troféu</div>
-          <div className="text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{titulo}</div>
+          <h1 ref={tituloRef} tabIndex={-1} data-testid="cup-trofeu-titulo" className="m-0 text-[14.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{titulo}</h1>
         </div>
       </div>
 
@@ -505,6 +586,7 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
               ? <CupLink href={edition.regulation_url} label="Regulamento" testId="cup-trofeu-regulamento" />
               : <span />}
             <button
+              ref={gerirRef}
               type="button"
               data-testid="cup-abrir-gerir"
               onClick={() => setGerirAberto(true)}
@@ -515,6 +597,17 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
             </button>
           </div>
         </GlassCard>
+
+        {pendentesResultado.length > 0 && (
+          <CupMatchPrompt
+            key={pendentesResultado[0].id}
+            round={pendentesResultado[0]}
+            more={pendentesResultado.length - 1}
+            idPrefix="cup-match-topo"
+            onConfirmed={() => focarDepois('classificacao')}
+            onRejected={() => focarDepois('gerir')}
+          />
+        )}
 
         {showCounter && attendance && (
           <GlassCard radius={20} padding={14} data-testid="cup-trofeu-contador">
@@ -626,6 +719,7 @@ export default function CupTrofeuScreen({ view, onClose, initialMode = null, foc
           onNaoFui={setNaoFui}
           onOpenRace={abrirProva}
           registando={registando === folhaRound.id}
+          onMatchRejected={() => { setFolha(null); focarDepois('gerir'); }}
         />
       )}
 

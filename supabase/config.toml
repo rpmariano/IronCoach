@@ -442,3 +442,11 @@ verify_jwt = false
 # verifica a sessão lá dentro — ver o cabeçalho de race-calendar/index.ts.
 [functions.race-calendar]
 verify_jwt = false
+
+# O cup-standings-sync (o job da classificação do Troféu, Fase 4) é chamado
+# pelo pg_cron (x-cron-secret, sem JWT) e pelo backoffice (JWT de admin,
+# verificado lá dentro com is_admin, como o race-calendar). Sem isto, o
+# deploy criava-a com verify_jwt = true e o gateway recusava o cron com 401.
+# Inerte até à M2 e ao admin ligar a edição; o cron cria-se à mão depois da M2.
+[functions.cup-standings-sync]
+verify_jwt = false

@@ -41,7 +41,18 @@ import { lisbonTodayISO } from '../lib/utils';
    acessória: falhar não mexe em mais nada. E as ações do calendário do
    Troféu: o papel, "Não fui", "Já me inscrevi", "Registar" uma jornada que
    já passou, promover a principal, e o pedido para abrir o ecrã do Troféu a
-   partir de outro ecrã (cupScreenRequest). */
+   partir de outro ecrã (cupScreenRequest).
+
+   FASE 4 (2026-09-27). A classificação passa a trazer também a linha
+   'proposta' (e a 'perdida') do próprio — o "És tu?" da 1.ª correspondência
+   de cada edição — com a fonte dos pontos, a linha dele na geral oficial
+   (cup_standings) e, com a edição a publicar, quando saiu a classificação de
+   cada jornada (cup_round_publication). "Sim, sou eu" e "Não sou eu" são as
+   RPCs confirm_cup_result e reject_cup_result. A M2 aplica-se à mão e este
+   código pode chegar antes dela: uma coluna, tabela ou RPC da M2 em falta
+   (isCupM2Missing) NUNCA marca a competição indisponível — a leitura volta
+   uma vez à da Fase 3 (só as confirmadas, sem a fonte dos pontos) e fica
+   assim até recarregar a app. */
 
 export const CUP_EMPTY = Object.freeze({
   // 'idle' (nada lido) | 'loading' | 'ready' | 'indisponivel' (M1 por
@@ -64,13 +75,27 @@ export const CUP_EMPTY = Object.freeze({
   // `rows` = cup_results confirmados do próprio, `teamRows` = a coletiva do
   // clube dele (vazia sem clube da lista), lida para o clube `teamId` — quem
   // muda de clube a meio da época não fica com a coletiva do antigo.
-  results: Object.freeze({ status: 'idle', enrollmentId: null, teamId: null, rows: [], teamRows: [] }),
+  // Fase 4: `rows` traz também as 'proposta'/'perdida' (com a M2);
+  // `standing` = a linha dele na geral oficial (ou null), `publication` =
+  // { round_id: results_ready_at } das jornadas que já passaram (só com a
+  // edição a publicar), `m2` = leu-se com as colunas da M2.
+  results: Object.freeze({ status: 'idle', enrollmentId: null, teamId: null, rows: [], teamRows: [], standing: null, publication: Object.freeze({}), m2: false }),
 });
 
 // As colunas da classificação, uma a uma (nunca match_hash, team_name,
 // athletes_count — nem nada de outros atletas ou de outros clubes).
 export const CUP_RESULT_COLUMNS = 'round_id, position, category_code, category_position, points, official_time_s, match_status';
 export const CUP_TEAM_RESULT_COLUMNS = 'round_id, position, points';
+// Fase 4 (M2): a fonte dos pontos ('oficial' da geral, ou 'calculado' pela
+// app — provisórios), a linha dele na geral e quando saiu a classificação
+// de cada jornada. Nunca bib_key, standings_key, match_hash, key_hash nem
+// match_refused_key: as chaves da correspondência não saem do servidor.
+export const CUP_RESULT_COLUMNS_M2 = `${CUP_RESULT_COLUMNS}, points_source`;
+export const CUP_TEAM_RESULT_COLUMNS_M2 = `${CUP_TEAM_RESULT_COLUMNS}, points_source`;
+export const CUP_STANDING_COLUMNS = 'category_code, category_rank, total_points, rounds_scored, source_checked_at';
+export const CUP_PUBLICATION_COLUMNS = 'round_id, results_ready_at';
+// As linhas que o atleta vê: a confirmada, a por confirmar e a que mudou.
+const CUP_VISIBLE_MATCH = ['proposta', 'confirmada', 'perdida'];
 
 const SERIES_INTENTS = ['atacar', 'controlar', 'trote', 'saltar'];
 
@@ -83,6 +108,22 @@ export function isCupSchemaMissing(error) {
   const msg = String(error.message || '');
   return /relation .*cup_.* does not exist|Could not find the (table|function) .*cup_|Could not find the function public\.(enroll_cup|update_enrollment|leave_cup|set_participation)/i.test(msg);
 }
+
+const M2_MISSING_CODES = new Set(['42P01', '42703', 'PGRST204', 'PGRST205', 'PGRST202', '42883']);
+const COLUMN_MISSING_CODES = new Set(['42703', 'PGRST204']);
+
+/** Uma tabela, coluna ou RPC da M2 ainda não existe nesta BD (Fase 4).
+ *  Ao contrário de isCupSchemaMissing, NÃO marca a competição indisponível:
+ *  o atleta fica com o que a Fase 3 já mostrava. Exportada para os testes. */
+export function isCupM2Missing(error) {
+  if (!error) return false;
+  if (M2_MISSING_CODES.has(error.code)) return true;
+  return /does not exist|Could not find/i.test(String(error.message || ''));
+}
+
+// A M2 faltou numa leitura: as seguintes vão direto à da Fase 3, até
+// recarregar a app (não se repete a pergunta a cada leitura).
+let m2Missing = false;
 
 let warnedMissing = false;
 function warnMissing(error) {
@@ -218,8 +259,15 @@ export const createCupSlice = (set, get) => {
 
   /* A classificação da inscrição ativa (Fase 3). Acessória: uma tabela em
      falta fica vazia sem marcar a competição indisponível; outro erro marca
-     só `results.status = 'erro'` (a mensagem vai à consola, nada mais). */
-  const readResults = async (userId, enrollment) => {
+     só `results.status = 'erro'` (a mensagem vai à consola, nada mais).
+
+     Fase 4: com a M2, as linhas 'proposta'/'confirmada'/'perdida' com a
+     fonte dos pontos, a linha dele na geral (cup_standings) e — só com a
+     edição a publicar — quando saiu a classificação das jornadas que já
+     passaram (cup_round_publication; `catalog` é o catálogo da edição, ou a
+     promessa da leitura dele em curso). Sem a M2 (isCupM2Missing), volta
+     uma vez à leitura da Fase 3 e `m2` fica false. */
+  const readResults = async (userId, enrollment, catalog = null) => {
     if (!enrollment?.id) return null;
     const enrollmentId = enrollment.id;
     const teamId = enrollment.team_id ?? null;
@@ -229,28 +277,68 @@ export const createCupSlice = (set, get) => {
       const cur = (get().cup.enrollments || []).find((e) => e?.id === enrollmentId);
       return !!cur && (cur.team_id ?? null) !== teamId;
     };
-    let mine, team;
+    const none = Promise.resolve({ data: null, error: null });
+    const mineQuery = (m2) => (m2
+      ? supabase.from('cup_results').select(CUP_RESULT_COLUMNS_M2).eq('enrollment_id', enrollmentId).in('match_status', CUP_VISIBLE_MATCH)
+      : supabase.from('cup_results').select(CUP_RESULT_COLUMNS).eq('enrollment_id', enrollmentId).eq('match_status', 'confirmada'));
+    // Só um clube da lista tem coletiva (os de "não está na lista" não).
+    const teamQuery = (m2) => (teamId
+      ? supabase.from('cup_team_results').select(m2 ? CUP_TEAM_RESULT_COLUMNS_M2 : CUP_TEAM_RESULT_COLUMNS).eq('team_id', teamId)
+      : Promise.resolve({ data: [], error: null }));
+    const standingQuery = () => supabase.from('cup_standings').select(CUP_STANDING_COLUMNS).eq('enrollment_id', enrollmentId).maybeSingle();
+    const publicationQuery = async () => {
+      const edition = (get().cup.editions || []).find((e) => e?.id === enrollment.edition_id) || null;
+      if (edition?.sync_mode !== 'publicar') return { data: [], error: null };
+      const entry = await (catalog ?? get().cup.catalog?.[enrollment.edition_id] ?? null);
+      const today = lisbonTodayISO();
+      const ids = (entry?.rounds || [])
+        .filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) <= today && r.date_status !== 'cancelada')
+        .map((r) => r.id);
+      if (!ids.length) return { data: [], error: null };
+      return supabase.from('cup_round_publication').select(CUP_PUBLICATION_COLUMNS).in('round_id', ids);
+    };
+
+    let m2 = !m2Missing;
+    let mine, team, standing, publication;
     try {
-      [mine, team] = await Promise.all([
-        supabase.from('cup_results').select(CUP_RESULT_COLUMNS).eq('enrollment_id', enrollmentId).eq('match_status', 'confirmada'),
-        // Só um clube da lista tem coletiva (os de "não está na lista" não).
-        teamId
-          ? supabase.from('cup_team_results').select(CUP_TEAM_RESULT_COLUMNS).eq('team_id', teamId)
-          : Promise.resolve({ data: [], error: null }),
+      [mine, team, standing, publication] = await Promise.all([
+        mineQuery(m2), teamQuery(m2), m2 ? standingQuery() : none, publicationQuery(),
       ]);
+      // A M2 por aplicar: a leitura da Fase 3, uma vez, e não se volta a
+      // perguntar até recarregar.
+      if (m2 && isCupM2Missing(mine?.error)) {
+        m2Missing = true;
+        m2 = false;
+        [mine, team] = await Promise.all([mineQuery(false), teamQuery(false)]);
+        standing = { data: null, error: null };
+      } else if (m2 && COLUMN_MISSING_CODES.has(team?.error?.code)) {
+        team = await teamQuery(false);
+      }
     } catch (err) {
       console.warn('Competição: resultados:', err?.message || String(err));
-      if (!stale()) patchCup(userId, { results: { status: 'erro', enrollmentId, teamId, rows: [], teamRows: [] } });
+      if (!stale()) patchCup(userId, { results: { ...CUP_EMPTY.results, status: 'erro', enrollmentId, teamId } });
       return null;
     }
     const failed = [mine, team].map((r) => r?.error).find((e) => e && !isCupSchemaMissing(e));
     if (failed) console.warn('Competição: resultados:', failed.message || String(failed));
+    // As acessórias: sem elas o ecrã fica como na Fase 3.
+    for (const r of [standing, publication]) {
+      if (r?.error && !isCupM2Missing(r.error)) console.warn('Competição: classificação:', r.error.message || String(r.error));
+    }
+    const standingRow = standing?.error ? null : (Array.isArray(standing?.data) ? standing.data[0] ?? null : standing?.data ?? null);
+    const readyAt = {};
+    for (const row of (publication?.error ? [] : publication?.data || [])) {
+      if (row?.round_id && row.results_ready_at) readyAt[row.round_id] = row.results_ready_at;
+    }
     const results = {
       status: failed ? 'erro' : 'ready',
       enrollmentId,
       teamId,
       rows: mine?.error ? [] : mine?.data || [],
       teamRows: team?.error ? [] : team?.data || [],
+      standing: m2 ? standingRow : null,
+      publication: readyAt,
+      m2: m2 && !mine?.error,
     };
     if (stale()) return null;
     patchCup(userId, { results });
@@ -267,6 +355,35 @@ export const createCupSlice = (set, get) => {
     return null;
   };
   const raceOfRound = (roundId) => (get().raceEvents || []).find((r) => r?.cup_round_id === roundId) || null;
+  // Feita: concluída, ou com uma corrida ligada — a régua de attendanceCount
+  // e do servidor (cup_race_is_done).
+  const raceDone = (race) => !!race?.id
+    && (race.status === 'concluida' || (get().runs || []).some((r) => r?.race_id === race.id));
+
+  /* "Sim, sou eu" / "Não sou eu" (Fase 4). Não passam por callRpc: uma RPC
+     da M2 em falta não é "competição indisponível" — é "ainda não está
+     disponível", e o resto fica como estava. Com resposta do servidor (ok,
+     ou uma recusa como "Não há nada para confirmar"), relê-se a
+     classificação: o ecrã deixa de perguntar o que já não existe. */
+  const callResultRpc = async (fn, roundId) => {
+    const userId = userIdOf(get);
+    if (!userId) return noSession();
+    ensureOwner(userId);
+    let res;
+    try {
+      res = await supabase.rpc(fn, { p_round_id: roundId });
+    } catch (err) {
+      return { ok: false, error: errorOf(err), unavailable: false };
+    }
+    if (res?.error && isCupM2Missing(res.error)) {
+      return { ok: false, error: { code: res.error.code ?? null, message: 'Ainda não está disponível.' }, unavailable: true };
+    }
+    if (res?.error) console.warn(`Competição (${fn}):`, res.error.message || res.error);
+    const active = (get().cup.enrollments || []).find((e) => e?.status === 'ativa') || null;
+    if (active && userIdOf(get) === userId) await readResults(userId, active);
+    if (res?.error) return { ok: false, error: errorOf(res.error), unavailable: false };
+    return { ok: true, data: res?.data ?? null };
+  };
 
   const callRpc = async (userId, fn, args) => {
     ensureOwner(userId);
@@ -342,10 +459,11 @@ export const createCupSlice = (set, get) => {
         if (!ok) return get().cup;
         writeCupEnrolledHint(userId, !!active);
         if (active) {
+          const catalog = get().loadCupCatalog(active.edition_id, { force });
           await Promise.all([
-            get().loadCupCatalog(active.edition_id, { force }),
+            catalog,
             readParticipations(userId, active.id),
-            readResults(userId, active),
+            readResults(userId, active, catalog),
           ]);
         } else if (get().cup.results?.enrollmentId) {
           patchCup(userId, { results: CUP_EMPTY.results });
@@ -429,10 +547,11 @@ export const createCupSlice = (set, get) => {
       const enrollment = res.data;
       patchCup(userId, (c) => ({ enrollments: upsertById(c.enrollments, enrollment), participations: [] }));
       writeCupEnrolledHint(userId, true);
+      const catalog = get().loadCupCatalog(editionId);
       await Promise.all([
-        get().loadCupCatalog(editionId),
+        catalog,
         enrollment?.id ? readParticipations(userId, enrollment.id) : null,
-        enrollment?.id ? readResults(userId, enrollment) : null,
+        enrollment?.id ? readResults(userId, enrollment, catalog) : null,
       ]);
       return { ok: true, data: enrollment };
     },
@@ -440,7 +559,8 @@ export const createCupSlice = (set, get) => {
     /* Clube, dorsal, objetivo da época, "quem te inscreve", avisos. Mudar
        de clube a meio da época (§4.2) relê a classificação: a coletiva lida
        é a do clube antigo e não passa para o novo (buildCupView também só a
-       usa com o mesmo `teamId`). */
+       usa com o mesmo `teamId`). Mudar o dorsal com linhas por confirmar
+       também (Fase 4). */
     updateEnrollment: async (enrollmentId, patch) => {
       const userId = userIdOf(get);
       if (!userId) return { ok: false, error: { code: null, message: 'Sem sessão' }, unavailable: false };
@@ -449,7 +569,13 @@ export const createCupSlice = (set, get) => {
       if (!res.ok) return res;
       patchCup(userId, (c) => ({ enrollments: upsertById(c.enrollments, res.data) }));
       const after = res.data;
-      if (after?.id && after.status === 'ativa' && (before?.team_id ?? null) !== (after.team_id ?? null)) {
+      // Fase 4: mudar o dorsal apaga no servidor as linhas por confirmar do
+      // dorsal antigo (trigger da M2) — com alguma no ecrã, relê-se, para o
+      // "És tu?" desse dorsal não ficar a perguntar.
+      const bibChanged = (before?.bib ?? null) !== (after?.bib ?? null);
+      const unconfirmed = (get().cup.results?.rows || []).some((r) => r?.match_status && r.match_status !== 'confirmada');
+      if (after?.id && after.status === 'ativa'
+        && ((before?.team_id ?? null) !== (after.team_id ?? null) || (bibChanged && unconfirmed))) {
         await readResults(userId, after);
       }
       return res;
@@ -559,12 +685,19 @@ export const createCupSlice = (set, get) => {
        calendário, é só abrir o registo nela (ok com o raceId, sem RPC). Sem
        ela (disse "Não sei", ou não chegou a decidir), grava-se "Vou": a
        sincronização cria a prova nesse dia — ou liga a que ele já lá tinha
-       — e devolve-se o raceId dela. */
+       — e devolve-se o raceId dela.
+
+       `done` (revisão da Fase 3, aviso [b]): a prova já está feita
+       (concluída, ou com a corrida ligada — é o caso da "Prova fora da
+       agenda" que a sincronização acabou de ligar). Aí o ecrã abre o hub e
+       diz "Ligada à jornada", em vez de reabrir o registo de uma prova que
+       já tem corrida. As recusas dizem a causa certa: a colisão com uma
+       principal; sem prova, o ecrã é que sabe se falta a distância. */
     registerCupRound: async (roundId) => {
       const userId = userIdOf(get);
       if (!userId) return noSession();
       const existing = raceOfRound(roundId);
-      if (existing) return { ok: true, data: { raceId: existing.id } };
+      if (existing) return { ok: true, data: { raceId: existing.id, done: raceDone(existing) } };
       const round = roundOf(roundId);
       const day = typeof round?.date === 'string' ? round.date.slice(0, 10) : null;
       if (!day || day >= lisbonTodayISO() || round.date_status !== 'confirmada') {
@@ -572,12 +705,23 @@ export const createCupSlice = (set, get) => {
       }
       const res = await get().setCupParticipation(roundId, { decision: 'vou', decision_source: 'atleta' });
       if (!res.ok) return res;
-      const created = raceOfRound(roundId);
-      if (!created) {
-        return refused('sem_prova', 'Não consegui criar a prova desta jornada (falta a distância do teu percurso). Regista a corrida como «Prova fora da agenda» e volta a carregar em «Registar» aqui para a ligar.');
+      if (res.collided) {
+        return refused('colisao', 'Nesse dia tens uma prova principal: a jornada ficou por decidir. Regista a corrida nessa prova.');
       }
-      return { ok: true, data: { raceId: created.id } };
+      const created = raceOfRound(roundId);
+      if (!created) return refused('sem_prova', 'Não consegui criar a prova desta jornada.');
+      return { ok: true, data: { raceId: created.id, done: raceDone(created) } };
     },
+
+    /* ── Fase 4: a 1.ª correspondência de cada edição (specs/trofeu.md §7) ─
+
+       "Sim, sou eu": confirma a linha por confirmar desta jornada (e o
+       servidor confirma com ela as outras propostas do mesmo dorsal). "Não
+       sou eu": apaga as não confirmadas desse dorsal e guarda a recusa — a
+       correspondência nunca mais o liga nesta edição (só mudar de dorsal
+       desbloqueia). As duas releem a classificação. */
+    confirmCupResult: (roundId) => callResultRpc('confirm_cup_result', roundId),
+    rejectCupResult: (roundId) => callResultRpc('reject_cup_result', roundId),
 
     /* Promover a jornada a principal ('a') ou voltar a secundária ('b')
        (§4.3). É um update normal da prova do próprio (RLS), SÓ da
@@ -659,4 +803,5 @@ export function __resetCupModuleState() {
   cupLoad = null;
   catalogLoads.clear();
   warnedMissing = false;
+  m2Missing = false;
 }
