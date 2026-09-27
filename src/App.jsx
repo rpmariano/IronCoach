@@ -12,6 +12,8 @@ import { shouldShowOnboarding, shouldSilentlyMarkDone, onboardingLocalKey } from
 import { ToastProvider } from './components/shared/ToastProvider';
 import { authEventAction, shouldReloadOnVisible } from './utils/authEvents';
 import CarolWelcome from './components/Welcome/CarolWelcome';
+import AppTutorial from './components/Tutorial/AppTutorial';
+import { isTutorialDoneLocally, tutorialLocalKey } from './utils/tutorial';
 import { decideWelcome, buildWelcome, readSeen, markSeen, readShownAt, markShownAt, slotKey, welcomeReturnAction } from './utils/carolWelcome';
 import { detectRaceConflict } from './utils/planDivergence';
 import { todayISO } from './lib/utils';
@@ -465,6 +467,8 @@ export default function App() {
   const raceEvents = useAppStore((s) => s.raceEvents);
   const onboardingOpen = useAppStore((s) => s.onboardingOpen);
   const setOnboardingOpen = useAppStore((s) => s.setOnboardingOpen);
+  const tutorialOpen = useAppStore((s) => s.tutorialOpen);
+  const setTutorialOpen = useAppStore((s) => s.setTutorialOpen);
   const markOnboardingDone = useAppStore((s) => s.markOnboardingDone);
   const [isInitializing, setIsInitializing] = useState(true);
   // O ecrã do logo fica enquanto os dados carregam E até o desenho acabar.
@@ -506,7 +510,10 @@ export default function App() {
   const dataPending = useAppStore((s) => s.dataPending);
   const needsOnboarding = !isInitializing && !dataPending && shouldShowOnboarding(dadosAtleta);
   const silentlyDone = !isInitializing && !dataPending && shouldSilentlyMarkDone(dadosAtleta);
-  const showOnboarding = !!session && (needsOnboarding || onboardingOpen);
+  const userId = session?.user?.id;
+  const isFirstArrival = needsOnboarding && !isTutorialDoneLocally(userId);
+  const showTutorial = !!session && (tutorialOpen || (isFirstArrival && !onboardingOpen));
+  const showOnboarding = !!session && !showTutorial && (needsOnboarding || onboardingOpen);
 
   useEffect(() => {
     if (silentlyDone) markOnboardingDone();
@@ -781,6 +788,10 @@ export default function App() {
     const entryTab = entryTabFromSearch(window.location.search);
     stripResumeParam();
     const isDemo = params.get('demo') === 'true';
+    const forcarTutorial = params.get('tutorial') === '1' || params.get('tutorial') === 'true';
+    if (forcarTutorial) {
+      useAppStore.getState().setTutorialOpen(true);
+    }
     // A chave da notificação que abriu a app (ação P.9) — sem sessão ainda
     // não há a quem atribuir a impressão nem dados para decidir o ecrã;
     // fica à espera de loadInitialData, mais abaixo.
@@ -821,15 +832,63 @@ export default function App() {
       navigator.serviceWorker.addEventListener('message', onWorkerMessage);
     }
 
+    const forcarOnboarding = params.get('onboarding') === '1' || params.get('onboarding') === 'true';
+    const skipTutorial = params.get('skip_tutorial') === '1' || params.get('skip_tutorial') === 'true';
+    if (forcarOnboarding && skipTutorial) {
+      useAppStore.getState().setOnboardingOpen(true);
+    }
+
     supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
-      if (existingSession?.user) {
+      if (isDemo) {
+        const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
+        setSession(demoSession);
+        // ?demo=true&onboarding=1 — o único sítio onde o arranque se vê sem
+        // criar uma conta nova: perfil por arrancar E sem registo nenhum nem
+        // prova, que é exatamente o que a regra de utils/onboarding.js exige.
+        if (forcarOnboarding) {
+          try { localStorage.removeItem(onboardingLocalKey('demo-user')); } catch (_) { /* modo privado */ }
+          try { localStorage.removeItem('ironcoach_onboarding_draft_demo-user'); } catch (_) { /* modo privado */ }
+          try { localStorage.removeItem(tutorialLocalKey('demo-user')); } catch (_) { /* modo privado */ }
+          if (skipTutorial) {
+            useAppStore.getState().setOnboardingOpen(true);
+          } else {
+            useAppStore.getState().setOnboardingOpen(false);
+          }
+        }
+        setProfile(forcarOnboarding
+          ? { ...DEMO_PROFILE, onboarding_done: false }
+          : DEMO_PROFILE);
+        // setState direto (em vez dos setters individuais) porque isto é
+        // inicialização única fora do fluxo normal de dados — os setters
+        // existem para respostas do Supabase, não para semear um estado
+        // fictício de propósito.
+        // ?demo=true&provas=1 — provas já corridas e nenhuma marcada: o
+        // dia a seguir no Início, o hub com conquistas e a Vitrina cheia.
+        const verProvas = params.get('provas') === '1';
+        useAppStore.setState(
+          forcarOnboarding ? buildEmptyDemoData()
+            : verProvas ? buildProvasDemoData()
+              : buildDemoData(),
+        );
+        // Também em demo, como com sessão: é onde isto se consegue ver sem conta.
+        if (!forcarOnboarding && shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) {
+          applyNavigation(useAppStore, savedNavigation);
+        }
+        setNavigationDecided(true);
+        setIsInitializing(false);
+      } else if (existingSession?.user) {
         setSession(existingSession);
         loadedUserIdRef.current = existingSession.user.id;
+        if (forcarOnboarding) {
+          useAppStore.getState().setOnboardingOpen(true);
+        }
         // Voltar depois de o Android ter matado a app: o separador e o ecrã
         // onde se estava, que reabre com o rascunho guardado — salvo quando
         // o URL manda (uma notificação acabada de tocar, uma bancada, um
         // ?tab= sem nada a meio; ver shouldRestoreNavigation).
-        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
+        if (!forcarOnboarding && shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) {
+          applyNavigation(useAppStore, savedNavigation);
+        }
         setNavigationDecided(true);
         const loading = loadInitialData(existingSession.user.id, { join: true });
         // O logo sai quando o carregamento devolve (no máximo 10 s)…
@@ -853,38 +912,6 @@ export default function App() {
             proactiveKeyRef.current = null;
           }
         });
-      } else if (isDemo) {
-        const demoSession = { user: { id: 'demo-user', email: 'atleta@ironcoach.app' } };
-        setSession(demoSession);
-        // ?demo=true&onboarding=1 — o único sítio onde o arranque se vê sem
-        // criar uma conta nova: perfil por arrancar E sem registo nenhum nem
-        // prova, que é exatamente o que a regra de utils/onboarding.js exige.
-        // Só existe em demo; sem `demo=true` o parâmetro não faz nada.
-        const forcarOnboarding = params.get('onboarding') === '1';
-        // O fallback local (utils/onboarding.js) grava "feito" ao terminar —
-        // sem isto, recarregar o mesmo URL já não mostrava o arranque.
-        if (forcarOnboarding) {
-          try { localStorage.removeItem(onboardingLocalKey('demo-user')); } catch (_) { /* modo privado */ }
-        }
-        setProfile(forcarOnboarding
-          ? { ...DEMO_PROFILE, onboarding_done: false }
-          : DEMO_PROFILE);
-        // setState direto (em vez dos setters individuais) porque isto é
-        // inicialização única fora do fluxo normal de dados — os setters
-        // existem para respostas do Supabase, não para semear um estado
-        // fictício de propósito.
-        // ?demo=true&provas=1 — provas já corridas e nenhuma marcada: o
-        // dia a seguir no Início, o hub com conquistas e a Vitrina cheia.
-        const verProvas = params.get('provas') === '1';
-        useAppStore.setState(
-          forcarOnboarding ? buildEmptyDemoData()
-            : verProvas ? buildProvasDemoData()
-              : buildDemoData(),
-        );
-        // Também em demo, como com sessão: é onde isto se consegue ver sem conta.
-        if (shouldRestoreNavigation({ tabParam, carolParam, saved: savedNavigation })) applyNavigation(useAppStore, savedNavigation);
-        setNavigationDecided(true);
-        setIsInitializing(false);
       } else {
         setSession(null);
         setNavigationDecided(true);
@@ -893,6 +920,7 @@ export default function App() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (isDemo) return;
       // A regra vive em utils/authEvents.js: com o mesmo utilizador cujos
       // dados já estão carregados (o SIGNED_IN ou o TOKEN_REFRESHED que
       // chegam ao voltar à app), só se atualiza a sessão — nem ecrã de
@@ -973,6 +1001,26 @@ export default function App() {
      pelo Perfil (ver Onboarding.jsx). `reentry` muda só duas coisas: o
      primeiro passo ganha "Voltar", e terminar devolve ao Perfil em vez de
      mudar de separador. */
+  /* Primeiro acesso: o Tutorial da Carol entra ANTES do Onboarding, para o atleta
+     conhecer a sua PT empática e omnipresente antes de preencher os dados. */
+  if (showTutorial && isFirstArrival) {
+    return (
+      <ToastProvider>
+        <AppTutorial
+          isFirstArrival={true}
+          onClose={() => {
+            setTutorialOpen(false);
+            setOnboardingOpen(true);
+          }}
+          onFinish={() => {
+            setTutorialOpen(false);
+            setOnboardingOpen(true);
+          }}
+        />
+      </ToastProvider>
+    );
+  }
+
   if (showOnboarding) {
     return (
       <ToastProvider>
@@ -1045,6 +1093,7 @@ export default function App() {
         </Suspense>
       </Layout>
       {welcome && <CarolWelcome key={welcome.key} welcome={welcome} now={welcome.at} onClose={closeWelcome} />}
+      {tutorialOpen && !isFirstArrival && <AppTutorial onClose={() => setTutorialOpen(false)} />}
     </ToastProvider>
   );
 }

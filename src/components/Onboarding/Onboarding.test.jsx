@@ -76,15 +76,16 @@ const renderOnboarding = (props = {}) =>
 const passo = () => screen.getByTestId('onboarding').dataset.step;
 const clicar = (nome) => fireEvent.click(screen.getByRole('button', { name: nome }));
 
-/* Anda do primeiro ecrã até ao Fecho, sempre pelo botão principal de cada
-   passo (os dois últimos têm nome próprio). */
+/* Anda do primeiro ecrã até ao Fecho, sempre pelo botão principal de cada passo. */
 function percorrerTudo() {
   clicar('Vamos a isso');        // 1 · quem é a Carol
   clicar('Continuar');           // 2 · quem és
   clicar('Continuar');           // 3 · objetivo
   clicar('Continuar');           // 4 · como corres
   clicar('Continuar');           // 5 · como comes
-  clicar('Criar o meu plano');   // 6 · a tua prova
+  clicar('Continuar');           // 6 · memórias
+  clicar('Continuar');           // 7 · alertas
+  clicar('Continuar');           // 8 · a tua prova
 }
 
 beforeEach(() => {
@@ -94,8 +95,8 @@ beforeEach(() => {
   seedStore();
 });
 
-describe('Onboarding — os seis passos', () => {
-  it('percorre os 6 passos com "Continuar" e volta atrás com "Voltar"', () => {
+describe('Onboarding — os passos guiados', () => {
+  it('percorre os passos com "Continuar" e volta atrás com "Voltar"', () => {
     renderOnboarding();
     expect(passo()).toBe('carol');
 
@@ -114,12 +115,19 @@ describe('Onboarding — os seis passos', () => {
     expect(passo()).toBe('como-comes');
 
     clicar('Continuar');
+    expect(passo()).toBe('memorias');
+    expect(screen.getByText('O que devo ter em mente?')).toBeInTheDocument();
+
+    clicar('Continuar');
+    expect(passo()).toBe('alertas');
+    expect(screen.getByText('Como te posso acompanhar?')).toBeInTheDocument();
+
+    clicar('Continuar');
     expect(passo()).toBe('prova');
     expect(screen.getByText('Para que dia treinamos?')).toBeInTheDocument();
 
-    clicar('Criar o meu plano');
+    clicar('Continuar');
     expect(passo()).toBe('fecho');
-
   });
 
   it('"Voltar" recua um passo de cada vez', () => {
@@ -139,8 +147,27 @@ describe('Onboarding — os seis passos', () => {
 
   it('cada passo traz a nota da Carol — menos o do objetivo, que no mock não a tem', () => {
     renderOnboarding();
-    const comNota = { carol: true, 'quem-es': true, objetivo: false, 'como-corres': true, 'como-comes': true, prova: true, fecho: true };
-    for (const nome of ['Vamos a isso', 'Continuar', 'Continuar', 'Continuar', 'Continuar', 'Criar o meu plano']) {
+    const comNota = {
+      carol: true,
+      'quem-es': true,
+      objetivo: false,
+      'como-corres': true,
+      'como-comes': true,
+      memorias: true,
+      prova: true,
+      alertas: true,
+      fecho: true,
+    };
+    for (const nome of [
+      'Vamos a isso',
+      'Continuar',
+      'Continuar',
+      'Continuar',
+      'Continuar',
+      'Continuar',
+      'Continuar',
+      'Continuar',
+    ]) {
       expect(screen.queryAllByTestId('carol-note').length > 0).toBe(comNota[passo()]);
       clicar(nome);
     }
@@ -156,6 +183,8 @@ describe('Onboarding — os seis passos', () => {
     expect(screen.getByLabelText(/Altura/).tagName).toBe('INPUT');
     expect(screen.getByLabelText(/Peso atual/).tagName).toBe('INPUT');
     expect(screen.getByLabelText(/Sexo/).tagName).toBe('SELECT');
+    expect(screen.getByLabelText(/Onde treinas/).tagName).toBe('INPUT');
+    expect(screen.getByLabelText(/FC repouso/).tagName).toBe('INPUT');
   });
 });
 
@@ -169,6 +198,8 @@ describe('Onboarding — o que fica gravado', () => {
     fireEvent.change(screen.getByLabelText(/Altura/), { target: { value: '178' } });
     fireEvent.change(screen.getByLabelText(/Peso atual/), { target: { value: '72.4' } });
     fireEvent.change(screen.getByLabelText(/Sexo/), { target: { value: 'M' } });
+    fireEvent.change(screen.getByLabelText(/Onde treinas/), { target: { value: 'Lisboa' } });
+    fireEvent.change(screen.getByLabelText(/FC repouso/), { target: { value: '54' } });
 
     clicar('Continuar');                                  // → objetivo
     clicar(/Preparar uma prova/);
@@ -178,6 +209,8 @@ describe('Onboarding — o que fica gravado', () => {
     fireEvent.change(screen.getByLabelText(/Dias por semana/), { target: { value: '5' } });
     clicar('Continuar');                                  // → como comes
     clicar('Sem lactose');
+    clicar('Continuar');                                  // → memorias
+    clicar('Continuar');                                  // → alertas
     clicar('Continuar');                                  // → a tua prova
     clicar('Ainda não tenho prova marcada');              // → fecho
 
@@ -191,8 +224,13 @@ describe('Onboarding — o que fica gravado', () => {
       height_cm: 178,
       weight_kg: 72.4,
       gender: 'M',
+      training_city: 'Lisboa',
+      resting_hr_bpm: 54,
       experience_level: 'medio',
       dietary_restrictions: ['sem_lactose'],
+      carol_push_enabled: true,
+      carol_welcome_enabled: true,
+      water_reminder_enabled: false,
       onboarding_done: true,
     });
 
@@ -209,8 +247,10 @@ describe('Onboarding — o que fica gravado', () => {
     fireEvent.change(screen.getByLabelText(/Km por semana/), { target: { value: '20' } });
     fireEvent.change(screen.getByLabelText(/Dias por semana/), { target: { value: '3' } });
     clicar('Continuar');
-    clicar('Continuar');
-    clicar('Ainda não tenho prova marcada');
+    clicar('Continuar'); // → memorias
+    clicar('Continuar'); // → alertas
+    clicar('Continuar'); // → a tua prova
+    clicar('Ainda não tenho prova marcada'); // → fecho
     clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(coachNoteInserts.length).toBe(2));
@@ -220,17 +260,67 @@ describe('Onboarding — o que fica gravado', () => {
     expect(coachNoteInserts[1].note).toMatch(/20 km por semana, 3 dias por semana/);
   });
 
-  it('prova do passo 6 SEM os obrigatórios todos: segue para o formulário, pré-preenchida', async () => {
+  it('o atleta pode adicionar memórias por chips de exemplos e são guardadas em coach_notes', async () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar'); // → objetivo
+    clicar('Continuar'); // → como corres
+    clicar('Continuar'); // → como comes
+    clicar('Continuar'); // → memorias
+
+    // Toca no chip de exemplo de fascite plantar
+    clicar(/Fascite plantar/);
+    expect(screen.getByTestId('onboarding-memorias-lista')).toBeInTheDocument();
+    expect(screen.getByText(/Histórico de fascite plantar/)).toBeInTheDocument();
+
+    clicar('Continuar'); // → alertas
+    clicar('Continuar'); // → a tua prova
+    clicar('Ainda não tenho prova marcada'); // → fecho
+    clicar('Ver o Início primeiro');
+
+    await waitFor(() => expect(coachNoteInserts.length).toBeGreaterThan(0));
+    expect(coachNoteInserts.some((n) => n.category === 'limitacao_fisica' && /fascite plantar/i.test(n.note))).toBe(true);
+  });
+
+  it('permite alternar os switches de alertas e grava no perfil', async () => {
+    renderOnboarding();
+    clicar('Vamos a isso');
+    clicar('Continuar'); // → objetivo
+    clicar('Continuar'); // → como corres
+    clicar('Continuar'); // → como comes
+    clicar('Continuar'); // → memorias
+    clicar('Continuar'); // → alertas
+
+    // Ligar lembretes de água
+    fireEvent.click(screen.getByRole('switch', { name: /Lembretes de hidratação/i }));
+    // Desligar alertas proativos
+    fireEvent.click(screen.getByRole('switch', { name: /Alertas proativos da Carol/i }));
+
+    clicar('Continuar'); // → a tua prova
+    clicar('Ainda não tenho prova marcada'); // → fecho
+    clicar('Ver o Início primeiro');
+
+    await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
+    expect(profileUpdates[0]).toMatchObject({
+      carol_push_enabled: false,
+      carol_welcome_enabled: true,
+      water_reminder_enabled: true,
+    });
+  });
+
+  it('prova do passo 7 SEM os obrigatórios todos: segue para o formulário, pré-preenchida', async () => {
     renderOnboarding();
     clicar('Vamos a isso');
     clicar('Continuar');
     clicar('Continuar');
     clicar('Continuar');
     clicar('Continuar');
+    clicar('Continuar'); // → alertas
+    clicar('Continuar'); // → a tua prova
     fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
     fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
     fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
-    clicar('Criar o meu plano');
+    clicar('Continuar'); // → fecho
     clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(useAppStore.getState().openCreationMode).toBe('race'));
@@ -245,19 +335,21 @@ describe('Onboarding — o que fica gravado', () => {
   /* Relatado pelo utilizador: o arranque perguntava meia dúzia de campos da
      prova e depois atirava-o para o formulário de criar prova. Perguntados
      todos os obrigatórios, a prova nasce gravada e o formulário não abre. */
-  it('prova do passo 6 COM os obrigatórios todos: grava-se e o formulário não abre', async () => {
+  it('prova do passo 7 COM os obrigatórios todos: grava-se e o formulário não abre', async () => {
     renderOnboarding();
     clicar('Vamos a isso');
     clicar('Continuar');
     clicar('Continuar');
     clicar('Continuar');
     clicar('Continuar');
+    clicar('Continuar'); // → alertas
+    clicar('Continuar'); // → a tua prova
     fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
     fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
     fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
     fireEvent.change(screen.getByLabelText(/Local/), { target: { value: 'Lisboa' } });
     fireEvent.change(screen.getByLabelText(/Objetivo de tempo/), { target: { value: '1:45:00' } });
-    clicar('Criar o meu plano');
+    clicar('Continuar'); // → fecho
     clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(raceInserts.length).toBe(1));
@@ -292,12 +384,14 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Continuar');
     clicar('Continuar');
     clicar('Continuar');
+    clicar('Continuar'); // → alertas
+    clicar('Continuar'); // → a tua prova
     fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
     fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
     fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
     fireEvent.change(screen.getByLabelText(/Local/), { target: { value: 'Lisboa' } });
     fireEvent.change(screen.getByLabelText(/Objetivo de tempo/), { target: { value: '1:45:00' } });
-    clicar('Criar o meu plano');
+    clicar('Continuar'); // → fecho
     clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(profileUpdates.length).toBeGreaterThan(0));
@@ -316,12 +410,14 @@ describe('Onboarding — o que fica gravado', () => {
     clicar('Continuar');
     clicar('Continuar');
     clicar('Continuar');
+    clicar('Continuar'); // → alertas
+    clicar('Continuar'); // → a tua prova
     fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Meia de Lisboa' } });
     fireEvent.change(screen.getByLabelText(/Data/), { target: { value: '2027-03-08' } });
     fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '21.1' } });
     fireEvent.change(screen.getByLabelText(/Local/), { target: { value: 'Lisboa' } });
     fireEvent.change(screen.getByLabelText(/Objetivo de tempo/), { target: { value: '1:45:00' } });
-    clicar('Criar o meu plano');
+    clicar('Continuar'); // → fecho
     clicar('Ver o Início primeiro');
 
     await waitFor(() => expect(useAppStore.getState().openCreationMode).toBe('race'));
@@ -372,8 +468,10 @@ function percorrerTudoAPartirDoPasso2() {
   clicar('Continuar');           // → objetivo
   clicar('Continuar');           // → como corres
   clicar('Continuar');           // → como comes
+  clicar('Continuar');           // → memorias
+  clicar('Continuar');           // → alertas
   clicar('Continuar');           // → a tua prova
-  clicar('Criar o meu plano');   // → fecho
+  clicar('Continuar');           // → fecho
 }
 
 describe('Onboarding — reentrada pelo Perfil', () => {
@@ -430,16 +528,18 @@ describe('Onboarding — reentrada pelo Perfil', () => {
     expect(screen.queryByRole('button', { name: 'Voltar' })).toBeNull();
   });
 
-  it('a prova já marcada volta a aparecer no passo 6', () => {
+  it('a prova já marcada volta a aparecer no passo 7', () => {
     useAppStore.setState({
       raceEvents: [{ id: 'r1', name: 'Meia de Lisboa', date: '2099-03-08', distance_km: 21.1, race_type: 'trail' }],
     });
     renderOnboarding({ reentry: true });
     clicar('Vamos a isso');
-    clicar('Continuar');
-    clicar('Continuar');
-    clicar('Continuar');
-    clicar('Continuar');
+    clicar('Continuar'); // quem-es
+    clicar('Continuar'); // objetivo
+    clicar('Continuar'); // como-corres
+    clicar('Continuar'); // como-comes
+    clicar('Continuar'); // memorias
+    clicar('Continuar'); // alertas -> prova
     expect(screen.getByLabelText(/Nome da prova/)).toHaveValue('Meia de Lisboa');
     expect(screen.getByRole('button', { name: 'Trail' })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -478,17 +578,17 @@ describe('Onboarding — regra de arranque', () => {
   });
 });
 
-/* Auditoria a11y (passagem "harden"): a barra de seis segmentos é a única
-   indicação de onde se está nos passos. Sem semântica de progressbar,
-   quem ouve o ecrã não tem nada. */
+/* Auditoria a11y (passagem "harden"): a barra de segmentos é a indicação
+   de onde se está nos passos. Sem semântica de progressbar, quem ouve o
+   ecrã não tem nada. */
 describe('Onboarding — progresso anunciado', () => {
   it('a barra é um progressbar que diz o passo em que se está', () => {
     renderOnboarding();
     clicar('Vamos a isso');
     const barra = screen.getByRole('progressbar');
-    expect(barra).toHaveAttribute('aria-valuenow', '2');
-    expect(barra).toHaveAttribute('aria-valuemax', '6');
-    expect(barra).toHaveAttribute('aria-valuetext', 'Passo 2 de 6');
+    expect(barra).toHaveAttribute('aria-valuenow', '1');
+    expect(barra).toHaveAttribute('aria-valuemax', '7');
+    expect(barra).toHaveAttribute('aria-valuetext', 'Passo 1 de 7');
   });
 });
 
@@ -499,10 +599,12 @@ describe('Onboarding — a Carol responde', () => {
     fireEvent.change(screen.getByLabelText(/Como te chamo/), { target: { value: 'Rui Mariano' } });
     clicar('Continuar');
     expect(screen.getByText('O que te traz aqui, Rui?')).toBeInTheDocument();
-    clicar('Continuar');
-    clicar('Continuar');
-    clicar('Continuar');
-    clicar('Ainda não tenho prova marcada');
+    clicar('Continuar'); // como-corres
+    clicar('Continuar'); // como-comes
+    clicar('Continuar'); // memorias
+    clicar('Continuar'); // alertas
+    clicar('Continuar'); // prova
+    clicar('Ainda não tenho prova marcada'); // fecho
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Está feito, Rui.');
   });
 
@@ -523,17 +625,19 @@ describe('Onboarding — a Carol responde', () => {
   it('com prova marcada, o fecho desenha as semanas até lá, uma a uma', () => {
     renderOnboarding();
     clicar('Vamos a isso');
-    clicar('Continuar');
-    clicar('Continuar');
-    clicar('Continuar');
-    clicar('Continuar');
+    clicar('Continuar'); // quem-es
+    clicar('Continuar'); // objetivo
+    clicar('Continuar'); // como-corres
+    clicar('Continuar'); // como-comes
+    clicar('Continuar'); // memorias
+    clicar('Continuar'); // alertas -> prova
     const d = new Date();
     d.setDate(d.getDate() + 7 * 12 + 2);
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     fireEvent.change(screen.getByLabelText(/Nome da prova/), { target: { value: 'Maratona do Porto' } });
     fireEvent.change(screen.getByLabelText(/^Data/), { target: { value: iso } });
     fireEvent.change(screen.getByLabelText(/Distância/), { target: { value: '42.2' } });
-    clicar('Criar o meu plano');
+    clicar('Continuar'); // fecho
     const semanas = screen.getByTestId('onboarding-semanas');
     expect(semanas).toHaveAttribute('aria-label', '12 semanas até Maratona do Porto');
     expect(semanas.querySelectorAll('.onb-week')).toHaveLength(12);
@@ -554,6 +658,8 @@ describe('Onboarding — a Carol responde', () => {
     fireEvent.change(screen.getByLabelText(/Km por semana/), { target: { value: '30' } });
     clicar('Continuar');
     clicar('Continuar');
+    clicar('Continuar'); // memorias
+    clicar('Continuar'); // alertas -> prova
     const d = new Date();
     d.setDate(d.getDate() + 5);
     const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

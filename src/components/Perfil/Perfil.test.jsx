@@ -746,3 +746,19 @@ describe('Perfil — onde treinas (ação 5.6)', () => {
   });
 });
 
+describe('Perfil — Tutorial da App', () => {
+  it('clicar em "Ver tutorial da app" ativa tutorialOpen no store', () => {
+    useAppStore.setState({
+      profile: PROFILE,
+      session: { user: { email: 'atleta@ironhealth.app' } },
+      tutorialOpen: false,
+    });
+    render(<Perfil />);
+    fireEvent.click(screen.getByRole('button', { name: /^Carol/ }));
+    const tutorialBtn = screen.getByRole('button', { name: /Ver tutorial da app/i });
+    expect(tutorialBtn).toBeInTheDocument();
+    fireEvent.click(tutorialBtn);
+    expect(useAppStore.getState().tutorialOpen).toBe(true);
+  });
+});
+

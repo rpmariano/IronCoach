@@ -1,5 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Eye, PenLine, Clock, Trophy, TrendingUp, Heart, RotateCcw, Check, House, Lightbulb } from 'lucide-react';
+import {
+  Eye, PenLine, Clock, Trophy, TrendingUp, Heart, RotateCcw,
+  Check, House, Lightbulb, Bell, MessageSquare, Droplets,
+  Plus, Trash2, Stethoscope, Briefcase
+} from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { DIETARY_RESTRICTIONS, toggleRestriction, normalizeRestrictions } from '../../utils/diet';
@@ -297,10 +301,30 @@ export function StepQuemEs({ draft, set }) {
             <option value="M">Masculino</option>
           </Field>
         </div>
+        <div className="flex" style={{ gap: 10 }}>
+          <Field
+            label="Onde treinas? (cidade)"
+            type="text"
+            placeholder="Ex.: Lisboa, Porto"
+            style={{ flex: 1, minWidth: 0 }}
+            value={draft.training_city || ''}
+            onChange={(e) => set('training_city', e.target.value)}
+          />
+          <Field
+            label="FC repouso"
+            type="number"
+            inputMode="numeric"
+            placeholder="Ex.: 52"
+            suffix="bpm"
+            style={{ width: 112, flexShrink: 0 }}
+            value={draft.resting_hr_bpm || ''}
+            onChange={(e) => set('resting_hr_bpm', e.target.value)}
+          />
+        </div>
       </div>
 
       <CarolNote>
-        O peso volta a aparecer nas avaliações. Aqui é só o ponto de partida — não te preocupes em ser exato ao grama.
+        A cidade permite-me ver a previsão do tempo para os teus treinos. A FC em repouso (opcional) ajuda-me a vigiar a fadiga.
       </CarolNote>
     </>
   );
@@ -479,7 +503,240 @@ export function StepComoComes({ draft, set }) {
   );
 }
 
-/* ── 6 · A tua prova ─────────────────────────────────────────────────────── */
+/* ── 6 · Memórias da Carol ───────────────────────────────────────────────── */
+
+export const CATEGORIAS_MEMORIAS = [
+  { key: 'disponibilidade', label: 'Horários & Dias', hint: 'Ex.: Só treino de manhã cedo' },
+  { key: 'limitacao_fisica', label: 'Lesões & Doenças', hint: 'Ex.: Sensibilidade no joelho direito' },
+  { key: 'contexto_vida', label: 'Rotina & Vida', hint: 'Ex.: Trabalho por turnos rotativos' },
+  { key: 'preferencia_treino', label: 'Preferência de Treino', hint: 'Ex.: Prefiro correr ao ar livre' },
+];
+
+export const EXEMPLOS_MEMORIAS = [
+  { category: 'disponibilidade', note: 'Só posso treinar de manhã cedo (antes das 7h)', label: '⏰ Manhã cedo (< 7h)' },
+  { category: 'disponibilidade', note: 'Treino ao final do dia, após o trabalho', label: '🌙 Treino à noite' },
+  { category: 'disponibilidade', note: 'Disponível às terças, quintas e sábados', label: '📅 Ter, Qui e Sáb' },
+  { category: 'disponibilidade', note: 'Segunda-feira é sempre dia de descanso', label: '⛔ Segundas descanso' },
+  { category: 'limitacao_fisica', note: 'Sensibilidade no joelho direito em descidas longas', label: '🩺 Joelho em descidas' },
+  { category: 'limitacao_fisica', note: 'Histórico de fascite plantar no pé esquerdo', label: '🩺 Fascite plantar' },
+  { category: 'limitacao_fisica', note: 'Asma induzida por esforço em tempo frio', label: '🩺 Asma no frio' },
+  { category: 'contexto_vida', note: 'Trabalho por turnos rotativos, sono irregular', label: '💼 Trabalho por turnos' },
+  { category: 'contexto_vida', note: 'Bebé pequeno em casa, noites mal dormidas frequentes', label: '👶 Noites mal dormidas' },
+];
+
+export function StepMemorias({ draft, set }) {
+  const [categoria, setCategoria] = useState('disponibilidade');
+  const [textoNota, setTextoNota] = useState('');
+  const notas = Array.isArray(draft.coach_notes_list) ? draft.coach_notes_list : [];
+
+  const adicionarNota = (cat, texto) => {
+    const limpo = (texto || '').trim();
+    if (!limpo) return;
+    const jaExiste = notas.some((n) => n.note.toLowerCase() === limpo.toLowerCase());
+    if (jaExiste) return;
+    const novaLista = [...notas, { category: cat, note: limpo }];
+    set('coach_notes_list', novaLista);
+  };
+
+  const removerNota = (index) => {
+    const novaLista = notas.filter((_, i) => i !== index);
+    set('coach_notes_list', novaLista);
+  };
+
+  const toggleExemplo = (ex) => {
+    const idx = notas.findIndex((n) => n.note.toLowerCase() === ex.note.toLowerCase());
+    if (idx >= 0) {
+      removerNota(idx);
+    } else {
+      adicionarNota(ex.category, ex.note);
+    }
+  };
+
+  const handleSubmeterTexto = (e) => {
+    e.preventDefault();
+    if (!textoNota.trim()) return;
+    adicionarNota(categoria, textoNota);
+    setTextoNota('');
+  };
+
+  const catAtual = CATEGORIAS_MEMORIAS.find((c) => c.key === categoria) || CATEGORIAS_MEMORIAS[0];
+
+  return (
+    <>
+      <CarolHead title="O que devo ter em mente?">
+        Ao contrário de um chat cujas mensagens antigas se perdem, as minhas <strong>Memórias</strong> são factos duradouros que consulto sempre antes de te sugerir qualquer treino ou refeição.
+      </CarolHead>
+
+      <div className="shrink-0 flex flex-col gap-2.5" style={{ marginTop: 20 }}>
+        <FieldLabel>Para que servem as memórias? Toca nos exemplos para adicionar:</FieldLabel>
+        <div className="flex flex-wrap" style={{ gap: 8 }}>
+          {EXEMPLOS_MEMORIAS.map((ex) => {
+            const ativa = notas.some((n) => n.note.toLowerCase() === ex.note.toLowerCase());
+            return (
+              <button
+                key={ex.note}
+                type="button"
+                aria-pressed={ativa}
+                onClick={() => toggleExemplo(ex)}
+                className="inline-flex items-center gap-1.5 transition active:scale-[.97]"
+                style={{
+                  minHeight: 40,
+                  padding: '7px 13px',
+                  borderRadius: 'var(--radius-pill)',
+                  fontSize: 12.5,
+                  fontWeight: ativa ? 800 : 600,
+                  color: ativa ? 'var(--coach-ink)' : 'var(--text-2)',
+                  background: ativa ? 'var(--grad-coach-legible)' : 'rgba(255,255,255,.05)',
+                  border: ativa ? 'none' : '1px solid rgba(255,255,255,.12)',
+                }}
+              >
+                <span>{ex.label}</span>
+                {ativa && <Check size={13} strokeWidth={2.5} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div
+        className="shrink-0 flex flex-col"
+        style={{
+          marginTop: 20,
+          padding: '14px',
+          borderRadius: 'var(--radius-lg)',
+          background: 'rgba(255,255,255,.03)',
+          border: '1px solid var(--border-glass)',
+          gap: 12,
+        }}
+      >
+        <div className="flex items-center justify-between">
+          <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--coach-soft)', letterSpacing: '.05em', textTransform: 'uppercase' }}>
+            Escrever nova memória
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-4)' }}>{catAtual.label}</span>
+        </div>
+
+        <div className="flex flex-wrap" style={{ gap: 6 }}>
+          {CATEGORIAS_MEMORIAS.map((c) => {
+            const on = categoria === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setCategoria(c.key)}
+                className="inline-flex items-center transition"
+                style={{
+                  minHeight: 34,
+                  padding: '4px 11px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: 11.5,
+                  fontWeight: on ? 800 : 600,
+                  color: on ? 'var(--coach)' : 'var(--text-3)',
+                  background: on ? 'rgba(34,211,238,.12)' : 'rgba(255,255,255,.04)',
+                  border: on ? '1px solid var(--coach)' : '1px solid transparent',
+                }}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <form onSubmit={handleSubmeterTexto} className="flex flex-col gap-2">
+          <input
+            type="text"
+            placeholder={catAtual.hint}
+            value={textoNota}
+            onChange={(e) => setTextoNota(e.target.value)}
+            className="w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,255,255,.14)] rounded-xl px-3.5 py-2.5 text-sm outline-none text-[var(--text-1)] placeholder-[var(--text-4)] focus:border-[var(--coach)]"
+            style={{ minHeight: 46 }}
+          />
+          <button
+            type="submit"
+            disabled={!textoNota.trim()}
+            className="inline-flex items-center justify-center gap-1.5 transition active:scale-[.98] disabled:opacity-40 self-end"
+            style={{
+              minHeight: 38,
+              padding: '0 16px',
+              borderRadius: 'var(--radius-md)',
+              background: 'rgba(34,211,238,.15)',
+              border: '1px solid var(--coach)',
+              color: 'var(--coach)',
+              fontSize: 12.5,
+              fontWeight: 800,
+            }}
+          >
+            <Plus size={15} /> Adicionar à memória
+          </button>
+        </form>
+      </div>
+
+      {notas.length > 0 && (
+        <div className="shrink-0 flex flex-col gap-2" style={{ marginTop: 18 }} data-testid="onboarding-memorias-lista">
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-3)' }}>
+            Memórias que vou guardar ({notas.length}):
+          </div>
+          {notas.map((n, i) => {
+            const rotuloCat = CATEGORIAS_MEMORIAS.find((c) => c.key === n.category)?.label || n.category;
+            return (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-3"
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'rgba(255,255,255,.04)',
+                  border: '1px solid rgba(255,255,255,.09)',
+                }}
+              >
+                <div className="flex-1 min-w-0">
+                  <span
+                    style={{
+                      display: 'inline-block',
+                      fontSize: 10,
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      letterSpacing: '.06em',
+                      color: n.category === 'limitacao_fisica' ? 'var(--danger, #f87171)' : 'var(--coach-soft)',
+                      marginBottom: 2,
+                    }}
+                  >
+                    {rotuloCat}
+                  </span>
+                  <p style={{ margin: 0, fontSize: 13, color: 'var(--text-1)', lineHeight: 1.4 }}>
+                    {n.note}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  aria-label={`Remover nota: ${n.note}`}
+                  onClick={() => removerNota(i)}
+                  className="shrink-0 flex items-center justify-center transition active:scale-95"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 9,
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--text-4)',
+                  }}
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <CarolNote style={{ marginTop: 22 }}>
+        Podes rever, alterar ou apagar qualquer memória no Perfil · Carol quando a tua rotina mudar.
+      </CarolNote>
+    </>
+  );
+}
+
+/* ── 7 · A tua prova ─────────────────────────────────────────────────────── */
 
 export function StepProva({ draft, set, carolNote, reaction }) {
   return (
@@ -580,6 +837,187 @@ export function StepProva({ draft, set, carolNote, reaction }) {
       </div>
 
       <CarolReply reaction={reaction}>{carolNote}</CarolReply>
+    </>
+  );
+}
+
+/* ── 6 · Presença & Alertas da Carol ─────────────────────────────────────── */
+
+export function StepAlertas({ draft, set }) {
+  const pushAtivo = draft.carol_push_enabled !== false;
+  const welcomeAtivo = draft.carol_welcome_enabled !== false;
+  const aguaAtiva = !!draft.water_reminder_enabled;
+
+  return (
+    <>
+      <CarolHead title="Como te posso acompanhar?">
+        Estou presente quando precisas, sem ruído quando estás focado. Ajusta a minha presença e os alertas para o teu dia a dia.
+      </CarolHead>
+
+      <div className="shrink-0 flex flex-col gap-3.5" style={{ marginTop: 24 }}>
+        {/* Switch 1: Alertas proativos */}
+        <div
+          className="flex items-center justify-between gap-3"
+          style={{
+            padding: '16px',
+            borderRadius: 'var(--radius-xl)',
+            background: pushAtivo ? 'var(--tint-coach-bg)' : 'rgba(255,255,255,.04)',
+            border: pushAtivo ? '1px solid var(--tint-coach-bd)' : '1px solid var(--border-glass)',
+          }}
+        >
+          <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
+            <span
+              className="shrink-0 flex items-center justify-center"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 11,
+                background: pushAtivo ? 'rgba(34,211,238,.16)' : 'rgba(255,255,255,.06)',
+                color: pushAtivo ? 'var(--coach)' : 'var(--text-3)',
+                marginTop: 2,
+              }}
+            >
+              <Bell size={18} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)' }}>
+                Alertas proativos da Carol
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 3 }}>
+                Aviso-te de sinais de sobretreino ou quebra de rendimento, faço o balanço semanal e preparo-te na véspera da prova.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-label="Alertas proativos da Carol"
+            aria-checked={pushAtivo}
+            onClick={() => set('carol_push_enabled', !pushAtivo)}
+            className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
+              pushAtivo ? '' : 'bg-[var(--surface-strong)]'
+            }`}
+            style={pushAtivo ? { background: 'var(--coach)' } : undefined}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
+                pushAtivo ? 'translate-x-5' : 'translate-x-0'
+              }`}
+              style={{ backgroundColor: pushAtivo ? 'var(--coach-ink)' : 'var(--text-1)' }}
+            />
+          </button>
+        </div>
+
+        {/* Switch 2: Boas-vindas ao abrir a app */}
+        <div
+          className="flex items-center justify-between gap-3"
+          style={{
+            padding: '16px',
+            borderRadius: 'var(--radius-xl)',
+            background: welcomeAtivo ? 'var(--tint-coach-bg)' : 'rgba(255,255,255,.04)',
+            border: welcomeAtivo ? '1px solid var(--tint-coach-bd)' : '1px solid var(--border-glass)',
+          }}
+        >
+          <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
+            <span
+              className="shrink-0 flex items-center justify-center"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 11,
+                background: welcomeAtivo ? 'rgba(34,211,238,.16)' : 'rgba(255,255,255,.06)',
+                color: welcomeAtivo ? 'var(--coach)' : 'var(--text-3)',
+                marginTop: 2,
+              }}
+            >
+              <MessageSquare size={18} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)' }}>
+                Saudação ao abrir a app
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 3 }}>
+                Recebo-te antes do Início com uma saudação empática adaptada à hora do dia, ao teu descanso e ao treino planeado.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-label="Saudação ao abrir a app"
+            aria-checked={welcomeAtivo}
+            onClick={() => set('carol_welcome_enabled', !welcomeAtivo)}
+            className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
+              welcomeAtivo ? '' : 'bg-[var(--surface-strong)]'
+            }`}
+            style={welcomeAtivo ? { background: 'var(--coach)' } : undefined}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
+                welcomeAtivo ? 'translate-x-5' : 'translate-x-0'
+              }`}
+              style={{ backgroundColor: welcomeAtivo ? 'var(--coach-ink)' : 'var(--text-1)' }}
+            />
+          </button>
+        </div>
+
+        {/* Switch 3: Lembretes de água */}
+        <div
+          className="flex items-center justify-between gap-3"
+          style={{
+            padding: '16px',
+            borderRadius: 'var(--radius-xl)',
+            background: aguaAtiva ? 'var(--tint-nutrition-bg)' : 'rgba(255,255,255,.04)',
+            border: aguaAtiva ? '1px solid var(--nutrition)' : '1px solid var(--border-glass)',
+          }}
+        >
+          <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
+            <span
+              className="shrink-0 flex items-center justify-center"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 11,
+                background: aguaAtiva ? 'rgba(52,211,153,.16)' : 'rgba(255,255,255,.06)',
+                color: aguaAtiva ? 'var(--nutrition)' : 'var(--text-3)',
+                marginTop: 2,
+              }}
+            >
+              <Droplets size={18} />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)' }}>
+                Lembretes de hidratação
+              </div>
+              <div style={{ fontSize: 12, lineHeight: 1.5, color: 'var(--text-3)', marginTop: 3 }}>
+                Notificações suaves ao longo do dia para não te esqueceres de beber água e manteres o corpo pronto para os treinos.
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-label="Lembretes de hidratação"
+            aria-checked={aguaAtiva}
+            onClick={() => set('water_reminder_enabled', !aguaAtiva)}
+            className={`tap-area-44 w-11 h-6 rounded-full relative transition-colors duration-200 shrink-0 ${
+              aguaAtiva ? '' : 'bg-[var(--surface-strong)]'
+            }`}
+            style={aguaAtiva ? { background: 'var(--nutrition)' } : undefined}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full transition-transform duration-200 ${
+                aguaAtiva ? 'translate-x-5' : 'translate-x-0'
+              }`}
+              style={{ backgroundColor: aguaAtiva ? 'var(--nutrition-ink, #000)' : 'var(--text-1)' }}
+            />
+          </button>
+        </div>
+      </div>
+
+      <CarolNote style={{ marginTop: 22 }}>
+        Podes ligar, desligar ou mudar a frequência destes avisos a qualquer momento em Perfil · Carol.
+      </CarolNote>
     </>
   );
 }
