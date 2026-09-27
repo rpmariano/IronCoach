@@ -47,7 +47,7 @@ export function CarolNoticesDock({ notices, bottom }) {
           )}
         >
           <p className="text-[12.5px] leading-[1.55]" style={{ color: 'var(--text-3)' }}>
-            O aviso deixa de aparecer. Podes voltar a falar comigo no chat sempre que quiseres.
+            Deixo de te chamar por este assunto. Podes voltar a falar comigo no chat sempre que quiseres.
           </p>
         </Dialog>
       )}

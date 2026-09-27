@@ -10,26 +10,35 @@ import { noticeSeverity, noticeTone } from './noticeTones';
    aviso, na cor e com o símbolo da gravidade (noticeTones.js).
 
    Desde 2026-09-27 os avisos em que ela pede para falar e os insights são o
-   mesmo cartão, e cada um traz as suas ações juntas, no fim do cartão:
-   "Falar com a Carol" em cima, "Percebi" e "Agora não" lado a lado por
-   baixo. Antes, o "Entendido" vivia no cartão e o "Falar com a Carol" e o
-   "Ignorar" no rodapé, para o conjunto (pedido do utilizador).
+   mesmo cartão, com as ações juntas no fim: "Falar com a Carol" em cima e,
+   por baixo, lado a lado, as que o aviso tiver. Antes, o "Entendido" vivia
+   no cartão e o "Falar com a Carol" e o "Ignorar" no rodapé, para o
+   conjunto (pedido do utilizador).
 
-   - "Falar com a Carol" abre o chat com esse aviso.
-   - "Percebi" (era "Entendido") tira o insight de vez, em todos os ecrãs.
+   Nos insights:
+   - "Falar com a Carol" abre o chat com esse insight;
+   - "Percebi" (era "Entendido") tira-o de vez, em todos os ecrãs;
    - "Agora não" (era "Ignorar") tira-o até amanhã: volta se ainda se
      aplicar. Fica registado como dispensa (coach_impressions, ação 5.1),
      para a Carol e o outro telemóvel saberem que foi posto de lado.
 
-   Os avisos em que ela pede para falar não têm "Percebi": são uma conversa
-   por ter, não um dado a perceber, e saem quando o assunto se resolve. O
-   "Agora não" só aparece nos que se podem dispensar. Formato de um aviso:
+   Nos avisos em que ela pede para falar não há "Percebi": são uma conversa
+   por ter, não um dado a perceber, e saem quando o assunto se resolve. No
+   lugar do "Agora não" há "Dispensar" (pedido 2026-09-27), porque aí a
+   dispensa é de vez: o balanço e o fim do bloco não voltam; o mapa da época
+   só volta se o calendário mudar com jornadas por decidir, e então é outro
+   aviso; uma intervenção por resolver ('assuntos') pede confirmação e
+   fecha-se. O conflito de provas e o ajuste do plano não se dispensam:
+   saem quando se resolvem. Formato de um aviso:
    { id, severity, title, message, onTalk, onDismiss? } */
 
 const PRIMARY_STYLE = { background: 'var(--grad-coach-legible)', color: 'var(--coach-ink)' };
-const NOT_NOW_STYLE = { background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' };
+const SECONDARY_STYLE = { background: 'transparent', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' };
 
-function NoticeCard({ testId, severity, title, message, children, onTalk, talkTestId, onUnderstood, understoodTestId, onNotNow, notNowTestId, notNowLabel }) {
+/* `dismiss` é o botão de pôr de lado — "Agora não" nos insights,
+   "Dispensar" nos avisos dela — ou null quando o aviso não se dispensa:
+   { text, ariaLabel, testId, onClick }. */
+function NoticeCard({ testId, severity, title, message, children, onTalk, talkTestId, onUnderstood, understoodTestId, dismiss }) {
   const t = noticeTone(severity);
   const titleId = useId();
   return (
@@ -40,8 +49,9 @@ function NoticeCard({ testId, severity, title, message, children, onTalk, talkTe
       </div>
       {message && <p className="text-[12.5px] leading-[1.5] mt-2" style={{ color: t.text }}>{message}</p>}
       {children}
-      {/* Cada cartão tem os mesmos três botões: o grupo diz de que aviso
-          são, para o leitor de ecrã não ouvir três "Percebi" iguais. */}
+      {/* Os botões de cada cartão são um grupo com o título do aviso: com
+          vários cartões, o leitor de ecrã não ouve "Percebi" atrás de
+          "Percebi" sem saber de qual. */}
       <div role="group" aria-labelledby={titleId} className="flex flex-col gap-2 mt-3">
         <button
           type="button"
@@ -52,7 +62,7 @@ function NoticeCard({ testId, severity, title, message, children, onTalk, talkTe
         >
           <Sparkles size={14} aria-hidden="true" /> Falar com a Carol
         </button>
-        {(onUnderstood || onNotNow) && (
+        {(onUnderstood || dismiss) && (
           <div className="flex gap-2">
             {onUnderstood && (
               <button
@@ -65,16 +75,16 @@ function NoticeCard({ testId, severity, title, message, children, onTalk, talkTe
                 Percebi
               </button>
             )}
-            {onNotNow && (
+            {dismiss && (
               <button
                 type="button"
-                data-testid={notNowTestId}
-                aria-label={notNowLabel}
-                onClick={onNotNow}
+                data-testid={dismiss.testId}
+                aria-label={dismiss.ariaLabel}
+                onClick={dismiss.onClick}
                 className="flex-1 min-h-[44px] rounded-[11px] text-[12.5px] font-bold"
-                style={NOT_NOW_STYLE}
+                style={SECONDARY_STYLE}
               >
-                Agora não
+                {dismiss.text}
               </button>
             )}
           </div>
@@ -145,9 +155,12 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
           message={alert.message}
           talkTestId={`carol-alert-talk-${alert.id}`}
           onTalk={() => { alert.onTalk?.(); onClose(); }}
-          notNowTestId={`carol-alert-dismiss-${alert.id}`}
-          notNowLabel="Agora não — dispensar este aviso"
-          onNotNow={alert.onDismiss ? () => { alert.onDismiss(); onClose(); } : null}
+          dismiss={alert.onDismiss ? {
+            text: 'Dispensar',
+            ariaLabel: 'Dispensar este aviso',
+            testId: `carol-alert-dismiss-${alert.id}`,
+            onClick: () => { alert.onDismiss(); onClose(); },
+          } : null}
         />
       ))}
       {visible.map((insight) => {
@@ -163,9 +176,12 @@ export default function CoachInsightModal({ insights = [], alerts = [], onClose 
             onTalk={() => talkAbout(insight)}
             understoodTestId={`insight-understood-${insight.id}`}
             onUnderstood={() => understood(insight)}
-            notNowTestId={`insight-snooze-${insight.id}`}
-            notNowLabel="Agora não — volta amanhã, se ainda se aplicar"
-            onNotNow={() => notNow(insight)}
+            dismiss={{
+              text: 'Agora não',
+              ariaLabel: 'Agora não — volta amanhã, se ainda se aplicar',
+              testId: `insight-snooze-${insight.id}`,
+              onClick: () => notNow(insight),
+            }}
           >
             <div className="mt-2.5 flex items-center gap-2 flex-wrap">
               <span className="px-2 py-0.5 rounded-[7px] text-[11px] font-extrabold uppercase" style={{ background: 'rgba(255,255,255,.08)', border: '1px solid rgba(255,255,255,.14)', color: 'var(--text-3)', letterSpacing: '.06em' }}>{insight.module}</span>
