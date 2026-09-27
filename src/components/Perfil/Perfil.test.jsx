@@ -551,6 +551,29 @@ describe('Perfil — notificações da Carol (P.6)', () => {
     expect(screen.queryByTestId('perfil-carol-push-prefs')).not.toBeInTheDocument();
   });
 
+  it('sem nenhum momento: "não te chama", salvo os avisos do Troféu ligados (esses não passam pelos momentos)', () => {
+    useAppStore.setState({ profile: { ...PROFILE, carol_push_enabled: true, carol_push_types: [] } });
+    const { unmount } = render(<Perfil />);
+    abrirMetas();
+    expect(screen.getByText('Sem nenhum momento escolhido, a Carol não te chama.')).toBeInTheDocument();
+    unmount();
+    useAppStore.setState({
+      cup: {
+        ...CUP_EMPTY, status: 'ready', userId: 'user-1',
+        editions: [{ id: 'ed-1', status: 'aberta', entry_mode: 'por_jornada', results_source: 'adaptador', notifications_enabled: true, competition: { short_name: 'Troféu de Cascais', round_label: 'Jornada' } }],
+        enrollments: [{ id: 'enr-1', edition_id: 'ed-1', status: 'ativa', entry_by: 'atleta', notify_results: true }],
+        catalog: { 'ed-1': { status: 'ready', rounds: [], courses: [], overrides: [], categories: [], teams: [] } },
+      },
+    });
+    try {
+      render(<Perfil />);
+      abrirMetas();
+      expect(screen.getByText('Sem nenhum momento escolhido, a Carol não te chama — só os avisos do Troféu que ligaste abaixo.')).toBeInTheDocument();
+    } finally {
+      useAppStore.setState({ cup: CUP_EMPTY });
+    }
+  });
+
   it('é independente da água: ligar a Carol não mexe nos lembretes de água', async () => {
     render(<Perfil />);
     abrirMetas();

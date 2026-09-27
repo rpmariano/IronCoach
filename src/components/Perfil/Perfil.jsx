@@ -24,6 +24,7 @@ import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
 import { todayISO } from '../../lib/utils';
+import { useCupForHome } from '../../utils/useCup';
 import { searchTrainingPlaces, trainingPlaceFields } from '../../utils/trainingPlace';
 
 const TAB_KEYS = ['perfil', 'metas', 'vitrina', 'equipamento', 'coach'];
@@ -531,6 +532,11 @@ export default function Perfil() {
   const carolEndHour = draft.carol_push_end_hour ?? DEFAULT_CAROL_PUSH_END_HOUR;
   const carolMaxPerDay = draft.carol_push_max_per_day ?? 1;
   const carolTypes = Array.isArray(draft.carol_push_types) ? draft.carol_push_types : ALL_CAROL_PUSH_TYPES;
+  // Os avisos do Troféu não passam por estes momentos (§8): a quem os ligou,
+  // "não te chama" deixava de ser verdade. O mesmo seletor do CupNoticePrefs.
+  const cupView = useCupForHome();
+  const cupNoticesOn = cupView?.enrollment?.status === 'ativa'
+    && ['notify_calendar', 'notify_date_changes', 'notify_entry_deadline', 'notify_results'].some((k) => cupView.enrollment[k] === true);
   // Sem a coluna (perfil antigo), as boas-vindas estão ligadas.
   const welcomeOn = draft.carol_welcome_enabled !== false;
 
@@ -1205,7 +1211,9 @@ export default function Perfil() {
                 </fieldset>
                 <p className="text-[11px] text-[var(--text-3)] leading-relaxed">
                   {carolTypes.length === 0
-                    ? 'Sem nenhum momento escolhido, a Carol não te chama.'
+                    ? (cupNoticesOn
+                      ? 'Sem nenhum momento escolhido, a Carol não te chama — só os avisos do Troféu que ligaste abaixo.'
+                      : 'Sem nenhum momento escolhido, a Carol não te chama.')
                     : carolStartHour === carolEndHour
                       ? 'Início igual ao fim: a Carol usa a janela das 09:00 às 21:00.'
                       : carolStartHour < carolEndHour && carolStartHour > 6 && carolTypes.includes('race_morning')

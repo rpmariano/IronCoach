@@ -272,7 +272,7 @@ async function handler(req: Request): Promise<Response> {
         if (raceAfterErr) console.warn("coach-proactive-tick: não leu os balanços de prova entregues", userId, raceAfterErr.message);
         deliveredRaceAfter = (raceAfterRows || []).map((r: { key: string }) => r.key);
       }
-      let candidates = cupTickCandidates(listServerProactive({
+      const baseCandidates = listServerProactive({
         raceEvents: races || [],
         runs: runs || [],
         lastRecordDate: last,
@@ -294,7 +294,15 @@ async function handler(req: Request): Promise<Response> {
         weekRecordDates: weekDates,
         deliveredKeys: deliveredRaceAfter,
         vitrina,
-      }, today), cupState.byUser.get(userId), now, today, { notices: !cupState.noticesOff });
+      }, today);
+      // As regras do Troféu nunca calam os outros momentos (§8): um erro nelas
+      // (ex.: uma linha anómala do catálogo) fica com a lista de sempre.
+      let candidates = baseCandidates;
+      try {
+        candidates = cupTickCandidates(baseCandidates, cupState.byUser.get(userId), now, today, { notices: !cupState.noticesOff });
+      } catch (e) {
+        console.warn("coach-proactive-tick: regras do Troféu falharam; fica a lista de sempre", e instanceof Error ? e.name : "erro");
+      }
 
       const prefs = prefsById.get(userId) ?? {};
       /* A decisão fica em app_logs (P.10) — só com algum momento, e nunca a
