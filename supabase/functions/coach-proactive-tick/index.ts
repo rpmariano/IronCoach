@@ -29,7 +29,7 @@ import { TERRAIN_LOOKBACK_DAYS } from "../_shared/formulas/percentileSegments.ts
 import { composePushMessage, type PushUsage } from "./pushText.ts";
 import { choosePush, lisbonDateOf, tickLogRow, tickLogSignature } from "./decide.ts";
 import { recordUsage } from "../_shared/usageRecorder.ts";
-import { cupNoticeMessage, cupTickCandidates, tickTab } from "../_shared/formulas/cupNotices.ts";
+import { cupNoticeMessage, cupTickCandidates, tickTab, type TickCandidate } from "../_shared/formulas/cupNotices.ts";
 import { loadCupNoticeState } from "./cupNoticeState.ts";
 import { claimWithCupFallback } from "./claim.ts";
 import type { ChooseCtx } from "./decide.ts";
@@ -297,7 +297,7 @@ async function handler(req: Request): Promise<Response> {
       }, today);
       // As regras do Troféu nunca calam os outros momentos (§8): um erro nelas
       // (ex.: uma linha anómala do catálogo) fica com a lista de sempre.
-      let candidates = baseCandidates;
+      let candidates: TickCandidate[] = baseCandidates;
       try {
         candidates = cupTickCandidates(baseCandidates, cupState.byUser.get(userId), now, today, { notices: !cupState.noticesOff });
       } catch (e) {
