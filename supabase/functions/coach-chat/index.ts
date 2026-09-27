@@ -1267,7 +1267,7 @@ async function generateRaceCaption(geminiKey: string, o: RaceOutcome, firstName:
     `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
     {
       method: "POST",
-      headers: geminiHeaders(geminiKey!),
+      headers: geminiHeaders(geminiKey),
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: buildRaceCaptionPrompt(o, firstName) }] }],
         generationConfig: { temperature: 0.8, maxOutputTokens: 1024 },
