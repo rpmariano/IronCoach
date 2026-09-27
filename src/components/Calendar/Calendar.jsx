@@ -171,12 +171,30 @@ export default function Calendar() {
     [isRaceList, raceEvents, filter.raceStatus],
   );
   const racePageInfo = pageOf(raceList, racePage);
+  // A lista encolheu (uma prova apagada ou concluída) e a página guardada
+  // ficou para lá do fim: o estado acompanha a página que se vê, para não
+  // ficar guardado no calendarView um número que já não existe.
+  useEffect(() => {
+    if (isRaceList && racePageInfo.page !== racePage) setRacePage(racePageInfo.page);
+  }, [isRaceList, racePageInfo.page, racePage]);
   const raceListRef = useRef(null);
+  const raceListTitleRef = useRef(null);
   const goToRacePage = (next) => {
     setRacePage(next);
-    // A página nova começa no topo da lista, não onde estava o botão.
+    // A página nova começa no topo da lista, não onde estava o botão. O
+    // foco vai para o título: na última página o "Seguintes" desativa-se, e
+    // com o foco nele o teclado e o leitor de ecrã ficavam sem sítio.
     raceListRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    raceListTitleRef.current?.focus?.({ preventScroll: true });
   };
+  // "3 provas por realizar", "1 prova concluída": o título diz o que a lista
+  // é — tocar num dia da grelha não a muda.
+  const raceListTitle = (() => {
+    const n = racePageInfo.total;
+    const provas = n === 1 ? 'prova' : 'provas';
+    if (filter.raceStatus === 'concluida') return `${n} ${provas} ${n === 1 ? 'concluída' : 'concluídas'}`;
+    return `${n} ${provas} por realizar`;
+  })();
 
   // A grelha e a lista do dia leem os mesmos registos já filtrados: um dia
   // só se acende com o que o filtro deixa ver.
@@ -410,7 +428,7 @@ export default function Calendar() {
             ))}
           </div>
           {filter.type === 'prova' && (
-            <div role="group" aria-label="Estado das provas" className="grid grid-cols-3 gap-1 mt-1 pt-1 border-t border-[var(--border-glass)] fade-in">
+            <div role="group" aria-label="Estado das provas" className="grid grid-cols-2 gap-1 mt-1 pt-1 border-t border-[var(--border-glass)] fade-in">
               {RACE_STATUS_FILTERS.map((s) => (
                 <FilterChip
                   key={s.key}
@@ -432,10 +450,13 @@ export default function Calendar() {
             está lá em baixo, longe dos botões do filtro, e um dia "vazio"
             tem de dizer porquê. Tocar tira o filtro. */}
         <div ref={raceListRef} className="flex items-center justify-between gap-2 px-1 pt-2" style={{ scrollMarginTop: 'calc(var(--header-h) + 8px)' }}>
-          <h3 className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide" data-testid="calendar-list-title">
-            {isRaceList
-              ? `${racePageInfo.total} ${racePageInfo.total === 1 ? 'prova' : 'provas'}`
-              : format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
+          <h3
+            ref={raceListTitleRef}
+            tabIndex={isRaceList ? -1 : undefined}
+            className="text-[11px] font-semibold text-[var(--text-3)] uppercase tracking-wide outline-none"
+            data-testid="calendar-list-title"
+          >
+            {isRaceList ? raceListTitle : format(selectedDate, 'dd MMMM yyyy', { locale: pt })}
           </h3>
           {filterActive && (
             <button

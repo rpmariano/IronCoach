@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { format, addMonths } from 'date-fns';
 import { pt } from 'date-fns/locale';
@@ -201,7 +201,7 @@ describe('Calendário — filtro', () => {
     renderCalendario();
     fireEvent.click(screen.getByTestId('calendar-filter-prova'));
 
-    expect(screen.getByTestId('calendar-list-title')).toHaveTextContent('7 provas');
+    expect(screen.getByTestId('calendar-list-title').textContent).toBe('7 provas por realizar');
     // Da mais próxima para a mais distante: as 5 primeiras.
     // Só o nome (o primeiro nó de texto): o resto do parágrafo são as pílulas.
     const nomes = () => screen.queryAllByText(/^Prova futura \d$/).map((n) => n.firstChild.textContent);
@@ -213,10 +213,12 @@ describe('Calendário — filtro', () => {
     expect(nomes()).toEqual(['Prova futura 6', 'Prova futura 7']);
     expect(screen.getByTestId('race-list-pager')).toHaveTextContent('Página 2 de 2');
     expect(screen.getByRole('button', { name: /Seguintes/ })).toBeDisabled();
+    // O "Seguintes" desativou-se: o foco foi para o título da lista.
+    expect(screen.getByTestId('calendar-list-title')).toHaveFocus();
 
     // Mudar de estado volta à primeira página; as concluídas, da mais recente.
     fireEvent.click(screen.getByTestId('calendar-filter-prova-concluida'));
-    expect(screen.getByTestId('calendar-list-title')).toHaveTextContent('2 provas');
+    expect(screen.getByTestId('calendar-list-title').textContent).toBe('2 provas concluídas');
     expect(screen.queryAllByText(/^Feita /).map((n) => n.firstChild.textContent)).toEqual(['Feita recente', 'Feita antiga']);
     // Até 5 não há paginação.
     expect(screen.queryByTestId('race-list-pager')).not.toBeInTheDocument();
@@ -228,7 +230,7 @@ describe('Calendário — filtro', () => {
     fireEvent.click(screen.getByTestId('calendar-filter-prova'));
     fireEvent.click(screen.getByTestId('calendar-filter-prova-concluida'));
     expect(screen.getByText('Ainda sem provas concluídas')).toBeInTheDocument();
-    expect(screen.getByTestId('calendar-list-title')).toHaveTextContent('0 provas');
+    expect(screen.getByTestId('calendar-list-title').textContent).toBe('0 provas concluídas');
   });
 
   it('o dia vazio diz porquê, e o nome do filtro ao lado do dia tira-o', () => {
@@ -305,6 +307,22 @@ describe('Calendário — filtro', () => {
     renderCalendario();
     expect(screen.getByTestId('race-list-pager')).toHaveTextContent('Página 2 de 2');
     expect(screen.getByText('Prova futura 6')).toBeInTheDocument();
+  });
+
+  it('a lista encolheu: a página guardada acompanha a que se vê', () => {
+    const porFazer = Array.from({ length: 6 }, (_, i) => ({
+      id: `pf-${i}`, name: `Prova futura ${i + 1}`, date: iso(addMonths(HOJE, i + 1)), distance_km: 10, status: 'agendada', race_type: 'estrada',
+    }));
+    useAppStore.setState({ raceEvents: porFazer });
+    const { unmount } = renderCalendario();
+    fireEvent.click(screen.getByTestId('calendar-filter-prova'));
+    fireEvent.click(screen.getByRole('button', { name: /Seguintes/ }));
+    // A única prova da página 2 sai (concluída noutro ecrã).
+    act(() => { useAppStore.setState({ raceEvents: porFazer.slice(0, 5) }); });
+    expect(screen.queryByTestId('race-list-pager')).not.toBeInTheDocument();
+    expect(screen.getByText('Prova futura 1')).toBeInTheDocument();
+    unmount();
+    expect(useAppStore.getState().calendarView.racePage).toBe(0);
   });
 
   it('sem sessão (saiu-se da conta com o Calendário aberto), não guarda nada', () => {
