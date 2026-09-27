@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk,findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -4070,12 +4070,14 @@ Deno.test("arranque da intervenção: objetivos convida; plano confronta; a etiq
 
 // "Não quero objetivos agora" no chat tem de travar a próxima pesagem: fica
 // uma proposta recusada e vazia (revisão pré-deploy do #41, M1).
-function makeResolveSb(reason: string | null) {
+function makeResolveSb(reason: string | null, status: string | null = "needed", rpcResult: { data: unknown; error: unknown } = { data: true, error: null }) {
   // deno-lint-ignore no-explicit-any
-  const calls = { inserts: [] as any[], updates: [] as any[] };
+  const calls = { inserts: [] as any[], updates: [] as any[], rpcs: [] as any[] };
   const sb = {
+    // deno-lint-ignore no-explicit-any
+    rpc: (fn: string, args: any) => { calls.rpcs.push({ fn, args }); return Promise.resolve(rpcResult); },
     from: (table: string) => ({
-      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { coach_intervention_reason: reason } }) }) }),
+      select: () => ({ eq: () => ({ maybeSingle: () => Promise.resolve({ data: { coach_intervention_status: status, coach_intervention_reason: reason } }) }) }),
       // deno-lint-ignore no-explicit-any
       update: (row: any) => { calls.updates.push({ table, row }); return { eq: () => Promise.resolve({ error: null }) }; },
       // deno-lint-ignore no-explicit-any
@@ -4155,6 +4157,49 @@ Deno.test("closeInterventionOnTalk: a de objetivos e sem motivo não se tocam", 
     assertEquals(await closeInterventionOnTalk(sb, "u1", motivo), false);
     assertEquals(calls.updates.length, 0);
   }
+});
+
+// Revisão pré-deploy de 752f5a13: fechado o aviso ao abrir a conversa, o
+// desfecho que a Carol dá depois perdia-se (o trigger não via transição).
+Deno.test("resolve_intervention: com o aviso já fechado pela conversa, o desfecho vai pela RPC", async () => {
+  const { sb, calls } = makeResolveSb(null, "resolved");
+  const out = await runResolveIntervention(sb, "u1", { action_taken: "falso_positivo" });
+  assertEquals(calls.updates.length, 0);
+  assertEquals(calls.rpcs, [{ fn: "record_intervention_outcome", args: { p_outcome: "falso_positivo" } }]);
+  assertStringIncludes(out, "Desfecho registado");
+});
+
+Deno.test("resolve_intervention: sem aviso recente por registar, diz-lho em vez de fingir sucesso", async () => {
+  const { sb } = makeResolveSb(null, "resolved", { data: false, error: null });
+  assertStringIncludes(await runResolveIntervention(sb, "u1", { action_taken: "atleta_ignorou" }), "Não há nenhum aviso recente");
+  const { sb: sbErr } = makeResolveSb(null, null, { data: null, error: { message: "falhou" } });
+  assertStringIncludes(await runResolveIntervention(sbErr, "u1", { action_taken: "atleta_ignorou" }), "Erro");
+});
+
+function makeTalkedSb(row: { reason: string } | null, error: unknown = null) {
+  const filters: Array<[string, unknown]> = [];
+  const chain = {
+    select: () => chain,
+    eq: (c: string, v: unknown) => { filters.push([c, v]); return chain; },
+    gte: (c: string, v: unknown) => { filters.push([c, v]); return chain; },
+    order: () => chain,
+    limit: () => chain,
+    maybeSingle: () => Promise.resolve({ data: row, error }),
+  };
+  return { sb: { from: () => chain }, filters };
+}
+
+Deno.test("readTalkedIntervention: o último aviso fechado pela conversa nas últimas 12 h", async () => {
+  const now = Date.parse("2026-09-27T16:00:00Z");
+  const { sb, filters } = makeTalkedSb({ reason: "Check-in de 2026-09-27: Dor 6/10 (braço direito)." });
+  assertEquals(await readTalkedIntervention(sb, "u1", now), "Check-in de 2026-09-27: Dor 6/10 (braço direito).");
+  assertEquals(filters, [["user_id", "u1"], ["outcome", "resolvido"], ["closed_at", "2026-09-27T04:00:00.000Z"]]);
+});
+
+Deno.test("readTalkedIntervention: nenhum, de objetivos ou com erro dá null", async () => {
+  assertEquals(await readTalkedIntervention(makeTalkedSb(null).sb, "u1"), null);
+  assertEquals(await readTalkedIntervention(makeTalkedSb({ reason: "[objetivos] Sem objetivos." }).sb, "u1"), null);
+  assertEquals(await readTalkedIntervention(makeTalkedSb(null, { message: "x" }).sb, "u1"), null);
 });
 
 Deno.test("closeInterventionOnTalk: um erro da base de dados não rebenta o turno", async () => {

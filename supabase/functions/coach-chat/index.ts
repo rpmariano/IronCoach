@@ -4,7 +4,7 @@
 // histórico de conversa) e chama o Gemini. Guarda pergunta e resposta
 // na tabela coach_messages para persistência entre sessões.
 
-import { CHAT_RESOLVE_OUTCOMES } from "../_shared/formulas/interventionOutcomes.ts";
+import { CHAT_RESOLVE_OUTCOMES, INTERVENTION_OUTCOME } from "../_shared/formulas/interventionOutcomes.ts";
 import { UNLINKED_RUN_DETAILS_PREFIX } from "../_shared/formulas/proactiveTriggers.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
@@ -3649,8 +3649,19 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
 
   // Numa conversa sobre objetivos, "não quero agora" fica registado para a
   // espera de 14 dias do analyze-body (ver goalsDeclinedMarker).
-  const { data: current } = await sb.from("profiles").select("coach_intervention_reason").eq("id", userId).maybeSingle();
+  const { data: current } = await sb.from("profiles").select("coach_intervention_status, coach_intervention_reason").eq("id", userId).maybeSingle();
   const eraDeObjetivos = isGoalsIntervention(current?.coach_intervention_reason);
+
+  /* O aviso já fechou quando a conversa abriu (closeInterventionOnTalk): o
+     perfil está fechado e o trigger não veria transição nenhuma. O desfecho
+     vai direto para a linha que a conversa fechou. */
+  if (!["needed", "in_progress"].includes(current?.coach_intervention_status)) {
+    const { data: recorded, error: rpcErr } = await sb.rpc("record_intervention_outcome", { p_outcome: actionTaken });
+    if (rpcErr) return `Erro ao registar o desfecho: ${rpcErr.message}`;
+    return recorded
+      ? `Desfecho registado: ${actionTaken}. O aviso no Início já tinha fechado quando abriste a conversa.`
+      : "Não há nenhum aviso recente por registar — não chames esta ferramenta outra vez nesta conversa.";
+  }
 
   const { error } = await sb
     .from("profiles")
@@ -3671,7 +3682,30 @@ export async function runResolveIntervention(sb: any, userId: string, args: any)
     if (markErr) console.warn("resolve_intervention: falha a registar a recusa de objetivos:", markErr);
   }
 
-  return `Intervenção marcada como resolvida com motivo: ${actionTaken}. O botão flutuante de alerta na homepage vai desaparecer.`;
+  return `Intervenção marcada como resolvida com motivo: ${actionTaken}. O aviso no Início fecha.`;
+}
+
+/* O aviso que esta conversa fechou (closeInterventionOnTalk), para os
+   turnos seguintes: sem isto, a partir da segunda mensagem a Carol já não
+   tinha o motivo nem as regras do aviso (o perfil já está fechado), e quase
+   nunca chegava a registar o desfecho. É a última linha fechada como
+   'resolvido' — o fecho sem desfecho, que é o da conversa — nas últimas
+   TALKED_INTERVENTION_HOURS; a de objetivos não fecha assim. null sem ela. */
+export const TALKED_INTERVENTION_HOURS = 12;
+
+export async function readTalkedIntervention(sb: any, userId: string, nowMs = Date.now()): Promise<string | null> {
+  const since = new Date(nowMs - TALKED_INTERVENTION_HOURS * 3600000).toISOString();
+  const { data, error } = await sb
+    .from("coach_interventions")
+    .select("reason")
+    .eq("user_id", userId)
+    .eq("outcome", INTERVENTION_OUTCOME.RESOLVIDO)
+    .gte("closed_at", since)
+    .order("closed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data?.reason || isGoalsIntervention(data.reason)) return null;
+  return data.reason;
 }
 
 /* O aviso "Preciso de falar contigo" fecha quando a conversa acontece
@@ -5703,7 +5737,7 @@ export function buildSystemInstruction(
   } else if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
     sys += `\n\n=== MODO DE INTERVENÇÃO PROATIVA ATIVO ===\n` +
            `Identificaste desvios significativos no cumprimento do plano (ex.: falhas repetidas na nutrição ou faltas/desvios grandes nos treinos) e decidiste intervir.\n` +
-           `O botão flutuante vermelho está visível na app para o atleta.\n` +
+           `Chamaste-o com o aviso "Preciso de falar contigo" na app, e é dele que estão a falar.\n` +
            `OBJETIVO: Confrontar o atleta (com exigência e empatia) sobre os desvios, explicando por que o plano atual está comprometido e propondo ajustá-lo.\n`;
            
     if (isInterventionStart) {
@@ -5882,6 +5916,11 @@ async function handler(req: Request): Promise<Response> {
         "cycle_tracking_consent_at, carol_push_enabled, carol_push_types, carol_push_start_hour, carol_push_end_hour, water_reminder_enabled")
       .eq("id", userId)
       .maybeSingle();
+
+    // O aviso que a conversa fechou ao abrir (readTalkedIntervention): nas
+    // respostas do atleta a Carol continua com o motivo e as regras dele.
+    const interventionOpen = ["needed", "in_progress"].includes(profile?.coach_intervention_status as string);
+    const talkedReason = !interventionOpen && message ? await readTalkedIntervention(sb, userId) : null;
 
     // ── Dados nutricionais dos últimos 7 dias ────────────────────────────
     // Uma semana dá ao coach contexto suficiente sobre consistência e
@@ -6650,8 +6689,8 @@ async function handler(req: Request): Promise<Response> {
       coachNotesContext,
       firstNameOf(profile?.display_name as string | null | undefined),
       body.is_intervention_start === true,
-      profile?.coach_intervention_status ?? null,
-      profile?.coach_intervention_reason ?? null,
+      talkedReason ? "in_progress" : profile?.coach_intervention_status ?? null,
+      talkedReason ?? profile?.coach_intervention_reason ?? null,
       shoesContext,
       coachingMode,
       weeklyRunningContext,
