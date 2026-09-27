@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Flag, Users, Lock, Megaphone, ExternalLink } from 'lucide-react';
+import { Flag, Users, Lock, Megaphone, ExternalLink, EyeOff } from 'lucide-react';
 import PremiumModal from '../../shared/PremiumModal';
 import Button from '../../shared/Button';
 import { setEditionStatus, closeEdition } from '../../../utils/cupAdmin';
@@ -13,8 +13,10 @@ const SUB_TABS = [
 ];
 
 /* Cabeçalho da edição (competição, edição, época, estado) + as ações de
-   estado (§6.1: "Publicar edição", "Fechar edição" com confirmação) + os
-   separadores internos Jornadas/Clubes. */
+   estado (§6.1: "Publicar edição", "Voltar a 'por anunciar'" e "Fechar
+   edição", as duas últimas com confirmação) + os separadores internos
+   Jornadas/Clubes. Aberta ↔ Por anunciar alterna-se quantas vezes for
+   preciso (pedido do dono, 2026-09-27); Encerrada não tem volta. */
 export default function EditionDetail({ edition, competition, onEditionChanged }) {
   const [subTab, setSubTab] = useState('jornadas');
   const [publishing, setPublishing] = useState(false);
@@ -22,6 +24,9 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState(null);
   const [confirmClose, setConfirmClose] = useState(false);
+  const [unpublishing, setUnpublishing] = useState(false);
+  const [unpublishError, setUnpublishError] = useState(null);
+  const [confirmUnpublish, setConfirmUnpublish] = useState(false);
 
   const handlePublish = async () => {
     setPublishing(true);
@@ -29,6 +34,20 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
     const res = await setEditionStatus(edition.id, 'aberta');
     setPublishing(false);
     if (!res.ok) { setPublishError(res.error?.message || 'Falha ao publicar a edição.'); return; }
+    onEditionChanged?.(res.data);
+  };
+
+  // Voltar a esconder: as inscrições novas fecham (enroll_cup só aceita
+  // 'aberta') e o convite some a quem não está inscrito; quem já está
+  // inscrito continua com o Troféu (shouldShowCupDoor dá 'inscrito' fora de
+  // 'encerrada'). Nada se apaga.
+  const handleUnpublish = async () => {
+    setUnpublishing(true);
+    setUnpublishError(null);
+    const res = await setEditionStatus(edition.id, 'por_anunciar');
+    setUnpublishing(false);
+    if (!res.ok) { setUnpublishError(res.error?.message || 'Falha ao voltar a "por anunciar".'); return; }
+    setConfirmUnpublish(false);
     onEditionChanged?.(res.data);
   };
 
@@ -86,7 +105,10 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
         )}
 
         {edition.status === 'aberta' && (
-          <div className="space-y-1.5">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="light" size="sm" onClick={() => setConfirmUnpublish(true)} icon={<EyeOff size={14} />}>
+              Voltar a "por anunciar"
+            </Button>
             <Button variant="danger-outline" size="sm" onClick={() => setConfirmClose(true)} icon={<Lock size={14} />}>
               Fechar edição
             </Button>
@@ -117,6 +139,36 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
       )}
       {subTab === 'clubes' && (
         <TeamsPanel edition={edition} readOnly={isClosed} />
+      )}
+
+      {confirmUnpublish && (
+        <PremiumModal
+          isOpen={confirmUnpublish}
+          onClose={() => !unpublishing && setConfirmUnpublish(false)}
+          title={'Voltar a "por anunciar"'}
+          subtitle={`${competition?.short_name} · ${edition.edition_no}.ª edição`}
+          icon={EyeOff}
+          variant="dialog"
+          maxWidth="max-w-sm"
+        >
+          <div className="p-6 space-y-4 bg-[var(--bg-sheet)] text-[var(--text-2)]">
+            <p className="text-xs leading-relaxed">
+              O convite deixa de aparecer a quem ainda não se inscreveu e as inscrições novas
+              ficam fechadas. Quem já está inscrito continua a ver o Troféu, as jornadas e a
+              Carol — nada se apaga. Podes voltar a publicar quando quiseres.
+            </p>
+            {unpublishError && <p className="text-[11px] text-[var(--danger)]">{unpublishError}</p>}
+            <div className="flex gap-2 pt-1">
+              <Button variant="light" className="flex-1" onClick={() => setConfirmUnpublish(false)} disabled={unpublishing}>
+                Cancelar
+              </Button>
+              <Button variant="module" moduleColor="var(--grad-race)" className="flex-1" onClick={handleUnpublish} disabled={unpublishing}
+                icon={unpublishing ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : <EyeOff size={16} />}>
+                {unpublishing ? 'A esconder…' : 'Voltar a "por anunciar"'}
+              </Button>
+            </div>
+          </div>
+        </PremiumModal>
       )}
 
       {confirmClose && (

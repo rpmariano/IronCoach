@@ -333,7 +333,9 @@ calculado.
 
 `bug_reviewer` não vê o separador.
 
-1. **Edições:** estado, "Publicar edição", **"Fechar edição"** (`close_edition`:
+1. **Edições:** estado, "Publicar edição" e "Voltar a 'por anunciar'" (alternam
+   quantas vezes for preciso; esconder fecha as inscrições novas e o convite, e
+   quem já está inscrito mantém tudo), **"Fechar edição"** (`close_edition`:
    `encerrada`, inscrições a `concluida`, grava os resumos, apaga dorsais e
    dados de correspondência). As regras da edição ficam por SQL em 2026/27.
 2. **Jornadas:** data e `date_status`, local, terreno, percursos com metros e

@@ -188,6 +188,30 @@ describe('CompetitionsTab — estado da edição', () => {
     expect(await screen.findByText('Fechar edição')).toBeInTheDocument();
   });
 
+  // Pedido do dono (2026-09-27): Aberta ↔ Por anunciar alterna-se quantas
+  // vezes for preciso; esconder pede confirmação e não apaga nada.
+  it('"Voltar a por anunciar" pede confirmação e alterna com "Publicar edição", ida e volta', async () => {
+    await openEdition('ed34');
+    fireEvent.click(await screen.findByText('Voltar a "por anunciar"'));
+    expect(await screen.findByText(/Quem já está inscrito continua a ver o Troféu/)).toBeInTheDocument();
+    // Cancelar não muda nada.
+    fireEvent.click(screen.getByText('Cancelar'));
+    expect(mocks.setEditionStatus).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('Voltar a "por anunciar"'));
+    const dialog = (await screen.findByText(/Quem já está inscrito continua a ver o Troféu/)).closest('div');
+    fireEvent.click(within(dialog.parentElement).getAllByText('Voltar a "por anunciar"').at(-1));
+    await waitFor(() => expect(mocks.setEditionStatus).toHaveBeenCalledWith('ed34', 'por_anunciar'));
+    expect(await screen.findByText('Publicar edição')).toBeInTheDocument();
+    expect(screen.queryByText('Fechar edição')).not.toBeInTheDocument();
+
+    // E de volta a aberta.
+    fireEvent.click(screen.getByText('Publicar edição'));
+    await waitFor(() => expect(mocks.setEditionStatus).toHaveBeenLastCalledWith('ed34', 'aberta'));
+    expect(await screen.findByText('Fechar edição')).toBeInTheDocument();
+    expect(mocks.closeEdition).not.toHaveBeenCalled();
+  });
+
   it('"Fechar edição" pede confirmação e só fecha depois de confirmar', async () => {
     await openEdition('ed34');
     fireEvent.click(screen.getByText('Fechar edição'));
