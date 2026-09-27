@@ -11,7 +11,7 @@ const net = { tables: {}, rpcs: {}, calls: [], queries: [] };
 function builder(table) {
   const q = { table, op: 'select', filters: [], payload: null };
   const b = {};
-  for (const m of ['select', 'eq', 'in', 'order', 'limit']) {
+  for (const m of ['select', 'eq', 'in', 'is', 'order', 'limit']) {
     b[m] = (...args) => {
       if (m === 'select' && q.op === 'select') q.columns = args[0] ?? '*';
       if (m !== 'select' && m !== 'order') q.filters.push([m, ...args]);
@@ -304,7 +304,7 @@ describe('cupAdmin — o estado do job (Fase 4)', () => {
 
   it('listSyncAlerts: só os do job, os 20 mais recentes', async () => {
     await cupAdmin.listSyncAlerts();
-    expect(lastCall()).toMatchObject({ table: 'app_logs', filters: [['eq', 'event', 'cup-standings-sync'], ['limit', 20]] });
+    expect(lastCall()).toMatchObject({ table: 'app_logs', filters: [['eq', 'event', 'cup-standings-sync'], ['is', 'user_id', null], ['limit', 20]] });
   });
 });
 

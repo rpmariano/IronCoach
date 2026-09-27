@@ -875,17 +875,19 @@ describe('Fase 4 — a classificação com a M2', () => {
     net.tables.cup_enrollments = ok([ENROLLMENT]);
     net.tables.cup_results = ok([PROPOSTA]);
     net.tables.cup_standings = ok(STANDING);
-    net.tables.cup_round_publication = ok([{ round_id: 'r-c2', results_ready_at: '2027-01-10T18:37:00Z' }, { round_id: 'r-c1', results_ready_at: null }]);
+    net.tables.cup_round_publication = ok([{ round_id: 'r-c2', results_ready_at: '2027-01-10T18:37:00Z', source: 'job' }, { round_id: 'r-c1', results_ready_at: null }, { round_id: 'r-c3', results_ready_at: '2027-01-24T18:37:00Z', source: 'manual' }]);
     catalogTables();
     await useAppStore.getState().loadCup();
     expect(readsOf('cup_standings')).toEqual([{ table: 'cup_standings', op: 'select', columns: 'category_code, category_rank, total_points, rounds_scored, match_status, source_checked_at', filters: [['eq', 'enrollment_id', 'enr1']] }]);
     // Só as jornadas desta edição que já passaram (hoje 20/01: a 1.ª e a 2.ª; a 6.ª foi cancelada).
-    expect(readsOf('cup_round_publication')).toEqual([{ table: 'cup_round_publication', op: 'select', columns: 'round_id, results_ready_at', filters: [['in', 'round_id', ['r-c1', 'r-c2']]] }]);
+    expect(readsOf('cup_round_publication')).toEqual([{ table: 'cup_round_publication', op: 'select', columns: 'round_id, results_ready_at, source', filters: [['in', 'round_id', ['r-c1', 'r-c2']]] }]);
     for (const c of net.selects.filter((x) => /^cup_(results|team_results|standings|round_publication)$/.test(x.table))) {
       expect(c.columns).not.toMatch(/bib_key|standings_key|match_hash|key_hash|match_refused_key|\*/);
     }
     const { results } = useAppStore.getState().cup;
     expect(results).toMatchObject({ status: 'ready', m2: true, standing: STANDING, publication: { 'r-c2': '2027-01-10T18:37:00Z' } });
+    // A publicação à mão (§6.4) não conta como saída lida pelo job: a frase "Revê o dorsal" não aparece por ela.
+    expect(results.publication).toEqual({ 'r-c2': '2027-01-10T18:37:00Z' });
     const v = buildCupView({ cup: useAppStore.getState().cup, profile: LOADED.profile, raceEvents: [], runs: [], today: '2027-01-20' });
     expect(v.results.pending.map((r) => r.id)).toEqual(['r-c2']);
     expect(v.results.summary.points).toBe(43);

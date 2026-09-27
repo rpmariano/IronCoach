@@ -78,9 +78,11 @@ export default function EditionDetail({ edition, competition, onEditionChanged }
 
   const isClosed = edition.status === 'encerrada';
   const roundLabel = competition?.round_label || 'Jornada';
-  // Sem as jornadas lidas (a ler, ou a leitura falhou), o botão fica ativo:
-  // o servidor tem a mesma guarda e diz o porquê no diálogo.
-  const closeBlocker = rounds ? closeEditionBlocker(rounds, editionTodayISO(edition.time_zone), roundLabel) : null;
+  // Sem as jornadas lidas (a ler, ou a leitura falhou) o botão fica
+  // desativado: fechar é irreversível, e a guarda do servidor só existe com a M2.
+  const closeBlocker = rounds
+    ? closeEditionBlocker(rounds, editionTodayISO(edition.time_zone), roundLabel)
+    : `as ${roundLabel.toLowerCase()}s ainda não foram lidas`;
 
   return (
     <div className="space-y-4">

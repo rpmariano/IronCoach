@@ -196,7 +196,8 @@ export default function CupClassificacao({ view }) {
       {/* O título recebe o foco depois de um "Sim, sou eu" (CupMatchPrompt):
           a pergunta desaparece e o resultado confirmado está aqui. */}
       <h2 id={CUP_CLASSIFICACAO_TITULO_ID} tabIndex={-1} className="m-0 shrink-0" style={{ margin: '10px 2px 0', fontSize: 'inherit' }}>
-        <SectionLabel style={{ margin: 0 }}>Classificação</SectionLabel>
+        {/* span (e não div) dentro do h2: HTML válido. */}
+        <SectionLabel as="span" style={{ margin: 0, display: 'block' }}>Classificação</SectionLabel>
       </h2>
       <GlassCard radius={20} padding={14} data-testid="cup-trofeu-classificacao">
         <p className="m-0 text-[12.5px]" data-testid="cup-classificacao-tua" style={{ color: 'var(--text-2)', lineHeight: 'var(--leading-normal)' }}>

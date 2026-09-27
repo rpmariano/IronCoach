@@ -811,6 +811,17 @@ update public.cup_editions e set age_rule = 'fim_ano_epoca'
 from public.cup_competitions c
 where c.id = e.competition_id and c.slug = 'trofeu-cascais' and e.edition_no = 34 and e.age_rule is null;
 
+-- A tabela e a base dos pontos do regulamento geral (Documento Orientador
+-- 2025/26: 11.º–20.º 3, 21.º–30.º 2, 31.º+ 1; por escalão). Em produção já
+-- estão postas desde 2026-09-27 e isto não muda nada lá; corrige o seed da M1
+-- (13 valores, base por preencher) num ambiente montado de raiz.
+update public.cup_editions e
+set points_table = '[15,13,11,10,9,8,7,6,5,4,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2,2,2,1]'::jsonb,
+    points_basis = coalesce(e.points_basis, 'escalao')
+from public.cup_competitions c
+where c.id = e.competition_id and c.slug = 'trofeu-cascais' and e.edition_no = 34
+  and e.points_table = '[15, 13, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]'::jsonb;
+
 insert into public.cup_categories (edition_id, code, name, gender, min_age, max_age, course_code)
 select e.id, v.code, v.name, v.gender, v.min_age, v.max_age, v.course_code
 from public.cup_editions e

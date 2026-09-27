@@ -453,6 +453,16 @@ describe('CompetitionsTab — a guarda do "Fechar edição"', () => {
     expect(mocks.closeEdition).not.toHaveBeenCalled();
   });
 
+  it('as jornadas não se leram (falha): desativado — fechar é irreversível e sem a M2 o servidor não tem a guarda', async () => {
+    rounds.push({ id: 'r1', edition_id: 'ed34', round_no: 1, name: 'Padroeira', date: '2025-12-08', date_status: 'confirmada' });
+    mocks.listRounds = vi.fn(async () => ({ ok: false, error: { message: 'rede' }, unavailable: false }));
+    await openEdition('ed34');
+    expect(await motivo()).toHaveTextContent('Ainda não dá para fechar: as jornadas ainda não foram lidas.');
+    expect(fechar()).toBeDisabled();
+    fireEvent.click(fechar());
+    expect(mocks.closeEdition).not.toHaveBeenCalled();
+  });
+
   it('a última ainda não passou, ou ainda não tem data: desativado com o motivo; as canceladas não contam', async () => {
     rounds.push(
       { id: 'r1', edition_id: 'ed34', round_no: 1, name: 'Padroeira', date: '2025-12-08', date_status: 'confirmada' },

@@ -179,7 +179,9 @@ function RelatorioEnsaio({ data }) {
   const th = 'text-left font-semibold text-[var(--text-3)] pr-2 py-1';
   const td = 'pr-2 py-1 align-top text-[var(--text-2)]';
   return (
-    <div className="space-y-3 overflow-x-auto" data-testid="cup-ensaio-relatorio" role="status">
+    <div className="space-y-3 overflow-x-auto" data-testid="cup-ensaio-relatorio">
+      {/* Só o aviso de que chegou é anunciado; as tabelas lêem-se ao navegar. */}
+      <p role="status" className="sr-only">Relatório do ensaio pronto.</p>
       <table className="w-full text-[11px]">
         <caption className="text-left text-[11px] font-bold text-[var(--text-1)] pb-1">Por página</caption>
         <thead><tr><th className={th}>Prova</th><th className={th}>Estado</th><th className={th}>Data</th><th className={th}>k</th><th className={th}>Tabelas</th><th className={th}>Linhas</th><th className={th}>Falhas</th></tr></thead>

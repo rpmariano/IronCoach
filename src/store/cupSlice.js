@@ -88,14 +88,16 @@ export const CUP_RESULT_COLUMNS = 'round_id, position, category_code, category_p
 export const CUP_TEAM_RESULT_COLUMNS = 'round_id, position, points';
 // Fase 4 (M2): a fonte dos pontos ('oficial' da geral, ou 'calculado' pela
 // app — provisórios), a linha dele na geral e quando saiu a classificação
-// de cada jornada. Nunca bib_key, standings_key, match_hash, key_hash nem
-// match_refused_key: as chaves da correspondência não saem do servidor.
+// de cada jornada. Destas tabelas nunca se pedem bib_key, standings_key,
+// match_hash nem key_hash. As recusas do próprio (match_refused_key,
+// standings_refused_keys) chegam com a inscrição (select('*')): são hashes
+// dele, nunca de outros atletas.
 export const CUP_RESULT_COLUMNS_M2 = `${CUP_RESULT_COLUMNS}, points_source`;
 export const CUP_TEAM_RESULT_COLUMNS_M2 = `${CUP_TEAM_RESULT_COLUMNS}, points_source`;
 // match_status: 'confirmada' ou 'proposta' (a geral pela chave alternativa —
 // o nome do meio —, por confirmar: o "És tu?" da geral).
 export const CUP_STANDING_COLUMNS = 'category_code, category_rank, total_points, rounds_scored, match_status, source_checked_at';
-export const CUP_PUBLICATION_COLUMNS = 'round_id, results_ready_at';
+export const CUP_PUBLICATION_COLUMNS = 'round_id, results_ready_at, source';
 // As linhas que o atleta vê: a confirmada, a por confirmar e a que mudou.
 const CUP_VISIBLE_MATCH = ['proposta', 'confirmada', 'perdida'];
 
@@ -333,7 +335,10 @@ export const createCupSlice = (set, get) => {
     const standingRow = standing?.error ? null : (Array.isArray(standing?.data) ? standing.data[0] ?? null : standing?.data ?? null);
     const readyAt = {};
     for (const row of (publication?.error ? [] : publication?.data || [])) {
-      if (row?.round_id && row.results_ready_at) readyAt[row.round_id] = row.results_ready_at;
+      // Só a saída dada pelo job conta: com "Classificação publicada" à mão
+      // (§6.4) o job não leu a página, e a frase "Revê o dorsal" culparia o
+      // dorsal por uma falha do site.
+      if (row?.round_id && row.results_ready_at && row.source === 'job') readyAt[row.round_id] = row.results_ready_at;
     }
     const results = {
       status: failed ? 'erro' : 'ready',

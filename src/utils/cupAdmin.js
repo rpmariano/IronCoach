@@ -345,6 +345,9 @@ export async function listSyncAlerts(limit = 20) {
     .from('app_logs')
     .select('id, level, message, meta, created_at')
     .eq('event', 'cup-standings-sync')
+    // Só as do job (grava sempre sem utilizador): os erros do cliente no
+    // "Ler agora"/ensaio (logAppEvent) têm o mesmo event e não são alertas.
+    .is('user_id', null)
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) return bad(error);
