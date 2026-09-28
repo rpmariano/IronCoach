@@ -6,6 +6,7 @@ import ReportIssueButton from '../shared/ReportIssueButton';
 import BugNotificationsHandler from '../shared/BugNotificationsHandler';
 import BrandMark from '../shared/BrandMark';
 import AppBackground from './AppBackground';
+import { scrollToTop as scrollMainToTop, isDashboardSwipe } from '../../utils/scrollToTop';
 import WaterSheet from '../Home/WaterSheet';
 import PaceCalculatorSheet from '../shared/PaceCalculatorSheet';
 import { useElasticPillIndicator } from '../../utils/useElasticPillIndicator';
@@ -70,32 +71,22 @@ export default function Layout({ children }) {
   // frente da caixa de texto (ver utils/softKeyboard.js e globals.css).
   useEffect(() => installSoftKeyboardWatcher(), []);
 
-  const scrollToTop = useCallback(() => {
-    if (typeof window.scrollTo === 'function') {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-    }
-    if (document.documentElement) {
-      document.documentElement.scrollTop = 0;
-    }
-    if (document.body) {
-      document.body.scrollTop = 0;
-    }
-    if (mainRef.current) {
-      if (typeof mainRef.current.scrollTo === 'function') {
-        mainRef.current.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-      }
-      mainRef.current.scrollTop = 0;
-    }
-  }, []);
+  const scrollToTop = useCallback(() => scrollMainToTop(mainRef.current), []);
 
-  const prevScreenKeyRef = useRef(null);
+  const prevScreenRef = useRef(null);
   useEffect(() => {
-    const currentScreenKey = `${activeTab}:${openCreationMode || ''}:${editingRunId || ''}:${editingRaceId || ''}`;
-    const screenChanged = prevScreenKeyRef.current !== currentScreenKey;
-    prevScreenKeyRef.current = currentScreenKey;
+    const prev = prevScreenRef.current;
+    prevScreenRef.current = { activeTab, openCreationMode, editingRunId, editingRaceId };
 
-    // Quando se muda de tela, a próxima deve de ser apresentada com scroll up, menos o chat (Coach)
-    if (activeTab !== 'coach') {
+    // Quando se muda de tela, a próxima é apresentada com scroll up — menos
+    // o chat (Coach) e o deslize entre separadores da Evolução, onde só muda
+    // o separador (ver utils/scrollToTop.js).
+    const onlySwipedDashboard = prev
+      && isDashboardSwipe(prev.activeTab, activeTab)
+      && prev.openCreationMode === openCreationMode
+      && prev.editingRunId === editingRunId
+      && prev.editingRaceId === editingRaceId;
+    if (activeTab !== 'coach' && !onlySwipedDashboard) {
       scrollToTop();
       requestAnimationFrame(() => {
         scrollToTop();

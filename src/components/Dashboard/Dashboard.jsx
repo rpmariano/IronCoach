@@ -87,11 +87,13 @@ export default function Dashboard({ activeModule }) {
       if (isInitialMount.current) {
         scrollTo(currentIndex, true);
         isInitialMount.current = false;
-        lastScrolledIndexRef.current = currentIndex;
       } else if (currentScrollIndex !== currentIndex && lastScrolledIndexRef.current !== currentIndex) {
         scrollTo(currentIndex, false);
-        lastScrolledIndexRef.current = currentIndex;
       }
+      // Também depois de um deslize (que não passa por scrollTab/SubNav):
+      // sem isto a ref ficava no separador antigo e uma troca vinda de fora
+      // de volta a ele era ignorada, deixando o carrossel noutro módulo.
+      lastScrolledIndexRef.current = currentIndex;
     }
   }, [currentIndex, scrollTo]);
 

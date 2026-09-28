@@ -11,3 +11,5 @@ supabase/.temp/
 supabase/.branches/
 .tmp.driveupload/
 graphify-out/
+__pycache__/
+*.pyc

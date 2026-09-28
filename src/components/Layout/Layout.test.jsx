@@ -65,6 +65,28 @@ describe('Layout — scroll up ao mudar de tela (menos o chat)', () => {
     expect(window.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 }));
   });
 
+  it('deslizar entre separadores da Evolução NÃO faz scroll up', () => {
+    useAppStore.setState({ activeTab: 'corrida', openCreationMode: null });
+    const { rerender } = render(<Layout><div /></Layout>);
+    window.scrollTo.mockClear();
+
+    useAppStore.setState({ activeTab: 'nutricao' });
+    rerender(<Layout><div /></Layout>);
+
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('abrir um formulário dentro da Evolução continua a fazer scroll up', () => {
+    useAppStore.setState({ activeTab: 'corrida', openCreationMode: null });
+    const { rerender } = render(<Layout><div /></Layout>);
+    window.scrollTo.mockClear();
+
+    useAppStore.setState({ activeTab: 'nutricao', openCreationMode: 'meal' });
+    rerender(<Layout><div /></Layout>);
+
+    expect(window.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 }));
+  });
+
   it('mudar para o chat (coach) NÃO faz scroll up', () => {
     useAppStore.setState({ activeTab: 'home', openCreationMode: null });
     const { rerender } = render(<Layout><div /></Layout>);

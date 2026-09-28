@@ -29,6 +29,7 @@ import { cupPushRoute } from './utils/cupPushRoute';
 import Home from './components/Home/Home';
 import LogoLoader from './components/shared/LogoLoader';
 import { adoptBootSplash, holdForLogo, logoIntroMs, registerSkeletonLogo, releaseBootSplash, useHeldWhile, SKELETON_DELAY_MS } from './utils/logoIntro';
+import { DASHBOARD_TABS } from './utils/scrollToTop';
 
 /* Code-splitting (auditoria de performance 2026-09-11). Antes disto o bundle
    era um só ficheiro de 1 351 kB: o primeiro carregamento trazia o Chart.js
@@ -1103,7 +1104,7 @@ export default function App() {
               {activeTab === 'home' && <Home />}
               {activeTab === 'calendario' && <Calendar />}
               {activeTab === 'provas' && <RacesScreen />}
-              {['hub', 'nutricao', 'corpo', 'ginasio', 'corrida', 'holistica'].includes(activeTab) && <Dashboard activeModule={activeTab} />}
+              {DASHBOARD_TABS.includes(activeTab) && <Dashboard activeModule={activeTab} />}
               {activeTab === 'coach' && <Coach />}
               {activeTab === 'perfil' && <Perfil />}
               {activeTab === 'admin' && <Admin />}

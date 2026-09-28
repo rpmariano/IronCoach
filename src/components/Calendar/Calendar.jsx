@@ -20,6 +20,7 @@ import CreatedRecordModal from '../shared/CreatedRecordModal';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
 import { Dialog } from '../shared/Sheet';
 import { orderDayRecords } from '../../utils/dayOrder';
+import { scrollToTop } from '../../utils/scrollToTop';
 import {
   CALENDAR_ALL,
   CALENDAR_FILTER_ALL,
@@ -155,18 +156,7 @@ export default function Calendar() {
   useEffect(() => {
     if (prevEditingRef.current !== isEditingAny) {
       prevEditingRef.current = isEditingAny;
-      if (typeof window.scrollTo === 'function') {
-        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-      }
-      if (document.documentElement) document.documentElement.scrollTop = 0;
-      if (document.body) document.body.scrollTop = 0;
-      const main = document.querySelector('main');
-      if (main) {
-        if (typeof main.scrollTo === 'function') {
-          main.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-        }
-        main.scrollTop = 0;
-      }
+      scrollToTop();
     }
   }, [isEditingAny]);
   // Prova cuja eliminação está por confirmar. Era um window.confirm — o

@@ -24,6 +24,7 @@ import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
 import { todayISO } from '../../lib/utils';
+import { scrollToTop } from '../../utils/scrollToTop';
 import { useCupForHome } from '../../utils/useCup';
 import { searchTrainingPlaces, trainingPlaceFields } from '../../utils/trainingPlace';
 
@@ -198,20 +199,7 @@ export default function Perfil() {
   const isFirstRender = useRef(true);
   useEffect(() => {
     scrollTo(tabIndex);
-    if (!isFirstRender.current) {
-      if (typeof window.scrollTo === 'function') {
-        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-      }
-      if (document.documentElement) document.documentElement.scrollTop = 0;
-      if (document.body) document.body.scrollTop = 0;
-      const main = document.querySelector('main');
-      if (main) {
-        if (typeof main.scrollTo === 'function') {
-          main.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-        }
-        main.scrollTop = 0;
-      }
-    }
+    if (!isFirstRender.current) scrollToTop();
     isFirstRender.current = false;
   }, [tabIndex, scrollTo]);
 
