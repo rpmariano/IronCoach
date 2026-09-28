@@ -1197,7 +1197,8 @@ export function buildWeekAdherenceLine(
   if (!summary.training.length) return null;
   const full = summary.executionScore === 100;
   return `Plano da semana de ${weekStart} a ${weekEnd} (só esta semana): ${trainingSummaryLine(summary.counts)}. ` +
-    `Cumprimento: ${String(summary.executionScore ?? 0).replace(".", ",")}%. Semana cumprida a 100%: ${full ? "sim" : "não"}.`;
+    // Às unidades: "77,8%" é linguagem de sistema, não de treinadora (2026-09-28).
+    `Cumprimento: ${Math.round(summary.executionScore ?? 0)}%. Semana cumprida a 100%: ${full ? "sim" : "não"}.`;
 }
 
 const PORTRAIT_ROW_LIMIT = 1000; // config.toml max_rows — o PostgREST corta em silêncio acima disto.

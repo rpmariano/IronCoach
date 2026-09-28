@@ -286,12 +286,23 @@ export function evaluatePrescriptions(
 
 /** A linha de contas dos treinos ("N treinos prescritos: …; descanso …") —
  *  a mesma no bloco de 14 dias e no plano da semana do balanço. */
+/* Sem as contagens a zero e com o singular certo (2026-09-28): a linha em
+   bruto ("2 treinos prescritos: 0 cumpridos, 1 a menos, 1 a mais, 0 não
+   feitos") saía tal e qual no balanço da semana — "(1 a mais, 1 a menos)" —,
+   e "1 treinos prescritos: 1 cumpridos" lia-se como um sistema a falar. */
 export function trainingSummaryLine(counts: Record<TrainingOutcome, number>): string {
   const workouts = counts.cumprido + counts.a_menos + counts.a_mais + counts.falhado;
   const rests = counts.descanso_respeitado + counts.descanso_nao_respeitado;
+  const n = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
+  const outcomes = [
+    counts.cumprido ? n(counts.cumprido, "cumprido", "cumpridos") : null,
+    counts.a_menos ? `${counts.a_menos} abaixo do previsto` : null,
+    counts.a_mais ? `${counts.a_mais} acima do previsto` : null,
+    counts.falhado ? n(counts.falhado, "não feito", "não feitos") : null,
+  ].filter(Boolean).join(", ");
   return [
-    workouts ? `${workouts} treinos prescritos: ${counts.cumprido} cumpridos, ${counts.a_menos} a menos, ${counts.a_mais} a mais, ${counts.falhado} não feitos` : null,
-    rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${rests} dias` : null,
+    workouts ? `${n(workouts, "treino prescrito", "treinos prescritos")}: ${outcomes}` : null,
+    rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${n(rests, "dia", "dias")}` : null,
   ].filter(Boolean).join("; ");
 }
 

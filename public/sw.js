@@ -21,6 +21,10 @@ self.addEventListener('push', (event) => {
     if (event.data) data = { ...data, ...event.data.json() };
   } catch (e) { /* payload não era JSON — usa os valores por omissão */ }
 
+  // A água é a única sem tag (send-water-reminders): tudo o resto — a Carol e
+  // o que vier depois — leva o logotipo da app, não a gota (pedido 2026-09-28).
+  const isWater = !data.tag || data.tag === 'water-reminder';
+
   event.waitUntil(
     self.registration.showNotification(data.title, {
       body: data.body,
@@ -28,9 +32,9 @@ self.addEventListener('push', (event) => {
       // O Android usa só o canal alfa do badge para desenhar uma silhueta
       // monocromática na barra de estado — um ícone colorido e opaco (como o
       // icon-192.png acima) fica um bloco branco sólido, indistinguível de
-      // "sem imagem". badge-96.png é uma gota branca sobre fundo transparente,
-      // pensada só para isto.
-      badge: 'badge-96.png',
+      // "sem imagem". badge-96.png é uma gota branca sobre fundo transparente;
+      // badge-logo-96.png, o hexágono com as duas setas do logotipo, a branco.
+      badge: isWater ? 'badge-96.png' : 'badge-logo-96.png',
       // Cada tipo substitui só a sua: a água não apaga uma mensagem da Carol.
       tag: data.tag || 'water-reminder',
       renotify: true,

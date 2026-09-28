@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickProactiveTrigger, listProactiveTriggers, lastRecordDate } from './coachProactive';
+import { pickProactiveTrigger, listProactiveTriggers, lastRecordDate, describeWeek } from './coachProactive';
 import { pickServerProactive, listServerProactive } from '@formulas/proactiveTriggers.ts';
 import { ownSegmentFor } from '@formulas/vitrina.ts';
 
@@ -231,6 +231,11 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     expect(details).toContain('2 check-ins');
     expect(details).toContain('sono médio 3,5/5, energia média 3,5/5');
     expect(details).toContain('Semana anterior: 1 corrida (6 km), 0 de ginásio.');
+    // Sem treinos na semana anterior não há comparação (balanço de 28/09:
+    // "subindo dos 0 km da semana anterior").
+    const semAnterior = describeWeek({ runs: [{ date: '2026-09-23', distance_km: 12 }] }, '2026-09-21', '2026-09-27');
+    expect(semAnterior).toContain('Semana anterior: sem treinos registados — não serve de comparação.');
+    expect(semAnterior).not.toContain('0 km');
     expect(details.length).toBeLessThanOrEqual(300);
   });
 

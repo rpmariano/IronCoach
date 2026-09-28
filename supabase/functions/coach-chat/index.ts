@@ -832,7 +832,10 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
     `(2) o que ficou bem e o que ficou a faltar, com um número concreto em cada — o sono e a energia dos check-ins contam, se os houver; ` +
     `(3) o foco da semana que começa, numa frase, a partir do plano em vigor e da próxima prova. ` +
     `Só se o Contexto disser "Semana cumprida a 100%: sim": uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +
-    `Não inventes números que não estejam no Contexto ou nos blocos.`,
+    `Não inventes números que não estejam no Contexto ou nos blocos. ` +
+    // 28/09: "(1 a mais, 1 a menos)" e "subindo dos 0 km da semana anterior".
+    `Diz por palavras o que aconteceu aos treinos (um ficou abaixo do previsto, outro acima), nunca as contagens em bruto nem entre parênteses. ` +
+    `A semana anterior só serve de comparação se teve treinos: sem treinos nela, não compares o volume.`,
   // A Vitrina (2026-09-25): as tabelas com nomes e o "Onde estás". O
   // Contexto diz o momento (entrou/saiu, meu/perto); os números vêm do bloco
   // VITRINA — a notificação não os leva, di-los tu aqui.

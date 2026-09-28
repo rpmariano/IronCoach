@@ -328,7 +328,12 @@ export function describeWeek(data, weekStart, weekEnd) {
   const checkinLine = sleep != null || energy != null
     ? ` Check-ins: sono médio ${sleep != null ? fmtNum(sleep) : '—'}/5, energia média ${energy != null ? fmtNum(energy) : '—'}/5.`
     : '';
-  return `${parts.join(', ')}.${checkinLine} Semana anterior: ${p.runs} corrida${p.runs === 1 ? '' : 's'} (${fmtNum(p.km)} km), ${p.gym} de ginásio.`;
+  /* Sem treinos na semana anterior não há termo de comparação: "0 corridas
+     (0 km)" dava "subindo dos 0 km da semana anterior" no balanço de 28/09. */
+  const prevLine = p.runs || p.gym
+    ? `Semana anterior: ${p.runs} corrida${p.runs === 1 ? '' : 's'} (${fmtNum(p.km)} km), ${p.gym} de ginásio.`
+    : 'Semana anterior: sem treinos registados — não serve de comparação.';
+  return `${parts.join(', ')}.${checkinLine} ${prevLine}`;
 }
 
 /** Escolhe a mensagem proativa para este momento, ou null — o primeiro de

@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildPrescriptionAdherenceContext, evaluatePrescriptions, evaluateTrainingItem, executionBase, executionScore, mealTotalsByDate } from "./prescriptionAdherence.ts";
+import { buildPrescriptionAdherenceContext, evaluatePrescriptions, evaluateTrainingItem, executionBase, executionScore, mealTotalsByDate, trainingSummaryLine } from "./prescriptionAdherence.ts";
 
 const TODAY = "2026-09-18";
 
@@ -51,7 +51,7 @@ Deno.test("evaluatePrescriptions: só os 14 dias antes de hoje, sem cancelados; 
   ]);
 
   const text = buildPrescriptionAdherenceContext(summary)!;
-  assertStringIncludes(text, "1 treinos prescritos: 1 cumpridos, 0 a menos, 0 a mais, 0 não feitos; descanso respeitado em 2 de 2 dias");
+  assertStringIncludes(text, "1 treino prescrito: 1 cumprido; descanso respeitado em 2 de 2 dias");
   assertStringIncludes(text, "a proteína ficou em média em 64% do que sugeriste");
   assertStringIncludes(text, "Um dia isolado não é um padrão");
 });
@@ -150,7 +150,7 @@ Deno.test("executionScore: o texto do prompt não mudou por causa do índice", (
     mealsByDate: {},
   }, TODAY);
   const texto = buildPrescriptionAdherenceContext(summary)!;
-  assertStringIncludes(texto, "1 treinos prescritos: 1 cumpridos, 0 a menos, 0 a mais, 0 não feitos");
+  assertStringIncludes(texto, "1 treino prescrito: 1 cumprido");
   assert(!texto.includes("índice"));
 });
 
@@ -169,3 +169,13 @@ Deno.test("um dia só com refeições dentro do plano de treino não conta como 
   assertEquals(summary.training.map((t) => t.outcome), ["cumprido"]);
 });
 
+
+Deno.test("trainingSummaryLine: sem contagens a zero e com o singular certo (balanço de 28/09)", () => {
+  const zero = { cumprido: 0, a_menos: 0, a_mais: 0, falhado: 0, descanso_respeitado: 0, descanso_nao_respeitado: 0 };
+  assertEquals(
+    trainingSummaryLine({ ...zero, a_menos: 1, a_mais: 1, descanso_respeitado: 5 }),
+    "2 treinos prescritos: 1 abaixo do previsto, 1 acima do previsto; descanso respeitado em 5 de 5 dias",
+  );
+  assertEquals(trainingSummaryLine({ ...zero, falhado: 1, descanso_respeitado: 0, descanso_nao_respeitado: 1 }), "1 treino prescrito: 1 não feito; descanso respeitado em 0 de 1 dia");
+  assertEquals(trainingSummaryLine(zero), "");
+});

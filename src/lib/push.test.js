@@ -432,6 +432,27 @@ async function fire(listener, event) {
   await pending;
 }
 
+describe('sw.js — o ícone da barra de estado', () => {
+  it('a gota só nos lembretes de água; a Carol (e o resto) leva o logotipo', async () => {
+    const { self, listeners } = loadServiceWorker();
+    const push = (payload) => fire(listeners.push, { data: { json: () => payload } });
+    await push({ title: 'Carol', body: 'Bebe um copo.' });
+    await push({ title: 'Carol', body: 'Balanço da semana.', tag: 'carol-proactive', tab: 'coach' });
+    await push({ title: 'Carol', body: 'Troféu.', tag: 'cup-notice' });
+    const badges = self.registration.showNotification.mock.calls.map(([, opts]) => opts.badge);
+    expect(badges).toEqual(['badge-96.png', 'badge-logo-96.png', 'badge-logo-96.png']);
+  });
+
+  it('os dois ficheiros existem em public/ (o GitHub Pages serve-os a partir daí)', () => {
+    for (const f of ['badge-96.png', 'badge-logo-96.png']) {
+      const png = readFileSync(resolve(process.cwd(), 'public', f));
+      expect(png.subarray(1, 4).toString()).toBe('PNG');
+      // cor com alfa (tipo 6): o Android desenha a silhueta pelo canal alfa
+      expect(png[25]).toBe(6);
+    }
+  });
+});
+
 describe('sw.js — pushsubscriptionchange', () => {
   it('sem subscrição nova, renova com a chave ATUAL da app (nunca a antiga) e avisa a app aberta', async () => {
     const client = { postMessage: vi.fn() };

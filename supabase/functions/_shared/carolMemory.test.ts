@@ -469,7 +469,7 @@ Deno.test("buildWeekAdherenceLine: as contas da semana e o veredicto já decidid
   const counts = { cumprido: 4, a_menos: 0, a_mais: 0, falhado: 0, descanso_respeitado: 3, descanso_nao_respeitado: 0 };
   const full = buildWeekAdherenceLine({ training: new Array(7).fill({}), counts, executionScore: 100 }, "2026-09-21", "2026-09-27");
   assertStringIncludes(full!, "Plano da semana de 2026-09-21 a 2026-09-27 (só esta semana)");
-  assertStringIncludes(full!, "4 treinos prescritos: 4 cumpridos, 0 a menos, 0 a mais, 0 não feitos");
+  assertStringIncludes(full!, "4 treinos prescritos: 4 cumpridos");
   assertStringIncludes(full!, "descanso respeitado em 3 de 3 dias");
   assertStringIncludes(full!, "Semana cumprida a 100%: sim.");
   const partial = buildWeekAdherenceLine({ training: new Array(4).fill({}), counts: { ...counts, cumprido: 2, falhado: 2, descanso_respeitado: 0 }, executionScore: 50 }, "2026-09-21", "2026-09-27");
@@ -477,6 +477,9 @@ Deno.test("buildWeekAdherenceLine: as contas da semana e o veredicto já decidid
   assertStringIncludes(partial!, "Semana cumprida a 100%: não.");
   // Sem nada prescrito nessa semana: sem linha — ela compara o volume.
   assertEquals(buildWeekAdherenceLine({ training: [], counts, executionScore: null }, "2026-09-21", "2026-09-27"), null);
+  // Às unidades: o "77,8%" do balanço de 28/09 era linguagem de sistema.
+  const decimal = buildWeekAdherenceLine({ training: new Array(7).fill({}), counts, executionScore: 77.8 }, "2026-09-21", "2026-09-27");
+  assertStringIncludes(decimal!, "Cumprimento: 78%.");
 });
 
 // Desde 2026-09-25 a análise de um registo vem em blocos com rótulo (ver
