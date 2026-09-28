@@ -67,6 +67,8 @@ export const SYNC_CODE_LABEL = {
   colunas: 'colunas',
   genero: 'género',
   posicoes: 'posições',
+  posicoes_com_saltos: 'lugares em falta nas posições',
+  sem_lugar: 'atletas sem lugar no fim da tabela',
   marca: 'marcas ilegíveis',
   marca_parcial: 'algumas marcas ilegíveis',
   dorsal: 'dorsais ilegíveis',
