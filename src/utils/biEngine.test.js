@@ -572,7 +572,9 @@ describe('detectCoachInsights', () => {
    sem corridas em 3 das 4 não têm rácio — buraco na linha, não um pico. */
 describe('calculateACWRHistory — sem histórico, sem rácio', () => {
   it('as semanas sem histórico ficam com ratio null e hasEnoughData false', () => {
-    const runs = [{ date: iso(1), distance_km: 10 }];
+    // Hoje, e não ontem: à segunda-feira ontem é a semana anterior, e a
+    // semana atual ficava sem carga (o teste falhava todas as segundas).
+    const runs = [{ date: iso(0), distance_km: 10 }];
     const weeks = calculateACWRHistory(runs, 4);
     expect(weeks).toHaveLength(4);
     const last = weeks[weeks.length - 1];
