@@ -108,8 +108,10 @@ com a da agenda mas da corrida — a partida real pode não ser a anunciada.
 A refeição tem `meals.meal_time` (migração `20260913220000_meal_time.sql`):
 a hora é SUGERIDA pelo tipo escolhido (pequeno-almoço 08:00, lanche da
 manhã 11:00, almoço 13:00, lanche 17:00, jantar 20:00, ceia 23:00), segue o
-tipo enquanto o atleta não lhe tocar, e muda-se à vontade. Todas se gravam
-por update à parte (as analyze-* não as conhecem). A Carol conhece-as: o
+tipo enquanto o atleta não lhe tocar, e muda-se à vontade. As das corridas e
+treinos gravam-se por update à parte (as analyze-* não as conhecem); a da
+refeição vai no pedido à analyze-meal desde 2026-09-28, que a grava com a
+refeição e a usa na análise (o update à parte fica como rede de segurança). A Carol conhece-as: o
 coach-chat lista corridas e treinos com a hora e, nos hábitos alimentares,
 a hora habitual de cada refeição (mediana de `meal_time`,
 `computeMealTypicalTimes`); o coach-daily-summary recebe `start_time` das

@@ -365,6 +365,33 @@ describe('MealRegistration — editar refeição existente', () => {
     expect(mocks.updateMeal).not.toHaveBeenCalled();
   });
 
+  it('a editar, apagar a hora reanalisa com meal_time null; sem hora gravada abre sem reanálise', async () => {
+    useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_time: null }] });
+    const { unmount } = render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    expect(screen.getByLabelText('Hora da refeição')).toHaveValue('');
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
+    unmount();
+
+    useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_time: '20:00:00' }] });
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-3', meal_time: null }, items: [] }, error: null });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    fireEvent.change(screen.getByLabelText('Hora da refeição'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBeNull();
+  });
+
+  it('numa refeição sem alimentos, mudar só a hora grava por update direto', async () => {
+    useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_items: [], meal_time: '17:00:00' }] });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    fireEvent.change(screen.getByLabelText('Hora da refeição'), { target: { value: '16:30' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+
+    await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(2));
+    expect(mocks.updateMeal.mock.calls[1]).toEqual([{ meal_time: '16:30' }, 'meal-3']);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
   it('mudar as gramas de um alimento passa pelo Coach e reanalisa', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 

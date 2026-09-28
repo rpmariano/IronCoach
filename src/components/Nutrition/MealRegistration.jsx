@@ -109,8 +109,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // Edição — carrega a refeição existente. Alimentos e observações são dados
   // ANALÍTICOS: mudá-los muda a análise, por isso guardar passa pelo Coach e
   // regenera-a (as observações entram no prompt de estimação — "hambúrguer"
-  // caseiro e do McDonald's não dão os mesmos valores). Data e tipo de
-  // refeição não mexem na análise, e nesses casos guardar é um update direto,
+  // caseiro e do McDonald's não dão os mesmos valores). A data e a hora
+  // também (a Carol lê o dia e a hora — ver analyticalSignature). Só o tipo
+  // de refeição não mexe na análise, e nesse caso guardar é um update direto,
   // sem custo de API. É por passar pelo Coach que acrescentar um alimento
   // novo ao editar é agora possível — a estimativa dos valores dele vem daí.
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
@@ -313,10 +314,17 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      alterado, para o aviso de saída as proteger. */
   usePersistedDraftMedia(mealIdToEdit ? null : draftStorageKey, 'photos', photos, (v) => { setPhotos(v); setIsFormDirty(true); });
 
-  // Regenera a análise se a data, alimentos ou observações mudaram
+  // Regenera a análise se a data, a hora, os alimentos ou as observações
+  // mudaram. Exceção: numa refeição sem alimentos (análise por foto que
+  // devolveu 0 itens) não há o que reanalisar, e corrigir só a hora tem de
+  // continuar a gravar — cai no update direto (revisão pré-deploy de c6f92a72).
+  const originalMealTime = isEditing ? (meals || []).find(m => m.id === mealIdToEdit)?.meal_time : null;
+  const onlyTimeChanged = isEditing
+    && analyticalSignature(date, originalMealTime, notes, manualItems) === originalSnapshot;
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(date, mealTime, notes, manualItems) !== originalSnapshot;
+    && analyticalSignature(date, mealTime, notes, manualItems) !== originalSnapshot
+    && !(onlyTimeChanged && manualItems.length === 0);
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
@@ -437,12 +445,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // ----------------------------------
   // GUARDAR ALTERAÇÕES (edição) — dois caminhos:
-  //   • Alimentos ou observações mudaram → passa pelo Coach (analyze-meal em
+  //   • Alimentos, observações, data ou hora mudaram → passa pelo Coach (analyze-meal em
   //     mode manual com meal_id), que reestima os valores nutricionais de
   //     todos os alimentos e regenera a análise. É o que permite acrescentar
   //     um alimento novo ao editar.
-  //   • Hora mudou → também reanalisa (a Carol lê-a desde 2026-09-28).
-  //   • Só o tipo mudou → update direto, sem chamada ao Gemini.
+  //     A hora conta desde 2026-09-28 (a Carol lê-a).
+  //   • Só o tipo mudou (ou só a hora, numa refeição sem alimentos) → update
+  //     direto, sem chamada ao Gemini; a hora grava-a persistMealTime.
   // ----------------------------------
   const saveEditTask = async () => {
     {
