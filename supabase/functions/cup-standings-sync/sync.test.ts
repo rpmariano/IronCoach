@@ -18,7 +18,7 @@ import {
 import { band, bibKeyInput, normBib, normText, sha256Hex } from "../_shared/formulas/cupResults.ts";
 import {
   colunasTrocadas,
-  comBuracoNasPosicoes,
+  comMuitosBuracosNasPosicoes,
   comColunaPVazia,
   comData,
   comDorsalRepetidoNaPagina,
@@ -304,7 +304,7 @@ Deno.test("invariantes da jornada: cada uma PÁRA — 0 escritas nas tabelas dos
     ["semColuna", semColuna(SINT_J1_PAGE, "marca"), "colunas"],
     ["colunasTrocadas", colunasTrocadas(SINT_J1_PAGE), "posicoes"],
     ["paginaErro", paginaErro(SINT_J1_PAGE), "pagina_erro"],
-    ["comBuracoNasPosicoes", comBuracoNasPosicoes(SINT_J1_PAGE), "posicoes"],
+    ["comMuitosBuracosNasPosicoes", comMuitosBuracosNasPosicoes(SINT_J1_PAGE), "posicoes"],
     ["comData", comData(SINT_J1_PAGE, "2026-12-13"), "data_da_pagina"],
     ["comEscalao", comEscalao(SINT_J1_PAGE, "M85"), "escalao_desconhecido"],
     ["comMarcaIlegivel", comMarcaIlegivel(SINT_J1_PAGE, 5), "marca"],

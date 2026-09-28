@@ -367,6 +367,34 @@ function pointsOf(s: string): number | null {
   return /^\d{1,6}$/.test(t) ? Number(t) : NaN;
 }
 
+/** Lugares em falta que uma tabela de prova pode ter: o site salta o lugar
+ *  de um atleta retirado ou desclassificado (a J2 da 33.ª, 4100 m M: …, 37,
+ *  39, …). Até 2, ou 2% das linhas; mais do que isso é página partida. */
+export const ROUND_POSITION_SKIPS = Object.freeze({ min: 2, fraction: 0.02 });
+
+/** Posições de uma tabela de PROVA: crescentes a partir de 1, com empates à
+ *  maneira da competição (1, 2, 2, 4) e alguns lugares em falta. Devolve
+ *  quantos lugares saltou, ou null se não serve (fora de ordem, não inteira,
+ *  empate "denso" 1, 2, 2, 3, ou saltos a mais). A geral continua com
+ *  isCompetitionRanking, sem saltos. */
+export function roundPositionSkips(pos: number[]): number | null {
+  let skipped = 0;
+  for (let i = 0; i < pos.length; i++) {
+    const p = pos[i];
+    if (!Number.isInteger(p) || p < 1) return null;
+    if (i > 0 && p === pos[i - 1]) continue;
+    const expected = i + 1 + skipped;
+    if (p < expected) return null;
+    skipped += p - expected;
+  }
+  return skipped <= positionSkipLimit(pos.length) ? skipped : null;
+}
+
+/** Quantos lugares em falta (ou linhas sem lugar no fim) uma tabela de n linhas aguenta. */
+function positionSkipLimit(n: number): number {
+  return Math.max(ROUND_POSITION_SKIPS.min, Math.floor(ROUND_POSITION_SKIPS.fraction * n));
+}
+
 /** Ranking de competição a partir de 1: pos[0]=1, pos[i] ∈ {pos[i−1], i+1}. */
 function isCompetitionRanking(pos: number[]): boolean {
   for (let i = 0; i < pos.length; i++) {
@@ -423,14 +451,26 @@ export function checkRoundPage(page: SourceRoundPage, ctx: RoundCtx): RoundCheck
     if (t?.missingColumns?.length) failures.add("colunas");
     if (t?.gender !== "M" && t?.gender !== "F") failures.add("genero");
     if (!rows.length) failures.add("linhas_implausiveis");
-    const positions = rows.map((r) => posOf(r?.pos));
-    if (!isCompetitionRanking(positions)) failures.add("posicoes");
+    // Quem ficou sem lugar (desistiu, desclassificado) vem no fim da tabela
+    // sem posição (a J2 da 33.ª): poucos, e só no fim — não entram na
+    // correspondência nem nos pontos. Uma linha sem posição no meio, ou
+    // muitas, é página partida.
+    let ranked = rows.length;
+    while (ranked > 0 && !Number.isInteger(posOf(rows[ranked - 1]?.pos))) ranked -= 1;
+    const unranked = rows.length - ranked;
+    if (unranked > positionSkipLimit(rows.length)) failures.add("posicoes");
+    else if (unranked > 0) warnings.add("sem_lugar");
+    const positions = rows.slice(0, ranked).map((r) => posOf(r?.pos));
+    const skips = roundPositionSkips(positions);
+    if (skips === null) failures.add("posicoes");
+    else if (skips > 0) warnings.add("posicoes_com_saltos");
     if (ctx?.courseDistancesM?.length && t?.distanceM != null) {
       const d = t.distanceM;
       if (ctx.courseDistancesM.every((c) => !(c > 0) || Math.abs(d - c) > DISTANCE_TOLERANCE * c)) warnings.add("distancia");
     }
     rows.forEach((r, ri) => {
       rowsTotal += 1;
+      if (ri >= ranked) return;
       const code = officialCategoryCode(r?.category, t?.gender ?? null);
       if (!code || !codes.has(code)) {
         unknownCategory += 1;

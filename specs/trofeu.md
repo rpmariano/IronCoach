@@ -422,7 +422,8 @@ porque não lê nem grava nada que um atleta leia.
   terceiros vivem só em memória (as linhas canónicas nem se serializam).
 - **Validação** (`@formulas/cupResults.ts`): página de erro, data da página
   ≠ data da jornada (apanha o link de outra prova), época da geral,
-  colunas por nome, posições em ranking, marcas e dorsais legíveis, escalões
+  colunas por nome, posições em ranking (na prova: até 2 lugares em falta ou
+  2%, e poucas linhas sem lugar só no fim), marcas e dorsais legíveis, escalões
   conhecidos, Total = Σ P, pontos da tabela, linhas plausíveis, regressão
   (−20% de linhas, escalão que desaparece) → **não escreve nada dessa
   página** e alerta. **Pronta** = mesmo hash (só colunas não pessoais) em 2
@@ -593,8 +594,15 @@ Troféu reduzido a calendário e links.
    por escalão das outras provas. O regulamento geral da 33.ª já responde às
    idades (por ano de nascimento, referência no 2.º ano da época), ao dorsal
    (o mesmo toda a época) e à base dos pontos (escalão). **Os atletas de
-   clubes de fora não ocupam lugar** — provável pela J1 da 33.ª, em agregado
-   (a soma oficial de cada escalão bate com a tabela aplicada só aos de
-   Cascais em 32/32); o ensaio das 11 provas confirma.
+   clubes de fora não ocupam lugar** — **confirmado pelo ensaio das 11 provas
+   da 33.ª (2026-09-28, só agregados):** base por escalão em 10/11 (32/32
+   escalões; na J8, 27/32 — correções da organização), "os de fora ocupam
+   lugar" falso em todas; a geral bate (Total = soma dos P em 908/908,
+   ranking certo nos 32); a chave da geral liga 99,5% das linhas com pontos
+   (4586 exata + 238 alternativa em 4847); coletiva com 10–14 clubes
+   elegíveis por prova. O ensaio levou a aceitar, nas páginas de prova, até
+   2 lugares em falta (ou 2%) e poucas linhas sem lugar no fim da tabela
+   (desistências/desclassificados, fora da correspondência) — a J2 tinha
+   ambos.
 4. **Omissões aprendidas:** duas escolhas seguidas contra a intenção proposta
    passam a ser a omissão, dentro das guardas (proposta, não decidida).

@@ -384,6 +384,14 @@ export function comBuracoNasPosicoes(p: RoundPage): RoundPage {
   return c;
 }
 
+/** Um lugar em falta em cada linha da 1.ª tabela a partir da 4.ª (…, 3, 5,
+ *  7, …): saltos a mais — página partida. */
+export function comMuitosBuracosNasPosicoes(p: RoundPage): RoundPage {
+  const c = copy(p);
+  c.tables[0].rows.slice(3).forEach((r, i) => (r.pos = String(5 + 2 * i)));
+  return c;
+}
+
 /** Outra data na página (o admin colou o link de outra prova). */
 export function comData(p: RoundPage, iso: string): RoundPage {
   return { ...copy(p), date: iso };

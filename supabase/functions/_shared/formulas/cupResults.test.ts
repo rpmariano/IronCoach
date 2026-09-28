@@ -5,6 +5,7 @@ import {
   calculatedPoints,
   CanonStandingRow,
   checkRoundPage,
+  roundPositionSkips,
   checkStandingsPage,
   clubCheck,
   confirmedKey,
@@ -54,6 +55,7 @@ import {
 import {
   colunasTrocadas,
   comBuracoNasPosicoes,
+  comMuitosBuracosNasPosicoes,
   comCelulaDaPropriaVazia,
   comColunaPVazia,
   comData,
@@ -257,6 +259,60 @@ Deno.test("checkRoundPage: a J1 sintética passa, sem avisos; o lugar no escalã
   assertEquals([mine.categoryCode, mine.pos, mine.categoryPos, mine.timeS], ["F40", 12, 2, 24 * 60 + 31]);
 });
 
+Deno.test("roundPositionSkips: empates de competição e alguns lugares em falta passam; fora de ordem, empate denso e saltos a mais não", () => {
+  assertEquals(roundPositionSkips([1, 2, 3, 4]), 0);
+  assertEquals(roundPositionSkips([1, 2, 2, 4, 5]), 0);
+  assertEquals(roundPositionSkips([1, 1, 3]), 0);
+  // A J2 da 33.ª (4100 m M): o 38.º não está na página.
+  const j2 = Array.from({ length: 241 }, (_, i) => (i < 37 ? i + 1 : i + 2));
+  assertEquals(roundPositionSkips(j2), 1);
+  // O 1.º retirado conta como salto; um empate depois de um salto também passa.
+  assertEquals(roundPositionSkips([2, 3, 4]), 1);
+  assertEquals(roundPositionSkips([1, 3, 3, 5]), 1);
+  // Até 2, ou 2% das linhas.
+  assertEquals(roundPositionSkips([1, 3, 5, 6]), 2);
+  assertEquals(roundPositionSkips([1, 3, 5, 7]), null);
+  const cem = Array.from({ length: 200 }, (_, i) => i + 1 + Math.min(4, Math.floor(i / 40)));
+  assertEquals(roundPositionSkips(cem), 4);
+  assertEquals(roundPositionSkips(Array.from({ length: 200 }, (_, i) => i + 1 + Math.min(5, Math.floor(i / 30)))), null);
+  // Partidas: fora de ordem, empate denso (1, 2, 2, 3), não inteiras, a começar em 0.
+  assertEquals(roundPositionSkips([1, 3, 2]), null);
+  assertEquals(roundPositionSkips([1, 2, 2, 3]), null);
+  assertEquals(roundPositionSkips([1, NaN, 3]), null);
+  assertEquals(roundPositionSkips([0, 1, 2]), null);
+  // Dorsais no lugar das posições (colunas trocadas, mesmo crescentes): saltos a mais.
+  assertEquals(roundPositionSkips([101, 102, 103]), null);
+});
+
+Deno.test("checkRoundPage: um lugar em falta (desclassificado) lê-se, com o aviso posicoes_com_saltos", () => {
+  const c = checkRoundPage(comBuracoNasPosicoes(SINT_J1_PAGE), sintRoundCtx());
+  assertEquals(c.ok, true, `${c.failures}`);
+  assert(c.warnings.includes("posicoes_com_saltos"), `${c.warnings}`);
+  assert(c.rows.length > 0);
+});
+
+Deno.test("checkRoundPage: quem ficou sem lugar vem no fim, sem posição — lê-se, com o aviso sem_lugar, e não entra na correspondência", () => {
+  const ctx = sintRoundCtx();
+  const comSemLugar = (n: number, onde: "fim" | "meio") => {
+    const c = JSON.parse(JSON.stringify(SINT_J1_PAGE));
+    const rows = c.tables[0].rows;
+    for (let k = 0; k < n; k++) {
+      const i = onde === "fim" ? rows.length - 1 - k : 2 + k;
+      rows[i] = { ...rows[i], pos: "", time: "" };
+    }
+    return c;
+  };
+  const fim = checkRoundPage(comSemLugar(1, "fim"), ctx);
+  assertEquals(fim.ok, true, `${fim.failures}`);
+  assert(fim.warnings.includes("sem_lugar"), `${fim.warnings}`);
+  const base = checkRoundPage(SINT_J1_PAGE, ctx);
+  assertEquals(fim.rows.length, base.rows.length - 1);
+  assert(fim.rows.every((r) => Number.isInteger(r.pos)));
+  // No meio da tabela, ou mais do que o limite no fim: página partida.
+  assert(checkRoundPage(comSemLugar(1, "meio"), ctx).failures.includes("posicoes"));
+  assert(checkRoundPage(comSemLugar(3, "fim"), ctx).failures.includes("posicoes"));
+});
+
 Deno.test("checkRoundPage: cada invariante PÁRA — ok false, rows [] e o código certo", () => {
   const ctx = sintRoundCtx();
   const cases: [string, ReturnType<typeof checkRoundPage>][] = [
@@ -267,7 +323,7 @@ Deno.test("checkRoundPage: cada invariante PÁRA — ok false, rows [] e o códi
     ["sem_tabelas", checkRoundPage({ ...SINT_J1_PAGE, tables: [] }, ctx)],
     ["colunas", checkRoundPage(semColuna(SINT_J1_PAGE, "marca"), ctx)],
     ["genero", checkRoundPage({ ...SINT_J1_PAGE, tables: SINT_J1_PAGE.tables.map((t, i) => (i === 0 ? { ...t, gender: null } : t)) }, ctx)],
-    ["posicoes", checkRoundPage(comBuracoNasPosicoes(SINT_J1_PAGE), ctx)],
+    ["posicoes", checkRoundPage(comMuitosBuracosNasPosicoes(SINT_J1_PAGE), ctx)],
     ["posicoes", checkRoundPage(colunasTrocadas(SINT_J1_PAGE), ctx)],
     ["marca", checkRoundPage(comMarcaIlegivel(SINT_J1_PAGE, 2), ctx)],
     ["dorsal", checkRoundPage({ ...SINT_J1_PAGE, tables: SINT_J1_PAGE.tables.map((t) => ({ ...t, rows: t.rows.map((r, i) => (i < 1 ? { ...r, bib: "" } : r)) })) }, ctx)],
