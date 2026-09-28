@@ -380,6 +380,22 @@ describe('MealRegistration — editar refeição existente', () => {
     expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBeNull();
   });
 
+  it('numa refeição sem alimentos, mudar as observações continua bloqueado', async () => {
+    useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_items: [] }] });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    fireEvent.change(screen.getByDisplayValue('nota antiga'), { target: { value: 'nota nova' } });
+    expect(screen.getByRole('button', { name: /Guardar e reanalisar/ })).toBeDisabled();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('reescrever as mesmas gramas não conta como mudança', async () => {
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    const grams = screen.getByDisplayValue('150');
+    fireEvent.change(grams, { target: { value: '' } });
+    fireEvent.change(grams, { target: { value: '150' } });
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
+  });
+
   it('numa refeição sem alimentos, mudar o tipo grava por update direto', async () => {
     useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_items: [] }] });
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
