@@ -122,11 +122,15 @@ export default function AppTutorial({ onClose, onFinish, isFirstArrival = false 
       aria-modal="true"
       aria-labelledby="tutorial-step-title"
       aria-describedby="tutorial-step-desc"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center"
       style={{
         background: 'rgba(0, 0, 0, 0.82)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
+        paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 16,
+        paddingRight: 16,
       }}
       onClick={(e) => {
         // Clicar fora do cartão principal fecha o tutorial
@@ -137,7 +141,7 @@ export default function AppTutorial({ onClose, onFinish, isFirstArrival = false 
         ref={containerRef}
         className="relative w-full max-w-md flex flex-col overflow-hidden animate-fade-in"
         style={{
-          maxHeight: '92vh',
+          maxHeight: '92dvh',
           borderRadius: 24,
           background: 'rgba(18, 20, 26, 0.97)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -258,13 +262,23 @@ export default function AppTutorial({ onClose, onFinish, isFirstArrival = false 
                 aria-current={idx === stepIndex ? 'step' : undefined}
                 className="transition-all duration-200"
                 style={{
-                  width: idx === stepIndex ? 24 : 8,
-                  height: 8,
-                  borderRadius: 4,
-                  background: idx === stepIndex ? accentColor : 'rgba(255, 255, 255, 0.2)',
-                  minHeight: 8,
+                  padding: '18px 6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
-              />
+              >
+                <span
+                  className="transition-all duration-200"
+                  style={{
+                    display: 'block',
+                    width: idx === stepIndex ? 24 : 8,
+                    height: 8,
+                    borderRadius: 4,
+                    background: idx === stepIndex ? accentColor : 'rgba(255, 255, 255, 0.2)',
+                  }}
+                />
+              </button>
             ))}
           </nav>
 
@@ -310,7 +324,8 @@ export default function AppTutorial({ onClose, onFinish, isFirstArrival = false 
               <button
                 type="button"
                 onClick={() => handleComplete(isFirstArrival ? null : 'home')}
-                className="text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition py-1 px-3"
+                className="text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition py-3 px-4"
+                style={{ minHeight: 'var(--tap, 44px)' }}
               >
                 {isFirstArrival ? 'Saltar tutorial e ir para o arranque' : 'Saltar tutorial e ir para o Início'}
               </button>

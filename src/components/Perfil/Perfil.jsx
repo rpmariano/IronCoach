@@ -649,7 +649,7 @@ export default function Perfil() {
                   type="text"
                   value={draft.display_name || ''}
                   onChange={e => updateDraft('display_name', e.target.value)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60"
                 />
               </div>
               <div>
@@ -658,7 +658,7 @@ export default function Perfil() {
                   id="perfil-genero"
                   value={draft.gender || ''}
                   onChange={e => updateDraft('gender', e.target.value)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60"
                 >
                   <option value="">–</option>
                   <option value="F">Feminino</option>
@@ -678,7 +678,7 @@ export default function Perfil() {
                   max={todayISO()}
                   value={draft.birth_date || ''}
                   onChange={e => updateDraft('birth_date', e.target.value || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60"
                 />
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Usada para calcular as zonas de frequência cardíaca e ajustar as
@@ -689,12 +689,12 @@ export default function Perfil() {
                 <div>
                   <label htmlFor="perfil-altura" className="text-[11px] text-[var(--text-3)] block mb-1">Altura (cm)</label>
                   <input id="perfil-altura" type="number" value={draft.height_cm || ''} onChange={e => updateDraft('height_cm', parseFloat(e.target.value) || null)}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60" />
                 </div>
                 <div>
                   <label htmlFor="perfil-peso" className="text-[11px] text-[var(--text-3)] block mb-1">Peso atual (kg)</label>
                   <input id="perfil-peso" type="number" step="0.1" value={draft.weight_kg || ''} onChange={e => updateDraft('weight_kg', parseFloat(e.target.value) || null)}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60" />
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60" />
                 </div>
               </div>
               <p className="text-[11px] text-[var(--text-3)] -mt-1">
@@ -705,7 +705,7 @@ export default function Perfil() {
                   id="perfil-nivel"
                   value={draft.experience_level || ''}
                   onChange={e => updateDraft('experience_level', e.target.value || null)}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60"
                 >
                   <option value="">–</option>
                   {EXPERIENCE_LEVELS.map(l => <option key={l.key} value={l.key}>{l.label}</option>)}
@@ -746,7 +746,7 @@ export default function Perfil() {
                   placeholder="Ex.: 52"
                   value={draft.resting_hr_bpm ?? ''}
                   onChange={e => updateDraft('resting_hr_bpm', e.target.value === '' ? null : parseInt(e.target.value, 10))}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60"
                 />
                 <p className="text-[11px] text-[var(--text-3)] mt-1">
                   Mede ao acordar, antes de te levantares. Torna as zonas de
@@ -802,7 +802,7 @@ export default function Perfil() {
                         maxLength={80}
                         enterKeyHint="search"
                         autoComplete="address-level2"
-                        className="flex-1 min-w-0 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60"
+                        className="flex-1 min-w-0 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60"
                       />
                       <button
                         type="submit"
@@ -918,7 +918,7 @@ export default function Perfil() {
                         const v = e.target.value === '' ? null : parseFloat(e.target.value);
                         updateCoachableGoal('goal_' + m.key, flagKey, v);
                       }}
-                      className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
+                      className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-base outline-none"
                       style={isCoach ? coachFieldStyle : plainFieldStyle} />
                   </div>
                 );
@@ -939,7 +939,7 @@ export default function Perfil() {
                 </label>
                 <input id="perfil-calorias" type="number" value={draft.calorie_goal || ''}
                   onChange={e => updateCoachableGoal('calorie_goal', 'calorie_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-base outline-none"
                   style={draft.calorie_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
@@ -949,7 +949,7 @@ export default function Perfil() {
                 </label>
                 <input id="perfil-proteina" type="number" value={draft.protein_goal || ''}
                   onChange={e => updateCoachableGoal('protein_goal', 'protein_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-base outline-none"
                   style={draft.protein_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
@@ -959,7 +959,7 @@ export default function Perfil() {
                 </label>
                 <input id="perfil-hidratos" type="number" value={draft.carbs_goal || ''}
                   onChange={e => updateCoachableGoal('carbs_goal', 'carbs_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-base outline-none"
                   style={draft.carbs_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div>
@@ -969,7 +969,7 @@ export default function Perfil() {
                 </label>
                 <input id="perfil-gordura" type="number" value={draft.fat_goal || ''}
                   onChange={e => updateCoachableGoal('fat_goal', 'fat_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-base outline-none"
                   style={draft.fat_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
               <div className="col-span-2">
@@ -979,7 +979,7 @@ export default function Perfil() {
                 </label>
                 <input id="perfil-agua" type="number" step="50" value={draft.water_goal_ml || ''}
                   onChange={e => updateCoachableGoal('water_goal_ml', 'water_goal_set_by_coach', parseInt(e.target.value) || null)}
-                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-sm outline-none"
+                  className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-base outline-none"
                   style={draft.water_goal_set_by_coach ? coachFieldStyle : plainFieldStyle} />
               </div>
             </div>
@@ -1167,7 +1167,7 @@ export default function Perfil() {
                 <div>
                   <label htmlFor="perfil-lembrete-intervalo" className="text-[11px] text-[var(--text-3)] block mb-1">Frequência (minutos)</label>
                   <select id="perfil-lembrete-intervalo" value={draft.water_reminder_interval_minutes || 120} onChange={e => updateDraft('water_reminder_interval_minutes', parseInt(e.target.value))}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60">
                     {WATER_REMINDER_INTERVALS.map(m => (
                       <option key={m} value={m}>A cada {m} minutos</option>
                     ))}
@@ -1177,14 +1177,14 @@ export default function Perfil() {
                   <div>
                     <label htmlFor="perfil-lembrete-inicio" className="text-[11px] text-[var(--text-3)] block mb-1">Início</label>
                     <select id="perfil-lembrete-inicio" value={reminderStartHour} onChange={e => updateDraft('water_reminder_start_hour', parseInt(e.target.value))}
-                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
                     <label htmlFor="perfil-lembrete-fim" className="text-[11px] text-[var(--text-3)] block mb-1">Fim</label>
                     <select id="perfil-lembrete-fim" value={reminderEndHour} onChange={e => updateDraft('water_reminder_end_hour', parseInt(e.target.value))}
-                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
@@ -1226,14 +1226,14 @@ export default function Perfil() {
                   <div>
                     <label htmlFor="perfil-carol-inicio" className="text-[11px] text-[var(--text-3)] block mb-1">A partir das</label>
                     <select id="perfil-carol-inicio" value={carolStartHour} onChange={e => updateDraft('carol_push_start_hour', parseInt(e.target.value))}
-                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
                   <div>
                     <label htmlFor="perfil-carol-fim" className="text-[11px] text-[var(--text-3)] block mb-1">Até às</label>
                     <select id="perfil-carol-fim" value={carolEndHour} onChange={e => updateDraft('carol_push_end_hour', parseInt(e.target.value))}
-                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60">
                       {HOURS.map(h => <option key={h} value={h}>{formatHour(h)}</option>)}
                     </select>
                   </div>
@@ -1241,7 +1241,7 @@ export default function Perfil() {
                 <div>
                   <label htmlFor="perfil-carol-maximo" className="text-[11px] text-[var(--text-3)] block mb-1">No máximo, por dia</label>
                   <select id="perfil-carol-maximo" value={carolMaxPerDay} onChange={e => updateDraft('carol_push_max_per_day', parseInt(e.target.value))}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--focus-ring)]/60">
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--focus-ring)]/60">
                     {[1, 2, 3].map(n => <option key={n} value={n}>{n === 1 ? '1 notificação' : `${n} notificações`}</option>)}
                   </select>
                 </div>
@@ -1354,7 +1354,7 @@ export default function Perfil() {
               placeholder="Alergias ou alimentos a evitar (ex.: frutos secos)"
               value={draft.dietary_notes || ''}
               onChange={e => updateDraft('dietary_notes', e.target.value.trim() === '' ? null : e.target.value)}
-              className="w-full mt-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-sm outline-none focus:border-[var(--mod-coach-to)]/60"
+              className="w-full mt-2 bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2 text-base outline-none focus:border-[var(--mod-coach-to)]/60"
             />
             <p className="text-[11px] text-[var(--text-3)] mt-1">
               A Carol trata isto como regra absoluta e nunca sugere nada que

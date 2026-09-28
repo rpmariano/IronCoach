@@ -61,7 +61,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-transparent text-[var(--text-1)] fade-in">
+    <div className="min-h-dvh flex flex-col items-center justify-center p-4 bg-transparent text-[var(--text-1)] fade-in" style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 0px))', paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))' }}>
       <AppBackground />
       <div className="card rounded-3xl p-6 max-w-sm w-full space-y-4">
         {/* Header */}
@@ -74,12 +74,12 @@ export default function Auth() {
 
         {/* Info & Error alerts */}
         {infoMsg && (
-          <div className="bg-[var(--tint-ok-bg)] border border-[var(--tint-ok-bd)] text-[var(--ok)] text-xs rounded-xl p-3">
+          <div role="status" className="bg-[var(--tint-ok-bg)] border border-[var(--tint-ok-bd)] text-[var(--ok)] text-xs rounded-xl p-3">
             {infoMsg}
           </div>
         )}
         {errorMsg && (
-          <div className="bg-[var(--tint-danger-bg)] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs rounded-xl p-3">
+          <div id="auth-error" role="alert" className="bg-[var(--tint-danger-bg)] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs rounded-xl p-3">
             {errorMsg}
           </div>
         )}
@@ -87,26 +87,34 @@ export default function Auth() {
         {/* Email & Password Form */}
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="text-[11px] font-semibold text-[var(--text-3)] mb-1 block">Email</label>
+            <label htmlFor="auth-email" className="text-xs font-semibold text-[var(--text-3)] mb-1 block">Email</label>
             <input
+              id="auth-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="exemplo@email.com"
               required
-              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
+              autoComplete="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-describedby={errorMsg ? 'auth-error' : undefined}
+              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-base text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 
           <div>
-            <label className="text-[11px] font-semibold text-[var(--text-3)] mb-1 block">Palavra-passe</label>
+            <label htmlFor="auth-password" className="text-xs font-semibold text-[var(--text-3)] mb-1 block">Palavra-passe</label>
             <input
+              id="auth-password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-sm text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
+              autoComplete="current-password"
+              aria-describedby={errorMsg ? 'auth-error' : undefined}
+              className="w-full bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3.5 py-2.5 text-base text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)]"
             />
           </div>
 

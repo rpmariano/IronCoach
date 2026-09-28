@@ -1099,7 +1099,7 @@ export default function Coach() {
 
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pb-2 pr-1 no-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pb-2 pr-1 no-scrollbar" style={{ overscrollBehaviorY: 'contain' }}>
         {/* Empty State */}
         {coachMessages.length === 0 && !coachLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8">
@@ -1245,7 +1245,7 @@ export default function Coach() {
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}
         {(pendingPlans.length > 0 || pendingGoalProposals.length > 0) && (
-          <div className="hide-when-keyboard fixed bottom-[140px] right-4 z-50 flex flex-col gap-2 items-end">
+          <div className="hide-when-keyboard fixed right-4 z-50 flex flex-col gap-2 items-end" style={{ bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
             <button
               type="button"
               // disabled={coachLoading} é o único guard aqui — impede mesmo o
@@ -1286,7 +1286,7 @@ export default function Coach() {
             // querer ao carregar em Enter para mudar de linha.
             aria-label="Mensagem para a Carol"
             placeholder="Escreve a tua pergunta..."
-            className="flex-1 bg-[var(--bg-sheet)] border border-[var(--border-glass)] rounded-2xl px-4 py-3 text-sm text-[var(--text-3)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
+            className="flex-1 bg-[var(--bg-sheet)] border border-[var(--border-glass)] rounded-2xl px-4 py-3 text-base text-[var(--text-3)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-coach-to)] resize-none leading-tight shadow-sm"
             style={{ minHeight: '44px' }}
           />
           <button

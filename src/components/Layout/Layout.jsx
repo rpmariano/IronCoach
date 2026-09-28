@@ -184,7 +184,7 @@ export default function Layout({ children }) {
           boxShadow: '0 6px 18px rgba(0,0,0,.45)',
         }}
       >
-        <header className="px-4 pt-4 pb-3 flex items-center justify-between">
+        <header className="px-4 pb-3 flex items-center justify-between" style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 0px))' }}>
           <div className="flex items-center gap-2">
             <button type="button" aria-label="IronCoach, ir para o Início" onClick={handleLogoClick} className="tap-44 flex items-center justify-center -ml-1 rounded-xl active:scale-95 transition">
               <BrandMark variant="icon" playOnce={logoPlays} size={36} className="rounded-xl" />
@@ -220,7 +220,7 @@ export default function Layout({ children }) {
       {/* Conteúdo */}
       {/* padding-top = --header-h (85px) e padding-bottom = --scroll-pad-bottom
           (112px), os mesmos da moldura dos mocks. */}
-      <main ref={mainRef} className="flex-1 px-4 overflow-y-auto" style={{ paddingTop: 'var(--header-h)', paddingBottom: 'var(--scroll-pad-bottom)' }}>
+      <main ref={mainRef} className="flex-1 px-4 overflow-y-auto" style={{ paddingTop: 'var(--header-h)', paddingBottom: 'var(--scroll-pad-bottom)', overscrollBehaviorY: 'contain' }}>
         {/* Contentor do conteúdo: existe para o "conteúdo segue a pílula"
             (useTabEnter) ter onde reiniciar a animação sem remontar o ecrã. */}
         <div ref={setContentRef(navIndex)}>{children}</div>
@@ -251,7 +251,7 @@ export default function Layout({ children }) {
 
           <div
             className="fixed left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2.5 w-max"
-            style={{ bottom: 90 }}
+            style={{ bottom: 'calc(90px + env(safe-area-inset-bottom, 0px))' }}
             ref={fabRef}
           >
             <FabItem delayIndex={5}
