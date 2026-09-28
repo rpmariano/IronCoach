@@ -828,14 +828,14 @@ const PROACTIVE_INSTRUCTIONS: Record<ProactiveTrigger, string> = {
   week_review:
     `É o balanço da semana que acabou no domingo — as datas e as contagens estão no Contexto. Três bolhas curtas: ` +
     `(1) o que ele fez face ao que estava previsto — usa a linha "Plano da semana" do Contexto, que já traz as contas e o veredicto ` +
-    `(não recontes a partir do bloco O QUE PRESCREVESTE, que cobre 14 dias); sem essa linha, não digas nada sobre o plano — pode não ter havido, ou a leitura falhou — e compara o volume com a semana anterior (no Contexto); ` +
+    `(não recontes a partir do bloco O QUE PRESCREVESTE, que cobre 14 dias); sem essa linha, não digas nada sobre o plano — pode não ter havido, ou a leitura falhou — e, se a semana anterior teve corridas, compara o volume com ela (no Contexto); ` +
     `(2) o que ficou bem e o que ficou a faltar, com um número concreto em cada — o sono e a energia dos check-ins contam, se os houver; ` +
     `(3) o foco da semana que começa, numa frase, a partir do plano em vigor e da próxima prova. ` +
     `Só se o Contexto disser "Semana cumprida a 100%: sim": uma frase de reconhecimento, uma só, sem festa. Semana fraca: sem sermão — diz o que muda. ` +
     `Não inventes números que não estejam no Contexto ou nos blocos. ` +
     // 28/09: "(1 a mais, 1 a menos)" e "subindo dos 0 km da semana anterior".
-    `Diz por palavras o que aconteceu aos treinos (um ficou abaixo do previsto, outro acima), nunca as contagens em bruto nem entre parênteses. ` +
-    `A semana anterior só serve de comparação se teve treinos: sem treinos nela, não compares o volume.`,
+    `Diz por palavras o que aconteceu a cada treino — por exemplo, «o longo ficou abaixo do previsto» —, nunca as contagens em bruto nem entre parênteses. ` +
+    `O volume de corrida só se compara com a semana anterior se ela teve corridas: sem corridas nela, não compares o volume.`,
   // A Vitrina (2026-09-25): as tabelas com nomes e o "Onde estás". O
   // Contexto diz o momento (entrou/saiu, meu/perto); os números vêm do bloco
   // VITRINA — a notificação não os leva, di-los tu aqui.

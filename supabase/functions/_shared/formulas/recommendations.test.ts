@@ -69,8 +69,8 @@ Deno.test("evaluateRecommendations: cada tipo cruzado com o registo do dia", () 
   ]);
   assertEquals(results[4].text, "2026-09-22 · recomendaste descanso → respeitado; no dia seguinte: sono 4/5, sem dor");
   assertStringIncludes(results[3].text, "fez 32 min (107%) · cumprido");
-  assertStringIncludes(results[2].text, "comeu 95 g (68%) · a menos");
-  assertStringIncludes(results[1].text, "fez 30 min (67%) · a menos");
+  assertStringIncludes(results[2].text, "comeu 95 g (68%) · abaixo do previsto");
+  assertStringIncludes(results[1].text, "fez 30 min (67%) · abaixo do previsto");
 });
 
 Deno.test("evaluateRecommendations: descanso não respeitado, dor no dia seguinte, e proteína num dia meio registado", () => {

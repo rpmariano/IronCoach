@@ -6,7 +6,7 @@ const TODAY = "2026-09-18";
 Deno.test("corrida: a distância decide, ±15% é cumprido; a ligação ao registo ganha à data", () => {
   const item = { planned_date: "2026-09-14", kind: "corrida", training_type: "longo", target_distance_km: 18 };
   assertEquals(evaluateTrainingItem(item, [{ date: "2026-09-14", distance_km: 12.4, duration_seconds: 4200, effort_rpe: 8 }], []).text,
-    "2026-09-14 · Corrida longo (18 km) → fez 12,4 km (69%), RPE 8 · a menos");
+    "2026-09-14 · Corrida longo (18 km) → fez 12,4 km (69%), RPE 8 · abaixo do previsto");
   assertEquals(evaluateTrainingItem(item, [{ date: "2026-09-14", distance_km: 17 }], []).outcome, "cumprido");
   assertEquals(evaluateTrainingItem(item, [{ date: "2026-09-14", distance_km: 22 }], []).outcome, "a_mais");
   assertEquals(evaluateTrainingItem(item, [], []).text, "2026-09-14 · Corrida longo (18 km) → não feito");

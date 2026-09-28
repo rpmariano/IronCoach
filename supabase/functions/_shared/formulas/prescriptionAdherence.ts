@@ -71,8 +71,10 @@ function ratioOutcome(ratio: number): TrainingOutcome {
 
 const OUTCOME_LABEL: Record<TrainingOutcome, string> = {
   cumprido: "cumprido",
-  a_menos: "a menos",
-  a_mais: "a mais",
+  // As mesmas palavras da linha de resumo (trainingSummaryLine) e das
+  // recomendações — a Carol lê as duas (2026-09-28).
+  a_menos: "abaixo do previsto",
+  a_mais: "acima do previsto",
   falhado: "não feito",
   descanso_respeitado: "descanso respeitado",
   descanso_nao_respeitado: "descanso NÃO respeitado",
@@ -293,16 +295,16 @@ export function evaluatePrescriptions(
 export function trainingSummaryLine(counts: Record<TrainingOutcome, number>): string {
   const workouts = counts.cumprido + counts.a_menos + counts.a_mais + counts.falhado;
   const rests = counts.descanso_respeitado + counts.descanso_nao_respeitado;
-  const n = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
+  const plural = (v: number, one: string, many: string) => `${v} ${v === 1 ? one : many}`;
   const outcomes = [
-    counts.cumprido ? n(counts.cumprido, "cumprido", "cumpridos") : null,
+    counts.cumprido ? plural(counts.cumprido, "cumprido", "cumpridos") : null,
     counts.a_menos ? `${counts.a_menos} abaixo do previsto` : null,
     counts.a_mais ? `${counts.a_mais} acima do previsto` : null,
-    counts.falhado ? n(counts.falhado, "não feito", "não feitos") : null,
+    counts.falhado ? plural(counts.falhado, "não feito", "não feitos") : null,
   ].filter(Boolean).join(", ");
   return [
-    workouts ? `${n(workouts, "treino prescrito", "treinos prescritos")}: ${outcomes}` : null,
-    rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${n(rests, "dia", "dias")}` : null,
+    workouts ? `${plural(workouts, "treino prescrito", "treinos prescritos")}: ${outcomes}` : null,
+    rests ? `descanso respeitado em ${counts.descanso_respeitado} de ${plural(rests, "dia", "dias")}` : null,
   ].filter(Boolean).join("; ");
 }
 

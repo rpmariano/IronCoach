@@ -236,6 +236,9 @@ describe('balanço da semana — cliente e servidor, a mesma chave', () => {
     const semAnterior = describeWeek({ runs: [{ date: '2026-09-23', distance_km: 12 }] }, '2026-09-21', '2026-09-27');
     expect(semAnterior).toContain('Semana anterior: sem treinos registados — não serve de comparação.');
     expect(semAnterior).not.toContain('0 km');
+    const soGinasio = describeWeek({ runs: [{ date: '2026-09-23', distance_km: 12 }], gymSessions: [{ date: '2026-09-16' }] }, '2026-09-21', '2026-09-27');
+    expect(soGinasio).toContain('Semana anterior: sem corridas, 1 sessão de ginásio — o volume de corrida não serve de comparação.');
+    expect(soGinasio).not.toContain('0 km');
     expect(details.length).toBeLessThanOrEqual(300);
   });
 

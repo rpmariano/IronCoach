@@ -68,8 +68,9 @@ function ratioOutcome(ratio: number): RecommendationOutcome {
 
 const OUTCOME_LABEL: Record<RecommendationOutcome, string> = {
   cumprido: "cumprido",
-  a_menos: "a menos",
-  a_mais: "a mais",
+  // As mesmas palavras do bloco do plano (prescriptionAdherence) — 2026-09-28.
+  a_menos: "abaixo do previsto",
+  a_mais: "acima do previsto",
   nao_feito: "não feito",
   descanso_respeitado: "respeitado",
   descanso_nao_respeitado: "treinou nesse dia",

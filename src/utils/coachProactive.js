@@ -330,9 +330,12 @@ export function describeWeek(data, weekStart, weekEnd) {
     : '';
   /* Sem treinos na semana anterior não há termo de comparação: "0 corridas
      (0 km)" dava "subindo dos 0 km da semana anterior" no balanço de 28/09. */
-  const prevLine = p.runs || p.gym
+  const prevLine = p.runs
     ? `Semana anterior: ${p.runs} corrida${p.runs === 1 ? '' : 's'} (${fmtNum(p.km)} km), ${p.gym} de ginásio.`
-    : 'Semana anterior: sem treinos registados — não serve de comparação.';
+    : p.gym
+      // Só ginásio: o volume de corrida continua sem termo de comparação.
+      ? `Semana anterior: sem corridas, ${p.gym} sess${p.gym === 1 ? 'ão' : 'ões'} de ginásio — o volume de corrida não serve de comparação.`
+      : 'Semana anterior: sem treinos registados — não serve de comparação.';
   return `${parts.join(', ')}.${checkinLine} ${prevLine}`;
 }
 
