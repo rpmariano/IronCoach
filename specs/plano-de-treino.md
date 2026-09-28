@@ -222,6 +222,19 @@ um plano aceite. As leituras da adesão (`prescriptionAdherence.ts`, o balanço
 da semana, o treino falhado dos alertas) seguem a ligação quando ela existe.
 Sem ela, contam o que foi registado nesse dia.
 
+**Apagar o registo que concluiu um item** (2026-09-28). Um trigger na BD
+(`20260928193000_plan_items_follow_deleted_records.sql`), antes de a corrida
+ou a sessão de ginásio sair:
+
+- havendo outro registo do mesmo tipo nesse dia (`actual_date`) ainda sem
+  item, o item passa para ele — o caso típico é apagar um duplicado;
+- senão, volta a `pendente`.
+
+O item de prova nunca passa para outra corrida (volta a `pendente`), e um item
+`cancelado` fica cancelado. Antes, a FK (`on delete set null`) deixava o item
+`concluido` sem registo: o Início dizia "Feito." e a adesão contava-o. O
+Calendário e as Corridas recarregam o plano depois de apagar.
+
 **Mitigação v2** (fora do âmbito): permitir ligar um item a um registo já
 existente noutro dia ("já fiz este").
 

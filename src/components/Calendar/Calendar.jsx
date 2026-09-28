@@ -227,6 +227,14 @@ export default function Calendar() {
     };
   }, [runs, raceEvents, gymSessions, meals, bodyAssessments, filter]);
 
+  /* Apagar o registo que cumpriu um treino do plano solta-o na BD (trigger
+     20260928193000_plan_items_follow_deleted_records.sql): passa para outro
+     registo desse dia, ou volta a pendente. O store traz o plano de novo,
+     senão o Início continuava a dizer "Feito." até recarregar. */
+  const reloadPlanAfterDelete = () => {
+    Promise.resolve(useAppStore.getState().reloadCoachPlans?.()).catch(() => {});
+  };
+
   // Delete handlers
   const handleDeleteRun = async (id) => {
     const previous = [...runs];
@@ -235,6 +243,7 @@ export default function Calendar() {
       const { error } = await supabase.from('runs').delete().eq('id', id);
       if (error) throw error;
       showToast('Corrida eliminada');
+      reloadPlanAfterDelete();
     } catch (err) {
       showToast('Erro ao eliminar corrida.', 'error');
       setRuns(previous);
@@ -248,6 +257,7 @@ export default function Calendar() {
       const { error } = await supabase.from('workout_sessions').delete().eq('id', id);
       if (error) throw error;
       showToast('Treino eliminado');
+      reloadPlanAfterDelete();
     } catch (err) {
       showToast('Erro ao eliminar treino.', 'error');
       setGymSessions(previous);

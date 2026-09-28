@@ -669,6 +669,9 @@ alter table coach_plan_items enable row level security;
 create policy "own rows" on coach_plan_items for all
   using (auth.uid() = user_id) with check (auth.uid() = user_id);
 create policy "admin read all" on coach_plan_items for select using (public.is_admin());
+-- Apagar a corrida/sessão que concluiu um item não o deixa "concluido" sem
+-- registo: o trigger BEFORE DELETE de 20260928193000_plan_items_follow_deleted_records.sql
+-- passa-o para outro registo livre desse dia, ou volta a pendente.
 
 -- ============ coach_daily_summary: resumo diário rotativo do Início ============
 -- Gerado 1x/dia (primeira abertura do dia), cacheado — não a cada abertura.

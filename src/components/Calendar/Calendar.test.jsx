@@ -352,3 +352,33 @@ describe('Calendário — filtro', () => {
     expect(screen.getByText('Prova por fazer')).toBeInTheDocument();
   });
 });
+
+/* Apagar a corrida que cumpriu um treino do plano solta-o na BD (trigger
+   20260928193000): o store tem de trazer o plano de novo, senão o Início
+   continuava a dizer "Feito." até recarregar. */
+describe('Calendário — apagar uma corrida recarrega o plano', () => {
+  beforeEach(() => {
+    mocks.deleted.length = 0;
+  });
+
+  it('depois de apagar, pede o plano outra vez', async () => {
+    const reloadCoachPlans = vi.fn(() => Promise.resolve([]));
+    const original = useAppStore.getState().reloadCoachPlans;
+    useAppStore.setState({
+      runs: [{ id: 'run-1', date: iso(HOJE), name: 'Rodagem', kind: 'treino', training_type: 'continuo', distance_km: 5, duration_seconds: 1800 }],
+      gymSessions: [], meals: [], bodyAssessments: [], raceEvents: [], pendingCalendarDate: null,
+      reloadCoachPlans,
+    });
+    try {
+      renderCalendario();
+      fireEvent.click(screen.getByRole('button', { name: /Ver detalhes da corrida/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /^Eliminar$/ }));
+      const popup = await screen.findByRole('dialog');
+      fireEvent.click(within(popup).getByRole('button', { name: /Eliminar/ }));
+      await waitFor(() => expect(mocks.deleted).toEqual(['run-1']));
+      await waitFor(() => expect(reloadCoachPlans).toHaveBeenCalledTimes(1));
+    } finally {
+      useAppStore.setState({ reloadCoachPlans: original });
+    }
+  });
+});
