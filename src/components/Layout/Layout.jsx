@@ -220,7 +220,7 @@ export default function Layout({ children }) {
       {/* Conteúdo */}
       {/* padding-top = --header-h (85px) e padding-bottom = --scroll-pad-bottom
           (112px), os mesmos da moldura dos mocks. */}
-      <main ref={mainRef} className="flex-1 px-4 overflow-y-auto" style={{ paddingTop: 'var(--header-h)', paddingBottom: 'var(--scroll-pad-bottom)', overscrollBehaviorY: 'contain' }}>
+      <main ref={mainRef} className="flex-1 px-4 overflow-y-auto" style={{ paddingTop: 'var(--header-h)', paddingBottom: 'var(--scroll-pad-bottom)' }}>
         {/* Contentor do conteúdo: existe para o "conteúdo segue a pílula"
             (useTabEnter) ter onde reiniciar a animação sem remontar o ecrã. */}
         <div ref={setContentRef(navIndex)}>{children}</div>

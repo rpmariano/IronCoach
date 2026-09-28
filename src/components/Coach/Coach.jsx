@@ -1099,7 +1099,7 @@ export default function Coach() {
 
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pb-2 pr-1 no-scrollbar" style={{ overscrollBehaviorY: 'contain' }}>
+      <div className="flex-1 min-h-0 overflow-y-auto space-y-3 pb-2 pr-1 no-scrollbar">
         {/* Empty State */}
         {coachMessages.length === 0 && !coachLoading && (
           <div className="flex flex-col items-center justify-center h-full text-center px-6 py-8">

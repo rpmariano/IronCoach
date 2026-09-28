@@ -140,7 +140,7 @@
 
 html, body {
   background-color: var(--bg-app);
-  min-height: 100dvh;
+  min-height: 100vh;
   /* Rede de segurança contra qualquer elemento que transborde horizontalmente
      (bug-018: "Nova Prova" cortada do lado esquerdo em Android). Sem isto,
      um filho mais largo que o ecrã (ex.: um <input type="date"> nativo numa
