@@ -37,3 +37,43 @@ describe('Layout — a barra inferior fecha "O plano"', () => {
     expect(useAppStore.getState().openCreationMode).toBe('meal');
   });
 });
+
+describe('Layout — scroll up ao mudar de tela (menos o chat)', () => {
+  beforeEach(() => {
+    vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  });
+
+  it('mudar para outro separador (ex.: corrida) faz scroll up', () => {
+    useAppStore.setState({ activeTab: 'home', openCreationMode: null });
+    const { rerender } = render(<Layout><div /></Layout>);
+    window.scrollTo.mockClear();
+
+    useAppStore.setState({ activeTab: 'corrida' });
+    rerender(<Layout><div /></Layout>);
+
+    expect(window.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 }));
+  });
+
+  it('abrir um formulário de criação (openCreationMode) faz scroll up', () => {
+    useAppStore.setState({ activeTab: 'home', openCreationMode: null });
+    const { rerender } = render(<Layout><div /></Layout>);
+    window.scrollTo.mockClear();
+
+    useAppStore.setState({ openCreationMode: 'meal' });
+    rerender(<Layout><div /></Layout>);
+
+    expect(window.scrollTo).toHaveBeenCalledWith(expect.objectContaining({ top: 0, left: 0 }));
+  });
+
+  it('mudar para o chat (coach) NÃO faz scroll up', () => {
+    useAppStore.setState({ activeTab: 'home', openCreationMode: null });
+    const { rerender } = render(<Layout><div /></Layout>);
+    window.scrollTo.mockClear();
+
+    useAppStore.setState({ activeTab: 'coach' });
+    rerender(<Layout><div /></Layout>);
+
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+});
+

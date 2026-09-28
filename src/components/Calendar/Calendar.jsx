@@ -149,6 +149,26 @@ export default function Calendar() {
   const [editingGymId, setEditingGymId] = useState(null);
   const [editingMealId, setEditingMealId] = useState(null);
   const [editingBodyId, setEditingBodyId] = useState(null);
+
+  const isEditingAny = !!(editingRunId || editingGymId || editingMealId || editingBodyId);
+  const prevEditingRef = useRef(isEditingAny);
+  useEffect(() => {
+    if (prevEditingRef.current !== isEditingAny) {
+      prevEditingRef.current = isEditingAny;
+      if (typeof window.scrollTo === 'function') {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      }
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+      const main = document.querySelector('main');
+      if (main) {
+        if (typeof main.scrollTo === 'function') {
+          main.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        }
+        main.scrollTop = 0;
+      }
+    }
+  }, [isEditingAny]);
   // Prova cuja eliminação está por confirmar. Era um window.confirm — o
   // popup do sistema não fala a língua da app, não diz o que se perde e
   // não respeita os 44px de toque (auditoria a11y). Passa pelo Dialog

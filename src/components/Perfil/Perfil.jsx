@@ -193,11 +193,27 @@ export default function Perfil() {
   const shoeCabinetRef = useRef(null);
 
   // tab também muda por fora do carrossel (ex.: goToPendingTarget) —
-  // sincroniza o scroll nesses casos.
+  // sincroniza o scroll nesses casos. Ao trocar de separador, o ecrã
+  // apresenta-se com scroll up.
+  const isFirstRender = useRef(true);
   useEffect(() => {
     scrollTo(tabIndex);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabIndex]);
+    if (!isFirstRender.current) {
+      if (typeof window.scrollTo === 'function') {
+        window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      }
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+      const main = document.querySelector('main');
+      if (main) {
+        if (typeof main.scrollTo === 'function') {
+          main.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        }
+        main.scrollTop = 0;
+      }
+    }
+    isFirstRender.current = false;
+  }, [tabIndex, scrollTo]);
 
   /* A ação de cada separador vive na ActionBar fixa (ponto 2 do handoff).
      Antes ficava no fim do carrossel e, como o carrossel

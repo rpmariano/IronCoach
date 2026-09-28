@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../store';
 import { House, Dumbbell, Plus, Camera, User, Calendar, LayoutDashboard, Trophy, Footprints, Droplets, Calculator } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
@@ -37,7 +37,7 @@ const moduleGradient = (mod) =>
   `linear-gradient(135deg, var(--mod-${mod}-from), var(--mod-${mod}-to))`;
 
 export default function Layout({ children }) {
-  const { activeTab, setActiveTab, profile, isAdmin, openCreationMode, setOpenCreationMode, lastDashboardTab, setWaterSheetOpen } = useAppStore();
+  const { activeTab, setActiveTab, profile, isAdmin, openCreationMode, setOpenCreationMode, lastDashboardTab, setWaterSheetOpen, editingRunId, editingRaceId } = useAppStore();
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);
@@ -70,28 +70,39 @@ export default function Layout({ children }) {
   // frente da caixa de texto (ver utils/softKeyboard.js e globals.css).
   useEffect(() => installSoftKeyboardWatcher(), []);
 
-  const prevTabRef = useRef(activeTab);
+  const scrollToTop = useCallback(() => {
+    if (typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+    }
+    if (document.documentElement) {
+      document.documentElement.scrollTop = 0;
+    }
+    if (document.body) {
+      document.body.scrollTop = 0;
+    }
+    if (mainRef.current) {
+      if (typeof mainRef.current.scrollTo === 'function') {
+        mainRef.current.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      }
+      mainRef.current.scrollTop = 0;
+    }
+  }, []);
+
+  const prevScreenKeyRef = useRef(null);
   useEffect(() => {
-    const prevTab = prevTabRef.current;
-    prevTabRef.current = activeTab;
+    const currentScreenKey = `${activeTab}:${openCreationMode || ''}:${editingRunId || ''}:${editingRaceId || ''}`;
+    const screenChanged = prevScreenKeyRef.current !== currentScreenKey;
+    prevScreenKeyRef.current = currentScreenKey;
 
-    // Transições entre submódulos da Evolução/Dashboard (hub, corrida, ginasio, nutricao, corpo)
-    // não devem forçar scroll para o topo para evitar saltos verticais durante o swipe horizontal.
-    const dashboardTabs = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'];
-    const isDashboardTransition = dashboardTabs.includes(prevTab) && dashboardTabs.includes(activeTab);
-
-    if (activeTab !== 'coach' && !isDashboardTransition) {
-      // Usar requestAnimationFrame duplo garante que o React já fez render e o DOM foi atualizado
+    // Quando se muda de tela, a próxima deve de ser apresentada com scroll up, menos o chat (Coach)
+    if (activeTab !== 'coach') {
+      scrollToTop();
       requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          window.scrollTo({ top: 0, behavior: 'instant' });
-          if (mainRef.current) {
-            mainRef.current.scrollTo({ top: 0, behavior: 'instant' });
-          }
-        });
+        scrollToTop();
+        requestAnimationFrame(scrollToTop);
       });
     }
-  }, [activeTab]);
+  }, [activeTab, openCreationMode, editingRunId, editingRaceId, scrollToTop]);
 
   const todayLabel = new Date().toLocaleDateString('pt-PT', { weekday: 'long', day: 'numeric', month: 'long' });
 
