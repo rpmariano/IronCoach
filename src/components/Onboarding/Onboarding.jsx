@@ -636,7 +636,7 @@ export default function Onboarding({ reentry = false, onDone }) {
       {(mostraVoltar || mostraProgresso) && (
         <div
           className="absolute left-1/2 -translate-x-1/2 w-full max-w-md flex items-center gap-3"
-          style={{ top: 0, zIndex: 'var(--z-header)', padding: '22px 20px 0' }}
+          style={{ top: 0, zIndex: 'var(--z-header)', padding: 'max(22px, calc(env(safe-area-inset-top, 0px) + 6px)) 20px 0' }}
         >
           <button
             type="button"

@@ -161,7 +161,7 @@ export default function CarolWelcome({ welcome, onClose, now = new Date() }) {
         </div>
 
         {/* A arte: curvas de nível, o arco do dia e ela ao centro. */}
-        <div aria-hidden="true" className="welcome-art relative shrink-0" style={{ height: ART_H - 40 }}>
+        <div aria-hidden="true" className="welcome-art relative shrink-0" style={{ height: ART_H - 40, overflow: 'hidden' }}>
           <svg width={W} height={ART_H} viewBox={`0 0 ${W} ${ART_H}`} className="absolute left-1/2 -translate-x-1/2" style={{ top: -40 }}>
             {CONTOURS.map((c, i) => (
               <polyline key={i} points={c.points} fill="none" stroke={accent} strokeOpacity={c.opacity} strokeWidth="1" />

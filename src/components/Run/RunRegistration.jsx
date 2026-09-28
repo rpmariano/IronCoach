@@ -3007,8 +3007,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <button
           type="button"
           onClick={() => setShowMissingMetricsSheet(true)}
-          className="hide-when-keyboard fixed bottom-20 right-5 z-[90] min-h-[44px] text-[var(--coach-ink)] font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90"
-          style={{ background: 'var(--grad-coach-legible)' }}
+          className="hide-when-keyboard fixed right-5 z-[90] min-h-[44px] text-[var(--coach-ink)] font-bold text-xs rounded-xl px-4 py-2.5 shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90"
+          style={{ background: 'var(--grad-coach-legible)', bottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}
         >
           <Sparkles className="w-4 h-4" />
           <span>Métricas em falta ({missingKeysList.length})</span>

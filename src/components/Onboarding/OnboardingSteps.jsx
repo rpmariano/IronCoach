@@ -89,7 +89,7 @@ export function Field({ label, as = 'input', suffix, style, ...rest }) {
             border: preenchido ? '1px solid rgba(255,255,255,.13)' : '1px dashed rgba(255,255,255,.16)',
             outline: 'none',
             fontFamily: 'inherit',
-            fontSize: 14,
+            fontSize: 16,
             fontWeight: preenchido ? 700 : 500,
             color: 'var(--text-1)',
             lineHeight: multiline ? 1.5 : undefined,
@@ -580,7 +580,7 @@ export function StepMemorias({ draft, set }) {
                 onClick={() => toggleExemplo(ex)}
                 className="inline-flex items-center gap-1.5 transition active:scale-[.97]"
                 style={{
-                  minHeight: 40,
+                  minHeight: 44,
                   padding: '7px 13px',
                   borderRadius: 'var(--radius-pill)',
                   fontSize: 12.5,
@@ -626,7 +626,7 @@ export function StepMemorias({ draft, set }) {
                 onClick={() => setCategoria(c.key)}
                 className="inline-flex items-center transition"
                 style={{
-                  minHeight: 34,
+                  minHeight: 44,
                   padding: '4px 11px',
                   borderRadius: 'var(--radius-md)',
                   fontSize: 11.5,
@@ -648,7 +648,7 @@ export function StepMemorias({ draft, set }) {
             placeholder={catAtual.hint}
             value={textoNota}
             onChange={(e) => setTextoNota(e.target.value)}
-            className="w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,255,255,.14)] rounded-xl px-3.5 py-2.5 text-sm outline-none text-[var(--text-1)] placeholder-[var(--text-4)] focus:border-[var(--coach)]"
+            className="w-full bg-[rgba(255,255,255,.06)] border border-[rgba(255,255,255,.14)] rounded-xl px-3.5 py-2.5 text-base outline-none text-[var(--text-1)] placeholder-[var(--text-4)] focus:border-[var(--coach)]"
             style={{ minHeight: 46 }}
           />
           <button
@@ -656,7 +656,7 @@ export function StepMemorias({ draft, set }) {
             disabled={!textoNota.trim()}
             className="inline-flex items-center justify-center gap-1.5 transition active:scale-[.98] disabled:opacity-40 self-end"
             style={{
-              minHeight: 38,
+              minHeight: 44,
               padding: '0 16px',
               borderRadius: 'var(--radius-md)',
               background: 'rgba(34,211,238,.15)',
