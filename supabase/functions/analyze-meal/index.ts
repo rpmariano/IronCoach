@@ -622,7 +622,7 @@ async function generateMealCoachNotes(
     `- CEIA / REFEIÇÕES ANTES DE DORMIR: A Ceia é uma refeição noturna tomada antes de ir dormir (mesmo que registada na madrugada). Numa Ceia, o treino do próprio dia da data ainda está por realizar mais tarde quando o atleta acordar. A Ceia foca-se no aporte proteico de absorção lenta (caseína, skyr, iogurte grego, queijo fresco) para manter a síntese proteica e regeneração muscular durante o sono.\n` +
     `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
     `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num alimento ou num número concreto.\n` +
-    `- O bloco "Para a próxima" é uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
+    `- O bloco "Para a próxima" é uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo; ou, se "O DIA ATÉ AGORA" disser que a ceia é a única hipótese que resta hoje, o que pôr nessa ceia)` +
     (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`) +
     `\n${MEAL_ANALYSIS_RULES}\n` +
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise), "intervention_needed" (boolean, true se justificar intervenção) e "intervention_reason" (string, justificação).\n` +
@@ -778,7 +778,7 @@ async function attachMealCoachNotes(
       // O dia até agora (5.5, push 3): as outras refeições de hoje…
       sb
         .from("meals")
-        .select("id, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+        .select("id, meal_type, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
         .eq("user_id", userId)
         .eq("date", ctx.date)
         .neq("id", meal.id),
@@ -795,9 +795,9 @@ async function attachMealCoachNotes(
     // deno-lint-ignore no-explicit-any
     const suggestion = (daySuggestions || []).map((i: any) => i?.meal_macros).find((m: any) => Number(m?.kcal) > 0 || Number(m?.protein_g) > 0) ?? null;
     const dayProgress = dayProgressSection(mealDayProgress({
-      thisMeal: ctx.totals,
+      thisMeal: { ...ctx.totals, meal_type: ctx.meal_type },
       // deno-lint-ignore no-explicit-any
-      otherMeals: (todayOthers || []).map((m: any) => totalsFromItems(m.meal_items || [])),
+      otherMeals: (todayOthers || []).map((m: any) => ({ ...totalsFromItems(m.meal_items || []), meal_type: m.meal_type })),
       suggestion,
       goals: profile || {},
     }));
