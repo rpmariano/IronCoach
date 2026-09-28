@@ -329,19 +329,18 @@ describe('MealRegistration — editar refeição existente', () => {
     expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
   });
 
-  it('mudar só o tipo de refeição faz update direto, sem chamar o Gemini', async () => {
+  /* Desde 2026-09-28 qualquer mudança num registo regenera a análise — o
+     tipo incluído: a Carol usa-o para decidir que refeições ainda podem vir. */
+  it('mudar só o tipo de refeição reanalisa com o tipo novo', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
-    await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(1));
-    const [mealPayload, mealId] = mocks.updateMeal.mock.calls[0];
-    expect(mealId).toBe('meal-3');
-    expect(mealPayload).toEqual({ date: '2026-01-10', meal_type: 'almoco' });
-    expect(mocks.invoke).not.toHaveBeenCalled();
-    await dispensarConfirmacao();
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-meal');
+    expect(body).toMatchObject({ mode: 'manual', meal_id: 'meal-3', meal_type: 'almoco', date: '2026-01-10' });
   });
 
   /* Desde 2026-09-28 a hora é analítica (a Carol lê-a): corrigi-la reanalisa
@@ -379,6 +378,17 @@ describe('MealRegistration — editar refeição existente', () => {
     fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBeNull();
+  });
+
+  it('numa refeição sem alimentos, mudar o tipo grava por update direto', async () => {
+    useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_items: [] }] });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+
+    await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(1));
+    expect(mocks.updateMeal.mock.calls[0]).toEqual([{ date: '2026-01-10', meal_type: 'almoco' }, 'meal-3']);
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
   it('numa refeição sem alimentos, mudar só a hora grava por update direto', async () => {
