@@ -344,17 +344,25 @@ describe('MealRegistration — editar refeição existente', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  it('a editar, a hora vem da refeição e muda por update à parte, sem o Gemini', async () => {
+  /* Desde 2026-09-28 a hora é analítica (a Carol lê-a): corrigi-la reanalisa
+     e vai no pedido à analyze-meal, que a grava com a refeição. */
+  it('a editar, a hora vem da refeição e mudá-la reanalisa com a hora nova', async () => {
     useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_time: '20:00:00' }] });
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-3', meal_time: '20:30:00' }, items: [] }, error: null });
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
     expect(screen.getByLabelText('Hora da refeição')).toHaveValue('20:00');
+    // A hora gravada, só reformatada ('HH:MM:SS' → 'HH:MM'), não conta como mudança.
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText('Hora da refeição'), { target: { value: '20:30' } });
-    fireEvent.click(screen.getByRole('button', { name: /Guardar alterações/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
-    await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledTimes(2));
-    expect(mocks.updateMeal.mock.calls[1]).toEqual([{ meal_time: '20:30' }, 'meal-3']);
-    expect(mocks.invoke).not.toHaveBeenCalled();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-meal');
+    expect(body).toMatchObject({ mode: 'manual', meal_id: 'meal-3', meal_time: '20:30' });
+    // A resposta já traz a hora gravada: sem update à parte.
+    expect(mocks.updateMeal).not.toHaveBeenCalled();
   });
 
   it('mudar as gramas de um alimento passa pelo Coach e reanalisa', async () => {

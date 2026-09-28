@@ -206,9 +206,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     } });
   };
 
-  // Assinatura do que é analítico, para comparar o antes com o agora.
-  const analyticalSignature = (dateValue, notesValue, items) => JSON.stringify({
+  // Assinatura do que é analítico, para comparar o antes com o agora. A hora
+  // conta desde 2026-09-28: a Carol lê-a (ordena o dia e decide que refeições
+  // ainda podem vir), por isso corrigi-la muda a análise e tem de a regenerar.
+  const analyticalSignature = (dateValue, timeValue, notesValue, items) => JSON.stringify({
     date: dateValue,
+    time: normalizeStartTime(timeValue),
     notes: (notesValue || '').trim(),
     items: items.map(i => ({ name: (i.name || '').trim(), grams: i.grams ?? null })),
   });
@@ -244,7 +247,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com alimentos/observações diferentes dos gravados dispara
     // "Guardar e reanalisar" já na primeira renderização.
-    setOriginalSnapshot(analyticalSignature(meal.date, meal.notes, canonicalItems));
+    setOriginalSnapshot(analyticalSignature(meal.date, meal.meal_time, meal.notes, canonicalItems));
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealIdToEdit]);
@@ -313,7 +316,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // Regenera a análise se a data, alimentos ou observações mudaram
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(date, notes, manualItems) !== originalSnapshot;
+    && analyticalSignature(date, mealTime, notes, manualItems) !== originalSnapshot;
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
@@ -438,7 +441,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   //     mode manual com meal_id), que reestima os valores nutricionais de
   //     todos os alimentos e regenera a análise. É o que permite acrescentar
   //     um alimento novo ao editar.
-  //   • Só a data/tipo mudaram → update direto, sem chamada ao Gemini.
+  //   • Hora mudou → também reanalisa (a Carol lê-a desde 2026-09-28).
+  //   • Só o tipo mudou → update direto, sem chamada ao Gemini.
   // ----------------------------------
   const saveEditTask = async () => {
     {
