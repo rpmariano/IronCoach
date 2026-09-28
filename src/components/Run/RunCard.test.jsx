@@ -102,7 +102,7 @@ describe('RunCard — eliminar a corrida de uma prova', () => {
   it('a última corrida de uma prova concluída: avisa que a prova volta a ficar por registar', async () => {
     useAppStore.setState({ runs: [DA_PROVA], raceEvents: [PROVA] });
     await abrirAviso(DA_PROVA);
-    expect(await screen.findByText(/É o registo de «Meia de Lisboa»: a prova volta a ficar por registar/)).toBeInTheDocument();
+    expect(await screen.findByText(/É o registo de «Meia de Lisboa»: a prova volta a ficar por registar e o balanço da Carol sai/)).toBeInTheDocument();
   });
 
   it('com outra corrida ligada à prova, o aviso de sempre', async () => {

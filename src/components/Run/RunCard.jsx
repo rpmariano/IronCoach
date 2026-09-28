@@ -513,7 +513,7 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
         onConfirm={handleDelete}
         isDeleting={isDeleting}
         message={raceThatReverts
-          ? `Tem a certeza que deseja eliminar esta corrida? É o registo de ${raceThatReverts.name ? `«${raceThatReverts.name}»` : 'uma prova'}: a prova volta a ficar por registar. O diploma, a medalha e as fotos ficam guardados. Esta ação não pode ser desfeita.`
+          ? `Tem a certeza que deseja eliminar esta corrida? É o registo de ${raceThatReverts.name ? `«${raceThatReverts.name}»` : 'uma prova'}: a prova volta a ficar por registar e o balanço da Carol sai. O diploma, a medalha e as fotos da prova ficam guardados. Esta ação não pode ser desfeita.`
           : 'Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita.'}
       />
     </div>
