@@ -522,7 +522,9 @@ export default function Perfil() {
   // leva o rascunho com ele. Passa pelo mesmo aviso que as outras.
   // Um segundo toque durante a saída (ela agora espera pela limpeza das
   // notificações) não repete a limpeza nem o signOut.
+  // O botão fica ocupado e diz o que se passa (a saída pode levar uns segundos).
   const signingOutRef = useRef(false);
+  const [signingOut, setSigningOut] = useState(false);
   const handleSignOut = async () => {
     if (isDirty) {
       setLeavePrompt({ kind: 'signout', target: null });
@@ -530,12 +532,14 @@ export default function Perfil() {
     }
     if (signingOutRef.current) return;
     signingOutRef.current = true;
+    setSigningOut(true);
     try {
       // Quem sai deixa de receber as notificações neste telemóvel (lib/push.js).
       await forgetPushSubscriptionOnThisDevice();
       await supabase.auth.signOut();
     } finally {
       signingOutRef.current = false;
+      setSigningOut(false);
     }
   };
 
@@ -861,8 +865,8 @@ export default function Perfil() {
           
           <div className="module-card-contrast">
             <p className="text-[11px] text-[var(--text-3)] mb-3">Sessão iniciada como <b className="text-[var(--text-3)]">{session?.user?.email}</b></p>
-            <button onClick={handleSignOut} className="w-full min-h-[44px] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-[var(--tint-danger-bg)] transition">
-              <LogOut size={14} /> Terminar sessão
+            <button onClick={handleSignOut} disabled={signingOut} aria-busy={signingOut} className="w-full min-h-[44px] border border-[var(--tint-danger-bd)] text-[var(--danger)] text-xs font-semibold rounded-xl py-2.5 flex items-center justify-center gap-1.5 hover:bg-[var(--tint-danger-bg)] transition disabled:opacity-60">
+              <LogOut size={14} /> {signingOut ? 'A terminar sessão…' : 'Terminar sessão'}
             </button>
           </div>
       </div>

@@ -67,14 +67,14 @@ function urlBase64ToUint8Array(base64String) {
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil((async () => {
     if (!event.newSubscription) {
-      const oldKey = event.oldSubscription && event.oldSubscription.options
-        && event.oldSubscription.options.applicationServerKey;
       try {
         const current = await self.registration.pushManager.getSubscription();
         if (!current) {
+          // Sempre a chave atual da app — nunca a da subscrição antiga, que
+          // numa troca de chave seria a errada.
           await self.registration.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: oldKey || urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
           });
         }
       } catch (e) { /* sem permissão ou sem rede: a app tenta ao abrir */ }

@@ -286,6 +286,35 @@ function mockServerDelete(result = { error: null }) {
   return { del, eq };
 }
 
+describe('uma verificação de cada vez, e nenhuma durante a saída', () => {
+  it('um aviso do service worker a meio de uma verificação espera por ela', async () => {
+    const order = [];
+    const reg = fakeRegistration(null);
+    let release;
+    reg.pushManager.subscribe
+      .mockImplementationOnce(() => new Promise((r) => { release = () => { order.push('1.º fim'); r(fakeSub('https://push.example/a')); }; }))
+      .mockImplementationOnce(async () => { order.push('2.º começo'); return fakeSub('https://push.example/b'); });
+    installBrowser({ reg });
+    const first = maybeSyncPushSubscription({ enabled: true, userId: U, now: 1 });
+    await vi.waitFor(() => expect(reg.pushManager.subscribe).toHaveBeenCalledTimes(1));
+    const second = maybeSyncPushSubscription({ enabled: true, userId: U, force: true, now: 2 });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(reg.pushManager.subscribe).toHaveBeenCalledTimes(1);
+    release();
+    await Promise.all([first, second]);
+    expect(order).toEqual(['1.º fim', '2.º começo']);
+  });
+
+  it('durante a saída, nenhuma verificação repõe a linha de quem está a sair', async () => {
+    const reg = fakeRegistration(fakeSub('https://push.example/antigo'));
+    installBrowser({ reg });
+    vi.spyOn(supabase, 'from').mockReturnValue({ delete: () => ({ eq: () => new Promise(() => {}) }) });
+    const forgetting = forgetPushSubscriptionOnThisDevice({ timeoutMs: 50 });
+    expect(await maybeSyncPushSubscription({ enabled: true, userId: U, force: true, now: 1 })).toBe('off');
+    await forgetting;
+  });
+});
+
 describe('forgetPushSubscriptionOnThisDevice', () => {
   it('apaga a linha deste endpoint no servidor e cancela a subscrição do browser', async () => {
     const sub = fakeSub('https://push.example/antigo');
@@ -353,14 +382,26 @@ describe('ensurePushSubscription (o interruptor do Perfil)', () => {
     const sub = fakeSub('https://push.example/de-outro');
     const reg = fakeRegistration(sub);
     installBrowser({ reg, optIn: false });
+    const rls = { error: 'new row violates row-level security policy (USING expression) for table "push_subscriptions"' };
     invoke
-      .mockResolvedValueOnce({ data: null, error: { message: 'new row violates row-level security policy' } })
+      .mockResolvedValueOnce({ data: null, error: { message: 'Edge Function returned a non-2xx status code', context: { status: 500, json: async () => rls } } })
       .mockResolvedValueOnce({ data: { ok: true }, error: null });
     expect(await ensurePushSubscription()).toEqual({ ok: true, error: null });
     expect(sub.unsubscribe).toHaveBeenCalled();
     expect(invoke).toHaveBeenLastCalledWith('save-push-subscription', expect.objectContaining({
       body: expect.objectContaining({ endpoint: 'https://push.example/novo' }),
     }));
+  });
+
+  it('uma falha de rede ao gravar não cancela uma subscrição que está a funcionar (a da água, por exemplo)', async () => {
+    const sub = fakeSub('https://push.example/da-agua');
+    const reg = fakeRegistration(sub);
+    installBrowser({ reg, optIn: false });
+    invoke.mockResolvedValue({ data: null, error: { name: 'FunctionsFetchError', message: 'Failed to send a request to the Edge Function' } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await ensurePushSubscription()).ok).toBe(false);
+    expect(sub.unsubscribe).not.toHaveBeenCalled();
+    expect(reg.pushManager.subscribe).not.toHaveBeenCalled();
   });
 });
 
@@ -392,12 +433,13 @@ async function fire(listener, event) {
 }
 
 describe('sw.js — pushsubscriptionchange', () => {
-  it('sem subscrição nova, renova com a chave antiga e avisa a app aberta para a gravar', async () => {
+  it('sem subscrição nova, renova com a chave ATUAL da app (nunca a antiga) e avisa a app aberta', async () => {
     const client = { postMessage: vi.fn() };
     const { self, listeners } = loadServiceWorker({ clients: [client] });
-    const oldKey = keyBytes().buffer;
-    await fire(listeners.pushsubscriptionchange, { oldSubscription: { options: { applicationServerKey: oldKey } } });
-    expect(self.registration.pushManager.subscribe).toHaveBeenCalledWith({ userVisibleOnly: true, applicationServerKey: oldKey });
+    const antiga = keyBytes('AAAA').buffer;
+    await fire(listeners.pushsubscriptionchange, { oldSubscription: { options: { applicationServerKey: antiga } } });
+    const { applicationServerKey } = self.registration.pushManager.subscribe.mock.calls[0][0];
+    expect(Array.from(applicationServerKey)).toEqual(Array.from(keyBytes()));
     expect(client.postMessage).toHaveBeenCalledWith({ type: 'push-subscription-changed' });
   });
 

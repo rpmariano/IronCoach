@@ -106,7 +106,10 @@ export async function ensurePushSubscription() {
       /* O endpoint pode ainda estar gravado em nome de outra conta deste
          telemóvel (uma sessão que acabou sem passar pelo Perfil): a RLS
          recusa o upsert, sempre. Com um endpoint novo não há conflito — e
-         aqui há um toque do atleta, que o iOS exige para subscrever. */
+         aqui há um toque do atleta, que o iOS exige para subscrever. Só
+         nesse caso: uma falha de rede ou do servidor não pode cancelar uma
+         subscrição que está a funcionar (a da água, por exemplo). */
+      if (!(await isEndpointOfAnotherAccount(e))) throw e;
       await sub.unsubscribe();
       sub = await subscribeFresh(reg, appServerKey);
       await saveSubscription(sub);
@@ -123,6 +126,19 @@ export async function ensurePushSubscription() {
 
 function subscribeFresh(reg, appServerKey) {
   return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appServerKey });
+}
+
+/* A resposta do save-push-subscription quando a RLS recusa o upsert: o
+   endpoint é de outra conta (a mensagem do Postgres vem no campo `error`). */
+async function isEndpointOfAnotherAccount(error) {
+  const res = error?.context;
+  if (!res || typeof res.json !== 'function') return false;
+  try {
+    const body = await (typeof res.clone === 'function' ? res.clone() : res).json();
+    return /row-level security/i.test(String(body?.error || ''));
+  } catch {
+    return false;
+  }
 }
 
 async function saveSubscription(sub) {
@@ -234,14 +250,20 @@ export const SYNC_INTERVAL_MS = 6 * 3600 * 1000;
 export const SYNC_RETRY_MS = 5 * 60 * 1000;
 const UNSETTLED = new Set(['error', 'read-failed', 'no-session']);
 let lastSync = { userId: null, at: 0 };
+/* Uma de cada vez: um aviso do service worker (force) a meio de uma
+   verificação normal davam duas trocas de subscrição ao mesmo tempo. E a
+   saída espera pela última da fila. */
 let inFlight = null;
+// Durante a saída não se repara nada: repunha a linha de quem está a sair.
+let signingOut = false;
 export function maybeSyncPushSubscription({ enabled, userId, force = false, fresh = false, now = Date.now() }) {
-  if (!enabled || !userId) return Promise.resolve('off');
+  if (!enabled || !userId || signingOut) return Promise.resolve('off');
   const recent = lastSync.userId === userId && lastSync.at && now - lastSync.at < SYNC_INTERVAL_MS;
   if (!force && recent) return Promise.resolve('throttled');
   const stamp = { userId, at: now };
   lastSync = stamp;
-  const run = syncPushSubscription({ enabled, userId, fresh }).then((result) => {
+  const previous = inFlight || Promise.resolve();
+  const run = previous.catch(() => {}).then(() => (signingOut ? 'off' : syncPushSubscription({ enabled, userId, fresh }))).then((result) => {
     if (UNSETTLED.has(result) && lastSync === stamp) {
       lastSync = { userId, at: now - SYNC_INTERVAL_MS + SYNC_RETRY_MS };
     }
@@ -273,6 +295,7 @@ export function resetPushSyncThrottle() {
 export async function forgetPushSubscriptionOnThisDevice({ timeoutMs = 3000 } = {}) {
   resetPushSyncThrottle();
   if (!pushSupported()) return;
+  signingOut = true;
   let timer;
   const deadline = new Promise((resolve) => { timer = setTimeout(resolve, timeoutMs); });
   try {
@@ -295,5 +318,6 @@ export async function forgetPushSubscriptionOnThisDevice({ timeoutMs = 3000 } = 
     console.warn('Não foi possível esquecer a subscrição deste dispositivo:', e);
   } finally {
     clearTimeout(timer);
+    signingOut = false;
   }
 }
