@@ -58,8 +58,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [date, setDate] = useState(todayISO());
   /* Hora da avaliação ('HH:MM', hora local; body_assessments.assessment_time)
      — a hora a que a pesagem foi feita, não a de introdução na app, e sem
-     valor por omissão (pedido 2026-09-13). Ordena o dia no Calendário e
-     entra na análise da Carol. */
+     valor por omissão (pedido 2026-09-13). Ordena o dia no Calendário e o
+     resumo diário da Carol (coach-daily-summary) lê-a; o resumo DESTA
+     avaliação (analyze-body) não — por isso não pede reanálise. */
   const [assessmentTime, setAssessmentTime] = useState('');
   const [notes, setNotes] = useState('');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da
@@ -81,9 +82,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [metrics, setMetrics] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Edição — métricas e observações são dados ANALÍTICOS: mudá-los muda o
-  // resumo do Coach e obriga a regenerá-lo. Mudar só a data é um update
-  // direto, sem custo de API (mesmo padrão da Nutrição/Ginásio, ver PRD 3.2).
+  // Edição — métricas, observações e data são dados ANALÍTICOS: mudá-los muda
+  // o resumo do Coach e obriga a regenerá-lo (ver analyticalSignature). Só a
+  // hora é update direto, sem custo de API (ver PRD 3.2).
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -187,7 +188,14 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     } });
   };
 
-  const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
+  // O que a Carol lê: métricas, observações e — desde 2026-09-28 — a data (a
+  // analyze-body compara com o histórico ATÉ essa data, por isso mudá-la muda
+  // o resumo). A hora da avaliação não entra: o resumo desta avaliação não a
+  // lê (o resumo diário lê, mas é gerado à parte).
+  // A data canónica ao abrir (ver needsReanalysis).
+  const originalDateRef = useRef(null);
+  const analyticalSignature = (dateValue, notesValue, metricsValue) => JSON.stringify({
+    date: dateValue,
     notes: (notesValue || '').trim(),
     metrics: BODY_METRICS.reduce((acc, m) => {
       const raw = metricsValue?.[m.key];
@@ -222,7 +230,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com métricas/observações diferentes das gravadas dispara
     // "Guardar e reanalisar" já na primeira renderização.
-    setOriginalSnapshot(analyticalSignature(a.notes, canonicalMetrics));
+    setOriginalSnapshot(analyticalSignature(a.date, a.notes, canonicalMetrics));
+    originalDateRef.current = a.date;
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentIdToEdit]);
@@ -279,9 +288,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
      alterado, para o aviso de saída as proteger. */
   usePersistedDraftMedia(assessmentIdToEdit ? null : draftStorageKey, 'photos', photos, (v) => { setPhotos(v); setIsFormDirty(true); });
 
+  // Exceção: sem nenhuma métrica a analyze-body recusa ("Preenche pelo menos
+  // um valor") — mudar só a data de uma avaliação assim continua a gravar por
+  // update direto, como antes.
+  const hasAnyMetric = BODY_METRICS.some(m => metrics?.[m.key] !== undefined && metrics[m.key] !== '' && metrics[m.key] !== null);
+  const onlyDateChanged = analyticalSignature(originalDateRef.current, notes, metrics) === originalSnapshot;
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(notes, metrics) !== originalSnapshot;
+    && analyticalSignature(date, notes, metrics) !== originalSnapshot
+    && !(onlyDateChanged && !hasAnyMetric);
 
   const handleMetricChange = (key, value) => {
     setIsFormDirty(true);
@@ -290,9 +305,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   // ----------------------------------
   // GUARDAR ALTERAÇÕES (edição) — dois caminhos:
-  //   • Métricas ou observações mudaram → passa pelo Coach (analyze-body em
-  //     mode manual com assessment_id), que regenera o resumo.
-  //   • Só a data mudou → update direto, sem chamada ao Gemini.
+  //   • Métricas, observações ou data mudaram → passa pelo Coach (analyze-body
+  //     em mode manual com assessment_id), que regenera o resumo. A data conta
+  //     desde 2026-09-28: muda o histórico com que o resumo compara.
+  //   • Nada do que a Carol lê mudou (só a hora), ou só a data numa avaliação
+  //     sem métricas → update direto, sem chamada ao Gemini.
   // ----------------------------------
   const handleSaveEdit = async () => {
     if (isSaving) return;

@@ -13,7 +13,7 @@ vi.mock('../../utils/bodyGoal', () => ({ bodyGoalMoment: () => null }));
 // analyze-body é a única coisa que estes testes exercitam de facto — tanto
 // a foto como o manual gravam a avaliação e geram o comentário do Coach
 // numa só chamada à Edge Function. Editar passa pelo Gemini quando as
-// métricas ou as observações mudam; mudar só a data é update direto.
+// métricas, as observações ou a data mudam (a data desde 2026-09-28).
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateAssessment: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
@@ -198,8 +198,10 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
   });
 });
 
-/* Editar: métricas e observações são dados ANALÍTICOS — mudá-los regenera o
-   resumo do Coach. Mudar só a data é um update direto, sem custo de API.
+/* Editar: métricas, observações e data são dados ANALÍTICOS — mudá-los
+   regenera o resumo do Coach (a data desde 2026-09-28: o resumo compara com o
+   histórico até ela). Só numa avaliação sem métricas mudar a data é update
+   direto — a analyze-body recusaria a reanálise.
    Antes desta iteração o módulo Corpo não tinha edição nenhuma: só dava para
    editar as observações inline no cartão, o que contornava o Coach. */
 describe('BodyRegistration — editar avaliação existente', () => {
@@ -258,7 +260,22 @@ describe('BodyRegistration — editar avaliação existente', () => {
     expect(body.assessment_id).toBe('assess-3');
   });
 
-  it('mudar só a data faz update direto, sem chamar o Gemini', async () => {
+  it('mudar só a data reanalisa com a data nova', async () => {
+    render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
+
+    fireEvent.change(document.querySelector('input[type="date"]'), { target: { value: '2026-01-09' } });
+    fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-body');
+    expect(body).toMatchObject({ mode: 'manual', assessment_id: 'assess-3', date: '2026-01-09' });
+    expect(mocks.updateAssessment).not.toHaveBeenCalled();
+  });
+
+  it('numa avaliação sem métricas, mudar só a data faz update direto', async () => {
+    const vazia = { id: 'assess-3', date: '2026-01-08', notes: 'nota antiga' };
+    useAppStore.setState({ bodyAssessments: [vazia] });
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
     fireEvent.change(document.querySelector('input[type="date"]'), { target: { value: '2026-01-09' } });
