@@ -82,3 +82,27 @@ describe('RunCard — métricas do relógio (details jsonb)', () => {
     expect(screen.getByText('4:55')).toBeInTheDocument();
   });
 });
+
+/* Apagar a corrida de uma prova põe a prova de volta a agendada (trigger de
+   2026-09-28): o aviso diz isso antes de o atleta confirmar. */
+describe('RunCard — eliminar a corrida de uma prova', () => {
+  beforeEach(() => {
+    useAppStore.setState({ profile: { id: 'user-1' }, runs: [RUN], setRuns: () => {} });
+  });
+
+  const abrirAviso = async (run) => {
+    render(<RunCard run={run} onDelete={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes da corrida' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Eliminar$/ }));
+  };
+
+  it('avisa que a prova volta a ficar por registar', async () => {
+    await abrirAviso({ ...RUN, kind: 'competicao', race_id: 'race-1' });
+    expect(await screen.findByText(/a prova volta a ficar por registar/)).toBeInTheDocument();
+  });
+
+  it('numa corrida sem prova, o aviso de sempre', async () => {
+    await abrirAviso(RUN);
+    expect(await screen.findByText('Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita.')).toBeInTheDocument();
+  });
+});

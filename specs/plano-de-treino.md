@@ -236,7 +236,15 @@ nunca passa para a corrida de uma prova (`race_id` preenchido), e um item
 os itens vão atrás dela (sem isto, apagar a conta podia falhar no check da
 FK). Antes, a FK (`on delete set null`) deixava o item
 `concluido` sem registo: o Início dizia "Feito." e a adesão contava-o. O
-Calendário e as Corridas recarregam o plano depois de apagar.
+Calendário e as Corridas recarregam o plano (e as provas) depois de apagar.
+
+**A prova também volta atrás** (pedido de 2026-09-28): apagar a corrida que
+concluiu uma prova, sem outra corrida ligada a ela, põe a prova de volta a
+`agendada` — "por registar", como estava antes do registo. As memórias
+(diploma, medalha, fotos) ficam; uma prova criada pela "Prova fora da agenda"
+também volta a agendada, não é apagada (o atleta apaga-a se quiser). O aviso
+de confirmação da corrida diz isto antes de apagar. Mesmo trigger
+(`…_race_reverts_when_its_run_is_deleted.sql`).
 
 **Mitigação v2** (fora do âmbito): permitir ligar um item a um registo já
 existente noutro dia ("já fiz este").

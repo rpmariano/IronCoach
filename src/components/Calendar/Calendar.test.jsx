@@ -356,18 +356,18 @@ describe('Calendário — filtro', () => {
 /* Apagar a corrida que cumpriu um treino do plano solta-o na BD (trigger
    20260928205037): o store tem de trazer o plano de novo, senão o Início
    continuava a dizer "Feito." até recarregar. */
-describe('Calendário — apagar uma corrida recarrega o plano', () => {
+describe('Calendário — apagar uma corrida recarrega o plano e as provas', () => {
   beforeEach(() => {
     mocks.deleted.length = 0;
   });
 
-  it('depois de apagar, pede o plano outra vez', async () => {
-    const reloadCoachPlans = vi.fn(() => Promise.resolve([]));
-    const original = useAppStore.getState().reloadCoachPlans;
+  it('depois de apagar, pede o plano e as provas outra vez', async () => {
+    const reloadAfterRunDeleted = vi.fn(() => Promise.resolve());
+    const original = useAppStore.getState().reloadAfterRunDeleted;
     useAppStore.setState({
       runs: [{ id: 'run-1', date: iso(HOJE), name: 'Rodagem', kind: 'treino', training_type: 'continuo', distance_km: 5, duration_seconds: 1800 }],
       gymSessions: [], meals: [], bodyAssessments: [], raceEvents: [], pendingCalendarDate: null,
-      reloadCoachPlans,
+      reloadAfterRunDeleted,
     });
     try {
       renderCalendario();
@@ -376,9 +376,9 @@ describe('Calendário — apagar uma corrida recarrega o plano', () => {
       const popup = await screen.findByRole('dialog');
       fireEvent.click(within(popup).getByRole('button', { name: /Eliminar/ }));
       await waitFor(() => expect(mocks.deleted).toEqual(['run-1']));
-      await waitFor(() => expect(reloadCoachPlans).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(reloadAfterRunDeleted).toHaveBeenCalledTimes(1));
     } finally {
-      useAppStore.setState({ reloadCoachPlans: original });
+      useAppStore.setState({ reloadAfterRunDeleted: original });
     }
   });
 });

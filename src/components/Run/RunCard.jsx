@@ -502,7 +502,10 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDelete}
         isDeleting={isDeleting}
-        message="Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita."
+        message={run.race_id
+          // A prova volta a agendada na BD (trigger de 2026-09-28): o atleta sabe-o antes de confirmar.
+          ? 'Tem a certeza que deseja eliminar esta corrida? É o registo de uma prova: a prova volta a ficar por registar, com as memórias guardadas. Esta ação não pode ser desfeita.'
+          : 'Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita.'}
       />
     </div>
   );

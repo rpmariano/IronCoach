@@ -227,12 +227,12 @@ export default function Calendar() {
     };
   }, [runs, raceEvents, gymSessions, meals, bodyAssessments, filter]);
 
-  /* Apagar o registo que cumpriu um treino do plano solta-o na BD (trigger
-     20260928205037_plan_items_follow_deleted_records.sql): passa para outro
-     registo desse dia, ou volta a pendente. O store traz o plano de novo,
-     senão o Início continuava a dizer "Feito." até recarregar. */
+  /* Apagar a corrida que cumpriu um treino do plano, ou que concluiu uma
+     prova, solta-os na BD (trigger 20260928205037 e seguinte): o treino
+     passa para outro registo desse dia ou volta a pendente, e a prova volta
+     a agendada. O store relê os dois (reloadAfterRunDeleted). */
   const reloadPlanAfterDelete = () => {
-    Promise.resolve(useAppStore.getState().reloadCoachPlans?.()).catch(() => {});
+    Promise.resolve(useAppStore.getState().reloadAfterRunDeleted?.()).catch(() => {});
   };
 
   // Delete handlers

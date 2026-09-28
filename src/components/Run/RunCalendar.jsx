@@ -76,8 +76,8 @@ export default function RunCalendar({ onNewRun }) {
       const { error } = await supabase.from('runs').delete().eq('id', id);
       if (error) throw error;
       showToast('Corrida eliminada');
-      // O treino do plano que ela cumpria soltou-se na BD (ver Calendar.jsx).
-      Promise.resolve(useAppStore.getState().reloadCoachPlans?.()).catch(() => {});
+      // O treino do plano e a prova que ela cumpria soltaram-se na BD (ver Calendar.jsx).
+      Promise.resolve(useAppStore.getState().reloadAfterRunDeleted?.()).catch(() => {});
     } catch (err) {
       console.error(err);
       showToast('Erro ao eliminar corrida.', 'error');

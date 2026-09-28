@@ -385,6 +385,22 @@ export const useAppStore = create((set, get) => ({
       return plans;
   },
 
+  /* Depois de apagar uma corrida. O trigger da BD
+     (20260928205037 e a migration seguinte) soltou os treinos do plano
+     que ela cumpria e pôs a prova dela de volta a agendada: relê os planos
+     e as provas, senão o Início e a lista de provas continuavam a dá-los
+     por feitos até recarregar. Um pedido que falha deixa o que lá estava. */
+  reloadAfterRunDeleted: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return;
+    const [{ data: races, error }] = await Promise.all([
+      supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
+      get().reloadCoachPlans(),
+    ]);
+    const now = get().session?.user?.id || get().profile?.id;
+    if (!error && races && now === userId) set({ raceEvents: races });
+  },
+
   // ── Armário de sapatilhas (tabela shoes) ───────────────────────────────
   // O acumulado de km de cada par NÃO vive aqui: é derivado das corridas com
   // runs.shoe_id a apontar para o par (ver src/utils/shoes.js). Guardar um
