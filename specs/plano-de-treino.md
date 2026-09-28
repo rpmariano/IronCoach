@@ -187,20 +187,31 @@ objetivos de nutrição e sai da lista ativa.
 
 Desde 2026-09-14, uma corrida ou sessão de ginásio registada sem vir de
 **Concluir** risca o item `pendente` do **mesmo dia e do mesmo tipo**
-(corrida ↔ corrida, ginásio ↔ ginásio; a prova só em modo prova). A ligação é
-a mesma do §5.2: `actual_date` e `completed_run_id`/`completed_session_id`.
+(corrida ↔ corrida, ginásio ↔ ginásio). O item de prova nunca se risca
+assim: fecha-se pelo registo da prova, em modo prova ou pela "Prova fora da
+agenda" que bate com a prova agendada. A ligação é a mesma do §5.2:
+`actual_date` e `completed_run_id`/`completed_session_id`.
 
 **No registo por foto, a ligação faz-se logo que a corrida fica gravada**
-(2026-09-28), não só no fecho. A análise grava a corrida antes do aviso das
-métricas em falta. Quem saísse nesse aviso, ou depois de uma reanálise
-falhada, ficava com a corrida gravada e o treino `pendente`, e o plano e o
-Início davam-no por fazer. Se a data mudar no aviso, o item já ligado recebe
-a data nova. A mesma corrida nunca se liga a um segundo item.
+(2026-09-28), não só no fecho, e fora do modo prova. A análise grava a
+corrida antes do aviso das métricas em falta. Quem saísse nesse aviso, ou
+depois de uma reanálise falhada, ficava com a corrida gravada e o treino
+`pendente`, e o plano e o Início davam-no por fazer.
+
+O fecho confirma essa ligação com o que o formulário tem nesse momento:
+
+- Mesma data: fica.
+- Data corrigida (os prints eram de ontem): o item volta a `pendente`, e a
+  procura faz-se pelo dia novo.
+- Passou a prova: o item volta a `pendente`.
+
+Assim a mesma corrida não fica ligada a dois itens, e um dia corrigido não
+deixa riscado o treino do dia errado.
 
 O que continua sem ligação: um treino num dia sem item desse tipo, ou fora de
 um plano aceite. As leituras da adesão (`prescriptionAdherence.ts`, o balanço
-da semana, o treino falhado dos alertas) não dependem desta ligação: sem ela,
-contam o que foi registado nesse dia.
+da semana, o treino falhado dos alertas) seguem a ligação quando ela existe.
+Sem ela, contam o que foi registado nesse dia.
 
 **Mitigação v2** (fora do âmbito): permitir ligar um item a um registo já
 existente noutro dia ("já fiz este").

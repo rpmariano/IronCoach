@@ -834,6 +834,18 @@ export const useAppStore = create((set, get) => ({
     return true;
   },
 
+  // Desfaz o completePlanItem: o registo ligado deixou de ser deste item (a
+  // data da corrida mudou depois de ela ficar ligada, ou passou a prova).
+  reopenPlanItem: async (itemId) => {
+    const updates = { status: 'pendente', actual_date: null, completed_run_id: null, completed_session_id: null };
+    const { error } = await supabase.from('coach_plan_items').update(updates).eq('id', itemId);
+    if (error) { console.error('Error reopening plan item:', error); return false; }
+    set((state) => ({
+      coachPlanItems: state.coachPlanItems.map(i => i.id === itemId ? { ...i, ...updates } : i),
+    }));
+    return true;
+  },
+
   // Cancelar não apaga — sai da lista ativa e deixa de contar para
   // objetivos de nutrição, mas fica no histórico do plano.
   cancelPlanItem: async (itemId) => {

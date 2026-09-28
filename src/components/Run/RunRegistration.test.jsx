@@ -643,7 +643,10 @@ describe('RunRegistration — regista sem vir do botão "Registar sessão" (bate
     const chegarAoAviso = async () => {
       localStorage.removeItem('ironcoach:corrida-rascunho:nova');
       mocks.invoke.mockReset().mockResolvedValue({ data: { run: gravada }, error: null });
+      // Vindo do plano, o registo abre em Manual (e o prefill limpa-se ao abrir).
+      const doPlano = !!useAppStore.getState().planItemPrefill;
       render(<RunRegistration onClose={onClose} />);
+      if (doPlano) fireEvent.click(screen.getByRole('button', { name: /^Foto$/ }));
       await selectPhoto();
       fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
       await screen.findByTestId('missing-metrics-bottom-sheet');
@@ -673,7 +676,9 @@ describe('RunRegistration — regista sem vir do botão "Registar sessão" (bate
       expect(updatesDoPlano().map(u => u.id)).toEqual(['item-corrida']);
     });
 
-    it('com a data mudada no aviso, fica o mesmo treino com a data nova — a corrida não se liga a um segundo', async () => {
+    const itemDe = (id) => useAppStore.getState().coachPlanItems.find(i => i.id === id);
+
+    it('com a data corrigida no aviso (os prints eram de ontem), passa para o treino de ontem — o de hoje volta a pendente', async () => {
       useAppStore.setState({
         coachPlanItems: [
           { id: 'item-hoje', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'pendente' },
@@ -686,10 +691,58 @@ describe('RunRegistration — regista sem vir do botão "Registar sessão" (bate
       fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
       await dispensarConfirmacao();
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-      expect(updatesDoPlano().map(u => u.id)).toEqual(['item-hoje', 'item-hoje']);
-      expect(updatesDoPlano()[1].payload).toMatchObject({ actual_date: ontemISO, completed_run_id: 'run-foto' });
-      const itens = useAppStore.getState().coachPlanItems;
-      expect(itens.find(i => i.id === 'item-ontem').status).toBe('pendente');
+      expect(updatesDoPlano().map(u => [u.id, u.payload.status])).toEqual([
+        ['item-hoje', 'concluido'], ['item-hoje', 'pendente'], ['item-ontem', 'concluido'],
+      ]);
+      expect(itemDe('item-hoje')).toMatchObject({ status: 'pendente', actual_date: null, completed_run_id: null });
+      expect(itemDe('item-ontem')).toMatchObject({ status: 'concluido', actual_date: ontemISO, completed_run_id: 'run-foto' });
+    });
+
+    it('com a data corrigida para um dia sem treino, o de hoje volta a pendente e não se liga nada', async () => {
+      useAppStore.setState({
+        coachPlanItems: [{ id: 'item-hoje', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'pendente' }],
+      });
+      await chegarAoAviso();
+      await waitFor(() => expect(updatesDoPlano()).toHaveLength(1));
+      fireEvent.change(document.querySelector('input[type="date"]'), { target: { value: ontemISO } });
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(itemDe('item-hoje')).toMatchObject({ status: 'pendente', completed_run_id: null });
+    });
+
+    it('vindo do botão "Registar sessão", liga ESSE treino logo, e o fecho não liga outro', async () => {
+      useAppStore.setState({
+        planItemPrefill: { id: 'item-especifico', kind: 'corrida', planned_date: hojeISO, training_type: 'continuo' },
+        coachPlanItems: [
+          { id: 'item-especifico', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'continuo', status: 'pendente' },
+          { id: 'item-outro', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'intervalos', status: 'pendente' },
+        ],
+      });
+      await chegarAoAviso();
+      await waitFor(() => expect(updatesDoPlano()).toHaveLength(1));
+      expect(updatesDoPlano()[0].id).toBe('item-especifico');
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(new Set(updatesDoPlano().map(u => u.id))).toEqual(new Set(['item-especifico']));
+      expect(itemDe('item-outro').status).toBe('pendente');
+    });
+
+    it('passando a prova no aviso, o treino de corrida do dia volta a pendente', async () => {
+      const prova = { id: 'race-hoje', name: 'Meia de Lisboa', date: hojeISO, race_type: 'estrada', distance_km: 21.0975, status: 'agendada' };
+      useAppStore.setState({
+        raceEvents: [prova], shoes: [],
+        coachPlanItems: [{ id: 'item-hoje', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'pendente' }],
+      });
+      await chegarAoAviso();
+      await waitFor(() => expect(updatesDoPlano()).toHaveLength(1));
+      fireEvent.click(screen.getByRole('button', { name: /^Prova$/i }));
+      fireEvent.change(screen.getByLabelText('Qual prova?'), { target: { value: 'race-hoje' } });
+      mocks.invoke.mockResolvedValue({ data: { run: { ...gravada, kind: 'competicao', name: 'Meia de Lisboa' } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await waitFor(() => expect(itemDe('item-hoje').status).toBe('pendente'));
+      expect(itemDe('item-hoje').completed_run_id).toBeNull();
     });
   });
 

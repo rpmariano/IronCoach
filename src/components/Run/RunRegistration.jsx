@@ -1256,24 +1256,32 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      sessão" desaparecia sem o treino planeado ter sido feito. Nunca a prova
      (isRacePlanItem): essa só se conclui em modo prova, acima. */
   const completeMatchingPlanItem = async (savedRun) => {
-    if (isRaceMode || completingPlanItemRef.current) return;
+    if (completingPlanItemRef.current) return;
     const store = useAppStore.getState();
     /* Já ligada a um treino (ao ser gravada, antes do aviso das métricas em
-       falta): é esse, com a data que o formulário tem agora. Procurar outra
-       vez pelo dia, com a data mudada no aviso, ligava a mesma corrida a um
-       segundo treino. */
-    const linked = savedRun?.id && (store.coachPlanItems || []).find(i => i.completed_run_id === savedRun.id);
+       falta). Com a mesma data, está feito. Com a data corrigida depois
+       disso (os prints eram de ontem), ou passando a prova, esse treino não
+       foi feito por ela: volta a pendente, e a procura faz-se pelo dia novo
+       — como se a ligação só se fizesse agora. Sem isto, o treino de hoje
+       ficava riscado por uma corrida de ontem (revisão pré-deploy). */
+    const linked = savedRun?.id && (store.coachPlanItems || []).find(i => i.completed_run_id === savedRun.id && !isRacePlanItem(i));
     if (linked) {
-      if (linked.actual_date === runDate) return;
+      if (!isRaceMode && linked.actual_date === runDate) return;
       try {
-        await store.completePlanItem(linked.id, { actualDate: runDate, runId: savedRun.id });
+        if (!isRaceMode && linked.planned_date === runDate) {
+          await store.completePlanItem(linked.id, { actualDate: runDate, runId: savedRun.id });
+          return;
+        }
+        // Sem a ligação desfeita, a procura pelo dia novo punha a corrida em dois.
+        if (!(await store.reopenPlanItem(linked.id))) return;
       } catch (err) {
-        console.warn('Data do item do plano não atualizada', err);
+        console.warn('Item do plano não atualizado', err);
+        return;
       }
-      return;
     }
+    if (isRaceMode) return;
     const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
-    const item = (store.coachPlanItems || []).find(
+    const item = (useAppStore.getState().coachPlanItems || []).find(
       i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === runDate && i.kind === 'corrida' && !isRacePlanItem(i),
     );
     if (!item) return;
