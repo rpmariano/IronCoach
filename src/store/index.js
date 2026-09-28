@@ -374,10 +374,13 @@ export const useAppStore = create((set, get) => ({
   reloadCoachPlans: async () => {
     const userId = get().session?.user?.id || get().profile?.id;
     if (!userId) return;
-    const [{ data: plans }, { data: items }] = await Promise.all([
+    const [{ data: plans, error: plansError }, { data: items, error: itemsError }] = await Promise.all([
       supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
       supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
     ]);
+    // Um pedido que falha (a rede, logo depois de apagar um registo) não
+    // é um plano vazio: fica o que lá estava (revisão pré-deploy).
+    if (plansError || itemsError) return get().coachPlans;
     set({ coachPlans: plans || [], coachPlanItems: items || [] });
       return plans;
   },

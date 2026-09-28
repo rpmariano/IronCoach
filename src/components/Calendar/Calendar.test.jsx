@@ -354,7 +354,7 @@ describe('Calendário — filtro', () => {
 });
 
 /* Apagar a corrida que cumpriu um treino do plano solta-o na BD (trigger
-   20260928193000): o store tem de trazer o plano de novo, senão o Início
+   20260928205037): o store tem de trazer o plano de novo, senão o Início
    continuava a dizer "Feito." até recarregar. */
 describe('Calendário — apagar uma corrida recarrega o plano', () => {
   beforeEach(() => {
