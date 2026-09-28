@@ -107,3 +107,34 @@ Deno.test("mealDayProgress: a hora ordena as refeições registadas; antes das 0
   assertEquals(normalizeMealTime("25:00"), null);
   assertEquals(normalizeMealTime(null), null);
 });
+
+// Revisão pré-deploy de 2026-09-28: a ceia de madrugada (data de hoje, hora
+// antes das 05:00) é a da noite anterior — não fecha o dia.
+Deno.test("mealDayProgress: uma ceia às 00:30 não fecha o dia nem ocupa a ceia de hoje", () => {
+  const almoco = mealDayProgress({
+    thisMeal: { calories: 650, protein: 40, meal_type: "almoco", meal_time: "13:00" },
+    otherMeals: [{ calories: 200, protein: 20, meal_type: "ceia", meal_time: "00:30:00" }],
+    suggestion: null,
+    goals: null,
+  });
+  assertEquals(almoco.remaining, ["lanche", "jantar", "ceia"]);
+  assertEquals(almoco.logged[0].meal_type, "ceia");
+
+  // A própria ceia de madrugada: o dia está todo por vir.
+  const ceia = mealDayProgress({
+    thisMeal: { calories: 200, protein: 20, meal_type: "ceia", meal_time: "01:10" },
+    otherMeals: [],
+    suggestion: null,
+    goals: null,
+  });
+  assertEquals(ceia.remaining, ["pequeno-almoco", "lanche-manha", "almoco", "lanche", "jantar", "ceia"]);
+
+  // A ceia à noite continua a fechar o dia.
+  const noite = mealDayProgress({
+    thisMeal: { calories: 238, protein: 5, meal_type: "lanche", meal_time: "17:00" },
+    otherMeals: [{ calories: 200, protein: 20, meal_type: "ceia", meal_time: "23:30" }],
+    suggestion: null,
+    goals: null,
+  });
+  assertEquals(noite.remaining, []);
+});

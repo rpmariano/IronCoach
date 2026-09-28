@@ -18,7 +18,7 @@
 // Com a hora (meals.meal_time, opcional) a posição de cada refeição no dia
 // deixa de depender só do tipo: um "lanche" às 20:15 fica no jantar ou depois
 // dele. A posição é a mais tardia entre a do tipo e a da hora — os intervalos
-// são os de inferMealType (MealRegistration.jsx). Antes das 05:00 a hora é
+// são os de getDefaultMealType (MealRegistration.jsx). Antes das 05:00 a hora é
 // ambígua (ceia de madrugada? pequeno-almoço cedo?) e não conta.
 
 export interface MacroTotals { calories: number; protein: number }
@@ -104,9 +104,18 @@ export function mealDayProgress(input: {
       ? { source: "meta" as const, kcal: gKcal, protein: gProt }
       : null;
   const rank = (t: string | null | undefined) => (t ? MEAL_ORDER.indexOf(t as typeof MEAL_ORDER[number]) : -1);
+  // Uma ceia com hora antes das 05:00 é a da noite ANTERIOR, registada já com
+  // a data de hoje (a app põe a data do dia e sugere "ceia" de madrugada):
+  // fica antes do dia e não conta como a ceia de hoje — senão fechava o dia
+  // inteiro e todas as refeições seguintes ouviam "não há refeição seguinte"
+  // (revisão pré-deploy de 2026-09-28).
+  const preDawnCeia = (m: { meal_type?: string | null; meal_time?: string | null }) => {
+    const t = normalizeMealTime(m.meal_time);
+    return m.meal_type === "ceia" && !!t && t < "05:00";
+  };
   // A posição no dia: a mais tardia entre o tipo e a hora.
   const position = (m: { meal_type?: string | null; meal_time?: string | null }) =>
-    Math.max(rank(m.meal_type), slotFromTime(m.meal_time) ?? -1);
+    preDawnCeia(m) ? -1 : Math.max(rank(m.meal_type), slotFromTime(m.meal_time) ?? -1);
   const logged = others
     .filter((m) => rank(m.meal_type) >= 0)
     .map((m) => ({
@@ -121,7 +130,7 @@ export function mealDayProgress(input: {
   const thisRank = rank(input.thisMeal.meal_type);
   if (thisRank >= 0) {
     const last = Math.max(position(input.thisMeal), ...logged.map(position));
-    const taken = new Set([input.thisMeal.meal_type, ...logged.map((m) => m.meal_type)]);
+    const taken = new Set([input.thisMeal, ...logged].filter((m) => !preDawnCeia(m)).map((m) => m.meal_type));
     remaining = MEAL_ORDER.slice(last + 1).filter((t) => !taken.has(t));
   }
   return { meals: others.length + 1, kcal, protein, target, logged, thisTime, remaining };
