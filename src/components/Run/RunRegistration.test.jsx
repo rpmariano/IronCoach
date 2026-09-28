@@ -950,6 +950,12 @@ describe('RunRegistration — editar corrida existente', () => {
   /* 2026-09-28: a análise não lê o tempo oficial nem a posição — mudar o
      valor não custa Gemini; apagá-lo continua a reanalisar (o manual é o único
      caminho que grava o null). */
+  it('um treino com temperatura dos prints abre sem pedir reanálise', () => {
+    useAppStore.setState({ profile: PROFILE, runs: [{ ...EXISTING_RUN, details: { cadence_spm: 165, temperature_c: 24.5, regularity_score: 80 } }], raceEvents: [] });
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
+  });
+
   it('numa prova, abrir não pede reanálise; mudar só a posição é update direto; apagá-la reanalisa', async () => {
     const PROVA = { ...EXISTING_RUN, kind: 'competicao', training_type: null, race_id: 'race-9', details: { cadence_spm: 165, race_type: '10k', official_time_seconds: 3000, position: 120, bib_number: '1234', participants: 1850 } };
     useAppStore.setState({ profile: PROFILE, runs: [PROVA], raceEvents: [{ id: 'race-9', name: '10K de Lisboa', date: '2026-08-01', race_type: '10k', status: 'concluida' }] });
