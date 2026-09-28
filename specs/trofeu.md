@@ -577,7 +577,7 @@ data (Fase 0 fecha-o); uma data provável errada disparar taper e push
 | **2. Carol e prioridades** | 27/11 | (**em produção** a 26/09, sem migração) `seriesArbitration.ts` com golden tests, `pointsBand`, contador, `getTaperDays` por intenção, `fetchSeriesBlock`, `SERIES_TOOLS`, mapa da época, 3 perguntas, doutrina #6 em `02-corrida-prova.md` | Golden tests das personas A–K; a Carol cala pontos com base `null`; nenhuma frase proibida de §5 nos testes |
 | **3. Ecrã do Troféu e lista** | 27/11 | (**em produção** a 27/09, sem migração) Ecrã do Troféu, bloco fixo na lista, "Para onde vou", hub com bloco Troféu, prazo no cartão diário | `groupRaces` sem `cup_round_id` igual a hoje; acessibilidade de §4.3 |
 | **4. Job da classificação** | antes da J2 | M2 (`20260927200000_cup_results.sql`, **aplicada em produção a 2026-09-27**: idade pela época, correspondência, `cup_standings`, `cup_sync_state`, guarda do fecho), adaptador, `cupResults.ts`, cron, correspondência, 33.ª em ensaio/`observar` | Teste de fuga verde; invariantes param a escrita; repetidos não ligam |
-| **5. Avisos** | antes da J2 | M3, tipos `cup_*`, preferências em Perfil › Carol, teto por jornada | Omissão tudo desligado; `carol_push_types` recusa `cup_*`; máximo 3 por jornada em teste |
+| **5. Avisos** | antes da J2 | M3 (`20260928082442_cup_notices.sql`, **aplicada em produção a 2026-09-28**), tipos `cup_*`, preferências em Perfil › Carol, teto por jornada | Omissão tudo desligado; `carol_push_types` recusa `cup_*`; máximo 3 por jornada em teste |
 
 **Não pode cair:** a RPC de impacto antes de sair o calendário e as guardas
 da Fase 2. **Se atrasar, cai por esta ordem:** avisos para a J3, ecrã do

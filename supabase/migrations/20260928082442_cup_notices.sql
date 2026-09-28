@@ -1,8 +1,12 @@
 -- ============================================================================
 -- M3 — Os avisos do Troféu (specs/trofeu.md §8, §9.3, §10 Fase 5)
--- POR APLICAR — precisa de autorização (pedido fresco do dono do produto).
--- Ensaiada numa transação revertida (scratchpad ensaio_m3.sql).
--- Ao aplicar, renomear o ficheiro para a version com que ficou registada.
+-- APLICADA EM PRODUÇÃO a 2026-09-28 08:24 UTC (version 20260928082442), com
+-- autorização do dono, depois do ensaio revertido em produção ("ENSAIO OK M3
+-- — 55 verificações, 0 falhas"). Aplicou-se o texto sem comentários nem
+-- linhas em branco e sem begin/commit (o apply_migration já é uma
+-- transação): md5 dos statements guardados = md5 do texto ensaiado
+-- (ac3a501654f3e063be431a77e1a8d9cd). Depois: 15 tipos nas duas
+-- restrições, 11 em profiles_carol_push_types_check. Não voltar a correr.
 -- ============================================================================
 --
 -- Alarga SÓ as duas restrições de tipo do registo da Carol — a conversa
