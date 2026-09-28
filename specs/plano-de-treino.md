@@ -183,14 +183,27 @@ explícita, não há nada a inferir.
 Um botão **Cancelar** marca `status='cancelado'`. O item deixa de contar para
 objetivos de nutrição e sai da lista ativa.
 
-### 5.4. Treino não planeado (caso não coberto)
+### 5.4. Registo sem passar pelo item
 
-Se o atleta treinar sem passar pelo item — ou fizer algo que não estava
-planeado — o registo fica sem ligação e o item continua `pendente`. É um
-caminho aceitável, mas deixa o plano a mostrar menos do que a realidade.
+Desde 2026-09-14, uma corrida ou sessão de ginásio registada sem vir de
+**Concluir** risca o item `pendente` do **mesmo dia e do mesmo tipo**
+(corrida ↔ corrida, ginásio ↔ ginásio; a prova só em modo prova). A ligação é
+a mesma do §5.2: `actual_date` e `completed_run_id`/`completed_session_id`.
+
+**No registo por foto, a ligação faz-se logo que a corrida fica gravada**
+(2026-09-28), não só no fecho. A análise grava a corrida antes do aviso das
+métricas em falta. Quem saísse nesse aviso, ou depois de uma reanálise
+falhada, ficava com a corrida gravada e o treino `pendente`, e o plano e o
+Início davam-no por fazer. Se a data mudar no aviso, o item já ligado recebe
+a data nova. A mesma corrida nunca se liga a um segundo item.
+
+O que continua sem ligação: um treino num dia sem item desse tipo, ou fora de
+um plano aceite. As leituras da adesão (`prescriptionAdherence.ts`, o balanço
+da semana, o treino falhado dos alertas) não dependem desta ligação: sem ela,
+contam o que foi registado nesse dia.
 
 **Mitigação v2** (fora do âmbito): permitir ligar um item a um registo já
-existente ("já fiz este").
+existente noutro dia ("já fiz este").
 
 ## 6. Início — o que muda
 

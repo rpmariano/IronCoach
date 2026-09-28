@@ -625,6 +625,74 @@ describe('RunRegistration — regista sem vir do botão "Registar sessão" (bate
     expect(mocks.updates.find(u => u.table === 'coach_plan_items').id).toBe('item-corrida');
   });
 
+  /* Balanço da semana de 2026-09-28: a corrida de 24/09 foi gravada pela
+     análise por foto, parou no aviso das métricas em falta, e o treino do
+     plano desse dia ficou "pendente" — só se riscava no fecho. */
+  describe('por foto, com o aviso das métricas em falta', () => {
+    const ontemISO = (() => {
+      const d = new Date(`${hojeISO}T12:00:00`);
+      d.setDate(d.getDate() - 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    })();
+    const gravada = {
+      id: 'run-foto', name: 'Corrida de Hoje', date: hojeISO, kind: 'treino', training_type: 'continuo',
+      effort_rpe: null, notes: null, shoe_id: null,
+      distance_km: 5, duration_seconds: 1800, photo_paths: ['user-1/a.jpg'], details: {},
+    };
+    const updatesDoPlano = () => mocks.updates.filter(u => u.table === 'coach_plan_items');
+    const chegarAoAviso = async () => {
+      localStorage.removeItem('ironcoach:corrida-rascunho:nova');
+      mocks.invoke.mockReset().mockResolvedValue({ data: { run: gravada }, error: null });
+      render(<RunRegistration onClose={onClose} />);
+      await selectPhoto();
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await screen.findByTestId('missing-metrics-bottom-sheet');
+    };
+
+    it('o treino risca-se logo que a corrida fica gravada, sem esperar pelo fecho', async () => {
+      useAppStore.setState({
+        coachPlanItems: [{ id: 'item-corrida', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'pendente' }],
+      });
+      await chegarAoAviso();
+      await waitFor(() => expect(updatesDoPlano()).toHaveLength(1));
+      expect(updatesDoPlano()[0]).toMatchObject({
+        id: 'item-corrida',
+        payload: { status: 'concluido', actual_date: hojeISO, completed_run_id: 'run-foto' },
+      });
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('"Prosseguir" depois disso não volta a mexer no plano', async () => {
+      useAppStore.setState({
+        coachPlanItems: [{ id: 'item-corrida', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'pendente' }],
+      });
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(updatesDoPlano().map(u => u.id)).toEqual(['item-corrida']);
+    });
+
+    it('com a data mudada no aviso, fica o mesmo treino com a data nova — a corrida não se liga a um segundo', async () => {
+      useAppStore.setState({
+        coachPlanItems: [
+          { id: 'item-hoje', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'pendente' },
+          { id: 'item-ontem', plan_id: 'p1', planned_date: ontemISO, kind: 'corrida', status: 'pendente' },
+        ],
+      });
+      await chegarAoAviso();
+      await waitFor(() => expect(updatesDoPlano()).toHaveLength(1));
+      fireEvent.change(document.querySelector('input[type="date"]'), { target: { value: ontemISO } });
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(updatesDoPlano().map(u => u.id)).toEqual(['item-hoje', 'item-hoje']);
+      expect(updatesDoPlano()[1].payload).toMatchObject({ actual_date: ontemISO, completed_run_id: 'run-foto' });
+      const itens = useAppStore.getState().coachPlanItems;
+      expect(itens.find(i => i.id === 'item-ontem').status).toBe('pendente');
+    });
+  });
+
   it('vindo do botão "Registar sessão" (planItemPrefill), continua a completar exatamente esse item — não outro treino de corrida do mesmo dia', async () => {
     useAppStore.setState({
       planItemPrefill: { id: 'item-especifico', kind: 'corrida', planned_date: hojeISO, training_type: 'longo' },

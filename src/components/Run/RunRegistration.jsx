@@ -1258,6 +1258,20 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const completeMatchingPlanItem = async (savedRun) => {
     if (isRaceMode || completingPlanItemRef.current) return;
     const store = useAppStore.getState();
+    /* Já ligada a um treino (ao ser gravada, antes do aviso das métricas em
+       falta): é esse, com a data que o formulário tem agora. Procurar outra
+       vez pelo dia, com a data mudada no aviso, ligava a mesma corrida a um
+       segundo treino. */
+    const linked = savedRun?.id && (store.coachPlanItems || []).find(i => i.completed_run_id === savedRun.id);
+    if (linked) {
+      if (linked.actual_date === runDate) return;
+      try {
+        await store.completePlanItem(linked.id, { actualDate: runDate, runId: savedRun.id });
+      } catch (err) {
+        console.warn('Data do item do plano não atualizada', err);
+      }
+      return;
+    }
     const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
     const item = (store.coachPlanItems || []).find(
       i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === runDate && i.kind === 'corrida' && !isRacePlanItem(i),
@@ -1627,6 +1641,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         // esconde até recarregar), e fica como a corrida deste ecrã.
         adoptCreatedRun(createdRun);
         upsertRunInStore(createdRun);
+        /* E o treino do plano desse dia risca-se já, não só no fecho: sair
+           no aviso (ou depois de uma reanálise falhada) deixava-o
+           "pendente" com a corrida gravada — o 24/09 do balanço de
+           2026-09-28, que o plano e o Início davam por fazer. A prova
+           fecha o item dela no fim, com a prova (completeRacePlanItem). */
+        if (!isRaceMode) {
+          try {
+            await completePlanItemForRun(createdRun);
+          } catch (err) {
+            console.warn('Item do plano não marcado como concluído', err);
+          }
+        }
         setMissingKeysList(missing);
         setShowMissingMetricsSheet(true);
         return;
