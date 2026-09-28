@@ -622,7 +622,7 @@ async function generateMealCoachNotes(
     `- CEIA / REFEIÇÕES ANTES DE DORMIR: A Ceia é uma refeição noturna tomada antes de ir dormir (mesmo que registada na madrugada). Numa Ceia, o treino do próprio dia da data ainda está por realizar mais tarde quando o atleta acordar. A Ceia foca-se no aporte proteico de absorção lenta (caseína, skyr, iogurte grego, queijo fresco) para manter a síntese proteica e regeneração muscular durante o sono.\n` +
     `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
     `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num alimento ou num número concreto.\n` +
-    `- O bloco "Para a próxima" é uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo)` +
+    `- O bloco "Para a próxima" é uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo; ou, se "O DIA ATÉ AGORA" disser que a ceia é a única hipótese que resta hoje, o que pôr nessa ceia)` +
     (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`) +
     `\n${MEAL_ANALYSIS_RULES}\n` +
     `\nDevolve a resposta obrigatoriamente no formato JSON com: "text" (análise), "intervention_needed" (boolean, true se justificar intervenção) e "intervention_reason" (string, justificação).\n` +

@@ -49,6 +49,8 @@ Deno.test("mealDayProgress: lanche registado depois do jantar — o jantar conta
   assertStringIncludes(s, "Refeições que ainda podem vir hoje: Ceia.");
   assertStringIncludes(s, "nunca uma que já está registada acima");
   assertStringIncludes(s, "NUNCA atribuas a compensação a uma refeição que já consta como registada");
+  assertStringIncludes(s, "A CEIA É A ÚNICA HIPÓTESE QUE RESTA HOJE");
+  assertStringIncludes(s, "antes de ir para a cama");
 });
 
 Deno.test("mealDayProgress: com a ceia registada não há refeição seguinte; sem tipo, fica o texto genérico", () => {
@@ -63,6 +65,7 @@ Deno.test("mealDayProgress: com a ceia registada não há refeição seguinte; s
 
   const manha = mealDayProgress({ thisMeal: { calories: 400, protein: 20, meal_type: "pequeno-almoco" }, otherMeals: [], suggestion: null, goals: null });
   assertEquals(manha.remaining, ["lanche-manha", "almoco", "lanche", "jantar", "ceia"]);
+  assertEquals(dayProgressSection(manha).includes("ÚNICA HIPÓTESE"), false);
 
   const semTipo = mealDayProgress({ thisMeal: { calories: 400, protein: 20 }, otherMeals: [], suggestion: null, goals: null });
   assertEquals(semTipo.remaining, null);

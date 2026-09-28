@@ -112,6 +112,16 @@ export function dayProgressSection(p: DayProgress): string {
     line += `\nRefeições que ainda podem vir hoje: ${labels.join(", ")}.`;
     next = `diz o que ainda pode fazer ${labels.length === 1 ? "a refeição" : "cada refeição"} que falta (${labels.join(", ")}) — ` +
       `só essas, nunca uma que já está registada acima`;
+    // Só a ceia pela frente (ex.: lanche registado depois do jantar): é a
+    // última oportunidade do dia, e é antes de dormir — o conselho tem de o ter
+    // em conta, não pode ser "come mais" genérico (feedback de 2026-09-28).
+    if (p.remaining.length === 1 && p.remaining[0] === "ceia") {
+      next += `. A CEIA É A ÚNICA HIPÓTESE QUE RESTA HOJE: se o dia estiver abaixo do alvo (sobretudo na proteína), diz-lo ` +
+        `explicitamente e aconselha como a ceia o pode compensar tendo em conta que é a refeição antes de ir para a cama — ` +
+        `proteína de absorção lenta (skyr, iogurte grego, queijo fresco, requeijão, leite; caseína se ele usar), com uma ` +
+        `quantidade concreta em gramas; porção leve e pouca gordura, para não pesar na digestão nem prejudicar o sono; ` +
+        `não tentes recuperar numa ceia as calorias todas que faltam. Esta é a sugestão do bloco "Para a próxima"`;
+    }
   } else {
     line += `\nNão há mais refeições previstas hoje depois desta — o dia está praticamente fechado.`;
     next = `não há refeição seguinte hoje para compensar: julga esta refeição no dia que já aconteceu e, se faltar algo, ` +
