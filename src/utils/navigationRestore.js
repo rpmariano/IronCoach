@@ -114,7 +114,8 @@ export function readRecentNavigation({ storage = defaultStorage(), now = () => D
 export function shouldRestoreNavigation({ tabParam = null, carolParam = null, saved = null } = {}) {
   if (!saved || carolParam) return false;
   if (tabParam && isBenchTab(tabParam)) return false;
-  if (tabParam && !saved.screen) return false;
+  // Sem ecrã de topo aberto (registo/edição a meio), a app abre sempre no Início
+  if (!saved.screen) return false;
   return true;
 }
 

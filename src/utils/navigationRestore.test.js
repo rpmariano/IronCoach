@@ -147,7 +147,8 @@ describe('shouldRestoreNavigation — quando manda o URL (revisão pré-deploy d
     expect(shouldRestoreNavigation({ tabParam: 'perfil', saved: semEcra })).toBe(false);
     expect(shouldRestoreNavigation({ tabParam: 'coach', saved: comEcra })).toBe(true);
   });
-  it('sem nada no URL, repõe', () => {
-    expect(shouldRestoreNavigation({ saved: semEcra })).toBe(true);
+  it('sem nada no URL: se tinha registo a meio repõe, se era só navegação de separador abre Início', () => {
+    expect(shouldRestoreNavigation({ saved: semEcra })).toBe(false);
+    expect(shouldRestoreNavigation({ saved: comEcra })).toBe(true);
   });
 });

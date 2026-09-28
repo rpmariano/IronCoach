@@ -70,8 +70,17 @@ export default function Layout({ children }) {
   // frente da caixa de texto (ver utils/softKeyboard.js e globals.css).
   useEffect(() => installSoftKeyboardWatcher(), []);
 
+  const prevTabRef = useRef(activeTab);
   useEffect(() => {
-    if (activeTab !== 'coach') {
+    const prevTab = prevTabRef.current;
+    prevTabRef.current = activeTab;
+
+    // Transições entre submódulos da Evolução/Dashboard (hub, corrida, ginasio, nutricao, corpo)
+    // não devem forçar scroll para o topo para evitar saltos verticais durante o swipe horizontal.
+    const dashboardTabs = ['hub', 'corrida', 'ginasio', 'nutricao', 'corpo', 'holistica'];
+    const isDashboardTransition = dashboardTabs.includes(prevTab) && dashboardTabs.includes(activeTab);
+
+    if (activeTab !== 'coach' && !isDashboardTransition) {
       // Usar requestAnimationFrame duplo garante que o React já fez render e o DOM foi atualizado
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {

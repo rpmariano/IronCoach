@@ -4,7 +4,6 @@ import { Utensils, Dumbbell, User, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
-import { useTabEnter } from '../../utils/useTabEnter';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 
 import Run from '../Run/Run';
@@ -55,22 +54,21 @@ export default function Dashboard({ activeModule }) {
   );
   scrollToRef.current = scrollTo;
 
-  // "O conteúdo segue a pílula": o módulo que fica ativo entra do lado de
-  // onde veio, 14px e uma pitada de opacidade, em 280ms.
-  const setPageRef = useTabEnter(currentIndex);
-
   /* A altura do carrossel segue o módulo ativo: sem isto o contentor tinha
      sempre a altura do módulo mais alto dos cinco, e num módulo curto
      sobrava esse vão como scroll vazio (relatado pelo utilizador a partir
      do Perfil — o mesmo carrossel). */
   const pageRefs = useRef([]);
-  const setCarouselPageRef = (i) => (el) => { pageRefs.current[i] = el; setPageRef(i)(el); };
+  const setCarouselPageRef = (i) => (el) => { pageRefs.current[i] = el; };
   useCarouselActiveHeight(scrollRef, pageRefs, currentIndex);
+
+  const lastScrolledIndexRef = useRef(currentIndex);
 
   // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
   const scrollToTab = useCallback((key) => {
     const idx = TABS.findIndex(t => t.key === key);
     if (idx >= 0) {
+      lastScrolledIndexRef.current = idx;
       setActiveTab(key);
       scrollTo(idx);
     }
@@ -78,52 +76,24 @@ export default function Dashboard({ activeModule }) {
 
   // activeModule também muda por fora do carrossel (ex.: FAB "Registar
   // refeição" chama setActiveTab diretamente) — sincroniza o scroll nesses
-  // casos. scrollTo já não faz nada se a posição for a mesma.
+  // casos. Se o utilizador já deslizou até ao separador pretendido, evita
+  // chamar scrollTo novamente para não criar saltos ou conflitos com o swipe.
   const isInitialMount = useRef(true);
   useEffect(() => {
-    if (currentIndex >= 0) {
-      scrollTo(currentIndex, isInitialMount.current);
-      isInitialMount.current = false;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex]);
+    if (currentIndex >= 0 && scrollRef.current) {
+      const el = scrollRef.current;
+      const currentScrollIndex = el.offsetWidth > 0 ? Math.round(el.scrollLeft / el.offsetWidth) : -1;
 
-  // JS avancado: Ajusta dinamicamente a altura do carrossel para a aba ativa.
-  // Evita o espaco vazio no fundo das abas mais curtas.
-  useEffect(() => {
-    const carousel = scrollRef.current;
-    if (!carousel) return;
-    
-    // Permite transicao suave da altura (desligar se causar artefactos com swiper rapido)
-    carousel.style.transition = 'height 0.3s cubic-bezier(0.25, 1, 0.5, 1)';
-    carousel.style.overflowY = 'hidden';
-
-    let activePage = null;
-    let observer = null;
-
-    const updateHeight = () => {
-      activePage = carousel.children[currentIndex];
-      if (!activePage) return;
-      
-      const newHeight = activePage.scrollHeight; // scrollHeight acomoda melhor margens ocultas
-      if (newHeight > 0) {
-        carousel.style.height = `${newHeight}px`;
+      if (isInitialMount.current) {
+        scrollTo(currentIndex, true);
+        isInitialMount.current = false;
+        lastScrolledIndexRef.current = currentIndex;
+      } else if (currentScrollIndex !== currentIndex && lastScrolledIndexRef.current !== currentIndex) {
+        scrollTo(currentIndex, false);
+        lastScrolledIndexRef.current = currentIndex;
       }
-    };
-
-    updateHeight();
-
-    if (window.ResizeObserver && activePage) {
-      observer = new ResizeObserver(() => {
-        updateHeight();
-      });
-      observer.observe(activePage);
     }
-
-    return () => {
-      if (observer) observer.disconnect();
-    };
-  }, [currentIndex]);
+  }, [currentIndex, scrollTo]);
 
   return (
     <div className="space-y-4 fade-in">
@@ -132,7 +102,10 @@ export default function Dashboard({ activeModule }) {
       <SubNav
         items={TABS}
         activeIndex={currentIndex}
-        onChange={(i) => scrollTo(i)}
+        onChange={(i) => {
+          lastScrolledIndexRef.current = i;
+          scrollTo(i);
+        }}
         className="mb-4"
       />
 
