@@ -280,6 +280,22 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       expect(useAppStore.getState().runs.map((r) => [r.id, r.name])).toEqual([['run-1', 'Rodagem do Tejo']]);
     });
 
+    // 2026-09-28: reanalisa tudo o que a Carol lê — a data incluída (compara
+    // com o plano e com as outras atividades DESSE dia).
+    it('sem prints novos mas com a data mudada, reanalisa com a data nova', async () => {
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));
+      fireEvent.change(document.querySelector('input[type="date"]'), { target: { value: '2026-01-05' } });
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, date: '2026-01-05' } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const [, { body }] = mocks.invoke.mock.calls[1];
+      expect(body.run_id).toBe('run-1');
+      expect(body.date).toBe('2026-01-05');
+      expect(mocks.updates.some((u) => u.table === 'runs' && u.payload.date === '2026-01-05')).toBe(false);
+    });
+
     it('sem prints novos mas com as notas mudadas, reanalisa — a mudança chega à Carol', async () => {
       await chegarAoAviso();
       fireEvent.click(screen.getByRole('button', { name: /Mais prints/ }));

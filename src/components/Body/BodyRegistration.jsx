@@ -187,7 +187,13 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     } });
   };
 
-  const analyticalSignature = (notesValue, metricsValue) => JSON.stringify({
+  // O que a Carol lê: métricas, observações e — desde 2026-09-28 — a data (a
+  // analyze-body compara com o histórico ATÉ essa data, por isso mudá-la muda
+  // o resumo). A hora da avaliação não entra: a Carol não a lê.
+  // A data canónica ao abrir (ver needsReanalysis).
+  const originalDateRef = useRef(null);
+  const analyticalSignature = (dateValue, notesValue, metricsValue) => JSON.stringify({
+    date: dateValue,
     notes: (notesValue || '').trim(),
     metrics: BODY_METRICS.reduce((acc, m) => {
       const raw = metricsValue?.[m.key];
@@ -222,7 +228,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com métricas/observações diferentes das gravadas dispara
     // "Guardar e reanalisar" já na primeira renderização.
-    setOriginalSnapshot(analyticalSignature(a.notes, canonicalMetrics));
+    setOriginalSnapshot(analyticalSignature(a.date, a.notes, canonicalMetrics));
+    originalDateRef.current = a.date;
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentIdToEdit]);
@@ -279,9 +286,15 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
      alterado, para o aviso de saída as proteger. */
   usePersistedDraftMedia(assessmentIdToEdit ? null : draftStorageKey, 'photos', photos, (v) => { setPhotos(v); setIsFormDirty(true); });
 
+  // Exceção: sem nenhuma métrica a analyze-body recusa ("Preenche pelo menos
+  // um valor") — mudar só a data de uma avaliação assim continua a gravar por
+  // update direto, como antes.
+  const hasAnyMetric = BODY_METRICS.some(m => metrics?.[m.key] !== undefined && metrics[m.key] !== '' && metrics[m.key] !== null);
+  const onlyDateChanged = analyticalSignature(originalDateRef.current, notes, metrics) === originalSnapshot;
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(notes, metrics) !== originalSnapshot;
+    && analyticalSignature(date, notes, metrics) !== originalSnapshot
+    && !(onlyDateChanged && !hasAnyMetric);
 
   const handleMetricChange = (key, value) => {
     setIsFormDirty(true);
@@ -290,9 +303,11 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   // ----------------------------------
   // GUARDAR ALTERAÇÕES (edição) — dois caminhos:
-  //   • Métricas ou observações mudaram → passa pelo Coach (analyze-body em
-  //     mode manual com assessment_id), que regenera o resumo.
-  //   • Só a data mudou → update direto, sem chamada ao Gemini.
+  //   • Métricas, observações ou data mudaram → passa pelo Coach (analyze-body
+  //     em mode manual com assessment_id), que regenera o resumo. A data conta
+  //     desde 2026-09-28: muda o histórico com que o resumo compara.
+  //   • Nada do que a Carol lê mudou (só a hora), ou só a data numa avaliação
+  //     sem métricas → update direto, sem chamada ao Gemini.
   // ----------------------------------
   const handleSaveEdit = async () => {
     if (isSaving) return;

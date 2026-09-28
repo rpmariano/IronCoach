@@ -1542,8 +1542,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      imagem (nome, data, RPE, notas, sapatilhas, tipo)? Se o atleta mudou
      alguma coisa depois do aviso, a corrida não pode fechar como estava —
      essas mudanças perdiam-se sem aviso. */
-  /* O que não mexe na análise (nome, data, sapatilhas) — update direto,
-     como a editar. `fallback`: o que já estava gravado, se o campo ficou
+  /* O que não mexe na análise (nome, sapatilhas) — update direto, como a
+     editar. A data vai junto no payload mas, desde 2026-09-28, mudá-la pede
+     reanálise (analysisMatchesRun): a Carol compara com o plano e com as
+     outras atividades DESSE dia. `fallback`: o que já estava gravado, se o campo ficou
      vazio (o "Prosseguir" não passa pelas validações do "Analisar", e a
      analyze-run ignorava um nome vazio ou uma data inválida). */
   const plainFieldsPayload = (fallback = {}) => ({
@@ -1556,9 +1558,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // nada a dizer que mudou. O servidor devolve a linha inteira.
   const sameAsRun = (fromRun, norm, fromForm) => fromRun === undefined || norm(fromRun) === fromForm;
   const trimmed = (v) => (v || '').trim();
-  // O que mexe na análise (RPE, notas, tipo) — mudar isto pede reanálise.
+  // O que mexe na análise (RPE, notas, tipo, data) — mudar isto pede reanálise.
   const analysisMatchesRun = (run) => (
-    sameAsRun(run.effort_rpe, (v) => Number(v || 0), Number(runEffortRpe || 0))
+    sameAsRun(run.date, (v) => v, runDate)
+    && sameAsRun(run.effort_rpe, (v) => Number(v || 0), Number(runEffortRpe || 0))
     && sameAsRun(run.notes, trimmed, runNotes.trim())
     && sameAsRun(run.kind, (v) => v, runKind)
     && (runKind !== 'treino' || sameAsRun(run.training_type, (v) => v ?? null, runTrainingType))
@@ -1567,7 +1570,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const formMatchesRun = (run) => (
     analysisMatchesRun(run)
     && sameAsRun(run.name, trimmed, runName.trim())
-    && sameAsRun(run.date, (v) => v, runDate)
     && sameAsRun(run.shoe_id, (v) => v ?? null, shoeId ?? null)
   );
 
@@ -1584,7 +1586,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       await finishCreatedRun(created.run);
       return;
     }
-    // Só o nome, a data ou as sapatilhas mudaram: não mexem na análise —
+    // Só o nome ou as sapatilhas mudaram: não mexem na análise —
     // update direto, sem voltar a ler os prints (como a editar, PRD 3.2).
     if (samePhotos && analysisMatchesRun(created.run)) {
       const payload = plainFieldsPayload(created.run);
