@@ -281,10 +281,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
   }, { isDirty: isFormDirty && !confirmation });
 
-  /* A hora grava-se por update à parte, a seguir, pela mesma razão da hora
-     da corrida (RunRegistration.persistRunStartTime): quem insere a linha
-     em `meals` é a analyze-meal, e acrescentar-lhe um campo obriga a mexer
-     numa função que faz deploy em produção a cada push a `dev`. Uma coluna
+  /* Desde 2026-09-28 a hora vai no próprio pedido à analyze-meal, que a
+     grava com a refeição — para a Carol a ler na análise (antes gravava-se
+     só aqui, depois, e ela nunca a via). Este update à parte fica como rede
+     de segurança: com o servidor atual não faz nada (a hora já vem certa na
+     resposta); com um servidor que ainda não a grave, é ele que a grava, e
+     no caminho de edição sem reanálise continua a ser o único. Uma coluna
      só, sob a RLS "own rows". Falhar aqui não desfaz a refeição: fica sem
      hora e avisa-se na consola. */
   const persistMealTime = async (meal) => {
@@ -355,6 +357,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         mime_type: 'image/jpeg',
         date,
         meal_type: mealType,
+        meal_time: normalizeStartTime(mealTime),
         notes: notes.trim() || null,
       },
     }, ANALYZE_TIMEOUT_MS);
@@ -410,6 +413,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         mode: 'manual',
         date,
         meal_type: mealType,
+        meal_time: normalizeStartTime(mealTime),
         notes: notes.trim() || null,
         items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
       },
@@ -446,6 +450,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             meal_id: mealIdToEdit,
             date,
             meal_type: mealType,
+            meal_time: normalizeStartTime(mealTime),
             notes: notes.trim() || null,
             items: manualItems.map(i => ({ name: i.name, grams: i.grams })),
           },

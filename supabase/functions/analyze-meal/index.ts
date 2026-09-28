@@ -11,7 +11,7 @@ import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule, carolRecordAnalysisRules, upstreamErrorText } from "../_shared/carolTone.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
-import { dayProgressSection, mealDayProgress } from "../_shared/formulas/mealDayProgress.ts";
+import { dayProgressSection, mealDayProgress, normalizeMealTime } from "../_shared/formulas/mealDayProgress.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
@@ -512,6 +512,7 @@ async function generateMealCoachNotes(
   meal: {
     date: string;
     meal_type: string;
+    meal_time?: string | null;
     notes: string | null;
     items?: Array<{ name?: string | null; quantity_grams?: number | null }>;
   },
@@ -605,7 +606,7 @@ async function generateMealCoachNotes(
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     `${carolLanguageRule(experienceLevel)}\n\n` +
     memoryPromptSection(memoryBlock) +
-    `Refeição: ${typeLabel}, ${meal.date}\n` +
+    `Refeição: ${typeLabel}, ${meal.date}${normalizeMealTime(meal.meal_time) ? ` às ${normalizeMealTime(meal.meal_time)}` : ""}\n` +
     (itemsLine ? `${itemsLine}\n` : "") +
     `Calorias: ${totals.calories.toFixed(0)} kcal\n` +
     `Proteína: ${totals.protein.toFixed(1)}g · Hidratos: ${totals.carbs.toFixed(1)}g · Gordura: ${totals.fat.toFixed(1)}g\n` +
@@ -699,6 +700,7 @@ async function attachMealCoachNotes(
   ctx: {
     date: string;
     meal_type: string;
+    meal_time?: string | null;
     notes: string | null;
     totals: MealTotals;
     // As linhas de meal_items acabadas de gravar (nome + quantidade).
@@ -778,7 +780,7 @@ async function attachMealCoachNotes(
       // O dia até agora (5.5, push 3): as outras refeições de hoje…
       sb
         .from("meals")
-        .select("id, meal_type, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+        .select("id, meal_type, meal_time, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
         .eq("user_id", userId)
         .eq("date", ctx.date)
         .neq("id", meal.id),
@@ -795,15 +797,15 @@ async function attachMealCoachNotes(
     // deno-lint-ignore no-explicit-any
     const suggestion = (daySuggestions || []).map((i: any) => i?.meal_macros).find((m: any) => Number(m?.kcal) > 0 || Number(m?.protein_g) > 0) ?? null;
     const dayProgress = dayProgressSection(mealDayProgress({
-      thisMeal: { ...ctx.totals, meal_type: ctx.meal_type },
+      thisMeal: { ...ctx.totals, meal_type: ctx.meal_type, meal_time: ctx.meal_time },
       // deno-lint-ignore no-explicit-any
-      otherMeals: (todayOthers || []).map((m: any) => ({ ...totalsFromItems(m.meal_items || []), meal_type: m.meal_type })),
+      otherMeals: (todayOthers || []).map((m: any) => ({ ...totalsFromItems(m.meal_items || []), meal_type: m.meal_type, meal_time: m.meal_time })),
       suggestion,
       goals: profile || {},
     }));
 
     const result = await generateMealCoachNotes(
-      { date: ctx.date, meal_type: ctx.meal_type, notes: ctx.notes, items: ctx.items },
+      { date: ctx.date, meal_type: ctx.meal_type, meal_time: ctx.meal_time, notes: ctx.notes, items: ctx.items },
       ctx.totals,
       profile || {},
       previousMeals,
@@ -883,6 +885,14 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
+    // A hora da refeição (meals.meal_time), gravada aqui para a análise já a
+    // ver — até 2026-09-28 a app gravava-a num update à parte, DEPOIS desta
+    // função responder, e a Carol nunca a lia. Só conta se vier no pedido: a
+    // app antiga não a envia e continua a gravá-la ela (persistMealTime), e
+    // numa edição a ausência do campo não apaga a hora que lá está.
+    const hasMealTime = Object.prototype.hasOwnProperty.call(body, "meal_time");
+    const mealTime = hasMealTime ? normalizeMealTime(body.meal_time) : null;
+    const mealTimeField = hasMealTime ? { meal_time: mealTime } : {};
 
     // ── Modo manual: registo sem fotos, todos os alimentos duma vez ────
     // O cliente só acumula {name, grams} localmente ao "Adicionar alimento"
@@ -947,7 +957,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
         const { data: updatedMeal, error: updateError } = await sb
           .from("meals")
-          .update({ date: body.date, meal_type: body.meal_type, notes: rawNotes })
+          .update({ date: body.date, meal_type: body.meal_type, notes: rawNotes, ...mealTimeField })
           .eq("id", mealId)
           .select()
           .single();
@@ -966,8 +976,8 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         // Soma o comentário da Carol ao usage da extração — senão esses tokens
         // nunca chegam ao app_logs (ver _shared/geminiUsage.ts).
         const coachUsage = await attachMealCoachNotes(sb, userId, updatedMeal, {
-          date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
-          items: savedItems || [],
+          date: body.date, meal_type: body.meal_type, meal_time: updatedMeal?.meal_time ?? null, notes: rawNotes,
+          totals: totalsFromItems(savedItems || []), items: savedItems || [],
         }, geminiKey, coachDeadline);
 
         return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: addUsage(estimated.usage, coachUsage) });
@@ -975,7 +985,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
       const { data: meal, error: mealError } = await sb
         .from("meals")
-        .insert({ user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes })
+        .insert({ user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes, ...mealTimeField })
         .select()
         .single();
       if (mealError) return jsonResponse({ error: `Falha a gravar refeição: ${mealError.message}` }, 500);
@@ -992,8 +1002,8 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
       // Comentário da Carol somado ao usage (ver _shared/geminiUsage.ts).
       const coachUsage = await attachMealCoachNotes(sb, userId, meal, {
-        date: body.date, meal_type: body.meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
-        items: savedItems || [],
+        date: body.date, meal_type: body.meal_type, meal_time: meal?.meal_time ?? null, notes: rawNotes,
+        totals: totalsFromItems(savedItems || []), items: savedItems || [],
       }, geminiKey, coachDeadline);
 
       return jsonResponse({ meal: { ...meal, meal_items: savedItems }, usage: addUsage(estimated.usage, coachUsage) });
@@ -1108,7 +1118,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // 3. Gravar refeição + itens
     const { data: meal, error: mealError } = await sb
       .from("meals")
-      .insert({ user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes })
+      .insert({ user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes, ...mealTimeField })
       .select()
       .single();
     if (mealError) {
@@ -1130,7 +1140,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // 4. Comentário do Coach (best-effort — ver attachMealCoachNotes); os seus
     // tokens somam-se ao usage da extração (ver _shared/geminiUsage.ts).
     const coachUsage = await attachMealCoachNotes(sb, userId, meal, {
-      date, meal_type, notes: rawNotes, totals: totalsFromItems(savedItems || []),
+      date, meal_type, meal_time: meal?.meal_time ?? null, notes: rawNotes, totals: totalsFromItems(savedItems || []),
       items: savedItems || [],
     }, geminiKey, coachDeadline);
 

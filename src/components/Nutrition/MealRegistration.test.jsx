@@ -76,8 +76,10 @@ describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () 
   });
 
   /* A hora da refeição (pedido 2026-09-13): é a hora a que se comeu, não a
-     de introdução — sugerida pelo tipo, segue o tipo até ser tocada, e
-     grava-se por update à parte (a analyze-meal não a conhece). */
+     de introdução — sugerida pelo tipo, segue o tipo até ser tocada. Desde
+     2026-09-28 vai no pedido à analyze-meal (para a Carol a ler); o update à
+     parte fica como rede de segurança quando a resposta não a traz (servidor
+     antigo) — é o caso deste mock. */
   it('a hora é sugerida pelo tipo, segue-o até ser tocada, e grava-se em meals.meal_time a seguir à análise', async () => {
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });
     mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
@@ -96,8 +98,21 @@ describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
 
     await waitFor(() => expect(mocks.updateMeal).toHaveBeenCalledWith({ meal_time: '13:10' }, 'meal-1'));
-    expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBeUndefined();
+    expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBe('13:10');
     await waitFor(() => expect(useAppStore.getState().meals.find(m => m.id === 'meal-1')?.meal_time).toBe('13:10'));
+  });
+
+  it('com a hora já gravada pela analyze-meal, não repete o update à parte', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-2', meal_time: '20:00:00' }, items: [] }, error: null });
+    mocks.updateMeal.mockReset().mockResolvedValue({ error: null });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Jantar$/i }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
+
+    await waitFor(() => expect(useAppStore.getState().meals.find(m => m.id === 'meal-2')).toBeTruthy());
+    expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBe('20:00');
+    expect(mocks.updateMeal).not.toHaveBeenCalled();
   });
 
   it('acrescenta a refeição devolvida (meal + items combinados) ao store e fecha o formulário', async () => {

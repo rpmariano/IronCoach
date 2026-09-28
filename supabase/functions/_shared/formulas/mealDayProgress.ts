@@ -14,10 +14,16 @@
 // sabia que o jantar já estava lá dentro, e assumia a ordem habitual do dia.
 // Agora recebe que refeições já estão registadas (pelo tipo) e quais ainda
 // podem vir, e nunca manda compensar numa que já foi comida.
+//
+// Com a hora (meals.meal_time, opcional) a posição de cada refeição no dia
+// deixa de depender só do tipo: um "lanche" às 20:15 fica no jantar ou depois
+// dele. A posição é a mais tardia entre a do tipo e a da hora — os intervalos
+// são os de inferMealType (MealRegistration.jsx). Antes das 05:00 a hora é
+// ambígua (ceia de madrugada? pequeno-almoço cedo?) e não conta.
 
 export interface MacroTotals { calories: number; protein: number }
-/** Uma refeição do dia, com o tipo quando se sabe (meals.meal_type). */
-export interface DayMeal extends MacroTotals { meal_type?: string | null }
+/** Uma refeição do dia, com o tipo e a hora quando se sabem (meals.meal_type, meals.meal_time). */
+export interface DayMeal extends MacroTotals { meal_type?: string | null; meal_time?: string | null }
 
 /** A ordem do dia — a mesma de MEAL_TYPES no analyze-meal. */
 export const MEAL_ORDER = ["pequeno-almoco", "lanche-manha", "almoco", "lanche", "jantar", "ceia"] as const;
@@ -29,6 +35,31 @@ export const MEAL_ORDER_LABELS: Record<string, string> = {
   "jantar": "Jantar",
   "ceia": "Ceia",
 };
+/** 'HH:MM' normalizada, ou null — espelha normalizeStartTime (src/utils/startTime.js):
+ *  o PostgREST devolve 'HH:MM:SS', a app envia 'HH:MM'. */
+export function normalizeMealTime(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const m = /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/.exec(String(value).trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  if (h > 23 || Number(m[2]) > 59) return null;
+  return `${String(h).padStart(2, "0")}:${m[2]}`;
+}
+
+/** O slot do dia que a hora sugere (índice em MEAL_ORDER), ou null antes das 05:00 / sem hora. */
+export function slotFromTime(time: string | null | undefined): number | null {
+  const t = normalizeMealTime(time);
+  if (!t) return null;
+  const x = Number(t.slice(0, 2)) + Number(t.slice(3)) / 60;
+  if (x < 5) return null;
+  if (x < 10.5) return 0;
+  if (x < 12) return 1;
+  if (x < 15) return 2;
+  if (x < 19) return 3;
+  if (x < 22.5) return 4;
+  return 5;
+}
+
 export interface DaySuggestion { kcal?: number | null; protein_g?: number | null }
 export interface DayGoals { calorie_goal?: number | null; protein_goal?: number | null }
 
@@ -39,7 +70,9 @@ export interface DayProgress {
   /** De onde vem o alvo do dia: a sugestão dela para hoje, a meta do perfil, ou nenhum. */
   target: { source: "sugestao" | "meta"; kcal: number | null; protein: number | null } | null;
   /** As outras refeições de hoje, pela ordem do dia (só as que têm tipo). */
-  logged: Array<{ meal_type: string; kcal: number; protein: number }>;
+  logged: Array<{ meal_type: string; meal_time: string | null; kcal: number; protein: number }>;
+  /** A hora desta refeição ('HH:MM'), se a houver. */
+  thisTime: string | null;
   /** Tipos que ainda podem vir hoje: os que ficam DEPOIS da última refeição
    *  já registada (esta incluída) e que ainda não existem. Vazio = dia fechado.
    *  null quando não se sabe o tipo desta refeição. */
@@ -71,18 +104,27 @@ export function mealDayProgress(input: {
       ? { source: "meta" as const, kcal: gKcal, protein: gProt }
       : null;
   const rank = (t: string | null | undefined) => (t ? MEAL_ORDER.indexOf(t as typeof MEAL_ORDER[number]) : -1);
+  // A posição no dia: a mais tardia entre o tipo e a hora.
+  const position = (m: { meal_type?: string | null; meal_time?: string | null }) =>
+    Math.max(rank(m.meal_type), slotFromTime(m.meal_time) ?? -1);
   const logged = others
     .filter((m) => rank(m.meal_type) >= 0)
-    .map((m) => ({ meal_type: m.meal_type as string, kcal: Math.round(Number(m.calories) || 0), protein: Math.round(Number(m.protein) || 0) }))
-    .sort((a, b) => rank(a.meal_type) - rank(b.meal_type));
+    .map((m) => ({
+      meal_type: m.meal_type as string,
+      meal_time: normalizeMealTime(m.meal_time),
+      kcal: Math.round(Number(m.calories) || 0),
+      protein: Math.round(Number(m.protein) || 0),
+    }))
+    .sort((a, b) => position(a) - position(b) || (a.meal_time ?? "").localeCompare(b.meal_time ?? ""));
+  const thisTime = normalizeMealTime(input.thisMeal.meal_time);
   let remaining: string[] | null = null;
   const thisRank = rank(input.thisMeal.meal_type);
   if (thisRank >= 0) {
-    const last = Math.max(thisRank, ...logged.map((m) => rank(m.meal_type)));
+    const last = Math.max(position(input.thisMeal), ...logged.map(position));
     const taken = new Set([input.thisMeal.meal_type, ...logged.map((m) => m.meal_type)]);
     remaining = MEAL_ORDER.slice(last + 1).filter((t) => !taken.has(t));
   }
-  return { meals: others.length + 1, kcal, protein, target, logged, remaining };
+  return { meals: others.length + 1, kcal, protein, target, logged, thisTime, remaining };
 }
 
 /** A secção do prompt do analyze-meal, com a instrução de como a usar. */
@@ -100,9 +142,12 @@ export function dayProgressSection(p: DayProgress): string {
       ? ` Sugeriste para hoje ${parts.join(" e ")} — vai em ${pct.join(" e ")}.`
       : ` A meta diária dele é ${parts.join(" e ")} — vai em ${pct.join(" e ")}.`;
   }
+  if (p.thisTime) line += `\nEsta refeição foi às ${p.thisTime}.`;
   if (p.logged.length) {
     line += `\nJá registadas hoje, além desta: ` +
-      p.logged.map((m) => `${MEAL_ORDER_LABELS[m.meal_type] ?? m.meal_type} (${m.kcal} kcal, ${m.protein} g de proteína)`).join("; ") + ".";
+      p.logged.map((m) =>
+        `${MEAL_ORDER_LABELS[m.meal_type] ?? m.meal_type}${m.meal_time ? ` às ${m.meal_time}` : ""} (${m.kcal} kcal, ${m.protein} g de proteína)`
+      ).join("; ") + ".";
   }
   let next: string;
   if (p.remaining === null) {
