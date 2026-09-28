@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
-import { ensurePushSubscription } from '../../lib/push';
+import { ensurePushSubscription, forgetPushSubscriptionOnThisDevice } from '../../lib/push';
 import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Medal, MessageSquare, MapPin, Sparkles } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import { ageFromBirthDate } from '../../utils/body';
@@ -472,6 +472,8 @@ export default function Perfil() {
     setNavGuard(null);
     if (kind === 'signout') {
       try {
+        // Antes do signOut, com o JWT ainda válido (lib/push.js).
+        await forgetPushSubscriptionOnThisDevice();
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
       } catch (err) {
@@ -523,6 +525,8 @@ export default function Perfil() {
       setLeavePrompt({ kind: 'signout', target: null });
       return;
     }
+    // Quem sai deixa de receber as notificações neste telemóvel (lib/push.js).
+    await forgetPushSubscriptionOnThisDevice();
     await supabase.auth.signOut();
   };
 

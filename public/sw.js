@@ -45,6 +45,45 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// A mesma chave pública de src/lib/push.js (não é segredo; push.test.js
+// garante que as duas não divergem).
+const VAPID_PUBLIC_KEY = 'BL4SDjui7uHeUOLvyKOJ-VrcGx3SadjPvz4lw5KABx9NwcL3N3awjiPk__Uhiizupgb_haaMKjaykFu-x1y26v4';
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  const out = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+  return out;
+}
+
+/* O browser trocou (ou deixou cair) a subscrição (2026-09-28). Sem isto, a
+   antiga morria no servidor ao primeiro envio (404/410) e o atleta ficava
+   sem notificações sem saber. Aqui renova-se já a subscrição do browser; quem
+   a grava é a app — a gravação precisa da sessão do atleta, que o service
+   worker não tem. Com a app aberta, avisa-se já (App.jsx sincroniza nesse
+   instante); fechada, a app grava-a ao abrir (syncPushSubscription). */
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    if (!event.newSubscription) {
+      const oldKey = event.oldSubscription && event.oldSubscription.options
+        && event.oldSubscription.options.applicationServerKey;
+      try {
+        const current = await self.registration.pushManager.getSubscription();
+        if (!current) {
+          await self.registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: oldKey || urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          });
+        }
+      } catch (e) { /* sem permissão ou sem rede: a app tenta ao abrir */ }
+    }
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) client.postMessage({ type: 'push-subscription-changed' });
+  })());
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const tab = event.notification.data && event.notification.data.tab;

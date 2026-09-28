@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
-import { registerServiceWorker } from './lib/push';
+import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor } from './lib/push';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
@@ -605,6 +605,20 @@ export default function App() {
       .finally(pronto);
     return () => { feito = true; clearTimeout(timer); };
   }, [sessionUserId, notesReadyFor]);
+  /* A subscrição das notificações confirma-se ao abrir e ao voltar à app, no
+     máximo de 6 em 6 horas (lib/push.js, syncPushSubscription): uma que o
+     serviço de push deu por morta volta sozinha, sem o atleta ter de ir ao
+     Perfil (as duas subscrições caíram assim a 28/09). */
+  const pushUserId = pushWantedFor({ session, profile });
+  useEffect(() => {
+    if (!pushUserId) return undefined;
+    maybeSyncPushSubscription({ enabled: true, userId: pushUserId });
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') maybeSyncPushSubscription({ enabled: true, userId: pushUserId });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [pushUserId]);
   // As boas-vindas esperam pelos dados todos: decidem pelas impressões (o
   // que já foi saudado noutro dispositivo), pelos registos e pela memória dela.
   const welcomeReady = !showBootSplash && !!session && !showOnboarding && !dataPending
@@ -833,6 +847,12 @@ export default function App() {
        service worker pede o separador, e só se aceita o do Coach. Com a app
        fechada, a notificação abre-a com ?tab=coach, que o bloco acima trata. */
     const onWorkerMessage = (event) => {
+      // O browser trocou a subscrição (sw.js, pushsubscriptionchange): grava-se já.
+      if (event?.data?.type === 'push-subscription-changed') {
+        const userId = pushWantedFor(useAppStore.getState());
+        maybeSyncPushSubscription({ enabled: !!userId, userId, force: true });
+        return;
+      }
       // O Coach, ou o Início (onde vivem o assunto por resolver e o conflito de provas — P.5).
       if (event?.data?.type === 'open-tab' && (event.data.tab === 'coach' || event.data.tab === 'home')) {
         // Veio por uma notificação: o atleta vem ao que ela disse. As

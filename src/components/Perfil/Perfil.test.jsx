@@ -13,7 +13,7 @@ import { CUP_EMPTY } from '../../store/cupSlice';
 // Captura o payload de cada UPDATE para se poder afirmar o que é enviado.
 // `from` guarda as tabelas lidas (os avisos do Troféu não podem ler nada a
 // quem não está inscrito).
-const mocks = vi.hoisted(() => ({ updates: [], from: [] }));
+const mocks = vi.hoisted(() => ({ updates: [], from: [], order: [] }));
 // Os 3 separadores ficam sempre montados (carrossel de swipe — ver
 // Perfil.jsx), por isso o efeito da Memória do Coach dispara em todos os
 // testes, não só nos que abrem a aba Coach. select() tem de responder algo,
@@ -34,7 +34,7 @@ vi.mock('../../lib/supabase', () => ({
         }),
       };
     },
-    auth: { signOut: () => Promise.resolve({ error: null }) },
+    auth: { signOut: () => { mocks.order.push('signOut'); return Promise.resolve({ error: null }); } },
   },
 }));
 
@@ -42,6 +42,7 @@ vi.mock('../../lib/supabase', () => ({
 const push = vi.hoisted(() => ({ result: { ok: true, error: null } }));
 vi.mock('../../lib/push', () => ({
   ensurePushSubscription: () => Promise.resolve(push.result),
+  forgetPushSubscriptionOnThisDevice: () => { mocks.order.push('forget'); return Promise.resolve(); },
 }));
 
 // A procura da cidade de treino (ação 5.6) vai à Open-Meteo: aqui responde o teste.
@@ -80,6 +81,16 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
       navGuard: null,
       activeTab: 'perfil',
     });
+  });
+
+  /* Quem sai deixa de receber as notificações neste telemóvel: a linha do
+     servidor apaga-se antes do signOut, enquanto o JWT ainda vale (revisão
+     adversarial de 2026-09-28, lib/push.js). */
+  it('terminar sessão esquece primeiro a subscrição deste dispositivo', async () => {
+    mocks.order.length = 0;
+    render(<Perfil />);
+    fireEvent.click(screen.getByRole('button', { name: /Terminar sessão/ }));
+    await waitFor(() => expect(mocks.order).toEqual(['forget', 'signOut']));
   });
 
   it('mantém as alterações por gravar quando o perfil é recarregado do servidor', () => {
