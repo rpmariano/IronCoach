@@ -63,7 +63,7 @@ function urlBase64ToUint8Array(base64String) {
    sem notificações sem saber. Aqui renova-se já a subscrição do browser; quem
    a grava é a app — a gravação precisa da sessão do atleta, que o service
    worker não tem. Com a app aberta, avisa-se já (App.jsx sincroniza nesse
-   instante); fechada, a app grava-a ao abrir (syncPushSubscription). */
+   instante); fechada, a app confirma-a ao abrir (syncPushSubscription). */
 self.addEventListener('pushsubscriptionchange', (event) => {
   event.waitUntil((async () => {
     if (!event.newSubscription) {

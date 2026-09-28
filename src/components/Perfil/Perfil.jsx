@@ -520,14 +520,23 @@ export default function Perfil() {
 
   // Terminar sessão é a saída mais destrutiva de todas: desmonta o Perfil e
   // leva o rascunho com ele. Passa pelo mesmo aviso que as outras.
+  // Um segundo toque durante a saída (ela agora espera pela limpeza das
+  // notificações) não repete a limpeza nem o signOut.
+  const signingOutRef = useRef(false);
   const handleSignOut = async () => {
     if (isDirty) {
       setLeavePrompt({ kind: 'signout', target: null });
       return;
     }
-    // Quem sai deixa de receber as notificações neste telemóvel (lib/push.js).
-    await forgetPushSubscriptionOnThisDevice();
-    await supabase.auth.signOut();
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    try {
+      // Quem sai deixa de receber as notificações neste telemóvel (lib/push.js).
+      await forgetPushSubscriptionOnThisDevice();
+      await supabase.auth.signOut();
+    } finally {
+      signingOutRef.current = false;
+    }
   };
 
   const reminderStartHour = draft.water_reminder_start_hour ?? DEFAULT_REMINDER_START_HOUR;

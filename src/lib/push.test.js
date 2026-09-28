@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { supabase } from './supabase';
 import {
   VAPID_PUBLIC_KEY, SYNC_INTERVAL_MS, SYNC_RETRY_MS, syncPushSubscription, maybeSyncPushSubscription,
-  pushWantedFor, resetPushSyncThrottle, forgetPushSubscriptionOnThisDevice,
+  pushWantedFor, resetPushSyncThrottle, forgetPushSubscriptionOnThisDevice, ensurePushSubscription,
 } from './push';
 
 /* A subscrição repara-se sozinha (2026-09-28): a 28/09 o serviço de push deu
@@ -51,7 +51,8 @@ function mockServerRow(result) {
 let invoke;
 let requestPermission;
 let getSession;
-function installBrowser({ permission = 'granted', reg, sessionUserId = U }) {
+function installBrowser({ permission = 'granted', reg, sessionUserId = U, optIn = true }) {
+  if (optIn) window.localStorage.setItem(`ironcoach:push-optin:${U}`, '1');
   getSession = vi.spyOn(supabase.auth, 'getSession').mockResolvedValue({
     data: { session: sessionUserId ? { user: { id: sessionUserId } } : null }, error: null,
   });
@@ -68,6 +69,7 @@ const U = 'u1';
 
 beforeEach(() => {
   resetPushSyncThrottle();
+  window.localStorage.clear();
 });
 
 afterEach(() => {
@@ -177,6 +179,51 @@ describe('syncPushSubscription', () => {
     }
   });
 
+  /* Segunda revisão adversarial: a permissão é do site inteiro e o
+     interruptor é da conta — num tablet partilhado, a reparação inscrevia
+     quem entrasse a seguir, com a permissão que outra pessoa deu. */
+  it('só repara onde o atleta ligou as notificações neste dispositivo', async () => {
+    const sub = fakeSub('https://push.example/antigo');
+    const reg = fakeRegistration(sub);
+    installBrowser({ reg, optIn: false });
+    mockServerRow({ data: null, error: null });
+    expect(await syncPushSubscription({ enabled: true, userId: U })).toBe('not-opted-in');
+    expect(sub.unsubscribe).not.toHaveBeenCalled();
+    expect(reg.pushManager.subscribe).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('um telemóvel de antes desta versão, com a linha no servidor, fica reconhecido como seu', async () => {
+    const reg = fakeRegistration(fakeSub('https://push.example/antigo'));
+    installBrowser({ reg, optIn: false });
+    mockServerRow({ data: { id: 's1' }, error: null });
+    expect(await syncPushSubscription({ enabled: true, userId: U })).toBe('in-sync');
+    expect(window.localStorage.getItem(`ironcoach:push-optin:${U}`)).toBe('1');
+  });
+
+  it('a que o service worker acabou de renovar grava-se tal como está, sem a trocar', async () => {
+    const sub = fakeSub('https://push.example/renovada');
+    const reg = fakeRegistration(sub);
+    installBrowser({ reg });
+    mockServerRow({ data: null, error: null });
+    expect(await syncPushSubscription({ enabled: true, userId: U, fresh: true })).toBe('saved');
+    expect(sub.unsubscribe).not.toHaveBeenCalled();
+    expect(reg.pushManager.subscribe).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith('save-push-subscription', expect.objectContaining({
+      body: expect.objectContaining({ endpoint: 'https://push.example/renovada' }),
+    }));
+  });
+
+  it('a sessão acaba a meio da renovação: não grava a subscrição em nome de quem saiu', async () => {
+    const reg = fakeRegistration(null);
+    installBrowser({ reg });
+    getSession
+      .mockResolvedValueOnce({ data: { session: { user: { id: U } } }, error: null })
+      .mockResolvedValueOnce({ data: { session: null }, error: null });
+    expect(await syncPushSubscription({ enabled: true, userId: U })).toBe('no-session');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('presa a uma chave VAPID antiga: renova sem perguntar ao servidor', async () => {
     const sub = fakeSub('https://push.example/antigo', keyBytes('AAAA'));
     const reg = fakeRegistration(sub);
@@ -231,33 +278,89 @@ describe('maybeSyncPushSubscription', () => {
   });
 });
 
+/** O apagar direto em push_subscriptions (RLS: só as do próprio). */
+function mockServerDelete(result = { error: null }) {
+  const eq = vi.fn(async () => result);
+  const del = vi.fn(() => ({ eq }));
+  vi.spyOn(supabase, 'from').mockReturnValue({ delete: del });
+  return { del, eq };
+}
+
 describe('forgetPushSubscriptionOnThisDevice', () => {
-  it('apaga a linha deste endpoint no servidor, antes de a sessão acabar', async () => {
-    const reg = fakeRegistration(fakeSub('https://push.example/antigo'));
-    installBrowser({ reg });
+  it('apaga a linha deste endpoint no servidor e cancela a subscrição do browser', async () => {
+    const sub = fakeSub('https://push.example/antigo');
+    installBrowser({ reg: fakeRegistration(sub) });
+    const { eq } = mockServerDelete();
     await forgetPushSubscriptionOnThisDevice();
-    expect(invoke).toHaveBeenCalledWith('save-push-subscription', {
-      method: 'DELETE', body: { endpoint: 'https://push.example/antigo' },
-    });
+    expect(eq).toHaveBeenCalledWith('endpoint', 'https://push.example/antigo');
+    expect(sub.unsubscribe).toHaveBeenCalled();
+    // A marca de quem ligou as notificações aqui fica: ao voltar, repara-se.
+    expect(window.localStorage.getItem(`ironcoach:push-optin:${U}`)).toBe('1');
   });
 
-  it('nunca atrasa a saída mais do que o limite, nem a impede se falhar', async () => {
-    const reg = fakeRegistration(fakeSub('https://push.example/antigo'));
-    installBrowser({ reg });
-    invoke.mockImplementation(() => new Promise(() => {}));
+  it('se o apagar falhar (ou já não houver sessão), cancela na mesma: o endpoint morre e o servidor limpa-o', async () => {
+    const sub = fakeSub('https://push.example/antigo');
+    installBrowser({ reg: fakeRegistration(sub) });
+    mockServerDelete({ error: { message: 'JWT expired' } });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await forgetPushSubscriptionOnThisDevice();
+    expect(sub.unsubscribe).toHaveBeenCalled();
+  });
+
+  it('nunca atrasa a saída mais do que o limite', async () => {
+    const sub = fakeSub('https://push.example/antigo');
+    installBrowser({ reg: fakeRegistration(sub) });
+    vi.spyOn(supabase, 'from').mockReturnValue({ delete: () => ({ eq: () => new Promise(() => {}) }) });
     const t = Date.now();
     await forgetPushSubscriptionOnThisDevice({ timeoutMs: 30 });
     expect(Date.now() - t).toBeLessThan(1000);
-    invoke.mockRejectedValue(new Error('rede'));
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await expect(forgetPushSubscriptionOnThisDevice({ timeoutMs: 30 })).resolves.toBeUndefined();
+  });
+
+  it('espera por uma renovação a meio, para ela não gravar a linha de quem sai depois de apagada', async () => {
+    const order = [];
+    const reg = fakeRegistration(null);
+    let finishSubscribe;
+    reg.pushManager.subscribe.mockImplementation(() => new Promise((r) => { finishSubscribe = () => r(fakeSub('https://push.example/novo')); }));
+    installBrowser({ reg });
+    invoke.mockImplementation(async () => { order.push('save'); return { data: {}, error: null }; });
+    const syncing = maybeSyncPushSubscription({ enabled: true, userId: U, now: 1 });
+    await vi.waitFor(() => expect(reg.pushManager.subscribe).toHaveBeenCalled());
+    reg.pushManager.getSubscription.mockResolvedValue(fakeSub('https://push.example/novo'));
+    vi.spyOn(supabase, 'from').mockReturnValue({ delete: () => ({ eq: async () => { order.push('delete'); return { error: null }; } }) });
+    const forgetting = forgetPushSubscriptionOnThisDevice({ timeoutMs: 2000 });
+    finishSubscribe();
+    await Promise.all([syncing, forgetting]);
+    expect(order).toEqual(['save', 'delete']);
   });
 
   it('sem suporte ou sem subscrição, não faz nada', async () => {
     await expect(forgetPushSubscriptionOnThisDevice()).resolves.toBeUndefined();
     installBrowser({ reg: fakeRegistration(null) });
+    const from = vi.spyOn(supabase, 'from');
     await forgetPushSubscriptionOnThisDevice();
-    expect(invoke).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensurePushSubscription (o interruptor do Perfil)', () => {
+  it('grava e deixa a marca de que foi neste dispositivo que o atleta as ligou', async () => {
+    installBrowser({ reg: fakeRegistration(null), optIn: false });
+    expect(await ensurePushSubscription()).toEqual({ ok: true, error: null });
+    expect(window.localStorage.getItem(`ironcoach:push-optin:${U}`)).toBe('1');
+  });
+
+  it('endpoint ainda gravado em nome de outra conta (a RLS recusa): troca-o por um novo e grava', async () => {
+    const sub = fakeSub('https://push.example/de-outro');
+    const reg = fakeRegistration(sub);
+    installBrowser({ reg, optIn: false });
+    invoke
+      .mockResolvedValueOnce({ data: null, error: { message: 'new row violates row-level security policy' } })
+      .mockResolvedValueOnce({ data: { ok: true }, error: null });
+    expect(await ensurePushSubscription()).toEqual({ ok: true, error: null });
+    expect(sub.unsubscribe).toHaveBeenCalled();
+    expect(invoke).toHaveBeenLastCalledWith('save-push-subscription', expect.objectContaining({
+      body: expect.objectContaining({ endpoint: 'https://push.example/novo' }),
+    }));
   });
 });
 

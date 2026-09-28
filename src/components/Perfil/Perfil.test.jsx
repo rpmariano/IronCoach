@@ -93,6 +93,15 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
     await waitFor(() => expect(mocks.order).toEqual(['forget', 'signOut']));
   });
 
+  it('dois toques seguidos em terminar sessão saem uma vez só', async () => {
+    mocks.order.length = 0;
+    render(<Perfil />);
+    const botao = screen.getByRole('button', { name: /Terminar sessão/ });
+    fireEvent.click(botao);
+    fireEvent.click(botao);
+    await waitFor(() => expect(mocks.order).toEqual(['forget', 'signOut']));
+  });
+
   it('mantém as alterações por gravar quando o perfil é recarregado do servidor', () => {
     render(<Perfil />);
     abrirMetas();

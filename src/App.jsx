@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
-import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor } from './lib/push';
+import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
 import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
@@ -850,7 +850,8 @@ export default function App() {
       // O browser trocou a subscrição (sw.js, pushsubscriptionchange): grava-se já.
       if (event?.data?.type === 'push-subscription-changed') {
         const userId = pushWantedFor(useAppStore.getState());
-        maybeSyncPushSubscription({ enabled: !!userId, userId, force: true });
+        // A que o service worker acabou de renovar é boa: grava-se tal como está.
+        maybeSyncPushSubscription({ enabled: !!userId, userId, force: true, fresh: true });
         return;
       }
       // O Coach, ou o Início (onde vivem o assunto por resolver e o conflito de provas — P.5).
@@ -971,6 +972,11 @@ export default function App() {
       });
       if (action === 'signed-out') {
         loadedUserIdRef.current = null;
+        /* A sessão pode ter acabado fora do Perfil (logout global a partir de
+           outro dispositivo, refresh recusado): as notificações de quem saiu
+           deixam de chegar a este telemóvel (lib/push.js). Sem sessão já não
+           se apaga a linha, mas cancelar a subscrição do browser chega. */
+        forgetPushSubscriptionOnThisDevice();
         // O ecrã aberto e o guardado não passam para outra conta.
         useAppStore.setState({
           openCreationMode: null, editingRunId: null, editingRaceId: null,
