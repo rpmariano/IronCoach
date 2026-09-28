@@ -8,8 +8,27 @@
 // — a frase que ajuda a decidir a próxima refeição. Isto soma o dia (as outras
 // refeições de hoje mais esta) e compara com a sugestão do plano para hoje
 // (coach_plan_items.meal_macros) ou, sem ela, com a meta do perfil.
+//
+// 2026-09-28: a soma sozinha não chega. Um lanche registado DEPOIS do jantar
+// levou a "o jantar terá de assumir o resto" — ela via 76 g no dia mas não
+// sabia que o jantar já estava lá dentro, e assumia a ordem habitual do dia.
+// Agora recebe que refeições já estão registadas (pelo tipo) e quais ainda
+// podem vir, e nunca manda compensar numa que já foi comida.
 
 export interface MacroTotals { calories: number; protein: number }
+/** Uma refeição do dia, com o tipo quando se sabe (meals.meal_type). */
+export interface DayMeal extends MacroTotals { meal_type?: string | null }
+
+/** A ordem do dia — a mesma de MEAL_TYPES no analyze-meal. */
+export const MEAL_ORDER = ["pequeno-almoco", "lanche-manha", "almoco", "lanche", "jantar", "ceia"] as const;
+export const MEAL_ORDER_LABELS: Record<string, string> = {
+  "pequeno-almoco": "Pequeno-almoço",
+  "lanche-manha": "Lanche da manhã",
+  "almoco": "Almoço",
+  "lanche": "Lanche",
+  "jantar": "Jantar",
+  "ceia": "Ceia",
+};
 export interface DaySuggestion { kcal?: number | null; protein_g?: number | null }
 export interface DayGoals { calorie_goal?: number | null; protein_goal?: number | null }
 
@@ -19,6 +38,12 @@ export interface DayProgress {
   protein: number;
   /** De onde vem o alvo do dia: a sugestão dela para hoje, a meta do perfil, ou nenhum. */
   target: { source: "sugestao" | "meta"; kcal: number | null; protein: number | null } | null;
+  /** As outras refeições de hoje, pela ordem do dia (só as que têm tipo). */
+  logged: Array<{ meal_type: string; kcal: number; protein: number }>;
+  /** Tipos que ainda podem vir hoje: os que ficam DEPOIS da última refeição
+   *  já registada (esta incluída) e que ainda não existem. Vazio = dia fechado.
+   *  null quando não se sabe o tipo desta refeição. */
+  remaining: string[] | null;
 }
 
 function pos(v: unknown): number | null {
@@ -28,8 +53,8 @@ function pos(v: unknown): number | null {
 
 /** O dia até agora (as outras refeições de hoje mais esta) e o alvo do dia. */
 export function mealDayProgress(input: {
-  thisMeal: MacroTotals;
-  otherMeals: MacroTotals[] | null | undefined;
+  thisMeal: DayMeal;
+  otherMeals: DayMeal[] | null | undefined;
   suggestion: DaySuggestion | null | undefined;
   goals: DayGoals | null | undefined;
 }): DayProgress {
@@ -45,7 +70,19 @@ export function mealDayProgress(input: {
     : gKcal || gProt
       ? { source: "meta" as const, kcal: gKcal, protein: gProt }
       : null;
-  return { meals: others.length + 1, kcal, protein, target };
+  const rank = (t: string | null | undefined) => (t ? MEAL_ORDER.indexOf(t as typeof MEAL_ORDER[number]) : -1);
+  const logged = others
+    .filter((m) => rank(m.meal_type) >= 0)
+    .map((m) => ({ meal_type: m.meal_type as string, kcal: Math.round(Number(m.calories) || 0), protein: Math.round(Number(m.protein) || 0) }))
+    .sort((a, b) => rank(a.meal_type) - rank(b.meal_type));
+  let remaining: string[] | null = null;
+  const thisRank = rank(input.thisMeal.meal_type);
+  if (thisRank >= 0) {
+    const last = Math.max(thisRank, ...logged.map((m) => rank(m.meal_type)));
+    const taken = new Set([input.thisMeal.meal_type, ...logged.map((m) => m.meal_type)]);
+    remaining = MEAL_ORDER.slice(last + 1).filter((t) => !taken.has(t));
+  }
+  return { meals: others.length + 1, kcal, protein, target, logged, remaining };
 }
 
 /** A secção do prompt do analyze-meal, com a instrução de como a usar. */
@@ -63,8 +100,26 @@ export function dayProgressSection(p: DayProgress): string {
       ? ` Sugeriste para hoje ${parts.join(" e ")} — vai em ${pct.join(" e ")}.`
       : ` A meta diária dele é ${parts.join(" e ")} — vai em ${pct.join(" e ")}.`;
   }
+  if (p.logged.length) {
+    line += `\nJá registadas hoje, além desta: ` +
+      p.logged.map((m) => `${MEAL_ORDER_LABELS[m.meal_type] ?? m.meal_type} (${m.kcal} kcal, ${m.protein} g de proteína)`).join("; ") + ".";
+  }
+  let next: string;
+  if (p.remaining === null) {
+    next = `diz o que a próxima refeição pode fazer`;
+  } else if (p.remaining.length) {
+    const labels = p.remaining.map((t) => MEAL_ORDER_LABELS[t] ?? t);
+    line += `\nRefeições que ainda podem vir hoje: ${labels.join(", ")}.`;
+    next = `diz o que ainda pode fazer ${labels.length === 1 ? "a refeição" : "cada refeição"} que falta (${labels.join(", ")}) — ` +
+      `só essas, nunca uma que já está registada acima`;
+  } else {
+    line += `\nNão há mais refeições previstas hoje depois desta — o dia está praticamente fechado.`;
+    next = `não há refeição seguinte hoje para compensar: julga esta refeição no dia que já aconteceu e, se faltar algo, ` +
+      `diz o que ajustar amanhã ou nesta mesma refeição da próxima vez`;
+  }
   return `${line}\n` +
-    `Se ajudar a decidir a próxima refeição, diz numa frase onde ele vai no dia face a esse alvo, com estes números — por exemplo ` +
-    `"sugeri 125 g de proteína para hoje; com esta vais em 60 g". É o dia até agora, não um balanço: não cobres o que falta, diz o que ` +
-    `a próxima refeição pode fazer. Na primeira refeição do dia, só se ajudar.\n`;
+    `Se ajudar, diz numa frase onde ele vai no dia face a esse alvo, com estes números — por exemplo ` +
+    `"sugeri 125 g de proteína para hoje; com esta vais em 60 g". É o dia até agora, não um balanço: não cobres o que falta; ${next}. ` +
+    `NUNCA atribuas a compensação a uma refeição que já consta como registada — a ordem em que ele regista não é a ordem em que comeu, ` +
+    `e esta refeição pode ter sido registada depois de outras mais tardias no dia. Na primeira refeição do dia, só se ajudar.\n`;
 }

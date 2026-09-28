@@ -778,7 +778,7 @@ async function attachMealCoachNotes(
       // O dia até agora (5.5, push 3): as outras refeições de hoje…
       sb
         .from("meals")
-        .select("id, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
+        .select("id, meal_type, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g)")
         .eq("user_id", userId)
         .eq("date", ctx.date)
         .neq("id", meal.id),
@@ -795,9 +795,9 @@ async function attachMealCoachNotes(
     // deno-lint-ignore no-explicit-any
     const suggestion = (daySuggestions || []).map((i: any) => i?.meal_macros).find((m: any) => Number(m?.kcal) > 0 || Number(m?.protein_g) > 0) ?? null;
     const dayProgress = dayProgressSection(mealDayProgress({
-      thisMeal: ctx.totals,
+      thisMeal: { ...ctx.totals, meal_type: ctx.meal_type },
       // deno-lint-ignore no-explicit-any
-      otherMeals: (todayOthers || []).map((m: any) => totalsFromItems(m.meal_items || [])),
+      otherMeals: (todayOthers || []).map((m: any) => ({ ...totalsFromItems(m.meal_items || []), meal_type: m.meal_type })),
       suggestion,
       goals: profile || {},
     }));
