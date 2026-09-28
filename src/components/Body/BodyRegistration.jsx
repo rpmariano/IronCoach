@@ -58,8 +58,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [date, setDate] = useState(todayISO());
   /* Hora da avaliação ('HH:MM', hora local; body_assessments.assessment_time)
      — a hora a que a pesagem foi feita, não a de introdução na app, e sem
-     valor por omissão (pedido 2026-09-13). Ordena o dia no Calendário e
-     entra na análise da Carol. */
+     valor por omissão (pedido 2026-09-13). Ordena o dia no Calendário e o
+     resumo diário da Carol (coach-daily-summary) lê-a; o resumo DESTA
+     avaliação (analyze-body) não — por isso não pede reanálise. */
   const [assessmentTime, setAssessmentTime] = useState('');
   const [notes, setNotes] = useState('');
   // Um único cartão, forma de introdução à escolha — mesmo padrão da
@@ -81,9 +82,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [metrics, setMetrics] = useState({});
   const [isSaving, setIsSaving] = useState(false);
 
-  // Edição — métricas e observações são dados ANALÍTICOS: mudá-los muda o
-  // resumo do Coach e obriga a regenerá-lo. Mudar só a data é um update
-  // direto, sem custo de API (mesmo padrão da Nutrição/Ginásio, ver PRD 3.2).
+  // Edição — métricas, observações e data são dados ANALÍTICOS: mudá-los muda
+  // o resumo do Coach e obriga a regenerá-lo (ver analyticalSignature). Só a
+  // hora é update direto, sem custo de API (ver PRD 3.2).
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -189,7 +190,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
 
   // O que a Carol lê: métricas, observações e — desde 2026-09-28 — a data (a
   // analyze-body compara com o histórico ATÉ essa data, por isso mudá-la muda
-  // o resumo). A hora da avaliação não entra: a Carol não a lê.
+  // o resumo). A hora da avaliação não entra: o resumo desta avaliação não a
+  // lê (o resumo diário lê, mas é gerado à parte).
   // A data canónica ao abrir (ver needsReanalysis).
   const originalDateRef = useRef(null);
   const analyticalSignature = (dateValue, notesValue, metricsValue) => JSON.stringify({
