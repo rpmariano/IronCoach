@@ -69,7 +69,17 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
      sem tocar no âmbar. */
   const effortColors = ['#2ee0ff', '#35dbef', '#3cd6df', '#34d399', '#6ed092', '#a7cd85', '#fb9d6d', '#fb7c4d', '#f4603f', '#f87171'];
 
-  const { profile, loadInitialData, runs, setRuns } = useAppStore();
+  const { profile, loadInitialData, runs, setRuns, raceEvents } = useAppStore();
+  /* Apagar a última corrida de uma prova concluída põe a prova de volta a
+     agendada (trigger de 2026-09-28) — não nas jornadas do Troféu. O aviso
+     só o diz quando é mesmo isso que vai acontecer. */
+  const raceThatReverts = (() => {
+    if (!run.race_id) return null;
+    const race = (raceEvents || []).find((e) => e.id === run.race_id);
+    if (!race || race.status !== 'concluida' || race.cup_round_id) return null;
+    const others = (runs || []).some((r) => r.id !== run.id && r.race_id === run.race_id);
+    return others ? null : race;
+  })();
   const { showToast } = useToast();
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
@@ -502,9 +512,8 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
         onClose={() => setShowDeleteConfirm(false)}
         onConfirm={handleDelete}
         isDeleting={isDeleting}
-        message={run.race_id
-          // A prova volta a agendada na BD (trigger de 2026-09-28): o atleta sabe-o antes de confirmar.
-          ? 'Tem a certeza que deseja eliminar esta corrida? É o registo de uma prova: a prova volta a ficar por registar, com as memórias guardadas. Esta ação não pode ser desfeita.'
+        message={raceThatReverts
+          ? `Tem a certeza que deseja eliminar esta corrida? É o registo de ${raceThatReverts.name ? `«${raceThatReverts.name}»` : 'uma prova'}: a prova volta a ficar por registar. O diploma, a medalha e as fotos ficam guardados. Esta ação não pode ser desfeita.`
           : 'Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita.'}
       />
     </div>

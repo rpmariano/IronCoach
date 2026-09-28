@@ -231,7 +231,7 @@ export default function Calendar() {
      prova, solta-os na BD (trigger 20260928205037 e seguinte): o treino
      passa para outro registo desse dia ou volta a pendente, e a prova volta
      a agendada. O store relê os dois (reloadAfterRunDeleted). */
-  const reloadPlanAfterDelete = () => {
+  const reloadAfterRunDelete = () => {
     Promise.resolve(useAppStore.getState().reloadAfterRunDeleted?.()).catch(() => {});
   };
 
@@ -243,7 +243,7 @@ export default function Calendar() {
       const { error } = await supabase.from('runs').delete().eq('id', id);
       if (error) throw error;
       showToast('Corrida eliminada');
-      reloadPlanAfterDelete();
+      reloadAfterRunDelete();
     } catch (err) {
       showToast('Erro ao eliminar corrida.', 'error');
       setRuns(previous);

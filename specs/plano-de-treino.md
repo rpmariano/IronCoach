@@ -236,15 +236,26 @@ nunca passa para a corrida de uma prova (`race_id` preenchido), e um item
 os itens vão atrás dela (sem isto, apagar a conta podia falhar no check da
 FK). Antes, a FK (`on delete set null`) deixava o item
 `concluido` sem registo: o Início dizia "Feito." e a adesão contava-o. O
-Calendário e as Corridas recarregam o plano (e as provas) depois de apagar.
+O ecrã que apaga relê o plano (e as provas): o Calendário e as Corridas pelo
+`reloadAfterRunDeleted`, o cartão da corrida e o da sessão de ginásio pelo
+carregamento inteiro.
 
 **A prova também volta atrás** (pedido de 2026-09-28): apagar a corrida que
 concluiu uma prova, sem outra corrida ligada a ela, põe a prova de volta a
-`agendada` — "por registar", como estava antes do registo. As memórias
-(diploma, medalha, fotos) ficam; uma prova criada pela "Prova fora da agenda"
-também volta a agendada, não é apagada (o atleta apaga-a se quiser). O aviso
-de confirmação da corrida diz isto antes de apagar. Mesmo trigger
+`agendada` — "por registar". As memórias (diploma, medalha, fotos) ficam; o
+balanço da Carol sai (na BD e a cópia local), porque era sobre a corrida
+apagada, e registar outra vez pede um novo. Uma prova criada pela "Prova fora
+da agenda" também volta a agendada, não é apagada (o atleta apaga-a se quiser).
+Uma prova marcada como concluída à mão antes do registo volta a agendada, não
+a concluída. O aviso de confirmação da corrida diz isto antes de apagar, e só
+quando vai acontecer. Mesmo trigger
 (`…_race_reverts_when_its_run_is_deleted.sql`).
+
+**Exceção: as jornadas do Troféu** (`cup_round_id`) ficam concluídas. Uma
+jornada por registar pode ser apagada pelo próprio Troféu ("Não fui", sair da
+competição, a jornada cancelada ou mudada pelo organizador — `cup_release_race`,
+`specs/trofeu.md` §3.5/§3.6), e as memórias vivem na linha da prova. Revertida,
+uma jornada já corrida ficava exposta a isso.
 
 **Mitigação v2** (fora do âmbito): permitir ligar um item a um registo já
 existente noutro dia ("já fiz este").

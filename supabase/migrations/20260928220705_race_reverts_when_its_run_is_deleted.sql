@@ -1,5 +1,12 @@
 -- ============================================================================
 -- Apagar a corrida de uma prova põe a prova de volta a agendada (2026-09-28)
+-- APLICADA EM PRODUÇÃO a 2026-09-28 22:07 UTC (version 20260928220705), com
+-- autorização explícita. Ensaiada lá antes num bloco DO revertido: prova real
+-- concluída com balanço, corrida apagada pelo atleta (role authenticated) →
+-- agendada, balanço null; jornada do Troféu (cup_round_id) → fica concluída,
+-- com o balanço; prova com 2 corridas → só a última a devolve; conta apagada
+-- → sem erro. Verificada depois: triggers ativos, a guarda do Troféu na
+-- função, sem EXECUTE para authenticated, as provas concluídas intactas.
 -- ============================================================================
 --
 -- Pedido do Rui (2026-09-28), a seguir a 20260928205037: apagar a corrida
@@ -16,10 +23,21 @@
 --
 --   · As memórias (diploma, medalha, fotos) ficam na prova: são do atleta, e
 --     registar a prova outra vez volta a mostrá-las.
+--   · O balanço da Carol (coach_balance/_at) sai: era sobre a corrida
+--     apagada. Registar outra vez pede um novo (a chave do momento
+--     race_after inclui o id da corrida). A app limpa também a cópia local
+--     (reloadAfterRunDeleted).
+--   · Jornadas do Troféu (cup_round_id) NÃO voltam atrás (revisão
+--     pré-deploy, bloqueante): cup_race_is_done() — status concluida OU
+--     corrida ligada — é a única guarda antes de cup_release_race(), que APAGA
+--     a race_events criada pelo Troféu (cup_link_origin null) com as memórias
+--     lá dentro, por "Não fui", por sair do Troféu, ou pelo admin (apagar,
+--     cancelar ou mudar a jornada). Uma jornada corrida fica concluída, como
+--     hoje; o atleta desfaz no hub da prova se quiser.
 --   · Uma prova criada pela "Prova fora da agenda" também volta a agendada,
 --     não é apagada: apagar dados sozinho não é papel de um trigger. O
 --     atleta apaga-a se quiser.
---   · Só o estado muda. Nenhum dos triggers de race_events dispara com isso
+--   · Só o estado e o balanço mudam. Nenhum dos triggers de race_events dispara com isso
 --     (cup_principal_collision, guard_cup_race_columns e sync_plan_end só
 --     olham para date, race_priority, distance_km, location e cup_*).
 --   · Numa conta a ser apagada, nada (a guarda do início da função).
@@ -65,12 +83,14 @@ begin
       end if;
     end loop;
     -- A prova que esta corrida concluía volta a agendada, se não lhe ficar
-    -- outra corrida. As memórias (diploma, medalha, fotos) ficam.
+    -- outra corrida — sem o balanço da Carol, que era sobre ela. As memórias
+    -- (diploma, medalha, fotos) ficam. Jornadas do Troféu não (ver acima).
     if old.race_id is not null
        and not exists (select 1 from public.runs r where r.race_id = old.race_id and r.id <> old.id) then
       update public.race_events
-         set status = 'agendada'
-       where id = old.race_id and user_id = old.user_id and status = 'concluida';
+         set status = 'agendada', coach_balance = null, coach_balance_at = null
+       where id = old.race_id and user_id = old.user_id and status = 'concluida'
+         and cup_round_id is null;
     end if;
   else
     for it in
@@ -101,4 +121,5 @@ revoke execute on function public.release_plan_items_of_deleted_record() from pu
 
 comment on function public.release_plan_items_of_deleted_record() is
   'Ao apagar uma corrida/sessão: os itens do plano concluídos por ela passam para outro registo livre desse dia, ou voltam a pendente; '
-  'a prova que a corrida concluía volta a agendada se não lhe ficar outra corrida. Ver specs/plano-de-treino.md §5.4.';
+  'a prova que a corrida concluía volta a agendada (sem o balanço) se não lhe ficar outra corrida, exceto jornadas do Troféu. '
+  'Ver specs/plano-de-treino.md §5.4.';

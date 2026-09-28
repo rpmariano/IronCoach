@@ -34,6 +34,24 @@ describe('reloadAfterRunDeleted', () => {
     expect(reloadCoachPlans).toHaveBeenCalledTimes(1);
   });
 
+  it('a prova que voltou a agendada perde a cópia local do balanço', async () => {
+    localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Velho', at: 'x' }));
+    localStorage.setItem('ironcoach:balanco:r2', JSON.stringify({ text: 'Outra', at: 'x' }));
+    useAppStore.setState({ raceEvents: [{ id: 'r1', status: 'concluida' }, { id: 'r2', status: 'concluida' }] });
+    net.races = { data: [{ id: 'r1', status: 'agendada' }, { id: 'r2', status: 'concluida' }], error: null };
+    await useAppStore.getState().reloadAfterRunDeleted();
+    expect(localStorage.getItem('ironcoach:balanco:r1')).toBeNull();
+    expect(localStorage.getItem('ironcoach:balanco:r2')).not.toBeNull();
+  });
+
+  it('a resposta de uma conta que entretanto saiu não se escreve', async () => {
+    net.races = { data: [{ id: 'r1', status: 'agendada' }], error: null };
+    const p = useAppStore.getState().reloadAfterRunDeleted();
+    useAppStore.setState({ session: { user: { id: 'u2' } } });
+    await p;
+    expect(useAppStore.getState().raceEvents).toEqual([{ id: 'r1', status: 'concluida' }]);
+  });
+
   it('um pedido que falha deixa as provas que lá estavam', async () => {
     net.races = { data: null, error: { message: 'rede' } };
     await useAppStore.getState().reloadAfterRunDeleted();

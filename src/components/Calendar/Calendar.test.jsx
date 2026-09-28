@@ -353,9 +353,10 @@ describe('Calendário — filtro', () => {
   });
 });
 
-/* Apagar a corrida que cumpriu um treino do plano solta-o na BD (trigger
-   20260928205037): o store tem de trazer o plano de novo, senão o Início
-   continuava a dizer "Feito." até recarregar. */
+/* Apagar a corrida que cumpriu um treino do plano, ou que concluiu uma
+   prova, solta-os na BD (trigger 20260928205037 e seguinte): o store tem de
+   trazer o plano e as provas de novo, senão o Início continuava a dá-los por
+   feitos até recarregar. */
 describe('Calendário — apagar uma corrida recarrega o plano e as provas', () => {
   beforeEach(() => {
     mocks.deleted.length = 0;

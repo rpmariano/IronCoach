@@ -96,9 +96,25 @@ describe('RunCard — eliminar a corrida de uma prova', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Eliminar$/ }));
   };
 
-  it('avisa que a prova volta a ficar por registar', async () => {
-    await abrirAviso({ ...RUN, kind: 'competicao', race_id: 'race-1' });
-    expect(await screen.findByText(/a prova volta a ficar por registar/)).toBeInTheDocument();
+  const PROVA = { id: 'race-1', name: 'Meia de Lisboa', status: 'concluida' };
+  const DA_PROVA = { ...RUN, kind: 'competicao', race_id: 'race-1' };
+
+  it('a última corrida de uma prova concluída: avisa que a prova volta a ficar por registar', async () => {
+    useAppStore.setState({ runs: [DA_PROVA], raceEvents: [PROVA] });
+    await abrirAviso(DA_PROVA);
+    expect(await screen.findByText(/É o registo de «Meia de Lisboa»: a prova volta a ficar por registar/)).toBeInTheDocument();
+  });
+
+  it('com outra corrida ligada à prova, o aviso de sempre', async () => {
+    useAppStore.setState({ runs: [DA_PROVA, { ...DA_PROVA, id: 'run-2' }], raceEvents: [PROVA] });
+    await abrirAviso(DA_PROVA);
+    expect(await screen.findByText('Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita.')).toBeInTheDocument();
+  });
+
+  it('numa jornada do Troféu, o aviso de sempre (a jornada não volta atrás)', async () => {
+    useAppStore.setState({ runs: [DA_PROVA], raceEvents: [{ ...PROVA, cup_round_id: 'r-1' }] });
+    await abrirAviso(DA_PROVA);
+    expect(await screen.findByText('Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita.')).toBeInTheDocument();
   });
 
   it('numa corrida sem prova, o aviso de sempre', async () => {

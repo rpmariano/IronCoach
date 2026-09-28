@@ -5,6 +5,7 @@ import { todayISO, lisbonTodayISO, addDaysISO } from '../lib/utils';
 import { markOnboardingDoneLocally } from '../utils/onboarding';
 import { newCheckinAlarms, interventionReasonFor, mergeCheckin, readCheckinReason, checkinReasonNow } from '../utils/checkin';
 import { TABELAS_POLICY_VERSION } from '../utils/percentile';
+import { RACE_BALANCE_CACHE_PREFIX } from '../utils/coachProactive';
 import { isGoalsIntervention } from '@formulas/goalsIntervention.ts';
 import { INTERVENTION_OUTCOME, INTERVENTION_ORIGIN } from '@formulas/interventionOutcomes.ts';
 import { createCupSlice, CUP_EMPTY } from './cupSlice';
@@ -379,8 +380,10 @@ export const useAppStore = create((set, get) => ({
       supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
     ]);
     // Um pedido que falha (a rede, logo depois de apagar um registo) não
-    // é um plano vazio: fica o que lá estava (revisão pré-deploy).
+    // é um plano vazio: fica o que lá estava (revisão pré-deploy). E a
+    // resposta de uma conta que entretanto saiu não se escreve na seguinte.
     if (plansError || itemsError) return get().coachPlans;
+    if ((get().session?.user?.id || get().profile?.id) !== userId) return get().coachPlans;
     set({ coachPlans: plans || [], coachPlanItems: items || [] });
       return plans;
   },
@@ -393,12 +396,22 @@ export const useAppStore = create((set, get) => ({
   reloadAfterRunDeleted: async () => {
     const userId = get().session?.user?.id || get().profile?.id;
     if (!userId) return;
-    const [{ data: races, error }] = await Promise.all([
+    const before = new Map((get().raceEvents || []).map((r) => [r.id, r.status]));
+    const [races] = await Promise.allSettled([
       supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
       get().reloadCoachPlans(),
     ]);
+    const { data, error } = races.status === 'fulfilled' ? races.value : { data: null, error: races.reason };
     const now = get().session?.user?.id || get().profile?.id;
-    if (!error && races && now === userId) set({ raceEvents: races });
+    if (error || !data || now !== userId) return;
+    // A prova que voltou a agendada perdeu o balanço na BD; a cópia local
+    // deste dispositivo também sai, senão o hub mostrava-o outra vez.
+    for (const r of data) {
+      if (before.get(r.id) === 'concluida' && r.status === 'agendada') {
+        try { window.localStorage.removeItem(`${RACE_BALANCE_CACHE_PREFIX}${r.id}`); } catch { /* sem storage */ }
+      }
+    }
+    set({ raceEvents: data });
   },
 
   // ── Armário de sapatilhas (tabela shoes) ───────────────────────────────
