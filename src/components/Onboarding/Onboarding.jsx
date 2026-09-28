@@ -10,7 +10,7 @@ import {
   clearPersistedFormDraft,
 } from '../../utils/formDraftPersistence';
 import {
-  StepCarol, StepQuemEs, StepObjetivo, StepComoCorres, StepComoComes, StepProva, StepFecho,
+  StepCarol, StepQuemEs, StepObjetivo, StepComoCorres, StepComoComes, StepMemorias, StepProva, StepAlertas, StepFecho,
   OBJETIVOS, TEMPO_A_CORRER,
 } from './OnboardingSteps';
 import { dietaryRestrictionLabel } from '../../utils/diet';
@@ -21,24 +21,18 @@ import { firstName, reactToRace } from './carolReactions';
 /* ════════════════════════════════════════════════════════════════════════
    Onboarding — o arranque (ponto 8 do handoff 2026-09, direção 6c)
 
-   Seis passos conduzidos pela Carol no primeiro acesso, e reentráveis a
-   partir de Perfil · Coach ("Rever o arranque com a Carol"). Os ecrãs são os
-   da secção "Onboarding · o arranque" do mock; o passo 3 está em "Estados em
-   falta" como "Onboarding 3".
+   Sete passos conduzidos pela Carol no primeiro acesso, e reentráveis a
+   partir de Perfil · Coach ("Rever o arranque com a Carol").
 
    ── Onde vive cada resposta ────────────────────────────────────────────
-   passo 2  nome, nascimento, altura, peso, sexo      → profiles
+   passo 2  nome, nascimento, altura, peso, sexo, cidade, FC repouso → profiles
    passo 3  objetivo                                  → coach_notes (objetivo_pessoal)
    passo 4  nível                                     → profiles.experience_level
             km/semana + dias/semana                   → coach_notes (disponibilidade)
    passo 5  restrições + notas                        → profiles
-   passo 6  nome/data/distância/terreno da prova      → formulário de Prova pré-preenchido
-
-   O passo 6 NÃO insere em `race_events` diretamente: a tabela exige local,
-   objetivo de tempo e ritmo-alvo (todos NOT NULL — ver supabase_schema.sql), e
-   o mock do arranque não os pergunta. Inventá-los seria pior do que pedi-los:
-   ao sair do Fecho, quem declarou uma prova cai no formulário que já existe
-   (RunAgenda) com os quatro campos preenchidos, e completa ali o que falta.
+   passo 6  memórias (horários, lesões, rotina)       → coach_notes
+   passo 7  nome/data/distância/terreno da prova      → formulário / race_events
+   passo 8  alertas, saudações e água                 → profiles
 
    ── Fora do Layout ─────────────────────────────────────────────────────
    O arranque não tem navegação inferior (é o arranque; o mock não a mostra) —
@@ -54,8 +48,8 @@ import { firstName, reactToRace } from './carolReactions';
    garantia sem esse custo. O rascunho só é limpo ao terminar.
    ════════════════════════════════════════════════════════════════════════ */
 
-const STEP_KEYS = ['carol', 'quem-es', 'objetivo', 'como-corres', 'como-comes', 'prova', 'fecho'];
-const TOTAL_PASSOS = 6;
+const STEP_KEYS = ['carol', 'quem-es', 'objetivo', 'como-corres', 'como-comes', 'memorias', 'alertas', 'prova', 'fecho'];
+const TOTAL_PASSOS = 7;
 const LAST_STEP = STEP_KEYS.length - 1;
 
 const EMPTY_DRAFT = {
@@ -64,20 +58,25 @@ const EMPTY_DRAFT = {
   height_cm: '',
   weight_kg: '',
   gender: '',
+  training_city: '',
+  training_lat: null,
+  training_lon: null,
+  training_altitude_m: null,
+  resting_hr_bpm: '',
   goal: '',
   experience_level: '',
   weekly_km: '',
   days_per_week: '',
   dietary_restrictions: [],
   dietary_notes: '',
+  coach_notes_list: [],
+  carol_push_enabled: true,
+  carol_welcome_enabled: true,
+  water_reminder_enabled: false,
   race_name: '',
   race_date: '',
   race_distance_km: '',
   race_type: 'estrada',
-  /* Os três que faltavam para a prova poder NASCER GRAVADA em vez de ir
-     abrir o formulário de criar prova por cima do fim do arranque
-     (relatado pelo utilizador). São os obrigatórios da validação de
-     Run/RunAgenda.jsx: local, objetivo de tempo e, só no trail, o D+. */
   race_location: '',
   race_target_time: '',
   race_elevation_gain_m: '',
@@ -113,6 +112,11 @@ export function seedDraftFrom({ profile, coachNotes, raceEvents } = {}) {
   const km = dispNota?.note?.match(/(\d+(?:[.,]\d+)?)\s*km por semana/);
   const dias = dispNota?.note?.match(/(\d+)\s*dias? por semana/);
 
+  // Notas extra além do objetivo e km/semana
+  const memoriasExtra = notas
+    .filter((n) => n.category !== 'objetivo_pessoal' && !(n.category === 'disponibilidade' && /km por semana/.test(n.note || '')))
+    .map((n) => ({ category: n.category, note: n.note, id: n.id }));
+
   const hoje = todayISO();
   const proxima = (Array.isArray(raceEvents) ? raceEvents : [])
     .filter((r) => r.date >= hoje)
@@ -125,16 +129,28 @@ export function seedDraftFrom({ profile, coachNotes, raceEvents } = {}) {
     height_cm: numText(p.height_cm),
     weight_kg: numText(p.weight_kg),
     gender: p.gender || '',
+    training_city: p.training_city || '',
+    training_lat: p.training_lat ?? null,
+    training_lon: p.training_lon ?? null,
+    training_altitude_m: p.training_altitude_m ?? null,
+    resting_hr_bpm: numText(p.resting_hr_bpm),
     goal: objetivo?.key || '',
     experience_level: TEMPO_A_CORRER.some((t) => t.key === p.experience_level) ? p.experience_level : '',
     weekly_km: km ? km[1].replace(',', '.') : '',
     days_per_week: dias ? dias[1] : '',
     dietary_restrictions: p.dietary_restrictions || [],
     dietary_notes: p.dietary_notes || '',
+    coach_notes_list: memoriasExtra,
+    carol_push_enabled: p.carol_push_enabled !== false,
+    carol_welcome_enabled: p.carol_welcome_enabled !== false,
+    water_reminder_enabled: !!p.water_reminder_enabled,
     race_name: proxima?.name || '',
     race_date: proxima?.date || '',
     race_distance_km: numText(proxima?.distance_km),
     race_type: proxima?.race_type || 'estrada',
+    race_location: proxima?.location || '',
+    race_target_time: proxima?.target_time || '',
+    race_elevation_gain_m: numText(proxima?.elevation_gain_m),
   };
 }
 
@@ -263,6 +279,7 @@ export default function Onboarding({ reentry = false, onDone }) {
   const resumo = useMemo(() => {
     const linhas = [];
     if (draft.display_name.trim()) linhas.push({ label: 'Nome', value: draft.display_name.trim() });
+    if (draft.training_city?.trim()) linhas.push({ label: 'Onde treinas', value: draft.training_city.trim() });
     const objetivo = OBJETIVOS.find((o) => o.key === draft.goal);
     if (objetivo) linhas.push({ label: 'Objetivo', value: objetivo.title });
     const nivel = TEMPO_A_CORRER.find((t) => t.key === draft.experience_level);
@@ -280,8 +297,22 @@ export default function Onboarding({ reentry = false, onDone }) {
       label: 'À mesa',
       value: restricoes.length ? restricoes.map(dietaryRestrictionLabel).join(', ') : 'Como de tudo',
     });
+    const totalMemorias = (draft.coach_notes_list || []).length;
+    if (totalMemorias > 0) {
+      linhas.push({
+        label: 'Memória da Carol',
+        value: `${totalMemorias} ${totalMemorias === 1 ? 'nota guardada' : 'notas guardadas'}`,
+      });
+    }
     if (temProva) {
       linhas.push({ label: 'A tua prova', value: `${draft.race_name.trim()} · ${parseNum(draft.race_distance_km)} km` });
+    }
+    const presenca = [];
+    if (draft.carol_push_enabled !== false) presenca.push('Alertas da Carol');
+    if (draft.carol_welcome_enabled !== false) presenca.push('Boas-vindas');
+    if (draft.water_reminder_enabled) presenca.push('Água');
+    if (presenca.length > 0) {
+      linhas.push({ label: 'Presença', value: presenca.join(' · ') });
     }
     return linhas;
   }, [draft, temProva]);
@@ -298,21 +329,36 @@ export default function Onboarding({ reentry = false, onDone }) {
      diferentes): `markOnboardingDone` do store repete o UPDATE sem ela, deixa
      o erro na consola e grava a marca em localStorage por utilizador — a
      rede que impede o arranque de reaparecer neste dispositivo.
-     As duas notas da Carol (objetivo e disponibilidade) vão à parte: falham
-     em silêncio no seu próprio store se o utilizador não tiver sessão
-     (modo demo), sem travar o fim do arranque. */
+     As notas da Carol (objetivo, disponibilidade e memórias livres) vão à
+     parte: falham em silêncio no seu próprio store se o utilizador não tiver
+     sessão (modo demo), sem travar o fim do arranque. */
   const gravar = useCallback(async () => {
     const perfil = {};
     if (draft.display_name.trim()) perfil.display_name = draft.display_name.trim();
     if (draft.birth_date) perfil.birth_date = draft.birth_date;
     const altura = parseNum(draft.height_cm);
-    if (altura) perfil.height_cm = altura;
+    if (altura) perfil.height_cm = Math.round(altura);
     const peso = parseNum(draft.weight_kg);
     if (peso) perfil.weight_kg = peso;
     if (draft.gender) perfil.gender = draft.gender;
     if (draft.experience_level) perfil.experience_level = draft.experience_level;
     perfil.dietary_restrictions = (draft.dietary_restrictions || []).length ? draft.dietary_restrictions : null;
     perfil.dietary_notes = draft.dietary_notes.trim() || null;
+
+    if (draft.training_city?.trim()) {
+      perfil.training_city = draft.training_city.trim();
+      if (draft.training_lat != null) perfil.training_lat = draft.training_lat;
+      if (draft.training_lon != null) perfil.training_lon = draft.training_lon;
+      if (draft.training_altitude_m != null) perfil.training_altitude_m = draft.training_altitude_m;
+    }
+    const hr = parseNum(draft.resting_hr_bpm);
+    if (hr && hr >= 25 && hr <= 120) {
+      perfil.resting_hr_bpm = Math.round(hr);
+    }
+
+    perfil.carol_push_enabled = draft.carol_push_enabled !== false;
+    perfil.carol_welcome_enabled = draft.carol_welcome_enabled !== false;
+    perfil.water_reminder_enabled = !!draft.water_reminder_enabled;
 
     await markOnboardingDone(perfil);
 
@@ -325,6 +371,14 @@ export default function Onboarding({ reentry = false, onDone }) {
     if (km || dias) {
       const partes = [km ? `${km} km por semana` : null, dias ? `${dias} dias por semana` : null].filter(Boolean);
       await addCoachNote({ category: 'disponibilidade', note: `No arranque declarou ${partes.join(', ')}.` });
+    }
+
+    if (Array.isArray(draft.coach_notes_list) && draft.coach_notes_list.length > 0) {
+      for (const item of draft.coach_notes_list) {
+        if (item?.note?.trim() && !item.id) {
+          await addCoachNote({ category: item.category || 'disponibilidade', note: item.note.trim() });
+        }
+      }
     }
 
     clearPersistedFormDraft(draftKey);
@@ -477,6 +531,8 @@ export default function Onboarding({ reentry = false, onDone }) {
       case 'objetivo': return <StepObjetivo draft={draft} set={set} />;
       case 'como-corres': return <StepComoCorres draft={draft} set={set} />;
       case 'como-comes': return <StepComoComes draft={draft} set={set} />;
+      case 'memorias': return <StepMemorias draft={draft} set={set} />;
+      case 'alertas': return <StepAlertas draft={draft} set={set} />;
       case 'prova': return <StepProva draft={draft} set={set} carolNote={notaProva} reaction={reactToRace(draft, semanas)} />;
       default: return <StepFecho titulo={tituloFecho} resumo={resumo} semanas={temProva ? semanas : null} raceName={temProva ? draft.race_name.trim() : ''} />;
     }
@@ -509,11 +565,24 @@ export default function Onboarding({ reentry = false, onDone }) {
             </GhostButton>
           </ActionBar>
         );
+      case 'memorias':
+        return (
+          <ActionBar aboveNav={false}>
+            <div className="flex-1 min-w-0"><PrimaryButton onClick={avancar}>Continuar</PrimaryButton></div>
+            <GhostButton onClick={avancar}>Saltar</GhostButton>
+          </ActionBar>
+        );
+      case 'alertas':
+        return (
+          <ActionBar aboveNav={false}>
+            <div className="flex-1 min-w-0"><PrimaryButton onClick={avancar}>Continuar</PrimaryButton></div>
+          </ActionBar>
+        );
       case 'prova':
         return (
           <ActionBar aboveNav={false} style={{ flexDirection: 'column', alignItems: 'stretch', gap: 9 }}>
             <PrimaryButton hero onClick={avancar}>
-              <Sparkles size={17} /> Criar o meu plano
+              Continuar
             </PrimaryButton>
             <GhostButton onClick={() => {
               set('race_name', '');
@@ -585,21 +654,21 @@ export default function Onboarding({ reentry = false, onDone }) {
                 role="progressbar"
                 aria-valuemin={1}
                 aria-valuemax={TOTAL_PASSOS}
-                aria-valuenow={step + 1}
+                aria-valuenow={step}
                 aria-label="Progresso do arranque"
-                aria-valuetext={`Passo ${step + 1} de ${TOTAL_PASSOS}`}
+                aria-valuetext={`Passo ${step} de ${TOTAL_PASSOS}`}
                 style={{ gap: 5 }}
               >
                 {Array.from({ length: TOTAL_PASSOS }, (_, i) => (
                   <span
                     key={i}
                     aria-hidden="true"
-                    style={{ flex: 1, height: 4, borderRadius: 99, background: i <= step ? 'var(--coach)' : 'rgba(255,255,255,.14)', transition: 'background-color var(--dur-tab-content) var(--ease-out)' }}
+                    style={{ flex: 1, height: 4, borderRadius: 99, background: i < step ? 'var(--coach)' : 'rgba(255,255,255,.14)', transition: 'background-color var(--dur-tab-content) var(--ease-out)' }}
                   />
                 ))}
               </div>
               <span className="shrink-0" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>
-                {step + 1}/{TOTAL_PASSOS}
+                {step}/{TOTAL_PASSOS}
               </span>
             </>
           )}

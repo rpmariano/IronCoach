@@ -301,6 +301,11 @@ export const useAppStore = create((set, get) => ({
   // cartão "Rever o arranque com a Carol" em Perfil · Coach.
   onboardingOpen: false,
   setOnboardingOpen: (open) => set({ onboardingOpen: !!open }),
+  // Tutorial da App ("A Carol mostra-te a casa", specs/onboarding-tutorial.md).
+  // Abre o guia visual de 5 passos a partir do Perfil, fecho do Onboarding
+  // ou parâmetro ?tutorial=1 em DEV.
+  tutorialOpen: false,
+  setTutorialOpen: (open) => set({ tutorialOpen: !!open }),
   // Campos do passo 6 do arranque à espera do formulário de Prova, que os
   // consome uma vez ao montar (RunAgenda.jsx). race_events exige local,
   // objetivo de tempo e ritmo-alvo — o arranque não os pergunta, por isso

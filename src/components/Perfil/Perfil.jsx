@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription } from '../../lib/push';
-import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Medal, MessageSquare, MapPin } from 'lucide-react';
+import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Medal, MessageSquare, MapPin, Sparkles } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
@@ -127,7 +127,7 @@ const CAROL_PUSH_TYPES = [
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 
 export default function Perfil() {
-  const { profile, setProfile, session, setNavGuard, setOnboardingOpen } = useAppStore();
+  const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setTutorialOpen } = useAppStore();
   const [tab, setTab] = useState('perfil');
   // O ecrã do consentimento das tabelas (Fase 5) — ecrã inteiro por portal,
   // como o onboarding: não é um separador nem um formulário deste ecrã.
@@ -1075,6 +1075,42 @@ export default function Perfil() {
               </span>
               <span className="block" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
                 Os seis passos outra vez, com as respostas que já deste
+              </span>
+            </span>
+            <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
+          </button>
+
+          {/* Tutorial da App — A Carol mostra-te a casa (specs/onboarding-tutorial.md) */}
+          <button
+            type="button"
+            onClick={() => setTutorialOpen(true)}
+            className="w-full flex items-center gap-3 text-left transition active:scale-[.99]"
+            style={{
+              minHeight: 'var(--tap)',
+              padding: 15,
+              borderRadius: 'var(--radius-xl)',
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
+            <div
+              className="flex items-center justify-center shrink-0"
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 11,
+                background: 'rgba(34, 211, 238, 0.12)',
+                color: 'var(--coach)',
+              }}
+            >
+              <Sparkles size={18} />
+            </div>
+            <span className="flex-1 min-w-0">
+              <span className="block" style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text-1)' }}>
+                Ver tutorial da app
+              </span>
+              <span className="block" style={{ fontSize: 11.5, color: 'var(--text-4)', marginTop: 2 }}>
+                Conhece os ecrãs, o registo por prints e como falar com a Carol
               </span>
             </span>
             <ChevronRight size={18} className="shrink-0" style={{ color: 'var(--text-4)' }} />
