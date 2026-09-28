@@ -109,12 +109,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // Edição — carrega a refeição existente. Alimentos e observações são dados
   // ANALÍTICOS: mudá-los muda a análise, por isso guardar passa pelo Coach e
   // regenera-a (as observações entram no prompt de estimação — "hambúrguer"
-  // caseiro e do McDonald's não dão os mesmos valores). A data e a hora
-  // também (a Carol lê o dia e a hora — ver analyticalSignature). Só o tipo
-  // de refeição não mexe na análise, e nesse caso guardar é um update direto,
+  // caseiro e do McDonald's não dão os mesmos valores). A data, a hora e o
+  // tipo também (a Carol lê-os — ver analyticalSignature). Sem nada mudado,
+  // ou numa refeição sem alimentos em que só mudou data/hora/tipo, guardar é
+  // um update direto,
   // sem custo de API. É por passar pelo Coach que acrescentar um alimento
   // novo ao editar é agora possível — a estimativa dos valores dele vem daí.
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
+  // Só observações + alimentos, tirada ao mesmo tempo (ver needsReanalysis).
+  const [originalContent, setOriginalContent] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
   useEffect(() => {
@@ -207,14 +210,25 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     } });
   };
 
-  // Assinatura do que é analítico, para comparar o antes com o agora. A hora
-  // conta desde 2026-09-28: a Carol lê-a (ordena o dia e decide que refeições
-  // ainda podem vir), por isso corrigi-la muda a análise e tem de a regenerar.
-  const analyticalSignature = (dateValue, timeValue, notesValue, items) => JSON.stringify({
+  // Assinatura do que é analítico, para comparar o antes com o agora. Desde
+  // 2026-09-28 é TUDO o que o formulário edita: qualquer mudança num registo
+  // regenera a análise (pedido do Rui). A hora e o tipo contam porque a Carol
+  // os lê — ordenam o dia e decidem que refeições ainda podem vir.
+  const contentSignature = (notesValue, items) => JSON.stringify({
+    notes: (notesValue || '').trim(),
+    // O input das gramas guarda texto ("150") e a BD devolve número (150):
+    // normaliza, senão apagar e reescrever o mesmo valor reanalisava.
+    items: items.map(i => {
+      const raw = i.grams === '' || i.grams === undefined ? null : i.grams;
+      const n = raw === null ? null : Number(raw);
+      return { name: (i.name || '').trim(), grams: n === null ? null : (Number.isFinite(n) ? n : String(raw)) };
+    }),
+  });
+  const analyticalSignature = (dateValue, timeValue, typeValue, notesValue, items) => JSON.stringify({
     date: dateValue,
     time: normalizeStartTime(timeValue),
-    notes: (notesValue || '').trim(),
-    items: items.map(i => ({ name: (i.name || '').trim(), grams: i.grams ?? null })),
+    type: typeValue,
+    content: contentSignature(notesValue, items),
   });
 
   useEffect(() => {
@@ -248,7 +262,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com alimentos/observações diferentes dos gravados dispara
     // "Guardar e reanalisar" já na primeira renderização.
-    setOriginalSnapshot(analyticalSignature(meal.date, meal.meal_time, meal.notes, canonicalItems));
+    setOriginalSnapshot(analyticalSignature(meal.date, meal.meal_time, meal.meal_type, meal.notes, canonicalItems));
+    setOriginalContent(contentSignature(meal.notes, canonicalItems));
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mealIdToEdit]);
@@ -314,17 +329,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      alterado, para o aviso de saída as proteger. */
   usePersistedDraftMedia(mealIdToEdit ? null : draftStorageKey, 'photos', photos, (v) => { setPhotos(v); setIsFormDirty(true); });
 
-  // Regenera a análise se a data, a hora, os alimentos ou as observações
-  // mudaram. Exceção: numa refeição sem alimentos (análise por foto que
-  // devolveu 0 itens) não há o que reanalisar, e corrigir só a hora tem de
-  // continuar a gravar — cai no update direto (revisão pré-deploy de c6f92a72).
-  const originalMealTime = isEditing ? (meals || []).find(m => m.id === mealIdToEdit)?.meal_time : null;
-  const onlyTimeChanged = isEditing
-    && analyticalSignature(date, originalMealTime, notes, manualItems) === originalSnapshot;
+  // Regenera a análise se QUALQUER campo mudou. Exceção: numa refeição sem
+  // alimentos (análise por foto que devolveu 0 itens) não há o que reanalisar,
+  // e corrigir a data, a hora ou o tipo tem de continuar a gravar — cai no
+  // update direto (revisão pré-deploy de c6f92a72). Mexer nas observações ou
+  // nos alimentos sem alimentos continua bloqueado, como antes.
+  const contentUnchanged = originalContent !== null && contentSignature(notes, manualItems) === originalContent;
   const needsReanalysis = isEditing
     && originalSnapshot !== null
-    && analyticalSignature(date, mealTime, notes, manualItems) !== originalSnapshot
-    && !(onlyTimeChanged && manualItems.length === 0);
+    && analyticalSignature(date, mealTime, mealType, notes, manualItems) !== originalSnapshot
+    && !(contentUnchanged && manualItems.length === 0);
 
   const updateManualItem = (key, patch) => {
     setManualItems(prev => prev.map(i => (i.key === key ? { ...i, ...patch } : i)));
@@ -445,13 +459,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   // ----------------------------------
   // GUARDAR ALTERAÇÕES (edição) — dois caminhos:
-  //   • Alimentos, observações, data ou hora mudaram → passa pelo Coach (analyze-meal em
+  //   • Qualquer campo mudou → passa pelo Coach (analyze-meal em
   //     mode manual com meal_id), que reestima os valores nutricionais de
   //     todos os alimentos e regenera a análise. É o que permite acrescentar
   //     um alimento novo ao editar.
-  //     A hora conta desde 2026-09-28 (a Carol lê-a).
-  //   • Só o tipo mudou (ou só a hora, numa refeição sem alimentos) → update
-  //     direto, sem chamada ao Gemini; a hora grava-a persistMealTime.
+  //     A hora e o tipo contam desde 2026-09-28 (a Carol lê-os).
+  //   • Refeição sem alimentos e só data/hora/tipo mudaram → update direto,
+  //     sem chamada ao Gemini; a hora grava-a persistMealTime.
   // ----------------------------------
   const saveEditTask = async () => {
     {
