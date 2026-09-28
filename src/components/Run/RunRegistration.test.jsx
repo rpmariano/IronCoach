@@ -729,6 +729,37 @@ describe('RunRegistration — regista sem vir do botão "Registar sessão" (bate
       expect(itemDe('item-outro').status).toBe('pendente');
     });
 
+    /* O rascunho reaberto depois de o Android matar a app: o prefill não
+       sobrevive, mas a ligação feita por ele, sim (aqui, já no store). */
+    it('um treino ligado de propósito a outro dia, com essa mesma data no formulário, fica como está', async () => {
+      useAppStore.setState({
+        coachPlanItems: [
+          { id: 'item-ontem', plan_id: 'p1', planned_date: ontemISO, kind: 'corrida', status: 'concluido', actual_date: hojeISO, completed_run_id: 'run-foto' },
+          { id: 'item-hoje', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'pendente' },
+        ],
+      });
+      await chegarAoAviso();
+      fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(updatesDoPlano()).toEqual([]);
+      expect(itemDe('item-hoje').status).toBe('pendente');
+    });
+
+    it('com a data de volta ao dia planeado do treino ligado, fica ligado, com a data nova', async () => {
+      useAppStore.setState({
+        coachPlanItems: [
+          { id: 'item-hoje', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', status: 'concluido', actual_date: ontemISO, completed_run_id: 'run-foto' },
+        ],
+      });
+      await chegarAoAviso();
+      await waitFor(() => expect(updatesDoPlano()).toHaveLength(1));
+      expect(updatesDoPlano()[0]).toMatchObject({
+        id: 'item-hoje',
+        payload: { status: 'concluido', actual_date: hojeISO, completed_run_id: 'run-foto' },
+      });
+    });
+
     it('passando a prova no aviso, o treino de corrida do dia volta a pendente', async () => {
       const prova = { id: 'race-hoje', name: 'Meia de Lisboa', date: hojeISO, race_type: 'estrada', distance_km: 21.0975, status: 'agendada' };
       useAppStore.setState({

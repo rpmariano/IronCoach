@@ -200,13 +200,22 @@ depois de uma reanálise falhada, ficava com a corrida gravada e o treino
 
 O fecho confirma essa ligação com o que o formulário tem nesse momento:
 
-- Mesma data: fica.
-- Data corrigida (os prints eram de ontem): o item volta a `pendente`, e a
-  procura faz-se pelo dia novo.
-- Passou a prova: o item volta a `pendente`.
+- A `actual_date` do item é a data do formulário: fica. É também o caso de
+  um item ligado de propósito a outro dia por "Registar sessão", num
+  rascunho reaberto depois de o Android matar a app.
+- A data voltou ao dia planeado do item: fica, com a `actual_date` nova.
+- Outra data (os prints eram de ontem): o item volta a `pendente`, e a
+  procura faz-se pelo dia novo. Num rascunho reaberto de "Registar sessão",
+  isto também solta o item escolhido — caso de canto aceite, porque o
+  prefill não sobrevive à morte da app.
+- Passou a modo prova (prova escolhida em "Qual prova?"): o item volta a
+  `pendente`, e a prova fecha o item dela.
 
-Assim a mesma corrida não fica ligada a dois itens, e um dia corrigido não
-deixa riscado o treino do dia errado.
+Assim um dia corrigido não deixa riscado o treino do dia errado, e em modo
+prova a corrida não fica em dois itens. Fica de fora a competição sem
+"Qual prova?" ("Prova fora da agenda"): o treino ligado cedo mantém-se, e se
+essa prova bater com uma prova agendada com item no mesmo dia, a corrida
+fica nos dois. É raro, porque o plano tem um item por dia.
 
 O que continua sem ligação: um treino num dia sem item desse tipo, ou fora de
 um plano aceite. As leituras da adesão (`prescriptionAdherence.ts`, o balanço

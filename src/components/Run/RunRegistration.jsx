@@ -1254,7 +1254,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      explicitamente. Só corrida: um treino de ginásio no mesmo dia fica na
      mesma pendente — tem de bater o TIPO, não só o dia, senão "Registar
      sessão" desaparecia sem o treino planeado ter sido feito. Nunca a prova
-     (isRacePlanItem): essa só se conclui em modo prova, acima. */
+     (isRacePlanItem): essa conclui-se pelo registo da prova — em modo prova
+     (completeRacePlanItem) ou pela "Prova fora da agenda" que bate com a
+     prova agendada (completeRacePlanItemForDate). */
   const completeMatchingPlanItem = async (savedRun) => {
     if (completingPlanItemRef.current) return;
     const store = useAppStore.getState();
