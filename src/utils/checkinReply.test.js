@@ -181,9 +181,14 @@ describe('checkinReply', () => {
       .toBe('Uma dor ligeira (braço direito) na recuperação da cirurgia. Fica anotada; se subir, diz-me.');
     expect(comVida({ pain: 2, pain_location: 'bíceps' }).text).toMatch(/na recuperação da cirurgia/);
     expect(comVida({ pain: 2 }).text).toBe('Uma dor ligeira na recuperação da cirurgia. Fica anotada; se subir, diz-me.');
+    // O sítio dito pelo que lá está, e não pela parte do corpo.
+    for (const onde of ['Cicatriz', 'zona operada', 'Pontos', 'sítio da cirurgia']) {
+      expect(comVida({ pain: 2, pain_location: onde }).text).toMatch(/na recuperação da cirurgia/);
+    }
     expect(comVida({ pain: 3, pain_location: 'Joelho' }).text).toBe('Uma dor ligeira (joelho). Fica anotada; se subir, diz-me.');
     const gripe = { tipo: 'doenca', dias: 1, recupera: 5, a: 'a gripe', da: 'da gripe', parte: null };
     expect(comVida({ pain: 2 }, gripe).text).toBe('Uma dor ligeira. Fica anotada; se subir, diz-me.');
+    expect(checkinReply([dia(HOJE, { pain: 2, pain_location: 'Cicatriz' })], HOJE).text).toBe('Uma dor ligeira (cicatriz). Fica anotada; se subir, diz-me.');
     expectCarolVoice(comVida({ pain: 3, pain_location: 'Braço direito' }).text);
   });
 });

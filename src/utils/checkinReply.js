@@ -61,6 +61,11 @@ function noitesMas(checkins, today) {
   }
 }
 
+/* O sítio dito pelo que lá está, e não pela parte do corpo: "cicatriz",
+   "pontos", "zona operada", "onde fui operado". Só conta com uma cirurgia ou
+   uma lesão de que ela sabe — sem isso, "cicatriz" é só um local. */
+const O_SITIO = /(?<!\p{L})(cicatriz|ferida|pontos|incis[ãa]o|operad[oa]|lesionad[oa]|da (cirurgia|opera[çc][ãa]o|les[ãa]o))(?!\p{L})/iu;
+
 const EXTENSO = ['', 'Uma', 'Duas', 'Três', 'Quatro', 'Cinco', 'Seis', 'Sete'];
 
 /**
@@ -173,7 +178,8 @@ export function checkinReply(checkins, today, dia = null, { conversaSobreADor } 
     // sem sítio dito) é da recuperação; ignorá-la aqui, e falar dela sem dor
     // nenhuma, era ao contrário (pedido 2026-09-29). Uma dor noutro sítio não
     // se cola à recuperação, e o "é normal" fica para a equipa médica.
-    const daRecuperacao = vida && vida.tipo !== 'doenca' && (!onde || !vida.parte || parteDoCorpo(onde) === vida.parte);
+    const daRecuperacao = vida && vida.tipo !== 'doenca'
+      && (!onde || !vida.parte || parteDoCorpo(onde) === vida.parte || O_SITIO.test(onde));
     if (daRecuperacao) {
       return { mood: 'neutral', tone: 'coach', text: `Uma dor ligeira${noLocal} na recuperação ${vida.da}. Fica anotada; se subir, diz-me.` };
     }
