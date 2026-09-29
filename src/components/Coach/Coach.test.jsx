@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
 import { ToastProvider } from '../shared/ToastProvider';
-import { readCachedBalance } from '../../utils/raceBalance';
+import { readRaceBalanceCache } from '../../utils/coachProactive';
 import Coach, { COACH_ASYNC_FALLBACK_TEXT, COACH_EMPTY_REPLY_TEXT, COACH_IMMEDIATE_FAILURE_TEXT, COACH_INITIATED_FALLBACK_TEXT, COACH_INITIATED_NETWORK_TEXT, COACH_INITIATED_LATER_TEXT } from './Coach';
 // Dia LOCAL (yyyy-mm-dd), como o todayISO() da app: em UTC, entre as 00:00 e
 // a 01:00 de verão o "há 5 dias" passava a 6 e o teste falhava só a essa hora.
@@ -1005,7 +1005,9 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
     details: 'Prova "Corrida do Tejo" foi há 1 dia (2026-09-13). Corrida registada: 45:00.',
     raceOutcome: { verdict: 'superado', officialSeconds: 2700 },
     raceId: 'race-1',
+    runId: 'run-1',
   };
+  const RACE = { id: 'race-1', status: 'concluida' };
   const STORAGE_KEY = 'ironcoach:carol-proativa:user-1';
 
   beforeEach(() => {
@@ -1034,7 +1036,9 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
     // E fica na mesma cópia local que utils/raceBalance.js usa — se o hub
     // (RaceBalanceCard) for aberto a seguir, mostra logo isto em vez de
     // convidar a pedir o balanço outra vez.
-    expect(readCachedBalance('race-1')?.text).toBe('Correste bem demais — superaste o objetivo.');
+    // Com a corrida a que se refere: só vale enquanto for ela a da prova.
+    expect(readRaceBalanceCache(RACE, 'run-1')).toMatchObject({ text: 'Correste bem demais — superaste o objetivo.', runId: 'run-1' });
+    expect(readRaceBalanceCache(RACE, 'outra-corrida')).toBeNull();
   });
 
   it('se mesmo assim o servidor saltar, não fica marcado como dito', async () => {
@@ -1048,7 +1052,7 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
     await act(async () => { await Promise.resolve(); });
     expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
-    expect(readCachedBalance('race-1')).toBeNull();
+    expect(readRaceBalanceCache(RACE, 'run-1')).toBeNull();
   });
 });
 

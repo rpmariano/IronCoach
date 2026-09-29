@@ -1,6 +1,6 @@
 import { invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, RACE_BALANCE_CACHE_PREFIX } from './coachProactive';
+import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, readRaceBalanceCache, RACE_BALANCE_CACHE_PREFIX } from './coachProactive';
 
 /* O balanço completo da Carol no hub da prova (pedido 2026-09-13).
 
@@ -24,23 +24,13 @@ const asError = (error) => (error instanceof Error ? error : new Error(typeof er
 
 const CACHE_PREFIX = RACE_BALANCE_CACHE_PREFIX;
 
-export function readCachedBalance(raceId) {
-  if (!raceId) return null;
-  try {
-    const raw = window.localStorage.getItem(`${CACHE_PREFIX}${raceId}`);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return parsed && typeof parsed.text === 'string' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
 /* Exportada: o coachIntent 'race_balance' do Início (Coach.jsx) pede o
    balanço por este mesmo caminho (proactive_force), mas passando pelo fluxo
    normal do chat, não por requestRaceBalance — precisa de gravar a mesma
    cópia local para o hub, se aberto a seguir, mostrar logo o balanço já
    dado em vez de convidar a pedi-lo outra vez (specs/gamificacao-provas.md,
-   "os dois sítios"). */
+   "os dois sítios"). A entrada leva `runId`, a corrida deste balanço
+   (readRaceBalanceCache). */
 export function writeCachedBalance(raceId, entry) {
   try {
     window.localStorage.setItem(`${CACHE_PREFIX}${raceId}`, JSON.stringify(entry));
@@ -49,10 +39,11 @@ export function writeCachedBalance(raceId, entry) {
   }
 }
 
-/** O balanço que já existe para esta prova: a coluna, senão a cópia local. */
-export function existingRaceBalance(race) {
+/** O balanço que já existe para esta prova: a coluna, senão a cópia local
+ *  — se ainda for desta corrida (readRaceBalanceCache). */
+export function existingRaceBalance(race, runId = null) {
   if (race?.coach_balance) return { text: race.coach_balance, suggestions: [] };
-  return readCachedBalance(race?.id);
+  return readRaceBalanceCache(race, runId);
 }
 
 /** True se a Carol já fez este balanço a partir do chat (neste dispositivo)
@@ -87,7 +78,7 @@ export async function requestRaceBalance({ race, run, runs, raceEvents, profile 
   const suggestions = Array.isArray(data?.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [];
 
   markProactiveSent(profile?.id, candidate);
-  const entry = { text, suggestions, at: new Date().toISOString() };
+  const entry = { text, suggestions, at: new Date().toISOString(), runId: candidate.runId };
   writeCachedBalance(race.id, entry);
 
   // Só o chat: escrever em raceEvents a partir daqui fazia o efeito de

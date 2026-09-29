@@ -389,6 +389,9 @@ export function buildRaceAfterCandidate({ race, run: givenRun, runs = [], raceEv
       achievements_new: achievementsForRace({ raceEvents, runs, profile, today }, race.id).filter((a) => a.isNew).map((a) => a.key),
     },
     raceId: race.id,
+    // A corrida deste balanço: guarda-se com a cópia local, que só vale
+    // enquanto for esta a corrida da prova (readRaceBalanceCache).
+    runId: run.id || null,
   };
 }
 
@@ -457,7 +460,7 @@ export function pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAsse
   // outro (bug relatado 2026-09-15: o aviso ficava depois de falar com ela
   // pelos dois sítios).
   const race = (raceEvents || []).find((r) => r?.id === candidate.raceId);
-  if (hasRaceBalance(race)) return null;
+  if (hasRaceBalance(race, candidate.runId)) return null;
   return candidate;
 }
 
@@ -466,18 +469,38 @@ export function pendingRaceBalanceCandidate({ runs, meals, gymSessions, bodyAsse
  *  outro em círculo. */
 export const RACE_BALANCE_CACHE_PREFIX = 'ironcoach:balanco:';
 
-/** True se esta prova já tem o balanço da Carol: a coluna no servidor
- *  (race_events.coach_balance, qualquer dispositivo) ou a cópia local. */
-export function hasRaceBalance(race) {
-  if (!race?.id) return false;
-  if (race.coach_balance) return true;
+/** A cópia local do balanço desta prova, ou null se já não for dela.
+ *
+ *  Apagar a corrida da prova põe-na de volta a agendada e tira o balanço da
+ *  coluna (trigger de 2026-09-28); a cópia local só se apaga no dispositivo
+ *  onde se apagou. Nos outros ficava, e o hub mostrava o balanço velho — e,
+ *  registada a prova outra vez, não se pedia um novo. Por isso a cópia leva
+ *  a corrida a que se refere (runId) e só conta:
+ *    · numa prova concluída (a que voltou a agendada não tem balanço), e
+ *    · com a mesma corrida (registada outra vez, é outro balanço).
+ *  As cópias antigas, sem runId, valem enquanto a prova estiver concluída. */
+export function readRaceBalanceCache(race, runId = null) {
+  if (!race?.id) return null;
+  let parsed = null;
   try {
     const raw = window.localStorage.getItem(`${RACE_BALANCE_CACHE_PREFIX}${race.id}`);
-    const parsed = raw ? JSON.parse(raw) : null;
-    return !!(parsed && typeof parsed.text === 'string' && parsed.text.trim());
+    parsed = raw ? JSON.parse(raw) : null;
   } catch {
-    return false;
+    return null;
   }
+  if (!parsed || typeof parsed.text !== 'string' || !parsed.text.trim()) return null;
+  if (race.status && race.status !== 'concluida') return null;
+  if (parsed.runId && runId && parsed.runId !== runId) return null;
+  return parsed;
+}
+
+/** True se esta prova já tem o balanço da Carol: a coluna no servidor
+ *  (race_events.coach_balance, qualquer dispositivo) ou a cópia local, se
+ *  ainda for desta corrida (readRaceBalanceCache). */
+export function hasRaceBalance(race, runId = null) {
+  if (!race?.id) return false;
+  if (race.coach_balance) return true;
+  return !!readRaceBalanceCache(race, runId);
 }
 
 /** A prova cujo balanço a Carol ainda não fez — para o Início chamar por ele

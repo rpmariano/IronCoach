@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pickProactiveTrigger, listProactiveTriggers, pendingRaceBalance, pendingRaceBalanceCandidate, pendingBlockEndAlert, endingBlock, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
+import { pickProactiveTrigger, listProactiveTriggers, pendingRaceBalance, pendingRaceBalanceCandidate, pendingBlockEndAlert, endingBlock, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, hasRaceBalance, readRaceBalanceCache, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
 
 const NOW = new Date('2026-09-11T09:00:00Z'); // sexta-feira
 
@@ -139,6 +139,35 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       // Uma cópia vazia não conta.
       window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: '  ' }));
       expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)?.raceId).toBe('r1');
+    });
+
+    /* A corrida da prova apagada noutro dispositivo (trigger de 2026-09-28):
+       a coluna sai, mas a cópia local deste fica. Só vale enquanto for da
+       corrida atual e a prova estiver concluída. */
+    it('a cópia local só conta se ainda for da corrida da prova', () => {
+      window.localStorage.clear();
+      window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Correste bem.', runId: 'run-race' }));
+      expect(pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [raceRun], profile }), NOW)).toBeNull();
+      expect(hasRaceBalance(race, 'run-race')).toBe(true);
+      // Registada outra vez, com outra corrida: é outro balanço, pede-se.
+      const nova = { ...raceRun, id: 'run-nova' };
+      const c = pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [nova], profile }), NOW);
+      expect(c?.runId).toBe('run-nova');
+      expect(readRaceBalanceCache(race, 'run-nova')).toBeNull();
+    });
+
+    it('numa prova que voltou a agendada, a cópia local não conta', () => {
+      window.localStorage.clear();
+      window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Correste bem.', runId: 'run-race' }));
+      expect(hasRaceBalance({ ...race, status: 'agendada' }, 'run-race')).toBe(false);
+      // A coluna do servidor manda sempre.
+      expect(hasRaceBalance({ ...race, status: 'agendada', coach_balance: 'Novo.' })).toBe(true);
+    });
+
+    it('as cópias antigas, sem runId, valem numa prova concluída', () => {
+      window.localStorage.clear();
+      window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Correste bem.' }));
+      expect(readRaceBalanceCache(race, 'run-race')?.text).toBe('Correste bem.');
     });
 
     it('"Dispensar aviso" cala só o aviso do Início — o hub e o chat continuam a poder pedir o balanço', () => {

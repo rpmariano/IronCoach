@@ -475,6 +475,7 @@ export default function Coach() {
           text: data.model_message.content,
           suggestions: Array.isArray(data.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [],
           at: new Date().toISOString(),
+          runId: candidate.runId || null,
         });
       }
     }

@@ -13,7 +13,7 @@ import { existingRaceBalance, requestRaceBalance, balanceAlreadyGivenInChat, bal
    que muda no treino. */
 export default function RaceBalanceCard({ race, run, runs = [], profile = {}, numbersLine, onLeave, onSaved }) {
   const { raceEvents } = useAppStore();
-  const [balance, setBalance] = useState(() => existingRaceBalance(race));
+  const [balance, setBalance] = useState(() => existingRaceBalance(race, run?.id));
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const requestedRef = useRef(null);
