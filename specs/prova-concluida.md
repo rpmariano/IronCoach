@@ -21,6 +21,19 @@ distância. Não há sítio para o diploma, a medalha, nem as fotografias.
    `status = 'concluida'` automaticamente. "Marcar como concluída sem
    registo" mantém-se como ação secundária na agenda (quem não quer registar
    não é obrigado).
+
+   **A corrida de uma prova** (`findRaceRun` na app, `findRaceRunServer` no
+   servidor, as duas por `pickRaceRun` em
+   `supabase/functions/_shared/formulas/raceRun.ts`): a ligada por
+   `race_id`; sem ela, e só numa prova já concluída, uma competição sem
+   ligação do mesmo dia (registos antigos). Com várias possíveis, a mais
+   antiga (`created_at`, depois `id`), em qualquer ordem e dos dois lados
+   (2026-09-29). Antes ganhava a primeira da lista, e a chave do balanço da
+   Carol (`race_after:<prova>:<corrida>`) trocava entre recargas e
+   dispositivos. Com um registo duplicado (a mesma prova registada duas
+   vezes), fica a primeira tentativa; um duplicado novo não muda a chave, e
+   não se paga outro balanço. Se a primeira for a errada, a saída é apagá-la:
+   a outra corrida mantém a prova concluída.
 2. **As memórias vivem na prova**, não na corrida: `race_events.diploma_path`
    (1 ficheiro, imagem ou PDF), `race_events.medal_path` (1 foto),
    `race_events.photo_paths` (até 6 fotos). Bucket privado novo

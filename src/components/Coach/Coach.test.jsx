@@ -1033,7 +1033,7 @@ describe('Coach — "O balanço da prova" pedido a partir do Início (coachInten
     expect(body.message).toBe('');
     await waitFor(() => expect(screen.getByText(/superaste o objetivo/)).toBeInTheDocument());
     await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual({ race_after: CANDIDATE.key }));
-    // E fica na mesma cópia local que utils/raceBalance.js usa — se o hub
+    // E fica na mesma cópia local que o hub lê (readRaceBalanceCache) — se o hub
     // (RaceBalanceCard) for aberto a seguir, mostra logo isto em vez de
     // convidar a pedir o balanço outra vez.
     // Com a corrida a que se refere: só vale enquanto for ela a da prova.

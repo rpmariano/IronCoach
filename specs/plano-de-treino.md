@@ -245,9 +245,12 @@ concluiu uma prova, sem outra corrida ligada a ela, põe a prova de volta a
 `agendada` — "por registar". As memórias (diploma, medalha, fotos) ficam; o
 balanço da Carol sai (na BD e a cópia local), porque era sobre a corrida
 apagada, e registar outra vez pede um novo. A cópia local guarda a corrida a
-que se refere e só conta com essa corrida numa prova concluída — assim o
-balanço velho também deixa de aparecer nos outros dispositivos, onde a cópia
-não foi apagada (`readRaceBalanceCache`). Uma prova criada pela "Prova fora
+que se refere e só conta com essa corrida — assim o balanço velho também
+deixa de aparecer nos outros dispositivos, onde a cópia não foi apagada
+(`readRaceBalanceCache`). Sem corrida para comparar (a prova já sem corrida,
+ou uma cópia de antes de 2026-09-29, que não a guardava), só conta numa prova
+concluída; essas cópias antigas ainda podem mostrar o balanço velho num
+segundo dispositivo, até serem substituídas. Uma prova criada pela "Prova fora
 da agenda" também volta a agendada, não é apagada (o atleta apaga-a se quiser).
 Uma prova marcada como concluída à mão antes do registo volta a agendada, não
 a concluída. O aviso de confirmação da corrida diz isto antes de apagar, e só

@@ -17,8 +17,7 @@ import { planStartMoment } from '../../utils/planStart';
 import { todayISO } from '../../lib/utils';
 import { insightStateForCarol } from '../../utils/insightState';
 import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS } from '../../utils/coachBubbles';
-import { listProactiveTriggers, wasProactiveSent, markProactiveSent } from '../../utils/coachProactive';
-import { writeCachedBalance } from '../../utils/raceBalance';
+import { listProactiveTriggers, wasProactiveSent, markProactiveSent, writeRaceBalanceCache } from '../../utils/coachProactive';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { markCupMapHandled } from '../../utils/cupMap';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -471,11 +470,10 @@ export default function Coach() {
       // pedido aqui, é esta cópia local que faz o hub mostrar o que a Carol
       // já disse em vez de convidar a pedir-lho outra vez.
       if (candidate.raceId && data.model_message?.content) {
-        writeCachedBalance(candidate.raceId, {
+        writeRaceBalanceCache(candidate.raceId, {
           text: data.model_message.content,
           suggestions: Array.isArray(data.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [],
-          at: new Date().toISOString(),
-          runId: candidate.runId || null,
+          runId: candidate.runId,
         });
       }
     }

@@ -592,10 +592,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     };
     if (parsedHrZones.length > 0) details.hr_zones = parsedHrZones;
     if (runSourceApp) details.source_app = runSourceApp;
+    // Os parciais em qualquer tipo de corrida, como a analyze-run os grava
+    // (detailsFromExtraction): só no treino, uma prova com parciais dos prints
+    // abria sempre a pedir reanálise sem nada mudado (revisão de 2026-09-28).
+    if (parsedSplits.length) details.splits = parsedSplits;
     if (runKind === 'treino') {
       if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
       if (recoverySeconds) details.recovery_seconds = parseInt(recoverySeconds);
-      if (parsedSplits.length) details.splits = parsedSplits;
     } else {
       details.race_type = completedRaceType;
       if (officialTime) details.official_time_seconds = parseDurationToSeconds(officialTime);
@@ -2907,15 +2910,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           </div>
 
             {/* FC Zones */}
-            <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3 mb-4">
+            <div role="group" aria-labelledby="rr-zonas-titulo" className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3 mb-4">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[12px] font-bold text-[var(--text-3)]">Zonas de FC (tempo em cada zona)</label>
+                <p id="rr-zonas-titulo" className="text-[12px] font-bold text-[var(--text-3)]">Zonas de FC (tempo em cada zona)</p>
                 <AddButton
                   onClick={() => { setHrZones([...hrZones, { zone: '', minutes: '' }]); setIsFormDirty(true); }}
                   variant="run"
                   type="button"
                 >
-                  Adicionar Zona
+                  Adicionar zona
                 </AddButton>
               </div>
               {hrZones.length === 0 ? (
@@ -2966,28 +2969,38 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input id="rr-recuperacao-seg" type="number" value={recoverySeconds} onChange={e => { setRecoverySeconds(e.target.value); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
               </div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="text-[11px] text-[var(--text-3)]">Splits (voltas)</label>
-                <AddButton
-                  onClick={() => { setSplits([...splits, { distance_km: '', minutes: '' }]); setIsFormDirty(true); }}
-                  variant="run"
-                  type="button"
-                >
-                  Adicionar Split
-                </AddButton>
-              </div>
-              {splits.map((s, i) => (
-                <div key={i} className="flex gap-1 mb-1.5 items-center">
-                  <span className="text-[11px] text-[var(--text-3)] w-3">{i+1}.</span>
-                  <input type="number" step="0.01" placeholder="km" aria-label={`Distância da parcial ${i + 1} (km)`} value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1 text-xs" />
-                  <input type="text" placeholder="Tempo" aria-label={`Tempo da parcial ${i + 1}`} value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1 text-xs" />
-                  <button onClick={() => { setSplits(splits.filter((_, idx) => idx !== i)); setIsFormDirty(true); }} type="button"
-                    aria-label={`Remover parcial ${i + 1}`}
-                    className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0"><X className="w-3.5 h-3.5"/></button>
-                </div>
-              ))}
             </div>
           )}
+
+          {/* Parciais — em qualquer corrida (2026-09-29): a analyze-run lê-os
+              dos prints em qualquer tipo e o aviso de métricas em falta pede-os,
+              mas o editor só aparecia nos treinos de repetições. Mesmo desenho
+              das Zonas de FC: título a 12px em negrito, grupo com nome para
+              leitores de ecrã e frase de ajuda quando vazio. */}
+          <div role="group" aria-labelledby="rr-parciais-titulo" className="bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-white mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <p id="rr-parciais-titulo" className="text-[12px] font-bold text-[var(--text-3)]">Parciais (voltas)</p>
+              <AddButton
+                onClick={() => { setSplits([...splits, { distance_km: '', minutes: '' }]); setIsFormDirty(true); }}
+                variant="run"
+                type="button"
+              >
+                Adicionar parcial
+              </AddButton>
+            </div>
+            {splits.length === 0 ? (
+              <p className="text-[11px] text-[var(--text-3)]">Sem parciais ainda — usa "Adicionar parcial" para cada volta que o relógio mostrar.</p>
+            ) : splits.map((s, i) => (
+              <div key={i} className="flex gap-1 mb-1.5 items-center">
+                <span className="text-[11px] text-[var(--text-3)] w-3">{i+1}.</span>
+                <input type="number" step="0.01" placeholder="km" aria-label={`Distância da parcial ${i + 1} (km)`} value={s.distance_km} onChange={e => { const newSplits = [...splits]; newSplits[i].distance_km = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="w-20 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1 text-xs" />
+                <input type="text" placeholder="Tempo" aria-label={`Tempo da parcial ${i + 1}`} value={s.minutes} onChange={e => { const newSplits = [...splits]; newSplits[i].minutes = e.target.value; setSplits(newSplits); setIsFormDirty(true); }} className="flex-1 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1 text-xs" />
+                <button onClick={() => { setSplits(splits.filter((_, idx) => idx !== i)); setIsFormDirty(true); }} type="button"
+                  aria-label={`Remover parcial ${i + 1}`}
+                  className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0"><X className="w-3.5 h-3.5"/></button>
+              </div>
+            ))}
+          </div>
 
           {runIdToEdit && (() => {
             const editingRun = runs.find(r => r.id === runIdToEdit);

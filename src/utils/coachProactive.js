@@ -478,7 +478,9 @@ export const RACE_BALANCE_CACHE_PREFIX = 'ironcoach:balanco:';
  *  a corrida a que se refere (runId) e só conta:
  *    · numa prova concluída (a que voltou a agendada não tem balanço), e
  *    · com a mesma corrida (registada outra vez, é outro balanço).
- *  As cópias antigas, sem runId, valem enquanto a prova estiver concluída. */
+ *  As cópias antigas, sem runId, valem enquanto a prova estiver concluída —
+ *  por isso uma cópia de antes de 2026-09-29 ainda pode mostrar o balanço
+ *  velho num segundo dispositivo, até ser substituída. */
 export function readRaceBalanceCache(race, runId = null) {
   if (!race?.id) return null;
   let parsed = null;
@@ -489,9 +491,28 @@ export function readRaceBalanceCache(race, runId = null) {
     return null;
   }
   if (!parsed || typeof parsed.text !== 'string' || !parsed.text.trim()) return null;
+  // Com as duas corridas à vista, decide a corrida — mesmo numa prova ainda
+  // agendada com a corrida ligada (as memórias falharam a meio do registo:
+  // o balanço dessa corrida continua a ser dela; revisão de cf15c71).
+  if (parsed.runId && runId) return parsed.runId === runId ? parsed : null;
+  // Sem corrida para comparar (cópia antiga, ou a prova já sem corrida —
+  // apagada noutro dispositivo): só numa prova concluída.
   if (race.status && race.status !== 'concluida') return null;
-  if (parsed.runId && runId && parsed.runId !== runId) return null;
   return parsed;
+}
+
+/** Grava a cópia local do balanço desta prova, com a corrida a que se
+ *  refere, e devolve a entrada. Um só sítio para os dois que a escrevem: o
+ *  hub (requestRaceBalance) e o aviso do Início (Coach, coachIntent
+ *  race_balance). */
+export function writeRaceBalanceCache(raceId, { text, suggestions = [], runId = null }) {
+  const entry = { text, suggestions, at: new Date().toISOString(), runId: runId || null };
+  if (raceId) {
+    try {
+      window.localStorage.setItem(`${RACE_BALANCE_CACHE_PREFIX}${raceId}`, JSON.stringify(entry));
+    } catch { /* sem storage — o servidor tem a cópia na coluna */ }
+  }
+  return entry;
 }
 
 /** True se esta prova já tem o balanço da Carol: a coluna no servidor

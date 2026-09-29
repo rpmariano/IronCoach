@@ -950,6 +950,27 @@ describe('RunRegistration — editar corrida existente', () => {
   /* 2026-09-28: a análise não lê o tempo oficial nem a posição — mudar o
      valor não custa Gemini; apagá-lo continua a reanalisar (o manual é o único
      caminho que grava o null). */
+  it('uma prova com parciais dos prints abre sem pedir reanálise e mostra-os para editar', () => {
+    const PROVA = { ...EXISTING_RUN, kind: 'competicao', training_type: null, race_id: 'race-9', details: { cadence_spm: 165, race_type: '10k', splits: [{ distance_km: 1, time_seconds: 300 }, { distance_km: 1, time_seconds: 305 }] } };
+    useAppStore.setState({ profile: PROFILE, runs: [PROVA], raceEvents: [{ id: 'race-9', name: '10K de Lisboa', date: '2026-08-01', race_type: '10k', status: 'concluida' }] });
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
+    // 2026-09-29: o editor de parciais aparece em qualquer corrida, não só
+    // nos treinos de repetições.
+    expect(screen.getByLabelText('Distância da parcial 2 (km)')).toHaveValue(1);
+    expect(screen.getByLabelText('Tempo da parcial 2')).toBeInTheDocument();
+    // O grupo tem nome para leitores de ecrã, como as Zonas de FC.
+    expect(screen.getByRole('group', { name: 'Parciais (voltas)' })).toBeInTheDocument();
+  });
+
+  it('sem parciais, o bloco diz como os acrescentar', () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    expect(screen.getByText(/Sem parciais ainda/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar parcial/ }));
+    expect(screen.getByLabelText('Distância da parcial 1 (km)')).toBeInTheDocument();
+    expect(screen.queryByText(/Sem parciais ainda/)).not.toBeInTheDocument();
+  });
+
   it('um treino com temperatura dos prints abre sem pedir reanálise', () => {
     useAppStore.setState({ profile: PROFILE, runs: [{ ...EXISTING_RUN, details: { cadence_spm: 165, temperature_c: 24.5, regularity_score: 80 } }], raceEvents: [] });
     render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);

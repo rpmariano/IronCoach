@@ -23,7 +23,7 @@
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import webpush from "npm:web-push@3";
-import { listServerProactive, RACE_AFTER_DAYS_WITH_RUN, weekToReviewBounds, type PushPreferences, type ServerProactiveCandidate, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
+import { findRaceRunServer, listServerProactive, RACE_AFTER_DAYS_WITH_RUN, weekToReviewBounds, type PushPreferences, type ServerProactiveCandidate, type TriggerPlan } from "../_shared/formulas/proactiveTriggers.ts";
 import { ownSegmentFor } from "../_shared/formulas/vitrina.ts";
 import { TERRAIN_LOOKBACK_DAYS } from "../_shared/formulas/percentileSegments.ts";
 import { composePushMessage, type PushUsage } from "./pushText.ts";
@@ -395,10 +395,10 @@ async function handler(req: Request): Promise<Response> {
          frase fixa da P.3. Os números vêm só daqui, nunca do modelo. */
       // deno-lint-ignore no-explicit-any
       const race: any = (races || []).find((r: { id: string }) => r.id === picked.raceId) ?? null;
+      // A mesma corrida do candidato (findRaceRunServer: o recurso por data e,
+      // com várias, a mais antiga) — os números do texto são dessa corrida.
       // deno-lint-ignore no-explicit-any
-      const raceRun: any = candidate.hasRun && race
-        ? (runs || []).find((r: { race_id?: string | null }) => r.race_id === race.id) ?? null
-        : null;
+      const raceRun: any = candidate.hasRun && race ? findRaceRunServer(runs, race) : null;
       // Os avisos do Troféu e as provas de jornada no regime: frase fixa, sem Gemini.
       const fixed = cupNoticeMessage(picked);
       const message = fixed ? { ...fixed, generated: false, usage: null } : await composePushMessage(picked as ServerProactiveCandidate, {
