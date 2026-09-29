@@ -206,6 +206,35 @@ export default function NutritionDashboard() {
     [meals, biRange]
   );
 
+  /* O gráfico de adesão também passa a gramas (2026-09-29). O
+     dailyBreakdown do macroAdherence vem em g/kg e é partilhado com a
+     Carol (Edge Functions) — mudá-lo seria um deploy em produção, e
+     multiplicar de volta pelo peso herdava o arredondamento a 0,1 g/kg
+     (±3-4 g). Somam-se aqui as gramas diretamente das refeições; os alvos
+     vêm do adherence, que já resolve os valores por omissão. */
+  const dailyGrams = useMemo(() => {
+    if (!adherence) return [];
+    const byDay = {};
+    for (const meal of periodMeals) {
+      if (!byDay[meal.date]) byDay[meal.date] = { protein: 0, carbs: 0, fat: 0 };
+      const n = mealNutrients(meal);
+      byDay[meal.date].protein += n.protein || 0;
+      byDay[meal.date].carbs += n.carbs || 0;
+      byDay[meal.date].fat += n.fat || 0;
+    }
+    return Object.entries(byDay)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, t]) => ({
+        date,
+        protein: Math.round(t.protein),
+        carbs: Math.round(t.carbs),
+        fat: Math.round(t.fat),
+        proteinTarget: adherence.protein.target,
+        carbsTarget: adherence.carbs.target,
+        fatTarget: adherence.fat.target,
+      }));
+  }, [periodMeals, adherence]);
+
   /* Os KPIs mostravam os macros em g/kg e a semana como "kcal/dia" sem
      dizer que era uma média — e o utilizador lia a semana como total (962
      na semana < 999 no dia não fazia sentido). Agora: gramas absolutas, e
@@ -334,8 +363,8 @@ export default function NutritionDashboard() {
       })()}
 
       {/* BI Charts */}
-      {adherence?.dailyBreakdown && adherence.dailyBreakdown.length > 0 && (
-        <MacroComplianceChart dailyData={adherence.dailyBreakdown} />
+      {dailyGrams.length > 0 && (
+        <MacroComplianceChart dailyData={dailyGrams} />
       )}
 
       {eaData && eaData.length > 0 && (

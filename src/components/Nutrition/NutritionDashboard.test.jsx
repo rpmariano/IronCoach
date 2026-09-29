@@ -63,11 +63,22 @@ describe('NutritionDashboard', () => {
   it('mostra os macros em gramas absolutas por dia, não em g/kg', () => {
     render(<NutritionDashboard />);
 
-    expect(screen.getByText('80')).toBeInTheDocument();
+    // O 80 aparece também como número grande do gráfico de adesão (a
+    // proteína do último dia) — aqui interessa o KPI.
+    const kpiProtein = screen.getAllByText('80').filter(el => el.className.includes('text-2xl'));
+    expect(kpiProtein).toHaveLength(1);
     expect(screen.getByText('150')).toBeInTheDocument();
     expect(screen.getByText('40')).toBeInTheDocument();
     expect(screen.getAllByText('g/dia')).toHaveLength(3);
     expect(screen.queryByText('g/kg')).not.toBeInTheDocument();
+  });
+
+  it('o gráfico de adesão mostra gramas e os alvos do perfil em gramas', () => {
+    render(<NutritionDashboard />);
+    expect(screen.getByText('g de proteína no último dia')).toBeInTheDocument();
+    expect(screen.getByText('Proteína · alvo 200 g')).toBeInTheDocument();
+    expect(screen.getByText('Hidratos · alvo 300 g')).toBeInTheDocument();
+    expect(screen.getByText('Gordura · alvo 100 g')).toBeInTheDocument();
   });
 
   it('diz que a semana é uma média diária e de quantos dias', () => {

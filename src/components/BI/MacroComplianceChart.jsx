@@ -82,7 +82,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
           afterBody: (context) => {
             if (context.length === 0) return '';
             const d = dailyData[context[0].dataIndex];
-            return `\nAlvos:\nProt: ${fmtNumber(d.proteinTarget || 0, 1)} g/kg\nHidr: ${fmtNumber(d.carbsTarget || 0, 1)} g/kg\nGord: ${fmtNumber(d.fatTarget || 0, 1)} g/kg`;
+            return `\nAlvos:\nProt: ${fmtNumber(d.proteinTarget || 0, 0)} g\nHidr: ${fmtNumber(d.carbsTarget || 0, 0)} g\nGord: ${fmtNumber(d.fatTarget || 0, 0)} g`;
           }
         }
       }
@@ -103,8 +103,8 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
 
   // O "valor atual" deste gráfico é a proteína do último dia registado —
   // é a macro que decide a recuperação, e a que a Carol cita primeiro. Os
-  // valores de `dailyBreakdown` vêm em g/kg de peso corporal (é o que
-  // macroAdherence devolve), não em gramas absolutas.
+  // valores chegam em gramas absolutas por dia (o NutritionDashboard soma-as
+  // das refeições; até 2026-09-29 eram g/kg do macroAdherence).
   const lastDay = dailyData[dailyData.length - 1] || {};
   const lastProtein = Number(lastDay.protein || 0);
   const proteinTarget = Number(lastDay.proteinTarget || sample.proteinTarget || 0);
@@ -117,14 +117,14 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
       label="Adesão às macros"
       info={<MetricInfo text="Compara o que realmente comeste (barras coloridas) com os teus alvos ideais de Nutrição Desportiva (linhas tracejadas). Tens de bater as linhas tracejadas, especialmente a proteína, para garantirmos recuperação máxima!" />}
       hint={dailyData.length > 0 ? `${dailyData.length} dias` : undefined}
-      value={fmtNumber(lastProtein, 1)}
-      unit="g/kg de proteína no último dia"
+      value={fmtNumber(lastProtein, 0)}
+      unit="g de proteína no último dia"
       valueColor={proteinPct >= 85 ? 'var(--text-1)' : 'var(--warn)'}
       delta={proteinTarget > 0 ? { text: `${fmtNumber(proteinPct, 0)}% do alvo`, tone: proteinPct >= 85 ? 'ok' : 'warn' } : undefined}
       legend={[
-        { label: `Proteína · alvo ${fmtNumber(sample.proteinTarget || 0, 1)} g/kg`, color: PROT },
-        { label: `Hidratos · alvo ${fmtNumber(sample.carbsTarget || 0, 1)} g/kg`, color: CARB },
-        { label: `Gordura · alvo ${fmtNumber(sample.fatTarget || 0, 1)} g/kg`, color: FAT },
+        { label: `Proteína · alvo ${fmtNumber(sample.proteinTarget || 0, 0)} g`, color: PROT },
+        { label: `Hidratos · alvo ${fmtNumber(sample.carbsTarget || 0, 0)} g`, color: CARB },
+        { label: `Gordura · alvo ${fmtNumber(sample.fatTarget || 0, 0)} g`, color: FAT },
       ]}
       height={200}
     >
