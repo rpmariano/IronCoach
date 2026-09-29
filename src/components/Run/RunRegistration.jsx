@@ -592,10 +592,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     };
     if (parsedHrZones.length > 0) details.hr_zones = parsedHrZones;
     if (runSourceApp) details.source_app = runSourceApp;
+    // Os parciais em qualquer tipo de corrida, como a analyze-run os grava
+    // (detailsFromExtraction): só no treino, uma prova com parciais dos prints
+    // abria sempre a pedir reanálise sem nada mudado (revisão de 2026-09-28).
+    if (parsedSplits.length) details.splits = parsedSplits;
     if (runKind === 'treino') {
       if (warmupMinutes) details.warmup_minutes = parseInt(warmupMinutes);
       if (recoverySeconds) details.recovery_seconds = parseInt(recoverySeconds);
-      if (parsedSplits.length) details.splits = parsedSplits;
     } else {
       details.race_type = completedRaceType;
       if (officialTime) details.official_time_seconds = parseDurationToSeconds(officialTime);
