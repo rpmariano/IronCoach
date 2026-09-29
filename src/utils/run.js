@@ -1,5 +1,6 @@
 import { formatPaceMinKm as sharedFormatPaceMinKm } from '@formulas/paceFormat.ts';
 import { categorizeDistance, categorizeElevationRatio } from '@formulas/vocabulary.ts';
+import { pickRaceRun } from '@formulas/raceRun.ts';
 // Conversões de tempo e ritmo da Corrida, e os tipos de prova.
 //
 // Vive aqui (e não dentro de um componente) porque o registo de corrida e a
@@ -27,19 +28,14 @@ export function raceTerrainLabel(key) {
    anteriores a essa coluna existir — era assim que o hub encontrava a
    corrida antes, e falhava em tudo o que fosse registado no dia seguinte.
    Ponto único: o hub, o cartão do Início e o da agenda têm de concordar
-   sobre o que é uma prova "já registada". */
+   sobre o que é uma prova "já registada".
+
+   A regra vive em supabase/functions/_shared/formulas/raceRun.ts, partilhada
+   com o servidor (o coach-proactive-tick): o recurso por data só numa prova
+   já concluída, e com várias corridas possíveis a mais antiga — a mesma em
+   qualquer ordem da lista e em qualquer dispositivo (2026-09-29). */
 export function findRaceRun(runs, race) {
-  if (!race?.id) return null;
-  const list = runs || [];
-  const linked = list.find(r => r?.race_id === race.id);
-  if (linked) return linked;
-  // O recurso por data só numa prova já marcada como concluída: é o caso dos
-  // registos antigos (a prova foi fechada à mão e a competição desse dia era
-  // dela). Numa prova ainda agendada, uma competição sem race_id no mesmo
-  // dia é uma "prova fora da agenda" — ligá-la escondia o "Registar a prova"
-  // sem nunca a concluir (apanhado na revisão pré-deploy).
-  if (race.status !== 'concluida') return null;
-  return list.find(r => !r?.race_id && r?.kind === 'competicao' && r?.date === race.date) || null;
+  return pickRaceRun(runs, race);
 }
 
 // Atalhos de distância — não são as únicas escolhas possíveis (Fase 0 do

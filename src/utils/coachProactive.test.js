@@ -165,6 +165,16 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
       expect(hasRaceBalance({ ...race, status: 'agendada', coach_balance: 'Novo.' })).toBe(true);
     });
 
+    it('a chave do balanço é a mesma em qualquer ordem das corridas (desempate pela mais antiga)', () => {
+      window.localStorage.clear();
+      const velha = { ...raceRun, id: 'run-velha', created_at: '2026-09-11T10:00:00+00:00' };
+      const nova = { ...raceRun, id: 'run-nova', created_at: '2026-09-11T12:00:00+00:00' };
+      const k1 = pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [velha, nova], profile }), NOW)?.key;
+      const k2 = pendingRaceBalanceCandidate(data({ raceEvents: [race], runs: [nova, velha], profile }), NOW)?.key;
+      expect(k1).toBe('race_after:r1:run-velha');
+      expect(k2).toBe(k1);
+    });
+
     it('numa prova ainda agendada com a corrida ligada (memórias falhadas a meio), a cópia dessa corrida conta', () => {
       window.localStorage.clear();
       window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Correste bem.', runId: 'run-race' }));

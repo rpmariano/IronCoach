@@ -24,6 +24,7 @@ import { buildRacePacingPlan } from "./racePacing.ts";
 import { isRunLoadIntervention, runLoadInterventionKind } from "./runLoadAlert.ts";
 import { INTERVENTION_ORIGIN } from "./interventionOutcomes.ts";
 import { pickRaceOfDay } from "./mainRace.ts";
+import { pickRaceRun } from "./raceRun.ts";
 
 export const SILENCE_DAYS = 3;
 // Sem plano nenhum a cobrir o período, um "está tudo bem?" só depois de uma
@@ -367,15 +368,12 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((Date.parse(`${toIso.slice(0, 10)}T00:00:00Z`) - Date.parse(`${fromIso.slice(0, 10)}T00:00:00Z`)) / DAY_MS);
 }
 
-/** A mesma regra de src/utils/run.js findRaceRun: a corrida ligada à prova;
- *  por data só numa prova já concluída, e só uma competição sem ligação. */
+/** A mesma regra de src/utils/run.js findRaceRun — as duas usam
+ *  pickRaceRun (raceRun.ts): a corrida ligada à prova; por data só numa
+ *  prova já concluída, e só uma competição sem ligação; com várias, a mais
+ *  antiga, para a chave do balanço ser a mesma dos dois lados. */
 export function findRaceRunServer(runs: TriggerRun[] | null | undefined, race: TriggerRace): TriggerRun | null {
-  if (!race?.id) return null;
-  const list = runs || [];
-  const linked = list.find((r) => r?.race_id === race.id);
-  if (linked) return linked;
-  if (race.status !== "concluida") return null;
-  return list.find((r) => !r?.race_id && r?.kind === "competicao" && r?.date === race.date) || null;
+  return pickRaceRun(runs, race);
 }
 
 /* ── Balanço da semana (pedido de produto 2026-09-24) ───────────────────────
