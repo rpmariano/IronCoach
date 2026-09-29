@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { pickProactiveTrigger, listProactiveTriggers, pendingRaceBalance, pendingRaceBalanceCandidate, pendingBlockEndAlert, endingBlock, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, hasRaceBalance, readRaceBalanceCache, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
+import { pickProactiveTrigger, listProactiveTriggers, pendingRaceBalance, pendingRaceBalanceCandidate, pendingBlockEndAlert, endingBlock, lastRecordDate, wasProactiveSent, markProactiveSent, dismissProactiveAlert, hasRaceBalance, readRaceBalanceCache, writeRaceBalanceCache, SILENCE_DAYS, RACE_AFTER_DAYS_WITH_RUN, RACE_AFTER_DAYS_WITHOUT_RUN } from './coachProactive';
 
 const NOW = new Date('2026-09-11T09:00:00Z'); // sexta-feira
 
@@ -159,9 +159,24 @@ describe('coachProactive — quando a Carol escreve primeiro (CAROL.md §3 e §7
     it('numa prova que voltou a agendada, a cópia local não conta', () => {
       window.localStorage.clear();
       window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Correste bem.', runId: 'run-race' }));
-      expect(hasRaceBalance({ ...race, status: 'agendada' }, 'run-race')).toBe(false);
+      // A corrida foi apagada: a prova já não tem corrida para comparar.
+      expect(hasRaceBalance({ ...race, status: 'agendada' }, null)).toBe(false);
       // A coluna do servidor manda sempre.
       expect(hasRaceBalance({ ...race, status: 'agendada', coach_balance: 'Novo.' })).toBe(true);
+    });
+
+    it('numa prova ainda agendada com a corrida ligada (memórias falhadas a meio), a cópia dessa corrida conta', () => {
+      window.localStorage.clear();
+      window.localStorage.setItem('ironcoach:balanco:r1', JSON.stringify({ text: 'Correste bem.', runId: 'run-race' }));
+      expect(hasRaceBalance({ ...race, status: 'agendada' }, 'run-race')).toBe(true);
+      expect(hasRaceBalance({ ...race, status: 'agendada' }, 'outra')).toBe(false);
+    });
+
+    it('writeRaceBalanceCache grava a corrida e a hora, e devolve a entrada', () => {
+      window.localStorage.clear();
+      const entry = writeRaceBalanceCache('r1', { text: 'Correste bem.', runId: 'run-race' });
+      expect(entry).toMatchObject({ text: 'Correste bem.', suggestions: [], runId: 'run-race', at: expect.any(String) });
+      expect(readRaceBalanceCache(race, 'run-race')).toEqual(entry);
     });
 
     it('as cópias antigas, sem runId, valem numa prova concluída', () => {

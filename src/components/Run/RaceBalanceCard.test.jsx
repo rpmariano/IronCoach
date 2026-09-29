@@ -51,6 +51,25 @@ describe('RaceBalanceCard', () => {
     expect(useAppStore.getState().raceEvents[0].coach_balance).toBeUndefined();
   });
 
+  /* A corrida da prova apagada e registada outra vez (trigger de 2026-09-28,
+     noutro dispositivo): a cópia local deste é da corrida antiga. */
+  it('uma cópia local de outra corrida não conta: pede o balanço desta, e guarda-o com ela', async () => {
+    window.localStorage.setItem('ironcoach:balanco:race-1', JSON.stringify({ text: 'Balanço velho.', runId: 'run-velha' }));
+    mocks.invoke.mockResolvedValue({ data: { model_message: { id: 'm1', content: BALANCO }, suggestions: [] }, error: null });
+    render(<RaceBalanceCard race={RACE} run={RUN} runs={[RUN]} profile={PROFILE} />);
+    await screen.findByTestId('race-balance-carol');
+    expect(screen.queryByText('Balanço velho.')).not.toBeInTheDocument();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(window.localStorage.getItem('ironcoach:balanco:race-1'))).toMatchObject({ text: BALANCO, runId: 'run-1' });
+  });
+
+  it('a cópia local desta corrida mostra-se logo, sem pedir outra vez', async () => {
+    window.localStorage.setItem('ironcoach:balanco:race-1', JSON.stringify({ text: 'Balanço guardado.', runId: 'run-1' }));
+    render(<RaceBalanceCard race={RACE} run={RUN} runs={[RUN]} profile={PROFILE} />);
+    expect(await screen.findByText('Balanço guardado.')).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
   it('entrega o balanço a quem monta o hub, para o gravar pelo caminho do RunAgenda', async () => {
     mocks.invoke.mockResolvedValue({ data: { model_message: { id: 'm1', content: BALANCO }, suggestions: [] }, error: null });
     const onSaved = vi.fn();

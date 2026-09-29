@@ -1,6 +1,6 @@
 import { invokeEdgeFunctionWithTimeout } from '../lib/supabase';
 import { useAppStore } from '../store';
-import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, readRaceBalanceCache, RACE_BALANCE_CACHE_PREFIX } from './coachProactive';
+import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, readRaceBalanceCache, writeRaceBalanceCache } from './coachProactive';
 
 /* O balanço completo da Carol no hub da prova (pedido 2026-09-13).
 
@@ -21,23 +21,6 @@ import { buildRaceAfterCandidate, markProactiveSent, wasProactiveSent, readRaceB
    legível), não como Error — quem apanha lia `err.message` e ficava sem
    nada (apanhado pelo hook de pre-push, 2026-09-13). */
 const asError = (error) => (error instanceof Error ? error : new Error(typeof error === 'string' ? error : error?.message || 'Falha na chamada ao servidor.'));
-
-const CACHE_PREFIX = RACE_BALANCE_CACHE_PREFIX;
-
-/* Exportada: o coachIntent 'race_balance' do Início (Coach.jsx) pede o
-   balanço por este mesmo caminho (proactive_force), mas passando pelo fluxo
-   normal do chat, não por requestRaceBalance — precisa de gravar a mesma
-   cópia local para o hub, se aberto a seguir, mostrar logo o balanço já
-   dado em vez de convidar a pedi-lo outra vez (specs/gamificacao-provas.md,
-   "os dois sítios"). A entrada leva `runId`, a corrida deste balanço
-   (readRaceBalanceCache). */
-export function writeCachedBalance(raceId, entry) {
-  try {
-    window.localStorage.setItem(`${CACHE_PREFIX}${raceId}`, JSON.stringify(entry));
-  } catch {
-    /* sem storage — o servidor tem a cópia */
-  }
-}
 
 /** O balanço que já existe para esta prova: a coluna, senão a cópia local
  *  — se ainda for desta corrida (readRaceBalanceCache). */
@@ -78,8 +61,7 @@ export async function requestRaceBalance({ race, run, runs, raceEvents, profile 
   const suggestions = Array.isArray(data?.suggestions) ? data.suggestions.filter((s) => typeof s === 'string' && s.trim()) : [];
 
   markProactiveSent(profile?.id, candidate);
-  const entry = { text, suggestions, at: new Date().toISOString(), runId: candidate.runId };
-  writeCachedBalance(race.id, entry);
+  const entry = writeRaceBalanceCache(race.id, { text, suggestions, runId: candidate.runId });
 
   // Só o chat: escrever em raceEvents a partir daqui fazia o efeito de
   // carregamento do RunAgenda repor o rascunho por gravar dos "Detalhes"
