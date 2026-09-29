@@ -14,8 +14,9 @@ import { todayISO } from '../../lib/utils';
       existiu em produção: passava por acaso porque o componente somava esses
       campos diretamente.
    2. Os valores mostrados são MÉDIAS DIÁRIAS no período (por omissão a
-      semana), e os macros aparecem em g/kg de peso corporal — não totais
-      absolutos. Só as calorias ficam em kcal/dia. */
+      semana), em gramas absolutas por dia (g/dia) — já não em g/kg, que o
+      utilizador achou pouco útil (2026-09-29). Uma legenda por cima diz que
+      é média e de quantos dias, para a semana não se ler como total. */
 
 const PROFILE = {
   weight_kg: 70,
@@ -59,35 +60,20 @@ describe('NutritionDashboard', () => {
     expect(screen.getByText('kcal/dia')).toBeInTheDocument();
   });
 
-  it('mostra os macros em g/kg de peso corporal, não em totais', () => {
+  it('mostra os macros em gramas absolutas por dia, não em g/kg', () => {
     render(<NutritionDashboard />);
 
-    // 80 g proteína / 70 kg = 1.1 g/kg (arredondado a uma casa)
-    expect(screen.getByText('1.1')).toBeInTheDocument();
-    // 150 g hidratos / 70 kg = 2.1 g/kg
-    expect(screen.getByText('2.1')).toBeInTheDocument();
-    // 40 g gordura / 70 kg = 0.6 g/kg
-    expect(screen.getByText('0.6')).toBeInTheDocument();
-
-    // Três KPIs de macro, todos em g/kg (as calorias ficam em kcal/dia).
-    expect(screen.getAllByText('g/kg')).toHaveLength(3);
+    expect(screen.getByText('80')).toBeInTheDocument();
+    expect(screen.getByText('150')).toBeInTheDocument();
+    expect(screen.getByText('40')).toBeInTheDocument();
+    expect(screen.getAllByText('g/dia')).toHaveLength(3);
+    expect(screen.queryByText('g/kg')).not.toBeInTheDocument();
   });
 
-  it('usa o peso da avaliação corporal mais recente em vez do perfil', () => {
-    // Com 80 kg em vez de 70, a proteína por kg desce: 80/80 = 1.0 g/kg.
-    useAppStore.setState({
-      bodyAssessments: [
-        { date: todayISO(), weight_kg: 80 },
-        { date: '2020-01-01', weight_kg: 60 },
-      ],
-    });
+  it('diz que a semana é uma média diária e de quantos dias', () => {
     render(<NutritionDashboard />);
-    // Desde o ponto 6 do redesenho o "1" aparece duas vezes: no KPI da
-    // proteína e no número grande do ChartFrame da adesão às macros (que
-    // mostra a proteína do último dia, também em g/kg). Aqui interessa o
-    // KPI — é ele que prova qual o peso usado no denominador.
-    const kpiValue = screen.getAllByText('1').filter(el => el.className.includes('text-2xl'));
-    expect(kpiValue).toHaveLength(1);
+    expect(screen.getByTestId('nutrition-kpi-caption'))
+      .toHaveTextContent('Média diária de 1 dia com registo');
   });
 
   /* Ponto 7 do redesenho: sem refeições no período, o ecrã deixa de mostrar

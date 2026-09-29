@@ -206,6 +206,18 @@ export default function NutritionDashboard() {
     [meals, biRange]
   );
 
+  /* Os KPIs mostravam os macros em g/kg e a semana como "kcal/dia" sem
+     dizer que era uma média — e o utilizador lia a semana como total (962
+     na semana < 999 no dia não fazia sentido). Agora: gramas absolutas, e
+     fora do "Dia" a legenda diz que é média diária e de quantos dias. */
+  const isSingleDay = activeFilter === 'dia';
+  const loggedDays = new Set(periodMeals.map(m => m.date)).size;
+  const kcalUnit = isSingleDay ? 'kcal' : 'kcal/dia';
+  const gramsUnit = isSingleDay ? 'g' : 'g/dia';
+  const kpiCaption = isSingleDay
+    ? 'Total de hoje · % face ao alvo diário'
+    : `Média diária de ${loggedDays} ${loggedDays === 1 ? 'dia' : 'dias'} com registo · % face ao alvo`;
+
   if (periodMeals.length === 0) {
     return (
       <div className="space-y-4 fade-in pb-20">
@@ -234,6 +246,7 @@ export default function NutritionDashboard() {
         onChange={setActiveFilter}
         module="nutricao"
       />
+      <p data-testid="nutrition-kpi-caption" className="px-1 text-[11px] text-[var(--text-3)]">{kpiCaption}</p>
       {/* 2x2 KPI Grid */}
       <div className="grid grid-cols-2 gap-3 px-1">
         <div 
@@ -243,7 +256,7 @@ export default function NutritionDashboard() {
           <KPICard 
             label="Calorias"
             value={adherence?.calories?.actual ?? 0}
-            unit="kcal/dia"
+            unit={kcalUnit}
             icon={Flame}
             moduleColor={modColor}
             status={getComplianceStatus(adherence?.calories?.compliance_pct)}
@@ -257,8 +270,8 @@ export default function NutritionDashboard() {
         >
           <KPICard 
             label="Proteína"
-            value={adherence?.protein?.actual_g_per_kg ?? 0}
-            unit="g/kg"
+            value={adherence?.protein?.actual_g ?? 0}
+            unit={gramsUnit}
             icon={Beef}
             moduleColor={modColor}
             status={getComplianceStatus(adherence?.protein?.compliance_pct)}
@@ -272,8 +285,8 @@ export default function NutritionDashboard() {
         >
           <KPICard 
             label="Hidratos"
-            value={adherence?.carbs?.actual_g_per_kg ?? 0}
-            unit="g/kg"
+            value={adherence?.carbs?.actual_g ?? 0}
+            unit={gramsUnit}
             icon={Wheat}
             moduleColor={modColor}
             status={getComplianceStatus(adherence?.carbs?.compliance_pct)}
@@ -287,8 +300,8 @@ export default function NutritionDashboard() {
         >
           <KPICard 
             label="Gordura"
-            value={adherence?.fat?.actual_g_per_kg ?? 0}
-            unit="g/kg"
+            value={adherence?.fat?.actual_g ?? 0}
+            unit={gramsUnit}
             icon={Droplet}
             moduleColor={modColor}
             status={getComplianceStatus(adherence?.fat?.compliance_pct)}
