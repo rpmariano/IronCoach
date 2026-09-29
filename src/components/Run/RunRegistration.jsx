@@ -2969,6 +2969,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   <input id="rr-recuperacao-seg" type="number" value={recoverySeconds} onChange={e => { setRecoverySeconds(e.target.value); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none" />
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Parciais — em qualquer corrida (2026-09-29): a analyze-run lê-os
+              dos prints em qualquer tipo e o aviso de métricas em falta pede-os,
+              mas o editor só aparecia nos treinos de repetições — numa prova
+              ou num contínuo ficavam invisíveis e sem onde os preencher. */}
+          <div className="bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-white mb-4">
               <div className="flex items-center justify-between mb-1.5">
                 <label className="text-[11px] text-[var(--text-3)]">Splits (voltas)</label>
                 <AddButton
@@ -2989,8 +2997,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                     className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0"><X className="w-3.5 h-3.5"/></button>
                 </div>
               ))}
-            </div>
-          )}
+          </div>
 
           {runIdToEdit && (() => {
             const editingRun = runs.find(r => r.id === runIdToEdit);
