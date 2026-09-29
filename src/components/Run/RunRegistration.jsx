@@ -128,6 +128,12 @@ const RACE_CLASSIFICATION_KEYS = new Set([
   'bib_number', 'age_group', 'age_group_position', 'gender_position',
   'participants', 'gun_time_seconds', 'official_splits',
 ]);
+// O que só vem dos prints e o formulário não edita (espelha IMAGE_ONLY_DETAILS
+// em analyze-run, menos source_app, que o formulário transporta): a Carol lê a
+// temperatura, mas o atleta não a pode mudar aqui e a analyze-run guarda-a em
+// cada gravação (keepImageOnlyDetails) — na assinatura só dava falsos
+// positivos (qualquer corrida com temperatura abria a pedir reanálise).
+const IMAGE_ONLY_DETAIL_KEYS = new Set(['regularity_score', 'recommended_hydration_ml', 'temperature_c']);
 
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
   const { profile, runs, setRuns, setNavGuard, activeTab, shoes, raceEvents } = useAppStore();
@@ -543,7 +549,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     notes: v.notes?.trim() || null,
     details: Object.fromEntries(
       Object.entries(v.details || {})
-        .filter(([key, val]) => val !== null && val !== undefined && val !== '' && !RACE_CLASSIFICATION_KEYS.has(key))
+        .filter(([key, val]) => val !== null && val !== undefined && val !== '' && !RACE_CLASSIFICATION_KEYS.has(key) && !IMAGE_ONLY_DETAIL_KEYS.has(key))
         // O tempo oficial e a posição: a Carol não os lê (2026-09-28: só
         // reanalisa o que ela lê) — mudar o valor grava-se por
         // persistRaceResultDetails, sem Gemini. Conta só se EXISTEM: apagá-los
