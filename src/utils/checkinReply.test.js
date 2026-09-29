@@ -170,4 +170,20 @@ describe('checkinReply', () => {
     expect(comVida({}).text).toBe('Obrigada. Um dia de cada vez na recuperação da cirurgia.');
     for (const o of [{ sleep: 1 }, { pain: 6 }, { energy: 1 }, {}]) expectCarolVoice(comVida(o).text);
   });
+
+  /* Pedido 2026-09-29: dor 3 no braço, quatro dias depois da cirurgia ao
+     bíceps, respondia como uma dor ligeira qualquer — sem dor nenhuma ela
+     lembrava-se da cirurgia, com uma dor no braço operado esquecia-se. */
+  it('uma dor ligeira no sítio da cirurgia é da recuperação; noutro sítio, não', () => {
+    const vida = { tipo: 'cirurgia', dias: 4, recupera: 14, a: 'a cirurgia', da: 'da cirurgia', parte: 'o braço' };
+    const comVida = (o, v = vida) => checkinReply([dia(HOJE, o)], HOJE, { tipo: 'descanso', corrida: false, vespera: false, vida: v });
+    expect(comVida({ pain: 3, pain_location: 'Braço direito' }).text)
+      .toBe('Uma dor ligeira (braço direito) na recuperação da cirurgia. Fica anotada; se subir, diz-me.');
+    expect(comVida({ pain: 2, pain_location: 'bíceps' }).text).toMatch(/na recuperação da cirurgia/);
+    expect(comVida({ pain: 2 }).text).toBe('Uma dor ligeira na recuperação da cirurgia. Fica anotada; se subir, diz-me.');
+    expect(comVida({ pain: 3, pain_location: 'Joelho' }).text).toBe('Uma dor ligeira (joelho). Fica anotada; se subir, diz-me.');
+    const gripe = { tipo: 'doenca', dias: 1, recupera: 5, a: 'a gripe', da: 'da gripe', parte: null };
+    expect(comVida({ pain: 2 }, gripe).text).toBe('Uma dor ligeira. Fica anotada; se subir, diz-me.');
+    expectCarolVoice(comVida({ pain: 3, pain_location: 'Braço direito' }).text);
+  });
 });

@@ -47,6 +47,9 @@ const PARTES = [
   [new RegExp(`${L}g[ée]meos?${R}`, 'iu'), 'o gémeo'],
 ];
 
+/** A parte do corpo de que um texto fala ("Braço direito" → "o braço"), ou null. */
+export const parteDoCorpo = (texto) => PARTES.find(([re]) => re.test(String(texto || '')))?.[1] || null;
+
 const SEMANAS = { uma: 1, duas: 2, 'três': 3, tres: 3, quatro: 4, cinco: 5, seis: 6, oito: 8 };
 
 /** A data do acontecimento escrita na nota: "2026-09-25" (como ela as
@@ -107,7 +110,7 @@ export function eventoDaVida(notes, hoje) {
     const dias = dayIndex(hoje) - dayIndex(data);
     const recupera = recuperacaoDaNota(texto) || t.recupera;
     if (dias < (t.tipo === 'cirurgia' ? -1 : 0) || dias > recupera) continue;
-    const parte = PARTES.find(([re]) => re.test(texto))?.[1] || null;
+    const parte = parteDoCorpo(texto);
     eventos.push({ tipo: t.tipo, data, dias, recupera, ...nomeDe(t.tipo, texto), parte, nota: texto });
   }
   eventos.sort((x, y) => Math.abs(x.dias) - Math.abs(y.dias) || y.dias - x.dias);
