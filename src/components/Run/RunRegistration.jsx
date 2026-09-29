@@ -2918,7 +2918,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   variant="run"
                   type="button"
                 >
-                  Adicionar Zona
+                  Adicionar zona
                 </AddButton>
               </div>
               {hrZones.length === 0 ? (
@@ -2974,10 +2974,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
           {/* Parciais — em qualquer corrida (2026-09-29): a analyze-run lê-os
               dos prints em qualquer tipo e o aviso de métricas em falta pede-os,
-              mas o editor só aparecia nos treinos de repetições — numa prova
-              ou num contínuo ficavam invisíveis e sem onde os preencher. */}
-          {/* Mesmo desenho das Zonas de FC: título a 12px em negrito, grupo
-              com nome para leitores de ecrã e frase de ajuda quando vazio. */}
+              mas o editor só aparecia nos treinos de repetições. Mesmo desenho
+              das Zonas de FC: título a 12px em negrito, grupo com nome para
+              leitores de ecrã e frase de ajuda quando vazio. */}
           <div role="group" aria-labelledby="rr-parciais-titulo" className="bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-white mb-4">
             <div className="flex items-center justify-between mb-2">
               <p id="rr-parciais-titulo" className="text-[12px] font-bold text-[var(--text-3)]">Parciais (voltas)</p>
