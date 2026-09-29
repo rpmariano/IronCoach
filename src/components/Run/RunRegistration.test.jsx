@@ -959,6 +959,16 @@ describe('RunRegistration — editar corrida existente', () => {
     // nos treinos de repetições.
     expect(screen.getByLabelText('Distância da parcial 2 (km)')).toHaveValue(1);
     expect(screen.getByLabelText('Tempo da parcial 2')).toBeInTheDocument();
+    // O grupo tem nome para leitores de ecrã, como as Zonas de FC.
+    expect(screen.getByRole('group', { name: 'Parciais (voltas)' })).toBeInTheDocument();
+  });
+
+  it('sem parciais, o bloco diz como os acrescentar', () => {
+    render(<RunRegistration onClose={onClose} runIdToEdit="run-9" />);
+    expect(screen.getByText(/Sem parciais ainda/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar parcial/ }));
+    expect(screen.getByLabelText('Distância da parcial 1 (km)')).toBeInTheDocument();
+    expect(screen.queryByText(/Sem parciais ainda/)).not.toBeInTheDocument();
   });
 
   it('um treino com temperatura dos prints abre sem pedir reanálise', () => {
