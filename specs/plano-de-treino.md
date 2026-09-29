@@ -236,9 +236,9 @@ nunca passa para a corrida de uma prova (`race_id` preenchido), e um item
 os itens vão atrás dela (sem isto, apagar a conta podia falhar no check da
 FK). Antes, a FK (`on delete set null`) deixava o item
 `concluido` sem registo: o Início dizia "Feito." e a adesão contava-o. O
-O ecrã que apaga relê o plano (e as provas): o Calendário e as Corridas pelo
-`reloadAfterRunDeleted`, o cartão da corrida e o da sessão de ginásio pelo
-carregamento inteiro.
+ecrã que apaga relê o plano (e as provas): o Calendário e as Corridas pelo
+`reloadAfterRunDeleted`, o cartão da sessão de ginásio pelo carregamento
+inteiro.
 
 **A prova também volta atrás** (pedido de 2026-09-28): apagar a corrida que
 concluiu uma prova, sem outra corrida ligada a ela, põe a prova de volta a

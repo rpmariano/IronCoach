@@ -66,7 +66,7 @@ function FilterChip({ label, color, tone, active, onClick, testId }) {
 }
 
 export default function Calendar() {
-  const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setGymSessions, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate, calendarView } = useAppStore();
+  const { runs, raceEvents, gymSessions, meals, bodyAssessments, setRuns, setRaceEvents, setMeals, setBodyAssessments, setEditingRaceId, pendingCalendarDate, clearPendingCalendarDate, calendarView } = useAppStore();
   const { showToast } = useToast();
 
   // Onde abrir. Gravar uma prova nova (RunAgenda) deixa aqui a data da
@@ -247,19 +247,6 @@ export default function Calendar() {
     } catch (err) {
       showToast('Erro ao eliminar corrida.', 'error');
       setRuns(previous);
-    }
-  };
-
-  const handleDeleteGym = async (id) => {
-    const previous = [...gymSessions];
-    setGymSessions(gymSessions.filter(s => s.id !== id));
-    try {
-      const { error } = await supabase.from('workout_sessions').delete().eq('id', id);
-      if (error) throw error;
-      showToast('Treino eliminado');
-    } catch (err) {
-      showToast('Erro ao eliminar treino.', 'error');
-      setGymSessions(previous);
     }
   };
 
@@ -555,7 +542,7 @@ export default function Calendar() {
             (pedido 2026-09-13). As provas ficam em cima: são o dia. */}
         {!isRaceList && orderDayRecords({ runs: selectedRuns, gym: selectedGym, meals: selectedMeals, body: selectedBody }).map(({ kind, item }) => {
           if (kind === 'run') return <RunCard key={`run-${item.id}`} run={item} onEdit={setEditingRunId} onDelete={handleDeleteRun} />;
-          if (kind === 'gym') return <GymSessionCard key={`gym-${item.id}`} session={item} onEdit={setEditingGymId} onDelete={handleDeleteGym} />;
+          if (kind === 'gym') return <GymSessionCard key={`gym-${item.id}`} session={item} onEdit={setEditingGymId} />;
           if (kind === 'meal') return <MealCard key={`meal-${item.id}`} meal={item} onEdit={setEditingMealId} onDelete={handleDeleteMeal} />;
           return <BodyAssessmentCard key={`body-${item.id}`} assessment={item} onEdit={setEditingBodyId} onDelete={handleDeleteBody} />;
         })}

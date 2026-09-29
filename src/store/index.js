@@ -382,8 +382,11 @@ export const useAppStore = create((set, get) => ({
     // Um pedido que falha (a rede, logo depois de apagar um registo) não
     // é um plano vazio: fica o que lá estava (revisão pré-deploy). E a
     // resposta de uma conta que entretanto saiu não se escreve na seguinte.
-    if (plansError || itemsError) return get().coachPlans;
-    if ((get().session?.user?.id || get().profile?.id) !== userId) return get().coachPlans;
+    // Devolve null, não o que está no store: o Coach abre a proposta
+    // pendente do que recebe, e a do store pode ser a que o coach-chat
+    // acabou de recusar — aceitá-la ficava 'aceite' (revisão de fdd212f).
+    if (plansError || itemsError) return null;
+    if ((get().session?.user?.id || get().profile?.id) !== userId) return null;
     set({ coachPlans: plans || [], coachPlanItems: items || [] });
       return plans;
   },
