@@ -9,6 +9,7 @@ import {
   raceDistanceLabel,
   racePriorityLabel,
   racePriorityDescription,
+  findRaceRun,
 } from './run';
 
 describe('parsePaceToSeconds', () => {
@@ -125,5 +126,24 @@ describe('raceDistanceLabel', () => {
 
   it('devolve vazio sem distância', () => {
     expect(raceDistanceLabel(null)).toBe('');
+  });
+});
+
+/* A corrida de uma prova: a mesma em qualquer ordem da lista (2026-09-29) —
+   a regra é a do servidor (supabase/functions/_shared/formulas/raceRun.ts). */
+describe('findRaceRun', () => {
+  const race = { id: 'r1', status: 'concluida', date: '2026-09-13' };
+  const a = { id: 'a', race_id: 'r1', created_at: '2026-09-13T10:00:00+00:00' };
+  const b = { id: 'b', race_id: 'r1', created_at: '2026-09-13T11:00:00+00:00' };
+
+  it('com duas ligadas, a mais antiga — em qualquer ordem', () => {
+    expect(findRaceRun([a, b], race)?.id).toBe('a');
+    expect(findRaceRun([b, a], race)?.id).toBe('a');
+  });
+
+  it('por data só numa prova concluída', () => {
+    const porData = { id: 'x', kind: 'competicao', date: '2026-09-13' };
+    expect(findRaceRun([porData], race)?.id).toBe('x');
+    expect(findRaceRun([porData], { ...race, status: 'agendada' })).toBeNull();
   });
 });
