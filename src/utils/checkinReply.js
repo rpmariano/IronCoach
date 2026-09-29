@@ -20,6 +20,7 @@
    servem qualquer dia. */
 
 import { todaysCheckin } from './checkin';
+import { parteDoCorpo } from './carolVida';
 
 const addDays = (iso, n) => {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -168,6 +169,14 @@ export function checkinReply(checkins, today, dia = null, { conversaSobreADor } 
     return { mood: 'neutral', tone: 'coach', text };
   }
   if (dor > 0) {
+    // Uma dor ligeira no sítio da cirurgia ou da lesão de que ela sabe (ou
+    // sem sítio dito) é da recuperação; ignorá-la aqui, e falar dela sem dor
+    // nenhuma, era ao contrário (pedido 2026-09-29). Uma dor noutro sítio não
+    // se cola à recuperação, e o "é normal" fica para a equipa médica.
+    const daRecuperacao = vida && vida.tipo !== 'doenca' && (!onde || !vida.parte || parteDoCorpo(onde) === vida.parte);
+    if (daRecuperacao) {
+      return { mood: 'neutral', tone: 'coach', text: `Uma dor ligeira${noLocal} na recuperação ${vida.da}. Fica anotada; se subir, diz-me.` };
+    }
     return { mood: 'neutral', tone: 'coach', text: `Uma dor ligeira${noLocal}. Fica anotada; se subir, diz-me.` };
   }
 
