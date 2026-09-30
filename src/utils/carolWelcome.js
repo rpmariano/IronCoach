@@ -23,7 +23,7 @@ import { planItemTitle, raceForDate, raceNameForDate, hasAnyRecord, isRacePlanIt
 import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
 import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
 import { evaluatePrescriptions } from '@formulas/prescriptionAdherence.ts';
-import { eventoDaVida, frasesDaVida } from './carolVida';
+import { eventoDaVida, frasesDaVida, frasesDeAcompanhamento } from './carolVida';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
 
@@ -894,6 +894,18 @@ export function buildWelcome(variant, data = {}, now = new Date(), timeZone = we
   if (lines.length < 2 && variant !== 'madrugada' && !provaHoje && diaHoje.tipo !== 'provaFeita' && !(vida && vida.dias >= 0)) {
     const extra = dataLine(variant, data, hoje, kmHoje);
     if (extra) lines.push(extra);
+  }
+
+  /* Ainda sem nenhuma linha? Nunca fica só o "Boa tarde" (2026-09-30: tarde
+     de descanso, tudo registado, em recuperação — cada regra calava-se por
+     boas razões, e juntas não sobrava nada). Primeiro, que continua atenta à
+     recuperação, sem perguntar; depois, o que o dia é. */
+  if (!lines.length && variant !== 'madrugada' && !provaHoje && diaHoje.tipo !== 'provaFeita') {
+    const acompanha = frasesDeAcompanhamento(vida);
+    if (acompanha) lines.push(pick(acompanha, 'acompanhamento'));
+    if (diaHoje.tipo === 'descanso') lines.push(pick(P.descansoHoje(historicoDoDescanso(data, hoje)), 'descansoHoje'));
+    else if (diaHoje.tipo === 'semTreino') lines.push(pick(P.semTreinoHoje, 'semTreinoHoje'));
+    else if (diaHoje.tipo === 'feito') lines.push(linhaDoFeito());
   }
 
   if (action === 'checkin') {

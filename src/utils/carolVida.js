@@ -196,6 +196,22 @@ export function frasesDaVida(evento, { momento = 'dia', variant = 'manha', depoi
      primeiras semanas — uma imobilização de seis semanas não é assunto de
      todas as manhãs (à noite e no check-in, a recuperação conta toda). */
   if (variant !== 'manha' || dias > Math.min(recupera, 14)) return null;
+  return frasesDeAcompanhamento(evento);
+}
+
+/**
+ * Ela continua atenta, sem perguntar nada — para quando, fora da manhã, as
+ * boas-vindas ficavam sem nenhuma linha. Caso de 2026-09-30: 13h, dia de
+ * descanso, check-in e refeições feitos, cinco dias depois da cirurgia. A
+ * frase da recuperação só se diz de manhã e a linha de números cala-se
+ * durante uma recuperação, por isso ficava só "Boa tarde, Rui." Devolve
+ * null sem acontecimento.
+ */
+export function frasesDeAcompanhamento(evento) {
+  if (!evento) return null;
+  const { tipo, dias, a, da, parte } = evento;
+  if (dias < 0) return [`Amanhã é ${a}. Hoje, descanso e cabeça tranquila; estou contigo.`];
+  if (tipo === 'doenca') return ['Espero que o dia esteja a correr melhor. Descansa o que puderes.'];
   return [
     `Continuamos na recuperação ${da}. Um dia de cada vez.`,
     parte ? `${maiuscula(parte)} ainda está a recuperar. Cada dia de paciência conta.` : 'A recuperação também é treino. Cada dia de paciência conta.',

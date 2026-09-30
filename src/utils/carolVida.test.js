@@ -138,6 +138,35 @@ describe('as boas-vindas à volta da cirurgia', () => {
     expect(frasesDaVida(eventoDaVida([NOTA], '2026-09-28'), { momento: 'sono' })).toContain(noite.lines[0]);
   });
 
+  /* O caso do ecrã de 2026-09-30: 13h, descanso, check-in e refeições
+     feitos, cinco dias depois da cirurgia — ficava só "Boa tarde, Rui." */
+  it('à tarde, num descanso com tudo registado, não fica só a saudação', () => {
+    const w = buildWelcome('tarde', data({
+      coachPlanItems: [{ id: 'd', plan_id: 'p', planned_date: '2026-09-30', kind: 'descanso', status: 'pendente' }],
+      dailyCheckins: [{ date: '2026-09-30', sleep: 3, energy: 3, pain: 1, stress: 2 }],
+      meals: [{ date: '2026-09-30' }],
+      saudadoHoje: true,
+    }), at('2026-09-30T13:00:00'));
+    expect(w.greeting).toBe('Boa tarde, Rui.');
+    expect(w.lines).toHaveLength(2);
+    expect(w.lines[0]).toMatch(/recupera/);
+    expect(w.lines[0]).not.toMatch(/\?/);
+    expect(w.lines[1]).toMatch(/descanso|não se treina/i);
+    w.lines.forEach(expectCarolVoice);
+  });
+
+  it('sem recuperação, a tarde de descanso com tudo registado diz que é descanso', () => {
+    const w = buildWelcome('tarde', data({
+      coachNotes: OUTRAS,
+      runs: [],
+      coachPlanItems: [{ id: 'd', plan_id: 'p', planned_date: '2026-09-30', kind: 'descanso', status: 'pendente' }],
+      dailyCheckins: [{ date: '2026-09-30', sleep: 3 }],
+      meals: [{ date: '2026-09-30' }],
+    }), at('2026-09-30T13:00:00'));
+    expect(w.lines).toHaveLength(1);
+    expect(w.lines[0]).toMatch(/descanso|não se treina/i);
+  });
+
   it('acabada a recuperação, volta tudo ao normal', () => {
     const w = buildWelcome('madrugada', data({ coachPlanItems: [{ id: 'x', plan_id: 'p', planned_date: '2026-10-20', kind: 'descanso' }] }), at('2026-10-20T03:53:00'));
     expect(w.lines.join(' ')).not.toMatch(/cirurgia|recupera/);
