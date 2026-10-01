@@ -1316,7 +1316,7 @@ const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
 
 const EMPTY_DATA = {
   profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [],
-  coachMessages: [], raceEvents: [], coachPlans: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
+  coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
   percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
   cup: CUP_EMPTY,
@@ -1375,6 +1375,13 @@ async function runInitialLoad(set, get, userId) {
       (data) => ({ raceEvents: list(data) })],
     ['coachPlans', supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
       (data) => ({ coachPlans: list(data) })],
+    /* As propostas de objetivos chegam com as mensagens. Relatado a
+       2026-10-01: o atleta saiu da app com a Carol a pensar; ao voltar, a
+       recarga trouxe a mensagem dela ("enviei uma proposta…") mas não a
+       proposta — só o Coach a lia, ao montar — e o "Objetivos por rever"
+       não aparecia. Mesma consulta de reloadCoachGoalProposals. */
+    ['coachGoalProposals', supabase.from('coach_goal_proposals').select('*').eq('user_id', userId).eq('status', 'proposto').order('created_at', { ascending: false }),
+      (data) => ({ coachGoalProposals: list(data) })],
     ['coachPlanItems', supabase.from('coach_plan_items').select('*').eq('user_id', userId).order('planned_date', { ascending: true }),
       (data) => ({ coachPlanItems: list(data) })],
     ['shoes', supabase.from('shoes').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
