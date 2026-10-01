@@ -367,7 +367,28 @@ const BODY_ANALYSIS_RULES = carolRecordAnalysisRules({
   sentences: "5 e 8",
 });
 
-function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null): string {
+/* As condições da pesagem que a Carol sabe, e a regra de não presumir as que
+   não sabe. Relatado a 2026-10-01: ela fechou com "pesa-te na mesma rotina
+   matinal e em jejum" a quem já o fazia — assumiu que não, sem ter como
+   saber. A hora é obrigatória no formulário; o jejum só se sabe se o atleta
+   o escreveu nas observações, por isso, não o sabendo, pergunta. */
+function weighingConditions(time: string | null, notes: string | null): string {
+  const quando = time
+    ? `A pesagem foi feita às ${time} (hora local do atleta).`
+    : "A hora da pesagem não foi indicada.";
+  const jejum = /jejum/i.test(notes ?? "")
+    ? "O atleta falou do jejum nas observações — usa o que ele disse."
+    : "Não sabes se o atleta estava em jejum.";
+  return `CONDIÇÕES DA PESAGEM: ${quando} ${jejum}\n` +
+    "- NUNCA presumas as condições em que o atleta se pesa (hora, jejum, rotina, balança). Não lhe digas " +
+    "para se pesar \"de manhã\" ou \"em jejum\" como se não o fizesse: não sabes se faz.\n" +
+    "- Se as condições importam para ler a evolução (ex.: a hora é tardia, ou varia, ou não sabes se estava " +
+    "em jejum), usa o bloco \"Para a próxima\" para PERGUNTAR — por exemplo se estava em jejum — em vez de " +
+    "dares uma instrução.\n" +
+    "- Se a pesagem foi de manhã cedo e o atleta já disse que estava em jejum, não voltes a perguntar nem a recomendar.\n\n";
+}
+
+function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null, assessmentTime: string | null = null): string {
   const mapping = METRIC_FIELDS
     .map((f) => `- ${f.key} — na Renpho aparece como "${f.renpho}"${f.hint ? ` — ${f.hint}` : ""}`)
     .join("\n");
@@ -413,6 +434,7 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     "evolução (o que melhorou, o que piorou, ex.: peso, gordura corporal, massa muscular). " +
     "Sê direta e prática, sem alarmismos e sem dar diagnósticos médicos.\n" +
     CAROL_TONE_RULES_SHORT + "\n" +
+    weighingConditions(assessmentTime, notes) +
     BODY_ANALYSIS_RULES + "\n" +
     carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
     goalsReviewSection(goalsCtx?.goals ?? null);
@@ -437,6 +459,7 @@ async function analyzeWithGemini(
   memoryBlock: string | null = null,
   goalsCtx: GoalsContext | null = null,
   deadline = Number.POSITIVE_INFINITY,
+  assessmentTime: string | null = null,
 ): Promise<
   {
     metrics: Record<string, number | null>;
@@ -447,7 +470,7 @@ async function analyzeWithGemini(
     goalsReview: GoalsReview;
   }
 > {
-  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx) }];
+  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx, assessmentTime) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -549,6 +572,7 @@ async function generateBodySummaryFromMetrics(
   goalsCtx: GoalsContext | null = null,
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
+  assessmentTime: string | null = null,
   // `usage`: tokens desta chamada (null se não houve resposta do Gemini) —
   // antes não era devolvido, e o registo manual não contava para os custos.
 ): Promise<{ text: string | null; goalsReview: GoalsReview; usage: GeminiUsage | null }> {
@@ -567,6 +591,7 @@ async function generateBodySummaryFromMetrics(
     "És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a avaliação corporal que ele acabou de registar.\n" +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     memoryPromptSection(memoryBlock) +
+    weighingConditions(assessmentTime, notes) +
     "O atleta registou manualmente os seguintes valores de uma avaliação de composição " +
     `corporal (sem foto):\n${metricLines}\n\n` +
     // deno-lint-ignore no-explicit-any
@@ -661,6 +686,10 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
     const body = await req.json();
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
+    // 'HH:MM' (ou 'HH:MM:SS' da BD) → 'HH:MM'; qualquer outra coisa = não indicada.
+    const rawTime = typeof body.assessment_time === "string" && /^([01]\d|2[0-3]):[0-5]\d/.test(body.assessment_time)
+      ? body.assessment_time.slice(0, 5)
+      : null;
 
     const metricSelect =
       "id, date, " + METRIC_FIELDS.map((f) => f.key).join(", ");
@@ -718,7 +747,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       if (editingId) historyQuery = historyQuery.neq("id", editingId);
       const { data: history } = await historyQuery;
 
-      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline);
+      const summaryResult = await generateBodySummaryFromMetrics(metrics, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime);
 
       if (editingId) {
         const { data: updated, error: updateError } = await sb
@@ -800,7 +829,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
       let result;
       try {
-        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline);
+        result = await analyzeWithGemini(images, "image/jpeg", rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime);
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
@@ -869,7 +898,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);

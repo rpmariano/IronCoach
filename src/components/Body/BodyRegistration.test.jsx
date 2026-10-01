@@ -35,6 +35,10 @@ vi.mock('../../lib/image', () => ({
 
 const PROFILE = { id: 'user-1' };
 
+// A hora da avaliação é obrigatória desde 2026-10-01.
+const setHora = (value = '07:15') =>
+  fireEvent.change(screen.getByLabelText('Hora da avaliação'), { target: { value } });
+
 const selectPhoto = async () => {
   const input = document.querySelector('input[type="file"]');
   const file = new File(['conteudo'], 'pesagem.jpg', { type: 'image/jpeg' });
@@ -92,6 +96,8 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
     fireEvent.change(screen.getByPlaceholderText('Contexto da pesagem...'), { target: { value: 'em jejum' } });
     await selectPhoto();
 
+    setHora();
+
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -108,6 +114,8 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
     render(<BodyRegistration onClose={onClose} />);
     await selectPhoto();
 
+    setHora();
+
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
     await dispensarConfirmacao();
@@ -121,6 +129,8 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
     render(<BodyRegistration onClose={onClose} />);
     await selectPhoto();
 
+    setHora();
+
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
     await dispensarConfirmacao();
@@ -133,6 +143,8 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
     render(<BodyRegistration onClose={onClose} />);
     await selectPhoto();
+
+    setHora();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
@@ -160,6 +172,8 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
     fireEvent.change(screen.getByLabelText('Gordura corporal (%)'), { target: { value: '18.2' } });
 
+    setHora();
+
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -178,6 +192,8 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
+    setHora();
+
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
     await dispensarConfirmacao();
@@ -190,6 +206,8 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     render(<BodyRegistration onClose={onClose} />);
     goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
+
+    setHora();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
@@ -210,6 +228,7 @@ describe('BodyRegistration — editar avaliação existente', () => {
   const EXISTING = {
     id: 'assess-3',
     date: '2026-01-08',
+    assessment_time: '07:30:00',
     notes: 'nota antiga',
     weight_kg: 78.5,
     body_fat_pct: 18.2,
@@ -274,7 +293,7 @@ describe('BodyRegistration — editar avaliação existente', () => {
   });
 
   it('numa avaliação sem métricas, mudar só a data faz update direto', async () => {
-    const vazia = { id: 'assess-3', date: '2026-01-08', notes: 'nota antiga' };
+    const vazia = { id: 'assess-3', date: '2026-01-08', assessment_time: '07:30:00', notes: 'nota antiga' };
     useAppStore.setState({ bodyAssessments: [vazia] });
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
@@ -314,6 +333,7 @@ describe('BodyRegistration — guarda de navegação com formulário sujo', () =
   const EXISTING = {
     id: 'assess-3',
     date: '2026-01-08',
+    assessment_time: '07:30:00',
     notes: 'nota antiga',
     weight_kg: 78.5,
     body_fat_pct: 18.2,
@@ -449,6 +469,8 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     const { unmount } = render(<BodyRegistration onClose={onClose} />);
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
 
+    setHora();
+
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
 
     await dispensarConfirmacao();
@@ -482,8 +504,9 @@ describe('BodyRegistration — ação primária na ActionBar', () => {
 });
 
 /* A hora da avaliação (pedido 2026-09-13): a hora a que a pesagem foi
-   feita, vazia por omissão, gravada por update à parte — a analyze-body
-   não a conhece. */
+   feita, vazia por omissão, gravada por update à parte. Desde 2026-10-01 é
+   obrigatória e vai também no pedido à analyze-body: sem ela a Carol
+   presumia as condições da pesagem ("pesa-te de manhã, em jejum"). */
 describe('BodyRegistration — hora da avaliação', () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
@@ -491,17 +514,28 @@ describe('BodyRegistration — hora da avaliação', () => {
     useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
   });
 
-  it('vazia por omissão; a escrita grava-se em body_assessments.assessment_time a seguir à análise', async () => {
-    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-1', date: '2026-09-13' } }, error: null });
+  it('sem hora não analisa e diz porquê', async () => {
     render(<BodyRegistration onClose={() => {}} />);
-    expect(screen.getByLabelText('Hora da avaliação')).toHaveValue('');
-    fireEvent.change(screen.getByLabelText('Hora da avaliação'), { target: { value: '07:15' } });
     await selectPhoto();
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
 
+    await screen.findByText(/Indica a hora da avaliação/);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('vazia por omissão; a escrita grava-se em body_assessments.assessment_time a seguir à análise', async () => {
+    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-1', date: '2026-09-13' } }, error: null });
+    render(<BodyRegistration onClose={() => {}} />);
+    expect(screen.getByLabelText('Hora da avaliação')).toHaveValue('');
+    await selectPhoto();
+
+    setHora();
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
+
     await waitFor(() => expect(mocks.updateAssessment).toHaveBeenCalledWith({ assessment_time: '07:15' }, 'assess-1'));
-    expect(mocks.invoke.mock.calls[0][1].body.assessment_time).toBeUndefined();
+    expect(mocks.invoke.mock.calls[0][1].body.assessment_time).toBe('07:15');
     await waitFor(() => expect(useAppStore.getState().bodyAssessments[0]?.assessment_time).toBe('07:15'));
   });
 
