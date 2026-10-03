@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2, PencilLine, MessageSquare, Image as ImageIcon } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2, MessageSquare } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -13,7 +13,6 @@ import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
-import SectionLabel from '../shared/SectionLabel';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -79,9 +78,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : mealNominalTime(mealType)));
   const mealTimeTouchedRef = useRef(!!mealIdToEdit);
   const [notes, setNotes] = useState('');
-  // Um único cartão, forma de introdução à escolha — mesmo padrão da
-  // Corrida: só um dos dois blocos fica visível/clicável a cada vez.
-  const [entryMethod, setEntryMethod] = useState('foto'); // 'foto' | 'manual'
+  /* Um só ecrã (bug #47, 2026-10-03): já não se escolhe entre Foto e
+     Manual. Fotos, alimentos escritos e observações juntam-se no mesmo
+     registo — tira-se foto ao prato e escreve-se o que ela não mostra (o
+     café com açúcar, o molho) ou a quantidade que se sabe. Basta uma das
+     duas coisas para analisar. */
   const [errorMsg, setErrorMsg] = useState('');
 
   // Foto (IA)
@@ -105,6 +106,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [manualItems, setManualItems] = useState([]); // [{ key, name, grams, dbId? }]
   const [itemName, setItemName] = useState('');
   const [itemGrams, setItemGrams] = useState('');
+  // O "Escrever" do aviso de falha traz o atleta aqui.
+  const itemNameRef = useRef(null);
 
   // Edição — carrega a refeição existente. Alimentos e observações são dados
   // ANALÍTICOS: mudá-los muda a análise, por isso guardar passa pelo Coach e
@@ -257,7 +260,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setManualItems(persisted?.manualItems ?? canonicalItems);
     setItemName(persisted?.itemName ?? '');
     setItemGrams(persisted?.itemGrams ?? '');
-    setEntryMethod(persisted?.entryMethod ?? 'manual');
     // A assinatura de partida compara sempre contra o valor CANÓNICO (do
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com alimentos/observações diferentes dos gravados dispara
@@ -283,7 +285,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (persisted.mealTime !== undefined) { setMealTime(persisted.mealTime); mealTimeTouchedRef.current = true; }
     if (persisted.mealType) setMealType(persisted.mealType);
     if (persisted.notes !== undefined) setNotes(persisted.notes);
-    if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
     if (persisted.manualItems) setManualItems(persisted.manualItems);
     if (persisted.itemName !== undefined) setItemName(persisted.itemName);
     if (persisted.itemGrams !== undefined) setItemGrams(persisted.itemGrams);
@@ -295,7 +296,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
-    date, mealTime, mealType, notes, entryMethod, manualItems, itemName, itemGrams,
+    date, mealTime, mealType, notes, manualItems, itemName, itemGrams,
   // Com a confirmação à vista o registo está gravado: o rascunho já foi
   // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
   }, { isDirty: isFormDirty && !confirmation });
@@ -371,10 +372,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const clearPhotos = () => setPhotos([]);
 
   // ----------------------------------
-  // ANALISAR REFEIÇÃO POR FOTO (IA — analyze-meal)
+  // ANALISAR REFEIÇÃO COM FOTOS (analyze-meal) — e com os alimentos escritos,
+  // se os há (bug #47): o servidor junta as duas coisas numa só chamada.
   // ----------------------------------
   // A tarefa em si, separada do gesto: é ela que o "Tentar de novo" repete,
-  // com as MESMAS fotos, data, tipo e observações (useAnalysis guarda-a).
+  // com as MESMAS fotos, alimentos, data, tipo e observações (useAnalysis guarda-a).
   const analyzePhotosTask = async () => {
     const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-meal', {
       body: {
@@ -384,6 +386,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         meal_type: mealType,
         meal_time: normalizeStartTime(mealTime),
         notes: notes.trim() || null,
+        ...(manualItems.length ? { items: manualItems.map(i => ({ name: i.name, grams: i.grams })) } : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
@@ -399,14 +402,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada');
   };
 
-  const handleAnalyzePhotos = () => {
-    if (!photos.length || isAnalyzing) return;
-    setErrorMsg('');
-    analysis.run(analyzePhotosTask);
-  };
-
   // ----------------------------------
-  // REGISTO MANUAL — adicionar é só local; a estimativa de nutrientes e o
+  // ALIMENTOS ESCRITOS — adicionar é só local; a estimativa de nutrientes e o
   // comentário do Coach só acontecem ao premir "Analisar refeição". As
   // gramas são opcionais: quando não indicadas, o Coach estima a porção
   // típica a partir da descrição do alimento + das observações da refeição
@@ -451,10 +448,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     finishCreateAndGoToCalendar(savedMeal, 'Refeição registada');
   };
 
-  const handleFinalizeManual = () => {
-    if (!manualItems.length || isAnalyzing) return;
+  // Um só "Analisar refeição": com fotos vai tudo junto (fotos + alimentos
+  // escritos), sem fotos é o registo só escrito (mode manual).
+  const canAnalyze = photos.length > 0 || manualItems.length > 0;
+  const handleAnalyze = () => {
+    if (!canAnalyze || isAnalyzing) return;
     setErrorMsg('');
-    analysis.run(finalizeManualTask);
+    analysis.run(photos.length ? analyzePhotosTask : finalizeManualTask);
   };
 
   // ----------------------------------
@@ -522,17 +522,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       busy={isAnalyzing}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
-  ) : entryMethod === 'foto' ? (
-    <CoachAnalyzeButton
-      onClick={handleAnalyzePhotos}
-      disabled={!photos.length || isAnalyzing}
-      busy={isAnalyzing}
-      label="Analisar refeição"
-    />
   ) : (
     <CoachAnalyzeButton
-      onClick={handleFinalizeManual}
-      disabled={!manualItems.length || isAnalyzing}
+      onClick={handleAnalyze}
+      disabled={!canAnalyze || isAnalyzing}
       busy={isAnalyzing}
       label="Analisar refeição"
     />
@@ -578,23 +571,23 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         {/* Ponto 7 — ESPERA. O esqueleto ocupa o sítio onde o resultado vai
             aparecer, e o formulário por baixo fica bloqueado mas VISÍVEL:
             nada do que o atleta escreveu ou fotografou se apaga. */}
-        {isAnalyzing && <AnalysisSkeleton kind="meal" manual={entryMethod === 'manual'} />}
+        {isAnalyzing && <AnalysisSkeleton kind="meal" manual={isEditing || photos.length === 0} />}
 
         {/* Ponto 7 — ERRO. Texto do mock "Refeição · análise falhou", na voz
             da Carol (CAROL.md: nunca "Desculpa, não consegui analisar").
             "Tentar de novo" repete a MESMA chamada com os mesmos dados;
-            "Escrever" passa ao modo manual sem perder foto, data, tipo nem
-            observações. */}
+            "Escrever" leva ao campo dos alimentos, no mesmo ecrã — as fotos,
+            a data, o tipo e as observações ficam onde estão (bug #47). */}
         {analysis.hasFailed && (
           <AnalysisFailure
             detail={analysis.error}
             onRetry={analysis.retry}
-            onManual={!isEditing && entryMethod === 'foto'
-              ? () => { setEntryMethod('manual'); analysis.reset(); }
+            onManual={!isEditing && photos.length > 0
+              ? () => { analysis.reset(); itemNameRef.current?.focus(); }
               : undefined}
           >
             {photos.length > 0
-              ? 'As fotos ficaram guardadas. Podes tentar outra vez ou escrever o que comeste — eu calculo na mesma.'
+              ? 'As fotos ficaram guardadas. Podes tentar outra vez, ou escrever o que comeste aqui em baixo — eu junto tudo.'
               : 'O que escreveste ficou guardado. Podes tentar outra vez.'}
           </AnalysisFailure>
         )}
@@ -653,39 +646,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           })}
         </div>
 
-        {/* Como queres registar? — escondido a editar: editar é sempre pelos
-            campos, sem foto nova (mesmo padrão da Corrida). */}
+        {/* FOTOS — opcionais (bug #47). Escondidas a editar: editar é pelos
+            alimentos e observações, sem foto nova (mesmo padrão da Corrida). */}
         {!isEditing && (
-          <div className="mb-5">
-            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block px-1">Como queres registar?</label>
-            <div className="flex gap-1.5">
-              <Chip
-                active={entryMethod === 'foto'}
-                variant="nutrition"
-                rounded="xl"
-                onClick={() => setEntryMethod('foto')}
-                className="flex-1 py-2.5 gap-1.5"
-                type="button"
-              >
-                <Camera size={14} /> Foto
-              </Chip>
-              <Chip
-                active={entryMethod === 'manual'}
-                variant="nutrition"
-                rounded="xl"
-                onClick={() => setEntryMethod('manual')}
-                className="flex-1 py-2.5 gap-1.5"
-                type="button"
-              >
-                <PencilLine size={14} /> Manual
-              </Chip>
-            </div>
-          </div>
-        )}
-
-        {entryMethod === 'foto' ? (
-          <>
-            {photos.length > 0 ? (
+          <div className="mb-5" data-testid="meal-photos">
+            <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Fotos</p>
+            {photos.length > 0 && (
               <>
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {photos.map((p, i) => (
@@ -703,163 +669,121 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
                   <button onClick={clearPhotos} className="tap-h-44 text-[11px] text-[var(--text-3)] hover:text-[var(--danger)] flex items-center gap-1 transition">
                     <Trash2 size={14} /> Limpar todas
                   </button>
                 </div>
-                {photos.length < MAX_PHOTOS && (
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
-                      <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
-                      <Camera size={16} className="text-[var(--nutrition)]" />
-                      <span className="text-xs font-semibold text-[var(--nutrition)]">Tirar foto</span>
-                    </label>
-                    <label className="flex items-center justify-center gap-1.5 border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
-                      <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                      <ImagePlus size={16} className="text-[var(--nutrition)]" />
-                      <span className="text-xs font-semibold text-[var(--nutrition)]">Da galeria</span>
-                    </label>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/40 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
-                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
-                    <Camera size={24} className="text-[var(--text-3)]" />
-                    <p className="text-xs text-[var(--text-3)] font-medium">Tirar foto</p>
-                  </label>
-                  <label className="flex flex-col items-center justify-center gap-1.5 border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-8 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/40 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                    <ImagePlus size={24} className="text-[var(--text-3)]" />
-                    <p className="text-xs text-[var(--text-3)] font-medium">Da galeria</p>
-                  </label>
-                </div>
-                <p className="text-[11px] text-[var(--text-3)] text-center -mt-2 mb-1">Podes juntar várias fotos (ângulos/pratos) da mesma refeição</p>
-                <p className="text-[11px] text-[var(--text-3)] text-center mb-5 leading-relaxed">Tira foto ao prato; eu leio os alimentos e as quantidades. Podes corrigir depois de gravado.</p>
               </>
             )}
-          </>
-        ) : (
-          <div className="mb-4">
-            {/* As fotos não se perdem ao cair para o modo manual (mock
-                "Refeição · análise falhou": "2 fotos guardadas"). Ficam à
-                vista, e voltar a "Foto" encontra-as lá. */}
-            {photos.length > 0 && (
-              <div
-                data-testid="saved-photos"
-                className="mb-3"
-                style={{
-                  borderRadius: 'var(--radius-xl)',
-                  background: 'rgba(255,255,255,.05)',
-                  border: '1px solid rgba(255,255,255,.11)',
-                  padding: '14px 16px',
-                }}
-              >
-                <div className="flex items-center gap-[7px] text-[11px] font-extrabold uppercase" style={{ letterSpacing: '.06em', color: 'var(--text-muted)' }}>
-                  <ImageIcon size={14} /> {photos.length} foto{photos.length === 1 ? '' : 's'} guardada{photos.length === 1 ? '' : 's'}
-                </div>
-                <div className="flex gap-2 mt-3">
-                  {photos.map((ph, i) => (
-                    <img
-                      key={i}
-                      src={ph.dataUrl}
-                      alt={`Foto da refeição ${i + 1}`}
-                      className="object-cover"
-                      style={{ width: 62, height: 62, borderRadius: 14, border: '1px solid rgba(255,255,255,.14)' }}
-                    />
-                  ))}
-                </div>
+            {photos.length < MAX_PHOTOS && (
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center justify-center gap-1.5 min-h-[var(--tap)] border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
+                  <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhotoSelect} />
+                  <Camera size={16} className="text-[var(--nutrition)]" />
+                  <span className="text-xs font-semibold text-[var(--nutrition)]">Tirar foto</span>
+                </label>
+                <label className="flex items-center justify-center gap-1.5 min-h-[var(--tap)] border-2 border-dashed border-[var(--mod-nutricao)]/40 rounded-xl py-3 text-center cursor-pointer hover:border-[var(--mod-nutricao)]/70 hover:bg-[var(--mod-nutricao)]/5 transition bg-[var(--surface-glass)]">
+                  <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
+                  <ImagePlus size={16} className="text-[var(--nutrition)]" />
+                  <span className="text-xs font-semibold text-[var(--nutrition)]">Da galeria</span>
+                </label>
               </div>
             )}
-
-            {photos.length > 0 && !isEditing && (
-              <SectionLabel style={{ margin: '4px 2px 8px' }}>Ou escreve os alimentos</SectionLabel>
-            )}
-
-            {/* Também disponível a editar: como guardar passa pelo Coach
-                quando os alimentos mudam, os valores nutricionais de um
-                alimento novo são estimados na mesma chamada. */}
-            <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3">
-              <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5">Adicionar alimento</p>
-                <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
-                  <input
-                    type="text"
-                    aria-label="Nome do alimento a adicionar"
-                    placeholder="Ex.: peito de frango grelhado"
-                    value={itemName}
-                    onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
-                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
-                  />
-                  <div className="relative w-24">
-                    <input
-                      type="number" min="1" step="1"
-                      aria-label="Gramas do alimento a adicionar (opcional)"
-                      placeholder="g (opcional)"
-                      value={itemGrams}
-                      onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
-                      className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
-                    />
-                  </div>
-                </div>
-                <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">Sem gramas indicadas, a Carol estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.</p>
-                <AddButton
-                  onClick={handleAddItem}
-                  disabled={!itemName.trim()}
-                  variant="nutrition"
-                  type="button"
-                >
-                  Adicionar Alimento
-                </AddButton>
-            </div>
-
-            {manualItems.length > 0 && (
-              <div className="space-y-1.5 mb-3">
-                {manualItems.map(item => (
-                  <div key={item.key} className="flex items-center gap-2 bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3 py-2">
-                    {isEditing ? (
-                      <>
-                        <input
-                          type="text"
-                          aria-label={`Nome do alimento: ${item.name}`}
-                          value={item.name}
-                          onChange={e => { updateManualItem(item.key, { name: e.target.value }); setIsFormDirty(true); }}
-                          className="flex-1 text-xs font-bold text-[var(--text-1)] outline-none bg-transparent"
-                        />
-                        <input
-                          type="number" min="1"
-                          aria-label={`Gramas de ${item.name}`}
-                          value={item.grams}
-                          onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
-                          className="w-14 text-xs text-[var(--text-3)] text-right outline-none bg-transparent"
-                        />
-                        <span className="text-[11px] text-[var(--text-3)]">g</span>
-                      </>
-                    ) : (
-                      <div className="flex-1">
-                        <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
-                        <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol'}</p>
-                      </div>
-                    )}
-                    <button
-                      onClick={() => { handleRemoveManualItem(item.key); setIsFormDirty(true); }}
-                      className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0"
-                      aria-label={`Remover ${item.name}`}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-                {(!isEditing || needsReanalysis) && (
-                  <p className="text-[11px] text-[var(--text-3)] text-right px-1">Valores nutricionais calculados ao analisar</p>
-                )}
-              </div>
+            {photos.length === 0 && (
+              <p className="text-[11px] text-[var(--text-3)] mt-2 px-1 leading-relaxed">Tira foto ao prato, escreve os alimentos, ou as duas coisas — eu junto tudo. Podes juntar várias fotos da mesma refeição.</p>
             )}
           </div>
         )}
+
+        {/* ALIMENTOS ESCRITOS — sozinhos, ou a completar as fotos (bug #47).
+            Também a editar: como guardar passa pelo Coach quando os alimentos
+            mudam, os valores de um alimento novo são estimados na mesma
+            chamada. */}
+        <div className="mb-4">
+          {!isEditing && <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Alimentos</p>}
+          <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3">
+            <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5">Adicionar alimento</p>
+            <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
+              <input
+                ref={itemNameRef}
+                type="text"
+                aria-label="Nome do alimento a adicionar"
+                placeholder="Ex.: peito de frango grelhado"
+                value={itemName}
+                onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
+                className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
+              />
+              <div className="relative w-24">
+                <input
+                  type="number" min="1" step="1"
+                  aria-label="Gramas do alimento a adicionar (opcional)"
+                  placeholder="g (opcional)"
+                  value={itemGrams}
+                  onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
+                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">
+              {photos.length > 0
+                ? 'Junta o que a foto não mostra, ou a quantidade que sabes (ex.: "café com açúcar", "arroz" com 150 g). Se o alimento também estiver na foto, conta o que escreveste.'
+                : 'Sem gramas indicadas, a Carol estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.'}
+            </p>
+            <AddButton
+              onClick={handleAddItem}
+              disabled={!itemName.trim()}
+              variant="nutrition"
+              type="button"
+            >
+              Adicionar Alimento
+            </AddButton>
+          </div>
+
+          {manualItems.length > 0 && (
+            <div className="space-y-1.5 mb-3">
+              {manualItems.map(item => (
+                <div key={item.key} className="flex items-center gap-2 bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3 py-2">
+                  {isEditing ? (
+                    <>
+                      <input
+                        type="text"
+                        aria-label={`Nome do alimento: ${item.name}`}
+                        value={item.name}
+                        onChange={e => { updateManualItem(item.key, { name: e.target.value }); setIsFormDirty(true); }}
+                        className="flex-1 text-xs font-bold text-[var(--text-1)] outline-none bg-transparent"
+                      />
+                      <input
+                        type="number" min="1"
+                        aria-label={`Gramas de ${item.name}`}
+                        value={item.grams}
+                        onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
+                        className="w-14 text-xs text-[var(--text-3)] text-right outline-none bg-transparent"
+                      />
+                      <span className="text-[11px] text-[var(--text-3)]">g</span>
+                    </>
+                  ) : (
+                    <div className="flex-1">
+                      <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
+                      <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol'}</p>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { handleRemoveManualItem(item.key); setIsFormDirty(true); }}
+                    className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0"
+                    aria-label={`Remover ${item.name}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              {(!isEditing || needsReanalysis) && (
+                <p className="text-[11px] text-[var(--text-3)] text-right px-1">Valores nutricionais calculados ao analisar</p>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="mb-5">
           <label htmlFor="mr-observacoes-opcional-ex-big-mac-bi" className="text-[11px] text-[var(--text-3)] mb-1.5 block px-1">Observações (opcional) — ex.: "Big Mac", "bife frito em azeite"</label>
@@ -916,7 +840,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       <UnsavedChangesModal
         isOpen={showUnsavedModal}
         isSaving={isAnalyzing}
-        onSaveAndLeave={isEditing ? handleSaveEdit : handleFinalizeManual}
+        onSaveAndLeave={isEditing ? handleSaveEdit : handleAnalyze}
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />

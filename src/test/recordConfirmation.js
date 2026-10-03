@@ -1,8 +1,10 @@
 import { screen, fireEvent } from '@testing-library/react';
 
-/* Desde 2026-09-21 a confirmação de registo não sai sozinha — espera pelo
-   "Continuar" («todas as mensagens que têm este caráter temporário devem
-   deixar de o ter; quero que só desapareçam mediante ação do utilizador»).
+/* Desde 2026-09-21 a confirmação de registo espera pelo "Continuar" («todas
+   as mensagens que têm este caráter temporário devem deixar de o ter; quero
+   que só desapareçam mediante ação do utilizador»). Desde o bug #49 o visto
+   simples sai sozinho aos 3 s — aqui dispensa-se logo, como o atleta pode
+   fazer, sem esperar pelo temporizador.
 
    Quem fecha o formulário e navega é o `onDone` dessa confirmação, por isso
    qualquer teste que verifique o que acontece DEPOIS de gravar tem de a

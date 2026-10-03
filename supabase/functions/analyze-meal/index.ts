@@ -1,7 +1,8 @@
 // IronHealth · analyze-meal Edge Function
 // Modo normal: recebe 1+ fotos de uma refeição (base64) + data + tipo de
-// refeição + observações opcionais, analisa tudo com Gemini e grava
-// meals + meal_items na BD.
+// refeição + alimentos escritos e observações opcionais, analisa tudo com
+// Gemini e grava meals + meal_items na BD.
+// Modo manual (mode: "manual"): só alimentos escritos, sem fotos.
 // Modo reanálise (meal_id presente): repesca as fotos já guardadas dessa
 // refeição no Storage, volta a chamar o Gemini com as observações
 // atualizadas, e substitui os meal_items existentes pelos novos.
@@ -85,26 +86,101 @@ const RESPONSE_SCHEMA = {
   required: ["items"],
 };
 
+// Fotos + alimentos escritos no mesmo registo (bug #47): cada item diz de
+// onde veio — o número do alimento na lista escrita (1..N), ou 0 se só está
+// nas fotos. É por aqui que o servidor repõe o nome e as gramas que o atleta
+// deu, sem depender da ordem em que o Gemini os devolve.
+const RESPONSE_SCHEMA_WITH_SOURCE = {
+  ...RESPONSE_SCHEMA,
+  properties: {
+    items: {
+      ...RESPONSE_SCHEMA.properties.items,
+      items: {
+        ...RESPONSE_SCHEMA.properties.items.items,
+        properties: { ...RESPONSE_SCHEMA.properties.items.items.properties, source_index: { type: "INTEGER" } },
+        required: [...RESPONSE_SCHEMA.properties.items.items.required, "source_index"],
+      },
+    },
+  },
+};
+
+const PHOTOS_INTRO =
+  "As fotografias seguintes mostram todas a MESMA refeição (possivelmente de " +
+  "ângulos diferentes ou vários pratos/componentes). Combina a informação de todas " +
+  "as fotos e identifica cada alimento distinto no conjunto, sem contar o mesmo " +
+  "alimento duas vezes por aparecer em várias fotos. ";
+
+function notesSection(notes: string | null): string {
+  if (!notes || !notes.trim()) return "";
+  return "\n\nO utilizador deixou esta observação sobre a refeição — usa-a para " +
+    "identificar com precisão os alimentos e os seus valores nutricionais " +
+    "(ex.: um hambúrguer de uma cadeia específica tem valores muito diferentes " +
+    "de um feito em casa; cozinhar com manteiga em vez de azeite muda a " +
+    "gordura; a marca/tipo de um produto embalado importa). " +
+    `Observação do utilizador: "${notes.trim()}"`;
+}
+
 function buildPrompt(notes: string | null): string {
-  let prompt =
-    "As fotografias seguintes mostram todas a MESMA refeição (possivelmente de " +
-    "ângulos diferentes ou vários pratos/componentes). Combina a informação de todas " +
-    "as fotos e identifica cada alimento distinto no conjunto, sem contar o mesmo " +
-    "alimento duas vezes por aparecer em várias fotos. " +
+  return PHOTOS_INTRO +
     "Para cada item, estima a porção total visível em gramas e o seu conteúdo nutricional " +
     "POR 100 GRAMAS (não por porção), usando valores de referência de bases de dados " +
-    "nutricionais padrão. O sódio é em mg por 100g. Usa nomes em português de Portugal.";
-  if (notes && notes.trim()) {
-    prompt +=
-      "\n\nO utilizador deixou esta observação sobre a refeição — usa-a para " +
-      "identificar com precisão os alimentos e os seus valores nutricionais " +
-      "(ex.: um hambúrguer de uma cadeia específica tem valores muito diferentes " +
-      "de um feito em casa; cozinhar com manteiga em vez de azeite muda a " +
-      "gordura; a marca/tipo de um produto embalado importa). " +
-      `Observação do utilizador: "${notes.trim()}"`;
+    "nutricionais padrão. O sódio é em mg por 100g. Usa nomes em português de Portugal." +
+    notesSection(notes) +
+    "\n\nResponde apenas com JSON estruturado conforme o schema.";
+}
+
+const writtenItemsList = (items: { name: string; grams: number | null }[]): string =>
+  items
+    .map((it, i) => `${i + 1}. "${it.name}"${it.grams != null ? ` — ${it.grams}g (valor exato dado pelo utilizador)` : " — sem gramas indicadas"}`)
+    .join("\n");
+
+// Fotos e alimentos escritos no mesmo ecrã (bug #47, 2026-10-03): o atleta
+// fotografa o prato e escreve o que a foto não mostra (o café com açúcar, o
+// molho) ou a quantidade que sabe. O que escreveu vale mais do que o que se
+// vê: um alimento escrito que também está na foto é o mesmo, conta uma vez.
+export function buildPhotosAndItemsPrompt(items: { name: string; grams: number | null }[], notes: string | null): string {
+  return PHOTOS_INTRO +
+    "\n\nAlém das fotos, o utilizador escreveu estes alimentos desta refeição:\n" +
+    `${writtenItemsList(items)}\n\n` +
+    "Como juntar as duas fontes:\n" +
+    "- Devolve um item para CADA alimento escrito, com source_index igual ao número dele na lista acima. " +
+    "O que o utilizador escreveu vale mais do que o que vês: se um alimento escrito também aparece nas fotos, " +
+    "é o MESMO alimento — devolve-o uma vez só, com o source_index dele, e não o repitas como alimento das fotos.\n" +
+    "- Para cada alimento das fotos que NÃO está na lista escrita, devolve um item com source_index 0.\n" +
+    "- Porção (estimated_quantity_grams) de um alimento escrito: com gramas indicadas, usa EXATAMENTE esse valor; " +
+    "sem gramas, estima-a pela foto se ele lá estiver, senão a porção típica do alimento descrito. Nunca 0 nem null.\n" +
+    "- Porção de um alimento das fotos: a porção total visível em gramas.\n\n" +
+    "Para cada item, o conteúdo nutricional é POR 100 GRAMAS (não por porção), com valores de referência de bases " +
+    "de dados nutricionais padrão. O sódio é em mg por 100g. Usa nomes em português de Portugal." +
+    notesSection(notes) +
+    "\n\nResponde apenas com JSON estruturado conforme o schema.";
+}
+
+// Repõe os alimentos escritos pelo source_index: o nome é o que o atleta
+// escreveu e as gramas, quando as deu, também (o Gemini só dá os valores).
+// Os das fotos vêm primeiro, como na foto; os escritos a seguir. Um índice
+// repetido é o mesmo alimento escrito duas vezes — fica o primeiro. null se
+// faltar algum dos escritos (quem chama trata como falha da análise).
+export function mergePhotoAndWrittenItems<T extends { quantity_grams: number; source_index?: number }>(
+  raw: T[],
+  written: { name: string; grams: number | null }[],
+): Omit<T, "source_index">[] | null {
+  const byIndex = new Map<number, Omit<T, "source_index">>();
+  const fromPhotos: Omit<T, "source_index">[] = [];
+  for (const { source_index, ...item } of raw) {
+    const idx = Number(source_index);
+    if (Number.isInteger(idx) && idx >= 1 && idx <= written.length) {
+      if (!byIndex.has(idx)) byIndex.set(idx, item);
+    } else {
+      fromPhotos.push(item);
+    }
   }
-  prompt += "\n\nResponde apenas com JSON estruturado conforme o schema.";
-  return prompt;
+  if (byIndex.size !== written.length) return null;
+  const fromWritten = written.map((w, i) => {
+    const est = byIndex.get(i + 1)!;
+    return { ...est, name: w.name.slice(0, 120), quantity_grams: w.grams != null ? w.grams : est.quantity_grams };
+  });
+  return [...fromPhotos, ...fromWritten];
 }
 
 // Prompt para o registo manual de texto (sem foto): o utilizador só indica
@@ -118,9 +194,7 @@ function buildPrompt(notes: string | null): string {
 // preciso) de TODOS de uma vez, tal como faria a partir de uma foto, mas
 // usando os nomes descritos em vez de reconhecimento visual.
 function buildManualItemsPrompt(items: { name: string; grams: number | null }[], notes: string | null): string {
-  const list = items
-    .map((it, i) => `${i + 1}. "${it.name}"${it.grams != null ? ` — ${it.grams}g (valor exato dado pelo utilizador)` : " — sem gramas indicadas"}`)
-    .join("\n");
+  const list = writtenItemsList(items);
   let prompt =
     "O utilizador registou manualmente os seguintes alimentos (sem foto):\n" +
     `${list}\n\n` +
@@ -198,8 +272,12 @@ async function runGeminiItemsRequest(
   retries = GEMINI_RETRIES,
   timeoutMs = GEMINI_TIMEOUT_MS,
   deadline = Number.POSITIVE_INFINITY,
+  // RESPONSE_SCHEMA_WITH_SOURCE mantém o source_index em cada item (fotos +
+  // alimentos escritos); quem o pede tira-o antes de gravar.
+  schema: typeof RESPONSE_SCHEMA = RESPONSE_SCHEMA,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ items: any[]; usage: GeminiUsage }> {
+  const withSource = schema === RESPONSE_SCHEMA_WITH_SOURCE;
   const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
     fetchGeminiWithTimeout(
       geminiUrl(geminiModel),
@@ -210,7 +288,7 @@ async function runGeminiItemsRequest(
           contents: [{ parts }],
           generationConfig: {
             response_mime_type: "application/json",
-            response_schema: RESPONSE_SCHEMA,
+            response_schema: schema,
             ...thinkingConfig("low", withThinking),
           },
         }),
@@ -259,6 +337,7 @@ async function runGeminiItemsRequest(
       calcium_mg_per_100g: num(it?.calcium_mg_per_100g),
       vitamin_c_mg_per_100g: num(it?.vitamin_c_mg_per_100g),
       potassium_mg_per_100g: num(it?.potassium_mg_per_100g),
+      ...(withSource ? { source_index: Math.round(num(it?.source_index)) } : {}),
     }));
 
   if (items.length === 0) {
@@ -290,6 +369,55 @@ async function analyzeWithGemini(
     deadline,
   );
 }
+
+// Fotos + alimentos escritos numa só chamada (bug #47). Os escritos voltam
+// com o nome e as gramas do atleta (mergePhotoAndWrittenItems); faltando
+// algum, a análise falha como as outras — "Tentar de novo" repete-a.
+async function analyzePhotosWithItems(
+  images: string[],
+  mime: string,
+  written: { name: string; grams: number | null }[],
+  notes: string | null,
+  geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
+  // deno-lint-ignore no-explicit-any
+): Promise<{ items: any[]; usage: GeminiUsage }> {
+  const parts: unknown[] = [{ text: buildPhotosAndItemsPrompt(written, notes) }];
+  for (const b64 of images) {
+    parts.push({ inline_data: { mime_type: mime, data: b64 } });
+  }
+  const { items: raw, usage } = await runGeminiItemsRequest(
+    parts,
+    geminiKey,
+    "Não foi possível identificar os alimentos. Tenta outro ângulo ou descreve-os de outra forma.",
+    GEMINI_RETRIES,
+    GEMINI_TIMEOUT_MS,
+    deadline,
+    RESPONSE_SCHEMA_WITH_SOURCE,
+  );
+  const items = mergePhotoAndWrittenItems(raw, written);
+  if (!items) {
+    throw new Error("A análise não devolveu todos os alimentos que escreveste. Tenta novamente.");
+  }
+  return { items, usage };
+}
+
+// Os alimentos escritos no pedido: nome (até 120) e gramas opcionais. Sem
+// nome, não conta. Partilhado pelo registo manual e pelo das fotos.
+// deno-lint-ignore no-explicit-any
+export function parseWrittenItems(raw: any): { name: string; grams: number | null }[] {
+  return (Array.isArray(raw) ? raw : [])
+    // deno-lint-ignore no-explicit-any
+    .map((it: any) => {
+      const g = Number(it?.grams);
+      return {
+        name: typeof it?.name === "string" ? it.name.trim().slice(0, 120) : "",
+        grams: Number.isFinite(g) && g > 0 ? g : null,
+      };
+    })
+    .filter((it) => it.name);
+}
+const MAX_WRITTEN_ITEMS = 30;
 
 // Estima o conteúdo nutricional de TODOS os alimentos do registo manual
 // numa só chamada ao Gemini (uma por refeição, não uma por alimento). Força
@@ -908,25 +1036,15 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
-      const rawItems = Array.isArray(body.items) ? body.items : [];
       // As gramas são opcionais — quando o utilizador não as indica, o
       // Gemini estima a porção típica a partir do nome do alimento e das
       // observações da refeição (ver buildManualItemsPrompt).
-      // deno-lint-ignore no-explicit-any
-      const items = rawItems
-        .map((it: any) => {
-          const g = Number(it?.grams);
-          return {
-            name: typeof it?.name === "string" ? it.name.trim().slice(0, 120) : "",
-            grams: Number.isFinite(g) && g > 0 ? g : null,
-          };
-        })
-        .filter((it: { name: string; grams: number | null }) => it.name);
+      const items = parseWrittenItems(body.items);
       if (items.length === 0) {
         return jsonResponse({ error: "Adiciona pelo menos um alimento." }, 400);
       }
-      if (items.length > 30) {
-        return jsonResponse({ error: "Máximo de 30 alimentos por refeição." }, 400);
+      if (items.length > MAX_WRITTEN_ITEMS) {
+        return jsonResponse({ error: `Máximo de ${MAX_WRITTEN_ITEMS} alimentos por refeição.` }, 400);
       }
 
       let estimated: { items: unknown[]; usage: GeminiUsage };
@@ -1086,6 +1204,12 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) {
       return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
     }
+    // Os alimentos escritos no mesmo ecrã das fotos (bug #47) — opcionais: a
+    // app de antes do #47 não os manda, e sem eles a análise é a de sempre.
+    const written = parseWrittenItems(body.items);
+    if (written.length > MAX_WRITTEN_ITEMS) {
+      return jsonResponse({ error: `Máximo de ${MAX_WRITTEN_ITEMS} alimentos por refeição.` }, 400);
+    }
     const mime = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]
         .includes(mime_type)
       ? mime_type
@@ -1106,10 +1230,13 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       photoPaths.push(path);
     }
 
-    // 2. Análise Gemini — todas as fotos numa só chamada (partes múltiplas)
+    // 2. Análise Gemini — todas as fotos numa só chamada (partes múltiplas),
+    // com os alimentos escritos quando os há.
     let items: unknown[], usage: GeminiUsage;
     try {
-      ({ items, usage } = await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline));
+      ({ items, usage } = written.length
+        ? await analyzePhotosWithItems(images, mime, written, rawNotes, geminiKey, extractionDeadline)
+        : await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline));
     } catch (e) {
       await sb.storage.from("meal-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);

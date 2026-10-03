@@ -2,7 +2,7 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { dietaryRestrictionsPromptBlock, formatMealItemsLine, planningFrameSection } from "./index.ts";
+import { buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, parseWrittenItems, planningFrameSection } from "./index.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
   assertEquals(dietaryRestrictionsPromptBlock(null, null), "");
@@ -91,4 +91,49 @@ Deno.test("planningFrameSection: sem plano e com prova, diz qual é a prova de r
   assertStringIncludes(bloco, `A prova de referência é "Maratona de Lisboa" (2026-10-11, 42,2 km), a próxima prova principal.`);
   assertEquals(planningFrameSection(false, true, null), planningFrameSection(false, true));
   assertEquals(planningFrameSection(true, true, principal), "");
+});
+
+// ─── Bug #47: fotos e alimentos escritos no mesmo registo ──────────────────
+
+const W = (name: string, grams: number | null = null) => ({ name, grams });
+const est = (name: string, quantity_grams: number, source_index: number) => ({ name, quantity_grams, calories_per_100g: 100, source_index });
+
+Deno.test("parseWrittenItems: nome aparado, gramas só positivas, sem nome não conta", () => {
+  assertEquals(parseWrittenItems([{ name: "  café com açúcar ", grams: "" }, { name: "Arroz", grams: 150 }, { name: "", grams: 20 }, { grams: 5 }]), [
+    W("café com açúcar"), W("Arroz", 150),
+  ]);
+  assertEquals(parseWrittenItems([{ name: "Ovo", grams: 0 }, { name: "Pão", grams: -3 }]), [W("Ovo"), W("Pão")]);
+  assertEquals(parseWrittenItems(undefined), []);
+  assertEquals(parseWrittenItems("não é lista"), []);
+});
+
+Deno.test("mergePhotoAndWrittenItems: os escritos ficam com o nome e as gramas do atleta; os das fotos primeiro", () => {
+  const merged = mergePhotoAndWrittenItems(
+    [est("Café", 200, 1), est("Bife grelhado", 180, 0), est("arroz branco", 210, 2), est("Salada", 80, 0)],
+    [W("café com açúcar"), W("Arroz", 150)],
+  )!;
+  assertEquals(merged.map((i) => [i.name, i.quantity_grams]), [
+    ["Bife grelhado", 180], ["Salada", 80], ["café com açúcar", 200], ["Arroz", 150],
+  ]);
+  // O source_index não chega à BD (meal_items não tem a coluna).
+  assertEquals(merged.some((i) => "source_index" in i), false);
+});
+
+Deno.test("mergePhotoAndWrittenItems: um escrito em falta é falha; um índice repetido conta uma vez", () => {
+  assertEquals(mergePhotoAndWrittenItems([est("Bife", 180, 0), est("Café", 200, 1)], [W("café"), W("pão")]), null);
+  const merged = mergePhotoAndWrittenItems([est("Café", 200, 1), est("Café outra vez", 150, 1)], [W("café")])!;
+  assertEquals(merged.map((i) => i.name), ["café"]);
+  // Índices fora da lista (ou partidos) são alimentos das fotos.
+  const fora = mergePhotoAndWrittenItems([est("Café", 200, 1), est("Pão", 60, 7), est("Fruta", 120, -1)], [W("café")])!;
+  assertEquals(fora.map((i) => i.name), ["Pão", "Fruta", "café"]);
+});
+
+Deno.test("buildPhotosAndItemsPrompt: a lista numerada, a regra do mesmo alimento e as observações", () => {
+  const p = buildPhotosAndItemsPrompt([W("café com açúcar"), W("Arroz", 150)], "frito em azeite");
+  assertStringIncludes(p, '1. "café com açúcar" — sem gramas indicadas');
+  assertStringIncludes(p, '2. "Arroz" — 150g (valor exato dado pelo utilizador)');
+  assertStringIncludes(p, "é o MESMO alimento — devolve-o uma vez só");
+  assertStringIncludes(p, "source_index 0");
+  assertStringIncludes(p, 'Observação do utilizador: "frito em azeite"');
+  assertEquals(buildPhotosAndItemsPrompt([W("Pão")], null).includes("Observação do utilizador"), false);
 });

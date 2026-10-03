@@ -143,7 +143,9 @@ describe('MealRegistration — Analisar refeição por foto (analyze-meal)', () 
   });
 });
 
-describe('MealRegistration — cartão único: alternar entre Foto e Manual', () => {
+/* Bug #47 (2026-10-03): já não há Foto OU Manual — fotos, alimentos escritos
+   e observações no mesmo ecrã, e um só "Analisar refeição". */
+describe('MealRegistration — um só ecrã: fotos e alimentos juntos', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
@@ -152,29 +154,75 @@ describe('MealRegistration — cartão único: alternar entre Foto e Manual', ()
     useAppStore.setState({ profile: PROFILE, meals: [] });
   });
 
-  it('mostra o upload de fotos por omissão e esconde os campos manuais', () => {
-    render(<MealRegistration onClose={onClose} />);
-    expect(screen.getByText(/Podes juntar várias fotos/)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText(/peito de frango grelhado/)).not.toBeInTheDocument();
-  });
+  const addItem = (name, grams) => {
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
+    if (grams != null) fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: String(grams) } });
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
+  };
 
-  it('ao escolher Manual, esconde o upload e mostra o formulário de alimentos', () => {
+  it('fotos, alimentos e observações à vista ao mesmo tempo, sem seletor Foto/Manual', () => {
     render(<MealRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
-
-    expect(screen.queryByText(/Podes juntar várias fotos/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('meal-photos')).toBeInTheDocument();
+    expect(screen.getByText('Tirar foto')).toBeInTheDocument();
+    expect(screen.getByText('Da galeria')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Analisar refeição/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/)).toBeInTheDocument();
+    expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Manual$/ })).not.toBeInTheDocument();
   });
 
   /* O caso do backlog (specs/carol-frases-contexto.md, MealRegistration:710): o
-     registo por foto nomeava «a IA» ao lado da Carol — rótulo «Foto (IA)» e
-     dica «A IA lê…». Aqui fala só ela, na primeira pessoa. */
-  it('o registo por foto fala na voz da Carol, sem nomear a IA', () => {
+     registo por foto nomeava «a IA» ao lado da Carol. Aqui fala só ela. */
+  it('fala na voz da Carol, sem nomear a IA', () => {
     render(<MealRegistration onClose={onClose} />);
-    expect(screen.getByRole('button', { name: /^Foto$/ })).toBeInTheDocument();
-    expect(screen.getByText('Tira foto ao prato; eu leio os alimentos e as quantidades. Podes corrigir depois de gravado.')).toBeInTheDocument();
+    expect(screen.getByText(/Tira foto ao prato, escreve os alimentos, ou as duas coisas — eu junto tudo\./)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/\bIA\b/);
+  });
+
+  it('sem foto nem alimento, "Analisar refeição" fica desativado; uma das duas chega', async () => {
+    render(<MealRegistration onClose={onClose} />);
+    expect(screen.getByRole('button', { name: /Analisar refeição/i })).toBeDisabled();
+    await selectPhoto();
+    expect(screen.getByRole('button', { name: /Analisar refeição/i })).toBeEnabled();
+  });
+
+  it('tirar uma foto e juntar outra da galeria: ficam as duas', async () => {
+    render(<MealRegistration onClose={onClose} />);
+    await selectPhoto();
+    const galeria = document.querySelectorAll('input[type="file"]')[1];
+    expect(galeria).toHaveAttribute('multiple');
+    await fireEvent.change(galeria, { target: { files: [new File(['b'], 'b.jpg', { type: 'image/jpeg' })] } });
+    await screen.findByAltText('Foto da refeição 2');
+  });
+
+  it('fotos + alimentos escritos + observações vão no mesmo pedido', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1' }, items: [{ id: 'i1' }] }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    await selectPhoto();
+    // Com foto, a ajuda do campo diz que é para o que ela não mostra.
+    expect(screen.getByText(/Junta o que a foto não mostra/)).toBeInTheDocument();
+    addItem('café com açúcar');
+    addItem('Arroz', 150);
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'frito em azeite' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fnName, { body }] = mocks.invoke.mock.calls[0];
+    expect(fnName).toBe('analyze-meal');
+    expect(body.mode).toBeUndefined();
+    expect(body.images).toEqual(['AAA']);
+    expect(body.items).toEqual([{ name: 'café com açúcar', grams: null }, { name: 'Arroz', grams: 150 }]);
+    expect(body.notes).toBe('frito em azeite');
+  });
+
+  it('só fotos: o pedido de sempre, sem lista de alimentos', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1' }, items: [] }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect('items' in mocks.invoke.mock.calls[0][1].body).toBe(false);
   });
 });
 
@@ -187,8 +235,6 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     useAppStore.setState({ profile: PROFILE, meals: [] });
   });
 
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
-
   const addItem = (name, grams) => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
     fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: String(grams) } });
@@ -197,7 +243,6 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
 
   it('"Adicionar alimento" só junta à lista local, sem chamar o Gemini/Coach', () => {
     render(<MealRegistration onClose={onClose} />);
-    goManual();
     addItem('Peito de frango', 150);
 
     expect(screen.getByText('Peito de frango')).toBeInTheDocument();
@@ -209,7 +254,6 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     const finalMeal = { id: 'meal-9', meal_items: [{ id: 'item-9' }] };
     mocks.invoke.mockResolvedValue({ data: { meal: finalMeal }, error: null });
     render(<MealRegistration onClose={onClose} />);
-    goManual();
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: '1 fatia de fiambre' } });
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
 
@@ -226,7 +270,6 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
 
   it('permite adicionar e remover vários alimentos, sempre localmente', () => {
     render(<MealRegistration onClose={onClose} />);
-    goManual();
     addItem('Arroz', 100);
     addItem('Feijão', 80);
 
@@ -243,7 +286,6 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     const finalMeal = { id: 'meal-2', coach_notes: 'Boa fonte de proteína.', meal_items: [{ id: 'item-1' }, { id: 'item-2' }] };
     mocks.invoke.mockResolvedValue({ data: { meal: finalMeal }, error: null });
     render(<MealRegistration onClose={onClose} />);
-    goManual();
     fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
     addItem('Ovos', 100);
     addItem('Aveia', 40);
@@ -268,7 +310,6 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha a analisar a refeição.' });
     render(<MealRegistration onClose={onClose} />);
-    goManual();
     addItem('Ovos', 100);
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
@@ -280,7 +321,6 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
 
   it('não deixa finalizar sem nenhum alimento adicionado', () => {
     render(<MealRegistration onClose={onClose} />);
-    goManual();
 
     expect(screen.getByRole('button', { name: /Analisar refeição/i })).toBeDisabled();
   });
@@ -314,12 +354,13 @@ describe('MealRegistration — editar refeição existente', () => {
     useAppStore.setState({ profile: PROFILE, meals: [EXISTING_MEAL], loadInitialData });
   });
 
-  it('pré-preenche os campos, esconde o seletor Foto/Manual mas deixa acrescentar alimentos', () => {
+  it('pré-preenche os campos, sem fotos novas mas a deixar acrescentar alimentos', () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     expect(screen.getByText('Editar Refeição')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Jantar/i })).toBeInTheDocument();
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('meal-photos')).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('Arroz')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Frango')).toBeInTheDocument();
     // Acrescentar um alimento novo ao editar passou a ser possível: guardar
@@ -780,8 +821,8 @@ describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  // (b) ERRO + alternativa manual
-  it('a alternativa manual passa ao modo de escrita e preserva foto, data, tipo e observações', async () => {
+  // (b) ERRO + "Escrever" (bug #47: no mesmo ecrã, já não há modo manual)
+  it('"Escrever" leva ao campo dos alimentos e preserva foto, data, tipo e observações', async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
 
     render(<MealRegistration onClose={onClose} />);
@@ -793,11 +834,10 @@ describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Escrever' }));
 
-    // Passou ao modo manual…
-    expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toBeInTheDocument();
-    // …e nada se perdeu: as fotos ficam guardadas (mock: "2 fotos guardadas"),
-    // as observações e o tipo de refeição também.
-    expect(screen.getByTestId('saved-photos')).toHaveTextContent('1 foto guardada');
+    // O foco vai para o nome do alimento…
+    expect(screen.getByPlaceholderText(/peito de frango grelhado/)).toHaveFocus();
+    // …e nada se perdeu: a foto, as observações e o tipo de refeição.
+    expect(screen.getByAltText('Foto da refeição 1')).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('Big Mac');
     expect(screen.getByRole('button', { name: /^Almoço$/i })).toBeInTheDocument();
     // O aviso sai assim que há um caminho novo à frente.
@@ -809,7 +849,6 @@ describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Timeout na análise.' });
 
     render(<MealRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
     fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: 'com molho extra' } });
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'Ovos' } });
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
