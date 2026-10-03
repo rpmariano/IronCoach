@@ -189,15 +189,22 @@ export function nextFoodRow(existing: PantryFood | null, item: any, userId: stri
   };
 }
 
-/** A regra depois de mais uma observação sobre o mesmo tema. null = não
- *  mexer (uma regra que o atleta escreveu à mão só ele a muda). */
-export function nextRuleRow(existing: FoodRule | null, fact: CookingFact, userId: string, nowISO: string): Record<string, unknown> | null {
+/** A regra depois de mais uma observação — ou, desde a fase B, de mais uma
+ *  resposta a uma pergunta da Carol — sobre o mesmo tema. null = não mexer
+ *  (uma regra que o atleta escreveu à mão só ele a muda). */
+export function nextRuleRow(
+  existing: FoodRule | null,
+  fact: CookingFact,
+  userId: string,
+  nowISO: string,
+  source: "observacao" | "resposta" = "observacao",
+): Record<string, unknown> | null {
   const topic_key = foodKey(fact.topic);
   const value_key = foodKey(fact.value);
   if (!topic_key || !value_key) return null;
   const base = { user_id: userId, topic: fact.topic.slice(0, 40), topic_key, updated_at: nowISO };
   if (!existing) {
-    return { ...base, value: fact.value.slice(0, 60), value_key, confirmations: 1, status: "por_confirmar", source: "observacao" };
+    return { ...base, value: fact.value.slice(0, 60), value_key, confirmations: 1, status: "por_confirmar", source };
   }
   if (existing.source === "manual") return null;
   if (existing.value_key === value_key) {
@@ -205,11 +212,11 @@ export function nextRuleRow(existing: FoodRule | null, fact: CookingFact, userId
     const status = existing.status === "varia"
       ? (confirmations >= 3 ? "confirmado" : "varia")
       : (confirmations >= 2 ? "confirmado" : "por_confirmar");
-    return { ...base, topic: existing.topic, value: existing.value, value_key, confirmations, status, source: existing.source };
+    return { ...base, topic: existing.topic, value: existing.value, value_key, confirmations, status, source };
   }
   return {
     ...base, value: fact.value.slice(0, 60), value_key, confirmations: 1,
-    status: existing.status === "por_confirmar" ? "por_confirmar" : "varia", source: "observacao",
+    status: existing.status === "por_confirmar" ? "por_confirmar" : "varia", source,
   };
 }
 
@@ -257,26 +264,112 @@ export async function learnFromMeal(sb: any, userId: string, items: any[], facts
       }
     }
 
-    if (facts.length) {
-      const keys = facts.map((f) => foodKey(f.topic)).filter(Boolean);
-      const { data: existingRules, error } = await sb.from("athlete_food_rules")
-        .select("topic, topic_key, value, value_key, confirmations, status, source")
-        .eq("user_id", userId)
-        .in("topic_key", keys);
-      if (error) throw error;
-      const prev = new Map<string, FoodRule>((existingRules ?? []).map((r: FoodRule) => [r.topic_key, r]));
-      const seenTopics = new Set<string>();
-      const rows = facts
-        .filter((f) => { const k = foodKey(f.topic); if (seenTopics.has(k)) return false; seenTopics.add(k); return true; })
-        .map((f) => nextRuleRow(prev.get(foodKey(f.topic)) ?? null, f, userId, nowISO))
-        .filter((r): r is Record<string, unknown> => !!r);
-      if (rows.length) {
-        const { error: upErr } = await sb.from("athlete_food_rules").upsert(rows, { onConflict: "user_id,topic_key" });
-        if (upErr) throw upErr;
-      }
-    }
+    if (facts.length) await learnRules(sb, userId, facts, "observacao", nowISO);
   } catch (e) {
     console.warn("Despensa por atualizar:", e instanceof Error ? e.message : e);
   }
   return { fromLabel };
+}
+
+/**
+ * Soma factos às regras de como ele cozinha — das observações de uma
+ * refeição nova, ou das respostas às perguntas (fase B). Devolve como cada
+ * regra ficou, para a app dizer "anotado" / "guardado" / "varia". Nunca
+ * rejeita.
+ */
+export async function learnRules(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  userId: string,
+  facts: CookingFact[],
+  source: "observacao" | "resposta",
+  nowISO = new Date().toISOString(),
+): Promise<{ topic: string; value: string; status: string }[]> {
+  try {
+    const seenTopics = new Set<string>();
+    const unique = facts.filter((f) => {
+      const k = foodKey(f.topic);
+      if (!k || seenTopics.has(k)) return false;
+      seenTopics.add(k);
+      return true;
+    });
+    if (!unique.length) return [];
+    const { data: existingRules, error } = await sb.from("athlete_food_rules")
+      .select("topic, topic_key, value, value_key, confirmations, status, source")
+      .eq("user_id", userId)
+      .in("topic_key", unique.map((f) => foodKey(f.topic)));
+    if (error) throw error;
+    const prev = new Map<string, FoodRule>((existingRules ?? []).map((r: FoodRule) => [r.topic_key, r]));
+    const rows = unique
+      .map((f) => nextRuleRow(prev.get(foodKey(f.topic)) ?? null, f, userId, nowISO, source))
+      .filter((r): r is Record<string, unknown> => !!r);
+    if (rows.length) {
+      const { error: upErr } = await sb.from("athlete_food_rules").upsert(rows, { onConflict: "user_id,topic_key" });
+      if (upErr) throw upErr;
+    }
+    return rows.map((r) => ({ topic: String(r.topic), value: String(r.value), status: String(r.status) }));
+  } catch (e) {
+    console.warn("Regras de cozinha por atualizar:", e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
+// ── Fase B: as perguntas da Carol ─────────────────────────────────────────
+
+/** Uma pergunta ao atleta, guardada em meals.carol_questions. */
+export type CarolQuestion = {
+  id: string;
+  topic: string;
+  item_name: string;
+  question: string;
+  options: string[];
+  assumed: string;
+  impact_kcal: number;
+  answer?: string | null;
+  answered_at?: string | null;
+};
+
+/** Abaixo disto a resposta não muda nada que se veja: não se pergunta. */
+export const MIN_QUESTION_IMPACT_KCAL = 50;
+export const MAX_QUESTIONS = 2;
+
+/**
+ * As perguntas que o Gemini propôs, filtradas pelas regras da casa: no
+ * máximo 2, só as que mudam ≥ 50 kcal, nunca sobre um tema já confirmado
+ * (ela já sabe), nunca sobre um alimento da despensa (já o conhece), e
+ * sempre presas a um alimento desta refeição. A opção assumida tem de estar
+ * entre as opções — é a que a estimativa usou.
+ */
+export function parseQuestions(
+  raw: unknown,
+  // deno-lint-ignore no-explicit-any
+  items: any[],
+  rules: FoodRule[],
+  newId: () => string = () => crypto.randomUUID(),
+): CarolQuestion[] {
+  if (!Array.isArray(raw)) return [];
+  const confirmed = new Set(rules.filter((r) => r.status === "confirmado").map((r) => r.topic_key));
+  const itemsByKey = new Map((items || []).map((it) => [foodKey(it?.name), it]));
+  const seenTopics = new Set<string>();
+  const out: CarolQuestion[] = [];
+  for (const q of raw) {
+    const topic = String(q?.topic ?? "").trim().slice(0, 40);
+    const question = String(q?.question ?? "").trim().slice(0, 140);
+    const itemName = String(q?.item_name ?? "").trim();
+    const topicKey = foodKey(topic);
+    const options = [...new Set((Array.isArray(q?.options) ? q.options : [])
+      .map((o: unknown) => String(o ?? "").trim().slice(0, 40))
+      .filter(Boolean))].slice(0, 4) as string[];
+    const assumed = String(q?.assumed ?? "").trim().slice(0, 40);
+    const impact = Math.round(Number(q?.impact_kcal));
+    const item = itemsByKey.get(foodKey(itemName));
+    if (!topicKey || !question || options.length < 2 || !item || item.from_pantry) continue;
+    if (!Number.isFinite(impact) || impact < MIN_QUESTION_IMPACT_KCAL) continue;
+    if (confirmed.has(topicKey) || seenTopics.has(topicKey)) continue;
+    if (!options.some((o) => foodKey(o) === foodKey(assumed))) continue;
+    seenTopics.add(topicKey);
+    out.push({ id: newId(), topic, item_name: String(item.name), question, options, assumed, impact_kcal: impact, answer: null, answered_at: null });
+    if (out.length >= MAX_QUESTIONS) break;
+  }
+  return out;
 }

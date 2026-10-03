@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import CarolQuestions, { openCarolQuestions } from '../Nutrition/CarolQuestions';
 import PremiumModal from './PremiumModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Button from './Button';
@@ -28,6 +29,7 @@ export default function CreatedRecordModal() {
   const {
     newlyCreatedRecord,
     clearNewlyCreatedRecord,
+    setNewlyCreatedRecord,
     profile,
     setProfile,
     setActiveTab,
@@ -69,6 +71,15 @@ export default function CreatedRecordModal() {
 
     return () => { cancelled = true; };
   }, [newlyCreatedRecord, profile?.id]);
+
+  // Presas ao registo, não ao estado das perguntas: depois de responder, a
+  // resposta da Carol fica à vista em vez de o bloco desaparecer.
+  const recordId = newlyCreatedRecord?.record?.id;
+  const hadQuestions = useMemo(
+    () => newlyCreatedRecord?.type === 'meal' && openCarolQuestions(newlyCreatedRecord.record).length > 0,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [recordId],
+  );
 
   if (!newlyCreatedRecord) return null;
 
@@ -132,6 +143,15 @@ export default function CreatedRecordModal() {
           <CheckCircle2 size={24} className="shrink-0" />
           <p className="text-sm font-bold">O teu registo foi analisado e guardado com sucesso.</p>
         </div>
+
+        {/* Bug #52 (fase B): as perguntas da Carol, logo a seguir à análise.
+            Fechar é o "respondo depois" — ficam no cartão da refeição. */}
+        {hadQuestions && (
+          <CarolQuestions
+            meal={record}
+            onAnswered={(updated) => setNewlyCreatedRecord({ type: 'meal', record: updated })}
+          />
+        )}
 
         <div className="pointer-events-none origin-top">
           {type === 'run' && <RunCard run={record} defaultExpanded={true} hideActions />}

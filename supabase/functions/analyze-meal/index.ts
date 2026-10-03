@@ -25,9 +25,10 @@ import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "..
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
-  applyPantry, type CookingFact, fetchPantry, knowledgeSection, learnFromMeal, parseCookingFacts,
-  pickMealItem, splitKnownWritten,
+  applyPantry, type CarolQuestion, type CookingFact, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
+  parseCookingFacts, parseQuestions, pickMealItem, splitKnownWritten,
 } from "./pantry.ts";
+import { foodKey } from "../_shared/formulas/foodKey.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -99,6 +100,23 @@ const RESPONSE_SCHEMA = {
         required: ["topic", "value"],
       },
     },
+    // Bug #52 (fase B): o que ela pergunta em vez de adivinhar — filtrado no
+    // servidor (pantry.ts, parseQuestions) e guardado em meals.carol_questions.
+    questions: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          topic: { type: "STRING" },
+          item_name: { type: "STRING" },
+          question: { type: "STRING" },
+          options: { type: "ARRAY", items: { type: "STRING" } },
+          assumed: { type: "STRING" },
+          impact_kcal: { type: "NUMBER" },
+        },
+        required: ["topic", "item_name", "question", "options", "assumed", "impact_kcal"],
+      },
+    },
   },
   required: ["items"],
 };
@@ -156,6 +174,20 @@ function cookingFactsRule(notes: string | null): string {
     "{topic: \"leite\", value: \"magro\"}. Nada que tenhas deduzido das fotos. Sem nada explícito, lista vazia.";
 }
 
+// Bug #52 (fase B): «em vez de a Carol estar a adivinhar determinadas
+// situações, pode perguntar no momento». A refeição grava-se na mesma com o
+// mais provável (assumed); a pergunta aparece no ecrã do resultado.
+const QUESTIONS_RULE =
+  "\n\nPERGUNTAS (questions): no máximo 2, e só quando não se vê nem se sabe como um alimento desta refeição " +
+  "foi preparado ou temperado E isso muda a energia em 50 kcal ou mais — a gordura usada para fritar ou saltear, " +
+  "o tempero da salada, o molho, a pele ou o corte da carne, o leite gordo ou magro, açúcar no café. Nunca sobre o " +
+  "que as observações já dizem, sobre um tema de \"Como cozinha e tempera\", nem sobre um alimento da lista que ele " +
+  "tem guardada. Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: topic (o tema, curto, " +
+  "ex. \"fritos\"), item_name (o nome EXATO do item em items), question (curta, na 2.ª pessoa, ex. \"Os ovos " +
+  "foram estrelados em quê?\"), options (2 a 4 respostas curtas, ex. [\"Azeite\", \"Manteiga\", \"Óleo\", " +
+  "\"Sem gordura\"]), assumed (uma das options), impact_kcal (quanto a resposta pode mudar a energia, em kcal). " +
+  "Na dúvida, não perguntes: lista vazia.";
+
 function buildPrompt(notes: string | null, knowledge = ""): string {
   return PHOTOS_INTRO +
     "Para cada item, estima a porção total visível em gramas e o seu conteúdo nutricional " +
@@ -165,6 +197,7 @@ function buildPrompt(notes: string | null, knowledge = ""): string {
     notesSection(notes) +
     knowledge +
     cookingFactsRule(notes) +
+    QUESTIONS_RULE +
     "\n\nResponde apenas com JSON estruturado conforme o schema.";
 }
 
@@ -195,6 +228,7 @@ export function buildPhotosAndItemsPrompt(items: { name: string; grams: number |
     notesSection(notes) +
     knowledge +
     cookingFactsRule(notes) +
+    QUESTIONS_RULE +
     "\n\nResponde apenas com JSON estruturado conforme o schema.";
 }
 
@@ -257,7 +291,7 @@ export function buildManualItemsPrompt(items: { name: string; grams: number | nu
   if (notes && notes.trim()) {
     prompt += `\nObservações gerais desta refeição, escritas pelo utilizador: "${notes.trim()}"\n`;
   }
-  prompt += knowledge + cookingFactsRule(notes) + "\nSem fotos: from_label=false em todos os itens.\n";
+  prompt += knowledge + cookingFactsRule(notes) + QUESTIONS_RULE + "\nSem fotos: from_label=false em todos os itens.\n";
   prompt +=
     '\nDevolve exatamente um item no array "items" para CADA alimento da lista, pela MESMA ' +
     "ORDEM em que aparecem acima. Responde apenas com JSON estruturado conforme o schema.";
@@ -319,7 +353,7 @@ async function runGeminiItemsRequest(
   // alimentos escritos); quem o pede tira-o antes de gravar.
   schema: typeof RESPONSE_SCHEMA = RESPONSE_SCHEMA,
   // deno-lint-ignore no-explicit-any
-): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[] }> {
+): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }> {
   const withSource = schema === RESPONSE_SCHEMA_WITH_SOURCE;
   const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
     fetchGeminiWithTimeout(
@@ -355,7 +389,7 @@ async function runGeminiItemsRequest(
   const geminiJson = await geminiRes.json();
   const usage: GeminiUsage = usageFromGemini(geminiJson);
   const rawText = geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text;
-  let parsed: { items?: unknown[]; cooking_facts?: unknown };
+  let parsed: { items?: unknown[]; cooking_facts?: unknown; questions?: unknown };
   try {
     parsed = JSON.parse(rawText);
   } catch {
@@ -388,7 +422,7 @@ async function runGeminiItemsRequest(
   if (items.length === 0) {
     throw new Error(emptyErrorMessage);
   }
-  return { items, usage, facts: parseCookingFacts(parsed.cooking_facts) };
+  return { items, usage, facts: parseCookingFacts(parsed.cooking_facts), questions: parsed.questions };
 }
 
 // Chama o Gemini com as imagens (base64) + observações, devolve os itens
@@ -401,7 +435,7 @@ async function analyzeWithGemini(
   deadline = Number.POSITIVE_INFINITY,
   knowledge = "",
   // deno-lint-ignore no-explicit-any
-): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[] }> {
+): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }> {
   const parts: unknown[] = [{ text: buildPrompt(notes, knowledge) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
@@ -428,12 +462,12 @@ async function analyzePhotosWithItems(
   deadline = Number.POSITIVE_INFINITY,
   knowledge = "",
   // deno-lint-ignore no-explicit-any
-): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[] }> {
+): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }> {
   const parts: unknown[] = [{ text: buildPhotosAndItemsPrompt(written, notes, knowledge) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
-  const { items: raw, usage, facts } = await runGeminiItemsRequest(
+  const { items: raw, usage, facts, questions } = await runGeminiItemsRequest(
     parts,
     geminiKey,
     "Não foi possível identificar os alimentos. Tenta outro ângulo ou descreve-os de outra forma.",
@@ -446,7 +480,7 @@ async function analyzePhotosWithItems(
   if (!items) {
     throw new Error("A análise não devolveu todos os alimentos que escreveste. Tenta novamente.");
   }
-  return { items, usage, facts };
+  return { items, usage, facts, questions };
 }
 
 // Os alimentos escritos no pedido: nome (até 120) e gramas opcionais. Sem
@@ -485,9 +519,9 @@ async function analyzeManualItems(
   deadline = Number.POSITIVE_INFINITY,
   knowledge = "",
   // deno-lint-ignore no-explicit-any
-): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[] }> {
+): Promise<{ items: any[]; usage: GeminiUsage; facts: CookingFact[]; questions: unknown }> {
   const parts: unknown[] = [{ text: buildManualItemsPrompt(items, notes, knowledge) }];
-  const { items: rawItems, usage, facts } = await runGeminiItemsRequest(
+  const { items: rawItems, usage, facts, questions } = await runGeminiItemsRequest(
     parts,
     geminiKey,
     "Não foi possível estimar valores nutricionais para estes alimentos. Tenta descrevê-los de outra forma.",
@@ -503,7 +537,7 @@ async function analyzeManualItems(
     name: items[i].name.slice(0, 120),
     quantity_grams: items[i].grams != null ? items[i].grams : it.quantity_grams,
   }));
-  return { items: merged, usage, facts };
+  return { items: merged, usage, facts, questions };
 }
 
 // Espelha DIETARY_RESTRICTION_INFO em supabase/functions/coach-chat/index.ts
@@ -1074,6 +1108,100 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // como ele cozinha. Nunca rejeita (analyze-meal/pantry.ts).
     const pantryPromise = fetchPantry(sb, userId);
 
+    // ── Modo "answer": o atleta responde às perguntas da Carol (fase B) ──
+    // Uma resposta igual à que ela assumiu só confirma; uma diferente volta a
+    // estimar o alimento a que se refere (com a resposta no nome) e refaz o
+    // comentário. Todas somam às regras de como ele cozinha — à 2.ª igual,
+    // ela deixa de perguntar (pantry.ts, learnRules).
+    if (body.mode === "answer") {
+      if (typeof body.meal_id !== "string" || !body.meal_id) {
+        return jsonResponse({ error: "Falta a refeição." }, 400);
+      }
+      const { data: meal, error: mealErr } = await sb
+        .from("meals")
+        .select("*, meal_items(*)")
+        .eq("id", body.meal_id)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (mealErr) return jsonResponse({ error: `Falha a procurar refeição: ${mealErr.message}` }, 500);
+      if (!meal) return jsonResponse({ error: "Refeição não encontrada" }, 404);
+
+      const questions: CarolQuestion[] = Array.isArray(meal.carol_questions) ? meal.carol_questions : [];
+      const wanted = new Map<string, string>(
+        (Array.isArray(body.answers) ? body.answers : [])
+          // deno-lint-ignore no-explicit-any
+          .map((a: any) => [String(a?.id ?? ""), String(a?.answer ?? "").trim().slice(0, 60)] as [string, string])
+          .filter(([id, answer]: [string, string]) => id && answer),
+      );
+      const answered = questions.filter((q) => !q.answer && wanted.has(q.id)).map((q) => ({ ...q, answer: wanted.get(q.id)! }));
+      if (!answered.length) return jsonResponse({ error: "Não há perguntas por responder nesta refeição." }, 400);
+
+      // Os alimentos a estimar outra vez: só onde a resposta não é a assumida.
+      // deno-lint-ignore no-explicit-any
+      const mealItems: any[] = meal.meal_items || [];
+      // deno-lint-ignore no-explicit-any
+      const changes = new Map<string, { item: any; answers: string[]; facts: string[] }>();
+      for (const q of answered) {
+        if (foodKey(q.answer) === foodKey(q.assumed)) continue;
+        const item = mealItems.find((it) => foodKey(it.name) === foodKey(q.item_name));
+        if (!item) continue;
+        const c = changes.get(item.id) ?? { item, answers: [], facts: [] };
+        c.answers.push(q.answer);
+        c.facts.push(`${q.topic}: ${q.answer}`);
+        changes.set(item.id, c);
+      }
+
+      let usage: GeminiUsage = emptyUsage();
+      if (changes.size) {
+        const pantry = await pantryPromise;
+        const list = [...changes.values()];
+        const written = list.map((c) => ({
+          name: `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120),
+          grams: Number(c.item.quantity_grams) || null,
+        }));
+        const answersNote = `Respostas do atleta: ${list.flatMap((c) => c.facts).join("; ")}.`;
+        let est;
+        try {
+          est = await analyzeManualItems(
+            written, [meal.notes, answersNote].filter(Boolean).join("\n"), geminiKey, extractionDeadline,
+            knowledgeSection(pantry.foods, pantry.rules),
+          );
+        } catch (e) {
+          return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
+        }
+        usage = est.usage;
+        for (let i = 0; i < list.length; i++) {
+          const { error: upErr } = await sb.from("meal_items")
+            .update(pickMealItem({ ...est.items[i], quantity_grams: list[i].item.quantity_grams }))
+            .eq("id", list[i].item.id);
+          if (upErr) return jsonResponse({ error: `Falha a gravar o alimento: ${upErr.message}` }, 500);
+        }
+      }
+
+      const nowISO = new Date().toISOString();
+      const byId = new Map(answered.map((q) => [q.id, q]));
+      const updatedQuestions = questions.map((q) => (byId.has(q.id) ? { ...q, answer: byId.get(q.id)!.answer, answered_at: nowISO } : q));
+      const { error: qErr } = await sb.from("meals").update({ carol_questions: updatedQuestions }).eq("id", meal.id);
+      if (qErr) return jsonResponse({ error: `Falha a gravar as respostas: ${qErr.message}` }, 500);
+
+      const { data: freshItems } = await sb.from("meal_items").select("*").eq("meal_id", meal.id);
+      const [coachUsage, learned] = await Promise.all([
+        changes.size
+          ? attachMealCoachNotes(sb, userId, meal, {
+            date: meal.date, meal_type: meal.meal_type, meal_time: meal.meal_time ?? null, notes: meal.notes ?? null,
+            totals: totalsFromItems(freshItems || []), items: freshItems || [],
+          }, geminiKey, coachDeadline)
+          : Promise.resolve(null),
+        learnRules(sb, userId, answered.map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
+      ]);
+      const { data: freshMeal } = await sb.from("meals").select("*").eq("id", meal.id).maybeSingle();
+      return jsonResponse({
+        meal: { ...(freshMeal ?? { ...meal, carol_questions: updatedQuestions }), meal_items: freshItems || mealItems },
+        learned,
+        usage: addUsage(usage, coachUsage),
+      });
+    }
+
     // ── Modo manual: registo sem fotos, todos os alimentos duma vez ────
     // O cliente só acumula {name, grams} localmente ao "Adicionar alimento"
     // — nada é consultado ao Gemini nesse momento. Só ao premir "Analisar
@@ -1104,16 +1232,17 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       // ela sabe de como ele cozinha. Todos conhecidos: nenhuma estimativa.
       const pantry = await pantryPromise;
       const { known, unknown } = splitKnownWritten(items, pantry.byKey);
-      let estimated: { items: unknown[]; usage: GeminiUsage; facts: CookingFact[] };
+      let estimated: { items: unknown[]; usage: GeminiUsage; facts: CookingFact[]; questions: CarolQuestion[] };
       try {
         if (unknown.length) {
           const est = await analyzeManualItems(
             unknown.map((u) => u.item), rawNotes, geminiKey, extractionDeadline, knowledgeSection(pantry.foods, pantry.rules),
           );
           const byIndex = new Map(unknown.map((u, i) => [u.index, est.items[i]]));
-          estimated = { items: items.map((_, i) => known.get(i) ?? byIndex.get(i)), usage: est.usage, facts: est.facts };
+          const all = items.map((_, i) => known.get(i) ?? byIndex.get(i));
+          estimated = { items: all, usage: est.usage, facts: est.facts, questions: parseQuestions(est.questions, all, pantry.rules) };
         } else {
-          estimated = { items: items.map((_, i) => known.get(i)), usage: emptyUsage(), facts: [] };
+          estimated = { items: items.map((_, i) => known.get(i)), usage: emptyUsage(), facts: [], questions: [] };
         }
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
@@ -1140,7 +1269,8 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
         const { data: updatedMeal, error: updateError } = await sb
           .from("meals")
-          .update({ date: body.date, meal_type: body.meal_type, notes: rawNotes, ...mealTimeField })
+          // As perguntas de antes falavam da refeição de antes.
+          .update({ date: body.date, meal_type: body.meal_type, notes: rawNotes, ...mealTimeField, carol_questions: estimated.questions.length ? estimated.questions : null })
           .eq("id", mealId)
           .select()
           .single();
@@ -1168,7 +1298,10 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
       const { data: meal, error: mealError } = await sb
         .from("meals")
-        .insert({ user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes, ...mealTimeField })
+        .insert({
+          user_id: userId, date: body.date, meal_type: body.meal_type, photo_paths: [], status: "ready", notes: rawNotes, ...mealTimeField,
+          carol_questions: estimated.questions.length ? estimated.questions : null,
+        })
         .select()
         .single();
       if (mealError) return jsonResponse({ error: `Falha a gravar refeição: ${mealError.message}` }, 500);
@@ -1308,9 +1441,9 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     const pantry = await pantryPromise;
     const knowledge = knowledgeSection(pantry.foods, pantry.rules);
     // deno-lint-ignore no-explicit-any
-    let items: any[], usage: GeminiUsage, facts: CookingFact[];
+    let items: any[], usage: GeminiUsage, facts: CookingFact[], rawQuestions: unknown;
     try {
-      ({ items, usage, facts } = written.length
+      ({ items, usage, facts, questions: rawQuestions } = written.length
         ? await analyzePhotosWithItems(images, mime, written, rawNotes, geminiKey, extractionDeadline, knowledge)
         : await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline, knowledge));
       items = applyPantry(items, pantry.byKey);
@@ -1322,7 +1455,10 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // 3. Gravar refeição + itens
     const { data: meal, error: mealError } = await sb
       .from("meals")
-      .insert({ user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes, ...mealTimeField })
+      .insert({
+        user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes, ...mealTimeField,
+        carol_questions: (() => { const q = parseQuestions(rawQuestions, items, pantry.rules); return q.length ? q : null; })(),
+      })
       .select()
       .single();
     if (mealError) {

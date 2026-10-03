@@ -1,8 +1,8 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
-  applyPantry, type FoodRule, knowledgeSection, learnFromMeal, nextFoodRow, nextRuleRow, type PantryFood,
-  parseCookingFacts, pickMealItem, splitKnownWritten,
+  applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
+  parseCookingFacts, parseQuestions, pickMealItem, splitKnownWritten,
 } from "./pantry.ts";
 
 // Bugs #48/#52, fase A: a despensa e como ele cozinha.
@@ -167,4 +167,62 @@ Deno.test("learnFromMeal: uma falha não rebenta o registo", async () => {
   const { sb } = makeSb([], [], true);
   const r = await learnFromMeal(sb, "u1", [estimado("Arroz", 130)], [], NOW);
   assert(Array.isArray(r.fromLabel));
+});
+
+// ─── Fase B: as perguntas da Carol ─────────────────────────────────────────
+
+const ovo = estimado("Ovo estrelado", 196);
+const salada = estimado("Salada mista", 20);
+const pergunta = (over: Record<string, unknown> = {}) => ({
+  topic: "fritos", item_name: "Ovo estrelado", question: "Os ovos foram estrelados em quê?",
+  options: ["Azeite", "Manteiga", "Óleo", "Sem gordura"], assumed: "Azeite", impact_kcal: 90, ...over,
+});
+let n = 0;
+const ids = () => `q${++n}`;
+
+Deno.test("parseQuestions: a pergunta fica presa ao alimento da refeição, com a opção assumida entre as opções", () => {
+  n = 0;
+  const [q] = parseQuestions([pergunta()], [ovo, salada], [], ids);
+  assertEquals(q, {
+    id: "q1", topic: "fritos", item_name: "Ovo estrelado", question: "Os ovos foram estrelados em quê?",
+    options: ["Azeite", "Manteiga", "Óleo", "Sem gordura"], assumed: "Azeite", impact_kcal: 90, answer: null, answered_at: null,
+  });
+});
+
+Deno.test("parseQuestions: as regras da casa — ≥ 50 kcal, no máximo 2, sem temas confirmados nem alimentos da despensa", () => {
+  const confirmada = regra({ topic: "salada", topic_key: "salada", status: "confirmado" });
+  const qs = parseQuestions([
+    pergunta({ impact_kcal: 30 }),                                    // pouco impacto
+    pergunta({ topic: "salada", item_name: "Salada mista" }),         // tema já confirmado
+    pergunta({ item_name: "Bife" }),                                  // não está na refeição
+    pergunta({ assumed: "Banha" }),                                   // assumida fora das opções
+    pergunta({ options: ["Azeite"] }),                                // uma opção só
+    pergunta(),                                                       // esta passa
+    pergunta(),                                                       // tema repetido
+    pergunta({ topic: "molho", item_name: "Salada mista", assumed: "Sem molho", options: ["Com molho", "Sem molho"] }),
+    pergunta({ topic: "café", item_name: "Salada mista" }),           // passava do limite de 2
+  ], [ovo, salada], [confirmada], ids);
+  assertEquals(qs.map((q) => q.topic), ["fritos", "molho"]);
+  // Um alimento que já veio da despensa não se pergunta.
+  assertEquals(parseQuestions([pergunta()], [{ ...ovo, from_pantry: true }], [], ids), []);
+  assertEquals(parseQuestions("nada", [ovo], [], ids), []);
+});
+
+Deno.test("nextRuleRow: uma resposta conta como uma observação, marcada como resposta", () => {
+  const primeira = nextRuleRow(null, { topic: "fritos", value: "manteiga" }, "u1", NOW, "resposta")!;
+  assertEquals([primeira.status, primeira.source], ["por_confirmar", "resposta"]);
+  const segunda = nextRuleRow(regra({ value: "manteiga", value_key: "manteiga", source: "resposta" }), { topic: "fritos", value: "Manteiga" }, "u1", NOW, "resposta")!;
+  assertEquals([segunda.status, segunda.confirmations], ["confirmado", 2]);
+});
+
+Deno.test("learnRules: devolve como cada regra ficou; uma falha devolve vazio", async () => {
+  const { sb, upserts } = makeSb([], [regra({ value: "azeite", value_key: "azeite" })]);
+  const ficou = await learnRules(sb, "u1", [{ topic: "fritos", value: "azeite" }, { topic: "Fritos", value: "manteiga" }, { topic: "salada", value: "azeite e vinagre" }], "resposta", NOW);
+  assertEquals(ficou, [
+    { topic: "fritos", value: "azeite", status: "confirmado" },
+    { topic: "salada", value: "azeite e vinagre", status: "por_confirmar" },
+  ]);
+  assertEquals(upserts.athlete_food_rules[0].opts, { onConflict: "user_id,topic_key" });
+  const { sb: falha } = makeSb([], [], true);
+  assertEquals(await learnRules(falha, "u1", [{ topic: "fritos", value: "azeite" }], "resposta", NOW), []);
 });

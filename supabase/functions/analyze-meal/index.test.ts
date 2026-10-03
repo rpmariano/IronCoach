@@ -153,3 +153,14 @@ Deno.test("os pedidos de análise levam a regra dos rótulos, o que ela já sabe
   // Sem despensa, o pedido não ganha a secção.
   assertEquals(buildManualItemsPrompt([{ name: "Ovos", grams: 100 }], null).includes("O QUE JÁ SABES"), false);
 });
+
+Deno.test("fase B: os três pedidos pedem perguntas só quando a preparação muda ≥ 50 kcal", () => {
+  for (const p of [
+    buildPhotosAndItemsPrompt([{ name: "Café", grams: null }], null),
+    buildManualItemsPrompt([{ name: "Ovo estrelado", grams: 100 }], null),
+  ]) {
+    assertStringIncludes(p, "PERGUNTAS (questions): no máximo 2");
+    assertStringIncludes(p, "50 kcal ou mais");
+    assertStringIncludes(p, "Na dúvida, não perguntes");
+  }
+});

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplet, Award, PencilLine } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplet, Award, PencilLine, HelpCircle } from 'lucide-react';
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { normalizeStartTime } from '../../utils/startTime';
 import { supabase } from '../../lib/supabase';
@@ -8,6 +8,8 @@ import { useToast } from '../shared/ToastProvider';
 import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
+import PremiumModal from '../shared/PremiumModal';
+import CarolQuestions, { openCarolQuestions } from './CarolQuestions';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -32,6 +34,9 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
   const [photos, setPhotos] = useState([]);
   const [photosLoading, setPhotosLoading] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // Bug #52 (fase B): as perguntas que ficaram por responder.
+  const [questionsOpen, setQuestionsOpen] = useState(false);
+  const openQuestions = openCarolQuestions(meal);
 
   const n = mealNutrients(meal);
   const items = meal.meal_items || [];
@@ -117,6 +122,34 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
           </button>
         </div>
       </div>
+
+      {/* As perguntas da Carol que ficaram por responder (bug #52, fase B) —
+          à vista com o cartão fechado; no pré-visualizar do resultado não,
+          que lá estão as próprias perguntas. */}
+      {!hideActions && openQuestions.length > 0 && (
+        <button
+          type="button"
+          data-testid="meal-card-questions"
+          onClick={() => setQuestionsOpen(true)}
+          className="w-full min-h-[44px] rounded-xl px-3.5 flex items-center justify-between text-[13px] font-extrabold"
+          style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}
+        >
+          <span className="inline-flex items-center gap-2">
+            <HelpCircle size={16} />
+            A Carol tem {openQuestions.length === 1 ? '1 pergunta' : `${openQuestions.length} perguntas`}
+          </span>
+          <span className="text-[12px] font-bold" style={{ color: 'var(--text-4)' }}>
+            até {openQuestions.reduce((t, q) => t + (Number(q.impact_kcal) || 0), 0)} kcal
+          </span>
+        </button>
+      )}
+      {questionsOpen && (
+        <PremiumModal isOpen onClose={() => setQuestionsOpen(false)} title="Perguntas da Carol" subtitle={mealTypeLabel(meal.meal_type)} theme="coach" variant="bottom-sheet" maxWidth="max-w-md">
+          <div className="px-5 py-4">
+            <CarolQuestions meal={meal} />
+          </div>
+        </PremiumModal>
+      )}
 
       {/* Expanded Content */}
       {expanded && (
