@@ -18,6 +18,7 @@ import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_
 import { estimate1RM } from "../_shared/formulas/epley.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
+import { missingProfileBasicsInstruction } from "../_shared/profileGaps.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { computeTrainingDistribution } from "../_shared/formulas/trainingDistribution.ts";
 import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
@@ -5262,7 +5263,7 @@ export function buildSystemInstruction(
     `  M: (10×peso) + (6,25×altura cm) − (5×idade) − 161\n` +
     `  GETD = TMB × fator atividade não-treino (1,2-1,4) + custo corrida (≈1,0 kcal/kg/km).\n` +
     `  BIA: body_assessments.bmr_kcal NÃO usar para cálculo (erro ±200-400 kcal/dia) — informativo apenas.\n` +
-    `  Os targets calculados no contexto abaixo mostram a estimativa Mifflin para este atleta.\n` +
+    `  Os targets calculados no contexto abaixo mostram a estimativa Mifflin para este atleta — só quando o perfil tem género, idade, altura e peso; senão vês "DADOS DO PERFIL EM FALTA".\n` +
     `DÉFICE CALÓRICO MÁXIMO por nível:\n` +
     `  Iniciante/Básico: 300-500 kcal/dia (15-20%) · perda ≤0,5 kg/sem (≤0,7% do peso).\n` +
     `  Médio:            250-400 kcal/dia (10-15%) · perda ≤0,25-0,40 kg/sem.\n` +
@@ -5647,6 +5648,10 @@ export function buildSystemInstruction(
   if (bio.length) {
     sys += `\n\nDados biométricos do utilizador:\n${bio.join("\n")}`;
   }
+  // Bug #50: faltando género, idade, altura ou peso, a TMB/GETD não sai —
+  // ela é avisada e pede-os, em vez de adivinhar o gasto.
+  const profileGaps = missingProfileBasicsInstruction(biometrics);
+  if (profileGaps) sys += `\n\n${profileGaps}`;
 
   // Restrições alimentares — regra dura, não preferência. Sem isto o coach
   // não fica calado, fica errado: sugere frango a um vegetariano e perde a

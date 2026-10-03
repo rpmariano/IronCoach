@@ -181,6 +181,21 @@ Deno.test("notas de alergia sozinhas já ativam o bloco de restrições", () => 
   assertEquals(ctx.restricoes_alimentares?.restrictions, []);
 });
 
+// Bug #50: o que falta para a TMB/GETD só entra no contexto quando falta.
+Deno.test("perfil.em_falta lista os dados que faltam para o gasto estimado", () => {
+  const ctx = buildDailySummaryContext(baseParams);
+  assertEquals(ctx.perfil.em_falta, ["género", "data de nascimento", "altura", "peso"]);
+});
+
+Deno.test("perfil completo: sem perfil.em_falta (contexto igual ao de sempre)", () => {
+  const ctx = buildDailySummaryContext({
+    ...baseParams,
+    profile: { ...baseParams.profile, gender: "M", birth_date: "1984-05-10", height_cm: 178, weight_kg: 74 },
+  });
+  assertEquals(ctx.perfil.em_falta, undefined);
+  assertEquals(JSON.stringify(ctx).includes("em_falta"), false);
+});
+
 Deno.test("soma as refeições de hoje e arredonda os totais", () => {
   const ctx = buildDailySummaryContext({
     ...baseParams,

@@ -927,6 +927,26 @@ Deno.test("com athleteFirstName, o prompt instrui a Carol a tratar o atleta por 
   assertStringIncludes(sys, "chama-se **Patrícia**");
 });
 
+// ─── bug #50: dados do perfil em falta ───────────────────────────────────
+
+Deno.test("perfil sem altura e peso: o prompt diz o que falta e manda pedi-lo", () => {
+  const sys = buildSystemInstruction(
+    null, { ...BIO_BASE, gender: "F", birth_date: "1990-03-02" }, null, null, "NUTRIÇÃO", "ÁGUA",
+    null, null, null, null, null, null,
+  );
+  assertStringIncludes(sys, "DADOS DO PERFIL EM FALTA: altura e peso.");
+  assertStringIncludes(sys, "Perfil → Pessoal");
+});
+
+Deno.test("perfil completo: nenhum aviso de dados em falta", () => {
+  const sys = buildSystemInstruction(
+    null, { ...BIO_BASE, gender: "M", birth_date: "1984-05-10", height_cm: 178, weight_kg: 74 },
+    null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+  );
+  assertEquals(sys.includes("DADOS DO PERFIL EM FALTA:"), false);
+  assertStringIncludes(sys, "Altura: 178 cm");
+});
+
 Deno.test("sem athleteFirstName, o prompt não menciona nome próprio (recua para 'atleta')", () => {
   const sys = buildSystemInstruction(
     null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,

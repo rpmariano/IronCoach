@@ -23,6 +23,7 @@ import { getTaperDays as sharedGetTaperDays, type SeriesIntent } from "../_share
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
+import { missingProfileBasics } from "../_shared/profileGaps.ts";
 import { resolveMaxHR, resolveHrZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { CAROL_TONE_RULES_SHORT, carolLanguageRule } from "../_shared/carolTone.ts";
 import { PAIN_ALARM_THRESHOLD } from "../_shared/formulas/checkinAlarms.ts";
@@ -336,6 +337,7 @@ export function buildDailySummaryContext(params: {
   const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva, seriesIntents } = params;
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
+  const perfilEmFalta = missingProfileBasics(profile);
 
   // deno-lint-ignore no-explicit-any
   const mealTotals = (todayMeals || []).reduce((acc: MealTotals, m: any) => {
@@ -395,6 +397,9 @@ export function buildDailySummaryContext(params: {
       gender: profile?.gender ?? null,
       idade: ageFromBirthDate(profile?.birth_date ?? null),
       fc_repouso_bpm: profile?.resting_hr_bpm ?? null,
+      // Bug #50: só com algum em falta — undefined não chega ao JSON, e o
+      // contexto de um perfil completo fica igual ao de sempre.
+      em_falta: perfilEmFalta.length ? perfilEmFalta : undefined,
       // A mesma FCmáx (observada nos prints de 30 dias, senão Tanaka) e a
       // mesma régua de zonas do chat e do analyze-run (ação 5.4) — nunca
       // uma quarta conta diferente.
@@ -748,6 +753,12 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     memoryPromptSection(memoryBlock) +
     seriesPromptSection(seriesBlock) +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
+    // Bug #50 — sem os quatro dados não há GETD (objetivos_diarios_tdee_kcal null).
+    ((ctx.perfil as { em_falta?: string[] } | undefined)?.em_falta?.length
+      ? `DADOS DO PERFIL EM FALTA ("perfil.em_falta"): sem género, idade, altura e peso não há gasto estimado — ` +
+        `não o estimes nem digas quantas calorias ele gasta. Se o que escreves hoje depender disso (calorias, peso, ` +
+        `energia), uma frase a dizer que, pondo o que falta no Perfil → Pessoal, as contas passam a ser as dele.\n\n`
+      : "") +
     `CAMPOS A PREENCHER:\n\n` +
     `1. recap — mensagem do Coach ao atleta (máx. 3 frases). ` +
     `Combina: (a) balanço honesto dos treinos recentes — consistência, volume, tendências; ` +
