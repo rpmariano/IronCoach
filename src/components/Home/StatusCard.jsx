@@ -1,7 +1,8 @@
 import React from 'react';
-import { Camera, Utensils, ChevronRight } from 'lucide-react';
+import { Camera, Utensils, ChevronRight, CalendarDays } from 'lucide-react';
 import GlassCard from '../shared/GlassCard';
-import { Orbit, OrbitLegend } from '../shared/Orbit';
+import { Orbit } from '../shared/Orbit';
+import NeonRing, { NeonRingValue } from '../shared/NeonRing';
 import { useRevealAnimation } from '../../utils/useRevealAnimation';
 
 /* "Como estou" — a órbita de nutrição do dia, só leitura (mock "Início").
@@ -14,7 +15,11 @@ import { useRevealAnimation } from '../../utils/useRevealAnimation';
    dos anéis. `mealsModel` é o que mealsForDay() devolve (null quando a
    Carol não sugeriu nada para hoje: a linha simplesmente não aparece, sem
    estado vazio nenhum a ocupar o cartão). */
-export default function StatusCard({ rings, empty = false, onRegisterMeal, mealsModel = null, onOpenMeals }) {
+/* Desde o bug #51 (2026-10-03): um anel neon por macro, com o objetivo do
+   dia por baixo, e a água numa barra (homeModels.buildNutritionGauges). "Ver
+   dias anteriores" abre a Nutrição na vista Dia, em ontem — o pedido era
+   saber o objetivo de ontem e se foi atingido. */
+export default function StatusCard({ gauges, empty = false, onRegisterMeal, mealsModel = null, onOpenMeals, onOpenHistory }) {
   /* Ponto 9: anéis a desenharem-se e valores a contar quando a órbita
      aparece no ecrã, e outra vez sempre que se volta ao Início
      (useRevealAnimation, 2026-09-13). */
@@ -35,10 +40,42 @@ export default function StatusCard({ rings, empty = false, onRegisterMeal, meals
   }
   return (
     <GlassCard padding="14px 16px" data-testid="status-card">
-      <div className="flex items-center gap-4" ref={reveal.ref} style={reveal.style}>
-        <div className="shrink-0" style={{ width: 116, height: 116 }}><Orbit key={reveal.playKey} rings={rings} size={116} animate={reveal.animate} /></div>
-        <OrbitLegend key={`l${reveal.playKey}`} rings={rings} animate={reveal.animate} />
+      <div ref={reveal.ref} style={reveal.style}>
+        <div className="grid grid-cols-4 gap-1.5" data-testid="status-card-rings">
+          {gauges.macros.map((m, i) => (
+            <div key={`${m.key}-${reveal.playKey}`} data-testid={`ring-${m.key}`} className="flex flex-col items-center text-center min-w-0">
+              <NeonRing value={m.value} target={m.target} color={m.color} animate={reveal.animate} index={i}>
+                <span className="text-[14px] font-black" style={{ color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+                  <NeonRingValue value={m.value} animate={reveal.animate} />
+                </span>
+              </NeonRing>
+              <span className="text-[10.5px] font-extrabold uppercase mt-1.5 whitespace-nowrap" style={{ color: 'var(--text-3)', letterSpacing: 'var(--tracking-label)' }}>{m.label}</span>
+              <span className="text-[11px] font-bold whitespace-nowrap" style={{ color: 'var(--text-4)', fontVariantNumeric: 'tabular-nums' }}>/ {m.target.toLocaleString('pt-PT')} {m.unit}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-3.5" data-testid="status-card-water">
+          <div className="flex items-baseline justify-between">
+            <span className="text-[10.5px] font-extrabold uppercase" style={{ color: 'var(--text-3)', letterSpacing: 'var(--tracking-label)' }}>{gauges.water.label}</span>
+            <span className="text-[13px] font-black" style={{ color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
+              {gauges.water.display} <span className="text-[11px] font-bold" style={{ color: 'var(--text-4)' }}>/ {gauges.water.targetDisplay} {gauges.water.unit}</span>
+            </span>
+          </div>
+          <div className="h-[6px] rounded-full overflow-hidden mt-1.5" style={{ background: 'rgba(61,139,255,.14)' }} aria-hidden="true">
+            <div className="h-full rounded-full" style={{ width: `${Math.min(100, gauges.water.target > 0 ? (gauges.water.value / gauges.water.target) * 100 : 0)}%`, background: gauges.water.color, boxShadow: `0 0 8px ${gauges.water.color}` }} />
+          </div>
+        </div>
       </div>
+      {onOpenHistory && (
+        <button type="button" data-testid="status-card-history" onClick={onOpenHistory} className="flex items-center justify-between w-full min-h-[44px] mt-2 text-left text-[12px] font-bold" style={{ color: 'var(--text-3)', borderTop: '1px solid rgba(255,255,255,.09)' }}>
+          <span className="flex items-center gap-2">
+            <CalendarDays size={15} style={{ color: 'var(--neon-kcal)' }} className="shrink-0" />
+            Ver dias anteriores — o objetivo e se o atingiste
+          </span>
+          <ChevronRight size={15} style={{ color: 'var(--text-4)' }} className="shrink-0" />
+        </button>
+      )}
       {mealsModel && (
         <button type="button" data-testid="status-card-meals" onClick={() => onOpenMeals?.()} className="flex items-center justify-between w-full min-h-[44px] mt-2 text-left text-[12px] font-bold" style={{ color: 'var(--text-3)', borderTop: '1px solid rgba(255,255,255,.09)' }}>
           <span className="flex items-center gap-2">

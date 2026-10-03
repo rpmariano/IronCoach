@@ -333,22 +333,34 @@ export function buildTrailModel(plan) {
 
 const litres = (ml) => (Math.round((ml / 1000) * 10) / 10).toFixed(1).replace('.', ',');
 
-/** Os três anéis: calorias (violeta), proteína (rosa), água (ciano). */
-export function buildOrbitRings({ meals = [], waterLogs = [], profile = {}, today } = {}) {
+/** O "Como estou" de hoje (bug #51, 2026-10-03: «um círculo por cada macro
+ *  e as cores têm de ser apelativas, neon»): um anel por macro — calorias,
+ *  proteína, hidratos, gordura — contra o objetivo do dia, e a água à parte,
+ *  numa barra. Sem metas no perfil valem os valores por omissão de
+ *  @formulas/macroAdherence.ts (nunca 0: dividia por zero nos anéis). */
+export function buildNutritionGauges({ meals = [], waterLogs = [], profile = {}, today } = {}) {
   const t = today || lisbonTodayISO();
   const totals = (meals || []).filter((m) => m.date === t).reduce((acc, m) => {
     const n = mealNutrients(m);
-    return { calories: acc.calories + (n.calories || 0), protein: acc.protein + (n.protein || 0) };
-  }, { calories: 0, protein: 0 });
+    return {
+      calories: acc.calories + (n.calories || 0),
+      protein: acc.protein + (n.protein || 0),
+      carbs: acc.carbs + (n.carbs || 0),
+      fat: acc.fat + (n.fat || 0),
+    };
+  }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
   const waterMl = (waterLogs || []).filter((w) => w.date === t).reduce((s, w) => s + (w.amount_ml || 0), 0);
-  const calGoal = Number(profile?.calorie_goal) || 2000;
-  const proteinGoal = Number(profile?.protein_goal) || 150;
-  const waterGoal = Number(profile?.water_goal_ml) || 2000;
-  return [
-    { label: 'Calorias', value: Math.round(totals.calories), target: calGoal, color: 'var(--nutrition)' },
-    { label: 'Proteína', value: Math.round(totals.protein), target: proteinGoal, unit: 'g', color: 'var(--body)' },
-    { label: 'Água', value: waterMl / 1000, target: waterGoal / 1000, unit: 'L', display: litres(waterMl), targetDisplay: litres(waterGoal), color: 'var(--run)' },
-  ];
+  const goal = (key, fallback) => Number(profile?.[key]) || fallback;
+  const waterGoal = goal('water_goal_ml', 2000);
+  return {
+    macros: [
+      { key: 'calories', label: 'Calorias', value: Math.round(totals.calories), target: goal('calorie_goal', 2000), unit: 'kcal', color: 'var(--neon-kcal)' },
+      { key: 'protein', label: 'Proteína', value: Math.round(totals.protein), target: goal('protein_goal', 150), unit: 'g', color: 'var(--neon-proteina)' },
+      { key: 'carbs', label: 'Hidratos', value: Math.round(totals.carbs), target: goal('carbs_goal', 200), unit: 'g', color: 'var(--neon-hidratos)' },
+      { key: 'fat', label: 'Gordura', value: Math.round(totals.fat), target: goal('fat_goal', 70), unit: 'g', color: 'var(--neon-gordura)' },
+    ],
+    water: { label: 'Água', value: waterMl / 1000, target: waterGoal / 1000, unit: 'L', display: litres(waterMl), targetDisplay: litres(waterGoal), color: 'var(--neon-agua)' },
+  };
 }
 
 /** Já há algum registo, de qualquer módulo? Sem nenhum é o primeiro dia. */

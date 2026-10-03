@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatDayLabel, formatDayMonth, planItemTitle, dayTitle, dayStatus, pendingSession,
-  parseMealSuggestion, mealsForDay, previewMeal, buildTrailModel, buildOrbitRings, hasAnyRecord,
+  parseMealSuggestion, mealsForDay, previewMeal, buildTrailModel, buildNutritionGauges, hasAnyRecord,
   isRacePlanItem, raceForDate, raceNameForDate, liveItems,
 } from './homeModels';
 
@@ -236,13 +236,17 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
       { date: today, meal_items: [{ quantity_grams: 100, calories_per_100g: 500, protein_per_100g: 30, carbs_per_100g: 0, fat_per_100g: 0 }] },
       { date: '2026-09-05', meal_items: [{ quantity_grams: 100, calories_per_100g: 900, protein_per_100g: 90, carbs_per_100g: 0, fat_per_100g: 0 }] },
     ];
-    const rings = buildOrbitRings({ meals, waterLogs: [{ date: today, amount_ml: 1600 }, { date: '2026-09-05', amount_ml: 900 }], profile: { calorie_goal: 2400, protein_goal: 160, water_goal_ml: 2500 }, today });
-    expect(rings[0]).toMatchObject({ label: 'Calorias', value: 500, target: 2400, color: 'var(--nutrition)' });
-    expect(rings[1]).toMatchObject({ label: 'Proteína', value: 30, target: 160, unit: 'g', color: 'var(--body)' });
-    expect(rings[2]).toMatchObject({ label: 'Água', display: '1,6', targetDisplay: '2,5', unit: 'L', color: 'var(--run)' });
-    expect(rings[2].value).toBeCloseTo(1.6);
+    const { macros, water } = buildNutritionGauges({ meals, waterLogs: [{ date: today, amount_ml: 1600 }, { date: '2026-09-05', amount_ml: 900 }], profile: { calorie_goal: 2400, protein_goal: 160, carbs_goal: 280, fat_goal: 60, water_goal_ml: 2500 }, today });
+    // Bug #51: um anel por macro, neon, cada um com o objetivo do dia.
+    expect(macros.map((m) => m.label)).toEqual(['Calorias', 'Proteína', 'Hidratos', 'Gordura']);
+    expect(macros[0]).toMatchObject({ value: 500, target: 2400, unit: 'kcal', color: 'var(--neon-kcal)' });
+    expect(macros[1]).toMatchObject({ value: 30, target: 160, unit: 'g', color: 'var(--neon-proteina)' });
+    expect(macros[2]).toMatchObject({ target: 280, color: 'var(--neon-hidratos)' });
+    expect(macros[3]).toMatchObject({ target: 60, color: 'var(--neon-gordura)' });
+    expect(water).toMatchObject({ label: 'Água', display: '1,6', targetDisplay: '2,5', unit: 'L', color: 'var(--neon-agua)' });
+    expect(water.value).toBeCloseTo(1.6);
     // sem metas no perfil cai nos defaults da app, não em 0 (divisão por zero nos anéis)
-    expect(buildOrbitRings({ today })[0].target).toBe(2000);
+    expect(buildNutritionGauges({ today }).macros.map((m) => m.target)).toEqual([2000, 150, 200, 70]);
   });
 
   it('hasAnyRecord: qualquer módulo conta; nada é o primeiro dia', () => {

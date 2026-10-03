@@ -183,6 +183,10 @@ export const useAppStore = create((set, get) => ({
   // hoje. Consumido uma vez por Calendar.jsx ao montar; ver
   // clearPendingCalendarDate.
   pendingCalendarDate: null,
+  // Dia (YYYY-MM-DD) a abrir na Nutrição, na vista "Dia" (bug #51) — posto
+  // pelo "Ver dias anteriores" do Início; consumido uma vez pelo
+  // NutritionDashboard.
+  nutritionDayFocus: null,
   // Onde o Calendário estava — mês, dia escolhido e filtro — quando um ecrã
   // de topo o tapou (o hub de uma prova, um registo): ao voltar, o atleta
   // encontra-o como o deixou, com o filtro ligado (pedido 2026-09-27). É o
@@ -366,6 +370,7 @@ export const useAppStore = create((set, get) => ({
   clearRunRacePrefill: () => set({ runRacePrefill: null }),
   setPendingCalendarDate: (dateIso) => set({ pendingCalendarDate: dateIso }),
   clearPendingCalendarDate: () => set({ pendingCalendarDate: null }),
+  setNutritionDayFocus: (dateIso) => set({ nutritionDayFocus: dateIso }),
   newlyCreatedRecord: null,
   setNewlyCreatedRecord: (recordInfo) => set({ newlyCreatedRecord: recordInfo }),
   clearNewlyCreatedRecord: () => set({ newlyCreatedRecord: null }),

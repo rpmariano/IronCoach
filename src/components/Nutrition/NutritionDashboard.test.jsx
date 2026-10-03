@@ -1,9 +1,9 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useAppStore } from '../../store';
 import NutritionDashboard from './NutritionDashboard';
-import { todayISO } from '../../lib/utils';
+import { todayISO, addDaysISO } from '../../lib/utils';
 
 /* O dashboard passou a assentar em calculateMacroAdherence (utils/biEngine),
    o que muda duas coisas face à versão anterior deste teste:
@@ -85,6 +85,26 @@ describe('NutritionDashboard', () => {
     render(<NutritionDashboard />);
     expect(screen.getByTestId('nutrition-kpi-caption'))
       .toHaveTextContent('Média diária de 1 dia com registo');
+  });
+
+  /* Bug #51: "Ver dias anteriores" no Início abre aqui, na vista Dia, em
+     ontem — e as setas andam de dia em dia até hoje. */
+  it('a vista Dia abre no dia pedido e anda de dia em dia até hoje', () => {
+    useAppStore.setState({ nutritionDayFocus: addDaysISO(todayISO(), -1), waterLogs: [], coachPlans: [], coachPlanItems: [] });
+    render(<NutritionDashboard />);
+    expect(screen.getByTestId('day-nutrition-title')).toHaveTextContent('Ontem');
+    expect(screen.getByTestId('day-row-calories')).toHaveAttribute('data-status', 'sem_registo');
+    expect(useAppStore.getState().nutritionDayFocus).toBe(null);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dia seguinte' }));
+    expect(screen.getByTestId('day-nutrition-title')).toHaveTextContent('Hoje');
+    // 1500 de 3000 kcal: abaixo.
+    expect(screen.getByTestId('day-row-calories')).toHaveTextContent('1500 / 3000 kcal');
+    expect(screen.getByTestId('day-row-calories')).toHaveAttribute('data-status', 'abaixo');
+    expect(screen.getByRole('button', { name: 'Dia seguinte' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dia anterior' }));
+    expect(screen.getByTestId('day-nutrition-title')).toHaveTextContent('Ontem');
   });
 
   /* Ponto 7 do redesenho: sem refeições no período, o ecrã deixa de mostrar

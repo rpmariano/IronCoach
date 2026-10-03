@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useCountUpDisplay } from '../../utils/useCountUp';
 
 /* A órbita do Início — três anéis concêntricos: calorias (violeta),
-   proteína (rosa), água (ciano). Só leitura; o registo vive no FAB
+   proteína (rosa), água (ciano). Desde o bug #51 (2026-10-03) o "Como
+   estou" mostra um anel neon por macro (shared/NeonRing.jsx) e a órbita
+   ficou só para o primeiro dia, tracejada (StatusCard empty). Só leitura; o registo vive no FAB
    (auditoria 2026-09-09, achado 7: o "+250" dentro dos anéis era o alvo
    mais pequeno da app). `empty` desenha os anéis tracejados do primeiro dia.
 
@@ -51,43 +52,5 @@ export function Orbit({ rings = [], size = 116, empty = false, animate = false }
         );
       })}
     </svg>
-  );
-}
-
-/* Quantas casas decimais mostrar: as que o `display` do modelo já usa
-   (a água vem em "1,5"), zero para calorias e proteína. */
-function decimalsOf(display) {
-  if (typeof display !== 'string') return 0;
-  const dec = display.split(',')[1];
-  return dec ? dec.replace(/\D/g, '').length : 0;
-}
-
-/* O valor de uma linha da legenda — em componente próprio porque cada um
-   conta com o seu próprio rAF (animação 2, "números que contam"). */
-function OrbitLegendValue({ ring, animate }) {
-  const text = useCountUpDisplay(ring.value, {
-    animate,
-    decimals: decimalsOf(ring.display),
-    display: ring.display ?? ring.value,
-  });
-  return <>{text}</>;
-}
-
-/* Legenda: ponto de cor, etiqueta uppercase, valor / alvo. */
-export function OrbitLegend({ rings = [], animate = false }) {
-  return (
-    <div className="flex flex-col gap-[11px] min-w-0 flex-1">
-      {rings.map((r) => (
-        <div key={r.label}>
-          <div className="flex items-center gap-[7px]">
-            <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 99, background: r.color }} />
-            <span className="text-[11px] font-extrabold uppercase whitespace-nowrap" style={{ color: 'var(--text-3)', letterSpacing: 'var(--tracking-label)' }}>{r.label}</span>
-          </div>
-          <div className="text-[16px] font-black whitespace-nowrap mt-[3px]" style={{ color: 'var(--text-1)', fontVariantNumeric: 'tabular-nums' }}>
-            <OrbitLegendValue ring={r} animate={animate} /> <span className="text-[11px] font-bold" style={{ color: 'var(--text-4)' }}>/ {r.targetDisplay ?? r.target}{r.unit ? ` ${r.unit}` : ''}</span>
-          </div>
-        </div>
-      ))}
-    </div>
   );
 }

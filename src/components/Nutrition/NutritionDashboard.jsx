@@ -1,5 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../../store';
+import { supabase } from '../../lib/supabase';
+import { todayISO, addDaysISO } from '../../lib/utils';
+import { computeNutrientRangeTotals } from '@formulas/micronutrientTotals.ts';
+import DayNutritionCard from './DayNutritionCard';
+import { goalsForDay, dayNutritionSummary, planMacrosForDay } from '../../utils/goalHistory';
 import { MACROS, MICROS, rangeTotals, mealNutrients } from '../../utils/nutrition';
 import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, Utensils } from 'lucide-react';
 import {
@@ -39,8 +44,53 @@ ChartJS.register(
 );
 
 export default function NutritionDashboard() {
-  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode } = useAppStore();
+  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs, coachPlans, coachPlanItems, nutritionDayFocus } = useAppStore();
   const [activeFilter, setActiveFilter] = useState('semana');
+
+  /* A vista "Dia" anda de dia em dia (bug #51): o comido contra o objetivo
+     DESSE dia, que vem do histórico (profile_goal_history), não do perfil de
+     hoje. Só se lê quando a vista abre. */
+  const today = todayISO();
+  const [selectedDay, setSelectedDay] = useState(today);
+  const [goalHistory, setGoalHistory] = useState([]);
+
+  // "Ver dias anteriores" no Início: abre aqui, na vista Dia, nesse dia.
+  useEffect(() => {
+    if (!nutritionDayFocus) return;
+    setActiveFilter('dia');
+    setSelectedDay(nutritionDayFocus);
+    useAppStore.getState().setNutritionDayFocus(null);
+  }, [nutritionDayFocus]);
+
+  useEffect(() => {
+    if (activeFilter !== 'dia' || !profile?.id) return undefined;
+    let alive = true;
+    Promise.resolve(
+      supabase
+        .from('profile_goal_history')
+        .select('valid_from, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, source')
+        .eq('user_id', profile.id)
+        .order('valid_from', { ascending: true }),
+    )
+      .then(({ data, error }) => { if (alive && !error) setGoalHistory(data || []); })
+      // Sem histórico (modo demo, rede), valem os objetivos de hoje.
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [activeFilter, profile?.id, profile?.calorie_goal, profile?.protein_goal, profile?.carbs_goal, profile?.fat_goal, profile?.water_goal_ml]);
+
+  const dayView = useMemo(() => {
+    if (activeFilter !== 'dia') return null;
+    // Hoje vale o perfil de agora — o histórico carregado pode ainda não ter
+    // a última mudança.
+    const { goals, estimated } = selectedDay >= today
+      ? goalsForDay([], today, profile)
+      : goalsForDay(goalHistory, selectedDay, profile);
+    return {
+      rows: dayNutritionSummary({ meals, waterLogs, dayISO: selectedDay, goals }),
+      estimated,
+      plan: planMacrosForDay({ coachPlans, coachPlanItems, dayISO: selectedDay }),
+    };
+  }, [activeFilter, selectedDay, today, goalHistory, profile, meals, waterLogs, coachPlans, coachPlanItems]);
   const [selectedMacro, setSelectedMacro] = useState('calories');
   const [microsExpanded, setMicrosExpanded] = useState(false);
 
@@ -65,7 +115,9 @@ export default function NutritionDashboard() {
 
   const biRange = biRangeMap[activeFilter] || 'semana';
   const legacyRange = legacyRangeMap[activeFilter] || 'semana';
-  const totals = rangeTotals(meals, legacyRange);
+  const totals = activeFilter === 'dia'
+    ? computeNutrientRangeTotals(meals, selectedDay, 'hoje')
+    : rangeTotals(meals, legacyRange);
 
   // BI Engine Calculations
   const adherence = useMemo(() => {
@@ -247,6 +299,55 @@ export default function NutritionDashboard() {
     ? 'Total de hoje · % face ao alvo diário'
     : `Média diária de ${loggedDays} ${loggedDays === 1 ? 'dia' : 'dias'} com registo · % face ao alvo`;
 
+  const microsSection = (
+    <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl overflow-hidden shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+      <button
+        onClick={() => setMicrosExpanded(!microsExpanded)}
+        className="w-full min-h-[44px] flex items-center justify-between p-4 text-left hover:bg-[var(--surface-strong)] transition"
+      >
+        <div className="flex items-center gap-2">
+          <FlaskConical size={14} className="text-[var(--mod-nutricao)]" />
+          <h2 className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider">Micronutrientes · {activeFilter}</h2>
+        </div>
+        {microsExpanded ? <ChevronUp size={16} className="text-[var(--text-3)]" /> : <ChevronDown size={16} className="text-[var(--text-3)]" />}
+      </button>
+      {microsExpanded && (
+        <div className="px-4 pb-4">
+          <div className="space-y-3 pt-2">
+            {MICROS.map(micro => (
+              <div key={micro.key} className="flex justify-between items-center text-sm border-b border-[var(--border-glass)] last:border-0 pb-2 last:pb-0">
+                <span className="text-[var(--text-3)] text-xs">{micro.label}</span>
+                <span className="font-bold text-white text-xs">{(totals[micro.key] || 0).toFixed(1)} <span className="text-[11px] font-normal text-[var(--text-3)]">{micro.unit}</span></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  /* Vista Dia (bug #51): um dia de cada vez, com o objetivo desse dia. Os
+     KPIs de média e os gráficos de tendência não dizem nada sobre um dia
+     só; o veredicto fala de hoje, por isso só aparece em hoje. */
+  if (activeFilter === 'dia' && dayView) {
+    return (
+      <div className="space-y-4 fade-in pb-20">
+        {selectedDay >= today && <VerdictLine text={verdict.text} tone={verdict.tone} />}
+        <TimeFilterBar activeRange={activeFilter} onChange={setActiveFilter} module="nutricao" />
+        <DayNutritionCard
+          dayISO={selectedDay}
+          todayISO={today}
+          rows={dayView.rows}
+          estimated={dayView.estimated}
+          plan={dayView.plan}
+          onPrev={() => setSelectedDay((d) => addDaysISO(d, -1))}
+          onNext={() => setSelectedDay((d) => (d < today ? addDaysISO(d, 1) : d))}
+        />
+        {microsSection}
+      </div>
+    );
+  }
+
   if (periodMeals.length === 0) {
     return (
       <div className="space-y-4 fade-in pb-20">
@@ -372,30 +473,7 @@ export default function NutritionDashboard() {
       )}
 
       {/* Micronutrients */}
-      <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl overflow-hidden shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-        <button
-          onClick={() => setMicrosExpanded(!microsExpanded)}
-          className="w-full min-h-[44px] flex items-center justify-between p-4 text-left hover:bg-[var(--surface-strong)] transition"
-        >
-          <div className="flex items-center gap-2">
-            <FlaskConical size={14} className="text-[var(--mod-nutricao)]" />
-            <h2 className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider">Micronutrientes · {activeFilter}</h2>
-          </div>
-          {microsExpanded ? <ChevronUp size={16} className="text-[var(--text-3)]" /> : <ChevronDown size={16} className="text-[var(--text-3)]" />}
-        </button>
-        {microsExpanded && (
-          <div className="px-4 pb-4">
-            <div className="space-y-3 pt-2">
-              {MICROS.map(micro => (
-                <div key={micro.key} className="flex justify-between items-center text-sm border-b border-[var(--border-glass)] last:border-0 pb-2 last:pb-0">
-                  <span className="text-[var(--text-3)] text-xs">{micro.label}</span>
-                  <span className="font-bold text-white text-xs">{(totals[micro.key] || 0).toFixed(1)} <span className="text-[11px] font-normal text-[var(--text-3)]">{micro.unit}</span></span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
+      {microsSection}
     </div>
   );
 }

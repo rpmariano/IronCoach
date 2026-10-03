@@ -66,6 +66,18 @@
   --gym: #9ec3d2;              /* módulo ginásio */
   --nutrition: #c77dff;        /* módulo nutrição */
   --body: #ff5fa8;             /* módulo corpo */
+  /* Os anéis neon das macros (bug #51, 2026-10-03: «um círculo por cada
+     macro e as cores têm de ser apelativas, neon»). Paleta validada com o
+     validador da skill dataviz sobre --bg-app: separação para daltonismo
+     ΔE ≥ 15 e contraste ≥ 3:1 em todos os pares; fica de propósito acima da
+     banda de luminosidade (é isso o neon), por isso cada anel leva sempre
+     o nome escrito — a cor nunca identifica sozinha. Só para os anéis e
+     barras das macros: não são significados (ok/aviso/prova). */
+  --neon-kcal: #ff3d9a;
+  --neon-proteina: #9f6bff;
+  --neon-hidratos: #b8f53d;
+  --neon-gordura: #2ee6ff;
+  --neon-agua: #3d8bff;
   --ok: #34d399;               /* concluído, dentro do alvo */
   --ok-soft: #a7f3d0;
   --warn: #fb7c4d;             /* aviso. Nunca âmbar. */

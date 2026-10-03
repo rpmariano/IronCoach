@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Footprints, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
-import { buildOrbitRings, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
-import { todayISO } from '../../lib/utils';
+import { buildNutritionGauges, hasAnyRecord, mealsForDay } from '../../utils/homeModels';
+import { todayISO, addDaysISO } from '../../lib/utils';
 import { goalFromNotes, knownFacts, isFirstDay, firstRunLine } from '../../utils/firstDay';
 import { computeAcceptedWindow, buildPlanDays } from './WeeklyPlanCard';
 import SectionLabel from '../shared/SectionLabel';
@@ -100,7 +100,7 @@ export default function Home() {
   const vidaHoje = firstDay ? eventoDaVida(coachNotes, lisbonParts().date) : null;
   const firstDayFacts = useMemo(() => (firstDay ? knownFacts({ profile, coachNotes }) : []), [firstDay, profile, coachNotes]);
 
-  const rings = useMemo(() => buildOrbitRings({ meals, waterLogs, profile }), [meals, waterLogs, profile]);
+  const gauges = useMemo(() => buildNutritionGauges({ meals, waterLogs, profile }), [meals, waterLogs, profile]);
 
   /* Os itens do plano aceite para HOJE — a mesma janela e o mesmo
      construtor que "O que faço hoje" usa (computeAcceptedWindow +
@@ -140,6 +140,11 @@ export default function Home() {
   // trata do prefill e do separador (specs/prova-concluida.md §3).
   const registerRace = (raceId) => useAppStore.getState().openRaceRun(raceId);
   const registerMeal = () => { if (setActiveTab('nutricao')) setOpenCreationMode('meal'); };
+  // Bug #51: o objetivo de ontem e se foi atingido — a Nutrição abre na vista Dia, em ontem.
+  const openNutritionHistory = () => {
+    useAppStore.getState().setNutritionDayFocus(addDaysISO(today, -1));
+    setActiveTab('nutricao');
+  };
   const registerRun = () => { if (setActiveTab('corrida')) setOpenCreationMode('run'); };
 
   if (firstDay) {
@@ -184,7 +189,7 @@ export default function Home() {
 
       <SectionLabel>Como estou</SectionLabel>
       <CheckinCard />
-      <StatusCard rings={rings} mealsModel={todayMeals} onOpenMeals={() => setMealDay({ dateISO: today, items: todayPlanItems })} />
+      <StatusCard gauges={gauges} mealsModel={todayMeals} onOpenMeals={() => setMealDay({ dateISO: today, items: todayPlanItems })} onOpenHistory={openNutritionHistory} />
 
       <SectionLabel>Para onde vou</SectionLabel>
       <RaceCard raceEvents={raceEvents} runs={runs} profile={profile} onOpenRace={setEditingRaceId} onCreateRace={createRace} onRegisterRace={registerRace} onOpenAllRaces={() => setActiveTab('provas')} />
