@@ -437,7 +437,7 @@ function buildPrompt(notes: string | null, history: unknown[], memoryBlock: stri
     weighingConditions(assessmentTime, notes) +
     BODY_ANALYSIS_RULES + "\n" +
     carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
-    goalsReviewSection(goalsCtx?.goals ?? null);
+    goalsReviewSection(goalsCtx?.goals ?? null, goalsCtx ?? {});
   if (notes && notes.trim()) {
     prompt +=
       "\n\nObservação do utilizador sobre esta pesagem (usa-a como contexto): " +
@@ -605,7 +605,7 @@ async function generateBodySummaryFromMetrics(
     "ritmo equivalente), pergunta se é intencional antes de sugerires mexer nas calorias — não ajustes " +
     "nada por tua conta. " +
     carolLanguageRule(goalsCtx?.level ?? null) + "\n\n" +
-    goalsReviewSection(goalsCtx?.goals ?? null) +
+    goalsReviewSection(goalsCtx?.goals ?? null, goalsCtx ?? {}) +
     "Responde em JSON: \"summary\" com a avaliação, \"goals_review\" com o juízo acima." +
     (notes && notes.trim() ? `\n\nObservação do utilizador sobre esta pesagem: "${notes.trim()}"` : "");
 

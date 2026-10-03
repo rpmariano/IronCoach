@@ -4,6 +4,7 @@ import { buildPlanDays, diffDaysISO, PlanDayCard, DisclaimerNutricional, diaTemS
 import { formatDayMonth } from '../../utils/homeModels';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
+import { formatTargetDate, goalHorizonSummary } from '../../utils/goalHorizon';
 
 const GOAL_LABELS = {
   calorie_goal: { label: 'Calorias', unit: 'kcal/dia' },
@@ -15,6 +16,7 @@ const GOAL_LABELS = {
   goal_body_fat_pct: { label: 'Gordura Corporal Alvo', unit: '%' },
   goal_muscle_mass_kg: { label: 'Massa Muscular Alvo', unit: 'kg' },
   goal_lean_body_mass_kg: { label: 'Massa Magra Alvo', unit: 'kg' },
+  goals_target_date: { label: 'Data-alvo', unit: '', format: formatTargetDate },
 };
 
 /* Persiana única para propostas do Coach pendentes de decisão do atleta.
@@ -35,8 +37,22 @@ export function PlanProposalBottomSheet({
   onRespondGoal,
   onClose,
   raceEvents = [],
+  bodyAssessments = [],
 }) {
   if (!plan && !goalProposal) return null;
+
+  /* A data-alvo que vale depois de aceitar: a da proposta, ou a que o perfil
+     já tem (uma proposta só de valores corporais mantém a data de antes). */
+  const goalHorizonDate = goalProposal?.goals?.goals_target_date ?? profile?.goals_target_date ?? null;
+  const goalHorizon = goalProposal
+    ? goalHorizonSummary({
+      targetDate: goalHorizonDate,
+      goals: { ...(profile || {}), ...(goalProposal.goals || {}) },
+      profile,
+      bodyAssessments,
+      raceEvents,
+    })
+    : null;
 
   /* A prova a que o plano se destina. `plan.period_end` é sempre o dia da
      prova, quando há uma vinculada (coach-chat, runProposeTrainingPlan) —
@@ -113,18 +129,35 @@ export function PlanProposalBottomSheet({
                   .filter(([k]) => !k.endsWith('_set_by_coach'))
                   .map(([k, newVal]) => {
                     const meta = GOAL_LABELS[k] || { label: k, unit: '' };
-                    const currentVal = profile?.[k] ?? '—';
+                    const show = (v) => (v == null || v === '' ? '—' : `${meta.format ? meta.format(v) : v}${meta.unit ? ` ${meta.unit}` : ''}`);
                     return (
                       <div key={k} className="flex items-center justify-between p-2.5 rounded-xl bg-[var(--surface-soft)] text-xs border border-[var(--border-faint)]">
                         <span className="text-[var(--text-3)] font-medium">{meta.label}</span>
                         <div className="flex items-center gap-2 font-bold">
-                          <span className="text-[var(--text-3)] line-through">{currentVal} {meta.unit}</span>
-                          <span style={{ color: 'var(--mod-coach-to)' }}>→ {newVal} {meta.unit}</span>
+                          <span className="text-[var(--text-3)] line-through">{show(profile?.[k])}</span>
+                          <span style={{ color: 'var(--mod-coach-to)' }}>→ {show(newVal)}</span>
                         </div>
                       </div>
                     );
                   })}
               </div>
+
+              {/* O horizonte (bug #46): até quando, quantas semanas e a que
+                  ritmo — a mesma conta que o servidor fez ao aceitar a
+                  proposta da Carol. */}
+              {goalHorizon && (
+                <div data-testid="goal-proposal-horizon" className="p-2.5 rounded-xl text-xs border border-[var(--border-faint)] bg-[var(--surface-soft)] space-y-1">
+                  <p className="font-bold text-[var(--text-1)]">
+                    Até {formatTargetDate(goalHorizonDate)} · {goalHorizon.weeks} semanas
+                  </p>
+                  {goalHorizon.lines.map((l) => (
+                    <p key={l.text} style={{ color: l.ok ? 'var(--text-3)' : 'var(--warn)' }}>{l.text}</p>
+                  ))}
+                  {goalHorizon.windows.map((w) => (
+                    <p key={w} className="text-[var(--text-3)]">{w}</p>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">

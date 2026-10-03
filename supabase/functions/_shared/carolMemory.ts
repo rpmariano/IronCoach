@@ -700,7 +700,7 @@ const GOAL_LABELS: Record<string, [string, string]> = {
   calorie_goal: ["calorias", " kcal/dia"], protein_goal: ["proteína", " g/dia"], carbs_goal: ["hidratos", " g/dia"],
   fat_goal: ["gordura", " g/dia"], water_goal_ml: ["água", " ml/dia"], goal_weight_kg: ["peso-alvo", " kg"],
   goal_body_fat_pct: ["massa gorda alvo", "%"], goal_muscle_mass_kg: ["massa muscular alvo", " kg"],
-  goal_lean_body_mass_kg: ["massa magra alvo", " kg"],
+  goal_lean_body_mass_kg: ["massa magra alvo", " kg"], goals_target_date: ["data-alvo", ""],
 };
 
 /** A proposta de objetivos (coach_goal_proposals) que o atleta ainda não
@@ -710,15 +710,18 @@ const GOAL_LABELS: Record<string, [string, string]> = {
 export function buildGoalProposalContext(row: any): string | null {
   if (!row || row.status !== "proposto") return null;
   const goals = row.goals && typeof row.goals === "object" ? row.goals : {};
+  // As marcas *_set_by_coach são internas: não são objetivos.
   const parts = Object.entries(goals)
-    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .filter(([k, v]) => !k.endsWith("_set_by_coach") && v !== null && v !== undefined && v !== "")
     .map(([k, v]) => { const l = GOAL_LABELS[k]; return l ? `${l[0]} ${v}${l[1]}` : `${k} ${v}`; });
   if (!parts.length) return null;
   const since = typeof row.created_at === "string" ? row.created_at.slice(0, 10) : null;
   const why = clip(row.rationale, 160);
   return `PROPOSTA DE OBJETIVOS POR DECIDIR${since ? ` (feita a ${since})` : ""}: ${parts.join(", ")}` +
     `${why ? ` — motivo: "${why.replace(/"/g, "'")}"` : ""}.\n` +
-    `O atleta ainda não a aceitou nem recusou. Não proponhas outra nem repitas os mesmos números; se vier a propósito, pergunta o que o faz hesitar.`;
+    `O atleta ainda não a aceitou nem recusou. Não proponhas outra por iniciativa tua nem repitas os mesmos números; se vier a propósito, pergunta o que o faz hesitar. ` +
+    // Bug #46: «quando interrogada tem de saber esclarecer o racional e ajustar».
+    `Se ele questionar a proposta, explica o racional (os valores, a data-alvo, o ritmo por semana, a prova que a decidiu); se ele pedir outra data, outro ritmo ou outros valores, ajusta e chama update_goals com a versão nova — substitui esta.`;
 }
 
 // ── 1.6 — Metas corporais ────────────────────────────────────────────────
@@ -730,7 +733,20 @@ const BODY_GOALS: Array<{ goal: string; byCoach: string; current: string; label:
   { goal: "goal_lean_body_mass_kg", byCoach: "goal_lean_mass_set_by_coach", current: "lean_body_mass_kg", label: "massa magra", unit: " kg" },
 ];
 
-export function buildBodyGoalsContext(profile: any, latestBody: any): string | null {
+/** A data-alvo dos objetivos corporais (bug #46): quantas semanas faltam, ou
+ *  que não há data — e então a próxima proposta tem de a trazer. */
+function bodyGoalsHorizonLine(targetDate: unknown, today: string | null): string {
+  if (typeof targetDate !== "string" || !/^\d{4}-\d{2}-\d{2}/.test(targetDate)) {
+    return "Sem data-alvo definida: se propuseres ou reveres estes objetivos, a proposta leva a data (target_date).";
+  }
+  const date = targetDate.slice(0, 10);
+  if (!today) return `Data-alvo: ${date}.`;
+  const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+  if (days < 0) return `Data-alvo: ${date} — já passou; se vier a propósito, revê-a com ele.`;
+  return `Data-alvo: ${date} (faltam ${Math.round((days / 7) * 10) / 10} semanas).`;
+}
+
+export function buildBodyGoalsContext(profile: any, latestBody: any, today: string | null = null): string | null {
   if (!profile) return null;
   const lines: string[] = [];
   for (const g of BODY_GOALS) {
@@ -744,7 +760,7 @@ export function buildBodyGoalsContext(profile: any, latestBody: any): string | n
     lines.push(`- ${g.label}: ${goal}${g.unit} (${who}${now})`);
   }
   if (!lines.length) return null;
-  return `METAS CORPORAIS DO ATLETA:\n${lines.join("\n")}\n` +
+  return `METAS CORPORAIS DO ATLETA:\n${lines.join("\n")}\n${bodyGoalsHorizonLine(profile.goals_target_date, today)}\n` +
     `Quando falares de peso ou composição, mede contra estas metas. Se uma meta te parecer errada para a fase de treino, diz-lo.`;
 }
 

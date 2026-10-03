@@ -6,6 +6,7 @@ import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT }
 import { runSetCupParticipation, runSetCupSeasonGoal, SERIES_TOOLS, SERIES_TOOL_NAMES } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
+import { lisbonTodayISO } from "../_shared/carolMemory.ts";
 import { buildRacePacingPlan, compareSplitsToPlan } from "../_shared/formulas/racePacing.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -725,6 +726,8 @@ function makeGoalsSb(opts: {
   profile?: any;
   supersedeError?: any;
   insertError?: any;
+  latestBody?: any;
+  races?: any[];
 } = {}) {
   // deno-lint-ignore no-explicit-any
   const calls: { updates: any[]; supersedes: any[]; inserts: any[] } = { updates: [], supersedes: [], inserts: [] };
@@ -747,6 +750,16 @@ function makeGoalsSb(opts: {
             return Promise.resolve({ error: opts.insertError ?? null });
           },
         };
+      }
+      if (table === "body_assessments") {
+        const chain = { select: () => chain, eq: () => chain, order: () => chain, limit: () => chain,
+          maybeSingle: () => Promise.resolve({ data: opts.latestBody ?? null, error: null }) };
+        return chain;
+      }
+      if (table === "race_events") {
+        const chain = { select: () => chain, eq: () => chain, gt: () => chain,
+          lte: () => Promise.resolve({ data: opts.races ?? [], error: null }) };
+        return chain;
       }
       if (table !== "profiles") throw new Error(`tabela inesperada: ${table}`);
       return {
@@ -814,15 +827,94 @@ Deno.test("aceita calorie_goal e carbs_goal — todos os macros são agora edit�
   assertEquals(calls.inserts[0].goals.carbs_goal_set_by_coach, true);
 });
 
-Deno.test("aceita water_goal_ml e objetivos corporais", async () => {
+Deno.test("aceita water_goal_ml e objetivos corporais (com data-alvo)", async () => {
   const { sb, calls } = makeGoalsSb();
-  await runUpdateGoals(sb, "user-1", { water_goal_ml: 2500, goal_weight_kg: 70.5, goal_body_fat_pct: 15 });
+  await runUpdateGoals(sb, "user-1", { water_goal_ml: 2500, goal_weight_kg: 70.5, goal_body_fat_pct: 15, target_date: dataDaqui(120) });
   assertEquals(calls.inserts[0].goals.water_goal_ml, 2500);
   assertEquals(calls.inserts[0].goals.water_goal_set_by_coach, true);
   assertEquals(calls.inserts[0].goals.goal_weight_kg, 70.5);
   assertEquals(calls.inserts[0].goals.goal_weight_set_by_coach, true);
   assertEquals(calls.inserts[0].goals.goal_body_fat_pct, 15);
   assertEquals(calls.inserts[0].goals.goal_body_fat_set_by_coach, true);
+});
+
+// ─── Bug #46: o horizonte dos objetivos corporais ─────────────────────────
+
+// O "hoje" do servidor é o de Lisboa (lisbonTodayISO), não o UTC.
+const dataDaqui = (dias: number) => {
+  const d = new Date(`${lisbonTodayISO()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+};
+
+Deno.test("objetivo corporal sem target_date: não cria a proposta e pede a data", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { goal_weight_kg: 78 } });
+  const result = await runUpdateGoals(sb, "user-1", { goal_weight_kg: 74 });
+  assertStringIncludes(result, "falta target_date");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("só macros não precisam de data", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { goal_weight_kg: 78 } });
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 150 });
+  assertStringIncludes(result, "criada com SUCESSO");
+  assertEquals(calls.inserts[0].goals.goals_target_date, undefined);
+});
+
+Deno.test("ritmo acima do limite: recusa e diz a data mais cedo possível", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { experience_level: "medio" }, latestBody: { weight_kg: 80 } });
+  // 6 kg em 4 semanas — muito acima de 0,5%/semana.
+  const result = await runUpdateGoals(sb, "user-1", { goal_weight_kg: 74, target_date: dataDaqui(28) });
+  assertStringIncludes(result, "passa o limite seguro");
+  assertStringIncludes(result, "data mais cedo");
+  assertStringIncludes(result, "NÃO foi criada");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("ritmo seguro: a proposta leva a data e o resultado traz as contas para ela explicar", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { experience_level: "medio" }, latestBody: { weight_kg: 80 } });
+  const result = await runUpdateGoals(sb, "user-1", { goal_weight_kg: 76, target_date: dataDaqui(112), rationale: "16 semanas" });
+  assertStringIncludes(result, "criada com SUCESSO");
+  assertEquals(calls.inserts[0].goals.goals_target_date, dataDaqui(112));
+  assertStringIncludes(result, "Horizonte: até");
+  assertStringIncludes(result, "16 semanas");
+  assertStringIncludes(result, "0,25 kg/semana");
+});
+
+Deno.test("uma prova A no meio: a janela sem défice entra nas contas", async () => {
+  const race = { name: "Meia de Lisboa", date: dataDaqui(70), distance_km: 21.1, race_priority: "a" };
+  const { sb } = makeGoalsSb({ profile: { experience_level: "medio" }, latestBody: { weight_kg: 80 }, races: [race] });
+  const result = await runUpdateGoals(sb, "user-1", { goal_weight_kg: 77, target_date: dataDaqui(112) });
+  assertStringIncludes(result, 'antes de "Meia de Lisboa", prova A');
+  assertStringIncludes(result, "semanas de défice");
+});
+
+Deno.test("só a data: muda o horizonte sem mexer nos valores", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { goal_weight_kg: 76, goals_target_date: dataDaqui(60), experience_level: "medio" }, latestBody: { weight_kg: 80 } });
+  const result = await runUpdateGoals(sb, "user-1", { target_date: dataDaqui(150) });
+  assertStringIncludes(result, "criada com SUCESSO");
+  assertEquals(Object.keys(calls.inserts[0].goals), ["goals_target_date"]);
+  assertStringIncludes(result, "data-alvo:");
+});
+
+Deno.test("a data nova também tem de servir aos objetivos que já lá estão", async () => {
+  const { sb, calls } = makeGoalsSb({ profile: { goal_weight_kg: 72, experience_level: "avancado" }, latestBody: { weight_kg: 80 } });
+  const result = await runUpdateGoals(sb, "user-1", { protein_goal: 160, target_date: dataDaqui(30) });
+  assertStringIncludes(result, "passa o limite seguro");
+  assertEquals(calls.inserts.length, 0);
+});
+
+Deno.test("data fora do formato, ou sem objetivos corporais nenhuns, não cria proposta", async () => {
+  const mal = await runUpdateGoals(makeGoalsSb().sb, "user-1", { goal_weight_kg: 70, target_date: "15/01/2027" });
+  assertStringIncludes(mal, "AAAA-MM-DD");
+  const semCorpo = await runUpdateGoals(makeGoalsSb().sb, "user-1", { target_date: dataDaqui(90) });
+  assertStringIncludes(semCorpo, "não tem nenhum");
+});
+
+Deno.test("data a menos de duas semanas: recusa sem calcular a data mais cedo", async () => {
+  const { sb } = makeGoalsSb({ latestBody: { weight_kg: 80 } });
+  const result = await runUpdateGoals(sb, "user-1", { goal_weight_kg: 79, target_date: dataDaqui(5) });
+  assertStringIncludes(result, "tem de ficar entre 14 dias e 2 anos");
 });
 
 Deno.test("rejeita sem gravar quando nenhum campo é dado", async () => {

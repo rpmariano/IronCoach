@@ -688,6 +688,9 @@ export default function Coach() {
   const handleRespondGoal = async (proposalId, accept) => {
     const ok = await respondToGoalProposal(proposalId, accept);
     if (ok) showToast(accept ? 'Objetivos aceites e atualizados' : 'Proposta de objetivos recusada');
+    // Antes, uma falha não dizia nada — a persiana fechava como se tivesse
+    // corrido bem. A proposta continua por decidir no botão flutuante.
+    else showToast('Não consegui gravar a tua decisão. A proposta continua aqui — tenta outra vez.', 'error');
     setActiveGoalProposal(null);
     // Aceitar na persiana só grava no perfil — não é uma troca de mensagens,
     // por isso a Carol nunca fica a saber que pode agora avançar com o que
@@ -1324,6 +1327,7 @@ export default function Coach() {
           onRespondGoal={handleRespondGoal}
           onClose={handleCloseProposalsSheet}
           raceEvents={raceEvents}
+          bodyAssessments={bodyAssessments}
         />
       )}
       {planStart && <RecordConfirmation label="Plano aceite" first={planStart} onDone={() => setPlanStart(null)} />}

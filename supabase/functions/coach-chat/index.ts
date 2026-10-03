@@ -19,6 +19,7 @@ import { estimate1RM } from "../_shared/formulas/epley.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { missingProfileBasicsInstruction } from "../_shared/profileGaps.ts";
+import { earliestFeasibleDate, evaluateGoalHorizon, type HorizonCheck, type HorizonResult, MIN_HORIZON_DAYS } from "../_shared/formulas/goalHorizon.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
 import { computeTrainingDistribution } from "../_shared/formulas/trainingDistribution.ts";
 import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
@@ -437,6 +438,13 @@ const UPDATE_GOALS_TOOL = {
       goal_body_fat_pct:      { type: "NUMBER", description: "Percentagem de gordura corporal alvo (%). Omite se não mudar." },
       goal_muscle_mass_kg:    { type: "NUMBER", description: "Massa muscular alvo (kg). Omite se não mudar." },
       goal_lean_body_mass_kg: { type: "NUMBER", description: "Massa magra alvo (kg). Omite se não mudar." },
+      target_date: {
+        type: "STRING",
+        description:
+          "Data-alvo (AAAA-MM-DD) dos objetivos corporais (peso, gordura, músculo, massa magra) — OBRIGATÓRIA quando " +
+          "propões algum deles; sozinha, muda só o horizonte. Escolhe-a pelas provas e pelo ritmo seguro (ver HORIZONTE " +
+          "DOS OBJETIVOS CORPORAIS). Se o ritmo passar o limite, o servidor recusa e diz-te a data mais cedo possível.",
+      },
       rationale: {
         type: "STRING",
         description: "Frase curta a justificar os valores propostos (ex.: '1,8 g/kg · 72 kg · treino força 4×/sem').",
@@ -3300,6 +3308,53 @@ export async function runUpdateRaceEvent(sb: any, userId: string, args: any): Pr
     `Se houver plano de treino aceite, confirma se continua a fazer sentido e propõe o ajustado se não fizer.`;
 }
 
+/* O horizonte dos objetivos corporais (bug #46, 2026-10-01): «a Carol tem de
+   indicar qual o intervalo temporal para os objetivos (...) tendo em conta as
+   provas. Quando interrogada tem de saber esclarecer o racional e ajustar.»
+   Uma data só para os quatro objetivos corporais; o ritmo que ela implica
+   verifica-se em _shared/formulas/goalHorizon.ts. */
+const BODY_GOAL_FIELDS = ["goal_weight_kg", "goal_body_fat_pct", "goal_muscle_mass_kg", "goal_lean_body_mass_kg"];
+const ptDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+const ptNum = (n: number) => String(n).replace(".", ",");
+
+function horizonCheckLine(c: HorizonCheck): string {
+  const ritmo = Number.isFinite(c.perWeekKg) ? `${ptNum(c.perWeekKg)} kg/semana` : "sem semanas para isso";
+  const pct = c.pctPerWeek !== null ? ` (${ptNum(c.pctPerWeek)}% do peso/semana; limite ${ptNum(c.limitPct!)}%)` : ` (limite ${ptNum(c.limitPerWeekKg)} kg/semana)`;
+  const semanas = c.direction === "perder" ? `${ptNum(c.weeks)} semanas de défice` : `${ptNum(c.weeks)} semanas`;
+  return `${c.label}: ${c.direction} ${ptNum(c.amountKg)} kg em ${semanas} → ${ritmo}${pct}`;
+}
+
+function horizonWindowsLine(h: HorizonResult): string {
+  if (!h.windows.length) return "";
+  return " Sem défice " + h.windows
+    .map((w) => `de ${ptDate(w.from)} a ${ptDate(w.to)}${w.race ? ` (antes de "${w.race}", prova A)` : " (antes da prova A)"}`)
+    .join(" e ") + " — essas semanas não contam para perder.";
+}
+
+/** O que a Carol diz ao atleta com a proposta: até quando, quantas semanas e
+ *  o ritmo de cada objetivo — é o racional que ele pode questionar. */
+export function describeHorizon(h: HorizonResult): string {
+  const checks = h.checks.map(horizonCheckLine);
+  const semMedicao = h.unchecked.length
+    ? ` Sem medição atual para comparar: ${h.unchecked.map((g) => GOAL_META[g]?.label ?? g).join(", ")} — não deu para verificar o ritmo.`
+    : "";
+  return `Horizonte: até ${ptDate(h.targetDate)} (${ptNum(h.weeks)} semanas).` +
+    (checks.length ? ` ${checks.join("; ")}.` : "") + horizonWindowsLine(h) + semMedicao;
+}
+
+export function horizonRejection(h: HorizonResult, earliest: string | null): string {
+  if (h.outOfRange) {
+    return `Erro: a data-alvo ${ptDate(h.targetDate)} fica a ${h.days} dias — tem de ficar entre ${MIN_HORIZON_DAYS} dias e 2 anos a partir de hoje. A proposta NÃO foi criada.`;
+  }
+  const falhas = h.checks.filter((c) => !c.ok).map(horizonCheckLine);
+  return `Erro: com a data-alvo ${ptDate(h.targetDate)} o ritmo passa o limite seguro — ${falhas.join("; ")}.` +
+    horizonWindowsLine(h) +
+    (earliest
+      ? ` A data mais cedo em que todos os ritmos ficam dentro do limite é ${ptDate(earliest)} (${earliest}).`
+      : " Nem a dois anos estes objetivos ficam dentro do ritmo seguro — aproxima-os do valor atual.") +
+    ` A proposta NÃO foi criada: escolhe uma data a partir dessa, ou um objetivo mais perto, e chama update_goals outra vez.`;
+}
+
 export async function runUpdateGoals(sb: any, userId: string, args: any): Promise<string> {
   const fieldNames = Object.keys(GOAL_META);
   // deno-lint-ignore no-explicit-any
@@ -3319,13 +3374,23 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
     updates[field] = rounded;
   }
 
-  if (Object.keys(updates).length === 0) {
+  const rawDate = args?.target_date;
+  let targetDate: string | null = null;
+  if (rawDate !== undefined && rawDate !== null && rawDate !== "") {
+    if (typeof rawDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(rawDate) || Number.isNaN(Date.parse(rawDate))) {
+      return "Erro: target_date tem de ser uma data no formato AAAA-MM-DD. A proposta NÃO foi criada.";
+    }
+    targetDate = rawDate;
+  }
+
+  // Só a data também é uma proposta: mudar o horizonte sem mudar os números.
+  if (Object.keys(updates).length === 0 && !targetDate) {
     return "Erro: nenhum campo fornecido. Indica pelo menos um objetivo a atualizar.";
   }
 
   const { data: profile, error: profileErr } = await sb
     .from("profiles")
-    .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg")
+    .select("calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, goals_target_date, experience_level, gender, weight_kg")
     .eq("id", userId)
     .maybeSingle();
 
@@ -3350,6 +3415,49 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
       realChanges[k] = v;
       realChanges[GOAL_META[k].flag] = true;
     }
+  }
+
+  // Objetivos corporais levam sempre data (bug #46), e o ritmo que ela
+  // implica tem de caber no limite seguro — senão a proposta não se cria e
+  // ela recebe a data mais cedo possível. Conta o que fica DEPOIS de aceitar:
+  // os objetivos que já lá estão também têm de caber numa data nova.
+  const bodyChanged = BODY_GOAL_FIELDS.some((f) => f in realChanges);
+  const effectiveGoals = Object.fromEntries(BODY_GOAL_FIELDS.map((f) => [f, f in realChanges ? realChanges[f] : profile?.[f] ?? null]));
+  const hasBodyGoals = BODY_GOAL_FIELDS.some((f) => Number(effectiveGoals[f]) > 0);
+  if (bodyChanged && !targetDate) {
+    return "Erro: falta target_date (AAAA-MM-DD). Objetivos de peso ou composição levam sempre uma data-alvo — " +
+      "escolhe-a pelas provas dele e pelo ritmo seguro, e chama update_goals outra vez. A proposta NÃO foi criada.";
+  }
+  if (targetDate && !hasBodyGoals && Object.keys(updates).length === 0) {
+    return "Erro: target_date é a data dos objetivos corporais (peso, gordura, músculo, massa magra) e o atleta não " +
+      "tem nenhum, nem esta proposta traz algum. A proposta NÃO foi criada.";
+  }
+  let horizonNote = "";
+  if (targetDate && hasBodyGoals) {
+    const today = lisbonTodayISO();
+    const [latestRes, racesRes] = await Promise.all([
+      sb.from("body_assessments")
+        .select("weight_kg, body_fat_pct, muscle_mass_kg, lean_body_mass_kg")
+        .eq("user_id", userId)
+        .order("date", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      // A janela sem défice de uma prova A começa até 49 dias antes dela
+      // (21 de taper + 28): uma prova até 60 dias depois da data ainda pesa.
+      sb.from("race_events")
+        .select("name, date, distance_km, race_priority, race_type, experience_level")
+        .eq("user_id", userId)
+        .eq("status", "agendada")
+        .gt("date", today)
+        .lte("date", addDaysISO(targetDate, 60)),
+    ]);
+    const latest = latestRes?.data ?? null;
+    const now = { ...(latest || {}), weight_kg: latest?.weight_kg ?? profile?.weight_kg ?? null };
+    const input = { today, now, goals: effectiveGoals, level: profile?.experience_level ?? null, gender: profile?.gender ?? null, races: racesRes?.data ?? [] };
+    const horizon = evaluateGoalHorizon({ ...input, targetDate });
+    if (!horizon.ok) return horizonRejection(horizon, horizon.outOfRange ? null : earliestFeasibleDate(input));
+    if (targetDate !== profile?.goals_target_date) realChanges.goals_target_date = targetDate;
+    horizonNote = describeHorizon(horizon);
   }
 
   if (Object.keys(realChanges).length === 0) {
@@ -3385,8 +3493,11 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
   if (propErr) return `Erro ao criar proposta de objetivos: ${propErr.message}`;
 
   const parts = Object.keys(realChanges)
-    .filter(f => !f.endsWith("_set_by_coach"))
+    .filter(f => GOAL_META[f])
     .map(f => `${GOAL_META[f].label}: ${profile?.[f] ?? '—'} → ${realChanges[f]} ${GOAL_META[f].unit}`);
+  if (realChanges.goals_target_date) {
+    parts.push(`data-alvo: ${profile?.goals_target_date ? ptDate(profile.goals_target_date) : '—'} → ${ptDate(realChanges.goals_target_date)}`);
+  }
 
   // "persiana"/"Modal Bottom Sheet" é o nome interno do componente — nunca
   // deve chegar à fala da Carol (jargão de implementação, sem significado
@@ -3396,6 +3507,7 @@ export async function runUpdateGoals(sb: any, userId: string, args: any): Promis
   // procurar no sítio errado.
   return `Proposta de alteração de metas criada com SUCESSO e disponível para o atleta rever aqui no Coach (estado: proposto). ` +
     `Campos a alterar: ${parts.join(", ")}. ` +
+    (horizonNote ? `${horizonNote} Diz-lhe a data, as semanas e o ritmo por semana, e porquê esta data (as provas dele). ` : "") +
     `CRÍTICO: O perfil AINDA NÃO FOI ALTERADO. A proposta aguarda aprovação do atleta aqui no Coach. ` +
     `Diz ao atleta que enviaste uma proposta de alteração de objetivos para ele rever e Aceitar ou Recusar aqui mesmo, no botão que vai aparecer.`;
 }
@@ -3627,7 +3739,7 @@ export function buildInterventionStartTurn(details: string | null, reason: strin
   if (isGoalsIntervention(reason)) {
     return `O atleta abriu o chat ao tocar em "Falar com a Carol" depois de registar uma avaliação corporal. ` +
       `INICIA tu a conversa, com calma e sem cobranças: diz-lhe o que viste na avaliação e convida-o a definir ` +
-      `(ou rever) os objetivos contigo. Pergunta-lhe onde quer chegar.`;
+      `(ou rever) os objetivos contigo. Pergunta-lhe onde quer chegar, e até quando.`;
   }
   return `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.` +
     (details ? ` Detalhes da análise/motivo: "${clean(details)}".` : "") +
@@ -3649,8 +3761,8 @@ export function buildGoalsInterventionInstruction(isStart: boolean, reason: stri
     `refeições passam a apontar para esses objetivos, e tu passas a conseguir dizer-lhe se está no bom caminho.\n` +
     (isStart
       ? `O atleta acabou de abrir a conversa a partir do teu aviso. INICIA tu, com calma e sem cobranças: diz o que ` +
-        `viste na avaliação e porque vale a pena falar dos objetivos agora. Pergunta onde ele quer chegar antes de ` +
-        `propores valores.\n`
+        `viste na avaliação e porque vale a pena falar dos objetivos agora. Pergunta onde ele quer chegar, e até ` +
+        `quando, antes de propores valores.\n`
       : "") +
     (motivo ? `O que te levou a chamá-lo: "${motivo}"\n` : "") +
     `COMO AVANÇAR: quando souberes onde ele quer chegar, propõe os valores com update_goals — ele aceita ou ` +
@@ -5704,7 +5816,13 @@ export function buildSystemInstruction(
       `2. Esta ferramenta disponibiliza a proposta aqui no Coach (não no ecrã Home) com o estado "proposto", para o utilizador Aceitar ou Recusar de forma totalmente independente de outros planos.\n` +
       `3. NUNCA digas ao atleta que "já atualizaste o perfil", nem uses termos técnicos como "persiana" ou "bottom sheet" — diz sempre algo como "enviei a proposta de alteração de objetivos para reveres e decidires aqui no Coach".\n` +
       `4. SEQUÊNCIA DE DEPENDÊNCIA (não se aplica se os objetivos atuais já foram aceites nesta conversa e continuam válidos — nesse caso avança DIRETO para o plano, sem passar outra vez pelos objetivos): Se pretenderes sugerir um plano de treino, nutrição ou refeições (propose_training_plan ou save_meal_suggestions) que DEPENDA da aceitação de objetivos NOVOS, NÃO chames essa ferramenta na mesma resposta. Em vez disso, propõe APENAS os objetivos (update_goals). A PRIMEIRA FRASE da tua resposta tem de dizer claramente que estás a aguardar a aceitação dos objetivos antes de avançares (ex.: "Estou a aguardar que aceites os novos objetivos para depois te sugerir as refeições/o plano."); só depois explica os valores propostos em detalhe.\n` +
-      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas (um dia inteiro dentro do plano: mostra-lho primeiro e grava só com o sim dele — athlete_confirmed). NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui: ele espera um plano para aceitar, não refeições avulsas; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). SE ESSE PLANO TIVER PROVA-OBJETIVO (race_id no contexto do plano): o period_end continua a ser o dia da prova e passas o MESMO race_id — um bloco até à prova pode ter 10 semanas, e encurtá-lo desvincularia o plano da prova (o servidor recusa). Nesse caso escreve os treinos dos próximos 7-14 dias e diz ao atleta que o resto do bloco se detalha à medida que chega. Só num plano SEM prova-objetivo é que period_end mais curto faz sentido: aí, se o período restante tiver mais de 14 dias, cobre só os primeiros 14 e diz-lhe que o resto fica para o próximo microciclo (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.`;
+      `5. CUMPRE O QUE FICOU PENDENTE — AÇÃO, NÃO SÓ TEXTO: quando o atleta confirmar que aceitou os objetivos ("aceitei", "aceite", "sim, aceito"), (a) NÃO voltes a chamar update_goals nessa resposta nem repitas os mesmos valores, MESMO QUE o teu próprio cálculo interno sugira um número ligeiramente diferente do que já está aceite (esta regra tem PRECEDÊNCIA sobre a Regra 1) — os objetivos já estão gravados no perfil (confere nos dados que já te foram dados), a não ser que o atleta peça explicitamente outro ajuste; (b) revê o HISTÓRICO desta conversa para veres exatamente o que o atleta tinha pedido originalmente antes da proposta de objetivos (ex.: "editar/adaptar o plano atual com sugestão de refeições", "sugestões de refeições completas") e CHAMA JÁ NESTA RESPOSTA a ferramenta correspondente — propose_training_plan com replace_active_plan=true (inclui meal_suggestion por dia) se o pedido era sobre o PLANO, ou save_meal_suggestions se era só sobre refeições avulsas (um dia inteiro dentro do plano: mostra-lho primeiro e grava só com o sim dele — athlete_confirmed). NÃO é suficiente escrever um resumo em texto a dizer que "os objetivos estão definidos" ou que "o plano já está alinhado" — isso deixa o atleta sem a ação concreta que pediu. (c) SEM PEDIDO EXPLÍCITO NO HISTÓRICO (ex.: a proposta de objetivos surgiu isolada, sem pedido de plano/refeições antes): a ação por omissão é CHAMAR propose_training_plan — NUNCA save_meal_suggestions aqui: ele espera um plano para aceitar, não refeições avulsas; ele espera decidir Aceitar/Recusar, tal como acabou de fazer com os objetivos. Usa replace_active_plan=true e cobre o período do plano de treino aceite em curso, de hoje até ao fim desse plano — NUNCA um sub-período mais curto (o atleta espera o plano todo atualizado, não só alguns dias). SE ESSE PLANO TIVER PROVA-OBJETIVO (race_id no contexto do plano): o period_end continua a ser o dia da prova e passas o MESMO race_id — um bloco até à prova pode ter 10 semanas, e encurtá-lo desvincularia o plano da prova (o servidor recusa). Nesse caso escreve os treinos dos próximos 7-14 dias e diz ao atleta que o resto do bloco se detalha à medida que chega. Só num plano SEM prova-objetivo é que period_end mais curto faz sentido: aí, se o período restante tiver mais de 14 dias, cobre só os primeiros 14 e diz-lhe que o resto fica para o próximo microciclo (ver Bloco 6 #5, ajuste a cada 7-14 dias). Se não houver plano ativo, propõe um novo de 7 dias a partir de hoje. NÃO te limites a perguntar "queres que detalhe as refeições?" — isso obriga o atleta a pedir de novo algo que já é o passo lógico seguinte; só perguntes se o pedido for genuinamente ambíguo quanto a QUAL plano/período.\n` +
+      // Bug #46 (2026-10-01).
+      `6. HORIZONTE DOS OBJETIVOS CORPORAIS: peso, gordura, músculo e massa magra têm SEMPRE uma data-alvo (target_date em update_goals) — sem ela não se sabe se o ritmo é seguro, nem para onde o plano aponta. Escolhe-a assim:\n` +
+      `   (a) Ritmo seguro: perder no máximo 0,7% do peso por semana (iniciante/básico), 0,5% (médio), 0,4% (avançado); ganhar músculo no máximo o teto da tabela GANHO DE MASSA MUSCULAR para o nível e o género.\n` +
+      `   (b) Provas A: a partir de 28 dias antes do início do taper e até à prova não há défice (Bloco 6 #1) — essas semanas não contam para perder. Se o objetivo não couber antes dessa janela, a data fica DEPOIS da prova (a perda divide-se pelos dois lados) ou o objetivo fica para depois dela; diz-lhe qual escolheste e porquê. Provas B/C não fecham janela.\n` +
+      `   (c) Sem provas no calendário, a data sai só do ritmo seguro — de preferência uma margem acima da data mais cedo, não à justa.\n` +
+      `   Ao propor, diz-lhe a data, quantas semanas são e o ritmo por semana que isso dá (o resultado do update_goals traz as contas), e o que a decidiu (a prova, a janela sem défice). Se ele perguntar porquê, explica com esses números. Se ele quiser outra data ou outro ritmo, ajusta: com a data dele, se o ritmo couber; se não couber, diz-lhe porquê e propõe a mais próxima que caiba — e chama update_goals de novo (a proposta nova substitui a que estava por decidir). Se o servidor recusar, NÃO digas que propuseste: usa a data mais cedo que ele te dá e volta a chamar.`;
 
   /* ── A partir daqui é TUDO o que varia ────────────────────────────────
      Tudo o que está acima é idêntico entre atletas e entre mensagens: é o
@@ -5954,7 +6072,7 @@ async function handler(req: Request): Promise<Response> {
     const { data: profile } = await sb
       .from("profiles")
       .select("display_name, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, height_cm, weight_kg, gender, birth_date, experience_level, resting_hr_bpm, dietary_restrictions, dietary_notes, coach_intervention_status, coach_intervention_reason, " +
-        "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, " +
+        "goal_weight_kg, goal_body_fat_pct, goal_muscle_mass_kg, goal_lean_body_mass_kg, goals_target_date, " +
         "goal_weight_set_by_coach, goal_body_fat_set_by_coach, goal_muscle_set_by_coach, goal_lean_mass_set_by_coach, " +
         "cycle_tracking_consent_at, carol_push_enabled, carol_push_types, carol_push_start_hour, carol_push_end_hour, water_reminder_enabled")
       .eq("id", userId)
@@ -6795,7 +6913,7 @@ async function handler(req: Request): Promise<Response> {
       // tabelas com nomes — a mesma vitrina, as mesmas regras.
       memoryBlocks.vitrina,
       memoryBlocks.proposals,
-      buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null),
+      buildBodyGoalsContext(profile, (bodyAssessments || [])[0] ?? null, lisbonTodayISO()),
       memoryBlocks.records,
       // Os prints que costumam faltar nas corridas (1.9) — logo a seguir aos
       // registos, porque é sobre como eles chegam à app. Só em turnos com

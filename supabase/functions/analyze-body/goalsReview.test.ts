@@ -80,3 +80,14 @@ Deno.test("goalsDeclinedMarker — uma proposta recusada e vazia, só para a esp
   assertEquals(goalsDeclinedMarker("u1"), { user_id: "u1", status: "recusado", goals: {}, rationale: GOALS_DECLINED_RATIONALE });
 });
 
+
+// Bug #46: a revisão vê a data-alvo e as provas A.
+Deno.test("goalsReviewSection — com objetivos corporais, diz a data-alvo (ou que não há) e as provas A", () => {
+  const com = goalsReviewSection({ goal_weight_kg: 72 }, { targetDate: "2027-01-15", races: [{ name: "Meia de Lisboa", date: "2026-12-06" }] });
+  assertStringIncludes(com, "data-alvo dos objetivos corporais: 2027-01-15");
+  assertStringIncludes(com, "PROVAS A MARCADAS: Meia de Lisboa (2026-12-06)");
+  assertStringIncludes(com, "a data-alvo já passou");
+  assertStringIncludes(goalsReviewSection({ goal_weight_kg: 72 }), "objetivos corporais sem data-alvo");
+  // Só macros: a data não é assunto.
+  assert(!goalsReviewSection({ calorie_goal: 2200 }).includes("data-alvo dos objetivos"));
+});

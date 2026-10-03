@@ -40,37 +40,82 @@ const GOAL_LABELS: Record<string, string> = {
   fat_goal: "gordura (g/dia)",
 };
 
-export type GoalsContext = { goals: Record<string, unknown> | null; level: string | null };
+/** Uma prova A marcada — fecha a janela sem défice antes dela (bug #46). */
+export type GoalsRace = { name: string | null; date: string };
 
-/** Os objetivos atuais e o nível — lidos antes da análise, para a Carol os
- *  poder pôr à prova. Uma falha aqui nunca trava o registo. */
+export type GoalsContext = {
+  goals: Record<string, unknown> | null;
+  level: string | null;
+  /** Data-alvo dos objetivos corporais (profiles.goals_target_date, bug #46). */
+  targetDate?: string | null;
+  /** As próximas provas A (status agendada). */
+  races?: GoalsRace[];
+};
+
+/** Os objetivos atuais, a data-alvo, o nível e as próximas provas A — lidos
+ *  antes da análise, para a Carol os poder pôr à prova. Uma falha aqui nunca
+ *  trava o registo (as provas falham à parte: sem elas, o resto vale). */
 // deno-lint-ignore no-explicit-any
-export async function fetchGoalsContext(sb: any, userId: string): Promise<GoalsContext> {
+export async function fetchGoalsContext(sb: any, userId: string, today: string = new Date().toISOString().slice(0, 10)): Promise<GoalsContext> {
   try {
-    const { data } = await sb
-      .from("profiles")
-      .select([...Object.keys(GOAL_LABELS), "experience_level"].join(", "))
-      .eq("id", userId)
-      .maybeSingle();
-    return { goals: data ?? null, level: typeof data?.experience_level === "string" ? data.experience_level : null };
+    const [{ data }, racesRes] = await Promise.all([
+      sb
+        .from("profiles")
+        .select([...Object.keys(GOAL_LABELS), "goals_target_date", "experience_level"].join(", "))
+        .eq("id", userId)
+        .maybeSingle(),
+      Promise.resolve(
+        sb.from("race_events")
+          .select("name, date, race_priority")
+          .eq("user_id", userId)
+          .eq("status", "agendada")
+          .gt("date", today)
+          .order("date", { ascending: true })
+          .limit(5),
+      ).catch(() => null),
+    ]);
+    // deno-lint-ignore no-explicit-any
+    const races: GoalsRace[] = ((racesRes?.data ?? []) as any[])
+      .filter((r) => r?.date && r.race_priority !== "b" && r.race_priority !== "c")
+      .map((r) => ({ name: r.name ?? null, date: String(r.date).slice(0, 10) }));
+    return {
+      goals: data ?? null,
+      level: typeof data?.experience_level === "string" ? data.experience_level : null,
+      targetDate: typeof data?.goals_target_date === "string" ? data.goals_target_date.slice(0, 10) : null,
+      races,
+    };
   } catch {
     return { goals: null, level: null };
   }
 }
 
-/** A secção do prompt com os objetivos e o pedido do juízo goals_review. */
-export function goalsReviewSection(goals: Record<string, unknown> | null): string {
+/** A secção do prompt com os objetivos e o pedido do juízo goals_review.
+ *  Com a data-alvo e as provas A (bug #46): um objetivo corporal só é bom
+ *  com o tempo que tem até lá, e sem défice antes de uma prova A. */
+export function goalsReviewSection(
+  goals: Record<string, unknown> | null,
+  horizon: { targetDate?: string | null; races?: GoalsRace[] } = {},
+): string {
   const linhas = Object.entries(GOAL_LABELS)
     .filter(([k]) => goals && goals[k] !== null && goals[k] !== undefined && goals[k] !== "")
     .map(([k, label]) => `- ${label}: ${goals![k]}`);
+  const temCorporais = BODY_GOAL_COLUMNS.some((k) => goals && goals[k] !== null && goals[k] !== undefined && goals[k] !== "");
+  const data = temCorporais
+    ? (horizon.targetDate ? `- data-alvo dos objetivos corporais: ${horizon.targetDate}\n` : "- objetivos corporais sem data-alvo\n")
+    : "";
+  const provas = horizon.races?.length
+    ? `PROVAS A MARCADAS: ${horizon.races.map((r) => `${r.name ?? "prova"} (${r.date})`).join(", ")} — a partir de 28 dias antes do início do taper de cada uma e até à prova não há défice calórico.\n`
+    : "";
   const atuais = linhas.length
-    ? `OBJETIVOS ATUAIS DO ATLETA (definidos por ele, afinados contigo):\n${linhas.join("\n")}\n`
+    ? `OBJETIVOS ATUAIS DO ATLETA (definidos por ele, afinados contigo):\n${linhas.join("\n")}\n${data}`
     : "O atleta ainda não tem objetivos definidos.\n";
-  return atuais +
+  return atuais + provas +
     "No campo \"goals_review\" diz se, à luz DESTA avaliação (e da evolução no histórico), os objetivos atuais " +
     "deviam ser revistos. needed=true só com uma razão concreta — ex.: o peso-alvo já foi atingido ou " +
     "ultrapassado; a gordura corporal está perto ou abaixo do limiar de segurança e o objetivo empurra-a para " +
-    "baixo; a massa muscular está a cair; um objetivo contradiz o que os números mostram. Em reason, uma frase " +
+    "baixo; a massa muscular está a cair; um objetivo contradiz o que os números mostram; a data-alvo já passou, " +
+    "ou o que falta já não cabe até lá sem passar o ritmo seguro (perder no máximo 0,5-0,7% do peso por semana), " +
+    "ou obriga a perder peso nas semanas sem défice antes de uma prova A; há objetivos corporais sem data-alvo. Em reason, uma frase " +
     "com essa razão e os números que a provam. Sem objetivos definidos, ou sem razão concreta, needed=false. " +
     "Pequenas oscilações de uma pesagem para a outra não são razão.\n";
 }

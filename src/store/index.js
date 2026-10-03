@@ -545,19 +545,25 @@ export const useAppStore = create((set, get) => ({
       ? { status: 'aceite', accepted_at: new Date().toISOString() }
       : { status: 'recusado' };
 
-    const { error } = await supabase.from('coach_goal_proposals').update(updates).eq('id', proposalId);
-    if (error) { console.error('Error responding to goal proposal:', error); return false; }
-
+    /* Aceitar grava PRIMEIRO os objetivos no perfil (bug #46, revisão): o
+       erro desse update não era lido — se falhasse (ex.: uma coluna nova
+       ainda por migrar, como a goals_target_date), a proposta ficava
+       "aceite", o toast dizia "atualizados" e o perfil ficava como estava.
+       Agora, falhando, nada muda: a proposta continua por decidir. */
     if (accept && proposal?.goals) {
       const userId = get().session?.user?.id || get().profile?.id;
       if (userId) {
-        await supabase.from('profiles').update(proposal.goals).eq('id', userId);
+        const { error: profileError } = await supabase.from('profiles').update(proposal.goals).eq('id', userId);
+        if (profileError) { console.error('Error applying accepted goals:', profileError); return false; }
         const { data: updatedProfile } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
         if (updatedProfile) {
           set({ profile: updatedProfile });
         }
       }
     }
+
+    const { error } = await supabase.from('coach_goal_proposals').update(updates).eq('id', proposalId);
+    if (error) { console.error('Error responding to goal proposal:', error); return false; }
 
     /* A conversa sobre objetivos que a análise corporal abriu (bug #41)
        fecha-se com a decisão do atleta na proposta — aceitar OU recusar. A

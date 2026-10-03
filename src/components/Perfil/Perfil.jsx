@@ -24,6 +24,7 @@ import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import { useTabEnter } from '../../utils/useTabEnter';
 import { todayISO } from '../../lib/utils';
+import { formatTargetDate, goalHorizonSummary } from '../../utils/goalHorizon';
 import { scrollToTop } from '../../utils/scrollToTop';
 import { useCupForHome } from '../../utils/useCup';
 import { searchTrainingPlaces, trainingPlaceFields } from '../../utils/trainingPlace';
@@ -128,7 +129,7 @@ const CAROL_PUSH_TYPES = [
 const ALL_CAROL_PUSH_TYPES = CAROL_PUSH_TYPES.map((t) => t.key);
 
 export default function Perfil() {
-  const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setTutorialOpen } = useAppStore();
+  const { profile, setProfile, session, setNavGuard, setOnboardingOpen, setTutorialOpen, bodyAssessments, raceEvents } = useAppStore();
   const [tab, setTab] = useState('perfil');
   // O ecrã do consentimento das tabelas (Fase 5) — ecrã inteiro por portal,
   // como o onboarding: não é um separador nem um formulário deste ecrã.
@@ -927,6 +928,33 @@ export default function Perfil() {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Até quando (bug #46): uma data para os quatro objetivos, e o
+                ritmo por semana que ela implica — a mesma conta que a Carol
+                faz quando os propõe. Avisa, não bloqueia: o atleta decide. */}
+            <div className="mt-3">
+              <label htmlFor="perfil-goals-target-date" className="text-[11px] text-[var(--text-3)] block mb-1">
+                Até quando (data-alvo)
+              </label>
+              <input id="perfil-goals-target-date" type="date" min={todayISO()} value={draft.goals_target_date ?? ''}
+                onChange={e => updateDraft('goals_target_date', e.target.value || null)}
+                className="w-full bg-[var(--surface-soft)] rounded-xl px-3 py-2 text-base outline-none"
+                style={plainFieldStyle} />
+              {(() => {
+                const h = goalHorizonSummary({ targetDate: draft.goals_target_date, goals: draft, profile: draft, bodyAssessments, raceEvents });
+                if (!h) return null;
+                return (
+                  <div data-testid="perfil-goals-horizon" className="text-[11px] mt-1.5 space-y-0.5 text-[var(--text-3)]">
+                    <p>{h.outOfRange ? 'Escolhe uma data entre duas semanas e dois anos a partir de hoje.' : `${h.weeks} semanas até lá.`}</p>
+                    {h.lines.map((l) => (
+                      <p key={l.text} style={l.ok ? undefined : { color: 'var(--warn)' }}>{l.text}</p>
+                    ))}
+                    {h.windows.map((w) => <p key={w}>{w}.</p>)}
+                    {h.earliest && <p style={{ color: 'var(--warn)' }}>Com estes objetivos, a data mais cedo dentro do ritmo seguro é {formatTargetDate(h.earliest)}.</p>}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

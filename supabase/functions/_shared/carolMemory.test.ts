@@ -583,3 +583,28 @@ Deno.test("fetchSharedMemoryBlock: a Vitrina chega às análises e ao cartão di
   assertStringIncludes((await fetchSharedMemoryBlock(sb, "u1", { todayISO: "2026-09-25" }))!, "A VITRINA DO PERFIL");
   assertEquals((await fetchSharedMemoryBlock(sb, "u1", { todayISO: "2026-09-25", vitrina: false }))?.includes("VITRINA") ?? false, false);
 });
+
+// ─── Bug #46: a data-alvo dos objetivos corporais ───────────────────────────
+
+Deno.test("buildBodyGoalsContext: diz a data-alvo e as semanas que faltam, ou que não há data", () => {
+  const com = buildBodyGoalsContext({ goal_weight_kg: 74, goals_target_date: "2026-11-28" }, { weight_kg: 78, date: "2026-10-01" }, "2026-10-03")!;
+  assertStringIncludes(com, "Data-alvo: 2026-11-28 (faltam 8 semanas).");
+  const sem = buildBodyGoalsContext({ goal_weight_kg: 74 }, null, "2026-10-03")!;
+  assertStringIncludes(sem, "Sem data-alvo definida");
+  assertStringIncludes(sem, "target_date");
+  const passada = buildBodyGoalsContext({ goal_weight_kg: 74, goals_target_date: "2026-09-01" }, null, "2026-10-03")!;
+  assertStringIncludes(passada, "já passou");
+});
+
+Deno.test("buildGoalProposalContext: mostra a data-alvo, esconde as marcas internas e deixa ajustar quando ele pergunta", () => {
+  const text = buildGoalProposalContext({
+    status: "proposto",
+    goals: { goal_weight_kg: 74, goal_weight_set_by_coach: true, goals_target_date: "2027-01-15" },
+    rationale: "Até à meia.",
+    created_at: "2026-10-01T10:00:00Z",
+  })!;
+  assertStringIncludes(text, "data-alvo 2027-01-15");
+  assertEquals(text.includes("set_by_coach"), false);
+  assertStringIncludes(text, "Se ele questionar a proposta, explica o racional");
+  assertStringIncludes(text, "chama update_goals com a versão nova");
+});
