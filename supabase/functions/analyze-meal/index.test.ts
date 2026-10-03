@@ -2,7 +2,7 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, parseWrittenItems, planningFrameSection } from "./index.ts";
+import { buildManualItemsPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, parseWrittenItems, planningFrameSection } from "./index.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
   assertEquals(dietaryRestrictionsPromptBlock(null, null), "");
@@ -136,4 +136,20 @@ Deno.test("buildPhotosAndItemsPrompt: a lista numerada, a regra do mesmo aliment
   assertStringIncludes(p, "source_index 0");
   assertStringIncludes(p, 'Observação do utilizador: "frito em azeite"');
   assertEquals(buildPhotosAndItemsPrompt([W("Pão")], null).includes("Observação do utilizador"), false);
+});
+
+// ─── Bugs #48/#52, fase A: o que ela já sabe entra nos pedidos ─────────────
+
+Deno.test("os pedidos de análise levam a regra dos rótulos, o que ela já sabe e os factos das observações", () => {
+  const saber = "\n\nO QUE JÁ SABES DESTE ATLETA (aprendido com ele):\nComo cozinha e tempera — fritos: azeite.";
+  const fotos = buildPhotosAndItemsPrompt([{ name: "Café", grams: null }], "bife frito em azeite", saber);
+  assertStringIncludes(fotos, "RÓTULOS:");
+  assertStringIncludes(fotos, "fritos: azeite");
+  assertStringIncludes(fotos, "cooking_facts: só o que a observação");
+  const manual = buildManualItemsPrompt([{ name: "Ovos", grams: 100 }], null, saber);
+  assertStringIncludes(manual, "fritos: azeite");
+  assertStringIncludes(manual, "cooking_facts: lista vazia.");
+  assertStringIncludes(manual, "from_label=false");
+  // Sem despensa, o pedido não ganha a secção.
+  assertEquals(buildManualItemsPrompt([{ name: "Ovos", grams: 100 }], null).includes("O QUE JÁ SABES"), false);
 });
