@@ -578,7 +578,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         {/* Ponto 7 — ESPERA. O esqueleto ocupa o sítio onde o resultado vai
             aparecer, e o formulário por baixo fica bloqueado mas VISÍVEL:
             nada do que o atleta escreveu ou fotografou se apaga. */}
-        {isAnalyzing && <AnalysisSkeleton kind="meal" />}
+        {isAnalyzing && <AnalysisSkeleton kind="meal" manual={entryMethod === 'manual'} />}
 
         {/* Ponto 7 — ERRO. Texto do mock "Refeição · análise falhou", na voz
             da Carol (CAROL.md: nunca "Desculpa, não consegui analisar").

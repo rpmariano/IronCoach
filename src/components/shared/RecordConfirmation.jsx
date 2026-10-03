@@ -39,9 +39,14 @@ import { useAppStore } from '../../store';
  * Desde 2026-09-21 é a regra de TODAS: «todas as mensagens que têm este
  * caráter temporário devem deixar de o ter; quero que só desapareçam
  * mediante ação do utilizador». O visto simples também esperava pouco (900
- * ms, ou 120 ms com movimento reduzido) e também era uma mensagem. Já não
- * há temporizador nenhum aqui: sai no botão "Continuar", no clique fora da
- * mensagem ou com Escape.
+ * ms, ou 120 ms com movimento reduzido) e também era uma mensagem. Sai no
+ * botão "Continuar", no clique fora da mensagem ou com Escape.
+ *
+ * Exceção desde o bug #49 (2026-10-02): «a mensagem de conclusão 3 seg
+ * depois». O visto simples — sem prova, conquista nem Carol — volta a sair
+ * sozinho, aos 3 s (os 900 ms antigos não davam para o ler). Os parabéns
+ * continuam à espera da dispensa. Movimento reduzido não encurta: é tempo de
+ * leitura, não de animação.
  */
 const TONES = {
   ok: {
@@ -69,10 +74,13 @@ const DUR_ACHIEVEMENT_IN = 300;
    que ele quer dizer. */
 export const DUR_FIRST_IN = 350;
 
-/* Já não temporiza a saída de nada — estas confirmações esperam pela dispensa
-   do atleta —, mas continua exportada porque os testes a usam como unidade de
-   "tempo mais do que suficiente para ter saído, se saísse". */
+/* Não temporiza a saída das confirmações com parabéns — essas esperam pela
+   dispensa do atleta —, mas continua exportada porque os testes a usam como
+   unidade de "tempo mais do que suficiente para ter saído, se saísse". */
 export const DUR_CONFIRM_EXIT_FIRST = 3000;
+
+/* O visto simples sai sozinho ao fim disto (bug #49). */
+export const DUR_CONFIRM_AUTO_CLOSE = 3000;
 
 export default function RecordConfirmation({ label = 'Registo guardado', tone = 'ok', achievement = null, first = null, onDone }) {
   const { ring, fill, label: labelColor, Icon } = TONES[tone] || TONES.ok;
@@ -96,11 +104,12 @@ export default function RecordConfirmation({ label = 'Registo guardado', tone = 
   useEffect(() => {
     const reduced = prefersReducedMotion();
     const timers = [];
-    /* Os únicos temporizadores que restam são de ENTRADA — a conquista e a
-       fala da Carol aparecem um instante depois do visto, para não entrarem
-       todas ao mesmo tempo. Nenhum deles faz nada sair. */
+    /* Temporizadores de ENTRADA — a conquista e a fala da Carol aparecem um
+       instante depois do visto, para não entrarem todas ao mesmo tempo. O
+       único de SAÍDA é o do visto simples (bug #49). */
     if (achievement && !first) timers.push(setTimeout(() => setShowAchievement(true), reduced ? 0 : DUR_ACHIEVEMENT_IN));
     if (first && !reduced) timers.push(setTimeout(() => setShowFirst(true), DUR_FIRST_IN));
+    if (tone !== 'race' && !achievement && !first) timers.push(setTimeout(finish, DUR_CONFIRM_AUTO_CLOSE));
     return () => timers.forEach(clearTimeout);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

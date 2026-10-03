@@ -336,6 +336,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [entryMethod, setEntryMethod] = useState(planItem ? 'manual' : 'foto'); // 'foto' | 'manual'
   
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /* Bug #49: a gravação escrita (ou a edição que reanalisa) também espera
+     pela Carol — 'manual' | 'foto' (a reanálise de prints trocados) | null.
+     Decide-se no handleSubmit, que é onde se sabe se vai haver chamada. */
+  const [savingWithCarol, setSavingWithCarol] = useState(null);
+  const showAnalysis = analyzingRun || !!savingWithCarol;
   const [errorMsg, setErrorMsg] = useState('');
   /* Um campo obrigatório em falta ao gravar era só uma linha vermelha no fundo
      do formulário, fora do ecrã quando se carrega em "Guardar" a meio de uma
@@ -1863,6 +1868,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // de API. Mesmo padrão da Nutrição/Ginásio/Corpo (PRD 3.2).
       if (runIdToEdit) {
         if (signatureChanged) {
+          setSavingWithCarol(photosChanged && runPhotos.length > 0 ? 'foto' : 'manual');
           const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
             body: photosChanged && runPhotos.length > 0 ? reanalysisBody() : {
               mode: 'manual',
@@ -1938,6 +1944,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // falta → "Preencher à mão", ou "Escrever" depois de uma falha), o
       // manual atualiza-a em vez de criar uma segunda.
       const created = createdRunRef.current;
+      setSavingWithCarol('manual');
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
           mode: 'manual',
@@ -1999,6 +2006,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       setErrorMsg(err.message || 'Falha a gravar a corrida. Tenta novamente.');
     } finally {
       setIsSubmitting(false);
+      setSavingWithCarol(null);
     }
   };
 
@@ -2066,7 +2074,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      do print falha. */
   const renderAnalysisStates = () => (
     <>
-      {analyzingRun && <AnalysisSkeleton kind="run" />}
+      {showAnalysis && <AnalysisSkeleton kind="run" manual={!analyzingRun && savingWithCarol === 'manual'} />}
 
       {analysis.hasFailed && (
         <AnalysisFailure
@@ -2274,8 +2282,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <GlassCard>
           {renderAnalysisStates()}
           <div
-            aria-busy={analyzingRun || undefined}
-            style={analyzingRun ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+            aria-busy={showAnalysis || undefined}
+            style={showAnalysis ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
           >
             <div className="grid grid-cols-2 gap-2.5 mb-4">
               <div>
@@ -2466,8 +2474,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           {renderAnalysisStates()}
 
           <div
-            aria-busy={analyzingRun || undefined}
-            style={analyzingRun ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+            aria-busy={showAnalysis || undefined}
+            style={showAnalysis ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
           >
           <div className="flex flex-wrap gap-1.5 mb-3">
             {/* Cor via style, não pela classe: nestes botões o fundo é escuro ou

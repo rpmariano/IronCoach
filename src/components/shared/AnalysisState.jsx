@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import Warning, { WarningAction } from './Warning';
 import CoachAvatar from '../Coach/CoachAvatar';
+import LogoLoader from './LogoLoader';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -27,11 +28,24 @@ const PASSOS_SEM_REFERENCIA = {
   run: [...PASSOS.run.slice(0, -1), 'A ver onde encaixa na tua semana…'],
   body: [...PASSOS.body.slice(0, -1), 'A guardar como ponto de partida…'],
 };
+/* Escrito à mão, ou a editar um registo (bug #49): não há print nem prato
+   para ler — "A ler o print…" seria trabalho que não acontece. */
+const PASSOS_MANUAL = {
+  meal: ['A ler os alimentos…', 'A estimar as quantidades…', 'A fazer as contas às calorias e às macros…'],
+  run: ['A ler os teus números…', 'A ver os parciais e a frequência cardíaca…', 'A comparar com o que o plano pedia…'],
+  gym: ['A ler o treino…', 'A juntar ao teu histórico…'],
+  body: ['A ler a avaliação…', 'A comparar com a última avaliação…'],
+};
+const PASSOS_MANUAL_SEM_REFERENCIA = {
+  run: [...PASSOS_MANUAL.run.slice(0, -1), 'A ver onde encaixa na tua semana…'],
+  body: [...PASSOS_MANUAL.body.slice(0, -1), 'A guardar como ponto de partida…'],
+};
 const PASSO_MS = 2400;
 const DEMORA_MS = 12000;
 
-export function analysisSteps(kind, semReferencia = false) {
-  return (semReferencia && PASSOS_SEM_REFERENCIA[kind]) || PASSOS[kind] || null;
+export function analysisSteps(kind, semReferencia = false, manual = false) {
+  const [base, semRef] = manual ? [PASSOS_MANUAL, PASSOS_MANUAL_SEM_REFERENCIA] : [PASSOS, PASSOS_SEM_REFERENCIA];
+  return (semReferencia && semRef[kind]) || base[kind] || null;
 }
 
 /** Se a análise deste tipo não tem com que comparar: corrida sem plano aceite
@@ -109,11 +123,12 @@ export function AnalysisSkeleton({
   note = 'Isto leva uns segundos. O que escreveste não se perde.',
   label = 'A analisar',
   kind = null,
+  manual = false,
 }) {
   const coachPlans = useAppStore((s) => s.coachPlans);
   const coachPlanItems = useAppStore((s) => s.coachPlanItems);
   const bodyAssessments = useAppStore((s) => s.bodyAssessments);
-  const steps = analysisSteps(kind, analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments }));
+  const steps = analysisSteps(kind, analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments }), manual);
   const step = useSteps(steps);
   const line = (width, height = 12) => (
     <span
@@ -135,19 +150,25 @@ export function AnalysisSkeleton({
       aria-label={label}
       style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}
     >
-      {steps && (
-        <div data-testid="analysis-step" className="flex items-center" style={{ gap: 10 }}>
-          <CoachAvatar size={28} mood="thinking" />
-          <span className="flex-1 min-w-0" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
-            <span key={step.text} className="fade-in" style={{ display: 'inline-block' }}>{step.slow ? 'Está a demorar mais do que o costume. Continuo.' : step.text}</span>
-          </span>
-          <span className="inline-flex items-center" style={{ gap: 4 }} aria-hidden="true">
-            <span className="coach-typing-dot" />
-            <span className="coach-typing-dot" style={{ animationDelay: '150ms' }} />
-            <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
-          </span>
-        </div>
-      )}
+      {/* O logotipo durante a análise (bug #49): desenha-se uma vez e fica a
+          respirar até a resposta chegar — não recomeça, que um desenho em
+          loop lê-se como "está preso" (ver LogoLoader). Decorativo: quem
+          anuncia a espera é o role="status" desta região. */}
+      <div data-testid="analysis-logo" className="flex flex-col items-center" style={{ gap: 10, paddingTop: 4 }}>
+        <LogoLoader size={64} label={null} />
+        {steps && (
+          <div data-testid="analysis-step" className="flex items-center justify-center" style={{ gap: 10 }}>
+            <span className="min-w-0 text-center" style={{ fontSize: 13, fontWeight: 700, color: 'var(--coach-soft)' }}>
+              <span key={step.text} className="fade-in" style={{ display: 'inline-block' }}>{step.slow ? 'Está a demorar mais do que o costume. Continuo.' : step.text}</span>
+            </span>
+            <span className="inline-flex items-center" style={{ gap: 4 }} aria-hidden="true">
+              <span className="coach-typing-dot" />
+              <span className="coach-typing-dot" style={{ animationDelay: '150ms' }} />
+              <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
+            </span>
+          </div>
+        )}
+      </div>
       <div
         style={{
           borderRadius: 'var(--radius-xl)',

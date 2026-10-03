@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import React from 'react';
-import RecordConfirmation, { DUR_FIRST_IN, DUR_CONFIRM_EXIT_FIRST } from './RecordConfirmation';
+import RecordConfirmation, { DUR_FIRST_IN, DUR_CONFIRM_EXIT_FIRST, DUR_CONFIRM_AUTO_CLOSE } from './RecordConfirmation';
 import { useAppStore } from '../../store';
 
 /* "Registo confirmado" — animação 6 de `IronCoach - Animacoes.dc.html`:
@@ -37,27 +37,41 @@ describe('RecordConfirmation', () => {
     expect(container.querySelector('.record-confirm-label')).not.toBeNull();
   });
 
-  /* Pedido de 2026-09-21: «todas as mensagens que têm este caráter temporário
-     devem deixar de o ter». O visto simples saía aos 900 ms (120 ms com
-     movimento reduzido); agora espera, como já esperavam os parabéns. */
-  it('o visto simples também espera — não sai sozinho', () => {
+  /* Bug #49 (2026-10-02): «a mensagem de conclusão 3 seg depois». O visto
+     simples volta a sair sozinho, mas aos 3 s — os 900 ms de antes de
+     2026-09-21 não davam para o ler. Os parabéns continuam à espera. */
+  it('o visto simples sai sozinho aos 3 s, uma vez só', () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation label="Treino registado" onDone={onDone} />);
 
-    act(() => { vi.advanceTimersByTime(60000); });
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_AUTO_CLOSE - 1); });
     expect(onDone).not.toHaveBeenCalled();
-    expect(screen.getByTestId('record-confirmation')).toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+    act(() => { vi.advanceTimersByTime(60000); });
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
-  it('com prefers-reduced-motion continua a esperar — o movimento é que muda, não o tempo de leitura', () => {
+  it('o "Continuar" antes dos 3 s não faz o temporizador chamar outra vez', () => {
+    vi.useFakeTimers();
+    const onDone = vi.fn();
+    render(<RecordConfirmation onDone={onDone} />);
+    fireEvent.click(screen.getByTestId('record-confirmation-close'));
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_AUTO_CLOSE); });
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('com prefers-reduced-motion também são 3 s — o movimento é que muda, não o tempo de leitura', () => {
     window.matchMedia = () => ({ matches: true });
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation onDone={onDone} />);
 
-    act(() => { vi.advanceTimersByTime(60000); });
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_AUTO_CLOSE - 1); });
     expect(onDone).not.toHaveBeenCalled();
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it('sai no botão "Continuar"', () => {
@@ -181,13 +195,13 @@ describe('RecordConfirmation — a conquista nova da prova', () => {
     expect(screen.getByTestId('record-confirmation-achievement')).toHaveTextContent('+1 conquista');
   });
 
-  it('sem conquista nenhuma, o registo de todos os dias também espera', () => {
+  it('sem conquista nenhuma, o registo de todos os dias sai sozinho (bug #49)', () => {
     vi.useFakeTimers();
     const onDone = vi.fn();
     render(<RecordConfirmation onDone={onDone} />);
-    act(() => { vi.advanceTimersByTime(60000); });
-    expect(onDone).not.toHaveBeenCalled();
     expect(screen.queryByTestId('record-confirmation-achievement')).not.toBeInTheDocument();
+    act(() => { vi.advanceTimersByTime(DUR_CONFIRM_AUTO_CLOSE); });
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it('com prefers-reduced-motion o cartão não espera pelos 300 ms — mas continua a exigir dispensa', () => {

@@ -41,6 +41,35 @@ describe('AnalysisSkeleton — o que ela está a ler', () => {
     expect(screen.getByTestId('analysis-skeleton')).toBeInTheDocument();
     expect(screen.queryByTestId('analysis-step')).not.toBeInTheDocument();
   });
+
+  /* Bug #49: «durante a análise aparecer o logotipo». */
+  it('mostra o logotipo, decorativo — quem anuncia a espera é a região', () => {
+    render(<AnalysisSkeleton kind="gym" />);
+    const logo = screen.getByTestId('logo-loader');
+    expect(logo).toHaveAttribute('aria-hidden', 'true');
+    expect(logo).not.toHaveAttribute('role');
+    expect(screen.getByTestId('analysis-skeleton')).toHaveAttribute('role', 'status');
+  });
+
+  it('o logotipo aparece mesmo sem tipo', () => {
+    render(<AnalysisSkeleton />);
+    expect(screen.getByTestId('logo-loader')).toBeInTheDocument();
+  });
+
+  it('escrito à mão não diz que lê o print nem o prato', () => {
+    window.matchMedia = () => ({ matches: false });
+    render(<AnalysisSkeleton kind="run" manual />);
+    expect(screen.getByTestId('analysis-step')).toHaveTextContent('A ler os teus números…');
+    const { unmount } = render(<AnalysisSkeleton kind="meal" manual />);
+    expect(screen.getAllByTestId('analysis-step')[1]).toHaveTextContent('A ler os alimentos…');
+    unmount();
+  });
+
+  it('manual sem referência: corrida sem plano e primeira avaliação não comparam', () => {
+    window.matchMedia = () => ({ matches: true });
+    render(<AnalysisSkeleton kind="body" manual />);
+    expect(screen.getByTestId('analysis-step')).toHaveTextContent('A guardar como ponto de partida…');
+  });
 });
 
 describe('AnalysisFailure — a causa, dita por ela', () => {

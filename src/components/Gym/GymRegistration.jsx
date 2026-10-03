@@ -435,6 +435,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const needsReanalysis = isEditing
     && originalSnapshot !== null
     && currentSignature() !== originalSnapshot;
+  // Bug #49: o registo escrito e a edição que reanalisa também esperam pela
+  // Carol — o mesmo ecrã de espera da foto, com o formulário bloqueado.
+  const savingWithCarol = isSaving && (!isEditing || needsReanalysis);
+  const showAnalysis = isAnalyzing || savingWithCarol;
 
   const toggleIn = (list, value) => (list.includes(value) ? list.filter(c => c !== value) : [...list, value]);
   const handleToggleCategory = (cat) => setCategories(prev => toggleIn(prev, cat));
@@ -765,7 +769,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
         {/* Ponto 7 — espera: esqueleto onde o resultado vai aparecer, com o
             formulário bloqueado mas visível. */}
-        {isAnalyzing && <AnalysisSkeleton kind="gym" />}
+        {showAnalysis && <AnalysisSkeleton kind="gym" manual={!isAnalyzing} />}
 
         {/* Ponto 7 — erro: aviso coral na voz da Carol, com "Tentar de novo"
             (mesma chamada, mesmos dados) e a alternativa manual. */}
@@ -782,8 +786,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         )}
 
         <div
-          aria-busy={isAnalyzing || undefined}
-          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+          aria-busy={showAnalysis || undefined}
+          style={showAnalysis ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
         >
         <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Tipo de sessão</label>
         <div className="flex gap-1.5 mb-4">

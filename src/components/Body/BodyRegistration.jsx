@@ -305,6 +305,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     && originalSnapshot !== null
     && analyticalSignature(date, notes, metrics) !== originalSnapshot
     && !(onlyDateChanged && !hasAnyMetric);
+  // Bug #49: o registo escrito e a edição que reanalisa também esperam pela
+  // Carol — o mesmo ecrã de espera da foto, com o formulário bloqueado.
+  const savingWithCarol = isSaving && (!isEditing || needsReanalysis);
+  const showAnalysis = isAnalyzing || savingWithCarol;
 
   const handleMetricChange = (key, value) => {
     setIsFormDirty(true);
@@ -521,7 +525,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         </div>
 
         {/* Ponto 7 — espera e erro (ver MealRegistration para o padrão). */}
-        {isAnalyzing && <AnalysisSkeleton kind="body" />}
+        {showAnalysis && <AnalysisSkeleton kind="body" manual={!isAnalyzing} />}
 
         {analysis.hasFailed && (
           <AnalysisFailure
@@ -536,8 +540,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         )}
 
         <div
-          aria-busy={isAnalyzing || undefined}
-          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+          aria-busy={showAnalysis || undefined}
+          style={showAnalysis ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
         >
         {/* Data · Hora — a hora a que a pesagem foi feita, obrigatória. */}
         <div className="grid grid-cols-2 gap-2 mb-4">
