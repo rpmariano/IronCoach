@@ -163,13 +163,21 @@ describe('computeReadinessIndex — pilares sem dados não contam (2026-10-04)',
   });
 
   it('só corridas: as refeições em falta não puxam o índice para baixo', () => {
-    const r = computeReadinessIndex(runs, [], [], [], {}, '2026-08-25', null, null);
+    const meals = [{ date: '2026-08-24', calories: 2400, protein_g: 150, carbs_g: 300, fat_g: 70 }];
+    const r = computeReadinessIndex(runs, meals, [{ date: '2026-08-01', weight_kg: 70, body_fat_pct: 15 }], [], { calorie_goal: 2400 }, '2026-08-25', null, null);
     const byKey = Object.fromEntries(r.pillars.map((p) => [p.key, p]));
-    expect(byKey.ea.hasData).toBe(false);
-    expect(byKey.calories.hasData).toBe(false);
     expect(byKey.vdot.hasData).toBe(true);
+    expect(byKey.calories.hasData).toBe(true);
     expect(r.calibrating).toBe(false);
-    expect(r.score).toBe(byKey.vdot.score);
+    const withData = r.pillars.filter((p) => p.hasData);
+    expect(r.score).toBe(Math.round(withData.reduce((s, p) => s + p.score, 0) / withData.length));
+  });
+
+  it('um pilar sozinho não dá número: só o VDOT com 2 corridas não é "100% Alta"', () => {
+    const r = computeReadinessIndex(runs, [], [], [], {}, '2026-08-25', null, null);
+    expect(r.pillars.find((p) => p.key === 'vdot').hasData).toBe(true);
+    expect(r.pillars.find((p) => p.key === 'ea').hasData).toBe(false);
+    expect(r.calibrating).toBe(true);
   });
 
   it('só o check-in de hoje não chega para a prontidão de uma prova', () => {
@@ -184,10 +192,12 @@ describe('computeReadinessIndex — pilares sem dados não contam (2026-10-04)',
     expect(r.calibrating).toBe(true);
   });
 
-  it('um alerta real da tática conta, mesmo sem mais nada', () => {
+  it('um alerta real da tática fica no pilar, mesmo com o índice a calibrar', () => {
     const nextRace = { date: '2026-11-21', distance_km: 42.195, race_priority: 'a', created_at: '2026-09-20T00:00:00Z' };
     const r = computeReadinessIndex([], [], [], [], { experience_level: 'iniciante' }, '2026-09-26', nextRace, null);
-    expect(r.calibrating).toBe(false);
-    expect(r.score).toBe(30);
+    const tactic = r.pillars.find((p) => p.key === 'tactic');
+    expect(tactic.hasData).toBe(true);
+    expect(tactic.score).toBe(30);
+    expect(r.calibrating).toBe(true);
   });
 });

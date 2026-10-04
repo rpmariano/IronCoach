@@ -553,7 +553,7 @@
         }
       ],
       "level": "low",
-      "calibrating": false
+      "calibrating": true
     }
   },
   {

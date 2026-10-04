@@ -70,6 +70,10 @@ export interface ReadinessDayContext {
   raceTodayOrTomorrow?: boolean;
 }
 
+/** Pilares de treino, nutrição ou prova com dados necessários para o índice
+ *  ter número (o do check-in não conta). */
+export const READINESS_MIN_PILLARS = 2;
+
 // Uma escala 1-5 em 0-100 (1 → 0, 5 → 100). No stress, 1 é "calmo": inverte-se.
 const scale5 = (v: number) => (v - 1) * 25;
 
@@ -338,10 +342,13 @@ export function computeReadinessIndex(
   // Antes, um pilar sem refeições ou sem VDOT entrava com 0: com 2 corridas
   // e nada mais, a prontidão dava "18% · Baixa", que um atleta novo lê como
   // "estás mal preparado" quando a verdade é "ainda não sei" (auditoria de
-  // onboarding, 2026-09-27). O check-in sozinho não chega para a prontidão
-  // de uma prova: sem nenhum dos outros, fica "a calibrar".
+  // onboarding, 2026-09-27). O check-in não chega para a prontidão de uma
+  // prova, e um pilar sozinho também não: só o VDOT com 2 corridas dava
+  // "100% · Alta" (auditoria da Evolução, 2026-10-04). Com menos de 2
+  // pilares de treino/nutrição/prova com dados, fica "a calibrar" — os
+  // pilares continuam a mostrar o que já sabem.
   const withData = pillars.filter((p) => p.hasData);
-  const calibrating = !withData.some((p) => p.key !== "checkin");
+  const calibrating = withData.filter((p) => p.key !== "checkin").length < READINESS_MIN_PILLARS;
   const totalScore = withData.length ? Math.round(withData.reduce((s, p) => s + p.score, 0) / withData.length) : 0;
   const level = totalScore >= 75 ? "high" : totalScore >= 50 ? "medium" : "low";
 
