@@ -400,6 +400,31 @@ export function calculateCrossMetrics(runs, gymSessions, meals, bodyAssessments,
   }
 }
 
+// 2026-10-04: um alerta de saúde diz de que avaliação vem e deixa de existir
+// quando essa avaliação já é velha — "gordura criticamente baixa" sobre uma
+// medição de há três meses é um facto de há três meses, não de agora.
+const MAX_ASSESSMENT_AGE_DAYS_FOR_ALERT = 30;
+// Perda de peso rápida: é um ritmo "de agora" — com a última pesagem a mais de
+// 14 dias (a própria janela da tendência) já não se alerta.
+const MAX_WEIGHING_AGE_DAYS_FOR_RATE_ALERT = 14;
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** '2026-09-28' → '28 set' (sem ano: o alerta só vale se for recente). */
+function fmtDiaMes(iso) {
+  const [, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  return `${d} ${MESES_CURTOS[m - 1]}`;
+}
+
+/** Idade em dias de calendário de uma data ISO face a hoje; NaN se inválida. */
+function ageInDays(iso) {
+  return Math.round((Date.parse(`${todayISO()}T00:00:00Z`) - Date.parse(`${String(iso).slice(0, 10)}T00:00:00Z`)) / 86400000);
+}
+
+/** Vírgula decimal pt-PT (toFixed dá ponto). */
+function fmtDec(n, casas = 1) {
+  return Number(n).toFixed(casas).replace('.', ',');
+}
+
 /**
  * Deteta insights proativos do Coach baseados nos limiares da doutrina.
  * Verifica múltiplas dimensões e retorna alertas ordenados por severidade.
@@ -466,14 +491,17 @@ export function detectCoachInsights(data, profile) {
           // prompt da Carol (P0-3, Fase A). A Fase C unificou os dois em km
           // (specs/formulas-centralizacao.md §5.1) — já não há grandezas
           // distintas para rotular.
-          message: `A carga desta semana está ${acwr.ratio.toFixed(2).replace('.', ',')} vezes acima do habitual. Esta semana, o próximo treino forte passa a fácil.`,
+          // 2026-10-04: "1,60 vezes acima do habitual" lia-se como se a carga
+          // fosse 1,6 vezes ACIMA do habitual (2,6×). É 1,6× o habitual, ou
+          // seja, +60%: diz-se das duas maneiras, com vírgula e uma casa.
+          message: `A carga desta semana está em ${fmtDec(acwr.ratio, 1)}× o habitual (+${Math.round((acwr.ratio - 1) * 100)}%). Esta semana, o próximo treino forte passa a fácil.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_DANGER, module: 'corrida'
         });
       } else if (acwr.hasEnoughData && acwr.status === 'caution') {
         insights.push({
           id: 'acwr_caution', severity: 'warning',
           title: 'Carga de treino elevada',
-          message: `O teu ACWR está em ${acwr.ratio.toFixed(2)} — na zona de cautela. Monitoriza a fadiga e não aumentes a intensidade.`,
+          message: `O teu ACWR está em ${fmtDec(acwr.ratio, 2)} — na zona de cautela. Monitoriza a fadiga e não aumentes a intensidade.`,
           metric: 'ACWR', value: acwr.ratio, threshold: Constants.ACWR_CAUTION_MAX, module: 'corrida'
         });
       }
@@ -494,12 +522,17 @@ export function detectCoachInsights(data, profile) {
     // 3. Composição Corporal — Gordura demasiado baixa
     if (data.bodyAssessments?.length > 0) {
       const latest = [...data.bodyAssessments].sort((a, b) => b.date.localeCompare(a.date))[0];
+      // Alertas de gordura (corporal e visceral): só sobre uma avaliação com
+      // no máximo 30 dias, e a mensagem diz a data dela.
+      const latestAge = ageInDays(latest.date);
+      const latestIsRecent = Number.isFinite(latestAge) && latestAge <= MAX_ASSESSMENT_AGE_DAYS_FOR_ALERT;
+      const latestDay = latestIsRecent ? fmtDiaMes(latest.date) : null;
       const bfAlarm = gender === 'F' ? Constants.BF_ALARM_WOMEN : Constants.BF_ALARM_MEN;
-      if (latest.body_fat_pct && latest.body_fat_pct < bfAlarm) {
+      if (latestIsRecent && latest.body_fat_pct && latest.body_fat_pct < bfAlarm) {
         insights.push({
           id: 'bf_low', severity: 'critical',
           title: 'Gordura corporal criticamente baixa',
-          message: `A tua gordura corporal está em ${latest.body_fat_pct}% — abaixo do limiar seguro de ${bfAlarm}%. Risco hormonal e de saúde óssea (RED-S).`,
+          message: `Na avaliação de ${latestDay}, a tua gordura corporal estava em ${fmtDec(latest.body_fat_pct, 1).replace(/,0$/, '')}% — abaixo do limiar seguro de ${bfAlarm}%. Risco hormonal e de saúde óssea (RED-S).`,
           metric: 'BF%', value: latest.body_fat_pct, threshold: bfAlarm, module: 'corpo'
         });
       }
@@ -509,19 +542,19 @@ export function detectCoachInsights(data, profile) {
       // a faixa de alerta 10-13 por completo e sem distinguir "risco
       // elevado" (≥15) do simples "alerta" (10-14) que coach-chat já tinha
       // certo (ver specs/formulas-checklist.md Fase C).
-      const visceralZone = classifyVisceralFat(latest.visceral_fat);
+      const visceralZone = latestIsRecent ? classifyVisceralFat(latest.visceral_fat) : null;
       if (visceralZone === 'high_risk') {
         insights.push({
           id: 'visceral_high', severity: 'critical',
           title: 'Gordura visceral em risco elevado',
-          message: `A tua gordura visceral está em ${latest.visceral_fat} — na faixa de risco elevado (≥${VISCERAL_FAT_HIGH_RISK_MIN}, escala Renpho). Risco cardiovascular aumentado.`,
+          message: `Na avaliação de ${latestDay}, a tua gordura visceral estava em ${latest.visceral_fat} — na faixa de risco elevado (≥${VISCERAL_FAT_HIGH_RISK_MIN}, escala Renpho). Risco cardiovascular aumentado.`,
           metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_HIGH_RISK_MIN, module: 'corpo'
         });
       } else if (visceralZone === 'alert') {
         insights.push({
           id: 'visceral_alert', severity: 'warning',
           title: 'Gordura visceral em alerta',
-          message: `A tua gordura visceral está em ${latest.visceral_fat} — na faixa de alerta (${VISCERAL_FAT_ALERT_MIN}-${VISCERAL_FAT_HIGH_RISK_MIN - 1}, escala Renpho).`,
+          message: `Na avaliação de ${latestDay}, a tua gordura visceral estava em ${latest.visceral_fat} — na faixa de alerta (${VISCERAL_FAT_ALERT_MIN}-${VISCERAL_FAT_HIGH_RISK_MIN - 1}, escala Renpho).`,
           metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_ALERT_MIN, module: 'corpo'
         });
       }
@@ -531,15 +564,27 @@ export function detectCoachInsights(data, profile) {
       // Fase C). Distinto de propósito do "Sinal #1" do coach-chat (queda
       // súbita >1,5-2% em 48-72h, Bloco 5 #11) — este é o ritmo sustentado
       // de défice calórico (Bloco 4.2 #3), não um sinal agudo.
+      // 2026-10-04 (O4/C1): só com o contrato de weightTrend a dar a tendência
+      // como suficiente (≥3 pesagens em ≥10 dias → declive por dia × 7). Antes
+      // o "kg/semana" era a diferença bruta entre 2 pontos (2 pesagens com 3
+      // dias de intervalo e −0,6 kg davam "0,6 kg/semana") e o alerta disparava
+      // com isso; sem dados que cheguem, não há alerta.
       const weightTrend = calculateWeightTrend(data.bodyAssessments);
-      if (weightTrend) {
-        const currentWeight = weightTrend.rawPoints[weightTrend.rawPoints.length - 1]?.weight || 70;
+      // Revisão 2026-10-04: a janela da tendência acaba na ÚLTIMA PESAGEM, não
+      // em hoje — sem porta de recência, 3 pesagens de há 3 meses davam "nas
+      // últimas duas semanas estás a perder…". Agora só alerta com a última
+      // pesagem de há ≤14 dias, e o texto diz até que pesagem vai a janela.
+      const lastWeighingOfTrend = weightTrend?.rawPoints?.[weightTrend.rawPoints.length - 1];
+      const lastWeighingAge = lastWeighingOfTrend ? ageInDays(lastWeighingOfTrend.date) : NaN;
+      if (weightTrend && weightTrend.sufficient === true && weightTrend.weeklyRate != null
+          && Number.isFinite(lastWeighingAge) && lastWeighingAge <= MAX_WEIGHING_AGE_DAYS_FOR_RATE_ALERT) {
+        const currentWeight = lastWeighingOfTrend?.weight || 70;
         const rate = assessWeightLossRate(weightTrend.weeklyRate, currentWeight, level);
         if (rate && rate.isTooFast) {
           insights.push({
             id: 'weight_loss_fast', severity: 'warning',
             title: 'Perda de peso demasiado rápida',
-            message: `Estás a perder ~${Math.abs(weightTrend.weeklyRate).toFixed(1)} kg/semana (${rate.lossPct.toFixed(1)}% do peso). O máximo seguro para o teu nível é ${rate.maxPct}%.`,
+            message: `Nas duas semanas até à pesagem de ${fmtDiaMes(lastWeighingOfTrend.date)} estás a perder ~${fmtDec(Math.abs(weightTrend.weeklyRate), 1)} kg/semana (${fmtDec(rate.lossPct, 1)}% do peso). O máximo seguro para o teu nível é ${fmtDec(rate.maxPct, 1).replace(/,0$/, '')}%.`,
             metric: 'Peso', value: rate.lossPct, threshold: rate.maxPct, module: 'corpo'
           });
         }

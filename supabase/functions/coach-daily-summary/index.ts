@@ -659,9 +659,13 @@ export function computeBodyMetrics(bodyAssessments: any[], gender: string | null
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
     .map((a) => ({ date: String(a.date), weight: Number(a.weight_kg) }));
   const trend = rawPoints.length >= 2 ? computeWeightTrend(rawPoints) : null;
-  const weeklyWeightChange = trend ? Math.round(trend.weeklyRate * 10) / 10 : null;
+  // C1/C2 (2026-10-04): weeklyRate vem null sem pesagens que cheguem (≥3
+  // nos 14 dias até à última, a abranger ≥10 dias). Antes eram 2 pesagens
+  // quaisquer, sem dividir pelos dias — e o cartão podia avisar "perda de
+  // peso rápida" com base em 2 pesagens a 3 dias. Sem ritmo, sem aviso.
+  const weeklyWeightChange = trend?.weeklyRate != null ? Math.round(trend.weeklyRate * 10) / 10 : null;
 
-  const lossRate = (trend && latestWeight)
+  const lossRate = (trend?.weeklyRate != null && latestWeight)
     ? sharedAssessWeightLossRate(trend.weeklyRate, latestWeight, experienceLevel ?? null)
     : null;
 

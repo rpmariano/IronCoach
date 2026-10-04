@@ -25,14 +25,30 @@ Deno.test("computeBodyMetrics: limiar RED-S é 8% para 'M', não sempre 16%", ()
 // Fase C (specs/formulas-checklist.md): weeklyWeightChange passou a delegar
 // em ../_shared/formulas/weightTrend.ts (EWMA α≈0,25) em vez de uma
 // regressão entre só o ponto mais recente e o mais antigo.
-Deno.test("computeBodyMetrics: weeklyWeightChange usa a EWMA partilhada (weightTrend.ts)", () => {
+// C1/C2 (2026-10-04): o ritmo é o declive de uma regressão sobre as
+// pesagens dos 14 dias até à última (× 7), só com ≥3 a abranger ≥10 dias.
+Deno.test("computeBodyMetrics: weeklyWeightChange usa a fórmula partilhada (weightTrend.ts)", () => {
   // bodyAssessments vem DESC da BD (mais recente primeiro).
+  // 80 → 79,5 → 79 em 10 dias = −0,1 kg/dia → −0,7 kg/semana.
+  const bodyAssessments = [
+    { date: "2026-08-11", body_fat_pct: 20, weight_kg: 79 },
+    { date: "2026-08-06", body_fat_pct: 20, weight_kg: 79.5 },
+    { date: "2026-08-01", body_fat_pct: 20, weight_kg: 80 },
+  ];
+  const result = computeBodyMetrics(bodyAssessments, "M");
+  assertEquals(result.weeklyWeightChange, -0.7);
+});
+
+Deno.test("computeBodyMetrics: 2 pesagens a 7 dias não chegam para ritmo — weeklyWeightChange null, sem aviso (C1/C2)", () => {
+  // Antes dava −1 kg/semana e podia disparar "perda de peso rápida".
   const bodyAssessments = [
     { date: "2026-08-11", body_fat_pct: 20, weight_kg: 79 },
     { date: "2026-08-04", body_fat_pct: 20, weight_kg: 80 },
   ];
-  const result = computeBodyMetrics(bodyAssessments, "M");
-  assertEquals(result.weeklyWeightChange, -1);
+  const result = computeBodyMetrics(bodyAssessments, "M", "avancado");
+  assertEquals(result.weeklyWeightChange, null);
+  assertEquals(result.weightLossTooFast, false);
+  assertEquals(result.weightLossPct, null);
 });
 
 // Fase C (specs/formulas-checklist.md): o alerta de perda de peso rápida
@@ -41,10 +57,12 @@ Deno.test("computeBodyMetrics: weeklyWeightChange usa a EWMA partilhada (weightT
 // por nível (doutrina Bloco 4.1 #5 / 4.2 #3), igual ao já correto em
 // src/utils/biEngine.js.
 Deno.test("computeBodyMetrics: limiar de perda de peso é por nível, não um kg/semana fixo", () => {
-  // 80kg → 79,6kg numa semana = -0,4 kg/semana = 0,5% do peso (79,6kg).
+  // 80 → 79,6 → 79,2 kg em 14 dias = −0,4 kg/semana ≈ 0,5% do peso (79,2 kg).
+  // 3 pesagens a abranger 14 dias: o mínimo para haver ritmo (C1/C2).
   const bodyAssessments = [
-    { date: "2026-08-11", weight_kg: 79.6 },
-    { date: "2026-08-04", weight_kg: 80 },
+    { date: "2026-08-15", weight_kg: 79.2 },
+    { date: "2026-08-08", weight_kg: 79.6 },
+    { date: "2026-08-01", weight_kg: 80 },
   ];
   // Iniciante: limiar 0,7% — 0,5% está dentro, não dispara.
   const iniciante = computeBodyMetrics(bodyAssessments, "M", "iniciante");

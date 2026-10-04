@@ -1,6 +1,6 @@
 [
   {
-    "name": "duas sessões, categorias sobrepostas — soma séries e volume por grupo",
+    "name": "sessão com vários grupos não entra (sem duplicar); a de um só grupo conta",
     "input": {
       "todayISO": "2026-08-25",
       "range": "semana",
@@ -10,9 +10,12 @@
       ]
     },
     "expect": {
-      "Pernas": { "sets": 3, "volumeLoad": 1720 },
-      "Core": { "sets": 2, "volumeLoad": 1240 }
-    }
+      "Pernas": {
+        "sets": 1,
+        "volumeLoad": 480
+      }
+    },
+    "expectMultiGroupSessions": 1
   },
   {
     "name": "sessão fora da janela 'semana' é ignorada",
@@ -23,15 +26,68 @@
         { "date": "2026-08-01", "categories": ["Peito"], "workout_session_sets": [{ "reps": 10, "weight": 50 }] }
       ]
     },
-    "expect": {}
+    "expect": {},
+    "expectMultiGroupSessions": 0
   },
   {
     "name": "sessão sem categorias não entra em nenhum grupo",
     "input": {
       "todayISO": "2026-08-25",
       "range": "mes",
-      "sessions": [{ "date": "2026-08-20", "categories": [], "workout_session_sets": [{ "reps": 10, "weight": 50 }] }]
+      "sessions": [
+        { "date": "2026-08-20", "categories": [], "workout_session_sets": [{ "reps": 10, "weight": 50 }] }
+      ]
     },
-    "expect": {}
+    "expect": {},
+    "expectMultiGroupSessions": 0
+  },
+  {
+    "name": "G1: Peito+Tríceps com 20 séries não dá 20+20 — fica de fora e é contada à parte",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-10-02", "kind": "forca", "categories": ["Peito", "Tríceps"], "workout_session_sets": [{ "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }, { "reps": 10, "weight": 50 }] }
+      ]
+    },
+    "expect": {},
+    "expectMultiGroupSessions": 1
+  },
+  {
+    "name": "G1: aula (kind 'aula') com categorias e sem séries não cria grupo a 0",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-10-02", "kind": "aula", "categories": ["Pernas Inferiores"], "workout_session_sets": [] },
+        { "date": "2026-10-01", "kind": "forca", "categories": ["Costas"], "workout_session_sets": [{ "reps": 8, "weight": 40 }, { "reps": 8, "weight": 40 }, { "reps": 8, "weight": 40 }, { "reps": 8, "weight": 40 }] }
+      ]
+    },
+    "expect": {
+      "Costas": {
+        "sets": 4,
+        "volumeLoad": 1280
+      }
+    },
+    "expectMultiGroupSessions": 0
+  },
+  {
+    "name": "G1: categoria repetida ou em branco conta como um só grupo; força sem séries nem carga é ignorada",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-10-02", "categories": ["Peito", " Peito ", ""], "workout_session_sets": [{ "reps": 5, "weight": 60 }, { "reps": 5, "weight": 60 }, { "reps": 5, "weight": 60 }] },
+        { "date": "2026-10-03", "categories": ["Peito"], "workout_session_sets": [] },
+        { "date": "2026-10-03", "categories": ["Ombros", "Core/Abdominais"], "workout_session_sets": [] }
+      ]
+    },
+    "expect": {
+      "Peito": {
+        "sets": 3,
+        "volumeLoad": 900
+      }
+    },
+    "expectMultiGroupSessions": 0
   }
 ]

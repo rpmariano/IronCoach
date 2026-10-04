@@ -14,7 +14,20 @@ import { formatPace } from '../../utils/run';
 
 const RUN_RGB = '46, 224, 255';   // --run #2ee0ff
 
-export default function ScatterTrendChart({ data = [], className = '' }) {
+/* R3 (2026-10-04): os pontos chegam pela ordem do store, que carrega as
+   corridas por data DESCENDENTE (store/index.js, order('date', desc)) — e
+   nem filterByDateRange nem calculatePaceVsHR reordenam. O componente lia o
+   último elemento como "a última" e fazia o gradiente de opacidade crescer
+   com o índice, por isso mostrava a sessão MAIS ANTIGA como a mais recente e
+   deixava as antigas mais opacas. Ordena-se aqui, por data ascendente (sort
+   estável: no mesmo dia mantém a ordem recebida), sem depender de quem
+   chama. */
+function porDataAscendente(data) {
+  return [...data].sort((a, b) => String(a?.date ?? '').localeCompare(String(b?.date ?? '')));
+}
+
+export default function ScatterTrendChart({ data: recebidos = [], className = '' }) {
+  const data = porDataAscendente(recebidos);
   const chartData = {
     datasets: [
       {
@@ -72,7 +85,7 @@ export default function ScatterTrendChart({ data = [], className = '' }) {
       className={className}
       label="Eficiência aeróbica"
       info={<MetricInfo text="Cruza o teu Pace (Ritmo) com a Frequência Cardíaca Média. O objetivo é ver a nuvem de pontos descer e ir para a direita (correr mais rápido para o mesmo esforço cardíaco)." />}
-      hint={data.length > 0 ? `${data.length} sessões` : undefined}
+      hint={data.length > 0 ? `${data.length} ${data.length === 1 ? 'sessão' : 'sessões'}` : undefined}
       value={latest ? formatPace(latest.paceSecondsPerKm) : '—'}
       unit={latest ? `/km a ${latest.avgHR} bpm na última` : undefined}
       valueColor="var(--run)"

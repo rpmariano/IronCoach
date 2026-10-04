@@ -25,6 +25,8 @@
 
 import { addDaysISO } from '../lib/utils';
 import { segundaDe } from './badges';
+import { assessWeightLossRate } from '@formulas/weightLossRate.ts';
+import { acwrMissingWeeks } from './biEngine';
 
 /** O que a Carol diz quando não tem nada para dizer. Nunca inventa. */
 export const NO_DATA_TEXT = 'Ainda não tenho dados suficientes para te dizer como estás.';
@@ -61,6 +63,50 @@ export function capitalize(word) {
 function countFem(n) {
   const r = Math.round(Number(n) * 10) / 10;
   return Number.isInteger(r) ? spellFem(r) : fmtNumber(r, 1);
+}
+
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+/* "2026-09-12" → "12 de setembro". null se a data não for AAAA-MM-DD. */
+function fmtDatePt(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  if (!m || !MESES[Number(m[2]) - 1]) return null;
+  // Com mais de ~11 meses (ou de outro ano) sem ano leria-se como recente.
+  const d = new Date(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`);
+  const velha = Date.now() - d.getTime() > 330 * 86400000 || Number(m[1]) !== new Date().getFullYear();
+  return `${Number(m[3])} de ${MESES[Number(m[2]) - 1]}${velha ? ` de ${m[1]}` : ''}`;
+}
+
+/* 1,6× — uma casa decimal, como o resto da frase. Se o arredondamento a uma
+   casa cair em cima do limiar que a frase cita (1,51 → "1,5×" contra "acima
+   de 1,5×"), mostra duas para o número não contradizer o limiar. */
+function fmtTimes(ratio, limit) {
+  return `${fmtVsLimit(ratio, limit)}×`;
+}
+
+/* Número com uma casa, ou duas se o arredondamento a uma casa igualar o
+   limiar citado na mesma frase (0,41% contra "máximo 0,4%", e não "0,4%
+   contra 0,4%"). Duas casas também se ainda coincidirem (1,5004). */
+function fmtVsLimit(value, limit) {
+  const v = Number(value);
+  if (limit === undefined || limit === null || v === limit) return fmtNumber(v, 1);
+  const one = Math.round(v * 10) / 10;
+  const lim1 = Math.round(Number(limit) * 10) / 10;
+  if (one !== lim1) return fmtNumber(v, 1);
+  const two = Math.round(v * 100) / 100;
+  return fmtNumber(v, two === Math.round(Number(limit) * 100) / 100 ? 3 : 2);
+}
+
+/* R10 (2026-10-04): o ACWR são os últimos 7 dias rolantes contra a média
+   semanal dos 28 — não "esta semana", e 1,62 é 1,6× o habitual, não "1,62
+   vezes acima". Devolve a frase-base; os km entram só quando existem. */
+function loadSentence(acwr, ratio, limit) {
+  const acute = Number(acwr?.acuteKm);
+  const chronic = Number(acwr?.chronicWeeklyKm);
+  const km = isFinite(acute) && isFinite(chronic) && (acute > 0 || chronic > 0)
+    ? ` (${fmtNumber(acute, 1)} vs ${fmtNumber(chronic, 1)} km)` : '';
+  if (!(ratio > 0)) return 'Nos últimos 7 dias não correste';
+  return `Nos últimos 7 dias correste ${fmtTimes(ratio, limit)} a tua média semanal das últimas 4 semanas${km}`;
 }
 
 /**
@@ -130,11 +176,21 @@ function unplannedDropStreak(weeks, planned) {
  * @param {boolean} [input.taper] hoje é polimento da próxima prova
  *   (calculateRaceTrainingPlan → currentPhase.id === 'taper')
  * @param {Array} [input.planItems] coach_plan_items dos planos aceites
+ * @param {string} [input.lastRunDate] data (AAAA-MM-DD) da última corrida de
+ *   todo o histórico — distingue "sem corridas neste período" de "ainda sem
+ *   corridas" (R7, 2026-10-04)
  */
-export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distribution, runCount = 0, today = null, taper = false, planItems = [] } = {}) {
+export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distribution, runCount = 0, today = null, taper = false, planItems = [], lastRunDate = null } = {}) {
   const weeks = (weeklyVolume || []).map(w => Number(w?.acuteLoad ?? w?.km ?? 0));
   const nonZeroWeeks = weeks.filter(v => v > 0).length;
-  if (runCount <= 0 && nonZeroWeeks === 0) return NO_DATA;
+  if (runCount <= 0 && nonZeroWeeks === 0) {
+    // R7: com histórico fora do período, "sem dados" seria falso.
+    const quando = fmtDatePt(lastRunDate);
+    if (quando) {
+      return { text: `Sem corridas neste período (a última foi a ${quando}).`, tone: 'neutral' };
+    }
+    return NO_DATA;
+  }
 
   const ratio = Number(acwr?.ratio || 0);
   const hasAcwr = !!acwr?.hasEnoughData;
@@ -142,7 +198,7 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
   // 1. Carga a disparar — o único caso urgente da corrida.
   if (hasAcwr && acwr.status === 'danger') {
     return {
-      text: `Subiste o volume depressa demais. A carga desta semana está ${fmtNumber(ratio, 2)} vezes acima da média das últimas quatro — acima de 1,5 é onde aparecem as lesões.`,
+      text: `Subiste o volume depressa demais. ${loadSentence(acwr, ratio, 1.5)} — acima de 1,5× é onde aparecem as lesões.`,
       tone: 'danger',
     };
   }
@@ -150,7 +206,7 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
   // 2. A subir mais depressa do que o corpo assenta.
   if (hasAcwr && acwr.status === 'caution') {
     return {
-      text: `Estás a subir mais depressa do que o corpo assenta. A carga está em ${fmtNumber(ratio, 2)} e o limite seguro é 1,3.`,
+      text: `Estás a subir mais depressa do que o corpo assenta. ${loadSentence(acwr, ratio, 1.3)}, e o limite seguro é 1,3×.`,
       tone: 'warn',
     };
   }
@@ -191,14 +247,17 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
       return { text: 'Estás no polimento: a carga baixa é de propósito.', tone: 'ok' };
     }
     return {
-      text: `A carga está baixa para o que queres fazer. O rácio desta semana é ${fmtNumber(ratio, 2)}, contra os 0,8 mínimos para evoluir.`,
+      text: `A carga está baixa para o que queres fazer. ${loadSentence(acwr, ratio, 0.8)}, contra os 0,8× mínimos para evoluir.`,
       tone: 'warn',
     };
   }
 
-  // 6. Volume a subir com a carga em zona segura — o cenário bom.
-  const vol = streakDirection(weeks);
-  if (vol.direction > 0 && vol.weeks >= 3) {
+  /* 6. Volume a subir com a carga em zona segura — o cenário bom. R10
+     (2026-10-04): só com ACWR com dados e em 'safe' (sem histórico, o rácio
+     real podia estar em perigo) e só com semanas fechadas — a semana em curso
+     é parcial e entrava na contagem, ao contrário da regra 4. */
+  const vol = streakDirection(closedWeeks);
+  if (hasAcwr && acwr.status === 'safe' && vol.direction > 0 && vol.weeks >= 3) {
     return {
       text: `O volume subiu ${spellFem(vol.weeks)} semanas seguidas e a carga está em zona segura. Podes manter o ritmo.`,
       tone: 'ok',
@@ -217,15 +276,24 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
   // 8. Nada a assinalar, mas com carga medida: dizer que está em ordem.
   if (hasAcwr) {
     return {
-      text: `A carga está onde deve estar. O rácio desta semana é ${fmtNumber(ratio, 2)}, dentro da zona segura.`,
+      text: `A carga está onde deve estar. ${loadSentence(acwr, ratio)}, dentro da zona segura.`,
       tone: 'ok',
     };
   }
 
-  return {
-    text: `Tenho ${spellFem(runCount)} corridas registadas. Preciso de quatro semanas seguidas para te dizer se a carga está certa.`,
-    tone: 'neutral',
-  };
+  /* R7 (2026-10-04): concordância ("uma corrida", não "uma corridas"); com o
+     período vazio mas histórico, não se diz "zero corridas registadas"; e a
+     regra do ACWR é corridas em 3 das últimas 4 semanas, não "quatro seguidas"
+     — diz-se quantas faltam. */
+  const quando = fmtDatePt(lastRunDate);
+  const registo = runCount > 0
+    ? `Tenho ${spellFem(runCount)} ${runCount === 1 ? 'corrida registada' : 'corridas registadas'} neste período.`
+    : `Sem corridas neste período${quando ? ` (a última foi a ${quando})` : ''}.`;
+  const falta = acwrMissingWeeks(acwr);
+  const resto = falta
+    ? ` Para te dizer se a carga está certa preciso de corridas em 3 das últimas 4 semanas: ${falta === 1 ? 'falta uma semana' : `faltam ${spellFem(falta)} semanas`}.`
+    : ' Para te dizer se a carga está certa preciso de corridas em 3 das últimas 4 semanas.';
+  return { text: registo + resto, tone: 'neutral' };
 }
 
 /* ─────────────────────────── Ginásio ─────────────────────────── */
@@ -383,15 +451,17 @@ export function nutritionVerdict({ adherence, ea } = {}) {
 
 /**
  * @param {object} input
- * @param {{trend:string,weeklyRate:number,movingAverage:Array,rawPoints:Array}} [input.weightTrend]
- *   calculateWeightTrend(bodyAssessments)
+ * @param {{trend:string|null,weeklyRate:number|null,sufficient:boolean,movingAverage:Array,rawPoints:Array}} [input.weightTrend]
+ *   calculateWeightTrend(bodyAssessments) — contrato de 2026-10-04
+ * @param {string} [input.experienceLevel] nível declarado (limiar de perda por nível)
+ * @param {boolean} [input.hasWeighInsOutside] há pesagens fora do período mostrado
  * @param {{dates:string[],fatMassKg:number[],leanMassKg:number[]}} [input.composition]
  *   calculateCompositionTrend(bodyAssessments)
  * @param {number} [input.assessmentCount] avaliações no período
  * @param {number} [input.gymSessionCount] sessões de ginásio registadas no
  *   período — sem nenhuma, a frase não fala do ginásio
  */
-export function bodyVerdict({ weightTrend, composition, assessmentCount = 0, gymSessionCount = 0 } = {}) {
+export function bodyVerdict({ weightTrend, composition, assessmentCount = 0, gymSessionCount = 0, experienceLevel = null, hasWeighInsOutside = false } = {}) {
   const points = weightTrend?.rawPoints || [];
   if (!weightTrend || points.length === 0) {
     if (assessmentCount <= 0) return NO_DATA;
@@ -401,9 +471,25 @@ export function bodyVerdict({ weightTrend, composition, assessmentCount = 0, gym
     };
   }
 
+  const faltaPesagens = 'Preciso de três pesagens espalhadas por pelo menos 10 dias para te dizer para onde vai o peso.';
+
   if (points.length < 2) {
+    // 2026-10-04: com pesagens fora do período, "só tenho uma" era falso.
+    const abre = hasWeighInsOutside ? 'Neste período só há uma pesagem' : 'Só tenho uma pesagem';
     return {
-      text: `Só tenho uma pesagem, de ${fmtNumber(points[0].weight, 1)} kg. Preciso de mais para te dizer para onde vai o peso.`,
+      text: `${abre}, de ${fmtNumber(points[0].weight, 1)} kg. ${faltaPesagens}`,
+      tone: 'neutral',
+    };
+  }
+
+  /* Contrato novo de computeWeightTrend (2026-10-04): sem `sufficient` (3
+     pesagens em 10 dias na janela recente) não há ritmo nem tendência — nada
+     de "estabilizou" nem de "perda lenta e magra" a partir de um 0 inventado. */
+  if (!weightTrend.sufficient) {
+    const first = Number(points[0].weight);
+    const last = Number(points[points.length - 1].weight);
+    return {
+      text: `Tenho ${spellFem(points.length)} pesagens neste período${first === last ? `, ambas de ${fmtNumber(first, 1)} kg` : `, de ${fmtNumber(first, 1)} a ${fmtNumber(last, 1)} kg`}. ${faltaPesagens}`,
       tone: 'neutral',
     };
   }
@@ -420,10 +506,13 @@ export function bodyVerdict({ weightTrend, composition, assessmentCount = 0, gym
     ? Number(weightTrend.movingAverage[weightTrend.movingAverage.length - 1].weight)
     : Number(points[points.length - 1].weight);
 
-  // 1. Perder depressa demais queima músculo — é o caso urgente do corpo.
-  if (rate <= -1) {
+  /* 1. Perder depressa demais é o caso urgente do corpo. O limiar é em % do
+     peso por semana e depende do nível (assessWeightLossRate), não um −1 kg
+     absoluto igual para 50 e para 100 kg. */
+  const loss = assessWeightLossRate(rate, latest, experienceLevel);
+  if (loss?.isTooFast) {
     return {
-      text: `Estás a perder peso depressa demais: ${fmtNumber(rate, 1)} kg por semana. Acima de um quilo por semana o que sai é músculo.`,
+      text: `Estás a perder peso depressa demais: ${fmtVsLimit(loss.lossPct, loss.maxPct)}% do peso por semana (${fmtNumber(Math.abs(rate), 1)} kg). ${experienceLevel ? `Para o teu nível o máximo saudável é ${fmtNumber(loss.maxPct, 1)}%` : `Sem nível declarado, conto com um máximo de ${fmtNumber(loss.maxPct, 1)}%`}; acima disso arriscas perder também massa magra.`,
       tone: 'danger',
     };
   }
@@ -444,17 +533,17 @@ export function bodyVerdict({ weightTrend, composition, assessmentCount = 0, gym
       ? `o peso desce ${fmtNumber(Math.abs(rate), 1)} kg por semana`
       : 'o peso está a descer';
 
-    // 3. A perder peso com o músculo seguro — o cenário bom.
+    // 3. A perder peso com a massa magra segura — o cenário bom.
     if (leanDelta !== null) {
       return {
-        text: `Perda lenta e magra: ${desce} e a massa muscular mantém-se.`,
+        text: `Perda lenta e magra: ${desce} e a massa magra mantém-se.`,
         tone: 'ok',
       };
     }
 
     // 4. Sem gordura medida, o peso não diz o que está a sair.
     return {
-      text: `${capitalize(desce)}. ${lean.length === 1 ? 'Com uma só medição de gordura, ainda' : 'Sem gordura medida,'} não sei se é gordura ou músculo.`,
+      text: `${capitalize(desce)}. ${lean.length === 1 ? 'Com uma só medição de gordura, ainda' : 'Sem gordura medida,'} não sei se é gordura ou massa magra.`,
       tone: 'neutral',
     };
   }

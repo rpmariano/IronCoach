@@ -66,7 +66,8 @@ describe('runVerdict', () => {
       runCount: 17,
     });
     expect(v.tone).toBe('ok');
-    expect(v.text).toContain('quatro semanas seguidas');
+    // R10: só semanas fechadas — sem `today` a última (parcial) fica de fora.
+    expect(v.text).toContain('três semanas seguidas');
     expect(v.text).toContain('zona segura');
   });
 
@@ -77,7 +78,10 @@ describe('runVerdict', () => {
       runCount: 9,
     });
     expect(v.tone).toBe('danger');
-    expect(v.text).toContain('1,72');
+    expect(v.text).toContain('1,7×');
+    expect(v.text).toContain('últimos 7 dias');
+    expect(v.text).not.toContain('vezes acima');
+    expect(v.text).not.toContain('esta semana');
   });
 
   it('mal: ACWR em atenção é aviso, não perigo', () => {
@@ -87,7 +91,7 @@ describe('runVerdict', () => {
       runCount: 9,
     });
     expect(v.tone).toBe('warn');
-    expect(v.text).toContain('1,38');
+    expect(v.text).toContain('1,4×');
   });
 
   it('mal: intensidade acima do alvo com mais de 10 pontos de folga', () => {
@@ -199,17 +203,79 @@ describe('runVerdict', () => {
       today: SEGUNDA,
     });
     expect(v.tone).toBe('warn');
-    expect(v.text).toContain('0,62');
+    expect(v.text).toContain('0,6×');
   });
 
-  it('com corridas mas sem quatro semanas de carga, não finge saber', () => {
+  it('com corridas mas sem histórico de carga, não finge saber e diz quantas faltam', () => {
     const v = runVerdict({
-      acwr: { ratio: 0, status: 'unknown', hasEnoughData: false },
+      acwr: { ratio: 0, status: 'unknown', hasEnoughData: false, historyWeeks: 1 },
       weeklyVolume: weeks(0, 0, 8),
       runCount: 2,
     });
     expect(v.tone).toBe('neutral');
-    expect(v.text).toContain('quatro semanas');
+    expect(v.text).toContain('duas corridas registadas');
+    expect(v.text).toContain('3 das últimas 4 semanas');
+    expect(v.text).toContain('faltam duas semanas');
+    expect(v.text).not.toContain('quatro semanas seguidas');
+  });
+
+  // R7 (2026-10-04): concordância e período vazio com histórico.
+  it('R7: uma só corrida concorda no singular', () => {
+    const v = runVerdict({
+      acwr: { ratio: 0, status: 'unknown', hasEnoughData: false, historyWeeks: 2 },
+      weeklyVolume: weeks(0, 0, 8),
+      runCount: 1,
+    });
+    expect(v.text).toContain('uma corrida registada');
+    expect(v.text).not.toContain('uma corridas');
+    expect(v.text).toContain('falta uma semana');
+  });
+
+  it('R7: período vazio com histórico não diz "zero corridas"', () => {
+    const v = runVerdict({
+      acwr: { ratio: 0, status: 'unknown', hasEnoughData: false, historyWeeks: 1 },
+      weeklyVolume: weeks(0, 12, 0),
+      runCount: 0,
+      lastRunDate: '2026-09-12',
+    });
+    expect(v.text).toContain('Sem corridas neste período (a última foi a 12 de setembro)');
+    expect(v.text).not.toContain('zero');
+  });
+
+  it('R7: período e 12 semanas vazios, mas com última corrida antiga', () => {
+    const v = runVerdict({ runCount: 0, weeklyVolume: weeks(0, 0), lastRunDate: '2026-03-02' });
+    expect(v.text).toBe('Sem corridas neste período (a última foi a 2 de março).');
+  });
+
+  // R10 (2026-10-04)
+  it('R10: sem ACWR com dados, não diz "zona segura"', () => {
+    const v = runVerdict({
+      acwr: { ratio: 1.56, status: 'unknown', hasEnoughData: false, historyWeeks: 2 },
+      weeklyVolume: weeks(10, 14, 18, 22, 30),
+      runCount: 12,
+    });
+    expect(v.text).not.toContain('zona segura');
+  });
+
+  it('R10: a semana em curso (parcial) não conta para a subida', () => {
+    const base = {
+      acwr: { ratio: 1.1, status: 'safe', hasEnoughData: true, acuteKm: 30, chronicWeeklyKm: 27 },
+      runCount: 12,
+    };
+    // Segunda: 10, 14, 18, 22 fechadas = 3 subidas; a parcial (2) não desfaz nem acrescenta.
+    const seg = runVerdict({ ...base, weeklyVolume: weeks(10, 14, 18, 22, 2), today: SEGUNDA });
+    expect(seg.text).toContain('três semanas seguidas');
+    const sem = runVerdict({ ...base, weeklyVolume: weeks(10, 14, 18, 2), today: SEGUNDA });
+    expect(sem.text).not.toContain('semanas seguidas');
+  });
+
+  it('Textos de carga falam de 7 dias rolantes e de "×" com os km', () => {
+    const v = runVerdict({
+      acwr: { ratio: 1.62, status: 'danger', hasEnoughData: true, acuteKm: 48.6, chronicWeeklyKm: 30 },
+      weeklyVolume: weeks(20, 25, 44),
+      runCount: 9,
+    });
+    expect(v.text).toContain('Nos últimos 7 dias correste 1,6× a tua média semanal das últimas 4 semanas (48,6 vs 30,0 km)');
   });
 });
 
@@ -351,6 +417,9 @@ describe('bodyVerdict', () => {
   const trend = (weeklyRate, trendLabel, weights = [73.1, 72.7, 72.4]) => ({
     trend: trendLabel,
     weeklyRate,
+    sufficient: true,
+    spanDays: 14,
+    pointsInWindow: weights.length,
     rawPoints: weights.map((w, i) => ({ date: `2026-08-0${i + 1}`, weight: w })),
     movingAverage: weights.map((w, i) => ({ date: `2026-08-0${i + 1}`, weight: w })),
   });
@@ -365,18 +434,36 @@ describe('bodyVerdict', () => {
       composition: { dates: ['a', 'b'], leanMassKg: [64.2, 64.1], fatMassKg: [8.9, 8.3] },
     });
     expect(v.tone).toBe('ok');
-    expect(v.text).toContain('massa muscular mantém-se');
+    expect(v.text).toContain('massa magra mantém-se');
   });
 
-  it('mal e urgente: perder mais de um quilo por semana', () => {
+  it('mal e urgente: perder acima do máximo do nível (% do peso por semana)', () => {
     const v = bodyVerdict({ weightTrend: trend(-1.4, 'descendo') });
     expect(v.tone).toBe('danger');
-    expect(v.text).toContain('1,4 kg por semana');
+    expect(v.text).toContain('1,4 kg');
+    expect(v.text).toContain('% do peso por semana');
+    expect(v.text).not.toContain('Para o teu nível');
+    expect(v.text).toContain('Sem nível declarado, conto com um máximo de 0,7%');
+    expect(v.text).not.toMatch(/sai também massa magra/);
+    expect(v.text).toContain('arriscas perder também massa magra');
+  });
+
+  it('perigo com nível: o número mostrado é maior do que o máximo mostrado', () => {
+    const v = bodyVerdict({ weightTrend: trend(-0.3, 'descendo', [72.6, 72.4]), experienceLevel: 'avancado' });
+    expect(v.tone).toBe('danger');
+    expect(v.text).toContain('Para o teu nível o máximo saudável é 0,4%');
+    const mostrado = Number(/: (\d+,\d+)% do peso/.exec(v.text)[1].replace(',', '.'));
+    expect(mostrado).toBeGreaterThan(0.4);
+  });
+
+  it('duas pesagens iguais: "ambas de"', () => {
+    const v = bodyVerdict({ weightTrend: { ...trend(null, null, [80, 80]), weeklyRate: null, sufficient: false } });
+    expect(v.text).toContain('ambas de 80,0 kg');
   });
 
   it('mal: a perder peso e massa magra ao mesmo tempo', () => {
     const v = bodyVerdict({
-      weightTrend: trend(-0.6, 'descendo'),
+      weightTrend: trend(-0.4, 'descendo'),
       composition: { dates: ['a', 'b'], leanMassKg: [64.2, 62.9], fatMassKg: [8.9, 8.7] },
     });
     expect(v.tone).toBe('warn');
@@ -395,9 +482,9 @@ describe('bodyVerdict', () => {
 
     it('não afirma perda de músculo a partir do peso', () => {
       const v = bodyVerdict({ weightTrend: trend(-0.4, 'descendo', [73.1, 72.5, 71.9]), composition: soPesagens, gymSessionCount: 4 });
-      expect(v.text).toBe('O peso desce 0,4 kg por semana. Sem gordura medida, não sei se é gordura ou músculo.');
+      expect(v.text).toBe('O peso desce 0,4 kg por semana. Sem gordura medida, não sei se é gordura ou massa magra.');
       expect(v.tone).toBe('neutral');
-      expect(v.text).not.toContain('massa magra');
+      expect(v.text).not.toContain('perdeste');
       expect(v.text).not.toContain('ginásio');
       expectCarolVoice(v.text);
     });
@@ -408,12 +495,12 @@ describe('bodyVerdict', () => {
         composition: { dates: ['a', 'b', 'c'], leanMassKg: [64.2, 72.7, 72.4], fatMassKg: [8.9, 0, 0] },
       });
       expect(v.text).toContain('uma só medição de gordura');
-      expect(v.text).not.toContain('massa muscular');
+      expect(v.text).not.toContain('músculo');
     });
 
     it('o ginásio só entra na frase com sessões registadas', () => {
       const perda = {
-        weightTrend: trend(-0.6, 'descendo'),
+        weightTrend: trend(-0.4, 'descendo'),
         composition: { dates: ['a', 'b'], leanMassKg: [64.2, 62.9], fatMassKg: [8.9, 8.7] },
       };
       expect(bodyVerdict(perda).text).not.toContain('ginásio');
@@ -442,6 +529,37 @@ describe('bodyVerdict', () => {
     const v = bodyVerdict({ weightTrend: trend(0, 'estavel', [72.4]), assessmentCount: 1 });
     expect(v.tone).toBe('neutral');
     expect(v.text).toContain('uma pesagem');
+  });
+
+  // Contrato novo (2026-10-04): sem `sufficient` não há tendência.
+  it('sem pesagens suficientes: diz o que falta, sem "estabilizou" nem "perda"', () => {
+    const v = bodyVerdict({
+      weightTrend: { ...trend(null, null, [73.1, 72.4]), weeklyRate: null, sufficient: false, spanDays: 5, pointsInWindow: 2 },
+      composition: { dates: ['a', 'b'], leanMassKg: [64.2, 64.1], fatMassKg: [8.9, 8.3] },
+    });
+    expect(v.tone).toBe('neutral');
+    expect(v.text).toContain('três pesagens espalhadas por pelo menos 10 dias');
+    expect(v.text).toContain('duas pesagens');
+    expect(v.text).not.toMatch(/estabilizou|depressa demais|Perda lenta/);
+    expectCarolVoice(v.text);
+  });
+
+  it('com uma só pesagem no período mas outras fora, diz-o', () => {
+    const v = bodyVerdict({ weightTrend: trend(null, null, [72.4]), assessmentCount: 1, hasWeighInsOutside: true });
+    expect(v.text).toContain('Neste período só há uma pesagem');
+    expect(v.text).not.toContain('Só tenho');
+  });
+
+  it('o limiar de perda rápida é em % do peso e depende do nível', () => {
+    // −0,45 kg/semana em 60 kg = 0,75%: acima do máximo de todos os níveis.
+    const leve = { weightTrend: trend(-0.45, 'descendo', [60.4, 60.2, 60.0]) };
+    expect(bodyVerdict({ ...leve, experienceLevel: 'iniciante' }).tone).toBe('danger');
+    // −0,3 kg em 72,4 = 0,41%: ok para médio (0,5%), demasiado para avançado? 0,41 > 0,4.
+    const d = { weightTrend: trend(-0.3, 'descendo') };
+    expect(bodyVerdict({ ...d, experienceLevel: 'medio' }).tone).not.toBe('danger');
+    expect(bodyVerdict({ ...d, experienceLevel: 'avancado' }).tone).toBe('danger');
+    // −0,9 kg/semana em 120 kg = 0,75% mas −0,8 kg = 0,67%: não é "−1 kg" absoluto.
+    expect(bodyVerdict({ weightTrend: trend(-0.8, 'descendo', [120.4, 120.0, 119.6]), experienceLevel: 'iniciante' }).tone).not.toBe('danger');
   });
 
   it('nenhuma frase leva emoji, exclamação ou "talvez"', () => {

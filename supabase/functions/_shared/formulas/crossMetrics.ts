@@ -32,17 +32,15 @@ export interface WeightVsPacePoint {
 export interface GymLoadVsRunRpePoint {
   date: string; // segunda-feira da semana
   gymVolume: number;
-  runRPE: number;
+  // Média do RPE REGISTADO nas corridas dessa semana; null quando nenhuma
+  // corrida da semana tem RPE (buraco no gráfico, nunca 0 nem 5) — O6.
+  runRPE: number | null;
 }
 export interface CrossMetrics {
   weightVsPace: WeightVsPacePoint[];
   gymLoadVsRunRPE: GymLoadVsRunRpePoint[];
   combinedACWR: number;
 }
-
-// RPE assumido quando a corrida não tem effort_rpe registado — mesmo
-// fallback do biEngine.js original (esforço "moderado" por omissão).
-const DEFAULT_RUN_RPE = 5;
 
 function mondayOfWeek(dateISO: string): string {
   const d = new Date(dateISO + "T00:00:00Z");
@@ -86,6 +84,13 @@ export function computeCrossMetrics(
   }
 
   // Carga de ginásio vs. RPE de corrida, por semana de calendário.
+  //
+  // O6 (2026-10-04): só contam corridas com RPE REAL. Antes, uma corrida sem
+  // effort_rpe valia 5 ("moderado") e uma semana sem corridas valia 0 — e a
+  // Análise Cruzada dizia "Boa gestão da carga cruzada… Continua assim!" a
+  // quem nunca registou um RPE. RPE é opcional no registo, por isso o que
+  // falta é um buraco (null), não um número. Uma semana só entra na série se
+  // tiver ginásio ou RPE real: semanas só com corridas sem RPE não dizem nada.
   const weeklyGym: Record<string, number> = {};
   for (const s of filteredGym) {
     const wk = mondayOfWeek(s.date);
@@ -93,16 +98,20 @@ export function computeCrossMetrics(
   }
   const weeklyRunRPE: Record<string, { total: number; count: number }> = {};
   for (const r of filteredRuns) {
+    const rpe = Number(r.effort_rpe);
+    if (!(rpe > 0)) continue; // sem RPE registado: não entra na média
     const wk = mondayOfWeek(r.date);
     if (!weeklyRunRPE[wk]) weeklyRunRPE[wk] = { total: 0, count: 0 };
-    weeklyRunRPE[wk].total += r.effort_rpe || DEFAULT_RUN_RPE;
+    weeklyRunRPE[wk].total += rpe;
     weeklyRunRPE[wk].count += 1;
   }
   const weeks = new Set([...Object.keys(weeklyGym), ...Object.keys(weeklyRunRPE)]);
   const gymLoadVsRunRPE: GymLoadVsRunRpePoint[] = [...weeks]
     .map((wk) => {
-      const rpe = weeklyRunRPE[wk] ? weeklyRunRPE[wk].total / weeklyRunRPE[wk].count : 0;
-      return { date: wk, gymVolume: weeklyGym[wk] || 0, runRPE: Math.round(rpe * 10) / 10 };
+      const rpe = weeklyRunRPE[wk]
+        ? Math.round((weeklyRunRPE[wk].total / weeklyRunRPE[wk].count) * 10) / 10
+        : null;
+      return { date: wk, gymVolume: weeklyGym[wk] || 0, runRPE: rpe };
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 

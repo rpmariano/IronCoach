@@ -16,13 +16,96 @@
   {
     "name": "sem lean_body_mass_kg — deriva peso menos massa gorda",
     "input": {
-      "bodyAssessments": [{ "date": "2026-08-25", "weight_kg": 80, "body_fat_pct": 15, "lean_body_mass_kg": null }]
+      "bodyAssessments": [
+        { "date": "2026-08-25", "weight_kg": 80, "body_fat_pct": 15, "lean_body_mass_kg": null }
+      ]
     },
-    "expect": { "dates": ["2026-08-25"], "fatMassKg": [12], "leanMassKg": [68] }
+    "expect": {
+      "dates": ["2026-08-25"],
+      "fatMassKg": [12],
+      "leanMassKg": [68]
+    }
   },
   {
     "name": "sem avaliações — arrays vazios",
-    "input": { "bodyAssessments": [] },
-    "expect": { "dates": [], "fatMassKg": [], "leanMassKg": [] }
+    "input": {
+      "bodyAssessments": []
+    },
+    "expect": {
+      "dates": [],
+      "fatMassKg": [],
+      "leanMassKg": []
+    }
+  },
+  {
+    "name": "C3: avaliação sem gordura medida (null) não entra — nem gordura 0 nem massa magra = peso",
+    "input": {
+      "bodyAssessments": [
+        { "date": "2026-08-01", "weight_kg": 80, "body_fat_pct": 20, "lean_body_mass_kg": null },
+        { "date": "2026-10-01", "weight_kg": 78, "body_fat_pct": null, "lean_body_mass_kg": null }
+      ]
+    },
+    "expect": {
+      "dates": ["2026-08-01"],
+      "fatMassKg": [16],
+      "leanMassKg": [64]
+    }
+  },
+  {
+    "name": "C3: sem gordura mas com lean_body_mass_kg também não entra (a gorda ficava 0 e o total por baixo)",
+    "input": {
+      "bodyAssessments": [
+        { "date": "2026-08-01", "weight_kg": 80, "body_fat_pct": 20, "lean_body_mass_kg": null },
+        { "date": "2026-09-15", "weight_kg": 79, "body_fat_pct": null, "lean_body_mass_kg": 63 },
+        { "date": "2026-10-01", "weight_kg": 78, "body_fat_pct": 19, "lean_body_mass_kg": null }
+      ]
+    },
+    "expect": {
+      "dates": ["2026-08-01", "2026-10-01"],
+      "fatMassKg": [16, 14.82],
+      "leanMassKg": [64, 63.18]
+    }
+  },
+  {
+    "name": "C3: body_fat_pct ausente (undefined) não dá NaN — a avaliação sai",
+    "input": {
+      "bodyAssessments": [
+        { "date": "2026-08-01", "weight_kg": 80, "body_fat_pct": 20 },
+        { "date": "2026-10-01", "weight_kg": 78 }
+      ]
+    },
+    "expect": {
+      "dates": ["2026-08-01"],
+      "fatMassKg": [16],
+      "leanMassKg": [64]
+    }
+  },
+  {
+    "name": "C3: sem peso (null ou 0) também não entra",
+    "input": {
+      "bodyAssessments": [
+        { "date": "2026-08-01", "weight_kg": null, "body_fat_pct": 20 },
+        { "date": "2026-09-01", "weight_kg": 0, "body_fat_pct": 21 },
+        { "date": "2026-10-01", "weight_kg": 75, "body_fat_pct": 18, "lean_body_mass_kg": null }
+      ]
+    },
+    "expect": {
+      "dates": ["2026-10-01"],
+      "fatMassKg": [13.5],
+      "leanMassKg": [61.5]
+    }
+  },
+  {
+    "name": "C3: só avaliações sem gordura — arrays vazios",
+    "input": {
+      "bodyAssessments": [
+        { "date": "2026-10-01", "weight_kg": 78, "body_fat_pct": null }
+      ]
+    },
+    "expect": {
+      "dates": [],
+      "fatMassKg": [],
+      "leanMassKg": []
+    }
   }
 ]

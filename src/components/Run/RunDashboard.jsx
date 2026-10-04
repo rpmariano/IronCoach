@@ -21,6 +21,7 @@ import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel, acwrMissingWeeks } from '../../utils/biEngine';
 import { formatPace } from '../../utils/run';
 import { computeBestPace } from '@formulas/bestPace.ts';
+import { focusRace } from '@formulas/mainRace.ts';
 import { computeRunWatchMetrics } from '@formulas/runWatchMetrics.ts';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { todayISO } from '../../lib/utils';
@@ -41,6 +42,14 @@ function formatDatePT(dateStr) {
   const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
   return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
 }
+
+// R9 (2026-10-04): os escalões não são "pelo menos X km" (o "+" do rótulo
+// antigo) mas intervalos fechados — um treino de 4,0 km conta como "5 km" e
+// uma corrida de 7 ou de 15 km não conta em nenhum. Os valores espelham
+// DISTANCE_RANGES de bestPace.ts (4–6,5 / 8,5–12 / 19–23 km); o teste do
+// dashboard prova as fronteiras contra computeBestPace, para os dois não
+// divergirem em silêncio.
+const BEST_PACE_LEGEND = '≈5 km: corridas e splits de 4 a 6,5 km · ≈10 km: de 8,5 a 12 km · ≈21 km: de 19 a 23 km.';
 
 // Delega em @formulas/bestPace.ts (T1.5) — única implementação, partilhada
 // com a Carol (specs/formulas-checklist.md Fase E). O fallback `r.pace`
@@ -63,20 +72,28 @@ export default function RunDashboard() {
     return periodRuns.reduce((sum, r) => sum + Number(r.distance_km || 0), 0);
   }, [periodRuns]);
 
-  const avgPaceSec = useMemo(() => {
-    if (totalDist <= 0) return 0;
-    const totalDuration = periodRuns.reduce((sum, r) => {
-      if (r.duration_seconds) return sum + Number(r.duration_seconds);
-      if (r.pace && r.distance_km) {
-        const parts = r.pace.replace('/km', '').split(':').map(Number);
-        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-          return sum + (parts[0] * 60 + parts[1]) * Number(r.distance_km);
-        }
-      }
-      return sum;
-    }, 0);
-    return totalDuration / totalDist;
-  }, [periodRuns, totalDist]);
+  // R4 (2026-10-04): o ritmo médio só conta corridas com distância E tempo.
+  // Antes somava os segundos das que tinham duração mas dividia pelos km de
+  // TODAS — 10 km a 5:00 mais 10 km sem tempo davam 2:30/km — e, no sentido
+  // inverso, uma corrida com tempo e sem distância tornava-o mais lento. O
+  // fallback `r.pace` ("m:ss/km") não existia na BD (a tabela runs não tem
+  // essa coluna) e saiu. Quando nem todas contam, o ecrã diz "N de M".
+  // O mesmo critério filtra as corridas que servem para prever a prova (R2).
+  const runsComTempo = useMemo(
+    () => (runs || []).filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0),
+    [runs]
+  );
+  const paceStats = useMemo(() => {
+    const comTempo = periodRuns.filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0);
+    const km = comTempo.reduce((sum, r) => sum + Number(r.distance_km), 0);
+    const seconds = comTempo.reduce((sum, r) => sum + Number(r.duration_seconds), 0);
+    return {
+      avgPaceSec: km > 0 ? seconds / km : 0,
+      withTime: comTempo.length,
+      total: periodRuns.length,
+    };
+  }, [periodRuns]);
+  const avgPaceSec = paceStats.avgPaceSec;
 
   // BI - ACWR
   const acwrData = useMemo(() => calculateACWR(runs), [runs]);
@@ -91,12 +108,15 @@ export default function RunDashboard() {
     return missing ? { ...st, label: `Faltam ${missing} sem.` } : st;
   }, [acwrData]);
 
-  // BI - Distribution. Sem o nível de experiência, caía sempre no default
-  // 'medio' (alvo 80/20) — um iniciante (alvo 95%) via "não conforme" no
-  // donut mesmo dentro da meta da sua doutrina (ver
-  // specs/formulas-checklist.md P0-8).
+  // BI - Distribution. Sem nível declarado a omissão é 'medio' (alvo 80/20),
+  // a mesma da Carol (coach-chat: `experienceLevel || "medio"`) e dos
+  // insights do biEngine (detectCoachInsights) — ver o comentário de
+  // calculateTrainingDistribution em utils/biEngine.js: são três sítios e
+  // mudam juntos. R8 (2026-10-04): aqui estava 'iniciante' (alvo 95%), e o
+  // donut e o veredicto diziam "forte demais, máximo 5% em Z3+" a quem a
+  // Carol dava como conforme, ao lado do seu próprio texto "cerca de 80%".
   const distribution = useMemo(
-    () => calculateTrainingDistribution(periodRuns, profile?.experience_level || 'iniciante'),
+    () => calculateTrainingDistribution(periodRuns, profile?.experience_level || 'medio'),
     [periodRuns, profile?.experience_level]
   );
 
@@ -108,11 +128,25 @@ export default function RunDashboard() {
   // contexto à previsão de prova.
   const vdotTrend = useMemo(() => getVDOTTrend(runs), [runs]);
 
-  // Future Races
-  const futureRaces = useMemo(() => {
-    const today = new Date().toISOString().split('T')[0];
-    return raceEvents.filter(r => r.date >= today).sort((a,b) => a.date.localeCompare(b.date));
-  }, [raceEvents]);
+  // Prova-objetivo — a mesma escolha do hub (focusRace de @formulas/mainRace:
+  // a próxima principal por correr, ou a próxima por data se não houver
+  // nenhuma). Antes era "a mais próxima por data", e uma prova de treino à
+  // frente da principal tomava o lugar do objetivo (R2, 2026-10-04).
+  const today = todayISO();
+  const focus = useMemo(() => focusRace(raceEvents, today), [raceEvents, today]);
+
+  // Previsão — mesmo pipeline do RaceHubView: getRacePrediction sobre as
+  // corridas com distância E tempo (runsComTempo). Sem previsão utilizável
+  // (predictedSeconds 0) não se mostra número nenhum: um "00:00" não é uma
+  // previsão, é um buraco nos dados. O gráfico cai no "Evolução do VDOT".
+  // getRacePrediction resolve nível (prioriza o desta prova) e distância
+  // equivalente ITRA — ponto único, o mesmo do "Previsão (VDOT)" do hub.
+  const racePrediction = useMemo(() => {
+    if (!focus) return null;
+    const p = getRacePrediction(focus, profile, runsComTempo);
+    if (!(p.predictedSeconds > 0)) return null;
+    return { ...p, raceName: focus.name || `${focus.distance_km}km` };
+  }, [focus, profile, runsComTempo]);
 
   // Best pace records across ALL runs
   const b5 = useMemo(() => getBestPaceData(runs, 5), [runs]);
@@ -207,7 +241,6 @@ export default function RunDashboard() {
   /* O que o plano previa (revisão de 2026-09-26): no polimento, ou numa
      semana em que o próprio plano desce, a carga a baixar não é falta de
      treino. A fase é a mesma do trilho do Início (calculateRaceTrainingPlan). */
-  const today = todayISO();
   const taper = useMemo(() => {
     const next = [...(raceEvents || [])]
       .filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) >= today)
@@ -333,6 +366,16 @@ export default function RunDashboard() {
           status={acwrStatus.tone}
         />
       </div>
+      {/* R4: o denominador do ritmo médio, só quando nem todas contam. */}
+      {paceStats.withTime < paceStats.total && (
+        <p data-testid="pace-denominador" className="text-[11px] text-[var(--text-3)] -mt-1">
+          {paceStats.withTime === 0
+            ? (paceStats.total === 1
+                ? 'Pace médio: a corrida não tem distância e tempo registados.'
+                : `Pace médio: nenhuma das ${paceStats.total} corridas tem distância e tempo registados.`)
+            : `Pace médio: ${paceStats.withTime} de ${paceStats.total} corridas com distância e tempo.`}
+        </p>
+      )}
 
       {/* 3-6. Gráficos BI.
           Cada componente já traz o seu próprio cartão, título e alturas, por
@@ -370,18 +413,7 @@ export default function RunDashboard() {
       {vdotTrend.length > 0 && (
         <RacePredictionChart
           vdotTrend={vdotTrend}
-          prediction={
-            futureRaces.length > 0
-              ? {
-                  // getRacePrediction resolve nível (prioriza o desta prova)
-                  // e distância equivalente ITRA — ponto único, mesmo usado
-                  // no "Previsão (VDOT)" do RaceHubView, para os dois lerem
-                  // sempre o mesmo número.
-                  ...getRacePrediction(futureRaces[0], profile, runs),
-                  raceName: futureRaces[0].name || `${futureRaces[0].distance_km}km`
-                }
-              : null
-          }
+          prediction={racePrediction}
         />
       )}
 
@@ -407,10 +439,12 @@ export default function RunDashboard() {
       <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
         <h2 className="text-[11px] font-semibold text-[var(--text-2)] mb-2 uppercase tracking-wider">Melhor pace de sempre</h2>
         <div className="space-y-1">
-          {renderBucket('5 km+', b5)}
-          {renderBucket('10 km+', b10)}
-          {renderBucket('21 km+', b21)}
+          {renderBucket('≈5 km', b5)}
+          {renderBucket('≈10 km', b10)}
+          {renderBucket('≈21 km', b21)}
         </div>
+        {/* R9: o intervalo real de cada escalão (bestPace.ts, DISTANCE_RANGES). */}
+        <p data-testid="recordes-intervalos" className="text-[11px] text-[var(--text-3)] mt-2">{BEST_PACE_LEGEND}</p>
       </div>
 
       {/* 9. Watch Metrics Card (if any data) */}

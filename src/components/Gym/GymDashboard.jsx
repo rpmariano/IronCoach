@@ -13,8 +13,9 @@ import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { gymVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
-import { filterByDateRange, calculateVolumeLoad, calculateMuscleGroupVolume, sessionVolumeKg } from '../../utils/biEngine';
+import { filterByDateRange, calculateVolumeLoad, sessionVolumeKg } from '../../utils/biEngine';
 import { computeClassAnalytics } from '@formulas/classAnalytics.ts';
+import { computeMuscleGroupVolumeDetailed } from '@formulas/muscleGroupVolume.ts';
 import { todayISO } from '../../lib/utils';
 
 // Semanas cobertas por cada filtro de período — denominador da frequência
@@ -22,7 +23,8 @@ import { todayISO } from '../../lib/utils';
 const WEEKS_BY_RANGE = { dia: 1, semana: 1, mes: 4, trimestre: 13, '6meses': 26, ano: 52 };
 
 function formatDurationMinutes(seconds) {
-  if (!seconds) return '0 min';
+  // Sem duração não é "0 min" (G7, 2026-10-04): é dado em falta.
+  if (!seconds) return '—';
   const mins = Math.round(seconds / 60);
   if (mins >= 60) {
     const h = Math.floor(mins / 60);
@@ -32,6 +34,18 @@ function formatDurationMinutes(seconds) {
   return `${mins} min`;
 }
 
+/* G7 (2026-10-04): a duração de uma aula é opcional, por isso o total só
+   soma as aulas que a têm. Nenhuma com duração → "—" (antes "0 min"); só
+   parte → o total com a nota "em N de M aulas", para não se ler como o
+   tempo todo. */
+function classTimeSummary(totalSeconds, withDuration, totalClasses) {
+  if (!(withDuration > 0)) return { value: '—', note: null };
+  return {
+    value: formatDurationMinutes(totalSeconds),
+    note: withDuration < totalClasses ? `em ${withDuration} de ${totalClasses} aulas` : null,
+  };
+}
+
 export default function GymDashboard() {
   const { gymSessions, runs, setOpenCreationMode } = useAppStore();
   const [timeRange, setTimeRange] = useState('mes');
@@ -39,7 +53,17 @@ export default function GymDashboard() {
 
   const sessionsInRange = useMemo(() => filterByDateRange(gymSessions, rangeKey), [gymSessions, rangeKey]);
   const volumeData = useMemo(() => calculateVolumeLoad(gymSessions, rangeKey), [gymSessions, rangeKey]);
-  const muscleVolume = useMemo(() => calculateMuscleGroupVolume(gymSessions, rangeKey), [gymSessions, rangeKey]);
+  // G1 (2026-10-04): as séries não guardam grupo muscular, por isso só entram
+  // as sessões de um único grupo; as de vários ficam de fora e contam-se aqui
+  // (muscleGroupVolume.ts). Chama a fórmula partilhada diretamente porque o
+  // biEngine só devolve os grupos.
+  const { groups: muscleVolume, multiGroupSessions } = useMemo(() => {
+    try {
+      return computeMuscleGroupVolumeDetailed(gymSessions || [], todayISO(), rangeKey);
+    } catch {
+      return { groups: {}, multiGroupSessions: 0 };
+    }
+  }, [gymSessions, rangeKey]);
 
   const { volumeByDay } = useMemo(() => {
     const byDay = {};
@@ -68,6 +92,12 @@ export default function GymDashboard() {
     const groups = Object.keys(muscleVolume).sort((a, b) => muscleVolume[b].sets - muscleVolume[a].sets);
     return groups.length ? { name: groups[0], sets: muscleVolume[groups[0]].sets } : null;
   }, [muscleVolume]);
+
+  const groupCount = Object.keys(muscleVolume).length;
+  const multiGroupNote = multiGroupSessions > 0
+    ? `${multiGroupSessions} ${multiGroupSessions === 1 ? 'sessão com vários grupos não entra' : 'sessões com vários grupos não entram'}.`
+    : '';
+  const muscleHint = `${groupCount} ${groupCount === 1 ? 'grupo' : 'grupos'}${multiGroupNote ? ` · ${multiGroupNote.slice(0, -1)}` : ''}`;
 
   const volChartData = useMemo(() => {
     const days = Object.keys(volumeByDay).sort();
@@ -124,6 +154,7 @@ export default function GymDashboard() {
     () => computeClassAnalytics(gymSessions, todayISO(), rangeKey),
     [gymSessions, rangeKey],
   );
+  const classTime = classTimeSummary(classAnalytics.totalClassSeconds, classAnalytics.classesWithDuration, classAnalytics.totalClasses);
 
   /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
      utils/dashboardVerdicts.js; aqui só se juntam os dados já calculados.
@@ -197,7 +228,7 @@ export default function GymDashboard() {
       {(
         <div className="space-y-4">
           {volumeData.weeklyBreakdown.length > 0 && (
-            <VolumeLoadChart weeklyData={volumeData.weeklyBreakdown} acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus, hasEnoughData: volumeData.acwrHasEnoughData }} />
+            <VolumeLoadChart weeklyData={volumeData.weeklyBreakdown} acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus, hasEnoughData: volumeData.acwrHasEnoughData, historyWeeks: volumeData.historyWeeks }} />
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -221,7 +252,7 @@ export default function GymDashboard() {
                 value={topMuscle ? topMuscle.sets : '—'}
                 unit={topMuscle ? `séries em ${topMuscle.name}` : undefined}
                 valueColor="var(--gym)"
-                hint={`${Object.keys(muscleVolume).length} grupos`}
+                hint={muscleHint}
                 legend={[{ label: 'Séries no período', color: 'var(--gym)' }]}
                 height={192}
               >
@@ -229,6 +260,12 @@ export default function GymDashboard() {
               </ChartFrame>
             )}
           </div>
+
+          {Object.keys(muscleVolume).length === 0 && multiGroupSessions > 0 && (
+            <p className="text-[11px] text-[var(--text-3)] px-1">
+              {multiGroupNote} Sem grupos para mostrar nas séries por músculo.
+            </p>
+          )}
 
           {/* Secção de Aulas e Modalidades de Grupo */}
           <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
@@ -250,13 +287,14 @@ export default function GymDashboard() {
                   </div>
                   <div>
                     <p className="text-base font-extrabold text-white leading-none">
-                      {formatDurationMinutes(classAnalytics.totalClassSeconds)}
+                      {classTime.value}
                     </p>
                     <p className="text-[11px] text-[var(--text-3)] mt-1">Tempo Total</p>
+                    {classTime.note && <p className="text-[10px] text-[var(--text-3)]">{classTime.note}</p>}
                   </div>
                   <div>
                     <p className="text-base font-extrabold leading-none" style={{ color: 'var(--gym)' }}>
-                      {classAnalytics.avgRpe ? `${classAnalytics.avgRpe} / 10` : '-'}
+                      {classAnalytics.avgRpe ? `${classAnalytics.avgRpe.replace('.', ',')} / 10` : '—'}
                     </p>
                     <p className="text-[11px] text-[var(--text-3)] mt-1">Esforço Médio (RPE)</p>
                   </div>
@@ -265,7 +303,9 @@ export default function GymDashboard() {
                 {/* Lista de Modalidades */}
                 <div className="space-y-1.5 mt-2">
                   {classAnalytics.classList.map(c => {
-                    const avgClassRpe = c.rpeCount > 0 ? (c.rpeSum / c.rpeCount).toFixed(1) : null;
+                    // G6 (2026-10-04): classAnalytics devolve `avgRpe` (string já
+                    // formatada), não rpeSum/rpeCount — antes lia estes e nunca aparecia.
+                    const avgClassRpe = c.avgRpe ? c.avgRpe.replace('.', ',') : null;
                     return (
                       <div key={c.name} className="flex items-center justify-between gap-3 py-2 px-3 rounded-xl bg-[var(--surface-glass)] border border-[var(--border-faint)]">
                         <div className="flex items-center gap-2">

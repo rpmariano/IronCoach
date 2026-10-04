@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
-import { BODY_METRICS, fmtMetric } from '../../utils/body';
+import { BODY_METRICS } from '../../utils/body';
 import { getBodyIcon } from '../../utils/bodyIcons';
 import { User } from 'lucide-react';
 import { Line } from 'react-chartjs-2';
@@ -13,6 +13,30 @@ import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { bodyVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
 import { filterByDateRange, calculateWeightTrend, calculateCompositionTrend } from '../../utils/biEngine';
+import { WEIGHT_TREND_MIN_POINTS, WEIGHT_TREND_MIN_SPAN_DAYS } from '@formulas/weightTrend.ts';
+
+/* C4 (2026-10-04): os números do Corpo saem com vírgula decimal (fmtNumber)
+   e o ChartFrame recebe o número SEM unidade — a unidade vai no `unit`.
+   Com fmtMetric (toFixed + unidade) o número grande saía "72.4 kg kg", com
+   ponto, e sem data-count-to (não é numérico), por isso também não contava. */
+function fmtValue(metric, val) {
+  if (val === null || val === undefined || !isFinite(Number(val))) return '—';
+  return fmtNumber(Number(val), metric.dec);
+}
+function fmtValueUnit(metric, val) {
+  const v = fmtValue(metric, val);
+  return v === '—' || !metric.unit ? v : `${v} ${metric.unit}`;
+}
+
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+/* "12 set" no ano corrente, "12 set 2025" nos outros — a data de uma
+   leitura que não é do período (C5) tem de se ler sem ambiguidade. */
+function fmtShortDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const base = `${d} ${MESES[m - 1]}`;
+  return y === new Date().getFullYear() ? base : `${base} ${y}`;
+}
 
 export default function BodyDashboard({ onGoToCalendar }) {
   const { bodyAssessments, gymSessions, profile, setOpenCreationMode } = useAppStore();
@@ -38,10 +62,15 @@ export default function BodyDashboard({ onGoToCalendar }) {
       const validOverall = sortedAssessmentsDesc.filter(a => a[m.key] !== null && a[m.key] !== undefined);
       const latestOverall = validOverall[0]?.[m.key];
 
+      /* C5 (2026-10-04): sem leitura desta métrica no período, o cartão
+         mostrava o último valor de sempre sem data, como se fosse do
+         período (e o gráfico, ao tocar, dizia que não havia leituras).
+         Passa a levar a data dessa leitura — ou "—" se nunca houve. */
       if (validInPeriod.length === 0) {
         return {
           metric: m,
-          value: latestOverall,
+          value: latestOverall ?? null,
+          valueDate: validOverall[0]?.date ?? null,
           hasPeriodData: false,
           deltaText: null,
           deltaType: 'neutral'
@@ -57,7 +86,8 @@ export default function BodyDashboard({ onGoToCalendar }) {
 
       if (validInPeriod.length >= 2 && Math.abs(diff) >= 0.01) {
         const isPositive = diff > 0;
-        const formattedDiff = (isPositive ? '+' : '') + diff.toFixed(m.dec) + (m.unit ? ` ${m.unit}` : '');
+        // fmtNumber já escreve o "−" dos negativos; o "+" é nosso.
+        const formattedDiff = (isPositive ? '+' : '') + fmtValueUnit(m, diff);
         deltaText = formattedDiff;
 
         if (m.good === 'down') {
@@ -71,7 +101,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
         deltaText = '1 leitura';
         deltaType = 'neutral';
       } else {
-        deltaText = '0.0 ' + (m.unit || '');
+        deltaText = fmtValueUnit(m, 0);
         deltaType = 'neutral';
       }
 
@@ -92,6 +122,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
   }, [filteredAssessments, selectedMetric]);
 
   const latestVal = points.length > 0 ? points[points.length - 1][selectedMetric.key] : null;
+  const selectedSummary = metricSummaries.find(s => s.metric.key === selectedMetric.key);
   const goalVal = profile ? profile['goal_' + selectedMetric.key] : null;
 
   const chartData = useMemo(() => {
@@ -208,8 +239,10 @@ export default function BodyDashboard({ onGoToCalendar }) {
       />
 
       <div className="grid grid-cols-3 gap-2 px-1">
-        {metricSummaries.map(({ metric: m, value, deltaText, deltaType }) => {
+        {metricSummaries.map(({ metric: m, value, valueDate, hasPeriodData, deltaText, deltaType }) => {
           const isSelected = selectedMetricKey === m.key;
+          // C5: leitura de fora do período — valor apagado e a data dela.
+          const outOfPeriod = !hasPeriodData && value !== null && value !== undefined;
           return (
             <button
               key={m.key}
@@ -231,11 +264,22 @@ export default function BodyDashboard({ onGoToCalendar }) {
                   <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
                 )}
               </div>
-              <p className="text-sm font-bold text-white tracking-tight leading-tight">
-                {fmtMetric(m, value)}
+              <p
+                className={`text-sm font-bold tracking-tight leading-tight ${outOfPeriod ? 'text-[var(--text-3)]' : 'text-white'}`}
+                data-testid={`body-card-value-${m.key}`}
+              >
+                {hasPeriodData || outOfPeriod ? fmtValueUnit(m, value) : '—'}
               </p>
               <div className="mt-1 flex items-center justify-between min-h-[14px]">
-                {deltaText ? (
+                {outOfPeriod ? (
+                  <span
+                    className="text-[11px] text-[var(--text-3)] truncate"
+                    data-testid={`body-card-date-${m.key}`}
+                    aria-label={`Última leitura a ${fmtShortDate(valueDate)}, fora do período`}
+                  >
+                    {`a ${fmtShortDate(valueDate)}`}
+                  </span>
+                ) : deltaText ? (
                   <span className={`text-[11px] font-semibold ${
                     deltaType === 'good' ? 'text-[var(--ok)]' :
                     deltaType === 'bad' ? 'text-[var(--danger)]' : 'text-[var(--text-3)]'
@@ -259,8 +303,8 @@ export default function BodyDashboard({ onGoToCalendar }) {
         return (
           <ChartFrame
             label={selectedMetric.label}
-            hint={goalVal != null ? `objetivo ${fmtMetric(selectedMetric, goalVal)}` : `${points.length} leitura${points.length === 1 ? '' : 's'}`}
-            value={latestVal !== null ? fmtMetric(selectedMetric, latestVal) : '—'}
+            hint={goalVal != null ? `objetivo ${fmtValueUnit(selectedMetric, goalVal)}` : `${points.length} leitura${points.length === 1 ? '' : 's'}`}
+            value={latestVal !== null ? fmtValue(selectedMetric, latestVal) : '—'}
             unit={selectedMetric.unit || undefined}
             valueColor={selectedMetric.color}
             delta={diff !== null && Math.abs(diff) >= 0.01
@@ -274,11 +318,15 @@ export default function BodyDashboard({ onGoToCalendar }) {
                 }
               : undefined}
             axis={vals.length > 1
-              ? { min: fmtMetric(selectedMetric, Math.min(...vals)), max: fmtMetric(selectedMetric, Math.max(...vals)) }
+              ? { min: fmtValueUnit(selectedMetric, Math.min(...vals)), max: fmtValueUnit(selectedMetric, Math.max(...vals)) }
               : undefined}
             legend={[{ label: selectedMetric.label, color: selectedMetric.color, shape: 'line' }]}
             height={points.length >= 1 ? 192 : 0}
-            footer={points.length >= 1 ? undefined : 'Sem leituras desta métrica no período selecionado.'}
+            footer={points.length >= 1
+              ? undefined
+              : selectedSummary?.valueDate
+                ? `Sem leituras desta métrica no período selecionado. A última é de ${fmtShortDate(selectedSummary.valueDate)} (${fmtValueUnit(selectedMetric, selectedSummary.value)}).`
+                : 'Sem leituras desta métrica no período selecionado.'}
           >
             {points.length >= 1 ? <Line data={chartData} options={chartOptions} /> : null}
           </ChartFrame>
@@ -290,7 +338,19 @@ export default function BodyDashboard({ onGoToCalendar }) {
         const ma = weightTrendData.movingAverage || [];
         const lastWeight = ma.length ? Number(ma[ma.length - 1].weight) : null;
         const raw = (weightTrendData.rawPoints || []).map(pt => Number(pt.weight)).filter(v => isFinite(v));
-        const rate = Number(weightTrendData.weeklyRate ?? 0);
+        /* C1/C2 (2026-10-04): o ritmo só existe com pesagens que cheguem
+           (weightTrend.ts: ≥3 nos últimos 14 dias, a abranger ≥10). Antes
+           saía "+0,6 kg/semana" de 2 pesagens a 3 dias, ou nada com
+           pesagens espaçadas; agora, sem dados, diz-se o que falta. */
+        const sufficient = weightTrendData.sufficient === true && weightTrendData.weeklyRate != null;
+        const rate = sufficient ? Number(weightTrendData.weeklyRate) : null;
+        const roundedRate = rate !== null && Math.abs(rate) >= 0.05 ? rate : 0;
+        const n = weightTrendData.pointsInWindow ?? 0;
+        const span = weightTrendData.spanDays ?? 0;
+        const missing = `Preciso de ${WEIGHT_TREND_MIN_POINTS} pesagens em ${WEIGHT_TREND_MIN_SPAN_DAYS} dias para a tendência — `
+          + (n <= 1
+            ? 'nas duas semanas até à última pesagem só há essa.'
+            : `nas duas semanas até à última pesagem há ${n} pesagens em ${span} ${span === 1 ? 'dia' : 'dias'}.`);
         return (
           <ChartFrame
             label={weightTrendData.isEWMASmoothing ? 'Tendência de peso (EWMA)' : 'Evolução de peso'}
@@ -299,13 +359,17 @@ export default function BodyDashboard({ onGoToCalendar }) {
                 ? "O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha."
                 : "A evolução direta do teu peso no período selecionado. A tendência (EWMA) será ativada automaticamente quando registares pelo menos 5 pesagens neste período."
             } />}
-            hint={`${raw.length} pesagens`}
+            hint={`${raw.length} ${raw.length === 1 ? 'pesagem' : 'pesagens'}`}
             value={lastWeight !== null ? fmtNumber(lastWeight, 1) : '—'}
             unit="kg"
             valueColor="var(--body)"
-            delta={Math.abs(rate) >= 0.05
-              ? { text: `${rate > 0 ? '+' : '−'}${fmtNumber(Math.abs(rate), 1)} kg/semana`, tone: Math.abs(rate) >= 1 ? 'danger' : 'neutral' }
+            delta={rate !== null
+              ? {
+                  text: `${roundedRate > 0 ? '+' : roundedRate < 0 ? '−' : ''}${fmtNumber(Math.abs(roundedRate), 1)} kg/semana`,
+                  tone: Math.abs(rate) >= 1 ? 'danger' : 'neutral',
+                }
               : undefined}
+            footer={sufficient ? undefined : missing}
             axis={raw.length > 1
               ? { min: `${fmtNumber(Math.min(...raw), 1)} kg`, max: `${fmtNumber(Math.max(...raw), 1)} kg` }
               : undefined}

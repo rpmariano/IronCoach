@@ -36,15 +36,29 @@ describe('sessionVolumeKg', () => {
 // ("Simplificação"), que o GymDashboard mostrava como se fosse real.
 describe('calculateVolumeLoad — ACWR do ginásio', () => {
   it('calcula um rácio real a partir do volume-carga, não um valor fixo', () => {
+    // G5 (2026-10-04): "dados suficientes" pede treino de força em 3 das 4
+    // últimas semanas (a regra da corrida) — duas sessões já não chegam.
     const gymSessions = [
       { date: iso(3), volume_kg: 9000 },  // semana aguda
-      { date: iso(15), volume_kg: 3000 }, // base crónica
+      { date: iso(10), volume_kg: 3000 }, // base crónica
+      { date: iso(17), volume_kg: 3000 },
     ];
     const result = calculateVolumeLoad(gymSessions, 'mes');
-    // ratio = 9000 / ((9000+3000)/4) = 9000/3000 = 3.0
-    expect(result.acwr).toBeCloseTo(3.0, 1);
+    // ratio = 9000 / ((9000+3000+3000)/4) = 9000/3750 = 2.4
+    expect(result.acwr).toBeCloseTo(2.4, 1);
     expect(result.acwrStatus).toBe('danger');
+    expect(result.historyWeeks).toBe(3);
     expect(result.acwrHasEnoughData).toBe(true);
+  });
+
+  it('G5: uma sessão antiga mais uma recente não bastam para o ACWR (antes dava "Perigo")', () => {
+    const gymSessions = [
+      { date: iso(15), volume_kg: 3000 },
+      { date: iso(3), volume_kg: 9000 },
+    ];
+    const result = calculateVolumeLoad(gymSessions, 'mes');
+    expect(result.historyWeeks).toBe(2);
+    expect(result.acwrHasEnoughData).toBe(false);
   });
 
   it('sem sessões fora da última semana, sinaliza dados insuficientes em vez de "seguro"', () => {
@@ -117,8 +131,9 @@ describe('detectCoachInsights', () => {
       expect(acwr.module).toBe('corrida');
       expect(acwr.value).toBeCloseTo(3.0, 1);
       // Revisão de 2026-09-26: vírgula decimal e sem "Considera" (CAROL.md).
-      expect(acwr.message).toBe('A carga desta semana está 3,00 vezes acima do habitual. Esta semana, o próximo treino forte passa a fácil.');
-      expect(acwr.message).not.toMatch(/considera|\d\.\d/i);
+      // 2026-10-04: "3,00 vezes acima" lia-se como 4× — é 3,0× o habitual (+200%).
+      expect(acwr.message).toBe('A carga desta semana está em 3,0× o habitual (+200%). Esta semana, o próximo treino forte passa a fácil.');
+      expect(acwr.message).not.toMatch(/considera|vezes acima|\d\.\d/i);
     });
 
     // Revisão da Fase 0 (2026-09-26): sem nível declarado, a distribuição
@@ -215,11 +230,14 @@ describe('detectCoachInsights', () => {
     });
 
     it('alerta quando a perda de peso semanal excede o máximo seguro do nível', () => {
-      // 80kg → 72kg em 9 dias, ~1kg/dia — bem acima do teto de 0,5%/semana (nível médio)
-      const bodyAssessments = Array.from({ length: 9 }, (_, i) => ({
-        date: iso(9 - i),
-        weight_kg: 80 - i,
-      }));
+      // 80kg → 74kg em 12 dias (3 pesagens, ≥10 dias — o mínimo do contrato de
+      // weightTrend desde 2026-10-04): −3,5 kg/semana, bem acima do teto de
+      // 0,5%/semana (nível médio).
+      const bodyAssessments = [
+        { date: iso(12), weight_kg: 80 },
+        { date: iso(6), weight_kg: 77 },
+        { date: iso(0), weight_kg: 74 },
+      ];
       const insights = detectCoachInsights({ bodyAssessments }, { experience_level: 'medio' });
       const loss = insights.find((i) => i.id === 'weight_loss_fast');
       expect(loss).toBeTruthy();

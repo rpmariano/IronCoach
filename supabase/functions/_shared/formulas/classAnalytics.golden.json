@@ -14,6 +14,7 @@
     "expect": {
       "totalClasses": 3,
       "totalClassSeconds": 6300,
+      "classesWithDuration": 3,
       "avgRpe": "6.0",
       "classList": [
         { "name": "HIIT", "count": 2, "totalSeconds": 3300, "avgRpe": "7.0" },
@@ -33,6 +34,7 @@
     "expect": {
       "totalClasses": 1,
       "totalClassSeconds": 2700,
+      "classesWithDuration": 1,
       "avgRpe": null,
       "classList": [
         { "name": "RPM", "count": 1, "totalSeconds": 2700, "avgRpe": null },
@@ -52,6 +54,7 @@
     "expect": {
       "totalClasses": 1,
       "totalClassSeconds": 1800,
+      "classesWithDuration": 1,
       "avgRpe": "5.0",
       "classList": [
         { "name": "Aula de Grupo", "count": 1, "totalSeconds": 1800, "avgRpe": "5.0" }
@@ -71,6 +74,7 @@
     "expect": {
       "totalClasses": 2,
       "totalClassSeconds": 6600,
+      "classesWithDuration": 2,
       "avgRpe": "7.0",
       "classList": [
         { "name": "Treino Funcional", "count": 1, "totalSeconds": 3600, "avgRpe": "7.0" },
@@ -81,7 +85,57 @@
   },
   {
     "name": "sem aulas no período — zeros/vazio",
-    "input": { "todayISO": "2026-08-25", "range": "semana", "sessions": [] },
-    "expect": { "totalClasses": 0, "totalClassSeconds": 0, "avgRpe": null, "classList": [] }
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "sessions": []
+    },
+    "expect": {
+      "totalClasses": 0,
+      "totalClassSeconds": 0,
+      "classesWithDuration": 0,
+      "avgRpe": null,
+      "classList": []
+    }
+  },
+  {
+    "name": "G7: nenhuma aula com duração — classesWithDuration 0 (o ecrã mostra '—', não '0 min')",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-10-02", "kind": "aula", "name": "Pilates", "class_types": [], "duration_seconds": null, "exertion": 6 },
+        { "date": "2026-10-01", "kind": "aula", "name": "Pilates", "class_types": [], "exertion": null }
+      ]
+    },
+    "expect": {
+      "totalClasses": 2,
+      "totalClassSeconds": 0,
+      "classesWithDuration": 0,
+      "avgRpe": "6.0",
+      "classList": [
+        { "name": "Pilates", "count": 2, "totalSeconds": 0, "avgRpe": "6.0" }
+      ]
+    }
+  },
+  {
+    "name": "G7: só parte das aulas tem duração — classesWithDuration 1 de 2",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-10-02", "kind": "aula", "name": "HIIT", "class_types": [], "duration_seconds": 2700, "exertion": 8 },
+        { "date": "2026-10-01", "kind": "aula", "name": "HIIT", "class_types": [], "duration_seconds": null, "exertion": 7 }
+      ]
+    },
+    "expect": {
+      "totalClasses": 2,
+      "totalClassSeconds": 2700,
+      "classesWithDuration": 1,
+      "avgRpe": "7.5",
+      "classList": [
+        { "name": "HIIT", "count": 2, "totalSeconds": 2700, "avgRpe": "7.5" }
+      ]
+    }
   }
 ]

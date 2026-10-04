@@ -1,6 +1,6 @@
 [
   {
-    "name": "3 sessões em janelas distintas — ACWR danger com base crónica, filtro 'mes' exclui a mais antiga",
+    "name": "3 sessões em 2 semanas distintas — rácio calculável mas só 2 de 4 semanas com treino (G5: sem dados suficientes); filtro 'mes' exclui a mais antiga",
     "input": {
       "todayISO": "2026-08-25",
       "range": "mes",
@@ -18,7 +18,8 @@
       ],
       "acwr": 2.6666666666666665,
       "acwrStatus": "danger",
-      "acwrHasEnoughData": true
+      "acwrHasEnoughData": false,
+      "historyWeeks": 2
     }
   },
   {
@@ -32,21 +33,120 @@
     },
     "expect": {
       "totalVolumeLoad": 500,
-      "weeklyBreakdown": [{ "weekLabel": "2026-08-24", "volumeLoad": 500 }],
+      "weeklyBreakdown": [
+        { "weekLabel": "2026-08-24", "volumeLoad": 500 }
+      ],
       "acwr": 4,
       "acwrStatus": "danger",
-      "acwrHasEnoughData": false
+      "acwrHasEnoughData": false,
+      "historyWeeks": 1
     }
   },
   {
     "name": "sem sessões — tudo a zero",
-    "input": { "todayISO": "2026-08-25", "range": "mes", "sessions": [] },
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "mes",
+      "sessions": []
+    },
     "expect": {
       "totalVolumeLoad": 0,
       "weeklyBreakdown": [],
       "acwr": 0,
       "acwrStatus": "undertrained",
-      "acwrHasEnoughData": false
+      "acwrHasEnoughData": false,
+      "historyWeeks": 0
+    }
+  },
+  {
+    "name": "G5: uma sessão antiga (fora da janela crónica) + uma recente — antes dava 'Perigo' 4,00; agora só 1 de 4 semanas com treino, sem dados suficientes",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2025-01-10", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] },
+        { "date": "2026-10-02", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] }
+      ]
+    },
+    "expect": {
+      "totalVolumeLoad": 1000,
+      "weeklyBreakdown": [
+        { "weekLabel": "2026-09-28", "volumeLoad": 1000 }
+      ],
+      "acwr": 4,
+      "acwrStatus": "danger",
+      "acwrHasEnoughData": false,
+      "historyWeeks": 1
+    }
+  },
+  {
+    "name": "G5: 3 sessões semanais regulares (3 de 4 semanas) — dados suficientes, rácio 1,33 em cautela",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-09-19", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] },
+        { "date": "2026-09-26", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] },
+        { "date": "2026-10-03", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] }
+      ]
+    },
+    "expect": {
+      "totalVolumeLoad": 3000,
+      "weeklyBreakdown": [
+        { "weekLabel": "2026-09-14", "volumeLoad": 1000 },
+        { "weekLabel": "2026-09-21", "volumeLoad": 1000 },
+        { "weekLabel": "2026-09-28", "volumeLoad": 1000 }
+      ],
+      "acwr": 1.3333333333333333,
+      "acwrStatus": "caution",
+      "acwrHasEnoughData": true,
+      "historyWeeks": 3
+    }
+  },
+  {
+    "name": "G5: 3 sessões na mesma semana — só 1 semana com treino, sem dados suficientes",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-09-29", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] },
+        { "date": "2026-10-01", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] },
+        { "date": "2026-10-03", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] }
+      ]
+    },
+    "expect": {
+      "totalVolumeLoad": 3000,
+      "weeklyBreakdown": [
+        { "weekLabel": "2026-09-28", "volumeLoad": 3000 }
+      ],
+      "acwr": 4,
+      "acwrStatus": "danger",
+      "acwrHasEnoughData": false,
+      "historyWeeks": 1
+    }
+  },
+  {
+    "name": "G5: aulas e sessões sem carga não contam como semanas de histórico",
+    "input": {
+      "todayISO": "2026-10-04",
+      "range": "mes",
+      "sessions": [
+        { "date": "2026-09-15", "kind": "aula", "volume_kg": 500, "workout_session_sets": [] },
+        { "date": "2026-09-22", "kind": "forca", "workout_session_sets": [{ "reps": 15, "weight": 0 }] },
+        { "date": "2026-09-30", "kind": "forca", "workout_session_sets": [{ "reps": 10, "weight": 100 }] }
+      ]
+    },
+    "expect": {
+      "totalVolumeLoad": 1500,
+      "weeklyBreakdown": [
+        { "weekLabel": "2026-09-14", "volumeLoad": 500 },
+        { "weekLabel": "2026-09-21", "volumeLoad": 0 },
+        { "weekLabel": "2026-09-28", "volumeLoad": 1000 }
+      ],
+      "acwr": 2.6666666666666665,
+      "acwrStatus": "danger",
+      "acwrHasEnoughData": false,
+      "historyWeeks": 1
     }
   }
 ]

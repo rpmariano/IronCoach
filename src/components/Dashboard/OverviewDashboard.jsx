@@ -16,8 +16,34 @@ import {
   filterByDateRange,
   acwrStatusLabel,
   acwrMissingWeeks,
+  sessionVolumeKg,
 } from '../../utils/biEngine';
 import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
+import { WEIGHT_TREND_MIN_POINTS, WEIGHT_TREND_MIN_SPAN_DAYS, WEIGHT_TREND_WINDOW_DAYS } from '@formulas/weightTrend.ts';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { todayISO } from '../../lib/utils';
+
+/* 2026-10-04 (O2): o plural de "sessão"/"avaliação" é "sessões"/"avaliações"
+   (troca o "ão"), não "sessão"+"ões" — "2 sessãoões" estava à vista. */
+const plural = (n, um, varios) => (n === 1 ? um : varios);
+
+/* Vírgula decimal (pt-PT) com casas fixas: "12,4 km", "74,6 kg" — o
+   toFixed(1) dava ponto ("12.4"). */
+const dec = (n, casas = 1) => fmtNumber(n, casas);
+
+const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/* "há 3 dias" para a última pesagem (O4): o número vale pela data a que
+   pertence. Dias de calendário, não horas. Mais de duas semanas: a data. */
+function idadeDaPesagem(dataISO) {
+  const dias = Math.round((Date.parse(`${todayISO()}T00:00:00Z`) - Date.parse(`${dataISO}T00:00:00Z`)) / 86400000);
+  if (!Number.isFinite(dias)) return null;
+  if (dias <= 0) return 'hoje';
+  if (dias === 1) return 'ontem';
+  if (dias <= 13) return `há ${dias} dias`;
+  const [, m, d] = dataISO.split('-').map(Number);
+  return `${d} ${MESES_CURTOS[m - 1]}`;
+}
 
 /* Ponto 3 do redesenho ("cor com significado"): os pilares tinham um emoji
    por ícone (🏃 🏋️ 🥗 👤) e os badges traziam bolinhas 🟢🟡🔴⚪ à frente do
@@ -57,7 +83,7 @@ export default function OverviewDashboard({ scrollToTab }) {
     [weekRuns]
   );
   const runSubtitle = weekRuns.length > 0
-    ? `${weekRuns.length} corrida${weekRuns.length !== 1 ? 's' : ''} esta semana`
+    ? `${weekRuns.length} ${plural(weekRuns.length, 'corrida', 'corridas')} esta semana`
     : 'Sem corridas esta semana';
   // 'undertrained' (carga baixa) e sem dados não são a mesma coisa que
   // "sem dados" genérico — ver acwrStatusLabel. Antes disto qualquer rácio
@@ -93,14 +119,21 @@ export default function OverviewDashboard({ scrollToTab }) {
   const weekStrengthHasSets = weekGymSessions.some(
     s => s.kind !== 'aula' && (s.workout_session_sets || []).length > 0
   );
-  const gymSubtitle = gymStats?.totalVolumeLoad > 0
-    ? `${Math.round(gymStats.totalVolumeLoad / weekSessions).toLocaleString('pt-PT')} kg/sessão em média`
+  // O3 (2026-10-04): a média divide só pelas sessões de FORÇA COM CARGA — antes
+  // dividia por todas as sessões da semana, aulas e treinos de peso do corpo
+  // incluídos (1 treino de 1000 kg + 1 aula dava "500 kg/sessão"). O
+  // denominador diz-se: "(N sessões)".
+  const weekLoadedSessions = weekGymSessions.filter(
+    s => s.kind !== 'aula' && sessionVolumeKg(s) > 0
+  ).length;
+  const gymSubtitle = gymStats?.totalVolumeLoad > 0 && weekLoadedSessions > 0
+    ? `${dec(Math.round(gymStats.totalVolumeLoad / weekLoadedSessions), 0)} kg/sessão em média (${weekLoadedSessions} ${plural(weekLoadedSessions, 'sessão', 'sessões')})`
     : weekStrengthHasSets
       ? 'Treino sem carga externa (peso do corpo)'
       : weekStrengthSessions > 0
         ? 'Sem séries com peso registadas'
         : weekClasses > 0
-          ? `${weekClasses} aula${weekClasses !== 1 ? 's' : ''} de ginásio esta semana`
+          ? `${weekClasses} ${plural(weekClasses, 'aula', 'aulas')} de ginásio esta semana`
           : 'Sem treinos esta semana';
 
   // ── Nutrição ──────────────────────────────────────────
@@ -126,28 +159,69 @@ export default function OverviewDashboard({ scrollToTab }) {
     return { label: 'Sem dados', color: 'neutral' };
   }, [calPct]);
   const eaAvg = eaData?.average ?? 0;
-  const nutriSubtitle = eaAvg > 0 ? `EA: ${eaAvg} kcal/kg` : 'Regista refeições';
+  const nutriSubtitle = eaAvg > 0 ? `EA: ${dec(eaAvg, 1).replace(/,0$/, '')} kcal/kg` : 'Regista refeições';
 
   // ── Corpo ─────────────────────────────────────────────
   const weightTrend = useMemo(() => calculateWeightTrend(bodyAssessments || []), [bodyAssessments]);
-  const currentWeight = weightTrend?.movingAverage?.length > 0
-    ? weightTrend.movingAverage[weightTrend.movingAverage.length - 1].weight?.toFixed(1)
-    : '—';
-  const bodyDelta = weightTrend?.weeklyRate != null
-    ? `${weightTrend.weeklyRate > 0 ? '+' : ''}${weightTrend.weeklyRate} kg/sem`
+  // O4 (2026-10-04): o peso do cartão é a ÚLTIMA PESAGEM, com a data a que
+  // pertence ("74,6 kg · há 3 dias") — não a média EWMA, que não tem data e
+  // pode andar quilos longe do que a balança disse. A tendência (Em perda /
+  // Estável / Em ganho, kg/sem) só existe quando o contrato de weightTrend a
+  // dá como suficiente (≥3 pesagens em ≥10 dias): com uma pesagem, ou pesagens
+  // muito espaçadas, o cartão dizia "Estável · 0 kg/sem" — um facto inventado.
+  const lastWeighing = weightTrend?.rawPoints?.length
+    ? weightTrend.rawPoints[weightTrend.rawPoints.length - 1]
+    : null;
+  const currentWeight = lastWeighing?.weight > 0 ? dec(lastWeighing.weight, 1) : '—';
+  const weighingAge = lastWeighing ? idadeDaPesagem(lastWeighing.date) : null;
+  // Porta de recência (revisão 2026-10-04): o contrato do weightTrend não tem
+  // regra de frescura — 3 pesagens de há 100 dias davam "Em perda" no presente.
+  // Com a última pesagem a mais de 14 dias não se afirma tendência.
+  const weighingDays = lastWeighing
+    ? Math.round((Date.parse(`${todayISO()}T00:00:00Z`) - Date.parse(`${lastWeighing.date}T00:00:00Z`)) / 86400000)
+    : NaN;
+  const weighingStale = Number.isFinite(weighingDays) && weighingDays > WEIGHT_TREND_WINDOW_DAYS;
+  const trendKnown = !weighingStale && weightTrend?.sufficient === true && weightTrend?.weeklyRate != null;
+  const bodyDelta = trendKnown
+    ? (Math.abs(weightTrend.weeklyRate) < 0.05
+        ? '0,0 kg/sem'
+        : `${weightTrend.weeklyRate > 0 ? '+' : ''}${dec(weightTrend.weeklyRate, 1)} kg/sem`)
     : null;
   const bodyBadge = useMemo(() => {
-    if (!weightTrend?.trend) return { label: 'Sem dados', color: 'neutral' };
+    if (!lastWeighing) return { label: 'Sem dados', color: 'neutral' };
+    if (weighingStale) return { label: 'Desatualizado', color: 'neutral' };
+    if (!trendKnown) return { label: 'A calibrar', color: 'neutral' };
     if (weightTrend.trend === 'descendo') return { label: 'Em perda', color: 'blue' };
     if (weightTrend.trend === 'subindo') return { label: 'Em ganho', color: 'yellow' };
     return { label: 'Estável', color: 'green' };
-  }, [weightTrend]);
+  }, [weightTrend, lastWeighing, trendKnown, weighingStale]);
   const weekBodyAssessments = useMemo(() =>
     filterByDateRange(bodyAssessments || [], 'semana'), [bodyAssessments]
   );
-  const bodySubtitle = weekBodyAssessments.length > 0
-    ? `${weekBodyAssessments.length} avaliação${weekBodyAssessments.length !== 1 ? 'ões' : ''} esta semana`
+  const weekBodyText = weekBodyAssessments.length > 0
+    ? `${weekBodyAssessments.length} ${plural(weekBodyAssessments.length, 'avaliação', 'avaliações')} esta semana`
     : 'Sem avaliações esta semana';
+  // Sem tendência, diz-se o que FALTA, não o requisito em abstrato (revisão
+  // 2026-10-04: "preciso de 3 pesagens em 10 dias (tenho 9 em 8 dias)" parecia
+  // cumprido, e "(tenho 1)" com 2 registos escondia que a contagem é só da
+  // janela). Duas faltas distintas, pela ordem do contrato:
+  //  1) menos de 3 pesagens na janela de 14 dias até à última;
+  //  2) pesagens que não cobrem 10 dias (ex.: 9 pesagens em 8 dias).
+  const trendMissing = (() => {
+    if (weighingStale) return `A última pesagem tem ${weighingDays} dias; com pesagens recentes volto a calcular a tendência.`;
+    const n = weightTrend?.pointsInWindow;
+    const span = weightTrend?.spanDays;
+    if (!Number.isFinite(n) || !Number.isFinite(span)) {
+      return `Para a tendência preciso de pelo menos ${WEIGHT_TREND_MIN_POINTS} pesagens que cubram ${WEIGHT_TREND_MIN_SPAN_DAYS} dias.`;
+    }
+    if (n < WEIGHT_TREND_MIN_POINTS) {
+      return `Para a tendência preciso de ${WEIGHT_TREND_MIN_POINTS} pesagens nos ${WEIGHT_TREND_WINDOW_DAYS} dias até à última (tenho ${n}).`;
+    }
+    return `Para a tendência as pesagens têm de cobrir pelo menos ${WEIGHT_TREND_MIN_SPAN_DAYS} dias (as tuas cobrem ${span} ${plural(span, 'dia', 'dias')}).`;
+  })();
+  const bodySubtitle = lastWeighing && !trendKnown
+    ? `${weekBodyText}. ${trendMissing}`
+    : weekBodyText;
 
   /* ─────────────── Ponto 7: a Visão Geral sem dados ───────────────
      Mock "Dashboard · sem dados". Sem um único registo, os quatro pilares
@@ -311,7 +385,7 @@ export default function OverviewDashboard({ scrollToTab }) {
         <PillarSummaryCard
           title="Corrida"
           icon={PILLAR_ICONS.corrida}
-          kpi={weekDist > 0 ? `${weekDist.toFixed(1)}` : '—'}
+          kpi={weekDist > 0 ? dec(weekDist, 1) : '—'}
           kpiUnit={weekDist > 0 ? 'km esta sem.' : ''}
           badge={runBadge}
           subtitle={runSubtitle}
@@ -322,11 +396,11 @@ export default function OverviewDashboard({ scrollToTab }) {
           icon={PILLAR_ICONS.ginasio}
           kpi={gymStats?.totalVolumeLoad > 0
             ? `${Math.round(gymStats.totalVolumeLoad / 1000) >= 1
-                ? (gymStats.totalVolumeLoad / 1000).toFixed(1) + 'k'
+                ? dec(gymStats.totalVolumeLoad / 1000, 1) + 'k'
                 : Math.round(gymStats.totalVolumeLoad)}`
             : '—'}
           kpiUnit={gymStats?.totalVolumeLoad > 0 ? 'kg vol.' : ''}
-          badge={{ label: `${weekSessions} sessão${weekSessions !== 1 ? 'ões' : ''}`, color: weekSessions >= 2 ? 'green' : weekSessions === 1 ? 'yellow' : 'neutral' }}
+          badge={{ label: `${weekSessions} ${plural(weekSessions, 'sessão', 'sessões')}`, color: weekSessions >= 2 ? 'green' : weekSessions === 1 ? 'yellow' : 'neutral' }}
           subtitle={gymSubtitle}
           onClick={() => scrollToTab('ginasio')}
         />
@@ -343,7 +417,7 @@ export default function OverviewDashboard({ scrollToTab }) {
           title="Corpo"
           icon={PILLAR_ICONS.corpo}
           kpi={currentWeight}
-          kpiUnit={currentWeight !== '—' ? 'kg' : ''}
+          kpiUnit={currentWeight !== '—' ? `kg${weighingAge ? ` · ${weighingAge}` : ''}` : ''}
           badge={bodyBadge}
           delta={bodyDelta}
           subtitle={bodySubtitle}

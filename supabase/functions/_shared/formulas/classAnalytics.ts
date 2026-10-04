@@ -32,6 +32,10 @@ export interface ClassGroupStats {
 export interface ClassAnalytics {
   totalClasses: number;
   totalClassSeconds: number;
+  /** Aulas com duração registada (G7, 2026-10-04): a duração é opcional, e
+   *  `totalClassSeconds` só soma essas — sem este número não se distingue
+   *  "0 min" de "ninguém registou duração", nem se avisa que o total é parcial. */
+  classesWithDuration: number;
   avgRpe: string | null;
   classList: ClassGroupStats[];
 }
@@ -46,12 +50,14 @@ export function computeClassAnalytics(
 
   const classMap: Record<string, { name: string; count: number; totalSeconds: number; rpeSum: number; rpeCount: number }> = {};
   let totalClassSeconds = 0;
+  let classesWithDuration = 0;
   let rpeSum = 0;
   let rpeCount = 0;
 
   for (const s of classSessions) {
     const duration = Number(s.duration_seconds || 0);
     totalClassSeconds += duration;
+    if (duration > 0) classesWithDuration++;
     const exertionVal = s.exertion != null ? Number(s.exertion) : s.rpe != null ? Number(s.rpe) : null;
     if (exertionVal !== null && !isNaN(exertionVal)) {
       rpeSum += exertionVal;
@@ -83,6 +89,7 @@ export function computeClassAnalytics(
   return {
     totalClasses: classSessions.length,
     totalClassSeconds,
+    classesWithDuration,
     avgRpe: rpeCount > 0 ? (rpeSum / rpeCount).toFixed(1) : null,
     classList,
   };

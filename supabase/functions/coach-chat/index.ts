@@ -11,7 +11,7 @@ import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PR
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { focusRace, isPrincipalRace, nextRaceByDate, selectRaces } from "../_shared/formulas/mainRace.ts";
 import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
-import { computeWeightTrend as sharedComputeWeightTrend } from "../_shared/formulas/weightTrend.ts";
+import { computeWeightTrend as sharedComputeWeightTrend, WEIGHT_TREND_MIN_POINTS, WEIGHT_TREND_MIN_SPAN_DAYS } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks, isSeriesIntent, SERIES_INTENTS, type SeriesIntent } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
@@ -26,7 +26,7 @@ import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
 import { computeRunWatchMetrics } from "../_shared/formulas/runWatchMetrics.ts";
 import { computeGymVolumeLoad } from "../_shared/formulas/volumeLoad.ts";
-import { computeMuscleGroupVolume } from "../_shared/formulas/muscleGroupVolume.ts";
+import { computeMuscleGroupVolumeDetailed } from "../_shared/formulas/muscleGroupVolume.ts";
 import { computeClassAnalytics } from "../_shared/formulas/classAnalytics.ts";
 import { buildBodyGoalsContext, buildBadgeQuestionContext, fetchChatMemoryBlocks, fetchWeekAdherenceLine, lisbonTodayISO } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext, fetchRaceWeatherObserved } from "../_shared/raceWeatherFetch.ts";
@@ -2072,7 +2072,7 @@ function buildRunAnalyticsPanel(runs: any[], experienceLevel: string | null, win
 // vem pré-filtrado pela query de 30 dias do handler — filtrar outra vez por
 // "mes" poderia cortar 1-2 dias a mais em meses de 31 dias, por engano.
 // deno-lint-ignore no-explicit-any
-function buildGymAnalyticsPanel(sessions: any[], todayISO: string, windowDays: number): string | null {
+export function buildGymAnalyticsPanel(sessions: any[], todayISO: string, windowDays: number): string | null {
   if (!sessions || sessions.length === 0) return null;
 
   const lines: string[] = [];
@@ -2080,23 +2080,44 @@ function buildGymAnalyticsPanel(sessions: any[], todayISO: string, windowDays: n
 
   const vol = computeGymVolumeLoad(sessions, todayISO, RANGE);
   if (vol.totalVolumeLoad > 0) {
-    lines.push(
-      `- Volume-carga (${windowDays}d): ${Math.round(vol.totalVolumeLoad)} kg — ACWR ginásio ${vol.acwrHasEnoughData ? vol.acwr.toFixed(2) : "sem histórico suficiente"} (zona: ${vol.acwrStatus})`,
-    );
+    // G5 (2026-10-04): o ACWR de kg só existe com força com carga em 3 das
+    // 4 semanas da janela crónica (a regra do de corrida). Sem isso, nem
+    // número nem zona — a zona de um rácio que não se mostra era "Perigo"
+    // com 2 sessões —, e diz-se quantas semanas há.
+    const acwrText = vol.acwrHasEnoughData
+      ? `${vol.acwr.toFixed(2)} (zona: ${vol.acwrStatus})`
+      : `sem histórico suficiente (${vol.historyWeeks} de 4 semanas com treino de força com carga; preciso de 3)`;
+    lines.push(`- Volume-carga (${windowDays}d): ${Math.round(vol.totalVolumeLoad)} kg — ACWR ginásio ${acwrText}`);
   }
 
-  const groups = computeMuscleGroupVolume(sessions, todayISO, RANGE);
-  const groupEntries = Object.entries(groups).sort((a, b) => b[1].volumeLoad - a[1].volumeLoad);
+  // G1 (2026-10-04): só entram sessões de UM grupo (as de vários grupos
+  // duplicavam as séries por cada grupo); as que ficam de fora são ditas,
+  // para a Carol não tratar o ranking como completo.
+  const muscle = computeMuscleGroupVolumeDetailed(sessions, todayISO, RANGE);
+  const groupEntries = Object.entries(muscle.groups).sort((a, b) => b[1].volumeLoad - a[1].volumeLoad);
+  const multiNote = muscle.multiGroupSessions > 0
+    ? ` (${muscle.multiGroupSessions} ${muscle.multiGroupSessions === 1 ? "sessão com vários grupos não entra" : "sessões com vários grupos não entram"} — não há como repartir as séries)`
+    : "";
   if (groupEntries.length > 0) {
     const top = groupEntries.slice(0, 5).map(([name, g]) => `${name} ${Math.round(g.volumeLoad)}kg/${g.sets}séries`);
-    lines.push(`- Grupos musculares (${windowDays}d): ${top.join(" · ")}`);
+    lines.push(`- Grupos musculares (${windowDays}d, só sessões de um grupo): ${top.join(" · ")}${multiNote}`);
+  } else if (muscle.multiGroupSessions > 0) {
+    lines.push(`- Grupos musculares (${windowDays}d): sem repartição por grupo${multiNote}`);
   }
 
   const classes = computeClassAnalytics(sessions, todayISO, RANGE);
   if (classes.totalClasses > 0) {
     const topClasses = classes.classList.slice(0, 3).map((c) => `${c.name} ×${c.count}${c.avgRpe ? ` (RPE ${c.avgRpe})` : ""}`);
+    // G7 (2026-10-04): a duração da aula é opcional — sem nenhuma, não há
+    // "0 min totais"; com só algumas, o total diz sobre quantas é.
+    const minutes = Math.round(classes.totalClassSeconds / 60);
+    const minutesText = classes.classesWithDuration === 0
+      ? ""
+      : classes.classesWithDuration < classes.totalClasses
+        ? `, ${minutes} min totais (em ${classes.classesWithDuration} de ${classes.totalClasses} aulas com duração registada)`
+        : `, ${minutes} min totais`;
     lines.push(
-      `- Aulas (${windowDays}d): ${classes.totalClasses} aula(s), ${Math.round(classes.totalClassSeconds / 60)} min totais${classes.avgRpe ? `, RPE médio ${classes.avgRpe}` : ""} — ${topClasses.join(" · ")}`,
+      `- Aulas (${windowDays}d): ${classes.totalClasses} ${classes.totalClasses === 1 ? "aula" : "aulas"}${minutesText}${classes.avgRpe ? `, RPE médio ${classes.avgRpe}` : ""} — ${topClasses.join(" · ")}`,
     );
   }
 
@@ -2113,7 +2134,7 @@ function buildGymAnalyticsPanel(sessions: any[], todayISO: string, windowDays: n
 // `windowDays` pela query do handler, por isso usa "todos" como range
 // (não filtra outra vez) — mesmo padrão do painel de ginásio.
 // deno-lint-ignore no-explicit-any
-function buildNutritionAnalyticsPanel(
+export function buildNutritionAnalyticsPanel(
   meals: any[],
   bodyAssessments: any[],
   runs: any[],
@@ -2144,13 +2165,42 @@ function buildNutritionAnalyticsPanel(
     );
   }
 
-  const ea = computeEnergyAvailabilityWindow(meals, bodyForShared, runs || [], gymSessions || [], todayISO, RANGE);
+  // N4 (2026-10-04): a EA só conta dias COM refeições registadas. `runs` e
+  // `gymSessions` chegam com 30 dias e `meals` com `windowDays` — com
+  // RANGE "todos", 3 semanas de treino sem refeições na query entravam
+  // como "dias sem refeições". Corta-se o treino à janela das refeições.
+  const mealWindowStart = (() => {
+    const d = new Date(todayISO + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - (windowDays - 1));
+    return d.toISOString().slice(0, 10);
+  })();
+  const inMealWindow = (x: { date?: string | null }) => !!x?.date && x.date >= mealWindowStart && x.date <= todayISO;
+  const ea = computeEnergyAvailabilityWindow(
+    meals, bodyForShared, (runs || []).filter(inMealWindow), (gymSessions || []).filter(inMealWindow), todayISO, RANGE,
+  );
+  const withoutMealsNote = ea.daysWithoutMeals > 0
+    ? `${ea.daysWithoutMeals} ${ea.daysWithoutMeals === 1 ? "dia de treino sem refeições registadas não entra" : "dias de treino sem refeições registadas não entram"} no cálculo`
+    : "";
   if (ea.daily.length > 0) {
     const eaStatusLabel: Record<string, string> = { critical: "crítica (RED-S)", subclinical: "subclínica", optimal: "ótima" };
+    // O estado é o do último dia COM refeições (já não o último de treino);
+    // se for hoje, o dia ainda não acabou e a ingestão está incompleta.
+    const lastDay = ea.daily[ea.daily.length - 1];
+    const lastDayText = lastDay.date === todayISO ? "hoje, dia ainda incompleto" : lastDay.date;
+    // A massa magra do divisor nem sempre é medida: sem avaliação são 55 kg
+    // fixos — a Carol não a apresenta como medida.
+    const leanText = ea.leanMassSource === "medida"
+      ? ""
+      : ` (massa magra ${ea.leanMassSource === "estimada" ? "estimada pelo peso e % de gordura" : "por omissão, sem avaliação corporal com gordura"})`;
+    const nDays = ea.daily.length;
     lines.push(
-      `- Disponibilidade Energética (${windowDays}d): ${ea.average} kcal/kg MMG — ${eaStatusLabel[ea.daily[ea.daily.length - 1].status] ?? ea.daily[ea.daily.length - 1].status}` +
-        (ea.isAtRisk ? " ⚠ risco de RED-S sustentado" : ""),
+      `- Disponibilidade Energética (${windowDays}d): ${ea.average} kcal/kg MMG, média de ${nDays} ${nDays === 1 ? "dia" : "dias"} com refeições${leanText} — ` +
+        `último dia com refeições (${lastDayText}): ${eaStatusLabel[lastDay.status] ?? lastDay.status}` +
+        (ea.isAtRisk ? " ⚠ risco de RED-S sustentado" : "") +
+        (withoutMealsNote ? ` · ${withoutMealsNote}` : ""),
     );
+  } else if (ea.daysWithoutMeals > 0) {
+    lines.push(`- Disponibilidade Energética (${windowDays}d): sem número — ${withoutMealsNote}`);
   }
 
   if (bodyForShared.length > 0) {
@@ -4634,13 +4684,21 @@ export function computeBodyMetrics(
     .filter((r) => r.weight_kg != null && r.weight_kg > 0)
     .reverse() // sorted é DESC; a fórmula partilhada espera ASC
     .map((r) => ({ date: r.assessed_at.slice(0, 10), weight: r.weight_kg as number }));
-  const weightTrend = weightPoints.length >= 2 ? sharedComputeWeightTrend(weightPoints) : null;
-  if (weightTrend) {
+  // C1/C2 (2026-10-04): o ritmo semanal passou a ser uma regressão sobre as
+  // pesagens dos 14 dias até à última, e só existe com ≥3 pesagens a
+  // abranger ≥10 dias (`sufficient`); antes, 2 pesagens a 2 dias davam
+  // "-2 kg/semana". Sem isso, weeklyRate/trend vêm null e a Carol recebe o
+  // peso mais recente mais o que falta — nunca um ritmo nem um "estável".
+  const weightTrend = weightPoints.length >= 1 ? sharedComputeWeightTrend(weightPoints) : null;
+  if (weightTrend?.sufficient && weightTrend.weeklyRate != null) {
     const latestSmoothed = weightTrend.movingAverage[weightTrend.movingAverage.length - 1];
-    const rateStr = weightTrend.weeklyRate > 0 ? `+${weightTrend.weeklyRate}` : `${weightTrend.weeklyRate}`;
+    // 1 casa decimal, como o ecrã (BodyDashboard) — a Carol não diz um
+    // número que o atleta não vê.
+    const rate1 = Math.round(weightTrend.weeklyRate * 10) / 10;
+    const rateStr = rate1 > 0 ? `+${rate1.toFixed(1)}` : rate1 < 0 ? `${rate1.toFixed(1)}` : "0.0";
     lines.push(
       `Peso (média suavizada): ${latestSmoothed.weight.toFixed(1)} kg — tendência ${weightTrend.trend} ` +
-      `(${rateStr} kg/semana, ${weightPoints.length} medições)`,
+      `(${rateStr} kg/semana, ${weightTrend.pointsInWindow} pesagens em ${weightTrend.spanDays} dias)`,
     );
     // Taxa de perda SUSTENTADA (%/semana por nível) — distinta do sinal #1
     // abaixo, que é a queda AGUDA em 48-72h. O frontend e a coach-daily-
@@ -4653,8 +4711,20 @@ export function computeBodyMetrics(
         (lossRate.isTooFast ? " ⚠ ACIMA do limite — risco de perda de massa magra e de disponibilidade energética" : ""),
       );
     }
-  } else if (latest.weight_kg) {
-    lines.push(`Peso mais recente: ${latest.weight_kg} kg (${sorted[0].assessed_at.slice(0, 10)})`);
+  } else if (weightPoints.length > 0) {
+    // A última pesagem COM peso (a avaliação mais recente pode ser só de
+    // gordura/água, com weight_kg null).
+    const lastWeight = weightPoints[weightPoints.length - 1];
+    lines.push(`Peso mais recente: ${lastWeight.weight} kg (${lastWeight.date})`);
+    const n = weightTrend?.pointsInWindow ?? weightPoints.length;
+    const span = weightTrend?.spanDays ?? 0;
+    const have = n <= 1
+      ? "só essa pesagem nas 2 semanas até à última"
+      : `${n} pesagens em ${span} ${span === 1 ? "dia" : "dias"} nas 2 semanas até à última`;
+    lines.push(
+      `Tendência de peso: ainda sem dados suficientes (${have}; preciso de ≥${WEIGHT_TREND_MIN_POINTS} pesagens ` +
+      `a abranger ≥${WEIGHT_TREND_MIN_SPAN_DAYS} dias) — não dês ritmo semanal nem digas que está estável`,
+    );
   }
 
   // ── Sinal #1 — queda súbita de peso >1,5% em 48-72h (Bloco 5 #11) ────────

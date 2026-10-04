@@ -10,11 +10,14 @@
 // esteja a ver no ecrã; só o total/quebra semanal respeitam `range`.
 
 import { classifyAcwrZone } from "./acwr.ts";
+import { RUN_ACWR_MIN_HISTORY_WEEKS } from "./runAcwr.ts";
 import { computeSessionVolumeKg, type SessionForVolume } from "./sessionVolumeKg.ts";
 import { filterByRelativeDateRange, type RelativeDateRange } from "./relativeDateRange.ts";
 
 export interface SessionForVolumeLoad extends SessionForVolume {
   date: string;
+  // 'aula' não é treino de força: não conta como histórico do ACWR de kg.
+  kind?: string | null;
 }
 
 export interface WeekVolumeLoad {
@@ -28,6 +31,9 @@ export interface GymVolumeLoad {
   acwr: number;
   acwrStatus: ReturnType<typeof classifyAcwrZone>;
   acwrHasEnoughData: boolean;
+  /** Quantas das 4 semanas da janela crónica têm treino de força com carga
+   *  (G5, 2026-10-04) — o mesmo conceito do `historyWeeks` do ACWR de corrida. */
+  historyWeeks: number;
 }
 
 // Mesma janela do ACWR de corrida (_shared/formulas/acwr.ts): 7 dias agudo,
@@ -47,6 +53,10 @@ function subDaysISO(dateISO: string, days: number): string {
   const d = new Date(dateISO + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+function addDaysISO(dateISO: string, days: number): string {
+  return subDaysISO(dateISO, -days);
 }
 
 export function computeGymVolumeLoad(
@@ -77,11 +87,26 @@ export function computeGymVolumeLoad(
     chronicLoad += vl;
     if (s.date > acuteCutoff) acuteLoad += vl;
   }
-  // "Dados suficientes" = existe pelo menos uma sessão com 7+ dias (fora da
-  // janela aguda) em TODO o histórico — não confundir com "há sessões
-  // recentes". Sem isto, um atleta que só começou a treinar esta semana
-  // teria um ACWR "calculável" mas sem nenhuma base crónica real por trás.
-  const hasEnoughData = sessions.some((s) => !(s.date > acuteCutoff));
+  // "Dados suficientes" (G5, 2026-10-04): a MESMA regra do ACWR de corrida
+  // (runAcwr.ts, RUN_ACWR_MIN_HISTORY_WEEKS) — treino de força com carga em
+  // pelo menos 3 das 4 semanas da janela crónica. Antes bastava UMA sessão
+  // com 7+ dias em todo o histórico (mesmo de há meses): 2 sessões davam
+  // "Perigo" (2,0-4,0), porque o crónico divide sempre por 4 mesmo com
+  // menos de 4 semanas de histórico, e o rácio sobe sozinho. Semanas como
+  // em runAcwr: as 4 da janela crónica (hoje−27 .. hoje), da mais antiga à
+  // de hoje. Conta só força com volume > 0 (o equivalente a km > 0 na
+  // corrida): uma aula, ou uma sessão sem carga, não sustenta um rácio em kg.
+  const chronicStart = subDaysISO(todayISO, CHRONIC_WINDOW_DAYS - 1);
+  const loaded = sessions.filter(
+    (s) => s.kind !== "aula" && s.date && s.date >= chronicStart && s.date <= todayISO && computeSessionVolumeKg(s) > 0,
+  );
+  let historyWeeks = 0;
+  for (let w = 0; w < 4; w++) {
+    const from = addDaysISO(chronicStart, w * 7);
+    const to = addDaysISO(chronicStart, w * 7 + 6);
+    if (loaded.some((s) => s.date >= from && s.date <= to)) historyWeeks++;
+  }
+  const hasEnoughData = historyWeeks >= RUN_ACWR_MIN_HISTORY_WEEKS;
   const chronicAvg = chronicLoad / 4;
   const ratio = chronicAvg > 0 ? acuteLoad / chronicAvg : 0;
 
@@ -91,5 +116,6 @@ export function computeGymVolumeLoad(
     acwr: ratio,
     acwrStatus: classifyAcwrZone(ratio),
     acwrHasEnoughData: hasEnoughData,
+    historyWeeks,
   };
 }

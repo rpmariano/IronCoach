@@ -14,9 +14,26 @@ import { fmtNumber } from '../../utils/dashboardVerdicts';
 export default function CrossMetricsChart({ title, helpText, leftData, rightData, className = '' }) {
   const leftPoints = leftData?.data || [];
   const rightPoints = rightData?.data || [];
-  const lastLeft = leftPoints.length ? Number(leftPoints[leftPoints.length - 1].y) : null;
-  const lastRight = rightPoints.length ? Number(rightPoints[rightPoints.length - 1].y) : null;
+  // O6 (2026-10-04): uma série pode ter buracos (y = null, p. ex. semanas sem
+  // RPE registado). Number(null) dava 0 — o número grande mostrava "RPE 0" —,
+  // por isso o "valor atual" é o último ponto que existe de facto.
+  const lastValue = (points) => {
+    for (let i = points.length - 1; i >= 0; i--) {
+      const y = points[i].y;
+      if (y != null && Number.isFinite(Number(y))) return Number(y);
+    }
+    return null;
+  };
+  const lastLeft = lastValue(leftPoints);
+  const lastRight = lastValue(rightPoints);
   const labels = leftPoints.map(d => d.x);
+  // Um ponto sem vizinhos (buracos dos dois lados) não desenha linha nenhuma:
+  // mostra-se como ponto, senão o único RPE registado ficava invisível.
+  const isolatedPointRadius = (points) => (ctx) => {
+    const i = ctx.dataIndex;
+    const has = (j) => points[j] != null && points[j].y != null;
+    return has(i) && !has(i - 1) && !has(i + 1) ? 3 : 0;
+  };
 
   const data = {
     labels: leftPoints.map((_, i) => i),
@@ -27,8 +44,9 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
         borderColor: leftData.color,
         backgroundColor: leftData.color,
         yAxisID: 'yLeft',
+        spanGaps: false,
         tension: 0.4,
-        pointRadius: 0,
+        pointRadius: isolatedPointRadius(leftPoints),
         pointHoverRadius: 4,
       },
       {
@@ -37,8 +55,9 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
         borderColor: rightData.color,
         backgroundColor: rightData.color,
         yAxisID: 'yRight',
+        spanGaps: false, // sem RPE numa semana: buraco, não uma linha a atravessá-lo
         tension: 0.4,
-        pointRadius: 0,
+        pointRadius: isolatedPointRadius(rightPoints),
         pointHoverRadius: 4,
       }
     ]

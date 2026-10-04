@@ -4,6 +4,7 @@ import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
 import { runSetCupParticipation, runSetCupSeasonGoal, SERIES_TOOLS, SERIES_TOOL_NAMES } from "./index.ts";
+import { buildGymAnalyticsPanel, buildNutritionAnalyticsPanel } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { lisbonTodayISO } from "../_shared/carolMemory.ts";
@@ -2294,18 +2295,47 @@ Deno.test("computeBodyMetrics: peso mais recente aparece quando há só 1 mediç
 // delegar em ../_shared/formulas/weightTrend.ts (EWMA α≈0,25) — a mesma
 // fórmula que src/utils/biEngine.js usa — em vez de uma média simples dos
 // últimos 7 dias.
-Deno.test("computeBodyMetrics: tendência de peso (EWMA partilhada) quando há ≥2 medições", () => {
+// C1/C2 (2026-10-04): o ritmo passou a ser a regressão das pesagens dos 14
+// dias até à última (× 7), e só com ≥3 pesagens a abranger ≥10 dias.
+Deno.test("computeBodyMetrics: tendência de peso quando há ≥3 pesagens em ≥10 dias", () => {
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { weight_kg: 71.0 }),
+    makeBA("2026-08-06T07:00:00Z", { weight_kg: 72.0 }),
+    makeBA("2026-08-01T07:00:00Z", { weight_kg: 73.0 }),
+  ];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
+  // <5 pontos → sem suavização EWMA; peso mais recente = 71.0; −0,2 kg/dia
+  // = −1,4 kg/semana, com 1 casa decimal como no ecrã.
+  assertStringIncludes(out!, "71.0 kg");
+  assertStringIncludes(out!, "tendência descendo");
+  assertStringIncludes(out!, "-1.4 kg/semana");
+  assertStringIncludes(out!, "3 pesagens em 10 dias");
+  assertEquals(out!.includes("sem dados suficientes"), false);
+});
+
+Deno.test("computeBodyMetrics: 2 pesagens não dão ritmo — diz o que falta em vez de inventar (C1/C2)", () => {
+  // Antes: "tendência descendo (-2 kg/semana)" a partir de 2 pesagens a 2 dias.
   const rows = [
     makeBA("2026-08-11T07:00:00Z", { weight_kg: 71.0 }),
     makeBA("2026-08-09T07:00:00Z", { weight_kg: 73.0 }),
   ];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-11", "avancado");
+  assertEquals(out!.includes("kg/semana"), false);
+  assertEquals(out!.includes("Ritmo de perda de peso"), false);
+  assertEquals(out!.includes("tendência descendo"), false);
+  assertStringIncludes(out!, "Peso mais recente: 71 kg (2026-08-11)");
+  assertStringIncludes(out!, "Tendência de peso: ainda sem dados suficientes (2 pesagens em 2 dias");
+});
+
+Deno.test("computeBodyMetrics: peso mais recente vem da última avaliação COM peso", () => {
+  // A avaliação mais recente só tem gordura — o peso é o da anterior.
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { body_fat_pct: 15 }),
+    makeBA("2026-08-09T07:00:00Z", { weight_kg: 73.0 }),
+  ];
   const out = computeBodyMetrics(rows, "masculino", "2026-08-11");
-  // <5 pontos → sem suavização EWMA; peso mais recente = 71.0, tendência
-  // descendo (71-73 = -2 kg/semana).
-  assertStringIncludes(out!, "71.0 kg");
-  assertStringIncludes(out!, "tendência descendo");
-  assertStringIncludes(out!, "-2 kg/semana");
-  assertStringIncludes(out!, "2 medições");
+  assertStringIncludes(out!, "Peso mais recente: 73 kg (2026-08-09)");
+  assertStringIncludes(out!, "só essa pesagem");
 });
 
 Deno.test("computeBodyMetrics: flag queda de peso >1,5% em <72h (Bloco 5 #11)", () => {
@@ -4995,4 +5025,71 @@ Deno.test("handler: mapa pedido sem bloco ativo — não chama o Gemini nem se d
   assertEquals(src.split("...(cupMapShown ? { cup_map_shown: true } : {}),").length - 1, 2);
   assertEquals(src.includes("cup_map_shown: cupMapShown"), false);
   assertEquals(src.includes("cup_map_shown: false"), false);
+});
+
+// ─── Painéis de ginásio e nutrição — só factos com dados (2026-10-04) ─────
+// specs/evolucao-2026-10/erros-verificados.md G1, G5, G7 e N4: a Carol lê
+// os mesmos números que o ecrã, e onde faltam dados diz o que falta.
+
+Deno.test("buildGymAnalyticsPanel: sem 3 de 4 semanas de força não há ACWR nem zona (G5)", () => {
+  const sessions = [
+    { date: "2026-10-01", kind: "forca", categories: ["Peito"], workout_session_sets: [{ reps: 10, weight: 50 }] },
+  ];
+  const out = buildGymAnalyticsPanel(sessions, "2026-10-04", 30)!;
+  assertStringIncludes(out, "ACWR ginásio sem histórico suficiente (1 de 4 semanas com treino de força com carga; preciso de 3)");
+  assertEquals(out.includes("zona:"), false);
+});
+
+Deno.test("buildGymAnalyticsPanel: sessões de vários grupos não entram no ranking e são ditas (G1)", () => {
+  const sessions = [
+    { date: "2026-10-01", kind: "forca", categories: ["Peito"], workout_session_sets: [{ reps: 10, weight: 50 }] },
+    {
+      date: "2026-09-30", kind: "forca", categories: ["Peito", "Tríceps"],
+      workout_session_sets: [{ reps: 10, weight: 40 }, { reps: 10, weight: 20 }],
+    },
+  ];
+  const out = buildGymAnalyticsPanel(sessions, "2026-10-04", 30)!;
+  // Antes: Peito 1100kg/3séries · Tríceps 600kg/2séries (séries duplicadas).
+  assertStringIncludes(out, "Peito 500kg/1séries (1 sessão com vários grupos não entra");
+  assertEquals(out.includes("Tríceps"), false);
+});
+
+Deno.test("buildGymAnalyticsPanel: aulas sem duração não dão '0 min totais'; total parcial diz sobre quantas (G7)", () => {
+  const semDuracao = [
+    { date: "2026-10-02", kind: "aula", class_types: ["HIIT"], duration_seconds: null },
+  ];
+  const a = buildGymAnalyticsPanel(semDuracao, "2026-10-04", 30)!;
+  assertStringIncludes(a, "1 aula");
+  assertEquals(a.includes("min totais"), false);
+
+  const parcial = [
+    ...semDuracao,
+    { date: "2026-09-29", kind: "aula", class_types: ["HIIT"], duration_seconds: 2700 },
+  ];
+  const b = buildGymAnalyticsPanel(parcial, "2026-10-04", 30)!;
+  assertStringIncludes(b, "2 aulas, 45 min totais (em 1 de 2 aulas com duração registada)");
+});
+
+Deno.test("buildNutritionAnalyticsPanel: EA só com dias com refeições, diz a origem da massa magra e os dias de fora (N4)", () => {
+  const meals = [{ date: "2026-10-02", meal_items: [{ quantity_grams: 100, calories_per_100g: 2750 }] }];
+  const runs = [
+    { date: "2026-10-03", distance_km: 10 }, // dia de treino sem refeições, dentro da janela
+    { date: "2026-09-15", distance_km: 10 }, // fora da janela das refeições — não conta como "dia sem refeições"
+  ];
+  const out = buildNutritionAnalyticsPanel(meals, [], runs, [], null, "2026-10-04", 7)!;
+  // 2750 kcal / 55 kg (massa magra por omissão) = 50 kcal/kg.
+  assertStringIncludes(out, "50 kcal/kg MMG, média de 1 dia com refeições");
+  assertStringIncludes(out, "massa magra por omissão, sem avaliação corporal com gordura");
+  assertStringIncludes(out, "último dia com refeições (2026-10-02): ótima");
+  assertStringIncludes(out, "1 dia de treino sem refeições registadas não entra no cálculo");
+});
+
+Deno.test("buildNutritionAnalyticsPanel: massa magra medida não leva nota; hoje é marcado como incompleto (N4)", () => {
+  const meals = [{ date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 600 }] }];
+  const body = [{ assessed_at: "2026-09-20", weight_kg: 70, body_fat_pct: 15, lean_body_mass_kg: 60 }];
+  const out = buildNutritionAnalyticsPanel(meals, body, [], [], null, "2026-10-04", 7)!;
+  assertEquals(out.includes("massa magra por omissão"), false);
+  assertEquals(out.includes("massa magra estimada"), false);
+  assertStringIncludes(out, "último dia com refeições (hoje, dia ainda incompleto)");
+  assertEquals(out.includes("sem refeições registadas"), false);
 });

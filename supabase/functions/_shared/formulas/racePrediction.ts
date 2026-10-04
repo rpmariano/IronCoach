@@ -36,9 +36,15 @@ export interface RiegelPrediction {
 }
 
 // Escolhe a corrida com melhor ritmo (duration/distance mínimo) entre as
-// que têm distância > 0 — é essa que alimenta a extrapolação de Riegel.
+// que têm distância > 0 E duração > 0 — é essa que alimenta a extrapolação
+// de Riegel. R2 (2026-10-04): só exigia a distância, e uma corrida com
+// duration_seconds nulo (o registo manual e a foto permitem-no; a BD só
+// proíbe 0) dava ritmo null/km = 0, ganhava o reduce e a previsão saía
+// "00:00" (ou NaN com a chave em falta) no ecrã e na Carol. É o mesmo
+// critério do hub (RaceHubView `runsComTempo`) e do classifyRaceOutcome —
+// agora vive aqui, no sítio único, para ninguém ter de filtrar antes.
 function fastestRun(runs: RaceRun[]): RaceRun | null {
-  const valid = (runs || []).filter(r => r.distance_km > 0);
+  const valid = (runs || []).filter(r => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0);
   if (valid.length === 0) return null;
   return valid.reduce((best, r) => {
     const paceR = r.duration_seconds / r.distance_km;

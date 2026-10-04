@@ -17,10 +17,25 @@ import { fmtNumber } from '../../utils/dashboardVerdicts';
 const MAGRA = '#c77dff';  // --nutrition
 const GORDA = '#ff5fa8';  // --body
 
+/* C3 (2026-10-04): só contam as avaliações com gordura medida. A fórmula
+   (compositionTrend.ts) já as filtra; o filtro aqui é a rede para quem
+   passe dados de outra origem — uma avaliação sem gordura dava "Massa
+   gorda 0,0 kg" e "+14,0 kg de massa magra" (era o peso inteiro). Com
+   menos de 2 não há evolução para desenhar: diz-se o que falta. */
+const MIN_ASSESSMENTS = 2;
+
 export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], leanMassKg: [] }, className = '' }) {
-  const dates = data.dates || [];
-  const lean = data.leanMassKg || [];
-  const fat = data.fatMassKg || [];
+  const rawDates = data.dates || [];
+  const rawLean = data.leanMassKg || [];
+  const rawFat = data.fatMassKg || [];
+  const valid = rawDates
+    .map((d, i) => ({ d, l: Number(rawLean[i]), f: Number(rawFat[i]) }))
+    .filter(p => isFinite(p.l) && isFinite(p.f) && p.f > 0 && p.l > 0);
+  const dates = valid.map(p => p.d);
+  const lean = valid.map(p => p.l);
+  const fat = valid.map(p => p.f);
+  const n = dates.length;
+  const canDraw = n >= MIN_ASSESSMENTS;
 
   const lastLean = lean.length ? Number(lean[lean.length - 1]) : 0;
   const lastFat = fat.length ? Number(fat[fat.length - 1]) : 0;
@@ -99,19 +114,24 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
       className={className}
       label="Composição corporal"
       info={<MetricInfo text="O peso na balança engana. Este gráfico permite-te ver de que é realmente feito o teu corpo. Se a linha global descer mas a área violeta se mantiver igual, excelente: perdeste peso queimando apenas massa gorda enquanto seguraste a massa magra!" />}
-      hint={dates.length > 0 ? `${dates.length} avaliações` : undefined}
+      hint={n > 0 ? `${n} ${n === 1 ? 'avaliação' : 'avaliações'}` : undefined}
       value={total > 0 ? fmtNumber(total, 1) : '—'}
       unit="kg"
-      delta={leanDelta !== null && Math.abs(leanDelta) >= 0.1
+      delta={canDraw && leanDelta !== null && Math.abs(leanDelta) >= 0.1
         ? { text: `${leanDelta > 0 ? '+' : '−'}${fmtNumber(Math.abs(leanDelta), 1)} kg de massa magra`, tone: leanDelta >= 0 ? 'ok' : 'warn' }
         : undefined}
-      legend={[
+      legend={n > 0 ? [
         { label: `Massa magra ${fmtNumber(lastLean, 1)} kg`, color: MAGRA },
         { label: `Massa gorda ${fmtNumber(lastFat, 1)} kg`, color: GORDA },
-      ]}
-      height={200}
+      ] : []}
+      height={canDraw ? 200 : 0}
+      footer={canDraw
+        ? undefined
+        : n === 1
+          ? 'Preciso de 2 avaliações com gordura medida para mostrar a evolução — tens 1.'
+          : 'Ainda não há avaliações com gordura medida neste período.'}
     >
-      <Line data={chartData} options={options} />
+      {canDraw ? <Line data={chartData} options={options} /> : null}
     </ChartFrame>
   );
 }

@@ -17,7 +17,10 @@
       "average": 21.5,
       "isAtRisk": false,
       "daysAtRisk": 2,
-      "leanMass": 50
+      "leanMass": 50,
+      "leanMassSource": "medida",
+      "daysWithoutMeals": 0,
+      "daysWithoutMealsDates": []
     }
   },
   {
@@ -47,7 +50,10 @@
       "average": 10,
       "isAtRisk": true,
       "daysAtRisk": 5,
-      "leanMass": 50
+      "leanMass": 50,
+      "leanMassSource": "medida",
+      "daysWithoutMeals": 0,
+      "daysWithoutMealsDates": []
     }
   },
   {
@@ -60,6 +66,96 @@
       "gymSessions": [],
       "bodyAssessments": []
     },
-    "expect": { "daily": [], "average": 0, "isAtRisk": false, "daysAtRisk": 0, "leanMass": 55 }
+    "expect": { "daily": [], "average": 0, "isAtRisk": false, "daysAtRisk": 0, "leanMass": 55, "leanMassSource": "omissao", "daysWithoutMeals": 0, "daysWithoutMealsDates": [] }
+  },
+  {
+    "name": "N4: corrida de manhã sem refeições nesse dia — dia fora da média e das contagens, contado em daysWithoutMeals",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [{"date": "2026-08-24", "calories": 2400}],
+      "runs": [{"date": "2026-08-24", "distance_km": 10}, {"date": "2026-08-25", "distance_km": 10}],
+      "gymSessions": [],
+      "bodyAssessments": [{"date": "2026-08-20", "weight_kg": 70, "lean_body_mass_kg": 56}]
+    },
+    "expect": {
+      "daily": [
+        {"date": "2026-08-24", "ea": 30.4, "status": "subclinical", "intake": 2400, "exercise": 700}
+      ],
+      "average": 30.4,
+      "isAtRisk": false,
+      "daysAtRisk": 0,
+      "leanMass": 56,
+      "leanMassSource": "medida",
+      "daysWithoutMeals": 1,
+      "daysWithoutMealsDates": ["2026-08-25"]
+    }
+  },
+  {
+    "name": "N4: 5 treinos de ginásio sem refeições registadas — sem dias, sem risco, 5 dias sem refeições",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [],
+      "runs": [],
+      "gymSessions": [{"date": "2026-08-20", "calories_kcal": null}, {"date": "2026-08-21", "calories_kcal": null}, {"date": "2026-08-22", "calories_kcal": null}, {"date": "2026-08-23", "calories_kcal": null}, {"date": "2026-08-24", "calories_kcal": null}],
+      "bodyAssessments": [{"date": "2026-08-10", "weight_kg": 70, "lean_body_mass_kg": 56}]
+    },
+    "expect": {
+      "daily": [],
+      "average": 0,
+      "isAtRisk": false,
+      "daysAtRisk": 0,
+      "leanMass": 56,
+      "leanMassSource": "medida",
+      "daysWithoutMeals": 5,
+      "daysWithoutMealsDates": ["2026-08-20", "2026-08-21", "2026-08-22", "2026-08-23", "2026-08-24"]
+    }
+  },
+  {
+    "name": "massa magra estimada (peso + % gordura, sem lean_body_mass_kg) — leanMassSource 'estimada'",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [{"date": "2026-08-24", "calories": 2000}],
+      "runs": [],
+      "gymSessions": [],
+      "bodyAssessments": [{"date": "2026-08-20", "weight_kg": 80, "body_fat_pct": 15}]
+    },
+    "expect": {
+      "daily": [
+        {"date": "2026-08-24", "ea": 29.4, "status": "critical", "intake": 2000, "exercise": 0}
+      ],
+      "average": 29.4,
+      "isAtRisk": false,
+      "daysAtRisk": 1,
+      "leanMass": 68,
+      "leanMassSource": "estimada",
+      "daysWithoutMeals": 0,
+      "daysWithoutMealsDates": []
+    }
+  },
+  {
+    "name": "peso sem % de gordura — 20% assumidos, leanMassSource 'omissao'",
+    "input": {
+      "todayISO": "2026-08-25",
+      "range": "semana",
+      "meals": [{"date": "2026-08-24", "calories": 2000}],
+      "runs": [],
+      "gymSessions": [],
+      "bodyAssessments": [{"date": "2026-08-20", "weight_kg": 80}]
+    },
+    "expect": {
+      "daily": [
+        {"date": "2026-08-24", "ea": 31.3, "status": "subclinical", "intake": 2000, "exercise": 0}
+      ],
+      "average": 31.3,
+      "isAtRisk": false,
+      "daysAtRisk": 0,
+      "leanMass": 64,
+      "leanMassSource": "omissao",
+      "daysWithoutMeals": 0,
+      "daysWithoutMealsDates": []
+    }
   }
 ]
