@@ -8,7 +8,7 @@
 Base:
 - O mock-up aprovado da Nutrição — artefacto "Evolução · Nutrição por período" (6 ecrãs: semana em curso/a começar, mês fechado/em curso, trimestre fechado/em curso).
 - Auditoria dos 5 separadores e verificação adversarial: [`erros-verificados.md`](erros-verificados.md) — 38 erros, 34 confirmados + 4 parciais, 0 refutados (18 factos errados, 16 enganadores, 4 cosméticos).
-- Investigação de animação e pré-cálculo (workflow `evolucao-animacao-precalculo`).
+- Investigação de animação e pré-cálculo (workflow `evolucao-animacao-precalculo`): inventário, ciclo de vida dos separadores, custo dos dados, desenho e 3 céticos (factos, viabilidade, UX) — 1 erro crítico e 4 altos corrigidos no desenho abaixo.
 
 ## 1. As regras (do mock-up da Nutrição, para todos os separadores)
 
@@ -33,8 +33,34 @@ Base:
 | F2 | `PeriodNavigator` (‹ rótulo ›) + `useCalendarPeriod`; `TimeFilterBar` com prop `options`; período de cada separador no store (sobrevive a sair e voltar) | `src/components/BI`, `src/store` | — |
 | F3 | **Histórico de objetivos (#51) no store**, lido uma vez; `goalsResolver(day)`; `estimated = dia < 2026-10-03` (hoje sai `estimated` para sempre a quem nunca mudou de objetivos) | `src/store`, `src/utils/goalHistory.js` | Hoje só a vista Dia o lê. |
 | F4 | **Paginação** de `meals` e `water_logs` no carregamento (o PostgREST corta em 1000 linhas e perdem-se as mais antigas sem aviso) | `src/store/index.js` | Risco latente (N8): ~6–7 meses de refeições; a água mais cedo. As setas de período param no primeiro dia completo. |
-| F5 | **Animação ao ficar visível** (R9): sinal "separador assente" no carrossel; `useRevealAnimation` passa a exigir *à vista + assente + dados prontos*; `ChartFrame` cria o gráfico só no 1.º reveal e repete com `chart.reset()` + `update()`; opções estáveis; escalonamento das barras com teto (31 barras deixam de demorar 2,35 s); anel e barras SVG do Geral com `stroke-dashoffset`/`scaleX`; *reduced motion* desliga tudo | `Dashboard.jsx`, `useRevealAnimation.js`, `ChartFrame.jsx`, `chartSetup.js`, `introAnimations.js`, 16 gráficos | Só frontend — pode sair primeiro. Os 7 usos do hook fora da Evolução não mudam. |
-| F6 | **Pré-cálculo** (R10): cache de vistas fora do React (`src/store/evolution/{core,cache,views/*}.js`), preparada após o carregamento em `requestIdleCallback`, um separador por fatia (último aberto → Geral → resto), invalidada por identidade das listas; o carregamento mantém o array anterior quando nada mudou; o Dashboard sobe para 1.º na fila de pré-carregamento do código; seletores no store em vez de `useAppStore()` inteiro (hoje cada deslize redesenha os 5 separadores) | `src/store`, `App.jsx`, os 5 separadores | Sem Web Worker: o custo dominante é criar os canvas (resolvido por F5), o cálculo é de dezenas de ms. Feito **com** cada separador (não extrair os `useMemo` duas vezes). |
+| F5 | **Animação ao ficar visível** (R9) — ver §2.1 | `Dashboard.jsx`, `useRevealAnimation.js`, `ChartFrame.jsx`, `chartSetup.js`, `introAnimations.js`, 13 gráficos, `RaceReadinessCard`, `PillarSummaryCard` | Só frontend — pode sair primeiro. |
+| F6 | **Dados prontos antes de entrar** (R10) — ver §2.2 | `src/store/evolution/*`, `App.jsx`, `Layout.jsx`, os 5 separadores | Sem Web Worker. Feito **com** cada separador (não extrair os `useMemo` duas vezes). Não mexe em `_shared/formulas`. |
+
+### 2.1 Animação ao ficar visível (F5) — desenho verificado
+
+Hoje: os 4 gráficos de barras já animam ao ficar à vista; os outros (linhas, donut, scatter — 10) correm 1 s de animação **escondidos** no mount, voltam a correr ao aparecer e ignoram *reduced motion*; o anel e as barras da Prontidão não têm entrada nenhuma; 31 barras do mês demoram 2,35 s (sem teto no escalonamento).
+
+O desenho foi atacado por 3 céticos (factos, viabilidade técnica, UX no telemóvel) com testes reais do Chart.js 4.5.1. Fica assim, já com as correções:
+
+1. **Gatilho = separador assente + à vista + dados do separador prontos.** "Assente" só sem toque ativo e com `scrollLeft` alinhado à página (≤1 px); usa `scrollend` quando existe. "À vista" = `intersectionRect.height` (respeita a Análise Cruzada fechada e os cortes do carrossel) com ≥50–60% da **área do gráfico**, não do cartão. "Pronto" por fatia de dados (corridas, refeições…), não o `dataPending` global (que pode demorar 45 s por uma fatia que nada tem a ver).
+2. **Chart.js:** o gráfico visível é criado quando o separador assenta (o construtor já anima a partir da base — no 1.º reveal não se chama mais nada); os dos separadores vizinhos são pré-criados em tempo morto, um por frame, já no estado zero. Ao sair: `stop()` → `reset()` → `draw()`; ao voltar: `stop()` → `reset()` → `update()` — **sem o `stop()` a animação em curso desfaz o reset e perde-se o escalonamento** (medido). Mudar de período: transição curta de 300 ms (`updateMode="period"`), sem repetir a entrada.
+3. **`chartSetup.js`:** alterar o objeto de animação por omissão **no sítio** (`Object.assign`) — trocá-lo por um objeto novo rebenta o animador dos gráficos de linha e congela as animações da sessão (medido).
+4. **Reduced motion** lido em tempo real (`useReducedMotion`) e aplicado às opções de cada gráfico (as opções do gráfico ganham ao `false` global). Com *reduced motion* nada anima, mas os gráficos continuam a ser criados só quando perto.
+5. **Número grande:** enquanto armado mostra o estado zero (não o valor final que depois salta para 0 — o piscar corrigido a 13/09); contagem alinhada com o gráfico (~800 ms). `opacity:0`, nunca `visibility:hidden` (o valor tem de continuar no leitor de ecrã).
+6. **Escalonamento com teto:** `delay = i × min(60, 450/(n−1))` — 31 barras em ~1 s.
+7. **Prontidão (Geral):** anel com `stroke-dashoffset` e barras dos pilares com `scaleX` a partir de zero, % a contar, a voltar a zero ao sair.
+8. **Fora da Evolução nada muda:** sem o contexto do separador, o hook mantém o comportamento atual (os badges do carrossel do Perfil continuam a rearmar).
+9. **Sem jank no deslize** (pré-requisito): `React.memo` nos 5 separadores, `scrollToTab` estável, `data` dos gráficos memorizados, seletores em `App.jsx` e `Layout.jsx` (hoje subscrevem o store inteiro: cada deslize redesenha a App e os 5 separadores e faz `update()` a todos os gráficos já criados).
+
+### 2.2 Dados prontos antes de entrar (F6) — desenho verificado
+
+1. **Vistas pré-calculadas** por separador e período (corrente e anterior, para os ▲/▼) numa cache **fora do React e fora do zustand** (`src/store/evolution/{core,cache,views/*}.js`), preparada em tempo morto depois do carregamento — um separador por fatia (último aberto → Geral → resto), com `deadline.timeRemaining()` e pausa durante toque/scroll; recalcula à mudança de dia (temporizador até à meia-noite + regresso à app). Cálculos partilhados entre separadores (ACWR, tendência de peso, VDOT) feitos uma vez.
+2. **Invalidação barata**: impressão digital por lista numa `WeakMap`, calculada em tempo morto (não comparar JSON de 1000 refeições dentro do carregamento, a seguir a cada gravação); inclui o `profile` e o histórico de objetivos (hoje cada recarga cria um `profile` novo e invalidaria tudo).
+3. **Tudo o que hoje se calcula ao montar entra na cache**: prontidão e plano de prova, insights (partilhados entre o banner e o aviso da Carol), Análise Cruzada só quando aberta.
+4. **Histórico de objetivos (#51) carregado com o resto** (hoje só ao abrir a vista Dia da Nutrição — a vista muda depois de entrar).
+5. **Primeira entrada sem os ~300 ms do `React.lazy`**: o código do Dashboard sobe para 1.º na fila de pré-carregamento e, quando já está carregado, é desenhado diretamente (o `lazy` fica só como recurso) — pré-carregar o ficheiro não chega, o `lazy` suspende sempre no 1.º render (medido no código do React 19).
+6. **Período de cada separador num store pequeno à parte** (não no `useAppStore`, senão cada seta redesenha a App inteira); depois de cada seta, prepara-se em tempo morto o período vizinho.
+7. Se a cache falhar, calcula-se como hoje — nunca spinner. Sem Web Worker: o custo dominante é criar os canvas (resolvido em §2.1); o cálculo é de dezenas de ms; a decisão revê-se se uma vista passar de 16 ms com o CPU 6× mais lento e um ano de dados.
 
 ## 3. Por separador
 
@@ -101,6 +127,6 @@ Cada fase: `npm run build`, `npm test`, revisão `pre-deploy-reviewer` antes de 
 | D1 | Seletor por separador | Nutrição: Dia/Semana/Mês/Trimestre (mock-up). Corrida e Corpo: Semana/Mês/Trimestre/**Ano** (tendências longas). Ginásio: Semana/Mês/Trimestre. Sai "6 Meses" de todos e "Dia" de todos menos a Nutrição. |
 | D2 | O Geral passa a ter período? | Sim: semana de calendário com ‹ ›, e os pilares abrem o separador nesse período. |
 | D3 | Motor de períodos e correções das fórmulas: partilhados com a Carol (`_shared/formulas`) ou só no ecrã? | **Partilhados.** A Carol diz hoje os mesmos números errados; uma só régua é a regra do projeto. Custo: as fases 1 e 3 vão a `dev` e `master` juntas, com a tua autorização. |
-| D4 | Animação: repetir sempre que se volta ao separador, ou só na 1.ª vez por sessão? | **Sempre que o separador assenta**, só para o que está à vista; nunca no scroll vertical nem ao mudar de período (aí só uma transição curta de 300 ms). |
+| D4 | Animação: repetir sempre que se volta ao separador, ou só na 1.ª vez por sessão? | **Sempre que o separador assenta**, só para o que está à vista; nunca no scroll vertical nem ao mudar de período (aí só uma transição curta de 300 ms). Se se voltou ao separador há menos de ~3 s (vai-e-vem rápido), não repete. |
 | D5 | Retirar o que não tem leitura útil: "Vol. Carga" e "Volume diário" (Ginásio), ACWR do ginásio, gráfico "Peso" duplicado (Corpo), "Impacto do Ginásio na Corrida" sem RPE real (Geral) | Retirar e substituir por progressão por exercício (Ginásio); o resto só volta com dados reais. |
 | D6 | Micronutrientes: mostrar cobertura ("dado em X% dos alimentos") exige gravar `null` quando o valor falta (hoje grava 0) | Mudar a `analyze-meal` para `null` daqui para a frente; até lá, só "São mínimos: alimentos sem esta informação contam como zero". |
