@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Bar } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { barGrowAnimation } from '../../utils/introAnimations';
-import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import useReducedMotion from '../../utils/useReducedMotion';
+import { useAppStore, sliceReady } from '../../store';
 
 /* Ponto 6 do redesenho:
    - A legenda do Chart.js (desenhada na tela) e os ticks dos dois eixos
@@ -20,53 +21,72 @@ const PROT = '#ff5fa8';   // --body
 const CARB = '#c77dff';   // --nutrition
 const FAT = '#2ee0ff';    // --run
 
+/* 2026-10-04: as linhas de alvo são um plugin CONSTANTE que lê os alvos das
+   opções na hora de desenhar (`options.plugins.targetLines`). O
+   react-chartjs-2 só entrega `plugins` ao `new Chart(...)` e nunca os
+   atualiza: com o plugin a fechar sobre `sample` as linhas ficavam nos alvos
+   da criação enquanto a legenda e o `y.suggestedMax` (que vêm das opções)
+   mudavam — e no carrossel o canvas já não remonta a cada reveal. */
+const TARGET_LINES_PLUGIN = {
+  id: 'targetLines',
+  afterDatasetsDraw: (chart, _args, opts) => {
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !scales?.y || !opts?.show) return;
+
+    const drawLine = (target, color) => {
+      if (!target || isNaN(target)) return;
+      const yPos = scales.y.getPixelForValue(target);
+      if (yPos > chartArea.bottom || yPos < chartArea.top) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(chartArea.left, yPos);
+      ctx.lineTo(chartArea.right, yPos);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    // Sem rótulo dentro da tela — os alvos estão na legenda em HTML.
+    drawLine(opts.protein, PROT);
+    drawLine(opts.carbs, CARB);
+    drawLine(opts.fat, FAT);
+  },
+};
+const PLUGINS = [TARGET_LINES_PLUGIN];
+const NO_SAMPLE = {};
+
 export default function MacroComplianceChart({ dailyData = [], className = '' }) {
-  const sample = dailyData[0] || {};
+  /* 2026-10-04 (F5, plano §2.1): data, plugin e options estáveis — cada
+     referência nova faz o react-chartjs-2 chamar chart.update(), que a meio de
+     uma entrada a reaproveita e perde o escalonamento das barras. Quando o
+     gráfico entra em cena é a ChartFrame que decide (stop → reset → update);
+     aqui só se diz COMO as barras crescem. */
+  const reduced = useReducedMotion();
+  // As refeições alimentam as barras e os alvos vêm do perfil; fora do
+  // separador (sem TabReadyContext) é isto que segura a entrada até chegarem.
+  const ready = useAppStore((s) => sliceReady(s, ['meals', 'profile', 'body']));
+  // Constante e não `{}`: um objeto novo a cada render refazia as opções (e
+  // cada opção nova é um chart.update()) com a lista vazia (2026-10-04).
+  const sample = dailyData[0] || NO_SAMPLE;
 
-  const targetLinesPlugin = {
-    id: 'targetLines',
-    afterDatasetsDraw: (chart) => {
-      const { ctx, chartArea, scales } = chart;
-      if (!chartArea || dailyData.length === 0) return;
 
-      const drawLine = (target, color) => {
-        if (!target || isNaN(target)) return;
-        const yPos = scales.y.getPixelForValue(target);
-        if (yPos > chartArea.bottom || yPos < chartArea.top) return;
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(chartArea.left, yPos);
-        ctx.lineTo(chartArea.right, yPos);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = color;
-        ctx.setLineDash([4, 4]);
-        ctx.stroke();
-        ctx.restore();
-      };
-
-      // Sem rótulo dentro da tela — os alvos estão na legenda em HTML.
-      drawLine(sample.proteinTarget, PROT);
-      drawLine(sample.carbsTarget, CARB);
-      drawLine(sample.fatTarget, FAT);
-    }
-  };
-
-  const data = {
+  const data = useMemo(() => ({
     labels: dailyData.map((_, i) => i),
     datasets: [
       { label: 'Proteína', data: dailyData.map(d => d.protein), backgroundColor: PROT, borderRadius: 4 },
       { label: 'Hidratos', data: dailyData.map(d => d.carbs), backgroundColor: CARB, borderRadius: 4 },
       { label: 'Gordura', data: dailyData.map(d => d.fat), backgroundColor: FAT, borderRadius: 4 },
     ]
-  };
+  }), [dailyData]);
 
-  const reveal = useRevealAnimation();
-
-  const options = {
+  const n = dailyData.length;
+  const options = useMemo(() => ({
     responsive: true,
     /* Ponto 9, animação 4: as barras crescem da base, da esquerda para a
-       direita, --dur-bars com --stagger-bars — quando o gráfico aparece no ecrã. */
-    animation: barGrowAnimation(reveal.animate),
+       direita; com reduced-motion é `false` e aparecem logo. */
+    animation: barGrowAnimation({ reduced, count: n }),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
@@ -85,7 +105,14 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
             return `\nAlvos:\nProt: ${fmtNumber(d.proteinTarget || 0, 0)} g\nHidr: ${fmtNumber(d.carbsTarget || 0, 0)} g\nGord: ${fmtNumber(d.fatTarget || 0, 0)} g`;
           }
         }
-      }
+      },
+      // Lido pelo TARGET_LINES_PLUGIN a cada desenho.
+      targetLines: {
+        show: dailyData.length > 0,
+        protein: sample.proteinTarget,
+        carbs: sample.carbsTarget,
+        fat: sample.fatTarget,
+      },
     },
     scales: {
       x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
@@ -99,7 +126,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
           : undefined
       }
     }
-  };
+  }), [dailyData, sample, reduced, n]);
 
   // O "valor atual" deste gráfico é a proteína do último dia registado —
   // é a macro que decide a recuperação, e a que a Carol cita primeiro. Os
@@ -112,7 +139,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
 
   return (
     <ChartFrame
-      reveal={reveal}
+      ready={ready}
       className={className}
       label="Adesão às macros"
       info={<MetricInfo text="Compara o que realmente comeste (barras coloridas) com os teus alvos ideais de Nutrição Desportiva (linhas tracejadas). Tens de bater as linhas tracejadas, especialmente a proteína, para garantirmos recuperação máxima!" />}
@@ -128,7 +155,7 @@ export default function MacroComplianceChart({ dailyData = [], className = '' })
       ]}
       height={200}
     >
-      <Bar data={data} options={options} plugins={[targetLinesPlugin]} />
+      <Bar data={data} options={options} plugins={PLUGINS} updateMode="period" />
     </ChartFrame>
   );
 }

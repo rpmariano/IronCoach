@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
+import { useShallow } from 'zustand/react/shallow';
 import { TrendingUp, Dumbbell, Users } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import '../../lib/chartSetup';
@@ -9,7 +10,7 @@ import VolumeLoadChart from '../BI/VolumeLoadChart';
 import MetricInfo from '../BI/MetricInfo';
 import ChartFrame from '../BI/ChartFrame';
 import { barGrowAnimation } from '../../utils/introAnimations';
-import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import useReducedMotion from '../../utils/useReducedMotion';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { gymVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
@@ -47,7 +48,14 @@ function classTimeSummary(totalSeconds, withDuration, totalClasses) {
 }
 
 export default function GymDashboard() {
-  const { gymSessions, runs, setOpenCreationMode } = useAppStore();
+  /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
+     seletor, qualquer alteração ao store — um deslize entre separadores
+     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
+     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
+     redesenha quando um destes campos muda de referência. */
+  const { gymSessions, runs, setOpenCreationMode } = useAppStore(useShallow((s) => ({
+    gymSessions: s.gymSessions, runs: s.runs, setOpenCreationMode: s.setOpenCreationMode,
+  })));
   const [timeRange, setTimeRange] = useState('mes');
   const rangeKey = timeRange;
 
@@ -171,23 +179,36 @@ export default function GymDashboard() {
 
   // Ponto 6: os ticks deixam de escrever dentro da tela — os valores atuais
   // e os extremos dos eixos passam a HTML no ChartFrame.
-  const darkScalesVertical = {
-    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
-    x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
-  };
-  const darkScalesHorizontal = {
-    x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
-    y: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
-  };
-  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars,
-     quando cada gráfico aparece no ecrã (useRevealAnimation). */
-  const volReveal = useRevealAnimation();
-  const muscleReveal = useRevealAnimation();
-  const baseChartOptions = {
+  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars. A
+     revelação (separador assente + gráfico no ecrã + dados prontos) é da
+     ChartFrame — o `ready` das fatias do ginásio vem do Dashboard. Aqui as
+     options são useMemo (2026-10-04, F5): uma referência nova a cada render
+     fazia chart.update() e estragava a entrada. `reduced` entra na animação
+     porque a opção por gráfico ganha ao `false` global. */
+  const reduced = useReducedMotion();
+  const volCount = volChartData.labels.length;
+  const muscleCount = muscleChartData.labels.length;
+  const volOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } }
-  };
+    plugins: { legend: { display: false } },
+    animation: barGrowAnimation({ reduced, count: volCount }),
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
+    },
+  }), [reduced, volCount]);
+  const muscleOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    animation: barGrowAnimation({ reduced, count: muscleCount }),
+    indexAxis: 'y',
+    scales: {
+      x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+      y: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
+    },
+  }), [reduced, muscleCount]);
 
   /* Ponto 7: sem sessões no período, o cartão de convite do mock
      "Dashboard · sem dados" em vez dos KPIs a zero e do bloco de aulas
@@ -233,7 +254,6 @@ export default function GymDashboard() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <ChartFrame
-              reveal={volReveal}
               label="Volume diário"
               value={fmtNumber(lastDayVolume, 0)}
               unit="kg no último dia com treino"
@@ -242,12 +262,11 @@ export default function GymDashboard() {
               legend={[{ label: 'Volume-carga do dia', color: 'var(--gym)' }]}
               height={192}
             >
-              <Bar data={volChartData} options={{ ...baseChartOptions, animation: barGrowAnimation(volReveal.animate), scales: darkScalesVertical }} />
+              <Bar data={volChartData} options={volOptions} updateMode="period" />
             </ChartFrame>
 
             {Object.keys(muscleVolume).length > 0 && (
               <ChartFrame
-                reveal={muscleReveal}
                 label="Séries por músculo"
                 value={topMuscle ? topMuscle.sets : '—'}
                 unit={topMuscle ? `séries em ${topMuscle.name}` : undefined}
@@ -256,7 +275,7 @@ export default function GymDashboard() {
                 legend={[{ label: 'Séries no período', color: 'var(--gym)' }]}
                 height={192}
               >
-                <Bar data={muscleChartData} options={{ ...baseChartOptions, animation: barGrowAnimation(muscleReveal.animate), indexAxis: 'y', scales: darkScalesHorizontal }} />
+                <Bar data={muscleChartData} options={muscleOptions} updateMode="period" />
               </ChartFrame>
             )}
           </div>

@@ -1,15 +1,25 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { ChevronDown, BarChart2 } from 'lucide-react';
 import CrossMetricsChart from './CrossMetricsChart';
 import AnalysisAlert from './AnalysisAlert';
 import { calculateCrossMetrics, getVDOTTrend, calculateWeightTrend } from '../../utils/biEngine';
 import { todayISO } from '../../lib/utils';
+import { useAppStore, sliceReady } from '../../store';
 
 // O5 (2026-10-04): a pesagem só serve a uma corrida se for do mesmo período —
 // ±7 dias. Mais longe, o peso já não é "o dela" e o ponto fica de fora.
 const MAX_WEIGHING_GAP_DAYS = 7;
 // O6: o alerta só fala com semanas FECHADAS e com RPE registado de verdade.
 const MIN_CLOSED_WEEKS_WITH_RPE = 3;
+// 2026-10-04 (F5): a abertura é uma transição de 300 ms (grid-rows 0fr -> 1fr).
+// Os gráficos só entram DEPOIS dela — a meio, a área ainda mede metade e o
+// movimento acontecia a esconder-se. Se o `transitionend` nunca chegar
+// (movimento reduzido no CSS, aba em segundo plano), este prazo revela na mesma.
+const OPEN_FALLBACK_MS = 450;
+// As fatias que cada gráfico lê (a Análise Cruzada vive no Geral, que já as
+// segura todas; isto cobre o uso fora dele).
+const SLICES_WEIGHT_VDOT = ['runs', 'body'];
+const SLICES_GYM_RUN = ['gym', 'runs'];
 
 // Vírgula decimal pt-PT.
 function fmtDec(n, casas = 1) {
@@ -51,6 +61,17 @@ export function closestWeighing(points, dateISO, maxDays = MAX_WEIGHING_GAP_DAYS
 
 export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAssessments }) {
   const [open, setOpen] = useState(false);
+  // `opened`: aberta E a transição acabou — é o `ready` dos gráficos. Fechar
+  // baixa-o já; reabrir volta a esperar pelo fim da transição.
+  const [opened, setOpened] = useState(false);
+  const markOpened = useCallback(() => setOpened(true), []);
+  useEffect(() => {
+    if (!open) { setOpened(false); return undefined; }
+    const timer = setTimeout(markOpened, OPEN_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [open, markOpened]);
+  const weightVdotReady = useAppStore((st) => sliceReady(st, SLICES_WEIGHT_VDOT));
+  const gymRunReady = useAppStore((st) => sliceReady(st, SLICES_GYM_RUN));
 
   const crossData = useMemo(() =>
     calculateCrossMetrics(runs || [], gymSessions || [], meals || [], bodyAssessments || [], 'mes'),
@@ -114,6 +135,33 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
     return { enough: true, neutral };
   }, [closedWeeksWithRpe]);
 
+  // As séries entregues ao gráfico são memoizadas: uma referência nova a cada
+  // render do Geral fazia chart.update() (e repetia o movimento sem motivo).
+  const weightSeries = useMemo(() => ({
+    label: 'Peso (kg)',
+    data: vdotVsWeightData.map(d => ({ x: d.date, y: d.left })),
+    color: '#ff5fa8', // --body
+    unit: 'kg'
+  }), [vdotVsWeightData]);
+  const vdotSeries = useMemo(() => ({
+    label: 'VDOT',
+    data: vdotVsWeightData.map(d => ({ x: d.date, y: d.right })),
+    color: '#2ee0ff', // --run
+    unit: ''
+  }), [vdotVsWeightData]);
+  const gymVolumeSeries = useMemo(() => ({
+    label: 'Volume Ginásio (kg)',
+    data: gymRunSeries.map(d => ({ x: d.date, y: d.gymVolume })),
+    color: '#9ec3d2', // --gym (era #facc15, amarelo reservado ao âmbar da prova)
+    unit: 'kg'
+  }), [gymRunSeries]);
+  const runRpeSeries = useMemo(() => ({
+    label: 'Esforço Corrida (RPE)',
+    data: gymRunSeries.map(d => ({ x: d.date, y: d.runRPE })),
+    color: '#2ee0ff', // --run
+    unit: 'RPE'
+  }), [gymRunSeries]);
+
   return (
     <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl shadow-[0_8px_20px_rgba(0,0,0,0.2)] overflow-hidden">
       {/* Toggle button */}
@@ -132,7 +180,13 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
       </button>
 
       {/* Expandable content */}
-      <div className={`grid transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+      <div
+        className={`grid transition-all duration-300 ease-in-out ${open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+        onTransitionEnd={(e) => {
+          // Só a da própria grelha (as dos filhos borbulham até aqui).
+          if (e.target === e.currentTarget && open) markOpened();
+        }}
+      >
         <div className="overflow-hidden">
           <div className="px-4 pb-4 space-y-4 pt-2 border-t border-[var(--border-glass)]">
 
@@ -142,18 +196,9 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                 <CrossMetricsChart
                   title="Eficiência Aeróbica vs. Peso"
                   helpText="Mostra se perder peso está a melhorar o teu VDOT (capacidade aeróbica). Uma descida de peso com VDOT a subir é o sinal ideal de recomposição corporal eficaz para o corredor."
-                  leftData={{
-                    label: 'Peso (kg)',
-                    data: vdotVsWeightData.map(d => ({ x: d.date, y: d.left })),
-                    color: '#ff5fa8', // --body
-                    unit: 'kg'
-                  }}
-                  rightData={{
-                    label: 'VDOT',
-                    data: vdotVsWeightData.map(d => ({ x: d.date, y: d.right })),
-                    color: '#2ee0ff', // --run
-                    unit: ''
-                  }}
+                  leftData={weightSeries}
+                  rightData={vdotSeries}
+                  ready={opened && weightVdotReady}
                 />
               </>
             ) : (
@@ -168,18 +213,9 @@ export default function CrossAnalysisSection({ runs, gymSessions, meals, bodyAss
                 <CrossMetricsChart
                   title="Impacto do Ginásio na Corrida"
                   helpText="Cruza o volume de ginásio (kg levantados) com o esforço percebido (RPE) nas corridas da mesma semana. As semanas sem RPE registado ficam em branco. Um RPE alto nas semanas de muito ginásio pode indicar fadiga central acumulada."
-                  leftData={{
-                    label: 'Volume Ginásio (kg)',
-                    data: gymRunSeries.map(d => ({ x: d.date, y: d.gymVolume })),
-                    color: '#9ec3d2', // --gym (era #facc15, amarelo reservado ao âmbar da prova)
-                    unit: 'kg'
-                  }}
-                  rightData={{
-                    label: 'Esforço Corrida (RPE)',
-                    data: gymRunSeries.map(d => ({ x: d.date, y: d.runRPE })),
-                    color: '#2ee0ff', // --run
-                    unit: 'RPE'
-                  }}
+                  leftData={gymVolumeSeries}
+                  rightData={runRpeSeries}
+                  ready={opened && gymRunReady}
                 />
                 {gymRunAnalysis.verdict ? (
                   <AnalysisAlert title={gymRunAnalysis.verdict.title} desc={gymRunAnalysis.verdict.desc} severity={gymRunAnalysis.verdict.severity} />

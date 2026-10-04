@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
+import { useAppStore, sliceReady } from '../../store';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { LOW_CONFIDENCE } from '@formulas/racePrediction.ts';
 
@@ -51,19 +52,21 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
   };
 
   // Um ponto por data, ficando com o melhor VDOT do dia.
-  const deduped = Object.values(
+  const deduped = useMemo(() => Object.values(
     vdotTrend.reduce((acc, d) => {
       if (!acc[d.date] || d.vdot > acc[d.date].vdot) acc[d.date] = d;
       return acc;
     }, {})
-  ).sort((a, b) => a.date.localeCompare(b.date));
+  ).sort((a, b) => a.date.localeCompare(b.date)), [vdotTrend]);
+  const ready = useAppStore((s) => sliceReady(s, ['runs', 'races']));
 
-  const vdots = deduped.map(d => Number(d.vdot));
+  const vdots = useMemo(() => deduped.map(d => Number(d.vdot)), [deduped]);
   const firstVdot = vdots.length ? vdots[0] : null;
   const lastVdot = vdots.length ? vdots[vdots.length - 1] : null;
   const hasTrend = deduped.length >= 2;
 
-  const data = {
+  // 2026-10-04: data/options estáveis; sem `animation` própria (default global).
+  const data = useMemo(() => ({
     labels: deduped.map((_, i) => i),
     datasets: [
       {
@@ -77,9 +80,9 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
         pointHoverRadius: 4,
       }
     ]
-  };
+  }), [deduped, vdots]);
 
-  const options = {
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -101,7 +104,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
       x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
       y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { display: false }, border: { display: false } }
     }
-  };
+  }), [deduped]);
 
   // O número grande: o tempo previsto quando há prova (âmbar, é da prova);
   // senão o VDOT atual (ciano, é da corrida).
@@ -121,6 +124,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
 
   return (
     <ChartFrame
+      ready={ready}
       className={className}
       label={prediction ? 'Previsão de prova' : 'Evolução do VDOT'}
       info={<MetricInfo text="O VDOT é uma aproximação do teu VO2max. Quanto mais alto o valor, maior a tua aptidão aeróbica e mais rápidos serão os teus tempos em provas." />}
@@ -151,7 +155,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
         </>
       ) : undefined}
     >
-      {hasTrend ? <Line data={data} options={options} /> : null}
+      {hasTrend ? <Line data={data} options={options} updateMode="period" /> : null}
     </ChartFrame>
   );
 }

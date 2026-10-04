@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Doughnut } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
+import { useAppStore, sliceReady } from '../../store';
 
 /* Ponto 6 do redesenho. Duas mudanças:
 
@@ -29,7 +30,7 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, classN
   const overTarget = highIntensityPct > targetHigh;
   const highColor = overTarget ? WARN : RUN_SOFT;
 
-  const data = {
+  const data = useMemo(() => ({
     labels: ['Z1-Z2', 'Z3+'],
     datasets: [
       {
@@ -39,9 +40,13 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, classN
         hoverOffset: 4
       }
     ]
-  };
+  }), [lowIntensityPct, highIntensityPct, highColor]);
 
-  const options = {
+  const ready = useAppStore((s) => sliceReady(s, ['runs']));
+
+  /* 2026-10-04: sem `animation` própria — o anel usa o default global (700 ms,
+     false com reduced-motion) e só desenha quando o ChartFrame monta o tela. */
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: true,
     cutout: '75%',
@@ -59,10 +64,11 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, classN
         }
       }
     }
-  };
+  }), []);
 
   return (
     <ChartFrame
+      ready={ready}
       className={className}
       label="Distribuição de intensidade"
       info={<MetricInfo text="Regra 80/20. Cerca de 80% do tempo de treino deve ser feito em intensidades baixas (Zonas 1 e 2) para maximizar as adaptações aeróbicas sem acumular fadiga. Só 20% deve ser intenso." />}
@@ -78,7 +84,7 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, classN
     >
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div style={{ width: 160, height: 160 }}>
-          <Doughnut data={data} options={options} />
+          <Doughnut data={data} options={options} updateMode="period" />
         </div>
       </div>
     </ChartFrame>

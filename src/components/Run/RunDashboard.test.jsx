@@ -10,7 +10,7 @@ import { computeBestPace } from '@formulas/bestPace.ts';
 
 const h = vi.hoisted(() => ({ state: {}, scatterProps: [] }));
 
-vi.mock('../../store', () => ({ useAppStore: () => h.state }));
+vi.mock('../../store', () => ({ useAppStore: (sel) => (typeof sel === 'function' ? sel(h.state) : h.state), sliceReady: () => true }));
 vi.mock('react-chartjs-2', () => ({
   Bar: () => <div data-testid="chart-bar" />,
   Line: () => <div data-testid="chart-line" />,

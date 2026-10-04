@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Footprints, Dumbbell, Utensils, Scale, ChartNoAxesColumn, Check, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store';
+import { useShallow } from 'zustand/react/shallow';
 import SmartInsightsBanner from '../BI/SmartInsightsBanner';
 import RaceReadinessCard from '../BI/RaceReadinessCard';
 import PillarSummaryCard from '../BI/PillarSummaryCard';
@@ -57,7 +58,12 @@ const PILLAR_ICONS = {
   corpo: <Scale size={15} style={{ color: 'var(--body)' }} />,
 };
 
-export default function OverviewDashboard({ scrollToTab }) {
+function OverviewDashboard({ scrollToTab }) {
+  /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
+     seletor, qualquer alteração ao store — um deslize entre separadores
+     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
+     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
+     redesenha quando um destes campos muda de referência. */
   const {
     runs,
     gymSessions,
@@ -71,7 +77,12 @@ export default function OverviewDashboard({ scrollToTab }) {
     setEditingRaceId,
     setOpenCreationMode,
     setActiveTab,
-  } = useAppStore();
+  } = useAppStore(useShallow((s) => ({
+    runs: s.runs, gymSessions: s.gymSessions, meals: s.meals, bodyAssessments: s.bodyAssessments,
+    raceEvents: s.raceEvents, coachPlans: s.coachPlans, coachPlanItems: s.coachPlanItems,
+    profile: s.profile, shoes: s.shoes, setEditingRaceId: s.setEditingRaceId,
+    setOpenCreationMode: s.setOpenCreationMode, setActiveTab: s.setActiveTab,
+  })));
 
   const data = { runs, gymSessions, meals, bodyAssessments, raceEvents, coachPlans, coachPlanItems, shoes };
 
@@ -439,3 +450,7 @@ export default function OverviewDashboard({ scrollToTab }) {
     </div>
   );
 }
+
+/* React.memo (2026-10-04): ver Run.jsx. A única prop é `scrollToTab`, que o
+   Dashboard passa estável (useCallback) — por isso o memo vale. */
+export default React.memo(OverviewDashboard);

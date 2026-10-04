@@ -1349,6 +1349,15 @@ export const useAppStore = create((set, get) => ({
        um registo) é sempre um carregamento novo — o que já corria pode ter
        começado antes da gravação; o mais recente ganha, fatia a fatia. */
   dataPending: false,
+  /* Que fatias do carregamento inicial já chegaram (ou já falharam — nada mais
+     há a esperar), por nome do pedido: { meals: true, training: true, ... }.
+     Escrito em runInitialLoad no mesmo set que aplica a fatia. Serve a quem
+     só precisa de uma parte dos dados (o separador da Evolução que vai
+     animar os gráficos) e não deve esperar pelo `dataPending` global, que
+     pode durar até 45 s por uma fatia sem nada a ver. Ler SEMPRE por
+     sliceReady(state, [...]) — que também trata o demo e os dados já
+     carregados (dataPending desligado). Só se limpa ao mudar de conta. */
+  loadedSlices: {},
   loadInitialData: (userId, { join = false } = {}) => {
     if (join && initialLoad && initialLoad.userId === userId) return initialLoad.promise;
     const promise = runInitialLoad(set, get, userId)
@@ -1371,6 +1380,7 @@ const EMPTY_DATA = {
   coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
   percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
+  loadedSlices: {},
   cup: CUP_EMPTY,
 };
 /** O dataPending nunca dura mais do que isto: um pedido que nunca responde
@@ -1388,6 +1398,49 @@ export function whenDataReady() {
       if (!s.dataPending) { unsubscribe(); resolve(); }
     });
   });
+}
+
+/* Os nomes por que os ecrãs conhecem os dados → o pedido (fatia) que os traz
+   em runInitialLoad. Corridas e ginásio vêm no mesmo pedido de propósito
+   (ver o comentário em 'training'); o corpo, a água e os planos têm o nome da
+   tabela. Um nome que não está aqui conta como o nome do próprio pedido. */
+export const SLICE_ALIASES = {
+  runs: 'training',
+  gym: 'training',
+  gymSessions: 'training',
+  body: 'bodyAssessments',
+  water: 'waterLogs',
+  races: 'raceEvents',
+  plans: 'coachPlans',
+  planItems: 'coachPlanItems',
+  checkins: 'dailyCheckins',
+};
+
+/* Que fatias cada separador da Evolução lê (2026-10-04) — o que o hook de
+   revelação espera antes de animar, em vez do `dataPending` global. Mantém
+   alinhado com o que cada *Dashboard.jsx lê do store. */
+export const EVOLUTION_TAB_SLICES = {
+  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'races', 'plans', 'planItems', 'shoes'],
+  corrida: ['profile', 'runs', 'races', 'plans', 'planItems'],
+  ginasio: ['gym', 'runs'],
+  nutricao: ['profile', 'meals', 'body', 'runs', 'gym', 'water', 'plans', 'planItems'],
+  corpo: ['body', 'gym', 'profile'],
+};
+
+/** Os dados dessas fatias já chegaram? (`slices`: nomes de ecrã ou de
+ *  pedido — ver SLICE_ALIASES.) Função pura do estado: serve de seletor
+ *  (`useAppStore((s) => sliceReady(s, ['runs']))`) e fora do React
+ *  (`sliceReady(useAppStore.getState(), [...])`).
+ *  - `dataPending` desligado → verdadeiro: o carregamento acabou (tudo
+ *    chegou, ou passou o prazo de 45 s), e é também o estado do modo demo e
+ *    de um recarregamento em que os dados já lá estão.
+ *  - Com `dataPending` ligado, só as fatias listadas contam — o resto pode
+ *    demorar, não é com isso que o gráfico espera.
+ *  Lista vazia → verdadeiro. */
+export function sliceReady(state, slices) {
+  if (!state.dataPending) return true;
+  const loaded = state.loadedSlices || {};
+  return (slices || []).every((name) => !!loaded[SLICE_ALIASES[name] || name]);
 }
 
 async function runInitialLoad(set, get, userId) {
@@ -1485,6 +1538,7 @@ async function runInitialLoad(set, get, userId) {
   let pending = jobs.length;
   let inTime = true;
   const onTime = {};
+  const settledOnTime = new Set(); // fatias que responderam (bem ou mal) dentro do prazo
   const canWrite = (slice) => loadedDataUserId === userId && (sliceSeq[slice] || 0) <= seq;
   const done = () => {
     if (seq !== loadSeq) return {};
@@ -1494,10 +1548,14 @@ async function runInitialLoad(set, get, userId) {
   // Escreve uma fatia que chegou depois do prazo — se este carregamento
   // ainda for o mais recente a escrevê-la e a conta não tiver mudado.
   const writeLate = (slice, patch) => {
-    if (!patch || !canWrite(slice)) return;
+    if (!canWrite(slice)) return;
+    // A fatia chegou (mesmo sem nada a escrever — ex.: sem resumo de hoje):
+    // vai para loadedSlices no mesmo set do que escreve (ver sliceReady).
+    const loadedSlices = { ...get().loadedSlices, [slice]: true };
+    if (!patch) { set({ loadedSlices }); return; }
     sliceSeq[slice] = seq;
-    if (typeof patch === 'function') patch();
-    else set(patch);
+    if (typeof patch === 'function') { patch(); set({ loadedSlices }); }
+    else set({ ...patch, loadedSlices });
   };
 
   const tasks = jobs.map(([slice, request, toPatch]) => Promise.resolve(request)
@@ -1507,9 +1565,13 @@ async function runInitialLoad(set, get, userId) {
         // Fica o que lá está — mas uma resposta atrasada de um carregamento
         // anterior (pedida antes de uma gravação) já não a pode substituir.
         if (canWrite(slice)) sliceSeq[slice] = seq;
+        // Falhou: não há mais nada a esperar desta fatia — conta como
+        // chegada (o gráfico anima com o que há, não fica 45 s à espera).
+        if (inTime) settledOnTime.add(slice);
+        else writeLate(slice, null);
         return;
       }
-      if (inTime) onTime[slice] = toPatch(res?.data);
+      if (inTime) { onTime[slice] = toPatch(res?.data); settledOnTime.add(slice); }
       else writeLate(slice, toPatch(res?.data));
     })
     .catch((err) => console.warn(`Carregamento inicial (${slice}):`, err))
@@ -1527,13 +1589,19 @@ async function runInitialLoad(set, get, userId) {
   // O que chegou a tempo entra num só set, como antes (o dailySummaryRefresh
   // e os ecrãs veem uma mudança, não treze).
   const merged = {};
+  let loadedSlices = null;
   for (const [slice] of jobs) {
     const patch = onTime[slice];
+    if (settledOnTime.has(slice) && canWrite(slice)) {
+      loadedSlices = loadedSlices || { ...get().loadedSlices };
+      loadedSlices[slice] = true;
+    }
     if (!patch || !canWrite(slice)) continue;
     sliceSeq[slice] = seq;
     if (typeof patch === 'function') patch();
     else Object.assign(merged, patch);
   }
+  if (loadedSlices) merged.loadedSlices = loadedSlices;
   if (pending === 0) Object.assign(merged, done());
   set(merged);
 }

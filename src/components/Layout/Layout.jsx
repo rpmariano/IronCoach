@@ -38,7 +38,22 @@ const moduleGradient = (mod) =>
   `linear-gradient(135deg, var(--mod-${mod}-from), var(--mod-${mod}-to))`;
 
 export default function Layout({ children }) {
-  const { activeTab, setActiveTab, profile, isAdmin, openCreationMode, setOpenCreationMode, lastDashboardTab, setWaterSheetOpen, editingRunId, editingRaceId } = useAppStore();
+  /* Seletores por campo, não o store inteiro (2026-10-04): `useAppStore()` sem
+     seletor subscreve tudo, e cada alteração — um deslize entre separadores da
+     Evolução mexe em `lastDashboardTab`, um recarregamento de dados cria
+     listas novas — redesenhava o Layout e, com ele, todos os filhos. Cada
+     campo só redesenha quando é ele que muda. (`profile` vinha na
+     desestruturação sem ser usado: tirado, deixava-o redesenhar o Layout a
+     cada recarga do perfil.) As ações são estáveis no zustand. */
+  const activeTab = useAppStore((s) => s.activeTab);
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const isAdmin = useAppStore((s) => s.isAdmin);
+  const openCreationMode = useAppStore((s) => s.openCreationMode);
+  const setOpenCreationMode = useAppStore((s) => s.setOpenCreationMode);
+  const lastDashboardTab = useAppStore((s) => s.lastDashboardTab);
+  const setWaterSheetOpen = useAppStore((s) => s.setWaterSheetOpen);
+  const editingRunId = useAppStore((s) => s.editingRunId);
+  const editingRaceId = useAppStore((s) => s.editingRaceId);
   const [fabOpen, setFabOpen] = useState(false);
   const fabRef = useRef(null);
   const fabBtnRef = useRef(null);

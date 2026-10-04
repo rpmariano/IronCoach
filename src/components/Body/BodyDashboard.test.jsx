@@ -7,11 +7,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
    marcadores (o jsdom não tem canvas). Hoje fixo a 4 out 2026; o filtro por
    omissão é o trimestre (depois de 4 jul). */
 
-const h = vi.hoisted(() => ({ state: {} }));
+const h = vi.hoisted(() => ({ state: {}, lines: [] }));
 
 vi.mock('../../store', () => ({ useAppStore: () => h.state }));
 vi.mock('react-chartjs-2', () => ({
-  Line: () => <div data-testid="chart-line" />,
+  Line: (props) => { h.lines.push(props); return <div data-testid="chart-line" />; },
   Bar: () => <div data-testid="chart-bar" />,
 }));
 
@@ -27,6 +27,7 @@ function monta(bodyAssessments) {
 const frame = (label) => screen.getAllByTestId('chart-frame').find((f) => within(f).queryAllByText(label).length > 0);
 
 beforeEach(() => {
+  h.lines.length = 0;
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date(2026, 9, 4, 12, 0, 0));
 });
@@ -128,5 +129,36 @@ describe('C3 — composição corporal sem gordura medida', () => {
     expect(f.textContent).not.toMatch(/\+14,0/);
     expect(f.textContent).not.toMatch(/Massa gorda 0,0/);
     expect(f).toHaveTextContent('Preciso de 2 avaliações com gordura medida');
+  });
+});
+
+describe('F5 — gráficos de linha sem animação própria e com props estáveis (2026-10-04)', () => {
+  it('as linhas pedem a transição curta, partilham as opções e não definem `animation`', () => {
+    monta([av('2026-09-20', { weight_kg: 72.0 }), av('2026-09-25', { weight_kg: 72.2 }), av('2026-10-01', { weight_kg: 72.4 })]);
+    expect(h.lines.length).toBeGreaterThanOrEqual(2);
+    for (const l of h.lines) expect(l.updateMode).toBe('period');
+    const [a, b] = h.lines;
+    expect(a.options).toBe(b.options);
+    expect(a.options.animation).toBeUndefined();
+  });
+
+  it('um render igual não troca `data` nem `options` (cada referência nova faz chart.update())', () => {
+    const rows = [av('2026-09-20', { weight_kg: 72.0 }), av('2026-09-25', { weight_kg: 72.2 }), av('2026-10-01', { weight_kg: 72.4 })];
+    const { rerender } = monta(rows);
+    const first = h.lines.filter((l) => l.data.datasets.length === 1).at(-1);
+    h.lines.length = 0;
+    rerender(<BodyDashboard />);
+    const again = h.lines.filter((l) => l.data.datasets.length === 1).at(-1);
+    expect(again.data).toBe(first.data);
+    expect(again.options).toBe(first.options);
+  });
+
+  it('trocar de métrica muda os dados (transição de 300 ms), não as opções', () => {
+    monta([av('2026-09-20', { weight_kg: 72.0, body_fat_pct: 18 }), av('2026-10-01', { weight_kg: 72.4, body_fat_pct: 17.5 })]);
+    const before = h.lines.filter((l) => l.data.datasets.length === 1).at(-1);
+    fireEvent.click(screen.getByTestId('body-card-value-body_fat_pct').closest('button'));
+    const after = h.lines.filter((l) => l.data.datasets.length === 1).at(-1);
+    expect(after.data).not.toBe(before.data);
+    expect(after.options).toBe(before.options);
   });
 });

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { useAppStore, sliceReady } from '../../store';
 
 /* Ponto 6 do redesenho: os ticks dos dois eixos saem da tela; o valor atual
    (a média de EA do período) é o número grande, as bandas de risco passam a
@@ -20,7 +21,14 @@ const STATUS_COLOR = {
 };
 
 export default function EnergyAvailabilityChart({ dailyData = [], className = '' }) {
-  const values = dailyData.map(d => Number(d.ea || 0));
+  /* 2026-10-04 (F5, plano §2.1): data, plugin e options estáveis (cada
+     referência nova faz chart.update()). Linha: sem chave `animation` — vale o
+     padrão global (700 ms; false com reduced-motion) e a ChartFrame só a
+     dispara quando o gráfico aparece, não escondido no mount. */
+  const values = useMemo(() => dailyData.map(d => Number(d.ea || 0)), [dailyData]);
+  // A EA cruza refeições, massa magra e gasto de treino (corridas e ginásio):
+  // sem as quatro fatias o gráfico entrava a desenhar uma EA parcial.
+  const ready = useAppStore((s) => sliceReady(s, ['meals', 'body', 'runs', 'gym']));
   const average = values.length ? values.reduce((s, v) => s + v, 0) / values.length : 0;
   const daysAtRisk = dailyData.filter(d => d.status === 'critical').length;
   // Sem `> 0` no primeiro ramo, de propósito: uma EA negativa (gasta-se mais
@@ -28,7 +36,7 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
   // que 29, não melhor; com a guarda antiga caía em 'warn' coral.
   const tone = average < 30 ? 'danger' : average < 45 ? 'warn' : 'ok';
 
-  const backgroundBandsPlugin = {
+  const backgroundBandsPlugin = useMemo(() => ({
     id: 'backgroundBands',
     beforeDraw: (chart) => {
       const { ctx, chartArea, scales } = chart;
@@ -49,9 +57,10 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
       drawBand(0, 30, 'rgba(248, 113, 113, 0.10)');   // --danger
       drawBand(30, 45, 'rgba(251, 124, 77, 0.10)');   // --warn
     }
-  };
+  }), []);
+  const plugins = useMemo(() => [backgroundBandsPlugin], [backgroundBandsPlugin]);
 
-  const data = {
+  const data = useMemo(() => ({
     labels: dailyData.map((_, i) => i),
     datasets: [
       {
@@ -67,9 +76,9 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
         pointHoverRadius: 6,
       }
     ]
-  };
+  }), [dailyData, values]);
 
-  const options = {
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -96,11 +105,12 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
         min: Math.min(10, ...values),
       }
     }
-  };
+  }), [dailyData, values]);
 
   return (
     <ChartFrame
       className={className}
+      ready={ready}
       label="Disponibilidade energética"
       info={<MetricInfo text="A EA (Energy Availability) é a energia que sobra para o teu corpo viver depois de descontar as calorias que queimaste a treinar. Se ficares repetidamente abaixo dos 30 kcal/kg, corres um risco clínico severo de Síndrome de Deficiência Energética Relativa (RED-S). Come mais nos dias de treino duro!" />}
       hint={dailyData.length > 0 ? `${dailyData.length} dias` : undefined}
@@ -115,7 +125,7 @@ export default function EnergyAvailabilityChart({ dailyData = [], className = ''
       ]}
       height={200}
     >
-      <Line data={data} options={options} plugins={[backgroundBandsPlugin]} />
+      <Line data={data} options={options} plugins={plugins} updateMode="period" />
     </ChartFrame>
   );
 }

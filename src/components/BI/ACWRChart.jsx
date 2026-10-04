@@ -1,11 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Chart } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { acwrStatusLabel } from '../../utils/biEngine';
 import { barGrowAnimation } from '../../utils/introAnimations';
-import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import useReducedMotion from '../../utils/useReducedMotion';
+import { useAppStore, sliceReady } from '../../store';
 
 /* Ponto 6 do redesenho: as etiquetas saíram da tela. Os eixos deixaram de
    ter ticks de texto (`ticks.display: false`) — o rácio atual é o número
@@ -20,42 +21,47 @@ const TONE_COLOR = {
   neutral: 'var(--text-4)',
 };
 
+/* 2026-10-04: o plugin saiu do componente para ser uma constante — com uma
+   referência nova a cada render, o react-chartjs-2 voltava a tratá-lo como
+   alteração e cada render era um chart.update(). */
+// Bandas de risco: verde 0.8–1.3, coral 1.3–1.5, vermelho acima. As cores
+// vinham do bootstrap antigo (#28a745/#ffc107/#dc3545) — passam às três
+// com significado do ponto 3.
+const BACKGROUND_BANDS_PLUGIN = {
+  id: 'backgroundBands',
+  beforeDraw: (chart) => {
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea) return;
+    const y = scales.ratio;
+    if (!y) return;
+
+    const drawBand = (min, max, color) => {
+      const top = y.getPixelForValue(max);
+      const bottom = y.getPixelForValue(min);
+      const adjustedTop = Math.max(top, chartArea.top);
+      const adjustedBottom = Math.min(bottom, chartArea.bottom);
+      if (adjustedBottom > adjustedTop) {
+        ctx.fillStyle = color;
+        ctx.fillRect(chartArea.left, adjustedTop, chartArea.right - chartArea.left, adjustedBottom - adjustedTop);
+      }
+    };
+
+    ctx.save();
+    drawBand(0.8, 1.3, 'rgba(52, 211, 153, 0.10)');   // --ok
+    drawBand(1.3, 1.5, 'rgba(251, 124, 77, 0.10)');   // --warn
+    drawBand(1.5, 3.0, 'rgba(248, 113, 113, 0.10)');  // --danger
+    ctx.restore();
+  }
+};
+
+const PLUGINS = [BACKGROUND_BANDS_PLUGIN];
+
 export default function ACWRChart({ weeklyData = [], className = '' }) {
-  // Bandas de risco: verde 0.8–1.3, coral 1.3–1.5, vermelho acima. As cores
-  // vinham do bootstrap antigo (#28a745/#ffc107/#dc3545) — passam às três
-  // com significado do ponto 3.
-  const backgroundBandsPlugin = {
-    id: 'backgroundBands',
-    beforeDraw: (chart) => {
-      const { ctx, chartArea, scales } = chart;
-      if (!chartArea) return;
-      const y = scales.ratio;
-      if (!y) return;
-
-      const drawBand = (min, max, color) => {
-        const top = y.getPixelForValue(max);
-        const bottom = y.getPixelForValue(min);
-        const adjustedTop = Math.max(top, chartArea.top);
-        const adjustedBottom = Math.min(bottom, chartArea.bottom);
-        if (adjustedBottom > adjustedTop) {
-          ctx.fillStyle = color;
-          ctx.fillRect(chartArea.left, adjustedTop, chartArea.right - chartArea.left, adjustedBottom - adjustedTop);
-        }
-      };
-
-      ctx.save();
-      drawBand(0.8, 1.3, 'rgba(52, 211, 153, 0.10)');   // --ok
-      drawBand(1.3, 1.5, 'rgba(251, 124, 77, 0.10)');   // --warn
-      drawBand(1.5, 3.0, 'rgba(248, 113, 113, 0.10)');  // --danger
-      ctx.restore();
-    }
-  };
-
   const last = weeklyData.length > 0 ? weeklyData[weeklyData.length - 1] : null;
   const prev = weeklyData.length > 1 ? weeklyData[weeklyData.length - 2] : null;
   const ratio = Number(last?.ratio || 0);
 
-  const loads = weeklyData.map(d => Number(d.acuteLoad || 0));
+  const loads = useMemo(() => weeklyData.map(d => Number(d.acuteLoad || 0)), [weeklyData]);
   const maxLoad = loads.length ? Math.max(...loads) : 0;
 
   /* O rácio só ganha cor e etiqueta de estado com histórico que o sustente —
@@ -74,7 +80,7 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
     hasEnoughData
   );
 
-  const data = {
+  const data = useMemo(() => ({
     labels: weeklyData.map(d => d.weekLabel),
     datasets: [
       {
@@ -100,17 +106,22 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         order: 2
       }
     ]
-  };
+  }), [weeklyData, loads]);
 
   // Nenhum eixo mostra texto: `ticks.display: false` nos três. A escala
   // continua a existir (as bandas e a linha precisam dela), só não escreve.
-  const reveal = useRevealAnimation();
+  /* 2026-10-04: a revelação é do ChartFrame (observa a própria área, só monta
+     o tela com o separador assente e no ecrã). Aqui ficam só as opções, estáveis
+     (cada referência nova faz chart.update()) e com reduced-motion a `false`. */
+  const reduced = useReducedMotion();
+  const ready = useAppStore((s) => sliceReady(s, ['runs']));
+  const n = weeklyData.length;
 
-  const options = {
+  const options = useMemo(() => ({
     responsive: true,
     /* Ponto 9, animação 4: só as barras da carga aguda crescem; a linha do
        rácio e as bandas entram com elas, sem animação própria. */
-    animation: barGrowAnimation(reveal.animate),
+    animation: barGrowAnimation({ reduced, count: n }),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
@@ -143,13 +154,13 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         border: { display: false },
       }
     }
-  };
+  }), [reduced, n]);
 
   const deltaRatio = last?.hasEnoughData && prev?.hasEnoughData ? Number(last.ratio) - Number(prev.ratio) : null;
 
   return (
     <ChartFrame
-      reveal={reveal}
+      ready={ready}
       className={className}
       label="Carga aguda : crónica"
       info={<MetricInfo text="O ACWR compara a carga do teu treino na última semana (Aguda) com a média das últimas 4 semanas (Crónica). Mantém-te na zona verde (0.8 a 1.3) para evoluir com segurança. Valores > 1.5 indicam risco elevado de lesão." />}
@@ -175,7 +186,8 @@ export default function ACWRChart({ weeklyData = [], className = '' }) {
         type="bar"
         data={data}
         options={options}
-        plugins={[backgroundBandsPlugin]}
+        updateMode="period"
+        plugins={PLUGINS}
       />
     </ChartFrame>
   );

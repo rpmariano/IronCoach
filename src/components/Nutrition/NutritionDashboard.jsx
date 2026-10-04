@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../../store';
+import { useShallow } from 'zustand/react/shallow';
 import { supabase } from '../../lib/supabase';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeNutrientRangeTotals } from '@formulas/micronutrientTotals.ts';
@@ -44,7 +45,16 @@ ChartJS.register(
 );
 
 export default function NutritionDashboard() {
-  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs, coachPlans, coachPlanItems, nutritionDayFocus } = useAppStore();
+  /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
+     seletor, qualquer alteração ao store — um deslize entre separadores
+     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
+     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
+     redesenha quando um destes campos muda de referência. */
+  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs, coachPlans, coachPlanItems, nutritionDayFocus } = useAppStore(useShallow((s) => ({
+    profile: s.profile, meals: s.meals, bodyAssessments: s.bodyAssessments, runs: s.runs, gymSessions: s.gymSessions,
+    setOpenCreationMode: s.setOpenCreationMode, waterLogs: s.waterLogs, coachPlans: s.coachPlans,
+    coachPlanItems: s.coachPlanItems, nutritionDayFocus: s.nutritionDayFocus,
+  })));
   const [activeFilter, setActiveFilter] = useState('semana');
 
   /* A vista "Dia" anda de dia em dia (bug #51): o comido contra o objetivo
@@ -186,7 +196,10 @@ export default function NutritionDashboard() {
     };
   }, [meals, activeFilter, selectedMacro]);
 
-  const chartOptions = {
+  /* 2026-10-04 (F5, plano §2.1): options estáveis (só mudam com a macro, que
+     entra no tooltip) — cada referência nova faz chart.update(). Linha: sem
+     `animation`, vale o padrão global. */
+  const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -218,7 +231,7 @@ export default function NutritionDashboard() {
         beginAtZero: true
       }
     }
-  };
+  }), [selectedMacro]);
 
   const getMacroIcon = (key) => {
     switch (key) {
@@ -458,7 +471,7 @@ export default function NutritionDashboard() {
             legend={[{ label: `${macroObj.label} (${macroObj.unit})`, color: macroObj.color, shape: 'line' }]}
             height={192}
           >
-            <Line data={chartData} options={chartOptions} />
+            <Line data={chartData} options={chartOptions} updateMode="period" />
           </ChartFrame>
         );
       })()}

@@ -1,9 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Trophy, Flag, ChevronRight, Footprints, Zap, Utensils, TrendingUp, Target, Sunrise } from 'lucide-react';
 import { differenceInCalendarDays, parseISO } from 'date-fns';
 import { calculateReadinessIndex } from '../../utils/biEngine';
 import { todayISO } from '../../lib/utils';
-import { useAppStore } from '../../store';
+import { useAppStore, sliceReady } from '../../store';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import { useCountUpDisplay } from '../../utils/useCountUp';
+import { DUR_COUNT_REVEAL } from '../../utils/introAnimations';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { buildTrailModel } from '../../utils/homeModels';
 import { focusRace } from '@formulas/mainRace.ts';
@@ -22,8 +25,64 @@ const PILLAR_ICONS = {
   checkin: <Sunrise size={13} style={{ color: 'var(--coach)' }} />,
 };
 
+/* 2026-10-04 (F5, animação ao ficar visível — plano §2.1, ponto 7): o anel e
+   as barras dos pilares não tinham entrada nenhuma. Passam a desenhar-se a
+   partir de zero quando o cartão fica à vista com o separador assente (o
+   gatilho é o do useRevealAnimation em modo separador), com o % a contar ao
+   mesmo ritmo (DUR_COUNT_REVEAL, 800 ms), e a voltar a zero ao rearmar (o
+   separador saiu há mais de ~3 s e o cartão já não se vê — fica à espera,
+   no estado zero, da próxima visita). Com reduced-motion nada anima e tudo
+   aparece já no valor final. Fora do carrossel (sem TabPageContext) o hook
+   está no modo antigo, sem `active`: o cartão fica como era. */
+
+// Fatia que o cartão lê e que o separador Geral não lista (os check-ins).
+const READINESS_EXTRA_SLICES = ['checkins'];
+
+/** O número em %, que conta de 0 ao valor quando `animate` e se remonta com
+ *  `key={playKey}` a cada reveal. Armado (`zero`) mostra "0%" — o valor real
+ *  fica num texto só para o leitor de ecrã, como no BigNumber do ChartFrame. */
+function CountPct({ value, animate, zero }) {
+  const shown = useCountUpDisplay(value, { animate, duration: DUR_COUNT_REVEAL, decimals: 0 });
+  if (zero) {
+    return (
+      <>
+        <span aria-hidden="true">0%</span>
+        <span className="sr-only">{value}%</span>
+      </>
+    );
+  }
+  return <>{shown}%</>;
+}
+
 export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSessions, raceEvents, profile, onClickRace, coachPlans, coachPlanItems }) {
   const [selectedPillar, setSelectedPillar] = useState(null);
+
+  const extraReady = useAppStore((st) => sliceReady(st, READINESS_EXTRA_SLICES));
+  const reveal = useRevealAnimation({ ready: extraReady });
+  const reduced = !!reveal.reduced;
+  // Há movimento a gerir só dentro do carrossel da Evolução e sem reduced-motion.
+  const motion = reveal.active === true && !reduced;
+  // Zero até ao 1.º reveal e depois de rearmar.
+  const hold = motion && (reveal.seen === false || reveal.armed === true);
+  // `drawn` liga num rAF DEPOIS do reveal: o cartão aparece primeiro no zero
+  // e só então muda para o valor, que é o que dispara a transição CSS.
+  const [drawn, setDrawn] = useState(!motion);
+  useEffect(() => {
+    if (!motion) { setDrawn(true); return undefined; }
+    if (hold) { setDrawn(false); return undefined; }
+    if (typeof requestAnimationFrame !== 'function') { setDrawn(true); return undefined; }
+    const raf = requestAnimationFrame(() => setDrawn(true));
+    return () => cancelAnimationFrame(raf);
+  }, [motion, hold, reveal.playKey]);
+  // Em zero: ao rearmar volta já, no mesmo render (sem um frame de valor cheio).
+  const atFinal = !motion || (!hold && drawn);
+  // A transição só vale a subir; a descer (rearmar) é instantânea, fora de vista.
+  const animateIn = motion && atFinal;
+  // O anel e os pilares ficam transparentes até ao 1.º reveal (opacity, nunca
+  // visibility:hidden: o valor tem de continuar no leitor de ecrã); o texto
+  // do cartão (prova, fase, dias) fica sempre à vista. O ref vai no cartão
+  // todo: o critério de "à vista" é sobre ele, não só sobre o anel.
+  const fadeStyle = motion ? { ...reveal.style, transition: 'opacity var(--dur-tap) var(--ease-out)' } : undefined;
   // O dia de Lisboa, como o resto da app: a data UTC ainda é ontem entre a
   // meia-noite e a 01:00, e a prova de ontem aparecia com "Faltam -1 dias"
   // (revisão de 2026-09-26).
@@ -116,11 +175,11 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
   };
 
   return (
-    <div className="w-full bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
+    <div ref={motion ? reveal.ref : undefined} className="w-full bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
       {/* Header */}
       <HeaderComponent {...headerProps}>
         {/* Ring */}
-        <div className="relative shrink-0 w-20 h-20">
+        <div className="relative shrink-0 w-20 h-20" style={fadeStyle}>
           <svg viewBox="0 0 88 88" className="w-20 h-20 -rotate-90">
             <circle cx="44" cy="44" r={radius} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" strokeDasharray={calibrating ? '4 6' : undefined} />
             <circle
@@ -130,12 +189,12 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
               strokeWidth="8"
               strokeLinecap="round"
               strokeDasharray={circumference}
-              strokeDashoffset={progress}
-              style={{ transition: 'stroke-dashoffset 1s ease' }}
+              strokeDashoffset={atFinal ? progress : circumference}
+              style={{ transition: animateIn ? `stroke-dashoffset ${DUR_COUNT_REVEAL}ms var(--ease-out)` : 'none' }}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-black leading-none" style={{ color: cfg.color }}>{calibrating ? '—' : `${readiness.score}%`}</span>
+            <span className="text-xl font-black leading-none" style={{ color: cfg.color }}>{calibrating ? '—' : <CountPct key={reveal.playKey} value={readiness.score} animate={motion && !!reveal.animate} zero={hold} />}</span>
             <span className="text-[11px] text-[var(--text-3)] font-semibold mt-0.5">Prontidão</span>
           </div>
         </div>
@@ -194,7 +253,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
       )}
 
       {/* Pillar breakdown */}
-      <div className="mt-4 grid grid-cols-2 gap-2">
+      <div className="mt-4 grid grid-cols-2 gap-2" style={fadeStyle}>
         {readiness.pillars.map(pillar => {
           // Um pilar sem dados não tem nota: "—" e a barra vazia, sem o 0%
           // a vermelho (auditoria de onboarding, 2026-09-27).
@@ -217,7 +276,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 {/* 12,5px: é um número que o atleta lê de relance, não uma
                     etiqueta — o handoff manda subir acima do piso nesses
                     casos (ponto 2, "12px para dados lidos em movimento"). */}
-                <span className="text-[12.5px] font-bold shrink-0" style={{ color: pCfg.color }}>{noData ? '—' : `${pillar.score}%`}</span>
+                <span className="text-[12.5px] font-bold shrink-0" style={{ color: pCfg.color }}>{noData ? '—' : <CountPct key={reveal.playKey} value={pillar.score} animate={motion && !!reveal.animate} zero={hold} />}</span>
               </div>
               {/* Cresce por transform, não por width: animar width obriga o
                   browser a refazer layout a cada frame (as barras são
@@ -230,9 +289,10 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                   className="h-full w-full rounded-full"
                   style={{
                     background: pCfg.color,
-                    transform: `scaleX(${noData ? 0 : Math.max(0, Math.min(100, pillar.score)) / 100})`,
+                    transform: `scaleX(${noData || !atFinal ? 0 : Math.max(0, Math.min(100, pillar.score)) / 100})`,
                     transformOrigin: 'left',
-                    transition: 'transform var(--dur-bars) var(--ease-out)',
+                    // Nunca com reduced-motion; em modo separador só a subir.
+                    transition: reduced || (motion && !animateIn) ? 'none' : 'transform var(--dur-bars) var(--ease-out)',
                   }}
                 />
               </div>

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Bar } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
@@ -6,7 +6,7 @@ import ChartFrame from './ChartFrame';
 import { acwrStatusLabel } from '../../utils/biEngine';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { barGrowAnimation } from '../../utils/introAnimations';
-import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import useReducedMotion from '../../utils/useReducedMotion';
 
 /* Ponto 6 do redesenho:
    - O "Média 4s" era escrito com `ctx.fillText` em cima da tela. A linha
@@ -21,8 +21,46 @@ import { useRevealAnimation } from '../../utils/useRevealAnimation';
 const TONE_COLOR = { danger: 'var(--danger)', caution: 'var(--warn)', safe: 'var(--ok)', neutral: 'var(--text-4)' };
 const GYM_RGB = '158, 195, 210';   // --gym #9ec3d2
 
+/* 2026-10-04: a linha da média de 4 semanas é um plugin CONSTANTE que lê o
+   valor das opções na hora de desenhar (`options.plugins.avgLine.value`). O
+   react-chartjs-2 só entrega `plugins` ao `new Chart(...)` e nunca os
+   atualiza; com o plugin a fechar sobre `avg4w` (useMemo [avg4w]) a linha
+   ficava no valor da criação — e no carrossel o canvas já não remonta a cada
+   reveal: ao passar de 'mes' para 'semana' a linha ficava desenhada sem
+   legenda, e ao contrário nunca aparecia. As opções, essas, chegam ao
+   gráfico (setOptions + update). */
+const AVG_LINE_PLUGIN = {
+  id: 'avgLine',
+  afterDraw: (chart, _args, opts) => {
+    const avg = opts?.value;
+    if (avg == null || !isFinite(avg)) return;
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea || !scales?.y) return;
+    const yPos = scales.y.getPixelForValue(avg);
+    if (yPos > chartArea.bottom || yPos < chartArea.top) return;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(chartArea.left, yPos);
+    ctx.lineTo(chartArea.right, yPos);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(248, 250, 252, 0.45)';
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.restore();
+    // Sem rótulo: o "Média 4s" vive na legenda em HTML do ChartFrame.
+  },
+};
+const PLUGINS = [AVG_LINE_PLUGIN];
+
 export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' }) {
-  const values = weeklyData.map(d => Number(d.volumeLoad || 0));
+  /* 2026-10-04 (F5, plano §2.1): data, plugin e options estáveis — cada
+     referência nova faz o react-chartjs-2 chamar chart.update(), que a meio de
+     uma entrada a reaproveita e perde o escalonamento. A revelação (quando o
+     gráfico aparece no ecrã) é da ChartFrame; aqui só se diz COMO as barras
+     crescem. */
+  const reduced = useReducedMotion();
+  const values = useMemo(() => weeklyData.map(d => Number(d.volumeLoad || 0)), [weeklyData]);
   const maxVal = values.length ? Math.max(...values) : 0;
   const last = values.length ? values[values.length - 1] : 0;
   const prev = values.length > 1 ? values[values.length - 2] : null;
@@ -32,29 +70,8 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
     avg4w = values.slice(-4).reduce((s, v) => s + v, 0) / 4;
   }
 
-  const avgLinePlugin = {
-    id: 'avgLine',
-    afterDraw: (chart) => {
-      if (avg4w === null) return;
-      const { ctx, chartArea, scales } = chart;
-      if (!chartArea) return;
-      const yPos = scales.y.getPixelForValue(avg4w);
-      if (yPos > chartArea.bottom || yPos < chartArea.top) return;
 
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(chartArea.left, yPos);
-      ctx.lineTo(chartArea.right, yPos);
-      ctx.lineWidth = 1;
-      ctx.strokeStyle = 'rgba(248, 250, 252, 0.45)';
-      ctx.setLineDash([5, 5]);
-      ctx.stroke();
-      ctx.restore();
-      // Sem rótulo: o "Média 4s" vive na legenda em HTML do ChartFrame.
-    }
-  };
-
-  const data = {
+  const data = useMemo(() => ({
     labels: weeklyData.map(d => d.weekLabel),
     datasets: [
       {
@@ -69,15 +86,15 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
         borderRadius: 6,
       }
     ]
-  };
+  }), [weeklyData, values]);
 
-  const reveal = useRevealAnimation();
-
-  const options = {
+  const n = weeklyData.length;
+  const options = useMemo(() => ({
     responsive: true,
     /* Ponto 9, animação 4: as barras crescem da base, da esquerda para a
-       direita, --dur-bars com --stagger-bars — quando o gráfico aparece no ecrã. */
-    animation: barGrowAnimation(reveal.animate),
+       direita. Quando entra em cena é a ChartFrame que decide (stop → reset →
+       update); com reduced-motion é `false` e o gráfico aparece logo. */
+    animation: barGrowAnimation({ reduced, count: n }),
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
@@ -88,7 +105,9 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
         borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         padding: 10,
-      }
+      },
+      // Lido pelo AVG_LINE_PLUGIN a cada desenho (null = sem linha).
+      avgLine: { value: avg4w },
     },
     scales: {
       x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
@@ -99,7 +118,7 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
         border: { display: false },
       }
     }
-  };
+  }), [reduced, n, avg4w]);
 
   let acwrHint;
   let acwrTone = 'neutral';
@@ -118,7 +137,6 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
 
   return (
     <ChartFrame
-      reveal={reveal}
       className={className}
       label="Volume-carga semanal"
       info={<MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />}
@@ -131,7 +149,7 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
       legend={legend}
       height={208}
     >
-      <Bar data={data} options={options} plugins={[avgLinePlugin]} />
+      <Bar data={data} options={options} plugins={PLUGINS} updateMode="period" />
     </ChartFrame>
   );
 }

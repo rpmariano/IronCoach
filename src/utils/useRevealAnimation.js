@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { prefersReducedMotion } from './coachBubbles';
+import { useReducedMotion } from './useReducedMotion';
+import { TabPageContext, TabReadyContext, useTabSettled } from './settledTab';
 
 /**
  * Animar quando se VÊ, não quando monta (pedido 2026-09-13).
@@ -32,6 +34,31 @@ import { prefersReducedMotion } from './coachBubbles';
  * Uso: pôr `ref` e `style` no elemento a observar, `key={playKey}` no que
  * tem de recomeçar a animação (um gráfico do Chart.js só anima ao montar),
  * e `animate` onde se decide se anima.
+ *
+ * ── Dois modos (2026-10-04, F5 — plano §2.1) ──────────────────────────────
+ * O que está acima é o modo SEM `TabPageContext` — Início (StatusCard,
+ * RaceCard) e Perfil (BadgesCard no carrossel do Perfil, que continua a
+ * rearmar por sair de lado; BadgesPorGanharSheet). Fica exatamente igual.
+ *
+ * Dentro do carrossel da Evolução (Dashboard.jsx põe um `TabPageContext` por
+ * página) o gatilho passa a ser o do plano:
+ *   revelado = à vista && separador ASSENTE && dados do separador prontos
+ * - "à vista" = `intersectionRect.height` ≥ 55 % da altura do que se observa
+ *   (a ÁREA do gráfico, não o cartão). O `intersectionRect` já vem cortado
+ *   pelos antepassados: a Análise Cruzada fechada (altura 0) e as páginas
+ *   cortadas pelo carrossel nunca contam. A largura sai do critério — o lado
+ *   é o separador assente que decide (settledTab.js);
+ * - "pronto" = `TabReadyContext` (o Dashboard calcula-o com `sliceReady` das
+ *   fatias do separador) E a opção `ready` de quem chama;
+ * - `seen` liga no 1.º reveal e nunca desliga (é o que deixa criar o canvas
+ *   uma vez só); `playKey` sobe a cada reveal;
+ * - rearma quando o separador deixa de estar assente — mas só ao fim de
+ *   QUICK_RETURN_MS fora dele e já fora da vista: num vai-e-vem rápido
+ *   (< ~3 s, decisão D4) o gráfico nunca chega a voltar a zero e não
+ *   repete. O scroll vertical nunca rearma;
+ * - com reduced-motion: `seen` logo, `animate` sempre falso, nada escondido —
+ *   mas continua a observar, porque a criação dos canvas continua a esperar
+ *   pela proximidade (ChartFrame).
  */
 
 /** Quanto tempo `animate` fica ligado depois de aparecer: cobre a contagem
@@ -42,9 +69,28 @@ export const REVEAL_ANIMATION_WINDOW_MS = 1600;
 export const REVEAL_MIN_VISIBLE_PX = 80;
 export const REVEAL_MIN_VISIBLE_RATIO = 0.3;
 
-const THRESHOLDS = [0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1];
+/** Modo separador: fração da altura (limitada à do ecrã) que tem de estar à
+ *  vista. Com os 80 px do modo antigo, num cartão o gráfico começava a crescer
+ *  com uns 20 px da área à vista — o movimento acontecia abaixo da dobra. */
+export const REVEAL_TAB_MIN_RATIO = 0.55;
+/** Modo separador: voltar ao separador antes disto não repete a entrada. */
+export const QUICK_RETURN_MS = 3000;
 
-export function useRevealAnimation({ enabled = true } = {}) {
+const THRESHOLDS = [0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1];
+// Passos finos: o IntersectionObserver só chama ao cruzar um limiar, e o
+// critério é por altura (55 % do que cabe no ecrã), não por um rácio fixo.
+const TAB_THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
+
+export function useRevealAnimation(options = {}) {
+  const page = useContext(TabPageContext);
+  // O modo não muda durante a vida do componente: um componente não passa de
+  // fora para dentro do carrossel sem remontar (o Provider muda a árvore). Por
+  // isso os dois ramos nunca trocam de ordem de hooks entre renders.
+  return page == null ? useLegacyReveal(options) : useTabReveal(options);
+}
+
+/** Modo antigo (sem `TabPageContext`) — sem alterações desde 2026-09-13. */
+function useLegacyReveal({ enabled = true } = {}) {
   const supported = typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function';
   const active = enabled && supported && !prefersReducedMotion();
 
@@ -114,5 +160,122 @@ export function useRevealAnimation({ enabled = true } = {}) {
     playKey: state.play,
     animate: active && state.play > 0 && settledPlay !== state.play,
     style: active && !state.shown ? { opacity: 0 } : undefined,
+  };
+}
+
+/**
+ * Modo separador (dentro do carrossel da Evolução). Opções:
+ *   enabled  false desliga (o ChartFrame desliga o seu quando o gráfico lhe
+ *            passa o próprio `reveal`)
+ *   ready    false segura o reveal (soma-se ao TabReadyContext da página) —
+ *            para um gráfico que espera por uma fatia que o separador não lista
+ */
+function useTabReveal({ enabled = true, ready: readyOption = true } = {}) {
+  const supported = typeof window !== 'undefined' && typeof window.IntersectionObserver === 'function';
+  // Observar (saber o que está à vista) e animar são coisas separadas: com
+  // reduced-motion não se anima, mas os canvas continuam a ser criados só
+  // quando perto — e para isso é preciso continuar a observar.
+  const observing = enabled && supported;
+  const reduced = useReducedMotion();
+  const motion = observing && !reduced;
+  const settled = useTabSettled();
+  const tabReady = useContext(TabReadyContext);
+  const ready = tabReady !== false && readyOption !== false;
+
+  // Como no modo antigo: sem nada a observar, o ref nem guarda o elemento
+  // (evita o 2.º render logo à montagem que rebentava o Chart.js no jsdom).
+  const observingRef = useRef(observing);
+  observingRef.current = observing;
+  const [node, setNode] = useState(null);
+  const ref = useCallback((el) => { if (observingRef.current) setNode(el); }, []);
+
+  // `inView` é ESTADO (não só uma ref): uma entrada do observer que chegue
+  // depois de o separador assentar tem de poder revelar sozinha.
+  const [inView, setInView] = useState(false);
+  // Fora da vista por completo (rácio 0) — a condição para rearmar: nunca se
+  // devolve a zero um gráfico que ainda se vê, nem que seja de raspão.
+  const outRef = useRef(true);
+  const settledRef = useRef(settled);
+  settledRef.current = settled;
+  const pendingRearmRef = useRef(false);
+
+  const [st, setSt] = useState({ shown: false, seen: false, play: 0 });
+  const [settledPlay, setSettledPlay] = useState(0);
+
+  // Revela no próprio render em que as três condições se juntam (e não num
+  // efeito): quem desenha o gráfico recebe já `seen`/`playKey` novos e monta o
+  // canvas no mesmo commit — o construtor do Chart.js anima a partir da base.
+  if (motion && !st.shown && inView && settled && ready) {
+    setSt((s) => (s.shown ? s : { shown: true, seen: true, play: s.play + 1 }));
+  }
+
+  const rearm = useCallback(() => {
+    pendingRearmRef.current = false;
+    setSt((s) => (s.shown ? { ...s, shown: false } : s));
+  }, []);
+
+  // O separador deixou de estar assente: rearma ao fim de QUICK_RETURN_MS,
+  // se já não se vê; se ainda se vê (o dedo pousado, a página a voltar),
+  // fica pendente até o observer a dar como fora. Voltar a assentar antes
+  // cancela tudo — é o vai-e-vem rápido, que não repete.
+  useEffect(() => {
+    if (!motion || settled || !st.shown) return undefined;
+    const timer = setTimeout(() => {
+      if (outRef.current) rearm();
+      else pendingRearmRef.current = true;
+    }, QUICK_RETURN_MS);
+    return () => {
+      clearTimeout(timer);
+      pendingRearmRef.current = false;
+    };
+  }, [motion, settled, st.shown, rearm]);
+
+  useEffect(() => {
+    if (!motion || st.play === 0) return undefined;
+    const timer = setTimeout(() => setSettledPlay(st.play), REVEAL_ANIMATION_WINDOW_MS);
+    return () => clearTimeout(timer);
+  }, [motion, st.play]);
+
+  useEffect(() => {
+    if (!observing || !node) return undefined;
+    const observer = new window.IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const box = entry.boundingClientRect || {};
+        const seenRect = entry.intersectionRect || {};
+        const viewHeight = entry.rootBounds?.height
+          || window.innerHeight || document.documentElement?.clientHeight || 0;
+        const height = box.height || 0;
+        const need = Math.min(height, viewHeight || height) * REVEAL_TAB_MIN_RATIO;
+        const seenHeight = seenRect.height || 0;
+        const seenWidth = seenRect.width ?? box.width ?? 1;
+        // Uma página vizinha encostada à margem do carrossel pode vir como
+        // "a intersetar" com largura 0 (interseção de aresta) — é fora.
+        const out = !entry.isIntersecting || seenHeight <= 0 || !(seenWidth > 0);
+        outRef.current = out;
+        setInView(!out && seenHeight >= need);
+        if (out && pendingRearmRef.current && !settledRef.current) rearm();
+      }
+    }, { threshold: TAB_THRESHOLDS });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [observing, node, rearm]);
+
+  return {
+    ref,
+    playKey: st.play,
+    animate: motion && st.play > 0 && settledPlay !== st.play,
+    // Escondido só antes do 1.º reveal; depois de rearmado fica à vista no
+    // estado zero (o ChartFrame põe o gráfico na base e o número a 0).
+    style: motion && !st.seen ? { opacity: 0 } : undefined,
+    seen: !motion || st.seen,
+    armed: motion && st.seen && !st.shown,
+    reduced,
+    // Para o ChartFrame: há animação a gerir? há observer? e a área está à
+    // vista com o separador assente (o critério de criar o canvas)?
+    active: motion,
+    observing,
+    visible: observing ? inView && settled : true,
+    settled,
+    ready,
   };
 }

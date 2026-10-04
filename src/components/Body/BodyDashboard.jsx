@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../../store';
+import { useShallow } from 'zustand/react/shallow';
 import { BODY_METRICS } from '../../utils/body';
 import { getBodyIcon } from '../../utils/bodyIcons';
 import { User } from 'lucide-react';
@@ -38,8 +39,35 @@ function fmtShortDate(iso) {
   return y === new Date().getFullYear() ? base : `${base} ${y}`;
 }
 
+/* Ponto 6: os ticks deixam de escrever dentro da tela — o valor atual é o
+   número grande do ChartFrame e os extremos do eixo vão para os cantos,
+   em HTML.
+   2026-10-04 (F5, animação ao ficar visível): as opções são uma constante de
+   módulo — referência estável, senão cada render fazia chart.update() e
+   repetia o movimento. As duas linhas não têm `animation` própria (vale o
+   default global, 700 ms; `false` com reduced-motion) e a revelação é do
+   ChartFrame. Trocar de métrica ou de período muda `data` e usa a transição
+   curta (updateMode="period"), sem repetir a entrada. */
+const CHART_OPTIONS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false } },
+  scales: {
+    y: { beginAtZero: false, grace: '5%', grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
+    x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
+  },
+};
+
 export default function BodyDashboard({ onGoToCalendar }) {
-  const { bodyAssessments, gymSessions, profile, setOpenCreationMode } = useAppStore();
+  /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
+     seletor, qualquer alteração ao store — um deslize entre separadores
+     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
+     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
+     redesenha quando um destes campos muda de referência. */
+  const { bodyAssessments, gymSessions, profile, setOpenCreationMode } = useAppStore(useShallow((s) => ({
+    bodyAssessments: s.bodyAssessments, gymSessions: s.gymSessions, profile: s.profile,
+    setOpenCreationMode: s.setOpenCreationMode,
+  })));
   const [timeRange, setTimeRange] = useState('trimestre');
   const [selectedMetricKey, setSelectedMetricKey] = useState('weight_kg');
 
@@ -143,23 +171,36 @@ export default function BodyDashboard({ onGoToCalendar }) {
     };
   }, [points, selectedMetric]);
 
-  // Ponto 6: os ticks deixam de escrever dentro da tela — o valor atual é o
-  // número grande do ChartFrame e os extremos do eixo vão para os cantos,
-  // em HTML.
-  const darkScales = {
-    y: { beginAtZero: false, grace: '5%', grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
-    x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
-  };
-
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    scales: darkScales
-  };
-
   const weightTrendData = useMemo(() => calculateWeightTrend(filteredAssessments), [filteredAssessments]);
   const compositionData = useMemo(() => calculateCompositionTrend(filteredAssessments), [filteredAssessments]);
+
+  // useMemo (e antes do return antecipado, por causa das regras dos hooks): `data` estável.
+  const weightDualChartData = useMemo(() => (weightTrendData ? {
+    labels: weightTrendData.rawPoints.map(p => p.date.slice(8, 10) + '/' + p.date.slice(5, 7)),
+    datasets: [
+      {
+        label: weightTrendData.isEWMASmoothing ? 'EWMA (Tendência)' : 'Evolução (Raw)',
+        data: weightTrendData.movingAverage.map(p => p.weight),
+        borderColor: '#ff5fa8', // --body
+        borderWidth: 3,
+        pointRadius: 0,
+        tension: 0.4,
+        fill: false,
+      },
+      {
+        label: 'Pesagens (Raw)',
+        data: weightTrendData.rawPoints.map(p => p.weight),
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(255, 255, 255, 0.4)',
+        pointBackgroundColor: 'rgba(255, 255, 255, 0.4)',
+        pointRadius: 4,
+        borderWidth: 0,
+        tension: 0,
+        fill: false,
+        showLine: false,
+      }
+    ]
+  } : null), [weightTrendData]);
 
   /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
      utils/dashboardVerdicts.js — aqui só se juntam os dados que o biEngine
@@ -199,33 +240,6 @@ export default function BodyDashboard({ onGoToCalendar }) {
       </div>
     );
   }
-
-  const weightDualChartData = weightTrendData ? {
-    labels: weightTrendData.rawPoints.map(p => p.date.slice(8, 10) + '/' + p.date.slice(5, 7)),
-    datasets: [
-      {
-        label: weightTrendData.isEWMASmoothing ? 'EWMA (Tendência)' : 'Evolução (Raw)',
-        data: weightTrendData.movingAverage.map(p => p.weight),
-        borderColor: '#ff5fa8', // --body
-        borderWidth: 3,
-        pointRadius: 0,
-        tension: 0.4,
-        fill: false,
-      },
-      {
-        label: 'Pesagens (Raw)',
-        data: weightTrendData.rawPoints.map(p => p.weight),
-        borderColor: 'transparent',
-        backgroundColor: 'rgba(255, 255, 255, 0.4)',
-        pointBackgroundColor: 'rgba(255, 255, 255, 0.4)',
-        pointRadius: 4,
-        borderWidth: 0,
-        tension: 0,
-        fill: false,
-        showLine: false,
-      }
-    ]
-  } : null;
 
   return (
     <div className="space-y-4 fade-in pb-16">
@@ -328,7 +342,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
                 ? `Sem leituras desta métrica no período selecionado. A última é de ${fmtShortDate(selectedSummary.valueDate)} (${fmtValueUnit(selectedMetric, selectedSummary.value)}).`
                 : 'Sem leituras desta métrica no período selecionado.'}
           >
-            {points.length >= 1 ? <Line data={chartData} options={chartOptions} /> : null}
+            {points.length >= 1 ? <Line data={chartData} options={CHART_OPTIONS} updateMode="period" /> : null}
           </ChartFrame>
         );
       })()}
@@ -379,7 +393,7 @@ export default function BodyDashboard({ onGoToCalendar }) {
             ]}
             height={192}
           >
-            <Line data={weightDualChartData} options={chartOptions} />
+            <Line data={weightDualChartData} options={CHART_OPTIONS} updateMode="period" />
           </ChartFrame>
         );
       })()}

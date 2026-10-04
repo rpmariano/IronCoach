@@ -1,7 +1,8 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Dashboard from './Dashboard';
+import { getSettledIndex, getLastSettledIndex, resetSettledTab } from '../../utils/settledTab';
 
 /* Teste de fumo dos separadores do Dashboard. Existe sobretudo para travar
    uma regressão concreta: a reestruturação de 2026-08-23 removeu o separador
@@ -9,8 +10,13 @@ import Dashboard from './Dashboard';
    um separador que importe ficheiros inexistentes, este teste falha antes do
    build de produção. */
 
-vi.mock('../../store', () => ({
-  useAppStore: () => ({
+const h = vi.hoisted(() => ({ scrollToTabs: [] }));
+
+// O mock respeita o seletor (2026-10-04): os separadores e o Dashboard
+// passaram a ler o store com seletores, e um mock que devolvia sempre o
+// estado inteiro dava-lhes o objeto todo no lugar de um array.
+vi.mock('../../store', () => {
+  const state = {
     runs: [],
     gymSessions: [],
     meals: [],
@@ -19,17 +25,44 @@ vi.mock('../../store', () => ({
     coachPlans: [],
     coachPlanItems: [],
     shoes: [],
+    dailyCheckins: [],
     profile: { experience_level: 'medio' },
     insightStates: {},
+    insightSnoozes: {},
     session: null,
     waterLogs: [],
-    setActiveTab: vi.fn(),
-  }),
-}));
+    dataPending: false,
+    loadedSlices: {},
+    setActiveTab: vi.fn(() => true),
+    setOpenCreationMode: vi.fn(),
+    setNutritionDayFocus: vi.fn(),
+  };
+  const useAppStore = (sel) => (sel ? sel(state) : state);
+  useAppStore.getState = () => state;
+  useAppStore.setState = () => {};
+  useAppStore.subscribe = () => () => {};
+  return {
+    useAppStore,
+    sliceReady: (s) => !s.dataPending,
+    EVOLUTION_TAB_SLICES: { hub: [], corrida: [], ginasio: [], nutricao: [], corpo: [] },
+  };
+});
 
 // Os avisos da Carol têm testes próprios (BI/CoachInsightsDock.test.jsx) e
 // leem do store o que este mock não tem — aqui testam-se os separadores.
 vi.mock('../BI/CoachInsightsDock', () => ({ default: () => null }));
+
+// O Geral real, mas a guardar o scrollToTab que recebe a cada render.
+vi.mock('./OverviewDashboard', async (importOriginal) => {
+  const actual = await importOriginal();
+  const React = await import('react');
+  return {
+    default: (props) => {
+      h.scrollToTabs.push(props.scrollToTab);
+      return React.createElement(actual.default, props);
+    },
+  };
+});
 
 // O jsdom não tem canvas — sem isto os gráficos rebentavam ao montar.
 vi.mock('react-chartjs-2', () => ({
@@ -41,6 +74,9 @@ vi.mock('react-chartjs-2', () => ({
 }));
 
 describe('Dashboard', () => {
+  beforeEach(() => { resetSettledTab(); h.scrollToTabs.length = 0; });
+  afterEach(() => { resetSettledTab(); vi.restoreAllMocks(); });
+
   it('mostra os cinco separadores: Visão Geral, Corrida, Ginásio, Nutrição, Corpo', () => {
     render(<Dashboard activeModule="corrida" />);
     // Usar getAllByText porque alguns labels aparecem tanto no tab como no PillarSummaryCard
@@ -61,5 +97,46 @@ describe('Dashboard', () => {
       const { unmount } = render(<Dashboard activeModule={mod} />);
       unmount();
     }
+  });
+
+  /* F5 (2026-10-04): o sinal de "separador assente" que os gráficos usam. */
+  it('ao entrar, o separador pedido fica logo assente (sem esperar por scroll)', () => {
+    render(<Dashboard activeModule="nutricao" />);
+    expect(getSettledIndex()).toBe(3);
+    expect(getLastSettledIndex()).toBe(3);
+  });
+
+  it('"holistica" (localStorage antigo) abre o Geral em vez de um índice −1', () => {
+    render(<Dashboard activeModule="holistica" />);
+    expect(getSettledIndex()).toBe(0);
+    // A SubNav marca o Geral como o separador atual.
+    expect(screen.getByRole('button', { current: 'page' })).toHaveTextContent('Geral');
+  });
+
+  it('entrar não vibra (o salto inicial não passa pelo scrollTo do hook)', () => {
+    const vibrate = vi.fn();
+    Object.defineProperty(navigator, 'vibrate', { configurable: true, value: vibrate });
+    try {
+      render(<Dashboard activeModule="ginasio" />);
+      expect(vibrate).not.toHaveBeenCalled();
+    } finally {
+      delete navigator.vibrate;
+    }
+  });
+
+  it('sair da Evolução esquece a página assente', () => {
+    const { unmount } = render(<Dashboard activeModule="corpo" />);
+    expect(getSettledIndex()).toBe(4);
+    unmount();
+    expect(getSettledIndex()).toBe(-1);
+    expect(getLastSettledIndex()).toBe(-1);
+  });
+
+  it('o scrollToTab que o Geral recebe é estável entre trocas de separador (o memo vale)', () => {
+    const { rerender } = render(<Dashboard activeModule="hub" />);
+    rerender(<Dashboard activeModule="corrida" />);
+    rerender(<Dashboard activeModule="nutricao" />);
+    expect(h.scrollToTabs.length).toBeGreaterThan(0);
+    expect(new Set(h.scrollToTabs).size).toBe(1);
   });
 });

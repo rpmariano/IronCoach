@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { prefetchScreensWhenIdle } from './prefetchScreens';
+import { prefetchScreensWhenIdle, rememberDefaultExport } from './prefetchScreens';
 
 const now = (fn) => fn();
 
@@ -51,5 +51,22 @@ describe('prefetchScreensWhenIdle — os ecrãs carregados antes de se pedirem',
     cancel();
     await vi.advanceTimersByTimeAsync(200);
     expect(load).not.toHaveBeenCalled();
+  });
+});
+
+describe('rememberDefaultExport — o ecrã já carregado desenha-se sem passar pelo lazy', () => {
+  it('get() é null até o import resolver, e depois devolve o export por omissão', async () => {
+    const Comp = () => null;
+    const mod = { default: Comp };
+    const screen = rememberDefaultExport(() => Promise.resolve(mod));
+    expect(screen.get()).toBe(null);
+    await expect(screen.load()).resolves.toBe(mod);
+    expect(screen.get()).toBe(Comp);
+  });
+
+  it('uma falha não regista nada e propaga o erro (o retryOnce trata dele)', async () => {
+    const screen = rememberDefaultExport(() => Promise.reject(new Error('404')));
+    await expect(screen.load()).rejects.toThrow('404');
+    expect(screen.get()).toBe(null);
   });
 });

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import Card from '../shared/Card';
-import { useAppStore } from '../../store';
+import { useAppStore, sliceReady } from '../../store';
+import { useShallow } from 'zustand/react/shallow';
 import { TrendingUp, Mountain, Activity, Zap, Timer, HeartPulse } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import { format, subDays, parseISO, eachDayOfInterval } from 'date-fns';
@@ -10,7 +11,7 @@ import TimeFilterBar from '../BI/TimeFilterBar';
 import KPICard from '../BI/KPICard';
 import ACWRChart from '../BI/ACWRChart';
 import { barGrowAnimation } from '../../utils/introAnimations';
-import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import useReducedMotion from '../../utils/useReducedMotion';
 import IntensityDonut from '../BI/IntensityDonut';
 import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
@@ -60,7 +61,15 @@ function getBestPaceData(allRuns, targetKm) {
 }
 
 export default function RunDashboard() {
-  const { runs, profile, raceEvents = [], setOpenCreationMode, coachPlans, coachPlanItems } = useAppStore();
+  /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
+     seletor, qualquer alteração ao store — um deslize entre separadores
+     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
+     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
+     redesenha quando um destes campos muda de referência. */
+  const { runs, profile, raceEvents = [], setOpenCreationMode, coachPlans, coachPlanItems } = useAppStore(useShallow((s) => ({
+    runs: s.runs, profile: s.profile, raceEvents: s.raceEvents, setOpenCreationMode: s.setOpenCreationMode,
+    coachPlans: s.coachPlans, coachPlanItems: s.coachPlanItems,
+  })));
   const [activeRange, setActiveRange] = useState('mes');
 
   // BI Data processing
@@ -212,18 +221,21 @@ export default function RunDashboard() {
   // é o número grande do ChartFrame e os extremos do eixo vão para os
   // cantos, em HTML.
   /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars,
-     quando o gráfico aparece no ecrã (useRevealAnimation). */
-  const barsReveal = useRevealAnimation();
-  const chartOptions = {
+     quando o gráfico aparece no ecrã — a revelação é do ChartFrame
+     (2026-10-04); aqui só opções estáveis e reduced-aware. */
+  const reduced = useReducedMotion();
+  const barsReady = useAppStore((s) => sliceReady(s, ['runs']));
+  const barCount = chartData?.labels?.length;
+  const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: { legend: { display: false } },
-    animation: barGrowAnimation(barsReveal.animate),
+    animation: barGrowAnimation({ reduced, count: barCount }),
     scales: {
       y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
       x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
     }
-  };
+  }), [reduced, barCount]);
 
   // Watch metrics — delega em @formulas/runWatchMetrics.ts (T1.5). BUG DE
   // PARIDADE corrigido ao migrar (2026-08-25, Fase E): lia
@@ -421,7 +433,7 @@ export default function RunDashboard() {
           saiu antes (EmptyModuleState), por isso aqui há sempre dados. */}
       {chartData && (
         <ChartFrame
-          reveal={barsReveal}
+          ready={barsReady}
           label="Distância por dia"
           value={fmtNumber(totalDist, 1)}
           unit="km no período"
@@ -431,7 +443,7 @@ export default function RunDashboard() {
           legend={[{ label: 'Distância diária', color: 'var(--run)' }]}
           height={176}
         >
-          <Bar data={chartData} options={chartOptions} />
+          <Bar data={chartData} options={chartOptions} updateMode="period" />
         </ChartFrame>
       )}
 

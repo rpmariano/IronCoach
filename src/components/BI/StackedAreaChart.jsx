@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { useAppStore, sliceReady } from '../../store';
 
 /* Ponto 6 do redesenho:
    - A legenda do Chart.js (desenhada na tela) e os ticks com callback
@@ -24,16 +25,29 @@ const GORDA = '#ff5fa8';  // --body
    menos de 2 não há evolução para desenhar: diz-se o que falta. */
 const MIN_ASSESSMENTS = 2;
 
-export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], leanMassKg: [] }, className = '' }) {
-  const rawDates = data.dates || [];
-  const rawLean = data.leanMassKg || [];
-  const rawFat = data.fatMassKg || [];
-  const valid = rawDates
-    .map((d, i) => ({ d, l: Number(rawLean[i]), f: Number(rawFat[i]) }))
-    .filter(p => isFinite(p.l) && isFinite(p.f) && p.f > 0 && p.l > 0);
-  const dates = valid.map(p => p.d);
-  const lean = valid.map(p => p.l);
-  const fat = valid.map(p => p.f);
+/* 2026-10-04 (F5, animação ao ficar visível): a revelação passou a ser do
+   ChartFrame (observa a própria área e só monta o canvas com o separador
+   assente). Aqui ficam só `data` e `options` ESTÁVEIS — cada referência nova
+   faz o react-chartjs-2 chamar chart.update(), e um update a meio da entrada
+   (ou fora do ecrã) estraga o movimento. A linha não define `animation`: vale
+   o default global (700 ms; `false` com reduced-motion). */
+const EMPTY_DATA = { dates: [], fatMassKg: [], leanMassKg: [] };
+// A fatia que o gráfico lê; o Dashboard já a segura pelo separador, isto cobre o uso fora dele.
+const SLICES = ['body'];
+
+export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) {
+  const ready = useAppStore((st) => sliceReady(st, SLICES));
+
+  // Uma só passagem, só quando `data` muda (o compositionData do Corpo já é memoizado).
+  const { dates, lean, fat } = useMemo(() => {
+    const rawDates = data.dates || [];
+    const rawLean = data.leanMassKg || [];
+    const rawFat = data.fatMassKg || [];
+    const valid = rawDates
+      .map((d, i) => ({ d, l: Number(rawLean[i]), f: Number(rawFat[i]) }))
+      .filter(p => isFinite(p.l) && isFinite(p.f) && p.f > 0 && p.l > 0);
+    return { dates: valid.map(p => p.d), lean: valid.map(p => p.l), fat: valid.map(p => p.f) };
+  }, [data]);
   const n = dates.length;
   const canDraw = n >= MIN_ASSESSMENTS;
 
@@ -44,7 +58,7 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
   const firstLean = lean.length ? Number(lean[0]) : 0;
   const leanDelta = lean.length >= 2 ? lastLean - firstLean : null;
 
-  const chartData = {
+  const chartData = useMemo(() => ({
     // Sem labels de texto: o eixo x não escreve nada. Os índices bastam.
     labels: dates.map((_, i) => i),
     datasets: [
@@ -73,9 +87,9 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
         tension: 0.2,
       }
     ]
-  };
+  }), [dates, lean, fat]);
 
-  const options = {
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -107,10 +121,11 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
       }
     },
     interaction: { mode: 'nearest', axis: 'x', intersect: false }
-  };
+  }), [dates]);
 
   return (
     <ChartFrame
+      ready={ready}
       className={className}
       label="Composição corporal"
       info={<MetricInfo text="O peso na balança engana. Este gráfico permite-te ver de que é realmente feito o teu corpo. Se a linha global descer mas a área violeta se mantiver igual, excelente: perdeste peso queimando apenas massa gorda enquanto seguraste a massa magra!" />}
@@ -131,7 +146,7 @@ export default function StackedAreaChart({ data = { dates: [], fatMassKg: [], le
           ? 'Preciso de 2 avaliações com gordura medida para mostrar a evolução — tens 1.'
           : 'Ainda não há avaliações com gordura medida neste período.'}
     >
-      {canDraw ? <Line data={chartData} options={options} /> : null}
+      {canDraw ? <Line data={chartData} options={options} updateMode="period" /> : null}
     </ChartFrame>
   );
 }

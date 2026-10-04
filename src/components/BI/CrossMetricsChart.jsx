@@ -1,19 +1,34 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Line } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 
-/* Ponto 6 do redesenho: a legenda do Chart.js (desenhada na tela) e os
+/* 2026-10-04 (F5, animação ao ficar visível): a revelação é do ChartFrame.
+   `data` e `options` passam a useMemo — quem chama (CrossAnalysisSection) já
+   entrega leftData/rightData memoizados; sem isto cada render fazia
+   chart.update(). A linha não tem `animation` própria: vale o default global
+   (700 ms; `false` com reduced-motion). `ready` (prop) segura a entrada
+   até a Análise Cruzada acabar de abrir (transitionend) e as fatias chegarem.
+
+   Ponto 6 do redesenho: a legenda do Chart.js (desenhada na tela) e os
    `title` dos dois eixos y saem; passam a HTML no ChartFrame, com o valor
    atual das duas séries como número grande e como delta. As cores das
    séries continuam a vir de quem chama (CrossAnalysisSection), já nas
    cores dos módulos. */
 
-export default function CrossMetricsChart({ title, helpText, leftData, rightData, className = '' }) {
-  const leftPoints = leftData?.data || [];
-  const rightPoints = rightData?.data || [];
+// Um ponto sem vizinhos (buracos dos dois lados) não desenha linha nenhuma:
+// mostra-se como ponto, senão o único RPE registado ficava invisível.
+const isolatedPointRadius = (points) => (ctx) => {
+  const i = ctx.dataIndex;
+  const has = (j) => points[j] != null && points[j].y != null;
+  return has(i) && !has(i - 1) && !has(i + 1) ? 3 : 0;
+};
+
+export default function CrossMetricsChart({ title, helpText, leftData, rightData, ready = true, className = '' }) {
+  const leftPoints = useMemo(() => leftData?.data || [], [leftData]);
+  const rightPoints = useMemo(() => rightData?.data || [], [rightData]);
   // O6 (2026-10-04): uma série pode ter buracos (y = null, p. ex. semanas sem
   // RPE registado). Number(null) dava 0 — o número grande mostrava "RPE 0" —,
   // por isso o "valor atual" é o último ponto que existe de facto.
@@ -26,16 +41,8 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
   };
   const lastLeft = lastValue(leftPoints);
   const lastRight = lastValue(rightPoints);
-  const labels = leftPoints.map(d => d.x);
-  // Um ponto sem vizinhos (buracos dos dois lados) não desenha linha nenhuma:
-  // mostra-se como ponto, senão o único RPE registado ficava invisível.
-  const isolatedPointRadius = (points) => (ctx) => {
-    const i = ctx.dataIndex;
-    const has = (j) => points[j] != null && points[j].y != null;
-    return has(i) && !has(i - 1) && !has(i + 1) ? 3 : 0;
-  };
-
-  const data = {
+  const labels = useMemo(() => leftPoints.map(d => d.x), [leftPoints]);
+  const data = useMemo(() => ({
     labels: leftPoints.map((_, i) => i),
     datasets: [
       {
@@ -61,9 +68,9 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
         pointHoverRadius: 4,
       }
     ]
-  };
+  }), [leftPoints, rightPoints, leftData, rightData]);
 
-  const options = {
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -105,10 +112,11 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
       }
     },
     interaction: { mode: 'nearest', axis: 'x', intersect: false }
-  };
+  }), [labels, leftData, rightData]);
 
   return (
     <ChartFrame
+      ready={ready}
       className={className}
       label={title}
       info={helpText ? <MetricInfo text={helpText} /> : undefined}
@@ -124,7 +132,7 @@ export default function CrossMetricsChart({ title, helpText, leftData, rightData
       ]}
       height={200}
     >
-      <Line data={data} options={options} />
+      <Line data={data} options={options} updateMode="period" />
     </ChartFrame>
   );
 }

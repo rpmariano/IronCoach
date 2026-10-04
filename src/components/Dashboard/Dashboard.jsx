@@ -1,10 +1,19 @@
-import React, { useRef, useCallback, useEffect } from 'react';
-import { useAppStore } from '../../store';
+import React, { useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
+import { useAppStore, sliceReady, EVOLUTION_TAB_SLICES } from '../../store';
 import { Utensils, Dumbbell, User, LayoutDashboard } from 'lucide-react';
 import RunIcon from '../shared/RunIcon';
 import { useCarouselHaptics } from '../../utils/haptics';
 import SubNav from '../shared/SubNav';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
+import { useReducedMotion } from '../../utils/useReducedMotion';
+import {
+  TabPageContext,
+  TabReadyContext,
+  setSettledIndex,
+  resetSettledTab,
+  useLastSettledIndex,
+  useSettledTabTracker,
+} from '../../utils/settledTab';
 
 import Run from '../Run/Run';
 import Gym from '../Gym/Gym';
@@ -26,10 +35,44 @@ const TABS = [
   { key: 'corpo', label: 'Corpo', icon: <User size={15} />, tone: 'body' },
 ];
 
-export default function Dashboard({ activeModule }) {
-  const { setActiveTab } = useAppStore();
+/* 'holistica' ainda vive em DASHBOARD_TABS e no localStorage antigo
+   (`ironcoach_last_module`) — o separador saiu a 2026-08-23 e o Geral ocupou
+   o lugar. Sem esta tradução o índice era −1: o carrossel não sincronizava e
+   nenhuma página ficava assente (2026-10-04). */
+const TAB_ALIASES = { holistica: 'hub' };
 
-  const currentIndex = TABS.findIndex(t => t.key === activeModule);
+/** Bit i ligado = os dados do separador i já chegaram (sliceReady das fatias
+ *  que ele lê, não o `dataPending` global — 2026-10-04). Um número, para o
+ *  seletor do zustand comparar por valor: o Dashboard só redesenha quando um
+ *  separador fica pronto, não a cada fatia que chega. */
+function readyMask(state) {
+  let mask = 0;
+  TABS.forEach((t, i) => {
+    if (sliceReady(state, EVOLUTION_TAB_SLICES[t.key] || [])) mask |= 1 << i;
+  });
+  return mask;
+}
+
+/** Uma página do carrossel: diz aos gráficos lá dentro em que página vivem
+ *  (para saberem se o separador está assente) e se os dados dela chegaram. */
+function TabPage({ index, ready, pageRef, children }) {
+  return (
+    <TabPageContext.Provider value={index}>
+      <TabReadyContext.Provider value={ready}>
+        <div ref={pageRef} className="tab-swipe-page">{children}</div>
+      </TabReadyContext.Provider>
+    </TabPageContext.Provider>
+  );
+}
+
+export default function Dashboard({ activeModule }) {
+  // Seletores, não o store inteiro (2026-10-04): o Dashboard redesenhava a
+  // cada mudança do store, e com ele os elementos dos cinco separadores.
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const readyBits = useAppStore(readyMask);
+
+  const moduleKey = TAB_ALIASES[activeModule] || activeModule;
+  const currentIndex = TABS.findIndex(t => t.key === moduleKey);
   const scrollRef = useRef(null);
   // scrollTo só existe depois de chamar o hook, mas o setter que lhe passamos
   // (handleIndexChange) precisa de lhe chamar quando o navGuard recusa a
@@ -44,35 +87,77 @@ export default function Dashboard({ activeModule }) {
   // carrossel em vez de o deixar preso a meio de um deslize.
   const handleIndexChange = useCallback((idx) => {
     const key = TABS[idx]?.key;
-    if (!key || key === activeModule) return;
+    if (!key || key === moduleKey) return;
     const ok = setActiveTab(key);
     if (!ok) scrollToRef.current(currentIndex);
-  }, [activeModule, currentIndex, setActiveTab]);
+  }, [moduleKey, currentIndex, setActiveTab]);
 
   const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
     scrollRef, TABS.length, currentIndex, handleIndexChange
   );
   scrollToRef.current = scrollTo;
 
+  /* Separador ASSENTE (2026-10-04, F5): o carrossel parado, sem toque, numa
+     página — o gatilho das animações dos gráficos (settledTab.js). Não é o
+     `currentIndex`, que muda a meio do gesto. */
+  useSettledTabTracker(scrollRef, TABS.length);
+
   /* A altura do carrossel segue o módulo ativo: sem isto o contentor tinha
      sempre a altura do módulo mais alto dos cinco, e num módulo curto
      sobrava esse vão como scroll vazio (relatado pelo utilizador a partir
-     do Perfil — o mesmo carrossel). */
+     do Perfil — o mesmo carrossel).
+     2026-10-04: segue a página ASSENTE, não o `currentIndex` — mudava a meio
+     do gesto e a página encolhia/crescia enquanto ainda se deslizava. Antes
+     da primeira (−1) vale o separador pedido. */
   const pageRefs = useRef([]);
-  const setCarouselPageRef = (i) => (el) => { pageRefs.current[i] = el; };
-  useCarouselActiveHeight(scrollRef, pageRefs, currentIndex);
+  const pageRefSetters = useMemo(
+    () => TABS.map((_, i) => (el) => { pageRefs.current[i] = el; }),
+    []
+  );
+  const lastSettled = useLastSettledIndex();
+  const heightIndex = lastSettled >= 0 ? lastSettled : currentIndex;
+  useCarouselActiveHeight(scrollRef, pageRefs, heightIndex);
+  // Com reduced-motion a altura muda sem transição. Declarado depois do
+  // hook de propósito: os efeitos correm por ordem, e este tira a transição
+  // que ele acabou de pôr antes de o browser a usar.
+  const reduced = useReducedMotion();
+  useEffect(() => {
+    if (reduced && scrollRef.current) scrollRef.current.style.transition = 'none';
+  }, [reduced, heightIndex]);
 
   const lastScrolledIndexRef = useRef(currentIndex);
 
-  // scrollToTab: permite que o OverviewDashboard navegue para um tab por key
+  // scrollToTab: permite que o OverviewDashboard navegue para um tab por key.
+  // Estável (2026-10-04): o `scrollTo` do hook muda a cada troca de separador
+  // e arrastava com ele o scrollToTab — o Geral (React.memo) redesenhava a
+  // cada deslize só por isso. Vai pela ref.
   const scrollToTab = useCallback((key) => {
     const idx = TABS.findIndex(t => t.key === key);
     if (idx >= 0) {
       lastScrolledIndexRef.current = idx;
       setActiveTab(key);
-      scrollTo(idx);
+      scrollToRef.current(idx);
     }
-  }, [setActiveTab, scrollTo]);
+  }, [setActiveTab]);
+
+  // O salto inicial para o separador pedido: antes de pintar (useLayoutEffect
+  // — com o useEffect o 1.º frame podia mostrar o Geral antes do salto) e sem
+  // vibrar (o scrollTo do hook vibrava 30 ms a cada entrada na Evolução, por
+  // "voltar" ao índice em que já estava). A página fica logo assente: entrar
+  // não espera por nenhum evento de scroll para os gráficos mexerem.
+  const initialIndexRef = useRef(currentIndex);
+  useLayoutEffect(() => {
+    const idx = initialIndexRef.current >= 0 ? initialIndexRef.current : 0;
+    const el = scrollRef.current;
+    if (el) {
+      const width = el.offsetWidth;
+      if (width > 0 && Math.abs(el.scrollLeft - idx * width) > 1) el.scrollLeft = idx * width;
+    }
+    setSettledIndex(idx);
+    // Ao sair da Evolução: a próxima entrada começa do zero (sem a altura nem
+    // a página assente desta).
+    return () => resetSettledTab();
+  }, []);
 
   // activeModule também muda por fora do carrossel (ex.: FAB "Registar
   // refeição" chama setActiveTab diretamente) — sincroniza o scroll nesses
@@ -80,22 +165,26 @@ export default function Dashboard({ activeModule }) {
   // chamar scrollTo novamente para não criar saltos ou conflitos com o swipe.
   const isInitialMount = useRef(true);
   useEffect(() => {
+    if (isInitialMount.current) {
+      // O 1.º já foi tratado no useLayoutEffect acima.
+      isInitialMount.current = false;
+      lastScrolledIndexRef.current = currentIndex;
+      return;
+    }
     if (currentIndex >= 0 && scrollRef.current) {
       const el = scrollRef.current;
       const currentScrollIndex = el.offsetWidth > 0 ? Math.round(el.scrollLeft / el.offsetWidth) : -1;
-
-      if (isInitialMount.current) {
-        scrollTo(currentIndex, true);
-        isInitialMount.current = false;
-      } else if (currentScrollIndex !== currentIndex && lastScrolledIndexRef.current !== currentIndex) {
-        scrollTo(currentIndex, false);
+      if (currentScrollIndex !== currentIndex && lastScrolledIndexRef.current !== currentIndex) {
+        scrollToRef.current(currentIndex, false);
       }
       // Também depois de um deslize (que não passa por scrollTab/SubNav):
       // sem isto a ref ficava no separador antigo e uma troca vinda de fora
       // de volta a ele era ignorada, deixando o carrossel noutro módulo.
       lastScrolledIndexRef.current = currentIndex;
     }
-  }, [currentIndex, scrollTo]);
+  }, [currentIndex]);
+
+  const ready = (i) => (readyBits & (1 << i)) !== 0;
 
   return (
     <div className="space-y-4 fade-in">
@@ -115,18 +204,19 @@ export default function Dashboard({ activeModule }) {
           em vez de só ser possível trocar tocando no separador. Os 5 ficam
           montados ao mesmo tempo (o scroll nativo exige-o), o que também
           preserva o estado de cada um (filtros, período ativo) ao deslizar
-          para outro e voltar. */}
+          para outro e voltar. Cada página diz aos gráficos que tem dentro
+          qual é (TabPage) — é assim que só animam com o separador assente. */}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
         onTouchMove={handleTouchMove}
         className="tab-swipe-carousel"
       >
-        <div ref={setCarouselPageRef(0)} className="tab-swipe-page"><OverviewDashboard scrollToTab={scrollToTab} /></div>
-        <div ref={setCarouselPageRef(1)} className="tab-swipe-page"><Run /></div>
-        <div ref={setCarouselPageRef(2)} className="tab-swipe-page"><Gym /></div>
-        <div ref={setCarouselPageRef(3)} className="tab-swipe-page"><Nutrition /></div>
-        <div ref={setCarouselPageRef(4)} className="tab-swipe-page"><Body /></div>
+        <TabPage index={0} ready={ready(0)} pageRef={pageRefSetters[0]}><OverviewDashboard scrollToTab={scrollToTab} /></TabPage>
+        <TabPage index={1} ready={ready(1)} pageRef={pageRefSetters[1]}><Run /></TabPage>
+        <TabPage index={2} ready={ready(2)} pageRef={pageRefSetters[2]}><Gym /></TabPage>
+        <TabPage index={3} ready={ready(3)} pageRef={pageRefSetters[3]}><Nutrition /></TabPage>
+        <TabPage index={4} ready={ready(4)} pageRef={pageRefSetters[4]}><Body /></TabPage>
       </div>
 
       {/* Os avisos da Carol: os mesmos de todos os ecrãs (pedido 2026-09-27).

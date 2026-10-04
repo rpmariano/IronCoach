@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Scatter } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
+import { useAppStore, sliceReady } from '../../store';
 import { formatPace } from '../../utils/run';
 
 /* Ponto 6 do redesenho: os `title` dos dois eixos ("Ritmo (min/km)", "FC
@@ -27,8 +28,10 @@ function porDataAscendente(data) {
 }
 
 export default function ScatterTrendChart({ data: recebidos = [], className = '' }) {
-  const data = porDataAscendente(recebidos);
-  const chartData = {
+  const data = useMemo(() => porDataAscendente(recebidos), [recebidos]);
+  const ready = useAppStore((s) => sliceReady(s, ['runs']));
+  // 2026-10-04: data/options estáveis (cada referência nova faz chart.update()).
+  const chartData = useMemo(() => ({
     datasets: [
       {
         label: 'Sessões',
@@ -39,9 +42,9 @@ export default function ScatterTrendChart({ data: recebidos = [], className = ''
         pointHoverRadius: 7,
       }
     ]
-  };
+  }), [data]);
 
-  const options = {
+  const options = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -74,7 +77,7 @@ export default function ScatterTrendChart({ data: recebidos = [], className = ''
         border: { display: false },
       }
     }
-  };
+  }), []);
 
   const latest = data.length ? data[data.length - 1] : null;
   const paces = data.map(d => Number(d.paceSecondsPerKm)).filter(v => isFinite(v) && v > 0);
@@ -82,6 +85,7 @@ export default function ScatterTrendChart({ data: recebidos = [], className = ''
 
   return (
     <ChartFrame
+      ready={ready}
       className={className}
       label="Eficiência aeróbica"
       info={<MetricInfo text="Cruza o teu Pace (Ritmo) com a Frequência Cardíaca Média. O objetivo é ver a nuvem de pontos descer e ir para a direita (correr mais rápido para o mesmo esforço cardíaco)." />}
@@ -98,7 +102,7 @@ export default function ScatterTrendChart({ data: recebidos = [], className = ''
       height={200}
       footer="Ritmo no eixo horizontal, mais rápido à direita. Frequência cardíaca na vertical."
     >
-      <Scatter data={chartData} options={options} />
+      <Scatter data={chartData} options={options} updateMode="period" />
     </ChartFrame>
   );
 }

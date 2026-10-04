@@ -1,5 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import { useCountUp } from '../../utils/useCountUp';
+import { DUR_COUNT_REVEAL } from '../../utils/introAnimations';
+import { fmtNumber } from '../../utils/dashboardVerdicts';
 
 /**
  * PillarSummaryCard — Card compacto para os 4 pilares do dashboard.
@@ -34,6 +38,44 @@ const BADGE_COLORS = {
   neutral: { background: 'rgba(255,255,255,.06)', color: 'var(--text-4)' },
 };
 
+/* 2026-10-04 (F5, animação ao ficar visível — plano §2.1, ponto 5): o KPI
+   conta de zero ao valor quando o cartão fica à vista com o separador assente
+   (DUR_COUNT_REVEAL, 800 ms) e volta a zero ao rearmar, como o número grande
+   dos gráficos. O `kpi` chega já formatado ("32,4", "1,2k", "85%", "—"):
+   separa-se o número do resto ("k", "%") e só os frames do meio são
+   formatados aqui — o valor final é sempre o texto que o ecrã passou. Um KPI
+   que não começa por número ("—") não conta.
+   2026-10-04 (revisão): o número só leva espaços como separador de milhares
+   ("1 850") e o resto tem de ser vazio, "k", "%" ou começar por espaço
+   ("5 dias"). Antes "5:41" passava como 5 + ":41" (contava "1:41", "2:41"…)
+   e em "5 dias" o espaço ia para o número e o zero mostrava "0dias". */
+const KPI_NUMBER = /^(\d+(?:\s\d{3})*(?:[.,]\d+)?)(|[k%]|\s.*)$/i;
+
+function parseKpi(kpi) {
+  const m = typeof kpi === 'string' ? KPI_NUMBER.exec(kpi.trim()) : null;
+  if (!m) return null;
+  const numeric = Number(m[1].replace(/\s/g, '').replace(',', '.'));
+  if (!Number.isFinite(numeric)) return null;
+  const dec = /[.,](\d+)$/.exec(m[1]);
+  return { numeric, decimals: dec ? dec[1].length : 0, suffix: m[2] };
+}
+
+/** `key={playKey}` no sítio de uso: remonta a cada reveal e recomeça a contagem. */
+function KpiValue({ kpi, parsed, animate, zero }) {
+  const current = useCountUp(parsed ? parsed.numeric : NaN, { animate: !!parsed && animate, duration: DUR_COUNT_REVEAL });
+  if (!parsed) return kpi;
+  if (zero) {
+    return (
+      <>
+        <span aria-hidden="true">{fmtNumber(0, parsed.decimals)}{parsed.suffix}</span>
+        <span className="sr-only">{kpi}</span>
+      </>
+    );
+  }
+  // A meio da contagem formata-se; no fim (ou sem animar) é o texto original.
+  return current === parsed.numeric ? kpi : `${fmtNumber(current, parsed.decimals)}${parsed.suffix}`;
+}
+
 export default function PillarSummaryCard({
   title,
   icon,
@@ -46,8 +88,15 @@ export default function PillarSummaryCard({
 }) {
   const badgeStyle = BADGE_COLORS[badge?.color] || BADGE_COLORS.neutral;
 
+  const reveal = useRevealAnimation();
+  // Só dentro do carrossel da Evolução e sem reduced-motion; fora, como era.
+  const motion = reveal.active === true && !reveal.reduced;
+  const zero = motion && (reveal.seen === false || reveal.armed === true);
+  const parsed = useMemo(() => parseKpi(kpi), [kpi]);
+
   return (
     <button
+      ref={motion ? reveal.ref : undefined}
       onClick={onClick}
       className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-3 min-h-[44px] shadow-[0_8px_20px_rgba(0,0,0,0.2),inset_0_1px_6px_rgba(255,255,255,0.4)] text-left w-full active:scale-[0.97] transition-transform"
     >
@@ -62,7 +111,9 @@ export default function PillarSummaryCard({
 
       {/* KPI */}
       <div className="flex items-baseline gap-1 mb-1">
-        <span className="text-xl font-black text-white leading-none">{kpi}</span>
+        <span className="text-xl font-black text-white leading-none">
+          <KpiValue key={reveal.playKey} kpi={kpi} parsed={parsed} animate={motion && !!reveal.animate} zero={zero} />
+        </span>
         {kpiUnit && <span className="text-[11px] text-[var(--text-3)] font-semibold">{kpiUnit}</span>}
       </div>
 

@@ -43,3 +43,22 @@ function runWhenIdle(fn) {
 function prefersSavingData() {
   try { return !!globalThis.navigator?.connection?.saveData; } catch { return false; }
 }
+
+/* Lembra o export por omissão de um ecrã depois de o import() resolver
+   (2026-10-04). O `React.lazy` suspende sempre no 1.º render, mesmo com o
+   ficheiro já carregado (React 19: só lê a promessa resolvida depois de a
+   ter visto pendente) — na Evolução eram ~300 ms de esqueleto. Quem tiver o
+   módulo já resolvido pode desenhar o componente diretamente; `get()` devolve
+   null até lá, e o chamador cai no lazy. `load` é a fábrica crua (serve
+   também ao pré-carregamento e ao retryOnce): regista à medida que resolve e
+   devolve o módulo intacto. Uma falha não regista nada. */
+export function rememberDefaultExport(importFn) {
+  let resolved = null;
+  return {
+    load: () => importFn().then((mod) => {
+      resolved = mod?.default ?? null;
+      return mod;
+    }),
+    get: () => resolved,
+  };
+}

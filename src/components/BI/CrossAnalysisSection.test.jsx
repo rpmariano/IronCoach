@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CrossAnalysisSection, { closestWeighing } from './CrossAnalysisSection';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -225,5 +225,54 @@ describe('CrossAnalysisSection — ≥3 semanas fechadas mas sem veredicto (revi
     );
     expect(screen.getByTestId('cross-rpe-neutral').textContent).toMatch(/esforço médio das corridas foi 8,0/);
     expect(document.body.textContent).not.toMatch(/Interferência/);
+  });
+});
+
+describe('CrossAnalysisSection — revelação dos gráficos (F5, 2026-10-04)', () => {
+  const props = () => ({
+    runs: [trial(100), trial(29), trial(9)],
+    gymSessions: [],
+    meals: [],
+    bodyAssessments: [pesagem(100, 85), pesagem(30, 80), pesagem(10, 78)],
+  });
+  const lastVdot = () => charts.filter((c) => c.title === 'Eficiência Aeróbica vs. Peso').at(-1);
+  const grid = () => document.querySelector('.grid.transition-all');
+
+  it('fechada, os gráficos não estão prontos; abrir só os liberta no fim da transição', () => {
+    render(<CrossAnalysisSection {...props()} />);
+    expect(lastVdot().ready).toBe(false);
+    fireEvent.click(screen.getByText('Análise Cruzada'));
+    // a meio da abertura ainda não: a área mede metade e animava-se a esconder-se
+    expect(lastVdot().ready).toBe(false);
+    // o transitionend de um filho que borbulha não conta
+    fireEvent.transitionEnd(grid().firstChild);
+    expect(lastVdot().ready).toBe(false);
+    fireEvent.transitionEnd(grid());
+    expect(lastVdot().ready).toBe(true);
+  });
+
+  it('sem transitionend (movimento reduzido no CSS) o prazo liberta na mesma; fechar volta a segurar', () => {
+    vi.useFakeTimers();
+    try {
+      render(<CrossAnalysisSection {...props()} />);
+      fireEvent.click(screen.getByText('Análise Cruzada'));
+      expect(lastVdot().ready).toBe(false);
+      act(() => { vi.advanceTimersByTime(500); });
+      expect(lastVdot().ready).toBe(true);
+      fireEvent.click(screen.getByText('Análise Cruzada'));
+      expect(lastVdot().ready).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('as séries entregues ao gráfico mantêm a referência entre renders (senão: chart.update())', () => {
+    render(<CrossAnalysisSection {...props()} />);
+    const a = lastVdot();
+    // mesmas listas, outro render (abrir a secção é um)
+    fireEvent.click(screen.getByText('Análise Cruzada'));
+    const b = lastVdot();
+    expect(b.leftData).toBe(a.leftData);
+    expect(b.rightData).toBe(a.rightData);
   });
 });

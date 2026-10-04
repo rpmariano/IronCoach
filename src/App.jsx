@@ -2,7 +2,7 @@ import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 
 import { supabase } from './lib/supabase';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
-import { prefetchScreensWhenIdle } from './utils/prefetchScreens';
+import { prefetchScreensWhenIdle, rememberDefaultExport } from './utils/prefetchScreens';
 import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
 import { useAppStore, whenDataReady } from './store';
 import { useAppNavigationHistory } from './utils/appNavigationHistory';
@@ -68,7 +68,17 @@ function retryOnce(load) {
 }
 // Os import() crus: o pré-carregamento em tempo morto (PREFETCH_WHEN_IDLE)
 // usa-os diretamente — uma falha aí não deve recarregar a app.
-const importDashboard = () => import('./components/Dashboard/Dashboard');
+/* O Dashboard, depois de carregado (2026-10-04). O `React.lazy` suspende
+   SEMPRE no primeiro render, mesmo com o ficheiro já em cache (o React 19
+   só sabe que a promessa resolveu depois de a ler): na primeira entrada na
+   Evolução isso eram ~300 ms de esqueleto, com o chunk já descarregado. Por
+   isso o import() regista o componente resolvido (rememberDefaultExport) e
+   o ecrã desenha-o diretamente quando já existe (DashboardScreen); o lazy
+   fica só como recurso (rede lenta, poupança de dados, pré-carregamento que ainda não
+   acabou). O registo está na fábrica crua, para valer também no
+   pré-carregamento em tempo morto e no por gesto. */
+const dashboardModule = rememberDefaultExport(() => import('./components/Dashboard/Dashboard'));
+const importDashboard = dashboardModule.load;
 const importCalendar = () => import('./components/Calendar/Calendar');
 const importRaces = () => import('./components/Run/RacesScreen');
 const importCoach = () => import('./components/Coach/Coach');
@@ -103,7 +113,10 @@ const loadPlanoScreen = retryOnce(importPlanoScreen);
    mudo de menu" (relatado 2026-09-24). Ficam de fora o Admin (só para quem
    o é) e o arranque (só no primeiro acesso). */
 const PREFETCH_WHEN_IDLE = [
-  importCoach, importCalendar, importRaces, importPerfil, importDashboard,
+  // O Dashboard é o 1.º (2026-10-04): é o ecrã mais pesado (leva o Chart.js)
+  // e a Evolução é a razão de ser da app — com ele já avaliado, a primeira
+  // entrada desenha-o logo, sem esqueleto (ver dashboardModule).
+  importDashboard, importCoach, importCalendar, importRaces, importPerfil,
   importRunRegistration, importMealRegistration, importGymRegistration,
   importBodyRegistration, importRunAgenda, importPlanoScreen,
 ];
@@ -112,6 +125,18 @@ const PREFETCH_WHEN_IDLE = [
    esqueleto, só entra quando o brasão acabar de se desenhar (utils/
    logoIntro.js). O pré-carregamento por gesto chama as fábricas cruas. */
 const Dashboard = lazy(holdForLogo(loadDashboard));
+
+/* Escolhe UMA vez por montagem entre o componente já resolvido e o lazy. O
+   tipo não pode mudar a meio da vida do ecrã: se o import() acabasse com o
+   Dashboard à vista (montado pelo lazy), trocar o tipo num re-render
+   desmontava-o e perdia-se o período de cada separador e os gráficos. Com o
+   useState, a escolha fica fixa até o atleta sair da Evolução. Se o lazy
+   suspender na montagem, o estado não chegou a ser guardado e a nova
+   tentativa já encontra o resolvido. */
+function DashboardScreen(props) {
+  const [Screen] = useState(() => dashboardModule.get() || Dashboard);
+  return <Screen {...props} />;
+}
 const Calendar = lazy(holdForLogo(loadCalendar));
 const RacesScreen = lazy(holdForLogo(loadRaces));
 const Coach = lazy(holdForLogo(loadCoach));
@@ -460,7 +485,23 @@ function buildEmptyDemoData() {
 }
 
 export default function App() {
-  const { session, setSession, setProfile, loadInitialData, activeTab, setActiveTab, openCreationMode, setOpenCreationMode, editingRaceId, setEditingRaceId, editingRunId, setEditingRunId } = useAppStore();
+  /* Seletores por campo, não `useAppStore()` inteiro (2026-10-04): sem seletor
+     a App subscrevia o store todo e redesenhava (com o Layout e os 5
+     separadores da Evolução dentro) a cada alteração — incluindo
+     `lastDashboardTab`, que muda a cada deslize entre separadores. Era um dos
+     focos do jank no deslize. As ações do zustand são estáveis. */
+  const session = useAppStore((s) => s.session);
+  const setSession = useAppStore((s) => s.setSession);
+  const setProfile = useAppStore((s) => s.setProfile);
+  const loadInitialData = useAppStore((s) => s.loadInitialData);
+  const activeTab = useAppStore((s) => s.activeTab);
+  const setActiveTab = useAppStore((s) => s.setActiveTab);
+  const openCreationMode = useAppStore((s) => s.openCreationMode);
+  const setOpenCreationMode = useAppStore((s) => s.setOpenCreationMode);
+  const editingRaceId = useAppStore((s) => s.editingRaceId);
+  const setEditingRaceId = useAppStore((s) => s.setEditingRaceId);
+  const editingRunId = useAppStore((s) => s.editingRunId);
+  const setEditingRunId = useAppStore((s) => s.setEditingRunId);
   const profile = useAppStore((s) => s.profile);
   const runs = useAppStore((s) => s.runs);
   const meals = useAppStore((s) => s.meals);
@@ -1104,7 +1145,7 @@ export default function App() {
               {activeTab === 'home' && <Home />}
               {activeTab === 'calendario' && <Calendar />}
               {activeTab === 'provas' && <RacesScreen />}
-              {DASHBOARD_TABS.includes(activeTab) && <Dashboard activeModule={activeTab} />}
+              {DASHBOARD_TABS.includes(activeTab) && <DashboardScreen activeModule={activeTab} />}
               {activeTab === 'coach' && <Coach />}
               {activeTab === 'perfil' && <Perfil />}
               {activeTab === 'admin' && <Admin />}
