@@ -122,7 +122,11 @@ export default function RaceHubView({
     calculateReadinessIndex(runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins),
   [runs, meals, bodyAssessments, gymSessions, profile, race, dailyCheckins]);
 
-  const readinessTitle = readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
+  // Sem pilares com dados (readinessIndex.ts, 2026-10-04), nenhuma luz acende
+  // e a pílula diz "a calibrar" — não "Baixa (0%)".
+  const calibrating = !!readiness.calibrating;
+  const readinessTitle = calibrating ? 'a calibrar' : readiness.level === 'high' ? 'Alta' : readiness.level === 'medium' ? 'Média' : 'Baixa';
+  const lightLevel = calibrating ? null : readiness.level;
 
   // Previsão de tempo/pace nesta prova — mesmo cálculo do gráfico "Evolução
   // VDOT & Previsão de Prova" (BI/RacePredictionChart) e dos insights do
@@ -754,10 +758,10 @@ export default function RaceHubView({
           </div>
 
           {/* Semáforo de Prontidão Carol */}
-          <div className="rh-traffic-light" title={`Prontidão Global: ${readinessTitle} (${readiness.score}%)`}>
-            <div className={`rh-light rh-light-red ${readiness.level === 'low' ? 'on' : ''}`} />
-            <div className={`rh-light rh-light-yellow ${readiness.level === 'medium' ? 'on' : ''}`} />
-            <div className={`rh-light rh-light-green ${readiness.level === 'high' ? 'on' : ''}`} />
+          <div className="rh-traffic-light" title={calibrating ? 'Prontidão Global: a calibrar' : `Prontidão Global: ${readinessTitle} (${readiness.score}%)`}>
+            <div className={`rh-light rh-light-red ${lightLevel === 'low' ? 'on' : ''}`} />
+            <div className={`rh-light rh-light-yellow ${lightLevel === 'medium' ? 'on' : ''}`} />
+            <div className={`rh-light rh-light-green ${lightLevel === 'high' ? 'on' : ''}`} />
           </div>
         </div>
 
@@ -894,16 +898,19 @@ export default function RaceHubView({
               // Mesma cor, mas misturada com o fundo da app em vez de
               // somada ao que estiver por baixo: 5,90:1, e igual em
               // qualquer sítio onde a pílula apareça.
-              background: readiness.level === 'high' ? 'color-mix(in srgb, var(--ok) 16%, var(--bg-app))'
-                : readiness.level === 'medium' ? 'color-mix(in srgb, var(--warn) 10%, var(--bg-app))'
+              background: calibrating ? 'var(--surface-dim)'
+                : lightLevel === 'high' ? 'color-mix(in srgb, var(--ok) 16%, var(--bg-app))'
+                : lightLevel === 'medium' ? 'color-mix(in srgb, var(--warn) 10%, var(--bg-app))'
                 : 'color-mix(in srgb, var(--danger) 12%, var(--bg-app))',
-              borderColor: readiness.level === 'high' ? 'var(--tint-ok-bd)'
-                : readiness.level === 'medium' ? 'var(--tint-warn-bd)' : 'var(--tint-danger-bd)',
-              color: readiness.level === 'high' ? 'var(--ok)'
-                : readiness.level === 'medium' ? 'var(--warn)' : 'var(--danger)',
+              borderColor: calibrating ? 'var(--border-glass)'
+                : lightLevel === 'high' ? 'var(--tint-ok-bd)'
+                : lightLevel === 'medium' ? 'var(--tint-warn-bd)' : 'var(--tint-danger-bd)',
+              color: calibrating ? 'var(--text-2)'
+                : lightLevel === 'high' ? 'var(--ok)'
+                : lightLevel === 'medium' ? 'var(--warn)' : 'var(--danger)',
             }}
           >
-            Prontidão {readinessTitle} ({readiness.score}%)
+            {calibrating ? 'Prontidão a calibrar' : `Prontidão ${readinessTitle} (${readiness.score}%)`}
           </span>
         </div>
 

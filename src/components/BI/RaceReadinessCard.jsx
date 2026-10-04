@@ -7,6 +7,8 @@ import { useAppStore } from '../../store';
 import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
 import { buildTrailModel } from '../../utils/homeModels';
 import { focusRace } from '@formulas/mainRace.ts';
+import { PILLAR_GLOSSARY } from '../../utils/glossary';
+import { readinessHint } from '../../utils/readinessHints';
 
 /* Ponto 3 do redesenho: os pilares tinham emoji (🏃 ⚡ 🥗 📈 🎯). Passam a
    lucide, cada um na cor do que mede — os dois de nutrição/energia no roxo
@@ -89,12 +91,21 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
     medium: { color: 'var(--warn)', label: 'Média' },
     low: { color: 'var(--danger)', label: 'Baixa' },
   };
-  const cfg = LEVEL_CONFIG[readiness.level] || LEVEL_CONFIG.low;
+  /* "A calibrar" (auditoria de onboarding, 2026-09-27): sem nenhum pilar de
+     treino, nutrição ou prova com dados, o score não diz nada. Mostrava
+     "18% · Baixa" a vermelho a quem tinha registado 2 corridas — lê-se
+     "estás mal preparado" quando a verdade é "ainda não sei". O motor
+     (readinessIndex.ts) já não conta os pilares sem dados; aqui só se
+     deixa de pintar um número que não existe. */
+  const calibrating = !!readiness.calibrating;
+  const NO_DATA = { color: 'var(--text-3)', label: 'a calibrar' };
+  const cfg = calibrating ? NO_DATA : (LEVEL_CONFIG[readiness.level] || LEVEL_CONFIG.low);
+  const hint = readinessHint(readiness);
 
   // SVG circle ring math
   const radius = 36;
   const circumference = 2 * Math.PI * radius;
-  const progress = circumference - (readiness.score / 100) * circumference;
+  const progress = circumference - ((calibrating ? 0 : readiness.score) / 100) * circumference;
 
   const HeaderComponent = nextRace && onClickRace ? 'button' : 'div';
   const headerProps = HeaderComponent === 'button' ? { 
@@ -111,7 +122,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
         {/* Ring */}
         <div className="relative shrink-0 w-20 h-20">
           <svg viewBox="0 0 88 88" className="w-20 h-20 -rotate-90">
-            <circle cx="44" cy="44" r={radius} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" />
+            <circle cx="44" cy="44" r={radius} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="8" strokeDasharray={calibrating ? '4 6' : undefined} />
             <circle
               cx="44" cy="44" r={radius}
               fill="none"
@@ -124,7 +135,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-xl font-black leading-none" style={{ color: cfg.color }}>{readiness.score}%</span>
+            <span className="text-xl font-black leading-none" style={{ color: cfg.color }}>{calibrating ? '—' : `${readiness.score}%`}</span>
             <span className="text-[11px] text-[var(--text-3)] font-semibold mt-0.5">Prontidão</span>
           </div>
         </div>
@@ -164,7 +175,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
           )}
           <div className="mt-2 flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-bold" style={{ color: cfg.color }}>
+              <span className="text-[11px] font-bold" style={{ color: cfg.color }} data-testid="readiness-level">
                 Prontidão {cfg.label}
               </span>
               {nextRace && (
@@ -178,10 +189,17 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
         </div>
       </HeaderComponent>
 
+      {hint && (
+        <p className="mt-3 text-[11px] leading-relaxed text-[var(--text-3)]" data-testid="readiness-hint">{hint}</p>
+      )}
+
       {/* Pillar breakdown */}
       <div className="mt-4 grid grid-cols-2 gap-2">
         {readiness.pillars.map(pillar => {
-          const pCfg = pillar.score >= 75 ? LEVEL_CONFIG.high : pillar.score >= 45 ? LEVEL_CONFIG.medium : LEVEL_CONFIG.low;
+          // Um pilar sem dados não tem nota: "—" e a barra vazia, sem o 0%
+          // a vermelho (auditoria de onboarding, 2026-09-27).
+          const noData = pillar.hasData === false;
+          const pCfg = noData ? NO_DATA : pillar.score >= 75 ? LEVEL_CONFIG.high : pillar.score >= 45 ? LEVEL_CONFIG.medium : LEVEL_CONFIG.low;
           return (
             <div 
               key={pillar.key} 
@@ -199,7 +217,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 {/* 12,5px: é um número que o atleta lê de relance, não uma
                     etiqueta — o handoff manda subir acima do piso nesses
                     casos (ponto 2, "12px para dados lidos em movimento"). */}
-                <span className="text-[12.5px] font-bold shrink-0" style={{ color: pCfg.color }}>{pillar.score}%</span>
+                <span className="text-[12.5px] font-bold shrink-0" style={{ color: pCfg.color }}>{noData ? '—' : `${pillar.score}%`}</span>
               </div>
               {/* Cresce por transform, não por width: animar width obriga o
                   browser a refazer layout a cada frame (as barras são
@@ -212,7 +230,7 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                   className="h-full w-full rounded-full"
                   style={{
                     background: pCfg.color,
-                    transform: `scaleX(${Math.max(0, Math.min(100, pillar.score)) / 100})`,
+                    transform: `scaleX(${noData ? 0 : Math.max(0, Math.min(100, pillar.score)) / 100})`,
                     transformOrigin: 'left',
                     transition: 'transform var(--dur-bars) var(--ease-out)',
                   }}
@@ -241,14 +259,23 @@ export default function RaceReadinessCard({ runs, meals, bodyAssessments, gymSes
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider">{selectedPillar.label}</h3>
               </div>
               <span className="text-sm font-bold" style={{
-                color: selectedPillar.score >= 75 ? 'var(--ok)'
+                color: selectedPillar.hasData === false ? 'var(--text-3)'
+                  : selectedPillar.score >= 75 ? 'var(--ok)'
                   : selectedPillar.score >= 45 ? 'var(--warn)' : 'var(--danger)',
-              }}>{selectedPillar.score}%</span>
+              }}>{selectedPillar.hasData === false ? 'Sem dados' : `${selectedPillar.score}%`}</span>
             </div>
             
-            <p className="text-sm text-[var(--text-3)] leading-relaxed mb-6">
+            <p className="text-sm text-[var(--text-3)] leading-relaxed mb-4">
               {selectedPillar.desc}
             </p>
+
+            {/* O que o pilar mede: o nome chega cortado a 375px e os title="…"
+                não existem num ecrã tátil (auditoria de onboarding). */}
+            {PILLAR_GLOSSARY[selectedPillar.key] && (
+              <p className="text-[12px] text-[var(--text-3)] leading-relaxed mb-6 pt-3 border-t border-[var(--border-glass)]" data-testid="pillar-glossary">
+                {PILLAR_GLOSSARY[selectedPillar.key]}
+              </p>
+            )}
             
             <button
               onClick={(e) => {

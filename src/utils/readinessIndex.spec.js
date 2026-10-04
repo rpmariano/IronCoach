@@ -146,3 +146,48 @@ describe('checkinPillar — perto da prova, nunca "descanso" (revisão pré-depl
     }
   });
 });
+
+/* Auditoria de onboarding (2026-09-27): um pilar sem dados não entra na
+   média, e sem nenhum pilar de treino/nutrição/prova a prontidão fica "a
+   calibrar" em vez de "Baixa". Espelhado em readinessIndex.test.ts. */
+describe('computeReadinessIndex — pilares sem dados não contam (2026-10-04)', () => {
+  const runs = [
+    { date: '2026-08-10', distance_km: 8, duration_seconds: 2400, kind: 'competicao', training_type: null, effort_rpe: 8 },
+    { date: '2026-08-24', distance_km: 8, duration_seconds: 2280, kind: 'competicao', training_type: null, effort_rpe: 8 },
+  ];
+
+  it('sem registos nenhuns: a calibrar', () => {
+    const r = computeReadinessIndex([], [], [], [], {}, '2026-08-25', null, null);
+    expect(r.calibrating).toBe(true);
+    expect(r.pillars.every((p) => !p.hasData)).toBe(true);
+  });
+
+  it('só corridas: as refeições em falta não puxam o índice para baixo', () => {
+    const r = computeReadinessIndex(runs, [], [], [], {}, '2026-08-25', null, null);
+    const byKey = Object.fromEntries(r.pillars.map((p) => [p.key, p]));
+    expect(byKey.ea.hasData).toBe(false);
+    expect(byKey.calories.hasData).toBe(false);
+    expect(byKey.vdot.hasData).toBe(true);
+    expect(r.calibrating).toBe(false);
+    expect(r.score).toBe(byKey.vdot.score);
+  });
+
+  it('só o check-in de hoje não chega para a prontidão de uma prova', () => {
+    const r = computeReadinessIndex([], [], [], [], {}, '2026-08-25', null, { sleep: 5, energy: 5, stress: 1, pain: 0 });
+    expect(r.calibrating).toBe(true);
+  });
+
+  it('prova marcada sem corridas: a tática não tem dados, continua a calibrar', () => {
+    const nextRace = { date: '2027-03-01', distance_km: 10, race_priority: 'a', created_at: '2026-08-01T00:00:00Z' };
+    const r = computeReadinessIndex([], [], [], [], { experience_level: 'intermedio' }, '2026-08-25', nextRace, null);
+    expect(r.pillars.find((p) => p.key === 'tactic').hasData).toBe(false);
+    expect(r.calibrating).toBe(true);
+  });
+
+  it('um alerta real da tática conta, mesmo sem mais nada', () => {
+    const nextRace = { date: '2026-11-21', distance_km: 42.195, race_priority: 'a', created_at: '2026-09-20T00:00:00Z' };
+    const r = computeReadinessIndex([], [], [], [], { experience_level: 'iniciante' }, '2026-09-26', nextRace, null);
+    expect(r.calibrating).toBe(false);
+    expect(r.score).toBe(30);
+  });
+});

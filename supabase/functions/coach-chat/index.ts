@@ -2370,9 +2370,15 @@ function buildReadinessPanel(
   if (readiness.pillars.length === 0) return null;
 
   const levelLabel: Record<string, string> = { high: "alta", medium: "média", low: "baixa" };
-  const pillarLine = readiness.pillars.map((p) => `${p.label} ${p.score}`).join(" · ");
+  // Um pilar sem dados não entra no índice (readinessIndex.ts, 2026-10-04):
+  // a Carol vê "sem dados" em vez de um 0 que não é nota nenhuma.
+  const pillarLine = readiness.pillars.map((p) => `${p.label} ${p.hasData ? p.score : "sem dados"}`).join(" · ");
   const lines: string[] = [
-    `- Índice de Prontidão: ${readiness.score}/100 (${levelLabel[readiness.level] ?? readiness.level}) — pilares: ${pillarLine}`,
+    readiness.calibrating
+      // O atleta vê "A calibrar" no ecrã, sem percentagem: a Carol não pode
+      // dar-lhe uma.
+      ? `- Índice de Prontidão: a calibrar (ainda não há registos de treino ou nutrição que cheguem; não dês uma percentagem, diz o que falta registar) — pilares: ${pillarLine}`
+      : `- Índice de Prontidão: ${readiness.score}/100 (${levelLabel[readiness.level] ?? readiness.level}; só conta os pilares com dados) — pilares: ${pillarLine}`,
   ];
   // Um "porquê" por pilar, não só o número — é o que permite à Carol explicar
   // a pontuação em vez de só a repetir.

@@ -18,7 +18,7 @@ import ChartFrame from '../BI/ChartFrame';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
 import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
-import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel } from '../../utils/biEngine';
+import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel, acwrMissingWeeks } from '../../utils/biEngine';
 import { formatPace } from '../../utils/run';
 import { computeBestPace } from '@formulas/bestPace.ts';
 import { computeRunWatchMetrics } from '@formulas/runWatchMetrics.ts';
@@ -83,10 +83,13 @@ export default function RunDashboard() {
   const acwrWeeklyData = useMemo(() => calculateACWRHistory(runs), [runs]);
   // 'undertrained' (carga baixa) e 'unknown'/sem dados não são "Perigo" —
   // ver auditoria de 23/08 (mostrava "Perigo" a um atleta com zero corridas).
-  const acwrStatus = useMemo(
-    () => acwrStatusLabel(acwrData?.status, acwrData?.hasEnoughData),
-    [acwrData]
-  );
+  // Sem histórico, quanto falta em vez de "Sem dados" (auditoria de
+  // onboarding, 2026-09-27).
+  const acwrStatus = useMemo(() => {
+    const st = acwrStatusLabel(acwrData?.status, acwrData?.hasEnoughData);
+    const missing = acwrMissingWeeks(acwrData);
+    return missing ? { ...st, label: `Faltam ${missing} sem.` } : st;
+  }, [acwrData]);
 
   // BI - Distribution. Sem o nível de experiência, caía sempre no default
   // 'medio' (alvo 80/20) — um iniciante (alvo 95%) via "não conforme" no

@@ -27,12 +27,18 @@ export interface ReadinessPillar {
   label: string;
   score: number;
   desc: string;
+  /** false quando o pilar não tem dados para dizer nada (sem refeições, sem
+   *  corridas com tempo...): o score fica 0, mas não entra na média. */
+  hasData: boolean;
 }
 
 export interface ReadinessIndex {
   score: number;
   pillars: ReadinessPillar[];
   level: "high" | "medium" | "low";
+  /** Nenhum pilar de treino, nutrição ou prova tem dados: o score não diz
+   *  nada e não se mostra como "Baixa" (auditoria de onboarding, 2026-09-27). */
+  calibrating: boolean;
 }
 
 export interface NextRaceForReadiness extends RaceForPlanning {
@@ -127,7 +133,7 @@ export function checkinPillar(c: CheckinForReadiness | null | undefined, ctx: Re
   } else {
     desc = trainingToday === false ? "Hoje estás em baixo. Ainda bem que é dia de descanso." : "Hoje estás em baixo. Um treino mais leve rende mais.";
   }
-  return { key: "checkin", label: "Como acordaste", score, desc };
+  return { key: "checkin", label: "Como acordaste", score, desc, hasData: true };
 }
 
 type RunInput = RunForAcwr & RunForVdot & RaceRun;
@@ -201,7 +207,7 @@ export function computeReadinessIndex(
       acwrScore = 0;
       acwrDesc = `Carga de risco (${virgula(acwrRatio)}). Risco de lesão aumentado.`;
     }
-    pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc });
+    pillars.push({ key: "acwr", label: "Carga de Treino", score: acwrScore, desc: acwrDesc, hasData: true });
   }
 
   // --- Pilar 2: Disponibilidade Energética ---
@@ -219,7 +225,7 @@ export function computeReadinessIndex(
     eaScore = 10;
     eaDesc = `EA de ${eaAvg} kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.`;
   }
-  pillars.push({ key: "ea", label: "Disponibilidade Energética", score: eaScore, desc: eaDesc });
+  pillars.push({ key: "ea", label: "Disponibilidade Energética", score: eaScore, desc: eaDesc, hasData: eaAvg > 0 });
 
   // --- Pilar 3: Compliance Calórica ---
   const macros = computeMacroAdherence(meals || [], profile, bodyAssessments || [], todayISO, "semana");
@@ -237,7 +243,7 @@ export function computeReadinessIndex(
     calScore = 20;
     calDesc = `${calPct}% do alvo calórico. Ingestão muito baixa para o volume de treino.`;
   }
-  pillars.push({ key: "calories", label: "Nutrição", score: calScore, desc: calDesc });
+  pillars.push({ key: "calories", label: "Nutrição", score: calScore, desc: calDesc, hasData: calZone !== "no_data" });
 
   // --- Pilar 4: Tendência VDOT ---
   const vdotTrend = computeVdotTrend(runs || []);
@@ -257,12 +263,13 @@ export function computeReadinessIndex(
       vdotDesc = `VDOT ${last.toFixed(1)} (↓ queda). A forma aeróbica desceu ligeiramente.`;
     }
   }
-  pillars.push({ key: "vdot", label: "Forma Aeróbica (VDOT)", score: vdotScore, desc: vdotDesc });
+  pillars.push({ key: "vdot", label: "Forma Aeróbica (VDOT)", score: vdotScore, desc: vdotDesc, hasData: vdotTrend.length >= 2 });
 
   // --- Pilar 5: Viabilidade Tática (só com prova agendada) ---
   if (nextRace && distanceKm != null && expLevel) {
     let tacticScore = 100;
     let tacticDesc = "Preparação alinhada com os objetivos da prova.";
+    let tacticHasData = true;
 
     const weeksToRace = Math.max(0, Math.floor((daysToRace ?? 0) / 7));
     // Só o volume que a app conhece de facto (com histórico); sem ele, null.
@@ -313,20 +320,30 @@ export function computeReadinessIndex(
       // dizer que "está adequado" (e pontuar 90) era inventar um dado que não há.
       tacticScore = 0;
       tacticDesc = "Ainda não tenho corridas para saber se o volume chega.";
+      tacticHasData = false;
     } else {
       tacticScore = 90;
       tacticDesc = "Volume e calendário de preparação adequados à distância.";
     }
 
-    pillars.push({ key: "tactic", label: "Viabilidade Tática", score: tacticScore, desc: tacticDesc });
+    pillars.push({ key: "tactic", label: "Viabilidade Tática", score: tacticScore, desc: tacticDesc, hasData: tacticHasData });
   }
 
   // --- Pilar 6: Como acordaste (só com check-in de hoje) ---
   const checkin = checkinPillar(todayCheckin, { trainingToday, raceTodayOrTomorrow });
   if (checkin) pillars.push(checkin);
 
-  const totalScore = Math.round(pillars.reduce((s, p) => s + p.score, 0) / pillars.length);
+  // Só os pilares com dados entram na média (pedido 2026-09-24: "se a app
+  // não tem dados, não apresenta dados", que o pilar de carga já seguia).
+  // Antes, um pilar sem refeições ou sem VDOT entrava com 0: com 2 corridas
+  // e nada mais, a prontidão dava "18% · Baixa", que um atleta novo lê como
+  // "estás mal preparado" quando a verdade é "ainda não sei" (auditoria de
+  // onboarding, 2026-09-27). O check-in sozinho não chega para a prontidão
+  // de uma prova: sem nenhum dos outros, fica "a calibrar".
+  const withData = pillars.filter((p) => p.hasData);
+  const calibrating = !withData.some((p) => p.key !== "checkin");
+  const totalScore = withData.length ? Math.round(withData.reduce((s, p) => s + p.score, 0) / withData.length) : 0;
   const level = totalScore >= 75 ? "high" : totalScore >= 50 ? "medium" : "low";
 
-  return { score: totalScore, pillars, level };
+  return { score: totalScore, pillars, level, calibrating };
 }

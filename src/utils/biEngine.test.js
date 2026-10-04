@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { subDays, format } from 'date-fns';
-import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel, sessionVolumeKg, calculateACWRHistory } from './biEngine';
+import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel, acwrMissingWeeks, sessionVolumeKg, calculateACWRHistory } from './biEngine';
 
 // Datas relativas a "agora" — daysAgo negativo devolve uma data futura
 // (útil para simular uma prova agendada).
@@ -588,5 +588,18 @@ describe('calculateACWRHistory — sem histórico, sem rácio', () => {
     const last = calculateACWRHistory(runs, 4).at(-1);
     expect(last.hasEnoughData).toBe(true);
     expect(typeof last.ratio).toBe('number');
+  });
+});
+
+// Auditoria de onboarding (2026-09-27): "Sem dados" passa a dizer quanto falta.
+describe('acwrMissingWeeks', () => {
+  it('semanas com corridas que faltam para 3 de 4', () => {
+    expect(acwrMissingWeeks({ hasEnoughData: false, historyWeeks: 0 })).toBe(3);
+    expect(acwrMissingWeeks({ hasEnoughData: false, historyWeeks: 2 })).toBe(1);
+  });
+  it('com histórico, ou sem saber, nada', () => {
+    expect(acwrMissingWeeks({ hasEnoughData: true, historyWeeks: 4 })).toBeNull();
+    expect(acwrMissingWeeks({ hasEnoughData: false })).toBeNull();
+    expect(acwrMissingWeeks(null)).toBeNull();
   });
 });

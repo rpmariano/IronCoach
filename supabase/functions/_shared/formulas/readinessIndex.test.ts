@@ -77,3 +77,24 @@ Deno.test("checkinPillar: energia em baixo com o sono bom não é 'Dormiste mal'
   assertEquals(checkinPillar(c, { trainingToday: false })!.desc, "Estás sem energia. Ainda bem que hoje é descanso.");
   assertEquals(checkinPillar(c, {})!.desc, "Estás sem energia. Hoje o treino é mais leve.");
 });
+
+/* Auditoria de onboarding (2026-09-27): pilares sem dados não entram na
+   média; sem nenhum de treino/nutrição/prova, "a calibrar". Espelha
+   src/utils/readinessIndex.spec.js. */
+Deno.test("computeReadinessIndex: só corridas — as refeições em falta não puxam o índice para baixo", () => {
+  const runs = [
+    { date: "2026-08-10", distance_km: 8, duration_seconds: 2400, kind: "competicao", training_type: null, effort_rpe: 8 },
+    { date: "2026-08-24", distance_km: 8, duration_seconds: 2280, kind: "competicao", training_type: null, effort_rpe: 8 },
+  ];
+  const r = computeReadinessIndex(runs, [], [], [], {}, "2026-08-25", null, null);
+  const vdot = r.pillars.find((p) => p.key === "vdot")!;
+  assertEquals(r.pillars.find((p) => p.key === "ea")!.hasData, false);
+  assertEquals(r.calibrating, false);
+  assertEquals(r.score, vdot.score);
+});
+
+Deno.test("computeReadinessIndex: só o check-in, ou prova sem corridas — a calibrar", () => {
+  assertEquals(computeReadinessIndex([], [], [], [], {}, "2026-08-25", null, { sleep: 5, energy: 5, stress: 1, pain: 0 }).calibrating, true);
+  const nextRace = { date: "2027-03-01", distance_km: 10, race_priority: "a", created_at: "2026-08-01T00:00:00Z" };
+  assertEquals(computeReadinessIndex([], [], [], [], { experience_level: "intermedio" }, "2026-08-25", nextRace, null).calibrating, true);
+});

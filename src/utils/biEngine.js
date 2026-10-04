@@ -99,6 +99,16 @@ export function acwrStatusLabel(status, hasEnoughData = true) {
 }
 
 /**
+ * Quantas semanas com corridas faltam para o ACWR existir (runAcwr.ts: em 3
+ * das últimas 4). "Sem dados" sozinho não diz o que fazer (auditoria de
+ * onboarding, 2026-09-27). null quando já há histórico ou não se sabe.
+ */
+export function acwrMissingWeeks(acwr) {
+  if (!acwr || acwr.hasEnoughData || !Number.isFinite(acwr.historyWeeks)) return null;
+  return Math.max(1, RUN_ACWR_MIN_HISTORY_WEEKS - acwr.historyWeeks);
+}
+
+/**
  * Running Analytics: Calcula ACWR (Acute:Chronic Workload Ratio) em km —
  * agudo: total dos últimos 7 dias (hoje incluído); crónico: média semanal
  * dos últimos 28 dias. Era sRPE (duração×RPE) até à Fase C — grandeza
@@ -113,11 +123,11 @@ export function acwrStatusLabel(status, hasEnoughData = true) {
 // unificadas nesta migração na janela exata de 7/28 dias que já era esta).
 export function calculateACWR(runs, today = todayISO()) {
   try {
-    const { acuteKm, chronicWeeklyKm, ratio, status, hasEnoughData } = computeRunAcwr(runs, today);
+    const { acuteKm, chronicWeeklyKm, ratio, status, hasEnoughData, historyWeeks } = computeRunAcwr(runs, today);
     const color = ACWR_STATUS_COLOR[status] || ACWR_STATUS_COLOR.unknown;
-    return { acuteKm, chronicWeeklyKm, ratio, status, color, hasEnoughData };
+    return { acuteKm, chronicWeeklyKm, ratio, status, color, hasEnoughData, historyWeeks };
   } catch (e) {
-    return { acuteKm: 0, chronicWeeklyKm: 0, ratio: 0, status: 'unknown', color: 'gray', hasEnoughData: false };
+    return { acuteKm: 0, chronicWeeklyKm: 0, ratio: 0, status: 'unknown', color: 'gray', hasEnoughData: false, historyWeeks: 0 };
   }
 }
 
@@ -792,6 +802,6 @@ export function calculateReadinessIndex(runs, meals, bodyAssessments, gymSession
     const todayCheckin = (dailyCheckins || []).find((c) => c?.date === today) || null;
     return sharedComputeReadinessIndex(runs || [], meals || [], bodyAssessments || [], gymSessions || [], profile, today, nextRace, todayCheckin, trainingToday);
   } catch (e) {
-    return { score: 0, pillars: [], level: 'low' };
+    return { score: 0, pillars: [], level: 'low', calibrating: true };
   }
 }

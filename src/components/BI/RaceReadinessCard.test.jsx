@@ -47,3 +47,25 @@ describe('RaceReadinessCard — escolha da próxima prova', () => {
     expect(screen.getByText('Meia B')).toBeInTheDocument();
   });
 });
+
+/* Auditoria de onboarding (2026-09-27): sem pilares com dados, nada de
+   "Baixa" nem de percentagens a vermelho. */
+describe('RaceReadinessCard — a calibrar', () => {
+  it('sem dados: "a calibrar", "—" no anel e nos pilares, e o que registar', async () => {
+    const { calculateReadinessIndex } = await import('../../utils/biEngine');
+    calculateReadinessIndex.mockReturnValueOnce({
+      score: 0, level: 'low', calibrating: true,
+      pillars: [
+        { key: 'ea', label: 'Disponibilidade Energética', score: 0, hasData: false, desc: '' },
+        { key: 'calories', label: 'Nutrição', score: 0, hasData: false, desc: '' },
+        { key: 'vdot', label: 'Forma Aeróbica (VDOT)', score: 0, hasData: false, desc: '' },
+      ],
+    });
+    useAppStore.setState?.({ dailyCheckins: [] });
+    render(<RaceReadinessCard runs={[]} meals={[]} bodyAssessments={[]} gymSessions={[]} raceEvents={[]} profile={{}} />);
+    expect(screen.getByTestId('readiness-level')).toHaveTextContent('Prontidão a calibrar');
+    expect(screen.queryByText(/Baixa/)).not.toBeInTheDocument();
+    expect(screen.queryByText('0%')).not.toBeInTheDocument();
+    expect(screen.getByTestId('readiness-hint')).toHaveTextContent('Regista corridas e refeições');
+  });
+});

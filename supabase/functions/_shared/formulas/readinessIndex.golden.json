@@ -60,22 +60,26 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão."
+          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino."
+          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino.",
+          "hasData": true
         },
         {
           "key": "vdot",
           "label": "Forma Aeróbica (VDOT)",
           "score": 100,
-          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer."
+          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer.",
+          "hasData": true
         }
       ],
-      "level": "low"
+      "level": "low",
+      "calibrating": false
     }
   },
   {
@@ -145,28 +149,33 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão."
+          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino."
+          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino.",
+          "hasData": true
         },
         {
           "key": "vdot",
           "label": "Forma Aeróbica (VDOT)",
           "score": 100,
-          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer."
+          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer.",
+          "hasData": true
         },
         {
           "key": "tactic",
           "label": "Viabilidade Tática",
           "score": 70,
-          "desc": "Ritmo-alvo exigente, mas alcançável num bom dia."
+          "desc": "Ritmo-alvo exigente, mas alcançável num bom dia.",
+          "hasData": true
         }
       ],
-      "level": "medium"
+      "level": "medium",
+      "calibrating": false
     }
   },
   {
@@ -254,34 +263,40 @@
           "key": "acwr",
           "label": "Carga de Treino",
           "score": 100,
-          "desc": "Carga ideal (1,28). Estás no sweet-spot de adaptação."
+          "desc": "Carga ideal (1,28). Estás no sweet-spot de adaptação.",
+          "hasData": true
         },
         {
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão."
+          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino."
+          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino.",
+          "hasData": true
         },
         {
           "key": "vdot",
           "label": "Forma Aeróbica (VDOT)",
           "score": 100,
-          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer."
+          "desc": "VDOT 41.9 (↑ melhoria). A tua capacidade aeróbica está a crescer.",
+          "hasData": true
         },
         {
           "key": "tactic",
           "label": "Viabilidade Tática",
           "score": 50,
-          "desc": "Volume de treino (6.3km/sem) insuficiente para a distância."
+          "desc": "Volume de treino (6.3km/sem) insuficiente para a distância.",
+          "hasData": true
         }
       ],
-      "level": "medium"
+      "level": "medium",
+      "calibrating": false
     }
   },
   {
@@ -302,22 +317,26 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 0,
-          "desc": "Sem dados nutricionais suficientes."
+          "desc": "Sem dados nutricionais suficientes.",
+          "hasData": false
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 0,
-          "desc": "Sem dados de nutrição suficientes."
+          "desc": "Sem dados de nutrição suficientes.",
+          "hasData": false
         },
         {
           "key": "vdot",
           "label": "Forma Aeróbica (VDOT)",
           "score": 0,
-          "desc": "Sem corridas qualificadas para calcular VDOT."
+          "desc": "Sem corridas qualificadas para calcular VDOT.",
+          "hasData": false
         }
       ],
-      "level": "low"
+      "level": "low",
+      "calibrating": true
     }
   },
   {
@@ -461,22 +480,26 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 60,
-          "desc": "EA de 31.6 kcal/kg. Subótima — come mais para sustentar o volume."
+          "desc": "EA de 31.6 kcal/kg. Subótima — come mais para sustentar o volume.",
+          "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 100,
-          "desc": "100% do alvo calórico. Nutrição alinhada com o esforço."
+          "desc": "100% do alvo calórico. Nutrição alinhada com o esforço.",
+          "hasData": true
         },
         {
           "key": "vdot",
           "label": "Forma Aeróbica (VDOT)",
           "score": 70,
-          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade."
+          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade.",
+          "hasData": true
         }
       ],
-      "level": "high"
+      "level": "high",
+      "calibrating": false
     }
   },
   {
@@ -504,28 +527,33 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 0,
-          "desc": "Sem dados nutricionais suficientes."
+          "desc": "Sem dados nutricionais suficientes.",
+          "hasData": false
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 0,
-          "desc": "Sem dados de nutrição suficientes."
+          "desc": "Sem dados de nutrição suficientes.",
+          "hasData": false
         },
         {
           "key": "vdot",
           "label": "Forma Aeróbica (VDOT)",
           "score": 0,
-          "desc": "Sem corridas qualificadas para calcular VDOT."
+          "desc": "Sem corridas qualificadas para calcular VDOT.",
+          "hasData": false
         },
         {
           "key": "tactic",
           "label": "Viabilidade Tática",
           "score": 0,
-          "desc": "Distância (Ultra) desaconselhada para iniciantes."
+          "desc": "Distância (Ultra) desaconselhada para iniciantes.",
+          "hasData": true
         }
       ],
-      "level": "low"
+      "level": "low",
+      "calibrating": false
     }
   },
   {
@@ -687,28 +715,33 @@
           "key": "acwr",
           "label": "Carga de Treino",
           "score": 0,
-          "desc": "Carga de risco (1,90). Risco de lesão aumentado."
+          "desc": "Carga de risco (1,90). Risco de lesão aumentado.",
+          "hasData": true
         },
         {
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 60,
-          "desc": "EA de 31.6 kcal/kg. Subótima — come mais para sustentar o volume."
+          "desc": "EA de 31.6 kcal/kg. Subótima — come mais para sustentar o volume.",
+          "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 100,
-          "desc": "100% do alvo calórico. Nutrição alinhada com o esforço."
+          "desc": "100% do alvo calórico. Nutrição alinhada com o esforço.",
+          "hasData": true
         },
         {
           "key": "vdot",
           "label": "Forma Aeróbica (VDOT)",
           "score": 70,
-          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade."
+          "desc": "VDOT 39.9 (→ estável). A manter a forma — adiciona um treino de qualidade.",
+          "hasData": true
         }
       ],
-      "level": "medium"
+      "level": "medium",
+      "calibrating": false
     }
   }
 ]

@@ -15,6 +15,7 @@ import {
   calculateWeightTrend,
   filterByDateRange,
   acwrStatusLabel,
+  acwrMissingWeeks,
 } from '../../utils/biEngine';
 import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
 
@@ -64,6 +65,10 @@ export default function OverviewDashboard({ scrollToTab }) {
   const runBadge = useMemo(() => {
     const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
     const COLOR = { safe: 'green', caution: 'yellow', danger: 'red', neutral: 'neutral' };
+    // Sem histórico, quanto falta em vez de "Sem dados" (auditoria de
+    // onboarding, 2026-09-27).
+    const missing = acwrMissingWeeks(acwr);
+    if (missing) return { label: `ACWR: faltam ${missing} sem.`, color: 'neutral' };
     return { label: label === 'Sem dados' ? label : `ACWR ${label}`, color: COLOR[tone] };
   }, [acwr]);
 
