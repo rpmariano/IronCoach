@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 /* Bugs #48/#52, fase C: a despensa na app — sugestões, habituais, e o que
    se grava quando o atleta ajusta à mão. */
 
-const db = vi.hoisted(() => ({ calls: [], prev: null, result: { data: { id: 'f1' }, error: null } }));
+const db = vi.hoisted(() => ({ calls: [], prev: null, prevError: null, result: { data: { id: 'f1' }, error: null } }));
 vi.mock('../lib/supabase', () => ({
   supabase: {
     from: (table) => {
@@ -15,7 +15,7 @@ vi.mock('../lib/supabase', () => ({
         eq: () => chain,
         select: () => chain,
         single: () => Promise.resolve(db.result),
-        maybeSingle: () => Promise.resolve({ data: db.prev, error: null }),
+        maybeSingle: () => Promise.resolve({ data: db.prev, error: db.prevError }),
         then: (resolve) => resolve({ error: null }),
       };
       return chain;
@@ -83,7 +83,7 @@ describe('textos', () => {
 });
 
 describe('savePantryFood', () => {
-  beforeEach(() => { db.calls.length = 0; db.prev = null; });
+  beforeEach(() => { db.calls.length = 0; db.prev = null; db.prevError = null; });
   const confirmed = { name: 'Pão de mistura (Lidl)', portion_grams: 40, portion_label: '1 fatia', calories_per_100g: 245, protein_per_100g: 9, carbs_per_100g: 45, fat_per_100g: 3, fiber_per_100g: 6 };
 
   it('novo, sem mexer nos valores da Carol: entra na despensa, não ajustado', async () => {
@@ -131,6 +131,12 @@ describe('savePantryFood', () => {
   it('um alimento que já está na despensa não é escrito por cima', async () => {
     db.prev = { id: 'f9', times_seen: 4, source: 'manual', in_pantry: true };
     await expect(savePantryFood({ userId: 'u1', values: { ...confirmed }, confirmed })).rejects.toThrow('Já tens este alimento na despensa');
+    expect(db.calls).toHaveLength(0);
+  });
+
+  it('se não consegue ver o que já lá está, não grava às cegas', async () => {
+    db.prevError = { message: 'sem rede' };
+    await expect(savePantryFood({ userId: 'u1', values: { ...confirmed }, confirmed })).rejects.toThrow('Não foi possível confirmar a despensa');
     expect(db.calls).toHaveLength(0);
   });
 });

@@ -144,8 +144,10 @@ export async function savePantryFood({ userId, values, confirmed, existing = nul
   }
   // Já vista numa refeição (fora da despensa)? Entra, sem perder as vezes
   // que já apareceu nem de onde veio (revisão pré-master).
-  const { data: prev } = await supabase.from('athlete_foods')
+  const { data: prev, error: prevError } = await supabase.from('athlete_foods')
     .select('id, times_seen, source, in_pantry').eq('user_id', userId).eq('name_key', row.name_key).maybeSingle();
+  // Sem esta leitura não se sabe se escreve por cima — não grava às cegas.
+  if (prevError) throw new Error('Não foi possível confirmar a despensa. Tenta novamente.');
   // Já está na despensa: não se escreve por cima sem ele ver o que lá está.
   if (prev?.in_pantry) throw new Error('Já tens este alimento na despensa — abre-o lá para o ajustar.');
   const { data, error } = await supabase.from('athlete_foods')

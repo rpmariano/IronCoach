@@ -235,11 +235,14 @@ Deno.test("remapQuestionItems: uma pergunta presa ao nome do Gemini passa para o
   // E assim parseQuestions já a encontra.
   assertEquals(parseQuestions(remapped, [estimado("2 ovos estrelados", 196)], [], ids).length, 1);
   assertEquals(remapQuestionItems("nada", []), "nada");
-  // Uma pergunta que já aponta para um alimento da refeição não muda: o
-  // "Arroz" da foto não passa a ser o "arroz basmati" escrito.
-  const arroz = [pergunta({ topic: "arroz", item_name: "Arroz" })];
-  const fica = remapQuestionItems(arroz, [["Arroz", "arroz basmati"]], ["Arroz", "arroz basmati"]) as Array<{ item_name: string }>;
-  assertEquals(fica[0].item_name, "Arroz");
+  // Uma pergunta que já aponta para um alimento da refeição não muda.
+  const ovos = [pergunta({ item_name: "2 ovos estrelados" })];
+  assertEquals(remapQuestionItems(ovos, [["2 Ovos estrelados", "2 ovos estrelados"]], ["2 ovos estrelados"]), ovos);
+  // Ambígua — "Arroz" da foto e também o nome que o Gemini deu ao "arroz
+  // basmati" escrito: cai, em vez de ajustar um deles às cegas.
+  const arroz = [pergunta({ topic: "arroz", item_name: "Arroz" }), pergunta({ topic: "molho", item_name: "Bife" })];
+  const ficam = remapQuestionItems(arroz, [["Arroz", "arroz basmati"]], ["Arroz", "arroz basmati", "Bife"]) as Array<{ item_name: string }>;
+  assertEquals(ficam.map((q) => q.item_name), ["Bife"]);
 });
 
 // Revisão pré-master: o pedido leva só os 80 mais usados, mas um escrito

@@ -387,14 +387,18 @@ export function remapQuestionItems(questions: unknown, pairs: [string, string][]
   const finals = new Set(finalNames.map(foodKey));
   const byKey = new Map(pairs.map(([from, to]) => [foodKey(from), to]));
   // deno-lint-ignore no-explicit-any
-  return questions.map((q: any) => {
+  return questions.flatMap((q: any) => {
     const key = foodKey(q?.item_name);
-    // Já aponta para um alimento da refeição: fica. Ex.: "Arroz" da foto,
-    // quando o Gemini chamou também "Arroz" ao "arroz basmati" escrito —
-    // passava a perguntar pelo outro arroz.
-    if (finals.has(key)) return q;
     const to = byKey.get(key);
-    return to ? { ...q, item_name: to } : q;
+    if (finals.has(key)) {
+      // Ambígua: "Arroz" é um alimento da refeição (da foto) e também o nome
+      // que o Gemini deu ao "arroz basmati" escrito. Não se sabe de qual
+      // fala, e a resposta ajustaria um deles às cegas — cai; a estimativa
+      // fica (revisão do 51a04fc1).
+      if (to && foodKey(to) !== key) return [];
+      return [q];
+    }
+    return [to ? { ...q, item_name: to } : q];
   });
 }
 
