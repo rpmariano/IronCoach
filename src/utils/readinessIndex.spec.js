@@ -201,3 +201,31 @@ describe('computeReadinessIndex — pilares sem dados não contam (2026-10-04)',
     expect(r.calibrating).toBe(true);
   });
 });
+
+/* Revisão pré-deploy de 2026-10-04: com refeições registadas, uma EA média
+   ≤ 0 é o pior caso de RED-S — crítico (score 0) e dentro da média, nunca
+   "sem dados" (antes subia o índice). Espelha readinessIndex.test.ts. */
+describe('computeReadinessIndex — EA negativa com refeições (2026-10-04)', () => {
+  const runs = [{ date: '2026-08-24', distance_km: 30, duration_seconds: 10800, kind: 'treino', training_type: null, effort_rpe: 6 }];
+  const meals = [{ date: '2026-08-24', calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 }];
+  const body = [{ date: '2026-08-01', weight_kg: 70, body_fat_pct: 15 }];
+  const profile = { calorie_goal: 2400 };
+
+  it('o pilar tem dados, score 0 e texto crítico; o índice inclui-o', () => {
+    const r = computeReadinessIndex(runs, meals, body, [], profile, '2026-08-25', null, null);
+    const ea = r.pillars.find((p) => p.key === 'ea');
+    expect(ea.hasData).toBe(true);
+    expect(ea.score).toBe(0);
+    expect(ea.desc).toMatch(/^EA de -\d.*Crítico/);
+    const withData = r.pillars.filter((p) => p.hasData);
+    expect(withData.map((p) => p.key)).toContain('ea');
+    expect(r.score).toBe(Math.round(withData.reduce((s, p) => s + p.score, 0) / withData.length));
+  });
+
+  it('sem refeições nenhumas o pilar continua fora da média', () => {
+    const r = computeReadinessIndex(runs, [], body, [], profile, '2026-08-25', null, null);
+    const ea = r.pillars.find((p) => p.key === 'ea');
+    expect(ea.hasData).toBe(false);
+    expect(ea.desc).toBe('Sem dados nutricionais suficientes.');
+  });
+});

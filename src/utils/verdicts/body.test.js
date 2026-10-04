@@ -54,6 +54,23 @@ describe('bodyVerdict com período', () => {
     expectCarolVoice(v.text);
   });
 
+  /* 2026-10-04 (revisão no browser, Corpo › jul–set): ritmo recente dentro da
+     banda de estável, mas o trimestre inteiro perdeu 3,2 kg — não é «estável». */
+  it('período fechado com o ritmo final estável mas uma mudança real no período: diz quanto mudou', () => {
+    const Q3 = { where: 'no 3.º trimestre', isCurrent: false };
+    const t = { ...trend(-0.2, 'estavel', [77.5, 76, 74.3]), rawPoints: [
+      { date: '2026-07-02', weight: 77.5 }, { date: '2026-08-15', weight: 76 }, { date: '2026-09-28', weight: 74.3 },
+    ] };
+    const v = bodyVerdict({ weightTrend: t, period: Q3 });
+    expect(v).toEqual({ text: 'No 3.º trimestre, o peso desceu 3,2 kg, de 77,5 a 74,3 kg (≈0,25 kg por semana); nas últimas semanas estabilizou.', tone: 'neutral' });
+    expectCarolVoice(v.text);
+    // Abaixo do ruído da balança continua «estável».
+    const pouco = { ...t, rawPoints: [{ date: '2026-07-02', weight: 74.9 }, { date: '2026-09-28', weight: 74.3 }] };
+    expect(bodyVerdict({ weightTrend: pouco, period: Q3 }).text).toBe('No 3.º trimestre, o peso esteve estável, em 74,3 kg.');
+    // Período em curso: fala das últimas semanas, como sempre.
+    expect(bodyVerdict({ weightTrend: t, period: OUTUBRO }).text).toBe('O peso estabilizou nas últimas semanas, em 74,3 kg.');
+  });
+
   it('perder depressa demais: perigo no período em curso, aviso num fechado (é história)', () => {
     const w = [80, 78.6, 77.2];
     expect(bodyVerdict({ weightTrend: trend(-1.4, 'descendo', w), period: OUTUBRO }).tone).toBe('danger');

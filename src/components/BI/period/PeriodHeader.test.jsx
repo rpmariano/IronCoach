@@ -22,6 +22,7 @@ describe('PeriodHeader', () => {
     expect(screen.queryByRole('button', { name: '6 Meses' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Semana' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('Esta semana')).toBeInTheDocument();
+    // Como no mock-up: só «em curso» (o progresso do calendário não entra no navegador da semana).
     expect(screen.getByText('28 set – 4 out · em curso')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Semana seguinte' })).toBeDisabled();
   });
@@ -80,6 +81,27 @@ describe('PeriodHeader', () => {
     expect(summary).toContainElement(screen.getByTestId('period-navigator'));
     fireEvent.click(screen.getByRole('button', { name: 'Trimestre' }));
     expect(screen.getByText('out – dez 2026')).toBeInTheDocument();
+  });
+
+  it('PeriodNav com closedDays + dataStartISO: o histórico começa dentro do ano → "desde 13 jul · em curso · 83 dias fechados" (uma só definição)', () => {
+    act(() => usePeriodStore.getState().setKind('corrida', 'ano'));
+    function Tab() {
+      const cal = useCalendarPeriod('corrida', { dataStartISO: '2026-07-13' });
+      return <PeriodNav cal={cal} module="corrida" closedDays={83} dataStartISO="2026-07-13" />;
+    }
+    render(<Tab />);
+    expect(screen.getByText('desde 13 jul · em curso · 83 dias fechados')).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/de 365/);
+  });
+
+  it('PeriodNav sem esses props deixa o rótulo do calendário como veio', () => {
+    act(() => usePeriodStore.getState().setKind('corrida', 'ano'));
+    function Tab() {
+      const cal = useCalendarPeriod('corrida', { dataStartISO: '2026-07-13' });
+      return <PeriodNav cal={cal} module="corrida" />;
+    }
+    render(<Tab />);
+    expect(screen.getByText(/desde 13 jul · em curso · 83 dias fechados/)).toBeInTheDocument();
   });
 
   it('cor do módulo passa para o seletor', () => {

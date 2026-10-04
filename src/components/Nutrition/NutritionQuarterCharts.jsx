@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { GOAL_KEY } from '@formulas/nutritionPeriod.ts';
 import NutritionChartCard, {
   DetailRow, LegendItem, StatusIcon, StatusWord, ViewButton, enterStyle, swatch, usePeriodPick, useRovingRadios,
@@ -24,12 +25,13 @@ import { fmtInt, isoParts, MONTHS_SHORT, rangeText, WD_ON, WD_PLURAL, WD_SHORT, 
  * escolhe), e as barras mudam de altura em 300 ms.
  *
  * Alvos de toque: 13–14 semanas num cartão de telemóvel dão colunas de
- * ~22–24 px — abaixo dos 44 px do projeto, como no mock-up aprovado. Exceção
- * assumida: cada coluna é um botão da altura do gráfico inteiro (~200 px) e
- * da largura TODA da sua fatia (sem intervalos mortos entre colunas: o
- * espaço entre barras é margem dentro do botão), o que cumpre os 24 px do
- * WCAG 2.5.8; as setas do teclado também escolhem, e "Ver semana" (44 px)
- * abre-a.
+ * ~22–24 px, e não há forma de pôr 14 alvos de 44 px lado a lado em 326 px (nem
+ * de os sobrepor sem tocar na semana errada). Cada coluna continua a ser um
+ * botão da altura do gráfico inteiro e da largura TODA da sua fatia (sem
+ * intervalos mortos entre colunas), e as setas do teclado também escolhem — e
+ * por baixo de cada gráfico há «‹ Anterior» e «Seguinte ›» de 44 px (WeekStepper):
+ * chegar a qualquer semana nunca depende de acertar numa coluna estreita
+ * (2026-10-04, reparo da verificação no browser: botões de 23 px).
  */
 
 const H = 132; // altura útil das barras
@@ -46,6 +48,42 @@ function monthLabels(weeks) {
     if (i === 0 || sd === 1) return MONTHS_SHORT[sm - 1];
     return em !== sm ? MONTHS_SHORT[em - 1] : '';
   });
+}
+
+/** «‹ Anterior» / «Seguinte ›» entre as semanas escolhíveis — alvos de 44 px.
+ * `scope` distingue os dois pares no mesmo ecrã para quem usa leitor de ecrã
+ * (revisão 2026-10-04: tinham o mesmo nome acessível). */
+function WeekStepper({ ids, selected, onSelect, testId, scope }) {
+  const i = ids.indexOf(selected);
+  const prev = i > 0 ? ids[i - 1] : null;
+  const next = i >= 0 && i < ids.length - 1 ? ids[i + 1] : null;
+  const btn = (disabled) => ({
+    flex: 1,
+    minHeight: 'var(--tap)',
+    borderRadius: 11,
+    border: '1px solid var(--border-hairline)',
+    background: 'var(--surface-dim)',
+    color: 'var(--text-2)',
+    fontSize: 'var(--text-sm)',
+    fontWeight: 700,
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    opacity: disabled ? 0.35 : 1,
+  });
+  return (
+    <div data-testid={testId} style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+      <button type="button" aria-label={`Semana anterior do trimestre — ${scope}`} disabled={prev == null} onClick={() => prev != null && onSelect(prev)} style={btn(prev == null)}>
+        <ChevronLeft size={16} aria-hidden="true" />
+        Anterior
+      </button>
+      <button type="button" aria-label={`Semana seguinte do trimestre — ${scope}`} disabled={next == null} onClick={() => next != null && onSelect(next)} style={btn(next == null)}>
+        Seguinte
+        <ChevronRight size={16} aria-hidden="true" />
+      </button>
+    </div>
+  );
 }
 
 function weekTitle(w, todayISO) {
@@ -161,6 +199,7 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
         )}
       >
         {(motion) => (
+          <>
           <div style={{ position: 'relative' }}>
             {band && <span aria-hidden="true" style={{ position: 'absolute', left: 0, right: 0, bottom: band.bottom, height: band.height, borderRadius: 4, background: 'rgba(255,255,255,.07)' }} />}
             {line != null && (
@@ -234,6 +273,8 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
               })}
             </div>
           </div>
+          <WeekStepper ids={selectable} selected={sel} onSelect={setPicked} testId="quarter-week-stepper" scope="média por semana" />
+          </>
         )}
       </NutritionChartCard>
 
@@ -333,6 +374,7 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
               <span>0 dias</span>
               <span>7 dias</span>
             </div>
+            <WeekStepper ids={selectable} selected={sel} onSelect={setPicked} testId="quarter-days-stepper" scope="dias no objetivo" />
           </>
         )}
       </NutritionChartCard>
@@ -395,9 +437,12 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
                       onClick={() => setPickedWd(i)}
                       style={{ border: 0, padding: 0, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'inherit', background: checked ? 'var(--surface-raised)' : 'transparent' }}
                     >
-                      <span style={{ height: 160, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
-                        <span className="tabular-nums" style={{ fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>{fmtInt(d.avg)}</span>
-                        <span style={{ display: 'block', width: 24, height: wpx(d.avg), borderRadius: '6px 6px 2px 2px', background: meta.color, opacity: checked ? 1 : 0.7, transition: heightTransition(motion), ...enterStyle(motion, i, 7) }} />
+                      <span style={{ height: 160, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        {/* O valor numa linha própria por cima das barras: a zona 90–115% nunca lá chega. */}
+                        <span className="tabular-nums" style={{ height: 20, display: 'flex', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>{fmtInt(d.avg)}</span>
+                        <span style={{ height: 140, display: 'flex', alignItems: 'flex-end' }}>
+                          <span style={{ display: 'block', width: 24, height: wpx(d.avg), borderRadius: '6px 6px 2px 2px', background: meta.color, opacity: checked ? 1 : 0.7, transition: heightTransition(motion), ...enterStyle(motion, i, 7) }} />
+                        </span>
                       </span>
                       <span style={{ height: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4, gap: 1 }}>
                         <span style={{ fontSize: 'var(--text-xs)', lineHeight: '15px', color: 'var(--text-3)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>

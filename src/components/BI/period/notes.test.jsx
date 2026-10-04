@@ -4,7 +4,8 @@ import { describe, it, expect } from 'vitest';
 import TodayExcludedNote from './TodayExcludedNote';
 import MinDataNote, { minDataText } from './MinDataNote';
 import DeltaVsPrevious, { deltaDirection, deltaColor } from './DeltaVsPrevious';
-import { calendarPeriod } from '@formulas/calendarPeriod.ts';
+import { calendarPeriod, periodLabel } from '@formulas/calendarPeriod.ts';
+import { closedCoverageLabel } from './periodText';
 
 describe('TodayExcludedNote (R2)', () => {
   it('texto do mock-up com Dia', () => {
@@ -101,5 +102,41 @@ describe('DeltaVsPrevious (R5)', () => {
     expect(deltaDirection(NaN, 1)).toBeNull();
     expect(deltaColor('up', 'down')).toBe('var(--warn)');
     expect(deltaColor('flat', 'up')).toBe('var(--text-4)');
+  });
+});
+
+describe('closedCoverageLabel — uma só definição de "dias fechados"', () => {
+  const today = '2026-10-04';
+  const ano = calendarPeriod('ano', today, 0);
+
+  it('histórico a começar DENTRO do ano em curso: "desde …" e os dias fechados desde o 1.º registo', () => {
+    const base = periodLabel(ano, today, { dataStartISO: '2026-07-13' });
+    expect(base.coverage).toBe('desde 13 jul · em curso · 83 dias fechados');
+    const l = closedCoverageLabel(base, { period: ano, closedDays: 83, dataStartISO: '2026-07-13', todayISO: today });
+    expect(l.coverage).toBe('desde 13 jul · em curso · 83 dias fechados');
+    expect(l.title).toBe(base.title);
+  });
+
+  it('1 dia fechado no singular e 0 dias sem número', () => {
+    const l1 = closedCoverageLabel(periodLabel(ano, today), { period: ano, closedDays: 1, dataStartISO: '2026-10-02', todayISO: today });
+    expect(l1.coverage).toBe('desde 2 out · em curso · 1 dia fechado');
+    const l0 = closedCoverageLabel(periodLabel(ano, today), { period: ano, closedDays: 0, dataStartISO: '2026-10-04', todayISO: today });
+    expect(l0.coverage).toBe('desde 4 out · em curso · ainda sem dias fechados');
+  });
+
+  it('histórico que já vinha de trás, antes do período, ou sem contagem: devolve o rótulo igual', () => {
+    const base = periodLabel(ano, today);
+    expect(closedCoverageLabel(base, { period: ano, closedDays: 276, dataStartISO: '2025-03-01', todayISO: today })).toBe(base);
+    expect(closedCoverageLabel(base, { period: ano, closedDays: 276, dataStartISO: '2027-01-01', todayISO: today })).toBe(base);
+    expect(closedCoverageLabel(base, { period: ano, dataStartISO: '2026-07-13', todayISO: today })).toBe(base);
+    expect(closedCoverageLabel(base, { period: ano, closedDays: 83, todayISO: today })).toBe(base);
+  });
+
+  it('período passado com "desde": acrescenta os dias; se já traz "com registo" (Nutrição) não toca', () => {
+    const set = calendarPeriod('mes', today, -1);
+    const l = closedCoverageLabel(periodLabel(set, today, { dataStartISO: '2026-09-20' }), { period: set, closedDays: 11, dataStartISO: '2026-09-20', todayISO: today });
+    expect(l.coverage).toBe('desde 20 set · 11 dias fechados');
+    const withReg = periodLabel(set, today, { dataStartISO: '2026-09-20', daysWithData: 9 });
+    expect(closedCoverageLabel(withReg, { period: set, closedDays: 11, dataStartISO: '2026-09-20', todayISO: today })).toBe(withReg);
   });
 });

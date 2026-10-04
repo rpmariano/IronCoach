@@ -370,10 +370,21 @@ export function periodLabel(
     : null;
 
   if (fresh.isCurrent) {
-    const prog = fresh.closedDays === 0
+    // Revisão no browser de 2026-10-04: com "desde", a cobertura dizia "desde
+    // 3 out · em curso · 3 de 31 dias fechados" e o cartão por baixo "Só 1 dia
+    // fechado em outubro" — dois números no mesmo cartão. Com o histórico a
+    // começar dentro do período, contam-se os dias fechados DESDE o 1.º
+    // registo (closedDaysOf, a régua do resto do ecrã), no formato do
+    // closedCoverageLabel do frontend. Só o rótulo; nenhuma conta muda.
+    if (desde) {
+      const n = closedDaysOf(fresh, today, ds).length;
+      const prog = n === 0 ? "ainda sem dias fechados" : `${n} ${dias(n)} ${n === 1 ? "fechado" : "fechados"}`;
+      label.coverage = `${desde} · em curso · ${prog}`;
+      return label;
+    }
+    label.coverage = fresh.closedDays === 0
       ? "em curso · ainda sem dias fechados"
       : `em curso · ${fresh.closedDays} de ${fresh.totalDays} ${dias(fresh.totalDays)} fechados`;
-    label.coverage = desde ? `${desde} · ${prog}` : prog;
     return label;
   }
 

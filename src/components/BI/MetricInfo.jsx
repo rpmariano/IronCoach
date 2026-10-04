@@ -28,15 +28,26 @@ export default function MetricInfo({ text }) {
 
   return (
     <>
-      <button 
+      {/* Alvo de toque de 44 px a sério (2026-10-04): o botão MEDE 44×44 — o
+          reparo da verificação no browser foi que media 18×18 (a área do
+          `tap-area-44` é um pseudo-elemento, que não conta quando se mede o
+          botão). As margens negativas devolvem os 13 px de cada lado, por isso
+          o layout fica igual ao do glifo de 14 px com a sua pastilha de 18 px,
+          que passa a ser o <span> de dentro (o círculo "aberto" não cresce). */}
+      <button
+        type="button"
         onClick={toggle}
-        // tap-area-44: o glifo continua com 14px e a area de toque passa a 44 (globals.css).
-        className={`tap-area-44 inline-flex ml-1.5 align-text-bottom rounded-full p-0.5 transition-all ${isOpen ? 'text-[var(--coach)] bg-[var(--tint-coach-bg)]' : 'text-[var(--text-3)] active:bg-[var(--surface-glass)]'}`}
+        data-testid="metric-info-button"
+        className="group inline-flex items-center justify-center align-text-bottom shrink-0"
+        style={{ width: 'var(--tap)', height: 'var(--tap)', margin: '-13px -13px -13px -7px', background: 'transparent', border: 0, padding: 0 }}
         aria-label="Mais informações"
+        aria-expanded={isOpen}
       >
-        <Info size={14} />
+        <span className={`inline-flex rounded-full p-0.5 transition-all ${isOpen ? 'text-[var(--coach)] bg-[var(--tint-coach-bg)]' : 'text-[var(--text-3)] group-active:bg-[var(--surface-glass)]'}`}>
+          <Info size={14} aria-hidden="true" />
+        </span>
       </button>
-      
+
       <div 
         className={`w-full basis-full grid transition-all duration-300 ease-in-out ${isOpen ? 'grid-rows-[1fr] opacity-100 mt-2 mb-4' : 'grid-rows-[0fr] opacity-0 m-0'}`}
       >

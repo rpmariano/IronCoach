@@ -22,6 +22,8 @@ vi.mock('../../utils/biEngine', () => ({ detectCoachInsights: vi.fn(() => INSIGH
 
 const { detectCoachInsights } = await import('../../utils/biEngine');
 const { default: CoachInsightsDock } = await import('./CoachInsightsDock');
+const { default: SmartInsightsBanner, resetBannerShown } = await import('./SmartInsightsBanner');
+const { TabPageContext, setSettledIndex, resetSettledTab } = await import('../../utils/settledTab');
 
 const seed = (over = {}) => useAppStore.setState({
   runs: [], gymSessions: [], meals: [], bodyAssessments: [], raceEvents: [],
@@ -198,6 +200,65 @@ describe('CoachInsightsDock', () => {
       const botao = screen.getByTestId('coach-insight-button');
       expect(botao).toHaveAttribute('data-severity', 'info');
       expect(botao.querySelector('.carol-face')).not.toBeNull();
+    });
+  });
+
+  /* 2026-10-04 (Geral): o botão não repete o que o banner do Geral já mostra. Só
+     enquanto o separador assente é o do banner; noutro (ou fora da Evolução) diz
+     tudo, e os avisos da Carol nunca se escondem. */
+  describe('deduplicação com o banner do Geral', () => {
+    const withBanner = (page = 0) => (
+      <>
+        <TabPageContext.Provider value={page}>
+          <SmartInsightsBanner data={{}} profile={{}} maxItems={1} />
+        </TabPageContext.Provider>
+        <CoachInsightsDock />
+      </>
+    );
+
+    beforeEach(() => {
+      resetBannerShown();
+      resetSettledTab();
+    });
+
+    it('o banner mostra 1 (maxItems) e o botão conta só o que sobra', () => {
+      setSettledIndex(0);
+      render(withBanner(0));
+      // INSIGHTS = [i1 (warning), i2 (info)]; o banner mostra o i1
+      expect(screen.getByText('Calendário apertado', { selector: 'p, span, div, h3, h4' })).toBeInTheDocument();
+      expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('1');
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      const dialog = screen.getByTestId('insights-dialog');
+      expect(dialog).toHaveTextContent('Sapatilhas perto do fim');
+      expect(dialog).not.toHaveTextContent('Calendário apertado');
+    });
+
+    it('com tudo à vista no banner, o botão desaparece (e volta noutro separador)', () => {
+      setSettledIndex(0);
+      render(<>
+        <TabPageContext.Provider value={0}><SmartInsightsBanner data={{}} profile={{}} maxItems={5} /></TabPageContext.Provider>
+        <CoachInsightsDock />
+      </>);
+      expect(screen.queryByTestId('coach-insight-button')).not.toBeInTheDocument();
+      // o atleta desliza para a Corrida: o banner já não se vê, o botão diz tudo
+      act(() => setSettledIndex(1));
+      expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('2');
+      act(() => setSettledIndex(0));
+      expect(screen.queryByTestId('coach-insight-button')).not.toBeInTheDocument();
+    });
+
+    it('sem banner (outros ecrãs) nada muda: o botão diz tudo', () => {
+      setSettledIndex(0);
+      render(<CoachInsightsDock />);
+      expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('2');
+    });
+
+    it('um banner fora do carrossel (sem página) esconde sempre o que mostra', () => {
+      render(<>
+        <SmartInsightsBanner data={{}} profile={{}} maxItems={1} />
+        <CoachInsightsDock />
+      </>);
+      expect(screen.getByTestId('coach-insight-button')).toHaveTextContent('1');
     });
   });
 });

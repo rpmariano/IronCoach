@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 import { isInsightHidden } from '../../utils/insightState';
+import { useTabPage } from '../../utils/settledTab';
 import Warning from '../shared/Warning';
 import { noticeSeverity, noticeTone } from './noticeTones';
 
@@ -15,8 +16,43 @@ import { noticeSeverity, noticeTone } from './noticeTones';
    de lado hoje ("Agora não") sai também deste banner, não só do botão. */
 const WARNING_TONE = { critical: 'danger', warning: 'warn', info: 'coach' };
 
-export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) {
+/* O que o banner está a mostrar, para o botão da Carol não o repetir
+   (2026-10-04, Geral): o banner mostrava os insights à cabeça do Geral e o botão
+   flutuante — montado no Dashboard, em todos os separadores — contava e listava
+   os mesmos, por isso o atleta via "2 insights" no botão e os mesmos 2 por cima.
+   Store externo mínimo (sem zustand, sem props atravessando o Dashboard): o
+   banner publica os ids que mostra e a página do carrossel em que vive
+   (`useTabPage`); o CoachInsightsDock só os esconde enquanto essa página é a
+   assente — noutro separador o banner não se vê e o botão volta a dizer tudo. */
+const NO_SHOWN = Object.freeze({ ids: Object.freeze([]), page: null });
+let shown = NO_SHOWN;
+const listeners = new Set();
+
+function publishShown(next) {
+  const same = next.page === shown.page && next.ids.length === shown.ids.length
+    && next.ids.every((id, i) => id === shown.ids[i]);
+  if (same) return;
+  shown = next;
+  [...listeners].forEach((l) => l());
+}
+
+const subscribeShown = (cb) => { listeners.add(cb); return () => listeners.delete(cb); };
+const getShown = () => shown;
+
+/** { ids, page }: os insights que o banner mostra agora e a página do carrossel
+ *  (null fora dele). Sem banner montado, ids é []. */
+export function useBannerShown() {
+  return useSyncExternalStore(subscribeShown, getShown, getShown);
+}
+
+/** Só para testes. */
+export function resetBannerShown() {
+  publishShown(NO_SHOWN);
+}
+
+export default function SmartInsightsBanner({ data, profile, excludeIds = [], maxItems = 2 }) {
   const { insightStates, insightSnoozes } = useAppStore();
+  const page = useTabPage();
   const today = todayISO();
   const insights = useMemo(() => {
     // Retorna todos os insights cruzados (RED-S, ACWR, etc) ordenados por severidade,
@@ -26,12 +62,22 @@ export default function SmartInsightsBanner({ data, profile, excludeIds = [] }) 
     );
   }, [data, profile, excludeIds, insightStates, insightSnoozes, today]);
 
-  if (!insights || insights.length === 0) {
+  // `maxItems` (2026-10-04): o Geral pedia 3 e o banner ignorava-o (cortava
+  // sempre a 2). Por omissão continua a ser 2.
+  const limit = Number.isFinite(Number(maxItems)) && Number(maxItems) > 0 ? Math.floor(Number(maxItems)) : 2;
+  const topInsights = useMemo(() => (insights || []).slice(0, limit), [insights, limit]);
+  const shownKey = topInsights.map((i) => i.id).join('|');
+
+  useEffect(() => {
+    publishShown(topInsights.length ? { ids: topInsights.map((i) => i.id), page } : NO_SHOWN);
+    // As dependências são `shownKey` (resume os ids) e `page`: `topInsights` muda de referência a cada render.
+  }, [shownKey, page]);
+  // Ao desmontar (saída da Evolução) o botão volta a dizer tudo.
+  useEffect(() => () => publishShown(NO_SHOWN), []);
+
+  if (topInsights.length === 0) {
     return null; // Nenhum insight, não mostra nada
   }
-
-  // Vamos mostrar apenas o insight mais crítico (ou até 2 se houver espaço) para não sobrecarregar
-  const topInsights = insights.slice(0, 2);
 
   return (
     <div className="space-y-3">

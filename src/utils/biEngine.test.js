@@ -1,10 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { subDays, format } from 'date-fns';
+import { mondayOf, addDaysISO } from '@formulas/calendarPeriod.ts';
+import { todayISO } from '../lib/utils';
 import { detectCoachInsights, calculateVolumeLoad, acwrStatusLabel, acwrMissingWeeks, sessionVolumeKg, calculateACWRHistory } from './biEngine';
 
 // Datas relativas a "agora" — daysAgo negativo devolve uma data futura
 // (útil para simular uma prova agendada).
 const iso = (daysAgo) => format(subDays(new Date(), daysAgo), 'yyyy-MM-dd');
+
+// As últimas 4 semanas FECHADAS (seg–dom até ao domingo passado): `closedWeekDay(0)`
+// é a segunda da semana fechada mais recente, `closedWeekDay(-7)` a da anterior…
+// Relativo a hoje, sem datas fixas (o teste vale em qualquer dia da semana).
+const lastClosedSunday = () => addDaysISO(mondayOf(todayISO()), -1);
+const closedWeekDay = (offsetFromLastMonday) => addDaysISO(addDaysISO(lastClosedSunday(), -6), offsetFromLastMonday);
 
 // Print do utilizador de 23/08: o cartão Ginásio da Visão Geral não tinha
 // nem KPI nem mini-gráfico apesar de haver sessões registadas.
@@ -140,14 +148,59 @@ describe('detectCoachInsights', () => {
     // usa 'medio' — a mesma omissão da Carol (coach-chat chama
     // computeTrainingDistribution(runs, experienceLevel || "medio")).
     it('sem nível declarado, a distribuição 80/20 usa o alvo de "medio" (o mesmo da Carol)', () => {
+      // 2026-10-04: o insight olha só para as últimas 4 semanas fechadas — as corridas
+      // vão para a semana fechada mais recente (não para "ontem", que à segunda-feira
+      // ou ao domingo cai na semana em curso).
       const runs = Array.from({ length: 5 }, (_, i) => ({
-        date: iso(i + 1), distance_km: 8, duration_seconds: 40 * 60,
+        date: closedWeekDay(i), distance_km: 8, duration_seconds: 40 * 60,
         details: { hr_zones: [{ zone: 4, minutes: 40 }] }, // toda a alta intensidade
       }));
       const insights = detectCoachInsights({ runs }, {});
       const intensity = insights.find((i) => i.id === 'intensity_imbalance');
       // 'medio' → targetLowPct 80 → "no máximo 20%"; 'iniciante' diria 5%.
       expect(intensity?.message).toContain('no máximo 20%');
+    });
+
+    describe('80/20 sobre as últimas 4 semanas fechadas', () => {
+      const forte = (date) => ({
+        date, distance_km: 8, duration_seconds: 40 * 60,
+        details: { hr_zones: [{ zone: 4, minutes: 40 }] },
+      });
+      const facil = (date) => ({
+        date, distance_km: 8, duration_seconds: 40 * 60,
+        details: { hr_zones: [{ zone: 2, minutes: 40 }] },
+      });
+
+      it('diz o intervalo na frase', () => {
+        const runs = Array.from({ length: 3 }, (_, i) => forte(closedWeekDay(i)));
+        const msg = detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance').message;
+        expect(msg).toMatch(/^Nas últimas 4 semanas fechadas \(\d{1,2} [a-z]{3} – \d{1,2} [a-z]{3}\), 100% do tempo foi em intensidade média\/alta\./);
+        expect(msg).not.toMatch(/Estás com/);
+      });
+
+      it('a semana em curso não conta: corridas fortes só de hoje para trás até segunda não alertam', () => {
+        const segunda = mondayOf(todayISO());
+        const runs = [forte(segunda), forte(segunda), forte(segunda)];
+        expect(detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance')).toBeUndefined();
+      });
+
+      it('um histórico antigo forte não pesa (corridas de há mais de 4 semanas fechadas)', () => {
+        const velhas = Array.from({ length: 5 }, (_, i) => forte(closedWeekDay(-28 - i - 1)));
+        expect(detectCoachInsights({ runs: velhas }, {}).find((i) => i.id === 'intensity_imbalance')).toBeUndefined();
+      });
+
+      it('o que está dentro das 4 semanas manda: fortes antigas + fáceis recentes não alertam', () => {
+        const runs = [
+          ...Array.from({ length: 5 }, (_, i) => forte(closedWeekDay(-60 - i))),
+          ...Array.from({ length: 5 }, (_, i) => facil(closedWeekDay(i))),
+        ];
+        expect(detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance')).toBeUndefined();
+      });
+
+      it('a 1.ª semana da janela (há 4 semanas fechadas) ainda conta', () => {
+        const runs = Array.from({ length: 3 }, (_, i) => forte(closedWeekDay(-21 + i)));
+        expect(detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance')).toBeTruthy();
+      });
     });
 
     it('alerta de cautela quando o rácio fica dentro da banda 1,31-1,50', () => {
@@ -220,6 +273,71 @@ describe('detectCoachInsights', () => {
       expect(visceral.severity).toBe('critical');
     });
 
+    describe('alertas de gordura: a última avaliação QUE TEM a métrica, ≤30 dias, com a data', () => {
+      it('uma pesagem mais recente sem gordura não apaga o alerta da avaliação anterior', () => {
+        const bodyAssessments = [
+          { date: iso(10), weight_kg: 70, body_fat_pct: 5 },
+          { date: iso(0), weight_kg: 69.5 }, // só balança
+        ];
+        const bf = detectCoachInsights({ bodyAssessments }, { gender: 'M' }).find((i) => i.id === 'bf_low');
+        expect(bf).toBeTruthy();
+        // diz a data da avaliação (a de há 10 dias), não a da pesagem de hoje
+        const dia = Number(iso(10).slice(8, 10));
+        expect(bf.message).toMatch(new RegExp(`^Na avaliação de ${dia} [a-z]{3}, a tua gordura corporal estava em 5%`));
+      });
+
+      it('a avaliação mais recente com gordura é a que vale (a antiga em baixo não dispara)', () => {
+        const bodyAssessments = [
+          { date: iso(20), weight_kg: 70, body_fat_pct: 5 },
+          { date: iso(5), weight_kg: 70, body_fat_pct: 14 },
+        ];
+        expect(detectCoachInsights({ bodyAssessments }, { gender: 'M' }).find((i) => i.id === 'bf_low')).toBeUndefined();
+      });
+
+      it('uma avaliação com gordura de há mais de 30 dias é ignorada', () => {
+        const bodyAssessments = [
+          { date: iso(40), weight_kg: 70, body_fat_pct: 5, visceral_fat: 16 },
+          { date: iso(0), weight_kg: 70 },
+        ];
+        const ids = detectCoachInsights({ bodyAssessments }, { gender: 'M' }).map((i) => i.id);
+        expect(ids).not.toContain('bf_low');
+        expect(ids).not.toContain('visceral_high');
+      });
+
+      it('a visceral vem da sua última avaliação, mesmo que a gordura seja de outra', () => {
+        const bodyAssessments = [
+          { date: iso(12), weight_kg: 70, visceral_fat: 16 },
+          { date: iso(3), weight_kg: 70, body_fat_pct: 20 }, // sem visceral
+        ];
+        const v = detectCoachInsights({ bodyAssessments }, { gender: 'M' }).find((i) => i.id === 'visceral_high');
+        expect(v).toBeTruthy();
+        expect(v.message).toContain(`Na avaliação de ${Number(iso(12).slice(8, 10))} `);
+      });
+
+      it('a gordura a zero (campo vazio gravado como 0) não é uma medição', () => {
+        const bodyAssessments = [{ date: iso(2), weight_kg: 70, body_fat_pct: 0 }];
+        expect(detectCoachInsights({ bodyAssessments }, { gender: 'M' }).find((i) => i.id === 'bf_low')).toBeUndefined();
+      });
+    });
+
+    describe('perda de peso rápida: recência de 30 dias', () => {
+      const tres = (fim) => [
+        { date: iso(fim + 12), weight_kg: 80 },
+        { date: iso(fim + 6), weight_kg: 77 },
+        { date: iso(fim), weight_kg: 74 },
+      ];
+      it('com a última pesagem de há 20 dias ainda alerta, e diz até que pesagem vai a janela', () => {
+        const loss = detectCoachInsights({ bodyAssessments: tres(20) }, { experience_level: 'medio' })
+          .find((i) => i.id === 'weight_loss_fast');
+        expect(loss).toBeTruthy();
+        expect(loss.message).toContain(`até à pesagem de ${Number(iso(20).slice(8, 10))} `);
+      });
+      it('com a última pesagem de há 35 dias já não alerta', () => {
+        expect(detectCoachInsights({ bodyAssessments: tres(35) }, { experience_level: 'medio' })
+          .find((i) => i.id === 'weight_loss_fast')).toBeUndefined();
+      });
+    });
+
     it('alerta de aviso (não crítico) quando a gordura visceral está na faixa de alerta (10-14)', () => {
       // Antes da Fase C isto não disparava nada (o código só verificava >= 14).
       const bodyAssessments = [{ date: iso(0), weight_kg: 70, body_fat_pct: 20, visceral_fat: 12 }];
@@ -273,6 +391,21 @@ describe('detectCoachInsights', () => {
       const bodyAssessments = [{ date: iso(1), weight_kg: 65, lean_body_mass_kg: 50 }];
       const insights = detectCoachInsights({ meals, bodyAssessments, runs: [], gymSessions: [] }, {});
       expect(insights.find((i) => i.id === 'reds_risk')).toBeUndefined();
+    });
+
+    // 2026-10-04: a média sai com vírgula decimal, como no pilar da Nutrição.
+    it('escreve a EA média com vírgula decimal nos dois avisos', () => {
+      const body = [{ date: iso(1), weight_kg: 65, lean_body_mass_kg: 50 }];
+      const meal = (d, g) => ({ date: iso(d), meal_items: [{ quantity_grams: g, calories_per_100g: 200 }] });
+      // 990 kcal / 50 kg = 19,8 em 5 dias → RED-S
+      const reds = detectCoachInsights({ meals: [1, 2, 3, 4, 5].map((d) => meal(d, 495)), bodyAssessments: body, runs: [], gymSessions: [] }, {})
+        .find((i) => i.id === 'reds_risk');
+      expect(reds.message).toContain('é de 19,8 kcal/kg FFM');
+      // 2 dias a 19,8 e 3 a 49,8 → média 37,8 (subótima)
+      const meals = [meal(1, 495), meal(2, 495), meal(3, 1245), meal(4, 1245), meal(5, 1245)];
+      const sub = detectCoachInsights({ meals, bodyAssessments: body, runs: [], gymSessions: [] }, {})
+        .find((i) => i.id === 'ea_subclinical');
+      expect(sub.message).toContain('é 37,8 kcal/kg FFM');
     });
   });
 

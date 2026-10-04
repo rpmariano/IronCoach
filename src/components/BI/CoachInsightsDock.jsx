@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Dialog } from '../shared/Sheet';
 import CoachInsightButton from './CoachInsightButton';
 import CoachInsightModal from './CoachInsightModal';
 import useCarolNotices from './useCarolNotices';
+import { useBannerShown } from './SmartInsightsBanner';
+import { useLastSettledIndex } from '../../utils/settledTab';
 
 /* O botão flutuante da Carol e a sua janela, prontos a montar em qualquer
    ecrã — em todos menos no Chat, que é onde o atleta já está a falar com
@@ -67,7 +69,21 @@ export function CarolNoticesDock({ notices, bottom }) {
   );
 }
 
+/* O botão não repete o que o banner do Geral já mostra (2026-10-04): enquanto o
+   separador assente é aquele onde o banner vive, os insights que ele mostra saem
+   da lista e da contagem; em qualquer outro ecrã (ou fora da Evolução, onde não
+   há banner) o botão diz tudo, como antes. Os avisos da Carol (`alerts`) nunca
+   se escondem — o banner não os mostra. */
 export default function CoachInsightsDock({ bottom }) {
   const notices = useCarolNotices();
-  return <CarolNoticesDock notices={notices} bottom={bottom} />;
+  const shown = useBannerShown();
+  const settledPage = useLastSettledIndex();
+  const bannerVisible = shown.ids.length > 0 && (shown.page == null || shown.page === settledPage);
+
+  const deduped = useMemo(() => {
+    if (!bannerVisible) return notices;
+    return { ...notices, insights: notices.insights.filter((i) => !shown.ids.includes(i.id)) };
+  }, [notices, bannerVisible, shown]);
+
+  return <CarolNoticesDock notices={deduped} bottom={bottom} />;
 }

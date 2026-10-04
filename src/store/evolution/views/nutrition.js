@@ -218,7 +218,12 @@ export function buildNutritionView(deps, period, todayISO) {
           prev: prev.both,
           curPct: pctOf(summary.both.k, summary.both.n),
           prevPct: pctOf(prev.both.k, prev.both.n),
-          sameN: summary.both.n === prev.both.n,
+          // A diferença de dias ("▼ 1 face a 21 – 26 set") só serve quando o período
+          // está em curso e se compara com os MESMOS dias do anterior. Num período
+          // FECHADO o mock-up escreve sempre o anterior por extenso com a %
+          // ("▲ agosto: 11 de 29 (38%)"): "▲ 3 face a agosto" não diz quantos dias
+          // houve de cada lado (2026-10-04, reparo da verificação no browser).
+          sameN: p.isCurrent && summary.both.n === prev.both.n,
         },
         byKey: byKey((k) => {
           const a = summary.byKey[k];

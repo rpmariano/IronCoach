@@ -26,5 +26,6 @@ export {
   firstPeriodNote,
   whereOf,
   earlyVerdict,
+  closedCoverageLabel,
   APPROX_GOALS_NOTE,
 } from './periodText';

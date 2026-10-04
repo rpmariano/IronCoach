@@ -109,6 +109,12 @@ function sameValue(a, b, budget) {
 
 // Uma coluna do nível de topo: escalar (===), recurso embutido (comprimento +
 // ids + updated_at) ou, no resto, comparação por valor sob o orçamento.
+// Atenção (revisão pré-deploy de 2026-10-04): o atalho id + updated_at nos
+// recursos embutidos assume que não se editam no sítio. O analyze-meal faz
+// UPDATE de meal_items por id ao responder às perguntas da Carol; hoje fica
+// certo só porque o mesmo pedido muda meals.carol_questions (comparado por
+// valor). Uma nova edição no sítio de linhas embutidas tem de mexer numa
+// coluna de topo da linha-mãe, ou os totais ficam com a referência antiga.
 function sameColumn(a, b, budget) {
   if (--budget.n < 0) return false;
   if (a === b) return true;

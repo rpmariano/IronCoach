@@ -60,7 +60,10 @@ export function leanMassNote(ea, { hasRuns = true } = {}) {
     return `Massa magra estimada a partir do peso e da gordura da avaliação de ${shortDate(ea.leanMassDate)}.`;
   }
   if (ea.leanMassDate && !ea.weightFallback) {
-    return `Sem gordura medida: conto com 20% de gordura sobre o peso da avaliação de ${shortDate(ea.leanMassDate)}.`;
+    // 2026-10-04: «Sem gordura medida» lia-se como se nunca houvesse
+    // composição medida, mesmo com uma avaliação completa dias antes — o que
+    // falta é na avaliação que vale para o período (a última até ao fim dele).
+    return `A avaliação de ${shortDate(ea.leanMassDate)} não tem gordura medida: conto com 20% de gordura sobre o peso dela.`;
   }
   return `Sem avaliação com peso: conto com ${fmtNumber(ea.leanMass, 0)} kg de massa magra e 70 kg para o gasto da corrida — regista uma avaliação para este número ser teu.`;
 }

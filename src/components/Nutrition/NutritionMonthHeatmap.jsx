@@ -20,6 +20,11 @@ import { dayLong, dayShort, fmtInt, isoParts, MONTHS_LONG, trainingText, WD_LETT
  * pelo dia do mês, e o estado muda de cor numa transição de 300 ms.
  */
 
+/* Os dias do mapa de calor medem ≥ 44 px (alvo de toque do projeto): num
+   telemóvel de 390 px o cartão dá 7 colunas de ~43 px com 4 px de intervalo
+   (1 px abaixo, reparo da verificação no browser); com 2 px de intervalo dão
+   ~44,9 px. O intervalo é o mesmo no cabeçalho S T Q Q S S D e na grelha. */
+const GAP = 2;
 const CELL_TRANSITION = 'background-color 300ms var(--ease-out), border-color 300ms var(--ease-out)';
 
 export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayISO }) {
@@ -103,7 +108,7 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
     >
       {(motion) => (
         <>
-          <div aria-hidden="true" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4, marginBottom: 6 }}>
+          <div aria-hidden="true" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: GAP, marginBottom: 6 }}>
             {WD_LETTER.map((l, i) => (
               <span key={i} style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-muted)' }}>{l}</span>
             ))}
@@ -112,7 +117,7 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
             role="radiogroup"
             aria-label={`Dias de ${monthName}`}
             onKeyDown={roving.onKeyDown}
-            style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: 4 }}
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: GAP }}
           >
             {Array.from({ length: view.leadingBlanks }, (_, i) => <span key={`b${i}`} aria-hidden="true" />)}
             {cells.map((c, i) => {

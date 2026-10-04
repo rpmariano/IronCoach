@@ -318,7 +318,34 @@ describe('R1 (fase 5) — períodos de calendário, só dias fechados', () => {
     expect(screen.getByRole('button', { name: 'Mês' })).toHaveAttribute('aria-pressed', 'true');
     const resumo = screen.getByTestId('period-summary');
     expect(within(resumo).getByText('outubro 2026')).toBeInTheDocument();
-    expect(within(resumo).getByText(/em curso · 3 de 31 dias fechados/)).toBeInTheDocument();
+    // O 1.º registo é 2 out (dentro do mês): o navegador diz os dias fechados DESDE
+    // ele — os que a vista conta —, não os "3 de 31" do calendário.
+    expect(within(resumo).getByText('desde 2 out · em curso · 2 dias fechados')).toBeInTheDocument();
+  });
+
+  it('uma só definição de dias fechados: o Ano em curso diz "desde 13 jul · … 83 dias fechados" uma vez, não 276 de 365 e depois 83', () => {
+    // 1.º registo a 13 jul 2026 → 13 jul … 3 out = 19 + 31 + 30 + 3 = 83 dias fechados.
+    monta({
+      runs: [corrida({ id: 'a', date: '2026-07-13' }), corrida({ id: 'b', date: '2026-09-12' })],
+      kind: 'ano',
+    });
+    const resumo = screen.getByTestId('period-summary');
+    expect(within(resumo).getByText('desde 13 jul · em curso · 83 dias fechados')).toBeInTheDocument();
+    expect(resumo.textContent).not.toMatch(/276/);
+    expect(resumo.textContent).not.toMatch(/de 365/);
+    // O cabeçalho do bloco de KPIs deixou de repetir a contagem.
+    expect(within(resumo).getByTestId('summary-columns')).toHaveTextContent('No período');
+    expect(within(resumo).getByTestId('summary-columns')).not.toHaveTextContent('fechados');
+    expect(resumo.textContent.match(/dias fechados/g)).toHaveLength(1);
+    // Nem o gráfico a repete: "km no período".
+    expect(frame('Distância por semana')).toHaveTextContent('km no período');
+    expect(frame('Distância por semana')).not.toHaveTextContent('dias fechados');
+  });
+
+  it('Trimestre em curso com histórico anterior ao trimestre: o rótulo do calendário fica ("N de M dias fechados")', () => {
+    monta({ runs: [corrida({ id: 'a', date: '2026-07-01' }), corrida({ id: 'b', date: '2026-09-12' })], kind: 'trimestre' });
+    // out – dez: 3 de 92 dias fechados e o 1.º registo é de antes → nada a corrigir.
+    expect(within(screen.getByTestId('period-summary')).getByText('em curso · 3 de 92 dias fechados')).toBeInTheDocument();
   });
 
   it('hoje não entra: a corrida de hoje (4 out) fica de fora dos números e a nota diz "aparece amanhã"', () => {
@@ -328,7 +355,7 @@ describe('R1 (fase 5) — períodos de calendário, só dias fechados', () => {
     });
     expect(within(linha('Corridas')).getByTestId('row-value')).toHaveTextContent('1');
     expect(within(linha('Distância')).getByTestId('row-value')).toHaveTextContent('6,0 km');
-    expect(screen.getByTestId('today-excluded-note')).toHaveTextContent('Hoje ainda não acabou, por isso não entra nas contas do período (a carga já o inclui); aparece amanhã.');
+    expect(screen.getByTestId('today-excluded-note')).toHaveTextContent('Hoje ainda não acabou, por isso não entra nas contas do período (a carga e os recordes já o incluem); aparece amanhã.');
     expect(screen.getByTestId('today-excluded-note')).not.toHaveTextContent('toca em Dia');
   });
 
@@ -354,9 +381,14 @@ describe('R1 (fase 5) — períodos de calendário, só dias fechados', () => {
       offset: -1,
     });
     const card = screen.getByTestId('relogio');
-    expect(within(card).getByTestId('relogio-periodo')).toHaveTextContent('Setembro 2026');
-    // R6: a maiúscula é feita em JS; text-transform: capitalize escrevia "Semana De 21 Set".
+    // Minúscula como a pista dos outros cartões ("setembro 2026") — 2026-10-04.
+    expect(within(card).getByTestId('relogio-periodo').textContent).toBe('setembro 2026');
+    // R6: sem text-transform: capitalize ("Semana De 21 Set").
     expect(within(card).getByTestId('relogio-periodo').className).not.toMatch(/capitalize/);
+    // Mesmo cartão dos gráficos (ChartFrame): borda e fundo do vidro, não a borda branca antiga.
+    expect(card.style.border).toBe('1px solid var(--border-glass)');
+    expect(card.style.background).toBe('var(--surface-glass)');
+    expect(card.className).not.toMatch(/border-white/);
     expect(within(card).getByTestId('relogio-elev-n')).toHaveTextContent('2 de 3 corridas');
     expect(within(card).getByTestId('relogio-cal-n')).toHaveTextContent('1 de 3 corridas');
     expect(within(card).getByTestId('relogio-cad-n')).toHaveTextContent('sem dados');
@@ -683,6 +715,22 @@ describe('revisão da Corrida (2026-10-04) — janelas, rótulos e contradiçõe
     monta({ runs: [corrida({ date: '2026-09-12' })], kind: 'mes', offset: -1 });
     expect(screen.getByTestId('fora-do-periodo')).not.toHaveTextContent('Os três blocos');
     expect(screen.getByTestId('recordes-de-sempre')).toBeInTheDocument();
+  });
+
+  it('recordes: "de sempre, hoje incluído" (a corrida de hoje conta nos recordes, que são factos fechados)', () => {
+    // 5 km a 4:00/km hoje: é o melhor de sempre e aparece nos recordes, mesmo com a nota a dizer que hoje
+    // ainda não entra nas contas do período.
+    monta({
+      runs: [
+        corrida({ id: 'a', date: '2026-09-12', distance_km: 5, duration_seconds: 1500 }),
+        corrida({ id: 'hoje', date: '2026-10-04', distance_km: 5, duration_seconds: 1200 }),
+      ],
+      kind: 'mes',
+    });
+    const recordes = screen.getByTestId('recordes-de-sempre');
+    expect(recordes).toHaveTextContent('De sempre, hoje incluído');
+    expect(recordes.parentElement).toHaveTextContent('4 out 2026');
+    expect(screen.getByTestId('today-excluded-note')).toHaveTextContent('os recordes já o incluem');
   });
 
   it('a data dos recordes escreve o mês em minúsculas, como o resto do ecrã', () => {

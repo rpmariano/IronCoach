@@ -523,7 +523,7 @@ describe('NutritionDashboard — Dia e sem dados', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Dia seguinte' }));
     expect(screen.getByTestId('day-nutrition-title')).toHaveTextContent('Hoje');
-    expect(screen.getByTestId('day-row-calories')).toHaveTextContent('1500 / 3000 kcal');
+    expect(screen.getByTestId('day-row-calories')).toHaveTextContent('1 500 / 3 000 kcal');
     expect(screen.getByTestId('day-row-calories')).toHaveAttribute('data-status', 'abaixo');
     expect(screen.getByRole('button', { name: 'Dia seguinte' })).toBeDisabled();
     // Micronutrientes do dia, com o nome do dia (N2: não "· dia").

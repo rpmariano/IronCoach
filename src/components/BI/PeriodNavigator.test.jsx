@@ -26,10 +26,43 @@ describe('PeriodNavigator', () => {
     expect(screen.queryByText('jul – set')).toBeNull();
   });
 
-  it('semana em curso: uma linha "intervalo · estado" mesmo com cobertura', () => {
+  it('semana em curso: só «intervalo · em curso» (o progresso do calendário não entra; mock-up)', () => {
     const { container } = render(<PeriodNavigator kind="semana" label={{ ...label, coverage: 'em curso · 6 de 7 dias fechados' }} />);
     expect(screen.getByText('28 set – 4 out · em curso')).toBeInTheDocument();
     expect(container.textContent.match(/em curso/g)).toHaveLength(1);
+    expect(container.textContent).not.toMatch(/fechados/);
+  });
+
+  it('semana a começar (segunda): «5 – 11 out · em curso», sem «ainda sem dias fechados»', () => {
+    const { container } = render(<PeriodNavigator kind="semana" label={{ title: 'Esta semana', range: '5 – 11 out', status: 'em curso', coverage: 'em curso · ainda sem dias fechados' }} />);
+    expect(screen.getByText('5 – 11 out · em curso')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/ainda sem dias fechados/);
+  });
+
+  it('semana com «desde» (1.º registo a meio): intervalo · desde … · em curso', () => {
+    const { container } = render(<PeriodNavigator kind="semana" label={{ ...label, coverage: 'desde 1 out · em curso · 3 dias fechados' }} />);
+    expect(screen.getByText('28 set – 4 out · desde 1 out · em curso')).toBeInTheDocument();
+    expect(container.textContent.match(/em curso/g)).toHaveLength(1);
+  });
+
+  it('semana do Corpo: «em curso · 2 avaliações» (cobertura que não é o calendário)', () => {
+    render(<PeriodNavigator kind="semana" label={{ ...label, coverage: 'em curso · 2 avaliações' }} />);
+    expect(screen.getByText('28 set – 4 out · em curso · 2 avaliações')).toBeInTheDocument();
+  });
+
+  it('semana passada com cobertura sem estado: intervalo · cobertura', () => {
+    render(<PeriodNavigator kind="semana" label={{ title: 'Semana passada', range: '21 – 27 set', coverage: '5 de 7 dias com registo' }} />);
+    expect(screen.getByText('21 – 27 set · 5 de 7 dias com registo')).toBeInTheDocument();
+  });
+
+  it('semana sem cobertura: continua "intervalo · estado"', () => {
+    render(<PeriodNavigator kind="semana" label={label} />);
+    expect(screen.getByText('28 set – 4 out · em curso')).toBeInTheDocument();
+  });
+
+  it('dia: intervalo · estado, sem cobertura', () => {
+    render(<PeriodNavigator kind="dia" label={{ title: 'Hoje', range: '4 out', status: 'em curso', coverage: 'qualquer' }} />);
+    expect(screen.getByText('4 out · em curso')).toBeInTheDocument();
   });
 
   it('mês sem cobertura recua para intervalo · estado', () => {

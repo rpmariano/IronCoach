@@ -34,6 +34,10 @@ const dia = (iso) => {
 const diasEntre = (a, b) => Math.round((Date.parse(`${String(b).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(a).slice(0, 10)}T00:00:00Z`)) / 86400000);
 /** Uma última pesagem com mais dias do que isto já não é "agora". */
 export const BODY_VERDICT_RECENT_DAYS = 14;
+/** Mudança do período inteiro (primeira → última pesagem) a partir da qual
+ *  «esteve estável» deixa de ser verdade num período fechado (2026-10-04):
+ *  acima do ruído de dia para dia de uma balança doméstica (água, sal). */
+export const PERIOD_CHANGE_MIN_KG = 1;
 
 /**
  * @param {object} input
@@ -227,6 +231,26 @@ export function bodyVerdict({
   }
 
   // 6. Estável.
+  /* 2026-10-04 (revisão no browser, Corpo › jul–set): o ritmo das duas
+     últimas semanas dava −0,2 kg/semana (dentro da banda de estável de
+     weightTrend.ts) e a frase dizia «esteve estável» ao lado de «−3,3 kg» e
+     de um gráfico de 77,5 a 74,3 kg. Num período fechado conta o período
+     inteiro: se da primeira à última pesagem mudou mais do que o ruído da
+     balança, diz-se quanto, e que no fim estabilizou. A fórmula da Carol não
+     muda — isto é só a frase do período. */
+  if (past && points.length >= 2) {
+    const first = points[0];
+    const firstW = Number(first.weight);
+    const diff = latest - firstW;
+    const days = diasEntre(first.date, lastDate);
+    if (Math.abs(diff) >= PERIOD_CHANGE_MIN_KG && days >= 14) {
+      const porSemana = Math.abs(diff) / (days / 7);
+      return {
+        text: `${Em}o peso ${diff < 0 ? 'desceu' : 'subiu'} ${fmtNumber(Math.abs(diff), 1)} kg, de ${fmtNumber(firstW, 1)} a ${fmtNumber(latest, 1)} kg (≈${fmtNumber(porSemana, 2)} kg por semana); nas últimas semanas estabilizou.`,
+        tone: 'neutral',
+      };
+    }
+  }
   if (past) {
     return {
       text: `${Em}o peso esteve estável, em ${fmtNumber(latest, 1)} kg.`,

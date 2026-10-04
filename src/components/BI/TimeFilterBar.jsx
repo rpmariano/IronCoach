@@ -33,6 +33,17 @@ const LEGACY_OPTIONS = [
 
 export default function TimeFilterBar({ activeRange, onChange, className = '', module = 'nutricao', options = LEGACY_OPTIONS }) {
   const tone = MODULE_TONE[module] || MODULE_TONE.nutricao;
+  /* 2026-10-04 (revisão no browser, 390 px): o Corpo tem 5 períodos e, com os
+     botões a dividir a largura (flex-1 do PeriodHeader), cada um ficava com
+     65 px — o `min-w-[44px]` substituía o mínimo natural do flex (o
+     conteúdo), e «Trimestre», o período por omissão do Corpo, saía fora da
+     pílula ativa. Agora o mínimo é o próprio rótulo (min-w-max), os 44 px do
+     alvo vêm do padding + largura mínima do rótulo, e com 5+ opções o padding
+     aperta para caberem todas sem deslizar. Se mesmo assim não couberem, a
+     barra desliza (overflow-x-auto) em vez de cortar o texto. */
+  const compact = options.length >= 5;
+  const padX = compact ? 'px-2' : 'px-3';
+  const labelMin = compact ? 'min-w-[28px]' : 'min-w-[20px]';
 
   return (
     <div role="group" aria-label="Período" className={`flex overflow-x-auto gap-1.5 p-1 no-scrollbar ${className}`}>
@@ -43,12 +54,12 @@ export default function TimeFilterBar({ activeRange, onChange, className = '', m
             key={option.value}
             aria-pressed={isActive}
             onClick={() => onChange?.(option.value)}
-            className={`whitespace-nowrap min-h-[44px] min-w-[44px] justify-center inline-flex items-center rounded-full px-3 py-1.5 text-[11px] font-medium transition-colors ${
+            className={`whitespace-nowrap min-h-[44px] min-w-max justify-center inline-flex items-center rounded-full ${padX} py-1.5 text-[11px] font-medium transition-colors ${
               isActive ? 'shadow-sm' : 'bg-[var(--surface-glass)] backdrop-blur text-[var(--text-3)] hover:bg-[var(--surface-glass-hover)]'
             }`}
             style={isActive ? { background: tone.bg, color: tone.ink } : undefined}
           >
-            {option.label}
+            <span className={`inline-block text-center ${labelMin}`}>{option.label}</span>
           </button>
         );
       })}

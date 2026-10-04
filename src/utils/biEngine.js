@@ -16,6 +16,7 @@ import { todayISO } from '../lib/utils';
 // @formulas/macroAdherence.ts e @formulas/energyAvailabilityWindow.ts (Fase E).
 import { normalizeGender } from '@formulas/vocabulary.ts';
 import { focusRace } from '@formulas/mainRace.ts';
+import { mondayOf, addDaysISO } from '@formulas/calendarPeriod.ts';
 import { computeAcwr, classifyAcwrZone } from '@formulas/acwr.ts';
 import { classifyVisceralFat, VISCERAL_FAT_ALERT_MIN, VISCERAL_FAT_HIGH_RISK_MIN } from '@formulas/bodyComposition.ts';
 import { computeWeightTrend } from '@formulas/weightTrend.ts';
@@ -404,9 +405,13 @@ export function calculateCrossMetrics(runs, gymSessions, meals, bodyAssessments,
 // quando essa avaliação já é velha — "gordura criticamente baixa" sobre uma
 // medição de há três meses é um facto de há três meses, não de agora.
 const MAX_ASSESSMENT_AGE_DAYS_FOR_ALERT = 30;
-// Perda de peso rápida: é um ritmo "de agora" — com a última pesagem a mais de
-// 14 dias (a própria janela da tendência) já não se alerta.
-const MAX_WEIGHING_AGE_DAYS_FOR_RATE_ALERT = 14;
+// Perda de peso rápida: a mesma recência dos alertas de gordura (30 dias, 2026-10-04,
+// Geral). Antes eram 14 dias só aqui, e três avaliações de composição corporal
+// podiam alertar enquanto a perda de peso — com a mensagem já a dizer até que
+// pesagem vai a janela — calava-se: duas réguas de "ainda é recente" no mesmo
+// bloco. A janela da tendência continua a ser de 14 dias, ancorada na última
+// pesagem; o que são 30 dias é a idade a partir da qual essa pesagem já não conta.
+const MAX_WEIGHING_AGE_DAYS_FOR_RATE_ALERT = MAX_ASSESSMENT_AGE_DAYS_FOR_ALERT;
 const MESES_CURTOS = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
 /** '2026-09-28' → '28 set' (sem ano: o alerta só vale se for recente). */
@@ -507,13 +512,26 @@ export function detectCoachInsights(data, profile) {
       }
 
       // 2. Distribuição 80/20
-      const dist = calculateTrainingDistribution(data.runs, level);
+      // 2026-10-04 (Geral): sobre as últimas 4 semanas FECHADAS (seg–dom, até ao
+      // domingo passado), e a frase diz o intervalo. Antes era sobre TODO o histórico: uma
+      // fase de intensidade de há um ano pesava como a de agora, e a frase
+      // "estás com X%" apresentava isso como o presente. A semana em curso fica de
+      // fora (ainda a meio) — é a mesma régua dos separadores de período.
+      // Só o insight muda: a distribuição que a Carol usa (computeTrainingDistribution)
+      // não se mexe.
+      const lastClosedSunday = addDaysISO(mondayOf(todayISO()), -1);
+      const windowStart = addDaysISO(lastClosedSunday, -27);
+      const closedRuns = data.runs.filter((r) => {
+        const d = String(r?.date || '').slice(0, 10);
+        return d >= windowStart && d <= lastClosedSunday;
+      });
+      const dist = calculateTrainingDistribution(closedRuns, level);
       const totalMinutes = dist.z1Minutes + dist.z2Minutes + dist.z3Minutes + dist.z4Minutes + dist.z5Minutes;
       if (totalMinutes > 60 && !dist.isCompliant && dist.highIntensityPct > 30) {
         insights.push({
           id: 'intensity_imbalance', severity: 'warning',
           title: 'Demasiada intensidade',
-          message: `Estás com ${Math.round(dist.highIntensityPct)}% do tempo em intensidade média/alta. O objetivo para o teu nível é no máximo ${Math.round(100 - dist.targetLowPct)}%. Treina mais em Z1/Z2.`,
+          message: `Nas últimas 4 semanas fechadas (${fmtDiaMes(windowStart)} – ${fmtDiaMes(lastClosedSunday)}), ${Math.round(dist.highIntensityPct)}% do tempo foi em intensidade média/alta. O objetivo para o teu nível é no máximo ${Math.round(100 - dist.targetLowPct)}%. Treina mais em Z1/Z2.`,
           metric: '80/20', value: dist.highIntensityPct, threshold: 100 - dist.targetLowPct, module: 'corrida'
         });
       }
@@ -521,19 +539,27 @@ export function detectCoachInsights(data, profile) {
 
     // 3. Composição Corporal — Gordura demasiado baixa
     if (data.bodyAssessments?.length > 0) {
-      const latest = [...data.bodyAssessments].sort((a, b) => b.date.localeCompare(a.date))[0];
-      // Alertas de gordura (corporal e visceral): só sobre uma avaliação com
-      // no máximo 30 dias, e a mensagem diz a data dela.
-      const latestAge = ageInDays(latest.date);
-      const latestIsRecent = Number.isFinite(latestAge) && latestAge <= MAX_ASSESSMENT_AGE_DAYS_FOR_ALERT;
-      const latestDay = latestIsRecent ? fmtDiaMes(latest.date) : null;
+      const byDateDesc = [...data.bodyAssessments].sort((x, y) => String(y.date).localeCompare(String(x.date)));
+      /* Alertas de gordura (corporal e visceral): sobre a ÚLTIMA AVALIAÇÃO QUE TEM
+         ESSA MÉTRICA, com no máximo 30 dias, e a mensagem diz a data dela
+         (2026-10-04, Geral). Antes lia-se a última avaliação à cabeça, fosse o que
+         fosse: uma pesagem de hoje só com peso apagava o alerta de uma avaliação
+         de bioimpedância de há 10 dias — e, ao contrário, uma pesagem sem gordura
+         nunca devia dar "gordura 0". */
+      const recentWith = (hasMetric) => {
+        const a = byDateDesc.find(hasMetric);
+        if (!a) return null;
+        const age = ageInDays(a.date);
+        return Number.isFinite(age) && age <= MAX_ASSESSMENT_AGE_DAYS_FOR_ALERT ? a : null;
+      };
+      const bfAssessment = recentWith((a) => a.body_fat_pct != null && Number(a.body_fat_pct) > 0);
       const bfAlarm = gender === 'F' ? Constants.BF_ALARM_WOMEN : Constants.BF_ALARM_MEN;
-      if (latestIsRecent && latest.body_fat_pct && latest.body_fat_pct < bfAlarm) {
+      if (bfAssessment && bfAssessment.body_fat_pct < bfAlarm) {
         insights.push({
           id: 'bf_low', severity: 'critical',
           title: 'Gordura corporal criticamente baixa',
-          message: `Na avaliação de ${latestDay}, a tua gordura corporal estava em ${fmtDec(latest.body_fat_pct, 1).replace(/,0$/, '')}% — abaixo do limiar seguro de ${bfAlarm}%. Risco hormonal e de saúde óssea (RED-S).`,
-          metric: 'BF%', value: latest.body_fat_pct, threshold: bfAlarm, module: 'corpo'
+          message: `Na avaliação de ${fmtDiaMes(bfAssessment.date)}, a tua gordura corporal estava em ${fmtDec(bfAssessment.body_fat_pct, 1).replace(/,0$/, '')}% — abaixo do limiar seguro de ${bfAlarm}%. Risco hormonal e de saúde óssea (RED-S).`,
+          metric: 'BF%', value: bfAssessment.body_fat_pct, threshold: bfAlarm, module: 'corpo'
         });
       }
 
@@ -542,20 +568,21 @@ export function detectCoachInsights(data, profile) {
       // a faixa de alerta 10-13 por completo e sem distinguir "risco
       // elevado" (≥15) do simples "alerta" (10-14) que coach-chat já tinha
       // certo (ver specs/formulas-checklist.md Fase C).
-      const visceralZone = latestIsRecent ? classifyVisceralFat(latest.visceral_fat) : null;
+      const visceralAssessment = recentWith((a) => a.visceral_fat != null && Number(a.visceral_fat) > 0);
+      const visceralZone = visceralAssessment ? classifyVisceralFat(Number(visceralAssessment.visceral_fat)) : null;
       if (visceralZone === 'high_risk') {
         insights.push({
           id: 'visceral_high', severity: 'critical',
           title: 'Gordura visceral em risco elevado',
-          message: `Na avaliação de ${latestDay}, a tua gordura visceral estava em ${latest.visceral_fat} — na faixa de risco elevado (≥${VISCERAL_FAT_HIGH_RISK_MIN}, escala Renpho). Risco cardiovascular aumentado.`,
-          metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_HIGH_RISK_MIN, module: 'corpo'
+          message: `Na avaliação de ${fmtDiaMes(visceralAssessment.date)}, a tua gordura visceral estava em ${visceralAssessment.visceral_fat} — na faixa de risco elevado (≥${VISCERAL_FAT_HIGH_RISK_MIN}, escala Renpho). Risco cardiovascular aumentado.`,
+          metric: 'Visceral', value: visceralAssessment.visceral_fat, threshold: VISCERAL_FAT_HIGH_RISK_MIN, module: 'corpo'
         });
       } else if (visceralZone === 'alert') {
         insights.push({
           id: 'visceral_alert', severity: 'warning',
           title: 'Gordura visceral em alerta',
-          message: `Na avaliação de ${latestDay}, a tua gordura visceral estava em ${latest.visceral_fat} — na faixa de alerta (${VISCERAL_FAT_ALERT_MIN}-${VISCERAL_FAT_HIGH_RISK_MIN - 1}, escala Renpho).`,
-          metric: 'Visceral', value: latest.visceral_fat, threshold: VISCERAL_FAT_ALERT_MIN, module: 'corpo'
+          message: `Na avaliação de ${fmtDiaMes(visceralAssessment.date)}, a tua gordura visceral estava em ${visceralAssessment.visceral_fat} — na faixa de alerta (${VISCERAL_FAT_ALERT_MIN}-${VISCERAL_FAT_HIGH_RISK_MIN - 1}, escala Renpho).`,
+          metric: 'Visceral', value: visceralAssessment.visceral_fat, threshold: VISCERAL_FAT_ALERT_MIN, module: 'corpo'
         });
       }
 
@@ -573,7 +600,8 @@ export function detectCoachInsights(data, profile) {
       // Revisão 2026-10-04: a janela da tendência acaba na ÚLTIMA PESAGEM, não
       // em hoje — sem porta de recência, 3 pesagens de há 3 meses davam "nas
       // últimas duas semanas estás a perder…". Agora só alerta com a última
-      // pesagem de há ≤14 dias, e o texto diz até que pesagem vai a janela.
+      // pesagem de há ≤30 dias (como os alertas de gordura), e o texto diz até
+      // que pesagem vai a janela.
       const lastWeighingOfTrend = weightTrend?.rawPoints?.[weightTrend.rawPoints.length - 1];
       const lastWeighingAge = lastWeighingOfTrend ? ageInDays(lastWeighingOfTrend.date) : NaN;
       if (weightTrend && weightTrend.sufficient === true && weightTrend.weeklyRate != null
@@ -592,20 +620,23 @@ export function detectCoachInsights(data, profile) {
     }
 
     // 4. Disponibilidade Energética (RED-S)
+    // 2026-10-04 (revisão no browser): a média ia em cru para a frase —
+    // "19.8 kcal/kg FFM" com ponto, ao lado do pilar da Nutrição com "23,8".
+    // Agora sai com vírgula decimal (fmtDec), como o resto da app.
     if (data.meals?.length > 0 && data.bodyAssessments?.length > 0) {
       const ea = calculateEnergyAvailability(data.meals, data.bodyAssessments, data.runs || [], data.gymSessions || [], 'semana');
       if (ea && ea.isAtRisk) {
         insights.push({
           id: 'reds_risk', severity: 'critical',
           title: 'Risco de RED-S detetado',
-          message: `A tua disponibilidade energética média é de ${ea.average} kcal/kg FFM — abaixo do limiar crítico de ${Constants.EA_CRITICAL}. Isto pode causar supressão hormonal e perda óssea. Aumenta a ingestão calórica.`,
+          message: `A tua disponibilidade energética média é de ${fmtDec(ea.average, 1)} kcal/kg FFM — abaixo do limiar crítico de ${Constants.EA_CRITICAL}. Isto pode causar supressão hormonal e perda óssea. Aumenta a ingestão calórica.`,
           metric: 'EA', value: ea.average, threshold: Constants.EA_CRITICAL, module: 'nutricao'
         });
       } else if (ea && ea.average > 0 && ea.average < Constants.EA_OPTIMAL && ea.daysAtRisk >= 2) {
         insights.push({
           id: 'ea_subclinical', severity: 'info',
           title: 'Disponibilidade energética subótima',
-          message: `A tua EA média é ${ea.average} kcal/kg FFM — entre 30 e 45. Aceitável a curto prazo mas monitoriza de perto.`,
+          message: `A tua EA média é ${fmtDec(ea.average, 1)} kcal/kg FFM — entre 30 e 45. Aceitável a curto prazo mas monitoriza de perto.`,
           metric: 'EA', value: ea.average, threshold: Constants.EA_OPTIMAL, module: 'nutricao'
         });
       }

@@ -97,3 +97,26 @@ Deno.test("computeReadinessIndex: só o check-in, ou prova sem corridas — a ca
   const nextRace = { date: "2027-03-01", distance_km: 10, race_priority: "a", created_at: "2026-08-01T00:00:00Z" };
   assertEquals(computeReadinessIndex([], [], [], [], { experience_level: "intermedio" }, "2026-08-25", nextRace, null).calibrating, true);
 });
+
+/* Revisão pré-deploy de 2026-10-04: com refeições registadas, uma EA média
+   ≤ 0 (tirada longa só com o pequeno-almoço) é o pior caso de RED-S — conta
+   como crítico (score 0) e puxa o índice para baixo, nunca "sem dados".
+   Espelhado em src/utils/readinessIndex.spec.js. */
+Deno.test("computeReadinessIndex: refeições com EA negativa contam como crítico, não 'sem dados'", () => {
+  const runs = [{ date: "2026-08-24", distance_km: 30, duration_seconds: 10800, kind: "treino", training_type: null, effort_rpe: 6 }];
+  const meals = [{ date: "2026-08-24", calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 }];
+  const body = [{ date: "2026-08-01", weight_kg: 70, body_fat_pct: 15 }];
+  const profile = { calorie_goal: 2400 };
+  const r = computeReadinessIndex(runs, meals, body, [], profile, "2026-08-25", null, null);
+  const ea = r.pillars.find((p) => p.key === "ea")!;
+  assertEquals(ea.hasData, true);
+  assertEquals(ea.score, 0);
+  assertEquals(/^EA de -\d/.test(ea.desc), true);
+  assertEquals(/Crítico/.test(ea.desc), true);
+  const withData = r.pillars.filter((p) => p.hasData);
+  assertEquals(r.score, Math.round(withData.reduce((s, p) => s + p.score, 0) / withData.length));
+  // Sem refeições nenhumas, o pilar continua fora da média.
+  const semRefeicoes = computeReadinessIndex(runs, [], body, [], profile, "2026-08-25", null, null);
+  assertEquals(semRefeicoes.pillars.find((p) => p.key === "ea")!.hasData, false);
+  assertEquals(semRefeicoes.pillars.find((p) => p.key === "ea")!.desc, "Sem dados nutricionais suficientes.");
+});

@@ -2,7 +2,8 @@ import React from 'react';
 import TimeFilterBar from '../TimeFilterBar';
 import PeriodNavigator from '../PeriodNavigator';
 import { useCalendarPeriod } from '../../../utils/useCalendarPeriod';
-import { kindText, toneOf } from './periodText';
+import { useTodayISO } from '../../../utils/useTodayISO';
+import { closedCoverageLabel, kindText, toneOf } from './periodText';
 
 /**
  * PeriodHeader / PeriodNav — o topo de cada separador da Evolução
@@ -33,15 +34,22 @@ const FILTER_CLASS = [
   '[&>button[aria-pressed=false]]:bg-transparent [&>button[aria-pressed=true]]:font-extrabold',
 ].join(' ');
 
-export function PeriodNav({ cal, module = 'nutricao', className = '', style }) {
+/* `closedDays` + `dataStartISO` (opcionais, 2026-10-04): os dias fechados que a
+   vista do separador realmente conta (desde o 1.º registo). Quando o histórico
+   começa dentro do período, o navegador diz ESSE número com o "desde 13 jul",
+   em vez dos "276 de 365" do calendário — uma só definição no ecrã
+   (closedCoverageLabel). Sem eles o rótulo vai como veio de periodLabel. */
+export function PeriodNav({ cal, module = 'nutricao', className = '', style, closedDays, dataStartISO }) {
+  const today = useTodayISO();
   if (!cal) return null;
   const tone = toneOf(module);
   const isPast = (cal.offset ?? 0) < 0;
+  const label = closedCoverageLabel(cal.label, { period: cal.period, closedDays, dataStartISO, todayISO: today });
   return (
     <div className={className} style={style} data-testid="period-nav">
       <PeriodNavigator
         kind={cal.kind}
-        label={cal.label}
+        label={label}
         canGoNext={cal.canGoNext}
         onPrev={cal.prev}
         onNext={cal.next}

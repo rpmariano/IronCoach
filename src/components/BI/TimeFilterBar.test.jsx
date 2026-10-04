@@ -28,4 +28,20 @@ describe('TimeFilterBar', () => {
     expect(labels(CORRIDA)).toEqual(['Semana', 'Mês', 'Trimestre', 'Ano']);
     expect(labels(GINASIO)).toEqual(['Semana', 'Mês', 'Trimestre']);
   });
+
+  /* 2026-10-04: a 390 px o Corpo (5 opções) encolhia os chips abaixo do
+     rótulo e «Trimestre» saía da pílula. O mínimo do chip é o rótulo. */
+  it('os chips nunca encolhem abaixo do rótulo; com 5 opções o padding aperta', () => {
+    const { unmount } = render(<TimeFilterBar options={CORPO} activeRange="trimestre" />);
+    const chips = screen.getAllByRole('button');
+    chips.forEach((b) => {
+      expect(b.className).toContain('min-w-max');
+      expect(b.className).not.toContain('min-w-[44px]');
+      expect(b.className).toContain('px-2');
+      expect(b.className).toContain('min-h-[44px]');
+    });
+    unmount();
+    render(<TimeFilterBar options={GINASIO} activeRange="mes" />);
+    screen.getAllByRole('button').forEach((b) => expect(b.className).toContain('px-3'));
+  });
 });

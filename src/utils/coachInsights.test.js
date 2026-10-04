@@ -107,14 +107,17 @@ describe('detectCoachInsights — "Perda de peso demasiado rápida" usa o contra
     expect(detectCoachInsights({ bodyAssessments }, { experience_level: 'medio' }).find((i) => i.id === 'weight_loss_fast')).toBeUndefined();
   });
 
-  it('última pesagem há 14 dias ainda alerta (diz a data); há 15 já não', () => {
+  // 2026-10-04 (Geral): a recência alinhou com a dos alertas de gordura — 30 dias
+  // (era 14). A janela da tendência continua a ser de 14 dias até à última pesagem;
+  // o que são 30 dias é a idade a partir da qual essa pesagem já não conta.
+  it('última pesagem há 30 dias ainda alerta (diz a data); há 31 já não', () => {
     const serie = (fim) => [
       { date: iso(fim + 12), weight_kg: 80 },
       { date: iso(fim + 6), weight_kg: 77 },
       { date: iso(fim), weight_kg: 74 },
     ];
-    expect(detectCoachInsights({ bodyAssessments: serie(14) }, { experience_level: 'medio' }).find((i) => i.id === 'weight_loss_fast')).toBeTruthy();
-    expect(detectCoachInsights({ bodyAssessments: serie(15) }, { experience_level: 'medio' }).find((i) => i.id === 'weight_loss_fast')).toBeUndefined();
+    expect(detectCoachInsights({ bodyAssessments: serie(30) }, { experience_level: 'medio' }).find((i) => i.id === 'weight_loss_fast')).toBeTruthy();
+    expect(detectCoachInsights({ bodyAssessments: serie(31) }, { experience_level: 'medio' }).find((i) => i.id === 'weight_loss_fast')).toBeUndefined();
   });
 
   it('3 pesagens em 12 dias mas a perda é lenta: sem alerta', () => {

@@ -194,7 +194,10 @@ Deno.test("closedDaysOf — corta no início dos dados ('desde')", () => {
   const out = calendarPeriod("mes", TODAY);
   assertEquals(closedDaysOf(out, TODAY, "2026-10-02"), ["2026-10-02", "2026-10-03"]);
   assertEquals(closedDaysOf(out, TODAY), ["2026-10-01", "2026-10-02", "2026-10-03"]);
-  assertEquals(periodLabel(out, TODAY, { dataStartISO: "2026-10-02" }).coverage, "desde 2 out · em curso · 3 de 31 dias fechados");
+  assertEquals(periodLabel(out, TODAY, { dataStartISO: "2026-10-02" }).coverage, "desde 2 out · em curso · 2 dias fechados");
+  // 2026-10-04: singular e zero — a mesma régua do cartão ("Só 1 dia fechado").
+  assertEquals(periodLabel(out, TODAY, { dataStartISO: "2026-10-03" }).coverage, "desde 3 out · em curso · 1 dia fechado");
+  assertEquals(periodLabel(out, TODAY, { dataStartISO: "2026-10-04" }).coverage, "desde 4 out · em curso · ainda sem dias fechados");
 });
 
 Deno.test("weekdayAverages — mínimo por dia da semana", () => {

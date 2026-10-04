@@ -167,8 +167,9 @@ export function nutritionPeriodVerdict({ summary, isCurrent = true, where = '', 
   // 1. Energia disponível em zona de risco (só com dias que cheguem).
   if (ea && Number(ea.nDays) >= minDays && ea.average != null && ea.average < 30) {
     const estimate = ea.leanMassSource === 'omissao';
+    // 2026-10-04: com avaliação (só peso), o que falta é a gordura dela, não «avaliação de composição».
     return {
-      text: open(`a energia que sobra depois do treino ${t.fica} em ${fmtNumber(ea.average, 0)} kcal por kg de massa magra, em média${estimate ? ' (estimativa: sem avaliação de composição corporal)' : ''}. Abaixo de 30 é onde se perde osso, hormonas e prontidão.`),
+      text: open(`a energia que sobra depois do treino ${t.fica} em ${fmtNumber(ea.average, 0)} kcal por kg de massa magra, em média${estimate ? (ea.leanMassDate ? ' (estimativa: a última avaliação não tem gordura medida)' : ' (estimativa: sem avaliação de composição corporal)') : ''}. Abaixo de 30 é onde se perde osso, hormonas e prontidão.`),
       // Sem massa magra medida nem estimada a partir de uma avaliação, é uma
       // estimativa fraca de uma estimativa fraca (energyAvailability.ts):
       // aviso, não alarme.

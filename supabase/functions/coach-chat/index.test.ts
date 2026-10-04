@@ -2309,7 +2309,7 @@ Deno.test("computeBodyMetrics: tendência de peso quando há ≥3 pesagens em �
   assertStringIncludes(out!, "71.0 kg");
   assertStringIncludes(out!, "tendência descendo");
   assertStringIncludes(out!, "-1.4 kg/semana");
-  assertStringIncludes(out!, "3 pesagens em 10 dias");
+  assertStringIncludes(out!, "3 pesagens em 10 dias, até à de 2026-08-11");
   assertEquals(out!.includes("sem dados suficientes"), false);
 });
 

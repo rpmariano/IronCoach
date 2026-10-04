@@ -4,6 +4,7 @@ import { useRevealAnimation } from '../../utils/useRevealAnimation';
 import { useCountUp } from '../../utils/useCountUp';
 import { DUR_COUNT_REVEAL } from '../../utils/introAnimations';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
+import { deltaColor } from './period/DeltaVsPrevious';
 
 /**
  * PillarSummaryCard — Card compacto para os 4 pilares do dashboard.
@@ -15,8 +16,12 @@ import { fmtNumber } from '../../utils/dashboardVerdicts';
  *   kpi: string — valor principal (ex: "32.4 km", "74.2 kg")
  *   kpiUnit: string — unidade opcional
  *   badge: { label: string, color: 'green'|'yellow'|'red'|'blue'|'neutral' }
- *   delta: string — ex: "+5%", "-0.3kg/sem"
- *   subtitle: string — segunda linha descritiva, sempre visível
+ *   delta: string — ex: "+5%", "-0,3 kg/sem" — ou, para um ▲/▼ face ao período
+ *     anterior (R5, 2026-10-04), { direction: 'up'|'down'|'flat', text, spoken,
+ *     better?: 'up'|'down'|'none' }: a seta fica escondida do leitor de ecrã (que lê
+ *     `spoken`) e a cor diz se a mudança é boa (`better`, por omissão cinzento).
+ *   subtitle: string | string[] — linhas descritivas, sempre visíveis (uma por
+ *     frase: o que diz o denominador, a origem do número)
  *   onClick: function
  *
  * Teve um mini-gráfico de 7 dias (sparkline), removido a pedido do
@@ -49,6 +54,8 @@ const BADGE_COLORS = {
    ("1 850") e o resto tem de ser vazio, "k", "%" ou começar por espaço
    ("5 dias"). Antes "5:41" passava como 5 + ":41" (contava "1:41", "2:41"…)
    e em "5 dias" o espaço ia para o número e o zero mostrava "0dias". */
+const DELTA_ARROW = { up: '▲', down: '▼', flat: '=' };
+
 const KPI_NUMBER = /^(\d+(?:\s\d{3})*(?:[.,]\d+)?)(|[k%]|\s.*)$/i;
 
 function parseKpi(kpi) {
@@ -126,15 +133,26 @@ export default function PillarSummaryCard({
         )}
         {/* 12,5px: ver nota em RaceReadinessCard — a variação é um dado que
             se lê de relance, não uma etiqueta. */}
-        {delta && (
+        {delta && typeof delta === 'string' && (
           <span className="text-[12.5px] text-[var(--text-3)] font-medium">{delta}</span>
+        )}
+        {delta && typeof delta === 'object' && (
+          <span
+            data-testid="pillar-delta"
+            data-direction={delta.direction}
+            className="text-[12.5px] font-bold"
+            style={{ color: deltaColor(delta.direction, delta.better || 'none') }}
+          >
+            <span aria-hidden="true">{`${DELTA_ARROW[delta.direction] || ''} ${delta.text}`.trim()}</span>
+            <span className="sr-only">{delta.spoken || delta.text}</span>
+          </span>
         )}
       </div>
 
       {/* Subtítulo — sempre visível, ocupa o espaço que era do sparkline */}
-      {subtitle && (
-        <p className="text-[11px] text-[var(--text-3)] font-medium leading-snug">{subtitle}</p>
-      )}
+      {(Array.isArray(subtitle) ? subtitle : [subtitle]).filter(Boolean).map((line, i) => (
+        <p key={i} className={`text-[11px] text-[var(--text-3)] font-medium leading-snug${i > 0 ? ' mt-0.5' : ''}`}>{line}</p>
+      ))}
     </button>
   );
 }

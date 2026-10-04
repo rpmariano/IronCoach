@@ -217,19 +217,29 @@ export function computeReadinessIndex(
   // --- Pilar 2: Disponibilidade Energética ---
   const ea = computeEnergyAvailabilityWindow(meals || [], bodyAssessments || [], runs || [], gymSessions || [], todayISO, "semana");
   const eaAvg = ea?.average ?? 0;
+  // Revisão pré-deploy de 2026-10-04: "tem dados" = há dias com refeições na
+  // janela, não "EA > 0". Com `eaAvg > 0` um dia de tirada longa só com o
+  // pequeno-almoço registado (EA ≤ 0, o pior caso de RED-S) passava a "sem
+  // dados", saía da média e SUBIA o índice (ou punha-o "a calibrar"). EA ≤ 0
+  // com refeições é crítico, não ausência de dados.
+  const eaHasData = (ea?.daily?.length ?? 0) > 0;
   let eaScore = 0;
   let eaDesc = "Sem dados nutricionais suficientes.";
-  if (eaAvg >= 45) {
+  if (!eaHasData) {
+    // fica "Sem dados", score 0, fora da média
+  } else if (eaAvg >= 45) {
     eaScore = 100;
     eaDesc = `EA de ${eaAvg} kcal/kg. Energia adequada para o treino.`;
   } else if (eaAvg >= 30) {
     eaScore = 60;
     eaDesc = `EA de ${eaAvg} kcal/kg. Subótima — come mais para sustentar o volume.`;
-  } else if (eaAvg > 0) {
-    eaScore = 10;
+  } else {
+    // EA ≤ 0 (o exercício gastou mais do que o que se comeu) fica com 0:
+    // pior do que qualquer EA positiva abaixo de 30.
+    eaScore = eaAvg > 0 ? 10 : 0;
     eaDesc = `EA de ${eaAvg} kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.`;
   }
-  pillars.push({ key: "ea", label: "Disponibilidade Energética", score: eaScore, desc: eaDesc, hasData: eaAvg > 0 });
+  pillars.push({ key: "ea", label: "Disponibilidade Energética", score: eaScore, desc: eaDesc, hasData: eaHasData });
 
   // --- Pilar 3: Compliance Calórica ---
   const macros = computeMacroAdherence(meals || [], profile, bodyAssessments || [], todayISO, "semana");

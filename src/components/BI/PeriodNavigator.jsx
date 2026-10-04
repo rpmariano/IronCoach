@@ -26,11 +26,27 @@ export default function PeriodNavigator({
   className = '',
 }) {
   const names = UNIT[kind] || UNIT.semana;
-  // 2026-10-04: UMA só linha pequena, como no mock-up aprovado. Dia/semana mostram
+  // 2026-10-04: UMA só linha pequena, como no mock-up aprovado. Dia mostra
   // "intervalo · estado"; mês/trimestre/ano mostram a cobertura (que já traz o estado,
   // ex. "em curso · 3 de 31 dias fechados") e só sem cobertura recuam para o intervalo.
+  // A semana não tem título com o mês, por isso leva o intervalo e o que a cobertura
+  // traz de DIFERENTE do calendário: "desde 30 set", "2 avaliações", "5 de 7 dias com
+  // registo". O progresso do calendário ("6 de 7 dias fechados", "ainda sem dias
+  // fechados") fica de fora: o mock-up diz só "28 set – 4 out · em curso", a contagem
+  // vive no resumo (um só sítio a dizê-la) e a linha não parte em duas a 390 px.
+  // Revisão 2026-10-04: antes juntava sempre a cobertura inteira.
   const rangeStatus = [label?.range, label?.status].filter(Boolean).join(' · ');
-  const subtitle = kind === 'dia' || kind === 'semana' ? rangeStatus : label?.coverage || rangeStatus;
+  const coverage = label?.coverage;
+  let subtitle;
+  if (kind === 'dia') subtitle = rangeStatus;
+  else if (kind === 'semana') {
+    const parts = coverage ? coverage.split(' · ') : [];
+    const isProgress = (s) => /dias? fechados?$/.test(s);
+    const kept = parts.filter((s) => s !== label?.status && !isProgress(s));
+    const since = kept.filter((s) => /^desde /.test(s));
+    const rest = kept.filter((s) => !/^desde /.test(s));
+    subtitle = [label?.range, ...since, label?.status, ...rest].filter(Boolean).join(' · ');
+  } else subtitle = coverage || rangeStatus;
 
   const arrow = (disabled) => ({
     width: 44,

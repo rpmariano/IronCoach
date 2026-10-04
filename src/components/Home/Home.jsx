@@ -12,6 +12,7 @@ import MealSheet from './MealSheet';
 import RaceCard from './RaceCard';
 import StatusCard from './StatusCard';
 import FirstDayCard from './FirstDayCard';
+import GettingStartedCard from './GettingStartedCard';
 import CheckinCard from './CheckinCard';
 import { CarolNoticesDock } from '../BI/CoachInsightsDock';
 import useCarolNotices from '../BI/useCarolNotices';
@@ -147,6 +148,14 @@ export default function Home() {
   };
   const registerRun = () => { if (setActiveTab('corrida')) setOpenCreationMode('run'); };
 
+  // O cartão "O que falta para começar" reaproveita os handlers do Início (2026-10-04).
+  const handleGettingStarted = (key) => {
+    if (key === 'perfil') setActiveTab('perfil');
+    else if (key === 'prova') createRace();
+    else if (key === 'corridas') registerRun();
+    else if (key === 'refeicoes') registerMeal();
+  };
+
   if (firstDay) {
     return (
       <div className="flex flex-col gap-3 fade-in pb-2">
@@ -161,6 +170,7 @@ export default function Home() {
           onRegisterRun={registerRun}
           onRegisterMeal={registerMeal}
         />
+        <GettingStartedCard onAction={handleGettingStarted} />
         <SectionLabel style={{ marginTop: 4 }}>Entretanto, começa a registar</SectionLabel>
         <StatusCard empty onRegisterMeal={registerMeal} />
         {/* Quando o pedido dela já é a corrida, a linha repetia o botão. */}
@@ -183,6 +193,7 @@ export default function Home() {
   return (
     <div className="flex flex-col gap-2 fade-in pb-2">
       <CarolCard onOpenRace={setEditingRaceId} onOpenCoach={notices.openCoach} />
+      <GettingStartedCard onAction={handleGettingStarted} />
 
       <SectionLabel>O que faço hoje</SectionLabel>
       <DayPlanCard plans={coachPlans} planItems={coachPlanItems} raceEvents={raceEvents} onComplete={handleCompleteItem} onNav={setActiveTab} onOpenRace={setEditingRaceId} onOpenPlano={() => setOpenCreationMode('plano')} />

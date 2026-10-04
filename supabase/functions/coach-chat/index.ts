@@ -4698,8 +4698,11 @@ export function computeBodyMetrics(
     const rateStr = rate1 > 0 ? `+${rate1.toFixed(1)}` : rate1 < 0 ? `${rate1.toFixed(1)}` : "0.0";
     lines.push(
       `Peso (média suavizada): ${latestSmoothed.weight.toFixed(1)} kg — tendência ${weightTrend.trend} ` +
-      `(${rateStr} kg/semana, ${weightTrend.pointsInWindow} pesagens em ${weightTrend.spanDays} dias)`,
+      `(${rateStr} kg/semana, ${weightTrend.pointsInWindow} pesagens em ${weightTrend.spanDays} dias, até à de ${weightPoints[weightPoints.length - 1].date})`,
     );
+    // 2026-10-04 (revisão pré-deploy): a janela acaba na ÚLTIMA pesagem, que
+    // pode ter até 29 dias (a query lê 30). Com a data à vista a Carol não
+    // fala de um ritmo de há 3 semanas como se fosse de agora.
     // Taxa de perda SUSTENTADA (%/semana por nível) — distinta do sinal #1
     // abaixo, que é a queda AGUDA em 48-72h. O frontend e a coach-daily-
     // summary já usavam esta avaliação; a coach-chat era a única das três

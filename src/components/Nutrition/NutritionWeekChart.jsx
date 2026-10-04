@@ -26,6 +26,12 @@ import { dayLong, dayShort, fmtInt, isoParts, trainingText, WD_SHORT, weekdayIdx
 
 const BAR_AREA = 160; // altura da coluna do valor + barra
 const H = 140; // altura útil das barras
+// O valor de cada dia fica numa linha PRÓPRIA por cima da área das barras (a
+// zona 90–115% e a linha do objetivo nunca lá chegam: 1,15 × objetivo ≤
+// H / 1,08). Colado ao topo da barra, o rótulo ficava cortado pela linha da
+// zona sempre que a barra acabava perto do objetivo (2026-10-04, reparo da
+// verificação no browser).
+const VALUE_ROW = BAR_AREA - H;
 const LAB = 68; // dia da semana, número, estado e treino por baixo
 
 export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }) {
@@ -170,15 +176,17 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
                   };
               const body = (
                 <>
-                  <span style={{ height: BAR_AREA, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }}>
-                    <span className="tabular-nums" style={{ fontSize: 'var(--text-xs)', color: isToday || c.value == null ? 'var(--text-4)' : 'var(--text-3)' }}>
+                  <span style={{ height: BAR_AREA, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <span className="tabular-nums" data-testid="week-value" style={{ height: VALUE_ROW, display: 'flex', alignItems: 'center', fontSize: 'var(--text-xs)', color: isToday || c.value == null ? 'var(--text-4)' : 'var(--text-3)' }}>
                       {c.value != null ? fmtInt(c.value) : c.state === 'future' ? '' : '–'}
                     </span>
-                    <span
-                      data-testid="week-bar"
-                      data-date={c.date}
-                      style={{ display: 'block', width: 24, transition: motion.active ? 'height 300ms var(--ease-out)' : undefined, ...barStyle, ...enterStyle(motion, i, cols.length) }}
-                    />
+                    <span style={{ height: H, display: 'flex', alignItems: 'flex-end' }}>
+                      <span
+                        data-testid="week-bar"
+                        data-date={c.date}
+                        style={{ display: 'block', width: 24, transition: motion.active ? 'height 300ms var(--ease-out)' : undefined, ...barStyle, ...enterStyle(motion, i, cols.length) }}
+                      />
+                    </span>
                   </span>
                   <span style={{ height: LAB, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4, gap: 1 }}>
                     <span style={{ fontSize: 'var(--text-xs)', lineHeight: '15px', color: 'var(--text-muted)' }}>{wd}</span>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, Check, ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import GlassCard from '../shared/GlassCard';
+import { fmtNumber } from '../../utils/verdicts/shared';
 
 /* Um dia de nutrição contra o objetivo DESSE dia (bug #51, 2026-10-02): «se
    quiser saber qual era o objetivo de calorias ou outro macro, no dia de
@@ -23,7 +24,10 @@ const STATUS = {
   sem_registo: { label: 'Sem registo', Icon: Minus, color: 'var(--text-4)' },
 };
 
-const fmt = (n) => Math.round(n).toLocaleString('pt-PT');
+/* 2026-10-04 (revisão no browser): toLocaleString('pt-PT') não agrupa
+   números de 4 algarismos («2400»), e o resto do separador escreve «2 400».
+   O formatador comum da app (fmtNumber) dá o mesmo espaço de milhar. */
+const fmt = (n) => fmtNumber(Math.round(n), 0);
 
 /** "Hoje", "Ontem", ou "qui, 1 out". */
 export function dayTitle(dayISO, todayISO) {
@@ -35,6 +39,10 @@ export function dayTitle(dayISO, todayISO) {
     .format(new Date(`${dayISO}T12:00:00Z`))
     .replace(/\./g, '');
 }
+
+/* Hoje ainda não acabou (2026-10-04): nem "Abaixo · 52%" nem "N objetivos
+   atingidos" — um dia em curso não se julga. Diz-se o que já vai, sem estado. */
+const IN_PROGRESS = { label: 'Até agora', Icon: null, color: 'var(--text-4)' };
 
 export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = false, plan = null, onPrev, onNext }) {
   const isToday = dayISO >= todayISO;
@@ -49,7 +57,9 @@ export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = f
         <div className="text-center min-w-0">
           <p data-testid="day-nutrition-title" className="text-[15px] font-black" style={{ color: 'var(--text-1)' }}>{dayTitle(dayISO, todayISO)}</p>
           <p className="text-[11px]" style={{ color: 'var(--text-3)' }}>
-            {recorded ? `${hits} de ${rows.length} objetivos atingidos` : 'Sem registos neste dia'}
+            {isToday
+              ? (recorded ? 'Ainda em curso — só conta quando acabar' : 'Ainda sem registos hoje')
+              : (recorded ? `${hits} de ${rows.length} objetivos atingidos` : 'Sem registos neste dia')}
           </p>
         </div>
         <button type="button" onClick={onNext} disabled={isToday} aria-label="Dia seguinte" className="tap-44 shrink-0 flex items-center justify-center disabled:opacity-30" style={{ color: 'var(--text-2)' }}>
@@ -59,7 +69,8 @@ export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = f
 
       <ul className="mt-3 space-y-3" aria-label="Objetivos do dia">
         {rows.map((r) => {
-          const s = STATUS[r.status];
+          // Em hoje, só o que já vai ("Até agora · 52%"); sem registo continua a dizê-lo.
+          const s = isToday && r.status !== 'sem_registo' ? IN_PROGRESS : STATUS[r.status];
           const pct = r.target > 0 ? Math.min(1, r.value / r.target) : 0;
           return (
             <li key={r.key} data-testid={`day-row-${r.key}`} data-status={r.status}>
@@ -73,8 +84,9 @@ export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = f
                 <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }} aria-hidden="true">
                   <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: COLOR[r.key], boxShadow: `0 0 8px ${COLOR[r.key]}` }} />
                 </div>
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold shrink-0 w-[92px] justify-end" style={{ color: s.color }}>
-                  <s.Icon size={12} aria-hidden="true" />
+                {/* min-w em vez de largura fixa (2026-10-04): «Até agora · 25%» partia em duas linhas nos 92 px. */}
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold shrink-0 min-w-[92px] whitespace-nowrap justify-end" style={{ color: s.color }}>
+                  {s.Icon && <s.Icon size={12} aria-hidden="true" />}
                   {s.label}{r.status !== 'sem_registo' && r.pct != null ? ` · ${r.pct}%` : ''}
                 </span>
               </div>

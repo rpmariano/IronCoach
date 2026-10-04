@@ -91,6 +91,48 @@ export function whereOf(kind, title, isCurrent = true) {
   return kind === 'semana' ? `na ${name.charAt(0).toLowerCase()}${name.slice(1)}` : `em ${name}`;
 }
 
+const MONTHS_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+
+/** "13 jul" (com o ano quando não é o de hoje) — o "desde 13 jul" do navegador. */
+function shortDayText(iso, todayISO) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  if (!m) return '';
+  const year = todayISO && String(todayISO).slice(0, 4) !== m[1] ? ` ${m[1]}` : '';
+  return `${Number(m[3])} ${MONTHS_ABBR[Number(m[2]) - 1]}${year}`;
+}
+
+/**
+ * Uma só definição de "dias fechados" no ecrã (2026-10-04, reparo da
+ * verificação no browser: o navegador do Ano da Corrida dizia "276 de 365 dias
+ * fechados" e o bloco de KPIs "124 dias fechados", dois números para a mesma
+ * coisa). O rótulo de periodLabel() conta os dias fechados do CALENDÁRIO
+ * (1 jan → ontem); quando o histórico começa dentro do período, os dias que
+ * contam são os fechados DESDE o 1.º registo (a vista só os usa a eles) e é
+ * esse o número que o navegador diz, com o "desde 13 jul". O resumo deixa de
+ * repetir a contagem: um só sítio a dizê-la.
+ *
+ * Só mexe quando o 1.º registo cai DENTRO do período (dataStart > início e
+ * ≤ fim) e `closedDays` é um inteiro; em todos os outros casos (histórico que
+ * já vinha de trás, período antes do 1.º registo, "dia") devolve o rótulo tal
+ * como veio. Num período passado que já traz "com registo" (Nutrição) também
+ * não toca.
+ */
+export function closedCoverageLabel(label, { period, closedDays, dataStartISO, todayISO } = {}) {
+  if (!label || !period || period.kind === 'dia' || !Number.isInteger(closedDays)) return label;
+  const ds = typeof dataStartISO === 'string' ? dataStartISO.slice(0, 10) : null;
+  if (!ds || !(ds > period.start && ds <= period.end)) return label;
+  const desde = `desde ${shortDayText(ds, todayISO)}`;
+  if (period.isCurrent) {
+    const n = Math.max(0, closedDays);
+    const prog = n === 0 ? 'ainda sem dias fechados' : `${nDays(n)} ${plural(n, 'fechado', 'fechados')}`;
+    return { ...label, coverage: `${desde} · em curso · ${prog}` };
+  }
+  if (label.coverage && /com registo/.test(label.coverage)) return label;
+  // Período passado: «213 dias» sem dizer de quê era ambíguo (revisão 2026-10-04).
+  const n = Math.max(0, closedDays);
+  return { ...label, coverage: `${desde} · ${nDays(n)} ${plural(n, 'fechado', 'fechados')}` };
+}
+
 /**
  * Veredicto "cedo" (R6): "Só 3 dias fechados em outubro — ainda é cedo para
  * conclusões." Devolve { text, tone: 'neutral' } — o formato do VerdictLine e

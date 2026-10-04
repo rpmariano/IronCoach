@@ -98,6 +98,22 @@ describe('vista da Nutrição (views/nutrition.js)', () => {
     expect(v.label.coverage).toBe('10 de 30 dias com registo'); // 1.º registo a 10 ago: setembro conta inteiro
   });
 
+  it('mês FECHADO com os mesmos dias dos dois lados: sameN é false (o mock-up diz "▲ agosto: 11 de 29 (38%)", não "▲ 3 face a agosto")', () => {
+    const day = (m, d) => `2026-${m}-${String(d).padStart(2, '0')}`;
+    const aug = Array.from({ length: 28 }, (_, i) => meal(day('08', i + 1), i < 14 ? 2400 : 2000, 150, 300, 80));
+    const sep = Array.from({ length: 28 }, (_, i) => meal(day('09', i + 3), 2400, 150, 300, 80));
+    const v = build({ kind: 'mes', offset: -1 }, TODAY, deps({ meals: [...aug, ...sep] }));
+    expect(v.compare.both.cur.n).toBe(28);
+    expect(v.compare.both.prev.n).toBe(28);
+    expect(v.compare.both.sameN).toBe(false);
+    expect(v.compare.both).toMatchObject({ curPct: 100, prevPct: 50 });
+  });
+
+  it('período em curso: sameN continua true quando os dias são os mesmos do anterior (a diferença de dias)', () => {
+    const v = build({ kind: 'semana', offset: 0 });
+    expect(v.compare.both.sameN).toBe(true);
+  });
+
   it('o período começa antes do 1.º registo: "desde 13 jul", 1.º trimestre, sem ▲/▼ (R7)', () => {
     const jul = [meal('2026-07-13', 2400, 150, 300, 80), meal('2026-07-14', 2400, 150, 300, 80)];
     const v = build({ kind: 'trimestre', offset: -1 }, TODAY, deps({ meals: [...jul, ...PREV_WEEK, ...WEEK] }));

@@ -24,9 +24,7 @@ import {
 } from '../BI/period';
 import { goalsResolver, dayNutritionSummary, planMacrosForDay } from '../../utils/goalHistory';
 import { NUTRIENT_META, NUTRIENT_ORDER } from '../../utils/nutrition';
-import { nutritionVerdict } from '../../utils/dashboardVerdicts';
 import { capitalize } from '../../utils/verdicts/shared';
-import { calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
 import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
 import { useTodayISO } from '../../utils/useTodayISO';
 import { fmtInt, rangeText, wherePast } from './nutritionText';
@@ -99,6 +97,35 @@ export function summaryFooterOf(view) {
 }
 
 /**
+ * O dia de HOJE ainda não acabou (2026-10-04, reparo da verificação no
+ * browser): com um pequeno-almoço às 8h o veredicto dizia "Estás a comer abaixo
+ * do que gastas… 4 kcal/kg" — num dia em curso não se julga a energia
+ * disponível nem o défice, só se diz o que já vai, sem conclusão (mock-up:
+ * "até agora … · ainda em curso"). Os dias fechados não têm veredicto aqui.
+ * `rows` são as do dia (dayNutritionSummary): calorias e proteína.
+ */
+// Espaço duro entre o número e a unidade (nunca parte a linha em "2 400 / kcal").
+const NB = '\u00a0';
+
+export function todayProgressVerdict(rows) {
+  const by = Object.fromEntries((rows || []).map((r) => [r.key, r]));
+  const kcal = by.calories;
+  const prot = by.protein;
+  const recorded = (rows || []).some((r) => r.key !== 'water' && r.status !== 'sem_registo');
+  if (!recorded || !kcal) {
+    return { text: 'Hoje ainda sem refeições registadas — o dia só conta quando acabar.', tone: 'neutral' };
+  }
+  const part = (r, unit) => `${fmtInt(r.value)} de ${fmtInt(r.target)}${NB}${unit}`;
+  const bits = [part(kcal, 'kcal')];
+  if (prot && prot.target > 0) bits.push(`${part(prot, 'g')} de proteína`);
+  return {
+    // Revisão 2026-10-04: «ainda» repetido; o mock-up diz «— ainda em curso».
+    text: `Hoje, até agora: ${bits.join(' e ')} — ainda em curso.`,
+    tone: 'neutral',
+  };
+}
+
+/**
  * O lugar do "Comer para treinar" quando ainda não há dias que cheguem (R6).
  * Período em curso que ainda lá chega: "Comer para treinar aparece a partir
  * de 7 dias fechados neste mês." (mock-up). Período passado, ou em curso que
@@ -139,10 +166,10 @@ export default function NutritionDashboard() {
      seletor, qualquer alteração ao store — um deslize entre separadores
      mexe em `lastDashboardTab` — redesenhava este separador mesmo escondido. */
   const {
-    profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs,
+    profile, meals, setOpenCreationMode, waterLogs,
     coachPlans, coachPlanItems, nutritionDayFocus, goalHistory,
   } = useAppStore(useShallow((s) => ({
-    profile: s.profile, meals: s.meals, bodyAssessments: s.bodyAssessments, runs: s.runs, gymSessions: s.gymSessions,
+    profile: s.profile, meals: s.meals,
     setOpenCreationMode: s.setOpenCreationMode, waterLogs: s.waterLogs, coachPlans: s.coachPlans,
     coachPlanItems: s.coachPlanItems, nutritionDayFocus: s.nutritionDayFocus, goalHistory: s.goalHistory,
   })));
@@ -198,14 +225,13 @@ export default function NutritionDashboard() {
     };
   }, [isDay, selectedDay, today, goalHistory, profile, meals, waterLogs, coachPlans, coachPlanItems]);
 
-  /* O veredicto da vista Dia fala de hoje, por isso só aparece em hoje (como
-     antes). A régua passou à única (N7) em verdicts/nutrition.js. */
+  /* O veredicto da vista Dia só existe em hoje (como antes) e, como o dia ainda
+     não acabou, só diz o que já vai — sem julgar a energia nem o défice
+     (todayProgressVerdict). Os dias fechados não levam veredicto. */
   const dayVerdict = useMemo(() => {
-    if (!isDay || selectedDay < today) return null;
-    const adherence = calculateMacroAdherence(meals || [], profile, bodyAssessments || [], 'dia');
-    const ea = calculateEnergyAvailability(meals || [], bodyAssessments || [], runs || [], gymSessions || [], 'dia');
-    return nutritionVerdict({ adherence, ea });
-  }, [isDay, selectedDay, today, meals, profile, bodyAssessments, runs, gymSessions]);
+    if (!dayView || selectedDay < today) return null;
+    return todayProgressVerdict(dayView.rows);
+  }, [dayView, selectedDay, today]);
 
   const header = <PeriodHeader tab="nutricao" options={NUTRICAO} cal={cal} navigator="none" />;
 
@@ -261,7 +287,7 @@ export default function NutritionDashboard() {
   const aComecar = v.earlyState === 'a_comecar';
   const cedo = v.earlyState === 'cedo';
   const desde = v.startsBeforeData ? rangeText(v.dataStartISO, v.dataStartISO, today) : null;
-  const nav = <PeriodNav cal={cal} module="nutricao" />;
+  const nav = <PeriodNav cal={cal} module="nutricao" closedDays={v.closedDays.length} dataStartISO={v.dataStartISO} />;
   const rows = summaryRowsOf(v, { aComecar });
 
   if (aComecar) {

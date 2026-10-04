@@ -196,7 +196,10 @@ describe('calendarPeriod', () => {
     const out = calendarPeriod("mes", TODAY);
     expect(closedDaysOf(out, TODAY, "2026-10-02")).toEqual(["2026-10-02", "2026-10-03"]);
     expect(closedDaysOf(out, TODAY)).toEqual(["2026-10-01", "2026-10-02", "2026-10-03"]);
-    expect(periodLabel(out, TODAY, { dataStartISO: "2026-10-02" }).coverage).toEqual("desde 2 out · em curso · 3 de 31 dias fechados");
+    expect(periodLabel(out, TODAY, { dataStartISO: "2026-10-02" }).coverage).toEqual("desde 2 out · em curso · 2 dias fechados");
+    // 2026-10-04: singular e zero — a mesma régua do cartão ("Só 1 dia fechado").
+    expect(periodLabel(out, TODAY, { dataStartISO: "2026-10-03" }).coverage).toEqual("desde 3 out · em curso · 1 dia fechado");
+    expect(periodLabel(out, TODAY, { dataStartISO: "2026-10-04" }).coverage).toEqual("desde 4 out · em curso · ainda sem dias fechados");
   });
 
   it("weekdayAverages — mínimo por dia da semana", () => {

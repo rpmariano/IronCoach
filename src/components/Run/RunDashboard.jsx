@@ -66,7 +66,6 @@ const BEST_PACE_LEGEND = '≈5 km: corridas e splits de 4 a 6,5 km · ≈10 km: 
 const ACWR_ROW_STATUS = { safe: 'ok', caution: 'above', danger: 'above', undertrained: null };
 
 const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-const diasFechados = (n) => `${n} ${plural(n, 'dia fechado', 'dias fechados')}`;
 const corridas = (n) => `${n} ${plural(n, 'corrida', 'corridas')}`;
 
 const GRADIENT = (context) => {
@@ -78,7 +77,29 @@ const GRADIENT = (context) => {
   return gradient;
 };
 
-const cardStyle = 'bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]';
+/* O cartão dos recordes e o do relógio são o mesmo cartão dos gráficos
+   (ChartFrame: vidro, borda --border-glass, raio 20, padding 16, sombra do
+   cartão) e o título/pista a mesma tipografia — antes eram um cartão Tailwind
+   à parte (borda branca a 60%, sombra interior) que se via diferente ao lado
+   dos outros (2026-10-04, reparo da verificação no browser). */
+const cardStyle = {
+  background: 'var(--surface-glass)',
+  backdropFilter: 'blur(var(--blur-card))',
+  WebkitBackdropFilter: 'blur(var(--blur-card))',
+  border: '1px solid var(--border-glass)',
+  borderRadius: 20,
+  padding: 16,
+  boxShadow: 'var(--shadow-card)',
+};
+const cardTitle = {
+  margin: 0,
+  fontSize: 'var(--text-xs)',
+  fontWeight: 800,
+  letterSpacing: '.09em',
+  textTransform: 'uppercase',
+  color: 'var(--text-3)',
+};
+const cardHint = { fontSize: 'var(--text-xs)', color: 'var(--text-4)', whiteSpace: 'nowrap', flexShrink: 0 };
 
 function DeltaLine({ label, children }) {
   return (
@@ -226,7 +247,12 @@ export default function RunDashboard() {
       : `Carga de hoje: ${view.acwrStatus.label}`,
   });
 
-  const averageLabel = noDays ? (view.beforeData ? 'No período' : 'No período (0 dias fechados)') : `No período (${diasFechados(closedN)})`;
+  // Uma só definição de "dias fechados" (2026-10-04): quem a diz é o navegador
+  // ("em curso · 124 dias fechados", com o "desde 13 jul" quando o histórico
+  // começa dentro do período — PeriodNav closedDays). O bloco de KPIs deixou de
+  // a repetir ("No período (124 dias fechados)" ao lado de "276 de 365" eram
+  // dois números para a mesma coisa).
+  const averageLabel = 'No período';
 
   /* ── O veredicto: "cedo" substitui só o que fala do período (neutro); um
      aviso de carga é de hoje e fica. ── */
@@ -291,10 +317,10 @@ export default function RunDashboard() {
     ? `${cap(view.prevLabel.title)} (${view.prevLabel.range}): ${prevFull.count > 0 ? `${corridas(prevFull.count)} · ${fmtNumber(prevFull.km, 1)} km` : 'sem corridas'}`
     : undefined;
 
-  const navigator = <PeriodNav cal={cal} module="corrida" />;
+  const navigator = <PeriodNav cal={cal} module="corrida" closedDays={closedN} dataStartISO={view.dataStartISO} />;
   // A carga (KPI e barra da semana em curso) é a de hoje e inclui as corridas de hoje (R1,
   // número da Carol): a nota não pode dizer que hoje não entra em nada.
-  const today = <TodayExcludedNote period={period} text={`${TODAY_EXCLUDED.replace(/\.$/, '')} do período (a carga já o inclui); aparece amanhã.`} />;
+  const today = <TodayExcludedNote period={period} text={`${TODAY_EXCLUDED.replace(/\.$/, '')} do período (a carga e os recordes já o incluem); aparece amanhã.`} />;
 
   /* ── Os blocos de fora do período: ACWR (hoje, 12 semanas), VDOT e recordes (de sempre). ── */
   const vdotCompare = view.vdotCompare
@@ -352,10 +378,10 @@ export default function RunDashboard() {
       )}
 
       {/* Recordes: de sempre, dentro e fora do período (R9 + 2026-10-04) */}
-      <div className={cardStyle}>
-        <h2 className="text-[11px] font-semibold text-[var(--text-2)] mb-1 uppercase tracking-wider">Melhor pace de sempre</h2>
+      <div style={cardStyle}>
+        <h2 style={{ ...cardTitle, marginBottom: 4 }}>Melhor pace de sempre</h2>
         <p data-testid="recordes-de-sempre" className="text-[11px] text-[var(--text-3)] mb-2">
-          Entre todas as tuas corridas, não só as deste período.
+          De sempre, hoje incluído — entre todas as tuas corridas, não só as deste período.
         </p>
         <div className="space-y-1">
           {view.records.map(renderBucket)}
@@ -444,7 +470,7 @@ export default function RunDashboard() {
               label={bars.unit === 'day' ? 'Distância por dia' : 'Distância por semana'}
               hint={cal.label?.title}
               value={fmtNumber(bars.total, 1)}
-              unit={`km em ${diasFechados(closedN)}`}
+              unit="km no período"
               valueColor="var(--run)"
               delta={{ text: corridas(cur.count), tone: 'neutral' }}
               axis={{ min: '0 km', max: `${fmtNumber(bars.max, 1)} km` }}
@@ -480,20 +506,22 @@ export default function RunDashboard() {
 
           {/* 9. Relógio: cada métrica diz em quantas corridas existe. */}
           {showWatch && (
-            <div className={cardStyle} data-testid="relogio">
+            <div style={cardStyle} data-testid="relogio">
               <div className="flex items-center justify-between mb-3 gap-2">
-                <h2 className="text-[11px] font-semibold text-[var(--text-2)] flex items-center gap-1.5 uppercase tracking-wider">
-                  <Mountain className="w-3.5 h-3.5 text-[var(--text-3)]" /> Desnível, calorias e cadência
+                <h2 style={{ ...cardTitle, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Mountain className="w-3.5 h-3.5 text-[var(--text-3)]" aria-hidden="true" /> Desnível, calorias e cadência
                 </h2>
-                <p data-testid="relogio-periodo" className="text-[11px] text-[var(--text-3)]">
-                  {cap(cal.label?.title)}
+                {/* Minúscula como a pista dos outros cartões ("setembro 2026"). */}
+                <p data-testid="relogio-periodo" style={cardHint}>
+                  {cal.label?.title}
                 </p>
               </div>
+              {/* 2026-10-04: valor em falta é «—», como no resto da app (era «-»). */}
               <div className="grid grid-cols-3 gap-2 text-center">
                 {[
-                  { k: 'elev', v: wm.elevation != null ? fmtNumber(wm.elevation, 0) : '-', l: 'Desnível (m)', n: wm.nElevation },
-                  { k: 'cal', v: wm.calories != null ? fmtNumber(wm.calories, 0) : '-', l: 'Calorias', n: wm.nCalories },
-                  { k: 'cad', v: wm.avgCadence != null ? fmtNumber(wm.avgCadence, 0) : '-', l: 'Cadência (spm)', n: wm.nCadence },
+                  { k: 'elev', v: wm.elevation != null ? fmtNumber(wm.elevation, 0) : '—', l: 'Desnível (m)', n: wm.nElevation },
+                  { k: 'cal', v: wm.calories != null ? fmtNumber(wm.calories, 0) : '—', l: 'Calorias', n: wm.nCalories },
+                  { k: 'cad', v: wm.avgCadence != null ? fmtNumber(wm.avgCadence, 0) : '—', l: 'Cadência (spm)', n: wm.nCadence },
                 ].map((m) => (
                   <div key={m.k}>
                     <p className="text-base font-extrabold text-white leading-none">{m.v}</p>
