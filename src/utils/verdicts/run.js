@@ -5,16 +5,25 @@
  * (fases 4–6 trabalhando em paralelo).
  */
 
-import { fmtNumber, spellFem, NO_DATA, NO_DATA_TEXT, fmtDatePt, streakDirection, loadSentence, plannedRunKmByWeek, unplannedDropStreak } from './shared';
+import { fmtNumber, spellFem, capitalize, NO_DATA, NO_DATA_TEXT, fmtDatePt, streakDirection, loadSentence, plannedRunKmByWeek, unplannedDropStreak } from './shared';
 import { acwrMissingWeeks } from '../biEngine';
+
+/** Pontos de VDOT em cada período para os comparar. */
+const MIN_VDOT_POINTS = 3;
 
 /**
  * @param {object} input
  * @param {{ratio:number,status:string,hasEnoughData:boolean}} [input.acwr]
  *   calculateACWR(runs)
- * @param {Array<{weekLabel:string,acuteLoad:number}>} [input.weeklyVolume]
- *   calculateACWRHistory(runs) — `acuteLoad` é o volume (km) da semana
- * @param {Array<{date:string,vdot:number}>} [input.vdotTrend] getVDOTTrend(runs)
+ * @param {Array<{weekLabel:string,acuteLoad:number|null,inProgress?:boolean}>} [input.weeklyVolume]
+ *   histórico semanal — `acuteLoad` é o volume (km) da semana. Com `inProgress`
+ *   (views/run.js) a última é a semana em curso e `acuteLoad` null é uma
+ *   semana inteira antes do 1.º registo (não é zero: sai das contas). Sem as
+ *   marcas (chamadores antigos) vale a regra de `today`.
+ * @param {{current:number,previous:number,nCurrent:number,nPrevious:number,previousWhere:string}} [input.vdotCompare]
+ *   VDOT médio do período contra o do anterior (2026-10-04): compara-se
+ *   período com período, com pelo menos 3 pontos em cada — antes comparava a
+ *   última corrida com a PRIMEIRA DE SEMPRE, que não diz nada sobre este mês.
  * @param {{lowIntensityPct:number,highIntensityPct:number,targetLowPct:number}} [input.distribution]
  *   calculateTrainingDistribution(runs, nivel)
  * @param {number} [input.runCount] corridas no período mostrado
@@ -26,17 +35,60 @@ import { acwrMissingWeeks } from '../biEngine';
  * @param {string} [input.lastRunDate] data (AAAA-MM-DD) da última corrida de
  *   todo o histórico — distingue "sem corridas neste período" de "ainda sem
  *   corridas" (R7, 2026-10-04)
+ * @param {number} [input.km] km do período (só para o veredicto de um período
+ *   passado)
+ * @param {string} [input.scope] onde cai o período: "nesta semana", "em
+ *   setembro" (whereOf) — por omissão "neste período"
+ * @param {boolean} [input.isCurrent] false = período fechado: o ACWR e as
+ *   semanas de hoje não falam desse período, por isso só contam os factos dele
  */
-export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distribution, runCount = 0, today = null, taper = false, planItems = [], lastRunDate = null } = {}) {
-  const weeks = (weeklyVolume || []).map(w => Number(w?.acuteLoad ?? w?.km ?? 0));
+export function runVerdict({ acwr, weeklyVolume = [], vdotCompare = null, distribution, runCount = 0, km = null, today = null, taper = false, planItems = [], lastRunDate = null, scope = 'neste período', isCurrent = true } = {}) {
+  // Semanas inteiras antes do 1.º registo (acuteLoad null) não são semanas a
+  // zero: ficam de fora, senão "o volume subiu três semanas seguidas" nascia
+  // do 0 → 8 km de quem acabou de começar. Saem sempre do princípio da série,
+  // por isso o alinhamento com o plano (a contar do fim) mantém-se.
+  const usable = (weeklyVolume || []).filter((w) => w?.acuteLoad !== null);
+  const weeks = usable.map(w => Number(w?.acuteLoad ?? w?.km ?? 0));
   const nonZeroWeeks = weeks.filter(v => v > 0).length;
+  const quando = fmtDatePt(lastRunDate);
   if (runCount <= 0 && nonZeroWeeks === 0) {
     // R7: com histórico fora do período, "sem dados" seria falso.
-    const quando = fmtDatePt(lastRunDate);
     if (quando) {
-      return { text: `Sem corridas neste período (a última foi a ${quando}).`, tone: 'neutral' };
+      return { text: `Sem corridas ${scope} (a última foi a ${quando}).`, tone: 'neutral' };
     }
     return NO_DATA;
+  }
+
+  // Intensidade a mais no período — o único alvo que fala do período em si.
+  const highPct = Number(distribution?.highIntensityPct || 0);
+  const targetHigh = 100 - Number(distribution?.targetLowPct ?? 80);
+  const tooIntense = highPct > 0 && highPct > targetHigh + 10;
+  const tooIntenseVerdict = {
+    text: `Andas a correr forte demais. ${fmtNumber(highPct, 0)}% do tempo em Z3+ quando o teu alvo é no máximo ${fmtNumber(targetHigh, 0)}%.`,
+    tone: 'warn',
+  };
+
+  // VDOT: média do período contra a do anterior, com pontos que cheguem.
+  const vc = vdotCompare;
+  const vdotUp = !!vc
+    && vc.nCurrent >= MIN_VDOT_POINTS && vc.nPrevious >= MIN_VDOT_POINTS
+    && Number(vc.current) - Number(vc.previous) >= 0.5;
+  const vdotUpVerdict = vdotUp ? {
+    text: `A tua forma aeróbica está a subir. O VDOT médio passou de ${fmtNumber(vc.previous, 1)} ${vc.previousWhere || 'no período anterior'} para ${fmtNumber(vc.current, 1)} ${scope}.`,
+    tone: 'ok',
+  } : null;
+
+  /* Um período FECHADO (setembro, a semana passada): o ACWR e as semanas de
+     hoje são de agora, não de então. Só contam os factos desse período. */
+  if (!isCurrent) {
+    if (tooIntense) return tooIntenseVerdict;
+    if (vdotUpVerdict) return vdotUpVerdict;
+    if (runCount <= 0) return { text: `Sem corridas ${scope}${quando ? ` (a última foi a ${quando})` : ''}.`, tone: 'neutral' };
+    const kmTxt = Number(km) > 0 ? ` e ${fmtNumber(km, 1)} km` : '';
+    return {
+      text: `${capitalize(scope)}: ${runCount} ${runCount === 1 ? 'corrida' : 'corridas'}${kmTxt}.`,
+      tone: 'neutral',
+    };
   }
 
   const ratio = Number(acwr?.ratio || 0);
@@ -59,14 +111,7 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
   }
 
   // 3. Intensidade a mais — o erro clássico de quem treina sozinho.
-  const highPct = Number(distribution?.highIntensityPct || 0);
-  const targetHigh = 100 - Number(distribution?.targetLowPct ?? 80);
-  if (highPct > 0 && highPct > targetHigh + 10) {
-    return {
-      text: `Andas a correr forte demais. ${fmtNumber(highPct, 0)}% do tempo em Z3+ quando o teu alvo é no máximo ${fmtNumber(targetHigh, 0)}%.`,
-      tone: 'warn',
-    };
-  }
+  if (tooIntense) return tooIntenseVerdict;
 
   /* 4. Volume a cair duas ou mais semanas seguidas. A semana em curso só
      conta ao domingo: à segunda tem 0 km porque mal começou, e dava
@@ -74,7 +119,13 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
      uma semana em que o próprio plano também descia (descarga) não é ficar
      aquém (revisão de 2026-09-26). */
   const isSunday = !!today && new Date(`${today}T00:00:00Z`).getUTCDay() === 0;
-  const closedWeeks = isSunday ? weeks : weeks.slice(0, -1);
+  /* Com as marcas `inProgress` (views/run.js) a semana em curso é a marcada —
+     R2: hoje (domingo incluído) ainda não acabou, a semana só fecha à segunda.
+     Sem marcas, a regra antiga de `today`. */
+  const hasFlags = usable.some((w) => typeof w?.inProgress === 'boolean');
+  const closedWeeks = hasFlags
+    ? weeks.filter((_, i) => !usable[i].inProgress)
+    : (isSunday ? weeks : weeks.slice(0, -1));
   const shortWeeks = taper
     ? 0
     : unplannedDropStreak(closedWeeks, plannedRunKmByWeek(planItems, today, weeks.length));
@@ -111,14 +162,8 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
     };
   }
 
-  // 7. Forma aeróbica a melhorar.
-  const vdots = (vdotTrend || []).map(v => Number(v?.vdot)).filter(v => isFinite(v) && v > 0);
-  if (vdots.length >= 2 && vdots[vdots.length - 1] - vdots[0] >= 0.5) {
-    return {
-      text: `A tua forma aeróbica está a subir. O VDOT passou de ${fmtNumber(vdots[0], 1)} para ${fmtNumber(vdots[vdots.length - 1], 1)}.`,
-      tone: 'ok',
-    };
-  }
+  // 7. Forma aeróbica a melhorar (período contra período).
+  if (vdotUpVerdict) return vdotUpVerdict;
 
   // 8. Nada a assinalar, mas com carga medida: dizer que está em ordem.
   if (hasAcwr) {
@@ -132,10 +177,9 @@ export function runVerdict({ acwr, weeklyVolume = [], vdotTrend = [], distributi
      período vazio mas histórico, não se diz "zero corridas registadas"; e a
      regra do ACWR é corridas em 3 das últimas 4 semanas, não "quatro seguidas"
      — diz-se quantas faltam. */
-  const quando = fmtDatePt(lastRunDate);
   const registo = runCount > 0
-    ? `Tenho ${spellFem(runCount)} ${runCount === 1 ? 'corrida registada' : 'corridas registadas'} neste período.`
-    : `Sem corridas neste período${quando ? ` (a última foi a ${quando})` : ''}.`;
+    ? `Tenho ${spellFem(runCount)} ${runCount === 1 ? 'corrida registada' : 'corridas registadas'} ${scope}.`
+    : `Sem corridas ${scope}${quando ? ` (a última foi a ${quando})` : ''}.`;
   const falta = acwrMissingWeeks(acwr);
   const resto = falta
     ? ` Para te dizer se a carga está certa preciso de corridas em 3 das últimas 4 semanas: ${falta === 1 ? 'falta uma semana' : `faltam ${spellFem(falta)} semanas`}.`

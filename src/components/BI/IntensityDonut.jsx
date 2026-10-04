@@ -23,7 +23,10 @@ const RUN = '#2ee0ff';           // --run
 const RUN_SOFT = 'rgba(46, 224, 255, 0.4)';
 const WARN = '#fb7c4d';          // --warn
 
-export default function IntensityDonut({ distribution = {}, targetLowPct, className = '' }) {
+/* 2026-10-04 (fase 5): `hint` diz de que período é e sobre quantas corridas
+   ("4 de 6 corridas com zonas · neste mês"): a distribuição soma os minutos
+   das corridas que têm zonas de FC, não de todas. */
+export default function IntensityDonut({ distribution = {}, targetLowPct, hint, className = '' }) {
   const { lowIntensityPct = 0, highIntensityPct = 0 } = distribution;
   const target = targetLowPct ?? distribution.targetLowPct ?? 80;
   const targetHigh = 100 - target;
@@ -71,6 +74,7 @@ export default function IntensityDonut({ distribution = {}, targetLowPct, classN
       ready={ready}
       className={className}
       label="Distribuição de intensidade"
+      hint={hint}
       info={<MetricInfo text="Regra 80/20. Cerca de 80% do tempo de treino deve ser feito em intensidades baixas (Zonas 1 e 2) para maximizar as adaptações aeróbicas sem acumular fadiga. Só 20% deve ser intenso." />}
       value={lowIntensityPct}
       unit="% em Z1-Z2"

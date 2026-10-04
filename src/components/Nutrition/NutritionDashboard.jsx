@@ -1,334 +1,219 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useAppStore } from '../../store';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { todayISO, addDaysISO } from '../../lib/utils';
-import { computeNutrientRangeTotals } from '@formulas/micronutrientTotals.ts';
-import DayNutritionCard from './DayNutritionCard';
-import { goalsResolver, dayNutritionSummary, planMacrosForDay } from '../../utils/goalHistory';
-import { MACROS, MICROS, rangeTotals, mealNutrients } from '../../utils/nutrition';
-import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, Utensils } from 'lucide-react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js';
-import { Line } from 'react-chartjs-2';
-import { format, eachDayOfInterval, subDays, subWeeks, subMonths, subYears } from 'date-fns';
-import TimeFilterBar from '../BI/TimeFilterBar';
-import KPICard from '../BI/KPICard';
-import MacroComplianceChart from '../BI/MacroComplianceChart';
-import EnergyAvailabilityChart from '../BI/EnergyAvailabilityChart';
-import MetricInfo from '../BI/MetricInfo';
-import ChartFrame from '../BI/ChartFrame';
-import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
+import { Utensils } from 'lucide-react';
+import { useAppStore } from '../../store';
+import { addDaysISO } from '../../lib/utils';
+import { usePeriodStore } from '../../store/periodStore';
+import { useEvolutionView } from '../../store/evolution/useEvolutionView';
+import { NUTRITION_MIN_CLOSED } from '../../store/evolution/views/nutrition';
+import { GOAL_KEY, micronutrientAverages } from '@formulas/nutritionPeriod.ts';
+import { mondayOf } from '@formulas/calendarPeriod.ts';
+import DayNutritionCard, { dayTitle } from './DayNutritionCard';
+import { NutritionEnteredContext, useNutritionEntered } from './NutritionChartCard';
+import NutritionWeekChart from './NutritionWeekChart';
+import NutritionMonthHeatmap from './NutritionMonthHeatmap';
+import NutritionQuarterCharts from './NutritionQuarterCharts';
+import EatingForTraining from './EatingForTraining';
+import MicronutrientsCard from './MicronutrientsCard';
+import EmptyModuleState from '../BI/EmptyModuleState';
 import VerdictLine from '../BI/VerdictLine';
-import { nutritionVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
-import { filterByDateRange, calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
-import { classifyCalorieCompliance } from '@formulas/nutritionCompliance.ts';
+import { NUTRICAO } from '../BI/TimeFilterBar';
+import {
+  PeriodHeader, PeriodNav, PeriodSummary, EarlyPeriodState, TodayExcludedNote, MinDataNote,
+  countOf, plural, nDays, earlyVerdict, firstPeriodNote, APPROX_GOALS_NOTE, kindText, whereOf,
+} from '../BI/period';
+import { goalsResolver, dayNutritionSummary, planMacrosForDay } from '../../utils/goalHistory';
+import { NUTRIENT_META, NUTRIENT_ORDER } from '../../utils/nutrition';
+import { nutritionVerdict } from '../../utils/dashboardVerdicts';
+import { capitalize } from '../../utils/verdicts/shared';
+import { calculateMacroAdherence, calculateEnergyAvailability } from '../../utils/biEngine';
+import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
+import { useTodayISO } from '../../utils/useTodayISO';
+import { fmtInt, rangeText, wherePast } from './nutritionText';
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+/**
+ * Nutrição na Evolução — o mock-up aprovado "Evolução · Nutrição por período"
+ * (fase 4, 2026-10-04; plano §3, R1–R10; erros N1, N2, N3, N5, N6, N7).
+ *
+ *   Dia · Semana · Mês · Trimestre (PeriodHeader)
+ *   ┌ Resumo do período ─────────────────────────────┐
+ *   │ ‹ Esta semana · 28 set – 4 out · em curso ›     │  PeriodNav
+ *   │ ▍ veredicto factual                             │
+ *   │ 5 linhas: média por dia registado / objetivo,   │  tocar escolhe o que
+ *   │   Dentro · 96%, "4 de 6" dias no objetivo       │  os gráficos mostram
+ *   │ Calorias e proteína no objetivo em 2 de 6 dias · ▼ 1 face a 21 – 26 set
+ *   └─────────────────────────────────────────────────┘
+ *   Semana: barras por dia · Mês: mapa de calor · Trimestre: por semana,
+ *   dias no objetivo por semana, por dia da semana
+ *   Comer para treinar (ou quando aparece) · Micronutrientes · nota de hoje
+ *
+ * Os números chegam prontos da vista pré-calculada (views/nutrition.js, F6 —
+ * só dias fechados, objetivo de cada dia, régua única); aqui só se formatam.
+ * O "Dia" é a vista de sempre (DayNutritionCard, bug #51), intacta.
+ */
+
+/** As 5 linhas do resumo (PeriodSummary) a partir da vista. */
+export function summaryRowsOf(view, { aComecar = false } = {}) {
+  return NUTRIENT_ORDER.map((key) => {
+    const meta = NUTRIENT_META[key];
+    const s = view.summary.byKey[key];
+    const goalVal = s.goal ?? Number(view.goalsToday?.[GOAL_KEY[key]]);
+    const base = { key, label: meta.label, goal: goalVal > 0 ? `${fmtInt(goalVal)} ${meta.unit}` : undefined, color: meta.color };
+    if (aComecar) return { ...base, value: null, missingText: 'ainda sem dias fechados' };
+    if (s.nDays === 0) return { ...base, value: null, missingText: view.period.isCurrent ? 'ainda sem registos' : 'sem registos' };
+    if (s.tooFew) return { ...base, value: null, missingText: `${nDays(s.nDays)}, ${plural(s.nDays, 'pouco', 'poucos')} para média` };
+    return {
+      ...base,
+      value: fmtInt(s.avg),
+      status: s.status,
+      pct: s.pctLabel,
+      count: countOf(s.daysInGoal, s.nDays),
+    };
+  });
+}
+
+/** "Calorias e proteína no objetivo em 14 de 28 dias (50%)" e o ▲/▼ (R4/R5). */
+export function summaryFooterOf(view) {
+  const both = view.summary.both;
+  const cmp = view.compare;
+  const pctMode = !!cmp && !cmp.both.sameN;
+  const summaryLine = both.n > 0
+    ? `Calorias e proteína no objetivo em ${countOf(both.k, both.n)} ${plural(both.n, 'dia', 'dias')}${pctMode && cmp.both.curPct != null ? ` (${cmp.both.curPct}%)` : ''}`
+    : null;
+  let delta = null;
+  if (cmp) {
+    // O mesmo número de dias dos dois lados (a semana em curso contra os
+    // mesmos dias da anterior): a diferença de dias. Senão, as % — "▲ agosto:
+    // 11 de 29 (38%)".
+    delta = cmp.both.sameN
+      ? { current: cmp.both.cur.k, previous: cmp.both.prev.k, previousLabel: cmp.label, better: 'up' }
+      : {
+          current: cmp.both.curPct,
+          previous: cmp.both.prevPct,
+          previousLabel: cmp.label,
+          previousText: `${countOf(cmp.both.prev.k, cmp.both.prev.n)} (${cmp.both.prevPct}%)`,
+          better: 'up',
+        };
+  }
+  return { summaryLine, delta };
+}
+
+/**
+ * O lugar do "Comer para treinar" quando ainda não há dias que cheguem (R6).
+ * Período em curso que ainda lá chega: "Comer para treinar aparece a partir
+ * de 7 dias fechados neste mês." (mock-up). Período passado, ou em curso que
+ * começou tão perto do 1.º registo que nunca lá chega: dizer quantos dias há
+ * em vez de prometer no futuro "neste mês" um mês que já fechou (revisão de
+ * 2026-10-04): "Comer para treinar precisa de 7 dias fechados — em setembro
+ * só houve 3 dias desde o primeiro registo."
+ */
+export function eatingMinNoteProps(view, todayISO) {
+  const min = view.eating.minClosed;
+  const p = view.period;
+  const reachable = view.daysFromDataStart ?? p.totalDays;
+  if (p.isCurrent && reachable >= min) return { what: 'Comer para treinar', min, kind: view.kind };
+  const k = p.isCurrent ? reachable : view.eating.closedDays;
+  const where = p.isCurrent ? whereOf(view.kind, view.label.title, true) : wherePast(view.kind, p.start, todayISO, view.offset);
+  const since = view.startsBeforeData ? ' desde o primeiro registo' : '';
+  return {
+    text: `Comer para treinar precisa de ${min} ${plural(min, 'dia fechado', 'dias fechados')} — ${where} só ${p.isCurrent ? 'há' : 'houve'} ${nDays(k)}${since}.`,
+  };
+}
+
+/** "Semana passada (28 set – 4 out): 2 300 kcal/dia · calorias e proteína no
+ *  objetivo em 2 de 7 dias" (ecrã "Semana a começar"). */
+export function previousSummaryText(view, { withKind = false } = {}) {
+  const pf = view.previousFull;
+  if (!pf) return null;
+  // Semana: o intervalo; mês/trimestre: o nome ("Mês passado (setembro)" no
+  // cartão "a começar", "setembro" na linha do "cedo", antes de "Ver setembro").
+  const name = view.kind === 'semana'
+    ? `Semana passada (${pf.range})`
+    : withKind ? `${capitalize(kindText(view.kind).prevName)} (${pf.name})` : pf.name;
+  const kcal = pf.kcalAvg != null ? `${fmtInt(pf.kcalAvg)} kcal/dia · ` : '';
+  return `${name}: ${kcal}calorias e proteína no objetivo em ${countOf(pf.both.k, pf.both.n)} ${plural(pf.both.n, 'dia', 'dias')}`;
+}
 
 export default function NutritionDashboard() {
   /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
      seletor, qualquer alteração ao store — um deslize entre separadores
-     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
-     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
-     redesenha quando um destes campos muda de referência. */
-  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs, coachPlans, coachPlanItems, nutritionDayFocus, goalHistory } = useAppStore(useShallow((s) => ({
+     mexe em `lastDashboardTab` — redesenhava este separador mesmo escondido. */
+  const {
+    profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs,
+    coachPlans, coachPlanItems, nutritionDayFocus, goalHistory,
+  } = useAppStore(useShallow((s) => ({
     profile: s.profile, meals: s.meals, bodyAssessments: s.bodyAssessments, runs: s.runs, gymSessions: s.gymSessions,
     setOpenCreationMode: s.setOpenCreationMode, waterLogs: s.waterLogs, coachPlans: s.coachPlans,
     coachPlanItems: s.coachPlanItems, nutritionDayFocus: s.nutritionDayFocus, goalHistory: s.goalHistory,
   })));
-  const [activeFilter, setActiveFilter] = useState('semana');
+
+  const today = useTodayISO();
+  // Os gráficos que montam depois de o separador assentar à vista (trocar
+  // Semana → Mês, um período sem refeições → um com) não repetem a entrada (D4).
+  const entered = useNutritionEntered();
+  // A vista do período (cache da Evolução, pronta antes de entrar — R10) e o
+  // período do separador (o mesmo store pequeno: as setas não redesenham a App).
+  const view = useEvolutionView('nutricao');
+  const cal = useCalendarPeriod('nutricao', {
+    daysWithData: view?.daysWithData,
+    dataStartISO: view?.dataStartISO,
+    minClosed: NUTRITION_MIN_CLOSED,
+  });
+  const { setKind } = cal;
+  const isDay = cal.kind === 'dia';
 
   /* A vista "Dia" anda de dia em dia (bug #51): o comido contra o objetivo
-     DESSE dia, que vem do histórico (profile_goal_history), não do perfil de
-     hoje. O histórico já vem do store (lido no carregamento inicial e relido
-     quando o perfil muda de objetivos — F3, 2026-10-04); aqui já não há
-     pedido próprio. */
-  const today = todayISO();
+     DESSE dia, do histórico (profile_goal_history, no store desde F3). */
   const [selectedDay, setSelectedDay] = useState(today);
+  const [metric, setMetric] = useState('calories');
 
   // "Ver dias anteriores" no Início: abre aqui, na vista Dia, nesse dia.
   useEffect(() => {
     if (!nutritionDayFocus) return;
-    setActiveFilter('dia');
+    setKind('dia');
     setSelectedDay(nutritionDayFocus);
     useAppStore.getState().setNutritionDayFocus(null);
-  }, [nutritionDayFocus]);
+  }, [nutritionDayFocus, setKind]);
+
+  // "Ver dia" (gráficos, dias de treino com pouca energia) e "Ver hoje".
+  const openDay = useCallback((dayISO) => {
+    setSelectedDay(dayISO);
+    setKind('dia');
+  }, [setKind]);
+  // "Ver semana" (trimestre): a semana de calendário que começa nessa segunda.
+  const openWeek = useCallback((weekStart) => {
+    const weeks = Math.round((Date.parse(`${mondayOf(weekStart)}T12:00:00Z`) - Date.parse(`${mondayOf(today)}T12:00:00Z`)) / (7 * 86400000));
+    usePeriodStore.getState().setPeriod('nutricao', 'semana', Math.min(0, weeks));
+  }, [today]);
 
   const dayView = useMemo(() => {
-    if (activeFilter !== 'dia') return null;
-    // Hoje (e o futuro) vale o perfil de agora — o histórico carregado pode
-    // ainda não ter a última mudança; o resolvedor já trata disso.
+    if (!isDay) return null;
+    // Hoje (e o futuro) vale o perfil de agora — o resolvedor já trata disso.
     const { goals, estimated } = goalsResolver(goalHistory, profile, today)(selectedDay);
     return {
       rows: dayNutritionSummary({ meals, waterLogs, dayISO: selectedDay, goals }),
       estimated,
       plan: planMacrosForDay({ coachPlans, coachPlanItems, dayISO: selectedDay }),
+      micros: micronutrientAverages(meals, [selectedDay]),
     };
-  }, [activeFilter, selectedDay, today, goalHistory, profile, meals, waterLogs, coachPlans, coachPlanItems]);
-  const [selectedMacro, setSelectedMacro] = useState('calories');
-  const [microsExpanded, setMicrosExpanded] = useState(false);
+  }, [isDay, selectedDay, today, goalHistory, profile, meals, waterLogs, coachPlans, coachPlanItems]);
 
-  // Map TimeFilterBar 'activeFilter' to biEngine range
-  const biRangeMap = {
-    'dia': 'dia',
-    'semana': 'semana',
-    'mes': 'mes',
-    'trimestre': 'trimestre',
-    '6meses': '6meses',
-    'ano': 'ano'
-  };
+  /* O veredicto da vista Dia fala de hoje, por isso só aparece em hoje (como
+     antes). A régua passou à única (N7) em verdicts/nutrition.js. */
+  const dayVerdict = useMemo(() => {
+    if (!isDay || selectedDay < today) return null;
+    const adherence = calculateMacroAdherence(meals || [], profile, bodyAssessments || [], 'dia');
+    const ea = calculateEnergyAvailability(meals || [], bodyAssessments || [], runs || [], gymSessions || [], 'dia');
+    return nutritionVerdict({ adherence, ea });
+  }, [isDay, selectedDay, today, meals, profile, bodyAssessments, runs, gymSessions]);
 
-  const legacyRangeMap = {
-    'dia': 'hoje',
-    'semana': 'semana',
-    'mes': 'mes',
-    'trimestre': 'mes',
-    '6meses': 'mes',
-    'ano': 'mes'
-  };
+  const header = <PeriodHeader tab="nutricao" options={NUTRICAO} cal={cal} navigator="none" />;
 
-  const biRange = biRangeMap[activeFilter] || 'semana';
-  const legacyRange = legacyRangeMap[activeFilter] || 'semana';
-  const totals = activeFilter === 'dia'
-    ? computeNutrientRangeTotals(meals, selectedDay, 'hoje')
-    : rangeTotals(meals, legacyRange);
-
-  // BI Engine Calculations
-  const adherence = useMemo(() => {
-    return calculateMacroAdherence(meals, profile, bodyAssessments || [], biRange);
-  }, [meals, profile, bodyAssessments, biRange]);
-
-  const eaWindow = useMemo(() => {
-    return calculateEnergyAvailability(meals, bodyAssessments || [], runs || [], gymSessions || [], biRange);
-  }, [meals, bodyAssessments, runs, gymSessions, biRange]);
-  const eaData = eaWindow?.daily || [];
-
-  /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
-     utils/dashboardVerdicts.js — aqui só se juntam os dados que o biEngine
-     já calculou. A janela de EA passa inteira (e não só `daily`) porque o
-     veredicto cita a média do período como prova. */
-  const verdict = useMemo(
-    () => nutritionVerdict({ adherence, ea: eaWindow }),
-    [adherence, eaWindow]
-  );
-
-  // Chart Data preparation for selected macro trend
-  const chartData = useMemo(() => {
-    const macroObj = MACROS.find(m => m.key === selectedMacro) || MACROS[0];
-    const now = new Date();
-    let startObj = now;
-    switch (activeFilter) {
-      case 'dia': startObj = subDays(now, 1); break;
-      case 'semana': startObj = subWeeks(now, 1); break;
-      case 'mes': startObj = subMonths(now, 1); break;
-      case 'trimestre': startObj = subMonths(now, 3); break;
-      case '6meses': startObj = subMonths(now, 6); break;
-      case 'ano': startObj = subYears(now, 1); break;
-      default: startObj = subWeeks(now, 1);
-    }
-    const endObj = now;
-    if (startObj > endObj) return null;
-
-    const dates = eachDayOfInterval({ start: startObj, end: endObj });
-    const labels = dates.map(d => format(d, 'dd/MM'));
-    
-    const dailyData = dates.map(dateObj => {
-      const dayStr = format(dateObj, 'yyyy-MM-dd');
-      const dayMeals = meals.filter(m => m.date === dayStr);
-      let val = 0;
-      dayMeals.forEach(m => {
-        const n = mealNutrients(m);
-        val += n[selectedMacro] || 0;
-      });
-      return Math.round(val * 10) / 10;
-    });
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: macroObj.label,
-          data: dailyData,
-          borderColor: macroObj.color,
-          backgroundColor: `${macroObj.color}20`,
-          fill: true,
-          tension: 0.4,
-          pointRadius: dailyData.length > 35 ? 0 : 4,
-          pointBackgroundColor: macroObj.color,
-        }
-      ]
-    };
-  }, [meals, activeFilter, selectedMacro]);
-
-  /* 2026-10-04 (F5, plano §2.1): options estáveis (só mudam com a macro, que
-     entra no tooltip) — cada referência nova faz chart.update(). Linha: sem
-     `animation`, vale o padrão global. */
-  const chartOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-        titleColor: '#f8fafc',
-        bodyColor: '#f8fafc',
-        borderColor: 'rgba(255,255,255,0.15)',
-        borderWidth: 1,
-        padding: 10,
-        callbacks: {
-          label: (context) => {
-            const macroObj = MACROS.find(m => m.key === selectedMacro);
-            return ` ${macroObj?.label || ''}: ${context.raw} ${macroObj?.unit || ''}`;
-          }
-        }
-      }
-    },
-    // Ponto 6: os ticks deixam de escrever dentro da tela — o valor do
-    // último dia é o número grande do ChartFrame e os extremos do eixo vão
-    // para os cantos, em HTML.
-    scales: {
-      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
-      y: {
-        grid: { color: 'rgba(255, 255, 255, 0.05)' },
-        ticks: { display: false },
-        border: { display: false },
-        beginAtZero: true
-      }
-    }
-  }), [selectedMacro]);
-
-  const getMacroIcon = (key) => {
-    switch (key) {
-      case 'calories': return Flame;
-      case 'protein': return Beef;
-      case 'carbs': return Wheat;
-      case 'fat': return Droplet;
-      default: return Flame;
-    }
-  };
-
-  const modColor = 'var(--mod-nutricao)';
-
-  // Determine status for KPICards. 'caution' (não 'warning') porque é o
-  // vocabulário que o KPICard reconhece — 'warning' não tinha nenhum case
-  // no getStatusColor() dele e caía sempre no cinzento neutro, escondendo o
-  // aviso de excesso (ver auditoria de 23/08).
-  //
-  // A classificação de zona delega em @formulas/nutritionCompliance.ts
-  // (T1) — antes tinha um limiar próprio (85/115), diferente dos outros 2
-  // ecrãs que mostram a mesma pergunta; unificado por decisão do
-  // utilizador (specs/formulas-checklist.md). 'critical' e 'low' mapeiam
-  // ambos para 'danger' — o KPICard só tem 3 tons + neutro, não 4.
-  const getComplianceStatus = (pct) => {
-    const zone = classifyCalorieCompliance(pct);
-    if (zone === 'no_data') return 'neutral';
-    if (zone === 'critical' || zone === 'low') return 'danger';
-    if (zone === 'over') return 'caution';
-    return 'safe';
-  };
-
-  /* Ponto 7: sem refeições no período, o cartão de convite do mock
-     "Dashboard · sem dados" em vez dos quatro KPIs a zero e de uma linha
-     de macros achatada no chão do gráfico. */
-  const periodMeals = useMemo(
-    () => filterByDateRange(meals || [], biRange),
-    [meals, biRange]
-  );
-
-  /* O gráfico de adesão também passa a gramas (2026-09-29). O
-     dailyBreakdown do macroAdherence vem em g/kg e é partilhado com a
-     Carol (Edge Functions) — mudá-lo seria um deploy em produção, e
-     multiplicar de volta pelo peso herdava o arredondamento a 0,1 g/kg
-     (±3-4 g). Somam-se aqui as gramas diretamente das refeições; os alvos
-     vêm do adherence, que já resolve os valores por omissão. */
-  const dailyGrams = useMemo(() => {
-    if (!adherence) return [];
-    const byDay = {};
-    for (const meal of periodMeals) {
-      if (!byDay[meal.date]) byDay[meal.date] = { protein: 0, carbs: 0, fat: 0 };
-      const n = mealNutrients(meal);
-      byDay[meal.date].protein += n.protein || 0;
-      byDay[meal.date].carbs += n.carbs || 0;
-      byDay[meal.date].fat += n.fat || 0;
-    }
-    return Object.entries(byDay)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, t]) => ({
-        date,
-        protein: Math.round(t.protein),
-        carbs: Math.round(t.carbs),
-        fat: Math.round(t.fat),
-        proteinTarget: adherence.protein.target,
-        carbsTarget: adherence.carbs.target,
-        fatTarget: adherence.fat.target,
-      }));
-  }, [periodMeals, adherence]);
-
-  /* Os KPIs mostravam os macros em g/kg e a semana como "kcal/dia" sem
-     dizer que era uma média — e o utilizador lia a semana como total (962
-     na semana < 999 no dia não fazia sentido). Agora: gramas absolutas, e
-     fora do "Dia" a legenda diz que é média diária e de quantos dias. */
-  const isSingleDay = activeFilter === 'dia';
-  const loggedDays = new Set(periodMeals.map(m => m.date)).size;
-  const kcalUnit = isSingleDay ? 'kcal' : 'kcal/dia';
-  const gramsUnit = isSingleDay ? 'g' : 'g/dia';
-  const kpiCaption = isSingleDay
-    ? 'Total de hoje · % face ao alvo diário'
-    : `Média diária de ${loggedDays} ${loggedDays === 1 ? 'dia' : 'dias'} com registo · % face ao alvo`;
-
-  const microsSection = (
-    <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl overflow-hidden shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-      <button
-        onClick={() => setMicrosExpanded(!microsExpanded)}
-        className="w-full min-h-[44px] flex items-center justify-between p-4 text-left hover:bg-[var(--surface-strong)] transition"
-      >
-        <div className="flex items-center gap-2">
-          <FlaskConical size={14} className="text-[var(--mod-nutricao)]" />
-          <h2 className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider">Micronutrientes · {activeFilter}</h2>
-        </div>
-        {microsExpanded ? <ChevronUp size={16} className="text-[var(--text-3)]" /> : <ChevronDown size={16} className="text-[var(--text-3)]" />}
-      </button>
-      {microsExpanded && (
-        <div className="px-4 pb-4">
-          <div className="space-y-3 pt-2">
-            {MICROS.map(micro => (
-              <div key={micro.key} className="flex justify-between items-center text-sm border-b border-[var(--border-glass)] last:border-0 pb-2 last:pb-0">
-                <span className="text-[var(--text-3)] text-xs">{micro.label}</span>
-                <span className="font-bold text-white text-xs">{(totals[micro.key] || 0).toFixed(1)} <span className="text-[11px] font-normal text-[var(--text-3)]">{micro.unit}</span></span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  /* Vista Dia (bug #51): um dia de cada vez, com o objetivo desse dia. Os
-     KPIs de média e os gráficos de tendência não dizem nada sobre um dia
-     só; o veredicto fala de hoje, por isso só aparece em hoje. */
-  if (activeFilter === 'dia' && dayView) {
+  if (isDay && dayView) {
     return (
       <div className="space-y-4 fade-in pb-20">
-        {selectedDay >= today && <VerdictLine text={verdict.text} tone={verdict.tone} />}
-        <TimeFilterBar activeRange={activeFilter} onChange={setActiveFilter} module="nutricao" />
+        {dayVerdict && <VerdictLine text={dayVerdict.text} tone={dayVerdict.tone} />}
+        {header}
         <DayNutritionCard
           dayISO={selectedDay}
           todayISO={today}
@@ -338,137 +223,139 @@ export default function NutritionDashboard() {
           onPrev={() => setSelectedDay((d) => addDaysISO(d, -1))}
           onNext={() => setSelectedDay((d) => (d < today ? addDaysISO(d, 1) : d))}
         />
-        {microsSection}
+        <MicronutrientsCard
+          title="Micronutrientes · total do dia"
+          subtitle={dayTitle(selectedDay, today)}
+          values={dayView.micros.avg}
+          perDay={false}
+          emptyText="Sem refeições registadas neste dia."
+        />
       </div>
     );
   }
 
-  if (periodMeals.length === 0) {
+  const v = view && view.kind !== 'dia' ? view : null;
+
+  /* Sem refeições nenhumas (nem água): o convite a registar, em vez de cinco
+     linhas a "—" e gráficos vazios (ponto 7 do redesenho). */
+  if (!v || (!v.hasAnyMeals && !(waterLogs || []).length)) {
     return (
       <div className="space-y-4 fade-in pb-20">
-        <VerdictLine text={verdict.text} tone={verdict.tone} />
-        <TimeFilterBar activeRange={activeFilter} onChange={setActiveFilter} module="nutricao" />
+        {header}
         <EmptyModuleState
           tone="nutrition"
           icon={<Utensils size={22} />}
           actionLabel="Registar refeição"
           onAction={() => setOpenCreationMode('meal')}
         >
-          Ainda não há refeições neste período. Regista uma refeição para veres a tua evolução aqui.
+          Ainda não há refeições registadas. Regista uma refeição para veres a tua evolução aqui.
         </EmptyModuleState>
-        <EmptyChartFrame label="Calorias por dia" unit="kcal no último dia" height={192} />
       </div>
     );
   }
 
-  return (
-    <div className="space-y-4 fade-in pb-20">
-      {/* Veredicto — antes dos filtros e dos KPIs, como no mock. */}
-      <VerdictLine text={verdict.text} tone={verdict.tone} />
+  const kind = cal.kind;
+  // O estado vem da vista, não do cal: conta os dias fechados desde o 1.º
+  // registo quando o período em curso começa antes dele (revisão de
+  // 2026-10-04 — nutritionEarlyState).
+  const aComecar = v.earlyState === 'a_comecar';
+  const cedo = v.earlyState === 'cedo';
+  const desde = v.startsBeforeData ? rangeText(v.dataStartISO, v.dataStartISO, today) : null;
+  const nav = <PeriodNav cal={cal} module="nutricao" />;
+  const rows = summaryRowsOf(v, { aComecar });
 
-      <TimeFilterBar
-        activeRange={activeFilter}
-        onChange={setActiveFilter}
-        module="nutricao"
-      />
-      <p data-testid="nutrition-kpi-caption" className="px-1 text-[11px] text-[var(--text-3)]">{kpiCaption}</p>
-      {/* 2x2 KPI Grid */}
-      <div className="grid grid-cols-2 gap-3 px-1">
-        <div 
-          onClick={() => setSelectedMacro('calories')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'calories' ? 'ring-2 ring-[var(--ok)]' : ''}`}
-        >
-          <KPICard 
-            label="Calorias"
-            value={adherence?.calories?.actual ?? 0}
-            unit={kcalUnit}
-            icon={Flame}
-            moduleColor={modColor}
-            status={getComplianceStatus(adherence?.calories?.compliance_pct)}
-            delta={adherence?.calories?.target ? Math.round(((adherence.calories.actual / adherence.calories.target) - 1) * 100) : 0}
-            className="h-full"
-          />
-        </div>
-        <div 
-          onClick={() => setSelectedMacro('protein')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'protein' ? 'ring-2 ring-[var(--ok)]' : ''}`}
-        >
-          <KPICard 
-            label="Proteína"
-            value={adherence?.protein?.actual_g ?? 0}
-            unit={gramsUnit}
-            icon={Beef}
-            moduleColor={modColor}
-            status={getComplianceStatus(adherence?.protein?.compliance_pct)}
-            delta={adherence?.protein?.target ? Math.round(((adherence.protein.actual_g / adherence.protein.target) - 1) * 100) : 0}
-            className="h-full"
-          />
-        </div>
-        <div 
-          onClick={() => setSelectedMacro('carbs')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'carbs' ? 'ring-2 ring-[var(--ok)]' : ''}`}
-        >
-          <KPICard 
-            label="Hidratos"
-            value={adherence?.carbs?.actual_g ?? 0}
-            unit={gramsUnit}
-            icon={Wheat}
-            moduleColor={modColor}
-            status={getComplianceStatus(adherence?.carbs?.compliance_pct)}
-            delta={adherence?.carbs?.target ? Math.round(((adherence.carbs.actual_g / adherence.carbs.target) - 1) * 100) : 0}
-            className="h-full"
-          />
-        </div>
-        <div 
-          onClick={() => setSelectedMacro('fat')}
-          className={`cursor-pointer transition-all rounded-2xl ${selectedMacro === 'fat' ? 'ring-2 ring-[var(--ok)]' : ''}`}
-        >
-          <KPICard 
-            label="Gordura"
-            value={adherence?.fat?.actual_g ?? 0}
-            unit={gramsUnit}
-            icon={Droplet}
-            moduleColor={modColor}
-            status={getComplianceStatus(adherence?.fat?.compliance_pct)}
-            delta={adherence?.fat?.target ? Math.round(((adherence.fat.actual_g / adherence.fat.target) - 1) * 100) : 0}
-            className="h-full"
-          />
-        </div>
+  if (aComecar) {
+    // R8 (ecrã "Semana · segunda-feira"): nada fechado ainda — o resumo a "—",
+    // o que já se comeu hoje (sem contar) e o período anterior.
+    const kcalToday = v.todayRow?.hasMeals ? v.todayRow.values.calories : null;
+    return (
+      <div className="space-y-4 fade-in pb-20">
+        {header}
+        <PeriodSummary navigator={nav} rows={rows} days={0} module="nutricao" />
+        <EarlyPeriodState
+          state="a_comecar"
+          kind={kind}
+          module="nutricao"
+          // O período começou antes, mas o 1.º registo é hoje: "A semana
+          // começou hoje" não seria verdade.
+          title={v.dataStartISO === today && v.period.start < today ? 'Os teus registos começaram hoje' : undefined}
+          text={kcalToday != null
+            ? `Os dias contam quando acabarem — hoje já vais em ${fmtInt(kcalToday)} kcal.`
+            : 'Os dias contam quando acabarem.'}
+          onViewToday={() => openDay(today)}
+          // Sem registos antes deste período, "Ver semana passada" abria uma
+          // semana vazia.
+          onViewPrevious={v.firstPeriod ? undefined : cal.prev}
+          previousSummary={previousSummaryText(v, { withKind: true })}
+        />
+        <TodayExcludedNote period={v.period} hasDayView />
       </div>
+    );
+  }
 
-      {/* Macro Trend Line Chart — logo a seguir aos 4 cards */}
-      {chartData && (() => {
-        const macroObj = MACROS.find(m => m.key === selectedMacro) || MACROS[0];
-        const series = chartData.datasets[0].data;
-        const lastValue = series.length ? series[series.length - 1] : 0;
-        const maxValue = series.length ? Math.max(...series) : 0;
-        return (
-          <ChartFrame
-            label={`${macroObj.label} por dia`}
-            info={<MetricInfo text="Aqui mostro-te a tua evolução diária exata deste macronutriente. O segredo da nutrição é a consistência: tenta manter esta linha estável e sem grandes picos repentinos." />}
-            value={fmtNumber(lastValue, macroObj.key === 'calories' ? 0 : 1)}
-            unit={`${macroObj.unit} no último dia`}
-            valueColor={macroObj.color}
-            axis={maxValue > 0 ? { min: `0 ${macroObj.unit}`, max: `${fmtNumber(maxValue, 0)} ${macroObj.unit}` } : undefined}
-            legend={[{ label: `${macroObj.label} (${macroObj.unit})`, color: macroObj.color, shape: 'line' }]}
-            height={192}
-          >
-            <Line data={chartData} options={chartOptions} updateMode="period" />
-          </ChartFrame>
-        );
-      })()}
+  const { summaryLine, delta } = summaryFooterOf(v);
+  const pf = v.previousFull;
+  const previous = cedo && pf
+    ? { text: previousSummaryText(v), actionLabel: kind === 'semana' ? 'Ver semana passada' : `Ver ${pf.name}`, onAction: cal.prev }
+    : null;
+  const notes = [
+    v.firstPeriod && !cedo && v.summary.nDays > 0 ? firstPeriodNote(kind) : null,
+    v.summary.approxGoals ? APPROX_GOALS_NOTE : null,
+  ];
+  const pastEmpty = !v.period.isCurrent && v.summary.nDays === 0;
+  const where = kind === 'semana' ? v.label.range : v.label.title;
 
-      {/* BI Charts */}
-      {dailyGrams.length > 0 && (
-        <MacroComplianceChart dailyData={dailyGrams} />
-      )}
+  return (
+    <NutritionEnteredContext.Provider value={entered}>
+      <div className="space-y-4 fade-in pb-20">
+        {header}
+        <PeriodSummary
+          navigator={nav}
+          // "Só 3 dias fechados em outubro" — ou, com o 1.º registo a meio do
+          // período, "Só 2 dias fechados desde 30 set" (os de antes não contam).
+          verdict={cedo ? earlyVerdict(cal, { count: v.closedDays.length, where: desde ? `desde ${desde}` : undefined }) : v.verdict}
+          rows={rows}
+          days={v.summary.nDays}
+          selectedKey={metric}
+          onSelect={setMetric}
+          summaryLine={summaryLine}
+          delta={delta}
+          previous={previous}
+          notes={notes}
+          module="nutricao"
+        />
 
-      {eaData && eaData.length > 0 && (
-        <EnergyAvailabilityChart dailyData={eaData} />
-      )}
+        {pastEmpty ? (
+          <MinDataNote text="Sem refeições registadas neste período." />
+        ) : (
+          <>
+            {/* Sem `key` por período (D4, bloqueio da revisão de 2026-10-04): ‹ ›
+                mantém a mesma instância — as barras mudam de altura em 300 ms e
+                nada volta a entrar (transparente, da base, número do 0). O dia/
+                semana escolhido volta ao de omissão sozinho (usePeriodPick). */}
+            {kind === 'semana' && (
+              <NutritionWeekChart view={v} metric={metric} onViewDay={openDay} todayISO={today} />
+            )}
+            {kind === 'mes' && (
+              <NutritionMonthHeatmap view={v} metric={metric} onViewDay={openDay} todayISO={today} />
+            )}
+            {(kind === 'trimestre' || kind === 'ano') && (
+              <NutritionQuarterCharts view={v} metric={metric} onViewWeek={openWeek} todayISO={today} />
+            )}
+            {v.eating.enough
+              ? <EatingForTraining view={v} onViewDay={openDay} />
+              : <MinDataNote {...eatingMinNoteProps(v, today)} />}
+            <MicronutrientsCard
+              title="Micronutrientes · média por dia"
+              subtitle={`${where} · ${nDays(v.micros.nDays)}`}
+              values={v.micros.avg}
+              emptyText="Sem refeições registadas nos dias fechados deste período."
+            />
+          </>
+        )}
 
-      {/* Micronutrients */}
-      {microsSection}
-    </div>
+        <TodayExcludedNote period={v.period} hasDayView />
+      </div>
+    </NutritionEnteredContext.Provider>
   );
 }

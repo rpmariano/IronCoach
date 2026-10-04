@@ -32,10 +32,26 @@ const MIN_ASSESSMENTS = 2;
    (ou fora do ecrã) estraga o movimento. A linha não define `animation`: vale
    o default global (700 ms; `false` com reduced-motion). */
 const EMPTY_DATA = { dates: [], fatMassKg: [], leanMassKg: [] };
+
+/* Eixo temporal real (2026-10-04, fase 5 do Corpo — plano §3): o x é o dia
+   (dias desde 1970, eixo linear) e não o índice da avaliação. Duas
+   avaliações a uma semana e duas a três meses ficavam à mesma distância, e a
+   inclinação da área mentia sobre o ritmo. Com `start`/`end` (ISO) o eixo vai
+   do 1.º ao último dia do período mostrado. */
+const DAY_MS = 86400000;
+const dayNumber = (iso) => Math.round(Date.parse(`${String(iso).slice(0, 10)}T00:00:00Z`) / DAY_MS);
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const fmtDay = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  return m ? `${Number(m[3])} ${MESES[Number(m[2]) - 1]} ${m[1]}` : '';
+};
 // A fatia que o gráfico lê; o Dashboard já a segura pelo separador, isto cobre o uso fora dele.
 const SLICES = ['body'];
 
-export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) {
+/* `emptyText` (2026-10-04, revisão do Corpo): o rodapé quando não há
+   evolução para desenhar, para quem fala de um período FECHADO — o
+   "Ainda não há… neste período" não serve para setembro. */
+export default function StackedAreaChart({ data = EMPTY_DATA, className = '', start = null, end = null, hint: hintProp, emptyText = null }) {
   const ready = useAppStore((st) => sliceReady(st, SLICES));
 
   // Uma só passagem, só quando `data` muda (o compositionData do Corpo já é memoizado).
@@ -59,12 +75,11 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) 
   const leanDelta = lean.length >= 2 ? lastLean - firstLean : null;
 
   const chartData = useMemo(() => ({
-    // Sem labels de texto: o eixo x não escreve nada. Os índices bastam.
-    labels: dates.map((_, i) => i),
+    // Pontos {x: dia, y} — o eixo x não escreve nada (as datas estão no tooltip).
     datasets: [
       {
         label: 'Massa magra',
-        data: lean,
+        data: lean.map((y, i) => ({ x: dayNumber(dates[i]), y })),
         borderColor: MAGRA,
         backgroundColor: 'rgba(199, 125, 255, 0.18)',
         pointBackgroundColor: MAGRA,
@@ -76,7 +91,7 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) 
       },
       {
         label: 'Massa gorda',
-        data: fat,
+        data: fat.map((y, i) => ({ x: dayNumber(dates[i]), y })),
         borderColor: GORDA,
         backgroundColor: 'rgba(255, 95, 168, 0.18)',
         pointBackgroundColor: GORDA,
@@ -104,14 +119,21 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) 
         mode: 'index',
         intersect: false,
         callbacks: {
-          title: (items) => dates[items?.[0]?.dataIndex] || '',
-          label: (context) => ` ${context.dataset.label}: ${fmtNumber(context.raw, 1)} kg`,
-          footer: (items) => `Total: ${fmtNumber(items.reduce((s, i) => s + Number(i.raw || 0), 0), 1)} kg`
+          title: (items) => fmtDay(dates[items?.[0]?.dataIndex]),
+          label: (context) => ` ${context.dataset.label}: ${fmtNumber(context.raw?.y, 1)} kg`,
+          footer: (items) => `Total: ${fmtNumber(items.reduce((s, i) => s + Number(i.raw?.y || 0), 0), 1)} kg`
         }
       }
     },
     scales: {
-      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
+      x: {
+        type: 'linear',
+        min: start ? dayNumber(start) : undefined,
+        max: end ? dayNumber(end) : undefined,
+        grid: { display: false },
+        ticks: { display: false },
+        border: { display: false },
+      },
       y: {
         stacked: true,
         beginAtZero: true,
@@ -121,7 +143,7 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) 
       }
     },
     interaction: { mode: 'nearest', axis: 'x', intersect: false }
-  }), [dates]);
+  }), [dates, start, end]);
 
   return (
     <ChartFrame
@@ -129,7 +151,7 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) 
       className={className}
       label="Composição corporal"
       info={<MetricInfo text="O peso na balança engana. Este gráfico permite-te ver de que é realmente feito o teu corpo. Se a linha global descer mas a área violeta se mantiver igual, excelente: perdeste peso queimando apenas massa gorda enquanto seguraste a massa magra!" />}
-      hint={n > 0 ? `${n} ${n === 1 ? 'avaliação' : 'avaliações'}` : undefined}
+      hint={hintProp ?? (n > 0 ? `${n} ${n === 1 ? 'avaliação' : 'avaliações'}` : undefined)}
       value={total > 0 ? fmtNumber(total, 1) : '—'}
       unit="kg"
       delta={canDraw && leanDelta !== null && Math.abs(leanDelta) >= 0.1
@@ -142,7 +164,9 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '' }) 
       height={canDraw ? 200 : 0}
       footer={canDraw
         ? undefined
-        : n === 1
+        : emptyText
+          ? emptyText
+          : n === 1
           ? 'Preciso de 2 avaliações com gordura medida para mostrar a evolução — tens 1.'
           : 'Ainda não há avaliações com gordura medida neste período.'}
     >

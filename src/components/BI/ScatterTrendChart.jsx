@@ -27,7 +27,9 @@ function porDataAscendente(data) {
   return [...data].sort((a, b) => String(a?.date ?? '').localeCompare(String(b?.date ?? '')));
 }
 
-export default function ScatterTrendChart({ data: recebidos = [], className = '' }) {
+/* 2026-10-04 (fase 5): `scope` diz de que período são as sessões ("neste
+   mês") — o ecrã passa só as corridas desse período, já fechadas. */
+export default function ScatterTrendChart({ data: recebidos = [], scope, className = '' }) {
   const data = useMemo(() => porDataAscendente(recebidos), [recebidos]);
   const ready = useAppStore((s) => sliceReady(s, ['runs']));
   // 2026-10-04: data/options estáveis (cada referência nova faz chart.update()).
@@ -89,7 +91,7 @@ export default function ScatterTrendChart({ data: recebidos = [], className = ''
       className={className}
       label="Eficiência aeróbica"
       info={<MetricInfo text="Cruza o teu Pace (Ritmo) com a Frequência Cardíaca Média. O objetivo é ver a nuvem de pontos descer e ir para a direita (correr mais rápido para o mesmo esforço cardíaco)." />}
-      hint={data.length > 0 ? `${data.length} ${data.length === 1 ? 'sessão' : 'sessões'}` : undefined}
+      hint={data.length > 0 ? `${data.length} ${data.length === 1 ? 'sessão' : 'sessões'}${scope ? ` ${scope}` : ''}` : undefined}
       value={latest ? formatPace(latest.paceSecondsPerKm) : '—'}
       unit={latest ? `/km a ${latest.avgHR} bpm na última` : undefined}
       valueColor="var(--run)"

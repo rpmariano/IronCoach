@@ -6,6 +6,7 @@ import ChartFrame from './ChartFrame';
 import { useAppStore, sliceReady } from '../../store';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { LOW_CONFIDENCE } from '@formulas/racePrediction.ts';
+import { formatDuration } from '../../utils/run';
 
 /* Ponto 6 do redesenho:
    - O `predictionPlugin` desenhava uma caixa com texto DENTRO da tela
@@ -43,13 +44,20 @@ export function descreverBase(basedOn, hoje = new Date()) {
   return km === 1 ? `baseado numa corrida de 1 km de ${dia}` : `baseado nos ${kmTxt} km de ${dia}`;
 }
 
-export default function RacePredictionChart({ vdotTrend = [], prediction, className = '' }) {
-  const formatTime = (seconds) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
-    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-    return h > 0 ? `${h}h${m}:${s}` : `${m}:${s}`;
-  };
+/* Fase 5 (2026-10-04): o tempo previsto no formato do hub — formatDuration
+   sobre segundos ARREDONDADOS ("1:35:00", "50:00"), não "1h35:00" com
+   Math.floor. A previsão vem fraccionária (VDOT): o floor dava 49:59 onde o
+   hub dava 50:00, e o mesmo número lia-se diferente nos dois ecrãs. */
+export function formatPredictedTime(seconds) {
+  return formatDuration(Math.round(Number(seconds))) || '—';
+}
+
+/* `compare` (opcional): o VDOT médio deste período contra o do anterior, com
+   pontos que cheguem — { current, previous, previousLabel }. Antes o ▲/▼ era
+   a última corrida contra a PRIMEIRA DE SEMPRE, que não diz nada sobre este
+   mês. A linha do gráfico é o histórico todo ("de sempre"). */
+export default function RacePredictionChart({ vdotTrend = [], prediction, compare = null, className = '' }) {
+  const formatTime = formatPredictedTime;
 
   // Um ponto por data, ficando com o melhor VDOT do dia.
   const deduped = useMemo(() => Object.values(
@@ -61,7 +69,6 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
   const ready = useAppStore((s) => sliceReady(s, ['runs', 'races']));
 
   const vdots = useMemo(() => deduped.map(d => Number(d.vdot)), [deduped]);
-  const firstVdot = vdots.length ? vdots[0] : null;
   const lastVdot = vdots.length ? vdots[vdots.length - 1] : null;
   const hasTrend = deduped.length >= 2;
 
@@ -112,7 +119,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
   const unit = prediction ? (prediction.raceName || 'prova') : 'VDOT';
   const valueColor = prediction ? 'var(--race)' : 'var(--run)';
 
-  const vdotDelta = hasTrend ? lastVdot - firstVdot : null;
+  const vdotDelta = compare && compare.previousLabel ? Number(compare.current) - Number(compare.previous) : null;
 
   // A base e a confiança só existem com previsão; o aviso de confiança baixa é
   // o mesmo critério (LOW_CONFIDENCE) e a mesma ressalva do hub da prova.
@@ -132,8 +139,9 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, classN
       unit={unit}
       valueColor={valueColor}
       delta={vdotDelta !== null && Math.abs(vdotDelta) >= 0.1
-        ? { text: `VDOT ${vdotDelta > 0 ? '+' : '−'}${fmtNumber(Math.abs(vdotDelta), 1)}`, tone: vdotDelta >= 0 ? 'ok' : 'warn' }
+        ? { text: `VDOT médio${compare.currentWhere ? ` ${compare.currentWhere}` : ''} ${vdotDelta > 0 ? '▲' : '▼'} ${fmtNumber(Math.abs(vdotDelta), 1)} face a ${compare.previousLabel}`, tone: vdotDelta >= 0 ? 'ok' : 'warn' }
         : undefined}
+      hint="de sempre"
       legend={hasTrend ? legend : []}
       axis={hasTrend ? { min: fmtNumber(Math.min(...vdots), 1), max: fmtNumber(Math.max(...vdots), 1) } : undefined}
       height={hasTrend ? 200 : 0}

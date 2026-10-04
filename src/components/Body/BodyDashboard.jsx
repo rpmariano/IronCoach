@@ -1,407 +1,262 @@
-import React, { useState, useMemo } from 'react';
-import { useAppStore } from '../../store';
+import React, { useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { BODY_METRICS } from '../../utils/body';
-import { getBodyIcon } from '../../utils/bodyIcons';
 import { User } from 'lucide-react';
-import { Line } from 'react-chartjs-2';
-import '../../lib/chartSetup';
-import TimeFilterBar from '../BI/TimeFilterBar';
+import { useAppStore } from '../../store';
+import { useEvolutionView } from '../../store/evolution/useEvolutionView';
+import '../../store/evolution/views/body';
+import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
+import { useTodayISO } from '../../utils/useTodayISO';
+import { BODY_METRIC_BY_KEY, fmtMetric, fmtSigned, fmtDayShort } from '../../utils/body';
+import { capitalize } from '../../utils/verdicts/shared';
 import StackedAreaChart from '../BI/StackedAreaChart';
-import MetricInfo from '../BI/MetricInfo';
-import ChartFrame from '../BI/ChartFrame';
-import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
-import VerdictLine from '../BI/VerdictLine';
-import { bodyVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
-import { filterByDateRange, calculateWeightTrend, calculateCompositionTrend } from '../../utils/biEngine';
-import { WEIGHT_TREND_MIN_POINTS, WEIGHT_TREND_MIN_SPAN_DAYS } from '@formulas/weightTrend.ts';
+import EmptyModuleState from '../BI/EmptyModuleState';
+import { CORPO } from '../BI/TimeFilterBar';
+import {
+  PeriodHeader, PeriodNav, PeriodSummary, EarlyPeriodState, TodayExcludedNote, MinDataNote,
+  plural, firstPeriodNote, scopeOf, kindText,
+} from '../BI/period';
+import BodyAssessmentDay from './BodyAssessmentDay';
+import { BodyMetricChart, WeightTrendChart } from './BodyCharts';
+import { BODY_DELTA_MIN_SPAN_DAYS } from '../../store/evolution/views/body';
 
-/* C4 (2026-10-04): os números do Corpo saem com vírgula decimal (fmtNumber)
-   e o ChartFrame recebe o número SEM unidade — a unidade vai no `unit`.
-   Com fmtMetric (toFixed + unidade) o número grande saía "72.4 kg kg", com
-   ponto, e sem data-count-to (não é numérico), por isso também não contava. */
-function fmtValue(metric, val) {
-  if (val === null || val === undefined || !isFinite(Number(val))) return '—';
-  return fmtNumber(Number(val), metric.dec);
-}
-function fmtValueUnit(metric, val) {
-  const v = fmtValue(metric, val);
-  return v === '—' || !metric.unit ? v : `${v} ${metric.unit}`;
-}
+/**
+ * Corpo na Evolução por períodos de calendário (2026-10-04, fase 5 — plano §3
+ * "Corpo" e decisão D1; erros C1–C5). A forma é a do mock-up aprovado da
+ * Nutrição, aplicada às avaliações:
+ *
+ *   Dia · Semana · Mês · Trimestre · Ano (PeriodHeader, CORPO)
+ *   Dia  → UMA avaliação (BodyAssessmentDay): ‹ › entre avaliações, todas as
+ *          métricas com a diferença face à anterior e "Comparar com…".
+ *   Resto┌ Resumo do período ──────────────────────────────┐
+ *        │ ‹ outubro 2026 · em curso · 2 avaliações ›        │  PeriodNav
+ *        │ ▍ veredicto do período (peso: ritmo, composição)  │
+ *        │ Última leitura (2 avaliações)              Data   │
+ *        │ PESO 74,2 kg / 72,0 kg  ✓ −1,1 kg vs set   3 out  │  tocar escolhe
+ *        └───────────────────────────────────────────────────┘  o gráfico
+ *        Peso → só a tendência (o gráfico "Peso" duplicado saiu, D5);
+ *        outra métrica → o gráfico dela; composição (só avaliações válidas).
+ *
+ * Os números chegam prontos da vista pré-calculada (views/body.js, F6). Aqui
+ * hoje CONTA: uma avaliação é um facto fechado no dia em que se faz (plano
+ * §3 Corpo, "R2 aplica-se a médias") — por isso a nota do fundo diz isso, e
+ * não o "hoje ainda não acabou" dos outros separadores.
+ */
 
-const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
-/* "12 set" no ano corrente, "12 set 2025" nos outros — a data de uma
-   leitura que não é do período (C5) tem de se ler sem ambiguidade. */
-function fmtShortDate(iso) {
-  if (!iso) return '';
-  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
-  const base = `${d} ${MESES[m - 1]}`;
-  return y === new Date().getFullYear() ? base : `${base} ${y}`;
-}
+const TODAY_COUNTS = 'No Corpo, hoje conta: uma avaliação é um facto fechado assim que a fazes.';
 
-/* Ponto 6: os ticks deixam de escrever dentro da tela — o valor atual é o
-   número grande do ChartFrame e os extremos do eixo vão para os cantos,
-   em HTML.
-   2026-10-04 (F5, animação ao ficar visível): as opções são uma constante de
-   módulo — referência estável, senão cada render fazia chart.update() e
-   repetia o movimento. As duas linhas não têm `animation` própria (vale o
-   default global, 700 ms; `false` com reduced-motion) e a revelação é do
-   ChartFrame. Trocar de métrica ou de período muda `data` e usa a transição
-   curta (updateMode="period"), sem repetir a entrada. */
-const CHART_OPTIONS = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false } },
-  scales: {
-    y: { beginAtZero: false, grace: '5%', grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
-    x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
-  },
+const STATUS_OF_TONE = (cmp) => {
+  if (!cmp || cmp.direction === 'flat') return null;
+  if (cmp.tone === 'good') return 'ok';
+  if (cmp.tone === 'bad') return cmp.direction === 'down' ? 'below' : 'above';
+  return null;
 };
 
-export default function BodyDashboard({ onGoToCalendar }) {
+/** As linhas do PeriodSummary a partir da vista (só as métricas já registadas). */
+export function bodySummaryRows(view, todayISO) {
+  return view.rows.map((r) => {
+    const m = BODY_METRIC_BY_KEY[r.key];
+    const base = { key: r.key, label: m.label, goal: r.goal != null ? fmtMetric(m, r.goal) : undefined, color: m.color };
+    if (!r.last) {
+      const lastTxt = r.lastBefore ? `última a ${fmtDayShort(r.lastBefore.date, todayISO)}` : null;
+      return {
+        ...base,
+        value: null,
+        missingText: lastTxt ? `sem leitura · ${lastTxt}` : 'sem leitura',
+        ariaLabel: `${m.label}: sem leitura ${view.where}${r.lastBefore ? `; a última é de ${fmtDayShort(r.lastBefore.date, todayISO)}, ${fmtMetric(m, r.lastBefore.value)}` : ''}`,
+      };
+    }
+    const readings = `${r.n} ${plural(r.n, 'leitura', 'leituras')}`;
+    let statusText = readings;
+    let spoken = readings;
+    if (r.cmp && r.cmp.direction !== 'flat') {
+      statusText = `${fmtSigned(m, r.cmp.diff)} vs ${view.prevName}`;
+      const sentido = r.cmp.tone === 'good' ? ', no bom sentido' : r.cmp.tone === 'bad' ? ', no sentido contrário' : '';
+      spoken = `${r.cmp.direction === 'up' ? 'subiu' : 'desceu'} ${fmtMetric(m, Math.abs(r.cmp.diff))} face a ${view.prevName}${sentido}; ${readings}`;
+    } else if (r.cmp) {
+      statusText = `= igual a ${view.prevName}`;
+      spoken = `igual a ${view.prevName}; ${readings}`;
+    }
+    return {
+      ...base,
+      value: fmtMetric(m, r.last.value),
+      status: STATUS_OF_TONE(r.cmp),
+      statusText,
+      count: fmtDayShort(r.last.date, todayISO),
+      ariaLabel: [
+        `${m.label}: ${fmtMetric(m, r.last.value)} a ${fmtDayShort(r.last.date, todayISO)}`,
+        r.goal != null ? `objetivo ${fmtMetric(m, r.goal)}` : null,
+        spoken,
+      ].filter(Boolean).join(', '),
+    };
+  });
+}
+
+/**
+ * A linha do anterior no rodapé do resumo, num período em curso com dados
+ * (mock-up MesOutubro/TrimestreOutDez, 2026-10-04 revisão): "setembro:
+ * última pesagem 76,6 kg a 28 set · 6 avaliações" — o "Ver setembro ›" é o
+ * botão do PeriodSummary.
+ */
+export function bodyPreviousLine(view, todayISO) {
+  const ps = view.previousSummary;
+  if (!ps) return null;
+  const w = ps.lastWeight ? `última pesagem ${fmtMetric(BODY_METRIC_BY_KEY.weight_kg, ps.lastWeight.value)} a ${fmtDayShort(ps.lastWeight.date, todayISO)} · ` : '';
+  return `${view.prevName}: ${w}${ps.count} ${plural(ps.count, 'avaliação', 'avaliações')}`;
+}
+
+/** "Semana passada (21 – 27 set): última pesagem 74,6 kg a 26 set · 2 avaliações". */
+export function bodyPreviousSummary(view, todayISO) {
+  const ps = view.previousSummary;
+  if (!ps) return null;
+  const name = view.kind === 'semana'
+    ? `${capitalize(kindText('semana').prevName)} (${ps.range})`
+    : `${capitalize(kindText(view.kind).prevName)} (${ps.name})`;
+  const w = ps.lastWeight ? `última pesagem ${fmtMetric(BODY_METRIC_BY_KEY.weight_kg, ps.lastWeight.value)} a ${fmtDayShort(ps.lastWeight.date, todayISO)} · ` : '';
+  return `${name}: ${w}${ps.count} ${plural(ps.count, 'avaliação', 'avaliações')}`;
+}
+
+export default function BodyDashboard() {
   /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
      seletor, qualquer alteração ao store — um deslize entre separadores
-     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
-     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
-     redesenha quando um destes campos muda de referência. */
-  const { bodyAssessments, gymSessions, profile, setOpenCreationMode } = useAppStore(useShallow((s) => ({
-    bodyAssessments: s.bodyAssessments, gymSessions: s.gymSessions, profile: s.profile,
-    setOpenCreationMode: s.setOpenCreationMode,
+     mexe em `lastDashboardTab` — redesenhava este separador mesmo escondido. */
+  const { profile, setOpenCreationMode } = useAppStore(useShallow((s) => ({
+    profile: s.profile, setOpenCreationMode: s.setOpenCreationMode,
   })));
-  const [timeRange, setTimeRange] = useState('trimestre');
-  const [selectedMetricKey, setSelectedMetricKey] = useState('weight_kg');
+  const today = useTodayISO();
+  const view = useEvolutionView('corpo');
+  // minClosed 1: no Corpo não há "cedo" por dias fechados (hoje conta) — o
+  // mínimo de dados é o das pesagens (weightTrend) e diz-se no veredicto.
+  const cal = useCalendarPeriod('corpo', { dataStartISO: view?.dataStartISO, minClosed: 1 });
+  const [metricKey, setMetricKey] = useState('weight_kg');
 
-  const selectedMetric = useMemo(() => {
-    return BODY_METRICS.find(m => m.key === selectedMetricKey) || BODY_METRICS[0];
-  }, [selectedMetricKey]);
+  const isDay = cal.kind === 'dia';
+  const v = view && view.kind === cal.kind ? view : null;
+  // A cobertura do navegador conta avaliações ("em curso · 2 avaliações"), não dias fechados.
+  const calShown = v?.label ? { ...cal, label: v.label } : cal;
+  const header = <PeriodHeader tab="corpo" options={CORPO} cal={calShown} navigator="none" />;
 
-  const filteredAssessments = useMemo(() => {
-    return filterByDateRange(bodyAssessments, timeRange, 'date').sort((a, b) => a.date.localeCompare(b.date));
-  }, [bodyAssessments, timeRange]);
-
-  const sortedAssessmentsDesc = useMemo(() => {
-    return [...bodyAssessments].sort((a, b) => b.date.localeCompare(a.date));
-  }, [bodyAssessments]);
-
-  // Metric summaries for top compact cards
-  const metricSummaries = useMemo(() => {
-    return BODY_METRICS.map(m => {
-      const validInPeriod = filteredAssessments.filter(a => a[m.key] !== null && a[m.key] !== undefined);
-      const validOverall = sortedAssessmentsDesc.filter(a => a[m.key] !== null && a[m.key] !== undefined);
-      const latestOverall = validOverall[0]?.[m.key];
-
-      /* C5 (2026-10-04): sem leitura desta métrica no período, o cartão
-         mostrava o último valor de sempre sem data, como se fosse do
-         período (e o gráfico, ao tocar, dizia que não havia leituras).
-         Passa a levar a data dessa leitura — ou "—" se nunca houve. */
-      if (validInPeriod.length === 0) {
-        return {
-          metric: m,
-          value: latestOverall ?? null,
-          valueDate: validOverall[0]?.date ?? null,
-          hasPeriodData: false,
-          deltaText: null,
-          deltaType: 'neutral'
-        };
-      }
-
-      const first = Number(validInPeriod[0][m.key]);
-      const latest = Number(validInPeriod[validInPeriod.length - 1][m.key]);
-      const diff = latest - first;
-
-      let deltaText = null;
-      let deltaType = 'neutral';
-
-      if (validInPeriod.length >= 2 && Math.abs(diff) >= 0.01) {
-        const isPositive = diff > 0;
-        // fmtNumber já escreve o "−" dos negativos; o "+" é nosso.
-        const formattedDiff = (isPositive ? '+' : '') + fmtValueUnit(m, diff);
-        deltaText = formattedDiff;
-
-        if (m.good === 'down') {
-          deltaType = diff < 0 ? 'good' : 'bad';
-        } else if (m.good === 'up') {
-          deltaType = diff > 0 ? 'good' : 'bad';
-        } else {
-          deltaType = 'neutral';
-        }
-      } else if (validInPeriod.length === 1) {
-        deltaText = '1 leitura';
-        deltaType = 'neutral';
-      } else {
-        deltaText = fmtValueUnit(m, 0);
-        deltaType = 'neutral';
-      }
-
-      return {
-        metric: m,
-        value: latest,
-        hasPeriodData: true,
-        deltaText,
-        deltaType
-      };
-    });
-  }, [filteredAssessments, sortedAssessmentsDesc]);
-
-  // Points for selected metric chart
-  const points = useMemo(() => {
-    return filteredAssessments
-      .filter(a => a[selectedMetric.key] !== null && a[selectedMetric.key] !== undefined);
-  }, [filteredAssessments, selectedMetric]);
-
-  const latestVal = points.length > 0 ? points[points.length - 1][selectedMetric.key] : null;
-  const selectedSummary = metricSummaries.find(s => s.metric.key === selectedMetric.key);
-  const goalVal = profile ? profile['goal_' + selectedMetric.key] : null;
-
-  const chartData = useMemo(() => {
-    return {
-      labels: points.length ? points.map(a => a.date.slice(8, 10) + '/' + a.date.slice(5, 7)) : ['—'],
-      datasets: [{
-        label: `${selectedMetric.label}${selectedMetric.unit ? ' (' + selectedMetric.unit + ')' : ''}`,
-        data: points.length ? points.map(a => Number(a[selectedMetric.key])) : [0],
-        borderColor: selectedMetric.color,
-        backgroundColor: `${selectedMetric.color}25`,
-        pointBackgroundColor: selectedMetric.color,
-        pointRadius: points.length > 20 ? 0 : 5,
-        pointHoverRadius: 7,
-        borderWidth: 2.5,
-        tension: 0.25,
-        fill: true,
-      }]
-    };
-  }, [points, selectedMetric]);
-
-  const weightTrendData = useMemo(() => calculateWeightTrend(filteredAssessments), [filteredAssessments]);
-  const compositionData = useMemo(() => calculateCompositionTrend(filteredAssessments), [filteredAssessments]);
-
-  // useMemo (e antes do return antecipado, por causa das regras dos hooks): `data` estável.
-  const weightDualChartData = useMemo(() => (weightTrendData ? {
-    labels: weightTrendData.rawPoints.map(p => p.date.slice(8, 10) + '/' + p.date.slice(5, 7)),
-    datasets: [
-      {
-        label: weightTrendData.isEWMASmoothing ? 'EWMA (Tendência)' : 'Evolução (Raw)',
-        data: weightTrendData.movingAverage.map(p => p.weight),
-        borderColor: '#ff5fa8', // --body
-        borderWidth: 3,
-        pointRadius: 0,
-        tension: 0.4,
-        fill: false,
-      },
-      {
-        label: 'Pesagens (Raw)',
-        data: weightTrendData.rawPoints.map(p => p.weight),
-        borderColor: 'transparent',
-        backgroundColor: 'rgba(255, 255, 255, 0.4)',
-        pointBackgroundColor: 'rgba(255, 255, 255, 0.4)',
-        pointRadius: 4,
-        borderWidth: 0,
-        tension: 0,
-        fill: false,
-        showLine: false,
-      }
-    ]
-  } : null), [weightTrendData]);
-
-  /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
-     utils/dashboardVerdicts.js — aqui só se juntam os dados que o biEngine
-     já calculou. */
-  const verdict = useMemo(() => bodyVerdict({
-    weightTrend: weightTrendData,
-    composition: compositionData,
-    assessmentCount: filteredAssessments.length,
-    gymSessionCount: filterByDateRange(gymSessions, timeRange).length,
-  }), [weightTrendData, compositionData, filteredAssessments.length, gymSessions, timeRange]);
-
-  /* Ponto 7 do redesenho. Este `return` antecipado era o caso que o ponto 6
-     assinalou: saía ANTES da frase de veredicto e do filtro de período, por
-     isso o Corpo era o único módulo sem veredicto nenhum quando não havia
-     dados — e o botão que mostrava ("Ir para o Calendário") recebia um
-     onGoToCalendar que ninguém passa (Body.jsx monta <BodyDashboard /> sem
-     props), ou seja, não fazia nada. Passa a ser o cartão do mock
-     "Dashboard · sem dados", já depois do veredicto e do filtro, com o
-     convite a registar uma avaliação.
-     A condição também passa a ser do PERÍODO (e não "nenhuma avaliação de
-     sempre"): com avaliações antigas mas nenhuma no trimestre, o ecrã
-     mostrava gráficos vazios sem dizer porquê. */
-  if (filteredAssessments.length === 0) {
+  /* Ponto 7 do redesenho: sem avaliações nenhumas, o convite a registar (com
+     o botão que funciona — antes "Ir para o Calendário" não fazia nada). */
+  if (!v || !v.hasAny) {
     return (
       <div className="space-y-4 fade-in pb-16">
-        <VerdictLine text={verdict.text} tone={verdict.tone} />
-        <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} module="corpo" />
+        {header}
         <EmptyModuleState
           tone="body"
           icon={<User size={22} />}
           actionLabel="Registar avaliação"
           onAction={() => setOpenCreationMode('assessment')}
         >
-          Ainda não há avaliações neste período. Regista uma avaliação — podes enviar um print da Renpho Health — para veres a tua evolução aqui.
+          Ainda não há avaliações. Regista uma avaliação — podes enviar um print da Renpho Health — para veres a tua evolução aqui.
         </EmptyModuleState>
-        <EmptyChartFrame label="Peso" unit="kg" height={192} />
       </div>
     );
   }
 
+  if (isDay) {
+    return (
+      <div className="space-y-4 fade-in pb-16">
+        {header}
+        <BodyAssessmentDay assessments={v.assessments} profile={profile} todayISO={today} />
+      </div>
+    );
+  }
+
+  const kind = cal.kind;
+  const nav = <PeriodNav cal={calShown} module="corpo" />;
+  const rows = bodySummaryRows(v, today);
+  const selected = v.metricKeys.includes(metricKey) ? metricKey : v.metricKeys[0];
+  const metric = BODY_METRIC_BY_KEY[selected];
+  const row = v.rows.find((r) => r.key === selected);
+  const averageLabel = `Última leitura (${v.count} ${plural(v.count, 'avaliação', 'avaliações')})`;
+  const todayNote = <TodayExcludedNote period={v.period} text={TODAY_COUNTS} />;
+
+  if (v.emptyCurrent) {
+    // R8 (ecrã "Semana · segunda-feira" do mock-up): ainda nada neste período
+    // — sem gráficos vazios; o que houve no anterior e o caminho para a última.
+    return (
+      <div className="space-y-4 fade-in pb-16">
+        {header}
+        <PeriodSummary
+          navigator={nav}
+          verdict={v.verdict}
+          rows={rows}
+          averageLabel={averageLabel}
+          countLabel="Data"
+          module="corpo"
+        />
+        <EarlyPeriodState
+          state="a_comecar"
+          kind={kind}
+          module="corpo"
+          title={v.justStarted ? undefined : `Ainda sem avaliações ${scopeOf(kind)}`}
+          text="Uma avaliação conta logo no dia em que a fazes — uma pesagem de hoje já entra."
+          onViewToday={() => cal.setKind('dia')}
+          todayLabel="Ver a última avaliação"
+          onViewPrevious={cal.prev}
+          previousSummary={bodyPreviousSummary(v, today)}
+        />
+        {todayNote}
+      </div>
+    );
+  }
+
+  const notes = [
+    // 2026-10-04, revisão: a regra é a maturidade do histórico (leituras a
+    // cobrir ≥ 14 dias), uma condição que se cumpre também na semana.
+    v.withheldSpan ? `As diferenças face a ${v.prevName} aparecem quando as tuas leituras cobrirem pelo menos ${BODY_DELTA_MIN_SPAN_DAYS} dias — antes disso, a balança diz mais da água do que do corpo.` : null,
+    v.anyFlat ? 'Diferenças abaixo do erro da balança contam como iguais.' : null,
+    v.firstPeriod ? firstPeriodNote(kind) : null,
+  ];
+  const empty = v.count === 0;
+  // Linha do anterior com atalho, como no mock-up (mês/trimestre/ano em curso).
+  const previous = v.period.isCurrent && kind !== 'semana' && v.previousSummary
+    ? { text: bodyPreviousLine(v, today), actionLabel: `Ver ${v.prevName}`, onAction: cal.prev }
+    : undefined;
+  /* Composição (2026-10-04, revisão): num período fechado sem nenhuma
+     avaliação com gordura medida, o cartão era só um "—" — sai. A pista diz
+     o que conta ("3 avaliações com gordura medida"), não um 2.º contador de
+     "avaliações" diferente do do resumo. */
+  const compN = v.composition?.dates?.length || 0;
+  const showComposition = v.metricKeys.includes('body_fat_pct') && (v.period.isCurrent || compN > 0);
+  const compHint = compN > 0 ? `${compN} ${plural(compN, 'avaliação com gordura medida', 'avaliações com gordura medida')}` : undefined;
+  const compEmpty = !v.period.isCurrent && compN === 1
+    ? `Só houve 1 avaliação com gordura medida ${v.where} — a evolução precisa de 2.`
+    : null;
+
   return (
     <div className="space-y-4 fade-in pb-16">
-      {/* Veredicto — antes dos filtros e dos KPIs, como no mock. */}
-      <VerdictLine text={verdict.text} tone={verdict.tone} />
-
-      <TimeFilterBar
-        activeRange={timeRange}
-        onChange={setTimeRange}
+      {header}
+      <PeriodSummary
+        navigator={nav}
+        verdict={v.verdict}
+        rows={rows}
+        averageLabel={averageLabel}
+        countLabel="Data"
+        selectedKey={selected}
+        onSelect={setMetricKey}
+        radioLabel="Escolher a métrica do gráfico"
+        previous={previous}
+        notes={notes}
         module="corpo"
       />
 
-      <div className="grid grid-cols-3 gap-2 px-1">
-        {metricSummaries.map(({ metric: m, value, valueDate, hasPeriodData, deltaText, deltaType }) => {
-          const isSelected = selectedMetricKey === m.key;
-          // C5: leitura de fora do período — valor apagado e a data dela.
-          const outOfPeriod = !hasPeriodData && value !== null && value !== undefined;
-          return (
-            <button
-              key={m.key}
-              type="button"
-              onClick={() => setSelectedMetricKey(m.key)}
-              className={`p-2.5 min-h-[44px] text-left rounded-xl transition-all relative overflow-hidden backdrop-blur-[20px] shadow-[0_8px_20px_rgba(0,0,0,0.2)] active:scale-95 cursor-pointer border ${
-                isSelected 
-                  ? 'bg-[var(--surface-glass)] ring-2' 
-                  : 'bg-[var(--surface-glass)] border-white/20 hover:bg-[var(--surface-strong)]'
-              }`}
-              style={isSelected ? { borderColor: m.color, '--tw-ring-color': `${m.color}cc` } : {}}
-            >
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span style={{ color: m.color }}>{getBodyIcon(m.key, 12)}</span>
-                  <p className="text-[11px] font-medium text-[var(--text-3)] truncate">{m.label}</p>
-                </div>
-                {isSelected && (
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: m.color }} />
-                )}
-              </div>
-              <p
-                className={`text-sm font-bold tracking-tight leading-tight ${outOfPeriod ? 'text-[var(--text-3)]' : 'text-white'}`}
-                data-testid={`body-card-value-${m.key}`}
-              >
-                {hasPeriodData || outOfPeriod ? fmtValueUnit(m, value) : '—'}
-              </p>
-              <div className="mt-1 flex items-center justify-between min-h-[14px]">
-                {outOfPeriod ? (
-                  <span
-                    className="text-[11px] text-[var(--text-3)] truncate"
-                    data-testid={`body-card-date-${m.key}`}
-                    aria-label={`Última leitura a ${fmtShortDate(valueDate)}, fora do período`}
-                  >
-                    {`a ${fmtShortDate(valueDate)}`}
-                  </span>
-                ) : deltaText ? (
-                  <span className={`text-[11px] font-semibold ${
-                    deltaType === 'good' ? 'text-[var(--ok)]' :
-                    deltaType === 'bad' ? 'text-[var(--danger)]' : 'text-[var(--text-3)]'
-                  }`}>
-                    {deltaText}
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-[var(--text-3)]">—</span>
-                )}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* 2. Gráfico da Métrica Selecionada (reage aos cards acima) */}
-      {(() => {
-        const vals = points.map(a => Number(a[selectedMetric.key])).filter(v => isFinite(v));
-        const first = vals.length ? vals[0] : null;
-        const diff = vals.length >= 2 ? vals[vals.length - 1] - first : null;
-        return (
-          <ChartFrame
-            label={selectedMetric.label}
-            hint={goalVal != null ? `objetivo ${fmtValueUnit(selectedMetric, goalVal)}` : `${points.length} leitura${points.length === 1 ? '' : 's'}`}
-            value={latestVal !== null ? fmtValue(selectedMetric, latestVal) : '—'}
-            unit={selectedMetric.unit || undefined}
-            valueColor={selectedMetric.color}
-            delta={diff !== null && Math.abs(diff) >= 0.01
-              ? {
-                  text: `${diff > 0 ? '+' : '−'}${fmtNumber(Math.abs(diff), selectedMetric.dec)}${selectedMetric.unit ? ' ' + selectedMetric.unit : ''} no período`,
-                  tone: selectedMetric.good === 'down'
-                    ? (diff < 0 ? 'ok' : 'warn')
-                    : selectedMetric.good === 'up'
-                      ? (diff > 0 ? 'ok' : 'warn')
-                      : 'neutral',
-                }
-              : undefined}
-            axis={vals.length > 1
-              ? { min: fmtValueUnit(selectedMetric, Math.min(...vals)), max: fmtValueUnit(selectedMetric, Math.max(...vals)) }
-              : undefined}
-            legend={[{ label: selectedMetric.label, color: selectedMetric.color, shape: 'line' }]}
-            height={points.length >= 1 ? 192 : 0}
-            footer={points.length >= 1
-              ? undefined
-              : selectedSummary?.valueDate
-                ? `Sem leituras desta métrica no período selecionado. A última é de ${fmtShortDate(selectedSummary.valueDate)} (${fmtValueUnit(selectedMetric, selectedSummary.value)}).`
-                : 'Sem leituras desta métrica no período selecionado.'}
-          >
-            {points.length >= 1 ? <Line data={chartData} options={CHART_OPTIONS} updateMode="period" /> : null}
-          </ChartFrame>
-        );
-      })()}
-
-      {/* 3. Tendência de Peso (EWMA) */}
-      {weightTrendData && (() => {
-        const ma = weightTrendData.movingAverage || [];
-        const lastWeight = ma.length ? Number(ma[ma.length - 1].weight) : null;
-        const raw = (weightTrendData.rawPoints || []).map(pt => Number(pt.weight)).filter(v => isFinite(v));
-        /* C1/C2 (2026-10-04): o ritmo só existe com pesagens que cheguem
-           (weightTrend.ts: ≥3 nos últimos 14 dias, a abranger ≥10). Antes
-           saía "+0,6 kg/semana" de 2 pesagens a 3 dias, ou nada com
-           pesagens espaçadas; agora, sem dados, diz-se o que falta. */
-        const sufficient = weightTrendData.sufficient === true && weightTrendData.weeklyRate != null;
-        const rate = sufficient ? Number(weightTrendData.weeklyRate) : null;
-        const roundedRate = rate !== null && Math.abs(rate) >= 0.05 ? rate : 0;
-        const n = weightTrendData.pointsInWindow ?? 0;
-        const span = weightTrendData.spanDays ?? 0;
-        const missing = `Preciso de ${WEIGHT_TREND_MIN_POINTS} pesagens em ${WEIGHT_TREND_MIN_SPAN_DAYS} dias para a tendência — `
-          + (n <= 1
-            ? 'nas duas semanas até à última pesagem só há essa.'
-            : `nas duas semanas até à última pesagem há ${n} pesagens em ${span} ${span === 1 ? 'dia' : 'dias'}.`);
-        return (
-          <ChartFrame
-            label={weightTrendData.isEWMASmoothing ? 'Tendência de peso (EWMA)' : 'Evolução de peso'}
-            info={<MetricInfo text={
-              weightTrendData.isEWMASmoothing
-                ? "O teu peso natural flutua todos os dias devido à água, ao sal e ao glicogénio (vê os pontos soltos). A linha contínua usa uma matemática especial (Média Móvel) para ignorar esse 'ruído' e mostrar-te a tua verdadeira tendência a longo prazo. Foca-te apenas na linha."
-                : "A evolução direta do teu peso no período selecionado. A tendência (EWMA) será ativada automaticamente quando registares pelo menos 5 pesagens neste período."
-            } />}
-            hint={`${raw.length} ${raw.length === 1 ? 'pesagem' : 'pesagens'}`}
-            value={lastWeight !== null ? fmtNumber(lastWeight, 1) : '—'}
-            unit="kg"
-            valueColor="var(--body)"
-            delta={rate !== null
-              ? {
-                  text: `${roundedRate > 0 ? '+' : roundedRate < 0 ? '−' : ''}${fmtNumber(Math.abs(roundedRate), 1)} kg/semana`,
-                  tone: Math.abs(rate) >= 1 ? 'danger' : 'neutral',
-                }
-              : undefined}
-            footer={sufficient ? undefined : missing}
-            axis={raw.length > 1
-              ? { min: `${fmtNumber(Math.min(...raw), 1)} kg`, max: `${fmtNumber(Math.max(...raw), 1)} kg` }
-              : undefined}
-            legend={[
-              { label: weightTrendData.isEWMASmoothing ? 'Tendência' : 'Evolução', color: 'var(--body)', shape: 'line' },
-              { label: 'Pesagens', color: 'rgba(248,250,252,.4)' },
-            ]}
-            height={192}
-          >
-            <Line data={weightDualChartData} options={CHART_OPTIONS} updateMode="period" />
-          </ChartFrame>
-        );
-      })()}
-
-      {/* 4. Composição Corporal (Massa Magra vs Massa Gorda - Eixo Duplo) */}
-      {compositionData && compositionData.dates.length > 0 && (
-        <StackedAreaChart data={compositionData} />
+      {empty ? (
+        <MinDataNote text={v.beforeFirst
+          ? `Sem avaliações neste período — a primeira é de ${fmtDayShort(v.dataStartISO, today)}.`
+          : 'Sem avaliações neste período.'} />
+      ) : (
+        <>
+          {selected === 'weight_kg' && v.weight
+            ? <WeightTrendChart weight={v.weight} period={v.period} todayISO={today} end={v.axisEnd} toToday={v.axisToToday} />
+            : <BodyMetricChart metric={metric} row={row} period={v.period} prevName={v.prevName} todayISO={today} end={v.axisEnd} toToday={v.axisToToday} />}
+          {showComposition && (
+            <StackedAreaChart data={v.composition} start={v.period.start} end={v.axisEnd} hint={compHint} emptyText={compEmpty} />
+          )}
+        </>
       )}
+
+      {todayNote}
     </div>
   );
 }

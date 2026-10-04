@@ -1,25 +1,56 @@
 import { computeItemNutrients, computeMealNutrients } from '@formulas/mealNutrients.ts';
-import { computeNutrientRangeTotals } from '@formulas/micronutrientTotals.ts';
-import { todayISO } from '../lib/utils';
 
-/* Cores das macros — ponto 6 do redesenho ("paleta das séries de dados").
-   Eram quatro cores inventadas (#dd3c4f/#3c6cdd/#8b8118/#dd3cb7), fora das
-   oito com significado. Passam a ser as do mock "Dashboard · Nutrição":
-   proteína rosa (--body), hidratos violeta (--nutrition), gordura ciano
-   (--run), calorias violeta (--nutrition, o módulo). Ficam em hexadecimal
-   e não em var(--x) porque o Chart.js pinta em <canvas> e não resolve
-   variáveis CSS — os valores são os mesmos de tokens/colors.css. */
+/* Cores das macros. Até 2026-10-04 eram as do mock "Dashboard · Nutrição"
+   (calorias e hidratos com o mesmo violeta do módulo, proteína no rosa do
+   Corpo, gordura no ciano da Corrida — cores com outro significado). Passam
+   aos neon das macros (--neon-*, bug #51), os mesmos dos anéis da vista Dia e
+   do mock-up aprovado "Evolução · Nutrição por período". Em hexadecimal porque
+   quem desenha em <canvas> não resolve variáveis CSS — são os valores de
+   tokens/colors.css. */
 export const MACROS = [
-  { key: 'calories', goalKey: 'calorie_goal', label: 'Calorias', unit: 'kcal', color: '#c77dff' },
-  { key: 'protein', goalKey: 'protein_goal', label: 'Proteína', unit: 'g', color: '#ff5fa8' },
-  { key: 'carbs', goalKey: 'carbs_goal', label: 'Hidratos', unit: 'g', color: '#c77dff' },
-  { key: 'fat', goalKey: 'fat_goal', label: 'Gordura', unit: 'g', color: '#2ee0ff' },
+  { key: 'calories', goalKey: 'calorie_goal', label: 'Calorias', unit: 'kcal', color: '#ff3d9a' },
+  { key: 'protein', goalKey: 'protein_goal', label: 'Proteína', unit: 'g', color: '#9f6bff' },
+  { key: 'carbs', goalKey: 'carbs_goal', label: 'Hidratos', unit: 'g', color: '#b8f53d' },
+  { key: 'fat', goalKey: 'fat_goal', label: 'Gordura', unit: 'g', color: '#2ee6ff' },
 ];
 
+/* As cinco linhas do resumo da Evolução (fase 4, 2026-10-04), por ordem:
+   nome, unidade, nome por extenso (leitor de ecrã), cor (token) e se o
+   objetivo tem teto. A régua em si (90–115%, proteína e água sem teto, N7)
+   vive em @formulas/nutritionPeriod.ts (classifyMacroDay); `ceiling` aqui é
+   só para desenhar a zona 90–115% ou a linha "90% ou mais". */
+export const NUTRIENT_META = {
+  calories: { key: 'calories', label: 'Calorias', unit: 'kcal', long: 'quilocalorias', color: 'var(--neon-kcal)', ceiling: true },
+  protein: { key: 'protein', label: 'Proteína', unit: 'g', long: 'gramas de proteína', color: 'var(--neon-proteina)', ceiling: false },
+  carbs: { key: 'carbs', label: 'Hidratos', unit: 'g', long: 'gramas de hidratos', color: 'var(--neon-hidratos)', ceiling: true },
+  fat: { key: 'fat', label: 'Gordura', unit: 'g', long: 'gramas de gordura', color: 'var(--neon-gordura)', ceiling: true },
+  water: { key: 'water', label: 'Água', unit: 'ml', long: 'mililitros de água', color: 'var(--neon-agua)', ceiling: false },
+};
+export const NUTRIENT_ORDER = ['calories', 'protein', 'carbs', 'fat', 'water'];
+
+/* Estado de um dia/valor contra o objetivo (Dentro/Abaixo/Acima/Sem registo),
+   em cor: verde dentro, coral fora (nunca âmbar), cinzento sem registo — a
+   mesma régua de cor da vista Dia. `bg`/`bd` são as tintas do mapa de calor. */
+export const DAY_STATUS_STYLE = {
+  ok: { color: 'var(--ok)', bg: 'var(--tint-ok-bg)', bd: 'var(--tint-ok-bd)', word: 'Dentro', long: 'dentro do objetivo' },
+  below: { color: 'var(--warn)', bg: 'var(--tint-warn-bg)', bd: 'var(--tint-warn-bd)', word: 'Abaixo', long: 'abaixo do objetivo' },
+  // Acima leva riscas: com o mesmo coral do Abaixo, a forma distingue-os sem depender da cor.
+  above: {
+    color: 'var(--warn)',
+    bg: 'repeating-linear-gradient(45deg, rgba(251,124,77,.24) 0 3px, rgba(251,124,77,.08) 3px 7px)',
+    bd: 'var(--tint-warn-bd)',
+    word: 'Acima',
+    long: 'acima do objetivo',
+  },
+  none: { color: 'var(--text-4)', bg: 'transparent', bd: 'rgba(255,255,255,.18)', word: 'Sem registo', long: 'sem registo' },
+};
+
+/* Micronutrientes — `unit` por dia na Evolução ("g/dia"). `note` só no sódio:
+   o limite de repouso não vale para quem transpira a treinar (mock-up). */
 export const MICROS = [
   { key: 'fiber', label: 'Fibra', unit: 'g' },
   { key: 'sugar', label: 'Açúcar', unit: 'g' },
-  { key: 'sodium', label: 'Sódio', unit: 'mg' },
+  { key: 'sodium', label: 'Sódio', unit: 'mg', note: 'Em repouso, menos de 2 000 mg. Quem treina e transpira perde sódio — não é um limite para dias de treino.' },
   { key: 'iron_mg', label: 'Ferro', unit: 'mg' },
   { key: 'calcium_mg', label: 'Cálcio', unit: 'mg' },
   { key: 'vitamin_c_mg', label: 'Vit. C', unit: 'mg' },
@@ -102,15 +133,11 @@ export function dayWaterGoalMet(waterLogs, dateStr, profile) {
   return total >= (Number(profile?.water_goal_ml) || 2000);
 }
 
-// Delega em @formulas/micronutrientTotals.ts (T1.5) — única implementação,
-// partilhada com a Carol. `rangeStr` mantém a mesma semântica de sempre
-// ('semana' = desde segunda-feira, 'mes' = desde o dia 1, qualquer outra
-// coisa = só hoje) — é um período de CALENDÁRIO, distinto do período
-// rolante de `filterByDateRange` (biEngine.js); ver o comentário em
-// micronutrientTotals.ts.
-export function rangeTotals(meals, rangeStr) {
-  return computeNutrientRangeTotals(meals, todayISO(), rangeStr);
-}
+/* rangeTotals() removida (fase 4 da Evolução, 2026-10-04, erro N2): só o
+   NutritionDashboard a usava, para os micronutrientes de qualquer período —
+   e dava a SOMA do mês civil em Trimestre/6 Meses/Ano. A Evolução passa a
+   micronutrientAverages (@formulas/nutritionPeriod.ts), média por dia do
+   período certo. */
 
 export function mealTypeLabel(type) {
   const labels = {

@@ -266,12 +266,30 @@ export default function ChartFrame({
   // objeto feito à mão) conta como revelado.
   const shown = r.seen !== false && !r.armed;
 
+  /* 2026-10-04 (verificação no browser, bloqueante da Corrida · «Previsão de
+     prova»): um cartão SEM gráfico (height 0 — p.ex. a previsão com um só
+     ponto de VDOT, o Corpo sem medições, a área empilhada sem dados) deixava
+     o número invisível para sempre. Observava-se a área do gráfico, e um
+     elemento com 0 px nunca tem 55 % "à vista" (`seenHeight <= 0` → fora):
+     o reveal nunca disparava e a linha do valor ficava em opacity 0. Sem
+     área para animar, observa-se a própria linha do valor (ou, sem ela, o
+     cartão) — o número continua a contar quando aparece. */
+  const hasValue = value !== undefined && value !== null && value !== '';
+  const noPlot = !(Number(height) > 0);
+  const watch = !tabMode ? null : (!noPlot ? 'plot' : (hasValue ? 'value' : 'frame'));
+
   const plotRef = useRef(null);
   const revealRef = r.ref;
   const setPlotRef = useCallback((el) => {
     plotRef.current = el;
-    if (tabMode) revealRef?.(el);
-  }, [tabMode, revealRef]);
+    if (watch === 'plot') revealRef?.(el);
+  }, [watch, revealRef]);
+  const setValueRowRef = useCallback((el) => {
+    if (watch === 'value') revealRef?.(el);
+  }, [watch, revealRef]);
+  const setFrameRef = useCallback((el) => {
+    if (watch === 'frame') revealRef?.(el);
+  }, [watch, revealRef]);
 
   // O canvas monta uma vez e fica: à vista com o separador assente, ou
   // pré-criado em tempo morto. Sem observer (jsdom, browsers antigos) monta
@@ -359,7 +377,7 @@ export default function ChartFrame({
 
   return (
     <div
-      ref={tabMode ? undefined : r.ref}
+      ref={tabMode ? setFrameRef : r.ref}
       data-testid="chart-frame"
       className={className}
       style={{
@@ -399,8 +417,9 @@ export default function ChartFrame({
         </div>
       )}
 
-      {(value !== undefined && value !== null && value !== '') && (
+      {hasValue && (
         <div
+          ref={tabMode ? setValueRowRef : undefined}
           data-testid="chart-frame-value-row"
           style={{
             display: 'flex',

@@ -20,7 +20,6 @@ import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
    regra. */
 
 const weeks = (...kms) => kms.map((km, i) => ({ weekLabel: `S${i}`, acuteLoad: km }));
-const gymWeeks = (...kgs) => kgs.map((kg, i) => ({ weekLabel: `S${i}`, volumeLoad: kg }));
 const SEGUNDA = '2026-09-21';
 const DOMINGO = '2026-09-27';
 
@@ -279,99 +278,8 @@ describe('runVerdict', () => {
   });
 });
 
-describe('gymVerdict', () => {
-  it('sem dados: diz que não sabe, em tom neutro', () => {
-    expect(gymVerdict({ strengthSessions: 0, classes: 0 })).toEqual({ text: NO_DATA_TEXT, tone: 'neutral' });
-  });
-
-  it('bem: duas por semana com carga a subir', () => {
-    const v = gymVerdict({
-      weeklyBreakdown: gymWeeks(6200, 7100, 8400),
-      strengthSessions: 8,
-      classes: 0,
-      weeksInRange: 4,
-      totalVolumeLoad: 33600,
-    });
-    expect(v.tone).toBe('ok');
-    expect(v.text).toContain('carga a subir');
-  });
-
-  it('mal: menos de uma sessão por semana', () => {
-    const v = gymVerdict({
-      weeklyBreakdown: gymWeeks(3000, 3200),
-      strengthSessions: 2,
-      classes: 0,
-      weeksInRange: 4,
-      totalVolumeLoad: 6200,
-    });
-    expect(v.tone).toBe('warn');
-    expect(v.text).toContain('2 sessões em quatro semanas');
-  });
-
-  it('mal: carga a cair duas semanas seguidas apesar de ir lá', () => {
-    const v = gymVerdict({
-      weeklyBreakdown: gymWeeks(9000, 7400, 5900),
-      strengthSessions: 8,
-      classes: 0,
-      weeksInRange: 4,
-      totalVolumeLoad: 22300,
-    });
-    expect(v.tone).toBe('warn');
-    expect(v.text).toContain('duas semanas seguidas');
-    expect(v.text).toContain('5 900');
-  });
-
-  it('uma sessão por semana é pouco, mas não é falta de dados', () => {
-    const v = gymVerdict({
-      weeklyBreakdown: gymWeeks(4000, 4000, 4000),
-      strengthSessions: 4,
-      classes: 0,
-      weeksInRange: 4,
-      totalVolumeLoad: 12000,
-    });
-    expect(v.tone).toBe('warn');
-    expect(v.text).toContain('O alvo são duas');
-    expect(v.text).toContain('uma vez por semana');
-  });
-
-  /* Revisão de 2026-09-26: 1,5 sessões por semana saía "uma sessão", e um
-     atleta só de ginásio ouvia falar de "volume de corrida". */
-  describe('o valor real e a corrida só para quem corre', () => {
-    const umaEMeia = { weeklyBreakdown: gymWeeks(4000, 4000, 4000), strengthSessions: 6, classes: 0, weeksInRange: 4, totalVolumeLoad: 12000 };
-
-    it('1,5 por semana diz 1,5, não "uma"', () => {
-      const v = gymVerdict(umaEMeia);
-      expect(v.tone).toBe('warn');
-      expect(v.text).toBe('Vais 1,5 vezes por semana. O alvo são duas.');
-      expectCarolVoice(v.text);
-    });
-
-    it('com corridas registadas, fala do volume de corrida', () => {
-      const v = gymVerdict({ ...umaEMeia, runCount: 12 });
-      expect(v.text).toContain('1,5 vezes por semana');
-      expect(v.text).toContain('volume de corrida');
-    });
-
-    it('só ginásio e poucas sessões: não fala de corrida', () => {
-      const v = gymVerdict({ weeklyBreakdown: gymWeeks(3000, 3200), strengthSessions: 2, weeksInRange: 4, totalVolumeLoad: 6200 });
-      expect(v.text).toContain('2 sessões em quatro semanas');
-      expect(v.text).not.toContain('corrida');
-      expect(gymVerdict({ weeklyBreakdown: gymWeeks(3000, 3200), strengthSessions: 2, weeksInRange: 4, runCount: 5 }).text)
-        .toContain('não seguram o volume de corrida');
-      expect(gymVerdict({ weeklyBreakdown: gymWeeks(3000), strengthSessions: 1, weeksInRange: 4, runCount: 5 }).text)
-        .toContain('1 sessão em quatro semanas não segura o volume de corrida');
-    });
-
-    it('2,5 por semana com carga a subir diz 2,5, não "três"', () => {
-      const subir = { weeklyBreakdown: gymWeeks(6200, 7100, 8400), strengthSessions: 10, weeksInRange: 4, totalVolumeLoad: 30000 };
-      const soGinasio = gymVerdict(subir);
-      expect(soGinasio.tone).toBe('ok');
-      expect(soGinasio.text).toContain('2,5 sessões por semana');
-      expect(soGinasio.text).not.toContain('corrida');
-      expect(gymVerdict({ ...subir, runCount: 3 }).text).toContain('aguentar o volume de corrida');
-    });
-  });
-});
+/* gymVerdict: os testes passaram para verdicts/gym.test.js (Ginásio por períodos de
+   calendário, 2026-10-04, G2) — a assinatura mudou: semanas fechadas, só força. */
 
 describe('nutritionVerdict', () => {
   const adherence = ({ cal = 100, prot = 100, carb = 100 } = {}) => ({
@@ -565,7 +473,7 @@ describe('bodyVerdict', () => {
   it('nenhuma frase leva emoji, exclamação ou "talvez"', () => {
     const frases = [
       runVerdict({ acwr: { ratio: 1.72, status: 'danger', hasEnoughData: true }, weeklyVolume: weeks(20, 44), runCount: 9 }).text,
-      gymVerdict({ weeklyBreakdown: gymWeeks(6200, 8400), strengthSessions: 8, weeksInRange: 4 }).text,
+      gymVerdict({ kind: 'mes', scope: 'neste mês', periodStrength: 8, closedWeeks: 4, strengthInWeeks: 8, weeklyLoads: [6200, 8400, 8400, 8400] }).text,
       nutritionVerdict({ adherence: { calories: { actual: 2000, compliance_pct: 70 }, protein: { compliance_pct: 70 }, carbs: { compliance_pct: 70 }, dailyBreakdown: [{}] }, ea: { average: 50 } }).text,
       bodyVerdict({ weightTrend: trend(-0.3, 'descendo') }).text,
       NO_DATA_TEXT,

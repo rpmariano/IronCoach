@@ -3,7 +3,6 @@ import { Bar } from 'react-chartjs-2';
 import ChartJS from '../../lib/chartSetup';
 import MetricInfo from './MetricInfo';
 import ChartFrame from './ChartFrame';
-import { acwrStatusLabel } from '../../utils/biEngine';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
 import { barGrowAnimation } from '../../utils/introAnimations';
 import useReducedMotion from '../../utils/useReducedMotion';
@@ -18,7 +17,6 @@ import useReducedMotion from '../../utils/useReducedMotion';
      ginásio, com as semanas antigas mais apagadas (tintas da cor do
      módulo, como no mock "Dashboard · Ginásio"). */
 
-const TONE_COLOR = { danger: 'var(--danger)', caution: 'var(--warn)', safe: 'var(--ok)', neutral: 'var(--text-4)' };
 const GYM_RGB = '158, 195, 210';   // --gym #9ec3d2
 
 /* 2026-10-04: a linha da média de 4 semanas é um plugin CONSTANTE que lê o
@@ -53,7 +51,47 @@ const AVG_LINE_PLUGIN = {
 };
 const PLUGINS = [AVG_LINE_PLUGIN];
 
-export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' }) {
+/* G3/G4 + D5 (2026-10-04): o gráfico passa a semanas de CALENDÁRIO (seg–dom).
+   Antes só havia barras das semanas com sessões: o "kg esta semana" era o da
+   última semana COM treino (podia ser de há meses, G3), o delta comparava as
+   duas últimas semanas com dados, e a "Média 4 semanas" não contava zeros nem
+   excluía a semana parcial (G4). Agora:
+   - `weeklyData` traz TODAS as semanas, com zeros explícitos;
+   - a semana em curso vem `inProgress`: barra só em contorno ("em curso"),
+     fora da média e do delta (ainda não acabou — e hoje nunca entra, R2);
+   - a semana que começa antes do 1.º registo vem `partial`: aparece, mas não
+     entra na média nem no delta (não se sabe o que houve antes);
+   - o número grande é a última semana FECHADA, rotulada "semana de 21 set";
+   - o delta é contra a semana fechada imediatamente anterior;
+   - a média é das 4 últimas semanas fechadas, zeros incluídos.
+   O ACWR do ginásio saiu do ecrã (D5, G5): com 2 sessões dava "Perigo". */
+
+/** O que o gráfico diz de um conjunto de semanas — exportado para os testes. */
+export function weeklyVolumeSummary(weeklyData = []) {
+  const weeks = Array.isArray(weeklyData) ? weeklyData : [];
+  const closed = weeks.filter((w) => !w.inProgress);
+  const last = closed.length ? closed[closed.length - 1] : null;
+  const prev = closed.length > 1 ? closed[closed.length - 2] : null;
+  // Só semanas observadas por inteiro entram na média e na comparação.
+  const eligible = closed.filter((w) => !w.partial);
+  const lastEligible = eligible.length ? eligible[eligible.length - 1] : null;
+  const delta = last && prev && lastEligible === last && !prev.partial
+    && Math.abs(Number(last.volumeLoad || 0) - Number(prev.volumeLoad || 0)) >= 1
+    ? { diff: Number(last.volumeLoad || 0) - Number(prev.volumeLoad || 0), prevLabel: prev.weekLabel }
+    : null;
+  const avg4w = eligible.length >= 4
+    ? eligible.slice(-4).reduce((s, w) => s + Number(w.volumeLoad || 0), 0) / 4
+    : null;
+  return {
+    last,
+    delta,
+    avg4w,
+    hasInProgress: weeks.some((w) => w.inProgress),
+    hasZeroWeek: closed.some((w) => !(Number(w.volumeLoad) > 0)),
+  };
+}
+
+export default function VolumeLoadChart({ weeklyData = [], hint, ready, className = '' }) {
   /* 2026-10-04 (F5, plano §2.1): data, plugin e options estáveis — cada
      referência nova faz o react-chartjs-2 chamar chart.update(), que a meio de
      uma entrada a reaproveita e perde o escalonamento. A revelação (quando o
@@ -62,31 +100,35 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
   const reduced = useReducedMotion();
   const values = useMemo(() => weeklyData.map(d => Number(d.volumeLoad || 0)), [weeklyData]);
   const maxVal = values.length ? Math.max(...values) : 0;
-  const last = values.length ? values[values.length - 1] : 0;
-  const prev = values.length > 1 ? values[values.length - 2] : null;
+  const { last, delta: weekDelta, avg4w, hasInProgress, hasZeroWeek } = useMemo(
+    () => weeklyVolumeSummary(weeklyData),
+    [weeklyData],
+  );
 
-  let avg4w = null;
-  if (values.length >= 4) {
-    avg4w = values.slice(-4).reduce((s, v) => s + v, 0) / 4;
-  }
-
-
-  const data = useMemo(() => ({
-    labels: weeklyData.map(d => d.weekLabel),
-    datasets: [
-      {
-        label: 'Volume-carga',
-        data: values,
-        // Tintas da cor do ginásio: a semana mais recente cheia, as
-        // anteriores progressivamente mais apagadas (mínimo 40%).
-        backgroundColor: values.map((_, i) => {
-          const t = values.length > 1 ? i / (values.length - 1) : 1;
-          return `rgba(${GYM_RGB}, ${(0.4 + 0.6 * t).toFixed(2)})`;
-        }),
-        borderRadius: 6,
-      }
-    ]
-  }), [weeklyData, values]);
+  const data = useMemo(() => {
+    // Tintas da cor do ginásio: as semanas fechadas da mais apagada (40%) à
+    // mais recente (cheia); a semana em curso é só contorno — ainda não é um
+    // facto.
+    const closedIdx = weeklyData.map((d, i) => (d.inProgress ? -1 : i)).filter((i) => i >= 0);
+    const rank = new Map(closedIdx.map((i, k) => [i, k]));
+    const t = (i) => (closedIdx.length > 1 ? rank.get(i) / (closedIdx.length - 1) : 1);
+    return {
+      labels: weeklyData.map(d => d.weekLabel),
+      datasets: [
+        {
+          label: 'Volume-carga',
+          data: values,
+          backgroundColor: weeklyData.map((d, i) => (d.inProgress
+            ? `rgba(${GYM_RGB}, 0.12)`
+            : `rgba(${GYM_RGB}, ${(0.4 + 0.6 * t(i)).toFixed(2)})`)),
+          borderColor: weeklyData.map(() => `rgba(${GYM_RGB}, 0.9)`),
+          borderWidth: weeklyData.map((d) => (d.inProgress ? 1.5 : 0)),
+          borderSkipped: false,
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [weeklyData, values]);
 
   const n = weeklyData.length;
   const options = useMemo(() => ({
@@ -105,6 +147,14 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
         borderColor: 'rgba(255,255,255,0.15)',
         borderWidth: 1,
         padding: 10,
+        callbacks: {
+          title: (items) => {
+            const w = weeklyData[items?.[0]?.dataIndex];
+            if (!w) return '';
+            return `Semana de ${w.weekLabel}${w.inProgress ? ' · em curso' : w.partial ? ' · início dos registos' : ''}`;
+          },
+          label: (ctx) => ` ${fmtNumber(ctx.raw, 0)} kg`,
+        },
       },
       // Lido pelo AVG_LINE_PLUGIN a cada desenho (null = sem linha).
       avgLine: { value: avg4w },
@@ -118,36 +168,38 @@ export default function VolumeLoadChart({ weeklyData = [], acwr, className = '' 
         border: { display: false },
       }
     }
-  }), [reduced, n, avg4w]);
+  }), [reduced, n, avg4w, weeklyData]);
 
-  let acwrHint;
-  let acwrTone = 'neutral';
-  if (acwr) {
-    const { label, tone } = acwrStatusLabel(acwr.status, acwr.hasEnoughData);
-    acwrTone = tone;
-    acwrHint = acwr.hasEnoughData ? `ACWR ${acwr.ratio.toFixed(2).replace('.', ',')}` : `ACWR ${label}`;
-  }
-
-  const delta = prev !== null && Math.abs(last - prev) >= 1
-    ? { text: `${last > prev ? '+' : '−'}${fmtNumber(Math.abs(last - prev), 0)} kg`, tone: last >= prev ? 'ok' : 'warn' }
+  const delta = weekDelta
+    ? {
+        text: `${weekDelta.diff > 0 ? '▲' : '▼'} ${fmtNumber(Math.abs(weekDelta.diff), 0)} kg face a ${weekDelta.prevLabel}`,
+        tone: weekDelta.diff > 0 ? 'ok' : 'warn',
+      }
     : undefined;
 
   const legend = [{ label: 'Volume-carga semanal', color: 'var(--gym)' }];
-  if (avg4w !== null) legend.push({ label: `Média 4 semanas · ${fmtNumber(avg4w, 0)} kg`, color: 'rgba(248,250,252,.45)', shape: 'dash' });
+  if (hasInProgress) legend.push({ label: 'Semana em curso (fora da média)', color: 'rgba(158,195,210,.45)' });
+  if (avg4w !== null) legend.push({ label: `Média 4 semanas fechadas · ${fmtNumber(avg4w, 0)} kg`, color: 'rgba(248,250,252,.45)', shape: 'dash' });
+
+  const notes = [];
+  if (hasZeroWeek) notes.push('As semanas sem treino contam 0 kg.');
+  if (hasInProgress) notes.push('A semana em curso (só os dias fechados) fica fora da média e da comparação.');
 
   return (
     <ChartFrame
       className={className}
       label="Volume-carga semanal"
-      info={<MetricInfo text="O Volume-Carga é o teu total de Séries × Repetições × Carga. É essencial subir este número ao longo do tempo para ganhares músculo. Compara com o ACWR para não exagerares." />}
-      hint={acwrHint}
-      value={fmtNumber(last, 0)}
-      unit="kg esta semana"
-      valueColor={acwrTone === 'neutral' ? 'var(--text-1)' : TONE_COLOR[acwrTone]}
+      info={<MetricInfo text="O Volume-Carga é o total de séries × repetições × carga de todos os exercícios da semana (seg–dom). Serve para ver se treinas mais ou menos de uma semana para a outra, não para comparar exercícios: agachamento e curl contam ambos em kg. Para a evolução de cada exercício, vê a Progressão por exercício." />}
+      hint={hint}
+      ready={ready}
+      value={last ? fmtNumber(last.volumeLoad, 0) : '—'}
+      unit={last ? `kg · semana de ${last.weekLabel}` : 'ainda sem semana fechada'}
+      valueColor="var(--text-1)"
       delta={delta}
       axis={maxVal > 0 ? { min: '0 kg', max: `${fmtNumber(maxVal, 0)} kg` } : undefined}
       legend={legend}
       height={208}
+      footer={notes.length ? <p data-testid="volume-notas" style={{ margin: 0 }}>{notes.join(' ')}</p> : undefined}
     >
       <Bar data={data} options={options} plugins={PLUGINS} updateMode="period" />
     </ChartFrame>

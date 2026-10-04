@@ -5,7 +5,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ChartJS, { applyChartMotion } from '../../lib/chartSetup';
 import { TabPageContext, setSettledIndex, resetSettledTab } from '../../utils/settledTab';
 import VolumeLoadChart from './VolumeLoadChart';
-import MacroComplianceChart from './MacroComplianceChart';
 
 /* 2026-10-04: com o Chart.js e o react-chartjs-2 VERDADEIROS (os outros testes
    de movimento usam mocks, e foi por isso que este erro passou). O
@@ -100,31 +99,10 @@ describe('VolumeLoadChart — linha da média de 4 semanas (Chart.js real)', () 
   });
 });
 
-describe('MacroComplianceChart — linhas de alvo (Chart.js real)', () => {
-  const days = (protein, carbs, fat) => [0, 1, 2].map((i) => ({
-    date: `2026-10-0${i + 1}`, protein: 100, carbs: 200, fat: 60,
-    proteinTarget: protein, carbsTarget: carbs, fatTarget: fat,
-  }));
-
-  it('os alvos mudam: as linhas tracejadas seguem os alvos novos, na mesma instância', () => {
-    const { container, rerender } = render(<MacroComplianceChart dailyData={days(120, 250, 70)} />);
-    const chart = chartOf(container);
-    const y = (v) => chart.scales.y.getPixelForValue(v);
-    expect(dashedLineYs(logOf(container), [4, 4])).toEqual([y(120), y(250), y(70)]);
-
-    logOf(container).length = 0;
-    rerender(<MacroComplianceChart dailyData={days(150, 220, 50)} />);
-    expect(chartOf(container)).toBe(chart);
-    expect(dashedLineYs(logOf(container), [4, 4])).toEqual([y(150), y(220), y(50)]);
-  });
-
-  it('sem dias, não desenha linhas', () => {
-    const { container, rerender } = render(<MacroComplianceChart dailyData={days(120, 250, 70)} />);
-    logOf(container).length = 0;
-    rerender(<MacroComplianceChart dailyData={[]} />);
-    expect(dashedLineYs(logOf(container), [4, 4])).toHaveLength(0);
-  });
-});
+/* MacroComplianceChart (as linhas de alvo da Nutrição) saiu a 2026-10-04 com
+   o mock-up da Nutrição por período (fase 4): os gráficos da Nutrição passaram
+   a HTML (NutritionWeekChart/MonthHeatmap/QuarterCharts), sem plugins do
+   Chart.js. */
 
 /* 2026-10-04: ChartFrame + Chart.js real dentro do React.StrictMode (o
    `npm run dev`). O StrictMode corre duas vezes o efeito de montagem do

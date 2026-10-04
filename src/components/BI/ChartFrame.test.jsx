@@ -188,6 +188,59 @@ describe('ChartFrame — dentro do carrossel da Evolução', () => {
     expect(observers[0].el).toBe(plot());
   });
 
+  /* 2026-10-04 (verificação no browser, bloqueante da Corrida · «Previsão de
+     prova»): sem gráfico (height 0, sem children) a área tem 0 px e nunca
+     fica "à vista" — o número ficava em opacity 0 para sempre. */
+  it('sem gráfico (height 0, sem children): observa a linha do valor e revela o número depois de assentar', () => {
+    render(
+      <TabPageContext.Provider value={PAGE}>
+        <TabReadyContext.Provider value>
+          <ChartFrame label="Previsão de prova" value="48:38" unit="São Silvestre de Lisboa" height={0} />
+        </TabReadyContext.Provider>
+      </TabPageContext.Provider>
+    );
+    expect(observers).toHaveLength(1);
+    expect(observers[0].el).toBe(valueRow());
+    expect(valueRow().style.opacity).toBe('0');
+    assenta(PAGE);
+    fire({
+      isIntersecting: true,
+      intersectionRect: { height: 28, width: 343 },
+      boundingClientRect: { height: 28, width: 343, top: 120, bottom: 148 },
+      rootBounds: { height: 800 },
+    });
+    expect(valueRow().style.opacity).toBe('1');
+    expect(screen.getByTestId('chart-frame-value')).toHaveTextContent('48:38');
+  });
+
+  it('sem gráfico e sem valor: observa o próprio cartão', () => {
+    render(
+      <TabPageContext.Provider value={PAGE}>
+        <TabReadyContext.Provider value>
+          <ChartFrame label="Composição" height={0} />
+        </TabReadyContext.Provider>
+      </TabPageContext.Provider>
+    );
+    expect(observers).toHaveLength(1);
+    expect(observers[0].el).toBe(screen.getByTestId('chart-frame'));
+  });
+
+  it('o gráfico chega depois (height 0 → 176): passa a observar a área', () => {
+    const ui = (h0) => (
+      <TabPageContext.Provider value={PAGE}>
+        <TabReadyContext.Provider value>
+          <ChartFrame label="VDOT" value="48,2" height={h0}>{h0 ? <canvas data-testid="cv" /> : null}</ChartFrame>
+        </TabReadyContext.Provider>
+      </TabPageContext.Provider>
+    );
+    const { rerender } = render(ui(0));
+    expect(observers.at(-1).el).toBe(valueRow());
+    rerender(ui(176));
+    const live = observers.filter((o) => !o.disconnected);
+    expect(live).toHaveLength(1);
+    expect(live[0].el).toBe(plot());
+  });
+
   it('1.º reveal: cria o canvas e não chama nada (o construtor já anima da base)', () => {
     revelado(h.chart);
     expect(valueRow().style.opacity).toBe('1');

@@ -1,15 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import Card from '../shared/Card';
+import React, { useMemo } from 'react';
 import { useAppStore, sliceReady } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
-import { TrendingUp, Mountain, Activity, Zap, Timer, HeartPulse } from 'lucide-react';
+import { Mountain } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
-import { format, subDays, parseISO, eachDayOfInterval } from 'date-fns';
 import '../../lib/chartSetup';
 import RunIcon from '../shared/RunIcon';
-import TimeFilterBar from '../BI/TimeFilterBar';
-import KPICard from '../BI/KPICard';
-import ACWRChart from '../BI/ACWRChart';
+import { CORRIDA } from '../BI/TimeFilterBar';
+import ACWRChart, { fmtRatio } from '../BI/ACWRChart';
 import { barGrowAnimation } from '../../utils/introAnimations';
 import useReducedMotion from '../../utils/useReducedMotion';
 import IntensityDonut from '../BI/IntensityDonut';
@@ -17,15 +14,28 @@ import ScatterTrendChart from '../BI/ScatterTrendChart';
 import RacePredictionChart from '../BI/RacePredictionChart';
 import ChartFrame from '../BI/ChartFrame';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
-import VerdictLine from '../BI/VerdictLine';
-import { runVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
-import { filterByDateRange, calculateACWR, calculateTrainingDistribution, calculatePaceVsHR, getVDOTTrend, getRacePrediction, calculateACWRHistory, acwrStatusLabel, acwrMissingWeeks } from '../../utils/biEngine';
+import {
+  PeriodHeader, PeriodNav, PeriodSummary, EarlyPeriodState, TodayExcludedNote, DeltaVsPrevious, MinDataNote,
+  VerdictLine, countOf, plural, earlyVerdict, firstPeriodNote, TODAY_EXCLUDED,
+} from '../BI/period';
+import { fmtNumber, fmtDatePt, NO_DATA } from '../../utils/verdicts/shared';
 import { formatPace } from '../../utils/run';
-import { computeBestPace } from '@formulas/bestPace.ts';
-import { focusRace } from '@formulas/mainRace.ts';
-import { computeRunWatchMetrics } from '@formulas/runWatchMetrics.ts';
-import { calculateRaceTrainingPlan } from '../../utils/racePlanEngine';
-import { todayISO } from '../../lib/utils';
+import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
+import { useEvolutionView } from '../../store/evolution/useEvolutionView';
+import {
+  RUN_MIN_CLOSED, MIN_WEEKS_FOR_AVG, MIN_RUNS_FOR_ZONES, MIN_RUNS_FOR_EFFICIENCY, fmtRange,
+} from '../../store/evolution/views/run';
+
+/* Corrida por períodos de calendário (2026-10-04, fase 5 do plano da
+   Evolução — R1, R5, R6, R10). A forma é a do mock-up aprovado da Nutrição:
+   o seletor (Semana · Mês · Trimestre · Ano) e o navegador ‹ › dentro do
+   resumo, só dias FECHADOS (hoje não entra), "X de N", ▲/▼ só contra o
+   período anterior equivalente, e um estado "a começar"/"cedo" em vez de
+   números sem base. Os números vêm da vista pré-calculada
+   (store/evolution/views/run.js); aqui só se apresenta.
+
+   O que NÃO é do período diz-se: a carga (ACWR) é "de hoje · 7 d vs 28 d" e
+   o gráfico "últimas 12 semanas"; o VDOT e os recordes são "de sempre". */
 
 // Antes deste ecrã tinha o seu próprio formatPace, com um formato visível
 // diferente do resto da app ("5:20/km" em vez de "5.20") — unificado por
@@ -38,10 +48,10 @@ function paceLabel(secPerKm) {
 }
 
 function formatDatePT(dateStr) {
-  if (!dateStr) return '';
-  const d = parseISO(dateStr);
-  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr || ''));
+  if (!m) return '';
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return `${Number(m[3])} ${months[Number(m[2]) - 1]} ${m[1]}`;
 }
 
 // R9 (2026-10-04): os escalões não são "pelo menos X km" (o "+" do rótulo
@@ -52,446 +62,463 @@ function formatDatePT(dateStr) {
 // divergirem em silêncio.
 const BEST_PACE_LEGEND = '≈5 km: corridas e splits de 4 a 6,5 km · ≈10 km: de 8,5 a 12 km · ≈21 km: de 19 a 23 km.';
 
-// Delega em @formulas/bestPace.ts (T1.5) — única implementação, partilhada
-// com a Carol (specs/formulas-checklist.md Fase E). O fallback `r.pace`
-// (string "m:ss/km") do original nunca disparava: `runs` não tem essa
-// coluna (select('*') confirmado contra o schema real) — não foi portado.
-function getBestPaceData(allRuns, targetKm) {
-  return computeBestPace(allRuns, targetKm);
+/* Estado do ACWR de hoje → o vocabulário do PeriodSummary (✓ ↓ ↑). */
+const ACWR_ROW_STATUS = { safe: 'ok', caution: 'above', danger: 'above', undertrained: null };
+
+const cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const diasFechados = (n) => `${n} ${plural(n, 'dia fechado', 'dias fechados')}`;
+const corridas = (n) => `${n} ${plural(n, 'corrida', 'corridas')}`;
+
+const GRADIENT = (context) => {
+  const { ctx, chartArea } = context.chart;
+  if (!chartArea) return 'rgba(46, 224, 255, 0.6)';
+  const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+  gradient.addColorStop(0, 'rgba(46, 224, 255, 0.25)');
+  gradient.addColorStop(1, 'rgba(46, 224, 255, 0.9)');
+  return gradient;
+};
+
+const cardStyle = 'bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]';
+
+function DeltaLine({ label, children }) {
+  return (
+    <p style={{ margin: 0, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+      <span style={{ color: 'var(--text-4)' }}>{label}</span>
+      {children}
+    </p>
+  );
 }
 
 export default function RunDashboard() {
   /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
      seletor, qualquer alteração ao store — um deslize entre separadores
-     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
-     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
-     redesenha quando um destes campos muda de referência. */
-  const { runs, profile, raceEvents = [], setOpenCreationMode, coachPlans, coachPlanItems } = useAppStore(useShallow((s) => ({
-    runs: s.runs, profile: s.profile, raceEvents: s.raceEvents, setOpenCreationMode: s.setOpenCreationMode,
-    coachPlans: s.coachPlans, coachPlanItems: s.coachPlanItems,
-  })));
-  const [activeRange, setActiveRange] = useState('mes');
+     mexe em `lastDashboardTab` — redesenhava este separador mesmo escondido,
+     que era o jank do deslize. Os dados de que a vista depende vêm do
+     useEvolutionView (só redesenha quando uma dessas listas muda). */
+  const { setOpenCreationMode } = useAppStore(useShallow((s) => ({ setOpenCreationMode: s.setOpenCreationMode })));
+  const view = useEvolutionView('corrida');
 
-  // BI Data processing
-  const periodRuns = useMemo(() => 
-    filterByDateRange(runs, activeRange), 
-  [runs, activeRange]);
+  // UM só cal, partilhado pelo seletor, pelo navegador e pelo resumo (forma
+  // do mock-up). Sem `daysWithData` de propósito: "9 de 30 dias com registo"
+  // leria-se como falhas de registo, e para quem corre os dias de descanso não
+  // são buracos — o rótulo diz só "desde …" e os dias fechados.
+  const cal = useCalendarPeriod('corrida', { dataStartISO: view?.dataStartISO, minClosed: RUN_MIN_CLOSED });
 
-  const totalDist = useMemo(() => {
-    return periodRuns.reduce((sum, r) => sum + Number(r.distance_km || 0), 0);
-  }, [periodRuns]);
+  const reduced = useReducedMotion();
+  const barsReady = useAppStore((s) => sliceReady(s, ['runs']));
 
-  // R4 (2026-10-04): o ritmo médio só conta corridas com distância E tempo.
-  // Antes somava os segundos das que tinham duração mas dividia pelos km de
-  // TODAS — 10 km a 5:00 mais 10 km sem tempo davam 2:30/km — e, no sentido
-  // inverso, uma corrida com tempo e sem distância tornava-o mais lento. O
-  // fallback `r.pace` ("m:ss/km") não existia na BD (a tabela runs não tem
-  // essa coluna) e saiu. Quando nem todas contam, o ecrã diz "N de M".
-  // O mesmo critério filtra as corridas que servem para prever a prova (R2).
-  const runsComTempo = useMemo(
-    () => (runs || []).filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0),
-    [runs]
-  );
-  const paceStats = useMemo(() => {
-    const comTempo = periodRuns.filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0);
-    const km = comTempo.reduce((sum, r) => sum + Number(r.distance_km), 0);
-    const seconds = comTempo.reduce((sum, r) => sum + Number(r.duration_seconds), 0);
-    return {
-      avgPaceSec: km > 0 ? seconds / km : 0,
-      withTime: comTempo.length,
-      total: periodRuns.length,
-    };
-  }, [periodRuns]);
-  const avgPaceSec = paceStats.avgPaceSec;
-
-  // BI - ACWR
-  const acwrData = useMemo(() => calculateACWR(runs), [runs]);
-  const acwrWeeklyData = useMemo(() => calculateACWRHistory(runs), [runs]);
-  // 'undertrained' (carga baixa) e 'unknown'/sem dados não são "Perigo" —
-  // ver auditoria de 23/08 (mostrava "Perigo" a um atleta com zero corridas).
-  // Sem histórico, quanto falta em vez de "Sem dados" (auditoria de
-  // onboarding, 2026-09-27).
-  const acwrStatus = useMemo(() => {
-    const st = acwrStatusLabel(acwrData?.status, acwrData?.hasEnoughData);
-    const missing = acwrMissingWeeks(acwrData);
-    return missing ? { ...st, label: `Faltam ${missing} sem.` } : st;
-  }, [acwrData]);
-
-  // BI - Distribution. Sem nível declarado a omissão é 'medio' (alvo 80/20),
-  // a mesma da Carol (coach-chat: `experienceLevel || "medio"`) e dos
-  // insights do biEngine (detectCoachInsights) — ver o comentário de
-  // calculateTrainingDistribution em utils/biEngine.js: são três sítios e
-  // mudam juntos. R8 (2026-10-04): aqui estava 'iniciante' (alvo 95%), e o
-  // donut e o veredicto diziam "forte demais, máximo 5% em Z3+" a quem a
-  // Carol dava como conforme, ao lado do seu próprio texto "cerca de 80%".
-  const distribution = useMemo(
-    () => calculateTrainingDistribution(periodRuns, profile?.experience_level || 'medio'),
-    [periodRuns, profile?.experience_level]
-  );
-
-  // BI - Scatter
-  const scatterData = useMemo(() => calculatePaceVsHR(periodRuns), [periodRuns]);
-
-  // Evolução do VDOT — sobre TODAS as corridas, não só as do período: a
-  // tendência de forma só faz sentido com histórico longo, e é ela que dá
-  // contexto à previsão de prova.
-  const vdotTrend = useMemo(() => getVDOTTrend(runs), [runs]);
-
-  // Prova-objetivo — a mesma escolha do hub (focusRace de @formulas/mainRace:
-  // a próxima principal por correr, ou a próxima por data se não houver
-  // nenhuma). Antes era "a mais próxima por data", e uma prova de treino à
-  // frente da principal tomava o lugar do objetivo (R2, 2026-10-04).
-  const today = todayISO();
-  const focus = useMemo(() => focusRace(raceEvents, today), [raceEvents, today]);
-
-  // Previsão — mesmo pipeline do RaceHubView: getRacePrediction sobre as
-  // corridas com distância E tempo (runsComTempo). Sem previsão utilizável
-  // (predictedSeconds 0) não se mostra número nenhum: um "00:00" não é uma
-  // previsão, é um buraco nos dados. O gráfico cai no "Evolução do VDOT".
-  // getRacePrediction resolve nível (prioriza o desta prova) e distância
-  // equivalente ITRA — ponto único, o mesmo do "Previsão (VDOT)" do hub.
-  const racePrediction = useMemo(() => {
-    if (!focus) return null;
-    const p = getRacePrediction(focus, profile, runsComTempo);
-    if (!(p.predictedSeconds > 0)) return null;
-    return { ...p, raceName: focus.name || `${focus.distance_km}km` };
-  }, [focus, profile, runsComTempo]);
-
-  // Best pace records across ALL runs
-  const b5 = useMemo(() => getBestPaceData(runs, 5), [runs]);
-  const b10 = useMemo(() => getBestPaceData(runs, 10), [runs]);
-  const b21 = useMemo(() => getBestPaceData(runs, 21), [runs]);
-
-  // Daily Distance Bar Chart Data
-  const chartData = useMemo(() => {
-    if (periodRuns.length === 0) return null;
-    
-    // Calcula startObj e endObj com base nos dados reais ou no activeRange
-    const now = new Date();
-    let startObj = now;
-    switch (activeRange) {
-      case 'semana': startObj = subDays(now, 7); break;
-      case 'mes': startObj = subDays(now, 30); break;
-      case 'trimestre': startObj = subDays(now, 90); break;
-      case '6meses': startObj = subDays(now, 180); break;
-      case 'ano': startObj = subDays(now, 365); break;
-    }
-    const endObj = now;
-    
-    if (startObj > endObj) return null;
-    
-    const days = eachDayOfInterval({ start: startObj, end: endObj });
-
-    const labels = days.map(d => format(d, 'dd/MM'));
-    const data = days.map(d => {
-      const dayStr = format(d, 'yyyy-MM-dd');
-      const dayRuns = periodRuns.filter(r => r.date === dayStr);
-      return dayRuns.reduce((sum, r) => sum + Number(r.distance_km || 0), 0);
-    });
-
-    return {
-      labels,
-      datasets: [
-        {
-          label: 'Distância (km)',
-          data,
-          // Ponto 6, paleta das séries: era azul genérico (59,130,246).
-          // Passa ao ciano da corrida (--run #2ee0ff), em tinta.
-          backgroundColor: (context) => {
-            const chart = context.chart;
-            const { ctx, chartArea } = chart;
-            if (!chartArea) return 'rgba(46, 224, 255, 0.6)';
-
-            const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-            gradient.addColorStop(0, 'rgba(46, 224, 255, 0.25)');
-            gradient.addColorStop(1, 'rgba(46, 224, 255, 0.9)');
-            return gradient;
-          },
-          borderRadius: 6,
-          borderSkipped: false,
-        }
-      ]
-    };
-    // startObj/endObj são derivados de activeRange aqui dentro — as antigas
-    // startDate/endDate deixaram de existir na reescrita e ficaram nas
-    // dependências, o que rebentava o componente ao montar (ReferenceError).
-  }, [periodRuns, activeRange]);
+  const bars = view?.bars || null;
+  const barCount = bars?.values?.length;
+  const chartData = useMemo(() => (bars ? {
+    labels: bars.labels,
+    datasets: [{
+      label: 'Distância (km)',
+      data: bars.values,
+      // Ponto 6, paleta das séries: ciano da corrida (--run #2ee0ff), em tinta.
+      backgroundColor: GRADIENT,
+      borderRadius: 6,
+      borderSkipped: false,
+    }],
+  } : null), [bars]);
 
   // Ponto 6: os ticks deixam de escrever dentro da tela. O total do período
   // é o número grande do ChartFrame e os extremos do eixo vão para os
-  // cantos, em HTML.
-  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars,
-     quando o gráfico aparece no ecrã — a revelação é do ChartFrame
-     (2026-10-04); aqui só opções estáveis e reduced-aware. */
-  const reduced = useReducedMotion();
-  const barsReady = useAppStore((s) => sliceReady(s, ['runs']));
-  const barCount = chartData?.labels?.length;
+  // cantos, em HTML. Ponto 9, animação 4: as barras crescem da base quando o
+  // gráfico aparece no ecrã — a revelação é do ChartFrame; aqui só opções
+  // estáveis e reduced-aware.
   const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          title: (items) => bars?.labels?.[items?.[0]?.dataIndex] || '',
+          label: (ctx) => ` ${fmtNumber(ctx.raw, 1)} km`,
+        },
+      },
+    },
     animation: barGrowAnimation({ reduced, count: barCount }),
     scales: {
       y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
-      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
-    }
-  }), [reduced, barCount]);
+      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
+    },
+  }), [reduced, barCount, bars]);
 
-  // Watch metrics — delega em @formulas/runWatchMetrics.ts (T1.5). BUG DE
-  // PARIDADE corrigido ao migrar (2026-08-25, Fase E): lia
-  // r.elevation_gain_m/r.calories_kcal/r.avg_cadence_spm como colunas de
-  // TOPO de `runs`, mas esses valores vivem em `details` (e a chave certa é
-  // `cadence_spm`, não `avg_cadence_spm` — essa nunca existiu). Este cartão
-  // mostrava sempre 0 km de desnível, 0 kcal e cadência "—", mesmo com dados
-  // gravados — ver comentário em runWatchMetrics.ts.
-  const watchMetrics = useMemo(() => computeRunWatchMetrics(periodRuns), [periodRuns]);
+  if (!view) return null;
 
-  /* Ponto 6 do redesenho: a frase de veredicto. O dashboard tem de dizer se
-     está bem ou mal antes de mostrar um único número (auditoria, achado 6).
-     As regras vivem em utils/dashboardVerdicts.js — aqui só se juntam os
-     dados que o biEngine já calculou acima. */
-  /* O que o plano previa (revisão de 2026-09-26): no polimento, ou numa
-     semana em que o próprio plano desce, a carga a baixar não é falta de
-     treino. A fase é a mesma do trilho do Início (calculateRaceTrainingPlan). */
-  const taper = useMemo(() => {
-    const next = [...(raceEvents || [])]
-      .filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) >= today)
-      .sort((a, b) => a.date.localeCompare(b.date))[0];
-    if (!next) return false;
-    try {
-      return calculateRaceTrainingPlan({ race: next, profile: profile || {}, runs: runs || [], todayISO: today })?.currentPhase?.id === 'taper';
-    } catch (e) {
-      return false;
-    }
-  }, [raceEvents, profile, runs, today]);
-  const planItems = useMemo(() => {
-    const aceites = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
-    return (coachPlanItems || []).filter((i) => i && aceites.has(i.plan_id));
-  }, [coachPlans, coachPlanItems]);
+  const { cur, kind } = view;
+  const period = cal.period;
+  const early = view.earlyState;
+  const scope = view.scope;
+  const closedN = view.closedDays;
+  const acwrZone = view.acwr?.status;
+  const acwrHas = !!view.acwr?.hasEnoughData;
 
-  const verdict = useMemo(() => runVerdict({
-    acwr: acwrData,
-    weeklyVolume: acwrWeeklyData,
-    vdotTrend,
-    distribution,
-    runCount: periodRuns.length,
-    today,
-    taper,
-    planItems,
-  }), [acwrData, acwrWeeklyData, vdotTrend, distribution, periodRuns.length, today, taper, planItems]);
-
-  const renderBucket = (label, b) => {
-    if (!b) {
-      return (
-        <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
-          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
-          <p className="text-xs text-[var(--text-3)]">Sem dados</p>
-        </div>
-      );
-    }
-    return (
-      <div className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
-        <div>
-          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
-          <p className="text-[11px] text-[var(--text-3)] mt-0.5 flex items-center gap-1.5">
-            {formatDatePT(b.date)}
-            {b.source === 'run' && b.runCount > 0 && (
-              <> · de {b.runCount} corrida{b.runCount > 1 ? 's' : ''} nesta distância</>
-            )}
-            {b.source === 'split' && (
-              <span
-                className="px-1 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide"
-                style={{ background: 'var(--tint-run-bg)', color: 'var(--run)' }}
-              >split</span>
-            )}
-          </p>
-        </div>
-        <p className="text-base font-extrabold text-white">{paceLabel(b.pace)}</p>
-      </div>
-    );
-  };
-
-  /* Ponto 7 do redesenho: sem corridas no período, o dashboard não mostra
-     gráficos a zero (uma barra a zero lê-se como "correste zero", não como
-     "não sei") nem os cartões partidos que o ponto 6 assinalou — mostra o
-     cartão de convite do mock "Dashboard · sem dados" e a moldura do
-     gráfico vazia. O veredicto e o filtro de período ficam: é pelo filtro
-     que se chega a um período com dados. */
-  const isEmpty = periodRuns.length === 0;
-
-  if (isEmpty) {
+  /* ── Sem nenhuma corrida registada: o convite, com o seletor à vista. ── */
+  if (!view.hasRuns) {
     return (
       <div className="space-y-4 fade-in">
-        <VerdictLine text={verdict.text} tone={verdict.tone} />
-        <TimeFilterBar activeRange={activeRange} onChange={setActiveRange} module="corrida" />
+        <VerdictLine text={NO_DATA.text} tone={NO_DATA.tone} />
+        <PeriodHeader tab="corrida" options={CORRIDA} cal={cal} navigator="none" />
         <EmptyModuleState
           tone="run"
           icon={<RunIcon className="w-[22px] h-[22px]" />}
           actionLabel="Registar corrida"
           onAction={() => setOpenCreationMode('run')}
         >
-          Ainda não há corridas neste período. Regista uma corrida para veres a tua evolução aqui.
+          Ainda não há corridas. Regista uma corrida para veres a tua evolução aqui.
         </EmptyModuleState>
         <EmptyChartFrame label="Distância por dia" unit="km no período" />
       </div>
     );
   }
 
-  return (
-    <div className="space-y-4 fade-in">
-      {/* 0. Veredicto — antes dos filtros e dos KPIs, como no mock. */}
-      <VerdictLine text={verdict.text} tone={verdict.tone} />
+  const noDays = closedN === 0;
+  const prevName = view.prevName;
+  const prevFull = view.prevFull;
 
-      {/* 1. TimeFilterBar */}
-      <TimeFilterBar
-        activeRange={activeRange}
-        onChange={setActiveRange}
-        module="corrida"
-      />
+  /* ── As linhas do resumo (todas só de dias fechados) ── */
+  const missingNoDays = view.beforeData ? 'antes do 1.º registo' : 'ainda sem dias fechados';
+  const rows = [];
+  rows.push({
+    key: 'corridas',
+    label: 'Corridas',
+    value: noDays ? null : String(cur.count),
+    missingText: noDays ? missingNoDays : undefined,
+    count: noDays ? undefined : countOf(cur.daysWithRun, closedN),
+  });
+  rows.push({
+    key: 'distancia',
+    label: 'Distância',
+    value: noDays ? null : `${fmtNumber(cur.km, 1)} km`,
+    missingText: noDays ? missingNoDays : undefined,
+  });
+  rows.push({
+    key: 'pace',
+    label: 'Pace médio',
+    value: noDays || !cur.paceSec ? null : paceLabel(cur.paceSec),
+    // R3/R4: o denominador do ritmo — "N de M com tempo" — só com corridas.
+    statusText: !noDays && cur.paceSec ? (cur.withTime < cur.count ? `${cur.withTime} de ${cur.count} com tempo` : `em ${corridas(cur.withTime)}`) : undefined,
+    missingText: noDays ? missingNoDays : (!cur.paceSec ? (cur.count === 0 ? 'sem corridas' : 'sem distância e tempo') : undefined),
+  });
+  if (kind !== 'semana') {
+    const w = view.weekly;
+    const enough = w.weeks >= MIN_WEEKS_FOR_AVG && w.avgKm != null;
+    rows.push({
+      key: 'semanal',
+      label: 'Média por semana',
+      value: !noDays && enough ? `${fmtNumber(w.avgKm, 1)} km` : null,
+      statusText: enough ? `em ${w.weeks} ${plural(w.weeks, 'semana completa', 'semanas completas')}` : undefined,
+      missingText: noDays ? missingNoDays : (!enough ? (w.weeks === 0 ? 'sem semanas completas' : 'só 1 semana completa, pouco para média') : undefined),
+    });
+  }
+  rows.push({
+    key: 'carga',
+    label: 'Carga · 7 d vs 28 d',
+    value: acwrHas ? fmtRatio(view.acwr.ratio) : null,
+    goal: '0,8–1,3',
+    status: acwrHas ? ACWR_ROW_STATUS[acwrZone] : null,
+    statusText: acwrHas ? view.acwrStatus.label : undefined,
+    missingText: acwrHas ? undefined : view.acwrStatus.label,
+    ariaLabel: acwrHas
+      ? `Carga de hoje, últimos 7 dias contra a média dos últimos 28: ${fmtRatio(view.acwr.ratio)} de 0,8 a 1,3, ${view.acwrStatus.label}`
+      : `Carga de hoje: ${view.acwrStatus.label}`,
+  });
 
-      {/* 2. KPICard row (2x2 grid) */}
-      <div className="grid grid-cols-2 gap-3">
-        <KPICard 
-          label="Total Corridas" 
-          value={periodRuns.length} 
-          icon={Activity}
-          moduleColor="var(--mod-corrida)"
-        />
-        <KPICard 
-          label="Distância Total" 
-          value={`${totalDist.toFixed(1)}`} 
-          unit="km"
-          icon={TrendingUp}
-          moduleColor="var(--mod-corrida)"
-        />
-        <KPICard 
-          label="Pace Médio" 
-          value={paceLabel(avgPaceSec)}
-          icon={Timer}
-          moduleColor="var(--mod-corrida)"
-        />
-        <KPICard
-          label="ACWR Status"
-          value={acwrStatus.label}
-          icon={Zap}
-          moduleColor="var(--mod-corrida)"
-          status={acwrStatus.tone}
-        />
+  const averageLabel = noDays ? (view.beforeData ? 'No período' : 'No período (0 dias fechados)') : `No período (${diasFechados(closedN)})`;
+
+  /* ── O veredicto: "cedo" substitui só o que fala do período (neutro); um
+     aviso de carga é de hoje e fica. ── */
+  const earlyIsVerdict = early === 'cedo' && view.verdict.tone === 'neutral';
+  // Os dias fechados contam-se desde o 1.º registo; se o período começou antes dele,
+  // diz-se, para não contradizer o rótulo do navegador ("6 de 7 dias fechados").
+  const earlyWhere = closedN < period.closedDays ? `${scope} (desde o 1.º registo)` : undefined;
+  const earlyOpts = { count: closedN, where: earlyWhere };
+  const verdict = earlyIsVerdict ? earlyVerdict(cal, earlyOpts) : view.verdict;
+
+  /* ── ▲/▼ face ao anterior equivalente e fechado (R5) ── */
+  const d = view.delta;
+  const showDeltas = early === 'ok' && !!d;
+  const notes = [];
+  if (early === 'ok' && !d && !view.beforeData) {
+    if (view.prevCoverage === 'none') notes.push(firstPeriodNote(kind));
+    else if (view.prevCoverage === 'partial') {
+      notes.push(`${cap(prevName)} começou antes do teu primeiro registo (${fmtRange(view.dataStartISO, view.dataStartISO)}) — não dá para comparar.`);
+    }
+  }
+  notes.push('A carga é a de hoje (últimos 7 dias contra a média semanal dos últimos 28), não a do período.');
+
+  const prevSummaryText = prevFull
+    ? `${prevName}: ${prevFull.count > 0 ? `${corridas(prevFull.count)} · ${fmtNumber(prevFull.km, 1)} km` : 'sem corridas'}`
+    : null;
+  const previousLine = early === 'cedo' && prevSummaryText
+    ? { text: prevSummaryText, actionLabel: `Ver ${prevName}`, onAction: cal.prev }
+    : undefined;
+
+  const deltas = showDeltas ? (
+    <div data-testid="run-deltas" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
+      {(d.count.cur + d.count.prev > 0) && (
+        <DeltaLine label="Corridas">
+          <DeltaVsPrevious current={d.count.cur} previous={d.count.prev} previousLabel={d.label} better="none"
+            unit={Math.abs(d.count.cur - d.count.prev) === 1 ? 'corrida' : 'corridas'} />
+        </DeltaLine>
+      )}
+      {(d.km.cur + d.km.prev > 0) && (
+        <DeltaLine label="Distância">
+          <DeltaVsPrevious current={d.km.cur} previous={d.km.prev} previousLabel={d.label} better="none" decimals={1} unit="km" />
+        </DeltaLine>
+      )}
+      {d.pace && (
+        <DeltaLine label="Pace médio">
+          <DeltaVsPrevious current={d.pace.cur} previous={d.pace.prev} previousLabel={d.label} better="down" unit="s/km" />
+        </DeltaLine>
+      )}
+      {d.weekly && (
+        <DeltaLine label="Média por semana">
+          <DeltaVsPrevious current={d.weekly.cur} previous={d.weekly.prev} previousLabel={d.label} better="none" decimals={1} unit="km" />
+        </DeltaLine>
+      )}
+    </div>
+  ) : null;
+
+  /* ── "A começar": nenhum dia fechado — resumo vazio e o do período anterior. ── */
+  const todayKm = view.todayRuns?.km || 0;
+  const startedText = view.todayRuns?.count > 0
+    ? `Os dias contam quando acabarem — hoje já registaste ${todayKm > 0 ? `${fmtNumber(todayKm, 1)} km` : corridas(view.todayRuns.count)}.`
+    : 'Os dias contam quando acabarem.';
+  const prevPeriodSummary = prevFull
+    ? `${cap(view.prevLabel.title)} (${view.prevLabel.range}): ${prevFull.count > 0 ? `${corridas(prevFull.count)} · ${fmtNumber(prevFull.km, 1)} km` : 'sem corridas'}`
+    : undefined;
+
+  const navigator = <PeriodNav cal={cal} module="corrida" />;
+  // A carga (KPI e barra da semana em curso) é a de hoje e inclui as corridas de hoje (R1,
+  // número da Carol): a nota não pode dizer que hoje não entra em nada.
+  const today = <TodayExcludedNote period={period} text={`${TODAY_EXCLUDED.replace(/\.$/, '')} do período (a carga já o inclui); aparece amanhã.`} />;
+
+  /* ── Os blocos de fora do período: ACWR (hoje, 12 semanas), VDOT e recordes (de sempre). ── */
+  const vdotCompare = view.vdotCompare
+    ? { current: view.vdotCompare.current, previous: view.vdotCompare.previous, previousLabel: view.vdotCompare.previousLabel, currentWhere: view.vdotCompare.currentWhere }
+    : null;
+
+  const renderBucket = ({ km, best, inPeriod }) => {
+    const label = `≈${km} km`;
+    if (!best) {
+      return (
+        <div key={km} className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
+          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
+          <p className="text-xs text-[var(--text-3)]">Sem dados</p>
+        </div>
+      );
+    }
+    return (
+      <div key={km} className="flex items-center justify-between gap-3 py-1.5 border-b border-[var(--border-glass)] last:border-0">
+        <div>
+          <p className="text-xs text-[var(--text-3)] font-medium">{label}</p>
+          <p className="text-[11px] text-[var(--text-3)] mt-0.5 flex items-center gap-1.5 flex-wrap">
+            {formatDatePT(best.date)}
+            {best.source === 'run' && best.runCount > 0 && (
+              <> · de {best.runCount} corrida{best.runCount > 1 ? 's' : ''} nesta distância</>
+            )}
+            {best.source === 'split' && (
+              <span
+                className="px-1 py-0.5 rounded text-[11px] font-bold uppercase tracking-wide"
+                style={{ background: 'var(--tint-run-bg)', color: 'var(--run)' }}
+              >split</span>
+            )}
+            {inPeriod && (
+              <span data-testid="recorde-no-periodo" style={{ color: 'var(--ok)', fontWeight: 700 }}>· neste período</span>
+            )}
+          </p>
+        </div>
+        <p className="text-base font-extrabold text-white">{paceLabel(best.pace)}</p>
       </div>
-      {/* R4: o denominador do ritmo médio, só quando nem todas contam. */}
-      {paceStats.withTime < paceStats.total && (
-        <p data-testid="pace-denominador" className="text-[11px] text-[var(--text-3)] -mt-1">
-          {paceStats.withTime === 0
-            ? (paceStats.total === 1
-                ? 'Pace médio: a corrida não tem distância e tempo registados.'
-                : `Pace médio: nenhuma das ${paceStats.total} corridas tem distância e tempo registados.`)
-            : `Pace médio: ${paceStats.withTime} de ${paceStats.total} corridas com distância e tempo.`}
-        </p>
-      )}
+    );
+  };
 
-      {/* 3-6. Gráficos BI.
-          Cada componente já traz o seu próprio cartão, título e alturas, por
-          isso é montado direto, sem wrapper. Estavam embrulhados num .card
-          com <h3> e altura fixa: dava título a dobrar, e o h-44 de fora
-          (176px) era menor que o h-64 de dentro (256px + padding + título),
-          o que fazia o conteúdo transbordar e sobrepor-se ao cartão
-          seguinte. Também não levam className="card" — a classe repete o
-          fundo/borda/sombra que o componente já aplica. */}
-      <ACWRChart weeklyData={acwrWeeklyData} />
+  const independent = (
+    <>
+      <p data-testid="fora-do-periodo" style={{ margin: 0, padding: '0 12px', textAlign: 'center', fontSize: 'var(--text-xs)', lineHeight: 'var(--leading-normal)', color: 'var(--text-4)' }}>
+        A carga das últimas 12 semanas, o VDOT e os recordes de sempre não seguem o período escolhido — só a comparação do VDOT e a marca «neste período» dos recordes o usam.
+      </p>
+      <ACWRChart weeklyData={view.weeklyAcwr} acwr={view.acwr} />
 
-      {/* Ambos dependem de dados que as corridas manuais não trazem (zonas de
-          FC, FC média) — sem guarda, o donut fica só com o anel vazio e o
-          "0%" a solo, e o scatter fica sem nenhum ponto, os dois sem
-          explicação. Mesmo tratamento de vazio que o resto do BI (ver
-          CrossAnalyticsDashboard). */}
-      {(distribution.lowIntensityPct > 0 || distribution.highIntensityPct > 0) ? (
-        <IntensityDonut distribution={distribution} />
-      ) : (
-        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <Activity className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
-          <p className="text-xs font-medium text-[var(--text-3)]">Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de Intensidade.</p>
-        </div>
-      )}
-
-      {scatterData.length > 0 ? (
-        <ScatterTrendChart data={scatterData} />
-      ) : (
-        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-6 text-center shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <HeartPulse className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
-          <p className="text-xs font-medium text-[var(--text-3)]">Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.</p>
-        </div>
-      )}
-
-      {vdotTrend.length > 0 && (
+      {view.vdotTrend.length > 0 && (
         <RacePredictionChart
-          vdotTrend={vdotTrend}
-          prediction={racePrediction}
+          vdotTrend={view.vdotTrend}
+          prediction={view.racePrediction}
+          compare={vdotCompare}
         />
       )}
 
-      {/* 7. Daily Distance Bar Chart — o caso "sem corridas no período" já
-          saiu antes (EmptyModuleState), por isso aqui há sempre dados. */}
-      {chartData && (
-        <ChartFrame
-          ready={barsReady}
-          label="Distância por dia"
-          value={fmtNumber(totalDist, 1)}
-          unit="km no período"
-          valueColor="var(--run)"
-          delta={{ text: `${periodRuns.length} ${periodRuns.length === 1 ? 'corrida' : 'corridas'}`, tone: 'neutral' }}
-          axis={{ min: '0 km', max: `${fmtNumber(Math.max(...chartData.datasets[0].data, 0), 1)} km` }}
-          legend={[{ label: 'Distância diária', color: 'var(--run)' }]}
-          height={176}
-        >
-          <Bar data={chartData} options={chartOptions} updateMode="period" />
-        </ChartFrame>
-      )}
-
-      {/* 8. Recordes: Melhor pace de sempre */}
-      <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-        <h2 className="text-[11px] font-semibold text-[var(--text-2)] mb-2 uppercase tracking-wider">Melhor pace de sempre</h2>
+      {/* Recordes: de sempre, dentro e fora do período (R9 + 2026-10-04) */}
+      <div className={cardStyle}>
+        <h2 className="text-[11px] font-semibold text-[var(--text-2)] mb-1 uppercase tracking-wider">Melhor pace de sempre</h2>
+        <p data-testid="recordes-de-sempre" className="text-[11px] text-[var(--text-3)] mb-2">
+          Entre todas as tuas corridas, não só as deste período.
+        </p>
         <div className="space-y-1">
-          {renderBucket('≈5 km', b5)}
-          {renderBucket('≈10 km', b10)}
-          {renderBucket('≈21 km', b21)}
+          {view.records.map(renderBucket)}
         </div>
         {/* R9: o intervalo real de cada escalão (bestPace.ts, DISTANCE_RANGES). */}
         <p data-testid="recordes-intervalos" className="text-[11px] text-[var(--text-3)] mt-2">{BEST_PACE_LEGEND}</p>
       </div>
+    </>
+  );
 
-      {/* 9. Watch Metrics Card (if any data) */}
-      {(watchMetrics.totalElevation > 0 || watchMetrics.totalCalories > 0 || watchMetrics.avgCadence !== null) && (
-        <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[11px] font-semibold text-[var(--text-2)] flex items-center gap-1.5 uppercase tracking-wider">
-              <Mountain className="w-3.5 h-3.5 text-[var(--text-3)]" /> Desnível, calorias e cadência
-            </h2>
-            <p className="text-[11px] text-[var(--text-3)] capitalize">
-              {activeRange.replace('mes', 'mês').replace('6meses', '6 Meses')}
-            </p>
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div>
-              <p className="text-base font-extrabold text-white leading-none">
-                {watchMetrics.totalElevation > 0 ? Math.round(watchMetrics.totalElevation) : '-'}
-              </p>
-              <p className="text-[11px] text-[var(--text-3)] mt-1">Desnível (m)</p>
-            </div>
-            <div>
-              <p className="text-base font-extrabold text-white leading-none">
-                {watchMetrics.totalCalories > 0 ? Math.round(watchMetrics.totalCalories) : '-'}
-              </p>
-              <p className="text-[11px] text-[var(--text-3)] mt-1">Calorias</p>
-            </div>
-            <div>
-              <p className="text-base font-extrabold text-white leading-none">
-                {watchMetrics.avgCadence !== null ? watchMetrics.avgCadence : '-'}
-              </p>
-              <p className="text-[11px] text-[var(--text-3)] mt-1">Cadência (spm)</p>
-            </div>
-          </div>
-        </div>
+  /* ── "A começar" (segunda-feira, dia 1): sem gráficos nem médias de 0 dias. ── */
+  if (early === 'a_comecar') {
+    return (
+      <div className="space-y-4 fade-in">
+        <PeriodHeader tab="corrida" options={CORRIDA} cal={cal} navigator="none" />
+        <PeriodSummary
+          module="corrida"
+          navigator={navigator}
+          rows={rows}
+          averageLabel={averageLabel}
+          countLabel="Dias com corrida"
+          notes={[notes[notes.length - 1]]}
+        />
+        <EarlyPeriodState
+          state="a_comecar"
+          kind={kind}
+          module="corrida"
+          title={view.firstDay ? 'Os teus registos começam hoje' : undefined}
+          text={startedText}
+          onViewPrevious={view.prevCoverage === 'none' ? undefined : cal.prev}
+          previousSummary={prevPeriodSummary}
+        />
+        {independent}
+        {today}
+      </div>
+    );
+  }
+
+  /* ── Período sem corridas (ou anterior ao 1.º registo): o texto diz-o e o resto
+     (carga, VDOT, recordes) não se esconde. ── */
+  const emptyPeriod = cur.count === 0;
+
+  const wm = view.watch;
+  const showWatch = !emptyPeriod && wm.hasAny;
+
+  return (
+    <div className="space-y-4 fade-in">
+      <PeriodHeader tab="corrida" options={CORRIDA} cal={cal} navigator="none" />
+
+      <PeriodSummary
+        module="corrida"
+        navigator={navigator}
+        verdict={verdict}
+        rows={rows}
+        averageLabel={averageLabel}
+        countLabel="Dias com corrida"
+        previous={previousLine}
+        notes={notes}
+      >
+        {deltas}
+      </PeriodSummary>
+
+      {early === 'cedo' && !earlyIsVerdict && (
+        <EarlyPeriodState state="cedo" cal={cal} module="corrida" earlyText={earlyVerdict(cal, earlyOpts).text} />
       )}
+
+      {emptyPeriod ? (
+        <EmptyModuleState
+          tone="run"
+          icon={<RunIcon className="w-[22px] h-[22px]" />}
+          title={view.beforeData ? 'Antes do teu primeiro registo' : `Sem corridas ${scope}`}
+          actionLabel={period.isCurrent ? 'Registar corrida' : undefined}
+          onAction={period.isCurrent ? () => setOpenCreationMode('run') : undefined}
+        >
+          {view.beforeData
+            ? `A tua primeira corrida registada é de ${fmtDatePt(view.dataStartISO) || fmtRange(view.dataStartISO, view.dataStartISO)}.`
+            : (view.lastRunDate ? `A última foi a ${fmtDatePt(view.lastRunDate)}.` : 'Ainda não registaste corridas antes deste período.')}
+        </EmptyModuleState>
+      ) : (
+        <>
+          {/* 7. Distância — o mesmo intervalo dos KPIs (R5): dias fechados do
+              período, por dia em Semana/Mês e por semana em Trimestre/Ano. */}
+          {chartData && (
+            <ChartFrame
+              ready={barsReady}
+              label={bars.unit === 'day' ? 'Distância por dia' : 'Distância por semana'}
+              hint={cal.label?.title}
+              value={fmtNumber(bars.total, 1)}
+              unit={`km em ${diasFechados(closedN)}`}
+              valueColor="var(--run)"
+              delta={{ text: corridas(cur.count), tone: 'neutral' }}
+              axis={{ min: '0 km', max: `${fmtNumber(bars.max, 1)} km` }}
+              legend={[{ label: bars.unit === 'day' ? 'Distância diária' : 'Distância semanal', color: 'var(--run)' }]}
+              height={176}
+              footer={bars.unit === 'week' && bars.counts.some((c) => c < 7)
+                ? <p data-testid="semanas-parciais" style={{ margin: 0 }}>As semanas com menos de 7 dias estão só parcialmente dentro do período — o total é a soma das barras.</p>
+                : undefined}
+            >
+              <Bar data={chartData} options={chartOptions} updateMode="period" />
+            </ChartFrame>
+          )}
+
+          {/* Intensidade: só com corridas com zonas que cheguem (R6). */}
+          {view.zoneRuns >= MIN_RUNS_FOR_ZONES ? (
+            <IntensityDonut
+              distribution={view.distribution}
+              hint={`${view.zoneRuns} de ${cur.count} corridas com zonas ${scope}`}
+            />
+          ) : (
+            <MinDataNote text={view.zoneRuns === 0
+              ? 'Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de intensidade.'
+              : `Distribuição de intensidade: preciso de pelo menos ${MIN_RUNS_FOR_ZONES} corridas com zonas de frequência cardíaca ${scope} (tens ${view.zoneRuns}).`} />
+          )}
+
+          {view.scatter.length >= MIN_RUNS_FOR_EFFICIENCY ? (
+            <ScatterTrendChart data={view.scatter} scope={scope} />
+          ) : (
+            <MinDataNote text={view.scatter.length === 0
+              ? 'Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.'
+              : `Eficiência aeróbica: preciso de pelo menos ${MIN_RUNS_FOR_EFFICIENCY} corridas com frequência cardíaca média ${scope} (tens ${view.scatter.length}).`} />
+          )}
+
+          {/* 9. Relógio: cada métrica diz em quantas corridas existe. */}
+          {showWatch && (
+            <div className={cardStyle} data-testid="relogio">
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <h2 className="text-[11px] font-semibold text-[var(--text-2)] flex items-center gap-1.5 uppercase tracking-wider">
+                  <Mountain className="w-3.5 h-3.5 text-[var(--text-3)]" /> Desnível, calorias e cadência
+                </h2>
+                <p data-testid="relogio-periodo" className="text-[11px] text-[var(--text-3)]">
+                  {cap(cal.label?.title)}
+                </p>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {[
+                  { k: 'elev', v: wm.elevation != null ? fmtNumber(wm.elevation, 0) : '-', l: 'Desnível (m)', n: wm.nElevation },
+                  { k: 'cal', v: wm.calories != null ? fmtNumber(wm.calories, 0) : '-', l: 'Calorias', n: wm.nCalories },
+                  { k: 'cad', v: wm.avgCadence != null ? fmtNumber(wm.avgCadence, 0) : '-', l: 'Cadência (spm)', n: wm.nCadence },
+                ].map((m) => (
+                  <div key={m.k}>
+                    <p className="text-base font-extrabold text-white leading-none">{m.v}</p>
+                    <p className="text-[11px] text-[var(--text-3)] mt-1">{m.l}</p>
+                    <p data-testid={`relogio-${m.k}-n`} className="text-[11px] text-[var(--text-4)] mt-0.5">
+                      {m.n > 0 ? `${m.n} de ${corridas(wm.total)}` : 'sem dados'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {wm.nCadence > 0 && (
+                <p data-testid="relogio-cadencia-nota" className="text-[11px] text-[var(--text-4)] mt-2">
+                  {wm.cadenceWeighted
+                    ? 'Cadência: média ponderada pelo tempo das corridas com dados.'
+                    : 'Cadência: média simples — nenhuma das corridas com cadência tem tempo registado.'}
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {independent}
+
+      {today}
     </div>
   );
 }

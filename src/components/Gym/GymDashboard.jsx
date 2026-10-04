@@ -1,364 +1,365 @@
-import React, { useState, useMemo } from 'react';
-import { useAppStore } from '../../store';
+import React, { useMemo } from 'react';
+import { useAppStore, sliceReady } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
-import { TrendingUp, Dumbbell, Users } from 'lucide-react';
+import { Dumbbell } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import '../../lib/chartSetup';
-import TimeFilterBar from '../BI/TimeFilterBar';
-import KPICard from '../BI/KPICard';
+import { GINASIO } from '../BI/TimeFilterBar';
 import VolumeLoadChart from '../BI/VolumeLoadChart';
-import MetricInfo from '../BI/MetricInfo';
 import ChartFrame from '../BI/ChartFrame';
 import { barGrowAnimation } from '../../utils/introAnimations';
 import useReducedMotion from '../../utils/useReducedMotion';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
-import VerdictLine from '../BI/VerdictLine';
-import { gymVerdict, fmtNumber } from '../../utils/dashboardVerdicts';
-import { filterByDateRange, calculateVolumeLoad, sessionVolumeKg } from '../../utils/biEngine';
-import { computeClassAnalytics } from '@formulas/classAnalytics.ts';
-import { computeMuscleGroupVolumeDetailed } from '@formulas/muscleGroupVolume.ts';
-import { todayISO } from '../../lib/utils';
+import {
+  PeriodHeader, PeriodNav, PeriodSummary, EarlyPeriodState, TodayExcludedNote, DeltaVsPrevious, MinDataNote,
+  VerdictLine, countOf, earlyVerdict, firstPeriodNote, minDataText,
+} from '../BI/period';
+import { fmtNumber, fmtDatePt, NO_DATA } from '../../utils/verdicts/shared';
+import { gymFrequencyStatus, GYM_TARGET_PER_WEEK, GYM_MIN_CLOSED_WEEKS } from '../../utils/verdicts/gym';
+import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
+import { useEvolutionView } from '../../store/evolution/useEvolutionView';
+import { GYM_MIN_CLOSED, fmtRange } from '../../store/evolution/views/gym';
+import ExerciseProgression from './ExerciseProgression';
+import GymClassesCard from './GymClassesCard';
+import { perWeekNum, diasFechados, semanasFechadas, treinosForca, aulasN, cap } from './gymText';
 
-// Semanas cobertas por cada filtro de período — denominador da frequência
-// semanal usada pela frase de veredicto.
-const WEEKS_BY_RANGE = { dia: 1, semana: 1, mes: 4, trimestre: 13, '6meses': 26, ano: 52 };
+/* Ginásio por períodos de calendário (2026-10-04, fase 5 da Evolução — erros
+   G2, G3, G4, G6, G7 e D5). A forma é a do mock-up aprovado da Nutrição: o
+   seletor (Semana · Mês · Trimestre) e o navegador ‹ › dentro do resumo, só
+   dias FECHADOS (hoje não entra), "X de N", ▲/▼ só contra o período anterior
+   equivalente e fechado, e um estado "a começar"/"cedo" em vez de números sem
+   base. Os números vêm da vista pré-calculada (store/evolution/views/gym.js);
+   aqui só se apresenta.
 
-function formatDurationMinutes(seconds) {
-  // Sem duração não é "0 min" (G7, 2026-10-04): é dado em falta.
-  if (!seconds) return '—';
-  const mins = Math.round(seconds / 60);
-  if (mins >= 60) {
-    const h = Math.floor(mins / 60);
-    const m = mins % 60;
-    return m > 0 ? `${h}h ${m}m` : `${h}h`;
-  }
-  return `${mins} min`;
-}
+   Saiu (D5): o KPI "Vol. Carga", o gráfico "Volume diário" e o ACWR do
+   ginásio — somavam kg de exercícios diferentes ou davam "Perigo" com 2
+   sessões. Entrou a progressão por exercício. */
 
-/* G7 (2026-10-04): a duração de uma aula é opcional, por isso o total só
-   soma as aulas que a têm. Nenhuma com duração → "—" (antes "0 min"); só
-   parte → o total com a nota "em N de M aulas", para não se ler como o
-   tempo todo. */
-function classTimeSummary(totalSeconds, withDuration, totalClasses) {
-  if (!(withDuration > 0)) return { value: '—', note: null };
-  return {
-    value: formatDurationMinutes(totalSeconds),
-    note: withDuration < totalClasses ? `em ${withDuration} de ${totalClasses} aulas` : null,
-  };
+const cardStyle = 'bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]';
+
+function DeltaLine({ label, children }) {
+  return (
+    <p style={{ margin: 0, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+      <span style={{ color: 'var(--text-4)' }}>{label}</span>
+      {children}
+    </p>
+  );
 }
 
 export default function GymDashboard() {
   /* Seletor com useShallow em vez de `useAppStore()` inteiro (2026-10-04): sem
      seletor, qualquer alteração ao store — um deslize entre separadores
-     mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
-     seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
-     redesenha quando um destes campos muda de referência. */
-  const { gymSessions, runs, setOpenCreationMode } = useAppStore(useShallow((s) => ({
-    gymSessions: s.gymSessions, runs: s.runs, setOpenCreationMode: s.setOpenCreationMode,
-  })));
-  const [timeRange, setTimeRange] = useState('mes');
-  const rangeKey = timeRange;
+     mexe em `lastDashboardTab` — redesenhava este separador mesmo escondido,
+     que era o jank do deslize. Os dados de que a vista depende vêm do
+     useEvolutionView (só redesenha quando uma dessas listas muda). */
+  const { setOpenCreationMode } = useAppStore(useShallow((s) => ({ setOpenCreationMode: s.setOpenCreationMode })));
+  const view = useEvolutionView('ginasio');
 
-  const sessionsInRange = useMemo(() => filterByDateRange(gymSessions, rangeKey), [gymSessions, rangeKey]);
-  const volumeData = useMemo(() => calculateVolumeLoad(gymSessions, rangeKey), [gymSessions, rangeKey]);
-  // G1 (2026-10-04): as séries não guardam grupo muscular, por isso só entram
-  // as sessões de um único grupo; as de vários ficam de fora e contam-se aqui
-  // (muscleGroupVolume.ts). Chama a fórmula partilhada diretamente porque o
-  // biEngine só devolve os grupos.
-  const { groups: muscleVolume, multiGroupSessions } = useMemo(() => {
-    try {
-      return computeMuscleGroupVolumeDetailed(gymSessions || [], todayISO(), rangeKey);
-    } catch {
-      return { groups: {}, multiGroupSessions: 0 };
-    }
-  }, [gymSessions, rangeKey]);
+  // UM só cal, partilhado pelo seletor, pelo navegador e pelo resumo (forma do
+  // mock-up). Sem `daysWithData` de propósito: "9 de 30 dias com registo"
+  // leria-se como falhas, e para quem treina os dias de descanso não são
+  // buracos — o rótulo diz só "desde …" e os dias fechados.
+  const cal = useCalendarPeriod('ginasio', { dataStartISO: view?.dataStartISO, minClosed: GYM_MIN_CLOSED });
 
-  const { volumeByDay } = useMemo(() => {
-    const byDay = {};
-
-    // sessionVolumeKg() (biEngine.js) — antes este componente reimplementava
-    // a soma peso×reps sem o atalho `volume_kg`, que sessionVolumeKg já
-    // trata (specs/formulas-checklist.md Fase C).
-    sessionsInRange.forEach(session => {
-      const dateStr = session.date;
-      byDay[dateStr] = (byDay[dateStr] || 0) + sessionVolumeKg(session);
-    });
-
-    return {
-      volumeByDay: byDay
-    };
-  }, [sessionsInRange]);
-
-  const strengthSessions = useMemo(() => sessionsInRange.filter(s => s.kind !== 'aula'), [sessionsInRange]);
-
-  // Valores que o ponto 6 põe em HTML acima dos gráficos, em vez de os
-  // deixar nos ticks do eixo.
-  const dayVolumes = useMemo(() => Object.keys(volumeByDay).sort().map(d => volumeByDay[d]), [volumeByDay]);
-  const lastDayVolume = dayVolumes.length ? dayVolumes[dayVolumes.length - 1] : 0;
-  const maxDayVolume = dayVolumes.length ? Math.max(...dayVolumes) : 0;
-  const topMuscle = useMemo(() => {
-    const groups = Object.keys(muscleVolume).sort((a, b) => muscleVolume[b].sets - muscleVolume[a].sets);
-    return groups.length ? { name: groups[0], sets: muscleVolume[groups[0]].sets } : null;
-  }, [muscleVolume]);
-
-  const groupCount = Object.keys(muscleVolume).length;
-  const multiGroupNote = multiGroupSessions > 0
-    ? `${multiGroupSessions} ${multiGroupSessions === 1 ? 'sessão com vários grupos não entra' : 'sessões com vários grupos não entram'}.`
-    : '';
-  const muscleHint = `${groupCount} ${groupCount === 1 ? 'grupo' : 'grupos'}${multiGroupNote ? ` · ${multiGroupNote.slice(0, -1)}` : ''}`;
-
-  const volChartData = useMemo(() => {
-    const days = Object.keys(volumeByDay).sort();
-    return {
-      labels: days.map(d => d.slice(8, 10) + '/' + d.slice(5, 7)),
-      datasets: [{
-        label: 'Volume (kg)',
-        data: days.map(d => volumeByDay[d]),
-        // Ponto 6, paleta das séries: era um gradiente âmbar
-        // (#d97706 → #f59e0b) e o âmbar é da prova. Passa ao ardósia do
-        // ginásio (--gym #9ec3d2), em tinta.
-        backgroundColor: (context) => {
-          const chart = context.chart;
-          const { ctx, chartArea } = chart;
-          if (!chartArea) return 'rgba(158, 195, 210, 0.7)';
-          const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-          gradient.addColorStop(0, 'rgba(158, 195, 210, 0.25)');
-          gradient.addColorStop(1, 'rgba(158, 195, 210, 0.9)');
-          return gradient;
-        },
-        borderRadius: 6
-      }]
-    };
-  }, [volumeByDay]);
-
-  const muscleChartData = useMemo(() => {
-    const groups = Object.keys(muscleVolume).sort((a,b) => muscleVolume[b].sets - muscleVolume[a].sets);
-    return {
-      labels: groups,
-      datasets: [{
-        label: 'Séries',
-        data: groups.map(g => muscleVolume[g].sets),
-        // Mesma razão do gráfico acima: fora o âmbar, dentro o ardósia.
-        backgroundColor: (context) => {
-          const chart = context.chart;
-          const { ctx, chartArea } = chart;
-          if (!chartArea) return 'rgba(158, 195, 210, 0.7)';
-          const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
-          gradient.addColorStop(0, 'rgba(158, 195, 210, 0.25)');
-          gradient.addColorStop(1, 'rgba(158, 195, 210, 0.9)');
-          return gradient;
-        },
-        borderRadius: 6
-      }]
-    };
-  }, [muscleVolume]);
-
-  // Analytics de Aulas e Modalidades — delega em @formulas/classAnalytics.ts
-  // (T1.5), partilhado com a Carol (specs/formulas-checklist.md Fase E).
-  // Nota: recebe `gymSessions` (não `sessionsInRange`) porque a própria
-  // função já aplica o filtro de período por dentro — mesma fonte usada
-  // por `calculateVolumeLoad`/`calculateMuscleGroupVolume` acima.
-  const classAnalytics = useMemo(
-    () => computeClassAnalytics(gymSessions, todayISO(), rangeKey),
-    [gymSessions, rangeKey],
-  );
-  const classTime = classTimeSummary(classAnalytics.totalClassSeconds, classAnalytics.classesWithDuration, classAnalytics.totalClasses);
-
-  /* Ponto 6 do redesenho: a frase de veredicto. As regras vivem em
-     utils/dashboardVerdicts.js; aqui só se juntam os dados já calculados.
-     `weeksInRange` é o denominador da frequência semanal — o número de
-     semanas que o filtro de período cobre. */
-  const verdict = useMemo(() => gymVerdict({
-    weeklyBreakdown: volumeData.weeklyBreakdown,
-    strengthSessions: strengthSessions.length,
-    classes: classAnalytics.totalClasses,
-    weeksInRange: WEEKS_BY_RANGE[rangeKey] || 4,
-    totalVolumeLoad: volumeData.totalVolumeLoad,
-    runCount: (runs || []).length,
-  }), [volumeData, strengthSessions.length, classAnalytics.totalClasses, rangeKey, runs]);
-
-  // Ponto 6: os ticks deixam de escrever dentro da tela — os valores atuais
-  // e os extremos dos eixos passam a HTML no ChartFrame.
-  /* Ponto 9, animação 4: as barras crescem da base com --stagger-bars. A
-     revelação (separador assente + gráfico no ecrã + dados prontos) é da
-     ChartFrame — o `ready` das fatias do ginásio vem do Dashboard. Aqui as
-     options são useMemo (2026-10-04, F5): uma referência nova a cada render
-     fazia chart.update() e estragava a entrada. `reduced` entra na animação
-     porque a opção por gráfico ganha ao `false` global. */
   const reduced = useReducedMotion();
-  const volCount = volChartData.labels.length;
-  const muscleCount = muscleChartData.labels.length;
-  const volOptions = useMemo(() => ({
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
-    animation: barGrowAnimation({ reduced, count: volCount }),
-    scales: {
-      y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
-      x: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
-    },
-  }), [reduced, volCount]);
+  const ready = useAppStore((s) => sliceReady(s, ['gym']));
+
+  /* Séries por músculo, em séries/semana (G1 + semanas fechadas). Ponto 9,
+     animação 4: as barras crescem da base quando o gráfico aparece no ecrã — a
+     revelação é da ChartFrame; aqui só opções estáveis e reduced-aware. */
+  const muscle = view?.muscle;
+  const muscleCount = muscle?.groups?.length || 0;
+  const muscleData = useMemo(() => ({
+    labels: (muscle?.groups || []).map((g) => g.name),
+    datasets: [{
+      label: 'Séries por semana',
+      data: (muscle?.groups || []).map((g) => Math.round(g.perWeek * 10) / 10),
+      // Ardósia do ginásio (--gym #9ec3d2), em tinta; o âmbar é da prova.
+      backgroundColor: (context) => {
+        const { ctx, chartArea } = context.chart;
+        if (!chartArea) return 'rgba(158, 195, 210, 0.7)';
+        const gradient = ctx.createLinearGradient(chartArea.left, 0, chartArea.right, 0);
+        gradient.addColorStop(0, 'rgba(158, 195, 210, 0.25)');
+        gradient.addColorStop(1, 'rgba(158, 195, 210, 0.9)');
+        return gradient;
+      },
+      borderRadius: 6,
+    }],
+  }), [muscle]);
   const muscleOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
-    plugins: { legend: { display: false } },
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: (ctx) => ` ${fmtNumber(ctx.raw, 1)} séries/semana` } },
+    },
     animation: barGrowAnimation({ reduced, count: muscleCount }),
     indexAxis: 'y',
     scales: {
       x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { display: false }, border: { display: false } },
-      y: { grid: { display: false }, ticks: { display: false }, border: { display: false } }
+      y: { grid: { display: false }, ticks: { display: false }, border: { display: false } },
     },
   }), [reduced, muscleCount]);
 
-  /* Ponto 7: sem sessões no período, o cartão de convite do mock
-     "Dashboard · sem dados" em vez dos KPIs a zero e do bloco de aulas
-     vazio. O veredicto e o filtro ficam — é pelo filtro que se chega a um
-     período com dados. */
-  if (sessionsInRange.length === 0) {
+  if (!view) return null;
+
+  const { cur, kind, scope } = view;
+  const period = cal.period;
+  const early = view.earlyState;
+  const closedN = view.closedDays;
+  const w = view.weeks;
+  const isWeek = kind === 'semana';
+
+  /* ── Sem nenhuma sessão registada: o convite, com o seletor à vista. ── */
+  if (!view.hasSessions) {
     return (
       <div className="space-y-4 fade-in">
-        <VerdictLine text={verdict.text} tone={verdict.tone} />
-        <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} module="ginasio" />
+        <PeriodHeader tab="ginasio" options={GINASIO} cal={cal} navigator="none" />
+        <VerdictLine text={NO_DATA.text} tone={NO_DATA.tone} />
         <EmptyModuleState
           tone="gym"
           icon={<Dumbbell size={22} />}
           actionLabel="Registar treino"
           onAction={() => setOpenCreationMode('workout')}
         >
-          Ainda não há treinos neste período. Regista um treino para veres a tua evolução aqui.
+          Ainda não há treinos. Regista um treino para veres a tua evolução aqui.
         </EmptyModuleState>
-        <EmptyChartFrame label="Volume diário" unit="kg no último dia com treino" height={192} />
+        <EmptyChartFrame label="Volume-carga semanal" unit="kg na última semana fechada" height={192} />
       </div>
     );
   }
 
+  const noDays = closedN === 0;
+  const prevName = view.prevName;
+  const prevFull = view.prevFull;
+
+  /* ── As linhas do resumo (todas só de dias fechados) ── */
+  const missingNoDays = view.beforeData ? 'antes do 1.º registo' : 'ainda sem dias fechados';
+  const rows = [];
+
+  if (isWeek) {
+    // Em Semana não há semanas para dividir: as sessões contra o alvo de 2.
+    const n = cur.strength;
+    const reached = n >= GYM_TARGET_PER_WEEK;
+    rows.push({
+      key: 'forca',
+      label: 'Treinos de força',
+      value: noDays ? null : String(n),
+      missingText: noDays ? missingNoDays : undefined,
+      status: noDays ? null : reached ? 'ok' : period.isCurrent ? null : 'below',
+      statusText: noDays ? undefined : reached ? `No alvo (${GYM_TARGET_PER_WEEK})` : period.isCurrent ? `Alvo: ${GYM_TARGET_PER_WEEK} por semana` : `Abaixo do alvo (${GYM_TARGET_PER_WEEK})`,
+      barPct: noDays ? undefined : Math.min(100, (n / GYM_TARGET_PER_WEEK) * 100),
+      count: noDays ? undefined : countOf(cur.strengthDays, closedN),
+    });
+  } else {
+    const perWeek = w.perWeekStrength;
+    const enough = w.count >= GYM_MIN_CLOSED_WEEKS;
+    rows.push({
+      key: 'forca',
+      label: 'Treinos de força',
+      // "N · X/semana (semanas fechadas)": o N é de todos os dias fechados, o
+      // X/semana só das semanas inteiras (as que têm numerador e denominador).
+      value: noDays ? null : `${cur.strength}${w.count >= 1 ? ` · ${perWeekNum(perWeek)}/semana` : ''}`,
+      missingText: noDays ? missingNoDays : undefined,
+      status: !noDays && enough ? gymFrequencyStatus(perWeek) : null,
+      statusText: noDays ? undefined : w.count >= 1 ? `em ${semanasFechadas(w.count)}` : 'sem semanas fechadas ainda',
+      barPct: !noDays && enough ? Math.min(100, (perWeek / GYM_TARGET_PER_WEEK) * 100) : undefined,
+      count: !noDays && w.count >= 1 ? countOf(w.onTarget, w.count) : undefined,
+    });
+  }
+  if (cur.classes > 0) {
+    rows.push({
+      key: 'aulas',
+      label: 'Aulas',
+      // As aulas contam-se UMA vez (aqui, com "/semana"); o cartão de baixo só
+      // tem o tempo e o esforço.
+      value: `${cur.classes}${!isWeek && w.count >= 1 ? ` · ${perWeekNum(w.perWeekClasses)}/semana` : ''}`,
+      statusText: !isWeek && w.count >= 1 ? `em ${semanasFechadas(w.count)}` : undefined,
+    });
+  }
+
+  const averageLabel = noDays ? (view.beforeData ? 'No período' : 'No período (0 dias fechados)') : `No período (${diasFechados(closedN)})`;
+  const countLabel = isWeek ? 'Dias com treino' : `Semanas com ${GYM_TARGET_PER_WEEK}+ treinos`;
+
+  /* ── O veredicto: "cedo" substitui só o que fala do período (neutro). ── */
+  /* Em "cedo" o veredicto neutro dá lugar à frase de "ainda é cedo". Um veredicto
+     factual (Semana com o alvo já cumprido) fica sozinho: o bloco "cedo" por
+     baixo contradizia-o (revisão de 2026-10-04) e deixou de existir. */
+  const earlyIsVerdict = early === 'cedo' && view.verdict.tone === 'neutral';
+  const verdict = earlyIsVerdict ? earlyVerdict(cal, { count: closedN }) : view.verdict;
+
+  /* ── ▲/▼ face ao anterior equivalente e fechado (R5) ── */
+  const d = view.delta;
+  const showDeltas = early === 'ok' && !!d;
+  const notes = [];
+  if (early === 'ok' && !d && !view.beforeData) {
+    if (view.prevCoverage === 'none') notes.push(firstPeriodNote(kind));
+    else if (view.prevCoverage === 'partial') {
+      notes.push(`${cap(prevName)} começou antes do teu primeiro registo (${fmtDatePt(view.dataStartISO) || fmtRange(view.dataStartISO, view.dataStartISO, view.today)}) — não dá para comparar.`);
+    }
+  }
+  // Antes do 1.º registo não há contas a que a nota se aplique.
+  if (!isWeek && !view.beforeData) notes.push('As contas por semana usam só semanas inteiras (seg–dom) dentro do período.');
+
+  // R7: o anterior que começou antes do 1.º registo diz-o ("desde 25 ago").
+  const prevSince = view.prevLabel?.coverage ? ` (${view.prevLabel.coverage})` : '';
+  const prevSummaryText = prevFull
+    ? `${prevName}${prevSince}: ${prevFull.total > 0 ? `${treinosForca(prevFull.strength)}${prevFull.classes > 0 ? ` · ${aulasN(prevFull.classes)}` : ''}` : 'sem treinos'}`
+    : null;
+  const previousLine = early === 'cedo' && prevSummaryText
+    ? { text: prevSummaryText, actionLabel: `Ver ${prevName}`, onAction: cal.prev }
+    : undefined;
+
+  const summaryLine = !isWeek && w.count >= GYM_MIN_CLOSED_WEEKS && w.onTargetPct != null && !view.verdict.early
+    ? `Duas ou mais sessões de força em ${countOf(w.onTarget, w.count)} semanas (${w.onTargetPct}%)`
+    : undefined;
+
+  const deltas = showDeltas ? (
+    <div data-testid="gym-deltas" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
+      {(d.strength.cur + d.strength.prev > 0) && (
+        <DeltaLine label="Treinos de força">
+          <DeltaVsPrevious current={d.strength.cur} previous={d.strength.prev} previousLabel={d.label} better="none"
+            unit={Math.abs(d.strength.cur - d.strength.prev) === 1 ? 'treino' : 'treinos'} />
+        </DeltaLine>
+      )}
+      {(d.classes.cur + d.classes.prev > 0) && (
+        <DeltaLine label="Aulas">
+          <DeltaVsPrevious current={d.classes.cur} previous={d.classes.prev} previousLabel={d.label} better="none"
+            unit={Math.abs(d.classes.cur - d.classes.prev) === 1 ? 'aula' : 'aulas'} />
+        </DeltaLine>
+      )}
+    </div>
+  ) : null;
+
+  /* ── "A começar": nenhum dia fechado — resumo vazio e o do período anterior. ── */
+  const todayN = view.todaySessions?.total || 0;
+  const startedText = todayN > 0
+    ? `Os dias contam quando acabarem — hoje já registaste ${view.todaySessions.strength > 0 ? treinosForca(view.todaySessions.strength) : aulasN(view.todaySessions.classes)}.`
+    : 'Os dias contam quando acabarem.';
+  const prevPeriodSummary = prevFull
+    ? `${cap(view.prevLabel.title)} (${view.prevLabel.range}${view.prevLabel.coverage ? `, ${view.prevLabel.coverage}` : ''}): ${prevFull.total > 0 ? `${treinosForca(prevFull.strength)}${prevFull.classes > 0 ? ` · ${aulasN(prevFull.classes)}` : ''}` : 'sem treinos'}`
+    : undefined;
+
+  const navigator = <PeriodNav cal={cal} module="ginasio" />;
+  const today = <TodayExcludedNote period={period} hasDayView={false} />;
+
+  /* ── "A começar" (segunda-feira, dia 1): sem gráficos nem médias de 0 dias. ── */
+  if (early === 'a_comecar') {
+    return (
+      <div className="space-y-4 fade-in">
+        <PeriodHeader tab="ginasio" options={GINASIO} cal={cal} navigator="none" />
+        <PeriodSummary
+          module="ginasio"
+          navigator={navigator}
+          rows={rows}
+          averageLabel={averageLabel}
+          countLabel={countLabel}
+        />
+        <EarlyPeriodState
+          state="a_comecar"
+          kind={kind}
+          module="ginasio"
+          title={view.firstDay ? 'Os teus registos começam hoje' : undefined}
+          text={startedText}
+          onViewPrevious={cal.prev}
+          previousSummary={prevPeriodSummary}
+        />
+        {today}
+      </div>
+    );
+  }
+
+  const emptyPeriod = cur.total === 0;
+
+  /* ── Os gráficos e cartões do período ── */
+  // Séries por músculo: só com semanas fechadas (séries/semana).
+  const groups = muscle.groups;
+  const topMuscle = groups[0];
+  const multi = muscle.multiGroupSessions;
+  const multiNote = multi > 0
+    ? `${multi} ${multi === 1 ? 'sessão com vários grupos não entra' : 'sessões com vários grupos não entram'}.`
+    : '';
+
+  // A progressão espera por um período em condições e por um anterior fechado.
+  const progressionGate = early !== 'ok'
+    ? minDataText({ what: 'Progressão por exercício', min: GYM_MIN_CLOSED, kind })
+    : view.prevCoverage === 'none'
+      ? 'Progressão por exercício: ainda não há período anterior para comparar.'
+      : view.prevCoverage === 'partial'
+        ? `Progressão por exercício: ${prevName} começou antes do teu primeiro registo, não dá para comparar.`
+        : null;
+
   return (
     <div className="space-y-4 fade-in">
-      {/* Veredicto — antes dos filtros e dos KPIs, como no mock. */}
-      <VerdictLine text={verdict.text} tone={verdict.tone} />
+      <PeriodHeader tab="ginasio" options={GINASIO} cal={cal} navigator="none" />
 
-      <TimeFilterBar activeRange={timeRange} onChange={setTimeRange} module="ginasio" />
-      
-      <div className="grid grid-cols-3 gap-3">
-        <KPICard label="Treinos de Força" value={strengthSessions.length} icon={Dumbbell} moduleColor="var(--mod-ginasio)" />
-        <KPICard label="Vol. Carga" value={Math.round(volumeData.totalVolumeLoad).toLocaleString('pt-PT')} unit="kg" icon={TrendingUp} moduleColor="var(--mod-ginasio)" />
-        <KPICard label="Aulas" value={classAnalytics.totalClasses} icon={Users} moduleColor="var(--mod-ginasio)" />
-      </div>
+      <PeriodSummary
+        module="ginasio"
+        navigator={navigator}
+        verdict={verdict}
+        rows={rows}
+        averageLabel={averageLabel}
+        countLabel={countLabel}
+        summaryLine={summaryLine}
+        delta={view.weeksDelta && summaryLine ? view.weeksDelta : undefined}
+        previous={previousLine}
+        notes={notes}
+      >
+        {deltas}
+      </PeriodSummary>
 
-      {/* O caso "sem sessões no período" já saiu antes (EmptyModuleState). */}
-      {(
-        <div className="space-y-4">
-          {volumeData.weeklyBreakdown.length > 0 && (
-            <VolumeLoadChart weeklyData={volumeData.weeklyBreakdown} acwr={{ ratio: volumeData.acwr, status: volumeData.acwrStatus, hasEnoughData: volumeData.acwrHasEnoughData, historyWeeks: volumeData.historyWeeks }} />
+      {emptyPeriod ? (
+        <EmptyModuleState
+          tone="gym"
+          icon={<Dumbbell size={22} />}
+          title={view.beforeData ? 'Antes do teu primeiro registo' : `Sem treinos ${scope}`}
+          actionLabel={period.isCurrent ? 'Registar treino' : undefined}
+          onAction={period.isCurrent ? () => setOpenCreationMode('workout') : undefined}
+        >
+          {view.beforeData
+            ? `O teu primeiro treino registado é de ${fmtDatePt(view.dataStartISO) || fmtRange(view.dataStartISO, view.dataStartISO, view.today)}.`
+            : (view.lastSessionDate ? `O último foi a ${fmtDatePt(view.lastSessionDate)}.` : 'Ainda não registaste treinos antes deste período.')}
+        </EmptyModuleState>
+      ) : (
+        <>
+          {/* Volume-carga em semanas de calendário (G3/G4): zeros explícitos, a
+              semana em curso fora da média e do delta. */}
+          {view.weeklyData.length > 0 && (
+            <VolumeLoadChart weeklyData={view.weeklyData} hint="semanas seg–dom" ready={ready} />
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* D5: a progressão por exercício, no lugar do "Vol. Carga" e do "Volume diário". */}
+          <ExerciseProgression progression={view.progression} scope={scope} gate={progressionGate} />
+
+          {groups.length > 0 ? (
             <ChartFrame
-              label="Volume diário"
-              value={fmtNumber(lastDayVolume, 0)}
-              unit="kg no último dia com treino"
+              ready={ready}
+              label="Séries por músculo"
+              hint={semanasFechadas(muscle.weeks)}
+              value={perWeekNum(topMuscle.perWeek)}
+              unit={`séries/semana em ${topMuscle.name}`}
               valueColor="var(--gym)"
-              axis={maxDayVolume > 0 ? { min: '0 kg', max: `${fmtNumber(maxDayVolume, 0)} kg` } : undefined}
-              legend={[{ label: 'Volume-carga do dia', color: 'var(--gym)' }]}
+              legend={[{ label: 'Séries por semana', color: 'var(--gym)' }]}
               height={192}
+              footer={multiNote ? <p data-testid="multi-grupo" style={{ margin: 0 }}>{multiNote}</p> : undefined}
             >
-              <Bar data={volChartData} options={volOptions} updateMode="period" />
+              <Bar data={muscleData} options={muscleOptions} updateMode="period" />
             </ChartFrame>
-
-            {Object.keys(muscleVolume).length > 0 && (
-              <ChartFrame
-                label="Séries por músculo"
-                value={topMuscle ? topMuscle.sets : '—'}
-                unit={topMuscle ? `séries em ${topMuscle.name}` : undefined}
-                valueColor="var(--gym)"
-                hint={muscleHint}
-                legend={[{ label: 'Séries no período', color: 'var(--gym)' }]}
-                height={192}
-              >
-                <Bar data={muscleChartData} options={muscleOptions} updateMode="period" />
-              </ChartFrame>
-            )}
-          </div>
-
-          {Object.keys(muscleVolume).length === 0 && multiGroupSessions > 0 && (
-            <p className="text-[11px] text-[var(--text-3)] px-1">
-              {multiGroupNote} Sem grupos para mostrar nas séries por músculo.
-            </p>
+          ) : (
+            <MinDataNote
+              text={muscle.weeks === 0 && isWeek
+                ? 'Séries por músculo: aparece quando a semana acabar (as contas são por semana seg–dom inteira).'
+                : muscle.weeks === 0
+                ? `Séries por músculo: preciso de pelo menos 1 semana fechada (seg–dom inteira) ${scope}.${multiNote ? ` ${multiNote}` : ''}`
+                : `Séries por músculo: sem grupos para mostrar em ${semanasFechadas(muscle.weeks)}.${multiNote ? ` ${multiNote}` : ''}`}
+            />
           )}
 
-          {/* Secção de Aulas e Modalidades de Grupo */}
-          <div className="bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4" style={{ color: 'var(--gym)' }} />
-                <h3 className="text-[12px] font-bold text-[var(--text-2)] uppercase tracking-wider">Aulas & Modalidades</h3>
-              </div>
-              <MetricInfo text="Registo das tuas aulas de grupo e modalidades (HIIT, Cycling, Pilates, CrossFit, etc.). Monitoriza a frequência semanal, tempo total investido e o nível de esforço percebido (RPE)." />
-            </div>
-
-            {classAnalytics.totalClasses > 0 ? (
-              <div className="space-y-3">
-                {/* Mini KPIs de Aulas */}
-                <div className="grid grid-cols-3 gap-2 bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-center">
-                  <div>
-                    <p className="text-base font-extrabold text-white leading-none">{classAnalytics.totalClasses}</p>
-                    <p className="text-[11px] text-[var(--text-3)] mt-1">Aulas</p>
-                  </div>
-                  <div>
-                    <p className="text-base font-extrabold text-white leading-none">
-                      {classTime.value}
-                    </p>
-                    <p className="text-[11px] text-[var(--text-3)] mt-1">Tempo Total</p>
-                    {classTime.note && <p className="text-[10px] text-[var(--text-3)]">{classTime.note}</p>}
-                  </div>
-                  <div>
-                    <p className="text-base font-extrabold leading-none" style={{ color: 'var(--gym)' }}>
-                      {classAnalytics.avgRpe ? `${classAnalytics.avgRpe.replace('.', ',')} / 10` : '—'}
-                    </p>
-                    <p className="text-[11px] text-[var(--text-3)] mt-1">Esforço Médio (RPE)</p>
-                  </div>
-                </div>
-
-                {/* Lista de Modalidades */}
-                <div className="space-y-1.5 mt-2">
-                  {classAnalytics.classList.map(c => {
-                    // G6 (2026-10-04): classAnalytics devolve `avgRpe` (string já
-                    // formatada), não rpeSum/rpeCount — antes lia estes e nunca aparecia.
-                    const avgClassRpe = c.avgRpe ? c.avgRpe.replace('.', ',') : null;
-                    return (
-                      <div key={c.name} className="flex items-center justify-between gap-3 py-2 px-3 rounded-xl bg-[var(--surface-glass)] border border-[var(--border-faint)]">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full" style={{ background: 'var(--gym)' }}></div>
-                          <div>
-                            <p className="text-xs font-semibold text-[var(--text-2)]">{c.name}</p>
-                            <p className="text-[11px] text-[var(--text-3)]">
-                              {c.count} aula{c.count > 1 ? 's' : ''}
-                              {c.totalSeconds > 0 ? ` · ${formatDurationMinutes(c.totalSeconds)}` : ''}
-                            </p>
-                          </div>
-                        </div>
-                        {avgClassRpe && (
-                          <div className="text-right">
-                            <span className="text-[11px] font-bold text-[var(--text-3)]">RPE {avgClassRpe}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="py-6 flex flex-col items-center justify-center text-center">
-                <Users className="w-8 h-8 text-[var(--text-3)] mb-2 opacity-50" />
-                <p className="text-xs text-[var(--text-3)] max-w-xs leading-relaxed">
-                  Sem aulas registadas neste período. Ao registares aulas (HIIT, Cycling, Pilates, etc.), verás aqui o resumo e o esforço.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
+          <GymClassesCard classes={view.classes} />
+        </>
       )}
+
+      {today}
     </div>
   );
 }
-
