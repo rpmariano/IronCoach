@@ -22,6 +22,167 @@ const getInitialDashboardTab = () => {
   return 'hub';
 };
 
+// ── Paginação do carregamento (F4, 2026-10-04) ───────────────────────────
+/* O PostgREST corta cada resposta em max_rows (1000 no projeto): quem tem mais
+   de 1000 refeições (~6-7 meses) ou registos de água perdia as mais antigas
+   SEM aviso. fetchAllPaged lê página a página com .range() até vir uma página
+   curta.
+   - `queryBuilderFactory` devolve um builder NOVO a cada chamada (um builder do
+     supabase-js não se reutiliza depois de executado) já com select/eq/order.
+     A ordem tem de ser total — desempate por `id` ao fim (nas refeições, antes
+     dele `created_at`, para a ordem dentro do dia seguir a de registo) —,
+     senão linhas com a mesma data podiam repetir-se ou faltar entre páginas.
+   - O limite conta linhas do recurso principal: workout_sessions com os sets
+     embutidos pagina por sessões, não por sets.
+   - Mesmo contrato de erro do pedido simples: { data, error }. Um erro em
+     qualquer página devolve { data: null, error } — nunca uma lista a meio
+     (o carregamento não escreve em erro e fica o que já lá estava).
+   - Se outra linha entrar entre duas páginas (o offset desliza), uma linha
+     pode vir duas vezes: deduplica-se por `id`.
+   - Pressuposto: pageSize <= max_rows do servidor; uma página curta é o fim. */
+export const FETCH_PAGE_SIZE = 1000;
+const FETCH_MAX_PAGES = 200; // trava de segurança: 200 mil linhas
+
+export async function fetchAllPaged(queryBuilderFactory, pageSize = FETCH_PAGE_SIZE) {
+  const all = [];
+  const seen = new Set();
+  for (let page = 0; page < FETCH_MAX_PAGES; page += 1) {
+    const from = page * pageSize;
+    const { data, error } = await queryBuilderFactory().range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    const rows = data || [];
+    for (const row of rows) {
+      const id = row?.id;
+      if (id !== undefined && id !== null) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
+      all.push(row);
+    }
+    if (rows.length < pageSize) break;
+  }
+  return { data: all, error: null };
+}
+
+// ── Partilha estrutural no carregamento (2026-10-04) ─────────────────────
+/* Numa recarga sem alterações (voltar à app) cada fatia chega como arrays e
+   objetos novos, e a cache de vistas da Evolução (impressão digital por
+   referência, numa WeakMap) invalidava tudo. Aqui, uma fatia cujo conteúdo é
+   igual à que já está no store mantém a referência anterior.
+   Sem JSON.stringify e SEM comparação profunda dos dados pesados (revisão
+   2026-10-04): por linha compara-se o id (sai logo à primeira diferença) e as
+   colunas escalares do nível de topo. Os recursos embutidos (meal_items,
+   workout_session_sets: arrays de objetos com id) comparam-se só por
+   comprimento, ids e updated_at — são escritos uma vez pela Edge Function e
+   não se editam no sítio. O que sobra (colunas jsonb) compara-se por valor.
+   O custo tem um teto REAL: um orçamento POR FATIA (SAME_SLICE_BUDGET) que
+   desconta cada folha, cada chave e cada elemento. Se acabar, a fatia conta
+   como «diferente» — falha segura (referência nova, como antes desta
+   otimização), nunca partilha uma fatia que mudou. Consequência assumida: um
+   histórico enorme (> ~100 mil comparações, ordem de 2000 refeições) perde a
+   partilha, mas nunca paga mais do que o teto. */
+const SAME_SLICE_BUDGET = 100000;
+
+function sameValue(a, b, budget) {
+  if (--budget.n < 0) return false;
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+    return a !== a && b !== b; // NaN
+  }
+  const arrA = Array.isArray(a);
+  if (arrA !== Array.isArray(b)) return false;
+  if (arrA) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) if (!sameValue(a[i], b[i], budget)) return false;
+    return true;
+  }
+  let nA = 0;
+  for (const k in a) {
+    nA += 1;
+    if (!(k in b) || !sameValue(a[k], b[k], budget)) return false;
+  }
+  let nB = 0;
+  for (const _k in b) nB += 1; // eslint-disable-line no-unused-vars
+  budget.n -= nA + nB;
+  return nA === nB && budget.n >= 0;
+}
+
+// Uma coluna do nível de topo: escalar (===), recurso embutido (comprimento +
+// ids + updated_at) ou, no resto, comparação por valor sob o orçamento.
+function sameColumn(a, b, budget) {
+  if (--budget.n < 0) return false;
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      const x = a[i];
+      const y = b[i];
+      if (x && y && typeof x === 'object' && typeof y === 'object' && !Array.isArray(x) && 'id' in x) {
+        budget.n -= 2;
+        if (budget.n < 0 || x.id !== y.id || x.updated_at !== y.updated_at) return false;
+      } else if (!sameValue(x, y, budget)) return false;
+    }
+    return true;
+  }
+  return sameValue(a, b, budget);
+}
+
+export function sameRow(a, b, budget = { n: SAME_SLICE_BUDGET }) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  if ('id' in a && a.id !== b.id) return false;
+  let nA = 0;
+  for (const k in a) {
+    nA += 1;
+    if (!(k in b) || !sameColumn(a[k], b[k], budget)) return false;
+  }
+  let nB = 0;
+  for (const _k in b) nB += 1; // eslint-disable-line no-unused-vars
+  budget.n -= nB;
+  return nA === nB && budget.n >= 0;
+}
+
+// O orçamento é da lista inteira (por fatia), não de cada linha.
+export function sameList(a, b, budget = { n: SAME_SLICE_BUDGET }) {
+  if (a === b) return true;
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (!sameRow(a[i], b[i], budget)) return false;
+  return true;
+}
+
+/** Fatias do store que se partilham: listas de linhas e objetos únicos de BD
+ *  (o profile compara-se campo a campo, o que sameRow já faz). `shoes`,
+ *  `raceEvents`… são linhas simples; `impressions` não é uma fatia de dados
+ *  (escreve conjuntos) e fica de fora. */
+const SHARED_LIST_KEYS = ['meals', 'runs', 'gymSessions', 'bodyAssessments', 'waterLogs', 'coachMessages', 'raceEvents',
+  'coachPlans', 'coachGoalProposals', 'coachPlanItems', 'shoes', 'dailyCheckins', 'percentileSnapshots', 'leaderboardEntries', 'goalHistory'];
+const SHARED_ROW_KEYS = ['profile', 'dailySummary'];
+
+/** Devolve `patch` com as fatias iguais às do estado `current` trocadas pela
+ *  referência que lá está. Não muda `patch` (cria um novo se preciso). */
+export function shareUnchanged(patch, current) {
+  if (!patch || typeof patch !== 'object') return patch;
+  let out = patch;
+  const keep = (key, prev) => { if (out === patch) out = { ...patch }; out[key] = prev; };
+  for (const key of SHARED_LIST_KEYS) {
+    if (key in patch && Array.isArray(patch[key]) && sameList(current?.[key], patch[key])) keep(key, current[key]);
+  }
+  for (const key of SHARED_ROW_KEYS) {
+    if (patch[key] && current?.[key] && sameRow(current[key], patch[key])) keep(key, current[key]);
+  }
+  return out;
+}
+
+// ── O histórico de objetivos (#51, F3) ───────────────────────────────────
+const GOAL_KEYS = ['calorie_goal', 'protein_goal', 'carbs_goal', 'fat_goal', 'water_goal_ml'];
+const queryGoalHistory = (userId) => supabase
+  .from('profile_goal_history')
+  .select('valid_from, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, source')
+  .eq('user_id', userId)
+  .order('valid_from', { ascending: true });
+const goalsDiffer = (a, b) => GOAL_KEYS.some((k) => (a?.[k] ?? null) !== (b?.[k] ?? null));
+let goalHistoryReloadSeq = 0;
+
 // O pedido do resumo diário em curso, se houver — ver loadDailySummary.
 // Fora do estado do store porque não é coisa que a UI leia; é só a trava.
 let dailySummaryInFlight = null;
@@ -86,6 +247,11 @@ export const useAppStore = create((set, get) => ({
   gymSessions: [],
   runs: [],
   waterLogs: [],
+  /* Histórico de objetivos (profile_goal_history, bug #51), por valid_from
+     ascendente. Lido no carregamento inicial (fatia 'goalHistory') e relido
+     quando o perfil muda de objetivos — ver reloadGoalHistory. Quem precisa do
+     objetivo de um dia usa goalsResolver (utils/goalHistory.js). */
+  goalHistory: [],
   raceEvents: [],
   coachPlans: [],
   coachPlanItems: [],
@@ -585,6 +751,29 @@ export const useAppStore = create((set, get) => ({
     }
   },
 
+  /* Relê o histórico de objetivos. Corre sozinho quando o perfil muda de
+     objetivos (subscrição no fim deste ficheiro): o trigger da BD escreve a
+     linha nova ao gravar o perfil, e a vista Dia do Nutrição lia-a ao abrir —
+     agora lê-se do store, por isso tem de ser o store a mantê-lo. Em erro
+     (modo demo, rede, tabela ainda por migrar) fica o que lá estava. */
+  reloadGoalHistory: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return null;
+    const seq = ++goalHistoryReloadSeq;
+    try {
+      const { data, error } = await queryGoalHistory(userId);
+      if (error || !data || seq !== goalHistoryReloadSeq) return null;
+      // Outra conta entrou entretanto: não escrever o histórico da anterior.
+      if ((get().session?.user?.id || get().profile?.id) !== userId) return null;
+      const next = shareUnchanged({ goalHistory: data }, get()).goalHistory;
+      if (next !== get().goalHistory) set({ goalHistory: next });
+      return next;
+    } catch (err) {
+      console.warn('reloadGoalHistory falhou:', err);
+      return null;
+    }
+  },
+
   respondToGoalProposal: async (proposalId, accept) => {
     const proposal = (get().coachGoalProposals || []).find(p => p.id === proposalId);
     const updates = accept
@@ -1047,7 +1236,14 @@ export const useAppStore = create((set, get) => ({
     if (!userId) return false;
 
     const { error } = await supabase.from('profiles').update({ ...updates, onboarding_done: true }).eq('id', userId);
-    if (!error) return true;
+    if (!error) {
+      // O set otimista acima corre ANTES do UPDATE: a releitura que a subscrição
+      // do fim do ficheiro dispara ainda não vê a linha que o trigger escreve
+      // agora. Relê-se depois da gravação (a guarda de sequência descarta a
+      // anterior). (2026-10-04)
+      if (GOAL_KEYS.some((k) => k in updates)) get().reloadGoalHistory?.();
+      return true;
+    }
 
     console.error('Erro a gravar onboarding_done (a coluna já existe?):', error);
     if (Object.keys(updates).length === 0) return false;
@@ -1056,6 +1252,7 @@ export const useAppStore = create((set, get) => ({
       console.error('Erro a gravar as respostas do arranque:', fallbackError);
       return false;
     }
+    if (GOAL_KEYS.some((k) => k in updates)) get().reloadGoalHistory?.();
     return true;
   },
 
@@ -1376,7 +1573,7 @@ let loadSeq = 0;
 const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
 
 const EMPTY_DATA = {
-  profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [],
+  profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [], goalHistory: [],
   coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
   percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
@@ -1423,7 +1620,7 @@ export const EVOLUTION_TAB_SLICES = {
   hub: ['profile', 'runs', 'gym', 'meals', 'body', 'races', 'plans', 'planItems', 'shoes'],
   corrida: ['profile', 'runs', 'races', 'plans', 'planItems'],
   ginasio: ['gym', 'runs'],
-  nutricao: ['profile', 'meals', 'body', 'runs', 'gym', 'water', 'plans', 'planItems'],
+  nutricao: ['profile', 'meals', 'body', 'runs', 'gym', 'water', 'plans', 'planItems', 'goalHistory'],
   corpo: ['body', 'gym', 'profile'],
 };
 
@@ -1461,19 +1658,26 @@ async function runInitialLoad(set, get, userId) {
   const jobs = [
     ['profile', supabase.from('profiles').select('*').eq('id', userId).single(),
       (data) => (data ? { profile: data, isAdmin: data.is_admin } : null)],
-    ['meals', supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }),
+    /* meals, runs, workout_sessions, body_assessments e water_logs paginam
+       (fetchAllPaged): o PostgREST corta em 1000 linhas. A ordem é a de
+       sempre, com `id` como desempate para as páginas não se sobreporem. */
+    ['meals', fetchAllPaged(() => supabase.from('meals').select('*, meal_items(*)').eq('user_id', userId).order('date', { ascending: false }).order('created_at', { ascending: false }).order('id', { ascending: false })),
       (data) => ({ meals: list(data) })],
     // Corridas e ginásio juntos: o dailySummaryRefresh toma a primeira lista
     // que chega como ponto de partida — uma sem a outra fazia a segunda
     // parecer treinos novos e pedia um resumo ao modelo em vão.
     ['training', both(
-      supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }),
-      supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }),
+      fetchAllPaged(() => supabase.from('runs').select('*').eq('user_id', userId).order('date', { ascending: false }).order('id', { ascending: false })),
+      fetchAllPaged(() => supabase.from('workout_sessions').select('*, workout_session_sets(*)').eq('user_id', userId).order('date', { ascending: false }).order('id', { ascending: false })),
     ), (data) => ({ runs: list(data[0]), gymSessions: list(data[1]), trainingLoadedFor: userId })],
-    ['bodyAssessments', supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }),
+    ['bodyAssessments', fetchAllPaged(() => supabase.from('body_assessments').select('*').eq('user_id', userId).order('date', { ascending: false }).order('id', { ascending: false })),
       (data) => ({ bodyAssessments: list(data) })],
-    ['waterLogs', supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+    ['waterLogs', fetchAllPaged(() => supabase.from('water_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }).order('id', { ascending: false })),
       (data) => ({ waterLogs: list(data) })],
+    // O histórico de objetivos (#51, F3): lido uma vez com o resto, para a
+    // Nutrição (e as vistas pré-calculadas) o terem pronto antes de entrar.
+    // Poucas linhas (uma por mudança de objetivos): sem paginação.
+    ['goalHistory', queryGoalHistory(userId), (data) => ({ goalHistory: list(data) })],
     ['coachMessages', supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
       (data) => ({ coachMessages: list(data) })],
     ['raceEvents', supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
@@ -1555,7 +1759,7 @@ async function runInitialLoad(set, get, userId) {
     if (!patch) { set({ loadedSlices }); return; }
     sliceSeq[slice] = seq;
     if (typeof patch === 'function') { patch(); set({ loadedSlices }); }
-    else set({ ...patch, loadedSlices });
+    else set({ ...shareUnchanged(patch, get()), loadedSlices });
   };
 
   const tasks = jobs.map(([slice, request, toPatch]) => Promise.resolve(request)
@@ -1599,7 +1803,7 @@ async function runInitialLoad(set, get, userId) {
     if (!patch || !canWrite(slice)) continue;
     sliceSeq[slice] = seq;
     if (typeof patch === 'function') patch();
-    else Object.assign(merged, patch);
+    else Object.assign(merged, shareUnchanged(patch, get()));
   }
   if (loadedSlices) merged.loadedSlices = loadedSlices;
   if (pending === 0) Object.assign(merged, done());
@@ -1618,3 +1822,17 @@ export const selectCoachPendingTopics = (state) => {
   return intervention + plans + goals;
 };
 export const selectCoachHasPendingTopic = (state) => selectCoachPendingTopics(state) > 0;
+
+/* Quando o perfil muda de objetivos (Perfil, proposta aceite, onboarding,
+   refreshProfile…) o trigger da BD escreve uma linha nova em
+   profile_goal_history; relê-se aqui, num só sítio, em vez de em cada
+   caminho que grava o perfil. Só conta uma mudança do MESMO utilizador (a
+   chegada do perfil, null → dados, ou a troca de conta, já trazem o
+   histórico pelo carregamento inicial). (2026-10-04) */
+useAppStore.subscribe((state, prev) => {
+  const a = prev.profile;
+  const b = state.profile;
+  if (!a || !b || a === b || a.id !== b.id) return;
+  if (!goalsDiffer(a, b)) return;
+  state.reloadGoalHistory?.();
+});

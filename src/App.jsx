@@ -203,6 +203,38 @@ function usePreloadOnNavTouch() {
   }, []);
 }
 
+/* Arranca a preparação das vistas da Evolução (2026-10-04, F6 / plano §2.2)
+   num tempo morto: o import() fica DENTRO do callback, por isso nem o código
+   de store/evolution/prepare.js entra no chunk principal nem se pede durante
+   o arranque. Sem requestIdleCallback (Safari), espera 2 s. Devolve a função
+   que cancela (ou para a preparação, se já arrancou). */
+function bootEvolutionPrepare() {
+  let cancelled = false;
+  let stop = null;
+  const go = () => {
+    import('./store/evolution/prepare.js')
+      .then((m) => { if (!cancelled) stop = m.startEvolutionPrepare(); })
+      .catch(() => { /* sem preparação, cada separador calcula no render, como antes */ });
+  };
+  // Chamado como método (window.requestIdleCallback(...)): solto, o Chrome
+  // atira "Illegal invocation".
+  const idle = typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function';
+  const handle = idle ? window.requestIdleCallback(go, { timeout: 5000 }) : setTimeout(go, 2000);
+  return () => {
+    cancelled = true;
+    if (idle) window.cancelIdleCallback?.(handle);
+    else clearTimeout(handle);
+    stop?.();
+    // Mudança de conta / saída (revisão 2026-10-04): a cache larga as listas
+    // da conta anterior (até 30 entradas a segurá-las em memória). Por
+    // import(), para não pôr a cache no chunk principal; se já estiver
+    // carregada (um separador usou-a), resolve logo.
+    import('./store/evolution/cache.js')
+      .then((m) => m.resetEvolutionCache())
+      .catch(() => { /* sem cache carregada, nada a largar */ });
+  };
+}
+
 /* Enquanto o logo de arranque se desenha (~2,5 s), a rede está livre:
    aquece-se o chunk do separador por onde a app vai entrar (uma notificação
    abre ?tab=coach, por exemplo) e, se os dados já disseram que é o primeiro
@@ -673,6 +705,17 @@ export default function App() {
     if (!welcomeReady || import.meta.env.MODE === 'test') return undefined;
     return prefetchScreensWhenIdle(PREFETCH_WHEN_IDLE);
   }, [welcomeReady]);
+  /* Vistas da Evolução prontas antes de entrar (2026-10-04, F6 / plano §2.2,
+     R10). Arranca assim que o arranque acabou (não espera pelo dataPending:
+     cada separador espera só pelas suas fatias, ver prepare.js). O módulo
+     chega por import() dentro do tempo morto, para não pesar no chunk
+     principal. Nos testes não corre sozinho (o import() tardio chegaria
+     depois de o ambiente fechar). Mudar de conta para e volta a arrancar. */
+  const evolutionPrepareUser = !isInitializing && sessionUserId ? sessionUserId : null;
+  useEffect(() => {
+    if (!evolutionPrepareUser || import.meta.env.MODE === 'test') return undefined;
+    return bootEvolutionPrepare();
+  }, [evolutionPrepareUser]);
   const welcomeReadyRef = useRef(false);
   welcomeReadyRef.current = welcomeReady;
   const markCurrentSlotSeen = useCallback(() => {

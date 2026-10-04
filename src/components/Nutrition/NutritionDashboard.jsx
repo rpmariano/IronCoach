@@ -1,11 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAppStore } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
-import { supabase } from '../../lib/supabase';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeNutrientRangeTotals } from '@formulas/micronutrientTotals.ts';
 import DayNutritionCard from './DayNutritionCard';
-import { goalsForDay, dayNutritionSummary, planMacrosForDay } from '../../utils/goalHistory';
+import { goalsResolver, dayNutritionSummary, planMacrosForDay } from '../../utils/goalHistory';
 import { MACROS, MICROS, rangeTotals, mealNutrients } from '../../utils/nutrition';
 import { ChevronDown, ChevronUp, Flame, Beef, Wheat, Droplet, FlaskConical, Utensils } from 'lucide-react';
 import {
@@ -50,19 +49,20 @@ export default function NutritionDashboard() {
      mexe em `lastDashboardTab` — redesenhava este separador (e recalculava os
      seus gráficos) mesmo escondido, que era o jank do deslize. Com o shallow só
      redesenha quando um destes campos muda de referência. */
-  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs, coachPlans, coachPlanItems, nutritionDayFocus } = useAppStore(useShallow((s) => ({
+  const { profile, meals, bodyAssessments, runs, gymSessions, setOpenCreationMode, waterLogs, coachPlans, coachPlanItems, nutritionDayFocus, goalHistory } = useAppStore(useShallow((s) => ({
     profile: s.profile, meals: s.meals, bodyAssessments: s.bodyAssessments, runs: s.runs, gymSessions: s.gymSessions,
     setOpenCreationMode: s.setOpenCreationMode, waterLogs: s.waterLogs, coachPlans: s.coachPlans,
-    coachPlanItems: s.coachPlanItems, nutritionDayFocus: s.nutritionDayFocus,
+    coachPlanItems: s.coachPlanItems, nutritionDayFocus: s.nutritionDayFocus, goalHistory: s.goalHistory,
   })));
   const [activeFilter, setActiveFilter] = useState('semana');
 
   /* A vista "Dia" anda de dia em dia (bug #51): o comido contra o objetivo
      DESSE dia, que vem do histórico (profile_goal_history), não do perfil de
-     hoje. Só se lê quando a vista abre. */
+     hoje. O histórico já vem do store (lido no carregamento inicial e relido
+     quando o perfil muda de objetivos — F3, 2026-10-04); aqui já não há
+     pedido próprio. */
   const today = todayISO();
   const [selectedDay, setSelectedDay] = useState(today);
-  const [goalHistory, setGoalHistory] = useState([]);
 
   // "Ver dias anteriores" no Início: abre aqui, na vista Dia, nesse dia.
   useEffect(() => {
@@ -72,29 +72,11 @@ export default function NutritionDashboard() {
     useAppStore.getState().setNutritionDayFocus(null);
   }, [nutritionDayFocus]);
 
-  useEffect(() => {
-    if (activeFilter !== 'dia' || !profile?.id) return undefined;
-    let alive = true;
-    Promise.resolve(
-      supabase
-        .from('profile_goal_history')
-        .select('valid_from, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, source')
-        .eq('user_id', profile.id)
-        .order('valid_from', { ascending: true }),
-    )
-      .then(({ data, error }) => { if (alive && !error) setGoalHistory(data || []); })
-      // Sem histórico (modo demo, rede), valem os objetivos de hoje.
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [activeFilter, profile?.id, profile?.calorie_goal, profile?.protein_goal, profile?.carbs_goal, profile?.fat_goal, profile?.water_goal_ml]);
-
   const dayView = useMemo(() => {
     if (activeFilter !== 'dia') return null;
-    // Hoje vale o perfil de agora — o histórico carregado pode ainda não ter
-    // a última mudança.
-    const { goals, estimated } = selectedDay >= today
-      ? goalsForDay([], today, profile)
-      : goalsForDay(goalHistory, selectedDay, profile);
+    // Hoje (e o futuro) vale o perfil de agora — o histórico carregado pode
+    // ainda não ter a última mudança; o resolvedor já trata disso.
+    const { goals, estimated } = goalsResolver(goalHistory, profile, today)(selectedDay);
     return {
       rows: dayNutritionSummary({ meals, waterLogs, dayISO: selectedDay, goals }),
       estimated,

@@ -43,6 +43,47 @@ export function goalsForDay(history, dayISO, profile) {
   return { goals: pick(row), estimated: row.source === 'inicial' };
 }
 
+/** Primeiro dia em que o histórico de objetivos é de verdade (a migração
+ *  20261003224956 correu a 2026-10-03). Antes disso o que há é uma estimativa
+ *  — a linha 'inicial' copia os valores de hoje —, por isso qualquer dia
+ *  anterior é «aproximado», seja qual for o `source` da linha que o cobre.
+ *  Sem esta regra, quem nunca mudou de objetivos ficava com `estimated` para
+ *  sempre (a linha 'inicial' é a única que tem) e a Nutrição dizia
+ *  «objetivos aproximados» também nos dias posteriores a 3 de outubro
+ *  (plano da Evolução, F3, 2026-10-04). */
+export const GOAL_HISTORY_SINCE = '2026-10-03';
+
+/**
+ * O resolvedor dos objetivos de um dia, para quem precisa de muitos dias de
+ * seguida (o resumo semanal/mensal da Nutrição): ordena e converte as datas
+ * do histórico UMA vez, e responde por dia.
+ *   goalsResolver(history, profile, todayISO) → (dayISO) => { goals, estimated }
+ * - Hoje e o futuro valem o perfil de agora: o histórico carregado pode ainda
+ *   não ter a última mudança, e é o perfil que manda.
+ * - Dias passados: a última linha que começou até ao fim desse dia (Lisboa);
+ *   antes da primeira linha, a primeira (estimativa); sem histórico nenhum
+ *   (a carregar, modo demo), o perfil.
+ * - `estimated` = dia < GOAL_HISTORY_SINCE, independentemente do source.
+ */
+export function goalsResolver(history, profile, todayISO) {
+  const rows = (history || [])
+    .filter((r) => r?.valid_from)
+    .map((r) => ({ r, day: lisbonDate(r.valid_from) }))
+    .sort((a, b) => String(a.r.valid_from).localeCompare(String(b.r.valid_from)));
+  const current = pick(profile);
+  return (dayISO) => {
+    const estimated = dayISO < GOAL_HISTORY_SINCE;
+    if (todayISO && dayISO >= todayISO) return { goals: current, estimated };
+    if (!rows.length) return { goals: current, estimated };
+    let row = rows[0].r;
+    for (const x of rows) {
+      if (x.day <= dayISO) row = x.r;
+      else break;
+    }
+    return { goals: pick(row), estimated };
+  };
+}
+
 /* Atingido ou não. Calorias, hidratos e gordura têm a mesma régua do resto
    da app (@formulas/nutritionCompliance.ts: 90-115% é dentro); proteína e
    água não têm teto — passar do objetivo não é falhar. */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { goalsForDay, dayNutritionSummary, planMacrosForDay, DAY_GOAL_DEFAULTS } from './goalHistory';
+import { goalsForDay, goalsResolver, GOAL_HISTORY_SINCE, dayNutritionSummary, planMacrosForDay, DAY_GOAL_DEFAULTS } from './goalHistory';
 
 /* Bug #51: o objetivo de um dia passado vem do histórico, não do perfil de
    hoje — e diz-se se foi atingido. */
@@ -70,5 +70,56 @@ describe('planMacrosForDay', () => {
     ];
     expect(planMacrosForDay({ coachPlans, coachPlanItems, dayISO: '2026-10-02' })).toEqual({ kcal: 2250, protein: 150, carbs: 270, fat: 62 });
     expect(planMacrosForDay({ coachPlans, coachPlanItems, dayISO: '2026-10-05' })).toBe(null);
+  });
+});
+
+describe('goalsResolver (F3, 2026-10-04)', () => {
+  const PROFILE = { calorie_goal: 2400, protein_goal: 160, carbs_goal: 220, fat_goal: 80, water_goal_ml: 3000 };
+  const H = [
+    { valid_from: '2026-10-03T10:00:00Z', calorie_goal: 2000, protein_goal: 145, carbs_goal: 210, fat_goal: 65, water_goal_ml: 2500, source: 'inicial' },
+    { valid_from: '2026-10-10T10:00:00Z', calorie_goal: 2200, protein_goal: 150, carbs_goal: 210, fat_goal: 65, water_goal_ml: 2500, source: 'perfil' },
+  ];
+
+  it('a data de arranque do histórico é 2026-10-03', () => {
+    expect(GOAL_HISTORY_SINCE).toBe('2026-10-03');
+  });
+
+  it('cada dia vale a última linha que começou até ao fim dele', () => {
+    const r = goalsResolver(H, PROFILE, '2026-10-20');
+    expect(r('2026-10-05').goals.calorie_goal).toBe(2000);
+    expect(r('2026-10-10').goals.calorie_goal).toBe(2200);
+    expect(r('2026-10-19').goals.calorie_goal).toBe(2200);
+  });
+
+  it('estimated é só dia < 2026-10-03, seja qual for o source da linha', () => {
+    const r = goalsResolver(H, PROFILE, '2026-10-20');
+    expect(r('2026-10-02').estimated).toBe(true);
+    expect(r('2026-08-01').estimated).toBe(true);
+    // A linha 'inicial' cobre o dia 3 e 4, mas já não é «aproximado».
+    expect(r('2026-10-03').estimated).toBe(false);
+    expect(r('2026-10-05').estimated).toBe(false);
+  });
+
+  it('antes da primeira linha vale a primeira (estimativa)', () => {
+    const r = goalsResolver(H, PROFILE, '2026-10-20');
+    expect(r('2026-09-01').goals.calorie_goal).toBe(2000);
+  });
+
+  it('hoje e o futuro usam o perfil, mesmo que o histórico ainda não tenha a mudança', () => {
+    const r = goalsResolver(H, PROFILE, '2026-10-20');
+    expect(r('2026-10-20').goals.calorie_goal).toBe(2400);
+    expect(r('2026-10-25').goals.calorie_goal).toBe(2400);
+    expect(r('2026-10-20').estimated).toBe(false);
+  });
+
+  it('sem histórico valem os objetivos do perfil; vazios caem nos valores por omissão', () => {
+    expect(goalsResolver([], PROFILE, '2026-10-20')('2026-10-05').goals.calorie_goal).toBe(2400);
+    expect(goalsResolver(undefined, { protein_goal: null }, '2026-10-20')('2026-10-05').goals.protein_goal).toBe(DAY_GOAL_DEFAULTS.protein_goal);
+    expect(goalsResolver([], PROFILE, '2026-10-20')('2026-09-05').estimated).toBe(true);
+  });
+
+  it('não depende da ordem em que o histórico chega', () => {
+    const r = goalsResolver([...H].reverse(), PROFILE, '2026-10-20');
+    expect(r('2026-10-12').goals.calorie_goal).toBe(2200);
   });
 });

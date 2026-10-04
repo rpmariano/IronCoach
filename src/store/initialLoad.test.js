@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const net = { plan: {}, calls: [] };
 function builder(table) {
   const b = {};
-  for (const m of ['select', 'eq', 'order', 'gte', 'lte', 'in', 'neq', 'limit']) b[m] = () => b;
+  for (const m of ['select', 'eq', 'order', 'gte', 'lte', 'in', 'neq', 'limit', 'range']) b[m] = () => b;
   // A resposta fica decidida quando o pedido sai, como na rede a sério.
   const cfg = net.plan[table] || {};
   const result = () => new Promise((resolve) => {

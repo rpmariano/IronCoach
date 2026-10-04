@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const net = { plan: {} };
 function builder(table) {
   const b = {};
-  for (const m of ['select', 'eq', 'order', 'gte', 'lte', 'in', 'neq', 'limit']) b[m] = () => b;
+  for (const m of ['select', 'eq', 'order', 'gte', 'lte', 'in', 'neq', 'limit', 'range']) b[m] = () => b;
   const cfg = net.plan[table] || {};
   const result = () => new Promise((resolve) => {
     const r = { data: cfg.data ?? (table === 'profiles' ? { id: 'u1' } : []), error: cfg.error ?? null };
