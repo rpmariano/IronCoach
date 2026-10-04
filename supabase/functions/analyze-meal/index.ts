@@ -25,8 +25,8 @@ import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "..
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
-  applyPantry, type CarolQuestion, type CookingFact, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
-  parseCookingFacts, parseQuestions, pickMealItem, splitKnownWritten,
+  applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
+  parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 
@@ -480,7 +480,11 @@ async function analyzePhotosWithItems(
   if (!items) {
     throw new Error("A análise não devolveu todos os alimentos que escreveste. Tenta novamente.");
   }
-  return { items, usage, facts, questions };
+  // Os escritos ficam com o nome do atleta — as perguntas seguem-no.
+  const pairs = raw
+    .filter((r) => Number.isInteger(r.source_index) && r.source_index >= 1 && r.source_index <= written.length)
+    .map((r): [string, string] => [String(r.name), written[r.source_index - 1].name]);
+  return { items, usage, facts, questions: remapQuestionItems(questions, pairs) };
 }
 
 // Bug #48 (fase C): um alimento que o atleta adiciona à despensa — por
@@ -625,7 +629,9 @@ async function analyzeManualItems(
     name: items[i].name.slice(0, 120),
     quantity_grams: items[i].grams != null ? items[i].grams : it.quantity_grams,
   }));
-  return { items: merged, usage, facts, questions };
+  // O nome passa a ser o escrito — as perguntas seguem-no.
+  const pairs = rawItems.map((it, i): [string, string] => [String(it.name), items[i].name.slice(0, 120)]);
+  return { items: merged, usage, facts, questions: remapQuestionItems(questions, pairs) };
 }
 
 // Espelha DIETARY_RESTRICTION_INFO em supabase/functions/coach-chat/index.ts
@@ -1194,7 +1200,8 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
     // Bugs #48/#52 (fase A): o que ela já sabe deste atleta — a despensa e
     // como ele cozinha. Nunca rejeita (analyze-meal/pantry.ts).
-    const pantryPromise = fetchPantry(sb, userId);
+    // O modo pantry_food não a usa (revisão pré-master).
+    const pantryPromise = body.mode === "pantry_food" ? Promise.resolve(EMPTY_PANTRY) : fetchPantry(sb, userId);
 
     // ── Modo "pantry_food": confirmar um alimento para a despensa (fase C) ──
     // Não grava nada: devolve o que a Carol leu, e a app grava depois de o
@@ -1290,7 +1297,17 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
       const nowISO = new Date().toISOString();
       const byId = new Map(answered.map((q) => [q.id, q]));
-      const updatedQuestions = questions.map((q) => (byId.has(q.id) ? { ...q, answer: byId.get(q.id)!.answer, answered_at: nowISO } : q));
+      // Um alimento reestimado ganhou a resposta no nome: uma pergunta ainda
+      // por responder sobre ele passa a apontar para o nome novo — senão,
+      // respondida mais tarde, já não o encontrava (revisão pré-master).
+      const renamed = new Map(
+        [...changes.values()].map((c) => [foodKey(c.item.name), `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120)]),
+      );
+      const updatedQuestions = questions.map((q) => {
+        if (byId.has(q.id)) return { ...q, answer: byId.get(q.id)!.answer, answered_at: nowISO };
+        const to = !q.answer ? renamed.get(foodKey(q.item_name)) : undefined;
+        return to ? { ...q, item_name: to } : q;
+      });
       const { error: qErr } = await sb.from("meals").update({ carol_questions: updatedQuestions }).eq("id", meal.id);
       if (qErr) return jsonResponse({ error: `Falha a gravar as respostas: ${qErr.message}` }, 500);
 
@@ -1340,7 +1357,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       // Bugs #48/#52 (fase A): um alimento da despensa entra com os valores
       // dela — a Carol já o conhece; só os outros vão ao Gemini, com o que
       // ela sabe de como ele cozinha. Todos conhecidos: nenhuma estimativa.
-      const pantry = await pantryPromise;
+      const pantry = await withWrittenFoods(sb, userId, await pantryPromise, items.map((i) => i.name));
       const { known, unknown } = splitKnownWritten(items, pantry.byKey);
       let estimated: { items: unknown[]; usage: GeminiUsage; facts: CookingFact[]; questions: CarolQuestion[] };
       try {
@@ -1548,7 +1565,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // Bugs #48/#52 (fase A): ela recebe a despensa e como ele cozinha; um
     // alimento que reconhece da despensa fica com os valores dela, e um
     // rótulo lido nas fotos entra logo na despensa.
-    const pantry = await pantryPromise;
+    const pantry = await withWrittenFoods(sb, userId, await pantryPromise, written.map((w) => w.name));
     const knowledge = knowledgeSection(pantry.foods, pantry.rules);
     // deno-lint-ignore no-explicit-any
     let items: any[], usage: GeminiUsage, facts: CookingFact[], rawQuestions: unknown;

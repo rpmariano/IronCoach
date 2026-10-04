@@ -18,6 +18,7 @@ vi.mock('../../lib/supabase', () => ({
         eq: () => chain,
         select: () => chain,
         single: () => Promise.resolve({ data: { id: 'novo' }, error: null }),
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
         then: (resolve) => resolve({ error: null }),
       };
       return chain;

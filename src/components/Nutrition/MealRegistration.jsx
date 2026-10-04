@@ -51,10 +51,14 @@ function getDefaultMealType() {
 }
 
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
-  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab, pantryFoods, pantryLoaded, loadPantry } = useAppStore();
+  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab, session, pantryFoods: storedPantry, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
   // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
   // desta refeição. Um alimento da despensa já não é analisado.
-  useEffect(() => { if (!pantryLoaded) loadPantry?.(); }, [pantryLoaded, loadPantry]);
+  // A que está em memória pode ser de outra conta (sessão trocada sem recarregar).
+  const myId = session?.user?.id || profile?.id;
+  const pantryIsMine = !myId || pantryUserId === myId;
+  const pantryFoods = pantryIsMine ? storedPantry : [];
+  useEffect(() => { if (!pantryLoaded || !pantryIsMine) loadPantry?.(); }, [pantryLoaded, pantryIsMine, loadPantry]);
   const [initialTab] = useState(activeTab);
 
   

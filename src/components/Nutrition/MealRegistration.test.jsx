@@ -888,7 +888,16 @@ describe('MealRegistration — a despensa ao escrever', () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
     localStorage.clear();
-    useAppStore.setState({ profile: PROFILE, meals: [], pantryFoods: FOODS, pantryLoaded: true });
+    useAppStore.setState({ profile: PROFILE, meals: [], pantryFoods: FOODS, pantryLoaded: true, pantryUserId: PROFILE.id });
+  });
+
+  // Revisão pré-master: outra conta no mesmo separador não herda a despensa.
+  it('a despensa de outra conta não aparece nas sugestões', () => {
+    useAppStore.setState({ pantryUserId: 'outra-conta', loadPantry: vi.fn() });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'io' } });
+    expect(screen.queryByTestId('pantry-suggestions')).not.toBeInTheDocument();
+    expect(useAppStore.getState().loadPantry).toHaveBeenCalled();
   });
 
   it('ao escrever, sugere da despensa; tocar junta com a porção habitual e diz que não é analisado', () => {

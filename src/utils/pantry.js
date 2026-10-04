@@ -23,7 +23,10 @@ export const EDITABLE_NUTRIENTS = [
   { key: 'fat_per_100g', label: 'gordura g' },
 ];
 
-const round1 = (n) => Math.round(Number(n) * 10) / 10;
+/* O teclado português escreve "3,5": Number("3,5") é NaN e gravava-se 0
+   (revisão pré-master). */
+export const toNumber = (v) => Number(String(v ?? '').trim().replace(',', '.'));
+const round1 = (n) => Math.round(toNumber(n) * 10) / 10;
 
 /** "1 fatia, 40 g" · "170 g" · "" */
 export function portionText(food) {
@@ -121,14 +124,14 @@ export async function confirmPantryFood({ description = null, images = [] }) {
  */
 export async function savePantryFood({ userId, values, confirmed, existing = null, source = 'manual' }) {
   const changed = !confirmed || EDITABLE_NUTRIENTS.some(({ key }) => round1(values[key]) !== round1(confirmed[key]))
-    || Number(values.portion_grams) !== Number(confirmed.portion_grams);
+    || toNumber(values.portion_grams) !== toNumber(confirmed.portion_grams);
   const row = {
     user_id: userId,
     name: String(values.name || '').trim().slice(0, 120),
     name_key: foodKey(values.name),
-    portion_grams: Number(values.portion_grams) > 0 ? Number(values.portion_grams) : null,
+    portion_grams: toNumber(values.portion_grams) > 0 ? toNumber(values.portion_grams) : null,
     portion_label: String(values.portion_label || '').trim().slice(0, 40) || null,
-    ...Object.fromEntries(NUTRIENTS.map((k) => [k, Math.max(0, Number(values[k] ?? confirmed?.[k] ?? 0) || 0)])),
+    ...Object.fromEntries(NUTRIENTS.map((k) => [k, Math.max(0, toNumber(values[k] ?? confirmed?.[k] ?? 0) || 0)])),
     in_pantry: true,
     edited_by_athlete: (existing?.edited_by_athlete ?? false) || (existing ? changed : changed && !!confirmed),
     updated_at: new Date().toISOString(),
@@ -139,8 +142,12 @@ export async function savePantryFood({ userId, values, confirmed, existing = nul
     if (error) throw new Error(error.code === '23505' ? 'Já tens um alimento com esse nome na despensa.' : error.message);
     return data;
   }
+  // Já vista numa refeição (fora da despensa)? Entra, sem perder as vezes
+  // que já apareceu nem de onde veio (revisão pré-master).
+  const { data: prev } = await supabase.from('athlete_foods')
+    .select('id, times_seen, source').eq('user_id', userId).eq('name_key', row.name_key).maybeSingle();
   const { data, error } = await supabase.from('athlete_foods')
-    .upsert({ ...row, source, times_seen: 0 }, { onConflict: 'user_id,name_key' })
+    .upsert({ ...row, source: prev?.source && prev.source !== 'refeicao' ? prev.source : source, times_seen: prev?.times_seen ?? 0 }, { onConflict: 'user_id,name_key' })
     .select().single();
   if (error) throw new Error(error.message);
   return data;

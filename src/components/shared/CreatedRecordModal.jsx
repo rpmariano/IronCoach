@@ -162,7 +162,7 @@ export default function CreatedRecordModal() {
         {hadQuestions && (
           <CarolQuestions
             meal={record}
-            onAnswered={(updated) => setNewlyCreatedRecord({ type: 'meal', record: updated })}
+            onAnswered={(updated) => setNewlyCreatedRecord({ ...newlyCreatedRecord, record: updated })}
           />
         )}
 

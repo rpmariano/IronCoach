@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 /* Bugs #48/#52, fase C: a despensa na app — sugestões, habituais, e o que
    se grava quando o atleta ajusta à mão. */
 
-const db = vi.hoisted(() => ({ calls: [], result: { data: { id: 'f1' }, error: null } }));
+const db = vi.hoisted(() => ({ calls: [], prev: null, result: { data: { id: 'f1' }, error: null } }));
 vi.mock('../lib/supabase', () => ({
   supabase: {
     from: (table) => {
@@ -15,6 +15,7 @@ vi.mock('../lib/supabase', () => ({
         eq: () => chain,
         select: () => chain,
         single: () => Promise.resolve(db.result),
+        maybeSingle: () => Promise.resolve({ data: db.prev, error: null }),
         then: (resolve) => resolve({ error: null }),
       };
       return chain;
@@ -82,7 +83,7 @@ describe('textos', () => {
 });
 
 describe('savePantryFood', () => {
-  beforeEach(() => { db.calls.length = 0; });
+  beforeEach(() => { db.calls.length = 0; db.prev = null; });
   const confirmed = { name: 'Pão de mistura (Lidl)', portion_grams: 40, portion_label: '1 fatia', calories_per_100g: 245, protein_per_100g: 9, carbs_per_100g: 45, fat_per_100g: 3, fiber_per_100g: 6 };
 
   it('novo, sem mexer nos valores da Carol: entra na despensa, não ajustado', async () => {
@@ -109,6 +110,22 @@ describe('savePantryFood', () => {
 
   it('sem nome não grava', async () => {
     await expect(savePantryFood({ userId: 'u1', values: { ...confirmed, name: '  ' }, confirmed })).rejects.toThrow('Dá um nome');
+  });
+
+  // Revisão pré-master (2026-10-04).
+  it('aceita a vírgula decimal do teclado português', async () => {
+    await savePantryFood({ userId: 'u1', values: { ...confirmed, portion_grams: '37,5', fat_per_100g: '3,5' }, confirmed });
+    expect(db.calls[0].row).toMatchObject({ portion_grams: 37.5, fat_per_100g: 3.5, edited_by_athlete: true });
+  });
+
+  it('um alimento já visto numa refeição entra sem perder as vezes que apareceu', async () => {
+    db.prev = { id: 'f9', times_seen: 3, source: 'refeicao' };
+    await savePantryFood({ userId: 'u1', values: { ...confirmed }, confirmed });
+    expect(db.calls[0].row).toMatchObject({ times_seen: 3, source: 'manual', in_pantry: true });
+    db.calls.length = 0;
+    db.prev = { id: 'f9', times_seen: 1, source: 'rotulo' };
+    await savePantryFood({ userId: 'u1', values: { ...confirmed }, confirmed });
+    expect(db.calls[0].row).toMatchObject({ times_seen: 1, source: 'rotulo' });
   });
 });
 

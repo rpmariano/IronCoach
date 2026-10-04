@@ -373,3 +373,46 @@ export function parseQuestions(
   }
   return out;
 }
+
+/**
+ * O servidor troca o nome que o Gemini deu a um alimento escrito pelo que o
+ * atleta escreveu (mergePhotoAndWrittenItems, analyzeManualItems) — e as
+ * perguntas vinham presas ao nome do Gemini, por isso parseQuestions não as
+ * encontrava e caíam (revisão pré-master de 2026-10-04). Aqui passam para o
+ * nome final. `pairs`: [nome do Gemini, nome final].
+ */
+export function remapQuestionItems(questions: unknown, pairs: [string, string][]): unknown {
+  if (!Array.isArray(questions)) return questions;
+  const byKey = new Map(pairs.map(([from, to]) => [foodKey(from), to]));
+  // deno-lint-ignore no-explicit-any
+  return questions.map((q: any) => {
+    const to = byKey.get(foodKey(q?.item_name));
+    return to ? { ...q, item_name: to } : q;
+  });
+}
+
+/**
+ * A lista que vai no pedido tem só os 80 mais usados (PANTRY_PROMPT_LIMIT),
+ * mas a app conta como conhecido tudo o que está na despensa: um alimento
+ * escrito fora dos 80 dizia "já conhecido" e era estimado na mesma (revisão
+ * pré-master). Junta-se ao mapa o que falta, procurado pelo nome. Nunca
+ * rejeita.
+ */
+// deno-lint-ignore no-explicit-any
+export async function withWrittenFoods(sb: any, userId: string, pantry: Pantry, names: string[]): Promise<Pantry> {
+  const missing = [...new Set(names.map(foodKey).filter((k) => k && !pantry.byKey.has(k)))];
+  if (!missing.length) return pantry;
+  try {
+    const { data, error } = await sb.from("athlete_foods")
+      .select("name, name_key, portion_grams, portion_label, times_seen, in_pantry, source, edited_by_athlete, " + NUTRIENT_COLUMNS.join(", "))
+      .eq("user_id", userId)
+      .eq("in_pantry", true)
+      .in("name_key", missing);
+    if (error || !data?.length) return pantry;
+    const byKey = new Map(pantry.byKey);
+    for (const f of data as PantryFood[]) byKey.set(f.name_key, f);
+    return { ...pantry, byKey };
+  } catch {
+    return pantry;
+  }
+}

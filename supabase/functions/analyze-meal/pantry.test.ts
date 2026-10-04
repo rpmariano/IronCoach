@@ -2,7 +2,7 @@ import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
   applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
-  parseCookingFacts, parseQuestions, pickMealItem, splitKnownWritten,
+  parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten, withWrittenFoods,
 } from "./pantry.ts";
 
 // Bugs #48/#52, fase A: a despensa e como ele cozinha.
@@ -225,4 +225,31 @@ Deno.test("learnRules: devolve como cada regra ficou; uma falha devolve vazio", 
   assertEquals(upserts.athlete_food_rules[0].opts, { onConflict: "user_id,topic_key" });
   const { sb: falha } = makeSb([], [], true);
   assertEquals(await learnRules(falha, "u1", [{ topic: "fritos", value: "azeite" }], "resposta", NOW), []);
+});
+
+// Revisão pré-master (2026-10-04): as perguntas seguem o nome final.
+Deno.test("remapQuestionItems: uma pergunta presa ao nome do Gemini passa para o nome que o atleta escreveu", () => {
+  const raw = [pergunta({ item_name: "Ovos estrelados" }), pergunta({ topic: "molho", item_name: "Bife" })];
+  const remapped = remapQuestionItems(raw, [["Ovos estrelados", "2 ovos estrelados"]]) as Array<{ item_name: string }>;
+  assertEquals(remapped.map((q) => q.item_name), ["2 ovos estrelados", "Bife"]);
+  // E assim parseQuestions já a encontra.
+  assertEquals(parseQuestions(remapped, [estimado("2 ovos estrelados", 196)], [], ids).length, 1);
+  assertEquals(remapQuestionItems("nada", []), "nada");
+});
+
+// Revisão pré-master: o pedido leva só os 80 mais usados, mas um escrito
+// fora deles que está na despensa também é conhecido.
+Deno.test("withWrittenFoods: vai buscar à despensa os escritos que não vieram nos 80", async () => {
+  const aveia: PantryFood = { ...iogurte, name: "Aveia em flocos", name_key: "aveia em flocos", times_seen: 1, calories_per_100g: 372 };
+  const pantry = { foods: [iogurte], rules: [], byKey: new Map(byKey) };
+  const { sb } = makeSb([aveia]);
+  const mais = await withWrittenFoods(sb, "u1", pantry, ["Aveia em Flocos", "Iogurte grego 0%"]);
+  assertEquals([...mais.byKey.keys()].sort(), ["aveia em flocos", "iogurte grego 0%"]);
+  assertEquals(mais.foods, [iogurte]); // o que vai no pedido não muda
+  assertEquals(splitKnownWritten([{ name: "Aveia em Flocos", grams: 40 }], mais.byKey).known.size, 1);
+  // Todos já no mapa: nem pergunta à base de dados.
+  const semPedido = { from: () => { throw new Error("não devia perguntar"); } };
+  assertEquals(await withWrittenFoods(semPedido, "u1", pantry, ["Iogurte grego 0%"]), pantry);
+  // Uma falha devolve a despensa como estava.
+  assertEquals(await withWrittenFoods(semPedido, "u1", pantry, ["Banana"]), pantry);
 });

@@ -96,6 +96,9 @@ export const useAppStore = create((set, get) => ({
   pantryFoods: [],
   foodRules: [],
   pantryLoaded: false,
+  // De quem é a despensa carregada — outra conta no mesmo separador não
+  // herda as sugestões da anterior (revisão pré-master).
+  pantryUserId: null,
   // Check-ins diários (Fase 2 de specs/carol-omnisciencia-omnipresenca.md):
   // os últimos 120 dias, para o ciclo ter margem. Um por dia.
   dailyCheckins: [],
@@ -545,13 +548,16 @@ export const useAppStore = create((set, get) => ({
         supabase.from('athlete_foods').select('*').eq('user_id', userId).eq('in_pantry', true).order('times_seen', { ascending: false }),
         supabase.from('athlete_food_rules').select('*').eq('user_id', userId).order('updated_at', { ascending: false }),
       ]);
+      const same = get().pantryUserId === userId;
       set({
-        pantryFoods: foods?.error ? get().pantryFoods : (foods?.data || []),
-        foodRules: rules?.error ? get().foodRules : (rules?.data || []),
+        pantryFoods: foods?.error ? (same ? get().pantryFoods : []) : (foods?.data || []),
+        foodRules: rules?.error ? (same ? get().foodRules : []) : (rules?.data || []),
         pantryLoaded: !foods?.error && !rules?.error,
+        pantryUserId: userId,
       });
     } catch (e) {
       console.warn('Despensa não lida', e);
+      if (get().pantryUserId !== userId) set({ pantryFoods: [], foodRules: [], pantryUserId: userId });
     }
   },
   setPantryFoods: (pantryFoods) => set({ pantryFoods }),
