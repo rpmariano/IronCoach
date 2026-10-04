@@ -145,7 +145,9 @@ export async function savePantryFood({ userId, values, confirmed, existing = nul
   // Já vista numa refeição (fora da despensa)? Entra, sem perder as vezes
   // que já apareceu nem de onde veio (revisão pré-master).
   const { data: prev } = await supabase.from('athlete_foods')
-    .select('id, times_seen, source').eq('user_id', userId).eq('name_key', row.name_key).maybeSingle();
+    .select('id, times_seen, source, in_pantry').eq('user_id', userId).eq('name_key', row.name_key).maybeSingle();
+  // Já está na despensa: não se escreve por cima sem ele ver o que lá está.
+  if (prev?.in_pantry) throw new Error('Já tens este alimento na despensa — abre-o lá para o ajustar.');
   const { data, error } = await supabase.from('athlete_foods')
     .upsert({ ...row, source: prev?.source && prev.source !== 'refeicao' ? prev.source : source, times_seen: prev?.times_seen ?? 0 }, { onConflict: 'user_id,name_key' })
     .select().single();

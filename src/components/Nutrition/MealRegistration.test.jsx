@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import MealRegistration from './MealRegistration';
 import { dispensarConfirmacao } from '../../test/recordConfirmation';
@@ -892,6 +892,9 @@ describe('MealRegistration — a despensa ao escrever', () => {
   });
 
   // Revisão pré-master: outra conta no mesmo separador não herda a despensa.
+  const realLoadPantry = useAppStore.getState().loadPantry;
+  afterEach(() => useAppStore.setState({ loadPantry: realLoadPantry }));
+
   it('a despensa de outra conta não aparece nas sugestões', () => {
     useAppStore.setState({ pantryUserId: 'outra-conta', loadPantry: vi.fn() });
     render(<MealRegistration onClose={onClose} />);

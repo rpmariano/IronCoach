@@ -13,7 +13,13 @@ import { foodSubline, foodKey, ruleInfo, visibleRules } from '../../utils/pantry
    cozinha, o que ela já não pergunta. Tocar num alimento abre-o para
    ajustar; "+" adiciona por descrição, foto do rótulo ou galeria. */
 export default function PantrySection() {
-  const { pantryFoods, foodRules, loadPantry } = useAppStore();
+  const { pantryFoods: storedFoods, foodRules: storedRules, pantryUserId, session, profile, loadPantry } = useAppStore();
+  // A despensa em memória pode ser de outra conta (sessão trocada sem
+  // recarregar): até chegar a de quem está, fica vazia.
+  const myId = session?.user?.id || profile?.id;
+  const mine = !myId || pantryUserId === myId;
+  const pantryFoods = mine ? storedFoods : null;
+  const foodRules = mine ? storedRules : null;
   const [tab, setTab] = useState('alimentos');
   const [query, setQuery] = useState('');
   const [foodSheet, setFoodSheet] = useState(null); // { food } | { food: null } (novo)

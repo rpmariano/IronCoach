@@ -480,11 +480,19 @@ async function analyzePhotosWithItems(
   if (!items) {
     throw new Error("A análise não devolveu todos os alimentos que escreveste. Tenta novamente.");
   }
-  // Os escritos ficam com o nome do atleta — as perguntas seguem-no.
+  // Os escritos ficam com o nome do atleta — as perguntas seguem-no. Só o
+  // primeiro de cada source_index, como em mergePhotoAndWrittenItems.
+  const seen = new Set<number>();
   const pairs = raw
-    .filter((r) => Number.isInteger(r.source_index) && r.source_index >= 1 && r.source_index <= written.length)
-    .map((r): [string, string] => [String(r.name), written[r.source_index - 1].name]);
-  return { items, usage, facts, questions: remapQuestionItems(questions, pairs) };
+    .filter((r) => {
+      const i = Number(r.source_index);
+      if (!Number.isInteger(i) || i < 1 || i > written.length || seen.has(i)) return false;
+      seen.add(i);
+      return true;
+    })
+    .map((r): [string, string] => [String(r.name), written[Number(r.source_index) - 1].name.slice(0, 120)]);
+  const finalNames = items.map((it) => String((it as { name?: unknown }).name ?? ""));
+  return { items, usage, facts, questions: remapQuestionItems(questions, pairs, finalNames) };
 }
 
 // Bug #48 (fase C): um alimento que o atleta adiciona à despensa — por
@@ -631,7 +639,7 @@ async function analyzeManualItems(
   }));
   // O nome passa a ser o escrito — as perguntas seguem-no.
   const pairs = rawItems.map((it, i): [string, string] => [String(it.name), items[i].name.slice(0, 120)]);
-  return { items: merged, usage, facts, questions: remapQuestionItems(questions, pairs) };
+  return { items: merged, usage, facts, questions: remapQuestionItems(questions, pairs, merged.map((m) => m.name)) };
 }
 
 // Espelha DIETARY_RESTRICTION_INFO em supabase/functions/coach-chat/index.ts

@@ -235,21 +235,33 @@ Deno.test("remapQuestionItems: uma pergunta presa ao nome do Gemini passa para o
   // E assim parseQuestions já a encontra.
   assertEquals(parseQuestions(remapped, [estimado("2 ovos estrelados", 196)], [], ids).length, 1);
   assertEquals(remapQuestionItems("nada", []), "nada");
+  // Uma pergunta que já aponta para um alimento da refeição não muda: o
+  // "Arroz" da foto não passa a ser o "arroz basmati" escrito.
+  const arroz = [pergunta({ topic: "arroz", item_name: "Arroz" })];
+  const fica = remapQuestionItems(arroz, [["Arroz", "arroz basmati"]], ["Arroz", "arroz basmati"]) as Array<{ item_name: string }>;
+  assertEquals(fica[0].item_name, "Arroz");
 });
 
 // Revisão pré-master: o pedido leva só os 80 mais usados, mas um escrito
 // fora deles que está na despensa também é conhecido.
 Deno.test("withWrittenFoods: vai buscar à despensa os escritos que não vieram nos 80", async () => {
   const aveia: PantryFood = { ...iogurte, name: "Aveia em flocos", name_key: "aveia em flocos", times_seen: 1, calories_per_100g: 372 };
-  const pantry = { foods: [iogurte], rules: [], byKey: new Map(byKey) };
+  // 80 no pedido: pode haver mais na despensa.
+  const outros = Array.from({ length: 79 }, (_, i) => ({ ...iogurte, name: `Outro ${i}`, name_key: `outro ${i}` }));
+  const foods = [iogurte, ...outros];
+  const pantry = { foods, rules: [], byKey: new Map(foods.map((f) => [f.name_key, f])) };
   const { sb } = makeSb([aveia]);
   const mais = await withWrittenFoods(sb, "u1", pantry, ["Aveia em Flocos", "Iogurte grego 0%"]);
-  assertEquals([...mais.byKey.keys()].sort(), ["aveia em flocos", "iogurte grego 0%"]);
-  assertEquals(mais.foods, [iogurte]); // o que vai no pedido não muda
+  assert(mais.byKey.has("aveia em flocos"));
+  assertEquals(mais.byKey.size, 81);
+  assertEquals(mais.foods, foods); // o que vai no pedido não muda
   assertEquals(splitKnownWritten([{ name: "Aveia em Flocos", grams: 40 }], mais.byKey).known.size, 1);
   // Todos já no mapa: nem pergunta à base de dados.
   const semPedido = { from: () => { throw new Error("não devia perguntar"); } };
   assertEquals(await withWrittenFoods(semPedido, "u1", pantry, ["Iogurte grego 0%"]), pantry);
   // Uma falha devolve a despensa como estava.
   assertEquals(await withWrittenFoods(semPedido, "u1", pantry, ["Banana"]), pantry);
+  // Menos de 80: o mapa já tem a despensa toda — nem pergunta.
+  const pequena = { foods: [iogurte], rules: [], byKey: new Map(byKey) };
+  assertEquals(await withWrittenFoods(semPedido, "u1", pequena, ["Banana"]), pequena);
 });

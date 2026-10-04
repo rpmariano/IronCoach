@@ -127,6 +127,12 @@ describe('savePantryFood', () => {
     await savePantryFood({ userId: 'u1', values: { ...confirmed }, confirmed });
     expect(db.calls[0].row).toMatchObject({ times_seen: 1, source: 'rotulo' });
   });
+
+  it('um alimento que já está na despensa não é escrito por cima', async () => {
+    db.prev = { id: 'f9', times_seen: 4, source: 'manual', in_pantry: true };
+    await expect(savePantryFood({ userId: 'u1', values: { ...confirmed }, confirmed })).rejects.toThrow('Já tens este alimento na despensa');
+    expect(db.calls).toHaveLength(0);
+  });
 });
 
 describe('saveFoodRule', () => {

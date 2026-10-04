@@ -7,7 +7,7 @@ import PantrySection from './PantrySection';
 /* Bugs #48/#52, fase C: a despensa no Armário do Perfil (mockup "Despensa e
    perguntas da Carol", ecrãs 6 a 9). */
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), calls: [] }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), calls: [], load: null }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: (table) => {
@@ -17,6 +17,7 @@ vi.mock('../../lib/supabase', () => ({
         delete: () => { mocks.calls.push({ table, op: 'delete' }); return chain; },
         eq: () => chain,
         select: () => chain,
+        order: () => (mocks.load ? mocks.load(table) : Promise.resolve({ data: [], error: null })),
         single: () => Promise.resolve({ data: { id: 'novo' }, error: null }),
         maybeSingle: () => Promise.resolve({ data: null, error: null }),
         then: (resolve) => resolve({ error: null }),
@@ -38,11 +39,21 @@ const RULES = [
   { id: 'r3', topic: 'leite', value: 'magro', status: 'por_confirmar', source: 'observacao', confirmations: 1 },
 ];
 
+const realLoadPantry = useAppStore.getState().loadPantry;
+
 describe('PantrySection', () => {
   beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.calls.length = 0;
-    useAppStore.setState({ profile: { id: 'u1' }, pantryFoods: FOODS, foodRules: RULES, pantryLoaded: true, loadPantry: vi.fn() });
+    useAppStore.setState({ profile: { id: 'u1' }, pantryFoods: FOODS, foodRules: RULES, pantryLoaded: true, pantryUserId: 'u1', loadPantry: vi.fn() });
+  });
+
+  // Revisão pré-master: outra conta no mesmo separador.
+  it('a despensa de outra conta não aparece no Armário', () => {
+    useAppStore.setState({ pantryUserId: 'outra-conta' });
+    render(<PantrySection />);
+    expect(screen.queryByText('Aveia em flocos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Iogurte grego 0%')).not.toBeInTheDocument();
   });
 
   it('os alimentos, os mais usados primeiro, sem distinguir de onde vieram; procura pelo nome', () => {
@@ -88,5 +99,32 @@ describe('PantrySection', () => {
     expect(screen.getByDisplayValue('Aveia em flocos')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Tirar da despensa' }));
     await waitFor(() => expect(mocks.calls.some((c) => c.op === 'delete' && c.table === 'athlete_foods')).toBe(true));
+  });
+});
+
+describe('loadPantry', () => {
+  beforeEach(() => {
+    mocks.load = null;
+    useAppStore.setState({ session: null, profile: { id: 'u1' }, pantryFoods: FOODS, foodRules: RULES, pantryLoaded: true, pantryUserId: 'u1', loadPantry: realLoadPantry });
+  });
+
+  it('uma resposta que chega depois de trocar de conta é ignorada', async () => {
+    const pending = [];
+    mocks.load = () => new Promise((r) => { pending.push(() => r({ data: [{ id: 'z', name: 'De outra conta' }], error: null })); });
+    const p = useAppStore.getState().loadPantry();
+    useAppStore.setState({ profile: { id: 'u2' } });
+    pending.forEach((release) => release());
+    await p;
+    expect(useAppStore.getState().pantryFoods).toBe(FOODS);
+    expect(useAppStore.getState().pantryUserId).toBe('u1');
+  });
+
+  it('uma falha deixa-a por ler, para o registo voltar a tentar; de outra conta, limpa', async () => {
+    mocks.load = () => Promise.reject(new Error('sem rede'));
+    await useAppStore.getState().loadPantry();
+    expect(useAppStore.getState()).toMatchObject({ pantryLoaded: false, pantryFoods: FOODS, pantryUserId: 'u1' });
+    useAppStore.setState({ profile: { id: 'u2' }, pantryLoaded: true });
+    await useAppStore.getState().loadPantry();
+    expect(useAppStore.getState()).toMatchObject({ pantryLoaded: false, pantryFoods: [], foodRules: [], pantryUserId: 'u2' });
   });
 });

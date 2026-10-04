@@ -379,14 +379,21 @@ export function parseQuestions(
  * atleta escreveu (mergePhotoAndWrittenItems, analyzeManualItems) — e as
  * perguntas vinham presas ao nome do Gemini, por isso parseQuestions não as
  * encontrava e caíam (revisão pré-master de 2026-10-04). Aqui passam para o
- * nome final. `pairs`: [nome do Gemini, nome final].
+ * nome final. `pairs`: [nome do Gemini, nome final]; `finalNames`: os nomes
+ * de todos os alimentos da refeição, já finais.
  */
-export function remapQuestionItems(questions: unknown, pairs: [string, string][]): unknown {
+export function remapQuestionItems(questions: unknown, pairs: [string, string][], finalNames: string[] = []): unknown {
   if (!Array.isArray(questions)) return questions;
+  const finals = new Set(finalNames.map(foodKey));
   const byKey = new Map(pairs.map(([from, to]) => [foodKey(from), to]));
   // deno-lint-ignore no-explicit-any
   return questions.map((q: any) => {
-    const to = byKey.get(foodKey(q?.item_name));
+    const key = foodKey(q?.item_name);
+    // Já aponta para um alimento da refeição: fica. Ex.: "Arroz" da foto,
+    // quando o Gemini chamou também "Arroz" ao "arroz basmati" escrito —
+    // passava a perguntar pelo outro arroz.
+    if (finals.has(key)) return q;
+    const to = byKey.get(key);
     return to ? { ...q, item_name: to } : q;
   });
 }
@@ -395,11 +402,13 @@ export function remapQuestionItems(questions: unknown, pairs: [string, string][]
  * A lista que vai no pedido tem só os 80 mais usados (PANTRY_PROMPT_LIMIT),
  * mas a app conta como conhecido tudo o que está na despensa: um alimento
  * escrito fora dos 80 dizia "já conhecido" e era estimado na mesma (revisão
- * pré-master). Junta-se ao mapa o que falta, procurado pelo nome. Nunca
+ * pré-master). Junta-se ao mapa o que falta, procurado pelo nome. Com menos
+ * de 80 na despensa o mapa já está completo e não se pergunta nada. Nunca
  * rejeita.
  */
 // deno-lint-ignore no-explicit-any
 export async function withWrittenFoods(sb: any, userId: string, pantry: Pantry, names: string[]): Promise<Pantry> {
+  if (pantry.foods.length < PANTRY_PROMPT_LIMIT) return pantry;
   const missing = [...new Set(names.map(foodKey).filter((k) => k && !pantry.byKey.has(k)))];
   if (!missing.length) return pantry;
   try {

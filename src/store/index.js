@@ -539,7 +539,8 @@ export const useAppStore = create((set, get) => ({
   },
 
   loadPantry: async () => {
-    const userId = get().session?.user?.id || get().profile?.id;
+    const whoIsIn = () => get().session?.user?.id || get().profile?.id;
+    const userId = whoIsIn();
     if (!userId) return;
     // Nunca rejeita: sem despensa (modo demo, sem rede), o Armário fica vazio
     // e o registo da refeição só não sugere nada.
@@ -548,6 +549,8 @@ export const useAppStore = create((set, get) => ({
         supabase.from('athlete_foods').select('*').eq('user_id', userId).eq('in_pantry', true).order('times_seen', { ascending: false }),
         supabase.from('athlete_food_rules').select('*').eq('user_id', userId).order('updated_at', { ascending: false }),
       ]);
+      // A sessão mudou entretanto: esta resposta já não é de quem está.
+      if (whoIsIn() !== userId) return;
       const same = get().pantryUserId === userId;
       set({
         pantryFoods: foods?.error ? (same ? get().pantryFoods : []) : (foods?.data || []),
@@ -557,7 +560,11 @@ export const useAppStore = create((set, get) => ({
       });
     } catch (e) {
       console.warn('Despensa não lida', e);
-      if (get().pantryUserId !== userId) set({ pantryFoods: [], foodRules: [], pantryUserId: userId });
+      if (whoIsIn() !== userId) return;
+      // Por ler: o registo da refeição volta a tentar (revisão pré-master).
+      set(get().pantryUserId === userId
+        ? { pantryLoaded: false }
+        : { pantryFoods: [], foodRules: [], pantryLoaded: false, pantryUserId: userId });
     }
   },
   setPantryFoods: (pantryFoods) => set({ pantryFoods }),
