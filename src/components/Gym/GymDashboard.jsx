@@ -162,7 +162,13 @@ export default function GymDashboard() {
       value: noDays ? null : `${cur.strength}${w.count >= 1 ? ` · ${perWeekNum(perWeek)}/semana` : ''}`,
       missingText: noDays ? missingNoDays : undefined,
       status: !noDays && enough ? gymFrequencyStatus(perWeek) : null,
-      statusText: noDays ? undefined : w.count >= 1 ? `em ${semanasFechadas(w.count)}` : 'sem semanas fechadas ainda',
+      /* 2026-10-05: o "X/semana" é das sessões dentro das semanas fechadas
+      (w.strength) a dividir por essas semanas; se o período tem sessões fora
+      delas (dias soltos nas pontas), o numerador diz-se à vista para o N e o
+      X/semana não parecerem da mesma conta. */
+      statusText: noDays ? undefined : w.count >= 1
+        ? (w.strength !== cur.strength ? `${treinosForca(w.strength)} em ${semanasFechadas(w.count)}` : `em ${semanasFechadas(w.count)}`)
+        : 'sem semanas fechadas ainda',
       barPct: !noDays && enough ? Math.min(100, (perWeek / GYM_TARGET_PER_WEEK) * 100) : undefined,
       count: !noDays && w.count >= 1 ? countOf(w.onTarget, w.count) : undefined,
     });

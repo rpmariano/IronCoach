@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { computeReadinessIndex, checkinPillar } from '@formulas/readinessIndex.ts';
+import { computeReadinessIndex, checkinPillar, readinessMealsStartISO } from '@formulas/readinessIndex.ts';
 
 const goldenPath = path.resolve(__dirname, '../../supabase/functions/_shared/formulas/readinessIndex.golden.json');
 const golden = JSON.parse(fs.readFileSync(goldenPath, 'utf8'));
@@ -227,5 +227,67 @@ describe('computeReadinessIndex — EA negativa com refeições (2026-10-04)', (
     const ea = r.pillars.find((p) => p.key === 'ea');
     expect(ea.hasData).toBe(false);
     expect(ea.desc).toBe('Sem dados nutricionais suficientes.');
+  });
+});
+
+/* 2026-10-05: EA e Nutrição só olham para dias FECHADOS (os 7 dias até
+   ontem). Um hoje parcial não mexe nos pilares; ontem conta. Espelha
+   readinessIndex.test.ts. */
+describe('computeReadinessIndex — pilares de nutrição só com dias fechados (2026-10-05)', () => {
+  const body = [{ date: '2026-08-01', weight_kg: 70, body_fat_pct: 15 }];
+  const profile = { calorie_goal: 2400 };
+  const mealOntem = { date: '2026-08-24', calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 };
+  const manha = { date: '2026-08-25', calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 };
+  const corridaHoje = { date: '2026-08-25', distance_km: 15, duration_seconds: 5400, kind: 'treino', training_type: null, effort_rpe: 6 };
+  const pil = (r, k) => r.pillars.find((p) => p.key === k);
+  const calc = (runs, meals) => computeReadinessIndex(runs, meals, body, [], profile, '2026-08-25', null, null);
+
+  it('hoje parcial (pequeno-almoço + corrida de manhã) não mexe em EA nem Nutrição', () => {
+    const semHoje = calc([], [mealOntem]);
+    const comHoje = calc([corridaHoje], [mealOntem, manha]);
+    expect(pil(comHoje, 'ea')).toEqual(pil(semHoje, 'ea'));
+    expect(pil(comHoje, 'calories')).toEqual(pil(semHoje, 'calories'));
+    expect(pil(comHoje, 'ea').desc).not.toMatch(/Crítico/);
+    expect(pil(comHoje, 'ea').desc).toMatch(/nos últimos 7 dias fechados/);
+    expect(pil(comHoje, 'calories').desc).toMatch(/nos últimos 7 dias fechados/);
+  });
+
+  it('só hoje registado: os dois pilares ficam sem dados', () => {
+    const r = calc([corridaHoje], [manha]);
+    expect(pil(r, 'ea').hasData).toBe(false);
+    expect(pil(r, 'calories').hasData).toBe(false);
+    // ...e dizem porquê: o registo de hoje só conta a partir de amanhã.
+    expect(pil(r, 'ea').desc).toBe('Os registos de hoje só contam a partir de amanhã.');
+    expect(pil(r, 'calories').desc).toBe('Os registos de hoje só contam a partir de amanhã.');
+    // Sem nenhuma refeição, o texto genérico de sempre.
+    const nada = calc([corridaHoje], []);
+    expect(pil(nada, 'ea').desc).toBe('Sem dados nutricionais suficientes.');
+    expect(pil(nada, 'calories').desc).toBe('Sem dados de nutrição suficientes.');
+  });
+
+  it('ontem conta: tirada longa só com o pequeno-almoço é crítica', () => {
+    const r = calc([{ ...corridaHoje, date: '2026-08-24' }], [{ ...manha, date: '2026-08-24' }]);
+    expect(pil(r, 'ea').hasData).toBe(true);
+    expect(pil(r, 'ea').score).toBe(0);
+    expect(pil(r, 'ea').desc).toMatch(/Crítico/);
+    expect(pil(r, 'calories').hasData).toBe(true);
+  });
+
+  it('a janela são 7 dias fechados: o dia 17 já saiu, o 18 ainda entra', () => {
+    const dia = (date) => ({ date, calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 });
+    expect(pil(calc([], [dia('2026-08-18')]), 'ea').hasData).toBe(true);
+    expect(pil(calc([], [dia('2026-08-17')]), 'ea').hasData).toBe(false);
+  });
+
+  it('a EA escreve sempre uma casa decimal, com vírgula', () => {
+    const r = calc([], [mealOntem]);
+    expect(pil(r, 'ea').desc).toMatch(/EA de \d+,\d kcal\/kg/);
+  });
+
+  it('readinessMealsStartISO: as refeições a carregar começam em hoje-7', () => {
+    expect(readinessMealsStartISO('2026-10-05')).toBe('2026-09-28');
+    expect(readinessMealsStartISO('2026-03-03')).toBe('2026-02-24');
+    const dia = (date) => ({ date, calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 });
+    expect(pil(calc([], [dia(readinessMealsStartISO('2026-08-25'))]), 'ea').hasData).toBe(true);
   });
 });

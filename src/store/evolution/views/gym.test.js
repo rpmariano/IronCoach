@@ -115,18 +115,54 @@ describe('G2: semanas fechadas, só força', () => {
 
 describe('G3/G4: volume semanal de calendário', () => {
   it('mostra todas as semanas, com zeros explícitos, e a em curso marcada', () => {
-    const v = view(SETEMBRO, 'mes', -1);
+    const v = view(SETEMBRO, 'mes');
     expect(v.weeklyData.map((w) => w.weekStart)).toEqual(['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28']);
     expect(v.weeklyData.map((w) => w.volumeLoad)).toEqual([0, 4000, 0, 4000, 6000]);
     expect(v.weeklyData.map((w) => w.inProgress)).toEqual([false, false, false, false, true]);
+    expect(v.weeklyData.some((w) => w.cut)).toBe(false);
     expect(v.weeklyData[2].volumeLoad).toBe(0); // a semana sem treino é um 0, não um buraco
   });
 
+  it('mês passado: só as semanas do mês, a última cortada ao fim dele (sem a semana de hoje)', () => {
+    const v = view(SETEMBRO, 'mes', -1);
+    expect(v.weeklyData.map((w) => w.weekStart)).toEqual(['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28']);
+    // 1 out e hoje ficam fora: a semana de 28 set só conta até 30 set.
+    expect(v.weeklyData.map((w) => w.volumeLoad)).toEqual([0, 4000, 0, 4000, 4000]);
+    expect(v.weeklyData.map((w) => w.inProgress)).toEqual([false, false, false, false, false]);
+    expect(v.weeklyData.map((w) => w.cut)).toEqual([false, false, false, false, true]);
+  });
+
+  it('trimestre passado: semanas do trimestre, sem a semana em curso nem preenchimento até hoje', () => {
+    const v = view([forca('2026-06-15'), forca('2026-07-08'), forca('2026-09-02'), forca('2026-09-29')], 'trimestre', -1);
+    expect(v.weeklyData[0].weekStart).toBe('2026-06-29'); // a semana que contém 1 jul
+    expect(v.weeklyData.at(-1)).toMatchObject({ weekStart: '2026-09-28', cut: true, inProgress: false });
+    expect(v.weeklyData.every((w) => !w.inProgress)).toBe(true);
+    expect(v.weeklyData.map((w) => w.weekStart)).not.toContain('2026-10-05');
+    expect(v.weeklyData).toHaveLength(14);
+  });
+
+  it('período passado que acaba num domingo: a última semana é inteira, não cortada', () => {
+    const v = view([forca('2026-05-04'), forca('2026-05-27')], 'mes', -5); // maio acaba a domingo 31
+    expect(v.weeklyData.at(-1)).toMatchObject({ weekStart: '2026-05-25', cut: false, inProgress: false });
+  });
+
   it('em Semana mostra pelo menos 5 semanas, acabando na do período', () => {
+    const v = view(SETEMBRO, 'semana');
+    expect(v.weeklyData).toHaveLength(CHART_MIN_WEEKS);
+    expect(v.weeklyData.at(-1).weekStart).toBe('2026-09-28');
+  });
+
+  it('numa Semana passada mantém o preenchimento: CHART_MIN_WEEKS semanas, a última a 21 set, fechada', () => {
     const v = view(SETEMBRO, 'semana', -1);
     expect(v.weeklyData).toHaveLength(CHART_MIN_WEEKS);
-    expect(v.weeklyData.at(-1).weekStart).toBe('2026-09-21');
-    expect(v.weeklyData.at(-1).inProgress).toBe(false);
+    expect(v.weeklyData.at(-1)).toMatchObject({ weekStart: '2026-09-21', inProgress: false, cut: false });
+    expect(v.weeklyData.map((w) => w.weekStart)).not.toContain('2026-09-28');
+    // Delta contra 14 set (0 kg) e média das 4 semanas fechadas até 21 set.
+    const closed = v.weeklyData.filter((w) => !w.inProgress && !w.cut);
+    expect(closed.at(-2).weekStart).toBe('2026-09-14');
+    expect(closed.at(-1).volumeLoad).toBe(4000);
+    expect(closed.at(-2).volumeLoad).toBe(0);
+    expect(closed.slice(-4).map((w) => w.weekStart)).toEqual(['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21']);
   });
 
   it('semanas inteiras antes do 1.º registo não existem (não são zeros)', () => {

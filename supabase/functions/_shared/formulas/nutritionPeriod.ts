@@ -574,26 +574,132 @@ export type MicroKey = "fiber" | "sugar" | "sodium" | "iron_mg" | "calcium_mg" |
 export const MICRO_KEYS: MicroKey[] = ["fiber", "sugar", "sodium", "iron_mg", "calcium_mg", "vitamin_c_mg", "potassium_mg"];
 
 /**
+ * Desde quando a analyze-meal grava null num micronutriente que o modelo não
+ * deu (D6; migração 20261005090000_micronutrients_nullable). Antes disso
+ * gravava 0 — e um 0 desses tanto é "não tem" como "não sei".
+ *
+ * null = AINDA NÃO HÁ DEPLOY: a cobertura fica desligada (coverageKnown
+ * false, o ecrã diz "São mínimos"). Revisão de 2026-10-05: estava fixa em
+ * 2026-10-05T00:00:00Z, à frente do deploy real (que depende da autorização
+ * do dono para a migração) — tudo o que a função ANTIGA gravasse entre essa
+ * hora e o deploy tinha sete zeros contados como "dado em todos os
+ * alimentos", para sempre. Uma data adivinhada falha para o lado errado;
+ * null falha para o lado seguro.
+ *
+ * PREENCHER, depois do push a dev da analyze-meal nova, com o instante UTC
+ * desse deploy (ISO, ex.: "2026-10-07T15:42:00Z") — nunca antes, nunca uma
+ * hora mais cedo. Vale para o ecrã e para a Carol (coach-chat): os dois
+ * importam este ficheiro, por isso a mudança vai a dev E a master.
+ */
+export const MICROS_NULL_SINCE: string | null = null;
+
+/** O nome da coluna por 100 g de cada micronutriente em meal_items. */
+const MICRO_PER_100G: Record<MicroKey, string> = {
+  fiber: "fiber_per_100g",
+  sugar: "sugar_per_100g",
+  sodium: "sodium_per_100g",
+  iron_mg: "iron_mg_per_100g",
+  calcium_mg: "calcium_mg_per_100g",
+  vitamin_c_mg: "vitamin_c_mg_per_100g",
+  potassium_mg: "potassium_mg_per_100g",
+};
+
+// deno-lint-ignore no-explicit-any
+type AnyItem = Record<string, any>;
+
+/**
+ * O item traz este micronutriente? Segue o mesmo caminho de
+ * computeItemNutrients (mealNutrients.ts): com macros diretos no item, o valor
+ * direto; senão o por 100 g, ou o do food_item (import legado). null/undefined
+ * = "não sei" (D6); um 0 é um valor.
+ */
+function itemHasMicro(item: AnyItem, k: MicroKey): boolean {
+  const direct = ["calories", "protein", "carbs", "fat"].some((m) => item[m] != null && Number(item[m]) > 0);
+  const v = direct ? item[k] : (item[MICRO_PER_100G[k]] ?? item.food_item?.[k]);
+  return v != null && v !== "" && Number.isFinite(Number(v));
+}
+
+/** O instante em que o item foi gravado: o created_at do item ou o da
+ *  refeição. Sem nenhum dos dois, -Infinity: na dúvida, antigo (revisão de
+ *  2026-10-05 — antes caía no início do dia da refeição, e um dia posterior
+ *  à mudança contava como "novo" sem prova nenhuma). */
+function writtenAtMs(item: AnyItem | null, meal: AnyItem): number {
+  for (const ts of [item?.created_at, meal?.created_at]) {
+    const t = typeof ts === "string" ? Date.parse(ts) : NaN;
+    if (Number.isFinite(t)) return t;
+  }
+  return -Infinity;
+}
+
+export interface MicronutrientAverages {
+  /** Dias com refeições, entre os de `days`. */
+  nDays: number;
+  /** Média por dia com refeições (total do dia, com `days` de um só dia);
+   *  null sem dias. Um valor por saber (null) não entra na soma — é por isso
+   *  um mínimo ("pelo menos"), nunca uma estimativa do que falta. */
+  avg: Record<MicroKey, number> | null;
+  /** Alimentos (meal_items) nesses dias. */
+  nItems: number;
+  /** Fração (0–1) dos alimentos com o valor dado, por micronutriente; null
+   *  sem alimentos. Só é verdade com `coverageKnown`. */
+  coverage: Record<MicroKey, number> | null;
+  /** Todos os alimentos foram gravados a partir de MICROS_NULL_SINCE: um 0 é
+   *  mesmo 0, um null é "não sei", e a cobertura pode mostrar-se. false com
+   *  algum anterior ou sem data (zeros ambíguos — fica "São mínimos: …
+   *  contam como zero."), sem alimentos, ou enquanto MICROS_NULL_SINCE for
+   *  null (deploy por fazer). */
+  coverageKnown: boolean;
+}
+
+/**
  * Média POR DIA com refeições dos micronutrientes, nos dias de `days` (N2:
  * antes era a SOMA do mês civil em qualquer período, com a chave interna
- * "· 6meses" no título). São mínimos: hoje a análise grava 0 quando o alimento
- * não traz o valor (D6), por isso um 0 conta como zero.
+ * "· 6meses" no título).
+ *
+ * D6 (2026-10-05): desde MICROS_NULL_SINCE a analyze-meal grava null quando o
+ * modelo não dá o valor. Um null não conta como zero na cobertura ("dado em X%
+ * dos alimentos") e não entra na soma — a média é o que se sabe que foi
+ * comido, um mínimo. Itens anteriores têm zeros ambíguos: com algum no período
+ * `coverageKnown` é false e o ecrã mantém "São mínimos". Sem data de mudança
+ * (MICROS_NULL_SINCE null, deploy por fazer) também é false. `since` só para
+ * testes.
  */
 export function micronutrientAverages(
   meals: MealForPeriod[] | null | undefined,
   days: string[],
-): { nDays: number; avg: Record<MicroKey, number> | null } {
+  { since = MICROS_NULL_SINCE }: { since?: string | null } = {},
+): MicronutrientAverages {
   const wanted = new Set(days);
+  // null/inválido → NaN: nenhum item fica "depois" e coverageKnown é false.
+  const sinceMs = typeof since === "string" ? Date.parse(since) : NaN;
   const totals = Object.fromEntries(MICRO_KEYS.map((k) => [k, 0])) as Record<MicroKey, number>;
+  const given = Object.fromEntries(MICRO_KEYS.map((k) => [k, 0])) as Record<MicroKey, number>;
   const seen = new Set<string>();
+  let nItems = 0;
+  let allAfter = true;
   for (const m of meals || []) {
     const d = typeof m?.date === "string" ? m.date.slice(0, 10) : null;
     if (!d || !wanted.has(d)) continue;
     seen.add(d);
     const n = computeMealNutrients(m);
+    // mealNutrients já trata null como nada (?? 0); o Number(...) || 0 é a
+    // rede para nunca sair NaN.
     for (const k of MICRO_KEYS) totals[k] += Number(n[k]) || 0;
+    const items = (m.meal_items || []) as AnyItem[];
+    // Refeição sem itens (registo antigo só com macros): não tem micronutrientes
+    // nenhuns — conta para a regra do "antes/depois", não para a cobertura.
+    if (!items.length && !(writtenAtMs(null, m as AnyItem) >= sinceMs)) allAfter = false;
+    for (const it of items) {
+      if (!it) continue;
+      nItems += 1;
+      if (!(writtenAtMs(it, m as AnyItem) >= sinceMs)) allAfter = false;
+      for (const k of MICRO_KEYS) if (itemHasMicro(it, k)) given[k] += 1;
+    }
   }
-  if (seen.size === 0) return { nDays: 0, avg: null };
+  if (seen.size === 0) return { nDays: 0, avg: null, nItems: 0, coverage: null, coverageKnown: false };
   const avg = Object.fromEntries(MICRO_KEYS.map((k) => [k, totals[k] / seen.size])) as Record<MicroKey, number>;
-  return { nDays: seen.size, avg };
+  const coverage = nItems
+    ? Object.fromEntries(MICRO_KEYS.map((k) => [k, given[k] / nItems])) as Record<MicroKey, number>
+    : null;
+  return { nDays: seen.size, avg, nItems, coverage, coverageKnown: nItems > 0 && allAfter && Number.isFinite(sinceMs) };
 }

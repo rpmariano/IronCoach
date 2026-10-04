@@ -2,7 +2,7 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildManualItemsPrompt, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, parseWrittenItems, planningFrameSection } from "./index.ts";
+import { buildManualItemsPrompt, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, RESPONSE_SCHEMA } from "./index.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
   assertEquals(dietaryRestrictionsPromptBlock(null, null), "");
@@ -176,4 +176,39 @@ Deno.test("buildPantryFoodPrompt: por descrição estima com a porção; por fot
   assertStringIncludes(foto, "LIDOS");
   assertStringIncludes(foto, "from_label=true");
   assertStringIncludes(buildPantryFoodPrompt("barra de chocolate", true), 'O atleta acrescentou: "barra de chocolate"');
+});
+
+// ─── D6 da Evolução (2026-10-05): micronutrientes por saber ficam null ─────
+
+Deno.test("schema: calorias e macros obrigatórios; os 7 micronutrientes opcionais e nuláveis", () => {
+  const item = RESPONSE_SCHEMA.properties.items.items;
+  for (const k of ["calories_per_100g", "protein_per_100g", "carbs_per_100g", "fat_per_100g"]) {
+    assertEquals(item.required.includes(k), true, k);
+  }
+  const micros = ["fiber_per_100g", "sugar_per_100g", "sodium_per_100g", "iron_mg_per_100g", "calcium_mg_per_100g", "vitamin_c_mg_per_100g", "potassium_mg_per_100g"];
+  for (const k of micros) {
+    assertEquals(item.required.includes(k), false, k);
+    // deno-lint-ignore no-explicit-any
+    assertEquals((item.properties as any)[k].nullable, true, k);
+  }
+});
+
+Deno.test("os pedidos de análise dizem ao modelo para deixar de fora o micronutriente que não sabe (nunca 0)", () => {
+  assertStringIncludes(MICROS_RULE, "deixa esse campo de fora (null)");
+  assertStringIncludes(MICROS_RULE, "nunca 0");
+  for (const p of [
+    buildPhotosAndItemsPrompt([{ name: "Café", grams: null }], null),
+    buildManualItemsPrompt([{ name: "Ovo estrelado", grams: 100 }], null),
+  ]) {
+    assertStringIncludes(p, MICROS_RULE);
+  }
+});
+
+Deno.test("mergePhotoAndWrittenItems: um micronutriente null do modelo chega null ao item final", () => {
+  const merged = mergePhotoAndWrittenItems(
+    [{ name: "arroz", quantity_grams: 150, source_index: 1, iron_mg_per_100g: null, fiber_per_100g: 0.4 }],
+    [{ name: "Arroz basmati", grams: null }],
+  )!;
+  assertEquals(merged[0].iron_mg_per_100g, null);
+  assertEquals(merged[0].fiber_per_100g, 0.4);
 });

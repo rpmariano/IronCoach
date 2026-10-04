@@ -10,12 +10,16 @@ import {
   eatingForTraining,
   energyAvailabilityForDays,
   leanMassAsOf,
+  MICRO_KEYS,
+  MICROS_NULL_SINCE,
   micronutrientAverages,
   summarizeNutritionPeriod,
   trainingByDay,
   trainingDaySet,
   type DayGoals,
+  type MealForPeriod,
 } from "./nutritionPeriod.ts";
+import type { MealItemLike } from "./mealNutrients.ts";
 
 const GOALS = { calorie_goal: 2400, protein_goal: 150, carbs_goal: 300, fat_goal: 80, water_goal_ml: 2500 };
 const goalsFor = (d: string): DayGoals => ({ goals: GOALS, estimated: d < "2026-10-03" });
@@ -187,5 +191,103 @@ Deno.test("micronutrientAverages — média por dia com refeições, do período
   assertEquals(m.avg?.sodium, 1800);
   assertEquals(m.avg?.iron_mg, 3);
   assertEquals(m.avg?.potassium_mg, 0);
-  assertEquals(micronutrientAverages(meals, ["2026-09-29"]), { nDays: 0, avg: null });
+  // Itens sem created_at, de setembro: anteriores à mudança — zeros ambíguos.
+  assertEquals(m.coverageKnown, false);
+  assertEquals(m.nItems, 3);
+  assertEquals(micronutrientAverages(meals, ["2026-09-29"]), { nDays: 0, avg: null, nItems: 0, coverage: null, coverageKnown: false });
+});
+
+// D6 (2026-10-05): desde MICROS_NULL_SINCE a analyze-meal grava null no que o
+// modelo não deu. Itens por 100 g, com created_at como vêm da BD.
+const NEW_WEEK = ["2026-10-05", "2026-10-06", "2026-10-07"];
+// A data da mudança passa-se sempre explícita (revisão de 2026-10-05):
+// MICROS_NULL_SINCE é null até ao deploy real da analyze-meal nova.
+const SINCE = { since: "2026-10-05T00:00:00Z" };
+const per100 = (created_at: string | null, extra: Record<string, unknown> = {}) => ({
+  quantity_grams: 200, calories_per_100g: 100, protein_per_100g: 5, carbs_per_100g: 10, fat_per_100g: 2,
+  fiber_per_100g: null, sugar_per_100g: null, sodium_per_100g: null, iron_mg_per_100g: null,
+  calcium_mg_per_100g: null, vitamin_c_mg_per_100g: null, potassium_mg_per_100g: null,
+  ...(created_at ? { created_at } : {}), ...extra,
+});
+const itemsMeal = (date: string, items: unknown[], extra: Record<string, unknown> = {}): MealForPeriod =>
+  ({ date, meal_items: items as MealItemLike[], ...extra });
+
+Deno.test("micronutrientAverages — um null não conta como zero: fica fora da soma e da cobertura; nunca NaN (D6)", () => {
+  const meals = [
+    itemsMeal("2026-10-05", [
+      per100("2026-10-05T12:00:00.123456+00:00", { iron_mg_per_100g: 3, fiber_per_100g: 0 }),
+      per100("2026-10-05T12:00:00.123456+00:00"),
+    ]),
+    itemsMeal("2026-10-06", [per100("2026-10-06T20:00:00+00:00", { iron_mg_per_100g: 1.5 })]),
+  ];
+  const m = micronutrientAverages(meals, NEW_WEEK, SINCE);
+  assertEquals(m.nDays, 2);
+  assertEquals(m.nItems, 3);
+  // Ferro: 200 g × 3 + 200 g × 1,5 = 9 mg em 2 dias → pelo menos 4,5 mg/dia.
+  assertEquals(m.avg?.iron_mg, 4.5);
+  assertEquals(m.avg?.potassium_mg, 0);
+  for (const k of MICRO_KEYS) assertEquals(Number.isNaN(m.avg?.[k]), false);
+  assertEquals(m.coverage?.iron_mg, 2 / 3);
+  assertEquals(m.coverage?.fiber, 1 / 3); // um 0 dado é um valor
+  assertEquals(m.coverage?.potassium_mg, 0);
+  assertEquals(m.coverageKnown, true);
+});
+
+Deno.test("micronutrientAverages — um alimento de antes da mudança (zeros ambíguos) desliga a cobertura (D6)", () => {
+  const meals = [
+    itemsMeal("2026-10-05", [per100("2026-10-05T12:00:00Z", { iron_mg_per_100g: 3 })]),
+    // Gravado a 4 out pela função antiga (0 = "não sei" ou "não tem").
+    itemsMeal("2026-10-04", [per100("2026-10-04T21:00:00Z", { iron_mg_per_100g: 0 })]),
+  ];
+  const all = micronutrientAverages(meals, ["2026-10-04", ...NEW_WEEK], SINCE);
+  assertEquals(all.coverageKnown, false);
+  assertEquals(all.coverage?.iron_mg, 1); // calcula-se, mas o ecrã não a mostra
+  // Só os dias depois: verdadeira.
+  assertEquals(micronutrientAverages(meals, NEW_WEEK, SINCE).coverageKnown, true);
+  // Um dia antigo re-analisado depois da mudança tem itens novos: conta.
+  const reanalisada = [itemsMeal("2026-10-03", [per100("2026-10-06T09:00:00Z", { iron_mg_per_100g: 2 })])];
+  assertEquals(micronutrientAverages(reanalisada, ["2026-10-03"], SINCE).coverageKnown, true);
+});
+
+Deno.test("micronutrientAverages — sem created_at vale o da refeição; sem nenhum, na dúvida, antigo (D6, revisão 2026-10-05)", () => {
+  const semDatas = [itemsMeal("2026-10-06", [per100(null, { iron_mg_per_100g: 2 })])];
+  // Sem data nenhuma não há prova de que veio da função nova: antigo.
+  assertEquals(micronutrientAverages(semDatas, ["2026-10-06"], SINCE).coverageKnown, false);
+  const refeicaoNova = [itemsMeal("2026-10-06", [per100(null, { iron_mg_per_100g: 2 })], { created_at: "2026-10-06T08:00:00Z" })];
+  assertEquals(micronutrientAverages(refeicaoNova, ["2026-10-06"], SINCE).coverageKnown, true);
+  const refeicaoAntiga = [itemsMeal("2026-10-06", [per100(null)], { created_at: "2026-10-04T08:00:00Z" })];
+  assertEquals(micronutrientAverages(refeicaoAntiga, ["2026-10-06"], SINCE).coverageKnown, false);
+  // Gravado exatamente no instante da mudança: conta como novo (>=).
+  const noInstante = [itemsMeal("2026-10-05", [per100("2026-10-05T00:00:00Z", { iron_mg_per_100g: 1 })])];
+  assertEquals(micronutrientAverages(noInstante, ["2026-10-05"], SINCE).coverageKnown, true);
+  // Refeição só com macros (registo antigo, sem itens): sem cobertura.
+  const soMacros = [{ date: "2026-09-30", calories: 500 }];
+  const r = micronutrientAverages(soMacros, ["2026-09-30"], SINCE);
+  assertEquals([r.nDays, r.nItems, r.coverage, r.coverageKnown], [1, 0, null, false]);
+});
+
+// Revisão de 2026-10-05: a data da mudança estava fixa em 5 out 00:00 UTC,
+// à frente do deploy real — o que a função ANTIGA gravasse entretanto (sete
+// zeros) contava como "dado em todos os alimentos". Agora falha para o lado
+// seguro.
+Deno.test("micronutrientAverages — sem data de deploy (MICROS_NULL_SINCE null) a cobertura nunca se mostra (D6)", () => {
+  // Quando se preencher MICROS_NULL_SINCE com o instante real do deploy, este
+  // teste muda de propósito: é o lembrete de que a data tem de ser a real.
+  assertEquals(MICROS_NULL_SINCE, null);
+  const meals = [itemsMeal("2026-10-06", [per100("2026-10-06T12:00:00Z", { iron_mg_per_100g: 3 })])];
+  const d = micronutrientAverages(meals, ["2026-10-06"]);
+  assertEquals([d.nItems, d.coverageKnown], [1, false]);
+  assertEquals(d.avg?.iron_mg, 6); // a média continua a calcular-se
+  assertEquals(micronutrientAverages(meals, ["2026-10-06"], { since: null }).coverageKnown, false);
+  assertEquals(micronutrientAverages(meals, ["2026-10-06"], { since: "não é data" }).coverageKnown, false);
+});
+
+Deno.test("micronutrientAverages — zeros gravados pela função antiga depois da data adivinhada e antes do deploy real: sem cobertura (D6)", () => {
+  const zeros = { fiber_per_100g: 0, sugar_per_100g: 0, sodium_per_100g: 0, iron_mg_per_100g: 0,
+    calcium_mg_per_100g: 0, vitamin_c_mg_per_100g: 0, potassium_mg_per_100g: 0 };
+  // Função antiga a 5 out 12:00; deploy real a 7 out 15:42.
+  const meals = [itemsMeal("2026-10-05", [per100("2026-10-05T12:00:00Z", zeros)])];
+  const m = micronutrientAverages(meals, ["2026-10-05"], { since: "2026-10-07T15:42:00Z" });
+  assertEquals(m.coverageKnown, false);
+  assertEquals(m.coverage?.iron_mg, 1); // calcula-se, mas não se mostra
 });

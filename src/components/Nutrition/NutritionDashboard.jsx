@@ -253,6 +253,8 @@ export default function NutritionDashboard() {
           title="Micronutrientes · total do dia"
           subtitle={dayTitle(selectedDay, today)}
           values={dayView.micros.avg}
+          coverage={dayView.micros.coverage}
+          coverageKnown={dayView.micros.coverageKnown}
           perDay={false}
           emptyText="Sem refeições registadas neste dia."
         />
@@ -375,6 +377,8 @@ export default function NutritionDashboard() {
               title="Micronutrientes · média por dia"
               subtitle={`${where} · ${nDays(v.micros.nDays)}`}
               values={v.micros.avg}
+              coverage={v.micros.coverage}
+              coverageKnown={v.micros.coverageKnown}
               emptyText="Sem refeições registadas nos dias fechados deste período."
             />
           </>

@@ -140,13 +140,24 @@ function weeksStats(sessions, weekStarts) {
  * registo vem `partial`. Semanas inteiras antes do 1.º registo não existem
  * (não são zeros).
  */
-function weeklyChart(sessions, period, todayISO, dataStartISO) {
+function weeklyChart(sessions, period, todayISO, dataStartISO, kind) {
   if (!dataStartISO) return [];
   const yesterday = addDaysISO(todayISO, -1);
+  /* 2026-10-05: num período PASSADO o gráfico mostra só as semanas do período
+     (as que intersetam [início, fim], cortadas ao fim dele): antes juntava-se
+     sempre a semana em curso e 4 semanas até hoje, e as do trimestre ficavam
+     esborratadas ao lado de números de hoje. O preenchimento até
+     CHART_MIN_WEEKS só faz sentido no período em curso — e na Semana passada,
+     onde anda para trás a partir de mondayOf(fim) e nunca chega à semana de
+     hoje: sem ele a Semana recuada ficava com 1 barra, sem delta nem média. */
   const lastWeek = mondayOf(period.isCurrent ? todayISO : period.end);
   let firstWeek = mondayOf(period.start);
-  const minFirst = addDaysISO(lastWeek, -7 * (CHART_MIN_WEEKS - 1));
-  if (minFirst < firstWeek) firstWeek = minFirst;
+  if (period.isCurrent || kind === 'semana') {
+    const minFirst = addDaysISO(lastWeek, -7 * (CHART_MIN_WEEKS - 1));
+    if (minFirst < firstWeek) firstWeek = minFirst;
+  }
+  // Último dia que conta: ontem (R2) e, num período passado, o fim do período.
+  const limit = !period.isCurrent && period.end < yesterday ? period.end : yesterday;
 
   const perDay = new Map();
   for (const s of sessions) {
@@ -162,14 +173,18 @@ function weeklyChart(sessions, period, todayISO, dataStartISO) {
     let load = 0;
     for (let i = 0; i < 7; i++) {
       const d = addDaysISO(m, i);
-      if (d > yesterday) break;
+      if (d > limit) break;
       load += perDay.get(d) || 0;
     }
+    // `cut`: semana de um período passado que continua depois do fim dele —
+    // o valor é só até ao fim do período, não é uma semana inteira.
+    const cut = !period.isCurrent && end > period.end && period.end <= yesterday;
     out.push({
       weekStart: m,
       weekLabel: dayLabel(m),
       volumeLoad: Math.round(load),
-      inProgress: end > yesterday,
+      inProgress: !cut && end > yesterday,
+      cut,
       partial: m < dataStartISO,
     });
   }
@@ -309,7 +324,7 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
   const closedSessions = from ? sessions.filter(inWindow) : [];
   const closedClasses = closedSessions.filter(isClass);
 
-  const weeklyData = weeklyChart(sessions, period, todayISO, dataStartISO);
+  const weeklyData = weeklyChart(sessions, period, todayISO, dataStartISO, kind);
 
   // Séries por músculo, em séries/semana, sobre as semanas fechadas (G1, D5).
   const muscle = (() => {

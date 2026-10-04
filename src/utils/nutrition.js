@@ -57,6 +57,24 @@ export const MICROS = [
   { key: 'potassium_mg', label: 'Potássio', unit: 'mg' },
 ];
 
+/* Cobertura de um micronutriente (D6 da Evolução, 2026-10-05): a fração de
+   alimentos com o valor dado (micronutrientAverages, @formulas/nutritionPeriod.ts)
+   em palavras. Só se mostra quando é honesta (coverageKnown — todos os
+   alimentos gravados depois de a analyze-meal passar a gravar null).
+   O "pelo menos" vem de a soma deixar de fora os alimentos sem o valor: é um
+   mínimo, não uma estimativa do que falta. Uma percentagem nunca diz 0% nem
+   100% quando não é exatamente isso (0,4% fica 1%; 99,6% fica 99%).
+     null/NaN → null · 0 → nenhum · 1 → todos · resto → "dado em 54% dos alimentos" */
+export function microCoverage(fraction) {
+  // Só um número conta (revisão 2026-10-05): '' ou true davam Number() 0/1.
+  if (typeof fraction !== 'number' || !Number.isFinite(fraction)) return null;
+  const c = fraction;
+  if (c <= 0) return { atLeast: false, none: true, text: 'nenhum alimento traz este valor' };
+  if (c >= 1) return { atLeast: false, none: false, text: 'dado em todos os alimentos' };
+  const pct = Math.min(99, Math.max(1, Math.round(c * 100)));
+  return { atLeast: true, none: false, text: `dado em ${pct}% dos alimentos` };
+}
+
 // rangeBounds() removida (Fase E) — sem consumidor fora de rangeTotals(),
 // que passou a delegar em @formulas/micronutrientTotals.ts.
 

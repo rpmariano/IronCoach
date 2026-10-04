@@ -38,6 +38,20 @@
     "expect": { "calories": 200, "protein": 10, "carbs": 20, "fat": 4, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 6, "calcium_mg": 100, "vitamin_c_mg": 20, "potassium_mg": 500 }
   },
   {
+    "name": "micronutrientes null (D6, 2026-10-05) — um null não entra na soma nem dá NaN; calorias e macros como sempre",
+    "input": {
+      "todayISO": "2026-10-06",
+      "range": "hoje",
+      "meals": [
+        { "date": "2026-10-06", "meal_items": [
+          { "quantity_grams": 200, "calories_per_100g": 100, "protein_per_100g": 5, "carbs_per_100g": 10, "fat_per_100g": 2, "fiber_per_100g": null, "sugar_per_100g": 4, "sodium_per_100g": null, "iron_mg_per_100g": 3, "calcium_mg_per_100g": null, "vitamin_c_mg_per_100g": null, "potassium_mg_per_100g": null },
+          { "quantity_grams": 50, "calories_per_100g": 400, "protein_per_100g": 10, "carbs_per_100g": 60, "fat_per_100g": 10, "fiber_per_100g": 8, "sugar_per_100g": null, "sodium_per_100g": 500, "iron_mg_per_100g": null, "calcium_mg_per_100g": 0, "vitamin_c_mg_per_100g": null, "potassium_mg_per_100g": null }
+        ] }
+      ]
+    },
+    "expect": { "calories": 400, "protein": 15, "carbs": 50, "fat": 9, "fiber": 4, "sugar": 8, "sodium": 250, "iron_mg": 6, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }
+  },
+  {
     "name": "sem refeições — tudo a zero",
     "input": { "todayISO": "2026-08-25", "range": "semana", "meals": [] },
     "expect": { "calories": 0, "protein": 0, "carbs": 0, "fat": 0, "fiber": 0, "sugar": 0, "sodium": 0, "iron_mg": 0, "calcium_mg": 0, "vitamin_c_mg": 0, "potassium_mg": 0 }

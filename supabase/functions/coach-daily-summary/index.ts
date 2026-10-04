@@ -18,7 +18,7 @@ import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PR
 import { computeRaceEve, describeRaceEveShort, type RaceEve } from "../_shared/formulas/raceEve.ts";
 import { computeAcwr as sharedComputeAcwr } from "../_shared/formulas/acwr.ts";
 import { runLoadReading, runLoadInterventionToOpen, runLoadInterventionReason, type LoadPlanItem } from "../_shared/formulas/runLoadAlert.ts";
-import { computeWeightTrend } from "../_shared/formulas/weightTrend.ts";
+import { computeWeightTrend, WEIGHT_TREND_WINDOW_DAYS } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, type SeriesIntent } from "../_shared/formulas/taper.ts";
 import { assessWeightLossRate as sharedAssessWeightLossRate } from "../_shared/formulas/weightLossRate.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE } from "../_shared/formulas/tdee.ts";
@@ -162,6 +162,10 @@ export function addDaysISO(iso: string, n: number): string {
   const d = new Date(iso + "T00:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+/** Dias de calendário de `fromIso` a `toIso` (YYYY-MM-DD, UTC). */
+function daysBetweenISO(fromIso: string, toIso: string): number {
+  return Math.round((Date.parse(toIso + "T00:00:00Z") - Date.parse(fromIso + "T00:00:00Z")) / 86400000);
 }
 
 /** 10.5 → "10,5" — no máximo uma casa, com vírgula, como no resto da app. */
@@ -338,6 +342,7 @@ export function buildDailySummaryContext(params: {
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
   const perfilEmFalta = missingProfileBasics(profile);
+  const pesoDesatualizado = weightStaleness(bodyAssessments, today);
 
   // deno-lint-ignore no-explicit-any
   const mealTotals = (todayMeals || []).reduce((acc: MealTotals, m: any) => {
@@ -425,6 +430,10 @@ export function buildDailySummaryContext(params: {
       body_fat_pct: a.body_fat_pct,
       lean_body_mass_kg: a.lean_body_mass_kg,
     })),
+    // Só com a última pesagem desatualizada (>14 dias, 2026-10-05): o modelo
+    // via as pesagens dos 30 dias e podia tirar delas uma tendência. Com o
+    // peso em dia fica undefined — o contexto é o de sempre.
+    ...(pesoDesatualizado ? { peso_desatualizado: pesoDesatualizado } : {}),
     acwr: acwr ?? null,
     plano_treino_hoje: {
       data: today,
@@ -635,16 +644,31 @@ export function isFemale(gender: string | null | undefined): boolean {
 // o mais antigo, ignorando todos os intermédios (Fase C escolheu a EWMA,
 // já usada em src/utils/biEngine.js, como fórmula única — ver
 // specs/formulas-centralizacao.md §5.3, specs/formulas-checklist.md Fase C).
-export function computeBodyMetrics(bodyAssessments: any[], gender: string | null, experienceLevel?: string | null): {
+// Recência (ponto 4, 2026-10-05): com `todayISO`, a última pesagem com mais
+// de WEIGHT_TREND_WINDOW_DAYS (14) dias está desatualizada — sem ritmo
+// semanal e sem aviso de perda rápida, como o pilar Corpo do ecrã
+// (src/store/evolution/views/hub.js, `stale`) e o insight de biEngine.js. A
+// consulta lê 30 dias e o cartão avisava "Estás a perder 0,9 kg por semana"
+// com pesagens de há 3 semanas. Sem `todayISO` (testes antigos) não há corte.
+export function computeBodyMetrics(bodyAssessments: any[], gender: string | null, experienceLevel?: string | null, todayISO?: string | null): {
   latestBodyFat: number | null;
   latestWeight: number | null;
   hasRedSRisk: boolean;
   weeklyWeightChange: number | null;
   weightLossTooFast: boolean;
   weightLossPct: number | null;
+  /** Data (YYYY-MM-DD) da última avaliação COM peso; null sem nenhuma. */
+  latestWeightDate: string | null;
+  /** Dias desde essa pesagem até hoje; null sem pesagem ou sem `todayISO`. */
+  weightAgeDays: number | null;
+  /** Última pesagem há mais de 14 dias: o ritmo e a perda rápida não se dizem. */
+  weightStale: boolean;
 } {
   if (!bodyAssessments || bodyAssessments.length === 0) {
-    return { latestBodyFat: null, latestWeight: null, hasRedSRisk: false, weeklyWeightChange: null, weightLossTooFast: false, weightLossPct: null };
+    return {
+      latestBodyFat: null, latestWeight: null, hasRedSRisk: false, weeklyWeightChange: null, weightLossTooFast: false, weightLossPct: null,
+      latestWeightDate: null, weightAgeDays: null, weightStale: false,
+    };
   }
   const latest = bodyAssessments[0]; // mais recente (ORDER BY date DESC)
   const latestBodyFat = latest.body_fat_pct != null ? Math.round(Number(latest.body_fat_pct) * 10) / 10 : null;
@@ -658,7 +682,10 @@ export function computeBodyMetrics(bodyAssessments: any[], gender: string | null
     .filter((a) => a.weight_kg != null && Number(a.weight_kg) > 0 && a.date)
     .sort((a, b) => String(a.date).localeCompare(String(b.date)))
     .map((a) => ({ date: String(a.date), weight: Number(a.weight_kg) }));
-  const trend = rawPoints.length >= 2 ? computeWeightTrend(rawPoints) : null;
+  const latestWeightDate = rawPoints.length > 0 ? rawPoints[rawPoints.length - 1].date.slice(0, 10) : null;
+  const weightAgeDays = latestWeightDate && todayISO ? daysBetweenISO(latestWeightDate, todayISO) : null;
+  const weightStale = weightAgeDays != null && weightAgeDays > WEIGHT_TREND_WINDOW_DAYS;
+  const trend = rawPoints.length >= 2 && !weightStale ? computeWeightTrend(rawPoints) : null;
   // C1/C2 (2026-10-04): weeklyRate vem null sem pesagens que cheguem (≥3
   // nos 14 dias até à última, a abranger ≥10 dias). Antes eram 2 pesagens
   // quaisquer, sem dividir pelos dias — e o cartão podia avisar "perda de
@@ -673,7 +700,31 @@ export function computeBodyMetrics(bodyAssessments: any[], gender: string | null
     latestBodyFat, latestWeight, hasRedSRisk, weeklyWeightChange,
     weightLossTooFast: lossRate?.isTooFast ?? false,
     weightLossPct: lossRate ? Math.round(lossRate.lossPct * 10) / 10 : null,
+    latestWeightDate, weightAgeDays, weightStale,
   };
+}
+
+/** A última pesagem quando está desatualizada (>WEIGHT_TREND_WINDOW_DAYS dias
+ *  até hoje) — `{ weight_kg, data, dias }` para o contexto do resumo; null
+ *  com o peso em dia ou sem pesagem nenhuma (2026-10-05). */
+// deno-lint-ignore no-explicit-any
+export function weightStaleness(bodyAssessments: any[] | null | undefined, todayISO: string): { weight_kg: number; data: string; dias: number } | null {
+  const m = computeBodyMetrics(bodyAssessments || [], null, null, todayISO);
+  if (!m.weightStale || !m.latestWeightDate || m.weightAgeDays == null) return null;
+  // deno-lint-ignore no-explicit-any
+  const row = (bodyAssessments || []).find((a: any) => String(a?.date ?? "").slice(0, 10) === m.latestWeightDate && Number(a?.weight_kg) > 0);
+  if (!row) return null;
+  return { weight_kg: Math.round(Number(row.weight_kg) * 10) / 10, data: m.latestWeightDate, dias: m.weightAgeDays };
+}
+
+/** A regra do prompt para o peso desatualizado — só quando o contexto o traz. */
+export function staleWeightPromptSection(ctx: Record<string, unknown>): string {
+  const p = ctx.peso_desatualizado as { weight_kg: number; data: string; dias: number } | undefined;
+  if (!p) return "";
+  return `PESO DESATUALIZADO ("peso_desatualizado"): a última pesagem é de ${p.data}, há ${p.dias} dias (mais de ` +
+    `${WEIGHT_TREND_WINDOW_DAYS}). Não tires de "composicao_corporal_30_dias" tendência de peso, ritmo por semana nem ` +
+    `perda de peso rápida. Se o peso vier ao caso, diz o último (${virgula(p.weight_kg)} kg) com a data e que está ` +
+    `desatualizado.\n\n`;
 }
 
 // TDEE (GETD) estimado via Mifflin-St Jeor — delega em
@@ -757,6 +808,8 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     memoryPromptSection(memoryBlock) +
     seriesPromptSection(seriesBlock) +
     `Contexto do atleta:\n${JSON.stringify(ctx, null, 2)}\n\n` +
+    // Ponto 4 (2026-10-05): só com "peso_desatualizado" no contexto.
+    staleWeightPromptSection(ctx) +
     // Bug #50 — sem os quatro dados não há GETD (objetivos_diarios_tdee_kcal null).
     ((ctx.perfil as { em_falta?: string[] } | undefined)?.em_falta?.length
       ? `DADOS DO PERFIL EM FALTA ("perfil.em_falta"): sem género, idade, altura e peso não há gasto estimado — ` +
@@ -1036,7 +1089,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     const acwr        = computeACWR(recentRuns || [], today);
     // O ACWR lido com o plano e o histórico (runLoadAlert.ts).
     const load        = runLoadReading({ runs: recentRuns, planItems: loadPlanItems, today });
-    const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null);
+    const bodyMetrics = computeBodyMetrics(bodyAssessments || [], profile?.gender ?? null, profile?.experience_level ?? null, today);
     // acute_km_per_day × 7 = km dos últimos 7 dias, para o TDEE somar o
     // custo do treino (ver computeTDEE acima).
     const tdee        = computeTDEE(profile, acwr.acute_km_per_day * 7);

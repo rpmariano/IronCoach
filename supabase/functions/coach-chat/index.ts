@@ -11,7 +11,7 @@ import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PR
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { focusRace, isPrincipalRace, nextRaceByDate, selectRaces } from "../_shared/formulas/mainRace.ts";
 import { parseRecommendations } from "../_shared/formulas/recommendations.ts";
-import { computeWeightTrend as sharedComputeWeightTrend, WEIGHT_TREND_MIN_POINTS, WEIGHT_TREND_MIN_SPAN_DAYS } from "../_shared/formulas/weightTrend.ts";
+import { computeWeightTrend as sharedComputeWeightTrend, WEIGHT_TREND_MIN_POINTS, WEIGHT_TREND_MIN_SPAN_DAYS, WEIGHT_TREND_WINDOW_DAYS } from "../_shared/formulas/weightTrend.ts";
 import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeeks, isSeriesIntent, SERIES_INTENTS, type SeriesIntent } from "../_shared/formulas/taper.ts";
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
@@ -38,12 +38,13 @@ import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
 import { computeCompositionTrend } from "../_shared/formulas/compositionTrend.ts";
 import { computeNutrientRangeTotals } from "../_shared/formulas/micronutrientTotals.ts";
+import { micronutrientAverages } from "../_shared/formulas/nutritionPeriod.ts";
 import { classifyCalorieCompliance } from "../_shared/formulas/nutritionCompliance.ts";
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from "../_shared/formulas/runAcwr.ts";
 import { fetchGeminiWithTimeout, hasTimeFor } from "../_shared/geminiFetch.ts";
 import { planLoadViolations, runLoadReading, type LoadPlanItem, type RunLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { computeCrossMetrics } from "../_shared/formulas/crossMetrics.ts";
-import { computeReadinessIndex } from "../_shared/formulas/readinessIndex.ts";
+import { computeReadinessIndex, readinessMealsStartISO } from "../_shared/formulas/readinessIndex.ts";
 import { computePhaseEvaluation } from "../_shared/formulas/racePhaseEvaluation.ts";
 import { computePhaseWindows, resolvePhaseState, type TrainingStatus } from "../_shared/formulas/racePhases.ts";
 import { getRecommendedPrepWeeks, getRacePrediction as sharedGetRacePrediction, computeEffectivePrepStart } from "../_shared/formulas/racePlanning.ts";
@@ -1568,6 +1569,13 @@ export async function runGetNutritionHistory(sb: any, userId: string, args: { st
   const rangeDays = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
   if (rangeDays > MAX_RANGE_DAYS) return `Erro: intervalo demasiado longo (máximo ${MAX_RANGE_DAYS} dias).`;
 
+  // As colunas de micronutrientes vêm na consulta mas, por agora, só se
+  // agregam calorias e macros (aggregateMealsByDate) — verificado 2026-10-05
+  // (D6, micronutrientes nuláveis): um null aqui não parte nada. Se um dia
+  // esta ferramenta mostrar micronutrientes, tem de ignorar o null (não é 0)
+  // e dizer a cobertura — micronutrientAverages (nutritionPeriod.ts), com
+  // created_at da refeição e dos alimentos na consulta, como o painel
+  // "Micronutrientes hoje".
   const { data: meals, error } = await sb
     .from("meals")
     .select(
@@ -2130,9 +2138,11 @@ export function buildGymAnalyticsPanel(sessions: any[], todayISO: string, window
 // Disponibilidade Energética e composição corporal só existiam no ecrã
 // (NutritionDashboard, BodyDashboard, biEngine.js). Delega nos mesmos
 // módulos de _shared/formulas/ que passaram a alimentar esses ecrãs — mesmo
-// código, mesmo número dos dois lados. `meals` já vem limitado aos últimos
-// `windowDays` pela query do handler, por isso usa "todos" como range
-// (não filtra outra vez) — mesmo padrão do painel de ginásio.
+// código, mesmo número dos dois lados. `meals` pode trazer mais um dia do que
+// a janela (hoje-`windowDays`): é a mesma lista que vai para a prontidão, que
+// precisa dos 7 dias FECHADOS (revisão de 2026-10-05). O cumprimento calórico
+// e os micronutrientes cortam-na aqui aos últimos `windowDays` até hoje (como
+// antes); a EA usa os `windowDays` dias fechados, até ontem.
 // deno-lint-ignore no-explicit-any
 export function buildNutritionAnalyticsPanel(
   meals: any[],
@@ -2142,6 +2152,11 @@ export function buildNutritionAnalyticsPanel(
   profile: { weight_kg?: number | null; calorie_goal?: number | null; protein_goal?: number | null; carbs_goal?: number | null; fat_goal?: number | null } | null,
   todayISO: string,
   windowDays: number,
+  // Só para os testes (2026-10-05): o instante a partir do qual um 0 nos
+  // micronutrientes é mesmo 0. Omitido, vale MICROS_NULL_SINCE de
+  // nutritionPeriod.ts — que fica null até ao deploy da analyze-meal nova, e
+  // aí a cobertura é sempre "desconhecida".
+  opts: { microsSince?: string | null } = {},
 ): string | null {
   if (!meals || meals.length === 0) return null;
 
@@ -2152,7 +2167,12 @@ export function buildNutritionAnalyticsPanel(
   // `assessed_at:date` (ver BodyAssessmentRow acima) — normaliza aqui.
   const bodyForShared = (bodyAssessments || []).map((a) => ({ ...a, date: a.assessed_at }));
 
-  const adherence = computeMacroAdherence(meals, profile, bodyForShared, todayISO, RANGE);
+  // Os últimos `windowDays` até hoje (hoje-(windowDays-1) .. hoje): o
+  // cumprimento calórico fica como estava antes de a lista trazer o dia a mais.
+  const mealWindowStart = addDaysISO(todayISO, -(windowDays - 1));
+  const windowMeals = (meals || []).filter((m) => !!m?.date && m.date >= mealWindowStart && m.date <= todayISO);
+
+  const adherence = computeMacroAdherence(windowMeals, profile, bodyForShared, todayISO, RANGE);
   if (adherence) {
     const complianceLabel: Record<string, string> = {
       no_data: "sem dados", critical: "crítico", low: "baixo", ok: "ok", over: "acima",
@@ -2166,27 +2186,38 @@ export function buildNutritionAnalyticsPanel(
   }
 
   // N4 (2026-10-04): a EA só conta dias COM refeições registadas. `runs` e
-  // `gymSessions` chegam com 30 dias e `meals` com `windowDays` — com
-  // RANGE "todos", 3 semanas de treino sem refeições na query entravam
-  // como "dias sem refeições". Corta-se o treino à janela das refeições.
-  const mealWindowStart = (() => {
-    const d = new Date(todayISO + "T00:00:00Z");
-    d.setUTCDate(d.getUTCDate() - (windowDays - 1));
-    return d.toISOString().slice(0, 10);
-  })();
-  const inMealWindow = (x: { date?: string | null }) => !!x?.date && x.date >= mealWindowStart && x.date <= todayISO;
+  // `gymSessions` chegam com 30 dias — com RANGE "todos", 3 semanas de treino
+  // sem refeições na query entravam como "dias sem refeições". Corta-se o
+  // treino à janela da EA.
+  // Só dias FECHADOS (2026-10-05): hoje, a meio, tem a ingestão incompleta e
+  // puxava a média para baixo (de manhã, com o pequeno-almoço e um treino,
+  // dava EA "crítica"). O ecrã (Geral/Nutrição) e a prontidão
+  // (readinessIndex.ts, `closedRef`) já contam só até ontem — a Carol passa a
+  // ver o mesmo. As refeições de hoje continuam no resto do painel.
+  // Os `windowDays` dias fechados, hoje-windowDays .. ontem (revisão de
+  // 2026-10-05): com windowDays = 7 é a janela "semana" que computeReadinessIndex
+  // usa a partir de ontem, e a EA daqui é a mesma do pilar da prontidão no
+  // mesmo prompt. Antes eram 6 dias (hoje-6 .. ontem) e a Carol recebia duas
+  // EA diferentes.
+  const eaLastClosedDay = addDaysISO(todayISO, -1);
+  const eaWindowStart = addDaysISO(todayISO, -windowDays);
+  const closedDays = windowDays;
+  const inEaWindow = (x: { date?: string | null }) => !!x?.date && x.date >= eaWindowStart && x.date <= eaLastClosedDay;
   const ea = computeEnergyAvailabilityWindow(
-    meals, bodyForShared, (runs || []).filter(inMealWindow), (gymSessions || []).filter(inMealWindow), todayISO, RANGE,
+    (meals || []).filter(inEaWindow), bodyForShared,
+    (runs || []).filter(inEaWindow), (gymSessions || []).filter(inEaWindow), todayISO, RANGE,
   );
+  const eaLabel = `Disponibilidade Energética (${closedDays} ${closedDays === 1 ? "dia fechado" : "dias fechados"}, até ontem)`;
   const withoutMealsNote = ea.daysWithoutMeals > 0
     ? `${ea.daysWithoutMeals} ${ea.daysWithoutMeals === 1 ? "dia de treino sem refeições registadas não entra" : "dias de treino sem refeições registadas não entram"} no cálculo`
     : "";
+  const hasMealsToday = (meals || []).some((m) => m?.date === todayISO);
   if (ea.daily.length > 0) {
     const eaStatusLabel: Record<string, string> = { critical: "crítica (RED-S)", subclinical: "subclínica", optimal: "ótima" };
-    // O estado é o do último dia COM refeições (já não o último de treino);
-    // se for hoje, o dia ainda não acabou e a ingestão está incompleta.
+    // O estado é o do último dia COM refeições (já não o último de treino) —
+    // agora sempre um dia fechado, com a data.
     const lastDay = ea.daily[ea.daily.length - 1];
-    const lastDayText = lastDay.date === todayISO ? "hoje, dia ainda incompleto" : lastDay.date;
+    const lastDayText = lastDay.date === eaLastClosedDay ? `ontem, ${lastDay.date}` : lastDay.date;
     // A massa magra do divisor nem sempre é medida: sem avaliação são 55 kg
     // fixos — a Carol não a apresenta como medida.
     const leanText = ea.leanMassSource === "medida"
@@ -2194,13 +2225,18 @@ export function buildNutritionAnalyticsPanel(
       : ` (massa magra ${ea.leanMassSource === "estimada" ? "estimada pelo peso e % de gordura" : "por omissão, sem avaliação corporal com gordura"})`;
     const nDays = ea.daily.length;
     lines.push(
-      `- Disponibilidade Energética (${windowDays}d): ${ea.average} kcal/kg MMG, média de ${nDays} ${nDays === 1 ? "dia" : "dias"} com refeições${leanText} — ` +
+      `- ${eaLabel}: ${ea.average} kcal/kg MMG, média de ${nDays} ${nDays === 1 ? "dia" : "dias"} com refeições${leanText} — ` +
         `último dia com refeições (${lastDayText}): ${eaStatusLabel[lastDay.status] ?? lastDay.status}` +
         (ea.isAtRisk ? " ⚠ risco de RED-S sustentado" : "") +
-        (withoutMealsNote ? ` · ${withoutMealsNote}` : ""),
+        (withoutMealsNote ? ` · ${withoutMealsNote}` : "") +
+        (hasMealsToday ? " · hoje não entra (o dia ainda não acabou)" : ""),
     );
   } else if (ea.daysWithoutMeals > 0) {
-    lines.push(`- Disponibilidade Energética (${windowDays}d): sem número — ${withoutMealsNote}`);
+    lines.push(`- ${eaLabel}: sem número — ${withoutMealsNote}`);
+  } else if (hasMealsToday) {
+    // Só há refeições de hoje: sem dia fechado não há EA — e não se calcula
+    // uma com meio dia de ingestão.
+    lines.push(`- ${eaLabel}: sem número — só há refeições de hoje, e o dia ainda não acabou`);
   }
 
   if (bodyForShared.length > 0) {
@@ -2211,12 +2247,53 @@ export function buildNutritionAnalyticsPanel(
     }
   }
 
-  const micros = computeNutrientRangeTotals(meals, todayISO, "hoje");
+  // D6 (2026-10-05): desde a migração 20261005090000_micronutrients_nullable
+  // um micronutriente que o modelo não deu fica null e não entra na soma — os
+  // totais são MÍNIMOS. Antes eram apresentados como completos e a Carol
+  // podia afirmar "pouco ferro hoje" quando o ferro era só desconhecido. A
+  // cobertura (que fração dos alimentos traz o valor) vem de
+  // micronutrientAverages, a mesma do cartão do ecrã; com alimentos gravados
+  // antes dessa data um 0 tanto é "não tem" como "não sei" (coverageKnown
+  // false) e a cobertura não se pode dizer.
+  const micros = computeNutrientRangeTotals(windowMeals, todayISO, "hoje");
   if (micros.calories > 0) {
-    lines.push(
-      `- Micronutrientes hoje: ferro ${Math.round(micros.iron_mg)} mg · cálcio ${Math.round(micros.calcium_mg)} mg · ` +
-        `vit. C ${Math.round(micros.vitamin_c_mg)} mg · potássio ${Math.round(micros.potassium_mg)} mg · fibra ${Math.round(micros.fiber)} g`,
+    const microCov = micronutrientAverages(
+      windowMeals, [todayISO], opts.microsSince !== undefined ? { since: opts.microsSince } : undefined,
     );
+    const MICRO_LINE: { key: "iron_mg" | "calcium_mg" | "vitamin_c_mg" | "potassium_mg" | "fiber"; label: string; unit: string }[] = [
+      { key: "iron_mg", label: "ferro", unit: "mg" },
+      { key: "calcium_mg", label: "cálcio", unit: "mg" },
+      { key: "vitamin_c_mg", label: "vit. C", unit: "mg" },
+      { key: "potassium_mg", label: "potássio", unit: "mg" },
+      { key: "fiber", label: "fibra", unit: "g" },
+    ];
+    const values = MICRO_LINE.map((m) => `${m.label} ${Math.round(micros[m.key])} ${m.unit}`).join(" · ");
+    const header = "- Micronutrientes hoje (mínimos — só somam os valores conhecidos)";
+    if (microCov.nItems === 0) {
+      // Refeições de hoje só com o total de calorias, sem alimentos (registo
+      // antigo/direto): não há nada de onde tirar micronutrientes. Não é a
+      // "cobertura desconhecida" dos alimentos antigos — não há alimentos
+      // (revisão de 2026-10-05).
+      lines.push(
+        "- Micronutrientes hoje: sem valores — as refeições de hoje não têm os alimentos discriminados " +
+          "(só o total de calorias), por isso não há micronutrientes para somar; não afirmes que falta um micronutriente",
+      );
+    } else if (microCov.coverageKnown && microCov.coverage) {
+      const cov = microCov.coverage;
+      const n = microCov.nItems;
+      const complete = MICRO_LINE.every((m) => cov[m.key] >= 1);
+      const coverageText = complete
+        ? ` — valor conhecido ${n === 1 ? "no único alimento" : `em todos os ${n} alimentos`} de hoje`
+        : ` — valor conhecido em: ${MICRO_LINE.map((m) => `${m.label} ${Math.round(cov[m.key] * 100)}%`).join(", ")} ` +
+          `${n === 1 ? "do único alimento" : `dos ${n} alimentos`} de hoje; onde não chega a 100% o total é "pelo menos" — ` +
+          `não digas que falta esse micronutriente`;
+      lines.push(`${header}: ${values}${coverageText}`);
+    } else {
+      lines.push(
+        `${header}: ${values} — cobertura desconhecida (há alimentos gravados antes de os valores em falta passarem a ficar ` +
+          "em branco, e aí um 0 tanto é \"não tem\" como \"não sei\"): são totais \"pelo menos\", não afirmes que falta um micronutriente",
+      );
+    }
   }
 
   if (lines.length === 0) return null;
@@ -2391,6 +2468,23 @@ export async function findAnsweredDuplicate(sb: any, userId: string, message: st
   return reply ? { user: lastUser, model: reply } : null;
 }
 
+// Janelas das refeições do handler (revisão de 2026-10-05). A consulta começa
+// em readinessMealsStartISO (hoje-7): computeReadinessIndex conta os 7 dias
+// FECHADOS (hoje-7 .. ontem) e a Home calcula-o com todas as refeições do
+// store — com a consulta a começar em hoje-6 faltava-lhe um dia e a Carol
+// dizia outro índice e outro porquê (EA, cumprimento calórico) que os do
+// ecrã. `weekStartISO` (hoje-6) é a janela de sempre do resumo de hoje, do
+// histórico e dos hábitos, que não mudam. A EA do painel de nutrição usa os
+// `windowDays` dias fechados — com windowDays = 7, a mesma do pilar.
+export function carolMealWindows(todayISO: string, windowDays: number): { queryStartISO: string; weekStartISO: string } {
+  const weekStartISO = addDaysISO(todayISO, -(windowDays - 1));
+  const readinessStart = readinessMealsStartISO(todayISO);
+  const eaStart = addDaysISO(todayISO, -windowDays);
+  // A mais cedo das três: nenhum consumidor pode ficar sem dias.
+  const queryStartISO = [weekStartISO, readinessStart, eaStart].sort()[0];
+  return { queryStartISO, weekStartISO };
+}
+
 // ─── Índice de Prontidão + métricas cruzadas (Fase E — omnisciência) ───────
 // O gap original que motivou toda a Fase E: antes desta migração, este
 // número (score 0-100 + pilares) só existia no ecrã (Home, RaceHubView) — a
@@ -2398,7 +2492,7 @@ export async function findAnsweredDuplicate(sb: any, userId: string, message: st
 // readinessIndex.ts/crossMetrics.ts (T1.5), que compõem tudo o resto já
 // partilhado (ACWR, EA, macros, VDOT, viabilidade de prova).
 // deno-lint-ignore no-explicit-any
-function buildReadinessPanel(
+export function buildReadinessPanel(
   runs: any[],
   meals: any[],
   bodyAssessments: any[],
@@ -4690,7 +4784,23 @@ export function computeBodyMetrics(
   // "-2 kg/semana". Sem isso, weeklyRate/trend vêm null e a Carol recebe o
   // peso mais recente mais o que falta — nunca um ritmo nem um "estável".
   const weightTrend = weightPoints.length >= 1 ? sharedComputeWeightTrend(weightPoints) : null;
-  if (weightTrend?.sufficient && weightTrend.weeklyRate != null) {
+  // Recência (ponto 4, 2026-10-05): o ecrã já não afirma tendência com a
+  // última pesagem a mais de 14 dias (pilar Corpo "desatualizado",
+  // src/store/evolution/views/hub.js — `staleDays > WEIGHT_TREND_WINDOW_DAYS`)
+  // e o insight de perda rápida também tem corte. A Carol lia 30 dias e dava
+  // "tendência descendo (-0,8 kg/semana)" e "ritmo ACIMA do limite" a partir
+  // de pesagens de há 3 semanas, como se fossem de agora. Mesmo corte, mesma
+  // constante partilhada (weightTrend.ts), contado até hoje.
+  const lastWeighing = weightPoints.length > 0 ? weightPoints[weightPoints.length - 1] : null;
+  const weightAgeDays = lastWeighing ? daysBetweenISO(lastWeighing.date, todayISO) : null;
+  const weightStale = weightAgeDays != null && weightAgeDays > WEIGHT_TREND_WINDOW_DAYS;
+  if (lastWeighing && weightStale) {
+    lines.push(
+      `Peso mais recente: ${lastWeighing.weight} kg (${lastWeighing.date}, há ${weightAgeDays} dias) — DESATUALIZADO ` +
+      `(sem pesagem nos últimos ${WEIGHT_TREND_WINDOW_DAYS} dias): não dês tendência, ritmo semanal nem avaliação de ` +
+      `perda de peso rápida; se o peso vier ao caso, diz o último com a data e que está desatualizado`,
+    );
+  } else if (weightTrend?.sufficient && weightTrend.weeklyRate != null) {
     const latestSmoothed = weightTrend.movingAverage[weightTrend.movingAverage.length - 1];
     // 1 casa decimal, como o ecrã (BodyDashboard) — a Carol não diz um
     // número que o atleta não vê.
@@ -4700,9 +4810,9 @@ export function computeBodyMetrics(
       `Peso (média suavizada): ${latestSmoothed.weight.toFixed(1)} kg — tendência ${weightTrend.trend} ` +
       `(${rateStr} kg/semana, ${weightTrend.pointsInWindow} pesagens em ${weightTrend.spanDays} dias, até à de ${weightPoints[weightPoints.length - 1].date})`,
     );
-    // 2026-10-04 (revisão pré-deploy): a janela acaba na ÚLTIMA pesagem, que
-    // pode ter até 29 dias (a query lê 30). Com a data à vista a Carol não
-    // fala de um ritmo de há 3 semanas como se fosse de agora.
+    // 2026-10-04 (revisão pré-deploy): a janela acaba na ÚLTIMA pesagem — com
+    // a data à vista. Desde 2026-10-05 essa pesagem tem no máximo
+    // WEIGHT_TREND_WINDOW_DAYS dias (ramo "desatualizado" acima).
     // Taxa de perda SUSTENTADA (%/semana por nível) — distinta do sinal #1
     // abaixo, que é a queda AGUDA em 48-72h. O frontend e a coach-daily-
     // summary já usavam esta avaliação; a coach-chat era a única das três
@@ -4731,7 +4841,9 @@ export function computeBodyMetrics(
   }
 
   // ── Sinal #1 — queda súbita de peso >1,5% em 48-72h (Bloco 5 #11) ────────
-  if (sorted.length >= 2) {
+  // 2026-10-05: só com o peso em dia — uma queda aguda de há 3 semanas
+  // ("verificar hidratação/depleção") já não diz nada do estado de hoje.
+  if (sorted.length >= 2 && !weightStale) {
     const newest = sorted[0];
     const cutoff72hMs = new Date(newest.assessed_at).getTime() - 72 * 3600000;
     const ref = sorted.find(
@@ -6169,9 +6281,10 @@ async function handler(req: Request): Promise<Response> {
     // desnecessário.
     const NUTRITION_WINDOW_DAYS = 7;
     const todayISO = new Date().toISOString().slice(0, 10);
-    const startDate = new Date();
-    startDate.setUTCDate(startDate.getUTCDate() - (NUTRITION_WINDOW_DAYS - 1));
-    const startISO = startDate.toISOString().slice(0, 10);
+    // A consulta lê mais um dia (hoje-7) do que a semana (hoje-6): a prontidão
+    // e a EA contam os 7 dias fechados até ontem (ver carolMealWindows,
+    // revisão de 2026-10-05).
+    const { queryStartISO: mealsQueryStartISO, weekStartISO: startISO } = carolMealWindows(todayISO, NUTRITION_WINDOW_DAYS);
 
     /* A memória alargada (specs/carol-omnisciencia-omnipresenca.md, Fase 1):
        os comentários que ela própria escreveu em cada registo, as notas do
@@ -6189,16 +6302,25 @@ async function handler(req: Request): Promise<Response> {
     let seriesPromise: Promise<SeriesBlock | null> | null =
       proactiveTrigger && !bypassQuietHours ? null : fetchSeriesBlock(sb, userId, todayISO, { channel: "chat" });
 
-    const { data: weekMeals, error: err_weekMeals } = await sb
+    // created_at (da refeição e de cada alimento, 2026-10-05): é por ele que
+    // micronutrientAverages sabe se um 0 é mesmo 0 (gravado depois de os
+    // micronutrientes passarem a aceitar null) — sem ele a cobertura dos
+    // "Micronutrientes hoje" fica sempre desconhecida.
+    const { data: mealsFromReadinessStart, error: err_weekMeals } = await sb
       .from("meals")
       .select(
-        "date, meal_items(quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
+        "date, created_at, meal_items(created_at, quantity_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, " +
           "fiber_per_100g, sugar_per_100g, sodium_per_100g, iron_mg_per_100g, calcium_mg_per_100g, " +
           "vitamin_c_mg_per_100g, potassium_mg_per_100g)",
       )
       .eq("user_id", userId)
-      .gte("date", startISO)
+      .gte("date", mealsQueryStartISO)
       .lte("date", todayISO);
+    // A semana de sempre (hoje-6 .. hoje) para o resumo de hoje, o histórico
+    // e os hábitos; a lista inteira (desde hoje-7) só vai para a prontidão e
+    // para o painel de nutrição, que a cortam eles próprios.
+    // deno-lint-ignore no-explicit-any
+    const weekMeals = (mealsFromReadinessStart || []).filter((m: any) => typeof m?.date === "string" && m.date >= startISO);
 
     const byDate: Record<string, { kcal: number; prot: number; carbs: number; fat: number; meals: number }> = {};
     for (const meal of (weekMeals || [])) {
@@ -6514,6 +6636,9 @@ async function handler(req: Request): Promise<Response> {
     }
 
     // ── Bloco 5 — Avaliações corporais (body_assessments) ───────────────
+    // 30 dias para a Carol ainda saber o último peso e a última gordura; a
+    // tendência, o ritmo e a perda rápida só com a última pesagem a ≤14 dias
+    // (computeBodyMetrics, 2026-10-05 — o mesmo corte do pilar Corpo).
     const BODY_WINDOW_DAYS = 30;
     const bodyStartD = new Date();
     bodyStartD.setUTCDate(bodyStartD.getUTCDate() - (BODY_WINDOW_DAYS - 1));
@@ -6537,7 +6662,7 @@ async function handler(req: Request): Promise<Response> {
       .maybeSingle();
     // Todas as queries de contexto acima falham "em silencio" se pedirem uma
     // coluna inexistente — ver warnIfQueryFailed. Isto poe o erro nos logs.
-    warnIfQueryFailed("meals(7d)", err_weekMeals);
+    warnIfQueryFailed("meals(8d)", err_weekMeals);
     warnIfQueryFailed("water_logs", err_waterLogs);
     warnIfQueryFailed("workout_sessions(30d)", err_gymSessions);
     warnIfQueryFailed("runs(30d)", err_recentRuns);
@@ -6553,7 +6678,7 @@ async function handler(req: Request): Promise<Response> {
       (profile?.experience_level as string | null) ?? null,
     );
     const nutritionAnalyticsPanel = buildNutritionAnalyticsPanel(
-      weekMeals || [],
+      mealsFromReadinessStart || [],
       bodyAssessments || [],
       recentRuns || [],
       gymSessions || [],
@@ -6597,7 +6722,7 @@ async function handler(req: Request): Promise<Response> {
       : undefined;
     const readinessPanel = buildReadinessPanel(
       recentRuns || [],
-      weekMeals || [],
+      mealsFromReadinessStart || [],
       bodyAssessments || [],
       gymSessions || [],
       profile,

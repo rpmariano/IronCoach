@@ -24,13 +24,48 @@ export const NUTRIENT_COLUMNS = [
   "calcium_mg_per_100g", "vitamin_c_mg_per_100g", "potassium_mg_per_100g",
 ] as const;
 
+/** Os micronutrientes (D6 da Evolução, 2026-10-05): podem ficar por saber.
+ *  Calorias e macros não — sem eles a refeição não tem números. */
+export const MICRO_COLUMNS = [
+  "fiber_per_100g", "sugar_per_100g", "sodium_per_100g", "iron_mg_per_100g",
+  "calcium_mg_per_100g", "vitamin_c_mg_per_100g", "potassium_mg_per_100g",
+] as const;
+const MICRO_SET: ReadonlySet<string> = new Set(MICRO_COLUMNS);
+export const isMicroColumn = (k: string): boolean => MICRO_SET.has(k);
+
+/**
+ * Um micronutriente como se grava em meal_items (D6, 2026-10-05): o número
+ * (≥ 0) quando há, null quando não há. Até aqui virava 0 — e um 0 tanto
+ * queria dizer "não tem" como "não sei", o que tornava impossível dizer
+ * "dado em X% dos alimentos". Atenção a Number(null) = 0: null/undefined/""
+ * ficam null antes de converter. Um valor inválido (negativo, NaN, texto)
+ * também é "não sei", não 0.
+ */
+export function microOrNull(v: unknown): number | null {
+  if (v == null || (typeof v === "string" && !v.trim())) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** Um micronutriente na resposta do modelo: só um número é um valor (como o
+ *  num() de sempre, que não aceitava texto); o resto — campo ausente, null,
+ *  texto, negativo — é "não deu", null (D6, 2026-10-05). */
+export function microFromModel(v: unknown): number | null {
+  return typeof v === "number" ? microOrNull(v) : null;
+}
+
 /** As colunas de meal_items que a análise escreve. O resto que um item traz
  *  pelo caminho (source_index, from_label) não é coluna — sai aqui. */
 const MEAL_ITEM_COLUMNS = ["name", "quantity_grams", ...NUTRIENT_COLUMNS] as const;
 
 // deno-lint-ignore no-explicit-any
 export function pickMealItem(it: any): Record<string, unknown> {
-  return Object.fromEntries(MEAL_ITEM_COLUMNS.map((k) => [k, it?.[k] ?? (k === "name" ? "Alimento" : 0)]));
+  // Micronutriente em falta grava null, não 0 (D6, 2026-10-05) — precisa da
+  // migração 20261005090000_micronutrients_nullable aplicada antes.
+  return Object.fromEntries(MEAL_ITEM_COLUMNS.map((k) => [
+    k,
+    isMicroColumn(k) ? microOrNull(it?.[k]) : it?.[k] ?? (k === "name" ? "Alimento" : 0),
+  ]));
 }
 
 export type PantryFood = {
@@ -120,10 +155,19 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
 }
 
 /** Os valores por 100 g da despensa, no lugar dos estimados; o nome passa a
- *  ser o dela. As gramas ficam as do item. */
+ *  ser o dela. As gramas ficam as do item.
+ *  Micronutrientes (D6, 2026-10-05): a despensa (athlete_foods) continua NOT
+ *  NULL DEFAULT 0 — um "não sei" vindo de uma refeição e o Armário da app
+ *  gravam lá 0 — por isso um 0 de micronutriente da despensa é ambíguo e
+ *  passa ao item como null. Perde-se um ou outro zero verdadeiro (vitamina C
+ *  no azeite) na cobertura; nunca se inventa um "dado". */
 // deno-lint-ignore no-explicit-any
 export function withPantryValues<T extends Record<string, any>>(item: T, food: PantryFood): T {
-  const values = Object.fromEntries(NUTRIENT_COLUMNS.map((k) => [k, num(food[k])]));
+  const values = Object.fromEntries(NUTRIENT_COLUMNS.map((k) => {
+    if (!isMicroColumn(k)) return [k, num(food[k])];
+    const v = microOrNull(food[k]);
+    return [k, v === 0 ? null : v];
+  }));
   return { ...item, ...values, name: food.name, from_pantry: true };
 }
 

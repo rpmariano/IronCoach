@@ -4,7 +4,7 @@ import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
 import { runSetCupParticipation, runSetCupSeasonGoal, SERIES_TOOLS, SERIES_TOOL_NAMES } from "./index.ts";
-import { buildGymAnalyticsPanel, buildNutritionAnalyticsPanel } from "./index.ts";
+import { buildGymAnalyticsPanel, buildNutritionAnalyticsPanel, buildReadinessPanel, carolMealWindows } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { runLoadReading } from "../_shared/formulas/runLoadAlert.ts";
 import { lisbonTodayISO } from "../_shared/carolMemory.ts";
@@ -2325,6 +2325,47 @@ Deno.test("computeBodyMetrics: 2 pesagens não dão ritmo — diz o que falta em
   assertEquals(out!.includes("tendência descendo"), false);
   assertStringIncludes(out!, "Peso mais recente: 71 kg (2026-08-11)");
   assertStringIncludes(out!, "Tendência de peso: ainda sem dados suficientes (2 pesagens em 2 dias");
+});
+
+// Ponto 4 (2026-10-05): o mesmo corte de recência do pilar Corpo (hub.js) —
+// com a última pesagem a mais de 14 dias, nem tendência, nem ritmo, nem
+// perda rápida; o último peso com a data e "desatualizado".
+Deno.test("computeBodyMetrics: pesagem a mais de 14 dias — desatualizado, sem tendência nem perda rápida", () => {
+  // Perda forte (73 → 70 kg em 10 dias), mas a última pesagem é de há 15 dias.
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { weight_kg: 70.0 }),
+    makeBA("2026-08-06T07:00:00Z", { weight_kg: 71.5 }),
+    makeBA("2026-08-01T07:00:00Z", { weight_kg: 73.0 }),
+  ];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-26", "iniciante")!;
+  assertStringIncludes(out, "Peso mais recente: 70 kg (2026-08-11, há 15 dias) — DESATUALIZADO (sem pesagem nos últimos 14 dias)");
+  assertStringIncludes(out, "não dês tendência, ritmo semanal nem avaliação de perda de peso rápida");
+  assertEquals(out.includes("kg/semana"), false);
+  assertEquals(out.includes("Ritmo de perda de peso"), false);
+  assertEquals(out.includes("tendência descendo"), false);
+  assertEquals(out.includes("sem dados suficientes"), false);
+});
+
+Deno.test("computeBodyMetrics: pesagem de há 14 dias ainda conta (o corte é > 14, como o pilar)", () => {
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { weight_kg: 71.0 }),
+    makeBA("2026-08-06T07:00:00Z", { weight_kg: 72.0 }),
+    makeBA("2026-08-01T07:00:00Z", { weight_kg: 73.0 }),
+  ];
+  const out = computeBodyMetrics(rows, "masculino", "2026-08-25")!;
+  assertStringIncludes(out, "tendência descendo");
+  assertStringIncludes(out, "-1.4 kg/semana");
+  assertEquals(out.includes("DESATUALIZADO"), false);
+});
+
+Deno.test("computeBodyMetrics: queda aguda (#11) de há mais de 14 dias não é dita", () => {
+  const rows = [
+    makeBA("2026-08-11T07:00:00Z", { weight_kg: 68.0 }),
+    makeBA("2026-08-09T07:00:00Z", { weight_kg: 71.0 }),
+  ];
+  const out = computeBodyMetrics(rows, "masculino", "2026-09-01")!;
+  assertEquals(out.includes("CORPO #11"), false);
+  assertStringIncludes(out, "DESATUALIZADO");
 });
 
 Deno.test("computeBodyMetrics: peso mais recente vem da última avaliação COM peso", () => {
@@ -5084,12 +5125,172 @@ Deno.test("buildNutritionAnalyticsPanel: EA só com dias com refeições, diz a 
   assertStringIncludes(out, "1 dia de treino sem refeições registadas não entra no cálculo");
 });
 
-Deno.test("buildNutritionAnalyticsPanel: massa magra medida não leva nota; hoje é marcado como incompleto (N4)", () => {
-  const meals = [{ date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 600 }] }];
+Deno.test("buildNutritionAnalyticsPanel: massa magra medida não leva nota; o último dia é o de ontem, com a data (N4)", () => {
+  const meals = [
+    { date: "2026-10-03", meal_items: [{ quantity_grams: 100, calories_per_100g: 2400 }] },
+    { date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 600 }] },
+  ];
   const body = [{ assessed_at: "2026-09-20", weight_kg: 70, body_fat_pct: 15, lean_body_mass_kg: 60 }];
   const out = buildNutritionAnalyticsPanel(meals, body, [], [], null, "2026-10-04", 7)!;
   assertEquals(out.includes("massa magra por omissão"), false);
   assertEquals(out.includes("massa magra estimada"), false);
-  assertStringIncludes(out, "último dia com refeições (hoje, dia ainda incompleto)");
+  assertStringIncludes(out, "último dia com refeições (ontem, 2026-10-03)");
   assertEquals(out.includes("sem refeições registadas"), false);
+});
+
+// 2026-10-05: a EA da Carol conta só dias fechados (até ontem), como o ecrã e
+// a prontidão. Antes, de manhã, o pequeno-almoço de hoje com um treino dava
+// a média de 7 dias puxada para baixo e o "último dia" crítico.
+Deno.test("buildNutritionAnalyticsPanel: EA só com dias fechados — hoje não entra na média", () => {
+  const meals = [
+    { date: "2026-10-03", meal_items: [{ quantity_grams: 100, calories_per_100g: 2750 }] },
+    // Hoje, a meio: 300 kcal e uma corrida de 10 km — seria EA negativa.
+    { date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 300 }] },
+  ];
+  const runs = [{ date: "2026-10-04", distance_km: 10 }];
+  const out = buildNutritionAnalyticsPanel(meals, [], runs, [], null, "2026-10-04", 7)!;
+  // Só 2026-10-03: 2750 / 55 = 50 kcal/kg; a corrida de hoje não é "dia sem refeições".
+  assertStringIncludes(out, "Disponibilidade Energética (7 dias fechados, até ontem): 50 kcal/kg MMG, média de 1 dia com refeições");
+  assertStringIncludes(out, "último dia com refeições (ontem, 2026-10-03): ótima");
+  assertStringIncludes(out, "hoje não entra (o dia ainda não acabou)");
+  assertEquals(out.includes("crítica"), false);
+  assertEquals(out.includes("sem refeições registadas"), false);
+});
+
+Deno.test("buildNutritionAnalyticsPanel: só refeições de hoje — EA sem número, sem meio dia de ingestão", () => {
+  const meals = [{ date: "2026-10-04", meal_items: [{ quantity_grams: 100, calories_per_100g: 600 }] }];
+  const out = buildNutritionAnalyticsPanel(meals, [], [], [], null, "2026-10-04", 7)!;
+  assertStringIncludes(out, "Disponibilidade Energética (7 dias fechados, até ontem): sem número — só há refeições de hoje, e o dia ainda não acabou");
+  assertEquals(out.includes("kcal/kg MMG"), false);
+});
+
+// Revisão de 2026-10-05: a consulta de refeições da Carol começava em hoje-6,
+// mas a prontidão (e agora a EA do painel) conta os 7 dias FECHADOS, hoje-7 ..
+// ontem. A Home calcula com todas as refeições do store — a Carol tem de dar o
+// mesmo índice e o mesmo porquê.
+function semanaComDiaMaisAntigoMau(todayISO: string) {
+  const day = (n: number) => {
+    const d = new Date(todayISO + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() - n);
+    return d.toISOString().slice(0, 10);
+  };
+  const meal = (date: string, kcal: number) => ({ date, meal_items: [{ quantity_grams: 100, calories_per_100g: kcal }] });
+  // Todas as refeições do store (a Home): 3 semanas, com hoje-7 a 200 kcal.
+  const allMeals = [];
+  for (let n = 20; n >= 0; n--) allMeals.push(meal(day(n), n === 7 ? 200 : 2500));
+  const runs = [{ date: day(7), distance_km: 25 }];
+  return { allMeals, runs, day };
+}
+
+Deno.test("carolMealWindows: a consulta começa em hoje-7 (7 dias fechados) e a semana em hoje-6", () => {
+  assertEquals(carolMealWindows("2026-10-04", 7), { queryStartISO: "2026-09-27", weekStartISO: "2026-09-28" });
+  // Na viragem do mês também.
+  assertEquals(carolMealWindows("2026-10-01", 7), { queryStartISO: "2026-09-24", weekStartISO: "2026-09-25" });
+});
+
+Deno.test("buildReadinessPanel: com a janela da consulta da Carol dá o mesmo que a Home com todas as refeições", () => {
+  const today = "2026-10-04";
+  const { allMeals, runs } = semanaComDiaMaisAntigoMau(today);
+  const profile = { weight_kg: 70, calorie_goal: 2500, protein_goal: 140, carbs_goal: 300, fat_goal: 70 };
+  const { queryStartISO, weekStartISO } = carolMealWindows(today, 7);
+  const queried = allMeals.filter((m) => m.date >= queryStartISO && m.date <= today);
+
+  const home = buildReadinessPanel(runs, allMeals, [], [], profile, today, null)!;
+  const carol = buildReadinessPanel(runs, queried, [], [], profile, today, null)!;
+  assertEquals(carol, home);
+  // O dia hoje-7 (200 kcal, 25 km) pesa: a EA e o cumprimento calórico vêm dele.
+  assertStringIncludes(home, "nos últimos 7 dias fechados");
+
+  // A consulta antiga (desde hoje-6) perdia esse dia e dava outro índice —
+  // é isto que o teste guarda.
+  const antiga = buildReadinessPanel(runs, allMeals.filter((m) => m.date >= weekStartISO && m.date <= today), [], [], profile, today, null)!;
+  assert(antiga !== home, "sem o dia hoje-7 a prontidão tem de ser diferente — senão o teste não prova nada");
+});
+
+Deno.test("buildNutritionAnalyticsPanel: com a lista da consulta, a EA é a do pilar da prontidão e o cumprimento calórico não muda", () => {
+  const today = "2026-10-04";
+  const { allMeals, runs } = semanaComDiaMaisAntigoMau(today);
+  const profile = { weight_kg: 70, calorie_goal: 2500, protein_goal: 140, carbs_goal: 300, fat_goal: 70 };
+  const { queryStartISO, weekStartISO } = carolMealWindows(today, 7);
+  const queried = allMeals.filter((m) => m.date >= queryStartISO && m.date <= today);
+  const week = allMeals.filter((m) => m.date >= weekStartISO && m.date <= today);
+
+  const out = buildNutritionAnalyticsPanel(queried, [], runs, [], profile, today, 7)!;
+  const eaPanel = /Disponibilidade Energética \(7 dias fechados, até ontem\): (-?[\d.]+) kcal\/kg MMG, média de 7 dias com refeições/.exec(out);
+  assert(eaPanel, out);
+  const readiness = buildReadinessPanel(runs, queried, [], [], profile, today, null)!;
+  const eaPillar = /EA de (-?[\d,]+) kcal\/kg nos últimos 7 dias fechados/.exec(readiness);
+  assert(eaPillar, readiness);
+  assertEquals(Number(eaPanel[1]).toFixed(1), eaPillar[1].replace(",", "."));
+
+  // O cumprimento calórico continua com os 7 dias até hoje (hoje-6 .. hoje):
+  // o dia a mais da consulta não entra.
+  const linhaCumprimento = (s: string) => s.split("\n").find((l) => l.includes("Cumprimento calórico"));
+  assertEquals(linhaCumprimento(out), linhaCumprimento(buildNutritionAnalyticsPanel(week, [], runs, [], profile, today, 7)!));
+});
+
+Deno.test("buildNutritionAnalyticsPanel: refeições de hoje sem alimentos discriminados — sem micronutrientes, sem falar de cobertura", () => {
+  // Registo só com o total de calorias (sem meal_items).
+  const out = buildNutritionAnalyticsPanel([{ date: "2026-10-06", calories: 600, meal_items: [] }], [], [], [], null, "2026-10-06", 7)!;
+  assertStringIncludes(out, "Micronutrientes hoje: sem valores — as refeições de hoje não têm os alimentos discriminados");
+  assertStringIncludes(out, "não afirmes que falta um micronutriente");
+  assertEquals(out.includes("cobertura desconhecida"), false);
+  assertEquals(out.includes("(mínimos"), false);
+});
+
+// D6 (2026-10-05): micronutrientes null não entram na soma — os totais de
+// hoje são mínimos e a Carol recebe a cobertura, para não afirmar falta de
+// ferro quando o ferro é só desconhecido.
+const SINCE = "2026-10-05T00:00:00Z";
+Deno.test("buildNutritionAnalyticsPanel: micronutrientes de hoje são mínimos e dizem a cobertura (D6)", () => {
+  const meals = [{
+    date: "2026-10-06", created_at: "2026-10-06T12:00:00Z",
+    meal_items: [
+      {
+        created_at: "2026-10-06T12:00:00Z", quantity_grams: 100, calories_per_100g: 300,
+        iron_mg_per_100g: 4, calcium_mg_per_100g: 100, vitamin_c_mg_per_100g: 10, potassium_mg_per_100g: 300, fiber_per_100g: 5,
+      },
+      {
+        created_at: "2026-10-06T12:00:00Z", quantity_grams: 100, calories_per_100g: 200,
+        iron_mg_per_100g: null, calcium_mg_per_100g: 50, vitamin_c_mg_per_100g: null, potassium_mg_per_100g: 100, fiber_per_100g: 2,
+      },
+    ],
+  }];
+  // MICROS_NULL_SINCE fica null até ao deploy da analyze-meal nova: o teste
+  // passa a data, para não depender do valor da constante.
+  const out = buildNutritionAnalyticsPanel(meals, [], [], [], null, "2026-10-06", 7, { microsSince: SINCE })!;
+  assertStringIncludes(out, "Micronutrientes hoje (mínimos — só somam os valores conhecidos): ferro 4 mg · cálcio 150 mg · vit. C 10 mg · potássio 400 mg · fibra 7 g");
+  assertStringIncludes(out, "valor conhecido em: ferro 50%, cálcio 100%, vit. C 50%, potássio 100%, fibra 100% dos 2 alimentos de hoje");
+  assertStringIncludes(out, "não digas que falta esse micronutriente");
+  assertEquals(out.includes("NaN"), false);
+});
+
+Deno.test("buildNutritionAnalyticsPanel: micronutrientes com tudo conhecido dizem-no; sem created_at a cobertura é desconhecida (D6)", () => {
+  const item = {
+    quantity_grams: 100, calories_per_100g: 300,
+    iron_mg_per_100g: 4, calcium_mg_per_100g: 100, vitamin_c_mg_per_100g: 10, potassium_mg_per_100g: 300, fiber_per_100g: 5,
+  };
+  const known = buildNutritionAnalyticsPanel(
+    [{ date: "2026-10-06", meal_items: [{ ...item, created_at: "2026-10-06T12:00:00Z" }] }], [], [], [], null, "2026-10-06", 7,
+    { microsSince: SINCE },
+  )!;
+  assertStringIncludes(known, "valor conhecido no único alimento de hoje");
+
+  // Sem data de deploy (null): mesmo um alimento recente fica com a
+  // cobertura desconhecida — o lado seguro.
+  const semDeploy = buildNutritionAnalyticsPanel(
+    [{ date: "2026-10-06", meal_items: [{ ...item, created_at: "2026-10-06T12:00:00Z" }] }], [], [], [], null, "2026-10-06", 7,
+    { microsSince: null },
+  )!;
+  assertStringIncludes(semDeploy, "cobertura desconhecida");
+  assertEquals(semDeploy.includes("valor conhecido"), false);
+
+  // Sem created_at conta como gravado no início do dia — antes de
+  // MICROS_NULL_SINCE para um dia anterior: zeros ambíguos.
+  const legacy = buildNutritionAnalyticsPanel(
+    [{ date: "2026-10-04", meal_items: [item] }], [], [], [], null, "2026-10-04", 7, { microsSince: SINCE },
+  )!;
+  assertStringIncludes(legacy, "Micronutrientes hoje (mínimos");
+  assertStringIncludes(legacy, "cobertura desconhecida");
+  assertStringIncludes(legacy, "não afirmes que falta um micronutriente");
 });

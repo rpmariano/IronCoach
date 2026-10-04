@@ -69,7 +69,10 @@ const PLUGINS = [AVG_LINE_PLUGIN];
 /** O que o gráfico diz de um conjunto de semanas — exportado para os testes. */
 export function weeklyVolumeSummary(weeklyData = []) {
   const weeks = Array.isArray(weeklyData) ? weeklyData : [];
-  const closed = weeks.filter((w) => !w.inProgress);
+  /* 2026-10-05: `cut` = semana de um período passado que o fim do período
+     corta ao meio; não é uma semana fechada dentro do período, por isso fica
+     de fora do número grande, do delta e da média (como a em curso). */
+  const closed = weeks.filter((w) => !w.inProgress && !w.cut);
   const last = closed.length ? closed[closed.length - 1] : null;
   const prev = closed.length > 1 ? closed[closed.length - 2] : null;
   // Só semanas observadas por inteiro entram na média e na comparação.
@@ -87,6 +90,7 @@ export function weeklyVolumeSummary(weeklyData = []) {
     delta,
     avg4w,
     hasInProgress: weeks.some((w) => w.inProgress),
+    hasCut: weeks.some((w) => w.cut),
     hasZeroWeek: closed.some((w) => !(Number(w.volumeLoad) > 0)),
   };
 }
@@ -100,29 +104,28 @@ export default function VolumeLoadChart({ weeklyData = [], hint, ready, classNam
   const reduced = useReducedMotion();
   const values = useMemo(() => weeklyData.map(d => Number(d.volumeLoad || 0)), [weeklyData]);
   const maxVal = values.length ? Math.max(...values) : 0;
-  const { last, delta: weekDelta, avg4w, hasInProgress, hasZeroWeek } = useMemo(
+  const { last, delta: weekDelta, avg4w, hasInProgress, hasCut, hasZeroWeek } = useMemo(
     () => weeklyVolumeSummary(weeklyData),
     [weeklyData],
   );
 
   const data = useMemo(() => {
-    // Tintas da cor do ginásio: as semanas fechadas da mais apagada (40%) à
-    // mais recente (cheia); a semana em curso é só contorno — ainda não é um
-    // facto.
-    const closedIdx = weeklyData.map((d, i) => (d.inProgress ? -1 : i)).filter((i) => i >= 0);
-    const rank = new Map(closedIdx.map((i, k) => [i, k]));
-    const t = (i) => (closedIdx.length > 1 ? rank.get(i) / (closedIdx.length - 1) : 1);
+    /* 2026-10-05: as semanas fechadas têm todas a mesma tinta — o degradê "as
+       antigas mais apagadas" fazia parecer que as semanas de um trimestre
+       passado eram menos reais. Só a semana em curso e a cortada pelo fim do
+       período (que não são factos fechados) ficam em contorno. */
+    const open = (d) => d.inProgress || d.cut;
     return {
       labels: weeklyData.map(d => d.weekLabel),
       datasets: [
         {
           label: 'Volume-carga',
           data: values,
-          backgroundColor: weeklyData.map((d, i) => (d.inProgress
+          backgroundColor: weeklyData.map((d) => (open(d)
             ? `rgba(${GYM_RGB}, 0.12)`
-            : `rgba(${GYM_RGB}, ${(0.4 + 0.6 * t(i)).toFixed(2)})`)),
+            : `rgba(${GYM_RGB}, 0.85)`)),
           borderColor: weeklyData.map(() => `rgba(${GYM_RGB}, 0.9)`),
-          borderWidth: weeklyData.map((d) => (d.inProgress ? 1.5 : 0)),
+          borderWidth: weeklyData.map((d) => (open(d) ? 1.5 : 0)),
           borderSkipped: false,
           borderRadius: 6,
         },
@@ -151,7 +154,7 @@ export default function VolumeLoadChart({ weeklyData = [], hint, ready, classNam
           title: (items) => {
             const w = weeklyData[items?.[0]?.dataIndex];
             if (!w) return '';
-            return `Semana de ${w.weekLabel}${w.inProgress ? ' · em curso' : w.partial ? ' · início dos registos' : ''}`;
+            return `Semana de ${w.weekLabel}${w.inProgress ? ' · em curso' : w.cut ? ' · cortada no fim do período' : w.partial ? ' · início dos registos' : ''}`;
           },
           label: (ctx) => ` ${fmtNumber(ctx.raw, 0)} kg`,
         },
@@ -179,11 +182,14 @@ export default function VolumeLoadChart({ weeklyData = [], hint, ready, classNam
 
   const legend = [{ label: 'Volume-carga semanal', color: 'var(--gym)' }];
   if (hasInProgress) legend.push({ label: 'Semana em curso (fora da média)', color: 'rgba(158,195,210,.45)' });
+  if (hasCut) legend.push({ label: 'Semana cortada pelo fim do período (fora da média)', color: 'rgba(158,195,210,.45)' });
   if (avg4w !== null) legend.push({ label: `Média 4 semanas fechadas · ${fmtNumber(avg4w, 0)} kg`, color: 'rgba(248,250,252,.45)', shape: 'dash' });
 
   const notes = [];
   if (hasZeroWeek) notes.push('As semanas sem treino contam 0 kg.');
   if (hasInProgress) notes.push('A semana em curso (só os dias fechados) fica fora da média e da comparação.');
+
+  if (hasCut) notes.push('A última semana continua depois do fim do período: só conta até lá e fica fora da média e da comparação.');
 
   return (
     <ChartFrame

@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { computeReadinessIndex, checkinPillar } from "./readinessIndex.ts";
+import { computeReadinessIndex, checkinPillar, readinessMealsStartISO } from "./readinessIndex.ts";
 
 const golden = JSON.parse(await Deno.readTextFile(new URL("./readinessIndex.golden.json", import.meta.url)));
 
@@ -119,4 +119,73 @@ Deno.test("computeReadinessIndex: refeições com EA negativa contam como críti
   const semRefeicoes = computeReadinessIndex(runs, [], body, [], profile, "2026-08-25", null, null);
   assertEquals(semRefeicoes.pillars.find((p) => p.key === "ea")!.hasData, false);
   assertEquals(semRefeicoes.pillars.find((p) => p.key === "ea")!.desc, "Sem dados nutricionais suficientes.");
+});
+
+/* 2026-10-05: EA e Nutrição só olham para dias FECHADOS (os 7 dias até
+   ontem). Um hoje parcial (pequeno-almoço + corrida de manhã) não mexe nos
+   pilares; ontem conta; e o que é de hoje não entra mesmo que o chamador o
+   passe. Espelhado em src/utils/readinessIndex.spec.js. */
+Deno.test("computeReadinessIndex: hoje parcial não mexe em EA nem Nutrição; ontem conta", () => {
+  const body = [{ date: "2026-08-01", weight_kg: 70, body_fat_pct: 15 }];
+  const profile = { calorie_goal: 2400 };
+  const mealOntem = { date: "2026-08-24", calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 };
+  const manha = { date: "2026-08-25", calories: 300, protein_g: 15, carbs_g: 50, fat_g: 5 };
+  const corridaHoje = { date: "2026-08-25", distance_km: 15, duration_seconds: 5400, kind: "treino", training_type: null, effort_rpe: 6 };
+  const pil = (r: ReturnType<typeof computeReadinessIndex>, k: string) => r.pillars.find((p) => p.key === k)!;
+
+  const semHoje = computeReadinessIndex([], [mealOntem], body, [], profile, "2026-08-25", null, null);
+  const comHoje = computeReadinessIndex([corridaHoje], [mealOntem, manha], body, [], profile, "2026-08-25", null, null);
+  assertEquals(pil(comHoje, "ea"), pil(semHoje, "ea"));
+  assertEquals(pil(comHoje, "calories"), pil(semHoje, "calories"));
+  assertEquals(pil(comHoje, "ea").hasData, true);
+  assertEquals(/Crítico/.test(pil(comHoje, "ea").desc), false);
+  assertEquals(/nos últimos 7 dias fechados/.test(pil(comHoje, "ea").desc), true);
+  assertEquals(/nos últimos 7 dias fechados/.test(pil(comHoje, "calories").desc), true);
+
+  // Só hoje registado (nada fechado): os dois pilares ficam sem dados.
+  const soHoje = computeReadinessIndex([corridaHoje], [manha], body, [], profile, "2026-08-25", null, null);
+  assertEquals(pil(soHoje, "ea").hasData, false);
+  assertEquals(pil(soHoje, "calories").hasData, false);
+  // ...e dizem porquê: o registo de hoje não se perdeu, só conta a partir de amanhã.
+  assertEquals(pil(soHoje, "ea").desc, "Os registos de hoje só contam a partir de amanhã.");
+  assertEquals(pil(soHoje, "calories").desc, "Os registos de hoje só contam a partir de amanhã.");
+  // Sem nenhuma refeição, o texto genérico de sempre.
+  const nada = computeReadinessIndex([corridaHoje], [], body, [], profile, "2026-08-25", null, null);
+  assertEquals(pil(nada, "ea").desc, "Sem dados nutricionais suficientes.");
+  assertEquals(pil(nada, "calories").desc, "Sem dados de nutrição suficientes.");
+
+  // Ontem conta: a mesma tirada longa, mas ontem, com só o pequeno-almoço, é crítica.
+  const corridaOntem = { ...corridaHoje, date: "2026-08-24" };
+  const ontem = computeReadinessIndex([corridaOntem], [{ ...manha, date: "2026-08-24" }], body, [], profile, "2026-08-25", null, null);
+  assertEquals(pil(ontem, "ea").hasData, true);
+  assertEquals(pil(ontem, "ea").score, 0);
+  assertEquals(/Crítico/.test(pil(ontem, "ea").desc), true);
+  assertEquals(pil(ontem, "calories").hasData, true);
+
+  // A janela são 7 dias fechados: o dia 17 já saiu, o 18 ainda entra.
+  const dia = (date: string) => ({ date, calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 });
+  const comDia18 = computeReadinessIndex([], [dia("2026-08-18")], body, [], profile, "2026-08-25", null, null);
+  const comDia17 = computeReadinessIndex([], [dia("2026-08-17")], body, [], profile, "2026-08-25", null, null);
+  assertEquals(pil(comDia18, "ea").hasData, true);
+  assertEquals(pil(comDia17, "ea").hasData, false);
+});
+
+Deno.test("computeReadinessIndex: a EA escreve sempre uma casa decimal, com vírgula", () => {
+  const body = [{ date: "2026-08-01", weight_kg: 70, body_fat_pct: 15 }];
+  const ontem = { date: "2026-08-24", calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 };
+  const r = computeReadinessIndex([], [ontem], body, [], { calorie_goal: 2400 }, "2026-08-25", null, null);
+  const desc = r.pillars.find((p) => p.key === "ea")!.desc;
+  // "NN,N kcal/kg" — nunca "31 kcal/kg" nem "31.0".
+  assertEquals(/EA de \d+,\d kcal\/kg/.test(desc), true);
+});
+
+Deno.test("readinessMealsStartISO: as refeições a carregar começam em hoje-7 (o início dos 7 dias fechados)", () => {
+  assertEquals(readinessMealsStartISO("2026-10-05"), "2026-09-28");
+  assertEquals(readinessMealsStartISO("2026-03-03"), "2026-02-24");
+  // E é exatamente o dia mais antigo que ainda entra nos pilares.
+  const body = [{ date: "2026-08-01", weight_kg: 70, body_fat_pct: 15 }];
+  const dia = (date: string) => ({ date, calories: 2400, protein_g: 120, carbs_g: 300, fat_g: 70 });
+  const inicio = readinessMealsStartISO("2026-08-25");
+  const r = computeReadinessIndex([], [dia(inicio)], body, [], { calorie_goal: 2400 }, "2026-08-25", null, null);
+  assertEquals(r.pillars.find((p) => p.key === "ea")!.hasData, true);
 });

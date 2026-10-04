@@ -26,7 +26,7 @@ import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_sha
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
   applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
-  parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten, withWrittenFoods,
+  microFromModel, parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 
@@ -48,7 +48,7 @@ const MEAL_TYPES = ["pequeno-almoco", "lanche-manha", "almoco", "lanche", "janta
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1; // repetições automáticas após timeout, antes de desistir de vez
 
-const RESPONSE_SCHEMA = {
+export const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     items: {
@@ -62,13 +62,13 @@ const RESPONSE_SCHEMA = {
           protein_per_100g: { type: "NUMBER" },
           carbs_per_100g: { type: "NUMBER" },
           fat_per_100g: { type: "NUMBER" },
-          fiber_per_100g: { type: "NUMBER" },
-          sugar_per_100g: { type: "NUMBER" },
-          sodium_per_100g: { type: "NUMBER" },
-          iron_mg_per_100g: { type: "NUMBER" },
-          calcium_mg_per_100g: { type: "NUMBER" },
-          vitamin_c_mg_per_100g: { type: "NUMBER" },
-          potassium_mg_per_100g: { type: "NUMBER" },
+          fiber_per_100g: { type: "NUMBER", nullable: true },
+          sugar_per_100g: { type: "NUMBER", nullable: true },
+          sodium_per_100g: { type: "NUMBER", nullable: true },
+          iron_mg_per_100g: { type: "NUMBER", nullable: true },
+          calcium_mg_per_100g: { type: "NUMBER", nullable: true },
+          vitamin_c_mg_per_100g: { type: "NUMBER", nullable: true },
+          potassium_mg_per_100g: { type: "NUMBER", nullable: true },
           // Bug #48 (fase A): os valores vêm de uma tabela nutricional lida
           // numa foto, não de uma estimativa — o produto entra logo na despensa.
           from_label: { type: "BOOLEAN" },
@@ -80,13 +80,9 @@ const RESPONSE_SCHEMA = {
           "protein_per_100g",
           "carbs_per_100g",
           "fat_per_100g",
-          "fiber_per_100g",
-          "sugar_per_100g",
-          "sodium_per_100g",
-          "iron_mg_per_100g",
-          "calcium_mg_per_100g",
-          "vitamin_c_mg_per_100g",
-          "potassium_mg_per_100g",
+          // Os micronutrientes deixaram de ser obrigatórios (D6 da Evolução,
+          // 2026-10-05): obrigá-los fazia o modelo inventar um número (ou 0)
+          // quando não o sabia. Sem valor → null em meal_items (MICROS_RULE).
         ],
       },
     },
@@ -163,6 +159,15 @@ const LABEL_RULE =
   "esse produto usa os valores POR 100 g LIDOS da tabela (não estimes), o nome comercial do produto " +
   "se estiver visível, e from_label=true. Nos outros itens, from_label=false.";
 
+// D6 da Evolução (2026-10-05): os micronutrientes deixaram de ser
+// obrigatórios no schema — o que o modelo não sabe fica null em meal_items, e
+// a app pode dizer "dado em X% dos alimentos". 0 só quando é mesmo zero.
+export const MICROS_RULE =
+  "\n\nMICRONUTRIENTES (fibra, açúcar, sódio, ferro, cálcio, vitamina C, potássio): dá o valor por 100 g quando " +
+  "há um valor de referência para esse alimento (num rótulo, o lido). Usa 0 só quando o alimento não tem mesmo " +
+  "esse nutriente (ex.: vitamina C no azeite). Quando não sabes, deixa esse campo de fora (null) — nunca 0 nem um " +
+  "número inventado. Calorias, proteína, hidratos e gordura são sempre obrigatórios.";
+
 // Bug #52 (fase A): o que as observações dizem de como ele cozinha fica a
 // valer para as próximas refeições (à segunda vez igual).
 function cookingFactsRule(notes: string | null): string {
@@ -194,6 +199,7 @@ function buildPrompt(notes: string | null, knowledge = ""): string {
     "POR 100 GRAMAS (não por porção), usando valores de referência de bases de dados " +
     "nutricionais padrão. O sódio é em mg por 100g. Usa nomes em português de Portugal." +
     LABEL_RULE +
+    MICROS_RULE +
     notesSection(notes) +
     knowledge +
     cookingFactsRule(notes) +
@@ -225,6 +231,7 @@ export function buildPhotosAndItemsPrompt(items: { name: string; grams: number |
     "Para cada item, o conteúdo nutricional é POR 100 GRAMAS (não por porção), com valores de referência de bases " +
     "de dados nutricionais padrão. O sódio é em mg por 100g. Usa nomes em português de Portugal." +
     LABEL_RULE +
+    MICROS_RULE +
     notesSection(notes) +
     knowledge +
     cookingFactsRule(notes) +
@@ -287,7 +294,8 @@ export function buildManualItemsPrompt(items: { name: string; grams: number | nu
     'peso que alimento "1 fatia de fiambre" sem observação nenhuma — o peso de uma fatia típica ' +
     "de fiambre (aprox. 20g). Outros exemplos de bom senso: \"1 banana\" ≈ 120g, \"1 ovo\" ≈ 50g, " +
     '"uma posta de bacalhau" ≈ 150g. Nunca devolvas 0 nem null nesta chave — escolhe sempre o ' +
-    "valor mais plausível para uma porção normal do alimento descrito.\n";
+    "valor mais plausível para uma porção normal do alimento descrito." +
+    MICROS_RULE + "\n";
   if (notes && notes.trim()) {
     prompt += `\nObservações gerais desta refeição, escritas pelo utilizador: "${notes.trim()}"\n`;
   }
@@ -398,6 +406,8 @@ async function runGeminiItemsRequest(
   }
 
   const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v >= 0 ? v : 0);
+  // Micronutrientes: o que o modelo não dá fica null, não 0 (D6, 2026-10-05).
+  const micro = microFromModel;
   const items = (Array.isArray(parsed.items) ? parsed.items : [])
     // deno-lint-ignore no-explicit-any
     .map((it: any) => ({
@@ -407,13 +417,13 @@ async function runGeminiItemsRequest(
       protein_per_100g: num(it?.protein_per_100g),
       carbs_per_100g: num(it?.carbs_per_100g),
       fat_per_100g: num(it?.fat_per_100g),
-      fiber_per_100g: num(it?.fiber_per_100g),
-      sugar_per_100g: num(it?.sugar_per_100g),
-      sodium_per_100g: num(it?.sodium_per_100g),
-      iron_mg_per_100g: num(it?.iron_mg_per_100g),
-      calcium_mg_per_100g: num(it?.calcium_mg_per_100g),
-      vitamin_c_mg_per_100g: num(it?.vitamin_c_mg_per_100g),
-      potassium_mg_per_100g: num(it?.potassium_mg_per_100g),
+      fiber_per_100g: micro(it?.fiber_per_100g),
+      sugar_per_100g: micro(it?.sugar_per_100g),
+      sodium_per_100g: micro(it?.sodium_per_100g),
+      iron_mg_per_100g: micro(it?.iron_mg_per_100g),
+      calcium_mg_per_100g: micro(it?.calcium_mg_per_100g),
+      vitamin_c_mg_per_100g: micro(it?.vitamin_c_mg_per_100g),
+      potassium_mg_per_100g: micro(it?.potassium_mg_per_100g),
       ...(withSource ? { source_index: Math.round(num(it?.source_index)) } : {}),
       // Não é coluna de meal_items: pickMealItem tira-o antes de gravar.
       from_label: it?.from_label === true,

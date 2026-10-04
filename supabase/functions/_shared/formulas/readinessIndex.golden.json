@@ -60,14 +60,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "desc": "EA de 7,7 kcal/kg nos últimos 7 dias fechados. Crítico — risco de RED-S. Aumenta a ingestão.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino.",
+          "desc": "50% do alvo calórico nos últimos 7 dias fechados. Ingestão muito baixa para o volume de treino.",
           "hasData": true
         },
         {
@@ -149,14 +149,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "desc": "EA de 7,7 kcal/kg nos últimos 7 dias fechados. Crítico — risco de RED-S. Aumenta a ingestão.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino.",
+          "desc": "50% do alvo calórico nos últimos 7 dias fechados. Ingestão muito baixa para o volume de treino.",
           "hasData": true
         },
         {
@@ -270,14 +270,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 10,
-          "desc": "EA de 7.7 kcal/kg. Crítico — risco de RED-S. Aumenta a ingestão.",
+          "desc": "EA de 7,7 kcal/kg nos últimos 7 dias fechados. Crítico — risco de RED-S. Aumenta a ingestão.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 20,
-          "desc": "50% do alvo calórico. Ingestão muito baixa para o volume de treino.",
+          "desc": "50% do alvo calórico nos últimos 7 dias fechados. Ingestão muito baixa para o volume de treino.",
           "hasData": true
         },
         {
@@ -480,14 +480,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 60,
-          "desc": "EA de 31.6 kcal/kg. Subótima — come mais para sustentar o volume.",
+          "desc": "EA de 31,0 kcal/kg nos últimos 7 dias fechados. Subótima — come mais para sustentar o volume.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 100,
-          "desc": "100% do alvo calórico. Nutrição alinhada com o esforço.",
+          "desc": "100% do alvo calórico nos últimos 7 dias fechados. Nutrição alinhada com o esforço.",
           "hasData": true
         },
         {
@@ -722,14 +722,14 @@
           "key": "ea",
           "label": "Disponibilidade Energética",
           "score": 60,
-          "desc": "EA de 31.6 kcal/kg. Subótima — come mais para sustentar o volume.",
+          "desc": "EA de 31,0 kcal/kg nos últimos 7 dias fechados. Subótima — come mais para sustentar o volume.",
           "hasData": true
         },
         {
           "key": "calories",
           "label": "Nutrição",
           "score": 100,
-          "desc": "100% do alvo calórico. Nutrição alinhada com o esforço.",
+          "desc": "100% do alvo calórico nos últimos 7 dias fechados. Nutrição alinhada com o esforço.",
           "hasData": true
         },
         {

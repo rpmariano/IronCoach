@@ -194,9 +194,16 @@ create table meal_items (
   protein_per_100g numeric not null default 0,
   carbs_per_100g numeric not null default 0,
   fat_per_100g numeric not null default 0,
-  fiber_per_100g numeric not null default 0,
-  sugar_per_100g numeric not null default 0,
-  sodium_per_100g numeric not null default 0,
+  -- Micronutrientes: null = a análise não deu o valor ("não sei"). Desde o
+  -- deploy do D6 (migração 20261005090000_micronutrients_nullable, 2026-10-05)
+  -- a analyze-meal grava null em vez de 0, e fibra/açúcar/sódio deixaram de
+  -- ser NOT NULL DEFAULT 0 (a migração garante também as outras quatro
+  -- nuláveis sem default, que nenhuma migração cria). Os zeros anteriores são
+  -- ambíguos ("não tem" ou "não sei") e ficaram como estavam — ver
+  -- MICROS_NULL_SINCE em nutritionPeriod.ts (null até ao deploy real).
+  fiber_per_100g numeric,
+  sugar_per_100g numeric,
+  sodium_per_100g numeric,
   iron_mg_per_100g numeric,
   calcium_mg_per_100g numeric,
   vitamin_c_mg_per_100g numeric,

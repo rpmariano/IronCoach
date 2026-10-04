@@ -91,7 +91,7 @@ describe('KPIs (G2): treinos de força com "/semana (semanas fechadas)"', () => 
     const l = linha('Treinos de força');
     // 6 sessões em setembro (7, 10, 21, 24, 28, 30); 4 dentro das 3 semanas inteiras (7, 14, 21 set).
     expect(within(l).getByTestId('row-value')).toHaveTextContent('6 · 1,3/semana');
-    expect(within(l).getByText('em 3 semanas fechadas')).toBeInTheDocument();
+    expect(within(l).getByText('4 treinos de força em 3 semanas fechadas')).toBeInTheDocument();
     expect(within(l).getByText('2 de 3')).toBeInTheDocument(); // semanas com 2+ treinos
     expect(screen.getByText('Semanas com 2+ treinos')).toBeInTheDocument();
     expect(screen.getByText('No período (30 dias fechados)')).toBeInTheDocument();
@@ -165,7 +165,10 @@ describe('G3/G4: volume-carga semanal', () => {
     const { data } = h.barProps.find((p) => p.data.datasets[0].label === 'Volume-carga');
     expect(data.labels).toEqual(['31 ago', '7 set', '14 set', '21 set', '28 set']);
     expect(data.datasets[0].data).toEqual([0, 4000, 0, 4000, 4000]);
-    expect(within(f).getByText(/Semana em curso/)).toBeInTheDocument();
+    // Setembro é um período passado: sem semana em curso; a de 28 set (que
+    // continua em outubro) só conta até 30 set e vem como "cortada".
+    expect(within(f).queryByText(/Semana em curso/)).toBeNull();
+    expect(within(f).getByText(/Semana cortada pelo fim do período/)).toBeInTheDocument();
   });
 
   it('D5: o KPI "Vol. Carga", o "Volume diário" e o ACWR do ginásio saíram', () => {

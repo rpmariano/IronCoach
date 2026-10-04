@@ -98,6 +98,17 @@ describe('weeklyVolumeSummary (G3/G4)', () => {
     expect(so.delta).toBeNull();
   });
 
+  it('período passado: a semana cortada fica fora do número, do delta e da média', () => {
+    const r = weeklyVolumeSummary([
+      semana('31 ago', 1000), semana('7 set', 2000), semana('14 set', 3000), semana('21 set', 5000), semana('28 set', 700, { cut: true }),
+    ]);
+    expect(r.last).toMatchObject({ weekLabel: '21 set', volumeLoad: 5000 });
+    expect(r.delta).toEqual({ diff: 2000, prevLabel: '14 set' });
+    expect(r.avg4w).toBe((1000 + 2000 + 3000 + 5000) / 4);
+    expect(r.hasCut).toBe(true);
+    expect(r.hasInProgress).toBe(false);
+  });
+
   it('sem nenhuma semana fechada não há número, nem delta, nem média', () => {
     const r = weeklyVolumeSummary([semana('28 set', 2000, { inProgress: true })]);
     expect(r).toMatchObject({ last: null, delta: null, avg4w: null });
@@ -129,6 +140,19 @@ describe('VolumeLoadChart — texto (G3/G4, D5)', () => {
     expect(data.datasets[0].data).toEqual([0, 4000, 0, 6000, 2000]);
     expect(data.datasets[0].borderWidth).toEqual([0, 0, 0, 0, 1.5]);
     expect(data.datasets[0].backgroundColor[4]).toBe('rgba(158, 195, 210, 0.12)');
+  });
+
+  it('período passado: sem degradê nas semanas fechadas; a cortada em contorno, com legenda e nota', () => {
+    const passado = [semana('14 set', 3000), semana('21 set', 5000), semana('28 set', 700, { cut: true })];
+    render(<VolumeLoadChart weeklyData={passado} />);
+    const ds = barProps.at(-1).data.datasets[0];
+    expect(ds.backgroundColor[0]).toBe(ds.backgroundColor[1]);
+    expect(ds.backgroundColor[2]).toBe('rgba(158, 195, 210, 0.12)');
+    expect(ds.borderWidth).toEqual([0, 0, 1.5]);
+    expect(screen.getByText('kg · semana de 21 set')).toBeInTheDocument();
+    expect(screen.queryByText(/Semana em curso/)).toBeNull();
+    expect(screen.getByText(/Semana cortada pelo fim do período/)).toBeInTheDocument();
+    expect(barProps.at(-1).options.plugins.tooltip.callbacks.title([{ dataIndex: 2 }])).toBe('Semana de 28 set · cortada no fim do período');
   });
 
   it('o tooltip marca a semana em curso', () => {

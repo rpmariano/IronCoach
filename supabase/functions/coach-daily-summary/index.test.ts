@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, buildTomorrowPrepMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary, treinoFalado } from "./index.ts";
+import { addDaysISO, buildDailySummaryContext, buildWarningsMessage, buildTomorrowPrepMessage, isFemale, computeBodyMetrics, computeTDEE, hhmmOf, checkinForSummary, treinoFalado, weightStaleness, staleWeightPromptSection } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 
@@ -71,6 +71,52 @@ Deno.test("computeBodyMetrics: limiar de perda de peso é por nível, não um kg
   // 0,9 kg/semana nunca teria disparado aqui para ninguém.
   const avancado = computeBodyMetrics(bodyAssessments, "M", "avancado");
   assertEquals(avancado.weightLossTooFast, true);
+});
+
+// Ponto 4 (2026-10-05): o corte de recência do pilar Corpo (hub.js) — com a
+// última pesagem a mais de 14 dias não há ritmo nem aviso de perda rápida.
+// A consulta lê 30 dias; antes o cartão avisava com pesagens de há 3 semanas.
+Deno.test("computeBodyMetrics: última pesagem a mais de 14 dias — sem ritmo nem perda rápida", () => {
+  const bodyAssessments = [
+    { date: "2026-08-15", weight_kg: 79.2 },
+    { date: "2026-08-08", weight_kg: 79.6 },
+    { date: "2026-08-01", weight_kg: 80 },
+  ];
+  // Com o peso em dia (14 dias), o avançado tem aviso — como no teste acima.
+  const emDia = computeBodyMetrics(bodyAssessments, "M", "avancado", "2026-08-29");
+  assertEquals(emDia.weightStale, false);
+  assertEquals(emDia.weightAgeDays, 14);
+  assertEquals(emDia.weightLossTooFast, true);
+  // 15 dias: desatualizado — sem ritmo, sem aviso.
+  const velho = computeBodyMetrics(bodyAssessments, "M", "avancado", "2026-08-30");
+  assertEquals(velho.weightStale, true);
+  assertEquals(velho.latestWeightDate, "2026-08-15");
+  assertEquals(velho.weightAgeDays, 15);
+  assertEquals(velho.weeklyWeightChange, null);
+  assertEquals(velho.weightLossTooFast, false);
+  assertEquals(velho.weightLossPct, null);
+  const aviso = buildWarningsMessage([], 0, null, { ...velho, gender: "M" });
+  assertEquals(aviso, null);
+});
+
+Deno.test("peso desatualizado: o contexto e o prompt dizem o último peso com a data, sem tendência", () => {
+  const bodyAssessments = [
+    { date: "2026-07-20", weight_kg: 79.25 },
+    { date: "2026-07-13", weight_kg: 80 },
+  ];
+  assertEquals(weightStaleness(bodyAssessments, "2026-08-11"), { weight_kg: 79.3, data: "2026-07-20", dias: 22 });
+  const ctx = buildDailySummaryContext({ ...baseParams, bodyAssessments });
+  assertEquals(ctx.peso_desatualizado, { weight_kg: 79.3, data: "2026-07-20", dias: 22 });
+  const rule = staleWeightPromptSection(ctx as Record<string, unknown>);
+  assertStringIncludes(rule, "a última pesagem é de 2026-07-20, há 22 dias");
+  assertStringIncludes(rule, "Não tires de \"composicao_corporal_30_dias\" tendência de peso");
+  assertStringIncludes(rule, "79,3 kg");
+
+  // Peso em dia (ou sem pesagens): o contexto e o prompt ficam os de sempre.
+  const emDia = buildDailySummaryContext({ ...baseParams, bodyAssessments: [{ date: "2026-08-10", weight_kg: 79 }] });
+  assertEquals("peso_desatualizado" in emDia, false);
+  assertEquals(staleWeightPromptSection(emDia as Record<string, unknown>), "");
+  assertEquals("peso_desatualizado" in buildDailySummaryContext(baseParams), false);
 });
 
 Deno.test("computeBodyMetrics: com uma só medição, weeklyWeightChange fica null (não 0)", () => {

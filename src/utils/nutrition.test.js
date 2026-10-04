@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dayNutrientStatus, dayWaterGoalMet, planAffectsDay } from './nutrition';
+import { dayNutrientStatus, dayWaterGoalMet, microCoverage, planAffectsDay } from './nutrition';
 
 const DAY = '2026-08-03';
 const OTHER_DAY = '2026-08-02';
@@ -158,5 +158,22 @@ describe('dayWaterGoalMet', () => {
   it('ignora registos de outros dias na soma', () => {
     const logs = [log(1500), log(1500, OTHER_DAY)];
     expect(dayWaterGoalMet(logs, DAY, { water_goal_ml: 2000 })).toBe(false);
+  });
+});
+
+// D6 da Evolução (2026-10-05): a cobertura de um micronutriente em palavras.
+describe('microCoverage', () => {
+  it('nenhum, todos, e a percentagem sem nunca dizer 0% nem 100% quando não é', () => {
+    expect(microCoverage(null)).toBeNull();
+    expect(microCoverage(undefined)).toBeNull();
+    expect(microCoverage(NaN)).toBeNull();
+    expect(microCoverage('')).toBeNull();
+    expect(microCoverage('0.5')).toBeNull();
+    expect(microCoverage(true)).toBeNull();
+    expect(microCoverage(0)).toEqual({ atLeast: false, none: true, text: 'nenhum alimento traz este valor' });
+    expect(microCoverage(1)).toEqual({ atLeast: false, none: false, text: 'dado em todos os alimentos' });
+    expect(microCoverage(7 / 13)).toEqual({ atLeast: true, none: false, text: 'dado em 54% dos alimentos' });
+    expect(microCoverage(0.996).text).toBe('dado em 99% dos alimentos');
+    expect(microCoverage(0.004).text).toBe('dado em 1% dos alimentos');
   });
 });

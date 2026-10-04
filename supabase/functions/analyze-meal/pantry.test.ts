@@ -2,7 +2,8 @@ import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
   applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
-  parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten, withWrittenFoods,
+  microFromModel, microOrNull, MICRO_COLUMNS, NUTRIENT_COLUMNS, parseCookingFacts, parseQuestions, pickMealItem,
+  remapQuestionItems, splitKnownWritten, withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
 
 // Bugs #48/#52, fase A: a despensa e como ele cozinha.
@@ -28,7 +29,61 @@ Deno.test("pickMealItem: só as colunas de meal_items chegam à BD", () => {
   const row = pickMealItem({ ...estimado("Arroz", 130), from_label: true, source_index: 2, from_pantry: true });
   assertEquals("from_label" in row || "source_index" in row || "from_pantry" in row, false);
   assertEquals(row.name, "Arroz");
-  assertEquals(row.potassium_mg_per_100g, 0);
+  // D6 (2026-10-05): um micronutriente que não veio grava null, não 0.
+  assertEquals(row.potassium_mg_per_100g, null);
+});
+
+// ── D6 da Evolução (2026-10-05): micronutrientes por saber ficam null ──────
+
+Deno.test("microOrNull: número ≥ 0 fica; null, vazio, negativo e lixo são 'não sei' (null), nunca 0", () => {
+  assertEquals(microOrNull(3.2), 3.2);
+  assertEquals(microOrNull(0), 0); // zero dado é zero
+  assertEquals(microOrNull("4,5".replace(",", ".")), 4.5);
+  assertEquals(microOrNull("12"), 12); // o PostgREST pode devolver numeric como texto
+  for (const v of [null, undefined, "", "  ", -1, NaN, Infinity, "abc", {}]) assertEquals(microOrNull(v), null);
+});
+
+Deno.test("microFromModel: só um número do modelo é valor; campo ausente ou texto é null", () => {
+  assertEquals(microFromModel(2.7), 2.7);
+  assertEquals(microFromModel(0), 0);
+  assertEquals(microFromModel(undefined), null);
+  assertEquals(microFromModel(null), null);
+  assertEquals(microFromModel("3"), null); // como o num() de sempre: texto não conta
+  assertEquals(microFromModel(-2), null);
+});
+
+Deno.test("pickMealItem: micronutrientes em falta ficam null; calorias e macros continuam 0", () => {
+  const row = pickMealItem({ name: "Salada", quantity_grams: 80, fiber_per_100g: 2.1, iron_mg_per_100g: 0 });
+  assertEquals(row.fiber_per_100g, 2.1);
+  assertEquals(row.iron_mg_per_100g, 0); // um 0 dado continua 0
+  for (const k of ["sugar_per_100g", "sodium_per_100g", "calcium_mg_per_100g", "vitamin_c_mg_per_100g", "potassium_mg_per_100g"]) {
+    assertEquals(row[k], null, k);
+  }
+  for (const k of ["calories_per_100g", "protein_per_100g", "carbs_per_100g", "fat_per_100g"]) assertEquals(row[k], 0, k);
+  // As 11 colunas de nutrientes vão sempre explícitas no insert (o DEFAULT nunca se usa).
+  for (const k of NUTRIENT_COLUMNS) assert(k in row, k);
+  assertEquals(MICRO_COLUMNS.length, 7);
+});
+
+Deno.test("withPantryValues: um 0 de micronutriente da despensa é ambíguo e passa como null; os outros ficam", () => {
+  const comMicros: PantryFood = { ...iogurte, fiber_per_100g: 0, sodium_per_100g: 36, calcium_mg_per_100g: 110, iron_mg_per_100g: 0 };
+  const it = withPantryValues({ quantity_grams: 170 }, comMicros) as Record<string, unknown>;
+  assertEquals(it.calories_per_100g, 59);
+  assertEquals(it.fat_per_100g, 0.4);
+  assertEquals(it.sodium_per_100g, 36);
+  assertEquals(it.calcium_mg_per_100g, 110);
+  assertEquals(it.fiber_per_100g, null);
+  assertEquals(it.iron_mg_per_100g, null);
+  assertEquals(it.potassium_mg_per_100g, null); // nem estava na linha
+  // Macros a 0 na despensa são 0 (não mudou).
+  const semGordura = withPantryValues({ quantity_grams: 100 }, { ...iogurte, fat_per_100g: 0 }) as Record<string, unknown>;
+  assertEquals(semGordura.fat_per_100g, 0);
+});
+
+Deno.test("nextFoodRow: um micronutriente por saber entra na despensa como 0 (athlete_foods continua NOT NULL)", () => {
+  const row = nextFoodRow(null, estimado("Arroz branco", 130, { fiber_per_100g: null, sodium_per_100g: 1 }), "u1", NOW)!;
+  assertEquals(row.fiber_per_100g, 0);
+  assertEquals(row.sodium_per_100g, 1);
 });
 
 Deno.test("knowledgeSection: vazia sem nada; regras confirmadas, as que variam e a lista da despensa", () => {
