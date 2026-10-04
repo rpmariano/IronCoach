@@ -483,6 +483,94 @@ async function analyzePhotosWithItems(
   return { items, usage, facts, questions };
 }
 
+// Bug #48 (fase C): um alimento que o atleta adiciona à despensa — por
+// descrição, ou por foto do rótulo / da galeria. A Carol confirma (estima,
+// ou lê a tabela nutricional) e devolve; quem grava é a app, depois de ele
+// ver e, se quiser, ajustar (mockup "Despensa e perguntas da Carol", ecrã 8).
+const PANTRY_FOOD_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    name: { type: "STRING" },
+    portion_grams: { type: "NUMBER" },
+    portion_label: { type: "STRING", nullable: true },
+    from_label: { type: "BOOLEAN" },
+    ...Object.fromEntries(Object.entries(RESPONSE_SCHEMA.properties.items.items.properties)
+      .filter(([k]) => k.endsWith("_per_100g"))),
+  },
+  required: ["name", "portion_grams", "from_label", "calories_per_100g", "protein_per_100g", "carbs_per_100g", "fat_per_100g"],
+};
+
+export function buildPantryFoodPrompt(description: string | null, hasImages: boolean): string {
+  const base = hasImages
+    ? "A(s) foto(s) mostram a embalagem ou o rótulo de UM produto que o atleta quer guardar na despensa dele. " +
+      "Se a tabela nutricional estiver legível, usa os valores POR 100 g LIDOS dela (não estimes), o nome comercial " +
+      "e, se a embalagem a indicar, a porção (ex.: \"1 barra\", 60 g); from_label=true. Sem tabela legível, " +
+      "estima pelo produto que vês, from_label=false."
+    : "O atleta quer guardar este alimento na despensa dele e descreveu-o assim: " +
+      `"${(description ?? "").trim()}". Dá-lhe um nome claro em português de Portugal (com a marca, se ele a disse), ` +
+      "a porção que ele costuma comer em gramas (portion_grams) e, se for uma unidade, o nome dela (portion_label, " +
+      "ex. \"1 fatia\"), e os valores nutricionais POR 100 g, de bases de dados padrão. from_label=false.";
+  return base + (hasImages && description?.trim() ? ` O atleta acrescentou: "${description.trim()}".` : "") +
+    " O sódio é em mg por 100 g. Sem porção indicada, a porção normal desse alimento. " +
+    "Responde apenas com JSON estruturado conforme o schema.";
+}
+
+async function analyzePantryFood(
+  parts: unknown[],
+  geminiKey: string,
+  deadline: number,
+  // deno-lint-ignore no-explicit-any
+): Promise<{ food: Record<string, any>; usage: GeminiUsage }> {
+  const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+    fetchGeminiWithTimeout(
+      geminiUrl(geminiModel),
+      {
+        method: "POST",
+        headers: geminiHeaders(geminiKey),
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            response_schema: PANTRY_FOOD_SCHEMA,
+            ...thinkingConfig("low", withThinking),
+          },
+        }),
+      },
+      GEMINI_TIMEOUT_MS,
+      GEMINI_RETRIES,
+      deadline,
+    )
+  );
+  if (!geminiRes.ok) {
+    console.error("Gemini error:", geminiRes.status, await geminiRes.text());
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) throw new Error(geminiBusyMessage("ler este alimento"));
+    throw new Error(upstreamErrorText(geminiRes.status));
+  }
+  const json = await geminiRes.json();
+  const usage = usageFromGemini(json);
+  // deno-lint-ignore no-explicit-any
+  let parsed: any;
+  try {
+    parsed = JSON.parse(json?.candidates?.[0]?.content?.parts?.[0]?.text);
+  } catch {
+    throw new Error("Não consegui ler este alimento. Tenta descrevê-lo de outra forma.");
+  }
+  const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v >= 0 ? v : 0);
+  const name = String(parsed?.name ?? "").trim().slice(0, 120);
+  if (!name) throw new Error("Não consegui ler este alimento. Tenta descrevê-lo de outra forma.");
+  const label = typeof parsed?.portion_label === "string" && parsed.portion_label.trim() ? parsed.portion_label.trim().slice(0, 40) : null;
+  return {
+    food: {
+      name,
+      portion_grams: Math.max(1, Math.round(num(parsed?.portion_grams)) || 100),
+      portion_label: label,
+      from_label: parsed?.from_label === true,
+      ...Object.fromEntries(Object.keys(PANTRY_FOOD_SCHEMA.properties).filter((k) => k.endsWith("_per_100g")).map((k) => [k, num(parsed?.[k])])),
+    },
+    usage,
+  };
+}
+
 // Os alimentos escritos no pedido: nome (até 120) e gramas opcionais. Sem
 // nome, não conta. Partilhado pelo registo manual e pelo das fotos.
 // deno-lint-ignore no-explicit-any
@@ -1107,6 +1195,28 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     // Bugs #48/#52 (fase A): o que ela já sabe deste atleta — a despensa e
     // como ele cozinha. Nunca rejeita (analyze-meal/pantry.ts).
     const pantryPromise = fetchPantry(sb, userId);
+
+    // ── Modo "pantry_food": confirmar um alimento para a despensa (fase C) ──
+    // Não grava nada: devolve o que a Carol leu, e a app grava depois de o
+    // atleta ver e ajustar (athlete_foods, RLS own rows).
+    if (body.mode === "pantry_food") {
+      const description = typeof body.description === "string" ? body.description.slice(0, 300) : null;
+      const imgs: string[] = (Array.isArray(body.images) ? body.images : [])
+        .filter((s: unknown) => typeof s === "string" && s.length > 0)
+        .slice(0, 3);
+      if (!imgs.length && !description?.trim()) {
+        return jsonResponse({ error: "Descreve o alimento ou junta uma foto do rótulo." }, 400);
+      }
+      const mime = ["image/jpeg", "image/png", "image/webp"].includes(body.mime_type) ? body.mime_type : "image/jpeg";
+      const parts: unknown[] = [{ text: buildPantryFoodPrompt(description, imgs.length > 0) }];
+      for (const b64 of imgs) parts.push({ inline_data: { mime_type: mime, data: b64 } });
+      try {
+        const { food, usage } = await analyzePantryFood(parts, geminiKey, extractionDeadline);
+        return jsonResponse({ food, usage });
+      } catch (e) {
+        return jsonResponse({ error: e instanceof Error ? e.message : "Não consegui ler este alimento." }, 502);
+      }
+    }
 
     // ── Modo "answer": o atleta responde às perguntas da Carol (fase B) ──
     // Uma resposta igual à que ela assumiu só confirma; uma diferente volta a

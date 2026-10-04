@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription, forgetPushSubscriptionOnThisDevice } from '../../lib/push';
-import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Footprints, Plus, Medal, MessageSquare, MapPin, Sparkles } from 'lucide-react';
+import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Plus, Medal, MessageSquare, MapPin, Sparkles, Archive } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
@@ -15,6 +15,7 @@ import CoachMemoryCard from './CoachMemoryCard';
 import TabelasConsentScreen from './TabelasConsentScreen';
 import CoachAvatar from '../Coach/CoachAvatar';
 import ShoeCabinet from './ShoeCabinet';
+import PantrySection from '../Pantry/PantrySection';
 import BadgesCard from './BadgesCard';
 import CupNoticePrefs from './CupNoticePrefs';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -51,10 +52,11 @@ const TABS = [
   { key: 'metas', label: 'Metas', icon: <Target size={14} />, tone: 'race' },
   // Medalha, não troféu: o troféu é o símbolo das Provas em toda a app.
   { key: 'vitrina', label: 'Vitrina', icon: <Medal size={14} />, tone: 'race' },
-  // srLabel: "Equipa." lê-se "equipa" num leitor de ecrã, que é outra coisa.
-  // O SubNav já tem o mecanismo (o Dashboard usa-o em "Geral" → "Visão
-  // Geral"); faltava aqui.
-  { key: 'equipamento', label: 'Equipa.', srLabel: 'Equipamento', icon: <Footprints size={14} />, tone: 'run' },
+  // Armário (bugs #48/#52, fase C, 2026-10-04): as sapatilhas e a despensa
+  // — um nome que serve aos dois e cabe sem abreviar (antes "Equipa.", que um
+  // leitor de ecrã lia "equipa"). A chave fica 'equipamento': é a que o resto
+  // da app usa para abrir este separador.
+  { key: 'equipamento', label: 'Armário', icon: <Archive size={14} />, tone: 'run' },
   { key: 'coach', label: 'Carol', icon: <CarolIcon size={14} />, tone: 'coach' },
 ];
 
@@ -1086,8 +1088,11 @@ export default function Perfil() {
           shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
       <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
-          <h2 className="sr-only">Equipamento</h2>
+          <h2 className="sr-only">Armário</h2>
           <ShoeCabinet ref={shoeCabinetRef} />
+          {/* A despensa (bugs #48/#52, fase C): também grava sozinha, à
+              parte do rascunho do perfil. */}
+          <PantrySection />
       </div>
 
       <div ref={(el) => { pageRefs.current[4] = el; setPageRef(4)(el); }} className="tab-swipe-page space-y-4">

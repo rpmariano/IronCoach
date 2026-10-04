@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import CarolQuestions, { openCarolQuestions } from '../Nutrition/CarolQuestions';
+import CoachAvatar from '../Coach/CoachAvatar';
 import PremiumModal from './PremiumModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Button from './Button';
@@ -143,6 +144,18 @@ export default function CreatedRecordModal() {
           <CheckCircle2 size={24} className="shrink-0" />
           <p className="text-sm font-bold">O teu registo foi analisado e guardado com sucesso.</p>
         </div>
+
+        {/* Bug #48 (fase C): um rótulo lido nas fotos entrou já na despensa —
+            não espera pela segunda vez (mockup, ecrã 5). */}
+        {newlyCreatedRecord.pantryAdded?.length > 0 && (
+          <div data-testid="pantry-added" className="flex gap-2.5 items-start rounded-2xl p-3.5" style={{ background: 'var(--tint-nutrition-bg)', border: '1px solid var(--tint-nutrition-bd)' }}>
+            <CoachAvatar size={32} mood="happy" />
+            <p className="text-[13px] leading-[1.5]" style={{ color: 'var(--text-2)' }}>
+              Li o rótulo e guardei já na tua despensa: <b style={{ color: 'var(--text-1)' }}>{newlyCreatedRecord.pantryAdded.join(', ')}</b>.
+              Da próxima, escreve o nome e já não preciso de analisar. Podes ajustá-lo no Perfil → Armário.
+            </p>
+          </div>
+        )}
 
         {/* Bug #52 (fase B): as perguntas da Carol, logo a seguir à análise.
             Fechar é o "respondo depois" — ficam no cartão da refeição. */}

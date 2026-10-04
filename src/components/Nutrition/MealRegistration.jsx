@@ -19,6 +19,7 @@ import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDra
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
+import { habitualsForMealType, isKnownFood, pantrySuggestions, portionText } from '../../utils/pantry';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -50,7 +51,10 @@ function getDefaultMealType() {
 }
 
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
-  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab } = useAppStore();
+  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab, pantryFoods, pantryLoaded, loadPantry } = useAppStore();
+  // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
+  // desta refeição. Um alimento da despensa já não é analisado.
+  useEffect(() => { if (!pantryLoaded) loadPantry?.(); }, [pantryLoaded, loadPantry]);
   const [initialTab] = useState(activeTab);
 
   
@@ -191,7 +195,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      analisado e o "Falar com a Carol", que o atleta precisa de ver. */
   const [confirmation, setConfirmation] = useState(null);
 
-  const finishCreateAndGoToCalendar = (createdRecord, label = 'Refeição registada') => {
+  // `extras`: o que mais o ecrã do resultado mostra — pantryAdded, os
+  // produtos que entraram já na despensa por um rótulo (bug #48, fase C).
+  const finishCreateAndGoToCalendar = (createdRecord, label = 'Refeição registada', extras = {}) => {
     const hadPendingNav = !!pendingNavTarget.current;
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
@@ -205,7 +211,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       if (!hadPendingNav) {
         setNavGuard(null);
         if (createdRecord) {
-          useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord });
+          useAppStore.getState().setNewlyCreatedRecord({ type: 'meal', record: createdRecord, ...extras });
         }
         useAppStore.getState().setPendingCalendarDate(date);
         useAppStore.getState().setActiveTab('calendario');
@@ -399,7 +405,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       console.warn('Aviso: análise retornou 0 itens', data);
     }
     setMeals([...meals, mealWithItems]);
-    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada');
+    // A refeição ensinou a despensa (fase A): as sugestões seguintes já a contam.
+    useAppStore.getState().loadPantry?.();
+    finishCreateAndGoToCalendar(mealWithItems, 'Refeição registada', data.pantry_added?.length ? { pantryAdded: data.pantry_added } : {});
   };
 
   // ----------------------------------
@@ -424,6 +432,22 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setItemGrams('');
   };
 
+  /* Um alimento da despensa: entra com o nome dela e a porção habitual (ou
+     as gramas já escritas). O servidor reconhece-o pelo nome e usa os
+     valores dela, sem o voltar a analisar (analyze-meal/pantry.ts). */
+  const addPantryFood = (food) => {
+    const typed = itemGrams.trim() ? Number(itemGrams) : null;
+    const grams = typed > 0 ? typed : (Number(food.portion_grams) > 0 ? Math.round(Number(food.portion_grams)) : null);
+    setErrorMsg('');
+    setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: food.name, grams }]);
+    setIsFormDirty(true);
+    setItemName('');
+    setItemGrams('');
+  };
+  const suggestions = pantrySuggestions(itemName, pantryFoods);
+  const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date })
+    .filter((f) => !manualItems.some((i) => isKnownFood(i.name, [f])));
+
   const handleRemoveManualItem = (key) => {
     setManualItems(prev => prev.filter(i => i.key !== key));
     setIsFormDirty(true);
@@ -445,6 +469,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
     const savedMeal = await persistMealTime(data.meal);
     setMeals([...meals, savedMeal]);
+    useAppStore.getState().loadPantry?.();
     finishCreateAndGoToCalendar(savedMeal, 'Refeição registada');
   };
 
@@ -703,6 +728,24 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             chamada. */}
         <div className="mb-4">
           {!isEditing && <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Alimentos</p>}
+          {habituals.length > 0 && (
+            <div className="mb-3" data-testid="meal-habituals">
+              <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">O que costumas comer {MEAL_TYPES.find((t) => t.key === mealType)?.label ? `ao ${MEAL_TYPES.find((t) => t.key === mealType).label.toLowerCase()}` : 'a esta refeição'}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {habituals.map((f) => (
+                  <button
+                    key={f.id ?? f.name_key}
+                    type="button"
+                    onClick={() => addPantryFood(f)}
+                    className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold"
+                    style={{ border: '1px solid var(--tint-nutrition-bd)', background: 'var(--tint-nutrition-bg)', color: 'var(--text-1)' }}
+                  >
+                    + {f.name}{portionText(f) ? ` · ${portionText(f)}` : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3">
             <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5">Adicionar alimento</p>
             <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
@@ -726,6 +769,27 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 />
               </div>
             </div>
+            {suggestions.length > 0 && (
+              <div role="listbox" aria-label="Da tua despensa" data-testid="pantry-suggestions" className="rounded-xl overflow-hidden mb-2" style={{ border: '1px solid var(--border-glass-strong)', background: 'var(--surface-strong)' }}>
+                <p className="px-3 pt-2 pb-1 text-[10.5px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)' }}>Da tua despensa</p>
+                {suggestions.map((f, i) => (
+                  <button
+                    key={f.id ?? f.name_key}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onClick={() => addPantryFood(f)}
+                    className="w-full min-h-[48px] px-3 py-1.5 text-left"
+                    style={i ? { borderTop: '1px solid var(--border-glass)' } : undefined}
+                  >
+                    <span className="block text-[13.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{f.name}</span>
+                    <span className="block text-[11.5px]" style={{ color: 'var(--text-4)' }}>
+                      {[portionText(f), f.portion_grams ? `${Math.round((Number(f.calories_per_100g) || 0) * Number(f.portion_grams) / 100)} kcal` : null].filter(Boolean).join(' · ')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
             <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">
               {photos.length > 0
                 ? 'Junta o que a foto não mostra, ou a quantidade que sabes (ex.: "café com açúcar", "arroz" com 150 g). Se o alimento também estiver na foto, conta o que escreveste.'
@@ -766,7 +830,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   ) : (
                     <div className="flex-1">
                       <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
-                      <p className="text-[11px] text-[var(--text-3)]">{item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol'}</p>
+                      <p className="text-[11px] text-[var(--text-3)]">
+                        {isKnownFood(item.name, pantryFoods)
+                          ? `${item.grams != null ? `${item.grams}g · ` : ''}já conhecido, não é analisado`
+                          : (item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol')}
+                      </p>
                     </div>
                   )}
                   <button

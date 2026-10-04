@@ -2,7 +2,7 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildManualItemsPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, parseWrittenItems, planningFrameSection } from "./index.ts";
+import { buildManualItemsPrompt, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, parseWrittenItems, planningFrameSection } from "./index.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
   assertEquals(dietaryRestrictionsPromptBlock(null, null), "");
@@ -163,4 +163,17 @@ Deno.test("fase B: os três pedidos pedem perguntas só quando a preparação mu
     assertStringIncludes(p, "50 kcal ou mais");
     assertStringIncludes(p, "Na dúvida, não perguntes");
   }
+});
+
+// ─── Bug #48, fase C: confirmar um alimento para a despensa ────────────────
+
+Deno.test("buildPantryFoodPrompt: por descrição estima com a porção; por foto lê o rótulo", () => {
+  const desc = buildPantryFoodPrompt("Pão de mistura do Lidl, uma fatia de 40 g", false);
+  assertStringIncludes(desc, '"Pão de mistura do Lidl, uma fatia de 40 g"');
+  assertStringIncludes(desc, "portion_label");
+  assertStringIncludes(desc, "from_label=false");
+  const foto = buildPantryFoodPrompt(null, true);
+  assertStringIncludes(foto, "LIDOS");
+  assertStringIncludes(foto, "from_label=true");
+  assertStringIncludes(buildPantryFoodPrompt("barra de chocolate", true), 'O atleta acrescentou: "barra de chocolate"');
 });

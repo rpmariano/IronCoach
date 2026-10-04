@@ -90,6 +90,12 @@ export const useAppStore = create((set, get) => ({
   coachPlans: [],
   coachPlanItems: [],
   coachGoalProposals: [],
+  // A despensa do atleta e como ele cozinha (bugs #48/#52, fase C): o
+  // Armário no Perfil e as sugestões ao escrever no registo da refeição.
+  // Lida a pedido (loadPantry), não no arranque.
+  pantryFoods: [],
+  foodRules: [],
+  pantryLoaded: false,
   // Check-ins diários (Fase 2 de specs/carol-omnisciencia-omnipresenca.md):
   // os últimos 120 dias, para o ciclo ter margem. Um por dia.
   dailyCheckins: [],
@@ -528,6 +534,28 @@ export const useAppStore = create((set, get) => ({
     set((state) => ({ coachNotes: (state.coachNotes || []).filter(n => n.id !== id) }));
     return true;
   },
+
+  loadPantry: async () => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    if (!userId) return;
+    // Nunca rejeita: sem despensa (modo demo, sem rede), o Armário fica vazio
+    // e o registo da refeição só não sugere nada.
+    try {
+      const [foods, rules] = await Promise.all([
+        supabase.from('athlete_foods').select('*').eq('user_id', userId).eq('in_pantry', true).order('times_seen', { ascending: false }),
+        supabase.from('athlete_food_rules').select('*').eq('user_id', userId).order('updated_at', { ascending: false }),
+      ]);
+      set({
+        pantryFoods: foods?.error ? get().pantryFoods : (foods?.data || []),
+        foodRules: rules?.error ? get().foodRules : (rules?.data || []),
+        pantryLoaded: !foods?.error && !rules?.error,
+      });
+    } catch (e) {
+      console.warn('Despensa não lida', e);
+    }
+  },
+  setPantryFoods: (pantryFoods) => set({ pantryFoods }),
+  setFoodRules: (foodRules) => set({ foodRules }),
 
   reloadCoachGoalProposals: async () => {
     const userId = get().session?.user?.id || get().profile?.id;

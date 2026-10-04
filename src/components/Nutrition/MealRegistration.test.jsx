@@ -872,3 +872,60 @@ describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
     }, { timeout: 2000 });
   });
 });
+
+/* Bugs #48/#52 (fase C): a despensa no registo — sugestões enquanto se
+   escreve, os habituais desta refeição, e um alimento conhecido não é
+   analisado (mockup "Despensa e perguntas da Carol", ecrã 4). */
+describe('MealRegistration — a despensa ao escrever', () => {
+  const onClose = vi.fn();
+  const FOODS = [
+    { id: 'i', name: 'Iogurte grego 0%', name_key: 'iogurte grego 0%', times_seen: 6, portion_grams: 170, calories_per_100g: 59 },
+    { id: 'n', name: 'Iogurte natural', name_key: 'iogurte natural', times_seen: 2, portion_grams: 125, calories_per_100g: 63 },
+    { id: 'a', name: 'Aveia em flocos', name_key: 'aveia em flocos', times_seen: 5, portion_grams: 40, calories_per_100g: 372 },
+  ];
+  const ontem = (d) => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, meals: [], pantryFoods: FOODS, pantryLoaded: true });
+  });
+
+  it('ao escrever, sugere da despensa; tocar junta com a porção habitual e diz que não é analisado', () => {
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'io' } });
+    const lista = screen.getByTestId('pantry-suggestions');
+    expect(lista).toHaveTextContent('Iogurte grego 0%');
+    expect(lista).toHaveTextContent('170 g · 100 kcal');
+    fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
+    expect(screen.getByText('170g · já conhecido, não é analisado')).toBeInTheDocument();
+    expect(screen.queryByTestId('pantry-suggestions')).not.toBeInTheDocument();
+  });
+
+  it('as gramas já escritas ganham à porção habitual', () => {
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: '200' } });
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog gr' } });
+    fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
+    expect(screen.getByText('200g · já conhecido, não é analisado')).toBeInTheDocument();
+  });
+
+  it('o que costuma comer nesta refeição aparece por cima, com um toque', async () => {
+    const tipo = 'almoco';
+    useAppStore.setState({
+      meals: [1, 2].map((d) => ({ id: `m${d}`, date: ontem(d), meal_type: tipo, meal_items: [{ name: 'Aveia em flocos' }] })),
+    });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Almoço$/i }));
+    const chips = screen.getByTestId('meal-habituals');
+    expect(chips).toHaveTextContent('O que costumas comer ao almoço');
+    fireEvent.click(screen.getByRole('button', { name: /\+ Aveia em flocos · 40 g/ }));
+    expect(screen.getByText('40g · já conhecido, não é analisado')).toBeInTheDocument();
+
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
+    // Vai com o nome da despensa: é por aí que o servidor o reconhece.
+    expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Aveia em flocos', grams: 40 }]);
+  });
+});
