@@ -122,9 +122,11 @@ Cada fase: `npm run build`, `npm test`, revisão `pre-deploy-reviewer` antes de 
 
 ## 6. Decisões
 
+D2–D6 aprovadas como recomendado (2026-10-04); D1 aprovada com a alteração do Corpo.
+
 | | Pergunta | Recomendação |
 |---|---|---|
-| D1 | Seletor por separador | Nutrição: Dia/Semana/Mês/Trimestre (mock-up). Corrida e Corpo: Semana/Mês/Trimestre/**Ano** (tendências longas). Ginásio: Semana/Mês/Trimestre. Sai "6 Meses" de todos e "Dia" de todos menos a Nutrição. |
+| D1 | Seletor por separador | **Aprovado com alteração (2026-10-04):** Nutrição: Dia/Semana/Mês/Trimestre. Corpo: **Dia**/Semana/Mês/Trimestre/Ano — o "Dia" do Corpo é uma **avaliação**: ‹ › saltam entre avaliações (não dias vazios), cada métrica com a diferença face à avaliação anterior e um seletor "Comparar com…" para escolher qualquer outra (ex.: a de há 3 meses, a primeira de sempre); uma pesagem de hoje é um facto fechado e conta. Corrida: Semana/Mês/Trimestre/Ano. Ginásio: Semana/Mês/Trimestre. Sai "6 Meses" de todos. |
 | D2 | O Geral passa a ter período? | Sim: semana de calendário com ‹ ›, e os pilares abrem o separador nesse período. |
 | D3 | Motor de períodos e correções das fórmulas: partilhados com a Carol (`_shared/formulas`) ou só no ecrã? | **Partilhados.** A Carol diz hoje os mesmos números errados; uma só régua é a regra do projeto. Custo: as fases 1 e 3 vão a `dev` e `master` juntas, com a tua autorização. |
 | D4 | Animação: repetir sempre que se volta ao separador, ou só na 1.ª vez por sessão? | **Sempre que o separador assenta**, só para o que está à vista; nunca no scroll vertical nem ao mudar de período (aí só uma transição curta de 300 ms). Se se voltou ao separador há menos de ~3 s (vai-e-vem rápido), não repete. |
