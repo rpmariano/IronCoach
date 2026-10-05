@@ -4,7 +4,7 @@ import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { compressImage } from '../../lib/image';
-import { confirmPantryFood, deletePantryFood, EDITABLE_NUTRIENTS, savePantryFood } from '../../utils/pantry';
+import { confirmPantryFood, deletePantryFood, EDITABLE_NUTRIENTS, listWords, missingMicroWords, savePantryFood } from '../../utils/pantry';
 
 /* Adicionar ou ajustar um alimento da despensa (bug #48, fase C; mockup
    "Despensa e perguntas da Carol", ecrãs 8 e 9). Tudo o que entra é
@@ -21,6 +21,22 @@ const toForm = (f) => ({
 });
 
 const fmtDate = (iso) => (iso ? new Intl.DateTimeFormat('pt-PT', { day: 'numeric', month: 'short' }).format(new Date(iso)).replace('.', '') : null);
+
+/* Os micronutrientes (2026-10-05): o atleta não os ajusta, mas sabe quais a
+   Carol ainda não tem — e que os completa sozinha, da próxima vez que o
+   alimento passar por uma análise (analyze-meal/pantry.ts, nextFoodRow).
+   `fresh`: valores acabados de vir dela (um 0 é dela, é dado). */
+function MicrosNote({ food, fresh }) {
+  const missing = missingMicroWords(food, { fresh });
+  const one = missing.length === 1;
+  return (
+    <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-muted)' }} data-testid="pantry-micros">
+      {missing.length === 0
+        ? 'Micronutrientes: os 7 conhecidos.'
+        : `${one ? 'Micronutriente' : 'Micronutrientes'} por confirmar: ${listWords(missing)}. A Carol ${one ? 'completa-o' : 'completa-os'} quando registares este alimento numa refeição.`}
+    </p>
+  );
+}
 
 export default function PantryFoodSheet({ food = null, onClose }) {
   const { profile, loadPantry } = useAppStore();
@@ -183,6 +199,7 @@ export default function PantryFoodSheet({ food = null, onClose }) {
                 ))}
               </div>
             </div>
+            <MicrosNote food={editing ? food : confirmed} fresh={!editing} />
             {editing && (
               <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                 Um valor que mudes passa a ser o que a Carol usa. As refeições já gravadas não mudam.

@@ -3,6 +3,7 @@ import { Check, ArrowDown, ArrowUp } from 'lucide-react';
 import VerdictLine from '../VerdictLine';
 import DeltaVsPrevious, { hasDelta } from './DeltaVsPrevious';
 import { STATUS_COLOR, STATUS_WORD, avgHeader, toneOf } from './periodText';
+import { AnimatedBar, useBarsReveal } from './AnimatedBar';
 
 /**
  * PeriodSummary — o cartão "Resumo do período" do mock-up aprovado
@@ -48,6 +49,15 @@ import { STATUS_COLOR, STATUS_WORD, avgHeader, toneOf } from './periodText';
  *   previous     { text, actionLabel, onAction } — "setembro: 19 de 28 … · Ver setembro ›"
  *   notes        string[] — linhas cinzentas (APPROX_GOALS_NOTE, firstPeriodNote(kind))
  *
+ * Barras (2026-10-05): só se desenha a calha quando a linha TEM barra (valor e
+ * % ou `barPct`) — uma calha cinzenta que nunca enche (Corrida, Corpo) lia-se
+ * como uma barra que não carregou. As barras são AnimatedBar: crescem do zero
+ * quando o separador assenta e o cartão está à vista, repetem ao voltar ao
+ * separador e deslizam em 300 ms ao mudar de período (ver AnimatedBar.jsx).
+ * O que se observa é a linha da 1.ª barra (não a lista, que pode ser mais alta
+ * do que o ecrã), e a calha tem sempre ROW_BAR_MIN_WIDTH: é o estado que parte
+ * em duas linhas quando é longo (2026-10-05, verificação no browser).
+ *
  * Com `onSelect` as linhas são um radiogroup (setas ↑↓/←→, Home, End): tocar
  * numa linha escolhe o que os gráficos mostram. Sem `onSelect`, é uma lista.
  */
@@ -80,13 +90,26 @@ function statusTextOf(r) {
     : STATUS_WORD[r.status];
 }
 
-function RowBody({ r, color }) {
+function barOf(r) {
+  if (r.value == null || r.missingText) return null;
+  const rawBar = r.barPct ?? r.pct;
+  return rawBar == null || !Number.isFinite(Number(rawBar)) ? null : Math.max(0, Math.min(100, Number(rawBar)));
+}
+
+/** Largura mínima da calha. 2026-10-05: no Ginásio o estado ("6 treinos de
+ *  força em 5 semanas fechadas", nowrap) mais o "2 de 5" esgotavam a linha e a
+ *  calha (`flex: 1`) ficava a 0 px — a barra existia mas não se via. Agora a
+ *  calha tem sempre isto e é o estado que parte em duas linhas. */
+export const ROW_BAR_MIN_WIDTH = 80;
+
+function RowBody({ r, color, bars, index, observeRef }) {
   const missing = r.value == null || !!r.missingText;
   const st = statusTextOf(r);
   const Icon = ICON[r.status];
   const stColor = STATUS_COLOR[r.status] || STATUS_COLOR.neutral;
-  const rawBar = r.barPct ?? r.pct;
-  const bar = rawBar == null || !Number.isFinite(Number(rawBar)) ? null : Math.max(0, Math.min(100, Number(rawBar)));
+  const bar = barOf(r);
+  // A calha só existe quando há barra a encher (A4, 2026-10-05).
+  const hasBar = bar != null;
 
   return (
     <>
@@ -118,32 +141,19 @@ function RowBody({ r, color }) {
           )}
         </span>
       </span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
-        <span
-          aria-hidden="true"
-          style={{
-            flex: 1,
-            height: 6,
-            borderRadius: 99,
-            background: 'var(--border-hairline)',
-            overflow: 'hidden',
-            display: 'block',
-          }}
-        >
-          {!missing && bar != null && (
-            <span
-              data-testid="row-bar"
-              style={{
-                display: 'block',
-                height: '100%',
-                width: `${bar}%`,
-                borderRadius: 99,
-                background: color,
-                boxShadow: `0 0 8px ${color}`,
-              }}
-            />
-          )}
-        </span>
+      {/* `observeRef`: só na 1.ª linha com barra — é o que decide quando as barras
+          crescem (ver PeriodSummary, 2026-10-05). */}
+      <span ref={observeRef} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 6 }}>
+        {hasBar && (
+          <AnimatedBar
+            testId="row-bar"
+            pct={bar}
+            color={color}
+            index={index}
+            bars={bars}
+            style={{ minWidth: ROW_BAR_MIN_WIDTH }}
+          />
+        )}
         {missing ? (
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-4)', whiteSpace: 'nowrap' }}>
             {r.missingText || ''}
@@ -155,13 +165,17 @@ function RowBody({ r, color }) {
               data-status={r.status || 'none'}
               style={{
                 minWidth: 92,
+                // Encolhe e parte em duas linhas em vez de esmagar a calha (2026-10-05).
+                flex: '0 1 auto',
                 display: 'inline-flex',
                 justifyContent: 'flex-end',
                 alignItems: 'center',
                 gap: 4,
                 fontSize: 'var(--text-xs)',
                 fontWeight: 700,
-                whiteSpace: 'nowrap',
+                whiteSpace: 'normal',
+                textAlign: 'right',
+                lineHeight: 1.3,
                 color: stColor,
               }}
             >
@@ -219,6 +233,14 @@ export default function PeriodSummary({
 }) {
   const tone = toneOf(module);
   const btnRefs = useRef([]);
+  // Uma só revelação para as barras de todas as linhas (escalonadas por índice).
+  const bars = useBarsReveal();
+  /* O que se observa é a linha da 1.ª barra, não a lista toda (2026-10-05). O
+     critério do separador pede 55 % da altura observada (limitada ao ecrã) à
+     vista: no Corpo a lista tem 13 linhas (887 px) e à entrada num 390×844 só
+     se veem 376 px — a barra do Peso ficava a zero, à vista, até haver scroll.
+     A linha da barra tem ~20 px: cresce quando ESSA barra está à vista. */
+  const firstBar = rows.findIndex((r) => barOf(r) != null);
   const interactive = typeof onSelect === 'function';
   const leftHeader = averageLabel ?? (days != null ? avgHeader(days) : null);
   const selIndex = Math.max(0, rows.findIndex((r) => r.key === selectedKey));
@@ -306,7 +328,7 @@ export default function PeriodSummary({
               if (!interactive) {
                 return (
                   <div key={r.key} role="listitem" aria-label={aria} style={rowStyle} data-testid="summary-row">
-                    <RowBody r={r} color={color} />
+                    <RowBody r={r} color={color} bars={bars} index={i} observeRef={i === firstBar ? bars.ref : undefined} />
                   </div>
                 );
               }
@@ -326,7 +348,7 @@ export default function PeriodSummary({
                   data-testid="summary-row"
                   style={rowStyle}
                 >
-                  <RowBody r={r} color={color} />
+                  <RowBody r={r} color={color} bars={bars} index={i} observeRef={i === firstBar ? bars.ref : undefined} />
                 </button>
               );
             })}

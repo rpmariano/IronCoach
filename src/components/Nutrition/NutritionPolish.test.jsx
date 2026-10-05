@@ -54,6 +54,10 @@ describe('Dia de HOJE — só se diz o que já vai (reparo 6)', () => {
     usePeriodStore.getState().setKind('nutricao', 'dia');
     render(<NutritionDashboard />);
     const v = screen.getByTestId('verdict-line');
+    // O veredicto vive DENTRO do cartão, por baixo do navegador de dias — não solto por cima do seletor (2026-10-05).
+    expect(screen.getByTestId('day-nutrition-card')).toContainElement(v);
+    expect(screen.getByTestId('day-nutrition-title').compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole('group', { name: 'Período' })[0].compareDocumentPosition(v) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(v).toHaveAttribute('data-tone', 'neutral');
     expect(plain(v)).toBe('Hoje, até agora: 1 240 de 2 400 kcal e 64 de 150 g de proteína — ainda em curso.');
     expect(document.body.textContent).not.toMatch(/Estás a comer|abaixo do que gastas|kcal\/kg|défice|Deficit/i);
@@ -61,6 +65,9 @@ describe('Dia de HOJE — só se diz o que já vai (reparo 6)', () => {
     const kcal = screen.getByTestId('day-row-calories');
     expect(plain(kcal)).toMatch(/Até agora · 52%/);
     expect(kcal.textContent).not.toMatch(/Abaixo|Dentro|Acima/);
+    // As barras do dia são AnimatedBar (scaleX, valor final fora do carrossel); sem registo não há calha.
+    expect(within(kcal).getByTestId('day-row-bar').style.transform).toBe('scaleX(0.5167)');
+    expect(within(screen.getByTestId('day-row-water')).queryByTestId('day-row-bar')).toBeNull();
     expect(screen.getByTestId('day-nutrition-card')).toHaveTextContent('Ainda em curso — só conta quando acabar');
     expect(screen.getByTestId('day-nutrition-card').textContent).not.toMatch(/objetivos atingidos/);
   });

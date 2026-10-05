@@ -90,7 +90,7 @@ describe('NutritionDashboard — Semana (mock-up "Semana · esta semana")', () =
     expect(within(s).getByTestId('verdict-line')).toHaveTextContent(
       'Calorias no sítio (96%), mas a proteína está curta: 88% do objetivo — só 2 de 6 dias lá chegaram.',
     );
-    expect(within(s).getByTestId('summary-columns')).toHaveTextContent('Média por dia registado (6 dias)');
+    expect(within(s).getByTestId('summary-columns')).toHaveTextContent('Média por dia registado (6 dias: 28 set – 3 out)');
     // Hoje (1 240 kcal até agora) não entra: a média é a dos 6 dias fechados.
     expect(nameOf(row('Calorias'))).toBe('Calorias: 2 310 de 2 400 kcal, Dentro · 96%, dias no objetivo: 4 de 6');
     expect(nameOf(row('Proteína'))).toBe('Proteína: 132 de 150 g, Abaixo · 88%, dias no objetivo: 2 de 6');
@@ -260,10 +260,46 @@ describe('NutritionDashboard — Mês (mock-ups "setembro, fechado" e "outubro, 
     expect(summary()).toHaveTextContent('em curso · 3 de 31 dias fechados');
     expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Só 3 dias fechados em outubro — ainda é cedo para conclusões.');
     expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent(/setembro: 2 \d{3} kcal\/dia · calorias e proteína no objetivo em \d de 10 dias/);
-    expect(screen.getByTestId('min-data-note')).toHaveTextContent('Comer para treinar aparece a partir de 7 dias fechados neste mês.');
+    expect(screen.getByTestId('min-data-note')).toHaveTextContent('Comer para treinar aparece a partir de 7 dias com refeições neste mês — em setembro há 10:');
     // Hoje no mapa: sem estado, abre o dia.
     expect(screen.getByRole('button', { name: 'hoje, domingo, 4 de outubro, em curso — ver o dia' })).toBeInTheDocument();
     fireEvent.click(within(summary()).getByRole('button', { name: /Ver setembro/ }));
+    expect(within(summary()).getByTestId('period-title')).toHaveTextContent('setembro 2026');
+  });
+
+  /* 2026-10-05: o cabeçalho diz os dias ("3 dias: 1–3 out"); dias com menos de
+     40% do objetivo ou uma só refeição continuam nas contas, mas há uma nota. */
+  it('o cabeçalho diz os dias e os dias provavelmente incompletos têm nota (continuam nas contas)', () => {
+    const m = (date, kcal) => ({ id: `x${seq++}`, date, meal_items: [{ calories: kcal, protein: 100, carbs: 200, fat: 60 }] });
+    setData({ meals: [m('2026-10-01', 1200), m('2026-10-01', 1200), m('2026-10-02', 1900), m('2026-10-03', 500), m('2026-10-03', 400)], waterLogs: [{ date: '2026-10-02', amount_ml: 1000 }, { date: '2026-10-03', amount_ml: 1500 }] });
+    usePeriodStore.getState().setPeriod('nutricao', 'mes', 0);
+    render(<NutritionDashboard />);
+    expect(within(summary()).getByTestId('summary-columns')).toHaveTextContent('Média por dia registado (3 dias: 1–3 out)');
+    // 2 out (uma só refeição) e 3 out (900 < 40% de 2 400): 2 dos 3.
+    expect(within(summary()).getByTestId('summary-footer')).toHaveTextContent('2 dos 3 dias parecem ter refeições por registar.');
+    // Entram na média dos 3 dias: (2 400 + 1 900 + 900) / 3.
+    expect(nameOf(row('Calorias'))).toMatch(/^Calorias: 1 733 /);
+    // Água: de que dias fala o mínimo.
+    expect(within(row('Água')).getByText('2 dias com água — poucos para média')).toBeInTheDocument();
+    // E sem a calha cinzenta vazia: a linha sem média não desenha barra.
+    expect(within(row('Água')).queryByTestId('row-bar')).toBeNull();
+  });
+
+  it('sem dias incompletos não há nota', () => {
+    const m = (date, kcal) => ({ id: `y${seq++}`, date, meal_items: [{ calories: kcal, protein: 100, carbs: 200, fat: 60 }] });
+    setData({ meals: ['2026-10-01', '2026-10-02', '2026-10-03'].flatMap((d) => [m(d, 1200), m(d, 1100)]), waterLogs: [] });
+    usePeriodStore.getState().setPeriod('nutricao', 'mes', 0);
+    render(<NutritionDashboard />);
+    expect(within(summary()).getByTestId('summary-footer').textContent).not.toMatch(/por registar/);
+  });
+
+  // N3: o botão que leva aos dados (MinDataNote com a ação do período anterior).
+  it('"Comer para treinar": diz onde estão os dados e leva lá (Ver setembro)', () => {
+    usePeriodStore.getState().setPeriod('nutricao', 'mes', 0);
+    render(<NutritionDashboard />);
+    const note = screen.getByTestId('min-data-note');
+    const go = within(note).getByRole('button', { name: /Ver setembro/ });
+    fireEvent.click(go);
     expect(within(summary()).getByTestId('period-title')).toHaveTextContent('setembro 2026');
   });
 });
@@ -305,6 +341,36 @@ describe('NutritionDashboard — Trimestre (mock-ups "jul – set, fechado" e "o
     expect(screen.getByTestId('eating-low-count')).toBeInTheDocument();
   });
 
+  /* N4 (2026-10-05): 5 dos 7 dias da semana com ≥ 4 registos chegam. Os outros
+     ficam a cinzento ("sáb · 2 registos") e saem do "dia mais baixo". */
+  it('por dia da semana com 5 dos 7 dias: o domingo sem registos não esconde o padrão, e o sábado fraco fica a cinzento', () => {
+    const out = [];
+    for (let t = Date.UTC(2026, 6, 13); t <= Date.UTC(2026, 8, 30); t += 86400000) {
+      const d = new Date(t);
+      const iso = d.toISOString().slice(0, 10);
+      const wd = (d.getUTCDay() + 6) % 7;
+      if (wd === 6) continue; // domingo: nunca registou
+      if (wd === 5 && iso > '2026-07-27') continue; // sábado: só 2 registos (18 e 25 jul)
+      out.push(meal(iso, wd === 2 ? 2000 : 2300, 140, 290, 78));
+    }
+    setData({ meals: out });
+    usePeriodStore.getState().setPeriod('nutricao', 'trimestre', -1);
+    render(<NutritionDashboard />);
+    const wd = screen.getByTestId('nutrition-quarter-weekdays');
+    const dias = within(within(wd).getByRole('radiogroup', { name: 'Dias da semana' })).getAllByRole('radio');
+    expect(dias).toHaveLength(7);
+    // O mais baixo é a quarta (2 000), não o sábado fraco (2 300 também, mas não conta) nem o domingo vazio.
+    expect(wd).toHaveTextContent('2 000kcal às quartas, o dia mais baixo');
+    expect(nameOf(dias[5])).toMatch(/^sáb: 2 300 quilocalorias em média, só 2 registos — poucos para contar$/);
+    expect(dias[5]).not.toBeDisabled();
+    expect(dias[5]).toHaveTextContent('sáb2 de 4');
+    expect(nameOf(dias[6])).toBe('dom: sem registo');
+    expect(dias[6]).toBeDisabled();
+    expect(within(wd).getByTestId('nutrition-quarter-weekdays-legend')).toHaveTextContent('Menos de 4 registos: não conta');
+    fireEvent.click(dias[5]);
+    expect(within(wd).getByTestId('quarter-weekday-detail')).toHaveTextContent('Sábados · 2 300 kcal em média (2 sábados) — poucos para contar, preciso de 4');
+  });
+
   it('"Ver semana" abre essa semana de calendário', () => {
     usePeriodStore.getState().setPeriod('nutricao', 'trimestre', -1);
     render(<NutritionDashboard />);
@@ -319,11 +385,47 @@ describe('NutritionDashboard — Trimestre (mock-ups "jul – set, fechado" e "o
     expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Só 3 dias fechados neste trimestre — ainda é cedo para conclusões.');
     expect(within(summary()).getByRole('button', { name: /Ver jul – set/ })).toBeInTheDocument();
     expect(within(screen.getByTestId('nutrition-quarter-weeks')).getByTestId('quarter-week-detail')).toHaveTextContent('1 – 4 out · em curso · 3 dias fechados');
-    const notes = screen.getAllByTestId('min-data-note').map((n) => n.textContent);
-    expect(notes).toEqual([
-      'Calorias por dia da semana: preciso de pelo menos 4 registos de cada dia da semana para mostrar este padrão.',
-      'Comer para treinar aparece a partir de 14 dias fechados neste trimestre.',
+    // O botão de ação vive dentro da nota: compara-se só o <p> (o texto) e o botão à parte.
+    const notes = screen.getAllByTestId('min-data-note');
+    expect(notes.map((n) => n.querySelector('p').textContent)).toEqual([
+      'Calorias por dia da semana: preciso de 4 registos em pelo menos 5 dos 7 dias da semana — neste trimestre ainda nenhum dia da semana lá chega. Em jul – set já dá:',
+      'Comer para treinar aparece a partir de 14 dias com refeições neste trimestre — no trimestre passado há 80:',
     ]);
+    notes.forEach((n) => expect(within(n).getByTestId('min-data-action')).toHaveAccessibleName(/Ver jul – set/));
+    fireEvent.click(within(notes[0]).getByTestId('min-data-action'));
+    expect(usePeriodStore.getState().tabs.nutricao).toEqual({ kind: 'trimestre', offset: -1 });
+  });
+
+  /* Teclado no "por dia da semana" (revisão 2026-10-05): os dias sem registo estão
+     desativados e não entram no roving — → salta-os e dá a volta, End vai ao último com dados. */
+  it('por dia da semana: as setas saltam os dias vazios e o End vai ao último dia com registos', () => {
+    const out = [];
+    for (let t = Date.UTC(2026, 6, 13); t <= Date.UTC(2026, 8, 30); t += 86400000) {
+      const d = new Date(t);
+      const wd = (d.getUTCDay() + 6) % 7;
+      if (wd === 6) continue; // domingo: nunca registou
+      out.push(meal(d.toISOString().slice(0, 10), wd === 5 ? 1900 : 2300, 140, 290, 78));
+    }
+    setData({ meals: out });
+    usePeriodStore.getState().setPeriod('nutricao', 'trimestre', -1);
+    render(<NutritionDashboard />);
+    const wd = screen.getByTestId('nutrition-quarter-weekdays');
+    const group = within(wd).getByRole('radiogroup', { name: 'Dias da semana' });
+    const dias = () => within(group).getAllByRole('radio');
+    // O sábado é o mais baixo: arranca selecionado.
+    expect(dias()[5]).toHaveAttribute('aria-checked', 'true');
+    // → no último dia com dados (sáb) salta o domingo vazio e dá a volta à segunda.
+    fireEvent.keyDown(dias()[5], { key: 'ArrowRight' });
+    expect(dias()[0]).toHaveAttribute('aria-checked', 'true');
+    expect(dias()[6]).toHaveAttribute('aria-checked', 'false');
+    // ← na segunda volta ao sábado, sem parar no domingo.
+    fireEvent.keyDown(dias()[0], { key: 'ArrowLeft' });
+    expect(dias()[5]).toHaveAttribute('aria-checked', 'true');
+    // Home e End.
+    fireEvent.keyDown(dias()[5], { key: 'Home' });
+    expect(dias()[0]).toHaveAttribute('aria-checked', 'true');
+    fireEvent.keyDown(dias()[0], { key: 'End' });
+    expect(dias()[5]).toHaveAttribute('aria-checked', 'true');
   });
 });
 
@@ -342,7 +444,7 @@ describe('NutritionDashboard — 1.º registo a meio do período (R6/R7)', () =>
     render(<NutritionDashboard />);
     expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Só 2 dias fechados desde 2 out — ainda é cedo para conclusões.');
     expect(screen.getByTestId('min-data-note')).toHaveTextContent(
-      'Comer para treinar precisa de 4 dias fechados — nesta semana só há 3 dias desde o primeiro registo.',
+      'Comer para treinar precisa de 4 dias com refeições — nesta semana só há 3 dias desde o primeiro registo.',
     );
   });
 
@@ -362,7 +464,7 @@ describe('NutritionDashboard — 1.º registo a meio do período (R6/R7)', () =>
     usePeriodStore.getState().setPeriod('nutricao', 'mes', -1);
     render(<NutritionDashboard />);
     expect(screen.getByTestId('min-data-note')).toHaveTextContent(
-      'Comer para treinar precisa de 7 dias fechados — em setembro só houve 3 dias desde o primeiro registo.',
+      'Comer para treinar precisa de 7 dias com refeições — em setembro só houve 3 dias com refeições desde o primeiro registo.',
     );
   });
 
@@ -549,7 +651,7 @@ describe('NutritionDashboard — Dia e sem dados', () => {
     usePeriodStore.getState().setPeriod('nutricao', 'semana', -3);
     render(<NutritionDashboard />);
     expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Na semana de 7 set não registaste refeições.');
-    expect(screen.getByTestId('min-data-note')).toHaveTextContent('Sem refeições registadas neste período.');
+    expect(screen.getByTestId('min-data-note')).toHaveTextContent('Sem refeições registadas na semana de 7 set — a primeira é de 21 set.');
     expect(screen.queryByTestId('nutrition-week-chart')).not.toBeInTheDocument();
     expect(screen.queryByTestId('today-excluded-note')).not.toBeInTheDocument();
   });

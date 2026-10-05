@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react';
+import { carouselPageWidth } from './settledTab';
 
 /**
  * 15ms é o intervalo ideal para um feedback tátil de transição suave em carrosséis,
@@ -57,10 +58,15 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
     return false;
   }, [itemCount, setCurrentIndex]);
 
+  // 2026-10-05 (A1): a largura da página é a FRACIONÁRIA (carouselPageWidth).
+  // Com `offsetWidth` (arredondado) num Pixel de 411,43 px o índice e o
+  // destino do scrollTo erravam 0,43 px por página — o snap corrigia-os e o
+  // separador do fim nunca contava como assente.
   const handleScroll = useCallback(() => {
     if (programmaticScrollRef.current) return;
-    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
-      const idx = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
+    const width = carouselPageWidth(scrollRef.current);
+    if (width > 0) {
+      const idx = Math.round(scrollRef.current.scrollLeft / width);
       changeCard(idx);
     }
   }, [scrollRef, changeCard]);
@@ -70,8 +76,9 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
     // controlo do carrossel — cancela de imediato a supressão de scroll
     // programático para que o gesto responda sem atraso.
     programmaticScrollRef.current = false;
-    if (scrollRef.current && scrollRef.current.offsetWidth > 0) {
-      const idx = Math.round(scrollRef.current.scrollLeft / scrollRef.current.offsetWidth);
+    const width = carouselPageWidth(scrollRef.current);
+    if (width > 0) {
+      const idx = Math.round(scrollRef.current.scrollLeft / width);
       changeCard(idx);
     }
   }, [scrollRef, changeCard]);
@@ -113,10 +120,11 @@ export function useCarouselHaptics(scrollRef, itemCount, currentIndex, setCurren
       // e logo a seguir "voltava" para o vizinho.
       programmaticScrollTimeoutRef.current = setTimeout(clearGuard, instant ? 60 : 550 + distance * 220);
 
+      const left = targetIdx * carouselPageWidth(el);
       if (typeof el.scrollTo === 'function') {
-        el.scrollTo({ left: targetIdx * (el.offsetWidth || 0), behavior: instant ? 'instant' : 'smooth' });
+        el.scrollTo({ left, behavior: instant ? 'instant' : 'smooth' });
       } else {
-        el.scrollLeft = targetIdx * (el.offsetWidth || 0);
+        el.scrollLeft = left;
       }
     }
   }, [scrollRef, itemCount, changeCard]);

@@ -160,13 +160,23 @@ describe('▲/▼ contra o anterior equivalente e fechado (R5)', () => {
     expect(duas.delta.pace).toEqual({ cur: 270, prev: 300 });
   });
 
-  it('a média por semana usa só semanas inteiras e pede 2 (setembro: 7–13, 14–20, 21–27)', () => {
+  it('a média por semana usa as semanas fechadas que tocam o período (R4, 2026-10-05)', () => {
+    // Setembro: 31 ago, 7, 14 e 21 set; a de 28 set só fecha a 4 out e a corrida de 30 set fica para outubro.
     const v = view([run('2026-08-01', 1), run('2026-09-08', 10), run('2026-09-15', 20), run('2026-09-22', 30), run('2026-09-30', 99)], 'mes', -1);
-    expect(v.weekly.weeks).toBe(3);
-    expect(v.weekly.avgKm).toBe(20);
+    expect(v.weekly.weeks).toBe(4);
+    expect(v.weekly.avgKm).toBe(15);
+    expect(v.weekly.range).toBe('31 ago – 27 set');
     const outubro = view([run('2026-09-01', 1)], 'mes');
-    expect(outubro.weekly).toEqual({ weeks: 0, avgKm: null });
+    expect(outubro.weekly).toEqual({ weeks: 0, avgKm: null, range: null, nextCloseISO: '2026-10-04' });
     expect(view([run('2026-09-01', 1)], 'semana').weekly.avgKm).toBeNull();
+  });
+
+  it('outubro a 12 out já tem 2 semanas que o tocam (28 set – 4 out e 5 – 11 out) e a média aparece', () => {
+    // A semana que cruza a fronteira conta o km da semana toda (28 e 30 set incluídos).
+    const v = view([run('2026-09-01', 1), run('2026-09-28', 6), run('2026-10-01', 4), run('2026-10-06', 10)], 'mes', 0, '2026-10-12');
+    expect(v.weekly.weeks).toBe(2);
+    expect(v.weekly.avgKm).toBe(10);
+    expect(v.weekly.range).toBe('28 set – 11 out');
   });
 });
 
@@ -228,10 +238,11 @@ describe('VDOT, recordes e previsão', () => {
 
   it('o VDOT de um período compara-se com o do anterior (≥3 pontos em cada)', () => {
     const runs = [
-      tempo('2026-08-02', 3300), tempo('2026-08-09', 3300), tempo('2026-08-16', 3300),
+      tempo('2026-08-01', 3300), tempo('2026-08-09', 3300), tempo('2026-08-16', 3300),
       tempo('2026-09-02', 3000), tempo('2026-09-09', 3000), tempo('2026-09-16', 3000),
     ];
     const v = view(runs, 'mes', -1);
+    expect(v.vdotNote).toBeNull();
     expect(v.vdotCompare).toMatchObject({ nCurrent: 3, nPrevious: 3, previousLabel: 'agosto', previousWhere: 'em agosto' });
     expect(v.vdotCompare.current).toBeGreaterThan(v.vdotCompare.previous);
   });
@@ -369,7 +380,9 @@ describe('revisão da Corrida (2026-10-04) — a janela atual é a dos KPIs', ()
     const runs = [run('2026-08-01', 1), run('2026-09-08', 10), run('2026-09-15', 10), run('2026-09-25', 100), run('2026-10-06', 14), run('2026-10-13', 14)];
     const v = view(runs, 'mes', 0, '2026-10-21');
     expect(v.delta.label).toBe('1 – 20 set');
-    expect(v.delta.weekly).toEqual({ cur: 14, prev: 10 });
+    // Semanas que tocam: outubro 28 set, 5 e 12 out (0, 14, 14); setembro 1 – 20: 31 ago, 7 e 14 set (0, 10, 10).
+    expect(v.delta.weekly.cur).toBeCloseTo(28 / 3, 6);
+    expect(v.delta.weekly.prev).toBeCloseTo(20 / 3, 6);
   });
 
   it('o rótulo do anterior leva o ano quando não é o corrente', () => {
@@ -388,5 +401,104 @@ describe('revisão da Corrida (2026-10-04) — a janela atual é a dos KPIs', ()
   it('período anterior ao 1.º registo: o veredicto não diz "sem corridas em agosto"', () => {
     const v = view([run('2026-09-12', 5)], 'mes', -2);
     expect(v.verdict.text).toMatch(/anterior ao teu primeiro registo/);
+  });
+});
+
+describe('limiares (2026-10-05): R2/R3, R4, R5, R10 e para onde ir', () => {
+  const zonas = (date, km = 8) => run(date, km, { details: { hr_zones: [{ minutes: 20 }, { minutes: 5 }] } });
+  const comFc = (date, km = 8) => run(date, km, { details: { avg_heart_rate_bpm: 150 } });
+
+  it('R2/R3: 0 corridas com zonas neste mês mas com histórico → a vista sabe a última e onde há as 3', () => {
+    const runs = [zonas('2026-09-02'), zonas('2026-09-09'), zonas('2026-09-16'), run('2026-10-01', 5)];
+    const v = view(runs, 'mes');
+    expect(v.zoneRuns).toBe(0);
+    expect(v.zonesEver).toEqual({ count: 3, lastDate: '2026-09-16' });
+    expect(v.fallbacks.zones).toMatchObject({ type: 'prev', label: 'Ver setembro', where: 'em setembro', count: 3 });
+    // Quem nunca teve zonas não leva "última foi a…" nem botão.
+    const nunca = view([run('2026-09-02'), run('2026-10-01')], 'mes');
+    expect(nunca.zonesEver.count).toBe(0);
+    expect(nunca.fallbacks.zones).toBeNull();
+  });
+
+  it('R2: se nem o mês passado tem 3, oferece o Ano (o tipo maior) — o que CONTÉM o período', () => {
+    const runs = [zonas('2026-02-02'), zonas('2026-04-09'), zonas('2026-09-16'), run('2026-10-01', 5)];
+    const v = view(runs, 'mes');
+    expect(v.fallbacks.zones).toMatchObject({ type: 'kind', kind: 'ano', count: 3 });
+    expect(v.fallbacks.zones.label).toBe('Ver o ano');
+    // Julho (mês −3): o ano que o contém é o de hoje — leva lá (2026-10-05).
+    expect(view(runs, 'mes', -3).fallbacks.zones).toMatchObject({ type: 'kind', kind: 'ano', count: 3 });
+    // Outubro de 2025: nem setembro de 2025 nem 2025 têm nada → sem botão.
+    expect(view(runs, 'mes', -12).fallbacks.zones).toBeNull();
+  });
+
+  it('semana passada com 1 corrida com zonas: leva a setembro, o mês onde a semana começa (verificação no browser, 2026-10-05)', () => {
+    // Hoje 5 out (segunda): semana passada = 28 set – 4 out (1 com zonas); 21–27 set sem nenhuma.
+    const runs = [zonas('2026-09-02'), zonas('2026-09-09'), zonas('2026-09-29')];
+    const v = view(runs, 'semana', -1, '2026-10-05');
+    expect(v.zoneRuns).toBe(1);
+    expect(v.fallbacks.zones).toMatchObject({ type: 'period', kind: 'mes', offset: -1, label: 'Ver setembro', where: 'em setembro', count: 3 });
+  });
+
+  it('R2/R3: a corrida com zonas/FC de HOJE não conta para "a última foi a…" (hoje ainda não entra no período)', () => {
+    // 5 out: o mês de outubro só tem hoje (nenhum dia fechado). A corrida de hoje não é "a última".
+    const runs = [zonas('2026-09-02'), zonas('2026-09-09'), zonas('2026-09-16'), zonas('2026-10-05')];
+    const v = view(runs, 'mes', 0, '2026-10-05');
+    expect(v.zonesEver).toEqual({ count: 3, lastDate: '2026-09-16' });
+    expect(v.hrEver.lastDate).toBeNull();
+    // Só a de hoje: para a vista, o atleta ainda não tem nenhuma com zonas.
+    const soHoje = view([zonas('2026-10-05')], 'mes', 0, '2026-10-05');
+    expect(soHoje.zonesEver).toEqual({ count: 0, lastDate: null });
+    expect(soHoje.fallbacks.zones).toBeNull();
+    // Com FC: idem.
+    const fc = view([comFc('2026-09-02'), comFc('2026-09-09'), comFc('2026-09-16'), comFc('2026-10-05')], 'mes', 0, '2026-10-05');
+    expect(fc.hrEver).toEqual({ count: 3, lastDate: '2026-09-16' });
+  });
+
+  it('R3: a eficiência conta corridas com FC média, distância e tempo', () => {
+    const runs = [comFc('2026-09-02'), comFc('2026-09-09'), comFc('2026-09-16'), run('2026-10-01', 5)];
+    const v = view(runs, 'mes');
+    expect(v.scatter).toHaveLength(0);
+    expect(v.hrEver.count).toBe(3);
+    expect(v.fallbacks.efficiency).toMatchObject({ type: 'prev', label: 'Ver setembro' });
+  });
+
+  it('R10: mês sem corridas fechadas mas com setembro: a vista diz onde há corridas', () => {
+    const v = view([run('2026-09-10', 8), run('2026-09-20', 12)], 'mes', 0, '2026-10-12');
+    expect(v.cur.count).toBe(0);
+    expect(v.fallbacks.data).toMatchObject({ type: 'prev', label: 'Ver setembro', count: 2, km: 20 });
+  });
+
+  it('R5: o VDOT não se compara numa semana e a vista di-lo uma vez', () => {
+    const tempo = (date, seconds) => run(date, 10, { duration_seconds: seconds, training_type: 'tempo' });
+    const runs = [tempo('2026-09-21', 3000), tempo('2026-09-23', 3000), tempo('2026-09-25', 3000), tempo('2026-09-14', 3300), tempo('2026-09-16', 3300), tempo('2026-09-18', 3300)];
+    const v = view(runs, 'semana', -1);
+    expect(v.vdotCompare).toBeNull();
+    expect(v.vdotNote).toBe('A comparação do VDOT é por mês ou mais.');
+  });
+
+  it('R5: o mês em curso compara com o anterior cortado aos mesmos dias, e diz o que falta', () => {
+    const tempo = (date, seconds) => run(date, 10, { duration_seconds: seconds, training_type: 'tempo' });
+    // Hoje 12 out (11 dias fechados): outubro 1–11 vs setembro 1–11. Setembro teve 4 treinos, só 2 nos primeiros 11 dias.
+    const runs = [tempo('2026-09-01', 3300), tempo('2026-09-08', 3300), tempo('2026-09-15', 3300), tempo('2026-09-22', 3300), tempo('2026-10-03', 3000)];
+    const v = view(runs, 'mes', 0, '2026-10-12');
+    expect(v.vdotCompare).toBeNull();
+    expect(v.vdotNote).toBe('Para comparar o VDOT preciso de 3 treinos de qualidade em cada mês — outubro vai em 1, setembro (1 – 11 set) teve 2.');
+  });
+
+  it('R5: com ≥3 pontos nos mesmos dias dos dois lados compara, sem nota', () => {
+    const tempo = (date, seconds) => run(date, 10, { duration_seconds: seconds, training_type: 'tempo' });
+    const runs = [
+      tempo('2026-09-01', 3300), tempo('2026-09-04', 3300), tempo('2026-09-08', 3300), tempo('2026-09-25', 3300),
+      tempo('2026-10-02', 3000), tempo('2026-10-06', 3000), tempo('2026-10-10', 3000),
+    ];
+    const v = view(runs, 'mes', 0, '2026-10-12');
+    expect(v.vdotNote).toBeNull();
+    expect(v.vdotCompare).toMatchObject({ nCurrent: 3, nPrevious: 3 }); // a corrida de 25 set fica fora da janela
+  });
+
+  it('R5: o anterior começou antes do 1.º registo → diz porquê', () => {
+    const tempo = (date, seconds) => run(date, 10, { duration_seconds: seconds, training_type: 'tempo' });
+    const v = view([tempo('2026-09-05', 3300), tempo('2026-10-01', 3000)], 'mes', 0, '2026-10-12');
+    expect(v.vdotNote).toMatch(/^Setembro começou antes do teu primeiro registo/);
   });
 });

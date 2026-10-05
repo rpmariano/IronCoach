@@ -241,6 +241,79 @@ describe('ChartFrame — dentro do carrossel da Evolução', () => {
     expect(live[0].el).toBe(plot());
   });
 
+  /* 2026-10-05 (A5): o gráfico nasce DEPOIS de a moldura estar revelada (a
+     Composição que passa de "só o número" a ter área ao trocar de período).
+     Abaixo da dobra animava lá em baixo, sem ninguém ver; agora segura-se na
+     base e cresce quando a área aparece. */
+  describe('gráfico que nasce depois do reveal (A5)', () => {
+    const ui = (h0) => (
+      <TabPageContext.Provider value={PAGE}>
+        <TabReadyContext.Provider value>
+          <ChartFrame label="Composição corporal" value="72,4" unit="kg" height={h0}>{h0 ? <canvas data-testid="cv" /> : null}</ChartFrame>
+        </TabReadyContext.Provider>
+      </TabPageContext.Provider>
+    );
+    const valorAVista = {
+      isIntersecting: true,
+      intersectionRect: { height: 28, width: 343 },
+      boundingClientRect: { height: 28, width: 343, top: 120, bottom: 148 },
+      rootBounds: { height: 800 },
+    };
+    const comAreaEm = (top) => {
+      const orig = window.HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(window.HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function rect() {
+        if (this.dataset?.testid === 'chart-frame-plot') return { top, bottom: top + 200, height: 200, width: 343, left: 0, right: 343 };
+        return orig.call(this);
+      });
+      vi.stubGlobal('innerHeight', 800);
+    };
+    // Só "na base" (stop → reset → draw, as vezes que forem), nunca um update.
+    const seguro = (calls) => calls.length > 0 && calls.every((c) => ['stop', 'reset', 'draw'].includes(c));
+    const revelaSoNumero = () => {
+      const r = render(ui(0));
+      assenta(PAGE);
+      fire(valorAVista);
+      expect(valueRow().style.opacity).toBe('1');
+      return r;
+    };
+
+    it('abaixo da dobra: fica na base (data-chart-hold) e cresce quando a área aparece', () => {
+      const { rerender } = revelaSoNumero();
+      comAreaEm(900); // abaixo dos 800 px do ecrã
+      rerender(ui(200));
+      expect(screen.getByTestId('cv')).toBeInTheDocument();
+      expect(seguro(h.chart.calls)).toBe(true);
+      expect(plot().dataset.chartHold).toBe('1');
+      // Ainda abaixo: nada anima.
+      fire(fora());
+      expect(seguro(h.chart.calls)).toBe(true);
+      // O atleta faz scroll até lá.
+      fire({ ...aVista(), boundingClientRect: { height: 200, width: 343, top: 300, bottom: 500 }, intersectionRect: { height: 200, width: 343 } });
+      expect(plot().dataset.chartHold).toBeUndefined();
+      expect(h.chart.calls.slice(-3)).toEqual(['stop', 'reset', 'update']);
+      stopAntesDeCadaReset(h.chart.calls);
+    });
+
+    it('já à vista quando nasce: o construtor anima ali mesmo, nada a segurar', () => {
+      const { rerender } = revelaSoNumero();
+      comAreaEm(200);
+      rerender(ui(200));
+      expect(h.chart.calls).toEqual([]);
+      expect(plot().dataset.chartHold).toBeUndefined();
+    });
+
+    it('com o separador por assentar quando nasce: também espera', () => {
+      const { rerender } = revelaSoNumero();
+      comAreaEm(200);
+      assenta(-1);
+      rerender(ui(200));
+      expect(seguro(h.chart.calls)).toBe(true);
+      assenta(PAGE);
+      fire({ ...aVista(), boundingClientRect: { height: 200, width: 343, top: 200, bottom: 400 }, intersectionRect: { height: 200, width: 343 } });
+      expect(h.chart.calls.slice(-3)).toEqual(['stop', 'reset', 'update']);
+    });
+  });
+
   it('1.º reveal: cria o canvas e não chama nada (o construtor já anima da base)', () => {
     revelado(h.chart);
     expect(valueRow().style.opacity).toBe('1');

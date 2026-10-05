@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useRevealAnimation } from '../../utils/useRevealAnimation';
+import { useRevealAnimation, tabEntryVisibility, TAB_THRESHOLDS, REVEAL_TAB_MIN_RATIO } from '../../utils/useRevealAnimation';
 import { useCountUpDisplay } from '../../utils/useCountUp';
 import { DUR_COUNT, DUR_COUNT_REVEAL } from '../../utils/introAnimations';
 import { fmtNumber } from '../../utils/dashboardVerdicts';
@@ -144,6 +144,19 @@ function replayFromZero(chart) {
 // jsdom devolve para o que não sabe calcular, não corta).
 const CLIPS = new Set(['hidden', 'clip', 'auto', 'scroll']);
 
+/** Um antepassado (dentro da página do carrossel) com altura 0 e overflow
+ *  cortado esconde-a por completo — a Análise Cruzada fechada. */
+function clippedToZero(el) {
+  for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
+    if (a.classList?.contains('tab-swipe-page')) break;
+    if (a.clientHeight === 0) {
+      const cs = window.getComputedStyle?.(a);
+      if (cs && (CLIPS.has(cs.overflowY) || CLIPS.has(cs.overflow))) return true;
+    }
+  }
+  return false;
+}
+
 /**
  * A área está perto do ecrã (na vertical) e não está cortada a zero por um
  * antepassado? A página vizinha está fora do ecrã de LADO — por isso só a
@@ -158,14 +171,25 @@ function isNearViewport(el) {
   const viewHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
   const margin = viewHeight * PRECREATE_MARGIN_SCREENS;
   if (rect.bottom < -margin || rect.top > viewHeight + margin) return false;
-  for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) {
-    if (a.classList?.contains('tab-swipe-page')) break;
-    if (a.clientHeight === 0) {
-      const cs = window.getComputedStyle?.(a);
-      if (cs && (CLIPS.has(cs.overflowY) || CLIPS.has(cs.overflow))) return false;
-    }
-  }
-  return true;
+  return !clippedToZero(el);
+}
+
+/**
+ * A área está à vista AGORA, pelo critério do reveal (≥ 55 % da altura que
+ * cabe no ecrã) e sem um antepassado a cortá-la a zero? Medido no próprio
+ * commit (getBoundingClientRect) — para o gráfico que nasce depois de a
+ * moldura já estar revelada (2026-10-05, A5), quando o observer ainda está a
+ * olhar para o nó antigo.
+ */
+function isPlotInViewNow(el) {
+  if (!el?.getBoundingClientRect) return false;
+  const rect = el.getBoundingClientRect();
+  if (!(rect.height > 0)) return false;
+  const viewHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
+  if (!(viewHeight > 0)) return true;
+  const visible = Math.min(rect.bottom, viewHeight) - Math.max(rect.top, 0);
+  if (visible < Math.min(rect.height, viewHeight) * REVEAL_TAB_MIN_RATIO) return false;
+  return !clippedToZero(el);
 }
 
 /** O número de destaque. Separado para o ponto 9 poder animá-lo sozinho:
@@ -313,6 +337,20 @@ export default function ChartFrame({
   const lastChartRef = useRef(null);
   const lastPlayRef = useRef(r.playKey);
   const heldRef = useRef(false);
+
+  /* 2026-10-05 (A5): um gráfico que NASCE depois de a moldura já estar
+     revelada — a Composição que passa de "só o número" a ter área ao trocar
+     Semana → Ano, a previsão que ganha tendência, o Corpo com a 1.ª leitura.
+     Antes animava no próprio commit, mesmo abaixo da dobra, e quando o atleta
+     lá chegava já estava quieto (e o scroll vertical não repete). Agora, se a
+     área não está à vista nesse commit, fica na base (`deferred` também põe
+     `data-chart-hold`, para o plugin a segurar) e cresce quando aparecer, com
+     o mesmo critério do reveal. */
+  const [deferred, setDeferred] = useState(false);
+  const deferredRef = useRef(false);
+  const releaseRef = useRef(false);
+  const settledNow = r.settled !== false;
+
   useEffect(() => {
     if (!motion) {
       /* 2026-10-04: o reduced-motion foi ligado com o gráfico seguro na base
@@ -332,7 +370,7 @@ export default function ChartFrame({
       }
       return undefined;
     }
-    heldRef.current = !shown;
+    heldRef.current = !shown || deferredRef.current;
     const chart = chartIn(plotRef.current);
     const last = lastChartRef.current;
     /* 2026-10-04: uma instância anterior DESTRUÍDA não quer dizer que a atual
@@ -350,7 +388,31 @@ export default function ChartFrame({
     if (chart) {
       if (!shown) holdAtZero(chart);
       else if (played && !created) replayFromZero(chart);
-      // Criado agora, no próprio reveal: o construtor já anima da base.
+      else if (deferredRef.current) {
+        // Adiado (A5): continua na base. Ao soltar, o atributo de hold já
+        // saiu neste commit — agora o update anima.
+        if (releaseRef.current) {
+          releaseRef.current = false;
+          deferredRef.current = false;
+          heldRef.current = false;
+          replayFromZero(chart);
+        } else {
+          holdAtZero(chart);
+        }
+      } else if (created && !played && !(settledNow && isPlotInViewNow(plotRef.current))) {
+        // Nasceu depois do reveal e fora da vista (A5): espera por ela.
+        holdAtZero(chart);
+        deferredRef.current = true;
+        heldRef.current = true;
+        setDeferred(true);
+      }
+      // Criado agora, no próprio reveal (ou já à vista): o construtor já anima da base.
+    } else if (releaseRef.current) {
+      // Soltou sem gráfico (a área voltou a ficar vazia): nada a repetir — o
+      // próximo que nascer volta a decidir pela vista.
+      releaseRef.current = false;
+      deferredRef.current = false;
+      heldRef.current = false;
     }
 
     /* 2026-10-04: e a instância que o StrictMode recria a seguir a este
@@ -367,10 +429,42 @@ export default function ChartFrame({
       const now = chartIn(plotRef.current);
       if (!now || now === lastChartRef.current) return;
       lastChartRef.current = now;
-      if (!shown) holdAtZero(now);
+      if (!shown || deferredRef.current) holdAtZero(now);
     });
     return () => { cancelled = true; };
   });
+
+  // O adiamento acaba quando a área fica à vista com o separador assente
+  // (observer próprio: o do reveal pode ainda estar no nó antigo — a linha do
+  // valor — e dar um `visible` de antes). Rearmado ou sem movimento, o
+  // caminho normal toma conta (segura na base e repete no reveal seguinte).
+  useEffect(() => {
+    if (!deferred) return undefined;
+    if (!motion || !shown) {
+      deferredRef.current = false;
+      releaseRef.current = false;
+      setDeferred(false);
+      return undefined;
+    }
+    if (!settledNow) return undefined;
+    const el = plotRef.current;
+    const release = () => {
+      releaseRef.current = true;
+      setDeferred(false);
+    };
+    if (!el || typeof window.IntersectionObserver !== 'function') { release(); return undefined; }
+    const io = new window.IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (tabEntryVisibility(entry).inView) {
+          io.disconnect();
+          release();
+          return;
+        }
+      }
+    }, { threshold: TAB_THRESHOLDS });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [deferred, motion, shown, settledNow]);
 
   const hidden = motion && r.seen === false;
   const fade = motion ? FADE_IN : undefined;
@@ -466,7 +560,7 @@ export default function ChartFrame({
         // — o construtor de uma instância recriada pelo StrictMode, um resize
         // (rodar o telemóvel) ou o update('none') do reduced-motion — sem
         // depender de esta moldura voltar a renderizar.
-        data-chart-hold={motion && !shown ? '1' : undefined}
+        data-chart-hold={motion && (!shown || deferred) ? '1' : undefined}
         style={{
           position: 'relative',
           height,

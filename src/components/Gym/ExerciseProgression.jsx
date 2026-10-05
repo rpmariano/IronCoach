@@ -11,7 +11,8 @@ import { fmtNumber } from '../../utils/verdicts/shared';
  * (sempre Epley sobre peso × repetições, séries de até 12 repetições) do período contra o período anterior
  * equivalente e fechado (R5), com ▲/▼.
  *
- * Só aparecem exercícios COMPARÁVEIS: com pelo menos 2 sessões no período e
+ * Só aparecem exercícios COMPARÁVEIS: com pelo menos 2 sessões no período (1 numa
+ * semana — G5, 2026-10-05: em split nunca há 2 do mesmo exercício em 7 dias) e
  * registos no anterior. Os restantes não se inventam — diz-se quantos ficaram
  * de fora (R6). A vista (store/evolution/views/gym.js) já traz tudo calculado;
  * isto só apresenta.
@@ -20,23 +21,31 @@ import { fmtNumber } from '../../utils/verdicts/shared';
  *   progression  { rows, hidden, withoutPrevious, label } da vista
  *   scope        "nesta semana" / "em setembro" — onde fica o período
  *   gate         texto do bloco quando o período ainda não permite comparar
- *                (cedo, sem anterior); sem ele usa-se o texto de "sem linhas"
+ *                (cedo, sem anterior); sem ele usa-se o texto de "sem linhas".
+ *                Pode ser { text, actionLabel, onAction } para levar ao período
+ *                onde a comparação já existe ("Ver setembro ›", M4).
  */
 const cardStyle = 'bg-[var(--surface-glass)] backdrop-blur-[20px] border border-white/60 rounded-2xl p-4 shadow-[0_16px_40px_rgba(0,0,0,0.3),inset_0_2px_10px_rgba(255,255,255,0.6)]';
 
-const INFO = 'O 1RM estimado é o peso máximo que levantarias numa repetição, calculado a partir da tua melhor série (fórmula de Epley sobre o peso e as repetições, só séries até 12 repetições; o 1RM guardado nas fotos não conta, para os dois períodos usarem a mesma régua). Assim 80 kg × 8 e 85 kg × 5 comparam-se. Só aparecem exercícios com pelo menos 2 sessões no período e registos no período anterior. Exercícios de peso do corpo (sem carga) não entram.';
+const infoText = (minSessions) => `O 1RM estimado é o peso máximo que levantarias numa repetição, calculado a partir da tua melhor série (fórmula de Epley sobre o peso e as repetições, só séries até 12 repetições; o 1RM guardado nas fotos não conta, para os dois períodos usarem a mesma régua). Assim 80 kg × 8 e 85 kg × 5 comparam-se. Só aparecem exercícios com pelo menos ${minSessions} ${minSessions === 1 ? 'sessão' : 'sessões'} no período e registos no período anterior${minSessions === 1 ? ' (numa semana, cada exercício compara a melhor série com a da semana passada)' : ''}. Exercícios de peso do corpo (sem carga) não entram.`;
 
-export function progressionEmptyText({ withoutPrevious = 0, scope }) {
-  const base = `Progressão por exercício: preciso de um exercício com pelo menos 2 sessões ${scope} e registos no período anterior para comparar.`;
+export function progressionEmptyText({ withoutPrevious = 0, scope, minSessions = 2 }) {
+  const base = minSessions === 1
+    ? `Progressão por exercício: preciso de um exercício treinado ${scope} e no período anterior para comparar.`
+    : `Progressão por exercício: preciso de um exercício com pelo menos ${minSessions} sessões ${scope} e registos no período anterior para comparar.`;
   if (withoutPrevious <= 0) return base;
   return `${base} ${withoutPrevious} ${plural(withoutPrevious, 'exercício ainda não tem', 'exercícios ainda não têm')} registos antes.`;
 }
 
 export default function ExerciseProgression({ progression, scope, gate }) {
   const rows = progression?.rows || [];
-  if (gate) return <MinDataNote text={gate} />;
+  const minSessions = progression?.minSessions || 2;
+  if (gate) {
+    const g = typeof gate === 'string' ? { text: gate } : gate;
+    return <MinDataNote module="ginasio" text={g.text} actionLabel={g.actionLabel} onAction={g.onAction} />;
+  }
   if (rows.length === 0) {
-    return <MinDataNote text={progressionEmptyText({ withoutPrevious: progression?.withoutPrevious, scope })} />;
+    return <MinDataNote module="ginasio" text={progressionEmptyText({ withoutPrevious: progression?.withoutPrevious, scope, minSessions })} />;
   }
   const { hidden = 0, withoutPrevious = 0, label } = progression;
 
@@ -44,7 +53,7 @@ export default function ExerciseProgression({ progression, scope, gate }) {
     <section className={cardStyle} aria-label="Progressão por exercício" data-testid="progressao">
       <div className="flex items-center justify-between mb-1 gap-2">
         <h2 className="text-[11px] font-semibold text-[var(--text-2)] uppercase tracking-wider">Progressão por exercício</h2>
-        <MetricInfo text={INFO} />
+        <MetricInfo text={infoText(minSessions)} />
       </div>
       <p className="text-[11px] text-[var(--text-3)] mb-2">
         Melhor 1RM estimado {scope}, contra {label}.
@@ -59,7 +68,7 @@ export default function ExerciseProgression({ progression, scope, gate }) {
             <div className="min-w-0">
               <p className="text-xs font-semibold text-[var(--text-2)] break-words">{r.name}</p>
               <p className="text-[11px] text-[var(--text-3)] mt-0.5">
-                {r.current.sessions} sessões · melhor série {fmtNumber(r.current.bestSet.weight, r.current.bestSet.weight % 1 ? 1 : 0)} kg × {r.current.bestSet.reps}
+                {r.current.sessions} {plural(r.current.sessions, 'sessão', 'sessões')} · melhor série {fmtNumber(r.current.bestSet.weight, r.current.bestSet.weight % 1 ? 1 : 0)} kg × {r.current.bestSet.reps}
               </p>
             </div>
             <div className="text-right shrink-0">
@@ -82,7 +91,9 @@ export default function ExerciseProgression({ progression, scope, gate }) {
       {(hidden > 0 || withoutPrevious > 0) && (
         <p data-testid="progressao-notas" className="text-[11px] text-[var(--text-4)] mt-2">
           {hidden > 0 && `Mais ${hidden} ${plural(hidden, 'exercício', 'exercícios')} não cabe${hidden === 1 ? '' : 'm'} aqui. `}
-          {withoutPrevious > 0 && `${withoutPrevious} ${plural(withoutPrevious, 'exercício com 2+ sessões não aparece', 'exercícios com 2+ sessões não aparecem')}: sem registos no período anterior para comparar.`}
+          {withoutPrevious > 0 && `${withoutPrevious} ${minSessions === 1
+            ? plural(withoutPrevious, 'exercício desta semana não aparece', 'exercícios desta semana não aparecem')
+            : plural(withoutPrevious, `exercício com ${minSessions}+ sessões não aparece`, `exercícios com ${minSessions}+ sessões não aparecem`)}: sem registos no período anterior para comparar.`}
         </p>
       )}
     </section>

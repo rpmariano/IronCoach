@@ -311,6 +311,35 @@ describe('useRevealAnimation — dentro do carrossel da Evolução', () => {
     expect(d().key).toBe('0');
   });
 
+  /* 2026-10-05 (A7): a Análise Cruzada fecha (`ready={opened && …}` desce) e
+     reabre — tem de repetir a entrada. */
+  it('ready de quem chama desce e a área fica fora (secção fechada): rearma; reabrir repete', () => {
+    const { rerender } = render(inTab({ readyOption: true }));
+    assenta(PAGE);
+    fire(aVista());
+    expect(d().key).toBe('1');
+    rerender(inTab({ readyOption: false })); // fechar
+    expect(d().armed).toBe('false'); // ainda se vê enquanto fecha
+    fire(fora()); // fechada: área cortada a 0 px
+    expect(d().armed).toBe('true');
+    fire(aVista()); // a abrir: já se vê, mas ainda não está pronta
+    expect(d().key).toBe('1');
+    rerender(inTab({ readyOption: true })); // aberta
+    expect(d().key).toBe('2');
+    expect(d().animate).toBe('true');
+  });
+
+  it('ready de quem chama desce e volta com o gráfico sempre à vista: não rearma', () => {
+    const { rerender } = render(inTab({ readyOption: true }));
+    assenta(PAGE);
+    fire(aVista());
+    rerender(inTab({ readyOption: false }));
+    rerender(inTab({ readyOption: true }));
+    fire(fora()); // sair por baixo depois: scroll, não rearma
+    expect(d().armed).toBe('false');
+    expect(d().key).toBe('1');
+  });
+
   it('a janela de animação fecha e não reabre sem novo reveal', () => {
     revelado();
     expect(d().animate).toBe('true');

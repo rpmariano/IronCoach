@@ -26,7 +26,8 @@ import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_sha
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
   applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
-  microFromModel, parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten, withWrittenFoods,
+  isMicroColumn, microFromModel, parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
+  withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 
@@ -587,7 +588,10 @@ async function analyzePantryFood(
       portion_grams: Math.max(1, Math.round(num(parsed?.portion_grams)) || 100),
       portion_label: label,
       from_label: parsed?.from_label === true,
-      ...Object.fromEntries(Object.keys(PANTRY_FOOD_SCHEMA.properties).filter((k) => k.endsWith("_per_100g")).map((k) => [k, num(parsed?.[k])])),
+      // Os micronutrientes que a Carol não deu voltam null, não 0 (2026-10-05):
+      // a app grava-os assim na despensa, por confirmar (src/utils/pantry.js).
+      ...Object.fromEntries(Object.keys(PANTRY_FOOD_SCHEMA.properties).filter((k) => k.endsWith("_per_100g"))
+        .map((k) => [k, isMicroColumn(k) ? microFromModel(parsed?.[k]) : num(parsed?.[k])])),
     },
     usage,
   };
@@ -1374,16 +1378,25 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
 
       // Bugs #48/#52 (fase A): um alimento da despensa entra com os valores
       // dela — a Carol já o conhece; só os outros vão ao Gemini, com o que
-      // ela sabe de como ele cozinha. Todos conhecidos: nenhuma estimativa.
+      // ela sabe de como ele cozinha.
+      // Registar sem o Gemini (2026-10-05): uma refeição só de alimentos da
+      // despensa COMPLETOS (os sete micronutrientes dados), sem fotos e sem
+      // perguntas da Carol em aberto sobre eles, calcula-se aqui — nenhuma
+      // estimativa (splitKnownWritten). Um da despensa que ainda não chega
+      // vai ao modelo, mas só se aproveita dele o que falta à despensa (os
+      // micronutrientes por confirmar, que a seguir a preenchem — nextFoodRow)
+      // e as perguntas em aberto; calorias e macros ficam os dela.
+      // O comentário da Carol (attachMealCoachNotes) continua a ser pedido:
+      // é a opinião dela sobre a refeição, não o cálculo.
       const pantry = await withWrittenFoods(sb, userId, await pantryPromise, items.map((i) => i.name));
-      const { known, unknown } = splitKnownWritten(items, pantry.byKey);
+      const { known, unknown } = splitKnownWritten(items, pantry.byKey, pantry.rules);
       let estimated: { items: unknown[]; usage: GeminiUsage; facts: CookingFact[]; questions: CarolQuestion[] };
       try {
         if (unknown.length) {
           const est = await analyzeManualItems(
             unknown.map((u) => u.item), rawNotes, geminiKey, extractionDeadline, knowledgeSection(pantry.foods, pantry.rules),
           );
-          const byIndex = new Map(unknown.map((u, i) => [u.index, est.items[i]]));
+          const byIndex = new Map(unknown.map((u, i) => [u.index, u.food ? withPantryValues(est.items[i], u.food, u.pending) : est.items[i]]));
           const all = items.map((_, i) => known.get(i) ?? byIndex.get(i));
           estimated = { items: all, usage: est.usage, facts: est.facts, questions: parseQuestions(est.questions, all, pantry.rules) };
         } else {
@@ -1591,7 +1604,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       ({ items, usage, facts, questions: rawQuestions } = written.length
         ? await analyzePhotosWithItems(images, mime, written, rawNotes, geminiKey, extractionDeadline, knowledge)
         : await analyzeWithGemini(images, mime, rawNotes, geminiKey, extractionDeadline, knowledge));
-      items = applyPantry(items, pantry.byKey);
+      items = applyPantry(items, pantry.byKey, pantry.rules);
     } catch (e) {
       await sb.storage.from("meal-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);

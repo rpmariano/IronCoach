@@ -12,8 +12,8 @@ import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
 import { computeMuscleGroupVolumeDetailed } from '@formulas/muscleGroupVolume.ts';
 import { computeClassAnalytics } from '@formulas/classAnalytics.ts';
 import { computeExerciseProgression } from '@formulas/strengthProgression.ts';
-import { gymVerdict, GYM_TARGET_PER_WEEK } from '../../../utils/verdicts/gym';
-import { whereOf } from '../../../components/BI/period/periodText';
+import { gymVerdict, GYM_TARGET_PER_WEEK, gymMinClosedWeeks } from '../../../utils/verdicts/gym';
+import { whereOf, pickFallbackPeriod, closedWeekStarts, nextWeekCloseISO } from '../../../components/BI/period/periodText';
 
 /**
  * Vista do Ginásio por período de calendário (2026-10-04, fase 5 do plano da
@@ -43,6 +43,11 @@ export const CHART_MIN_WEEKS = 5;
 export const MIN_CLASSES_FOR_RPE = 3;
 /** Exercícios mostrados na progressão; os restantes dizem-se numa nota. */
 export const MAX_PROGRESSION_ROWS = 8;
+/** Sessões do MESMO exercício para o comparar (G5, 2026-10-05): num mês ou mais
+ *  2; numa semana 1 — quem treina em split (pernas um dia, peito outro) nunca tem
+ *  2 sessões do mesmo exercício em 7 dias. Na semana compara a melhor série com
+ *  a da semana anterior. */
+export const progressionMinSessions = (kind) => (kind === 'semana' ? 1 : 2);
 
 const MONTHS_SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
 
@@ -82,19 +87,6 @@ function windowStats(sessions, from, to) {
     }
   }
   return { from, to, strength, classes, strengthDays: strengthDays.size, classDays: classDays.size, total: strength + classes };
-}
-
-/** Segundas-feiras das semanas seg–dom INTEIRAS dentro de [from, to]: uma
- *  semana a meio do período, ou que começa antes do 1.º registo, não é uma
- *  semana fechada observada (puxava a média para baixo com dias que não
- *  existiram). */
-function closedWeekStarts(from, to) {
-  if (!from || !to || from > to) return [];
-  let m = mondayOf(from);
-  if (m < from) m = addDaysISO(m, 7);
-  const out = [];
-  for (; addDaysISO(m, 6) <= to; m = addDaysISO(m, 7)) out.push(m);
-  return out;
 }
 
 /** Sessões de uma lista de semanas: força, aulas, kg e semanas no alvo. */
@@ -232,6 +224,9 @@ function shortName(title, kind, todayISO) {
   return t.charAt(0).toLowerCase() + t.slice(1);
 }
 
+const GYM_KINDS = ['semana', 'mes', 'trimestre'];
+const capFirst = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
+
 // ── A vista ───────────────────────────────────────────────────────────────
 
 export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
@@ -245,6 +240,7 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
   const dates = sessions.map(dayOf).filter(Boolean);
   const dataStartISO = dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : null;
 
+  const minWeeks = gymMinClosedWeeks(kind);
   const calEarly = periodEarlyState(period, todayISO, GYM_MIN_CLOSED);
   // A janela dos números: dias fechados do período, a partir do 1.º registo (R7).
   const closedDays = dataStartISO ? closedDaysOf(period, todayISO, dataStartISO) : [];
@@ -255,15 +251,22 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
      quem começou a 2 out não tem "3 dias fechados" em outubro, tem 2 (R6/R7).
      Sem nenhum e com o 1.º registo de hoje, é "a começar" na mesma, mas o
      título não diz "o mês começou hoje" (firstDay). */
+  /* 2026-10-05 (G1): "ainda é cedo" só num período EM CURSO, como na Corrida.
+     Num fechado (setembro com o 1.º registo a 28 set) nunca vai ficar mais tarde:
+     os números são factos, e a progressão prometia "aparece a partir de 4 dias
+     fechados" sobre um período que já acabou. */
   const earlyState = beforeData ? calEarly
     : (calEarly === 'a_comecar' || closedDays.length === 0) ? 'a_comecar'
-    : closedDays.length < Math.min(GYM_MIN_CLOSED, period.totalDays) ? 'cedo' : 'ok';
+    : (period.isCurrent && closedDays.length < Math.min(GYM_MIN_CLOSED, period.totalDays)) ? 'cedo' : 'ok';
   const firstDay = earlyState === 'a_comecar' && calEarly !== 'a_comecar';
 
   const cur = windowStats(sessions, from, to);
 
-  // ── As semanas fechadas do período (G2) ──
-  const wk = weeksStats(sessions, closedWeekStarts(from, to));
+  // ── As semanas fechadas que tocam o período (G2/G7) ──
+  const wkStarts = closedWeekStarts(period.start, period.end, todayISO, dataStartISO);
+  const wk = weeksStats(sessions, wkStarts);
+  const weeksRange = wkStarts.length ? fmtRange(wkStarts[0], addDaysISO(wkStarts[wkStarts.length - 1], 6), todayISO) : null;
+  const weeksNextClose = nextWeekCloseISO(period.start, period.end, todayISO, dataStartISO);
 
   // ── O período anterior, equivalente e fechado (R5) ──
   const prevLabelFull = periodLabel(previous, todayISO, { dataStartISO });
@@ -271,7 +274,8 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
   const prevCoverage = !dataStartISO || dataStartISO > previous.end ? 'none' : dataStartISO > previous.start ? 'partial' : 'full';
   const prevFrom = prevCoverage === 'none' ? null : maxISO(previous.start, dataStartISO);
   const prevFull = prevCoverage === 'none' ? null : windowStats(sessions, prevFrom, previous.end);
-  const prevWk = prevCoverage === 'full' ? weeksStats(sessions, closedWeekStarts(previous.start, previous.end)) : null;
+  const prevWk = prevCoverage === 'none' ? null
+    : weeksStats(sessions, closedWeekStarts(previous.start, previous.end, todayISO, dataStartISO));
 
   /* As janelas da comparação (2026-10-04, revisão: período fechado de tamanho
      diferente). Num período EM CURSO comparam-se as mesmas N primeiras datas dos
@@ -309,7 +313,7 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
     }
     // "X de N semanas com 2+ treinos" contra o anterior, em % (mock-up): só
     // com semanas que cheguem dos dois lados (R6).
-    if (kind !== 'semana' && wk.weeks >= 3 && prevWk && prevWk.weeks >= 3) {
+    if (kind !== 'semana' && wk.weeks >= minWeeks && prevCoverage === 'full' && prevWk && prevWk.weeks >= minWeeks) {
       weeksDelta = {
         current: wk.onTargetPct,
         previous: prevWk.onTargetPct,
@@ -348,17 +352,63 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
   // Progressão por exercício (D5): só com o período em condições (R6) e um
   // anterior equivalente e fechado com os mesmos dias de cada lado (R5).
   const progression = (() => {
-    const base = { rows: [], withoutPrevious: 0, hidden: 0, label: '' };
+    const base = { rows: [], withoutPrevious: 0, hidden: 0, label: '', minSessions: progressionMinSessions(kind) };
     if (earlyState !== 'ok' || !cmp || !from) return base;
     // A mesma regra das janelas do ▲/▼: em curso, as N primeiras datas; fechado, tudo.
-    const res = computeExerciseProgression(sessions, cmp.cur, cmp.prev);
+    const res = computeExerciseProgression(sessions, cmp.cur, cmp.prev, { minSessions: progressionMinSessions(kind) });
     return {
       rows: res.rows.slice(0, MAX_PROGRESSION_ROWS),
       hidden: Math.max(0, res.rows.length - MAX_PROGRESSION_ROWS),
       withoutPrevious: res.withoutPrevious,
       label: cmp.label,
+      minSessions: progressionMinSessions(kind),
     };
   })();
+
+  /* ── Onde estão os dados quando o período ainda não chega (M2/M4/G2/G7) ──
+     Cada porta fechada diz para onde ir: o período anterior equivalente e, se nem
+     esse chega, o tipo maior (a vista só os descreve; o ecrã liga o botão). */
+  const pickFb = (min, countIn, kinds = GYM_KINDS) => pickFallbackPeriod({
+    kind, offset, todayISO, dataStartISO, kinds, min, countIn,
+  });
+  const weeksOf = (p) => closedWeekStarts(p.start, p.end, todayISO, dataStartISO);
+  const periodOfFb = (fb) => (fb.type === 'prev' ? previousPeriod(period, todayISO) : calendarPeriod(fb.kind, todayISO, fb.offset || 0));
+  const dsISO = dataStartISO;
+  const windowOf = (p) => ({ from: dsISO && dsISO > p.start ? dsISO : p.start, to: p.lastClosed });
+
+  const fbWeeks = kind !== 'semana' && wk.weeks < minWeeks
+    ? pickFb(1, (f, t, p) => { const n = weeksOf(p).length; return n >= gymMinClosedWeeks(p.kind) ? n : 0; })
+    : null;
+  // "Em setembro: 3 de 4 semanas com 2+ treinos de força." — o facto que o período tem.
+  const weeksHint = (() => {
+    if (!fbWeeks) return null;
+    const st = weeksStats(sessions, weeksOf(periodOfFb(fbWeeks)));
+    if (st.weeks === 0) return null;
+    return `${capFirst(fbWeeks.where)}: ${st.onTarget} de ${st.weeks} semanas com ${GYM_TARGET_PER_WEEK}+ treinos de força.`;
+  })();
+  const fbMuscle = muscle.groups.length === 0
+    ? pickFb(1, (f, t, p) => weeksStats(sessions, weeksOf(p)).strength)
+    : null;
+  /* 2026-10-05 (verificação no browser): também com o período "ok" mas sem
+     nenhum exercício comparável — outubro a 5 dizia "preciso de um exercício
+     com pelo menos 2 sessões…" sem dizer que setembro já tem a sua. */
+  const fbProgression = earlyState !== 'a_comecar' && (earlyState !== 'ok' || progression.rows.length === 0)
+    ? pickFb(1, (f, t, p) => {
+      const pp = previousPeriod(p, todayISO);
+      if (!dsISO || dsISO > pp.end) return 0;
+      return computeExerciseProgression(sessions, { from: f, to: t }, { from: pp.start, to: pp.end }, { minSessions: progressionMinSessions(kind) }).rows.length;
+    }, [])
+    : null;
+  // Qualquer treino (força ou aula): para o período vazio / "cedo" dizerem onde há.
+  const fbData = cur.total === 0 || earlyState === 'cedo'
+    ? (() => {
+      const fb = pickFb(1, (f, t) => windowStats(sessions, f, t).total);
+      if (!fb) return null;
+      const w = windowOf(periodOfFb(fb));
+      const st = windowStats(sessions, w.from, w.to);
+      return { ...fb, strength: st.strength, classes: st.classes };
+    })()
+    : null;
 
   // Aulas: análise da fórmula partilhada + os denominadores que ela não dá.
   const classAn = computeClassAnalytics(closedClasses, todayISO, 'periodo');
@@ -391,6 +441,8 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
     runCount: runsInPeriod,
     observedDays: closedDays.length,
     early: earlyState,
+    minClosedWeeks: minWeeks,
+    earlyHint: weeksHint,
   });
 
   return {
@@ -409,6 +461,9 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
     cur,
     weeks: {
       count: wk.weeks,
+      min: minWeeks,
+      range: weeksRange,
+      nextCloseISO: weeksNextClose,
       strength: wk.strength,
       classes: wk.classes,
       onTarget: wk.onTarget,
@@ -426,6 +481,7 @@ export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
     weeklyData,
     muscle,
     progression,
+    fallbacks: { weeks: fbWeeks, muscle: fbMuscle, progression: fbProgression, data: fbData },
     classes: {
       ...classAn,
       rpeCount: rpeCounts.overall,

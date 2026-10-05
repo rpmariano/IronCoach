@@ -51,7 +51,11 @@ const SLICES = ['body'];
 /* `emptyText` (2026-10-04, revisão do Corpo): o rodapé quando não há
    evolução para desenhar, para quem fala de um período FECHADO — o
    "Ainda não há… neste período" não serve para setembro. */
-export default function StackedAreaChart({ data = EMPTY_DATA, className = '', start = null, end = null, hint: hintProp, emptyText = null }) {
+/* `emptyAction` (2026-10-05, auditoria dos limiares C4): { label, onClick } —
+   o botão "Ver trimestre ›" ao lado do rodapé quando não há evolução neste
+   período mas há num maior. Dizer só "precisa de 2" deixava o atleta sem saber
+   que os dados existem (é a queixa "no Ano já aparecem"). Alvo de 44 px. */
+export default function StackedAreaChart({ data = EMPTY_DATA, className = '', start = null, end = null, hint: hintProp, emptyText = null, emptyAction = null }) {
   const ready = useAppStore((st) => sliceReady(st, SLICES));
 
   // Uma só passagem, só quando `data` muda (o compositionData do Corpo já é memoizado).
@@ -164,11 +168,40 @@ export default function StackedAreaChart({ data = EMPTY_DATA, className = '', st
       height={canDraw ? 200 : 0}
       footer={canDraw
         ? undefined
-        : emptyText
-          ? emptyText
-          : n === 1
-          ? 'Preciso de 2 avaliações com gordura medida para mostrar a evolução — tens 1.'
-          : 'Ainda não há avaliações com gordura medida neste período.'}
+        : (
+          <>
+            {emptyText
+              ? emptyText
+              : n === 1
+                ? 'Preciso de 2 avaliações com gordura medida para mostrar a evolução — tens 1.'
+                : 'Ainda não há avaliações com gordura medida neste período.'}
+            {emptyAction?.label && typeof emptyAction.onClick === 'function' && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={emptyAction.onClick}
+                  data-testid="composition-wider"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    minHeight: 'var(--tap)',
+                    margin: '-14px 0',
+                    padding: 0,
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--body)',
+                    fontSize: 'inherit',
+                    fontWeight: 700,
+                  }}
+                >
+                  {emptyAction.label}
+                  <span aria-hidden="true">&nbsp;›</span>
+                </button>
+              </>
+            )}
+          </>
+        )}
     >
       {canDraw ? <Line data={chartData} options={options} updateMode="period" /> : null}
     </ChartFrame>

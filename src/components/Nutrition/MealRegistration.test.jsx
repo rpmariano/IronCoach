@@ -878,10 +878,13 @@ describe('MealRegistration — espera e erro da análise (ponto 7)', () => {
    analisado (mockup "Despensa e perguntas da Carol", ecrã 4). */
 describe('MealRegistration — a despensa ao escrever', () => {
   const onClose = vi.fn();
+  // Completos (2026-10-05): os 7 micronutrientes dados. O iogurte natural
+  // não tem nenhum — vai à análise buscá-los.
+  const MICROS = { fiber_per_100g: 0.1, sugar_per_100g: 3.6, sodium_per_100g: 36, iron_mg_per_100g: 0.1, calcium_mg_per_100g: 110, vitamin_c_mg_per_100g: 0.5, potassium_mg_per_100g: 141 };
   const FOODS = [
-    { id: 'i', name: 'Iogurte grego 0%', name_key: 'iogurte grego 0%', times_seen: 6, portion_grams: 170, calories_per_100g: 59 },
+    { id: 'i', name: 'Iogurte grego 0%', name_key: 'iogurte grego 0%', times_seen: 6, portion_grams: 170, calories_per_100g: 59, ...MICROS },
     { id: 'n', name: 'Iogurte natural', name_key: 'iogurte natural', times_seen: 2, portion_grams: 125, calories_per_100g: 63 },
-    { id: 'a', name: 'Aveia em flocos', name_key: 'aveia em flocos', times_seen: 5, portion_grams: 40, calories_per_100g: 372 },
+    { id: 'a', name: 'Aveia em flocos', name_key: 'aveia em flocos', times_seen: 5, portion_grams: 40, calories_per_100g: 372, ...MICROS },
   ];
   const ontem = (d) => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
 
@@ -912,6 +915,13 @@ describe('MealRegistration — a despensa ao escrever', () => {
     fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
     expect(screen.getByText('170g · já conhecido, não é analisado')).toBeInTheDocument();
     expect(screen.queryByTestId('pantry-suggestions')).not.toBeInTheDocument();
+  });
+
+  it('um da despensa com micronutrientes por confirmar diz que a Carol os completa (não que não é analisado)', () => {
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog nat' } });
+    fireEvent.click(screen.getByRole('option', { name: /Iogurte natural/ }));
+    expect(screen.getByText('125g · já conhecido · a Carol completa os micronutrientes')).toBeInTheDocument();
   });
 
   it('as gramas já escritas ganham à porção habitual', () => {

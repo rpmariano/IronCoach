@@ -79,7 +79,29 @@ export const QUICK_RETURN_MS = 3000;
 const THRESHOLDS = [0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1];
 // Passos finos: o IntersectionObserver só chama ao cruzar um limiar, e o
 // critério é por altura (55 % do que cabe no ecrã), não por um rácio fixo.
-const TAB_THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
+export const TAB_THRESHOLDS = Array.from({ length: 21 }, (_, i) => i / 20);
+
+/**
+ * O critério "à vista" do modo separador, para uma entrada do
+ * IntersectionObserver: `{ out, inView }`. Exportado (2026-10-05, A5) para a
+ * ChartFrame usar o MESMO critério quando um gráfico aparece depois de a
+ * moldura já estar revelada.
+ */
+export function tabEntryVisibility(entry) {
+  const box = entry?.boundingClientRect || {};
+  const seenRect = entry?.intersectionRect || {};
+  const viewHeight = entry?.rootBounds?.height
+    || (typeof window !== 'undefined' ? window.innerHeight : 0)
+    || (typeof document !== 'undefined' ? document.documentElement?.clientHeight : 0) || 0;
+  const height = box.height || 0;
+  const need = Math.min(height, viewHeight || height) * REVEAL_TAB_MIN_RATIO;
+  const seenHeight = seenRect.height || 0;
+  const seenWidth = seenRect.width ?? box.width ?? 1;
+  // Uma página vizinha encostada à margem do carrossel pode vir como
+  // "a intersetar" com largura 0 (interseção de aresta) — é fora.
+  const out = !entry?.isIntersecting || seenHeight <= 0 || !(seenWidth > 0);
+  return { out, inView: !out && seenHeight >= need };
+}
 
 export function useRevealAnimation(options = {}) {
   const page = useContext(TabPageContext);
@@ -198,6 +220,7 @@ function useTabReveal({ enabled = true, ready: readyOption = true } = {}) {
   const settledRef = useRef(settled);
   settledRef.current = settled;
   const pendingRearmRef = useRef(false);
+  const pendingUnreadyRef = useRef(false);
 
   const [st, setSt] = useState({ shown: false, seen: false, play: 0 });
   const [settledPlay, setSettledPlay] = useState(0);
@@ -211,8 +234,28 @@ function useTabReveal({ enabled = true, ready: readyOption = true } = {}) {
 
   const rearm = useCallback(() => {
     pendingRearmRef.current = false;
+    pendingUnreadyRef.current = false;
     setSt((s) => (s.shown ? { ...s, shown: false } : s));
   }, []);
+
+  /* 2026-10-05 (A7): quem chama baixou o seu `ready` depois de revelar — é a
+     Análise Cruzada a fechar (`ready={opened && …}`). Fechar não saía de lado
+     nem deixava o separador, por isso nada rearmava e reabrir mostrava o
+     gráfico já cheio. Agora rearma, mas só quando já não se vê (a secção
+     fechada corta a área a 0 px): um `ready` que desça com o gráfico à vista
+     nunca o devolve a zero diante do atleta — fica pendente até sair. Voltar
+     a ficar pronto antes disso cancela. Só a opção de quem chama: o
+     TabReadyContext do separador não desce numa sessão. */
+  const readyOptionRef = useRef(readyOption !== false);
+  readyOptionRef.current = readyOption !== false;
+  useEffect(() => {
+    if (!motion || readyOption !== false || !st.shown) {
+      pendingUnreadyRef.current = false;
+      return;
+    }
+    if (outRef.current) rearm();
+    else pendingUnreadyRef.current = true;
+  }, [motion, readyOption, st.shown, rearm]);
 
   // O separador deixou de estar assente: rearma ao fim de QUICK_RETURN_MS,
   // se já não se vê; se ainda se vê (o dedo pousado, a página a voltar),
@@ -240,20 +283,11 @@ function useTabReveal({ enabled = true, ready: readyOption = true } = {}) {
     if (!observing || !node) return undefined;
     const observer = new window.IntersectionObserver((entries) => {
       for (const entry of entries) {
-        const box = entry.boundingClientRect || {};
-        const seenRect = entry.intersectionRect || {};
-        const viewHeight = entry.rootBounds?.height
-          || window.innerHeight || document.documentElement?.clientHeight || 0;
-        const height = box.height || 0;
-        const need = Math.min(height, viewHeight || height) * REVEAL_TAB_MIN_RATIO;
-        const seenHeight = seenRect.height || 0;
-        const seenWidth = seenRect.width ?? box.width ?? 1;
-        // Uma página vizinha encostada à margem do carrossel pode vir como
-        // "a intersetar" com largura 0 (interseção de aresta) — é fora.
-        const out = !entry.isIntersecting || seenHeight <= 0 || !(seenWidth > 0);
+        const { out, inView: seen } = tabEntryVisibility(entry);
         outRef.current = out;
-        setInView(!out && seenHeight >= need);
+        setInView(seen);
         if (out && pendingRearmRef.current && !settledRef.current) rearm();
+        if (out && pendingUnreadyRef.current && !readyOptionRef.current) rearm();
       }
     }, { threshold: TAB_THRESHOLDS });
     observer.observe(node);

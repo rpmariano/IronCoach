@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bodyVerdict } from './body';
+import { bodyVerdict, trendNeedText } from './body';
 import { expectCarolVoice } from '../../test/carolVoice';
 
 /* Veredicto do Corpo num período de calendário (2026-10-04, fase 5 — plano §3
@@ -43,7 +43,8 @@ describe('bodyVerdict com período', () => {
 
   it('uma pesagem no período com outras fora: "Em setembro só há uma pesagem"', () => {
     const v = bodyVerdict({ weightTrend: trend(null, null, [74]), period: SETEMBRO, hasWeighInsOutside: true, assessmentCount: 1 });
-    expect(v.text.startsWith('Em setembro só há uma pesagem, de 74,0 kg.')).toBe(true);
+    // Fechado: o que havia na janela, não um pedido (2026-10-05).
+    expect(v.text).toBe('Em setembro só há uma pesagem, de 74,0 kg; nas duas semanas até 1 set não havia outras — a tendência precisa de três em pelo menos 10 dias.');
   });
 
   it('período fechado fala no passado', () => {
@@ -109,7 +110,7 @@ describe('bodyVerdict com período', () => {
   it('pesagens que chegam mas juntas: pede espaço, não "três pesagens"', () => {
     const t = { ...trend(null, null, [80, 79.7, 79.4, 79.1, 78.8, 78.5, 78.2]), spanDays: 6 };
     const v = bodyVerdict({ weightTrend: t, period: { where: 'na semana passada', isCurrent: false } });
-    expect(v.text).toBe('Tenho sete pesagens na semana passada, de 80,0 a 78,2 kg. Para o ritmo preciso de pesagens espalhadas por pelo menos 10 dias — nas duas semanas até à última há 7, em 6 dias.');
+    expect(v.text).toBe('Tenho sete pesagens na semana passada, de 80,0 a 78,2 kg; nas duas semanas até à última havia 7, em 6 dias — para a tendência eram precisos pelo menos 10 dias entre a primeira e a última.');
     expectCarolVoice(v.text);
   });
 
@@ -122,5 +123,47 @@ describe('bodyVerdict com período', () => {
   it('o "peso atual" da frase é a última pesagem, não o último ponto da EWMA', () => {
     const t = { ...trend(0, 'estavel', [75, 75.2, 74.8]), movingAverage: pts([75, 75.05, 75.0]) };
     expect(bodyVerdict({ weightTrend: t }).text).toContain('em 74,8 kg');
+  });
+});
+
+/* 2026-10-05: sem tendência, o separador Corpo diz o facto e o que falta em
+   concreto ("preciso de mais duas até 4 out"), nunca a regra solta. */
+describe('bodyVerdict — o que falta em concreto e a estimativa com 2 pesagens', () => {
+  const SEMANA = { where: 'nesta semana', isCurrent: true };
+
+  it('trendNeedText: até quando, entre que dias, ou a partir de quando', () => {
+    expect(trendNeedText({ more: 2, start: '2026-09-25', from: '2026-09-25', until: '2026-09-28' })).toBe('para a tendência preciso de mais duas até 28 set');
+    expect(trendNeedText({ more: 1, start: '2026-09-30', from: '2026-10-02', until: '2026-10-06' })).toBe('para a tendência preciso de mais uma, a última entre 2 e 6 out');
+    expect(trendNeedText({ more: 1, start: '2026-09-28', from: '2026-09-29', until: '2026-10-02' })).toBe('para a tendência preciso de mais uma, a última entre 29 set e 2 out');
+    expect(trendNeedText({ more: 1, start: '2026-10-01', from: '2026-10-03', until: '2026-10-03' })).toBe('para a tendência preciso de mais uma, a última a 3 out');
+    // Revisão de 2026-10-05: com um limite — a janela é de 14 dias.
+    expect(trendNeedText({ more: 3, start: '2026-10-05', from: '2026-10-15', until: '2026-10-19', fresh: true })).toBe('para a tendência preciso de três pesagens em 10 a 14 dias — a primeira hoje, a última entre 15 e 19 out');
+  });
+
+  it('1 pesagem na semana em curso: "Nesta semana só há uma pesagem…; para a tendência preciso de mais duas até 28 set"', () => {
+    const t = { ...trend(null, null, [76.2]), rawPoints: [{ date: '2026-09-24', weight: 76.2 }], pointsInWindow: 1, spanDays: 0 };
+    const v = bodyVerdict({ weightTrend: t, period: SEMANA, hasWeighInsOutside: true, assessmentCount: 1, todayISO: '2026-09-25',
+      trendNeed: { more: 2, start: '2026-09-25', from: '2026-09-25', until: '2026-09-28' } });
+    expect(v).toEqual({ text: 'Nesta semana só há uma pesagem, de 76,2 kg; para a tendência preciso de mais duas até 28 set.', tone: 'neutral' });
+    expectCarolVoice(v.text);
+  });
+
+  it('2 pesagens: o facto e a 3.ª que falta — nunca "preciso de três pesagens"', () => {
+    const t = { ...trend(null, null, [77.3, 76.2]), rawPoints: [{ date: '2026-09-20', weight: 77.3 }, { date: '2026-10-02', weight: 76.2 }], pointsInWindow: 2, spanDays: 12 };
+    const est = { first: t.rawPoints[0], last: t.rawPoints[1], n: 2, diff: -1.1, days: 12, weeklyRate: -0.64 };
+    const v = bodyVerdict({ weightTrend: t, weightEstimate: est, period: { where: 'em 2026', isCurrent: true }, todayISO: '2026-10-04',
+      trendNeed: { more: 1, start: '2026-10-04', from: '2026-10-04', until: '2026-10-04' } });
+    expect(v.text).toBe('Desceste 1,1 kg em 12 dias (≈0,6 kg por semana). Com só duas pesagens é uma estimativa pouco fiável — mais uma pesagem até 4 out e passo a dar-te a tendência a sério.');
+    expect(v.text).not.toMatch(/três pesagens/);
+    expectCarolVoice(v.text);
+    // A subir, e com menos de 7 dias: sem kg por semana inventado.
+    const sobe = { ...est, diff: 0.6, days: 3, weeklyRate: null };
+    expect(bodyVerdict({ weightTrend: t, weightEstimate: sobe, period: { where: 'em 2026', isCurrent: true }, trendNeed: null }).text)
+      .toMatch(/^Subiste 0,6 kg em 3 dias\. Com só duas pesagens/);
+  });
+
+  it('sem `period` (Geral, Carol): as frases de sempre', () => {
+    const v = bodyVerdict({ weightTrend: trend(null, null, [76.4, 76.2]) });
+    expect(v.text).toContain('Preciso de três pesagens espalhadas por pelo menos 10 dias');
   });
 });

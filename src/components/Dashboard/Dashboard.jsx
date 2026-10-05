@@ -11,6 +11,8 @@ import {
   TabReadyContext,
   setSettledIndex,
   resetSettledTab,
+  carouselPageWidth,
+  settleTolerance,
   useLastSettledIndex,
   useSettledTabTracker,
 } from '../../utils/settledTab';
@@ -42,9 +44,12 @@ const TABS = [
 const TAB_ALIASES = { holistica: 'hub' };
 
 /** Bit i ligado = os dados do separador i já chegaram (sliceReady das fatias
- *  que ele lê, não o `dataPending` global — 2026-10-04). Um número, para o
- *  seletor do zustand comparar por valor: o Dashboard só redesenha quando um
- *  separador fica pronto, não a cada fatia que chega. */
+ *  de EVOLUTION_TAB_SLICES, não o `dataPending` global — 2026-10-04). Um
+ *  número, para o seletor do zustand comparar por valor: o Dashboard só
+ *  redesenha quando a máscara muda, não a cada fatia que chega. Numa
+ *  abertura a frio a máscara fica a 0 até ao fim do orçamento de 10 s (ou
+ *  até tudo chegar); daí em diante cada separador liga quando as fatias da
+ *  sua lista que faltavam chegam (2026-10-05). */
 function readyMask(state) {
   let mask = 0;
   TABS.forEach((t, i) => {
@@ -150,8 +155,11 @@ export default function Dashboard({ activeModule }) {
     const idx = initialIndexRef.current >= 0 ? initialIndexRef.current : 0;
     const el = scrollRef.current;
     if (el) {
-      const width = el.offsetWidth;
-      if (width > 0 && Math.abs(el.scrollLeft - idx * width) > 1) el.scrollLeft = idx * width;
+      // Largura fracionária (2026-10-05, A1): com `offsetWidth` o salto ia
+      // para idx × 379 num carrossel de 379,43 px, o snap corrigia para a
+      // posição verdadeira e esse scroll desfazia o assentamento da entrada.
+      const width = carouselPageWidth(el);
+      if (width > 0 && Math.abs(el.scrollLeft - idx * width) > settleTolerance(width)) el.scrollLeft = idx * width;
     }
     setSettledIndex(idx);
     // Ao sair da Evolução: a próxima entrada começa do zero (sem a altura nem
@@ -173,7 +181,8 @@ export default function Dashboard({ activeModule }) {
     }
     if (currentIndex >= 0 && scrollRef.current) {
       const el = scrollRef.current;
-      const currentScrollIndex = el.offsetWidth > 0 ? Math.round(el.scrollLeft / el.offsetWidth) : -1;
+      const width = carouselPageWidth(el);
+      const currentScrollIndex = width > 0 ? Math.round(el.scrollLeft / width) : -1;
       if (currentScrollIndex !== currentIndex && lastScrolledIndexRef.current !== currentIndex) {
         scrollToRef.current(currentIndex, false);
       }

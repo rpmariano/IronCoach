@@ -12,6 +12,9 @@ import {
   useTabSettled,
   TabPageContext,
   SETTLE_DEBOUNCE_MS,
+  SETTLE_SAFETY_MS,
+  carouselPageWidth,
+  nearestPageIndex,
 } from './settledTab';
 
 /* "Separador assente" (2026-10-04, F5): o carrossel parado, sem toque, com o
@@ -46,6 +49,63 @@ describe('alignedPageIndex', () => {
   it('sem largura (por pintar) não há página', () => {
     const el = document.createElement('div');
     expect(alignedPageIndex(el, 5)).toBe(-1);
+  });
+});
+
+/* 2026-10-05 (A1, P0): larguras FRACIONÁRIAS. O browser arredonda o
+   `offsetWidth`; o snap pára em idx × largura real. Um Pixel (411,43 px de
+   ecrã) dá um carrossel de 379,43 px; o zoom e o aA dão outras. */
+function fractionalCarousel(rectWidth) {
+  const el = document.createElement('div');
+  Object.defineProperty(el, 'offsetWidth', { configurable: true, value: Math.round(rectWidth) });
+  el.getBoundingClientRect = () => ({ width: rectWidth, height: 600, top: 0, left: 0, right: rectWidth, bottom: 600 });
+  document.body.appendChild(el);
+  return el;
+}
+
+describe('larguras fracionárias (Pixel, zoom)', () => {
+  it('carouselPageWidth usa a largura com casas decimais e cai no offsetWidth sem layout', () => {
+    const el = fractionalCarousel(379.43);
+    expect(carouselPageWidth(el)).toBeCloseTo(379.43, 5);
+    expect(carouselPageWidth(carousel())).toBe(WIDTH);
+    expect(carouselPageWidth({ offsetWidth: 300 })).toBe(300);
+    expect(carouselPageWidth(null)).toBe(0);
+  });
+
+  for (const width of [379.43, 411.43]) {
+    it(`com ${String(width).replace('.', ',')} px todas as páginas assentam (scrollLeft fracionário e arredondado)`, () => {
+      const el = fractionalCarousel(width);
+      for (let i = 0; i < 5; i++) {
+        el.scrollLeft = i * width; // o que o snap dá
+        expect(alignedPageIndex(el, 5)).toBe(i);
+        el.scrollLeft = Math.round(i * width); // o que o browser arredonda
+        expect(alignedPageIndex(el, 5)).toBe(i);
+        el.scrollLeft = i * width + 0.37; // subpíxel de um ecrã de alta densidade
+        expect(alignedPageIndex(el, 5)).toBe(i);
+      }
+      // A meio de duas páginas continua a não estar assente.
+      el.scrollLeft = 3.5 * width;
+      expect(alignedPageIndex(el, 5)).toBe(-1);
+      el.remove();
+    });
+  }
+
+  it('o Corpo (índice 4) assenta num Pixel — com o offsetWidth arredondado não assentava', () => {
+    const el = fractionalCarousel(379.43);
+    el.scrollLeft = 4 * 379.43; // 1517,72
+    // A conta antiga: |1517,72 − 4 × 379| = 1,72 px > 1 px → nunca assente.
+    expect(Math.abs(el.scrollLeft - 4 * el.offsetWidth)).toBeGreaterThan(1);
+    expect(alignedPageIndex(el, 5)).toBe(4);
+    el.remove();
+  });
+
+  it('nearestPageIndex limita às páginas que existem', () => {
+    const el = fractionalCarousel(379.43);
+    el.scrollLeft = 3.4 * 379.43;
+    expect(nearestPageIndex(el, 5)).toBe(3);
+    el.scrollLeft = 9999;
+    expect(nearestPageIndex(el, 5)).toBe(4);
+    el.remove();
   });
 });
 
@@ -140,10 +200,85 @@ describe('trackSettledTab', () => {
     expect(getLastSettledIndex()).toBe(2);
   });
 
+  it('assenta no índice 4 de um carrossel de 379,43 px com scrollLeft fracionário', () => {
+    stop();
+    el.remove();
+    el = fractionalCarousel(379.43);
+    stop = trackSettledTab(el, { pageCount: 5 });
+    scrollTo(el, 1517.72);
+    vi.advanceTimersByTime(SETTLE_DEBOUNCE_MS + 10);
+    expect(getSettledIndex()).toBe(4);
+  });
+
+  /* Rede de segurança (2026-10-05): parado sem página assente, ao fim de
+     SETTLE_SAFETY_MS assenta na mais próxima — nunca um gráfico invisível
+     para sempre. */
+  it('parado desalinhado, a rede assenta na página mais próxima', () => {
+    scrollTo(el, 800); // 20 px depois da página 2: fora da folga
+    vi.advanceTimersByTime(SETTLE_DEBOUNCE_MS + 10);
+    expect(getSettledIndex()).toBe(-1);
+    vi.advanceTimersByTime(SETTLE_SAFETY_MS);
+    expect(getSettledIndex()).toBe(2);
+  });
+
+  it('a rede espera pelo fim do scroll e não age com o dedo pousado', () => {
+    touch(el, 'touchstart', [{}]);
+    scrollTo(el, 500);
+    vi.advanceTimersByTime(SETTLE_SAFETY_MS * 3);
+    expect(getSettledIndex()).toBe(-1);
+    touch(el, 'touchend', []);
+    scrollTo(el, 760);
+    vi.advanceTimersByTime(SETTLE_SAFETY_MS - 50);
+    scrollTo(el, 770); // ainda a mexer: recomeça a contar
+    vi.advanceTimersByTime(SETTLE_SAFETY_MS - 50);
+    expect(getSettledIndex()).toBe(-1);
+    vi.advanceTimersByTime(100);
+    expect(getSettledIndex()).toBe(2);
+  });
+
+  it('a rede não mexe numa página já assente', () => {
+    setSettledIndex(1);
+    el.scrollLeft = 390;
+    vi.advanceTimersByTime(SETTLE_SAFETY_MS * 2);
+    expect(getSettledIndex()).toBe(1);
+  });
+
+  /* 2026-10-05 (A6): o alvo do toque sai do DOM a meio do gesto (um
+     separador que troca o "ainda sem dados" pelos gráficos). O touchend vai
+     para o nó desligado e não borbulha — antes o toque ficava preso. */
+  it('o touchend de um alvo que saiu do DOM a meio do gesto também solta o toque', () => {
+    const alvo = document.createElement('button');
+    el.appendChild(alvo);
+    const start = new Event('touchstart', { bubbles: true });
+    start.touches = [{}];
+    alvo.dispatchEvent(start);
+    scrollTo(el, 780);
+    alvo.remove();
+    const end = new Event('touchend', { bubbles: true });
+    end.touches = [];
+    alvo.dispatchEvent(end); // não chega ao carrossel
+    vi.advanceTimersByTime(SETTLE_DEBOUNCE_MS + 10);
+    expect(getSettledIndex()).toBe(2);
+  });
+
+  it('com o alvo ainda no carrossel, o touchend conta uma vez só (pelo carrossel)', () => {
+    const alvo = document.createElement('button');
+    el.appendChild(alvo);
+    const start = new Event('touchstart', { bubbles: true });
+    start.touches = [{}];
+    alvo.dispatchEvent(start);
+    scrollTo(el, 780);
+    const end = new Event('touchend', { bubbles: true });
+    end.touches = [];
+    alvo.dispatchEvent(end);
+    vi.advanceTimersByTime(SETTLE_DEBOUNCE_MS + 10);
+    expect(getSettledIndex()).toBe(2);
+  });
+
   it('desligar remove os ouvintes', () => {
     stop();
     scrollTo(el, 780);
-    vi.advanceTimersByTime(500);
+    vi.advanceTimersByTime(SETTLE_SAFETY_MS * 2); // nem a rede fica para trás
     expect(getSettledIndex()).toBe(-1);
     stop = () => {};
   });

@@ -12,6 +12,10 @@ import {
   daysBetweenISO,
   fmtDayShort,
   isoDay,
+  bodyGoalSince,
+  goalProgress,
+  weightTrendNeed,
+  weightEstimate,
 } from '../../../utils/body';
 import { bodyVerdict, BODY_VERDICT_RECENT_DAYS } from '../../../utils/verdicts/body';
 import { whereOf } from '../../../components/BI/period/periodText';
@@ -45,6 +49,24 @@ import { whereOf } from '../../../components/BI/period/periodText';
  *   (`weight.recent`): um ritmo de março não é um alarme de outubro.
  * - Composição só com avaliações com gordura medida (compositionTrend.ts, C3).
  * - Métricas nunca registadas não aparecem.
+ *
+ * 2026-10-05 (revisão das barras e dos limiares do Corpo):
+ * - Cada linha com objetivo traz `progress` — o caminho feito desde a leitura
+ *   do dia em que o objetivo foi definido até à última do período
+ *   (goalProgress). Sem objetivo não há barra: uma régua que não mede nada é
+ *   fogo de artifício. O dia vem do histórico de objetivos (bodyGoalSince);
+ *   como esse histórico ainda não guarda os objetivos do corpo, hoje conta-se
+ *   desde a primeira leitura dos últimos 90 dias (não a de sempre: uma de 2024
+ *   do outro lado do objetivo dava "objetivo atingido" — revisão do mesmo dia)
+ *   e diz-se que o ponto de partida é aproximado. O sentido é o da métrica
+ *   (gordura a descer) ou, no peso, o do objetivo visto de agora.
+ * - Peso sem tendência: com 2+ pesagens no período há `estimate` (da 1.ª à
+ *   última, em linha reta, calculada aqui — weightTrend.ts não muda); no
+ *   período em curso há `need`, o que falta em concreto (quantas e até
+ *   quando), com as pesagens de antes do período a contar.
+ * - Limiares (auditoria limiares.md, C1/C4/C6): a composição diz onde há
+ *   avaliações com gordura que cheguem (`compositionWider`, com o período e o
+ *   botão), e um período vazio diz de quando é a avaliação anterior.
  *
  * `kind: 'dia'` (D1): o "Dia" do Corpo é uma AVALIAÇÃO, não um dia de
  * calendário — a vista devolve só a lista ordenada; a navegação entre
@@ -128,7 +150,21 @@ function buildDay(all, base) {
   return { ...base, assessments: all };
 }
 
-export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, offset = 0 }, todayISO) {
+/* Períodos maiores onde procurar avaliações com gordura que cheguem para a
+   composição (C4): da semana para o mês, o trimestre e o ano. */
+const WIDER_KINDS = { semana: ['mes', 'trimestre', 'ano'], mes: ['trimestre', 'ano'], trimestre: ['ano'], ano: [] };
+
+/** O período do tipo `kind` que contém `dayISO` (≤ hoje), com o offset certo. */
+function periodContaining(kind, dayISO, todayISO) {
+  for (let o = 0; o > -400; o--) {
+    const p = calendarPeriod(kind, todayISO, o);
+    if (p.start <= dayISO && dayISO <= p.end) return p;
+    if (p.end < dayISO) return null;
+  }
+  return null;
+}
+
+export function buildBodyView([bodyAssessments, profile, gymSessions, goalHistory], { kind, offset = 0 }, todayISO) {
   const all = sortedOf(bodyAssessments);
   const metrics = metricsRegistered(all);
   const dataStartISO = all.length ? isoDay(all[0]) : null;
@@ -179,6 +215,16 @@ export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, o
     const first = firstReading(all, m.key);
     const lastBefore = last ? null : lastReading(upToEnd, m.key);
     const goal = goalOf(profile, m.key);
+    // Caminho até ao objetivo (2026-10-05): só com objetivo e leitura no período.
+    let progress = null;
+    if (goal != null && last) {
+      const readings = [];
+      for (const a of all) {
+        const v = readingOf(a, m.key);
+        if (v !== null) readings.push({ date: isoDay(a), value: v });
+      }
+      progress = goalProgress(m, readings, last, goal, bodyGoalSince(goalHistory, m.key, goal));
+    }
     let cmp = null;
     let withheld = null;
     if (last && prevLast) {
@@ -191,7 +237,7 @@ export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, o
         if (cmp.direction === 'flat') anyFlat = true;
       }
     }
-    return { key: m.key, n: series.length, series, last, prevLast, lastBefore, goal, cmp, withheld };
+    return { key: m.key, n: series.length, series, last, prevLast, lastBefore, goal, cmp, withheld, progress };
   });
 
   // ── Peso: pesagens do período; ritmo com o histórico até à última (C1/C2) ──
@@ -210,18 +256,30 @@ export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, o
       const w = readingOf(a, 'weight_kg');
       if (w !== null) history.push({ date: d, weight: w });
     }
+    /* A janela da tendência (2026-10-05, pedido do dono: "três pesagens em 10
+       dias" numa semana de 7 lia-se como impossível): são as pesagens dos 14
+       dias até à ÚLTIMA pesagem do período — o fim do período com dados —, e
+       as de antes do período contam (é por isso que a semana chega lá).
+       Ancorar no último dia do CALENDÁRIO seria pior: setembro com a última
+       pesagem a 28 set perdia a tendência por causa de 29 e 30 sem pesagem, e
+       o Geral e a Carol (mesma régua, weightTrend.ts) diriam outra coisa. */
     const trend = computeWeightTrend(history);
     const sufficient = trend?.sufficient === true && trend.weeklyRate != null;
     const rate = sufficient ? Number(trend.weeklyRate) : null;
     // A linha (EWMA do histórico) só no período, mais o ponto de antes para
-    // entrar pela esquerda (o eixo corta o que fica fora).
+    // entrar pela esquerda (o eixo corta o que fica fora). Sem tendência não
+    // há linha "a sério": a estimativa (tracejada) liga só as do período.
     const ma = trend?.movingAverage || [];
     let from = ma.findIndex((p) => p.date >= period.start);
     if (from < 0) from = ma.length;
     weight = {
       points: weighIns,
       trend,
-      line: ma.slice(Math.max(0, from - 1)),
+      line: sufficient ? ma.slice(Math.max(0, from - 1)) : [],
+      // Sem tendência, com 2+ pesagens no período: a estimativa da 1.ª à última.
+      estimate: sufficient ? null : weightEstimate(weighIns),
+      // O que falta, em concreto — só no período em curso (o passado já não se completa).
+      need: sufficient || !period.isCurrent ? null : weightTrendNeed(history.map((p) => p.date), todayISO),
       latest,
       sufficient,
       rate,
@@ -232,6 +290,25 @@ export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, o
   }
 
   const composition = computeCompositionTrend(inP);
+  /* C4 (2026-10-05, auditoria dos limiares): com menos de 2 avaliações com
+     gordura no período, dizer onde há — o 1.º período maior (mês, trimestre,
+     ano) que contém este e tem pelo menos 2 —, para o botão "Ver trimestre ›". */
+  let compositionWider = null;
+  if ((composition?.dates?.length || 0) < 2 && metrics.some((m) => m.key === 'body_fat_pct')) {
+    for (const k of WIDER_KINDS[kind] || []) {
+      const wp = periodContaining(k, upper < period.start ? period.start : upper, todayISO);
+      if (!wp) continue;
+      const wUpper = wp.end < todayISO ? wp.end : todayISO;
+      const wn = computeCompositionTrend(between(all, wp.start, wUpper))?.dates?.length || 0;
+      if (wn >= 2) {
+        const wLabel = periodLabel(wp, todayISO);
+        compositionWider = { kind: k, offset: wp.offset, n: wn, where: whereText(wp, wLabel, todayISO) };
+        break;
+      }
+    }
+  }
+  // C6: a avaliação anterior a um período vazio ("a anterior é de 28 jul").
+  const lastBeforeISO = before.length ? isoDay(before[before.length - 1]) : null;
   const hasWeighInsOutside = all.some((a) => readingOf(a, 'weight_kg') !== null && (isoDay(a) < period.start || isoDay(a) > upper));
   const lastOutsideW = n === 0 ? lastReading(upToEnd, 'weight_kg') : null;
   const gymSessionCount = between(Array.isArray(gymSessions) ? gymSessions : [], period.start, upper).length;
@@ -243,6 +320,8 @@ export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, o
     ? { text: `${THIS_PERIOD[kind] || 'Este período'} é anterior à tua primeira avaliação (${fmtDayShort(dataStartISO, todayISO)}).`, tone: 'neutral' }
     : bodyVerdict({
     weightTrend: weight ? { rawPoints: weighIns, ...weight.trend } : null,
+    weightEstimate: weight?.estimate ?? null,
+    trendNeed: weight?.need ?? null,
     composition,
     assessmentCount: n,
     gymSessionCount,
@@ -270,6 +349,8 @@ export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, o
     rows,
     weight,
     composition,
+    compositionWider,
+    lastBeforeISO,
     verdict,
     gymSessionCount,
     previousSummary,
@@ -289,7 +370,8 @@ export function buildBodyView([bodyAssessments, profile, gymSessions], { kind, o
 }
 
 registerEvolutionView('corpo', {
-  deps: (s) => [s.bodyAssessments, s.profile, s.gymSessions],
+  // goalHistory (2026-10-05): o dia em que cada objetivo foi definido (barras).
+  deps: (s) => [s.bodyAssessments, s.profile, s.gymSessions, s.goalHistory],
   build: buildBodyView,
 });
 

@@ -12,14 +12,16 @@ import useReducedMotion from '../../utils/useReducedMotion';
 import EmptyModuleState, { EmptyChartFrame } from '../BI/EmptyModuleState';
 import {
   PeriodHeader, PeriodNav, PeriodSummary, EarlyPeriodState, TodayExcludedNote, DeltaVsPrevious, MinDataNote,
-  VerdictLine, countOf, earlyVerdict, firstPeriodNote, minDataText,
+  VerdictLine, countOf, earlyVerdict, firstPeriodNote,
 } from '../BI/period';
 import { fmtNumber, fmtDatePt, NO_DATA } from '../../utils/verdicts/shared';
-import { gymFrequencyStatus, GYM_TARGET_PER_WEEK, GYM_MIN_CLOSED_WEEKS } from '../../utils/verdicts/gym';
+import { gymFrequencyStatus, GYM_TARGET_PER_WEEK } from '../../utils/verdicts/gym';
 import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
+import { useOpenInClosedPeriod } from '../../store/periodStore';
+import { fallbackAction } from '../BI/period/periodText';
 import { useEvolutionView } from '../../store/evolution/useEvolutionView';
-import { GYM_MIN_CLOSED, fmtRange } from '../../store/evolution/views/gym';
-import ExerciseProgression from './ExerciseProgression';
+import { GYM_MIN_CLOSED, fmtRange, dayLabel } from '../../store/evolution/views/gym';
+import ExerciseProgression, { progressionEmptyText } from './ExerciseProgression';
 import GymClassesCard from './GymClassesCard';
 import { perWeekNum, diasFechados, semanasFechadas, treinosForca, aulasN, cap } from './gymText';
 
@@ -60,9 +62,13 @@ export default function GymDashboard() {
   // leria-se como falhas, e para quem treina os dias de descanso não são
   // buracos — o rótulo diz só "desde …" e os dias fechados.
   const cal = useCalendarPeriod('ginasio', { dataStartISO: view?.dataStartISO, minClosed: GYM_MIN_CLOSED });
-
   const reduced = useReducedMotion();
   const ready = useAppStore((s) => sliceReady(s, ['gym']));
+  /* 2026-10-05: se o mês por omissão ainda não tem nenhum dia fechado, abre no
+     anterior (a seta › leva ao mês a começar). Só decide quando os treinos JÁ
+     chegaram (ready): a vista existe sempre, mesmo com a fatia por carregar, e um
+     null do 1.º render ficava gravado como "nunca registou" (revisão). */
+  useOpenInClosedPeriod('ginasio', view && ready ? (view.dataStartISO ?? null) : undefined);
 
   /* Séries por músculo, em séries/semana (G1 + semanas fechadas). Ponto 9,
      animação 4: as barras crescem da base quando o gráfico aparece no ecrã — a
@@ -153,7 +159,7 @@ export default function GymDashboard() {
     });
   } else {
     const perWeek = w.perWeekStrength;
-    const enough = w.count >= GYM_MIN_CLOSED_WEEKS;
+    const enough = w.count >= w.min;
     rows.push({
       key: 'forca',
       label: 'Treinos de força',
@@ -166,8 +172,11 @@ export default function GymDashboard() {
       (w.strength) a dividir por essas semanas; se o período tem sessões fora
       delas (dias soltos nas pontas), o numerador diz-se à vista para o N e o
       X/semana não parecerem da mesma conta. */
+      /* Sem repetir "treinos de força" (a etiqueta da linha já o diz): o texto
+         longo, ao lado do "2 de 5", deixava a calha da barra a 0 px num ecrã
+         de 390 px (verificação no browser, 2026-10-05). */
       statusText: noDays ? undefined : w.count >= 1
-        ? (w.strength !== cur.strength ? `${treinosForca(w.strength)} em ${semanasFechadas(w.count)}` : `em ${semanasFechadas(w.count)}`)
+        ? (w.strength !== cur.strength ? `${w.strength} em ${semanasFechadas(w.count)}` : `em ${semanasFechadas(w.count)}`)
         : 'sem semanas fechadas ainda',
       barPct: !noDays && enough ? Math.min(100, (perWeek / GYM_TARGET_PER_WEEK) * 100) : undefined,
       count: !noDays && w.count >= 1 ? countOf(w.onTarget, w.count) : undefined,
@@ -204,19 +213,36 @@ export default function GymDashboard() {
       notes.push(`${cap(prevName)} começou antes do teu primeiro registo (${fmtDatePt(view.dataStartISO) || fmtRange(view.dataStartISO, view.dataStartISO, view.today)}) — não dá para comparar.`);
     }
   }
-  // Antes do 1.º registo não há contas a que a nota se aplique.
-  if (!isWeek && !view.beforeData) notes.push('As contas por semana usam só semanas inteiras (seg–dom) dentro do período.');
+  /* Antes do 1.º registo não há contas a que a nota se aplique. 2026-10-05
+     (G2/G7): as semanas são as seg–dom FECHADAS que tocam o período — a que cruza
+     a fronteira (28 set – 4 out) conta para os dois meses — e a nota diz quais. */
+  if (!isWeek && !view.beforeData) {
+    notes.push(`As contas por semana usam as semanas seg–dom já fechadas que tocam o período${w.range ? ` (${w.range})` : ''}.`);
+  }
 
   // R7: o anterior que começou antes do 1.º registo diz-o ("desde 25 ago").
   const prevSince = view.prevLabel?.coverage ? ` (${view.prevLabel.coverage})` : '';
   const prevSummaryText = prevFull
     ? `${prevName}${prevSince}: ${prevFull.total > 0 ? `${treinosForca(prevFull.strength)}${prevFull.classes > 0 ? ` · ${aulasN(prevFull.classes)}` : ''}` : 'sem treinos'}`
     : null;
-  const previousLine = early === 'cedo' && prevSummaryText
-    ? { text: prevSummaryText, actionLabel: `Ver ${prevName}`, onAction: cal.prev }
-    : undefined;
+  /* M2/R10 (2026-10-05): "cedo" e período vazio dizem ONDE há treinos e levam lá:
+     o período anterior e, se nem esse tem, o tipo maior ("Ver o trimestre"). */
+  const dataFb = view.fallbacks?.data || null;
+  const fbSummary = (fb) => {
+    if (fb.type === 'prev' && prevSummaryText) return prevSummaryText;
+    const parts = [];
+    if (fb.strength > 0) parts.push(treinosForca(fb.strength));
+    if (fb.classes > 0) parts.push(aulasN(fb.classes));
+    return `${cap(fb.where)}: ${parts.join(' · ') || 'sem treinos'}`;
+  };
+  const emptyPeriod = cur.total === 0;
+  const previousLine = early === 'cedo'
+    ? (dataFb
+      ? { text: fbSummary(dataFb), ...fallbackAction(dataFb, cal) }
+      : prevSummaryText ? { text: prevSummaryText, actionLabel: `Ver ${prevName}`, onAction: cal.prev } : undefined)
+    : (emptyPeriod && dataFb ? { text: fbSummary(dataFb), ...fallbackAction(dataFb, cal) } : undefined);
 
-  const summaryLine = !isWeek && w.count >= GYM_MIN_CLOSED_WEEKS && w.onTargetPct != null && !view.verdict.early
+  const summaryLine = !isWeek && w.count >= w.min && w.onTargetPct != null && !view.verdict.early
     ? `Duas ou mais sessões de força em ${countOf(w.onTarget, w.count)} semanas (${w.onTargetPct}%)`
     : undefined;
 
@@ -269,31 +295,45 @@ export default function GymDashboard() {
           text={startedText}
           onViewPrevious={cal.prev}
           previousSummary={prevPeriodSummary}
+          {...(view.fallbacks?.data?.type === 'kind' ? fallbackAction(view.fallbacks.data, cal) : {})}
         />
         {today}
       </div>
     );
   }
 
-  const emptyPeriod = cur.total === 0;
-
   /* ── Os gráficos e cartões do período ── */
   // Séries por músculo: só com semanas fechadas (séries/semana).
   const groups = muscle.groups;
   const topMuscle = groups[0];
+  const muscleFb = view.fallbacks?.muscle || null;
   const multi = muscle.multiGroupSessions;
   const multiNote = multi > 0
     ? `${multi} ${multi === 1 ? 'sessão com vários grupos não entra' : 'sessões com vários grupos não entram'}.`
     : '';
 
   // A progressão espera por um período em condições e por um anterior fechado.
+  const fbProg = view.fallbacks?.progression || null;
   const progressionGate = early !== 'ok'
-    ? minDataText({ what: 'Progressão por exercício', min: GYM_MIN_CLOSED, kind })
+    // G4 (2026-10-05): a promessa "aparece a partir de 4 dias fechados" era falsa —
+    // ao 4.º dia ainda faltam o anterior inteiro e o exercício repetido. Diz-se o que
+    // a comparação pede e onde já há.
+    ? {
+      text: `Progressão por exercício: compara cada exercício com o período anterior — ${scope} ainda só há ${diasFechados(closedN)}.${fbProg ? ` ${cap(fbProg.where)} já tem a sua.` : ''}`,
+      ...fallbackAction(fbProg, cal),
+    }
     : view.prevCoverage === 'none'
       ? 'Progressão por exercício: ainda não há período anterior para comparar.'
       : view.prevCoverage === 'partial'
         ? `Progressão por exercício: ${prevName} começou antes do teu primeiro registo, não dá para comparar.`
-        : null;
+        /* Sem exercício comparável mas com um período que já tem (2026-10-05): a
+           frase de sempre e o botão para lá ("Setembro já tem a sua. Ver setembro ›"). */
+        : (view.progression?.rows?.length ?? 0) === 0 && fbProg
+          ? {
+            text: `${progressionEmptyText({ withoutPrevious: view.progression?.withoutPrevious, scope, minSessions: view.progression?.minSessions || 2 })} ${cap(fbProg.where)} já tem a sua.`,
+            ...fallbackAction(fbProg, cal),
+          }
+          : null;
 
   return (
     <div className="space-y-4 fade-in">
@@ -353,11 +393,15 @@ export default function GymDashboard() {
             </ChartFrame>
           ) : (
             <MinDataNote
+              module="ginasio"
               text={muscle.weeks === 0 && isWeek
-                ? 'Séries por músculo: aparece quando a semana acabar (as contas são por semana seg–dom inteira).'
+                ? `Séries por músculo: aparece quando a semana acabar (as contas são por semana seg–dom inteira).${muscleFb ? ` ${cap(muscleFb.where)} já tem.` : ''}`
                 : muscle.weeks === 0
-                ? `Séries por músculo: preciso de pelo menos 1 semana fechada (seg–dom inteira) ${scope}.${multiNote ? ` ${multiNote}` : ''}`
+                // G7 (2026-10-05): conta as semanas fechadas que tocam o período e diz
+                // quando fecha a 1.ª; a semana passada (28 set – 4 out) já contava.
+                ? `Séries por músculo: ${w.nextCloseISO ? `a 1.ª semana fechada ${scope} acaba a ${dayLabel(w.nextCloseISO)}` : `preciso de pelo menos 1 semana fechada (seg–dom) ${scope}`}.${muscleFb ? ` ${cap(muscleFb.where)} já tem.` : ''}${multiNote ? ` ${multiNote}` : ''}`
                 : `Séries por músculo: sem grupos para mostrar em ${semanasFechadas(muscle.weeks)}.${multiNote ? ` ${multiNote}` : ''}`}
+              {...fallbackAction(muscleFb, cal)}
             />
           )}
 

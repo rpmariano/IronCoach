@@ -6,6 +6,7 @@ import { addDaysISO } from '../../lib/utils';
 import { usePeriodStore } from '../../store/periodStore';
 import { useEvolutionView } from '../../store/evolution/useEvolutionView';
 import { NUTRITION_MIN_CLOSED } from '../../store/evolution/views/nutrition';
+import { BarsEnteredContext } from '../BI/period/AnimatedBar';
 import { GOAL_KEY, micronutrientAverages } from '@formulas/nutritionPeriod.ts';
 import { mondayOf } from '@formulas/calendarPeriod.ts';
 import DayNutritionCard, { dayTitle } from './DayNutritionCard';
@@ -16,7 +17,6 @@ import NutritionQuarterCharts from './NutritionQuarterCharts';
 import EatingForTraining from './EatingForTraining';
 import MicronutrientsCard from './MicronutrientsCard';
 import EmptyModuleState from '../BI/EmptyModuleState';
-import VerdictLine from '../BI/VerdictLine';
 import { NUTRICAO } from '../BI/TimeFilterBar';
 import {
   PeriodHeader, PeriodNav, PeriodSummary, EarlyPeriodState, TodayExcludedNote, MinDataNote,
@@ -27,7 +27,7 @@ import { NUTRIENT_META, NUTRIENT_ORDER } from '../../utils/nutrition';
 import { capitalize } from '../../utils/verdicts/shared';
 import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
 import { useTodayISO } from '../../utils/useTodayISO';
-import { fmtInt, rangeText, wherePast } from './nutritionText';
+import { averageHeaderText, fmtInt, incompleteDaysNote, rangeText, wherePast } from './nutritionText';
 
 /**
  * Nutrição na Evolução — o mock-up aprovado "Evolução · Nutrição por período"
@@ -59,7 +59,8 @@ export function summaryRowsOf(view, { aComecar = false } = {}) {
     const base = { key, label: meta.label, goal: goalVal > 0 ? `${fmtInt(goalVal)} ${meta.unit}` : undefined, color: meta.color };
     if (aComecar) return { ...base, value: null, missingText: 'ainda sem dias fechados' };
     if (s.nDays === 0) return { ...base, value: null, missingText: view.period.isCurrent ? 'ainda sem registos' : 'sem registos' };
-    if (s.tooFew) return { ...base, value: null, missingText: `${nDays(s.nDays)}, ${plural(s.nDays, 'pouco', 'poucos')} para média` };
+    // Só a água tem este mínimo: diz de que dias fala ("2 dias com água — poucos para média").
+    if (s.tooFew) return { ...base, value: null, missingText: `${nDays(s.nDays)} com água — ${plural(s.nDays, 'pouco', 'poucos')} para média` };
     return {
       ...base,
       value: fmtInt(s.avg),
@@ -127,23 +128,42 @@ export function todayProgressVerdict(rows) {
 
 /**
  * O lugar do "Comer para treinar" quando ainda não há dias que cheguem (R6).
- * Período em curso que ainda lá chega: "Comer para treinar aparece a partir
- * de 7 dias fechados neste mês." (mock-up). Período passado, ou em curso que
- * começou tão perto do 1.º registo que nunca lá chega: dizer quantos dias há
- * em vez de prometer no futuro "neste mês" um mês que já fechou (revisão de
- * 2026-10-04): "Comer para treinar precisa de 7 dias fechados — em setembro
- * só houve 3 dias desde o primeiro registo."
+ * Conta DIAS COM REFEIÇÕES (limiares N3, 2026-10-05 — antes contava dias
+ * fechados, e com 14 dias fechados e 2 com refeições aparecia na mesma).
+ *  - Período em curso que ainda lá chega: "Comer para treinar aparece a partir
+ *    de 7 dias com refeições neste mês — vai em 3." e, se o período anterior já
+ *    tem dias que cheguem, diz onde estão: "… em setembro há 24:" + o botão
+ *    "Ver setembro ›" (`goPrev`: o ecrã liga-o ao período anterior).
+ *  - Período passado, ou em curso que começou tão perto do 1.º registo que
+ *    nunca lá chega: dizer quantos dias há em vez de prometer no futuro "neste
+ *    mês" um mês que já fechou (revisão de 2026-10-04): "Comer para treinar
+ *    precisa de 7 dias com refeições — em setembro só houve 3 desde o primeiro
+ *    registo."
  */
 export function eatingMinNoteProps(view, todayISO) {
   const min = view.eating.minClosed;
+  const mealDays = view.eating.mealDays ?? 0;
   const p = view.period;
   const reachable = view.daysFromDataStart ?? p.totalDays;
-  if (p.isCurrent && reachable >= min) return { what: 'Comer para treinar', min, kind: view.kind };
-  const k = p.isCurrent ? reachable : view.eating.closedDays;
+  const prev = view.previousData;
+  if (p.isCurrent && reachable >= min) {
+    const head = `Comer para treinar aparece a partir de ${min} dias com refeições ${kindText(view.kind).scope}`;
+    if (prev && prev.mealDays >= min) {
+      const onde = view.kind === 'semana' ? 'na semana passada' : view.kind === 'mes' ? `em ${prev.name}` : `no ${kindText(view.kind).prevName}`;
+      return {
+        text: `${head} — ${onde} há ${prev.mealDays}:`,
+        actionLabel: view.kind === 'semana' ? 'Ver semana passada' : `Ver ${prev.name}`,
+        goPrev: true,
+      };
+    }
+    return { text: `${head} — ${mealDays > 0 ? `vai em ${mealDays}` : 'ainda sem nenhum'}.` };
+  }
+  const k = p.isCurrent ? reachable : mealDays;
   const where = p.isCurrent ? whereOf(view.kind, view.label.title, true) : wherePast(view.kind, p.start, todayISO, view.offset);
   const since = view.startsBeforeData ? ' desde o primeiro registo' : '';
+  const com = p.isCurrent ? '' : ' com refeições';
   return {
-    text: `Comer para treinar precisa de ${min} ${plural(min, 'dia fechado', 'dias fechados')} — ${where} só ${p.isCurrent ? 'há' : 'houve'} ${nDays(k)}${since}.`,
+    text: `Comer para treinar precisa de ${min} dias com refeições — ${where} só ${p.isCurrent ? 'há' : 'houve'} ${nDays(k)}${com}${since}.`,
   };
 }
 
@@ -159,6 +179,16 @@ export function previousSummaryText(view, { withKind = false } = {}) {
     : withKind ? `${capitalize(kindText(view.kind).prevName)} (${pf.name})` : pf.name;
   const kcal = pf.kcalAvg != null ? `${fmtInt(pf.kcalAvg)} kcal/dia · ` : '';
   return `${name}: ${kcal}calorias e proteína no objetivo em ${countOf(pf.both.k, pf.both.n)} ${plural(pf.both.n, 'dia', 'dias')}`;
+}
+
+/* O ref "o separador já assentou à vista" serve os dois contextos de entrada
+   calada: os cartões de gráfico (D4) e as barras do resumo/dia (2026-10-05). */
+function EnteredProviders({ entered, children }) {
+  return (
+    <NutritionEnteredContext.Provider value={entered}>
+      <BarsEnteredContext.Provider value={entered}>{children}</BarsEnteredContext.Provider>
+    </NutritionEnteredContext.Provider>
+  );
 }
 
 export default function NutritionDashboard() {
@@ -237,28 +267,32 @@ export default function NutritionDashboard() {
 
   if (isDay && dayView) {
     return (
-      <div className="space-y-4 fade-in pb-20">
-        {dayVerdict && <VerdictLine text={dayVerdict.text} tone={dayVerdict.tone} />}
-        {header}
-        <DayNutritionCard
-          dayISO={selectedDay}
-          todayISO={today}
-          rows={dayView.rows}
-          estimated={dayView.estimated}
-          plan={dayView.plan}
-          onPrev={() => setSelectedDay((d) => addDaysISO(d, -1))}
-          onNext={() => setSelectedDay((d) => (d < today ? addDaysISO(d, 1) : d))}
-        />
-        <MicronutrientsCard
-          title="Micronutrientes · total do dia"
-          subtitle={dayTitle(selectedDay, today)}
-          values={dayView.micros.avg}
-          coverage={dayView.micros.coverage}
-          coverageKnown={dayView.micros.coverageKnown}
-          perDay={false}
-          emptyText="Sem refeições registadas neste dia."
-        />
-      </div>
+      <EnteredProviders entered={entered}>
+        <div className="space-y-4 fade-in pb-20">
+          {header}
+          {/* O veredicto vive dentro do cartão, por baixo do navegador de dias,
+              como nas outras vistas (2026-10-05) — antes ficava por cima do seletor. */}
+          <DayNutritionCard
+            dayISO={selectedDay}
+            todayISO={today}
+            rows={dayView.rows}
+            estimated={dayView.estimated}
+            plan={dayView.plan}
+            verdict={dayVerdict}
+            onPrev={() => setSelectedDay((d) => addDaysISO(d, -1))}
+            onNext={() => setSelectedDay((d) => (d < today ? addDaysISO(d, 1) : d))}
+          />
+          <MicronutrientsCard
+            title="Micronutrientes · total do dia"
+            subtitle={dayTitle(selectedDay, today)}
+            values={dayView.micros.avg}
+            coverage={dayView.micros.coverage}
+            coverageKnown={dayView.micros.coverageKnown}
+            perDay={false}
+            emptyText="Sem refeições registadas neste dia."
+          />
+        </div>
+      </EnteredProviders>
     );
   }
 
@@ -297,27 +331,29 @@ export default function NutritionDashboard() {
     // o que já se comeu hoje (sem contar) e o período anterior.
     const kcalToday = v.todayRow?.hasMeals ? v.todayRow.values.calories : null;
     return (
-      <div className="space-y-4 fade-in pb-20">
-        {header}
-        <PeriodSummary navigator={nav} rows={rows} days={0} module="nutricao" />
-        <EarlyPeriodState
-          state="a_comecar"
-          kind={kind}
-          module="nutricao"
-          // O período começou antes, mas o 1.º registo é hoje: "A semana
-          // começou hoje" não seria verdade.
-          title={v.dataStartISO === today && v.period.start < today ? 'Os teus registos começaram hoje' : undefined}
-          text={kcalToday != null
-            ? `Os dias contam quando acabarem — hoje já vais em ${fmtInt(kcalToday)} kcal.`
-            : 'Os dias contam quando acabarem.'}
-          onViewToday={() => openDay(today)}
-          // Sem registos antes deste período, "Ver semana passada" abria uma
-          // semana vazia.
-          onViewPrevious={v.firstPeriod ? undefined : cal.prev}
-          previousSummary={previousSummaryText(v, { withKind: true })}
-        />
-        <TodayExcludedNote period={v.period} hasDayView />
-      </div>
+      <EnteredProviders entered={entered}>
+        <div className="space-y-4 fade-in pb-20">
+          {header}
+          <PeriodSummary navigator={nav} rows={rows} days={0} module="nutricao" />
+          <EarlyPeriodState
+            state="a_comecar"
+            kind={kind}
+            module="nutricao"
+            // O período começou antes, mas o 1.º registo é hoje: "A semana
+            // começou hoje" não seria verdade.
+            title={v.dataStartISO === today && v.period.start < today ? 'Os teus registos começaram hoje' : undefined}
+            text={kcalToday != null
+              ? `Os dias contam quando acabarem — hoje já vais em ${fmtInt(kcalToday)} kcal.`
+              : 'Os dias contam quando acabarem.'}
+            onViewToday={() => openDay(today)}
+            // Sem registos antes deste período, "Ver semana passada" abria uma
+            // semana vazia.
+            onViewPrevious={v.firstPeriod ? undefined : cal.prev}
+            previousSummary={previousSummaryText(v, { withKind: true })}
+          />
+          <TodayExcludedNote period={v.period} hasDayView />
+        </div>
+      </EnteredProviders>
     );
   }
 
@@ -328,13 +364,23 @@ export default function NutritionDashboard() {
     : null;
   const notes = [
     v.firstPeriod && !cedo && v.summary.nDays > 0 ? firstPeriodNote(kind) : null,
+    // N6: porque é que não há ▲/▼ ("Sem comparação: setembro só tem 2 dias com refeições.").
+    v.compareNote,
+    // Dias com pouco registado continuam nas contas; diz-se que podem estar incompletos.
+    incompleteDaysNote(v.incomplete),
     v.summary.approxGoals ? APPROX_GOALS_NOTE : null,
   ];
   const pastEmpty = !v.period.isCurrent && v.summary.nDays === 0;
+  // N8: um período anterior ao 1.º registo não é "sem refeições", é "ainda não usavas a app".
+  const beforeFirst = pastEmpty && v.dataStartISO && v.dataStartISO > v.period.end;
+  const pastEmptyText = beforeFirst
+    ? `Sem refeições registadas ${wherePast(kind, v.period.start, today, v.offset)} — a primeira é de ${rangeText(v.dataStartISO, v.dataStartISO, today)}.`
+    : 'Sem refeições registadas neste período.';
+  const eatingNote = v.eating.enough ? null : eatingMinNoteProps(v, today);
   const where = kind === 'semana' ? v.label.range : v.label.title;
 
   return (
-    <NutritionEnteredContext.Provider value={entered}>
+    <EnteredProviders entered={entered}>
       <div className="space-y-4 fade-in pb-20">
         {header}
         <PeriodSummary
@@ -343,7 +389,8 @@ export default function NutritionDashboard() {
           // período, "Só 2 dias fechados desde 30 set" (os de antes não contam).
           verdict={cedo ? earlyVerdict(cal, { count: v.closedDays.length, where: desde ? `desde ${desde}` : undefined }) : v.verdict}
           rows={rows}
-          days={v.summary.nDays}
+          // "Média por dia registado (3 dias: 1–3 out)": diz de que dias é a média.
+          averageLabel={averageHeaderText(v.summary.nDays, v.recordedRange, today)}
           selectedKey={metric}
           onSelect={setMetric}
           summaryLine={summaryLine}
@@ -354,7 +401,7 @@ export default function NutritionDashboard() {
         />
 
         {pastEmpty ? (
-          <MinDataNote text="Sem refeições registadas neste período." />
+          <MinDataNote text={pastEmptyText} />
         ) : (
           <>
             {/* Sem `key` por período (D4, bloqueio da revisão de 2026-10-04): ‹ ›
@@ -368,11 +415,11 @@ export default function NutritionDashboard() {
               <NutritionMonthHeatmap view={v} metric={metric} onViewDay={openDay} todayISO={today} />
             )}
             {(kind === 'trimestre' || kind === 'ano') && (
-              <NutritionQuarterCharts view={v} metric={metric} onViewWeek={openWeek} todayISO={today} />
+              <NutritionQuarterCharts view={v} metric={metric} onViewWeek={openWeek} onViewPrevious={cal.prev} todayISO={today} />
             )}
             {v.eating.enough
               ? <EatingForTraining view={v} onViewDay={openDay} />
-              : <MinDataNote {...eatingMinNoteProps(v, today)} />}
+              : <MinDataNote text={eatingNote.text} actionLabel={eatingNote.actionLabel} onAction={eatingNote.goPrev ? cal.prev : undefined} />}
             <MicronutrientsCard
               title="Micronutrientes · média por dia"
               subtitle={`${where} · ${nDays(v.micros.nDays)}`}
@@ -386,6 +433,6 @@ export default function NutritionDashboard() {
 
         <TodayExcludedNote period={v.period} hasDayView />
       </div>
-    </NutritionEnteredContext.Provider>
+    </EnteredProviders>
   );
 }

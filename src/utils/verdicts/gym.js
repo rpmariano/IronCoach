@@ -27,6 +27,15 @@ import { fmtNumber, spellFem, capitalize, countFem, NO_DATA, streakDirection } f
 export const GYM_TARGET_PER_WEEK = 2;
 /** Semanas fechadas mínimas para avaliar frequência e tendência (R6). */
 export const GYM_MIN_CLOSED_WEEKS = 3;
+/**
+ * Mínimo por tipo de período (2026-10-05, limiares G2/G3). Conta as semanas
+ * seg–dom FECHADAS que tocam o período: um mês tem 4 ou 5 semanas que o tocam,
+ * por isso 2 chegam para dizer "a este ritmo…" (com 3, o mês em curso só saía do
+ * "ainda é cedo" a ~20 do mês); trimestre e ano continuam em 3. A semana não
+ * divide em semanas (usa o alvo de 2 da própria semana).
+ */
+export const GYM_MIN_CLOSED_WEEKS_BY_KIND = { mes: 2, trimestre: 3, ano: 3 };
+export const gymMinClosedWeeks = (kind) => GYM_MIN_CLOSED_WEEKS_BY_KIND[kind] ?? GYM_MIN_CLOSED_WEEKS;
 /** Abaixo disto a frequência fica aquém do alvo de duas por semana. */
 export const GYM_FREQ_OK = 1.7;
 
@@ -58,6 +67,10 @@ export function gymFrequencyStatus(perWeek) {
  *   FACTO e diz-se (2026-10-04, revisão: agosto fechado com treinos em julho e
  *   setembro dizia "sem dados suficientes" por cima de "0 treinos").
  * @param {'ok'|'cedo'|'a_comecar'} [input.early] estado do período
+ * @param {number} [input.minClosedWeeks] semanas fechadas mínimas (por omissão
+ *   gymMinClosedWeeks(kind): mês 2, trimestre/ano 3)
+ * @param {string} [input.earlyHint] frase com onde estão os dados ("Em setembro:
+ *   3 de 4 semanas com 2+ treinos de força."), acrescentada ao "ainda é cedo"
  * @returns {{ text: string, tone: 'ok'|'warn'|'danger'|'neutral', early?: boolean }}
  */
 export function gymVerdict({
@@ -72,6 +85,8 @@ export function gymVerdict({
   runCount = 0,
   observedDays = 0,
   early: earlyState = 'ok',
+  minClosedWeeks,
+  earlyHint = null,
 } = {}) {
   const strengthTotal = Number(periodStrength) || 0;
   if (strengthTotal + (Number(classes) || 0) <= 0) {
@@ -122,12 +137,15 @@ export function gymVerdict({
   }
 
   const weeks = Math.max(0, Math.trunc(Number(closedWeeks) || 0));
-  if (weeks < GYM_MIN_CLOSED_WEEKS) {
+  const minWeeks = Number.isFinite(Number(minClosedWeeks)) ? Number(minClosedWeeks) : gymMinClosedWeeks(kind);
+  if (weeks < minWeeks) {
     return {
       // "Só 0 semanas fechadas" lê-se mal: sem nenhuma, diz-se que ainda não há.
-      text: weeks === 0
+      text: (weeks === 0
         ? `Ainda não há semanas fechadas ${scope} — ainda é cedo para conclusões.`
-        : `Só ${semanasFechadas(weeks)} ${scope} — ainda é cedo para conclusões.`,
+        : `Só ${semanasFechadas(weeks)} ${scope} — ainda é cedo para conclusões.`)
+        // M2: onde estão os dados (o botão "Ver setembro ›" está no ecrã).
+        + (earlyHint ? ` ${earlyHint}` : ''),
       tone: 'neutral',
       early: true,
     };

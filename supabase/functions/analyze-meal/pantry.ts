@@ -54,6 +54,87 @@ export function microFromModel(v: unknown): number | null {
   return typeof v === "number" ? microOrNull(v) : null;
 }
 
+// ── Os micronutrientes da despensa (2026-10-05) ──────────────────────────
+// Migração 20261005100000_pantry_micronutrients_nullable: em athlete_foods
+// os micronutrientes passam a nuláveis (null = por confirmar) e a linha ganha
+// micros_checked_at. A REGRA, em três casos, por micronutriente:
+//   · null                → por confirmar;
+//   · > 0                 → dado (um valor positivo nunca foi inventado);
+//   · 0                   → dado SÓ se micros_checked_at = updated_at (foi o
+//     código novo, que grava null no que não sabe, o último a escrever a
+//     linha); senão é um 0 antigo, ambíguo — por confirmar.
+// Um micronutriente por confirmar preenche-se com o que uma análise der
+// (nextFoodRow); um dado nunca se escreve por cima, a não ser por um rótulo.
+
+/** As colunas que se leem de athlete_foods (as de sempre + o que diz se os
+ *  zeros da linha são dados). */
+export const FOOD_SELECT =
+  "name, name_key, portion_grams, portion_label, times_seen, in_pantry, source, edited_by_athlete, micros_checked_at, updated_at, " +
+  NUTRIENT_COLUMNS.join(", ");
+
+const sameInstant = (a: unknown, b: unknown): boolean => {
+  if (a == null || b == null) return false;
+  const ta = Date.parse(String(a));
+  return Number.isFinite(ta) && ta === Date.parse(String(b));
+};
+
+/** Os zeros desta linha são dados? (micros_checked_at = updated_at) */
+// deno-lint-ignore no-explicit-any
+export function microsTrusted(food: any): boolean {
+  return sameInstant(food?.micros_checked_at, food?.updated_at);
+}
+
+/** O que a despensa sabe deste micronutriente, ou null se está por confirmar. */
+// deno-lint-ignore no-explicit-any
+export function pantryMicro(food: any, k: string): number | null {
+  const v = microOrNull(food?.[k]);
+  if (v === 0 && !microsTrusted(food)) return null;
+  return v;
+}
+
+/** Os micronutrientes por confirmar deste alimento da despensa. */
+// deno-lint-ignore no-explicit-any
+export function missingMicros(food: any): string[] {
+  return MICRO_COLUMNS.filter((k) => pantryMicro(food, k) == null);
+}
+
+/** Completo: calorias e macros com número, e os sete micronutrientes dados.
+ *  Só um alimento completo se regista sem o Gemini (splitKnownWritten). */
+// deno-lint-ignore no-explicit-any
+export function isPantryComplete(food: any): boolean {
+  if (!food) return false;
+  const macrosOk = NUTRIENT_COLUMNS.filter((k) => !isMicroColumn(k))
+    .every((k) => food[k] != null && Number.isFinite(Number(food[k])) && Number(food[k]) >= 0);
+  return macrosOk && missingMicros(food).length === 0;
+}
+
+// Raiz de uma palavra, para "fritos" ↔ "frita", "ovos" ↔ "ovo", "batatas" ↔
+// "batata": tira o -s do plural e, em palavras de 4+ letras, a vogal final.
+const stem = (w: string): string => {
+  let s = w.endsWith("s") && w.length > 3 ? w.slice(0, -1) : w;
+  if (s.length >= 4 && /[aeo]$/.test(s)) s = s.slice(0, -1);
+  return s;
+};
+const stems = (text: unknown): Set<string> =>
+  new Set(foodKey(text).split(" ").filter((w) => w.length >= 3 && /[a-z]/.test(w)).map(stem));
+
+/**
+ * As perguntas da Carol que ainda estão em aberto para este alimento: uma
+ * regra "por confirmar" (vista uma vez) ou "varia" (ela continua a perguntar,
+ * ruleInfo no Armário) cujo tema partilha uma palavra com o nome dele
+ * ("frango" → "Peito de frango"). Um falso positivo custa só uma chamada ao
+ * modelo; um falso negativo era registar às cegas o que ela prometeu
+ * perguntar — por isso a comparação é larga (raiz da palavra).
+ */
+export function pendingRulesFor(name: unknown, rules: FoodRule[]): FoodRule[] {
+  const words = stems(name);
+  if (!words.size) return [];
+  return (rules || []).filter((r) =>
+    (r.status === "por_confirmar" || r.status === "varia") &&
+    [...stems(r.topic)].some((w) => words.has(w))
+  );
+}
+
 /** As colunas de meal_items que a análise escreve. O resto que um item traz
  *  pelo caminho (source_index, from_label) não é coluna — sai aqui. */
 const MEAL_ITEM_COLUMNS = ["name", "quantity_grams", ...NUTRIENT_COLUMNS] as const;
@@ -78,7 +159,11 @@ export type PantryFood = {
   in_pantry: boolean;
   source: "refeicao" | "rotulo" | "manual";
   edited_by_athlete: boolean;
-} & Partial<Record<(typeof NUTRIENT_COLUMNS)[number], number>>;
+  // Ver "Os micronutrientes da despensa": os zeros só são dados com
+  // micros_checked_at = updated_at (2026-10-05).
+  micros_checked_at?: string | null;
+  updated_at?: string | null;
+} & Partial<Record<(typeof NUTRIENT_COLUMNS)[number], number | null>>;
 
 export type FoodRule = {
   topic: string;
@@ -110,15 +195,18 @@ export async function fetchPantry(sb: any, userId: string): Promise<Pantry> {
   try {
     const [foodsRes, rulesRes] = await Promise.all([
       sb.from("athlete_foods")
-        .select("name, name_key, portion_grams, portion_label, times_seen, in_pantry, source, edited_by_athlete, " + NUTRIENT_COLUMNS.join(", "))
+        .select(FOOD_SELECT)
         .eq("user_id", userId)
         .eq("in_pantry", true)
         .order("times_seen", { ascending: false })
         .limit(PANTRY_PROMPT_LIMIT),
+      // Todas as regras, também as por confirmar (2026-10-05): uma por
+      // confirmar é uma pergunta em aberto (pendingRulesFor). O pedido ao
+      // modelo continua a levar só as confirmadas e as que variam
+      // (knowledgeSection filtra), e as perguntas só fogem das confirmadas.
       sb.from("athlete_food_rules")
         .select("topic, topic_key, value, value_key, confirmations, status, source")
-        .eq("user_id", userId)
-        .in("status", ["confirmado", "varia"]),
+        .eq("user_id", userId),
     ]);
     const foods: PantryFood[] = foodsRes?.error ? [] : (foodsRes?.data ?? []);
     const rules: FoodRule[] = rulesRes?.error ? [] : (rulesRes?.data ?? []);
@@ -156,56 +244,88 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
 
 /** Os valores por 100 g da despensa, no lugar dos estimados; o nome passa a
  *  ser o dela. As gramas ficam as do item.
- *  Micronutrientes (D6, 2026-10-05): a despensa (athlete_foods) continua NOT
- *  NULL DEFAULT 0 — um "não sei" vindo de uma refeição e o Armário da app
- *  gravam lá 0 — por isso um 0 de micronutriente da despensa é ambíguo e
- *  passa ao item como null. Perde-se um ou outro zero verdadeiro (vitamina C
- *  no azeite) na cobertura; nunca se inventa um "dado". */
+ *  Micronutrientes (2026-10-05): os da despensa quando ela os sabe
+ *  (pantryMicro — um 0 antigo, ambíguo, não conta como sabido); senão o que
+ *  o item já trazia da análise (null se nada). É esse valor da análise que
+ *  depois preenche a despensa (nextFoodRow). Nunca se inventa um 0.
+ *  `pending`: há perguntas da Carol em aberto sobre este alimento
+ *  (pendingRulesFor) — parseQuestions deixa-a perguntar. */
 // deno-lint-ignore no-explicit-any
-export function withPantryValues<T extends Record<string, any>>(item: T, food: PantryFood): T {
+export function withPantryValues<T extends Record<string, any>>(item: T, food: PantryFood, pending = false): T {
   const values = Object.fromEntries(NUTRIENT_COLUMNS.map((k) => {
     if (!isMicroColumn(k)) return [k, num(food[k])];
-    const v = microOrNull(food[k]);
-    return [k, v === 0 ? null : v];
+    return [k, pantryMicro(food, k) ?? microOrNull(item?.[k])];
   }));
-  return { ...item, ...values, name: food.name, from_pantry: true };
+  return { ...item, ...values, name: food.name, from_pantry: true, ...(pending ? { pantry_pending: true } : {}) };
 }
 
 /** Um item analisado (das fotos, ou escrito e juntado às fotos) que já está
  *  na despensa fica com os valores dela. Um rótulo lido agora não se troca:
- *  é ele que vai atualizar a despensa. */
+ *  é ele que vai atualizar a despensa. `rules`: para marcar os que têm
+ *  perguntas em aberto (2026-10-05). */
 // deno-lint-ignore no-explicit-any
-export function applyPantry<T extends Record<string, any>>(items: T[], byKey: Map<string, PantryFood>): T[] {
+export function applyPantry<T extends Record<string, any>>(items: T[], byKey: Map<string, PantryFood>, rules: FoodRule[] = []): T[] {
   return items.map((it) => {
     if (it?.from_label) return it;
     const food = byKey.get(foodKey(it?.name));
-    return food ? withPantryValues(it, food) : it;
+    return food ? withPantryValues(it, food, pendingRulesFor(food.name, rules).length > 0) : it;
   });
 }
 
+type WrittenItem = { name: string; grams: number | null };
+
 /**
- * Registo só escrito: os alimentos que ela já conhece não vão ao Gemini.
- * Conhecido = na despensa, e com gramas (as escritas, ou a porção habitual).
- *   known: índice → item pronto a gravar; unknown: os que faltam estimar.
+ * Registo só escrito: o que ela já conhece por inteiro não vai ao Gemini.
+ * Conhecido (2026-10-05) = na despensa, com gramas (as escritas, ou a porção
+ * habitual), COMPLETO (isPantryComplete: os sete micronutrientes dados) e
+ * sem perguntas da Carol em aberto sobre ele (pendingRulesFor). Uma refeição
+ * só destes calcula-se aqui, sem chamada ao modelo para os valores.
+ *   known: índice → item pronto a gravar;
+ *   unknown: os que vão ao modelo. Os que estão na despensa mas não chegam
+ *   (micronutrientes por confirmar, perguntas em aberto, sem gramas) levam
+ *   `food`: vão com o nome dela e as gramas dela, e a resposta do modelo só
+ *   serve para o que lhe falta — o resto fica o da despensa (withPantryValues).
  */
 export function splitKnownWritten(
-  written: { name: string; grams: number | null }[],
+  written: WrittenItem[],
   byKey: Map<string, PantryFood>,
-): { known: Map<number, Record<string, unknown>>; unknown: { index: number; item: { name: string; grams: number | null } }[] } {
+  rules: FoodRule[] = [],
+): { known: Map<number, Record<string, unknown>>; unknown: { index: number; item: WrittenItem; food?: PantryFood; pending?: boolean }[] } {
   const known = new Map<number, Record<string, unknown>>();
-  const unknown: { index: number; item: { name: string; grams: number | null } }[] = [];
+  const unknown: { index: number; item: WrittenItem; food?: PantryFood; pending?: boolean }[] = [];
   written.forEach((w, index) => {
     const food = byKey.get(foodKey(w.name));
-    const grams = w.grams ?? (food?.portion_grams ? Number(food.portion_grams) : null);
-    if (food && grams) known.set(index, withPantryValues({ quantity_grams: grams }, food));
-    else unknown.push({ index, item: w });
+    if (!food) {
+      unknown.push({ index, item: w });
+      return;
+    }
+    const grams = w.grams ?? (food.portion_grams ? Number(food.portion_grams) : null);
+    const pending = pendingRulesFor(food.name, rules).length > 0;
+    if (grams && !pending && isPantryComplete(food)) known.set(index, withPantryValues({ quantity_grams: grams }, food));
+    else unknown.push({ index, item: { name: food.name, grams }, food, pending });
   });
   return { known, unknown };
 }
 
 // ── Aprender ──────────────────────────────────────────────────────────────
 
-/** A linha de athlete_foods depois de mais uma refeição com este alimento. */
+/**
+ * A linha de athlete_foods depois de mais uma refeição com este alimento.
+ * Calorias e macros: na despensa ficam — a não ser um rótulo novo;
+ * ajustados à mão, ficam sempre.
+ * Micronutrientes (2026-10-05) — a regra de "Os micronutrientes da
+ * despensa", lá em cima:
+ *   · quando a linha guarda os valores (na despensa / ajustada à mão), um
+ *     micronutriente dado fica; um por confirmar (null, ou 0 antigo)
+ *     preenche-se com o que esta análise deu;
+ *   · quando a linha leva os valores novos (ainda fora da despensa, ou um
+ *     rótulo), o que a análise deu ganha; o que não deu fica o que a
+ *     despensa já sabia — um valor dado nunca se troca por um "não sei".
+ *   · o que ninguém sabe grava null (nunca 0), e a linha fica marcada
+ *     (micros_checked_at = updated_at): a partir daqui os zeros dela são
+ *     dados. Um 0 antigo que esta análise não confirmou passa a null — era
+ *     "por confirmar", agora diz-se.
+ */
 // deno-lint-ignore no-explicit-any
 export function nextFoodRow(existing: PantryFood | null, item: any, userId: string, nowISO: string): Record<string, unknown> | null {
   const key = foodKey(item?.name);
@@ -213,10 +333,13 @@ export function nextFoodRow(existing: PantryFood | null, item: any, userId: stri
   const fromLabel = item?.from_label === true;
   const seen = (existing?.times_seen ?? 0) + 1;
   const wasIn = existing?.in_pantry === true;
-  // Na despensa, os valores ficam — a não ser um rótulo novo; ajustados à
-  // mão, ficam sempre.
   const keepValues = !!existing && (existing.edited_by_athlete || (wasIn && !fromLabel));
-  const values = Object.fromEntries(NUTRIENT_COLUMNS.map((k) => [k, keepValues ? num(existing![k]) : num(item?.[k])]));
+  const values = Object.fromEntries(NUTRIENT_COLUMNS.map((k) => {
+    if (!isMicroColumn(k)) return [k, keepValues ? num(existing![k]) : num(item?.[k])];
+    const known = existing ? pantryMicro(existing, k) : null;
+    const fresh = microOrNull(item?.[k]);
+    return [k, keepValues ? (known ?? fresh) : (fresh ?? known)];
+  }));
   return {
     user_id: userId,
     name: existing && (wasIn || existing.edited_by_athlete) ? existing.name : String(item.name).slice(0, 120),
@@ -224,6 +347,7 @@ export function nextFoodRow(existing: PantryFood | null, item: any, userId: stri
     portion_grams: existing?.portion_grams ?? (num(item?.quantity_grams) || null),
     portion_label: existing?.portion_label ?? null,
     ...values,
+    micros_checked_at: nowISO,
     times_seen: seen,
     in_pantry: wasIn || fromLabel || seen >= 2,
     source: fromLabel && !existing?.edited_by_athlete ? "rotulo" : (existing?.source ?? "refeicao"),
@@ -291,7 +415,7 @@ export async function learnFromMeal(sb: any, userId: string, items: any[], facts
     }
     if (byKey.size) {
       const { data: existing, error } = await sb.from("athlete_foods")
-        .select("name, name_key, portion_grams, portion_label, times_seen, in_pantry, source, edited_by_athlete, " + NUTRIENT_COLUMNS.join(", "))
+        .select(FOOD_SELECT)
         .eq("user_id", userId)
         .in("name_key", [...byKey.keys()]);
       if (error) throw error;
@@ -380,7 +504,8 @@ export const MAX_QUESTIONS = 2;
 /**
  * As perguntas que o Gemini propôs, filtradas pelas regras da casa: no
  * máximo 2, só as que mudam ≥ 50 kcal, nunca sobre um tema já confirmado
- * (ela já sabe), nunca sobre um alimento da despensa (já o conhece), e
+ * (ela já sabe), nunca sobre um alimento da despensa (já o conhece — a não
+ * ser que haja uma regra por confirmar ou que varia sobre ele, 2026-10-05), e
  * sempre presas a um alimento desta refeição. A opção assumida tem de estar
  * entre as opções — é a que a estimativa usou.
  */
@@ -407,7 +532,9 @@ export function parseQuestions(
     const assumed = String(q?.assumed ?? "").trim().slice(0, 40);
     const impact = Math.round(Number(q?.impact_kcal));
     const item = itemsByKey.get(foodKey(itemName));
-    if (!topicKey || !question || options.length < 2 || !item || item.from_pantry) continue;
+    // Da despensa, só se há perguntas em aberto sobre ele (pantry_pending,
+    // 2026-10-05) — foi por isso que o modelo foi chamado.
+    if (!topicKey || !question || options.length < 2 || !item || (item.from_pantry && !item.pantry_pending)) continue;
     if (!Number.isFinite(impact) || impact < MIN_QUESTION_IMPACT_KCAL) continue;
     if (confirmed.has(topicKey) || seenTopics.has(topicKey)) continue;
     if (!options.some((o) => foodKey(o) === foodKey(assumed))) continue;
@@ -461,7 +588,7 @@ export async function withWrittenFoods(sb: any, userId: string, pantry: Pantry, 
   if (!missing.length) return pantry;
   try {
     const { data, error } = await sb.from("athlete_foods")
-      .select("name, name_key, portion_grams, portion_label, times_seen, in_pantry, source, edited_by_athlete, " + NUTRIENT_COLUMNS.join(", "))
+      .select(FOOD_SELECT)
       .eq("user_id", userId)
       .eq("in_pantry", true)
       .in("name_key", missing);

@@ -19,6 +19,7 @@ export function useCalendarPeriod(tab, opts = {}) {
   const today = useTodayISO();
   const setKindRaw = usePeriodStore((s) => s.setKind);
   const shift = usePeriodStore((s) => s.shift);
+  const setPeriodRaw = usePeriodStore((s) => s.setPeriod);
 
   const { daysWithData, dataStartISO, minClosed } = opts;
   const period = useMemo(() => calendarPeriod(kind, today, offset), [kind, today, offset]);
@@ -35,8 +36,10 @@ export function useCalendarPeriod(tab, opts = {}) {
   const setKind = useCallback((k) => setKindRaw(tab, k), [setKindRaw, tab]);
   const prev = useCallback(() => shift(tab, -1), [shift, tab]);
   const next = useCallback(() => shift(tab, 1), [shift, tab]);
+  // Ir para um período passado de outro tipo ("Ver setembro" a partir da semana passada, 2026-10-05).
+  const setPeriod = useCallback((k, o) => setPeriodRaw(tab, k, o), [setPeriodRaw, tab]);
 
-  return { kind: kind || DEFAULT_KINDS[tab], offset, period, previous, label, earlyState, canGoNext: offset < 0, setKind, prev, next };
+  return { kind: kind || DEFAULT_KINDS[tab], offset, period, previous, label, earlyState, canGoNext: offset < 0, setKind, setPeriod, prev, next };
 }
 
 export default useCalendarPeriod;

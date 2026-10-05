@@ -26,17 +26,17 @@ const DADOS = [
   av(HOJE, { weight_kg: 76.2 }), // hoje conta
 ];
 
-const view = (kind, offset = 0, { list = DADOS, profile = {}, gym = [], today = HOJE } = {}) =>
-  buildBodyView([list, profile, gym], { kind, offset }, today);
+const view = (kind, offset = 0, { list = DADOS, profile = {}, gym = [], today = HOJE, goals = [] } = {}) =>
+  buildBodyView([list, profile, gym, goals], { kind, offset }, today);
 const rowOf = (v, key) => v.rows.find((r) => r.key === key);
 
 beforeEach(() => resetBodyViewMemo());
 
 describe('registo', () => {
-  it('regista a vista "corpo" com avaliações, perfil e ginásio', () => {
+  it('regista a vista "corpo" com avaliações, perfil, ginásio e histórico de objetivos', () => {
     const def = getEvolutionViewDef('corpo');
     expect(def).toBeTruthy();
-    expect(def.deps({ bodyAssessments: [1], profile: { a: 1 }, gymSessions: [2], meals: [3] })).toEqual([[1], { a: 1 }, [2]]);
+    expect(def.deps({ bodyAssessments: [1], profile: { a: 1 }, gymSessions: [2], meals: [3], goalHistory: [4] })).toEqual([[1], { a: 1 }, [2], [4]]);
   });
 });
 
@@ -173,9 +173,10 @@ describe('peso: ritmo com dados que cheguem (C1/C2), estável, perigo só para p
     const list = ['21', '22', '23', '24', '25', '26', '27'].map((d, i) => av(`2026-09-${d}`, { weight_kg: 80 - i * 0.3 }));
     const v = view('semana', -1, { list });
     expect(v.weight.sufficient).toBe(false);
-    expect(v.verdict.text).toContain('Tenho sete pesagens na semana passada');
-    expect(v.verdict.text).toContain('nas duas semanas até à última há 7, em 6 dias');
+    expect(v.verdict.text).toBe('Tenho sete pesagens na semana passada, de 80,0 a 78,2 kg; nas duas semanas até à última havia 7, em 6 dias — para a tendência eram precisos pelo menos 10 dias entre a primeira e a última.');
     expect(v.verdict.text).not.toContain('três pesagens');
+    // Período fechado: nada de "o que falta" (já não se completa).
+    expect(v.weight.need).toBeNull();
   });
 
   it('ano em curso com pesagens só de março: passado, com a data, e aviso em vez de perigo', () => {
@@ -262,12 +263,15 @@ describe('veredicto coerente com o período', () => {
     expect(v.text).toMatch(/desceu|esteve/);
   });
 
-  it('só 2 pesagens no histórico: diz o que falta, sem tendência inventada', () => {
+  /* 2026-10-05: duas pesagens dizem o facto (a estimativa) e o que falta em
+     concreto — nunca "preciso de três pesagens" ao lado de um gráfico com direção. */
+  it('só 2 pesagens no histórico: o facto, "estimativa pouco fiável" e quando chega a 3.ª', () => {
     const list = [av('2026-10-01', { weight_kg: 76.4 }), av(HOJE, { weight_kg: 76.2 })];
     const v = view('mes', 0, { list }).verdict;
     expect(v.tone).toBe('neutral');
-    expect(v.text).toContain('Tenho duas pesagens em outubro');
-    expect(v.text).toContain('três pesagens');
+    // −0,2 kg fica abaixo do ruído da balança: "quase não mexeu", não "desceste".
+    expect(v.text).toBe('Entre a primeira e a última pesagem o peso quase não mexeu: 76,4 e 76,2 kg, em 3 dias. Com só duas pesagens é uma estimativa pouco fiável — mais uma pesagem entre 11 e 15 out e passo a dar-te a tendência a sério.');
+    expect(v.text).not.toContain('três pesagens');
   });
 
   it('trimestre fechado diz-se pelo número ("No 3.º trimestre"), não "Em jul – set 2026"', () => {
@@ -303,5 +307,86 @@ describe('Dia = avaliação (D1)', () => {
     const v = view('dia', 0, { list: shuffled });
     expect(v.assessments.map((a) => a.date)).toEqual(['2026-07-05', '2026-09-10', '2026-09-20', HOJE]);
     expect(v.period).toBeUndefined();
+  });
+});
+
+/* 2026-10-05: barras do resumo = caminho até ao objetivo; estimativa com
+   poucas pesagens; o que falta em concreto; onde estão os dados (C4/C6). */
+describe('caminho até ao objetivo (barras)', () => {
+  it('sem objetivo: sem `progress`', () => {
+    expect(rowOf(view('mes'), 'weight_kg').progress).toBeNull();
+  });
+
+  it('com objetivo e sem histórico dos objetivos do corpo: desde a 1.ª leitura dos últimos 90 dias, aproximado', () => {
+    const p = rowOf(view('mes', 0, { profile: { goal_weight_kg: 74 } }), 'weight_kg').progress;
+    // 5 jul fica a 91 dias: parte de 79 (2 ago) → 76,2 (hoje) a caminho de 74: 2,8 de 5 = 56%.
+    expect(p).toMatchObject({ start: { date: '2026-08-02', value: 79 }, remaining: 2.2, pct: 56, approx: 'sem_historico' });
+  });
+
+  /* Revisão de 2026-10-05: com a 1.ª leitura de sempre do lado errado (2024),
+     a barra dizia "objetivo atingido" a 77,3 kg com objetivo 76. */
+  it('uma leitura antiga do outro lado do objetivo não conta: 79,4 → 77,3, objetivo 76', () => {
+    const list = [av('2024-05-01', { weight_kg: 72, body_fat_pct: 16 }), av('2026-07-12', { weight_kg: 79.4, body_fat_pct: 24.5 }), av(HOJE, { weight_kg: 77.3, body_fat_pct: 23 })];
+    const v = view('mes', 0, { list, profile: { goal_weight_kg: 76, goal_body_fat_pct: 18 } });
+    expect(rowOf(v, 'weight_kg').progress).toMatchObject({ reached: false, away: false, remaining: 1.3, pct: 62, start: { date: '2026-07-12', value: 79.4 } });
+    expect(rowOf(v, 'body_fat_pct').progress).toMatchObject({ reached: false, away: false, remaining: 5, pct: 23 });
+  });
+
+  it('com o dia no histórico de objetivos: parte da leitura desse dia', () => {
+    const goals = [{ valid_from: '2026-09-15T09:00:00Z', goal_weight_kg: 74 }];
+    const p = rowOf(view('mes', 0, { profile: { goal_weight_kg: 74 }, goals }), 'weight_kg').progress;
+    expect(p.start).toEqual({ date: '2026-09-15', value: 77.3 });
+    expect(p.pct).toBe(33); // 1,1 de 3,3
+    expect(p.approx).toBe('antes_do_historico');
+  });
+
+  it('métrica sem leitura no período: sem barra, mesmo com objetivo', () => {
+    expect(rowOf(view('mes', 0, { profile: { goal_body_fat_pct: 18 } }), 'body_fat_pct').progress).toBeNull();
+  });
+});
+
+describe('peso sem tendência: estimativa e o que falta', () => {
+  it('2 pesagens: estimativa da 1.ª à última, sem linha cheia; o que falta só no período em curso', () => {
+    const list = [av('2026-09-20', { weight_kg: 77.3 }), av('2026-10-02', { weight_kg: 76.2 })];
+    const w = view('ano', 0, { list }).weight;
+    expect(w.sufficient).toBe(false);
+    expect(w.line).toEqual([]);
+    expect(w.estimate).toMatchObject({ n: 2, diff: -1.1, days: 12 });
+    expect(w.need).toEqual({ more: 1, start: HOJE, from: HOJE, until: HOJE, fresh: false });
+    expect(view('ano', 0, { list }).verdict.text).toBe('Desceste 1,1 kg em 12 dias (≈0,6 kg por semana). Com só duas pesagens é uma estimativa pouco fiável — mais uma pesagem até 4 out e passo a dar-te a tendência a sério.');
+    // Fechado: o facto, sem pedido.
+    const q3 = view('trimestre', -1, { list: [av('2026-09-02', { weight_kg: 77.3 }), av('2026-09-14', { weight_kg: 76.2 })] });
+    expect(q3.weight.need).toBeNull();
+    expect(q3.verdict.text).toBe('No 3.º trimestre, desceste 1,1 kg em 12 dias (≈0,6 kg por semana). Com só duas pesagens é uma estimativa pouco fiável.');
+  });
+
+  it('com tendência não há estimativa nem "falta"', () => {
+    const w = view('mes', -1).weight;
+    expect(w.estimate).toBeNull();
+    expect(w.need).toBeNull();
+    expect(w.line.length).toBeGreaterThan(0);
+  });
+
+  it('semana com 1 pesagem: as de antes contam e diz-se quantas faltam e até quando', () => {
+    const list = [av('2026-09-22', { weight_kg: 77 }), av('2026-09-29', { weight_kg: 76.2 })];
+    const v = view('semana', 0, { list, today: '2026-09-30' });
+    expect(v.weight.need).toEqual({ more: 1, start: '2026-09-30', from: '2026-10-02', until: '2026-10-06', fresh: false });
+    expect(v.verdict.text).toBe('Nesta semana só há uma pesagem, de 76,2 kg; para a tendência preciso de mais uma, a última entre 2 e 6 out.');
+  });
+});
+
+describe('onde estão os dados (limiares C4/C6)', () => {
+  it('composição: com 1 avaliação com gordura no mês, aponta o trimestre que tem 2', () => {
+    const list = [av('2026-08-02', { weight_kg: 79, body_fat_pct: 21.5 }), av('2026-09-20', { weight_kg: 77, body_fat_pct: 20 })];
+    expect(view('mes', -1, { list }).compositionWider).toEqual({ kind: 'trimestre', offset: -1, n: 2, where: 'no 3.º trimestre' });
+    // Semana em curso: o 1.º maior com 2 é o ano (o trimestre out – dez não tem nenhuma).
+    expect(view('semana', 0, { list }).compositionWider).toMatchObject({ kind: 'ano', offset: 0, n: 2 });
+    // Com 2 no próprio período não há para onde apontar.
+    expect(view('trimestre', -1, { list }).compositionWider).toBeNull();
+  });
+
+  it('período vazio: a avaliação anterior', () => {
+    const list = [av('2026-07-28', { weight_kg: 79 }), av('2026-10-02', { weight_kg: 77 })];
+    expect(view('mes', -1, { list }).lastBeforeISO).toBe('2026-07-28');
   });
 });

@@ -106,6 +106,34 @@ describe('Dashboard', () => {
     expect(getLastSettledIndex()).toBe(3);
   });
 
+  /* 2026-10-05 (A1): num Pixel o carrossel tem 379,43 px. O salto inicial
+     ia para 4 × 379 = 1516 (offsetWidth arredondado); o snap corrigia para
+     1517,72 e esse scroll desfazia o assentamento — o Corpo nunca aparecia. */
+  it('o salto inicial usa a largura fracionária do carrossel (Pixel, 379,43 px)', () => {
+    const proto = window.HTMLElement.prototype;
+    const rectOrig = proto.getBoundingClientRect;
+    const lefts = new WeakMap();
+    const leftDesc = Object.getOwnPropertyDescriptor(window.Element.prototype, 'scrollLeft');
+    proto.getBoundingClientRect = function rect() {
+      if (this.classList?.contains('tab-swipe-carousel')) return { width: 379.43, height: 600, top: 0, left: 0, right: 379.43, bottom: 600 };
+      return rectOrig.call(this);
+    };
+    Object.defineProperty(window.Element.prototype, 'scrollLeft', {
+      configurable: true,
+      get() { return lefts.get(this) || 0; },
+      set(v) { lefts.set(this, v); },
+    });
+    try {
+      const { container } = render(<Dashboard activeModule="corpo" />);
+      const el = container.querySelector('.tab-swipe-carousel');
+      expect(el.scrollLeft).toBeCloseTo(4 * 379.43, 5);
+      expect(getSettledIndex()).toBe(4);
+    } finally {
+      proto.getBoundingClientRect = rectOrig;
+      if (leftDesc) Object.defineProperty(window.Element.prototype, 'scrollLeft', leftDesc);
+    }
+  });
+
   it('"holistica" (localStorage antigo) abre o Geral em vez de um índice −1', () => {
     render(<Dashboard activeModule="holistica" />);
     expect(getSettledIndex()).toBe(0);

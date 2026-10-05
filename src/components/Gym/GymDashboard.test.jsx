@@ -8,10 +8,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
    4 out 2026) e mexe-se por `h.today` para os testes de "a começar".
    Semanas: seg 21 set, seg 28 set; hoje (dom 4 out) a semana de 28 set é a em curso. */
 
-const h = vi.hoisted(() => ({ state: {}, barProps: [], today: '2026-10-04' }));
+const h = vi.hoisted(() => ({ state: {}, barProps: [], today: '2026-10-04', ready: true }));
 
 vi.mock('../../utils/useTodayISO', () => ({ useTodayISO: () => h.today, default: () => h.today }));
-vi.mock('../../store', () => ({ useAppStore: (sel) => (typeof sel === 'function' ? sel(h.state) : h.state), sliceReady: () => true }));
+vi.mock('../../store', () => ({ useAppStore: (sel) => (typeof sel === 'function' ? sel(h.state) : h.state), sliceReady: () => h.ready }));
 vi.mock('react-chartjs-2', () => ({
   Bar: (props) => { h.barProps.push(props); return <div data-testid="chart-bar" />; },
   Line: () => <div data-testid="chart-line" />,
@@ -50,6 +50,7 @@ const SETEMBRO = [
 beforeEach(() => {
   h.barProps.length = 0;
   h.today = '2026-10-04';
+  h.ready = true;
   resetEvolutionCache();
   act(() => usePeriodStore.getState().reset());
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -89,10 +90,12 @@ describe('KPIs (G2): treinos de força com "/semana (semanas fechadas)"', () => 
   it('"N · X/semana" em semanas fechadas, com X de N semanas e sem bolinha decorativa', () => {
     monta({ sessions: [...SETEMBRO, aula('2026-09-22', { exertion: 7 })] });
     const l = linha('Treinos de força');
-    // 6 sessões em setembro (7, 10, 21, 24, 28, 30); 4 dentro das 3 semanas inteiras (7, 14, 21 set).
-    expect(within(l).getByTestId('row-value')).toHaveTextContent('6 · 1,3/semana');
-    expect(within(l).getByText('4 treinos de força em 3 semanas fechadas')).toBeInTheDocument();
-    expect(within(l).getByText('2 de 3')).toBeInTheDocument(); // semanas com 2+ treinos
+    // 6 sessões em setembro (7, 10, 21, 24, 28, 30); 4 nas 4 semanas fechadas que tocam o mês
+    // (31 ago, 7, 14 e 21 set — a de 28 set só fecha a 4 out, 2026-10-05).
+    expect(within(l).getByTestId('row-value')).toHaveTextContent('6 · 1/semana');
+    expect(within(l).getByText('4 em 4 semanas fechadas')).toBeInTheDocument();
+    expect(within(l).getByText('2 de 4')).toBeInTheDocument(); // semanas com 2+ treinos
+    expect(screen.getByText(/As contas por semana usam as semanas seg–dom já fechadas que tocam o período \(31 ago – 27 set\)\./)).toBeInTheDocument();
     expect(screen.getByText('Semanas com 2+ treinos')).toBeInTheDocument();
     expect(screen.getByText('No período (30 dias fechados)')).toBeInTheDocument();
     expect(screen.queryByText('Vol. Carga')).not.toBeInTheDocument();
@@ -101,7 +104,7 @@ describe('KPIs (G2): treinos de força com "/semana (semanas fechadas)"', () => 
   it('as aulas contam-se uma vez, no resumo, com /semana', () => {
     monta({ sessions: [...SETEMBRO, aula('2026-09-08'), aula('2026-09-15'), aula('2026-09-16'), aula('2026-09-22')] });
     const l = linha('Aulas');
-    expect(within(l).getByTestId('row-value')).toHaveTextContent('4 · 1,3/semana');
+    expect(within(l).getByTestId('row-value')).toHaveTextContent('4 · 1/semana');
     // O cartão de baixo já não repete a contagem.
     expect(screen.getByTestId('aulas')).not.toHaveTextContent(/^4 Aulas/);
   });
@@ -242,19 +245,27 @@ describe('D5: progressão por exercício', () => {
     monta({ sessions: [...sess, forca('2026-09-22', { workout_session_sets: sets(2, 60, 10, 'Remada') })], kind: 'semana', offset: -1 });
     const card = screen.getByTestId('progressao');
     expect(within(card).getAllByTestId('progressao-linha')).toHaveLength(1);
-    expect(screen.getByTestId('progressao-notas')).toHaveTextContent('1 exercício com 2+ sessões não aparece');
+    // Numa semana 1 sessão chega (G5): a Remada tem 2, mas nenhuma na semana anterior.
+    expect(screen.getByTestId('progressao-notas')).toHaveTextContent('1 exercício desta semana não aparece');
   });
 
   it('sem nenhum comparável, o cartão dá lugar a uma nota', () => {
     monta({ sessions: [forca('2026-09-01'), forca('2026-09-21'), forca('2026-09-24')], kind: 'semana', offset: -1 });
     expect(screen.queryByTestId('progressao')).not.toBeInTheDocument();
-    expect(screen.getByText(/Progressão por exercício: preciso de um exercício com pelo menos 2 sessões/)).toBeInTheDocument();
+    expect(screen.getByText(/Progressão por exercício: preciso de um exercício treinado na semana passada e no período anterior para comparar/)).toBeInTheDocument();
+  });
+
+  it('num mês continua a pedir 2 sessões do mesmo exercício', () => {
+    monta({ sessions: [forca('2026-07-05'), forca('2026-08-05'), forca('2026-09-21')], kind: 'mes', offset: -1 });
+    expect(screen.queryByTestId('progressao')).not.toBeInTheDocument();
+    expect(screen.getByText(/Progressão por exercício: preciso de um exercício com pelo menos 2 sessões em setembro/)).toBeInTheDocument();
   });
 
   it('com o período "cedo" não há progressão', () => {
     monta({ sessions: [...sess, forca('2026-10-01', { workout_session_sets: sets(3, 80, 8) })], kind: 'mes', offset: 0 });
     expect(screen.queryByTestId('progressao')).not.toBeInTheDocument();
-    expect(screen.getByText(/Progressão por exercício aparece a partir de 4 dias fechados neste mês/)).toBeInTheDocument();
+    // G4 (2026-10-05): já não promete "a partir de 4 dias" — diz o que a comparação pede.
+    expect(screen.getByText(/Progressão por exercício: compara cada exercício com o período anterior — em outubro ainda só há 3 dias fechados\./)).toBeInTheDocument();
   });
 });
 
@@ -364,7 +375,7 @@ describe('estados: a começar, cedo, vazio (R6, R7, R8)', () => {
     monta({ sessions: [forca('2026-09-24')], kind: 'mes', offset: -2 });
     expect(screen.getByText('Antes do teu primeiro registo')).toBeInTheDocument();
     // Sem contas, sem a nota das contas por semana.
-    expect(screen.queryByText(/As contas por semana usam só semanas inteiras/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/As contas por semana usam/)).not.toBeInTheDocument();
   });
 
   it('sem nenhuma sessão: convite a registar, com o seletor à vista', () => {
@@ -373,5 +384,117 @@ describe('estados: a começar, cedo, vazio (R6, R7, R8)', () => {
     expect(screen.getByRole('group', { name: 'Período' })).toBeInTheDocument();
     act(() => { fireEvent.click(screen.getByText('Registar treino')); });
     expect(h.state.setOpenCreationMode).toHaveBeenCalledWith('workout');
+  });
+});
+
+describe('limiares (2026-10-05) — onde estão os dados', () => {
+  // Treina duas vezes por semana desde agosto: setembro tem semanas de sobra.
+  const REGULAR = ['2026-08-10', '2026-08-12', '2026-08-17', '2026-08-19', '2026-08-24', '2026-08-26', '2026-08-31', '2026-09-02', '2026-09-07', '2026-09-09',
+    '2026-09-14', '2026-09-16', '2026-09-21', '2026-09-23', '2026-10-01'].map((d) => forca(d));
+
+  it('G2: 5 out, a semana 28 set – 4 out já fechou; o mês ainda diz "cedo" mas aponta setembro, com botão', () => {
+    h.today = '2026-10-05';
+    vi.setSystemTime(new Date(2026, 9, 5, 12, 0, 0));
+    monta({ sessions: REGULAR, kind: 'mes', offset: 0 });
+    const resumo = screen.getByTestId('period-summary');
+    expect(resumo).toHaveTextContent('Só 1 semana fechada em outubro — ainda é cedo para conclusões.');
+    expect(resumo).toHaveTextContent(/Em setembro: \d+ de \d+ semanas com 2\+ treinos de força\./);
+    expect(resumo).toHaveTextContent('As contas por semana usam as semanas seg–dom já fechadas que tocam o período (28 set – 4 out).');
+  });
+
+  it('G2: a 12 out o mês já tem 2 semanas fechadas e avalia a frequência (mínimo do mês: 2)', () => {
+    h.today = '2026-10-12';
+    vi.setSystemTime(new Date(2026, 9, 12, 12, 0, 0));
+    monta({ sessions: [...REGULAR, forca('2026-10-06'), forca('2026-10-08')], kind: 'mes', offset: 0 });
+    expect(screen.getByTestId('period-summary')).not.toHaveTextContent(/ainda é cedo/);
+    expect(within(linha('Treinos de força')).getByText(/em 2 semanas fechadas/)).toBeInTheDocument();
+  });
+
+  it('G7: séries por músculo sem semana fechada: diz quando fecha a 1.ª e leva a setembro', () => {
+    monta({ sessions: REGULAR, kind: 'mes', offset: 0 }); // hoje 4 out: a semana de 28 set fecha a 4 out
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Séries por músculo'));
+    expect(nota).toHaveTextContent('Séries por músculo: a 1.ª semana fechada em outubro acaba a 4 out. Em setembro já tem.');
+    const botao = within(nota).getByRole('button', { name: 'Ver setembro' });
+    expect(botao.style.minHeight).toBe('var(--tap)');
+    expect(botao.style.color).toBe('var(--gym)');
+    act(() => { fireEvent.click(botao); });
+    expect(usePeriodStore.getState().tabs.ginasio).toEqual({ kind: 'mes', offset: -1 });
+  });
+
+  it('G7: na semana em curso aponta a semana passada', () => {
+    monta({ sessions: REGULAR, kind: 'semana', offset: 0 });
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Séries por músculo'));
+    expect(nota).toHaveTextContent('aparece quando a semana acabar');
+    expect(within(nota).getByRole('button', { name: 'Ver semana passada' })).toBeInTheDocument();
+  });
+
+  it('G4: a progressão em "cedo" diz o que a comparação pede e onde já há', () => {
+    const ex = (date, w) => forca(date, { workout_session_sets: sets(2, w, 10, 'Agachamento') });
+    monta({ sessions: [ex('2026-07-06', 60), ex('2026-07-20', 60), ex('2026-08-05', 70), ex('2026-08-20', 70), ex('2026-09-02', 80), ex('2026-09-20', 80), ex('2026-10-01', 90)], kind: 'mes', offset: 0 });
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Progressão por exercício'));
+    expect(nota).toHaveTextContent('Progressão por exercício: compara cada exercício com o período anterior — em outubro ainda só há 3 dias fechados. Em setembro já tem a sua.');
+    act(() => { fireEvent.click(within(nota).getByRole('button', { name: 'Ver setembro' })); });
+    expect(usePeriodStore.getState().tabs.ginasio).toEqual({ kind: 'mes', offset: -1 });
+  });
+
+  it('G4: progressão com o mês "ok" mas sem exercício comparável — diz que setembro já tem e leva lá (2026-10-05)', () => {
+    h.today = '2026-10-12';
+    vi.setSystemTime(new Date(2026, 9, 12, 12, 0, 0));
+    const ex = (date, w, name = 'Agachamento') => forca(date, { workout_session_sets: sets(2, w, 10, name) });
+    monta({ sessions: [ex('2026-08-05', 70), ex('2026-08-20', 70), ex('2026-09-02', 80), ex('2026-09-20', 80),
+      ex('2026-10-01', 90), ex('2026-10-06', 60, 'Remada'), ex('2026-10-08', 60, 'Remada')], kind: 'mes', offset: 0 });
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Progressão por exercício'));
+    expect(nota).toHaveTextContent(/^Progressão por exercício: preciso de um exercício com pelo menos 2 sessões em outubro e registos no período anterior para comparar\..* Em setembro já tem a sua\./);
+    const botao = within(nota).getByRole('button', { name: 'Ver setembro' });
+    expect(botao.style.minHeight).toBe('var(--tap)');
+    act(() => { fireEvent.click(botao); });
+    expect(usePeriodStore.getState().tabs.ginasio).toEqual({ kind: 'mes', offset: -1 });
+  });
+
+  it('G5: numa semana um exercício com 1 sessão compara-se (singular "1 sessão")', () => {
+    monta({
+      sessions: [forca('2026-09-01'), forca('2026-09-16', { workout_session_sets: sets(3, 100, 5, 'Agachamento') }), forca('2026-09-23', { workout_session_sets: sets(3, 110, 5, 'Agachamento') })],
+      kind: 'semana', offset: -1,
+    });
+    const linhas = within(screen.getByTestId('progressao')).getAllByTestId('progressao-linha');
+    expect(linhas[0]).toHaveTextContent('Agachamento');
+    expect(linhas[0]).toHaveTextContent('1 sessão · melhor série 110 kg × 5');
+  });
+
+  it('G1: um mês fechado com o 1.º registo nos últimos dias não está "cedo"', () => {
+    monta({ sessions: [forca('2026-09-29'), forca('2026-09-30')], kind: 'mes', offset: -1 });
+    expect(screen.queryByText(/Só 2 dias fechados em setembro/)).toBeNull();
+    expect(screen.queryByText(/Progressão por exercício: compara cada exercício/)).toBeNull();
+  });
+});
+
+describe('o período por omissão abre no anterior quando está a começar (2026-10-05)', () => {
+  it('dia 1 do mês com registos antes: abre em outubro; quem já escolheu não é mexido', () => {
+    h.today = '2026-11-01';
+    vi.setSystemTime(new Date(2026, 10, 1, 12, 0, 0));
+    h.state = { gymSessions: [forca('2026-10-06'), forca('2026-10-20')], runs: [], setOpenCreationMode: vi.fn() };
+    const { unmount } = render(<GymDashboard />);
+    expect(usePeriodStore.getState().tabs.ginasio).toEqual({ kind: 'mes', offset: -1 });
+    unmount();
+    act(() => usePeriodStore.getState().reset());
+    act(() => usePeriodStore.getState().setPeriod('ginasio', 'mes', 0));
+    render(<GymDashboard />);
+    expect(usePeriodStore.getState().tabs.ginasio).toEqual({ kind: 'mes', offset: 0 });
+  });
+});
+
+describe('abrir no mês anterior só depois de os treinos chegarem (revisão 2026-10-05)', () => {
+  it('1.º render com a fatia por carregar não grava "nunca registou": quando chegam, abre no mês anterior', () => {
+    h.today = '2026-11-01';
+    vi.setSystemTime(new Date(2026, 10, 1, 12, 0, 0));
+    h.ready = false;
+    h.state = { gymSessions: [], runs: [], setOpenCreationMode: vi.fn() };
+    const { rerender } = render(<GymDashboard />);
+    expect(usePeriodStore.getState().tabs.ginasio.offset).toBe(0);
+    expect(usePeriodStore.getState().opened.ginasio).toBeUndefined();
+    h.ready = true;
+    h.state = { ...h.state, gymSessions: [forca('2026-10-06'), forca('2026-10-20')] };
+    act(() => { rerender(<GymDashboard />); });
+    expect(usePeriodStore.getState().tabs.ginasio.offset).toBe(-1);
   });
 });

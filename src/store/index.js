@@ -1559,7 +1559,10 @@ export const useAppStore = create((set, get) => ({
      animar os gráficos) e não deve esperar pelo `dataPending` global, que
      pode durar até 45 s por uma fatia sem nada a ver. Ler SEMPRE por
      sliceReady(state, [...]) — que também trata o demo e os dados já
-     carregados (dataPending desligado). Só se limpa ao mudar de conta. */
+     carregados (dataPending desligado). Só se limpa ao mudar de conta.
+     Atenção ao tempo (2026-10-05): o que chega dentro do orçamento de 10 s
+     só entra aqui no set único do fim do orçamento (ou quando tudo chega,
+     se for antes). Até lá isto fica vazio — ver sliceReady. */
   loadedSlices: {},
   loadInitialData: (userId, { join = false } = {}) => {
     if (join && initialLoad && initialLoad.userId === userId) return initialLoad.promise;
@@ -1619,15 +1622,37 @@ export const SLICE_ALIASES = {
   checkins: 'dailyCheckins',
 };
 
-/* Que fatias cada separador da Evolução lê (2026-10-04) — o que o hook de
-   revelação espera antes de animar, em vez do `dataPending` global. Mantém
-   alinhado com o que cada *Dashboard.jsx lê do store. */
+/* Que fatias cada separador da Evolução espera antes de animar os gráficos
+   (2026-10-04), em vez do `dataPending` global.
+   Quando é que isto pesa, de facto (2026-10-05, revisão do A2): numa
+   abertura a frio, o que chega dentro do orçamento de 10 s só entra no store
+   no set único do fim do orçamento — por isso, até lá, nenhum separador fica
+   pronto, tenha a lista que tiver (a não ser que chegue tudo antes, e então
+   o dataPending desce). A lista só decide DEPOIS do orçamento: o separador
+   espera pelas fatias dela que ainda faltam, e as que não estão na lista
+   deixam de contar. O teto é o DATA_PENDING_MAX_MS (45 s).
+   2026-10-05 (A2): só o que os GRÁFICOS desenham — não tudo o que o
+   separador lê. Planos, itens do plano, sapatilhas e provas só mudam textos
+   (veredicto, "plano em vigor") ou têm a sua própria espera (a previsão de
+   prova espera por `races` no RacePredictionChart; a Prontidão pelos
+   check-ins): com `coach_plan_items` a demorar 37 s (incidente de
+   2026-09-24) a Corrida, o Geral e a Nutrição ficavam na base esse tempo
+   todo; agora soltam-se aos 10 s.
+   - hub: as fatias da vista do Geral, COM goalHistory (os pilares da
+     Nutrição medem contra o objetivo de cada dia; sem ele contavam até um
+     valor provisório e saltavam) — as mesmas de views/hub.js `slices`. Um
+     goalHistory que chegue depois dos 10 s segura o Geral até chegar;
+   - corrida: corridas + perfil (o nível de experiência define as zonas da
+     distribuição);
+   - ginasio/corpo: só a sua tabela (as outras listas só contam em textos);
+   - nutricao: refeições, água, objetivos (perfil + histórico) e treinos
+     (o "Comer para treinar" desenha os dias de treino). */
 export const EVOLUTION_TAB_SLICES = {
-  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'races', 'plans', 'planItems', 'shoes'],
-  corrida: ['profile', 'runs', 'races', 'plans', 'planItems'],
-  ginasio: ['gym', 'runs'],
-  nutricao: ['profile', 'meals', 'body', 'runs', 'gym', 'water', 'plans', 'planItems', 'goalHistory'],
-  corpo: ['body', 'gym', 'profile'],
+  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory'],
+  corrida: ['profile', 'runs'],
+  ginasio: ['gym'],
+  nutricao: ['profile', 'meals', 'water', 'goalHistory', 'runs'],
+  corpo: ['body'],
 };
 
 /** Os dados dessas fatias já chegaram? (`slices`: nomes de ecrã ou de
@@ -1637,8 +1662,12 @@ export const EVOLUTION_TAB_SLICES = {
  *  - `dataPending` desligado → verdadeiro: o carregamento acabou (tudo
  *    chegou, ou passou o prazo de 45 s), e é também o estado do modo demo e
  *    de um recarregamento em que os dados já lá estão.
- *  - Com `dataPending` ligado, só as fatias listadas contam — o resto pode
- *    demorar, não é com isso que o gráfico espera.
+ *  - Com `dataPending` ligado, cada fatia listada tem de estar em
+ *    `loadedSlices`. Na prática (2026-10-05): até ao fim do orçamento de
+ *    10 s isso nunca acontece (as fatias a tempo só entram no set do fim);
+ *    daí em diante espera só pelas listadas que ainda faltam — as outras não
+ *    contam. Sem teto próprio: o gráfico espera pelos dados que desenha (não
+ *    anima vazio para depois saltar), até o dataPending descer (≤ 45 s).
  *  Lista vazia → verdadeiro. */
 export function sliceReady(state, slices) {
   if (!state.dataPending) return true;
@@ -1784,7 +1813,17 @@ async function runInitialLoad(set, get, userId) {
       if (inTime) { onTime[slice] = toPatch(res?.data); settledOnTime.add(slice); }
       else writeLate(slice, toPatch(res?.data));
     })
-    .catch((err) => console.warn(`Carregamento inicial (${slice}):`, err))
+    .catch((err) => {
+      console.warn(`Carregamento inicial (${slice}):`, err);
+      // 2026-10-05 (A2): uma promessa rejeitada (ou um `toPatch` que lança)
+      // também é "nada mais a esperar desta fatia" — igual ao caminho de
+      // erro acima. Antes ficava fora de loadedSlices e o gráfico esperava
+      // que o dataPending descesse (até 45 s).
+      if (inTime) settledOnTime.add(slice);
+      else {
+        try { writeLate(slice, null); } catch { /* nada a fazer */ }
+      }
+    })
     .finally(() => {
       pending -= 1;
       if (!inTime && pending === 0) { const patch = done(); if (Object.keys(patch).length) set(patch); }

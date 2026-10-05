@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
-import PeriodSummary from './PeriodSummary';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import PeriodSummary, { ROW_BAR_MIN_WIDTH } from './PeriodSummary';
+import { TabPageContext, TabReadyContext, setSettledIndex, resetSettledTab } from '../../../utils/settledTab';
 import DeltaVsPrevious from './DeltaVsPrevious';
 import { avgHeader, countOf, APPROX_GOALS_NOTE, firstPeriodNote } from './periodText';
 
@@ -49,8 +50,9 @@ describe('PeriodSummary', () => {
 
     const fat = screen.getByRole('radio', { name: /^Gordura/ });
     expect(within(fat).getByText('Acima · 120%')).toBeInTheDocument();
-    // barra limitada a 100%
-    expect(within(fat).getByTestId('row-bar').style.width).toBe('100%');
+    // barra limitada a 100% (scaleX, não width: AnimatedBar)
+    expect(within(fat).getByTestId('row-bar').style.transform).toBe('scaleX(1)');
+    expect(within(kcal).getByTestId('row-bar').style.transform).toBe('scaleX(0.95)');
   });
 
   it('sem média: "—", texto da falta, sem barra nem estado', () => {
@@ -61,6 +63,28 @@ describe('PeriodSummary', () => {
     expect(within(water).queryByTestId('row-bar')).toBeNull();
     expect(within(water).queryByTestId('row-status')).toBeNull();
     expect(water).toHaveAccessibleName('Água: 2 dias, poucos para média: objetivo 2 500 ml');
+  });
+
+  /* 2026-10-05 (A4): só há calha quando a linha TEM barra. Na Corrida e no Corpo
+     as linhas nunca levam pct/barPct, e uma calha cinzenta que nunca enche lia-se
+     como uma barra que não carregou. */
+  it('sem barra, sem calha: linhas sem pct/barPct e linhas sem média não desenham a pista cinzenta', () => {
+    const rows = [
+      { key: 'km', label: 'Distância', value: '25,0 km' },
+      { key: 'pace', label: 'Pace médio', value: '5:00/km', status: 'ok', statusText: 'Dentro' },
+      { key: 'water', label: 'Água', value: null, goal: '2 500 ml', missingText: '2 dias com água — poucos para média' },
+      { key: 'kcal', label: 'Calorias', value: '2 290', goal: '2 400 kcal', status: 'ok', pct: 95 },
+    ];
+    const { container } = render(<PeriodSummary rows={rows} days={3} />);
+    const tracks = Array.from(container.querySelectorAll('span')).filter((n) => n.style.background === 'var(--border-hairline)');
+    // Só a das Calorias.
+    expect(tracks).toHaveLength(1);
+    expect(screen.getAllByTestId('row-bar')).toHaveLength(1);
+    const water = screen.getByRole('listitem', { name: /^Água/ });
+    expect(within(water).queryByTestId('row-bar')).toBeNull();
+    expect(within(water).getByText('2 dias com água — poucos para média')).toBeInTheDocument();
+    // O estado e a contagem continuam lá, sem barra.
+    expect(within(screen.getByRole('listitem', { name: /^Pace/ })).getByTestId('row-status')).toHaveAttribute('data-status', 'ok');
   });
 
   it('nome acessível por extenso da linha', () => {
@@ -164,5 +188,86 @@ describe('PeriodSummary', () => {
     expect(screen.getByText('Média por dia registado (0 dias)')).toBeInTheDocument();
     expect(screen.getAllByText('ainda sem dias fechados')).toHaveLength(4);
     expect(screen.getAllByTestId('row-value').every((n) => n.textContent === '—')).toBe(true);
+  });
+});
+
+/* Verificação no browser (2026-10-05): duas barras que existiam mas não se viam. */
+describe('PeriodSummary — barras que se veem', () => {
+  it('estado longo (Ginásio): a calha nunca fica a 0 px — tem largura mínima e o estado parte em duas linhas', () => {
+    render(
+      <PeriodSummary
+        countLabel="Semanas com 2+ treinos"
+        rows={[{ key: 'forca', label: 'Treinos de força', value: '8 · 1,2/semana', statusText: '6 treinos de força em 5 semanas fechadas', status: 'ok', barPct: 60, count: countOf(2, 5) }]}
+      />,
+    );
+    const track = screen.getByTestId('row-bar').parentElement;
+    // O jsdom não mede: verifica-se o estilo que garante a largura.
+    expect(track.style.minWidth).toBe(`${ROW_BAR_MIN_WIDTH}px`);
+    expect(ROW_BAR_MIN_WIDTH).toBeGreaterThanOrEqual(80);
+    const st = screen.getByTestId('row-status');
+    expect(st.style.whiteSpace).toBe('normal');
+    expect(st.style.flexShrink).toBe('1');
+  });
+
+  describe('no carrossel: o que se observa é a linha da 1.ª barra, não a lista toda', () => {
+    let observers = [];
+    class FakeObserver {
+      constructor(callback) { this.callback = callback; observers.push(this); }
+      observe(el) { this.el = el; }
+      disconnect() { this.disconnected = true; }
+    }
+    beforeEach(() => {
+      vi.useFakeTimers();
+      observers = [];
+      resetSettledTab();
+      vi.stubGlobal('IntersectionObserver', FakeObserver);
+      vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+    });
+    afterEach(() => {
+      resetSettledTab();
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    });
+
+    // O Corpo: 13 linhas, só o Peso (a 1.ª) e a Gordura (a 3.ª) com objetivo e barra.
+    const CORPO = Array.from({ length: 13 }, (_, i) => ({
+      key: `m${i}`,
+      label: `Medida ${i}`,
+      value: '1,0',
+      ...(i === 0 || i === 2 ? { goal: '72,0 kg', barPct: 48, statusText: 'falta 1,2 kg' } : { statusText: '3 leituras' }),
+    }));
+
+    it('à entrada num 390×844 (376 px da lista à vista): a barra do Peso cresce sem precisar de scroll', () => {
+      render(
+        <TabPageContext.Provider value={3}>
+          <TabReadyContext.Provider value>
+            <PeriodSummary rows={CORPO} module="corpo" countLabel={null} />
+          </TabReadyContext.Provider>
+        </TabPageContext.Provider>,
+      );
+      const [peso] = screen.getAllByTestId('row-bar');
+      expect(peso.style.transform).toBe('scaleX(0)');
+      const watched = observers.filter((o) => o.el && !o.disconnected).map((o) => o.el);
+      expect(watched).toHaveLength(1);
+      // Não é a lista (887 px — com 376 px à vista nunca chegava aos 55 %)…
+      expect(watched[0].getAttribute('role')).not.toBe('list');
+      // …é a linha da barra do Peso.
+      expect(watched[0].contains(peso)).toBe(true);
+      expect(screen.getAllByRole('listitem')[0].contains(watched[0])).toBe(true);
+
+      act(() => { setSettledIndex(3); });
+      // A linha da barra (20 px) inteira à vista, em top 512 de um ecrã de 844.
+      act(() => {
+        observers.forEach((o) => o.el && !o.disconnected && o.callback([{
+          isIntersecting: true,
+          intersectionRect: { height: 20, width: 323 },
+          boundingClientRect: { height: 20, width: 323, top: 512, bottom: 532 },
+          rootBounds: { height: 844 },
+        }]));
+      });
+      act(() => { vi.advanceTimersByTime(32); });
+      expect(peso.style.transform).toBe('scaleX(0.48)');
+      expect(screen.getAllByTestId('row-bar')[1].style.transform).toBe('scaleX(0.48)');
+    });
   });
 });

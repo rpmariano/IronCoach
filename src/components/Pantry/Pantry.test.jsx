@@ -86,11 +86,28 @@ describe('PantrySection', () => {
 
     await screen.findByText(/Confirmado pela Carol · ajusta se precisares/);
     expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ mode: 'pantry_food', description: 'Pão de mistura do Lidl, uma fatia de 40 g' });
+    // 2026-10-05: a Carol não deu micronutrientes — diz quais faltam, sem inventar zeros.
+    expect(screen.getByTestId('pantry-micros')).toHaveTextContent('Micronutrientes por confirmar: fibra, açúcar, sódio, ferro, cálcio, vitamina C e potássio. A Carol completa-os quando registares este alimento numa refeição.');
     fireEvent.change(screen.getByLabelText('proteína g por 100 g'), { target: { value: '11' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     await waitFor(() => expect(mocks.calls.find((c) => c.op === 'upsert')).toBeTruthy());
-    expect(mocks.calls.find((c) => c.op === 'upsert').row).toMatchObject({ name: 'Pão de mistura (Lidl)', protein_per_100g: 11, edited_by_athlete: true, in_pantry: true });
+    expect(mocks.calls.find((c) => c.op === 'upsert').row).toMatchObject({ name: 'Pão de mistura (Lidl)', protein_per_100g: 11, edited_by_athlete: true, in_pantry: true, fiber_per_100g: null });
+  });
+
+  it('a ajustar: diz que micronutrientes faltam — um só, no singular; todos, "os 7 conhecidos"', () => {
+    const micros = { fiber_per_100g: 10, sugar_per_100g: 1, sodium_per_100g: 6, iron_mg_per_100g: 4, calcium_mg_per_100g: 50, vitamin_c_mg_per_100g: null, potassium_mg_per_100g: 400 };
+    useAppStore.setState({ pantryFoods: [{ ...FOODS[0], ...micros }] });
+    const { unmount } = render(<PantrySection />);
+    fireEvent.click(screen.getByRole('button', { name: /Aveia em flocos/ }));
+    expect(screen.getByTestId('pantry-micros')).toHaveTextContent('Micronutriente por confirmar: vitamina C. A Carol completa-o quando');
+    unmount();
+    // Um 0 numa linha marcada é dado.
+    const NOW = '2026-10-05T10:00:00.000Z';
+    useAppStore.setState({ pantryFoods: [{ ...FOODS[0], ...micros, vitamin_c_mg_per_100g: 0, micros_checked_at: NOW, updated_at: NOW }] });
+    render(<PantrySection />);
+    fireEvent.click(screen.getByRole('button', { name: /Aveia em flocos/ }));
+    expect(screen.getByTestId('pantry-micros')).toHaveTextContent('Micronutrientes: os 7 conhecidos.');
   });
 
   it('tocar num alimento abre-o para ajustar, e dá para o tirar da despensa', async () => {

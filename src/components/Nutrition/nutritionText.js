@@ -117,3 +117,32 @@ export function trainingText(t) {
 export function weekdayCount(idx, n) {
   return `${n} ${n === 1 ? WD_LONG[idx] : WD_PLURAL[idx]}`;
 }
+
+/**
+ * A nota dos dias "provavelmente incompletos" (2026-10-05): continuam nas
+ * contas, mas alguns podem ter refeições por registar.
+ *   ({ n: 2, of: 3 }) → "2 dos 3 dias parecem ter refeições por registar."
+ * Sem nenhum, ou sem dias com refeições, não há nota.
+ */
+export function incompleteDaysNote(incomplete) {
+  const n = incomplete?.n ?? 0;
+  const of = incomplete?.of ?? 0;
+  if (n <= 0 || of <= 0) return null;
+  if (of === 1) return 'O dia parece ter refeições por registar.';
+  if (n === of) return `Os ${of} dias parecem ter refeições por registar.`;
+  return `${n} dos ${of} ${n === 1 ? 'dias parece' : 'dias parecem'} ter refeições por registar.`;
+}
+
+/**
+ * O cabeçalho da coluna das médias com os dias a que se refere:
+ *   "Média por dia registado (3 dias: 1–3 out)"
+ * `range` é { first, last } (os dias com refeições); sem dias não há intervalo.
+ */
+export function averageHeaderText(count, range, todayISO) {
+  const dias = `${count} ${count === 1 ? 'dia' : 'dias'}`;
+  if (!range || count <= 0) return `Média por dia registado (${dias})`;
+  // Travessão sem espaços só quando é o mesmo mês ("1–3 out"); com datas de dois
+  // meses ("28 set – 3 out") os espaços mantêm-se, como no resto da app (2026-10-05).
+  const span = rangeText(range.first, range.last, todayISO).replace(/^(\d+) – /, '$1–');
+  return `Média por dia registado (${dias}: ${span})`;
+}

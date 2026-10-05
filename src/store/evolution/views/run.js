@@ -25,7 +25,7 @@ import {
 import { calculateRaceTrainingPlan } from '../../../utils/racePlanEngine';
 import { runVerdict } from '../../../utils/verdicts/run';
 import { fmtDatePt } from '../../../utils/verdicts/shared';
-import { whereOf } from '../../../components/BI/period/periodText';
+import { whereOf, pickFallbackPeriod, closedWeekStarts, nextWeekCloseISO, shortPeriodName } from '../../../components/BI/period/periodText';
 
 /**
  * Vista da Corrida por período de calendário (2026-10-04, fase 5 do plano da
@@ -116,27 +116,30 @@ function windowStats(runs, from, to) {
   return { from, to, count, km, daysWithRun: days.size, paceSec: paceKm > 0 ? paceSec / paceKm : null, withTime };
 }
 
-/** Média de km por semana sobre as semanas seg–dom INTEIRAS dentro de
- *  [from, to] (uma semana a meio do período, ou antes do 1.º registo, não é
- *  uma semana: puxava a média para baixo com dias que não existiram). */
-function weeklyAverage(runs, from, to) {
-  if (!from || !to || from > to) return { weeks: 0, avgKm: null };
-  const loads = new Map();
+/** Média de km por semana sobre as semanas seg–dom FECHADAS que TOCAM
+ *  [start, end] (2026-10-05, limiares R4). Antes só contavam as INTEIRAS dentro
+ *  do período: outubro só tinha a 1.ª a 11 out e a linha ficava vazia mais de
+ *  metade do mês. A semana que cruza a fronteira (28 set – 4 out) é uma semana
+ *  completa de corridas e conta para os dois meses — o km dela é o da semana
+ *  toda, não só dos dias de outubro, e o ecrã di-lo ("em 3 semanas (28 set –
+ *  18 out)"). Uma semana que começa antes do 1.º registo não conta. */
+function weeklyAverage(runs, start, end, todayISO, dataStartISO) {
+  const starts = closedWeekStarts(start, end, todayISO, dataStartISO);
+  if (!starts.length) return { weeks: 0, avgKm: null, range: null };
+  const loads = new Map(starts.map((m) => [m, 0]));
   for (const r of runs) {
     const d = dayOf(r);
-    if (!d || d < from || d > to) continue;
+    if (!d) continue;
     const m = mondayOf(d);
-    loads.set(m, (loads.get(m) || 0) + (Number(r.distance_km) || 0));
+    if (loads.has(m)) loads.set(m, loads.get(m) + (Number(r.distance_km) || 0));
   }
-  let first = mondayOf(from);
-  if (first < from) first = addDaysISO(first, 7);
-  let weeks = 0;
   let sum = 0;
-  for (let m = first; addDaysISO(m, 6) <= to; m = addDaysISO(m, 7)) {
-    weeks++;
-    sum += loads.get(m) || 0;
-  }
-  return { weeks, avgKm: weeks > 0 ? sum / weeks : null };
+  for (const v of loads.values()) sum += v;
+  return {
+    weeks: starts.length,
+    avgKm: sum / starts.length,
+    range: fmtRange(starts[0], addDaysISO(starts[starts.length - 1], 6), todayISO),
+  };
 }
 
 // ── ACWR por semanas fechadas (R1) ────────────────────────────────────────
@@ -278,15 +281,7 @@ function distanceBars(runs, closedDays, kind) {
 
 // ── O nome curto do período anterior, para "face a …" ─────────────────────
 
-function shortName(title, kind, todayISO) {
-  const t = String(title || '').trim();
-  if (!t) return '';
-  if (kind === 'mes') {
-    const [name, year] = t.split(' ');
-    return year && Number(year) === Number(todayISO.slice(0, 4)) ? name : t;
-  }
-  return t.charAt(0).toLowerCase() + t.slice(1);
-}
+const shortName = shortPeriodName;
 
 // ── A vista ───────────────────────────────────────────────────────────────
 
@@ -319,7 +314,9 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
   const closedRuns = from ? runs.filter((r) => { const d = dayOf(r); return d && d >= from && d <= to; }) : [];
 
   const cur = windowStats(runs, from, to);
-  const weekly = kind === 'semana' ? { weeks: 0, avgKm: null } : weeklyAverage(runs, from, to);
+  const weekly = kind === 'semana'
+    ? { weeks: 0, avgKm: null, range: null, nextCloseISO: null }
+    : { ...weeklyAverage(runs, period.start, period.end, todayISO, dataStartISO), nextCloseISO: nextWeekCloseISO(period.start, period.end, todayISO, dataStartISO) };
 
   // ── O período anterior, equivalente e fechado (R5) ──
   const prevLabelFull = periodLabel(previous, todayISO);
@@ -327,6 +324,21 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
   const prevCoverage = !dataStartISO || dataStartISO > previous.end ? 'none' : dataStartISO > previous.start ? 'partial' : 'full';
   // Resumo completo do anterior (para "setembro: 9 corridas · 62 km · Ver setembro").
   const prevFull = prevCoverage === 'none' ? null : windowStats(runs, maxISO(previous.start, dataStartISO), previous.end);
+  /* A janela da comparação, UMA para o ▲/▼ e para o VDOT (R5, 2026-10-05): o período
+     em análise é sempre a dos KPIs (do 1.º ao último dia fechado) e só o anterior
+     se corta ao mesmo número de dias. Antes o VDOT comparava o atual até hoje com o
+     anterior inteiro. */
+  const cmp = prevCoverage === 'full' && closedDays.length > 0
+    ? (() => {
+      const nPrev = Math.min(closedDays.length, previous.totalDays);
+      return {
+        days: nPrev,
+        prevFrom: previous.start,
+        prevTo: addDaysISO(previous.start, nPrev - 1),
+        full: nPrev === previous.totalDays,
+      };
+    })()
+    : null;
   let delta = null;
   if (prevCoverage === 'full' && earlyState === 'ok' && cur.count + (prevFull?.count || 0) > 0) {
     // A janela do período em análise é SEMPRE a dos KPIs (do 1.º ao último dia
@@ -335,14 +347,13 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
     // setembro dava "= igual a setembro" com o KPI a dizer 2 corridas. Se o
     // atual tem mais dias do que o anterior, compara-se inteiro com inteiro
     // (como o mock-up: "▲ agosto: 11 de 29") e o rótulo é o nome do período.
-    const n = closedDays.length;
-    const nPrev = Math.min(n, previous.totalDays);
-    const prevEnd = addDaysISO(previous.start, nPrev - 1);
+    const nPrev = cmp.days;
+    const prevEnd = cmp.prevTo;
     const c = windowStats(runs, from, to);
     const p = windowStats(runs, previous.start, prevEnd);
-    const full = nPrev === previous.totalDays;
-    // Média semanal do anterior sobre a MESMA janela do rótulo.
-    const pw = kind === 'semana' ? { weeks: 0, avgKm: null } : weeklyAverage(runs, previous.start, prevEnd);
+    const full = cmp.full;
+    // Média semanal do anterior sobre a MESMA janela do rótulo (semanas que a tocam).
+    const pw = kind === 'semana' ? { weeks: 0, avgKm: null } : weeklyAverage(runs, previous.start, prevEnd, todayISO, dataStartISO);
     delta = {
       label: full ? prevName : fmtRange(previous.start, prevEnd, todayISO),
       windowDays: nPrev,
@@ -369,9 +380,13 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
     const pts = vdotAll.filter((p) => p.date >= a && p.date <= b).map((p) => Number(p.vdot)).filter((v) => v > 0);
     return { n: pts.length, avg: pts.length ? pts.reduce((s, v) => s + v, 0) / pts.length : null };
   };
-  const vdotCur = from ? avgVdot(from, to) : { n: 0, avg: null };
-  const vdotPrev = avgVdot(previous.start, previous.end);
-  const vdotCompare = vdotCur.n >= MIN_VDOT_POINTS && vdotPrev.n >= MIN_VDOT_POINTS && prevCoverage !== 'none'
+  /* R5 (2026-10-05): o VDOT compara-se na MESMA base de dias dos dois lados (a
+     janela do ▲/▼) e só de um mês para cima: numa semana 3 treinos de qualidade
+     quase nunca acontecem, a tendência é "de sempre" e diz-se uma vez. Quando não
+     compara, diz porquê (vdotNote) em vez de a linha desaparecer sem explicação. */
+  const vdotCur = from && kind !== 'semana' ? avgVdot(from, to) : { n: 0, avg: null };
+  const vdotPrev = cmp && kind !== 'semana' ? avgVdot(cmp.prevFrom, cmp.prevTo) : { n: 0, avg: null };
+  const vdotCompare = vdotCur.n >= MIN_VDOT_POINTS && vdotPrev.n >= MIN_VDOT_POINTS && cmp
     ? {
         current: vdotCur.avg, previous: vdotPrev.avg, nCurrent: vdotCur.n, nPrevious: vdotPrev.n,
         previousLabel: prevName,
@@ -380,6 +395,18 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
         currentWhere: whereOf(kind, periodLabel(period, todayISO).title, period.isCurrent),
       }
     : null;
+
+  const vdotNote = (() => {
+    if (vdotCompare || vdotAll.length === 0 || beforeData) return null;
+    if (kind === 'semana') return 'A comparação do VDOT é por mês ou mais.';
+    if (closedDays.length === 0) return null;
+    if (prevCoverage === 'none') return 'Ainda não há período anterior para comparar o VDOT.';
+    if (prevCoverage === 'partial') return `${prevName.charAt(0).toUpperCase()}${prevName.slice(1)} começou antes do teu primeiro registo — o VDOT só se compara com o período anterior inteiro.`;
+    const unit = { mes: 'mês', trimestre: 'trimestre', ano: 'ano' }[kind] || 'período';
+    const curName = shortName(periodLabel(period, todayISO).title, kind, todayISO);
+    const prevTxt = cmp.full ? prevName : `${prevName} (${fmtRange(cmp.prevFrom, cmp.prevTo, todayISO)})`;
+    return `Para comparar o VDOT preciso de ${MIN_VDOT_POINTS} treinos de qualidade em cada ${unit} — ${curName} vai em ${vdotCur.n}, ${prevTxt} teve ${vdotPrev.n}.`;
+  })();
 
   const runsComTempo = runs.filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0);
   const focus = focusRace(raceEvents || [], todayISO);
@@ -397,8 +424,48 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
   // ── Dentro do período ──
   const level = profile?.experience_level || 'medio';
   const distribution = calculateTrainingDistribution(closedRuns, level);
-  const zoneRuns = closedRuns.filter((r) => (r?.details?.hr_zones || []).some((z) => Number(z?.minutes) > 0)).length;
+  const hasZones = (r) => (r?.details?.hr_zones || []).some((z) => Number(z?.minutes) > 0);
+  const zoneRuns = closedRuns.filter(hasZones).length;
   const scatter = calculatePaceVsHR(closedRuns);
+
+  /* ── R2/R3 (2026-10-05): "0 neste período" não é "0 de sempre". Com corridas com
+     zonas/FC noutro período a vista diz a última e onde há as 3 que chegam. ── */
+  const hrOf = (r) => calculatePaceVsHR([r]).length > 0;
+  /* Só contam corridas até ONTEM (a mesma régua dos dias fechados de zoneRuns e
+     scatter): uma corrida com relógio feita HOJE ainda não entra na distribuição,
+     e dizer "a última foi a 5 out" num período que acaba de dizer que não tem
+     zonas seria falso (revisão 2026-10-05). */
+  const yesterdayISO = addDaysISO(todayISO, -1);
+  const pastRuns = runs.filter((r) => { const d = dayOf(r); return d && d <= yesterdayISO; });
+  const lastWith = (pred) => {
+    let best = null;
+    for (const r of pastRuns) { const d = dayOf(r); if (pred(r) && (!best || d > best)) best = d; }
+    return best;
+  };
+  const zonesEver = { count: pastRuns.filter(hasZones).length, lastDate: lastWith(hasZones) };
+  const hrEver = { count: pastRuns.filter(hrOf).length, lastDate: lastWith(hrOf) };
+  const countRunsIn = (pred) => (f, t) => {
+    let n = 0;
+    const end = t < yesterdayISO ? t : yesterdayISO;
+    for (const r of pastRuns) { const d = dayOf(r); if (d >= f && d <= end && pred(r)) n++; }
+    return n;
+  };
+  const pickFb = (min, countIn) => pickFallbackPeriod({ kind, offset, todayISO, dataStartISO, min, countIn });
+  const periodOfFb = (fb) => (fb.type === 'prev' ? previous : calendarPeriod(fb.kind, todayISO, fb.offset || 0));
+  const fallbacks = {
+    zones: zoneRuns < MIN_RUNS_FOR_ZONES && zonesEver.count >= MIN_RUNS_FOR_ZONES ? pickFb(MIN_RUNS_FOR_ZONES, countRunsIn(hasZones)) : null,
+    efficiency: scatter.length < MIN_RUNS_FOR_EFFICIENCY && hrEver.count >= MIN_RUNS_FOR_EFFICIENCY ? pickFb(MIN_RUNS_FOR_EFFICIENCY, countRunsIn(hrOf)) : null,
+    // Qualquer corrida: o período vazio / "cedo" dizem onde há (R10) e levam lá.
+    data: cur.count === 0 || earlyState === 'cedo'
+      ? (() => {
+        const fb = pickFb(1, countRunsIn(() => true));
+        if (!fb) return null;
+        const p = periodOfFb(fb);
+        const st = windowStats(runs, dataStartISO && dataStartISO > p.start ? dataStartISO : p.start, p.lastClosed);
+        return { ...fb, count: st.count, km: st.km };
+      })()
+      : null,
+  };
   const bars = distanceBars(runs, closedDays, kind);
   const watch = watchMetricsOf(closedRuns);
 
@@ -471,9 +538,13 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
     weeklyAcwr: weeklyData,
     distribution,
     zoneRuns,
+    zonesEver,
+    hrEver,
+    fallbacks,
     scatter,
     vdotTrend: vdotAll,
     vdotCompare,
+    vdotNote,
     racePrediction,
     records,
     bars,

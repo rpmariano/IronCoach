@@ -64,6 +64,41 @@ describe('useCarouselHaptics hook', () => {
     expect(scrollRef.current.scrollTo).toHaveBeenCalledWith({ left: 300, behavior: 'smooth' });
   });
 
+  /* 2026-10-05 (A1): o destino do salto usa a largura FRACIONÁRIA. Com o
+     offsetWidth arredondado (379) num carrossel de 379,43 px o salto ia para
+     1516 em vez de 1517,72 e o separador do fim nunca contava como assente. */
+  it('scrollTo usa a largura fracionária (Pixel, 379,43 px)', () => {
+    window.navigator.vibrate = vi.fn().mockReturnValue(true);
+    const scrollRef = {
+      current: {
+        offsetWidth: 379,
+        getBoundingClientRect: () => ({ width: 379.43 }),
+        scrollLeft: 0,
+        scrollTo: vi.fn(),
+      },
+    };
+    const { result } = renderHook(() => useCarouselHaptics(scrollRef, 5, 0, vi.fn()));
+    act(() => { result.current.scrollTo(4); });
+    const { left } = scrollRef.current.scrollTo.mock.calls[0][0];
+    expect(left).toBeCloseTo(4 * 379.43, 5);
+  });
+
+  it('o índice do deslize também usa a largura fracionária', () => {
+    window.navigator.vibrate = vi.fn().mockReturnValue(true);
+    // 3,5 páginas de 411,43 px = 1440,0 — com 411 dava 3,504 → 4.
+    const scrollRef = {
+      current: {
+        offsetWidth: 411,
+        getBoundingClientRect: () => ({ width: 411.43 }),
+        scrollLeft: 1439.9,
+      },
+    };
+    const setCurrentIndex = vi.fn();
+    const { result } = renderHook(() => useCarouselHaptics(scrollRef, 5, 0, setCurrentIndex));
+    act(() => { result.current.handleScroll(); });
+    expect(setCurrentIndex).toHaveBeenCalledWith(3);
+  });
+
   it('triggers haptic on touchmove when index changes', () => {
     const vibrateMock = vi.fn().mockReturnValue(true);
     window.navigator.vibrate = vibrateMock;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gymVerdict, gymFrequencyStatus } from './gym';
+import { gymVerdict, gymFrequencyStatus, gymMinClosedWeeks } from './gym';
 import { NO_DATA_TEXT } from './shared';
 import { expectCarolVoice } from '../../test/carolVoice';
 
@@ -50,11 +50,28 @@ describe('G2: semanas fechadas, não as semanas nominais do filtro', () => {
     expect(v.text).toBe('Só 1 semana fechada neste trimestre — ainda é cedo para conclusões.');
   });
 
-  it('com 2 semanas fechadas continua a ser cedo, com o plural certo', () => {
-    const v = gymVerdict(mes({ closedWeeks: 2, strengthInWeeks: 1, weeklyLoads: [100, 0] }));
+  it('num trimestre, com 2 semanas fechadas continua a ser cedo, com o plural certo', () => {
+    const v = gymVerdict(mes({ kind: 'trimestre', scope: 'em jul – set 2026', closedWeeks: 2, strengthInWeeks: 1, weeklyLoads: [100, 0] }));
     expect(v.early).toBe(true);
-    expect(v.text).toBe('Só 2 semanas fechadas em setembro — ainda é cedo para conclusões.');
+    expect(v.text).toBe('Só 2 semanas fechadas em jul – set 2026 — ainda é cedo para conclusões.');
     expectCarolVoice(v.text);
+  });
+
+  it('G2 (2026-10-05): o mínimo de semanas fechadas é 2 no mês e 3 no trimestre e no ano', () => {
+    expect(gymMinClosedWeeks('mes')).toBe(2);
+    expect(gymMinClosedWeeks('trimestre')).toBe(3);
+    expect(gymMinClosedWeeks('ano')).toBe(3);
+    // Mês: 1 semana é cedo, 2 já avaliam.
+    expect(gymVerdict(mes({ closedWeeks: 1, strengthInWeeks: 2, weeklyLoads: [100] })).early).toBe(true);
+    const dois = gymVerdict(mes({ closedWeeks: 2, strengthInWeeks: 4, weeklyLoads: [100, 100] }));
+    expect(dois.early).toBeUndefined();
+    expect(dois.text).toContain('sessões de força por semana em duas semanas fechadas');
+  });
+
+  it('M2: o "cedo" junta onde estão os dados, quando a vista os dá', () => {
+    const v = gymVerdict(mes({ closedWeeks: 1, strengthInWeeks: 2, weeklyLoads: [100], earlyHint: 'Em setembro: 3 de 4 semanas com 2+ treinos de força.' }));
+    expect(v.text).toBe('Só 1 semana fechada em setembro — ainda é cedo para conclusões. Em setembro: 3 de 4 semanas com 2+ treinos de força.');
+    expect(v.early).toBe(true);
   });
 
   it('só avalia a frequência com 3+ semanas fechadas, dividindo as sessões DESSAS semanas', () => {

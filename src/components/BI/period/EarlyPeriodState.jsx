@@ -31,6 +31,12 @@ import { earlyVerdict, kindText, toneOf, viewPreviousLabel } from './periodText'
  *   previousSummary  "Semana passada (28 set – 4 out): 2 300 kcal/dia · …"
  *   cal              para o "cedo": dias fechados e "em outubro" vêm daqui
  *   earlyText        substitui a frase do "cedo"
+ *   onAction / actionLabel
+ *                    (2026-10-05, limiares M5) a saída para o período onde os
+ *                    dados já estão ("Ver setembro ›", "Ver o ano ›"). No "cedo"
+ *                    é o botão por baixo da frase; no "a começar" substitui o
+ *                    "Ver mês passado" (quando o anterior não tem nada e o Ano
+ *                    tem, é o Ano que se oferece). Botão ≥44 px na cor do módulo.
  */
 const btnBase = {
   minHeight: 'var(--tap)',
@@ -56,13 +62,33 @@ export default function EarlyPeriodState({
   previousSummary,
   cal,
   earlyText,
+  onAction,
+  actionLabel,
   className = '',
   style,
 }) {
+  const hasAction = typeof onAction === 'function' && !!actionLabel;
   if (state === 'cedo') {
     // Sem `cal` não se sabe quantos dias há: nunca escrever "Só 0 dias fechados".
     const msg = earlyText || (cal?.period ? earlyVerdict(cal).text : 'Ainda é cedo para conclusões.');
-    return <VerdictLine text={msg} tone="neutral" className={className} style={style} data-testid="early-cedo" />;
+    if (!hasAction) {
+      return <VerdictLine text={msg} tone="neutral" className={className} style={style} data-testid="early-cedo" />;
+    }
+    const t = toneOf(module);
+    return (
+      <div className={className} style={style}>
+        <VerdictLine text={msg} tone="neutral" data-testid="early-cedo" />
+        <button
+          type="button"
+          data-testid="early-action"
+          onClick={onAction}
+          style={{ ...btnBase, marginTop: 8, background: t.bg, border: `1px solid ${t.bd}`, color: t.color }}
+        >
+          {actionLabel}
+          <ChevronRight size={14} strokeWidth={2.4} aria-hidden="true" />
+        </button>
+      </div>
+    );
   }
   if (state !== 'a_comecar') return null;
 
@@ -97,7 +123,7 @@ export default function EarlyPeriodState({
           {text}
         </p>
       )}
-      {(onViewToday || onViewPrevious) && (
+      {(onViewToday || onViewPrevious || hasAction) && (
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 16, flexWrap: 'wrap' }}>
           {onViewToday && (
             <button
@@ -109,10 +135,10 @@ export default function EarlyPeriodState({
               <ChevronRight size={14} strokeWidth={2.4} aria-hidden="true" />
             </button>
           )}
-          {onViewPrevious && (
+          {(hasAction || onViewPrevious) && (
             <button
               type="button"
-              onClick={onViewPrevious}
+              onClick={hasAction ? onAction : onViewPrevious}
               style={{
                 ...btnBase,
                 background: 'transparent',
@@ -120,7 +146,7 @@ export default function EarlyPeriodState({
                 color: 'var(--text-2)',
               }}
             >
-              {viewPreviousLabel(kind)}
+              {hasAction ? actionLabel : viewPreviousLabel(kind)}
               <ChevronRight size={14} strokeWidth={2.4} aria-hidden="true" />
             </button>
           )}

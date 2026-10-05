@@ -41,6 +41,25 @@ describe('StackedAreaChart — C3', () => {
     expect(screen.queryByText(/Preciso de 2/)).not.toBeInTheDocument();
   });
 
+  /* C4 (2026-10-05): sem evolução neste período mas com num maior — o botão leva lá. */
+  it('`emptyAction`: botão de 44 px ao lado do rodapé, que chama onClick', () => {
+    const onClick = vi.fn();
+    render(<StackedAreaChart
+      data={{ dates: ['2026-09-20'], fatMassKg: [15.4], leanMassKg: [61.6] }}
+      emptyText="Só houve 1 avaliação com gordura medida em setembro — a evolução precisa de 2. No 3.º trimestre há 3:"
+      emptyAction={{ label: 'Ver trimestre', onClick }}
+    />);
+    const btn = screen.getByRole('button', { name: /Ver trimestre/ });
+    expect(btn.style.minHeight).toBe('var(--tap)');
+    btn.click();
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem `emptyAction`, nem botão', () => {
+    render(<StackedAreaChart data={{ dates: ['2026-09-20'], fatMassKg: [15.4], leanMassKg: [61.6] }} />);
+    expect(screen.queryByRole('button', { name: /Ver/ })).not.toBeInTheDocument();
+  });
+
   it('pontos sem gordura (0 ou NaN) que cheguem de outra origem não contam', () => {
     render(<StackedAreaChart data={{
       dates: ['2026-08-01', '2026-09-01', '2026-10-01'],

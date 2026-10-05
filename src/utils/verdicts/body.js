@@ -21,6 +21,19 @@
  *   weightTrend), uma só pesagem no período já não esconde o ritmo.
  * - O que falta diz-se com os números da janela: a quem tem 7 pesagens em 6
  *   dias não se pede "três pesagens".
+ *
+ * 2026-10-05 (pedido do dono e auditoria dos limiares, C2) — só com `period`
+ * (o separador Corpo); sem ele as frases são as de sempre:
+ * - "Preciso de três pesagens espalhadas por pelo menos 10 dias" numa semana
+ *   lia-se como impossível. No período em curso diz-se o que falta em
+ *   concreto, com `trendNeed` (weightTrendNeed): "Nesta semana só há uma
+ *   pesagem, de 76,2 kg; para a tendência preciso de mais duas até 4 out."
+ * - Duas pesagens: o facto em vez do pedido, ao lado do gráfico que já mostra
+ *   a direção — "Desceste 1,1 kg em 12 dias (≈0,6 kg por semana). Com só 2
+ *   pesagens é uma estimativa pouco fiável — mais uma pesagem e passo a
+ *   dar-te a tendência a sério." (`weightEstimate`, calculada na vista).
+ * - O veredicto diz o facto e o que falta; a REGRA (14 dias, 3 em 10) fica
+ *   só no rodapé do gráfico — antes as duas frases diziam a mesma falta.
  */
 
 import { fmtNumber, spellFem, capitalize, fmtVsLimit, NO_DATA } from './shared';
@@ -31,13 +44,60 @@ const dia = (iso) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
   return m ? `${Number(m[3])} ${MESES[Number(m[2]) - 1]}` : '';
 };
+/** "entre 11 e 15 out" / "entre 28 set e 2 out" (2026-10-05). */
+const entreDias = (a, b) => (String(a).slice(0, 7) === String(b).slice(0, 7)
+  ? `entre ${Number(String(a).slice(8, 10))} e ${dia(b)}`
+  : `entre ${dia(a)} e ${dia(b)}`);
 const diasEntre = (a, b) => Math.round((Date.parse(`${String(b).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(a).slice(0, 10)}T00:00:00Z`)) / 86400000);
+/** "0,6%" ou "0,51%" (fmtVsLimit); colado ao máximo até à 2.ª casa, "um pouco
+ *  mais de 0,5%". 2026-10-05: a verificação no browser apanhou "0,504% do peso
+ *  por semana" — três casas só para não dizer "0,5%" contra "o máximo é 0,5%".
+ *  `isTooFast` garante que o valor está ACIMA do máximo. */
+const pctVsMax = (v, max) => (Math.round(Number(v) * 100) === Math.round(Number(max) * 100) && Number(v) > Number(max)
+  ? `um pouco mais de ${fmtNumber(Number(max), 1)}%`
+  : `${fmtVsLimit(v, max)}%`);
 /** Uma última pesagem com mais dias do que isto já não é "agora". */
 export const BODY_VERDICT_RECENT_DAYS = 14;
 /** Mudança do período inteiro (primeira → última pesagem) a partir da qual
  *  «esteve estável» deixa de ser verdade num período fechado (2026-10-04):
  *  acima do ruído de dia para dia de uma balança doméstica (água, sal). */
 export const PERIOD_CHANGE_MIN_KG = 1;
+/** Abaixo disto (kg) duas pesagens contam como iguais: o ruído de manhã para
+ *  manhã de uma balança doméstica (o mesmo `noise` do peso em utils/body.js). */
+const WEIGHT_NOISE_KG = 0.5;
+
+/**
+ * "para a tendência preciso de mais duas até 4 out" — o que falta, a partir de
+ * weightTrendNeed (2026-10-05). Sem `need`, a regra por extenso.
+ */
+export function trendNeedText(need) {
+  if (!need || !(need.more > 0)) return 'para a tendência preciso de três pesagens espalhadas por pelo menos 10 dias';
+  if (need.fresh || need.until == null) {
+    /* Nenhuma das pesagens que tens conta: três novas, a 1.ª em `start` e a
+       última 10 a 14 dias depois (revisão de 2026-10-05: "a última a partir
+       de 15 out" não tinha limite, mas a janela é de 14 dias). Sem nenhuma
+       pesagem a contar, `start` é sempre hoje (uma de hoje contaria). */
+    const ultima = need.until == null || need.until === need.from ? `a ${dia(need.from)}` : entreDias(need.from, need.until);
+    return `para a tendência preciso de três pesagens em 10 a 14 dias — a primeira hoje, a última ${ultima}`;
+  }
+  const mais = `mais ${need.more === 1 ? 'uma' : spellFem(need.more)}`;
+  if (need.from <= need.start) return `para a tendência preciso de ${mais} até ${dia(need.until)}`;
+  const quando = need.from === need.until ? `a ${dia(need.from)}` : entreDias(need.from, need.until);
+  return `para a tendência preciso de ${mais}, a última ${quando}`;
+}
+
+/** "Desceste 1,1 kg em 12 dias (≈0,6 kg por semana)" — a estimativa com poucas pesagens. */
+function estimateFact(est, { Em = '' } = {}) {
+  const d = Number(est.diff);
+  const dias = `${est.days} ${est.days === 1 ? 'dia' : 'dias'}`;
+  if (Math.abs(d) < WEIGHT_NOISE_KG) {
+    return `${Em ? Em : ''}${Em ? 'e' : 'E'}ntre a primeira e a última pesagem o peso quase não mexeu: ${fmtNumber(est.first.weight, 1)} e ${fmtNumber(est.last.weight, 1)} kg, em ${dias}.`;
+  }
+  const verbo = d < 0 ? 'desceste' : 'subiste';
+  const ritmo = est.weeklyRate != null ? ` (≈${fmtNumber(Math.abs(est.weeklyRate), 1)} kg por semana)` : '';
+  const frase = `${verbo} ${fmtNumber(Math.abs(d), 1)} kg em ${dias}${ritmo}.`;
+  return Em ? `${Em}${frase}` : capitalize(frase);
+}
 
 /**
  * @param {object} input
@@ -72,6 +132,8 @@ export function bodyVerdict({
   goalWeight = null,
   lastOutside = null,
   todayISO = null,
+  weightEstimate: estimateIn = undefined,
+  trendNeed = null,
 } = {}) {
   const where = period?.where || null;
   const points = weightTrend?.rawPoints || [];
@@ -108,6 +170,58 @@ export function bodyVerdict({
   // Ritmo medido no histórico até à última pesagem (≥3 na janela): conta
   // mesmo com uma só pesagem no período.
   const hasHistoryRate = weightTrend.sufficient === true && weightTrend.weeklyRate != null && inWindow >= 3;
+
+  /* Separador Corpo, sem tendência (2026-10-05): o facto e o que falta em
+     concreto, nunca a regra solta (essa vai no rodapé do gráfico). */
+  if (period && !hasHistoryRate && weightTrend.sufficient !== true) {
+    const n = points.length;
+    const first = Number(points[0].weight);
+    const last = Number(points[n - 1].weight);
+    // Fechado = já não se completa. Um período em curso com a última pesagem
+    // velha (`stale`) ainda se completa: diz-se o que falta a partir de hoje.
+    const closed = period.isCurrent === false;
+    const falta = closed ? null : trendNeedText(trendNeed);
+    const havia = Number.isFinite(span) && inWindow > 1
+      ? `nas duas semanas até ${dia(lastDate)} havia ${inWindow}, em ${span} ${span === 1 ? 'dia' : 'dias'} — a tendência precisa de três em pelo menos 10 dias`
+      : `nas duas semanas até ${dia(lastDate)} não havia outras — a tendência precisa de três em pelo menos 10 dias`;
+    if (n === 1) {
+      const abre = hasWeighInsOutside
+        ? (where ? `${capitalize(where)} só há uma pesagem` : 'Neste período só há uma pesagem')
+        : 'Só tenho uma pesagem';
+      return { text: `${abre}, de ${fmtNumber(first, 1)} kg; ${falta || havia}.`, tone: 'neutral' };
+    }
+    const est = estimateIn !== undefined ? estimateIn : null;
+    if (n === 2 && est) {
+      const Em = closed && where ? `${capitalize(where)}, ` : stale ? `Até ${dia(lastDate)}, ` : '';
+      const facto = estimateFact(est, { Em });
+      if (closed) return { text: `${facto} Com só duas pesagens é uma estimativa pouco fiável.`, tone: 'neutral' };
+      let fecho;
+      if (trendNeed?.more === 1) {
+        const quando = trendNeed.until == null ? ''
+          : trendNeed.from <= trendNeed.start ? ` até ${dia(trendNeed.until)}`
+            : trendNeed.from === trendNeed.until ? ` a ${dia(trendNeed.from)}` : ` ${entreDias(trendNeed.from, trendNeed.until)}`;
+        fecho = `mais uma pesagem${quando} e passo a dar-te a tendência a sério`;
+      } else if (trendNeed && trendNeed.until == null) {
+        // As duas já não contam (velhas): começa de novo.
+        fecho = `para a tendência a sério preciso de três pesagens novas, espalhadas por pelo menos 10 dias, a última a partir de ${dia(trendNeed.from)}`;
+      } else {
+        fecho = `${trendNeedText(trendNeed).replace(/^para a tendência /, '')} para te dar a tendência a sério`;
+      }
+      return { text: `${facto} Com só duas pesagens é uma estimativa pouco fiável — ${fecho}.`, tone: 'neutral' };
+    }
+    const ambas = n === 2 ? 'ambas' : 'todas';
+    const intervalo = first === last ? `, ${ambas} de ${fmtNumber(first, 1)} kg` : `, de ${fmtNumber(first, 1)} a ${fmtNumber(last, 1)} kg`;
+    // ≥3 pesagens mas juntas, num período fechado: faltou espaço, não pesagens
+    // (revisão de 2026-10-04). No período em curso, o que falta em concreto.
+    const juntas = inWindow >= 3 && Number.isFinite(span) && span < 10
+      ? `nas duas semanas até à última havia ${inWindow}, em ${span} ${span === 1 ? 'dia' : 'dias'} — para a tendência eram precisos pelo menos 10 dias entre a primeira e a última`
+      : null;
+    const resto = closed ? (juntas || havia) : falta;
+    return {
+      text: `Tenho ${spellFem(n)} pesagens ${where}${intervalo}; ${resto}.`,
+      tone: 'neutral',
+    };
+  }
 
   if (points.length < 2 && !hasHistoryRate) {
     // 2026-10-04: com pesagens fora do período, "só tenho uma" era falso.
@@ -155,18 +269,18 @@ export function bodyVerdict({
     const limite = `${experienceLevel ? `Para o teu nível o máximo saudável é ${fmtNumber(loss.maxPct, 1)}%` : `Sem nível declarado, conto com um máximo de ${fmtNumber(loss.maxPct, 1)}%`}`;
     if (stale) {
       return {
-        text: `Até ${dia(lastDate)} perdias peso depressa demais: ${fmtVsLimit(loss.lossPct, loss.maxPct)}% do peso por semana (${fmtNumber(Math.abs(rate), 1)} kg). ${limite}; acima disso arrisca-se perder também massa magra.`,
+        text: `Até ${dia(lastDate)} perdias peso depressa demais: ${pctVsMax(loss.lossPct, loss.maxPct)} do peso por semana (${fmtNumber(Math.abs(rate), 1)} kg). ${limite}; acima disso arrisca-se perder também massa magra.`,
         tone: 'warn',
       };
     }
     if (past) {
       return {
-        text: `${Em}perdeste peso depressa demais: ${fmtVsLimit(loss.lossPct, loss.maxPct)}% do peso por semana (${fmtNumber(Math.abs(rate), 1)} kg). ${limite}; acima disso arrisca-se perder também massa magra.`,
+        text: `${Em}perdeste peso depressa demais: ${pctVsMax(loss.lossPct, loss.maxPct)} do peso por semana (${fmtNumber(Math.abs(rate), 1)} kg). ${limite}; acima disso arrisca-se perder também massa magra.`,
         tone: 'warn',
       };
     }
     return {
-      text: `Estás a perder peso depressa demais: ${fmtVsLimit(loss.lossPct, loss.maxPct)}% do peso por semana (${fmtNumber(Math.abs(rate), 1)} kg). ${limite}; acima disso arriscas perder também massa magra.`,
+      text: `Estás a perder peso depressa demais: ${pctVsMax(loss.lossPct, loss.maxPct)} do peso por semana (${fmtNumber(Math.abs(rate), 1)} kg). ${limite}; acima disso arriscas perder também massa magra.`,
       tone: 'danger',
     };
   }

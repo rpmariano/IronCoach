@@ -25,9 +25,9 @@ import { WEIGHT_TREND_MIN_POINTS, WEIGHT_TREND_MIN_SPAN_DAYS } from '@formulas/w
  *
  * 2026-10-04, revisão do Corpo:
  * - O ritmo e a linha vêm do histórico até à última pesagem do período (a
- *   vista corta a linha ao período); o rodapé do "falta" usa esses números
- *   e diz até que dia (antes contava só o período e dizia "nas duas semanas
- *   até à última pesagem" — facto errado no ecrã).
+ *   vista corta a linha ao período).
+ * - 2026-10-05: sem tendência, a linha passa a tracejada ("estimativa") e o
+ *   rodapé diz só a regra; o que falta em concreto é do veredicto.
  * - Perigo só com a última pesagem recente (`weight.recent`), como o veredicto.
  * - No período em curso o eixo vai até hoje (`end` = vista.axisEnd).
  *
@@ -126,22 +126,15 @@ export function BodyMetricChart({ metric, row, period, prevName, todayISO, end, 
 }
 
 /**
- * O que falta para o ritmo (C1/C2), com os números da janela do weightTrend:
- * as pesagens dos 14 dias até à última pesagem do período (`lastDate`),
- * contando as de antes do período.
+ * O rodapé do gráfico de peso sem tendência (2026-10-05, auditoria dos
+ * limiares C2): só a REGRA — que pesagens contam e quantas são precisas. O que
+ * falta em concreto ("preciso de mais duas até 4 out") é do veredicto; antes
+ * as duas frases diziam a mesma falta com palavras diferentes. Diz que as de
+ * antes do período contam: é isso que faz a regra caber numa semana.
  */
-export function weightMissingText(trend, lastDate = null, todayISO = null) {
-  const n = trend?.pointsInWindow ?? 0;
-  const span = trend?.spanDays ?? 0;
-  const ate = lastDate ? `nas duas semanas até ${fmtDayShort(lastDate, todayISO)}` : 'nas duas semanas até à última pesagem';
-  if (n >= WEIGHT_TREND_MIN_POINTS) {
-    // Pesagens chegam; falta espaço entre elas (7 pesagens numa semana).
-    return `Para a tendência preciso de pesagens espalhadas por pelo menos ${WEIGHT_TREND_MIN_SPAN_DAYS} dias — ${ate} há ${n} pesagens, em ${span} ${plural(span, 'dia', 'dias')}.`;
-  }
-  return `Preciso de ${WEIGHT_TREND_MIN_POINTS} pesagens em ${WEIGHT_TREND_MIN_SPAN_DAYS} dias para a tendência — `
-    + (n <= 1
-      ? `${ate} só há essa.`
-      : `${ate} há ${n} pesagens em ${span} ${plural(span, 'dia', 'dias')}.`);
+export function weightRuleText(estimate = null) {
+  const regra = `A tendência usa as pesagens das duas semanas até à última, também as de antes do período, e precisa de ${WEIGHT_TREND_MIN_POINTS} espalhadas por pelo menos ${WEIGHT_TREND_MIN_SPAN_DAYS} dias.`;
+  return estimate ? `${regra} Até lá, a linha tracejada liga só a primeira à última pesagem do período.` : regra;
 }
 
 /** O texto e o tom do ritmo semanal (null sem dados que cheguem). */
@@ -158,64 +151,94 @@ export function weightRateDelta(weight, { isCurrent = true } = {}) {
   };
 }
 
-/** Tendência de peso do período: pesagens soltas + linha (EWMA com ≥5). */
+const BODY_PINK = '#ff5fa8'; // --body (o canvas não resolve var(--x))
+// Referências estáveis (F5): um `[]` novo a cada render mudava `data` e fazia chart.update().
+const NO_POINTS = [];
+
+/**
+ * Tendência de peso do período (2026-10-05, revisão):
+ * - Com tendência (≥3 pesagens em ≥10 dias, weightTrend `sufficient`): a
+ *   linha cheia — EWMA com ≥5 pesagens no total, senão as pesagens ligadas.
+ * - Sem tendência, com 2+ pesagens no período: só uma reta TRACEJADA da 1.ª à
+ *   última, com a legenda "Estimativa · 2 pesagens". Antes desenhava-se a
+ *   linha cheia ao lado de "preciso de três pesagens": o gráfico afirmava
+ *   uma direção que o texto dizia não haver.
+ * - Uma pesagem: um ponto, sem linha nenhuma.
+ */
 export function WeightTrendChart({ weight, period, todayISO, end, toToday = false }) {
   const trend = weight?.trend;
-  const points = weight?.points || [];
-  const ewma = !!trend?.isEWMASmoothing;
-  const line = weight?.line || trend?.movingAverage || [];
+  const points = weight?.points || NO_POINTS;
+  const sufficient = !!weight?.sufficient;
+  const ewma = sufficient && !!trend?.isEWMASmoothing;
+  const estimate = sufficient ? null : weight?.estimate || null;
+  const line = sufficient ? (weight?.line || trend?.movingAverage || NO_POINTS) : NO_POINTS;
 
-  const data = useMemo(() => ({
-    datasets: [
-      {
-        label: ewma ? 'Tendência (EWMA)' : 'Evolução',
-        data: line.map((p) => ({ x: dayNumber(p.date), y: p.weight })),
-        borderColor: '#ff5fa8', // --body
-        borderWidth: 3,
-        pointRadius: 0,
-        tension: 0.4,
-        fill: false,
-      },
-      {
-        label: 'Pesagens',
-        data: points.map((p) => ({ x: dayNumber(p.date), y: p.weight })),
-        borderColor: 'transparent',
-        backgroundColor: 'rgba(255, 255, 255, 0.4)',
-        pointBackgroundColor: 'rgba(255, 255, 255, 0.4)',
-        pointRadius: 4,
-        borderWidth: 0,
-        tension: 0,
-        fill: false,
-        showLine: false,
-      },
-    ],
-  }), [line, points, ewma]);
+  const data = useMemo(() => {
+    const lineData = estimate
+      ? [estimate.first, estimate.last].map((p) => ({ x: dayNumber(p.date), y: p.weight }))
+      : line.map((p) => ({ x: dayNumber(p.date), y: p.weight }));
+    return {
+      datasets: [
+        {
+          label: estimate ? 'Estimativa' : ewma ? 'Tendência (EWMA)' : 'Evolução',
+          data: lineData,
+          borderColor: BODY_PINK,
+          borderWidth: estimate ? 2 : 3,
+          borderDash: estimate ? [6, 5] : undefined,
+          pointRadius: 0,
+          tension: estimate ? 0 : 0.4,
+          fill: false,
+        },
+        {
+          label: 'Pesagens',
+          data: points.map((p) => ({ x: dayNumber(p.date), y: p.weight })),
+          borderColor: 'transparent',
+          backgroundColor: 'rgba(255, 255, 255, 0.4)',
+          pointBackgroundColor: 'rgba(255, 255, 255, 0.4)',
+          pointRadius: 4,
+          borderWidth: 0,
+          tension: 0,
+          fill: false,
+          showLine: false,
+        },
+      ],
+    };
+  }, [line, points, ewma, estimate]);
 
   const raw = points.map((p) => p.weight);
   const latest = weight?.latest;
   const delta = weightRateDelta(weight, { isCurrent: period.isCurrent });
 
+  let info;
+  if (ewma) {
+    info = 'O peso flutua todos os dias com a água, o sal e o glicogénio (vês isso nos pontos soltos). A linha é uma média móvel que ignora esse ruído e mostra a tendência. O número grande é a tua última pesagem.';
+  } else if (sufficient) {
+    /* C3 (2026-10-05): "a partir de 5 pesagens" lia-se como 5 NESTE período;
+       a média móvel conta as pesagens de sempre. */
+    info = 'As tuas pesagens neste período, espaçadas pelas datas reais e ligadas por uma linha. A média móvel, que tira o ruído de dia para dia, aparece quando tiveres 5 pesagens no total.';
+  } else {
+    info = `As tuas pesagens neste período, espaçadas pelas datas reais. Sem ${WEIGHT_TREND_MIN_POINTS} pesagens em pelo menos ${WEIGHT_TREND_MIN_SPAN_DAYS} dias não há tendência${estimate ? ': a linha tracejada é só uma estimativa entre a primeira e a última' : ''}.`;
+  }
+
+  const legend = [];
+  if (estimate) legend.push({ label: `Estimativa · ${estimate.n} ${plural(estimate.n, 'pesagem', 'pesagens')}`, color: 'var(--body)', shape: 'dash' });
+  else if (line.length) legend.push({ label: ewma ? 'Tendência' : 'Evolução', color: 'var(--body)', shape: 'line' });
+  legend.push({ label: 'Pesagens', color: 'rgba(248,250,252,.4)' });
+
   return (
     <ChartFrame
       label={ewma ? 'Tendência de peso' : 'Evolução de peso'}
-      info={<MetricInfo text={
-        ewma
-          ? 'O peso flutua todos os dias com a água, o sal e o glicogénio (vês isso nos pontos soltos). A linha é uma média móvel que ignora esse ruído e mostra a tendência. O número grande é a tua última pesagem.'
-          : 'As tuas pesagens neste período, espaçadas pelas datas reais. A linha de tendência (média móvel) aparece a partir de 5 pesagens.'
-      } />}
+      info={<MetricInfo text={info} />}
       hint={`${raw.length} ${plural(raw.length, 'pesagem', 'pesagens')}${latest ? ` · última a ${fmtDayShort(latest.date, todayISO)}` : ''}${toToday ? ' · até hoje' : ''}`}
       value={latest ? fmtNumber(latest.weight, 1) : '—'}
       unit="kg"
       valueColor="var(--body)"
       delta={delta || undefined}
-      footer={weight?.sufficient ? undefined : weightMissingText(trend, latest?.date, todayISO)}
+      footer={sufficient ? undefined : weightRuleText(estimate)}
       axis={raw.length > 1
         ? { min: `${fmtNumber(Math.min(...raw), 1)} kg`, max: `${fmtNumber(Math.max(...raw), 1)} kg` }
         : undefined}
-      legend={[
-        { label: ewma ? 'Tendência' : 'Evolução', color: 'var(--body)', shape: 'line' },
-        { label: 'Pesagens', color: 'rgba(248,250,252,.4)' },
-      ]}
+      legend={legend}
       height={192}
     >
       <Line data={data} options={timeAxisOptions(period.start, end || period.end)} updateMode="period" />

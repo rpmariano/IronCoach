@@ -21,10 +21,16 @@ import {
 import { fmtNumber, fmtDatePt, NO_DATA } from '../../utils/verdicts/shared';
 import { formatPace } from '../../utils/run';
 import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
+import { useOpenInClosedPeriod } from '../../store/periodStore';
+import { fallbackAction } from '../BI/period/periodText';
 import { useEvolutionView } from '../../store/evolution/useEvolutionView';
 import {
   RUN_MIN_CLOSED, MIN_WEEKS_FOR_AVG, MIN_RUNS_FOR_ZONES, MIN_RUNS_FOR_EFFICIENCY, fmtRange,
 } from '../../store/evolution/views/run';
+
+const MONTHS_ABBR = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+/** "4 out" (de uma data AAAA-MM-DD). */
+const dayLabel = (iso) => `${Number(iso.slice(8, 10))} ${MONTHS_ABBR[Number(iso.slice(5, 7)) - 1]}`;
 
 /* Corrida por períodos de calendário (2026-10-04, fase 5 do plano da
    Evolução — R1, R5, R6, R10). A forma é a do mock-up aprovado da Nutrição:
@@ -101,6 +107,19 @@ const cardTitle = {
 };
 const cardHint = { fontSize: 'var(--text-xs)', color: 'var(--text-4)', whiteSpace: 'nowrap', flexShrink: 0 };
 
+/* O texto de um bloco que precisa de N corridas com um dado (zonas de FC, FC média).
+   Três casos (R2/R3, 2026-10-05): nunca as teve → o convite a registar; já as teve
+   mas não neste período → diz a última e onde há; tem algumas, poucas → "tens N".
+   O fim ("Em setembro tens 9.") só entra quando há um período que as tem. */
+function hrGateText({ what, needs, none, min, have, ever, fb, scope }) {
+  if (!ever || ever.count === 0) return none;
+  const onde = fb ? ` ${cap(fb.where)} tens ${fb.count}.` : '';
+  if (have === 0) {
+    return `${what}: ${scope} não há ${needs} — a última foi a ${fmtDatePt(ever.lastDate) || ever.lastDate}.${onde}`;
+  }
+  return `${what}: preciso de pelo menos ${min} ${needs} ${scope} (tens ${have}).${onde}`;
+}
+
 function DeltaLine({ label, children }) {
   return (
     <p style={{ margin: 0, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
@@ -124,9 +143,14 @@ export default function RunDashboard() {
   // leria-se como falhas de registo, e para quem corre os dias de descanso não
   // são buracos — o rótulo diz só "desde …" e os dias fechados.
   const cal = useCalendarPeriod('corrida', { dataStartISO: view?.dataStartISO, minClosed: RUN_MIN_CLOSED });
-
   const reduced = useReducedMotion();
   const barsReady = useAppStore((s) => sliceReady(s, ['runs']));
+  /* 2026-10-05: se o mês por omissão ainda não tem nenhum dia fechado, abre no
+     anterior (a seta › leva ao mês a começar). Só decide quando as corridas JÁ
+     chegaram (barsReady): useEvolutionView devolve sempre uma vista, mesmo com a
+     fatia por carregar, e um null do 1.º render ficava gravado como "nunca
+     registou" (revisão). Até lá, undefined = não decidir. */
+  useOpenInClosedPeriod('corrida', view && barsReady ? (view.dataStartISO ?? null) : undefined);
 
   const bars = view?.bars || null;
   const barCount = bars?.values?.length;
@@ -230,8 +254,13 @@ export default function RunDashboard() {
       key: 'semanal',
       label: 'Média por semana',
       value: !noDays && enough ? `${fmtNumber(w.avgKm, 1)} km` : null,
-      statusText: enough ? `em ${w.weeks} ${plural(w.weeks, 'semana completa', 'semanas completas')}` : undefined,
-      missingText: noDays ? missingNoDays : (!enough ? (w.weeks === 0 ? 'sem semanas completas' : 'só 1 semana completa, pouco para média') : undefined),
+      // R4 (2026-10-05): semanas seg–dom fechadas que TOCAM o período; o intervalo vai na nota.
+      statusText: enough ? `em ${w.weeks} ${plural(w.weeks, 'semana', 'semanas')}` : undefined,
+      missingText: noDays ? missingNoDays : (!enough
+        ? (w.weeks === 0
+          ? (w.nextCloseISO ? `a 1.ª semana fecha a ${dayLabel(w.nextCloseISO)}` : 'sem semanas fechadas')
+          : `só ${w.weeks} ${plural(w.weeks, 'semana fechada', 'semanas fechadas')}, pouco para média`)
+        : undefined),
     });
   }
   rows.push({
@@ -273,14 +302,26 @@ export default function RunDashboard() {
       notes.push(`${cap(prevName)} começou antes do teu primeiro registo (${fmtRange(view.dataStartISO, view.dataStartISO)}) — não dá para comparar.`);
     }
   }
+  if (kind !== 'semana' && view.weekly.weeks >= 1 && !view.beforeData) {
+    notes.push(`A média por semana usa as semanas seg–dom já fechadas que tocam o período (${view.weekly.range}).`);
+  }
   notes.push('A carga é a de hoje (últimos 7 dias contra a média semanal dos últimos 28), não a do período.');
 
   const prevSummaryText = prevFull
     ? `${prevName}: ${prevFull.count > 0 ? `${corridas(prevFull.count)} · ${fmtNumber(prevFull.km, 1)} km` : 'sem corridas'}`
     : null;
-  const previousLine = early === 'cedo' && prevSummaryText
-    ? { text: prevSummaryText, actionLabel: `Ver ${prevName}`, onAction: cal.prev }
-    : undefined;
+  /* M2/R10 (2026-10-05): "cedo" e período sem corridas dizem ONDE há corridas e
+     levam lá: o período anterior e, se nem esse tem, o tipo maior ("Ver o ano"). */
+  const dataFb = view.fallbacks?.data || null;
+  const emptyPeriod = cur.count === 0;
+  const fbSummary = (fb) => (fb.type === 'prev' && prevSummaryText
+    ? prevSummaryText
+    : `${cap(fb.where)}: ${corridas(fb.count)} · ${fmtNumber(fb.km, 1)} km`);
+  const previousLine = early === 'cedo'
+    ? (dataFb
+      ? { text: fbSummary(dataFb), ...fallbackAction(dataFb, cal) }
+      : prevSummaryText ? { text: prevSummaryText, actionLabel: `Ver ${prevName}`, onAction: cal.prev } : undefined)
+    : (emptyPeriod && dataFb ? { text: fbSummary(dataFb), ...fallbackAction(dataFb, cal) } : undefined);
 
   const deltas = showDeltas ? (
     <div data-testid="run-deltas" style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>
@@ -374,6 +415,7 @@ export default function RunDashboard() {
           vdotTrend={view.vdotTrend}
           prediction={view.racePrediction}
           compare={vdotCompare}
+          compareNote={view.vdotNote}
         />
       )}
 
@@ -413,6 +455,7 @@ export default function RunDashboard() {
           text={startedText}
           onViewPrevious={view.prevCoverage === 'none' ? undefined : cal.prev}
           previousSummary={prevPeriodSummary}
+          {...(dataFb?.type === 'kind' ? fallbackAction(dataFb, cal) : {})}
         />
         {independent}
         {today}
@@ -422,8 +465,6 @@ export default function RunDashboard() {
 
   /* ── Período sem corridas (ou anterior ao 1.º registo): o texto diz-o e o resto
      (carga, VDOT, recordes) não se esconde. ── */
-  const emptyPeriod = cur.count === 0;
-
   const wm = view.watch;
   const showWatch = !emptyPeriod && wm.hasAny;
 
@@ -484,24 +525,48 @@ export default function RunDashboard() {
             </ChartFrame>
           )}
 
-          {/* Intensidade: só com corridas com zonas que cheguem (R6). */}
+          {/* Intensidade: só com corridas com zonas que cheguem (R6). R2 (2026-10-05):
+              "0 neste período" não é "0 de sempre" — quem já teve zonas lê a última e
+              o botão para o período onde há as 3 que chegam. */}
           {view.zoneRuns >= MIN_RUNS_FOR_ZONES ? (
             <IntensityDonut
               distribution={view.distribution}
               hint={`${view.zoneRuns} de ${cur.count} corridas com zonas ${scope}`}
             />
           ) : (
-            <MinDataNote text={view.zoneRuns === 0
-              ? 'Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de intensidade.'
-              : `Distribuição de intensidade: preciso de pelo menos ${MIN_RUNS_FOR_ZONES} corridas com zonas de frequência cardíaca ${scope} (tens ${view.zoneRuns}).`} />
+            <MinDataNote
+              module="corrida"
+              text={hrGateText({
+                what: 'Distribuição de intensidade',
+                needs: `corridas com zonas de frequência cardíaca`,
+                none: 'Regista corridas com zonas de frequência cardíaca (relógio/app) para veres a Distribuição de intensidade.',
+                min: MIN_RUNS_FOR_ZONES,
+                have: view.zoneRuns,
+                ever: view.zonesEver,
+                fb: view.fallbacks?.zones,
+                scope,
+              })}
+              {...fallbackAction(view.fallbacks?.zones, cal)}
+            />
           )}
 
           {view.scatter.length >= MIN_RUNS_FOR_EFFICIENCY ? (
             <ScatterTrendChart data={view.scatter} scope={scope} />
           ) : (
-            <MinDataNote text={view.scatter.length === 0
-              ? 'Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.'
-              : `Eficiência aeróbica: preciso de pelo menos ${MIN_RUNS_FOR_EFFICIENCY} corridas com frequência cardíaca média ${scope} (tens ${view.scatter.length}).`} />
+            <MinDataNote
+              module="corrida"
+              text={hrGateText({
+                what: 'Eficiência aeróbica',
+                needs: 'corridas com frequência cardíaca média',
+                none: 'Regista corridas com frequência cardíaca média para veres a Eficiência Aeróbica.',
+                min: MIN_RUNS_FOR_EFFICIENCY,
+                have: view.scatter.length,
+                ever: view.hrEver,
+                fb: view.fallbacks?.efficiency,
+                scope,
+              })}
+              {...fallbackAction(view.fallbacks?.efficiency, cal)}
+            />
           )}
 
           {/* 9. Relógio: cada métrica diz em quantas corridas existe. */}

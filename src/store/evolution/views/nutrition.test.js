@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildNutritionView, resetNutritionViewMemo, EATING_MIN_CLOSED, nutritionEarlyState } from './nutrition';
+import {
+  buildNutritionView, resetNutritionViewMemo, EATING_MIN_CLOSED, nutritionEarlyState, incompleteDaysOf,
+  WEEKDAY_MIN, WEEKDAY_MIN_DAYS, INCOMPLETE_KCAL_RATIO,
+} from './nutrition';
 import { calendarPeriod } from '@formulas/calendarPeriod.ts';
 import { getEvolutionViewDef } from '../registry';
 
@@ -226,3 +229,113 @@ describe('vista da Nutrição (views/nutrition.js)', () => {
     });
   });
 });
+
+/* 2026-10-05 — limiares da Nutrição (auditoria, N3/N4/N6) e dias provavelmente
+   incompletos. Uma refeição por dia nos dados de cima: aqui constroem-se dias
+   com o número de refeições que cada caso precisa. */
+describe('dias provavelmente incompletos', () => {
+  const rowOf = (date, calories, goal = 2400) => ({ date, hasMeals: calories != null, values: { calories }, goals: { calorie_goal: goal } });
+  const counts = (o) => new Map(Object.entries(o));
+
+  it('menos de 40% do objetivo de calorias OU uma só refeição; continuam nas contas', () => {
+    expect(INCOMPLETE_KCAL_RATIO).toBe(0.4);
+    const rows = [rowOf('2026-10-01', 2300), rowOf('2026-10-02', 2300), rowOf('2026-10-03', 900)];
+    // 1 out: 3 refeições, completo. 2 out: uma só refeição. 3 out: 900 < 40% de 2 400 (960).
+    const r = incompleteDaysOf(rows, counts({ '2026-10-01': 3, '2026-10-02': 1, '2026-10-03': 2 }));
+    expect(r).toEqual({ days: ['2026-10-02', '2026-10-03'], n: 2, of: 3 });
+  });
+
+  it('exatamente 40% já não é incompleto; dias sem refeições não entram', () => {
+    const rows = [rowOf('2026-10-01', 960), rowOf('2026-10-02', null)];
+    expect(incompleteDaysOf(rows, counts({ '2026-10-01': 2 }))).toEqual({ days: [], n: 0, of: 1 });
+  });
+
+  it('sem objetivo de calorias só vale o "uma só refeição"', () => {
+    const rows = [rowOf('2026-10-01', 100, 0), rowOf('2026-10-02', 100, 0)];
+    expect(incompleteDaysOf(rows, counts({ '2026-10-01': 2, '2026-10-02': 1 })).days).toEqual(['2026-10-02']);
+  });
+
+  it('a vista diz quantos e o intervalo dos dias com refeições (cabeçalho "3 dias: 1–3 out")', () => {
+    const m = (date, kcal) => ({ id: `${date}-${kcal}`, date, meal_items: [{ calories: kcal, protein: 100, carbs: 200, fat: 60 }] });
+    const meals = [
+      m('2026-10-01', 1200), m('2026-10-01', 1200), // 2 refeições, 2 400
+      m('2026-10-02', 1900), // uma só refeição
+      m('2026-10-03', 500), m('2026-10-03', 400), // 900 < 960
+    ];
+    const v = build({ kind: 'mes', offset: 0 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [] }));
+    expect(v.incomplete).toEqual({ days: ['2026-10-02', '2026-10-03'], n: 2, of: 3 });
+    expect(v.recordedRange).toEqual({ first: '2026-10-01', last: '2026-10-03' });
+    // Continuam nas contas: a média é a dos 3 dias.
+    expect(v.summary.nDays).toBe(3);
+    expect(v.summary.byKey.calories.avg).toBeCloseTo((2400 + 1900 + 900) / 3, 5);
+  });
+});
+
+describe('limiares da Nutrição (N3, N4, N6)', () => {
+  beforeEach(() => resetNutritionViewMemo());
+  const dayMeals = (iso, n = 3) => Array.from({ length: n }, (_, i) => ({ id: `${iso}-${i}`, date: iso, meal_items: [{ calories: 800, protein: 50, carbs: 100, fat: 25 }] }));
+  const range = (from, to) => {
+    const out = [];
+    for (let t = Date.parse(`${from}T12:00:00Z`); t <= Date.parse(`${to}T12:00:00Z`); t += 86400000) out.push(new Date(t).toISOString().slice(0, 10));
+    return out;
+  };
+
+  it('N3: "Comer para treinar" conta dias com refeições, não dias fechados', () => {
+    // Setembro inteiro fechado (30 dias) mas só 5 dias com refeições: < 7.
+    const meals = ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'].flatMap((d) => dayMeals(d));
+    const v = build({ kind: 'mes', offset: -1 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [] }));
+    expect(v.closedDays).toHaveLength(30);
+    expect(v.eating).toMatchObject({ enough: false, mealDays: 5, closedDays: 30, minClosed: 7 });
+    // Com 7 dias com refeições passa.
+    const more = [...meals, ...dayMeals('2026-09-06'), ...dayMeals('2026-09-07')];
+    const v2 = build({ kind: 'mes', offset: -1 }, TODAY, deps({ meals: more, waterLogs: [], runs: [], gym: [] }));
+    expect(v2.eating).toMatchObject({ enough: true, mealDays: 7 });
+  });
+
+  it('N3: no mês em curso curto, o período anterior diz quantos dias com refeições tem', () => {
+    const meals = [...range('2026-09-01', '2026-09-24').flatMap((d) => dayMeals(d)), ...range('2026-10-01', '2026-10-03').flatMap((d) => dayMeals(d))];
+    const v = build({ kind: 'mes', offset: 0 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [] }));
+    expect(v.eating).toMatchObject({ enough: false, mealDays: 3 });
+    expect(v.previousData).toMatchObject({ name: 'setembro', mealDays: 24 });
+  });
+
+  it('N4: o padrão por dia da semana aparece com 5 dos 7 dias com ≥ 4 registos — um domingo por registar não o esconde', () => {
+    expect(WEEKDAY_MIN).toBe(4);
+    expect(WEEKDAY_MIN_DAYS).toBe(5);
+    // 13 jul a 30 set (11 semanas e meia), sem nenhum registo ao domingo e 2 aos sábados.
+    const days = range('2026-07-13', '2026-09-30').filter((d) => {
+      const wd = (new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7;
+      if (wd === 6) return false; // domingo
+      if (wd === 5) return d <= '2026-07-27'; // sábado: só 2 (18 e 25 jul)
+      return true;
+    });
+    const meals = days.flatMap((d) => dayMeals(d));
+    const v = build({ kind: 'trimestre', offset: -1 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [] }));
+    const wk = v.weekdays.calories;
+    expect(wk.strong).toBe(5);
+    expect(wk.shown).toBe(true);
+    expect(wk.complete).toBe(false);
+    expect(wk.days[5]).toMatchObject({ n: 2, thin: true }); // sábado: a cinzento
+    expect(wk.days[6]).toBe(null); // domingo: nada
+    expect(wk.days[0].thin).toBe(false);
+  });
+
+  it('N4: com menos de 5 dias da semana a cumprir não aparece, e diz quantos há', () => {
+    const meals = range('2026-10-01', '2026-10-03').flatMap((d) => dayMeals(d)); // qui, sex, sáb: 1 registo cada
+    const v = build({ kind: 'trimestre', offset: 0 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [] }));
+    expect(v.weekdays.calories).toMatchObject({ shown: false, strong: 0 });
+  });
+
+  it('N6: sem ▲/▼ por falta de dias, diz de que lado', () => {
+    // Semana passada fechada com 3 dias com refeições: não dá para comparar com a anterior.
+    const meals = [...range('2026-09-14', '2026-09-16').flatMap((d) => dayMeals(d)), ...range('2026-09-21', '2026-09-27').flatMap((d) => dayMeals(d))];
+    const v = build({ kind: 'semana', offset: -1 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [] }));
+    expect(v.compare).toBe(null);
+    expect(v.compareNote).toBe('Sem comparação: 14 – 20 set só tem 3 dias com refeições.');
+    // Com os dois lados completos não há nota.
+    const ok = build({ kind: 'semana', offset: -1 }, TODAY, deps({ meals: range('2026-09-14', '2026-09-27').flatMap((d) => dayMeals(d)), waterLogs: [], runs: [], gym: [] }));
+    expect(ok.compare).not.toBe(null);
+    expect(ok.compareNote).toBe(null);
+  });
+});
+

@@ -26,6 +26,7 @@ vi.mock('../lib/supabase', () => ({
 
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
+  microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -138,6 +139,58 @@ describe('savePantryFood', () => {
     db.prevError = { message: 'sem rede' };
     await expect(savePantryFood({ userId: 'u1', values: { ...confirmed }, confirmed })).rejects.toThrow('Não foi possível confirmar a despensa');
     expect(db.calls).toHaveLength(0);
+  });
+});
+
+// Despensa com micronutrientes (2026-10-05): a regra espelha
+// analyze-meal/pantry.ts — null por confirmar, 0 só é dado em linha marcada.
+describe('micronutrientes da despensa', () => {
+  const NOW = '2026-10-05T10:00:00.000Z';
+  const todos = (v) => Object.fromEntries(MICRO_COLUMNS.map((k) => [k, v]));
+
+  it('microOrNull: número ≥ 0 fica (vírgula também); vazio, null e lixo são null, nunca 0', () => {
+    expect(microOrNull(0)).toBe(0);
+    expect(microOrNull('3,5')).toBe(3.5);
+    for (const v of [null, undefined, '', '  ', -1, 'abc', NaN]) expect(microOrNull(v)).toBeNull();
+  });
+
+  it('um 0 só é dado com micros_checked_at = updated_at; o PostgREST escreve +00:00', () => {
+    const marcado = { ...todos(0), micros_checked_at: NOW, updated_at: '2026-10-05T10:00:00+00:00' };
+    expect(microsTrusted(marcado)).toBe(true);
+    expect(pantryMicro(marcado, 'fiber_per_100g')).toBe(0);
+    expect(isPantryComplete(marcado)).toBe(true);
+    // Mexido depois pelo código antigo (só mexe em updated_at): zeros por confirmar.
+    const antigo = { ...marcado, updated_at: '2026-10-05T11:00:00Z' };
+    expect(pantryMicro(antigo, 'fiber_per_100g')).toBeNull();
+    expect(isPantryComplete(antigo)).toBe(false);
+    // Positivos são sempre dados.
+    expect(isPantryComplete(todos(2))).toBe(true);
+  });
+
+  it('o que falta, em palavras; acabado de vir da Carol, um 0 é dela', () => {
+    const f = { ...todos(1), fiber_per_100g: 0, iron_mg_per_100g: null, vitamin_c_mg_per_100g: 0 };
+    expect(missingMicroWords(f)).toEqual(['fibra', 'ferro', 'vitamina C']);
+    expect(missingMicroWords(f, { fresh: true })).toEqual(['ferro']);
+    expect(listWords(['fibra'])).toBe('fibra');
+    expect(listWords(['fibra', 'ferro', 'vitamina C'])).toBe('fibra, ferro e vitamina C');
+  });
+
+  it('ao guardar um novo: os micronutrientes que a Carol deu, null nos outros; a linha fica marcada', async () => {
+    db.calls.length = 0; db.prev = null; db.prevError = null;
+    const confirmed = { name: 'Azeite', portion_grams: 10, calories_per_100g: 884, protein_per_100g: 0, carbs_per_100g: 0, fat_per_100g: 100, fiber_per_100g: 0, vitamin_c_mg_per_100g: 0, iron_mg_per_100g: 0.6 };
+    await savePantryFood({ userId: 'u1', values: { ...confirmed, portion_grams: '10' }, confirmed });
+    const { row } = db.calls[0];
+    expect(row).toMatchObject({ fiber_per_100g: 0, vitamin_c_mg_per_100g: 0, iron_mg_per_100g: 0.6, sodium_per_100g: null, potassium_mg_per_100g: null });
+    expect(row.micros_checked_at).toBe(row.updated_at);
+  });
+
+  it('ao editar: os micronutrientes que a despensa sabe ficam; um 0 antigo passa a null (por confirmar)', async () => {
+    db.calls.length = 0;
+    const existing = { id: 'f1', name: 'Pão', name_key: 'pao', portion_grams: 40, calories_per_100g: 245, protein_per_100g: 9, carbs_per_100g: 45, fat_per_100g: 3, ...todos(0), sodium_per_100g: 450 };
+    await savePantryFood({ userId: 'u1', values: { ...existing, calories_per_100g: '250' }, confirmed: existing, existing });
+    const { row } = db.calls[0];
+    expect(row).toMatchObject({ sodium_per_100g: 450, fiber_per_100g: null, calories_per_100g: 250 });
+    expect(row.micros_checked_at).toBe(row.updated_at);
   });
 });
 

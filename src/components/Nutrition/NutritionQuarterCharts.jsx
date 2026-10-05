@@ -4,10 +4,11 @@ import { GOAL_KEY } from '@formulas/nutritionPeriod.ts';
 import NutritionChartCard, {
   DetailRow, LegendItem, StatusIcon, StatusWord, ViewButton, enterStyle, swatch, usePeriodPick, useRovingRadios,
 } from './NutritionChartCard';
-import { DeltaVsPrevious, MinDataNote, countOf, nDays } from '../BI/period';
+import { DeltaVsPrevious, MinDataNote, countOf, nDays, plural, scopeOf } from '../BI/period';
+import { WEEKDAY_MIN, WEEKDAY_MIN_DAYS } from '../../store/evolution/views/nutrition';
 import { capitalize } from '../../utils/verdicts/shared';
 import { DAY_STATUS_STYLE, NUTRIENT_META } from '../../utils/nutrition';
-import { fmtInt, isoParts, MONTHS_SHORT, rangeText, WD_ON, WD_PLURAL, WD_SHORT, weekdayCount } from './nutritionText';
+import { fmtInt, isoParts, MONTHS_SHORT, rangeText, WD_ON, WD_PLURAL, WD_SHORT, weekdayCount, wherePast } from './nutritionText';
 
 /**
  * O Trimestre do mock-up aprovado (ecrãs "Trimestre · jul – set 2026,
@@ -16,8 +17,11 @@ import { fmtInt, isoParts, MONTHS_SHORT, rangeText, WD_ON, WD_PLURAL, WD_SHORT, 
  *      só com os dias fechados, marcada), com a zona do objetivo;
  *   2. "Dias no objetivo por semana" — Dentro/Abaixo/Acima/Sem registo
  *      empilhados (0 a 7 dias);
- *   3. "<Macro> por dia da semana" — só com pelo menos 4 registos de cada dia
- *      da semana; senão, a frase do mock-up.
+ *   3. "<Macro> por dia da semana" — com pelo menos 4 registos em 5 dos 7 dias
+ *      da semana (2026-10-05, limiares N4: antes exigia os 7, e um domingo por
+ *      registar escondia o gráfico até no Ano). Os dias com menos de 4 registos
+ *      aparecem a cinzento ("dom · 2 registos") e não contam para o "dia mais
+ *      baixo"; senão, a frase diz onde estão os dados.
  * A semana escolhida é a mesma nos dois primeiros, e "Ver semana" abre-a.
  *
  * ‹ › não remonta estes gráficos (D4, revisão de 2026-10-04): colunas com
@@ -90,7 +94,38 @@ function weekTitle(w, todayISO) {
   return rangeText(w.start, w.end, todayISO);
 }
 
-export default function NutritionQuarterCharts({ view, metric, onViewWeek, todayISO }) {
+/**
+ * O lugar do gráfico por dia da semana quando ainda não há registos que o
+ * sustentem (N4, 2026-10-05): diz quantos dias da semana já cumprem e, se o
+ * período anterior já o abre, oferece-o ("Ver jul – set ›"). `goPrev` diz ao
+ * ecrã que a ação é ir ao período anterior.
+ */
+export function weekdayMinNoteProps(view, metric, todayISO) {
+  const meta = NUTRIENT_META[metric];
+  const strong = view.weekdays?.[metric]?.strong ?? 0;
+  const p = view.period;
+  const where = p.isCurrent ? scopeOf(view.kind) : wherePast(view.kind, p.start, todayISO, view.offset);
+  const base = `${meta.label} por dia da semana: preciso de ${WEEKDAY_MIN} registos em pelo menos ${WEEKDAY_MIN_DAYS} dos 7 dias da semana`;
+  // Diz o que é que se conta ("dias da semana que lá chegam"), não um "nenhum"/"há 2"
+  // solto que o leitor não sabe a que se refere (revisão 2026-10-05).
+  const have = strong === 0
+    ? (p.isCurrent ? 'ainda nenhum dia da semana lá chega' : 'nenhum dia da semana lá chegou')
+    : p.isCurrent
+      ? `só ${strong} ${strong === 1 ? 'dia da semana lá chega' : 'dias da semana lá chegam'}`
+      : `só ${strong} ${strong === 1 ? 'dia da semana lá chegou' : 'dias da semana lá chegaram'}`;
+  const prev = view.previousData;
+  if (p.isCurrent && prev && (prev.weekdayStrong?.[metric] ?? 0) >= WEEKDAY_MIN_DAYS) {
+    return { text: `${base} — ${where} ${have}. Em ${prev.name} já dá:`, actionLabel: `Ver ${prev.name}`, goPrev: true };
+  }
+  return { text: `${base} — ${where} ${have}.` };
+}
+
+function WeekdayMinNote({ view, metric, todayISO, onViewPrevious }) {
+  const { goPrev, ...note } = weekdayMinNoteProps(view, metric, todayISO);
+  return <MinDataNote {...note} onAction={goPrev ? onViewPrevious : undefined} />;
+}
+
+export default function NutritionQuarterCharts({ view, metric, onViewWeek, onViewPrevious, todayISO }) {
   const meta = NUTRIENT_META[metric];
   const sum = view.summary.byKey[metric];
   const weeks = view.weeks || [];
@@ -164,15 +199,23 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
   // ── 3. Por dia da semana ───────────────────────────────────────────────
   const wk = view.weekdays?.[metric];
   const wdDays = wk?.days || [];
-  const lowest = wk?.complete ? wdDays.reduce((best, d, i) => (best == null || d.avg < wdDays[best].avg ? i : best), null) : null;
+  // Só os dias com registos que cheguem (≥ 4) contam para o "dia mais baixo" e
+  // para o objetivo médio; os outros desenham-se a cinzento.
+  const wdStrong = wdDays.map((d, i) => (d && !d.thin ? i : null)).filter((i) => i != null);
+  const lowest = wk?.shown ? wdStrong.reduce((best, i) => (best == null || wdDays[i].avg < wdDays[best].avg ? i : best), null) : null;
   const [pickedWd, setPickedWd] = usePeriodPick(periodKey);
-  const selWd = pickedWd ?? lowest;
-  const wdIds = useMemo(() => [0, 1, 2, 3, 4, 5, 6], []);
+  // Só os dias com registos entram no roving: os vazios estão `disabled` e, se
+  // ficassem na lista, a seta parava neles e nunca passava adiante (revisão 2026-10-05).
+  const wdIdsKey = wdDays.map((d, i) => (d ? i : null)).filter((i) => i != null).join(',');
+  const wdIds = useMemo(() => (wdIdsKey ? wdIdsKey.split(',').map(Number) : []), [wdIdsKey]);
+  const selWdRaw = pickedWd ?? lowest;
+  const selWd = selWdRaw != null && wdDays[selWdRaw] ? selWdRaw : lowest;
   const rovingC = useRovingRadios(wdIds, selWd, setPickedWd);
-  const wdGoal = wk?.complete ? wdDays.reduce((s, d) => s + (d.goal || 0), 0) / 7 : goal;
-  const wdValues = wk?.complete ? wdDays.map((d) => d.avg) : [];
+  const wdGoal = wk?.shown ? wdStrong.reduce((sum, i) => sum + (wdDays[i].goal || 0), 0) / Math.max(1, wdStrong.length) : goal;
+  const wdValues = wk?.shown ? wdDays.filter(Boolean).map((d) => d.avg) : [];
   const wdMax = Math.max(1, ...wdValues, wdGoal * (meta.ceiling ? 1.15 : 1)) * 1.08;
   const wpx = (v) => Math.max(0, Math.round((v / wdMax) * 140));
+  const anyThin = wdDays.some((d) => d && d.thin);
 
   return (
     <>
@@ -379,7 +422,7 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
         )}
       </NutritionChartCard>
 
-      {wk?.complete ? (
+      {wk?.shown ? (
         <NutritionChartCard
           testId="nutrition-quarter-weekdays"
           label={`${meta.label} por dia da semana`}
@@ -390,8 +433,14 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
           detail={selWd != null && wdDays[selWd] ? (
             <DetailRow testId="quarter-weekday-detail">
               <b style={{ color: 'var(--text-2)' }}>{capitalize(WD_PLURAL[selWd])}</b>
-              {` · ${fmtInt(wdDays[selWd].avg)} ${meta.unit} em média (${weekdayCount(selWd, wdDays[selWd].n)}) · ${wdDays[selWd].pctLabel}% · `}
-              <StatusWord status={wdDays[selWd].status} />
+              {wdDays[selWd].thin ? (
+                ` · ${fmtInt(wdDays[selWd].avg)} ${meta.unit} em média (${weekdayCount(selWd, wdDays[selWd].n)}) — poucos para contar, preciso de ${WEEKDAY_MIN}`
+              ) : (
+                <>
+                  {` · ${fmtInt(wdDays[selWd].avg)} ${meta.unit} em média (${weekdayCount(selWd, wdDays[selWd].n)}) · ${wdDays[selWd].pctLabel}% · `}
+                  <StatusWord status={wdDays[selWd].status} />
+                </>
+              )}
             </DetailRow>
           ) : null}
           legend={(
@@ -400,6 +449,7 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
               {meta.ceiling
                 ? <LegendItem swatch={swatch.zone()}>Zona do objetivo (90–115%)</LegendItem>
                 : <LegendItem swatch={swatch.dashLine()}>Objetivo: 90% ou mais</LegendItem>}
+              {anyThin && <LegendItem swatch={swatch.square('var(--text-4)')}>{`Menos de ${WEEKDAY_MIN} registos: não conta`}</LegendItem>}
             </>
           )}
         >
@@ -424,7 +474,15 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
               >
                 {wdDays.map((d, i) => {
                   const checked = i === selWd;
-                  const st = DAY_STATUS_STYLE[d.status];
+                  const thin = !!d?.thin;
+                  const st = d && !thin ? DAY_STATUS_STYLE[d.status] : null;
+                  // "2 de 4": cabe na coluna (~46 px); o nome acessível e a legenda dizem "registos".
+                  const sub = !d ? `0 de ${WEEKDAY_MIN}` : thin ? `${d.n} de ${WEEKDAY_MIN}` : nDays(d.n);
+                  const aria = !d
+                    ? `${WD_SHORT[i]}: sem registo`
+                    : thin
+                      ? `${WD_SHORT[i]}: ${fmtInt(d.avg)} ${meta.long} em média, só ${d.n} ${plural(d.n, 'registo', 'registos')} — poucos para contar`
+                      : `${WD_SHORT[i]}: ${fmtInt(d.avg)} ${meta.long} em média${st ? `, ${st.long}` : ''}, ${nDays(d.n)}`;
                   return (
                     <button
                       key={i}
@@ -432,24 +490,28 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
                       type="button"
                       role="radio"
                       aria-checked={checked}
+                      aria-disabled={d ? undefined : 'true'}
+                      disabled={!d}
                       tabIndex={checked ? 0 : -1}
-                      aria-label={`${WD_SHORT[i]}: ${fmtInt(d.avg)} ${meta.long} em média${st ? `, ${st.long}` : ''}, ${nDays(d.n)}`}
-                      onClick={() => setPickedWd(i)}
+                      aria-label={aria}
+                      onClick={d ? () => setPickedWd(i) : undefined}
                       style={{ border: 0, padding: 0, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', color: 'inherit', background: checked ? 'var(--surface-raised)' : 'transparent' }}
                     >
                       <span style={{ height: 160, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                         {/* O valor numa linha própria por cima das barras: a zona 90–115% nunca lá chega. */}
-                        <span className="tabular-nums" style={{ height: 20, display: 'flex', alignItems: 'center', fontSize: 'var(--text-xs)', color: 'var(--text-3)' }}>{fmtInt(d.avg)}</span>
+                        <span className="tabular-nums" style={{ height: 20, display: 'flex', alignItems: 'center', fontSize: 'var(--text-xs)', color: thin || !d ? 'var(--text-4)' : 'var(--text-3)' }}>{d ? fmtInt(d.avg) : '–'}</span>
                         <span style={{ height: 140, display: 'flex', alignItems: 'flex-end' }}>
-                          <span style={{ display: 'block', width: 24, height: wpx(d.avg), borderRadius: '6px 6px 2px 2px', background: meta.color, opacity: checked ? 1 : 0.7, transition: heightTransition(motion), ...enterStyle(motion, i, 7) }} />
+                          {d && (
+                            <span style={{ display: 'block', width: 24, height: wpx(d.avg), borderRadius: '6px 6px 2px 2px', background: thin ? 'var(--text-4)' : meta.color, opacity: thin ? 0.4 : checked ? 1 : 0.7, transition: heightTransition(motion), ...enterStyle(motion, i, 7) }} />
+                          )}
                         </span>
                       </span>
                       <span style={{ height: 34, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 4, gap: 1 }}>
                         <span style={{ fontSize: 'var(--text-xs)', lineHeight: '15px', color: 'var(--text-3)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-                          <StatusIcon status={d.status} />
+                          {d && !thin && <StatusIcon status={d.status} />}
                           {WD_SHORT[i]}
                         </span>
-                        <span style={{ fontSize: 'var(--text-xs)', lineHeight: '15px', color: 'var(--text-muted)' }}>{nDays(d.n)}</span>
+                        <span style={{ fontSize: 'var(--text-xs)', lineHeight: '15px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{sub}</span>
                       </span>
                     </button>
                   );
@@ -459,7 +521,7 @@ export default function NutritionQuarterCharts({ view, metric, onViewWeek, today
           )}
         </NutritionChartCard>
       ) : (
-        <MinDataNote text={`${meta.label} por dia da semana: preciso de pelo menos 4 registos de cada dia da semana para mostrar este padrão.`} />
+        <WeekdayMinNote view={view} metric={metric} todayISO={todayISO} onViewPrevious={onViewPrevious} />
       )}
     </>
   );

@@ -61,13 +61,50 @@ describe('só dias fechados do período (R2)', () => {
 });
 
 describe('G2: semanas fechadas, só força', () => {
-  it('setembro tem 3 semanas inteiras (7, 14 e 21 set); a de 28 set cruza o mês', () => {
+  it('setembro: as semanas fechadas que o tocam (31 ago, 7, 14 e 21 set); a de 28 set só fecha a 4 out', () => {
+    // 2026-10-05 (G2): contam as semanas seg–dom fechadas que TOCAM o período, não só as inteiras dentro dele.
     const v = view(SETEMBRO, 'mes', -1);
-    expect(v.weeks.count).toBe(3);
-    expect(v.weeks.strength).toBe(4); // 7, 10, 21, 24 set; as de 28 e 30 não estão numa semana inteira
-    expect(v.weeks.onTarget).toBe(2); // a semana de 14 set teve 0
-    expect(v.weeks.onTargetPct).toBe(67);
-    expect(v.weeks.perWeekStrength).toBeCloseTo(4 / 3, 6);
+    expect(v.weeks.count).toBe(4);
+    expect(v.weeks.strength).toBe(4); // 7, 10, 21, 24 set; a semana de 28 set ainda não fechou (hoje é 4 out)
+    expect(v.weeks.onTarget).toBe(2); // a semana de 31 ago e a de 14 set tiveram 0
+    expect(v.weeks.onTargetPct).toBe(50);
+    expect(v.weeks.perWeekStrength).toBe(1);
+    expect(v.weeks.range).toBe('31 ago – 27 set');
+  });
+
+  it('a semana que cruza a fronteira conta para os dois meses: outubro a 5 out já tem 1 semana fechada', () => {
+    const sessoes = [forca('2026-09-08'), forca('2026-09-10'), forca('2026-09-29'), forca('2026-10-01')];
+    const v = view(sessoes, 'mes', 0, '2026-10-05');
+    expect(v.weeks.count).toBe(1); // 28 set – 4 out
+    expect(v.weeks.strength).toBe(2);
+    expect(v.weeks.range).toBe('28 set – 4 out');
+    expect(v.weeks.min).toBe(2);
+    expect(v.verdict.early).toBe(true);
+    expect(v.verdict.text).toContain('Só 1 semana fechada em outubro — ainda é cedo para conclusões.');
+  });
+
+  it('o mês passa a avaliar com 2 semanas fechadas (G2: mínimo mês 2, trimestre 3, ano 3)', () => {
+    const sessoes = [forca('2026-09-08'), forca('2026-09-10'), forca('2026-09-29'), forca('2026-10-01'), forca('2026-10-06'), forca('2026-10-08')];
+    const v = view(sessoes, 'mes', 0, '2026-10-12'); // fecham 28 set – 4 out e 5 – 11 out
+    expect(v.weeks.count).toBe(2);
+    expect(v.verdict.early).toBeUndefined();
+    expect(v.verdict.text).toMatch(/Vais ao ginásio o suficiente|Vais uma vez|Duas sessões|sessões por semana/);
+    // O trimestre continua a pedir 3 semanas.
+    expect(view(sessoes, 'trimestre', 0, '2026-10-12').weeks.min).toBe(3);
+    expect(view(sessoes, 'trimestre', 0, '2026-10-12').verdict.early).toBe(true);
+  });
+
+  it('antes da 1.ª semana fechar diz quando ela acaba', () => {
+    const v = view([forca('2026-09-24'), forca('2026-10-01')], 'mes', 0, '2026-10-04');
+    expect(v.weeks.count).toBe(0);
+    expect(v.weeks.nextCloseISO).toBe('2026-10-04');
+  });
+
+  it('semanas que começam antes do 1.º registo não contam (não foram observadas inteiras)', () => {
+    // 1.º registo a quarta 9 set: a semana de 7 set é parcial e fica de fora.
+    const v = view([forca('2026-09-09'), forca('2026-09-10'), forca('2026-09-15'), forca('2026-09-22')], 'mes', -1);
+    expect(v.weeks.count).toBe(2); // 14 e 21 set
+    expect(v.weeks.range).toBe('14 – 27 set');
   });
 
   it('as aulas não entram na frequência de força', () => {
@@ -102,7 +139,8 @@ describe('G2: semanas fechadas, só força', () => {
   it('com 3+ semanas fechadas avalia a frequência real (4/3 = 1,3 por semana)', () => {
     const v = view(SETEMBRO, 'mes', -1);
     expect(v.verdict.tone).toBe('warn');
-    expect(v.verdict.text).toContain('Vais 1,3 vezes por semana em média, em três semanas fechadas');
+    // 4 treinos em 4 semanas fechadas que tocam setembro (31 ago, 7, 14, 21 set).
+    expect(v.verdict.text).toContain('Vais uma vez por semana em média, em quatro semanas fechadas');
   });
 
   it('semana fechada: as sessões da semana contra o alvo de 2', () => {
@@ -187,11 +225,11 @@ describe('G1: séries por semana, só sessões de um grupo', () => {
       forca('2026-09-22', { workout_session_sets: sets(3), categories: ['Costas'] }),
     ];
     const v = view(sessions, 'mes', -1);
-    expect(v.muscle.weeks).toBe(3);
+    expect(v.muscle.weeks).toBe(4); // 31 ago, 7, 14, 21 set (G7: as que tocam o mês)
     expect(v.muscle.multiGroupSessions).toBe(1);
     expect(v.muscle.groups).toHaveLength(1); // Peito+Tríceps não duplica
     expect(v.muscle.groups[0]).toMatchObject({ name: 'Costas', sets: 15 });
-    expect(v.muscle.groups[0].perWeek).toBeCloseTo(5, 6);
+    expect(v.muscle.groups[0].perWeek).toBeCloseTo(15 / 4, 6);
   });
 
   it('sem semanas fechadas não há séries por semana', () => {
@@ -209,15 +247,30 @@ describe('D5: progressão por exercício', () => {
     forca('2026-09-24', { workout_session_sets: [...sets(3, 80, 8), ...sets(2, 60, 10, 'Remada')] }),
   ];
 
-  it('compara o melhor 1RM da semana com o da anterior, só de exercícios com 2+ sessões', () => {
+  it('semana: compara a melhor série da semana com a da anterior (G5: 1 sessão chega numa semana)', () => {
     const v = view(B, 'semana', -1);
+    expect(v.progression.minSessions).toBe(1);
     expect(v.progression.rows).toHaveLength(1);
     const r = v.progression.rows[0];
     expect(r.name).toBe('Supino reto');
     expect(r.current.sessions).toBe(2);
     expect(r.current.bestSet).toEqual({ weight: 80, reps: 8 });
     expect(r.diffKg).toBeGreaterThan(0);
-    expect(v.progression.withoutPrevious).toBe(0); // a Remada só tem 1 sessão: nem conta
+    // A Remada de 24 set tem 1 sessão: na semana já conta, mas não tem anterior para comparar.
+    expect(v.progression.withoutPrevious).toBe(1);
+  });
+
+  it('semana: um treino em split (um exercício por dia) compara-se com 1 sessão cada', () => {
+    const sessoes = [
+      forca('2026-09-01'),
+      forca('2026-09-16', { workout_session_sets: sets(3, 100, 5, 'Agachamento') }),
+      forca('2026-09-23', { workout_session_sets: sets(3, 110, 5, 'Agachamento') }),
+    ];
+    const v = view(sessoes, 'semana', -1);
+    expect(v.progression.rows.map((r) => r.name)).toEqual(['Agachamento']);
+    expect(v.progression.rows[0].current.sessions).toBe(1);
+    // O mês continua a pedir 2 sessões do mesmo exercício.
+    expect(view(sessoes, 'mes', -1).progression.minSessions).toBe(2);
   });
 
   it('um exercício com 2+ sessões mas sem anterior não é comparável: conta-se à parte', () => {
@@ -251,8 +304,9 @@ describe('▲/▼ só contra o anterior equivalente e fechado (R5)', () => {
     const agosto = ['2026-08-03', '2026-08-05', '2026-08-10', '2026-08-12', '2026-08-17', '2026-08-19', '2026-08-24', '2026-08-26'];
     const setembro = ['2026-09-07', '2026-09-09', '2026-09-14', '2026-09-21', '2026-09-23'];
     const v = view([...agosto, ...setembro, '2026-07-20'].map((d) => forca(d)), 'mes', -1);
-    expect(v.weeks).toMatchObject({ count: 3, onTarget: 2, onTargetPct: 67 });
-    expect(v.weeksDelta).toMatchObject({ current: 67, previous: 100, previousLabel: 'agosto', previousText: '4 de 4 (100%)' });
+    // Setembro: 31 ago, 7, 14, 21 set; agosto: 27 jul, 3, 10, 17, 24 e 31 ago (a de 31 ago toca os dois meses).
+    expect(v.weeks).toMatchObject({ count: 4, onTarget: 2, onTargetPct: 50 });
+    expect(v.weeksDelta).toMatchObject({ current: 50, previous: 67, previousLabel: 'agosto', previousText: '4 de 6 (67%)' });
   });
 
   it('sem período anterior com registos não há delta', () => {
@@ -409,5 +463,66 @@ describe('aulas', () => {
 describe('constantes', () => {
   it('o "cedo" é com menos de 4 dias fechados', () => {
     expect(GYM_MIN_CLOSED).toBe(4);
+  });
+});
+
+describe('limiares (2026-10-05): G1, M2/M4 e para onde ir', () => {
+  it('G1: um período FECHADO nunca está "cedo", mesmo com o 1.º registo nos últimos dias', () => {
+    // 1.º registo a 29 set: setembro fechado tem 2 dias observados, mas já acabou.
+    const v = view([forca('2026-09-29'), forca('2026-09-30')], 'mes', -1, '2026-10-12');
+    expect(v.closedDays).toBe(2);
+    expect(v.earlyState).toBe('ok');
+    // Em curso, com os mesmos 2 dias, continua "cedo".
+    expect(view([forca('2026-10-01'), forca('2026-10-02')], 'mes', 0, '2026-10-04').earlyState).toBe('cedo');
+  });
+
+  it('semanas do mês: o verdict "cedo" diz onde estão os dados (setembro) e o botão leva lá', () => {
+    const ses = ['2026-08-10', '2026-08-12', '2026-08-17', '2026-08-19', '2026-08-24', '2026-08-26', '2026-09-01', '2026-09-03', '2026-09-08', '2026-09-10', '2026-09-15', '2026-09-17', '2026-09-22', '2026-09-24', '2026-10-01']
+      .map((d) => forca(d));
+    const v = view(ses, 'mes', 0, '2026-10-05'); // só a semana 28 set – 4 out fechou
+    expect(v.weeks.count).toBe(1);
+    expect(v.fallbacks.weeks).toMatchObject({ type: 'prev', label: 'Ver setembro', where: 'em setembro' });
+    expect(v.verdict.text).toContain('Em setembro: ');
+    expect(v.verdict.text).toMatch(/de \d+ semanas com 2\+ treinos de força\.$/);
+  });
+
+  it('séries por músculo sem semana fechada: oferece o período com semanas e diz quando fecha a 1.ª', () => {
+    const ses = ['2026-09-01', '2026-09-08', '2026-09-15', '2026-09-22', '2026-10-01'].map((d) => forca(d));
+    const v = view(ses, 'mes', 0, '2026-10-04');
+    expect(v.muscle.weeks).toBe(0);
+    expect(v.weeks.nextCloseISO).toBe('2026-10-04');
+    expect(v.fallbacks.muscle).toMatchObject({ type: 'prev', label: 'Ver setembro' });
+  });
+
+  it('sem nada no período anterior oferece o tipo maior (o mês) que contém o período', () => {
+    // Segunda 14 set: a semana a começar, a anterior (7–13 set) vazia, mas o mês já tem treinos.
+    const ses = [forca('2026-09-01'), forca('2026-09-02'), forca('2026-09-03')];
+    const v = view(ses, 'semana', 0, '2026-09-14');
+    expect(v.earlyState).toBe('a_comecar');
+    expect(v.fallbacks.data).toMatchObject({ type: 'kind', kind: 'mes', label: 'Ver o mês', where: 'neste mês', strength: 3 });
+    // Num período passado é o tipo maior que o CONTÉM (2026-10-05): a semana de
+    // 14 set, vista a 28 set, leva a setembro — que aqui é o mês de hoje.
+    expect(view(ses, 'semana', -2, '2026-09-28').fallbacks.data).toMatchObject({ type: 'kind', kind: 'mes' });
+    // Vista a 12 out, setembro já é passado: Ver setembro (mês −1).
+    expect(view(ses, 'semana', -4, '2026-10-12').fallbacks.data).toMatchObject({ type: 'period', kind: 'mes', offset: -1, label: 'Ver setembro', strength: 3 });
+  });
+
+  it('progressão com o período "cedo": diz onde já há comparação', () => {
+    const ex = (date, w) => forca(date, { workout_session_sets: sets(2, w, 10, 'Agachamento') });
+    const ses = [ex('2026-08-05', 70), ex('2026-08-20', 70), ex('2026-09-02', 80), ex('2026-09-20', 80), ex('2026-10-01', 90)];
+    const v = view(ses, 'mes', 0, '2026-10-04');
+    expect(v.earlyState).toBe('cedo');
+    expect(v.fallbacks.progression).toMatchObject({ type: 'prev', label: 'Ver setembro' });
+  });
+
+  it('progressão com o período "ok" mas sem exercício comparável: também diz onde já há (2026-10-05)', () => {
+    const ex = (date, w, name = 'Agachamento') => forca(date, { workout_session_sets: sets(2, w, 10, name) });
+    // 12 out: outubro já está "ok", mas só tem 1 sessão de agachamento (e 2 de supino sem anterior).
+    const ses = [ex('2026-08-05', 70), ex('2026-08-20', 70), ex('2026-09-02', 80), ex('2026-09-20', 80),
+      ex('2026-10-01', 90), ex('2026-10-06', 60, 'Remada'), ex('2026-10-08', 60, 'Remada')];
+    const v = view(ses, 'mes', 0, '2026-10-12');
+    expect(v.earlyState).toBe('ok');
+    expect(v.progression.rows).toEqual([]);
+    expect(v.fallbacks.progression).toMatchObject({ type: 'prev', label: 'Ver setembro' });
   });
 });

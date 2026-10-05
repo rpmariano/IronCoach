@@ -464,6 +464,30 @@ export default function RunAgenda({ onClose }) {
     if (onClose) onClose();
   };
 
+  // Bug #54 (2026-10-05, Android/Chrome, "provas"): gravar uma prova NOVA
+  // mostrava "Prova guardada" mas o atleta continuava a ver o formulário, e
+  // "Cancelar" deixava a prova gravada. A causa: este ecrã NÃO remonta ao ir
+  // de "Nova Prova" para o hub da prova gravada (editingRaceId passa de null
+  // a id com a mesma instância), e o carrossel nativo ficava com o scrollLeft
+  // na página dos Detalhes — activePage voltava a 'hub' mas o ecrã não. Aqui
+  // leva-se o carrossel à primeira página sempre que uma prova passa a estar
+  // aberta (null → id). Só nessa transição: a mexer no resto não se salta
+  // de página.
+  const prevEditingEventIdRef = useRef(editingEventId);
+  useEffect(() => {
+    const antes = prevEditingEventIdRef.current;
+    prevEditingEventIdRef.current = editingEventId;
+    if (!antes && editingEventId) {
+      // Direto no elemento (não via scrollTo do hook): esse dispara um "tick"
+      // háptico quando o destino já é o índice activo, e aqui não houve swipe.
+      const t = setTimeout(() => {
+        const el = scrollRef.current;
+        if (el && el.scrollLeft !== 0) el.scrollTo({ left: 0, behavior: 'instant' });
+      }, 0);
+      return () => clearTimeout(t);
+    }
+  }, [editingEventId]);
+
   useEffect(() => {
     if (activeTab !== initialTab && isFormOpen) {
       handleCloseForm();
@@ -855,9 +879,9 @@ export default function RunAgenda({ onClose }) {
       if (!editingEventId) {
         setNavGuard(null);
         if (createdRaceId) {
-          // setEditingRaceId repõe openCreationMode='race', o que remonta
-          // este mesmo ecrã já ligado à prova gravada e com o subnav na
-          // primeira página — o hub (activePage nasce em 'hub').
+          // setEditingRaceId NÃO remonta este ecrã (mesma instância, sem
+          // key): o efeito do bug #54 (2026-10-05) leva o carrossel à
+          // primeira página — o hub — quando editingRaceId passa de null a id.
           useAppStore.getState().setEditingRaceId(createdRaceId);
         } else {
           // Sem id devolvido pelo insert não há hub para abrir; o

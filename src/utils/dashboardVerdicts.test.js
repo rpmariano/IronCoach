@@ -364,6 +364,15 @@ describe('bodyVerdict', () => {
     expect(mostrado).toBeGreaterThan(0.4);
   });
 
+  it('colado ao máximo até à 2.ª casa: "um pouco mais de 0,5%", não "0,504%" (2026-10-05)', () => {
+    // 0,4032 kg em 80 kg = 0,504% por semana, contra o máximo de 0,5% do nível médio.
+    const v = bodyVerdict({ weightTrend: trend(-0.4032, 'descendo', [80.4, 80]), experienceLevel: 'medio' });
+    expect(v.tone).toBe('danger');
+    expect(v.text).toContain('depressa demais: um pouco mais de 0,5% do peso por semana (0,4 kg)');
+    expect(v.text).not.toMatch(/0,50\d%/);
+    expect(v.text).toContain('Para o teu nível o máximo saudável é 0,5%');
+  });
+
   it('duas pesagens iguais: "ambas de"', () => {
     const v = bodyVerdict({ weightTrend: { ...trend(null, null, [80, 80]), weeklyRate: null, sufficient: false } });
     expect(v.text).toContain('ambas de 80,0 kg');

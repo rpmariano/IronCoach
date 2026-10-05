@@ -180,3 +180,159 @@ describe('ordem e métricas registadas', () => {
     expect(metricsRegistered([{ weight_kg: 70 }, { visceral_fat: 8 }]).map((m) => m.key)).toEqual(['weight_kg', 'visceral_fat']);
   });
 });
+
+import { bodyGoalSince, goalProgress, weightTrendNeed, weightEstimate } from './body';
+import { computeWeightTrend } from '@formulas/weightTrend.ts';
+
+/* Barras do resumo do Corpo e o que falta para a tendência (2026-10-05). */
+
+describe('bodyGoalSince — o dia em que o objetivo foi definido', () => {
+  it('o histórico de hoje não tem os objetivos do corpo: sem dia, aproximado', () => {
+    const hist = [{ valid_from: '2026-10-03T22:49:00Z', calorie_goal: 2400, source: 'inicial' }];
+    expect(bodyGoalSince(hist, 'weight_kg', 76)).toEqual({ since: null, approx: 'sem_historico' });
+    expect(bodyGoalSince([], 'weight_kg', 76)).toEqual({ since: null, approx: 'sem_historico' });
+  });
+
+  it('com a coluna: o 1.º dia do troço final com este valor (dia de Lisboa)', () => {
+    const hist = [
+      { valid_from: '2026-07-01T10:00:00Z', goal_weight_kg: 76 },
+      { valid_from: '2026-08-01T10:00:00Z', goal_weight_kg: 74 },
+      { valid_from: '2026-10-04T23:30:00Z', goal_weight_kg: 76 }, // 5 out em Lisboa
+    ];
+    expect(bodyGoalSince(hist, 'weight_kg', 76)).toEqual({ since: '2026-10-05', approx: null });
+    // Anterior a 3 out: aproximado (o histórico só é de verdade desde aí).
+    expect(bodyGoalSince(hist.slice(0, 2), 'weight_kg', 74)).toEqual({ since: '2026-08-01', approx: 'antes_do_historico' });
+    // O perfil já mudou e a releitura não chegou: não se sabe o dia.
+    expect(bodyGoalSince(hist, 'weight_kg', 72).since).toBeNull();
+  });
+});
+
+describe('goalProgress — o caminho até ao objetivo', () => {
+  const W = M.weight_kg;
+  const leituras = [{ date: '2026-07-12', value: 79.4 }, { date: '2026-09-20', value: 78 }, { date: '2026-10-02', value: 77.3 }];
+
+  it('sem dia conhecido: desde a 1.ª leitura dos últimos 90 dias, aproximado — 77,3 → 76,0 é 62% do caminho', () => {
+    const p = goalProgress(W, leituras, leituras[2], 76, { since: null, approx: 'sem_historico' });
+    expect(p).toMatchObject({ start: leituras[0], remaining: 1.3, pct: 62, reached: false, away: false, approx: 'sem_historico' });
+  });
+
+  it('com dia: a última leitura até esse dia é o ponto de partida', () => {
+    const p = goalProgress(W, leituras, leituras[2], 76, { since: '2026-09-25', approx: null });
+    expect(p.start).toEqual(leituras[1]);
+    expect(p.pct).toBe(35); // 0,7 de 2,0
+    expect(p.approx).toBeNull();
+  });
+
+  it('chegar (a menos do ruído da balança): 100 e "atingido"; afastar-se: 0 com `away`', () => {
+    expect(goalProgress(W, leituras, { date: '2026-10-04', value: 75.8 }, 76, null)).toMatchObject({ pct: 100, reached: true });
+    expect(goalProgress(W, leituras, { date: '2026-10-04', value: 76.04 }, 76, null)).toMatchObject({ reached: true, remaining: 0 });
+    expect(goalProgress(W, leituras, { date: '2026-10-04', value: 80 }, 76, null)).toMatchObject({ pct: 0, away: true, reached: false });
+  });
+
+  it('subir para o objetivo (músculo) também conta', () => {
+    const m = [{ date: '2026-07-05', value: 30 }, { date: '2026-10-01', value: 32 }];
+    expect(goalProgress(M.muscle_mass_kg, m, m[1], 34, null).pct).toBe(50);
+  });
+
+  /* Revisão de 2026-10-05: o sentido é o da métrica (ou, no peso, o lado do
+     objetivo a partir de AGORA), e o ponto de partida sem dia conhecido é a 1.ª
+     leitura dos últimos 90 dias — orientar pela 1.ª leitura de sempre inventava
+     "objetivo atingido". */
+  const G = M.body_fat_pct;
+  const HOJE = { date: '2026-10-05', value: 23 };
+
+  it('gordura acima do objetivo depois de ter estado abaixo: nunca "atingido"', () => {
+    const r = [{ date: '2025-03-01', value: 16 }, { date: '2026-07-12', value: 24.5 }, HOJE];
+    const p = goalProgress(G, r, HOJE, 18, { since: null, approx: 'sem_historico' });
+    expect(p).toMatchObject({ reached: false, away: false, remaining: 5, pct: 23, start: r[1] });
+    // Com o dia do objetivo conhecido e a partida do lado bom: afastaste-te.
+    const q = goalProgress(G, r, HOJE, 18, { since: '2025-06-01', approx: null });
+    expect(q).toMatchObject({ reached: false, away: true, pct: 0, start: r[0] });
+  });
+
+  it('gordura já abaixo do objetivo: atingido, mesmo a subir', () => {
+    const r = [{ date: '2026-07-12', value: 16 }, { date: '2026-10-05', value: 17 }];
+    expect(goalProgress(G, r, r[1], 18, { since: null, approx: 'sem_historico' })).toMatchObject({ reached: true, pct: 100 });
+  });
+
+  it('peso com a 1.ª leitura de sempre abaixo do objetivo: conta desde julho, não 2024', () => {
+    const r = [{ date: '2024-05-01', value: 72 }, { date: '2026-07-12', value: 79.4 }, { date: '2026-10-05', value: 77.3 }];
+    const p = goalProgress(W, r, r[2], 76, { since: null, approx: 'sem_historico' });
+    expect(p).toMatchObject({ reached: false, away: false, remaining: 1.3, pct: 62, start: r[1] });
+  });
+
+  it('peso do outro lado do objetivo: mais longe que a partida é afastar-se; mais perto só é "atingido" com o dia certo', () => {
+    // Julho 75 kg (1 abaixo), hoje 77,3 (1,3 acima): afastou-se.
+    const a = [{ date: '2026-07-12', value: 75 }, { date: '2026-10-05', value: 77.3 }];
+    expect(goalProgress(W, a, a[1], 76, { since: null, approx: 'sem_historico' })).toMatchObject({ reached: false, away: true });
+    // 79,4 → 75: passou os 76 a descer. Com a partida aproximada não se sabe se o
+    // queria passar — só o que falta, sem barra; com o dia certo, atingido.
+    const b = [{ date: '2026-07-12', value: 79.4 }, { date: '2026-10-05', value: 75 }];
+    expect(goalProgress(W, b, b[1], 76, { since: null, approx: 'sem_historico' })).toMatchObject({ reached: false, away: false, noPath: true, remaining: 1 });
+    expect(goalProgress(W, b, b[1], 76, { since: '2026-07-12', approx: null })).toMatchObject({ reached: true, pct: 100 });
+  });
+
+  it('a única leitura dos 90 dias é a de agora: só o que falta, sem caminho', () => {
+    const r = [{ date: '2025-01-01', value: 72 }, { date: '2026-10-05', value: 77.3 }];
+    expect(goalProgress(W, r, r[1], 76, { since: null, approx: 'sem_historico' })).toMatchObject({ noPath: true, reached: false, away: false, remaining: 1.3 });
+  });
+
+  it('sem objetivo, ou um período anterior ao ponto de partida: nada', () => {
+    expect(goalProgress(W, leituras, leituras[2], null, null)).toBeNull();
+    expect(goalProgress(W, leituras, leituras[0], 76, { since: '2026-09-25', approx: null })).toBeNull();
+  });
+});
+
+describe('weightTrendNeed — o que falta, em concreto', () => {
+  it('semana com 1 pesagem e outra a 22 set: mais uma, a última entre 2 e 6 out', () => {
+    expect(weightTrendNeed(['2026-09-22', '2026-09-29'], '2026-09-30'))
+      .toEqual({ more: 1, start: '2026-09-30', from: '2026-10-02', until: '2026-10-06', fresh: false });
+  });
+
+  /* Revisão de 2026-10-05: "a última a partir de 14 out" não tinha limite, mas
+     a janela é de 14 dias — pesar a 4, 5 e 20 out não dá tendência. */
+  it('sem nada nas duas semanas: três novas, a última 10 a 14 dias depois de hoje', () => {
+    expect(weightTrendNeed(['2026-03-13'], '2026-10-04')).toEqual({ more: 3, start: '2026-10-04', from: '2026-10-14', until: '2026-10-18', fresh: true });
+    expect(weightTrendNeed([], '2026-10-05')).toEqual({ more: 3, start: '2026-10-05', from: '2026-10-15', until: '2026-10-19', fresh: true });
+  });
+
+  it('o plano cumpre a régua do weightTrend.ts nas duas pontas, e não passa delas', () => {
+    const ok = (dates) => computeWeightTrend(dates.map((date, i) => ({ date, weight: 80 - i * 0.2 }))).sufficient;
+    expect(ok(['2026-10-05', '2026-10-06', '2026-10-15'])).toBe(true);
+    expect(ok(['2026-10-05', '2026-10-06', '2026-10-19'])).toBe(true);
+    expect(ok(['2026-10-05', '2026-10-06', '2026-10-20'])).toBe(false);
+  });
+
+  it('as que já tens chegam: null (não pede o que não falta)', () => {
+    expect(weightTrendNeed(['2026-09-23', '2026-09-24', '2026-10-05'], '2026-10-05')).toBeNull();
+  });
+
+  it('pesou-se hoje: a próxima só conta amanhã (uma por dia)', () => {
+    expect(weightTrendNeed(['2026-09-26', '2026-10-04'], '2026-10-04'))
+      .toEqual({ more: 1, start: '2026-10-05', from: '2026-10-06', until: '2026-10-10', fresh: false });
+    // A de 20 set sai da janela já amanhã: faltam duas, não uma.
+    expect(weightTrendNeed(['2026-09-20', '2026-10-04'], '2026-10-04').more).toBe(2);
+  });
+
+  it('duas pesagens a 12 dias, ainda dentro da janela: mais uma até hoje', () => {
+    expect(weightTrendNeed(['2026-09-20', '2026-10-02'], '2026-10-04'))
+      .toEqual({ more: 1, start: '2026-10-04', from: '2026-10-04', until: '2026-10-04', fresh: false });
+  });
+});
+
+describe('weightEstimate — a reta da 1.ª à última pesagem', () => {
+  it('12 dias, −1,1 kg ≈ −0,64 kg/semana', () => {
+    const e = weightEstimate([{ date: '2026-09-20', weight: 77.3 }, { date: '2026-10-02', weight: 76.2 }]);
+    expect(e).toMatchObject({ n: 2, diff: -1.1, days: 12 });
+    expect(e.weeklyRate).toBeCloseTo(-0.64, 2);
+  });
+
+  it('menos de 7 dias: sem ritmo semanal (esticar 3 dias a uma semana é inventar)', () => {
+    expect(weightEstimate([{ date: '2026-10-01', weight: 80 }, { date: '2026-10-04', weight: 80.6 }]).weeklyRate).toBeNull();
+  });
+
+  it('uma pesagem, ou duas no mesmo dia: sem estimativa', () => {
+    expect(weightEstimate([{ date: '2026-10-01', weight: 80 }])).toBeNull();
+    expect(weightEstimate([{ date: '2026-10-01', weight: 80 }, { date: '2026-10-01', weight: 79 }])).toBeNull();
+  });
+});

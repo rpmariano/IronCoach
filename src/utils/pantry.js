@@ -15,6 +15,63 @@ const NUTRIENTS = [
   'fiber_per_100g', 'sugar_per_100g', 'sodium_per_100g', 'iron_mg_per_100g',
   'calcium_mg_per_100g', 'vitamin_c_mg_per_100g', 'potassium_mg_per_100g',
 ];
+/* Os micronutrientes da despensa (2026-10-05). Espelha a regra de
+   supabase/functions/analyze-meal/pantry.ts ("Os micronutrientes da
+   despensa"; migração 20261005100000_pantry_micronutrients_nullable) — a
+   Edge Function não pode importar daqui nem nós de lá; mudar uma, mudar a
+   outra. Por micronutriente: null → por confirmar; > 0 → dado; 0 → dado só
+   se a linha foi escrita por código que grava null no que não sabe
+   (micros_checked_at = updated_at), senão é um 0 antigo, por confirmar. */
+export const MICRO_COLUMNS = [
+  'fiber_per_100g', 'sugar_per_100g', 'sodium_per_100g', 'iron_mg_per_100g',
+  'calcium_mg_per_100g', 'vitamin_c_mg_per_100g', 'potassium_mg_per_100g',
+];
+/** Em palavras, pela ordem de MICRO_COLUMNS. */
+const MICRO_WORDS = {
+  fiber_per_100g: 'fibra', sugar_per_100g: 'açúcar', sodium_per_100g: 'sódio', iron_mg_per_100g: 'ferro',
+  calcium_mg_per_100g: 'cálcio', vitamin_c_mg_per_100g: 'vitamina C', potassium_mg_per_100g: 'potássio',
+};
+
+/** Um micronutriente como número ≥ 0, ou null ("não sei"). Atenção a
+    Number(null) = 0: null/vazio ficam null antes de converter. */
+export function microOrNull(v) {
+  if (v == null || (typeof v === 'string' && !v.trim())) return null;
+  const n = typeof v === 'number' ? v : toNumber(v);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+const sameInstant = (a, b) => {
+  if (a == null || b == null) return false;
+  const ta = Date.parse(String(a));
+  return Number.isFinite(ta) && ta === Date.parse(String(b));
+};
+
+/** Os zeros desta linha da despensa são dados? */
+export const microsTrusted = (food) => sameInstant(food?.micros_checked_at, food?.updated_at);
+
+/** O que a despensa sabe deste micronutriente, ou null (por confirmar). */
+export function pantryMicro(food, k) {
+  const v = microOrNull(food?.[k]);
+  return v === 0 && !microsTrusted(food) ? null : v;
+}
+
+/** Os micronutrientes por confirmar, em palavras ("fibra", "ferro"…).
+    `fresh`: valores acabados de vir da Carol (modo pantry_food) — aí um 0 é
+    dela, é dado. */
+export function missingMicroWords(food, { fresh = false } = {}) {
+  return MICRO_COLUMNS
+    .filter((k) => (fresh ? microOrNull(food?.[k]) : pantryMicro(food, k)) == null)
+    .map((k) => MICRO_WORDS[k]);
+}
+
+/** Completo: com os sete micronutrientes dados. Só uma refeição destes (sem
+    fotos, sem perguntas da Carol em aberto) se regista sem o modelo — quem
+    decide é o servidor (splitKnownWritten); aqui só se diz ao atleta. */
+export const isPantryComplete = (food) => !!food && missingMicroWords(food).length === 0;
+
+/** "fibra" · "fibra e ferro" · "fibra, ferro e potássio" */
+export const listWords = (words) => (words.length < 2 ? words.join('') : `${words.slice(0, -1).join(', ')} e ${words[words.length - 1]}`);
+
 /** Os quatro que o atleta vê e pode ajustar. */
 export const EDITABLE_NUTRIENTS = [
   { key: 'calories_per_100g', label: 'kcal' },
@@ -125,16 +182,28 @@ export async function confirmPantryFood({ description = null, images = [] }) {
 export async function savePantryFood({ userId, values, confirmed, existing = null, source = 'manual' }) {
   const changed = !confirmed || EDITABLE_NUTRIENTS.some(({ key }) => round1(values[key]) !== round1(confirmed[key]))
     || toNumber(values.portion_grams) !== toNumber(confirmed.portion_grams);
+  const nowISO = new Date().toISOString();
+  /* Micronutrientes (2026-10-05): o atleta não os ajusta. A editar, ficam os
+     que a despensa sabe (um 0 antigo, ambíguo, passa a null — por
+     confirmar); um alimento novo leva os que a Carol deu, e null nos que não
+     deu. Nunca um 0 inventado. A linha fica marcada (micros_checked_at =
+     updated_at): a partir daqui os zeros dela são dados. */
+  const micros = Object.fromEntries(MICRO_COLUMNS.map((k) => [
+    k, existing ? pantryMicro(existing, k) : microOrNull(confirmed?.[k]),
+  ]));
   const row = {
     user_id: userId,
     name: String(values.name || '').trim().slice(0, 120),
     name_key: foodKey(values.name),
     portion_grams: toNumber(values.portion_grams) > 0 ? toNumber(values.portion_grams) : null,
     portion_label: String(values.portion_label || '').trim().slice(0, 40) || null,
-    ...Object.fromEntries(NUTRIENTS.map((k) => [k, Math.max(0, toNumber(values[k] ?? confirmed?.[k] ?? 0) || 0)])),
+    ...Object.fromEntries(NUTRIENTS.filter((k) => !MICRO_COLUMNS.includes(k))
+      .map((k) => [k, Math.max(0, toNumber(values[k] ?? confirmed?.[k] ?? 0) || 0)])),
+    ...micros,
     in_pantry: true,
     edited_by_athlete: (existing?.edited_by_athlete ?? false) || (existing ? changed : changed && !!confirmed),
-    updated_at: new Date().toISOString(),
+    micros_checked_at: nowISO,
+    updated_at: nowISO,
   };
   if (!row.name_key) throw new Error('Dá um nome ao alimento.');
   if (existing?.id) {

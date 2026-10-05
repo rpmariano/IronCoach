@@ -56,7 +56,11 @@ export function formatPredictedTime(seconds) {
    pontos que cheguem — { current, previous, previousLabel }. Antes o ▲/▼ era
    a última corrida contra a PRIMEIRA DE SEMPRE, que não diz nada sobre este
    mês. A linha do gráfico é o histórico todo ("de sempre"). */
-export default function RacePredictionChart({ vdotTrend = [], prediction, compare = null, className = '' }) {
+/* `compareNote` (opcional, 2026-10-05, R5): quando a comparação do VDOT não se faz,
+   diz porquê ("A comparação do VDOT é por mês ou mais.", "Para comparar o VDOT preciso
+   de 3 treinos de qualidade em cada mês — outubro vai em 1, setembro teve 4."): a
+   linha ▲/▼ deixava de aparecer sem nenhuma explicação. */
+export default function RacePredictionChart({ vdotTrend = [], prediction, compare = null, compareNote = null, className = '' }) {
   const formatTime = formatPredictedTime;
 
   // Um ponto por data, ficando com o melhor VDOT do dia.
@@ -145,7 +149,7 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
       legend={hasTrend ? legend : []}
       axis={hasTrend ? { min: fmtNumber(Math.min(...vdots), 1), max: fmtNumber(Math.max(...vdots), 1) } : undefined}
       height={hasTrend ? 200 : 0}
-      footer={(base || lowConfidence || !hasTrend) ? (
+      footer={(base || lowConfidence || !hasTrend || compareNote) ? (
         <>
           {base && <p data-testid="race-prediction-base" style={{ margin: 0 }}>{base.charAt(0).toUpperCase() + base.slice(1)}.</p>}
           {lowConfidence && (
@@ -154,10 +158,16 @@ export default function RacePredictionChart({ vdotTrend = [], prediction, compar
             </p>
           )}
           {!hasTrend && (
-            <p style={{ margin: (base || lowConfidence) ? '4px 0 0' : 0 }}>
-              {prediction
-                ? 'Regista mais corridas para veres a evolução do VDOT ao longo do tempo.'
-                : 'Regista corridas para veres a previsão desta prova.'}
+            <p data-testid="vdot-criterio" style={{ margin: (base || lowConfidence) ? '4px 0 0' : 0 }}>
+              {/* R8 (2026-10-05): os dois textos estavam trocados (sem previsão falava da
+                  "previsão desta prova", com previsão de "evolução"). Os dois dizem o critério
+                  real do VDOT (vdotTrend.ts): treino de qualidade com 3 km ou mais. */}
+              Preciso de 2 treinos de qualidade (competição, tempo, intervalos ou esforço 7 ou mais, com 3 km ou mais) para desenhar {prediction ? 'a evolução do VDOT' : 'o VDOT'}.
+            </p>
+          )}
+          {compareNote && (
+            <p data-testid="vdot-compare-note" style={{ margin: (base || lowConfidence || !hasTrend) ? '4px 0 0' : 0 }}>
+              {compareNote}
             </p>
           )}
         </>

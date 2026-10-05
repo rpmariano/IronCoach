@@ -2,8 +2,9 @@ import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
   applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
-  microFromModel, microOrNull, MICRO_COLUMNS, NUTRIENT_COLUMNS, parseCookingFacts, parseQuestions, pickMealItem,
-  remapQuestionItems, splitKnownWritten, withPantryValues, withWrittenFoods,
+  isPantryComplete, microFromModel, microOrNull, MICRO_COLUMNS, microsTrusted, missingMicros, NUTRIENT_COLUMNS, pantryMicro,
+  parseCookingFacts, parseQuestions, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
+  withWrittenFoods,
 } from "./pantry.ts";
 
 // Bugs #48/#52, fase A: a despensa e como ele cozinha.
@@ -14,7 +15,14 @@ const iogurte: PantryFood = {
   times_seen: 6, in_pantry: true, source: "refeicao", edited_by_athlete: false,
   calories_per_100g: 59, protein_per_100g: 10, carbs_per_100g: 3.6, fat_per_100g: 0.4,
 };
-const byKey = new Map([[iogurte.name_key, iogurte]]);
+// Completo (2026-10-05): os sete micronutrientes dados — os zeros valem
+// porque a linha foi escrita pelo código novo (micros_checked_at = updated_at).
+const MICROS_IOGURTE = {
+  fiber_per_100g: 0, sugar_per_100g: 3.6, sodium_per_100g: 36, iron_mg_per_100g: 0,
+  calcium_mg_per_100g: 110, vitamin_c_mg_per_100g: 0, potassium_mg_per_100g: 141,
+};
+const iogurteCompleto: PantryFood = { ...iogurte, ...MICROS_IOGURTE, micros_checked_at: NOW, updated_at: NOW };
+const byKey = new Map([[iogurte.name_key, iogurteCompleto]]);
 const estimado = (name: string, kcal: number, extra: Record<string, unknown> = {}) => ({
   name, quantity_grams: 150, calories_per_100g: kcal, protein_per_100g: 5, carbs_per_100g: 10, fat_per_100g: 2, ...extra,
 });
@@ -80,10 +88,70 @@ Deno.test("withPantryValues: um 0 de micronutriente da despensa é ambíguo e pa
   assertEquals(semGordura.fat_per_100g, 0);
 });
 
-Deno.test("nextFoodRow: um micronutriente por saber entra na despensa como 0 (athlete_foods continua NOT NULL)", () => {
-  const row = nextFoodRow(null, estimado("Arroz branco", 130, { fiber_per_100g: null, sodium_per_100g: 1 }), "u1", NOW)!;
-  assertEquals(row.fiber_per_100g, 0);
+Deno.test("nextFoodRow: um micronutriente por saber entra na despensa como null, nunca 0; a linha fica marcada", () => {
+  const row = nextFoodRow(null, estimado("Arroz branco", 130, { fiber_per_100g: null, sodium_per_100g: 1, iron_mg_per_100g: 0 }), "u1", NOW)!;
+  assertEquals(row.fiber_per_100g, null);
+  assertEquals(row.potassium_mg_per_100g, null); // nem veio
   assertEquals(row.sodium_per_100g, 1);
+  assertEquals(row.iron_mg_per_100g, 0); // um 0 dado pela análise é dado
+  assertEquals([row.micros_checked_at, row.updated_at], [NOW, NOW]);
+});
+
+// ── Despensa com micronutrientes (2026-10-05) ──────────────────────────────
+
+Deno.test("withPantryValues: usa os micronutrientes da despensa quando os sabe; senão os da análise; nunca inventa 0", () => {
+  const parcial: PantryFood = { ...iogurte, sodium_per_100g: 36, fiber_per_100g: 0, micros_checked_at: NOW, updated_at: NOW };
+  const daAnalise = { quantity_grams: 170, sodium_per_100g: 50, fiber_per_100g: 1, calcium_mg_per_100g: 120, iron_mg_per_100g: null };
+  const it = withPantryValues(daAnalise, parcial) as Record<string, unknown>;
+  assertEquals(it.sodium_per_100g, 36); // a despensa sabe: fica o dela
+  assertEquals(it.fiber_per_100g, 0); // 0 dado (linha marcada): fica 0
+  assertEquals(it.calcium_mg_per_100g, 120); // a despensa não sabe: o da análise
+  assertEquals(it.iron_mg_per_100g, null); // ninguém sabe
+  assertEquals(it.calories_per_100g, 59); // macros: os da despensa
+  assertEquals(it.from_pantry, true);
+  assertEquals("pantry_pending" in it, false);
+  assertEquals((withPantryValues({}, parcial, true) as Record<string, unknown>).pantry_pending, true);
+});
+
+Deno.test("nextFoodRow: na despensa, os micronutrientes por confirmar (null ou 0 antigo) preenchem-se; os dados ficam", () => {
+  // Linha antiga: zeros ambíguos, sem marca.
+  const antigo: PantryFood = { ...iogurte, fiber_per_100g: 0, sodium_per_100g: 36, iron_mg_per_100g: 0, potassium_mg_per_100g: null };
+  const analise = estimado("Iogurte grego 0%", 90, { fiber_per_100g: 0.2, sodium_per_100g: 60, potassium_mg_per_100g: 150 });
+  const row = nextFoodRow(antigo, analise, "u1", NOW)!;
+  assertEquals(row.calories_per_100g, 59); // macros da despensa ficam
+  assertEquals(row.fiber_per_100g, 0.2); // 0 antigo: por confirmar → preenche
+  assertEquals(row.potassium_mg_per_100g, 150); // null → preenche
+  assertEquals(row.sodium_per_100g, 36); // dado: não se escreve por cima
+  assertEquals(row.iron_mg_per_100g, null); // 0 antigo que ninguém confirmou: diz-se "por confirmar"
+  assertEquals(row.micros_checked_at, row.updated_at);
+  // Linha nova, com um 0 dado: fica 0 mesmo que a análise diga outra coisa.
+  const marcado: PantryFood = { ...iogurteCompleto };
+  assertEquals(nextFoodRow(marcado, estimado("Iogurte grego 0%", 90, { vitamin_c_mg_per_100g: 4 }), "u1", NOW)!.vitamin_c_mg_per_100g, 0);
+  // Ajustado à mão: os micronutrientes por confirmar também se preenchem (ele só ajusta calorias e macros).
+  const ajustado = nextFoodRow({ ...antigo, edited_by_athlete: true }, analise, "u1", NOW)!;
+  assertEquals([ajustado.calories_per_100g, ajustado.potassium_mg_per_100g], [59, 150]);
+});
+
+Deno.test("nextFoodRow: um rótulo ganha nos micronutrientes que lê; os que não lê ficam os que a despensa sabia", () => {
+  const rotulo = estimado("Iogurte grego 0%", 61, { from_label: true, sodium_per_100g: 40, calcium_mg_per_100g: null });
+  const row = nextFoodRow(iogurteCompleto, rotulo, "u1", NOW)!;
+  assertEquals(row.sodium_per_100g, 40);
+  assertEquals(row.calcium_mg_per_100g, 110);
+  assertEquals(row.calories_per_100g, 61);
+});
+
+Deno.test("applyPantry + parseQuestions: um alimento da despensa só se pergunta com uma regra em aberto sobre ele", () => {
+  const ovoDespensa: PantryFood = { ...iogurteCompleto, name: "Ovo estrelado", name_key: "ovo estrelado" };
+  const despensa = new Map([[ovoDespensa.name_key, ovoDespensa]]);
+  const aberta: FoodRule = { topic: "ovos", topic_key: "ovos", value: "azeite", value_key: "azeite", confirmations: 1, status: "varia", source: "observacao" };
+  const q = [{ topic: "gordura dos ovos", item_name: "Ovo estrelado", question: "Em quê?", options: ["Azeite", "Manteiga"], assumed: "Azeite", impact_kcal: 80 }];
+  const semRegra = applyPantry([estimado("Ovo estrelado", 196)], despensa);
+  assertEquals(parseQuestions(q, semRegra, [], () => "q"), []);
+  const comRegra = applyPantry([estimado("Ovo estrelado", 196)], despensa, [aberta]);
+  assertEquals((comRegra[0] as Record<string, unknown>).pantry_pending, true);
+  assertEquals(parseQuestions(q, comRegra, [aberta], () => "q").length, 1);
+  // pantry_pending não é coluna: não chega à BD.
+  assertEquals("pantry_pending" in pickMealItem(comRegra[0]), false);
 });
 
 Deno.test("knowledgeSection: vazia sem nada; regras confirmadas, as que variam e a lista da despensa", () => {
@@ -111,8 +179,75 @@ Deno.test("splitKnownWritten: o que está na despensa não vai ao Gemini; sem gr
   assertEquals(known.get(2)?.quantity_grams, 200);
 });
 
+Deno.test("splitKnownWritten: da despensa mas com micronutrientes por confirmar vai ao modelo, com o nome e a porção dela", () => {
+  const incompleto = new Map([[iogurte.name_key, iogurte]]); // sem micronutrientes
+  const { known, unknown } = splitKnownWritten([{ name: "iogurte grego 0 %", grams: null }], incompleto);
+  assertEquals(known.size, 0);
+  assertEquals(unknown[0].item, { name: "Iogurte grego 0%", grams: 170 });
+  assertEquals(unknown[0].food, iogurte);
+  assertEquals(unknown[0].pending, false);
+  // Zeros antigos (linha sem a marca) também estão por confirmar.
+  const antigo = new Map([[iogurte.name_key, { ...iogurte, ...MICROS_IOGURTE }]]);
+  assertEquals(splitKnownWritten([{ name: "Iogurte grego 0%", grams: 170 }], antigo).known.size, 0);
+  // Só positivos: completo mesmo sem a marca — um valor > 0 nunca foi inventado.
+  const positivos = Object.fromEntries(Object.keys(MICROS_IOGURTE).map((k) => [k, 1]));
+  const semMarca = new Map([[iogurte.name_key, { ...iogurte, ...positivos }]]);
+  assertEquals(splitKnownWritten([{ name: "Iogurte grego 0%", grams: 170 }], semMarca).known.size, 1);
+});
+
+Deno.test("splitKnownWritten: refeição só de alimentos da despensa completos, com gramas → nada vai ao modelo", () => {
+  const aveia: PantryFood = { ...iogurteCompleto, name: "Aveia em flocos", name_key: "aveia em flocos", portion_grams: 40, calories_per_100g: 372 };
+  const despensa = new Map([[iogurteCompleto.name_key, iogurteCompleto], [aveia.name_key, aveia]]);
+  const { known, unknown } = splitKnownWritten([{ name: "Iogurte grego 0%", grams: null }, { name: "aveia em flocos", grams: 50 }], despensa, []);
+  assertEquals(unknown, []); // index.ts: unknown vazio → nenhuma chamada de estimativa
+  assertEquals(known.get(1)?.quantity_grams, 50);
+  assertEquals(known.get(1)?.calories_per_100g, 372);
+  assertEquals(known.get(0)?.calcium_mg_per_100g, 110);
+  assertEquals(known.get(0)?.fiber_per_100g, 0); // 0 dado vai como 0
+});
+
+Deno.test("splitKnownWritten: com uma pergunta da Carol em aberto sobre o alimento, chama o modelo", () => {
+  const frango: PantryFood = { ...iogurteCompleto, name: "Peito de frango grelhado", name_key: "peito de frango grelhado", portion_grams: 150 };
+  const despensa = new Map([[frango.name_key, frango]]);
+  const regras: FoodRule[] = [
+    { topic: "frango", topic_key: "frango", value: "sem pele", value_key: "sem pele", confirmations: 1, status: "varia", source: "observacao" },
+  ];
+  const { known, unknown } = splitKnownWritten([{ name: "Peito de frango grelhado", grams: null }], despensa, regras);
+  assertEquals(known.size, 0);
+  assertEquals(unknown[0].pending, true);
+  // Uma regra confirmada não está em aberto: segue sem o modelo.
+  const confirmada = [{ ...regras[0], status: "confirmado" as const }];
+  assertEquals(splitKnownWritten([{ name: "Peito de frango grelhado", grams: null }], despensa, confirmada).known.size, 1);
+});
+
+Deno.test("pendingRulesFor: por confirmar ou varia, com uma palavra do tema no nome (plural e género contam)", () => {
+  const r = (topic: string, status: FoodRule["status"]): FoodRule =>
+    ({ topic, topic_key: foodKey(topic), value: "x", value_key: "x", confirmations: 1, status, source: "observacao" });
+  assertEquals(pendingRulesFor("Batata frita", [r("fritos", "por_confirmar")]).length, 1);
+  assertEquals(pendingRulesFor("Ovo estrelado", [r("ovos", "varia")]).length, 1);
+  assertEquals(pendingRulesFor("Batatas cozidas", [r("batata", "varia")]).length, 1);
+  assertEquals(pendingRulesFor("Iogurte grego 0%", [r("fritos", "varia"), r("batata", "por_confirmar")]), []);
+  assertEquals(pendingRulesFor("Batata frita", [r("fritos", "confirmado")]), []);
+  assertEquals(pendingRulesFor("", [r("fritos", "varia")]), []);
+});
+
+Deno.test("isPantryComplete / pantryMicro / microsTrusted: a regra dos zeros da despensa", () => {
+  assert(isPantryComplete(iogurteCompleto));
+  assertEquals(isPantryComplete(iogurte), false);
+  assertEquals(isPantryComplete(null), false);
+  // A marca só vale igual a updated_at: o código antigo mexe em updated_at e não nela.
+  const mexidoPeloAntigo = { ...iogurteCompleto, updated_at: "2026-10-05T13:00:00.000Z" };
+  assertEquals(microsTrusted(mexidoPeloAntigo), false);
+  assertEquals(pantryMicro(mexidoPeloAntigo, "fiber_per_100g"), null);
+  assertEquals(pantryMicro(mexidoPeloAntigo, "sodium_per_100g"), 36);
+  assertEquals(missingMicros(mexidoPeloAntigo), ["fiber_per_100g", "iron_mg_per_100g", "vitamin_c_mg_per_100g"]);
+  // O PostgREST devolve o instante com +00:00 — é o mesmo.
+  assert(microsTrusted({ micros_checked_at: "2026-10-04T12:00:00+00:00", updated_at: NOW }));
+  assertEquals(microsTrusted({ micros_checked_at: null, updated_at: NOW }), false);
+});
+
 Deno.test("splitKnownWritten: conhecido mas sem gramas nem porção habitual vai ao Gemini", () => {
-  const semPorcao = new Map([["aveia", { ...iogurte, name: "Aveia", name_key: "aveia", portion_grams: null }]]);
+  const semPorcao = new Map([["aveia", { ...iogurteCompleto, name: "Aveia", name_key: "aveia", portion_grams: null }]]);
   const { known, unknown } = splitKnownWritten([{ name: "Aveia", grams: null }], semPorcao);
   assertEquals(known.size, 0);
   assertEquals(unknown.length, 1);
@@ -303,7 +438,7 @@ Deno.test("remapQuestionItems: uma pergunta presa ao nome do Gemini passa para o
 // Revisão pré-master: o pedido leva só os 80 mais usados, mas um escrito
 // fora deles que está na despensa também é conhecido.
 Deno.test("withWrittenFoods: vai buscar à despensa os escritos que não vieram nos 80", async () => {
-  const aveia: PantryFood = { ...iogurte, name: "Aveia em flocos", name_key: "aveia em flocos", times_seen: 1, calories_per_100g: 372 };
+  const aveia: PantryFood = { ...iogurteCompleto, name: "Aveia em flocos", name_key: "aveia em flocos", times_seen: 1, calories_per_100g: 372 };
   // 80 no pedido: pode haver mais na despensa.
   const outros = Array.from({ length: 79 }, (_, i) => ({ ...iogurte, name: `Outro ${i}`, name_key: `outro ${i}` }));
   const foods = [iogurte, ...outros];

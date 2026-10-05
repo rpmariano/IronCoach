@@ -810,3 +810,26 @@ drop policy if exists "runs race_id own race" on public.runs;
 create policy "runs race_id own race" on public.runs
   as restrictive for all using (true)
   with check (race_id is null or exists (select 1 from public.race_events r where r.id = race_id and r.user_id = auth.uid()));
+
+-- ============================================================================
+-- A despensa do atleta — athlete_foods (só documentação; quem cria e altera
+-- são as migrações). Criada em 20261003233613_athlete_pantry (bugs #48/#52,
+-- com athlete_food_rules); os micronutrientes passaram a nuláveis em
+-- 20261005100000_pantry_micronutrients_nullable (2026-10-05, POR APLICAR à
+-- data). Valores por 100 g. Calorias e macros: numeric NOT NULL DEFAULT 0.
+-- Micronutrientes (fiber/sugar/sodium_per_100g, iron_mg/calcium_mg/
+-- vitamin_c_mg/potassium_mg_per_100g): numeric nulável sem default —
+-- null = por confirmar. Um 0 só é dado quando micros_checked_at = updated_at
+-- (o último a escrever a linha foi código que grava null no que não sabe);
+-- senão é um 0 antigo, ambíguo, também por confirmar. Um micronutriente por
+-- confirmar preenche-se com o que uma análise der; um dado não se escreve
+-- por cima (só um rótulo). A regra vive em analyze-meal/pantry.ts
+-- ("Os micronutrientes da despensa") e espelha-se em src/utils/pantry.js.
+-- Um alimento com os sete dados regista-se sem chamar o modelo (registo só
+-- escrito, sem perguntas da Carol em aberto sobre ele — splitKnownWritten).
+--   athlete_foods (id, user_id, name, name_key, portion_grams, portion_label,
+--     calories/protein/carbs/fat_per_100g, <7 micronutrientes>,
+--     times_seen, in_pantry, source, edited_by_athlete,
+--     micros_checked_at timestamptz, last_used_at, created_at, updated_at,
+--     unique (user_id, name_key))
+-- ============================================================================

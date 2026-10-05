@@ -1,6 +1,8 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, Check, ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import GlassCard from '../shared/GlassCard';
+import VerdictLine from '../BI/VerdictLine';
+import { AnimatedBar, useBarsReveal } from '../BI/period/AnimatedBar';
 import { fmtNumber } from '../../utils/verdicts/shared';
 
 /* Um dia de nutrição contra o objetivo DESSE dia (bug #51, 2026-10-02): «se
@@ -44,7 +46,14 @@ export function dayTitle(dayISO, todayISO) {
    atingidos" — um dia em curso não se julga. Diz-se o que já vai, sem estado. */
 const IN_PROGRESS = { label: 'Até agora', Icon: null, color: 'var(--text-4)' };
 
-export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = false, plan = null, onPrev, onNext }) {
+/* 2026-10-05: o veredicto ("Hoje, até agora…") passa a viver DENTRO do cartão,
+   por baixo do navegador de dias, como o PeriodSummary das outras vistas — antes
+   ficava solto por cima do seletor Dia/Semana/Mês/Trimestre.
+   As barras são AnimatedBar: crescem quando o separador assenta e o cartão está
+   à vista, e mudar de dia com ‹ › desliza-as do valor anterior (300 ms). Um dia
+   sem registo não tem barra: uma calha vazia ao lado de "Sem registo" não diz nada. */
+export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = false, plan = null, verdict = null, onPrev, onNext }) {
+  const bars = useBarsReveal();
   const isToday = dayISO >= todayISO;
   const hits = rows.filter((r) => r.status === 'ok').length;
   const recorded = rows.some((r) => r.status !== 'sem_registo');
@@ -67,8 +76,10 @@ export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = f
         </button>
       </div>
 
-      <ul className="mt-3 space-y-3" aria-label="Objetivos do dia">
-        {rows.map((r) => {
+      {verdict?.text && <VerdictLine text={verdict.text} tone={verdict.tone} style={{ marginTop: 12 }} />}
+
+      <ul ref={bars.ref} className="mt-3 space-y-3" aria-label="Objetivos do dia">
+        {rows.map((r, i) => {
           // Em hoje, só o que já vai ("Até agora · 52%"); sem registo continua a dizê-lo.
           const s = isToday && r.status !== 'sem_registo' ? IN_PROGRESS : STATUS[r.status];
           const pct = r.target > 0 ? Math.min(1, r.value / r.target) : 0;
@@ -80,10 +91,10 @@ export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = f
                   {fmt(r.value)} <span className="text-[11px] font-bold" style={{ color: 'var(--text-4)' }}>/ {fmt(r.target)} {r.unit}</span>
                 </span>
               </div>
-              <div className="flex items-center gap-2 mt-1.5">
-                <div className="flex-1 h-[6px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,.08)' }} aria-hidden="true">
-                  <div className="h-full rounded-full" style={{ width: `${pct * 100}%`, background: COLOR[r.key], boxShadow: `0 0 8px ${COLOR[r.key]}` }} />
-                </div>
+              <div className="flex items-center justify-end gap-2 mt-1.5">
+                {r.status !== 'sem_registo' && (
+                  <AnimatedBar testId="day-row-bar" pct={pct * 100} color={COLOR[r.key]} index={i} bars={bars} track="rgba(255,255,255,.08)" />
+                )}
                 {/* min-w em vez de largura fixa (2026-10-04): «Até agora · 25%» partia em duas linhas nos 92 px. */}
                 <span className="inline-flex items-center gap-1 text-[11px] font-bold shrink-0 min-w-[92px] whitespace-nowrap justify-end" style={{ color: s.color }}>
                   {s.Icon && <s.Icon size={12} aria-hidden="true" />}

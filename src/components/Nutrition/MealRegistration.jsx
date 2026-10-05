@@ -19,7 +19,7 @@ import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDra
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
-import { habitualsForMealType, isKnownFood, pantrySuggestions, portionText } from '../../utils/pantry';
+import { foodKey, habitualsForMealType, isKnownFood, isPantryComplete, pantrySuggestions, portionText } from '../../utils/pantry';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -448,6 +448,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setItemName('');
     setItemGrams('');
   };
+  /* Desde 2026-10-05 só um alimento da despensa COMPLETO (os 7
+     micronutrientes dados) fica de fora da análise; um com micronutrientes
+     por confirmar vai lá só buscar esses — calorias e macros continuam os
+     da despensa (analyze-meal/pantry.ts, splitKnownWritten). O texto diz a
+     verdade sobre cada um. */
+  const knownFoodNote = (name) => {
+    const food = (pantryFoods || []).find((f) => f.name_key === foodKey(name));
+    return isPantryComplete(food) ? 'já conhecido, não é analisado' : 'já conhecido · a Carol completa os micronutrientes';
+  };
   const suggestions = pantrySuggestions(itemName, pantryFoods);
   const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date })
     .filter((f) => !manualItems.some((i) => isKnownFood(i.name, [f])));
@@ -836,7 +845,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                       <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
                       <p className="text-[11px] text-[var(--text-3)]">
                         {isKnownFood(item.name, pantryFoods)
-                          ? `${item.grams != null ? `${item.grams}g · ` : ''}já conhecido, não é analisado`
+                          ? `${item.grams != null ? `${item.grams}g · ` : ''}${knownFoodNote(item.name)}`
                           : (item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol')}
                       </p>
                     </div>

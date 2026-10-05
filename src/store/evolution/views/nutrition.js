@@ -8,7 +8,6 @@ import {
   periodEarlyState,
   periodLabel,
   previousPeriod,
-  weekdayAverages,
   weeklyBuckets,
 } from '@formulas/calendarPeriod.ts';
 import {
@@ -25,7 +24,7 @@ import {
 } from '@formulas/nutritionPeriod.ts';
 import { goalsResolver } from '../../../utils/goalHistory';
 import { nutritionPeriodVerdict } from '../../../utils/verdicts/nutrition';
-import { whereOf } from '../../../components/BI/period/periodText';
+import { nDays, whereOf } from '../../../components/BI/period/periodText';
 import { periodName, rangeText, wherePast } from '../../../components/Nutrition/nutritionText';
 
 /**
@@ -46,20 +45,34 @@ import { periodName, rangeText, wherePast } from '../../../components/Nutrition/
  *   desta semana); num fechado, o anterior inteiro; e só com dias que cheguem
  *   dos dois lados;
  * - mínimos de dados (R6): água com ≥ 3 dias, "Comer para treinar" com ≥ 4/7/14
- *   dias fechados (semana/mês/trimestre), calorias por dia da semana com ≥ 4
- *   registos de cada.
+ *   DIAS COM REFEIÇÕES (semana/mês/trimestre), calorias por dia da semana com ≥ 4
+ *   registos em pelo menos 5 dos 7 dias da semana.
+ * - 2026-10-05 (auditoria dos limiares, N3/N4/N6/N8): os mínimos contam o que
+ *   o atleta registou, não o calendário — um mês com 14 dias fechados e 2 com
+ *   refeições não chega a "Comer para treinar"; um domingo por registar não
+ *   esconde o padrão semanal inteiro, nem no Ano.
+ * - dias "provavelmente incompletos" (menos de 40% do objetivo de calorias, ou
+ *   uma só refeição): continuam nas contas, mas o ecrã avisa que podem ter
+ *   refeições por registar (`incomplete`).
  *
  * `build` é pura: só depende de (deps, período, hoje). Não congelar nada.
  */
 
 /** Dias fechados abaixo dos quais o período em curso está "cedo" (R6). */
 export const NUTRITION_MIN_CLOSED = 4;
-/** "Comer para treinar" a partir de N dias fechados (mock-up: 7 no mês, 14 no trimestre). */
+/** "Comer para treinar" a partir de N dias COM REFEIÇÕES (mock-up: 7 no mês, 14 no
+ *  trimestre). O nome ficou de quando contava dias fechados; a contagem passou a
+ *  ser de dias com refeições em 2026-10-05 (limiares N3). */
 export const EATING_MIN_CLOSED = { semana: 4, mes: 7, trimestre: 14, ano: 14 };
 /** ▲/▼ só com pelo menos estes dias com refeições dos dois lados. */
 export const DELTA_MIN_DAYS = 4;
-/** Calorias por dia da semana: pelo menos 4 registos de cada dia. */
+/** Calorias por dia da semana: um dia da semana conta com pelo menos 4 registos… */
 export const WEEKDAY_MIN = 4;
+/** …e o padrão aparece quando pelo menos 5 dos 7 dias da semana contam (N4,
+ *  2026-10-05): um só domingo por registar não esconde o gráfico todo. */
+export const WEEKDAY_MIN_DAYS = 5;
+/** Um dia com menos de 40% do objetivo de calorias provavelmente ficou por registar. */
+export const INCOMPLETE_KCAL_RATIO = 0.4;
 /** Água com média a partir de 3 dias com registo. */
 export const WATER_MIN_DAYS = 3;
 
@@ -126,6 +139,39 @@ function equivalentPrevious(p, todayISO) {
   return { period: prev, days: eachDayISO(prev.start, prev.end), label: periodName(prev.kind, prev.start, prev.end, todayISO) };
 }
 
+/**
+ * Dias "provavelmente incompletos" (2026-10-05): dos dias com refeições, os que
+ * têm menos de 40% do objetivo de calorias OU uma só refeição. Não saem das
+ * contas — o ecrã só diz que alguns podem ter refeições por registar.
+ * `mealCounts` é um Map data → número de refeições.
+ */
+export function incompleteDaysOf(rows, mealCounts) {
+  const withMeals = rows.filter((r) => r.hasMeals && r.values.calories != null);
+  const days = withMeals
+    .filter((r) => {
+      const goal = Number(r.goals?.calorie_goal) || 0;
+      const lowKcal = goal > 0 && r.values.calories < goal * INCOMPLETE_KCAL_RATIO;
+      return lowKcal || (mealCounts.get(r.date) || 0) === 1;
+    })
+    .map((r) => r.date);
+  return { days, n: days.length, of: withMeals.length };
+}
+
+/** Os registos por dia da semana de uma chave, com o mínimo de cada dia (N4). */
+function weekdayStats(rows, key) {
+  const recs = rows.filter((r) => hasRecord(r, key) && r.values[key] != null);
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const rs = recs.filter((r) => isoWeekday(r.date) === i);
+    if (rs.length === 0) return null;
+    const avg = meanOf(rs.map((r) => r.values[key]));
+    const goal = meanOf(rs.map((r) => Number(r.goals[GOAL_KEY[key]]) || 0));
+    const cls = classifyMacroDay(key, avg, goal);
+    return { avg, n: rs.length, goal, pctLabel: cls.pctLabel, status: cls.status, thin: rs.length < WEEKDAY_MIN };
+  });
+  const strong = days.filter((d) => d && !d.thin).length;
+  return { shown: strong >= WEEKDAY_MIN_DAYS, complete: strong === 7, strong, days };
+}
+
 /** Por chave, os números de um conjunto de linhas (uma semana, um dia da
  *  semana): média, objetivo médio, estado e contagens Dentro/Abaixo/Acima/sem. */
 function groupStats(rows, key) {
@@ -170,6 +216,16 @@ export function buildNutritionView(deps, period, todayISO) {
   const rows = dailyNutritionRows({ meals, waterLogs, days: closed, goalsFor });
   const rowByDate = new Map(rows.map((r) => [r.date, r]));
   const summary = summarizeNutritionPeriod(rows, { minWaterDays: WATER_MIN_DAYS });
+  // Refeições por dia fechado (o "só uma refeição" dos dias provavelmente incompletos).
+  const mealCounts = new Map();
+  for (const m of meals || EMPTY) {
+    const d = typeof m?.date === 'string' ? m.date.slice(0, 10) : null;
+    if (d && closedSet.has(d)) mealCounts.set(d, (mealCounts.get(d) || 0) + 1);
+  }
+  const incomplete = incompleteDaysOf(rows, mealCounts);
+  // Primeiro e último dia COM refeições dos fechados: o "(3 dias: 1–3 out)" do cabeçalho.
+  const mealDates = rows.filter((r) => r.hasMeals && r.values.calories != null).map((r) => r.date);
+  const recordedRange = mealDates.length ? { first: mealDates[0], last: mealDates[mealDates.length - 1] } : null;
   const label = periodLabel(p, todayISO, { daysWithData: summary.nDays, dataStartISO });
   const earlyState = nutritionEarlyState(p, todayISO, closed.length, dataStartISO);
   // O período começa antes do 1.º registo ("desde 13 jul"): quantos dias do
@@ -207,9 +263,11 @@ export function buildNutritionView(deps, period, todayISO) {
   // "Primeiro trimestre com registos — ainda não há outro para comparar.").
   const firstPeriod = !dataStartISO || previousPeriod(p, todayISO).end < dataStartISO;
   let compare = null;
+  let eqSummary = null;
   if (eq && !firstPeriod) {
     const prevRows = dailyNutritionRows({ meals, waterLogs, days: fromDataStart(eq.days, dataStartISO), goalsFor });
     const prev = summarizeNutritionPeriod(prevRows, { minWaterDays: WATER_MIN_DAYS });
+    eqSummary = prev;
     if (summary.nDays >= DELTA_MIN_DAYS && prev.nDays >= DELTA_MIN_DAYS) {
       compare = {
         label: eq.label,
@@ -244,26 +302,26 @@ export function buildNutritionView(deps, period, todayISO) {
     }
   }
 
-  // O período anterior INTEIRO (fechado), para o "a começar" e o "cedo":
-  // "Semana passada (28 set – 4 out): 2 300 kcal/dia · …" / "Ver setembro".
-  let previousFull = null;
-  if (p.isCurrent && earlyState !== 'ok' && !firstPeriod) {
-    const prevP = previousPeriod(p, todayISO);
-    const prevDays = fromDataStart(closedDaysOf(prevP, todayISO), dataStartISO);
-    const prevSum = summarizeNutritionPeriod(dailyNutritionRows({ meals, waterLogs, days: prevDays, goalsFor }), { minWaterDays: WATER_MIN_DAYS });
-    if (prevSum.nDays > 0) {
-      previousFull = {
-        name: periodName(prevP.kind, prevP.start, prevP.end, todayISO),
-        range: rangeText(prevP.start, prevP.end, todayISO),
-        nDays: prevSum.nDays,
-        kcalAvg: prevSum.byKey.calories.avg,
-        both: prevSum.both,
-      };
+  // N6 (2026-10-05): quando não há ▲/▼ por falta de dias de um dos lados, diz-se
+  // qual — em vez de a seta desaparecer sem explicação. Em "cedo" não: aí o
+  // veredicto já diz que é cedo.
+  let compareNote = null;
+  if (!compare && eqSummary && earlyState === 'ok') {
+    const eqDays = eqSummary.nDays;
+    const where = p.isCurrent ? whereOf(kind, label.title, true) : wherePast(kind, p.start, todayISO, offset);
+    if (summary.nDays < DELTA_MIN_DAYS) {
+      compareNote = `Sem comparação: só há ${nDays(summary.nDays)} com refeições ${where}.`;
+    } else if (eqDays < DELTA_MIN_DAYS) {
+      compareNote = `Sem comparação: ${eq.label} só tem ${nDays(eqDays)} com refeições.`;
     }
   }
 
   // ── Comer para treinar, EA e micronutrientes (só dias fechados) ─────────
-  const eating = eatingForTraining(rows, trainingClosed, { minClosed: EATING_MIN_CLOSED[kind] ?? 7 });
+  // N3 (2026-10-05): o mínimo conta DIAS COM REFEIÇÕES, não dias fechados — com
+  // 14 dias fechados e 2 com refeições não há "com treino" nem "sem treino" que
+  // se compare. `closedDays` mantém-se (dias fechados) para os textos.
+  const eatingRaw = eatingForTraining(rows, trainingClosed, { minClosed: EATING_MIN_CLOSED[kind] ?? 7 });
+  const eating = { ...eatingRaw, mealDays: summary.nDays, enough: summary.nDays >= eatingRaw.minClosed };
   const ea = energyAvailabilityForDays({ meals, runs, gymSessions, bodyAssessments, days: closed });
   const micros = micronutrientAverages(meals, closed);
 
@@ -284,17 +342,36 @@ export function buildNutritionView(deps, period, todayISO) {
         perKey: byKey((k) => groupStats(wRows, k)),
       };
     });
-    weekdays = byKey((k) => {
-      const recs = rows.filter((r) => hasRecord(r, k) && r.values[k] != null);
-      const avgs = weekdayAverages(recs.map((r) => ({ date: r.date, value: r.values[k] })), WEEKDAY_MIN);
-      const per = avgs.map((a, i) => {
-        if (!a) return null;
-        const goal = meanOf(recs.filter((r) => isoWeekday(r.date) === i).map((r) => Number(r.goals[GOAL_KEY[k]]) || 0));
-        const cls = classifyMacroDay(k, a.avg, goal);
-        return { avg: a.avg, n: a.n, goal, pctLabel: cls.pctLabel, status: cls.status };
-      });
-      return { complete: per.every(Boolean), days: per };
-    });
+    weekdays = byKey((k) => weekdayStats(rows, k));
+  }
+
+  // O período anterior INTEIRO (fechado), calculado uma vez e só quando serve:
+  // - o "a começar"/"cedo": "Semana passada (28 set – 4 out): 2 300 kcal/dia · …" / "Ver setembro";
+  // - dizer, onde falta uma porta de dados (Comer para treinar, dias da
+  //   semana), se o período anterior já a abre — "Em setembro tens 24: Ver setembro ›".
+  let previousFull = null;
+  let previousData = null;
+  const weekdaysMissing = !!weekdays && NUTRITION_KEYS.some((k) => !weekdays[k].shown);
+  if (p.isCurrent && !firstPeriod && (earlyState !== 'ok' || !eating.enough || weekdaysMissing)) {
+    const prevP = previousPeriod(p, todayISO);
+    const prevDays = fromDataStart(closedDaysOf(prevP, todayISO), dataStartISO);
+    const prevRows = dailyNutritionRows({ meals, waterLogs, days: prevDays, goalsFor });
+    const prevSum = summarizeNutritionPeriod(prevRows, { minWaterDays: WATER_MIN_DAYS });
+    const name = periodName(prevP.kind, prevP.start, prevP.end, todayISO);
+    if (earlyState !== 'ok' && prevSum.nDays > 0) {
+      previousFull = {
+        name,
+        range: rangeText(prevP.start, prevP.end, todayISO),
+        nDays: prevSum.nDays,
+        kcalAvg: prevSum.byKey.calories.avg,
+        both: prevSum.both,
+      };
+    }
+    previousData = {
+      name,
+      mealDays: prevSum.nDays,
+      weekdayStrong: byKey((k) => weekdayStats(prevRows, k).strong),
+    };
   }
 
   const verdict = nutritionPeriodVerdict({
@@ -326,6 +403,10 @@ export function buildNutritionView(deps, period, todayISO) {
     compare,
     firstPeriod,
     previousFull,
+    previousData,
+    compareNote,
+    incomplete,
+    recordedRange,
     eating,
     ea,
     micros,

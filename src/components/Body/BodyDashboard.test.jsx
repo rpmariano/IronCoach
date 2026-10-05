@@ -101,11 +101,76 @@ describe('resumo: última leitura do período com data (C5)', () => {
 
   it('setembro vs agosto: −2,4 kg; com objetivo abaixo, a verde (Dentro)', () => {
     setPeriod('mes', -1);
+    monta(DADOS, { goal_weight_kg: 82 });
+    // Com objetivo a linha fala do caminho; a diferença face a agosto fica no leitor de ecrã.
+    expect(nameOf(row('Peso'))).toContain('desceu 2,4 kg face a agosto, no sentido contrário');
+  });
+
+  /* 2026-10-05: a barra é o PROGRESSO real até ao objetivo, desde o ponto de
+     partida (aqui a 1.ª leitura, 5 jul, 80 kg: os objetivos do corpo ainda não
+     têm histórico) — sem objetivo não há barra nenhuma. */
+  it('com objetivo: barra do caminho feito, "faltam 4,6 kg · 43%", e a nota do ponto de partida', () => {
+    setPeriod('mes', -1);
     monta(DADOS, { goal_weight_kg: 72 });
     const r = row('Peso');
-    expect(r).toHaveTextContent('−2,4 kg vs agosto');
-    expect(within(r).getByTestId('row-status')).toHaveAttribute('data-status', 'ok');
+    expect(r).toHaveTextContent('faltam 4,6 kg · 43%');
+    expect(within(r).getByTestId('row-bar')).toHaveAttribute('data-pct', '43');
+    expect(within(r).getByTestId('row-status')).toHaveAttribute('data-status', 'none');
+    expect(nameOf(r)).toContain('faltam 4,6 kg, 43% do caminho desde 5 jul, ponto de partida aproximado');
     expect(nameOf(r)).toContain('desceu 2,4 kg face a agosto, no bom sentido');
+    expect(within(summary()).getByText(/Barras: o caminho até ao objetivo desde a leitura de 5 jul\. Ponto de partida aproximado/)).toBeInTheDocument();
+  });
+
+  it('sem objetivo: sem barra (nem calha) — valor, leituras e data', () => {
+    setPeriod('mes', -1);
+    monta();
+    expect(within(summary()).queryAllByTestId('row-bar')).toHaveLength(0);
+    expect(row('Peso')).toHaveTextContent('−2,4 kg vs agosto');
+    expect(row('Peso')).toHaveTextContent('28 set');
+    expect(screen.queryByText(/Barras:/)).not.toBeInTheDocument();
+  });
+
+  it('objetivo atingido (a menos do ruído da balança): barra cheia e "objetivo atingido", a verde', () => {
+    monta(DADOS, { goal_weight_kg: 76.5 });
+    const r = row('Peso');
+    expect(r).toHaveTextContent('objetivo atingido');
+    expect(within(r).getByTestId('row-bar')).toHaveAttribute('data-pct', '100');
+    expect(within(r).getByTestId('row-status')).toHaveAttribute('data-status', 'ok');
+  });
+
+  /* Revisão de 2026-10-05: orientar pela 1.ª leitura de sempre inventava
+     "objetivo atingido". Os três casos do revisor, mais o peso que passou o
+     objetivo com partida aproximada. */
+  it('gordura acima do objetivo e peso com a 1.ª leitura (2024) abaixo: faltam, nunca "atingido"', () => {
+    const list = [
+      av('2024-05-01', { weight_kg: 72, body_fat_pct: 16 }),
+      av('2026-07-12', { weight_kg: 79.4, body_fat_pct: 24.5 }),
+      av('2026-10-04', { weight_kg: 77.3, body_fat_pct: 23 }),
+    ];
+    monta(list, { goal_weight_kg: 76, goal_body_fat_pct: 18 });
+    expect(row('Peso')).toHaveTextContent('faltam 1,3 kg · 62%');
+    expect(within(row('Peso')).getByTestId('row-bar')).toHaveAttribute('data-pct', '62');
+    expect(row('Gordura corporal')).toHaveTextContent('faltam 5,0 % · 23%');
+    expect(within(row('Gordura corporal')).getByTestId('row-status')).toHaveAttribute('data-status', 'none');
+    expect(within(summary()).getByText(/desde a leitura de 12 jul\. Ponto de partida aproximado: .* primeira leitura dos últimos 90 dias\./)).toBeInTheDocument();
+  });
+
+  it('gordura já abaixo do objetivo, mesmo a subir: "objetivo atingido"', () => {
+    const list = [av('2026-07-12', { body_fat_pct: 16 }), av('2026-10-04', { body_fat_pct: 17 })];
+    monta(list, { goal_body_fat_pct: 18 });
+    const r = row('Gordura corporal');
+    expect(r).toHaveTextContent('objetivo atingido');
+    expect(r).not.toHaveTextContent('faltam');
+    expect(within(r).getByTestId('row-status')).toHaveAttribute('data-status', 'ok');
+  });
+
+  it('peso que passou o objetivo, com partida aproximada: o lado em que está, sem barra', () => {
+    monta(DADOS, { goal_weight_kg: 77 });
+    const r = row('Peso');
+    expect(r).toHaveTextContent('0,8 kg abaixo do objetivo');
+    expect(r).not.toHaveTextContent('objetivo atingido');
+    expect(within(r).queryByTestId('row-bar')).toBeNull();
+    expect(nameOf(r)).toContain('0,8 kg abaixo do objetivo; passou-o desde 79,0 kg a 2 ago, ponto de partida aproximado');
   });
 
   it('sem objetivo, o peso não tem cor de bom ou mau', () => {
@@ -199,11 +264,30 @@ describe('gráficos', () => {
     expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Até 13 mar perdias peso depressa demais');
   });
 
-  it('pesagens que não chegam: diz o que falta, sem kg/semana (C1/C2)', () => {
+  /* 2026-10-05: duas pesagens — linha TRACEJADA entre elas ("estimativa · 2
+     pesagens"); o veredicto diz o facto e quando chega a 3.ª; o rodapé só a regra. */
+  it('duas pesagens: estimativa tracejada, o facto no veredicto, a regra no rodapé (C1/C2)', () => {
     monta([av('2026-10-01', { weight_kg: 80 }), av('2026-10-04', { weight_kg: 80.6 })]);
     const f = frame('Evolução de peso');
     expect(f.textContent).not.toMatch(/kg\/semana/);
-    expect(f).toHaveTextContent('nas duas semanas até 4 out há 2 pesagens em 3 dias');
+    expect(f).toHaveTextContent('Estimativa · 2 pesagens');
+    expect(f).toHaveTextContent('A tendência usa as pesagens das duas semanas até à última, também as de antes do período, e precisa de 3 espalhadas por pelo menos 10 dias.');
+    const est = h.lines.at(-1).data.datasets[0];
+    expect(est.borderDash).toEqual([6, 5]);
+    expect(est.data).toHaveLength(2);
+    expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Subiste 0,6 kg em 3 dias. Com só duas pesagens é uma estimativa pouco fiável — mais uma pesagem entre 11 e 15 out e passo a dar-te a tendência a sério.');
+    expect(within(summary()).getByTestId('verdict-line').textContent).not.toMatch(/três pesagens/);
+  });
+
+  it('uma pesagem: um ponto, sem linha; o veredicto diz quantas faltam e até quando', () => {
+    setPeriod('semana');
+    monta([av('2026-09-22', { weight_kg: 77 }), av('2026-10-02', { weight_kg: 76.2 })]);
+    const f = frame('Evolução de peso');
+    const [line, pts] = h.lines.at(-1).data.datasets;
+    expect(line.data).toHaveLength(0);
+    expect(pts.data).toHaveLength(1);
+    expect(f).not.toHaveTextContent('Estimativa');
+    expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Nesta semana só há uma pesagem, de 76,2 kg; para a tendência preciso de mais uma até 6 out.');
   });
 
   /* Revisão 2026-10-04 (C1/C2): na semana o ritmo vem das pesagens até à
@@ -243,16 +327,36 @@ describe('gráficos', () => {
     expect(frame('Composição corporal')).toBeUndefined();
   });
 
-  it('período fechado: sem gordura medida não há cartão; com 1, o rodapé fala desse período', () => {
+  it('período fechado: sem gordura medida (nem num período maior) não há cartão; com 1, o rodapé fala desse período', () => {
     const list = [av('2026-08-02', { weight_kg: 79, body_fat_pct: 21.5 }), av('2026-09-20', { weight_kg: 77, body_fat_pct: 20 }), av('2026-09-24', { weight_kg: 76.8 })];
     setPeriod('mes', -1);
     const { unmount } = monta(list);
     expect(frame('Composição corporal')).toHaveTextContent('Só houve 1 avaliação com gordura medida em setembro — a evolução precisa de 2.');
     unmount();
     resetEvolutionCache();
-    setPeriod('semana', -1); // 21 – 27 set: só a de 24 set, sem gordura
-    monta(list);
+    setPeriod('semana', -1); // 21 – 27 set: só a de 24 set, sem gordura; e nenhuma com gordura em 2025
+    const only = [av('2026-09-24', { weight_kg: 76.8 }), av('2025-03-01', { weight_kg: 80, body_fat_pct: 22 })];
+    monta(only);
     expect(frame('Composição corporal')).toBeUndefined();
+  });
+
+  /* C4 (2026-10-05, auditoria dos limiares): com menos de 2 avaliações com
+     gordura no período, o cartão diz onde há e leva lá. */
+  it('composição sem evolução no período: diz onde há (No 3.º trimestre há 2) e "Ver trimestre ›" leva lá', () => {
+    const list = [av('2026-08-02', { weight_kg: 79, body_fat_pct: 21.5 }), av('2026-09-20', { weight_kg: 77, body_fat_pct: 20 }), av('2026-09-24', { weight_kg: 76.8 })];
+    setPeriod('mes', -1);
+    monta(list);
+    const f = frame('Composição corporal');
+    expect(f).toHaveTextContent('Só houve 1 avaliação com gordura medida em setembro — a evolução precisa de 2. No 3.º trimestre há 2:');
+    fireEvent.click(within(f).getByRole('button', { name: /Ver trimestre/ }));
+    expect(usePeriodStore.getState().tabs.corpo).toEqual({ kind: 'trimestre', offset: -1 });
+    expect(within(summary()).getByTestId('period-title')).toHaveTextContent('jul – set 2026');
+  });
+
+  it('período vazio: diz de quando é a avaliação anterior (C6)', () => {
+    setPeriod('mes', -1);
+    monta([av('2026-07-28', { weight_kg: 79 }), av('2026-10-02', { weight_kg: 77 })]);
+    expect(screen.getByText('Sem avaliações em setembro — a anterior é de 28 jul.')).toBeInTheDocument();
   });
 });
 
@@ -280,6 +384,23 @@ describe('período a começar (R8)', () => {
     expect(within(summary()).getByTestId('verdict-line')).toHaveTextContent('Ainda sem avaliações nesta semana. A última pesagem foi a 4 out: 76,2 kg.');
     fireEvent.click(within(early).getByRole('button', { name: /Ver a última avaliação/ }));
     expect(screen.getByTestId('body-day-title')).toHaveTextContent('Ontem');
+  });
+
+  /* C1 (2026-10-05): o período em curso vazio diz onde está a última avaliação. */
+  it('trimestre em curso sem avaliações: diz de quando é a última e que está no trimestre passado', () => {
+    monta(DADOS.slice(0, 8)); // a última é de 28 set
+    const early = screen.getByTestId('early-a-comecar');
+    expect(early).toHaveTextContent('A última foi a 28 set, no trimestre passado.');
+    expect(within(early).getByRole('button', { name: /Ver trimestre passado/ })).toBeInTheDocument();
+  });
+
+  it('sem avaliações no anterior, sem o botão que levava a um período vazio', () => {
+    setPeriod('mes');
+    monta([av('2026-07-28', { weight_kg: 79 })]);
+    const early = screen.getByTestId('early-a-comecar');
+    expect(early).toHaveTextContent('A última foi a 28 jul.');
+    expect(within(early).queryByRole('button', { name: /Ver mês passado/ })).not.toBeInTheDocument();
+    expect(within(early).getByRole('button', { name: /Ver a última avaliação/ })).toBeInTheDocument();
   });
 
   it('"Ver semana passada" recua', () => {

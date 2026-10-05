@@ -9,10 +9,10 @@ import { computeBestPace } from '@formulas/bestPace.ts';
    o Bar guardam os dados que recebem. "Hoje" é fixo (domingo, 4 out 2026) e
    mexe-se por `h.today` para os testes de "a começar". */
 
-const h = vi.hoisted(() => ({ state: {}, scatterProps: [], barProps: [], chartProps: [], today: '2026-10-04' }));
+const h = vi.hoisted(() => ({ state: {}, scatterProps: [], barProps: [], chartProps: [], today: '2026-10-04', ready: true }));
 
 vi.mock('../../utils/useTodayISO', () => ({ useTodayISO: () => h.today, default: () => h.today }));
-vi.mock('../../store', () => ({ useAppStore: (sel) => (typeof sel === 'function' ? sel(h.state) : h.state), sliceReady: () => true }));
+vi.mock('../../store', () => ({ useAppStore: (sel) => (typeof sel === 'function' ? sel(h.state) : h.state), sliceReady: () => h.ready }));
 vi.mock('react-chartjs-2', () => ({
   Bar: (props) => { h.barProps.push(props); return <div data-testid="chart-bar" />; },
   Line: () => <div data-testid="chart-line" />,
@@ -59,6 +59,7 @@ beforeEach(() => {
   h.barProps.length = 0;
   h.chartProps.length = 0;
   h.today = '2026-10-04';
+  h.ready = true;
   resetEvolutionCache();
   resetEvolutionCore();
   act(() => usePeriodStore.getState().reset());
@@ -635,7 +636,7 @@ describe('R5 — ▲/▼ só contra o anterior equivalente e fechado', () => {
 describe('VDOT por período', () => {
   const tempo = (id, date, seconds) => corrida({ id, date, distance_km: 10, duration_seconds: seconds, training_type: 'tempo' });
   const treze = [
-    tempo('a1', '2026-08-02', 3300), tempo('a2', '2026-08-09', 3300), tempo('a3', '2026-08-16', 3300),
+    tempo('a1', '2026-08-01', 3300), tempo('a2', '2026-08-09', 3300), tempo('a3', '2026-08-16', 3300),
     tempo('s1', '2026-09-02', 3000), tempo('s2', '2026-09-09', 3000), tempo('s3', '2026-09-16', 3000),
   ];
 
@@ -736,5 +737,141 @@ describe('revisão da Corrida (2026-10-04) — janelas, rótulos e contradiçõe
   it('a data dos recordes escreve o mês em minúsculas, como o resto do ecrã', () => {
     monta({ runs: [corrida({ date: '2026-09-12', distance_km: 5, duration_seconds: 1500 })], kind: 'ano' });
     expect(screen.getByTestId('recordes-de-sempre').parentElement).toHaveTextContent('12 set 2026');
+  });
+});
+
+describe('limiares (2026-10-05) — onde estão os dados', () => {
+  const zonas = (id, date) => corrida({ id, date, distance_km: 8, details: { hr_zones: [{ minutes: 25 }, { minutes: 5 }] } });
+  const setembro = [zonas('z1', '2026-09-02'), zonas('z2', '2026-09-09'), zonas('z3', '2026-09-16')];
+
+  it('R2: 0 corridas com zonas neste mês mas com setembro → diz a última e leva a setembro', () => {
+    monta({ runs: [...setembro, corrida({ id: 'o1', date: '2026-10-01', details: {} })], kind: 'mes', offset: 0 });
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Distribuição de intensidade'));
+    expect(nota).toHaveTextContent('Distribuição de intensidade: em outubro não há corridas com zonas de frequência cardíaca — a última foi a 16 de setembro.');
+    expect(nota).toHaveTextContent('Em setembro tens 3.');
+    // NÃO diz "Regista corridas com zonas": o atleta já as tem.
+    expect(screen.queryByText(/Regista corridas com zonas/)).toBeNull();
+    const botao = within(nota).getByRole('button', { name: 'Ver setembro' });
+    expect(botao.style.minHeight).toBe('var(--tap)');
+    expect(botao.style.color).toBe('var(--run)');
+    act(() => { fireEvent.click(botao); });
+    expect(usePeriodStore.getState().tabs.corrida).toEqual({ kind: 'mes', offset: -1 });
+  });
+
+  it('R2: quem nunca teve zonas continua a ver o convite a registar, sem botão', () => {
+    monta({ runs: [corrida({ id: 'o1', date: '2026-10-01', details: {} })], kind: 'mes', offset: 0 });
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Regista corridas com zonas'));
+    expect(nota).toBeTruthy();
+    expect(screen.queryAllByTestId('min-data-action')).toHaveLength(0);
+  });
+
+  it('R2: sem 3 em setembro, o botão leva ao Ano', () => {
+    monta({ runs: [zonas('z1', '2026-02-02'), zonas('z2', '2026-04-09'), zonas('z3', '2026-09-16'), corrida({ id: 'o1', date: '2026-10-01' })], kind: 'mes', offset: 0 });
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Distribuição de intensidade'));
+    act(() => { fireEvent.click(within(nota).getByRole('button', { name: 'Ver o ano' })); });
+    expect(usePeriodStore.getState().tabs.corrida).toEqual({ kind: 'ano', offset: 0 });
+  });
+
+  it('R3: a eficiência com 0 neste mês diz a última e onde há', () => {
+    const fc = (id, date) => corrida({ id, date, details: { avg_heart_rate_bpm: 150 } });
+    monta({ runs: [fc('a', '2026-09-02'), fc('b', '2026-09-09'), fc('c', '2026-09-16'), corrida({ id: 'o1', date: '2026-10-01' })], kind: 'mes', offset: 0 });
+    const nota = screen.getAllByTestId('min-data-note').find((n) => n.textContent.includes('Eficiência aeróbica'));
+    expect(nota).toHaveTextContent('em outubro não há corridas com frequência cardíaca média — a última foi a 16 de setembro. Em setembro tens 3.');
+    expect(within(nota).getByRole('button', { name: 'Ver setembro' })).toBeInTheDocument();
+  });
+
+  it('R4: a média por semana conta as semanas fechadas que tocam o mês (28 set – 4 out já fechou a 5 out)', () => {
+    h.today = '2026-10-12';
+    vi.setSystemTime(new Date(2026, 9, 12, 12, 0, 0));
+    monta({ runs: [corrida({ id: 'a', date: '2026-09-01', distance_km: 5 }), corrida({ id: 'b', date: '2026-09-29', distance_km: 6 }), corrida({ id: 'c', date: '2026-10-06', distance_km: 10 })], kind: 'mes', offset: 0 });
+    const l = linha('Média por semana');
+    expect(within(l).getByTestId('row-value')).toHaveTextContent('8,0 km');
+    expect(within(l).getByText('em 2 semanas')).toBeInTheDocument();
+    expect(screen.getByText(/A média por semana usa as semanas seg–dom já fechadas que tocam o período \(28 set – 11 out\)\./)).toBeInTheDocument();
+  });
+
+  it('R4: antes de a 1.ª semana fechar diz quando fecha', () => {
+    monta({ runs: [corrida({ id: 'a', date: '2026-09-01' }), corrida({ id: 'b', date: '2026-10-01' })], kind: 'mes', offset: 0 });
+    expect(within(linha('Média por semana')).getByText('a 1.ª semana fecha a 4 out')).toBeInTheDocument();
+  });
+
+  it('R5: numa semana o VDOT não se compara e o cartão di-lo; num mês diz o que falta', () => {
+    const tempo = (id, date, s) => corrida({ id, date, distance_km: 10, duration_seconds: s, training_type: 'tempo' });
+    const runs = [tempo('x', '2026-08-01', 3300), tempo('y', '2026-08-15', 3300), tempo('a', '2026-09-01', 3300), tempo('b', '2026-09-15', 3300), tempo('c', '2026-10-01', 3000)];
+    const { unmount } = monta({ runs, kind: 'semana', offset: 0 });
+    expect(within(frame('Evolução do VDOT')).getByTestId('vdot-compare-note')).toHaveTextContent('A comparação do VDOT é por mês ou mais.');
+    unmount();
+    monta({ runs, kind: 'mes', offset: -1 });
+    expect(within(frame('Evolução do VDOT')).getByTestId('vdot-compare-note')).toHaveTextContent('Para comparar o VDOT preciso de 3 treinos de qualidade em cada mês — setembro vai em 2, agosto (1 – 30 ago) teve 2.');
+  });
+
+  it('R8: sem tendência o cartão diz o critério real do VDOT, igual com ou sem prova', () => {
+    monta({ runs: [corrida({ id: 'a', date: '2026-09-12', training_type: 'rodagem' })], kind: 'ano', offset: 0 });
+    expect(screen.queryByText(/Regista corridas para veres a previsão desta prova/)).toBeNull();
+  });
+
+  it('R10: mês sem corridas fechadas mas com setembro: a linha do período diz onde e leva lá', () => {
+    monta({ runs: [corrida({ id: 'a', date: '2026-09-10', distance_km: 8 }), corrida({ id: 'b', date: '2026-09-20', distance_km: 12 })], kind: 'mes', offset: 0 });
+    const resumo = screen.getByTestId('period-summary');
+    expect(resumo).toHaveTextContent('setembro: 2 corridas · 20,0 km');
+    act(() => { fireEvent.click(within(resumo).getByRole('button', { name: /Ver setembro/ })); });
+    expect(usePeriodStore.getState().tabs.corrida).toEqual({ kind: 'mes', offset: -1 });
+  });
+});
+
+describe('o período por omissão abre no anterior quando está a começar (2026-10-05)', () => {
+  const runs = [corrida({ id: 'a', date: '2026-10-10', distance_km: 8 }), corrida({ id: 'b', date: '2026-10-20', distance_km: 12 })];
+
+  it('dia 1 do mês (0 dias fechados) com registos antes: abre em outubro, a seta › leva ao mês a começar', () => {
+    h.today = '2026-11-01';
+    vi.setSystemTime(new Date(2026, 10, 1, 12, 0, 0));
+    h.state = { runs, raceEvents: [], profile: {}, setOpenCreationMode: vi.fn(), coachPlans: [], coachPlanItems: [] };
+    render(<RunDashboard />);
+    expect(usePeriodStore.getState().tabs.corrida).toEqual({ kind: 'mes', offset: -1 });
+    expect(screen.getAllByText('outubro 2026').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('heading', { name: 'O mês começou hoje' })).toBeNull();
+    // O mock-up do mês a começar continua disponível pela seta ›.
+    act(() => { usePeriodStore.getState().shift('corrida', 1); });
+    expect(screen.getByRole('heading', { name: 'O mês começou hoje' })).toBeInTheDocument();
+  });
+
+  it('quem já escolheu um período não é mexido', () => {
+    h.today = '2026-11-01';
+    vi.setSystemTime(new Date(2026, 10, 1, 12, 0, 0));
+    h.state = { runs, raceEvents: [], profile: {}, setOpenCreationMode: vi.fn(), coachPlans: [], coachPlanItems: [] };
+    act(() => usePeriodStore.getState().setPeriod('corrida', 'mes', 0));
+    render(<RunDashboard />);
+    expect(usePeriodStore.getState().tabs.corrida).toEqual({ kind: 'mes', offset: 0 });
+    expect(screen.getByRole('heading', { name: 'O mês começou hoje' })).toBeInTheDocument();
+  });
+
+  it('quem nunca registou nada fica no período a começar (o convite), não num mês vazio', () => {
+    h.today = '2026-11-01';
+    vi.setSystemTime(new Date(2026, 10, 1, 12, 0, 0));
+    h.state = { runs: [], raceEvents: [], profile: {}, setOpenCreationMode: vi.fn(), coachPlans: [], coachPlanItems: [] };
+    render(<RunDashboard />);
+    expect(usePeriodStore.getState().tabs.corrida).toEqual({ kind: 'mes', offset: 0 });
+  });
+
+  it('a meio do mês (já há dias fechados) abre no mês em curso', () => {
+    h.state = { runs, raceEvents: [], profile: {}, setOpenCreationMode: vi.fn(), coachPlans: [], coachPlanItems: [] };
+    render(<RunDashboard />); // hoje é 4 out
+    expect(usePeriodStore.getState().tabs.corrida).toEqual({ kind: 'mes', offset: 0 });
+  });
+});
+
+describe('abrir no mês anterior só depois de as corridas chegarem (revisão 2026-10-05)', () => {
+  it('1.º render com a fatia por carregar (sem corridas) não grava "nunca registou": quando chegam, abre no mês anterior', () => {
+    h.today = '2026-11-01';
+    vi.setSystemTime(new Date(2026, 10, 1, 12, 0, 0));
+    h.ready = false;
+    h.state = { runs: [], raceEvents: [], profile: {}, setOpenCreationMode: vi.fn(), coachPlans: [], coachPlanItems: [] };
+    const { rerender } = render(<RunDashboard />);
+    expect(usePeriodStore.getState().tabs.corrida.offset).toBe(0);
+    expect(usePeriodStore.getState().opened.corrida).toBeUndefined();
+    h.ready = true;
+    h.state = { ...h.state, runs: [corrida({ date: '2026-10-12' }), corrida({ date: '2026-09-20' })] };
+    act(() => { rerender(<RunDashboard />); });
+    expect(usePeriodStore.getState().tabs.corrida.offset).toBe(-1);
   });
 });
