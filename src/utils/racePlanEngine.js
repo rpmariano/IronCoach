@@ -23,6 +23,7 @@ import { computePhaseWindows, resolvePhaseState } from '@formulas/racePhases.ts'
 import { computeRaceEve } from '@formulas/raceEve.ts';
 import { phaseGuidance } from './phaseGuidance';
 import { addDaysISO } from '../lib/utils';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 function getTodayISO() {
   const d = new Date();
@@ -502,7 +503,8 @@ export function calculateRaceTrainingPlan({ race, profile = {}, runs = [], today
     const hasAcceptedPlan = planosDaProva.some((p) => isTrainingPlan({ coach_plan_items: (coachPlanItems || []).filter((i) => i?.plan_id === p.id) }));
     const segunda = addDaysISO(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
     const kmPlaneados = (de, ate) => (coachPlanItems || [])
-      .filter((i) => i && idsDaProva.has(i.plan_id) && i.kind === 'corrida' && i.status !== 'cancelado')
+      // Caminhadas fora: não são km de corrida (runKinds.ts, 2026-10-05).
+      .filter((i) => i && idsDaProva.has(i.plan_id) && i.kind === 'corrida' && !isWalkPlanItem(i) && i.status !== 'cancelado')
       .filter((i) => { const d = String(i.planned_date || '').slice(0, 10); return d >= de && d < ate; })
       .reduce((s, i) => s + (Number(i.target_distance_km) || 0), 0);
     const kmEstaSemana = kmPlaneados(segunda, addDaysISO(segunda, 7));

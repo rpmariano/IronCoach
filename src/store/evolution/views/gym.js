@@ -12,6 +12,7 @@ import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
 import { computeMuscleGroupVolumeDetailed } from '@formulas/muscleGroupVolume.ts';
 import { computeClassAnalytics } from '@formulas/classAnalytics.ts';
 import { computeExerciseProgression } from '@formulas/strengthProgression.ts';
+import { runsOnly } from '@formulas/runKinds.ts';
 import { gymVerdict, GYM_TARGET_PER_WEEK, gymMinClosedWeeks } from '../../../utils/verdicts/gym';
 import { whereOf, pickFallbackPeriod, closedWeekStarts, nextWeekCloseISO } from '../../../components/BI/period/periodText';
 
@@ -231,7 +232,8 @@ const capFirst = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
 export function buildGymView([sessionsIn, runsIn], periodSel, todayISO) {
   const sessions = Array.isArray(sessionsIn) ? sessionsIn : [];
-  const runsList = Array.isArray(runsIn) ? runsIn : [];
+  // Só corridas: o veredicto fala do "volume de corrida" (caminhadas à parte, runKinds.ts, 2026-10-05).
+  const runsList = Array.isArray(runsIn) ? runsOnly(runsIn) : [];
   const kind = periodSel?.kind || 'mes';
   const offset = periodSel?.offset ?? 0;
   const period = calendarPeriod(kind, todayISO, offset);

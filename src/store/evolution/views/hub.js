@@ -399,7 +399,8 @@ export function buildHubView(deps, periodSel, todayISO) {
   const [runsIn, sessionsIn, mealsIn, bodyIn, profile, goalHistory] = deps || EMPTY;
   /* Caminhadas (2026-10-05, runKinds.ts): o pilar Corrida é só de corridas e
      diz as caminhadas da semana à parte. Os registos "de qualquer tipo"
-     (1.º registo, EA da nutrição, a semana passada) usam a lista inteira. */
+     (1.º registo, EA da nutrição) usam a lista inteira; o resumo da semana
+     passada recebe só corridas. */
   const allRuns = Array.isArray(runsIn) ? runsIn : EMPTY;
   const split = splitWalksCore(allRuns);
   const runs = split.runs;

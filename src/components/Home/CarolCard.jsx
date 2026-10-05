@@ -23,7 +23,7 @@ import { useCupForHome } from '../../utils/useCup';
 import { cupEntryNotices, cupWeekLine } from '../../utils/cupWeek';
 import { CupPrevisao } from '../Run/CupBits';
 import { useToast } from '../shared/ToastProvider';
-import { runsOnly } from '@formulas/runKinds.ts';
+import { runsOnly, runMatchesPlanItem } from '@formulas/runKinds.ts';
 
 /* O cartão da Carol no topo do Início (mock "Início": ciano, "Ler mais").
    Duas partes: o cabeçalho com o nome dela, que abre o chat, e uma linha do
@@ -279,7 +279,13 @@ export function useCoachDailyMessages(agora = new Date()) {
     const itensHoje = activePlanItems.today;
     const treinoHoje = itensHoje.filter((i) => i.kind === 'corrida' || i.kind === 'ginasio');
     const provaFeita = (raceEvents || []).some((r) => r?.status === 'concluida' && typeof r.date === 'string' && r.date.slice(0, 10) === today);
-    const isDone = (i) => i.status === 'concluido' || doneKindsToday.has(i.kind) || (provaFeita && isRacePlanItem(i));
+    // Corrida e caminhada só se cumprem uma à outra pelo tipo certo
+    // (runMatchesPlanItem, runKinds.ts): 3 km a andar não fazem o contínuo
+    // de 8 km do plano, nem o contrário (2026-10-05).
+    const runsHoje = (runs || []).filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) === today);
+    const isDone = (i) => i.status === 'concluido'
+      || (i.kind === 'corrida' ? runsHoje.some((r) => runMatchesPlanItem(r, i)) : doneKindsToday.has(i.kind))
+      || (provaFeita && isRacePlanItem(i));
     const pendentes = treinoHoje.filter((i) => !isDone(i));
     const feitos = treinoHoje.filter(isDone);
     // Só corridas: os km de hoje são de corrida (as caminhadas à parte, runKinds.ts).

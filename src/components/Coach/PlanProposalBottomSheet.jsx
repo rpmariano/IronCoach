@@ -4,6 +4,7 @@ import { buildPlanDays, diffDaysISO, PlanDayCard, DisclaimerNutricional, diaTemS
 import { formatDayMonth } from '../../utils/homeModels';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 import { formatTargetDate, goalHorizonSummary } from '../../utils/goalHorizon';
 
 const GOAL_LABELS = {
@@ -203,10 +204,13 @@ export function PlanProposalBottomSheet({
                       Plano de {diffDaysISO(plan.period_start, plan.period_end) + 1} dias
                       {raceTarget ? ` até ${raceTarget.name}` : ''}, com{' '}
                       {(() => {
-                        const runs = planItems.filter(i => i.kind === 'corrida').length;
+                        // Caminhadas contadas à parte das corridas (runKinds.ts, 2026-10-05).
+                        const walks = planItems.filter(i => isWalkPlanItem(i)).length;
+                        const runs = planItems.filter(i => i.kind === 'corrida' && !isWalkPlanItem(i)).length;
                         const gym = planItems.filter(i => i.kind === 'ginasio').length;
                         const parts = [];
                         if (runs > 0) parts.push(`${runs} ${runs === 1 ? 'corrida' : 'corridas'}`);
+                        if (walks > 0) parts.push(`${walks} ${walks === 1 ? 'caminhada' : 'caminhadas'}`);
                         if (gym > 0) parts.push(`${gym} ${gym === 1 ? 'sessão' : 'sessões'} de ginásio`);
                         return parts.length > 0 ? parts.join(' e ') : 'refeições e descanso';
                       })()}

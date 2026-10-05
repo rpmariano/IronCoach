@@ -30,6 +30,7 @@ import {
   withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
+import { isWalk } from "../_shared/formulas/runKinds.ts";
 
 const MAX_PHOTOS = 6;
 const MAX_NOTES_LENGTH = 500;
@@ -906,13 +907,13 @@ async function generateMealCoachNotes(
   let workoutsText = `\nHistórico de Treinos REALIZADOS (efetivamente concluídos e registados):\n`;
   if (yesterdayRuns.length || yesterdayGym.length) {
     workoutsText += `- Ontem (${yesterdayISO}): ` + [
-      ...yesterdayRuns.map(r => `Corrida (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
+      ...yesterdayRuns.map(r => `${isWalk(r) ? 'Caminhada' : 'Corrida'} (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
       ...yesterdayGym.map(g => `Ginásio ${g.name || ''} (${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`),
     ].join(", ") + "\n";
   }
   if (todayRuns.length || todayGym.length) {
     workoutsText += `- Hoje (${meal.date}): ` + [
-      ...todayRuns.map(r => `Corrida (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
+      ...todayRuns.map(r => `${isWalk(r) ? 'Caminhada' : 'Corrida'} (${r.distance_km}km, ${Math.round((r.duration_seconds || 0)/60)}m, RPE ${r.effort_rpe || '?'}/10)`),
       ...todayGym.map(g => `Ginásio ${g.name || ''} (${Math.round((g.duration_seconds || 0)/60)}m, RPE ${g.exertion || '?'}/10)`),
     ].join(", ") + "\n";
   } else {

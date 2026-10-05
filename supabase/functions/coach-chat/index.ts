@@ -2024,7 +2024,7 @@ function buildRunningSummary(runs: any[], windowDays: number): string {
   const walkLine = walks.count
     ? `\nCaminhadas nestes ${windowDays} dias: ${walksLabel(walks.count)} · ${String(walks.km).replace(".", ",")} km — à parte, NÃO contam para a carga de corrida (ACWR, km/semana, pace, VDOT).`
     : "";
-  return `Corridas (últimos ${windowDays} dias, ${runs.length} registada(s)) — DETALHE, NÃO SOMES: para totais usa "VOLUME SEMANAL (calendário)" abaixo ou get_running_history:\n${summariseRuns(runs).join("\n")}${walkLine}`;
+  return `Corridas (últimos ${windowDays} dias, ${runsOnly(runs).length} registada(s)${walks.count ? `, mais ${walksLabel(walks.count)}` : ''}) — DETALHE, NÃO SOMES: para totais usa "VOLUME SEMANAL (calendário)" abaixo ou get_running_history:\n${summariseRuns(runs).join("\n")}${walkLine}`;
 }
 
 // ─── Volume semanal por calendário (segunda a domingo) ──────────────────────
@@ -2890,7 +2890,7 @@ export async function runGetRunningHistory(sb: any, userId: string, args: { star
 
   if (error) return `Erro ao consultar dados: ${error.message}`;
   if (!data || data.length === 0) return `Sem corridas registadas entre ${start_date} e ${end_date}.`;
-  return `Corridas de ${start_date} a ${end_date} (${data.length}):\n${summariseRuns(data).join("\n")}`;
+  return `Corridas de ${start_date} a ${end_date} (${runsOnly(data).length}${walkTotals(data).count ? ` + ${walksLabel(walkTotals(data).count)}` : ''}):\n${summariseRuns(data).join("\n")}`;
 }
 
 // Valida e monta a estimativa opcional de macros (MEAL_MACROS_SCHEMA_
