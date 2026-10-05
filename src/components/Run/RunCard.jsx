@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, RefreshCw, Flame, HeartPulse, TrendingUp, Zap, Navigation, Activity, Route, Timer, Gauge, PencilLine, Droplet, Footprints } from 'lucide-react';
+import { ChevronDown, ChevronUp, Image as ImageIcon, Award, Trash2, Loader2, RefreshCw, Flame, HeartPulse, TrendingUp, Zap, Navigation, Activity, Route, Timer, Gauge, PencilLine, Droplet, Footprints, PersonStanding } from 'lucide-react';
+import { isWalk } from '@formulas/runKinds.ts';
 import { format, parseISO } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -46,6 +47,7 @@ function runKindLabel(run) {
       subidas: 'Subidas',
       trail: 'Trail',
       tecnico: 'Técnico (trilho)',
+      caminhada: 'Caminhada',
     };
     return map[run.training_type] || run.training_type;
   }
@@ -196,12 +198,15 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
       >
         <div className="flex items-start gap-3 min-w-0">
           <div className="w-10 h-10 rounded-full bg-[var(--surface-glass)] border border-[var(--border-glass)] flex items-center justify-center text-[var(--mod-corrida)] shrink-0 mt-0.5">
-            <RunIcon className="w-5 h-5" />
+            {/* Caminhada com ícone próprio (2026-10-05) — distingue-se de relance. */}
+            {isWalk(run)
+              ? <PersonStanding className="w-5 h-5" aria-label="Caminhada" data-testid="icone-caminhada" />
+              : <RunIcon className="w-5 h-5" />}
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <h4 className="text-sm font-bold text-[var(--text-1)] leading-tight">
-                {run.title || run.name || 'Corrida'}
+                {run.title || run.name || (isWalk(run) ? 'Caminhada' : 'Corrida')}
               </h4>
               <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] border border-[var(--border-glass)]">
                 {kindLabel}

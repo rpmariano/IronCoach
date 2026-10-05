@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, Footprints, Trophy, AlertTriangle } from 'lucide-react';
+import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, Footprints, Trophy, AlertTriangle, PersonStanding } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
@@ -30,6 +30,7 @@ import PremiumModal from '../shared/PremiumModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '@formulas/runRecord.ts';
+import { WALK_TRAINING_TYPE, runMatchesPlanItem } from '@formulas/runKinds.ts';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import DurationInput from '../shared/DurationInput';
@@ -68,7 +69,14 @@ const RUN_TRAINING_TYPES = [
   { key: 'subidas', label: 'Subidas', group: 'Trilho' },
   { key: 'trail', label: 'Trail', group: 'Trilho' },
   { key: 'tecnico', label: 'Técnico (trilho)', group: 'Trilho' },
+  // Caminhada (2026-10-05): escolhe-se pelo chip "Caminhada" ao lado de
+  // Treino/Prova, não por este select — mas é um training_type como os outros
+  // (runs.training_type = 'caminhada', ver _shared/formulas/runKinds.ts).
+  { key: 'caminhada', label: 'Caminhada', group: 'Caminhada' },
 ];
+
+const DEFAULT_RUN_NAME = 'Corrida de Hoje';
+const DEFAULT_WALK_NAME = 'Caminhada de Hoje';
 
 const RUN_REPEAT_TRAINING_TYPES = new Set(['intervalos', 'subidas']);
 
@@ -200,7 +208,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [runStartTime, setRunStartTime] = useState(
     startTimeInputValue(initialRace?.start_time || planItem?.start_time)
   );
-  const [runName, setRunName] = useState(initialRace?.name || planItem?.title || 'Corrida de Hoje');
+  const [runName, setRunName] = useState(initialRace?.name || planItem?.title
+    || (planItem?.training_type === WALK_TRAINING_TYPE ? DEFAULT_WALK_NAME : DEFAULT_RUN_NAME));
   // Par usado nesta corrida — é daqui que sai o acumulado de km do armário
   // (Perfil → Equipamento). Fica fora da analyticalSignature de propósito:
   // trocar o par não muda a análise do Coach, por isso não deve custar uma
@@ -1320,8 +1329,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
     if (isRaceMode) return;
     const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
+    /* Caminhada só risca a caminhada do plano, corrida só a corrida
+       (runMatchesPlanItem, runKinds.ts — 2026-10-05): andar 5 km não é ter
+       feito o contínuo de 8, e correr não é o que se pediu num dia de
+       caminhada de recuperação. */
+    const kindForMatch = { kind: runKind, training_type: runKind === 'treino' ? runTrainingType : null };
     const item = (useAppStore.getState().coachPlanItems || []).find(
-      i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === runDate && i.kind === 'corrida' && !isRacePlanItem(i),
+      i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === runDate && i.kind === 'corrida' && !isRacePlanItem(i)
+        && runMatchesPlanItem(kindForMatch, i),
     );
     if (!item) return;
     try {
@@ -2049,6 +2064,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   );
 
   const isRepeatType = runKind === 'treino' && RUN_REPEAT_TRAINING_TYPES.has(runTrainingType);
+  const isWalkSelected = runKind === 'treino' && runTrainingType === WALK_TRAINING_TYPE;
+  /* Trocar entre corrida e caminhada leva o nome por omissão consigo — só se
+     o atleta não o mudou ("Corrida de Hoje" ↔ "Caminhada de Hoje"). */
+  const chooseTrainingType = (next) => {
+    setRunTrainingType(next);
+    const toWalk = next === WALK_TRAINING_TYPE;
+    setRunName((name) => {
+      if (toWalk && name === DEFAULT_RUN_NAME) return DEFAULT_WALK_NAME;
+      if (!toWalk && name === DEFAULT_WALK_NAME) return DEFAULT_RUN_NAME;
+      return name;
+    });
+  };
 
   /* As peças partilhadas pelos dois layouts (treino e modo prova) vivem aqui
      em cima, para não haver duas versões do mesmo bloco a divergir com o
@@ -2484,9 +2511,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 do resto da app. (O override global que reescrevia text-white
                 saiu no impeccable colorize — ver a tabela em globals.css.) */}
             <Chip
-              active={runKind === 'treino'}
+              active={runKind === 'treino' && !isWalkSelected}
               variant="run"
-              onClick={() => { setRunKind('treino'); setIsFormDirty(true); }}
+              onClick={() => { setRunKind('treino'); if (isWalkSelected) chooseTrainingType('continuo'); setIsFormDirty(true); }}
               className="px-3 py-1.5"
               type="button"
             >
@@ -2501,9 +2528,26 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             >
               Prova
             </Chip>
+            {/* Caminhada (2026-10-05): recuperação de lesão ou cirurgia, pós-prova,
+                ou quem não pode correr. Grava training_type 'caminhada' e fica
+                fora da carga de corrida (runKinds.ts). */}
+            <Chip
+              active={isWalkSelected}
+              variant="run"
+              onClick={() => { setRunKind('treino'); chooseTrainingType(WALK_TRAINING_TYPE); setIsFormDirty(true); }}
+              className="px-3 py-1.5"
+              type="button"
+              aria-label="Caminhada"
+            >
+              <span className="inline-flex items-center gap-1"><PersonStanding size={13} aria-hidden="true" /> Caminhada</span>
+            </Chip>
           </div>
 
-          {runKind === 'treino' ? (
+          {isWalkSelected ? (
+            <p data-testid="nota-caminhada" className="text-[11px] text-[var(--text-3)] mb-4">
+              Uma caminhada fica à parte das corridas: não conta para os km, o pace nem a carga de corrida. A Carol olha para ela como recuperação.
+            </p>
+          ) : runKind === 'treino' ? (
             <div className="mb-4">
               <RunTrainingTypeHelp label="Tipo de treino" fieldId="rr-tipo-de-treino">
                 <select

@@ -32,6 +32,7 @@ import { todayISO } from '../lib/utils';
 import { formatDayMonth, isRacePlanItem } from './homeModels';
 import { treinoFalado } from '../components/Home/carolCardLines';
 import { PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from '@formulas/vocabulary.ts';
+import { isWalk, isWalkPlanItem } from '@formulas/runKinds.ts';
 
 /** Trabalho duro que não tem lugar nos dois dias antes de uma prova — a
  *  MESMA lista que o servidor recusa no runProposeTrainingPlan
@@ -339,7 +340,8 @@ export function detectPlanDivergence({
     const trainingDays = new Set(items.filter((i) => i.kind === 'corrida' || i.kind === 'ginasio').map((i) => dayOf(i.planned_date)));
     const linked = new Set(items.flatMap((i) => [i.completed_run_id, i.completed_session_id]).filter(Boolean));
     const records = [
-      ...(runs || []).map((r) => ({ id: r?.id, date: dayOf(r?.date), kind: 'corrida' })),
+      // Caminhada só explica caminhada; corrida só corrida (runKinds.ts, 2026-10-05).
+      ...(runs || []).map((r) => ({ id: r?.id, date: dayOf(r?.date), kind: 'corrida', walk: isWalk(r) })),
       ...(gymSessions || []).map((g) => ({ id: g?.id, date: dayOf(g?.date), kind: 'ginasio' })),
     ].filter((r) => r.date && r.date <= today && !trainingDays.has(r.date) && !(r.id && linked.has(r.id)));
     const pares = [];
@@ -347,7 +349,7 @@ export function detectPlanDivergence({
       const date = dayOf(item.planned_date);
       records.forEach((r, idx) => {
         const gap = Math.abs(diasEntre(date, r.date));
-        if (r.kind === item.kind && gap >= 1 && gap <= SWAP_WINDOW_DAYS) pares.push({ k, idx, gap, date, r });
+        if (r.kind === item.kind && !!r.walk === isWalkPlanItem(item) && gap >= 1 && gap <= SWAP_WINDOW_DAYS) pares.push({ k, idx, gap, date, r });
       });
     });
     pares.sort((a, b) => a.gap - b.gap || a.date.localeCompare(b.date) || a.r.date.localeCompare(b.r.date));

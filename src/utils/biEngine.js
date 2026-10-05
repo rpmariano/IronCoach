@@ -33,6 +33,7 @@ import { computeCompositionTrend } from '@formulas/compositionTrend.ts';
 import { computeRunAcwr, RUN_ACWR_MIN_HISTORY_WEEKS } from '@formulas/runAcwr.ts';
 import { computeCrossMetrics } from '@formulas/crossMetrics.ts';
 import { computeReadinessIndex as sharedComputeReadinessIndex } from '@formulas/readinessIndex.ts';
+import { runsOnly } from '@formulas/runKinds.ts';
 
 /**
  * Filtra dados por um intervalo de datas relativo à data atual.
@@ -157,7 +158,8 @@ export function calculateACWRHistory(runs, weeksCount = 12) {
     
     const allWeeks = [...historyWeeks, ...weeks];
 
-    runs.forEach(run => {
+    // Caminhadas fora da carga (runKinds.ts, 2026-10-05).
+    runsOnly(runs).forEach(run => {
       const d = parseISO(run.date);
       if (!isValid(d)) return;
 
@@ -225,7 +227,9 @@ export function calculateTrainingDistribution(runs, level = 'medio') {
  */
 export function calculatePaceVsHR(runs) {
   try {
-    return runs.filter(r => r.distance_km > 0 && r.duration_seconds > 0 && r.details?.avg_heart_rate_bpm > 0)
+    // Eficiência aeróbica é de corrida: uma caminhada (ritmo lento, FC baixa)
+    // era um ponto fora da nuvem (runKinds.ts, 2026-10-05).
+    return runsOnly(runs).filter(r => r.distance_km > 0 && r.duration_seconds > 0 && r.details?.avg_heart_rate_bpm > 0)
       .map(r => ({
         date: r.date,
         paceSecondsPerKm: r.duration_seconds / r.distance_km,
@@ -437,9 +441,15 @@ function fmtDec(n, casas = 1) {
  * @param {object} profile
  * @returns {Array<{ id, severity, title, message, metric, value, threshold, module }>}
  */
-export function detectCoachInsights(data, profile) {
+export function detectCoachInsights(dataIn, profile) {
   try {
     const insights = [];
+    /* Caminhadas (runKinds.ts, 2026-10-05): fora de tudo o que é corrida —
+       carga, 80/20, polimento, viabilidade, previsão. Ficam na lista completa
+       (allRuns) só o que é atividade/gasto: o "treinou nesse dia" da adesão,
+       a EA e o desgaste das sapatilhas (andar com elas também as gasta). */
+    const allRuns = dataIn?.runs || [];
+    const data = { ...dataIn, runs: runsOnly(allRuns) };
     // Sem nível declarado, 'medio' — o mesmo que a Carol usa na distribuição
     // 80/20 (ver calculateTrainingDistribution acima).
     const level = profile?.experience_level || 'medio';
@@ -467,7 +477,7 @@ export function detectCoachInsights(data, profile) {
         if (i.planned_date >= todayStr || i.planned_date < past14DaysStr) return false;
         
         // Verifica se o atleta registou algum treino nesse dia independentemente do plano
-        const hasRun = (data.runs || []).some(r => format(parseISO(r.date), 'yyyy-MM-dd') === i.planned_date);
+        const hasRun = allRuns.some(r => format(parseISO(r.date), 'yyyy-MM-dd') === i.planned_date);
         const hasGym = (data.gymSessions || []).some(s => format(parseISO(s.date), 'yyyy-MM-dd') === i.planned_date);
         
         return !hasRun && !hasGym;
@@ -624,7 +634,7 @@ export function detectCoachInsights(data, profile) {
     // "19.8 kcal/kg FFM" com ponto, ao lado do pilar da Nutrição com "23,8".
     // Agora sai com vírgula decimal (fmtDec), como o resto da app.
     if (data.meals?.length > 0 && data.bodyAssessments?.length > 0) {
-      const ea = calculateEnergyAvailability(data.meals, data.bodyAssessments, data.runs || [], data.gymSessions || [], 'semana');
+      const ea = calculateEnergyAvailability(data.meals, data.bodyAssessments, allRuns, data.gymSessions || [], 'semana');
       if (ea && ea.isAtRisk) {
         insights.push({
           id: 'reds_risk', severity: 'critical',
@@ -837,7 +847,7 @@ export function detectCoachInsights(data, profile) {
     // se escolhe o par mais gasto — avisar sobre três pares ao mesmo tempo
     // enterrava os outros insights.
     if (data.shoes?.length > 0) {
-      const [worst] = shoesNeedingAttention(data.shoes, data.runs || [], profile?.weight_kg);
+      const [worst] = shoesNeedingAttention(data.shoes, allRuns, profile?.weight_kg);
       // 'atencao' (75%) fica de fora de propósito: dá para o armário mostrar
       // a barra a amarelo, mas não chega para ocupar um insight do Coach.
       if (worst && worst.wear.level !== 'atencao') {

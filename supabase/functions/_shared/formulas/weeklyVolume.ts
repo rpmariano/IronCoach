@@ -18,9 +18,13 @@
 // dependente de timezone do sistema — todo o cálculo de dia-da-semana é feito
 // em UTC sobre a string YYYY-MM-DD, exatamente como o resto de `_shared/formulas`.
 
+import { runsOnly } from "./runKinds.ts";
+
 export interface WeeklyVolumeRunLike {
   date: string;
   distance_km: number | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 
 export interface WeekVolume {
@@ -63,9 +67,11 @@ function sumWeek(runs: WeeklyVolumeRunLike[], startISO: string, endISO: string):
  * semana imediatamente anterior ("semana passada", sempre completa).
  */
 export function computeCalendarWeeklyVolume(
-  runs: WeeklyVolumeRunLike[],
+  runsIn: WeeklyVolumeRunLike[],
   todayISO: string,
 ): CalendarWeeklyVolume {
+  // Caminhadas fora (runKinds.ts, 2026-10-05): não são km de corrida.
+  const runs = runsOnly(runsIn);
   const currentMonday = mondayOfWeek(todayISO);
   const currentSunday = addDaysISO(currentMonday, 6);
   const previousMonday = addDaysISO(currentMonday, -7);

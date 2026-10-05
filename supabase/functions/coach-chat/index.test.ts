@@ -5294,3 +5294,62 @@ Deno.test("buildNutritionAnalyticsPanel: micronutrientes com tudo conhecido dize
   assertStringIncludes(legacy, "cobertura desconhecida");
   assertStringIncludes(legacy, "não afirmes que falta um micronutriente");
 });
+
+// ── Caminhada (2026-10-05, runKinds.ts) ──────────────────────────────────
+import { WALKING_DOCTRINE } from "./index.ts";
+
+Deno.test("caminhada: o schema de propose_training_plan aceita caminhada e a intensidade", () => {
+  // deno-lint-ignore no-explicit-any
+  const decls = (buildTools(allowedToolsFor("F_PLAN"))[0] as any).functionDeclarations as any[];
+  const plan = decls.find((d) => d.name === "propose_training_plan");
+  const item = plan.parameters.properties.items.items.properties;
+  assertEquals(item.training_type.enum.includes("caminhada"), true);
+  assertEquals(item.walk_intensity.enum, ["leve", "moderada"]);
+  assertStringIncludes(item.training_type.description, "caminhada");
+});
+
+Deno.test("caminhada: runProposeTrainingPlan grava o dia de caminhada (kind corrida) com a intensidade em categories", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [
+      { planned_date: "2026-08-10", kind: "corrida", training_type: "caminhada", target_duration_min: 40, walk_intensity: "moderada", notes: "Terreno plano, a conversar." },
+      { planned_date: "2026-08-12", kind: "corrida", training_type: "caminhada", target_distance_km: 3 },
+    ],
+  });
+  assertStringIncludes(result, "Plano criado com 2 treino(s)");
+  assertEquals(calls.itemInserts[0].kind, "corrida");
+  assertEquals(calls.itemInserts[0].training_type, "caminhada");
+  assertEquals(calls.itemInserts[0].categories, ["moderada"]);
+  assertEquals(calls.itemInserts[0].target_duration_min, 40);
+  // Sem intensidade, leve por omissão.
+  assertEquals(calls.itemInserts[1].categories, ["leve"]);
+  assertEquals(calls.itemInserts[1].target_distance_km, 3);
+});
+
+Deno.test("caminhada: a doutrina da Carol diz quando a usar, que não conta para a carga e como a pôr no plano", () => {
+  assertStringIncludes(WALKING_DOCTRINE, "training_type=caminhada");
+  assertStringIncludes(WALKING_DOCTRINE, "cirurgia");
+  assertStringIncludes(WALKING_DOCTRINE, "pós-operatório");
+  assertStringIncludes(WALKING_DOCTRINE, "indicação médica para não correr");
+  assertStringIncludes(WALKING_DOCTRINE, "NÃO conta para a carga de corrida");
+  assertStringIncludes(WALKING_DOCTRINE, "walk_intensity");
+  assertStringIncludes(WALKING_DOCTRINE, "uma corrida não a cumpre");
+  // E chega mesmo ao prompt.
+  const sys = buildSystemInstruction(null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null);
+  assertStringIncludes(sys, WALKING_DOCTRINE.trim());
+});
+
+Deno.test("caminhada: na lista de corridas do contexto diz-se CAMINHADA, sem o aviso de cadência de corrida", () => {
+  const [linha] = summariseRuns([{ date: "2026-10-05", kind: "treino", training_type: "caminhada", distance_km: 3, duration_seconds: 2400, details: { cadence_spm: 110 } }]);
+  assertStringIncludes(linha, "CAMINHADA");
+  assertEquals(linha.includes("⚠cadência"), false);
+});
+
+Deno.test("caminhada: o ACWR do chat ignora as caminhadas", () => {
+  const today = "2026-10-05";
+  const day = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) - n * 86400000).toISOString().slice(0, 10);
+  const runs = [1, 4, 8, 11, 15, 18, 22, 25].map((n) => ({ date: day(n), distance_km: 8, kind: "treino", training_type: "continuo" }));
+  const withWalks = [...runs, { date: today, distance_km: 20, kind: "treino", training_type: "caminhada" }];
+  assertEquals(computeACWR(withWalks, today), computeACWR(runs, today));
+});

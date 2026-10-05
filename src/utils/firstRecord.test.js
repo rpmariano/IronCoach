@@ -161,3 +161,25 @@ describe('firstRecordMoment — o primeiro treino de ginásio', () => {
     }
   });
 });
+
+/* Caminhada (2026-10-05): a primeira caminhada diz-se caminhada, e corridas e
+   caminhadas contam-se à parte. */
+describe('firstRecordMoment — caminhada', () => {
+  const walk = { id: 'w2', training_type: 'caminhada', kind: 'treino', distance_km: 3, duration_seconds: 2400 };
+
+  it('a primeira caminhada é "A primeira caminhada."', () => {
+    const m = firstRecordMoment('run', { runs: [] }, walk);
+    expect(m.title).toBe('A primeira caminhada.');
+    expectCarolVoice(m.sub);
+  });
+
+  it('a primeira corrida depois de caminhadas continua a ser a primeira corrida', () => {
+    const m = firstRecordMoment('run', { runs: [{ id: 'w1', training_type: 'caminhada' }] }, { id: 'r1', kind: 'treino', training_type: 'continuo', distance_km: 5, duration_seconds: 1800 });
+    expect(m.title).toBe('A primeira corrida.');
+    expect(m.everFirst).toBe(false);
+  });
+
+  it('a segunda caminhada já não é momento', () => {
+    expect(firstRecordMoment('run', { runs: [{ id: 'w1', training_type: 'caminhada' }] }, walk)).toBeNull();
+  });
+});

@@ -6,6 +6,7 @@ import { pt } from 'date-fns/locale';
 import { mealNutrients } from './nutrition';
 import { lisbonTodayISO } from '../lib/utils';
 import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.ts';
+import { isWalkPlanItem, walkIntensity } from '@formulas/runKinds.ts';
 
 // ─── Datas ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,7 @@ const TRAINING_TYPE_LABELS = {
   // grafia antiga, que ainda existe em planos gravados antes disso.
   prova: 'Prova',
   competicao: 'Prova',
+  caminhada: 'Caminhada',
 };
 
 function capitalize(s) {
@@ -108,6 +110,16 @@ export function planItemTitle(item, raceName = null) {
   }
   if (isRacePlanItem(item)) {
     return ['Prova', raceName, distanciaKm(item.target_distance_km)].filter(Boolean).join(' · ');
+  }
+  /* Caminhada do plano (2026-10-05, runKinds.ts): "Caminhada leve · 40 min".
+     Minutos ou km — o que o plano tiver; a intensidade vem de categories. */
+  if (isWalkPlanItem(item)) {
+    const intensity = walkIntensity(item);
+    return [
+      intensity ? `Caminhada ${intensity}` : 'Caminhada',
+      distanciaKm(item.target_distance_km),
+      item.target_duration_min ? `${item.target_duration_min} min` : null,
+    ].filter(Boolean).join(' · ');
   }
   if (item.kind === 'corrida') {
     const type = item.training_type ? (TRAINING_TYPE_LABELS[item.training_type] || capitalize(item.training_type)) : 'Corrida';

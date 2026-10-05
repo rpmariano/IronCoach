@@ -6,6 +6,8 @@
 // (specs/formulas-checklist.md Fase E) — só o KPI de recordes existia no
 // dashboard; a Carol não tinha acesso a estes números.
 
+import { runsOnly } from "./runKinds.ts";
+
 export interface SplitEntry {
   distance_km?: number | null;
   time_seconds?: number | null;
@@ -16,6 +18,8 @@ export interface RunForBestPace {
   distance_km: number | null;
   duration_seconds: number | null;
   details?: { splits?: SplitEntry[] | null } | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 
 export interface BestPaceResult {
@@ -49,7 +53,8 @@ export function computeBestPace(runs: RunForBestPace[], targetKm: BestPaceBucket
 
   const entries: PaceEntry[] = [];
 
-  for (const r of runs) {
+  // Caminhadas fora (runKinds.ts, 2026-10-05): um recorde de pace é de corrida.
+  for (const r of runsOnly(runs)) {
     const totalDist = Number(r.distance_km || 0);
 
     // Prioridade 1: splits com distância ≈ targetKm — um split guarda o

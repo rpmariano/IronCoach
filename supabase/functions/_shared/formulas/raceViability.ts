@@ -34,15 +34,20 @@
 
 import { categorizeDistance, LEVEL_WEEKLY_KM_RANGE, MIN_PREP_WEEKS, MIN_VOLUME_KM } from "./vocabulary.ts";
 import { computeRunAcwr } from "./runAcwr.ts";
+import { runsOnly } from "./runKinds.ts";
 
 export interface RunForVolume {
   date: string;
   distance_km?: number | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 
 /** Volume médio semanal das últimas `weeks` semanas (0 se sem dados). */
 export function computeRecentWeeklyVolume(runs: RunForVolume[], todayISO: string, weeks = 4): number {
   if (!Array.isArray(runs) || runs.length === 0) return 0;
+  // Caminhadas fora (runKinds.ts, 2026-10-05): é volume de CORRIDA.
+  runs = runsOnly(runs);
   const cutoffMs = new Date(todayISO + "T00:00:00Z").getTime() - weeks * 7 * 86400000;
   const total = runs
     .filter((r) => r.date && new Date(r.date + "T00:00:00Z").getTime() >= cutoffMs)
@@ -57,7 +62,8 @@ export function computeRecentWeeklyVolume(runs: RunForVolume[], todayISO: string
  *  semanas davam ~5 km/semana e "volume insuficiente" para um 10 km a quem
  *  corre mais do que regista. */
 export function knownWeeklyVolume(runs: RunForVolume[], todayISO: string): number | null {
-  const list = (runs || []).filter((r) => r && typeof r.date === "string")
+  // Caminhadas fora ANTES do map (que perde o training_type) — runKinds.ts.
+  const list = runsOnly(runs).filter((r) => r && typeof r.date === "string")
     .map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0 }));
   if (!computeRunAcwr(list, todayISO).hasEnoughData) return null;
   const v = computeRecentWeeklyVolume(list, todayISO, 4);

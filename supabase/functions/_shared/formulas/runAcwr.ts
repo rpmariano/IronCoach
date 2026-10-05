@@ -14,6 +14,7 @@
 // coach-chat passa a alinhar com o ecrã, não o contrário.
 
 import { computeAcwr, classifyAcwrZone } from "./acwr.ts";
+import { runsOnly } from "./runKinds.ts";
 
 const ACUTE_WINDOW_DAYS = 7;
 const CHRONIC_WINDOW_DAYS = 28;
@@ -29,6 +30,8 @@ export const RUN_ACWR_MIN_HISTORY_WEEKS = 3;
 export interface RunForAcwr {
   date: string;
   distance_km?: number | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 
 export interface RunAcwr {
@@ -47,7 +50,11 @@ function addDaysISO(dateISO: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function computeRunAcwr(runs: RunForAcwr[], todayISO: string): RunAcwr {
+export function computeRunAcwr(runsIn: RunForAcwr[], todayISO: string): RunAcwr {
+  // As caminhadas não são carga de corrida (runKinds.ts, 2026-10-05): saem
+  // aqui, à entrada, para nenhum chamador (ecrã, chat, resumo, guarda dos
+  // planos) ter de se lembrar.
+  const runs = runsOnly(runsIn);
   const acuteStart = addDaysISO(todayISO, -(ACUTE_WINDOW_DAYS - 1));
   const chronicStart = addDaysISO(todayISO, -(CHRONIC_WINDOW_DAYS - 1));
 

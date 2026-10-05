@@ -921,7 +921,7 @@ async function generateMealCoachNotes(
 
   const planSection = planItems.length > 0 
     ? `\nPlano de treino PREVISTO/FUTURO (o que está agendado mas ainda não foi feito a menos que conste em 'Treinos REALIZADOS' acima):\n` +
-      planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
+      planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `${i.training_type === 'caminhada' ? 'Caminhada' : `Corrida ${i.training_type || ''}`} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
       `\n\nAVALIAÇÃO DO PLANO E NUTRIÇÃO: Avalia se os alimentos e macros desta refeição estão adequados para a recuperação dos treinos já feitos OU como preparação para os treinos previstos. Se o plano estiver gravemente comprometido e justificar que a Carol intervenha para propor um novo plano, marca intervention_needed=true e indica a reason.\n` +
       planningFrameSection(true, !!upcomingRace, upcomingRace)
     : planningFrameSection(false, !!upcomingRace, upcomingRace);

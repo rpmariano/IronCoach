@@ -10,6 +10,7 @@
 // sempre a mesma resposta ao atleta e à Carol.
 
 import { calculateVDOT } from "./racePrediction.ts";
+import { runsOnly } from "./runKinds.ts";
 
 export interface RunForVdot {
   date: string;
@@ -42,7 +43,9 @@ function qualifiesAsTimeTrial(r: RunForVdot): boolean {
 }
 
 export function computeVdotTrend(runs: RunForVdot[]): VdotPoint[] {
-  return runs
+  // Caminhadas fora (runKinds.ts, 2026-10-05): uma caminhada a RPE 7 num
+  // pós-operatório não diz nada sobre a forma aeróbica de corrida.
+  return runsOnly(runs)
     .filter(qualifiesAsTimeTrial)
     .map((r) => ({
       date: r.date,

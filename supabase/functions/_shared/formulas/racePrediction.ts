@@ -4,6 +4,8 @@
 // muda de casa, sem mudar comportamento (ver
 // specs/formulas-centralizacao.md §4, specs/formulas-checklist.md Fase C).
 
+import { runsOnly } from "./runKinds.ts";
+
 // ─── Riegel — previsão de tempo de prova ──────────────────────────────────
 // @doutrina specs/coach-investigacao.md (fator por nível: iniciante/básico
 // 1,085 · médio/avançado 1,06 — atletas menos treinados perdem mais ritmo
@@ -19,6 +21,8 @@ export interface RaceRun {
   distance_km: number;
   duration_seconds: number;
   date?: string;
+  kind?: string | null;
+  training_type?: string | null;
 }
 
 /** Abaixo disto a previsão é uma extrapolação longa: a corrida que a sustenta
@@ -44,7 +48,10 @@ export interface RiegelPrediction {
 // critério do hub (RaceHubView `runsComTempo`) e do classifyRaceOutcome —
 // agora vive aqui, no sítio único, para ninguém ter de filtrar antes.
 function fastestRun(runs: RaceRun[]): RaceRun | null {
-  const valid = (runs || []).filter(r => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0);
+  // Caminhadas fora (runKinds.ts, 2026-10-05): o ritmo de uma caminhada não
+  // prevê tempo de prova nenhum (nunca ganharia o reduce, mas um atleta que só
+  // caminha — lesão, pós-operatório — ficava com uma "previsão" a 9'/km).
+  const valid = runsOnly(runs).filter(r => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0);
   if (valid.length === 0) return null;
   return valid.reduce((best, r) => {
     const paceR = r.duration_seconds / r.distance_km;

@@ -9,7 +9,7 @@
 
 import { computeMealNutrients, type MealLike } from "./mealNutrients.ts";
 import { computeEnergyAvailability, type EnergyAvailabilityStatus } from "./energyAvailability.ts";
-import { RUNNING_COST_KCAL_PER_KG_KM } from "./tdee.ts";
+import { distanceCostKcalPerKgKm } from "./tdee.ts";
 import { filterByRelativeDateRange } from "./relativeDateRange.ts";
 
 // Sem `calories_kcal` registado numa sessão de ginásio, assume-se este
@@ -25,6 +25,8 @@ export interface MealForEA extends MealLike {
 export interface RunForEA {
   date: string;
   distance_km?: number | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 export interface GymSessionForEA {
   date: string;
@@ -114,7 +116,7 @@ export function computeEnergyAvailabilityWindow(
   }
   for (const run of filteredRuns) {
     addDay(run.date);
-    days[run.date].exercise += (run.distance_km || 0) * weight * RUNNING_COST_KCAL_PER_KG_KM;
+    days[run.date].exercise += (run.distance_km || 0) * weight * distanceCostKcalPerKgKm(run); // caminhada a metade (tdee.ts)
   }
   for (const session of filteredGym) {
     addDay(session.date);

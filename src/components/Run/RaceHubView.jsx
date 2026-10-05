@@ -55,6 +55,7 @@ import { todayISO } from '../../lib/utils';
 import { experienceLevelLabel } from '../../utils/experience';
 import { normalizeStartTime } from '../../utils/startTime';
 import './RaceHubView.css';
+import { runsOnly } from '@formulas/runKinds.ts';
 
 export default function RaceHubView({
   race,
@@ -144,7 +145,8 @@ export default function RaceHubView({
      plano do dia e a distância equivalente. É o mesmo critério do
      classifyRaceOutcome. */
   const runsComTempo = useMemo(() =>
-    (runs || []).filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0),
+    // Só corridas: uma caminhada não prevê tempo de prova (runKinds.ts, 2026-10-05).
+    runsOnly(runs).filter((r) => Number(r?.distance_km) > 0 && Number(r?.duration_seconds) > 0),
   [runs]);
 
   const prediction = useMemo(() =>

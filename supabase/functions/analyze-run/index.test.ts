@@ -212,3 +212,40 @@ Deno.test("jornadas: o bloco da competição entra no prompt do comentário só 
   assertStringIncludes(src, "      deadline,\n      (await seriesPromise)?.text ?? null,\n    );");
   assertStringIncludes(src, "  deadline = Number.POSITIVE_INFINITY,\n  // O bloco da competição por jornadas");
 });
+
+// ── Caminhada (2026-10-05, runKinds.ts) ──────────────────────────────────
+import { buildWalkAnalysisSection, TRAINING_TYPE_KEYS } from "./index.ts";
+
+Deno.test("caminhada: 'caminhada' é um training_type aceite (sem isto gravava-se como treino sem tipo)", () => {
+  assertEquals(TRAINING_TYPE_KEYS.includes("caminhada"), true);
+  const existing = { kind: "treino", training_type: "continuo", details: { race_type: null } };
+  assertEquals(resolveReanalysisTypes(existing, { training_type: "caminhada" }), { kind: "treino", trainingType: "caminhada", raceType: null });
+});
+
+Deno.test("caminhada: a análise não a julga como corrida — ritmo esperado, fora da carga, avaliada como recuperação", () => {
+  const bloco = buildWalkAnalysisSection(2400);
+  assertStringIncludes(bloco, "CAMINHADA, NÃO UMA CORRIDA");
+  assertStringIncludes(bloco, "NUNCA julgues o ritmo como se fosse corrida");
+  assertStringIncludes(bloco, "corrida pontual");
+  assertStringIncludes(bloco, "NÃO conta para a carga de corrida");
+  assertStringIncludes(bloco, "(40 min)");
+  assertStringIncludes(bloco, "FC média");
+  assertStringIncludes(bloco, "cirurgia");
+  assertStringIncludes(bloco, "nunca digas \"já podes correr\"");
+});
+
+Deno.test("caminhada: nunca é recorde de corrida, e não esconde os recordes das corridas", () => {
+  const candidates = [
+    { date: "2026-09-01", distance_km: 5, duration_seconds: 1500, kind: "treino", training_type: "continuo" },
+    { date: "2026-09-08", distance_km: 6, duration_seconds: 1800, kind: "treino", training_type: "continuo" },
+    { date: "2026-09-15", distance_km: 7, duration_seconds: 2100, kind: "treino", training_type: "continuo" },
+    { date: "2026-09-20", distance_km: 5, duration_seconds: 900, kind: "treino", training_type: "caminhada" },
+  ];
+  const walk = computeRunRecordContext(
+    { id: "w", date: "2026-10-05", distance_km: 20, duration_seconds: 14400, details: null, kind: "treino", training_type: "caminhada" },
+    candidates,
+  );
+  assertEquals(walk.personalRecordKind, null);
+  // A "caminhada" absurda a 3'/km não é o melhor dos 5 km.
+  assertStringIncludes(walk.bestPacesLine ?? "", "5k 5.00");
+});

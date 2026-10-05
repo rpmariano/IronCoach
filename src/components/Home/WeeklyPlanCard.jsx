@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
   ChevronDown, ChevronUp, ChevronLeft, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag
+  Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag, PersonStanding
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
@@ -12,6 +12,7 @@ import { todayISO, addDaysISO } from '../../lib/utils';
 import { isRacePlanItem, raceNameForDate, planItemTitle } from '../../utils/homeModels';
 import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import './WeeklyPlanCard.css';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 // Mesmos valores por omissão de computeMacroAdherence
 // (supabase/functions/_shared/formulas/macroAdherence.ts) — não importados
@@ -120,6 +121,7 @@ export function DisclaimerNutricional() {
 
 function itemIcon(item) {
   if (item.isRace || isRacePlanItem(item)) return Flag;
+  if (isWalkPlanItem(item)) return PersonStanding; // caminhada (2026-10-05)
   if (item.kind === 'corrida') return RunIcon;
   if (item.kind === 'ginasio') return DumbbellIcon;
   if (isMealOnlyItem(item)) return Utensils;

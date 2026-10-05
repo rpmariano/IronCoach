@@ -3,6 +3,7 @@ import { computeAcwr } from '@formulas/acwr.ts';
 import { computeWeightTrend } from '@formulas/weightTrend.ts';
 import { computeVdotTrend } from '@formulas/vdotTrend.ts';
 import { addDaysISO, mondayOf } from '@formulas/calendarPeriod.ts';
+import { runsOnly, walksOnly } from '@formulas/runKinds.ts';
 
 /**
  * Cálculos de base partilhados pelos separadores da Evolução (2026-10-04,
@@ -81,7 +82,7 @@ export function runAcwrHistoryCore(runs, todayISO, weeksCount = 12) {
       loads.push(0);
       index.set(s, i);
     }
-    for (const run of list) {
+    for (const run of runsOnly(list)) { // caminhadas fora da carga (runKinds.ts)
       const d = typeof run?.date === 'string' ? run.date.slice(0, 10) : null;
       if (!d || d < firstMonday) continue;
       let i;
@@ -136,6 +137,17 @@ export function vdotTrendCore(runs) {
       return [];
     }
   });
+}
+
+/**
+ * A lista de `runs` partida em corridas e caminhadas (feature "Caminhada",
+ * 2026-10-05, runKinds.ts). Memorizada pela identidade da lista: as duas
+ * metades são SEMPRE as mesmas arrays para a mesma lista, e os outros cores
+ * (memorizados por identidade) continuam a acertar na cache quando recebem
+ * `split.runs`.
+ */
+export function splitWalksCore(runs) {
+  return memoByList('splitWalks', runs, '', (list) => ({ runs: runsOnly(list), walks: walksOnly(list) }));
 }
 
 /** Só para testes. */

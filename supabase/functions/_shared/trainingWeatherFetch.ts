@@ -10,6 +10,7 @@
 //
 // Nunca rejeita: devolve o bloco ou null.
 
+import { isWalkPlanItem } from "./formulas/runKinds.ts";
 import { buildTrainingWeatherContext, trainingHours, weatherAtHours, type TrainingDay } from "./formulas/trainingWeather.ts";
 
 const TIMEOUT_MS = 4000;
@@ -25,6 +26,8 @@ function lisbonHour(now: Date): number {
 // deno-lint-ignore no-explicit-any
 function describeItem(i: any): string {
   const km = Number(i?.target_distance_km);
+  // A caminhada do plano diz-se caminhada (runKinds.ts, 2026-10-05).
+  if (isWalkPlanItem(i)) return `caminhada${Number.isFinite(km) && km > 0 ? ` ${String(km).replace(".", ",")} km` : ""}`;
   return `corrida${i?.training_type ? ` ${i.training_type}` : ""}${Number.isFinite(km) && km > 0 ? ` ${String(km).replace(".", ",")} km` : ""}`;
 }
 

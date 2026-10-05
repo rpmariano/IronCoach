@@ -99,6 +99,7 @@ export const TIPOS_TREINO = {
   subidas: 'Subidas',
   trail: 'Trail',
   tecnico: 'Técnico (trilho)',
+  caminhada: 'Caminhada', // 2026-10-05 (runKinds.ts)
 };
 
 export function runKindLabel(run) {

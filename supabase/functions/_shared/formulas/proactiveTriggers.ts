@@ -17,6 +17,7 @@
 // por resolver (intervenção — dor no check-in, desvio num registo) passa à
 // frente de tudo, e o conflito de provas vem logo a seguir à véspera.
 
+import { isWalk, isWalkPlanItem } from "./runKinds.ts";
 import type { Segment } from "./percentileSegments.ts";
 import { type LeaderboardEntryRow, leaderboardMoment, percentileAvailability, percentileReadyMoment, type SnapshotRow } from "./vitrina.ts";
 import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
@@ -86,6 +87,7 @@ export interface TriggerRun {
   date?: string | null;
   race_id?: string | null;
   kind?: string | null;
+  training_type?: string | null;
   created_at?: string | null;
 }
 
@@ -293,8 +295,10 @@ function lisbonMinutesOf(iso: string): number | null {
 export function findUnlinkedRaceDayRun<R extends TriggerRun>(runs: R[] | null | undefined, race: TriggerRace, todayISO: string): R | null {
   const day = race.date.slice(0, 10);
   const start = day === todayISO ? startTimeMinutes(race.start_time) : null;
+  // Uma caminhada no dia da prova (o passeio da manhã) nunca é a prova
+  // (runKinds.ts, 2026-10-05).
   return (runs || []).find((r) => {
-    if (!r || r.race_id || dayOf(r.date ?? null) !== day) return false;
+    if (!r || r.race_id || isWalk(r) || dayOf(r.date ?? null) !== day) return false;
     if (start == null || !r.created_at) return true;
     const createdDay = lisbonDayOf(r.created_at);
     const at = lisbonMinutesOf(r.created_at);
@@ -316,6 +320,8 @@ const MISSED_KIND_LABEL: Record<string, string> = { corrida: "corrida", ginasio:
 export function missedWorkoutLabel(items: TriggerPlanItem[]): string {
   return items
     .map((i) => {
+      // Uma caminhada do plano diz-se caminhada, não "corrida (caminhada)".
+      if (isWalkPlanItem(i)) return "caminhada";
       const kind = MISSED_KIND_LABEL[i.kind ?? ""] || i.kind || "treino";
       return i.training_type ? `${kind} (${i.training_type})` : kind;
     })

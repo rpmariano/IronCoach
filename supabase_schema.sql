@@ -461,9 +461,11 @@ create table runs (
   kind text not null default 'simples' check (kind in ('simples', 'treino', 'competicao')),
   -- 'sprints' mantido só por compatibilidade com registos antigos — já não é
   -- oferecido no ecrã (ver RUN_TRAINING_TYPES no cliente).
+  -- 'caminhada' (2026-10-05, migração 20261005120000): caminhada, fora da
+  -- carga de corrida (supabase/functions/_shared/formulas/runKinds.ts).
   training_type text check (training_type is null or training_type in (
     'continuo', 'longo', 'tempo', 'recuperacao', 'fartlek',
-    'intervalos', 'subidas', 'trail', 'tecnico', 'sprints'
+    'intervalos', 'subidas', 'trail', 'tecnico', 'sprints', 'caminhada'
   )),
   details jsonb
 );

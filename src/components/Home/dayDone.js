@@ -21,6 +21,7 @@
 
 import { formatPace } from '../../utils/run';
 import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 const km = (v) => String(Math.round(Number(v) * 10) / 10).replace('.', ',');
 const milhares = (n) => Math.round(n).toLocaleString('pt-PT');
@@ -44,6 +45,7 @@ const TIPO_DITO = {
   regenerativo: 'corrida regenerativa',
   trail: 'trail',
   tecnico: 'técnico em trilho',
+  caminhada: 'caminhada', // 2026-10-05 (runKinds.ts)
 };
 
 /** A frase do tipo trocado, ou null quando o tipo bate (ou não se sabe).
@@ -92,6 +94,27 @@ const GINASIO_CURTO = 0.8;
 /** Para um treino concluído: { text, verdict } — o feito e a leitura dele. */
 export function doneLine(item, { runs = [], gymSessions = [] } = {}) {
   if (!item || item.status !== 'concluido') return null;
+
+  /* Caminhada do plano (2026-10-05, runKinds.ts): diz-se o que se andou e o
+     tempo, sem ritmo — uma caminhada não se julga pelo pace. Compara-se com o
+     que o plano pedia: os km, ou os minutos quando o plano só tinha minutos. */
+  if (isWalkPlanItem(item)) {
+    const run = (runs || []).find((r) => r?.id === item.completed_run_id);
+    if (!run) return { text: 'Feito.', verdict: null };
+    const dist = Number(run.distance_km) || 0;
+    const min = Math.round(Number(run.duration_seconds) / 60) || 0;
+    const partes = [dist > 0 ? `${km(dist)} km` : null, min > 0 ? `${min} min` : null].filter(Boolean);
+    const text = partes.length ? `${partes.join(' em ')}.` : 'Feito.';
+    const alvoKm = Number(item.target_distance_km);
+    const alvoMin = Number(item.target_duration_min);
+    let razao = null;
+    let curto = null;
+    if (alvoKm > 0 && dist > 0) { razao = dist / alvoKm; curto = `Ficaste nos ${km(dist)} de ${km(alvoKm)} km.`; }
+    else if (alvoMin > 0 && min > 0) { razao = min / alvoMin; curto = `Ficaste nos ${min} de ${Math.round(alvoMin)} min.`; }
+    if (razao == null) return { text, verdict: null };
+    if (razao < 0.8) return { text, verdict: curto };
+    return { text, verdict: 'Cumprido.' };
+  }
 
   if (item.kind === 'corrida') {
     const run = (runs || []).find((r) => r?.id === item.completed_run_id);

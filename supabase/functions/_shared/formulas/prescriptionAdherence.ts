@@ -17,6 +17,8 @@ import { isMealOnlyItem } from "./mealSuggestions.ts";
 
 export const ADHERENCE_WINDOW_DAYS = 14;
 /** ±15%: dentro disto, o treino foi o prescrito. */
+import { isWalkPlanItem, runMatchesPlanItem, runsOnly } from "./runKinds.ts";
+
 export const ADHERENCE_TOLERANCE = 0.15;
 const MAX_TRAINING_LINES = 10;
 const MAX_NUTRITION_LINES = 5;
@@ -42,7 +44,7 @@ export interface PlanItemRow {
   categories?: string[] | null;
 }
 
-export interface RunRow { id?: string; date: string; distance_km?: number | string | null; duration_seconds?: number | null; effort_rpe?: number | null }
+export interface RunRow { id?: string; date: string; distance_km?: number | string | null; duration_seconds?: number | null; effort_rpe?: number | null; kind?: string | null; training_type?: string | null }
 export interface GymRow { id?: string; date: string; duration_seconds?: number | null; exertion?: number | null }
 export interface DayMacros { kcal: number; prot: number; carbs: number; fat: number; meals: number }
 
@@ -85,7 +87,9 @@ function describePrescription(item: PlanItemRow): string {
   const dist = num(item.target_distance_km);
   const dur = num(item.target_duration_min);
   const target = [dist > 0 ? km(dist) : null, dur > 0 ? `${dur} min` : null].filter(Boolean).join(", ");
-  const name = item.kind === "corrida" ? `Corrida${item.training_type ? ` ${item.training_type}` : ""}` : "Ginásio";
+  const name = isWalkPlanItem(item)
+    ? "Caminhada"
+    : item.kind === "corrida" ? `Corrida${item.training_type ? ` ${item.training_type}` : ""}` : "Ginásio";
   return target ? `${name} (${target})` : name;
 }
 
@@ -105,7 +109,9 @@ export function evaluateTrainingItem(
   const matchDate = (item.actual_date || item.planned_date).slice(0, 10);
   const linkedRun = item.completed_run_id ? runs.find((r) => r.id === item.completed_run_id) : undefined;
   const linkedGym = item.completed_session_id ? gym.find((g) => g.id === item.completed_session_id) : undefined;
-  const dayRuns = linkedRun ? [linkedRun] : runs.filter((r) => r.date === matchDate && !(r.id && takenRunIds.has(r.id)));
+  // Sem ligação, só serve um registo do MESMO tipo: caminhada cumpre
+  // caminhada, corrida cumpre corrida (runKinds.ts, 2026-10-05).
+  const dayRuns = linkedRun ? [linkedRun] : runs.filter((r) => r.date === matchDate && !(r.id && takenRunIds.has(r.id)) && runMatchesPlanItem(r, item));
   const dayGym = linkedGym ? [linkedGym] : gym.filter((g) => g.date === matchDate && !(g.id && takenGymIds.has(g.id)));
   const prescription = describePrescription(item);
   // Marcado como feito, mas o registo ligado não está na janela (ou nem há
@@ -113,7 +119,9 @@ export function evaluateTrainingItem(
   const markedDone = item.status === "concluido";
 
   if (item.kind === "descanso") {
-    const trained = runs.some((r) => r.date === date) || gym.some((g) => g.date === date);
+    // Uma caminhada num dia de descanso é descanso ativo, não o quebra
+    // (runKinds.ts, 2026-10-05).
+    const trained = runsOnly(runs).some((r) => r.date === date) || gym.some((g) => g.date === date);
     return {
       date,
       outcome: trained ? "descanso_nao_respeitado" : "descanso_respeitado",

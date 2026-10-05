@@ -121,3 +121,22 @@ describe('wasDayDoneSeen', () => {
     expect(wasDayDoneSeen('u1', '2026-09-21', new Set(), semStorage)).toBe(false);
   });
 });
+
+/* Caminhada do plano (2026-10-05): diz-se o que se andou e o tempo, sem
+   ritmo; compara com os km ou, sem km, com os minutos. */
+describe('doneLine — caminhada', () => {
+  const item = (over = {}) => ({ id: 'i1', kind: 'corrida', training_type: 'caminhada', status: 'concluido', completed_run_id: 'w1', ...over });
+  const walk = (over = {}) => ({ id: 'w1', kind: 'treino', training_type: 'caminhada', distance_km: 3.2, duration_seconds: 2400, ...over });
+
+  it('sem ritmo no texto, e cumprida pelos minutos', () => {
+    const r = doneLine(item({ target_duration_min: 40 }), { runs: [walk()] });
+    expect(r.text).toBe('3,2 km em 40 min.');
+    expect(r.text).not.toMatch(/por km/);
+    expect(r.verdict).toBe('Cumprido.');
+  });
+
+  it('curta face aos km pedidos', () => {
+    const r = doneLine(item({ target_distance_km: 5 }), { runs: [walk({ distance_km: 2 })] });
+    expect(r.verdict).toBe('Ficaste nos 2 de 5 km.');
+  });
+});

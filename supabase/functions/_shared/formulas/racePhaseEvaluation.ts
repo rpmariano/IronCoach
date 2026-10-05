@@ -26,6 +26,7 @@
 
 import { categorizeDistance, MIN_VOLUME_KM } from "./vocabulary.ts";
 import { formatPaceMinKm } from "./paceFormat.ts";
+import { runsOnly } from "./runKinds.ts";
 
 export type PhaseId = "base" | "build" | "peak" | "taper" | string;
 export type PhaseState = "upcoming" | "active" | "completed" | "skipped";
@@ -35,6 +36,7 @@ export interface RunForPhase {
   distance_km?: number | string | null;
   duration_seconds?: number | null;
   training_type?: string | null;
+  kind?: string | null;
   effort_rpe?: number | null;
 }
 
@@ -236,7 +238,9 @@ export function computePhaseEvaluation(input: PhaseEvaluationInput): PhaseEvalua
     };
   }
 
-  const phaseRuns = (runs || []).filter((r) => r.date && r.date >= startDateStr && r.date <= endDateStr);
+  // Caminhadas fora (runKinds.ts, 2026-10-05): a fase avalia-se pelo volume,
+  // frequência e ritmo de CORRIDA.
+  const phaseRuns = runsOnly(runs).filter((r) => r.date && r.date >= startDateStr && r.date <= endDateStr);
 
   const totalKm = phaseRuns.reduce((sum, r) => sum + (parseFloat(String(r.distance_km)) || 0), 0);
   const runsCount = phaseRuns.length;

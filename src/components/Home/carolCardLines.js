@@ -21,6 +21,7 @@ import { isRacePlanItem, formatWeekday } from '../../utils/homeModels';
 import { addDaysISO } from '../../lib/utils';
 import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
 import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 /* ── pequenas ferramentas ───────────────────────────────────────────────── */
 
@@ -272,7 +273,7 @@ export function linhaDoDia({ tipo, feitos = [], kmHoje = 0, propostas = 0, jaHou
        item fechado dizia-se como planeado — 5 km corridos davam «Hoje já
        fizeste uma rodagem longa de 16 km.». Com os km do dia longe dos do
        plano (mais de 15%), fala-se do que ele correu. */
-    const corridas = feitos.filter((i) => i.kind === 'corrida');
+    const corridas = feitos.filter((i) => i.kind === 'corrida' && !isWalkPlanItem(i));
     const planeado = corridas.reduce((s, i) => s + (Number(i.target_distance_km) || 0), 0);
     const bate = !k || !corridas.length || !(planeado > 0) || Math.abs(kmHoje - planeado) <= planeado * 0.15;
     return pick(bate ? FRASES.treinoFeito(treinoFalado(feitos, hoje)) : FRASES.treinoFeitoKm(k), 'cartaoTreinoFeito');

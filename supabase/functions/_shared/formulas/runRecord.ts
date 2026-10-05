@@ -23,6 +23,7 @@
 import { computeBestPace, type BestPaceBucket, type RunForBestPace } from "./bestPace.ts";
 import { formatPaceMinKm } from "./paceFormat.ts";
 import { PRE_RACE_HARD_RUN_TYPES } from "./vocabulary.ts";
+import { isWalk, runsOnly } from "./runKinds.ts";
 
 export interface RunForRecord extends RunForBestPace {
   id?: string | null;
@@ -82,8 +83,10 @@ function fraseDeAmanha(run: RunForRecord, { todayISO, planItems }: RunRecordCont
  * por dizer.
  */
 export function runRecordMoment(run: RunForRecord | null | undefined, runs: RunForRecord[] = [], contexto: RunRecordContext = {}): RunRecordMoment | null {
-  if (!run) return null;
-  const outras = (runs || []).filter((r) => r && (!run.id || r.id !== run.id));
+  // Caminhada não bate recordes de corrida, nem a "corrida mais longa"; e as
+  // caminhadas não são a régua dos recordes das corridas (runKinds.ts, 2026-10-05).
+  if (!run || isWalk(run)) return null;
+  const outras = runsOnly(runs).filter((r) => r && (!run.id || r.id !== run.id));
 
   for (const alvo of ESCALOES) {
     const antes = computeBestPace(outras, alvo);

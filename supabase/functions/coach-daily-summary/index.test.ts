@@ -555,3 +555,52 @@ Deno.test("jornadas: o bloco da competição entra no prompt pela secção próp
   // Sem bloco, a secção é vazia: o prompt de quem não está inscrito não muda.
   assertEquals(seriesPromptSection(null), "");
 });
+
+// ── Caminhada (2026-10-05, runKinds.ts) ──────────────────────────────────
+import { WALKS_SUMMARY_RULE } from "./index.ts";
+
+Deno.test("caminhada: a semana do plano só conta uma caminhada com caminhada e uma corrida com corrida", () => {
+  const items = [
+    { planned_date: "2026-08-04", kind: "corrida", training_type: "caminhada" },
+    { planned_date: "2026-08-05", kind: "corrida", training_type: "continuo" },
+  ];
+  // Uma corrida no dia da caminhada e uma caminhada no dia da corrida: nenhum cumprido.
+  const trocados = [
+    { date: "2026-08-04", kind: "treino", training_type: "continuo" },
+    { date: "2026-08-05", kind: "treino", training_type: "caminhada" },
+  ];
+  assertEquals(computeLastWeekAdherence(items, trocados, []).com_registo, 0);
+  const certos = [
+    { date: "2026-08-04", kind: "treino", training_type: "caminhada" },
+    { date: "2026-08-05", kind: "treino", training_type: "continuo" },
+  ];
+  assertEquals(computeLastWeekAdherence(items, certos, []).com_registo, 2);
+});
+
+Deno.test("caminhada: o contexto do cartão põe as caminhadas à parte das corridas", () => {
+  const ctx = buildDailySummaryContext({
+    ...baseParams,
+    recentRuns: [
+      { date: "2026-08-10", kind: "treino", training_type: "continuo", distance_km: 8, duration_seconds: 2700 },
+      { date: "2026-08-11", kind: "treino", training_type: "caminhada", distance_km: 3, duration_seconds: 2400, details: { avg_heart_rate_bpm: 98 } },
+    ],
+  });
+  // deno-lint-ignore no-explicit-any
+  const c = ctx as any;
+  assertEquals(c.corridas_ultimos_30_dias.length, 1);
+  assertEquals(c.caminhadas_ultimos_30_dias.length, 1);
+  assertEquals(c.caminhadas_ultimos_30_dias[0].training_type, "caminhada");
+  // Sem caminhadas, o contexto fica como sempre (undefined não chega ao JSON).
+  // deno-lint-ignore no-explicit-any
+  assertEquals((buildDailySummaryContext(baseParams) as any).caminhadas_ultimos_30_dias, undefined);
+});
+
+Deno.test("caminhada: a regra do prompt diz que não é corrida nem carga, e não julga o ritmo", () => {
+  assertStringIncludes(WALKS_SUMMARY_RULE, "caminhadas_ultimos_30_dias");
+  assertStringIncludes(WALKS_SUMMARY_RULE, "Não contam para a carga de corrida");
+  assertStringIncludes(WALKS_SUMMARY_RULE, "nunca julgues o");
+});
+
+Deno.test("caminhada: o plano de hoje diz caminhada com a intensidade", () => {
+  assertEquals(treinoFalado({ kind: "corrida", training_type: "caminhada", categories: ["leve"], target_duration_min: 40 }), "uma caminhada leve de 40 minutos");
+});

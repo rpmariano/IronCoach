@@ -35,6 +35,7 @@ import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import { geminiHeaders, geminiUrl, geminiWithFallback, thinkingConfig } from "../_shared/geminiModel.ts";
+import { isWalkPlanItem, runMatchesPlanItem, runsOnly, walkIntensity, walksOnly } from "../_shared/formulas/runKinds.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -201,6 +202,7 @@ const CORRIDA_FALADA: Record<string, [string, string]> = {
   tecnico: ["um", "treino em trilho técnico"],
   prova: ["a", "prova"],
   competicao: ["a", "prova"],
+  caminhada: ["uma", "caminhada"], // 2026-10-05 (runKinds.ts)
 };
 const AULA_FALADA: Record<string, [string, string]> = {
   hiit: ["um", "HIIT"],
@@ -227,6 +229,9 @@ export function treinoFalado(i: any, comArtigo = true): string {
     if (min > 0) medida = ` de ${min} minutos`;
   } else {
     [artigo, nome] = CORRIDA_FALADA[i?.training_type] ?? ["uma", "corrida"];
+    // "uma caminhada leve de 40 minutos" (a intensidade vem de categories).
+    const intensidade = isWalkPlanItem(i) ? walkIntensity(i) : null;
+    if (intensidade) nome = `${nome} ${intensidade}`;
     const k = kmFalado(i?.target_distance_km);
     if (k) medida = ` de ${k} km`;
     else if (min > 0) medida = ` de ${min} minutos`;
@@ -237,6 +242,11 @@ export function treinoFalado(i: any, comArtigo = true): string {
 function formatPlanItemsSummary(items: any[]): string {
   if (!items || items.length === 0) return "Descanso (sem treinos planeados)";
   return items.map((i: any) => {
+    if (isWalkPlanItem(i)) {
+      const km = kmFalado(i.target_distance_km);
+      const details = [walkIntensity(i), km ? `${km} km` : "", i.target_duration_min ? `${i.target_duration_min} min` : ""].filter(Boolean).join(", ");
+      return `Caminhada${details ? ` (${details})` : ""}`;
+    }
     if (i.kind === "corrida") {
       const typeStr = i.training_type ? i.training_type : "corrida";
       const km = kmFalado(i.target_distance_km);
@@ -421,7 +431,13 @@ export function buildDailySummaryContext(params: {
     // created_at só serve para o assunto da carga (runLoadInterventionToOpen):
     // não vai ao modelo, que o confundia com a hora da corrida.
     // deno-lint-ignore no-explicit-any
-    corridas_ultimos_30_dias: (recentRuns || []).map(({ created_at: _criado, ...r }: any) => r),
+    // As caminhadas vão à parte (2026-10-05, runKinds.ts): não são corridas
+    // nem carga de corrida, e a Carol lê-as como recuperação.
+    corridas_ultimos_30_dias: runsOnly(recentRuns || []).map(({ created_at: _criado, ...r }: any) => r),
+    caminhadas_ultimos_30_dias: walksOnly(recentRuns || []).length
+      // deno-lint-ignore no-explicit-any
+      ? walksOnly(recentRuns || []).map(({ created_at: _criado, details: _d, ...r }: any) => r)
+      : undefined,
     ginasio_ultimos_30_dias: recentGym || [],
     composicao_corporal_30_dias: (bodyAssessments || []).map((a: any) => ({
       date: a.date,
@@ -487,8 +503,8 @@ export function buildDailySummaryContext(params: {
  *  leitura mais simples possível de propósito — o reconhecimento de
  *  segunda-feira é uma frase, não uma auditoria. */
 export function computeLastWeekAdherence(
-  items: { planned_date: string; kind: string }[],
-  runs: { date: string }[],
+  items: { planned_date: string; kind: string; training_type?: string | null }[],
+  runs: { date: string; kind?: string | null; training_type?: string | null }[],
   gym: { date: string }[],
 ): { itens: number; com_registo: number } {
   const runDays = new Set(runs.map((r) => r.date));
@@ -496,7 +512,8 @@ export function computeLastWeekAdherence(
   let done = 0;
   for (const it of items) {
     if (it.kind === "descanso") done++;
-    else if (it.kind === "corrida") { if (runDays.has(it.planned_date)) done++; }
+    // Do mesmo tipo: caminhada cumpre caminhada, corrida cumpre corrida (runKinds.ts, 2026-10-05).
+    else if (it.kind === "corrida") { if (runs.some((r) => r.date === it.planned_date && runMatchesPlanItem(r, it))) done++; }
     else if (it.kind === "ginasio") { if (gymDays.has(it.planned_date)) done++; }
     else if (runDays.has(it.planned_date) || gymDays.has(it.planned_date)) done++;
   }
@@ -602,7 +619,9 @@ export function buildTomorrowPrepMessage(tomorrowPlanItems: any[]): string | nul
 // O ratio delega em ../_shared/formulas/acwr.ts (T1) — a mesma fórmula que
 // coach-chat e biEngine.js usam desde a Fase C (specs/formulas-checklist.md).
 // A agregação por data fica aqui (impura, específica desta runtime).
-function computeACWR(runs: any[], today: string): { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null } {
+function computeACWR(runsIn: any[], today: string): { acute_km_per_day: number; chronic_km_per_day: number; ratio: number | null } {
+  // Caminhadas fora da carga (e do custo de treino do TDEE) — runKinds.ts, 2026-10-05.
+  const runs = runsOnly(runsIn);
   const day7  = addDaysISO(today, -6);   // início da janela aguda (7 dias)
   const day28 = addDaysISO(today, -27);  // início da janela crónica (28 dias)
   const acuteKm   = (runs || []).filter((r: any) => r.date >= day7)
@@ -794,6 +813,14 @@ const RESPONSE_SCHEMA = {
   required: ["recap", "meal_suggestion", "race_readiness", "daily_concept_body"],
 };
 
+// As caminhadas no cartão diário (feature "Caminhada", 2026-10-05). Exportada
+// para o teste do prompt.
+export const WALKS_SUMMARY_RULE =
+  `CAMINHADAS: "caminhadas_ultimos_30_dias" (quando existe) são caminhadas, não corridas — recuperação de lesão ou ` +
+  `cirurgia, pós-prova, regresso, descanso ativo ou indicação médica para não correr. Não contam para a carga de corrida ` +
+  `(o ACWR e os km já vêm sem elas). Fala delas como caminhadas: a regularidade, a duração, a FC baixa; nunca julgues o ` +
+  `ritmo como corrida lenta nem lhes chames corrida. Uma "caminhada" no plano de hoje é para andar, não para correr. `;
+
 // seriesBlock: o bloco da competição por jornadas (fetchSeriesBlock) — null
 // sem inscrição, e aí o prompt fica igual byte a byte.
 // deno-lint-ignore no-explicit-any
@@ -827,11 +854,12 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `ESTE CARTÃO NÃO MUDA O PLANO: nunca sugiras trocar um treino por descanso, cortar volume ou mudar dias ` +
     `(a única exceção é o check-in de hoje, abaixo). Mudanças ao plano discutem-se no chat — quando é preciso, ` +
     `a app chama-o lá. ` +
-    `REGISTOS DE HOJE: se "corridas_ultimos_30_dias" ou "ginasio_ultimos_30_dias" tiverem um registo com a data de hoje, ` +
+    `REGISTOS DE HOJE: se "corridas_ultimos_30_dias", "caminhadas_ultimos_30_dias" ou "ginasio_ultimos_30_dias" tiverem um registo com a data de hoje, ` +
     `esse treino JÁ ESTÁ FEITO — fala dele no passado e nunca como algo que ainda tem pela frente. ` +
     `CARGA (ACWR): lê o bloco "acwr". Só é risco se "conta_como_risco" for true. Se "segue_o_plano" for true, a carga ` +
     `é a que tu prescreveste — não a trates como excesso. Se "ratio" for null, há poucos registos nas últimas 4 semanas ` +
     `("semanas_com_corridas_de_4") para o rácio dizer alguma coisa: não o cites nem tires conclusões dele. ` +
+    WALKS_SUMMARY_RULE +
     `Se existir "semana_passada_plano" (só à segunda-feira) e com_registo for igual a itens, abres com UMA frase de ` +
     `reconhecimento — uma só, específica — e segues. Se ficou abaixo dos 100%, não elogias a parte cumprida: dizes o que ficou por fazer, sem sermão. ` +
     `Lê "fase_do_plano" e calibra o tom. Se existir "prescrito_vs_feito", usa-o no balanço: um padrão (treinos a meio, ` +

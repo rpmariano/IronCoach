@@ -25,7 +25,7 @@ import {
   EA_CRITICAL,
   type EnergyAvailabilityStatus,
 } from "./energyAvailability.ts";
-import { RUNNING_COST_KCAL_PER_KG_KM } from "./tdee.ts";
+import { distanceCostKcalPerKgKm } from "./tdee.ts";
 import {
   CALORIE_COMPLIANCE_OK_MIN,
   CALORIE_COMPLIANCE_OVER_MIN,
@@ -284,6 +284,8 @@ export function summarizeNutritionPeriod(
 export interface RunForPeriod {
   date: string;
   distance_km?: number | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 export interface GymSessionForPeriod {
   date: string;
@@ -528,7 +530,7 @@ export function energyAvailabilityForDays({
     const d = typeof r?.date === "string" ? r.date.slice(0, 10) : null;
     if (!d || !wanted.has(d)) continue;
     trained.add(d);
-    exercise.set(d, (exercise.get(d) || 0) + (Number(r.distance_km) || 0) * weight * RUNNING_COST_KCAL_PER_KG_KM);
+    exercise.set(d, (exercise.get(d) || 0) + (Number(r.distance_km) || 0) * weight * distanceCostKcalPerKgKm(r)); // caminhada a metade (tdee.ts)
   }
   for (const s of gymSessions || []) {
     const d = typeof s?.date === "string" ? s.date.slice(0, 10) : null;

@@ -134,6 +134,8 @@ function pillarsOf(view) {
       if (r.partial && !isCurrent) lines.push(partialText('corridas', r.dataStart));
     }
     if (r.hasHistory && !r.beforeData && r.acwr.atWeekEnd) lines.push('ACWR no fim dessa semana');
+    // Caminhadas à parte (2026-10-05): não contam para os km nem para a carga.
+    if (r.walks) lines.push(`${r.walks.count} ${plural(r.walks.count, 'caminhada', 'caminhadas')} · ${dec(r.walks.km, 1)} km (à parte)`);
     const shows = r.hasHistory && closed && !r.beforeData;
     run = {
       kpi: shows ? (r.km > 0 ? dec(r.km, 1) : '0') : '—',

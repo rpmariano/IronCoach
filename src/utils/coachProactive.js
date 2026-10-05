@@ -26,6 +26,7 @@ import { leaderboardMoment, ownSegmentFor, percentileAvailability, percentileRea
 import { pickRaceOfDay } from '@formulas/mainRace.ts';
 import { addDaysISO } from '../lib/utils';
 import { segmentPhrase } from './percentile';
+import { isWalkPlanItem, runsOnly } from '@formulas/runKinds.ts';
 
 /** Depois da prova, com a corrida registada, o balanço vale durante uma
  *  semana — depois disso já é história, não é "o balanço". Sem corrida
@@ -220,6 +221,9 @@ const ITEM_KIND_LABEL = { corrida: 'corrida', ginasio: 'ginásio' };
 
 /** "corrida (longo, 16 km)" — o que o plano pedia, para o Contexto do chat. */
 function missedItemLabel(item) {
+  const km0 = Number(item?.target_distance_km);
+  // A caminhada do plano diz-se caminhada (2026-10-05, runKinds.ts).
+  if (isWalkPlanItem(item)) return `caminhada${Number.isFinite(km0) && km0 > 0 ? ` (${String(km0).replace('.', ',')} km)` : ''}`;
   const km = Number(item?.target_distance_km);
   const parts = [item?.training_type, Number.isFinite(km) && km > 0 ? `${String(km).replace('.', ',')} km` : null].filter(Boolean);
   return `${ITEM_KIND_LABEL[item?.kind] || item?.kind}${parts.length ? ` (${parts.join(', ')})` : ''}`;
@@ -297,7 +301,8 @@ const inRange = (d, from, to) => typeof d === 'string' && d.slice(0, 10) >= from
 const fmtNum = (n) => (Math.round(n * 10) / 10).toString().replace('.', ',');
 
 function weekCounts({ runs, meals, gymSessions, dailyCheckins }, from, to) {
-  const weekRuns = (runs || []).filter((r) => inRange(r?.date, from, to));
+  // Só corridas nos km da semana (as caminhadas não são carga, runKinds.ts).
+  const weekRuns = runsOnly(runs).filter((r) => inRange(r?.date, from, to));
   const km = weekRuns.reduce((sum, r) => sum + (Number(r?.distance_km) || 0), 0);
   const gym = (gymSessions || []).filter((g) => inRange(g?.date, from, to)).length;
   const mealDays = new Set((meals || []).filter((m) => inRange(m?.date, from, to)).map((m) => m.date.slice(0, 10))).size;

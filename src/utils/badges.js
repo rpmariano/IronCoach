@@ -117,6 +117,7 @@ import { formatDatePTShort } from './racePlanEngine';
 import { calculateVDOT } from '@formulas/racePrediction.ts';
 import { computeBestPace } from '@formulas/bestPace.ts';
 import { evaluatePrescriptions, executionBase } from '@formulas/prescriptionAdherence.ts';
+import { runsOnly } from '@formulas/runKinds.ts';
 
 /** As quatro famílias, pela ordem em que a Vitrina as mostra: primeiro o que
  *  mede a corrida, depois o que mede o cumprimento, depois o que só soma, e
@@ -3437,12 +3438,17 @@ function treinosDe(runs) {
  * @returns {{ badges: object[], due: object[] }}
  */
 export function computeBadges({
-  runs = [], raceEvents = [], profile = {}, planItems = [], gymSessions = [], today,
+  runs: allRuns = [], raceEvents = [], profile = {}, planItems = [], gymSessions = [], today,
 } = {}) {
   const hoje = requireToday(today, 'computeBadges');
+  /* Caminhadas (2026-10-05, runKinds.ts): os badges são de CORRIDA — km,
+     ritmo, cadência, D+, horas, estações. Uma caminhada não os ganha nem os
+     faz andar. A adesão ao plano (semana_100, descanso cumprido) lê a lista
+     inteira: uma caminhada do plano cumpre-se com uma caminhada registada. */
+  const runs = runsOnly(allRuns);
   const treinos = treinosDe(runs).filter((r) => dayOf(r.date) <= hoje);
   const completed = completedRaces({ raceEvents, runs, profile: profile || {}, today: hoje }).reverse();
-  const semanas = semanasAvaliadas({ planItems, runs, gym: gymSessions, today: hoje });
+  const semanas = semanasAvaliadas({ planItems, runs: allRuns, gym: gymSessions, today: hoje });
 
   const ctx = { runs, treinos, raceEvents, completed, semanas, profile: profile || {}, today: hoje };
   const partes = {

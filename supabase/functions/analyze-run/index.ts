@@ -35,6 +35,7 @@ import { formatPaceMinKm } from "../_shared/formulas/paceFormat.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
+import { isWalk, WALK_TRAINING_TYPE } from "../_shared/formulas/runKinds.ts";
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
@@ -62,13 +63,19 @@ const GEMINI_RETRIES = 1;
 // Espelha RUN_TRAINING_TYPES / RACE_TYPES no cliente (index.html) — mantidos
 // sincronizados manualmente, já que o schema do Gemini precisa de um enum
 // fixo de valores possíveis.
-const TRAINING_TYPE_KEYS = [
+// "caminhada" (2026-10-05): a caminhada é um tipo de treino da corrida — ver
+// _shared/formulas/runKinds.ts. Sem ela aqui, o training_type que o cliente
+// manda era descartado em silêncio e a caminhada gravava-se como treino sem
+// tipo (logo, como corrida). Exige a migração 20261005120000 (check de
+// runs.training_type) ANTES deste deploy.
+export const TRAINING_TYPE_KEYS = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
-  "intervalos", "subidas", "trail", "tecnico",
+  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE,
 ];
 const TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", recuperacao: "Recuperação", tempo: "Ritmo (Tempo)",
   fartlek: "Fartlek", intervalos: "Intervalos", subidas: "Subidas", trail: "Trail", tecnico: "Técnico (trilho)",
+  caminhada: "Caminhada",
 };
 const RACE_TYPE_KEYS = ["estrada", "trail", "ultra", "5k", "10k", "21k", "42k", "outro"];
 const RACE_TYPE_LABELS: Record<string, string> = {
@@ -436,8 +443,8 @@ export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean,
  * por acaso, aparecer em `candidates`.
  */
 export function computeRunRecordContext(
-  run: { id: string; date: string; distance_km: number | null; duration_seconds: number | null; details: Record<string, unknown> | null },
-  candidates: Array<{ date: string; distance_km: number | null; duration_seconds: number | null; details?: { splits?: Array<{ distance_km?: number | null; time_seconds?: number | null }> | null } | null }>,
+  run: { id: string; date: string; distance_km: number | null; duration_seconds: number | null; details: Record<string, unknown> | null; kind?: string | null; training_type?: string | null },
+  candidates: Array<{ date: string; distance_km: number | null; duration_seconds: number | null; kind?: string | null; training_type?: string | null; details?: { splits?: Array<{ distance_km?: number | null; time_seconds?: number | null }> | null } | null }>,
 ): { bestPacesLine: string | null; personalRecordKind: "pace" | "distance" | null } {
   const bestPacesByBucket: string[] = [];
   for (const bucket of [5, 10, 21] as BestPaceBucket[]) {
@@ -526,6 +533,29 @@ const RUN_ANALYSIS_RULES = carolRecordAnalysisRules({
   interventionInvite: true,
 });
 
+/**
+ * O bloco do prompt para uma CAMINHADA (2026-10-05, feature "Caminhada").
+ * A caminhada passa pela mesma análise da corrida (prints, FC, plano), mas
+ * não se julga como corrida: o ritmo de caminhada é o esperado, não "lento";
+ * não há recordes, VDOT nem carga de corrida; avalia-se como recuperação.
+ * Exportada para o teste.
+ */
+export function buildWalkAnalysisSection(durationSeconds: number | null): string {
+  const min = Number(durationSeconds) > 0 ? Math.round(Number(durationSeconds) / 60) : null;
+  return `ESTE REGISTO É UMA CAMINHADA, NÃO UMA CORRIDA. O atleta escolheu caminhar — tipicamente recuperação de lesão ou cirurgia, ` +
+    `pós-prova, regresso progressivo, descanso ativo ou indicação médica para não correr. Regras para esta análise:\n` +
+    `- NUNCA julgues o ritmo como se fosse corrida: um ritmo de caminhada (8 a 13 min/km) é o esperado — não é "lento", não é falha, ` +
+    `não é "uma corrida pontual" nem "uma corrida fácil". Não sugiras "acelerar".\n` +
+    `- A caminhada NÃO conta para a carga de corrida (ACWR, km/semana de corrida, pace médio, VDOT, recordes): não a compares com corridas ` +
+    `nem fales dela como volume de corrida.\n` +
+    `- Avalia-a como recuperação: a duração${min ? ` (${min} min)` : ""} e a distância face às caminhadas anteriores (progressão gradual, ` +
+    `sem saltos), a FC média (numa caminhada de recuperação fica baixa, Z1–Z2; se subir para Z3 ou mais, é sinal para abrandar), o esforço ` +
+    `percebido e o que o atleta escreveu (dor, sensações, cansaço).\n` +
+    `- Se a memória ou a nota falarem de lesão, cirurgia ou indicação médica, respeita-as: valoriza a regularidade e a prudência; nunca ` +
+    `digas "já podes correr" — isso é decisão de quem o acompanha clinicamente.\n` +
+    `- Usa "caminhada"/"caminhar" no texto, nunca "corrida"/"correr" para falar deste registo.\n\n`;
+}
+
 // Gera feedback do Coach (análise de progresso, elogios, alertas, sugestões)
 // baseado na corrida acabada de ser criada e no contexto das últimas corridas.
 async function generateCoachNotes(
@@ -590,6 +620,12 @@ async function generateCoachNotes(
     ? run.duration_seconds / run.distance_km
     : null;
   const paceStr = paceSec ? `${Math.floor(paceSec / 60)}'${Math.round(paceSec % 60)}"` : "—";
+
+  // Caminhada (2026-10-05, runKinds.ts): a mesma análise, mas lida como
+  // caminhada. O que se evitava: "corrida pontual a 5'49" dita como falha
+  // numa caminhada de recuperação de um pós-operatório.
+  const walking = isWalk(run);
+  const walkSection = walking ? buildWalkAnalysisSection(run.duration_seconds) : "";
 
   const details = (run.details || {}) as Record<string, unknown>;
 
@@ -656,17 +692,17 @@ async function generateCoachNotes(
 
   const contextSection = previousContext.trim()
     ? `\nBase de comparação usada: ${historyLabel}.\n` +
-      `\nÚltimas ${recentRuns.length} corridas deste grupo (mais antiga primeiro, mais recente por último):\n${previousContext}\n` +
+      `\nÚltimas ${recentRuns.length} ${walking ? "caminhadas" : "corridas"} deste grupo (mais antiga primeiro, mais recente por último):\n${previousContext}\n` +
       (avgRecentPace ? `Média de pace recente: ${Math.floor(avgRecentPace / 60)}'${Math.round(avgRecentPace % 60)}"/km\n` : "") +
       (paceDeltaStr ? `Pace desta corrida vs. média: ${paceDeltaStr}\n` : "") +
       (daysSinceLastRun !== null ? `Dias desde a corrida anterior deste grupo: ${daysSinceLastRun}\n` : "") +
       (weeklyVolumeStr ? `- Volume semanal: ${weeklyVolumeStr}\n` : "") +
       (bestPacesLine ? `- Melhores por escalão (histórico, antes desta corrida): ${bestPacesLine}\n` : "") +
       (recordLine ? `- ${recordLine}\n` : "")
-    : `\nBase de comparação usada: ${historyLabel}.\nNota: não há nenhuma corrida anterior neste grupo para comparação.\n`;
+    : `\nBase de comparação usada: ${historyLabel}.\nNota: não há nenhuma ${walking ? "caminhada" : "corrida"} anterior neste grupo para comparação.\n`;
 
   const planSection = planItems.length > 0 
-    ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `Corrida ${i.training_type || ''} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
+    ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `${i.training_type === WALK_TRAINING_TYPE ? "Caminhada" : `Corrida ${i.training_type || ''}`} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
       `\n\nAVALIAÇÃO DO PLANO: Compara esta corrida com o item do plano especificamente previsto para a data de hoje (${run.date}). Se para a data ${run.date} não houver corrida planeada ou estiver marcado descanso, indica que a corrida de hoje foi extra/não planeada para esta data (NUNCA compares a corrida de hoje com o que está planeado para amanhã ou para outra data!). Se o desvio do plano comprometer a recuperação ou os objetivos, marca intervention_needed=true e indica a reason. SE intervieres, o bloco "${RECORD_ANALYSIS_LABELS.next}" é ${INTERVENTION_INVITE} O desvio vai no bloco "${RECORD_ANALYSIS_LABELS.fix}" e não substitui a análise da corrida que ele fez.\n` +
       planningFrameSection(true, !!upcomingRace, upcomingRace)
     : planningFrameSection(false, !!upcomingRace, upcomingRace);
@@ -704,7 +740,7 @@ async function generateCoachNotes(
   const splitsLine = formatSplitsLine(details.splits);
 
   const prompt =
-    `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa a corrida que ele acabou de registar. ` +
+    `És a Carol, a treinadora deste atleta amador, a comentar em primeira pessoa ${walking ? "a caminhada" : "a corrida"} que ele acabou de registar. ` +
     `Analisa os dados abaixo — que incluem tanto as corridas mais recentes em detalhe como estatísticas de tendência de médio prazo.\n\n` +
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     `${carolLanguageRule(experienceLevel)}\n\n` +
@@ -719,8 +755,9 @@ async function generateCoachNotes(
     `- Se o esforço percebido (RPE) não bater certo com o pace/distância, assinala-o no bloco "O esforço".\n` +
     `- Se marcares intervention_needed=true, o bloco "${RECORD_ANALYSIS_LABELS.next}" é só ${INTERVENTION_INVITE}\n\n` +
     `${RUN_ANALYSIS_RULES}\n\n` +
-    `Corrida de hoje:\n` +
-    `- Tipo: ${run.kind === "competicao" ? "Prova" : `Treino (${trainingTypeLabel})`}\n` +
+    walkSection +
+    `${walking ? "Caminhada de hoje" : "Corrida de hoje"}:\n` +
+    `- Tipo: ${run.kind === "competicao" ? "Prova" : walking ? "Caminhada (não é corrida)" : `Treino (${trainingTypeLabel})`}\n` +
     `- Data: ${run.date}\n` +
     `- Distância: ${run.distance_km?.toFixed(2) || "?"} km\n` +
     `- Pace: ${paceStr}/km\n` +
@@ -857,13 +894,21 @@ async function attachCoachNotes(
     //   não comparável a estrada); as restantes disciplinas comparam-se
     //   todas entre si, mesmo com distâncias diferentes.
     // - Treino: continua a olhar para treinos E competições.
+    // training_type na seleção: o volume semanal (weeklyVolume.ts) tira as
+    // caminhadas sozinho, mas só se souber quais são (2026-10-05).
     let historyQuery = sb
       .from("runs")
-      .select("date, kind, distance_km, duration_seconds, effort_rpe, details")
+      .select("date, kind, training_type, distance_km, duration_seconds, effort_rpe, details")
       .eq("user_id", userId)
       .lt("date", ctx.date);
     let historyLabel: string;
-    if (ctx.kind === "competicao") {
+    const walking = isWalk(ctx);
+    if (walking) {
+      // Caminhada compara-se com caminhadas: o ritmo e a FC de uma corrida
+      // não são a régua de uma caminhada de recuperação (2026-10-05).
+      historyQuery = historyQuery.eq("training_type", WALK_TRAINING_TYPE);
+      historyLabel = "apenas outras caminhadas";
+    } else if (ctx.kind === "competicao") {
       historyQuery = historyQuery.eq("kind", "competicao");
       if (ctx.race_type === "trail") {
         historyQuery = historyQuery.eq("details->>race_type", "trail");
@@ -873,6 +918,10 @@ async function attachCoachNotes(
         historyLabel = "apenas outras competições de estrada/pista (todas as distâncias, sem Trail)";
       }
     } else {
+      // Um treino de corrida não se compara com caminhadas (a média de pace
+      // recente ficava a 8'/km). NULL conta como corrida: `neq` sozinho
+      // deixava de fora os registos sem tipo.
+      historyQuery = historyQuery.or(`training_type.is.null,training_type.neq.${WALK_TRAINING_TYPE}`);
       historyLabel = "treinos e competições";
     }
 
@@ -937,7 +986,7 @@ async function attachCoachNotes(
     // serve). Projeção details->splits, nunca details inteiro.
     const { data: recordCandidates } = await sb
       .from("runs")
-      .select("date, distance_km, duration_seconds, details:details->splits")
+      .select("date, kind, training_type, distance_km, duration_seconds, details:details->splits")
       .eq("user_id", userId)
       .neq("id", run.id)
       .limit(1000);
@@ -945,7 +994,7 @@ async function attachCoachNotes(
       console.warn("analyze-run: consulta de recordes atingiu o limite de 1000 linhas");
     }
     const { bestPacesLine, personalRecordKind } = computeRunRecordContext(
-      { id: run.id, date: ctx.date, distance_km: ctx.distance_km, duration_seconds: ctx.duration_seconds, details: ctx.details },
+      { id: run.id, date: ctx.date, kind: ctx.kind, training_type: ctx.training_type, distance_km: ctx.distance_km, duration_seconds: ctx.duration_seconds, details: ctx.details },
       recordCandidates || [],
     );
 

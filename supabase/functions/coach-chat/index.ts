@@ -21,6 +21,7 @@ import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { missingProfileBasicsInstruction } from "../_shared/profileGaps.ts";
 import { earliestFeasibleDate, evaluateGoalHorizon, type HorizonCheck, type HorizonResult, MIN_HORIZON_DAYS } from "../_shared/formulas/goalHorizon.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
+import { isWalk, runsOnly, walkTotals, walksLabel, WALK_INTENSITIES, WALK_TRAINING_TYPE } from "../_shared/formulas/runKinds.ts";
 import { computeTrainingDistribution } from "../_shared/formulas/trainingDistribution.ts";
 import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
@@ -157,9 +158,12 @@ const RUNNING_TOOL = {
 // check constraint de runs.training_type. Um valor fora desta lista faria o
 // insert do item do plano rebentar, por isso vai como enum no schema da
 // ferramenta — o modelo não consegue inventar um tipo novo.
+// "caminhada" (2026-10-05): tipo de treino da corrida para recuperações e para
+// quem não pode correr (_shared/formulas/runKinds.ts). Exige a migração
+// 20261005120000 no check de runs.training_type.
 const RUN_TRAINING_TYPES = [
   "continuo", "longo", "recuperacao", "tempo", "fartlek",
-  "intervalos", "subidas", "trail", "tecnico",
+  "intervalos", "subidas", "trail", "tecnico", WALK_TRAINING_TYPE,
 ];
 // No PLANO há mais um tipo: "prova" — o dia da prova é a prova, não um
 // treino (specs/plano-de-prova.md, "O plano tem de saber da prova"). Só é
@@ -233,6 +237,24 @@ const MEAL_MACROS_SCHEMA_PROPERTIES = {
   meal_estimated_carbs_g: { type: "NUMBER", description: "Preenche sempre junto com meal_items. Total de hidratos de carbono (g) do dia inteiro." },
   meal_estimated_fat_g: { type: "NUMBER", description: "Preenche sempre junto com meal_items. Total de gordura (g) do dia inteiro." },
 };
+
+// A caminhada na doutrina da Carol (feature "Caminhada", 2026-10-05 —
+// _shared/formulas/runKinds.ts). Exportada para o teste do prompt. O dono do
+// produto está em pós-operatório com um braço imobilizado: é para casos assim
+// que isto existe — e ela não pode tratar a caminhada como corrida lenta.
+export const WALKING_DOCTRINE =
+  `CAMINHADA (training_type=caminhada): existe um tipo de treino "Caminhada". O atleta regista-a em "Registar corrida", ` +
+  `escolhendo Caminhada, e tu podes pô-la nos planos. Quando a usar: recuperação de lesão ou de cirurgia (num pós-operatório, ` +
+  `mesmo com um membro imobilizado, é muitas vezes o treino possível e seguro), os dias a seguir a uma prova, o regresso ` +
+  `progressivo à corrida, descanso ativo, ou quando há indicação médica para não correr. A caminhada NÃO conta para a carga de ` +
+  `corrida: não entra no ACWR, nos km/semana de corrida, no pace médio, no VDOT, nos recordes, na previsão de prova nem na 80/20 — ` +
+  `os números do contexto já vêm sem ela, e as caminhadas aparecem à parte ("Caminhadas …", "CAMINHADA" na lista). Nunca ` +
+  `julgues o ritmo de uma caminhada como corrida lenta nem lhe chames corrida. No plano: kind=corrida com training_type=caminhada, ` +
+  `target_duration_min (de preferência) ou target_distance_km, e walk_intensity=leve ou moderada; a notes diz como (terreno plano, ` +
+  `ritmo em que se conversa, FC em Z1-Z2, parar se doer) — sem pace-alvo. Uma caminhada do plano só se cumpre com uma caminhada ` +
+  `registada, e uma corrida não a cumpre (nem o contrário). Com indicação médica para não correr, o plano não leva corridas: ` +
+  `caminhadas, ginásio compatível com a lesão e descanso — e nunca és tu a dar alta para voltar a correr; isso é de quem o ` +
+  `acompanha clinicamente.\n\n`;
 
 // Ferramenta de ESCRITA — as três acima só leem. Grava um plano de treino em
 // coach_plans/coach_plan_items com status 'proposto'; o atleta aceita ou
@@ -321,7 +343,14 @@ const PROPOSE_PLAN_TOOL = {
               enum: PLAN_RUN_TRAINING_TYPES,
               description:
                 "Só para kind=corrida. Tipo de treino de corrida. \"prova\" é o dia de uma prova " +
-                "agendada (o servidor exige-o nesse dia e recusa treinos fortes e ginásio na véspera e na antevéspera).",
+                "agendada (o servidor exige-o nesse dia e recusa treinos fortes e ginásio na véspera e na antevéspera). " +
+                "\"caminhada\" é um dia de CAMINHADA (recuperação de lesão/cirurgia, pós-prova, regresso, descanso ativo, " +
+                "indicação médica para não correr): leva target_duration_min ou target_distance_km e walk_intensity, e não conta para a carga de corrida.",
+            },
+            walk_intensity: {
+              type: "STRING",
+              enum: [...WALK_INTENSITIES],
+              description: "Só para training_type=caminhada. leve = ritmo de passeio, conversa fácil; moderada = passo vivo, ainda a conseguir falar.",
             },
             categories: {
               type: "ARRAY",
@@ -330,7 +359,7 @@ const PROPOSE_PLAN_TOOL = {
                 "Só para kind=ginasio. Grupos musculares ou modalidade, ex.: [\"Pernas\", \"Glúteos\"] " +
                 "ou [\"HIIT\"].",
             },
-            target_distance_km: { type: "NUMBER", description: "Só para kind=corrida. Distância alvo em km." },
+            target_distance_km: { type: "NUMBER", description: "Só para kind=corrida (incluindo caminhada). Distância alvo em km." },
             target_duration_min: { type: "NUMBER", description: "Duração alvo em minutos." },
             notes: {
               type: "STRING",
@@ -1906,7 +1935,7 @@ const PUSH_TYPE_LABELS: Record<string, string> = {
 };
 const RUN_TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "Contínuo", longo: "Longo", tempo: "Tempo", recuperacao: "Recuperação",
-  intervalos: "Intervalos", sprints: "Sprints",
+  intervalos: "Intervalos", sprints: "Sprints", caminhada: "Caminhada",
 };
 
 // Delega em @formulas/paceFormat.ts (T1.5). ATE 2026-08-26 devolvia o
@@ -1927,7 +1956,11 @@ function formatDuration(totalSeconds: number): string {
 // deno-lint-ignore no-explicit-any
 export function summariseRuns(runs: any[]): string[] {
   return runs.map((r) => {
-    const kindLabel = r.kind === "treino"
+    // Uma caminhada diz-se caminhada, e que não é carga de corrida (2026-10-05).
+    const walk = isWalk(r);
+    const kindLabel = walk
+      ? "CAMINHADA (não é corrida, fora da carga de corrida)"
+      : r.kind === "treino"
       ? `Treino${r.training_type ? ` (${RUN_TRAINING_TYPE_LABELS[r.training_type] || r.training_type})` : ""}`
       : RUN_KIND_LABELS[r.kind] || "Simples";
     const distance = r.distance_km != null ? `${Number(r.distance_km).toFixed(2)} km` : null;
@@ -1939,8 +1972,9 @@ export function summariseRuns(runs: any[]): string[] {
     // descartado no destructuring) deixava a Carol sem NENHUMA corrida.
     const details = (r.details || {}) as Record<string, any>;
     // Cadência — só mostra quando registada; assinala sobrepassada (<155 spm) per 2.4 #1.
+    // Numa caminhada a cadência é outra coisa: sem o aviso <155 (é de corrida).
     const cadStr = details.cadence_spm != null
-      ? `${Math.round(details.cadence_spm)} spm${details.cadence_spm < 155 ? " ⚠cadência<155" : ""}`
+      ? `${Math.round(details.cadence_spm)} spm${!walk && details.cadence_spm < 155 ? " ⚠cadência<155" : ""}`
       : null;
     // FC média — sinal de deriva/fadiga (Bloco 2.4 #2): FC alta para o pace
     // indica sobretreino, calor ou fadiga acumulada. Sem FC de reserva por run
@@ -1985,7 +2019,12 @@ function buildRunningSummary(runs: any[], windowDays: number): string {
   // corretos por semana de calendário já vêm pré-calculados em
   // "VOLUME SEMANAL (calendário)" — usa sempre essa linha, nunca esta lista,
   // para responder a perguntas de total/soma.
-  return `Corridas (últimos ${windowDays} dias, ${runs.length} registada(s)) — DETALHE, NÃO SOMES: para totais usa "VOLUME SEMANAL (calendário)" abaixo ou get_running_history:\n${summariseRuns(runs).join("\n")}`;
+  // As caminhadas vêm na lista (marcadas) e contam-se à parte (2026-10-05).
+  const walks = walkTotals(runs);
+  const walkLine = walks.count
+    ? `\nCaminhadas nestes ${windowDays} dias: ${walksLabel(walks.count)} · ${String(walks.km).replace(".", ",")} km — à parte, NÃO contam para a carga de corrida (ACWR, km/semana, pace, VDOT).`
+    : "";
+  return `Corridas (últimos ${windowDays} dias, ${runs.length} registada(s)) — DETALHE, NÃO SOMES: para totais usa "VOLUME SEMANAL (calendário)" abaixo ou get_running_history:\n${summariseRuns(runs).join("\n")}${walkLine}`;
 }
 
 // ─── Volume semanal por calendário (segunda a domingo) ──────────────────────
@@ -1995,6 +2034,16 @@ function buildRunningSummary(runs: any[], windowDays: number): string {
 // à forma como o atleta realmente fala: "esta semana" e "semana passada" são
 // semanas de CALENDÁRIO. Os dois números não são o mesmo e não devem ser
 // confundidos — por isso aparecem em linhas separadas e nomeadas.
+/** "- Caminhadas: esta semana N · X km; semana passada …" — ou "" sem nenhuma. */
+// deno-lint-ignore no-explicit-any
+function walkWeekLine(runs: any[], curFrom: string, curTo: string, prevFrom: string, prevTo: string): string {
+  const cur = walkTotals(runs, curFrom, curTo);
+  const prev = walkTotals(runs, prevFrom, prevTo);
+  if (!cur.count && !prev.count) return "";
+  const fmt = (t: { count: number; km: number }) => t.count ? `${walksLabel(t.count)} · ${String(t.km).replace(".", ",")} km` : "nenhuma";
+  return `- Caminhadas (à parte, não somam aos km acima): esta semana ${fmt(cur)}; semana passada ${fmt(prev)}\n`;
+}
+
 // deno-lint-ignore no-explicit-any
 function buildWeeklyRunningContext(runs: any[], todayISO: string): string {
   const { currentWeek, previousWeek } = computeCalendarWeeklyVolume(runs, todayISO);
@@ -2009,6 +2058,8 @@ function buildWeeklyRunningContext(runs: any[], todayISO: string): string {
     `VOLUME SEMANAL (calendário, segunda a domingo) — usa SEMPRE estes números para "esta semana"/"semana passada", nunca a soma manual da lista de corridas:\n` +
     `- Esta semana (${fmtRange(currentWeek.startISO, currentWeek.endISO)})${currentStatus}: ${currentWeek.km} km em ${currentWeek.count} corrida(s)\n` +
     `- Semana passada (${fmtRange(previousWeek.startISO, previousWeek.endISO)}): ${previousWeek.km} km em ${previousWeek.count} corrida(s)\n` +
+    // Caminhadas à parte (2026-10-05): os km acima são só de corrida.
+    walkWeekLine(runs, currentWeek.startISO, currentWeek.endISO, previousWeek.startISO, previousWeek.endISO) +
     `Nota: estes totais são diferentes do "ACWR" abaixo — o ACWR usa uma janela ROLANTE dos últimos 7 dias a contar de hoje, não a semana de calendário.`
   );
 }
@@ -2021,7 +2072,9 @@ function buildWeeklyRunningContext(runs: any[], todayISO: string): string {
 // e RunDashboard.jsx passaram a usar (specs/formulas-checklist.md Fase E) —
 // mesmo código, mesmo número dos dois lados.
 // deno-lint-ignore no-explicit-any
-function buildRunAnalyticsPanel(runs: any[], experienceLevel: string | null, windowDays: number): string | null {
+function buildRunAnalyticsPanel(runsIn: any[], experienceLevel: string | null, windowDays: number): string | null {
+  // Só corridas (2026-10-05): a cadência e o D+ de uma caminhada não são do painel de corrida.
+  const runs = runsOnly(runsIn);
   if (!runs || runs.length === 0) return null;
 
   const lines: string[] = [];
@@ -2749,7 +2802,8 @@ export function buildAcwrLine(
 // deno-lint-ignore no-explicit-any
 export async function checkPlanLoad(sb: any, userId: string, rows: any[], trainingPlans: any[], periodStart: string, todayISO: string): Promise<string | null> {
   try {
-    const { data: runs, error } = await sb.from("runs").select("date, distance_km, duration_seconds")
+    // kind/training_type: a guarda tira as caminhadas da carga (runLoadAlert.ts).
+    const { data: runs, error } = await sb.from("runs").select("date, kind, training_type, distance_km, duration_seconds")
       .eq("user_id", userId).gte("date", addDaysISO(todayISO, -34)).lte("date", todayISO);
     if (error) { console.warn("checkPlanLoad: corridas não lidas:", error.message); return null; }
     // deno-lint-ignore no-explicit-any
@@ -3110,7 +3164,14 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
       // — forçar null no ginásio evita gravar um tipo de corrida numa sessão de
       // ginásio (não rebentaria, mas ficaria incoerente).
       training_type: item.kind === "corrida" && item.training_type ? item.training_type : null,
-      categories: item.kind === "ginasio" && Array.isArray(item.categories) ? item.categories : [],
+      // Na caminhada, `categories` guarda a intensidade (runKinds.ts walkIntensity):
+      // a coluna text[] estava sempre vazia nos itens de corrida e assim não é
+      // preciso mexer no schema de coach_plan_items (2026-10-05).
+      categories: item.kind === "ginasio" && Array.isArray(item.categories)
+        ? item.categories
+        : item.kind === "corrida" && item.training_type === WALK_TRAINING_TYPE
+          ? [(WALK_INTENSITIES as readonly string[]).includes(item.walk_intensity) ? item.walk_intensity : "leve"]
+          : [],
       target_distance_km: item.kind === "corrida" && distance > 0 ? distance : null,
       // Num dia de descanso não há duração para cumprir — o modelo por vezes
       // preenche na mesma, e ficaria um "0 min" sem sentido no cartão.
@@ -4394,7 +4455,8 @@ export function buildRaceEventsContext(
   // query de histórico completo aqui seria mais uma chamada à BD em TODAS
   // as invocações do coach-chat; o atleta já tem get_running_history para
   // ir buscar mais para trás se precisar.
-  const flattenedRuns = (runs || []).map((r) => ({
+  // Só corridas: o map perde o training_type (runKinds.ts, 2026-10-05).
+  const flattenedRuns = runsOnly(runs).map((r) => ({
     date: r.date,
     // distance_km é o que sharedGetRacePrediction (RaceRun) precisa para
     // achar a corrida mais rápida e prever o tempo; sem isto a previsão
@@ -5800,9 +5862,10 @@ export function buildSystemInstruction(
     `nunca um treino. A véspera e a antevéspera levam recuperação curta ou descanso: o servidor recusa ` +
     `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
     `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
+    WALKING_DOCTRINE +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
     `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
-    `que sentir. Para cada dia kind=corrida, combina na notes, sempre que o histórico o permita:\n` +
+    `que sentir. Para cada dia kind=corrida (menos a caminhada, que tem as regras dela acima), combina na notes, sempre que o histórico o permita:\n` +
     `  • Pace-alvo (min/km), derivado dos paces REAIS das últimas corridas do atleta (contexto ` +
     `abaixo já traz pace por corrida) — nunca inventes um número às cegas: recuperação/longo = ` +
     `mais lento que o pace confortável habitual; tempo/limiar = perto do pace que já mostrou ` +
@@ -6568,7 +6631,8 @@ async function handler(req: Request): Promise<Response> {
     // qualquer pergunta "como corro isto?"). A previsão é a mesma da Bloco 8
     // (getRacePrediction sobre as corridas dos últimos 30 dias).
     // deno-lint-ignore no-explicit-any
-    const planRuns = (recentRuns || []).map((r: any) => ({
+    // Só corridas: o map perde o training_type (runKinds.ts, 2026-10-05).
+    const planRuns = runsOnly(recentRuns || []).map((r: any) => ({
       date: r.date,
       distance_km: r.distance_km,
       duration_seconds: r.duration_seconds,

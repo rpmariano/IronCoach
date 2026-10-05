@@ -20,6 +20,7 @@
 // para o frontend a importar pelo @formulas (utils/carolTopics.js).
 
 import { computeRunAcwr } from "./runAcwr.ts";
+import { runsOnly, isWalkPlanItem } from "./runKinds.ts";
 import { ACWR_DANGER, ACWR_SAFE_MAX } from "./acwr.ts";
 
 export const RUN_LOAD_INTERVENTION_TAG = "[carga]";
@@ -37,6 +38,8 @@ export interface LoadRun {
   date: string;
   distance_km?: number | string | null;
   duration_seconds?: number | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 
 export interface LoadPlanItem {
@@ -97,7 +100,10 @@ function athletePaceMinPerKm(runs: LoadRun[]): number {
 export function runLoadReading(
   { runs, planItems, today }: { runs: LoadRun[]; planItems: LoadPlanItem[]; today: string },
 ): RunLoadReading {
-  const list = (runs || []).filter((r) => r && typeof r.date === "string" && r.date.slice(0, 10) <= today);
+  // Caminhadas fora — dos km feitos e dos previstos (runKinds.ts, 2026-10-05):
+  // a carga de corrida é de corrida, e o ritmo de uma caminhada estragava a
+  // régua de athletePaceMinPerKm.
+  const list = runsOnly(runs).filter((r) => r && typeof r.date === "string" && r.date.slice(0, 10) <= today);
   const acwr = computeRunAcwr(list.map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0 })), today);
   const ratio = acwr.chronicWeeklyKm > 0 ? acwr.ratio : null;
 
@@ -110,7 +116,7 @@ export function runLoadReading(
   const trainingPlans = new Set(live.filter((i) => i.kind === "corrida" || i.kind === "ginasio").map((i) => i.plan_id ?? null));
   const training = live.filter((i) => trainingPlans.has(i.plan_id ?? null));
   const inPlanWindow = training.filter((i) => i.planned_date >= acuteStart && i.planned_date <= today);
-  const planned = inPlanWindow.filter((i) => i.kind === "corrida");
+  const planned = inPlanWindow.filter((i) => i.kind === "corrida" && !isWalkPlanItem(i));
   let prescribedKm: number | null = null;
   if (planned.length) {
     const pace = athletePaceMinPerKm(list);
@@ -305,7 +311,7 @@ type DayKm = { date: string; distance_km: number; duration_seconds?: number | nu
 
 function plannedRuns(items: LoadPlanItem[], today: string, ranToday: boolean, pace: number): DayKm[] {
   return (items || [])
-    .filter((i) => i && i.kind === "corrida" && i.status !== "cancelado" && i.training_type !== "prova" &&
+    .filter((i) => i && i.kind === "corrida" && !isWalkPlanItem(i) && i.status !== "cancelado" && i.training_type !== "prova" &&
       typeof i.planned_date === "string" && (i.planned_date > today || (i.planned_date === today && !ranToday)))
     .map((i) => {
       const km = Number(i.target_distance_km) || 0;
@@ -321,7 +327,7 @@ const kmIn = (list: DayKm[], from: string, to: string) =>
 export function planLoadViolations(
   { runs, fixedItems, proposedItems, today }: { runs: LoadRun[]; fixedItems: LoadPlanItem[]; proposedItems: LoadPlanItem[]; today: string },
 ): PlanLoadViolation[] {
-  const past: DayKm[] = (runs || [])
+  const past: DayKm[] = runsOnly(runs)
     .filter((r) => r && typeof r.date === "string" && r.date.slice(0, 10) <= today)
     .map((r) => ({ date: r.date.slice(0, 10), distance_km: Number(r.distance_km) || 0, duration_seconds: r.duration_seconds ?? null }));
   if (!computeRunAcwr(past, today).hasEnoughData) return [];

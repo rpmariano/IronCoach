@@ -418,3 +418,20 @@ describe('pureza', () => {
     expect(() => buildHubView([null, null, null, null, null, null], { offset: 0 }, HOJE)).not.toThrow();
   });
 });
+
+/* Caminhada (2026-10-05, runKinds.ts): o pilar Corrida conta só corridas e
+   diz as caminhadas da semana à parte. */
+describe('pilar Corrida — caminhadas à parte', () => {
+  const walk = (date, km) => run(date, km, { kind: 'treino', training_type: 'caminhada', duration_seconds: km * 700 });
+
+  it('os km e a contagem são de corrida; as caminhadas vêm em run.walks', () => {
+    const v = build({ runs: [run('2026-10-06', 6), walk('2026-10-07', 4), walk(HOJE, 3)] });
+    expect(v.run.count).toBe(1);
+    expect(v.run.km).toBe(6);
+    expect(v.run.walks).toMatchObject({ count: 2, km: 7 });
+  });
+
+  it('sem caminhadas, run.walks é null', () => {
+    expect(build({ runs: [run('2026-10-06', 6)] }).run.walks).toBeNull();
+  });
+});

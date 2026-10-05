@@ -11,6 +11,8 @@
    Puro: recebe o estado do store e o registo acabado de criar (que pode ou
    não já estar na lista — conta-se sem ele). */
 
+import { isWalk, runsOnly, walksOnly } from '@formulas/runKinds.ts';
+
 const LISTA = { run: 'runs', meal: 'meals', gym: 'gymSessions', body: 'bodyAssessments' };
 
 const FRASE = {
@@ -26,6 +28,10 @@ const FRASE = {
    teu ritmo, a tua distância, o teu esforço» afirmava os três. Sem o
    registo à mão, a frase de sempre. */
 function primeiraCorrida(record) {
+  // A primeira caminhada é a primeira caminhada, não "a primeira corrida" (2026-10-05).
+  if (isWalk(record)) {
+    return { title: 'A primeira caminhada.', sub: 'É o teu ponto de partida. Fica à parte das corridas; da próxima vez, já tenho com que comparar.' };
+  }
   const title = 'A primeira corrida.';
   const tempo = !record || Number(record.duration_seconds) > 0;
   const distancia = !record || Number(record.distance_km) > 0;
@@ -110,7 +116,11 @@ function semEste(list, record) {
 export function firstRecordMoment(kind, state = {}, record = null) {
   const chave = LISTA[kind];
   if (!chave || !FRASE[kind]) return null;
-  if (semEste(state[chave], record).length > 0) return null;
+  let anteriores = semEste(state[chave], record);
+  // Corridas e caminhadas contam-se à parte: a primeira corrida depois de
+  // semanas de caminhadas (o regresso de uma lesão) continua a ser a primeira.
+  if (kind === 'run') anteriores = isWalk(record) ? walksOnly(anteriores) : runsOnly(anteriores);
+  if (anteriores.length > 0) return null;
   const everFirst = Object.values(LISTA).every((k) => semEste(state[k], record).length === 0);
   const frase = typeof FRASE[kind] === 'function' ? FRASE[kind](record) : FRASE[kind];
   return { ...frase, everFirst };

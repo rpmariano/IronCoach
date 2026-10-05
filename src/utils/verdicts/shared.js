@@ -7,6 +7,7 @@
 
 import { addDaysISO } from '../../lib/utils';
 import { segundaDe } from '../badges';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 /** O que a Carol diz quando não tem nada para dizer. Nunca inventa. */
 export const NO_DATA_TEXT = 'Ainda não tenho dados suficientes para te dizer como estás.';
@@ -120,7 +121,7 @@ export function plannedRunKmByWeek(planItems, today, count) {
     const start = addDaysISO(monday, -7 * (count - 1 - i));
     const end = addDaysISO(start, 6);
     const km = (planItems || [])
-      .filter((it) => it && it.kind === 'corrida' && it.status !== 'cancelado'
+      .filter((it) => it && it.kind === 'corrida' && !isWalkPlanItem(it) && it.status !== 'cancelado'
         && typeof it.planned_date === 'string' && it.planned_date >= start && it.planned_date <= end)
       .reduce((sum, it) => sum + (Number(it.target_distance_km) || 0), 0);
     return km > 0 ? km : null;

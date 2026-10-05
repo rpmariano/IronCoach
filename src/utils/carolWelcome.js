@@ -24,6 +24,7 @@ import { isMealOnlyItem, MEAL_ONLY_DAY_LABEL } from '@formulas/mealSuggestions.t
 import { PAIN_ALARM_THRESHOLD } from '@formulas/checkinAlarms.ts';
 import { evaluatePrescriptions } from '@formulas/prescriptionAdherence.ts';
 import { eventoDaVida, frasesDaVida, frasesDeAcompanhamento } from './carolVida';
+import { isWalkPlanItem, walkIntensity, runsOnly } from '@formulas/runKinds.ts';
 
 export const WELCOME_SLOTS = ['manha', 'tarde', 'noite', 'madrugada'];
 
@@ -277,6 +278,7 @@ const CORRIDA_FALADA = {
   subidas: 'um treino de subidas',
   trail: 'uma corrida em trilho',
   tecnico: 'um treino em trilho técnico',
+  caminhada: 'uma caminhada', // 2026-10-05 (runKinds.ts)
 };
 // Séries, ritmo, fartlek e subidas não se fazem "sem puxar": puxar é o treino.
 const TREINOS_DE_QUALIDADE = new Set(['tempo', 'fartlek', 'intervalos', 'subidas']);
@@ -305,6 +307,14 @@ function itemFalado(item) {
     if (aula) return `${aula}${duracao}`;
     const grupos = cats.map((c) => GRUPO_FALADO[c.toLowerCase()] || (/^[A-Z0-9]{2,}$/.test(c) ? c : c.toLowerCase()));
     return `um treino de ${grupos.length ? juntar([...new Set(grupos)]) : 'ginásio'}${duracao}`;
+  }
+  // Caminhada do plano: "uma caminhada leve de 40 minutos" (2026-10-05).
+  if (isWalkPlanItem(item)) {
+    const intensidade = walkIntensity(item);
+    const base = intensidade ? `uma caminhada ${intensidade}` : 'uma caminhada';
+    const k = km(item.target_distance_km);
+    const min = Math.round(Number(item.target_duration_min));
+    return k ? `${base} de ${k} km` : min > 0 ? `${base} de ${min} minutos` : base;
   }
   const base = CORRIDA_FALADA[item.training_type] || 'uma corrida';
   const k = km(item.target_distance_km);
@@ -370,11 +380,12 @@ export function carolDay(dateISO, data = {}) {
     feitoFalado: juntar(feitos.map(itemFalado)),
     prova,
     provaFeita,
-    corrida: pendentes.some((i) => i.kind === 'corrida'),
+    // Uma caminhada por fazer não é "uma corrida por fazer" (2026-10-05).
+    corrida: pendentes.some((i) => i.kind === 'corrida' && !isWalkPlanItem(i)),
     // Os km que o plano pedia nas corridas dadas como feitas: uma corrida
     // registada fecha o item do dia (RunRegistration), mesmo com 5 km num
     // dia de 16 — e aí "fizeste a rodagem longa de 16 km" é falso.
-    kmPlaneadoFeito: feitos.filter((i) => i.kind === 'corrida').reduce((t, i) => t + (Number(i.target_distance_km) || 0), 0),
+    kmPlaneadoFeito: feitos.filter((i) => i.kind === 'corrida' && !isWalkPlanItem(i)).reduce((t, i) => t + (Number(i.target_distance_km) || 0), 0),
     qualidade: pendentes.some((i) => i.kind === 'corrida' && TREINOS_DE_QUALIDADE.has(i.training_type)),
   };
 }
@@ -552,7 +563,7 @@ function dataLine(variant, data, hoje, kmHoje = 0) {
   // Segunda-feira da semana de hoje (dia da semana em UTC da data de hoje).
   const dow = (new Date(`${hoje}T00:00:00Z`).getUTCDay() + 6) % 7;
   const segunda = addDays(hoje, -dow);
-  const semanaKm = (data.runs || [])
+  const semanaKm = runsOnly(data.runs)
     .filter((r) => { const d = String(r?.date).slice(0, 10); return d >= segunda && d <= hoje; })
     .reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
   const soHoje = kmHoje > 0 && km(semanaKm) === km(kmHoje);
@@ -561,8 +572,10 @@ function dataLine(variant, data, hoje, kmHoje = 0) {
   return ordem.find(Boolean) || null;
 }
 
+/* Só corridas: "ontem correste 5 km" / "hoje já correste" não contam as
+   caminhadas (runKinds.ts, 2026-10-05). */
 function runsOn(runs, dateISO) {
-  return (runs || []).filter((r) => String(r?.date).slice(0, 10) === dateISO);
+  return runsOnly(runs).filter((r) => String(r?.date).slice(0, 10) === dateISO);
 }
 
 /** O que sustenta as frases do descanso: um descanso do plano trocado por
@@ -576,7 +589,7 @@ function historicoDoDescanso(data, hoje) {
   const semana = addDays(hoje, -7);
   return {
     trocouDescanso: counts.descanso_nao_respeitado > 0,
-    treinouNaSemana: [...runs, ...gym].some((r) => { const d = String(r.date).slice(0, 10); return d >= semana && d < hoje; }),
+    treinouNaSemana: [...runsOnly(runs), ...gym].some((r) => { const d = String(r.date).slice(0, 10); return d >= semana && d < hoje; }),
   };
 }
 

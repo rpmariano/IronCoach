@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useAppStore, sliceReady } from '../../store';
 import { useShallow } from 'zustand/react/shallow';
-import { Mountain } from 'lucide-react';
+import { Mountain, PersonStanding } from 'lucide-react';
 import { Bar } from 'react-chartjs-2';
 import '../../lib/chartSetup';
 import RunIcon from '../shared/RunIcon';
@@ -120,6 +120,27 @@ function hrGateText({ what, needs, none, min, have, ever, fb, scope }) {
   return `${what}: preciso de pelo menos ${min} ${needs} ${scope} (tens ${have}).${onde}`;
 }
 
+/* Caminhadas do período (2026-10-05, feature "Caminhada"): à parte, numa linha
+   própria — não contam para os km, o pace, a carga nem o VDOT desta vista
+   (runKinds.ts). Do 1.º dia do período até hoje, inclusive. */
+function WalksNote({ walks }) {
+  if (!walks) return null;
+  const n = walks.count;
+  return (
+    <div data-testid="caminhadas-periodo" style={{ ...cardStyle, display: 'flex', alignItems: 'center', gap: 10 }}>
+      <PersonStanding className="w-4 h-4 shrink-0" style={{ color: 'var(--run)' }} aria-hidden="true" />
+      <div style={{ minWidth: 0 }}>
+        <p className="text-sm font-bold text-white" style={{ margin: 0 }}>
+          {n} {plural(n, 'caminhada', 'caminhadas')}{walks.km > 0 ? ` · ${fmtNumber(walks.km, 1)} km` : ''}
+        </p>
+        <p className="text-[11px] text-[var(--text-3)]" style={{ margin: '2px 0 0' }}>
+          À parte das corridas: não contam para os km, o pace nem a carga.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function DeltaLine({ label, children }) {
   return (
     <p style={{ margin: 0, display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
@@ -214,6 +235,7 @@ export default function RunDashboard() {
         >
           Ainda não há corridas. Regista uma corrida para veres a tua evolução aqui.
         </EmptyModuleState>
+        <WalksNote walks={view.walks} />
         <EmptyChartFrame label="Distância por dia" unit="km no período" />
       </div>
     );
@@ -457,6 +479,7 @@ export default function RunDashboard() {
           previousSummary={prevPeriodSummary}
           {...(dataFb?.type === 'kind' ? fallbackAction(dataFb, cal) : {})}
         />
+        <WalksNote walks={view.walks} />
         {independent}
         {today}
       </div>
@@ -488,6 +511,8 @@ export default function RunDashboard() {
       {early === 'cedo' && !earlyIsVerdict && (
         <EarlyPeriodState state="cedo" cal={cal} module="corrida" earlyText={earlyVerdict(cal, earlyOpts).text} />
       )}
+
+      <WalksNote walks={view.walks} />
 
       {emptyPeriod ? (
         <EmptyModuleState

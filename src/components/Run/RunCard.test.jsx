@@ -159,3 +159,22 @@ describe('RunCard — a intervenção da Carol', () => {
     expect(screen.queryByRole('button', { name: 'Falar com a Carol' })).not.toBeInTheDocument();
   });
 });
+
+/* Caminhada (2026-10-05): rótulo e ícone próprios no cartão (e no calendário,
+   que usa este cartão). */
+describe('RunCard — caminhada', () => {
+  beforeEach(() => {
+    useAppStore.setState({ profile: { id: 'user-1' }, runs: [], setRuns: () => {} });
+  });
+
+  it('diz "Caminhada" e usa o ícone da caminhada, não o da corrida', () => {
+    render(<RunCard run={{ ...RUN, name: null, training_type: 'caminhada', details: {} }} />);
+    expect(screen.getAllByText('Caminhada').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('icone-caminhada')).toBeTruthy();
+  });
+
+  it('uma corrida continua com o ícone de corrida', () => {
+    render(<RunCard run={RUN} />);
+    expect(screen.queryByTestId('icone-caminhada')).toBeNull();
+  });
+});

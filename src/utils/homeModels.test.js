@@ -255,3 +255,13 @@ describe('homeModels — o que o Início mostra (ponto 5)', () => {
     expect(hasAnyRecord({})).toBe(false);
   });
 });
+
+/* Caminhada do plano (2026-10-05, runKinds.ts): kind 'corrida' com
+   training_type 'caminhada'; a intensidade vem de categories. */
+describe('homeModels — caminhada no plano', () => {
+  it('título com intensidade e minutos ou km', () => {
+    expect(planItemTitle({ kind: 'corrida', training_type: 'caminhada', categories: ['leve'], target_duration_min: 40 })).toBe('Caminhada leve · 40 min');
+    expect(planItemTitle({ kind: 'corrida', training_type: 'caminhada', categories: ['moderada'], target_distance_km: 3.5 })).toBe('Caminhada moderada · 3,5 km');
+    expect(planItemTitle({ kind: 'corrida', training_type: 'caminhada' })).toBe('Caminhada');
+  });
+});

@@ -26,6 +26,13 @@ const RUN_TRAINING_TYPES_DOCS = [
       { name: 'Trail', desc: 'Corrida contínua na montanha/trilho (Endurance base).' },
       { name: 'Técnico', desc: 'Foco na agilidade, footwork e leitura do terreno acidentado.' }
     ]
+  },
+  // 2026-10-05: escolhe-se pelo chip "Caminhada" do registo, não pelo select.
+  {
+    group: 'Caminhada',
+    items: [
+      { name: 'Caminhada', desc: 'Para recuperar (lesão, cirurgia, pós-prova) ou quando não podes correr. Fica à parte: não conta para a carga de corrida.' }
+    ]
   }
 ];
 

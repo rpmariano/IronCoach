@@ -14,7 +14,8 @@ import { computeAcwr, classifyAcwrZone } from '@formulas/acwr.ts';
 import { RUN_ACWR_MIN_HISTORY_WEEKS } from '@formulas/runAcwr.ts';
 import { computeBestPace } from '@formulas/bestPace.ts';
 import { focusRace } from '@formulas/mainRace.ts';
-import { runAcwrCore, vdotTrendCore } from '../core';
+import { runAcwrCore, vdotTrendCore, splitWalksCore } from '../core';
+import { walkTotals } from '@formulas/runKinds.ts';
 import {
   calculateTrainingDistribution,
   calculatePaceVsHR,
@@ -279,6 +280,22 @@ function distanceBars(runs, closedDays, kind) {
   };
 }
 
+// ── Caminhadas do período (2026-10-05) ────────────────────────────────────
+
+/**
+ * "N caminhadas · X km" do período, à parte das corridas (runKinds.ts). Do 1.º
+ * dia do período até hoje INCLUSIVE: não é um KPI comparado (a régua dos dias
+ * fechados serve as comparações), é o registo do que se andou — e quem só
+ * caminha (lesão, pós-operatório) vê a caminhada de hoje logo. null quando o
+ * período não tem nenhuma.
+ */
+export function walksOfPeriod(walks, period, todayISO) {
+  const to = period.end < todayISO ? period.end : todayISO;
+  if (!walks?.length || period.start > to) return null;
+  const t = walkTotals(walks, period.start, to);
+  return t.count > 0 ? { ...t, from: period.start, to } : null;
+}
+
 // ── O nome curto do período anterior, para "face a …" ─────────────────────
 
 const shortName = shortPeriodName;
@@ -286,7 +303,11 @@ const shortName = shortPeriodName;
 // ── A vista ───────────────────────────────────────────────────────────────
 
 export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlanItems], periodSel, todayISO) {
-  const runs = Array.isArray(runsIn) ? runsIn : [];
+  /* Caminhadas (2026-10-05, runKinds.ts): a vista da Corrida é SÓ de corridas —
+     KPIs, carga, VDOT, recordes, previsão, zonas, eficiência. As caminhadas
+     do período dizem-se à parte (`walks`, "N caminhadas · X km"). */
+  const split = splitWalksCore(Array.isArray(runsIn) ? runsIn : []);
+  const runs = split.runs;
   const kind = periodSel?.kind || 'mes';
   const offset = periodSel?.offset ?? 0;
   const period = calendarPeriod(kind, todayISO, offset);
@@ -551,6 +572,7 @@ export function buildRunView([runsIn, profile, raceEvents, coachPlans, coachPlan
     watch,
     lastRunDate: lastBefore,
     todayRuns: windowStats(runs, todayISO, todayISO),
+    walks: walksOfPeriod(split.walks, period, todayISO),
     verdict,
   };
 }

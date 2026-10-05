@@ -21,6 +21,7 @@ import { getRecommendedPrepWeeks, resolveExperienceLevel, getRacePrediction, com
 import type { RaceRun } from "./racePrediction.ts";
 import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
 import { getTaperDays } from "./taper.ts";
+import { runsOnly } from "./runKinds.ts";
 
 export interface ReadinessPillar {
   key: "acwr" | "ea" | "calories" | "vdot" | "tactic" | "checkin";
@@ -166,7 +167,7 @@ function daysBetweenISO(laterISO: string, earlierISO: string): number {
 }
 
 export function computeReadinessIndex(
-  runs: RunInput[],
+  runsIn: RunInput[],
   meals: MealInput[],
   bodyAssessments: BodyInput[],
   gymSessions: GymInput[],
@@ -180,6 +181,11 @@ export function computeReadinessIndex(
   trainingToday?: boolean,
 ): ReadinessIndex {
   const pillars: ReadinessPillar[] = [];
+  // As caminhadas ficam fora de TODOS os pilares de corrida (carga, VDOT,
+  // volume, previsão — runKinds.ts, 2026-10-05). A EA também usa `runs`, e
+  // aí uma caminhada é gasto (a metade, tdee.ts) — por isso a EA recebe a
+  // lista completa (allClosedRuns), o resto só as corridas.
+  const runs = runsOnly(runsIn);
   const raceTodayOrTomorrow = !!nextRace && (nextRace.date === todayISO || nextRace.date === addDaysISO(todayISO, 1));
 
   // Viabilidade da prova (T1, racePlanning.ts): quantas semanas a preparação
@@ -234,7 +240,7 @@ export function computeReadinessIndex(
   const fechados = <T extends { date?: string | null }>(rows: T[] | null | undefined): T[] =>
     (rows || []).filter((r) => typeof r.date === "string" && r.date <= closedRef);
   const closedMeals = fechados(meals);
-  const closedRuns = fechados(runs);
+  const closedRuns = fechados(runsIn); // com caminhadas: é gasto (EA)
   const closedGym = fechados(gymSessions);
 
   // --- Pilar 2: Disponibilidade Energética ---

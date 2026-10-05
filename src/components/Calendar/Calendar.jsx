@@ -5,6 +5,7 @@ import { useToast } from '../shared/ToastProvider';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, X } from 'lucide-react';
+import { isWalk } from '@formulas/runKinds.ts';
 
 import RunCard from '../Run/RunCard';
 import RaceCard from '../Run/RaceCard';
@@ -394,7 +395,11 @@ export default function Calendar() {
                   <span className="text-xs font-bold leading-none mt-[1px]">{dayNum}</span>
                   <div className="flex gap-[3px] justify-center w-full px-1.5 h-1">
                     {dayRaces.length > 0 && <span className="flex-1 rounded-[2px]" style={{ backgroundColor: isSelected ? 'var(--mod-prova)' : 'rgba(255,255,255,0.7)' }} />}
-                    {dayRuns.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-corrida)]" />}
+                    {/* Só caminhadas nesse dia: a mesma cor, mais apagada (2026-10-05) —
+                        a caminhada é do módulo da corrida mas não é corrida. */}
+                    {dayRuns.length > 0 && (dayRuns.every(isWalk)
+                      ? <span data-testid={`calendar-walk-${dayStr}`} className="flex-1 rounded-[2px] bg-[var(--mod-corrida)] opacity-50" />
+                      : <span className="flex-1 rounded-[2px] bg-[var(--mod-corrida)]" />)}
                     {dayGym.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-ginasio)]" />}
                     {dayMeals.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-nutricao)]" />}
                     {dayBody.length > 0 && <span className="flex-1 rounded-[2px] bg-[var(--mod-corpo)]" />}

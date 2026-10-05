@@ -131,7 +131,7 @@ async function handler(req: Request): Promise<Response> {
       .select("user_id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, actual_date")
       .in("user_id", ids).gte("planned_date", janela.start).lt("planned_date", janela.end),
     sb.from("runs")
-      .select("user_id, id, date, distance_km, duration_seconds, effort_rpe")
+      .select("user_id, id, date, kind, training_type, distance_km, duration_seconds, effort_rpe")
       .in("user_id", ids).gte("date", janela.start).lt("date", janela.end),
     sb.from("workout_sessions")
       .select("user_id, id, date, duration_seconds")

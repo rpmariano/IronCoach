@@ -23,6 +23,7 @@ import { useCupForHome } from '../../utils/useCup';
 import { cupEntryNotices, cupWeekLine } from '../../utils/cupWeek';
 import { CupPrevisao } from '../Run/CupBits';
 import { useToast } from '../shared/ToastProvider';
+import { runsOnly } from '@formulas/runKinds.ts';
 
 /* O cartão da Carol no topo do Início (mock "Início": ciano, "Ler mais").
    Duas partes: o cabeçalho com o nome dela, que abre o chat, e uma linha do
@@ -281,7 +282,8 @@ export function useCoachDailyMessages(agora = new Date()) {
     const isDone = (i) => i.status === 'concluido' || doneKindsToday.has(i.kind) || (provaFeita && isRacePlanItem(i));
     const pendentes = treinoHoje.filter((i) => !isDone(i));
     const feitos = treinoHoje.filter(isDone);
-    const corridasHoje = (runs || []).filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) === today);
+    // Só corridas: os km de hoje são de corrida (as caminhadas à parte, runKinds.ts).
+    const corridasHoje = runsOnly(runs).filter((r) => typeof r?.date === 'string' && r.date.slice(0, 10) === today);
     const kmHoje = corridasHoje.reduce((s, r) => s + (Number(r.distance_km) || 0), 0);
     const checkin = todaysCheckin(dailyCheckins, today);
 

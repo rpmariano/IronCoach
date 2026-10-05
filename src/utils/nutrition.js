@@ -1,4 +1,5 @@
 import { computeItemNutrients, computeMealNutrients } from '@formulas/mealNutrients.ts';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 /* Cores das macros. Até 2026-10-04 eram as do mock "Dashboard · Nutrição"
    (calorias e hidratos com o mesmo violeta do módulo, proteína no rosa do
@@ -105,6 +106,8 @@ export function planAffectsDay(planItems, dateStr) {
   return (planItems || []).some(item => {
     if (item.status === 'cancelado') return false;
     if (item.kind !== 'corrida') return false;
+    // Uma caminhada do plano não é dia de carga de hidratos (2026-10-05, runKinds.ts).
+    if (isWalkPlanItem(item)) return false;
     const relevantDate = item.status === 'concluido' ? item.actual_date : item.planned_date;
     if (relevantDate !== dateStr) return false;
     const isLong = item.training_type === 'longo' || (Number(item.target_distance_km) || 0) >= 15;

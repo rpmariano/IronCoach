@@ -11,6 +11,7 @@ import { computeRunAcwr, type RunForAcwr } from "./runAcwr.ts";
 import { computeGymVolumeLoad } from "./volumeLoad.ts";
 import { computeSessionVolumeKg, type SessionForVolume } from "./sessionVolumeKg.ts";
 import { filterByRelativeDateRange } from "./relativeDateRange.ts";
+import { runsOnly } from "./runKinds.ts";
 
 export interface RunForCrossMetrics extends RunForAcwr {
   duration_seconds?: number | null;
@@ -65,7 +66,9 @@ export function computeCrossMetrics(
   todayISO: string,
   range: string,
 ): CrossMetrics {
-  const filteredRuns = filterByRelativeDateRange(runs, todayISO, range);
+  // Caminhadas fora (runKinds.ts, 2026-10-05): o peso vs. PACE e o RPE "de
+  // corrida" são da corrida; o ACWR já as tira sozinho.
+  const filteredRuns = filterByRelativeDateRange(runsOnly(runs), todayISO, range);
   const filteredBody = filterByRelativeDateRange(bodyAssessments, todayISO, range);
   const filteredGym = filterByRelativeDateRange(gymSessions, todayISO, range);
 

@@ -18,7 +18,8 @@ import {
 import { goalsResolver } from '../../../utils/goalHistory';
 import { acwrStatusLabel, acwrMissingWeeks } from '../../../utils/biEngine';
 import { GYM_TARGET_PER_WEEK } from '../../../utils/verdicts/gym';
-import { runAcwrCore, weightTrendCore } from '../core';
+import { runAcwrCore, weightTrendCore, splitWalksCore } from '../core';
+import { walkTotals } from '@formulas/runKinds.ts';
 import { rangeText } from '../../../components/Nutrition/nutritionText';
 
 /**
@@ -396,7 +397,12 @@ function previousWeekSummary({ runs, sessions, meals, previous, todayISO }) {
  */
 export function buildHubView(deps, periodSel, todayISO) {
   const [runsIn, sessionsIn, mealsIn, bodyIn, profile, goalHistory] = deps || EMPTY;
-  const runs = Array.isArray(runsIn) ? runsIn : EMPTY;
+  /* Caminhadas (2026-10-05, runKinds.ts): o pilar Corrida é só de corridas e
+     diz as caminhadas da semana à parte. Os registos "de qualquer tipo"
+     (1.º registo, EA da nutrição, a semana passada) usam a lista inteira. */
+  const allRuns = Array.isArray(runsIn) ? runsIn : EMPTY;
+  const split = splitWalksCore(allRuns);
+  const runs = split.runs;
   const sessions = Array.isArray(sessionsIn) ? sessionsIn : EMPTY;
   const meals = Array.isArray(mealsIn) ? mealsIn : EMPTY;
   const bodyAssessments = Array.isArray(bodyIn) ? bodyIn : EMPTY;
@@ -409,7 +415,7 @@ export function buildHubView(deps, periodSel, todayISO) {
   const from = closedN ? closed[0] : null;
   const to = closedN ? closed[closedN - 1] : null;
 
-  const dataStarts = [firstDate(runs), firstDate(sessions), firstDate(meals), firstDate(bodyAssessments)].filter(Boolean);
+  const dataStarts = [firstDate(allRuns), firstDate(sessions), firstDate(meals), firstDate(bodyAssessments)].filter(Boolean);
   const dataStartISO = dataStarts.length ? dataStarts.reduce(minISO) : null;
   const hasAnyRecords = dataStarts.length > 0;
 
@@ -429,10 +435,18 @@ export function buildHubView(deps, periodSel, todayISO) {
     dataStartISO,
     hasAnyRecords,
     earlyState,
-    run: runPillar({ runs, ...ctx }),
+    run: {
+      ...runPillar({ runs, ...ctx }),
+      // Do 1.º dia da semana até hoje (inclusive) — o que se andou, não um KPI comparado.
+      walks: (() => {
+        const to = period.end < todayISO ? period.end : todayISO;
+        const t = walkTotals(split.walks, period.start, to);
+        return t.count > 0 ? t : null;
+      })(),
+    },
     gym: gymPillar({ sessions, ...ctx }),
     nutrition: nutritionPillar({
-      meals, runs, gymSessions: sessions, bodyAssessments, profile, goalHistory, closed, ...ctx,
+      meals, runs: allRuns, gymSessions: sessions, bodyAssessments, profile, goalHistory, closed, ...ctx,
     }),
     body: bodyPillar({ bodyAssessments, period, todayISO }),
     previousWeek: earlyState === 'a_comecar' ? previousWeekSummary({ runs, sessions, meals, previous, todayISO }) : null,

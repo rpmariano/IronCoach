@@ -10,6 +10,8 @@
 // sempre no alvo 'medio' (80%) mesmo para atletas iniciantes (alvo 95%) —
 // corrigido ao migrar, já que agora há um único sítio a decidir o alvo.
 
+import { runsOnly } from "./runKinds.ts";
+
 export type ExperienceLevelKey = "iniciante" | "basico" | "medio" | "avancado";
 
 // Mesma tabela de src/utils/biConstants.js TARGET_LOW_INTENSITY_PCT — vive
@@ -34,6 +36,8 @@ export interface HrZoneMinutes {
 
 export interface RunWithHrZones {
   details?: { hr_zones?: HrZoneMinutes[] | null } | null;
+  kind?: string | null;
+  training_type?: string | null;
 }
 
 export interface TrainingDistribution {
@@ -54,7 +58,9 @@ export function computeTrainingDistribution(
 ): TrainingDistribution {
   let z1 = 0, z2 = 0, z3 = 0, z4 = 0, z5 = 0;
 
-  for (const run of runs) {
+  // Caminhadas fora (runKinds.ts, 2026-10-05): a 80/20 é da corrida, e uma
+  // caminhada (quase toda Z1-Z2) enchia a fatia "fácil" sem ser treino de corrida.
+  for (const run of runsOnly(runs)) {
     const zones = run.details?.hr_zones || [];
     for (const z of zones) {
       if (z.zone === 1) z1 += z.minutes;

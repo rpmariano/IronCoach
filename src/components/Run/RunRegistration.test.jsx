@@ -2058,3 +2058,99 @@ describe('RunRegistration — hora de início', () => {
     expect(useAppStore.getState().runs.find(r => r.id === 'run-8').start_time).toBe('19:15');
   });
 });
+
+/* Caminhada (2026-10-05, feature aprovada pelo dono do produto): escolhe-se
+   pelo chip "Caminhada" ao lado de Treino/Prova e grava-se como um treino com
+   training_type 'caminhada' (runKinds.ts). Só cumpre uma caminhada do plano —
+   e uma corrida não cumpre a caminhada. */
+describe('RunRegistration — Caminhada', () => {
+  const onClose = vi.fn();
+  const hojeISO = todayISO();
+  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+  const itensDoPlano = () => mocks.updates.filter(u => u.table === 'coach_plan_items');
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { run: { id: 'run-caminhada' } }, error: null });
+    mocks.updateRun.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    mocks.inserts.length = 0;
+    mocks.insertResult = null;
+    onClose.mockClear();
+    localStorage.removeItem('ironcoach:corrida-rascunho:nova');
+    useAppStore.setState({
+      profile: PROFILE, runs: [], raceEvents: [], runRacePrefill: null, planItemPrefill: null,
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: hojeISO, period_end: hojeISO }],
+      coachPlanItems: [],
+    });
+  });
+
+  it('escolher "Caminhada" grava training_type caminhada, kind treino e o nome de caminhada', async () => {
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Caminhada' }));
+    expect(screen.getByTestId('nota-caminhada')).toBeTruthy();
+    // O select dos tipos de corrida sai: a caminhada não tem subtipos.
+    expect(document.getElementById('rr-tipo-de-treino')).toBeNull();
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.kind).toBe('treino');
+    expect(body.training_type).toBe('caminhada');
+    expect(body.name).toBe('Caminhada de Hoje');
+  });
+
+  it('voltar a "Treino" repõe um tipo de corrida (contínuo) e o nome por omissão', async () => {
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Caminhada' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Treino$/ }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.training_type).toBe('continuo');
+    expect(body.name).toBe('Corrida de Hoje');
+  });
+
+  it('uma caminhada risca a caminhada do plano desse dia, não a corrida', async () => {
+    useAppStore.setState({
+      coachPlanItems: [
+        { id: 'item-corrida', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'continuo', status: 'pendente' },
+        { id: 'item-caminhada', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'caminhada', categories: ['leve'], status: 'pendente' },
+      ],
+    });
+    render(<RunRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Caminhada' }));
+    goManual();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(itensDoPlano()).toHaveLength(1));
+    expect(itensDoPlano()[0]).toMatchObject({ id: 'item-caminhada', payload: { status: 'concluido', completed_run_id: 'run-caminhada' } });
+  });
+
+  it('uma corrida não risca a caminhada do plano', async () => {
+    useAppStore.setState({
+      coachPlanItems: [
+        { id: 'item-caminhada', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'caminhada', status: 'pendente' },
+      ],
+    });
+    render(<RunRegistration onClose={onClose} />);
+    goManual();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+
+    await waitFor(() => expect(useAppStore.getState().runs).toHaveLength(1));
+    expect(itensDoPlano()).toHaveLength(0);
+  });
+
+  it('vindo de uma caminhada do plano ("Registar sessão"), abre já em Caminhada', async () => {
+    useAppStore.setState({
+      planItemPrefill: { id: 'item-caminhada', kind: 'corrida', planned_date: hojeISO, training_type: 'caminhada' },
+      coachPlanItems: [{ id: 'item-caminhada', plan_id: 'p1', planned_date: hojeISO, kind: 'corrida', training_type: 'caminhada', status: 'pendente' }],
+    });
+    render(<RunRegistration onClose={onClose} />);
+    expect(screen.getByTestId('nota-caminhada')).toBeTruthy();
+    expect(screen.getByDisplayValue('Caminhada de Hoje')).toBeTruthy();
+  });
+});

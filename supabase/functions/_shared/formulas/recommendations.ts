@@ -14,6 +14,7 @@
 // índice de execução do plano (percentis, badges), e uma recomendação solta
 // não é plano.
 
+import { runsOnly } from "./runKinds.ts";
 import { ADHERENCE_TOLERANCE, ADHERENCE_WINDOW_DAYS, MIN_MEALS_FOR_AVERAGE, type DayMacros, type GymRow, type RunRow } from "./prescriptionAdherence.ts";
 
 export const RECOMMENDATION_KINDS = ["descanso", "corrida", "ginasio", "proteina"] as const;
@@ -151,7 +152,9 @@ export function evaluateRecommendations(
   days = ADHERENCE_WINDOW_DAYS,
 ): RecommendationResult[] {
   const from = addDays(todayISO, -days);
-  const runs = input.runs || [];
+  // Caminhadas fora (runKinds.ts, 2026-10-05): não cumprem uma corrida
+  // recomendada e não quebram um descanso recomendado (descanso ativo).
+  const runs = runsOnly(input.runs);
   const gym = input.gym || [];
   const meals = input.mealsByDate || {};
   const checkins = input.checkins || [];

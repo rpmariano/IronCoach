@@ -502,3 +502,32 @@ describe('limiares (2026-10-05): R2/R3, R4, R5, R10 e para onde ir', () => {
     expect(v.vdotNote).toMatch(/^Setembro começou antes do teu primeiro registo/);
   });
 });
+
+/* Caminhada (2026-10-05, runKinds.ts): a vista da Corrida é só de corridas e
+   diz as caminhadas do período à parte ("N caminhadas · X km"). */
+describe('caminhadas à parte', () => {
+  const walk = (date, km, over = {}) => run(date, km, { training_type: 'caminhada', duration_seconds: km * 700, ...over });
+
+  it('não entram nos KPIs, no ritmo, nas barras, na carga nem nos recordes', () => {
+    const runs = [run('2026-09-29', 8), run('2026-10-02', 6)];
+    const withWalks = [...runs, walk('2026-09-30', 5), walk('2026-10-03', 4)];
+    const a = view(runs, 'semana');
+    const b = view(withWalks, 'semana');
+    expect(b.cur).toEqual(a.cur);
+    expect(b.bars.values).toEqual(a.bars.values);
+    expect(b.acwr).toEqual(a.acwr);
+    expect(b.records.map((r) => r.best)).toEqual(a.records.map((r) => r.best));
+  });
+
+  it('dizem-se à parte, do 1.º dia do período até hoje (inclusive)', () => {
+    const v = view([run('2026-09-29', 8), walk('2026-09-30', 5), walk('2026-10-03', 4.2), walk(HOJE, 3)], 'semana');
+    expect(v.walks).toMatchObject({ count: 3, km: 12.2, from: '2026-09-28', to: HOJE });
+    expect(view([run('2026-09-29', 8)], 'semana').walks).toBeNull();
+  });
+
+  it('quem só caminha (pós-operatório) não tem corridas, mas vê as caminhadas', () => {
+    const v = view([walk('2026-10-01', 3), walk('2026-10-02', 3.5)], 'semana');
+    expect(v.hasRuns).toBe(false);
+    expect(v.walks).toMatchObject({ count: 2, km: 6.5 });
+  });
+});

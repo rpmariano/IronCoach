@@ -12,6 +12,8 @@
 // Mifflin-St Jeor (1990) — 2ª opção da doutrina quando a massa magra por
 // DXA não está disponível (1ª opção, Cunningham 1980, não implementada:
 // a app não tem massa magra por DXA, só por BIA).
+import { isWalk } from "./runKinds.ts";
+
 export function computeBMR(
   weightKg: number,
   heightCm: number,
@@ -30,6 +32,18 @@ export const TDEE_ACTIVITY_FACTOR = 1.3;
 // (não só inline) para as duas fórmulas partilharem o número, em vez de
 // cada uma hardcodar o seu "1.0" (Fase E).
 export const RUNNING_COST_KCAL_PER_KG_KM = 1.0;
+
+// Custo energético LÍQUIDO da caminhada (≈0,5 kcal/kg/km — cerca de metade
+// do da corrida à mesma distância; ACSM, Margaria). Feature "Caminhada"
+// (2026-10-05, runKinds.ts): a caminhada não é carga de corrida, mas é
+// gasto — na EA conta, a metade. Sem isto, 5 km a andar valiam o mesmo
+// gasto que 5 km a correr e a EA de quem está em recuperação saía baixa demais.
+export const WALKING_COST_KCAL_PER_KG_KM = 0.5;
+
+/** kcal/kg/km do registo: caminhada a metade, tudo o resto como corrida. */
+export function distanceCostKcalPerKgKm(run: { kind?: string | null; training_type?: string | null } | null | undefined): number {
+  return isWalk(run) ? WALKING_COST_KCAL_PER_KG_KM : RUNNING_COST_KCAL_PER_KG_KM;
+}
 
 // weeklyVolumeKm: km corridos nos últimos 7 dias — o custo do treino é a
 // média diária desse volume (≈1 kcal/kg/km), somado à TMB×fator. Sem

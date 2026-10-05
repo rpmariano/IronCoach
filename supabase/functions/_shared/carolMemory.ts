@@ -20,6 +20,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 
+import { isWalk, runsOnly, walkTotals, walksLabel } from "./formulas/runKinds.ts";
 import { buildCheckinContext, type DailyCheckin } from "./formulas/checkinAlarms.ts";
 import { normalizeGender } from "./formulas/vocabulary.ts";
 import { buildPrescriptionAdherenceContext, evaluatePrescriptions, mealTotalsByDate, trainingSummaryLine, ADHERENCE_WINDOW_DAYS, type TrainingOutcome } from "./formulas/prescriptionAdherence.ts";
@@ -100,7 +101,7 @@ function warn(label: string, error: unknown) {
 
 const TRAINING_TYPE_LABELS: Record<string, string> = {
   continuo: "contínuo", longo: "longo", intervalos: "intervalos", fartlek: "fartlek",
-  recuperacao: "recuperação", trail: "trail",
+  recuperacao: "recuperação", trail: "trail", caminhada: "caminhada",
 };
 
 const MEAL_TYPE_LABELS: Record<string, string> = {
@@ -118,6 +119,8 @@ export interface RecordEntry {
 }
 
 export function runLabel(r: any): string {
+  // Uma caminhada diz-se caminhada, não "Corrida (caminhada)" (2026-10-05).
+  if (isWalk(r)) return km(r?.distance_km) ? `Caminhada (${km(r?.distance_km)})` : "Caminhada";
   const kind = r?.kind === "competicao" ? "Prova" : "Corrida";
   const type = r?.training_type ? TRAINING_TYPE_LABELS[r.training_type] || r.training_type : null;
   const parts = [type, km(r?.distance_km)].filter(Boolean);
@@ -796,11 +799,15 @@ function sumKm(runs: PortraitInput["runs"], from: string, to: string): number {
  */
 export function buildAthletePortrait(input: PortraitInput, todayISO: string): string | null {
   const from = addDaysISO(todayISO, -364);
-  const runs = (input.runs || []).filter((r) => typeof r?.date === "string" && r.date >= from && r.date <= todayISO);
+  const all = (input.runs || []).filter((r) => typeof r?.date === "string" && r.date >= from && r.date <= todayISO);
+  // A época de CORRIDA é só de corridas; as caminhadas dizem-se à parte
+  // numa linha própria (runKinds.ts, 2026-10-05).
+  const runs = runsOnly(all);
+  const walks = walkTotals(all);
   const gym = (input.gymDates || []).filter((d) => d >= from && d <= todayISO);
   const body = (input.body || []).filter((b) => typeof b?.date === "string" && b.date >= from && b.date <= todayISO)
     .sort((a, b) => a.date.localeCompare(b.date));
-  if (!runs.length && !gym.length && !body.length) return null;
+  if (!runs.length && !walks.count && !gym.length && !body.length) return null;
 
   const lines: string[] = [];
   let hasMeasureLine = false; // melhores ritmos e/ou forma — só então o rodapé sobre eles faz sentido.
@@ -859,6 +866,11 @@ export function buildAthletePortrait(input: PortraitInput, todayISO: string): st
       lines.push(`- Forma aeróbica: ${trend} (VDOT ${last.vdot} em ${mes}).`);
       hasMeasureLine = true;
     }
+  }
+
+  if (walks.count) {
+    const recentWalks = walkTotals(all, addDaysISO(todayISO, -27), todayISO);
+    lines.push(`- Caminhada: ${walksLabel(walks.count)} · ${km(walks.km) || "0 km"} em 12 meses (${walksLabel(recentWalks.count)} nas últimas 4 semanas) — não conta para a carga de corrida`);
   }
 
   if (gym.length) {
@@ -1121,7 +1133,7 @@ export async function fetchAdherenceBlock(sb: any, userId: string, todayISO: str
         .select("id, plan_id, planned_date, actual_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
         .eq("user_id", userId).eq("coach_plans.status", "aceite")
         .gte("planned_date", from).lt("planned_date", todayISO),
-      sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")
+      sb.from("runs").select("id, date, kind, training_type, distance_km, duration_seconds, effort_rpe")
         .eq("user_id", userId).gte("date", from).lte("date", todayISO),
       sb.from("workout_sessions").select("id, date, duration_seconds, exertion")
         .eq("user_id", userId).eq("status", "concluido").gte("date", from).lte("date", todayISO),
@@ -1187,7 +1199,7 @@ export async function fetchWeekAdherenceLine(sb: any, userId: string, weekStart:
         .select("id, plan_id, planned_date, actual_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, meal_macros, coach_plans!inner(status)")
         .eq("user_id", userId).eq("coach_plans.status", "aceite")
         .gte("planned_date", weekStart).lte("planned_date", weekEnd),
-      sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")
+      sb.from("runs").select("id, date, kind, training_type, distance_km, duration_seconds, effort_rpe")
         .eq("user_id", userId).gte("date", weekStart).lte("date", weekEnd),
       sb.from("workout_sessions").select("id, date, duration_seconds, exertion")
         .eq("user_id", userId).eq("status", "concluido").gte("date", weekStart).lte("date", weekEnd),
@@ -1615,7 +1627,7 @@ export async function fetchVitrinaBlock(
       const [itens, corridas, ginasio] = await Promise.all([
         sb.from("coach_plan_items").select("plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, status, completed_run_id, completed_session_id, actual_date")
           .eq("user_id", userId).gte("planned_date", a.windowStart).lt("planned_date", a.own.window_end),
-        sb.from("runs").select("id, date, distance_km, duration_seconds, effort_rpe")
+        sb.from("runs").select("id, date, kind, training_type, distance_km, duration_seconds, effort_rpe")
           .eq("user_id", userId).gte("date", a.windowStart).lt("date", a.own.window_end),
         sb.from("workout_sessions").select("id, date, duration_seconds")
           .eq("user_id", userId).gte("date", a.windowStart).lt("date", a.own.window_end),

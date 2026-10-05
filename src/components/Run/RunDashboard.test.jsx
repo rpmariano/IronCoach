@@ -875,3 +875,23 @@ describe('abrir no mês anterior só depois de as corridas chegarem (revisão 20
     expect(usePeriodStore.getState().tabs.corrida.offset).toBe(-1);
   });
 });
+
+/* Caminhada (2026-10-05, runKinds.ts): à parte das corridas, numa linha
+   própria — e quem só caminha (pós-operatório) vê-a na mesma. */
+describe('caminhadas à parte', () => {
+  const caminhada = (over = {}) => corrida({ training_type: 'caminhada', duration_seconds: 2800, distance_km: 4, ...over });
+
+  it('a linha "N caminhadas · X km" aparece e não mexe nos KPIs de corrida', () => {
+    monta({ runs: [corrida({ id: 'c1', date: '2026-10-01' }), caminhada({ id: 'w1', date: '2026-10-02' }), caminhada({ id: 'w2', date: '2026-10-03', distance_km: 3.5 })], kind: 'mes' });
+    const nota = screen.getByTestId('caminhadas-periodo');
+    expect(nota.textContent).toContain('2 caminhadas · 7,5 km');
+    expect(nota.textContent).toContain('não contam para os km, o pace nem a carga');
+    expect(within(linha('Corridas')).getByText('1')).toBeTruthy();
+  });
+
+  it('só com caminhadas: o convite a registar corridas e as caminhadas à vista', () => {
+    monta({ runs: [caminhada({ id: 'w1', date: '2026-10-02' })], kind: 'mes' });
+    expect(screen.getByText(/Ainda não há corridas/)).toBeTruthy();
+    expect(screen.getByTestId('caminhadas-periodo').textContent).toContain('1 caminhada · 4,0 km');
+  });
+});

@@ -10,6 +10,7 @@ import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRace
 import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import MealSheet from './MealSheet';
 import { CarolTalkButton } from '../shared/CarolActions';
+import { isWalkPlanItem } from '@formulas/runKinds.ts';
 
 /* "O plano" — o plano acordado inteiro, dia a dia, em ecrã cheio
    (redesenho 2026-09-15). É para aqui que veio o trabalho do carrossel que
@@ -249,6 +250,8 @@ export default function PlanoScreen({ onClose }) {
     const items = (currentWeek?.days || []).flatMap(treinosPorContar);
     const done = items.filter((i) => i.status === 'concluido');
     const km = done.reduce((s, i) => {
+      // Km de corrida: as caminhadas do plano contam como treino feito, não como km (2026-10-05).
+      if (isWalkPlanItem(i)) return s;
       const run = (runs || []).find((r) => r?.id === i.completed_run_id);
       const dist = Number(run?.distance_km);
       return s + (dist > 0 ? dist : (Number(i.target_distance_km) || 0));

@@ -194,7 +194,7 @@ async function handler(req: Request): Promise<Response> {
         sb.from("race_events").select("id, name, date, status, distance_km, coach_balance, start_time, target_time_seconds, race_priority, conflict_acknowledged_at")
           .eq("user_id", userId).gte("date", addDays(today, -7)).lte("date", addDays(today, 183))
           .order("date", { ascending: true }).order("id", { ascending: true }),
-        sb.from("runs").select("id, date, race_id, kind, created_at, duration_seconds, distance_km")
+        sb.from("runs").select("id, date, race_id, kind, training_type, created_at, duration_seconds, distance_km")
           .eq("user_id", userId).gte("date", addDays(today, -8)),
         lastRecordDates(sb, userId),
         // Os planos em vigor ou propostos, com os itens — o tipo, para o
