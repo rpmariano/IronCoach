@@ -1,12 +1,12 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, ChevronRight, Info, MessageSquare } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Info } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useEscapeClose } from '../shared/Sheet';
 import BadgeRing, { corDoBadge } from '../shared/BadgeRing';
 import SectionLabel from '../shared/SectionLabel';
 import { DateTile } from '../Run/RaceListCard';
-import Button from '../shared/Button';
+import { CarolTalkButton } from '../shared/CarolActions';
 
 /* O ecrã de detalhe de um badge (reforma da gamificação, fase 2).
 
@@ -208,22 +208,11 @@ export default function BadgeDetailSheet({ badge, onClose, onNavigate }) {
 
         {/* A conversa com a Carol. Faz sentido nos dois estados: num badge
             por ganhar interessa o que falta, num ganho interessa o que
-            significa ter chegado lá. Mesma cor e mesmo gesto do "Falar com
-            a Carol" do RunCard — não há um terceiro aspeto para a mesma
-            coisa. */}
+            significa ter chegado lá. O botão da Carol da convenção única
+            (shared/CarolActions.jsx, 2026-10-05), o mesmo de todas as
+            superfícies dela — não há um segundo aspeto para a mesma coisa. */}
         <div className="flex flex-col gap-1.5">
-          <Button
-            variant="module"
-            moduleColor="var(--grad-coach-legible)"
-            onClick={falarComACarol}
-            data-testid="badge-detalhe-carol"
-            className="w-full shadow-md border-transparent font-semibold text-xs py-3"
-          >
-            <div className="flex items-center justify-center gap-2 w-full">
-              <MessageSquare size={16} />
-              <span>Falar com a Carol</span>
-            </div>
-          </Button>
+          <CarolTalkButton onClick={falarComACarol} testId="badge-detalhe-carol" />
           <p className="m-0 text-[11.5px] text-center leading-relaxed" data-testid="badge-detalhe-carol-legenda" style={{ color: 'var(--text-4)' }}>
             {legendaDoBotao(badge)}
           </p>

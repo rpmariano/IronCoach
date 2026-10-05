@@ -4,10 +4,11 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import PremiumModal from './PremiumModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Button from './Button';
+import CarolInterventionActions from './CarolInterventionActions';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
 import { useToast } from './ToastProvider';
-import { MessageSquare, CheckCircle2, Trash2 } from 'lucide-react';
+import { CheckCircle2, Trash2 } from 'lucide-react';
 
 import RunCard from '../Run/RunCard';
 import GymSessionCard from '../Gym/GymSessionCard';
@@ -33,22 +34,24 @@ export default function CreatedRecordModal() {
     setNewlyCreatedRecord,
     profile,
     setProfile,
-    setActiveTab,
-    dismissedInterventions,
-    dismissIntervention,
     loadInitialData,
   } = useAppStore();
   const { showToast } = useToast();
 
-  // Busca o coach_intervention_status diretamente do perfil na BD, porque a
-  // Edge Function pode tê-lo acabado de atualizar e o store local ainda não
-  // refletiu essa mudança (race condition). Usa um state local para garantir
-  const [interventionNeeded, setInterventionNeeded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  // "Agora não" nas perguntas da Carol: fecha o bloco aqui; as perguntas
+  // ficam no cartão da refeição (2026-10-05).
+  const [questionsLater, setQuestionsLater] = useState(false);
 
+  // A Edge Function pode ter acabado de mudar o coach_intervention_status no
+  // perfil e o store ainda não o refletir (race condition): relê-o da BD
+  // para o botão flutuante da Carol ficar certo. Já NÃO decide o "Falar com
+  // a Carol" deste modal (2026-10-05): uma intervenção no perfil pode ser de
+  // outro registo ou da carga semanal, e aqui só aparece a que é deste
+  // registo — a outra vive no aviso da Carol, com a sua confirmação.
   useEffect(() => {
-    setInterventionNeeded(false);
+    setQuestionsLater(false);
     if (!newlyCreatedRecord?.record || !profile?.id) return;
 
     let cancelled = false;
@@ -59,11 +62,8 @@ export default function CreatedRecordModal() {
           .select('coach_intervention_status')
           .eq('id', profile.id)
           .single();
-        if (!cancelled && data && !error) {
-          if (data.coach_intervention_status !== profile.coach_intervention_status) {
-            setProfile({ ...profile, coach_intervention_status: data.coach_intervention_status });
-          }
-          setInterventionNeeded(data.coach_intervention_status === 'needed');
+        if (!cancelled && data && !error && data.coach_intervention_status !== profile.coach_intervention_status) {
+          setProfile({ ...profile, coach_intervention_status: data.coach_intervention_status });
         }
       } catch (err) {
         console.warn('Erro ao verificar coach_intervention_status', err);
@@ -85,13 +85,11 @@ export default function CreatedRecordModal() {
   if (!newlyCreatedRecord) return null;
 
   const { type, record } = newlyCreatedRecord;
-  const isDismissed = record?.id && (dismissedInterventions[record.id] === record?.coach_notes || dismissedInterventions[record.id] === 'dismissed');
-  const hasInterventionInRecord = Boolean(
-    record?.intervention_needed ||
-    record?.coach_intervention_status === 'needed' ||
-    (record?.coach_notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(record.coach_notes))
-  );
-  const showCoachButton = !isDismissed && (interventionNeeded || profile?.coach_intervention_status === 'needed' || hasInterventionInRecord);
+  // O motivo do pedido ao chat: o da análise deste registo; o do perfil só
+  // quando foi esta análise a marcá-lo (as marcas intervention_needed /
+  // 'needed' que a Edge Function devolve no próprio registo).
+  const flaggedHere = Boolean(record?.intervention_needed || record?.coach_intervention_status === 'needed');
+  const talkReason = record?.coach_intervention_reason || (flaggedHere ? profile?.coach_intervention_reason : null) || null;
 
   const handleClose = () => {
     clearNewlyCreatedRecord();
@@ -118,24 +116,6 @@ export default function CreatedRecordModal() {
     }
   };
 
-  const handleGoToChat = () => {
-    if (record?.id) {
-      dismissIntervention(record.id, record?.coach_notes);
-    }
-    useAppStore.setState({
-      coachIntent: {
-        kind: 'proactive_intervention',
-        recordType: type,
-        recordId: record?.id,
-        recordName: record?.name,
-        date: record?.date,
-        reason: record?.coach_intervention_reason || profile?.coach_intervention_reason || record?.coach_notes,
-      }
-    });
-    setActiveTab('coach');
-    clearNewlyCreatedRecord();
-  };
-
   return (
     <PremiumModal isOpen={true} onClose={handleClose} title="Registo Guardado">
       <div className="space-y-5 px-1 pb-6 pt-2">
@@ -158,11 +138,13 @@ export default function CreatedRecordModal() {
         )}
 
         {/* Bug #52 (fase B): as perguntas da Carol, logo a seguir à análise.
-            Fechar é o "respondo depois" — ficam no cartão da refeição. */}
-        {hadQuestions && (
+            "Agora não" (ou o X) é o "respondo depois" — ficam no cartão da
+            refeição. */}
+        {hadQuestions && !questionsLater && (
           <CarolQuestions
             meal={record}
             onAnswered={(updated) => setNewlyCreatedRecord({ ...newlyCreatedRecord, record: updated })}
+            onLater={() => setQuestionsLater(true)}
           />
         )}
 
@@ -173,41 +155,22 @@ export default function CreatedRecordModal() {
           {type === 'body' && <BodyAssessmentCard assessment={record} defaultExpanded={true} hideActions />}
         </div>
 
-        {showCoachButton && (
-          <Button
-            onClick={handleGoToChat}
-            variant="module"
-            moduleColor="var(--grad-coach-legible)"
-            className="w-full shadow-lg shadow-[var(--mod-coach-to)]/20 border-transparent font-semibold"
-          >
-            <div className="flex items-center justify-center gap-2 w-full">
-              <MessageSquare size={18} />
-              <span>Falar com a Carol</span>
-            </div>
-          </Button>
-        )}
+        {/* A intervenção da Carol, só quando é DESTE registo (2026-10-05):
+            o componente comum do cartão e do formulário. "Falar com a Carol"
+            não dispensa (antes gravava logo a dispensa) e fecha este ecrã só
+            se o separador mudar; "Dispensar" usa a chave única do tipo. */}
+        <CarolInterventionActions record={record} type={type} reason={talkReason} onTalked={clearNewlyCreatedRecord} />
 
-        {/* Fechar e Eliminar juntos no mesmo frame — o "Eliminar avaliação"
-            do cartão acima ficava isolado lá em cima (e inerte, por causa do
-            pointer-events-none do preview) enquanto estes dois viviam num
-            rodapé à parte. "Fechar" tem mais destaque: é a ação normal de
-            sair deste ecrã de sucesso.
+        {/* Sair é o X do cabeçalho (aria-label "Fechar"), como em todas as
+            superfícies da Carol — o botão "Fechar" do rodapé saiu
+            (2026-10-05, convenção única dos botões). Fica o "Eliminar", a
+            única ação deste ecrã que não é sair.
 
-            Havia um terceiro botão aqui, "Atualizar registo", que abria o
-            registo em edição na hora — mas é sempre o registo que se acabou
-            de submeter: não há nada por atualizar ainda (relatado
-            2026-09-21, "acabamos de o submeter, atualização só se for ver o
-            detalhe"). Editar continua possível a partir do cartão do dia no
-            Calendário — é lá que a ação faz sentido. */}
-        <div className="space-y-3 pt-2">
-          <Button
-            onClick={handleClose}
-            variant="primary"
-            className="w-full"
-          >
-            Fechar
-          </Button>
-
+            Havia também "Atualizar registo", que abria o registo em edição
+            na hora — mas é sempre o registo que se acabou de submeter: não
+            há nada por atualizar ainda (relatado 2026-09-21). Editar continua
+            possível a partir do cartão do dia no Calendário. */}
+        <div className="pt-2">
           <Button
             onClick={() => setShowDeleteConfirm(true)}
             variant="danger-outline"

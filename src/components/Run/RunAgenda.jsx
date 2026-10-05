@@ -976,13 +976,15 @@ export default function RunAgenda({ onClose }) {
           {validationError}
         </p>
         <div className="flex justify-center">
+          {/* "Percebi" (era "Entendido", 2026-10-05): o mesmo nome do botão que
+              fecha um aviso informativo nos cartões da Carol (convenção única). */}
           <Button
             variant="module"
             moduleColor="var(--mod-prova)"
             onClick={() => { setValidationError(null) }}
             className="w-full"
           >
-            Entendido
+            Percebi
           </Button>
         </div>
       </div>

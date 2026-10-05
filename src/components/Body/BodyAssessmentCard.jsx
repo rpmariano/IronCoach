@@ -9,6 +9,7 @@ import { getBodyIcon } from '../../utils/bodyIcons';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
 import CoachText from '../shared/CoachText';
+import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → BodyRegistration, porque mexer nas métricas ou
@@ -162,41 +163,13 @@ export default function BodyAssessmentCard({ assessment, onEdit, defaultExpanded
           )}
 
           {/* Falar com a Carol se a análise indicar intervenção. Não na
-              pré-visualização (hideActions) do "Registo Guardado": aí o
-              botão já está no rodapé, e este, por baixo do
-              pointer-events-none, nem respondia (bug #55, 2026-10-05). */}
-          {Boolean(
-            !hideActions &&
-            coachCommentary &&
-            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
-            useAppStore.getState().dismissedInterventions[assessment.id] !== coachCommentary
-          ) && (
-            <Button
-              variant="module"
-              moduleColor="var(--grad-coach-legible)"
-              onClick={(e) => {
-                e.stopPropagation();
-                useAppStore.getState().dismissIntervention(assessment.id, coachCommentary);
-                useAppStore.setState({
-                  coachIntent: {
-                    kind: 'proactive_intervention',
-                    recordType: 'body',
-                    recordId: assessment.id,
-                    recordName: 'Avaliação Corporal',
-                    date: assessment.date,
-                    reason: coachCommentary,
-                  }
-                });
-                useAppStore.getState().setActiveTab('coach');
-              }}
-              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
-            >
-              <div className="flex items-center justify-center gap-2 w-full">
-                <MessageSquare size={16} />
-                <span>Falar com a Carol</span>
-              </div>
-            </Button>
-          )}
+              pré-visualização (hideActions) do "Registo Guardado": aí os
+              botões já estão no modal, e estes, por baixo do
+              pointer-events-none, nem respondiam (bug #55, 2026-10-05).
+              Desde 2026-10-05 é o componente comum (convenção única dos
+              botões da Carol): "Falar com a Carol" não dispensa, "Dispensar"
+              dispensa — com a chave única do tipo, a mesma do formulário. */}
+          {!hideActions && <CarolInterventionActions record={assessment} type="body" />}
 
           {/* Ações — escondidas quando o cartão é só uma pré-visualização
               (ex.: CreatedRecordModal, que tem os seus próprios botões de

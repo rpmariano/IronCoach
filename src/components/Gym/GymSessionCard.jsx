@@ -11,6 +11,7 @@ import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
 import { formatDuration } from '../../utils/run';
 import { normalizeStartTime } from '../../utils/startTime';
+import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 /* O cartão é só de consulta e de eliminar. Qualquer alteração ao conteúdo
    passa pelo botão "Editar" → GymRegistration, porque mexer nas séries, no
@@ -251,41 +252,13 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
           )}
 
           {/* Falar com a Carol se a análise indicar intervenção. Não na
-              pré-visualização (hideActions) do "Registo Guardado": aí o
-              botão já está no rodapé, e este, por baixo do
-              pointer-events-none, nem respondia (bug #55, 2026-10-05). */}
-          {Boolean(
-            !hideActions &&
-            coachCommentary &&
-            /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
-            useAppStore.getState().dismissedInterventions[session.id] !== coachCommentary
-          ) && (
-            <Button
-              variant="module"
-              moduleColor="var(--grad-coach-legible)"
-              onClick={(e) => {
-                e.stopPropagation();
-                useAppStore.getState().dismissIntervention(session.id, coachCommentary);
-                useAppStore.setState({
-                  coachIntent: {
-                    kind: 'proactive_intervention',
-                    recordType: 'gym',
-                    recordId: session.id,
-                    recordName: session.name,
-                    date: session.date,
-                    reason: coachCommentary,
-                  }
-                });
-                useAppStore.getState().setActiveTab('coach');
-              }}
-              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3"
-            >
-              <div className="flex items-center justify-center gap-2 w-full">
-                <MessageSquare size={16} />
-                <span>Falar com a Carol</span>
-              </div>
-            </Button>
-          )}
+              pré-visualização (hideActions) do "Registo Guardado": aí os
+              botões já estão no modal, e estes, por baixo do
+              pointer-events-none, nem respondiam (bug #55, 2026-10-05).
+              Desde 2026-10-05 é o componente comum (convenção única dos
+              botões da Carol): "Falar com a Carol" não dispensa, "Dispensar"
+              dispensa — com a chave única do tipo, a mesma do formulário. */}
+          {!hideActions && <CarolInterventionActions record={session} type="gym" />}
 
           {/* Bottom Action Bar — escondida quando o cartão é só uma
               pré-visualização (ex.: CreatedRecordModal, que tem os seus

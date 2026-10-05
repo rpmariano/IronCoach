@@ -278,8 +278,12 @@ export function CheckinSheet({ initial = null, onClose, onSaved }) {
                 <button type="button" onClick={() => toggleConsent(true)} className="min-h-[44px] rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
                   Aceito registar
                 </button>
+                {/* "Mais tarde" (era "Agora não", 2026-10-05): só fecha a
+                    explicação, não grava nada — o convite continua no cartão.
+                    Na convenção dos botões da Carol, "Agora não" é "até
+                    amanhã", e aqui não há prazo nenhum. */}
                 <button type="button" onClick={() => setConsentOpen(false)} className="min-h-[44px] rounded-[11px] text-[12.5px] font-bold" style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-3)' }}>
-                  Agora não
+                  Mais tarde
                 </button>
               </div>
             </div>

@@ -29,6 +29,7 @@ import { formatTargetDate, goalHorizonSummary } from '../../utils/goalHorizon';
 import { scrollToTop } from '../../utils/scrollToTop';
 import { useCupForHome } from '../../utils/useCup';
 import { searchTrainingPlaces, trainingPlaceFields } from '../../utils/trainingPlace';
+import { CarolTalkButton } from '../shared/CarolActions';
 
 const TAB_KEYS = ['perfil', 'metas', 'vitrina', 'equipamento', 'coach'];
 
@@ -502,7 +503,11 @@ export default function Perfil() {
       kind: 'say',
       text: 'Quero definir os meus objetivos contigo, para o corpo e para a nutrição. Olha para as minhas avaliações corporais e para o meu treino e propõe-me metas.',
     });
-    setActiveTab('coach');
+    // Com alterações por gravar, o guard do Perfil trava a saída
+    // (setActiveTab devolve false): o pedido desfaz-se, senão ficava à
+    // espera e disparava sozinho na próxima ida ao chat (2026-10-05, como
+    // no BadgeDetailSheet).
+    if (setActiveTab('coach') === false) setCoachIntent(null);
   };
 
   const discardAndLeave = () => {
@@ -894,15 +899,11 @@ export default function Perfil() {
               atingir, não medições. Afina-os com a Carol: ela olha para as tuas
               avaliações corporais e para o teu treino e propõe valores, que aceitas ou recusas.
             </p>
-            <button
-              type="button"
-              data-testid="perfil-metas-carol"
-              onClick={askCarolForGoals}
-              className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold"
-              style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}
-            >
-              <MessageSquare size={15} /> Definir objetivos com a Carol
-            </button>
+            {/* O botão da Carol da convenção única (2026-10-05): gradiente e
+                balão — era a tinta ciana com o MessageSquare. */}
+            <CarolTalkButton testId="perfil-metas-carol" onClick={askCarolForGoals} className="mt-3">
+              Definir objetivos com a Carol
+            </CarolTalkButton>
           </div>
 
           <div className="module-card-contrast">

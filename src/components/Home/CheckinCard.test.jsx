@@ -116,6 +116,19 @@ describe('CheckinCard', () => {
     await waitFor(() => expect(setCycleConsent).toHaveBeenCalledWith(true));
   });
 
+  // 2026-10-05: "Mais tarde" (era "Agora não") só fecha — não grava nada.
+  it('"Mais tarde" fecha a explicação do ciclo sem gravar nada', () => {
+    useAppStore.setState({ profile: { id: 'u1', gender: 'F', cycle_tracking_consent_at: null } });
+    renderCard();
+    fireEvent.click(screen.getByTestId('checkin-card'));
+    fireEvent.click(screen.getByRole('button', { name: /Registar também o ciclo menstrual/ }));
+    expect(screen.queryByRole('button', { name: 'Agora não' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Mais tarde' }));
+    expect(screen.queryByTestId('checkin-cycle-consent')).not.toBeInTheDocument();
+    expect(setCycleConsent).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /Registar também o ciclo menstrual/ })).toBeInTheDocument();
+  });
+
   it('com consentimento, a pergunta aparece e segue no check-in', async () => {
     useAppStore.setState({ profile: { id: 'u1', gender: 'F', cycle_tracking_consent_at: '2026-09-01T00:00:00Z' } });
     renderCard();

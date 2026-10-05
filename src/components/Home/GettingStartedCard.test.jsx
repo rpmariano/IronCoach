@@ -28,9 +28,12 @@ describe('GettingStartedCard', () => {
     expect(screen.getByText('1 de 4')).toBeInTheDocument();
   });
 
-  it('"Agora não" esconde e guarda a dispensa por utilizador', () => {
+  it('"Dispensar" esconde de vez e guarda a dispensa por utilizador', () => {
     const { container } = render(<GettingStartedCard onAction={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /Agora não/ }));
+    // 2026-10-05: é para sempre, por isso diz "Dispensar" — "Agora não" é só até amanhã.
+    expect(screen.getByRole('button', { name: 'Dispensar este aviso' })).toHaveTextContent('Dispensar');
+    expect(screen.queryByText(/Agora não/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dispensar este aviso' }));
     expect(container).toBeEmptyDOMElement();
     expect(localStorage.getItem(gettingStartedDismissKey('u1'))).toBe('1');
   });
@@ -72,13 +75,13 @@ describe('GettingStartedCard', () => {
   it('sem utilizador não grava a dispensa; trocar de conta repõe o cartão', () => {
     useAppStore.setState({ profile: null });
     const { container, rerender } = render(<GettingStartedCard onAction={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /Agora não/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dispensar este aviso' }));
     expect(container).toBeEmptyDOMElement();
     expect(localStorage.getItem(gettingStartedDismissKey(undefined))).toBeNull();
 
     useAppStore.setState({ profile: { id: 'u1' } });
     rerender(<GettingStartedCard onAction={() => {}} />);
-    fireEvent.click(screen.getByRole('button', { name: /Agora não/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dispensar este aviso' }));
     useAppStore.setState({ profile: { id: 'u2' } });
     rerender(<GettingStartedCard onAction={() => {}} />);
     expect(screen.getByTestId('getting-started')).toBeInTheDocument();

@@ -1,11 +1,13 @@
-import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
+import React, { useEffect, useId, useMemo, useSyncExternalStore } from 'react';
 import { detectCoachInsights } from '../../utils/biEngine';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
 import { isInsightHidden } from '../../utils/insightState';
 import { useTabPage } from '../../utils/settledTab';
 import Warning from '../shared/Warning';
+import CarolActions from '../shared/CarolActions';
 import { noticeSeverity, noticeTone } from './noticeTones';
+import useInsightActions from './useInsightActions';
 
 /* Ponto 3 do redesenho: o aviso era âmbar (bg-amber-100) — o âmbar é da
    prova. Coral para aviso, vermelho para crítico, ciano da Carol para o
@@ -15,6 +17,41 @@ import { noticeSeverity, noticeTone } from './noticeTones';
    (noticeTones.js) — eram o escudo e o raio, só aqui — e um insight posto
    de lado hoje ("Agora não") sai também deste banner, não só do botão. */
 const WARNING_TONE = { critical: 'danger', warning: 'warn', info: 'coach' };
+
+/* Desde 2026-10-05 cada insight do banner tem os botões da janela da Carol
+   (convenção única, shared/CarolActions.jsx): "Falar com a Carol",
+   "Percebi" e "Agora não", com as mesmas funções (useInsightActions.js).
+   Antes era só texto — e, como o botão flutuante esconde o que o banner
+   mostra (ver abaixo), um insight à vista aqui deixava de ter onde ser
+   tratado. Agora o que o banner mostra continua acionável, e tratá-lo aqui
+   tira-o dos dois sítios (a mesma régua, utils/insightState.js). Os botões
+   vão nas ações do Warning, não no corpo: o corpo é um <p>, e um grupo de
+   botões não pode viver dentro de um parágrafo. */
+function InsightWarning({ insight, actions }) {
+  const severity = noticeSeverity(insight.severity);
+  const { Icon } = noticeTone(severity);
+  const titleId = useId();
+  return (
+    <Warning
+      tone={WARNING_TONE[severity]}
+      title={<span id={titleId}>{insight.title}</span>}
+      icon={<Icon size={14} />}
+      data-testid={`banner-insight-${insight.id}`}
+      actions={(
+        <CarolActions
+          className="w-full"
+          labelledBy={titleId}
+          severity={severity}
+          talk={{ testId: `banner-insight-talk-${insight.id}`, onClick: () => actions.talk(insight) }}
+          understood={{ testId: `banner-insight-understood-${insight.id}`, onClick: () => actions.understand(insight) }}
+          snooze={{ testId: `banner-insight-snooze-${insight.id}`, onClick: () => actions.snooze(insight) }}
+        />
+      )}
+    >
+      {insight.message}
+    </Warning>
+  );
+}
 
 /* O que o banner está a mostrar, para o botão da Carol não o repetir
    (2026-10-04, Geral): o banner mostrava os insights à cabeça do Geral e o botão
@@ -52,6 +89,7 @@ export function resetBannerShown() {
 
 export default function SmartInsightsBanner({ data, profile, excludeIds = [], maxItems = 2 }) {
   const { insightStates, insightSnoozes } = useAppStore();
+  const actions = useInsightActions();
   const page = useTabPage();
   const today = todayISO();
   const insights = useMemo(() => {
@@ -81,21 +119,7 @@ export default function SmartInsightsBanner({ data, profile, excludeIds = [], ma
 
   return (
     <div className="space-y-3">
-      {topInsights.map(insight => {
-        const severity = noticeSeverity(insight.severity);
-        const { Icon } = noticeTone(severity);
-
-        return (
-          <Warning
-            key={insight.id}
-            tone={WARNING_TONE[severity]}
-            title={insight.title}
-            icon={<Icon size={14} />}
-          >
-            {insight.message}
-          </Warning>
-        );
-      })}
+      {topInsights.map((insight) => <InsightWarning key={insight.id} insight={insight} actions={actions} />)}
     </div>
   );
 }

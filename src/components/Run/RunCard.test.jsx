@@ -122,3 +122,40 @@ describe('RunCard — eliminar a corrida de uma prova', () => {
     expect(await screen.findByText('Tem a certeza que deseja eliminar esta corrida? Esta ação não pode ser desfeita.')).toBeInTheDocument();
   });
 });
+
+/* A intervenção da Carol no cartão (convenção única, 2026-10-05): o
+   componente comum, com "Falar com a Carol" (não dispensa) e "Dispensar"
+   (dispensa com a chave única). E o bug #55: no pré-visualizar do "Registo
+   Guardado" (hideActions) não aparece — lá estão os botões do modal. */
+describe('RunCard — a intervenção da Carol', () => {
+  const CONVITE = 'Ritmo muito acima do previsto. Vamos adaptar o plano.';
+  const comConvite = { ...RUN, coach_notes: CONVITE, ai_analysis: 'texto antigo' };
+
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.setState({ profile: { id: 'user-1' }, runs: [comConvite], setRuns: () => {}, dismissedInterventions: {} });
+  });
+
+  const abrir = () => fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes da corrida' }));
+
+  it('"Falar com a Carol" e, por baixo, "Dispensar"; "Dispensar" grava com a chave única e sai logo', () => {
+    render(<RunCard run={comConvite} />);
+    abrir();
+    expect(screen.getByRole('button', { name: 'Falar com a Carol' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dispensar este aviso' }));
+    expect(useAppStore.getState().dismissedInterventions['run-1']).toBe(CONVITE);
+    expect(screen.queryByRole('button', { name: 'Falar com a Carol' })).not.toBeInTheDocument();
+  });
+
+  it('a dispensa feita no formulário (mesma chave) também vale aqui', () => {
+    useAppStore.setState({ dismissedInterventions: { 'run-1': CONVITE } });
+    render(<RunCard run={comConvite} />);
+    abrir();
+    expect(screen.queryByRole('button', { name: 'Falar com a Carol' })).not.toBeInTheDocument();
+  });
+
+  it('com hideActions (o pré-visualizar do "Registo Guardado") não há botão (bug #55)', () => {
+    render(<RunCard run={comConvite} defaultExpanded hideActions />);
+    expect(screen.queryByRole('button', { name: 'Falar com a Carol' })).not.toBeInTheDocument();
+  });
+});

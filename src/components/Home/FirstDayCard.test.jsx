@@ -12,7 +12,10 @@ describe('FirstDayCard — a Carol lembra-se do arranque', () => {
     expect(screen.getByText('Rui, vamos pôr-te mais rápido.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Registar uma corrida/ }));
     expect(h.onRegisterRun).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Falar com a Carol' }));
+    const falar = screen.getByRole('button', { name: 'Falar com a Carol' });
+    // O balão da convenção única (2026-10-05).
+    expect(falar.querySelector('svg.lucide-message-circle')).not.toBeNull();
+    fireEvent.click(falar);
     expect(h.onTalk).toHaveBeenCalled();
   });
 

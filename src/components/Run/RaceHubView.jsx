@@ -22,6 +22,7 @@ import {
   Zap,
   Star,
   Pencil,
+  MessageCircle,
 } from 'lucide-react';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
@@ -710,13 +711,27 @@ export default function RaceHubView({
         >
           <Plus size={16} /> Marcar a próxima prova
         </button>
+        {/* Leva a prova ao chat (2026-10-05; antes só mudava de separador e
+            a conversa abria sem saber de onde ele vinha). Não é o
+            'race_balance': o balanço já está aqui em cima (RaceBalanceCard),
+            pedido ao mesmo servidor — repeti-lo no chat era dizer duas vezes
+            o mesmo. É o 'say': a pergunta dele entra na conversa, com a
+            prova pelo nome. Fica secundário, com o balão da Carol: o
+            primário deste ecrã é marcar a próxima prova. Se a saída for
+            travada, o pedido desfaz-se. */}
         <button
           type="button"
-          onClick={() => { leaveTo(null); useAppStore.getState().setActiveTab('coach'); }}
-          className="w-full"
+          data-testid="race-done-talk"
+          onClick={() => {
+            const store = useAppStore.getState();
+            store.setCoachIntent({ kind: 'say', text: `${race.name ? `Já fiz a prova «${race.name}».` : 'Já fiz a prova.'} O que fazemos a seguir?` });
+            if (store.setActiveTab('coach') === false) { store.setCoachIntent(null); return; }
+            leaveTo(null);
+          }}
+          className="w-full inline-flex items-center justify-center gap-2"
           style={{ minHeight: 'var(--tap)', marginTop: 9, borderRadius: 14, border: '1px solid rgba(255,255,255,.14)', background: 'rgba(255,255,255,.05)', color: 'var(--text-3)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
         >
-          Falar com a Carol
+          <MessageCircle size={15} aria-hidden="true" /> Falar com a Carol
         </button>
       </div>
     );

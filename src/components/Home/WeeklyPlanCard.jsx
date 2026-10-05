@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
-  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Check, X as XIcon, Dumbbell as DumbbellIcon,
-  Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag, MessageCircle
+  ChevronDown, ChevronUp, ChevronLeft, Check, X as XIcon, Dumbbell as DumbbellIcon,
+  Utensils, Coffee, Salad, Sunrise, Apple, Cherry, UtensilsCrossed, StickyNote, Clock, Flag
 } from 'lucide-react';
 import { useAppStore } from '../../store';
 import RunIcon from '../shared/RunIcon';
@@ -596,135 +596,8 @@ export function PlanProposalCard({ plan, items, onRespond }) {
   );
 }
 
-export default function WeeklyPlanCard({ plans = [], planItems = [], profile, onComplete, onCancel, onNav }) {
-  const pendingCount = useMemo(() => (plans || []).filter(p => p.status === 'proposto').length, [plans]);
-
-  const window = useMemo(() => computeAcceptedWindow(plans, planItems), [plans, planItems]);
-  const acceptedIds = useMemo(
-    () => new Set((plans || []).filter(p => p.status === 'aceite').map(p => p.id)),
-    [plans],
-  );
-  const accepted = useMemo(
-    () => planItems.filter(i => acceptedIds.has(i.plan_id)),
-    [planItems, acceptedIds],
-  );
-  const days = useMemo(
-    () => (window ? buildPlanDays(accepted, window.start, window.days, { plans }) : []),
-    [accepted, window, plans],
-  );
-  const hasMeal = useMemo(() => days.some((d) => diaTemSugestao(d.items)), [days]);
-
-  const PendingBanner = () => pendingCount > 0 && (
-    <button onClick={() => onNav('coach')} className="wpc-pending-banner tap-scale" type="button">
-      <span className="flex items-start gap-1.5 flex-1">
-        <MessageCircle size={14} className="mt-0.5 shrink-0" /> 
-        <span>Tens {pendingCount} sugestão{pendingCount > 1 ? 'ões' : ''} da Carol por rever</span>
-      </span>
-      <span className="wpc-pending-link">
-        Ver no chat <ChevronRight size={12} />
-      </span>
-    </button>
-  );
-
-  if (!window) {
-    return (
-      <div className="w-full">
-        <PendingBanner />
-        <button onClick={() => onNav('coach')} className="wpc-card text-left tap-scale" style={{ border: 'none', background: 'rgba(255, 255, 255, 0.4)' }}>
-          <div className="wpc-glow-coach"></div>
-          <div className="wpc-content">
-            <h2 className="wpc-proposal-title">Plano</h2>
-            <p className="text-xs font-semibold text-[var(--text-3)] mt-1">
-              Sem treinos acordados. Pede à Carol um plano — as sugestões aparecem no chat para aceitares ou recusares.
-            </p>
-          </div>
-        </button>
-      </div>
-    );
-  }
-
-  const todayIdx = useMemo(() => {
-    const idx = days.findIndex(d => d.isToday);
-    return idx !== -1 ? idx : 0;
-  }, [days]);
-
-  const [currentIndex, setCurrentIndex] = useState(todayIdx);
-  const [allExpanded, setAllExpanded] = useState(false);
-  const scrollRef = useRef(null);
-
-  const { handleScroll, handleTouchMove, scrollTo } = useCarouselHaptics(
-    scrollRef,
-    days.length,
-    currentIndex,
-    setCurrentIndex
-  );
-
-  const isInitialMount = useRef(true);
-  useEffect(() => {
-    if (currentIndex >= 0) {
-      scrollTo(currentIndex, isInitialMount.current);
-      isInitialMount.current = false;
-    }
-  }, [currentIndex, scrollTo]);
-
-  return (
-    <div className="flex flex-col gap-3">
-
-      <div className="wpc-card">
-        <div className="wpc-glow-coach"></div>
-        <div className="wpc-content">
-          <PendingBanner />
-          <div className="wpc-header-row mb-2 flex justify-between items-center">
-            <span className="wpc-lbl">Plano de {window.days} dias</span>
-            <button 
-              onClick={() => {
-                useAppStore.getState().setCoachIntent('adapt_plan');
-                onNav('coach');
-              }}
-              className="tap-h-44 text-xs font-semibold px-2 py-1 rounded-md"
-              style={{ color: 'var(--coach)', background: 'color-mix(in srgb, var(--coach) 15%, transparent)' }}
-            >
-              Adaptar Plano
-            </button>
-          </div>
-          
-          <div 
-            className="wpc-carousel"
-            ref={scrollRef}
-            onScroll={handleScroll}
-            onTouchMove={handleTouchMove}
-            style={{ scrollBehavior: 'smooth' }}
-          >
-            {days.map(day => (
-              <PlanDayCard
-                key={day.dateISO}
-                dateISO={day.dateISO}
-                dayNumber={day.dayNumber}
-                items={day.items}
-                isToday={day.isToday}
-                isOverdue={day.isOverdue}
-                onComplete={onComplete}
-                onCancel={onCancel}
-                profile={profile}
-                expanded={allExpanded}
-                onToggleExpand={setAllExpanded}
-              />
-            ))}
-          </div>
-
-          {hasMeal && <DisclaimerNutricional />}
-
-          <div style={{ height: '32px' }} className="shrink-0" />
-        </div>
-        
-        {days.length > 1 && (
-          <div className="absolute bottom-4 left-0 right-0 flex justify-center pointer-events-none">
-            <div className="flex items-center gap-1.5 pointer-events-auto bg-[var(--surface-strong)] border border-[var(--border-faint)] shadow-sm px-2 py-1.5 rounded-full backdrop-blur-md">
-              <CarouselDots count={days.length} currentIndex={currentIndex} onSelect={scrollTo} ariaLabelPrefix="Ver dia" />
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+/* O cartão "Plano de N dias" do Início (o export por omissão deste ficheiro)
+   saiu a 2026-10-05: já ninguém o importava — o Início usa o DayPlanCard e o
+   ecrã do plano o PlanoScreen — e era o último sítio com um "Adaptar Plano"
+   fora da convenção dos botões da Carol. Ficam as peças que os outros usam
+   (PlanDayCard, PlanProposalCard, buildPlanDays, computeAcceptedWindow…). */

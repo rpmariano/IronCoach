@@ -142,6 +142,12 @@ export default function useCarolNotices() {
     return cupMapCandidate({ view: cupView, userId: profile?.id, impressionShown, impressionDismissed, today });
   }, [pendingTopics, raceConflict, cupView, profile?.id, impressionShown, impressionDismissed, today, alertDismissals]);
 
+  /* Cada ramo leva a origem ao chat (coachIntent). Só um 'assuntos' sem
+     intervenção — planos ou objetivos propostos — vai sem pedido: as
+     propostas estão no próprio chat, à espera de "Aceitar"/"Recusar", e
+     não há conversa a abrir por cima delas (convenção dos botões da Carol,
+     2026-10-05). "Falar com a Carol" nunca dispensa nada: os avisos saem
+     quando o assunto se resolve. */
   const openCoach = () => {
     if (interventionPending) {
       setCoachIntent({ kind: 'proactive_intervention', reason: profile?.coach_intervention_reason || null });

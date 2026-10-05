@@ -125,16 +125,20 @@ export default function GettingStartedCard({ onAction }) {
           </div>
         ))}
 
+        {/* "Dispensar" (era "Agora não", 2026-10-05): a marca é para sempre,
+            por utilizador — e na convenção dos botões da Carol "Agora não" é
+            só até amanhã. */}
         <button
           type="button"
           onClick={dismiss}
+          aria-label="Dispensar este aviso"
           style={{
             display: 'flex', alignItems: 'center', gap: 6, minHeight: 'var(--tap, 44px)',
             background: 'none', border: 'none', cursor: 'pointer', padding: 0,
             fontSize: 'var(--text-xs)', color: 'var(--text-muted)',
           }}
         >
-          <X size={12} aria-hidden="true" /> Agora não
+          <X size={12} aria-hidden="true" /> Dispensar
         </button>
       </div>
     </section>

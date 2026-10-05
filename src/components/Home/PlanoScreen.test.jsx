@@ -435,7 +435,27 @@ describe('PlanoScreen', () => {
     expect(screen.queryByTestId('plano-adaptar')).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('Pedir um plano'));
     expect(setActiveTab).toHaveBeenCalledWith('coach');
+    // 2026-10-05: o pedido vai ao chat com a origem (o check-in do plano).
+    expect(setCoachIntent).toHaveBeenCalledWith('adapt_plan');
+  });
+
+  it('com uma proposta à espera, "Ver a proposta" só leva ao chat (a proposta está lá)', () => {
+    setup({ coachPlans: [{ id: 'pp', status: 'proposto' }], coachPlanItems: [] });
+    fireEvent.click(screen.getByText('Ver a proposta'));
+    expect(setActiveTab).toHaveBeenCalledWith('coach');
     expect(setCoachIntent).not.toHaveBeenCalled();
+  });
+
+  it('"Adaptar o plano com a Carol" e "Pedir um plano" são o botão da Carol: gradiente e balão', () => {
+    const { unmount } = setup({ coachPlans: [], coachPlanItems: [] });
+    const pedir = screen.getByTestId('plano-pedir-plano');
+    expect(pedir.getAttribute('style')).toContain('--grad-coach-legible');
+    expect(pedir.querySelector('svg.lucide-message-circle')).not.toBeNull();
+    unmount();
+    setup();
+    const adaptar = screen.getByTestId('plano-adaptar');
+    expect(adaptar.getAttribute('style')).toContain('--grad-coach-legible');
+    expect(adaptar.querySelector('svg.lucide-message-circle')).not.toBeNull();
   });
 
   // Pedido 2026-09-26: com uma proposta por decidir, ela não pede outra.

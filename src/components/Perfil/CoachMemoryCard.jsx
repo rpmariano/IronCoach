@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Brain, Plus, Trash2, Pencil, Check, Loader2, MessageSquare, HelpCircle } from 'lucide-react';
+import { Brain, Plus, Trash2, Pencil, Check, Loader2, MessageCircle, HelpCircle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import Button from '../shared/Button';
@@ -113,7 +113,9 @@ export default function CoachMemoryCard() {
   // ela que atualiza, mantendo a autoria de cada linha intacta.
   const askCarolToChange = (note) => {
     setCoachIntent({ kind: 'discuss_note', note });
-    setActiveTab('coach');
+    // Travada a saída (o Perfil com alterações por gravar), o pedido
+    // desfaz-se em vez de ficar à espera do próximo chat (2026-10-05).
+    if (setActiveTab('coach') === false) setCoachIntent(null);
   };
 
   const handleDelete = async (id) => {
@@ -227,7 +229,8 @@ export default function CoachMemoryCard() {
                       className="tap-44 transition hover:opacity-70"
                       style={{ color: 'var(--mod-coach-to)' }}
                     >
-                      <MessageSquare size={13} />
+                      {/* O balão da Carol, o mesmo de todas as superfícies dela (2026-10-05). */}
+                      <MessageCircle size={13} />
                     </button>
                   ) : (
                     <button

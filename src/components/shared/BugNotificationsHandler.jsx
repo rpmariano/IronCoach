@@ -266,16 +266,10 @@ export default function BugNotificationsHandler() {
               )}
             </div>
 
-            {/* Botões de Ação */}
+            {/* Botões de Ação: "Responder" à esquerda, "Cancelar" à direita
+                (2026-10-05) — em linha, o positivo vai à esquerda e o
+                negativo à direita (convenção única dos botões). */}
             <div className="flex gap-2 pt-2">
-              <Button
-                variant="ghost"
-                onClick={handleCloseNotification}
-                disabled={submitting}
-                className="flex-1"
-              >
-                Cancelar
-              </Button>
               <Button
                 variant={responseStatus === 'not_ok' ? 'outline' : 'module'}
                 moduleColor={responseStatus === 'ok' ? 'var(--ok)' : undefined}
@@ -285,6 +279,14 @@ export default function BugNotificationsHandler() {
                 icon={submitting ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : undefined}
               >
                 {submitting ? 'A responder…' : 'Responder'}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={handleCloseNotification}
+                disabled={submitting}
+                className="flex-1"
+              >
+                Cancelar
               </Button>
             </div>
           </div>

@@ -188,8 +188,16 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
     expect(screen.queryByTestId('day-plan-open-plano')).not.toBeInTheDocument();
     // Nada de "à Carol" por baixo de um "Pede-me": o cartão não muda de pessoa.
     expect(screen.getByTestId('day-plan-no-plan')).not.toHaveTextContent('Carol');
+    const setCoachIntent = vi.fn();
+    useAppStore.setState({ setCoachIntent });
+    const pedir = screen.getByTestId('day-plan-ask');
+    // O botão da Carol da convenção única (2026-10-05).
+    expect(pedir.getAttribute('style')).toContain('--grad-coach-legible');
+    expect(pedir.querySelector('svg.lucide-message-circle')).not.toBeNull();
     fireEvent.click(screen.getByText('Pedir um plano'));
     expect(onNav).toHaveBeenCalledWith('coach');
+    // Com a origem: o check-in do plano, onde ela pode propor.
+    expect(setCoachIntent).toHaveBeenCalledWith('adapt_plan');
   });
 
   /* O caso do backlog (specs/carol-frases-contexto.md, DayPlanCard:122): a
@@ -203,8 +211,12 @@ describe('DayPlanCard — sem plano e com propostas por rever', () => {
     expect(screen.getByText('Escrevi-te um plano. Vê-o e diz-me se serve, ou o que queres mudar.')).toBeInTheDocument();
     expect(screen.queryByText(/Pede-me um plano/)).not.toBeInTheDocument();
     expect(screen.queryByText(/proposta minha por rever/)).not.toBeInTheDocument();
+    const setCoachIntent = vi.fn();
+    useAppStore.setState({ setCoachIntent });
     fireEvent.click(screen.getByText('Ver a proposta'));
     expect(onNav).toHaveBeenCalledWith('coach');
+    // A proposta já está no chat: não se pede outra.
+    expect(setCoachIntent).not.toHaveBeenCalled();
   });
 
   it('duas propostas por decidir e nenhum plano: as duas, por extenso', () => {

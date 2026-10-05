@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2, MessageSquare } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -11,7 +11,6 @@ import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
-import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
@@ -20,6 +19,7 @@ import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { foodKey, habitualsForMealType, isKnownFood, isPantryComplete, pantrySuggestions, portionText } from '../../utils/pantry';
+import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -878,40 +878,20 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           />
         </div>
 
-        {isEditing && (() => {
-          const editingMeal = (meals || []).find(m => m.id === mealIdToEdit);
-          const notes = editingMeal?.coach_notes || editingMeal?.coach_analysis;
-          const isDismissed = editingMeal?.id && (useAppStore.getState().dismissedInterventions[editingMeal.id] === notes || useAppStore.getState().dismissedInterventions[editingMeal.id] === 'dismissed');
-          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
-          if (!hasIntervention) return null;
-          return (
-            <Button
-              variant="module"
-              moduleColor="var(--grad-coach-legible)"
-              onClick={() => {
-                useAppStore.getState().dismissIntervention(editingMeal.id, notes);
-                useAppStore.setState({
-                  coachIntent: {
-                    kind: 'proactive_intervention',
-                    recordType: 'meal',
-                    recordId: editingMeal.id,
-                    recordName: editingMeal.name || 'Refeição',
-                    date: editingMeal.date,
-                    reason: notes,
-                  }
-                });
-                handleClose();
-                useAppStore.getState().setActiveTab('coach');
-              }}
-              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
-            >
-              <div className="flex items-center justify-center gap-2 w-full">
-                <MessageSquare size={16} />
-                <span>Falar com a Carol</span>
-              </div>
-            </Button>
-          );
-        })()}
+        {/* A intervenção da Carol neste registo — o mesmo componente do cartão
+            e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
+            dispensa e só fecha o formulário se o separador mudar de facto;
+            "Dispensar" usa a chave única do tipo (utils/recordIntervention.js) —
+            antes este formulário lia coach_notes || coach_analysis e o cartão
+            outro campo, e a dispensa num não valia no outro. */}
+        {isEditing && (
+          <CarolInterventionActions
+            record={(meals || []).find(m => m.id === mealIdToEdit)}
+            type="meal"
+            onTalked={handleClose}
+            className="mb-2"
+          />
+        )}
 
         {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
         </div>

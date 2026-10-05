@@ -42,7 +42,7 @@ export default function Home() {
   const {
     profile, meals, waterLogs, raceEvents, coachPlans, coachPlanItems, runs, gymSessions, bodyAssessments,
     setActiveTab, setPlanItemPrefill, setEditingRaceId, setOpenCreationMode,
-    dailySummary, logImpression,
+    dailySummary, logImpression, setCoachIntent,
   } = useAppStore();
 
   const [mealDay, setMealDay] = useState(null);
@@ -165,7 +165,13 @@ export default function Home() {
           facts={firstDayFacts}
           vida={vidaHoje}
           notesLoaded={notesLoaded}
-          onTalk={() => setActiveTab('coach')}
+          // Com a origem (2026-10-05): no primeiro dia é ela que abre a
+          // conversa, com o que ele lhe contou no arranque — o mesmo pedido
+          // do fim do onboarding (Coach.jsx, onboarding_start).
+          onTalk={() => {
+            setCoachIntent({ kind: 'onboarding_start' });
+            if (setActiveTab('coach') === false) setCoachIntent(null);
+          }}
           onCreateRace={createRace}
           onRegisterRun={registerRun}
           onRegisterMeal={registerMeal}

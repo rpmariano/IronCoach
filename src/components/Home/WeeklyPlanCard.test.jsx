@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
-import WeeklyPlanCard, { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard, PlanProposalCard, planeadoAte } from './WeeklyPlanCard';
+import { buildPlanDays, PLAN_HORIZON_DAYS, computeAcceptedWindow, PlanDayCard, PlanProposalCard, planeadoAte } from './WeeklyPlanCard';
 import { dayTitle } from '../../utils/homeModels';
 
 const item = (over = {}) => ({
@@ -420,15 +420,6 @@ describe('o aviso do nutricionista aparece uma só vez, abaixo da lista de dias'
     expect(screen.queryByText(AVISO)).not.toBeInTheDocument();
   });
 
-  it('no plano já aceite, com refeição em dois dias, o aviso também aparece uma só vez', () => {
-    const plans = [{ id: 'p1', status: 'aceite', period_start: '2026-08-11', period_end: '2026-08-12' }];
-    const dia1 = item({ id: 'a', plan_id: 'p1', planned_date: '2026-08-11', kind: 'descanso', meal_suggestion: 'Jantar: arroz.' });
-    const dia2 = item({ id: 'b', plan_id: 'p1', planned_date: '2026-08-12', kind: 'descanso', meal_suggestion: 'Jantar: peixe.' });
-    const { container } = render(<WeeklyPlanCard plans={plans} planItems={[dia1, dia2]} onComplete={() => {}} onCancel={() => {}} onNav={() => {}} />);
-    // Aqui a expansão é partilhada por todos os dias (allExpanded): um clique chega.
-    fireEvent.click(container.querySelector('.wpc-day-header'));
-    expect(screen.getAllByText(AVISO)).toHaveLength(1);
-  });
 });
 
 describe('computeAcceptedWindow — vários planos aceites (simulação)', () => {

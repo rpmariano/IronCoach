@@ -9,6 +9,7 @@ import { planWeekLabel, noPlanCopy } from './DayPlanCard';
 import { formatDayMonth, formatWeekday, dayTitle, dayStatus, mealsForDay, isRacePlanItem, isUnplannedDay, liveItems, raceNameForDate, trainingItems } from '../../utils/homeModels';
 import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import MealSheet from './MealSheet';
+import { CarolTalkButton } from '../shared/CarolActions';
 
 /* "O plano" — o plano acordado inteiro, dia a dia, em ecrã cheio
    (redesenho 2026-09-15). É para aqui que veio o trabalho do carrossel que
@@ -310,9 +311,16 @@ export default function PlanoScreen({ onClose }) {
           <p className="text-[12.5px] leading-[1.45] mt-1.5" style={{ color: 'var(--text-3)' }}>
             {copy.body}
           </p>
-          <button type="button" onClick={() => goCoach(null)} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
-            <MessageCircle size={15} /> {copy.cta}
-          </button>
+          {/* Convenção única dos botões da Carol (2026-10-05): o primário
+              dela, e o pedido vai ao chat ('adapt_plan', o check-in do plano)
+              — com propostas à espera não, que estão no próprio chat. */}
+          <CarolTalkButton
+            className="mt-3"
+            testId="plano-pedir-plano"
+            onClick={() => goCoach((coachPlans || []).some((p) => p?.status === 'proposto') ? null : 'adapt_plan')}
+          >
+            {copy.cta}
+          </CarolTalkButton>
         </div>
       </div>
     );
@@ -426,9 +434,11 @@ export default function PlanoScreen({ onClose }) {
         })}
       </div>
 
-      <button type="button" data-testid="plano-adaptar" onClick={() => goCoach('adapt_plan')} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-1 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
+      {/* Um CTA com contexto mantém o verbo, mas é o mesmo botão da Carol:
+          gradiente e o balão (2026-10-05; era a tinta ciana e sem ícone). */}
+      <CarolTalkButton className="mt-1" testId="plano-adaptar" onClick={() => goCoach('adapt_plan')}>
         Adaptar o plano com a Carol
-      </button>
+      </CarolTalkButton>
 
       {mealDay && <MealSheet day={mealDay} onClose={() => setMealDay(null)} />}
     </div>

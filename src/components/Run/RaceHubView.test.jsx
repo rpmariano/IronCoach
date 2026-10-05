@@ -111,6 +111,25 @@ describe('RaceHubView — hub depois da prova', () => {
     expect(screen.getByRole('button', { name: /Marcar a próxima prova/ })).toBeInTheDocument();
   });
 
+  /* 2026-10-05: o "Falar com a Carol" da prova concluída leva a prova ao
+     chat (era só mudar de separador). */
+  it('"Falar com a Carol" na prova concluída leva a prova ao chat', () => {
+    const originais = { setActiveTab: useAppStore.getState().setActiveTab, setCoachIntent: useAppStore.getState().setCoachIntent };
+    const setActiveTab = vi.fn(() => true);
+    const setCoachIntent = vi.fn();
+    useAppStore.setState({ setActiveTab, setCoachIntent });
+    try {
+      render(<RaceHubView race={RACE} runs={[RACE_RUN]} profile={PROFILE} />);
+      const falar = screen.getByTestId('race-done-talk');
+      expect(falar.querySelector('svg.lucide-message-circle')).not.toBeNull();
+      fireEvent.click(falar);
+      expect(setCoachIntent).toHaveBeenCalledWith({ kind: 'say', text: `Já fiz a prova «${RACE.name}». O que fazemos a seguir?` });
+      expect(setActiveTab).toHaveBeenCalledWith('coach');
+    } finally {
+      useAppStore.setState(originais);
+    }
+  });
+
   it('sem corrida de competição nesse dia, convida a registá-la em vez de inventar um tempo', () => {
     render(<RaceHubView race={RACE} runs={[]} profile={PROFILE} />);
 

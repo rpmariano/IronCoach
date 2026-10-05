@@ -229,9 +229,12 @@ export function impressionKeySets(rows) {
 }
 
 /* Aplica as linhas ao store: os dois conjuntos e, para os insights
-   dispensados noutro dispositivo, o estado 'ignored' pelo mesmo caminho do
-   "Ignorar" (setInsightState) — sem isto a leitura era só de escrita. Nunca
-   por cima de um estado que já exista. */
+   postos de lado noutro dispositivo, o estado 'ignored' pelo mesmo caminho do
+   "Agora não" (setInsightState; era "Ignorar" — renomeado a 2026-09-27, e
+   este comentário atualizado a 2026-10-05) — sem isto a leitura era só de
+   escrita. Sem a data do adiamento (insightSnoozes), um 'ignored' daqui não
+   esconde o insight: "Agora não" é só até amanhã (utils/insightState.js).
+   Nunca por cima de um estado que já exista. */
 function applyImpressionRows(set, get, rows) {
   const { shown, dismissed, lastWelcomeAt } = impressionKeySets(rows);
   set({ impressionShown: shown, impressionDismissed: dismissed, lastWelcomeAt });

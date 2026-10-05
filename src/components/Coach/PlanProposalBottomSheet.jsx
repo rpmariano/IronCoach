@@ -256,10 +256,14 @@ export function PlanProposalBottomSheet({
               {days.some((d) => diaTemSugestao(d.items)) && <DisclaimerNutricional />}
             </div>
 
+            {/* "Aceitar plano" no gradiente da Carol, igual a "Aceitar
+                objetivos" (2026-10-05, convenção única dos botões da Carol):
+                era verde (--ok), e as duas propostas dela pareciam coisas de
+                naturezas diferentes. "Recusar" é igual nas duas. */}
             <div className="flex items-center gap-3">
               <Button
                 variant="module"
-                moduleColor="var(--ok)"
+                moduleColor="var(--grad-coach-legible)"
                 onClick={() => handleRespondPlanAction(true)}
                 className="flex-1 text-sm py-3.5"
                 icon={<Check size={18} />}

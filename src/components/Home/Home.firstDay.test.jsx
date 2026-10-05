@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -61,6 +61,17 @@ describe('Home — o primeiro dia não nega o plano que ela escreveu', () => {
     renderHome();
     expect(screen.getByTestId('first-day-card')).toBeInTheDocument();
     expect(screen.queryByTestId('day-plan-card')).not.toBeInTheDocument();
+  });
+
+  /* 2026-10-05: "Falar com a Carol" leva a origem — é ela que abre a
+     conversa do primeiro dia (onboarding_start, tratado no Coach.jsx). */
+  it('"Falar com a Carol" no primeiro dia abre o chat com o pedido do arranque', () => {
+    const setCoachIntent = vi.fn();
+    useAppStore.setState({ setCoachIntent });
+    renderHome();
+    fireEvent.click(within(screen.getByTestId('first-day-card')).getByRole('button', { name: /Falar com a Carol/ }));
+    expect(setCoachIntent).toHaveBeenCalledWith({ kind: 'onboarding_start' });
+    expect(setActiveTab).toHaveBeenCalledWith('coach');
   });
 
   it('com o plano do arranque aceite e sem registos: o Início de todos os dias, com o treino de hoje', () => {

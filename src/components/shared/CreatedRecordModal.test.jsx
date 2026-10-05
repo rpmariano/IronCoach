@@ -44,7 +44,8 @@ function mockStore(overrides = {}) {
     clearNewlyCreatedRecord: vi.fn(),
     profile: { id: 'user-1' },
     setProfile: vi.fn(),
-    setActiveTab: vi.fn(),
+    setActiveTab: vi.fn(() => true),
+    setCoachIntent: vi.fn(),
     setSelectedDate: vi.fn(),
     dismissedInterventions: {},
     dismissIntervention: vi.fn(),
@@ -83,33 +84,33 @@ describe('CreatedRecordModal', () => {
   /* Pedido do utilizador (2026-09-01): o "Eliminar avaliação" do cartão de
      pré-visualização era um botão só de decoração — o wrapper
      pointer-events-none do preview desativa-o — e vivia isolado lá em
-     cima, longe de "Fechar" (rodapé à parte). Os dois botões devem de
-     estar juntos no mesmo frame, e "Fechar" deve de ser o mais destacado
-     dos dois.
+     cima, longe de "Fechar" (rodapé à parte).
+
+     Desde 2026-10-05 (convenção única dos botões da Carol) sair é só o X
+     do cabeçalho (aria-label "Fechar"): o botão "Fechar" do rodapé saiu, e
+     fica o "Eliminar", a única ação que não é sair.
 
      Havia um terceiro, "Atualizar registo" — saiu (2026-09-21): "acabamos
      de o submeter, atualização só se for ver o detalhe". Editar continua
      possível a partir do cartão do dia no Calendário. */
-  describe('Fechar e Eliminar juntos', () => {
-    it('mostra os dois botões no mesmo frame, com "Fechar" como o mais destacado (variant primary)', () => {
+  describe('Fechar (o X) e Eliminar', () => {
+    it('sair é só o X do cabeçalho: não há botão "Fechar" no rodapé', async () => {
+      const clearNewlyCreatedRecord = vi.fn();
       mockStore({
         newlyCreatedRecord: { type: 'body', record: { id: 'a1', date: '2026-08-24', weight_kg: 79.2 } },
+        clearNewlyCreatedRecord,
       });
       render(<CreatedRecordModal />);
 
-      // PremiumModal também tem o seu próprio X com aria-label="Fechar" —
-      // filtra pelo texto visível do botão para apanhar só o nosso.
-      const fechar = screen.getAllByRole('button', { name: 'Fechar' }).find((el) => el.textContent === 'Fechar');
-      const eliminar = screen.getByRole('button', { name: /^Eliminar$/i });
+      const fechar = screen.getAllByRole('button', { name: 'Fechar' });
+      // Só o X do PremiumModal — sem texto visível "Fechar".
+      expect(fechar).toHaveLength(1);
+      expect(fechar[0].textContent).not.toBe('Fechar');
+      expect(screen.getByRole('button', { name: /^Eliminar$/i })).toBeInTheDocument();
 
-      // Mesmo contentor (frame) — o pai imediato comum aos dois.
-      expect(fechar.parentElement).toBe(eliminar.parentElement);
-
-      // "Fechar" é o variant="primary" (preenchido, cor de destaque) —
-      // o mais visualmente destacado dos dois; "Eliminar" é secundário
-      // (danger-outline).
-      expect(fechar.className).toMatch(/bg-\[var\(--accent\)\]/);
-      expect(eliminar.className).not.toMatch(/bg-\[var\(--accent\)\]/);
+      fireEvent.click(fechar[0]);
+      // O PremiumModal fecha depois da animação de saída.
+      await waitFor(() => expect(clearNewlyCreatedRecord).toHaveBeenCalled());
     });
 
     it('não mostra "Atualizar registo" — o registo acabou de ser submetido, não há nada por atualizar ainda', () => {
@@ -174,6 +175,81 @@ describe('CreatedRecordModal', () => {
       await waitFor(() => expect(clearNewlyCreatedRecord).toHaveBeenCalled());
       expect(supabase.from).toHaveBeenCalledWith('workout_sessions');
       expect(loadInitialData).toHaveBeenCalledWith('user-1');
+    });
+  });
+
+  /* Convenção única dos botões da Carol (2026-10-05): a intervenção só
+     aparece quando é DESTE registo, "Falar com a Carol" não dispensa e
+     "Dispensar" grava a dispensa com a chave única do tipo. */
+  describe('a intervenção da Carol neste registo', () => {
+    const corrida = (over = {}) => ({ id: 'r1', date: '2026-10-05', name: 'Rodagem', coach_notes: 'Corrida dura. Vamos adaptar o plano para a semana.', ...over });
+
+    it('aparece com "Falar com a Carol" em cima e "Dispensar" por baixo', () => {
+      mockStore({ newlyCreatedRecord: { type: 'run', record: corrida() } });
+      render(<CreatedRecordModal />);
+      const falar = screen.getByRole('button', { name: 'Falar com a Carol' });
+      const dispensar = screen.getByRole('button', { name: 'Dispensar este aviso' });
+      expect(dispensar).toHaveTextContent('Dispensar');
+      expect(falar.compareDocumentPosition(dispensar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(falar.querySelector('svg.lucide-message-circle')).not.toBeNull();
+    });
+
+    it('não aparece por uma intervenção do perfil que não é deste registo', () => {
+      mockStore({
+        newlyCreatedRecord: { type: 'run', record: corrida({ coach_notes: 'Boa corrida.' }) },
+        profile: { id: 'user-1', coach_intervention_status: 'needed', coach_intervention_reason: 'Carga alta esta semana' },
+      });
+      render(<CreatedRecordModal />);
+      expect(screen.queryByRole('button', { name: 'Falar com a Carol' })).not.toBeInTheDocument();
+    });
+
+    it('aparece pela marca que a análise deste registo devolveu, com o motivo do perfil', () => {
+      const setCoachIntent = vi.fn();
+      mockStore({
+        newlyCreatedRecord: { type: 'meal', record: { id: 'm1', date: '2026-10-05', intervention_needed: true, coach_notes: 'Pouca proteína.' } },
+        profile: { id: 'user-1', coach_intervention_status: 'needed', coach_intervention_reason: 'Proteína abaixo do plano' },
+        setCoachIntent,
+      });
+      render(<CreatedRecordModal />);
+      fireEvent.click(screen.getByRole('button', { name: 'Falar com a Carol' }));
+      expect(setCoachIntent).toHaveBeenCalledWith(expect.objectContaining({
+        kind: 'proactive_intervention', recordType: 'meal', recordId: 'm1', reason: 'Proteína abaixo do plano',
+      }));
+    });
+
+    it('"Falar com a Carol" leva o registo ao chat e fecha — sem dispensar', () => {
+      const dismissIntervention = vi.fn();
+      const setCoachIntent = vi.fn();
+      const setActiveTab = vi.fn(() => true);
+      const clearNewlyCreatedRecord = vi.fn();
+      mockStore({ newlyCreatedRecord: { type: 'run', record: corrida() }, dismissIntervention, setCoachIntent, setActiveTab, clearNewlyCreatedRecord });
+      render(<CreatedRecordModal />);
+      fireEvent.click(screen.getByRole('button', { name: 'Falar com a Carol' }));
+      expect(setCoachIntent).toHaveBeenCalledWith(expect.objectContaining({ kind: 'proactive_intervention', recordType: 'run', recordId: 'r1' }));
+      expect(setActiveTab).toHaveBeenCalledWith('coach');
+      expect(clearNewlyCreatedRecord).toHaveBeenCalled();
+      expect(dismissIntervention).not.toHaveBeenCalled();
+    });
+
+    it('"Dispensar" grava a dispensa com a chave única do tipo e não muda de separador', () => {
+      const dismissIntervention = vi.fn();
+      const setActiveTab = vi.fn(() => true);
+      const record = corrida({ ai_analysis: 'outro texto' });
+      mockStore({ newlyCreatedRecord: { type: 'run', record }, dismissIntervention, setActiveTab });
+      render(<CreatedRecordModal />);
+      fireEvent.click(screen.getByRole('button', { name: 'Dispensar este aviso' }));
+      expect(dismissIntervention).toHaveBeenCalledWith('r1', record.coach_notes);
+      expect(setActiveTab).not.toHaveBeenCalled();
+    });
+
+    it('já dispensada (pela chave única ou pela marca antiga) não aparece', () => {
+      mockStore({ newlyCreatedRecord: { type: 'run', record: corrida() }, dismissedInterventions: { r1: 'dismissed' } });
+      const { unmount } = render(<CreatedRecordModal />);
+      expect(screen.queryByRole('button', { name: 'Falar com a Carol' })).not.toBeInTheDocument();
+      unmount();
+      mockStore({ newlyCreatedRecord: { type: 'run', record: corrida() }, dismissedInterventions: { r1: corrida().coach_notes } });
+      render(<CreatedRecordModal />);
+      expect(screen.queryByRole('button', { name: 'Falar com a Carol' })).not.toBeInTheDocument();
     });
   });
 });

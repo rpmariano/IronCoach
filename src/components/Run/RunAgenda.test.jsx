@@ -314,7 +314,7 @@ describe('RunAgenda — "Obter informação do site" & Dual-Page', () => {
     fireEvent.change(screen.getByPlaceholderText('Ex.: Meia Maratona de Lisboa'), { target: { value: 'Prova Teste' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar prova/i }));
     expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Percebi' }));
     expect(screen.queryByText('Dados Incompletos')).not.toBeInTheDocument();
   });
 

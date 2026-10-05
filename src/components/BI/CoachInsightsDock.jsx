@@ -73,7 +73,9 @@ export function CarolNoticesDock({ notices, bottom }) {
    separador assente é aquele onde o banner vive, os insights que ele mostra saem
    da lista e da contagem; em qualquer outro ecrã (ou fora da Evolução, onde não
    há banner) o botão diz tudo, como antes. Os avisos da Carol (`alerts`) nunca
-   se escondem — o banner não os mostra. */
+   se escondem — o banner não os mostra. Desde 2026-10-05 cada insight do
+   banner tem os seus botões ("Falar com a Carol", "Percebi", "Agora não"),
+   por isso o que sai daqui continua acionável lá. */
 export default function CoachInsightsDock({ bottom }) {
   const notices = useCarolNotices();
   const shown = useBannerShown();

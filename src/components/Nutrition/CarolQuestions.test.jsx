@@ -52,6 +52,27 @@ describe('CarolQuestions', () => {
     expect(onAnswered).toHaveBeenCalledWith(updated, expect.any(Array));
   });
 
+  /* Convenção única dos botões da Carol (2026-10-05): "Responder" é o
+     primário dela (gradiente, tinta --coach-ink); "Agora não" fecha sem
+     responder e as perguntas ficam. */
+  it('"Responder" no gradiente da Carol; "Agora não" só fecha, sem mandar nada', () => {
+    const onLater = vi.fn();
+    render(<CarolQuestions meal={MEAL} onLater={onLater} />);
+    const responder = screen.getByTestId('carol-questions-submit');
+    expect(responder.getAttribute('style')).toContain('--grad-coach-legible');
+    expect(responder.getAttribute('style')).toContain('--coach-ink');
+    const agoraNao = screen.getByTestId('carol-questions-later');
+    expect(agoraNao).toHaveTextContent('Agora não');
+    fireEvent.click(agoraNao);
+    expect(onLater).toHaveBeenCalledTimes(1);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('sem quem a feche (onLater), não há "Agora não"', () => {
+    render(<CarolQuestions meal={MEAL} />);
+    expect(screen.queryByTestId('carol-questions-later')).not.toBeInTheDocument();
+  });
+
   it('"Outro…" abre um campo e manda o que lá se escreve', async () => {
     mocks.invoke.mockResolvedValue({ data: { meal: MEAL, learned: [] }, error: null });
     render(<CarolQuestions meal={MEAL} />);
@@ -89,6 +110,10 @@ describe('MealCard — perguntas por responder', () => {
     expect(chip).toHaveTextContent('até 160 kcal');
     fireEvent.click(chip);
     expect(screen.getByTestId('carol-questions')).toBeInTheDocument();
+    // "Agora não" fecha a persiana; as perguntas ficam no cartão.
+    fireEvent.click(screen.getByTestId('carol-questions-later'));
+    expect(screen.queryByTestId('carol-questions')).not.toBeInTheDocument();
+    expect(screen.getByTestId('meal-card-questions')).toBeInTheDocument();
   });
 
   it('sem perguntas abertas, ou no pré-visualizar do resultado, não aparece', () => {

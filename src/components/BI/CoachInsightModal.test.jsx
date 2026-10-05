@@ -69,6 +69,14 @@ describe('CoachInsightModal', () => {
     }
     // Uma cópia por cartão, nenhuma solta no rodapé.
     expect(screen.getAllByRole('button', { name: 'Falar com a Carol' })).toHaveLength(2);
+    // Ícone único da convenção (2026-10-05): o balão, não a faísca.
+    for (const falar of screen.getAllByRole('button', { name: 'Falar com a Carol' })) {
+      expect(falar.querySelector('svg.lucide-message-circle')).not.toBeNull();
+      expect(falar.querySelector('svg.lucide-sparkles')).toBeNull();
+    }
+    // Ordem: Falar em cima; Percebi à esquerda e Agora não à direita.
+    const botoes = within(screen.getByTestId('insight-insight-1')).getAllByRole('button').map((b) => b.textContent);
+    expect(botoes).toEqual(['Falar com a Carol', 'Percebi', 'Agora não']);
     expect(screen.queryByRole('button', { name: /Entendido|Ignorar/ })).not.toBeInTheDocument();
   });
 
@@ -117,6 +125,14 @@ describe('CoachInsightModal', () => {
     expect(mockLogImpressionDismissed).toHaveBeenCalledWith({ kind: 'insights', key: 'insight-1', title: 'Carga de Treino Excessiva (ACWR)' });
     // Era o único: a janela fecha.
     expect(mockOnClose).toHaveBeenCalled();
+  });
+
+  it('com a saída travada, "Falar com a Carol" não dá o insight por tratado e desfaz o pedido', () => {
+    mockSetActiveTab.mockReturnValueOnce(false);
+    render(<CoachInsightModal insights={[acwr]} onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('insight-talk-insight-1'));
+    expect(mockSetInsightState).not.toHaveBeenCalled();
+    expect(mockSetCoachIntent).toHaveBeenLastCalledWith(null);
   });
 
   it('"Agora não" diz a quem usa leitor de ecrã que volta amanhã', () => {

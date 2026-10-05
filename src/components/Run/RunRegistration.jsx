@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, MessageSquare, Footprints, Trophy, AlertTriangle } from 'lucide-react';
+import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, Footprints, Trophy, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
@@ -40,6 +40,7 @@ import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDra
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { isRacePlanItem } from '../../utils/homeModels';
+import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 // -------------------------------------
 // ICONS & UTILS
@@ -3010,40 +3011,20 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             ))}
           </div>
 
-          {runIdToEdit && (() => {
-            const editingRun = runs.find(r => r.id === runIdToEdit);
-            const notes = editingRun?.coach_notes || editingRun?.coach_analysis;
-            const isDismissed = editingRun?.id && (useAppStore.getState().dismissedInterventions[editingRun.id] === notes || useAppStore.getState().dismissedInterventions[editingRun.id] === 'dismissed');
-            const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
-            if (!hasIntervention) return null;
-            return (
-              <Button
-                variant="module"
-                moduleColor="var(--grad-coach-legible)"
-                onClick={() => {
-                  useAppStore.getState().dismissIntervention(editingRun.id, notes);
-                  useAppStore.setState({
-                    coachIntent: {
-                      kind: 'proactive_intervention',
-                      recordType: 'run',
-                      recordId: editingRun.id,
-                      recordName: editingRun.name,
-                      date: editingRun.date,
-                      reason: notes,
-                    }
-                  });
-                  handleClose();
-                  useAppStore.getState().setActiveTab('coach');
-                }}
-                className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
-              >
-                <div className="flex items-center justify-center gap-2 w-full">
-                  <MessageSquare size={16} />
-                  <span>Falar com a Carol</span>
-                </div>
-              </Button>
-            );
-          })()}
+          {/* A intervenção da Carol neste registo — o mesmo componente do cartão
+              e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
+              dispensa e só fecha o formulário se o separador mudar de facto;
+              "Dispensar" usa a chave única do tipo (utils/recordIntervention.js) —
+              antes este formulário lia coach_notes || coach_analysis e o cartão
+              outro campo, e a dispensa num não valia no outro. */}
+          {runIdToEdit && (
+            <CarolInterventionActions
+              record={runs.find(r => r.id === runIdToEdit)}
+              type="run"
+              onTalked={handleClose}
+              className="mb-2"
+            />
+          )}
 
             </>
     );
@@ -3131,13 +3112,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             {validationError}
           </p>
           <div className="flex justify-center">
+            {/* "Percebi" (era "Entendido", 2026-10-05): o mesmo nome do botão que
+                fecha um aviso informativo nos cartões da Carol (convenção única). */}
             <Button
               variant="module"
               moduleColor="var(--mod-prova)"
               onClick={() => setValidationError(null)}
               className="w-full"
             >
-              Entendido
+              Percebi
             </Button>
           </div>
         </div>

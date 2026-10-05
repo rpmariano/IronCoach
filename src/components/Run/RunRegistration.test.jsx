@@ -1328,8 +1328,8 @@ describe('RunRegistration — modo prova', () => {
        pára o ecrã com o mesmo diálogo do formulário da prova. */
     expect(screen.getByText('Dados Incompletos')).toBeInTheDocument();
     expect(screen.getByTestId('run-validation-error')).toHaveTextContent('Indica o tempo oficial da prova.');
-    // E fecha-se com "Entendido", devolvendo o atleta ao campo em falta.
-    fireEvent.click(screen.getByRole('button', { name: /Entendido/i }));
+    // E fecha-se com "Percebi" (era "Entendido"), devolvendo o atleta ao campo em falta.
+    fireEvent.click(screen.getByRole('button', { name: 'Percebi' }));
     expect(screen.queryByText('Dados Incompletos')).not.toBeInTheDocument();
   });
 

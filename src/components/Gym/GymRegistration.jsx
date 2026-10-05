@@ -6,18 +6,18 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Trash2, MessageSquare } from 'lucide-react';
+import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Trash2 } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import AddButton from '../shared/AddButton';
-import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
+import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 const GYM_KINDS = [
   { key: 'forca', label: 'Força', icon: Dumbbell },
@@ -1103,40 +1103,20 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           />
         </div>
 
-        {isEditing && (() => {
-          const editingSession = (gymSessions || []).find(s => s.id === sessionIdToEdit);
-          const notes = editingSession?.coach_notes || editingSession?.coach_analysis;
-          const isDismissed = editingSession?.id && (useAppStore.getState().dismissedInterventions[editingSession.id] === notes || useAppStore.getState().dismissedInterventions[editingSession.id] === 'dismissed');
-          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
-          if (!hasIntervention) return null;
-          return (
-            <Button
-              variant="module"
-              moduleColor="var(--grad-coach-legible)"
-              onClick={() => {
-                useAppStore.getState().dismissIntervention(editingSession.id, notes);
-                useAppStore.setState({
-                  coachIntent: {
-                    kind: 'proactive_intervention',
-                    recordType: 'gym',
-                    recordId: editingSession.id,
-                    recordName: editingSession.name,
-                    date: editingSession.date,
-                    reason: notes,
-                  }
-                });
-                handleClose();
-                useAppStore.getState().setActiveTab('coach');
-              }}
-              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
-            >
-              <div className="flex items-center justify-center gap-2 w-full">
-                <MessageSquare size={16} />
-                <span>Falar com a Carol</span>
-              </div>
-            </Button>
-          );
-        })()}
+        {/* A intervenção da Carol neste registo — o mesmo componente do cartão
+            e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
+            dispensa e só fecha o formulário se o separador mudar de facto;
+            "Dispensar" usa a chave única do tipo (utils/recordIntervention.js) —
+            antes este formulário lia coach_notes || coach_analysis e o cartão
+            outro campo, e a dispensa num não valia no outro. */}
+        {isEditing && (
+          <CarolInterventionActions
+            record={(gymSessions || []).find(s => s.id === sessionIdToEdit)}
+            type="gym"
+            onTalked={handleClose}
+            className="mb-2"
+          />
+        )}
 
         {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
         </div>

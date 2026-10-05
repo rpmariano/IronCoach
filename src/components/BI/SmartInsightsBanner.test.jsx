@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import { todayISO, addDaysISO } from '../../lib/utils';
@@ -114,6 +114,70 @@ describe('SmartInsightsBanner', () => {
       render(<Spy onShown={(v) => { last = v; }} />);
       renderBanner();
       expect(last.ids).toEqual(['race_day_x']);
+    });
+  });
+
+  /* 2026-10-05: o banner esconde os seus insights do botão da Carol, por
+     isso o que mostra tem de ser acionável aqui — os mesmos botões e as
+     mesmas funções da janela (useInsightActions). */
+  describe('os botões da Carol em cada insight', () => {
+    let setActiveTab;
+    let setCoachIntent;
+    let logImpressionDismissed;
+    beforeEach(() => {
+      localStorage.clear();
+      setActiveTab = vi.fn(() => true);
+      setCoachIntent = vi.fn();
+      logImpressionDismissed = vi.fn();
+      useAppStore.setState({ setActiveTab, setCoachIntent, logImpressionDismissed });
+    });
+
+    it('"Falar com a Carol" em cima; por baixo [Percebi] [Agora não]', () => {
+      renderBanner();
+      const cartao = screen.getByTestId('banner-insight-acwr_danger');
+      const botoes = within(cartao).getAllByRole('button');
+      expect(botoes.map((b) => b.textContent)).toEqual(['Falar com a Carol', 'Percebi', 'Agora não']);
+      expect(botoes[0].querySelector('svg.lucide-message-circle')).not.toBeNull();
+      // O grupo tem o nome do insight (vários cartões, vários "Percebi").
+      expect(within(cartao).getByRole('group', { name: 'Carga excessiva' })).toBeInTheDocument();
+    });
+
+    it('"Percebi" tira-o de vez — daqui e do botão — sem registar dispensa', () => {
+      let last = null;
+      function Spy() { last = useBannerShown(); return null; }
+      render(<Spy />);
+      renderBanner();
+      fireEvent.click(screen.getByTestId('banner-insight-understood-acwr_danger'));
+      expect(useAppStore.getState().insightStates.acwr_danger).toBe('understood');
+      expect(screen.queryByText('Carga excessiva')).not.toBeInTheDocument();
+      expect(last.ids).toEqual(['race_day_x']);
+      expect(logImpressionDismissed).not.toHaveBeenCalled();
+    });
+
+    it('"Agora não" tira-o só até amanhã e regista a dispensa', () => {
+      renderBanner();
+      fireEvent.click(screen.getByTestId('banner-insight-snooze-acwr_danger'));
+      expect(useAppStore.getState().insightSnoozes.acwr_danger).toBe(todayISO());
+      expect(useAppStore.getState().insightStates.acwr_danger).toBe('ignored');
+      expect(logImpressionDismissed).toHaveBeenCalledWith({ kind: 'insights', key: 'acwr_danger', title: 'Carga excessiva' });
+      expect(screen.queryByText('Carga excessiva')).not.toBeInTheDocument();
+    });
+
+    it('"Falar com a Carol" leva o insight ao chat e só então o dá por tratado', () => {
+      renderBanner();
+      fireEvent.click(screen.getByTestId('banner-insight-talk-acwr_danger'));
+      expect(setCoachIntent).toHaveBeenCalledWith(expect.objectContaining({ kind: 'proactive_intervention', reason: expect.stringContaining('Carga excessiva') }));
+      expect(setActiveTab).toHaveBeenCalledWith('coach');
+      expect(useAppStore.getState().insightStates.acwr_danger).toBe('understood');
+    });
+
+    it('com a saída travada, não o dá por tratado e o pedido desfaz-se', () => {
+      setActiveTab.mockReturnValue(false);
+      renderBanner();
+      fireEvent.click(screen.getByTestId('banner-insight-talk-acwr_danger'));
+      expect(useAppStore.getState().insightStates.acwr_danger).toBeUndefined();
+      expect(setCoachIntent).toHaveBeenLastCalledWith(null);
+      expect(screen.getByText('Carga excessiva')).toBeInTheDocument();
     });
   });
 });

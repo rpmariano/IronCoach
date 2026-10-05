@@ -4,6 +4,7 @@ import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays, diffDaysISO } from './WeeklyPlanCard';
 import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, raceForDate, raceNameForDate, trainingItems, planItemTitle, liveItems } from '../../utils/homeModels';
 import GlassCard from '../shared/GlassCard';
+import { CarolTalkButton } from '../shared/CarolActions';
 import WeekDoneRibbon from './WeekDoneRibbon';
 import { useAppStore } from '../../store';
 import { doneLine, dayDoneMomentKey, wasDayDoneSeen, markDayDoneSeen } from './dayDone';
@@ -216,9 +217,21 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
               {copy.cta}
             </button>
           ) : (
-            <button type="button" onClick={() => onNav?.('coach')} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-3 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)', color: 'var(--coach)' }}>
-              <MessageCircle size={15} /> {copy.cta}
-            </button>
+            /* Convenção única dos botões da Carol (2026-10-05): o primário
+               dela, no gradiente. "Pedir um plano" / "Combinar o próximo
+               plano" levam o pedido ao chat ('adapt_plan', o check-in do
+               plano, onde ela pode propor); com propostas à espera não há
+               pedido — estão no próprio chat. */
+            <CarolTalkButton
+              className="mt-3"
+              testId="day-plan-ask"
+              onClick={() => {
+                if (!pendingCount) useAppStore.getState().setCoachIntent('adapt_plan');
+                onNav?.('coach');
+              }}
+            >
+              {copy.cta}
+            </CarolTalkButton>
           )}
         </GlassCard>
       </div>

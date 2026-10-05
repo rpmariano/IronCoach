@@ -4,6 +4,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { useAppStore } from '../../store';
+import { CAROL_TALK_CLASS, CAROL_TALK_STYLE, CAROL_SECONDARY_CLASS, CAROL_SECONDARY_STYLE } from '../shared/CarolActions';
 
 /* As perguntas da Carol sobre uma refeição (bug #52, fase B, 2026-10-04:
    «em vez de a Carol estar a adivinhar determinadas situações, pode
@@ -28,7 +29,7 @@ export function learnedLine({ topic, value, status }) {
   return `Anotado: ${topic} — ${value}. Se da próxima vez também for, deixo de perguntar.`;
 }
 
-export default function CarolQuestions({ meal, onAnswered }) {
+export default function CarolQuestions({ meal, onAnswered, onLater }) {
   const questions = openCarolQuestions(meal);
   const [picked, setPicked] = useState({});
   const [other, setOther] = useState({});
@@ -130,16 +131,37 @@ export default function CarolQuestions({ meal, onAnswered }) {
 
       {error && <p role="alert" className="text-[12.5px]" style={{ color: 'var(--danger)' }}>{error}</p>}
 
+      {/* Convenção única dos botões da Carol (2026-10-05): "Responder" é o
+          primário dela — gradiente e tinta var(--coach-ink), largura toda,
+          em cima (era o ciano cheio com a tinta escrita à mão). Por baixo,
+          "Agora não" fecha sem responder: as perguntas ficam no cartão da
+          refeição. Só aparece quando quem mostra as perguntas sabe fechá-las
+          (onLater). */}
       <button
         type="button"
         data-testid="carol-questions-submit"
         onClick={submit}
         disabled={!answers.length || sending}
-        className="w-full min-h-[48px] rounded-xl text-[14px] font-black inline-flex items-center justify-center gap-2 disabled:opacity-50"
-        style={{ background: 'var(--coach)', color: '#062a33' }}
+        className={`${CAROL_TALK_CLASS} disabled:opacity-50`}
+        style={CAROL_TALK_STYLE}
       >
-        {sending ? <><Loader2 size={16} className="animate-spin" /> A refazer as contas…</> : 'Responder'}
+        {sending ? <><Loader2 size={15} className="animate-spin" /> A refazer as contas…</> : 'Responder'}
       </button>
+      {onLater && (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            data-testid="carol-questions-later"
+            onClick={onLater}
+            disabled={sending}
+            aria-label="Agora não — as perguntas ficam no cartão da refeição"
+            className={`${CAROL_SECONDARY_CLASS} disabled:opacity-50`}
+            style={CAROL_SECONDARY_STYLE}
+          >
+            Agora não
+          </button>
+        </div>
+      )}
     </div>
   );
 }

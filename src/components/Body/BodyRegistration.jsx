@@ -6,19 +6,19 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { ScanLine, X, ImagePlus, Camera, PencilLine, MessageSquare } from 'lucide-react';
+import { ScanLine, X, ImagePlus, Camera, PencilLine } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { bodyGoalMoment } from '../../utils/bodyGoal';
 import Chip from '../shared/Chip';
-import Button from '../shared/Button';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { ecraPrincipal } from '../../../supabase/functions/_shared/sourceApps.ts';
+import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -677,40 +677,20 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           />
         </div>
 
-        {isEditing && (() => {
-          const editingAssessment = (bodyAssessments || []).find(a => a.id === assessmentIdToEdit);
-          const notes = editingAssessment?.coach_notes || editingAssessment?.coach_analysis;
-          const isDismissed = editingAssessment?.id && (useAppStore.getState().dismissedInterventions[editingAssessment.id] === notes || useAppStore.getState().dismissedInterventions[editingAssessment.id] === 'dismissed');
-          const hasIntervention = !isDismissed && notes && /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(notes);
-          if (!hasIntervention) return null;
-          return (
-            <Button
-              variant="module"
-              moduleColor="var(--grad-coach-legible)"
-              onClick={() => {
-                useAppStore.getState().dismissIntervention(editingAssessment.id, notes);
-                useAppStore.setState({
-                  coachIntent: {
-                    kind: 'proactive_intervention',
-                    recordType: 'body',
-                    recordId: editingAssessment.id,
-                    recordName: 'Avaliação Corporal',
-                    date: editingAssessment.date,
-                    reason: notes,
-                  }
-                });
-                handleClose();
-                useAppStore.getState().setActiveTab('coach');
-              }}
-              className="w-full text-white shadow-md border-transparent font-semibold text-xs py-3 mb-2"
-            >
-              <div className="flex items-center justify-center gap-2 w-full">
-                <MessageSquare size={16} />
-                <span>Falar com a Carol</span>
-              </div>
-            </Button>
-          );
-        })()}
+        {/* A intervenção da Carol neste registo — o mesmo componente do cartão
+            e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
+            dispensa e só fecha o formulário se o separador mudar de facto;
+            "Dispensar" usa a chave única do tipo (utils/recordIntervention.js) —
+            antes este formulário lia coach_notes || coach_analysis e o cartão
+            outro campo, e a dispensa num não valia no outro. */}
+        {isEditing && (
+          <CarolInterventionActions
+            record={(bodyAssessments || []).find(a => a.id === assessmentIdToEdit)}
+            type="body"
+            onTalked={handleClose}
+            className="mb-2"
+          />
+        )}
 
         {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
         </div>

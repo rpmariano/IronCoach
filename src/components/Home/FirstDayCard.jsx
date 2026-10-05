@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Check, Flag, Footprints, Camera } from 'lucide-react';
+import { MessageCircle, Check, Flag, Footprints, Camera } from 'lucide-react';
 import CoachAvatar from '../Coach/CoachAvatar';
 import { firstDayAsk } from '../../utils/firstDay';
 
@@ -18,7 +18,8 @@ const ACAO = {
   race: { label: 'Marcar a prova', Icon: Flag, tone: 'race' },
   run: { label: 'Registar uma corrida', Icon: Footprints, tone: 'coach' },
   meal: { label: 'Registar uma refeição', Icon: Camera, tone: 'coach' },
-  talk: { label: 'Falar com a Carol', Icon: Sparkles, tone: 'coach' },
+  // O balão da convenção única dos botões da Carol (2026-10-05; era a faísca).
+  talk: { label: 'Falar com a Carol', Icon: MessageCircle, tone: 'coach' },
 };
 
 export default function FirstDayCard({ firstName, goal = null, facts = [], vida = null, notesLoaded = true, onTalk, onCreateRace, onRegisterRun, onRegisterMeal }) {
@@ -34,7 +35,7 @@ export default function FirstDayCard({ firstName, goal = null, facts = [], vida 
   // FirstDayCard.jsx:30): uma atleta diria "eu mesma".
   const secundaria = ask.primary === 'talk'
     ? { label: 'Marcar a prova à mão', onClick: onCreateRace }
-    : { label: 'Falar com a Carol', onClick: onTalk };
+    : { label: 'Falar com a Carol', onClick: onTalk, Icon: MessageCircle };
 
   return (
     <div className="rounded-[24px] shrink-0" style={{ background: 'rgba(34,211,238,.08)', border: '1px solid rgba(34,211,238,.32)', padding: 20, boxShadow: 'var(--shadow-card)' }} data-testid="first-day-card" data-goal={goal || undefined}>
@@ -71,9 +72,13 @@ export default function FirstDayCard({ firstName, goal = null, facts = [], vida 
             className="w-full inline-flex items-center justify-center gap-2 min-h-[46px] mt-[15px] rounded-[11px] text-[13.5px] font-extrabold transition active:scale-[.98]"
             style={{ background: acao.tone === 'race' ? 'var(--grad-race)' : 'var(--grad-coach-legible)', color: acao.tone === 'race' ? 'var(--race-ink)' : 'var(--coach-ink)' }}
           >
-            <acao.Icon size={16} aria-hidden="true" /> {acao.label}
+            <acao.Icon size={acao.Icon === MessageCircle ? 15 : 16} aria-hidden="true" /> {acao.label}
           </button>
-          <button type="button" onClick={secundaria.onClick} className="w-full min-h-[44px] mt-[9px] rounded-[11px] text-[13px] font-bold transition active:scale-[.98]" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,.16)', color: 'var(--text-3)' }}>
+          {/* Como segunda via, "Falar com a Carol" fica secundário (com
+              contorno) — dois gradientes seguidos competiam pelo primeiro
+              toque —, mas leva o mesmo balão (2026-10-05). */}
+          <button type="button" onClick={secundaria.onClick} className="w-full inline-flex items-center justify-center gap-2 min-h-[44px] mt-[9px] rounded-[11px] text-[13px] font-bold transition active:scale-[.98]" style={{ background: 'transparent', border: '1px solid rgba(255,255,255,.16)', color: 'var(--text-3)' }}>
+            {secundaria.Icon && <secundaria.Icon size={15} aria-hidden="true" />}
             {secundaria.label}
           </button>
         </>

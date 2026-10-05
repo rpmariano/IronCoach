@@ -117,6 +117,15 @@ describe('PlanProposalBottomSheet', () => {
     expect(screen.getByText('Propostas da Carol')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aceitar objetivos/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Aceitar plano/i })).toBeInTheDocument();
+    // 2026-10-05: os dois "Aceitar" com o mesmo estilo (gradiente da Carol)
+    // e os dois "Recusar" iguais.
+    const aceitarPlano = screen.getByRole('button', { name: /Aceitar plano/i });
+    const aceitarObjetivos = screen.getByRole('button', { name: /Aceitar objetivos/i });
+    expect(aceitarPlano.getAttribute('style')).toContain('--grad-coach-legible');
+    expect(aceitarPlano.getAttribute('style')).toBe(aceitarObjetivos.getAttribute('style'));
+    expect(aceitarPlano.className).toBe(aceitarObjetivos.className);
+    const [recusarObjetivos, recusarPlano] = screen.getAllByRole('button', { name: /Recusar/i });
+    expect(recusarPlano.className).toBe(recusarObjetivos.className);
   });
 
   it('responder aos objetivos não invoca onRespondPlan nem fecha a persiana inteira', () => {
