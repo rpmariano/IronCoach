@@ -62,6 +62,26 @@ describe('CheckinCard', () => {
     expect(await screen.findByText('Guardado. Quero falar contigo sobre isto.')).toBeInTheDocument();
   });
 
+  it('o aviso traz "Falar com a Carol": põe o intent no store e abre o chat', async () => {
+    const setActiveTab = vi.fn().mockReturnValue(true);
+    useAppStore.setState({ setActiveTab, coachIntent: null });
+    saveDailyCheckin.mockResolvedValue({ ok: true, alarms: [{ code: 'G2' }], opened: true });
+    await guardarComDor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Falar com a Carol' }));
+    expect(setActiveTab).toHaveBeenCalledWith('coach');
+    expect(useAppStore.getState().coachIntent).toMatchObject({ kind: 'proactive_intervention' });
+    expect(screen.queryByText('Guardado. Quero falar contigo sobre isto.')).not.toBeInTheDocument();
+  });
+
+  it('se a mudança para o chat for travada, o intent desfaz-se', async () => {
+    const setActiveTab = vi.fn().mockReturnValue(false);
+    useAppStore.setState({ setActiveTab, coachIntent: null });
+    saveDailyCheckin.mockResolvedValue({ ok: true, alarms: [{ code: 'G2' }], opened: true });
+    await guardarComDor();
+    fireEvent.click(await screen.findByRole('button', { name: 'Falar com a Carol' }));
+    expect(useAppStore.getState().coachIntent).toBeNull();
+  });
+
   it('com outra conversa já pendente, o alarme não abre nada e o aviso não a promete', async () => {
     saveDailyCheckin.mockResolvedValue({ ok: true, alarms: [{ code: 'G2' }], opened: false });
     await guardarComDor();

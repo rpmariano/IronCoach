@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { installSoftKeyboardWatcher, isTextField } from './softKeyboard';
+import { installSoftKeyboardWatcher, isTextField, computeKeyboardInset } from './softKeyboard';
 
 /* Relato 2026-09-23: com o teclado aberto, a barra de baixo tapava a caixa
    de texto do Coach. O atributo no <html> é o que o CSS usa para a esconder. */
@@ -8,9 +8,11 @@ function fakeViewport(height) {
   const listeners = {};
   return {
     height,
+    offsetTop: 0,
     addEventListener: (t, fn) => { listeners[t] = fn; },
     removeEventListener: () => {},
     fire(h) { this.height = h; listeners.resize?.(); },
+    scroll(top) { this.offsetTop = top; listeners.scroll?.(); },
   };
 }
 
@@ -24,6 +26,7 @@ describe('softKeyboard', () => {
     win = Object.create(window);
     Object.defineProperty(win, 'document', { value: document });
     Object.defineProperty(win, 'visualViewport', { value: vv });
+    Object.defineProperty(win, 'innerHeight', { value: 800, configurable: true });
     win.matchMedia = () => ({ matches: true });
     win.setTimeout = (fn, ms) => setTimeout(fn, ms);
     win.addEventListener = () => {};
@@ -71,5 +74,48 @@ describe('softKeyboard', () => {
     expect(isTextField(el('<input type="number">'))).toBe(true);
     expect(isTextField(el('<input type="date">'))).toBe(false);
     expect(isTextField(el('<input type="text" disabled>'))).toBe(false);
+  });
+  // Bug #56 (2026-10-05): iOS — o teclado tapa o layout viewport.
+  describe('--keyboard-inset', () => {
+    const inset = () => document.documentElement.style.getPropertyValue('--keyboard-inset');
+
+    it('sem teclado é 0px', () => {
+      expect(inset()).toBe('0px');
+    });
+
+    it('iOS: o teclado tapa 336 px e o inset acompanha', () => {
+      document.getElementById('t').focus();
+      vv.fire(464);
+      expect(inset()).toBe('336px');
+    });
+
+    it('desconta o offsetTop que o iOS aplica ao rolar a página', () => {
+      document.getElementById('t').focus();
+      vv.offsetTop = 100;
+      vv.fire(464);
+      expect(inset()).toBe('236px');
+      vv.scroll(0);
+      expect(inset()).toBe('336px');
+    });
+
+    it('Android com resizes-content: innerHeight acompanha o visualViewport, inset 0', () => {
+      Object.defineProperty(win, 'innerHeight', { value: 464, configurable: true });
+      document.getElementById('t').focus();
+      vv.fire(464);
+      expect(open()).toBe(true);
+      expect(inset()).toBe('0px');
+    });
+
+    it('nunca é negativo', () => {
+      expect(computeKeyboardInset({ innerHeight: 700, visualViewport: { height: 800, offsetTop: 0 } })).toBe(0);
+      expect(computeKeyboardInset({ innerHeight: 700 })).toBe(0);
+    });
+
+    it('fechar o teclado volta a 0px', () => {
+      document.getElementById('t').focus();
+      vv.fire(464);
+      vv.fire(800);
+      expect(inset()).toBe('0px');
+    });
   });
 });

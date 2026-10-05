@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { ToastProvider, useToast, TOASTS_VISIVEIS, TOAST_MS } from './ToastProvider';
+import { ToastProvider, useToast, TOASTS_VISIVEIS, TOAST_MS, TOAST_ACTION_MS } from './ToastProvider';
 
 /* Os avisos curtos da app. Saem sozinhos (bug #44, 2026-09-22: "devem
    desaparecer sozinhas, como estava originalmente desenhado"); o toque, o
@@ -100,5 +100,52 @@ describe('ToastProvider', () => {
     montar();
     disparar();
     expect(screen.getByRole('button', { name: /^Aviso 1/ })).toBeInTheDocument();
+  });
+  // 2026-10-05: toasts com ação (ex.: "Falar com a Carol" no check-in).
+  describe('com ação', () => {
+    function ComAcao({ onClick }) {
+      const { showToast } = useToast();
+      return (
+        <button type="button" onClick={() => showToast('Guardado.', { type: 'coach', action: { label: 'Falar com a Carol', onClick } })}>
+          disparar
+        </button>
+      );
+    }
+
+    it('o botão da ação executa o onClick e fecha o aviso', () => {
+      const onClick = vi.fn();
+      render(<ToastProvider><ComAcao onClick={onClick} /></ToastProvider>);
+      disparar();
+      expect(screen.getByRole('status')).toContainElement(screen.getByTestId('toast'));
+      fireEvent.click(screen.getByRole('button', { name: 'Falar com a Carol' }));
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+    });
+
+    it('tocar no texto só dispensa, sem executar a ação', () => {
+      const onClick = vi.fn();
+      render(<ToastProvider><ComAcao onClick={onClick} /></ToastProvider>);
+      disparar();
+      fireEvent.click(screen.getByRole('button', { name: /Guardado\./ }));
+      expect(onClick).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+    });
+
+    it('fica mais tempo do que um aviso simples (8 s)', () => {
+      vi.useFakeTimers();
+      render(<ToastProvider><ComAcao onClick={() => {}} /></ToastProvider>);
+      disparar();
+      act(() => { vi.advanceTimersByTime(TOAST_ACTION_MS - 1); });
+      expect(screen.getByTestId('toast')).toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(screen.queryByTestId('toast')).not.toBeInTheDocument();
+    });
+
+    it('a assinatura antiga (mensagem, tipo) continua a funcionar', () => {
+      montar({ tipo: 'error' });
+      disparar();
+      expect(screen.getByTestId('toast')).toHaveClass('toast-error');
+      expect(screen.queryByTestId('toast-action')).not.toBeInTheDocument();
+    });
   });
 });

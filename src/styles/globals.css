@@ -751,6 +751,7 @@ html[data-page-hidden] .carol-blink {
    campo onde se escreve, e o respiro do scroll encolhe para a caixa de
    texto encostar ao teclado. A barra de ação ("Guardar") desce e cola ao
    teclado em vez de ficar suspensa sobre uma barra que já não está lá. */
+:root { --keyboard-inset: 0px; }
 :root[data-keyboard="open"] {
   --scroll-pad-bottom: 16px;
   --scroll-pad-bottom-actionbar: 88px;

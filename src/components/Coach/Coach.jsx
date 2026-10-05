@@ -1247,7 +1247,11 @@ export default function Coach() {
       </div>
 
       {/* Input Box Footer */}
-      <div className="shrink-0 border-t border-[var(--border-glass)] pt-3 mt-1 relative">
+      {/* paddingBottom: --keyboard-inset (utils/softKeyboard.js, bug #56,
+          2026-10-05) sobe a caixa acima do teclado no Safari iOS, onde ele
+          tapa o layout viewport. 0px no Chrome Android (resizes-content) e
+          sem teclado — por isso nada muda aí. */}
+      <div className="shrink-0 border-t border-[var(--border-glass)] pt-3 mt-1 relative" style={{ paddingBottom: 'var(--keyboard-inset, 0px)' }} data-testid="coach-composer">
         {/* Sugestões pendentes (Planos / Objetivos) — botão único: as duas
             propostas podem coexistir e abrem sempre a MESMA persiana, para
             o atleta decidir ambas sem trocar de ecrã. */}

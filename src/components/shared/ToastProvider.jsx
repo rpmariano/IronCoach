@@ -21,7 +21,11 @@ export const TOASTS_VISIVEIS = 4;
 /* Quanto tempo cada aviso fica à vista. O erro (e o aviso/info, que também
    trazem algo a ler) fica o dobro: era o caso que mais doía quando saía
    antes de ser lido. */
-export const TOAST_MS = { success: 3000, error: 6000, warning: 6000, info: 6000 };
+export const TOAST_MS = { success: 3000, error: 6000, warning: 6000, info: 6000, coach: 6000 };
+
+/* Um aviso com ação fica mais tempo (2026-10-05): o atleta tem de ler, decidir
+   e acertar num botão — 3 s não chegam, e a ação perdia-se a meio do gesto. */
+export const TOAST_ACTION_MS = 8000;
 
 /* Os avisos curtos da app — "+250 ml de água", "Guardado", "Não consegui
    registar". São 84 sítios a chamar `showToast`.
@@ -41,10 +45,19 @@ export const ToastProvider = ({ children }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const showToast = useCallback((message, type = 'success') => {
+  /* showToast(mensagem, tipo?, { action: { label, onClick } }?). O tipo
+     ('success' por omissão) pode ser omitido quando só há opções:
+     showToast(msg, { type: 'coach', action }). 'coach' é o tom da Carol. */
+  const showToast = useCallback((message, typeOrOptions = 'success', maybeOptions) => {
+    const options = typeof typeOrOptions === 'object' && typeOrOptions !== null ? typeOrOptions : (maybeOptions || {});
+    const type = typeof typeOrOptions === 'string' ? typeOrOptions : (options.type || 'success');
+    const action = options.action && options.action.label && typeof options.action.onClick === 'function'
+      ? options.action
+      : null;
     const id = crypto.randomUUID();
-    setToasts((prev) => [...prev, { id, message, type }]);
-    timers.current.set(id, setTimeout(() => dismiss(id), TOAST_MS[type] ?? TOAST_MS.success));
+    setToasts((prev) => [...prev, { id, message, type, action }]);
+    const ms = action ? TOAST_ACTION_MS : (TOAST_MS[type] ?? TOAST_MS.success);
+    timers.current.set(id, setTimeout(() => dismiss(id), ms));
   }, [dismiss]);
 
   const clearAll = useCallback(() => {
@@ -89,7 +102,24 @@ export const ToastProvider = ({ children }) => {
               +{escondidos} {escondidos === 1 ? 'aviso mais antigo' : 'avisos mais antigos'}
             </span>
           )}
-          {visiveis.map((t) => (
+          {visiveis.map((t) => t.action ? (
+            /* Com ação, o aviso já não pode ser um único botão (botão dentro
+               de botão é HTML inválido e o leitor de ecrã perde-se): o texto
+               dispensa, a ação executa e dispensa. */
+            <div key={t.id} className={`toast toast-${t.type} toast-has-action`} data-testid="toast">
+              <button type="button" className="toast-text toast-dismiss" onClick={() => dismiss(t.id)} aria-label={`${t.message} — dispensar`}>
+                {t.message}
+              </button>
+              <button
+                type="button"
+                className="toast-action"
+                data-testid="toast-action"
+                onClick={() => { dismiss(t.id); t.action.onClick(); }}
+              >
+                {t.action.label}
+              </button>
+            </div>
+          ) : (
             <button
               key={t.id}
               type="button"

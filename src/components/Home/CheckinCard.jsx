@@ -158,6 +158,14 @@ export function CheckinSheet({ initial = null, onClose, onSaved }) {
   const hasConsent = !!profile?.cycle_tracking_consent_at;
   const ready = values.sleep && values.energy && values.stress;
 
+  // O alarme do check-in abre a intervenção; o Coach trata-a como
+  // 'proactive_intervention' (com o motivo que o store gravou).
+  const falarComACarol = () => {
+    const s = useAppStore.getState();
+    s.setCoachIntent({ kind: 'proactive_intervention', reason: s.profile?.coach_intervention_reason || null });
+    if (s.setActiveTab('coach') === false) s.setCoachIntent(null);
+  };
+
   const save = async () => {
     if (!ready || busy) return;
     setBusy(true);
@@ -166,7 +174,16 @@ export function CheckinSheet({ initial = null, onClose, onSaved }) {
     if (!ok) { showToast('Não consegui guardar o check-in. Tenta outra vez.', 'error'); return; }
     // A confirmação é a resposta dela no cartão; o aviso só fica para quando
     // o check-in abre mesmo uma conversa — com outra já pendente, não abre.
-    if (opened) showToast('Guardado. Quero falar contigo sobre isto.');
+    // A ação leva ao chat com a origem (2026-10-05): o toast só avisava, e a
+    // conversa prometida ficava a um separador de distância. Mesmo padrão dos
+    // botões da Carol (useCarolNotices.openCoach): coachIntent primeiro,
+    // separador depois, e o intent desfaz-se se a mudança for travada.
+    if (opened) {
+      showToast('Guardado. Quero falar contigo sobre isto.', {
+        type: 'coach',
+        action: { label: 'Falar com a Carol', onClick: falarComACarol },
+      });
+    }
     onSaved?.();
     onClose();
   };

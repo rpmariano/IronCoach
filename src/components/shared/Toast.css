@@ -99,6 +99,48 @@
   -webkit-backdrop-filter: blur(12px);
 }
 
+/* Aviso com ação (2026-10-05): o texto à esquerda dispensa, o botão à direita
+   executa. Ambos com alvo de 44 px. */
+.toast-has-action { cursor: default; padding: 4px 6px 4px 20px; }
+.toast-dismiss {
+  min-height: 44px;
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.toast-action {
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 16px;
+  border-radius: 9999px;
+  border: none;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.22);
+  color: inherit;
+}
+
+/* Tom da Carol: fundo de vidro escuro e o botão no gradiente dela, como os
+   outros botões "Falar com a Carol" (CarolActions). Sem o ✓ do sucesso. */
+.toast-coach {
+  background: var(--bg-sheet);
+  color: var(--text-1);
+  border: 1px solid var(--tint-coach-bd);
+}
+.toast-coach .toast-action {
+  background: var(--grad-coach-legible);
+  color: var(--coach-ink);
+}
+
 .toast-success {
   background: var(--ok);
   color: var(--ok-ink);
