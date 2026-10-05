@@ -18,9 +18,16 @@ export const METRIC_CONFIGS = {
   total_steps: { label: 'Passos Totais', icon: <Footprints className="w-4 h-4 text-[var(--run)]" /> },
 };
 
+/* Numa caminhada, "da Corrida" no rótulo estava errado. */
+const WALK_LABELS = {
+  distance_km: 'Distância da Caminhada (km)',
+  duration_seconds: 'Duração Total da Caminhada',
+};
+
 /* Uma linha por métrica em falta — o que o painel sempre mostrou. */
-function LinhaMetrica({ chave }) {
-  const cfg = METRIC_CONFIGS[chave] || { label: chave, icon: <Sparkles className="w-4 h-4 text-[var(--text-3)]" /> };
+function LinhaMetrica({ chave, walk = false }) {
+  const base = METRIC_CONFIGS[chave] || { label: chave, icon: <Sparkles className="w-4 h-4 text-[var(--text-3)]" /> };
+  const cfg = walk && WALK_LABELS[chave] ? { ...base, label: WALK_LABELS[chave] } : base;
   return (
     <div className="flex items-center gap-2.5 bg-[var(--surface-soft)] rounded-xl px-3 py-2.5 text-xs font-medium text-[var(--text-2)] border border-[var(--border-faint)]">
       {cfg.icon}
@@ -33,6 +40,7 @@ export default function MissingMetricsBottomSheet({
   isOpen,
   missingKeys = [],
   sourceApp = null,
+  walk = false,
   onAddPhotos,
   onGoManual,
   onProceedAnyway,
@@ -85,7 +93,7 @@ export default function MissingMetricsBottomSheet({
                         )}
                       </p>
                       <div className="space-y-1.5">
-                        {grupo.chaves.map((key) => <LinhaMetrica key={key} chave={key} />)}
+                        {grupo.chaves.map((key) => <LinhaMetrica key={key} chave={key} walk={walk} />)}
                       </div>
                     </div>
                   ))}
@@ -95,7 +103,7 @@ export default function MissingMetricsBottomSheet({
                    exatamente o painel de sempre — nunca se inventa o nome de
                    um ecrã de uma app que o catálogo não conhece. */
                 <div className="space-y-1.5">
-                  {missingKeys.map((key) => <LinhaMetrica key={key} chave={key} />)}
+                  {missingKeys.map((key) => <LinhaMetrica key={key} chave={key} walk={walk} />)}
                 </div>
               )}
             </div>

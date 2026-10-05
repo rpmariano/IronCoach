@@ -30,7 +30,7 @@ import PremiumModal from '../shared/PremiumModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '@formulas/runRecord.ts';
-import { WALK_TRAINING_TYPE, runMatchesPlanItem } from '@formulas/runKinds.ts';
+import { WALK_TRAINING_TYPE, isWalk, runMatchesPlanItem } from '@formulas/runKinds.ts';
 import RunTrainingTypeHelp from '../shared/RunTrainingTypeHelp';
 import Chip from '../shared/Chip';
 import DurationInput from '../shared/DurationInput';
@@ -483,7 +483,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [pendingForceReanalyze, setPendingForceReanalyze] = useState(false);
 
   // Helper para identificar métricas recomendadas em falta
-  const detectMissingRunMetrics = (detailsObj = {}, distance = null, duration = null) => {
+  /* Numa caminhada só se pede o que a Carol usa: distância, duração e FC
+     média. Cadência, biomecânica, limiares, splits e zonas são métricas de
+     corrida — pedi-las a quem está a recuperar de uma lesão era ruído. */
+  const detectMissingRunMetrics = (detailsObj = {}, distance = null, duration = null, walk = false) => {
     const missing = [];
     if (distance === null || distance === undefined || distance === '' || Number(distance) === 0) {
       missing.push('distance_km');
@@ -492,6 +495,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       missing.push('duration_seconds');
     }
     if (!detailsObj.avg_heart_rate_bpm) missing.push('avg_heart_rate_bpm');
+    if (walk) return missing;
     if (!detailsObj.cadence_spm) missing.push('cadence_spm');
     if (!detailsObj.elevation_gain_m) missing.push('elevation_gain_m');
     if (!detailsObj.sweat_loss_ml) missing.push('sweat_loss_ml');
@@ -1699,7 +1703,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       const createdRun = data.run;
       const extractedDetails = applyExtractedRun(createdRun);
 
-      const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds);
+      const missing = detectMissingRunMetrics(extractedDetails, createdRun.distance_km, createdRun.duration_seconds, isWalk(createdRun));
       if (missing.length > 0 && !userBypassedMissingSheet) {
         // A corrida JÁ está gravada: entra já no store (sair daqui não a
         // esconde até recarregar), e fica como a corrida deste ecrã.
@@ -1850,7 +1854,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       signatureChanged = originalSnapshot !== newSig || isForceReanalyze || photosChanged;
     }
 
-    const missing = detectMissingRunMetrics(details, runDistance, runDuration);
+    const missing = detectMissingRunMetrics(details, runDistance, runDuration, isWalkSelected);
     // Com prints novos/removidos não se insiste: a reanálise vai lê-los.
     const shouldNag = missing.length > 0 && !userBypassedMissingSheet && !isBypass && !photosChanged && (!runIdToEdit || signatureChanged);
 
@@ -3091,6 +3095,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         isOpen={showMissingMetricsSheet}
         missingKeys={missingKeysList}
         sourceApp={runSourceApp}
+        walk={isWalkSelected}
         onAddPhotos={() => {
           setShowMissingMetricsSheet(false);
           // Abre-se logo o seletor de ficheiros dos prints — a editar

@@ -28,6 +28,7 @@ import {
 import { clip, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
+import { isWalk, isWalkPlanItem } from "../_shared/formulas/runKinds.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
@@ -786,13 +787,13 @@ async function generateGymCoachNotes(
     : `Sem sessões anteriores de ${kindLabel.toLowerCase()} para comparar a duração, as calorias e o esforço.`;
 
   const planSection = planItems.length > 0 
-    ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'ginasio' ? `Ginásio (${i.categories?.join('/') || ''})` : i.kind}`).join("\n") +
+    ? `\nPlano de treino (últimos dias e hoje):\n` + planItems.map(i => `- ${i.planned_date}: ${i.kind === 'ginasio' ? `Ginásio (${i.categories?.join('/') || ''})` : isWalkPlanItem(i) ? 'caminhada' : i.kind}`).join("\n") +
       `\n\nAVALIAÇÃO DO PLANO: Verifica se esta sessão desvia gravemente do que estava planeado (ex: era suposto treinar peito e treinou pernas, ou ignorou os últimos dias de treino). Se o plano estiver comprometido e precisar de intervenção, marca intervention_needed=true e indica a reason. SE intervieres, o bloco "${RECORD_ANALYSIS_LABELS.next}" é ${INTERVENTION_INVITE} Não prescrevas tu um treino para o dia seguinte. O desvio vai no bloco "${RECORD_ANALYSIS_LABELS.fix}" e não substitui a análise do treino que ele fez.\n` +
       planningFrameSection(true, !!upcomingRace, upcomingRace)
     : planningFrameSection(false, !!upcomingRace, upcomingRace);
 
   const crossActivitiesSection = sameDayRuns.length > 0
-    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou corrida hoje: ` + sameDayRuns.map(r => `${r.training_type || 'Corrida'} - ${r.distance_km}km em ${Math.round(r.duration_seconds/60)}m, Esforço: ${r.effort_rpe}/10`).join('; ') + `. Tens que comentar sobre o volume duplo e a carga total/desgaste que isto causa num só dia!\n`
+    ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou corrida ou caminhada hoje: ` + sameDayRuns.map(r => `${isWalk(r) ? 'Caminhada' : (r.training_type ? `Corrida (${r.training_type})` : 'Corrida')} - ${r.distance_km}km em ${Math.round(r.duration_seconds/60)}m, Esforço: ${r.effort_rpe}/10`).join('; ') + `. Tens que comentar sobre o volume duplo e a carga total/desgaste que isto causa num só dia (uma caminhada pesa pouco: não a trates como uma corrida)!\n`
     : ``;
 
   const prompt =
@@ -941,7 +942,7 @@ async function attachGymCoachNotes(
 
     const { data: sameDayRuns } = await sb
       .from("runs")
-      .select("training_type, distance_km, duration_seconds, effort_rpe")
+      .select("kind, training_type, distance_km, duration_seconds, effort_rpe")
       .eq("user_id", userId)
       .eq("date", ctx.date);
 

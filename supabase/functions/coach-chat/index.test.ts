@@ -1192,6 +1192,13 @@ Deno.test("plano proposto aparece com aviso de não propor outro", () => {
   assertStringIncludes(ctx!, "aguarda aceitação");
 });
 
+Deno.test("caminhada do plano leva a intensidade e a duração", () => {
+  const ctx = buildPlanContext([], [makeItem("2026-08-12", "corrida", {
+    training_type: "caminhada", categories: ["leve"], target_distance_km: 4, target_duration_min: 45,
+  })], TODAY);
+  assertStringIncludes(ctx!, "2026-08-12: caminhada leve 4 km 45 min");
+});
+
 Deno.test("plano aceite em curso aparece com proibição de novo plano", () => {
   const ctx = buildPlanContext([], [makeItem("2026-08-12", "ginasio")], TODAY);
   assertStringIncludes(ctx!, "PLANO ACEITE EM CURSO");

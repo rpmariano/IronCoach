@@ -21,7 +21,7 @@ import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { missingProfileBasicsInstruction } from "../_shared/profileGaps.ts";
 import { earliestFeasibleDate, evaluateGoalHorizon, type HorizonCheck, type HorizonResult, MIN_HORIZON_DAYS } from "../_shared/formulas/goalHorizon.ts";
 import { computeCalendarWeeklyVolume } from "../_shared/formulas/weeklyVolume.ts";
-import { isWalk, runsOnly, walkTotals, walksLabel, WALK_INTENSITIES, WALK_TRAINING_TYPE } from "../_shared/formulas/runKinds.ts";
+import { isWalk, isWalkPlanItem, runsOnly, walkIntensity, walkTotals, walksLabel, WALK_INTENSITIES, WALK_TRAINING_TYPE } from "../_shared/formulas/runKinds.ts";
 import { computeTrainingDistribution } from "../_shared/formulas/trainingDistribution.ts";
 import { computeVdotTrend } from "../_shared/formulas/vdotTrend.ts";
 import { computeBestPace, type BestPaceBucket } from "../_shared/formulas/bestPace.ts";
@@ -4659,6 +4659,13 @@ export function buildRaceEventsContext(
 // deno-lint-ignore no-explicit-any
 function describeItem(i: any): string {
   if (i.kind === "corrida") {
+    // Caminhada: a intensidade (em `categories`) e a duração também contam —
+    // sem elas a Carol não sabia se a caminhada do plano era leve ou moderada.
+    if (isWalkPlanItem(i)) {
+      return [WALK_TRAINING_TYPE, walkIntensity(i),
+        i.target_distance_km ? `${i.target_distance_km} km` : null,
+        i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
+    }
     return [i.training_type || "corrida", i.target_distance_km ? `${i.target_distance_km} km` : null]
       .filter(Boolean).join(" ");
   }

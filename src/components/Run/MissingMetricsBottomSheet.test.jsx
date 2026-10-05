@@ -31,6 +31,13 @@ describe('MissingMetricsBottomSheet', () => {
     expect(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i })).toBeInTheDocument();
   });
 
+  it('numa caminhada os rótulos dizem caminhada, não corrida', () => {
+    render(<MissingMetricsBottomSheet {...defaultProps} walk missingKeys={['distance_km', 'duration_seconds']} />);
+    expect(screen.getByText('Distância da Caminhada (km)')).toBeInTheDocument();
+    expect(screen.getByText('Duração Total da Caminhada')).toBeInTheDocument();
+    expect(screen.queryByText(/da Corrida/)).toBeNull();
+  });
+
   it('chama os respetivos callbacks ao clicar nos botões', () => {
     render(<MissingMetricsBottomSheet {...defaultProps} />);
 
