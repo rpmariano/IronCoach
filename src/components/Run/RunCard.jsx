@@ -433,8 +433,12 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
             </div>
           )}
 
-          {/* Falar com a Carol se a análise indicar intervenção */}
+          {/* Falar com a Carol se a análise indicar intervenção. Não na
+              pré-visualização (hideActions) do "Registo Guardado": aí o
+              botão já está no rodapé, e este, por baixo do
+              pointer-events-none, nem respondia (bug #55, 2026-10-05). */}
           {Boolean(
+            !hideActions &&
             coachCommentary &&
             /adaptar o plano|falar com a coach|ajustarmos o teu plano|botão vermelho/i.test(coachCommentary) &&
             useAppStore.getState().dismissedInterventions[run.id] !== coachCommentary

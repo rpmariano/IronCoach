@@ -814,6 +814,11 @@ export default function Coach() {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+      // Bug #56 (2026-10-05): ao crescer, a caixa e o botão de enviar
+      // ficavam por baixo do teclado. Com interactive-widget=resizes-content
+      // (index.html) a página encolhe acima do teclado; isto traz a caixa
+      // inteira de volta à vista a cada linha nova.
+      textareaRef.current.scrollIntoView?.({ block: 'nearest' });
     }
   };
 
