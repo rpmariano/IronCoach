@@ -824,6 +824,45 @@ const MEAL_ANALYSIS_RULES = carolRecordAnalysisRules({
 
 /** Os alimentos da refeição, pelo nome e com a quantidade, para ela os poder
  *  comentar um a um — até 2026-09-25 só lhe chegavam os totais. */
+/* A referência "do costume" para este TIPO de refeição (lanche, jantar…).
+   Bug relatado em 2026-10-06: com 3 lanches anteriores (16,5 g, 1,3 g e
+   5,3 g de proteína) a Carol escreveu "a média habitual de 8 g de proteína
+   para esta refeição" — a conta estava certa, mas 3 lanches tão diferentes
+   não são um hábito, e "esta refeição" fazia crer que era a mesma refeição.
+   Agora:
+   - só há "costume" com MEAL_BASELINE_MIN refeições do tipo nos últimos
+     MEAL_BASELINE_DAYS dias; abaixo disso diz-se ao modelo que não há
+     padrão e proíbe-se falar em média/habitual;
+   - usa-se a MEDIANA (um lanche de 1 g não puxa tudo para baixo);
+   - o texto diz que é a referência do tipo, nunca desta refeição. */
+export const MEAL_BASELINE_MIN = 4;
+export const MEAL_BASELINE_DAYS = 28;
+
+function median(values: number[]): number {
+  const v = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+}
+
+export function mealTypeBaselineLine(
+  previousMeals: Array<{ date: string } & MealTotals>,
+  typeLabel: string,
+  mealDate: string,
+): string {
+  const type = typeLabel.toLowerCase();
+  const cutoff = new Date(new Date(`${mealDate}T00:00:00Z`).getTime() - MEAL_BASELINE_DAYS * 86400000)
+    .toISOString().slice(0, 10);
+  const recent = previousMeals.filter((m) => m.date >= cutoff && m.calories > 0);
+  if (recent.length < MEAL_BASELINE_MIN) {
+    return `Refeições do tipo "${type}" nos últimos ${MEAL_BASELINE_DAYS} dias: ${recent.length} — poucas para haver um padrão. ` +
+      `NÃO fales em média, "habitual", "costume" nem compares com refeições anteriores: comenta só o que estes números por si só revelam.`;
+  }
+  const med = (k: keyof MealTotals) => median(recent.map((m) => m[k])).toFixed(0);
+  return `Referência do tipo "${type}" (mediana das últimas ${recent.length} refeições deste TIPO em ${MEAL_BASELINE_DAYS} dias — ` +
+    `não é esta refeição nem a mesma comida): ${med("calories")} kcal, P ${med("protein")}g, H ${med("carbs")}g, G ${med("fat")}g. ` +
+    `Se comparares, diz "ao ${type} costumas ter…" (o teu ${type} típico), nunca "a média desta refeição".`;
+}
+
 export function formatMealItemsLine(items: Array<{ name?: string | null; quantity_grams?: number | null }> | null | undefined): string | null {
   const parts = (items || [])
     .filter((it) => typeof it?.name === "string" && it.name.trim())
@@ -884,17 +923,7 @@ async function generateMealCoachNotes(
     goals.fat_goal ? `Meta diária de gordura: ${goals.fat_goal}g` : null,
   ].filter(Boolean).join("; ");
 
-  const recent = previousMeals.slice(0, 5);
-  const avg = recent.length
-    ? recent.reduce((a, m) => ({
-        calories: a.calories + m.calories, protein: a.protein + m.protein,
-        carbs: a.carbs + m.carbs, fat: a.fat + m.fat,
-      }), { calories: 0, protein: 0, carbs: 0, fat: 0 })
-    : null;
-  const avgLine = avg && recent.length
-    ? `Média das últimas ${recent.length} refeições deste tipo: ${(avg.calories / recent.length).toFixed(0)} kcal, ` +
-      `P ${(avg.protein / recent.length).toFixed(0)}g, H ${(avg.carbs / recent.length).toFixed(0)}g, G ${(avg.fat / recent.length).toFixed(0)}g.`
-    : "Sem refeições anteriores deste tipo para comparar — comenta só o que estes números por si só revelam.";
+  const avgLine = mealTypeBaselineLine(previousMeals, typeLabel, meal.date);
 
   const restricoes = dietaryRestrictionsPromptBlock(diet.dietary_restrictions, diet.dietary_notes);
 
@@ -948,7 +977,7 @@ async function generateMealCoachNotes(
     `- Usa os números que provam o que dizes — não despejes a ficha toda.\n` +
     `- DISTINÇÃO ENTRE TREINOS FEITOS vs. PREVISTOS: NUNCA digas 'após o teu treino de X' de um treino que apenas está no plano para hoje e que ainda NÃO consta na lista de treinos REALIZADOS! Se o treino de hoje ainda não foi feito, refere-te a ele como 'o teu próximo treino de X' ou 'o treino que terás mais tarde'.\n` +
     `- CEIA / REFEIÇÕES ANTES DE DORMIR: A Ceia é uma refeição noturna tomada antes de ir dormir (mesmo que registada na madrugada). Numa Ceia, o treino do próprio dia da data ainda está por realizar mais tarde quando o atleta acordar. A Ceia foca-se no aporte proteico de absorção lenta (caseína, skyr, iogurte grego, queijo fresco) para manter a síntese proteica e regeneração muscular durante o sono.\n` +
-    `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima do habitual, diz isso.\n` +
+    `- Se a proteína desta refeição for baixa para o tipo de refeição, ou a gordura/hidratos muito acima da referência do tipo (só se ela existir acima), diz isso.\n` +
     `- Nunca tragas frases genéricas de louvor sem estarem ancoradas num alimento ou num número concreto.\n` +
     `- O bloco "Para a próxima" é uma sugestão pequena e concreta (ex.: um alimento a acrescentar/reduzir na próxima refeição do mesmo tipo; ou, se "O DIA ATÉ AGORA" disser que a ceia é a única hipótese que resta hoje, o que pôr nessa ceia)` +
     (restricoes ? `, sempre dentro das restrições alimentares do atleta indicadas acima.\n` : `.\n`) +
@@ -1057,7 +1086,9 @@ async function attachMealCoachNotes(
       .eq("meal_type", ctx.meal_type)
       .lt("date", ctx.date)
       .order("date", { ascending: false })
-      .limit(5);
+      // Até 8: a referência do tipo só existe com MEAL_BASELINE_MIN (4)
+      // nos últimos 28 dias — ver mealTypeBaselineLine.
+      .limit(8);
 
     // deno-lint-ignore no-explicit-any
     const previousMeals = (previous || []).map((m: any) => ({ date: m.date, ...totalsFromItems(m.meal_items || []) }));

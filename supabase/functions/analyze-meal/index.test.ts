@@ -2,7 +2,7 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildManualItemsPrompt, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, RESPONSE_SCHEMA } from "./index.ts";
+import { buildManualItemsPrompt, mealTypeBaselineLine, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, RESPONSE_SCHEMA } from "./index.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
   assertEquals(dietaryRestrictionsPromptBlock(null, null), "");
@@ -211,4 +211,31 @@ Deno.test("mergePhotoAndWrittenItems: um micronutriente null do modelo chega nul
   )!;
   assertEquals(merged[0].iron_mg_per_100g, null);
   assertEquals(merged[0].fiber_per_100g, 0.4);
+});
+
+// ─── mealTypeBaselineLine — referência do tipo de refeição ──────────────────
+
+const lanche = (date: string, protein: number, calories = 200) => ({ date, calories, protein, carbs: 20, fat: 5 });
+
+Deno.test("3 lanches (o caso de 2026-10-06) não fazem média: proíbe 'habitual'", () => {
+  const line = mealTypeBaselineLine([lanche("2026-09-30", 16.5), lanche("2026-09-29", 1.3), lanche("2026-09-28", 5.3)], "Lanche", "2026-10-06");
+  assertStringIncludes(line, "poucas para haver um padrão");
+  assertStringIncludes(line, "NÃO fales em média");
+  assertEquals(line.includes("P 8g"), false);
+});
+
+Deno.test("com 4+ do tipo usa a mediana e diz que é do tipo, não desta refeição", () => {
+  const line = mealTypeBaselineLine([
+    lanche("2026-10-05", 20), lanche("2026-10-04", 22), lanche("2026-10-03", 1), lanche("2026-10-02", 24),
+  ], "Lanche", "2026-10-06");
+  assertStringIncludes(line, "P 21g"); // mediana de 1, 20, 22, 24
+  assertStringIncludes(line, "não é esta refeição");
+  assertStringIncludes(line, "ao lanche costumas ter");
+});
+
+Deno.test("refeições com mais de 28 dias e vazias não contam para o padrão", () => {
+  const line = mealTypeBaselineLine([
+    lanche("2026-10-05", 20), lanche("2026-10-04", 22), lanche("2026-10-03", 0, 0), lanche("2026-08-01", 24),
+  ], "Lanche", "2026-10-06");
+  assertStringIncludes(line, "nos últimos 28 dias: 2");
 });
