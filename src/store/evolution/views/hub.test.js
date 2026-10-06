@@ -17,8 +17,8 @@ const peso = (date, kg) => ({ id: `p${n++}`, date, weight_kg: kg });
 const goal = (validFrom, kcal) => ({ valid_from: validFrom, source: 'manual', calorie_goal: kcal, protein_goal: 150, carbs_goal: 200, fat_goal: 70, water_goal_ml: 2000 });
 
 const build = (over = {}, period = { offset: 0 }, today = HOJE) => {
-  const d = { runs: [], sessions: [], meals: [], body: [], profile: {}, goalHistory: [], ...over };
-  return buildHubView([d.runs, d.sessions, d.meals, d.body, d.profile, d.goalHistory], period, today);
+  const d = { runs: [], sessions: [], meals: [], body: [], profile: {}, goalHistory: [], incomplete: [], ...over };
+  return buildHubView([d.runs, d.sessions, d.meals, d.body, d.profile, d.goalHistory, d.incomplete], period, today);
 };
 
 beforeEach(() => resetHubViewMemo());
@@ -27,9 +27,10 @@ describe('registo', () => {
   it('regista a vista "hub", com o histórico de objetivos na espera', () => {
     const def = getEvolutionViewDef('hub');
     expect(def).toBeTruthy();
-    const deps = def.deps({ runs: [1], gymSessions: [2], meals: [3], bodyAssessments: [4], profile: { a: 1 }, goalHistory: [5], waterLogs: [6] });
-    expect(deps).toEqual([[1], [2], [3], [4], { a: 1 }, [5]]);
+    const deps = def.deps({ runs: [1], gymSessions: [2], meals: [3], bodyAssessments: [4], profile: { a: 1 }, goalHistory: [5], waterLogs: [6], nutritionIncompleteDays: ['2026-10-05'] });
+    expect(deps).toEqual([[1], [2], [3], [4], { a: 1 }, [5], ['2026-10-05']]);
     expect(def.slices).toContain('goalHistory');
+    expect(def.slices).toContain('nutritionIncompleteDays');
   });
 });
 
@@ -164,6 +165,16 @@ describe('Nutrição (O1)', () => {
     expect(v.nutrition.status).toBeNull();
     expect(v.nutrition.avgKcal).toBe(2000);
     expect(v.nutrition.nDays).toBe(4);
+  });
+
+  // 2026-10-06: um dia marcado como incompleto (no Dia) sai das contas, como na Nutrição.
+  it('um dia marcado como incompleto não conta', () => {
+    const meio = [...quatro, meal('2026-10-09', 400)];
+    const v = build({ meals: meio, profile: { calorie_goal: 2000 }, incomplete: ['2026-10-09'] });
+    expect(v.nutrition.nDays).toBe(4);
+    expect(v.nutrition.daysInGoal).toBe(4);
+    expect(v.nutrition.pct).toBe(100);
+    expect(build({ meals: meio, profile: { calorie_goal: 2000 } }).nutrition.nDays).toBe(5);
   });
 
   it('com objetivo no perfil: %, estado e "X de N dias"', () => {

@@ -1704,7 +1704,7 @@ export const SLICE_ALIASES = {
      (o "Comer para treinar" desenha os dias de treino) e os dias marcados
      como incompletos (saem das contas — sem eles as barras saltavam). */
 export const EVOLUTION_TAB_SLICES = {
-  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory'],
+  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory', 'nutritionIncompleteDays'],
   corrida: ['profile', 'runs'],
   ginasio: ['gym'],
   nutricao: ['profile', 'meals', 'water', 'goalHistory', 'runs', 'nutritionIncompleteDays'],
