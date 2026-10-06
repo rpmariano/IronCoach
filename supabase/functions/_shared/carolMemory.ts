@@ -1298,6 +1298,7 @@ export async function fetchSharedMemoryBlock(
       sb.from("coach_notes").select("category, note").eq("user_id", userId)
         .order("category", { ascending: true }).order("updated_at", { ascending: false }),
       sb.from("coach_messages").select("role, content, created_at").eq("user_id", userId)
+        .eq("is_error", false)
         .order("created_at", { ascending: false }).limit(MAX_CONVERSATION_MESSAGES),
     ]);
     warn("coach_notes", e1);

@@ -336,9 +336,9 @@ async function handler(req: Request): Promise<Response> {
           sb.from("coach_proactive_log").select("key").eq("user_id", userId).in("key", keys),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).in("key", keys),
           sb.from("coach_proactive_pushes").select("key").eq("user_id", userId).eq("sent_date", today),
-          sb.from("coach_messages").select("role, created_at").eq("user_id", userId)
+          sb.from("coach_messages").select("role, created_at").eq("user_id", userId).eq("is_error", false)
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
-          sb.from("coach_messages").select("created_at").eq("user_id", userId).eq("role", "model")
+          sb.from("coach_messages").select("created_at").eq("user_id", userId).eq("role", "model").eq("is_error", false)
             .order("created_at", { ascending: false }).limit(1).maybeSingle(),
           // O que o Início mostrou ou o atleta dispensou HOJE (dia de Lisboa,
           // como grava o logImpression): a chave do candidato (P.10).

@@ -106,7 +106,7 @@ const COACH_INITIATED_FAILURE = { timeout: COACH_INITIATED_LATER_TEXT };
 // isto está a demorar" lia-se como um formulário.
 const WAITING_MESSAGES = [
   (n) => `${n ? `${n}, isto` : 'Isto'} está a levar mais tempo do que devia. Fico nisto e respondo-te aqui.`,
-  (n) => `${n ? `${n}, estou` : 'Estou'} a pensar nisto com mais tempo. Respondo-te aqui.`,
+  (n) => `${n ? `${n}, estou` : 'Estou'} a pensar nisto, preciso de mais tempo. Respondo-te aqui.`,
 ];
 
 function pickWaitingMessage(firstName) {
@@ -197,7 +197,7 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const { data, error, isTimeout, serverText } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -880,7 +880,8 @@ export default function Coach() {
       addCoachMessage({
         id: waitingId,
         role: 'assistant',
-        content: pickWaitingMessage(getFirstName(profile?.display_name))
+        content: pickWaitingMessage(getFirstName(profile?.display_name)),
+        transient: true,
       });
     }
 
@@ -916,7 +917,8 @@ export default function Coach() {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: failureText
+        content: failureText,
+        transient: true,
       });
     }
     if (!silent) setCoachLoading(false);
@@ -939,11 +941,14 @@ export default function Coach() {
   // servidor — rede, DNS) fica o genérico: nem sempre há "uma mensagem" —
   // um pedido por iniciativa dela (balanço, plano) não é escrito pelo
   // atleta, por isso o texto não presume isso.
-  const handleImmediateFailure = (message) => {
+  // `messageId`: a frase já gravada no histórico pelo coach-chat — com o id
+  // da BD não se repete ao recarregar; sem ele, só existe no ecrã.
+  const handleImmediateFailure = (message, messageId) => {
     addCoachMessage({
-      id: (Date.now() + 1).toString(),
+      id: messageId || (Date.now() + 1).toString(),
       role: 'assistant',
-      content: message || COACH_IMMEDIATE_FAILURE_TEXT
+      content: message || COACH_IMMEDIATE_FAILURE_TEXT,
+      ...(messageId ? {} : { transient: true }),
     });
     setCoachLoading(false);
   };
@@ -996,7 +1001,7 @@ export default function Coach() {
         ...(extras && typeof extras === 'object' ? extras : null),
       };
 
-      const { data, error, isTimeout, serverText } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
@@ -1008,7 +1013,7 @@ export default function Coach() {
           // não só no caso 409 busy. Sem frase — falha de rede, ou um erro
           // do gateway que só traz o texto em inglês da supabase-js — cai no
           // aviso genérico.
-          handleImmediateFailure(serverText || undefined);
+          handleImmediateFailure(serverText || undefined, serverMessageId);
         }
         return;
       }

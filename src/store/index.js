@@ -1678,6 +1678,17 @@ export function sliceReady(state, slices) {
   return (slices || []).every((name) => !!loaded[SLICE_ALIASES[name] || name]);
 }
 
+/* Os avisos da Carol que só existem no ecrã — "estou a pensar nisto…" e a
+   frase de falha sem id da BD (`transient`) — não se perdem quando a app
+   recarrega as mensagens ao voltar ao primeiro plano: antes, o aviso de
+   demora sumia e a conversa parecia parada (2026-10-06). Ficam no fim, a
+   seguir às gravadas. */
+export function keepTransientCoachMessages(fromDb, current) {
+  const saved = new Set(fromDb.map((m) => m.id));
+  const keep = (current || []).filter((m) => m?.transient && !saved.has(m.id));
+  return keep.length ? [...fromDb, ...keep] : fromDb;
+}
+
 async function runInitialLoad(set, get, userId) {
   const seq = ++loadSeq;
   // Só se limpa quando havia OUTRA conta carregada. No arranque a frio o
@@ -1717,7 +1728,7 @@ async function runInitialLoad(set, get, userId) {
     // Poucas linhas (uma por mudança de objetivos): sem paginação.
     ['goalHistory', queryGoalHistory(userId), (data) => ({ goalHistory: list(data) })],
     ['coachMessages', supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-      (data) => ({ coachMessages: list(data) })],
+      (data) => ({ coachMessages: keepTransientCoachMessages(list(data), get().coachMessages) })],
     ['raceEvents', supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
       (data) => ({ raceEvents: list(data) })],
     ['coachPlans', supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),
