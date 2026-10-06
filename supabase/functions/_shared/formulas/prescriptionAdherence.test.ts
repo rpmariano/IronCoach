@@ -179,3 +179,14 @@ Deno.test("trainingSummaryLine: sem contagens a zero e com o singular certo (bal
   assertEquals(trainingSummaryLine({ ...zero, falhado: 1, descanso_respeitado: 0, descanso_nao_respeitado: 1 }), "1 treino prescrito: 1 não feito; descanso respeitado em 0 de 1 dia");
   assertEquals(trainingSummaryLine(zero), "");
 });
+
+// 2026-10-07: "Ontem completaste 36 dos 45 minutos planeados" — no ginásio os
+// minutos do plano são estimativa, não meta.
+Deno.test("ginásio: 36 de ~45 min é cumprido; abaixo de metade é curto; nunca 'a mais'", () => {
+  const gym = { planned_date: "2026-10-06", kind: "ginasio", target_duration_min: 45 };
+  const r = evaluateTrainingItem(gym, [], [{ date: "2026-10-06", duration_seconds: 36 * 60 }]);
+  assertEquals(r.outcome, "cumprido");
+  assertEquals(r.text, "2026-10-06 · Ginásio (45 min) → fez 36 min (o plano estimava ~45 min) · cumprido");
+  assertEquals(evaluateTrainingItem(gym, [], [{ date: "2026-10-06", duration_seconds: 20 * 60 }]).outcome, "a_menos");
+  assertEquals(evaluateTrainingItem(gym, [], [{ date: "2026-10-06", duration_seconds: 90 * 60 }]).outcome, "cumprido");
+});

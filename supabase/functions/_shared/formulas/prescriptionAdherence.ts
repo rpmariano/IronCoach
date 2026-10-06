@@ -20,6 +20,19 @@ export const ADHERENCE_WINDOW_DAYS = 14;
 import { isWalkPlanItem, runMatchesPlanItem, runsOnly } from "./runKinds.ts";
 
 export const ADHERENCE_TOLERANCE = 0.15;
+/* Ginásio: os minutos do plano são uma ESTIMATIVA do tempo da sessão, não
+   uma meta — o conteúdo é que é o treino (relatado em 2026-10-07: "Ontem
+   completaste 36 dos 45 minutos planeados" num plano que só pedia 20 min de
+   bicicleta e extensora/flexora; os 45 eram a estimativa da sessão toda).
+   Só se diz que ficou curta abaixo de metade da estimativa, e nunca "a mais".
+   A mesma régua no Início (src/components/Home/dayDone.js). */
+export const GYM_SHORT_RATIO = 0.5;
+
+export function gymDurationOutcome(doneMin: number, estimateMin: number): { outcome: "cumprido" | "a_menos"; text: string } | null {
+  if (!(doneMin > 0) || !(estimateMin > 0)) return null;
+  const outcome = doneMin / estimateMin < GYM_SHORT_RATIO ? "a_menos" : "cumprido";
+  return { outcome, text: `fez ${Math.round(doneMin)} min (o plano estimava ~${Math.round(estimateMin)} min)` };
+}
 const MAX_TRAINING_LINES = 10;
 const MAX_NUTRITION_LINES = 5;
 /** Um dia com menos refeições do que isto está meio registado: não entra na
@@ -162,9 +175,10 @@ export function evaluateTrainingItem(
   const targetDur = num(item.target_duration_min);
   let outcome: TrainingOutcome = "cumprido";
   let got = durMin > 0 ? `fez ${Math.round(durMin)} min` : "fez a sessão";
-  if (targetDur > 0 && durMin > 0) {
-    outcome = ratioOutcome(durMin / targetDur);
-    got += ` (${Math.round((durMin / targetDur) * 100)}%)`;
+  const byDuration = gymDurationOutcome(durMin, targetDur);
+  if (byDuration) {
+    outcome = byDuration.outcome;
+    got = byDuration.text;
   }
   return { date, outcome, text: `${date} · ${prescription} → ${got} · ${OUTCOME_LABEL[outcome]}` };
 }

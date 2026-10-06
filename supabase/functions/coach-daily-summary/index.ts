@@ -862,6 +862,9 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     WALKS_SUMMARY_RULE +
     `Se existir "semana_passada_plano" (só à segunda-feira) e com_registo for igual a itens, abres com UMA frase de ` +
     `reconhecimento — uma só, específica — e segues. Se ficou abaixo dos 100%, não elogias a parte cumprida: dizes o que ficou por fazer, sem sermão. ` +
+    `GINÁSIO E MINUTOS: no ginásio, os minutos do plano são uma ESTIMATIVA do tempo da sessão, não uma meta — o treino é o ` +
+    `conteúdo (os exercícios, os grupos). Nunca digas "X dos Y minutos planeados" nem trates uma sessão mais curta como ` +
+    `falha; só falas do tempo se "prescrito_vs_feito" disser "abaixo do previsto". ` +
     `Lê "fase_do_plano" e calibra o tom. Se existir "prescrito_vs_feito", usa-o no balanço: um padrão (treinos a meio, ` +
     `descanso não respeitado, proteína abaixo) diz-se com o número; um dia isolado não. ` +
     `Se existir "o_que_ja_viu_na_app", não repitas como novidade nem contradigas o que já lhe disseste ao abrir a app, ` +

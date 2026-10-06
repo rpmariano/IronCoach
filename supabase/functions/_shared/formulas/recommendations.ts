@@ -15,7 +15,7 @@
 // não é plano.
 
 import { runsOnly } from "./runKinds.ts";
-import { ADHERENCE_TOLERANCE, ADHERENCE_WINDOW_DAYS, MIN_MEALS_FOR_AVERAGE, type DayMacros, type GymRow, type RunRow } from "./prescriptionAdherence.ts";
+import { ADHERENCE_TOLERANCE, ADHERENCE_WINDOW_DAYS, gymDurationOutcome, MIN_MEALS_FOR_AVERAGE, type DayMacros, type GymRow, type RunRow } from "./prescriptionAdherence.ts";
 
 export const RECOMMENDATION_KINDS = ["descanso", "corrida", "ginasio", "proteina"] as const;
 export type RecommendationKind = typeof RECOMMENDATION_KINDS[number];
@@ -198,9 +198,10 @@ export function evaluateRecommendations(
       const dayGym = gym.filter((x) => x.date === r.date);
       if (!dayGym.length) return { date: r.date, kind: r.kind, outcome: "nao_feito", text: `${head} ${OUTCOME_LABEL.nao_feito}` };
       const dur = dayGym.reduce((s, x) => s + num(x.duration_seconds), 0) / 60;
-      if (num(r.duration_min) > 0 && dur > 0) {
-        const outcome = ratioOutcome(dur / num(r.duration_min));
-        return { date: r.date, kind: r.kind, outcome, text: `${head} fez ${Math.round(dur)} min (${Math.round((dur / num(r.duration_min)) * 100)}%) · ${OUTCOME_LABEL[outcome]}` };
+      // Os minutos no ginásio são estimativa, não meta (gymDurationOutcome).
+      const byDuration = gymDurationOutcome(dur, num(r.duration_min));
+      if (byDuration) {
+        return { date: r.date, kind: r.kind, outcome: byDuration.outcome, text: `${head} ${byDuration.text} · ${OUTCOME_LABEL[byDuration.outcome]}` };
       }
       return { date: r.date, kind: r.kind, outcome: "cumprido", text: `${head} fez a sessão · ${OUTCOME_LABEL.cumprido}` };
     });

@@ -22,6 +22,7 @@
 import { formatPace } from '../../utils/run';
 import { computeSessionVolumeKg } from '@formulas/sessionVolumeKg.ts';
 import { isWalkPlanItem } from '@formulas/runKinds.ts';
+import { GYM_SHORT_RATIO } from '@formulas/prescriptionAdherence.ts';
 
 const km = (v) => String(Math.round(Number(v) * 10) / 10).replace('.', ',');
 const milhares = (n) => Math.round(n).toLocaleString('pt-PT');
@@ -87,9 +88,10 @@ function compararGrupos(pedidos, feitos) {
   return a.some((z) => b.includes(z)) ? 'igual' : 'diferente';
 }
 
-/* Abaixo de 80% da duração pedida, a sessão ficou curta: 50 min numa hora
-   ainda é a sessão da hora; 15 min já não é. */
-const GINASIO_CURTO = 0.8;
+/* Os minutos do ginásio no plano são uma estimativa da sessão, não uma meta
+   (2026-10-07): só se diz que ficou curta abaixo de metade — a mesma régua
+   da Carol (GYM_SHORT_RATIO em @formulas/prescriptionAdherence.ts). */
+const GINASIO_CURTO = GYM_SHORT_RATIO;
 
 /** Para um treino concluído: { text, verdict } — o feito e a leitura dele. */
 export function doneLine(item, { runs = [], gymSessions = [] } = {}) {
@@ -158,7 +160,7 @@ export function doneLine(item, { runs = [], gymSessions = [] } = {}) {
       return { text, verdict: `O plano pedia ${lista(item.categories)}; fizeste ${lista(s.categories)}.` };
     }
     if (temDuracao && feitoMin / alvoMin < GINASIO_CURTO) {
-      return { text, verdict: `Ficaste nos ${feitoMin} de ${Math.round(alvoMin)} min.` };
+      return { text, verdict: `Sessão curta: ${feitoMin} min de ~${Math.round(alvoMin)} estimados.` };
     }
     return { text, verdict: temDuracao || grupos === 'igual' ? 'Cumprido.' : null };
   }

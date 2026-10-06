@@ -62,7 +62,7 @@ Deno.test("evaluateRecommendations: cada tipo cruzado com o registo do dia", () 
   }, TODAY);
   assertEquals(results.map((r) => [r.date, r.outcome]), [
     ["2026-09-18", "nao_feito"],
-    ["2026-09-19", "a_menos"],
+    ["2026-09-19", "cumprido"], // ginásio: 30 de ~45 min estimados não é falha
     ["2026-09-20", "a_menos"],
     ["2026-09-21", "cumprido"],
     ["2026-09-22", "descanso_respeitado"],
@@ -70,7 +70,7 @@ Deno.test("evaluateRecommendations: cada tipo cruzado com o registo do dia", () 
   assertEquals(results[4].text, "2026-09-22 · recomendaste descanso → respeitado; no dia seguinte: sono 4/5, sem dor");
   assertStringIncludes(results[3].text, "fez 32 min (107%) · cumprido");
   assertStringIncludes(results[2].text, "comeu 95 g (68%) · abaixo do previsto");
-  assertStringIncludes(results[1].text, "fez 30 min (67%) · abaixo do previsto");
+  assertStringIncludes(results[1].text, "fez 30 min (o plano estimava ~45 min) · cumprido");
 });
 
 Deno.test("evaluateRecommendations: descanso não respeitado, dor no dia seguinte, e proteína num dia meio registado", () => {

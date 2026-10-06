@@ -41,16 +41,19 @@ describe('doneLine', () => {
       expectCarolVoice(l.verdict);
     });
 
-    it('a zona certa mas curta: diz quanto', () => {
+    it('a zona certa mas muito curta (menos de metade da estimativa): diz quanto', () => {
       const l = doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 15 * 60 })] });
-      expect(l.verdict).toBe('Ficaste nos 15 de 60 min.');
+      expect(l.verdict).toBe('Sessão curta: 15 min de ~60 estimados.');
       expectCarolVoice(l.verdict);
     });
 
-    it('a zona certa e a duração quase toda (80% ou mais): cumprido', () => {
+    /* 2026-10-07: os minutos do plano no ginásio são estimativa, não meta —
+       36 de 45 min era "Ficaste nos 36 de 45" e a Carol cobrava os 9 min. */
+    it('a zona certa e metade da estimativa ou mais: cumprido', () => {
       expect(doneLine(ginasio(), { gymSessions: [sessao()] }).verdict).toBe('Cumprido.');
-      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 48 * 60 })] }).verdict).toBe('Cumprido.');
-      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 47 * 60 })] }).verdict).toBe('Ficaste nos 47 de 60 min.');
+      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 47 * 60 })] }).verdict).toBe('Cumprido.');
+      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 30 * 60 })] }).verdict).toBe('Cumprido.');
+      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 29 * 60 })] }).verdict).toBe('Sessão curta: 29 min de ~60 estimados.');
     });
 
     it('o «Pernas» do plano é a mesma zona que «Pernas Superiores» do registo; «Full Body» serve qualquer uma', () => {
@@ -80,8 +83,8 @@ describe('doneLine', () => {
       expect(segundos).toEqual({ text: 'Feito.', verdict: null });
       const comSeries = doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 20 })] });
       expect(comSeries).toEqual({ text: '3 séries · 360 kg levantados.', verdict: 'Cumprido.' });
-      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 2856 })] }).verdict).toBe('Cumprido.');
-      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 2820 })] }).verdict).toBe('Ficaste nos 47 de 60 min.');
+      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 1776 })] }).verdict).toBe('Cumprido.');
+      expect(doneLine(ginasio(), { gymSessions: [sessao({ duration_seconds: 1740 })] }).verdict).toBe('Sessão curta: 29 min de ~60 estimados.');
     });
 
     it('6 km de corrida contínua contra intervalos de 6 km: bate nos km, não é o treino pedido', () => {
