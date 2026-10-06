@@ -193,3 +193,20 @@ describe('AnalysisSkeleton — só compara quando há com quê', () => {
   });
 });
 
+/* Bug #49, reaberto a 2026-10-06 ("não aparece o logotipo"): a espera fica no
+   topo do formulário e o "Analisar" no fundo — o ecrã tem de subir até ela. */
+describe('AnalysisSkeleton — à vista quando começa', () => {
+  it('ao aparecer, o ecrã sobe até ao logotipo', () => {
+    window.matchMedia = () => ({ matches: false });
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      render(<AnalysisSkeleton kind="meal" />);
+      expect(spy).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
+      expect(spy.mock.contexts[0]).toBe(screen.getByTestId('analysis-skeleton'));
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});

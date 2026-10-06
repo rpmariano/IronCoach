@@ -130,6 +130,14 @@ export function AnalysisSkeleton({
   const bodyAssessments = useAppStore((s) => s.bodyAssessments);
   const steps = analysisSteps(kind, analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments }), manual);
   const step = useSteps(steps);
+  /* Bug #49, reaberto (2026-10-06, "não aparece o logotipo"): a espera fica
+     no topo do formulário, onde o resultado vai aparecer, mas o "Analisar"
+     está no fundo — o logotipo ficava fora do ecrã. Ao começar, o ecrã sobe
+     até ela. */
+  const regionRef = useRef(null);
+  useEffect(() => {
+    regionRef.current?.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  }, []);
   const line = (width, height = 12) => (
     <span
       style={{
@@ -144,6 +152,7 @@ export function AnalysisSkeleton({
 
   return (
     <div
+      ref={regionRef}
       data-testid="analysis-skeleton"
       role="status"
       aria-live="polite"
