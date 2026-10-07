@@ -3,6 +3,7 @@ import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
+import { failureReplyFor } from "./index.ts";
 import { runSetCupParticipation, runSetCupSeasonGoal, SERIES_TOOLS, SERIES_TOOL_NAMES } from "./index.ts";
 import { buildGymAnalyticsPanel, buildNutritionAnalyticsPanel, buildReadinessPanel, carolMealWindows } from "./index.ts";
 import { assertCarolVoice } from "../_shared/carolTone.ts";
@@ -4420,7 +4421,7 @@ Deno.test("closeInterventionOnTalk: um erro da base de dados não rebenta o turn
 // ── Pedido repetido (incidente 2026-09-23) ──────────────────────────────
 // O mesmo POST chegou duas vezes (a resposta perdeu-se a caminho do
 // telemóvel e o browser repetiu-o): a Carol respondia duas vezes.
-function dupSb(rows: Array<{ id: string; role: string; content: string; created_at: string }>) {
+function dupSb(rows: Array<{ id: string; role: string; content: string; created_at: string; is_error?: boolean }>) {
   return {
     from: () => {
       const f: Record<string, unknown> = {};
@@ -4432,6 +4433,7 @@ function dupSb(rows: Array<{ id: string; role: string; content: string; created_
         limit: () => chain,
         maybeSingle: () => {
           let r = rows.filter((x) => x.role === f.role);
+          if (f.is_error === false) r = r.filter((x) => !x.is_error);
           if (f.gt) r = r.filter((x) => x.created_at > (f.gt as string));
           r.sort((a, b) => (f.asc ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at)));
           return Promise.resolve({ data: r[0] ?? null });
@@ -5359,4 +5361,61 @@ Deno.test("caminhada: o ACWR do chat ignora as caminhadas", () => {
   const runs = [1, 4, 8, 11, 15, 18, 22, 25].map((n) => ({ date: day(n), distance_km: 8, kind: "treino", training_type: "continuo" }));
   const withWalks = [...runs, { date: today, distance_km: 20, kind: "treino", training_type: "caminhada" }];
   assertEquals(computeACWR(withWalks, today), computeACWR(runs, today));
+});
+
+// ── A frase de falha fica no histórico (incidente 2026-10-06) ────────────
+Deno.test("findAnsweredDuplicate: uma frase de falha gravada não conta como resposta — repetir a pergunta volta a tentar", async () => {
+  const now = Date.parse("2026-10-06T13:13:00Z");
+  const rows = [
+    { id: "u1", role: "user", content: "Não preciso de folga", created_at: "2026-10-06T13:11:06Z" },
+    { id: "m1", role: "model", content: "Não consegui responder a tempo.", created_at: "2026-10-06T13:12:46Z", is_error: true },
+  ];
+  assertEquals(await findAnsweredDuplicate(dupSb(rows), "u", "Não preciso de folga", now), null);
+});
+
+function failSb(replied: unknown[] = [], insertError: unknown = null) {
+  const inserts: Record<string, unknown>[] = [];
+  const sb = {
+    from: () => {
+      const chain = {
+        select: () => chain,
+        eq: () => chain,
+        gt: () => chain,
+        limit: () => Promise.resolve({ data: replied }),
+        insert: (row: Record<string, unknown>) => {
+          inserts.push(row);
+          return { select: () => ({ single: () => Promise.resolve(insertError ? { data: null, error: insertError } : { data: { id: "row-1", ...row }, error: null }) }) };
+        },
+      };
+      return chain;
+    },
+  };
+  return { sb, inserts };
+}
+const err504 = () => new Response(JSON.stringify({ error: "Não consegui responder a tempo. Tenta outra vez daqui a pouco." }), { status: 504, headers: { "Content-Type": "application/json" } });
+
+Deno.test("failureReplyFor: o Gemini não respondeu depois de gravada a pergunta — a frase dela fica no histórico, marcada", async () => {
+  const { sb, inserts } = failSb();
+  const res = await failureReplyFor(err504(), { sb, userId: "u", userMsgAt: "2026-10-06T13:11:06Z" });
+  assertEquals(res.status, 504);
+  assertEquals(inserts, [{ user_id: "u", role: "model", content: "Não consegui responder a tempo. Tenta outra vez daqui a pouco.", is_error: true }]);
+  const body = await res.json();
+  assertEquals(body.model_message.id, "row-1");
+  assertEquals(body.error, "Não consegui responder a tempo. Tenta outra vez daqui a pouco.");
+});
+
+Deno.test("failureReplyFor: sem pergunta gravada, com resposta já gravada, num 4xx ou se a gravação falhar — não mexe", async () => {
+  const semPergunta = failSb();
+  assertEquals((await failureReplyFor(err504(), { sb: semPergunta.sb, userId: "u", userMsgAt: null })).status, 504);
+  assertEquals(semPergunta.inserts.length, 0);
+  const jaRespondida = failSb([{ id: "m" }]);
+  await failureReplyFor(err504(), { sb: jaRespondida.sb, userId: "u", userMsgAt: "2026-10-06T13:11:06Z" });
+  assertEquals(jaRespondida.inserts.length, 0);
+  const ocupado = failSb();
+  const busy = new Response(JSON.stringify({ error: "x", busy: true }), { status: 409 });
+  assertEquals(await failureReplyFor(busy, { sb: ocupado.sb, userId: "u", userMsgAt: "t" }), busy);
+  assertEquals(ocupado.inserts.length, 0);
+  const falha = failSb([], { code: "42703", message: "column is_error does not exist" });
+  const res = await failureReplyFor(err504(), { sb: falha.sb, userId: "u", userMsgAt: "t" });
+  assertEquals((await res.json()).model_message, undefined);
 });

@@ -2,7 +2,7 @@ import React, { useCallback, useMemo } from 'react';
 import { GOAL_KEY, hasRecord } from '@formulas/nutritionPeriod.ts';
 import { addDaysISO } from '@formulas/calendarPeriod.ts';
 import NutritionChartCard, {
-  DetailRow, LegendItem, StatusIcon, StatusWord, ViewButton, enterStyle, swatch, usePeriodPick, useRovingRadios,
+  DetailRow, INCOMPLETE_READOUT, IncompleteMark, LegendItem, StatusIcon, StatusWord, ViewButton, enterStyle, swatch, usePeriodPick, useRovingRadios,
 } from './NutritionChartCard';
 import { DeltaVsPrevious, countOf } from '../BI/period';
 import { DAY_STATUS_STYLE, NUTRIENT_META } from '../../utils/nutrition';
@@ -18,6 +18,10 @@ import { dayLong, dayShort, fmtInt, isoParts, MONTHS_LONG, trainingText, WD_LETT
  *
  * ‹ › não remonta o mapa (D4, revisão de 2026-10-04): cada quadrado tem chave
  * pelo dia do mês, e o estado muda de cor numa transição de 300 ms.
+ *
+ * Um dia marcado como incompleto (2026-10-06, `state: 'incomplete'`) fica fora
+ * das contas: escolhe-se (para o "Ver dia"), mas o quadrado é neutro e
+ * tracejado, com uma marca em vez do ícone de estado — nunca a cor de um estado.
  */
 
 /* Os dias do mapa de calor medem ≥ 44 px (alvo de toque do projeto): num
@@ -37,10 +41,14 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
     return { ...d, value: v, status };
   }), [view.days, metric]);
 
-  const closedIds = useMemo(() => cells.filter((c) => c.state === 'closed').map((c) => c.date), [cells]);
+  // Os que se escolhem: os fechados e os marcados como incompletos.
+  const closedIds = useMemo(() => cells.filter((c) => c.state === 'closed' || c.state === 'incomplete').map((c) => c.date), [cells]);
+  const hasIncomplete = closedIds.length > 0 && cells.some((c) => c.state === 'incomplete');
   const fallback = useMemo(() => {
     const withData = cells.filter((c) => c.state === 'closed' && c.value != null);
     if (withData.length) return withData[withData.length - 1].date;
+    const closedOnly = cells.filter((c) => c.state === 'closed');
+    if (closedOnly.length) return closedOnly[closedOnly.length - 1].date;
     return closedIds[closedIds.length - 1] ?? null;
   }, [cells, closedIds]);
   const [picked, setPicked] = usePeriodPick(view.period.start);
@@ -65,7 +73,9 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
     detail = (
       <DetailRow action={<ViewButton onClick={() => onViewDay?.(selCell.date)}>Ver dia</ViewButton>}>
         <b style={{ color: 'var(--text-2)' }}>{dayShort(selCell.date, todayISO)}</b>
-        {selCell.value == null
+        {selCell.state === 'incomplete'
+          ? ` · ${INCOMPLETE_READOUT}`
+          : selCell.value == null
           ? ' · sem registo'
           : <>{` · ${fmtInt(selCell.value)} de ${fmtInt(g)} ${meta.unit} · ${cls.pctLabel}% · `}<StatusWord status={cls.status} /></>}
         {train ? ` · ${train}` : ''}
@@ -102,6 +112,7 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
           <LegendItem swatch={<StatusIcon status="below" />}>Abaixo</LegendItem>
           <LegendItem swatch={<StatusIcon status="above" />}>Acima</LegendItem>
           <LegendItem swatch={<StatusIcon status="none" />}>Sem registo</LegendItem>
+          {hasIncomplete && <LegendItem swatch={swatch.incomplete()}>Incompleto (fora das contas)</LegendItem>}
           <LegendItem swatch={swatch.dot()}>dia de treino</LegendItem>
         </>
       )}
@@ -137,6 +148,36 @@ export default function NutritionMonthHeatmap({ view, metric, onViewDay, todayIS
                   >
                     <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--text-1)' }}>{day}</span>
                     <span style={{ fontSize: 'var(--text-xs)', lineHeight: 1, color: 'var(--text-4)' }}>hoje</span>
+                  </button>
+                );
+              }
+              if (c.state === 'incomplete') {
+                // Marcado como incompleto: escolhe-se, mas não tem estado.
+                const checked = c.date === sel;
+                return (
+                  <button
+                    key={day}
+                    ref={roving.setRef(c.date)}
+                    type="button"
+                    role="radio"
+                    aria-checked={checked}
+                    tabIndex={checked ? 0 : -1}
+                    data-testid="month-cell"
+                    data-state="incomplete"
+                    aria-label={`${dayLong(c.date, todayISO)}: marcado como incompleto, fora das contas`}
+                    onClick={() => setPicked(c.date)}
+                    style={{
+                      ...cellBase,
+                      background: 'transparent',
+                      border: '1px dashed var(--text-4)',
+                      outline: checked ? `2px solid ${meta.color}` : undefined,
+                      outlineOffset: checked ? 1 : undefined,
+                      transition: motion.active ? CELL_TRANSITION : undefined,
+                      ...anim,
+                    }}
+                  >
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, color: 'var(--text-4)' }}>{day}</span>
+                    <IncompleteMark />
                   </button>
                 );
               }

@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
    aparecia a dizer a mesma coisa duas vezes. */
 
 vi.mock('../lib/supabase', () => ({ supabase: {}, invokeEdgeFunctionWithTimeout: vi.fn() }));
-const { useAppStore } = await import('./index');
+const { useAppStore, keepTransientCoachMessages } = await import('./index');
 
 describe('addCoachMessage — a mesma mensagem não entra duas vezes', () => {
   beforeEach(() => useAppStore.setState({ coachMessages: [] }));
@@ -22,5 +22,23 @@ describe('addCoachMessage — a mesma mensagem não entra duas vezes', () => {
     addCoachMessage({ id: 'a', role: 'user', content: 'Ok' });
     addCoachMessage({ id: 'b', role: 'user', content: 'Ok' });
     expect(useAppStore.getState().coachMessages).toHaveLength(2);
+  });
+});
+
+/* Incidente 2026-10-06: ao voltar à app, o recarregamento das mensagens
+   apagava o aviso "estou a pensar nisto…" e a frase de falha, que só existem
+   no ecrã — a conversa parecia parada. */
+describe('keepTransientCoachMessages', () => {
+  const db = [{ id: 'a', role: 'user', content: 'Não preciso de folga' }];
+  it('os avisos só do ecrã ficam, no fim; as mensagens gravadas vêm da BD', () => {
+    const atual = [
+      { id: 'local-1', role: 'user', content: 'Não preciso de folga' },
+      { id: 'waiting-1', role: 'assistant', content: 'Rui, estou a pensar nisto, preciso de mais tempo. Respondo-te aqui.', transient: true },
+    ];
+    expect(keepTransientCoachMessages(db, atual).map((m) => m.id)).toEqual(['a', 'waiting-1']);
+  });
+  it('sem avisos, a lista é a da BD; um aviso que já está gravado não se repete', () => {
+    expect(keepTransientCoachMessages(db, [{ id: 'x', role: 'assistant' }])).toBe(db);
+    expect(keepTransientCoachMessages(db, [{ id: 'a', transient: true }])).toBe(db);
   });
 });

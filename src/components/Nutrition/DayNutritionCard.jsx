@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Check, ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import GlassCard from '../shared/GlassCard';
 import VerdictLine from '../BI/VerdictLine';
@@ -52,7 +52,74 @@ const IN_PROGRESS = { label: 'Até agora', Icon: null, color: 'var(--text-4)' };
    As barras são AnimatedBar: crescem quando o separador assenta e o cartão está
    à vista, e mudar de dia com ‹ › desliza-as do valor anterior (300 ms). Um dia
    sem registo não tem barra: uma calha vazia ao lado de "Sem registo" não diz nada. */
-export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = false, plan = null, verdict = null, onPrev, onNext }) {
+/* Marcar o dia como incompleto (2026-10-06): num dia FECHADO com refeições, o
+   atleta diz que só registou parte do dia — e o dia sai das contas da
+   Evolução. `mark` vem do ecrã ({ marked, suggested }, ou null quando não se
+   pode marcar: hoje, ou sem refeições); `onToggle(incomplete)` devolve
+   { error }. A sugestão aparece quando o dia parece incompleto (menos de 40%
+   do objetivo de calorias, ou uma só refeição) e ainda não está marcado. */
+function IncompleteDayControl({ dayISO, mark, onToggle }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // Outro dia, outra conversa: o erro de ontem não fica no ecrã de hoje.
+  useEffect(() => { setFailed(false); setBusy(false); }, [dayISO]);
+  if (!mark || typeof onToggle !== 'function') return null;
+  const toggle = async (incomplete) => {
+    if (busy) return;
+    setBusy(true);
+    setFailed(false);
+    let res;
+    try { res = await onToggle(incomplete); } catch (e) { res = { error: e || true }; }
+    setBusy(false);
+    if (res?.error) setFailed(true);
+  };
+  const btn = {
+    minHeight: 'var(--tap)',
+    padding: '0 12px',
+    borderRadius: 'var(--radius-sm)',
+    background: 'var(--tint-nutrition-bg)',
+    border: '1px solid var(--tint-nutrition-bd)',
+    color: 'var(--nutrition)',
+    fontSize: 'var(--text-sm)',
+    fontWeight: 800,
+    whiteSpace: 'nowrap',
+  };
+  return (
+    <div data-testid="day-incomplete" className="mt-3 pt-3" style={{ borderTop: '1px solid rgba(255,255,255,.09)' }}>
+      {mark.marked ? (
+        <div className="flex items-center justify-between gap-3">
+          <p data-testid="day-incomplete-marked" className="text-[11px] leading-[1.5]" style={{ color: 'var(--text-3)' }}>
+            Dia marcado como incompleto — não conta nas médias da Evolução.
+          </p>
+          <button type="button" data-testid="day-incomplete-undo" onClick={() => toggle(false)} disabled={busy} className="shrink-0 disabled:opacity-50" style={btn}>
+            Anular
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-start gap-2">
+          {mark.suggested && (
+            <p data-testid="day-incomplete-suggestion" className="text-[11px] leading-[1.5]" style={{ color: 'var(--text-3)' }}>
+              Parece incompleto — falta registar alguma refeição?
+            </p>
+          )}
+          <button type="button" data-testid="day-incomplete-mark" onClick={() => toggle(true)} disabled={busy} className="disabled:opacity-50" style={btn}>
+            Marcar dia como incompleto
+          </button>
+        </div>
+      )}
+      {failed && (
+        <p data-testid="day-incomplete-error" role="alert" className="text-[11px] leading-[1.5] mt-2" style={{ color: 'var(--warn)' }}>
+          Não consegui guardar isto. Tenta outra vez daqui a pouco.
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function DayNutritionCard({
+  dayISO, todayISO, rows, estimated = false, plan = null, verdict = null, onPrev, onNext,
+  incompleteMark = null, onToggleIncomplete,
+}) {
   const bars = useBarsReveal();
   const isToday = dayISO >= todayISO;
   const hits = rows.filter((r) => r.status === 'ok').length;
@@ -112,6 +179,7 @@ export default function DayNutritionCard({ dayISO, todayISO, rows, estimated = f
           {plan.protein != null && plan.carbs != null && plan.fat != null ? ` · proteína ${plan.protein} g · hidratos ${plan.carbs} g · gordura ${plan.fat} g` : ''}.
         </p>
       )}
+      {!isToday && <IncompleteDayControl dayISO={dayISO} mark={incompleteMark} onToggle={onToggleIncomplete} />}
       {estimated && (
         <p data-testid="day-nutrition-estimated" className="text-[11px] leading-[1.5] mt-2" style={{ color: 'var(--text-4)' }}>
           Objetivos aproximados: antes de 3 de outubro a app não guardava a mudança dos objetivos, por isso estes são os mais próximos que se conhecem.

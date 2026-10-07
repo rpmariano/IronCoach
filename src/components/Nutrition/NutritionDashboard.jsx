@@ -5,7 +5,7 @@ import { useAppStore } from '../../store';
 import { addDaysISO } from '../../lib/utils';
 import { usePeriodStore } from '../../store/periodStore';
 import { useEvolutionView } from '../../store/evolution/useEvolutionView';
-import { NUTRITION_MIN_CLOSED } from '../../store/evolution/views/nutrition';
+import { INCOMPLETE_KCAL_RATIO, NUTRITION_MIN_CLOSED } from '../../store/evolution/views/nutrition';
 import { BarsEnteredContext } from '../BI/period/AnimatedBar';
 import { GOAL_KEY, micronutrientAverages } from '@formulas/nutritionPeriod.ts';
 import { mondayOf } from '@formulas/calendarPeriod.ts';
@@ -27,7 +27,7 @@ import { NUTRIENT_META, NUTRIENT_ORDER } from '../../utils/nutrition';
 import { capitalize } from '../../utils/verdicts/shared';
 import { useCalendarPeriod } from '../../utils/useCalendarPeriod';
 import { useTodayISO } from '../../utils/useTodayISO';
-import { averageHeaderText, fmtInt, incompleteDaysNote, rangeText, wherePast } from './nutritionText';
+import { averageHeaderText, fmtInt, incompleteDaysNote, markedDaysNote, rangeText, wherePast } from './nutritionText';
 
 /**
  * Nutrição na Evolução — o mock-up aprovado "Evolução · Nutrição por período"
@@ -198,10 +198,12 @@ export default function NutritionDashboard() {
   const {
     profile, meals, setOpenCreationMode, waterLogs,
     coachPlans, coachPlanItems, nutritionDayFocus, goalHistory,
+    nutritionIncompleteDays, setNutritionDayIncomplete,
   } = useAppStore(useShallow((s) => ({
     profile: s.profile, meals: s.meals,
     setOpenCreationMode: s.setOpenCreationMode, waterLogs: s.waterLogs, coachPlans: s.coachPlans,
     coachPlanItems: s.coachPlanItems, nutritionDayFocus: s.nutritionDayFocus, goalHistory: s.goalHistory,
+    nutritionIncompleteDays: s.nutritionIncompleteDays, setNutritionDayIncomplete: s.setNutritionDayIncomplete,
   })));
 
   const today = useTodayISO();
@@ -255,6 +257,24 @@ export default function NutritionDashboard() {
     };
   }, [isDay, selectedDay, today, goalHistory, profile, meals, waterLogs, coachPlans, coachPlanItems]);
 
+  /* Marcar o dia como incompleto (2026-10-06): só num dia FECHADO com
+     refeições. A sugestão "Parece incompleto" usa a mesma régua da vista do
+     período (incompleteDaysOf): menos de 40% do objetivo de calorias, ou uma
+     só refeição. */
+  const dayMark = useMemo(() => {
+    if (!dayView || selectedDay >= today) return null;
+    const nMeals = (meals || []).filter((m) => typeof m?.date === 'string' && m.date.slice(0, 10) === selectedDay).length;
+    if (nMeals === 0) return null;
+    const marked = (nutritionIncompleteDays || []).includes(selectedDay);
+    const kcal = dayView.rows.find((r) => r.key === 'calories');
+    const lowKcal = !!kcal && kcal.target > 0 && kcal.value < kcal.target * INCOMPLETE_KCAL_RATIO;
+    return { marked, suggested: !marked && (lowKcal || nMeals === 1) };
+  }, [dayView, selectedDay, today, meals, nutritionIncompleteDays]);
+  const toggleIncomplete = useCallback(
+    (incomplete) => (setNutritionDayIncomplete ? setNutritionDayIncomplete(selectedDay, incomplete) : Promise.resolve({ error: 'indisponível' })),
+    [setNutritionDayIncomplete, selectedDay],
+  );
+
   /* O veredicto da vista Dia só existe em hoje (como antes) e, como o dia ainda
      não acabou, só diz o que já vai — sem julgar a energia nem o défice
      (todayProgressVerdict). Os dias fechados não levam veredicto. */
@@ -279,6 +299,8 @@ export default function NutritionDashboard() {
             estimated={dayView.estimated}
             plan={dayView.plan}
             verdict={dayVerdict}
+            incompleteMark={dayMark}
+            onToggleIncomplete={toggleIncomplete}
             onPrev={() => setSelectedDay((d) => addDaysISO(d, -1))}
             onNext={() => setSelectedDay((d) => (d < today ? addDaysISO(d, 1) : d))}
           />
@@ -366,11 +388,14 @@ export default function NutritionDashboard() {
     v.firstPeriod && !cedo && v.summary.nDays > 0 ? firstPeriodNote(kind) : null,
     // N6: porque é que não há ▲/▼ ("Sem comparação: setembro só tem 2 dias com refeições.").
     v.compareNote,
-    // Dias com pouco registado continuam nas contas; diz-se que podem estar incompletos.
+    // Dias com pouco registado continuam nas contas até serem marcados no Dia.
     incompleteDaysNote(v.incomplete),
+    // Os marcados como incompletos (2026-10-06) já saíram — diz-se quantos.
+    markedDaysNote(v.marked),
     v.summary.approxGoals ? APPROX_GOALS_NOTE : null,
   ];
-  const pastEmpty = !v.period.isCurrent && v.summary.nDays === 0;
+  // Com dias marcados como incompletos não está vazio: os gráficos mostram-nos.
+  const pastEmpty = !v.period.isCurrent && v.summary.nDays === 0 && !(v.marked?.n > 0);
   // N8: um período anterior ao 1.º registo não é "sem refeições", é "ainda não usavas a app".
   const beforeFirst = pastEmpty && v.dataStartISO && v.dataStartISO > v.period.end;
   const pastEmptyText = beforeFirst

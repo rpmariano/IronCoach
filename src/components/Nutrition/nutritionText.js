@@ -120,17 +120,29 @@ export function weekdayCount(idx, n) {
 
 /**
  * A nota dos dias "provavelmente incompletos" (2026-10-05): continuam nas
- * contas, mas alguns podem ter refeições por registar.
- *   ({ n: 2, of: 3 }) → "2 dos 3 dias parecem ter refeições por registar."
+ * contas até o atleta os marcar no Dia — a nota diz-lhe onde (2026-10-06).
+ *   ({ n: 2 }) → "2 dias parecem incompletos — abre-os no Dia para os marcar."
+ *   ({ n: 1 }) → "1 dia parece incompleto — abre-o no Dia para o marcar."
  * Sem nenhum, ou sem dias com refeições, não há nota.
  */
 export function incompleteDaysNote(incomplete) {
   const n = incomplete?.n ?? 0;
   const of = incomplete?.of ?? 0;
   if (n <= 0 || of <= 0) return null;
-  if (of === 1) return 'O dia parece ter refeições por registar.';
-  if (n === of) return `Os ${of} dias parecem ter refeições por registar.`;
-  return `${n} dos ${of} ${n === 1 ? 'dias parece' : 'dias parecem'} ter refeições por registar.`;
+  if (n === 1) return '1 dia parece incompleto — abre-o no Dia para o marcar.';
+  return `${n} dias parecem incompletos — abre-os no Dia para os marcar.`;
+}
+
+/**
+ * Os dias que o atleta marcou como incompletos (2026-10-06) e saíram das contas.
+ *   ({ n: 1 }) → "1 dia marcado como incompleto ficou fora das contas."
+ *   ({ n: 3 }) → "3 dias marcados como incompletos ficaram fora das contas."
+ */
+export function markedDaysNote(marked) {
+  const n = marked?.n ?? 0;
+  if (n <= 0) return null;
+  if (n === 1) return '1 dia marcado como incompleto ficou fora das contas.';
+  return `${n} dias marcados como incompletos ficaram fora das contas.`;
 }
 
 /**

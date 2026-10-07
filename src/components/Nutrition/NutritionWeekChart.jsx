@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { GOAL_KEY, hasRecord } from '@formulas/nutritionPeriod.ts';
 import NutritionChartCard, {
-  DetailRow, LegendItem, StatusIcon, StatusWord, TrainingIcons, ViewButton, enterStyle, swatch, usePeriodPick, useRovingRadios,
+  DetailRow, INCOMPLETE_READOUT, IncompleteMark, LegendItem, StatusIcon, StatusWord, TrainingIcons, ViewButton, enterStyle, swatch,
+  usePeriodPick, useRovingRadios,
 } from './NutritionChartCard';
 import { DeltaVsPrevious, STATUS_LONG, nDays } from '../BI/period';
 import { NUTRIENT_META } from '../../utils/nutrition';
@@ -22,6 +23,10 @@ import { dayLong, dayShort, fmtInt, isoParts, trainingText, WD_SHORT, weekdayIdx
  * chave pela posição (seg … dom) e é sempre um <button> (desativado quando o
  * dia não se escolhe), por isso a barra é o mesmo elemento de semana para
  * semana e só muda de altura, em 300 ms.
+ *
+ * Um dia marcado como incompleto (2026-10-06, `state: 'incomplete'`) fica fora
+ * das contas: escolhe-se (para o "Ver dia"), mas a barra é ténue e tracejada e,
+ * em vez do ícone de estado, leva uma marca neutra.
  */
 
 const BAR_AREA = 160; // altura da coluna do valor + barra
@@ -48,7 +53,7 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
     return { ...d, value: v, status };
   }), [view.days, metric]);
 
-  const selectable = useMemo(() => cols.filter((c) => c.state === 'closed' || c.state === 'today').map((c) => c.date), [cols]);
+  const selectable = useMemo(() => cols.filter((c) => c.state === 'closed' || c.state === 'today' || c.state === 'incomplete').map((c) => c.date), [cols]);
   // Por omissão, o último dia fechado com registo (no mock-up, sábado).
   const fallback = useMemo(() => {
     const withData = cols.filter((c) => c.state === 'closed' && c.value != null);
@@ -63,6 +68,7 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
   const maxV = Math.max(1, ...values, goal * (meta.ceiling ? 1.15 : 1)) * 1.08;
   const px = (v) => Math.max(0, Math.round((v / maxV) * H));
   const hasToday = cols.some((c) => c.state === 'today');
+  const hasIncomplete = cols.some((c) => c.state === 'incomplete');
   const anyRun = cols.some((c) => c.training?.runs > 0);
   const anyGym = cols.some((c) => c.training?.gym > 0 || c.training?.classes > 0);
 
@@ -82,6 +88,8 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
       text = selCol.value != null
         ? <><b style={{ color: 'var(--text-2)' }}>Hoje</b>, até agora: {fmtInt(selCol.value)} de {fmtInt(g)} {meta.unit} · ainda em curso</>
         : <><b style={{ color: 'var(--text-2)' }}>Hoje</b> · ainda sem registos</>;
+    } else if (selCol.state === 'incomplete') {
+      text = <><b style={{ color: 'var(--text-2)' }}>{dayShort(selCol.date, todayISO)}</b>{` · ${INCOMPLETE_READOUT}`}</>;
     } else if (selCol.value == null) {
       text = <><b style={{ color: 'var(--text-2)' }}>{dayShort(selCol.date, todayISO)}</b> · sem registo</>;
     } else {
@@ -127,6 +135,7 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
             ? <LegendItem swatch={swatch.zone()}>Zona do objetivo (90–115%)</LegendItem>
             : <LegendItem swatch={swatch.dashLine()}>Objetivo: 90% ou mais</LegendItem>}
           {hasToday && <LegendItem swatch={swatch.today()}>Hoje, até agora</LegendItem>}
+          {hasIncomplete && <LegendItem swatch={swatch.incomplete()}>Incompleto (fora das contas)</LegendItem>}
           {anyRun && <LegendItem swatch={<TrainingIcons training={{ runs: 1 }} />}>corrida</LegendItem>}
           {anyGym && <LegendItem swatch={<TrainingIcons training={{ gym: 1 }} />}>ginásio</LegendItem>}
         </>
@@ -153,13 +162,15 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
           >
             {cols.map((c, i) => {
               const isToday = c.state === 'today';
-              const canPick = c.state === 'closed' || isToday;
+              const isIncomplete = c.state === 'incomplete';
+              const canPick = c.state === 'closed' || isToday || isIncomplete;
               const checked = canPick && c.date === sel;
               const barH = c.value != null ? px(c.value) : 0;
               const wd = isToday ? 'hoje' : WD_SHORT[weekdayIdx(c.date)];
               let aria = `${isToday ? `hoje, ${dayLong(c.date, todayISO)}` : dayLong(c.date, todayISO)}: `;
               if (c.state === 'future') aria += 'ainda não chegou';
               else if (c.state === 'before') aria += 'antes do primeiro registo';
+              else if (isIncomplete) aria += 'marcado como incompleto, fora das contas';
               else if (isToday) aria += c.value != null ? `até agora ${fmtInt(c.value)} ${meta.long}, em curso` : 'ainda sem registos, em curso';
               else if (c.value == null) aria += 'sem registo';
               else aria += `${fmtInt(c.value)} ${meta.long}, ${STATUS_LONG[c.status]}`;
@@ -170,6 +181,12 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
                     height: barH, borderRadius: '6px 6px 2px 2px', border: barH ? '1px dashed var(--text-4)' : 0,
                     background: 'repeating-linear-gradient(135deg, rgba(255,255,255,.10) 0 3px, transparent 3px 7px)',
                   }
+                : isIncomplete
+                ? {
+                    // Ténue e tracejada: está lá para se ver, não conta.
+                    height: barH, borderRadius: '6px 6px 2px 2px', background: meta.color,
+                    border: barH ? '1px dashed var(--text-3)' : 0, opacity: 0.45,
+                  }
                 : {
                     height: barH, borderRadius: '6px 6px 2px 2px', background: meta.color,
                     opacity: checked ? 1 : 0.7, boxShadow: checked ? `0 0 10px ${meta.color}` : undefined,
@@ -177,13 +194,14 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
               const body = (
                 <>
                   <span style={{ height: BAR_AREA, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <span className="tabular-nums" data-testid="week-value" style={{ height: VALUE_ROW, display: 'flex', alignItems: 'center', fontSize: 'var(--text-xs)', color: isToday || c.value == null ? 'var(--text-4)' : 'var(--text-3)' }}>
+                    <span className="tabular-nums" data-testid="week-value" style={{ height: VALUE_ROW, display: 'flex', alignItems: 'center', fontSize: 'var(--text-xs)', color: isToday || isIncomplete || c.value == null ? 'var(--text-4)' : 'var(--text-3)' }}>
                       {c.value != null ? fmtInt(c.value) : c.state === 'future' ? '' : '–'}
                     </span>
                     <span style={{ height: H, display: 'flex', alignItems: 'flex-end' }}>
                       <span
                         data-testid="week-bar"
                         data-date={c.date}
+                        data-state={c.state}
                         style={{ display: 'block', width: 24, transition: motion.active ? 'height 300ms var(--ease-out)' : undefined, ...barStyle, ...enterStyle(motion, i, cols.length) }}
                       />
                     </span>
@@ -193,6 +211,7 @@ export default function NutritionWeekChart({ view, metric, onViewDay, todayISO }
                     <span style={{ fontSize: 'var(--text-xs)', lineHeight: '15px', fontWeight: 700, color: 'var(--text-3)' }}>{isoParts(c.date)[2]}</span>
                     <span style={{ height: 15, display: 'flex', alignItems: 'center' }}>
                       {c.status && <StatusIcon status={c.status} />}
+                      {isIncomplete && <IncompleteMark />}
                     </span>
                     <span style={{ height: 15, display: 'flex', alignItems: 'center', gap: 2 }}>
                       <TrainingIcons training={c.training} />

@@ -141,7 +141,25 @@ export const swatch = {
   ),
   stub: () => <span aria-hidden="true" style={{ width: 14, height: 4, borderRadius: 2, background: 'rgba(255,255,255,.12)', flexShrink: 0 }} />,
   dot: () => <span aria-hidden="true" style={{ width: 4, height: 4, borderRadius: 99, background: 'var(--text-3)', flexShrink: 0 }} />,
+  // Dia marcado como incompleto (2026-10-06): neutro, tracejado — não é um estado.
+  incomplete: () => <IncompleteMark />,
 };
+
+/** A marca de um dia marcado como incompleto (fora das contas): um círculo
+ *  tracejado neutro no lugar do ícone de estado — nunca a cor de um estado. */
+export function IncompleteMark({ size = 9 }) {
+  return (
+    <span
+      aria-hidden="true"
+      data-testid="incomplete-mark"
+      style={{ width: size, height: size, borderRadius: 99, border: '1px dashed var(--text-4)', flexShrink: 0, display: 'inline-block' }}
+    />
+  );
+}
+
+/** "ter, 29 set · marcado como incompleto — fica fora das contas" (o texto
+ *  depois do dia, na leitura dos gráficos). */
+export const INCOMPLETE_READOUT = 'marcado como incompleto — fica fora das contas';
 
 /** "Ver dia ›" / "Ver semana ›" — 44 px, tinta do módulo. */
 export function ViewButton({ children, onClick }) {

@@ -108,6 +108,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
          (revisão pré-deploy de 2026-09-25). `detail` é a causa técnica que o
          servidor acrescenta à frase dela, só para o log. */
       let serverText = null;
+      let serverMessageId = null;
       let detail = null;
       if (error.context && typeof error.context.json === 'function') {
         try {
@@ -115,6 +116,9 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
           if (bodyJson?.error) detailedMsg = bodyJson.error;
           if (typeof bodyJson?.error === 'string' && bodyJson.error.trim()) serverText = bodyJson.error;
           if (typeof bodyJson?.detail === 'string') detail = bodyJson.detail;
+          // A frase de falha que o coach-chat gravou no histórico: com o id
+          // dela, o recarregamento ao voltar à app não a repete.
+          if (bodyJson?.model_message?.id) serverMessageId = bodyJson.model_message.id;
           isBusy = bodyJson?.busy === true;
         } catch (_) {}
       }
@@ -132,6 +136,7 @@ export async function invokeEdgeFunctionWithTimeout(fnName, options = {}, timeou
         isTimeout: false,
         isBusy,
         serverText,
+        serverMessageId,
         status: error.context?.status ?? null,
         isNetwork: error?.name === 'FunctionsFetchError',
       };

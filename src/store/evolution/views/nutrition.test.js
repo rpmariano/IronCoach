@@ -35,17 +35,18 @@ const WATER = [
 const RUNS = [{ date: '2026-09-29', distance_km: 12 }, { date: '2026-10-01', distance_km: 8 }, { date: '2026-10-03', distance_km: 20 }];
 const GYM = [{ date: '2026-09-30', kind: 'forca' }];
 
-const deps = ({ meals = [...PREV_WEEK, ...WEEK], waterLogs = WATER, runs = RUNS, gym = GYM, body = [], profile = PROFILE, goalHistory = [] } = {}) =>
-  [meals, waterLogs, runs, gym, body, profile, goalHistory];
+const deps = ({ meals = [...PREV_WEEK, ...WEEK], waterLogs = WATER, runs = RUNS, gym = GYM, body = [], profile = PROFILE, goalHistory = [], marked = [] } = {}) =>
+  [meals, waterLogs, runs, gym, body, profile, goalHistory, marked];
 const build = (period, today = TODAY, d = deps()) => buildNutritionView(d, period, today);
 
 describe('vista da Nutrição (views/nutrition.js)', () => {
   beforeEach(() => resetNutritionViewMemo());
 
-  it('regista-se como a vista do separador nutricao, com os 7 deps', () => {
+  it('regista-se como a vista do separador nutricao, com os 8 deps (os dias marcados por último)', () => {
     const def = getEvolutionViewDef('nutricao');
     expect(def).toBeTruthy();
-    expect(def.deps({ meals: 1, waterLogs: 2, runs: 3, gymSessions: 4, bodyAssessments: 5, profile: 6, goalHistory: 7 })).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(def.deps({ meals: 1, waterLogs: 2, runs: 3, gymSessions: 4, bodyAssessments: 5, profile: 6, goalHistory: 7, nutritionIncompleteDays: 8 }))
+      .toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
   it('a vista Dia não usa a cache (é a de sempre)', () => {
@@ -339,3 +340,92 @@ describe('limiares da Nutrição (N3, N4, N6)', () => {
   });
 });
 
+
+/* 2026-10-06 — dias MARCADOS como incompletos pelo atleta: saem de todas as
+   contas; continuam no calendário (closedDays) e em `days` como 'incomplete'. */
+describe('dias marcados como incompletos', () => {
+  beforeEach(() => resetNutritionViewMemo());
+  const MARK = '2026-09-30'; // quarta desta semana: 1 960 kcal
+
+  it('saem do resumo e das linhas; em `days` ficam "incomplete" com a linha só para mostrar', () => {
+    const v = build({ kind: 'semana', offset: 0 }, TODAY, deps({ marked: [MARK] }));
+    expect(v.closedDays).toHaveLength(6); // o calendário não muda
+    expect(v.rows.map((r) => r.date)).not.toContain(MARK);
+    expect(v.summary.nDays).toBe(5);
+    expect(v.summary.byKey.calories.avg).toBe((2520 + 2180 + 2610 + 2040 + 2550) / 5);
+    expect(v.days.map((d) => d.state)).toEqual(['closed', 'closed', 'incomplete', 'closed', 'closed', 'closed', 'today']);
+    expect(v.days[2].row.values.calories).toBe(1960);
+    expect(v.marked).toEqual({ days: [MARK], n: 1 });
+    expect(v.earlyState).toBe('ok');
+  });
+
+  it('sem marcas, `marked` vem vazio e nada muda', () => {
+    const a = build({ kind: 'semana', offset: 0 });
+    const b = build({ kind: 'semana', offset: 0 }, TODAY, deps({ marked: [] }));
+    expect(a.marked).toEqual({ days: [], n: 0 });
+    expect(b.summary).toEqual(a.summary);
+  });
+
+  it('hoje, o futuro e dias antes do período não contam como marcados', () => {
+    const v = build({ kind: 'semana', offset: 0 }, TODAY, deps({ marked: [TODAY, '2026-10-10', '2026-01-01'] }));
+    expect(v.marked.n).toBe(0);
+    expect(v.days[6].state).toBe('today');
+    expect(v.summary.nDays).toBe(6);
+  });
+
+  it('saem da comparação, dos dois lados (o período anterior equivalente também)', () => {
+    const v = build({ kind: 'semana', offset: 0 }, TODAY, deps({ marked: [MARK, '2026-09-24'] }));
+    expect(v.compare.both.cur.n).toBe(5);
+    expect(v.compare.both.prev.n).toBe(5);
+    // 21–26 set sem o 24 (2 000): 2 400 ×3 + 2 000 ×2.
+    expect(v.compare.byKey.calories.prevAvg).toBe((2400 * 3 + 2000 * 2) / 5);
+    expect(v.compare.both.sameN).toBe(true);
+  });
+
+  it('saem das sugestões de dias provavelmente incompletos', () => {
+    const m = (date, kcal) => ({ id: `${date}-${kcal}`, date, meal_items: [{ calories: kcal, protein: 100, carbs: 200, fat: 60 }] });
+    const meals = [m('2026-10-01', 1200), m('2026-10-01', 1200), m('2026-10-02', 1900), m('2026-10-03', 500), m('2026-10-03', 400)];
+    const v = build({ kind: 'mes', offset: 0 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [], marked: ['2026-10-02'] }));
+    expect(v.incomplete).toEqual({ days: ['2026-10-03'], n: 1, of: 2 });
+    expect(v.summary.nDays).toBe(2);
+    expect(v.recordedRange).toEqual({ first: '2026-10-01', last: '2026-10-03' });
+    expect(v.days.find((d) => d.date === '2026-10-02').state).toBe('incomplete');
+  });
+
+  it('saem de Comer para treinar, EA e micronutrientes', () => {
+    const micro = (date) => ({ id: `${date}-m`, date, meal_items: [{ calories: 2400, protein: 150, carbs: 300, fat: 80, iron_mg: 10 }] });
+    const meals = ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01', '2026-10-02', '2026-10-03'].map(micro);
+    const all = build({ kind: 'semana', offset: 0 }, TODAY, deps({ meals }));
+    const v = build({ kind: 'semana', offset: 0 }, TODAY, deps({ meals, marked: ['2026-09-29', MARK] }));
+    expect(all.eating.mealDays).toBe(6);
+    expect(v.eating.mealDays).toBe(4);
+    expect(v.eating.enough).toBe(true);
+    expect(v.micros.nDays).toBe(all.micros.nDays - 2);
+    // Os dias de treino marcados (29 set corrida, 30 set ginásio) já não entram nos "com treino".
+    expect(all.eating.withTraining.nDays).toBe(4);
+    expect(v.eating.withTraining.nDays).toBe(2);
+    expect(v.eating.withoutTraining.nDays).toBe(all.eating.withoutTraining.nDays);
+  });
+
+  it('saem das semanas e dos dias da semana (trimestre)', () => {
+    // 3.º trimestre (fechado): a última semana tem 28, 29 e 30 set.
+    const all = build({ kind: 'trimestre', offset: -1 }, TODAY, deps());
+    const v = build({ kind: 'trimestre', offset: -1 }, TODAY, deps({ marked: [MARK] }));
+    const wk = (x) => x.weeks.find((w) => w.weekStart === '2026-09-28');
+    expect(wk(all).closedDays).toBe(3);
+    expect(wk(v).closedDays).toBe(2);
+    expect(wk(v).perKey.calories.nDays).toBe(2);
+    // Quartas com registo: 23 e 30 set; sem a marcada fica uma.
+    expect(all.weekdays.calories.days[2].n).toBe(2);
+    expect(v.weekdays.calories.days[2].n).toBe(1);
+  });
+
+  it('saem do período anterior inteiro (previousData / previousFull)', () => {
+    const dayMeals = (iso) => [{ id: `${iso}-0`, date: iso, meal_items: [{ calories: 2400, protein: 150, carbs: 300, fat: 80 }] }];
+    const sept = Array.from({ length: 24 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`);
+    const meals = [...sept.flatMap(dayMeals), ...['2026-10-01', '2026-10-02', '2026-10-03'].flatMap(dayMeals)];
+    const v = build({ kind: 'mes', offset: 0 }, TODAY, deps({ meals, waterLogs: [], runs: [], gym: [], marked: ['2026-09-01', '2026-09-02'] }));
+    expect(v.previousData).toMatchObject({ name: 'setembro', mealDays: 22 });
+    expect(v.previousFull.nDays).toBe(22);
+  });
+});

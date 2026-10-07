@@ -161,7 +161,8 @@ export function sameList(a, b, budget = { n: SAME_SLICE_BUDGET }) {
  *  `raceEvents`… são linhas simples; `impressions` não é uma fatia de dados
  *  (escreve conjuntos) e fica de fora. */
 const SHARED_LIST_KEYS = ['meals', 'runs', 'gymSessions', 'bodyAssessments', 'waterLogs', 'coachMessages', 'raceEvents',
-  'coachPlans', 'coachGoalProposals', 'coachPlanItems', 'shoes', 'dailyCheckins', 'percentileSnapshots', 'leaderboardEntries', 'goalHistory'];
+  'coachPlans', 'coachGoalProposals', 'coachPlanItems', 'shoes', 'dailyCheckins', 'percentileSnapshots', 'leaderboardEntries', 'goalHistory',
+  'nutritionIncompleteDays'];
 const SHARED_ROW_KEYS = ['profile', 'dailySummary'];
 
 /** Devolve `patch` com as fatias iguais às do estado `current` trocadas pela
@@ -188,6 +189,18 @@ const queryGoalHistory = (userId) => supabase
   .order('valid_from', { ascending: true });
 const goalsDiffer = (a, b) => GOAL_KEYS.some((k) => (a?.[k] ?? null) !== (b?.[k] ?? null));
 let goalHistoryReloadSeq = 0;
+
+// ── Dias marcados como incompletos na Nutrição (2026-10-06) ─────────────
+/** Das linhas de nutrition_incomplete_days às datas 'AAAA-MM-DD', ordenadas
+ *  e sem repetidas. Exportada para os testes. */
+export function incompleteDatesOf(rows) {
+  const out = new Set();
+  for (const r of rows || []) {
+    const d = typeof r?.date === 'string' ? r.date.slice(0, 10) : null;
+    if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) out.add(d);
+  }
+  return [...out].sort();
+}
 
 // O pedido do resumo diário em curso, se houver — ver loadDailySummary.
 // Fora do estado do store porque não é coisa que a UI leia; é só a trava.
@@ -261,6 +274,11 @@ export const useAppStore = create((set, get) => ({
      quando o perfil muda de objetivos — ver reloadGoalHistory. Quem precisa do
      objetivo de um dia usa goalsResolver (utils/goalHistory.js). */
   goalHistory: [],
+  /* Dias que o atleta marcou como incompletos na Nutrição (2026-10-06):
+     'AAAA-MM-DD', da tabela nutrition_incomplete_days. Um dia marcado sai de
+     todas as contas da Evolução · Nutrição (views/nutrition.js). Lido no
+     carregamento inicial; mudado por setNutritionDayIncomplete. */
+  nutritionIncompleteDays: [],
   raceEvents: [],
   coachPlans: [],
   coachPlanItems: [],
@@ -743,6 +761,39 @@ export const useAppStore = create((set, get) => ({
     }
   },
   setPantryFoods: (pantryFoods) => set({ pantryFoods }),
+
+  /* Marca (ou desmarca) um dia como incompleto na Nutrição (2026-10-06): o
+     atleta só registou parte do dia e não quer que conte nas médias. O ecrã
+     muda logo (otimista); se a BD recusar, volta ao que estava e devolve
+     { error } para o Dia o dizer. Marcar duas vezes não é erro (a chave
+     primária já lá está: 23505 conta como feito). */
+  setNutritionDayIncomplete: async (dateISO, incomplete) => {
+    const userId = get().session?.user?.id || get().profile?.id;
+    const date = typeof dateISO === 'string' ? dateISO.slice(0, 10) : '';
+    if (!userId || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: 'sem sessão' };
+    const before = get().nutritionIncompleteDays || [];
+    const has = before.includes(date);
+    if (has === !!incomplete) return { error: null };
+    const after = incomplete ? [...before, date].sort() : before.filter((d) => d !== date);
+    set({ nutritionIncompleteDays: after });
+    let error = null;
+    try {
+      const res = incomplete
+        ? await supabase.from('nutrition_incomplete_days').insert({ user_id: userId, date })
+        : await supabase.from('nutrition_incomplete_days').delete().eq('user_id', userId).eq('date', date);
+      error = res?.error && res.error.code !== '23505' ? res.error : null;
+    } catch (e) {
+      error = e || new Error('falhou');
+    }
+    if (error) {
+      console.warn('Dia incompleto não gravado:', error?.message || error);
+      // Repõe só este dia: outra marca feita entretanto fica.
+      const now = get().nutritionIncompleteDays || [];
+      set({ nutritionIncompleteDays: has ? [...now.filter((d) => d !== date), date].sort() : now.filter((d) => d !== date) });
+      return { error };
+    }
+    return { error: null };
+  },
   setFoodRules: (foodRules) => set({ foodRules }),
 
   reloadCoachGoalProposals: async () => {
@@ -1586,6 +1637,7 @@ const sliceSeq = {}; // por fatia, o carregamento que a escreveu por último
 
 const EMPTY_DATA = {
   profile: null, isAdmin: false, meals: [], runs: [], gymSessions: [], bodyAssessments: [], waterLogs: [], goalHistory: [],
+  nutritionIncompleteDays: [],
   coachMessages: [], raceEvents: [], coachPlans: [], coachGoalProposals: [], coachPlanItems: [], shoes: [], dailyCheckins: [], dailySummary: null,
   percentileSnapshots: [], leaderboardEntries: [],
   trainingLoadedFor: null,
@@ -1649,12 +1701,13 @@ export const SLICE_ALIASES = {
      distribuição);
    - ginasio/corpo: só a sua tabela (as outras listas só contam em textos);
    - nutricao: refeições, água, objetivos (perfil + histórico) e treinos
-     (o "Comer para treinar" desenha os dias de treino). */
+     (o "Comer para treinar" desenha os dias de treino) e os dias marcados
+     como incompletos (saem das contas — sem eles as barras saltavam). */
 export const EVOLUTION_TAB_SLICES = {
-  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory'],
+  hub: ['profile', 'runs', 'gym', 'meals', 'body', 'goalHistory', 'nutritionIncompleteDays'],
   corrida: ['profile', 'runs'],
   ginasio: ['gym'],
-  nutricao: ['profile', 'meals', 'water', 'goalHistory', 'runs'],
+  nutricao: ['profile', 'meals', 'water', 'goalHistory', 'runs', 'nutritionIncompleteDays'],
   corpo: ['body'],
 };
 
@@ -1676,6 +1729,17 @@ export function sliceReady(state, slices) {
   if (!state.dataPending) return true;
   const loaded = state.loadedSlices || {};
   return (slices || []).every((name) => !!loaded[SLICE_ALIASES[name] || name]);
+}
+
+/* Os avisos da Carol que só existem no ecrã — "estou a pensar nisto…" e a
+   frase de falha sem id da BD (`transient`) — não se perdem quando a app
+   recarrega as mensagens ao voltar ao primeiro plano: antes, o aviso de
+   demora sumia e a conversa parecia parada (2026-10-06). Ficam no fim, a
+   seguir às gravadas. */
+export function keepTransientCoachMessages(fromDb, current) {
+  const saved = new Set(fromDb.map((m) => m.id));
+  const keep = (current || []).filter((m) => m?.transient && !saved.has(m.id));
+  return keep.length ? [...fromDb, ...keep] : fromDb;
 }
 
 async function runInitialLoad(set, get, userId) {
@@ -1716,8 +1780,13 @@ async function runInitialLoad(set, get, userId) {
     // Nutrição (e as vistas pré-calculadas) o terem pronto antes de entrar.
     // Poucas linhas (uma por mudança de objetivos): sem paginação.
     ['goalHistory', queryGoalHistory(userId), (data) => ({ goalHistory: list(data) })],
+    // Os dias marcados como incompletos (2026-10-06). Um erro (ex.: a tabela
+    // ainda não existe) não escreve — fica a lista que havia, vazia ao mudar
+    // de conta: sem marcas, a Nutrição conta como antes.
+    ['nutritionIncompleteDays', supabase.from('nutrition_incomplete_days').select('date').eq('user_id', userId),
+      (data) => ({ nutritionIncompleteDays: incompleteDatesOf(data) })],
     ['coachMessages', supabase.from('coach_messages').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-      (data) => ({ coachMessages: list(data) })],
+      (data) => ({ coachMessages: keepTransientCoachMessages(list(data), get().coachMessages) })],
     ['raceEvents', supabase.from('race_events').select('*').eq('user_id', userId).order('date', { ascending: true }),
       (data) => ({ raceEvents: list(data) })],
     ['coachPlans', supabase.from('coach_plans').select('*').eq('user_id', userId).order('period_start', { ascending: false }),

@@ -2515,7 +2515,7 @@ export async function findAnsweredDuplicate(sb: any, userId: string, message: st
   if (now - Date.parse(lastUser.created_at) > DUPLICATE_WINDOW_MS) return null;
   const { data: reply } = await sb.from("coach_messages")
     .select("id, role, content, created_at")
-    .eq("user_id", userId).eq("role", "model")
+    .eq("user_id", userId).eq("role", "model").eq("is_error", false)
     .gt("created_at", lastUser.created_at)
     .order("created_at", { ascending: true }).limit(1).maybeSingle();
   return reply ? { user: lastUser, model: reply } : null;
@@ -6180,7 +6180,51 @@ export function buildSystemInstruction(
   return sys;
 }
 
+/* O que o pedido gravou, para o handler saber, depois, se a mensagem do
+   atleta ficou sem resposta. */
+// deno-lint-ignore no-explicit-any
+export type ChatRun = { sb: any; userId: string | null; userMsgAt: string | null };
+
+/* Quando a Carol não consegue responder (o Gemini não respondeu a tempo, um
+   erro do servidor) depois de a mensagem do atleta já estar gravada, a frase
+   de falha dela vai também para o histórico, marcada is_error. Antes ficava só
+   no ecrã — e ao voltar à app o recarregamento apagava-a, com o aviso de
+   demora: a mensagem "desaparecia e não avançava" (2026-10-06, um plano que
+   o Gemini não respondeu em 101 s). A app, que entretanto sonda à espera,
+   encontra-a logo como resposta, em vez de esperar 3 minutos para descobrir
+   que não vem nada. Nunca rejeita: falhar a gravar deixa a resposta como
+   estava. */
+export async function failureReplyFor(res: Response, run: ChatRun): Promise<Response> {
+  if (res.status < 500 || !run.sb || !run.userId || !run.userMsgAt) return res;
+  try {
+    const body = await res.clone().json();
+    const text = typeof body?.error === "string" && body.error.trim() ? body.error.trim() : CHAT_OWN_FAILURE_TEXT;
+    // Já houve resposta gravada (por exemplo, a de depois de uma escrita)?
+    const { data: replied } = await run.sb.from("coach_messages")
+      .select("id").eq("user_id", run.userId).eq("role", "model")
+      .gt("created_at", run.userMsgAt).limit(1);
+    if (Array.isArray(replied) && replied.length) return res;
+    const { data: row, error } = await run.sb.from("coach_messages")
+      .insert({ user_id: run.userId, role: "model", content: text, is_error: true })
+      .select().single();
+    if (error || !row) {
+      if (error) console.error("coach-chat: falha a gravar a frase de falha", error.code, error.message);
+      return res;
+    }
+    return jsonResponse({ ...body, model_message: row }, res.status);
+  } catch (e) {
+    console.error("coach-chat: falha a gravar a frase de falha", e instanceof Error ? e.message : String(e));
+    return res;
+  }
+}
+
 async function handler(req: Request): Promise<Response> {
+  const run: ChatRun = { sb: null, userId: null, userMsgAt: null };
+  const res = await handleChat(req, run);
+  return await failureReplyFor(res, run);
+}
+
+async function handleChat(req: Request, run: ChatRun): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return jsonResponse({ error: "Método não suportado" }, 405);
   // O prazo do pedido inteiro (CHAT_BUDGET_MS), contado desde que chega.
@@ -6962,6 +7006,8 @@ async function handler(req: Request): Promise<Response> {
       .from("coach_messages")
       .select("role, content, created_at")
       .eq("user_id", userId)
+      // As frases de falha dela não são conversa (ver failureReplyFor).
+      .eq("is_error", false)
       .order("created_at", { ascending: false })
       .limit(MAX_HISTORY);
     // desc + reverse: as MAIS RECENTES, repostas por ordem cronológica.
@@ -7063,6 +7109,9 @@ async function handler(req: Request): Promise<Response> {
         }, 500);
       }
       userMsg = data;
+      run.sb = sb;
+      run.userId = userId;
+      run.userMsgAt = data?.created_at ?? new Date(requestStartedAt).toISOString();
     }
 
     /* O balanço da semana: o plano de segunda a domingo da semana revista,
