@@ -199,35 +199,73 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(screen.queryByText(/Não consegui responder. Tenta outra vez/)).not.toBeInTheDocument();
   });
 
-  it('INCIDENTE 2026-09-12 — o 409 "busy" do servidor mostra-se na voz da Carol, não como falha de rede', async () => {
-    // A recusa "Rui, ainda estou a acabar…" é escrita de propósito para o atleta a ler; o
-    // cliente deitava-a fora e anunciava "A tua mensagem não saiu: falha de
-    // rede" — que não houve.
-    const busyText = 'Rui, ainda estou a acabar de te responder à mensagem anterior. Manda esta outra vez daqui a um instante.';
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({
-      data: null,
-      error: busyText,
-      isTimeout: false,
-      isBusy: true,
-      // A frase veio do servidor (campo `error` do corpo): é para mostrar.
-      serverText: busyText,
-    });
-    supabase.from.mockImplementation((table) => {
-      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
-      return profilesChain({ data: null, error: null });
-    });
-    renderCoach();
+  // Incidente 2026-10-11: o 409 "busy" pedia ao atleta para mandar outra vez
+  // — e destravava o campo com a resposta anterior ainda a caminho. Agora a
+  // app espera essa resposta, mostra-a e manda a mensagem a seguir.
+  const busyText = 'Rui, ainda estou a acabar de te responder à mensagem anterior. Manda esta outra vez daqui a um instante.';
+  const busyReply = { data: null, error: busyText, isTimeout: false, isBusy: true, serverText: busyText };
 
+  it('INCIDENTE 2026-10-11 — 409 "busy": espera a resposta anterior, mostra-a e manda esta a seguir', async () => {
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce(busyReply)
+      .mockResolvedValueOnce({ data: { model_message: { id: 'r2', content: 'Agora a tua.' }, suggestions: [] }, error: null });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        return coachMessagesChain({ data: [{ id: 'r1', role: 'model', content: 'A resposta anterior.', created_at: new Date().toISOString() }], error: null });
+      }
+      return profilesChain({ data: { coach_chat_busy_since: new Date().toISOString() }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
     fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
-      await Promise.resolve();
-      await Promise.resolve();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    // Enquanto espera, diz que responde a seguir — não pede para reenviar.
+    expect(screen.getAllByTestId('coach-waiting-message').length).toBeGreaterThan(0);
+    expect(useAppStore.getState().coachMessages.at(-1).content)
+      .toBe('Ainda estou a acabar de te responder à mensagem anterior. Respondo a esta logo a seguir.');
+    expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).toBeDisabled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
+    await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+    const msgs = useAppStore.getState().coachMessages;
+    expect(msgs.map((m) => m.content)).toEqual(['Olá', 'A resposta anterior.', 'Agora a tua.']);
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[1][1].body).message).toBe('Olá');
+    expect(msgs.some((m) => m.retryText)).toBe(false);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('o 409 repete-se depois da espera: mostra a frase dela (nunca "falha de rede") e o botão Reenviar', async () => {
+    // INCIDENTE 2026-09-12: a recusa é escrita de propósito para o atleta a
+    // ler; o cliente deitava-a fora e anunciava uma falha de rede que não houve.
+    invokeEdgeFunctionWithTimeout.mockResolvedValue(busyReply);
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: { coach_chat_busy_since: null }, error: null });
     });
 
-    expect(screen.getByText(/Rui, ainda estou a acabar de te responder/)).toBeInTheDocument();
-    expect(screen.queryByText(/A tua mensagem não saiu/)).not.toBeInTheDocument();
+    vi.useFakeTimers();
+    renderCoach();
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(8200); });
+    await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+    // Uma espera e um só reenvio automático — não fica em ciclo.
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
+    const contents = useAppStore.getState().coachMessages.map((m) => m.content);
+    expect(contents).toEqual(['Olá', busyText]);
+    expect(contents).not.toContain(COACH_IMMEDIATE_FAILURE_TEXT);
     expect(useAppStore.getState().coachLoading).toBe(false);
+    expect(screen.getByTestId('coach-retry')).toBeInTheDocument();
   });
 
   it('BUG CORRIGIDO 2026-08-31 — Enter faz quebra de linha, nunca envia a pergunta; só o botão envia', () => {
@@ -525,14 +563,88 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     });
   });
 
-  it('mostra erro imediato (não o aviso de demora) e destrava logo o campo, sem sondar', async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const networkError = {
+    data: null,
+    error: 'Failed to send a request to the Edge Function',
+    isTimeout: false,
+    // FunctionsFetchError (ação P.12): a ligação falhou — antes ou depois
+    // de o pedido chegar ao servidor, não se sabe.
+    isNetwork: true,
+  };
+
+  const sendOla = async () => {
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+  };
+
+  // Incidente 2026-10-11: a rede caiu 6 s depois do envio, com a pergunta
+  // já gravada no servidor. A app disse "A rede falhou" e destravou o campo;
+  // a resposta chegou 61 s depois e só apareceu uma hora mais tarde.
+  it('INCIDENTE 2026-10-11 — a rede cai com o pedido já no servidor: espera a resposta em vez de dizer "A rede falhou"', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue(networkError);
+    let polls = 0;
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        polls += 1;
+        return coachMessagesChain(polls < 3
+          ? { data: [], error: null }
+          : { data: [{ id: 'm1', role: 'model', content: 'Cheguei atrasada.', created_at: new Date().toISOString() }], error: null });
+      }
+      return profilesChain({ data: { coach_chat_busy_since: new Date().toISOString() }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    await sendOla();
+    expect(screen.getByTestId('coach-waiting-message')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).toBeDisabled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+    const contents = useAppStore.getState().coachMessages.map((m) => m.content);
+    expect(contents).toEqual(['Olá', 'Cheguei atrasada.']);
+    expect(contents).not.toContain(COACH_IMMEDIATE_FAILURE_TEXT);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('a rede falhou e o pedido não chegou: aviso de rede em segundos, e "Reenviar" manda outra vez a mesma mensagem', async () => {
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce(networkError)
+      .mockResolvedValueOnce({ data: { model_message: { id: 'r1', content: 'Agora sim.' }, suggestions: [] }, error: null });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      // Servidor livre e sem resposta: o pedido nunca lá chegou.
+      return profilesChain({ data: { coach_chat_busy_since: null }, error: null });
+    });
+
+    vi.useFakeTimers();
+    renderCoach();
+    await sendOla();
+    await act(async () => { await vi.advanceTimersByTimeAsync(8200); });
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', COACH_IMMEDIATE_FAILURE_TEXT]);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('coach-retry'));
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[1][1].body).message).toBe('Olá');
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', COACH_IMMEDIATE_FAILURE_TEXT, 'Olá', 'Agora sim.']);
+    // Já não é a última mensagem que falhou: o botão sai.
+    expect(screen.queryByTestId('coach-retry')).not.toBeInTheDocument();
+  });
+
+  it('a frase de falha gravada pelo servidor também traz o "Reenviar", com o contexto que acompanhava a mensagem', async () => {
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
-      data: null,
-      error: 'Failed to send a request to the Edge Function',
-      isTimeout: false,
-      // O pedido nunca chegou ao servidor (ação P.12) — isNetwork:true é o
-      // que faz o Coach mostrar o aviso genérico em vez deste texto bruto.
-      isNetwork: true,
+      data: null, error: 'Não consegui responder a tempo.', isTimeout: false, isNetwork: false, status: 504,
+      serverText: 'Não consegui responder a tempo.', serverMessageId: 'e1',
     });
     supabase.from.mockImplementation((table) => {
       if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
@@ -540,21 +652,11 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     });
 
     renderCoach();
-    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Olá' } });
-    fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i }));
-
-    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain(COACH_IMMEDIATE_FAILURE_TEXT));
-    // Não é o aviso de demora (não faz sentido esperar por algo que nunca
-    // vai chegar — o pedido nunca saiu).
-    expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
-    // Campo destravado de imediato — sem os 45s+sondagem do outro caminho.
-    // O botão só fica ativo com texto por enviar (ver o mesmo padrão no
-    // teste de sondagem acima) — testa o destravar do coachLoading
-    // escrevendo de novo, não o estado "sem texto".
-    expect(useAppStore.getState().coachLoading).toBe(false);
-    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Tenta de novo' } });
-    expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).not.toBeDisabled();
-    // Sem sondagem: nenhuma leitura a coach_messages foi despoletada.
+    await sendOla();
+    await waitFor(() => expect(screen.getByTestId('coach-retry')).toBeInTheDocument());
+    const last = useAppStore.getState().coachMessages.at(-1);
+    expect(last).toMatchObject({ id: 'e1', content: 'Não consegui responder a tempo.', retryText: 'Olá' });
+    // Sem sondagem: o servidor respondeu, não há nada em curso.
     expect(supabase.from).not.toHaveBeenCalledWith('coach_messages');
   });
 
@@ -1314,6 +1416,19 @@ describe('Coach — conversas que o atleta não escreveu', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(8200); });
     return useAppStore.getState().coachMessages.map((m) => m.content);
   };
+  // A rede caiu: como num timeout, sonda-se antes de avisar (incidente
+  // 2026-10-11) — com o servidor livre e sem resposta, avisa em 8 s.
+  const redeSemResposta = async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({
+      data: null, error: 'Failed to send a request to the Edge Function', isTimeout: false, isNetwork: true, serverText: null,
+    });
+    semRespostaNaSondagem();
+    vi.useFakeTimers();
+    renderCoach();
+    await act(async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(8200); });
+    return useAppStore.getState().coachMessages.map((m) => m.content);
+  };
 
   it('"Falar com a Carol" de uma intervenção, timeout sem resposta: diz onde voltar a tocar', async () => {
     useAppStore.setState(assuntoNoInicio());
@@ -1335,13 +1450,10 @@ describe('Coach — conversas que o atleta não escreveu', () => {
 
   it('"Falar com a Carol" de uma intervenção, falha de rede: sem "responder" nem "servidor", e diz onde voltar a tocar', async () => {
     useAppStore.setState(assuntoNoInicio());
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({
-      data: null, error: 'Failed to send a request to the Edge Function', isTimeout: false, isNetwork: true, serverText: null,
-    });
-
-    renderCoach();
-    await waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
-    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual([COACH_INITIATED_NETWORK_TEXT]));
+    expect(await redeSemResposta()).toEqual([COACH_INITIATED_NETWORK_TEXT]);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+    // Não há mensagem do atleta a reenviar: o caminho é voltar ao Início.
+    expect(screen.queryByTestId('coach-retry')).not.toBeInTheDocument();
     expect(COACH_INITIATED_NETWORK_TEXT).toBe('A rede falhou. Volta a tocar em Falar com a Carol, no Início.');
   });
 
@@ -1371,11 +1483,7 @@ describe('Coach — conversas que o atleta não escreveu', () => {
       ...assuntoNoInicio(),
       coachIntent: { kind: 'proactive_intervention', recordType: 'meal', recordId: 'm1', recordName: 'Almoço', date: localISO(new Date()), reason: 'Pouca proteína.' },
     });
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({
-      data: null, error: 'Failed to send a request to the Edge Function', isTimeout: false, isNetwork: true, serverText: null,
-    });
-    renderCoach();
-    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual([COACH_IMMEDIATE_FAILURE_TEXT]));
+    expect(await redeSemResposta()).toEqual([COACH_IMMEDIATE_FAILURE_TEXT]);
   });
 
   it('o assunto já resolvido (noutro dispositivo): no Início já não há aviso, por isso não manda lá voltar', async () => {
@@ -1509,12 +1617,7 @@ describe('Coach — conversas que o atleta não escreveu', () => {
 
   it('o "Adaptar Plano" do cartão do plano não manda voltar a um "Falar com a Carol" que lá não há', async () => {
     useAppStore.setState({ coachIntent: 'adapt_plan' });
-    invokeEdgeFunctionWithTimeout.mockResolvedValue({
-      data: null, error: 'Failed to send a request to the Edge Function', isTimeout: false, isNetwork: true, serverText: null,
-    });
-
-    renderCoach();
-    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual([COACH_IMMEDIATE_FAILURE_TEXT]));
+    expect(await redeSemResposta()).toEqual([COACH_IMMEDIATE_FAILURE_TEXT]);
   });
 
   // A bolha do atleta dizia "atualiza a nota quando estivermos de acordo" —

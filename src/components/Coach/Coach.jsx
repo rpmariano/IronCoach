@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore, selectCoachHasPendingTopic } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Send, Loader2, Sparkles } from 'lucide-react';
+import { Send, Loader2, Sparkles, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
@@ -114,6 +114,12 @@ function pickWaitingMessage(firstName) {
   return variant(firstName);
 }
 
+// O aviso enquanto o servidor ainda responde à mensagem anterior (409 `busy`):
+// a frase do servidor manda "outra vez daqui a um instante", mas é a app que
+// espera e volta a mandar — por isso aqui não se pede nada ao atleta.
+export const busyWaitingMessage = (n) =>
+  `${n ? `${n}, ainda` : 'Ainda'} estou a acabar de te responder à mensagem anterior. Respondo a esta logo a seguir.`;
+
 export default function Coach() {
   const {
     coachMessages,
@@ -197,18 +203,21 @@ export default function Coach() {
     const requestStartedAt = new Date().toISOString();
 
     try {
-      const { data, error, isTimeout, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isNetwork, serverText } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
       if (error) {
         if (isTimeout) {
           await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.timeout });
+        } else if (isNetwork) {
+          // A ligação pode ter caído com o pedido já no servidor (ver
+          // handleImmediateFailure): espera-se pela resposta como num timeout.
+          await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.network || COACH_IMMEDIATE_FAILURE_TEXT });
         } else if (!silent) {
           // O servidor respondeu com uma frase dela (ação P.12): mostra-a
-          // (409 busy, 429, 5xx…). Sem frase — falha de rede, ou um erro do
-          // gateway que só traz o texto em inglês da supabase-js — cai no
-          // aviso genérico.
+          // (409 busy, 429, 5xx…). Sem frase — um erro do gateway que só traz
+          // o texto em inglês da supabase-js — cai no aviso genérico.
           handleImmediateFailure(serverText || failure?.network);
         }
         return null;
@@ -874,13 +883,17 @@ export default function Coach() {
   // chat, sem contexto nenhum (revisão de 2026-09-26). Também não mexe no
   // coachLoading, que não é dela (ver sendCoachInitiatedPayload), e uma
   // sondagem que falhe acaba calada.
-  const handleAsyncFallback = async (requestStartedAt, { silent = false, failureText = COACH_ASYNC_FALLBACK_TEXT } = {}) => {
+  // `retry`: o que o botão "Reenviar" volta a mandar (ver handleSend) — fica
+  // na bolha de falha do fim, ou na frase de falha que o servidor gravou.
+  // `chained`: há mais trabalho depois desta espera (o reenvio a seguir a um
+  // 409 `busy`) — sem bolha de falha no fim e sem destravar o campo.
+  const handleAsyncFallback = async (requestStartedAt, { silent = false, failureText = COACH_ASYNC_FALLBACK_TEXT, retry = null, waitingText = null, chained = false } = {}) => {
     const waitingId = `waiting-${Date.now()}`;
     if (!silent) {
       addCoachMessage({
         id: waitingId,
         role: 'assistant',
-        content: pickWaitingMessage(getFirstName(profile?.display_name)),
+        content: waitingText || pickWaitingMessage(getFirstName(profile?.display_name)),
         transient: true,
       });
     }
@@ -891,7 +904,10 @@ export default function Coach() {
     if (!silent) removeCoachMessage(waitingId);
 
     if (modelRow) {
-      addCoachMessage({ id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true });
+      addCoachMessage({
+        id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true,
+        ...(modelRow.is_error && retry ? retry : {}),
+      });
       // As da conversa anterior, que a silenciosa deixou ficar.
       if (silent) setCoachSuggestions([]);
       // Chegados por sondagem, não temos os flags plan_proposed/goal_proposed/
@@ -913,42 +929,46 @@ export default function Coach() {
         const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
         if (freshProfile) setProfile(freshProfile);
       }
-    } else if (!silent) {
+    } else if (!silent && !chained) {
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: failureText,
         transient: true,
+        ...(retry || {}),
       });
     }
-    if (!silent) setCoachLoading(false);
+    if (!silent && !chained) setCoachLoading(false);
+    return modelRow;
   };
 
-  // Chamado quando invokeEdgeFunctionWithTimeout falha com isTimeout=false —
-  // ou seja, o pedido nunca chegou a ser processado no servidor (falha de
-  // rede, DNS, CORS...) ou o servidor respondeu já com erro. Ao contrário de
-  // handleAsyncFallback, NÃO há nada em curso para esperar: sondar durante
-  // até 3 minutos só atrasaria uma mensagem que já sabemos de antemão que
-  // nunca vai chegar, e o aviso de "demora" (pensado para pedidos lentos mas
-  // em curso) seria enganador aqui. Informa já e liberta o campo para o
-  // atleta poder tentar de novo de imediato.
+  // Chamado quando o servidor respondeu já com erro (4xx/5xx). Ao contrário
+  // de handleAsyncFallback, NÃO há nada em curso para esperar: informa já e
+  // liberta o campo para o atleta poder tentar de novo de imediato.
+  // A falha de REDE (FunctionsFetchError) já não vem para aqui: a ligação
+  // pode cair a meio, com o pedido já no servidor. Incidente 2026-10-11: a
+  // rede caiu 6 s depois do envio, a app disse "A rede falhou" e destravou o
+  // campo, a atleta reenviou e levou o 409 `busy` — e a resposta, gravada
+  // 61 s depois, só apareceu quando voltou à app, uma hora mais tarde.
   // `message` opcional: o texto QUE ELA disse quando o servidor respondeu
   // (mesmo com erro — 409 `busy`, 502, 503...), para mostrar tal e qual em
   // vez de o esconder atrás de um aviso genérico (ação P.12: antes só o 409
   // `busy` mostrava o texto do servidor; qualquer outra resposta HTTP, por
   // exemplo "Estou com muitos pedidos. Dá-me uns minutos.", ficava presa
-  // atrás deste aviso). Sem `message` (pedido que nunca chegou ao
-  // servidor — rede, DNS) fica o genérico: nem sempre há "uma mensagem" —
+  // atrás deste aviso). Sem `message` (um erro do gateway, que não traz
+  // frase dela) fica o genérico: nem sempre há "uma mensagem" —
   // um pedido por iniciativa dela (balanço, plano) não é escrito pelo
   // atleta, por isso o texto não presume isso.
   // `messageId`: a frase já gravada no histórico pelo coach-chat — com o id
   // da BD não se repete ao recarregar; sem ele, só existe no ecrã.
-  const handleImmediateFailure = (message, messageId) => {
+  // `retry`: ver handleSend.
+  const handleImmediateFailure = (message, messageId, retry) => {
     addCoachMessage({
       id: messageId || (Date.now() + 1).toString(),
       role: 'assistant',
       content: message || COACH_IMMEDIATE_FAILURE_TEXT,
       ...(messageId ? {} : { transient: true }),
+      ...(retry || {}),
     });
     setCoachLoading(false);
   };
@@ -978,7 +998,18 @@ export default function Coach() {
     // dela acabar (silentRunRef) — e a hora do pedido conta a partir daí,
     // para a sondagem não tomar a mensagem dela pela resposta a ele.
     await afterSilentRun();
+    await sendUserMessage(text, extras, localUserId);
+  };
+
+  /* O pedido de handleSend, com a bolha do atleta já no ecrã.
+     `retry` vai em toda a bolha de falha que fecha este pedido: é o que o
+     botão "Reenviar" (no fim da conversa) volta a mandar, para o atleta não
+     ter de escrever tudo outra vez. Se a pergunta afinal já tinha resposta, o
+     servidor devolve essa (`duplicate`) em vez de responder duas vezes.
+     `afterBusy`: já é o reenvio automático a seguir a um 409 `busy`. */
+  const sendUserMessage = async (text, extras, localUserId, { afterBusy = false } = {}) => {
     const requestStartedAt = new Date().toISOString();
+    const retry = { retryText: text, ...(extras && typeof extras === 'object' ? { retryExtras: extras } : null) };
 
     try {
       // Injeta os insights biométricos ativos no payload para a Carol
@@ -1001,19 +1032,34 @@ export default function Coach() {
         ...(extras && typeof extras === 'object' ? extras : null),
       };
 
-      const { data, error, isTimeout, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
+      const { data, error, isTimeout, isNetwork, isBusy, serverText, serverMessageId } = await invokeEdgeFunctionWithTimeout('coach-chat', {
         body: JSON.stringify(payload)
       });
 
       if (error) {
-        if (isTimeout) {
-          await handleAsyncFallback(requestStartedAt);
+        if (isBusy && !afterBusy) {
+          // Ela ainda está a responder à mensagem anterior, e esta não foi
+          // gravada: espera essa resposta, mostra-a e manda esta a seguir —
+          // em vez de devolver ao atleta o "manda outra vez".
+          await handleAsyncFallback(requestStartedAt, {
+            waitingText: busyWaitingMessage(getFirstName(profile?.display_name)),
+            chained: true,
+          });
+          await sendUserMessage(text, extras, localUserId, { afterBusy: true });
+        } else if (isTimeout || isNetwork) {
+          // A rede pode ter caído com o pedido já no servidor (ver
+          // handleImmediateFailure): espera-se pela resposta como num
+          // timeout. Se ele afinal não chegou lá, o servidor não está ocupado
+          // e a sondagem desiste em segundos (waitForAsyncReply).
+          await handleAsyncFallback(requestStartedAt, {
+            failureText: isTimeout ? COACH_ASYNC_FALLBACK_TEXT : COACH_IMMEDIATE_FAILURE_TEXT,
+            retry,
+          });
         } else {
           // O servidor respondeu com uma frase dela (ação P.12): mostra-a,
-          // não só no caso 409 busy. Sem frase — falha de rede, ou um erro
-          // do gateway que só traz o texto em inglês da supabase-js — cai no
-          // aviso genérico.
-          handleImmediateFailure(serverText || undefined, serverMessageId);
+          // não só no caso 409 busy. Sem frase — um erro do gateway que só
+          // traz o texto em inglês da supabase-js — cai no aviso genérico.
+          handleImmediateFailure(serverText || undefined, serverMessageId, retry);
         }
         return;
       }
@@ -1032,6 +1078,7 @@ export default function Coach() {
         content: data?.model_message?.content || COACH_EMPTY_REPLY_TEXT,
         mood: data?.model_message?.mood,
         live: true,
+        ...(data?.model_message?.content ? null : retry),
       });
       if (Array.isArray(data?.suggestions)) {
         setCoachSuggestions(data.suggestions);
@@ -1055,9 +1102,15 @@ export default function Coach() {
       await refreshAfterTurn(data);
       setCoachLoading(false);
     } catch (err) {
-      await handleAsyncFallback(requestStartedAt);
+      await handleAsyncFallback(requestStartedAt, { retry });
     }
   };
+
+  // O botão "Reenviar": só na última bolha, e só se for uma falha a uma
+  // mensagem do atleta (`retryText`, ver sendUserMessage) — depois de outra
+  // mensagem qualquer, já não é "a última" que falhou.
+  const lastVisibleMsg = visibleMessages[visibleMessages.length - 1];
+  const retryMsg = lastVisibleMsg?.retryText ? lastVisibleMsg : null;
 
   // A cara dela no chat (CAROL.md §4). Enquanto pensa ou escreve, "a pensar";
   // depois, a emoção do que acabou de dizer — a que o modelo escolheu junto
@@ -1225,6 +1278,26 @@ export default function Coach() {
                 <span className="coach-typing-dot" style={{ animationDelay: '300ms' }} />
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Reenviar a mensagem que falhou, sem a escrever outra vez. */}
+        {!coachLoading && !typingActive && retryMsg && (
+          <div className="flex pl-11">
+            <button
+              type="button"
+              data-testid="coach-retry"
+              onClick={() => handleSend(retryMsg.retryText, retryMsg.retryExtras)}
+              className="min-h-[44px] inline-flex items-center gap-2 text-xs rounded-xl px-3.5 py-2 transition font-semibold"
+              style={{
+                color: 'var(--mod-coach-to)',
+                border: '1px solid color-mix(in srgb, var(--mod-coach-to) 30%, transparent)',
+                background: 'color-mix(in srgb, var(--mod-coach-to) 5%, transparent)'
+              }}
+            >
+              <RotateCcw size={14} aria-hidden="true" />
+              Reenviar a mensagem
+            </button>
           </div>
         )}
 
