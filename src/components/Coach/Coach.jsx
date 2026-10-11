@@ -62,6 +62,7 @@ function carolMoodOf(msg) {
   return messageMood(msg);
 }
 const POLL_MAX_MS = 180000; // cobre o pior caso de latência do coach-chat
+const OFFLINE_POLLS_MAX = 3; // voltas seguidas sem rede até desistir (ver waitForAsyncReply)
 
 // Mesma extração que firstNameOf em coach-chat/index.ts — duplicada porque
 // vive noutro runtime (cliente vs. Edge Function), não porque a lógica seja
@@ -846,11 +847,24 @@ export default function Coach() {
   // pedido que chegou tarde ao servidor ainda não o tinha reservado na
   // primeira. (Um pedido que falhou a reservar o lock corre sem ele do
   // princípio ao fim — esse caso raro continua sem cobertura.)
+  //
+  // Sem rede de todo (navigator.onLine falso em OFFLINE_POLLS_MAX voltas
+  // seguidas, ~12 s), desiste: nem o lock nem as mensagens se conseguem ler,
+  // e esperar os 3 minutos com o campo travado era pior do que avisar e
+  // deixar o "Reenviar" (revisão pré-deploy de 3a00a815). A resposta, se o
+  // servidor a gravou, aparece ao recarregar.
   const waitForAsyncReply = async (afterIso) => {
     const deadline = Date.now() + POLL_MAX_MS;
     let freeReads = 0;
+    let offlineReads = 0;
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        offlineReads += 1;
+        if (offlineReads >= OFFLINE_POLLS_MAX) return null;
+        continue;
+      }
+      offlineReads = 0;
       const { data: lock } = await supabase
         .from('profiles')
         .select('coach_chat_busy_since')
@@ -898,10 +912,15 @@ export default function Coach() {
       });
     }
 
-    const modelRow = silent
-      ? await waitForAsyncReply(requestStartedAt).catch(() => null)
-      : await waitForAsyncReply(requestStartedAt);
-    if (!silent) removeCoachMessage(waitingId);
+    // O aviso de espera sai sempre, mesmo se a sondagem lançar uma exceção.
+    let modelRow;
+    try {
+      modelRow = silent
+        ? await waitForAsyncReply(requestStartedAt).catch(() => null)
+        : await waitForAsyncReply(requestStartedAt);
+    } finally {
+      if (!silent) removeCoachMessage(waitingId);
+    }
 
     if (modelRow) {
       addCoachMessage({
@@ -1041,16 +1060,26 @@ export default function Coach() {
           // Ela ainda está a responder à mensagem anterior, e esta não foi
           // gravada: espera essa resposta, mostra-a e manda esta a seguir —
           // em vez de devolver ao atleta o "manda outra vez".
-          await handleAsyncFallback(requestStartedAt, {
-            waitingText: busyWaitingMessage(getFirstName(profile?.display_name)),
-            chained: true,
-          });
+          // Uma exceção nesta espera (a sondagem, ou recarregar planos e
+          // objetivos depois da resposta anterior) não pode engolir a
+          // mensagem dele: o reenvio sai na mesma (revisão pré-deploy de
+          // 3a00a815 — antes caía no catch de baixo e acabava sem reenvio,
+          // sem falha e sem "Reenviar").
+          try {
+            await handleAsyncFallback(requestStartedAt, {
+              waitingText: busyWaitingMessage(getFirstName(profile?.display_name)),
+              chained: true,
+            });
+          } catch (err) {
+            console.warn('[Coach] a espera depois do 409 falhou; reenvia na mesma', err);
+          }
           await sendUserMessage(text, extras, localUserId, { afterBusy: true });
         } else if (isTimeout || isNetwork) {
           // A rede pode ter caído com o pedido já no servidor (ver
           // handleImmediateFailure): espera-se pela resposta como num
           // timeout. Se ele afinal não chegou lá, o servidor não está ocupado
-          // e a sondagem desiste em segundos (waitForAsyncReply).
+          // e a sondagem desiste em segundos; sem rede nenhuma, desiste ao
+          // fim de ~12 s (waitForAsyncReply).
           await handleAsyncFallback(requestStartedAt, {
             failureText: isTimeout ? COACH_ASYNC_FALLBACK_TEXT : COACH_IMMEDIATE_FAILURE_TEXT,
             retry,

@@ -641,6 +641,48 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     expect(screen.queryByTestId('coach-retry')).not.toBeInTheDocument();
   });
 
+  it('sem rede nenhuma: não espera os 3 minutos — avisa ao fim de ~12 s, com o "Reenviar"', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue(networkError);
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: [], error: null });
+      return profilesChain({ data: null, error: { message: 'Failed to fetch' } });
+    });
+    const onLine = vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false);
+    try {
+      vi.useFakeTimers();
+      renderCoach();
+      await sendOla();
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+      expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', COACH_IMMEDIATE_FAILURE_TEXT]);
+      expect(useAppStore.getState().coachLoading).toBe(false);
+      expect(screen.getByTestId('coach-retry')).toBeInTheDocument();
+      // Offline nem se tenta ler o lock nem as mensagens.
+      expect(supabase.from).not.toHaveBeenCalled();
+    } finally {
+      onLine.mockRestore();
+    }
+  });
+
+  it('409 e a espera rebenta: a mensagem sai na mesma, e o aviso de espera não fica no ecrã', async () => {
+    const busyText = 'Ainda estou a acabar. Manda esta outra vez daqui a um instante.';
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce({ data: null, error: busyText, isTimeout: false, isBusy: true, serverText: busyText })
+      .mockResolvedValueOnce({ data: { model_message: { id: 'r2', content: 'Agora a tua.' }, suggestions: [] }, error: null });
+    supabase.from.mockImplementation(() => { throw new Error('rebentou'); });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    vi.useFakeTimers();
+    renderCoach();
+    await sendOla();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
+    await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', 'Agora a tua.']);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+    warn.mockRestore();
+  });
+
   it('a frase de falha gravada pelo servidor também traz o "Reenviar", com o contexto que acompanhava a mensagem', async () => {
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: null, error: 'Não consegui responder a tempo.', isTimeout: false, isNetwork: false, status: 504,
