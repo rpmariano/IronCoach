@@ -261,7 +261,14 @@ export default function Coach() {
       if (!silent) setCoachLoading(false);
       return data;
     } catch (err) {
-      await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.timeout });
+      // Mesma rede de segurança de sendUserMessage: a espera não pode deixar
+      // o coachLoading preso.
+      try {
+        await handleAsyncFallback(requestStartedAt, { silent, failureText: failure?.timeout });
+      } catch (fallbackErr) {
+        console.warn('[Coach] a espera pela resposta falhou', fallbackErr);
+        if (!silent) handleImmediateFailure(failure?.network);
+      }
       return null;
     }
   };
@@ -848,15 +855,29 @@ export default function Coach() {
   // primeira. (Um pedido que falhou a reservar o lock corre sem ele do
   // princípio ao fim — esse caso raro continua sem cobertura.)
   //
-  // Sem rede de todo (navigator.onLine falso em OFFLINE_POLLS_MAX voltas
-  // seguidas, ~12 s), desiste: nem o lock nem as mensagens se conseguem ler,
-  // e esperar os 3 minutos com o campo travado era pior do que avisar e
-  // deixar o "Reenviar" (revisão pré-deploy de 3a00a815). A resposta, se o
-  // servidor a gravou, aparece ao recarregar.
+  // Sem rede, desiste ao fim de OFFLINE_POLLS_MAX voltas seguidas (~12 s):
+  // esperar os 3 minutos com o campo travado era pior do que avisar e deixar
+  // o "Reenviar" (revisões pré-deploy de 3a00a815 e 82852b22). "Sem rede" é
+  // navigator.onLine falso, OU as duas leituras falharem na mesma volta — o
+  // telemóvel pode dizer que tem rede sem ter internet (Wi-Fi sem saída,
+  // portal cativo, dados sem sinal útil). Só o lock a falhar não conta: a
+  // sondagem continua (ver acima). A resposta, se o servidor a gravou,
+  // aparece ao recarregar.
+  //
+  // Nunca lança: uma leitura que rebente conta como leitura falhada — quem
+  // chama (handleAsyncFallback) tem de chegar sempre ao fim e destravar o
+  // campo.
   const waitForAsyncReply = async (afterIso) => {
     const deadline = Date.now() + POLL_MAX_MS;
     let freeReads = 0;
     let offlineReads = 0;
+    const safeRead = async (read) => {
+      try {
+        return await read();
+      } catch (err) {
+        return { data: null, error: err };
+      }
+    };
     while (Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -864,23 +885,28 @@ export default function Coach() {
         if (offlineReads >= OFFLINE_POLLS_MAX) return null;
         continue;
       }
-      offlineReads = 0;
-      const { data: lock } = await supabase
+      const { data: lock, error: lockError } = await safeRead(() => supabase
         .from('profiles')
         .select('coach_chat_busy_since')
         .eq('id', profile?.id)
-        .single();
+        .single());
       // '*' e não a lista das colunas: a `mood` pode ainda não existir na
       // base (migration por aplicar), e pedi-la pelo nome partia a sondagem.
-      const { data: rows } = await supabase
+      const { data: rows, error: rowsError } = await safeRead(() => supabase
         .from('coach_messages')
         .select('*')
         .eq('user_id', profile?.id)
         .eq('role', 'model')
         .gt('created_at', afterIso)
         .order('created_at', { ascending: true })
-        .limit(1);
+        .limit(1));
       if (rows && rows.length > 0) return rows[0];
+      if (lockError && rowsError) {
+        offlineReads += 1;
+        if (offlineReads >= OFFLINE_POLLS_MAX) return null;
+        continue;
+      }
+      offlineReads = 0;
       freeReads = lock && lock.coach_chat_busy_since === null ? freeReads + 1 : 0;
       if (freeReads >= 2) return null;
     }
@@ -933,20 +959,26 @@ export default function Coach() {
       // goals_updated do payload síncrono (nem as sugestões rápidas, que só
       // vêm nesse payload e não ficam persistidas) — por isso verificamos
       // sempre se apareceu algo pendente, em vez de confiar num flag que
-      // aqui não existe.
-      const freshPlans = await reloadCoachPlans();
-      if (freshPlans && freshPlans.length > 0) {
-        const pending = freshPlans.filter(p => p.status === 'proposto');
-        if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
-      }
-      const freshGoals = await reloadCoachGoalProposals();
-      if (freshGoals && freshGoals.length > 0) {
-        const pendingGoals = freshGoals.filter(g => g.status === 'proposto');
-        if (pendingGoals.length > 0) setActiveGoalProposal(pendingGoals[0]);
-      }
-      if (profile?.id) {
-        const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
-        if (freshProfile) setProfile(freshProfile);
+      // aqui não existe. A resposta já está no ecrã: se recarregar falhar,
+      // o que faltar entra no próximo carregamento — não é uma falha da
+      // conversa, e não pode impedir quem chama de destravar o campo.
+      try {
+        const freshPlans = await reloadCoachPlans();
+        if (freshPlans && freshPlans.length > 0) {
+          const pending = freshPlans.filter(p => p.status === 'proposto');
+          if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
+        }
+        const freshGoals = await reloadCoachGoalProposals();
+        if (freshGoals && freshGoals.length > 0) {
+          const pendingGoals = freshGoals.filter(g => g.status === 'proposto');
+          if (pendingGoals.length > 0) setActiveGoalProposal(pendingGoals[0]);
+        }
+        if (profile?.id) {
+          const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
+          if (freshProfile) setProfile(freshProfile);
+        }
+      } catch (err) {
+        console.warn('[Coach] recarregar depois da resposta falhou', err);
       }
     } else if (!silent && !chained) {
       addCoachMessage({
@@ -1131,7 +1163,15 @@ export default function Coach() {
       await refreshAfterTurn(data);
       setCoachLoading(false);
     } catch (err) {
-      await handleAsyncFallback(requestStartedAt, { retry });
+      // Se a própria espera rebentar (recarregar planos/objetivos depois de
+      // a resposta chegar), acaba aqui: com o campo destravado e o
+      // "Reenviar", nunca com o coachLoading preso.
+      try {
+        await handleAsyncFallback(requestStartedAt, { retry });
+      } catch (fallbackErr) {
+        console.warn('[Coach] a espera pela resposta falhou', fallbackErr);
+        handleImmediateFailure(undefined, undefined, retry);
+      }
     }
   };
 

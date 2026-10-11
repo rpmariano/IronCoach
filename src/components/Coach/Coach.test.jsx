@@ -230,7 +230,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
     expect(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })).toBeDisabled();
 
     await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
-    await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+    await vi.waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
 
     const msgs = useAppStore.getState().coachMessages;
     expect(msgs.map((m) => m.content)).toEqual(['Olá', 'A resposta anterior.', 'Agora a tua.']);
@@ -257,7 +257,7 @@ describe('Coach — resposta assíncrona quando o pedido síncrono falha', () =>
       for (let i = 0; i < 6; i++) await Promise.resolve();
     });
     await act(async () => { await vi.advanceTimersByTimeAsync(8200); });
-    await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+    await vi.waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
 
     // Uma espera e um só reenvio automático — não fica em ciclo.
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
@@ -632,8 +632,8 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
 
     await act(async () => {
       fireEvent.click(screen.getByTestId('coach-retry'));
-      for (let i = 0; i < 10; i++) await Promise.resolve();
     });
+    await vi.waitFor(() => expect(useAppStore.getState().coachMessages).toHaveLength(4));
     expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
     expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[1][1].body).message).toBe('Olá');
     expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', COACH_IMMEDIATE_FAILURE_TEXT, 'Olá', 'Agora sim.']);
@@ -663,24 +663,86 @@ describe('Coach — falha imediata (sem timeout, isTimeout=false)', () => {
     }
   });
 
-  it('409 e a espera rebenta: a mensagem sai na mesma, e o aviso de espera não fica no ecrã', async () => {
-    const busyText = 'Ainda estou a acabar. Manda esta outra vez daqui a um instante.';
-    invokeEdgeFunctionWithTimeout
-      .mockResolvedValueOnce({ data: null, error: busyText, isTimeout: false, isBusy: true, serverText: busyText })
-      .mockResolvedValueOnce({ data: { model_message: { id: 'r2', content: 'Agora a tua.' }, suggestions: [] }, error: null });
-    supabase.from.mockImplementation(() => { throw new Error('rebentou'); });
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  // Revisão pré-deploy de 82852b22: o telemóvel pode dizer que tem rede
+  // (navigator.onLine) sem ter internet — Wi-Fi sem saída, portal cativo.
+  it('"online" mas sem internet (as duas leituras falham): também avisa ao fim de ~12 s, com o "Reenviar"', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue(networkError);
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') return coachMessagesChain({ data: null, error: { message: 'Failed to fetch' } });
+      return profilesChain({ data: null, error: { message: 'Failed to fetch' } });
+    });
 
     vi.useFakeTimers();
     renderCoach();
     await sendOla();
-    await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
-    await act(async () => { for (let i = 0; i < 10; i++) await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+    await vi.waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', COACH_IMMEDIATE_FAILURE_TEXT]);
+    expect(screen.getByTestId('coach-retry')).toBeInTheDocument();
+  });
 
-    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
-    expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', 'Agora a tua.']);
-    expect(useAppStore.getState().coachLoading).toBe(false);
-    warn.mockRestore();
+  it('a sondagem que rebenta (exceção, não erro devolvido) conta como leitura falhada: avisa e destrava', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue(networkError);
+    supabase.from.mockImplementation(() => { throw new Error('rebentou'); });
+
+    vi.useFakeTimers();
+    renderCoach();
+    await sendOla();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+    await vi.waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', COACH_IMMEDIATE_FAILURE_TEXT]);
+    expect(screen.queryByTestId('coach-waiting-message')).not.toBeInTheDocument();
+  });
+
+  it('409 e recarregar depois da resposta anterior rebenta: a mensagem sai na mesma', async () => {
+    const busyText = 'Ainda estou a acabar. Manda esta outra vez daqui a um instante.';
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce({ data: null, error: busyText, isTimeout: false, isBusy: true, serverText: busyText })
+      .mockResolvedValueOnce({ data: { model_message: { id: 'r2', content: 'Agora a tua.' }, suggestions: [] }, error: null });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        return coachMessagesChain({ data: [{ id: 'r1', role: 'model', content: 'A resposta anterior.', created_at: new Date().toISOString() }], error: null });
+      }
+      return profilesChain({ data: { coach_chat_busy_since: new Date().toISOString() }, error: null });
+    });
+    useAppStore.setState({ reloadCoachPlans: vi.fn().mockRejectedValue(new Error('rebentou')) });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      vi.useFakeTimers();
+      renderCoach();
+      await sendOla();
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
+      await vi.waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+      expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
+      expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', 'A resposta anterior.', 'Agora a tua.']);
+      expect(screen.queryByTestId('coach-retry')).not.toBeInTheDocument();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('timeout com a resposta a chegar e recarregar a rebentar: a resposta fica, sem bolha de falha, e o campo destrava', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => {
+      if (table === 'coach_messages') {
+        return coachMessagesChain({ data: [{ id: 'm1', role: 'model', content: 'Cheguei.', created_at: new Date().toISOString() }], error: null });
+      }
+      return profilesChain({ data: { coach_chat_busy_since: new Date().toISOString() }, error: null });
+    });
+    useAppStore.setState({ reloadCoachGoalProposals: vi.fn().mockRejectedValue(new Error('rebentou')) });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    try {
+      vi.useFakeTimers();
+      renderCoach();
+      await sendOla();
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100); });
+      await vi.waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+      expect(useAppStore.getState().coachMessages.map((m) => m.content)).toEqual(['Olá', 'Cheguei.']);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('a frase de falha gravada pelo servidor também traz o "Reenviar", com o contexto que acompanhava a mensagem', async () => {
