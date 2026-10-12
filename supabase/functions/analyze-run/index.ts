@@ -40,6 +40,8 @@ import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_share
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_BUSY_BACKOFF_MS,
+  GEMINI_HEDGE_AFTER_MS,
   GEMINI_RETRYABLE_STATUSES,
   geminiBusyMessage,
   hasTimeFor,
@@ -258,7 +260,9 @@ function fetchGeminiWithTimeout(
   retries = GEMINI_RETRIES,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  return fetchGemini(url, options, timeoutMs, retries, deadline);
+  // Sem resposta em GEMINI_HEDGE_AFTER_MS, pede outra vez em paralelo
+  // (_shared/geminiFetch.ts, incidente 2026-10-12).
+  return fetchGemini(url, options, timeoutMs, retries, deadline, GEMINI_BUSY_BACKOFF_MS, GEMINI_HEDGE_AFTER_MS);
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

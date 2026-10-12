@@ -30,6 +30,8 @@ import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMem
 import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
+  GEMINI_BUSY_BACKOFF_MS,
+  GEMINI_HEDGE_AFTER_MS,
   GEMINI_RETRYABLE_STATUSES,
   geminiBusyMessage,
   hasTimeFor,
@@ -135,7 +137,9 @@ function fetchGeminiWithTimeout(
   retries = GEMINI_RETRIES,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
-  return fetchGemini(url, options, timeoutMs, retries, deadline);
+  // Sem resposta em GEMINI_HEDGE_AFTER_MS, pede outra vez em paralelo
+  // (_shared/geminiFetch.ts, incidente 2026-10-12).
+  return fetchGemini(url, options, timeoutMs, retries, deadline, GEMINI_BUSY_BACKOFF_MS, GEMINI_HEDGE_AFTER_MS);
 }
 
 /* ── Depois de gravar uma avaliação: o perfil acompanha ────────────────────

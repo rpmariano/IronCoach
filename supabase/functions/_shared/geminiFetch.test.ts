@@ -122,3 +122,82 @@ Deno.test("fetchGeminiWithTimeout: rede sempre em baixo — duas tentativas e a 
     globalThis.fetch = original;
   }
 });
+
+// ── Pedido em paralelo (incidente 2026-10-12) ───────────────────────────────
+// O Gemini deixou pedidos pendurados: um pedido igual, logo a seguir,
+// respondia em segundos. Cada passo do guião é um pedido: "hang" só acaba
+// quando é cancelado; um número responde com esse estado ao fim de `ms`.
+type Step = "hang" | "net" | { status: number; ms?: number };
+async function withScript(steps: Step[], run: (stats: { calls: number; aborted: number }) => Promise<void>) {
+  const original = globalThis.fetch;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  const stats = { calls: 0, aborted: 0 };
+  globalThis.fetch = ((_url: string, init?: RequestInit) => {
+    const step = steps[Math.min(stats.calls, steps.length - 1)];
+    stats.calls++;
+    return new Promise<Response>((resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
+        stats.aborted++;
+        reject(new DOMException("aborted", "AbortError"));
+      });
+      if (step === "hang") return;
+      if (step === "net") return reject(new TypeError("dns"));
+      setTimeout(() => resolve(new Response(step.status === 200 ? "{}" : "erro", { status: step.status })), step.ms ?? 0);
+    });
+  }) as typeof fetch;
+  try {
+    await run(stats);
+  } finally {
+    globalThis.fetch = original;
+    console.warn = originalWarn;
+  }
+}
+
+Deno.test("pedido em paralelo: o primeiro fica pendurado, o segundo responde — fica o segundo e o primeiro é cancelado", async () => {
+  await withScript(["hang", { status: 200 }], async (stats) => {
+    const started = Date.now();
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 10000, 1, Number.POSITIVE_INFINITY, [1, 1, 1], 20);
+    assertEquals(res.status, 200);
+    assertEquals(stats.calls, 2);
+    assertEquals(stats.aborted, 1);
+    // Não esperou pelo limite da tentativa (10 s).
+    assertEquals(Date.now() - started < 2000, true);
+  });
+});
+
+Deno.test("pedido em paralelo: resposta antes do prazo — não há segundo pedido", async () => {
+  await withScript([{ status: 200, ms: 1 }], async (stats) => {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 10000, 1, Number.POSITIVE_INFINITY, [1, 1, 1], 200);
+    assertEquals(res.status, 200);
+    assertEquals(stats.calls, 1);
+    await new Promise((r) => setTimeout(r, 250));
+    assertEquals(stats.calls, 1);
+  });
+});
+
+Deno.test("pedido em paralelo: um erro com o outro ainda em curso espera pelo outro", async () => {
+  // O original falha (500) depois de o paralelo já ter saído; o paralelo responde bem.
+  await withScript([{ status: 500, ms: 40 }, { status: 200, ms: 60 }], async (stats) => {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 10000, 1, Number.POSITIVE_INFINITY, [], 20);
+    assertEquals(res.status, 200);
+    assertEquals(stats.calls, 2);
+  });
+});
+
+Deno.test("pedido em paralelo: os dois falham — devolve o erro HTTP, não a falha de rede", async () => {
+  await withScript([{ status: 503, ms: 40 }, "net"], async (stats) => {
+    // Sem esperas de "ocupado" ([]): o 503 volta tal como veio.
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 10000, 0, Number.POSITIVE_INFINITY, [], 20);
+    assertEquals(res.status, 503);
+    assertEquals(stats.calls, 2);
+  });
+});
+
+Deno.test("pedido em paralelo: desligado por omissão (o coach-chat não o usa)", async () => {
+  await withScript([{ status: 200, ms: 60 }], async (stats) => {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 10000, 0, Number.POSITIVE_INFINITY, [1, 1, 1]);
+    assertEquals(res.status, 200);
+    assertEquals(stats.calls, 1);
+  });
+});

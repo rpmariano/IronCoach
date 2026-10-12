@@ -20,7 +20,19 @@
    Nenhuma repetição começa se já não couber uma tentativa útil antes de
    `deadline` (epoch ms), e o limite de cada tentativa encolhe para lá caber.
    Ao fim, devolve a resposta como veio (o chamador decide a mensagem) ou
-   lança um erro claro se nem chegou a haver resposta. */
+   lança um erro claro se nem chegou a haver resposta.
+
+   Pedido em paralelo (`hedgeAfterMs`, incidente 2026-10-12): o Gemini às
+   vezes deixa um pedido pendurado — não responde, mas um pedido igual,
+   feito logo a seguir, responde em 5–15 s. Esperava-se 40 s pela primeira
+   tentativa e a segunda só tinha os 20 s que sobravam dos 60 da leitura:
+   três análises falharam ao minuto num dia, e todas passaram quando o
+   atleta tentou outra vez. Agora, sem resposta ao fim de `hedgeAfterMs`,
+   sai um segundo pedido igual sem cancelar o primeiro; fica o primeiro que
+   responder bem, e o outro é cancelado. Só os pedidos lentos pagam a dobrar
+   (o Gemini pode cobrar o cancelado, que o ai_usage não vê). Desligado por
+   omissão: o coach-chat tem respostas legitimamente longas e pagava quase
+   sempre duas; as funções de registo ligam-no (GEMINI_HEDGE_AFTER_MS). */
 
 export const GEMINI_RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 export const GEMINI_BUSY_BACKOFF_MS: readonly number[] = [2000, 4000, 7000];
@@ -28,6 +40,9 @@ export const GEMINI_BUSY_BACKOFF_MS: readonly number[] = [2000, 4000, 7000];
 export const GEMINI_NETWORK_RETRIES = 1;
 /** Uma tentativa útil (uma leitura de prints demora ~5–10 s). */
 export const GEMINI_MIN_ATTEMPT_MS = 8000;
+/** Sem resposta ao fim disto, as funções de registo pedem outra vez em
+ *  paralelo. Uma análise inteira (leitura + comentário) costuma levar 4–18 s. */
+export const GEMINI_HEDGE_AFTER_MS = 15000;
 
 /* Prazos de um pedido de registo, contados desde que ele chega. Têm de
    caber, com folga para o arranque a frio e o envio das imagens, no que a
@@ -52,6 +67,74 @@ export function geminiBusyMessage(what: string): string {
   return `Estou com muita procura neste momento e não consegui ${what}, mesmo depois de tentar de novo. Tenta outra vez daqui a um minuto.`;
 }
 
+/** Um pedido, e — sem resposta ao fim de `hedgeAfterMs` — um segundo igual
+ *  em paralelo. Ganha o primeiro que responda com sucesso; uma resposta de
+ *  erro (ou falha de rede) só se devolve quando não há outro pedido em curso
+ *  que ainda possa responder bem. `signal` (o limite da tentativa) cancela
+ *  os dois. */
+export function hedgedFetch(
+  url: string,
+  options: RequestInit,
+  signal: AbortSignal,
+  hedgeAfterMs: number,
+): Promise<Response> {
+  if (!Number.isFinite(hedgeAfterMs)) return fetch(url, { ...options, signal });
+  return new Promise<Response>((resolve, reject) => {
+    const controllers: AbortController[] = [];
+    let pending = 0;
+    let settled = false;
+    let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
+    // A resposta de erro guardada enquanto o outro pedido ainda corre.
+    let errorRes: { res: Response; c: AbortController } | null = null;
+    const abortAll = () => controllers.forEach((c) => c.abort());
+    signal.addEventListener("abort", abortAll, { once: true });
+    const settle = (winner: AbortController | null, outcome: () => void) => {
+      settled = true;
+      clearTimeout(hedgeTimer);
+      signal.removeEventListener("abort", abortAll);
+      for (const c of controllers) if (c !== winner) c.abort();
+      outcome();
+    };
+    const launch = (hedge: boolean) => {
+      const c = new AbortController();
+      controllers.push(c);
+      if (signal.aborted) c.abort();
+      pending++;
+      fetch(url, { ...options, signal: c.signal }).then(
+        (res) => {
+          pending--;
+          if (settled) {
+            res.body?.cancel().catch(() => {});
+            return;
+          }
+          if (res.ok || pending === 0) {
+            if (hedge && res.ok) console.warn(`[gemini] o pedido em paralelo respondeu primeiro (o original passou de ${hedgeAfterMs} ms)`);
+            if (errorRes) errorRes.res.body?.cancel().catch(() => {});
+            settle(c, () => resolve(res));
+            return;
+          }
+          // Erro com o outro ainda em curso: guarda-o e espera pelo outro.
+          errorRes = { res, c };
+        },
+        (err) => {
+          pending--;
+          if (settled || pending > 0) return;
+          // Os dois acabaram: um erro HTTP diz mais do que uma falha de rede.
+          const kept = errorRes;
+          if (kept) settle(kept.c, () => resolve(kept.res));
+          else settle(null, () => reject(err));
+        },
+      );
+    };
+    launch(false);
+    hedgeTimer = setTimeout(() => {
+      if (settled || signal.aborted) return;
+      console.warn(`[gemini] sem resposta em ${hedgeAfterMs} ms; segundo pedido em paralelo`);
+      launch(true);
+    }, hedgeAfterMs);
+  });
+}
+
 export async function fetchGeminiWithTimeout(
   url: string,
   options: RequestInit,
@@ -60,6 +143,8 @@ export async function fetchGeminiWithTimeout(
   deadline = Number.POSITIVE_INFINITY,
   // Injetável para os testes não esperarem segundos a sério.
   backoffMs: readonly number[] = GEMINI_BUSY_BACKOFF_MS,
+  // Ver "Pedido em paralelo" acima; infinito = desligado.
+  hedgeAfterMs = Number.POSITIVE_INFINITY,
 ): Promise<Response> {
   let busyRetries = 0;
   let timeoutRetries = 0;
@@ -71,7 +156,7 @@ export async function fetchGeminiWithTimeout(
     const limit = Math.max(GEMINI_MIN_ATTEMPT_MS, Math.min(timeoutMs, deadline - Date.now()));
     const timer = setTimeout(() => controller.abort(), limit);
     try {
-      const res = await fetch(url, { ...options, signal: controller.signal });
+      const res = await hedgedFetch(url, options, controller.signal, hedgeAfterMs);
       clearTimeout(timer);
       if (!res.ok && GEMINI_RETRYABLE_STATUSES.has(res.status) && busyRetries < backoffMs.length) {
         const wait = backoffMs[busyRetries];
