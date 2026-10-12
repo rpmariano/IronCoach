@@ -86,7 +86,11 @@ export function hedgedFetch(
     let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
     // A resposta de erro guardada enquanto o outro pedido ainda corre.
     let errorRes: { res: Response; c: AbortController } | null = null;
-    const abortAll = () => controllers.forEach((c) => c.abort());
+    // A resposta de erro já guardada não se cancela: os cabeçalhos chegaram e
+    // falta só o corpo (pequeno), que quem chama vai ler para a mensagem —
+    // cancelada, o .text() rebentava com um AbortError em inglês na bolha
+    // (revisão pré-deploy de 11fd7364).
+    const abortAll = () => controllers.forEach((c) => { if (c !== errorRes?.c) c.abort(); });
     signal.addEventListener("abort", abortAll, { once: true });
     const settle = (winner: AbortController | null, outcome: () => void) => {
       settled = true;

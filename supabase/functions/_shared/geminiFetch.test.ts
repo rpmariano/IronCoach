@@ -201,3 +201,44 @@ Deno.test("pedido em paralelo: desligado por omissão (o coach-chat não o usa)"
     assertEquals(stats.calls, 1);
   });
 });
+
+Deno.test("pedido em paralelo: erro guardado e o outro pendurado até ao limite — o corpo do erro ainda se lê", async () => {
+  // Como no fetch real, cancelar o pedido mata também o corpo da resposta.
+  // O original dá 503 depois de o paralelo sair; o paralelo nunca responde.
+  const original = globalThis.fetch;
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  let calls = 0;
+  globalThis.fetch = ((_url: string, init?: RequestInit) => {
+    calls++;
+    const signal = init?.signal;
+    if (calls > 1) {
+      return new Promise<Response>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      });
+    }
+    return new Promise<Response>((resolve) => {
+      setTimeout(() => {
+        const body = new ReadableStream<Uint8Array>({
+          start(ctrl) {
+            if (signal?.aborted) return ctrl.error(new DOMException("aborted", "AbortError"));
+            signal?.addEventListener("abort", () => ctrl.error(new DOMException("aborted", "AbortError")));
+            ctrl.enqueue(new TextEncoder().encode("ocupado"));
+            setTimeout(() => { try { ctrl.close(); } catch (_) { /* já em erro */ } }, 9000);
+          },
+        });
+        resolve(new Response(body, { status: 503 }));
+      }, 40);
+    });
+  }) as typeof fetch;
+  try {
+    // Limite mínimo da tentativa: 8 s (GEMINI_MIN_ATTEMPT_MS); sem repetições.
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 10, 0, Number.POSITIVE_INFINITY, [], 20);
+    assertEquals(res.status, 503);
+    assertEquals(calls, 2);
+    assertEquals(await res.text(), "ocupado");
+  } finally {
+    globalThis.fetch = original;
+    console.warn = originalWarn;
+  }
+});
