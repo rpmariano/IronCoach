@@ -86,6 +86,8 @@ export function hedgedFetch(
     let hedgeTimer: ReturnType<typeof setTimeout> | undefined;
     // A resposta de erro guardada enquanto o outro pedido ainda corre.
     let errorRes: { res: Response; c: AbortController } | null = null;
+    // Já saiu o segundo pedido? Para o registo de quem ganhou.
+    let hedged = false;
     // A resposta de erro já guardada não se cancela: os cabeçalhos chegaram e
     // falta só o corpo (pequeno), que quem chama vai ler para a mensagem —
     // cancelada, o .text() rebentava com um AbortError em inglês na bolha
@@ -112,7 +114,10 @@ export function hedgedFetch(
             return;
           }
           if (res.ok || pending === 0) {
-            if (hedge && res.ok) console.warn(`[gemini] o pedido em paralelo respondeu primeiro (o original passou de ${hedgeAfterMs} ms)`);
+            // Um registo por cada vez que houve dois pedidos, a dizer quem
+            // ganhou: "segundo" = o original estava mesmo pendurado; "original"
+            // = pagou-se o segundo à toa (o limiar pode estar curto).
+            if (hedged && res.ok) console.warn(`[gemini] pedido em paralelo: ganhou o ${hedge ? "segundo" : "original"}`);
             if (errorRes) errorRes.res.body?.cancel().catch(() => {});
             settle(c, () => resolve(res));
             return;
@@ -134,6 +139,7 @@ export function hedgedFetch(
     hedgeTimer = setTimeout(() => {
       if (settled || signal.aborted) return;
       console.warn(`[gemini] sem resposta em ${hedgeAfterMs} ms; segundo pedido em paralelo`);
+      hedged = true;
       launch(true);
     }, hedgeAfterMs);
   });

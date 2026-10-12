@@ -128,11 +128,11 @@ Deno.test("fetchGeminiWithTimeout: rede sempre em baixo — duas tentativas e a 
 // respondia em segundos. Cada passo do guião é um pedido: "hang" só acaba
 // quando é cancelado; um número responde com esse estado ao fim de `ms`.
 type Step = "hang" | "net" | { status: number; ms?: number };
-async function withScript(steps: Step[], run: (stats: { calls: number; aborted: number }) => Promise<void>) {
+async function withScript(steps: Step[], run: (stats: { calls: number; aborted: number; warns: string[] }) => Promise<void>) {
   const original = globalThis.fetch;
   const originalWarn = console.warn;
-  console.warn = () => {};
-  const stats = { calls: 0, aborted: 0 };
+  const stats = { calls: 0, aborted: 0, warns: [] as string[] };
+  console.warn = (msg: string) => { stats.warns.push(String(msg)); };
   globalThis.fetch = ((_url: string, init?: RequestInit) => {
     const step = steps[Math.min(stats.calls, steps.length - 1)];
     stats.calls++;
@@ -163,6 +163,7 @@ Deno.test("pedido em paralelo: o primeiro fica pendurado, o segundo responde —
     assertEquals(stats.aborted, 1);
     // Não esperou pelo limite da tentativa (10 s).
     assertEquals(Date.now() - started < 2000, true);
+    assertEquals(stats.warns.at(-1), "[gemini] pedido em paralelo: ganhou o segundo");
   });
 });
 
@@ -241,4 +242,20 @@ Deno.test("pedido em paralelo: erro guardado e o outro pendurado até ao limite 
     globalThis.fetch = original;
     console.warn = originalWarn;
   }
+});
+
+Deno.test("pedido em paralelo: o original responde depois de o segundo sair — fica registado que ganhou o original", async () => {
+  await withScript([{ status: 200, ms: 40 }, "hang"], async (stats) => {
+    const res = await fetchGeminiWithTimeout("https://gemini.test", {}, 10000, 0, Number.POSITIVE_INFINITY, [], 20);
+    assertEquals(res.status, 200);
+    assertEquals(stats.calls, 2);
+    assertEquals(stats.warns.at(-1), "[gemini] pedido em paralelo: ganhou o original");
+  });
+});
+
+Deno.test("pedido em paralelo: sem segundo pedido não há registo de vencedor", async () => {
+  await withScript([{ status: 200, ms: 1 }], async (stats) => {
+    await fetchGeminiWithTimeout("https://gemini.test", {}, 10000, 0, Number.POSITIVE_INFINITY, [], 200);
+    assertEquals(stats.warns, []);
+  });
 });
