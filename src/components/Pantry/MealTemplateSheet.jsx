@@ -3,7 +3,7 @@ import { X } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
-import { deleteMealTemplate, foodKey, pantrySuggestions, portionText, saveMealTemplate, templateItems, templateTotals, toNumber } from '../../utils/pantry';
+import { deleteMealTemplate, foodKey, isKnownFood, pantrySuggestions, portionText, saveMealTemplate, templateItems, templateTotals, toNumber } from '../../utils/pantry';
 import { MEAL_TYPE_OPTIONS } from '../../utils/nutrition';
 
 /* Criar ou ajustar uma refeição predefinida (bug #63, fase D, 2026-10-17;
@@ -94,7 +94,7 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
                   <span className="block text-[13.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{it.name}</span>
                   {/* Vindo de "Guardar como refeição", pode não estar na despensa:
                       ao usar a refeição, a Carol estima-o (sem os valores dela). */}
-                  {pantryLoaded && !(pantryFoods || []).some((f) => f.name_key === foodKey(it.name)) && (
+                  {pantryLoaded && !isKnownFood(it.name, pantryFoods) && (
                     <span className="block text-[11px]" style={{ color: 'var(--text-4)' }}>fora da despensa · a Carol estima</span>
                   )}
                 </span>

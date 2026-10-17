@@ -367,6 +367,13 @@ export function suggestedTemplateName(typeLabel, items) {
   if (full.length <= 60) return full;
   // Corta numa palavra inteira, nunca a meio de um nome.
   const cut = full.slice(0, 60);
+  const tidy = (s) => s.replace(/[\s·]+$/, '');
+  // A palavra acaba mesmo no limite: cabe toda.
+  if (full[60] === ' ') return tidy(cut);
   const space = cut.lastIndexOf(' ');
-  return (space > 0 ? cut.slice(0, space) : cut).replace(/[\s·]+$/, '');
+  // Um alimento de uma palavra só, comprida: o único espaço é o do " · " —
+  // cortar aí deixava só o tipo. Corta-se a palavra a direito.
+  const sep = typeLabel ? `${typeLabel} ·`.length : -1;
+  if (space <= sep) return tidy(cut);
+  return tidy(cut.slice(0, space));
 }

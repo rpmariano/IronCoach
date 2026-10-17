@@ -233,6 +233,13 @@ describe('refeições predefinidas', () => {
     const longo = suggestedTemplateName('Pequeno-Almoço', [{ name: 'Iogurte grego natural sem açúcar com granola caseira e frutos vermelhos' }]);
     expect(longo.length).toBeLessThanOrEqual(60);
     expect(longo).toBe('Pequeno-Almoço · Iogurte grego natural sem açúcar com');
+    // Uma palavra só, comprida: corta-a a direito, não deixa só o tipo.
+    const palavra = suggestedTemplateName('Almoço', [{ name: 'X'.repeat(80) }]);
+    expect(palavra).toBe(`Almoço · ${'X'.repeat(51)}`);
+    // A palavra acaba mesmo no 60.º carácter: fica inteira.
+    const certo = suggestedTemplateName('Almoço', [{ name: `${'a'.repeat(51)} resto` }]);
+    expect(certo).toBe(`Almoço · ${'a'.repeat(51)}`);
+    expect(certo).toHaveLength(60);
   });
 
   it('markMealTemplateUsed devolve o valor novo quando grava', async () => {
