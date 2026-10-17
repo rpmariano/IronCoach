@@ -18,7 +18,7 @@ import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDra
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
-import { foodKey, habitualsForMealType, isKnownFood, isPantryComplete, pantrySuggestions, portionText } from '../../utils/pantry';
+import { foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType } from '../../utils/pantry';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
@@ -51,13 +51,14 @@ function getDefaultMealType() {
 }
 
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
-  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab, session, pantryFoods: storedPantry, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
+  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
   // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
   // desta refeição. Um alimento da despensa já não é analisado.
   // A que está em memória pode ser de outra conta (sessão trocada sem recarregar).
   const myId = session?.user?.id || profile?.id;
   const pantryIsMine = !myId || pantryUserId === myId;
   const pantryFoods = pantryIsMine ? storedPantry : [];
+  const mealTemplates = pantryIsMine ? (storedTemplates || []) : [];
   useEffect(() => { if (!pantryLoaded || !pantryIsMine) loadPantry?.(); }, [pantryLoaded, pantryIsMine, loadPantry]);
   const [initialTab] = useState(activeTab);
 
@@ -461,6 +462,18 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date })
     .filter((f) => !manualItems.some((i) => isKnownFood(i.name, [f])));
 
+  /* Uma refeição predefinida (bug #63, fase D, 2026-10-17): junta os
+     alimentos dela que ainda não estão na lista, com as gramas dela — tudo
+     continua editável. Os da despensa registam-se sem estimativa. */
+  const templates = templatesForMealType(mealTemplates, mealType).slice(0, 6);
+  const applyTemplate = (template) => {
+    const toAdd = templateItems(template).filter((it) => !manualItems.some((m) => foodKey(m.name) === foodKey(it.name)));
+    setErrorMsg('');
+    setManualItems(prev => [...prev, ...toAdd.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
+    setIsFormDirty(true);
+    markMealTemplateUsed(template);
+  };
+
   const handleRemoveManualItem = (key) => {
     setManualItems(prev => prev.filter(i => i.key !== key));
     setIsFormDirty(true);
@@ -741,6 +754,25 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             chamada. */}
         <div className="mb-4">
           {!isEditing && <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Alimentos</p>}
+          {templates.length > 0 && (
+            <div className="mb-3" data-testid="meal-templates">
+              <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">As tuas refeições</p>
+              <div className="flex flex-wrap gap-1.5">
+                {templates.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    aria-label={`Juntar a refeição ${t.name} (${templateItems(t).length} ${templateItems(t).length === 1 ? 'alimento' : 'alimentos'})`}
+                    className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold"
+                    style={{ border: '1px solid var(--nutrition)', background: 'var(--tint-nutrition-bg)', color: 'var(--text-1)' }}
+                  >
+                    + {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {habituals.length > 0 && (
             <div className="mb-3" data-testid="meal-habituals">
               <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">O que costumas comer {MEAL_TYPES.find((t) => t.key === mealType)?.label ? `ao ${MEAL_TYPES.find((t) => t.key === mealType).label.toLowerCase()}` : 'a esta refeição'}</p>

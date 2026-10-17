@@ -11,6 +11,7 @@ vi.mock('../lib/supabase', () => ({
         _table: table,
         upsert: (row, opts) => { db.calls.push({ table, op: 'upsert', row, opts }); return chain; },
         update: (row) => { db.calls.push({ table, op: 'update', row }); return chain; },
+        insert: (row) => { db.calls.push({ table, op: 'insert', row }); return chain; },
         delete: () => { db.calls.push({ table, op: 'delete' }); return chain; },
         eq: () => chain,
         select: () => chain,
@@ -27,6 +28,7 @@ vi.mock('../lib/supabase', () => ({
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
+  templateItems, templateTotals, templatesForMealType, saveMealTemplate,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -199,5 +201,40 @@ describe('saveFoodRule', () => {
   it('uma regra escrita à mão fica confirmada logo', async () => {
     await saveFoodRule({ userId: 'u1', topic: 'Fritos', value: 'Azeite' });
     expect(db.calls[0].row).toMatchObject({ topic_key: 'fritos', value_key: 'azeite', status: 'confirmado', source: 'manual', confirmations: 2 });
+  });
+});
+
+/* Bug #63 (fase D, 2026-10-17): refeições predefinidas. */
+describe('refeições predefinidas', () => {
+  const T = (name, items, extra = {}) => ({ id: name, name, items, times_used: 0, ...extra });
+
+  it('templateItems limpa os itens: sem nome sai, gramas inválidas ficam null', () => {
+    expect(templateItems(T('x', [{ name: ' Aveia em flocos ', grams: '40' }, { name: '', grams: 10 }, { name: 'Mel', grams: 0 }]))).toEqual([
+      { food_id: null, name: 'Aveia em flocos', grams: 40 }, { food_id: null, name: 'Mel', grams: null },
+    ]);
+    expect(templateItems(null)).toEqual([]);
+  });
+
+  it('templateTotals conta pela despensa — sem gramas usa a porção habitual; fora da despensa não conta', () => {
+    const t = T('Pequeno-almoço', [{ name: 'Iogurte grego 0%', grams: 170 }, { name: 'Aveia em flocos' }, { name: 'Banana', grams: 120 }]);
+    // 170 × 0,59 = 100,3 + 40 × 1 = 40 → 140 kcal; 2 de 3 contados.
+    expect(templateTotals(t, FOODS)).toMatchObject({ kcal: 140, known: 2, total: 3 });
+  });
+
+  it('para o registo: as deste tipo primeiro, depois as mais usadas', () => {
+    const lista = [T('A', [], { times_used: 9 }), T('B', [], { default_meal_type: 'almoco', times_used: 1 }), T('C', [], { times_used: 3 })];
+    expect(templatesForMealType(lista, 'almoco').map((t) => t.name)).toEqual(['B', 'A', 'C']);
+    expect(templatesForMealType(lista, 'jantar').map((t) => t.name)).toEqual(['A', 'C', 'B']);
+  });
+
+  it('saveMealTemplate grava nome, chave e itens limpos; recusa sem nome ou sem alimentos', async () => {
+    db.calls.length = 0;
+    await saveMealTemplate({ userId: 'u1', values: { name: 'Pequeno-almoço de treino', default_meal_type: 'pequeno-almoco', items: [{ name: 'Aveia em flocos', grams: '40' }] } });
+    expect(db.calls.find((c) => c.table === 'athlete_meal_templates' && c.op === 'insert').row).toMatchObject({
+      user_id: 'u1', name: 'Pequeno-almoço de treino', name_key: 'pequeno almoco de treino', default_meal_type: 'pequeno-almoco',
+      items: [{ food_id: null, name: 'Aveia em flocos', grams: 40 }],
+    });
+    await expect(saveMealTemplate({ userId: 'u1', values: { name: ' ', items: [{ name: 'Mel' }] } })).rejects.toThrow('Dá um nome');
+    await expect(saveMealTemplate({ userId: 'u1', values: { name: 'Vazia', items: [] } })).rejects.toThrow('pelo menos um alimento');
   });
 });

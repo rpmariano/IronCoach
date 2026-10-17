@@ -14,6 +14,7 @@ vi.mock('../../lib/supabase', () => ({
       const chain = {
         upsert: (row, opts) => { mocks.calls.push({ table, op: 'upsert', row, opts }); return chain; },
         update: (row) => { mocks.calls.push({ table, op: 'update', row }); return chain; },
+        insert: (row) => { mocks.calls.push({ table, op: 'insert', row }); return chain; },
         delete: () => { mocks.calls.push({ table, op: 'delete' }); return chain; },
         eq: () => chain,
         select: () => chain,
@@ -115,6 +116,30 @@ describe('PantrySection', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(mocks.calls.find((c) => c.table === 'athlete_food_rules' && c.op === 'upsert')).toBeTruthy());
     expect(mocks.calls.find((c) => c.table === 'athlete_food_rules').row.topic).toBe('manteiga · quantidade');
+  });
+
+  it('Refeições: lista as predefinidas e cria uma com alimentos da despensa (bug #63)', async () => {
+    useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 40 }, { name: 'Iogurte grego 0%', grams: 170 }], default_meal_type: 'pequeno-almoco', times_used: 3 }] });
+    render(<PantrySection />);
+    fireEvent.click(screen.getByRole('tab', { name: /Refeições · 1/ }));
+    const lista = screen.getByRole('list', { name: 'Refeições predefinidas' });
+    // 40 × 3,72 + 170 × 0,59 = 148,8 + 100,3 → 249 kcal
+    expect(lista).toHaveTextContent('Pequeno-almoço de treino');
+    expect(lista).toHaveTextContent('2 alimentos · 249 kcal · Pequeno-Almoço');
+
+    fireEvent.click(screen.getByTestId('pantry-add-template'));
+    fireEvent.change(screen.getByLabelText(/^Nome/), { target: { value: 'Lanche rápido' } });
+    fireEvent.change(screen.getByLabelText('Juntar alimento da despensa'), { target: { value: 'iog' } });
+    fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
+    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(170);
+    fireEvent.change(screen.getByLabelText('Gramas de Iogurte grego 0%'), { target: { value: '200' } });
+    expect(screen.getByTestId('meal-template-totals')).toHaveTextContent('118 kcal');
+    fireEvent.click(screen.getByRole('button', { name: 'Lanche' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(mocks.calls.find((c) => c.table === 'athlete_meal_templates' && c.op === 'insert')).toBeTruthy());
+    expect(mocks.calls.find((c) => c.table === 'athlete_meal_templates').row).toMatchObject({
+      name: 'Lanche rápido', default_meal_type: 'lanche', items: [{ food_id: 'i', name: 'Iogurte grego 0%', grams: 200 }],
+    });
   });
 
   it('adicionar por descrição: a Carol confirma, o atleta ajusta e grava', async () => {

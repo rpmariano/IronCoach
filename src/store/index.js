@@ -288,6 +288,8 @@ export const useAppStore = create((set, get) => ({
   // Lida a pedido (loadPantry), não no arranque.
   pantryFoods: [],
   foodRules: [],
+  // As refeições predefinidas (bug #63, fase D): lidas com a despensa.
+  mealTemplates: [],
   pantryLoaded: false,
   // De quem é a despensa carregada — outra conta no mesmo separador não
   // herda as sugestões da anterior (revisão pré-master).
@@ -738,9 +740,13 @@ export const useAppStore = create((set, get) => ({
     // Nunca rejeita: sem despensa (modo demo, sem rede), o Armário fica vazio
     // e o registo da refeição só não sugere nada.
     try {
-      const [foods, rules] = await Promise.all([
+      const [foods, rules, templates] = await Promise.all([
         supabase.from('athlete_foods').select('*').eq('user_id', userId).eq('in_pantry', true).order('times_seen', { ascending: false }),
         supabase.from('athlete_food_rules').select('*').eq('user_id', userId).order('updated_at', { ascending: false }),
+        // Refeições predefinidas (bug #63): uma falha aqui não estraga a
+        // despensa — fica a lista que havia (ou vazia).
+        Promise.resolve(supabase.from('athlete_meal_templates').select('*').eq('user_id', userId).order('times_used', { ascending: false }))
+          .catch(() => ({ data: null, error: true })),
       ]);
       // A sessão mudou entretanto: esta resposta já não é de quem está.
       if (whoIsIn() !== userId) return;
@@ -748,6 +754,7 @@ export const useAppStore = create((set, get) => ({
       set({
         pantryFoods: foods?.error ? (same ? get().pantryFoods : []) : (foods?.data || []),
         foodRules: rules?.error ? (same ? get().foodRules : []) : (rules?.data || []),
+        mealTemplates: templates?.error ? (same ? get().mealTemplates : []) : (templates?.data || []),
         pantryLoaded: !foods?.error && !rules?.error,
         pantryUserId: userId,
       });
@@ -757,7 +764,7 @@ export const useAppStore = create((set, get) => ({
       // Por ler: o registo da refeição volta a tentar (revisão pré-master).
       set(get().pantryUserId === userId
         ? { pantryLoaded: false }
-        : { pantryFoods: [], foodRules: [], pantryLoaded: false, pantryUserId: userId });
+        : { pantryFoods: [], foodRules: [], mealTemplates: [], pantryLoaded: false, pantryUserId: userId });
     }
   },
   setPantryFoods: (pantryFoods) => set({ pantryFoods }),

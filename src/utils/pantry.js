@@ -266,3 +266,80 @@ export async function deleteFoodRule(id) {
   const { error } = await supabase.from('athlete_food_rules').delete().eq('id', id);
   if (error) throw new Error(error.message);
 }
+
+// ── Refeições predefinidas (bug #63, fase D, 2026-10-17) ─────────────────
+// specs/carol-quantidades-habitos-refeicoes.md §5. Tabela
+// athlete_meal_templates: os itens guardam-se pelo NOME e as gramas — é
+// pelo nome que a analyze-meal reconhece um alimento da despensa e o regista
+// sem estimativa (pantry.ts, splitKnownWritten).
+
+/** Os itens de uma refeição predefinida, limpos: nome, gramas (> 0 ou null). */
+export function templateItems(template) {
+  return (Array.isArray(template?.items) ? template.items : [])
+    .map((it) => ({
+      food_id: it?.food_id ?? null,
+      name: String(it?.name ?? '').trim().slice(0, 120),
+      grams: toNumber(it?.grams) > 0 ? Math.round(toNumber(it.grams)) : null,
+    }))
+    .filter((it) => it.name);
+}
+
+/** kcal e proteína da refeição pelos valores da despensa — só dos alimentos
+ *  que lá estão e têm gramas; `known` diz quantos foram contados. */
+export function templateTotals(template, foods) {
+  const byKey = new Map((foods || []).map((f) => [f.name_key, f]));
+  let kcal = 0;
+  let protein = 0;
+  let known = 0;
+  const items = templateItems(template);
+  for (const it of items) {
+    const f = byKey.get(foodKey(it.name));
+    const grams = it.grams ?? (Number(f?.portion_grams) > 0 ? Number(f.portion_grams) : null);
+    if (!f || !grams) continue;
+    kcal += (Number(f.calories_per_100g) || 0) * grams / 100;
+    protein += (Number(f.protein_per_100g) || 0) * grams / 100;
+    known += 1;
+  }
+  return { kcal: Math.round(kcal), protein: Math.round(protein * 10) / 10, known, total: items.length };
+}
+
+/** As refeições para o registo: as deste tipo primeiro, depois as mais usadas. */
+export function templatesForMealType(templates, mealType) {
+  return [...(templates || [])].sort((a, b) =>
+    (Number(b.default_meal_type === mealType) - Number(a.default_meal_type === mealType))
+    || ((b.times_used || 0) - (a.times_used || 0))
+    || String(a.name).localeCompare(String(b.name), 'pt'));
+}
+
+export async function saveMealTemplate({ userId, values, existing = null }) {
+  const name = String(values?.name || '').trim().slice(0, 60);
+  const items = templateItems({ items: values?.items });
+  if (!foodKey(name)) throw new Error('Dá um nome à refeição.');
+  if (!items.length) throw new Error('Junta pelo menos um alimento.');
+  const row = {
+    user_id: userId, name, name_key: foodKey(name), default_meal_type: values?.default_meal_type || null,
+    items, updated_at: new Date().toISOString(),
+  };
+  const q = existing?.id
+    ? supabase.from('athlete_meal_templates').update(row).eq('id', existing.id)
+    : supabase.from('athlete_meal_templates').insert(row);
+  const { data, error } = await q.select().single();
+  if (error) throw new Error(error.code === '23505' ? 'Já tens uma refeição com esse nome.' : error.message);
+  return data;
+}
+
+export async function deleteMealTemplate(id) {
+  const { error } = await supabase.from('athlete_meal_templates').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+/** Conta mais uma vez que foi usada — best-effort, nunca rejeita. */
+export async function markMealTemplateUsed(template) {
+  try {
+    await supabase.from('athlete_meal_templates')
+      .update({ times_used: (template?.times_used || 0) + 1, last_used_at: new Date().toISOString() })
+      .eq('id', template.id);
+  } catch (e) {
+    console.warn('Refeição predefinida por contar', e);
+  }
+}

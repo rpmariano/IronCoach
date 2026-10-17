@@ -932,6 +932,24 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(screen.getByText('200g · já conhecido, não é analisado')).toBeInTheDocument();
   });
 
+  it('as tuas refeições: um toque junta os alimentos com as gramas, sem repetir os que já lá estão (bug #63)', async () => {
+    useAppStore.setState({ mealTemplates: [
+      { id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 50 }, { name: 'Iogurte grego 0%', grams: 170 }], times_used: 2 },
+    ] });
+    render(<MealRegistration onClose={onClose} />);
+    expect(screen.getByTestId('meal-templates')).toHaveTextContent('As tuas refeições');
+    // Já há aveia na lista: a refeição não a repete.
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'aveia' } });
+    fireEvent.click(screen.getByRole('option', { name: /Aveia em flocos/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Juntar a refeição Pequeno-almoço de treino (2 alimentos)' }));
+    expect(screen.getByText('170g · já conhecido, não é analisado')).toBeInTheDocument();
+
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
+    expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Aveia em flocos', grams: 40 }, { name: 'Iogurte grego 0%', grams: 170 }]);
+  });
+
   it('o que costuma comer nesta refeição aparece por cima, com um toque', async () => {
     const tipo = 'almoco';
     useAppStore.setState({

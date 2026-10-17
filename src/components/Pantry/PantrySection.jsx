@@ -4,7 +4,9 @@ import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
 import PantryFoodSheet from './PantryFoodSheet';
 import FoodRuleSheet from './FoodRuleSheet';
-import { foodSubline, foodKey, isQuantityRule, ruleInfo, ruleLabel, visibleRules } from '../../utils/pantry';
+import MealTemplateSheet from './MealTemplateSheet';
+import { foodSubline, foodKey, isQuantityRule, ruleInfo, ruleLabel, templateItems, templatesForMealType, templateTotals, visibleRules } from '../../utils/pantry';
+import { mealTypeLabel } from '../../utils/nutrition';
 
 /* A despensa, no Armário do Perfil (bugs #48/#52, fase C; mockup "Despensa e
    perguntas da Carol", ecrãs 6 e 7). Dois separadores: os alimentos que a
@@ -13,17 +15,19 @@ import { foodSubline, foodKey, isQuantityRule, ruleInfo, ruleLabel, visibleRules
    cozinha, o que ela já não pergunta. Tocar num alimento abre-o para
    ajustar; "+" adiciona por descrição, foto do rótulo ou galeria. */
 export default function PantrySection() {
-  const { pantryFoods: storedFoods, foodRules: storedRules, pantryUserId, session, profile, loadPantry } = useAppStore();
+  const { pantryFoods: storedFoods, foodRules: storedRules, mealTemplates: storedTemplates, pantryUserId, session, profile, loadPantry } = useAppStore();
   // A despensa em memória pode ser de outra conta (sessão trocada sem
   // recarregar): até chegar a de quem está, fica vazia.
   const myId = session?.user?.id || profile?.id;
   const mine = !myId || pantryUserId === myId;
   const pantryFoods = mine ? storedFoods : null;
   const foodRules = mine ? storedRules : null;
+  const mealTemplates = mine ? (storedTemplates || []) : [];
   const [tab, setTab] = useState('alimentos');
   const [query, setQuery] = useState('');
   const [foodSheet, setFoodSheet] = useState(null); // { food } | { food: null } (novo)
   const [ruleSheet, setRuleSheet] = useState(null); // { rule } | { rule: null } (nova)
+  const [templateSheet, setTemplateSheet] = useState(null); // { template } | { template: null } (nova)
 
   useEffect(() => { loadPantry?.(); }, [loadPantry]);
 
@@ -45,15 +49,15 @@ export default function PantrySection() {
         O que a Carol já conhece do que comes e de como cozinhas — não volta a analisar nem a perguntar.
       </p>
 
-      <div role="tablist" aria-label="Despensa" className="grid grid-cols-2 gap-1 p-1 rounded-[14px] mb-3" style={{ background: 'rgba(255,255,255,.05)' }}>
-        {[['alimentos', `Alimentos · ${pantryFoods?.length || 0}`, 'rgba(199,125,255,.2)', '#f3e8ff'], ['cozinhar', `Como cozinhas · ${rules.length}`, 'rgba(34,211,238,.18)', '#cffafe']].map(([key, label, bg, fg]) => (
+      <div role="tablist" aria-label="Despensa" className="grid grid-cols-3 gap-1 p-1 rounded-[14px] mb-3" style={{ background: 'rgba(255,255,255,.05)' }}>
+        {[['alimentos', `Alimentos · ${pantryFoods?.length || 0}`, 'rgba(199,125,255,.2)', '#f3e8ff'], ['cozinhar', `Como cozinhas · ${rules.length}`, 'rgba(34,211,238,.18)', '#cffafe'], ['refeicoes', `Refeições · ${mealTemplates.length}`, 'rgba(199,125,255,.2)', '#f3e8ff']].map(([key, label, bg, fg]) => (
           <button
             key={key}
             type="button"
             role="tab"
             aria-selected={tab === key}
             onClick={() => setTab(key)}
-            className="min-h-[40px] rounded-[10px] text-[13px] font-extrabold"
+            className="min-h-[44px] rounded-[10px] text-[12.5px] font-extrabold leading-tight px-1"
             style={tab === key ? { background: bg, color: fg } : { color: 'var(--text-3)' }}
           >
             {label}
@@ -115,6 +119,47 @@ export default function PantrySection() {
             Cada alimento que entra aqui é confirmado pela Carol, e podes ajustar os valores à mão. Numa refeição, já não volta a ser analisado.
           </p>
         </div>
+      ) : tab === 'refeicoes' ? (
+        <div role="tabpanel" className="space-y-2">
+          {/* Bug #63 (fase D, 2026-10-17): refeições feitas de alimentos da
+              despensa, com as gramas — no registo, um toque preenche a lista. */}
+          <div className="flex gap-2.5 items-start mb-1">
+            <CoachAvatar size={32} mood="neutral" />
+            <p className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--text-2)' }}>
+              Junta alimentos da despensa numa refeição. Ao registar, tocas nela e a lista fica feita — sem estimar nada.
+            </p>
+          </div>
+          {mealTemplates.length === 0 ? (
+            <p className="text-[12px] leading-relaxed py-1" style={{ color: 'var(--text-muted)' }}>Ainda não tens refeições guardadas.</p>
+          ) : (
+            <ul className="space-y-2" aria-label="Refeições predefinidas">
+              {templatesForMealType(mealTemplates, null).map((t) => {
+                const tot = templateTotals(t, pantryFoods);
+                const n = templateItems(t).length;
+                return (
+                  <li key={t.id}>
+                    <button type="button" onClick={() => setTemplateSheet({ template: t })}
+                      className="w-full min-h-[56px] flex items-center gap-2 pl-3.5 pr-2 rounded-[14px] text-left"
+                      style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.09)' }}>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[14px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{t.name}</span>
+                        <span className="block text-[12px]" style={{ color: 'var(--text-4)' }}>
+                          {[`${n} ${n === 1 ? 'alimento' : 'alimentos'}`, tot.known ? `${tot.kcal} kcal` : null, t.default_meal_type ? mealTypeLabel(t.default_meal_type) : null].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                      <ChevronRight size={18} style={{ color: 'var(--text-4)' }} className="shrink-0" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <button type="button" data-testid="pantry-add-template" onClick={() => setTemplateSheet({ template: null })}
+            className="w-full min-h-[46px] rounded-xl text-[13.5px] font-extrabold"
+            style={{ border: '1px dashed var(--tint-nutrition-bd)', color: 'var(--nutrition)' }}>
+            + Nova refeição
+          </button>
+        </div>
       ) : (
         <div role="tabpanel" className="space-y-2">
           <div className="flex gap-2.5 items-start mb-1">
@@ -170,6 +215,7 @@ export default function PantrySection() {
 
       {foodSheet && <PantryFoodSheet food={foodSheet.food} onClose={() => setFoodSheet(null)} />}
       {ruleSheet && <FoodRuleSheet rule={ruleSheet.rule} onClose={() => setRuleSheet(null)} />}
+      {templateSheet && <MealTemplateSheet template={templateSheet.template} onClose={() => setTemplateSheet(null)} />}
     </div>
   );
 }

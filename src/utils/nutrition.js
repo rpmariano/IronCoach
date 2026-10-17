@@ -160,6 +160,16 @@ export function dayWaterGoalMet(waterLogs, dateStr, profile) {
    micronutrientAverages (@formulas/nutritionPeriod.ts), média por dia do
    período certo. */
 
+/** Os tipos de refeição, pela ordem do dia, com o rótulo do registo. */
+export const MEAL_TYPE_OPTIONS = [
+  { key: 'pequeno-almoco', label: 'Pequeno-almoço' },
+  { key: 'lanche-manha', label: 'Lanche da manhã' },
+  { key: 'almoco', label: 'Almoço' },
+  { key: 'lanche', label: 'Lanche' },
+  { key: 'jantar', label: 'Jantar' },
+  { key: 'ceia', label: 'Ceia' },
+];
+
 export function mealTypeLabel(type) {
   const labels = {
     'pequeno-almoco': 'Pequeno-Almoço',
