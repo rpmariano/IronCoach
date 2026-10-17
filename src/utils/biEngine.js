@@ -535,9 +535,21 @@ export function detectCoachInsights(dataIn, profile) {
         const d = String(r?.date || '').slice(0, 10);
         return d >= windowStart && d <= lastClosedSunday;
       });
+      // Bug #59 (2026-10-08): duas semanas parado e o alerta saía na mesma, a
+      // partir de dois treinos do início da janela — uma percentagem de poucas
+      // corridas soltas não é a distribuição do treino. A mesma régua do ACWR:
+      // corridas em pelo menos 3 das 4 semanas fechadas.
+      const weeksWithRuns = [0, 1, 2, 3].filter((k) => {
+        const start = addDaysISO(windowStart, 7 * k);
+        const end = addDaysISO(start, 6);
+        return closedRuns.some((r) => {
+          const d = String(r?.date || '').slice(0, 10);
+          return d >= start && d <= end;
+        });
+      }).length;
       const dist = calculateTrainingDistribution(closedRuns, level);
       const totalMinutes = dist.z1Minutes + dist.z2Minutes + dist.z3Minutes + dist.z4Minutes + dist.z5Minutes;
-      if (totalMinutes > 60 && !dist.isCompliant && dist.highIntensityPct > 30) {
+      if (weeksWithRuns >= 3 && totalMinutes > 60 && !dist.isCompliant && dist.highIntensityPct > 30) {
         insights.push({
           id: 'intensity_imbalance', severity: 'warning',
           title: 'Demasiada intensidade',

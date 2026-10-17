@@ -151,8 +151,9 @@ describe('detectCoachInsights', () => {
       // 2026-10-04: o insight olha só para as últimas 4 semanas fechadas — as corridas
       // vão para a semana fechada mais recente (não para "ontem", que à segunda-feira
       // ou ao domingo cai na semana em curso).
-      const runs = Array.from({ length: 5 }, (_, i) => ({
-        date: closedWeekDay(i), distance_km: 8, duration_seconds: 40 * 60,
+      // Bug #59: corridas em pelo menos 3 das 4 semanas — uma por semana.
+      const runs = Array.from({ length: 4 }, (_, i) => ({
+        date: closedWeekDay(-7 * i), distance_km: 8, duration_seconds: 40 * 60,
         details: { hr_zones: [{ zone: 4, minutes: 40 }] }, // toda a alta intensidade
       }));
       const insights = detectCoachInsights({ runs }, {});
@@ -172,7 +173,7 @@ describe('detectCoachInsights', () => {
       });
 
       it('diz o intervalo na frase', () => {
-        const runs = Array.from({ length: 3 }, (_, i) => forte(closedWeekDay(i)));
+        const runs = Array.from({ length: 3 }, (_, i) => forte(closedWeekDay(-7 * i)));
         const msg = detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance').message;
         expect(msg).toMatch(/^Nas últimas 4 semanas fechadas \(\d{1,2} [a-z]{3} – \d{1,2} [a-z]{3}\), 100% do tempo foi em intensidade média\/alta\./);
         expect(msg).not.toMatch(/Estás com/);
@@ -198,8 +199,18 @@ describe('detectCoachInsights', () => {
       });
 
       it('a 1.ª semana da janela (há 4 semanas fechadas) ainda conta', () => {
-        const runs = Array.from({ length: 3 }, (_, i) => forte(closedWeekDay(-21 + i)));
+        const runs = [forte(closedWeekDay(-21)), forte(closedWeekDay(-14)), forte(closedWeekDay(-7))];
         expect(detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance')).toBeTruthy();
+      });
+
+      it('bug #59: duas semanas parado — corridas fortes só nas 2 semanas mais antigas não alertam', () => {
+        const runs = [forte(closedWeekDay(-21)), forte(closedWeekDay(-19)), forte(closedWeekDay(-14))];
+        expect(detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance')).toBeUndefined();
+      });
+
+      it('bug #59: muitas corridas fortes numa só semana também não chegam', () => {
+        const runs = Array.from({ length: 5 }, (_, i) => forte(closedWeekDay(i)));
+        expect(detectCoachInsights({ runs }, {}).find((i) => i.id === 'intensity_imbalance')).toBeUndefined();
       });
     });
 
