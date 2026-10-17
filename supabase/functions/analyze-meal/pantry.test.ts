@@ -3,7 +3,7 @@ import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
   applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
   isPantryComplete, microFromModel, microOrNull, MICRO_COLUMNS, microsTrusted, missingMicros, NUTRIENT_COLUMNS, pantryMicro,
-  parseCookingFacts, parseQuestions, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
+  optionGrams, parseCookingFacts, parseQuestions, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
   withWrittenFoods,
 } from "./pantry.ts";
 
@@ -374,7 +374,7 @@ Deno.test("parseQuestions: a pergunta fica presa ao alimento da refeição, com 
   n = 0;
   const [q] = parseQuestions([pergunta()], [ovo, salada], [], ids);
   assertEquals(q, {
-    id: "q1", topic: "fritos", item_name: "Ovo estrelado", question: "Os ovos foram estrelados em quê?",
+    id: "q1", kind: "preparacao", topic: "fritos", item_name: "Ovo estrelado", question: "Os ovos foram estrelados em quê?",
     options: ["Azeite", "Manteiga", "Óleo", "Sem gordura"], assumed: "Azeite", impact_kcal: 90, impact_protein_g: 0, answer: null, answered_at: null,
   });
 });
@@ -482,4 +482,42 @@ Deno.test("parseQuestions: até 5 perguntas (bug #66), as de mais impacto primei
     pergunta({ topic: "t6", item_name: "Alimento f", impact_kcal: 80 }),
   ], itens, [], ids);
   assertEquals(qs.map((q) => q.topic), ["t2", "t3", "t6", "t4", "t1"]);
+});
+
+// ─── Fase B dos #58/#66 (2026-10-17): perguntas de quantidade ───────────────
+
+Deno.test("optionGrams: as gramas de uma opção ou resposta de quantidade", () => {
+  assertEquals(optionGrams("3 fatias finas (~35 g)"), 35);
+  assertEquals(optionGrams("Camada fina, um lado (≈5g)"), 5);
+  assertEquals(optionGrams("20 g"), 20);
+  assertEquals(optionGrams("1 ovo (~50 g)"), 50);
+  assertEquals(optionGrams("12,5 gramas"), 12.5);
+  assertEquals(optionGrams("Sem manteiga (0 g)"), 0);
+  assertEquals(optionGrams("duas fatias grossas"), null);
+  assertEquals(optionGrams("3 fatias gordas"), null);
+  assertEquals(optionGrams(null), null);
+});
+
+Deno.test("parseQuestions: quantidade — tema \"<alimento> · quantidade\", opções todas com gramas, nunca sobre gramas escritas (bug #58)", () => {
+  const manteiga = estimado("Manteiga", 10);
+  const quant = (over: Record<string, unknown> = {}) => ({
+    kind: "quantidade", topic: "manteiga", item_name: "Manteiga", question: "Quanta manteiga levou o pão?",
+    options: ["Camada fina, um lado (~5 g)", "Camada fina, dos dois lados (~10 g)", "Camada grossa (~15 g)"],
+    assumed: "Camada fina, dos dois lados (~10 g)", impact_kcal: 72, impact_protein_g: 0, ...over,
+  });
+  const [q] = parseQuestions([quant()], [manteiga], [], ids);
+  assertEquals(q.kind, "quantidade");
+  assertEquals(q.topic, "manteiga · quantidade");
+  assertEquals(q.options.length, 3);
+  // Uma opção sem gramas não dá para aplicar sem o modelo: a pergunta cai.
+  assertEquals(parseQuestions([quant({ options: ["Pouca", "Muita (~15 g)"], assumed: "Pouca" })], [manteiga], [], ids), []);
+  // As gramas que o atleta escreveu não se perguntam.
+  assertEquals(parseQuestions([quant()], [{ ...manteiga, grams_explicit: true }], [], ids), []);
+  // Um tema de quantidade já confirmado nas regras não volta a perguntar-se.
+  const confirmada = regra({ topic: "manteiga · quantidade", topic_key: "manteiga quantidade", status: "confirmado" });
+  assertEquals(parseQuestions([quant()], [manteiga], [confirmada], ids), []);
+  // O modelo já pode mandar o tema com "quantidade": não se duplica.
+  assertEquals(parseQuestions([quant({ topic: "manteiga quantidade" })], [manteiga], [], ids)[0].topic, "manteiga quantidade");
+  // Sem kind (as gravadas antes, ou o modelo a omiti-lo) é de preparação.
+  assertEquals(parseQuestions([pergunta()], [ovo], [], ids)[0].kind, "preparacao");
 });

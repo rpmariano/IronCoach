@@ -28,7 +28,7 @@ import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_sha
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
   applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
-  isMicroColumn, microFromModel, parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
+  isMicroColumn, microFromModel, optionGrams, parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
   withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
@@ -107,6 +107,7 @@ export const RESPONSE_SCHEMA = {
       items: {
         type: "OBJECT",
         properties: {
+          kind: { type: "STRING", enum: ["preparacao", "quantidade"] },
           topic: { type: "STRING" },
           item_name: { type: "STRING" },
           question: { type: "STRING" },
@@ -115,7 +116,7 @@ export const RESPONSE_SCHEMA = {
           impact_kcal: { type: "NUMBER" },
           impact_protein_g: { type: "NUMBER" },
         },
-        required: ["topic", "item_name", "question", "options", "assumed", "impact_kcal"],
+        required: ["kind", "topic", "item_name", "question", "options", "assumed", "impact_kcal"],
       },
     },
   },
@@ -187,18 +188,28 @@ function cookingFactsRule(notes: string | null): string {
 // Bug #52 (fase B): «em vez de a Carol estar a adivinhar determinadas
 // situações, pode perguntar no momento». A refeição grava-se na mesma com o
 // mais provável (assumed); a pergunta aparece no ecrã do resultado.
+// Dois tipos desde 2026-10-17 (#58/#66): preparação e quantidade. Na de
+// quantidade cada opção traz as gramas, para a resposta se aplicar sem voltar
+// ao modelo (specs/carol-quantidades-habitos-refeicoes.md §4.1).
 const QUESTIONS_RULE =
   "\n\nPERGUNTAS (questions): as que forem precisas, até 5 — mais vale perguntar do que assumir algo muito errado —, " +
-  "só quando não se vê nem se sabe como um alimento desta refeição foi preparado ou temperado E isso muda a energia " +
-  "em 40 kcal ou mais OU a proteína em 4 g ou mais — a gordura usada para fritar ou saltear, " +
-  "o tempero da salada, o molho, a pele ou o corte da carne, o leite gordo ou magro, açúcar no café. Nunca sobre o " +
-  "que as observações já dizem, sobre um tema de \"Como cozinha e tempera\", nem sobre um alimento da lista que ele " +
-  "tem guardada. Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: topic (o tema, curto, " +
-  "ex. \"fritos\"), item_name (o nome EXATO do item em items), question (curta, na 2.ª pessoa, ex. \"Os ovos " +
-  "foram estrelados em quê?\"), options (2 a 4 respostas curtas, ex. [\"Azeite\", \"Manteiga\", \"Óleo\", " +
-  "\"Sem gordura\"]), assumed (uma das options), impact_kcal (quanto a resposta pode mudar a energia, em kcal), " +
-  "impact_protein_g (quanto pode mudar a proteína, em g; 0 se não muda). " +
-  "Na dúvida, não perguntes: lista vazia.";
+  "só quando isso muda a energia em 40 kcal ou mais OU a proteína em 4 g ou mais. De dois tipos (kind):\n" +
+  "- \"preparacao\": não se vê nem se sabe como um alimento desta refeição foi preparado ou temperado — a gordura " +
+  "usada para fritar ou saltear, o tempero da salada, o molho, a pele ou o corte da carne, o leite gordo ou magro, " +
+  "açúcar no café. Ex.: question \"Os ovos foram estrelados em quê?\", options [\"Azeite\", \"Manteiga\", \"Óleo\", " +
+  "\"Sem gordura\"].\n" +
+  "- \"quantidade\": a quantidade de um alimento não se vê bem nem foi escrita — a espessura das fatias, a camada de " +
+  "manteiga ou de doce, quanto molho ou azeite, o tamanho da porção. Cada opção descreve a quantidade E diz as " +
+  "gramas, SEMPRE no formato \"(~N g)\". Ex.: manteiga → question \"Quanta manteiga levou o pão?\", options " +
+  "[\"Camada fina, um lado (~5 g)\", \"Camada fina, dos dois lados (~10 g)\", \"Camada grossa (~15 g)\"]; fiambre → " +
+  "[\"3 fatias finíssimas (~25 g)\", \"3 fatias finas (~35 g)\", \"3 fatias médias (~50 g)\"]. A assumed é a opção " +
+  "que usaste em estimated_quantity_grams. Nunca sobre um alimento com gramas indicadas pelo utilizador.\n" +
+  "Nunca sobre o que as observações já dizem, sobre um tema de \"Como cozinha e tempera\", nem sobre um alimento da " +
+  "lista que ele tem guardada. Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
+  "topic (o tema, curto: \"fritos\"; numa de quantidade, o alimento: \"manteiga\"), item_name (o nome EXATO do item " +
+  "em items), question (curta, na 2.ª pessoa), options (2 a 4 respostas curtas), assumed (uma das options), " +
+  "impact_kcal (quanto a resposta pode mudar a energia, em kcal), impact_protein_g (quanto pode mudar a proteína, " +
+  "em g; 0 se não muda). Na dúvida, não perguntes: lista vazia.";
 
 function buildPrompt(notes: string | null, knowledge = ""): string {
   return PHOTOS_INTRO +
@@ -268,7 +279,12 @@ export function mergePhotoAndWrittenItems<T extends { quantity_grams: number; so
   if (byIndex.size !== written.length) return null;
   const fromWritten = written.map((w, i) => {
     const est = byIndex.get(i + 1)!;
-    return { ...est, name: w.name.slice(0, 120), quantity_grams: w.grams != null ? w.grams : est.quantity_grams };
+    // grams_explicit: o atleta deu as gramas — não se lhe pergunta a quantidade
+    // (parseQuestions). Não é coluna: pickMealItem deixa-o de fora.
+    return {
+      ...est, name: w.name.slice(0, 120), quantity_grams: w.grams != null ? w.grams : est.quantity_grams,
+      ...(w.grams != null ? { grams_explicit: true } : {}),
+    };
   });
   return [...fromPhotos, ...fromWritten];
 }
@@ -870,6 +886,20 @@ export function mealTypeBaselineLine(
     `Se comparares, diz "ao ${type} costumas ter…" (o teu ${type} típico), nunca "a média desta refeição".`;
 }
 
+/** O que ela assumiu e ainda vai perguntar (perguntas em aberto), para o
+ *  comentário não criticar uma suposição dela — no bug #58 escreveu "corta os
+ *  10 g de manteiga" sobre uma manteiga cuja quantidade estava a perguntar.
+ *  "" sem perguntas em aberto (specs/carol-quantidades-habitos-refeicoes.md §4.5). */
+export function assumedValuesSection(questions: CarolQuestion[] | null | undefined): string {
+  const open = (questions || []).filter((q) => q && !q.answer && q.item_name && q.assumed);
+  if (!open.length) return "";
+  return `POR CONFIRMAR — assumiste isto e ainda lhe vais perguntar: ` +
+    open.map((q) => `${q.item_name}: ${q.assumed}`).join("; ") + ".\n" +
+    `São suposições tuas, não dele: NÃO critiques nem mandes cortar, reduzir ou trocar uma quantidade ou preparação por ` +
+    `confirmar, e não a ponhas em "O que corrigir". Podes dizer o que assumiste ("assumi ~10 g de manteiga"). ` +
+    `O comentário definitivo vem depois de ele responder.\n`;
+}
+
 export function formatMealItemsLine(items: Array<{ name?: string | null; quantity_grams?: number | null }> | null | undefined): string | null {
   const parts = (items || [])
     .filter((it) => typeof it?.name === "string" && it.name.trim())
@@ -909,6 +939,8 @@ async function generateMealCoachNotes(
   deadline = Number.POSITIVE_INFINITY,
   // O dia até agora face ao que ela sugeriu (5.5, push 3) — dayProgressSection.
   dayProgress: string | null = null,
+  // As perguntas em aberto: o que assumiu não se critica (assumedValuesSection).
+  openQuestions: CarolQuestion[] = [],
   // usage: o consumo desta chamada (null se não chegou a haver resposta).
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null; usage: GeminiUsage | null }> {
   if (!geminiKey) return { text: null, usage: null };
@@ -976,6 +1008,7 @@ async function generateMealCoachNotes(
     (goalLine ? `${goalLine} (referência diária, esta é só uma refeição — não esperes que bata a meta toda).\n` : "") +
     `${avgLine}\n` +
     (dayProgress ?? "") +
+    assumedValuesSection(openQuestions) +
     (meal.notes ? `Nota do utilizador: "${meal.notes}"\n` : "") +
     restricoes +
     workoutsText +
@@ -1070,6 +1103,9 @@ async function attachMealCoachNotes(
     totals: MealTotals;
     // As linhas de meal_items acabadas de gravar (nome + quantidade).
     items?: Array<{ name?: string | null; quantity_grams?: number | null }>;
+    // As perguntas da Carol em aberto sobre esta refeição: o comentário não
+    // critica o que ela assumiu e ainda vai perguntar (assumedValuesSection).
+    questions?: CarolQuestion[];
   },
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
@@ -1188,6 +1224,7 @@ async function attachMealCoachNotes(
       (profile?.experience_level as string | null) ?? null,
       deadline,
       dayProgress,
+      ctx.questions ?? [],
     );
     usage = result.usage;
 
@@ -1316,28 +1353,47 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       const answered = questions.filter((q) => !q.answer && wanted.has(q.id)).map((q) => ({ ...q, answer: wanted.get(q.id)! }));
       if (!answered.length) return jsonResponse({ error: "Não há perguntas por responder nesta refeição." }, 400);
 
-      // Os alimentos a estimar outra vez: só onde a resposta não é a assumida.
+      // Os alimentos a mexer: só onde a resposta não é a assumida. Uma
+      // resposta de quantidade com gramas (fase B dos #58/#66, 2026-10-17)
+      // troca só as gramas do alimento — os valores por 100 g ficam, sem
+      // chamada ao modelo. Uma de preparação, ou uma quantidade escrita à mão
+      // sem gramas ("Outro…"), volta a estimar o alimento no modelo.
       // deno-lint-ignore no-explicit-any
       const mealItems: any[] = meal.meal_items || [];
       // deno-lint-ignore no-explicit-any
-      const changes = new Map<string, { item: any; answers: string[]; facts: string[] }>();
+      type Change = { item: any; answers: string[]; facts: string[]; grams: number | null; reestimate: boolean; estimateGrams: boolean };
+      const changes = new Map<string, Change>();
       for (const q of answered) {
         if (foodKey(q.answer) === foodKey(q.assumed)) continue;
         const item = mealItems.find((it) => foodKey(it.name) === foodKey(q.item_name));
         if (!item) continue;
-        const c = changes.get(item.id) ?? { item, answers: [], facts: [] };
-        c.answers.push(q.answer);
-        c.facts.push(`${q.topic}: ${q.answer}`);
+        const c = changes.get(item.id) ?? { item, answers: [], facts: [], grams: null, reestimate: false, estimateGrams: false };
+        const grams = q.kind === "quantidade" ? optionGrams(q.answer) : null;
+        if (grams != null) {
+          c.grams = grams;
+        } else {
+          c.answers.push(q.answer);
+          c.facts.push(`${q.topic}: ${q.answer}`);
+          c.reestimate = true;
+          if (q.kind === "quantidade") c.estimateGrams = true;
+        }
         changes.set(item.id, c);
       }
 
+      for (const c of changes.values()) {
+        if (c.reestimate || c.grams == null) continue;
+        const { error: upErr } = await sb.from("meal_items").update({ quantity_grams: c.grams }).eq("id", c.item.id);
+        if (upErr) return jsonResponse({ error: `Falha a gravar o alimento: ${upErr.message}` }, 500);
+      }
+
       let usage: GeminiUsage = emptyUsage();
-      if (changes.size) {
+      const list = [...changes.values()].filter((c) => c.reestimate);
+      if (list.length) {
         const pantry = await pantryPromise;
-        const list = [...changes.values()];
         const written = list.map((c) => ({
           name: `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120),
-          grams: Number(c.item.quantity_grams) || null,
+          // Sem gramas na resposta ("Outro…" numa quantidade), o modelo estima a porção.
+          grams: c.estimateGrams ? null : (c.grams ?? (Number(c.item.quantity_grams) || null)),
         }));
         const answersNote = `Respostas do atleta: ${list.flatMap((c) => c.facts).join("; ")}.`;
         let est;
@@ -1351,8 +1407,9 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         }
         usage = est.usage;
         for (let i = 0; i < list.length; i++) {
+          const grams = list[i].estimateGrams ? est.items[i].quantity_grams : (list[i].grams ?? list[i].item.quantity_grams);
           const { error: upErr } = await sb.from("meal_items")
-            .update(pickMealItem({ ...est.items[i], quantity_grams: list[i].item.quantity_grams }))
+            .update(pickMealItem({ ...est.items[i], quantity_grams: grams }))
             .eq("id", list[i].item.id);
           if (upErr) return jsonResponse({ error: `Falha a gravar o alimento: ${upErr.message}` }, 500);
         }
@@ -1364,7 +1421,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       // por responder sobre ele passa a apontar para o nome novo — senão,
       // respondida mais tarde, já não o encontrava (revisão pré-master).
       const renamed = new Map(
-        [...changes.values()].map((c) => [foodKey(c.item.name), `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120)]),
+        list.map((c) => [foodKey(c.item.name), `${c.item.name} (${c.answers.join(", ")})`.slice(0, 120)]),
       );
       const updatedQuestions = questions.map((q) => {
         if (byId.has(q.id)) return { ...q, answer: byId.get(q.id)!.answer, answered_at: nowISO };
@@ -1380,6 +1437,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
           ? attachMealCoachNotes(sb, userId, meal, {
             date: meal.date, meal_type: meal.meal_type, meal_time: meal.meal_time ?? null, notes: meal.notes ?? null,
             totals: totalsFromItems(freshItems || []), items: freshItems || [],
+            questions: updatedQuestions.filter((q) => !q.answer),
           }, geminiKey, coachDeadline)
           : Promise.resolve(null),
         learnRules(sb, userId, answered.map((q) => ({ topic: q.topic, value: q.answer })), "resposta", nowISO),
@@ -1438,7 +1496,8 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
             unknown.map((u) => u.item), rawNotes, geminiKey, extractionDeadline, knowledgeSection(pantry.foods, pantry.rules),
           );
           const byIndex = new Map(unknown.map((u, i) => [u.index, u.food ? withPantryValues(est.items[i], u.food, u.pending) : est.items[i]]));
-          const all = items.map((_, i) => known.get(i) ?? byIndex.get(i));
+          // grams_explicit: as gramas são do atleta — sem pergunta de quantidade.
+          const all = items.map((w, i) => ({ ...(known.get(i) ?? byIndex.get(i)), ...(w.grams != null ? { grams_explicit: true } : {}) }));
           estimated = { items: all, usage: est.usage, facts: est.facts, questions: parseQuestions(est.questions, all, pantry.rules) };
         } else {
           estimated = { items: items.map((_, i) => known.get(i)), usage: emptyUsage(), facts: [], questions: [] };
@@ -1489,7 +1548,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         // nunca chegam ao app_logs (ver _shared/geminiUsage.ts).
         const coachUsage = await attachMealCoachNotes(sb, userId, updatedMeal, {
           date: body.date, meal_type: body.meal_type, meal_time: updatedMeal?.meal_time ?? null, notes: rawNotes,
-          totals: totalsFromItems(savedItems || []), items: savedItems || [],
+          totals: totalsFromItems(savedItems || []), items: savedItems || [], questions: estimated.questions,
         }, geminiKey, coachDeadline);
 
         return jsonResponse({ meal: { ...updatedMeal, meal_items: savedItems }, usage: addUsage(estimated.usage, coachUsage) });
@@ -1521,7 +1580,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       const [coachUsage] = await Promise.all([
         attachMealCoachNotes(sb, userId, meal, {
           date: body.date, meal_type: body.meal_type, meal_time: meal?.meal_time ?? null, notes: rawNotes,
-          totals: totalsFromItems(savedItems || []), items: savedItems || [],
+          totals: totalsFromItems(savedItems || []), items: savedItems || [], questions: estimated.questions,
         }, geminiKey, coachDeadline),
         learnFromMeal(sb, userId, estimated.items as unknown[], estimated.facts),
       ]);
@@ -1652,11 +1711,12 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     }
 
     // 3. Gravar refeição + itens
+    const questions = parseQuestions(rawQuestions, items, pantry.rules);
     const { data: meal, error: mealError } = await sb
       .from("meals")
       .insert({
         user_id: userId, date, meal_type, photo_paths: photoPaths, status: "ready", notes: rawNotes, ...mealTimeField,
-        carol_questions: (() => { const q = parseQuestions(rawQuestions, items, pantry.rules); return q.length ? q : null; })(),
+        carol_questions: questions.length ? questions : null,
       })
       .select()
       .single();
@@ -1681,7 +1741,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
     const [coachUsage, learned] = await Promise.all([
       attachMealCoachNotes(sb, userId, meal, {
         date, meal_type, meal_time: meal?.meal_time ?? null, notes: rawNotes, totals: totalsFromItems(savedItems || []),
-        items: savedItems || [],
+        items: savedItems || [], questions,
       }, geminiKey, coachDeadline),
       learnFromMeal(sb, userId, items, facts),
     ]);

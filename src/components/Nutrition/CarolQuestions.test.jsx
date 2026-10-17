@@ -93,6 +93,20 @@ describe('CarolQuestions', () => {
     expect(mocks.invoke.mock.calls[0][1].body.answers).toEqual([{ id: 'q1', answer: 'Banha' }]);
   });
 
+  it('numa pergunta de quantidade, "Outro…" sugere escrever as gramas (fase B dos #58/#66)', () => {
+    const manteiga = { id: 'q3', kind: 'quantidade', topic: 'manteiga · quantidade', item_name: 'Manteiga', question: 'Quanta manteiga levou o pão?', options: ['Camada fina (~5 g)', 'Camada grossa (~15 g)'], assumed: 'Camada grossa (~15 g)', impact_kcal: 70, answer: null };
+    render(<CarolQuestions meal={{ ...MEAL, carol_questions: [manteiga] }} />);
+    expect(screen.getByText('Assumi camada grossa (~15 g).')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Outro…' }));
+    expect(screen.getByLabelText(/Outra resposta: Quanta manteiga/)).toHaveAttribute('placeholder', 'ex.: 20 g, ou "duas fatias grossas"');
+  });
+
+  it('numa pergunta de preparação, "Outro…" não sugere gramas', () => {
+    render(<CarolQuestions meal={MEAL} />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Outro…' })[0]);
+    expect(screen.getByLabelText(/Outra resposta: Os ovos/)).not.toHaveAttribute('placeholder');
+  });
+
   it('uma falha diz-se e deixa tentar outra vez', async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Rede em baixo.' });
     render(<CarolQuestions meal={MEAL} />);

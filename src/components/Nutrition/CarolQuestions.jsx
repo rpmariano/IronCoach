@@ -143,6 +143,9 @@ export default function CarolQuestions({ meal, onAnswered, onLater }) {
               value={other[q.id] || ''}
               maxLength={60}
               autoFocus
+              // Numa quantidade (fase B dos #58/#66), com gramas a resposta
+              // aplica-se logo; sem gramas a Carol volta a estimar a porção.
+              placeholder={q.kind === 'quantidade' ? 'ex.: 20 g, ou "duas fatias grossas"' : undefined}
               onChange={(e) => setOther((o) => ({ ...o, [q.id]: e.target.value }))}
               className="w-full mt-2.5 min-h-[44px] rounded-xl px-3 text-sm outline-none"
               style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-glass)', color: 'var(--text-1)' }}

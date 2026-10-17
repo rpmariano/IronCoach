@@ -487,6 +487,10 @@ export async function learnRules(
 /** Uma pergunta ao atleta, guardada em meals.carol_questions. */
 export type CarolQuestion = {
   id: string;
+  // "preparacao" (como foi feito/temperado) ou "quantidade" (quanto — as
+  // opções trazem as gramas, "(~N g)"). As gravadas antes de 2026-10-17 não
+  // têm o campo: são de preparação. specs/carol-quantidades-habitos-refeicoes.md §4.1.
+  kind: "preparacao" | "quantidade";
   topic: string;
   item_name: string;
   question: string;
@@ -512,6 +516,16 @@ export const MAX_QUESTIONS = 5;
 const questionWeight = (q: CarolQuestion): number =>
   Math.max(q.impact_kcal / MIN_QUESTION_IMPACT_KCAL, q.impact_protein_g / MIN_QUESTION_IMPACT_PROTEIN_G);
 
+/** As gramas que uma opção (ou resposta) de quantidade diz — "3 fatias finas
+ *  (~35 g)", "20 g", "camada fina (≈5g)" — ou null se não diz. É com isto que
+ *  uma resposta de quantidade se aplica sem o modelo: troca-se só as gramas. */
+export function optionGrams(text: unknown): number | null {
+  const m = String(text ?? "").match(/(\d+(?:[.,]\d+)?)\s*g(?:ramas?)?(?![a-z])/i);
+  if (!m) return null;
+  const n = Number(m[1].replace(",", "."));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 /**
  * As perguntas que o Gemini propôs, filtradas pelas regras da casa: no
  * máximo 5, só as que mudam ≥ 40 kcal ou ≥ 4 g de proteína (as de mais
@@ -520,6 +534,10 @@ const questionWeight = (q: CarolQuestion): number =>
  * ser que haja uma regra por confirmar ou que varia sobre ele, 2026-10-05), e
  * sempre presas a um alimento desta refeição. A opção assumida tem de estar
  * entre as opções — é a que a estimativa usou.
+ * Quantidade (2026-10-17): cada opção tem de dizer as gramas (optionGrams),
+ * nunca sobre gramas que o atleta escreveu (grams_explicit), e o tema passa a
+ * "<alimento> · quantidade" — é assim que fica nas regras e que, confirmado,
+ * deixa de se perguntar.
  */
 export function parseQuestions(
   raw: unknown,
@@ -534,14 +552,18 @@ export function parseQuestions(
   const seenTopics = new Set<string>();
   const out: CarolQuestion[] = [];
   for (const q of raw) {
-    const topic = String(q?.topic ?? "").trim().slice(0, 40);
+    const kind: CarolQuestion["kind"] = q?.kind === "quantidade" ? "quantidade" : "preparacao";
+    const rawTopic = String(q?.topic ?? "").trim();
+    const topic = kind === "quantidade" && !/quantidade/i.test(rawTopic)
+      ? `${rawTopic.slice(0, 27)} · quantidade`
+      : rawTopic.slice(0, 40);
     const question = String(q?.question ?? "").trim().slice(0, 140);
     const itemName = String(q?.item_name ?? "").trim();
     const topicKey = foodKey(topic);
     const options = [...new Set((Array.isArray(q?.options) ? q.options : [])
-      .map((o: unknown) => String(o ?? "").trim().slice(0, 40))
+      .map((o: unknown) => String(o ?? "").trim().slice(0, 50))
       .filter(Boolean))].slice(0, 4) as string[];
-    const assumed = String(q?.assumed ?? "").trim().slice(0, 40);
+    const assumed = String(q?.assumed ?? "").trim().slice(0, 50);
     const kcal = Math.round(Number(q?.impact_kcal));
     const impact = Number.isFinite(kcal) && kcal > 0 ? kcal : 0;
     const protein = Math.round(Number(q?.impact_protein_g) * 10) / 10;
@@ -553,8 +575,9 @@ export function parseQuestions(
     if (impact < MIN_QUESTION_IMPACT_KCAL && impactProtein < MIN_QUESTION_IMPACT_PROTEIN_G) continue;
     if (confirmed.has(topicKey) || seenTopics.has(topicKey)) continue;
     if (!options.some((o) => foodKey(o) === foodKey(assumed))) continue;
+    if (kind === "quantidade" && (item.grams_explicit || !options.every((o) => optionGrams(o) != null))) continue;
     seenTopics.add(topicKey);
-    out.push({ id: newId(), topic, item_name: String(item.name), question, options, assumed, impact_kcal: impact, impact_protein_g: impactProtein, answer: null, answered_at: null });
+    out.push({ id: newId(), kind, topic, item_name: String(item.name), question, options, assumed, impact_kcal: impact, impact_protein_g: impactProtein, answer: null, answered_at: null });
   }
   // Ordem estável: com o mesmo peso fica a ordem do modelo.
   return out

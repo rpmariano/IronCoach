@@ -2,7 +2,8 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildManualItemsPrompt, mealTypeBaselineLine, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, RESPONSE_SCHEMA } from "./index.ts";
+import { assumedValuesSection, buildManualItemsPrompt, mealTypeBaselineLine, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, RESPONSE_SCHEMA } from "./index.ts";
+import type { CarolQuestion } from "./pantry.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
   assertEquals(dietaryRestrictionsPromptBlock(null, null), "");
@@ -117,6 +118,8 @@ Deno.test("mergePhotoAndWrittenItems: os escritos ficam com o nome e as gramas d
   ]);
   // O source_index não chega à BD (meal_items não tem a coluna).
   assertEquals(merged.some((i) => "source_index" in i), false);
+  // Só o escrito com gramas fica marcado: não se lhe pergunta a quantidade (fase B).
+  assertEquals(merged.map((i) => (i as { grams_explicit?: boolean }).grams_explicit ?? false), [false, false, false, true]);
 });
 
 Deno.test("mergePhotoAndWrittenItems: um escrito em falta é falha; um índice repetido conta uma vez", () => {
@@ -163,7 +166,27 @@ Deno.test("os pedidos pedem perguntas até 5, quando muda ≥ 40 kcal ou ≥ 4 g
     assertStringIncludes(p, "40 kcal ou mais OU a proteína em 4 g ou mais");
     assertStringIncludes(p, "impact_protein_g");
     assertStringIncludes(p, "Na dúvida, não perguntes");
+    // Fase B: as de quantidade trazem as gramas em cada opção.
+    assertStringIncludes(p, "\"quantidade\"");
+    assertStringIncludes(p, "SEMPRE no formato \"(~N g)\"");
+    assertStringIncludes(p, "Nunca sobre um alimento com gramas indicadas pelo utilizador");
   }
+  assertEquals(RESPONSE_SCHEMA.properties.questions.items.properties.kind.enum, ["preparacao", "quantidade"]);
+});
+
+Deno.test("assumedValuesSection: o que ela assumiu e ainda vai perguntar não se critica (bug #58)", () => {
+  const q = (over: Partial<CarolQuestion>): CarolQuestion => ({
+    id: "q", kind: "quantidade", topic: "manteiga · quantidade", item_name: "Manteiga", question: "Quanta?",
+    options: ["Camada fina (~5 g)", "Camada grossa (~15 g)"], assumed: "Camada grossa (~15 g)", impact_kcal: 70, impact_protein_g: 0,
+    answer: null, answered_at: null, ...over,
+  });
+  const s = assumedValuesSection([q({}), q({ id: "r", kind: "preparacao", item_name: "Ovo", assumed: "Azeite" })]);
+  assertStringIncludes(s, "POR CONFIRMAR — assumiste isto e ainda lhe vais perguntar: Manteiga: Camada grossa (~15 g); Ovo: Azeite.");
+  assertStringIncludes(s, "não a ponhas em \"O que corrigir\"");
+  // Respondida já não é suposição; sem perguntas, nada.
+  assertEquals(assumedValuesSection([q({ answer: "Camada fina (~5 g)" })]), "");
+  assertEquals(assumedValuesSection([]), "");
+  assertEquals(assumedValuesSection(null), "");
 });
 
 // ─── Bug #48, fase C: confirmar um alimento para a despensa ────────────────
