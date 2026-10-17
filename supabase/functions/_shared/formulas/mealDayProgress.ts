@@ -150,6 +150,14 @@ export function dayProgressSection(p: DayProgress): string {
     line += p.target.source === "sugestao"
       ? ` Sugeriste para hoje ${parts.join(" e ")} — vai em ${pct.join(" e ")}.`
       : ` A meta diária dele é ${parts.join(" e ")} — vai em ${pct.join(" e ")}.`;
+    // Bug #65 (2026-10-10): com o dia a 114/115 g, ela disse que ele tinha
+    // praticamente atingido a meta e, logo a seguir, pôs a proteína desta
+    // refeição em "O que corrigir" face ao jantar do costume. O dia manda.
+    if (p.target.protein && p.protein >= p.target.protein * 0.95) {
+      line += `\nCOM ESTA REFEIÇÃO A PROTEÍNA DO DIA CHEGA AO ALVO (${p.protein} de ${p.target.protein} g): isso é um ponto positivo. ` +
+        `NÃO ponhas a proteína desta refeição em "O que corrigir" nem a apresentes como falha face ao costume do tipo de refeição — ` +
+        `o que conta é o dia, e o dia está bem.`;
+    }
   }
   if (p.thisTime) line += `\nEsta refeição foi às ${p.thisTime}.`;
   if (p.logged.length) {

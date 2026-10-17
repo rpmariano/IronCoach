@@ -17,6 +17,24 @@ Deno.test("mealDayProgress: soma as outras refeições de hoje com esta, e usa a
   assertStringIncludes(s, "não cobres o que falta");
 });
 
+Deno.test("dayProgressSection: o dia chega ao alvo de proteína — a proteína desta refeição não é ponto a corrigir (bug #65)", () => {
+  const p = mealDayProgress({
+    thisMeal: { calories: 367, protein: 20.8 },
+    otherMeals: [{ calories: 1500, protein: 93.2 }],
+    suggestion: { kcal: 2300, protein_g: 115 },
+    goals: { protein_goal: 145 },
+  });
+  const s = dayProgressSection(p);
+  assertStringIncludes(s, "COM ESTA REFEIÇÃO A PROTEÍNA DO DIA CHEGA AO ALVO (114 de 115 g)");
+  assertStringIncludes(s, "NÃO ponhas a proteína desta refeição em \"O que corrigir\"");
+
+  const longe = dayProgressSection(mealDayProgress({
+    thisMeal: { calories: 367, protein: 20.8 }, otherMeals: [{ calories: 600, protein: 40 }],
+    suggestion: { kcal: 2300, protein_g: 115 }, goals: {},
+  }));
+  assertEquals(longe.includes("CHEGA AO ALVO"), false);
+});
+
 Deno.test("mealDayProgress: sem sugestão para hoje, a meta do perfil; sem nenhuma, só o dia", () => {
   const meta = mealDayProgress({ thisMeal: { calories: 500, protein: 40 }, otherMeals: [], suggestion: null, goals: { protein_goal: 150 } });
   assertEquals(meta.target, { source: "meta", kcal: null, protein: 150 });
