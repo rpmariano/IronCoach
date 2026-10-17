@@ -16,6 +16,7 @@ import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeek
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
+import { buildPrescription, describePrescription } from "../_shared/formulas/planPrescription.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { missingProfileBasicsInstruction } from "../_shared/profileGaps.ts";
@@ -358,6 +359,40 @@ const PROPOSE_PLAN_TOOL = {
               description:
                 "Só para kind=ginasio. Grupos musculares ou modalidade, ex.: [\"Pernas\", \"Glúteos\"] " +
                 "ou [\"HIIT\"].",
+            },
+            // Sem minItems/maxItems aqui (o 400 de 2026-09-05,
+            // ver MEAL_MACROS_SCHEMA_PROPERTIES): os limites vivem em
+            // buildPrescription (_shared/formulas/planPrescription.ts).
+            prescription_blocks: {
+              type: "ARRAY",
+              description:
+                "Só para kind=ginasio. Os exercícios do treino, por ordem, segundo a doutrina " +
+                "\"DETALHE DOS TREINOS DE GINÁSIO NO PLANO\". Força: sets × reps + goal. Cardio: os alvos " +
+                "que fizerem sentido (duration_min, distance_km, laps) + goal. NUNCA kg — o peso vem da " +
+                "última vez que o atleta fez o exercício. Até 12 exercícios.",
+              items: {
+                type: "OBJECT",
+                properties: {
+                  type: { type: "STRING", enum: ["forca", "cardio"] },
+                  name: { type: "STRING", description: "Nome do exercício em português, como o atleta o diria (\"Extensões de pernas\", \"Bicicleta\")." },
+                  sets: { type: "NUMBER", description: "Só força. Número de séries (1-10)." },
+                  reps: { type: "NUMBER", description: "Só força. Repetições por série (1-50)." },
+                  goal: {
+                    type: "STRING",
+                    description:
+                      "O objetivo deste exercício, concreto e verificável: técnica, tempo, ritmo, RIR " +
+                      "(\"descida controlada em 3 s\", \"parar com 2-3 reps em reserva\", \"Z2, cadência 85-90\"). Nunca um peso.",
+                  },
+                  // Sem `fields` (os campos de cardio a registar): seria um
+                  // 3.º nível de arrays, nunca provado contra a API. O
+                  // servidor tira-os do exercício (cardioFields.ts) e dos
+                  // alvos dados aqui.
+                  duration_min: { type: "NUMBER", description: "Só cardio. Tempo alvo em minutos." },
+                  distance_km: { type: "NUMBER", description: "Só cardio. Distância alvo em km (remo 2000 m = 2)." },
+                  laps: { type: "NUMBER", description: "Só cardio. Voltas ou rondas alvo." },
+                },
+                required: ["type", "name"],
+              },
             },
             target_distance_km: { type: "NUMBER", description: "Só para kind=corrida (incluindo caminhada). Distância alvo em km." },
             target_duration_min: { type: "NUMBER", description: "Duração alvo em minutos." },
@@ -3156,6 +3191,12 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
     const distance = Number(item.target_distance_km);
     const duration = Number(item.target_duration_min);
     const isTraining = item.kind === "corrida" || item.kind === "ginasio";
+    // Só no ginásio. Uma prescrição inválida fica null — o treino grava-se na
+    // mesma, descrito nas notes, como até aqui.
+    const { prescription, issue: prescriptionIssue } = item.kind === "ginasio"
+      ? buildPrescription(item.prescription_blocks)
+      : { prescription: null, issue: null };
+    if (prescriptionIssue) console.warn(`propose_training_plan: prescrição do treino ${n} descartada — ${prescriptionIssue}`);
     rows.push({
       user_id: userId,
       planned_date: item.planned_date,
@@ -3179,6 +3220,7 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
       notes: itemNotes,
       meal_suggestion: mealSuggestion,
       meal_macros: buildMealMacros(item),
+      prescription,
     });
   }
 
@@ -4671,8 +4713,12 @@ function describeItem(i: any): string {
   }
   if (isMealOnlyItem(i)) return `${MEAL_ONLY_DAY_LABEL.toLowerCase()} (só refeições sugeridas)`;
   if (i.kind === "descanso") return "descanso";
+  // A prescrição por exercício, quando existe: sem ela, um ajuste ao plano
+  // reescrevia os exercícios às cegas.
+  const prescricao = describePrescription(i.prescription);
   return ["ginásio", i.categories?.length ? i.categories.join("/") : null,
-    i.target_duration_min ? `${i.target_duration_min} min` : null].filter(Boolean).join(" ");
+    i.target_duration_min ? `${i.target_duration_min} min` : null,
+    prescricao ? `— ${prescricao}` : null].filter(Boolean).join(" ");
 }
 
 // deno-lint-ignore no-explicit-any
@@ -5888,6 +5934,16 @@ export function buildSystemInstruction(
     `Sem histórico de pace suficiente para o training_type em causa (atleta novo, sem corridas ` +
     `qualificadas nesse ritmo), descreve o esforço por sensação ("ritmo de conversa", "esforço ` +
     `moderado, ainda consegues falar em frases curtas") em vez de inventar um número.\n\n` +
+    `DETALHE DOS TREINOS DE GINÁSIO NO PLANO (prescription_blocks de propose_training_plan): em cada dia ` +
+    `kind=ginasio, os exercícios vão em prescription_blocks — por exercício, séries × reps e um objetivo — e não só ` +
+    `na notes, que fica para o enquadramento (aquecimento, ordem face à corrida do dia).\n` +
+    `  • NUNCA prescrevas kg. O atleta vê no registo a carga da última vez que fez o exercício e decide; ` +
+    `o teu objetivo diz o que ele deve conseguir: técnica, tempo de descida, reps em reserva, completar as reps.\n` +
+    `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre com 2-4 reps em reserva — nunca até à ` +
+    `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11).\n` +
+    `  • Cardio no ginásio (bicicleta, remo, passadeira, piscina): duração/distância/voltas alvo e o objetivo (zona, cadência).\n` +
+    `  • Usa os nomes dos exercícios que o atleta já registou (histórico de ginásio) quando servirem — é por eles ` +
+    `que o registo encontra a última carga.\n\n` +
     `PLANO ATIVO EM CURSO: se o contexto abaixo indicar um PLANO ACEITE EM CURSO, não propões ` +
     `um novo plano enquanto esse microciclo não terminar — a menos que o atleta refira ` +
     `explicitamente um dos seguintes sinais de interrupção:\n` +
@@ -6880,7 +6936,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (proposedPlanId) {
       const { data } = await sb
         .from("coach_plan_items")
-        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion")
+        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, prescription")
         .eq("plan_id", proposedPlanId)
         .eq("status", "pendente")
         .order("planned_date", { ascending: true })
@@ -6903,7 +6959,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (activePlanIds.length > 0) {
       const { data } = await sb
         .from("coach_plan_items")
-        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion")
+        .select("planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, prescription")
         .in("plan_id", activePlanIds)
         .eq("status", "pendente")
         .gte("planned_date", todayISO)

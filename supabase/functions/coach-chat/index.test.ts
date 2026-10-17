@@ -367,6 +367,66 @@ Deno.test("runProposeTrainingPlan grava plano e itens", async () => {
   assertEquals(calls.itemInserts[1].training_type, "longo");
 });
 
+Deno.test("runProposeTrainingPlan grava a prescrição por exercício num treino de ginásio (sem kg)", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{
+      planned_date: "2026-08-12",
+      kind: "ginasio",
+      categories: ["Pernas Inferiores"],
+      prescription_blocks: [
+        { type: "forca", name: "Extensões de pernas", sets: 3, reps: 12, goal: "chegar às 12 sem falhar", weight_kg: 40 },
+        { type: "cardio", name: "Bicicleta", duration_min: 20, goal: "Z2" },
+      ],
+    }],
+  });
+  assertStringIncludes(result, "Plano criado com 1 treino(s)");
+  assertEquals(calls.itemInserts[0].prescription.blocks.length, 2);
+  assertEquals(calls.itemInserts[0].prescription.blocks[0], { type: "forca", name: "Extensões de pernas", sets: 3, reps: 12, goal: "chegar às 12 sem falhar" });
+  assertEquals(calls.itemInserts[0].prescription.blocks[1].fields, ["duration", "distance"]);
+});
+
+Deno.test("runProposeTrainingPlan: prescrição inválida fica null e o treino grava na mesma", async () => {
+  const { sb, calls } = makePlanSb();
+  const result = await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ planned_date: "2026-08-12", kind: "ginasio", notes: "Pernas", prescription_blocks: [{ type: "forca", name: "Prensa" }] }],
+  });
+  assertStringIncludes(result, "Plano criado com 1 treino(s)");
+  assertEquals(calls.itemInserts[0].prescription, null);
+  assertEquals(calls.itemInserts[0].notes, "Pernas");
+});
+
+Deno.test("runProposeTrainingPlan: prescrição numa corrida é descartada", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [{ ...VALID_PLAN.items[0], prescription_blocks: [{ type: "forca", name: "Prensa", sets: 3, reps: 10 }] }],
+  });
+  assertEquals(calls.itemInserts[0].prescription, null);
+});
+
+Deno.test("schema: prescription_blocks não abre um 3.º nível de arrays (só items[] → prescription_blocks[])", () => {
+  const block = buildTools(allowedToolsFor("E"));
+  // deno-lint-ignore no-explicit-any
+  const propose = (block[0] as any).functionDeclarations.find((d: any) => d.name === "propose_training_plan");
+  const blocks = propose.parameters.properties.items.items.properties.prescription_blocks;
+  assertEquals(blocks.type, "ARRAY");
+  for (const p of Object.values(blocks.items.properties)) {
+    // deno-lint-ignore no-explicit-any
+    assertEquals((p as any).type === "ARRAY" || (p as any).type === "OBJECT", false);
+  }
+});
+
+Deno.test("buildPlanContext mostra a prescrição de um ginásio pendente", () => {
+  const ctx = buildPlanContext([{
+    planned_date: "2026-08-12", kind: "ginasio", categories: ["Pernas Inferiores"], status: "pendente",
+    prescription: { blocks: [{ type: "forca", name: "Extensões de pernas", sets: 3, reps: 12, goal: "chegar às 12" }] },
+  }], [], "2026-08-10");
+  assertStringIncludes(ctx ?? "", "Extensões de pernas 3×12 (chegar às 12)");
+});
+
 Deno.test("runProposeTrainingPlan rejeita training_type inválido sem gravar nada", async () => {
   const { sb, calls } = makePlanSb();
   const result = await runProposeTrainingPlan(sb, "user-1", {

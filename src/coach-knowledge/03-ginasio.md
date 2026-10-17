@@ -213,6 +213,30 @@ Fonte:     Differential effects of strength training leading to failure
 Confiança: ALTA
 ```
 
+### Como se prescreve no plano — decisão de produto (2026-10-17)
+
+Não é investigação: é a forma acordada com o atleta em
+[specs/plano-registo-plano-coach.md](../../specs/plano-registo-plano-coach.md)
+(decisões 1, 4 e 5). Aplica as respostas #5, #10 e #11 acima ao plano.
+
+```
+Forma:     Por exercício: séries × reps + um OBJETIVO (o que conta como
+           cumprido: técnica, tempo de descida, RIR, completar as reps).
+           Cardio no ginásio: tempo / distância / voltas consoante o
+           exercício (bicicleta: tempo e km; remo: tempo e metros;
+           piscina: tempo e voltas) + objetivo (zona, cadência).
+Nunca kg:  A Carol não prescreve carga. O peso vem da última execução
+           desse exercício pelo atleta, que o vê no registo e decide. A
+           progressão (#5) entra pelo objetivo e pelas reps, e a análise
+           compara a carga com a da última vez.
+Corredor:  Pernas 3-6 reps pesadas ou 6-12 controladas, RIR 2-4, nunca até
+           à falha (#10, #11). Séries de 15+ nas pernas, não.
+Nomes:     Os do histórico do atleta sempre que sirvam — é por eles que o
+           registo encontra a última carga.
+Onde:      coach_plan_items.prescription = { blocks: [...] }, validado em
+           código (_shared/formulas/planPrescription.ts).
+```
+
 ---
 
 ⚠️ **Avaliação de implementabilidade — Bloco 3**
