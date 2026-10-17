@@ -38,6 +38,27 @@ const BODY_METRICS = [
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-body
 
+// Segmentos "Em jejum" / "Não em jejum" (bug #60): escrevem uma frase fixa no
+// início das observações — é por aí que a analyze-body já sabe do jejum
+// (weighingConditions lê as observações), sem coluna nova. O estado dos
+// segmentos lê-se das observações, por isso editar o texto à mão não os
+// desalinha.
+const FASTED_NOTE = 'Em jejum.';
+const NOT_FASTED_NOTE = 'Não estava em jejum.';
+
+function fastingFromNotes(notes) {
+  const t = (notes || '').trimStart();
+  if (t.startsWith(NOT_FASTED_NOTE)) return 'no';
+  if (t.startsWith(FASTED_NOTE)) return 'yes';
+  return null;
+}
+
+function withFasting(notes, choice) {
+  const rest = (notes || '').trimStart().replace(NOT_FASTED_NOTE, '').replace(FASTED_NOTE, '').trimStart();
+  const phrase = choice === 'yes' ? FASTED_NOTE : choice === 'no' ? NOT_FASTED_NOTE : '';
+  return phrase ? (rest ? `${phrase} ${rest}` : phrase) : rest;
+}
+
 export default function BodyRegistration({ onClose, assessmentIdToEdit = null }) {
   const { bodyAssessments, setBodyAssessments, profile, loadInitialData, setNavGuard, activeTab } = useAppStore();
   const [initialTab] = useState(activeTab);
@@ -666,7 +687,25 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         )}
 
         <div className="mb-4">
-          <label htmlFor="br-observacoes-opcional-ex-em-jejum-a" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Observações (opcional) — ex.: "em jejum", "após treino"</label>
+          <span id="br-jejum-label" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Condições da pesagem</span>
+          <div role="group" aria-labelledby="br-jejum-label" className="flex gap-2 mb-3">
+            {[['yes', 'Em jejum'], ['no', 'Não em jejum']].map(([value, label]) => {
+              const active = fastingFromNotes(notes) === value;
+              return (
+                <Chip
+                  key={value}
+                  type="button"
+                  variant="body"
+                  active={active}
+                  aria-pressed={active}
+                  onClick={() => { setNotes(withFasting(notes, active ? null : value)); setIsFormDirty(true); }}
+                >
+                  {label}
+                </Chip>
+              );
+            })}
+          </div>
+          <label htmlFor="br-observacoes-opcional-ex-em-jejum-a" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Observações (opcional) — ex.: "após treino"</label>
           <textarea id="br-observacoes-opcional-ex-em-jejum-a"
             rows={2}
             maxLength={500}

@@ -108,6 +108,34 @@ describe('BodyRegistration — Analisar avaliação por foto (analyze-body)', ()
     expect(body.notes).toBe('em jejum');
   });
 
+  it('os segmentos "Em jejum" / "Não em jejum" escrevem-se nas observações e alternam (bug #60)', async () => {
+    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-1' } }, error: null });
+    render(<BodyRegistration onClose={onClose} />);
+    const emJejum = screen.getByRole('button', { name: 'Em jejum' });
+    const naoJejum = screen.getByRole('button', { name: 'Não em jejum' });
+    const notas = screen.getByPlaceholderText('Contexto da pesagem...');
+
+    fireEvent.change(notas, { target: { value: 'depois do treino' } });
+    fireEvent.click(emJejum);
+    expect(notas).toHaveValue('Em jejum. depois do treino');
+    expect(emJejum).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(naoJejum);
+    expect(notas).toHaveValue('Não estava em jejum. depois do treino');
+    expect(emJejum).toHaveAttribute('aria-pressed', 'false');
+    expect(naoJejum).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.click(naoJejum);
+    expect(notas).toHaveValue('depois do treino');
+
+    fireEvent.click(emJejum);
+    await selectPhoto();
+    setHora();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.notes).toBe('Em jejum. depois do treino');
+  });
+
   it('acrescenta a avaliação devolvida (já com ai_summary) ao store e fecha o formulário', async () => {
     const newAssessment = { id: 'assess-1', ai_summary: 'O peso desceu 0.4kg desde a última pesagem.' };
     mocks.invoke.mockResolvedValue({ data: { assessment: newAssessment }, error: null });
