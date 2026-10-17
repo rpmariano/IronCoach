@@ -63,7 +63,7 @@ export default function MealTemplateSheet({ template = null, onClose }) {
               const on = mealType === t.key;
               return (
                 <button key={t.key} type="button" aria-pressed={on} onClick={() => setMealType(on ? '' : t.key)}
-                  className="min-h-[40px] px-3 rounded-full text-[12.5px] font-bold"
+                  className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold"
                   style={on
                     ? { background: 'var(--tint-nutrition-bg)', border: '1px solid var(--nutrition)', color: 'var(--text-1)' }
                     : { background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.16)', color: 'var(--text-2)' }}>
@@ -82,7 +82,7 @@ export default function MealTemplateSheet({ template = null, onClose }) {
                 <label className="flex items-center gap-1 shrink-0">
                   <input type="number" min="1" step="1" inputMode="numeric" value={it.grams} aria-label={`Gramas de ${it.name}`}
                     onChange={(e) => setItems((prev) => prev.map((x) => (x.key === it.key ? { ...x, grams: e.target.value } : x)))}
-                    className="w-16 min-h-[40px] rounded-lg px-2 text-sm text-right outline-none" style={field} />
+                    className="w-16 min-h-[44px] rounded-lg px-2 text-sm text-right outline-none" style={field} />
                   <span className="text-[12px]" style={{ color: 'var(--text-4)' }}>g</span>
                 </label>
                 <button type="button" aria-label={`Tirar ${it.name}`} onClick={() => setItems((prev) => prev.filter((x) => x.key !== it.key))}

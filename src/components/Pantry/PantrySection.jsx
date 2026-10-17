@@ -5,7 +5,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import PantryFoodSheet from './PantryFoodSheet';
 import FoodRuleSheet from './FoodRuleSheet';
 import MealTemplateSheet from './MealTemplateSheet';
-import { foodSubline, foodKey, isQuantityRule, ruleInfo, ruleLabel, templateItems, templatesForMealType, templateTotals, visibleRules } from '../../utils/pantry';
+import { foodSubline, foodKey, isQuantityRule, ruleInfo, ruleLabel, templateItems, templateTotals, visibleRules } from '../../utils/pantry';
 import { mealTypeLabel } from '../../utils/nutrition';
 
 /* A despensa, no Armário do Perfil (bugs #48/#52, fase C; mockup "Despensa e
@@ -133,7 +133,7 @@ export default function PantrySection() {
             <p className="text-[12px] leading-relaxed py-1" style={{ color: 'var(--text-muted)' }}>Ainda não tens refeições guardadas.</p>
           ) : (
             <ul className="space-y-2" aria-label="Refeições predefinidas">
-              {templatesForMealType(mealTemplates, null).map((t) => {
+              {[...mealTemplates].sort((a, b) => (b.times_used || 0) - (a.times_used || 0)).map((t) => {
                 const tot = templateTotals(t, pantryFoods);
                 const n = templateItems(t).length;
                 return (

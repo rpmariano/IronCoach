@@ -837,6 +837,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               <button
                 type="button"
                 aria-label="Adicionar alimento"
+                // O foco fica no campo: no Safari tocar num botão não lhe dá
+                // foco, o blur chegava antes do click, os atalhos voltavam,
+                // o bloco saltava e o 1.º toque perdia-se (revisão pré-master).
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={handleAddItem}
                 disabled={!itemName.trim()}
                 className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 transition"
@@ -854,6 +858,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     type="button"
                     role="option"
                     aria-selected={false}
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => { addPantryFood(f); itemNameRef.current?.focus(); }}
                     className="w-full min-h-[48px] px-3 py-1.5 text-left"
                     style={i ? { borderTop: '1px solid var(--border-glass)' } : undefined}

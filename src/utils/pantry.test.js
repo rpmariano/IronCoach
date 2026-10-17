@@ -234,6 +234,12 @@ describe('refeições predefinidas', () => {
       user_id: 'u1', name: 'Pequeno-almoço de treino', name_key: 'pequeno almoco de treino', default_meal_type: 'pequeno-almoco',
       items: [{ food_id: null, name: 'Aveia em flocos', grams: 40 }],
     });
+    // A editar não manda user_id (com o perfil por carregar ia a null).
+    db.calls.length = 0;
+    await saveMealTemplate({ userId: undefined, existing: { id: 't1' }, values: { name: 'Outro nome', items: [{ name: 'Mel', grams: 10 }] } });
+    const upd = db.calls.find((c) => c.table === 'athlete_meal_templates' && c.op === 'update');
+    expect(upd.row).toMatchObject({ name: 'Outro nome', items: [{ food_id: null, name: 'Mel', grams: 10 }] });
+    expect('user_id' in upd.row).toBe(false);
     await expect(saveMealTemplate({ userId: 'u1', values: { name: ' ', items: [{ name: 'Mel' }] } })).rejects.toThrow('Dá um nome');
     await expect(saveMealTemplate({ userId: 'u1', values: { name: 'Vazia', items: [] } })).rejects.toThrow('pelo menos um alimento');
   });

@@ -940,6 +940,8 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(screen.getByTestId('meal-templates')).toHaveTextContent('As tuas refeições');
     // Já há aveia na lista: a refeição não a repete.
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'aveia' } });
+    // Tocar numa sugestão também não tira o foco ao campo (revisão pré-master, Safari).
+    expect(fireEvent.mouseDown(screen.getByRole('option', { name: /Aveia em flocos/ }))).toBe(false);
     fireEvent.click(screen.getByRole('option', { name: /Aveia em flocos/ }));
     // A escrever, os atalhos escondem-se (bug #64); voltam ao sair do campo.
     fireEvent.blur(screen.getByLabelText('Nome do alimento a adicionar'));
@@ -966,8 +968,13 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(within(screen.getByTestId('meal-items')).getByText('banana')).toBeInTheDocument();
     expect(screen.getByTestId('meal-items')).toHaveTextContent('Nesta refeição · 1');
     expect(nome).toHaveValue('');
-    // O "+" está no mesmo bloco do campo.
-    expect(within(screen.getByTestId('meal-add-food')).getByRole('button', { name: 'Adicionar alimento' })).toBeInTheDocument();
+    // O "+" está no mesmo bloco do campo, e carregar nele não tira o foco ao
+    // campo (Safari: o blur antes do click fazia perder o 1.º toque).
+    const mais = within(screen.getByTestId('meal-add-food')).getByRole('button', { name: 'Adicionar alimento' });
+    fireEvent.change(nome, { target: { value: 'maçã' } });
+    expect(fireEvent.mouseDown(mais)).toBe(false);
+    fireEvent.click(mais);
+    expect(screen.getByTestId('meal-items')).toHaveTextContent('Nesta refeição · 2');
     fireEvent.blur(nome);
     expect(screen.getByTestId('meal-templates')).toBeInTheDocument();
   });

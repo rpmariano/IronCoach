@@ -317,12 +317,14 @@ export async function saveMealTemplate({ userId, values, existing = null }) {
   if (!foodKey(name)) throw new Error('Dá um nome à refeição.');
   if (!items.length) throw new Error('Junta pelo menos um alimento.');
   const row = {
-    user_id: userId, name, name_key: foodKey(name), default_meal_type: values?.default_meal_type || null,
+    name, name_key: foodKey(name), default_meal_type: values?.default_meal_type || null,
     items, updated_at: new Date().toISOString(),
   };
+  // A editar não se manda user_id: com o perfil ainda por carregar ia a null
+  // e o update falhava (revisão pré-master). A RLS já prende a linha ao dono.
   const q = existing?.id
     ? supabase.from('athlete_meal_templates').update(row).eq('id', existing.id)
-    : supabase.from('athlete_meal_templates').insert(row);
+    : supabase.from('athlete_meal_templates').insert({ ...row, user_id: userId });
   const { data, error } = await q.select().single();
   if (error) throw new Error(error.code === '23505' ? 'Já tens uma refeição com esse nome.' : error.message);
   return data;
