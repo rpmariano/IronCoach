@@ -994,6 +994,8 @@ describe('MealRegistration — a despensa ao escrever', () => {
     render(<MealRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Jantar leve/ }));
     expect(screen.getByRole('button', { name: /^Jantar$/ })).toHaveAttribute('aria-pressed', 'true');
+    // A hora sugerida segue o tipo (revisão pré-master).
+    expect(screen.getByLabelText('Hora da refeição')).toHaveValue('20:00');
     expect(useAppStore.getState().mealTemplates[0].times_used).toBe(4); // a contagem chega depois (assíncrona)
     fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Jantar leve/ }));
     expect(screen.getByTestId('meal-items')).toHaveTextContent('Nesta refeição · 1');

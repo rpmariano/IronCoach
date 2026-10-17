@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
@@ -26,6 +26,9 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // O nome sugerido seleciona-se só no 1.º foco: voltar ao campo para corrigir
+  // uma letra não pode apagar o nome todo à primeira tecla.
+  const selectedOnce = useRef(false);
 
   const suggestions = pantrySuggestions(query, pantryFoods)
     .filter((f) => !items.some((it) => foodKey(it.name) === f.name_key));
@@ -62,7 +65,7 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
           <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>Nome (ex.: Pequeno-almoço de treino)</span>
           <input id="template-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)}
             // Nova a partir de uma refeição: o nome vem sugerido e selecionado, pronto a trocar.
-            autoFocus={!!initial && !template} onFocus={(e) => { if (initial && !template) e.target.select(); }} className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none" style={field} />
+            autoFocus={!!initial && !template} onFocus={(e) => { if (initial && !template && !selectedOnce.current) { selectedOnce.current = true; e.target.select(); } }} className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none" style={field} />
         </label>
 
         <div>
@@ -104,7 +107,7 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
         )}
         {items.length > 0 && totals.known > 0 && (
           <p className="text-[12px]" style={{ color: 'var(--text-3)' }} data-testid="meal-template-totals">
-            {totals.kcal} kcal · P {String(totals.protein).replace('.', ',')} g · H {String(totals.carbs).replace('.', ',')} g · G {String(totals.fat).replace('.', ',')} g
+            {totals.kcal} kcal · <abbr title="proteína" aria-label="proteína">P</abbr> {String(totals.protein).replace('.', ',')} g · <abbr title="hidratos" aria-label="hidratos">H</abbr> {String(totals.carbs).replace('.', ',')} g · <abbr title="gordura" aria-label="gordura">G</abbr> {String(totals.fat).replace('.', ',')} g
             {totals.known < totals.total ? ` (${totals.known} de ${totals.total} alimentos com gramas)` : ''}
           </p>
         )}

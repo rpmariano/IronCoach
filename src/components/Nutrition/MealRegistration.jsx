@@ -514,7 +514,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (!toAdd.length) return; // já estava tudo: não junta nem conta
     // O tipo dela (§5.1, "sugere o tipo ao usar"): só num registo novo ainda
     // sem alimentos — nunca troca um tipo que o atleta já tem com comida.
-    if (!isEditing && manualItems.length === 0 && template.default_meal_type) setMealType(template.default_meal_type);
+    // A hora sugerida segue o tipo, como no chip (revisão pré-master: um
+    // "Jantar leve" gravava-se às 13:00 do almoço sugerido).
+    if (!isEditing && manualItems.length === 0 && template.default_meal_type) {
+      setMealType(template.default_meal_type);
+      if (!mealTimeTouchedRef.current) setMealTime(mealNominalTime(template.default_meal_type));
+    }
     setManualItems(prev => [...prev, ...toAdd.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
     setIsFormDirty(true);
     markMealTemplateUsed(template).then((times_used) => {
