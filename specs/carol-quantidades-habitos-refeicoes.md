@@ -1,7 +1,7 @@
 # Carol: quantidades, hábitos e refeições predefinidas (bugs #58, #66, #63)
 
 Estado: **aprovada** a 2026-10-17 (todas as decisões da §7 aceites tal como propostas). Escrita a 2026-10-17 a partir dos bugs abertos e
-Feito: fase A (044bdf4d) e fase B (perguntas de quantidade, resposta sem Gemini, comentario sem criticar o assumido).
+Feito: fase A (044bdf4d) fase B (perguntas de quantidade, resposta sem Gemini, comentario sem criticar o assumido, c09c4b7d) e fase C (habitos de quantidade nas observacoes e na Despensa, observacao com prioridade).
 do código atual (`analyze-meal/pantry.ts`, `analyze-meal/index.ts`,
 `CarolQuestions.jsx`, `PantrySection.jsx`, migration `20261003233613_athlete_pantry.sql`).
 

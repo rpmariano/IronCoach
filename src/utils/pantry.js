@@ -157,6 +157,22 @@ export function ruleInfo(rule) {
   return `Das tuas observações · ${rule?.confirmations ?? 1}×`;
 }
 
+/* Hábitos de quantidade (fase C dos #58/#66, 2026-10-17): o tema é
+   "<alimento> · quantidade" — é assim que analyze-meal os grava
+   (pantry.ts, parseQuestions). No Armário mostram-se à parte, só com o nome
+   do alimento. */
+export const QUANTITY_SUFFIX = ' · quantidade';
+
+/** É um hábito de quantidade ("manteiga · quantidade")? */
+export function isQuantityRule(rule) {
+  return /quantidade\s*$/i.test(String(rule?.topic || ''));
+}
+
+/** O tema para mostrar: "manteiga · quantidade" → "manteiga". */
+export function ruleLabel(rule) {
+  return String(rule?.topic || '').replace(/\s*·?\s*quantidade\s*$/i, '').trim() || String(rule?.topic || '');
+}
+
 /** As regras que aparecem no Armário: as que ela já usa, ou que variam. */
 export function visibleRules(rules) {
   return (rules || []).filter((r) => r.status === 'confirmado' || r.status === 'varia' || r.source === 'manual');

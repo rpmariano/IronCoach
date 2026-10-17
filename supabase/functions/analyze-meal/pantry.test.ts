@@ -162,6 +162,8 @@ Deno.test("knowledgeSection: vazia sem nada; regras confirmadas, as que variam e
   ];
   const s = knowledgeSection([iogurte], regras);
   assertStringIncludes(s, "fritos: azeite");
+  // Fase C dos #58/#66: a observação desta refeição ganha ao hábito, dito às claras.
+  assertStringIncludes(s, "A OBSERVAÇÃO DESTA REFEIÇÃO TEM PRIORIDADE");
   assertStringIncludes(s, "não assumas o que foi da última vez: batata");
   assertStringIncludes(s, "- Iogurte grego 0% (porção habitual 170 g)");
   assertStringIncludes(s, "usa EXATAMENTE este nome");

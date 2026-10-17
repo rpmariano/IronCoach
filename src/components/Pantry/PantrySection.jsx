@@ -4,7 +4,7 @@ import { useAppStore } from '../../store';
 import CoachAvatar from '../Coach/CoachAvatar';
 import PantryFoodSheet from './PantryFoodSheet';
 import FoodRuleSheet from './FoodRuleSheet';
-import { foodSubline, foodKey, ruleInfo, visibleRules } from '../../utils/pantry';
+import { foodSubline, foodKey, isQuantityRule, ruleInfo, ruleLabel, visibleRules } from '../../utils/pantry';
 
 /* A despensa, no Armário do Perfil (bugs #48/#52, fase C; mockup "Despensa e
    perguntas da Carol", ecrãs 6 e 7). Dois separadores: os alimentos que a
@@ -120,29 +120,42 @@ export default function PantrySection() {
           <div className="flex gap-2.5 items-start mb-1">
             <CoachAvatar size={32} mood="neutral" />
             <p className="text-[12.5px] leading-[1.5]" style={{ color: 'var(--text-2)' }}>
-              Isto é o que já não te pergunto. Guardo à segunda resposta igual, ou quando o escreves nas observações. Se estiver errado, corrige aqui.
+              Isto é o que já não te pergunto — como cozinhas e quanto costumas pôr. Guardo à segunda resposta igual, ou quando o escreves nas observações. Se estiver errado, corrige aqui.
             </p>
           </div>
           {rules.length === 0 ? (
             <p className="text-[12px] leading-relaxed py-1" style={{ color: 'var(--text-muted)' }}>Ainda não sei nada de como cozinhas.</p>
           ) : (
-            <ul className="space-y-2" aria-label="Como cozinhas">
-              {rules.map((r) => (
-                <li key={r.id} className="flex items-center gap-2 p-3 rounded-[14px]"
-                  style={r.status === 'varia'
-                    ? { background: 'var(--tint-warn-bg)', border: '1px solid var(--tint-warn-bd)' }
-                    : { background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.09)' }}>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: r.status === 'varia' ? 'var(--warn-soft)' : 'var(--text-4)' }}>{r.topic}</span>
-                    <span className="block text-[15px] font-extrabold mt-0.5" style={{ color: 'var(--text-1)' }}>{r.status === 'varia' ? 'Varia' : r.value}</span>
-                    <span className="block text-[11.5px] mt-0.5" style={{ color: r.status === 'varia' ? 'var(--warn-soft)' : 'var(--text-muted)' }}>{ruleInfo(r)}</span>
-                  </span>
-                  <button type="button" aria-label={`Corrigir ${r.topic}`} onClick={() => setRuleSheet({ rule: r })} className="tap-44 flex items-center justify-center shrink-0" style={{ color: 'var(--text-4)' }}>
-                    <Pencil size={17} />
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {/* Fase C dos #58/#66 (2026-10-17): os hábitos de quantidade
+                  ("manteiga · quantidade") à parte, só com o nome do alimento. */}
+              {[['Como cozinhas', rules.filter((r) => !isQuantityRule(r))], ['Quanto costumas pôr', rules.filter(isQuantityRule)]]
+                .filter(([, list]) => list.length > 0)
+                .map(([title, list]) => (
+                  <div key={title} className="space-y-2">
+                    {rules.some(isQuantityRule) && (
+                      <p className="text-[11px] font-extrabold uppercase pt-1" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-3)' }}>{title}</p>
+                    )}
+                    <ul className="space-y-2" aria-label={title}>
+                      {list.map((r) => (
+                        <li key={r.id} className="flex items-center gap-2 p-3 rounded-[14px]"
+                          style={r.status === 'varia'
+                            ? { background: 'var(--tint-warn-bg)', border: '1px solid var(--tint-warn-bd)' }
+                            : { background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.09)' }}>
+                          <span className="flex-1 min-w-0">
+                            <span className="block text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: r.status === 'varia' ? 'var(--warn-soft)' : 'var(--text-4)' }}>{ruleLabel(r)}</span>
+                            <span className="block text-[15px] font-extrabold mt-0.5" style={{ color: 'var(--text-1)' }}>{r.status === 'varia' ? 'Varia' : r.value}</span>
+                            <span className="block text-[11.5px] mt-0.5" style={{ color: r.status === 'varia' ? 'var(--warn-soft)' : 'var(--text-muted)' }}>{ruleInfo(r)}</span>
+                          </span>
+                          <button type="button" aria-label={`Corrigir ${ruleLabel(r)}${isQuantityRule(r) ? ' (quantidade)' : ''}`} onClick={() => setRuleSheet({ rule: r })} className="tap-44 flex items-center justify-center shrink-0" style={{ color: 'var(--text-4)' }}>
+                            <Pencil size={17} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+            </>
           )}
           <button
             type="button"

@@ -227,8 +227,16 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
   if (!foods.length && !certas.length && !variam.length) return "";
   let s = "\n\nO QUE JÁ SABES DESTE ATLETA (aprendido com ele):";
   if (certas.length) {
-    s += `\nComo cozinha e tempera — usa isto em vez de adivinhar (a observação desta refeição, se disser outra coisa, ganha): ` +
-      certas.map((r) => `${r.topic}: ${r.value}`).join("; ") + ".";
+    // Fase C dos #58/#66 (2026-10-17): também quanto costuma pôr ("manteiga ·
+    // quantidade: camada fina, um lado (~5 g)"), e a observação desta
+    // refeição passa a regra explícita — «anular a predefinição e assumir o
+    // comentário». A regra contrariada passa a "varia" (nextRuleRow) e ela
+    // volta a perguntar da próxima vez.
+    s += `\nComo cozinha, tempera e quanto costuma pôr — usa isto em vez de adivinhar: ` +
+      certas.map((r) => `${r.topic}: ${r.value}`).join("; ") + "." +
+      `\nA OBSERVAÇÃO DESTA REFEIÇÃO TEM PRIORIDADE sobre qualquer hábito acima: se disser outra coisa (ex.: "fritas em ` +
+      `óleo" quando o hábito é air fryer, "muita manteiga" quando o hábito é camada fina), usa a observação nesta refeição ` +
+      `e ignora o hábito.`;
   }
   if (variam.length) {
     s += `\nVaria de vez para vez — não assumas o que foi da última vez: ` + variam.map((r) => r.topic).join(", ") + ".";

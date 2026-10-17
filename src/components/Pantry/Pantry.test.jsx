@@ -77,6 +77,33 @@ describe('PantrySection', () => {
     expect(lista).not.toHaveTextContent('magro');
   });
 
+  it('os hábitos de quantidade aparecem à parte, só com o nome do alimento (fase C dos #58/#66)', () => {
+    useAppStore.setState({ foodRules: [...RULES, { id: 'r4', topic: 'manteiga · quantidade', value: 'camada fina, um lado (~5 g)', status: 'confirmado', source: 'resposta', confirmations: 2 }] });
+    render(<PantrySection />);
+    fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas · 3/ }));
+    const cozinha = screen.getByRole('list', { name: 'Como cozinhas' });
+    expect(cozinha).not.toHaveTextContent('manteiga');
+    const quanto = screen.getByRole('list', { name: 'Quanto costumas pôr' });
+    expect(quanto).toHaveTextContent('manteiga');
+    expect(quanto).not.toHaveTextContent('quantidade');
+    expect(quanto).toHaveTextContent('camada fina, um lado (~5 g)');
+    expect(screen.getByRole('button', { name: 'Corrigir manteiga (quantidade)' })).toBeInTheDocument();
+  });
+
+  it('dizer-lhe quanto ponho: grava com o tema "<alimento> · quantidade" (fase C dos #58/#66)', async () => {
+    render(<PantrySection />);
+    fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Dizer-lhe como cozinho/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quanto ponho' }));
+    fireEvent.change(screen.getByLabelText(/De quê/), { target: { value: 'Fiambre' } });
+    fireEvent.change(screen.getByLabelText(/Quanto \(ex\./), { target: { value: '3 fatias finas (~35 g)' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(mocks.calls.find((c) => c.table === 'athlete_food_rules' && c.op === 'upsert')).toBeTruthy());
+    expect(mocks.calls.find((c) => c.table === 'athlete_food_rules').row).toMatchObject({
+      topic: 'Fiambre · quantidade', topic_key: 'fiambre quantidade', value: '3 fatias finas (~35 g)', status: 'confirmado', source: 'manual',
+    });
+  });
+
   it('adicionar por descrição: a Carol confirma, o atleta ajusta e grava', async () => {
     mocks.invoke.mockResolvedValue({ data: { food: { name: 'Pão de mistura (Lidl)', portion_grams: 40, portion_label: '1 fatia', from_label: false, calories_per_100g: 245, protein_per_100g: 9, carbs_per_100g: 45, fat_per_100g: 3 } }, error: null });
     render(<PantrySection />);

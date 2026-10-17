@@ -182,7 +182,10 @@ function cookingFactsRule(notes: string | null): string {
     "tempera os alimentos — um par {topic, value} por facto, em português, curtos e no singular. Temas: " +
     "fritos, grelhados, salada, ovos, carne, frango, peixe, leite, café, pão, arroz, batata, massa (ou outro, " +
     "se for claro). Ex.: \"bife frito em azeite\" → {topic: \"fritos\", value: \"azeite\"}; \"leite magro\" → " +
-    "{topic: \"leite\", value: \"magro\"}. Nada que tenhas deduzido das fotos. Sem nada explícito, lista vazia.";
+    "{topic: \"leite\", value: \"magro\"}. Também as QUANTIDADES que a observação diz explicitamente (fase C dos #58/#66), " +
+    "com o tema \"<alimento> · quantidade\": \"pouca manteiga\" → {topic: \"manteiga · quantidade\", value: \"pouca\"}; " +
+    "\"3 fatias finas de fiambre\" → {topic: \"fiambre · quantidade\", value: \"3 fatias finas\"}. " +
+    "Nada que tenhas deduzido das fotos. Sem nada explícito, lista vazia.";
 }
 
 // Bug #52 (fase B): «em vez de a Carol estar a adivinhar determinadas
@@ -204,7 +207,7 @@ const QUESTIONS_RULE =
   "[\"Camada fina, um lado (~5 g)\", \"Camada fina, dos dois lados (~10 g)\", \"Camada grossa (~15 g)\"]; fiambre → " +
   "[\"3 fatias finíssimas (~25 g)\", \"3 fatias finas (~35 g)\", \"3 fatias médias (~50 g)\"]. A assumed é a opção " +
   "que usaste em estimated_quantity_grams. Nunca sobre um alimento com gramas indicadas pelo utilizador.\n" +
-  "Nunca sobre o que as observações já dizem, sobre um tema de \"Como cozinha e tempera\", nem sobre um alimento da " +
+  "Nunca sobre o que as observações já dizem, sobre um tema de \"Como cozinha, tempera e quanto costuma pôr\", nem sobre um alimento da " +
   "lista que ele tem guardada. Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
   "topic (o tema, curto: \"fritos\"; numa de quantidade, o alimento: \"manteiga\"), item_name (o nome EXATO do item " +
   "em items), question (curta, na 2.ª pessoa), options (2 a 4 respostas curtas), assumed (uma das options), " +
