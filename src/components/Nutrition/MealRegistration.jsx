@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Camera, ImagePlus, X, Trash2 } from 'lucide-react';
+import { Camera, ImagePlus, X, Trash2, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
@@ -10,7 +10,6 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
-import AddButton from '../shared/AddButton';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
@@ -117,6 +116,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [itemGrams, setItemGrams] = useState('');
   // O "Escrever" do aviso de falha traz o atleta aqui.
   const itemNameRef = useRef(null);
+  /* Bug #64 (2026-10-17): com o teclado aberto, os atalhos, as sugestões e o
+     botão de adicionar não cabiam — deixava de se ver o que se escrevia. A
+     escrever (foco no bloco), os atalhos e a ajuda escondem-se e o bloco
+     sobe para o topo; o "+" fica na mesma linha do campo. */
+  const addBlockRef = useRef(null);
+  const [typingFood, setTypingFood] = useState(false);
 
   // Edição — carrega a refeição existente. Alimentos e observações são dados
   // ANALÍTICOS: mudá-los muda a análise, por isso guardar passa pelo Coach e
@@ -752,9 +757,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             Também a editar: como guardar passa pelo Coach quando os alimentos
             mudam, os valores de um alimento novo são estimados na mesma
             chamada. */}
-        <div className="mb-4">
+        {/* A escrever (bug #64): espaço por baixo para o bloco de adicionar
+            poder subir ao topo mesmo no fim do formulário — senão ficava
+            onde o teclado o tapa. */}
+        <div className="mb-4" style={typingFood ? { paddingBottom: '45vh' } : undefined}>
           {!isEditing && <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Alimentos</p>}
-          {templates.length > 0 && (
+          {!typingFood && templates.length > 0 && (
             <div className="mb-3" data-testid="meal-templates">
               <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">As tuas refeições</p>
               <div className="flex flex-wrap gap-1.5">
@@ -773,7 +781,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               </div>
             </div>
           )}
-          {habituals.length > 0 && (
+          {!typingFood && habituals.length > 0 && (
             <div className="mb-3" data-testid="meal-habituals">
               <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">O que costumas comer {MEAL_TYPES.find((t) => t.key === mealType)?.label ? `ao ${MEAL_TYPES.find((t) => t.key === mealType).label.toLowerCase()}` : 'a esta refeição'}</p>
               <div className="flex flex-wrap gap-1.5">
@@ -791,39 +799,62 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               </div>
             </div>
           )}
-          <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3">
-            <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5">Adicionar alimento</p>
-            <div className="grid grid-cols-[1fr_auto] gap-2 mb-2">
+          <div
+            ref={addBlockRef}
+            data-testid="meal-add-food"
+            className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3"
+            style={{ scrollMarginTop: 72 }}
+            onFocus={() => {
+              if (typingFood) return;
+              setTypingFood(true);
+              // Depois de o teclado abrir: o bloco no topo, as sugestões por baixo, acima do teclado.
+              setTimeout(() => addBlockRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 250);
+            }}
+            onBlur={(e) => { if (!addBlockRef.current?.contains(e.relatedTarget)) setTypingFood(false); }}
+          >
+            <p className="text-[12px] font-bold text-[var(--text-3)] mb-2">Adicionar alimento</p>
+            <div className="grid grid-cols-[1fr_4.5rem_auto] gap-2">
               <input
                 ref={itemNameRef}
                 type="text"
+                enterKeyHint="done"
                 aria-label="Nome do alimento a adicionar"
                 placeholder="Ex.: peito de frango grelhado"
                 value={itemName}
                 onChange={e => { setItemName(e.target.value); setIsFormDirty(true); }}
-                className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (itemName.trim()) handleAddItem(); } }}
+                className="w-full min-w-0 min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
               />
-              <div className="relative w-24">
-                <input
-                  type="number" min="1" step="1"
-                  aria-label="Gramas do alimento a adicionar (opcional)"
-                  placeholder="g (opcional)"
-                  value={itemGrams}
-                  onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
-                />
-              </div>
+              <input
+                type="number" min="1" step="1" inputMode="numeric"
+                aria-label="Gramas do alimento a adicionar (opcional)"
+                placeholder="g"
+                value={itemGrams}
+                onChange={e => { setItemGrams(e.target.value); setIsFormDirty(true); }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); if (itemName.trim()) handleAddItem(); } }}
+                className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-2 text-sm text-center text-[var(--text-1)] outline-none focus:border-[var(--mod-nutricao-to)] transition"
+              />
+              <button
+                type="button"
+                aria-label="Adicionar alimento"
+                onClick={handleAddItem}
+                disabled={!itemName.trim()}
+                className="w-11 h-11 rounded-xl flex items-center justify-center disabled:opacity-40 transition"
+                style={{ background: 'var(--nutrition)', color: 'var(--nutrition-ink)' }}
+              >
+                <Plus size={20} />
+              </button>
             </div>
             {suggestions.length > 0 && (
-              <div role="listbox" aria-label="Da tua despensa" data-testid="pantry-suggestions" className="rounded-xl overflow-hidden mb-2" style={{ border: '1px solid var(--border-glass-strong)', background: 'var(--surface-strong)' }}>
-                <p className="px-3 pt-2 pb-1 text-[10.5px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)' }}>Da tua despensa</p>
-                {suggestions.map((f, i) => (
+              <div role="listbox" aria-label="Da tua despensa" data-testid="pantry-suggestions" className="rounded-xl overflow-hidden mt-2" style={{ border: '1px solid var(--border-glass-strong)', background: 'var(--surface-strong)' }}>
+                <p className="px-3 pt-2 pb-1 text-[10.5px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--text-4)' }}>Da tua despensa — toca para juntar</p>
+                {suggestions.slice(0, 4).map((f, i) => (
                   <button
                     key={f.id ?? f.name_key}
                     type="button"
                     role="option"
                     aria-selected={false}
-                    onClick={() => addPantryFood(f)}
+                    onClick={() => { addPantryFood(f); itemNameRef.current?.focus(); }}
                     className="w-full min-h-[48px] px-3 py-1.5 text-left"
                     style={i ? { borderTop: '1px solid var(--border-glass)' } : undefined}
                   >
@@ -835,23 +866,20 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-[var(--text-3)] mb-2 px-1">
-              {photos.length > 0
-                ? 'Junta o que a foto não mostra, ou a quantidade que sabes (ex.: "café com açúcar", "arroz" com 150 g). Se o alimento também estiver na foto, conta o que escreveste.'
-                : 'Sem gramas indicadas, a Carol estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.'}
-            </p>
-            <AddButton
-              onClick={handleAddItem}
-              disabled={!itemName.trim()}
-              variant="nutrition"
-              type="button"
-            >
-              Adicionar Alimento
-            </AddButton>
+            {!typingFood && (
+              <p className="text-[11px] text-[var(--text-3)] mt-2 px-1">
+                {photos.length > 0
+                  ? 'Junta o que a foto não mostra, ou a quantidade que sabes (ex.: "café com açúcar", "arroz" com 150 g). Se o alimento também estiver na foto, conta o que escreveste.'
+                  : 'Sem gramas indicadas, a Carol estima a porção típica pela descrição do alimento (ex.: "1 fatia de fiambre") e pelas observações abaixo.'}
+              </p>
+            )}
           </div>
 
           {manualItems.length > 0 && (
-            <div className="space-y-1.5 mb-3">
+            <div className="space-y-1.5 mb-3" data-testid="meal-items">
+              {!isEditing && (
+                <p className="text-[11px] font-bold text-[var(--text-3)] px-1">Nesta refeição · {manualItems.length}</p>
+              )}
               {manualItems.map(item => (
                 <div key={item.key} className="flex items-center gap-2 bg-[var(--surface-faint)] border border-[var(--border-glass)] rounded-xl px-3 py-2">
                   {isEditing ? (

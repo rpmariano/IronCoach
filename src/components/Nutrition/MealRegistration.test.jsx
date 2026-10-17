@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import MealRegistration from './MealRegistration';
@@ -156,7 +156,7 @@ describe('MealRegistration — um só ecrã: fotos e alimentos juntos', () => {
 
   const addItem = (name, grams) => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
-    if (grams != null) fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: String(grams) } });
+    if (grams != null) fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: String(grams) } });
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
   };
 
@@ -237,7 +237,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
 
   const addItem = (name, grams) => {
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: name } });
-    fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: String(grams) } });
+    fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: String(grams) } });
     fireEvent.click(screen.getByRole('button', { name: /Adicionar alimento/i }));
   };
 
@@ -926,7 +926,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
 
   it('as gramas já escritas ganham à porção habitual', () => {
     render(<MealRegistration onClose={onClose} />);
-    fireEvent.change(screen.getByPlaceholderText('g (opcional)'), { target: { value: '200' } });
+    fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: '200' } });
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog gr' } });
     fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
     expect(screen.getByText('200g · já conhecido, não é analisado')).toBeInTheDocument();
@@ -941,6 +941,8 @@ describe('MealRegistration — a despensa ao escrever', () => {
     // Já há aveia na lista: a refeição não a repete.
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'aveia' } });
     fireEvent.click(screen.getByRole('option', { name: /Aveia em flocos/ }));
+    // A escrever, os atalhos escondem-se (bug #64); voltam ao sair do campo.
+    fireEvent.blur(screen.getByLabelText('Nome do alimento a adicionar'));
     fireEvent.click(screen.getByRole('button', { name: 'Juntar a refeição Pequeno-almoço de treino (2 alimentos)' }));
     expect(screen.getByText('170g · já conhecido, não é analisado')).toBeInTheDocument();
 
@@ -948,6 +950,26 @@ describe('MealRegistration — a despensa ao escrever', () => {
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
     expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Aveia em flocos', grams: 40 }, { name: 'Iogurte grego 0%', grams: 170 }]);
+  });
+
+  it('bug #64: a escrever, os atalhos e a ajuda escondem-se; Enter adiciona; "+" na mesma linha', () => {
+    useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 50 }], times_used: 1 }] });
+    render(<MealRegistration onClose={onClose} />);
+    expect(screen.getByTestId('meal-templates')).toBeInTheDocument();
+    expect(screen.getByText(/Sem gramas indicadas, a Carol estima/)).toBeInTheDocument();
+    const nome = screen.getByLabelText('Nome do alimento a adicionar');
+    fireEvent.focus(nome);
+    expect(screen.queryByTestId('meal-templates')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sem gramas indicadas, a Carol estima/)).not.toBeInTheDocument();
+    fireEvent.change(nome, { target: { value: 'banana' } });
+    fireEvent.keyDown(nome, { key: 'Enter' });
+    expect(within(screen.getByTestId('meal-items')).getByText('banana')).toBeInTheDocument();
+    expect(screen.getByTestId('meal-items')).toHaveTextContent('Nesta refeição · 1');
+    expect(nome).toHaveValue('');
+    // O "+" está no mesmo bloco do campo.
+    expect(within(screen.getByTestId('meal-add-food')).getByRole('button', { name: 'Adicionar alimento' })).toBeInTheDocument();
+    fireEvent.blur(nome);
+    expect(screen.getByTestId('meal-templates')).toBeInTheDocument();
   });
 
   it('o que costuma comer nesta refeição aparece por cima, com um toque', async () => {
