@@ -835,3 +835,65 @@ create policy "runs race_id own race" on public.runs
 --     micros_checked_at timestamptz, last_used_at, created_at, updated_at,
 --     unique (user_id, name_key))
 -- ============================================================================
+
+-- ============================================================================
+-- Registo unificado ligado ao plano da Carol — Fase 0 (2026-10-17).
+-- Ver specs/plano-registo-plano-coach.md §2 e
+-- supabase/migrations/20261017233601_plan_prescription_and_exercise_locker.sql
+-- (que também atualiza release_plan_items_of_deleted_record: o item que passa
+-- para outro registo fica completion_source='auto'; o que volta a pendente
+-- perde completion_source e execution_note).
+-- ============================================================================
+alter table public.coach_plan_items
+  -- { blocks: [{ type: 'forca'|'cardio', name, sets, reps, goal, fields,
+  --   duration_min, distance_km, laps }] } — sem kg; validado em código.
+  add column if not exists prescription jsonb
+    check (prescription is null or jsonb_typeof(prescription) = 'object'),
+  -- 'plano' (ligado de propósito) | 'auto' (treino livre riscou o item).
+  add column if not exists completion_source text
+    check (completion_source is null or completion_source in ('plano', 'auto')),
+  -- Nota da Carol sobre a execução (análise, F4).
+  add column if not exists execution_note text;
+
+-- [{ name, goal, block_type, plan_block_index, goal_met }] — objetivo por exercício.
+alter table public.workout_sessions
+  add column if not exists exercises_meta jsonb
+    check (exercises_meta is null or jsonb_typeof(exercises_meta) = 'array');
+
+-- Linhas de cardio numa sessão de ginásio.
+alter table public.workout_session_sets
+  add column if not exists duration_seconds integer
+    check (duration_seconds is null or duration_seconds > 0),
+  add column if not exists distance_km numeric
+    check (distance_km is null or distance_km > 0),
+  add column if not exists laps integer
+    check (laps is null or laps > 0);
+
+alter table public.runs add column if not exists goal text;
+
+-- O Armário de Exercícios: entra à 1.ª vez que é registado.
+create table if not exists public.athlete_exercises (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 80),
+  name_key text not null,
+  category text not null default 'Outro',
+  block_type text not null default 'forca' check (block_type in ('forca', 'cardio')),
+  cardio_fields text[]
+    check (cardio_fields is null or cardio_fields <@ array['duration', 'distance', 'laps']::text[]),
+  machine_settings text,
+  last_weight numeric check (last_weight is null or last_weight >= 0),
+  last_reps integer check (last_reps is null or last_reps > 0),
+  personal_record_weight numeric check (personal_record_weight is null or personal_record_weight >= 0),
+  times_performed integer not null default 1 check (times_performed >= 0),
+  last_performed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, name_key)
+);
+create index if not exists athlete_exercises_user_recent_idx
+  on public.athlete_exercises (user_id, last_performed_at desc nulls last);
+alter table public.athlete_exercises enable row level security;
+drop policy if exists "own exercises" on public.athlete_exercises;
+create policy "own exercises" on public.athlete_exercises
+  for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
