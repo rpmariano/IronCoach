@@ -2076,7 +2076,7 @@ Deno.test("o prompt inclui volume de manutenção em bloco de prova (Bloco 3 #8)
 Deno.test("o prompt inclui treino até à falha com custo de recuperação (Bloco 3 #11)", () => {
   const sys = sysCom(null, null);
   assertStringIncludes(sys, "TREINO ATÉ À FALHA");
-  assertStringIncludes(sys, "RIR 2-4");
+  assertStringIncludes(sys, "RPE 6-8");
   assertStringIncludes(sys, "72-96 h");
 });
 

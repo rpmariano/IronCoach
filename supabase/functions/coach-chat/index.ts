@@ -5734,7 +5734,7 @@ export function buildSystemInstruction(
     `  Médio:     45% economia e pico de força máxima · 35% prevenção e estabilidade pélvica/core · 20% potência e RFD\n` +
     `  Avançado:  40% economia e recrutamento de UMs de limiar elevado · 40% potência, RFD e rigidez do tendão de Aquiles · 20% prevenção\n` +
     `GRUPOS PRIORITÁRIOS: 1.º tricípite sural (solear+gémeos) · 2.º quadríceps · 3.º isquiotibiais+glúteo máximo · 4.º glúteo médio/mínimo (estabilização pélvica). Secundários: core/eretores, flexores da anca, tibial anterior.\n` +
-    `SÉRIES/SEMANA por grupo (membros inferiores, séries de trabalho efetivas RIR 2-3):\n` +
+    `SÉRIES/SEMANA por grupo (membros inferiores, séries de trabalho efetivas RPE 7-8):\n` +
     `  Iniciante: desenvolvimento 4-6 · manutenção 2-3 (-50%)\n` +
     `  Básico:    desenvolvimento 6-8 · manutenção 3-4 (-50%)\n` +
     `  Médio:     desenvolvimento 8-10 · manutenção 3-5 (-50-60% nas últimas 4-6 sem pré-prova)\n` +
@@ -5746,11 +5746,11 @@ export function buildSystemInstruction(
     `PROGRESSÃO DE CARGA por nível:\n` +
     `  Iniciante: +2,5-5,0 kg a cada 1-2 sem · critério: completar topo das reps em todas as séries com RPE ≤7.\n` +
     `  Básico:    +2,5-5,0 kg a cada 2-3 sem · critério: +2 reps além do alvo na última série, em 2 treinos consecutivos.\n` +
-    `  Médio:     +1,25-2,5 kg a cada 3-4 sem ou na transição de bloco · critério: manter RIR 2 sem degradar velocidade concêntrica.\n` +
+    `  Médio:     +1,25-2,5 kg a cada 3-4 sem ou na transição de bloco · critério: manter RPE 8 sem degradar velocidade concêntrica.\n` +
     `  Avançado:  +1,0-2,5 kg a cada 4-6 sem, periodização ondulatória · critério: perda de velocidade intrassérie <10-15%.\n` +
     `VOLUME-CARGA SPIKE (#6): >10-15% de aumento do Σ(séries×reps×kg) face à média móvel das 4 semanas = risco acrescido; >20% = risco elevado de lesão miotendinosa. O contexto pode conter alertas ⚠ VOLUME-CARGA PERNAS.\n` +
     `INTERVALO ENTRE SESSÕES (#7): 48-72 h entre sessões do mesmo grupo de membros inferiores. Baixo volume (2-4 séries): 48 h; alto volume (6-10 séries): 72 h. O contexto pode conter alertas ⚠ INTERVALO PERNAS.\n` +
-    `TREINO ATÉ À FALHA (#11): 0% das séries de pernas para corredor em ciclo ativo. Todas as séries de pernas: RIR 2-4 (RPE 6-8). Falha (RIR 0) só em ≤5% das séries secundárias de superiores/core.\n` +
+    `TREINO ATÉ À FALHA (#11): 0% das séries de pernas para corredor em ciclo ativo. Todas as séries de pernas: RPE 6-8. Falha (RPE 10) só em ≤5% das séries secundárias de superiores/core. Nos planos e nas respostas usa sempre RPE, nunca RIR, salvo se o atleta usar RIR.\n` +
     `  Custo da falha: recuperação neuromuscular 72-96 h (vs. 48 h), CK +30-50%, glicogénio local esgotado, economia de corrida reduzida 3-4 dias.\n` +
     `INTERFERÊNCIA CORRIDA+GINÁSIO (#4 — prescritivo, ao propor plano):\n` +
     `  Corrida de qualidade + ginásio de pernas NO MESMO DIA: só se corrida PRIMEIRO (manhã), ginásio ao final (noite), separados por ≥6-9 h.\n` +
