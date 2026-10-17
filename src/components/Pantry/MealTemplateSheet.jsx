@@ -10,12 +10,15 @@ import { MEAL_TYPE_OPTIONS } from '../../utils/nutrition';
    specs/carol-quantidades-habitos-refeicoes.md §5.2): um nome, o tipo de
    refeição sugerido e os alimentos da despensa com as gramas. No registo,
    tocar nela preenche a lista de alimentos. */
-export default function MealTemplateSheet({ template = null, onClose }) {
+/* `initial` (fase 2 do #63, 2026-10-18): uma refeição NOVA já preenchida —
+   "Guardar como refeição" no cartão de uma refeição registada. */
+export default function MealTemplateSheet({ template = null, initial = null, onClose }) {
+  const start = template ?? initial;
   const { profile, pantryFoods, loadPantry } = useAppStore();
   const { showToast } = useToast();
-  const [name, setName] = useState(template?.name ?? '');
-  const [mealType, setMealType] = useState(template?.default_meal_type ?? '');
-  const [items, setItems] = useState(() => templateItems(template).map((it, i) => ({ ...it, key: `${i}`, grams: it.grams != null ? String(it.grams) : '' })));
+  const [name, setName] = useState(start?.name ?? '');
+  const [mealType, setMealType] = useState(start?.default_meal_type ?? '');
+  const [items, setItems] = useState(() => templateItems(start).map((it, i) => ({ ...it, key: `${i}`, grams: it.grams != null ? String(it.grams) : '' })));
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

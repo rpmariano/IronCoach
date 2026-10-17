@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAppStore } from '../../store';
 import CarolQuestions, { openCarolQuestions, learnedLine } from './CarolQuestions';
@@ -146,5 +146,32 @@ describe('MealCard — perguntas por responder', () => {
     unmount();
     render(<MealCard meal={MEAL} hideActions />);
     expect(screen.queryByTestId('meal-card-questions')).not.toBeInTheDocument();
+  });
+});
+
+describe('MealCard — guardar como refeição (fase 2 do #63)', () => {
+  beforeEach(() => useAppStore.setState({ meals: [], profile: { id: 'u1' }, pantryFoods: [] }));
+
+  it('abre a ficha da refeição predefinida já com o tipo e os alimentos com as gramas', () => {
+    const meal = { id: 'm2', date: '2026-10-04', meal_type: 'almoco', carol_questions: null, meal_items: [
+      { id: 'i1', name: 'Arroz basmati', quantity_grams: 150, calories_per_100g: 130 },
+      { id: 'i2', name: 'Peito de frango', quantity_grams: 120, calories_per_100g: 165 },
+    ] };
+    render(<MealCard meal={meal} defaultExpanded onEdit={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: /Guardar como refeição/ }));
+    const ficha = screen.getByTestId('meal-template-sheet');
+    expect(within(ficha).getByLabelText(/^Nome/)).toHaveValue('Almoço');
+    expect(within(ficha).getByRole('button', { name: 'Almoço' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(ficha).getByLabelText('Gramas de Arroz basmati')).toHaveValue(150);
+    expect(within(ficha).getByLabelText('Gramas de Peito de frango')).toHaveValue(120);
+  });
+
+  it('sem alimentos não há botão; na pré-visualização também não', () => {
+    const vazia = { id: 'm3', date: '2026-10-04', meal_type: 'jantar', meal_items: [] };
+    const { unmount } = render(<MealCard meal={vazia} defaultExpanded />);
+    expect(screen.queryByRole('button', { name: /Guardar como refeição/ })).not.toBeInTheDocument();
+    unmount();
+    render(<MealCard meal={{ ...vazia, meal_items: [{ id: 'i', name: 'Sopa', quantity_grams: 300 }] }} defaultExpanded hideActions />);
+    expect(screen.queryByRole('button', { name: /Guardar como refeição/ })).not.toBeInTheDocument();
   });
 });

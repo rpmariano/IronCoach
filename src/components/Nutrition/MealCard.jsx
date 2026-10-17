@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplet, Award, PencilLine, HelpCircle } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplet, Award, PencilLine, HelpCircle, BookmarkPlus } from 'lucide-react';
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { normalizeStartTime } from '../../utils/startTime';
 import { supabase } from '../../lib/supabase';
@@ -11,6 +11,7 @@ import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
 import CarolQuestions, { openCarolQuestions, questionsImpactText } from './CarolQuestions';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
+import MealTemplateSheet from '../Pantry/MealTemplateSheet';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -37,6 +38,8 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Bug #52 (fase B): as perguntas que ficaram por responder.
   const [questionsOpen, setQuestionsOpen] = useState(false);
+  // "Guardar como refeição" (fase 2 do #63): a ficha da despensa, já preenchida.
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
   const openQuestions = openCarolQuestions(meal);
 
   const n = mealNutrients(meal);
@@ -252,6 +255,18 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
           {/* Action Buttons — escondidos quando o cartão é só uma
               pré-visualização (ex.: CreatedRecordModal, que tem os seus
               próprios botões de Eliminar/Fechar agrupados no rodapé). */}
+          {/* Fase 2 do #63: os alimentos desta refeição, com as gramas, numa
+              refeição predefinida — linha própria, três botões não cabiam. */}
+          {!hideActions && items.length > 0 && (
+            <Button
+              variant="light"
+              onClick={() => setSaveAsOpen(true)}
+              className="w-full text-xs"
+              icon={<BookmarkPlus size={14} />}
+            >
+              Guardar como refeição
+            </Button>
+          )}
           {!hideActions && (
             <div className="flex items-center gap-2 pt-1">
               {onEdit && (
@@ -277,6 +292,16 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             </div>
           )}
         </div>
+      )}
+      {saveAsOpen && (
+        <MealTemplateSheet
+          initial={{
+            name: mealTypeLabel(meal.meal_type),
+            default_meal_type: meal.meal_type || null,
+            items: items.map((it) => ({ name: it.name, grams: it.quantity_grams })),
+          }}
+          onClose={() => setSaveAsOpen(false)}
+        />
       )}
       <ConfirmDeleteModal
         isOpen={showDeleteConfirm}
