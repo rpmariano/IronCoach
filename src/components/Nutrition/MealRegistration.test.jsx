@@ -954,6 +954,38 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Aveia em flocos', grams: 40 }, { name: 'Iogurte grego 0%', grams: 170 }]);
   });
 
+  it('bug #64 (2.º print): o bloco volta ao topo quando o teclado abre (resize) e quando aparecem sugestões', () => {
+    const vvTarget = new EventTarget();
+    const originalVV = window.visualViewport;
+    Object.defineProperty(window, 'visualViewport', { configurable: true, value: vvTarget });
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      render(<MealRegistration onClose={onClose} />);
+      const nome = screen.getByLabelText('Nome do alimento a adicionar');
+      fireEvent.focus(nome);
+      scroll.mockClear();
+      // O teclado a abrir: a área visível muda de tamanho.
+      act(() => { vvTarget.dispatchEvent(new Event('resize')); });
+      expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+      expect(scroll.mock.contexts.at(-1)).toBe(screen.getByTestId('meal-add-food'));
+      scroll.mockClear();
+      // Aparecem sugestões da despensa: volta a subir.
+      fireEvent.change(nome, { target: { value: 'io' } });
+      expect(screen.getByTestId('pantry-suggestions')).toBeInTheDocument();
+      expect(scroll).toHaveBeenCalledWith({ block: 'start' });
+      // Fora do campo, o resize já não mexe no scroll.
+      fireEvent.blur(nome);
+      scroll.mockClear();
+      act(() => { vvTarget.dispatchEvent(new Event('resize')); });
+      expect(scroll).not.toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+      Object.defineProperty(window, 'visualViewport', { configurable: true, value: originalVV });
+    }
+  });
+
   it('bug #64: a escrever, os atalhos e a ajuda escondem-se; Enter adiciona; "+" na mesma linha', () => {
     useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 50 }], times_used: 1 }] });
     render(<MealRegistration onClose={onClose} />);

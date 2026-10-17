@@ -464,6 +464,26 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     return isPantryComplete(food) ? 'já conhecido, não é analisado' : 'já conhecido · a Carol completa os micronutrientes';
   };
   const suggestions = pantrySuggestions(itemName, pantryFoods);
+  const hasSuggestions = suggestions.length > 0;
+
+  /* Bug #64 (2.º print, 2026-10-17): um scroll só, 250 ms depois do foco,
+     não chegava — no Android o teclado ainda estava a abrir e o próprio
+     Chrome voltava a encostar o campo ao teclado, com as sugestões por baixo
+     dele. Agora o bloco volta ao topo a cada resize da área visível (o
+     teclado a abrir) e quando as sugestões aparecem; instantâneo, que um
+     scroll suave era cancelado pelo do browser. */
+  useEffect(() => {
+    if (!typingFood) return undefined;
+    const toTop = () => addBlockRef.current?.scrollIntoView?.({ block: 'start' });
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const t = setTimeout(toTop, 300);
+    vv?.addEventListener('resize', toTop);
+    return () => { clearTimeout(t); vv?.removeEventListener('resize', toTop); };
+  }, [typingFood]);
+  useEffect(() => {
+    if (typingFood && hasSuggestions) addBlockRef.current?.scrollIntoView?.({ block: 'start' });
+  }, [typingFood, hasSuggestions]);
+
   const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date })
     .filter((f) => !manualItems.some((i) => isKnownFood(i.name, [f])));
 
@@ -760,7 +780,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         {/* A escrever (bug #64): espaço por baixo para o bloco de adicionar
             poder subir ao topo mesmo no fim do formulário — senão ficava
             onde o teclado o tapa. */}
-        <div className="mb-4" style={typingFood ? { paddingBottom: '45vh' } : undefined}>
+        {/* Em px e não só em vh: com o teclado aberto o Android encolhe o
+            viewport, e 45vh passava a pouco mais de 150 px. */}
+        <div className="mb-4" style={typingFood ? { paddingBottom: 'max(45vh, 420px)' } : undefined}>
           {!isEditing && <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Alimentos</p>}
           {!typingFood && templates.length > 0 && (
             <div className="mb-3" data-testid="meal-templates">
@@ -803,13 +825,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             ref={addBlockRef}
             data-testid="meal-add-food"
             className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3"
-            style={{ scrollMarginTop: 72 }}
-            onFocus={() => {
-              if (typingFood) return;
-              setTypingFood(true);
-              // Depois de o teclado abrir: o bloco no topo, as sugestões por baixo, acima do teclado.
-              setTimeout(() => addBlockRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' }), 250);
-            }}
+            // Por baixo do header fixo (~88 px no telemóvel).
+            style={{ scrollMarginTop: 96 }}
+            onFocus={() => { if (!typingFood) setTypingFood(true); }}
             onBlur={(e) => { if (!addBlockRef.current?.contains(e.relatedTarget)) setTypingFood(false); }}
           >
             <p className="text-[12px] font-bold text-[var(--text-3)] mb-2">Adicionar alimento</p>
