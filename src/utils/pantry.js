@@ -290,6 +290,8 @@ export function templateTotals(template, foods) {
   const byKey = new Map((foods || []).map((f) => [f.name_key, f]));
   let kcal = 0;
   let protein = 0;
+  let carbs = 0;
+  let fat = 0;
   let known = 0;
   const items = templateItems(template);
   for (const it of items) {
@@ -298,9 +300,12 @@ export function templateTotals(template, foods) {
     if (!f || !grams) continue;
     kcal += (Number(f.calories_per_100g) || 0) * grams / 100;
     protein += (Number(f.protein_per_100g) || 0) * grams / 100;
+    carbs += (Number(f.carbs_per_100g) || 0) * grams / 100;
+    fat += (Number(f.fat_per_100g) || 0) * grams / 100;
     known += 1;
   }
-  return { kcal: Math.round(kcal), protein: Math.round(protein * 10) / 10, known, total: items.length };
+  const r1 = (v) => Math.round(v * 10) / 10;
+  return { kcal: Math.round(kcal), protein: r1(protein), carbs: r1(carbs), fat: r1(fat), known, total: items.length };
 }
 
 /** As refeições para o registo: as deste tipo primeiro, depois as mais usadas. */
@@ -335,13 +340,25 @@ export async function deleteMealTemplate(id) {
   if (error) throw new Error(error.message);
 }
 
-/** Conta mais uma vez que foi usada — best-effort, nunca rejeita. */
+/** Conta mais uma vez que foi usada — best-effort, nunca rejeita. Devolve
+ *  o valor novo, para quem chama o pôr no store: sem isso, dois usos na mesma
+ *  sessão partiam do mesmo número e o segundo perdia-se (revisão pré-master). */
 export async function markMealTemplateUsed(template) {
+  const times_used = (template?.times_used || 0) + 1;
   try {
     await supabase.from('athlete_meal_templates')
-      .update({ times_used: (template?.times_used || 0) + 1, last_used_at: new Date().toISOString() })
+      .update({ times_used, last_used_at: new Date().toISOString() })
       .eq('id', template.id);
   } catch (e) {
     console.warn('Refeição predefinida por contar', e);
   }
+  return times_used;
+}
+
+/** O nome sugerido para guardar uma refeição registada: o tipo e o 1.º
+ *  alimento ("Almoço · Arroz basmati") — só "Almoço" colidia logo à segunda
+ *  vez (nome único por atleta). */
+export function suggestedTemplateName(typeLabel, items) {
+  const first = templateItems({ items })[0]?.name;
+  return [typeLabel, first].filter(Boolean).join(' · ').slice(0, 60);
 }

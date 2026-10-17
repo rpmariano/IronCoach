@@ -12,6 +12,7 @@ import PremiumModal from '../shared/PremiumModal';
 import CarolQuestions, { openCarolQuestions, questionsImpactText } from './CarolQuestions';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import MealTemplateSheet from '../Pantry/MealTemplateSheet';
+import { suggestedTemplateName } from '../../utils/pantry';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -296,7 +297,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
       {saveAsOpen && (
         <MealTemplateSheet
           initial={{
-            name: mealTypeLabel(meal.meal_type),
+            name: suggestedTemplateName(mealTypeLabel(meal.meal_type), items),
             default_meal_type: meal.meal_type || null,
             items: items.map((it) => ({ name: it.name, grams: it.quantity_grams })),
           }}

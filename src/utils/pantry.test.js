@@ -28,7 +28,7 @@ vi.mock('../lib/supabase', () => ({
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
-  templateItems, templateTotals, templatesForMealType, saveMealTemplate,
+  templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -219,6 +219,16 @@ describe('refeições predefinidas', () => {
     const t = T('Pequeno-almoço', [{ name: 'Iogurte grego 0%', grams: 170 }, { name: 'Aveia em flocos' }, { name: 'Banana', grams: 120 }]);
     // 170 × 0,59 = 100,3 + 40 × 1 = 40 → 140 kcal; 2 de 3 contados.
     expect(templateTotals(t, FOODS)).toMatchObject({ kcal: 140, known: 2, total: 3 });
+  });
+
+  it('templateTotals também dá hidratos e gordura', () => {
+    const foods = [{ name: 'Aveia', name_key: 'aveia', portion_grams: 40, calories_per_100g: 372, protein_per_100g: 13, carbs_per_100g: 60, fat_per_100g: 7 }];
+    expect(templateTotals(T('x', [{ name: 'Aveia', grams: 50 }]), foods)).toMatchObject({ kcal: 186, protein: 6.5, carbs: 30, fat: 3.5 });
+  });
+
+  it('suggestedTemplateName junta o tipo e o 1.º alimento', () => {
+    expect(suggestedTemplateName('Almoço', [{ name: 'Arroz basmati', grams: 150 }, { name: 'Frango' }])).toBe('Almoço · Arroz basmati');
+    expect(suggestedTemplateName('Ceia', [])).toBe('Ceia');
   });
 
   it('para o registo: as deste tipo primeiro, depois as mais usadas', () => {

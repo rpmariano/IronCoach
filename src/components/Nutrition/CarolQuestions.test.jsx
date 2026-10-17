@@ -160,7 +160,8 @@ describe('MealCard — guardar como refeição (fase 2 do #63)', () => {
     render(<MealCard meal={meal} defaultExpanded onEdit={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: /Guardar como refeição/ }));
     const ficha = screen.getByTestId('meal-template-sheet');
-    expect(within(ficha).getByLabelText(/^Nome/)).toHaveValue('Almoço');
+    // Nome com o 1.º alimento: só "Almoço" colidia à segunda vez (nome único).
+    expect(within(ficha).getByLabelText(/^Nome/)).toHaveValue('Almoço · Arroz basmati');
     expect(within(ficha).getByRole('button', { name: 'Almoço' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(ficha).getByLabelText('Gramas de Arroz basmati')).toHaveValue(150);
     expect(within(ficha).getByLabelText('Gramas de Peito de frango')).toHaveValue(120);

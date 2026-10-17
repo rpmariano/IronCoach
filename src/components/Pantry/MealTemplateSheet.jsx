@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
@@ -14,7 +14,11 @@ import { MEAL_TYPE_OPTIONS } from '../../utils/nutrition';
    "Guardar como refeição" no cartão de uma refeição registada. */
 export default function MealTemplateSheet({ template = null, initial = null, onClose }) {
   const start = template ?? initial;
-  const { profile, pantryFoods, loadPantry } = useAppStore();
+  const { profile, pantryFoods, pantryLoaded, loadPantry } = useAppStore();
+  // Aberta do Calendário ("Guardar como refeição"), a despensa pode ainda
+  // não estar lida: sem ela, a pesquisa dizia "nada com esse nome" e os
+  // totais não apareciam (revisão pré-master).
+  useEffect(() => { if (!pantryLoaded) loadPantry?.(); }, [pantryLoaded, loadPantry]);
   const { showToast } = useToast();
   const [name, setName] = useState(start?.name ?? '');
   const [mealType, setMealType] = useState(start?.default_meal_type ?? '');
@@ -56,7 +60,9 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
       <div className="px-5 py-4 space-y-3" data-testid="meal-template-sheet">
         <label className="block" htmlFor="template-name">
           <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>Nome (ex.: Pequeno-almoço de treino)</span>
-          <input id="template-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)} className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none" style={field} />
+          <input id="template-name" value={name} maxLength={60} onChange={(e) => setName(e.target.value)}
+            // Nova a partir de uma refeição: o nome vem sugerido e selecionado, pronto a trocar.
+            autoFocus={!!initial && !template} onFocus={(e) => { if (initial && !template) e.target.select(); }} className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none" style={field} />
         </label>
 
         <div>
@@ -98,7 +104,7 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
         )}
         {items.length > 0 && totals.known > 0 && (
           <p className="text-[12px]" style={{ color: 'var(--text-3)' }} data-testid="meal-template-totals">
-            {totals.kcal} kcal · {String(totals.protein).replace('.', ',')} g de proteína
+            {totals.kcal} kcal · P {String(totals.protein).replace('.', ',')} g · H {String(totals.carbs).replace('.', ',')} g · G {String(totals.fat).replace('.', ',')} g
             {totals.known < totals.total ? ` (${totals.known} de ${totals.total} alimentos com gramas)` : ''}
           </p>
         )}

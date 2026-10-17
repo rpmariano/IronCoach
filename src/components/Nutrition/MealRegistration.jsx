@@ -511,9 +511,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const applyTemplate = (template) => {
     const toAdd = templateItems(template).filter((it) => !manualItems.some((m) => foodKey(m.name) === foodKey(it.name)));
     setErrorMsg('');
+    if (!toAdd.length) return; // já estava tudo: não junta nem conta
+    // O tipo dela (§5.1, "sugere o tipo ao usar"): só num registo novo ainda
+    // sem alimentos — nunca troca um tipo que o atleta já tem com comida.
+    if (!isEditing && manualItems.length === 0 && template.default_meal_type) setMealType(template.default_meal_type);
     setManualItems(prev => [...prev, ...toAdd.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
     setIsFormDirty(true);
-    markMealTemplateUsed(template);
+    markMealTemplateUsed(template).then((times_used) => {
+      const st = useAppStore.getState();
+      useAppStore.setState({ mealTemplates: (st.mealTemplates || []).map((t) => (t.id === template.id ? { ...t, times_used } : t)) });
+    });
   };
 
   const handleRemoveManualItem = (key) => {
@@ -723,6 +730,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               <Chip
                 key={t.key}
                 active={isActive}
+                aria-pressed={isActive}
                 variant="nutrition"
                 onClick={() => {
                   setMealType(t.key);

@@ -1,7 +1,7 @@
 # Carol: quantidades, hábitos e refeições predefinidas (bugs #58, #66, #63)
 
 Estado: **aprovada** a 2026-10-17 (todas as decisões da §7 aceites tal como propostas). Escrita a 2026-10-17 a partir dos bugs abertos e
-Feito: fase A (044bdf4d) fase B (perguntas de quantidade, resposta sem Gemini, comentario sem criticar o assumido, c09c4b7d) fase C (habitos de quantidade nas observacoes e na Despensa, observacao com prioridade, 9e45116c) e fase D (refeicoes predefinidas: tabela athlete_meal_templates aplicada a mao a 2026-10-17, separador Refeicoes na Despensa, "As tuas refeicoes" no registo). "Guardar como refeicao" a partir de uma refeicao registada fica para a fase 2, como decidido.
+Feito: fase A (044bdf4d) fase B (perguntas de quantidade, resposta sem Gemini, comentario sem criticar o assumido, c09c4b7d) fase C (habitos de quantidade nas observacoes e na Despensa, observacao com prioridade, 9e45116c) e fase D (refeicoes predefinidas: tabela athlete_meal_templates aplicada a mao a 2026-10-17, separador Refeicoes na Despensa, "As tuas refeicoes" no registo). "Guardar como refeicao" no cartao de uma refeicao registada feito a 2026-10-18 (fase 2), com nome sugerido "<tipo> · <1.o alimento>"; ao usar uma refeicao predefinida num registo novo vazio, o tipo dela passa a ser o do registo.
 do código atual (`analyze-meal/pantry.ts`, `analyze-meal/index.ts`,
 `CarolQuestions.jsx`, `PantrySection.jsx`, migration `20261003233613_athlete_pantry.sql`).
 

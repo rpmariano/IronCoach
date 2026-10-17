@@ -986,6 +986,19 @@ describe('MealRegistration — a despensa ao escrever', () => {
     }
   });
 
+  // Um teste que falhe a meio não deixa o <html> com o teclado "aberto".
+  afterEach(() => document.documentElement.removeAttribute('data-keyboard'));
+
+  it('uma refeição predefinida num registo novo vazio traz o tipo dela; repetida não junta nem conta', () => {
+    useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Jantar leve', default_meal_type: 'jantar', items: [{ name: 'Iogurte grego 0%', grams: 170 }], times_used: 4 }] });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Jantar leve/ }));
+    expect(screen.getByRole('button', { name: /^Jantar$/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(useAppStore.getState().mealTemplates[0].times_used).toBe(4); // a contagem chega depois (assíncrona)
+    fireEvent.click(screen.getByRole('button', { name: /Juntar a refeição Jantar leve/ }));
+    expect(screen.getByTestId('meal-items')).toHaveTextContent('Nesta refeição · 1');
+  });
+
   it('Android: fechar o teclado com o "voltar" (foco fica no campo) mostra de novo os atalhos; reabrir esconde-os', async () => {
     useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 50 }], times_used: 1 }] });
     const root = document.documentElement;
