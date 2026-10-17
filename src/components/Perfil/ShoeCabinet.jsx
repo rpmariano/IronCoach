@@ -228,10 +228,13 @@ const ShoeCabinet = forwardRef(function ShoeCabinet(props, ref) {
           <h3 className="text-sm font-semibold">Armário de Sapatilhas</h3>
         </div>
         <button
+          type="button"
+          aria-label="Adicionar sapatilhas"
           onClick={openNew}
-          className="tap-h-44 flex items-center gap-1 text-[11px] font-bold px-3 rounded-full bg-[var(--surface-strong)] border border-[var(--border-glass)] text-[var(--text-2)] hover:bg-white/20 active:scale-95 transition"
+          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 active:scale-95 transition"
+          style={{ background: 'var(--mod-corrida)', color: 'var(--run-ink)' }}
         >
-          <Plus size={13} /> Adicionar
+          <Plus size={20} />
         </button>
       </div>
 

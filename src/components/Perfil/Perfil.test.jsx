@@ -426,13 +426,14 @@ describe('Perfil — ação na ActionBar', () => {
     expect(bar).toContainElement(screen.getByRole('button', { name: /Guardar altera/ }));
   });
 
-  it('no separador Armário a barra passa a "Adicionar sapatilhas"', async () => {
+  it('no separador Armário não há barra: o "+" de sapatilhas vive no cartão (bug #62)', async () => {
     render(<Perfil />);
     // Era "Equipa." (com srLabel "Equipamento"); desde a fase C dos bugs
     // #48/#52 é "Armário" — sapatilhas e despensa — e cabe sem abreviar.
     fireEvent.click(screen.getByRole('button', { name: /Armário/ }));
-    const botao = await screen.findByRole('button', { name: /Adicionar sapatilhas/ });
-    expect(screen.getByTestId('action-bar')).toContainElement(botao);
+    const botao = await screen.findByRole('button', { name: 'Adicionar sapatilhas' });
+    expect(screen.queryByTestId('action-bar')).not.toBeInTheDocument();
+    expect(botao).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Guardar altera/ })).not.toBeInTheDocument();
   });
 });

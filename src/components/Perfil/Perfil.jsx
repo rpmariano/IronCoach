@@ -3,7 +3,7 @@ import { useAppStore } from '../../store';
 import Button from '../shared/Button';
 import { supabase } from '../../lib/supabase';
 import { ensurePushSubscription, forgetPushSubscriptionOnThisDevice } from '../../lib/push';
-import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Plus, Medal, MessageSquare, MapPin, Sparkles, Archive } from 'lucide-react';
+import { User, Target, LogOut, Bell, ChevronRight, ShieldCheck, Utensils, Medal, MessageSquare, MapPin, Sparkles, Archive } from 'lucide-react';
 import CarolIcon from '../Coach/CarolIcon';
 import { ageFromBirthDate } from '../../utils/body';
 import { EXPERIENCE_LEVELS, experienceLevelDescription } from '../../utils/experience';
@@ -192,10 +192,6 @@ export default function Perfil() {
   // "O conteúdo segue a pílula": o separador que fica ativo entra do lado de
   // onde veio, 14px e uma pitada de opacidade, em 280ms.
   const setPageRef = useTabEnter(tabIndex);
-
-  // O armário de sapatilhas grava-se a si próprio; a barra do separador
-  // Equipamento só lhe pede para abrir o formulário de um par novo.
-  const shoeCabinetRef = useRef(null);
 
   // tab também muda por fora do carrossel (ex.: goToPendingTarget) —
   // sincroniza o scroll nesses casos. Ao trocar de separador, o ecrã
@@ -604,20 +600,6 @@ export default function Perfil() {
       className="w-full text-xs"
     >
       Guardar alterações
-    </Button>
-  );
-
-  // Equipamento não escreve no rascunho partilhado (o armário grava-se a si
-  // próprio, par a par) — a ação da barra nesse separador é a do mock:
-  // abrir o formulário de um par novo.
-  const addShoesButton = (
-    <Button
-      variant="module"
-      moduleColor="var(--mod-corrida)"
-      onClick={() => shoeCabinetRef.current?.openNew()}
-      className="w-full text-xs"
-    >
-      <Plus size={14} /> Adicionar sapatilhas
     </Button>
   );
 
@@ -1090,7 +1072,7 @@ export default function Perfil() {
           continua a ser só dos campos do perfil. */}
       <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Armário</h2>
-          <ShoeCabinet ref={shoeCabinetRef} />
+          <ShoeCabinet />
           {/* A despensa (bugs #48/#52, fase C): também grava sozinha, à
               parte do rascunho do perfil. */}
           <PantrySection />
@@ -1419,10 +1401,8 @@ export default function Perfil() {
           tem formulário nenhum — são os badges, que se leem, não se gravam —
           por isso a barra nem aparece nesse separador (em vez de mostrar um
           botão sem ação, como fazia o Equipamento antes de ganhar o dele). */}
-      {tab !== 'vitrina' && (
-        <ActionBar>
-          {tab === 'equipamento' ? addShoesButton : saveButton}
-        </ActionBar>
+      {tab !== 'vitrina' && tab !== 'equipamento' && (
+        <ActionBar>{saveButton}</ActionBar>
       )}
 
       {/* Os avisos da Carol acompanham o atleta em todo o lado menos no
