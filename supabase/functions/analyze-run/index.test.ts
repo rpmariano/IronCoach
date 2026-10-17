@@ -181,6 +181,17 @@ Deno.test("formatHrZonesLine: minutos por zona, sem as zonas vazias", () => {
   assertEquals(formatHrZonesLine(null), null);
 });
 
+Deno.test("formatSplitsLine: o resto de 0,02 km (relógio a parar) não é uma volta (bug #61)", () => {
+  assertEquals(
+    formatSplitsLine([
+      { distance_km: 1, time_seconds: 385 },
+      { distance_km: 1, time_seconds: 387 },
+      { distance_km: 0.02, time_seconds: 6 },
+    ]),
+    "Parciais (ritmo de cada volta, por km): 1: 6'25\" · 2: 6'27\"",
+  );
+});
+
 Deno.test("formatSplitsLine: 4'59,6\" arredonda para 5'00\", não 4'60\"", () => {
   assertEquals(
     formatSplitsLine([{ distance_km: 1, time_seconds: 299.6 }, { distance_km: 1, time_seconds: 305 }]),

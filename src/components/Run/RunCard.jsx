@@ -169,7 +169,9 @@ export default function RunCard({ run, onEdit, onDelete, defaultExpanded = false
   const avgHr = details.avg_heart_rate_bpm ?? run.avg_heart_rate_bpm ?? run.avg_hr ?? run.avg_heart_rate ?? run.metrics?.avg_heart_rate_bpm ?? run.metrics?.avg_hr;
   const maxHr = details.max_heart_rate_bpm ?? run.max_heart_rate_bpm ?? run.max_hr ?? run.max_heart_rate ?? run.metrics?.max_heart_rate_bpm ?? run.metrics?.max_hr;
   const hrZones = details.hr_zones ?? run.hr_zones ?? run.metrics?.hr_zones;
-  const splits = details.splits ?? run.splits ?? run.metrics?.splits;
+  const rawSplits = details.splits ?? run.splits ?? run.metrics?.splits;
+  // Menos de 0,1 km é o relógio a parar, não uma volta (bug #61).
+  const splits = Array.isArray(rawSplits) ? rawSplits.filter((s) => !(Number(s?.distance_km) > 0 && Number(s.distance_km) < 0.1)) : rawSplits;
 
   const sweatLoss = details.sweat_loss_ml;
   const totalSteps = details.total_steps;

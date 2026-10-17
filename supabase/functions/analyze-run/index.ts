@@ -498,7 +498,9 @@ export function buildWeeklyVolumeLine(
  *  distância ou sem tempo fica de fora, mas os outros mantêm o número da volta. */
 export function formatSplitsLine(splits: unknown): string | null {
   if (!Array.isArray(splits)) return null;
-  const paces = splits.slice(0, 45).map((s, i) => {
+  // Menos de 0,1 km é o relógio a parar (bug #61: 0,02 km em 6 s virava um
+  // "pico a 5'00"" que a Carol criticava): não é uma volta, fica de fora.
+  const paces = splits.filter((s) => Number(s?.distance_km) >= 0.1).slice(0, 45).map((s, i) => {
     const d = Number(s?.distance_km);
     const t = Number(s?.time_seconds);
     if (!(d > 0 && t > 0)) return null;
