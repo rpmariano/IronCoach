@@ -150,7 +150,8 @@ describe('MealCard — perguntas por responder', () => {
 });
 
 describe('MealCard — guardar como refeição (fase 2 do #63)', () => {
-  beforeEach(() => useAppStore.setState({ meals: [], profile: { id: 'u1' }, pantryFoods: [] }));
+  beforeEach(() => useAppStore.setState({ meals: [], profile: { id: 'u1' }, pantryUserId: 'u1', pantryLoaded: true,
+    pantryFoods: [{ id: 'p1', name: 'Arroz basmati', name_key: 'arroz basmati', portion_grams: 150, calories_per_100g: 130 }] }));
 
   it('abre a ficha da refeição predefinida já com o tipo e os alimentos com as gramas', () => {
     const meal = { id: 'm2', date: '2026-10-04', meal_type: 'almoco', carol_questions: null, meal_items: [
@@ -165,6 +166,8 @@ describe('MealCard — guardar como refeição (fase 2 do #63)', () => {
     expect(within(ficha).getByRole('button', { name: 'Almoço' })).toHaveAttribute('aria-pressed', 'true');
     expect(within(ficha).getByLabelText('Gramas de Arroz basmati')).toHaveValue(150);
     expect(within(ficha).getByLabelText('Gramas de Peito de frango')).toHaveValue(120);
+    // Só o que não está na despensa leva a marca: aí a Carol estima.
+    expect(within(ficha).getAllByText('fora da despensa · a Carol estima')).toHaveLength(1);
   });
 
   it('sem alimentos não há botão; na pré-visualização também não', () => {

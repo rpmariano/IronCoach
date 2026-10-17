@@ -346,13 +346,16 @@ export async function deleteMealTemplate(id) {
 export async function markMealTemplateUsed(template) {
   const times_used = (template?.times_used || 0) + 1;
   try {
-    await supabase.from('athlete_meal_templates')
+    const res = await supabase.from('athlete_meal_templates')
       .update({ times_used, last_used_at: new Date().toISOString() })
       .eq('id', template.id);
+    if (res?.error) throw res.error;
+    return times_used;
   } catch (e) {
+    // Não gravou: null, e o store fica como a base de dados (revisão pré-master).
     console.warn('Refeição predefinida por contar', e);
+    return null;
   }
-  return times_used;
 }
 
 /** O nome sugerido para guardar uma refeição registada: o tipo e o 1.º
@@ -360,5 +363,10 @@ export async function markMealTemplateUsed(template) {
  *  vez (nome único por atleta). */
 export function suggestedTemplateName(typeLabel, items) {
   const first = templateItems({ items })[0]?.name;
-  return [typeLabel, first].filter(Boolean).join(' · ').slice(0, 60);
+  const full = [typeLabel, first].filter(Boolean).join(' · ');
+  if (full.length <= 60) return full;
+  // Corta numa palavra inteira, nunca a meio de um nome.
+  const cut = full.slice(0, 60);
+  const space = cut.lastIndexOf(' ');
+  return (space > 0 ? cut.slice(0, space) : cut).replace(/[\s·]+$/, '');
 }

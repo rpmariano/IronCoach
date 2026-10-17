@@ -28,7 +28,7 @@ vi.mock('../lib/supabase', () => ({
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
-  templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName,
+  templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -229,6 +229,16 @@ describe('refeições predefinidas', () => {
   it('suggestedTemplateName junta o tipo e o 1.º alimento', () => {
     expect(suggestedTemplateName('Almoço', [{ name: 'Arroz basmati', grams: 150 }, { name: 'Frango' }])).toBe('Almoço · Arroz basmati');
     expect(suggestedTemplateName('Ceia', [])).toBe('Ceia');
+    // Comprido: corta numa palavra inteira, sem "·" pendurado.
+    const longo = suggestedTemplateName('Pequeno-Almoço', [{ name: 'Iogurte grego natural sem açúcar com granola caseira e frutos vermelhos' }]);
+    expect(longo.length).toBeLessThanOrEqual(60);
+    expect(longo).toBe('Pequeno-Almoço · Iogurte grego natural sem açúcar com');
+  });
+
+  it('markMealTemplateUsed devolve o valor novo quando grava', async () => {
+    db.calls.length = 0;
+    expect(await markMealTemplateUsed({ id: 't1', times_used: 4 })).toBe(5);
+    expect(db.calls.find((c) => c.table === 'athlete_meal_templates' && c.op === 'update').row).toMatchObject({ times_used: 5 });
   });
 
   it('para o registo: as deste tipo primeiro, depois as mais usadas', () => {

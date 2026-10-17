@@ -523,6 +523,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     setManualItems(prev => [...prev, ...toAdd.map((it, i) => ({ key: `${Date.now()}-${prev.length + i}`, name: it.name, grams: it.grams }))]);
     setIsFormDirty(true);
     markMealTemplateUsed(template).then((times_used) => {
+      if (times_used == null) return;
       const st = useAppStore.getState();
       useAppStore.setState({ mealTemplates: (st.mealTemplates || []).map((t) => (t.id === template.id ? { ...t, times_used } : t)) });
     });

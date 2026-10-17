@@ -232,8 +232,10 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Gravar e sair' }));
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    await waitFor(() => expect(mocks.updates.length).toBe(1));
+    // Com a suite toda a correr, gravar passava o 1 s por omissão do waitFor
+    // (timeout aleatório, 2026-10-17); sozinho passava sempre.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(() => expect(mocks.updates.length).toBe(1), { timeout: 5000 });
 
     // O separador ativo pinta-se no tom do seu assunto (ponto 4 do handoff, e
     // o mock "Perfil"): Pessoal em --gym, Metas em --race. Antes eram os
@@ -241,7 +243,7 @@ describe('Perfil — rascunho vs recarregamento do perfil', () => {
     // um separador fica aceso, e é o que o aviso mandou abrir.
     expect(screen.getByRole('button', { name: /Pessoal/ })).toHaveStyle({ color: 'var(--gym)' });
     expect(screen.getByRole('button', { name: /Metas/ })).toHaveStyle({ color: 'var(--text-muted)' });
-  });
+  }, 15000);
 });
 
 // ─── Autorização do Coach para escrever metas — DECISÃO N1, camada 1 ───────

@@ -59,7 +59,7 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
   const field = { border: '1px solid var(--border-glass)', background: 'var(--surface-soft)', color: 'var(--text-1)' };
 
   return (
-    <PremiumModal isOpen onClose={onClose} title={template ? template.name : 'Nova refeição'} subtitle="Alimentos da despensa, com as gramas" theme="nutri" variant="bottom-sheet" maxWidth="max-w-md">
+    <PremiumModal isOpen onClose={onClose} title={template ? template.name : 'Nova refeição'} subtitle="Os alimentos, com as gramas" theme="nutri" variant="bottom-sheet" maxWidth="max-w-md">
       <div className="px-5 py-4 space-y-3" data-testid="meal-template-sheet">
         <label className="block" htmlFor="template-name">
           <span className="block text-[11px] mb-1.5" style={{ color: 'var(--text-3)' }}>Nome (ex.: Pequeno-almoço de treino)</span>
@@ -90,7 +90,14 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
           <ul className="space-y-1.5" aria-label="Alimentos da refeição">
             {items.map((it) => (
               <li key={it.key} className="flex items-center gap-2 p-2 pl-3 rounded-xl" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.09)' }}>
-                <span className="flex-1 min-w-0 text-[13.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{it.name}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[13.5px] font-extrabold truncate" style={{ color: 'var(--text-1)' }}>{it.name}</span>
+                  {/* Vindo de "Guardar como refeição", pode não estar na despensa:
+                      ao usar a refeição, a Carol estima-o (sem os valores dela). */}
+                  {pantryLoaded && !(pantryFoods || []).some((f) => f.name_key === foodKey(it.name)) && (
+                    <span className="block text-[11px]" style={{ color: 'var(--text-4)' }}>fora da despensa · a Carol estima</span>
+                  )}
+                </span>
                 <label className="flex items-center gap-1 shrink-0">
                   <input type="number" min="1" step="1" inputMode="numeric" value={it.grams} aria-label={`Gramas de ${it.name}`}
                     onChange={(e) => setItems((prev) => prev.map((x) => (x.key === it.key ? { ...x, grams: e.target.value } : x)))}
