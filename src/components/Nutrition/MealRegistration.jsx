@@ -968,7 +968,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
       {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
 
-      <ActionBar>{primaryAction}</ActionBar>
+      {/* Bug #64 (print de 2026-10-17): colada ao teclado, a barra comia ~120 px
+          e tapava as sugestões da despensa. Aqui sai com o teclado aberto
+          (hide-when-keyboard, globals.css) e volta quando ele fecha. */}
+      <ActionBar className="hide-when-keyboard">{primaryAction}</ActionBar>
     </div>
   );
 }
