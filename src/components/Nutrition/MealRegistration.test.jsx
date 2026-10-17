@@ -986,6 +986,24 @@ describe('MealRegistration — a despensa ao escrever', () => {
     }
   });
 
+  it('Android: fechar o teclado com o "voltar" (foco fica no campo) mostra de novo os atalhos; reabrir esconde-os', async () => {
+    useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 50 }], times_used: 1 }] });
+    const root = document.documentElement;
+    render(<MealRegistration onClose={onClose} />);
+    const nome = screen.getByLabelText('Nome do alimento a adicionar');
+    nome.focus();
+    root.setAttribute('data-keyboard', 'open');
+    await waitFor(() => expect(screen.queryByTestId('meal-templates')).not.toBeInTheDocument());
+    // "Voltar": o teclado fecha, o foco continua no campo.
+    root.removeAttribute('data-keyboard');
+    expect(document.activeElement).toBe(nome);
+    await waitFor(() => expect(screen.getByTestId('meal-templates')).toBeInTheDocument());
+    // Tocar no campo outra vez reabre o teclado: volta o modo "a escrever".
+    root.setAttribute('data-keyboard', 'open');
+    await waitFor(() => expect(screen.queryByTestId('meal-templates')).not.toBeInTheDocument());
+    root.removeAttribute('data-keyboard');
+  });
+
   it('bug #64: a escrever, os atalhos e a ajuda escondem-se; Enter adiciona; "+" na mesma linha', () => {
     useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 50 }], times_used: 1 }] });
     render(<MealRegistration onClose={onClose} />);

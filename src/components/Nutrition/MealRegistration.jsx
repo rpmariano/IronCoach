@@ -484,6 +484,23 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (typingFood && hasSuggestions) addBlockRef.current?.scrollIntoView?.({ block: 'start' });
   }, [typingFood, hasSuggestions]);
 
+  /* No Android o "voltar" fecha o teclado SEM tirar o foco ao campo
+     (utils/softKeyboard.js): os atalhos ficavam escondidos e o espaço vazio
+     por baixo até se tocar fora. O <html data-keyboard> manda também: fechou
+     → sai do modo "a escrever"; voltou a abrir com o foco no bloco → entra.
+     Num computador o atributo nunca muda e fica só o foco. */
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined') return undefined;
+    const root = document.documentElement;
+    const obs = new MutationObserver(() => {
+      const open = root.getAttribute('data-keyboard') === 'open';
+      if (!open) setTypingFood(false);
+      else if (addBlockRef.current?.contains(document.activeElement)) setTypingFood(true);
+    });
+    obs.observe(root, { attributes: true, attributeFilter: ['data-keyboard'] });
+    return () => obs.disconnect();
+  }, []);
+
   const habituals = habitualsForMealType({ meals, foods: pantryFoods, mealType, today: date })
     .filter((f) => !manualItems.some((i) => isKnownFood(i.name, [f])));
 
