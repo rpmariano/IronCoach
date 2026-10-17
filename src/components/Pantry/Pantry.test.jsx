@@ -104,6 +104,19 @@ describe('PantrySection', () => {
     });
   });
 
+  it('"Quanto ponho" com "quantidade" escrito no nome não duplica o sufixo; o título diz o que é', async () => {
+    render(<PantrySection />);
+    fireEvent.click(screen.getByRole('tab', { name: /Como cozinhas/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Dizer-lhe como cozinho/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Quanto ponho' }));
+    expect(screen.getByText('Quanto costumas pôr')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/De quê/), { target: { value: 'manteiga quantidade' } });
+    fireEvent.change(screen.getByLabelText(/Quanto \(ex\./), { target: { value: 'pouca' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(mocks.calls.find((c) => c.table === 'athlete_food_rules' && c.op === 'upsert')).toBeTruthy());
+    expect(mocks.calls.find((c) => c.table === 'athlete_food_rules').row.topic).toBe('manteiga · quantidade');
+  });
+
   it('adicionar por descrição: a Carol confirma, o atleta ajusta e grava', async () => {
     mocks.invoke.mockResolvedValue({ data: { food: { name: 'Pão de mistura (Lidl)', portion_grams: 40, portion_label: '1 fatia', from_label: false, calories_per_100g: 245, protein_per_100g: 9, carbs_per_100g: 45, fat_per_100g: 3 } }, error: null });
     render(<PantrySection />);

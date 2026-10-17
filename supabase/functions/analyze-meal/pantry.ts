@@ -401,7 +401,11 @@ export function parseCookingFacts(raw: unknown): CookingFact[] {
   if (!Array.isArray(raw)) return [];
   return raw
     // deno-lint-ignore no-explicit-any
-    .map((f: any) => ({ topic: String(f?.topic ?? "").trim(), value: String(f?.value ?? "").trim() }))
+    .map((f: any) => {
+      const topic = String(f?.topic ?? "").trim();
+      // Uma quantidade das observações fica com o mesmo tema que a pergunta.
+      return { topic: /quantidade/i.test(topic) ? quantityTopic(topic) : topic, value: String(f?.value ?? "").trim() };
+    })
     .filter((f) => f.topic && f.value && f.topic.length <= 40 && f.value.length <= 60)
     .slice(0, 5);
 }
@@ -528,10 +532,43 @@ const questionWeight = (q: CarolQuestion): number =>
  *  (~35 g)", "20 g", "camada fina (≈5g)" — ou null se não diz. É com isto que
  *  uma resposta de quantidade se aplica sem o modelo: troca-se só as gramas. */
 export function optionGrams(text: unknown): number | null {
-  const m = String(text ?? "").match(/(\d+(?:[.,]\d+)?)\s*g(?:ramas?)?(?![a-z])/i);
+  const s = String(text ?? "");
+  const toNum = (v: string) => Number(v.replace(",", "."));
+  // "2 fatias de 20 g" são 40 g, não 20 (revisão pré-master de 2026-10-17).
+  const each = s.match(/(\d+(?:[.,]\d+)?)\s+[a-zà-ú]+(?:\s+[a-zà-ú]+)?\s+de\s+(\d+(?:[.,]\d+)?)\s*g(?:ramas?)?(?![a-z])/i);
+  if (each) {
+    const n = toNum(each[1]) * toNum(each[2]);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  }
+  const m = s.match(/(\d+(?:[.,]\d+)?)\s*g(?:ramas?)?(?![a-z])/i);
   if (!m) return null;
-  const n = Number(m[1].replace(",", "."));
+  const n = toNum(m[1]);
   return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/** As gramas do alimento depois de uma resposta de quantidade com gramas:
+ *  soma-se a diferença entre a resposta e a assumida — num prato que veio num
+ *  só item ("Tosta mista", 120 g) a pergunta "quanto fiambre?" mexe só na
+ *  parte do fiambre. Sem gramas na assumida, ficam as da resposta. Nunca < 0. */
+export function quantityAnswerGrams(itemGrams: number, answer: unknown, assumed: unknown): number | null {
+  const a = optionGrams(answer);
+  if (a == null) return null;
+  const s = optionGrams(assumed);
+  return s == null ? a : Math.max(0, Math.round((Number(itemGrams) || 0) + a - s));
+}
+
+/** Um tema de quantidade sempre como "<alimento> · quantidade": o modelo
+ *  pode mandar "quantidade de manteiga" ou "manteiga quantidade", e as duas
+ *  têm de ser a MESMA regra (para confirmar e deixar de perguntar) e cair em
+ *  "Quanto costumas pôr" no Armário (revisão pré-master de 2026-10-17). */
+export function quantityTopic(raw: unknown): string {
+  const food = String(raw ?? "")
+    .replace(/\bquantidades?\b/gi, " ")
+    .replace(/^\s*(?:de|do|da|dos|das)\s+/i, "")
+    .replace(/[·:\-–—]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return food ? `${food.slice(0, 27)} · quantidade` : "";
 }
 
 /**
@@ -562,9 +599,7 @@ export function parseQuestions(
   for (const q of raw) {
     const kind: CarolQuestion["kind"] = q?.kind === "quantidade" ? "quantidade" : "preparacao";
     const rawTopic = String(q?.topic ?? "").trim();
-    const topic = kind === "quantidade" && !/quantidade/i.test(rawTopic)
-      ? `${rawTopic.slice(0, 27)} · quantidade`
-      : rawTopic.slice(0, 40);
+    const topic = kind === "quantidade" ? quantityTopic(rawTopic) : rawTopic.slice(0, 40);
     const question = String(q?.question ?? "").trim().slice(0, 140);
     const itemName = String(q?.item_name ?? "").trim();
     const topicKey = foodKey(topic);

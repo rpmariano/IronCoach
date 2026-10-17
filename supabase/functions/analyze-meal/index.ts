@@ -28,7 +28,7 @@ import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_sha
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
   applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
-  isMicroColumn, microFromModel, optionGrams, parseCookingFacts, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
+  isMicroColumn, microFromModel, optionGrams, parseCookingFacts, quantityAnswerGrams, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
   withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
@@ -1371,9 +1371,14 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         const item = mealItems.find((it) => foodKey(it.name) === foodKey(q.item_name));
         if (!item) continue;
         const c = changes.get(item.id) ?? { item, answers: [], facts: [], grams: null, reestimate: false, estimateGrams: false };
-        const grams = q.kind === "quantidade" ? optionGrams(q.answer) : null;
-        if (grams != null) {
-          c.grams = grams;
+        const answerGrams = q.kind === "quantidade" ? optionGrams(q.answer) : null;
+        if (answerGrams != null) {
+          // Aplica-se a DIFERENÇA entre a resposta e o que ela assumiu, não as
+          // gramas da resposta: num prato que veio num só item ("Tosta mista",
+          // 120 g) a pergunta "quanto fiambre?" mexe só na parte do fiambre —
+          // trocar pelas gramas da opção (35 g) punha a tosta toda a 35 g
+          // (revisão pré-master de 2026-10-17). Sem gramas na assumida, troca.
+          c.grams = quantityAnswerGrams(c.grams ?? (Number(item.quantity_grams) || 0), q.answer, q.assumed);
         } else {
           c.answers.push(q.answer);
           c.facts.push(`${q.topic}: ${q.answer}`);

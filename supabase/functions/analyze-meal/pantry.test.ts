@@ -3,7 +3,7 @@ import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
   applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
   isPantryComplete, microFromModel, microOrNull, MICRO_COLUMNS, microsTrusted, missingMicros, NUTRIENT_COLUMNS, pantryMicro,
-  optionGrams, parseCookingFacts, parseQuestions, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
+  optionGrams, parseCookingFacts, parseQuestions, quantityAnswerGrams, quantityTopic, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
   withWrittenFoods,
 } from "./pantry.ts";
 
@@ -497,6 +497,9 @@ Deno.test("optionGrams: as gramas de uma opção ou resposta de quantidade", () 
   assertEquals(optionGrams("Sem manteiga (0 g)"), 0);
   assertEquals(optionGrams("duas fatias grossas"), null);
   assertEquals(optionGrams("3 fatias gordas"), null);
+  // "2 fatias de 20 g" são 40 g (revisão pré-master de 2026-10-17).
+  assertEquals(optionGrams("2 fatias de 20 g"), 40);
+  assertEquals(optionGrams("3 fatias finas de 12,5 g"), 37.5);
   assertEquals(optionGrams(null), null);
 });
 
@@ -519,7 +522,29 @@ Deno.test("parseQuestions: quantidade — tema \"<alimento> · quantidade\", op�
   const confirmada = regra({ topic: "manteiga · quantidade", topic_key: "manteiga quantidade", status: "confirmado" });
   assertEquals(parseQuestions([quant()], [manteiga], [confirmada], ids), []);
   // O modelo já pode mandar o tema com "quantidade": não se duplica.
-  assertEquals(parseQuestions([quant({ topic: "manteiga quantidade" })], [manteiga], [], ids)[0].topic, "manteiga quantidade");
+  // Venha como vier, o tema fica "<alimento> · quantidade" — a mesma regra.
+  assertEquals(parseQuestions([quant({ topic: "manteiga quantidade" })], [manteiga], [], ids)[0].topic, "manteiga · quantidade");
+  assertEquals(parseQuestions([quant({ topic: "quantidade de manteiga" })], [manteiga], [], ids)[0].topic, "manteiga · quantidade");
+  assertEquals(parseQuestions([quant({ topic: "quantidade de manteiga" })], [manteiga], [confirmada], ids), []);
   // Sem kind (as gravadas antes, ou o modelo a omiti-lo) é de preparação.
   assertEquals(parseQuestions([pergunta()], [ovo], [], ids)[0].kind, "preparacao");
+});
+
+Deno.test("quantityAnswerGrams: soma a diferença à porção, não a troca (o prato composto da revisão pré-master)", () => {
+  // "Tosta mista" num só item (120 g), assumidos ~50 g de fiambre, resposta ~35 g: 105 g, não 35 g.
+  assertEquals(quantityAnswerGrams(120, "3 fatias finas (~35 g)", "3 fatias médias (~50 g)"), 105);
+  // O item é o próprio fiambre (50 g): fica nos 35 g da resposta.
+  assertEquals(quantityAnswerGrams(50, "3 fatias finas (~35 g)", "3 fatias médias (~50 g)"), 35);
+  // Sem gramas na assumida, ficam as da resposta; nunca abaixo de 0; sem gramas na resposta, null.
+  assertEquals(quantityAnswerGrams(80, "20 g", "Normal"), 20);
+  assertEquals(quantityAnswerGrams(10, "Sem manteiga (0 g)", "Camada grossa (~15 g)"), 0);
+  assertEquals(quantityAnswerGrams(80, "duas fatias grossas", "3 fatias (~35 g)"), null);
+});
+
+Deno.test("quantityTopic e parseCookingFacts: uma quantidade das observações tem o tema da pergunta", () => {
+  assertEquals(quantityTopic("quantidade de manteiga"), "manteiga · quantidade");
+  assertEquals(quantityTopic("Fiambre - quantidade"), "Fiambre · quantidade");
+  assertEquals(quantityTopic("quantidade"), "");
+  assertEquals(parseCookingFacts([{ topic: "quantidade de manteiga", value: "pouca" }, { topic: "fritos", value: "azeite" }]),
+    [{ topic: "manteiga · quantidade", value: "pouca" }, { topic: "fritos", value: "azeite" }]);
 });

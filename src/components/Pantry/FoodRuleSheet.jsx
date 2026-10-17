@@ -16,7 +16,9 @@ export default function FoodRuleSheet({ rule = null, onClose }) {
   const [kind, setKind] = useState(rule && isQuantityRule(rule) ? 'quantidade' : 'preparacao');
   const [topic, setTopic] = useState(rule ? ruleLabel(rule) : '');
   const isQty = kind === 'quantidade';
-  const savedTopic = rule ? rule.topic : (isQty ? `${topic.trim()}${QUANTITY_SUFFIX}` : topic);
+  // Sem "quantidade" escrito à mão no nome — o sufixo põe-se uma vez só.
+  const qtyFood = topic.replace(/\s*·?\s*quantidades?\s*$/i, '').trim();
+  const savedTopic = rule ? rule.topic : (isQty ? `${qtyFood}${QUANTITY_SUFFIX}` : topic);
   const [value, setValue] = useState(rule?.status === 'varia' ? '' : (rule?.value ?? ''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,7 +52,7 @@ export default function FoodRuleSheet({ rule = null, onClose }) {
   );
 
   return (
-    <PremiumModal isOpen onClose={onClose} title={rule ? `${ruleLabel(rule)}${isQuantityRule(rule) ? ' · quantidade' : ''}` : 'Como cozinhas'} subtitle={rule ? 'O que a Carol usa sem perguntar' : 'A Carol passa a usar isto sem perguntar'} theme="coach" variant="bottom-sheet" maxWidth="max-w-md">
+    <PremiumModal isOpen onClose={onClose} title={rule ? `${ruleLabel(rule)}${isQuantityRule(rule) ? ' · quantidade' : ''}` : (isQty ? 'Quanto costumas pôr' : 'Como cozinhas')} subtitle={rule ? 'O que a Carol usa sem perguntar' : 'A Carol passa a usar isto sem perguntar'} theme="coach" variant="bottom-sheet" maxWidth="max-w-md">
       <div className="px-5 py-4 space-y-3" data-testid="food-rule-sheet">
         {!rule && (
           <div role="group" aria-label="Que tipo de hábito" className="grid grid-cols-2 gap-2">
@@ -70,12 +72,12 @@ export default function FoodRuleSheet({ rule = null, onClose }) {
             ))}
           </div>
         )}
-        {!rule && input('rule-topic', isQty ? 'De quê (ex.: manteiga, fiambre, azeite na salada)' : 'O quê (ex.: fritos, salada, café)', topic, setTopic, { maxLength: 27 })}
+        {!rule && input('rule-topic', isQty ? 'De quê (ex.: manteiga, fiambre, azeite na salada)' : 'O quê (ex.: fritos, salada, café)', topic, setTopic, { maxLength: isQty ? 27 : 40 })}
         {input('rule-value', rule?.status === 'varia' ? 'Varia — se afinal é sempre igual, diz como' : isQty ? 'Quanto (ex.: camada fina, um lado (~5 g))' : 'Como (ex.: azeite, azeite e vinagre, sem açúcar)', value, setValue, { maxLength: 60, autoFocus: true })}
         {error && <p role="alert" className="text-[12.5px]" style={{ color: 'var(--danger)' }}>{error}</p>}
         <button
           type="button"
-          disabled={busy || !topic.trim() || !value.trim()}
+          disabled={busy || !(isQty && !rule ? qtyFood : topic.trim()) || !value.trim()}
           onClick={() => run(() => saveFoodRule({ userId: profile?.id, topic: savedTopic, value, existing: rule }), 'Guardado — a Carol já não pergunta')}
           className="w-full min-h-[48px] rounded-xl text-[14px] font-black disabled:opacity-50"
           style={{ background: 'var(--coach)', color: '#062a33' }}
