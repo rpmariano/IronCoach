@@ -9,7 +9,7 @@ import CoachText from '../shared/CoachText';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
-import CarolQuestions, { openCarolQuestions } from './CarolQuestions';
+import CarolQuestions, { openCarolQuestions, questionsImpactText } from './CarolQuestions';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 const MEAL_ICONS = {
@@ -140,7 +140,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             A Carol tem {openQuestions.length === 1 ? '1 pergunta' : `${openQuestions.length} perguntas`}
           </span>
           <span className="text-[12px] font-bold" style={{ color: 'var(--text-4)' }}>
-            até {openQuestions.reduce((t, q) => t + (Number(q.impact_kcal) || 0), 0)} kcal
+            até {questionsImpactText(openQuestions)}
           </span>
         </button>
       )}

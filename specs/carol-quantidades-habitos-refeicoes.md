@@ -1,6 +1,6 @@
 # Carol: quantidades, hábitos e refeições predefinidas (bugs #58, #66, #63)
 
-Estado: **proposta**, por aprovar. Escrita a 2026-10-17 a partir dos bugs abertos e
+Estado: **aprovada** a 2026-10-17 (todas as decisões da §7 aceites tal como propostas). Escrita a 2026-10-17 a partir dos bugs abertos e
 do código atual (`analyze-meal/pantry.ts`, `analyze-meal/index.ts`,
 `CarolQuestions.jsx`, `PantrySection.jsx`, migration `20261003233613_athlete_pantry.sql`).
 
@@ -156,7 +156,7 @@ As fases A–C tocam a Edge Function `analyze-meal`: cada push a `dev` é deploy
 Testar com `deno test` (com `DENO_DIR` novo) e `vitest` antes de cada um. A D é sobretudo
 frontend, mais uma migration.
 
-## 7. Decisões que preciso de ti
+## 7. Decisões (aceites a 2026-10-17)
 
 1. **Máximo de perguntas:** 5? (o #66 diz "o que for necessário"; um teto evita um
    questionário a cada refeição).

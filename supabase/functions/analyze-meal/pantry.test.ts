@@ -375,11 +375,11 @@ Deno.test("parseQuestions: a pergunta fica presa ao alimento da refeição, com 
   const [q] = parseQuestions([pergunta()], [ovo, salada], [], ids);
   assertEquals(q, {
     id: "q1", topic: "fritos", item_name: "Ovo estrelado", question: "Os ovos foram estrelados em quê?",
-    options: ["Azeite", "Manteiga", "Óleo", "Sem gordura"], assumed: "Azeite", impact_kcal: 90, answer: null, answered_at: null,
+    options: ["Azeite", "Manteiga", "Óleo", "Sem gordura"], assumed: "Azeite", impact_kcal: 90, impact_protein_g: 0, answer: null, answered_at: null,
   });
 });
 
-Deno.test("parseQuestions: as regras da casa — ≥ 50 kcal, no máximo 2, sem temas confirmados nem alimentos da despensa", () => {
+Deno.test("parseQuestions: as regras da casa — ≥ 40 kcal ou ≥ 4 g de proteína, sem temas confirmados nem alimentos da despensa", () => {
   const confirmada = regra({ topic: "salada", topic_key: "salada", status: "confirmado" });
   const qs = parseQuestions([
     pergunta({ impact_kcal: 30 }),                                    // pouco impacto
@@ -390,7 +390,6 @@ Deno.test("parseQuestions: as regras da casa — ≥ 50 kcal, no máximo 2, sem 
     pergunta(),                                                       // esta passa
     pergunta(),                                                       // tema repetido
     pergunta({ topic: "molho", item_name: "Salada mista", assumed: "Sem molho", options: ["Com molho", "Sem molho"] }),
-    pergunta({ topic: "café", item_name: "Salada mista" }),           // passava do limite de 2
   ], [ovo, salada], [confirmada], ids);
   assertEquals(qs.map((q) => q.topic), ["fritos", "molho"]);
   // Um alimento que já veio da despensa não se pergunta.
@@ -457,4 +456,30 @@ Deno.test("withWrittenFoods: vai buscar à despensa os escritos que não vieram 
   // Menos de 80: o mapa já tem a despensa toda — nem pergunta.
   const pequena = { foods: [iogurte], rules: [], byKey: new Map(byKey) };
   assertEquals(await withWrittenFoods(semPedido, "u1", pequena, ["Banana"]), pequena);
+});
+
+Deno.test("parseQuestions: pouca energia mas muita proteína pergunta-se (o fiambre do bug #58)", () => {
+  const fiambre = estimado("Fiambre de peru", 40);
+  const q = (over: Record<string, unknown>) => pergunta({
+    topic: "fiambre", item_name: "Fiambre de peru", question: "As fatias eram de que espessura?",
+    options: ["Finíssimas", "Finas", "Médias"], assumed: "Médias", ...over,
+  });
+  assertEquals(parseQuestions([q({ impact_kcal: 17, impact_protein_g: 3.5 })], [fiambre], [], ids), []);
+  const [passa] = parseQuestions([q({ impact_kcal: 17, impact_protein_g: 4.24 })], [fiambre], [], ids);
+  assertEquals([passa.impact_kcal, passa.impact_protein_g], [17, 4.2]);
+  // Sem impact_kcal mas com proteína que chegue também passa.
+  assertEquals(parseQuestions([q({ impact_kcal: undefined, impact_protein_g: 6 })], [fiambre], [], ids).length, 1);
+});
+
+Deno.test("parseQuestions: até 5 perguntas (bug #66), as de mais impacto primeiro", () => {
+  const itens = ["a", "b", "c", "d", "e", "f"].map((k) => estimado(`Alimento ${k}`, 100));
+  const qs = parseQuestions([
+    pergunta({ topic: "t1", item_name: "Alimento a", impact_kcal: 45 }),
+    pergunta({ topic: "t2", item_name: "Alimento b", impact_kcal: 200 }),
+    pergunta({ topic: "t3", item_name: "Alimento c", impact_kcal: 10, impact_protein_g: 12 }), // 3× o limiar da proteína
+    pergunta({ topic: "t4", item_name: "Alimento d", impact_kcal: 60 }),
+    pergunta({ topic: "t5", item_name: "Alimento e", impact_kcal: 41 }),
+    pergunta({ topic: "t6", item_name: "Alimento f", impact_kcal: 80 }),
+  ], itens, [], ids);
+  assertEquals(qs.map((q) => q.topic), ["t2", "t3", "t6", "t4", "t1"]);
 });

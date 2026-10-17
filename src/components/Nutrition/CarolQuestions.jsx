@@ -5,6 +5,7 @@ import { invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { useAppStore } from '../../store';
 import { CAROL_TALK_CLASS, CAROL_TALK_STYLE, CAROL_SECONDARY_CLASS, CAROL_SECONDARY_STYLE } from '../shared/CarolActions';
+import { spellFem, fmtNumber } from '../../utils/verdicts/shared';
 
 /* As perguntas da Carol sobre uma refeição (bug #52, fase B, 2026-10-04:
    «em vez de a Carol estar a adivinhar determinadas situações, pode
@@ -21,6 +22,28 @@ export function openCarolQuestions(meal) {
 }
 
 const OUTRO = '__outro__';
+
+/* Desde 2026-10-17 (bugs #58/#66) uma pergunta também vale pela proteína que
+   muda — o fiambre muda pouca energia e muita proteína —, e podem ser até 5. */
+const proteinOf = (q) => Number(q?.impact_protein_g) || 0;
+const fmtProtein = (g) => fmtNumber(g, Number.isInteger(g) ? 0 : 1);
+
+/** "160 kcal" ou "160 kcal e 4,2 g de proteína": quanto as respostas mudam. */
+export function questionsImpactText(questions) {
+  const kcal = (questions || []).reduce((s, q) => s + (Number(q?.impact_kcal) || 0), 0);
+  const protein = Math.round((questions || []).reduce((s, q) => s + proteinOf(q), 0) * 10) / 10;
+  if (protein > 0 && kcal > 0) return `${kcal} kcal e ${fmtProtein(protein)} g de proteína`;
+  if (protein > 0) return `${fmtProtein(protein)} g de proteína`;
+  return `${kcal} kcal`;
+}
+
+/** "± 90 kcal" ou "± 17 kcal · 4,2 g prot.", ao lado de cada pergunta. */
+export function questionImpactText(q) {
+  const kcal = Number(q?.impact_kcal) || 0;
+  const protein = proteinOf(q);
+  if (protein > 0) return kcal > 0 ? `± ${kcal} kcal · ${fmtProtein(protein)} g prot.` : `± ${fmtProtein(protein)} g prot.`;
+  return `± ${kcal} kcal`;
+}
 
 /** A frase de cada regra depois de responder. */
 export function learnedLine({ topic, value, status }) {
@@ -53,7 +76,7 @@ export default function CarolQuestions({ meal, onAnswered, onLater }) {
 
   const answerFor = (q) => (picked[q.id] === OUTRO ? (other[q.id] || '').trim() : picked[q.id]);
   const answers = questions.map((q) => ({ id: q.id, answer: answerFor(q) })).filter((a) => a.answer);
-  const totalImpact = questions.reduce((s, q) => s + (Number(q.impact_kcal) || 0), 0);
+  const totalImpact = questionsImpactText(questions);
 
   const submit = async () => {
     if (!answers.length || sending) return;
@@ -82,9 +105,9 @@ export default function CarolQuestions({ meal, onAnswered, onLater }) {
       <div className="flex gap-2.5 items-start">
         <CoachAvatar size={36} mood="thinking" />
         <p className="text-[13px] leading-[1.5] mt-0.5" style={{ color: 'var(--text-2)' }}>
-          {questions.length === 1 ? 'Antes de fechar as contas, uma pergunta.' : 'Antes de fechar as contas, duas perguntas.'}{' '}
+          {questions.length === 1 ? 'Antes de fechar as contas, uma pergunta.' : `Antes de fechar as contas, ${spellFem(questions.length)} perguntas.`}{' '}
           Para já assumi o mais comum — {questions.length === 1 ? 'a resposta muda' : 'as respostas mudam'} até{' '}
-          <b style={{ color: 'var(--coach)' }}>{totalImpact} kcal</b>.
+          <b style={{ color: 'var(--coach)' }}>{totalImpact}</b>.
         </p>
       </div>
 
@@ -93,7 +116,7 @@ export default function CarolQuestions({ meal, onAnswered, onLater }) {
           <legend className="sr-only">{q.question}</legend>
           <div className="flex items-baseline justify-between gap-2">
             <p className="text-[14px] font-extrabold" style={{ color: 'var(--text-1)' }} aria-hidden="true">{q.question}</p>
-            <span className="text-[11px] shrink-0" style={{ color: 'var(--text-4)' }}>± {q.impact_kcal} kcal</span>
+            <span className="text-[11px] shrink-0" style={{ color: 'var(--text-4)' }}>{questionImpactText(q)}</span>
           </div>
           <div className="flex flex-wrap gap-2 mt-2.5">
             {[...q.options, OUTRO].map((opt) => {

@@ -32,6 +32,16 @@ describe('CarolQuestions', () => {
     expect(screen.getByTestId('carol-questions-submit')).toBeDisabled();
   });
 
+  it('até 5 perguntas, contadas por extenso, e a proteína entra no que podem mudar (bugs #58/#66)', () => {
+    const fiambre = { id: 'q3', topic: 'fiambre', item_name: 'Fiambre de peru', question: 'As fatias eram de que espessura?', options: ['Finas', 'Médias'], assumed: 'Médias', impact_kcal: 17, impact_protein_g: 4.2, answer: null };
+    const meal = { ...MEAL, carol_questions: [Q1, Q2, fiambre] };
+    render(<CarolQuestions meal={meal} />);
+    expect(screen.getByText(/três perguntas/)).toBeInTheDocument();
+    expect(screen.getByText('177 kcal e 4,2 g de proteína')).toBeInTheDocument();
+    expect(screen.getByText('± 17 kcal · 4,2 g prot.')).toBeInTheDocument();
+    expect(screen.getByText('± 90 kcal')).toBeInTheDocument();
+  });
+
   it('responde com um toque: manda só as escolhidas, atualiza a refeição e diz o que aprendeu', async () => {
     const updated = { ...MEAL, carol_questions: [{ ...Q1, answer: 'Manteiga' }, Q2] };
     mocks.invoke.mockResolvedValue({ data: { meal: updated, learned: [{ topic: 'fritos', value: 'Manteiga', status: 'por_confirmar' }] }, error: null });

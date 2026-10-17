@@ -113,6 +113,7 @@ export const RESPONSE_SCHEMA = {
           options: { type: "ARRAY", items: { type: "STRING" } },
           assumed: { type: "STRING" },
           impact_kcal: { type: "NUMBER" },
+          impact_protein_g: { type: "NUMBER" },
         },
         required: ["topic", "item_name", "question", "options", "assumed", "impact_kcal"],
       },
@@ -187,14 +188,16 @@ function cookingFactsRule(notes: string | null): string {
 // situações, pode perguntar no momento». A refeição grava-se na mesma com o
 // mais provável (assumed); a pergunta aparece no ecrã do resultado.
 const QUESTIONS_RULE =
-  "\n\nPERGUNTAS (questions): no máximo 2, e só quando não se vê nem se sabe como um alimento desta refeição " +
-  "foi preparado ou temperado E isso muda a energia em 50 kcal ou mais — a gordura usada para fritar ou saltear, " +
+  "\n\nPERGUNTAS (questions): as que forem precisas, até 5 — mais vale perguntar do que assumir algo muito errado —, " +
+  "só quando não se vê nem se sabe como um alimento desta refeição foi preparado ou temperado E isso muda a energia " +
+  "em 40 kcal ou mais OU a proteína em 4 g ou mais — a gordura usada para fritar ou saltear, " +
   "o tempero da salada, o molho, a pele ou o corte da carne, o leite gordo ou magro, açúcar no café. Nunca sobre o " +
   "que as observações já dizem, sobre um tema de \"Como cozinha e tempera\", nem sobre um alimento da lista que ele " +
   "tem guardada. Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: topic (o tema, curto, " +
   "ex. \"fritos\"), item_name (o nome EXATO do item em items), question (curta, na 2.ª pessoa, ex. \"Os ovos " +
   "foram estrelados em quê?\"), options (2 a 4 respostas curtas, ex. [\"Azeite\", \"Manteiga\", \"Óleo\", " +
-  "\"Sem gordura\"]), assumed (uma das options), impact_kcal (quanto a resposta pode mudar a energia, em kcal). " +
+  "\"Sem gordura\"]), assumed (uma das options), impact_kcal (quanto a resposta pode mudar a energia, em kcal), " +
+  "impact_protein_g (quanto pode mudar a proteína, em g; 0 se não muda). " +
   "Na dúvida, não perguntes: lista vazia.";
 
 function buildPrompt(notes: string | null, knowledge = ""): string {

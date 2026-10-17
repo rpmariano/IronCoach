@@ -493,17 +493,29 @@ export type CarolQuestion = {
   options: string[];
   assumed: string;
   impact_kcal: number;
+  // Quanto a resposta pode mudar a proteína, em g (bug #58/#66, 2026-10-17).
+  impact_protein_g: number;
   answer?: string | null;
   answered_at?: string | null;
 };
 
-/** Abaixo disto a resposta não muda nada que se veja: não se pergunta. */
-export const MIN_QUESTION_IMPACT_KCAL = 50;
-export const MAX_QUESTIONS = 2;
+/** Abaixo disto a resposta não muda nada que se veja: não se pergunta.
+ *  Basta passar UM dos dois: o fiambre do bug #58 mudava ~17 kcal mas ~3,5 g
+ *  de proteína — e era a proteína que ela depois criticava. Até 5 perguntas
+ *  (#66: «mais vale ir perguntando do que assumir»), as de mais impacto
+ *  primeiro. specs/carol-quantidades-habitos-refeicoes.md §4.2. */
+export const MIN_QUESTION_IMPACT_KCAL = 40;
+export const MIN_QUESTION_IMPACT_PROTEIN_G = 4;
+export const MAX_QUESTIONS = 5;
+
+/** O peso de uma pergunta para a ordem: quantas vezes passa o limiar. */
+const questionWeight = (q: CarolQuestion): number =>
+  Math.max(q.impact_kcal / MIN_QUESTION_IMPACT_KCAL, q.impact_protein_g / MIN_QUESTION_IMPACT_PROTEIN_G);
 
 /**
  * As perguntas que o Gemini propôs, filtradas pelas regras da casa: no
- * máximo 2, só as que mudam ≥ 50 kcal, nunca sobre um tema já confirmado
+ * máximo 5, só as que mudam ≥ 40 kcal ou ≥ 4 g de proteína (as de mais
+ * impacto primeiro), nunca sobre um tema já confirmado
  * (ela já sabe), nunca sobre um alimento da despensa (já o conhece — a não
  * ser que haja uma regra por confirmar ou que varia sobre ele, 2026-10-05), e
  * sempre presas a um alimento desta refeição. A opção assumida tem de estar
@@ -530,19 +542,26 @@ export function parseQuestions(
       .map((o: unknown) => String(o ?? "").trim().slice(0, 40))
       .filter(Boolean))].slice(0, 4) as string[];
     const assumed = String(q?.assumed ?? "").trim().slice(0, 40);
-    const impact = Math.round(Number(q?.impact_kcal));
+    const kcal = Math.round(Number(q?.impact_kcal));
+    const impact = Number.isFinite(kcal) && kcal > 0 ? kcal : 0;
+    const protein = Math.round(Number(q?.impact_protein_g) * 10) / 10;
+    const impactProtein = Number.isFinite(protein) && protein > 0 ? protein : 0;
     const item = itemsByKey.get(foodKey(itemName));
     // Da despensa, só se há perguntas em aberto sobre ele (pantry_pending,
     // 2026-10-05) — foi por isso que o modelo foi chamado.
     if (!topicKey || !question || options.length < 2 || !item || (item.from_pantry && !item.pantry_pending)) continue;
-    if (!Number.isFinite(impact) || impact < MIN_QUESTION_IMPACT_KCAL) continue;
+    if (impact < MIN_QUESTION_IMPACT_KCAL && impactProtein < MIN_QUESTION_IMPACT_PROTEIN_G) continue;
     if (confirmed.has(topicKey) || seenTopics.has(topicKey)) continue;
     if (!options.some((o) => foodKey(o) === foodKey(assumed))) continue;
     seenTopics.add(topicKey);
-    out.push({ id: newId(), topic, item_name: String(item.name), question, options, assumed, impact_kcal: impact, answer: null, answered_at: null });
-    if (out.length >= MAX_QUESTIONS) break;
+    out.push({ id: newId(), topic, item_name: String(item.name), question, options, assumed, impact_kcal: impact, impact_protein_g: impactProtein, answer: null, answered_at: null });
   }
-  return out;
+  // Ordem estável: com o mesmo peso fica a ordem do modelo.
+  return out
+    .map((q, i) => ({ q, i }))
+    .sort((a, b) => questionWeight(b.q) - questionWeight(a.q) || a.i - b.i)
+    .slice(0, MAX_QUESTIONS)
+    .map(({ q }) => q);
 }
 
 /**
