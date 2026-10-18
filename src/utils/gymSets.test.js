@@ -70,3 +70,60 @@ describe('registo unificado — exercícios', async () => {
     expect(meta).toEqual([{ name: 'Supino', goal: 'RIR 2', block_type: 'forca', plan_block_index: null, goal_met: null }]);
   });
 });
+
+describe('ler prints e notas para o formulário (F2)', async () => {
+  const { mergePreview, exercisesFromPreview, readSummary, newExercise, newSet } = await import('./gymSets');
+  const form = (over = {}) => ({ kind: 'forca', categories: [], classTypes: [], name: '', durationStr: '', calories: '', avgHr: '', maxHr: '', exertion: '', exercises: [], ...over });
+  const PREVIEW = {
+    session_name: 'Pernas', categories: ['Pernas Inferiores'], class_types: [],
+    metrics: { duration_seconds: 3000, calories_kcal: 400, avg_hr: null, max_hr: 150, exertion: 7 },
+    exercises: [
+      { name: 'Extensões de pernas', type: 'forca', plan_block_index: 0, sets: [{ reps: 12, weight: 40 }, { reps: 12, weight: 40 }] },
+      { name: 'Bicicleta', type: 'cardio', plan_block_index: null, sets: [{ duration_seconds: 1200, distance_km: 8 }] },
+    ],
+  };
+
+  it('exercisesFromPreview: força com séries, cardio com tempo/km, e o objetivo vem do plano pelo índice', () => {
+    const [ext, bike] = exercisesFromPreview(PREVIEW, [{ name: 'Extensões de pernas', goal: 'chegar às 12' }]);
+    expect(ext).toMatchObject({ name: 'Extensões de pernas', type: 'forca', goal: 'chegar às 12', planBlockIndex: 0 });
+    expect(ext.sets.map(s => [s.reps, s.weight])).toEqual([[12, 40], [12, 40]]);
+    expect(bike).toMatchObject({ type: 'cardio', fields: ['duration', 'distance'] });
+    expect(bike.sets[0]).toMatchObject({ durationMin: '20', distance: '8' });
+  });
+
+  it('o remo lido em km volta a metros no formulário', () => {
+    const [remo] = exercisesFromPreview({ exercises: [{ name: 'Remo', type: 'cardio', sets: [{ duration_seconds: 600, distance_km: 2 }] }] });
+    expect(remo.sets[0].distance).toBe('2000');
+    expect(remo.distanceUnit).toBe('m');
+  });
+
+  it('mergePreview: formulário vazio recebe tudo e conta', () => {
+    const r = mergePreview(form(), PREVIEW);
+    expect(r.patch).toMatchObject({ categories: ['Pernas Inferiores'], name: 'Pernas', durationStr: '50:00', calories: '400', maxHr: '150', exertion: 7 });
+    expect(r.patch.avgHr).toBeUndefined();
+    expect(r).toMatchObject({ exercises: 2, metrics: 4 });
+    expect(r.patch.exercises).toHaveLength(2);
+  });
+
+  it('mergePreview: o que o atleta escreveu ganha à leitura', () => {
+    const mine = newExercise({ name: 'extensoes de pernas', type: 'forca', sets: [newSet({ reps: '10', weight: '35' })] });
+    const r = mergePreview(form({ categories: ['Ombros'], name: 'Meu treino', durationStr: '40m', exercises: [mine] }), PREVIEW);
+    expect(r.patch.categories).toBeUndefined();
+    expect(r.patch.name).toBeUndefined();
+    expect(r.patch.durationStr).toBeUndefined();
+    expect(r.patch.exercises.map(e => e.name)).toEqual(['extensoes de pernas', 'Bicicleta']);
+    expect(r).toMatchObject({ exercises: 1, skipped: 1 });
+  });
+
+  it('mergePreview: uma linha em branco deixada aberta sai quando entram exercícios', () => {
+    const r = mergePreview(form({ exercises: [newExercise({ type: 'forca' })] }), PREVIEW);
+    expect(r.patch.exercises.map(e => e.name)).toEqual(['Extensões de pernas', 'Bicicleta']);
+  });
+
+  it('readSummary: a frase certa em cada caso', () => {
+    expect(readSummary({ exercises: 3, metrics: 1, skipped: 0 }, 'foto')).toMatch(/Li 3 exercícios e 1 métrica\. Revê/);
+    expect(readSummary({ exercises: 0, metrics: 0, skipped: 2 }, 'foto')).toMatch(/já tens esses exercícios/);
+    expect(readSummary({ exercises: 0, metrics: 0, skipped: 0 }, 'foto')).toMatch(/Não consegui ler/);
+    expect(readSummary({ exercises: 0, metrics: 0, skipped: 0 }, 'notas')).toMatch(/3x12 extensões/);
+  });
+});

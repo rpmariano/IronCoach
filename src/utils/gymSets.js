@@ -264,3 +264,85 @@ export function describeLast(row) {
   if (r) return `${r} reps`;
   return w;
 }
+
+// ── Ler os prints e as notas para o formulário (F2, Opção A) ─────────────
+
+const secToMin = (s) => (s ? String(Math.round((s / 60) * 10) / 10) : '');
+
+/** Os exercícios que a Carol leu (preview da analyze-gym), no modelo do
+ *  formulário. `planBlocks` são os blocos da prescrição do item do plano: o
+ *  índice que ela devolveu traz o objetivo do plano de volta. */
+export function exercisesFromPreview(preview, planBlocks = []) {
+  return (preview?.exercises || []).map((pe, i) => {
+    const idx = Number.isInteger(pe.plan_block_index) ? pe.plan_block_index : null;
+    const goal = (idx !== null && planBlocks[idx]?.goal) || '';
+    if (pe.type === 'cardio') {
+      const s = pe.sets?.[0] || {};
+      const metres = cardioSpecFor(pe.name)?.distanceUnit === 'm';
+      const present = ['duration', 'distance', 'laps'].filter(f => (f === 'duration' ? s.duration_seconds : f === 'distance' ? s.distance_km : s.laps));
+      const fields = ['duration', 'distance', 'laps'].filter(f => present.includes(f) || (cardioSpecFor(pe.name)?.fields || ['duration']).includes(f));
+      return newExercise({
+        name: pe.name,
+        type: 'cardio',
+        goal,
+        fields,
+        distanceUnit: metres ? 'm' : null,
+        planBlockIndex: idx,
+        sets: [newSet({
+          durationMin: secToMin(s.duration_seconds),
+          distance: s.distance_km ? String(metres ? Math.round(s.distance_km * 1000) : s.distance_km) : '',
+          laps: s.laps ? String(s.laps) : '',
+        })],
+      });
+    }
+    return newExercise({
+      name: pe.name,
+      type: 'forca',
+      goal,
+      planBlockIndex: idx,
+      sets: (pe.sets || []).map(s => newSet({ reps: s.reps ?? '', weight: s.weight ?? '' })),
+    });
+  });
+}
+
+/** O que a leitura acrescenta ao formulário — só o que o atleta ainda não
+ *  escreveu. "O que ele escreveu ganha ao que ela leu": grupos, nome e
+ *  métricas só entram se estiverem vazios; os exercícios juntam-se, sem repetir
+ *  um nome que já lá esteja. Devolve o que mudar e uma contagem para a frase. */
+export function mergePreview(form, preview, planBlocks = []) {
+  const patch = {};
+  let metrics = 0;
+  if (!form.categories.length && preview.categories?.length) patch.categories = preview.categories;
+  if (form.kind === 'aula' && !form.classTypes.length && preview.class_types?.length) patch.classTypes = preview.class_types;
+  if (!form.name.trim() && preview.session_name) patch.name = preview.session_name;
+
+  const m = preview.metrics || {};
+  if (blank(form.durationStr) && m.duration_seconds) { patch.durationStr = formatDurationInput(m.duration_seconds); metrics++; }
+  if (blank(form.calories) && m.calories_kcal != null) { patch.calories = String(m.calories_kcal); metrics++; }
+  if (blank(form.avgHr) && m.avg_hr) { patch.avgHr = String(m.avg_hr); metrics++; }
+  if (blank(form.maxHr) && m.max_hr) { patch.maxHr = String(m.max_hr); metrics++; }
+  if ((form.exertion === '' || form.exertion == null || form.exertion === 0) && m.exertion) { patch.exertion = m.exertion; metrics++; }
+
+  const have = new Set(form.exercises.map(e => foodKey(e.name)));
+  const incoming = exercisesFromPreview(preview, planBlocks).filter(e => !have.has(foodKey(e.name)));
+  // Uma linha em branco que o atleta deixou aberta não é um exercício: sai.
+  const kept = form.exercises.filter(e => (e.name || '').trim() || e.sets.some(s => !blank(s.reps) || !blank(s.weight) || !blank(s.durationMin) || !blank(s.distance) || !blank(s.laps)));
+  if (incoming.length || kept.length !== form.exercises.length) patch.exercises = [...kept, ...incoming];
+
+  return { patch, exercises: incoming.length, metrics, skipped: (preview.exercises || []).length - incoming.length };
+}
+
+/** A frase para o atleta, na voz da Carol, depois de uma leitura. */
+export function readSummary({ exercises, metrics, skipped }, source) {
+  const parts = [];
+  if (exercises) parts.push(exercises === 1 ? '1 exercício' : `${exercises} exercícios`);
+  if (metrics) parts.push(metrics === 1 ? '1 métrica' : `${metrics} métricas`);
+  if (!parts.length) {
+    return skipped
+      ? 'Li o que está nos prints, mas já tens esses exercícios no formulário — não mexi em nada.'
+      : source === 'foto'
+        ? 'Não consegui ler exercícios nem métricas nos prints. Tenta outro print, ou escreve-os abaixo.'
+        : 'Não percebi exercícios nas observações. Tenta assim: «3x12 extensões 40 kg, 20 min bicicleta».';
+  }
+  return `Li ${parts.join(' e ')}. Revê e corrige o que for preciso antes de gravar.`;
+}

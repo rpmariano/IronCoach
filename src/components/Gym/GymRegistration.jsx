@@ -6,14 +6,15 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { Dumbbell, ImagePlus, Users, X } from 'lucide-react';
+import { Dumbbell, Users, X } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import ChipPicker from '../shared/registration/ChipPicker';
 import ExerciseEditor from '../shared/registration/ExerciseEditor';
-import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex } from '../../utils/gymSets';
+import PhotoReadSection from '../shared/registration/PhotoReadSection';
+import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary } from '../../utils/gymSets';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -94,6 +95,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
      onde cair. */
   const analysis = useAnalysis();
   const isAnalyzing = analysis.isAnalyzing;
+  /* Ler os prints e/ou as observações para o formulário, sem gravar (F2,
+     Opção A). `reviewedPhotos` guarda quantos prints havia quando a leitura
+     correu: se são os mesmos ao gravar, o servidor não volta a ler. */
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState(null);
+  const [reviewedPhotos, setReviewedPhotos] = useState(null);
 
   // Métricas do relógio — opcionais, com ou sem prints.
   const [durationStr, setDurationStr] = useState(planItem?.target_duration_min ? String(planItem.target_duration_min) : '');
@@ -343,6 +350,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const savingWithCarol = isSaving && (!isEditing || needsReanalysis);
   const showAnalysis = isAnalyzing || savingWithCarol;
 
+  // O estado de agora, para a leitura (assíncrona) fundir sobre o que está no
+  // formulário quando a resposta chega, não sobre o de quando o pedido saiu.
+  const formRef = useRef(null);
+  formRef.current = { kind, categories, classTypes, name, durationStr, calories, avgHr, maxHr, exertion, exercises };
+
   const toggleIn = (list, value) => (list.includes(value) ? list.filter(c => c !== value) : [...list, value]);
   const handleToggleCategory = (cat) => setCategories(prev => toggleIn(prev, cat));
   const handleToggleClassType = (t) => setClassTypes(prev => toggleIn(prev, t));
@@ -381,13 +393,61 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        setReviewedPhotos(null);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
       }
     }
   };
 
-  const removePhoto = (idx) => setPhotos(prev => prev.filter((_, i) => i !== idx));
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); };
+
+  // Os exercícios do plano do dia, para a Carol casar os nomes (e o objetivo).
+  const planBlocks = planItem?.prescription?.blocks || [];
+
+  /* Ler os prints e/ou as observações e preencher o formulário. Não grava
+     nada: a analyze-gym em mode "preview" só devolve o que leu. */
+  const handleRead = async () => {
+    if (reading || isSaving || isAnalyzing) return;
+    const fromPhotos = photos.length > 0;
+    setReading(true);
+    setReadNote(null);
+    try {
+      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-gym', {
+        body: {
+          mode: 'preview',
+          images: photos.map(p => p.base64),
+          mime_type: 'image/jpeg',
+          kind,
+          notes: notes.trim() || null,
+          plan_blocks: planBlocks.map(b => ({ name: b.name, type: b.type })),
+        },
+      }, ANALYZE_TIMEOUT_MS);
+      if (error) throw new Error(error);
+      if (data?.error) throw new Error(data.error);
+
+      const result = mergePreview(formRef.current, data.preview, planBlocks);
+      const { patch } = result;
+      if (patch.categories) setCategories(patch.categories);
+      if (patch.classTypes) setClassTypes(patch.classTypes);
+      if (patch.name !== undefined) setName(patch.name);
+      if (patch.durationStr !== undefined) setDurationStr(patch.durationStr);
+      if (patch.calories !== undefined) setCalories(patch.calories);
+      if (patch.avgHr !== undefined) setAvgHr(patch.avgHr);
+      if (patch.maxHr !== undefined) setMaxHr(patch.maxHr);
+      if (patch.exertion !== undefined) setExertion(patch.exertion);
+      if (patch.exercises) setExercises(patch.exercises);
+      if (Object.keys(patch).length) setIsFormDirty(true);
+      const readable = !!data.readable;
+      setReviewedPhotos(fromPhotos && readable ? photos.length : null);
+      setReadNote({ tone: readable ? 'ok' : 'warn', text: readSummary(result, fromPhotos ? 'foto' : 'notas') });
+    } catch (err) {
+      console.error(err);
+      setReadNote({ tone: 'warn', text: err.message || 'Não consegui ler agora. Tenta outra vez, ou escreve o treino abaixo.' });
+    } finally {
+      setReading(false);
+    }
+  };
 
   /* Regista um treino "frio" — sem vir do botão "Registar sessão" de um item
      específico (pedido 2026-09-14) — mas se havia um treino de GINÁSIO
@@ -473,6 +533,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           categories,
           class_types: kind === 'aula' ? classTypes : [],
           notes: notes.trim() || null,
+          // Os prints já foram lidos e revistos: o servidor só os guarda.
+          reviewed: reviewedPhotos !== null && reviewedPhotos === photos.length,
           ...metricsAndSetsBody(),
         },
       }, ANALYZE_TIMEOUT_MS);
@@ -672,7 +734,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             detail={analysis.error}
             onRetry={analysis.retry}
             onManual={!isEditing && photos.length
-              ? () => { setPhotos([]); analysis.reset(); setIsFormDirty(true); }
+              ? () => { setPhotos([]); setReviewedPhotos(null); analysis.reset(); setIsFormDirty(true); }
               : undefined}
           >
             As fotos ficaram guardadas. Podes tentar outra vez ou registar só o que escreveste — eu faço as contas na mesma.
@@ -680,8 +742,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         )}
 
         <div
-          aria-busy={showAnalysis || undefined}
-          style={showAnalysis ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+          aria-busy={showAnalysis || reading || undefined}
+          style={showAnalysis || reading ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
         >
         <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Tipo de sessão</label>
         <div className="flex gap-1.5 mb-4">
@@ -736,45 +798,15 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
         {/* Prints (opcional) — escondido a editar: editar é sempre pelos
             campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
         {!isEditing && (
-          <>
-            {photos.length > 0 ? (
-              <>
-                <div className="grid grid-cols-3 gap-2 mb-2">
-                  {photos.map((p, i) => (
-                    <div key={i} className="relative aspect-square">
-                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
-                      <button
-                        onClick={() => removePhoto(i)}
-                        aria-label={`Remover print ${i + 1}`}
-                        className="tap-44 absolute -top-1.5 -right-1.5 text-[var(--text-3)] hover:text-[var(--danger)] transition"
-                      >
-                        <span className="bg-white/90 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex items-center justify-center">
-                          <X size={14} />
-                        </span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
-                </div>
-                {photos.length < MAX_PHOTOS && (
-                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-ginasio-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-ginasio-to)]/5 transition mb-4">
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                    <ImagePlus className="w-4 h-4" style={{ color: 'var(--mod-ginasio-to)' }} />
-                    <span className="text-[12px] font-bold" style={{ color: 'var(--mod-ginasio-to)' }}>Adicionar outro print</span>
-                  </label>
-                )}
-              </>
-            ) : (
-              <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-4 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-4 bg-[var(--surface-glass)]">
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                <ImagePlus className="w-6 h-6 text-[var(--text-3)] mx-auto mb-2" />
-                <p className="text-xs text-[var(--text-3)] font-semibold">Prints da app de treino (opcional)</p>
-                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Hevy, Strong… Junta os ecrãs da mesma sessão e eu leio o que não escreveres abaixo.</p>
-              </label>
-            )}
-          </>
+          <PhotoReadSection
+            photos={photos}
+            maxPhotos={MAX_PHOTOS}
+            onSelect={handlePhotoSelect}
+            onRemove={removePhoto}
+            onRead={handleRead}
+            reading={reading}
+            note={readNote}
+          />
         )}
 
         <div className="mb-4">
@@ -900,6 +932,20 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             placeholder="Contexto do treino..."
             className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm text-white placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-ginasio-to)] resize-none"
           />
+          {!isEditing && photos.length === 0 && notes.trim().length >= 3 && (
+            <>
+              <button
+                type="button"
+                onClick={handleRead}
+                disabled={reading}
+                className="mt-2 min-h-[44px] px-3 rounded-xl border text-[12px] font-bold disabled:opacity-60"
+                style={{ borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)', color: 'var(--mod-ginasio-to)', background: 'color-mix(in srgb, var(--mod-ginasio-to) 10%, transparent)' }}
+              >
+                {reading ? 'A ler…' : 'Preencher o formulário com isto'}
+              </button>
+              <p role="status" aria-live="polite" className="text-[12px] mt-2 text-[var(--text-2)]">{readNote?.text || ''}</p>
+            </>
+          )}
         </div>
 
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão

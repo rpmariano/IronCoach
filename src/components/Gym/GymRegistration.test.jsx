@@ -833,3 +833,105 @@ describe('GymRegistration — aula: modalidade e grupos musculares à parte', ()
     expect(body.categories).toEqual([]);
   });
 });
+
+describe('GymRegistration — ler os prints e as notas para o formulário (F2, Opção A)', () => {
+  const onClose = vi.fn();
+  const PREVIEW = {
+    session_name: 'Pernas', categories: ['Pernas Inferiores'], class_types: [],
+    metrics: { duration_seconds: 3000, calories_kcal: null, avg_hr: null, max_hr: null, exertion: null },
+    exercises: [{ name: 'Extensões de pernas', type: 'forca', plan_block_index: null, sets: [{ reps: 12, weight: 40, duration_seconds: null, distance_km: null, laps: null }] }],
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, gymSessions: [] });
+  });
+
+  it('com prints: "Ler" preenche o formulário sem gravar, e gravar a seguir não volta a ler (reviewed)', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+
+    expect(await screen.findByText(/Li 1 exercício e 1 métrica\. Revê e corrige/)).toBeInTheDocument();
+    const [, { body: readBody }] = mocks.invoke.mock.calls[0];
+    expect(readBody).toMatchObject({ mode: 'preview', images: ['AAA'], kind: 'forca' });
+    expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument();
+    expect(screen.getByLabelText('Repetições da série 1')).toHaveValue(12);
+    expect(screen.getByPlaceholderText('Ex: 45m')).toHaveValue('50:00');
+    expect(screen.getByDisplayValue('Pernas')).toBeInTheDocument();
+    expect(useAppStore.getState().gymSessions).toEqual([]);
+
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const { body } = mocks.invoke.mock.calls[1][1];
+    expect(body.mode).toBeUndefined();
+    expect(body.reviewed).toBe(true);
+    expect(body.sets).toEqual([{ exercise_name: 'Extensões de pernas', set_index: 0, reps: 12, weight: 40 }]);
+    expect(body.duration_seconds).toBe(3000);
+  });
+
+  it('acrescentar outro print depois de ler desfaz o "revisto": grava com leitura normal', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    await screen.findByText(/Li 1 exercício/);
+
+    const input = document.querySelectorAll('input[type="file"]')[0];
+    await fireEvent.change(input, { target: { files: [new File(['x'], 'b.jpg', { type: 'image/jpeg' })] } });
+    await screen.findByAltText('Print 2');
+
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body.reviewed).toBe(false);
+  });
+
+  it('só com notas: aparece "Preencher o formulário com isto" e lê sem imagens', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    expect(screen.queryByRole('button', { name: /Preencher o formulário com isto/ })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Contexto do treino...'), { target: { value: '3x12 extensões 40kg' } });
+    fireEvent.click(screen.getByRole('button', { name: /Preencher o formulário com isto/ }));
+
+    await waitFor(() => expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument());
+    const { body } = mocks.invoke.mock.calls[0][1];
+    expect(body).toMatchObject({ mode: 'preview', images: [], notes: '3x12 extensões 40kg' });
+    // Só notas não marca nada como "revisto": gravar é o registo normal.
+    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body.mode).toBe('manual');
+  });
+
+  it('o que o atleta já escreveu ganha à leitura', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText('Nome do treino'), { target: { value: 'Treino de sábado' } });
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    await screen.findByText(/Li 1 exercício/);
+    expect(screen.getByDisplayValue('Treino de sábado')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('Pernas')).not.toBeInTheDocument();
+  });
+
+  it('uma leitura sem nada legível avisa e não marca como revisto', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { ...PREVIEW, exercises: [], metrics: {}, categories: [], session_name: '' }, readable: false }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    expect(await screen.findByText(/Não consegui ler exercícios nem métricas/)).toBeInTheDocument();
+  });
+
+  it('um erro da leitura aparece e o formulário volta a ficar livre', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    expect(await screen.findByText('O Coach está ocupado.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Ler os prints e preencher/ })).not.toBeDisabled();
+  });
+});

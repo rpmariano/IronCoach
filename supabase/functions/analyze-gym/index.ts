@@ -7,6 +7,10 @@
 // objetivo de cada exercício (exercises_meta), logo na criação.
 // Todos os caminhos que gravam séries atualizam o Armário de Exercícios
 // (athlete_exercises, manualRegistration.ts), sem nunca fazer falhar o registo.
+// Modo preview (mode: "preview", F2): lê prints e/ou observações e devolve as
+// séries para o formulário SEM gravar nem subir nada (preview.ts) — o atleta
+// revê e só depois grava. Com reviewed:true no registo por foto, a gravação
+// não volta a chamar o Gemini: o que está no formulário é o que conta.
 // Modo reanálise (session_id presente): repesca os prints já guardados dessa
 // sessão no Storage, volta a chamar o Gemini com as observações atualizadas,
 // e substitui os sets existentes pelos novos.
@@ -31,6 +35,10 @@ import { clip, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/ca
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { MAX_SETS, parseExercisesMeta, parseManualSets, updateExerciseLocker } from "./manualRegistration.ts";
+import {
+  hasPreviewContent, MAX_LOCKER_NAMES, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum,
+  type PlanBlockRef,
+} from "./preview.ts";
 import { isWalk, isWalkPlanItem } from "../_shared/formulas/runKinds.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
@@ -42,7 +50,7 @@ import {
   hasTimeFor,
   requestDeadlines,
 } from "../_shared/geminiFetch.ts";
-import { addUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
+import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 
 const MAX_PHOTOS = 6;
@@ -465,6 +473,62 @@ async function analyzeWithGemini(
     extraFields,
     usage,
   };
+}
+
+// A leitura de preview: prints e/ou observações → o que o formulário mostra.
+// Não grava, não sobe, não devolve erro por "pouca coisa" — devolve o que leu
+// e o cliente diz ao atleta o que fazer com isso.
+async function previewWithGemini(
+  images: string[],
+  mime: string,
+  kind: string,
+  notes: string | null,
+  planBlocks: PlanBlockRef[],
+  lockerNames: string[],
+  geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
+) {
+  const prompt = images.length
+    ? buildPrompt(kind, notes) + previewAddendum(planBlocks, lockerNames)
+    : notesOnlyPrompt(kind, notes ?? "", planBlocks, lockerNames);
+  const parts: unknown[] = [{ text: prompt }];
+  for (const b64 of images) parts.push({ inline_data: { mime_type: mime, data: b64 } });
+
+  const geminiRes = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    geminiUrl(model),
+    {
+      method: "POST",
+      headers: geminiHeaders(geminiKey),
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: {
+          ...thinkingConfig("low", withThinking),
+          response_mime_type: "application/json",
+          response_schema: PREVIEW_SCHEMA,
+        },
+      }),
+    },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
+  ));
+  if (!geminiRes.ok) {
+    const errText = await geminiRes.text();
+    console.error("Gemini error (preview):", geminiRes.status, errText);
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) {
+      throw new Error(geminiBusyMessage(images.length ? "ler os prints do treino" : "ler as observações do treino"));
+    }
+    throw new Error(upstreamErrorText(geminiRes.status));
+  }
+  const geminiJson = await geminiRes.json();
+  const usage = usageFromGemini(geminiJson);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text);
+  } catch {
+    throw new Error("A leitura devolveu um formato inesperado. Tenta novamente.");
+  }
+  return { preview: normalizePreview(parsed, planBlocks.length, kind), usage, raw: parsed as Record<string, unknown> };
 }
 
 // Registo sem fotos (manual ou edição) em que não se escolheu nenhum grupo
@@ -1117,6 +1181,52 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     const mergeClassTypes = (ai: string[]): string[] =>
       userClassTypes.length ? userClassTypes : ai;
 
+    // ── Modo preview: ler prints e/ou observações, sem gravar ──────────
+    if (body.mode === "preview") {
+      const kind = body.kind === "aula" ? "aula" : "forca";
+      const mime = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"].includes(body.mime_type)
+        ? body.mime_type
+        : "image/jpeg";
+      const images: string[] = Array.isArray(body.images)
+        ? body.images.filter((x: unknown) => typeof x === "string" && x.length > 0)
+        : [];
+      if (images.length > MAX_PHOTOS) {
+        return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por sessão` }, 400);
+      }
+      if (images.length === 0 && !(rawNotes && rawNotes.trim().length >= 3)) {
+        return jsonResponse({ error: "Para eu ler, escolhe prints ou escreve o que fizeste nas observações." }, 400);
+      }
+      const planBlocks = parsePlanBlocks(body.plan_blocks);
+      // Os nomes que o atleta já usou (o Armário): a leitura alinha-se com eles,
+      // para o registo encontrar a última carga. Best-effort.
+      let lockerNames: string[] = [];
+      try {
+        const { data } = await sb
+          .from("athlete_exercises")
+          .select("name")
+          .eq("user_id", userId)
+          .order("last_performed_at", { ascending: false, nullsFirst: false })
+          .limit(MAX_LOCKER_NAMES);
+        lockerNames = (data ?? []).map((r: { name: string }) => r.name).filter(Boolean);
+      } catch (e) {
+        console.warn("analyze-gym preview: Armário não lido —", e instanceof Error ? e.message : e);
+      }
+      let result;
+      try {
+        result = await previewWithGemini(images, mime, kind, rawNotes, planBlocks, lockerNames, geminiKey, extractionDeadline);
+      } catch (e) {
+        return jsonResponse({ error: e instanceof Error ? e.message : "Falha na leitura." }, 502);
+      }
+      if (images.length) {
+        await checkAndLogAppImage(sb, userId, "gym", images, mime, result.raw);
+      }
+      return jsonResponse({
+        preview: result.preview,
+        readable: hasPreviewContent(result.preview),
+        usage: result.usage,
+      });
+    }
+
     // ── Modo manual: registo sem fotos, com análise do Coach ───────────
     // Os valores já vêm todos do formulário (nada para o Gemini extrair de
     // imagem nenhuma) — grava a sessão diretamente e gera o comentário do
@@ -1408,10 +1518,17 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
       photoPaths.push(path);
     }
 
-    // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
+    // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas).
+    // Com reviewed:true o atleta já leu e reviu o que a Carol tirou dos prints
+    // (mode preview): o formulário é a verdade e os prints só se guardam.
     let analysis: GymAnalysis;
     try {
-      analysis = await analyzeWithGemini(images, mime, kind, rawNotes, geminiKey, extractionDeadline);
+      analysis = body.reviewed === true
+        ? {
+          sessionName: "", categories: [], classTypes: [], exercises: [], extraFields: [], usage: emptyUsage(),
+          metrics: { duration_seconds: null, calories_kcal: null, avg_hr: null, max_hr: null, exertion: null, volume_kg: null },
+        }
+        : await analyzeWithGemini(images, mime, kind, rawNotes, geminiKey, extractionDeadline);
     } catch (e) {
       await sb.storage.from("gym-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
