@@ -51,3 +51,24 @@ Deno.test("describePlanExecution — as linhas que a Carol lê, e o aviso do tre
   assertEquals(first.startsWith("PLANEADO VS FEITO:"), true);
   assertEquals(describePlanExecution(null), null);
 });
+
+import { recentExecutionLines } from "./planExecution.ts";
+
+Deno.test("recentExecutionLines — só concluídos com nota, na janela, do mais recente para o mais antigo", () => {
+  const items = [
+    { status: "concluido", actual_date: "2026-10-16", kind: "ginasio", categories: ["Pernas Inferiores"], execution_note: "Treino livre, contado como o treino do plano. 2 de 3 exercícios cumpridos." },
+    { status: "concluido", actual_date: "2026-10-17", kind: "ginasio", categories: [], execution_note: "3 de 3 exercícios cumpridos." },
+    { status: "concluido", actual_date: "2026-10-01", kind: "ginasio", execution_note: "fora da janela" },
+    { status: "pendente", planned_date: "2026-10-17", kind: "ginasio", execution_note: "ainda não feito" },
+    { status: "concluido", actual_date: "2026-10-17", kind: "corrida", execution_note: "   " },
+    { status: "concluido", actual_date: "2026-10-18", kind: "ginasio", execution_note: "hoje" },
+  ];
+  assertEquals(recentExecutionLines(items, "2026-10-18"), [
+    "- 2026-10-18: ginásio — hoje",
+    "- 2026-10-17: ginásio — 3 de 3 exercícios cumpridos.",
+    "- 2026-10-16: ginásio (Pernas Inferiores) — Treino livre, contado como o treino do plano. 2 de 3 exercícios cumpridos.",
+  ]);
+  assertEquals(recentExecutionLines(items, "2026-10-18", 1).length, 2);
+  assertEquals(recentExecutionLines(items, "2026-10-18", 7, 1).length, 1);
+  assertEquals(recentExecutionLines(null, "2026-10-18"), []);
+});

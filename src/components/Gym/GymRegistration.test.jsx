@@ -992,6 +992,8 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0]).toMatchObject({ id: 'item-1', payload: { status: 'concluido', completion_source: 'plano' } });
     const { body } = mocks.invoke.mock.calls[0][1];
+    // A análise recebe o treino do plano e a origem, para comparar o planeado com o feito.
+    expect(body).toMatchObject({ plan_item_id: 'item-1', completion_source: 'plano' });
     expect(body.exercises_meta).toEqual([
       { name: 'Extensões de pernas', goal: 'chegar às 12 sem falhar', block_type: 'forca', plan_block_index: 0, goal_met: null },
       { name: 'Bicicleta', goal: 'Z2', block_type: 'cardio', plan_block_index: 1, goal_met: null },
@@ -1014,6 +1016,8 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0].payload.completion_source).toBe('auto');
+    // O pedido à análise leva o mesmo item e a origem 'auto' — o treino livre reconhece-se lá.
+    expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ plan_item_id: 'item-1', completion_source: 'auto' });
   });
 
   it('dois treinos no dia: escolhe-se qual, e é esse que se liga', async () => {

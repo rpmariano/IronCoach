@@ -17,6 +17,7 @@ import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, 
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
 import { buildPrescription, describePrescription } from "../_shared/formulas/planPrescription.ts";
+import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { missingProfileBasicsInstruction } from "../_shared/profileGaps.ts";
@@ -4773,6 +4774,10 @@ export function buildPlanContext(
      chat não lia. */
   // deno-lint-ignore no-explicit-any
   activeMeta: any[] = [],
+  /* O que fez dos treinos do plano nos últimos dias (execution_note, escrita
+     pela análise do treino — F4b): o mesmo facto que ela leu no comentário,
+     incluindo um treino livre contado como o do plano. */
+  recentExecution: string[] = [],
 ): string | null {
   const sections: string[] = [];
 
@@ -4826,6 +4831,17 @@ export function buildPlanContext(
     sections.push(
       `PLANO ACEITE EM CURSO (microciclo ativo — NÃO propões plano novo a não ser que o atleta ` +
       `refira explicitamente um dos sinais de interrupção abaixo):\n${meta.length ? `${meta.join("\n")}\n` : ""}${lines.join("\n")}${vinculo}`
+    );
+  }
+
+  // O que ele fez dos treinos do plano (planeado vs feito, F4b). Um treino
+  // livre que riscou o do dia diz-se como tal; o plano nunca se altera sozinha:
+  // se o que faltou justificar adaptá-lo, propõe-se e ele decide.
+  if (recentExecution.length > 0) {
+    sections.push(
+      `O QUE FEZ DOS TREINOS DO PLANO (últimos 7 dias — do registo, não de memória):\n${recentExecution.join("\n")}\n` +
+      `Usa-o quando falares do plano. Nunca alteres o plano por tua conta com base nisto: se o que ficou de fora ou foi trocado ` +
+      `justificar adaptá-lo, propõe-o (propose_training_plan) e ele aceita ou recusa.`,
     );
   }
 
@@ -6990,7 +7006,25 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (erroContagem) console.warn("coach-chat: falha a contar planos aceites:", erroContagem);
     const everHadPlan = erroContagem ? true : (planosAceitesDeSempre ?? 0) > 0;
 
-    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan, everHadPlan, activePlans || []);
+    // O que fez dos treinos do plano nos últimos 7 dias (execution_note — F4b).
+    // Best-effort: sem isto o contexto do plano é o de sempre.
+    let recentExecution: string[] = [];
+    try {
+      const { data: doneItems } = await sb
+        .from("coach_plan_items")
+        .select("planned_date, actual_date, kind, status, categories, execution_note")
+        .eq("user_id", userId)
+        .eq("status", "concluido")
+        .not("execution_note", "is", null)
+        .gte("actual_date", addDaysISO(todayISO, -7))
+        .order("actual_date", { ascending: false })
+        .limit(10);
+      recentExecution = recentExecutionLines(doneItems, todayISO);
+    } catch (e) {
+      console.warn("coach-chat: execução dos treinos do plano não lida —", e instanceof Error ? e.message : e);
+    }
+
+    const planContext = buildPlanContext(proposedItems, activePlanItems, todayISO, boundPlan, everHadPlan, activePlans || [], recentExecution);
 
     // ── Bloco 7 — Hábitos alimentares reais + sugestões vs. registado ────
     // Uma janela mais larga do que a de 7 dias usada acima (nutritionSummary/

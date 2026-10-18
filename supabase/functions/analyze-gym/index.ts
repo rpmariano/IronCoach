@@ -35,6 +35,8 @@ import { clip, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/ca
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { MAX_SETS, parseExercisesMeta, parseManualSets, updateExerciseLocker } from "./manualRegistration.ts";
+import { parsePlanLink, planExecutionPromptSection, resolvePlanExecution, type PlanLink } from "./planLink.ts";
+import type { PlanExecution } from "../_shared/formulas/planExecution.ts";
 import {
   hasPreviewContent, MAX_LOCKER_NAMES, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum,
   type PlanBlockRef,
@@ -821,6 +823,8 @@ async function generateGymCoachNotes(
   gymHistory: string | null = null,
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
+  // O planeado vs feito do treino do plano, se este registo o cumpre (F4b).
+  planExecution: PlanExecution | null = null,
 ): Promise<{
   text: string | null;
   intervention_needed?: boolean;
@@ -878,6 +882,8 @@ async function generateGymCoachNotes(
       planningFrameSection(true, !!upcomingRace, upcomingRace)
     : planningFrameSection(false, !!upcomingRace, upcomingRace);
 
+  const executionSection = planExecutionPromptSection(planExecution);
+
   const crossActivitiesSection = sameDayRuns.length > 0
     ? `\nOUTRAS ATIVIDADES HOJE: O atleta também registou corrida ou caminhada hoje: ` + sameDayRuns.map(r => `${isWalk(r) ? 'Caminhada' : (r.training_type ? `Corrida (${r.training_type})` : 'Corrida')} - ${r.distance_km}km em ${Math.round(r.duration_seconds/60)}m, Esforço: ${r.effort_rpe}/10`).join('; ') + `. Tens que comentar sobre o volume duplo e a carga total/desgaste que isto causa num só dia (uma caminhada pesa pouco: não a trates como uma corrida)!\n`
     : ``;
@@ -891,7 +897,7 @@ async function generateGymCoachNotes(
     `Sessão de hoje (${session.date}):\n${contextLines}\n` + exercisesSection +
     `\n${historyLine}\n` +
     (gymHistory ? `\n${gymHistory}\n` : "") +
-    crossActivitiesSection + planSection + `\n` +
+    crossActivitiesSection + planSection + executionSection + `\n` +
     `${GYM_ANALYSIS_RULES}\n\n` +
     `REGRAS:\n` +
     `- Usa os números que provam o que dizes — não despejes a ficha toda.\n` +
@@ -966,7 +972,11 @@ async function attachGymCoachNotes(
   sb: any,
   userId: string,
   session: { id: string; coach_notes?: string | null },
-  ctx: { date: string; kind: string; categories: string[]; classTypes?: string[]; metrics: GymMetrics; notes: string | null; sets?: SetRow[] },
+  ctx: {
+    date: string; kind: string; categories: string[]; classTypes?: string[]; metrics: GymMetrics; notes: string | null; sets?: SetRow[];
+    // O treino do plano a que o registo corresponde e as metas por exercício (F4b).
+    planLink?: PlanLink; meta?: ReturnType<typeof parseExercisesMeta>;
+  },
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
 ): Promise<GeminiUsage | null> {
@@ -1052,6 +1062,13 @@ async function attachGymCoachNotes(
       }
     }
 
+    const planExecution = ctx.kind === "forca"
+      ? await resolvePlanExecution(sb, {
+        userId, sessionId: session.id, sessionDate: ctx.date, sets: ctx.sets,
+        meta: ctx.meta, link: ctx.planLink ?? { itemId: null, source: null }, recent: recentAny,
+      })
+      : null;
+
     const result = await generateGymCoachNotes(
       { date: ctx.date, kind: ctx.kind, categories: ctx.categories, classTypes: ctx.classTypes, metrics: ctx.metrics, notes: ctx.notes, sets: ctx.sets },
       previous || [],
@@ -1064,6 +1081,7 @@ async function attachGymCoachNotes(
       await levelPromise,
       buildGymHistoryBlock(recentAny),
       deadline,
+      planExecution,
     );
     usage = result.usage ?? null;
 
@@ -1327,6 +1345,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
 
         const coachUsage = await attachGymCoachNotes(sb, userId, updatedSession, {
           date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes, sets: setRows,
+          planLink: parsePlanLink(body), meta: editMetaValue ?? null,
         }, geminiKey, coachDeadline);
 
         return jsonResponse({
@@ -1385,6 +1404,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
 
       const coachUsage = await attachGymCoachNotes(sb, userId, session, {
         date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes, sets: newSets,
+        planLink: parsePlanLink(body), meta: newMeta,
       }, geminiKey, coachDeadline);
 
       return jsonResponse({ session, sets: savedNewSets, ...usageField(addUsage(inferUsage, coachUsage)) });
@@ -1587,7 +1607,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     // 4. Comentário do Coach (best-effort — ver attachGymCoachNotes)
     const coachUsage = await attachGymCoachNotes(sb, userId, session, {
       date, kind, categories: mergedCategories, classTypes: mergedClassTypes, metrics: mergeMetrics(analysis.metrics), notes: rawNotes,
-      sets: setRows,
+      sets: setRows, planLink: parsePlanLink(body), meta: parseExercisesMeta(body.exercises_meta),
     }, geminiKey, coachDeadline);
 
     await checkAndLogAppImage(sb, userId, "gym", images, mime, analysis as unknown as Record<string, unknown>);

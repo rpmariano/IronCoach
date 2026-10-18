@@ -13,6 +13,7 @@ import { isRacePlanItem, raceNameForDate, planItemTitle } from '../../utils/home
 import { isMealOnlyItem } from '@formulas/mealSuggestions.ts';
 import './WeeklyPlanCard.css';
 import { isWalkPlanItem } from '@formulas/runKinds.ts';
+import { describePrescription } from '@formulas/planPrescription.ts';
 
 // Mesmos valores por omissão de computeMacroAdherence
 // (supabase/functions/_shared/formulas/macroAdherence.ts) — não importados
@@ -48,6 +49,24 @@ const MEAL_LABEL_BY_TIPO = {
    real do(s) plano(s) aceite(s), não um horizonte fixo de 7 dias. */
 
 export const PLAN_HORIZON_DAYS = 7;
+
+/* Planeado / Feito de um treino concluído (registo unificado, F4b): o que a
+   Carol prescreveu por exercício e a nota da execução que a análise gravou —
+   os mesmos números que ela leu. O selo diz quando o treino foi registado
+   como livre e contado como o do plano (completion_source = 'auto'). */
+export function PlannedVsDone({ item }) {
+  const planned = describePrescription(item.prescription);
+  const note = typeof item.execution_note === 'string' ? item.execution_note.trim() : '';
+  const auto = item.completion_source === 'auto';
+  if (!planned && !note && !auto) return null;
+  return (
+    <div className="wpc-vs" aria-label="Planeado e feito">
+      {auto && <span className="wpc-auto-seal">Ligado automaticamente</span>}
+      {planned && <p className="wpc-vs-line"><strong>Planeado</strong> {planned}</p>}
+      {note && <p className="wpc-vs-line"><strong>Feito</strong> {note}</p>}
+    </div>
+  );
+}
 
 export function diffDaysISO(aISO, bISO) {
   return Math.round((new Date(bISO + 'T00:00:00') - new Date(aISO + 'T00:00:00')) / 86400000);
@@ -339,6 +358,7 @@ export function PlanDayCard({
                             <Check size={14} /> Concluído{item.actual_date && item.actual_date !== item.planned_date ? ` a ${item.actual_date}` : ''}
                           </div>
                         )}
+                        {item.status === 'concluido' && <PlannedVsDone item={item} />}
                         {item.status === 'cancelado' && (
                           <div className="wpc-pill-status danger">
                             <XIcon size={14} /> Cancelado

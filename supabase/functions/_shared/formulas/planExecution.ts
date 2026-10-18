@@ -376,3 +376,44 @@ export function describePlanExecution(exec: PlanExecution | null): string | null
     : "PLANEADO VS FEITO:";
   return [head, ...lines].join("\n");
 }
+
+/** A nota curta sobre a execução, gravada no item (coach_plan_items.execution_note)
+ *  e lida pelo cartão do plano, pelo chat e pelo resumo diário. Determinística:
+ *  os mesmos números que a análise lê, sem o Gemini no meio. */
+export function executionNote(exec: PlanExecution | null): string | null {
+  if (!exec || !exec.blocks.length) return null;
+  const n = exec.blocks.length;
+  const parts: string[] = [];
+  if (exec.autoLinked) parts.push("Treino livre, contado como o treino do plano");
+  parts.push(`${exec.counts.cumprido} de ${n} exercício${n === 1 ? "" : "s"} cumprido${exec.counts.cumprido === 1 ? "" : "s"}`);
+  if (exec.counts.parcial) parts.push(`${exec.counts.parcial} em parte`);
+  const swapped = exec.blocks.filter((b) => b.status === "trocado").map((b) => `${b.name} → ${b.doneName}`);
+  if (swapped.length) parts.push(`trocado: ${swapped.join("; ")}`);
+  const missing = exec.blocks.filter((b) => b.status === "em_falta").map((b) => b.name);
+  if (missing.length) parts.push(`ficou de fora: ${missing.join(", ")}`);
+  if (exec.extras.length) parts.push(`fora do plano: ${exec.extras.join(", ")}`);
+  if (exec.goalsFailed.length) parts.push(`objetivo por cumprir: ${exec.goalsFailed.join(", ")}`);
+  return (parts.join(". ") + ".").slice(0, 400);
+}
+
+/** As linhas "o que fez dos treinos do plano" dos últimos dias, para o chat e
+ *  o resumo diário: só os treinos concluídos com execution_note, do mais
+ *  recente para o mais antigo. O mesmo facto que a análise do treino leu. */
+export function recentExecutionLines(
+  items: Array<{ planned_date?: string | null; actual_date?: string | null; kind?: string | null; status?: string | null; categories?: string[] | null; execution_note?: string | null }> | null | undefined,
+  todayISO: string,
+  windowDays = 7,
+  max = 5,
+): string[] {
+  const from = new Date(Date.parse(todayISO + "T00:00:00Z") - windowDays * 86400000).toISOString().slice(0, 10);
+  return (items || [])
+    .filter((i) => i?.status === "concluido" && typeof i.execution_note === "string" && i.execution_note.trim())
+    .map((i) => ({ date: String(i.actual_date || i.planned_date || ""), i }))
+    .filter((x) => x.date >= from && x.date <= todayISO)
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, max)
+    .map(({ date, i }) => {
+      const cats = i.categories?.length ? ` (${i.categories.join("/")})` : "";
+      return `- ${date}: ${i.kind === "ginasio" ? "ginásio" : i.kind}${cats} — ${String(i.execution_note).trim()}`;
+    });
+}

@@ -30,6 +30,7 @@ import { PAIN_ALARM_THRESHOLD } from "../_shared/formulas/checkinAlarms.ts";
 import { fetchAdherenceBlock, fetchImpressionsBlock, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { fetchRaceWeatherContext } from "../_shared/raceWeatherFetch.ts";
 import { selectRaces } from "../_shared/formulas/mainRace.ts";
+import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { fetchSeriesBlock, seriesPromptSection, seriesRacePhaseText } from "../_shared/seriesBlock.ts";
 import { type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
@@ -329,6 +330,8 @@ export function buildDailySummaryContext(params: {
   planItems: any[];
   // Só à segunda-feira: quantos itens do plano da semana passada têm registo.
   lastWeekPlan?: { itens: number; com_registo: number } | null;
+  // O que fez dos treinos do plano nos últimos dias (execution_note — F4b).
+  execucaoRecente?: string[];
   // deno-lint-ignore no-explicit-any
   nextRace: any;
   /** As provas de preparação (b/c, jornadas) que vêm antes do objetivo —
@@ -348,7 +351,7 @@ export function buildDailySummaryContext(params: {
    *  falta = o contexto de sempre. */
   seriesIntents?: Record<string, SeriesIntent> | null;
 }) {
-  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva, seriesIntents } = params;
+  const { today, profile, todayMeals, todayWater, recentRuns, recentGym, planItems, nextRace, racesBefore, bodyAssessments, acwr, tdee, lastWeekPlan, vesperaDaProva, seriesIntents, execucaoRecente } = params;
   const tomorrow = addDaysISO(today, 1);
   const dayAfterTomorrow = addDaysISO(today, 2);
   const perfilEmFalta = missingProfileBasics(profile);
@@ -470,6 +473,9 @@ export function buildDailySummaryContext(params: {
        Sem isto o resumo diário falava de plano e de preparação de prova a quem
        não tem nem uma coisa nem outra. */
     semana_passada_plano: lastWeekPlan ?? undefined,
+    // Planeado vs feito dos treinos do plano (a nota que a análise do treino gravou). Um treino livre
+    // contado como o do plano diz-se como tal; o plano nunca se altera sozinha.
+    treinos_do_plano_feitos: execucaoRecente && execucaoRecente.length ? execucaoRecente : undefined,
     vespera_da_prova: vesperaDaProva ?? undefined,
     modo_acompanhamento: (planItems || []).length > 0
       ? (nextRace ? "PROVA_COM_PLANO" : "MANUTENCAO_COM_PLANO")
@@ -860,6 +866,9 @@ async function generateSummary(ctx: Record<string, unknown>, geminiKey: string, 
     `é a que tu prescreveste — não a trates como excesso. Se "ratio" for null, há poucos registos nas últimas 4 semanas ` +
     `("semanas_com_corridas_de_4") para o rácio dizer alguma coisa: não o cites nem tires conclusões dele. ` +
     WALKS_SUMMARY_RULE +
+    `EXECUÇÃO DO PLANO: se existir "treinos_do_plano_feitos", é o planeado vs feito dos últimos dias, tal como a análise do treino o registou — ` +
+    `usa-o para dizer o que ficou de fora ou foi trocado, sem sermão. Um treino livre contado como o do plano diz-se como tal. ` +
+    `Isto não muda o plano: se justificar adaptá-lo, convida-o a falar contigo no chat. ` +
     `Se existir "semana_passada_plano" (só à segunda-feira) e com_registo for igual a itens, abres com UMA frase de ` +
     `reconhecimento — uma só, específica — e segues. Se ficou abaixo dos 100%, não elogias a parte cumprida: dizes o que ficou por fazer, sem sermão. ` +
     `GINÁSIO E MINUTOS: no ginásio, os minutos do plano são uma ESTIMATIVA do tempo da sessão, não uma meta — o treino é o ` +
@@ -1092,7 +1101,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
     if (acceptedPlanIds.length > 0) {
       const { data: fetchedItems } = await sb
         .from("coach_plan_items")
-        .select("id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status")
+        .select("id, plan_id, planned_date, kind, training_type, categories, target_distance_km, target_duration_min, notes, meal_suggestion, status, actual_date, execution_note")
         .eq("user_id", userId)
         .in("plan_id", acceptedPlanIds)
         // Semana passada incluída só para a regra de segunda-feira (CAROL.md
@@ -1194,6 +1203,7 @@ Deno.serve(withUsageRecording("coach-daily-summary", async (req) => {
       // ("semana_passada_plano") era código morto e a janela extra de 7 dias
       // da query era lida em vão (apanhado na revisão pré-deploy 2026-09-12).
       lastWeekPlan,
+      execucaoRecente: recentExecutionLines(loadPlanItems, today, 3),
       vesperaDaProva: raceEveForSummary,
       seriesIntents: series?.active ? series.intentByRaceId : null,
     });

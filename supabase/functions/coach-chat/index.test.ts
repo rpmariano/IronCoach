@@ -5479,3 +5479,14 @@ Deno.test("failureReplyFor: sem pergunta gravada, com resposta já gravada, num 
   const res = await failureReplyFor(err504(), { sb: falha.sb, userId: "u", userMsgAt: "t" });
   assertEquals((await res.json()).model_message, undefined);
 });
+
+Deno.test("buildPlanContext: o que fez dos treinos do plano entra, com a regra de nunca alterar o plano sozinha", () => {
+  const ctx = buildPlanContext([], [], "2026-10-18", null, true, [], [
+    "- 2026-10-17: ginásio (Pernas Inferiores) — Treino livre, contado como o treino do plano. 2 de 3 exercícios cumpridos. ficou de fora: Seletor de pernas.",
+  ]);
+  assertStringIncludes(ctx ?? "", "O QUE FEZ DOS TREINOS DO PLANO");
+  assertStringIncludes(ctx ?? "", "Treino livre, contado como o treino do plano");
+  assertStringIncludes(ctx ?? "", "Nunca alteres o plano por tua conta");
+  // Sem registos, o contexto é o de sempre.
+  assertEquals((buildPlanContext([], [], "2026-10-18", null, true, [], []) ?? "").includes("O QUE FEZ"), false);
+});

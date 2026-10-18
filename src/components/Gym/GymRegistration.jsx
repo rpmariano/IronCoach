@@ -426,6 +426,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   );
   const chosenPlanItem = planItem
     || (planChoice?.mode === 'plano' ? (coachPlanItems || []).find(i => i.id === planChoice.id) || null : null);
+  // O item que este registo vai riscar: o escolhido ('plano') ou, sem escolha,
+  // o primeiro pendente do dia ('auto' — treino livre). A analyze-gym recebe-o
+  // para comparar o planeado com o feito; o cliente só o liga depois.
+  const linkedPlanItem = chosenPlanItem || pendingPlanItems[0] || null;
+  const planSource = chosenPlanItem ? 'plano' : 'auto';
 
   const handleUsePlan = (item) => {
     const incoming = exercisesFromPrescription(item.prescription, locker);
@@ -487,36 +492,19 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     }
   };
 
-  /* Regista um treino "frio" — sem vir do botão "Registar sessão" de um item
-     específico (pedido 2026-09-14) — mas se havia um treino de GINÁSIO
-     pendente nesse dia, o registo também o risca, tal como o botão faria.
-     Só ginásio: uma corrida planeada no mesmo dia continua pendente — tem
-     de bater o TIPO, não só o dia, senão "Registar sessão" desaparecia sem
-     o treino planeado ter sido feito. */
-  const completeMatchingPlanItem = async (savedSession) => {
-    if (completingPlanItemRef.current) return;
-    const store = useAppStore.getState();
-    const acceptedIds = new Set((store.coachPlans || []).filter(p => p.status === 'aceite').map(p => p.id));
-    const item = (store.coachPlanItems || []).find(
-      i => acceptedIds.has(i.plan_id) && i.status === 'pendente' && i.planned_date === date && i.kind === 'ginasio',
-    );
-    if (!item) return;
+  /* Liga o treino do plano a esta sessão, depois de gravada (specs/plano-de-treino.md
+     §5.2). O item é o do banner "Do plano" ou do botão "Registar sessão"
+     ('plano'); sem escolha, é o treino pendente desse dia ('auto': um treino
+     livre que o risca — decisão 3 do registo unificado). Só ginásio: uma
+     corrida planeada no mesmo dia continua pendente — o tipo tem de bater. */
+  const completePlanItemForSession = async (savedSession) => {
+    if (!linkedPlanItem) return;
     try {
-      await store.completePlanItem(item.id, { actualDate: date, sessionId: savedSession?.id || null, source: 'auto' });
+      await useAppStore.getState().completePlanItem(linkedPlanItem.id, { actualDate: date, sessionId: savedSession?.id || null, source: planSource });
     } catch (err) {
       console.warn('Item do plano não marcado como concluído', err);
     }
   };
-
-  /* Ponto único chamado pelos dois caminhos que podem criar um treino (foto
-     e manual) — sem isto, registar por foto (o método por omissão quando
-     não se vem do botão "Registar sessão") nunca fazia desaparecer o botão,
-     só o registo manual. */
-  const completePlanItemForSession = (savedSession) => (
-    chosenPlanItem
-      ? useAppStore.getState().completePlanItem(chosenPlanItem.id, { actualDate: date, sessionId: savedSession.id, source: 'plano' })
-      : completeMatchingPlanItem(savedSession)
-  );
 
   // ----------------------------------
   // ANALISAR TREINO POR FOTO (IA — analyze-gym)
@@ -555,6 +543,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     exertion: exertion ? parseInt(exertion) : null,
     sets: flattenExercises(exercises),
     exercises_meta: buildExercisesMeta(exercises),
+    ...(linkedPlanItem ? { plan_item_id: linkedPlanItem.id, completion_source: planSource } : {}),
   });
 
   // A tarefa, separada do gesto: é ela que o "Tentar de novo" repete, com as
