@@ -100,6 +100,13 @@ export function exerciseFromLocker(row) {
 /** A sugestão para uma série: a série anterior preenchida, senão a última
  *  vez que o atleta fez o exercício (Armário). Nunca inventa. */
 export function setSuggestion(ex, setIdx, last) {
+  // Uma série que veio do plano: as reps alvo e o kg da última vez (Armário),
+  // lido na hora — a Carol não prescreve kg (decisão 5).
+  const own = ex.sets[setIdx];
+  if (own?.plan) {
+    const lastW = last?.last_weight != null && Number(last.last_weight) > 0 ? last.last_weight : '';
+    return { reps: own.plan.reps ?? '', weight: !blank(own.plan.weight) ? own.plan.weight : lastW };
+  }
   for (let i = setIdx - 1; i >= 0; i--) {
     const s = ex.sets[i];
     if (s && (!blank(s.reps) || !blank(s.weight))) return { reps: s.reps, weight: s.weight };
@@ -118,7 +125,17 @@ export function toggleSetDone(ex, setKey, last) {
     sets: ex.sets.map((s, i) => {
       if (s.key !== setKey) return s;
       if (s.done) return { ...s, done: false };
-      if (exerciseType(ex) === 'cardio') return { ...s, done: true };
+      if (exerciseType(ex) === 'cardio') {
+        // Cardio do plano: o ✓ confirma os alvos que ficaram por escrever.
+        const p = s.plan || {};
+        return {
+          ...s,
+          done: true,
+          durationMin: blank(s.durationMin) && !blank(p.durationMin) ? String(p.durationMin) : s.durationMin,
+          distance: blank(s.distance) && !blank(p.distance) ? String(p.distance) : s.distance,
+          laps: blank(s.laps) && !blank(p.laps) ? String(p.laps) : s.laps,
+        };
+      }
       const sug = setSuggestion(ex, i, last);
       return {
         ...s,
@@ -129,6 +146,17 @@ export function toggleSetDone(ex, setKey, last) {
     }),
   };
 }
+
+/** "Marcar todas": cada série por confirmar fica feita, com a sugestão onde
+ *  estiver vazia — o exercício do plano cumprido tal e qual, num toque. */
+export function markAllDone(ex, last) {
+  let next = ex;
+  for (const s of ex.sets) if (!s.done) next = toggleSetDone(next, s.key, last);
+  return next;
+}
+
+/** Há séries vindas do plano ainda por confirmar? (Não contam ao gravar.) */
+export const hasUnconfirmedPlanSets = (ex) => ex.sets.some(s => s.plan && !s.done && blank(s.reps) && blank(s.weight) && blank(s.durationMin) && blank(s.distance) && blank(s.laps));
 
 /** Ajuste rápido (+2,5 kg, −1 rep) a partir do valor escrito ou da sugestão. */
 export function nudgeSet(ex, setKey, field, delta, last) {

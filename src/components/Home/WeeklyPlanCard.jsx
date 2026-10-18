@@ -60,7 +60,7 @@ export function PlannedVsDone({ item }) {
   const auto = item.completion_source === 'auto';
   if (!planned && !note && !auto) return null;
   return (
-    <div className="wpc-vs" aria-label="Planeado e feito">
+    <div className="wpc-vs" role="group" aria-label="Planeado e feito">
       {auto && <span className="wpc-auto-seal">Ligado automaticamente</span>}
       {planned && <p className="wpc-vs-line"><strong>Planeado</strong> {planned}</p>}
       {note && <p className="wpc-vs-line"><strong>Feito</strong> {note}</p>}

@@ -30,17 +30,17 @@ describe('ExerciseEditor', () => {
   it('nome, objetivo, reps e kg', () => {
     render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca' })]} />);
     fireEvent.change(screen.getByLabelText('Objetivo — Prensa'), { target: { value: 'descida em 3 s' } });
-    fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '12' } });
-    fireEvent.change(screen.getByLabelText('Peso da série 1 (kg)'), { target: { value: '85' } });
+    fireEvent.change(screen.getByLabelText(/^Repetições da série 1 —/), { target: { value: '12' } });
+    fireEvent.change(screen.getByLabelText(/^Peso da série 1 \(kg\) —/), { target: { value: '85' } });
     expect(state()[0]).toMatchObject({ goal: 'descida em 3 s', sets: [{ reps: '12', weight: '85' }] });
   });
 
   it('o ✓ de uma série vazia usa a última vez do Armário; desmarcar não apaga', () => {
     render(<Harness initial={[newExercise({ name: 'Leg Press', type: 'forca' })]} lockerRows={LOCKER} />);
     expect(screen.getByText('da última vez: 100 kg × 10')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Marcar série 1 como feita' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Série 1 de .* feita$/ }));
     expect(state()[0].sets[0]).toMatchObject({ done: true, reps: '10', weight: '100' });
-    fireEvent.click(screen.getByRole('button', { name: /Série 1 feita/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Série 1 de .* feita$/ }));
     expect(state()[0].sets[0]).toMatchObject({ done: false, reps: '10', weight: '100' });
   });
 
@@ -61,9 +61,9 @@ describe('ExerciseEditor', () => {
 
   it('remover exercício e série', () => {
     render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca', sets: [newSet(), newSet()] })]} />);
-    fireEvent.click(screen.getByLabelText('Remover serie 2'));
+    fireEvent.click(screen.getByLabelText(/^Remover série 2 /));
     expect(state()[0].sets).toHaveLength(1);
-    fireEvent.click(screen.getByLabelText('Remover exercicio'));
+    fireEvent.click(screen.getByLabelText(/^Remover exercício/));
     expect(state()).toHaveLength(0);
   });
 

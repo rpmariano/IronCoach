@@ -229,8 +229,10 @@ Nunca kg:  A Carol não prescreve carga. O peso vem da última execução
            desse exercício pelo atleta, que o vê no registo e decide. A
            progressão (#5) entra pelo objetivo e pelas reps, e a análise
            compara a carga com a da última vez.
-Corredor:  Pernas 3-6 reps pesadas ou 6-12 controladas, RIR 2-4, nunca até
-           à falha (#10, #11). Séries de 15+ nas pernas, não.
+Corredor:  Pernas 3-6 reps pesadas ou 6-12 controladas, RPE 6-8 (RIR 2-4 —
+           mas ao atleta fala-se em RPE), nunca até à falha (#10, #11).
+           Séries de 15+ nas pernas, não.
+Nunca %1RM: também é carga prescrita; nem nos exercícios nem nas notas.
 Nomes:     Os do histórico do atleta sempre que sirvam — é por eles que o
            registo encontra a última carga.
 Onde:      coach_plan_items.prescription = { blocks: [...] }, validado em

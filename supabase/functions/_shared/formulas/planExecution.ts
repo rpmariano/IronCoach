@@ -8,14 +8,18 @@
 // regras de adaptação — sempre por esta fórmula, nunca por uma cópia.
 //
 // Decisões:
-//   · Casamento bloco ↔ exercício feito: primeiro o plan_block_index que o
-//     registo guardou (exercises_meta — veio do "Usar o plano" ou da leitura
-//     dos prints), depois o nome normalizado (foodKey). Um bloco só casa com
-//     um exercício e vice-versa.
+//   · Casamento bloco ↔ exercício feito: primeiro o nome normalizado
+//     (foodKey), depois o plan_block_index que o registo guardou
+//     (exercises_meta — veio do "Usar o plano" ou da leitura dos prints). Um
+//     bloco só casa com um exercício e vice-versa.
 //   · O que sobra: os blocos sem par ficam "em_falta"; os exercícios sem par
-//     são "extra". Um bloco em falta com um extra do MESMO tipo, pela ordem,
-//     conta como "trocado" (fez outra coisa no lugar) — o extra deixa de ser
-//     extra.
+//     são "extra". "Trocado" só existe quando a troca é explícita: a linha do
+//     plano (com o plan_block_index) foi renomeada para outro exercício. Saltar
+//     um exercício e fazer outro qualquer não é uma troca — é "em_falta" e
+//     "extra" (revisão pré-deploy de 2026-10-18: um abdominal no fim não pode
+//     passar por substituto do seletor de pernas). A leitura dos prints usa o
+//     nome EXATO do plano quando casa (preview.ts), por isso um nome diferente
+//     com o índice do plano é mesmo outro exercício.
 //   · Força: cumprido = todas as séries prescritas chegaram às reps alvo. A
 //     conformidade de reps conta cada série prescrita até ao alvo (séries ou
 //     reps a mais não compensam as que faltam) — é a régua dos "< 80 % das
@@ -281,24 +285,19 @@ export function computePlanExecution(input: {
     if (r.type === "cardio") fillCardio(r, ex); else fillStrength(r, ex, input.sessionDate, history);
   };
 
-  // 1. O índice que o registo guardou.
-  for (const ex of done) {
-    const idx = ex.meta?.plan_block_index;
-    if (typeof idx !== "number") continue;
-    const bi = blocks.findIndex((b) => b.index === idx);
-    if (bi >= 0 && results[bi].doneName === null) pair(bi, ex);
-  }
-  // 2. O nome.
+  // 1. O nome: o exercício do plano feito tal e qual.
   for (const [bi, b] of blocks.entries()) {
-    if (results[bi].doneName !== null) continue;
     const ex = done.find((d) => !matchedDone.has(d.key) && d.key === b.key);
     if (ex) pair(bi, ex);
   }
-  // 3. Trocas: um bloco em falta e um extra do mesmo tipo, pela ordem.
-  for (const [bi] of blocks.entries()) {
-    if (results[bi].doneName !== null) continue;
-    const ex = done.find((d) => !matchedDone.has(d.key) && (d.isCardio ? "cardio" : "forca") === results[bi].type);
-    if (!ex) continue;
+  // 2. O índice que o registo guardou, para o que sobrou: a linha do plano foi
+  //    renomeada — outro exercício no lugar daquele (troca explícita).
+  for (const ex of done) {
+    if (matchedDone.has(ex.key)) continue;
+    const idx = ex.meta?.plan_block_index;
+    if (typeof idx !== "number") continue;
+    const bi = blocks.findIndex((b) => b.index === idx);
+    if (bi < 0 || results[bi].doneName !== null) continue;
     pair(bi, ex);
     results[bi].status = "trocado";
   }

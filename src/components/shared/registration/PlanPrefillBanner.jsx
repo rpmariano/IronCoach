@@ -6,10 +6,10 @@ import { CalendarCheck } from 'lucide-react';
      · 0 itens pendentes → não se mostra nada (quem usa não o renderiza);
      · 1 → "Usar o plano" ou "Treino livre";
      · vários → escolhe-se qual;
-   Escolhido o plano, fica uma linha com "Mudar". "Treino livre" deixa os
+   Escolhido o plano, fica uma linha com "Mudar"; mudar a data desfaz a escolha. "Treino livre" deixa os
    campos vazios — e, ao gravar, o treino do dia é riscado na mesma, como
    automático. Só apresentação: quem o usa decide o que cada escolha faz. */
-export default function PlanPrefillBanner({ items, describe, chosenId, onUse, onFree, onChange, mode = null, accent = 'var(--mod-ginasio-to)' }) {
+export default function PlanPrefillBanner({ items, describe, chosenId, onUse, onFree, onChange, mode = null, dayLabel = 'hoje', freeCountsAs = null, accent = 'var(--mod-ginasio-to)' }) {
   const chosen = chosenId ? items.find(i => i.id === chosenId) || null : null;
   const tint = `color-mix(in srgb, ${accent} 10%, transparent)`;
   const border = `color-mix(in srgb, ${accent} 40%, transparent)`;
@@ -31,19 +31,19 @@ export default function PlanPrefillBanner({ items, describe, chosenId, onUse, on
         </div>
       ) : mode === 'livre' ? (
         <div className="flex items-start justify-between gap-2">
-          <p className="text-[12px] text-[var(--text-2)]">Treino livre — conto-o como o treino do plano de hoje.</p>
+          <p className="text-[12px] text-[var(--text-2)]">Treino livre — conto-o como o treino do plano {dayLabel === 'hoje' ? 'de hoje' : `de ${dayLabel}`}{freeCountsAs ? ` («${freeCountsAs}»)` : ''}.</p>
           {onChange && <button type="button" onClick={onChange} className="tap-h-44 shrink-0 text-[11px] font-bold underline" style={{ color: accent }}>Mudar</button>}
         </div>
       ) : (
         <>
           <p className="text-[12px] text-[var(--text-2)] mb-2">
-            {items.length === 1 ? 'Tens este treino marcado para hoje.' : 'Tens estes treinos marcados para hoje — qual vais registar?'}
+            {items.length === 1 ? `Tens este treino marcado para ${dayLabel}.` : `Tens estes treinos marcados para ${dayLabel} — qual vais registar?`}
           </p>
           <ul className="space-y-2">
             {items.map(item => (
               <li key={item.id} className="flex items-center gap-2">
                 <span className="flex-1 min-w-0 text-[12px] text-[var(--text-1)]">{describe(item)}</span>
-                <button type="button" onClick={() => onUse(item)} className={`${btn} shrink-0`} style={{ borderColor: border, color: accent, background: tint }}>
+                <button type="button" onClick={() => onUse(item)} aria-label={`Usar o plano: ${describe(item)}`} className={`${btn} shrink-0`} style={{ borderColor: border, color: accent, background: tint }}>
                   Usar o plano
                 </button>
               </li>

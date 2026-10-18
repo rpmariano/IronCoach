@@ -589,3 +589,35 @@ details.wpc-info-box-details .details-chevron {
 details.wpc-info-box-details[open] .details-chevron {
   transform: rotate(180deg);
 }
+
+/* Planeado / Feito de um treino concluído (registo unificado, F4b). */
+.wpc-vs {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.wpc-vs-line {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.wpc-vs-line strong {
+  color: var(--text-1);
+  font-weight: 800;
+  margin-right: 4px;
+}
+
+.wpc-auto-seal {
+  align-self: flex-start;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 999px;
+  color: var(--text-2);
+  border: 1px solid var(--border-glass);
+  background: var(--surface-soft);
+}

@@ -40,8 +40,8 @@ Deno.test("describePlanExecution — as linhas que a Carol lê, e o aviso do tre
   const r = computePlanExecution(golden[3].input)!;
   const text = describePlanExecution(r)!;
   assertStringIncludes(text, "registado como treino livre; contou como o treino do plano desse dia");
-  assertStringIncludes(text, "Seletor de pernas (trocado por Leg curl)");
-  assertStringIncludes(text, 'objetivo "controlar a descida em 3 s"');
+  assertStringIncludes(text, "Seletor de pernas — ficou de fora");
+  assertStringIncludes(text, "Fora do plano: Leg curl");
   assertStringIncludes(text, "Bicicleta — ficou de fora");
   assertStringIncludes(text, "Extensões de pernas — planeado 3×12, feito 3 série(s) de 12/12/12 reps a 40 kg [cumprido]");
 

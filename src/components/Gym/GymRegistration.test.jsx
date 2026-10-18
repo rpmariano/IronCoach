@@ -92,8 +92,8 @@ describe('GymRegistration — formulário único (registo unificado, F1)', () =>
     fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
     fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Extensões de pernas' } });
     fireEvent.change(screen.getByLabelText(/^Objetivo/), { target: { value: 'chegar às 12' } });
-    fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '12' } });
-    fireEvent.change(screen.getByLabelText('Peso da série 1 (kg)'), { target: { value: '40' } });
+    fireEvent.change(screen.getByLabelText(/^Repetições da série 1 —/), { target: { value: '12' } });
+    fireEvent.change(screen.getByLabelText(/^Peso da série 1 \(kg\) —/), { target: { value: '40' } });
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
@@ -107,12 +107,12 @@ describe('GymRegistration — formulário único (registo unificado, F1)', () =>
     render(<GymRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
     fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Prensa' } });
-    fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('Peso da série 1 (kg)'), { target: { value: '80' } });
+    fireEvent.change(screen.getByLabelText(/^Repetições da série 1 —/), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText(/^Peso da série 1 \(kg\) —/), { target: { value: '80' } });
     fireEvent.click(screen.getByRole('button', { name: /^\+\s*Série$/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Marcar série 2 como feita' }));
-    expect(screen.getByLabelText('Repetições da série 2')).toHaveValue(10);
-    expect(screen.getByLabelText('Peso da série 2 (kg)')).toHaveValue(80);
+    fireEvent.click(screen.getByRole('button', { name: /^Série 2 de .* feita$/ }));
+    expect(screen.getByLabelText(/^Repetições da série 2 —/)).toHaveValue(10);
+    expect(screen.getByLabelText(/^Peso da série 2 \(kg\) —/)).toHaveValue(80);
   });
 
   it('cardio: "Bicicleta" muda sozinha para cardio e manda tempo e km', async () => {
@@ -148,7 +148,7 @@ describe('GymRegistration — formulário único (registo unificado, F1)', () =>
     await selectPhoto();
     fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
     fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Supino' } });
-    fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText(/^Repetições da série 1 —/), { target: { value: '8' } });
     fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '40' } });
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
@@ -858,7 +858,7 @@ describe('GymRegistration — ler os prints e as notas para o formulário (F2, O
     const [, { body: readBody }] = mocks.invoke.mock.calls[0];
     expect(readBody).toMatchObject({ mode: 'preview', images: ['AAA'], kind: 'forca' });
     expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument();
-    expect(screen.getByLabelText('Repetições da série 1')).toHaveValue(12);
+    expect(screen.getByLabelText(/^Repetições da série 1 —/)).toHaveValue(12);
     expect(screen.getByPlaceholderText('Ex: 45m')).toHaveValue('50:00');
     expect(screen.getByDisplayValue('Pernas')).toBeInTheDocument();
     expect(useAppStore.getState().gymSessions).toEqual([]);
@@ -970,23 +970,44 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
   it('um treino pendente: banner com o treino; "Usar o plano" preenche exercícios, objetivo e os kg da última vez', async () => {
     render(<GymRegistration onClose={onClose} />);
     expect(screen.getByRole('region', { name: 'Treino do plano' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Usar o plano' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
 
     expect(screen.getByText(/A usar o plano/)).toBeInTheDocument();
     expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument();
     expect(screen.getByDisplayValue('chegar às 12 sem falhar')).toBeInTheDocument();
+    // Os alvos são SUGESTÃO: vazios, com o alvo e o kg da última vez à vista.
     const reps = screen.getAllByLabelText(/Repetições da série/);
     expect(reps).toHaveLength(3);
-    reps.forEach(r => expect(r).toHaveValue(12));
+    reps.forEach(r => { expect(r).toHaveValue(null); expect(r).toHaveAttribute('placeholder', '12'); });
     // O kg vem da última execução (Armário), que chega depois.
-    await waitFor(() => screen.getAllByLabelText(/Peso da série/).forEach(w => expect(w).toHaveValue(40)));
-    expect(screen.getByLabelText('Tempo (min) — Bicicleta')).toHaveValue(20);
+    await waitFor(() => screen.getAllByLabelText(/Peso da série/).forEach(w => expect(w).toHaveAttribute('placeholder', '40')));
+    expect(screen.getByLabelText('Tempo (min) — Bicicleta')).toHaveAttribute('placeholder', '20');
+    expect(screen.getByText(/Os números do plano são sugestão/)).toBeInTheDocument();
+    // "Marcar todas" confirma o exercício inteiro tal e qual.
+    fireEvent.click(screen.getByRole('button', { name: /Marcar todas as séries de Extensões de pernas/ }));
+    screen.getAllByLabelText(/Repetições da série/).forEach(r => expect(r).toHaveValue(12));
+    screen.getAllByLabelText(/Peso da série/).forEach(w => expect(w).toHaveValue(40));
     expect(screen.getByPlaceholderText('Ex: 45m')).toHaveValue('45');
+  });
+
+  it('séries do plano por confirmar não se gravam como feitas; só as confirmadas contam', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    await waitFor(() => expect(screen.getAllByLabelText(/Peso da série/)[0]).toHaveAttribute('placeholder', '40'));
+    // Fez 2 das 3 séries.
+    fireEvent.click(screen.getByRole('button', { name: /^Série 1 de Extensões de pernas feita$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Série 2 de Extensões de pernas feita$/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.sets).toEqual([
+      { exercise_name: 'Extensões de pernas', set_index: 0, reps: 12, weight: 40 },
+      { exercise_name: 'Extensões de pernas', set_index: 1, reps: 12, weight: 40 },
+    ]);
   });
 
   it('gravar depois de "Usar o plano": liga o item com completion_source plano e manda o plan_block_index', async () => {
     render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Usar o plano' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
@@ -1024,7 +1045,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     const SEGUNDO = { ...ITEM, id: 'item-2', categories: ['Peito'], target_duration_min: 30, prescription: { blocks: [{ type: 'forca', name: 'Supino', sets: 4, reps: 8 }] } };
     useAppStore.setState({ coachPlanItems: [ITEM, SEGUNDO] });
     render(<GymRegistration onClose={onClose} />);
-    const usar = screen.getAllByRole('button', { name: 'Usar o plano' });
+    const usar = screen.getAllByRole('button', { name: /^Usar o plano/ });
     expect(usar).toHaveLength(2);
     fireEvent.click(usar[1]);
     expect(screen.getByDisplayValue('Supino')).toBeInTheDocument();
@@ -1038,7 +1059,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     render(<GymRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: 'Treino livre' }));
     fireEvent.click(screen.getByRole('button', { name: 'Mudar' }));
-    expect(screen.getByRole('button', { name: 'Usar o plano' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Usar o plano/ })).toBeInTheDocument();
   });
 
   it('vindo de "Registar sessão": ligado, sem banner, com os exercícios do plano e source plano', async () => {
@@ -1054,8 +1075,51 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
   it('um item de um plano antigo (sem prescrição) segue como antes: grupos e duração, sem exercícios', () => {
     useAppStore.setState({ coachPlanItems: [{ ...ITEM, prescription: null }] });
     render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Usar o plano' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
     expect(screen.getByPlaceholderText('Ex: 45m')).toHaveValue('45');
     expect(screen.queryByLabelText('Nome do exercício')).not.toBeInTheDocument();
+  });
+});
+
+describe('GymRegistration — a escolha do plano e a data (revisão pré-deploy)', () => {
+  const onClose = vi.fn();
+  const hojeISO = todayISO();
+  const ITEM = { id: 'item-1', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente', categories: ['Peito'], prescription: { blocks: [{ type: 'forca', name: 'Supino', sets: 3, reps: 8 }] } };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { session: { id: 's' }, sets: [] }, error: null });
+    mocks.updatePlanItem.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({
+      profile: PROFILE, gymSessions: [], planItemPrefill: null, session: { user: { id: 'user-1' } },
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: hojeISO, period_end: hojeISO }],
+      coachPlanItems: [ITEM],
+    });
+  });
+
+  it('mudar a data depois de "Usar o plano" desfaz a escolha — o item de hoje não fica ligado a outro dia', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    const ontem = new Date(Date.parse(hojeISO + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+    fireEvent.change(screen.getByLabelText('Data do treino'), { target: { value: ontem } });
+    expect(screen.queryByRole('region', { name: 'Treino do plano' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.plan_item_id).toBeUndefined();
+    expect(mocks.updates).toHaveLength(0);
+  });
+
+  it('a escolha do plano sobrevive a recarregar a app (rascunho)', async () => {
+    const { unmount } = render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    await new Promise(r => setTimeout(r, 700));
+    unmount();
+    render(<GymRegistration onClose={onClose} />);
+    expect(screen.getByText(/A usar o plano/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    await waitFor(() => expect(mocks.updates).toHaveLength(1));
+    expect(mocks.updates[0].payload.completion_source).toBe('plano');
   });
 });

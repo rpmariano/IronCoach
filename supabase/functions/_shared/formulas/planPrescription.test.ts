@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { buildPrescription, describePrescription, MAX_PRESCRIPTION_BLOCKS } from "./planPrescription.ts";
+import { buildPrescription, describePrescription, MAX_PRESCRIPTION_BLOCKS, stripPrescribedLoad } from "./planPrescription.ts";
 import { cardioSpecFor, normalizeCardioFields } from "./cardioFields.ts";
 
 // specs/plano-registo-plano-coach.md §2.1 e §2.4 (decisões 1, 4 e 5).
@@ -96,4 +96,15 @@ Deno.test("describePrescription: uma linha legível; null sem blocos", () => {
   );
   assertEquals(describePrescription(null), null);
   assertEquals(describePrescription({ blocks: [{ name: "" }] }), null);
+});
+
+Deno.test("stripPrescribedLoad e LOAD_RE: kg, kgs e %1RM caem; o resto da nota fica", () => {
+  assertEquals(stripPrescribedLoad("Aquece 10 min na bicicleta. Agachamento a 80% 1RM. Termina com alongamentos."),
+    "Aquece 10 min na bicicleta. Termina com alongamentos.");
+  assertEquals(stripPrescribedLoad("Usa 40kgs na prensa"), null);
+  assertEquals(stripPrescribedLoad("3x5 a 85 % do 1RM"), null);
+  assertEquals(stripPrescribedLoad("Pernas antes da corrida de amanhã."), "Pernas antes da corrida de amanhã.");
+  assertEquals(stripPrescribedLoad(null), null);
+  const { prescription } = buildPrescription([{ type: "forca", name: "Agachamento", sets: 3, reps: 5, goal: "a 80% 1RM" }]);
+  assertEquals(prescription?.blocks[0].goal, null);
 });

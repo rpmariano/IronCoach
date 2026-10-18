@@ -16,7 +16,7 @@ import { getTaperDays as sharedGetTaperDays, getTaperWeeks as sharedGetTaperWeek
 import { wearStatus as sharedWearStatus, WEAR_LEVEL_LABELS, WEAR_ATTENTION_PCT, WEAR_REPLACE_PCT } from "../_shared/formulas/shoes.ts";
 import { computeBMR as sharedComputeBMR, computeTDEE as sharedComputeTDEE, TDEE_ACTIVITY_FACTOR } from "../_shared/formulas/tdee.ts";
 import { estimate1RM } from "../_shared/formulas/epley.ts";
-import { buildPrescription, describePrescription } from "../_shared/formulas/planPrescription.ts";
+import { buildPrescription, describePrescription, stripPrescribedLoad } from "../_shared/formulas/planPrescription.ts";
 import { recentExecutionLines } from "../_shared/formulas/planExecution.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf, type HeartRateZones, type ObservedHrReading } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
@@ -382,7 +382,7 @@ const PROPOSE_PLAN_TOOL = {
                     type: "STRING",
                     description:
                       "O objetivo deste exercício, concreto e verificável: técnica, tempo, ritmo, RIR " +
-                      "(\"descida controlada em 3 s\", \"parar com 2-3 reps em reserva\", \"Z2, cadência 85-90\"). Nunca um peso.",
+                      "(\"descida controlada em 3 s\", \"acabar a RPE 7\", \"Z2, cadência 85-90\"). Nunca um peso nem %1RM.",
                   },
                   // Sem `fields` (os campos de cardio a registar): seria um
                   // 3.º nível de arrays, nunca provado contra a API. O
@@ -3181,7 +3181,10 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
     const mealSuggestion = typeof item.meal_suggestion === "string" && item.meal_suggestion.trim()
       ? item.meal_suggestion.trim()
       : null;
-    const itemNotes = typeof item.notes === "string" && item.notes.trim() ? item.notes.trim() : null;
+    // Num treino de ginásio, as frases que prescrevem carga (kg, %1RM) caem — decisão 5.
+    const itemNotes = typeof item.notes === "string" && item.notes.trim()
+      ? (item.kind === "ginasio" ? stripPrescribedLoad(item.notes.trim()) : item.notes.trim())
+      : null;
     // Um dia de descanso sem sugestão nem nota não tem nada para mostrar — só
     // ocuparia uma linha vazia no plano. Rejeitar aqui ensina o modelo a não
     // encher o plano com dias vazios só para "cobrir a semana".
@@ -5805,7 +5808,8 @@ export function buildSystemInstruction(
     `  Força máxima/adaptação neural: 1-5 reps (≥85% 1RM), descanso 2-5 min — PREFERIDA para corredor.\n` +
     `  Hipertrofia: 6-12 reps (65-80% 1RM), descanso 60-90 s — aceitável.\n` +
     `  Resistência muscular local (15+ reps): DESACONSELHADA para corredor — essa qualidade já é desenvolvida pela corrida. Se detetares séries ≥15 reps no contexto, sinalizar (⚠ SÉRIES LONGAS PERNAS).\n` +
-    `PROGRESSÃO DE CARGA por nível:\n` +
+    `PROGRESSÃO DE CARGA por nível (é para leres a progressão do atleta — no PLANO nunca escreves kg nem %1RM, nem nos ` +
+    `exercícios nem nas notes: a carga vem da última vez dele; a progressão vai no objetivo e nas reps):\n` +
     `  Iniciante: +2,5-5,0 kg a cada 1-2 sem · critério: completar topo das reps em todas as séries com RPE ≤7.\n` +
     `  Básico:    +2,5-5,0 kg a cada 2-3 sem · critério: +2 reps além do alvo na última série, em 2 treinos consecutivos.\n` +
     `  Médio:     +1,25-2,5 kg a cada 3-4 sem ou na transição de bloco · critério: manter RPE 8 sem degradar velocidade concêntrica.\n` +
@@ -5953,9 +5957,9 @@ export function buildSystemInstruction(
     `DETALHE DOS TREINOS DE GINÁSIO NO PLANO (prescription_blocks de propose_training_plan): em cada dia ` +
     `kind=ginasio, os exercícios vão em prescription_blocks — por exercício, séries × reps e um objetivo — e não só ` +
     `na notes, que fica para o enquadramento (aquecimento, ordem face à corrida do dia).\n` +
-    `  • NUNCA prescrevas kg. O atleta vê no registo a carga da última vez que fez o exercício e decide; ` +
-    `o teu objetivo diz o que ele deve conseguir: técnica, tempo de descida, reps em reserva, completar as reps.\n` +
-    `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre com 2-4 reps em reserva — nunca até à ` +
+    `  • NUNCA prescrevas kg nem %1RM. O atleta vê no registo a carga da última vez que fez o exercício e decide; ` +
+    `o teu objetivo diz o que ele deve conseguir: técnica, tempo de descida, RPE, completar as reps.\n` +
+    `  • Corredor: pernas a 3-6 reps pesadas ou 6-12 controladas, sempre a RPE 6-8 — nunca até à ` +
     `falha; séries de 15+ reps nas pernas não (Bloco 3 #10/#11).\n` +
     `  • Cardio no ginásio (bicicleta, remo, passadeira, piscina): duração/distância/voltas alvo e o objetivo (zona, cadência).\n` +
     `  • Usa os nomes dos exercícios que o atleta já registou (histórico de ginásio) quando servirem — é por eles ` +

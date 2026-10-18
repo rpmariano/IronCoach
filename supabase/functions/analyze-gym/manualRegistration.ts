@@ -68,6 +68,16 @@ export function parseManualSets(rawSets: any): ManualSetRow[] {
   return rows;
 }
 
+/** As séries escritas no formulário e as lidas nos prints, juntas por
+ *  exercício (foodKey): num exercício que o atleta escreveu, ganham as dele
+ *  (ele viu o print, o modelo só o leu); os exercícios que só vêm do print
+ *  acrescentam-se. Antes era tudo-ou-nada — escrever a prancha à mão apagava
+ *  os exercícios todos do Hevy (revisão pré-deploy de 2026-10-18). */
+export function mergeTypedWithRead<A extends { exercise_name: string }, B extends { exercise_name: string }>(typed: A[], read: B[]): Array<A | B> {
+  const typedKeys = new Set(typed.map((r) => foodKey(r.exercise_name)));
+  return [...typed, ...read.filter((r) => !typedKeys.has(foodKey(r.exercise_name)))];
+}
+
 /** O objetivo e o tipo de cada exercício (workout_sessions.exercises_meta).
  *  Nada válido → null (a coluna fica vazia, como num registo antigo). */
 // deno-lint-ignore no-explicit-any
@@ -93,6 +103,28 @@ export function parseExercisesMeta(raw: any): ExerciseMeta[] | null {
   return out.length ? out : null;
 }
 
+/** O recorde de um exercício a partir das séries gravadas: a maior carga acima
+ *  de `atLeast`, ou `atLeast` (null se 0). Os nomes comparam-se por foodKey. */
+export async function recordFromSets(
+  // deno-lint-ignore no-explicit-any
+  sb: any,
+  userId: string,
+  nameKey: string,
+  atLeast: number,
+): Promise<number | null> {
+  const { data, error } = await sb
+    .from("workout_session_sets")
+    .select("exercise_name, weight")
+    .eq("user_id", userId)
+    .gt("weight", atLeast)
+    .order("weight", { ascending: false })
+    .limit(1000);
+  if (error) throw error;
+  const best = (data ?? []).find((r: { exercise_name: string; weight: number }) => foodKey(r.exercise_name) === nameKey);
+  const value = best ? Number(best.weight) : atLeast;
+  return value > 0 ? value : null;
+}
+
 /** Atualiza o Armário com as séries desta sessão. Best-effort: um erro fica
  *  no log e o registo segue — o Armário é uma conveniência, não o registo. */
 export async function updateExerciseLocker(
@@ -111,6 +143,20 @@ export async function updateExerciseLocker(
     if (readErr) throw readErr;
     const rows = buildLockerUpserts({ ...args, existing: (existing ?? []) as LockerExisting[] });
     if (!rows.length) return;
+    // Numa edição ou reanálise (increment=false) o recorde só subia: um 400 kg
+    // escrito por engano e corrigido para 40 ficava recorde para sempre
+    // (revisão pré-deploy de 2026-10-18). Quando o recorde guardado passa a
+    // série mais pesada desta sessão, recalcula-se das séries gravadas — que
+    // nesta altura já são as novas (a edição apaga e volta a inserir antes).
+    if (!args.increment) {
+      for (const row of rows) {
+        const sessionTop = Math.max(0, ...args.sets
+          .filter((s) => foodKey(s?.exercise_name) === row.name_key)
+          .map((s) => (typeof s.weight === "number" && s.weight > 0 ? s.weight : 0)));
+        if (row.personal_record_weight == null || row.personal_record_weight <= sessionTop) continue;
+        row.personal_record_weight = await recordFromSets(sb, args.userId, row.name_key, sessionTop);
+      }
+    }
     const { error: upErr } = await sb.from("athlete_exercises").upsert(rows, { onConflict: "user_id,name_key" });
     if (upErr) throw upErr;
   } catch (e) {

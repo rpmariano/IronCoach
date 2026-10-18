@@ -4,25 +4,52 @@ import AddButton from '../AddButton';
 import Chip from '../Chip';
 import ExerciseLockerPicker from './ExerciseLockerPicker';
 import {
-  cardioFieldsOf, describeLast, distanceUnitOf, exerciseType, lockerEntryFor, newExercise, newSet, nudgeSet, renameExercise, setSuggestion, toggleSetDone,
+  cardioFieldsOf, describeLast, distanceUnitOf, exerciseType, hasUnconfirmedPlanSets, lockerEntryFor, markAllDone,
+  newExercise, newSet, nudgeSet, renameExercise, setSuggestion, toggleSetDone,
 } from '../../../utils/gymSets';
 
 /* Os exercícios de uma sessão de ginásio — registo unificado, F1
    (specs/plano-registo-plano-coach.md). Serve a criação e a edição:
    · por exercício, um OBJETIVO (decisão 1) e o tipo, força ou cardio;
    · força: séries de reps × kg, com o ✓ do modo Live — confirma a série e,
-     vazia, preenche-a com a sugestão (a série anterior ou a última vez, do
-     Armário); por baixo da série ativa, o ajuste rápido ±2,5 kg / ±1 rep;
+     vazia, preenche-a com a sugestão (o alvo do plano, a série anterior ou a
+     última vez, do Armário); por baixo da série ativa, o ajuste rápido
+     ±2,5 kg / ±1 rep;
+   · do plano, as séries vêm só como sugestão: contam quando confirmadas (✓,
+     "Marcar todas") ou escritas — nunca sozinhas (revisão pré-deploy de
+     2026-10-18);
    · cardio: tempo, distância e voltas consoante o exercício (decisão 4);
-   · "+ Adicionar do Armário": a pesquisa no catálogo pessoal (decisão 7).
+   · "+ Do Armário": a pesquisa no catálogo pessoal (decisão 7).
    O estado vive em quem o usa: `exercises` + `onChange(next)`. */
 
 const inputCls = 'min-h-[44px] bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-lg px-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)] placeholder-[var(--text-muted)]';
 const quietBtn = 'tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0';
 
+const label = (ex) => (ex.name || '').trim() || 'exercício';
+
+/* O ✓: feito = círculo cheio na cor do módulo com o ícone escuro; por fazer =
+   só o contorno. A diferença é de forma e de cor, não só de tinta (WCAG
+   1.4.11). O rótulo é fixo e o estado vai em aria-pressed — um rótulo que
+   mudasse com o estado era lido duas vezes, ao contrário. */
+function DoneToggle({ done, onToggle, ariaLabel }) {
+  return (
+    <button type="button" onClick={onToggle} aria-pressed={!!done} aria-label={ariaLabel} className="tap-44 shrink-0">
+      <span
+        className="w-8 h-8 rounded-full flex items-center justify-center border-2 transition-colors"
+        style={done
+          ? { background: 'var(--mod-ginasio-to)', borderColor: 'var(--mod-ginasio-to)', color: 'var(--bg-app)' }
+          : { background: 'transparent', borderColor: 'var(--border-glass-strong)', color: 'var(--text-3)' }}
+      >
+        <Check size={15} strokeWidth={3} />
+      </span>
+    </button>
+  );
+}
+
 function StrengthSets({ ex, last, onExercise }) {
   const activeIdx = ex.sets.findIndex(s => !s.done);
   const patchSet = (key, patch) => onExercise({ ...ex, sets: ex.sets.map(s => (s.key === key ? { ...s, ...patch } : s)) });
+  const name = label(ex);
   return (
     <div className="space-y-1.5">
       {ex.sets.map((s, idx) => {
@@ -34,58 +61,47 @@ function StrengthSets({ ex, last, onExercise }) {
               <input
                 type="number"
                 inputMode="numeric"
-                aria-label={`Repetições da série ${idx + 1}`}
+                aria-label={`Repetições da série ${idx + 1} — ${name}`}
                 value={s.reps}
                 onChange={e => patchSet(s.key, { reps: e.target.value })}
                 placeholder={sug?.reps !== '' && sug?.reps != null ? String(sug.reps) : 'Reps'}
                 className={`${inputCls} w-14`}
               />
-              <span className="text-[11px] text-[var(--text-3)]">×</span>
+              <span className="text-[11px] text-[var(--text-3)]" aria-hidden="true">×</span>
               <input
                 type="number"
                 inputMode="decimal"
                 step="0.5"
-                aria-label={`Peso da série ${idx + 1} (kg)`}
+                aria-label={`Peso da série ${idx + 1} (kg) — ${name}`}
                 value={s.weight}
                 onChange={e => patchSet(s.key, { weight: e.target.value })}
                 placeholder={sug?.weight !== '' && sug?.weight != null ? String(sug.weight) : 'kg'}
                 className={`${inputCls} w-14`}
               />
-              <button
-                type="button"
-                onClick={() => onExercise(toggleSetDone(ex, s.key, last))}
-                aria-pressed={!!s.done}
-                aria-label={s.done ? `Série ${idx + 1} feita — desmarcar` : `Marcar série ${idx + 1} como feita`}
-                className="tap-44 shrink-0"
-              >
-                <span
-                  className="w-8 h-8 rounded-full flex items-center justify-center border transition-colors"
-                  style={s.done
-                    ? { background: 'color-mix(in srgb, var(--mod-ginasio-to) 18%, transparent)', borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)', color: 'var(--mod-ginasio-to)' }
-                    : { borderColor: 'var(--border-glass-strong)', color: 'var(--text-3)' }}
-                >
-                  <Check size={15} strokeWidth={3} />
-                </span>
-              </button>
+              <DoneToggle
+                done={s.done}
+                onToggle={() => onExercise(toggleSetDone(ex, s.key, last))}
+                ariaLabel={`Série ${idx + 1} de ${name} feita`}
+              />
               <button
                 type="button"
                 onClick={() => onExercise({ ...ex, sets: ex.sets.filter(x => x.key !== s.key) })}
-                aria-label={`Remover serie ${idx + 1}`}
+                aria-label={`Remover série ${idx + 1} de ${name}`}
                 className={quietBtn}
               >
                 <X size={13} />
               </button>
             </div>
             {idx === activeIdx && (
-              <div className="flex gap-1 mt-1 ml-11" role="group" aria-label={`Ajuste rápido da série ${idx + 1}`}>
-                {[['weight', -2.5, '−2,5 kg'], ['weight', 2.5, '+2,5 kg'], ['reps', -1, '−1 rep'], ['reps', 1, '+1 rep']].map(([f, d, label]) => (
+              <div className="flex gap-1 mt-1 ml-11" role="group" aria-label={`Ajuste rápido da série ${idx + 1} de ${name}`}>
+                {[['weight', -2.5, '−2,5 kg'], ['weight', 2.5, '+2,5 kg'], ['reps', -1, '−1 rep'], ['reps', 1, '+1 rep']].map(([f, d, text]) => (
                   <button
-                    key={label}
+                    key={text}
                     type="button"
                     onClick={() => onExercise(nudgeSet(ex, s.key, f, d, last))}
                     className="tap-h-44 px-2 rounded-full text-[11px] font-medium border border-[var(--border-glass)] text-[var(--text-3)] hover:text-[var(--text-1)]"
                   >
-                    {label}
+                    {text}
                   </button>
                 ))}
               </div>
@@ -109,41 +125,33 @@ function CardioRow({ ex, onExercise }) {
   const patch = (p) => onExercise({ ...ex, sets: [{ ...s, ...p }, ...ex.sets.slice(1)] });
   const keyOf = { duration: 'durationMin', distance: 'distance', laps: 'laps' };
   const missing = ['distance', 'laps'].filter(f => !fields.includes(f));
+  const exWithRow = ex.sets.length ? ex : { ...ex, sets: [s] };
   return (
     <div>
       <div className="flex flex-wrap items-end gap-2">
         {fields.map(f => {
-          const label = f === 'distance' ? (unit === 'm' ? 'Distância (m)' : 'Distância (km)') : CARDIO_LABEL[f];
+          const text = f === 'distance' ? (unit === 'm' ? 'Distância (m)' : 'Distância (km)') : CARDIO_LABEL[f];
+          const target = s.plan?.[keyOf[f]];
           return (
             <label key={f} className="flex flex-col gap-1 text-[11px] text-[var(--text-3)]">
-              {label}
+              {text}
               <input
                 type="number"
                 inputMode="decimal"
-                aria-label={`${label} — ${ex.name || 'exercício'}`}
+                aria-label={`${text} — ${label(ex)}`}
                 value={s[keyOf[f]]}
                 onChange={e => patch({ [keyOf[f]]: e.target.value })}
+                placeholder={target ? String(target) : ''}
                 className={`${inputCls} w-24`}
               />
             </label>
           );
         })}
-        <button
-          type="button"
-          onClick={() => patch({ done: !s.done })}
-          aria-pressed={!!s.done}
-          aria-label={s.done ? 'Feito — desmarcar' : 'Marcar como feito'}
-          className="tap-44 shrink-0"
-        >
-          <span
-            className="w-8 h-8 rounded-full flex items-center justify-center border"
-            style={s.done
-              ? { background: 'color-mix(in srgb, var(--mod-ginasio-to) 18%, transparent)', borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)', color: 'var(--mod-ginasio-to)' }
-              : { borderColor: 'var(--border-glass-strong)', color: 'var(--text-3)' }}
-          >
-            <Check size={15} strokeWidth={3} />
-          </span>
-        </button>
+        <DoneToggle
+          done={s.done}
+          onToggle={() => onExercise(toggleSetDone(exWithRow, s.key, null))}
+          ariaLabel={`${label(ex)} feito`}
+        />
       </div>
       {missing.length > 0 && (
         <div className="flex gap-1.5 mt-1.5">
@@ -167,6 +175,7 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
   const [pickerOpen, setPickerOpen] = useState(false);
   const replace = (key, next) => onChange(exercises.map(e => (e.key === key ? next : e)));
   const remove = (key) => onChange(exercises.filter(e => e.key !== key));
+  const anyUnconfirmed = exercises.some(hasUnconfirmedPlanSets);
 
   return (
     <div className="mb-4">
@@ -186,6 +195,12 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
           </AddButton>
         </div>
       </div>
+
+      {anyUnconfirmed && (
+        <p className="text-[11px] text-[var(--text-2)] mb-2">
+          Os números do plano são sugestão: toca ✓ em cada série que fizeres (ou "Marcar todas"). As que ficarem por confirmar não contam.
+        </p>
+      )}
 
       {pickerOpen && (
         <ExerciseLockerPicker
@@ -214,12 +229,12 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
                     placeholder="Nome do exercício"
                     className="flex-1 min-w-0 min-h-[44px] text-sm font-bold text-white outline-none bg-transparent border-b border-[var(--border-glass)] focus:border-[var(--border-control)]"
                   />
-                  <button onClick={() => remove(ex.key)} type="button" aria-label="Remover exercicio" className={quietBtn}>
+                  <button onClick={() => remove(ex.key)} type="button" aria-label={`Remover exercício ${label(ex)}`} className={quietBtn}>
                     <Trash2 size={14} />
                   </button>
                 </div>
-                <div className="flex items-center gap-1.5 mb-2" role="group" aria-label="Tipo de exercício">
-                  {[['forca', 'Força'], ['cardio', 'Cardio']].map(([k, label]) => (
+                <div className="flex items-center gap-1.5 mb-2 flex-wrap" role="group" aria-label={`Tipo de exercício — ${label(ex)}`}>
+                  {[['forca', 'Força'], ['cardio', 'Cardio']].map(([k, text]) => (
                     <Chip
                       key={k}
                       active={type === k}
@@ -228,16 +243,27 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
                       type="button"
                       onClick={() => type !== k && replace(ex.key, { ...ex, type: k, sets: [newSet()] })}
                     >
-                      {label}
+                      {text}
                     </Chip>
                   ))}
+                  {hasUnconfirmedPlanSets(ex) && (
+                    <button
+                      type="button"
+                      onClick={() => replace(ex.key, markAllDone(ex, last))}
+                      className="tap-h-44 px-2.5 rounded-full text-[11px] font-bold border"
+                      style={{ borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)', color: 'var(--mod-ginasio-to)' }}
+                      aria-label={`Marcar todas as séries de ${label(ex)} como feitas`}
+                    >
+                      Marcar todas
+                    </button>
+                  )}
                   {lastText && type === 'forca' && (
                     <span className="text-[11px] text-[var(--text-3)] ml-auto">da última vez: {lastText}</span>
                   )}
                 </div>
                 <input
                   type="text"
-                  aria-label={`Objetivo — ${ex.name || 'exercício'}`}
+                  aria-label={`Objetivo — ${label(ex)}`}
                   value={ex.goal || ''}
                   maxLength={200}
                   onChange={e => replace(ex.key, { ...ex, goal: e.target.value })}
@@ -255,4 +281,3 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
     </div>
   );
 }
-

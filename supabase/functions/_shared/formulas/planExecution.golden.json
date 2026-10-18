@@ -4,35 +4,134 @@
     "input": {
       "sessionDate": "2026-10-18",
       "completionSource": "plano",
-      "prescription": { "blocks": [
-        { "type": "forca", "name": "Extensões de pernas", "sets": 3, "reps": 12, "goal": "chegar às 12 sem falhar" },
-        { "type": "cardio", "name": "Bicicleta", "duration_min": 20, "goal": "Z2" }
-      ] },
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Extensões de pernas",
+            "sets": 3,
+            "reps": 12,
+            "goal": "chegar às 12 sem falhar"
+          },
+          {
+            "type": "cardio",
+            "name": "Bicicleta",
+            "duration_min": 20,
+            "goal": "Z2"
+          }
+        ]
+      },
       "sets": [
-        { "exercise_name": "Extensões de pernas", "set_index": 0, "reps": 12, "weight": 40 },
-        { "exercise_name": "Extensões de pernas", "set_index": 1, "reps": 12, "weight": 40 },
-        { "exercise_name": "Extensões de pernas", "set_index": 2, "reps": 12, "weight": 42.5 },
-        { "exercise_name": "Bicicleta", "set_index": 0, "duration_seconds": 1200, "distance_km": 8 }
+        {
+          "exercise_name": "Extensões de pernas",
+          "set_index": 0,
+          "reps": 12,
+          "weight": 40
+        },
+        {
+          "exercise_name": "Extensões de pernas",
+          "set_index": 1,
+          "reps": 12,
+          "weight": 40
+        },
+        {
+          "exercise_name": "Extensões de pernas",
+          "set_index": 2,
+          "reps": 12,
+          "weight": 42.5
+        },
+        {
+          "exercise_name": "Bicicleta",
+          "set_index": 0,
+          "duration_seconds": 1200,
+          "distance_km": 8
+        }
       ],
       "history": [
-        { "date": "2026-10-18", "sets": [{ "exercise_name": "Extensões de pernas", "reps": 10, "weight": 60 }] },
-        { "date": "2026-10-11", "sets": [{ "exercise_name": "extensoes de pernas", "reps": 12, "weight": 37.5 }, { "exercise_name": "Extensões de pernas", "reps": 10, "weight": 40 }] },
-        { "date": "2026-10-04", "sets": [{ "exercise_name": "Extensões de pernas", "reps": 12, "weight": 35 }] }
+        {
+          "date": "2026-10-18",
+          "sets": [
+            {
+              "exercise_name": "Extensões de pernas",
+              "reps": 10,
+              "weight": 60
+            }
+          ]
+        },
+        {
+          "date": "2026-10-11",
+          "sets": [
+            {
+              "exercise_name": "extensoes de pernas",
+              "reps": 12,
+              "weight": 37.5
+            },
+            {
+              "exercise_name": "Extensões de pernas",
+              "reps": 10,
+              "weight": 40
+            }
+          ]
+        },
+        {
+          "date": "2026-10-04",
+          "sets": [
+            {
+              "exercise_name": "Extensões de pernas",
+              "reps": 12,
+              "weight": 35
+            }
+          ]
+        }
       ]
     },
     "expect": {
       "completionSource": "plano",
       "autoLinked": false,
-      "counts": { "cumprido": 2, "parcial": 0, "trocado": 0, "em_falta": 0 },
+      "counts": {
+        "cumprido": 2,
+        "parcial": 0,
+        "trocado": 0,
+        "em_falta": 0
+      },
       "allDone": true,
       "strengthRepsCompliance": 1,
       "cardioCompliance": 1,
       "extras": [],
       "goalsFailed": [],
       "blocks": [
-        { "index": 0, "status": "cumprido", "doneName": "Extensões de pernas", "setsDone": 3, "setsFull": 3, "repsDone": [12, 12, 12], "compliance": 1,
-          "topSet": { "weight": 42.5, "reps": 12 }, "lastTopSet": { "weight": 40, "reps": 10, "date": "2026-10-11" }, "loadDeltaKg": 2.5, "loadTrend": "subiu" },
-        { "index": 1, "status": "cumprido", "durationTargetMin": 20, "durationDoneMin": 20, "distanceDoneKm": 8, "compliance": 1 }
+        {
+          "index": 0,
+          "status": "cumprido",
+          "doneName": "Extensões de pernas",
+          "setsDone": 3,
+          "setsFull": 3,
+          "repsDone": [
+            12,
+            12,
+            12
+          ],
+          "compliance": 1,
+          "topSet": {
+            "weight": 42.5,
+            "reps": 12
+          },
+          "lastTopSet": {
+            "weight": 40,
+            "reps": 10,
+            "date": "2026-10-11"
+          },
+          "loadDeltaKg": 2.5,
+          "loadTrend": "subiu"
+        },
+        {
+          "index": 1,
+          "status": "cumprido",
+          "durationTargetMin": 20,
+          "durationDoneMin": 20,
+          "distanceDoneKm": 8,
+          "compliance": 1
+        }
       ]
     }
   },
@@ -41,101 +140,310 @@
     "input": {
       "sessionDate": "2026-10-18",
       "completionSource": "plano",
-      "prescription": { "blocks": [{ "type": "forca", "name": "Prensa", "sets": 3, "reps": 12 }] },
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Prensa",
+            "sets": 3,
+            "reps": 12
+          }
+        ]
+      },
       "sets": [
-        { "exercise_name": "Prensa", "set_index": 0, "reps": 12, "weight": 100 },
-        { "exercise_name": "Prensa", "set_index": 1, "reps": 12, "weight": 100 },
-        { "exercise_name": "Prensa", "set_index": 2, "reps": 9, "weight": 100 }
+        {
+          "exercise_name": "Prensa",
+          "set_index": 0,
+          "reps": 12,
+          "weight": 100
+        },
+        {
+          "exercise_name": "Prensa",
+          "set_index": 1,
+          "reps": 12,
+          "weight": 100
+        },
+        {
+          "exercise_name": "Prensa",
+          "set_index": 2,
+          "reps": 9,
+          "weight": 100
+        }
       ]
     },
     "expect": {
       "allDone": false,
-      "counts": { "cumprido": 0, "parcial": 1, "trocado": 0, "em_falta": 0 },
+      "counts": {
+        "cumprido": 0,
+        "parcial": 1,
+        "trocado": 0,
+        "em_falta": 0
+      },
       "strengthRepsCompliance": 0.92,
       "cardioCompliance": null,
-      "blocks": [{ "status": "parcial", "setsFull": 2, "compliance": 0.92, "lastTopSet": null, "loadDeltaKg": null, "loadTrend": null }]
+      "blocks": [
+        {
+          "status": "parcial",
+          "setsFull": 2,
+          "compliance": 0.92,
+          "lastTopSet": null,
+          "loadDeltaKg": null,
+          "loadTrend": null
+        }
+      ]
     }
   },
   {
     "name": "séries e reps a mais não compensam o que falta, nem passam de 1",
     "input": {
       "sessionDate": "2026-10-18",
-      "prescription": { "blocks": [{ "type": "forca", "name": "Supino", "sets": 3, "reps": 8 }] },
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Supino",
+            "sets": 3,
+            "reps": 8
+          }
+        ]
+      },
       "sets": [
-        { "exercise_name": "Supino", "set_index": 0, "reps": 12, "weight": 60 },
-        { "exercise_name": "Supino", "set_index": 1, "reps": 6, "weight": 60 },
-        { "exercise_name": "Supino", "set_index": 2, "reps": 8, "weight": 60 },
-        { "exercise_name": "Supino", "set_index": 3, "reps": 8, "weight": 60 }
+        {
+          "exercise_name": "Supino",
+          "set_index": 0,
+          "reps": 12,
+          "weight": 60
+        },
+        {
+          "exercise_name": "Supino",
+          "set_index": 1,
+          "reps": 6,
+          "weight": 60
+        },
+        {
+          "exercise_name": "Supino",
+          "set_index": 2,
+          "reps": 8,
+          "weight": 60
+        },
+        {
+          "exercise_name": "Supino",
+          "set_index": 3,
+          "reps": 8,
+          "weight": 60
+        }
       ]
     },
     "expect": {
       "completionSource": null,
       "strengthRepsCompliance": 0.92,
-      "blocks": [{ "status": "parcial", "setsDone": 4, "setsFull": 2, "repsDone": [12, 6, 8, 8], "compliance": 0.92 }]
+      "blocks": [
+        {
+          "status": "parcial",
+          "setsDone": 4,
+          "setsFull": 2,
+          "repsDone": [
+            12,
+            6,
+            8,
+            8
+          ],
+          "compliance": 0.92
+        }
+      ]
     }
   },
   {
-    "name": "um exercício trocado por outro do mesmo tipo, o cardio ficou de fora, e um extra de cardio não tapa a falta de força",
+    "name": "saltar um exercício e fazer outro não é troca: o seletor fica de fora, o leg curl é extra, e o cardio também falta",
     "input": {
       "sessionDate": "2026-10-18",
       "completionSource": "auto",
-      "prescription": { "blocks": [
-        { "type": "forca", "name": "Seletor de pernas", "sets": 3, "reps": 12, "goal": "controlar a descida em 3 s" },
-        { "type": "forca", "name": "Extensões de pernas", "sets": 3, "reps": 12 },
-        { "type": "cardio", "name": "Bicicleta", "duration_min": 20 }
-      ] },
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Seletor de pernas",
+            "sets": 3,
+            "reps": 12,
+            "goal": "controlar a descida em 3 s"
+          },
+          {
+            "type": "forca",
+            "name": "Extensões de pernas",
+            "sets": 3,
+            "reps": 12
+          },
+          {
+            "type": "cardio",
+            "name": "Bicicleta",
+            "duration_min": 20
+          }
+        ]
+      },
       "sets": [
-        { "exercise_name": "Extensões de pernas", "set_index": 0, "reps": 12, "weight": 40 },
-        { "exercise_name": "Extensões de pernas", "set_index": 1, "reps": 12, "weight": 40 },
-        { "exercise_name": "Extensões de pernas", "set_index": 2, "reps": 12, "weight": 40 },
-        { "exercise_name": "Leg curl", "set_index": 0, "reps": 10, "weight": 30 },
-        { "exercise_name": "Leg curl", "set_index": 1, "reps": 10, "weight": 30 }
+        {
+          "exercise_name": "Extensões de pernas",
+          "set_index": 0,
+          "reps": 12,
+          "weight": 40
+        },
+        {
+          "exercise_name": "Extensões de pernas",
+          "set_index": 1,
+          "reps": 12,
+          "weight": 40
+        },
+        {
+          "exercise_name": "Extensões de pernas",
+          "set_index": 2,
+          "reps": 12,
+          "weight": 40
+        },
+        {
+          "exercise_name": "Leg curl",
+          "set_index": 0,
+          "reps": 10,
+          "weight": 30
+        },
+        {
+          "exercise_name": "Leg curl",
+          "set_index": 1,
+          "reps": 10,
+          "weight": 30
+        }
       ]
     },
     "expect": {
       "completionSource": "auto",
       "autoLinked": true,
-      "counts": { "cumprido": 1, "parcial": 0, "trocado": 1, "em_falta": 1 },
+      "counts": {
+        "cumprido": 1,
+        "parcial": 0,
+        "trocado": 0,
+        "em_falta": 2
+      },
       "allDone": false,
-      "strengthRepsCompliance": 1,
+      "strengthRepsCompliance": 0.5,
       "cardioCompliance": 0,
-      "extras": [],
+      "extras": [
+        "Leg curl"
+      ],
       "blocks": [
-        { "index": 0, "status": "trocado", "doneName": "Leg curl", "goal": "controlar a descida em 3 s" },
-        { "index": 1, "status": "cumprido" },
-        { "index": 2, "status": "em_falta", "doneName": null, "compliance": 0, "durationTargetMin": 20, "durationDoneMin": null }
+        {
+          "index": 0,
+          "status": "em_falta",
+          "doneName": null,
+          "goal": "controlar a descida em 3 s"
+        },
+        {
+          "index": 1,
+          "status": "cumprido"
+        },
+        {
+          "index": 2,
+          "status": "em_falta",
+          "doneName": null,
+          "compliance": 0,
+          "durationTargetMin": 20,
+          "durationDoneMin": null
+        }
       ]
     }
   },
   {
-    "name": "o plan_block_index casa um nome diferente (Leg Extension) e o goal_met vem do registo",
+    "name": "a linha do plano renomeada para outro exercício (com o plan_block_index) é uma troca explícita; o goal_met vem do registo",
     "input": {
       "sessionDate": "2026-10-18",
       "completionSource": "plano",
-      "prescription": { "blocks": [
-        { "type": "forca", "name": "Supino", "sets": 3, "reps": 8 },
-        { "type": "forca", "name": "Extensões de pernas", "sets": 2, "reps": 15, "goal": "chegar às 15" }
-      ] },
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Supino",
+            "sets": 3,
+            "reps": 8
+          },
+          {
+            "type": "forca",
+            "name": "Extensões de pernas",
+            "sets": 2,
+            "reps": 15,
+            "goal": "chegar às 15"
+          }
+        ]
+      },
       "exercisesMeta": [
-        { "name": "Leg Extension", "block_type": "forca", "plan_block_index": 1, "goal_met": false },
-        { "name": "Supino", "block_type": "forca", "plan_block_index": null, "goal_met": null }
+        {
+          "name": "Leg Extension",
+          "block_type": "forca",
+          "plan_block_index": 1,
+          "goal_met": false
+        },
+        {
+          "name": "Supino",
+          "block_type": "forca",
+          "plan_block_index": null,
+          "goal_met": null
+        }
       ],
       "sets": [
-        { "exercise_name": "Supino", "set_index": 0, "reps": 8, "weight": 60 },
-        { "exercise_name": "Supino", "set_index": 1, "reps": 8, "weight": 60 },
-        { "exercise_name": "Supino", "set_index": 2, "reps": 8, "weight": 60 },
-        { "exercise_name": "Leg Extension", "set_index": 0, "reps": 15, "weight": 30 },
-        { "exercise_name": "Leg Extension", "set_index": 1, "reps": 12, "weight": 30 }
+        {
+          "exercise_name": "Supino",
+          "set_index": 0,
+          "reps": 8,
+          "weight": 60
+        },
+        {
+          "exercise_name": "Supino",
+          "set_index": 1,
+          "reps": 8,
+          "weight": 60
+        },
+        {
+          "exercise_name": "Supino",
+          "set_index": 2,
+          "reps": 8,
+          "weight": 60
+        },
+        {
+          "exercise_name": "Leg Extension",
+          "set_index": 0,
+          "reps": 15,
+          "weight": 30
+        },
+        {
+          "exercise_name": "Leg Extension",
+          "set_index": 1,
+          "reps": 12,
+          "weight": 30
+        }
       ]
     },
     "expect": {
-      "counts": { "cumprido": 1, "parcial": 1, "trocado": 0, "em_falta": 0 },
-      "goalsFailed": ["Extensões de pernas"],
-      "strengthRepsCompliance": 0.94,
+      "counts": {
+        "cumprido": 1,
+        "parcial": 0,
+        "trocado": 1,
+        "em_falta": 0
+      },
+      "goalsFailed": [
+        "Extensões de pernas"
+      ],
+      "strengthRepsCompliance": 1,
       "extras": [],
       "blocks": [
-        { "index": 0, "status": "cumprido", "doneName": "Supino", "goalMet": null },
-        { "index": 1, "status": "parcial", "doneName": "Leg Extension", "goalMet": false, "compliance": 0.9 }
+        {
+          "index": 0,
+          "status": "cumprido",
+          "doneName": "Supino",
+          "goalMet": null
+        },
+        {
+          "index": 1,
+          "status": "trocado",
+          "doneName": "Leg Extension",
+          "goalMet": false
+        }
       ]
     }
   },
@@ -143,27 +451,80 @@
     "name": "cardio: o pior alvo manda; 90 % do tempo cumpre (±15 %), 75 % da distância não",
     "input": {
       "sessionDate": "2026-10-18",
-      "prescription": { "blocks": [
-        { "type": "cardio", "name": "Bicicleta", "duration_min": 20 },
-        { "type": "cardio", "name": "Remo", "duration_min": 10, "distance_km": 2 },
-        { "type": "cardio", "name": "Piscina", "goal": "nadar contínuo" }
-      ] },
+      "prescription": {
+        "blocks": [
+          {
+            "type": "cardio",
+            "name": "Bicicleta",
+            "duration_min": 20
+          },
+          {
+            "type": "cardio",
+            "name": "Remo",
+            "duration_min": 10,
+            "distance_km": 2
+          },
+          {
+            "type": "cardio",
+            "name": "Piscina",
+            "goal": "nadar contínuo"
+          }
+        ]
+      },
       "sets": [
-        { "exercise_name": "Bicicleta", "set_index": 0, "duration_seconds": 1080 },
-        { "exercise_name": "Remo", "set_index": 0, "duration_seconds": 600, "distance_km": 1.5 },
-        { "exercise_name": "Piscina", "set_index": 0, "laps": 20 },
-        { "exercise_name": "Abdominais", "set_index": 0, "reps": 20 }
+        {
+          "exercise_name": "Bicicleta",
+          "set_index": 0,
+          "duration_seconds": 1080
+        },
+        {
+          "exercise_name": "Remo",
+          "set_index": 0,
+          "duration_seconds": 600,
+          "distance_km": 1.5
+        },
+        {
+          "exercise_name": "Piscina",
+          "set_index": 0,
+          "laps": 20
+        },
+        {
+          "exercise_name": "Abdominais",
+          "set_index": 0,
+          "reps": 20
+        }
       ]
     },
     "expect": {
-      "counts": { "cumprido": 2, "parcial": 1, "trocado": 0, "em_falta": 0 },
+      "counts": {
+        "cumprido": 2,
+        "parcial": 1,
+        "trocado": 0,
+        "em_falta": 0
+      },
       "cardioCompliance": 0.75,
       "strengthRepsCompliance": null,
-      "extras": ["Abdominais"],
+      "extras": [
+        "Abdominais"
+      ],
       "blocks": [
-        { "status": "cumprido", "durationDoneMin": 18, "compliance": 0.9 },
-        { "status": "parcial", "durationDoneMin": 10, "distanceDoneKm": 1.5, "compliance": 0.75 },
-        { "status": "cumprido", "lapsDone": 20, "lapsTarget": null, "compliance": 1 }
+        {
+          "status": "cumprido",
+          "durationDoneMin": 18,
+          "compliance": 0.9
+        },
+        {
+          "status": "parcial",
+          "durationDoneMin": 10,
+          "distanceDoneKm": 1.5,
+          "compliance": 0.75
+        },
+        {
+          "status": "cumprido",
+          "lapsDone": 20,
+          "lapsTarget": null,
+          "compliance": 1
+        }
       ]
     }
   },
@@ -171,22 +532,127 @@
     "name": "carga igual e carga a descer contra a última vez",
     "input": {
       "sessionDate": "2026-10-18",
-      "prescription": { "blocks": [
-        { "type": "forca", "name": "Agachamento", "sets": 1, "reps": 5 },
-        { "type": "forca", "name": "Remada", "sets": 1, "reps": 10 }
-      ] },
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Agachamento",
+            "sets": 1,
+            "reps": 5
+          },
+          {
+            "type": "forca",
+            "name": "Remada",
+            "sets": 1,
+            "reps": 10
+          }
+        ]
+      },
       "sets": [
-        { "exercise_name": "Agachamento", "set_index": 0, "reps": 5, "weight": 80 },
-        { "exercise_name": "Remada", "set_index": 0, "reps": 10, "weight": 45 }
+        {
+          "exercise_name": "Agachamento",
+          "set_index": 0,
+          "reps": 5,
+          "weight": 80
+        },
+        {
+          "exercise_name": "Remada",
+          "set_index": 0,
+          "reps": 10,
+          "weight": 45
+        }
       ],
       "history": [
-        { "date": "2026-10-10", "sets": [{ "exercise_name": "Agachamento", "reps": 5, "weight": 80 }, { "exercise_name": "Remada", "reps": 10, "weight": 50 }] }
+        {
+          "date": "2026-10-10",
+          "sets": [
+            {
+              "exercise_name": "Agachamento",
+              "reps": 5,
+              "weight": 80
+            },
+            {
+              "exercise_name": "Remada",
+              "reps": 10,
+              "weight": 50
+            }
+          ]
+        }
       ]
     },
     "expect": {
       "blocks": [
-        { "loadDeltaKg": 0, "loadTrend": "igual" },
-        { "loadDeltaKg": -5, "loadTrend": "desceu" }
+        {
+          "loadDeltaKg": 0,
+          "loadTrend": "igual"
+        },
+        {
+          "loadDeltaKg": -5,
+          "loadTrend": "desceu"
+        }
+      ]
+    }
+  },
+  {
+    "name": "o mesmo exercício do plano, pelo nome, ganha a um índice antigo que aponte para outro bloco",
+    "input": {
+      "sessionDate": "2026-10-18",
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Prensa",
+            "sets": 1,
+            "reps": 10
+          },
+          {
+            "type": "forca",
+            "name": "Hack squat",
+            "sets": 1,
+            "reps": 10
+          }
+        ]
+      },
+      "exercisesMeta": [
+        {
+          "name": "Hack squat",
+          "plan_block_index": 0
+        }
+      ],
+      "sets": [
+        {
+          "exercise_name": "Prensa",
+          "set_index": 0,
+          "reps": 10,
+          "weight": 100
+        },
+        {
+          "exercise_name": "Hack squat",
+          "set_index": 0,
+          "reps": 10,
+          "weight": 60
+        }
+      ]
+    },
+    "expect": {
+      "counts": {
+        "cumprido": 2,
+        "parcial": 0,
+        "trocado": 0,
+        "em_falta": 0
+      },
+      "extras": [],
+      "blocks": [
+        {
+          "index": 0,
+          "status": "cumprido",
+          "doneName": "Prensa"
+        },
+        {
+          "index": 1,
+          "status": "cumprido",
+          "doneName": "Hack squat"
+        }
       ]
     }
   }

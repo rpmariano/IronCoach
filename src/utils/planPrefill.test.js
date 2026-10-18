@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, fillWeightsFromLocker, appendExercises } from './planPrefill';
-import { lockerIndex, newExercise, newSet } from './gymSets';
+import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, appendExercises } from './planPrefill';
+import { flattenExercises, lockerIndex, markAllDone, newExercise, newSet, setSuggestion } from './gymSets';
 
 const PLANS = [{ id: 'p1', status: 'aceite' }, { id: 'p2', status: 'proposto' }, { id: 'p3', status: 'recusado' }];
 const item = (over) => ({ id: 'i', plan_id: 'p1', planned_date: '2026-10-18', kind: 'ginasio', status: 'pendente', ...over });
@@ -21,7 +21,7 @@ describe('findPendingPlanItems', () => {
   });
 });
 
-describe('exercisesFromPrescription', () => {
+describe('exercisesFromPrescription — os alvos do plano são sugestão, não valores', () => {
   const LOCKER = lockerIndex([{ name: 'Extensões de pernas', name_key: 'extensoes de pernas', last_weight: 40, last_reps: 10 }]);
   const RX = { blocks: [
     { type: 'forca', name: 'Extensões de pernas', sets: 3, reps: 12, goal: 'chegar às 12' },
@@ -31,40 +31,33 @@ describe('exercisesFromPrescription', () => {
     { name: '  ' },
   ] };
 
-  it('força: N séries com as reps alvo e o kg da última vez; sem histórico, kg vazio', () => {
-    const [ext, prensa] = exercisesFromPrescription(RX, LOCKER);
+  it('força: N séries vazias com o alvo em plan; a sugestão junta o kg da última vez', () => {
+    const [ext, prensa] = exercisesFromPrescription(RX);
     expect(ext).toMatchObject({ name: 'Extensões de pernas', type: 'forca', goal: 'chegar às 12', planBlockIndex: 0 });
-    expect(ext.sets.map(s => [s.reps, s.weight])).toEqual([['12', '40'], ['12', '40'], ['12', '40']]);
-    expect(prensa.sets.map(s => [s.reps, s.weight])).toEqual([['10', ''], ['10', '']]);
+    expect(ext.sets.map(s => [s.reps, s.weight, s.plan.reps])).toEqual([['', '', '12'], ['', '', '12'], ['', '', '12']]);
+    expect(setSuggestion(ext, 0, LOCKER.get('extensoes de pernas'))).toEqual({ reps: '12', weight: 40 });
+    expect(setSuggestion(prensa, 0, null)).toEqual({ reps: '10', weight: '' });
   });
 
-  it('cardio: os campos do exercício, com os alvos; o remo em metros', () => {
-    const [, , remo, piscina] = exercisesFromPrescription(RX, LOCKER);
+  it('nada por confirmar se grava; "Marcar todas" grava o plano tal e qual', () => {
+    const [ext] = exercisesFromPrescription(RX);
+    expect(flattenExercises([ext])).toEqual([]);
+    const feito = markAllDone(ext, LOCKER.get('extensoes de pernas'));
+    expect(flattenExercises([feito]).map(r => [r.reps, r.weight])).toEqual([[12, 40], [12, 40], [12, 40]]);
+  });
+
+  it('cardio: os campos do exercício, com os alvos em plan; o remo em metros', () => {
+    const [, , remo, piscina] = exercisesFromPrescription(RX);
     expect(remo).toMatchObject({ type: 'cardio', fields: ['duration', 'distance'], distanceUnit: 'm', planBlockIndex: 2 });
-    expect(remo.sets[0]).toMatchObject({ durationMin: '10', distance: '2000' });
+    expect(remo.sets[0]).toMatchObject({ durationMin: '', distance: '', plan: { durationMin: '10', distance: '2000' } });
     expect(piscina.fields).toEqual(['duration', 'laps']);
-    expect(piscina.sets[0].laps).toBe('20');
+    expect(flattenExercises([markAllDone(remo, null)])[0]).toMatchObject({ duration_seconds: 600, distance_km: 2 });
   });
 
   it('sem prescrição ou lixo: lista vazia; séries limitadas a 10', () => {
-    expect(exercisesFromPrescription(null, LOCKER)).toEqual([]);
-    expect(exercisesFromPrescription({ blocks: 'x' }, LOCKER)).toEqual([]);
-    expect(exercisesFromPrescription({ blocks: [{ type: 'forca', name: 'A', sets: 99, reps: 5 }] }, LOCKER)[0].sets).toHaveLength(10);
-  });
-});
-
-describe('fillWeightsFromLocker', () => {
-  const LOCKER = lockerIndex([{ name: 'Prensa', name_key: 'prensa', last_weight: 80 }]);
-  it('só preenche kg vazios de séries do plano por confirmar; o resto fica', () => {
-    const plano = newExercise({ name: 'Prensa', type: 'forca', planBlockIndex: 0, sets: [newSet({ reps: '10' }), newSet({ reps: '10', weight: '70' }), newSet({ reps: '10', done: true })] });
-    const livre = newExercise({ name: 'Prensa', type: 'forca', sets: [newSet({ reps: '10' })] });
-    const [a, b] = fillWeightsFromLocker([plano, livre], LOCKER);
-    expect(a.sets.map(s => s.weight)).toEqual(['80', '70', '']);
-    expect(b.sets[0].weight).toBe('');
-  });
-  it('nada a mudar devolve a mesma lista', () => {
-    const list = [newExercise({ name: 'Outro', type: 'forca', planBlockIndex: 0 })];
-    expect(fillWeightsFromLocker(list, LOCKER)).toBe(list);
+    expect(exercisesFromPrescription(null)).toEqual([]);
+    expect(exercisesFromPrescription({ blocks: 'x' })).toEqual([]);
+    expect(exercisesFromPrescription({ blocks: [{ type: 'forca', name: 'A', sets: 99, reps: 5 }] })[0].sets).toHaveLength(10);
   });
 });
 

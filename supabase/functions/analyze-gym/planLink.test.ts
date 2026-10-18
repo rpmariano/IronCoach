@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { parsePlanLink, planExecutionPromptSection, resolvePlanExecution } from "./planLink.ts";
+import { FREE_WORKOUT_NOTE, parsePlanLink, planExecutionPromptSection, resolvePlanExecution } from "./planLink.ts";
 import { computePlanExecution, executionNote } from "../_shared/formulas/planExecution.ts";
 
 const RX = { blocks: [
@@ -66,7 +66,8 @@ function mockSb(items: Record<string, any>) {
 
 Deno.test("resolvePlanExecution: acha o item pelo plan_item_id, calcula e grava a execution_note", async () => {
   const { sb, calls } = mockSb({ [UUID]: { id: UUID, prescription: RX, completion_source: null } });
-  const exec = await resolvePlanExecution(sb, { ...BASE, link: { itemId: UUID, source: "auto" } });
+  const { exec, autoLinked } = await resolvePlanExecution(sb, { ...BASE, link: { itemId: UUID, source: "auto" } });
+  assertEquals(autoLinked, true);
   assertEquals(exec?.autoLinked, true);
   assertEquals(calls.updates.length, 1);
   assertStringIncludes(calls.updates[0].payload.execution_note, "ficou de fora: Seletor de pernas");
@@ -74,16 +75,16 @@ Deno.test("resolvePlanExecution: acha o item pelo plan_item_id, calcula e grava 
 
 Deno.test("resolvePlanExecution: numa edição acha o item ligado à sessão; sem prescrição devolve null e não grava", async () => {
   const a = mockSb({ "by-session": { id: "i2", prescription: RX, completion_source: "plano" } });
-  const exec = await resolvePlanExecution(a.sb, { ...BASE, link: { itemId: null, source: null } });
+  const { exec } = await resolvePlanExecution(a.sb, { ...BASE, link: { itemId: null, source: null } });
   assertEquals(exec?.completionSource, "plano");
   const b = mockSb({ [UUID]: { id: UUID, prescription: null } });
-  assertEquals(await resolvePlanExecution(b.sb, { ...BASE, link: { itemId: UUID, source: "auto" } }), null);
+  assertEquals(await resolvePlanExecution(b.sb, { ...BASE, link: { itemId: UUID, source: "plano" } }), { exec: null, autoLinked: false });
   assertEquals(b.calls.updates.length, 0);
 });
 
 Deno.test("resolvePlanExecution: usa as sessões anteriores para a carga face à última vez", async () => {
   const { sb } = mockSb({ [UUID]: { id: UUID, prescription: RX } });
-  const exec = await resolvePlanExecution(sb, {
+  const { exec } = await resolvePlanExecution(sb, {
     ...BASE, link: { itemId: UUID, source: "plano" },
     recent: [{ date: "2026-10-11", workout_session_sets: [{ exercise_name: "Extensões de pernas", reps: 12, weight: 35 }] }],
   });
@@ -92,5 +93,22 @@ Deno.test("resolvePlanExecution: usa as sessões anteriores para a carga face à
 
 Deno.test("resolvePlanExecution: um erro da base de dados não rebenta o registo", async () => {
   const sb = { from: () => { throw new Error("rede"); } };
-  assertEquals(await resolvePlanExecution(sb, { ...BASE, sets: [], link: { itemId: UUID, source: null } }), null);
+  assertEquals(await resolvePlanExecution(sb, { ...BASE, sets: [], link: { itemId: UUID, source: null } }), { exec: null, autoLinked: false });
+});
+
+Deno.test("resolvePlanExecution: treino livre sem prescrição (ou numa aula) reconhece-se e grava a nota mínima", async () => {
+  const semRx = mockSb({ [UUID]: { id: UUID, prescription: null } });
+  assertEquals(await resolvePlanExecution(semRx.sb, { ...BASE, link: { itemId: UUID, source: "auto" } }), { exec: null, autoLinked: true });
+  assertEquals(semRx.calls.updates[0].payload.execution_note, FREE_WORKOUT_NOTE);
+
+  const aula = mockSb({ [UUID]: { id: UUID, prescription: RX } });
+  assertEquals(await resolvePlanExecution(aula.sb, { ...BASE, kind: "aula", link: { itemId: UUID, source: "auto" } }), { exec: null, autoLinked: true });
+  assertEquals(aula.calls.updates[0].payload.execution_note, FREE_WORKOUT_NOTE);
+});
+
+Deno.test("planExecutionPromptSection: sem prescrição mas treino livre, a frase de reconhecimento entra na mesma", () => {
+  const text = planExecutionPromptSection(null, true);
+  assertStringIncludes(text, "ESTE TREINO FOI REGISTADO COMO LIVRE");
+  assertStringIncludes(text, "NÃO alteres tu o plano");
+  assertEquals(planExecutionPromptSection(null, false), "");
 });

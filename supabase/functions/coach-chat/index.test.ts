@@ -5490,3 +5490,16 @@ Deno.test("buildPlanContext: o que fez dos treinos do plano entra, com a regra d
   // Sem registos, o contexto é o de sempre.
   assertEquals((buildPlanContext([], [], "2026-10-18", null, true, [], []) ?? "").includes("O QUE FEZ"), false);
 });
+
+Deno.test("runProposeTrainingPlan: num ginásio, as frases das notes que prescrevem carga caem; numa corrida não se mexe", async () => {
+  const { sb, calls } = makePlanSb();
+  await runProposeTrainingPlan(sb, "user-1", {
+    ...VALID_PLAN,
+    items: [
+      { planned_date: "2026-08-12", kind: "ginasio", notes: "Aquece bem. Prensa a 100 kg. Fecha com core." },
+      { planned_date: "2026-08-13", kind: "corrida", training_type: "continuo", target_distance_km: 8, notes: "Leva 0,5 kg de água" },
+    ],
+  });
+  assertEquals(calls.itemInserts[0].notes, "Aquece bem. Fecha com core.");
+  assertEquals(calls.itemInserts[1].notes, "Leva 0,5 kg de água");
+});

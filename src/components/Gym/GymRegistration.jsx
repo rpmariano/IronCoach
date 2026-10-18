@@ -15,7 +15,7 @@ import ChipPicker from '../shared/registration/ChipPicker';
 import ExerciseEditor from '../shared/registration/ExerciseEditor';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
-import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, fillWeightsFromLocker, appendExercises } from '../../utils/planPrefill';
+import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, appendExercises } from '../../utils/planPrefill';
 import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary } from '../../utils/gymSets';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
@@ -120,21 +120,17 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // Forma: utils/gymSets.js (newExercise).
   const [exercises, setExercises] = useState(() => (
     planItem?.prescription
-      ? exercisesFromPrescription(planItem.prescription, lockerIndex(useAppStore.getState().exerciseLocker))
+      ? exercisesFromPrescription(planItem.prescription)
       : []
   ));
-  // Com exercícios vindos do plano, os kg (da última vez) preenchem-se quando o Armário chegar.
-  const planPrefillRef = useRef(!!planItem?.prescription);
   // O treino do plano que este registo cumpre: o do botão "Registar sessão" (ligado, sem
   // banner) ou o que o atleta escolheu no banner "Do plano" (F3). 'livre' = não usa o plano.
-  const [planChoice, setPlanChoice] = useState(null); // { id, mode: 'plano' | 'livre' } | null
+  // Vai no rascunho persistido: recarregar a página não pode trocar "usei o plano" por "treino livre".
+  const [planChoice, setPlanChoice] = useState(planItem ? { id: planItem.id, mode: 'plano' } : null); // { id, mode: 'plano' | 'livre' } | null
   // O Armário de Exercícios: "da última vez" e "+ Do Armário".
   const exerciseLocker = useAppStore(s => s.exerciseLocker);
   const locker = useMemo(() => lockerIndex(exerciseLocker), [exerciseLocker]);
   useEffect(() => { useAppStore.getState().loadExerciseLocker?.(); }, []);
-  useEffect(() => {
-    if (planPrefillRef.current) setExercises(prev => fillWeightsFromLocker(prev, locker));
-  }, [locker]);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -331,6 +327,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     if (persisted.maxHr !== undefined) setMaxHr(persisted.maxHr);
     if (persisted.exertion !== undefined) setExertion(persisted.exertion);
     if (persisted.exercises) setExercises(persisted.exercises);
+    if (persisted.planChoice !== undefined) setPlanChoice(persisted.planChoice);
     setIsFormDirty(true);
   }, [sessionIdToEdit, draftStorageKey]);
 
@@ -339,7 +336,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
-    date, startTime, kind, categories, classTypes, customCategory, name, notes,
+    date, startTime, kind, categories, classTypes, customCategory, name, notes, planChoice,
     durationStr, calories, avgHr, maxHr, exertion, exercises,
   // Com a confirmação à vista o registo está gravado: o rascunho já foi
   // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
@@ -424,17 +421,27 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     () => (isEditing || planItem ? [] : findPendingPlanItems('ginasio', date, coachPlans, coachPlanItems)),
     [isEditing, planItem, date, coachPlans, coachPlanItems],
   );
-  const chosenPlanItem = planItem
-    || (planChoice?.mode === 'plano' ? (coachPlanItems || []).find(i => i.id === planChoice.id) || null : null);
+  const chosenPlanItem = planChoice?.mode === 'plano'
+    ? (planItem?.id === planChoice.id ? planItem : (coachPlanItems || []).find(i => i.id === planChoice.id) || null)
+    : null;
   // O item que este registo vai riscar: o escolhido ('plano') ou, sem escolha,
   // o primeiro pendente do dia ('auto' — treino livre). A analyze-gym recebe-o
   // para comparar o planeado com o feito; o cliente só o liga depois.
   const linkedPlanItem = chosenPlanItem || pendingPlanItems[0] || null;
   const planSource = chosenPlanItem ? 'plano' : 'auto';
 
+  // Mudar a data depois de escolher: o treino escolhido era de outro dia — a
+  // escolha desfaz-se e o banner mostra o plano do dia novo. Os exercícios ficam.
+  const choiceDateRef = useRef(date);
+  useEffect(() => {
+    if (choiceDateRef.current === date) return;
+    choiceDateRef.current = date;
+    setPlanChoice(prev => (prev && !(planItem && prev.id === planItem.id && planItem.planned_date === date) ? null : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date]);
+
   const handleUsePlan = (item) => {
-    const incoming = exercisesFromPrescription(item.prescription, locker);
-    planPrefillRef.current = incoming.length > 0;
+    const incoming = exercisesFromPrescription(item.prescription);
     setPlanChoice({ id: item.id, mode: 'plano' });
     if (!categories.length && item.categories?.length) setCategories(item.categories);
     if (!notes.trim() && item.notes) setNotes(item.notes);
@@ -831,6 +838,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             onUse={handleUsePlan}
             onFree={handleFreeWorkout}
             onChange={() => setPlanChoice(null)}
+            dayLabel={date === todayISO() ? 'hoje' : `${date.slice(8, 10)}/${date.slice(5, 7)}`}
+            freeCountsAs={pendingPlanItems.length > 1 ? describePlanItem(pendingPlanItems[0]) : null}
           />
         )}
 

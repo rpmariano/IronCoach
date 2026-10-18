@@ -37,10 +37,19 @@ export type Prescription = { blocks: PrescriptionBlock[] };
 
 export type PrescriptionResult = { prescription: Prescription | null; issue: string | null };
 
-// Decisão 5: a Carol não prescreve kg. O schema não tem campo de peso, mas
-// o modelo pode escrevê-lo no objetivo ("3×10 a 40 kg"): esse objetivo cai,
-// o exercício fica.
-const KG_RE = /\d\s*(kg|quilos?)\b/i;
+// Decisão 5: a Carol não prescreve carga. O schema não tem campo de peso, mas
+// o modelo pode escrevê-la no objetivo ("3×10 a 40 kg", "a 80% 1RM"): esse
+// objetivo cai, o exercício fica. Nas notes de um treino de ginásio cai só a
+// frase que a traz (stripPrescribedLoad).
+export const LOAD_RE = /\d\s*(kgs?|quilos?)\b|\d\s*%\s*(d[eo]\s*)?1\s*rm\b|\b1\s*rm\b/i;
+
+/** O texto sem as frases que prescrevem carga (kg ou %1RM). null se nada sobrar. */
+export function stripPrescribedLoad(text: string | null | undefined): string | null {
+  if (typeof text !== "string" || !text.trim()) return null;
+  const kept = text.split(/(?<=[.!?;])\s+|\n+/).filter((f) => f.trim() && !LOAD_RE.test(f));
+  const out = kept.join(" ").trim();
+  return out || null;
+}
 
 function cleanText(v: unknown, max: number): string | null {
   if (typeof v !== "string") return null;
@@ -80,7 +89,7 @@ export function buildPrescription(rawBlocks: any): PrescriptionResult {
     const name = cleanText(b.name, MAX_NAME_LENGTH);
     if (!name) return { prescription: null, issue: `exercício ${n} sem nome` };
     let goal = cleanText(b.goal, MAX_GOAL_LENGTH);
-    if (goal && KG_RE.test(goal)) goal = null;
+    if (goal && LOAD_RE.test(goal)) goal = null;
 
     if (b.type === "forca") {
       const sets = intIn(b.sets, 1, MAX_SETS);
