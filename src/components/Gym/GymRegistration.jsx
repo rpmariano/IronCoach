@@ -6,12 +6,14 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X, Trash2 } from 'lucide-react';
+import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
-import AddButton from '../shared/AddButton';
+import ChipPicker from '../shared/registration/ChipPicker';
+import ExerciseEditor from '../shared/registration/ExerciseEditor';
+import { parseDurationInput, formatDurationInput, flattenExercises } from '../../utils/gymSets';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -29,98 +31,8 @@ const GYM_KINDS = [
    20260925162654 — antes a mesma coluna guardava as duas coisas). */
 const MUSCLE_GROUPS = ['Peito', 'Costas', 'Pernas Superiores', 'Pernas Inferiores', 'Ombros', 'Bíceps', 'Tríceps', 'Glúteos', 'Core/Abdominais', 'Full Body', 'Cardio', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'];
 const CLASS_TYPES = ['HIIT', 'RPM/Cycling', 'Pilates', 'Yoga', 'Body Pump', 'Zumba', 'CrossFit', 'Treino Funcional', 'Natação', 'Outro'];
-const GYM_CATEGORIES_VISIBLE = 6;
 
-/* Um grupo de chips de escolha múltipla, com "+N mais" quando a lista é
-   longa. Mostra sempre os escolhidos, mesmo os que não estão na lista (texto
-   livre vindo da Carol ou de um registo antigo). */
-function ChipPicker({ id, label, hint, options, selected, onToggle }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? options : options.filter((c, i) => i < GYM_CATEGORIES_VISIBLE || selected.includes(c));
-  const hiddenCount = options.length - visible.length;
-  return (
-    <div className="mb-4">
-      <p id={`${id}-label`} className="text-[11px] text-[var(--text-3)] mb-1.5">{label}</p>
-      <div
-        role="group"
-        aria-labelledby={`${id}-label`}
-        aria-describedby={hint ? `${id}-hint` : undefined}
-        className="flex flex-wrap gap-1.5 mb-2"
-      >
-        {visible.map(c => (
-          <Chip key={c} active={selected.includes(c)} aria-pressed={selected.includes(c)} variant="gym" onClick={() => onToggle(c)} type="button">
-            {c}
-          </Chip>
-        ))}
-        {hiddenCount > 0 && !expanded && (
-          <button
-            onClick={() => setExpanded(true)}
-            type="button"
-            className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
-          >
-            +{hiddenCount} mais
-          </button>
-        )}
-        {expanded && options.length > GYM_CATEGORIES_VISIBLE && (
-          <button
-            onClick={() => setExpanded(false)}
-            type="button"
-            className="tap-h-44 rounded-full px-3.5 py-1.5 text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
-          >
-            Mostrar menos
-          </button>
-        )}
-        {selected.filter(c => !options.includes(c)).map(c => (
-          <Chip key={c} active aria-pressed variant="gym" onClick={() => onToggle(c)} type="button">
-            {c}
-          </Chip>
-        ))}
-      </div>
-      {hint && <p id={`${id}-hint`} className="text-[11px] text-[var(--text-muted)] -mt-1">{hint}</p>}
-    </div>
-  );
-}
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
-
-function parseDurationInput(val) {
-  val = val.trim().toLowerCase();
-  if (!val) return null;
-  if (val.endsWith('m')) return parseInt(val) * 60;
-  const parts = val.split(':').map(Number);
-  if (parts.length === 2) return parts[0] * 60 + parts[1];
-  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-  if (!isNaN(parts[0])) return parts[0] * 60;
-  return null;
-}
-
-// Inverso de parseDurationInput, para pré-preencher o campo de texto ao
-// editar uma sessão já gravada (duration_seconds vem sempre em segundos).
-function formatDurationInput(totalSeconds) {
-  if (!totalSeconds) return '';
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${m}:${String(s).padStart(2, '0')}`;
-}
-
-// Achata exercícios→séries em linhas prontas para workout_session_sets,
-// espelhando flattenSets em supabase/functions/analyze-gym/index.ts — mesmas
-// colunas (session_id, exercise_name, set_index, reps, weight).
-function flattenExercises(exercises) {
-  const rows = [];
-  for (const ex of exercises) {
-    const name = ex.name.trim();
-    if (!name) continue;
-    ex.sets.forEach((s, i) => {
-      const reps = s.reps === '' || s.reps === null || s.reps === undefined ? null : parseInt(s.reps);
-      const weight = s.weight === '' || s.weight === null || s.weight === undefined ? null : parseFloat(s.weight);
-      if (reps === null && weight === null) return;
-      rows.push({ exercise_name: name, set_index: i, reps, weight });
-    });
-  }
-  return rows;
-}
 
 export default function GymRegistration({ onClose, dateIso = null, sessionIdToEdit = null }) {
   const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard, activeTab } = useAppStore();
@@ -1014,75 +926,16 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               <p className="text-[11px] text-[var(--text-3)] mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
             </div>
             {isEditing ? (
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-[11px] text-[var(--text-3)]">Exercícios e séries</label>
-                  <AddButton
-                    onClick={handleAddExercise}
-                    type="button"
-                    variant="gym"
-                  >
-                    Adicionar exercício
-                  </AddButton>
-                </div>
-                {exercises.length === 0 ? (
-                  <p className="text-[11px] text-[var(--text-3)]">Sem exercícios ainda.</p>
-                ) : (
-                  <div className="space-y-2">
-                    {exercises.map(ex => (
-                      <div key={ex.key} className="bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl p-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <input
-                            type="text"
-                            aria-label="Nome do exercício"
-                            value={ex.name}
-                            onChange={e => { updateExercise(ex.key, { name: e.target.value }); setIsFormDirty(true); }}
-                            placeholder="Nome do exercício"
-                            className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-[var(--border-glass)] focus:border-[var(--border-control)] pb-1"
-                          />
-                          <button onClick={() => removeExercise(ex.key)} type="button" aria-label="Remover exercicio" className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0">
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                        <div className="space-y-1.5">
-                          {ex.sets.map((s, idx) => (
-                            <div key={s.key} className="flex items-center gap-2">
-                              <span className="text-[11px] text-[var(--text-3)] w-14 shrink-0">Série {idx + 1}</span>
-                              <input
-                                type="number"
-                                aria-label={`Repetições da série ${idx + 1}`}
-                                value={s.reps}
-                                onChange={e => { updateSet(ex.key, s.key, { reps: e.target.value }); setIsFormDirty(true); }}
-                                placeholder="Reps"
-                                className="w-16 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
-                              />
-                              <input
-                                type="number"
-                                step="0.5"
-                                aria-label={`Peso da série ${idx + 1} (kg)`}
-                                value={s.weight}
-                                onChange={e => { updateSet(ex.key, s.key, { weight: e.target.value }); setIsFormDirty(true); }}
-                                placeholder="kg"
-                                className="w-16 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
-                              />
-                              <button onClick={() => removeSet(ex.key, s.key)} type="button" aria-label={`Remover serie ${idx + 1}`} className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0">
-                                <X size={13} />
-                              </button>
-                            </div>
-                          ))}
-                          <AddButton
-                            onClick={() => addSet(ex.key)}
-                            type="button"
-                            variant="gym"
-                          >
-                            Série
-                          </AddButton>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <ExerciseEditor
+                exercises={exercises}
+                onAddExercise={handleAddExercise}
+                onRemoveExercise={removeExercise}
+                onUpdateExercise={updateExercise}
+                onAddSet={addSet}
+                onRemoveSet={removeSet}
+                onUpdateSet={updateSet}
+                onDirty={() => setIsFormDirty(true)}
+              />
             ) : (
               <p className="text-[11px] text-[var(--text-3)] -mt-2 mb-4">Séries/repetições/carga adicionam-se ao editar o treino.</p>
             )}
