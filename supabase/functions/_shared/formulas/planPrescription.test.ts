@@ -108,3 +108,12 @@ Deno.test("stripPrescribedLoad e LOAD_RE: kg, kgs e %1RM caem; o resto da nota f
   const { prescription } = buildPrescription([{ type: "forca", name: "Agachamento", sets: 3, reps: 5, goal: "a 80% 1RM" }]);
   assertEquals(prescription?.blocks[0].goal, null);
 });
+
+Deno.test("stripPrescribedLoad: sem carga devolve o texto tal e qual; com carga mantém as quebras de linha do resto", () => {
+  const lista = "Faz antes da corrida.\n- 10 min de mobilidade\n- 2 séries de prancha";
+  assertEquals(stripPrescribedLoad(lista), lista);
+  assertEquals(stripPrescribedLoad("Aquece.\n- Prensa a 100 kg\n- Prancha 3x30 s"), "Aquece.\n- Prancha 3x30 s");
+  for (const ok of ["1 km de aquecimento", "Acaba a RPE 8", "3x10 controladas", "Trote a 5:30/km", "20 quilómetros esta semana"]) {
+    assertEquals(stripPrescribedLoad(ok), ok);
+  }
+});

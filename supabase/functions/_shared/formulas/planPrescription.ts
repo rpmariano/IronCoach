@@ -43,11 +43,23 @@ export type PrescriptionResult = { prescription: Prescription | null; issue: str
 // frase que a traz (stripPrescribedLoad).
 export const LOAD_RE = /\d\s*(kgs?|quilos?)\b|\d\s*%\s*(d[eo]\s*)?1\s*rm\b|\b1\s*rm\b/i;
 
-/** O texto sem as frases que prescrevem carga (kg ou %1RM). null se nada sobrar. */
+/** O texto sem as frases que prescrevem carga (kg ou %1RM). null se nada sobrar.
+ *  Sem nada a tirar, devolve o texto tal e qual; a tirar, mantém as quebras de
+ *  linha e os espaços das frases que ficam — uma nota em lista continua lista
+ *  (revisão pré-deploy, N8). */
 export function stripPrescribedLoad(text: string | null | undefined): string | null {
   if (typeof text !== "string" || !text.trim()) return null;
-  const kept = text.split(/(?<=[.!?;])\s+|\n+/).filter((f) => f.trim() && !LOAD_RE.test(f));
-  const out = kept.join(" ").trim();
+  if (!LOAD_RE.test(text)) return text;
+  // Frases e separadores alternados: [frase, sep, frase, sep, …].
+  const parts = text.split(/((?<=[.!?;])[ \t]+|\n+)/);
+  let out = "";
+  for (let i = 0; i < parts.length; i += 2) {
+    const sentence = parts[i] ?? "";
+    const sep = parts[i + 1] ?? "";
+    if (!sentence.trim() || LOAD_RE.test(sentence)) continue;
+    out += sentence + sep;
+  }
+  out = out.trim();
   return out || null;
 }
 

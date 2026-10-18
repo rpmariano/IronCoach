@@ -381,7 +381,7 @@ const PROPOSE_PLAN_TOOL = {
                   goal: {
                     type: "STRING",
                     description:
-                      "O objetivo deste exercício, concreto e verificável: técnica, tempo, ritmo, RIR " +
+                      "O objetivo deste exercício, concreto e verificável: técnica, tempo, ritmo, RPE " +
                       "(\"descida controlada em 3 s\", \"acabar a RPE 7\", \"Z2, cadência 85-90\"). Nunca um peso nem %1RM.",
                   },
                   // Sem `fields` (os campos de cardio a registar): seria um

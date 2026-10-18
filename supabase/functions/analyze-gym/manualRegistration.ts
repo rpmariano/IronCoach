@@ -103,26 +103,29 @@ export function parseExercisesMeta(raw: any): ExerciseMeta[] | null {
   return out.length ? out : null;
 }
 
-/** O recorde de um exercício a partir das séries gravadas: a maior carga acima
- *  de `atLeast`, ou `atLeast` (null se 0). Os nomes comparam-se por foodKey. */
+/** O recorde de um exercício a partir das séries gravadas: a maior carga
+ *  com um destes nomes (as grafias que o atleta usou para ele), ou null. Uma
+ *  só linha por pedido — a mais pesada —, filtrada pelos nomes, para não ler
+ *  o histórico todo (revisão pré-deploy, N7). */
 export async function recordFromSets(
   // deno-lint-ignore no-explicit-any
   sb: any,
   userId: string,
-  nameKey: string,
-  atLeast: number,
+  names: string[],
 ): Promise<number | null> {
+  const variants = [...new Set(names.flatMap((n) => [n, n.trim(), n.toLowerCase()]).filter(Boolean))];
+  if (!variants.length) return null;
   const { data, error } = await sb
     .from("workout_session_sets")
-    .select("exercise_name, weight")
+    .select("weight")
     .eq("user_id", userId)
-    .gt("weight", atLeast)
+    .in("exercise_name", variants)
+    .gt("weight", 0)
     .order("weight", { ascending: false })
-    .limit(1000);
+    .limit(1);
   if (error) throw error;
-  const best = (data ?? []).find((r: { exercise_name: string; weight: number }) => foodKey(r.exercise_name) === nameKey);
-  const value = best ? Number(best.weight) : atLeast;
-  return value > 0 ? value : null;
+  const w = Number(data?.[0]?.weight);
+  return Number.isFinite(w) && w > 0 ? w : null;
 }
 
 /** Atualiza o Armário com as séries desta sessão. Best-effort: um erro fica
@@ -130,35 +133,59 @@ export async function recordFromSets(
 export async function updateExerciseLocker(
   // deno-lint-ignore no-explicit-any
   sb: any,
-  args: { userId: string; sessionDate: string; sessionCategories: string[]; sets: LockerSetRow[]; meta?: LockerMeta[] | null; increment: boolean },
+  args: {
+    userId: string; sessionDate: string; sessionCategories: string[]; sets: LockerSetRow[]; meta?: LockerMeta[] | null; increment: boolean;
+    // Numa edição: os nomes que a sessão tinha antes. Um exercício que saiu
+    // (apagado ou renomeado) também pode ter de baixar o recorde.
+    previousNames?: string[];
+  },
 ): Promise<void> {
   try {
     const keys = [...new Set(args.sets.map((s) => foodKey(s?.exercise_name)).filter(Boolean))];
-    if (!keys.length) return;
+    const removed = [...new Set((args.previousNames ?? []).map((n) => foodKey(n)).filter((k) => k && !keys.includes(k)))];
+    if (!keys.length && !removed.length) return;
     const { data: existing, error: readErr } = await sb
       .from("athlete_exercises")
       .select("name_key, name, category, block_type, cardio_fields, machine_settings, last_weight, last_reps, personal_record_weight, times_performed, last_performed_at")
       .eq("user_id", args.userId)
-      .in("name_key", keys);
+      .in("name_key", [...keys, ...removed]);
     if (readErr) throw readErr;
     const rows = buildLockerUpserts({ ...args, existing: (existing ?? []) as LockerExisting[] });
-    if (!rows.length) return;
     // Numa edição ou reanálise (increment=false) o recorde só subia: um 400 kg
     // escrito por engano e corrigido para 40 ficava recorde para sempre
     // (revisão pré-deploy de 2026-10-18). Quando o recorde guardado passa a
     // série mais pesada desta sessão, recalcula-se das séries gravadas — que
     // nesta altura já são as novas (a edição apaga e volta a inserir antes).
+    const namesFor = (key: string, lockerName?: string | null) => [
+      ...(lockerName ? [lockerName] : []),
+      ...args.sets.filter((s) => foodKey(s?.exercise_name) === key).map((s) => s.exercise_name),
+      ...(args.previousNames ?? []).filter((n) => foodKey(n) === key),
+    ];
     if (!args.increment) {
-      for (const row of rows) {
+      await Promise.all(rows.map(async (row) => {
         const sessionTop = Math.max(0, ...args.sets
           .filter((s) => foodKey(s?.exercise_name) === row.name_key)
           .map((s) => (typeof s.weight === "number" && s.weight > 0 ? s.weight : 0)));
-        if (row.personal_record_weight == null || row.personal_record_weight <= sessionTop) continue;
-        row.personal_record_weight = await recordFromSets(sb, args.userId, row.name_key, sessionTop);
-      }
+        if (row.personal_record_weight == null || row.personal_record_weight <= sessionTop) return;
+        const best = await recordFromSets(sb, args.userId, namesFor(row.name_key, row.name));
+        row.personal_record_weight = Math.max(best ?? 0, sessionTop) || null;
+      }));
     }
-    const { error: upErr } = await sb.from("athlete_exercises").upsert(rows, { onConflict: "user_id,name_key" });
-    if (upErr) throw upErr;
+    if (rows.length) {
+      const { error: upErr } = await sb.from("athlete_exercises").upsert(rows, { onConflict: "user_id,name_key" });
+      if (upErr) throw upErr;
+    }
+    // Os exercícios que saíram da sessão nesta edição: só o recorde se
+    // recalcula (pelas séries que ficaram); o resto do Armário fica como está.
+    const existingByKey = new Map(((existing ?? []) as LockerExisting[]).map((e) => [e.name_key, e]));
+    await Promise.all(removed.map(async (key) => {
+      const prev = existingByKey.get(key);
+      if (!prev || prev.personal_record_weight == null) return;
+      const best = await recordFromSets(sb, args.userId, namesFor(key, prev.name));
+      if (best === Number(prev.personal_record_weight)) return;
+      await sb.from("athlete_exercises").update({ personal_record_weight: best, updated_at: new Date().toISOString() })
+        .eq("user_id", args.userId).eq("name_key", key);
+    }));
   } catch (e) {
     console.warn("analyze-gym: Armário de Exercícios não atualizado —", e instanceof Error ? e.message : e);
   }

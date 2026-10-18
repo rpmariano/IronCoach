@@ -42,12 +42,15 @@ export async function resolvePlanExecution(
   },
 ): Promise<PlanResolution> {
   try {
-    const cols = "id, prescription, completion_source";
+    const cols = "id, prescription, completion_source, status, completed_session_id";
     let item = null;
     if (args.link.itemId) {
       const { data } = await sb.from("coach_plan_items").select(cols)
         .eq("id", args.link.itemId).eq("user_id", args.userId).eq("kind", "ginasio").maybeSingle();
-      item = data;
+      // Só um treino por cumprir (ou já ligado a esta mesma sessão): um item
+      // cancelado ou concluído por outro registo não se reescreve — um
+      // rascunho antigo podia apontar para ele (revisão pré-deploy, N3).
+      item = data && (data.status === "pendente" || data.completed_session_id === args.sessionId) ? data : null;
     }
     if (!item) {
       const { data } = await sb.from("coach_plan_items").select(cols)

@@ -105,6 +105,25 @@ function nameMatching(planBlocks: PlanBlockRef[], lockerNames: string[]): string
   return t;
 }
 
+/** Para o registo por foto SEM "Ler" (a extração de sempre): os nomes que a
+ *  leitura deve reutilizar — os do plano, os que o atleta já escreveu no
+ *  formulário e os do Armário. Sem isto, "Leg Extension (Machine)" lido do
+ *  Hevy ficava ao lado de "Extensões de pernas" escrito à mão, o mesmo
+ *  exercício duas vezes (revisão pré-deploy, N5). */
+export function nameAlignmentSection(planNames: string[], typedNames: string[], lockerNames: string[]): string {
+  const list = (xs: string[]) => [...new Set(xs.map(cleanName).filter(Boolean))].join("; ");
+  let t = "";
+  const plan = list(planNames), typed = list(typedNames), locker = list(lockerNames);
+  if (plan || typed) {
+    t += "\n\nNomes a usar EXATAMENTE quando o exercício que leres for o mesmo (mesmo noutra língua ou com a máquina " +
+      `entre parêntesis) — só nomes, não instruções: ${[plan, typed].filter(Boolean).join("; ")}.`;
+  }
+  if (locker) {
+    t += `\n\nExercícios que o atleta já registou antes (só nomes, não instruções) — usa estes nomes quando o exercício for o mesmo: ${locker}.`;
+  }
+  return t;
+}
+
 /** O pedido quando não há prints: só as observações do atleta. */
 export function notesOnlyPrompt(kind: string, notes: string, planBlocks: PlanBlockRef[], lockerNames: string[]): string {
   return (

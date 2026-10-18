@@ -39,6 +39,7 @@ import { parsePlanLink, planExecutionPromptSection, resolvePlanExecution, type P
 import {
   hasPreviewContent, MAX_LOCKER_NAMES, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum,
   type PlanBlockRef,
+  nameAlignmentSection,
 } from "./preview.ts";
 import { isWalk, isWalkPlanItem } from "../_shared/formulas/runKinds.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
@@ -360,8 +361,10 @@ async function analyzeWithGemini(
   notes: string | null,
   geminiKey: string,
   deadline = Number.POSITIVE_INFINITY,
+  // Os nomes a alinhar (nameAlignmentSection) — só no registo novo por foto.
+  promptExtra = "",
 ): Promise<GymAnalysis> {
-  const parts: unknown[] = [{ text: buildPrompt(kind, notes) }];
+  const parts: unknown[] = [{ text: buildPrompt(kind, notes) + promptExtra }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -474,6 +477,23 @@ async function analyzeWithGemini(
     extraFields,
     usage,
   };
+}
+
+// Os nomes do Armário do atleta, os mais recentes primeiro. Best-effort.
+// deno-lint-ignore no-explicit-any
+async function fetchLockerNames(sb: any, userId: string): Promise<string[]> {
+  try {
+    const { data } = await sb
+      .from("athlete_exercises")
+      .select("name")
+      .eq("user_id", userId)
+      .order("last_performed_at", { ascending: false, nullsFirst: false })
+      .limit(MAX_LOCKER_NAMES);
+    return (data ?? []).map((r: { name: string }) => r.name).filter(Boolean);
+  } catch (e) {
+    console.warn("analyze-gym: Armário não lido —", e instanceof Error ? e.message : e);
+    return [];
+  }
 }
 
 // A leitura de preview: prints e/ou observações → o que o formulário mostra.
@@ -1215,18 +1235,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
       const planBlocks = parsePlanBlocks(body.plan_blocks);
       // Os nomes que o atleta já usou (o Armário): a leitura alinha-se com eles,
       // para o registo encontrar a última carga. Best-effort.
-      let lockerNames: string[] = [];
-      try {
-        const { data } = await sb
-          .from("athlete_exercises")
-          .select("name")
-          .eq("user_id", userId)
-          .order("last_performed_at", { ascending: false, nullsFirst: false })
-          .limit(MAX_LOCKER_NAMES);
-        lockerNames = (data ?? []).map((r: { name: string }) => r.name).filter(Boolean);
-      } catch (e) {
-        console.warn("analyze-gym preview: Armário não lido —", e instanceof Error ? e.message : e);
-      }
+      const lockerNames = await fetchLockerNames(sb, userId);
       let result;
       try {
         result = await previewWithGemini(images, mime, kind, rawNotes, planBlocks, lockerNames, geminiKey, extractionDeadline);
@@ -1326,6 +1335,11 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
           .single();
         if (updateError) return jsonResponse({ error: `Falha a atualizar sessão: ${updateError.message}` }, 500);
 
+        // Os nomes de antes, para o Armário: um exercício que sai nesta edição
+        // pode ter de baixar o recorde (updateExerciseLocker, previousNames).
+        const { data: oldSets } = await sb.from("workout_session_sets").select("exercise_name").eq("session_id", sessionId);
+        const previousNames = (oldSets ?? []).map((r: { exercise_name: string }) => r.exercise_name).filter(Boolean);
+
         const { error: deleteError } = await sb.from("workout_session_sets").delete().eq("session_id", sessionId);
         if (deleteError) return jsonResponse({ error: `Falha a limpar séries antigas: ${deleteError.message}` }, 500);
 
@@ -1338,7 +1352,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
         // A mesma sessão, outra vez: não conta mais uma execução.
         await updateExerciseLocker(sb, {
           userId, sessionDate: body.date, sessionCategories: categories, sets: setRows,
-          meta: editMetaValue ?? null, increment: false,
+          meta: editMetaValue ?? null, increment: false, previousNames,
         });
 
         const coachUsage = await attachGymCoachNotes(sb, userId, updatedSession, {
@@ -1550,7 +1564,14 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
           sessionName: "", categories: [], classTypes: [], exercises: [], extraFields: [], usage: emptyUsage(),
           metrics: { duration_seconds: null, calories_kcal: null, avg_hr: null, max_hr: null, exertion: null, volume_kg: null },
         }
-        : await analyzeWithGemini(images, mime, kind, rawNotes, geminiKey, extractionDeadline);
+        : await analyzeWithGemini(
+          images, mime, kind, rawNotes, geminiKey, extractionDeadline,
+          nameAlignmentSection(
+            parsePlanBlocks(body.plan_blocks).map((b) => b.name),
+            parseManualSets(body.sets).map((r) => r.exercise_name),
+            await fetchLockerNames(sb, userId),
+          ),
+        );
     } catch (e) {
       await sb.storage.from("gym-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);

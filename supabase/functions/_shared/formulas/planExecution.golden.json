@@ -655,5 +655,70 @@
         }
       ]
     }
+  },
+  {
+    "name": "renomear a linha do plano só no plural, nos acentos ou com a máquina entre parêntesis é o mesmo exercício (não é troca)",
+    "input": {
+      "sessionDate": "2026-10-18",
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Extensões de pernas",
+            "sets": 1,
+            "reps": 12
+          },
+          {
+            "type": "forca",
+            "name": "Leg press",
+            "sets": 1,
+            "reps": 10
+          }
+        ]
+      },
+      "exercisesMeta": [
+        {
+          "name": "Extensoes de perna",
+          "plan_block_index": 0
+        },
+        {
+          "name": "Leg Press (Machine)",
+          "plan_block_index": 1
+        }
+      ],
+      "sets": [
+        {
+          "exercise_name": "Extensoes de perna",
+          "set_index": 0,
+          "reps": 12,
+          "weight": 40
+        },
+        {
+          "exercise_name": "Leg Press (Machine)",
+          "set_index": 0,
+          "reps": 10,
+          "weight": 100
+        }
+      ]
+    },
+    "expect": {
+      "counts": {
+        "cumprido": 2,
+        "parcial": 0,
+        "trocado": 0,
+        "em_falta": 0
+      },
+      "extras": [],
+      "blocks": [
+        {
+          "index": 0,
+          "status": "cumprido"
+        },
+        {
+          "index": 1,
+          "status": "cumprido"
+        }
+      ]
+    }
   }
 ]

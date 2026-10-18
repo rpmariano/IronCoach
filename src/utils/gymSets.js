@@ -104,8 +104,14 @@ export function setSuggestion(ex, setIdx, last) {
   // lido na hora — a Carol não prescreve kg (decisão 5).
   const own = ex.sets[setIdx];
   if (own?.plan) {
+    // As reps são o alvo do plano; a carga segue a que ele já usou numa série
+    // anterior desta sessão, senão a da última vez (revisão pré-deploy, N10).
+    let prevW = '';
+    for (let i = setIdx - 1; i >= 0; i--) {
+      if (!blank(ex.sets[i]?.weight)) { prevW = ex.sets[i].weight; break; }
+    }
     const lastW = last?.last_weight != null && Number(last.last_weight) > 0 ? last.last_weight : '';
-    return { reps: own.plan.reps ?? '', weight: !blank(own.plan.weight) ? own.plan.weight : lastW };
+    return { reps: own.plan.reps ?? '', weight: !blank(prevW) ? prevW : (!blank(own.plan.weight) ? own.plan.weight : lastW) };
   }
   for (let i = setIdx - 1; i >= 0; i--) {
     const s = ex.sets[i];
@@ -153,6 +159,25 @@ export function markAllDone(ex, last) {
   let next = ex;
   for (const s of ex.sets) if (!s.done) next = toggleSetDone(next, s.key, last);
   return next;
+}
+
+/** Ao gravar: numa série do plano em que ele escreveu as reps mas deixou o kg
+ *  em branco, o kg é o que estava à vista como sugestão — senão gravava-se
+ *  10×nada com "40" escrito no campo (revisão pré-deploy, N10). */
+export function completePlanSets(exercises, lockerIdx) {
+  return exercises.map(ex => {
+    if (exerciseType(ex) === 'cardio' || !ex.sets.some(s => s.plan)) return ex;
+    const last = lockerEntryFor(lockerIdx, ex.name);
+    let next = ex;
+    ex.sets.forEach((s, i) => {
+      if (!s.plan || blank(s.reps) || !blank(s.weight)) return;
+      const sug = setSuggestion(next, i, last);
+      if (sug && !blank(sug.weight)) {
+        next = { ...next, sets: next.sets.map(x => (x.key === s.key ? { ...x, weight: String(sug.weight) } : x)) };
+      }
+    });
+    return next;
+  });
 }
 
 /** Há séries vindas do plano ainda por confirmar? (Não contam ao gravar.) */

@@ -90,20 +90,28 @@ Deno.test("mergeTypedWithRead: o escrito ganha no mesmo exercício; os só lidos
 // deno-lint-ignore no-explicit-any
 function prSb(existing: any[], sets: any[]) {
   // deno-lint-ignore no-explicit-any
-  const calls = { upserts: [] as any[] };
+  const calls = { upserts: [] as any[], updates: [] as any[], queries: 0 };
   const sb = {
     from: (t: string) => {
       if (t === "workout_session_sets") {
-        const q = { select: () => q, eq: () => q, gt: (_c: string, v: number) => { q._gt = v; return q; }, order: () => q,
+        // deno-lint-ignore no-explicit-any
+        const q: any = { names: [] as string[] };
+        q.select = () => q; q.eq = () => q; q.gt = () => q; q.order = () => q;
+        q.in = (_c: string, names: string[]) => { q.names = names; return q; };
+        q.limit = () => {
+          calls.queries++;
           // deno-lint-ignore no-explicit-any
-          limit: () => Promise.resolve({ data: sets.filter((s: any) => s.weight > q._gt).sort((a: any, b: any) => b.weight - a.weight), error: null }),
-          _gt: 0 };
+          const rows = sets.filter((s: any) => q.names.includes(s.exercise_name) && s.weight > 0).sort((x: any, y: any) => y.weight - x.weight);
+          return Promise.resolve({ data: rows.slice(0, 1), error: null });
+        };
         return q;
       }
       return {
         select: () => ({ eq: () => ({ in: () => Promise.resolve({ data: existing, error: null }) }) }),
         // deno-lint-ignore no-explicit-any
         upsert: (rows: any[]) => { calls.upserts.push(...rows); return Promise.resolve({ error: null }); },
+        // deno-lint-ignore no-explicit-any
+        update: (payload: any) => ({ eq: () => ({ eq: (_c: string, key: string) => { calls.updates.push({ key, payload }); return Promise.resolve({ error: null }); } }) }),
       };
     },
   };
@@ -128,9 +136,21 @@ Deno.test("updateExerciseLocker: num registo novo o recorde nunca desce nem se r
   assertEquals(calls.upserts[0].personal_record_weight, 400);
 });
 
-Deno.test("recordFromSets: sem séries mais pesadas fica o da sessão; 0 é null", async () => {
-  const { sb } = prSb([], [{ exercise_name: "Supino", weight: 30 }]);
-  assertEquals(await recordFromSets(sb, "u1", "supino", 40), 40);
-  assertEquals(await recordFromSets(sb, "u1", "supino", 0), 30);
-  assertEquals(await recordFromSets(prSb([], []).sb, "u1", "supino", 0), null);
+Deno.test("recordFromSets: a maior carga com um destes nomes (e as minúsculas); sem nada, null", async () => {
+  const { sb, calls } = prSb([], [{ exercise_name: "supino", weight: 30 }, { exercise_name: "Remo", weight: 90 }]);
+  assertEquals(await recordFromSets(sb, "u1", ["Supino"]), 30);
+  assertEquals(calls.queries, 1);
+  assertEquals(await recordFromSets(sb, "u1", ["Agachamento"]), null);
+  assertEquals(await recordFromSets(sb, "u1", []), null);
+});
+
+Deno.test("updateExerciseLocker: um exercício apagado numa edição baixa o recorde para o das outras sessões", async () => {
+  const prevPrensa = { ...PREV, name_key: "prensa", name: "Prensa", personal_record_weight: 400, last_weight: 400 };
+  // Já sem as séries de 400 desta sessão; noutra sessão, 120.
+  const { sb, calls } = prSb([prevPrensa], [{ exercise_name: "Prensa", weight: 120 }]);
+  await updateExerciseLocker(sb, {
+    userId: "u1", sessionDate: "2026-10-18", sessionCategories: ["Pernas"], sets: [{ exercise_name: "Supino", reps: 8, weight: 40 }],
+    increment: false, previousNames: ["Prensa", "Supino"],
+  });
+  assertEquals(calls.updates, [{ key: "prensa", payload: { personal_record_weight: 120, updated_at: calls.updates[0].payload.updated_at } }]);
 });

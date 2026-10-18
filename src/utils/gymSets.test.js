@@ -127,3 +127,25 @@ describe('ler prints e notas para o formulário (F2)', async () => {
     expect(readSummary({ exercises: 0, metrics: 0, skipped: 0 }, 'notas')).toMatch(/3x12 extensões/);
   });
 });
+
+describe('séries do plano: a sugestão segue a carga usada e o kg em branco completa-se ao gravar (N10)', async () => {
+  const { setSuggestion, completePlanSets, newExercise, newSet, lockerIndex } = await import('./gymSets');
+  const LOCKER = lockerIndex([{ name: 'Prensa', name_key: 'prensa', last_weight: 100, last_reps: 10 }]);
+  const ex = () => newExercise({ name: 'Prensa', type: 'forca', planBlockIndex: 0, sets: [
+    newSet({ plan: { reps: '12', weight: '' }, reps: '10', weight: '110' }),
+    newSet({ plan: { reps: '12', weight: '' } }),
+  ] });
+
+  it('a série 2 sugere as reps do plano com a carga que ele usou na 1', () => {
+    expect(setSuggestion(ex(), 1, LOCKER.get('prensa'))).toEqual({ reps: '12', weight: '110' });
+  });
+
+  it('completePlanSets: reps escritas sem kg levam o kg sugerido; o resto não mexe', () => {
+    const e = ex();
+    e.sets[1] = { ...e.sets[1], reps: '9' };
+    const [out] = completePlanSets([e], LOCKER);
+    expect(out.sets.map(s => [s.reps, s.weight])).toEqual([['10', '110'], ['9', '110']]);
+    const livre = newExercise({ name: 'Prensa', type: 'forca', sets: [newSet({ reps: '8' })] });
+    expect(completePlanSets([livre], LOCKER)[0]).toBe(livre);
+  });
+});

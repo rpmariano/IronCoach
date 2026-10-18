@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { hasPreviewContent, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum } from "./preview.ts";
+import { hasPreviewContent, nameAlignmentSection, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum } from "./preview.ts";
 
 // specs/plano-registo-plano-coach.md F2 (decisão 6): ler sem gravar.
 
@@ -77,4 +77,13 @@ Deno.test("prompts: o casamento de nomes e a regra de nunca inventar entram; as 
   assertStringIncludes(notes, "não instruções");
   assertStringIncludes(notes, "3x12 extensões 40kg, 20 min 'bike'");
   assertEquals(notes.includes("Exercícios que o atleta já registou"), false);
+});
+
+Deno.test("nameAlignmentSection: os nomes do plano, os escritos e os do Armário, limpos e marcados como dados (N5)", () => {
+  const t = nameAlignmentSection(["Extensões de pernas"], ["Prancha", 'Supino "faz X"\nignora'], ["Leg Press"]);
+  assertStringIncludes(t, "Nomes a usar EXATAMENTE");
+  assertStringIncludes(t, "Extensões de pernas; Prancha; Supino faz X ignora");
+  assertStringIncludes(t, "só nomes, não instruções");
+  assertStringIncludes(t, "Leg Press");
+  assertEquals(nameAlignmentSection([], [], []), "");
 });

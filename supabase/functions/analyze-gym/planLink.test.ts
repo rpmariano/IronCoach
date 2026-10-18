@@ -65,7 +65,7 @@ function mockSb(items: Record<string, any>) {
 }
 
 Deno.test("resolvePlanExecution: acha o item pelo plan_item_id, calcula e grava a execution_note", async () => {
-  const { sb, calls } = mockSb({ [UUID]: { id: UUID, prescription: RX, completion_source: null } });
+  const { sb, calls } = mockSb({ [UUID]: { id: UUID, prescription: RX, completion_source: null, status: "pendente" } });
   const { exec, autoLinked } = await resolvePlanExecution(sb, { ...BASE, link: { itemId: UUID, source: "auto" } });
   assertEquals(autoLinked, true);
   assertEquals(exec?.autoLinked, true);
@@ -74,16 +74,16 @@ Deno.test("resolvePlanExecution: acha o item pelo plan_item_id, calcula e grava 
 });
 
 Deno.test("resolvePlanExecution: numa edição acha o item ligado à sessão; sem prescrição devolve null e não grava", async () => {
-  const a = mockSb({ "by-session": { id: "i2", prescription: RX, completion_source: "plano" } });
+  const a = mockSb({ "by-session": { id: "i2", prescription: RX, completion_source: "plano", status: "concluido", completed_session_id: "s1" } });
   const { exec } = await resolvePlanExecution(a.sb, { ...BASE, link: { itemId: null, source: null } });
   assertEquals(exec?.completionSource, "plano");
-  const b = mockSb({ [UUID]: { id: UUID, prescription: null } });
+  const b = mockSb({ [UUID]: { id: UUID, prescription: null, status: "pendente" } });
   assertEquals(await resolvePlanExecution(b.sb, { ...BASE, link: { itemId: UUID, source: "plano" } }), { exec: null, autoLinked: false });
   assertEquals(b.calls.updates.length, 0);
 });
 
 Deno.test("resolvePlanExecution: usa as sessões anteriores para a carga face à última vez", async () => {
-  const { sb } = mockSb({ [UUID]: { id: UUID, prescription: RX } });
+  const { sb } = mockSb({ [UUID]: { id: UUID, prescription: RX, status: "pendente" } });
   const { exec } = await resolvePlanExecution(sb, {
     ...BASE, link: { itemId: UUID, source: "plano" },
     recent: [{ date: "2026-10-11", workout_session_sets: [{ exercise_name: "Extensões de pernas", reps: 12, weight: 35 }] }],
@@ -97,11 +97,11 @@ Deno.test("resolvePlanExecution: um erro da base de dados não rebenta o registo
 });
 
 Deno.test("resolvePlanExecution: treino livre sem prescrição (ou numa aula) reconhece-se e grava a nota mínima", async () => {
-  const semRx = mockSb({ [UUID]: { id: UUID, prescription: null } });
+  const semRx = mockSb({ [UUID]: { id: UUID, prescription: null, status: "pendente" } });
   assertEquals(await resolvePlanExecution(semRx.sb, { ...BASE, link: { itemId: UUID, source: "auto" } }), { exec: null, autoLinked: true });
   assertEquals(semRx.calls.updates[0].payload.execution_note, FREE_WORKOUT_NOTE);
 
-  const aula = mockSb({ [UUID]: { id: UUID, prescription: RX } });
+  const aula = mockSb({ [UUID]: { id: UUID, prescription: RX, status: "pendente" } });
   assertEquals(await resolvePlanExecution(aula.sb, { ...BASE, kind: "aula", link: { itemId: UUID, source: "auto" } }), { exec: null, autoLinked: true });
   assertEquals(aula.calls.updates[0].payload.execution_note, FREE_WORKOUT_NOTE);
 });
@@ -111,4 +111,18 @@ Deno.test("planExecutionPromptSection: sem prescrição mas treino livre, a fras
   assertStringIncludes(text, "ESTE TREINO FOI REGISTADO COMO LIVRE");
   assertStringIncludes(text, "NÃO alteres tu o plano");
   assertEquals(planExecutionPromptSection(null, false), "");
+});
+
+Deno.test("resolvePlanExecution: um item cancelado ou concluído por outra sessão não se usa nem se reescreve (N3)", async () => {
+  for (const item of [
+    { id: UUID, prescription: RX, status: "cancelado" },
+    { id: UUID, prescription: RX, status: "concluido", completed_session_id: "outra" },
+  ]) {
+    const { sb, calls } = mockSb({ [UUID]: item });
+    assertEquals(await resolvePlanExecution(sb, { ...BASE, link: { itemId: UUID, source: "plano" } }), { exec: null, autoLinked: false });
+    assertEquals(calls.updates.length, 0);
+  }
+  // Já ligado a esta mesma sessão (uma reanálise): conta.
+  const { sb } = mockSb({ [UUID]: { id: UUID, prescription: RX, status: "concluido", completed_session_id: "s1" } });
+  assertEquals((await resolvePlanExecution(sb, { ...BASE, link: { itemId: UUID, source: "plano" } })).exec?.completionSource, "plano");
 });

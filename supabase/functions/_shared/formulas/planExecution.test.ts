@@ -72,3 +72,13 @@ Deno.test("recentExecutionLines — só concluídos com nota, na janela, do mais
   assertEquals(recentExecutionLines(items, "2026-10-18", 7, 1).length, 1);
   assertEquals(recentExecutionLines(null, "2026-10-18"), []);
 });
+
+import { looseExerciseKey } from "./planExecution.ts";
+
+Deno.test("looseExerciseKey — plural, acentos e parêntesis não separam; exercícios diferentes continuam diferentes", () => {
+  assertEquals(looseExerciseKey("Extensões de pernas"), looseExerciseKey("extensoes de perna"));
+  assertEquals(looseExerciseKey("Leg Press (Machine)"), looseExerciseKey("leg press"));
+  assertEquals(looseExerciseKey("Remadas"), looseExerciseKey("Remada"));
+  assertEquals(looseExerciseKey("Prensa") === looseExerciseKey("Hack squat"), false);
+  assertEquals(looseExerciseKey("Supino") === looseExerciseKey("Supino inclinado"), false);
+});

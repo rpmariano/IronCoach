@@ -16,7 +16,7 @@ import ExerciseEditor from '../shared/registration/ExerciseEditor';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, appendExercises } from '../../utils/planPrefill';
-import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary } from '../../utils/gymSets';
+import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary, completePlanSets, hasUnconfirmedPlanSets, markAllDone, lockerEntryFor } from '../../utils/gymSets';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -421,8 +421,13 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     () => (isEditing || planItem ? [] : findPendingPlanItems('ginasio', date, coachPlans, coachPlanItems)),
     [isEditing, planItem, date, coachPlans, coachPlanItems],
   );
+  // Um rascunho restaurado pode apontar para um item que entretanto foi
+  // cancelado ou concluído por outro registo: esse já não conta (revisão
+  // pré-deploy, N3) — o registo volta a ser livre e o banner volta a perguntar.
   const chosenPlanItem = planChoice?.mode === 'plano'
-    ? (planItem?.id === planChoice.id ? planItem : (coachPlanItems || []).find(i => i.id === planChoice.id) || null)
+    ? (planItem?.id === planChoice.id
+      ? planItem
+      : (coachPlanItems || []).find(i => i.id === planChoice.id && i.status === 'pendente') || null)
     : null;
   // O item que este registo vai riscar: o escolhido ('plano') ou, sem escolha,
   // o primeiro pendente do dia ('auto' — treino livre). A analyze-gym recebe-o
@@ -430,15 +435,18 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const linkedPlanItem = chosenPlanItem || pendingPlanItems[0] || null;
   const planSource = chosenPlanItem ? 'plano' : 'auto';
 
-  // Mudar a data depois de escolher: o treino escolhido era de outro dia — a
-  // escolha desfaz-se e o banner mostra o plano do dia novo. Os exercícios ficam.
-  const choiceDateRef = useRef(date);
-  useEffect(() => {
-    if (choiceDateRef.current === date) return;
-    choiceDateRef.current = date;
-    setPlanChoice(prev => (prev && !(planItem && prev.id === planItem.id && planItem.planned_date === date) ? null : prev));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  // Mudar a data depois de escolher no banner: o treino escolhido era de outro
+  // dia — a escolha desfaz-se e o banner mostra o plano do dia novo (os
+  // exercícios ficam). Vindo de "Registar sessão" não: aí a data é editável
+  // de propósito, é como se regista que o treino passou para outro dia
+  // (specs/plano-de-treino.md §5.2) — a ligação mantém-se (revisão pré-deploy, N1).
+  // Só quando é ELE a mudar a data (o input): restaurar um rascunho também
+  // muda a data, e isso não pode desfazer a escolha que vem com ele (N4).
+  const handleDateChange = (value) => {
+    setDate(value);
+    setIsFormDirty(true);
+    setPlanChoice(prev => (prev && prev.id !== planItem?.id ? null : prev));
+  };
 
   const handleUsePlan = (item) => {
     const incoming = exercisesFromPrescription(item.prescription);
@@ -542,16 +550,23 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   // O que o formulário manda em todos os caminhos: as métricas do relógio, as
   // séries (força e cardio) e o objetivo de cada exercício.
-  const metricsAndSetsBody = () => ({
-    duration_seconds: parseDurationInput(durationStr),
-    calories_kcal: calories ? parseInt(calories) : null,
-    avg_hr: avgHr ? parseInt(avgHr) : null,
-    max_hr: maxHr ? parseInt(maxHr) : null,
-    exertion: exertion ? parseInt(exertion) : null,
-    sets: flattenExercises(exercises),
-    exercises_meta: buildExercisesMeta(exercises),
-    ...(linkedPlanItem ? { plan_item_id: linkedPlanItem.id, completion_source: planSource } : {}),
-  });
+  const metricsAndSetsBody = () => {
+    // Séries do plano com as reps escritas e o kg em branco levam o kg que
+    // estava à vista como sugestão (N10).
+    const exs = completePlanSets(exercises, locker);
+    return {
+      duration_seconds: parseDurationInput(durationStr),
+      calories_kcal: calories ? parseInt(calories) : null,
+      avg_hr: avgHr ? parseInt(avgHr) : null,
+      max_hr: maxHr ? parseInt(maxHr) : null,
+      exertion: exertion ? parseInt(exertion) : null,
+      sets: flattenExercises(exs),
+      exercises_meta: buildExercisesMeta(exs),
+      ...(linkedPlanItem ? { plan_item_id: linkedPlanItem.id, completion_source: planSource } : {}),
+      // Os nomes do plano, para a leitura dos prints os reutilizar (N5).
+      ...(planBlocks.length ? { plan_blocks: planBlocks.map(b => ({ name: b.name, type: b.type })) } : {}),
+    };
+  };
 
   // A tarefa, separada do gesto: é ela que o "Tentar de novo" repete, com as
   // mesmas fotos e os mesmos campos.
@@ -703,7 +718,36 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
      no fim do formulário, onde ficava abaixo da dobra. Rótulos inalterados. */
   // Com prints, a Carol lê-os (e o que está escrito ganha); sem prints, grava
   // o que está escrito. A mesma ação, o mesmo rótulo.
-  const handleAnalyze = () => (photos.length ? handleAnalyzePhotos() : handleSaveManual());
+  const doAnalyze = () => (photos.length ? handleAnalyzePhotos() : handleSaveManual());
+
+  /* Séries do plano por confirmar ao gravar: em vez de as deixar cair em
+     silêncio (uma sessão com 0 séries e "ficou tudo de fora" — revisão
+     pré-deploy, N2), pergunta-se: marcá-las como feitas, ou gravar só as
+     confirmadas. */
+  const [confirmPlanSets, setConfirmPlanSets] = useState(false);
+  const [saveAfterMark, setSaveAfterMark] = useState(false);
+  const unconfirmedPlanSets = exercises.some(hasUnconfirmedPlanSets);
+  const handleAnalyze = () => {
+    if (!isEditing && unconfirmedPlanSets) {
+      setShowUnsavedModal(false);
+      setConfirmPlanSets(true);
+      return;
+    }
+    doAnalyze();
+  };
+  const markAllAndSave = () => {
+    setExercises(prev => prev.map(ex => (hasUnconfirmedPlanSets(ex) ? markAllDone(ex, lockerEntryFor(locker, ex.name)) : ex)));
+    setConfirmPlanSets(false);
+    setIsFormDirty(true);
+    setSaveAfterMark(true);
+  };
+  // Grava depois de o estado já ter as séries marcadas (o render seguinte).
+  useEffect(() => {
+    if (!saveAfterMark) return;
+    setSaveAfterMark(false);
+    doAnalyze();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveAfterMark]);
   const primaryAction = isEditing ? (
     <CoachAnalyzeButton
       onClick={handleSaveEdit}
@@ -813,7 +857,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               aria-label="Data do treino"
               value={date}
               max={todayISO()}
-              onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
+              onChange={e => handleDateChange(e.target.value)}
               className="w-full min-h-[var(--tap)] bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)]"
             />
           </div>
@@ -1025,6 +1069,36 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       />
 
       {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
+
+      {confirmPlanSets && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="gr-plan-sets-title"
+          aria-describedby="gr-plan-sets-desc"
+          className="fixed inset-x-0 bottom-0 z-50 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] rounded-t-2xl border-t border-[var(--border-glass)] bg-[var(--bg-sheet)] shadow-2xl"
+        >
+          <p id="gr-plan-sets-title" className="text-sm font-bold text-[var(--text-1)] mb-1">Há séries do plano por confirmar</p>
+          <p id="gr-plan-sets-desc" className="text-[12px] text-[var(--text-2)] mb-3">
+            Fizeste-as como estavam no plano? As que ficarem por confirmar não contam como feitas.
+          </p>
+          <div className="flex flex-col gap-2">
+            <button type="button" autoFocus onClick={markAllAndSave}
+              className="min-h-[44px] rounded-xl text-[13px] font-bold"
+              style={{ background: 'var(--mod-ginasio-to)', color: 'var(--bg-app)' }}>
+              Marcar todas como feitas e gravar
+            </button>
+            <button type="button" onClick={() => { setConfirmPlanSets(false); doAnalyze(); }}
+              className="min-h-[44px] rounded-xl text-[13px] font-bold border border-[var(--border-glass-strong)] text-[var(--text-1)]">
+              Gravar só as confirmadas
+            </button>
+            <button type="button" onClick={() => setConfirmPlanSets(false)}
+              className="min-h-[44px] rounded-xl text-[13px] font-semibold text-[var(--text-3)]">
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
 
       <ActionBar>{primaryAction}</ActionBar>
     </div>

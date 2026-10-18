@@ -8,8 +8,8 @@
 // regras de adaptação — sempre por esta fórmula, nunca por uma cópia.
 //
 // Decisões:
-//   · Casamento bloco ↔ exercício feito: primeiro o nome normalizado
-//     (foodKey), depois o plan_block_index que o registo guardou
+//   · Casamento bloco ↔ exercício feito: primeiro o nome normalizado e
+//     tolerante (looseExerciseKey: plural, acentos, parêntesis), depois o plan_block_index que o registo guardou
 //     (exercises_meta — veio do "Usar o plano" ou da leitura dos prints). Um
 //     bloco só casa com um exercício e vice-versa.
 //   · O que sobra: os blocos sem par ficam "em_falta"; os exercícios sem par
@@ -38,6 +38,18 @@
 
 import { foodKey } from "./foodKey.ts";
 import { ADHERENCE_TOLERANCE } from "./prescriptionAdherence.ts";
+
+/** A chave tolerante de um exercício: foodKey sem o que vem entre parêntesis
+ *  ("Leg Press (Machine)") e sem o plural no fim de cada palavra — "Extensões
+ *  de perna" e "Extensões de pernas" são o mesmo exercício. Só para casar o
+ *  plano com o feito; o Armário continua a usar foodKey (revisão pré-deploy
+ *  de 2026-10-18, N6). */
+export function looseExerciseKey(name: unknown): string {
+  return foodKey(String(name ?? "").replace(/\([^)]*\)/g, " "))
+    .split(" ")
+    .map((w) => (w.length > 3 ? w.replace(/(es|s)$/, "") : w))
+    .join(" ");
+}
 
 export type BlockStatus = "cumprido" | "parcial" | "trocado" | "em_falta";
 export type LoadTrend = "subiu" | "igual" | "desceu";
@@ -186,7 +198,7 @@ function lastTopBefore(key: string, sessionDate: string, history: HistorySession
     .filter((h) => typeof h?.date === "string" && h.date < sessionDate)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   for (const h of prior) {
-    const mine = (h.sets || []).filter((s) => foodKey(s?.exercise_name) === key);
+    const mine = (h.sets || []).filter((s) => looseExerciseKey(s?.exercise_name) === key);
     const top = topSetOf(mine);
     if (top) return { ...top, date: h.date };
   }
@@ -238,7 +250,7 @@ function fillStrength(block: BlockExecution, done: DoneExercise, sessionDate: st
     block.compliance = performed.length ? 1 : 0;
   }
   block.topSet = topSetOf(performed);
-  block.lastTopSet = lastTopBefore(done.key, sessionDate, history);
+  block.lastTopSet = lastTopBefore(looseExerciseKey(done.name), sessionDate, history);
   if (block.topSet && block.lastTopSet) {
     block.loadDeltaKg = round2(block.topSet.weight - block.lastTopSet.weight);
     block.loadTrend = block.loadDeltaKg > 0 ? "subiu" : block.loadDeltaKg < 0 ? "desceu" : "igual";
@@ -287,7 +299,7 @@ export function computePlanExecution(input: {
 
   // 1. O nome: o exercício do plano feito tal e qual.
   for (const [bi, b] of blocks.entries()) {
-    const ex = done.find((d) => !matchedDone.has(d.key) && d.key === b.key);
+    const ex = done.find((d) => !matchedDone.has(d.key) && looseExerciseKey(d.name) === looseExerciseKey(b.label));
     if (ex) pair(bi, ex);
   }
   // 2. O índice que o registo guardou, para o que sobrou: a linha do plano foi

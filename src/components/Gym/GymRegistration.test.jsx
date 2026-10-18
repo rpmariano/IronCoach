@@ -59,6 +59,13 @@ const selectPhoto = async () => {
   await screen.findByAltText('Print 1');
 };
 
+// Ao gravar com séries do plano por confirmar aparece um aviso (revisão
+// pré-deploy, N2): nos testes que não são sobre ele, grava-se só o confirmado.
+const gravarSoConfirmadasSeHouver = () => {
+  const b = screen.queryByRole('button', { name: 'Gravar só as confirmadas' });
+  if (b) fireEvent.click(b);
+};
+
 describe('GymRegistration — formulário único (registo unificado, F1)', () => {
   const onClose = vi.fn();
 
@@ -998,6 +1005,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Série 1 de Extensões de pernas feita$/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Série 2 de Extensões de pernas feita$/ }));
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     expect(mocks.invoke.mock.calls[0][1].body.sets).toEqual([
       { exercise_name: 'Extensões de pernas', set_index: 0, reps: 12, weight: 40 },
@@ -1009,6 +1017,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     render(<GymRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
 
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0]).toMatchObject({ id: 'item-1', payload: { status: 'concluido', completion_source: 'plano' } });
@@ -1027,6 +1036,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     expect(screen.getByText(/Treino livre — conto-o como o treino do plano de hoje/)).toBeInTheDocument();
     expect(screen.queryByLabelText('Nome do exercício')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
 
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0]).toMatchObject({ id: 'item-1', payload: { completion_source: 'auto' } });
@@ -1035,6 +1045,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
   it('sem escolher nada no banner, gravar também conta como automático', async () => {
     render(<GymRegistration onClose={onClose} />);
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0].payload.completion_source).toBe('auto');
     // O pedido à análise leva o mesmo item e a origem 'auto' — o treino livre reconhece-se lá.
@@ -1051,6 +1062,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     expect(screen.getByDisplayValue('Supino')).toBeInTheDocument();
     expect(screen.getAllByLabelText(/Repetições da série/)).toHaveLength(4);
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0]).toMatchObject({ id: 'item-2', payload: { completion_source: 'plano' } });
   });
@@ -1068,6 +1080,7 @@ describe('GymRegistration — pré-preenchimento pelo plano (F3)', () => {
     expect(screen.queryByRole('region', { name: 'Treino do plano' })).not.toBeInTheDocument();
     expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0]).toMatchObject({ id: 'item-1', payload: { completion_source: 'plano' } });
   });
@@ -1106,6 +1119,7 @@ describe('GymRegistration — a escolha do plano e a data (revisão pré-deploy)
     fireEvent.change(screen.getByLabelText('Data do treino'), { target: { value: ontem } });
     expect(screen.queryByRole('region', { name: 'Treino do plano' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     expect(mocks.invoke.mock.calls[0][1].body.plan_item_id).toBeUndefined();
     expect(mocks.updates).toHaveLength(0);
@@ -1119,7 +1133,102 @@ describe('GymRegistration — a escolha do plano e a data (revisão pré-deploy)
     render(<GymRegistration onClose={onClose} />);
     expect(screen.getByText(/A usar o plano/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
     await waitFor(() => expect(mocks.updates).toHaveLength(1));
     expect(mocks.updates[0].payload.completion_source).toBe('plano');
+  });
+});
+
+describe('GymRegistration — ronda 3 da revisão pré-deploy (N1–N4, N2, N10)', () => {
+  const onClose = vi.fn();
+  const hojeISO = todayISO();
+  const ontemISO = new Date(Date.parse(hojeISO + 'T12:00:00Z') - 86400000).toISOString().slice(0, 10);
+  const RX = { blocks: [{ type: 'forca', name: 'Prensa', sets: 3, reps: 12 }] };
+  const item = (over = {}) => ({ id: 'item-1', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente', categories: ['Pernas'], prescription: RX, ...over });
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { session: { id: 's' }, sets: [] }, error: null });
+    mocks.updatePlanItem.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    mocks.locker = [{ id: 'l', name: 'Prensa', name_key: 'prensa', category: 'Pernas', block_type: 'forca', last_weight: 100, last_reps: 10 }];
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({
+      profile: PROFILE, gymSessions: [], planItemPrefill: null, exerciseLocker: [], exerciseLockerUserId: null,
+      session: { user: { id: 'user-1' } },
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: ontemISO, period_end: hojeISO }],
+      coachPlanItems: [item()],
+    });
+  });
+  afterEach(() => { mocks.locker = []; });
+
+  it('N2: gravar com séries do plano por confirmar pergunta; "Marcar todas" grava o plano com o kg da última vez', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    await waitFor(() => expect(screen.getAllByLabelText(/Peso da série/)[0]).toHaveAttribute('placeholder', '100'));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    expect(screen.getByRole('alertdialog', { name: 'Há séries do plano por confirmar' })).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar todas como feitas e gravar' }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.sets.map(r => [r.reps, r.weight])).toEqual([[12, 100], [12, 100], [12, 100]]);
+  });
+
+  it('N2: "Voltar" fecha o aviso sem gravar', () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Voltar' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('N10: numa série do plano com as reps escritas e o kg em branco, grava-se o kg que estava à vista', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    await waitFor(() => expect(screen.getAllByLabelText(/Peso da série/)[0]).toHaveAttribute('placeholder', '100'));
+    fireEvent.change(screen.getByLabelText(/^Repetições da série 1 —/), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.sets).toEqual([{ exercise_name: 'Prensa', set_index: 0, reps: 10, weight: 100 }]);
+  });
+
+  it('N1: vindo de "Registar sessão", mudar a data mantém a ligação ao item (o treino passou para outro dia)', async () => {
+    useAppStore.setState({ planItemPrefill: item({ planned_date: ontemISO }), coachPlanItems: [item({ planned_date: ontemISO })] });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Data do treino'), { target: { value: hojeISO } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
+    await waitFor(() => expect(mocks.updates).toHaveLength(1));
+    expect(mocks.updates[0]).toMatchObject({ id: 'item-1', payload: { completion_source: 'plano', actual_date: hojeISO } });
+    expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ plan_item_id: 'item-1', completion_source: 'plano' });
+  });
+
+  it('N3: um rascunho que aponta para um item entretanto cancelado não o reabre nem o conclui', async () => {
+    const { unmount } = render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    await new Promise(r => setTimeout(r, 700));
+    unmount();
+    useAppStore.setState({ coachPlanItems: [item({ status: 'cancelado' })] });
+    render(<GymRegistration onClose={onClose} />);
+    expect(screen.queryByText(/A usar o plano/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    gravarSoConfirmadasSeHouver();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body.plan_item_id).toBeUndefined();
+    expect(mocks.updates).toHaveLength(0);
+  });
+
+  it('N4: um rascunho de ontem guarda a escolha do plano de ontem ao reabrir', async () => {
+    useAppStore.setState({ coachPlanItems: [item({ planned_date: ontemISO })] });
+    const { unmount } = render(<GymRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Data do treino'), { target: { value: ontemISO } });
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    await new Promise(r => setTimeout(r, 700));
+    unmount();
+    render(<GymRegistration onClose={onClose} />);
+    expect(screen.getByLabelText('Data do treino')).toHaveValue(ontemISO);
+    expect(screen.getByText(/A usar o plano/)).toBeInTheDocument();
   });
 });
