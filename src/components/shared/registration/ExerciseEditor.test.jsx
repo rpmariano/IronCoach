@@ -1,45 +1,85 @@
-import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import React, { useState } from 'react';
+import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import ExerciseEditor from './ExerciseEditor';
+import { lockerIndex, newExercise, newSet } from '../../../utils/gymSets';
 
-function setup(exercises) {
-  const fns = {
-    onAddExercise: vi.fn(), onRemoveExercise: vi.fn(), onUpdateExercise: vi.fn(),
-    onAddSet: vi.fn(), onRemoveSet: vi.fn(), onUpdateSet: vi.fn(), onDirty: vi.fn(),
-  };
-  render(<ExerciseEditor exercises={exercises} {...fns} />);
-  return fns;
+function Harness({ initial = [], lockerRows = [] }) {
+  const [exercises, setExercises] = useState(initial);
+  return (
+    <>
+      <ExerciseEditor exercises={exercises} onChange={setExercises} locker={lockerIndex(lockerRows)} lockerRows={lockerRows} />
+      <pre data-testid="state">{JSON.stringify(exercises)}</pre>
+    </>
+  );
 }
+const state = () => JSON.parse(screen.getByTestId('state').textContent);
 
-const EX = [{ key: 'e1', name: 'Prensa', sets: [{ key: 's1', reps: '10', weight: '80' }] }];
+const LOCKER = [{ id: 'l1', name: 'Leg Press', name_key: 'leg press', category: 'Pernas Inferiores', block_type: 'forca', last_weight: 100, last_reps: 10 },
+  { id: 'l2', name: 'Remo', name_key: 'remo', category: 'Cardio', block_type: 'cardio', cardio_fields: ['duration', 'distance'] }];
 
 describe('ExerciseEditor', () => {
   it('sem exercícios mostra o estado vazio e deixa adicionar', () => {
-    const fns = setup([]);
+    render(<Harness />);
     expect(screen.getByText('Sem exercícios ainda.')).toBeTruthy();
     fireEvent.click(screen.getByText('Adicionar exercício'));
-    expect(fns.onAddExercise).toHaveBeenCalled();
+    expect(state()).toHaveLength(1);
+    expect(state()[0].type).toBe('forca');
   });
 
-  it('editar o nome, as reps e o peso chama o handler certo e marca como sujo', () => {
-    const fns = setup(EX);
-    fireEvent.change(screen.getByLabelText('Nome do exercício'), { target: { value: 'Prensa 45°' } });
-    expect(fns.onUpdateExercise).toHaveBeenCalledWith('e1', { name: 'Prensa 45°' });
+  it('nome, objetivo, reps e kg', () => {
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca' })]} />);
+    fireEvent.change(screen.getByLabelText('Objetivo — Prensa'), { target: { value: 'descida em 3 s' } });
     fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '12' } });
-    expect(fns.onUpdateSet).toHaveBeenCalledWith('e1', 's1', { reps: '12' });
     fireEvent.change(screen.getByLabelText('Peso da série 1 (kg)'), { target: { value: '85' } });
-    expect(fns.onUpdateSet).toHaveBeenCalledWith('e1', 's1', { weight: '85' });
-    expect(fns.onDirty).toHaveBeenCalledTimes(3);
+    expect(state()[0]).toMatchObject({ goal: 'descida em 3 s', sets: [{ reps: '12', weight: '85' }] });
   });
 
-  it('remover exercício e série e juntar uma série', () => {
-    const fns = setup(EX);
+  it('o ✓ de uma série vazia usa a última vez do Armário; desmarcar não apaga', () => {
+    render(<Harness initial={[newExercise({ name: 'Leg Press', type: 'forca' })]} lockerRows={LOCKER} />);
+    expect(screen.getByText('da última vez: 100 kg × 10')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar série 1 como feita' }));
+    expect(state()[0].sets[0]).toMatchObject({ done: true, reps: '10', weight: '100' });
+    fireEvent.click(screen.getByRole('button', { name: /Série 1 feita/ }));
+    expect(state()[0].sets[0]).toMatchObject({ done: false, reps: '10', weight: '100' });
+  });
+
+  it('ajuste rápido na série ativa: +2,5 kg a partir da sugestão', () => {
+    render(<Harness initial={[newExercise({ name: 'Leg Press', type: 'forca' })]} lockerRows={LOCKER} />);
+    fireEvent.click(screen.getByRole('button', { name: '+2,5 kg' }));
+    expect(state()[0].sets[0].weight).toBe('102.5');
+  });
+
+  it('trocar para cardio mostra os campos do exercício e "+ voltas"', () => {
+    render(<Harness initial={[newExercise({ name: 'Remo', type: 'forca', sets: [newSet()] })]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cardio' }));
+    expect(screen.getByLabelText('Tempo (min) — Remo')).toBeTruthy();
+    expect(screen.getByLabelText('Distância (m) — Remo')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '+ voltas' }));
+    expect(screen.getByLabelText('Voltas — Remo')).toBeTruthy();
+  });
+
+  it('remover exercício e série', () => {
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca', sets: [newSet(), newSet()] })]} />);
+    fireEvent.click(screen.getByLabelText('Remover serie 2'));
+    expect(state()[0].sets).toHaveLength(1);
     fireEvent.click(screen.getByLabelText('Remover exercicio'));
-    expect(fns.onRemoveExercise).toHaveBeenCalledWith('e1');
-    fireEvent.click(screen.getByLabelText('Remover serie 1'));
-    expect(fns.onRemoveSet).toHaveBeenCalledWith('e1', 's1');
-    fireEvent.click(screen.getByText('Série'));
-    expect(fns.onAddSet).toHaveBeenCalledWith('e1');
+    expect(state()).toHaveLength(0);
+  });
+
+  it('o Armário: procura, filtra e junta', () => {
+    render(<Harness lockerRows={LOCKER} />);
+    fireEvent.click(screen.getByRole('button', { name: /Do Armário/ }));
+    fireEvent.change(screen.getByLabelText('Procurar no Armário'), { target: { value: 'leg' } });
+    expect(screen.queryByRole('button', { name: /^Remo/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Leg Press/ }));
+    expect(state()[0]).toMatchObject({ name: 'Leg Press', type: 'forca' });
+    expect(state()[0].sets).toHaveLength(3);
+  });
+
+  it('o Armário vazio explica como se enche', () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /Do Armário/ }));
+    expect(screen.getByText(/O Armário enche-se sozinho/)).toBeTruthy();
   });
 });

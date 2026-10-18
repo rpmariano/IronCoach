@@ -2,9 +2,11 @@
 // Modo normal: recebe 1+ prints de uma app de ginásio (Hevy, Strong, etc.),
 // analisa com Gemini e grava workout_sessions + workout_session_sets na BD.
 // Modo manual (mode: "manual"): os valores (métricas, categorias, nome) já
-// vêm do formulário, sem foto nenhuma — séries/repetições/carga continuam a
-// ser números simples que o utilizador introduz diretamente no cliente
-// depois de criada a sessão (não precisam de estimativa da IA).
+// vêm do formulário, sem foto nenhuma — e, desde o registo unificado (F1,
+// specs/plano-registo-plano-coach.md), também as séries (força e cardio) e o
+// objetivo de cada exercício (exercises_meta), logo na criação.
+// Todos os caminhos que gravam séries atualizam o Armário de Exercícios
+// (athlete_exercises, manualRegistration.ts), sem nunca fazer falhar o registo.
 // Modo reanálise (session_id presente): repesca os prints já guardados dessa
 // sessão no Storage, volta a chamar o Gemini com as observações atualizadas,
 // e substitui os sets existentes pelos novos.
@@ -28,6 +30,7 @@ import {
 import { clip, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
+import { MAX_SETS, parseExercisesMeta, parseManualSets, updateExerciseLocker } from "./manualRegistration.ts";
 import { isWalk, isWalkPlanItem } from "../_shared/formulas/runKinds.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
 import {
@@ -573,7 +576,10 @@ function flattenSets(exercises: GymExercise[]): { exercise_name: string; set_ind
 // escritas à mão, nunca chegavam ao prompt, e das sessões anteriores só vinham
 // médias. Sem cargas não há "subiste de 7 para 20 kg", nem crítica a um
 // exercício concreto.
-type SetRow = { exercise_name?: string | null; set_index?: number | null; reps: number | null; weight: number | null };
+type SetRow = {
+  exercise_name?: string | null; set_index?: number | null; reps: number | null; weight: number | null;
+  duration_seconds?: number | null; distance_km?: number | null; laps?: number | null;
+};
 
 const fmtNum = (n: number) => String(Math.round(n * 10) / 10).replace(".", ",");
 
@@ -597,6 +603,18 @@ export function formatExerciseLines(rows: SetRow[] | null | undefined, maxExerci
   for (const [name, sets] of byName) {
     if (lines.length >= maxExercises) break;
     const ordered = sets.slice().sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0));
+    // Cardio (registo unificado, F1): tempo, distância e voltas, somados por
+    // exercício — "Bicicleta — 20 min, 8 km".
+    if (ordered.every((s) => !s.reps && !s.weight) && ordered.some((s) => s.duration_seconds || s.distance_km || s.laps)) {
+      const sum = (k: "duration_seconds" | "distance_km" | "laps") => ordered.reduce((t, s) => t + (Number(s[k]) || 0), 0);
+      const parts = [
+        sum("duration_seconds") ? `${fmtNum(sum("duration_seconds") / 60)} min` : null,
+        sum("distance_km") ? `${fmtNum(sum("distance_km"))} km` : null,
+        sum("laps") ? `${fmtNum(sum("laps"))} voltas` : null,
+      ].filter(Boolean);
+      lines.push(`${name} — ${parts.join(", ")}`);
+      continue;
+    }
     const count = ordered.length === 1 ? "1 série" : `${ordered.length} séries`;
     if (ordered.every((s) => s.weight === ordered[0].weight)) {
       const r = ordered.map(reps);
@@ -909,7 +927,7 @@ async function attachGymCoachNotes(
     const historyFrom = new Date(new Date(ctx.date).getTime() - 45 * 24 * 3600 * 1000).toISOString().slice(0, 10);
     const { data: recentAny } = await sb
       .from("workout_sessions")
-      .select("date, name, kind, categories, notes, workout_session_sets(exercise_name, set_index, reps, weight)")
+      .select("date, name, kind, categories, notes, workout_session_sets(exercise_name, set_index, reps, weight, duration_seconds, distance_km, laps)")
       .eq("user_id", userId)
       .lt("date", ctx.date)
       .gte("date", historyFrom)
@@ -1105,9 +1123,8 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
     // Coach a partir dela, comparando com sessões anteriores do mesmo tipo
     // (attachGymCoachNotes). Sem isto, uma sessão registada manualmente
     // nunca tinha análise nenhuma; agora as duas formas de registo passam
-    // pelo Coach. Séries/repetições/carga continuam a ser adicionadas à
-    // sessão já criada, uma a uma, pelo cartão do treino — não fazem parte
-    // deste pedido.
+    // pelo Coach. As séries e o objetivo por exercício vêm já no pedido
+    // (body.sets, body.exercises_meta) — registo unificado, F1.
     if (body.mode === "manual") {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date ?? "")) {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
@@ -1155,28 +1172,14 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
           classTypes = Array.isArray(existing.class_types) ? existing.class_types : [];
         }
 
-        // deno-lint-ignore no-explicit-any
-        const rawSets = Array.isArray(body.sets) ? body.sets : [];
-        if (rawSets.length > 200) {
-          return jsonResponse({ error: "Máximo de 200 séries por sessão." }, 400);
+        if (Array.isArray(body.sets) && body.sets.length > MAX_SETS) {
+          return jsonResponse({ error: `Máximo de ${MAX_SETS} séries por sessão.` }, 400);
         }
-        // deno-lint-ignore no-explicit-any
-        const setRows = rawSets
-          // deno-lint-ignore no-explicit-any
-          .map((s: any, i: number) => {
-            const reps = Number(s?.reps);
-            const weight = Number(s?.weight);
-            return {
-              exercise_name: typeof s?.exercise_name === "string" ? s.exercise_name.trim().slice(0, 120) : "",
-              set_index: Number.isFinite(Number(s?.set_index)) ? Number(s.set_index) : i,
-              reps: Number.isFinite(reps) ? reps : null,
-              weight: Number.isFinite(weight) ? weight : null,
-              one_rep_max_est: Number.isFinite(Number(s?.one_rep_max_est)) ? Number(s.one_rep_max_est) : null,
-              session_id: sessionId,
-              user_id: userId,
-            };
-          })
-          .filter((r: { exercise_name: string }) => r.exercise_name);
+        const setRows = parseManualSets(body.sets)
+          .map((r) => ({ ...r, session_id: sessionId, user_id: userId }));
+        // Um cliente antigo não manda exercises_meta: o que lá estava fica.
+        const editMetaValue = Array.isArray(body.exercises_meta) ? parseExercisesMeta(body.exercises_meta) : undefined;
+        const editMeta = editMetaValue !== undefined ? { exercises_meta: editMetaValue } : {};
 
         const { categories, usage: inferUsage } = await resolveCategories();
         const finalName = nameFor(categories);
@@ -1190,6 +1193,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
             class_types: classTypes,
             ...userMetrics,
             notes: rawNotes,
+            ...editMeta,
           })
           .eq("id", sessionId)
           .select()
@@ -1205,6 +1209,11 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
           if (setsError) return jsonResponse({ error: `Falha a gravar séries: ${setsError.message}` }, 500);
           savedSets = data ?? [];
         }
+        // A mesma sessão, outra vez: não conta mais uma execução.
+        await updateExerciseLocker(sb, {
+          userId, sessionDate: body.date, sessionCategories: categories, sets: setRows,
+          meta: editMetaValue ?? null, increment: false,
+        });
 
         const coachUsage = await attachGymCoachNotes(sb, userId, updatedSession, {
           date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes, sets: setRows,
@@ -1216,6 +1225,12 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
           ...usageField(addUsage(inferUsage, coachUsage)),
         });
       }
+
+      if (Array.isArray(body.sets) && body.sets.length > MAX_SETS) {
+        return jsonResponse({ error: `Máximo de ${MAX_SETS} séries por sessão.` }, 400);
+      }
+      const newSets = parseManualSets(body.sets);
+      const newMeta = parseExercisesMeta(body.exercises_meta);
 
       const { categories, usage: inferUsage } = await resolveCategories();
       const finalName = nameFor(categories);
@@ -1235,16 +1250,34 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
           photo_paths: [],
           status: "concluido",
           notes: rawNotes,
+          exercises_meta: newMeta,
         })
         .select()
         .single();
       if (sessionError) return jsonResponse({ error: `Falha a gravar sessão: ${sessionError.message}` }, 500);
 
+      // Séries falhadas desfazem a sessão — uma sessão sem as séries que o
+      // atleta escreveu seria um registo diferente do que ele fez.
+      let savedNewSets: unknown[] = [];
+      if (newSets.length) {
+        const { data, error: setsError } = await sb.from("workout_session_sets")
+          .insert(newSets.map((r) => ({ ...r, session_id: session.id, user_id: userId })))
+          .select();
+        if (setsError) {
+          await sb.from("workout_sessions").delete().eq("id", session.id);
+          return jsonResponse({ error: `Falha a gravar séries: ${setsError.message}` }, 500);
+        }
+        savedNewSets = data ?? [];
+        await updateExerciseLocker(sb, {
+          userId, sessionDate: body.date, sessionCategories: categories, sets: newSets, meta: newMeta, increment: true,
+        });
+      }
+
       const coachUsage = await attachGymCoachNotes(sb, userId, session, {
-        date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes,
+        date: body.date, kind, categories, classTypes, metrics: userMetrics, notes: rawNotes, sets: newSets,
       }, geminiKey, coachDeadline);
 
-      return jsonResponse({ session, ...usageField(addUsage(inferUsage, coachUsage)) });
+      return jsonResponse({ session, sets: savedNewSets, ...usageField(addUsage(inferUsage, coachUsage)) });
     }
 
     // ── Modo reanálise por foto: session_id presente sem mode manual ───
@@ -1406,6 +1439,7 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
         photo_paths: photoPaths,
         status: "concluido",
         notes: rawNotes,
+        exercises_meta: parseExercisesMeta(body.exercises_meta),
       })
       .select()
       .single();
@@ -1414,7 +1448,10 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
       return jsonResponse({ error: `Falha a gravar sessão: ${sessionError.message}` }, 500);
     }
 
-    const setRows = flattenSets(analysis.exercises)
+    // As séries que o atleta escreveu no formulário ganham às que a Carol leu
+    // nos prints (registo unificado, F1) — ele viu o print, o modelo só o leu.
+    const typedSets = parseManualSets(body.sets);
+    const setRows = (typedSets.length ? typedSets : flattenSets(analysis.exercises))
       .map((row) => ({ ...row, session_id: session.id, user_id: userId }));
     let savedSets: unknown[] = [];
     if (setRows.length) {
@@ -1425,6 +1462,9 @@ Deno.serve(withUsageRecording("analyze-gym", async (req) => {
         return jsonResponse({ error: `Falha a gravar séries: ${setsError.message}` }, 500);
       }
       savedSets = data ?? [];
+      await updateExerciseLocker(sb, {
+        userId, sessionDate: date, sessionCategories: mergedCategories, sets: setRows, increment: true,
+      });
     }
 
     // 4. Comentário do Coach (best-effort — ver attachGymCoachNotes)

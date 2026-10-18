@@ -1,82 +1,258 @@
-import React from 'react';
-import { X, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Trash2, Check } from 'lucide-react';
 import AddButton from '../AddButton';
+import Chip from '../Chip';
+import ExerciseLockerPicker from './ExerciseLockerPicker';
+import {
+  cardioFieldsOf, describeLast, distanceUnitOf, exerciseType, lockerEntryFor, newExercise, newSet, nudgeSet, renameExercise, setSuggestion, toggleSetDone,
+} from '../../../utils/gymSets';
 
-/* Os exercícios e as séries de uma sessão de ginásio: nome, reps e kg por
-   série. Só apresentação — o estado (`exercises`) e as operações vivem em
-   quem o usa, que também decide o que é "sujo" via `onDirty`. Extraído de
-   Gym/GymRegistration.jsx (registo unificado, F1-pré) sem mudar o
-   comportamento nem o aspeto. */
-export default function ExerciseEditor({ exercises, onAddExercise, onRemoveExercise, onUpdateExercise, onAddSet, onRemoveSet, onUpdateSet, onDirty }) {
+/* Os exercícios de uma sessão de ginásio — registo unificado, F1
+   (specs/plano-registo-plano-coach.md). Serve a criação e a edição:
+   · por exercício, um OBJETIVO (decisão 1) e o tipo, força ou cardio;
+   · força: séries de reps × kg, com o ✓ do modo Live — confirma a série e,
+     vazia, preenche-a com a sugestão (a série anterior ou a última vez, do
+     Armário); por baixo da série ativa, o ajuste rápido ±2,5 kg / ±1 rep;
+   · cardio: tempo, distância e voltas consoante o exercício (decisão 4);
+   · "+ Adicionar do Armário": a pesquisa no catálogo pessoal (decisão 7).
+   O estado vive em quem o usa: `exercises` + `onChange(next)`. */
+
+const inputCls = 'min-h-[44px] bg-[var(--surface-glass)] border border-[var(--border-glass)] rounded-lg px-2 text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)] placeholder-[var(--text-muted)]';
+const quietBtn = 'tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0';
+
+function StrengthSets({ ex, last, onExercise }) {
+  const activeIdx = ex.sets.findIndex(s => !s.done);
+  const patchSet = (key, patch) => onExercise({ ...ex, sets: ex.sets.map(s => (s.key === key ? { ...s, ...patch } : s)) });
   return (
-    <div className="mb-4">
-      <div className="flex items-center justify-between mb-1.5">
-        <label className="text-[11px] text-[var(--text-3)]">Exercícios e séries</label>
-        <AddButton
-          onClick={onAddExercise}
-          type="button"
-          variant="gym"
-        >
-          Adicionar exercício
-        </AddButton>
-      </div>
-      {exercises.length === 0 ? (
-        <p className="text-[11px] text-[var(--text-3)]">Sem exercícios ainda.</p>
-      ) : (
-        <div className="space-y-2">
-          {exercises.map(ex => (
-            <div key={ex.key} className="bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <input
-                  type="text"
-                  aria-label="Nome do exercício"
-                  value={ex.name}
-                  onChange={e => { onUpdateExercise(ex.key, { name: e.target.value }); onDirty(); }}
-                  placeholder="Nome do exercício"
-                  className="flex-1 text-xs font-bold text-white outline-none bg-transparent border-b border-[var(--border-glass)] focus:border-[var(--border-control)] pb-1"
-                />
-                <button onClick={() => onRemoveExercise(ex.key)} type="button" aria-label="Remover exercicio" className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-              <div className="space-y-1.5">
-                {ex.sets.map((s, idx) => (
-                  <div key={s.key} className="flex items-center gap-2">
-                    <span className="text-[11px] text-[var(--text-3)] w-14 shrink-0">Série {idx + 1}</span>
-                    <input
-                      type="number"
-                      aria-label={`Repetições da série ${idx + 1}`}
-                      value={s.reps}
-                      onChange={e => { onUpdateSet(ex.key, s.key, { reps: e.target.value }); onDirty(); }}
-                      placeholder="Reps"
-                      className="w-16 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
-                    />
-                    <input
-                      type="number"
-                      step="0.5"
-                      aria-label={`Peso da série ${idx + 1} (kg)`}
-                      value={s.weight}
-                      onChange={e => { onUpdateSet(ex.key, s.key, { weight: e.target.value }); onDirty(); }}
-                      placeholder="kg"
-                      className="w-16 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-lg px-2 py-1 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)]"
-                    />
-                    <button onClick={() => onRemoveSet(ex.key, s.key)} type="button" aria-label={`Remover serie ${idx + 1}`} className="tap-44 text-[var(--text-3)] hover:text-[var(--danger)] shrink-0">
-                      <X size={13} />
-                    </button>
-                  </div>
-                ))}
-                <AddButton
-                  onClick={() => onAddSet(ex.key)}
-                  type="button"
-                  variant="gym"
+    <div className="space-y-1.5">
+      {ex.sets.map((s, idx) => {
+        const sug = setSuggestion(ex, idx, last);
+        return (
+          <div key={s.key}>
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] text-[var(--text-3)] w-11 shrink-0">Série {idx + 1}</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                aria-label={`Repetições da série ${idx + 1}`}
+                value={s.reps}
+                onChange={e => patchSet(s.key, { reps: e.target.value })}
+                placeholder={sug?.reps !== '' && sug?.reps != null ? String(sug.reps) : 'Reps'}
+                className={`${inputCls} w-14`}
+              />
+              <span className="text-[11px] text-[var(--text-3)]">×</span>
+              <input
+                type="number"
+                inputMode="decimal"
+                step="0.5"
+                aria-label={`Peso da série ${idx + 1} (kg)`}
+                value={s.weight}
+                onChange={e => patchSet(s.key, { weight: e.target.value })}
+                placeholder={sug?.weight !== '' && sug?.weight != null ? String(sug.weight) : 'kg'}
+                className={`${inputCls} w-14`}
+              />
+              <button
+                type="button"
+                onClick={() => onExercise(toggleSetDone(ex, s.key, last))}
+                aria-pressed={!!s.done}
+                aria-label={s.done ? `Série ${idx + 1} feita — desmarcar` : `Marcar série ${idx + 1} como feita`}
+                className="tap-44 shrink-0"
+              >
+                <span
+                  className="w-8 h-8 rounded-full flex items-center justify-center border transition-colors"
+                  style={s.done
+                    ? { background: 'color-mix(in srgb, var(--mod-ginasio-to) 18%, transparent)', borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)', color: 'var(--mod-ginasio-to)' }
+                    : { borderColor: 'var(--border-glass-strong)', color: 'var(--text-3)' }}
                 >
-                  Série
-                </AddButton>
-              </div>
+                  <Check size={15} strokeWidth={3} />
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onExercise({ ...ex, sets: ex.sets.filter(x => x.key !== s.key) })}
+                aria-label={`Remover serie ${idx + 1}`}
+                className={quietBtn}
+              >
+                <X size={13} />
+              </button>
             </div>
+            {idx === activeIdx && (
+              <div className="flex gap-1 mt-1 ml-11" role="group" aria-label={`Ajuste rápido da série ${idx + 1}`}>
+                {[['weight', -2.5, '−2,5 kg'], ['weight', 2.5, '+2,5 kg'], ['reps', -1, '−1 rep'], ['reps', 1, '+1 rep']].map(([f, d, label]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => onExercise(nudgeSet(ex, s.key, f, d, last))}
+                    className="tap-h-44 px-2 rounded-full text-[11px] font-medium border border-[var(--border-glass)] text-[var(--text-3)] hover:text-[var(--text-1)]"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <AddButton onClick={() => onExercise({ ...ex, sets: [...ex.sets, newSet()] })} type="button" variant="gym">
+        Série
+      </AddButton>
+    </div>
+  );
+}
+
+const CARDIO_LABEL = { duration: 'Tempo (min)', laps: 'Voltas' };
+
+function CardioRow({ ex, onExercise }) {
+  const fields = cardioFieldsOf(ex);
+  const unit = distanceUnitOf(ex);
+  const s = ex.sets[0] || newSet();
+  const patch = (p) => onExercise({ ...ex, sets: [{ ...s, ...p }, ...ex.sets.slice(1)] });
+  const keyOf = { duration: 'durationMin', distance: 'distance', laps: 'laps' };
+  const missing = ['distance', 'laps'].filter(f => !fields.includes(f));
+  return (
+    <div>
+      <div className="flex flex-wrap items-end gap-2">
+        {fields.map(f => {
+          const label = f === 'distance' ? (unit === 'm' ? 'Distância (m)' : 'Distância (km)') : CARDIO_LABEL[f];
+          return (
+            <label key={f} className="flex flex-col gap-1 text-[11px] text-[var(--text-3)]">
+              {label}
+              <input
+                type="number"
+                inputMode="decimal"
+                aria-label={`${label} — ${ex.name || 'exercício'}`}
+                value={s[keyOf[f]]}
+                onChange={e => patch({ [keyOf[f]]: e.target.value })}
+                className={`${inputCls} w-24`}
+              />
+            </label>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => patch({ done: !s.done })}
+          aria-pressed={!!s.done}
+          aria-label={s.done ? 'Feito — desmarcar' : 'Marcar como feito'}
+          className="tap-44 shrink-0"
+        >
+          <span
+            className="w-8 h-8 rounded-full flex items-center justify-center border"
+            style={s.done
+              ? { background: 'color-mix(in srgb, var(--mod-ginasio-to) 18%, transparent)', borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)', color: 'var(--mod-ginasio-to)' }
+              : { borderColor: 'var(--border-glass-strong)', color: 'var(--text-3)' }}
+          >
+            <Check size={15} strokeWidth={3} />
+          </span>
+        </button>
+      </div>
+      {missing.length > 0 && (
+        <div className="flex gap-1.5 mt-1.5">
+          {missing.map(f => (
+            <button
+              key={f}
+              type="button"
+              onClick={() => onExercise({ ...ex, fields: [...fields, f] })}
+              className="tap-h-44 px-2.5 rounded-full text-[11px] font-medium border border-dashed border-[var(--border-glass-strong)] text-[var(--text-3)]"
+            >
+              + {f === 'distance' ? (unit === 'm' ? 'metros' : 'km') : 'voltas'}
+            </button>
           ))}
         </div>
       )}
     </div>
   );
 }
+
+export default function ExerciseEditor({ exercises, onChange, locker = null, lockerRows = [], onOpenLocker }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const replace = (key, next) => onChange(exercises.map(e => (e.key === key ? next : e)));
+  const remove = (key) => onChange(exercises.filter(e => e.key !== key));
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+        <span className="text-[11px] text-[var(--text-3)]">Exercícios e séries</span>
+        <div className="flex gap-1.5">
+          <AddButton
+            onClick={() => { setPickerOpen(o => !o); if (!pickerOpen && onOpenLocker) onOpenLocker(); }}
+            type="button"
+            variant="gym"
+            aria-expanded={pickerOpen}
+          >
+            Do Armário
+          </AddButton>
+          <AddButton onClick={() => onChange([...exercises, newExercise({ type: 'forca' })])} type="button" variant="gym">
+            Adicionar exercício
+          </AddButton>
+        </div>
+      </div>
+
+      {pickerOpen && (
+        <ExerciseLockerPicker
+          rows={lockerRows}
+          onPick={(ex) => { onChange([...exercises, ex]); }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {exercises.length === 0 ? (
+        <p className="text-[11px] text-[var(--text-3)]">Sem exercícios ainda.</p>
+      ) : (
+        <div className="space-y-2">
+          {exercises.map(ex => {
+            const type = exerciseType(ex);
+            const last = lockerEntryFor(locker, ex.name);
+            const lastText = describeLast(last);
+            return (
+              <div key={ex.key} className="bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <input
+                    type="text"
+                    aria-label="Nome do exercício"
+                    value={ex.name}
+                    onChange={e => replace(ex.key, renameExercise(ex, e.target.value))}
+                    placeholder="Nome do exercício"
+                    className="flex-1 min-w-0 min-h-[44px] text-sm font-bold text-white outline-none bg-transparent border-b border-[var(--border-glass)] focus:border-[var(--border-control)]"
+                  />
+                  <button onClick={() => remove(ex.key)} type="button" aria-label="Remover exercicio" className={quietBtn}>
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5 mb-2" role="group" aria-label="Tipo de exercício">
+                  {[['forca', 'Força'], ['cardio', 'Cardio']].map(([k, label]) => (
+                    <Chip
+                      key={k}
+                      active={type === k}
+                      aria-pressed={type === k}
+                      variant="gym"
+                      type="button"
+                      onClick={() => type !== k && replace(ex.key, { ...ex, type: k, sets: [newSet()] })}
+                    >
+                      {label}
+                    </Chip>
+                  ))}
+                  {lastText && type === 'forca' && (
+                    <span className="text-[11px] text-[var(--text-3)] ml-auto">da última vez: {lastText}</span>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  aria-label={`Objetivo — ${ex.name || 'exercício'}`}
+                  value={ex.goal || ''}
+                  maxLength={200}
+                  onChange={e => replace(ex.key, { ...ex, goal: e.target.value })}
+                  placeholder="Objetivo (opcional) — ex.: descida controlada em 3 s"
+                  className="w-full min-h-[44px] mb-2 bg-transparent border-b border-[var(--border-glass)] text-[12px] text-white outline-none focus:border-[var(--mod-ginasio-to)] placeholder-[var(--text-muted)]"
+                />
+                {type === 'cardio'
+                  ? <CardioRow ex={ex} onExercise={(next) => replace(ex.key, next)} />
+                  : <StrengthSets ex={ex} last={last} onExercise={(next) => replace(ex.key, next)} />}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+

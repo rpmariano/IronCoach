@@ -294,6 +294,11 @@ export const useAppStore = create((set, get) => ({
   // De quem é a despensa carregada — outra conta no mesmo separador não
   // herda as sugestões da anterior (revisão pré-master).
   pantryUserId: null,
+  // O Armário de Exercícios (registo unificado, F1 — athlete_exercises):
+  // o catálogo pessoal que a analyze-gym enche sozinha. Lido a pedido
+  // (loadExerciseLocker), pelo registo de ginásio.
+  exerciseLocker: [],
+  exerciseLockerUserId: null,
   // Check-ins diários (Fase 2 de specs/carol-omnisciencia-omnipresenca.md):
   // os últimos 120 dias, para o ciclo ter margem. Um por dia.
   dailyCheckins: [],
@@ -768,6 +773,29 @@ export const useAppStore = create((set, get) => ({
     }
   },
   setPantryFoods: (pantryFoods) => set({ pantryFoods }),
+
+  /* O Armário de Exercícios. Nunca rejeita: sem ele (modo demo, sem rede) o
+     registo de ginásio só não sugere "da última vez" nem a pesquisa. */
+  loadExerciseLocker: async () => {
+    const whoIsIn = () => get().session?.user?.id || get().profile?.id;
+    const userId = whoIsIn();
+    if (!userId) return;
+    try {
+      const { data, error } = await supabase
+        .from('athlete_exercises')
+        .select('*')
+        .eq('user_id', userId)
+        .order('last_performed_at', { ascending: false, nullsFirst: false })
+        .limit(500);
+      if (whoIsIn() !== userId) return;
+      if (error) throw error;
+      set({ exerciseLocker: data || [], exerciseLockerUserId: userId });
+    } catch (e) {
+      console.warn('Armário de Exercícios não lido', e);
+      if (whoIsIn() !== userId) return;
+      if (get().exerciseLockerUserId !== userId) set({ exerciseLocker: [], exerciseLockerUserId: userId });
+    }
+  },
 
   /* Marca (ou desmarca) um dia como incompleto na Nutrição (2026-10-06): o
      atleta só registou parte do dia e não quer que conte nas médias. O ecrã

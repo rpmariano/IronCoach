@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
@@ -6,14 +6,14 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { Dumbbell, ImagePlus, Camera, PencilLine, Users, X } from 'lucide-react';
+import { Dumbbell, ImagePlus, Users, X } from 'lucide-react';
 import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import ChipPicker from '../shared/registration/ChipPicker';
 import ExerciseEditor from '../shared/registration/ExerciseEditor';
-import { parseDurationInput, formatDurationInput, flattenExercises } from '../../utils/gymSets';
+import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex } from '../../utils/gymSets';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -73,11 +73,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [customCategory, setCustomCategory] = useState('');
   const [name, setName] = useState('');
   const [notes, setNotes] = useState(planItem?.notes || '');
-  // Um único cartão, forma de introdução à escolha — mesmo padrão da
-  // Corrida/Nutrição/Corpo: só um dos dois blocos fica visível/clicável a
-  // cada vez, e as duas formas passam pelo Coach. Vindo do plano, entra
-  // direto em manual — os campos já estão preenchidos.
-  const [entryMethod, setEntryMethod] = useState(planItem ? 'manual' : 'foto'); // 'foto' | 'manual'
+  /* Um só formulário (registo unificado, F1 — specs/plano-registo-plano-coach.md
+     §1): os prints são opcionais e os campos estão sempre visíveis. Com
+     prints, a Carol lê-os; o que o atleta escreveu ganha sempre ao que ela
+     ler (analyze-gym). Já não há "Foto | Manual" à escolha. */
   const [errorMsg, setErrorMsg] = useState('');
 
   // Limpa o item do plano do store assim que foi consumido para os estados
@@ -96,9 +95,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const analysis = useAnalysis();
   const isAnalyzing = analysis.isAnalyzing;
 
-  // Manual — métricas do relógio; séries/repetições/carga só se gerem ao
-  // editar uma sessão já criada (ver exercises abaixo) — não fazem parte do
-  // registo inicial (nem por foto, nem manual), tal como sempre foi.
+  // Métricas do relógio — opcionais, com ou sem prints.
   const [durationStr, setDurationStr] = useState(planItem?.target_duration_min ? String(planItem.target_duration_min) : '');
   const [calories, setCalories] = useState('');
   const [avgHr, setAvgHr] = useState('');
@@ -106,12 +103,17 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [exertion, setExertion] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Edição — exercícios/séries só se gerem aqui (a sessão já existe). Séries,
-  // métricas, categorias, tipo e observações são dados ANALÍTICOS: mudá-los
-  // muda a análise, por isso guardar passa pelo Coach e regenera-a. Mudar só
-  // a data ou o nome é um update direto, sem custo de API (mesmo padrão da
-  // Nutrição — ver MealRegistration.jsx e PRD 3.2/3.3).
-  const [exercises, setExercises] = useState([]); // [{ key, name, sets: [{key, reps, weight}] }]
+  // Exercícios e séries — na criação (modo Live: picar as séries durante a
+  // sessão) e na edição. Séries, objetivos, métricas, categorias, tipo e
+  // observações são dados ANALÍTICOS: numa edição, mudá-los passa pelo Coach
+  // e regenera a análise. Mudar só a data ou o nome é um update direto, sem
+  // custo de API (mesmo padrão da Nutrição — ver MealRegistration.jsx).
+  // Forma: utils/gymSets.js (newExercise).
+  const [exercises, setExercises] = useState([]);
+  // O Armário de Exercícios: "da última vez" e "+ Do Armário".
+  const exerciseLocker = useAppStore(s => s.exerciseLocker);
+  const locker = useMemo(() => lockerIndex(exerciseLocker), [exerciseLocker]);
+  useEffect(() => { useAppStore.getState().loadExerciseLocker?.(); }, []);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -221,6 +223,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     maxHr: v.maxHr === '' || v.maxHr == null ? null : Number(v.maxHr),
     exertion: v.exertion === '' || v.exertion == null ? null : Number(v.exertion),
     sets: v.sets,
+    meta: v.meta,
   });
 
   const currentSignature = () => analyticalSignature({
@@ -229,6 +232,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     duration: parseDurationInput(durationStr),
     calories, avgHr, maxHr, exertion,
     sets: flattenExercises(exercises),
+    meta: buildExercisesMeta(exercises),
   });
 
   useEffect(() => {
@@ -243,19 +247,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     const persisted = alreadyRestored ? null : restorePersistedFormDraft(draftStorageKey);
     restoredForKeyRef.current = draftStorageKey;
 
-    const grouped = new Map();
-    for (const s of session.workout_session_sets || []) {
-      const key = s.exercise_name || 'Exercício';
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key).push(s);
-    }
-    const canonicalExercises = Array.from(grouped.entries()).map(([exName, sets], i) => ({
-      key: `${Date.now()}-${i}`,
-      name: exName,
-      sets: sets
-        .sort((a, b) => (a.set_index ?? 0) - (b.set_index ?? 0))
-        .map((s, j) => ({ key: s.id || `${Date.now()}-${i}-${j}`, reps: s.reps ?? '', weight: s.weight ?? '' })),
-    }));
+    const canonicalExercises = exercisesFromSession(session);
     setDate(persisted?.date ?? (session.date || todayISO()));
     // A BD devolve 'HH:MM:SS'; o input só fala 'HH:MM' (ver startTime.js).
     setStartTime(persisted?.startTime ?? startTimeInputValue(session.start_time));
@@ -271,7 +263,6 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     setMaxHr(persisted?.maxHr ?? (session.max_hr ?? ''));
     setExertion(persisted?.exertion ?? (session.exertion ?? ''));
     setExercises(persisted?.exercises ?? canonicalExercises);
-    setEntryMethod(persisted?.entryMethod ?? 'manual');
     // A assinatura de partida compara sempre contra o valor CANÓNICO (do
     // servidor), nunca contra o rascunho restaurado — é assim que um
     // rascunho com séries/métricas diferentes das gravadas dispara "Guardar
@@ -288,6 +279,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       maxHr: session.max_hr,
       exertion: session.exertion,
       sets: flattenExercises(canonicalExercises),
+      meta: buildExercisesMeta(canonicalExercises),
     }));
     if (persisted) setIsFormDirty(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -312,7 +304,6 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     if (persisted.customCategory !== undefined) setCustomCategory(persisted.customCategory);
     if (persisted.name !== undefined) setName(persisted.name);
     if (persisted.notes !== undefined) setNotes(persisted.notes);
-    if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
     if (persisted.durationStr !== undefined) setDurationStr(persisted.durationStr);
     if (persisted.calories !== undefined) setCalories(persisted.calories);
     if (persisted.avgHr !== undefined) setAvgHr(persisted.avgHr);
@@ -327,7 +318,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
-    date, startTime, kind, categories, classTypes, customCategory, name, notes, entryMethod,
+    date, startTime, kind, categories, classTypes, customCategory, name, notes,
     durationStr, calories, avgHr, maxHr, exertion, exercises,
   // Com a confirmação à vista o registo está gravado: o rascunho já foi
   // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
@@ -456,6 +447,18 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     return { ...session, start_time: value };
   };
 
+  // O que o formulário manda em todos os caminhos: as métricas do relógio, as
+  // séries (força e cardio) e o objetivo de cada exercício.
+  const metricsAndSetsBody = () => ({
+    duration_seconds: parseDurationInput(durationStr),
+    calories_kcal: calories ? parseInt(calories) : null,
+    avg_hr: avgHr ? parseInt(avgHr) : null,
+    max_hr: maxHr ? parseInt(maxHr) : null,
+    exertion: exertion ? parseInt(exertion) : null,
+    sets: flattenExercises(exercises),
+    exercises_meta: buildExercisesMeta(exercises),
+  });
+
   // A tarefa, separada do gesto: é ela que o "Tentar de novo" repete, com as
   // mesmas fotos e os mesmos campos.
   const analyzePhotosTask = async () => {
@@ -470,6 +473,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           categories,
           class_types: kind === 'aula' ? classTypes : [],
           notes: notes.trim() || null,
+          ...metricsAndSetsBody(),
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
@@ -482,6 +486,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       const sessionWithSets = await persistSessionStartTime(analysed);
       setGymSessions([sessionWithSets, ...gymSessions]);
       await completePlanItemForSession(sessionWithSets);
+      useAppStore.getState().loadExerciseLocker?.();
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     }
   };
@@ -512,11 +517,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           categories,
           class_types: kind === 'aula' ? classTypes : [],
           notes: notes.trim() || null,
-          duration_seconds: parseDurationInput(durationStr),
-          calories_kcal: calories ? parseInt(calories) : null,
-          avg_hr: avgHr ? parseInt(avgHr) : null,
-          max_hr: maxHr ? parseInt(maxHr) : null,
-          exertion: exertion ? parseInt(exertion) : null,
+          ...metricsAndSetsBody(),
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
@@ -534,6 +535,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       // do formulário, que pode ter sido alterada face ao planned_date (ver
       // specs/plano-de-treino.md §4-§5.2).
       await completePlanItemForSession(sessionWithSets);
+      useAppStore.getState().loadExerciseLocker?.();
 
       finishCreateAndGoToCalendar(sessionWithSets, 'Treino registado');
     } catch (err) {
@@ -571,12 +573,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             categories,
             class_types: kind === 'aula' ? classTypes : [],
             notes: notes.trim() || null,
-            duration_seconds: parseDurationInput(durationStr),
-            calories_kcal: calories ? parseInt(calories) : null,
-            avg_hr: avgHr ? parseInt(avgHr) : null,
-            max_hr: maxHr ? parseInt(maxHr) : null,
-            exertion: exertion ? parseInt(exertion) : null,
-            sets: flattenExercises(exercises),
+            ...metricsAndSetsBody(),
           },
         }, ANALYZE_TIMEOUT_MS);
         if (error) throw new Error(error);
@@ -606,19 +603,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     }
   };
 
-  // Gestão local de exercícios/séries (só usada em edição)
-  const handleAddExercise = () => {
-    setExercises(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: '', sets: [{ key: `${Date.now()}-0`, reps: '', weight: '' }] }]);
-  };
-  const removeExercise = (exKey) => setExercises(prev => prev.filter(e => e.key !== exKey));
-  const updateExercise = (exKey, patch) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, ...patch } : e)));
-  const addSet = (exKey) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: [...e.sets, { key: `${Date.now()}-${e.sets.length}`, reps: '', weight: '' }] } : e)));
-  const removeSet = (exKey, setKey) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: e.sets.filter(s => s.key !== setKey) } : e)));
-  const updateSet = (exKey, setKey, patch) => setExercises(prev => prev.map(e => (e.key === exKey ? { ...e, sets: e.sets.map(s => (s.key === setKey ? { ...s, ...patch } : s)) } : e)));
-
-
   /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
      no fim do formulário, onde ficava abaixo da dobra. Rótulos inalterados. */
+  // Com prints, a Carol lê-os (e o que está escrito ganha); sem prints, grava
+  // o que está escrito. A mesma ação, o mesmo rótulo.
+  const handleAnalyze = () => (photos.length ? handleAnalyzePhotos() : handleSaveManual());
   const primaryAction = isEditing ? (
     <CoachAnalyzeButton
       onClick={handleSaveEdit}
@@ -626,18 +615,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       busy={isSaving}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
-  ) : entryMethod === 'foto' ? (
-    <CoachAnalyzeButton
-      onClick={handleAnalyzePhotos}
-      disabled={!photos.length || isAnalyzing}
-      busy={isAnalyzing}
-      label="Analisar treino"
-    />
   ) : (
     <CoachAnalyzeButton
-      onClick={handleSaveManual}
-      disabled={isSaving}
-      busy={isSaving}
+      onClick={handleAnalyze}
+      disabled={isSaving || isAnalyzing}
+      busy={isSaving || isAnalyzing}
       label="Analisar treino"
     />
   );
@@ -689,11 +671,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           <AnalysisFailure
             detail={analysis.error}
             onRetry={analysis.retry}
-            onManual={!isEditing && entryMethod === 'foto'
-              ? () => { setEntryMethod('manual'); analysis.reset(); }
+            onManual={!isEditing && photos.length
+              ? () => { setPhotos([]); analysis.reset(); setIsFormDirty(true); }
               : undefined}
           >
-            As fotos ficaram guardadas. Podes tentar outra vez ou escrever o treino — eu faço as contas na mesma.
+            As fotos ficaram guardadas. Podes tentar outra vez ou registar só o que escreveste — eu faço as contas na mesma.
           </AnalysisFailure>
         )}
 
@@ -751,6 +733,50 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           </div>
         </div>
 
+        {/* Prints (opcional) — escondido a editar: editar é sempre pelos
+            campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
+        {!isEditing && (
+          <>
+            {photos.length > 0 ? (
+              <>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  {photos.map((p, i) => (
+                    <div key={i} className="relative aspect-square">
+                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
+                      <button
+                        onClick={() => removePhoto(i)}
+                        aria-label={`Remover print ${i + 1}`}
+                        className="tap-44 absolute -top-1.5 -right-1.5 text-[var(--text-3)] hover:text-[var(--danger)] transition"
+                      >
+                        <span className="bg-white/90 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex items-center justify-center">
+                          <X size={14} />
+                        </span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
+                </div>
+                {photos.length < MAX_PHOTOS && (
+                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-ginasio-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-ginasio-to)]/5 transition mb-4">
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
+                    <ImagePlus className="w-4 h-4" style={{ color: 'var(--mod-ginasio-to)' }} />
+                    <span className="text-[12px] font-bold" style={{ color: 'var(--mod-ginasio-to)' }}>Adicionar outro print</span>
+                  </label>
+                )}
+              </>
+            ) : (
+              <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-4 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-4 bg-[var(--surface-glass)]">
+                <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
+                <ImagePlus className="w-6 h-6 text-[var(--text-3)] mx-auto mb-2" />
+                <p className="text-xs text-[var(--text-3)] font-semibold">Prints da app de treino (opcional)</p>
+                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Hevy, Strong… Junta os ecrãs da mesma sessão e eu leio o que não escreveres abaixo.</p>
+              </label>
+            )}
+          </>
+        )}
+
         <div className="mb-4">
           <label htmlFor="gr-nome-da-sessao-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             Nome da sessão (opcional) — ex.: "{kind === 'aula' ? 'Aula de HIIT' : 'Peito e Tríceps'}"
@@ -783,164 +809,84 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           onToggle={(c) => { handleToggleCategory(c); setIsFormDirty(true); }}
         />
 
-        {/* Como queres registar? — escondido a editar: editar é sempre pelos
-            campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
-        {!isEditing && (
-          <div className="mb-4">
-            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Como queres registar?</label>
-            <div className="flex gap-1.5">
-              <Chip
-                active={entryMethod === 'foto'}
-                variant="gym"
-                rounded="xl"
-                onClick={() => setEntryMethod('foto')}
-                className="flex-1 py-2.5 gap-1.5"
-                type="button"
-              >
-                <Camera size={14} /> Foto
-              </Chip>
-              <Chip
-                active={entryMethod === 'manual'}
-                variant="gym"
-                rounded="xl"
-                onClick={() => setEntryMethod('manual')}
-                className="flex-1 py-2.5 gap-1.5"
-                type="button"
-              >
-                <PencilLine size={14} /> Manual
-              </Chip>
-            </div>
-          </div>
-        )}
+        <ExerciseEditor
+          exercises={exercises}
+          onChange={(next) => { setExercises(next); setIsFormDirty(true); }}
+          locker={locker}
+          lockerRows={exerciseLocker}
+          onOpenLocker={() => useAppStore.getState().loadExerciseLocker?.()}
+        />
 
-        {entryMethod === 'foto' ? (
-          <>
-            {photos.length > 0 ? (
-              <>
-                <div className="grid grid-cols-3 gap-2 mb-2">
-                  {photos.map((p, i) => (
-                    <div key={i} className="relative aspect-square">
-                      <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
-                      <button
-                        onClick={() => removePhoto(i)}
-                        aria-label={`Remover print ${i + 1}`}
-                        className="tap-44 absolute -top-1.5 -right-1.5 text-[var(--text-3)] hover:text-[var(--danger)] transition"
-                      >
-                        <span className="bg-white/90 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex items-center justify-center">
-                          <X size={14} />
-                        </span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-[11px] text-[var(--text-3)]">{photos.length} foto(s) · máx {MAX_PHOTOS}</span>
-                </div>
-                {photos.length < MAX_PHOTOS && (
-                  <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-ginasio-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-ginasio-to)]/5 transition mb-4">
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                    <ImagePlus className="w-4 h-4" style={{ color: 'var(--mod-ginasio-to)' }} />
-                    <span className="text-[12px] font-bold" style={{ color: 'var(--mod-ginasio-to)' }}>Adicionar outro print</span>
-                  </label>
-                )}
-              </>
-            ) : (
-              <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-4 bg-[var(--surface-glass)]">
-                <input type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelect} />
-                <ImagePlus className="w-8 h-8 text-[var(--text-3)] mx-auto mb-2" />
-                <p className="text-xs text-[var(--text-3)] font-semibold">Escolhe os prints da app de treino (Hevy, Strong...)</p>
-                <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Junta os ecrãs da mesma sessão; eu leio os exercícios, as séries e as cargas. Podes corrigir depois de gravado.</p>
-              </label>
-            )}
-          </>
-        ) : (
-          <>
-            <label className="text-[11px] text-[var(--text-3)] mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
-            <div className="grid grid-cols-2 gap-2.5 mb-4">
-              <div>
-                <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Duração (ex.: 43m)</label>
-                <input id="gr-duracao-ex-43m"
-                  type="text"
-                  inputMode="text"
-                  value={durationStr}
-                  onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
-                  placeholder="Ex: 45m"
-                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-                />
-              </div>
-              <div>
-                <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Calorias (kcal)</label>
-                <input id="gr-calorias-kcal"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={calories}
-                  onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
-                  placeholder="Ex: 350"
-                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-                />
-              </div>
-              <div>
-                <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC média (bpm)</label>
-                <input id="gr-fc-media-bpm"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={avgHr}
-                  onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
-                  placeholder="Ex: 135"
-                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-                />
-              </div>
-              <div>
-                <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC máxima (bpm)</label>
-                <input id="gr-fc-maxima-bpm"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={maxHr}
-                  onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
-                  placeholder="Ex: 168"
-                  className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-                />
-              </div>
-            </div>
-            
-            <div className="mb-4">
-              <label className="text-[12px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
-              <div className="flex gap-1.5">
-                {Array.from({ length: 10 }).map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
-                    // min-h-[44px] em vez de aspect-square: dez celulas de 44px de LARGURA nao
-                    // cabem em 358px, e o piso do handoff e de altura (44 de largura so
-                    // se exige a botoes que sao so icone).
-                    className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-[var(--surface-glass)] border-[var(--border-glass)] text-[var(--text-3)]'}`}
-                  >
-                    {i + 1}
-                  </button>
-                ))}
-              </div>
-              <p className="text-[11px] text-[var(--text-3)] mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
-            </div>
-            {isEditing ? (
-              <ExerciseEditor
-                exercises={exercises}
-                onAddExercise={handleAddExercise}
-                onRemoveExercise={removeExercise}
-                onUpdateExercise={updateExercise}
-                onAddSet={addSet}
-                onRemoveSet={removeSet}
-                onUpdateSet={updateSet}
-                onDirty={() => setIsFormDirty(true)}
-              />
-            ) : (
-              <p className="text-[11px] text-[var(--text-3)] -mt-2 mb-4">Séries/repetições/carga adicionam-se ao editar o treino.</p>
-            )}
-          </>
-        )}
+        <label className="text-[11px] text-[var(--text-3)] mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
+        <div className="grid grid-cols-2 gap-2.5 mb-4">
+          <div>
+            <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Duração (ex.: 43m)</label>
+            <input id="gr-duracao-ex-43m"
+              type="text"
+              inputMode="text"
+              value={durationStr}
+              onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
+              placeholder="Ex: 45m"
+              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+            />
+          </div>
+          <div>
+            <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Calorias (kcal)</label>
+            <input id="gr-calorias-kcal"
+              type="number"
+              min="0"
+              step="1"
+              value={calories}
+              onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
+              placeholder="Ex: 350"
+              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+            />
+          </div>
+          <div>
+            <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC média (bpm)</label>
+            <input id="gr-fc-media-bpm"
+              type="number"
+              min="0"
+              step="1"
+              value={avgHr}
+              onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
+              placeholder="Ex: 135"
+              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+            />
+          </div>
+          <div>
+            <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC máxima (bpm)</label>
+            <input id="gr-fc-maxima-bpm"
+              type="number"
+              min="0"
+              step="1"
+              value={maxHr}
+              onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
+              placeholder="Ex: 168"
+              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+            />
+          </div>
+        </div>
+        
+        <div className="mb-4">
+          <label className="text-[12px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
+          <div className="flex gap-1.5">
+            {Array.from({ length: 10 }).map((_, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => { setExertion(exertion == i + 1 ? 0 : i + 1); setIsFormDirty(true); }}
+                // min-h-[44px] em vez de aspect-square: dez celulas de 44px de LARGURA nao
+                // cabem em 358px, e o piso do handoff e de altura (44 de largura so
+                // se exige a botoes que sao so icone).
+                className={`flex-1 min-h-[44px] rounded-lg flex items-center justify-center text-[13px] font-bold transition-colors border shadow-sm ${exertion == i + 1 ? 'bg-[var(--mod-ginasio-to)]/15 border-[var(--mod-ginasio-to)]/40 text-[var(--mod-ginasio-to)]' : 'bg-[var(--surface-glass)] border-[var(--border-glass)] text-[var(--text-3)]'}`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-[var(--text-3)] mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
+        </div>
 
         <div className="mb-4">
           <label htmlFor="gr-observacoes-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
@@ -979,7 +925,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       <UnsavedChangesModal
         isOpen={showUnsavedModal}
         isSaving={isSaving}
-        onSaveAndLeave={isEditing ? handleSaveEdit : handleSaveManual}
+        onSaveAndLeave={isEditing ? handleSaveEdit : handleAnalyze}
         onDiscardAndLeave={handleClose}
         onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
       />

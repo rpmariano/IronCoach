@@ -18,7 +18,7 @@ vi.mock('../../utils/firstRecord', () => ({ firstRecordMoment: () => null }));
 // `updates`/`updatePlanItem`: o store's completePlanItem escreve em
 // coach_plan_items (Regista sem vir do botão "Registar sessão" — pedido
 // 2026-09-14) — mesmo padrão de rastreio do RunRegistration.test.jsx.
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), updateSession: vi.fn(), deleteSets: vi.fn(), insertSets: vi.fn(), updates: [], updatePlanItem: vi.fn() }));
+const mocks = vi.hoisted(() => ({ locker: [], invoke: vi.fn(), updateSession: vi.fn(), deleteSets: vi.fn(), insertSets: vi.fn(), updates: [], updatePlanItem: vi.fn() }));
 vi.mock('../../lib/supabase', () => ({
   supabase: {
     from: (table) => {
@@ -30,6 +30,10 @@ vi.mock('../../lib/supabase', () => ({
           delete: () => ({ eq: (col, val) => mocks.deleteSets(val) }),
           insert: (rows) => mocks.insertSets(rows),
         };
+      }
+      if (table === 'athlete_exercises') {
+        const chain = { select: () => chain, eq: () => chain, order: () => chain, limit: () => Promise.resolve({ data: mocks.locker || [], error: null }) };
+        return chain;
       }
       if (table === 'coach_plan_items') {
         return { update: (payload) => ({ eq: (col, val) => { mocks.updates.push({ table, payload, id: val }); return mocks.updatePlanItem(payload, val); } }) };
@@ -55,7 +59,7 @@ const selectPhoto = async () => {
   await screen.findByAltText('Print 1');
 };
 
-describe('GymRegistration — cartão único: alternar entre Foto e Manual', () => {
+describe('GymRegistration — formulário único (registo unificado, F1)', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
@@ -64,29 +68,96 @@ describe('GymRegistration — cartão único: alternar entre Foto e Manual', () 
     useAppStore.setState({ profile: PROFILE, gymSessions: [] });
   });
 
-  it('mostra o upload de fotos por omissão e esconde os campos manuais', () => {
+  it('prints opcionais, exercícios e métricas à vista ao mesmo tempo — sem "Foto | Manual"', () => {
     render(<GymRegistration onClose={onClose} />);
-    expect(screen.getByText(/Escolhe os prints da app de treino/)).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('Ex: 45m')).not.toBeInTheDocument();
-  });
-
-  it('ao escolher Manual, esconde o upload e mostra as métricas do relógio', () => {
-    render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
-
-    expect(screen.queryByText(/Escolhe os prints da app de treino/)).not.toBeInTheDocument();
+    expect(screen.getByText('Prints da app de treino (opcional)')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Ex: 45m')).toBeInTheDocument();
+    expect(screen.getByText('Exercícios e séries')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Manual$/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Analisar treino/i })).toBeInTheDocument();
   });
 
-  /* O caso do backlog (specs/carol-frases-contexto.md, MealRegistration:710, mesma linha para o ginásio): o
-     registo por foto nomeava «a IA» ao lado da Carol — rótulo «Foto (IA)» e
-     dica «A IA lê…». Aqui fala só ela, na primeira pessoa. */
-  it('o registo por foto fala na voz da Carol, sem nomear a IA', () => {
+  /* O caso do backlog (specs/carol-frases-contexto.md): fala só ela, na
+     primeira pessoa — nunca «a IA». */
+  it('a dica dos prints fala na voz da Carol, sem nomear a IA', () => {
     render(<GymRegistration onClose={onClose} />);
-    expect(screen.getByRole('button', { name: /^Foto$/ })).toBeInTheDocument();
-    expect(screen.getByText('Junta os ecrãs da mesma sessão; eu leio os exercícios, as séries e as cargas. Podes corrigir depois de gravado.')).toBeInTheDocument();
+    expect(screen.getByText(/eu leio o que não escreveres abaixo/)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/\bIA\b/);
+  });
+
+  it('na criação, as séries e o objetivo vão no pedido manual', async () => {
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
+    fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Extensões de pernas' } });
+    fireEvent.change(screen.getByLabelText(/^Objetivo/), { target: { value: 'chegar às 12' } });
+    fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '12' } });
+    fireEvent.change(screen.getByLabelText('Peso da série 1 (kg)'), { target: { value: '40' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const { body } = mocks.invoke.mock.calls[0][1];
+    expect(body.mode).toBe('manual');
+    expect(body.sets).toEqual([{ exercise_name: 'Extensões de pernas', set_index: 0, reps: 12, weight: 40 }]);
+    expect(body.exercises_meta).toEqual([{ name: 'Extensões de pernas', goal: 'chegar às 12', block_type: 'forca', plan_block_index: null, goal_met: null }]);
+  });
+
+  it('modo Live: o ✓ de uma série vazia confirma a sugestão da série anterior', () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
+    fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Prensa' } });
+    fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Peso da série 1 (kg)'), { target: { value: '80' } });
+    fireEvent.click(screen.getByRole('button', { name: /^\+\s*Série$/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Marcar série 2 como feita' }));
+    expect(screen.getByLabelText('Repetições da série 2')).toHaveValue(10);
+    expect(screen.getByLabelText('Peso da série 2 (kg)')).toHaveValue(80);
+  });
+
+  it('cardio: "Bicicleta" muda sozinha para cardio e manda tempo e km', async () => {
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
+    fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Bicicleta' } });
+    fireEvent.change(screen.getByLabelText('Tempo (min) — Bicicleta'), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText('Distância (km) — Bicicleta'), { target: { value: '8' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const { body } = mocks.invoke.mock.calls[0][1];
+    expect(body.sets).toEqual([{ exercise_name: 'Bicicleta', set_index: 0, reps: null, weight: null, duration_seconds: 1200, distance_km: 8, laps: null }]);
+    expect(body.exercises_meta[0].block_type).toBe('cardio');
+  });
+
+  it('"+ Do Armário" junta um exercício conhecido, com a última vez como referência', async () => {
+    mocks.locker = [{ id: 'x1', name: 'Leg Press', name_key: 'leg press', category: 'Pernas Inferiores', block_type: 'forca', last_weight: 100, last_reps: 10 }];
+    useAppStore.setState({ exerciseLocker: [], exerciseLockerUserId: null, session: { user: { id: 'user-1' } } });
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /Do Armário/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Leg Press/ }));
+    expect(screen.getByDisplayValue('Leg Press')).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/Repetições da série/)).toHaveLength(3);
+    expect(screen.getByText(/da última vez: 100 kg × 10/)).toBeInTheDocument();
+    mocks.locker = [];
+  });
+
+  it('com prints, o pedido leva também as séries escritas e as métricas', async () => {
+    mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
+    fireEvent.change(screen.getByPlaceholderText('Nome do exercício'), { target: { value: 'Supino' } });
+    fireEvent.change(screen.getByLabelText('Repetições da série 1'), { target: { value: '8' } });
+    fireEvent.change(screen.getByPlaceholderText('Ex: 45m'), { target: { value: '40' } });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const { body } = mocks.invoke.mock.calls[0][1];
+    expect(body.images).toEqual(['AAA']);
+    expect(body.mode).toBeUndefined();
+    expect(body.sets).toEqual([{ exercise_name: 'Supino', set_index: 0, reps: 8, weight: null }]);
+    expect(body.duration_seconds).toBe(2400);
   });
 });
 
@@ -154,7 +225,8 @@ describe('GymRegistration — registo manual também passa pelo Coach (analyze-g
     useAppStore.setState({ profile: PROFILE, gymSessions: [] });
   });
 
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+  // Já não há "Foto | Manual" (registo unificado, F1): sem prints, grava o que está escrito.
+  const goManual = () => {};
 
   it('envia o registo manual para analyze-gym em modo manual, sem imagens', async () => {
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-2' } }, error: null });
@@ -215,7 +287,8 @@ describe('GymRegistration — regista sem vir do botão "Registar sessão" (bate
      às 00:49, com o teste a dizer 09-17 e o formulário 09-18), e o item do
      plano deixava de bater com a data do registo. */
   const hojeISO = todayISO();
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+  // Já não há "Foto | Manual" (registo unificado, F1): sem prints, grava o que está escrito.
+  const goManual = () => {};
 
   beforeEach(() => {
     mocks.invoke.mockReset().mockResolvedValue({ data: { session: { id: 'sess-frio' } }, error: null });
@@ -317,7 +390,7 @@ describe('GymRegistration — editar sessão existente', () => {
     useAppStore.setState({ profile: PROFILE, gymSessions: [EXISTING_SESSION], loadInitialData });
   });
 
-  it('pré-preenche os campos, esconde o seletor Foto/Manual e mostra os exercícios agrupados', () => {
+  it('pré-preenche os campos, sem seletor Foto/Manual, e mostra os exercícios agrupados', () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
     expect(screen.getByText('Editar Treino')).toBeInTheDocument();
@@ -326,7 +399,7 @@ describe('GymRegistration — editar sessão existente', () => {
     expect(screen.getByDisplayValue('50:00')).toBeInTheDocument();
     expect(screen.getByDisplayValue('400')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Supino')).toBeInTheDocument();
-    const reps = screen.getAllByPlaceholderText('Reps');
+    const reps = screen.getAllByLabelText(/Repetições da série/);
     expect(reps).toHaveLength(2);
     expect(reps[0]).toHaveValue(10);
     expect(reps[1]).toHaveValue(8);
@@ -352,12 +425,12 @@ describe('GymRegistration — editar sessão existente', () => {
   it('editar uma série e adicionar um exercício novo passa pelo Coach', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
-    const reps = screen.getAllByPlaceholderText('Reps');
+    const reps = screen.getAllByLabelText(/Repetições da série/);
     fireEvent.change(reps[0], { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
     const nameInputs = screen.getAllByPlaceholderText('Nome do exercício');
     fireEvent.change(nameInputs[nameInputs.length - 1], { target: { value: 'Fondos' } });
-    fireEvent.change(screen.getAllByPlaceholderText('Reps')[2], { target: { value: '15' } });
+    fireEvent.change(screen.getAllByLabelText(/Repetições da série/)[2], { target: { value: '15' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
@@ -401,12 +474,12 @@ describe('GymRegistration — editar sessão existente', () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha na análise.' });
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
-    fireEvent.change(screen.getAllByPlaceholderText('Reps')[0], { target: { value: '12' } });
+    fireEvent.change(screen.getAllByLabelText(/Repetições da série/)[0], { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
     await screen.findByText('Falha na análise.');
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getAllByPlaceholderText('Reps')[0]).toHaveValue(12);
+    expect(screen.getAllByLabelText(/Repetições da série/)[0]).toHaveValue(12);
   });
 });
 
@@ -551,7 +624,6 @@ describe('GymRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive 
     vi.useFakeTimers();
     try {
       const { unmount } = render(<GymRegistration onClose={onClose} />);
-      fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
       fireEvent.change(screen.getByPlaceholderText('Nome do treino'), { target: { value: 'Treino a meio de preencher' } });
 
       // Debounce da persistência (formDraftPersistence.js).
@@ -632,7 +704,6 @@ describe('GymRegistration — hora de início', () => {
   it('treino novo: a hora escrita grava-se em workout_sessions.start_time a seguir à análise', async () => {
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
     render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
     fireEvent.change(screen.getByLabelText('Hora do treino'), { target: { value: '19:00' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
@@ -647,7 +718,6 @@ describe('GymRegistration — hora de início', () => {
   it('sem hora escrita não há update nenhum — o campo é mesmo opcional', async () => {
     mocks.invoke.mockResolvedValue({ data: { session: { id: 'sess-9' }, sets: [] }, error: null });
     render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
 
@@ -691,7 +761,8 @@ describe('GymRegistration — aula: modalidade e grupos musculares à parte', ()
     useAppStore.setState({ profile: PROFILE, gymSessions: [], loadInitialData });
   });
 
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+  // Já não há "Foto | Manual" (registo unificado, F1): sem prints, grava o que está escrito.
+  const goManual = () => {};
 
   it('numa aula há dois seletores, e a modalidade vai em class_types, os grupos em categories', async () => {
     render(<GymRegistration onClose={onClose} />);
