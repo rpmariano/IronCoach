@@ -82,3 +82,14 @@ Deno.test("looseExerciseKey — plural, acentos e parêntesis não separam; exer
   assertEquals(looseExerciseKey("Prensa") === looseExerciseKey("Hack squat"), false);
   assertEquals(looseExerciseKey("Supino") === looseExerciseKey("Supino inclinado"), false);
 });
+
+import { sameExercise } from "./planExecution.ts";
+
+Deno.test("sameExercise — parêntesis de um lado só juntam; diferentes dos dois lados separam (B2)", () => {
+  assertEquals(sameExercise("Leg Press (Machine)", "Leg press"), true);
+  assertEquals(sameExercise("Extensões de pernas", "extensoes de perna"), true);
+  assertEquals(sameExercise("Bench Press (Barbell)", "Bench Press (Dumbbell)"), false);
+  assertEquals(sameExercise("Supino (barra)", "Supino (halteres)"), false);
+  assertEquals(sameExercise("Supino (barra)", "supino (Barra)"), true);
+  assertEquals(sameExercise("", "Supino"), false);
+});

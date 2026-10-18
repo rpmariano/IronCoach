@@ -1232,3 +1232,45 @@ describe('GymRegistration — ronda 3 da revisão pré-deploy (N1–N4, N2, N10)
     expect(screen.getByText(/A usar o plano/)).toBeInTheDocument();
   });
 });
+
+describe('GymRegistration — revisão final (B1, M1)', () => {
+  const onClose = vi.fn();
+  const hojeISO = todayISO();
+  const ITEM = { id: 'item-1', plan_id: 'p1', planned_date: hojeISO, kind: 'ginasio', status: 'pendente', categories: ['Pernas'], prescription: { blocks: [{ type: 'forca', name: 'Prensa', sets: 3, reps: 12 }] } };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset().mockResolvedValue({ data: { session: { id: 's' }, sets: [] }, error: null });
+    mocks.updatePlanItem.mockReset().mockResolvedValue({ error: null });
+    mocks.updates.length = 0;
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({
+      profile: PROFILE, gymSessions: [], planItemPrefill: null, session: { user: { id: 'user-1' } },
+      coachPlans: [{ id: 'p1', status: 'aceite', period_start: hojeISO, period_end: hojeISO }],
+      coachPlanItems: [ITEM],
+    });
+  });
+
+  it('B1: com prints não há aviso — as séries por confirmar não vão no pedido e a leitura dos prints conta', async () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const { body } = mocks.invoke.mock.calls[0][1];
+    expect(body.images).toEqual(['AAA']);
+    expect(body.sets).toEqual([]);
+    expect(body.plan_blocks).toEqual([{ name: 'Prensa', type: 'forca' }]);
+  });
+
+  it('M1: Escape fecha o aviso sem gravar', () => {
+    render(<GymRegistration onClose={onClose} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Usar o plano/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+});

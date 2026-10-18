@@ -728,13 +728,26 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [saveAfterMark, setSaveAfterMark] = useState(false);
   const unconfirmedPlanSets = exercises.some(hasUnconfirmedPlanSets);
   const handleAnalyze = () => {
-    if (!isEditing && unconfirmedPlanSets) {
+    // Com prints, as séries do plano por confirmar caem e a leitura dos prints
+    // preenche o que ele fez — "marcar todas" ali poria os alvos por cima do
+    // que o print mostra (revisão pré-deploy, B1). O aviso é só sem prints.
+    if (!isEditing && !photos.length && unconfirmedPlanSets) {
       setShowUnsavedModal(false);
       setConfirmPlanSets(true);
       return;
     }
     doAnalyze();
   };
+  // "Voltar" (ou Escape, ou tocar fora) fecha sem gravar e esquece uma saída
+  // pedida pelo "Gravar e sair" (M5).
+  const closePlanSetsDialog = () => { pendingNavTarget.current = null; setConfirmPlanSets(false); };
+  useEffect(() => {
+    if (!confirmPlanSets) return;
+    const onKey = (e) => { if (e.key === 'Escape') closePlanSetsDialog(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmPlanSets]);
   const markAllAndSave = () => {
     setExercises(prev => prev.map(ex => (hasUnconfirmedPlanSets(ex) ? markAllDone(ex, lockerEntryFor(locker, ex.name)) : ex)));
     setConfirmPlanSets(false);
@@ -1071,6 +1084,9 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
 
       {confirmPlanSets && (
+        <div className="fixed inset-0 z-40 bg-[var(--bg-scrim)]" onClick={closePlanSetsDialog} aria-hidden="true" />
+      )}
+      {confirmPlanSets && (
         <div
           role="alertdialog"
           aria-modal="true"
@@ -1092,7 +1108,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
               className="min-h-[44px] rounded-xl text-[13px] font-bold border border-[var(--border-glass-strong)] text-[var(--text-1)]">
               Gravar só as confirmadas
             </button>
-            <button type="button" onClick={() => setConfirmPlanSets(false)}
+            <button type="button" onClick={closePlanSetsDialog}
               className="min-h-[44px] rounded-xl text-[13px] font-semibold text-[var(--text-3)]">
               Voltar
             </button>

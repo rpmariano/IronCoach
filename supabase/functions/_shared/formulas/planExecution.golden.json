@@ -720,5 +720,65 @@
         }
       ]
     }
+  },
+  {
+    "name": "variantes diferentes entre parêntesis não são o mesmo exercício: halteres no lugar da barra é troca, e a carga não se compara com a outra variante",
+    "input": {
+      "sessionDate": "2026-10-18",
+      "prescription": {
+        "blocks": [
+          {
+            "type": "forca",
+            "name": "Bench Press (Barbell)",
+            "sets": 1,
+            "reps": 8
+          }
+        ]
+      },
+      "exercisesMeta": [
+        {
+          "name": "Bench Press (Dumbbell)",
+          "plan_block_index": 0
+        }
+      ],
+      "sets": [
+        {
+          "exercise_name": "Bench Press (Dumbbell)",
+          "set_index": 0,
+          "reps": 8,
+          "weight": 30
+        }
+      ],
+      "history": [
+        {
+          "date": "2026-10-10",
+          "sets": [
+            {
+              "exercise_name": "Bench Press (Barbell)",
+              "reps": 8,
+              "weight": 80
+            }
+          ]
+        }
+      ]
+    },
+    "expect": {
+      "counts": {
+        "cumprido": 0,
+        "parcial": 0,
+        "trocado": 1,
+        "em_falta": 0
+      },
+      "extras": [],
+      "blocks": [
+        {
+          "index": 0,
+          "status": "trocado",
+          "doneName": "Bench Press (Dumbbell)",
+          "lastTopSet": null,
+          "loadDeltaKg": null
+        }
+      ]
+    }
   }
 ]

@@ -51,6 +51,21 @@ export function looseExerciseKey(name: unknown): string {
     .join(" ");
 }
 
+/** O mesmo exercício escrito de outra forma? Plural, acentos e a máquina entre
+ *  parêntesis de UM dos lados não separam ("Leg Press (Machine)" = "Leg
+ *  press"); parêntesis diferentes dos DOIS lados são variantes diferentes —
+ *  "Bench Press (Barbell)" ≠ "Bench Press (Dumbbell)", "Supino (barra)" ≠
+ *  "Supino (halteres)" (revisão pré-deploy, B2). */
+export function sameExercise(a: unknown, b: unknown): boolean {
+  const ka = foodKey(a), kb = foodKey(b);
+  if (!ka || !kb) return false;
+  if (ka === kb) return true;
+  const paren = (n: unknown) => (String(n ?? "").match(/\(([^)]*)\)/g) ?? []).map((p) => foodKey(p)).filter(Boolean).join(" ");
+  const pa = paren(a), pb = paren(b);
+  if (pa && pb && pa !== pb) return false;
+  return looseExerciseKey(a) === looseExerciseKey(b);
+}
+
 export type BlockStatus = "cumprido" | "parcial" | "trocado" | "em_falta";
 export type LoadTrend = "subiu" | "igual" | "desceu";
 
@@ -193,14 +208,18 @@ export function topSetOf(sets: SetIn[]): TopSet | null {
 }
 
 /** A última vez ANTES desta sessão que o exercício foi feito com carga. */
-function lastTopBefore(key: string, sessionDate: string, history: HistorySession[]): (TopSet & { date: string }) | null {
+function lastTopBefore(name: string, sessionDate: string, history: HistorySession[]): (TopSet & { date: string }) | null {
   const prior = history
     .filter((h) => typeof h?.date === "string" && h.date < sessionDate)
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  for (const h of prior) {
-    const mine = (h.sets || []).filter((s) => looseExerciseKey(s?.exercise_name) === key);
-    const top = topSetOf(mine);
-    if (top) return { ...top, date: h.date };
+  // Primeiro o nome exato (foodKey); só sem nenhum, o mesmo exercício escrito
+  // de outra forma (sameExercise) — nunca outra variante (barra vs halteres).
+  const exact = foodKey(name);
+  for (const match of [(n: unknown) => foodKey(n) === exact, (n: unknown) => sameExercise(n, name)]) {
+    for (const h of prior) {
+      const top = topSetOf((h.sets || []).filter((s) => match(s?.exercise_name)));
+      if (top) return { ...top, date: h.date };
+    }
   }
   return null;
 }
@@ -250,7 +269,7 @@ function fillStrength(block: BlockExecution, done: DoneExercise, sessionDate: st
     block.compliance = performed.length ? 1 : 0;
   }
   block.topSet = topSetOf(performed);
-  block.lastTopSet = lastTopBefore(looseExerciseKey(done.name), sessionDate, history);
+  block.lastTopSet = lastTopBefore(done.name, sessionDate, history);
   if (block.topSet && block.lastTopSet) {
     block.loadDeltaKg = round2(block.topSet.weight - block.lastTopSet.weight);
     block.loadTrend = block.loadDeltaKg > 0 ? "subiu" : block.loadDeltaKg < 0 ? "desceu" : "igual";
@@ -299,7 +318,7 @@ export function computePlanExecution(input: {
 
   // 1. O nome: o exercício do plano feito tal e qual.
   for (const [bi, b] of blocks.entries()) {
-    const ex = done.find((d) => !matchedDone.has(d.key) && looseExerciseKey(d.name) === looseExerciseKey(b.label));
+    const ex = done.find((d) => !matchedDone.has(d.key) && sameExercise(d.name, b.label));
     if (ex) pair(bi, ex);
   }
   // 2. O índice que o registo guardou, para o que sobrou: a linha do plano foi
