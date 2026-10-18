@@ -14,6 +14,8 @@ import Chip from '../shared/Chip';
 import ChipPicker from '../shared/registration/ChipPicker';
 import ExerciseEditor from '../shared/registration/ExerciseEditor';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
+import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
+import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, fillWeightsFromLocker, appendExercises } from '../../utils/planPrefill';
 import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary } from '../../utils/gymSets';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { todayISO } from '../../lib/utils';
@@ -116,11 +118,23 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   // e regenera a análise. Mudar só a data ou o nome é um update direto, sem
   // custo de API (mesmo padrão da Nutrição — ver MealRegistration.jsx).
   // Forma: utils/gymSets.js (newExercise).
-  const [exercises, setExercises] = useState([]);
+  const [exercises, setExercises] = useState(() => (
+    planItem?.prescription
+      ? exercisesFromPrescription(planItem.prescription, lockerIndex(useAppStore.getState().exerciseLocker))
+      : []
+  ));
+  // Com exercícios vindos do plano, os kg (da última vez) preenchem-se quando o Armário chegar.
+  const planPrefillRef = useRef(!!planItem?.prescription);
+  // O treino do plano que este registo cumpre: o do botão "Registar sessão" (ligado, sem
+  // banner) ou o que o atleta escolheu no banner "Do plano" (F3). 'livre' = não usa o plano.
+  const [planChoice, setPlanChoice] = useState(null); // { id, mode: 'plano' | 'livre' } | null
   // O Armário de Exercícios: "da última vez" e "+ Do Armário".
   const exerciseLocker = useAppStore(s => s.exerciseLocker);
   const locker = useMemo(() => lockerIndex(exerciseLocker), [exerciseLocker]);
   useEffect(() => { useAppStore.getState().loadExerciseLocker?.(); }, []);
+  useEffect(() => {
+    if (planPrefillRef.current) setExercises(prev => fillWeightsFromLocker(prev, locker));
+  }, [locker]);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const autoCloseRef = useRef(false);
@@ -402,8 +416,32 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
 
   const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReviewedPhotos(null); };
 
+  /* O plano do dia (F3): os treinos pendentes do tipo, nos planos aceites.
+     Vindo do botão "Registar sessão" já está ligado, sem banner. */
+  const coachPlans = useAppStore(st => st.coachPlans);
+  const coachPlanItems = useAppStore(st => st.coachPlanItems);
+  const pendingPlanItems = useMemo(
+    () => (isEditing || planItem ? [] : findPendingPlanItems('ginasio', date, coachPlans, coachPlanItems)),
+    [isEditing, planItem, date, coachPlans, coachPlanItems],
+  );
+  const chosenPlanItem = planItem
+    || (planChoice?.mode === 'plano' ? (coachPlanItems || []).find(i => i.id === planChoice.id) || null : null);
+
+  const handleUsePlan = (item) => {
+    const incoming = exercisesFromPrescription(item.prescription, locker);
+    planPrefillRef.current = incoming.length > 0;
+    setPlanChoice({ id: item.id, mode: 'plano' });
+    if (!categories.length && item.categories?.length) setCategories(item.categories);
+    if (!notes.trim() && item.notes) setNotes(item.notes);
+    if (!durationStr.trim() && item.target_duration_min) setDurationStr(String(item.target_duration_min));
+    if (incoming.length) setExercises(prev => appendExercises(prev, incoming));
+    setIsFormDirty(true);
+  };
+  // "Treino livre": campos vazios; ao gravar, o treino do dia risca-se na mesma, como automático.
+  const handleFreeWorkout = () => { setPlanChoice({ id: null, mode: 'livre' }); };
+
   // Os exercícios do plano do dia, para a Carol casar os nomes (e o objetivo).
-  const planBlocks = planItem?.prescription?.blocks || [];
+  const planBlocks = chosenPlanItem?.prescription?.blocks || [];
 
   /* Ler os prints e/ou as observações e preencher o formulário. Não grava
      nada: a analyze-gym em mode "preview" só devolve o que leu. */
@@ -464,7 +502,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     );
     if (!item) return;
     try {
-      await store.completePlanItem(item.id, { actualDate: date, sessionId: savedSession?.id || null });
+      await store.completePlanItem(item.id, { actualDate: date, sessionId: savedSession?.id || null, source: 'auto' });
     } catch (err) {
       console.warn('Item do plano não marcado como concluído', err);
     }
@@ -475,8 +513,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
      não se vem do botão "Registar sessão") nunca fazia desaparecer o botão,
      só o registo manual. */
   const completePlanItemForSession = (savedSession) => (
-    completingPlanItemRef.current
-      ? useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, { actualDate: date, sessionId: savedSession.id })
+    chosenPlanItem
+      ? useAppStore.getState().completePlanItem(chosenPlanItem.id, { actualDate: date, sessionId: savedSession.id, source: 'plano' })
       : completeMatchingPlanItem(savedSession)
   );
 
@@ -794,6 +832,18 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             />
           </div>
         </div>
+
+        {pendingPlanItems.length > 0 && (
+          <PlanPrefillBanner
+            items={pendingPlanItems}
+            describe={describePlanItem}
+            chosenId={planChoice?.mode === 'plano' ? planChoice.id : null}
+            mode={planChoice?.mode || null}
+            onUse={handleUsePlan}
+            onFree={handleFreeWorkout}
+            onChange={() => setPlanChoice(null)}
+          />
+        )}
 
         {/* Prints (opcional) — escondido a editar: editar é sempre pelos
             campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}

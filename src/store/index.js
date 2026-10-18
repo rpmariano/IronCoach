@@ -1190,12 +1190,16 @@ export const useAppStore = create((set, get) => ({
   // o cumpre. actualDate pode divergir de planned_date; é essa divergência
   // que corrige os objetivos de nutrição dos dois dias (ver
   // src/utils/nutrition.js e specs/plano-de-treino.md §4).
-  completePlanItem: async (itemId, { actualDate, runId = null, sessionId = null }) => {
+  // `source` (registo unificado, F3): 'plano' = o atleta escolheu o treino do
+  // plano ("Usar o plano" ou "Registar sessão"); 'auto' = um treino livre que
+  // riscou o item do dia (decisão 3). Sem `source`, a coluna não muda.
+  completePlanItem: async (itemId, { actualDate, runId = null, sessionId = null, source = undefined }) => {
     const updates = {
       status: 'concluido',
       actual_date: actualDate,
       completed_run_id: runId,
       completed_session_id: sessionId,
+      ...(source ? { completion_source: source } : {}),
     };
     const { error } = await supabase.from('coach_plan_items').update(updates).eq('id', itemId);
     if (error) { console.error('Error completing plan item:', error); return false; }
@@ -1208,7 +1212,7 @@ export const useAppStore = create((set, get) => ({
   // Desfaz o completePlanItem: o registo ligado deixou de ser deste item (a
   // data da corrida mudou depois de ela ficar ligada, ou passou a prova).
   reopenPlanItem: async (itemId) => {
-    const updates = { status: 'pendente', actual_date: null, completed_run_id: null, completed_session_id: null };
+    const updates = { status: 'pendente', actual_date: null, completed_run_id: null, completed_session_id: null, completion_source: null, execution_note: null };
     const { error } = await supabase.from('coach_plan_items').update(updates).eq('id', itemId);
     if (error) { console.error('Error reopening plan item:', error); return false; }
     set((state) => ({
