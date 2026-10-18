@@ -32,6 +32,7 @@ import {
   withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
+import { NOTES_EMPTY_MESSAGE, NOTES_ITEMS_SCHEMA, notesAreAnalyzable, notesItemsPrompt, parseNotesItems } from "./notesItems.ts";
 import { isWalk } from "../_shared/formulas/runKinds.ts";
 
 const MAX_PHOTOS = 6;
@@ -461,6 +462,51 @@ async function runGeminiItemsRequest(
     throw new Error(emptyErrorMessage);
   }
   return { items, usage, facts: parseCookingFacts(parsed.cooking_facts), questions: parsed.questions };
+}
+
+// Uma refeição só com observações (decisão 15 do registo unificado): a Carol
+// tira do texto os alimentos e as quantidades ditas — sem estimar nutrientes,
+// isso faz o resto do registo manual, que segue igual. Pedido curto, só texto.
+async function extractItemsFromNotes(
+  notes: string,
+  pantryNames: string[],
+  geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<{ items: { name: string; grams: number | null }[]; usage: GeminiUsage }> {
+  const geminiRes = await geminiWithFallback((geminiModel, withThinking) =>
+    fetchGeminiWithTimeout(
+      geminiUrl(geminiModel),
+      {
+        method: "POST",
+        headers: geminiHeaders(geminiKey),
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: notesItemsPrompt(notes, pantryNames) }] }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            response_schema: NOTES_ITEMS_SCHEMA,
+            ...thinkingConfig("low", withThinking),
+          },
+        }),
+      },
+      20000,
+      2,
+      deadline,
+    )
+  );
+  if (!geminiRes.ok) {
+    const errText = await geminiRes.text();
+    console.error("Gemini error (observações):", geminiRes.status, errText);
+    if (GEMINI_RETRYABLE_STATUSES.has(geminiRes.status)) throw new Error(geminiBusyMessage("ler a refeição que descreveste"));
+    throw new Error(upstreamErrorText(geminiRes.status));
+  }
+  const geminiJson = await geminiRes.json();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(geminiJson?.candidates?.[0]?.content?.parts?.[0]?.text);
+  } catch {
+    throw new Error("A leitura das observações devolveu um formato inesperado. Tenta novamente.");
+  }
+  return { items: parseNotesItems(parsed), usage: usageFromGemini(geminiJson) };
 }
 
 // Chama o Gemini com as imagens (base64) + observações, devolve os itens
@@ -1475,9 +1521,24 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       // As gramas são opcionais — quando o utilizador não as indica, o
       // Gemini estima a porção típica a partir do nome do alimento e das
       // observações da refeição (ver buildManualItemsPrompt).
-      const items = parseWrittenItems(body.items);
+      let items = parseWrittenItems(body.items);
+      // Só observações, sem alimentos (decisão 15): a Carol tira-os do texto e
+      // o resto segue igual. Os tokens desta leitura somam-se aos da estimativa.
+      let notesUsage: GeminiUsage | null = null;
+      if (items.length === 0 && notesAreAnalyzable(rawNotes)) {
+        try {
+          const read = await extractItemsFromNotes(
+            rawNotes!, (await pantryPromise).foods.filter((f) => f.in_pantry).map((f) => f.name), geminiKey, extractionDeadline,
+          );
+          items = read.items;
+          notesUsage = read.usage;
+        } catch (e) {
+          return jsonResponse({ error: e instanceof Error ? e.message : "Falha a ler as observações." }, 502);
+        }
+        if (items.length === 0) return jsonResponse({ error: NOTES_EMPTY_MESSAGE }, 400);
+      }
       if (items.length === 0) {
-        return jsonResponse({ error: "Adiciona pelo menos um alimento." }, 400);
+        return jsonResponse({ error: "Adiciona pelo menos um alimento, ou descreve a refeição nas observações." }, 400);
       }
       if (items.length > MAX_WRITTEN_ITEMS) {
         return jsonResponse({ error: `Máximo de ${MAX_WRITTEN_ITEMS} alimentos por refeição.` }, 400);
@@ -1513,6 +1574,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na estimativa." }, 502);
       }
+      if (notesUsage) estimated.usage = addUsage(estimated.usage, notesUsage);
 
       // ── Edição de uma refeição existente (meal_id presente) ──────────
       // Editar alimentos ou observações muda a análise, por isso passa pelo

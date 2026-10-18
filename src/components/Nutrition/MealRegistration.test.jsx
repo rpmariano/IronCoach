@@ -421,10 +421,24 @@ describe('MealRegistration — editar refeição existente', () => {
     expect(mocks.invoke.mock.calls[0][1].body.meal_time).toBeNull();
   });
 
-  it('numa refeição sem alimentos, mudar as observações continua bloqueado', async () => {
+  // Decisão 15 do registo unificado: as observações chegam para a Carol
+  // tirar delas os alimentos — antes, uma refeição sem alimentos ficava presa.
+  it('numa refeição sem alimentos, mudar as observações reanalisa a partir delas', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-3', meal_items: [] } }, error: null });
     useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_items: [] }] });
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
-    fireEvent.change(screen.getByDisplayValue('nota antiga'), { target: { value: 'nota nova' } });
+    fireEvent.change(screen.getByDisplayValue('nota antiga'), { target: { value: 'bife com arroz e salada' } });
+    const btn = screen.getByRole('button', { name: /Guardar e reanalisar/ });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ mode: 'manual', meal_id: 'meal-3', items: [], notes: 'bife com arroz e salada' });
+  });
+
+  it('sem alimentos e sem observações continua bloqueado', async () => {
+    useAppStore.setState({ meals: [{ ...EXISTING_MEAL, meal_items: [] }] });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
+    fireEvent.change(screen.getByDisplayValue('nota antiga'), { target: { value: '' } });
     expect(screen.getByRole('button', { name: /Guardar e reanalisar/ })).toBeDisabled();
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
@@ -522,11 +536,12 @@ describe('MealRegistration — editar refeição existente', () => {
     expect(mocks.deleteItem).not.toHaveBeenCalled();
   });
 
-  it('não deixa gravar uma refeição sem alimento nenhum', async () => {
+  it('não deixa gravar uma refeição sem alimento nenhum e sem observações', async () => {
     render(<MealRegistration onClose={onClose} mealIdToEdit="meal-3" />);
 
     fireEvent.click(screen.getByRole('button', { name: /Remover Arroz/i }));
     fireEvent.click(screen.getByRole('button', { name: /Remover Frango/i }));
+    fireEvent.change(screen.getByDisplayValue('nota antiga'), { target: { value: '' } });
 
     expect(screen.getByRole('button', { name: /Guardar e reanalisar/ })).toBeDisabled();
     expect(mocks.invoke).not.toHaveBeenCalled();
@@ -1061,5 +1076,41 @@ describe('MealRegistration — a despensa ao escrever', () => {
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
     // Vai com o nome da despensa: é por aí que o servidor o reconhece.
     expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Aveia em flocos', grams: 40 }]);
+  });
+});
+
+describe('MealRegistration — refeição só com observações (decisão 15)', () => {
+  const onClose = vi.fn();
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, meals: [] });
+  });
+
+  it('sem nada, o botão está desligado e a dica convida a escrever a refeição', () => {
+    render(<MealRegistration onClose={onClose} />);
+    expect(screen.getByRole('button', { name: /Analisar refeição/ })).toBeDisabled();
+    expect(screen.getByText(/Escreve aqui o que comeste e eu trato do resto/)).toBeInTheDocument();
+  });
+
+  it('só com observações: liga o botão e manda o registo manual sem alimentos, com as notas', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-9', meal_items: [] } }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: '2 ovos mexidos e um café' } });
+    expect(screen.getByText(/Vou ler o que escreveste/)).toBeInTheDocument();
+    const btn = screen.getByRole('button', { name: /Analisar refeição/ });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [fn, { body }] = mocks.invoke.mock.calls[0];
+    expect(fn).toBe('analyze-meal');
+    expect(body).toMatchObject({ mode: 'manual', items: [], notes: '2 ovos mexidos e um café' });
+  });
+
+  it('observações curtas demais não chegam', () => {
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/Detalhes que mudam os valores/), { target: { value: ' ab ' } });
+    expect(screen.getByRole('button', { name: /Analisar refeição/ })).toBeDisabled();
   });
 });

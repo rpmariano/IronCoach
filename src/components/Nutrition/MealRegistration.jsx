@@ -555,8 +555,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   };
 
   // Um só "Analisar refeição": com fotos vai tudo junto (fotos + alimentos
-  // escritos), sem fotos é o registo só escrito (mode manual).
-  const canAnalyze = photos.length > 0 || manualItems.length > 0;
+  // escritos), sem fotos é o registo só escrito (mode manual). Também só com
+  // as observações (decisão 15 do registo unificado): a Carol tira delas os
+  // alimentos — o mínimo é o mesmo do servidor (analyze-meal/notesItems.ts).
+  const notesOnly = notes.trim().length >= 3;
+  const canAnalyze = photos.length > 0 || manualItems.length > 0 || notesOnly;
   const handleAnalyze = () => {
     if (!canAnalyze || isAnalyzing) return;
     setErrorMsg('');
@@ -610,8 +613,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
 
   const handleSaveEdit = () => {
     if (isAnalyzing) return;
-    if (needsReanalysis && !manualItems.length) {
-      setErrorMsg('A refeição tem de ter pelo menos um alimento.');
+    if (needsReanalysis && !manualItems.length && !notesOnly) {
+      setErrorMsg('A refeição tem de ter pelo menos um alimento, ou descreve-a nas observações.');
       return;
     }
     setErrorMsg('');
@@ -624,7 +627,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const primaryAction = isEditing ? (
     <CoachAnalyzeButton
       onClick={handleSaveEdit}
-      disabled={isAnalyzing || (needsReanalysis && !manualItems.length)}
+      disabled={isAnalyzing || (needsReanalysis && !manualItems.length && !notesOnly)}
       busy={isAnalyzing}
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
@@ -985,11 +988,21 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           <textarea id="mr-observacoes-opcional-ex-big-mac-bi"
             rows="2"
             maxLength="500"
-            placeholder="Detalhes que mudam os valores nutricionais..."
+            placeholder="Detalhes que mudam os valores nutricionais... ou a refeição toda: «2 ovos mexidos, 1 torrada e um café»"
             value={notes}
             onChange={e => { setNotes(e.target.value); setIsFormDirty(true); }}
+            aria-describedby="mr-notes-only-hint"
             className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[13px] text-[var(--text-1)] placeholder-[var(--text-muted)] outline-none focus:border-[var(--focus-ring)] resize-none shadow-sm transition"
           />
+          {/* Sem alimentos nem fotos, as observações chegam: a Carol lê-as e
+              estrutura a refeição (decisão 15). Diz-se ANTES de ele carregar. */}
+          <p id="mr-notes-only-hint" className="text-[11px] text-[var(--text-2)] mt-1.5 px-1">
+            {!photos.length && !manualItems.length
+              ? (notesOnly
+                ? 'Vou ler o que escreveste e tirar daí os alimentos e as quantidades.'
+                : 'Sem tempo para os alimentos? Escreve aqui o que comeste e eu trato do resto.')
+              : ''}
+          </p>
         </div>
 
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão
