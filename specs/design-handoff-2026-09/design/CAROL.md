@@ -71,10 +71,11 @@ A posição e o percentil dizem-se no chat, a ele — nunca no ecrã bloqueado, 
 
 ## 4. Rosto
 
-O avatar era um balão de fala — ícone de chat, não pessoa. Desde 2026-09-24 é um retrato (`src/components/Coach/CoachAvatar.jsx`, geometria em `carolFace.js`).
+O avatar era um balão de fala — ícone de chat, não pessoa. De 2026-09-24 a 2026-10-18 foi um retrato vetorial de traço (`carolFace.js`, já removido). Desde 2026-10-18 é o busto 3D em croché (`src/components/Coach/CoachAvatar.jsx`).
 
-- **Desenho:** retrato de traço simples, dentro do disco ciano dela — linha escura, cara clara, bochechas coradas, e o cabelo escuro com estrutura: franja varrida em madeixas com pontas, acima das sobrancelhas, fios de luz a marcar o sentido do cabelo, e rabo-de-cavalo alto com as pontas desfiadas. O queixo fica perto do fundo do disco, para o pescoço ser curto. Só a cabeça: o pescoço sai pelo fundo do disco e os ombros nunca aparecem. Sempre o mesmo; muda a expressão, nunca a pessoa.
-- **Seis emoções** (vocabulário partilhado em `supabase/functions/_shared/formulas/carolMood.ts`):
+- **Retrato:** a Carol em croché, versão cabelo castanho mel e olhos avelã — a oficial. A versão de cabelo preto e olhos azuis fica guardada como reserva, sem uso. Bandolete coral, rabo-de-cavalo alto, bochechas coradas, sobre o fundo de estúdio escuro da fotografia, com um anel ciano fino a dizer "é a Carol". Mostra a cabeça e o arranque dos ombros. Sempre o mesmo; muda a expressão, nunca a pessoa.
+- **Ficheiros:** cópias de 256 px em WebP (~16 KB cada) em `public/carol-avatar/`: `busto_<emoção>.webp`, `busto_neutral_blink.webp` (olhos fechados) e `boca_happy.webp` (a boca recortada para "a falar"). Os originais de 760 px, as cenas de corpo inteiro e o mapa muscular estão em `public/carol/` (fora do git; inventário em `CAROL_ASSETS_FINAL.md`).
+- **Seis emoções**, um busto cada (vocabulário partilhado em `supabase/functions/_shared/formulas/carolMood.ts`):
 
 | Emoção | Quando |
 |---|---|
@@ -82,14 +83,19 @@ O avatar era um balão de fala — ícone de chat, não pessoa. Desde 2026-09-24
 | `happy` — contente | Uma coisa boa e concreta: treino bem feito, melhoria, adesão. |
 | `proud` — orgulhosa | O excecional: recorde, prova concluída, semana a 100%. Rara. |
 | `worried` — preocupada | Dor, alarme G1–G5, objetivo inviável, discordância, dias sem notícias. |
-| `caring` — empática | Dia em baixo, cansaço, frustração. Inclina a cabeça. |
-| `thinking` — a pensar | Enquanto escreve ou analisa. Nunca é o tom de uma mensagem. |
+| `caring` — empática | Dia em baixo, cansaço, frustração. |
+| `thinking` — a pensar | Enquanto analisa. Nunca é o tom de uma mensagem. |
 
 - **A expressão acompanha o tom da mensagem em que aparece.** No chat é o modelo que a escolhe, na mesma resposta em que escreve o texto (campo `mood` do JSON estruturado do `coach-chat`), e fica gravada em `coach_messages.mood`. Nas mensagens antigas, ou quando falta, o cliente deduz do texto por marcadores fortes (`inferMoodFromText`); na dúvida, neutra. Um aviso ganha sempre: a cara nunca sorri por cima de uma dor.
-- **Nunca muda sem motivo.** Quando muda, passa de uma à outra em 360 ms (os traços deslizam, o corado sobe ou desce) e acena. No cabeçalho do chat fica "a pensar" enquanto ela escreve, depois a emoção da última mensagem; passadas 6 horas volta à neutra.
-- **Vida:** a assinatura — as linhas desenham-se como uma caneta e só depois o desenho ganha cor — nos momentos de chegada (boas-vindas, onboarding, chat); pisca os olhos a cada ~5 s, com compasso próprio por instância. Com `prefers-reduced-motion`, tudo parado.
-- **Tamanhos:** funciona de 24 px a 88 px. Abaixo de 32 px o enquadramento aproxima-se da cara; acima de 56 px entra o nariz. Nos tamanhos pequenos as sobrancelhas e a boca engrossam, porque são elas que dizem a emoção, e nunca ficam abaixo de 1,2 px. No Início e no chat, nunca menos de 36 px ao lado de uma mensagem dela e 56 px no cartão do Início.
-- **Onde aparece:** header do chat e ao lado de cada mensagem dela, cartão do Início (com a cara do resumo), cabeçalho de cada passo do onboarding, estados de análise ("a pensar"), balanço no hub de prova (a cara do veredicto), boas-vindas.
+- **Nunca muda sem motivo.** Quando muda, o busto novo entra por cima do anterior em `--dur-carol-mood` (350 ms; 120 ms com movimento reduzido) — o de baixo fica inteiro até ao fim, para a cara nunca escurecer a meio — e a cabeça acena. No cabeçalho do chat fica "a pensar" enquanto ela analisa, depois a emoção da última mensagem; passadas 6 horas volta à neutra.
+- **Vida:**
+  - *Chegada* (`draw`): o busto entra a crescer e a acender em `--dur-sign`, nos momentos de chegada (boas-vindas, onboarding, chat vazio).
+  - *Piscar* (`alive`): o busto de olhos fechados aparece ~150 ms a cada ~5 s, com compasso próprio por instância. Só na neutra — as outras expressões têm os olhos delas.
+  - *A falar* (`talking`): no "a escrever…" do chat fica o busto neutro, e a boca recortada abre e fecha por cima ao ritmo de 150 ms.
+  - Com `prefers-reduced-motion`, tudo parado; com a página escondida, o piscar e a fala param.
+- **Tamanhos:** funciona de 20 px a 88 px. Abaixo de 32 px o enquadramento aproxima-se da cara (`data-close`), senão as emoções não se distinguem. No Início e no chat, nunca menos de 36 px ao lado de uma mensagem dela e 56 px no cartão do Início.
+- **Onde aparece:** header do chat e ao lado de cada mensagem dela, "a escrever…", cartão do Início (com a cara do resumo), check-in, cabeçalho de cada passo do onboarding, estados de análise ("a pensar"), balanço no hub de prova (a cara do veredicto), boas-vindas.
+- **O ícone** (`CarolIcon.jsx`, barra de baixo e Perfil) continua a ser um traço no estilo lucide: a 24 px um busto fotográfico não se lê como ícone.
 
 ## 5. Ritmo humano na escrita
 
@@ -137,6 +143,7 @@ Nem tudo o que a Carol diz sai do modelo. As boas-vindas, a resposta ao check-in
 
 - Prompt do sistema e conhecimento: `src/coach-knowledge/*.md`
 - Chat: `src/components/Coach/Coach.jsx`
+- Rosto: `src/components/Coach/CoachAvatar.jsx`, imagens em `public/carol-avatar/`
 - Frases fixas do dia: `src/utils/carolWelcome.js` (boas-vindas, `carolDay`), `src/utils/checkinReply.js` (resposta ao check-in), `src/utils/carolVida.js` (o que ela sabe da vida do atleta); backlog em `specs/carol-frases-contexto.md`
 - Resumo no Início: `src/components/Home/CoachDailySummaryCard.jsx`
 - Memória: tabela `coach_memory` e separador Perfil · Coach (`src/components/Perfil/Perfil.jsx`)

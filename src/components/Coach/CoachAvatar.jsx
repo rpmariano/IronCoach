@@ -44,6 +44,20 @@ export const AVATAR_MOODS = ['neutral', 'happy', 'proud', 'worried', 'caring', '
 /* A boca recortada senta-se no busto neutro nesta caixa (em % do busto). */
 const MOUTH_BOX = { left: '34.21%', top: '65.78%', width: '31.57%', height: '17.10%' };
 
+/* Os bustos pré-carregam-se uma vez, quando a primeira Carol aparece: assim a
+   primeira mudança de emoção já encontra a imagem em cache e o fade não
+   entra sobre um busto ainda por chegar (~110 KB, uma vez por sessão). */
+let preloaded = false;
+function preloadBusts() {
+  if (preloaded || typeof Image !== 'function') return;
+  preloaded = true;
+  for (const f of [...AVATAR_MOODS.map((m) => `busto_${m}.webp`), 'busto_neutral_blink.webp', 'boca_happy.webp']) {
+    const im = new Image();
+    im.decoding = 'async';
+    im.src = `${SRC}${f}`;
+  }
+}
+
 /** A emoção anterior, enquanto a nova entra por cima. */
 function usePreviousDuringFade(mood) {
   const [prev, setPrev] = useState(null);
@@ -74,6 +88,7 @@ export default function CoachAvatar({
   const normalized = normalizeMood(moodProp) || 'neutral';
   const mood = talking ? 'neutral' : normalized;
   const prev = usePreviousDuringFade(mood);
+  useEffect(preloadBusts, []);
 
   // O compasso do piscar de cada instância, escolhido uma vez.
   const [blinkRhythm] = useState(() => ({
