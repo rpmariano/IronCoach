@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   CAROL_MOODS, MESSAGE_MOODS, normalizeMood, normalizeMessageMood, inferMoodFromText, messageMood,
 } from '@formulas/carolMood.ts';
-import { FACE_MOODS } from '../components/Coach/carolFace';
+import { AVATAR_MOODS } from '../components/Coach/CoachAvatar';
 
 describe('carolMood — o vocabulário das emoções', () => {
   it('seis estados; "a pensar" não acompanha mensagens', () => {
@@ -10,8 +10,8 @@ describe('carolMood — o vocabulário das emoções', () => {
     expect(MESSAGE_MOODS).not.toContain('thinking');
   });
 
-  it('o rosto tem um desenho para cada emoção, e só essas', () => {
-    expect([...FACE_MOODS].sort()).toEqual([...CAROL_MOODS].sort());
+  it('o rosto tem um busto para cada emoção, e só essas', () => {
+    expect([...AVATAR_MOODS].sort()).toEqual([...CAROL_MOODS].sort());
   });
 
   it('normalizeMood aceita os nomes do CAROL.md, maiúsculas e acentos', () => {

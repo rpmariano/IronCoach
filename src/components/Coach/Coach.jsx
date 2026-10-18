@@ -1338,7 +1338,7 @@ export default function Coach() {
             900 ms; some com prefers-reduced-motion (as bolhas entram logo). */}
         {(coachLoading || typingActive) && (
           <div className="flex justify-start items-start gap-2" data-testid="coach-typing">
-            <CoachAvatar size={36} mood="thinking" style={{ marginTop: 2 }} />
+            <CoachAvatar size={36} talking style={{ marginTop: 2 }} />
             <div className="coach-bubble-model px-[15px] py-3 flex items-center gap-2">
               <span className="text-[11px] font-semibold" style={{ color: 'var(--coach-soft)' }}>a escrever…</span>
               <span className="flex items-center gap-1" aria-hidden="true">

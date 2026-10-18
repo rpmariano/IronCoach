@@ -1,73 +1,63 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { normalizeMood } from '@formulas/carolMood.ts';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
-import {
-  CHEEKS, EARS_PATH, FACE_FILL_PATH, HAIR_PATH, JAW_PATH, NECK_FILL_PATH, NECK_PATH, NOSE_PATH,
-  HAIR_STRANDS_PATH, PONYTAIL_PATH, PONYTAIL_STRANDS_PATH, PONYTAIL_TIE_PATH, SHINE_PATHS,
-  frameFor, lerpRig, rigFor, rigPaths,
-} from './carolFace';
 
 /* O rosto da Carol (CAROL.md §4) — ponto único para todos os sítios onde ela
    aparece.
 
-   Um retrato de traço simples dentro do disco ciano dela: linha escura,
-   cara clara, bochechas coradas, e o cabelo escuro com estrutura — franja
-   varrida em madeixas e rabo-de-cavalo alto. Só a cabeça — os ombros nunca aparecem. A geometria vive em
-   carolFace.js; aqui só se desenha e se dá vida.
+   O retrato é o busto 3D em croché (versão cabelo castanho, olhos avelã — a
+   oficial). Cópias leves de 256 px em public/carol-avatar/; os originais
+   (760 px) e a versão de cabelo preto, guardada como reserva, ficam fora do
+   repositório.
 
    Seis emoções (`mood`, vocabulário em @formulas/carolMood.ts): neutral (por
-   defeito), happy, proud, worried, caring e thinking. A expressão acompanha o
-   tom da mensagem em que aparece; quando muda, a cara passa de uma à outra
-   (os traços deslizam, ~360 ms, e o corado sobe ou desce) e dá um aceno
-   curto — nunca troca de desenho de repente, nunca muda sem motivo.
+   defeito), happy, proud, worried, caring e thinking — um busto cada. Só se
+   monta o busto da emoção atual; quando muda, o anterior fica por baixo,
+   inteiro, enquanto o novo entra por cima em --dur-carol-mood, e depois sai.
+   A cabeça dá um aceno curto — nunca troca de cara de repente, nunca muda
+   sem motivo.
 
-   Três camadas de vida, todas desligadas com prefers-reduced-motion:
-   - `draw`: a assinatura. As linhas desenham-se como uma caneta — rabo-de-
-     -cavalo, cabelo e franja, maxilar — e só depois o cabelo se enche de
-     cor e acendem os olhos e a boca. Por defeito só nos tamanhos de palco (≥ 56 px: boas-
-     -vindas, onboarding, chat vazio); os outros pedem-na nos momentos de
-     chegada.
-   - `alive`: pisca os olhos, com um compasso diferente em cada instância
-     (duas Carol no ecrã não piscam em coro). Por defeito a partir de 26 px.
-     Pára com a página escondida.
-   - `breathing`: a animação 7 do ponto 9 ("A Carol respira"), inalterada —
-     um halo de --dur-breathe, três ciclos e para, só quando há assunto por
-     resolver. Ela chama, não alarma.
+   Camadas de vida, todas desligadas com prefers-reduced-motion:
+   - `draw`: a chegada. O busto entra a crescer e a acender, uma vez. Por
+     defeito só nos tamanhos de palco (≥ 56 px).
+   - `alive`: pisca os olhos (o busto neutro de olhos fechados, ~150 ms), com
+     um compasso diferente em cada instância. Só na neutra — as outras
+     expressões têm os olhos desenhados por elas. Por defeito a partir de
+     26 px. Pára com a página escondida.
+   - `talking`: a falar. Fica o busto neutro e por cima a boca abre e fecha
+     (a boca recortada que encaixa nesse busto). Para o "a escrever…" do
+     chat.
+   - `breathing`: o halo de --dur-breathe, três ciclos e para, só quando há
+     assunto por resolver. Ela chama, não alarma.
 
-   Tem de funcionar a 30 px e a 76 px: abaixo de 32 px o enquadramento
-   aproxima-se da cara (frameFor). `mood` fica também em data-mood. */
+   Abaixo de 32 px o enquadramento aproxima-se da cara (`data-close`): o
+   busto inteiro, a esse tamanho, deixava as emoções indistinguíveis.
 
-const MORPH_MS = 360;
-const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+   `mood` fica também em data-mood. */
 
-function useMorphingRig(mood) {
-  const [rig, setRig] = useState(() => rigFor(mood));
-  const rigRef = useRef(rig);
-  const first = useRef(true);
+const SRC = `${import.meta.env.BASE_URL || '/'}carol-avatar/`;
+const MORPH_MS = 350;
 
+/** As emoções que têm busto — uma por estado de @formulas/carolMood.ts. */
+export const AVATAR_MOODS = ['neutral', 'happy', 'proud', 'worried', 'caring', 'thinking'];
+
+/* A boca recortada senta-se no busto neutro nesta caixa (em % do busto). */
+const MOUTH_BOX = { left: '34.21%', top: '65.78%', width: '31.57%', height: '17.10%' };
+
+/** A emoção anterior, enquanto a nova entra por cima. */
+function usePreviousDuringFade(mood) {
+  const [prev, setPrev] = useState(null);
+  const last = useRef(mood);
   useEffect(() => {
-    if (first.current) { first.current = false; return undefined; }
-    const from = rigRef.current;
-    const to = rigFor(mood);
-    if (prefersReducedMotion() || typeof requestAnimationFrame !== 'function') {
-      rigRef.current = to;
-      setRig(to);
-      return undefined;
-    }
-    let raf = 0;
-    const start = performance.now();
-    const step = (now) => {
-      const t = Math.min(1, (now - start) / MORPH_MS);
-      const next = lerpRig(from, to, easeInOut(t));
-      rigRef.current = next;
-      setRig(next);
-      if (t < 1) raf = requestAnimationFrame(step);
-    };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
+    if (last.current === mood) return undefined;
+    const from = last.current;
+    last.current = mood;
+    if (prefersReducedMotion()) { setPrev(null); return undefined; }
+    setPrev(from);
+    const t = setTimeout(() => setPrev(null), MORPH_MS);
+    return () => clearTimeout(t);
   }, [mood]);
-
-  return rig;
+  return prev;
 }
 
 export default function CoachAvatar({
@@ -79,11 +69,11 @@ export default function CoachAvatar({
   breathing = false,
   draw,
   alive,
+  talking = false,
 }) {
-  const mood = normalizeMood(moodProp) || 'neutral';
-  const rig = useMorphingRig(mood);
-  const paths = rigPaths(rig);
-  const frame = frameFor(size);
+  const normalized = normalizeMood(moodProp) || 'neutral';
+  const mood = talking ? 'neutral' : normalized;
+  const prev = usePreviousDuringFade(mood);
 
   // O compasso do piscar de cada instância, escolhido uma vez.
   const [blinkRhythm] = useState(() => ({
@@ -106,24 +96,19 @@ export default function CoachAvatar({
   }, [mood]);
 
   const drawing = (draw ?? size >= 56) && !prefersReducedMotion();
-  const blinking = (alive ?? size >= 26) && rig.blink;
+  const blinking = (alive ?? size >= 26) && mood === 'neutral' && !talking && !prev;
 
-  // Espessura: `strokePx` é o traço principal em píxeis; o resto do rig está
-  // desenhado para um traço de 3,2 unidades e escala com ele.
-  const vbW = Number(frame.viewBox.split(' ')[2]);
-  const unit = (frame.strokePx * vbW) / size;
-  const k = unit / 3.2;
-  // As feições que dizem a emoção, mais grossas nos tamanhos pequenos; os
-  // olhos só a meio caminho, senão fechavam-se em manchas.
-  const fk = k * frame.featBoost;
-  const ek = k * (1 + (frame.featBoost - 1) / 2);
-  const line = { stroke: 'var(--carol-line)' };
+  const img = (src, part, cls, extra, key) => (
+    <img key={key} src={`${SRC}${src}`} alt="" draggable="false" decoding="async" data-part={part} className={cls} {...extra} />
+  );
 
   return (
     <span
       aria-hidden="true"
-      data-mood={mood}
+      data-mood={normalized}
+      data-talking={talking ? 'true' : undefined}
       data-breathing={breathing ? 'true' : undefined}
+      data-close={size < 32 ? 'true' : undefined}
       className={`carol-face inline-flex items-center justify-center shrink-0 ${breathing ? 'coach-breathing ' : ''}${drawing ? 'carol-draw ' : ''}${className}`}
       style={{
         width: size,
@@ -133,82 +118,14 @@ export default function CoachAvatar({
         ...style,
       }}
     >
-      <svg
-        viewBox={frame.viewBox}
-        width={size}
-        height={size}
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        style={{ display: 'block' }}
-      >
-        <g ref={faceRef}>
-          {/* O pescoço sai pelo fundo do disco — não inclina com a cabeça. */}
-          <path className="carol-fill" d={NECK_FILL_PATH} style={{ fill: 'var(--carol-skin)' }} />
-          <path className="carol-sig carol-sig-2" pathLength="1" d={NECK_PATH} style={line} strokeWidth={unit} />
-
-          <g data-part="head" transform={`rotate(${rig.tilt.toFixed(2)} 50 80) translate(0 ${rig.lift.toFixed(2)})`}>
-            {/* O rabo-de-cavalo, por trás da cabeça. */}
-            <path className="carol-fill" d={PONYTAIL_PATH} style={{ fill: 'var(--carol-hair)' }} />
-            <path className="carol-sig" pathLength="1" d={PONYTAIL_PATH} style={line} strokeWidth={unit} />
-
-            <path className="carol-fill" d={FACE_FILL_PATH} style={{ fill: 'var(--carol-skin)' }} />
-            <path className="carol-sig" pathLength="1" d={JAW_PATH} style={line} strokeWidth={unit} />
-            {/* As orelhas antes do cabelo: o cabelo tapa-lhes o alto. */}
-            <path className="carol-feat" d={EARS_PATH} style={{ ...line, fill: 'var(--carol-skin)' }} strokeWidth={unit * 0.85} />
-            <path className="carol-fill" d={HAIR_PATH} style={{ fill: 'var(--carol-hair)' }} />
-            <path className="carol-sig" pathLength="1" d={HAIR_PATH} style={line} strokeWidth={unit} />
-            {/* A estrutura: os fios de luz das madeixas e o elástico. A 24–30 px
-                ficam só dois fios, senão o cabelo vira ruído. */}
-            <g className="carol-feat" style={{ stroke: 'var(--carol-hair-light)' }}>
-              <g opacity=".55">
-                <path d={frame.detail === 'min' ? HAIR_STRANDS_PATH.split(' M ')[0] : HAIR_STRANDS_PATH} strokeWidth={unit * 0.45} />
-                {frame.detail !== 'min' && <path d={PONYTAIL_STRANDS_PATH} strokeWidth={unit * 0.45} />}
-              </g>
-              <path d={PONYTAIL_TIE_PATH} strokeWidth={unit * 0.6} />
-            </g>
-
-            {/* O corado sobe e desce com a emoção. */}
-            <g className="carol-feat">
-              <g data-part="cheeks" style={{ fill: 'var(--carol-blush)' }} opacity={(0.25 + rig.blush * 0.6).toFixed(3)}>
-                {CHEEKS.map(([cx, cy, rx, ry]) => (
-                  <ellipse key={cx} cx={cx} cy={cy} rx={rx * (0.8 + rig.blush * 0.2)} ry={ry * (0.8 + rig.blush * 0.2)} />
-                ))}
-              </g>
-            </g>
-            {frame.detail === 'full' && (
-              <g className="carol-feat">
-                <path d={NOSE_PATH} style={line} strokeWidth={unit * 0.6} opacity=".7" />
-              </g>
-            )}
-            <g className="carol-feat" style={line}>
-              <path data-part="browL" d={paths.browL} strokeWidth={rig.browW * fk * 0.7} />
-              <path data-part="browR" d={paths.browR} strokeWidth={rig.browW * fk * 0.7} />
-            </g>
-            <g className="carol-feat carol-eyes-in" style={line}>
-              <g className={blinking ? 'carol-blink' : undefined}>
-                <path data-part="eyeL" d={paths.eyeL} strokeWidth={rig.eyeW * ek} />
-                <path data-part="eyeR" d={paths.eyeR} strokeWidth={rig.eyeW * ek} />
-              </g>
-            </g>
-            <path
-              data-part="mouth"
-              className="carol-feat carol-mouth-in"
-              d={paths.mouth}
-              style={{ ...line, fill: 'var(--carol-line)' }}
-              strokeWidth={rig.mouthW * fk * 0.8}
-              fillOpacity={paths.mouthOpen}
-            />
-
-          </g>
-
-          <g data-part="shine" opacity={rig.shine.toFixed(3)} style={{ stroke: 'var(--carol-shine)' }}>
-            {SHINE_PATHS.map((d) => (
-              <path key={d} d={d} strokeWidth={unit * 1.1} />
-            ))}
-          </g>
-        </g>
-      </svg>
+      <span ref={faceRef} className="carol-bust">
+        <span className="carol-frame">
+          {prev && img(`busto_${prev}.webp`, `bust-${prev}`, 'carol-layer', undefined, `prev-${prev}`)}
+          {img(`busto_${mood}.webp`, `bust-${mood}`, `carol-layer${prev ? ' carol-layer-in' : ''}`, undefined, mood)}
+          {blinking && img('busto_neutral_blink.webp', 'blink', 'carol-layer carol-blink')}
+          {talking && img('boca_happy.webp', 'mouth', 'carol-mouth carol-talk', { style: MOUTH_BOX })}
+        </span>
+      </span>
     </span>
   );
 }
