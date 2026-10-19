@@ -111,7 +111,7 @@ export default function ExerciseSheet({ exercise = null, onClose }) {
             <div role="alertdialog" aria-label="Tirar o exercício do Armário" className="rounded-xl p-3 space-y-2" style={{ border: '1px solid var(--danger)' }}>
               <p className="text-[12.5px]" style={{ color: 'var(--text-2)' }}>Os treinos já registados ficam como estão; só sai da lista e da última carga.</p>
               <div className="flex gap-2">
-                <button type="button" onClick={remove} disabled={busy} className="flex-1 min-h-[44px] rounded-xl text-[13px] font-bold" style={{ background: 'var(--danger)', color: '#fff' }}>Tirar</button>
+                <button type="button" onClick={remove} disabled={busy} className="flex-1 min-h-[44px] rounded-xl text-[13px] font-bold" style={{ background: 'var(--danger)', color: 'var(--danger-ink)' }}>Tirar</button>
                 <button type="button" onClick={() => setConfirmDelete(false)} className="flex-1 min-h-[44px] rounded-xl text-[13px] font-semibold" style={{ border: '1px solid var(--border-glass-strong)', color: 'var(--text-2)' }}>Manter</button>
               </div>
             </div>

@@ -70,3 +70,8 @@ Deno.test("handler: preview com run_id não cai na reanálise; a reanálise acei
   assertStringIncludes(src, 'body.mode !== "manual" && body.mode !== "preview") {');
   assertStringIncludes(src, "if (hasTypedRunValues(typedRe)) result = { ...result, extraction: mergeRunExtraction(result.extraction, typedRe) };");
 });
+
+Deno.test("cleanTypedArrays: tempo oficial e posição a zero não apagam a leitura", () => {
+  const t = cleanTypedArrays(extractionFromForm({ official_time_seconds: 0, position: 0, cadence_spm: 170 }));
+  assertEquals([t.official_time_seconds, t.position, t.cadence_spm], [null, null, 170]);
+});
