@@ -27,7 +27,19 @@ import {
   type GoalsReview,
 } from "./goalsReview.ts";
 import { fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
-import { FONTE_NAO_RECONHECIDA, normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import { normalizarFonte, opcoesDeFonte } from "../_shared/sourceApps.ts";
+import {
+  buildPreviewPrompt,
+  extractionRules,
+  METRIC_FIELDS,
+  type Metrics,
+  metricNum,
+  normalizeExtraction,
+  parseTypedMetrics,
+  PREVIEW_SCHEMA,
+  sanitizeClassifications,
+  typedMetricsSection,
+} from "./extraction.ts";
 import {
   fetchGeminiWithTimeout as fetchGemini,
   GEMINI_BUSY_BACKOFF_MS,
@@ -61,35 +73,6 @@ const corsHeaders = {
 const GEMINI_TIMEOUT_MS = 40000;
 const GEMINI_RETRIES = 1; // repetições automáticas após timeout, antes de desistir de vez
 
-// Colunas de métricas guardadas na BD e devolvidas pelo Gemini. A ordem/labels
-// aqui espelham o que a app Renpho Health mostra num print típico.
-// `label` = descrição curta (usada no histórico enviado ao Gemini).
-// `renpho` = como o termo aparece na app Renpho Health em português (inclui a
-//   grafia real da app, ex.: "Viceral"). `hint` = regra de desambiguação para
-//   a extração — calibrado com screenshots reais da Renpho.
-const METRIC_FIELDS: { key: string; label: string; renpho: string; hint?: string }[] = [
-  { key: "weight_kg", label: "Peso (kg)", renpho: "Peso", hint: "em kg" },
-  { key: "bmi", label: "IMC", renpho: "IMC", hint: "índice (ex.: 25.2)" },
-  { key: "body_fat_pct", label: "Gordura corporal (%)", renpho: "Gordura corporal",
-    hint: "USA A PERCENTAGEM (ex.: 26.0 %), NÃO o valor em kg que aparece no donut da Visão geral" },
-  { key: "skeletal_muscle_pct", label: "Músculo esquelético (%)", renpho: "Músculo esquelético", hint: "em %" },
-  { key: "muscle_mass_kg", label: "Massa muscular (kg)", renpho: "Massa Muscular",
-    hint: "USA OS KG (ex.: 56.70 kg), não a % que aparece ao lado" },
-  { key: "body_water_pct", label: "Água corporal (%)", renpho: "Água corporal",
-    hint: "USA A PERCENTAGEM (ex.: 53.4 %), não os kg ao lado" },
-  { key: "protein_pct", label: "Proteína (%)", renpho: "Proteína",
-    hint: "USA A PERCENTAGEM (ex.: 16.9 %), não os kg ao lado" },
-  { key: "bone_mass_kg", label: "Massa óssea (kg)", renpho: "Massa óssea",
-    hint: "USA OS KG (ex.: 2.98 kg), não a % ao lado" },
-  { key: "bmr_kcal", label: "Metabolismo basal (kcal)", renpho: "TMB (Taxa Metabólica Basal)",
-    hint: "em kcal (ex.: 1657)" },
-  { key: "visceral_fat", label: "Gordura visceral (índice)", renpho: "Gordura Visceral (por vezes escrito \"Viceral\")",
-    hint: "índice inteiro (ex.: 8), não uma percentagem" },
-  { key: "subcutaneous_fat_pct", label: "Gordura subcutânea (%)", renpho: "Gordura subcutânea", hint: "em %" },
-  { key: "metabolic_age", label: "Idade metabólica (anos)", renpho: "Idade Metabólica", hint: "em anos (ex.: 45)" },
-  { key: "lean_body_mass_kg", label: "Massa magra (kg)", renpho: "Peso corporal sem gordura (massa magra / isenta de gordura)",
-    hint: "em kg (ex.: 59.68)" },
-];
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
@@ -392,39 +375,10 @@ function weighingConditions(time: string | null, notes: string | null): string {
     "- Se a pesagem foi de manhã cedo e o atleta já disse que estava em jejum, não voltes a perguntar nem a recomendar.\n\n";
 }
 
-function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null, assessmentTime: string | null = null): string {
-  const mapping = METRIC_FIELDS
-    .map((f) => `- ${f.key} — na Renpho aparece como "${f.renpho}"${f.hint ? ` — ${f.hint}` : ""}`)
-    .join("\n");
+function buildPrompt(notes: string | null, history: unknown[], memoryBlock: string | null = null, goalsCtx: GoalsContext | null = null, assessmentTime: string | null = null, typed: Metrics | null = null): string {
 
   let prompt =
-    "As imagens seguintes são capturas de ecrã (screenshots) da aplicação Renpho Health, " +
-    "em português, que mostram os resultados de uma pesagem de composição corporal " +
-    "(ecrãs possíveis: \"Composição corporal / Comparativo\", \"Relatório de métricas / Visão geral\", ou \"Tendências\"). " +
-    "Extrai o valor numérico ATUAL de cada métrica. Devolve exatamente estas chaves:\n" +
-    mapping +
-    "\n\nRegras de extração (importantes — calibradas com a app real):\n" +
-    "- Devolve apenas o número, sem unidades nem símbolos. Usa ponto como separador decimal.\n" +
-    "- Se uma métrica não aparecer em nenhuma imagem, devolve null nessa chave (não inventes).\n" +
-    "- Várias métricas da Renpho mostram DOIS valores (ex.: \"56.70 kg, 70.3 %\"). Segue rigorosamente " +
-    "a unidade indicada em cada chave acima (kg ou %).\n" +
-    "- Muitas métricas têm ao lado uma ETIQUETA DE ESTADO (ex.: \"Média\", \"Normal\", \"Alto\", " +
-    "\"Baixo\", \"Ligeiramente alto\", \"Excelente\", \"Padrão\"). Coloca essa etiqueta, tal e qual " +
-    "aparece na imagem, no objeto \"classifications\" sob a MESMA chave da métrica. Se uma métrica " +
-    "não tiver etiqueta visível, devolve null nessa chave de \"classifications\". A etiqueta NÃO é " +
-    "um valor numérico — nunca a metas em \"metrics\".\n" +
-    "- No ecrã \"Comparativo\", cada cartão mostra o valor grande (atual) e por baixo uma variação " +
-    "com sinal (ex.: \"−0.40\", \"+0.1\"). Extrai SEMPRE o valor grande atual, NUNCA a variação.\n" +
-    "- No ecrã \"Tendências\" (gráfico), usa o valor mais recente/último ponto, não a meta nem os extremos.\n" +
-    "- Combina a informação de todas as imagens numa única leitura coerente da mesma pesagem.\n" +
-    "- source_app: identifica de QUE APLICAÇÃO são estes prints, pelo cabeçalho, pelo nome visível, pelo tipo " +
-    "de letra e pelo estilo do ecrã (cores, ícones, disposição dos cartões) — não pelos valores nem pelo facto " +
-    "de serem métricas de composição corporal, que são as mesmas em todas as balanças. Devolve exatamente uma " +
-    "destas chaves: " + opcoesDeFonte("corpo").join(", ") + ". A Renpho Health reconhece-se pelo nome no topo, " +
-    "pelo donut da Visão geral e pela terminologia própria (ex.: \"Gordura Viceral\" escrito assim, " +
-    "\"Peso corporal sem gordura\"). Se as imagens forem de outra app (Withings, Xiaomi Zepp, Tanita, Huawei " +
-    "Health...), ou se não tiveres a certeza, devolve \"" + FONTE_NAO_RECONHECIDA + "\" — nunca escolhas a app " +
-    "mais parecida por eliminação.\n\n" +
+    extractionRules() + typedMetricsSection(typed) + "\n\n" +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
     "\n\n" +
@@ -464,6 +418,8 @@ async function analyzeWithGemini(
   goalsCtx: GoalsContext | null = null,
   deadline = Number.POSITIVE_INFINITY,
   assessmentTime: string | null = null,
+  // O que o atleta escreveu no formulário: ganha à leitura (registo unificado).
+  typed: Metrics | null = null,
 ): Promise<
   {
     metrics: Record<string, number | null>;
@@ -474,7 +430,7 @@ async function analyzeWithGemini(
     goalsReview: GoalsReview;
   }
 > {
-  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx, assessmentTime) }];
+  const parts: unknown[] = [{ text: buildPrompt(notes, history, memoryBlock, goalsCtx, assessmentTime, typed) }];
   for (const b64 of images) {
     parts.push({ inline_data: { mime_type: mime, data: b64 } });
   }
@@ -525,42 +481,65 @@ async function analyzeWithGemini(
     throw new Error("A análise devolveu um formato inesperado. Tenta novamente.");
   }
 
-  // Aceita apenas números finitos e >= 0; tudo o resto vira null.
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && isFinite(v) && v >= 0 ? v : null;
-  const rawMetrics = (parsed.metrics ?? {}) as Record<string, unknown>;
-  const metrics: Record<string, number | null> = {};
-  for (const f of METRIC_FIELDS) metrics[f.key] = num(rawMetrics[f.key]);
-
-  const hasAny = Object.values(metrics).some((v) => v !== null);
+  const { metrics, classifications, sourceApp, hasAny } = normalizeExtraction(parsed, typed);
   if (!hasAny) {
     throw new Error(
       "Não foi possível ler valores nas imagens. Confirma que é um print da Renpho Health, com boa nitidez.",
     );
   }
 
-  // Classificações: só guarda strings não vazias, e só para métricas com valor.
-  const rawClass = (parsed.classifications ?? {}) as Record<string, unknown>;
-  const classifications: Record<string, string> = {};
-  for (const f of METRIC_FIELDS) {
-    const label = rawClass[f.key];
-    if (metrics[f.key] !== null && typeof label === "string" && label.trim()) {
-      classifications[f.key] = label.trim().slice(0, 40);
-    }
-  }
-
-  /* A fonte NÃO é uma classificação de métrica nenhuma — vai à boleia do
-     mesmo jsonb por uma razão prática: `body_assessments` não tem coluna
-     `details` (ao contrário de `runs`), e este trabalho não abre migrações.
-     `classifications` é indexado pelas chaves de METRIC_FIELDS, onde
-     "source_app" nunca pode cair, por isso não colide com nada. Se um dia
-     houver coluna própria, é daqui que sai. */
-  const sourceApp = normalizarFonte(parsed.source_app, "corpo");
-  classifications.source_app = sourceApp;
-
   const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
   return { metrics, classifications, summary, sourceApp, usage, goalsReview: parseGoalsReview(parsed.goals_review) };
 }
+
+// A pré-leitura (mode "preview"): só os valores, as etiquetas e a app — sem
+// resumo e sem gravar. Lança um erro com mensagem amigável.
+async function previewWithGemini(
+  images: string[],
+  mime: string,
+  notes: string | null,
+  geminiKey: string,
+  deadline = Number.POSITIVE_INFINITY,
+): Promise<{ preview: { metrics: Metrics; classifications: Record<string, string>; source_app: string }; usage: GeminiUsage }> {
+  const parts: unknown[] = [{ text: buildPreviewPrompt(notes) }];
+  for (const b64 of images) parts.push({ inline_data: { mime_type: mime, data: b64 } });
+  const res = await geminiWithFallback((model, withThinking) => fetchGeminiWithTimeout(
+    geminiUrl(model),
+    {
+      method: "POST",
+      headers: geminiHeaders(geminiKey),
+      body: JSON.stringify({
+        contents: [{ parts }],
+        generationConfig: {
+          ...thinkingConfig("low", withThinking),
+          response_mime_type: "application/json",
+          response_schema: PREVIEW_SCHEMA,
+        },
+      }),
+    },
+    GEMINI_TIMEOUT_MS,
+    GEMINI_RETRIES,
+    deadline,
+  ));
+  if (!res.ok) {
+    const errText = await res.text();
+    console.error("Gemini error (preview):", res.status, errText);
+    if (GEMINI_RETRYABLE_STATUSES.has(res.status)) throw new Error(geminiBusyMessage("ler os prints"));
+    throw new Error(upstreamErrorText(res.status));
+  }
+  const json = await res.json();
+  const usage: GeminiUsage = usageFromGemini(json);
+  let parsed;
+  try {
+    parsed = JSON.parse(json?.candidates?.[0]?.content?.parts?.[0]?.text);
+  } catch {
+    throw new Error("A leitura devolveu um formato inesperado. Tenta novamente.");
+  }
+  const { metrics, classifications, sourceApp } = normalizeExtraction(parsed);
+  return { preview: { metrics, classifications, source_app: sourceApp }, usage };
+}
+
+const normalizarFonteCorpo = (v: unknown) => normalizarFonte(v, "corpo");
 
 // Gera o resumo/comentário do Coach a partir de valores indicados manualmente
 // (sem foto) — mesmo texto e regras do resumo gerado no modo normal
@@ -577,6 +556,8 @@ async function generateBodySummaryFromMetrics(
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
   assessmentTime: string | null = null,
+  // Os valores vieram de prints que o atleta leu e reviu (registo unificado, `reviewed`).
+  fromPrints = false,
   // `usage`: tokens desta chamada (null se não houve resposta do Gemini) —
   // antes não era devolvido, e o registo manual não contava para os custos.
 ): Promise<{ text: string | null; goalsReview: GoalsReview; usage: GeminiUsage | null }> {
@@ -596,8 +577,11 @@ async function generateBodySummaryFromMetrics(
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     memoryPromptSection(memoryBlock) +
     weighingConditions(assessmentTime, notes) +
-    "O atleta registou manualmente os seguintes valores de uma avaliação de composição " +
-    `corporal (sem foto):\n${metricLines}\n\n` +
+    (fromPrints
+      ? "O atleta registou os seguintes valores de uma avaliação de composição corporal, lidos dos prints da " +
+        `balança e revistos por ele:\n${metricLines}\n\n`
+      : "O atleta registou manualmente os seguintes valores de uma avaliação de composição " +
+        `corporal (sem foto):\n${metricLines}\n\n`) +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
     "\n\nEscreve a tua avaliação destes valores, em português de Portugal. " +
@@ -698,6 +682,27 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
     const metricSelect =
       "id, date, " + METRIC_FIELDS.map((f) => f.key).join(", ");
 
+    // ── Modo preview: ler os prints para o formulário, SEM gravar ──────
+    // Registo unificado (specs/plano-registo-plano-coach.md, decisão 6): o
+    // atleta revê o que se leu e só depois grava. Só leitura — sem resumo,
+    // sem histórico, sem Storage.
+    if (body.mode === "preview") {
+      const imgs: string[] = (Array.isArray(body.images) ? body.images : [])
+        .filter((x: unknown) => typeof x === "string" && x.length > 0);
+      if (imgs.length === 0) return jsonResponse({ error: "Junta pelo menos um print para eu ler." }, 400);
+      if (imgs.length > MAX_PHOTOS) return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por avaliação` }, 400);
+      const mime = ["image/jpeg", "image/png", "image/webp"].includes(body.mime_type) ? body.mime_type : "image/jpeg";
+      try {
+        const { preview, usage } = await previewWithGemini(imgs, mime, rawNotes, geminiKey, extractionDeadline);
+        // Ler e depois gravar é o caminho comum: os prints de apps que não se
+        // reconhecem chegam ao Admin por aqui (no `reviewed` já não se leem).
+        await checkAndLogAppImage(sb, userId, "body", imgs, mime, preview as unknown as Record<string, unknown>);
+        return jsonResponse({ preview, usage });
+      } catch (e) {
+        return jsonResponse({ error: e instanceof Error ? e.message : "Não consegui ler os prints." }, 502);
+      }
+    }
+
     // ── Modo manual: registo sem fotos, com análise do Coach ───────────
     // Os valores já vêm todos do formulário (nada para o Gemini extrair de
     // imagem nenhuma) — grava a avaliação diretamente e gera o comentário do
@@ -710,10 +715,8 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
       const rawMetrics = (body.metrics ?? {}) as Record<string, unknown>;
-      const num = (v: unknown): number | null =>
-        typeof v === "number" && isFinite(v) && v >= 0 ? v : null;
       const metrics: Record<string, number | null> = {};
-      for (const f of METRIC_FIELDS) metrics[f.key] = num(rawMetrics[f.key]);
+      for (const f of METRIC_FIELDS) metrics[f.key] = metricNum(rawMetrics[f.key]);
       const hasAny = Object.values(metrics).some((v) => v !== null);
       if (!hasAny) {
         return jsonResponse({ error: "Preenche pelo menos um valor." }, 400);
@@ -852,6 +855,11 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
     // ── Modo normal: nova avaliação a partir de imagens ────────────────
     const { mime_type, date } = body;
+    // Registo unificado: o que o atleta escreveu ganha à leitura; com
+    // `reviewed` (os prints já foram lidos no "preview" e ele reviu os
+    // valores), não se volta a ler — grava-se o que está no formulário.
+    const typed = parseTypedMetrics(body.metrics);
+    const reviewed = body.reviewed === true && typed !== null;
 
     let images: string[] = [];
     if (Array.isArray(body.images)) {
@@ -899,10 +907,39 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       photoPaths.push(path);
     }
 
-    // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
+    // 2a. Já revisto: o resumo faz-se dos valores do formulário, sem nova leitura.
+    if (reviewed) {
+      const summaryResult = await generateBodySummaryFromMetrics(typed!, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, true);
+      const classifications = sanitizeClassifications(body.classifications, typed!);
+      if (typeof body.classifications?.source_app === "string") {
+        classifications.source_app = normalizarFonteCorpo(body.classifications.source_app);
+      }
+      const { data: assessment, error: insertError } = await sb
+        .from("body_assessments")
+        .insert({
+          user_id: userId,
+          date,
+          photo_paths: photoPaths,
+          status: "ready",
+          notes: rawNotes,
+          ai_summary: summaryResult.text,
+          classifications,
+          ...typed!,
+        })
+        .select()
+        .single();
+      if (insertError) {
+        await sb.storage.from("body-photos").remove(photoPaths);
+        return jsonResponse({ error: `Falha a gravar avaliação: ${insertError.message}` }, 500);
+      }
+      await syncProfileAfterAssessment(sb, userId, assessment, summaryResult.goalsReview);
+      return jsonResponse({ assessment, source_app: classifications.source_app ?? null, usage: summaryResult.usage });
+    }
+
+    // 2b. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
     let result;
     try {
-      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime);
+      result = await analyzeWithGemini(images, mime, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, extractionDeadline, rawTime, typed);
     } catch (e) {
       await sb.storage.from("body-photos").remove(photoPaths);
       return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
