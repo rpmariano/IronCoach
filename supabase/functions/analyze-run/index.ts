@@ -1369,6 +1369,9 @@ export function cleanTypedArrays(t: RunExtraction): RunExtraction {
   }
   if (typeof t.distance_km === "number" && !(t.distance_km > 0)) scalars.distance_km = null;
   if (typeof t.duration_seconds === "number" && !(t.duration_seconds > 0)) scalars.duration_seconds = null;
+  // O tempo oficial e a posição também só valem acima de zero ("0:00" ou "0" não apagam a leitura).
+  if (typeof t.official_time_seconds === "number" && !(t.official_time_seconds > 0)) scalars.official_time_seconds = null;
+  if (typeof t.position === "number" && !(t.position > 0)) scalars.position = null;
   t = { ...t, ...scalars } as RunExtraction;
   const splits = Array.isArray(t.splits)
     ? t.splits.map((x) => ({ distance_km: n((x as RunSplit)?.distance_km), time_seconds: n((x as RunSplit)?.time_seconds) }))

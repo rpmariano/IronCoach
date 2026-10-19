@@ -71,7 +71,7 @@ Componentes partilhados em `src/components/shared/registration/`:
 ### 2.2 Execução no registo
 - `workout_sessions.exercises_meta jsonb`: `[{ name, goal, block_type, plan_block_index, goal_met }]`. O **objetivo vive por exercício, não por série**. Assim não se mexe na forma de `workout_session_sets`, que muitas leituras usam.
 - `workout_session_sets`: + `duration_seconds`, `distance_km`, `laps` (nullable), para as linhas de cardio.
-- `runs.goal text`: o objetivo da corrida (uma corrida é "um exercício").
+- ~~`runs.goal text`~~: **retirada a 2026-10-20** (`20261020100000_drop_runs_goal.sql`): a corrida não tem campo de objetivo; nunca foi usada (0 de 88 corridas). O objetivo existe só por exercício do Ginásio.
 
 ### 2.3 Origem da ligação (decisão 3)
 - `coach_plan_items.completion_source text`: `'plano'` (escolheu "Usar o plano" ou veio de "Registar sessão") ou `'auto'` (treino livre que riscou o item do dia).

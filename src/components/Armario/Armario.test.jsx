@@ -141,3 +141,21 @@ describe('Armário — submenus por secção (decisão 14)', () => {
     await waitFor(() => expect(mocks.calls).toEqual([{ table: 'athlete_exercises', op: 'delete' }]));
   });
 });
+
+describe('Armário — navegação por setas nos separadores', () => {
+  it('as setas, Home e End movem entre as secções e o foco acompanha', () => {
+    render(<Armario />);
+    const tabs = screen.getAllByRole('tab');
+    tabs[0].focus();
+    fireEvent.keyDown(tabs[0].parentElement, { key: 'ArrowRight' });
+    expect(tabs[1]).toHaveAttribute('aria-selected', 'true');
+    expect(document.activeElement).toBe(tabs[1]);
+    fireEvent.keyDown(tabs[1].parentElement, { key: 'End' });
+    expect(tabs[2]).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(tabs[2].parentElement, { key: 'ArrowRight' });
+    expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+    // Só o separador ativo está na ordem de tabulação.
+    expect(tabs[0]).toHaveAttribute('tabindex', '0');
+    expect(tabs[1]).toHaveAttribute('tabindex', '-1');
+  });
+});

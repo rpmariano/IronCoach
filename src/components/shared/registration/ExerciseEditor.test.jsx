@@ -27,6 +27,26 @@ describe('ExerciseEditor', () => {
     expect(state()[0].type).toBe('forca');
   });
 
+  it('bug #69: um exercício novo entra no TOPO da lista, não no fundo', () => {
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca' })]} lockerRows={LOCKER} />);
+    fireEvent.click(screen.getByText('Adicionar exercício'));
+    expect(state().map(e => e.name)).toEqual(['', 'Prensa']);
+    // Da biblioteca também: o último a entrar fica por cima.
+    fireEvent.click(screen.getByRole('button', { name: /Da biblioteca/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Leg Press/ }));
+    expect(state().map(e => e.name)).toEqual(['Leg Press', '', 'Prensa']);
+  });
+
+  it('bug #68: o ajuste rápido são pílulas, com as reps antes do peso', () => {
+    render(<Harness initial={[newExercise({ name: 'Leg Press', type: 'forca' })]} lockerRows={LOCKER} />);
+    const grupo = screen.getByRole('group', { name: /Ajuste rápido da série 1/ });
+    const botoes = Array.from(grupo.querySelectorAll('button'));
+    expect(botoes.map(b => b.textContent)).toEqual(['−1 rep', '+1 rep', '−2,5 kg', '+2,5 kg']);
+    for (const b of botoes) expect(b.className).toMatch(/rounded-full/);
+    fireEvent.click(screen.getByRole('button', { name: '+1 rep' }));
+    expect(state()[0].sets[0].reps).toBe('11');
+  });
+
   it('nome, objetivo, reps e kg', () => {
     render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca' })]} />);
     fireEvent.change(screen.getByLabelText('Objetivo — Prensa'), { target: { value: 'descida em 3 s' } });
@@ -69,8 +89,8 @@ describe('ExerciseEditor', () => {
 
   it('o Armário: procura, filtra e junta', () => {
     render(<Harness lockerRows={LOCKER} />);
-    fireEvent.click(screen.getByRole('button', { name: /Do Armário/ }));
-    fireEvent.change(screen.getByLabelText('Procurar no Armário'), { target: { value: 'leg' } });
+    fireEvent.click(screen.getByRole('button', { name: /Da biblioteca/ }));
+    fireEvent.change(screen.getByLabelText('Procurar na biblioteca'), { target: { value: 'leg' } });
     expect(screen.queryByRole('button', { name: /^Remo/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Leg Press/ }));
     expect(state()[0]).toMatchObject({ name: 'Leg Press', type: 'forca' });
@@ -79,8 +99,8 @@ describe('ExerciseEditor', () => {
 
   it('o Armário vazio explica como se enche', () => {
     render(<Harness />);
-    fireEvent.click(screen.getByRole('button', { name: /Do Armário/ }));
-    expect(screen.getByText(/O Armário enche-se sozinho/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /Da biblioteca/ }));
+    expect(screen.getByText(/A biblioteca enche-se sozinha/)).toBeTruthy();
   });
 
   it('afinação (decisão 10): mostra a do Armário e só vai no registo se a mudar', () => {

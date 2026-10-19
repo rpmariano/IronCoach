@@ -6,7 +6,7 @@ import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
-import { Dumbbell, Users, X } from 'lucide-react';
+import { Dumbbell, Users } from 'lucide-react';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import ChipPicker from '../shared/registration/ChipPicker';

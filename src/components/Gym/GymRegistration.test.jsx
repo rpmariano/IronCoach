@@ -137,11 +137,11 @@ describe('GymRegistration — formulário único (registo unificado, F1)', () =>
     expect(body.exercises_meta[0].block_type).toBe('cardio');
   });
 
-  it('"+ Do Armário" junta um exercício conhecido, com a última vez como referência', async () => {
+  it('"Da biblioteca" junta um exercício conhecido, com a última vez como referência', async () => {
     mocks.locker = [{ id: 'x1', name: 'Leg Press', name_key: 'leg press', category: 'Pernas Inferiores', block_type: 'forca', last_weight: 100, last_reps: 10 }];
     useAppStore.setState({ exerciseLocker: [], exerciseLockerUserId: null, session: { user: { id: 'user-1' } } });
     render(<GymRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Do Armário/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Da biblioteca/ }));
     fireEvent.click(await screen.findByRole('button', { name: /Leg Press/ }));
     expect(screen.getByDisplayValue('Leg Press')).toBeInTheDocument();
     expect(screen.getAllByLabelText(/Repetições da série/)).toHaveLength(3);
@@ -432,12 +432,13 @@ describe('GymRegistration — editar sessão existente', () => {
   it('editar uma série e adicionar um exercício novo passa pelo Coach', async () => {
     render(<GymRegistration onClose={onClose} sessionIdToEdit="sess-3" />);
 
-    const reps = screen.getAllByLabelText(/Repetições da série/);
-    fireEvent.change(reps[0], { target: { value: '12' } });
+    // O exercício novo entra no TOPO (bug #69, 2026-10-19): fica antes do Supino.
     fireEvent.click(screen.getByRole('button', { name: /Adicionar exercício/ }));
     const nameInputs = screen.getAllByPlaceholderText('Nome do exercício');
-    fireEvent.change(nameInputs[nameInputs.length - 1], { target: { value: 'Fondos' } });
-    fireEvent.change(screen.getAllByLabelText(/Repetições da série/)[2], { target: { value: '15' } });
+    fireEvent.change(nameInputs[0], { target: { value: 'Fondos' } });
+    const reps = screen.getAllByLabelText(/Repetições da série/);
+    fireEvent.change(reps[0], { target: { value: '15' } });
+    fireEvent.change(reps[1], { target: { value: '12' } });
 
     fireEvent.click(screen.getByRole('button', { name: /Guardar e reanalisar/ }));
 
@@ -446,7 +447,7 @@ describe('GymRegistration — editar sessão existente', () => {
     expect(fnName).toBe('analyze-gym');
     expect(body.mode).toBe('manual');
     expect(body.session_id).toBe('sess-3');
-    expect(body.sets[0]).toEqual({ exercise_name: 'Supino', set_index: 0, reps: 12, weight: 60 });
+    expect(body.sets).toContainEqual({ exercise_name: 'Supino', set_index: 0, reps: 12, weight: 60 });
     expect(body.sets).toContainEqual({ exercise_name: 'Fondos', set_index: 0, reps: 15, weight: null });
     // Quem grava é a Edge Function — o cliente já não mexe nas séries.
     expect(mocks.updateSession).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDurationInput, formatDurationInput, flattenExercises } from './gymSets';
+import { parseDurationInput, formatDurationInput, flattenExercises, describeSavedSet } from './gymSets';
 
 describe('parseDurationInput', () => {
   it('lê minutos, mm:ss e hh:mm:ss', () => {
@@ -180,5 +180,31 @@ describe('afinação da máquina no exercises_meta (decisão 10)', async () => {
     expect('machine_settings' in meta[0]).toBe(false);
     expect(meta[1].machine_settings).toBe('banco furo 5');
     expect(meta[2].machine_settings).toBe('');
+  });
+});
+
+describe('describeSavedSet — a série gravada no cartão (bug #73)', () => {
+  it('força: reps × kg', () => {
+    expect(describeSavedSet({ reps: 12, weight: 40 })).toBe('12 reps × 40 kg');
+    expect(describeSavedSet({ reps: 15, weight: null })).toBe('15 reps');
+    expect(describeSavedSet({ reps: null, weight: 20 })).toBe('20 kg');
+  });
+
+  it('cardio: o tempo e os km que a passadeira de 2026-10-19 tinha (318 s, 1 km), não "reps × kg"', () => {
+    const passadeira = { reps: null, weight: null, duration_seconds: 318, distance_km: '1', laps: null };
+    expect(describeSavedSet(passadeira)).toBe('5 min 18 s · 1 km');
+    expect(describeSavedSet(passadeira)).not.toMatch(/reps|kg/);
+  });
+
+  it('cardio: minutos certos, metros, voltas, vírgula decimal', () => {
+    expect(describeSavedSet({ duration_seconds: 1200 })).toBe('20 min');
+    expect(describeSavedSet({ duration_seconds: 45 })).toBe('45 s');
+    expect(describeSavedSet({ distance_km: 0.4, laps: 16 })).toBe('400 m · 16 voltas');
+    expect(describeSavedSet({ distance_km: 5.25, duration_seconds: 1800, laps: 1 })).toBe('30 min · 5,25 km · 1 volta');
+  });
+
+  it('sem nada: um traço, nunca "undefined"', () => {
+    expect(describeSavedSet({})).toBe('—');
+    expect(describeSavedSet(null)).toBe('—');
   });
 });

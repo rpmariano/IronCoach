@@ -406,3 +406,32 @@ export function readSummary({ exercises, metrics, skipped }, source) {
   }
   return `Li ${parts.join(' e ')}. Revê e corrige o que for preciso antes de gravar.`;
 }
+
+/** Uma série gravada, em texto, para o cartão: força "12 reps × 40 kg"; cardio
+ *  "5 min 18 s · 1 km · 3 voltas" (bug #73, 2026-10-19: uma passadeira com
+ *  tempo e km aparecia como "reps × kg"). Só o que a série tem — nunca
+ *  "undefined" nem "reps × kg" vazios. */
+export function describeSavedSet(set) {
+  const secs = Number(set?.duration_seconds);
+  const km = Number(set?.distance_km);
+  const laps = Number(set?.laps);
+  const parts = [];
+  if (secs > 0) {
+    const m = Math.floor(secs / 60);
+    const s = Math.round(secs % 60);
+    parts.push(m > 0 ? (s > 0 ? `${m} min ${s} s` : `${m} min`) : `${s} s`);
+  }
+  if (km > 0) {
+    parts.push(km < 1 ? `${Math.round(km * 1000)} m` : `${String(Math.round(km * 100) / 100).replace('.', ',')} km`);
+  }
+  if (laps > 0) parts.push(`${laps} ${laps === 1 ? 'volta' : 'voltas'}`);
+  if (parts.length) return parts.join(' · ');
+  const reps = set?.reps;
+  const weight = set?.weight;
+  const hasReps = reps !== null && reps !== undefined && reps !== '';
+  const hasWeight = weight !== null && weight !== undefined && weight !== '';
+  if (hasReps && hasWeight) return `${reps} reps × ${weight} kg`;
+  if (hasReps) return `${reps} reps`;
+  if (hasWeight) return `${weight} kg`;
+  return '—';
+}

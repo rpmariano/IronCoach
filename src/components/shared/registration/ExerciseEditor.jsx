@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Trash2, Check } from 'lucide-react';
+import { X, Trash2, Check, BookOpen, Plus } from 'lucide-react';
 import AddButton from '../AddButton';
 import Chip from '../Chip';
 import ExerciseLockerPicker from './ExerciseLockerPicker';
@@ -94,13 +94,19 @@ function StrengthSets({ ex, last, onExercise }) {
               </button>
             </div>
             {idx === activeIdx && (
-              <div className="flex gap-1 mt-1 ml-11" role="group" aria-label={`Ajuste rápido da série ${idx + 1} de ${name}`}>
-                {[['weight', -2.5, '−2,5 kg'], ['weight', 2.5, '+2,5 kg'], ['reps', -1, '−1 rep'], ['reps', 1, '+1 rep']].map(([f, d, text]) => (
+              <div className="flex flex-wrap gap-2 mt-1.5 ml-11" role="group" aria-label={`Ajuste rápido da série ${idx + 1} de ${name}`}>
+                {/* Bug #68 (2026-10-19): pílulas, e as reps primeiro, o peso a seguir. */}
+                {[['reps', -1, '−1 rep'], ['reps', 1, '+1 rep'], ['weight', -2.5, '−2,5 kg'], ['weight', 2.5, '+2,5 kg']].map(([f, d, text]) => (
                   <button
                     key={text}
                     type="button"
                     onClick={() => onExercise(nudgeSet(ex, s.key, f, d, last))}
-                    className="tap-h-44 px-2 rounded-full text-[11px] font-medium border border-[var(--border-glass)] text-[var(--text-3)] hover:text-[var(--text-1)]"
+                    className="min-h-[44px] min-w-[72px] px-3.5 rounded-full text-[12.5px] font-bold border active:scale-95 transition"
+                    style={{
+                      background: 'color-mix(in srgb, var(--mod-ginasio-to) 14%, transparent)',
+                      borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 45%, transparent)',
+                      color: 'var(--text-1)',
+                    }}
                   >
                     {text}
                   </button>
@@ -180,21 +186,31 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
 
   return (
     <div className="mb-4">
-      <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
-        <span className="text-[11px] text-[var(--text-3)]">Exercícios e séries</span>
-        <div className="flex gap-1.5">
-          <AddButton
-            onClick={() => { setPickerOpen(o => !o); if (!pickerOpen && onOpenLocker) onOpenLocker(); }}
-            type="button"
-            variant="gym"
-            aria-expanded={pickerOpen}
-          >
-            Do Armário
-          </AddButton>
-          <AddButton onClick={() => onChange([...exercises, newExercise({ type: 'forca' })])} type="button" variant="gym">
-            Adicionar exercício
-          </AddButton>
-        </div>
+      <span className="block text-[11px] text-[var(--text-3)] mb-1.5">Exercícios e séries</span>
+      {/* Bug #71 (2026-10-19): as duas ações com destaque — antes eram texto
+          pequeno no canto. "Armário" não dizia nada aqui: Biblioteca. */}
+      <div className="grid grid-cols-2 gap-2 mb-2.5">
+        <button
+          onClick={() => { setPickerOpen(o => !o); if (!pickerOpen && onOpenLocker) onOpenLocker(); }}
+          type="button"
+          aria-expanded={pickerOpen}
+          className="min-h-[48px] rounded-xl border text-[13px] font-extrabold flex items-center justify-center gap-1.5 active:scale-95 transition"
+          style={{
+            background: pickerOpen ? 'color-mix(in srgb, var(--mod-ginasio-to) 22%, transparent)' : 'color-mix(in srgb, var(--mod-ginasio-to) 12%, transparent)',
+            borderColor: 'color-mix(in srgb, var(--mod-ginasio-to) 55%, transparent)',
+            color: 'var(--text-1)',
+          }}
+        >
+          <BookOpen size={16} aria-hidden="true" /> Da biblioteca
+        </button>
+        <button
+          onClick={() => onChange([newExercise({ type: 'forca' }), ...exercises])}
+          type="button"
+          className="min-h-[48px] rounded-xl text-[13px] font-extrabold flex items-center justify-center gap-1.5 active:scale-95 transition"
+          style={{ background: 'var(--mod-ginasio-to)', color: 'var(--gym-ink, #0b2129)' }}
+        >
+          <Plus size={16} aria-hidden="true" /> Adicionar exercício
+        </button>
       </div>
 
       {anyUnconfirmed && (
@@ -206,7 +222,7 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
       {pickerOpen && (
         <ExerciseLockerPicker
           rows={lockerRows}
-          onPick={(ex) => { onChange([...exercises, ex]); }}
+          onPick={(ex) => { onChange([ex, ...exercises]); }}
           onClose={() => setPickerOpen(false)}
         />
       )}

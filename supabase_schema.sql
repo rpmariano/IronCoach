@@ -869,7 +869,7 @@ alter table public.workout_session_sets
   add column if not exists laps integer
     check (laps is null or laps > 0);
 
-alter table public.runs add column if not exists goal text;
+-- (runs.goal foi criada na F0a e retirada a 2026-10-20: 20261020100000_drop_runs_goal.sql)
 
 -- O Armário de Exercícios: entra à 1.ª vez que é registado.
 create table if not exists public.athlete_exercises (
