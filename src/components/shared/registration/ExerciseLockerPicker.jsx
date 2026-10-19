@@ -21,18 +21,18 @@ export default function ExerciseLockerPicker({ rows, onPick, onClose }) {
   }, [rows, query, group]);
 
   return (
-    <div className="mb-3 rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3" role="region" aria-label="Armário de Exercícios">
+    <div className="mb-3 rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3" role="region" aria-label="Biblioteca de exercícios">
       <div className="flex items-center gap-2 mb-2">
         <input
           type="search"
           autoFocus
-          aria-label="Procurar no Armário"
+          aria-label="Procurar na biblioteca"
           value={query}
           onChange={e => setQuery(e.target.value)}
           placeholder="Procurar exercício…"
           className="flex-1 min-w-0 min-h-[44px] bg-transparent border-b border-[var(--border-glass)] text-sm text-white outline-none focus:border-[var(--mod-ginasio-to)] placeholder-[var(--text-muted)]"
         />
-        <button type="button" onClick={onClose} aria-label="Fechar o Armário" className="tap-44 text-[var(--text-3)] shrink-0">
+        <button type="button" onClick={onClose} aria-label="Fechar a biblioteca" className="tap-44 text-[var(--text-3)] shrink-0">
           <X size={16} />
         </button>
       </div>
@@ -46,7 +46,7 @@ export default function ExerciseLockerPicker({ rows, onPick, onClose }) {
         </div>
       )}
       {(rows || []).length === 0 ? (
-        <p className="text-[12px] text-[var(--text-3)]">O Armário enche-se sozinho: cada exercício que registares fica cá, com a última carga.</p>
+        <p className="text-[12px] text-[var(--text-3)]">A biblioteca enche-se sozinha: cada exercício que registares fica cá, com a última carga.</p>
       ) : results.length === 0 ? (
         <p className="text-[12px] text-[var(--text-3)]">Nada com esse nome. Escreve-o em "Adicionar exercício".</p>
       ) : (
