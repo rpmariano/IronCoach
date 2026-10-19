@@ -19,12 +19,15 @@ import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../ActionBar';
 export default function RegistrationShell({
   accent, icon: Icon, title, exit, status = null, busy = false,
   onSaveAndLeave, isSaving = false, confirmation = null, primaryAction, children,
+  // A Refeição: o cartão recorta o que sobe com o teclado, a barra sai com ele,
+  // e os testes procuram o bloco dos campos pelo id.
+  cardClassName = '', actionBarClassName = '', bodyTestId = undefined,
 }) {
   return (
     // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
     <div className="space-y-4 fade-in" style={{ '--focus-ring': accent, paddingBottom: ACTION_BAR_SCROLL_PAD }}>
       <div
-        className="module-card-contrast"
+        className={`module-card-contrast ${cardClassName}`.trim()}
         // O mesmo vidro fosco do resto da app, com a cor do módulo por cima, bem subtil.
         style={{
           background: `linear-gradient(135deg, color-mix(in srgb, ${accent} 3%, transparent), color-mix(in srgb, ${accent} 6%, transparent)), rgba(255, 255, 255, 0.05)`,
@@ -51,7 +54,7 @@ export default function RegistrationShell({
 
         {status}
 
-        <div aria-busy={busy || undefined} style={busy ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+        <div data-testid={bodyTestId} aria-busy={busy || undefined} style={busy ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
           {children}
         </div>
       </div>
@@ -66,7 +69,7 @@ export default function RegistrationShell({
 
       {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
 
-      <ActionBar>{primaryAction}</ActionBar>
+      <ActionBar className={actionBarClassName || undefined}>{primaryAction}</ActionBar>
     </div>
   );
 }

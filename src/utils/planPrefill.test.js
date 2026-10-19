@@ -74,3 +74,31 @@ describe('appendExercises e describePlanItem', () => {
     expect(describePlanItem({})).toBe('Treino de ginásio');
   });
 });
+
+describe('mealSuggestionsFor — a refeição sugerida no plano (Refeição, §1)', async () => {
+  const { mealSuggestionsFor } = await import('./planPrefill');
+  const DAY = '2026-10-19';
+  const dia = (over = {}) => ({
+    id: 'd1', plan_id: 'p1', planned_date: DAY, kind: 'descanso', status: 'pendente', created_at: '2026-10-18T10:00:00Z',
+    meal_macros: { kcal: 2200, items: [
+      { tipo: 'pequeno-almoco', texto: '60 g de aveia e 170 g de skyr' },
+      { tipo: 'almoco', texto: '150 g de frango, arroz e salada' },
+      { tipo: 'jantar', texto: '150 g de peixe e legumes' },
+    ] },
+    ...over,
+  });
+
+  it('com a do tipo escolhido, só essa; sem ela, as outras', () => {
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'almoco').map(m => m.tipo)).toEqual(['almoco']);
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'ceia').map(m => m.tipo)).toEqual(['pequeno-almoco', 'almoco', 'jantar']);
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'almoco')[0]).toMatchObject({ id: `${DAY}:almoco`, label: 'Almoço', texto: '150 g de frango, arroz e salada' });
+  });
+
+  it('as já registadas nesse dia saem; outro dia, plano não aceite ou dia cancelado não dão nada', () => {
+    const meals = [{ date: DAY, meal_type: 'almoco' }, { date: '2026-10-18', meal_type: 'jantar' }];
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], meals, 'almoco').map(m => m.tipo)).toEqual(['pequeno-almoco', 'jantar']);
+    expect(mealSuggestionsFor('2026-10-20', PLANS, [dia()], [], 'almoco')).toEqual([]);
+    expect(mealSuggestionsFor(DAY, PLANS, [dia({ plan_id: 'p2' })], [], 'almoco')).toEqual([]);
+    expect(mealSuggestionsFor(DAY, PLANS, [dia({ status: 'cancelado' })], [], 'almoco')).toEqual([]);
+  });
+});
