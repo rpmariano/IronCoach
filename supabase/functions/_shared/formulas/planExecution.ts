@@ -31,13 +31,16 @@
 //   · Carga face à última vez (decisão 5: a Carol não prescreve kg): a série
 //     mais pesada desta sessão contra a da sessão ANTERIOR mais recente com o
 //     mesmo exercício. Sem histórico ou sem kg, null.
-//   · O objetivo (goal) é texto: esta fórmula não o julga. goal_met vem do
-//     exercises_meta (quem o decidiu foi o atleta ou a análise) ou fica null.
+//   · O objetivo (goal) é texto. goal_met é misto (decisão 9): se o atleta o
+//     confirmou (exercises_meta), vale o que ele disse; senão, um objetivo
+//     mensurável (reps, minutos, km, ritmo — goalCheck.ts) julga-se pelas
+//     séries gravadas, sempre fresco; o qualitativo fica null até ele confirmar.
 //   · Sem prescrição (planos antigos), devolve null: quem chama cai no que já
 //     fazia (prescriptionAdherence: duração e tipo).
 
 import { foodKey } from "./foodKey.ts";
 import { ADHERENCE_TOLERANCE } from "./prescriptionAdherence.ts";
+import { inferGoalMet } from "./goalCheck.ts";
 
 /** A chave tolerante de um exercício: foodKey sem o que vem entre parêntesis
  *  ("Leg Press (Machine)") e sem o plural no fim de cada palavra — "Extensões
@@ -313,6 +316,7 @@ export function computePlanExecution(input: {
     r.doneName = ex.name;
     r.goalMet = typeof ex.meta?.goal_met === "boolean" ? ex.meta.goal_met : null;
     if (!r.goal && ex.meta?.goal) r.goal = ex.meta.goal;
+    if (r.goalMet === null && r.goal) r.goalMet = inferGoalMet(r.goal, ex.sets);
     if (r.type === "cardio") fillCardio(r, ex); else fillStrength(r, ex, input.sessionDate, history);
   };
 

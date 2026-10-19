@@ -3,6 +3,7 @@ import { X, Trash2, Check } from 'lucide-react';
 import AddButton from '../AddButton';
 import Chip from '../Chip';
 import ExerciseLockerPicker from './ExerciseLockerPicker';
+import { isMeasurableGoal } from '@formulas/goalCheck.ts';
 import {
   cardioFieldsOf, describeLast, distanceUnitOf, exerciseType, hasUnconfirmedPlanSets, lockerEntryFor, markAllDone,
   newExercise, newSet, nudgeSet, renameExercise, setSuggestion, toggleSetDone,
@@ -282,6 +283,27 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
                   placeholder="Objetivo (opcional) — ex.: descida controlada em 3 s"
                   className="w-full min-h-[44px] mb-2 bg-transparent border-b border-[var(--border-glass)] text-[12px] text-white outline-none focus:border-[var(--mod-ginasio-to)] placeholder-[var(--text-muted)]"
                 />
+                {/* Decisão 9: o objetivo mensurável a Carol confere pelos números;
+                    o qualitativo ("descida em 3 s") confirma-o ele, com um toque. */}
+                {(ex.goal || '').trim() && !isMeasurableGoal(ex.goal) && (
+                  <div role="group" aria-label={`Objetivo cumprido? — ${label(ex)}`} className="flex items-center gap-2 mb-2">
+                    <span className="flex-1 min-w-0 text-[12px] text-[var(--text-2)]">Cumpriste o objetivo?</span>
+                    {[[true, 'Sim'], [false, 'Não']].map(([value, text]) => (
+                      <button
+                        key={text}
+                        type="button"
+                        aria-pressed={ex.goalMet === value}
+                        onClick={() => replace(ex.key, { ...ex, goalMet: ex.goalMet === value ? null : value })}
+                        className="min-h-[44px] min-w-[56px] px-3 rounded-xl border text-[12px] font-bold transition active:scale-[0.99]"
+                        style={ex.goalMet === value
+                          ? { borderColor: 'var(--mod-ginasio-to)', color: 'var(--mod-ginasio-to)', background: 'color-mix(in srgb, var(--mod-ginasio-to) 14%, transparent)' }
+                          : { borderColor: 'var(--border-glass)', color: 'var(--text-3)' }}
+                      >
+                        {text}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {type === 'cardio'
                   ? <CardioRow ex={ex} onExercise={(next) => replace(ex.key, next)} />
                   : <StrengthSets ex={ex} last={last} onExercise={(next) => replace(ex.key, next)} />}

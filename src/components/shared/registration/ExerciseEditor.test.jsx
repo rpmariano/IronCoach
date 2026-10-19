@@ -93,6 +93,22 @@ describe('ExerciseEditor', () => {
     expect(state()[0].machineSettings).toBe('banco furo 5');
   });
 
+  it('objetivo qualitativo (decisão 9): o "Cumpriste?" confirma-se com um toque e desfaz-se', () => {
+    render(<Harness initial={[newExercise({ name: 'Supino', type: 'forca', goal: 'descida em 3 s' })]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sim' }));
+    expect(state()[0].goalMet).toBe(true);
+    expect(screen.getByRole('button', { name: 'Sim' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Não' }));
+    expect(state()[0].goalMet).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Não' }));
+    expect(state()[0].goalMet).toBe(null);
+  });
+
+  it('objetivo mensurável ou sem objetivo: não pergunta', () => {
+    render(<Harness initial={[newExercise({ name: 'Prensa', type: 'forca', goal: 'chegar às 12 reps' }), newExercise({ name: 'Remo sentado', type: 'forca' })]} />);
+    expect(screen.queryByText('Cumpriste o objetivo?')).toBeNull();
+  });
+
   it('afinação: no cardio não há campo', () => {
     render(<Harness initial={[newExercise({ name: 'Remo', type: 'cardio', sets: [newSet()] })]} />);
     expect(screen.queryByLabelText(/Afinação da máquina/)).toBeNull();
