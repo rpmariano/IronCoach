@@ -64,6 +64,8 @@ export default function useRegistrationExit({ isDirty, onClose, draftKey }) {
     close,
     /** O X do ecrã: com alterações pergunta, sem elas fecha. */
     requestClose: () => { if (isDirty) setShowUnsaved(true); else close(); },
+    /** Esconde o aviso mas MANTÉM o destino pendente (o Ginásio abre outro diálogo e, gravado, ainda navega). */
+    hideUnsaved: () => setShowUnsaved(false),
     /** "Cancelar" no aviso: fica no formulário e esquece o destino. */
     cancelLeave: () => { pendingNavTarget.current = null; setShowUnsaved(false); },
     showUnsaved,
