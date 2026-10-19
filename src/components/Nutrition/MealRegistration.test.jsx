@@ -1157,15 +1157,34 @@ describe('MealRegistration — a refeição sugerida no plano', () => {
     expect(body.notes).toBe(notes.value);
   });
 
-  it('"Comi outra coisa" deixa as observações como estavam', () => {
+  it('"Comi outra coisa" deixa as observações como estavam e não deixa nada por gravar', () => {
     render(<MealRegistration onClose={onClose} />);
     const region = screen.getByRole('region', { name: 'Refeição do plano' });
     fireEvent.click(within(region).getByRole('button', { name: 'Comi outra coisa' }));
     expect(within(region).getByText(/Comeste outra coisa/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('');
+    expect(useAppStore.getState().navGuard).toBeNull();
   });
 
-  it('a refeição desse tipo já registada hoje deixa de aparecer; a editar não há banner', () => {
+  it('"Mudar" tira o texto que a sugestão pôs; outra sugestão troca-o em vez de o juntar', () => {
+    render(<MealRegistration onClose={onClose} />);
+    const notes = screen.getByPlaceholderText(/Detalhes que mudam os valores/);
+    fireEvent.change(notes, { target: { value: 'com pouco sal' } });
+    const region = screen.getByRole('region', { name: 'Refeição do plano' });
+    fireEvent.click(within(region).getAllByRole('button', { name: /^Usar a sugestão/ })[0]);
+    const first = notes.value;
+    expect(first.startsWith('com pouco sal\n')).toBe(true);
+    fireEvent.click(within(region).getByRole('button', { name: 'Mudar' }));
+    expect(notes.value).toBe('com pouco sal');
+  });
+
+  it('a editar não há banner', () => {
+    useAppStore.setState({ meals: [{ id: 'm-edit', date: DAY, meal_type: 'jantar', notes: '', meal_items: [] }] });
+    render(<MealRegistration onClose={onClose} mealIdToEdit="m-edit" />);
+    expect(screen.queryByRole('region', { name: 'Refeição do plano' })).toBeNull();
+  });
+
+  it('as refeições já registadas hoje deixam de aparecer', () => {
     useAppStore.setState({ meals: ['pequeno-almoco', 'lanche-manha', 'almoco', 'lanche', 'jantar', 'ceia'].map((t, i) => ({ id: `m${i}`, date: DAY, meal_type: t, meal_items: [] })) });
     render(<MealRegistration onClose={onClose} />);
     expect(screen.queryByRole('region', { name: 'Refeição do plano' })).toBeNull();
