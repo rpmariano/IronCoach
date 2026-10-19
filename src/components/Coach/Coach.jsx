@@ -741,6 +741,7 @@ export default function Coach() {
   // Fotos por enviar (embalagens, comida — decisões 16/17): só em memória, vão neste pedido e mais nada.
   const [photos, setPhotos] = useState([]);
   const [photoNote, setPhotoNote] = useState('');
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [hoursToShow, setHoursToShow] = useState(24);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -1038,7 +1039,15 @@ export default function Coach() {
     const files = e.target.files;
     e.target.value = '';
     if (!files?.length) return;
-    const { photos: next, skipped } = await addChatPhotos(photos, files, compressImage);
+    // Enquanto comprime, anexar e enviar ficam parados: duas seleções seguidas apagavam-se uma à outra.
+    setPhotoBusy(true);
+    let next = photos;
+    let skipped = 0;
+    try {
+      ({ photos: next, skipped } = await addChatPhotos(photos, files, compressImage));
+    } finally {
+      setPhotoBusy(false);
+    }
     setPhotos(next);
     setPhotoNote(skipped > 0 ? `Só cabem ${MAX_CHAT_PHOTOS} fotos por mensagem, ou algum ficheiro não era uma imagem.` : '');
   };
@@ -1206,7 +1215,7 @@ export default function Coach() {
   // mensagem do atleta (`retryText`, ver sendUserMessage) — depois de outra
   // mensagem qualquer, já não é "a última" que falhou.
   const lastVisibleMsg = visibleMessages[visibleMessages.length - 1];
-  const retryMsg = lastVisibleMsg?.retryText ? lastVisibleMsg : null;
+  const retryMsg = lastVisibleMsg?.retryText || lastVisibleMsg?.retryExtras?.images?.length ? lastVisibleMsg : null;
 
   // A cara dela no chat (CAROL.md §4). Enquanto pensa ou escreve, "a pensar";
   // depois, a emoção do que acabou de dizer — a que o modelo escolheu junto
@@ -1483,7 +1492,7 @@ export default function Coach() {
               aria-label="Anexar foto (embalagem ou comida)"
               className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center border border-[var(--border-glass)] bg-[var(--bg-sheet)] text-[var(--text-3)] transition focus-within:ring-2 focus-within:ring-[var(--mod-coach-to)] ${coachLoading ? 'opacity-50' : 'cursor-pointer active:scale-95'}`}
             >
-              <input type="file" accept="image/*" multiple disabled={coachLoading} className="sr-only" onChange={handleSelectPhotos} data-testid="coach-photo-input" />
+              <input type="file" accept="image/*" multiple aria-label="Anexar foto (embalagem ou comida)" disabled={coachLoading || photoBusy} className="sr-only" onChange={handleSelectPhotos} data-testid="coach-photo-input" />
               <ImagePlus className="w-5 h-5" />
             </label>
           )}
@@ -1503,7 +1512,7 @@ export default function Coach() {
           />
           <button
             onClick={() => handleSend()}
-            disabled={(!inputStr.trim() && !photos.length) || coachLoading}
+            disabled={(!inputStr.trim() && !photos.length) || coachLoading || photoBusy}
             aria-label="Enviar pergunta à Carol"
             className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
               coachLoading || (!inputStr.trim() && !photos.length)

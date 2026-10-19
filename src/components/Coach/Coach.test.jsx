@@ -2038,6 +2038,23 @@ describe('Coach — fotos no chat (decisões 16 e 17)', () => {
     expect(screen.getByTestId('coach-photo-input')).toBeInTheDocument();
   });
 
+  it('uma mensagem só com fotos que falha tem o botão Reenviar, e o reenvio leva as fotos', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValueOnce({
+      data: null, error: 'Não consegui responder a tempo.', isTimeout: false, isNetwork: false, status: 504,
+      serverText: 'Não consegui responder a tempo.', serverMessageId: 'e1',
+    });
+    renderCoach();
+    fireEvent.change(screen.getByTestId('coach-photo-input'), { target: { files: [photo('barra.jpg')] } });
+    await screen.findByAltText('Foto 1 por enviar');
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar pergunta à Carol' }));
+    const retry = await screen.findByTestId('coach-retry');
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { content: 'Guardei.' } }, error: null });
+    fireEvent.click(retry);
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[1][1].body);
+    expect(body.images).toEqual([{ mime_type: 'image/jpeg', data: 'barra.jpg' }]);
+  });
+
   it('o texto vai junto com as fotos', async () => {
     invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { content: 'Ok.' } }, error: null });
     renderCoach();

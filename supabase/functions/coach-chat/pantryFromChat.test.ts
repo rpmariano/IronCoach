@@ -57,3 +57,14 @@ Deno.test("runSavePantryFood: erros da base de dados vêm como Erro e não como 
   assertStringIncludes(await runSavePantryFood(fakeSb(null, { readErr: true }).sb, "u1", ARGS), "Erro");
   assertStringIncludes(await runSavePantryFood(fakeSb(null, { upErr: true }).sb, "u1", ARGS), "Erro ao guardar");
 });
+
+Deno.test("runSavePantryFood: a energia tem de bater com os macros (kJ lidos como kcal, kcal a zero)", async () => {
+  const { sb, calls } = fakeSb(null);
+  // 250 kJ (≈ 60 kcal) lidos como kcal num iogurte com macros de 100 g.
+  const kj = await runSavePantryFood(sb, "u1", { name: "Iogurte", calories_per_100g: 250, protein_per_100g: 4, carbs_per_100g: 6, fat_per_100g: 1.5 });
+  assertStringIncludes(kj, "não batem com os macros");
+  assertStringIncludes(await runSavePantryFood(sb, "u1", { ...ARGS, calories_per_100g: 0 }), "não batem com os macros");
+  assertEquals(calls.upserts.length, 0);
+  // Com fibra/polióis a diferença é normal: 10 % fora ainda passa.
+  assertStringIncludes(await runSavePantryFood(sb, "u1", { ...ARGS, calories_per_100g: 345 }), "guardado");
+});

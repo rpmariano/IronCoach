@@ -73,6 +73,14 @@ export async function runSavePantryFood(sb: any, userId: string, args: any, nowI
       "Não guardes; confirma na imagem ou pede ao atleta uma foto mais nítida.";
   }
 
+  // A energia tem de bater com os macros (4/4/9 kcal por grama; fibra e polióis explicam o resto): apanha kJ lidos
+  // como kcal, valores por porção em vez de por 100 g e kcal a zero com macros.
+  const expected = 4 * protein + 4 * carbs + 9 * fat;
+  if (Math.abs(kcal - expected) > Math.max(0.3 * expected, 25)) {
+    return `Erro: ${round1(kcal)} kcal não batem com os macros (≈ ${round1(expected)} kcal por 100 g). Releste kJ como kcal, ` +
+      "ou valores por porção? Não guardes; confirma na imagem ou pede ao atleta uma foto mais nítida.";
+  }
+
   const { data: existing, error: readErr } = await sb
     .from("athlete_foods")
     .select(FOOD_SELECT)

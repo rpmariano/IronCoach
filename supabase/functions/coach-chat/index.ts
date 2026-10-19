@@ -7200,7 +7200,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (message) {
       const { data, error: userMsgErr } = await sb
         .from("coach_messages")
-        .insert({ user_id: userId, role: "user", content: message + imageMarker(chatImages.length) })
+        .insert({ user_id: userId, role: "user", content: (typedMessage + imageMarker(chatImages.length)).trim() })
         .select()
         .single();
       if (userMsgErr) {
@@ -7525,7 +7525,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (chatImages.length) contents[contents.length - 1].parts.push(...userTurnParts("", chatImages).slice(1));
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
-    const allowedTools = proactiveTrigger ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
+    // Com fotos, só leitura, notas e a Despensa: o texto de uma imagem não pode levar a Carol a mexer em planos, metas ou provas.
+    const allowedTools = proactiveTrigger || chatImages.length ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
 
     // Observabilidade do pedido ao Gemini. Sem isto, o incidente de
     // 2026-09-05 foi impossível de atribuir a partir dos logs: o modelo real
