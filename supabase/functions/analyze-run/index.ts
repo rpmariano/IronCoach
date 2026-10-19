@@ -1357,10 +1357,19 @@ export function extractionFromForm(src: Record<string, unknown>): RunExtraction 
   };
 }
 
-/** As parciais e as zonas do `typed`, limpas como as da leitura (analyzeWithGemini):
- *  parciais com pelo menos um número, zonas com os dois. Antes de ganharem à leitura. */
+/** O `typed` limpo antes de ganhar à leitura: parciais e zonas como as da
+ *  leitura (analyzeWithGemini — parciais com pelo menos um número, zonas com
+ *  os dois), números negativos fora, e distância/duração só acima de zero —
+ *  um "0" escrito não apaga os km que os prints leram. */
 export function cleanTypedArrays(t: RunExtraction): RunExtraction {
   const n = (v: unknown): number | null => (typeof v === "number" && isFinite(v) && v >= 0 ? v : null);
+  const scalars: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(t)) {
+    if (typeof v === "number") scalars[k] = n(v);
+  }
+  if (typeof t.distance_km === "number" && !(t.distance_km > 0)) scalars.distance_km = null;
+  if (typeof t.duration_seconds === "number" && !(t.duration_seconds > 0)) scalars.duration_seconds = null;
+  t = { ...t, ...scalars } as RunExtraction;
   const splits = Array.isArray(t.splits)
     ? t.splits.map((x) => ({ distance_km: n((x as RunSplit)?.distance_km), time_seconds: n((x as RunSplit)?.time_seconds) }))
       .filter((x) => x.distance_km !== null || x.time_seconds !== null)
@@ -1473,7 +1482,7 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     const rawNotes = typeof body.notes === "string" ? body.notes.slice(0, MAX_NOTES_LENGTH) : null;
 
     // ── Modo reanálise por foto: run_id presente sem mode manual ───────
-    if (typeof body.run_id === "string" && body.run_id && body.mode !== "manual") {
+    if (typeof body.run_id === "string" && body.run_id && body.mode !== "manual" && body.mode !== "preview") {
       const runId = body.run_id;
       const { data: existing, error: fetchError } = await sb
         .from("runs")
@@ -1534,6 +1543,11 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
         if (newPaths.length) await sb.storage.from("run-photos").remove(newPaths);
         return jsonResponse({ error: e instanceof Error ? e.message : "Falha na reanálise." }, 502);
       }
+
+      // O que o atleta escreveu depois de a corrida estar gravada (registo
+      // unificado): ganha à releitura, como no registo com prints.
+      const typedRe = body.typed && typeof body.typed === "object" ? cleanTypedArrays(extractionFromForm(body.typed as Record<string, unknown>)) : null;
+      if (hasTypedRunValues(typedRe)) result = { ...result, extraction: mergeRunExtraction(result.extraction, typedRe) };
 
       const details = detailsFromExtraction(kind, result.extraction, existingTrainingType, existingRaceType);
       const patch: Record<string, unknown> = {

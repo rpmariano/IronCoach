@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi, onTestFinished } from 'vitest';
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
@@ -391,6 +391,53 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       expect(body.mode).toBe('manual');
       expect(body.run_id).toBe('run-1');
       expect(body.avg_heart_rate_bpm).toBe(150);
+    });
+
+    it('depois do aviso, uma métrica escrita + um print novo: a reanálise leva SÓ o que ele mudou (typed)', async () => {
+      await chegarAoAviso();
+      fireEvent.click(within(screen.getByTestId('missing-metrics-bottom-sheet')).getByRole('button', { name: /Preencher à mão/ }));
+      fireEvent.change(screen.getByLabelText('FC média (bpm)'), { target: { value: '151' } });
+      const input = document.querySelector('input[type="file"]');
+      await fireEvent.change(input, { target: { files: [new File(['fc'], 'fc.jpg', { type: 'image/jpeg' })] } });
+      await screen.findByAltText('Print 2');
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, details: { avg_heart_rate_bpm: 151 } } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const { body } = mocks.invoke.mock.calls[1][1];
+      expect(body.run_id).toBe('run-1');
+      expect(body.typed).toEqual({ avg_heart_rate_bpm: 151 });
+    });
+
+    it('rascunho com a fotografia, reaberto sem mudanças: "Analisar" fecha sem voltar a gravar', async () => {
+      const { unmount } = await (async () => { await chegarAoAviso(); return { unmount: () => cleanup() }; })();
+      // O rascunho grava com espera (600 ms).
+      await new Promise((r) => setTimeout(r, 750));
+      const draft = JSON.parse(localStorage.getItem('ironcoach:corrida-rascunho:nova'));
+      expect(typeof draft.createdFormSig).toBe('string');
+      unmount();
+      render(<RunRegistration onClose={onClose} />);
+      await screen.findByAltText('Print 1');
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      await dispensarConfirmacao();
+      await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    });
+
+    it('rascunho com a fotografia, reaberto com uma métrica mudada: grava pelos campos (manual, run_id)', async () => {
+      await chegarAoAviso();
+      await new Promise((r) => setTimeout(r, 750));
+      cleanup();
+      const draft = JSON.parse(localStorage.getItem('ironcoach:corrida-rascunho:nova'));
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ ...draft, avgHeartRate: '149' }));
+      render(<RunRegistration onClose={onClose} />);
+      await screen.findByAltText('Print 1');
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, details: { avg_heart_rate_bpm: 149 } } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      fireEvent.click(await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i }));
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+      const { body } = mocks.invoke.mock.calls[1][1];
+      expect(body.mode).toBe('manual');
+      expect(body.avg_heart_rate_bpm).toBe(149);
     });
 
     it('rascunho reaberto: se os prints da corrida não carregam, diz-o, e contam para o limite de 6', async () => {
