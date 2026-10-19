@@ -1357,6 +1357,21 @@ export function extractionFromForm(src: Record<string, unknown>): RunExtraction 
   };
 }
 
+/** As parciais e as zonas do `typed`, limpas como as da leitura (analyzeWithGemini):
+ *  parciais com pelo menos um número, zonas com os dois. Antes de ganharem à leitura. */
+export function cleanTypedArrays(t: RunExtraction): RunExtraction {
+  const n = (v: unknown): number | null => (typeof v === "number" && isFinite(v) && v >= 0 ? v : null);
+  const splits = Array.isArray(t.splits)
+    ? t.splits.map((x) => ({ distance_km: n((x as RunSplit)?.distance_km), time_seconds: n((x as RunSplit)?.time_seconds) }))
+      .filter((x) => x.distance_km !== null || x.time_seconds !== null)
+    : [];
+  const zones = Array.isArray(t.hr_zones)
+    ? t.hr_zones.map((z) => ({ zone: n((z as HrZone)?.zone), minutes: n((z as HrZone)?.minutes) }))
+      .filter((z) => z.zone !== null && z.minutes !== null)
+    : [];
+  return { ...t, splits: splits.length ? splits as RunSplit[] : null, hr_zones: zones.length ? zones as HrZone[] : null };
+}
+
 /** O atleta escreveu alguma coisa? (um array vazio não conta) */
 export function hasTypedRunValues(typed: RunExtraction | null): boolean {
   if (!typed) return false;
@@ -1726,7 +1741,7 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     const periodLabel = typeof body.period_label === "string" ? body.period_label.slice(0, 20) : "";
     // Registo unificado: o que o atleta escreveu (ganha à leitura) e, com
     // `reviewed`, os prints já lidos e revistos — não se voltam a ler.
-    const typed = body.typed && typeof body.typed === "object" ? extractionFromForm(body.typed as Record<string, unknown>) : null;
+    const typed = body.typed && typeof body.typed === "object" ? cleanTypedArrays(extractionFromForm(body.typed as Record<string, unknown>)) : null;
     const typedAny = hasTypedRunValues(typed);
     const reviewed = body.reviewed === true && typedAny;
     // Tipo de treino/disciplina: sempre escolhidos pelo utilizador no

@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { extractionFromForm, hasTypedRunValues, imageOnlyFromRead, mergeRunExtraction } from "./index.ts";
+import { cleanTypedArrays, extractionFromForm, hasTypedRunValues, imageOnlyFromRead, mergeRunExtraction } from "./index.ts";
 
 Deno.test("extractionFromForm: números do formulário; inteiros onde a coluna é inteira; lixo vira null", () => {
   const e = extractionFromForm({ distance_km: 8.2, duration_seconds: 2700, avg_heart_rate_bpm: 148.5, cadence_spm: "170", splits: [{ distance_km: 1, time_seconds: 330 }] });
@@ -46,4 +46,14 @@ Deno.test("handler: preview não grava, o revisto não volta a ler e o escrito g
   const preview = src.slice(src.indexOf('if (body.mode === "preview") {'), src.indexOf('if (body.mode === "manual") {'));
   assertEquals(preview.includes("storage"), false);
   assertEquals(preview.includes(".insert("), false);
+});
+
+Deno.test("cleanTypedArrays: parciais com um número, zonas com os dois (decimais ficam); lixo cai", () => {
+  const t = cleanTypedArrays(extractionFromForm({
+    splits: [{ distance_km: 1, time_seconds: 330 }, { distance_km: "x" }, null, { time_seconds: 300 }],
+    hr_zones: [{ zone: 1, minutes: 0.5 }, { zone: 2 }, "z", { zone: 3, minutes: -1 }],
+  }));
+  assertEquals(t.splits, [{ distance_km: 1, time_seconds: 330 }, { distance_km: null, time_seconds: 300 }]);
+  assertEquals(t.hr_zones, [{ zone: 1, minutes: 0.5 }]);
+  assertEquals(cleanTypedArrays(extractionFromForm({ splits: [null], hr_zones: [] })).splits, null);
 });

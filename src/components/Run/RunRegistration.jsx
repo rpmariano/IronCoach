@@ -403,7 +403,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* Os valores que o PLANO pôs no formulário (distância, duração, desnível):
      são o alvo, não o feito — enquanto ninguém lhes mexer, a leitura dos
      prints escreve por cima e não vão como "escritos pelo atleta". */
-  const planValuesRef = useRef(planItem ? {
+  const planValuesRef = useRef(initialRace ? {
+    // A distância e o D+ da agenda da prova são o percurso, não o que o relógio mediu.
+    runDistance: initialRace.distance_km ? String(initialRace.distance_km) : '',
+    elevationGain: initialRace.elevation_gain_m ? String(initialRace.elevation_gain_m) : '',
+  } : planItem ? {
     runDistance: planItem?.target_distance_km ? String(planItem.target_distance_km) : '',
     runDuration: planItem?.target_duration ? formatDuration(planItem.target_duration) : '',
     elevationGain: planItem?.elevation_gain_m ? String(planItem.elevation_gain_m) : '',
@@ -564,8 +568,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // A hora da prova só se impõe se ainda não houver uma escrita aqui.
     if (!runStartTime && ev.start_time) setRunStartTime(startTimeInputValue(ev.start_time));
     setCompletedRaceType(raceTypeFromRaceEvent(ev));
-    if (!runDistance && ev.distance_km) setRunDistance(String(ev.distance_km));
-    if (!elevationGain && ev.elevation_gain_m) setElevationGain(String(ev.elevation_gain_m));
+    // Os da agenda ficam abertos à leitura dos prints, como os alvos do plano.
+    if (!runDistance && ev.distance_km) { setRunDistance(String(ev.distance_km)); planValuesRef.current = { ...planValuesRef.current, runDistance: String(ev.distance_km) }; }
+    if (!elevationGain && ev.elevation_gain_m) { setElevationGain(String(ev.elevation_gain_m)); planValuesRef.current = { ...planValuesRef.current, elevationGain: String(ev.elevation_gain_m) }; }
   };
 
   // Assinatura do que é analítico. Normaliza (descarta vazios, ordena
@@ -597,7 +602,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       .map(s => ({ distance_km: parseFloat(s.distance_km) || null, time_seconds: parseDurationToSeconds(s.minutes) }))
       .filter(s => s.distance_km || s.time_seconds);
     const parsedHrZones = hrZones
-      .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
+      .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseFloat(z.minutes) || null }))
       .filter(z => z.zone && z.minutes);
 
     const details = {
@@ -807,6 +812,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const persisted = restorePersistedFormDraft(draftStorageKey);
     if (!persisted) return;
     if (persisted.readState) setReadState(persisted.readState);
+    if (persisted.planValues && typeof persisted.planValues === 'object') planValuesRef.current = persisted.planValues;
     if (persisted.planChoice) {
       setPlanChoice(persisted.planChoice);
       // A escolha do banner volta a ligar o registo ao treino (se ainda estiver pendente).
@@ -900,7 +906,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // seletor de prints aberto — voltava a criar a corrida.
     createdRun: pendingCreatedRun,
     raceId,
-    readState, planChoice, runKind, runTrainingType, runDate, runStartTime, runName, shoeId,
+    readState, planChoice, planValues: planValuesRef.current, runKind, runTrainingType, runDate, runStartTime, runName, shoeId,
     runDistance, runDuration, runEffortRpe, runNotes,
     elevationGain, cadence, maxCadence, calories, vo2Max, avgHeartRate, maxHeartRate,
     sweatLossMl, totalSteps, maxPace, elevationLoss, aerobicThreshold, anaerobicThreshold,
@@ -1799,6 +1805,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (extractedDetails.vertical_oscillation_cm) setVerticalOscillation(extractedDetails.vertical_oscillation_cm);
       if (extractedDetails.asymmetry_pct) setAsymmetryPct(extractedDetails.asymmetry_pct);
       if (extractedDetails.leg_stiffness_kn_m) setLegStiffness(extractedDetails.leg_stiffness_kn_m);
+      if (extractedDetails.warmup_minutes) setWarmupMinutes(extractedDetails.warmup_minutes);
+      if (extractedDetails.recovery_seconds) setRecoverySeconds(extractedDetails.recovery_seconds);
 
       if (extractedDetails.splits) {
         setSplits(extractedDetails.splits.map(s => ({
@@ -1829,7 +1837,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // Os campos estão à vista (formulário único): o que ele escreveu nas
       // métricas depois do aviso grava-se pelo formulário, sem voltar a
       // perguntar o que falta.
-      if (createdRunRef.current && formMetricsSignature() !== runMetricsSignature(run)) {
+      if (createdRunRef.current && metricsEditedSinceCreated()) {
         handleSaveCorrida(true);
         return;
       }
@@ -1919,7 +1927,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       })).filter(s => s.distance_km || s.time_seconds);
 
       const parsedHrZones = hrZones
-        .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
+        .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseFloat(z.minutes) || null }))
         .filter(z => z.zone && z.minutes);
 
       let newlySavedRun = null;
@@ -2071,6 +2079,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
   };
 
+  /* As métricas do formulário tal como ficaram quando a corrida (gravada pelos
+     prints) passou a ser a deste ecrã — tiradas no render a seguir, já com o
+     que applyExtractedRun pôs. Comparar com run.details dava falsos
+     "mudou" (zonas decimais, campos que o formulário não tem). */
+  const createdFormSigRef = useRef(null);
+  useEffect(() => {
+    createdFormSigRef.current = pendingCreatedRun ? formMetricsSignature() : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCreatedRun]);
+  const metricsEditedSinceCreated = () => createdFormSigRef.current !== null && formMetricsSignature() !== createdFormSigRef.current;
+
   // ----------------------------------
   // FORMULÁRIO ÚNICO — ler os prints, o que foi escrito, o plano
   // ----------------------------------
@@ -2138,6 +2157,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // O que só os prints sabem segue com o registo revisto.
       const details = Object.fromEntries(READ_ONLY_KEYS.filter((k) => read[k] !== null && read[k] !== undefined).map((k) => [k, read[k]]));
       setReadState({ count: runPhotos.length, details });
+      // Lidos e revistos: o que fica nos campos é dele (um alvo confirmado pela
+      // leitura, ou que os prints não trouxeram, grava-se como está).
+      planValuesRef.current = {};
       setRunSourceApp(read.source_app || null);
       setReadNote(filled > 0
         ? { text: `Li ${filled === 1 ? '1 valor' : `${filled} valores`}. Revê-os e carrega em "${isRaceMode ? 'Registar a prova' : 'Analisar corrida'}".${kept > 0 ? ` Os ${kept === 1 ? '1 que' : `${kept} que`} já tinhas escrito ficaram.` : ''}`, tone: 'ok' }
@@ -2160,7 +2182,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       .map((x) => ({ distance_km: parseFloat(x.distance_km) || null, time_seconds: parseDurationToSeconds(x.minutes) }))
       .filter((x) => x.distance_km || x.time_seconds);
     const parsedHrZones = hrZones
-      .map((z) => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
+      .map((z) => ({ zone: parseInt(z.zone) || null, minutes: parseFloat(z.minutes) || null }))
       .filter((z) => z.zone && z.minutes);
     const official = own('officialTime', officialTime);
     return {
@@ -2211,9 +2233,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const formMetricsSignature = () => analyticalSignature({
     ...SAME, distance: runDistance, duration: parseDurationToSeconds(runDuration), details: pickMetrics(buildDetailsFromForm().details),
   });
-  const runMetricsSignature = (r) => analyticalSignature({
-    ...SAME, distance: r.distance_km, duration: r.duration_seconds, details: pickMetrics(r.details),
-  });
 
   /* "Analisar corrida" (ou "Registar a prova"), a criar:
      · com prints novos → a Carol lê-os (o que ele escreveu ganha; já lidos, não relê);
@@ -2225,7 +2244,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     if (isSubmitting || analyzingRun || reading) return;
     const fresh = runPhotos.some((p) => p.base64);
     const created = createdRunRef.current;
-    if (created && !fresh && formMetricsSignature() !== runMetricsSignature(created.run)) { handleSaveCorrida(); return; }
+    // Sem prints à vista (removidos, ou não carregaram) não há o que reler: pelos campos.
+    if (created && !runPhotos.length) { handleSaveCorrida(); return; }
+    if (created && !fresh && metricsEditedSinceCreated()) { handleSaveCorrida(); return; }
     if (fresh || created) { handleAnalyzeRun(); return; }
     handleSaveCorrida();
   };
@@ -2257,7 +2278,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     setPlanChoice({ id: null, mode: 'livre' });
   };
   const handleChangeRunPlan = () => {
-    if (planChoice?.mode === 'plano') completingPlanItemRef.current = null;
+    if (planChoice?.mode === 'plano') {
+      completingPlanItemRef.current = null;
+      // O que o plano pôs e ninguém mexeu sai com ele.
+      const now = liveForm.current;
+      for (const [key, value] of Object.entries(planValuesRef.current)) {
+        if (value && String(now[key]) === value && SETTERS[key]) SETTERS[key]('');
+      }
+      planValuesRef.current = {};
+    }
     setPlanChoice(null);
   };
 
@@ -2339,7 +2368,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             : undefined}
           manualLabel="Seguir sem os prints"
         >
-          Os prints ficaram guardados. Podes tentar outra vez ou escrever os dados da corrida — eu faço as contas na mesma.
+          Podes tentar outra vez, ou seguir sem os prints e escrever os dados da corrida — eu faço as contas na mesma.
         </AnalysisFailure>
       )}
     </>
@@ -2672,8 +2701,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               onFree={handleFreeRun}
               onChange={handleChangeRunPlan}
               dayLabel={runDate === todayISO() ? 'hoje' : `${runDate.slice(8, 10)}/${runDate.slice(5, 7)}`}
-              freeCountsAs={pendingRunItems.length > 1 ? describeRunItem(pendingRunItems[0]) : null}
               accent="var(--mod-corrida-to)"
+              // Na corrida o treino livre só risca o do dia se for do mesmo tipo
+              // (runMatchesPlanItem): uma caminhada não é o contínuo de 8 km.
+              labels={{ freeMode: () => 'Treino livre — se for do tipo do plano, conto-o como o treino do dia.' }}
             />
           )}
 
@@ -3254,6 +3285,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           setShowMissingMetricsSheet(false);
           // Os campos já estão à vista (formulário único): leva-o até eles.
           metricsAnchorRef.current?.scrollIntoView?.({ block: 'center' });
+          metricsAnchorRef.current?.querySelector?.('input')?.focus?.();
         }}
         onProceedAnyway={handleProceedAnyway}
         onClose={() => {
