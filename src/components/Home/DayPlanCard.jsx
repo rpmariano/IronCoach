@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ChevronRight, ChevronDown, ChevronUp, Check, X as XIcon, MessageCircle } from 'lucide-react';
+import { ChevronRight, ChevronDown, ChevronUp, Check, Play, X as XIcon, MessageCircle } from 'lucide-react';
 import { todayISO, addDaysISO } from '../../lib/utils';
 import { computeAcceptedWindow, buildPlanDays, diffDaysISO } from './WeeklyPlanCard';
 import { formatDayLabel, dayTitle, dayStatus, pendingSession, isRacePlanItem, raceForDate, raceNameForDate, trainingItems, planItemTitle, liveItems } from '../../utils/homeModels';
@@ -265,7 +265,14 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
      linha que promete detalhe e abre para nada. No dia da prova dá isto
      falso sozinho (a instrução, o botão e o estado saltam sempre o item da
      prova), e o que fica à vista é "Abrir a prova". */
-  const hasDetail = instructions.length > 0 || !!session || cancelled;
+  /* "Começar treino" (decisão 11, specs/plano-registo-plano-coach.md §6): o
+     treino de ginásio de HOJE, por fazer, tem o botão à vista — fora da
+     gaveta — e abre o registo já com "Usar o plano" (o mesmo caminho do
+     "Registar sessão", que aí deixa de se repetir na gaveta). Só no Início:
+     o "+" não o tem. A corrida e os dias passados ficam com o "Registar
+     sessão" da gaveta. */
+  const startSession = session && session.kind === 'ginasio' && day.dateISO === today ? session : null;
+  const hasDetail = instructions.length > 0 || (!!session && !startSession) || cancelled;
 
   /* O dia fechado (dayDone.js): feito o treino, o que foi feito fica à
      vista — os números do registo contra o que o plano pedia —, fora da
@@ -308,6 +315,12 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
           </div>
         )}
 
+        {startSession && (
+          <button type="button" data-testid="day-plan-start" onClick={() => onComplete?.(startSession)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-3 rounded-[11px] text-[13px] font-extrabold" style={{ background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)', color: 'var(--ok)' }}>
+            <Play size={15} /> Começar treino
+          </button>
+        )}
+
         {hasDetail && (
           <button
             type="button"
@@ -333,7 +346,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
               </p>
             ))}
 
-            {session && (
+            {session && !startSession && (
               <button type="button" onClick={() => onComplete?.(session)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-2.5 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)', color: 'var(--ok)' }}>
                 <Check size={15} /> Registar sessão
               </button>

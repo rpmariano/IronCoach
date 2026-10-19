@@ -150,6 +150,25 @@ describe('séries do plano: a sugestão segue a carga usada e o kg em branco com
   });
 });
 
+describe('goal_met misto no exercises_meta (decisão 9)', async () => {
+  const { buildExercisesMeta, newExercise, exercisesFromSession } = await import('./gymSets');
+  it('só o qualitativo leva o que ele confirmou; o mensurável vai null (a Carol julga)', () => {
+    const meta = buildExercisesMeta([
+      { ...newExercise({ name: 'Supino', type: 'forca', goal: 'descida em 3 s' }), goalMet: true },
+      { ...newExercise({ name: 'Prensa', type: 'forca', goal: 'chegar às 12 reps' }), goalMet: true },
+      newExercise({ name: 'Remo sentado', type: 'forca', goal: 'descida em 2 s' }),
+    ]);
+    expect(meta.map(m => m.goal_met)).toEqual([true, null, null]);
+  });
+  it('editar uma sessão traz de volta o que ele confirmou', () => {
+    const [ex] = exercisesFromSession({
+      exercises_meta: [{ name: 'Supino', goal: 'descida em 3 s', block_type: 'forca', goal_met: false }],
+      workout_session_sets: [{ id: 'a', exercise_name: 'Supino', set_index: 0, reps: 8, weight: 50 }],
+    });
+    expect(ex.goalMet).toBe(false);
+  });
+});
+
 describe('afinação da máquina no exercises_meta (decisão 10)', async () => {
   const { buildExercisesMeta, newExercise } = await import('./gymSets');
   it('só vai quando ele a escreveu (ou apagou); senão fica de fora', () => {

@@ -210,7 +210,7 @@ Dividido em duas vertentes: **Modelos na Aplicação (Runtime/Produção)** e **
 
 | # | Decisão |
 |---|---|
-| 9 | **`goal_met` misto:** a Carol infere-o quando o objetivo é mensurável (reps, tempo, km, ritmo); nos qualitativos ("descida em 3 s") o atleta confirma com um toque |
+| 9 | **`goal_met` misto:** a Carol infere-o quando o objetivo é mensurável (reps, tempo, km, ritmo); nos qualitativos ("descida em 3 s") o atleta confirma com um toque. **Feito (2026-10-19):** `_shared/formulas/goalCheck.ts` (reps, minutos, km, metros, ritmo; qualquer resto ⇒ qualitativo) julga-o ao ler a execução, sempre fresco; o registo mostra "Cumpriste o objetivo? Sim/Não" só nos qualitativos |
 | 10 | **Afinação (`machine_settings`)** escreve-se no registo, por exercício, e aparece da próxima vez; também editável no Armário |
 | 11 | **"Começar treino" só no Início** (não no FAB), quando há treino de ginásio no plano do dia — abre o registo já com "Usar o plano" |
 | 12 | **`RegistrationShell`** faz-se com o Corpo (o registo mais pequeno), antes da Corrida |

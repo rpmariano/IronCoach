@@ -1,5 +1,6 @@
 import { foodKey } from '@formulas/foodKey.ts';
 import { cardioSpecFor } from '@formulas/cardioFields.ts';
+import { isMeasurableGoal } from '@formulas/goalCheck.ts';
 
 /* O registo de ginásio no cliente: duração escrita ↔ segundos, o modelo de um
    exercício no formulário (força ou cardio, com objetivo) e a conversão para
@@ -249,7 +250,9 @@ export function buildExercisesMeta(exercises) {
       goal: (ex.goal || '').trim() || null,
       block_type: exerciseType(ex),
       plan_block_index: Number.isInteger(ex.planBlockIndex) ? ex.planBlockIndex : null,
-      goal_met: null,
+      // Decisão 9: o que se mede (reps, minutos, km, ritmo) a Carol julga pelos
+      // números; só o qualitativo ("descida em 3 s") leva o que ele confirmou.
+      goal_met: !isMeasurableGoal(ex.goal) && typeof ex.goalMet === 'boolean' ? ex.goalMet : null,
       // A afinação da máquina só vai se ele a escreveu ou apagou neste registo
       // (decisão 10): sem mexer, o servidor deixa a que o Armário já tem.
       ...(typeof ex.machineSettings === 'string' ? { machine_settings: ex.machineSettings.trim().slice(0, 120) } : {}),
@@ -285,6 +288,7 @@ export function exercisesFromSession(session) {
       name,
       type,
       goal: meta?.goal || '',
+      goalMet: typeof meta?.goal_met === 'boolean' ? meta.goal_met : null,
       fields: fields && fields.length ? fields : null,
       distanceUnit: null,
       planBlockIndex: Number.isInteger(meta?.plan_block_index) ? meta.plan_block_index : null,

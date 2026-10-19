@@ -94,6 +94,26 @@ describe('DayPlanCard — "Ver detalhe do treino"', () => {
     expect(onComplete).toHaveBeenCalledWith(training);
   });
 
+  it('"Começar treino": o ginásio de hoje tem o botão à vista, sem abrir a gaveta', () => {
+    const gym = { id: 'g1', plan_id: 'p1', planned_date: today, kind: 'ginasio', categories: ['Pernas'], status: 'pendente' };
+    renderCard([gym]);
+    fireEvent.click(screen.getByTestId('day-plan-start'));
+    expect(onComplete).toHaveBeenCalledWith(gym);
+    // Sem instrução, não há gaveta vazia nem um segundo botão a fazer o mesmo.
+    expect(screen.queryByTestId('day-plan-detail-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByText('Registar sessão')).not.toBeInTheDocument();
+  });
+
+  it('"Começar treino" não aparece na corrida nem no ginásio já feito', () => {
+    renderCard();
+    expect(screen.queryByTestId('day-plan-start')).not.toBeInTheDocument();
+  });
+
+  it('ginásio feito: sem "Começar treino"', () => {
+    renderCard([{ id: 'g1', plan_id: 'p1', planned_date: today, kind: 'ginasio', categories: ['Pernas'], status: 'concluido' }]);
+    expect(screen.queryByTestId('day-plan-start')).not.toBeInTheDocument();
+  });
+
   it('um dia de descanso sem nada a dizer não tem sequer a linha do detalhe', () => {
     renderCard([{ id: 'i1', plan_id: 'p1', planned_date: today, kind: 'descanso', status: 'pendente' }]);
     expect(screen.getByText('Descanso')).toBeInTheDocument();
