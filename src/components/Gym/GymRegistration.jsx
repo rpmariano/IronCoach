@@ -7,8 +7,6 @@ import { CoachAnalyzeButton } from '../shared/CoachButton';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { Dumbbell, Users, X } from 'lucide-react';
-import UnsavedChangesModal from '../shared/UnsavedChangesModal';
-import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
 import ChipPicker from '../shared/registration/ChipPicker';
@@ -18,7 +16,8 @@ import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { MUSCLE_GROUPS } from '../../utils/exerciseLocker';
 import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, appendExercises } from '../../utils/planPrefill';
 import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary, completePlanSets, hasUnconfirmedPlanSets, markAllDone, lockerEntryFor } from '../../utils/gymSets';
-import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
+import RegistrationShell from '../shared/registration/RegistrationShell';
+import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
@@ -38,8 +37,7 @@ const CLASS_TYPES = ['HIIT', 'RPM/Cycling', 'Pilates', 'Yoga', 'Body Pump', 'Zum
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym
 
 export default function GymRegistration({ onClose, dateIso = null, sessionIdToEdit = null }) {
-  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard, activeTab } = useAppStore();
-  const [initialTab] = useState(activeTab);
+  const { profile, gymSessions, setGymSessions, loadInitialData, setNavGuard } = useAppStore();
 
   
   const isEditing = !!sessionIdToEdit;
@@ -133,69 +131,15 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   useEffect(() => { useAppStore.getState().loadExerciseLocker?.(); }, []);
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
-  const autoCloseRef = useRef(false);
-  useEffect(() => {
-    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
-      autoCloseRef.current = true;
-      if (onClose) onClose();
-    }
-  }, [activeTab, initialTab, onClose, isFormDirty]);
-  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
-  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
-  // separador com o formulário sujo — null quando a saída foi pedida pelo
-  // botão X do próprio ecrã, sem destino nenhum.
-  const pendingNavTarget = useRef(null);
-
-  // Trava a navegação para fora deste ecrã enquanto houver alterações por
-  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
-  useEffect(() => {
-    if (!isFormDirty) { setNavGuard(null); return; }
-    setNavGuard((intendedTab) => {
-      pendingNavTarget.current = intendedTab;
-      setShowUnsavedModal(true);
-      return false;
-    });
-    return () => setNavGuard(null);
-  }, [isFormDirty, setNavGuard]);
-
-  // Fechar/recarregar o separador do browser também avisa.
-  useEffect(() => {
-    if (!isFormDirty) return;
-    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isFormDirty]);
-
-  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
-  // de separador (navGuard), há ainda que completar essa navegação depois
-  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
-  // que já estava aberto antes de pedir para sair.
-  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
-  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
-  // foi trocado para handleClose(), precisamente para passar por aqui.
-  const handleClose = () => {
-    autoCloseRef.current = true;
-    const target = pendingNavTarget.current;
-    pendingNavTarget.current = null;
-    clearPersistedFormDraft(draftStorageKey);
-    onClose();
-    if (target) {
-      // O guard ainda está registado neste render — o próprio setActiveTab()
-      // chamado a seguir voltaria a cair nele e a bloquear-se a si mesmo,
-      // porque onClose() só desmonta este ecrã no próximo render, não já.
-      // Limpar primeiro é o que falta para a navegação pendente completar
-      // (mesmo detalhe já usado em Perfil.jsx/RunAgenda.jsx).
-      setNavGuard(null);
-      useAppStore.getState().setActiveTab(target);
-    }
-  };
+  // Sair do registo (aviso, navGuard, beforeunload, destino pendente): RegistrationShell.
+  const exit = useRegistrationExit({ isDirty: isFormDirty, onClose, draftKey: draftStorageKey });
 
   // Ao gravar um treino NOVO (foto ou manual), vai sempre para o
   // Calendário, aberto no dia do treino — mesmo padrão de RunAgenda.jsx
   // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
-  // ANTES de handleClose() o consumir.
+  // ANTES de exit.close() o consumir.
   /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
      elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
      destino de sempre. O CreatedRecordModal continua lá — traz o cartão
@@ -203,7 +147,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   const [confirmation, setConfirmation] = useState(null);
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Treino registado') => {
-    const hadPendingNav = !!pendingNavTarget.current;
+    const hadPendingNav = exit.hasPendingNav();
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
     const first = !isEditing && firstRecordMoment('gym', useAppStore.getState(), createdRecord);
@@ -212,7 +156,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
     clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
-      handleClose();
+      exit.close();
       if (!hadPendingNav) {
         setNavGuard(null);
         if (createdRecord) {
@@ -732,7 +676,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     // preenche o que ele fez — "marcar todas" ali poria os alvos por cima do
     // que o print mostra (revisão pré-deploy, B1). O aviso é só sem prints.
     if (!isEditing && !photos.length && unconfirmedPlanSets) {
-      setShowUnsavedModal(false);
+      exit.hideUnsaved();
       setConfirmPlanSets(true);
       return;
     }
@@ -740,7 +684,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
   };
   // "Voltar" (ou Escape, ou tocar fora) fecha sem gravar e esquece uma saída
   // pedida pelo "Gravar e sair" (M5).
-  const closePlanSetsDialog = () => { pendingNavTarget.current = null; setConfirmPlanSets(false); };
+  const closePlanSetsDialog = () => { exit.cancelLeave(); setConfirmPlanSets(false); };
   useEffect(() => {
     if (!confirmPlanSets) return;
     const onKey = (e) => { if (e.key === 'Escape') closePlanSetsDialog(); };
@@ -777,43 +721,8 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     />
   );
 
-  return (
-    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
-    <div
-      className="space-y-4 fade-in"
-      style={{ '--focus-ring': 'var(--mod-ginasio-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
-    >
-      <div
-        className="module-card-contrast"
-        // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
-        // versão anterior tinha a borda/glow do .card mas sem backdrop-filter
-        // nem base branca, o que dava um retângulo escuro plano em vez do
-        // vidro premium usado nos outros ecrãs. Lavagem na cor do módulo por
-        // cima, bem subtil.
-        style={{
-          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-ginasio-to) 3%, transparent), color-mix(in srgb, var(--mod-ginasio-to) 6%, transparent)), rgba(255, 255, 255, 0.05)',
-        }}
-      >
-        <div className="flex items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            <Dumbbell className="w-5 h-5" style={{ color: 'var(--mod-ginasio-to)' }} />
-            <h2 className="text-sm font-semibold text-[var(--text-1)]">{isEditing ? 'Editar Treino' : 'Novo Treino'}</h2>
-          </div>
-          <button
-            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
-            type="button"
-            // O circulo continua a desenhar-se com 32px; o que cresce para
-            // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
-            className="tap-44 shrink-0"
-            title="Fechar"
-            aria-label="Fechar"
-          >
-            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
-              <X size={16} />
-            </span>
-          </button>
-        </div>
-
+  const status = (
+    <>
         {/* Ponto 7 — espera: esqueleto onde o resultado vai aparecer, com o
             formulário bloqueado mas visível. */}
         {showAnalysis && <AnalysisSkeleton kind="gym" manual={!isAnalyzing} />}
@@ -831,11 +740,61 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             As fotos ficaram guardadas. Podes tentar outra vez ou registar só o que escreveste — eu faço as contas na mesma.
           </AnalysisFailure>
         )}
+    </>
+  );
 
+  // Os diálogos das séries do plano ficam por cima, como antes.
+  const planSetsDialog = confirmPlanSets ? (
+    <>
+      {confirmPlanSets && (
+        <div className="fixed inset-0 z-40 bg-[var(--bg-scrim)]" onClick={closePlanSetsDialog} aria-hidden="true" />
+      )}
+      {confirmPlanSets && (
         <div
-          aria-busy={showAnalysis || reading || undefined}
-          style={showAnalysis || reading ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="gr-plan-sets-title"
+          aria-describedby="gr-plan-sets-desc"
+          className="fixed inset-x-0 bottom-0 z-50 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] rounded-t-2xl border-t border-[var(--border-glass)] bg-[var(--bg-sheet)] shadow-2xl"
         >
+          <p id="gr-plan-sets-title" className="text-sm font-bold text-[var(--text-1)] mb-1">Há séries do plano por confirmar</p>
+          <p id="gr-plan-sets-desc" className="text-[12px] text-[var(--text-2)] mb-3">
+            Fizeste-as como estavam no plano? As que ficarem por confirmar não contam como feitas.
+          </p>
+          <div className="flex flex-col gap-2">
+            <button type="button" autoFocus onClick={markAllAndSave}
+              className="min-h-[44px] rounded-xl text-[13px] font-bold"
+              style={{ background: 'var(--mod-ginasio-to)', color: 'var(--bg-app)' }}>
+              Marcar todas como feitas e gravar
+            </button>
+            <button type="button" onClick={() => { setConfirmPlanSets(false); doAnalyze(); }}
+              className="min-h-[44px] rounded-xl text-[13px] font-bold border border-[var(--border-glass-strong)] text-[var(--text-1)]">
+              Gravar só as confirmadas
+            </button>
+            <button type="button" onClick={closePlanSetsDialog}
+              className="min-h-[44px] rounded-xl text-[13px] font-semibold text-[var(--text-3)]">
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  ) : null;
+
+  return (
+    <RegistrationShell
+      accent="var(--mod-ginasio-to)"
+      icon={Dumbbell}
+      title={isEditing ? 'Editar Treino' : 'Novo Treino'}
+      exit={exit}
+      status={status}
+      busy={showAnalysis || reading}
+      onSaveAndLeave={isEditing ? handleSaveEdit : handleAnalyze}
+      isSaving={isSaving}
+      confirmation={confirmation}
+      primaryAction={primaryAction}
+      overlays={planSetsDialog}
+    >
         <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Tipo de sessão</label>
         <div className="flex gap-1.5 mb-4">
           {GYM_KINDS.map(k => {
@@ -1063,60 +1022,12 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           <CarolInterventionActions
             record={(gymSessions || []).find(s => s.id === sessionIdToEdit)}
             type="gym"
-            onTalked={handleClose}
+            onTalked={exit.close}
             className="mb-2"
           />
         )}
 
         {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
-        </div>
-      </div>
-
-      {/* Modal de confirmação de saída com alterações por gravar */}
-      <UnsavedChangesModal
-        isOpen={showUnsavedModal}
-        isSaving={isSaving}
-        onSaveAndLeave={isEditing ? handleSaveEdit : handleAnalyze}
-        onDiscardAndLeave={handleClose}
-        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
-      />
-
-      {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
-
-      {confirmPlanSets && (
-        <div className="fixed inset-0 z-40 bg-[var(--bg-scrim)]" onClick={closePlanSetsDialog} aria-hidden="true" />
-      )}
-      {confirmPlanSets && (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-labelledby="gr-plan-sets-title"
-          aria-describedby="gr-plan-sets-desc"
-          className="fixed inset-x-0 bottom-0 z-50 p-4 pb-[calc(env(safe-area-inset-bottom)+16px)] rounded-t-2xl border-t border-[var(--border-glass)] bg-[var(--bg-sheet)] shadow-2xl"
-        >
-          <p id="gr-plan-sets-title" className="text-sm font-bold text-[var(--text-1)] mb-1">Há séries do plano por confirmar</p>
-          <p id="gr-plan-sets-desc" className="text-[12px] text-[var(--text-2)] mb-3">
-            Fizeste-as como estavam no plano? As que ficarem por confirmar não contam como feitas.
-          </p>
-          <div className="flex flex-col gap-2">
-            <button type="button" autoFocus onClick={markAllAndSave}
-              className="min-h-[44px] rounded-xl text-[13px] font-bold"
-              style={{ background: 'var(--mod-ginasio-to)', color: 'var(--bg-app)' }}>
-              Marcar todas como feitas e gravar
-            </button>
-            <button type="button" onClick={() => { setConfirmPlanSets(false); doAnalyze(); }}
-              className="min-h-[44px] rounded-xl text-[13px] font-bold border border-[var(--border-glass-strong)] text-[var(--text-1)]">
-              Gravar só as confirmadas
-            </button>
-            <button type="button" onClick={closePlanSetsDialog}
-              className="min-h-[44px] rounded-xl text-[13px] font-semibold text-[var(--text-3)]">
-              Voltar
-            </button>
-          </div>
-        </div>
-      )}
-
-      <ActionBar>{primaryAction}</ActionBar>
-    </div>
+    </RegistrationShell>
   );
 }
