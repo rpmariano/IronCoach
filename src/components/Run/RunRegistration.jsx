@@ -180,6 +180,9 @@ const PREVIEW_FIELDS = [
 /** O que só os prints sabem (a app, a regularidade, a hidratação, a temperatura) — vai com o registo revisto. */
 const READ_ONLY_KEYS = ['source_app', 'regularity_score', 'recommended_hydration_ml', 'temperature_c'];
 
+/** Um rascunho com a corrida gravada mas sem a fotografia das métricas: nunca bate com nada. */
+const RASCUNHO_SEM_ASSINATURA = '__rascunho-sem-assinatura__';
+
 /** O treino de corrida do plano como o registo o pré-preenche (o mesmo do "Registar sessão" do Início). */
 function planRunPrefill(item) {
   return {
@@ -415,6 +418,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   // De onde veio o aviso das métricas em falta: da corrida que os prints
   // gravaram ('photo') ou do formulário ('form') — decide o "Prosseguir".
   const sheetFromRef = useRef(null);
+  /* As métricas do formulário quando a corrida gravada pelos prints passou a
+     ser a deste ecrã (ver o efeito mais abaixo) e, reaberto de um rascunho,
+     a que veio com ele (undefined = nenhuma por repor). */
+  const createdFormSigRef = useRef(null);
+  const restoredFormSigRef = useRef(undefined);
+  // O mesmo valor em estado, só para o rascunho o apanhar (o ref muda depois do render).
+  const [createdFormSigForDraft, setCreatedFormSigForDraft] = useState(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   /* Bug #49: a gravação escrita (ou a edição que reanalisa) também espera
@@ -870,6 +880,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // ela. Os prints dela voltam do servidor; até lá mantêm-se todos.
       const run = persisted.createdRun;
       createdRunRef.current = { run, photosShown: false };
+      // A fotografia das métricas de quando ela foi gravada. Um rascunho sem
+      // ela (de antes desta versão) conta como mexido: grava-se pelos campos,
+      // que fazem bem a ida-e-volta — perder o que ele escreveu era pior.
+      restoredFormSigRef.current = typeof persisted.createdFormSig === 'string' ? persisted.createdFormSig : RASCUNHO_SEM_ASSINATURA;
       setPendingCreatedRun(run);
       const paths = Array.isArray(run.photo_paths) ? run.photo_paths : [];
       if (paths.length) {
@@ -905,6 +919,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // falta): sem ela, um rascunho reaberto — o Android mata a app com o
     // seletor de prints aberto — voltava a criar a corrida.
     createdRun: pendingCreatedRun,
+    // E as métricas do formulário quando ela ficou gravada (createdFormSigRef):
+    // reaberto, compara-se com isto e não com o próprio rascunho.
+    createdFormSig: pendingCreatedRun ? createdFormSigForDraft : null,
     raceId,
     readState, planChoice, planValues: planValuesRef.current, runKind, runTrainingType, runDate, runStartTime, runName, shoeId,
     runDistance, runDuration, runEffortRpe, runNotes,
@@ -2083,9 +2100,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      prints) passou a ser a deste ecrã — tiradas no render a seguir, já com o
      que applyExtractedRun pôs. Comparar com run.details dava falsos
      "mudou" (zonas decimais, campos que o formulário não tem). */
-  const createdFormSigRef = useRef(null);
   useEffect(() => {
-    createdFormSigRef.current = pendingCreatedRun ? formMetricsSignature() : null;
+    // Reaberto de um rascunho: a fotografia é a que veio com ele.
+    if (pendingCreatedRun && restoredFormSigRef.current !== undefined) {
+      createdFormSigRef.current = restoredFormSigRef.current;
+      restoredFormSigRef.current = undefined;
+    } else {
+      createdFormSigRef.current = pendingCreatedRun ? formMetricsSignature() : null;
+    }
+    setCreatedFormSigForDraft(createdFormSigRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingCreatedRun]);
   const metricsEditedSinceCreated = () => createdFormSigRef.current !== null && formMetricsSignature() !== createdFormSigRef.current;

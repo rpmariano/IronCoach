@@ -377,6 +377,22 @@ describe('RunRegistration — Analisar corrida (analyze-run)', () => {
       });
     });
 
+    it('rascunho reaberto com uma métrica escrita depois do aviso: "Analisar" grava-a (não fecha a perdê-la)', async () => {
+      localStorage.setItem('ironcoach:corrida-rascunho:nova', JSON.stringify({ createdRun: gravada, avgHeartRate: '150' }));
+      render(<RunRegistration onClose={onClose} />);
+      await screen.findByAltText('Print 1');
+      expect(screen.getByLabelText('FC média (bpm)')).toHaveValue(150);
+      mocks.invoke.mockResolvedValueOnce({ data: { run: { ...gravada, details: { avg_heart_rate_bpm: 150 } } }, error: null });
+      fireEvent.click(screen.getByRole('button', { name: /Analisar corrida/ }));
+      const prosseguir = await screen.findByRole('button', { name: /Prosseguir sem estas métricas/i });
+      fireEvent.click(prosseguir);
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      const { body } = mocks.invoke.mock.calls[0][1];
+      expect(body.mode).toBe('manual');
+      expect(body.run_id).toBe('run-1');
+      expect(body.avg_heart_rate_bpm).toBe(150);
+    });
+
     it('rascunho reaberto: se os prints da corrida não carregam, diz-o, e contam para o limite de 6', async () => {
       mocks.signError = { message: 'sem rede' };
       try {
