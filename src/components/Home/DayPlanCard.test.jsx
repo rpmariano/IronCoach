@@ -104,6 +104,13 @@ describe('DayPlanCard — "Ver detalhe do treino"', () => {
     expect(screen.queryByText('Registar sessão')).not.toBeInTheDocument();
   });
 
+  it('"Começar treino" aparece mesmo com uma corrida pendente antes do ginásio no mesmo dia', () => {
+    const gym = { id: 'g1', plan_id: 'p1', planned_date: today, kind: 'ginasio', categories: ['Pernas'], status: 'pendente' };
+    renderCard([training, gym]);
+    fireEvent.click(screen.getByTestId('day-plan-start'));
+    expect(onComplete).toHaveBeenCalledWith(gym);
+  });
+
   it('"Começar treino" não aparece na corrida nem no ginásio já feito', () => {
     renderCard();
     expect(screen.queryByTestId('day-plan-start')).not.toBeInTheDocument();

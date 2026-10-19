@@ -9,11 +9,12 @@ Deno.test("parseGoalTarget: reps, minutos, km, metros e ritmo", () => {
   assertEquals(parseGoalTarget("20 min"), { kind: "minutos", value: 20 });
   assertEquals(parseGoalTarget("pelo menos 8 km"), { kind: "km", value: 8 });
   assertEquals(parseGoalTarget("2000 m"), { kind: "metros", value: 2000 });
+  assertEquals(parseGoalTarget("2000 metros"), { kind: "metros", value: 2000 });
   assertEquals(parseGoalTarget("5:30/km"), { kind: "ritmo", value: 330 });
 });
 
 Deno.test("parseGoalTarget: o qualitativo e o misto não são mensuráveis", () => {
-  for (const g of ["descida em 3 s", "RPE 8", "12 reps com RIR 2", "8 km em 45 min", "controlar a subida", "", "  ", null, 12]) {
+  for (const g of ["chegar a 3 séries", "20m", "descida em 3 s", "RPE 8", "12 reps com RIR 2", "8 km em 45 min", "controlar a subida", "", "  ", null, 12]) {
     assertEquals(parseGoalTarget(g), null, String(g));
     assertEquals(isMeasurableGoal(g), false);
   }
@@ -55,4 +56,15 @@ Deno.test("computePlanExecution: o mensurável julga-se sozinho; o confirmado pe
   ] })!;
   assertEquals(com.blocks.map((b) => b.goalMet), [true, true]);
   assertEquals(sem.goalsFailed, ["Prensa"]);
+});
+
+Deno.test("computePlanExecution: uma série de descarga a mais não deixa um bloco cumprido com objetivo por cumprir", () => {
+  const r = computePlanExecution({
+    prescription: { blocks: [{ type: "forca", name: "Prensa", sets: 3, reps: 12, goal: "chegar às 12" }] },
+    sessionDate: "2026-10-19",
+    sets: [12, 12, 12, 8].map((reps, i) => ({ exercise_name: "Prensa", set_index: i, reps, weight: 100 })),
+  })!;
+  assertEquals(r.blocks[0].status, "cumprido");
+  assertEquals(r.blocks[0].goalMet, true);
+  assertEquals(r.goalsFailed, []);
 });

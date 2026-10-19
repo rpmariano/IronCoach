@@ -38,11 +38,11 @@ const num = (s: string) => Number(s.replace(",", "."));
 const PATTERNS: Array<{ kind: GoalKind; re: RegExp; value: (m: RegExpExecArray) => number }> = [
   { kind: "ritmo", re: /(\d{1,2}):(\d{2})\s*(?:\/|por\s*)\s*km\b/, value: (m) => Number(m[1]) * 60 + Number(m[2]) },
   { kind: "km", re: /(\d+(?:[.,]\d+)?)\s*km\b/, value: (m) => num(m[1]) },
-  { kind: "metros", re: /(\d{2,5})\s*m\b/, value: (m) => Number(m[1]) },
+  { kind: "metros", re: /(\d{3,5})\s*m(?:etros?)?\b/, value: (m) => Number(m[1]) },
   { kind: "minutos", re: /(\d+(?:[.,]\d+)?)\s*(?:min|minutos?)\b/, value: (m) => num(m[1]) },
   // "10-12 reps" exige o mínimo do intervalo; "chegar às 12" sozinho também conta.
   { kind: "reps", re: /(\d{1,3})(?:\s*(?:-|a)\s*\d{1,3})?\s*(?:reps?|repeticoes)\b/, value: (m) => Number(m[1]) },
-  { kind: "reps", re: /chegar\s+(?:as|a)\s+(\d{1,3})\b/, value: (m) => Number(m[1]) },
+  { kind: "reps", re: /chegar\s+(?:as|a)\s+(\d{1,3})\b(?!\s*series?\b)/, value: (m) => Number(m[1]) },
 ];
 
 /** A medida do objetivo, ou null se for qualitativo/misto/vazio. */

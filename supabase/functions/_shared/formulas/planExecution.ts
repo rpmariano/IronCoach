@@ -316,8 +316,12 @@ export function computePlanExecution(input: {
     r.doneName = ex.name;
     r.goalMet = typeof ex.meta?.goal_met === "boolean" ? ex.meta.goal_met : null;
     if (!r.goal && ex.meta?.goal) r.goal = ex.meta.goal;
-    if (r.goalMet === null && r.goal) r.goalMet = inferGoalMet(r.goal, ex.sets);
     if (r.type === "cardio") fillCardio(r, ex); else fillStrength(r, ex, input.sessionDate, history);
+    // Só as séries prescritas contam para o objetivo: uma série a mais (de
+    // descarga) com menos reps não deixa um bloco cumprido "por cumprir".
+    if (r.goalMet === null && r.goal) {
+      r.goalMet = inferGoalMet(r.goal, r.type === "forca" && r.setsTarget ? ex.sets.slice(0, r.setsTarget) : ex.sets);
+    }
   };
 
   // 1. O nome: o exercício do plano feito tal e qual.
