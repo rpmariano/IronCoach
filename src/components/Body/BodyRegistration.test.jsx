@@ -46,7 +46,7 @@ const selectPhoto = async () => {
   await screen.findByAltText('Print 1');
 };
 
-describe('BodyRegistration — cartão único: alternar entre Foto e Manual', () => {
+describe('BodyRegistration — formulário único (registo unificado, decisão 12)', () => {
   const onClose = vi.fn();
 
   beforeEach(() => {
@@ -55,29 +55,104 @@ describe('BodyRegistration — cartão único: alternar entre Foto e Manual', ()
     useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
   });
 
-  it('mostra o upload de fotos por omissão e esconde os campos manuais', () => {
+  it('os prints (opcionais) e os campos estão juntos — já não há Foto | Manual', () => {
     render(<BodyRegistration onClose={onClose} />);
-    expect(screen.getByText(/Escolhe os prints da app Renpho Health/)).toBeInTheDocument();
-    expect(screen.queryByText('Peso (kg)')).not.toBeInTheDocument();
-  });
-
-  it('ao escolher Manual, esconde o upload e mostra os campos de métricas', () => {
-    render(<BodyRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
-
-    expect(screen.queryByText(/Escolhe os prints da app Renpho Health/)).not.toBeInTheDocument();
-    expect(screen.getByText('Peso (kg)')).toBeInTheDocument();
+    expect(screen.getByText('Prints da Renpho Health (opcional)')).toBeInTheDocument();
+    expect(screen.getByLabelText('Peso (kg)')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Foto$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Manual$/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Analisar avaliação/i })).toBeInTheDocument();
   });
 
-  /* O caso do backlog (specs/carol-frases-contexto.md, MealRegistration:710, mesma linha para o corpo): o
-     registo por foto nomeava «a IA» ao lado da Carol — rótulo «Foto (IA)» e
-     dica «A IA lê…». Aqui fala só ela, na primeira pessoa. */
-  it('o registo por foto fala na voz da Carol, sem nomear a IA', () => {
+  /* O caso do backlog (specs/carol-frases-contexto.md): o registo por foto
+     nomeava «a IA» ao lado da Carol. Aqui fala só ela, na primeira pessoa. */
+  it('os prints falam na voz da Carol, sem nomear a IA', () => {
     render(<BodyRegistration onClose={onClose} />);
-    expect(screen.getByRole('button', { name: /^Foto$/ })).toBeInTheDocument();
-    expect(screen.getByText('Junta os ecrãs da mesma pesagem; eu leio e comento os valores. Podes corrigir depois de gravado.')).toBeInTheDocument();
+    expect(screen.getByText('Junta os ecrãs da mesma pesagem; eu leio os valores e preencho os campos abaixo para reveres.')).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/\bIA\b/);
+  });
+
+  it('sem prints e sem valores não analisa e diz porquê', async () => {
+    render(<BodyRegistration onClose={onClose} />);
+    setHora();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Junta um print da balança ou escreve pelo menos um valor.');
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+});
+
+describe('BodyRegistration — ler os prints para o formulário (analyze-body, mode preview)', () => {
+  const onClose = vi.fn();
+  const PREVIEW = {
+    metrics: { weight_kg: 79.2, body_fat_pct: 20.1, bmi: null },
+    classifications: { weight_kg: 'Normal', body_fat_pct: 'Alto', source_app: 'renpho' },
+    source_app: 'renpho',
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
+  });
+
+  it('enche só os campos vazios, sem gravar, e diz o que leu', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW }, error: null });
+    render(<BodyRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+
+    await screen.findByText(/Li 1 valor\./);
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.mode).toBe('preview');
+    expect(body.images).toEqual(['AAA']);
+    // O que ele escreveu ganhou; o resto veio dos prints.
+    expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
+    expect(screen.getByLabelText('Gordura corporal (%)')).toHaveValue(20.1);
+    expect(screen.getByText(/já tinhas escrito ficaram/)).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('depois de ler, gravar não volta a ler: vai o formulário revisto com as etiquetas', async () => {
+    mocks.invoke
+      .mockResolvedValueOnce({ data: { preview: PREVIEW }, error: null })
+      .mockResolvedValueOnce({ data: { assessment: { id: 'assess-7' } }, error: null });
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    await screen.findByText(/Li 2 valores\./);
+    setHora();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const [, { body }] = mocks.invoke.mock.calls[1];
+    expect(body.mode).toBeUndefined();
+    expect(body.reviewed).toBe(true);
+    expect(body.images).toEqual(['AAA']);
+    expect(body.metrics).toEqual({ weight_kg: 79.2, body_fat_pct: 20.1 });
+    expect(body.classifications).toEqual(PREVIEW.classifications);
+  });
+
+  it('prints por ler: a Carol lê-os ao gravar e o que ele escreveu vai junto (ganha)', async () => {
+    mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-8' } }, error: null });
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
+    setHora();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
+
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const [, { body }] = mocks.invoke.mock.calls[0];
+    expect(body.reviewed).toBeUndefined();
+    expect(body.metrics).toEqual({ weight_kg: 78.5 });
+  });
+
+  it('nada lido: avisa e deixa escrever', async () => {
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: {}, classifications: {} } }, error: null });
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    expect(await screen.findByText(/Não consegui ler valores nestes prints/)).toBeInTheDocument();
   });
 });
 
@@ -191,12 +266,10 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     useAppStore.setState({ profile: PROFILE, bodyAssessments: [] });
   });
 
-  const goManual = () => fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
   it('envia o registo manual para analyze-body em modo manual, sem imagens', async () => {
     mocks.invoke.mockResolvedValue({ data: { assessment: { id: 'assess-2' } }, error: null });
     render(<BodyRegistration onClose={onClose} />);
-    goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
     fireEvent.change(screen.getByLabelText('Gordura corporal (%)'), { target: { value: '18.2' } });
 
@@ -217,7 +290,6 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
     const newAssessment = { id: 'assess-2', ai_summary: 'Boa evolução na massa muscular.' };
     mocks.invoke.mockResolvedValue({ data: { assessment: newAssessment }, error: null });
     render(<BodyRegistration onClose={onClose} />);
-    goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
     setHora();
@@ -232,7 +304,6 @@ describe('BodyRegistration — registo manual também passa pelo Coach (analyze-
   it('mostra o erro da Edge Function e não fecha o formulário', async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: 'Falha a gravar avaliação.' });
     render(<BodyRegistration onClose={onClose} />);
-    goManual();
     fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
     setHora();
@@ -270,11 +341,12 @@ describe('BodyRegistration — editar avaliação existente', () => {
     useAppStore.setState({ profile: PROFILE, bodyAssessments: [EXISTING], loadInitialData });
   });
 
-  it('pré-preenche os campos e esconde o seletor Foto/Manual', () => {
+  it('pré-preenche os campos e não mostra os prints', () => {
     render(<BodyRegistration onClose={onClose} assessmentIdToEdit="assess-3" />);
 
     expect(screen.getByText('Editar Avaliação')).toBeInTheDocument();
     expect(screen.queryByText('Como queres registar?')).not.toBeInTheDocument();
+    expect(screen.queryByText('Prints da Renpho Health (opcional)')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
     expect(screen.getByRole('button', { name: /Guardar alterações/i })).toBeInTheDocument();
   });
@@ -468,7 +540,6 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
     vi.useFakeTimers();
     try {
       const { unmount } = render(<BodyRegistration onClose={onClose} />);
-      fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
       fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78.5' } });
 
       // Debounce da persistência (formDraftPersistence.js).
@@ -480,7 +551,6 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
       // quando o Android recarrega a página ao voltar de outra app e apaga
       // todo o estado em memória.
       render(<BodyRegistration onClose={onClose} />);
-      fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
 
       expect(screen.getByLabelText('Peso (kg)')).toHaveValue(78.5);
     } finally {
@@ -509,7 +579,6 @@ describe('BodyRegistration — BUG CORRIGIDO (2026-08-30) — rascunho sobrevive
 
     // Próxima avaliação nova: sem vestígios do rascunho gravado.
     render(<BodyRegistration onClose={onClose} />);
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
     expect(screen.getByLabelText('Peso (kg)')).toHaveValue(null);
   });
 });
