@@ -1,6 +1,12 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act, within, cleanup } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi, onTestFinished } from 'vitest';
+
+/* O registo de corrida é o maior ecrã da app (formulário único, modo prova,
+   aviso das métricas em falta): sob carga — o pre-push corre a suite toda —
+   alguns testes passavam os 5 s por omissão e travavam o push sem falha
+   nenhuma (2026-10-19). 15 s aqui, só neste ficheiro. */
+vi.setConfig({ testTimeout: 15000 });
 import { useAppStore } from '../../store';
 import RunRegistration from './RunRegistration';
 import { draftMediaStore } from '../../utils/draftMediaPersistence';
