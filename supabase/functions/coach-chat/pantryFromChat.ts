@@ -43,6 +43,8 @@ export const SAVE_PANTRY_FOOD_TOOL = {
       fiber_per_100g: microProp("Fibra por 100 g, em gramas — só se estiver na tabela."),
       sugar_per_100g: microProp("Açúcares por 100 g, em gramas — só se estiver na tabela."),
       sodium_per_100g: microProp("Sódio por 100 g, em miligramas (se a tabela der sal em gramas, sódio = sal × 400) — só se estiver na tabela."),
+      polyols_per_100g: { type: "NUMBER", description: "Polióis (eritritol, maltitol, xilitol…) por 100 g, em gramas — só se a tabela os indicar. Não se guarda; serve para conferir as kcal." },
+      alcohol_per_100g: { type: "NUMBER", description: "Álcool por 100 g (ou 100 ml), em gramas (% vol × 0,79) — só em bebidas alcoólicas. Não se guarda; serve para conferir as kcal." },
     },
     required: ["name", "calories_per_100g", "protein_per_100g", "carbs_per_100g", "fat_per_100g"],
   },
@@ -52,6 +54,26 @@ const finiteNonNeg = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/** As kcal batem com os macros? Só recusa desvios GROSSEIROS (kJ lidos como kcal, kcal a zero por engano): fibra,
+ *  polióis e álcool explicam diferenças legítimas, por isso têm crédito — e, não vindo, uma tolerância larga.
+ *  Devolve a mensagem de erro para a Carol, ou null se está coerente. Exportada para os testes. */
+export function energyMismatch(
+  kcal: number, protein: number, carbs: number, fat: number,
+  extra: { fiber?: number; polyols?: number; alcohol?: number } = {},
+): string | null {
+  const fiber = extra.fiber ?? 0, polyols = extra.polyols ?? 0, alcohol = extra.alcohol ?? 0;
+  const expected = 4 * protein + 4 * carbs + 9 * fat + 7 * alcohol;
+  // O mínimo plausível: a fibra vale ~2 kcal/g e os polióis ~0 (estão contados nos hidratos).
+  const lowest = Math.max(0, expected - 4 * polyols - 2 * fiber);
+  const tooHigh = kcal > expected * 1.35 + 25;
+  const tooLow = kcal < lowest * 0.5 - 25;
+  if (!tooHigh && !tooLow) return null;
+  return `Erro: ${round1(kcal)} kcal por 100 g não batem com os macros (≈ ${round1(expected)} kcal). ` +
+    "Confirma na imagem se leste kcal e não kJ (1 kcal = 4,18 kJ) e se os valores são por 100 g e não por porção. " +
+    "Se o rótulo diz mesmo isto porque o produto tem fibra, polióis (eritritol, maltitol…) ou álcool, volta a chamar " +
+    "indicando fiber_per_100g, polyols_per_100g ou alcohol_per_100g. Caso contrário não guardes e diz ao atleta o que viste.";
+}
 
 // deno-lint-ignore no-explicit-any
 export async function runSavePantryFood(sb: any, userId: string, args: any, nowISO = new Date().toISOString()): Promise<string> {
@@ -73,13 +95,12 @@ export async function runSavePantryFood(sb: any, userId: string, args: any, nowI
       "Não guardes; confirma na imagem ou pede ao atleta uma foto mais nítida.";
   }
 
-  // A energia tem de bater com os macros (4/4/9 kcal por grama; fibra e polióis explicam o resto): apanha kJ lidos
-  // como kcal, valores por porção em vez de por 100 g e kcal a zero com macros.
-  const expected = 4 * protein + 4 * carbs + 9 * fat;
-  if (Math.abs(kcal - expected) > Math.max(0.3 * expected, 25)) {
-    return `Erro: ${round1(kcal)} kcal não batem com os macros (≈ ${round1(expected)} kcal por 100 g). Releste kJ como kcal, ` +
-      "ou valores por porção? Não guardes; confirma na imagem ou pede ao atleta uma foto mais nítida.";
-  }
+  const energyProblem = energyMismatch(kcal, protein, carbs, fat, {
+    fiber: finiteNonNeg(args?.fiber_per_100g) ?? 0,
+    polyols: finiteNonNeg(args?.polyols_per_100g) ?? 0,
+    alcohol: finiteNonNeg(args?.alcohol_per_100g) ?? 0,
+  });
+  if (energyProblem) return energyProblem;
 
   const { data: existing, error: readErr } = await sb
     .from("athlete_foods")
@@ -91,7 +112,7 @@ export async function runSavePantryFood(sb: any, userId: string, args: any, nowI
   const prev = (existing ?? null) as PantryFood | null;
 
   // Ajustado à mão: nem um rótulo lhe reescreve os valores (athlete_foods.edited_by_athlete).
-  if (prev?.edited_by_athlete && prev.in_pantry) {
+  if (prev?.edited_by_athlete) {
     return `«${prev.name}» já está na Despensa e foi ajustado por ele — não mexi nos valores. ` +
       "Diz-lho; se quiser mudá-los, abre o alimento na Despensa (Armário > Alimentação).";
   }

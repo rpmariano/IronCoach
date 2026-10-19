@@ -1041,6 +1041,7 @@ export default function Coach() {
     if (!files?.length) return;
     // Enquanto comprime, anexar e enviar ficam parados: duas seleções seguidas apagavam-se uma à outra.
     setPhotoBusy(true);
+    setPhotoNote('A preparar a foto…');
     let next = photos;
     let skipped = 0;
     try {
@@ -1049,7 +1050,9 @@ export default function Coach() {
       setPhotoBusy(false);
     }
     setPhotos(next);
-    setPhotoNote(skipped > 0 ? `Só cabem ${MAX_CHAT_PHOTOS} fotos por mensagem, ou algum ficheiro não era uma imagem.` : '');
+    setPhotoNote(skipped > 0
+      ? `Só cabem ${MAX_CHAT_PHOTOS} fotos por mensagem, ou algum ficheiro não era uma imagem.`
+      : `${next.length === 1 ? '1 foto pronta' : `${next.length} fotos prontas`} a enviar.`);
   };
 
   const handleSend = async (textToSend, extras) => {
@@ -1476,6 +1479,7 @@ export default function Coach() {
                 <button
                   type="button"
                   aria-label={`Tirar a foto ${i + 1}`}
+                  disabled={photoBusy}
                   onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
                   className="absolute -top-2 -right-2 w-11 h-11 flex items-center justify-center"
                 >
@@ -1489,7 +1493,6 @@ export default function Coach() {
         <div className="flex gap-2 items-end">
           {photos.length < MAX_CHAT_PHOTOS && (
             <label
-              aria-label="Anexar foto (embalagem ou comida)"
               className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center border border-[var(--border-glass)] bg-[var(--bg-sheet)] text-[var(--text-3)] transition focus-within:ring-2 focus-within:ring-[var(--mod-coach-to)] ${coachLoading ? 'opacity-50' : 'cursor-pointer active:scale-95'}`}
             >
               <input type="file" accept="image/*" multiple aria-label="Anexar foto (embalagem ou comida)" disabled={coachLoading || photoBusy} className="sr-only" onChange={handleSelectPhotos} data-testid="coach-photo-input" />

@@ -68,3 +68,40 @@ Deno.test("runSavePantryFood: a energia tem de bater com os macros (kJ lidos com
   // Com fibra/polióis a diferença é normal: 10 % fora ainda passa.
   assertStringIncludes(await runSavePantryFood(sb, "u1", { ...ARGS, calories_per_100g: 345 }), "guardado");
 });
+
+import { energyMismatch } from "./pantryFromChat.ts";
+
+Deno.test("energyMismatch: rótulos legítimos passam (fibra, polióis, álcool, líquidos)", () => {
+  // Psílio: quase tudo é fibra (78 g de 85 g de hidratos) — 186 kcal contra ≈357 pelos macros.
+  assertEquals(energyMismatch(186, 2, 85, 1, { fiber: 78 }), null);
+  // Eritritol: 0 kcal, hidratos 100 g, polióis 100 g.
+  assertEquals(energyMismatch(0, 0, 100, 0, { polyols: 100 }), null);
+  // Cerveja 4,5 %: 43 kcal com 3,6 g de hidratos e 3,5 g de álcool.
+  assertEquals(energyMismatch(43, 0.5, 3.6, 0, { alcohol: 3.5 }), null);
+  // Vinho tinto: 85 kcal, 2,6 g de hidratos, 9,5 g de álcool.
+  assertEquals(energyMismatch(85, 0.1, 2.6, 0, { alcohol: 9.5 }), null);
+  // Leite meio-gordo e uma barra proteica, só com os macros.
+  assertEquals(energyMismatch(46, 3.3, 4.8, 1.6), null);
+  assertEquals(energyMismatch(380, 33, 35, 12), null);
+});
+
+Deno.test("energyMismatch: recusa o grosseiro e diz o que fazer", () => {
+  // kJ lidos como kcal.
+  const kj = energyMismatch(250, 4, 6, 1.5)!;
+  assertStringIncludes(kj, "kJ");
+  assertStringIncludes(kj, "polyols_per_100g");
+  // kcal a zero com macros e sem nada que o explique.
+  assertStringIncludes(energyMismatch(0, 33, 35, 12)!, "não batem com os macros");
+  // Eritritol sem dizer que são polióis.
+  assertStringIncludes(energyMismatch(0, 0, 100, 0)!, "não batem com os macros");
+});
+
+Deno.test("runSavePantryFood: o crédito de polióis chega pela ferramenta; um alimento ajustado à mão não se mexe, esteja ou não na despensa", async () => {
+  const { sb, calls } = fakeSb(null);
+  const ok = await runSavePantryFood(sb, "u1", { name: "Eritritol", calories_per_100g: 0, protein_per_100g: 0, carbs_per_100g: 100, fat_per_100g: 0, polyols_per_100g: 100 });
+  assertStringIncludes(ok, "guardado");
+  assertEquals(calls.upserts.length, 1);
+  const edited = fakeSb({ name: "Barra Proteica Choco", name_key: "barra proteica choco", in_pantry: false, edited_by_athlete: true, times_seen: 1 });
+  assertStringIncludes(await runSavePantryFood(edited.sb, "u1", ARGS), "ajustado por ele");
+  assertEquals(edited.calls.upserts.length, 0);
+});
