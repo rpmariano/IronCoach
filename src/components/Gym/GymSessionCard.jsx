@@ -10,6 +10,7 @@ import { sessionVolumeKg } from '../../utils/biEngine';
 import ConfirmDeleteModal from '../shared/ConfirmDeleteModal';
 import Button from '../shared/Button';
 import { formatDuration } from '../../utils/run';
+import { describeSavedSet } from '../../utils/gymSets';
 import { normalizeStartTime } from '../../utils/startTime';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 
@@ -230,7 +231,7 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
                   {exSets.map((s, idx) => (
                     <div key={s.id || idx} className="flex items-center justify-between bg-[var(--surface-glass)] border border-[var(--border-faint)] rounded-lg px-2.5 py-1.5 text-xs">
                       <span className="font-semibold text-[var(--text-3)]">Série {idx + 1}</span>
-                      <span className="font-bold text-[var(--text-1)]">{s.reps} reps × {s.weight} kg</span>
+                      <span className="font-bold text-[var(--text-1)]">{describeSavedSet(s)}</span>
                     </div>
                   ))}
                 </div>
