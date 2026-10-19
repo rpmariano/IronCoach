@@ -14,8 +14,7 @@ import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import CoachMemoryCard from './CoachMemoryCard';
 import TabelasConsentScreen from './TabelasConsentScreen';
 import CoachAvatar from '../Coach/CoachAvatar';
-import ShoeCabinet from './ShoeCabinet';
-import PantrySection from '../Pantry/PantrySection';
+import Armario from '../Armario/Armario';
 import BadgesCard from './BadgesCard';
 import CupNoticePrefs from './CupNoticePrefs';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -1066,16 +1065,13 @@ export default function Perfil() {
           </button>
       </div>
 
-      {/* Equipamento — ao contrário dos outros separadores, este não escreve
-          no rascunho partilhado: o armário faz o seu próprio CRUD na tabela
-          shoes, par a par, e grava logo. "Guardar alterações" lá em baixo
+      {/* Armário — ao contrário dos outros separadores, este não escreve no
+          rascunho partilhado: cada secção (Treino, Alimentação, Equipamento)
+          faz o seu próprio CRUD e grava logo. "Guardar alterações" lá em baixo
           continua a ser só dos campos do perfil. */}
       <div ref={(el) => { pageRefs.current[3] = el; setPageRef(3)(el); }} className="tab-swipe-page space-y-4">
           <h2 className="sr-only">Armário</h2>
-          <ShoeCabinet />
-          {/* A despensa (bugs #48/#52, fase C): também grava sozinha, à
-              parte do rascunho do perfil. */}
-          <PantrySection />
+          <Armario />
       </div>
 
       <div ref={(el) => { pageRefs.current[4] = el; setPageRef(4)(el); }} className="tab-swipe-page space-y-4">

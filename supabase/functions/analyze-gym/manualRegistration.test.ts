@@ -154,3 +154,18 @@ Deno.test("updateExerciseLocker: um exercício apagado numa edição baixa o rec
   });
   assertEquals(calls.updates, [{ key: "prensa", payload: { personal_record_weight: 120, updated_at: calls.updates[0].payload.updated_at } }]);
 });
+
+Deno.test("parseExercisesMeta: a afinação passa (limpa e limitada) só quando vem como texto", () => {
+  const meta = parseExercisesMeta([
+    { name: "Leg Press", machine_settings: "  banco furo 3  " },
+    { name: "Supino" },
+    { name: "Remo", machine_settings: "" },
+    { name: "Prensa", machine_settings: 5 },
+    { name: "Agachamento", machine_settings: "x".repeat(300) },
+  ])!;
+  assertEquals(meta[0].machine_settings, "banco furo 3");
+  assertEquals("machine_settings" in meta[1], false);
+  assertEquals(meta[2].machine_settings, "");
+  assertEquals("machine_settings" in meta[3], false);
+  assertEquals(meta[4].machine_settings?.length, 120);
+});

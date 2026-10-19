@@ -82,4 +82,19 @@ describe('ExerciseEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: /Do Armário/ }));
     expect(screen.getByText(/O Armário enche-se sozinho/)).toBeTruthy();
   });
+
+  it('afinação (decisão 10): mostra a do Armário e só vai no registo se a mudar', () => {
+    const LOCKER2 = [{ id: 'l1', name: 'Leg Press', name_key: 'leg press', category: 'Pernas', block_type: 'forca', last_weight: 100, last_reps: 10, machine_settings: 'banco furo 3' }];
+    render(<Harness initial={[newExercise({ name: 'Leg Press', type: 'forca' })]} lockerRows={LOCKER2} />);
+    const campo = screen.getByLabelText(/^Afinação da máquina — Leg Press/);
+    expect(campo).toHaveValue('banco furo 3');
+    expect(state()[0].machineSettings).toBeUndefined();
+    fireEvent.change(campo, { target: { value: 'banco furo 5' } });
+    expect(state()[0].machineSettings).toBe('banco furo 5');
+  });
+
+  it('afinação: no cardio não há campo', () => {
+    render(<Harness initial={[newExercise({ name: 'Remo', type: 'cardio', sets: [newSet()] })]} />);
+    expect(screen.queryByLabelText(/Afinação da máquina/)).toBeNull();
+  });
 });

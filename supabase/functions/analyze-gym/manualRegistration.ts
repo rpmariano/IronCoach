@@ -26,6 +26,8 @@ export type ExerciseMeta = {
   block_type: "forca" | "cardio";
   plan_block_index: number | null;
   goal_met: boolean | null;
+  // A afinação da máquina escrita neste registo (decisão 10); ausente = não mexeu.
+  machine_settings?: string;
 };
 
 const finiteOrNull = (v: unknown): number | null => {
@@ -98,6 +100,7 @@ export function parseExercisesMeta(raw: any): ExerciseMeta[] | null {
       block_type: m?.block_type === "cardio" ? "cardio" : "forca",
       plan_block_index: m?.plan_block_index != null && Number.isInteger(idx) && idx >= 0 && idx < 50 ? idx : null,
       goal_met: typeof m?.goal_met === "boolean" ? m.goal_met : null,
+      ...(typeof m?.machine_settings === "string" ? { machine_settings: m.machine_settings.trim().slice(0, 120) } : {}),
     });
   }
   return out.length ? out : null;

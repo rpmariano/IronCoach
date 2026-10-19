@@ -250,6 +250,9 @@ export function buildExercisesMeta(exercises) {
       block_type: exerciseType(ex),
       plan_block_index: Number.isInteger(ex.planBlockIndex) ? ex.planBlockIndex : null,
       goal_met: null,
+      // A afinação da máquina só vai se ele a escreveu ou apagou neste registo
+      // (decisão 10): sem mexer, o servidor deixa a que o Armário já tem.
+      ...(typeof ex.machineSettings === 'string' ? { machine_settings: ex.machineSettings.trim().slice(0, 120) } : {}),
     });
   }
   return out;
