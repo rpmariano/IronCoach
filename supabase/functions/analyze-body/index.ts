@@ -556,6 +556,8 @@ async function generateBodySummaryFromMetrics(
   // Até quando se pode tentar (COACH_BUDGET_MS, em _shared/geminiFetch.ts).
   deadline = Number.POSITIVE_INFINITY,
   assessmentTime: string | null = null,
+  // Os valores vieram de prints que o atleta leu e reviu (registo unificado, `reviewed`).
+  fromPrints = false,
   // `usage`: tokens desta chamada (null se não houve resposta do Gemini) —
   // antes não era devolvido, e o registo manual não contava para os custos.
 ): Promise<{ text: string | null; goalsReview: GoalsReview; usage: GeminiUsage | null }> {
@@ -575,8 +577,11 @@ async function generateBodySummaryFromMetrics(
     `${CAROL_TONE_RULES_SHORT}\n\n` +
     memoryPromptSection(memoryBlock) +
     weighingConditions(assessmentTime, notes) +
-    "O atleta registou manualmente os seguintes valores de uma avaliação de composição " +
-    `corporal (sem foto):\n${metricLines}\n\n` +
+    (fromPrints
+      ? "O atleta registou os seguintes valores de uma avaliação de composição corporal, lidos dos prints da " +
+        `balança e revistos por ele:\n${metricLines}\n\n`
+      : "O atleta registou manualmente os seguintes valores de uma avaliação de composição " +
+        `corporal (sem foto):\n${metricLines}\n\n`) +
     // deno-lint-ignore no-explicit-any
     historyContext(history as any[]) +
     "\n\nEscreve a tua avaliação destes valores, em português de Portugal. " +
@@ -689,6 +694,9 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
       const mime = ["image/jpeg", "image/png", "image/webp"].includes(body.mime_type) ? body.mime_type : "image/jpeg";
       try {
         const { preview, usage } = await previewWithGemini(imgs, mime, rawNotes, geminiKey, extractionDeadline);
+        // Ler e depois gravar é o caminho comum: os prints de apps que não se
+        // reconhecem chegam ao Admin por aqui (no `reviewed` já não se leem).
+        await checkAndLogAppImage(sb, userId, "body", imgs, mime, preview as unknown as Record<string, unknown>);
         return jsonResponse({ preview, usage });
       } catch (e) {
         return jsonResponse({ error: e instanceof Error ? e.message : "Não consegui ler os prints." }, 502);
@@ -901,7 +909,7 @@ Deno.serve(withUsageRecording("analyze-body", async (req) => {
 
     // 2a. Já revisto: o resumo faz-se dos valores do formulário, sem nova leitura.
     if (reviewed) {
-      const summaryResult = await generateBodySummaryFromMetrics(typed!, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime);
+      const summaryResult = await generateBodySummaryFromMetrics(typed!, rawNotes, history || [], geminiKey, await memoryPromise, await goalsCtxPromise, coachDeadline, rawTime, true);
       const classifications = sanitizeClassifications(body.classifications, typed!);
       if (typeof body.classifications?.source_app === "string") {
         classifications.source_app = normalizarFonteCorpo(body.classifications.source_app);

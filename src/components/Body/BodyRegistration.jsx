@@ -85,6 +85,18 @@ export function mergeBodyPreview(metrics, previewMetrics) {
   return { metrics: next, filled, kept };
 }
 
+/** As etiquetas da Renpho só dos valores que ficaram como se leram — num valor
+ *  corrigido (ou que ele já tinha escrito), a etiqueta era de outro número. */
+export function labelsStillValid(readState, typed) {
+  const labels = readState?.classifications;
+  if (!labels) return null;
+  const out = {};
+  for (const [key, label] of Object.entries(labels)) {
+    if (key === 'source_app' || readState.read?.[key] === typed?.[key]) out[key] = label;
+  }
+  return out;
+}
+
 /** A frase depois de ler os prints. */
 export function bodyReadNote({ filled, kept }) {
   if (filled > 0) {
@@ -137,6 +149,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
   const [readState, setReadState] = useState(null); // { count, classifications } | null
 
   const [metrics, setMetrics] = useState({});
+  // As métricas de agora, para a leitura (que demora) se juntar ao que ele
+  // escreveu entretanto e não ao que havia quando carregou em "Ler".
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
   const [isSaving, setIsSaving] = useState(false);
 
   // Edição — métricas, observações e data são dados ANALÍTICOS: mudá-los muda
@@ -336,6 +352,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setPhotos(prev => [...prev, { dataUrl, base64 }]);
+        setReadState(null);
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -343,7 +360,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     }
   };
 
-  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setIsFormDirty(true); };
+  const removePhoto = (idx) => { setPhotos(prev => prev.filter((_, i) => i !== idx)); setReadState(null); setIsFormDirty(true); };
 
   // ── Ler os prints para o formulário (sem gravar) ─────────────────────
   const handleRead = async () => {
@@ -358,9 +375,9 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       if (error) throw new Error(error);
       if (data?.error) throw new Error(data.error);
       const preview = data?.preview || {};
-      const merged = mergeBodyPreview(metrics, preview.metrics);
+      const merged = mergeBodyPreview(metricsRef.current, preview.metrics);
       setMetrics(merged.metrics);
-      setReadState({ count: photos.length, classifications: preview.classifications || null });
+      setReadState({ count: photos.length, read: preview.metrics || null, classifications: preview.classifications || null });
       setReadNote(bodyReadNote(merged));
       setIsFormDirty(true);
     } catch (err) {
@@ -385,7 +402,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
         assessment_time: normalizeStartTime(assessmentTime),
         notes: notes.trim() || null,
         ...(hasTyped ? { metrics: typed } : {}),
-        ...(reviewed ? { reviewed: true, classifications: readState.classifications || null } : {}),
+        ...(reviewed ? { reviewed: true, classifications: labelsStillValid(readState, typed) } : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
@@ -472,7 +489,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       exit={exit}
       status={status}
       busy={showAnalysis}
-      onSaveAndLeave={isEditing ? handleSaveEdit : handleAnalyze}
+      onSaveAndLeave={isEditing ? handleSaveEdit : () => {
+        if (reading) { exit.cancelLeave(); setErrorMsg('Espera que eu acabe de ler os prints.'); return; }
+        handleAnalyze();
+      }}
       isSaving={isSaving || isAnalyzing}
       confirmation={confirmation}
       primaryAction={primaryAction}

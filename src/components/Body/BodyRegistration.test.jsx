@@ -147,6 +147,50 @@ describe('BodyRegistration — ler os prints para o formulário (analyze-body, m
     expect(body.metrics).toEqual({ weight_kg: 78.5 });
   });
 
+  it('o que ele escreve durante a leitura não se perde', async () => {
+    let finish;
+    mocks.invoke.mockImplementationOnce(() => new Promise((r) => { finish = r; }));
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '77' } });
+    await act(async () => { finish({ data: { preview: PREVIEW }, error: null }); });
+    expect(screen.getByLabelText('Peso (kg)')).toHaveValue(77);
+    expect(screen.getByLabelText('Gordura corporal (%)')).toHaveValue(20.1);
+  });
+
+  it('um valor corrigido depois de ler não leva a etiqueta da Renpho; mexer nos prints obriga a ler outra vez', async () => {
+    mocks.invoke
+      .mockResolvedValueOnce({ data: { preview: PREVIEW }, error: null })
+      .mockResolvedValue({ data: { assessment: { id: 'assess-9' } }, error: null });
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    await screen.findByText(/Li 2 valores\./);
+    fireEvent.change(screen.getByLabelText('Peso (kg)'), { target: { value: '78' } });
+    setHora();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    const { body } = mocks.invoke.mock.calls[1][1];
+    expect(body.classifications).toEqual({ body_fat_pct: 'Alto', source_app: 'renpho' });
+  });
+
+  it('juntar um print depois de ler: ao gravar, a Carol volta a ler', async () => {
+    mocks.invoke
+      .mockResolvedValueOnce({ data: { preview: PREVIEW }, error: null })
+      .mockResolvedValue({ data: { assessment: { id: 'assess-10' } }, error: null });
+    render(<BodyRegistration onClose={onClose} />);
+    await selectPhoto();
+    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    await screen.findByText(/Li 2 valores\./);
+    fireEvent.click(screen.getByLabelText('Remover print 1'));
+    await selectPhoto();
+    setHora();
+    fireEvent.click(screen.getByRole('button', { name: /Analisar avaliação/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
+    expect(mocks.invoke.mock.calls[1][1].body.reviewed).toBeUndefined();
+  });
+
   it('nada lido: avisa e deixa escrever', async () => {
     mocks.invoke.mockResolvedValueOnce({ data: { preview: { metrics: {}, classifications: {} } }, error: null });
     render(<BodyRegistration onClose={onClose} />);
