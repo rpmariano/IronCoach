@@ -27,7 +27,7 @@ describe('MissingMetricsBottomSheet', () => {
     expect(screen.getByText('Perda por Transpiração (ml)')).toBeInTheDocument();
 
     expect(screen.getByRole('button', { name: /Mais prints/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Manual/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Preencher à mão/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i })).toBeInTheDocument();
   });
 
@@ -44,7 +44,7 @@ describe('MissingMetricsBottomSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: /Mais prints/i }));
     expect(defaultProps.onAddPhotos).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('button', { name: /Manual/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Preencher à mão/i }));
     expect(defaultProps.onGoManual).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole('button', { name: /Prosseguir sem estas métricas/i }));

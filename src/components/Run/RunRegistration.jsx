@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { ImagePlus, X, Trash2, Sparkles, PencilLine, Camera, Footprints, Trophy, AlertTriangle, PersonStanding } from 'lucide-react';
+import { ImagePlus, X, Sparkles, PencilLine, Footprints, Trophy, AlertTriangle, PersonStanding } from 'lucide-react';
 import { useAppStore } from '../../store';
 import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
@@ -25,9 +25,7 @@ import { raceResultSeconds, gpsMatchesOfficialDistance } from '../../utils/raceO
 import { todayISO } from '../../lib/utils';
 import MissingMetricsBottomSheet from './MissingMetricsBottomSheet';
 import { ecrasQueSePerdem } from '../../../supabase/functions/_shared/sourceApps.ts';
-import UnsavedChangesModal from '../shared/UnsavedChangesModal';
 import PremiumModal from '../shared/PremiumModal';
-import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import { runRecordMoment } from '@formulas/runRecord.ts';
 import { WALK_TRAINING_TYPE, isWalk, runMatchesPlanItem } from '@formulas/runKinds.ts';
@@ -36,18 +34,22 @@ import Chip from '../shared/Chip';
 import DurationInput from '../shared/DurationInput';
 import AddButton from '../shared/AddButton';
 import Button from '../shared/Button';
-import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
-import { isRacePlanItem } from '../../utils/homeModels';
+import { isRacePlanItem, planItemTitle } from '../../utils/homeModels';
+import RegistrationShell from '../shared/registration/RegistrationShell';
+import useRegistrationExit from '../shared/registration/useRegistrationExit';
+import PhotoReadSection from '../shared/registration/PhotoReadSection';
+import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
+import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 
 // -------------------------------------
 // ICONS & UTILS
 // -------------------------------------
-const SneakerIcon = ({ className }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+const SneakerIcon = ({ className, style, ...rest }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style} {...rest}>
     <path d="M14.1 7.9 12.5 10" />
     <path d="M17.4 10.1 16 12" />
     <path d="M2 16a2 2 0 0 0 2 2h13c2.8 0 5-2.2 5-5a2 2 0 0 0-2-2c-.8 0-1.6-.2-2.2-.7l-6.2-4.2c-.4-.3-.9-.2-1.3.1 0 0-.6.8-1.2 1.1a3.5 3.5 0 0 1-4.2.1C4.4 7 3.7 6.3 3.7 6.3A.92.92 0 0 0 2 7Z" />
@@ -144,9 +146,56 @@ const RACE_CLASSIFICATION_KEYS = new Set([
 // positivos (qualquer corrida com temperatura abria a pedir reanálise).
 const IMAGE_ONLY_DETAIL_KEYS = new Set(['regularity_score', 'recommended_hydration_ml', 'temperature_c']);
 
+/* A leitura dos prints ("Ler os prints e preencher", analyze-run mode preview):
+   o que ela devolve → o campo do formulário. Só se enchem os campos vazios —
+   o que o atleta escreveu ganha (registo unificado, decisão 6). */
+const PREVIEW_FIELDS = [
+  ['distance_km', 'runDistance', (v) => String(v)],
+  ['duration_seconds', 'runDuration', (v) => formatDuration(v)],
+  ['official_time_seconds', 'officialTime', (v) => formatDuration(v)],
+  ['position', 'position', (v) => String(v)],
+  ['elevation_gain_m', 'elevationGain', (v) => String(v)],
+  ['elevation_loss_m', 'elevationLoss', (v) => String(v)],
+  ['cadence_spm', 'cadence', (v) => String(v)],
+  ['max_cadence_spm', 'maxCadence', (v) => String(v)],
+  ['calories_kcal', 'calories', (v) => String(v)],
+  ['vo2_max', 'vo2Max', (v) => String(v)],
+  ['avg_heart_rate_bpm', 'avgHeartRate', (v) => String(v)],
+  ['max_heart_rate_bpm', 'maxHeartRate', (v) => String(v)],
+  ['sweat_loss_ml', 'sweatLossMl', (v) => String(v)],
+  ['total_steps', 'totalSteps', (v) => String(v)],
+  ['max_pace_seconds_per_km', 'maxPace', (v) => formatPace(v)],
+  ['aerobic_threshold_bpm', 'aerobicThreshold', (v) => String(v)],
+  ['anaerobic_threshold_bpm', 'anaerobicThreshold', (v) => String(v)],
+  ['hr_recovery_bpm', 'hrRecovery', (v) => String(v)],
+  ['ground_contact_time_ms', 'groundContactTime', (v) => String(v)],
+  ['flight_time_ms', 'flightTime', (v) => String(v)],
+  ['vertical_oscillation_cm', 'verticalOscillation', (v) => String(v)],
+  ['asymmetry_pct', 'asymmetryPct', (v) => String(v)],
+  ['leg_stiffness_kn_m', 'legStiffness', (v) => String(v)],
+  ['warmup_minutes', 'warmupMinutes', (v) => String(v)],
+  ['recovery_seconds', 'recoverySeconds', (v) => String(v)],
+];
+
+/** O que só os prints sabem (a app, a regularidade, a hidratação, a temperatura) — vai com o registo revisto. */
+const READ_ONLY_KEYS = ['source_app', 'regularity_score', 'recommended_hydration_ml', 'temperature_c'];
+
+/** Um rascunho com a corrida gravada mas sem a fotografia das métricas: nunca bate com nada. */
+const RASCUNHO_SEM_ASSINATURA = '__rascunho-sem-assinatura__';
+
+/** O treino de corrida do plano como o registo o pré-preenche (o mesmo do "Registar sessão" do Início). */
+function planRunPrefill(item) {
+  return {
+    trainingType: item?.training_type || 'continuo',
+    name: item?.title || (item?.training_type === WALK_TRAINING_TYPE ? DEFAULT_WALK_NAME : DEFAULT_RUN_NAME),
+    distance: item?.target_distance_km ? String(item.target_distance_km) : '',
+    duration: item?.target_duration ? formatDuration(item.target_duration) : '',
+    elevation: item?.elevation_gain_m ? String(item.elevation_gain_m) : '',
+  };
+}
+
 export default function RunRegistration({ onClose, dateIso = null, runIdToEdit = null }) {
-  const { profile, runs, setRuns, setNavGuard, activeTab, shoes, raceEvents } = useAppStore();
-  const [initialTab] = useState(activeTab);
+  const { profile, runs, setRuns, setNavGuard, shoes, raceEvents, coachPlans, coachPlanItems } = useAppStore();
 
   
 
@@ -158,6 +207,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     !runIdToEdit ? useAppStore.getState().planItemPrefill : null
   );
   const planItem = completingPlanItemRef.current?.kind === 'corrida' ? completingPlanItemRef.current : null;
+  // Veio do "Registar sessão" do Início (fixo ao abrir) — o banner "Do plano"
+  // não aparece; escolher no banner também enche o ref, mas não é isto.
+  const [cameFromHomePlan] = useState(!!planItem);
 
   /* ── MODO PROVA (specs/prova-concluida.md §3) ──────────────────────────────
      A prova que esta corrida vem concluir. Chega de três sítios — o hub, o
@@ -338,12 +390,41 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      print, e fica com o `errorMsg` de sempre. */
   const analysis = useAnalysis();
   const analyzingRun = analysis.isAnalyzing;
-  // Um único cartão, forma de introdução escolhida em vez de 2 blocos
-  // sempre visíveis — só um dos dois fica ativo/clicável a cada vez, por
-  // isso não há risco de o utilizador preencher os dois em paralelo.
-  // Vindo do plano, entra direto em manual — os campos já estão preenchidos,
-  // não faz sentido pedir foto/IA por cima.
-  const [entryMethod, setEntryMethod] = useState(planItem ? 'manual' : 'foto'); // 'foto' | 'manual'
+  /* Formulário único (registo unificado, decisões 2 e 6): já não há
+     "Foto | Manual". Os prints são opcionais e os campos estão sempre à
+     vista. "Ler os prints e preencher" (analyze-run, mode preview) enche os
+     campos vazios SEM gravar; `readState` guarda quantos prints havia quando
+     a leitura correu e o que só eles sabem — com os mesmos prints, gravar não
+     os volta a ler (reviewed). */
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState(null);
+  const [readState, setReadState] = useState(null); // { count, details } | null
+  /* "Do plano": o treino de corrida que a Carol marcou para o dia, escolhido
+     no banner — { id, mode: 'plano' | 'livre' } | null. O "Registar sessão"
+     do Início já vem com ele (planItem) e não mostra o banner. */
+  const [planChoice, setPlanChoice] = useState(null);
+  /* Os valores que o PLANO pôs no formulário (distância, duração, desnível):
+     são o alvo, não o feito — enquanto ninguém lhes mexer, a leitura dos
+     prints escreve por cima e não vão como "escritos pelo atleta". */
+  const planValuesRef = useRef(initialRace ? {
+    // A distância e o D+ da agenda da prova são o percurso, não o que o relógio mediu.
+    runDistance: initialRace.distance_km ? String(initialRace.distance_km) : '',
+    elevationGain: initialRace.elevation_gain_m ? String(initialRace.elevation_gain_m) : '',
+  } : planItem ? {
+    runDistance: planItem?.target_distance_km ? String(planItem.target_distance_km) : '',
+    runDuration: planItem?.target_duration ? formatDuration(planItem.target_duration) : '',
+    elevationGain: planItem?.elevation_gain_m ? String(planItem.elevation_gain_m) : '',
+  } : {});
+  // De onde veio o aviso das métricas em falta: da corrida que os prints
+  // gravaram ('photo') ou do formulário ('form') — decide o "Prosseguir".
+  const sheetFromRef = useRef(null);
+  /* As métricas do formulário quando a corrida gravada pelos prints passou a
+     ser a deste ecrã (ver o efeito mais abaixo) e, reaberto de um rascunho,
+     a que veio com ele (undefined = nenhuma por repor). */
+  const createdFormSigRef = useRef(null);
+  const restoredFormSigRef = useRef(undefined);
+  // O mesmo valor em estado, só para o rascunho o apanhar (o ref muda depois do render).
+  const [createdFormSigForDraft, setCreatedFormSigForDraft] = useState(null);
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   /* Bug #49: a gravação escrita (ou a edição que reanalisa) também espera
@@ -367,69 +448,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   };
   const [originalSnapshot, setOriginalSnapshot] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
-  const autoCloseRef = useRef(false);
-  useEffect(() => {
-    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
-      autoCloseRef.current = true;
-      if (onClose) onClose();
-    }
-  }, [activeTab, initialTab, onClose, isFormDirty]);
-  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
-  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
-  // separador com o formulário sujo — null quando a saída foi pedida pelo
-  // botão X do próprio ecrã, sem destino nenhum.
-  const pendingNavTarget = useRef(null);
-
-  // Trava a navegação para fora deste ecrã enquanto houver alterações por
-  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
-  useEffect(() => {
-    if (!isFormDirty) { setNavGuard(null); return; }
-    setNavGuard((intendedTab) => {
-      pendingNavTarget.current = intendedTab;
-      setShowUnsavedModal(true);
-      return false;
-    });
-    return () => setNavGuard(null);
-  }, [isFormDirty, setNavGuard]);
-
-  // Fechar/recarregar o separador do browser também avisa.
-  useEffect(() => {
-    if (!isFormDirty) return;
-    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isFormDirty]);
-
-  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
-  // de separador (navGuard), há ainda que completar essa navegação depois
-  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
-  // que já estava aberto antes de pedir para sair.
-  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
-  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
-  // foi trocado para handleClose(), precisamente para passar por aqui.
-  const handleClose = () => {
-    autoCloseRef.current = true;
-    const target = pendingNavTarget.current;
-    pendingNavTarget.current = null;
-    clearPersistedFormDraft(draftStorageKey);
-    onClose();
-    if (target) {
-      // O guard ainda está registado neste render — o próprio setActiveTab()
-      // chamado a seguir voltaria a cair nele e a bloquear-se a si mesmo,
-      // porque onClose() só desmonta este ecrã no próximo render, não já.
-      // Limpar primeiro é o que falta para a navegação pendente completar
-      // (mesmo detalhe já usado em Perfil.jsx/RunAgenda.jsx).
-      setNavGuard(null);
-      useAppStore.getState().setActiveTab(target);
-    }
-  };
+  // Sair do registo (aviso, navGuard, beforeunload, destino pendente): RegistrationShell.
+  const exit = useRegistrationExit({ isDirty: isFormDirty, onClose, draftKey: draftStorageKey });
 
   // Ao gravar uma corrida NOVA (foto ou manual), vai sempre para o
   // Calendário, aberto no dia da corrida — mesmo padrão de RunAgenda.jsx
   // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
-  // ANTES de handleClose() o consumir.
+  // ANTES de exit.close() o consumir.
   /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
      elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
      destino de sempre. O CreatedRecordModal continua lá — traz o cartão
@@ -437,7 +464,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const [confirmation, setConfirmation] = useState(null);
 
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Corrida registada') => {
-    const hadPendingNav = !!pendingNavTarget.current;
+    const hadPendingNav = exit.hasPendingNav();
     // O primeiro registo deste tipo, ou um recorde de treino (ritmo aos
     // 5/10/21 km, a corrida mais longa): a Carol diz o que ele quer dizer
     // (utils/firstRecord.js, @formulas/runRecord.ts). Só ao criar — editar a
@@ -456,7 +483,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
     clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
-      handleClose();
+      exit.close();
       if (!hadPendingNav) {
         setNavGuard(null);
         if (createdRecord) {
@@ -551,8 +578,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // A hora da prova só se impõe se ainda não houver uma escrita aqui.
     if (!runStartTime && ev.start_time) setRunStartTime(startTimeInputValue(ev.start_time));
     setCompletedRaceType(raceTypeFromRaceEvent(ev));
-    if (!runDistance && ev.distance_km) setRunDistance(String(ev.distance_km));
-    if (!elevationGain && ev.elevation_gain_m) setElevationGain(String(ev.elevation_gain_m));
+    // Os da agenda ficam abertos à leitura dos prints, como os alvos do plano.
+    if (!runDistance && ev.distance_km) { setRunDistance(String(ev.distance_km)); planValuesRef.current = { ...planValuesRef.current, runDistance: String(ev.distance_km) }; }
+    if (!elevationGain && ev.elevation_gain_m) { setElevationGain(String(ev.elevation_gain_m)); planValuesRef.current = { ...planValuesRef.current, elevationGain: String(ev.elevation_gain_m) }; }
   };
 
   // Assinatura do que é analítico. Normaliza (descarta vazios, ordena
@@ -584,7 +612,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       .map(s => ({ distance_km: parseFloat(s.distance_km) || null, time_seconds: parseDurationToSeconds(s.minutes) }))
       .filter(s => s.distance_km || s.time_seconds);
     const parsedHrZones = hrZones
-      .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
+      .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseFloat(z.minutes) || null }))
       .filter(z => z.zone && z.minutes);
 
     const details = {
@@ -644,7 +672,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         const canonicalSplits = d.splits ? d.splits.map(s => ({ distance_km: s.distance_km || '', minutes: s.time_seconds ? formatDuration(s.time_seconds) : '' })) : [];
         const canonicalHrZones = d.hr_zones ? d.hr_zones.map(z => ({ zone: z.zone || '', minutes: z.minutes || '' })) : [];
 
-        setEntryMethod(persisted?.entryMethod ?? 'manual');
         setRunKind(persisted?.runKind ?? (r.kind || 'treino'));
         setRunTrainingType(persisted?.runTrainingType ?? (r.training_type || 'continuo'));
         setRunDate(persisted?.runDate ?? (r.date || todayISO()));
@@ -794,7 +821,16 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     restoredForKeyRef.current = draftStorageKey;
     const persisted = restorePersistedFormDraft(draftStorageKey);
     if (!persisted) return;
-    if (persisted.entryMethod) setEntryMethod(persisted.entryMethod);
+    if (persisted.readState) setReadState(persisted.readState);
+    if (persisted.planValues && typeof persisted.planValues === 'object') planValuesRef.current = persisted.planValues;
+    if (persisted.planChoice) {
+      setPlanChoice(persisted.planChoice);
+      // A escolha do banner volta a ligar o registo ao treino (se ainda estiver pendente).
+      const chosen = persisted.planChoice.mode === 'plano'
+        ? (useAppStore.getState().coachPlanItems || []).find((i) => i.id === persisted.planChoice.id && i.status === 'pendente')
+        : null;
+      if (chosen && !completingPlanItemRef.current) completingPlanItemRef.current = chosen;
+    }
     if (persisted.runKind) setRunKind(persisted.runKind);
     if (persisted.runTrainingType) setRunTrainingType(persisted.runTrainingType);
     if (persisted.runDate) setRunDate(persisted.runDate);
@@ -844,6 +880,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       // ela. Os prints dela voltam do servidor; até lá mantêm-se todos.
       const run = persisted.createdRun;
       createdRunRef.current = { run, photosShown: false };
+      // A fotografia das métricas de quando ela foi gravada. Um rascunho sem
+      // ela (de antes desta versão) conta como mexido: grava-se pelos campos,
+      // que fazem bem a ida-e-volta — perder o que ele escreveu era pior.
+      restoredFormSigRef.current = typeof persisted.createdFormSig === 'string' ? persisted.createdFormSig : RASCUNHO_SEM_ASSINATURA;
       setPendingCreatedRun(run);
       const paths = Array.isArray(run.photo_paths) ? run.photo_paths : [];
       if (paths.length) {
@@ -879,8 +919,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // falta): sem ela, um rascunho reaberto — o Android mata a app com o
     // seletor de prints aberto — voltava a criar a corrida.
     createdRun: pendingCreatedRun,
+    // E as métricas do formulário quando ela ficou gravada (createdFormSigRef):
+    // reaberto, compara-se com isto e não com o próprio rascunho.
+    createdFormSig: pendingCreatedRun ? createdFormSigForDraft : null,
     raceId,
-    entryMethod, runKind, runTrainingType, runDate, runStartTime, runName, shoeId,
+    readState, planChoice, planValues: planValuesRef.current, runKind, runTrainingType, runDate, runStartTime, runName, shoeId,
     runDistance, runDuration, runEffortRpe, runNotes,
     elevationGain, cadence, maxCadence, calories, vo2Max, avgHeartRate, maxHeartRate,
     sweatLossMl, totalSteps, maxPace, elevationLoss, aerobicThreshold, anaerobicThreshold,
@@ -962,6 +1005,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       try {
         const { dataUrl, base64 } = await compressImage(file);
         setRunPhotos(prev => [...prev, { dataUrl, base64 }]);
+        setReadState(null);
         setIsFormDirty(true);
       } catch (err) {
         console.warn('Falha a processar imagem', err);
@@ -972,6 +1016,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
   const removePhoto = (index) => {
     setRunPhotos(prev => prev.filter((_, i) => i !== index));
+    setReadState(null);
     setIsFormDirty(true);
     clearStaleMissingMetrics();
   };
@@ -1344,7 +1389,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     );
     if (!item) return;
     try {
-      await store.completePlanItem(item.id, { actualDate: runDate, runId: savedRun?.id || null });
+      // Um treino livre que riscou o do dia (decisão 3): completion_source 'auto'.
+      await store.completePlanItem(item.id, { actualDate: runDate, runId: savedRun?.id || null, source: 'auto' });
     } catch (err) {
       console.warn('Item do plano não marcado como concluído', err);
     }
@@ -1358,7 +1404,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      sessão") nunca fazia desaparecer o botão, só o registo manual. */
   const completePlanItemForRun = (savedRun) => (
     completingPlanItemRef.current
-      ? useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, { actualDate: runDate, runId: savedRun.id })
+      // Escolhido ("Registar sessão" no Início ou "Usar o plano" no banner): 'plano'.
+      ? useAppStore.getState().completePlanItem(completingPlanItemRef.current.id, { actualDate: runDate, runId: savedRun.id, source: 'plano' })
       : completeMatchingPlanItem(savedRun)
   );
 
@@ -1402,7 +1449,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      destino é o HUB, não o Calendário — é lá que estão o tempo final ao lado
      do objetivo, o balanço da Carol e a galeria das memórias. */
   const finishRaceAndGoToHub = () => {
-    const hadPendingNav = !!pendingNavTarget.current;
+    const hadPendingNav = exit.hasPendingNav();
     // Ligada e com as memórias: a corrida deixa de estar "por fechar".
     forgetCreatedRun();
     // "Meia de Lisboa concluída · 1:53:42" — o nome dela e o tempo que conta.
@@ -1416,7 +1463,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       tone: 'race',
       achievement: novaConquistaDaProva(),
       done: () => {
-        handleClose();
+        exit.close();
         if (!hadPendingNav) {
           setNavGuard(null);
           useAppStore.getState().setEditingRaceId(raceId);
@@ -1682,6 +1729,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       return;
     }
     {
+      /* O que o atleta escreveu vai junto e ganha à leitura (typed); com os
+         prints já lidos e os mesmos, não se voltam a ler (reviewed) e segue o
+         que só eles sabem (read_details). */
+      const typed = typedFormFields();
+      const hasTyped = Object.values(typed).some((v) => v !== null && !(Array.isArray(v) && v.length === 0));
+      const reviewed = hasTyped && readState?.count === runPhotos.length;
       const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
         body: {
           images: runPhotos.map(p => p.base64),
@@ -1695,6 +1748,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           training_type: runKind === 'treino' ? runTrainingType : null,
           race_type: runKind === 'competicao' ? completedRaceType : null,
           shoe_id: shoeId,
+          ...(hasTyped ? { typed } : {}),
+          ...(reviewed ? { reviewed: true, read_details: readState.details || null } : {}),
         },
       }, ANALYZE_TIMEOUT_MS);
       if (error) throw new Error(error);
@@ -1721,6 +1776,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             console.warn('Item do plano não marcado como concluído', err);
           }
         }
+        sheetFromRef.current = 'photo';
         setMissingKeysList(missing);
         setShowMissingMetricsSheet(true);
         return;
@@ -1766,6 +1822,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       if (extractedDetails.vertical_oscillation_cm) setVerticalOscillation(extractedDetails.vertical_oscillation_cm);
       if (extractedDetails.asymmetry_pct) setAsymmetryPct(extractedDetails.asymmetry_pct);
       if (extractedDetails.leg_stiffness_kn_m) setLegStiffness(extractedDetails.leg_stiffness_kn_m);
+      if (extractedDetails.warmup_minutes) setWarmupMinutes(extractedDetails.warmup_minutes);
+      if (extractedDetails.recovery_seconds) setRecoverySeconds(extractedDetails.recovery_seconds);
 
       if (extractedDetails.splits) {
         setSplits(extractedDetails.splits.map(s => ({
@@ -1789,10 +1847,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   const handleProceedAnyway = async () => {
     setShowMissingMetricsSheet(false);
     setUserBypassedMissingSheet(true);
-    // Vindo do manual (o aviso também aparece aí), o que o atleta escreveu
-    // grava-se — em cima da corrida já criada, se a houver.
-    if (pendingCreatedRun && entryMethod !== 'manual') {
+    // Vindo do formulário (o aviso também aparece aí), o que o atleta
+    // escreveu grava-se — em cima da corrida já criada, se a houver.
+    if (pendingCreatedRun && sheetFromRef.current === 'photo') {
       const run = createdRunRef.current?.run || pendingCreatedRun;
+      // Os campos estão à vista (formulário único): o que ele escreveu nas
+      // métricas depois do aviso grava-se pelo formulário, sem voltar a
+      // perguntar o que falta.
+      if (createdRunRef.current && metricsEditedSinceCreated()) {
+        handleSaveCorrida(true);
+        return;
+      }
       // Mudou o nome, a data, o RPE, as notas, as sapatilhas ou o tipo
       // depois do aviso: vai numa reanálise, que os grava (e não volta a
       // mostrar o aviso). Fechar como estava perdia-os sem aviso.
@@ -1859,6 +1924,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     const shouldNag = missing.length > 0 && !userBypassedMissingSheet && !isBypass && !photosChanged && (!runIdToEdit || signatureChanged);
 
     if (shouldNag) {
+      sheetFromRef.current = 'form';
       setPendingForceReanalyze(isForceReanalyze);
       setMissingKeysList(missing);
       setShowMissingMetricsSheet(true);
@@ -1878,7 +1944,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       })).filter(s => s.distance_km || s.time_seconds);
 
       const parsedHrZones = hrZones
-        .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseInt(z.minutes) || null }))
+        .map(z => ({ zone: parseInt(z.zone) || null, minutes: parseFloat(z.minutes) || null }))
         .filter(z => z.zone && z.minutes);
 
       let newlySavedRun = null;
@@ -2030,25 +2096,234 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     }
   };
 
+  /* As métricas do formulário tal como ficaram quando a corrida (gravada pelos
+     prints) passou a ser a deste ecrã — tiradas no render a seguir, já com o
+     que applyExtractedRun pôs. Comparar com run.details dava falsos
+     "mudou" (zonas decimais, campos que o formulário não tem). */
+  useEffect(() => {
+    // Reaberto de um rascunho: a fotografia é a que veio com ele.
+    if (pendingCreatedRun && restoredFormSigRef.current !== undefined) {
+      createdFormSigRef.current = restoredFormSigRef.current;
+      restoredFormSigRef.current = undefined;
+    } else {
+      createdFormSigRef.current = pendingCreatedRun ? formMetricsSignature() : null;
+    }
+    setCreatedFormSigForDraft(createdFormSigRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCreatedRun]);
+  const metricsEditedSinceCreated = () => createdFormSigRef.current !== null && formMetricsSignature() !== createdFormSigRef.current;
+
+  // ----------------------------------
+  // FORMULÁRIO ÚNICO — ler os prints, o que foi escrito, o plano
+  // ----------------------------------
+  // O formulário de agora, para a leitura (que demora) se juntar ao que ele
+  // escreveu entretanto e não ao que havia quando carregou em "Ler".
+  const liveForm = useRef({});
+  liveForm.current = {
+    runDistance, runDuration, officialTime, position, elevationGain, elevationLoss, cadence, maxCadence, calories,
+    vo2Max, avgHeartRate, maxHeartRate, sweatLossMl, totalSteps, maxPace, aerobicThreshold, anaerobicThreshold,
+    hrRecovery, groundContactTime, flightTime, verticalOscillation, asymmetryPct, legStiffness, warmupMinutes,
+    recoverySeconds, splits, hrZones,
+  };
+  const SETTERS = {
+    runDistance: setRunDistance, runDuration: setRunDuration, officialTime: setOfficialTime, position: setPosition,
+    elevationGain: setElevationGain, elevationLoss: setElevationLoss, cadence: setCadence, maxCadence: setMaxCadence,
+    calories: setCalories, vo2Max: setVo2Max, avgHeartRate: setAvgHeartRate, maxHeartRate: setMaxHeartRate,
+    sweatLossMl: setSweatLossMl, totalSteps: setTotalSteps, maxPace: setMaxPace, aerobicThreshold: setAerobicThreshold,
+    anaerobicThreshold: setAnaerobicThreshold, hrRecovery: setHrRecovery, groundContactTime: setGroundContactTime,
+    flightTime: setFlightTime, verticalOscillation: setVerticalOscillation, asymmetryPct: setAsymmetryPct,
+    legStiffness: setLegStiffness, warmupMinutes: setWarmupMinutes, recoverySeconds: setRecoverySeconds,
+  };
+  const isBlankValue = (v) => v === '' || v === null || v === undefined;
+  // Um campo "vazio" para a leitura: em branco, ou ainda com o alvo do plano.
+  const isOpenForRead = (key, value) => isBlankValue(value)
+    || (planValuesRef.current[key] !== undefined && planValuesRef.current[key] !== '' && String(value) === planValuesRef.current[key]);
+
+  /** "Ler os prints e preencher": a Carol lê os prints SEM gravar; os campos vazios enchem-se. */
+  const handleReadRunPrints = async () => {
+    if (!runPhotos.length || reading) return;
+    setReading(true);
+    setReadNote(null);
+    setErrorMsg('');
+    try {
+      const { data, error } = await invokeEdgeFunctionWithTimeout('analyze-run', {
+        body: {
+          mode: 'preview',
+          images: runPhotos.map((p) => p.base64).filter(Boolean),
+          mime_type: 'image/jpeg',
+          kind: runKind,
+          training_type: runKind === 'treino' ? runTrainingType : null,
+          race_type: runKind === 'competicao' ? completedRaceType : null,
+          notes: runNotes.trim() || null,
+        },
+      }, ANALYZE_TIMEOUT_MS);
+      if (error) throw new Error(error);
+      if (data?.error) throw new Error(data.error);
+      const read = data?.preview || {};
+      const now = liveForm.current;
+      let filled = 0;
+      let kept = 0;
+      for (const [readKey, formKey, fmt] of PREVIEW_FIELDS) {
+        const v = read[readKey];
+        if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) continue;
+        if (isOpenForRead(formKey, now[formKey])) { SETTERS[formKey](fmt(v)); filled += 1; }
+        else kept += 1;
+      }
+      if (Array.isArray(read.splits) && read.splits.length && !(now.splits || []).length) {
+        setSplits(read.splits.map((x) => ({ distance_km: x.distance_km || '', minutes: x.time_seconds ? formatDuration(x.time_seconds) : '' })));
+        filled += 1;
+      }
+      if (Array.isArray(read.hr_zones) && read.hr_zones.length && !(now.hrZones || []).length) {
+        setHrZones(read.hr_zones.map((z) => ({ zone: z.zone || '', minutes: z.minutes || '' })));
+        filled += 1;
+      }
+      // O que só os prints sabem segue com o registo revisto.
+      const details = Object.fromEntries(READ_ONLY_KEYS.filter((k) => read[k] !== null && read[k] !== undefined).map((k) => [k, read[k]]));
+      setReadState({ count: runPhotos.length, details });
+      // Lidos e revistos: o que fica nos campos é dele (um alvo confirmado pela
+      // leitura, ou que os prints não trouxeram, grava-se como está).
+      planValuesRef.current = {};
+      setRunSourceApp(read.source_app || null);
+      setReadNote(filled > 0
+        ? { text: `Li ${filled === 1 ? '1 valor' : `${filled} valores`}. Revê-os e carrega em "${isRaceMode ? 'Registar a prova' : 'Analisar corrida'}".${kept > 0 ? ` Os ${kept === 1 ? '1 que' : `${kept} que`} já tinhas escrito ficaram.` : ''}`, tone: 'ok' }
+        : kept > 0
+          ? { text: 'Já tinhas escrito esses valores — ficaram os teus.', tone: 'ok' }
+          : { text: 'Não consegui ler valores nestes prints. Confirma que são do resumo da corrida e estão nítidos, ou escreve-os abaixo.', tone: 'warn' });
+      setIsFormDirty(true);
+    } catch (err) {
+      setReadNote({ text: err.message || 'Não consegui ler os prints. Tenta outra vez.', tone: 'warn' });
+    } finally {
+      setReading(false);
+    }
+  };
+
+  /** O que o atleta escreveu, na forma do modo manual — sem os alvos do plano por mexer. */
+  const typedFormFields = () => {
+    const own = (key, value) => (isOpenForRead(key, value) ? '' : value);
+    const distVal = parseFloat(own('runDistance', runDistance));
+    const parsedSplits = splits
+      .map((x) => ({ distance_km: parseFloat(x.distance_km) || null, time_seconds: parseDurationToSeconds(x.minutes) }))
+      .filter((x) => x.distance_km || x.time_seconds);
+    const parsedHrZones = hrZones
+      .map((z) => ({ zone: parseInt(z.zone) || null, minutes: parseFloat(z.minutes) || null }))
+      .filter((z) => z.zone && z.minutes);
+    const official = own('officialTime', officialTime);
+    return {
+      distance_km: !isNaN(distVal) ? distVal : null,
+      duration_seconds: parseDurationToSeconds(own('runDuration', runDuration)) || null,
+      elevation_gain_m: parseInt(own('elevationGain', elevationGain)) || null,
+      cadence_spm: parseInt(cadence) || null,
+      max_cadence_spm: parseInt(maxCadence) || null,
+      calories_kcal: parseInt(calories) || null,
+      vo2_max: parseFloat(vo2Max) || null,
+      avg_heart_rate_bpm: parseInt(avgHeartRate) || null,
+      max_heart_rate_bpm: parseInt(maxHeartRate) || null,
+      hr_zones: parsedHrZones.length ? parsedHrZones : null,
+      warmup_minutes: warmupMinutes ? parseInt(warmupMinutes) : null,
+      recovery_seconds: recoverySeconds ? parseInt(recoverySeconds) : null,
+      splits: parsedSplits.length ? parsedSplits : null,
+      official_time_seconds: official ? parseDurationToSeconds(official) : null,
+      position: position ? parseInt(position) : null,
+      sweat_loss_ml: parseInt(sweatLossMl) || null,
+      total_steps: parseInt(totalSteps) || null,
+      max_pace_seconds_per_km: parsePaceToSeconds(maxPace) || null,
+      elevation_loss_m: parseInt(elevationLoss) || null,
+      aerobic_threshold_bpm: parseInt(aerobicThreshold) || null,
+      anaerobic_threshold_bpm: parseInt(anaerobicThreshold) || null,
+      hr_recovery_bpm: parseInt(hrRecovery) || null,
+      ground_contact_time_ms: parseInt(groundContactTime) || null,
+      flight_time_ms: parseInt(flightTime) || null,
+      vertical_oscillation_cm: parseFloat(verticalOscillation) || null,
+      asymmetry_pct: parseFloat(asymmetryPct) || null,
+      leg_stiffness_kn_m: parseFloat(legStiffness) || null,
+    };
+  };
+
+  /* As MÉTRICAS do formulário e as de uma corrida gravada, na régua da edição
+     (analyticalSignature): o resto (data, tipo, RPE, notas) fica igual dos
+     dois lados — essas mudanças continuam a ir pela reanálise dos prints. */
+  // Só as métricas que o formulário escreve (a disciplina é classificação, e o
+  // que só o servidor calcula não se compara).
+  const SAME = { date: '-', kind: '-', trainingType: null, rpe: 0, notes: null };
+  const FORM_METRIC_KEYS = [
+    'elevation_gain_m', 'cadence_spm', 'max_cadence_spm', 'calories_kcal', 'vo2_max', 'avg_heart_rate_bpm',
+    'max_heart_rate_bpm', 'sweat_loss_ml', 'total_steps', 'max_pace_seconds_per_km', 'elevation_loss_m',
+    'aerobic_threshold_bpm', 'anaerobic_threshold_bpm', 'hr_recovery_bpm', 'ground_contact_time_ms', 'flight_time_ms',
+    'vertical_oscillation_cm', 'asymmetry_pct', 'leg_stiffness_kn_m', 'hr_zones', 'splits', 'warmup_minutes',
+    'recovery_seconds', 'official_time_seconds', 'position',
+  ];
+  const pickMetrics = (details) => Object.fromEntries(FORM_METRIC_KEYS.map((k) => [k, details?.[k] ?? null]));
+  const formMetricsSignature = () => analyticalSignature({
+    ...SAME, distance: runDistance, duration: parseDurationToSeconds(runDuration), details: pickMetrics(buildDetailsFromForm().details),
+  });
+
+  /* "Analisar corrida" (ou "Registar a prova"), a criar:
+     · com prints novos → a Carol lê-os (o que ele escreveu ganha; já lidos, não relê);
+     · sem prints → o registo pelos campos (mode manual);
+     · com a corrida que os prints já gravaram (aviso das métricas em falta):
+       métricas mudadas no formulário gravam-se por ele; prints novos (ou
+       data, notas, tipo mudados) reanalisam; sem mudanças fecha como estava. */
+  const handleAnalyze = () => {
+    if (isSubmitting || analyzingRun || reading) return;
+    const fresh = runPhotos.some((p) => p.base64);
+    const created = createdRunRef.current;
+    // Sem prints à vista (removidos, ou não carregaram) não há o que reler: pelos campos.
+    if (created && !runPhotos.length) { handleSaveCorrida(); return; }
+    if (created && !fresh && metricsEditedSinceCreated()) { handleSaveCorrida(); return; }
+    if (fresh || created) { handleAnalyzeRun(); return; }
+    handleSaveCorrida();
+  };
+
+  // ── "Do plano": o treino de corrida marcado para o dia ─────────────────
+  const pendingRunItems = (runIdToEdit || isRaceMode || cameFromHomePlan)
+    ? []
+    : findPendingPlanItems('corrida', runDate, coachPlans, coachPlanItems).filter((i) => !isRacePlanItem(i));
+  const describeRunItem = (item) => [planItemTitle(item), item?.notes?.trim() || null].filter(Boolean).join(' — ');
+  const handleUseRunPlan = (item) => {
+    const pre = planRunPrefill(item);
+    completingPlanItemRef.current = item;
+    setRunKind('treino');
+    setRunTrainingType(pre.trainingType);
+    setRunName((name) => (name === DEFAULT_RUN_NAME || name === DEFAULT_WALK_NAME || !name.trim() ? pre.name : name));
+    // Os alvos entram só nos campos vazios, e ficam marcados como do plano.
+    const now = liveForm.current;
+    const nextPlan = {};
+    if (pre.distance && isBlankValue(now.runDistance)) { setRunDistance(pre.distance); nextPlan.runDistance = pre.distance; }
+    if (pre.duration && isBlankValue(now.runDuration)) { setRunDuration(pre.duration); nextPlan.runDuration = pre.duration; }
+    if (pre.elevation && isBlankValue(now.elevationGain)) { setElevationGain(pre.elevation); nextPlan.elevationGain = pre.elevation; }
+    planValuesRef.current = nextPlan;
+    setPlanChoice({ id: item.id, mode: 'plano' });
+    setIsFormDirty(true);
+  };
+  // "Treino livre": nada se pré-preenche; ao gravar, o treino do dia risca-se na mesma (completeMatchingPlanItem).
+  const handleFreeRun = () => {
+    if (planChoice?.mode === 'plano') completingPlanItemRef.current = null;
+    setPlanChoice({ id: null, mode: 'livre' });
+  };
+  const handleChangeRunPlan = () => {
+    if (planChoice?.mode === 'plano') {
+      completingPlanItemRef.current = null;
+      // O que o plano pôs e ninguém mexeu sai com ele.
+      const now = liveForm.current;
+      for (const [key, value] of Object.entries(planValuesRef.current)) {
+        if (value && String(now[key]) === value && SETTERS[key]) SETTERS[key]('');
+      }
+      planValuesRef.current = {};
+    }
+    setPlanChoice(null);
+  };
+
   // ----------------------------------
   // RENDER CORRIDA (Runs)
   // ----------------------------------
   const showToggle = !runIdToEdit;
-  const showFotoBlock = showToggle && entryMethod === 'foto';
 
   /* Ação primária do ecrã — vive na ActionBar fixa (ponto 2 do handoff), não
      no fim do formulário: num ecrã de registo com este comprimento ficava
      sempre abaixo da dobra. O rótulo é o mesmo de antes (os testes e o
      atleta conhecem-no): "Analisar corrida" a criar, "Guardar alterações"
      (ou "Guardar e reanalisar") a editar. */
-  const primaryAction = showFotoBlock ? (
-    <CoachAnalyzeButton
-      onClick={handleAnalyzeRun}
-      disabled={!runPhotos.length || analyzingRun}
-      busy={analyzingRun}
-      label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'}
-    />
-  ) : runIdToEdit ? (
+  const primaryAction = runIdToEdit ? (
     <CoachAnalyzeButton
       onClick={() => handleSaveCorrida(false, needsReanalysis)}
       disabled={isSubmitting}
@@ -2056,13 +2331,12 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       label={needsReanalysis ? "Guardar e reanalisar" : "Guardar alterações"}
     />
   ) : (
-    // Criar uma corrida manualmente também passa pelo Coach, por isso tem o
-    // mesmo botão do caminho por foto. No modo prova o botão nomeia o que
-    // está mesmo a acontecer — registar a prova, memórias incluídas.
+    // Uma só ação: com prints a Carol lê-os; sem eles, conta pelos campos.
+    // No modo prova o botão nomeia o que está mesmo a acontecer.
     <CoachAnalyzeButton
-      onClick={handleSaveCorrida}
-      disabled={isSubmitting}
-      busy={isSubmitting}
+      onClick={handleAnalyze}
+      disabled={isSubmitting || analyzingRun || reading}
+      busy={isSubmitting || analyzingRun}
       label={isRaceMode ? 'Registar a prova' : 'Analisar corrida'}
     />
   );
@@ -2087,7 +2361,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      campos. */
   const closeButton = (
     <button
-      onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
+      onClick={exit.requestClose}
       // O circulo continua a desenhar-se com 32px; o que cresce para
       // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
       className="tap-44 shrink-0"
@@ -2112,42 +2386,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         <AnalysisFailure
           detail={analysis.error}
           onRetry={analysis.retry}
-          onManual={showToggle && entryMethod === 'foto'
-            ? () => { setEntryMethod('manual'); analysis.reset(); }
+          onManual={showToggle && runPhotos.some((p) => p.base64) && !createdRunRef.current
+            ? () => { analysis.reset(); setRunPhotos((prev) => prev.filter((p) => !p.base64)); setReadState(null); }
             : undefined}
+          manualLabel="Seguir sem os prints"
         >
-          Os prints ficaram guardados. Podes tentar outra vez ou escrever os dados da corrida — eu faço as contas na mesma.
+          Podes tentar outra vez, ou seguir sem os prints e escrever os dados da corrida — eu faço as contas na mesma.
         </AnalysisFailure>
       )}
     </>
-  );
-
-  const renderEntryMethodChips = () => (
-    <div className="mb-4">
-      <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Como queres registar?</label>
-      <div className="flex gap-1.5">
-        <Chip
-          active={entryMethod === 'foto'}
-          variant="run"
-          rounded="xl"
-          onClick={() => setEntryMethod('foto')}
-          className="flex-1 py-2.5 gap-1.5"
-          type="button"
-        >
-          <Camera size={14} /> Foto
-        </Chip>
-        <Chip
-          active={entryMethod === 'manual'}
-          variant="run"
-          rounded="xl"
-          onClick={() => setEntryMethod('manual')}
-          className="flex-1 py-2.5 gap-1.5"
-          type="button"
-        >
-          <PencilLine size={14} /> Manual
-        </Chip>
-      </div>
-    </div>
   );
 
   /* A cor do foco e do estado ativo segue o ecrã: ciano do módulo Corrida
@@ -2219,9 +2466,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* Distância e duração do relógio. Em competição a duração é o "tempo
      pessoal" (runs.duration_seconds) — distinto do tempo oficial, que é o
      do cronómetro da organização e vai em details.official_time_seconds. */
+  const metricsAnchorRef = useRef(null);
   const renderCoreMetrics = () => (
     <>
-      <div className="mb-3">
+      <div className="mb-3" ref={metricsAnchorRef}>
         <label htmlFor="rr-distancia" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
           {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
         </label>
@@ -2396,14 +2644,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
             </div>
 
-            {showToggle && renderEntryMethodChips()}
-
-            {showFotoBlock ? renderPhotoBlock() : (
-              <>
-                {renderCoreMetrics()}
-                {renderManualDetails()}
-              </>
-            )}
+            {showToggle && renderPhotoBlock()}
+            {renderCoreMetrics()}
+            {renderManualDetails()}
 
             {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
           </div>
@@ -2466,49 +2709,28 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   };
 
   const renderCorridaForm = () => {
-    if (isRaceMode) return renderProvaForm();
 
+    // O cartão (cabeçalho, espera e erro da análise, formulário bloqueado) é
+    // o do RegistrationShell; aqui ficam os campos do treino.
     return (
-      <div className="space-y-4 fade-in pb-10">
+      <>
+          {pendingRunItems.length > 0 && (
+            <PlanPrefillBanner
+              items={pendingRunItems}
+              describe={describeRunItem}
+              chosenId={planChoice?.mode === 'plano' ? planChoice.id : null}
+              mode={planChoice?.mode || null}
+              onUse={handleUseRunPlan}
+              onFree={handleFreeRun}
+              onChange={handleChangeRunPlan}
+              dayLabel={runDate === todayISO() ? 'hoje' : `${runDate.slice(8, 10)}/${runDate.slice(5, 7)}`}
+              accent="var(--mod-corrida-to)"
+              // Na corrida o treino livre só risca o do dia se for do mesmo tipo
+              // (runMatchesPlanItem): uma caminhada não é o contínuo de 8 km.
+              labels={{ freeMode: () => 'Treino livre — se for do tipo do plano, conto-o como o treino do dia.' }}
+            />
+          )}
 
-        {/* Cartão único — os campos comuns ficam sempre visíveis; a forma de
-            introdução (foto/IA ou manual) decide o resto. Editar uma corrida
-            existente é sempre pelos campos (ver showToggle acima) — a IA por
-            foto só cria; "Reanalisar" no cartão da corrida é a ação dedicada
-            a reanalisar uma corrida já criada assim. */}
-        <div
-          className="module-card-contrast"
-          // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app —
-          // a versão anterior tinha a borda/glow do .card mas sem
-          // backdrop-filter nem base branca, o que dava um retângulo escuro
-          // plano em vez do vidro premium usado nos outros ecrãs.
-          style={{ background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-corrida-to) 3%, transparent), color-mix(in srgb, var(--mod-corrida-to) 6%, transparent)), rgba(255, 255, 255, 0.05)' }}
-        >
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <SneakerIcon className="w-4 h-4" style={{ color: 'var(--mod-corrida-to)' }} />
-              <h2 className="text-sm font-semibold text-white">{runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}</h2>
-            </div>
-            <button
-              onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
-              // O circulo continua a desenhar-se com 32px; o que cresce para
-              // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
-              className="tap-44 shrink-0"
-              title="Fechar"
-              aria-label="Fechar"
-            >
-              <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
-                <X size={16} />
-              </span>
-            </button>
-          </div>
-
-          {renderAnalysisStates()}
-
-          <div
-            aria-busy={showAnalysis || undefined}
-            style={showAnalysis ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
-          >
           <div className="flex flex-wrap gap-1.5 mb-3">
             {/* Cor via style, não pela classe: nestes botões o fundo é escuro ou
                 colorido e o texto tem de ficar branco a valer, não o --text-1
@@ -2625,7 +2847,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 type="date"
                 value={runDate}
                 max={todayISO()}
-                onChange={e => { setRunDate(e.target.value); setIsFormDirty(true); }}
+                onChange={e => { setRunDate(e.target.value); if (planChoice) handleChangeRunPlan(); setIsFormDirty(true); }}
                 className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
               />
             </div>
@@ -2671,24 +2893,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             </div>
           )}
 
-          {showToggle && renderEntryMethodChips()}
-
-          {/* Distância e duração são manuais — na opção "Foto" quem os
-              dá é a análise do print, não o atleta. Estavam a renderizar-se
-              sempre, antes da própria escolha do método, e apareciam mesmo
-              com "Foto" selecionada (bug #34, relatado 2026-09-21). O
-              modo prova, mais acima, já seguia este padrão correto. */}
-          {showFotoBlock ? renderPhotoBlock() : (
-            <>
-              {renderCoreMetrics()}
-              {renderManualDetails()}
-            </>
-          )}
+          {/* Formulário único: os prints (opcionais) e logo a seguir os campos,
+              sempre à vista — "Ler os prints" enche os que estiverem vazios. */}
+          {showToggle && renderPhotoBlock()}
+          {renderCoreMetrics()}
+          {renderManualDetails()}
 
           {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
-          </div>
-        </div>
-      </div>
+      </>
     );
   };
 
@@ -2696,53 +2908,30 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      Não confundir com as memórias da prova, que não passam pela IA. */
   function renderPhotoBlock() {
     return (
-            <>
-              {runPhotos.length > 0 ? (
-                <>
-                  <div className="grid grid-cols-3 gap-2 mb-3">
-                    {runPhotos.map((p, i) => (
-                      <div key={i} className="relative aspect-square">
-                        <img src={p.dataUrl} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" alt={`Print ${i+1}`} />
-                        <button onClick={() => removePhoto(i)} style={{ color: '#fff' }} aria-label={`Remover print ${i + 1}`} className="tap-area-44 absolute top-1 right-1 bg-[var(--bg-scrim)] rounded-full p-1 hover:bg-[var(--danger)] transition">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] text-[var(--text-3)]">{runPhotos.length} print(s) · máx {MAX_PHOTOS}</span>
-                    <button onClick={() => { setRunPhotos([]); setIsFormDirty(true); clearStaleMissingMetrics(); }} className="tap-h-44 text-[11px] text-[var(--text-3)] hover:text-[var(--danger)] flex items-center gap-1 transition">
-                      <Trash2 className="w-3.5 h-3.5" /> Limpar todos
-                    </button>
-                  </div>
-                  {runPhotos.length < MAX_PHOTOS && (
-                    <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--mod-corrida-to)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--mod-corrida-to)]/5 transition mb-3">
-                      <input ref={addPhotoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
-                      <ImagePlus className="w-4 h-4 text-[var(--mod-corrida-to)]" />
-                      <span className="text-[12px] font-bold text-[var(--mod-corrida-to)]">Adicionar outro print</span>
-                    </label>
-                  )}
-                </>
-              ) : (
-                <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-6 text-center cursor-pointer hover:border-[var(--border-control)] transition mb-3 bg-[var(--surface-glass)]">
-                  <input ref={addPhotoInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handlePhotoSelected} />
-                  <ImagePlus className="w-7 h-7 text-[var(--text-3)] mx-auto mb-2" />
-                  <p className="text-[11px] text-[var(--text-3)] font-bold">Escolhe os prints da app de corrida (Strava, Garmin...)</p>
-                  <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">Eu leio a distância, a duração, o tipo de treino e os splits. Podes corrigir depois de gravado.</p>
-                  {/* Uma linha por app conhecida, com os ecrãs que um print do
-                      resumo sozinho deixa de fora — vem do catálogo
-                      (supabase/functions/_shared/sourceApps.ts), por isso uma
-                      app nova aparece aqui sem se tocar neste ficheiro. Uma
-                      linha por app e mais nada: isto é um seletor de fotos,
-                      não um manual. */}
-                  {ecrasQueSePerdem('corrida').map(({ app, ecras }) => (
-                    <p key={app.nome} className="text-[11px] text-[var(--text-3)] mt-1 px-4">
-                      No <span className="font-bold">{app.nome}</span>, junta {ecras.map((e) => e.nome).join(' e ')} — só o resumo deixa essas métricas de fora
-                    </p>
-                  ))}
-                </label>
-              )}
-            </>
+      <PhotoReadSection
+        photos={runPhotos}
+        maxPhotos={MAX_PHOTOS}
+        onSelect={handlePhotoSelected}
+        onRemove={removePhoto}
+        onRead={handleReadRunPrints}
+        reading={reading}
+        note={readNote}
+        inputRef={addPhotoInputRef}
+        accent={isRaceMode ? 'var(--race)' : 'var(--mod-corrida-to)'}
+        emptyTitle="Prints da app de corrida (opcional)"
+        emptyHint="Strava, Garmin… Eu leio a distância, a duração e os splits e preencho os campos abaixo para reveres."
+        // Uma linha por app conhecida, com os ecrãs que um print do resumo
+        // sozinho deixa de fora — vem do catálogo (_shared/sourceApps.ts).
+        emptyExtra={ecrasQueSePerdem('corrida').length ? (
+          <>
+            {ecrasQueSePerdem('corrida').map(({ app, ecras }) => (
+              <span key={app.nome} className="block">
+                No <span className="font-bold">{app.nome}</span>, junta {ecras.map((e) => e.nome).join(' e ')} — só o resumo deixa essas métricas de fora
+              </span>
+            ))}
+          </>
+        ) : null}
+      />
     );
   }
 
@@ -3069,7 +3258,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             <CarolInterventionActions
               record={runs.find(r => r.id === runIdToEdit)}
               type="run"
-              onTalked={handleClose}
+              onTalked={exit.close}
               className="mb-2"
             />
           )}
@@ -3080,16 +3269,24 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
   return (
     // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
-    // No modo prova o módulo é a prova, e o âmbar é dela — o anel acompanha.
-    // paddingBottom: espaço para a ActionBar fixa não tapar o fim do form.
-    <div
-      className="w-full max-w-lg mx-auto"
-      style={{ '--focus-ring': isRaceMode ? 'var(--race)' : 'var(--mod-corrida-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
-    >
-      {renderCorridaForm()}
-
-      <ActionBar>{primaryAction}</ActionBar>
-
+    // No modo prova o módulo é a prova, e o âmbar é dela — o anel acompanha:
+    // aí o shell é só a moldura (bare), porque a prova tem o seu desenho.
+    <RegistrationShell
+      bare={isRaceMode}
+      containerClassName={isRaceMode ? 'w-full max-w-lg mx-auto' : 'w-full max-w-lg mx-auto space-y-4 fade-in'}
+      cardClassName="mb-10"
+      accent={isRaceMode ? 'var(--race)' : 'var(--mod-corrida-to)'}
+      icon={SneakerIcon}
+      title={runIdToEdit ? 'Editar Corrida' : 'Nova Corrida'}
+      exit={exit}
+      status={renderAnalysisStates()}
+      busy={showAnalysis}
+      onSaveAndLeave={runIdToEdit ? () => handleSaveCorrida() : handleAnalyze}
+      isSaving={isSubmitting || analyzingRun}
+      confirmation={confirmation}
+      primaryAction={primaryAction}
+      overlays={(
+        <>
       {/* Modal Bottom Sheet para métricas em falta */}
       <MissingMetricsBottomSheet
         isOpen={showMissingMetricsSheet}
@@ -3103,14 +3300,15 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
           // botão só fechava o aviso e o atleta tinha de procurar onde
           // juntar os prints).
           const input = runIdToEdit ? editPhotoInputRef.current : addPhotoInputRef.current;
-          if (!runIdToEdit) setEntryMethod('foto');
           if (input) input.click();
           else if (runIdToEdit) setErrorMsg(serverPhotosLoaded ? `Máximo de ${MAX_PHOTOS} imagens.` : 'Os prints ainda estão a carregar.');
           else if (runPhotos.length >= MAX_PHOTOS) setErrorMsg(`Máximo de ${MAX_PHOTOS} imagens.`);
         }}
         onGoManual={() => {
           setShowMissingMetricsSheet(false);
-          setEntryMethod('manual');
+          // Os campos já estão à vista (formulário único): leva-o até eles.
+          metricsAnchorRef.current?.scrollIntoView?.({ block: 'center' });
+          metricsAnchorRef.current?.querySelector?.('input')?.focus?.();
         }}
         onProceedAnyway={handleProceedAnyway}
         onClose={() => {
@@ -3132,16 +3330,6 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         </button>
       )}
 
-      {/* Modal de confirmação de saída com alterações por gravar */}
-      <UnsavedChangesModal
-        isOpen={showUnsavedModal}
-        isSaving={isSubmitting}
-        onSaveAndLeave={handleSaveCorrida}
-        onDiscardAndLeave={handleClose}
-        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
-      />
-
-      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} first={confirmation.first} onDone={confirmation.done} />}
 
       {/* O mesmo diálogo do formulário da prova (RunAgenda), pela mesma razão:
           um campo obrigatório em falta tem de parar o ecrã, não ficar numa
@@ -3175,6 +3363,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         </div>
       </PremiumModal>
       )}
-    </div>
+        </>
+      )}
+    >
+      {isRaceMode ? renderProvaForm() : renderCorridaForm()}
+    </RegistrationShell>
   );
 }

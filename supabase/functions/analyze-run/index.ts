@@ -14,6 +14,12 @@
 // substituindo os campos lidos da imagem; kind/training_type/race_type/
 // notes/effort_rpe/coach_notes mantêm-se como estavam (são escolhas/análises
 // anteriores, não vêm de imagem nenhuma).
+// Registo unificado (specs/plano-registo-plano-coach.md, decisões 2 e 6):
+// `mode: "preview"` lê os prints e devolve o que leu SEM gravar (o atleta revê
+// no formulário); no modo normal, `typed` traz o que o atleta escreveu e ganha
+// à leitura, e com `reviewed` (os prints já foram lidos e revistos) não se
+// voltam a ler — grava-se o formulário, com o que só os prints sabem
+// (`read_details`: a app, a regularidade, a hidratação, a temperatura).
 // A chave Gemini vive apenas aqui (secret GEMINI_API_KEY), nunca no cliente.
 
 import { INTERVENTION_ORIGIN } from "../_shared/formulas/interventionOutcomes.ts";
@@ -1311,6 +1317,93 @@ export function keepImageOnlyDetails(
   return next || kept ? out : null;
 }
 
+/** Os campos do formulário na forma da extração (RunExtraction):
+ *  detailsFromExtraction não sabe — nem precisa de saber — se os números
+ *  vieram de um print ou de um formulário. O modo manual e o `typed` do
+ *  registo com prints leem daqui. */
+export function extractionFromForm(src: Record<string, unknown>): RunExtraction {
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const int = (v: unknown): number | null => (Number.isInteger(v) ? (v as number) : null);
+  return {
+    distance_km: num(src.distance_km),
+    duration_seconds: int(src.duration_seconds),
+    warmup_minutes: int(src.warmup_minutes),
+    recovery_seconds: int(src.recovery_seconds),
+    splits: Array.isArray(src.splits) ? src.splits as RunSplit[] : null,
+    official_time_seconds: int(src.official_time_seconds),
+    position: int(src.position),
+    elevation_gain_m: int(src.elevation_gain_m),
+    cadence_spm: int(src.cadence_spm),
+    max_cadence_spm: int(src.max_cadence_spm),
+    calories_kcal: int(src.calories_kcal),
+    avg_heart_rate_bpm: int(src.avg_heart_rate_bpm),
+    max_heart_rate_bpm: int(src.max_heart_rate_bpm),
+    vo2_max: num(src.vo2_max),
+    hr_zones: Array.isArray(src.hr_zones) ? src.hr_zones as HrZone[] : null,
+    max_pace_seconds_per_km: num(src.max_pace_seconds_per_km),
+    elevation_loss_m: int(src.elevation_loss_m),
+    total_steps: int(src.total_steps),
+    sweat_loss_ml: int(src.sweat_loss_ml),
+    recommended_hydration_ml: num(src.recommended_hydration_ml),
+    aerobic_threshold_bpm: int(src.aerobic_threshold_bpm),
+    anaerobic_threshold_bpm: int(src.anaerobic_threshold_bpm),
+    hr_recovery_bpm: int(src.hr_recovery_bpm),
+    ground_contact_time_ms: int(src.ground_contact_time_ms),
+    flight_time_ms: int(src.flight_time_ms),
+    vertical_oscillation_cm: num(src.vertical_oscillation_cm),
+    asymmetry_pct: num(src.asymmetry_pct),
+    leg_stiffness_kn_m: num(src.leg_stiffness_kn_m),
+    regularity_score: num(src.regularity_score),
+  };
+}
+
+/** As parciais e as zonas do `typed`, limpas como as da leitura (analyzeWithGemini):
+ *  parciais com pelo menos um número, zonas com os dois. Antes de ganharem à leitura. */
+export function cleanTypedArrays(t: RunExtraction): RunExtraction {
+  const n = (v: unknown): number | null => (typeof v === "number" && isFinite(v) && v >= 0 ? v : null);
+  const splits = Array.isArray(t.splits)
+    ? t.splits.map((x) => ({ distance_km: n((x as RunSplit)?.distance_km), time_seconds: n((x as RunSplit)?.time_seconds) }))
+      .filter((x) => x.distance_km !== null || x.time_seconds !== null)
+    : [];
+  const zones = Array.isArray(t.hr_zones)
+    ? t.hr_zones.map((z) => ({ zone: n((z as HrZone)?.zone), minutes: n((z as HrZone)?.minutes) }))
+      .filter((z) => z.zone !== null && z.minutes !== null)
+    : [];
+  return { ...t, splits: splits.length ? splits as RunSplit[] : null, hr_zones: zones.length ? zones as HrZone[] : null };
+}
+
+/** O atleta escreveu alguma coisa? (um array vazio não conta) */
+export function hasTypedRunValues(typed: RunExtraction | null): boolean {
+  if (!typed) return false;
+  return Object.values(typed).some((v) => v !== null && v !== undefined && !(Array.isArray(v) && v.length === 0));
+}
+
+/** O lido com o escrito por cima: o que o atleta escreveu ganha sempre. */
+export function mergeRunExtraction(read: RunExtraction, typed: RunExtraction | null): RunExtraction {
+  if (!typed) return read;
+  const out: Record<string, unknown> = { ...read };
+  for (const [k, v] of Object.entries(typed)) {
+    if (v === null || v === undefined || (Array.isArray(v) && v.length === 0)) continue;
+    out[k] = v;
+  }
+  return out as RunExtraction;
+}
+
+/** O que só os prints sabem, vindo da pré-leitura (`read_details`), já limpo:
+ *  a app (normalizada pelo catálogo), a regularidade, a hidratação e a
+ *  temperatura (entre -30 e 55 °C, como na leitura). */
+export function imageOnlyFromRead(raw: unknown): Partial<RunExtraction> {
+  const r = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const num = (v: unknown): number | null => (typeof v === "number" && isFinite(v) && v >= 0 ? v : null);
+  const t = r.temperature_c;
+  return {
+    source_app: normalizarFonte(r.source_app, "corrida"),
+    regularity_score: num(r.regularity_score),
+    recommended_hydration_ml: num(r.recommended_hydration_ml),
+    temperature_c: typeof t === "number" && isFinite(t) && t >= -30 && t <= 55 ? Math.round(t * 10) / 10 : null,
+  };
+}
+
 /** Reanálise a editar (pedido 2026-09-13): dos prints já guardados, quais
  *  ficam (`keep_paths`, por omissão todos) e quais saem — só se aceitam
  *  caminhos que a corrida já tinha, nunca um caminho inventado. */
@@ -1493,6 +1586,31 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
       return jsonResponse({ run: updated, usage: addUsage(result.usage, coachUsage) });
     }
 
+    // ── Modo preview: ler os prints para o formulário, SEM gravar ──────
+    // Registo unificado (decisão 6): o atleta revê o que se leu e só depois
+    // grava. Nada sobe para o Storage nem entra em `runs`.
+    if (body.mode === "preview") {
+      const imgs: string[] = (Array.isArray(body.images) ? body.images : [])
+        .filter((x: unknown): x is string => typeof x === "string" && x.length > 0);
+      if (imgs.length === 0) return jsonResponse({ error: "Junta pelo menos um print para eu ler." }, 400);
+      if (imgs.length > MAX_PHOTOS) return jsonResponse({ error: `Máximo de ${MAX_PHOTOS} imagens por corrida` }, 400);
+      const mime = ["image/jpeg", "image/png", "image/webp"].includes(body.mime_type) ? body.mime_type : "image/jpeg";
+      const kind = VALID_KINDS.has(body.kind) ? body.kind : "treino";
+      const trainingType = kind === "treino" && typeof body.training_type === "string" && TRAINING_TYPE_KEYS.includes(body.training_type)
+        ? body.training_type : null;
+      const raceType = kind === "competicao" && typeof body.race_type === "string" && RACE_TYPE_KEYS.includes(body.race_type)
+        ? body.race_type : null;
+      try {
+        const { extraction, usage } = await analyzeWithGemini(imgs, mime, kind, trainingType, raceType, rawNotes, geminiKey, extractionDeadline);
+        // Ler e depois gravar é o caminho comum: as apps que não se reconhecem
+        // chegam ao Admin por aqui (no `reviewed` já não se leem).
+        await checkAndLogAppImage(sb, userId, "run", imgs, mime, extraction as unknown as Record<string, unknown>);
+        return jsonResponse({ preview: extraction, usage });
+      } catch (e) {
+        return jsonResponse({ error: e instanceof Error ? e.message : "Não consegui ler os prints." }, 502);
+      }
+    }
+
     // ── Modo manual: registo sem fotos, com análise do Coach ───────────
     // Os dados já vêm todos do formulário (nada para o Gemini extrair de
     // imagem nenhuma) — grava a corrida diretamente e gera só o comentário
@@ -1520,42 +1638,8 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
         return jsonResponse({ error: "Data inválida (esperado YYYY-MM-DD)" }, 400);
       }
 
-      // Mesma forma (RunExtraction) que a extração por IA produzia —
-      // detailsFromExtraction não sabe (nem precisa saber) se os números
-      // vieram de um print ou de um formulário.
-      const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-      const int = (v: unknown): number | null => (Number.isInteger(v) ? (v as number) : null);
-      const extraction: RunExtraction = {
-        distance_km: num(body.distance_km),
-        duration_seconds: int(body.duration_seconds),
-        warmup_minutes: int(body.warmup_minutes),
-        recovery_seconds: int(body.recovery_seconds),
-        splits: Array.isArray(body.splits) ? body.splits : null,
-        official_time_seconds: int(body.official_time_seconds),
-        position: int(body.position),
-        elevation_gain_m: int(body.elevation_gain_m),
-        cadence_spm: int(body.cadence_spm),
-        max_cadence_spm: int(body.max_cadence_spm),
-        calories_kcal: int(body.calories_kcal),
-        avg_heart_rate_bpm: int(body.avg_heart_rate_bpm),
-        max_heart_rate_bpm: int(body.max_heart_rate_bpm),
-        vo2_max: num(body.vo2_max),
-        hr_zones: Array.isArray(body.hr_zones) ? body.hr_zones : null,
-        max_pace_seconds_per_km: num(body.max_pace_seconds_per_km),
-        elevation_loss_m: int(body.elevation_loss_m),
-        total_steps: int(body.total_steps),
-        sweat_loss_ml: int(body.sweat_loss_ml),
-        recommended_hydration_ml: num(body.recommended_hydration_ml),
-        aerobic_threshold_bpm: int(body.aerobic_threshold_bpm),
-        anaerobic_threshold_bpm: int(body.anaerobic_threshold_bpm),
-        hr_recovery_bpm: int(body.hr_recovery_bpm),
-        ground_contact_time_ms: int(body.ground_contact_time_ms),
-        flight_time_ms: int(body.flight_time_ms),
-        vertical_oscillation_cm: num(body.vertical_oscillation_cm),
-        asymmetry_pct: num(body.asymmetry_pct),
-        leg_stiffness_kn_m: num(body.leg_stiffness_kn_m),
-        regularity_score: num(body.regularity_score),
-      };
+      // Mesma forma (RunExtraction) que a extração por IA produzia (extractionFromForm).
+      const extraction: RunExtraction = extractionFromForm(body);
       const details = detailsFromExtraction(kind, extraction, trainingType, raceType);
 
       // ── Edição de uma corrida existente (run_id presente) ────────────
@@ -1655,6 +1739,11 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
     const clientName = typeof body.name === "string" ? body.name.trim().slice(0, 120) : "";
     const nameIsAuto = body.name_is_auto === true;
     const periodLabel = typeof body.period_label === "string" ? body.period_label.slice(0, 20) : "";
+    // Registo unificado: o que o atleta escreveu (ganha à leitura) e, com
+    // `reviewed`, os prints já lidos e revistos — não se voltam a ler.
+    const typed = body.typed && typeof body.typed === "object" ? cleanTypedArrays(extractionFromForm(body.typed as Record<string, unknown>)) : null;
+    const typedAny = hasTypedRunValues(typed);
+    const reviewed = body.reviewed === true && typedAny;
     // Tipo de treino/disciplina: sempre escolhidos pelo utilizador no
     // cliente antes de submeter — nunca inferidos pela IA.
     const trainingType = kind === "treino" && typeof body.training_type === "string" && TRAINING_TYPE_KEYS.includes(body.training_type)
@@ -1704,13 +1793,19 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
       photoPaths.push(path);
     }
 
-    // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas)
-    let result;
-    try {
-      result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey, extractionDeadline);
-    } catch (e) {
-      await sb.storage.from("run-photos").remove(photoPaths);
-      return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
+    // 2. Análise Gemini — todas as imagens numa só chamada (partes múltiplas).
+    //    Já revisto: o formulário é a leitura (mais o que só os prints sabem).
+    let result: { extraction: RunExtraction; usage: GeminiUsage | null };
+    if (reviewed) {
+      result = { extraction: { ...typed!, ...imageOnlyFromRead(body.read_details) }, usage: null };
+    } else {
+      try {
+        result = await analyzeWithGemini(images, mime, kind, trainingType, raceType, rawNotes, geminiKey, extractionDeadline);
+      } catch (e) {
+        await sb.storage.from("run-photos").remove(photoPaths);
+        return jsonResponse({ error: e instanceof Error ? e.message : "Falha na análise." }, 502);
+      }
+      if (typedAny) result = { ...result, extraction: mergeRunExtraction(result.extraction, typed) };
     }
 
     // Se o nome ainda era a sugestão genérica do cliente, refaz com o kind +
@@ -1754,7 +1849,7 @@ Deno.serve(withUsageRecording("analyze-run", async (req) => {
       details: detailsFromExtraction(kind, result.extraction, trainingType, raceType),
     }, geminiKey, coachDeadline);
 
-    await checkAndLogAppImage(sb, userId, "run", images, mime, result.extraction as unknown as Record<string, unknown>);
+    if (!reviewed) await checkAndLogAppImage(sb, userId, "run", images, mime, result.extraction as unknown as Record<string, unknown>);
 
     // Extração + comentário da Carol (ver _shared/geminiUsage.ts).
     return jsonResponse({ run, usage: addUsage(result.usage, coachUsage) });

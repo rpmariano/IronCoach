@@ -135,7 +135,7 @@ export default function MissingMetricsBottomSheet({
               className="text-sm py-3.5 shrink-0 px-5"
               icon={<PencilLine size={16} />}
             >
-              Manual
+              Preencher à mão
             </Button>
           </div>
 

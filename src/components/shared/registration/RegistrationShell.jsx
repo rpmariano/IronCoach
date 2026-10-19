@@ -15,17 +15,23 @@ import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../ActionBar';
    · `busy`: o formulário bloqueado enquanto a Carol trabalha;
    · o aviso de saída, a confirmação do registo e a ActionBar fixa.
 
-   O estado da saída vem de useRegistrationExit (passado em `exit`). */
+   O estado da saída vem de useRegistrationExit (passado em `exit`).
+   `bare`: só a moldura, sem o cartão — o modo prova da Corrida tem o seu
+   próprio desenho (cartões por secção) e traz cabeçalho e estado da análise.
+   `overlays`: o que mais flutua por cima do registo (o aviso das métricas em
+   falta da Corrida, o diálogo dos dados incompletos). */
 export default function RegistrationShell({
   accent, icon: Icon, title, exit, status = null, busy = false,
   onSaveAndLeave, isSaving = false, confirmation = null, primaryAction, children,
   // A Refeição: o cartão recorta o que sobe com o teclado, a barra sai com ele,
   // e os testes procuram o bloco dos campos pelo id.
   cardClassName = '', actionBarClassName = '', bodyTestId = undefined,
+  bare = false, overlays = null, containerClassName = 'space-y-4 fade-in',
 }) {
   return (
     // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
-    <div className="space-y-4 fade-in" style={{ '--focus-ring': accent, paddingBottom: ACTION_BAR_SCROLL_PAD }}>
+    <div className={containerClassName} style={{ '--focus-ring': accent, paddingBottom: ACTION_BAR_SCROLL_PAD }}>
+      {bare ? children : (
       <div
         className={`module-card-contrast ${cardClassName}`.trim()}
         // O mesmo vidro fosco do resto da app, com a cor do módulo por cima, bem subtil.
@@ -58,6 +64,7 @@ export default function RegistrationShell({
           {children}
         </div>
       </div>
+      )}
 
       <UnsavedChangesModal
         isOpen={exit.showUnsaved}
@@ -67,9 +74,11 @@ export default function RegistrationShell({
         onCancel={exit.cancelLeave}
       />
 
-      {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
+      {confirmation && <RecordConfirmation label={confirmation.label} tone={confirmation.tone} achievement={confirmation.achievement} first={confirmation.first} onDone={confirmation.done} />}
 
       <ActionBar className={actionBarClassName || undefined}>{primaryAction}</ActionBar>
+
+      {overlays}
     </div>
   );
 }

@@ -12,7 +12,7 @@ export default function PhotoReadSection({
   photos, maxPhotos, onSelect, onRemove, onRead, reading = false, note = null,
   emptyTitle = 'Prints da app de treino (opcional)',
   emptyHint = 'Hevy, Strong… Junta os ecrãs da mesma sessão e eu leio o que não escreveres abaixo.',
-  emptyExtra = null, accent = 'var(--mod-ginasio-to)',
+  emptyExtra = null, accent = 'var(--mod-ginasio-to)', inputRef = undefined,
 }) {
   return (
     <div className="mb-4" style={{ '--pr-accent': accent }}>
@@ -40,7 +40,7 @@ export default function PhotoReadSection({
           </div>
           {photos.length < maxPhotos && (
             <label className="flex items-center justify-center gap-2 border-2 border-dashed border-[var(--pr-accent)]/40 rounded-xl py-3 text-center cursor-pointer hover:bg-[var(--pr-accent)]/5 transition mb-2 min-h-[44px] focus-within:ring-2 focus-within:ring-[var(--pr-accent)]">
-              <input type="file" accept="image/*" multiple className="sr-only" onChange={onSelect} />
+              <input ref={inputRef} type="file" accept="image/*" multiple className="sr-only" onChange={onSelect} />
               <ImagePlus className="w-4 h-4" style={{ color: 'var(--pr-accent)' }} />
               <span className="text-[12px] font-bold" style={{ color: 'var(--pr-accent)' }}>Adicionar outro print</span>
             </label>
@@ -59,7 +59,7 @@ export default function PhotoReadSection({
         </>
       ) : (
         <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-4 text-center cursor-pointer hover:border-[var(--border-control)] transition bg-[var(--surface-glass)] focus-within:ring-2 focus-within:ring-[var(--pr-accent)]">
-          <input type="file" accept="image/*" multiple className="sr-only" onChange={onSelect} />
+          <input ref={inputRef} type="file" accept="image/*" multiple className="sr-only" onChange={onSelect} />
           <ImagePlus className="w-6 h-6 text-[var(--text-3)] mx-auto mb-2" />
           <p className="text-xs text-[var(--text-3)] font-semibold">{emptyTitle}</p>
           <p className="text-[11px] text-[var(--text-3)] mt-1 px-4">{emptyHint}</p>
