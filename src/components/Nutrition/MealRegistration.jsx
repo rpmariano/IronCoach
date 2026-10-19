@@ -6,11 +6,8 @@ import { supabase, invokeEdgeFunctionWithTimeout } from '../../lib/supabase';
 import { ANALYZE_TIMEOUT_MS } from '../../lib/edgeTimeouts';
 import { compressImage } from '../../lib/image';
 import { CoachAnalyzeButton } from '../shared/CoachButton';
-import UnsavedChangesModal from '../shared/UnsavedChangesModal';
-import RecordConfirmation from '../shared/RecordConfirmation';
 import { firstRecordMoment } from '../../utils/firstRecord';
 import Chip from '../shared/Chip';
-import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import { AnalysisSkeleton, AnalysisFailure } from '../shared/AnalysisState';
 import useAnalysis from '../../utils/useAnalysis';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -19,6 +16,10 @@ import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType } from '../../utils/pantry';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
+import RegistrationShell from '../shared/registration/RegistrationShell';
+import useRegistrationExit from '../shared/registration/useRegistrationExit';
+import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
+import { mealSuggestionsFor } from '../../utils/planPrefill';
 
 /* Espelha MEAL_TYPES em supabase/functions/analyze-meal e mealTypeLabel()
    em src/utils/nutrition.js — as duas usam hífen (ex.: "pequeno-almoco"). A
@@ -50,7 +51,7 @@ function getDefaultMealType() {
 }
 
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
-  const { profile, meals, setMeals, loadInitialData, setNavGuard, activeTab, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
+  const { profile, meals, setMeals, loadInitialData, setNavGuard, coachPlans, coachPlanItems, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
   // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
   // desta refeição. Um alimento da despensa já não é analisado.
   // A que está em memória pode ser de outra conta (sessão trocada sem recarregar).
@@ -59,7 +60,6 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const pantryFoods = pantryIsMine ? storedPantry : [];
   const mealTemplates = pantryIsMine ? (storedTemplates || []) : [];
   useEffect(() => { if (!pantryLoaded || !pantryIsMine) loadPantry?.(); }, [pantryLoaded, pantryIsMine, loadPantry]);
-  const [initialTab] = useState(activeTab);
 
   
 
@@ -86,6 +86,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const [mealTime, setMealTime] = useState(() => (mealIdToEdit ? '' : mealNominalTime(mealType)));
   const mealTimeTouchedRef = useRef(!!mealIdToEdit);
   const [notes, setNotes] = useState('');
+  /* "Do plano" na Refeição (specs/plano-registo-plano-coach.md §1): a refeição
+     que a Carol sugeriu para este dia e tipo. "Usar a sugestão" põe o texto
+     nas observações — a Carol estrutura os alimentos ao analisar (decisão 15)
+     e ele ajusta o que comeu de facto. Nada no plano se marca: as refeições
+     não se riscam. { id, mode: 'plano' | 'livre' } | null */
+  const [planChoice, setPlanChoice] = useState(null);
   /* Um só ecrã (bug #47, 2026-10-03): já não se escolhe entre Foto e
      Manual. Fotos, alimentos escritos e observações juntam-se no mesmo
      registo — tira-se foto ao prato e escreve-se o que ela não mostra (o
@@ -136,69 +142,15 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // Só observações + alimentos, tirada ao mesmo tempo (ver needsReanalysis).
   const [originalContent, setOriginalContent] = useState(null);
   const [isFormDirty, setIsFormDirty] = useState(false);
-  const autoCloseRef = useRef(false);
-  useEffect(() => {
-    if (activeTab !== initialTab && !autoCloseRef.current && !isFormDirty) {
-      autoCloseRef.current = true;
-      if (onClose) onClose();
-    }
-  }, [activeTab, initialTab, onClose, isFormDirty]);
-  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
-  // Alvo de navegação pendente quando o navGuard intercepta uma troca de
-  // separador com o formulário sujo — null quando a saída foi pedida pelo
-  // botão X do próprio ecrã, sem destino nenhum.
-  const pendingNavTarget = useRef(null);
-
-  // Trava a navegação para fora deste ecrã enquanto houver alterações por
-  // gravar — mesmo mecanismo usado em Perfil.jsx e RunAgenda.jsx.
-  useEffect(() => {
-    if (!isFormDirty) { setNavGuard(null); return; }
-    setNavGuard((intendedTab) => {
-      pendingNavTarget.current = intendedTab;
-      setShowUnsavedModal(true);
-      return false;
-    });
-    return () => setNavGuard(null);
-  }, [isFormDirty, setNavGuard]);
-
-  // Fechar/recarregar o separador do browser também avisa.
-  useEffect(() => {
-    if (!isFormDirty) return;
-    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [isFormDirty]);
-
-  // onClose() do prop só fecha este ecrã; quando a saída veio de uma troca
-  // de separador (navGuard), há ainda que completar essa navegação depois
-  // de fechar — senão o utilizador ficava preso no ecrã Início/Ginásio/etc.
-  // que já estava aberto antes de pedir para sair.
-  // Chama o onClose() do PROP diretamente (nunca handleClose) — é a saída
-  // da recursão. Tudo o resto no ficheiro que antes fechava com onClose()
-  // foi trocado para handleClose(), precisamente para passar por aqui.
-  const handleClose = () => {
-    autoCloseRef.current = true;
-    const target = pendingNavTarget.current;
-    pendingNavTarget.current = null;
-    clearPersistedFormDraft(draftStorageKey);
-    onClose();
-    if (target) {
-      // O guard ainda está registado neste render — o próprio setActiveTab()
-      // chamado a seguir voltaria a cair nele e a bloquear-se a si mesmo,
-      // porque onClose() só desmonta este ecrã no próximo render, não já.
-      // Limpar primeiro é o que falta para a navegação pendente completar
-      // (mesmo detalhe já usado em Perfil.jsx/RunAgenda.jsx).
-      setNavGuard(null);
-      useAppStore.getState().setActiveTab(target);
-    }
-  };
+  // Sair do registo (aviso, navGuard, beforeunload, destino pendente): RegistrationShell.
+  const exit = useRegistrationExit({ isDirty: isFormDirty, onClose, draftKey: draftStorageKey });
 
   // Ao gravar uma refeição NOVA (foto ou manual), vai sempre para o
   // Calendário, aberto no dia da refeição — mesmo padrão de RunAgenda.jsx
   // (Prova) via pendingCalendarDate no store. Se isto veio de "Gravar e
   // sair" a caminho de outro separador (navGuard intercetado), respeita
   // esse destino em vez de o substituir — por isso o alvo pendente é lido
-  // ANTES de handleClose() o consumir.
+  // ANTES de exit.close() o consumir.
   /* Ponto 9, animação 6 ("Registo confirmado"): o check com impulso
      elástico corre PRIMEIRO e só depois é que o ecrã fecha e leva ao
      destino de sempre. O CreatedRecordModal continua lá — traz o cartão
@@ -208,7 +160,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // `extras`: o que mais o ecrã do resultado mostra — pantryAdded, os
   // produtos que entraram já na despensa por um rótulo (bug #48, fase C).
   const finishCreateAndGoToCalendar = (createdRecord, label = 'Refeição registada', extras = {}) => {
-    const hadPendingNav = !!pendingNavTarget.current;
+    const hadPendingNav = exit.hasPendingNav();
     // O primeiro registo deste tipo: a Carol diz o que ele quer dizer
     // (utils/firstRecord.js). Só ao criar — editar a única corrida não é "a primeira".
     const first = !isEditing && firstRecordMoment('meal', useAppStore.getState(), createdRecord);
@@ -217,7 +169,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     // gravar outra vez duplicava-o (revisão pré-deploy de 5ce5f31).
     clearPersistedFormDraft(draftStorageKey);
     setConfirmation({ label, first, done: () => {
-      handleClose();
+      exit.close();
       if (!hadPendingNav) {
         setNavGuard(null);
         if (createdRecord) {
@@ -304,6 +256,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (persisted.manualItems) setManualItems(persisted.manualItems);
     if (persisted.itemName !== undefined) setItemName(persisted.itemName);
     if (persisted.itemGrams !== undefined) setItemGrams(persisted.itemGrams);
+    if (persisted.planChoice !== undefined) setPlanChoice(persisted.planChoice);
     setIsFormDirty(true);
   }, [mealIdToEdit, draftStorageKey]);
 
@@ -312,7 +265,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   // As fotos guardam-se à parte, em IndexedDB (draftMediaPersistence.js,
   // logo abaixo): em localStorage estouravam a quota.
   usePersistedFormDraft(draftStorageKey, {
-    date, mealTime, mealType, notes, manualItems, itemName, itemGrams,
+    date, mealTime, mealType, notes, manualItems, itemName, itemGrams, planChoice,
   // Com a confirmação à vista o registo está gravado: o rascunho já foi
   // apagado e não volta a guardar-se (revisão pré-deploy de 6e92d67).
   }, { isDirty: isFormDirty && !confirmation });
@@ -640,43 +593,19 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     />
   );
 
-  return (
-    // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
-    <div
-      className="fade-in"
-      style={{ '--focus-ring': 'var(--mod-nutricao-to)', paddingBottom: ACTION_BAR_SCROLL_PAD }}
-    >
-      <div
-        className="module-card-contrast relative overflow-hidden"
-        // Mesmo vidro fosco (bg branco 5% + blur 20px) do resto da app — a
-        // versão anterior tinha a borda/glow do .card mas sem backdrop-filter
-        // nem base branca, o que dava um retângulo escuro plano em vez do
-        // vidro premium usado nos outros ecrãs. Lavagem na cor do módulo por
-        // cima, bem subtil.
-        style={{
-          background: 'linear-gradient(135deg, color-mix(in srgb, var(--mod-nutricao-to) 3%, transparent), color-mix(in srgb, var(--mod-nutricao-to) 6%, transparent)), rgba(255, 255, 255, 0.05)',
-        }}
-      >
-        <div className="flex items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            <Camera size={18} style={{ color: 'var(--mod-nutricao-to)' }} />
-            <h2 className="text-sm font-semibold text-[var(--text-1)]">{isEditing ? 'Editar Refeição' : 'Nova Refeição'}</h2>
-          </div>
-          <button
-            onClick={() => { if (isFormDirty) setShowUnsavedModal(true); else handleClose(); }}
-            type="button"
-            // O circulo continua a desenhar-se com 32px; o que cresce para
-            // 44 (--tap) e a area tocavel a volta dele - ponto 2 do handoff.
-            className="tap-44 shrink-0"
-            title="Fechar"
-            aria-label="Fechar"
-          >
-            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
-              <X size={16} />
-            </span>
-          </button>
-        </div>
+  const mealSuggestions = isEditing ? [] : mealSuggestionsFor(date, coachPlans, coachPlanItems, meals, mealType);
+  const mealDayLabel = date === format(new Date(), 'yyyy-MM-dd') ? 'hoje' : `${date.slice(8, 10)}/${date.slice(5, 7)}`;
+  const handleUseMealSuggestion = (item) => {
+    setMealType(item.tipo);
+    if (!mealTimeTouchedRef.current) setMealTime(mealNominalTime(item.tipo));
+    // O texto da sugestão junta-se ao que ele já tinha escrito, sem o repetir.
+    setNotes(prev => (prev || '').includes(item.texto) ? prev : [prev?.trim(), item.texto].filter(Boolean).join('\n'));
+    setPlanChoice({ id: item.id, mode: 'plano' });
+    setIsFormDirty(true);
+  };
 
+  const status = (
+    <>
         {/* Ponto 7 — ESPERA. O esqueleto ocupa o sítio onde o resultado vai
             aparecer, e o formulário por baixo fica bloqueado mas VISÍVEL:
             nada do que o atleta escreveu ou fotografou se apaga. */}
@@ -700,12 +629,49 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               : 'O que escreveste ficou guardado. Podes tentar outra vez.'}
           </AnalysisFailure>
         )}
+    </>
+  );
 
-        <div
-          data-testid="meal-form-fields"
-          aria-busy={isAnalyzing || undefined}
-          style={isAnalyzing ? { opacity: 0.45, pointerEvents: 'none' } : undefined}
-        >
+  return (
+    <RegistrationShell
+      accent="var(--mod-nutricao-to)"
+      icon={Camera}
+      title={isEditing ? 'Editar Refeição' : 'Nova Refeição'}
+      exit={exit}
+      status={status}
+      busy={isAnalyzing}
+      onSaveAndLeave={isEditing ? handleSaveEdit : handleAnalyze}
+      isSaving={isAnalyzing}
+      confirmation={confirmation}
+      primaryAction={primaryAction}
+      cardClassName="relative overflow-hidden"
+      // Bug #64 (print de 2026-10-17): colada ao teclado, a barra comia ~120 px
+      // e tapava as sugestões da despensa. Sai com o teclado aberto e volta quando ele fecha.
+      actionBarClassName="hide-when-keyboard"
+      bodyTestId="meal-form-fields"
+    >
+        {mealSuggestions.length > 0 && (
+          <PlanPrefillBanner
+            items={mealSuggestions}
+            describe={(m) => `${m.label}: ${m.texto}`}
+            chosenId={planChoice?.mode === 'plano' ? planChoice.id : null}
+            mode={planChoice?.mode || null}
+            onUse={handleUseMealSuggestion}
+            onFree={() => { setPlanChoice({ id: null, mode: 'livre' }); setIsFormDirty(true); }}
+            onChange={() => setPlanChoice(null)}
+            dayLabel={mealDayLabel}
+            accent="var(--mod-nutricao-to)"
+            labels={{
+              region: 'Refeição do plano',
+              single: (day) => `A Carol sugeriu esta refeição para ${day}.`,
+              multi: (day) => `A Carol sugeriu estas refeições para ${day} — qual vais registar?`,
+              use: 'Usar a sugestão',
+              free: 'Comi outra coisa',
+              chosen: 'A usar a sugestão',
+              freeMode: () => 'Comeste outra coisa — a sugestão do plano fica como estava.',
+            }}
+          />
+        )}
         {/* Data · Hora — como na corrida e no ginásio. A hora ordena o dia
             no Calendário e diz à Carol a que horas se comeu. */}
         <div className="grid grid-cols-2 gap-2 mb-4">
@@ -716,7 +682,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               type="date"
               value={date}
               max={format(new Date(), 'yyyy-MM-dd')}
-              onChange={e => { setDate(e.target.value); setIsFormDirty(true); }}
+              onChange={e => { setDate(e.target.value); setPlanChoice(null); setIsFormDirty(true); }}
               className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-sm text-[var(--text-1)] outline-none focus:border-[var(--focus-ring)] shadow-sm transition"
             />
           </div>
@@ -1015,30 +981,12 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           <CarolInterventionActions
             record={(meals || []).find(m => m.id === mealIdToEdit)}
             type="meal"
-            onTalked={handleClose}
+            onTalked={exit.close}
             className="mb-2"
           />
         )}
 
         {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3 text-center" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
-        </div>
-      </div>
-
-      {/* Modal de confirmação de saída com alterações por gravar */}
-      <UnsavedChangesModal
-        isOpen={showUnsavedModal}
-        isSaving={isAnalyzing}
-        onSaveAndLeave={isEditing ? handleSaveEdit : handleAnalyze}
-        onDiscardAndLeave={handleClose}
-        onCancel={() => { pendingNavTarget.current = null; setShowUnsavedModal(false); }}
-      />
-
-      {confirmation && <RecordConfirmation label={confirmation.label} first={confirmation.first} onDone={confirmation.done} />}
-
-      {/* Bug #64 (print de 2026-10-17): colada ao teclado, a barra comia ~120 px
-          e tapava as sugestões da despensa. Aqui sai com o teclado aberto
-          (hide-when-keyboard, globals.css) e volta quando ele fecha. */}
-      <ActionBar className="hide-when-keyboard">{primaryAction}</ActionBar>
-    </div>
+    </RegistrationShell>
   );
 }

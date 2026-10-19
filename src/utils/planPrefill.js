@@ -2,6 +2,7 @@ import { describePrescription } from '@formulas/planPrescription.ts';
 import { cardioSpecFor } from '@formulas/cardioFields.ts';
 import { foodKey } from '@formulas/foodKey.ts';
 import { newExercise, newSet } from './gymSets';
+import { mealsForDay } from './homeModels';
 
 /* O registo a partir do plano da Carol (registo unificado, F3 —
    specs/plano-registo-plano-coach.md §3). Funções puras: o banner "Do plano"
@@ -70,4 +71,21 @@ export function appendExercises(existing, incoming) {
   const kept = existing.filter(e => (e.name || '').trim() || e.sets.some(s => !isBlankSet(s)));
   const have = new Set(kept.map(e => foodKey(e.name)));
   return [...kept, ...incoming.filter(e => !have.has(foodKey(e.name)))];
+}
+
+/** As refeições que a Carol sugeriu para um dia, nos planos aceites (a nota da
+ *  Refeição, specs/plano-registo-plano-coach.md §1): só as que ainda não foram
+ *  registadas nesse dia. Com a do tipo escolhido, só essa; sem ela, as outras,
+ *  para ele escolher. [{ id, tipo, label, texto }] */
+export function mealSuggestionsFor(dateIso, coachPlans, coachPlanItems, meals = [], currentType = null) {
+  const accepted = new Set((coachPlans || []).filter(p => p?.status === 'aceite').map(p => p.id));
+  const dayItems = (coachPlanItems || []).filter(i => accepted.has(i.plan_id) && i.planned_date === dateIso && i.status !== 'cancelado');
+  const model = mealsForDay(dayItems);
+  if (!model) return [];
+  const registered = new Set((meals || []).filter(m => m?.date === dateIso).map(m => m.meal_type));
+  const open = model.meals
+    .filter(m => m.tipo && typeof m.texto === 'string' && m.texto.trim() && !registered.has(m.tipo))
+    .map(m => ({ id: `${dateIso}:${m.tipo}`, tipo: m.tipo, label: m.label, texto: m.texto.trim() }));
+  const same = open.filter(m => m.tipo === currentType);
+  return same.length ? same : open;
 }

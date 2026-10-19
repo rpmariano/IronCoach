@@ -1114,3 +1114,60 @@ describe('MealRegistration — refeição só com observações (decisão 15)', 
     expect(screen.getByRole('button', { name: /Analisar refeição/ })).toBeDisabled();
   });
 });
+
+describe('MealRegistration — a refeição sugerida no plano', () => {
+  const onClose = vi.fn();
+  const today = new Date();
+  const DAY = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const PLAN_ITEM = {
+    id: 'd1', plan_id: 'p1', planned_date: DAY, kind: 'descanso', status: 'pendente', created_at: '2026-10-18T10:00:00Z',
+    meal_macros: { kcal: 2200, items: [
+      { tipo: 'pequeno-almoco', texto: '60 g de aveia e 170 g de skyr' },
+      { tipo: 'almoco', texto: '150 g de frango, arroz e salada' },
+      { tipo: 'jantar', texto: '150 g de peixe e legumes' },
+      { tipo: 'lanche', texto: '1 iogurte e 1 peça de fruta' },
+      { tipo: 'lanche-manha', texto: '1 banana' },
+      { tipo: 'ceia', texto: '1 chá' },
+    ] },
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+    localStorage.clear();
+    useAppStore.setState({ profile: PROFILE, meals: [], coachPlans: [{ id: 'p1', status: 'aceite' }], coachPlanItems: [PLAN_ITEM] });
+  });
+
+  afterEach(() => useAppStore.setState({ coachPlans: [], coachPlanItems: [] }));
+
+  it('"Usar a sugestão" põe o texto nas observações e o tipo da refeição; a análise leva-o', async () => {
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'meal-1', meal_items: [] } }, error: null });
+    render(<MealRegistration onClose={onClose} />);
+    const region = screen.getByRole('region', { name: 'Refeição do plano' });
+    expect(within(region).getByText(/A Carol sugeriu esta refeição para hoje/)).toBeInTheDocument();
+    fireEvent.click(within(region).getByRole('button', { name: /^Usar a sugestão/ }));
+    expect(within(region).getByText(/A usar a sugestão/)).toBeInTheDocument();
+    const notes = screen.getByPlaceholderText(/Detalhes que mudam os valores/);
+    const tipo = within(region).getByText(/A usar a sugestão/).textContent.split(': ')[1];
+    expect(tipo).toBeTruthy();
+    expect(notes.value).not.toBe('');
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const { body } = mocks.invoke.mock.calls[0][1];
+    expect(body.notes).toBe(notes.value);
+  });
+
+  it('"Comi outra coisa" deixa as observações como estavam', () => {
+    render(<MealRegistration onClose={onClose} />);
+    const region = screen.getByRole('region', { name: 'Refeição do plano' });
+    fireEvent.click(within(region).getByRole('button', { name: 'Comi outra coisa' }));
+    expect(within(region).getByText(/Comeste outra coisa/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Detalhes que mudam os valores/).value).toBe('');
+  });
+
+  it('a refeição desse tipo já registada hoje deixa de aparecer; a editar não há banner', () => {
+    useAppStore.setState({ meals: ['pequeno-almoco', 'lanche-manha', 'almoco', 'lanche', 'jantar', 'ceia'].map((t, i) => ({ id: `m${i}`, date: DAY, meal_type: t, meal_items: [] })) });
+    render(<MealRegistration onClose={onClose} />);
+    expect(screen.queryByRole('region', { name: 'Refeição do plano' })).toBeNull();
+  });
+});
