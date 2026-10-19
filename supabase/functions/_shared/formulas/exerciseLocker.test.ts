@@ -63,3 +63,16 @@ Deno.test("várias categorias na sessão: o exercício novo fica 'Outro'; nomes 
   assertEquals(rows.length, 1);
   assertEquals(rows[0].category, "Outro");
 });
+
+Deno.test("buildLockerUpserts: a afinação escrita no registo grava-se; sem ela, a do Armário fica; '' apaga (decisão 10)", () => {
+  const prevSup = { ...prev(), machine_settings: "banco furo 3" };
+  const run = (meta?: { name: string; machine_settings?: string }[]) =>
+    buildLockerUpserts({ ...base, existing: [prevSup], meta, sets: [{ exercise_name: "Leg Press", reps: 10, weight: 100 }] })[0].machine_settings;
+  assertEquals(run(), "banco furo 3");
+  assertEquals(run([{ name: "Leg Press" }]), "banco furo 3");
+  assertEquals(run([{ name: "Leg Press", machine_settings: " banco furo 5, pino 2 " }]), "banco furo 5, pino 2");
+  assertEquals(run([{ name: "Leg Press", machine_settings: "" }]), null);
+  // Um exercício novo, com afinação escrita logo à primeira.
+  const novo = buildLockerUpserts({ ...base, meta: [{ name: "Remo sentado", machine_settings: "pé na 4" }], sets: [{ exercise_name: "Remo sentado", reps: 10, weight: 40 }] })[0];
+  assertEquals(novo.machine_settings, "pé na 4");
+});

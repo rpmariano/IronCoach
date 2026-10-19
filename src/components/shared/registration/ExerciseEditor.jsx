@@ -261,6 +261,18 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
                     <span className="text-[11px] text-[var(--text-3)] ml-auto">da última vez: {lastText}</span>
                   )}
                 </div>
+                {type === 'forca' && (
+                  <input
+                    type="text"
+                    aria-label={`Afinação da máquina — ${label(ex)}`}
+                    // Mostra a do Armário até ele escrever outra (decisão 10): aparece da próxima vez.
+                    value={ex.machineSettings ?? last?.machine_settings ?? ''}
+                    maxLength={120}
+                    onChange={e => replace(ex.key, { ...ex, machineSettings: e.target.value })}
+                    placeholder="Afinação (opcional) — ex.: banco furo 3, pino 6"
+                    className="w-full min-h-[44px] mb-2 bg-transparent border-b border-[var(--border-glass)] text-[12px] text-white outline-none focus:border-[var(--mod-ginasio-to)] placeholder-[var(--text-muted)]"
+                  />
+                )}
                 <input
                   type="text"
                   aria-label={`Objetivo — ${label(ex)}`}

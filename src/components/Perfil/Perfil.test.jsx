@@ -433,6 +433,9 @@ describe('Perfil — ação na ActionBar', () => {
     // Era "Equipa." (com srLabel "Equipamento"); desde a fase C dos bugs
     // #48/#52 é "Armário" — sapatilhas e despensa — e cabe sem abreviar.
     fireEvent.click(screen.getByRole('button', { name: /Armário/ }));
+    // O Armário tem submenus (Treino, Alimentação, Equipamento): as sapatilhas
+    // estão em Equipamento.
+    fireEvent.click(await screen.findByRole('tab', { name: 'Equipamento' }));
     const botao = await screen.findByRole('button', { name: 'Adicionar sapatilhas' });
     expect(screen.queryByTestId('action-bar')).not.toBeInTheDocument();
     expect(botao).toBeInTheDocument();

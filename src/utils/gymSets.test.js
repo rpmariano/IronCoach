@@ -149,3 +149,17 @@ describe('séries do plano: a sugestão segue a carga usada e o kg em branco com
     expect(completePlanSets([livre], LOCKER)[0]).toBe(livre);
   });
 });
+
+describe('afinação da máquina no exercises_meta (decisão 10)', async () => {
+  const { buildExercisesMeta, newExercise } = await import('./gymSets');
+  it('só vai quando ele a escreveu (ou apagou); senão fica de fora', () => {
+    const meta = buildExercisesMeta([
+      newExercise({ name: 'Leg Press', type: 'forca' }),
+      { ...newExercise({ name: 'Supino', type: 'forca' }), machineSettings: ' banco furo 5 ' },
+      { ...newExercise({ name: 'Remo sentado', type: 'forca' }), machineSettings: '' },
+    ]);
+    expect('machine_settings' in meta[0]).toBe(false);
+    expect(meta[1].machine_settings).toBe('banco furo 5');
+    expect(meta[2].machine_settings).toBe('');
+  });
+});

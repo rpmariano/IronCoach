@@ -15,6 +15,7 @@ import ChipPicker from '../shared/registration/ChipPicker';
 import ExerciseEditor from '../shared/registration/ExerciseEditor';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
+import { MUSCLE_GROUPS } from '../../utils/exerciseLocker';
 import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, appendExercises } from '../../utils/planPrefill';
 import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary, completePlanSets, hasUnconfirmedPlanSets, markAllDone, lockerEntryFor } from '../../utils/gymSets';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
@@ -32,7 +33,6 @@ const GYM_KINDS = [
 /* `categories` são sempre grupos musculares, num treino de força ou numa
    aula; a modalidade da aula vive à parte, em `class_types` (migration
    20260925162654 — antes a mesma coluna guardava as duas coisas). */
-const MUSCLE_GROUPS = ['Peito', 'Costas', 'Pernas Superiores', 'Pernas Inferiores', 'Ombros', 'Bíceps', 'Tríceps', 'Glúteos', 'Core/Abdominais', 'Full Body', 'Cardio', 'Levantamento Olímpico', 'Powerlifting', 'Calistenia', 'Outro'];
 const CLASS_TYPES = ['HIIT', 'RPM/Cycling', 'Pilates', 'Yoga', 'Body Pump', 'Zumba', 'CrossFit', 'Treino Funcional', 'Natação', 'Outro'];
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-gym

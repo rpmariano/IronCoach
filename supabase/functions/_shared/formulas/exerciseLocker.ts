@@ -17,7 +17,7 @@
 //     reescreve o "último" — só conta a vez e pode subir o recorde;
 //   · `increment=false` (edição, reanálise) não conta outra vez a mesma sessão;
 //   · a afinação (machine_settings) e uma categoria já conhecida nunca se
-//     perdem: vão sempre na linha, porque um upsert em lote põe a null as
+//     perdem — a afinação só muda se o registo a mandar (exercises_meta): vão sempre na linha, porque um upsert em lote põe a null as
 //     colunas que faltem a uma das linhas.
 
 import { foodKey } from "./foodKey.ts";
@@ -32,7 +32,9 @@ export type LockerSetRow = {
   laps?: number | null;
 };
 
-export type LockerMeta = { name: string; block_type?: string | null };
+// machine_settings: a afinação que o atleta escreveu neste registo (decisão 10). Ausente
+// = não mexeu (fica a que o Armário já tinha); '' = apagou-a.
+export type LockerMeta = { name: string; block_type?: string | null; machine_settings?: string | null };
 
 export type LockerExisting = {
   name_key: string;
@@ -102,7 +104,8 @@ export function buildLockerUpserts(input: {
   const out: LockerUpsert[] = [];
   for (const [key, { name, sets }] of groups) {
     const prev = existingByKey.get(key);
-    const metaType = metaByKey.get(key)?.block_type;
+    const metaItem = metaByKey.get(key);
+    const metaType = metaItem?.block_type;
     const hasCardio = sets.some((s) => pos(s.duration_seconds) || pos(s.distance_km) || pos(s.laps));
     const hasLoad = sets.some((s) => pos(s.weight) || pos(s.reps));
     const blockType: "forca" | "cardio" = metaType === "cardio" || metaType === "forca"
@@ -142,7 +145,10 @@ export function buildLockerUpserts(input: {
       category: categoryFor(prev, input.sessionCategories, blockType),
       block_type: blockType,
       cardio_fields: cardioFields,
-      machine_settings: prev?.machine_settings ?? null,
+      // A que ele escreveu agora (ou apagou); senão a que já lá estava.
+      machine_settings: typeof metaItem?.machine_settings === "string"
+        ? (metaItem.machine_settings.trim().slice(0, 120) || null)
+        : (prev?.machine_settings ?? null),
       last_weight: isLatest ? (topWeight ?? (blockType === "cardio" ? null : prev?.last_weight ?? null)) : (prev?.last_weight ?? null),
       last_reps: isLatest ? (topReps ?? prev?.last_reps ?? null) : (prev?.last_reps ?? null),
       personal_record_weight: pr,
