@@ -49,7 +49,7 @@ Componentes partilhados em `src/components/shared/registration/`:
 - `ExerciseEditor` (Ginásio)
 
 > [!NOTE]
-> **Proposta para a Refeição:** o plano já tem `meal_macros.meal_items`, as refeições sugeridas pela Carol. O mesmo banner ("Vais registar a refeição sugerida?") pré-carregava esses alimentos. Mesma experiência do treino. No Corpo não há plano, por isso não há banner.
+> **Refeição (feito a 2026-10-19):** o plano guarda as refeições sugeridas pela Carol em `meal_macros.items` (`{ tipo, texto }`). O banner "Do plano" mostra a do dia e tipo; "Usar a sugestão" põe o texto nas observações e a análise estrutura os alimentos (decisão 15). No Corpo não há plano, por isso não há banner.
 
 ---
 

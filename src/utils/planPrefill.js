@@ -79,7 +79,9 @@ export function appendExercises(existing, incoming) {
  *  para ele escolher. [{ id, tipo, label, texto }] */
 export function mealSuggestionsFor(dateIso, coachPlans, coachPlanItems, meals = [], currentType = null) {
   const accepted = new Set((coachPlans || []).filter(p => p?.status === 'aceite').map(p => p.id));
-  const dayItems = (coachPlanItems || []).filter(i => accepted.has(i.plan_id) && i.planned_date === dateIso && i.status !== 'cancelado');
+  // Os cancelados também: ao aceitar um bloco novo, é o item cancelado que traz
+  // a sugestão nova — o mealsForDay escolhe a mais recente, como no Início.
+  const dayItems = (coachPlanItems || []).filter(i => accepted.has(i.plan_id) && i.planned_date === dateIso);
   const model = mealsForDay(dayItems);
   if (!model) return [];
   const registered = new Set((meals || []).filter(m => m?.date === dateIso).map(m => m.meal_type));

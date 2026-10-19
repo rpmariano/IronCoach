@@ -36,6 +36,14 @@ const MEAL_TYPES = [
 ];
 
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-meal
+const MAX_NOTES = 500; // espelha MAX_NOTES_LENGTH em supabase/functions/analyze-meal
+
+/** As observações sem o texto que uma sugestão do plano lá pôs (se ainda estiver tal e qual). */
+export function withoutSuggestion(notes, texto) {
+  const n = notes || '';
+  if (!texto || !n.includes(texto)) return n;
+  return n.replace(texto, '').replace(/\n{2,}/g, '\n').trim();
+}
 
 function getDefaultMealType() {
   const hour = new Date().getHours();
@@ -598,10 +606,19 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const handleUseMealSuggestion = (item) => {
     setMealType(item.tipo);
     if (!mealTimeTouchedRef.current) setMealTime(mealNominalTime(item.tipo));
-    // O texto da sugestão junta-se ao que ele já tinha escrito, sem o repetir.
-    setNotes(prev => (prev || '').includes(item.texto) ? prev : [prev?.trim(), item.texto].filter(Boolean).join('\n'));
-    setPlanChoice({ id: item.id, mode: 'plano' });
+    // O texto da sugestão junta-se ao que ele já tinha escrito, sem o repetir;
+    // a sugestão escolhida antes (se ainda lá estiver tal e qual) sai.
+    setNotes(prev => {
+      const base = withoutSuggestion(prev, planChoice?.texto);
+      return (base.includes(item.texto) ? base : [base.trim(), item.texto].filter(Boolean).join('\n')).slice(0, MAX_NOTES);
+    });
+    setPlanChoice({ id: item.id, mode: 'plano', texto: item.texto });
     setIsFormDirty(true);
+  };
+  // "Mudar": volta à escolha e tira o texto que a sugestão tinha posto (se ele não o mexeu).
+  const handleChangeMealSuggestion = () => {
+    if (planChoice?.texto) setNotes(prev => withoutSuggestion(prev, planChoice.texto));
+    setPlanChoice(null);
   };
 
   const status = (
@@ -657,8 +674,9 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             chosenId={planChoice?.mode === 'plano' ? planChoice.id : null}
             mode={planChoice?.mode || null}
             onUse={handleUseMealSuggestion}
-            onFree={() => { setPlanChoice({ id: null, mode: 'livre' }); setIsFormDirty(true); }}
-            onChange={() => setPlanChoice(null)}
+            // "Comi outra coisa" não mexe no formulário: não o deixa por gravar.
+            onFree={() => setPlanChoice({ id: null, mode: 'livre' })}
+            onChange={handleChangeMealSuggestion}
             dayLabel={mealDayLabel}
             accent="var(--mod-nutricao-to)"
             labels={{

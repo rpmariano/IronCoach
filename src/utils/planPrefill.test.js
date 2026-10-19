@@ -94,11 +94,15 @@ describe('mealSuggestionsFor — a refeição sugerida no plano (Refeição, §1
     expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'almoco')[0]).toMatchObject({ id: `${DAY}:almoco`, label: 'Almoço', texto: '150 g de frango, arroz e salada' });
   });
 
-  it('as já registadas nesse dia saem; outro dia, plano não aceite ou dia cancelado não dão nada', () => {
+  it('a sugestão mais recente do dia ganha, mesmo num item cancelado (um bloco novo aceite)', () => {
+    const novo = dia({ id: 'd2', status: 'cancelado', created_at: '2026-10-19T15:00:00Z', meal_macros: { items: [{ tipo: 'almoco', texto: 'sugestão nova' }, { tipo: 'jantar', texto: 'jantar novo' }] } });
+    expect(mealSuggestionsFor(DAY, PLANS, [dia(), novo], [], 'almoco')[0].texto).toBe('sugestão nova');
+  });
+
+  it('as já registadas nesse dia saem; outro dia ou plano não aceite não dão nada', () => {
     const meals = [{ date: DAY, meal_type: 'almoco' }, { date: '2026-10-18', meal_type: 'jantar' }];
     expect(mealSuggestionsFor(DAY, PLANS, [dia()], meals, 'almoco').map(m => m.tipo)).toEqual(['pequeno-almoco', 'jantar']);
     expect(mealSuggestionsFor('2026-10-20', PLANS, [dia()], [], 'almoco')).toEqual([]);
     expect(mealSuggestionsFor(DAY, PLANS, [dia({ plan_id: 'p2' })], [], 'almoco')).toEqual([]);
-    expect(mealSuggestionsFor(DAY, PLANS, [dia({ status: 'cancelado' })], [], 'almoco')).toEqual([]);
   });
 });
