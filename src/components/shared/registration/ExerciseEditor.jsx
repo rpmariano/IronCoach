@@ -299,7 +299,7 @@ export default function ExerciseEditor({ exercises, onChange, locker = null, loc
                           ? { borderColor: 'var(--mod-ginasio-to)', color: 'var(--mod-ginasio-to)', background: 'color-mix(in srgb, var(--mod-ginasio-to) 14%, transparent)' }
                           : { borderColor: 'var(--border-glass)', color: 'var(--text-3)' }}
                       >
-                        {text}
+                        {ex.goalMet === value && <Check size={13} className="inline mr-1 -mt-0.5" aria-hidden="true" />}{text}
                       </button>
                     ))}
                   </div>

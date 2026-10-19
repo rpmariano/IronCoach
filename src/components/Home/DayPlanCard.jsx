@@ -271,8 +271,10 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
      "Registar sessão", que aí deixa de se repetir na gaveta). Só no Início:
      o "+" não o tem. A corrida e os dias passados ficam com o "Registar
      sessão" da gaveta. */
-  const startSession = session && session.kind === 'ginasio' && day.dateISO === today ? session : null;
-  const hasDetail = instructions.length > 0 || (!!session && !startSession) || cancelled;
+  const startSession = day.dateISO === today
+    ? trainingItems(vivos).find((i) => !i.isRace && !isRacePlanItem(i) && i.status === 'pendente' && i.kind === 'ginasio') || null
+    : null;
+  const hasDetail = instructions.length > 0 || (!!session && session !== startSession) || cancelled;
 
   /* O dia fechado (dayDone.js): feito o treino, o que foi feito fica à
      vista — os números do registo contra o que o plano pedia —, fora da
@@ -346,7 +348,7 @@ export default function DayPlanCard({ plans = [], planItems = [], raceEvents = [
               </p>
             ))}
 
-            {session && !startSession && (
+            {session && session !== startSession && (
               <button type="button" onClick={() => onComplete?.(session)} className="w-full inline-flex items-center justify-center gap-[7px] min-h-[44px] mt-2.5 rounded-[11px] text-[12.5px] font-extrabold" style={{ background: 'var(--tint-ok-bg)', border: '1px solid var(--tint-ok-bd)', color: 'var(--ok)' }}>
                 <Check size={15} /> Registar sessão
               </button>
