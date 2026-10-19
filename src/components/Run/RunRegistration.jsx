@@ -1712,6 +1712,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         effort_rpe: runEffortRpe || null,
         shoe_id: shoeId,
         notes: runNotes.trim() ? runNotes.trim() : null,
+        // O que ele escreveu depois do aviso ganha à releitura dos prints.
+        ...(editedTypedSinceCreated() ? { typed: editedTypedSinceCreated() } : {}),
       },
     }, ANALYZE_TIMEOUT_MS);
     if (error) throw new Error(error);
@@ -2112,6 +2114,26 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingCreatedRun]);
   const metricsEditedSinceCreated = () => createdFormSigRef.current !== null && formMetricsSignature() !== createdFormSigRef.current;
+  /* Na reanálise da corrida criada (prints novos depois do aviso), só o que o
+     atleta mudou desde então vai como escrito (typed) — o resto do formulário
+     é a leitura antiga e não pode ganhar à leitura nova. */
+  const editedTypedSinceCreated = () => {
+    const snap = createdFormSigRef.current;
+    if (!snap || snap === RASCUNHO_SEM_ASSINATURA) return null;
+    let before;
+    let now;
+    try { before = JSON.parse(snap); now = JSON.parse(formMetricsSignature()); } catch { return null; }
+    const all = typedFormFields();
+    const out = {};
+    const differs = (a, b) => JSON.stringify(a ?? null) !== JSON.stringify(b ?? null);
+    if (differs(before.distance, now.distance)) out.distance_km = all.distance_km;
+    if (differs(before.duration, now.duration)) out.duration_seconds = all.duration_seconds;
+    const keys = new Set([...Object.keys(before.details || {}), ...Object.keys(now.details || {})]);
+    for (const k of keys) {
+      if (k in all && differs(before.details?.[k], now.details?.[k])) out[k] = all[k];
+    }
+    return Object.values(out).some((v) => v !== null && v !== undefined) ? out : null;
+  };
 
   // ----------------------------------
   // FORMULÁRIO ÚNICO — ler os prints, o que foi escrito, o plano
@@ -3281,7 +3303,10 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
       exit={exit}
       status={renderAnalysisStates()}
       busy={showAnalysis}
-      onSaveAndLeave={runIdToEdit ? () => handleSaveCorrida() : handleAnalyze}
+      onSaveAndLeave={runIdToEdit ? () => handleSaveCorrida() : () => {
+        if (reading) { exit.cancelLeave(); setErrorMsg('Espera que eu acabe de ler os prints.'); return; }
+        handleAnalyze();
+      }}
       isSaving={isSubmitting || analyzingRun}
       confirmation={confirmation}
       primaryAction={primaryAction}

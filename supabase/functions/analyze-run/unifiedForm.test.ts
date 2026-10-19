@@ -57,3 +57,16 @@ Deno.test("cleanTypedArrays: parciais com um número, zonas com os dois (decimai
   assertEquals(t.hr_zones, [{ zone: 1, minutes: 0.5 }]);
   assertEquals(cleanTypedArrays(extractionFromForm({ splits: [null], hr_zones: [] })).splits, null);
 });
+
+Deno.test("cleanTypedArrays: negativos fora; distância e duração só acima de zero (um 0 não apaga a leitura)", () => {
+  const t = cleanTypedArrays(extractionFromForm({ distance_km: 0, duration_seconds: 0, avg_heart_rate_bpm: -5, cadence_spm: 170 }));
+  assertEquals([t.distance_km, t.duration_seconds, t.avg_heart_rate_bpm, t.cadence_spm], [null, null, null, 170]);
+  const read = extractionFromForm({ distance_km: 8.3, duration_seconds: 2700 });
+  assertEquals(mergeRunExtraction(read, t).distance_km, 8.3);
+});
+
+Deno.test("handler: preview com run_id não cai na reanálise; a reanálise aceita o escrito (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, 'body.mode !== "manual" && body.mode !== "preview") {');
+  assertStringIncludes(src, "if (hasTypedRunValues(typedRe)) result = { ...result, extraction: mergeRunExtraction(result.extraction, typedRe) };");
+});
