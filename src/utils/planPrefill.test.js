@@ -99,6 +99,13 @@ describe('mealSuggestionsFor — a refeição sugerida no plano (Refeição, §1
     expect(mealSuggestionsFor(DAY, PLANS, [dia(), novo], [], 'almoco')[0].texto).toBe('sugestão nova');
   });
 
+  it('um cancelado fora do período do seu plano (bloco antigo arrumado) não dá sugestão', () => {
+    const plans = [{ id: 'p1', status: 'aceite', period_start: '2026-10-01', period_end: '2026-10-18' }];
+    expect(mealSuggestionsFor(DAY, plans, [dia({ status: 'cancelado' })], [], 'almoco')).toEqual([]);
+    const dentro = [{ id: 'p1', status: 'aceite', period_start: '2026-10-01', period_end: '2026-10-31' }];
+    expect(mealSuggestionsFor(DAY, dentro, [dia({ status: 'cancelado' })], [], 'almoco')).toHaveLength(1);
+  });
+
   it('as já registadas nesse dia saem; outro dia ou plano não aceite não dão nada', () => {
     const meals = [{ date: DAY, meal_type: 'almoco' }, { date: '2026-10-18', meal_type: 'jantar' }];
     expect(mealSuggestionsFor(DAY, PLANS, [dia()], meals, 'almoco').map(m => m.tipo)).toEqual(['pequeno-almoco', 'jantar']);

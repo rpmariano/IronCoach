@@ -38,11 +38,17 @@ const MEAL_TYPES = [
 const MAX_PHOTOS = 6; // espelha MAX_PHOTOS em supabase/functions/analyze-meal
 const MAX_NOTES = 500; // espelha MAX_NOTES_LENGTH em supabase/functions/analyze-meal
 
-/** As observações sem o texto que uma sugestão do plano lá pôs (se ainda estiver tal e qual). */
+/** As observações sem o texto que uma sugestão do plano lá pôs — só se estiver
+ *  numa linha sozinha, tal e qual; leva a quebra de linha que a juntou e mais
+ *  nada do que ele escreveu. */
 export function withoutSuggestion(notes, texto) {
   const n = notes || '';
-  if (!texto || !n.includes(texto)) return n;
-  return n.replace(texto, '').replace(/\n{2,}/g, '\n').trim();
+  if (!texto) return n;
+  const lines = n.split('\n');
+  const at = lines.lastIndexOf(texto);
+  if (at === -1) return n;
+  lines.splice(at, 1);
+  return lines.join('\n');
 }
 
 function getDefaultMealType() {

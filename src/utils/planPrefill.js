@@ -78,10 +78,19 @@ export function appendExercises(existing, incoming) {
  *  registadas nesse dia. Com a do tipo escolhido, só essa; sem ela, as outras,
  *  para ele escolher. [{ id, tipo, label, texto }] */
 export function mealSuggestionsFor(dateIso, coachPlans, coachPlanItems, meals = [], currentType = null) {
-  const accepted = new Set((coachPlans || []).filter(p => p?.status === 'aceite').map(p => p.id));
+  const accepted = new Map((coachPlans || []).filter(p => p?.status === 'aceite').map(p => [p.id, p]));
   // Os cancelados também: ao aceitar um bloco novo, é o item cancelado que traz
   // a sugestão nova — o mealsForDay escolhe a mais recente, como no Início.
-  const dayItems = (coachPlanItems || []).filter(i => accepted.has(i.plan_id) && i.planned_date === dateIso);
+  // Menos os arrumados pelo sistema: cancelados FORA do período do seu plano
+  // (o bloco antigo fechado na véspera do novo), como o ecrã Plano os esconde.
+  const arrumado = (i) => {
+    if (i.status !== 'cancelado') return false;
+    const p = accepted.get(i.plan_id);
+    const ini = String(p?.period_start || '').slice(0, 10);
+    const fim = String(p?.period_end || '').slice(0, 10);
+    return !!ini && !!fim && (dateIso < ini || dateIso > fim);
+  };
+  const dayItems = (coachPlanItems || []).filter(i => accepted.has(i.plan_id) && i.planned_date === dateIso && !arrumado(i));
   const model = mealsForDay(dayItems);
   if (!model) return [];
   const registered = new Set((meals || []).filter(m => m?.date === dateIso).map(m => m.meal_type));

@@ -102,6 +102,8 @@ Deno.test("runSavePantryFood: o crédito de polióis chega pela ferramenta; um a
   assertStringIncludes(ok, "guardado");
   assertEquals(calls.upserts.length, 1);
   const edited = fakeSb({ name: "Barra Proteica Choco", name_key: "barra proteica choco", in_pantry: false, edited_by_athlete: true, times_seen: 1 });
-  assertStringIncludes(await runSavePantryFood(edited.sb, "u1", ARGS), "ajustado por ele");
+  const msg = await runSavePantryFood(edited.sb, "u1", ARGS);
+  assertStringIncludes(msg, "já está registado");
+  assertEquals(msg.includes("abre o alimento na Despensa"), false);
   assertEquals(edited.calls.upserts.length, 0);
 });

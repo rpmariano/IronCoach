@@ -113,8 +113,11 @@ export async function runSavePantryFood(sb: any, userId: string, args: any, nowI
 
   // Ajustado à mão: nem um rótulo lhe reescreve os valores (athlete_foods.edited_by_athlete).
   if (prev?.edited_by_athlete) {
-    return `«${prev.name}» ${prev.in_pantry ? "já está na Despensa e" : "já está registado e"} foi ajustado por ele — não mexi nos valores. ` +
-      "Diz-lho; se quiser mudá-los, abre o alimento na Despensa (Armário > Alimentação).";
+    return prev.in_pantry
+      ? `«${prev.name}» já está na Despensa e foi ajustado por ele — não mexi nos valores. ` +
+        "Diz-lho; se quiser mudá-los, abre o alimento na Despensa (Armário > Alimentação)."
+      : `«${prev.name}» já está registado e foi ajustado por ele — não mexi nos valores. ` +
+        "Diz-lho; se quiser que fique na Despensa, pode juntá-lo lá à mão (Armário > Alimentação).";
   }
 
   const portionGrams = finiteNonNeg(args?.portion_grams);
