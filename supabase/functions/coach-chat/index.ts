@@ -7,6 +7,8 @@
 import { CHAT_RESOLVE_OUTCOMES, INTERVENTION_OUTCOME } from "../_shared/formulas/interventionOutcomes.ts";
 import { UNLINKED_RUN_DETAILS_PREFIX } from "../_shared/formulas/proactiveTriggers.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { imageMarker, imagesTurnSection, parseChatImages, userTurnParts } from "./chatImages.ts";
+import { runSavePantryFood, SAVE_PANTRY_FOOD_TOOL } from "./pantryFromChat.ts";
 import { normalizeGender, categorizeDistance as sharedCategorizeDistance, MIN_PREP_WEEKS as SHARED_MIN_PREP_WEEKS, MIN_VOLUME_KM as SHARED_MIN_VOLUME_KM, PRE_RACE_HARD_RUN_TYPES, PRE_RACE_EASY_DAYS } from "../_shared/formulas/vocabulary.ts";
 import { classifyVisceralFat as sharedClassifyVisceralFat } from "../_shared/formulas/bodyComposition.ts";
 import { focusRace, isPrincipalRace, nextRaceByDate, selectRaces } from "../_shared/formulas/mainRace.ts";
@@ -718,8 +720,9 @@ export const SERIES_TOOL_NAMES: readonly string[] = SERIES_TOOLS.map((t) => t.na
 // `withSeries` (Fase 2 do Troféu): as SERIES_TOOLS só com inscrição ativa. O
 // filtro `allowed` aplica-se por cima — nos casos A–D, F_* e nos turnos
 // proativos elas ficam de fora como as outras de escrita.
-export function buildTools(allowed?: Set<string> | null, withSeries = false) {
-  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, UPDATE_RACE_EVENT_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL, RESOLVE_INTERVENTION_TOOL, ...(withSeries ? SERIES_TOOLS : [])];
+// `withPhotos` (fotos no chat, decisão 17): a save_pantry_food só com fotos neste pedido; sem elas o payload é o de sempre.
+export function buildTools(allowed?: Set<string> | null, withSeries = false, withPhotos = false) {
+  const all = [NUTRITION_TOOL, GYM_TOOL, RUNNING_TOOL, PROPOSE_PLAN_TOOL, UPDATE_GOALS_TOOL, UPDATE_RACE_EVENT_TOOL, SAVE_MEALS_TOOL, SAVE_NOTE_TOOL, RESOLVE_INTERVENTION_TOOL, ...(withSeries ? SERIES_TOOLS : []), ...(withPhotos ? [SAVE_PANTRY_FOOD_TOOL] : [])];
   const decls = allowed ? all.filter((t) => allowed.has(t.name)) : all;
   return [{ functionDeclarations: decls }];
 }
@@ -740,7 +743,8 @@ const DECISION_PHRASES: Record<string, "A" | "B" | "C" | "D"> = {
 // save_coach_note entra aqui porque é permitida em TODOS os casos: não cria
 // nada que o atleta tenha de decidir, e é ao reagir a uma recusa que ele
 // explica o porquê — o momento em que há mais para aprender.
-const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note", "resolve_intervention"];
+// save_pantry_food só é declarada com fotos no pedido (buildTools) e, como a nota, não deixa nada por decidir.
+const READ_TOOL_NAMES = ["get_nutrition_history", "get_gym_history", "get_running_history", "save_coach_note", "resolve_intervention", "save_pantry_food"];
 
 export type TurnCase = "A" | "B" | "C" | "D" | "F_PLAN" | "F_GOALS" | "E";
 
@@ -6383,9 +6387,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
 
     const body = await req.json();
-    const message = typeof body.message === "string"
+    // Fotos no chat (decisões 16/17): só neste pedido, nunca em turnos por iniciativa dela.
+    const chatImages = typeof body.proactive_trigger === "string" ? [] : parseChatImages(body.images);
+    const typedMessage = typeof body.message === "string"
       ? body.message.slice(0, MAX_MSG_LEN).trim()
       : "";
+    const message = typedMessage || (chatImages.length ? "Olha para esta(s) foto(s), por favor." : "");
     // Turno por iniciativa da Carol (ver PROACTIVE_TRIGGERS): sem mensagem do
     // atleta, com um contexto curto do cliente sobre o momento (prova, dias
     // sem registo). Um valor fora da lista é ignorado, não é erro.
@@ -7146,7 +7153,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Verificação leve antes de guardar a mensagem ou construir o prompt.
     // Só bloqueia mensagens longas sem qualquer keyword de saúde/treino —
     // casos ambíguos passam ao Gemini que decide via o campo "on_topic".
-    if (!looksHealthRelated(message)) {
+    if (!chatImages.length && !looksHealthRelated(message)) {
       // Guardar o par user+modelo no histórico para a Carol lembrar que redirecionou.
       const [{ data: offUserMsg }, { data: offModelMsg }] = await Promise.all([
         sb.from("coach_messages").insert({ user_id: userId, role: "user", content: message }).select().single(),
@@ -7170,7 +7177,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // à mesma pergunta, com textos diferentes. Uma mensagem igual à última
     // do atleta, há menos de DUPLICATE_WINDOW_MS e já com resposta, é o
     // mesmo pedido: devolve-se essa resposta, sem gravar nem gerar nada.
-    if (message) {
+    // Com fotos não se compara: duas fotos diferentes com a mesma frase não são o mesmo pedido.
+    if (message && !chatImages.length) {
       const duplicate = await findAnsweredDuplicate(sb, userId, message);
       if (duplicate) {
         console.log("coach-chat pedido repetido: devolve a resposta já dada", { userMessageId: duplicate.user.id });
@@ -7192,7 +7200,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     if (message) {
       const { data, error: userMsgErr } = await sb
         .from("coach_messages")
-        .insert({ user_id: userId, role: "user", content: message })
+        .insert({ user_id: userId, role: "user", content: message + imageMarker(chatImages.length) })
         .select()
         .single();
       if (userMsgErr) {
@@ -7488,6 +7496,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const cupMapShown = cupMapPrompt !== null && !message && !body.is_intervention_start && !!body.is_plan_checkin &&
       planCheckinPrompt === cupMapPrompt;
 
+    if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
+
     // deno-lint-ignore no-explicit-any
     const contents: any[] = [
       ...(history || []).map((m: { role: string; content: string }) => ({
@@ -7511,6 +7521,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Restringe as ferramentas ao que este caso permite (ver classifyTurn).
     // É a mesma regra do ESQUEMA DE DECISÃO no prompt, mas aqui é imposta:
     // o que não vai na lista o modelo não consegue chamar.
+    // As fotos seguem no último turno do atleta, a seguir ao texto.
+    if (chatImages.length) contents[contents.length - 1].parts.push(...userTurnParts("", chatImages).slice(1));
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
     const allowedTools = proactiveTrigger ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
@@ -7523,7 +7535,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // As SERIES_TOOLS só com inscrição ativa (o filtro do caso aplica-se por
     // cima). Sem ela, o payload é o de sempre, byte a byte.
     const seriesToolsOn = seriesBlock?.active === true;
-    const toolsBlock = buildTools(allowedTools, seriesToolsOn);
+    const toolsBlock = buildTools(allowedTools, seriesToolsOn, chatImages.length > 0);
     const toolNamesSent = toolsBlock[0].functionDeclarations.map((t: { name: string }) => t.name);
     const toolsBytes = JSON.stringify(toolsBlock).length;
 
@@ -7593,6 +7605,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let planWasProposed = false;
     let goalsWereUpdated = false;
     let goalWasProposed = false;
+    let pantryFoodsSaved = 0;
     // Sinais para o cliente recarregar o que mudou na base de dados durante
     // o turno: a prova (update_race_event) e o estado da intervenção
     // (resolve_intervention) — sem isto o Início continuava a dizer "1
@@ -7772,6 +7785,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
           raceWasUpdated = raceWasUpdated || result.startsWith("Prova atualizada");
         } else if (name === "save_coach_note") {
           result = await runSaveCoachNote(sb, userId, args || {});
+        } else if (name === "save_pantry_food") {
+          // Só com fotos no pedido, e no máximo uma por foto.
+          result = chatImages.length > 0 && pantryFoodsSaved < chatImages.length
+            ? await runSavePantryFood(sb, userId, args || {})
+            : `Erro: função desconhecida "${name}".`;
+          if (result.startsWith("Produto ")) pantryFoodsSaved++;
         } else if (name === "save_meal_suggestions") {
           result = await runSaveMealSuggestions(sb, userId, args || {});
         } else if (name === "resolve_intervention") {

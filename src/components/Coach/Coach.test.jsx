@@ -1976,3 +1976,78 @@ describe('Coach — "Saiu a classificação" (coachIntent cup_results)', () => {
     expect(invokeEdgeFunctionWithTimeout).not.toHaveBeenCalled();
   });
 });
+
+vi.mock('../../lib/image', () => ({
+  compressImage: vi.fn(async (f) => ({ dataUrl: `data:image/jpeg;base64,${f.name}`, base64: f.name })),
+}));
+
+describe('Coach — fotos no chat (decisões 16 e 17)', () => {
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    localStorage.clear();
+    useAppStore.setState({
+      profile: { id: 'user-1' },
+      coachMessages: [],
+      coachLoading: false,
+      coachSuggestions: [],
+      coachPlans: [],
+      coachPlanItems: [],
+      coachGoalProposals: [],
+      coachIntent: null,
+      session: { user: { id: 'user-1' } },
+      setCoachIntent: (intent) => useAppStore.setState({ coachIntent: intent }),
+      reloadCoachPlans: vi.fn().mockResolvedValue([]),
+      reloadCoachGoalProposals: vi.fn().mockResolvedValue([]),
+      respondToPlan: vi.fn().mockResolvedValue(true),
+      respondToGoalProposal: vi.fn().mockResolvedValue(true),
+    });
+  });
+
+  afterEach(() => localStorage.clear());
+
+  const photo = (name) => new File(['x'], name, { type: 'image/jpeg' });
+
+  it('anexar uma foto mostra a miniatura, deixa enviar sem texto e manda-a no pedido', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { content: 'Guardei o produto na Despensa.' } }, error: null });
+    renderCoach();
+    const send = screen.getByRole('button', { name: 'Enviar pergunta à Carol' });
+    expect(send).toBeDisabled();
+
+    fireEvent.change(screen.getByTestId('coach-photo-input'), { target: { files: [photo('barra.jpg')] } });
+    expect(await screen.findByAltText('Foto 1 por enviar')).toBeInTheDocument();
+    expect(send).not.toBeDisabled();
+
+    fireEvent.click(send);
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalled());
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.images).toEqual([{ mime_type: 'image/jpeg', data: 'barra.jpg' }]);
+    expect(body.message).toBe('');
+    expect(screen.queryByAltText('Foto 1 por enviar')).toBeNull();
+    expect(await screen.findByText(/1 foto enviada/)).toBeInTheDocument();
+  });
+
+  it('tirar uma foto antes de enviar; no máximo 3 por mensagem', async () => {
+    renderCoach();
+    fireEvent.change(screen.getByTestId('coach-photo-input'), { target: { files: [photo('1'), photo('2'), photo('3')] } });
+    expect(await screen.findAllByAltText(/por enviar$/)).toHaveLength(3);
+    // Com 3, o botão de anexar sai.
+    expect(screen.queryByTestId('coach-photo-input')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Tirar a foto 2' }));
+    expect(screen.getAllByAltText(/por enviar$/)).toHaveLength(2);
+    expect(screen.getByTestId('coach-photo-input')).toBeInTheDocument();
+  });
+
+  it('o texto vai junto com as fotos', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { model_message: { content: 'Ok.' } }, error: null });
+    renderCoach();
+    fireEvent.change(screen.getByTestId('coach-photo-input'), { target: { files: [photo('prato.jpg')] } });
+    await screen.findByAltText('Foto 1 por enviar');
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Quantas calorias tem isto?' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Enviar pergunta à Carol' }));
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalled());
+    const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
+    expect(body.message).toBe('Quantas calorias tem isto?');
+    expect(body.images).toHaveLength(1);
+  });
+});

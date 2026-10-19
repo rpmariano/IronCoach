@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppStore, selectCoachHasPendingTopic } from '../../store';
 import { invokeEdgeFunctionWithTimeout, supabase } from '../../lib/supabase';
-import { Send, Loader2, Sparkles, RotateCcw } from 'lucide-react';
+import { Send, Loader2, Sparkles, RotateCcw, ImagePlus, X } from 'lucide-react';
+import { compressImage } from '../../lib/image';
+import { MAX_CHAT_PHOTOS, addChatPhotos, photoMarker, toPayloadImages } from '../../utils/chatPhotos';
 import { format } from 'date-fns';
 import { pt } from 'date-fns/locale';
 import '../Home/WeeklyPlanCard.css';
@@ -736,6 +738,9 @@ export default function Coach() {
   };
 
   const [inputStr, setInputStr] = useState('');
+  // Fotos por enviar (embalagens, comida — decisões 16/17): só em memória, vão neste pedido e mais nada.
+  const [photos, setPhotos] = useState([]);
+  const [photoNote, setPhotoNote] = useState('');
   const [hoursToShow, setHoursToShow] = useState(24);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
@@ -1029,9 +1034,31 @@ export default function Coach() {
      `noteDiscussion` (a nota da memória a mudar). Fica de
      fora da mensagem de propósito: o que o atleta escreve tem de ser o que
      ele diria, e o contexto é do servidor. */
+  const handleSelectPhotos = async (e) => {
+    const files = e.target.files;
+    e.target.value = '';
+    if (!files?.length) return;
+    const { photos: next, skipped } = await addChatPhotos(photos, files, compressImage);
+    setPhotos(next);
+    setPhotoNote(skipped > 0 ? `Só cabem ${MAX_CHAT_PHOTOS} fotos por mensagem, ou algum ficheiro não era uma imagem.` : '');
+  };
+
   const handleSend = async (textToSend, extras) => {
-    const text = (typeof textToSend === 'string' ? textToSend : inputStr).trim();
-    if (!text || coachLoading) return;
+    // Só o envio da caixa de texto leva as fotos; as frases automáticas (decisões de plano, etc.) não.
+    const fromComposer = typeof textToSend !== 'string';
+    const sendPhotos = fromComposer ? photos : [];
+    const typed = (fromComposer ? inputStr : textToSend).trim();
+    // Um "Reenviar" de só fotos volta com as imagens nos extras (retryExtras).
+    const retriedImages = Array.isArray(extras?.images) && extras.images.length > 0;
+    if ((!typed && !sendPhotos.length && !retriedImages) || coachLoading) return;
+    // Só fotos: o servidor responde a "olha para estas fotos"; aqui a bolha mostra só a linha das fotos.
+    const text = typed;
+    if (sendPhotos.length) {
+      extras = { ...(extras && typeof extras === 'object' ? extras : null), images: toPayloadImages(sendPhotos) };
+      setPhotos([]);
+      setPhotoNote('');
+    }
+    const nPhotos = Array.isArray(extras?.images) ? extras.images.length : 0;
 
     setInputStr('');
     clearPersistedFormDraft(COACH_CHAT_DRAFT_KEY);
@@ -1041,7 +1068,7 @@ export default function Coach() {
 
     // Add user message to state
     const localUserId = Date.now().toString();
-    addCoachMessage({ id: localUserId, role: 'user', content: text });
+    addCoachMessage({ id: localUserId, role: 'user', content: (text + photoMarker(nPhotos)).trim() });
     setCoachLoading(true);
     setCoachSuggestions([]);
 
@@ -1432,7 +1459,34 @@ export default function Coach() {
             </button>
           </div>
         )}
+        {photos.length > 0 && (
+          <div className="flex gap-2 mb-2 px-1" data-testid="coach-photos">
+            {photos.map((p, i) => (
+              <div key={i} className="relative w-16 h-16 shrink-0">
+                <img src={p.dataUrl} alt={`Foto ${i + 1} por enviar`} className="w-full h-full object-cover rounded-xl border border-[var(--border-glass)]" />
+                <button
+                  type="button"
+                  aria-label={`Tirar a foto ${i + 1}`}
+                  onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
+                  className="absolute -top-2 -right-2 w-11 h-11 flex items-center justify-center"
+                >
+                  <span className="bg-white/90 text-slate-800 border border-[var(--border-glass)] rounded-full p-1 shadow-sm flex"><X size={12} /></span>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {photoNote && <p role="status" className="text-[12px] text-[var(--text-2)] mb-2 px-1">{photoNote}</p>}
         <div className="flex gap-2 items-end">
+          {photos.length < MAX_CHAT_PHOTOS && (
+            <label
+              aria-label="Anexar foto (embalagem ou comida)"
+              className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center border border-[var(--border-glass)] bg-[var(--bg-sheet)] text-[var(--text-3)] transition focus-within:ring-2 focus-within:ring-[var(--mod-coach-to)] ${coachLoading ? 'opacity-50' : 'cursor-pointer active:scale-95'}`}
+            >
+              <input type="file" accept="image/*" multiple disabled={coachLoading} className="sr-only" onChange={handleSelectPhotos} data-testid="coach-photo-input" />
+              <ImagePlus className="w-5 h-5" />
+            </label>
+          )}
           <textarea
             ref={textareaRef}
             rows={1}
@@ -1449,15 +1503,15 @@ export default function Coach() {
           />
           <button
             onClick={() => handleSend()}
-            disabled={!inputStr.trim() || coachLoading}
+            disabled={(!inputStr.trim() && !photos.length) || coachLoading}
             aria-label="Enviar pergunta à Carol"
             className={`shrink-0 w-11 h-11 min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition active:scale-95 ${
-              coachLoading || !inputStr.trim()
+              coachLoading || (!inputStr.trim() && !photos.length)
                 ? 'bg-[var(--surface-strong)] text-[var(--text-3)] cursor-not-allowed'
                 : 'text-[var(--coach-ink)] font-bold'
             }`}
             style={{
-              background: !inputStr.trim() || coachLoading ? undefined : 'var(--mod-coach-to)'
+              background: (!inputStr.trim() && !photos.length) || coachLoading ? undefined : 'var(--mod-coach-to)'
             }}
           >
             {coachLoading ? (
