@@ -13,3 +13,10 @@ supabase/.branches/
 graphify-out/
 __pycache__/
 *.pyc
+
+# Carol: originais 3D em croché, cenas, showcase e ZIP (~200 MB, fora do git).
+# A app usa só as cópias leves de public/carol-avatar/ (CAROL.md §4).
+public/carol/
+CAROL_ASSETS_FINAL.md
+carol_assets_final.zip
+carol_mobile_showcase.html
