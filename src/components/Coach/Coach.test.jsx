@@ -2031,6 +2031,8 @@ describe('Coach — fotos no chat (decisões 16 e 17)', () => {
     renderCoach();
     fireEvent.change(screen.getByTestId('coach-photo-input'), { target: { files: [photo('1'), photo('2'), photo('3')] } });
     expect(await screen.findAllByAltText(/por enviar$/)).toHaveLength(3);
+    // Anuncia-se o que está pronto (região de estado).
+    expect(screen.getByText('3 fotos prontas a enviar.')).toHaveAttribute('role', 'status');
     // Com 3, o botão de anexar sai.
     expect(screen.queryByTestId('coach-photo-input')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Tirar a foto 2' }));
