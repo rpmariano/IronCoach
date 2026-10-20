@@ -90,7 +90,10 @@ describe('mealSuggestionsFor — a refeição sugerida no plano (Refeição, §1
 
   it('com a do tipo escolhido, só essa; sem ela, as outras', () => {
     expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'almoco').map(m => m.tipo)).toEqual(['almoco']);
-    expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'ceia').map(m => m.tipo)).toEqual(['pequeno-almoco', 'almoco', 'jantar']);
+    // Bug #77: um tipo sem sugestão no plano (a Ceia) não mostra as outras refeições do dia.
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'ceia')).toEqual([]);
+    // Sem tipo escolhido, ficam todas as em aberto.
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], null).map(m => m.tipo)).toEqual(['pequeno-almoco', 'almoco', 'jantar']);
     expect(mealSuggestionsFor(DAY, PLANS, [dia()], [], 'almoco')[0]).toMatchObject({ id: `${DAY}:almoco`, label: 'Almoço', texto: '150 g de frango, arroz e salada' });
   });
 
@@ -108,7 +111,10 @@ describe('mealSuggestionsFor — a refeição sugerida no plano (Refeição, §1
 
   it('as já registadas nesse dia saem; outro dia ou plano não aceite não dão nada', () => {
     const meals = [{ date: DAY, meal_type: 'almoco' }, { date: '2026-10-18', meal_type: 'jantar' }];
-    expect(mealSuggestionsFor(DAY, PLANS, [dia()], meals, 'almoco').map(m => m.tipo)).toEqual(['pequeno-almoco', 'jantar']);
+    // O almoço já está registado: o tipo almoço não dá nada; os outros continuam (bug #77: só o do tipo escolhido).
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], meals, 'almoco')).toEqual([]);
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], meals, 'jantar').map(m => m.tipo)).toEqual(['jantar']);
+    expect(mealSuggestionsFor(DAY, PLANS, [dia()], meals, null).map(m => m.tipo)).toEqual(['pequeno-almoco', 'jantar']);
     expect(mealSuggestionsFor('2026-10-20', PLANS, [dia()], [], 'almoco')).toEqual([]);
     expect(mealSuggestionsFor(DAY, PLANS, [dia({ plan_id: 'p2' })], [], 'almoco')).toEqual([]);
   });
