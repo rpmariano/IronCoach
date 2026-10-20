@@ -928,13 +928,18 @@ describe('GymRegistration — plano só com texto (bug #70)', () => {
     onClose.mockClear();
   });
 
-  it('vindo do Início com um treino do plano sem prescrição, a Carol lê o texto sozinha e preenche', async () => {
+  it('vindo do Início com um treino do plano sem prescrição, o texto vem para as notas e só é lido ao tocar no botão', async () => {
     useAppStore.setState({
       profile: PROFILE, gymSessions: [], exerciseLocker: [],
       planItemPrefill: { id: 'item-txt', kind: 'ginasio', planned_date: hojeISO, notes: NOTAS, prescription: null },
     });
     mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW_PLANO, readable: true }, error: null });
     render(<GymRegistration onClose={onClose} />);
+    expect(await screen.findByDisplayValue(NOTAS)).toBeInTheDocument();
+    // Cada leitura é uma chamada ao Gemini: abrir o ecrã não chama nada.
+    await new Promise(r => setTimeout(r, 20));
+    expect(mocks.invoke).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /Preencher o formulário com isto/ }));
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ mode: 'preview', images: [], notes: NOTAS });
     expect(await screen.findByDisplayValue('Cadeira extensora')).toBeInTheDocument();
