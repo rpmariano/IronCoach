@@ -1034,6 +1034,22 @@ describe('MealRegistration — a despensa ao escrever', () => {
     root.removeAttribute('data-keyboard');
   });
 
+  it('bug #79: sem espaço vazio por baixo; a barra só sai a escrever um alimento; foco nas Observações liberta-a', () => {
+    render(<MealRegistration onClose={onClose} />);
+    const barra = screen.getByTestId('action-bar');
+    expect(barra.className).not.toMatch(/hide-when-keyboard/);
+    const nome = screen.getByLabelText('Nome do alimento a adicionar');
+    fireEvent.focus(nome);
+    fireEvent.focusIn(nome);
+    expect(screen.getByTestId('action-bar').className).toMatch(/hide-when-keyboard/);
+    // O espaço fixo de 45vh / 420 px já não existe.
+    expect(screen.queryByTestId('meal-typing-spacer')).not.toBeInTheDocument();
+    // Ir para as Observações (focusin fora do bloco) desliga o modo de escrita.
+    const obs = screen.getByPlaceholderText(/Detalhes que mudam os valores nutricionais/);
+    fireEvent.focusIn(obs);
+    expect(screen.getByTestId('action-bar').className).not.toMatch(/hide-when-keyboard/);
+  });
+
   it('bug #64: a escrever, os atalhos e a ajuda escondem-se; Enter adiciona; "+" na mesma linha', () => {
     useAppStore.setState({ mealTemplates: [{ id: 't1', name: 'Pequeno-almoço de treino', items: [{ name: 'Aveia em flocos', grams: 50 }], times_used: 1 }] });
     render(<MealRegistration onClose={onClose} />);
