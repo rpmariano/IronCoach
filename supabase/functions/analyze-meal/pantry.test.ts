@@ -600,6 +600,14 @@ Deno.test("bug #74 (revisão): hábitos aprendidos sem prato já não vão para 
   assertStringIncludes(s, "vale para os pratos dessa categoria");
 });
 
+Deno.test("bug #74 (revisão): o plural e a forma antiga \"quantidade de X\" também são quantidade", () => {
+  const r = (topic: string): FoodRule =>
+    ({ topic, topic_key: foodKey(topic), value: "x", value_key: "x", confirmations: 2, status: "confirmado", source: "resposta" });
+  const s = knowledgeSection([], [r("manteiga · quantidades"), r("quantidade de manteiga")]);
+  assertStringIncludes(s, "manteiga · quantidades: x");
+  assertStringIncludes(s, "quantidade de manteiga: x");
+});
+
 Deno.test("bug #74: o conhecimento diz que um hábito só vale para o prato que nomeia", () => {
   const regras: FoodRule[] = [{ topic: "azeite na salada · quantidade", topic_key: "azeite na salada quantidade", value: "um fio", value_key: "um fio", confirmations: 2, status: "confirmado", source: "resposta" }];
   const s = knowledgeSection([], regras);

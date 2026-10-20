@@ -731,8 +731,12 @@ export function isGenericTopic(topic: string): boolean {
   return GENERIC_TOPICS.has(foodKey(topicCore(topic)));
 }
 
+/** "manteiga · quantidade", "manteiga quantidades" ou, de dados antigos,
+ *  "quantidade de manteiga". A mesma regra de isQuantityRule em
+ *  src/utils/pantry.js. */
 function isQuantityTopic(topic: string): boolean {
-  return /quantidades?\s*$/i.test(String(topic || ""));
+  const t = String(topic || "");
+  return /quantidades?\s*$/i.test(t) || /^\s*quantidades?\b/i.test(t);
 }
 
 /** Um hábito de preparação aprendido (não escrito por ele) cujo tema não diz

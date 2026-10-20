@@ -164,13 +164,20 @@ export function ruleInfo(rule) {
 export const QUANTITY_SUFFIX = ' · quantidade';
 
 /** É um hábito de quantidade ("manteiga · quantidade")? */
+// Também o plural e a forma antiga "quantidade de manteiga" — a mesma regra
+// de isQuantityTopic em supabase/functions/analyze-meal/pantry.ts.
 export function isQuantityRule(rule) {
-  return /quantidade\s*$/i.test(String(rule?.topic || ''));
+  const t = String(rule?.topic || '');
+  return /quantidades?\s*$/i.test(t) || /^\s*quantidades?\b/i.test(t);
 }
 
-/** O tema para mostrar: "manteiga · quantidade" → "manteiga". */
+/** O tema para mostrar: "manteiga · quantidade" e "quantidade de manteiga" → "manteiga". */
 export function ruleLabel(rule) {
-  return String(rule?.topic || '').replace(/\s*·?\s*quantidade\s*$/i, '').trim() || String(rule?.topic || '');
+  const topic = String(rule?.topic || '');
+  return topic
+    .replace(/\s*·?\s*quantidades?\s*$/i, '')
+    .replace(/^\s*quantidades?\s+(?:de|do|da|dos|das)?\s*/i, '')
+    .trim() || topic;
 }
 
 /* Bug #74: os temas que só dizem o ingrediente ou o gesto. A mesma lista de
