@@ -131,6 +131,9 @@ export function pendingRulesFor(name: unknown, rules: FoodRule[]): FoodRule[] {
   if (!words.size) return [];
   return (rules || []).filter((r) =>
     (r.status === "por_confirmar" || r.status === "varia") &&
+    // Um hábito de quantidade com gramas (o peso que ele escreveu, bug #75)
+    // não é uma pergunta em aberto: o alimento continua sem ir ao modelo.
+    !(/quantidades?\s*$/i.test(r.topic) && optionGrams(r.value) != null) &&
     [...stems(r.topic)].some((w) => words.has(w))
   );
 }
@@ -759,4 +762,29 @@ export function contextualTopic(rawTopic: string, itemName: string, max = 40): s
   if (room < 4) return core.slice(0, max);
   const dish = item.length > room ? `${item.slice(0, room - 1).trimEnd()}…` : item;
   return `${core} (${dish})`;
+}
+
+/* Bug #75 (2026-10-20): o peso que o atleta escreve para um alimento da
+   despensa, quando é outro que não a porção habitual, soma a um hábito de
+   quantidade — "arroz branco cozido · quantidade: 150 g". Duas vezes o mesmo
+   peso confirma-o (nextRuleRow), e a app passa a usá-lo por omissão. */
+export function portionFacts(
+  written: Array<{ name?: string | null; grams?: number | null }> | null | undefined,
+  byKey: Map<string, PantryFood>,
+): CookingFact[] {
+  const out: CookingFact[] = [];
+  const seen = new Set<string>();
+  for (const w of written || []) {
+    const grams = Math.round(Number(w?.grams));
+    if (!(grams > 0)) continue;
+    const food = byKey.get(foodKey(w?.name));
+    if (!food || seen.has(food.name_key)) continue;
+    const portion = Math.round(Number(food.portion_grams));
+    if (portion > 0 && portion === grams) continue;
+    const topic = quantityTopic(food.name);
+    if (!topic) continue;
+    seen.add(food.name_key);
+    out.push({ topic, value: `${grams} g` });
+  }
+  return out;
 }

@@ -407,3 +407,21 @@ export function suggestedTemplateName(typeLabel, items) {
   if (space <= sep) return tidy(cut);
   return tidy(cut.slice(0, space));
 }
+
+/* Bug #75 (2026-10-20): o peso habitual de um alimento — um hábito de
+   quantidade confirmado ("arroz branco cozido · quantidade: 150 g", duas
+   vezes o mesmo peso) ganha à porção da despensa. Devolve { grams, habitual }:
+   habitual=true quando vem do hábito. */
+export function foodDefaultGrams(food, rules) {
+  const key = String(food?.name_key || foodKey(food?.name));
+  const rule = (rules || []).find((r) => {
+    if (r?.status !== 'confirmado' || !isQuantityRule(r)) return false;
+    const label = foodKey(ruleLabel(r));
+    return !!label && (label === key || (label.length >= 20 && key.startsWith(label)));
+  });
+  const m = rule && String(rule.value || '').match(/(\d+(?:[.,]\d+)?)\s*g(?:ramas?)?(?![a-z])/i);
+  const fromRule = m ? Math.round(Number(m[1].replace(',', '.'))) : null;
+  if (fromRule > 0) return { grams: fromRule, habitual: true };
+  const portion = Number(food?.portion_grams);
+  return { grams: portion > 0 ? Math.round(portion) : null, habitual: false };
+}

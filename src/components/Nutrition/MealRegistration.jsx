@@ -14,7 +14,7 @@ import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDra
 import { normalizeStartTime, startTimeInputValue } from '../../utils/startTime';
 import { mealNominalTime } from '../../utils/dayOrder';
 import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
-import { foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType } from '../../utils/pantry';
+import { foodDefaultGrams, foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType } from '../../utils/pantry';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import RegistrationShell from '../shared/registration/RegistrationShell';
 import RegistrationSection from '../shared/registration/RegistrationSection';
@@ -66,7 +66,7 @@ function getDefaultMealType() {
 }
 
 export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit = null }) {
-  const { profile, meals, setMeals, loadInitialData, setNavGuard, coachPlans, coachPlanItems, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
+  const { profile, meals, setMeals, loadInitialData, setNavGuard, coachPlans, coachPlanItems, session, pantryFoods: storedPantry, mealTemplates: storedTemplates, foodRules: storedRules, pantryLoaded, pantryUserId, loadPantry } = useAppStore();
   // A despensa (bugs #48/#52, fase C): sugestões ao escrever e os habituais
   // desta refeição. Um alimento da despensa já não é analisado.
   // A que está em memória pode ser de outra conta (sessão trocada sem recarregar).
@@ -74,6 +74,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
   const pantryIsMine = !myId || pantryUserId === myId;
   const pantryFoods = pantryIsMine ? storedPantry : [];
   const mealTemplates = pantryIsMine ? (storedTemplates || []) : [];
+  const foodRules = pantryIsMine ? (storedRules || []) : [];
   useEffect(() => { if (!pantryLoaded || !pantryIsMine) loadPantry?.(); }, [pantryLoaded, pantryIsMine, loadPantry]);
 
   
@@ -415,7 +416,8 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
      valores dela, sem o voltar a analisar (analyze-meal/pantry.ts). */
   const addPantryFood = (food) => {
     const typed = itemGrams.trim() ? Number(itemGrams) : null;
-    const grams = typed > 0 ? typed : (Number(food.portion_grams) > 0 ? Math.round(Number(food.portion_grams)) : null);
+    // Bug #75: o peso habitual (duas vezes o mesmo) ganha à porção da despensa.
+    const grams = typed > 0 ? typed : foodDefaultGrams(food, foodRules).grams;
     setErrorMsg('');
     setManualItems(prev => [...prev, { key: `${Date.now()}-${prev.length}`, name: food.name, grams }]);
     setIsFormDirty(true);
@@ -432,6 +434,17 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     return isPantryComplete(food) ? 'já conhecido, não é analisado' : 'já conhecido · a Carol completa os micronutrientes';
   };
   const suggestions = pantrySuggestions(itemName, pantryFoods);
+  /* Bug #75: a porção que se mostra é a que vai entrar — o peso habitual
+     (hábito confirmado) quando há, senão a da despensa. */
+  const portionLabel = (f) => {
+    const { grams, habitual } = foodDefaultGrams(f, foodRules);
+    if (habitual) return `${grams} g · o teu habitual`;
+    return portionText(f);
+  };
+  const portionKcal = (f) => {
+    const { grams } = foodDefaultGrams(f, foodRules);
+    return grams ? `${Math.round((Number(f.calories_per_100g) || 0) * grams / 100)} kcal` : null;
+  };
   const hasSuggestions = suggestions.length > 0;
 
   /* Bug #64 (2.º print, 2026-10-17): um scroll só, 250 ms depois do foco,
@@ -857,7 +870,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                     className="min-h-[44px] px-3 rounded-full text-[12.5px] font-bold"
                     style={{ border: '1px solid var(--tint-nutrition-bd)', background: 'var(--tint-nutrition-bg)', color: 'var(--text-1)' }}
                   >
-                    + {f.name}{portionText(f) ? ` · ${portionText(f)}` : ''}
+                    + {f.name}{portionLabel(f) ? ` · ${portionLabel(f)}` : ''}
                   </button>
                 ))}
               </div>
@@ -925,7 +938,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                   >
                     <span className="block text-[13.5px] font-extrabold" style={{ color: 'var(--text-1)' }}>{f.name}</span>
                     <span className="block text-[11.5px]" style={{ color: 'var(--text-4)' }}>
-                      {[portionText(f), f.portion_grams ? `${Math.round((Number(f.calories_per_100g) || 0) * Number(f.portion_grams) / 100)} kcal` : null].filter(Boolean).join(' · ')}
+                      {[portionLabel(f), portionKcal(f)].filter(Boolean).join(' · ')}
                     </span>
                   </button>
                 ))}
@@ -966,14 +979,30 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                       <span className="text-[11px] text-[var(--text-3)]">g</span>
                     </>
                   ) : (
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <p className="text-xs font-bold text-[var(--text-1)] capitalize">{item.name}</p>
                       <p className="text-[11px] text-[var(--text-3)]">
                         {isKnownFood(item.name, pantryFoods)
-                          ? `${item.grams != null ? `${item.grams}g · ` : ''}${knownFoodNote(item.name)}`
-                          : (item.grams != null ? `${item.grams}g` : 'Porção estimada pela Carol')}
+                          ? knownFoodNote(item.name)
+                          : (item.grams != null && item.grams !== '' ? 'a Carol estima os valores' : 'Porção estimada pela Carol')}
                       </p>
                     </div>
+                  )}
+                  {!isEditing && (
+                    /* Bug #75 (2026-10-20): as gramas editam-se também ao criar —
+                       tocar num alimento da despensa trazia a porção habitual
+                       (90 g) e não havia forma de pôr os 150 g antes de gravar. */
+                    <label className="flex items-center gap-1 shrink-0">
+                      <input
+                        type="number" min="1" step="1" inputMode="numeric"
+                        aria-label={`Gramas de ${item.name}`}
+                        value={item.grams ?? ''}
+                        placeholder="g"
+                        onChange={e => { updateManualItem(item.key, { grams: e.target.value === '' ? null : Number(e.target.value) }); setIsFormDirty(true); }}
+                        className="w-16 min-h-[44px] rounded-lg px-2 text-sm text-right outline-none bg-[var(--surface-soft)] border border-[var(--border-glass)] text-[var(--text-1)]"
+                      />
+                      <span className="text-[11px] text-[var(--text-3)]">g</span>
+                    </label>
                   )}
                   <button
                     onClick={() => { handleRemoveManualItem(item.key); setIsFormDirty(true); }}

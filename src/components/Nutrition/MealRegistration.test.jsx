@@ -246,7 +246,7 @@ describe('MealRegistration — registo manual: adicionar é local, análise só 
     addItem('Peito de frango', 150);
 
     expect(screen.getByText('Peito de frango')).toBeInTheDocument();
-    expect(screen.getByText('150g')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gramas de Peito de frango')).toHaveValue(150);
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
@@ -900,13 +900,14 @@ describe('MealRegistration — a despensa ao escrever', () => {
     { id: 'i', name: 'Iogurte grego 0%', name_key: 'iogurte grego 0%', times_seen: 6, portion_grams: 170, calories_per_100g: 59, ...MICROS },
     { id: 'n', name: 'Iogurte natural', name_key: 'iogurte natural', times_seen: 2, portion_grams: 125, calories_per_100g: 63 },
     { id: 'a', name: 'Aveia em flocos', name_key: 'aveia em flocos', times_seen: 5, portion_grams: 40, calories_per_100g: 372, ...MICROS },
+    { id: 'r', name: 'Arroz branco cozido', name_key: 'arroz branco cozido', times_seen: 3, portion_grams: 90, calories_per_100g: 130, ...MICROS },
   ];
   const ontem = (d) => { const x = new Date(); x.setDate(x.getDate() - d); return x.toISOString().slice(0, 10); };
 
   beforeEach(() => {
     mocks.invoke.mockReset();
     localStorage.clear();
-    useAppStore.setState({ profile: PROFILE, meals: [], pantryFoods: FOODS, pantryLoaded: true, pantryUserId: PROFILE.id });
+    useAppStore.setState({ profile: PROFILE, meals: [], pantryFoods: FOODS, foodRules: [], pantryLoaded: true, pantryUserId: PROFILE.id });
   });
 
   // Revisão pré-master: outra conta no mesmo separador não herda a despensa.
@@ -928,7 +929,8 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(lista).toHaveTextContent('Iogurte grego 0%');
     expect(lista).toHaveTextContent('170 g · 100 kcal');
     fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
-    expect(screen.getByText('170g · já conhecido, não é analisado')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(170);
+    expect(screen.getByText('já conhecido, não é analisado')).toBeInTheDocument();
     expect(screen.queryByTestId('pantry-suggestions')).not.toBeInTheDocument();
   });
 
@@ -936,7 +938,8 @@ describe('MealRegistration — a despensa ao escrever', () => {
     render(<MealRegistration onClose={onClose} />);
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog nat' } });
     fireEvent.click(screen.getByRole('option', { name: /Iogurte natural/ }));
-    expect(screen.getByText('125g · já conhecido · a Carol completa os micronutrientes')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gramas de Iogurte natural')).toHaveValue(125);
+    expect(screen.getByText('já conhecido · a Carol completa os micronutrientes')).toBeInTheDocument();
   });
 
   it('as gramas já escritas ganham à porção habitual', () => {
@@ -944,7 +947,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: '200' } });
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog gr' } });
     fireEvent.click(screen.getByRole('option', { name: /Iogurte grego 0%/ }));
-    expect(screen.getByText('200g · já conhecido, não é analisado')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(200);
   });
 
   it('as tuas refeições: um toque junta os alimentos com as gramas, sem repetir os que já lá estão (bug #63)', async () => {
@@ -961,7 +964,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     // A escrever, os atalhos escondem-se (bug #64); voltam ao sair do campo.
     fireEvent.blur(screen.getByLabelText('Nome do alimento a adicionar'));
     fireEvent.click(screen.getByRole('button', { name: 'Juntar a refeição Pequeno-almoço de treino (2 alimentos)' }));
-    expect(screen.getByText('170g · já conhecido, não é analisado')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gramas de Iogurte grego 0%')).toHaveValue(170);
 
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
@@ -1075,6 +1078,28 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(screen.getByTestId('meal-templates')).toBeInTheDocument();
   });
 
+  it('bug #75: as gramas de um alimento já na lista editam-se antes de gravar', async () => {
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'arroz' } });
+    fireEvent.click(screen.getByRole('option', { name: /Arroz branco cozido/ }));
+    const gramas = screen.getByLabelText('Gramas de Arroz branco cozido');
+    expect(gramas).toHaveValue(90);
+    fireEvent.change(gramas, { target: { value: '150' } });
+    mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
+    fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalled());
+    expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Arroz branco cozido', grams: 150 }]);
+  });
+
+  it('bug #75: com o peso habitual confirmado (duas vezes 150 g), é esse que entra e que se mostra', () => {
+    useAppStore.setState({ foodRules: [{ id: 'r1', topic: 'Arroz branco cozido · quantidade', topic_key: 'arroz branco cozido quantidade', value: '150 g', status: 'confirmado', source: 'observacao', confirmations: 2 }] });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'arroz' } });
+    expect(screen.getByTestId('pantry-suggestions')).toHaveTextContent('150 g · o teu habitual');
+    fireEvent.click(screen.getByRole('option', { name: /Arroz branco cozido/ }));
+    expect(screen.getByLabelText('Gramas de Arroz branco cozido')).toHaveValue(150);
+  });
+
   it('o que costuma comer nesta refeição aparece por cima, com um toque', async () => {
     const tipo = 'almoco';
     useAppStore.setState({
@@ -1085,7 +1110,7 @@ describe('MealRegistration — a despensa ao escrever', () => {
     const chips = screen.getByTestId('meal-habituals');
     expect(chips).toHaveTextContent('O que costumas comer ao almoço');
     fireEvent.click(screen.getByRole('button', { name: /\+ Aveia em flocos · 40 g/ }));
-    expect(screen.getByText('40g · já conhecido, não é analisado')).toBeInTheDocument();
+    expect(screen.getByLabelText('Gramas de Aveia em flocos')).toHaveValue(40);
 
     mocks.invoke.mockResolvedValue({ data: { meal: { id: 'm9', meal_items: [] } }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar refeição/i }));

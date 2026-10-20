@@ -28,7 +28,7 @@ vi.mock('../lib/supabase', () => ({
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
-  isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed,
+  isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -297,5 +297,21 @@ describe('isQuantityRule e ruleLabel: plural e a forma antiga (revisão do #74)'
     expect(ruleLabel({ topic: 'quantidade dos ovos' })).toBe('ovos');
     expect(ruleLabel({ topic: 'quantidade das natas' })).toBe('natas');
     expect(isDishlessRule({ topic: 'quantidade de manteiga', status: 'confirmado', source: 'resposta' })).toBe(false);
+  });
+});
+
+describe('foodDefaultGrams — o peso habitual (bug #75)', () => {
+  const arroz = { name: 'Arroz branco cozido', name_key: 'arroz branco cozido', portion_grams: 90 };
+  const regra = (over) => ({ topic: 'Arroz branco cozido · quantidade', value: '150 g', status: 'confirmado', ...over });
+
+  it('um hábito confirmado ganha à porção da despensa', () => {
+    expect(foodDefaultGrams(arroz, [regra()])).toEqual({ grams: 150, habitual: true });
+  });
+  it('por confirmar, a variar, de outro alimento ou sem gramas: fica a porção', () => {
+    expect(foodDefaultGrams(arroz, [regra({ status: 'por_confirmar' })])).toEqual({ grams: 90, habitual: false });
+    expect(foodDefaultGrams(arroz, [regra({ status: 'varia' })])).toEqual({ grams: 90, habitual: false });
+    expect(foodDefaultGrams(arroz, [regra({ topic: 'Batata · quantidade' })])).toEqual({ grams: 90, habitual: false });
+    expect(foodDefaultGrams(arroz, [regra({ value: 'um prato' })])).toEqual({ grams: 90, habitual: false });
+    expect(foodDefaultGrams({ name: 'X', name_key: 'x' }, [])).toEqual({ grams: null, habitual: false });
   });
 });
