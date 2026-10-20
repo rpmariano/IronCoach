@@ -28,7 +28,7 @@ vi.mock('../lib/supabase', () => ({
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
-  templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed,
+  isDishlessRule, templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -269,5 +269,18 @@ describe('refeições predefinidas', () => {
     expect('user_id' in upd.row).toBe(false);
     await expect(saveMealTemplate({ userId: 'u1', values: { name: ' ', items: [{ name: 'Mel' }] } })).rejects.toThrow('Dá um nome');
     await expect(saveMealTemplate({ userId: 'u1', values: { name: 'Vazia', items: [] } })).rejects.toThrow('pelo menos um alimento');
+  });
+});
+
+describe('isDishlessRule (bug #74, revisão)', () => {
+  const r = (topic, extra = {}) => ({ topic, status: 'confirmado', source: 'resposta', ...extra });
+  it('um hábito aprendido sem prato fica marcado; com prato, de categoria ou escrito por ele não', () => {
+    expect(isDishlessRule(r('tempero'))).toBe(true);
+    expect(isDishlessRule(r('manteiga · quantidade'))).toBe(true);
+    expect(isDishlessRule(r('quantidade de manteiga'))).toBe(true);
+    expect(isDishlessRule(r('tempero (Salada mista)'))).toBe(false);
+    expect(isDishlessRule(r('fritos'))).toBe(false);
+    expect(isDishlessRule(r('azeite', { source: 'manual' }))).toBe(false);
+    expect(isDishlessRule(r('tempero', { status: 'varia' }))).toBe(false);
   });
 });

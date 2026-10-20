@@ -569,6 +569,35 @@ Deno.test("bug #74: um tema genérico ganha o alimento — \"tempero\" da salada
   assertEquals(parseQuestions([q("Salada mista")], [salada], [generico], ids).length, 1);
 });
 
+Deno.test("bug #74 (revisão): o prato é cortado sem partir o parêntese; \"quantidade de X\" também ganha o prato", () => {
+  // Quantidade: 27 caracteres antes do " · quantidade" — corta-se o prato, com reticências.
+  const t = quantityTopic(contextualTopic("azeite", "Esparguete à bolonhesa", 27));
+  assertEquals(t, "azeite (Esparguete à bolo…) · quantidade");
+  assert(t.length <= 40);
+  // Cabe inteiro: sem reticências.
+  assertEquals(contextualTopic("molho", "Salada", 27), "molho (Salada)");
+  // "quantidade de manteiga" dava "de manteiga" e escapava sem prato.
+  assertEquals(quantityTopic(contextualTopic("quantidade de manteiga", "Pão", 27)), "manteiga (Pão) · quantidade");
+  assertEquals(quantityTopic(contextualTopic("manteiga quantidade", "Pão", 27)), "manteiga (Pão) · quantidade");
+  // Não genérico: fica como vinha.
+  assertEquals(quantityTopic(contextualTopic("quantidade de queijo", "Tosta", 27)), "queijo · quantidade");
+});
+
+Deno.test("bug #74 (revisão): hábitos aprendidos sem prato já não vão para o pedido; categorias e manuais ficam", () => {
+  const r = (topic: string, source: FoodRule["source"] = "resposta"): FoodRule =>
+    ({ topic, topic_key: foodKey(topic), value: "x", value_key: "x", confirmations: 2, status: "confirmado", source });
+  const s = knowledgeSection([], [
+    r("tempero"), r("manteiga · quantidade"), r("tempero (Salada mista)"), r("fritos"), r("azeite", "manual"),
+  ]);
+  assert(!s.includes("tempero: x"));
+  assert(!s.includes("manteiga · quantidade: x"));
+  assertStringIncludes(s, "tempero (Salada mista): x");
+  assertStringIncludes(s, "fritos: x");
+  assertStringIncludes(s, "azeite: x");
+  // A categoria vale para os pratos dela — "fritos: azeite" serve ao ovo estrelado.
+  assertStringIncludes(s, "vale para os pratos dessa categoria");
+});
+
 Deno.test("bug #74: o conhecimento diz que um hábito só vale para o prato que nomeia", () => {
   const regras: FoodRule[] = [{ topic: "azeite na salada · quantidade", topic_key: "azeite na salada quantidade", value: "um fio", value_key: "um fio", confirmations: 2, status: "confirmado", source: "resposta" }];
   const s = knowledgeSection([], regras);
