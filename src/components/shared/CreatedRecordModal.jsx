@@ -4,6 +4,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import PremiumModal from './PremiumModal';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import Button from './Button';
+import SaveAsMealButton from '../Nutrition/SaveAsMealButton';
 import CarolInterventionActions from './CarolInterventionActions';
 import { useAppStore } from '../../store';
 import { supabase } from '../../lib/supabase';
@@ -161,23 +162,26 @@ export default function CreatedRecordModal() {
             se o separador mudar; "Dispensar" usa a chave única do tipo. */}
         <CarolInterventionActions record={record} type={type} reason={talkReason} onTalked={clearNewlyCreatedRecord} />
 
-        {/* Sair é o X do cabeçalho (aria-label "Fechar"), como em todas as
-            superfícies da Carol — o botão "Fechar" do rodapé saiu
-            (2026-10-05, convenção única dos botões). Fica o "Eliminar", a
-            única ação deste ecrã que não é sair.
-
-            Havia também "Atualizar registo", que abria o registo em edição
-            na hora — mas é sempre o registo que se acabou de submeter: não
-            há nada por atualizar ainda (relatado 2026-09-21). Editar continua
-            possível a partir do cartão do dia no Calendário. */}
-        <div className="pt-2">
+        {/* Bug #78 (2026-10-20): o "Fechar" volta ao rodapé — era o "Eliminar"
+            o único botão visível e chamava a atenção a mais. Sair continua a
+            poder ser pelo X (aria-label "Fechar" no cabeçalho), mas o botão
+            do rodapé é o caminho óbvio, e o "Eliminar" passa a discreto, por
+            baixo. Em refeições, "Guardar como refeição" também aparece aqui.
+            (Decide o #55 de 2026-10-05, convenção dos botões: aí saiu o
+            "Fechar" por haver dois caminhos; agora os botões do rodapé são
+            "Fechar" e "Eliminar", cada um com o seu peso.) */}
+        {type === 'meal' && <SaveAsMealButton meal={record} />}
+        <div className="pt-1 space-y-1">
+          <Button onClick={handleClose} variant="secondary" className="w-full" data-testid="created-record-close">
+            Fechar
+          </Button>
           <Button
             onClick={() => setShowDeleteConfirm(true)}
-            variant="danger-outline"
-            className="w-full"
+            variant="danger-ghost"
+            className="w-full text-xs"
           >
             <div className="flex items-center justify-center gap-2 w-full">
-              <Trash2 size={18} />
+              <Trash2 size={14} />
               <span>Eliminar</span>
             </div>
           </Button>
