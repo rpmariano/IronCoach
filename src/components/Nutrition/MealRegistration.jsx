@@ -452,6 +452,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     if (typingFood && hasSuggestions) addBlockRef.current?.scrollIntoView?.({ block: 'start' });
   }, [typingFood, hasSuggestions]);
 
+  /* Bug #79: qualquer foco fora do bloco de adicionar desliga o modo "a
+     escrever" — o onBlur do bloco nem sempre chega (toques em zonas sem
+     foco, o Android a fechar o teclado), e preso ele escondia a barra. */
+  useEffect(() => {
+    if (!typingFood) return undefined;
+    const onFocusIn = (e) => { if (!addBlockRef.current?.contains(e.target)) setTypingFood(false); };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, [typingFood]);
+
   /* No Android o "voltar" fecha o teclado SEM tirar o foco ao campo
      (utils/softKeyboard.js): os atalhos ficavam escondidos e o espaço vazio
      por baixo até se tocar fora. O <html data-keyboard> manda também: fechou
@@ -669,9 +679,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
       confirmation={confirmation}
       primaryAction={primaryAction}
       cardClassName="relative overflow-hidden"
-      // Bug #64 (print de 2026-10-17): colada ao teclado, a barra comia ~120 px
-      // e tapava as sugestões da despensa. Sai com o teclado aberto e volta quando ele fecha.
-      actionBarClassName="hide-when-keyboard"
+      // Bug #64: colada ao teclado, a barra tapava as sugestões da despensa.
+      // Bug #79: só sai enquanto ele escreve um alimento — nas Observações (e
+      // nos outros campos) fica colada ao teclado; antes "desaparecia".
+      actionBarClassName={typingFood ? 'hide-when-keyboard' : ''}
       bodyTestId="meal-form-fields"
     >
         {mealSuggestions.length > 0 && (
@@ -1006,11 +1017,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         </div>
         </RegistrationSection>
 
-        {/* A escrever (bug #64): espaço por baixo para o bloco de adicionar
-            poder subir ao topo mesmo no fim do formulário — senão ficava
-            onde o teclado o tapa. Em px e não só em vh: com o teclado aberto
-            o Android encolhe o viewport, e 45vh passava a pouco mais de 150 px. */}
-        {typingFood && <div aria-hidden="true" data-testid="meal-typing-spacer" style={{ height: 'max(45vh, 420px)' }} />}
+        {/* Bug #79 (2026-10-20): saiu o espaço vazio de 45vh / 420 px que o #64
+            punha por baixo a escrever um alimento — dava um scroll "quase
+            infinito". Por baixo do bloco já há a lista e as Observações, o que
+            chega para ele subir ao topo com o teclado aberto. */}
 
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão
             e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
