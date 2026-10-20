@@ -176,7 +176,8 @@ export function ruleLabel(rule) {
   const topic = String(rule?.topic || '');
   return topic
     .replace(/\s*·?\s*quantidades?\s*$/i, '')
-    .replace(/^\s*quantidades?\s+(?:de|do|da|dos|das)?\s*/i, '')
+    // "dos"/"das" antes de "do"/"da": senão "quantidade dos ovos" dava "s ovos".
+    .replace(/^\s*quantidades?\s+(?:(?:dos|das|de|do|da)\b\s*)?/i, '')
     .trim() || topic;
 }
 
