@@ -234,6 +234,9 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
     // volta a perguntar da próxima vez.
     s += `\nComo cozinha, tempera e quanto costuma pôr — usa isto em vez de adivinhar: ` +
       certas.map((r) => `${r.topic}: ${r.value}`).join("; ") + "." +
+      // Bug #74 (2026-10-19): "tempero: 1 colher de azeite" não vale para tudo.
+      `\nCada hábito vale SÓ para o prato ou alimento que nomeia ("azeite na salada" não serve para o esparguete); ` +
+      `um tema sem prato não se estende a outros pratos — aí pergunta.` +
       `\nA OBSERVAÇÃO DESTA REFEIÇÃO TEM PRIORIDADE sobre qualquer hábito acima: se disser outra coisa (ex.: "fritas em ` +
       `óleo" quando o hábito é air fryer, "muita manteiga" quando o hábito é camada fina), usa a observação nesta refeição ` +
       `e ignora o hábito.`;
@@ -599,9 +602,13 @@ export function parseQuestions(
   for (const q of raw) {
     const kind: CarolQuestion["kind"] = q?.kind === "quantidade" ? "quantidade" : "preparacao";
     const rawTopic = String(q?.topic ?? "").trim();
-    const topic = kind === "quantidade" ? quantityTopic(rawTopic) : rawTopic.slice(0, 40);
     const question = String(q?.question ?? "").trim().slice(0, 140);
     const itemName = String(q?.item_name ?? "").trim();
+    const item = itemsByKey.get(foodKey(itemName));
+    // Tema genérico ("tempero") ganha o alimento (bug #74, contextualTopic).
+    const topic = kind === "quantidade"
+      ? quantityTopic(contextualTopic(rawTopic, String(item?.name ?? ""), 27))
+      : contextualTopic(rawTopic, String(item?.name ?? ""), 40);
     const topicKey = foodKey(topic);
     const options = [...new Set((Array.isArray(q?.options) ? q.options : [])
       .map((o: unknown) => String(o ?? "").trim().slice(0, 50))
@@ -611,7 +618,6 @@ export function parseQuestions(
     const impact = Number.isFinite(kcal) && kcal > 0 ? kcal : 0;
     const protein = Math.round(Number(q?.impact_protein_g) * 10) / 10;
     const impactProtein = Number.isFinite(protein) && protein > 0 ? protein : 0;
-    const item = itemsByKey.get(foodKey(itemName));
     // Da despensa, só se há perguntas em aberto sobre ele (pantry_pending,
     // 2026-10-05) — foi por isso que o modelo foi chamado.
     if (!topicKey || !question || options.length < 2 || !item || (item.from_pantry && !item.pantry_pending)) continue;
@@ -684,4 +690,23 @@ export async function withWrittenFoods(sb: any, userId: string, pantry: Pantry, 
   } catch {
     return pantry;
   }
+}
+
+/* Bug #74 (2026-10-19): um hábito com um tema genérico — "tempero: Azeite (1
+   colher de chá)" — passava a valer para qualquer prato, quando a colher de
+   azeite era da salada. Os temas que só dizem o ingrediente ou o gesto ganham
+   o alimento a que a pergunta se prende: "tempero" + "Salada mista" →
+   "tempero (Salada mista)". O prompt já pede o prato; isto é a rede. */
+const GENERIC_TOPICS = new Set([
+  "tempero", "temperos", "azeite", "oleo", "manteiga", "molho", "molhos", "gordura", "sal", "acucar", "natas",
+  "quantidade", "porcao", "fritura",
+]);
+
+export function contextualTopic(rawTopic: string, itemName: string, max = 40): string {
+  const topic = String(rawTopic || "").trim();
+  const base = foodKey(topic.replace(/\bquantidades?\b/gi, " ").replace(/[·:]/g, " "));
+  const item = String(itemName || "").trim();
+  if (!base || !GENERIC_TOPICS.has(base) || !item || foodKey(item) === base) return topic.slice(0, max);
+  const withItem = `${topic.replace(/\s*·?\s*quantidades?\s*$/i, "").trim()} (${item})`;
+  return withItem.slice(0, max);
 }
