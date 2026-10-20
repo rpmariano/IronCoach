@@ -222,7 +222,11 @@ export async function fetchPantry(sb: any, userId: string): Promise<Pantry> {
 /** A secção do pedido de análise com o que ela já sabe. "" sem nada — o
  *  pedido de quem ainda não tem despensa fica igual ao de sempre. */
 export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string {
-  const certas = rules.filter((r) => r.status === "confirmado");
+  // Um hábito aprendido antes do #74 com tema sem prato ("tempero: 1 colher
+  // de azeite") já não diz a que prato se aplica: não entra — ela pergunta e
+  // aprende-o por prato. Os escritos pelo atleta (manual) ficam: foi ele que
+  // disse que valem para tudo.
+  const certas = rules.filter((r) => r.status === "confirmado" && (r.source === "manual" || !isGenericTopic(r.topic)));
   const variam = rules.filter((r) => r.status === "varia");
   if (!foods.length && !certas.length && !variam.length) return "";
   let s = "\n\nO QUE JÁ SABES DESTE ATLETA (aprendido com ele):";
@@ -236,7 +240,7 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
       certas.map((r) => `${r.topic}: ${r.value}`).join("; ") + "." +
       // Bug #74 (2026-10-19): "tempero: 1 colher de azeite" não vale para tudo.
       `\nCada hábito vale SÓ para o prato ou alimento que nomeia ("azeite na salada" não serve para o esparguete); ` +
-      `um tema sem prato não se estende a outros pratos — aí pergunta.` +
+      `um hábito de uma categoria ("fritos", "saladas", "grelhados") vale para os pratos dessa categoria.` +
       `\nA OBSERVAÇÃO DESTA REFEIÇÃO TEM PRIORIDADE sobre qualquer hábito acima: se disser outra coisa (ex.: "fritas em ` +
       `óleo" quando o hábito é air fryer, "muita manteiga" quando o hábito é camada fina), usa a observação nesta refeição ` +
       `e ignora o hábito.`;
@@ -702,11 +706,36 @@ const GENERIC_TOPICS = new Set([
   "quantidade", "porcao", "fritura",
 ]);
 
+/** O núcleo de um tema, sem "quantidade" nem o "de" que a acompanha:
+ *  "quantidade de manteiga", "manteiga · quantidade" e "manteiga" → "manteiga"
+ *  (revisão pré-master do #74: "quantidade de manteiga" dava "de manteiga",
+ *  que não se reconhecia como genérico e escapava sem prato). */
+function topicCore(topic: string): string {
+  return String(topic || "")
+    .replace(/\bquantidades?\b/gi, " ")
+    .replace(/[·:]/g, " ")
+    .replace(/^\s*(?:de|do|da|dos|das)\s+/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** É um tema que só diz o ingrediente ou o gesto, sem prato ("tempero",
+ *  "azeite · quantidade")? Os temas com prato ("tempero (Salada mista)")
+ *  e os de categoria ("fritos") não são. */
+export function isGenericTopic(topic: string): boolean {
+  return GENERIC_TOPICS.has(foodKey(topicCore(topic)));
+}
+
 export function contextualTopic(rawTopic: string, itemName: string, max = 40): string {
   const topic = String(rawTopic || "").trim();
-  const base = foodKey(topic.replace(/\bquantidades?\b/gi, " ").replace(/[·:]/g, " "));
+  const core = topicCore(topic);
   const item = String(itemName || "").trim();
-  if (!base || !GENERIC_TOPICS.has(base) || !item || foodKey(item) === base) return topic.slice(0, max);
-  const withItem = `${topic.replace(/\s*·?\s*quantidades?\s*$/i, "").trim()} (${item})`;
-  return withItem.slice(0, max);
+  if (!GENERIC_TOPICS.has(foodKey(core)) || !item || foodKey(item) === foodKey(core)) return topic.slice(0, max);
+  // Corta-se o PRATO, nunca o parêntese: "azeite (Esparguete à bolonh"
+  // ficava aberto (revisão pré-master do #74). Dois pratos com o mesmo início
+  // longo ainda partilham o tema — raro, e o nome inteiro não cabe no Armário.
+  const room = max - core.length - 3;
+  if (room < 4) return core.slice(0, max);
+  const dish = item.length > room ? `${item.slice(0, room - 1).trimEnd()}…` : item;
+  return `${core} (${dish})`;
 }

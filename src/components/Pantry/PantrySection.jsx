@@ -5,7 +5,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import PantryFoodSheet from './PantryFoodSheet';
 import FoodRuleSheet from './FoodRuleSheet';
 import MealTemplateSheet from './MealTemplateSheet';
-import { foodSubline, foodKey, isQuantityRule, ruleInfo, ruleLabel, templateItems, templateTotals, visibleRules } from '../../utils/pantry';
+import { foodSubline, foodKey, isDishlessRule, isQuantityRule, ruleInfo, ruleLabel, templateItems, templateTotals, visibleRules } from '../../utils/pantry';
 import { mealTypeLabel } from '../../utils/nutrition';
 
 /* A despensa, no Armário do Perfil (bugs #48/#52, fase C; mockup "Despensa e
@@ -190,7 +190,10 @@ export default function PantrySection() {
                           <span className="flex-1 min-w-0">
                             <span className="block text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: r.status === 'varia' ? 'var(--warn-soft)' : 'var(--text-4)' }}>{ruleLabel(r)}</span>
                             <span className="block text-[15px] font-extrabold mt-0.5" style={{ color: 'var(--text-1)' }}>{r.status === 'varia' ? 'Varia' : r.value}</span>
-                            <span className="block text-[11.5px] mt-0.5" style={{ color: r.status === 'varia' ? 'var(--warn-soft)' : 'var(--text-muted)' }}>{ruleInfo(r)}</span>
+                            <span className="block text-[11.5px] mt-0.5" style={{ color: r.status === 'varia' ? 'var(--warn-soft)' : 'var(--text-muted)' }}>
+                              {/* Bug #74: aprendido sem prato — ela já não o usa. */}
+                              {isDishlessRule(r) ? 'Sem prato — já não uso. Diz-me em que prato, ou apaga' : ruleInfo(r)}
+                            </span>
                           </span>
                           <button type="button" aria-label={`Corrigir ${ruleLabel(r)}${isQuantityRule(r) ? ' (quantidade)' : ''}`} onClick={() => setRuleSheet({ rule: r })} className="tap-44 flex items-center justify-center shrink-0" style={{ color: 'var(--text-4)' }}>
                             <Pencil size={17} />

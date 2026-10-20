@@ -173,6 +173,27 @@ export function ruleLabel(rule) {
   return String(rule?.topic || '').replace(/\s*·?\s*quantidade\s*$/i, '').trim() || String(rule?.topic || '');
 }
 
+/* Bug #74: os temas que só dizem o ingrediente ou o gesto. A mesma lista de
+   GENERIC_TOPICS em supabase/functions/analyze-meal/pantry.ts — mudar uma é
+   mudar a outra. */
+const GENERIC_TOPICS = new Set([
+  'tempero', 'temperos', 'azeite', 'oleo', 'manteiga', 'molho', 'molhos', 'gordura', 'sal', 'acucar', 'natas',
+  'porcao', 'fritura',
+]);
+
+/** Um hábito aprendido antes do #74 sem dizer o prato ("tempero", "manteiga ·
+ *  quantidade")? A Carol já não o usa (knowledgeSection) — o Armário diz
+ *  isso. Os escritos pelo atleta não contam: foi ele que disse que valem
+ *  para tudo. */
+export function isDishlessRule(rule) {
+  if (!rule || rule.source === 'manual' || rule.status !== 'confirmado') return false;
+  const core = String(rule.topic || '')
+    .replace(/\bquantidades?\b/gi, ' ')
+    .replace(/[·:]/g, ' ')
+    .replace(/^\s*(?:de|do|da|dos|das)\s+/i, '');
+  return GENERIC_TOPICS.has(foodKey(core));
+}
+
 /** As regras que aparecem no Armário: as que ela já usa, ou que variam. */
 export function visibleRules(rules) {
   return (rules || []).filter((r) => r.status === 'confirmado' || r.status === 'varia' || r.source === 'manual');
