@@ -294,6 +294,8 @@ describe('isQuantityRule e ruleLabel: plural e a forma antiga (revisão do #74)'
     expect(isQuantityRule({ topic: 'tempero (Salada mista)' })).toBe(false);
     expect(ruleLabel({ topic: 'manteiga · quantidades' })).toBe('manteiga');
     expect(ruleLabel({ topic: 'quantidade de manteiga' })).toBe('manteiga');
+    expect(ruleLabel({ topic: 'quantidade dos ovos' })).toBe('ovos');
+    expect(ruleLabel({ topic: 'quantidade das natas' })).toBe('natas');
     expect(isDishlessRule({ topic: 'quantidade de manteiga', status: 'confirmado', source: 'resposta' })).toBe(false);
   });
 });
