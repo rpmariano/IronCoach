@@ -87,3 +87,18 @@ Deno.test("nameAlignmentSection: os nomes do plano, os escritos e os do Armário
   assertStringIncludes(t, "Leg Press");
   assertEquals(nameAlignmentSection([], [], []), "");
 });
+
+Deno.test("bug #67: o texto de um plano (intervalos, sem carga) vira exercícios", () => {
+  const prompt = notesOnlyPrompt("forca", "cadeira extensora e gémeos (3-4 séries de 10-12 reps)", [], []);
+  assertStringIncludes(prompt, "usa o número MÍNIMO de séries e as reps de CIMA");
+  assertStringIncludes(prompt, "Um exercício nomeado sem números devolve-se na mesma");
+  const p = normalizePreview({
+    session_name: "Pernas",
+    exercises: [
+      { name: "Cadeira extensora", type: "forca", sets: [{ reps: 12, weight: null }, { reps: 12, weight: null }, { reps: 12, weight: null }] },
+      { name: "Gémeos", type: "forca", sets: [] },
+      { name: "Bicicleta", type: "cardio", sets: [] },
+    ],
+  }, 0, "forca");
+  assertEquals(p.exercises.map((e) => [e.name, e.sets.length]), [["Cadeira extensora", 3], ["Gémeos", 0]]);
+});

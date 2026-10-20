@@ -30,29 +30,33 @@ export default function RegistrationShell({
 }) {
   return (
     // --focus-ring: anel de teclado na cor do módulo (handoff, "Fidelity").
-    <div className={containerClassName} style={{ '--focus-ring': accent, paddingBottom: ACTION_BAR_SCROLL_PAD }}>
+    // `.reg-form`: os campos viram poços e as etiquetas sobem (globals.css).
+    <div className={`reg-form ${containerClassName}`.trim()} style={{ '--focus-ring': accent, paddingBottom: ACTION_BAR_SCROLL_PAD }}>
       {bare ? children : (
-      <div
-        className={`module-card-contrast ${cardClassName}`.trim()}
-        // O mesmo vidro fosco do resto da app, com a cor do módulo por cima, bem subtil.
-        style={{
-          background: `linear-gradient(135deg, color-mix(in srgb, ${accent} 3%, transparent), color-mix(in srgb, ${accent} 6%, transparent)), rgba(255, 255, 255, 0.05)`,
-        }}
-      >
-        <div className="flex items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            {Icon && <Icon className="w-5 h-5" style={{ color: accent }} aria-hidden="true" />}
-            <h2 className="text-sm font-semibold text-[var(--text-1)]">{title}</h2>
+      // Sem cartão à volta (solução B): os blocos (RegistrationSection) são os
+      // cartões, e um cartão dentro de outro voltava a fundir as zonas.
+      <div className={cardClassName || undefined}>
+        <div className="flex items-center justify-between gap-2 mb-3 px-1">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {Icon && (
+              <span
+                className="w-9 h-9 shrink-0 rounded-xl flex items-center justify-center"
+                style={{ background: `color-mix(in srgb, ${accent} 16%, transparent)` }}
+              >
+                <Icon className="w-5 h-5" style={{ color: accent }} aria-hidden="true" />
+              </span>
+            )}
+            <h2 className="text-lg font-bold text-[var(--text-1)] truncate">{title}</h2>
           </div>
           <button
             onClick={exit.requestClose}
             type="button"
-            // O círculo desenha-se com 32px; a área tocável à volta tem 44 (--tap).
+            // O círculo desenha-se com 36px; a área tocável à volta tem 44 (--tap).
             className="tap-44 shrink-0"
             title="Fechar"
             aria-label="Fechar"
           >
-            <span className="w-8 h-8 flex items-center justify-center rounded-full bg-[var(--surface-glass)] text-[var(--text-3)] hover:bg-[var(--surface-strong)] transition-colors">
+            <span className="w-9 h-9 flex items-center justify-center rounded-full bg-[var(--surface-card)] border border-[var(--border-card)] text-[var(--text-2)] hover:bg-[var(--surface-chip)] transition-colors">
               <X size={16} />
             </span>
           </button>
@@ -60,7 +64,7 @@ export default function RegistrationShell({
 
         {status}
 
-        <div data-testid={bodyTestId} aria-busy={busy || undefined} style={busy ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+        <div data-testid={bodyTestId} className="flex flex-col gap-3" aria-busy={busy || undefined} style={busy ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
           {children}
         </div>
       </div>

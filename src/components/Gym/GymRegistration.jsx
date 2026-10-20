@@ -17,6 +17,7 @@ import { MUSCLE_GROUPS } from '../../utils/exerciseLocker';
 import { findPendingPlanItems, describePlanItem, exercisesFromPrescription, appendExercises } from '../../utils/planPrefill';
 import { parseDurationInput, formatDurationInput, flattenExercises, buildExercisesMeta, exercisesFromSession, lockerIndex, mergePreview, readSummary, completePlanSets, hasUnconfirmedPlanSets, markAllDone, lockerEntryFor } from '../../utils/gymSets';
 import RegistrationShell from '../shared/registration/RegistrationShell';
+import RegistrationSection from '../shared/registration/RegistrationSection';
 import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import { todayISO } from '../../lib/utils';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
@@ -400,6 +401,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     if (!durationStr.trim() && item.target_duration_min) setDurationStr(String(item.target_duration_min));
     if (incoming.length) setExercises(prev => appendExercises(prev, incoming));
     setIsFormDirty(true);
+    // Sem prescrição mas com texto (bug #70): a Carol lê-o depois de as notas
+    // entrarem no formulário.
+    if (!incoming.length && !planHasBlocks(item) && !exercises.length && !photos.length && (notes.trim() || item.notes)) {
+      setTimeout(() => readRef.current?.(), 0);
+    }
   };
   // "Treino livre": campos vazios; ao gravar, o treino do dia risca-se na mesma, como automático.
   const handleFreeWorkout = () => { setPlanChoice({ id: null, mode: 'livre' }); };
@@ -450,6 +456,26 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       setReading(false);
     }
   };
+
+  /* Bug #70 (2026-10-19): vindo do Início com o treino do plano, o formulário
+     tem de vir preenchido sem escolher nada. Com prescrição (os planos desde
+     2026-10-17) já vinha; um plano só com texto ("cadeira extensora, cadeira
+     flexora e gémeos, 3-4 séries de 10-12 reps") não trazia exercícios — a
+     Carol lê agora esse texto sozinha, uma vez, como no "Preencher o
+     formulário com isto". O mesmo ao escolher, no banner, um treino do plano
+     sem prescrição. `readRef`: o handleRead do render mais recente (as notas
+     acabadas de pôr pelo banner). */
+  const readRef = useRef(handleRead);
+  readRef.current = handleRead;
+  const autoReadDone = useRef(false);
+  const planHasBlocks = (item) => (item?.prescription?.blocks || []).length > 0;
+  useEffect(() => {
+    if (autoReadDone.current || isEditing || !planItem || planHasBlocks(planItem)) return;
+    if (exercises.length || photos.length || (notes || '').trim().length < 3) return;
+    autoReadDone.current = true;
+    readRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Liga o treino do plano a esta sessão, depois de gravada (specs/plano-de-treino.md
      §5.2). O item é o do banner "Do plano" ou do botão "Registar sessão"
@@ -795,25 +821,35 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       primaryAction={primaryAction}
       overlays={planSetsDialog}
     >
-        <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Tipo de sessão</label>
-        <div className="flex gap-1.5 mb-4">
-          {GYM_KINDS.map(k => {
-            const Icon = k.icon;
-            const isActive = kind === k.key;
-            return (
-              <Chip
-                key={k.key}
-                active={isActive}
-                variant="gym"
-                rounded="xl"
-                onClick={() => { handleKindChange(k.key); setIsFormDirty(true); }}
-                className="flex-1 py-2.5 gap-1.5"
-                type="button"
-              >
-                <Icon size={14} /> {k.label}
-              </Chip>
-            );
-          })}
+      {/* Um cartão por passo (RegistrationSection): o espaço entre campos é o
+          `gap` da secção — os `mb-*` dos filhos diretos deixam de contar. */}
+      <RegistrationSection
+        step={1}
+        title="Que treino foi"
+        done={categories.length > 0 || classTypes.length > 0 || !!name.trim()}
+        className="[&>*]:mb-0!"
+      >
+        <div>
+          <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Tipo de sessão</label>
+          <div className="flex gap-1.5">
+            {GYM_KINDS.map(k => {
+              const Icon = k.icon;
+              const isActive = kind === k.key;
+              return (
+                <Chip
+                  key={k.key}
+                  active={isActive}
+                  variant="gym"
+                  rounded="xl"
+                  onClick={() => { handleKindChange(k.key); setIsFormDirty(true); }}
+                  className="flex-1 py-2.5 gap-1.5"
+                  type="button"
+                >
+                  <Icon size={14} /> {k.label}
+                </Chip>
+              );
+            })}
+          </div>
         </div>
 
         {/* Data · Hora — a hora ao lado da data, opcional. É ela que deixa a
@@ -821,7 +857,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             (specs/plano-de-prova.md, "A véspera e a hora"). O rótulo passou
             para cima de cada campo: com dois controlos na grelha já não há
             onde pôr o texto ao lado. */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        <div className="grid grid-cols-2 gap-2">
           <div className="min-w-0">
             <label htmlFor="gr-data-do-treino" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data do treino</label>
             <input id="gr-data-do-treino"
@@ -859,21 +895,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           />
         )}
 
-        {/* Prints (opcional) — escondido a editar: editar é sempre pelos
-            campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
-        {!isEditing && (
-          <PhotoReadSection
-            photos={photos}
-            maxPhotos={MAX_PHOTOS}
-            onSelect={handlePhotoSelect}
-            onRemove={removePhoto}
-            onRead={handleRead}
-            reading={reading}
-            note={readNote}
-          />
-        )}
-
-        <div className="mb-4">
+        <div>
           <label htmlFor="gr-nome-da-sessao-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             Nome da sessão (opcional) — ex.: "{kind === 'aula' ? 'Aula de HIIT' : 'Peito e Tríceps'}"
           </label>
@@ -904,6 +926,26 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           selected={categories}
           onToggle={(c) => { handleToggleCategory(c); setIsFormDirty(true); }}
         />
+      </RegistrationSection>
+
+      <RegistrationSection step={2} title="Exercícios" done={exercises.length > 0} className="[&>*]:mb-0!">
+        {/* Prints (opcional) — a Carol tira deles os exercícios e as métricas.
+            Escondido a editar: editar é sempre pelos
+            campos, sem foto nova (mesmo padrão da Corrida/Refeição). */}
+        {!isEditing && (
+          <PhotoReadSection
+            photos={photos}
+            maxPhotos={MAX_PHOTOS}
+            onSelect={handlePhotoSelect}
+            onRemove={removePhoto}
+            // Bug #72: sem botão "Ler os prints e preencher" — a Carol lê-os ao
+            // "Analisar treino" (analyze-gym, reviewed=false) e o que escreveste
+            // ganha sempre ao que ela ler (mergeMetrics, mergeTypedWithRead).
+            autoReadNote="Ao analisar, leio os prints sozinha. O que escreveres aqui ganha sempre ao que eu ler — não apago nada."
+            reading={reading}
+            note={readNote}
+          />
+        )}
 
         <ExerciseEditor
           exercises={exercises}
@@ -912,59 +954,63 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           lockerRows={exerciseLocker}
           onOpenLocker={() => useAppStore.getState().loadExerciseLocker?.()}
         />
+      </RegistrationSection>
 
-        <label className="text-[11px] text-[var(--text-3)] mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
-        <div className="grid grid-cols-2 gap-2.5 mb-4">
-          <div>
-            <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Duração (ex.: 43m)</label>
-            <input id="gr-duracao-ex-43m"
-              type="text"
-              inputMode="text"
-              value={durationStr}
-              onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
-              placeholder="Ex: 45m"
-              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-            />
-          </div>
-          <div>
-            <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Calorias (kcal)</label>
-            <input id="gr-calorias-kcal"
-              type="number"
-              min="0"
-              step="1"
-              value={calories}
-              onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
-              placeholder="Ex: 350"
-              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-            />
-          </div>
-          <div>
-            <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC média (bpm)</label>
-            <input id="gr-fc-media-bpm"
-              type="number"
-              min="0"
-              step="1"
-              value={avgHr}
-              onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
-              placeholder="Ex: 135"
-              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-            />
-          </div>
-          <div>
-            <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC máxima (bpm)</label>
-            <input id="gr-fc-maxima-bpm"
-              type="number"
-              min="0"
-              step="1"
-              value={maxHr}
-              onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
-              placeholder="Ex: 168"
-              className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
-            />
+      <RegistrationSection step={3} title="Como correu" optional className="[&>*]:mb-0!">
+        <div>
+          <label className="text-[11px] text-[var(--text-3)] mb-1.5 block font-semibold">Métricas do relógio (opcional)</label>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div>
+              <label htmlFor="gr-duracao-ex-43m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Duração (ex.: 43m)</label>
+              <input id="gr-duracao-ex-43m"
+                type="text"
+                inputMode="text"
+                value={durationStr}
+                onChange={e => { setDurationStr(e.target.value); setIsFormDirty(true); }}
+                placeholder="Ex: 45m"
+                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+              />
+            </div>
+            <div>
+              <label htmlFor="gr-calorias-kcal" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Calorias (kcal)</label>
+              <input id="gr-calorias-kcal"
+                type="number"
+                min="0"
+                step="1"
+                value={calories}
+                onChange={e => { setCalories(e.target.value); setIsFormDirty(true); }}
+                placeholder="Ex: 350"
+                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+              />
+            </div>
+            <div>
+              <label htmlFor="gr-fc-media-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC média (bpm)</label>
+              <input id="gr-fc-media-bpm"
+                type="number"
+                min="0"
+                step="1"
+                value={avgHr}
+                onChange={e => { setAvgHr(e.target.value); setIsFormDirty(true); }}
+                placeholder="Ex: 135"
+                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+              />
+            </div>
+            <div>
+              <label htmlFor="gr-fc-maxima-bpm" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">FC máxima (bpm)</label>
+              <input id="gr-fc-maxima-bpm"
+                type="number"
+                min="0"
+                step="1"
+                value={maxHr}
+                onChange={e => { setMaxHr(e.target.value); setIsFormDirty(true); }}
+                placeholder="Ex: 168"
+                className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[var(--mod-ginasio-to)] transition"
+              />
+            </div>
           </div>
         </div>
-        
-        <div className="mb-4">
+
+        <div>
           <label className="text-[12px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
           <div className="flex gap-1.5">
             {Array.from({ length: 10 }).map((_, i) => (
@@ -984,7 +1030,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
           <p className="text-[11px] text-[var(--text-3)] mt-1.5">1 = Muito leve · 10 = Máximo. Só preenche se sentires que ajuda a explicar como correu.</p>
         </div>
 
-        <div className="mb-4">
+        <div>
           <label htmlFor="gr-observacoes-opcional-ex" className="text-[11px] text-[var(--text-3)] mb-1.5 block">
             Observações (opcional) — ex.: "{kind === 'aula' ? 'aula puxada, professor novo' : 'treino de força, peso corporal'}"
           </label>
@@ -1011,6 +1057,7 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             </>
           )}
         </div>
+      </RegistrationSection>
 
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão
             e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não

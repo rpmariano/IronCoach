@@ -13,6 +13,9 @@ export default function PhotoReadSection({
   emptyTitle = 'Prints da app de treino (opcional)',
   emptyHint = 'Hevy, Strong… Junta os ecrãs da mesma sessão e eu leio o que não escreveres abaixo.',
   emptyExtra = null, accent = 'var(--mod-ginasio-to)', inputRef = undefined,
+  // Sem onRead não há botão "Ler os prints": a leitura acontece ao gravar
+  // (bug #72, 2026-10-19 — «isso deveria ser automático»). autoReadNote diz isso.
+  autoReadNote = null,
 }) {
   return (
     <div className="mb-4" style={{ '--pr-accent': accent }}>
@@ -45,6 +48,7 @@ export default function PhotoReadSection({
               <span className="text-[12px] font-bold" style={{ color: 'var(--pr-accent)' }}>Adicionar outro print</span>
             </label>
           )}
+          {onRead ? (
           <button
             type="button"
             onClick={onRead}
@@ -56,6 +60,9 @@ export default function PhotoReadSection({
             <Sparkles size={14} />
             {reading ? 'A ler os prints…' : 'Ler os prints e preencher'}
           </button>
+          ) : autoReadNote && (
+            <p className="text-[11.5px] leading-relaxed text-[var(--text-2)]" data-testid="photo-auto-read-note">{autoReadNote}</p>
+          )}
         </>
       ) : (
         <label className="block border-2 border-dashed border-[var(--border-glass-strong)] rounded-xl py-4 text-center cursor-pointer hover:border-[var(--border-control)] transition bg-[var(--surface-glass)] focus-within:ring-2 focus-within:ring-[var(--pr-accent)]">

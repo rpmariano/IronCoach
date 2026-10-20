@@ -856,46 +856,23 @@ describe('GymRegistration — ler os prints e as notas para o formulário (F2, O
     useAppStore.setState({ profile: PROFILE, gymSessions: [] });
   });
 
-  it('com prints: "Ler" preenche o formulário sem gravar, e gravar a seguir não volta a ler (reviewed)', async () => {
-    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
+  // Bug #72 (2026-10-19): já não há botão "Ler os prints e preencher" — a
+  // Carol lê os prints ao "Analisar treino" e o que ele escreveu ganha
+  // (servidor: mergeMetrics, mergeTypedWithRead).
+  it('com prints: sem botão de ler, uma nota diz que a leitura é automática, e gravar lê os prints (reviewed: false)', async () => {
     render(<GymRegistration onClose={onClose} />);
     await selectPhoto();
-    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
-
-    expect(await screen.findByText(/Li 1 exercício e 1 métrica\. Revê e corrige/)).toBeInTheDocument();
-    const [, { body: readBody }] = mocks.invoke.mock.calls[0];
-    expect(readBody).toMatchObject({ mode: 'preview', images: ['AAA'], kind: 'forca' });
-    expect(screen.getByDisplayValue('Extensões de pernas')).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Repetições da série 1 —/)).toHaveValue(12);
-    expect(screen.getByPlaceholderText('Ex: 45m')).toHaveValue('50:00');
-    expect(screen.getByDisplayValue('Pernas')).toBeInTheDocument();
-    expect(useAppStore.getState().gymSessions).toEqual([]);
+    expect(screen.queryByRole('button', { name: /Ler os prints e preencher/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId('photo-auto-read-note')).toHaveTextContent('Ao analisar, leio os prints sozinha');
+    expect(screen.getByTestId('photo-auto-read-note')).toHaveTextContent('não apago nada');
 
     mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
     fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    const { body } = mocks.invoke.mock.calls[1][1];
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    const { body } = mocks.invoke.mock.calls[0][1];
     expect(body.mode).toBeUndefined();
-    expect(body.reviewed).toBe(true);
-    expect(body.sets).toEqual([{ exercise_name: 'Extensões de pernas', set_index: 0, reps: 12, weight: 40 }]);
-    expect(body.duration_seconds).toBe(3000);
-  });
-
-  it('acrescentar outro print depois de ler desfaz o "revisto": grava com leitura normal', async () => {
-    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
-    render(<GymRegistration onClose={onClose} />);
-    await selectPhoto();
-    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
-    await screen.findByText(/Li 1 exercício/);
-
-    const input = document.querySelectorAll('input[type="file"]')[0];
-    await fireEvent.change(input, { target: { files: [new File(['x'], 'b.jpg', { type: 'image/jpeg' })] } });
-    await screen.findByAltText('Print 2');
-
-    mocks.invoke.mockResolvedValueOnce({ data: { session: { id: 'sess-1' }, sets: [] }, error: null });
-    fireEvent.click(screen.getByRole('button', { name: /Analisar treino/i }));
-    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(2));
-    expect(mocks.invoke.mock.calls[1][1].body.reviewed).toBe(false);
+    expect(body.reviewed).toBe(false);
+    expect(body.images).toEqual(['AAA']);
   });
 
   it('só com notas: aparece "Preencher o formulário com isto" e lê sem imagens', async () => {
@@ -915,32 +892,65 @@ describe('GymRegistration — ler os prints e as notas para o formulário (F2, O
     expect(mocks.invoke.mock.calls[1][1].body.mode).toBe('manual');
   });
 
-  it('o que o atleta já escreveu ganha à leitura', async () => {
-    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW, readable: true }, error: null });
-    render(<GymRegistration onClose={onClose} />);
-    fireEvent.change(screen.getByPlaceholderText('Nome do treino'), { target: { value: 'Treino de sábado' } });
-    await selectPhoto();
-    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
-    await screen.findByText(/Li 1 exercício/);
-    expect(screen.getByDisplayValue('Treino de sábado')).toBeInTheDocument();
-    expect(screen.queryByDisplayValue('Pernas')).not.toBeInTheDocument();
-  });
-
-  it('uma leitura sem nada legível avisa e não marca como revisto', async () => {
+  it('uma leitura das observações sem nada legível avisa', async () => {
     mocks.invoke.mockResolvedValueOnce({ data: { preview: { ...PREVIEW, exercises: [], metrics: {}, categories: [], session_name: '' }, readable: false }, error: null });
     render(<GymRegistration onClose={onClose} />);
-    await selectPhoto();
-    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
-    expect(await screen.findByText(/Não consegui ler exercícios nem métricas/)).toBeInTheDocument();
+    fireEvent.change(screen.getByPlaceholderText('Contexto do treino...'), { target: { value: 'treino leve' } });
+    fireEvent.click(screen.getByRole('button', { name: /Preencher o formulário com isto/ }));
+    expect(await screen.findByText(/Não percebi exercícios nas observações/)).toBeInTheDocument();
   });
 
-  it('um erro da leitura aparece e o formulário volta a ficar livre', async () => {
+  it('um erro da leitura aparece e o botão volta a ficar livre', async () => {
     mocks.invoke.mockResolvedValueOnce({ data: null, error: 'O Coach está ocupado.' });
     render(<GymRegistration onClose={onClose} />);
-    await selectPhoto();
-    fireEvent.click(screen.getByRole('button', { name: /Ler os prints e preencher/ }));
+    fireEvent.change(screen.getByPlaceholderText('Contexto do treino...'), { target: { value: '3x12 extensões' } });
+    fireEvent.click(screen.getByRole('button', { name: /Preencher o formulário com isto/ }));
     expect(await screen.findByText('O Coach está ocupado.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Ler os prints e preencher/ })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /Preencher o formulário com isto/ })).not.toBeDisabled();
+  });
+});
+
+describe('GymRegistration — plano só com texto (bug #70)', () => {
+  const onClose = vi.fn();
+  const hojeISO = todayISO();
+  const NOTAS = 'Sessão de máquinas guiadas de pernas: cadeira extensora, cadeira flexora e gémeos (3-4 séries de 10-12 reps).';
+  const PREVIEW_PLANO = {
+    session_name: 'Pernas', categories: ['Pernas Inferiores'], class_types: [],
+    metrics: { duration_seconds: null, calories_kcal: null, avg_hr: null, max_hr: null, exertion: null },
+    exercises: [
+      { name: 'Cadeira extensora', type: 'forca', plan_block_index: null, sets: [12, 12, 12].map(reps => ({ reps, weight: null, duration_seconds: null, distance_km: null, laps: null })) },
+      { name: 'Gémeos', type: 'forca', plan_block_index: null, sets: [] },
+    ],
+  };
+
+  beforeEach(() => {
+    mocks.invoke.mockReset();
+    onClose.mockClear();
+  });
+
+  it('vindo do Início com um treino do plano sem prescrição, a Carol lê o texto sozinha e preenche', async () => {
+    useAppStore.setState({
+      profile: PROFILE, gymSessions: [], exerciseLocker: [],
+      planItemPrefill: { id: 'item-txt', kind: 'ginasio', planned_date: hojeISO, notes: NOTAS, prescription: null },
+    });
+    mocks.invoke.mockResolvedValueOnce({ data: { preview: PREVIEW_PLANO, readable: true }, error: null });
+    render(<GymRegistration onClose={onClose} />);
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+    expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({ mode: 'preview', images: [], notes: NOTAS });
+    expect(await screen.findByDisplayValue('Cadeira extensora')).toBeInTheDocument();
+    // Nomeado sem números: entra com uma série vazia para ele preencher.
+    expect(screen.getByDisplayValue('Gémeos')).toBeInTheDocument();
+    expect(screen.getAllByLabelText(/^Repetições da série/).length).toBe(4);
+  });
+
+  it('com prescrição não lê o texto (já vem preenchido pelos blocos)', async () => {
+    useAppStore.setState({
+      profile: PROFILE, gymSessions: [], exerciseLocker: [],
+      planItemPrefill: { id: 'item-blk', kind: 'ginasio', planned_date: hojeISO, notes: NOTAS, prescription: { blocks: [{ type: 'forca', name: 'Extensões', sets: 3, reps: 12 }] } },
+    });
+    render(<GymRegistration onClose={onClose} />);
+    expect(await screen.findByDisplayValue('Extensões')).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 });
 

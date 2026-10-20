@@ -42,6 +42,7 @@ import RegistrationShell from '../shared/registration/RegistrationShell';
 import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
+import RegistrationSection from '../shared/registration/RegistrationSection';
 import { findPendingPlanItems } from '../../utils/planPrefill';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 
@@ -2427,8 +2428,11 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     ? 'bg-[var(--race)]/15 border-[var(--race)]/40 text-[var(--race)]'
     : 'bg-[var(--mod-corrida-to)]/15 border-[var(--mod-corrida-to)]/40 text-[var(--mod-corrida-to)]';
 
-  const renderEffortField = () => (
-    <div className="mb-4">
+  /* `spaced`: no modo prova os campos empilham-se num só cartão e a margem
+     separa-os; no treino cada passo é um RegistrationSection, que já põe o
+     espaço entre os filhos (gap) — aí a margem só o duplicava. */
+  const renderEffortField = (spaced = true) => (
+    <div className={spaced ? 'mb-4' : undefined}>
       <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nível de esforço (RPE, opcional)</label>
       <div className="flex gap-1.5">
         {Array.from({ length: 10 }).map((_, i) => (
@@ -2450,8 +2454,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* Sapatilhas usadas — alimenta o acumulado de km do armário
      (Perfil → Equipamento). Só aparece se houver pares ativos: sem
      armário montado seria um campo vazio a ocupar espaço. */
-  const renderShoesField = () => (activeShoes.length > 0 ? (
-    <div className="mb-4">
+  const renderShoesField = (spaced = true) => (activeShoes.length > 0 ? (
+    <div className={spaced ? 'mb-4' : undefined}>
       <label htmlFor="rr-sapatilhas-opcional" className="text-[11px] text-[var(--text-3)] mb-1.5 flex items-center gap-1.5">
         <Footprints size={14} /> Sapatilhas (opcional)
       </label>
@@ -2471,8 +2475,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
     </div>
   ) : null);
 
-  const renderNotesField = () => (
-    <div className="mb-4">
+  const renderNotesField = (spaced = true) => (
+    <div className={spaced ? 'mb-4' : undefined}>
       <label htmlFor="rr-observacoes-opcional" className="text-[11px] text-[var(--text-3)] mb-1.5 flex items-center gap-1.5">
         <PencilLine size={14} /> {isRaceMode ? 'Notas da prova (opcional)' : 'Observações (opcional)'}
       </label>
@@ -2489,9 +2493,9 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
      pessoal" (runs.duration_seconds) — distinto do tempo oficial, que é o
      do cronómetro da organização e vai em details.official_time_seconds. */
   const metricsAnchorRef = useRef(null);
-  const renderCoreMetrics = () => (
+  const renderCoreMetrics = (spaced = true) => (
     <>
-      <div className="mb-3" ref={metricsAnchorRef}>
+      <div className={spaced ? 'mb-3' : undefined} ref={metricsAnchorRef}>
         <label htmlFor="rr-distancia" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
           {isRepeatType ? 'Distância total (km, opcional)' : 'Distância (km)'}
         </label>
@@ -2507,7 +2511,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
         </div>
       </div>
 
-      <div className="mb-4">
+      <div className={spaced ? 'mb-4' : undefined}>
         <label htmlFor="rr-duracao" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">
           {isRepeatType ? 'Duração total (h:mm:ss)' : (runKind === 'competicao' ? 'Tempo pessoal (h:mm:ss)' : 'Duração (h:mm:ss)')}
         </label>
@@ -2581,7 +2585,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
         {/* ── 2. O RESULTADO ─────────────────────────────────────────────── */}
         <SectionLabel tone="race">O resultado</SectionLabel>
-        <GlassCard>
+        <section className="reg-section">
           {renderAnalysisStates()}
           <div
             aria-busy={showAnalysis || undefined}
@@ -2672,22 +2676,22 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
 
             {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
           </div>
-        </GlassCard>
+        </section>
 
         {/* ── 3. COMO CORREU ─────────────────────────────────────────────── */}
         <SectionLabel tone="race">Como correu</SectionLabel>
-        <GlassCard>
+        <section className="reg-section">
           {renderEffortField()}
           {renderNotesField()}
           {renderShoesField()}
-        </GlassCard>
+        </section>
 
         {/* ── 4. MEMÓRIAS — vivem na prova, não na corrida (spec §2). São uma
             oferta, não uma condição: a prova conclui-se com a corrida, e o
             diploma, a medalha e as fotos juntam-se aqui ou, mais tarde, na
             persiana "Memórias" do hub (pedido 2026-09-13). ─────────────── */}
         <SectionLabel tone="race">Memórias</SectionLabel>
-        <GlassCard data-testid="race-memories">
+        <section className="reg-section" data-testid="race-memories">
           <p className="text-[12px] leading-[1.5] mb-4" style={{ color: 'var(--text-3)' }}>
             Opcional. Se o diploma ou as fotografias ainda não chegaram, regista a prova na mesma — juntas tudo depois, no hub da prova.
           </p>
@@ -2725,15 +2729,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               A corrida ficou gravada. O que não consegui foi guardar as memórias da prova — podes tentar outra vez sem perder nada.
             </Warning>
           )}
-        </GlassCard>
+        </section>
       </div>
     );
   };
 
   const renderCorridaForm = () => {
 
-    // O cartão (cabeçalho, espera e erro da análise, formulário bloqueado) é
-    // o do RegistrationShell; aqui ficam os campos do treino.
+    // O cabeçalho, a espera e o erro da análise e o formulário bloqueado são
+    // do RegistrationShell; aqui ficam os campos do treino, um cartão por
+    // passo (RegistrationSection — soluções A + B, 2026-10-20). O que separa
+    // os blocos é o cartão e o espaço, não uma linha.
     return (
       <>
           {pendingRunItems.length > 0 && (
@@ -2753,173 +2759,190 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
             />
           )}
 
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {/* Cor via style, não pela classe: nestes botões o fundo é escuro ou
-                colorido e o texto tem de ficar branco a valer, não o --text-1
-                do resto da app. (O override global que reescrevia text-white
-                saiu no impeccable colorize — ver a tabela em globals.css.) */}
-            <Chip
-              active={runKind === 'treino' && !isWalkSelected}
-              variant="run"
-              onClick={() => { setRunKind('treino'); if (isWalkSelected) chooseTrainingType('continuo'); setIsFormDirty(true); }}
-              className="px-3 py-1.5"
-              type="button"
-            >
-              Treino
-            </Chip>
-            <Chip
-              active={runKind === 'competicao'}
-              variant="run"
-              onClick={() => { setRunKind('competicao'); setIsFormDirty(true); }}
-              className="px-3 py-1.5"
-              type="button"
-            >
-              Prova
-            </Chip>
-            {/* Caminhada (2026-10-05): recuperação de lesão ou cirurgia, pós-prova,
-                ou quem não pode correr. Grava training_type 'caminhada' e fica
-                fora da carga de corrida (runKinds.ts). */}
-            <Chip
-              active={isWalkSelected}
-              variant="run"
-              onClick={() => { setRunKind('treino'); chooseTrainingType(WALK_TRAINING_TYPE); setIsFormDirty(true); }}
-              className="px-3 py-1.5"
-              type="button"
-              aria-label="Caminhada"
-            >
-              <span className="inline-flex items-center gap-1"><PersonStanding size={13} aria-hidden="true" /> Caminhada</span>
-            </Chip>
-          </div>
-
-          {isWalkSelected ? (
-            <p data-testid="nota-caminhada" className="text-[11px] text-[var(--text-3)] mb-4">
-              Uma caminhada fica à parte das corridas: não conta para os km, o pace nem a carga de corrida. A Carol olha para ela como recuperação.
-            </p>
-          ) : runKind === 'treino' ? (
-            <div className="mb-4">
-              <RunTrainingTypeHelp label="Tipo de treino" fieldId="rr-tipo-de-treino">
-                <select
-                  id="rr-tipo-de-treino"
-                  value={runTrainingType}
-                  onChange={e => { setRunTrainingType(e.target.value); setIsFormDirty(true); }}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-                >
-                  <optgroup label="Corrida solta">
-                    <option value="continuo">Contínuo</option>
-                    <option value="longo">Longo</option>
-                    <option value="recuperacao">Recuperação</option>
-                  </optgroup>
-                  <optgroup label="Estruturado">
-                    <option value="tempo">Ritmo (Tempo)</option>
-                    <option value="fartlek">Fartlek</option>
-                    <option value="intervalos">Intervalos</option>
-                  </optgroup>
-                  <optgroup label="Trilho">
-                    <option value="subidas">Subidas</option>
-                    <option value="trail">Trail</option>
-                    <option value="tecnico">Técnico (trilho)</option>
-                  </optgroup>
-                </select>
-                <p className="text-[11px] text-[var(--text-3)] mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
-              </RunTrainingTypeHelp>
+          <RegistrationSection step={1} title="Que corrida foi" done={Boolean(runDate)}>
+            <div className="flex flex-wrap gap-1.5">
+              {/* Cor via style, não pela classe: nestes botões o fundo é escuro ou
+                  colorido e o texto tem de ficar branco a valer, não o --text-1
+                  do resto da app. (O override global que reescrevia text-white
+                  saiu no impeccable colorize — ver a tabela em globals.css.) */}
+              <Chip
+                active={runKind === 'treino' && !isWalkSelected}
+                variant="run"
+                onClick={() => { setRunKind('treino'); if (isWalkSelected) chooseTrainingType('continuo'); setIsFormDirty(true); }}
+                className="px-3 py-1.5"
+                type="button"
+              >
+                Treino
+              </Chip>
+              <Chip
+                active={runKind === 'competicao'}
+                variant="run"
+                onClick={() => { setRunKind('competicao'); setIsFormDirty(true); }}
+                className="px-3 py-1.5"
+                type="button"
+              >
+                Prova
+              </Chip>
+              {/* Caminhada (2026-10-05): recuperação de lesão ou cirurgia, pós-prova,
+                  ou quem não pode correr. Grava training_type 'caminhada' e fica
+                  fora da carga de corrida (runKinds.ts). */}
+              <Chip
+                active={isWalkSelected}
+                variant="run"
+                onClick={() => { setRunKind('treino'); chooseTrainingType(WALK_TRAINING_TYPE); setIsFormDirty(true); }}
+                className="px-3 py-1.5"
+                type="button"
+                aria-label="Caminhada"
+              >
+                <span className="inline-flex items-center gap-1"><PersonStanding size={13} aria-hidden="true" /> Caminhada</span>
+              </Chip>
             </div>
-          ) : (
-            <>
-              {/* "Qual prova?" — uma competição quase sempre é uma prova que
-                  já está na agenda. Escolhê-la entra no modo prova (spec §3);
-                  "fora da agenda" é o comportamento de sempre, para a corrida
-                  de rua que ninguém marcou. Só a criar: a editar, a ligação
-                  já vem de runs.race_id. */}
-              {showToggle && racePickerOptions.length > 0 && (
-                <div className="mb-4">
-                  <label htmlFor="rr-qual-prova" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Qual prova?</label>
-                  <select id="rr-qual-prova"
-                    value={raceId || ''}
-                    onChange={e => applyRaceSelection(e.target.value || null)}
-                    className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
+
+            {isWalkSelected ? (
+              <p data-testid="nota-caminhada" className="text-[11px] text-[var(--text-3)]">
+                Uma caminhada fica à parte das corridas: não conta para os km, o pace nem a carga de corrida. A Carol olha para ela como recuperação.
+              </p>
+            ) : runKind === 'treino' ? (
+              <div>
+                <RunTrainingTypeHelp label="Tipo de treino" fieldId="rr-tipo-de-treino">
+                  <select
+                    id="rr-tipo-de-treino"
+                    value={runTrainingType}
+                    onChange={e => { setRunTrainingType(e.target.value); setIsFormDirty(true); }}
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
                   >
-                    <option value="">Prova fora da agenda</option>
-                    {racePickerOptions.map(ev => (
-                      <option key={ev.id} value={ev.id}>{`${ev.name} · ${formatDatePTShort(ev.date)}`}</option>
-                    ))}
+                    <optgroup label="Corrida solta">
+                      <option value="continuo">Contínuo</option>
+                      <option value="longo">Longo</option>
+                      <option value="recuperacao">Recuperação</option>
+                    </optgroup>
+                    <optgroup label="Estruturado">
+                      <option value="tempo">Ritmo (Tempo)</option>
+                      <option value="fartlek">Fartlek</option>
+                      <option value="intervalos">Intervalos</option>
+                    </optgroup>
+                    <optgroup label="Trilho">
+                      <option value="subidas">Subidas</option>
+                      <option value="trail">Trail</option>
+                      <option value="tecnico">Técnico (trilho)</option>
+                    </optgroup>
+                  </select>
+                  <p className="text-[11px] text-[var(--text-3)] mt-1.5">A maioria das corridas é "Contínuo" — só muda se for um treino estruturado.</p>
+                </RunTrainingTypeHelp>
+              </div>
+            ) : (
+              <>
+                {/* "Qual prova?" — uma competição quase sempre é uma prova que
+                    já está na agenda. Escolhê-la entra no modo prova (spec §3);
+                    "fora da agenda" é o comportamento de sempre, para a corrida
+                    de rua que ninguém marcou. Só a criar: a editar, a ligação
+                    já vem de runs.race_id. */}
+                {showToggle && racePickerOptions.length > 0 && (
+                  <div>
+                    <label htmlFor="rr-qual-prova" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Qual prova?</label>
+                    <select id="rr-qual-prova"
+                      value={raceId || ''}
+                      onChange={e => applyRaceSelection(e.target.value || null)}
+                      className="w-full min-h-[44px] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--race)] transition"
+                    >
+                      <option value="">Prova fora da agenda</option>
+                      {racePickerOptions.map(ev => (
+                        <option key={ev.id} value={ev.id}>{`${ev.name} · ${formatDatePTShort(ev.date)}`}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div>
+                  <label htmlFor="rr-disciplina" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Disciplina</label>
+                  <select id="rr-disciplina"
+                    value={completedRaceType}
+                    onChange={e => { setCompletedRaceType(e.target.value); setIsFormDirty(true); }}
+                    className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+                  >
+                    {COMPLETED_RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
                   </select>
                 </div>
-              )}
+              </>
+            )}
 
-              <div className="mb-4">
-                <label htmlFor="rr-disciplina" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Disciplina</label>
-                <select id="rr-disciplina"
-                  value={completedRaceType}
-                  onChange={e => { setCompletedRaceType(e.target.value); setIsFormDirty(true); }}
-                  className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-3 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-                >
-                  {COMPLETED_RACE_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
-                </select>
+            {/* Data · Hora — a hora ao lado da data, opcional. É ela que diz à
+                Carol que se treinou às 22:30 (sono) ou à hora da prova na
+                última semana (specs/plano-de-prova.md, "A véspera e a hora"). */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="min-w-0">
+                <label htmlFor="rr-data-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da corrida</label>
+                <input id="rr-data-da-corrida"
+                  type="date"
+                  value={runDate}
+                  max={todayISO()}
+                  onChange={e => { setRunDate(e.target.value); if (planChoice) handleChangeRunPlan(); setIsFormDirty(true); }}
+                  className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+                />
               </div>
-            </>
-          )}
-
-          {/* Data · Hora — a hora ao lado da data, opcional. É ela que diz à
-              Carol que se treinou às 22:30 (sono) ou à hora da prova na
-              última semana (specs/plano-de-prova.md, "A véspera e a hora"). */}
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <div className="min-w-0">
-              <label htmlFor="rr-data-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da corrida</label>
-              <input id="rr-data-da-corrida"
-                type="date"
-                value={runDate}
-                max={todayISO()}
-                onChange={e => { setRunDate(e.target.value); if (planChoice) handleChangeRunPlan(); setIsFormDirty(true); }}
-                className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-              />
-            </div>
-            <div className="min-w-0">
-              <label htmlFor="rr-hora-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora</label>
-              <input id="rr-hora-da-corrida"
-                type="time"
-                value={runStartTime}
-                onChange={e => { setRunStartTime(e.target.value); setIsFormDirty(true); }}
-                className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-              />
-            </div>
-          </div>
-
-          {renderEffortField()}
-
-          {renderShoesField()}
-
-          {renderNotesField()}
-
-          <div className="mb-4">
-            <label htmlFor="rr-nome-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nome da corrida <span className="text-[var(--danger)]">*</span></label>
-            <input id="rr-nome-da-corrida"
-              type="text"
-              value={runName}
-              onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
-              className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
-            />
-            <p className="text-[11px] text-[var(--text-3)] mt-1.5">Sugestão automática — muda se quiseres.</p>
-          </div>
-
-          {/* Competition Specifics */}
-          {runKind === 'competicao' && (
-            <div className="grid grid-cols-2 gap-2 mb-4 bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl p-3">
-              <div>
-                <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1">Tempo Oficial</label>
-                <DurationInput id="rr-tempo-oficial" placeholder="ex: 1:45:00" value={officialTime} onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
-              </div>
-              <div>
-                <label htmlFor="rr-posicao" className="text-[11px] text-[var(--text-3)] block mb-1">Posição</label>
-                <input id="rr-posicao" type="number" placeholder="ex: 12" value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+              <div className="min-w-0">
+                <label htmlFor="rr-hora-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Hora</label>
+                <input id="rr-hora-da-corrida"
+                  type="time"
+                  value={runStartTime}
+                  onChange={e => { setRunStartTime(e.target.value); setIsFormDirty(true); }}
+                  className="w-full min-h-[var(--tap)] bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+                />
               </div>
             </div>
-          )}
+          </RegistrationSection>
 
-          {/* Formulário único: os prints (opcionais) e logo a seguir os campos,
+          {/* Os números: os prints (opcionais) e logo a seguir os campos,
               sempre à vista — "Ler os prints" enche os que estiverem vazios. */}
-          {showToggle && renderPhotoBlock()}
-          {renderCoreMetrics()}
-          {renderManualDetails()}
+          <RegistrationSection step={2} title="Os números" done={Boolean(runDistance && runDuration)}>
+            {showToggle && renderPhotoBlock()}
+            {renderEditPhotos(false)}
+            {renderCoreMetrics(false)}
+            {/* Competition Specifics */}
+            {runKind === 'competicao' && (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label htmlFor="rr-tempo-oficial" className="text-[11px] text-[var(--text-3)] block mb-1">Tempo Oficial</label>
+                  <DurationInput id="rr-tempo-oficial" placeholder="ex: 1:45:00" value={officialTime} onChange={(v) => { setOfficialTime(v); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                </div>
+                <div>
+                  <label htmlFor="rr-posicao" className="text-[11px] text-[var(--text-3)] block mb-1">Posição</label>
+                  <input id="rr-posicao" type="number" placeholder="ex: 12" value={position} onChange={e => { setPosition(e.target.value); setIsFormDirty(true); }} className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-2 py-1.5 text-xs outline-none focus:border-[var(--mod-corrida-to)] transition" />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="rr-nome-da-corrida" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Nome da corrida <span className="text-[var(--danger)]">*</span></label>
+              <input id="rr-nome-da-corrida"
+                type="text"
+                value={runName}
+                onChange={e => { setRunName(e.target.value); setIsFormDirty(true); }}
+                className="w-full bg-[var(--surface-soft)] border border-[var(--border-glass)] rounded-xl px-3 py-2.5 text-[14px] text-white outline-none focus:border-[var(--mod-corrida-to)] transition"
+              />
+              <p className="text-[11px] text-[var(--text-3)] mt-1.5">Sugestão automática — muda se quiseres.</p>
+            </div>
+          </RegistrationSection>
+
+          <RegistrationSection step={3} title="Como te sentiste" optional>
+            {renderEffortField(false)}
+            {renderShoesField(false)}
+            {renderNotesField(false)}
+          </RegistrationSection>
+
+          {/* Voltas e estrutura: os parciais em qualquer corrida; a estrutura
+              da sessão só nos treinos de repetições. */}
+          <RegistrationSection step={4} title="Parciais e estrutura" optional>
+            {renderRepeatStructure(false)}
+            {renderSplits(false)}
+          </RegistrationSection>
+
+          <RegistrationSection step={5} title="Fisiologia e relógio" optional>
+            {renderWatchMetrics(false)}
+            {renderHrZones(false)}
+          </RegistrationSection>
+
+          {renderCarolIntervention()}
 
           {errorMsg && <p role="alert" className="text-[13px] font-medium mt-3" style={{ color: 'var(--danger)' }}>{errorMsg}</p>}
       </>
@@ -2960,15 +2983,32 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
   /* Tudo o que o registo manual acrescenta: os prints já carregados (a
      editar), as grelhas de métricas do relógio, as zonas de FC, a estrutura
      da sessão (só treinos de repetições) e o atalho para a Carol. Partilhado
-     pelos dois layouts — em modo prova entra dentro de "O resultado". */
+     pelos dois layouts — em modo prova entra dentro de "O resultado".
+     No modo prova entra tudo junto, cada grupo na sua caixa; no treino cada
+     peça vai para o passo (RegistrationSection) a que pertence, e aí a caixa
+     interior sai — o cartão do passo já é a moldura. `boxed` escolhe. */
   function renderManualDetails() {
     return (
-            <>
-          {/* A editar, os prints do relógio removem-se e juntam-se (pedido
-              2026-09-13: um print errado, ou a tabela dos km que faltava);
-              guardar reanalisa a corrida pelo conjunto final. */}
-          {runIdToEdit && (
-            <div className="mb-4" data-testid="edit-run-photos">
+      <>
+        {renderEditPhotos()}
+        <div className="space-y-3 mb-4">
+          {renderWatchMetrics(true)}
+        </div>
+        {renderHrZones(true)}
+        {renderRepeatStructure(true)}
+        {renderSplits(true)}
+        {renderCarolIntervention()}
+      </>
+    );
+  }
+
+  /* A editar, os prints do relógio removem-se e juntam-se (pedido
+     2026-09-13: um print errado, ou a tabela dos km que faltava);
+     guardar reanalisa a corrida pelo conjunto final. */
+  function renderEditPhotos(spaced = true) {
+    if (!runIdToEdit) return null;
+    return (
+            <div className={spaced ? 'mb-4' : undefined} data-testid="edit-run-photos">
               <label className="text-[11px] text-[var(--text-3)] mb-1.5 block">Prints do relógio</label>
               {runPhotos.length > 0 && (
                 <div className="grid grid-cols-3 gap-2 mb-2">
@@ -2998,16 +3038,36 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 Remover ou juntar prints reanalisa a corrida pelas imagens ao guardar.
               </p>
             </div>
-          )}
+    );
+  }
 
-          {/* Metrics Grid inside Organized Sub-containers */}
-          <div className="space-y-3 mb-4">
-            {/* Relógio & Fisiologia */}
+  /* Um grupo de métricas do relógio: em caixa (modo prova) ou só com o
+     subtítulo (treino, dentro do passo "Fisiologia e relógio"). Sem título,
+     o grupo é o primeiro do passo e o título do passo já o nomeia. */
+  function metricGroup(title, grid, boxed) {
+    if (boxed) {
+      return (
             <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3">
               <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5 flex items-center justify-between">
-                <span>Fisiologia & Relógio</span>
+                <span>{title}</span>
                 <span className="text-[11px] font-normal text-[var(--text-3)]">opcional</span>
               </p>
+              {grid}
+            </div>
+      );
+    }
+    return (
+      <div>
+        {title && <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5">{title}</p>}
+        {grid}
+      </div>
+    );
+  }
+
+  function renderWatchMetrics(boxed) {
+    return (
+      <>
+        {metricGroup(boxed ? 'Fisiologia & Relógio' : null, (
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label htmlFor="rr-desnivel-subida-m" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Desnível subida (m)</label>
@@ -3090,14 +3150,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   />
                 </div>
               </div>
-            </div>
-
-            {/* Biomecânica de Corrida */}
-            <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3">
-              <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5 flex items-center justify-between">
-                <span>Biomecânica de Corrida</span>
-                <span className="text-[11px] font-normal text-[var(--text-3)]">opcional</span>
-              </p>
+        ), boxed)}
+        {metricGroup(boxed ? 'Biomecânica de Corrida' : 'Biomecânica', (
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label htmlFor="rr-contacto-solo-ms" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Contacto Solo (ms)</label>
@@ -3148,14 +3202,8 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   />
                 </div>
               </div>
-            </div>
-
-            {/* Hidratação & Passos */}
-            <div className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3">
-              <p className="text-[12px] font-bold text-[var(--text-3)] mb-2.5 flex items-center justify-between">
-                <span>Hidratação & Atividade</span>
-                <span className="text-[11px] font-normal text-[var(--text-3)]">opcional</span>
-              </p>
+        ), boxed)}
+        {metricGroup(boxed ? 'Hidratação & Atividade' : 'Hidratação e atividade', (
               <div className="grid grid-cols-2 gap-2.5">
                 <div>
                   <label htmlFor="rr-perda-transpiracao-ml" className="text-[11px] font-semibold text-[var(--text-3)] block mb-1">Perda transpiração (ml)</label>
@@ -3174,11 +3222,14 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                   />
                 </div>
               </div>
-            </div>
-          </div>
+        ), boxed)}
+      </>
+    );
+  }
 
-            {/* FC Zones */}
-            <div role="group" aria-labelledby="rr-zonas-titulo" className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3 mb-4">
+  function renderHrZones(boxed) {
+    return (
+            <div role="group" aria-labelledby="rr-zonas-titulo" className={boxed ? 'rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] text-white p-3 mb-4' : undefined}>
               <div className="flex items-center justify-between mb-2">
                 <p id="rr-zonas-titulo" className="text-[12px] font-bold text-[var(--text-3)]">Zonas de FC (tempo em cada zona)</p>
                 <AddButton
@@ -3222,10 +3273,13 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 ))
               )}
             </div>
+    );
+  }
 
-          {/* Repeat Specifics */}
-          {runKind === 'treino' && isRepeatType && (
-            <div className="bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-white mb-4">
+  function renderRepeatStructure(boxed) {
+    if (!(runKind === 'treino' && isRepeatType)) return null;
+    return (
+            <div className={boxed ? 'bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-white mb-4' : undefined}>
               <p className="text-[12px] font-semibold text-[var(--text-3)] mb-2">Estrutura da Sessão</p>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 <div>
@@ -3238,14 +3292,17 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                 </div>
               </div>
             </div>
-          )}
+    );
+  }
 
-          {/* Parciais — em qualquer corrida (2026-09-29): a analyze-run lê-os
-              dos prints em qualquer tipo e o aviso de métricas em falta pede-os,
-              mas o editor só aparecia nos treinos de repetições. Mesmo desenho
-              das Zonas de FC: título a 12px em negrito, grupo com nome para
-              leitores de ecrã e frase de ajuda quando vazio. */}
-          <div role="group" aria-labelledby="rr-parciais-titulo" className="bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-white mb-4">
+  /* Parciais — em qualquer corrida (2026-09-29): a analyze-run lê-os
+     dos prints em qualquer tipo e o aviso de métricas em falta pede-os,
+     mas o editor só aparecia nos treinos de repetições. Mesmo desenho
+     das Zonas de FC: título a 12px em negrito, grupo com nome para
+     leitores de ecrã e frase de ajuda quando vazio. */
+  function renderSplits(boxed) {
+    return (
+          <div role="group" aria-labelledby="rr-parciais-titulo" className={boxed ? 'bg-[var(--surface-glass)] rounded-xl p-3 border border-[var(--border-glass)] text-white mb-4' : undefined}>
             <div className="flex items-center justify-between mb-2">
               <p id="rr-parciais-titulo" className="text-[12px] font-bold text-[var(--text-3)]">Parciais (voltas)</p>
               <AddButton
@@ -3269,13 +3326,18 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               </div>
             ))}
           </div>
+    );
+  }
 
-          {/* A intervenção da Carol neste registo — o mesmo componente do cartão
-              e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
-              dispensa e só fecha o formulário se o separador mudar de facto;
-              "Dispensar" usa a chave única do tipo (utils/recordIntervention.js) —
-              antes este formulário lia coach_notes || coach_analysis e o cartão
-              outro campo, e a dispensa num não valia no outro. */}
+  /* A intervenção da Carol neste registo — o mesmo componente do cartão
+     e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não
+     dispensa e só fecha o formulário se o separador mudar de facto;
+     "Dispensar" usa a chave única do tipo (utils/recordIntervention.js) —
+     antes este formulário lia coach_notes || coach_analysis e o cartão
+     outro campo, e a dispensa num não valia no outro. */
+  function renderCarolIntervention() {
+    return (
+      <>
           {runIdToEdit && (
             <CarolInterventionActions
               record={runs.find(r => r.id === runIdToEdit)}
@@ -3284,8 +3346,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
               className="mb-2"
             />
           )}
-
-            </>
+      </>
     );
   }
 

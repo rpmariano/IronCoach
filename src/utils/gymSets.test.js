@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseDurationInput, formatDurationInput, flattenExercises, describeSavedSet } from './gymSets';
+import { parseDurationInput, formatDurationInput, flattenExercises, describeSavedSet, exercisesFromPreview } from './gymSets';
 
 describe('parseDurationInput', () => {
   it('lê minutos, mm:ss e hh:mm:ss', () => {
@@ -206,5 +206,14 @@ describe('describeSavedSet — a série gravada no cartão (bug #73)', () => {
   it('sem nada: um traço, nunca "undefined"', () => {
     expect(describeSavedSet({})).toBe('—');
     expect(describeSavedSet(null)).toBe('—');
+  });
+});
+
+describe('exercisesFromPreview — nomeado sem números (bug #67)', () => {
+  it('força sem séries lidas entra com uma série vazia', () => {
+    const [ex] = exercisesFromPreview({ exercises: [{ name: 'Gémeos', type: 'forca', plan_block_index: null, sets: [] }] });
+    expect(ex.name).toBe('Gémeos');
+    expect(ex.sets).toHaveLength(1);
+    expect(ex.sets[0]).toMatchObject({ reps: '', weight: '' });
   });
 });

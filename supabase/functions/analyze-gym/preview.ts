@@ -79,6 +79,12 @@ const SETS_RULE =
   "passadeira, elíptica, piscina, corda…). Na força, cada série leva reps e weight (kg), pela ordem; \"3x12 a 40 kg\" são " +
   "TRÊS séries de 12 reps a 40 kg. No cardio, UMA série com os alvos que existirem: duration_seconds, distance_km " +
   "(\"2000 m\" = 2) e/ou laps (voltas). Devolve null no que não estiver escrito ou visível — nunca inventes valores. " +
+  // Bug #67 (2026-10-19): o texto do plano da Carol ("cadeira extensora,
+  // cadeira flexora e gémeos (3-4 séries de 10-12 reps)") voltava sem nenhum
+  // exercício — intervalos e falta de carga davam séries vazias, que caíam.
+  "Se o texto der INTERVALOS ou for um plano (\"3-4 séries de 10-12 reps\"), usa o número MÍNIMO de séries e as reps " +
+  "de CIMA (3 séries de 12 reps), com weight null se a carga não estiver escrita; o mesmo esquema vale para todos os " +
+  "exercícios que ele abranger. Um exercício nomeado sem números devolve-se na mesma, com sets vazio. " +
   DURATION_RULE;
 
 /** O acrescento ao prompt de extração de prints (buildPrompt) para a leitura de preview. */
@@ -198,7 +204,9 @@ export function normalizePreview(parsed: any, planBlockCount: number, kind: stri
       if (Object.values(row).every((v) => v === null)) continue;
       sets.push(row);
     }
-    if (!sets.length) continue;
+    // Um exercício de força nomeado sem números conta (bug #67): o atleta
+    // preenche as séries. Um de cardio sem nada fica de fora.
+    if (!sets.length && (ex?.type === "cardio" || cardioSpecFor(name))) continue;
     const hasLoad = sets.some((s) => s.reps !== null || s.weight !== null);
     const hasCardio = sets.some((s) => s.duration_seconds !== null || s.distance_km !== null || s.laps !== null);
     // O tipo diz-se, mas os dados mandam: séries só de cardio, ou um exercício

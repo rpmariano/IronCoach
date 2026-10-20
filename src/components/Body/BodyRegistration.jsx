@@ -19,6 +19,7 @@ import CarolInterventionActions from '../shared/CarolInterventionActions';
 import RegistrationShell from '../shared/registration/RegistrationShell';
 import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PhotoReadSection from '../shared/registration/PhotoReadSection';
+import RegistrationSection from '../shared/registration/RegistrationSection';
 
 const BODY_METRICS = [
   { key:'weight_kg',            label:'Peso',              unit:'kg',   dec:1, color:'#dd3c71' },
@@ -481,6 +482,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
     </>
   );
 
+  /* Os passos (solução B, 2026-10-20): a editar não há o passo dos prints,
+     por isso a numeração dos seguintes recua um. */
+  const stepMeasures = isEditing ? 2 : 3;
+
   return (
     <RegistrationShell
       accent={ACCENT}
@@ -498,7 +503,8 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
       primaryAction={primaryAction}
     >
       {/* Data · Hora — a hora a que a pesagem foi feita, obrigatória. */}
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <RegistrationSection step={1} title="Quando" done={!!date && !!normalizeStartTime(assessmentTime)}>
+      <div className="grid grid-cols-2 gap-2">
         <div className="min-w-0">
           <label htmlFor="br-data-da-avaliacao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da avaliação</label>
           <input
@@ -522,10 +528,12 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           />
         </div>
       </div>
+      </RegistrationSection>
 
       {/* Ler de uma foto (opcional) — a editar não há prints novos: os
           valores corrigem-se nos campos. */}
       {!isEditing && (
+        <RegistrationSection step={2} title="Ler de um print" optional done={!!readState}>
         <PhotoReadSection
           photos={photos}
           maxPhotos={MAX_PHOTOS}
@@ -543,10 +551,12 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
             <>O ecrã <span className="font-bold">{ecraPrincipal('renpho').nome}</span> é o que traz todas as métricas de uma vez</>
           ) : null}
         />
+        </RegistrationSection>
       )}
 
       {/* Os valores — sempre à vista (formulário único). */}
-      <div className="grid grid-cols-2 gap-2 mb-4">
+      <RegistrationSection step={stepMeasures} title="As medidas" done={!isBlank(metrics.weight_kg)}>
+      <div className="grid grid-cols-2 gap-2">
         {BODY_METRICS.map(m => (
           <label key={m.key} className="block">
             <span className="text-[11px] text-[var(--text-3)] block mb-1">{m.label} {m.unit && `(${m.unit})`}</span>
@@ -561,8 +571,10 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           </label>
         ))}
       </div>
+      </RegistrationSection>
 
-      <div className="mb-4">
+      <RegistrationSection step={stepMeasures + 1} title="Condições e observações" optional>
+      <div>
         <span id="br-jejum-label" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Condições da pesagem</span>
         <div role="group" aria-labelledby="br-jejum-label" className="flex gap-2 mb-3">
           {[['yes', 'Em jejum'], ['no', 'Não em jejum']].map(([value, label]) => {
@@ -591,6 +603,7 @@ export default function BodyRegistration({ onClose, assessmentIdToEdit = null })
           className="w-full bg-[var(--surface-glass)] border border-[var(--border-glass)] text-white rounded-xl px-3 py-2.5 text-sm placeholder-[var(--text-muted)] outline-none focus:border-[var(--mod-corpo-to)] resize-none"
         />
       </div>
+      </RegistrationSection>
 
       {/* A intervenção da Carol neste registo — o mesmo componente do cartão
           e do "Registo Guardado" (2026-10-05). */}
