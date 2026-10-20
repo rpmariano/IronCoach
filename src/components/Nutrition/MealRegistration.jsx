@@ -17,6 +17,7 @@ import { usePersistedDraftMedia } from '../../utils/draftMediaPersistence';
 import { foodKey, habitualsForMealType, isKnownFood, isPantryComplete, markMealTemplateUsed, pantrySuggestions, portionText, templateItems, templatesForMealType } from '../../utils/pantry';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
 import RegistrationShell from '../shared/registration/RegistrationShell';
+import RegistrationSection from '../shared/registration/RegistrationSection';
 import useRegistrationExit from '../shared/registration/useRegistrationExit';
 import PlanPrefillBanner from '../shared/registration/PlanPrefillBanner';
 import { mealSuggestionsFor } from '../../utils/planPrefill';
@@ -696,9 +697,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             }}
           />
         )}
+        {/* Passo 1 — QUE REFEIÇÃO: data, hora e tipo. Cada passo é o seu
+            cartão (RegistrationSection, 2026-10-20); já não há margens a
+            separar os grupos dentro de um cartão só. */}
+        <RegistrationSection step={1} title="Que refeição" done={!!(date && mealTime && mealType)}>
         {/* Data · Hora — como na corrida e no ginásio. A hora ordena o dia
             no Calendário e diz à Carol a que horas se comeu. */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
+        <div className="grid grid-cols-2 gap-2">
           <div className="min-w-0">
             <label htmlFor="mr-data-da-refeicao" className="text-[11px] text-[var(--text-3)] mb-1.5 block">Data da refeição</label>
             <input
@@ -722,7 +727,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 mb-5">
+        <div className="flex flex-wrap gap-2">
           {MEAL_TYPES.map(t => {
             const isActive = mealType === t.key;
             return (
@@ -745,11 +750,16 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             );
           })}
         </div>
+        </RegistrationSection>
 
+        {/* Passo 2 — O QUE COMESTE: fotos e alimentos escritos. Preenchido
+            com uma foto ou um alimento (as observações sozinhas também
+            chegam para analisar, mas vivem no passo 3). */}
+        <RegistrationSection step={2} title="O que comeste" done={photos.length > 0 || manualItems.length > 0}>
         {/* FOTOS — opcionais (bug #47). Escondidas a editar: editar é pelos
             alimentos e observações, sem foto nova (mesmo padrão da Corrida). */}
         {!isEditing && (
-          <div className="mb-5" data-testid="meal-photos">
+          <div data-testid="meal-photos">
             <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Fotos</p>
             {photos.length > 0 && (
               <>
@@ -800,13 +810,10 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
         {/* ALIMENTOS ESCRITOS — sozinhos, ou a completar as fotos (bug #47).
             Também a editar: como guardar passa pelo Coach quando os alimentos
             mudam, os valores de um alimento novo são estimados na mesma
-            chamada. */}
-        {/* A escrever (bug #64): espaço por baixo para o bloco de adicionar
-            poder subir ao topo mesmo no fim do formulário — senão ficava
-            onde o teclado o tapa. */}
-        {/* Em px e não só em vh: com o teclado aberto o Android encolhe o
-            viewport, e 45vh passava a pouco mais de 150 px. */}
-        <div className="mb-4" style={typingFood ? { paddingBottom: 'max(45vh, 420px)' } : undefined}>
+            chamada. O espaço por baixo para o bloco de adicionar subir ao
+            topo a escrever (bug #64) vai num espaçador a seguir ao passo 3,
+            fora dos cartões — como padding aqui esticava o cartão. */}
+        <div>
           {!isEditing && <p className="text-[11px] text-[var(--text-3)] mb-1.5 px-1">Alimentos</p>}
           {!typingFood && templates.length > 0 && (
             <div className="mb-3" data-testid="meal-templates">
@@ -848,7 +855,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           <div
             ref={addBlockRef}
             data-testid="meal-add-food"
-            className="rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 mb-3"
+            className={`rounded-xl border border-[var(--border-glass)] bg-[var(--surface-glass)] p-3 ${manualItems.length > 0 ? 'mb-3' : ''}`}
             // Por baixo do header fixo (~88 px no telemóvel).
             style={{ scrollMarginTop: 96 }}
             onFocus={() => { if (!typingFood) setTypingFood(true); }}
@@ -923,7 +930,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
           </div>
 
           {manualItems.length > 0 && (
-            <div className="space-y-1.5 mb-3" data-testid="meal-items">
+            <div className="space-y-1.5" data-testid="meal-items">
               {!isEditing && (
                 <p className="text-[11px] font-bold text-[var(--text-3)] px-1">Nesta refeição · {manualItems.length}</p>
               )}
@@ -972,8 +979,11 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
             </div>
           )}
         </div>
+        </RegistrationSection>
 
-        <div className="mb-5">
+        {/* Passo 3 — OBSERVAÇÕES, opcionais. */}
+        <RegistrationSection step={3} title="Observações" optional done={notes.trim().length > 0}>
+        <div>
           <label htmlFor="mr-observacoes-opcional-ex-big-mac-bi" className="text-[11px] text-[var(--text-3)] mb-1.5 block px-1">Observações (opcional) — ex.: "Big Mac", "bife frito em azeite"</label>
           <textarea id="mr-observacoes-opcional-ex-big-mac-bi"
             rows="2"
@@ -994,6 +1004,13 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
               : ''}
           </p>
         </div>
+        </RegistrationSection>
+
+        {/* A escrever (bug #64): espaço por baixo para o bloco de adicionar
+            poder subir ao topo mesmo no fim do formulário — senão ficava
+            onde o teclado o tapa. Em px e não só em vh: com o teclado aberto
+            o Android encolhe o viewport, e 45vh passava a pouco mais de 150 px. */}
+        {typingFood && <div aria-hidden="true" data-testid="meal-typing-spacer" style={{ height: 'max(45vh, 420px)' }} />}
 
         {/* A intervenção da Carol neste registo — o mesmo componente do cartão
             e do "Registo Guardado" (2026-10-05): "Falar com a Carol" não

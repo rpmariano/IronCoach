@@ -26,6 +26,18 @@
      upload tracejada): 3:1 contra o fundo, ao contrário das bordas de vidro
      acima, que são decorativas. É a mesma cor do --text-4 de propósito. */
   --border-control: var(--text-4);
+  /* As camadas dos registos (2026-10-20, canvas "Registo — contraste e
+     hierarquia", soluções A + B): tudo era vidro a 3-5% de branco e as zonas
+     do ecrã fundiam-se. Agora há três degraus opacos com papéis fixos — o que
+     se TOCA sobe (chip), o que se ESCREVE desce (poço), o cartão fica no meio.
+     --border-well dá 3,06:1 contra o cartão e 3,5:1 contra o poço. */
+  --surface-card: #172031;     /* cartão de bloco do registo */
+  --border-card: #2c384b;
+  --surface-card-quiet: #131b29; /* bloco opcional */
+  --surface-chip: #222c3e;     /* botão/chip de escolha (RPE, séries) */
+  --border-chip: #3a475b;
+  --surface-well: #0a101c;     /* campo de texto: mais escuro que o cartão */
+  --border-well: #5d6b80;
 
   /* texto */
   --text-1: #f8fafc;

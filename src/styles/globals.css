@@ -728,6 +728,60 @@ html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
    Carol e é redefinida no contentor de cada ecrã com identidade própria
    (registos de corrida/ginásio/nutrição/corpo/prova, separadores do Perfil),
    para o anel falar a cor do sítio onde se está. */
+/* ===== Registos: campo vs. texto da app (soluções A + B, 2026-10-20) =====
+   Dentro de qualquer registo (RegistrationShell põe `.reg-form` no
+   contentor) um campo de escrever é um POÇO — mais escuro que o cartão, com
+   borda a 3:1 — e o valor escrito é o texto mais forte do ecrã. As etiquetas
+   sobem a 600 para se separarem das ajudas. Regras em vez de mexer em ~60
+   classNames: os campos herdaram `bg-[var(--surface-soft)]` do legado e o
+   que muda é o desenho, não o campo. Ficam de fora os campos sem caixa
+   própria (`bg-transparent`, ex.: o número dentro de uma pílula com unidade)
+   e os chips: os botões pintados de surface-soft passam a chip (sobe). */
+.reg-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([class*="bg-transparent"]),
+.reg-form select:not([class*="bg-transparent"]),
+.reg-form textarea:not([class*="bg-transparent"]) {
+  background-color: var(--surface-well);
+  border: 1px solid var(--border-well);
+  color: var(--text-1);
+  font-weight: 500;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, .35);
+}
+.reg-form input::placeholder,
+.reg-form textarea::placeholder { color: var(--text-placeholder); font-weight: 400; }
+.reg-form input:not([type="checkbox"]):not([type="radio"]):not([class*="bg-transparent"]):focus,
+.reg-form select:not([class*="bg-transparent"]):focus,
+.reg-form textarea:not([class*="bg-transparent"]):focus {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 20%, transparent);
+}
+.reg-form input[aria-invalid="true"],
+.reg-form textarea[aria-invalid="true"] { border-color: var(--danger); }
+.reg-form input:disabled,
+.reg-form select:disabled,
+.reg-form textarea:disabled { opacity: .55; box-shadow: none; }
+.reg-form label { color: var(--text-2); font-weight: 600; }
+.reg-form button[class*="bg-[var(--surface-soft)]"],
+.reg-form button[class*="bg-[var(--surface-glass)]"] {
+  background-color: var(--surface-chip);
+  border-color: var(--border-chip);
+}
+
+/* O bloco de um passo do registo (RegistrationSection.jsx, solução B). O
+   bloco onde se está a escrever acende-se na cor do módulo — sem estado em
+   JS: é o :focus-within que diz "estás aqui". */
+.reg-section {
+  background: var(--surface-card);
+  border: 1px solid var(--border-card);
+  border-radius: 20px;
+  padding: 16px;
+  transition: border-color var(--dur-tap) var(--ease-out), box-shadow var(--dur-tap) var(--ease-out);
+}
+.reg-section--quiet { background: var(--surface-card-quiet); }
+.reg-section:focus-within {
+  border-color: var(--focus-ring);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--focus-ring) 10%, transparent);
+}
+
 :root { --focus-ring: var(--coach); }
 :focus-visible {
   outline: 2px solid var(--focus-ring, var(--coach));
