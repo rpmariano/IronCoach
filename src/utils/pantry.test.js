@@ -28,7 +28,7 @@ vi.mock('../lib/supabase', () => ({
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
-  isDishlessRule, templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed,
+  isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -283,5 +283,17 @@ describe('isDishlessRule (bug #74, revisão)', () => {
     expect(isDishlessRule(r('fritos'))).toBe(false);
     expect(isDishlessRule(r('azeite', { source: 'manual' }))).toBe(false);
     expect(isDishlessRule(r('tempero', { status: 'varia' }))).toBe(false);
+  });
+});
+
+describe('isQuantityRule e ruleLabel: plural e a forma antiga (revisão do #74)', () => {
+  it('reconhece "· quantidade", "quantidades" e "quantidade de X", e mostra só o alimento', () => {
+    expect(isQuantityRule({ topic: 'manteiga · quantidade' })).toBe(true);
+    expect(isQuantityRule({ topic: 'manteiga · quantidades' })).toBe(true);
+    expect(isQuantityRule({ topic: 'quantidade de manteiga' })).toBe(true);
+    expect(isQuantityRule({ topic: 'tempero (Salada mista)' })).toBe(false);
+    expect(ruleLabel({ topic: 'manteiga · quantidades' })).toBe('manteiga');
+    expect(ruleLabel({ topic: 'quantidade de manteiga' })).toBe('manteiga');
+    expect(isDishlessRule({ topic: 'quantidade de manteiga', status: 'confirmado', source: 'resposta' })).toBe(false);
   });
 });
