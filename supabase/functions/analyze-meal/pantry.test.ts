@@ -590,10 +590,12 @@ Deno.test("bug #74 (revisão): hábitos aprendidos sem prato já não vão para 
     r("tempero"), r("manteiga · quantidade"), r("tempero (Salada mista)"), r("fritos"), r("azeite", "manual"),
   ]);
   assert(!s.includes("tempero: x"));
-  assert(!s.includes("manteiga · quantidade: x"));
+  // Quantidade sem prato é da própria manteiga (item à parte): fica — tirá-la calava a resposta dele.
+  assertStringIncludes(s, "manteiga · quantidade: x");
   assertStringIncludes(s, "tempero (Salada mista): x");
   assertStringIncludes(s, "fritos: x");
-  assertStringIncludes(s, "azeite: x");
+  // Escrito por ele sem prato: vale para tudo, e o pedido di-lo.
+  assertStringIncludes(s, "azeite (em qualquer prato): x");
   // A categoria vale para os pratos dela — "fritos: azeite" serve ao ovo estrelado.
   assertStringIncludes(s, "vale para os pratos dessa categoria");
 });
