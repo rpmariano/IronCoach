@@ -274,10 +274,11 @@ describe('refeições predefinidas', () => {
 
 describe('isDishlessRule (bug #74, revisão)', () => {
   const r = (topic, extra = {}) => ({ topic, status: 'confirmado', source: 'resposta', ...extra });
-  it('um hábito aprendido sem prato fica marcado; com prato, de categoria ou escrito por ele não', () => {
+  it('um hábito de preparação aprendido sem prato fica marcado; quantidade, com prato, de categoria ou escrito por ele não', () => {
     expect(isDishlessRule(r('tempero'))).toBe(true);
-    expect(isDishlessRule(r('manteiga · quantidade'))).toBe(true);
-    expect(isDishlessRule(r('quantidade de manteiga'))).toBe(true);
+    expect(isDishlessRule(r('molho'))).toBe(true);
+    // Quantidade é da própria manteiga, quando vem à parte: a Carol usa-a.
+    expect(isDishlessRule(r('manteiga · quantidade'))).toBe(false);
     expect(isDishlessRule(r('tempero (Salada mista)'))).toBe(false);
     expect(isDishlessRule(r('fritos'))).toBe(false);
     expect(isDishlessRule(r('azeite', { source: 'manual' }))).toBe(false);

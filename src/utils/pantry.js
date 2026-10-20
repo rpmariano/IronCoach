@@ -181,12 +181,13 @@ const GENERIC_TOPICS = new Set([
   'porcao', 'fritura',
 ]);
 
-/** Um hábito aprendido antes do #74 sem dizer o prato ("tempero", "manteiga ·
- *  quantidade")? A Carol já não o usa (knowledgeSection) — o Armário diz
- *  isso. Os escritos pelo atleta não contam: foi ele que disse que valem
- *  para tudo. */
+/** Um hábito de preparação aprendido sem dizer o prato ("tempero", "molho")?
+ *  A Carol já não o usa (isDishlessHabit em analyze-meal/pantry.ts, a mesma
+ *  regra) — o Armário diz isso. Não contam os escritos pelo atleta (foi ele
+ *  que disse que valem para tudo) nem os de quantidade ("manteiga ·
+ *  quantidade" é da própria manteiga). */
 export function isDishlessRule(rule) {
-  if (!rule || rule.source === 'manual' || rule.status !== 'confirmado') return false;
+  if (!rule || rule.source === 'manual' || rule.status !== 'confirmado' || isQuantityRule(rule)) return false;
   const core = String(rule.topic || '')
     .replace(/\bquantidades?\b/gi, ' ')
     .replace(/[·:]/g, ' ')

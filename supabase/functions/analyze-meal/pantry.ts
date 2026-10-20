@@ -222,11 +222,15 @@ export async function fetchPantry(sb: any, userId: string): Promise<Pantry> {
 /** A secção do pedido de análise com o que ela já sabe. "" sem nada — o
  *  pedido de quem ainda não tem despensa fica igual ao de sempre. */
 export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string {
-  // Um hábito aprendido antes do #74 com tema sem prato ("tempero: 1 colher
-  // de azeite") já não diz a que prato se aplica: não entra — ela pergunta e
-  // aprende-o por prato. Os escritos pelo atleta (manual) ficam: foi ele que
-  // disse que valem para tudo.
-  const certas = rules.filter((r) => r.status === "confirmado" && (r.source === "manual" || !isGenericTopic(r.topic)));
+  // Um hábito de PREPARAÇÃO aprendido sem prato ("tempero: 1 colher de
+  // azeite") já não diz a que prato se aplica: não entra — ela pergunta e
+  // aprende-o por prato. Ficam:
+  // · os escritos pelo atleta (manual): foi ele que disse que valem para tudo;
+  // · os de quantidade sem prato ("manteiga · quantidade"): são da própria
+  //   manteiga quando vem como alimento à parte (contextualTopic não junta o
+  //   prato quando o alimento É o ingrediente). Tirá-los calava a resposta
+  //   dele — confirmada, não se volta a perguntar (revisão pré-master).
+  const certas = rules.filter((r) => r.status === "confirmado" && !isDishlessHabit(r));
   const variam = rules.filter((r) => r.status === "varia");
   if (!foods.length && !certas.length && !variam.length) return "";
   let s = "\n\nO QUE JÁ SABES DESTE ATLETA (aprendido com ele):";
@@ -237,10 +241,11 @@ export function knowledgeSection(foods: PantryFood[], rules: FoodRule[]): string
     // comentário». A regra contrariada passa a "varia" (nextRuleRow) e ela
     // volta a perguntar da próxima vez.
     s += `\nComo cozinha, tempera e quanto costuma pôr — usa isto em vez de adivinhar: ` +
-      certas.map((r) => `${r.topic}: ${r.value}`).join("; ") + "." +
+      certas.map((r) => `${r.topic}${r.source === "manual" && isGenericTopic(r.topic) && !isQuantityTopic(r.topic) ? " (em qualquer prato)" : ""}: ${r.value}`).join("; ") + "." +
       // Bug #74 (2026-10-19): "tempero: 1 colher de azeite" não vale para tudo.
-      `\nCada hábito vale SÓ para o prato ou alimento que nomeia ("azeite na salada" não serve para o esparguete); ` +
-      `um hábito de uma categoria ("fritos", "saladas", "grelhados") vale para os pratos dessa categoria.` +
+      `\nCada hábito vale SÓ para o prato ou alimento que nomeia ("azeite na salada" não serve para o esparguete), ` +
+      `a não ser que diga "(em qualquer prato)"; um hábito de uma categoria ("fritos", "saladas", "grelhados") vale ` +
+      `para os pratos dessa categoria; "<alimento> · quantidade" é quanto põe desse alimento quando aparece à parte.` +
       `\nA OBSERVAÇÃO DESTA REFEIÇÃO TEM PRIORIDADE sobre qualquer hábito acima: se disser outra coisa (ex.: "fritas em ` +
       `óleo" quando o hábito é air fryer, "muita manteiga" quando o hábito é camada fina), usa a observação nesta refeição ` +
       `e ignora o hábito.`;
@@ -724,6 +729,18 @@ function topicCore(topic: string): string {
  *  e os de categoria ("fritos") não são. */
 export function isGenericTopic(topic: string): boolean {
   return GENERIC_TOPICS.has(foodKey(topicCore(topic)));
+}
+
+function isQuantityTopic(topic: string): boolean {
+  return /quantidades?\s*$/i.test(String(topic || ""));
+}
+
+/** Um hábito de preparação aprendido (não escrito por ele) cujo tema não diz
+ *  o prato — "tempero", "molho". A Carol já não o usa; o Armário marca-o
+ *  (isDishlessRule em src/utils/pantry.js, a mesma regra). Pode ser de antes
+ *  do #74 ou um facto das observações em que o modelo não pôs o prato. */
+export function isDishlessHabit(rule: FoodRule): boolean {
+  return rule.source !== "manual" && !isQuantityTopic(rule.topic) && isGenericTopic(rule.topic);
 }
 
 export function contextualTopic(rawTopic: string, itemName: string, max = 40): string {
