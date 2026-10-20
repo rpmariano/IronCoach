@@ -360,7 +360,8 @@ export function exercisesFromPreview(preview, planBlocks = []) {
       type: 'forca',
       goal,
       planBlockIndex: idx,
-      sets: (pe.sets || []).map(s => newSet({ reps: s.reps ?? '', weight: s.weight ?? '' })),
+      // Nomeado sem números (bug #67): uma série vazia para ele preencher.
+      sets: (pe.sets || []).length ? pe.sets.map(s => newSet({ reps: s.reps ?? '', weight: s.weight ?? '' })) : null,
     });
   });
 }

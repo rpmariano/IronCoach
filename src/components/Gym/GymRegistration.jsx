@@ -400,6 +400,11 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
     if (!durationStr.trim() && item.target_duration_min) setDurationStr(String(item.target_duration_min));
     if (incoming.length) setExercises(prev => appendExercises(prev, incoming));
     setIsFormDirty(true);
+    // Sem prescrição mas com texto (bug #70): a Carol lê-o depois de as notas
+    // entrarem no formulário.
+    if (!incoming.length && !planHasBlocks(item) && !exercises.length && !photos.length && (notes.trim() || item.notes)) {
+      setTimeout(() => readRef.current?.(), 0);
+    }
   };
   // "Treino livre": campos vazios; ao gravar, o treino do dia risca-se na mesma, como automático.
   const handleFreeWorkout = () => { setPlanChoice({ id: null, mode: 'livre' }); };
@@ -450,6 +455,26 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
       setReading(false);
     }
   };
+
+  /* Bug #70 (2026-10-19): vindo do Início com o treino do plano, o formulário
+     tem de vir preenchido sem escolher nada. Com prescrição (os planos desde
+     2026-10-17) já vinha; um plano só com texto ("cadeira extensora, cadeira
+     flexora e gémeos, 3-4 séries de 10-12 reps") não trazia exercícios — a
+     Carol lê agora esse texto sozinha, uma vez, como no "Preencher o
+     formulário com isto". O mesmo ao escolher, no banner, um treino do plano
+     sem prescrição. `readRef`: o handleRead do render mais recente (as notas
+     acabadas de pôr pelo banner). */
+  const readRef = useRef(handleRead);
+  readRef.current = handleRead;
+  const autoReadDone = useRef(false);
+  const planHasBlocks = (item) => (item?.prescription?.blocks || []).length > 0;
+  useEffect(() => {
+    if (autoReadDone.current || isEditing || !planItem || planHasBlocks(planItem)) return;
+    if (exercises.length || photos.length || (notes || '').trim().length < 3) return;
+    autoReadDone.current = true;
+    readRef.current();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Liga o treino do plano a esta sessão, depois de gravada (specs/plano-de-treino.md
      §5.2). O item é o do banner "Do plano" ou do botão "Registar sessão"
@@ -867,7 +892,10 @@ export default function GymRegistration({ onClose, dateIso = null, sessionIdToEd
             maxPhotos={MAX_PHOTOS}
             onSelect={handlePhotoSelect}
             onRemove={removePhoto}
-            onRead={handleRead}
+            // Bug #72: sem botão "Ler os prints e preencher" — a Carol lê-os ao
+            // "Analisar treino" (analyze-gym, reviewed=false) e o que escreveste
+            // ganha sempre ao que ela ler (mergeMetrics, mergeTypedWithRead).
+            autoReadNote="Ao analisar, leio os prints sozinha. O que escreveres aqui ganha sempre ao que eu ler — não apago nada."
             reading={reading}
             note={readNote}
           />
