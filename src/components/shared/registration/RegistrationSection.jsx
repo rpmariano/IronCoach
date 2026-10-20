@@ -16,7 +16,7 @@ export default function RegistrationSection({ step, title, done = false, optiona
     <section className={`reg-section ${optional ? 'reg-section--quiet' : ''} flex flex-col gap-3.5 ${className}`.trim()} {...rest}>
       <div className="flex items-center gap-2.5">
         {step != null && (done ? (
-          <span className="w-[26px] h-[26px] shrink-0 rounded-full bg-[var(--ok)] text-[var(--ok-ink)] flex items-center justify-center" aria-label={`Passo ${step}, preenchido`}>
+          <span className="w-[26px] h-[26px] shrink-0 rounded-full bg-[var(--ok)] text-[var(--ok-ink)] flex items-center justify-center" role="img" aria-label={`Passo ${step}, preenchido`}>
             <Check size={14} strokeWidth={3} aria-hidden="true" />
           </span>
         ) : (

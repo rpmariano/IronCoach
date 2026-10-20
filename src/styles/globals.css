@@ -737,9 +737,9 @@ html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
    que muda é o desenho, não o campo. Ficam de fora os campos sem caixa
    própria (`bg-transparent`, ex.: o número dentro de uma pílula com unidade)
    e os chips: os botões pintados de surface-soft passam a chip (sobe). */
-.reg-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([class*="bg-transparent"]),
-.reg-form select:not([class*="bg-transparent"]),
-.reg-form textarea:not([class*="bg-transparent"]) {
+.reg-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([class~="bg-transparent"]),
+.reg-form select:not([class~="bg-transparent"]),
+.reg-form textarea:not([class~="bg-transparent"]) {
   background-color: var(--surface-well);
   border: 1px solid var(--border-well);
   color: var(--text-1);
@@ -748,9 +748,9 @@ html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
 }
 .reg-form input::placeholder,
 .reg-form textarea::placeholder { color: var(--text-placeholder); font-weight: 400; }
-.reg-form input:not([type="checkbox"]):not([type="radio"]):not([class*="bg-transparent"]):focus,
-.reg-form select:not([class*="bg-transparent"]):focus,
-.reg-form textarea:not([class*="bg-transparent"]):focus {
+.reg-form input:not([type="checkbox"]):not([type="radio"]):not([class~="bg-transparent"]):focus,
+.reg-form select:not([class~="bg-transparent"]):focus,
+.reg-form textarea:not([class~="bg-transparent"]):focus {
   border-color: var(--focus-ring);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 20%, transparent);
 }
@@ -759,11 +759,21 @@ html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
 .reg-form input:disabled,
 .reg-form select:disabled,
 .reg-form textarea:disabled { opacity: .55; box-shadow: none; }
-.reg-form label { color: var(--text-2); font-weight: 600; }
-.reg-form button[class*="bg-[var(--surface-soft)]"],
-.reg-form button[class*="bg-[var(--surface-glass)]"] {
+/* `~=` (classe inteira) e não `*=` (substring): `*=` apanhava também as
+   variantes `hover:bg-…`/`focus:bg-…`, e um chip só com fundo no hover
+   ficava pintado em repouso. As etiquetas que embrulham um campo (zona de
+   upload, checkbox) ficam de fora — o texto delas é ajuda, não etiqueta. */
+.reg-form label:not(:has(input)) { color: var(--text-2); font-weight: 600; }
+.reg-form button[class~="bg-[var(--surface-soft)]"],
+.reg-form button[class~="bg-[var(--surface-glass)]"] {
   background-color: var(--surface-chip);
   border-color: var(--border-chip);
+}
+/* Esta regra está fora das camadas do Tailwind e ganha aos `hover:` dos
+   utilitários — o hover do chip tem de vir daqui. */
+.reg-form button[class~="bg-[var(--surface-soft)]"]:hover:not(:disabled),
+.reg-form button[class~="bg-[var(--surface-glass)]"]:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--surface-chip), white 7%);
 }
 
 /* O bloco de um passo do registo (RegistrationSection.jsx, solução B). O
