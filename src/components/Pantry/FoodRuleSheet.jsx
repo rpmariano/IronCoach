@@ -72,7 +72,7 @@ export default function FoodRuleSheet({ rule = null, onClose }) {
             ))}
           </div>
         )}
-        {!rule && input('rule-topic', isQty ? 'De quê (ex.: manteiga, fiambre, azeite na salada)' : 'O quê (ex.: fritos, salada, café)', topic, setTopic, { maxLength: isQty ? 27 : 40 })}
+        {!rule && input('rule-topic', isQty ? 'De quê, e em quê (ex.: azeite na salada, manteiga no pão)' : 'O quê, e em quê (ex.: tempero da salada, ovos fritos)', topic, setTopic, { maxLength: isQty ? 27 : 40 })}
         {input('rule-value', rule?.status === 'varia' ? 'Varia — se afinal é sempre igual, diz como' : isQty ? 'Quanto (ex.: camada fina, um lado (~5 g))' : 'Como (ex.: azeite, azeite e vinagre, sem açúcar)', value, setValue, { maxLength: 60, autoFocus: true })}
         {error && <p role="alert" className="text-[12.5px]" style={{ color: 'var(--danger)' }}>{error}</p>}
         <button

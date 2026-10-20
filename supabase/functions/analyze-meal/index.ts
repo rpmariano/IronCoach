@@ -183,9 +183,12 @@ function cookingFactsRule(notes: string | null): string {
     "tempera os alimentos — um par {topic, value} por facto, em português, curtos e no singular. Temas: " +
     "fritos, grelhados, salada, ovos, carne, frango, peixe, leite, café, pão, arroz, batata, massa (ou outro, " +
     "se for claro). Ex.: \"bife frito em azeite\" → {topic: \"fritos\", value: \"azeite\"}; \"leite magro\" → " +
-    "{topic: \"leite\", value: \"magro\"}. Também as QUANTIDADES que a observação diz explicitamente (fase C dos #58/#66), " +
-    "com o tema \"<alimento> · quantidade\": \"pouca manteiga\" → {topic: \"manteiga · quantidade\", value: \"pouca\"}; " +
-    "\"3 fatias finas de fiambre\" → {topic: \"fiambre · quantidade\", value: \"3 fatias finas\"}. " +
+    "{topic: \"leite\", value: \"magro\"}. O tema diz SEMPRE a que prato ou alimento se aplica — \"tempero da salada\", " +
+    "nunca só \"tempero\" (bug #74: uma colher de azeite num prato não vale para outro). Também as QUANTIDADES que a " +
+    "observação diz explicitamente, com o tema \"<alimento> no <prato> · quantidade\": \"um fio de azeite na salada\" → " +
+    "{topic: \"azeite na salada · quantidade\", value: \"um fio\"}; \"esparguete com uma colher de azeite\" → " +
+    "{topic: \"azeite no esparguete · quantidade\", value: \"1 colher de sopa\"}; \"pouca manteiga no pão\" → " +
+    "{topic: \"manteiga no pão · quantidade\", value: \"pouca\"}. " +
     "Nada que tenhas deduzido das fotos. Sem nada explícito, lista vazia.";
 }
 
@@ -210,7 +213,9 @@ const QUESTIONS_RULE =
   "que usaste em estimated_quantity_grams. Nunca sobre um alimento com gramas indicadas pelo utilizador.\n" +
   "Nunca sobre o que as observações já dizem, sobre um tema de \"Como cozinha, tempera e quanto costuma pôr\", nem sobre um alimento da " +
   "lista que ele tem guardada. Na estimativa, usa o mais provável e diz qual foi em assumed. Cada pergunta: kind, " +
-  "topic (o tema, curto: \"fritos\"; numa de quantidade, o alimento: \"manteiga\"), item_name (o nome EXATO do item " +
+  "topic (o tema, curto e SEMPRE com o prato ou alimento a que se aplica: \"tempero da salada\", \"ovos fritos\" — nunca só " +
+  "\"tempero\" ou \"azeite\"; numa de quantidade, o alimento e o prato: \"azeite na salada\", \"manteiga no pão\"), " +
+  "item_name (o nome EXATO do item " +
   "em items), question (curta, na 2.ª pessoa), options (2 a 4 respostas curtas), assumed (uma das options), " +
   "impact_kcal (quanto a resposta pode mudar a energia, em kcal), impact_protein_g (quanto pode mudar a proteína, " +
   "em g; 0 se não muda). Na dúvida, não perguntes: lista vazia.";

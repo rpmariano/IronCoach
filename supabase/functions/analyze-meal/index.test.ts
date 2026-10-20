@@ -150,7 +150,9 @@ Deno.test("os pedidos de análise levam a regra dos rótulos, o que ela já sabe
   assertStringIncludes(fotos, "fritos: azeite");
   assertStringIncludes(fotos, "cooking_facts: só o que a observação");
   // Fase C dos #58/#66: as quantidades ditas nas observações também viram hábito.
-  assertStringIncludes(fotos, "{topic: \"manteiga · quantidade\", value: \"pouca\"}");
+  // Bug #74: as quantidades levam o prato — "azeite na salada", não só "azeite".
+  assertStringIncludes(fotos, "{topic: \"azeite na salada · quantidade\", value: \"um fio\"}");
+  assertStringIncludes(fotos, "nunca só \"tempero\"");
   const manual = buildManualItemsPrompt([{ name: "Ovos", grams: 100 }], null, saber);
   assertStringIncludes(manual, "fritos: azeite");
   assertStringIncludes(manual, "cooking_facts: lista vazia.");

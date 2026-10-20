@@ -3,7 +3,7 @@ import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
   applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
   isPantryComplete, microFromModel, microOrNull, MICRO_COLUMNS, microsTrusted, missingMicros, NUTRIENT_COLUMNS, pantryMicro,
-  optionGrams, parseCookingFacts, parseQuestions, quantityAnswerGrams, quantityTopic, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
+  contextualTopic, optionGrams, parseCookingFacts, parseQuestions, quantityAnswerGrams, quantityTopic, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
   withWrittenFoods,
 } from "./pantry.ts";
 
@@ -393,7 +393,8 @@ Deno.test("parseQuestions: as regras da casa — ≥ 40 kcal ou ≥ 4 g de prote
     pergunta(),                                                       // tema repetido
     pergunta({ topic: "molho", item_name: "Salada mista", assumed: "Sem molho", options: ["Com molho", "Sem molho"] }),
   ], [ovo, salada], [confirmada], ids);
-  assertEquals(qs.map((q) => q.topic), ["fritos", "molho"]);
+  // "molho" é genérico: vai com o alimento (bug #74).
+  assertEquals(qs.map((q) => q.topic), ["fritos", "molho (Salada mista)"]);
   // Um alimento que já veio da despensa não se pergunta.
   assertEquals(parseQuestions([pergunta()], [{ ...ovo, from_pantry: true }], [], ids), []);
   assertEquals(parseQuestions("nada", [ovo], [], ids), []);
@@ -547,4 +548,29 @@ Deno.test("quantityTopic e parseCookingFacts: uma quantidade das observações t
   assertEquals(quantityTopic("quantidade"), "");
   assertEquals(parseCookingFacts([{ topic: "quantidade de manteiga", value: "pouca" }, { topic: "fritos", value: "azeite" }]),
     [{ topic: "manteiga · quantidade", value: "pouca" }, { topic: "fritos", value: "azeite" }]);
+});
+
+Deno.test("bug #74: um tema genérico ganha o alimento — \"tempero\" da salada não é o do esparguete", () => {
+  assertEquals(contextualTopic("tempero", "Salada mista"), "tempero (Salada mista)");
+  assertEquals(contextualTopic("azeite", "Esparguete à bolonhesa"), "azeite (Esparguete à bolonhesa)");
+  // Já com o prato, ou o próprio alimento: fica.
+  assertEquals(contextualTopic("tempero da salada", "Salada mista"), "tempero da salada");
+  assertEquals(contextualTopic("azeite", "Azeite"), "azeite");
+  assertEquals(contextualTopic("fritos", "Ovo estrelado"), "fritos");
+
+  const salada = estimado("Salada mista", 60);
+  const esparguete = estimado("Esparguete", 350);
+  const q = (item: string) => pergunta({ topic: "tempero", item_name: item, question: "Como temperaste?", options: ["Azeite", "Sem tempero"], assumed: "Azeite" });
+  const qs = parseQuestions([q("Salada mista"), q("Esparguete")], [salada, esparguete], [], ids);
+  // Antes eram o mesmo tema e a segunda caía; agora são dois hábitos, um por prato.
+  assertEquals(qs.map((x) => x.topic), ["tempero (Salada mista)", "tempero (Esparguete)"]);
+  // Um "tempero" genérico confirmado não cala a pergunta da salada.
+  const generico = regra({ topic: "tempero", topic_key: "tempero", status: "confirmado" });
+  assertEquals(parseQuestions([q("Salada mista")], [salada], [generico], ids).length, 1);
+});
+
+Deno.test("bug #74: o conhecimento diz que um hábito só vale para o prato que nomeia", () => {
+  const regras: FoodRule[] = [{ topic: "azeite na salada · quantidade", topic_key: "azeite na salada quantidade", value: "um fio", value_key: "um fio", confirmations: 2, status: "confirmado", source: "resposta" }];
+  const s = knowledgeSection([], regras);
+  assertStringIncludes(s, "Cada hábito vale SÓ para o prato ou alimento que nomeia");
 });
