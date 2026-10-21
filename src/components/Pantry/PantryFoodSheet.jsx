@@ -115,7 +115,7 @@ export default function PantryFoodSheet({ food = null, onClose }) {
         value={form[key]}
         onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
         className="w-full min-h-[44px] rounded-[10px] px-3 text-[15px] font-extrabold outline-none"
-        style={{ border: '1px solid var(--border-glass)', background: 'var(--surface-soft)', color: 'var(--text-1)' }}
+        style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
         {...props}
       />
     </label>
@@ -153,7 +153,7 @@ export default function PantryFoodSheet({ food = null, onClose }) {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Ex.: pão de mistura do Lidl, uma fatia de 40 g"
                 className="w-full rounded-xl px-3 py-2.5 text-[15px] outline-none resize-none"
-                style={{ border: '1px solid var(--border-glass)', background: 'var(--surface-soft)', color: 'var(--text-1)' }}
+                style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
               />
             </label>
             <button
@@ -192,7 +192,7 @@ export default function PantryFoodSheet({ food = null, onClose }) {
                       value={form[key]}
                       onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
                       className="w-full min-h-[44px] rounded-[10px] text-center text-[15px] font-extrabold outline-none"
-                      style={{ border: '1px solid var(--border-glass)', background: 'var(--surface-soft)', color: 'var(--text-1)' }}
+                      style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
                     />
                     <span className="block text-[10.5px] mt-1" style={{ color: 'var(--text-4)' }}>{label}</span>
                   </label>

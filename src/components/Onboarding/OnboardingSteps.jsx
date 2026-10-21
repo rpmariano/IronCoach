@@ -62,7 +62,7 @@ export function CarolNote({ children, style, reacting = false }) {
 }
 
 function FieldLabel({ children }) {
-  return <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-4)', marginBottom: 7 }}>{children}</div>;
+  return <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', marginBottom: 7 }}>{children}</div>;
 }
 
 /* Campo real — <input>/<select>/<textarea>, nunca uma <div> a fazer de campo
@@ -85,8 +85,11 @@ export function Field({ label, as = 'input', suffix, style, ...rest }) {
             minHeight: multiline ? 76 : 48,
             padding: multiline ? '13px 14px' : `0 ${suffix ? 42 : 14}px 0 14px`,
             borderRadius: 'var(--radius-md)',
-            background: 'rgba(255,255,255,.05)',
-            border: preenchido ? '1px solid rgba(255,255,255,.13)' : '1px dashed rgba(255,255,255,.16)',
+            // O poço dos campos (o mesmo dos registos, .data-form em globals.css):
+            // mais escuro que o fundo, borda a 3:1; vazio continua tracejado.
+            background: 'var(--surface-well)',
+            border: `1px ${preenchido ? 'solid' : 'dashed'} var(--border-well)`,
+            boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, .35)',
             outline: 'none',
             fontFamily: 'inherit',
             fontSize: 16,

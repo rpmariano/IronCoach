@@ -45,7 +45,7 @@ export default function FoodRuleSheet({ rule = null, onClose }) {
         value={val}
         onChange={(e) => set(e.target.value)}
         className="w-full min-h-[46px] rounded-xl px-3 text-[15px] font-bold outline-none disabled:opacity-60"
-        style={{ border: '1px solid var(--border-glass)', background: 'var(--surface-soft)', color: 'var(--text-1)' }}
+        style={{ border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' }}
         {...props}
       />
     </label>

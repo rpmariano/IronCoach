@@ -56,7 +56,8 @@ export default function MealTemplateSheet({ template = null, initial = null, onC
     }
   };
 
-  const field = { border: '1px solid var(--border-glass)', background: 'var(--surface-soft)', color: 'var(--text-1)' };
+  // O poço dos campos (.data-form): inline ganha ao CSS, por isso aqui os mesmos tokens.
+  const field = { border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' };
 
   return (
     <PremiumModal isOpen onClose={onClose} title={template ? template.name : 'Nova refeição'} subtitle="Os alimentos, com as gramas" theme="nutri" variant="bottom-sheet" maxWidth="max-w-md">
