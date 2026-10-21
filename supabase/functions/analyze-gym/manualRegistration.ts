@@ -4,6 +4,7 @@
 // §2.5). Separado de index.ts para se testar sem o Deno.serve.
 
 import { buildLockerUpserts, type LockerExisting, type LockerMeta, type LockerSetRow } from "../_shared/formulas/exerciseLocker.ts";
+import { cardioSpecFor } from "../_shared/formulas/cardioFields.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 
 export const MAX_SETS = 200;
@@ -192,4 +193,51 @@ export async function updateExerciseLocker(
   } catch (e) {
     console.warn("analyze-gym: Armário de Exercícios não atualizado —", e instanceof Error ? e.message : e);
   }
+}
+
+export type ReadSet = {
+  reps: number | null;
+  weight: number | null;
+  one_rep_max_est: number | null;
+  duration_seconds: number | null;
+  distance_km: number | null;
+  laps: number | null;
+};
+export type ReadExercise = { name: string; sets: ReadSet[] };
+
+/** Bug #80 (2026-10-21): os exercícios lidos nos prints ao gravar. Antes cada
+ *  série só tinha reps e kg — a bicicleta estacionária de 45 min e 15 km
+ *  ficava "Série 1" vazia, e a distância ia só para os logs (extra_fields).
+ *  Agora o cardio traz tempo, distância e voltas; uma série sem nada cai.
+ *  Um exercício de cardio sem números, quando é o ÚNICO da sessão, fica com a
+ *  duração da sessão (é dela que se trata); senão cai, como na leitura das
+ *  observações (preview.ts). */
+// deno-lint-ignore no-explicit-any
+export function normalizeReadExercises(raw: any, sessionDurationSeconds: number | null = null): ReadExercise[] {
+  const nonNeg = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+  const list = Array.isArray(raw) ? raw : [];
+  const out: ReadExercise[] = [];
+  for (const ex of list) {
+    const name = String(ex?.name ?? "").trim().slice(0, 120) || "Exercício";
+    const sets: ReadSet[] = [];
+    for (const s of Array.isArray(ex?.sets) ? ex.sets : []) {
+      const duration = positiveOrNull(s?.duration_seconds, 86400);
+      const laps = positiveOrNull(s?.laps, 10000);
+      const row: ReadSet = {
+        reps: nonNeg(s?.reps),
+        weight: nonNeg(s?.weight),
+        one_rep_max_est: nonNeg(s?.one_rep_max_est),
+        duration_seconds: duration !== null ? Math.round(duration) : null,
+        distance_km: positiveOrNull(s?.distance_km, 1000),
+        laps: laps !== null ? Math.round(laps) : null,
+      };
+      if (Object.values(row).every((v) => v === null)) continue;
+      sets.push(row);
+    }
+    if (sets.length) out.push({ name, sets });
+    else if (list.length === 1 && cardioSpecFor(name) && sessionDurationSeconds) {
+      out.push({ name, sets: [{ reps: null, weight: null, one_rep_max_est: null, duration_seconds: sessionDurationSeconds, distance_km: null, laps: null }] });
+    }
+  }
+  return out;
 }

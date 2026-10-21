@@ -475,6 +475,19 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
     return () => document.removeEventListener('focusin', onFocusIn);
   }, [typingFood]);
 
+  /* Bug #81 (2026-10-21): o campo de gramas de "Nesta refeição" ficava
+     tapado pela barra "Analisar refeição" e pelo teclado. Ao focar, vai para o
+     meio da área visível — depois de o teclado abrir e a cada resize dela
+     (o mesmo padrão do #64), enquanto o campo tiver o foco. */
+  const keepFieldVisible = (e) => {
+    const el = e.currentTarget;
+    const go = () => { if (document.activeElement === el) el.scrollIntoView?.({ block: 'center' }); };
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    const t = setTimeout(go, 300);
+    vv?.addEventListener('resize', go);
+    el.addEventListener('blur', () => { clearTimeout(t); vv?.removeEventListener('resize', go); }, { once: true });
+  };
+
   /* No Android o "voltar" fecha o teclado SEM tirar o foco ao campo
      (utils/softKeyboard.js): os atalhos ficavam escondidos e o espaço vazio
      por baixo até se tocar fora. O <html data-keyboard> manda também: fechou
@@ -973,6 +986,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                         type="number" min="1"
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams}
+                        onFocus={keepFieldVisible}
                         onChange={e => { updateManualItem(item.key, { grams: e.target.value }); setIsFormDirty(true); }}
                         className="w-14 text-xs text-[var(--text-3)] text-right outline-none bg-transparent"
                       />
@@ -998,6 +1012,7 @@ export default function MealRegistration({ onClose, dateIso = null, mealIdToEdit
                         aria-label={`Gramas de ${item.name}`}
                         value={item.grams ?? ''}
                         placeholder="g"
+                        onFocus={keepFieldVisible}
                         onChange={e => { updateManualItem(item.key, { grams: e.target.value === '' ? null : Number(e.target.value) }); setIsFormDirty(true); }}
                         className="w-16 min-h-[44px] rounded-lg px-2 text-sm text-right outline-none bg-[var(--surface-soft)] border border-[var(--border-glass)] text-[var(--text-1)]"
                       />
