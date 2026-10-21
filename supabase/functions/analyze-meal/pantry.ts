@@ -767,22 +767,27 @@ export function contextualTopic(rawTopic: string, itemName: string, max = 40): s
 /* Bug #75 (2026-10-20): o peso que o atleta escreve para um alimento da
    despensa, quando é outro que não a porção habitual, soma a um hábito de
    quantidade — "arroz branco cozido · quantidade: 150 g". Duas vezes o mesmo
-   peso confirma-o (nextRuleRow), e a app passa a usá-lo por omissão. */
+   peso confirma-o (nextRuleRow), e a app passa a usá-lo por omissão.
+   A porção da despensa só não conta enquanto não há hábito: havendo, voltar
+   a ela também é um peso a aprender (senão o hábito ficava preso). */
+export const PORTION_FACT_MAX_GRAMS = 3000;
 export function portionFacts(
   written: Array<{ name?: string | null; grams?: number | null }> | null | undefined,
   byKey: Map<string, PantryFood>,
+  rules: Array<{ topic?: string | null }> = [],
 ): CookingFact[] {
+  const habitKeys = new Set((rules || []).map((r) => foodKey(r?.topic)).filter(Boolean));
   const out: CookingFact[] = [];
   const seen = new Set<string>();
   for (const w of written || []) {
     const grams = Math.round(Number(w?.grams));
-    if (!(grams > 0)) continue;
+    if (!(grams > 0) || grams > PORTION_FACT_MAX_GRAMS) continue;
     const food = byKey.get(foodKey(w?.name));
     if (!food || seen.has(food.name_key)) continue;
-    const portion = Math.round(Number(food.portion_grams));
-    if (portion > 0 && portion === grams) continue;
     const topic = quantityTopic(food.name);
     if (!topic) continue;
+    const portion = Math.round(Number(food.portion_grams));
+    if (portion > 0 && portion === grams && !habitKeys.has(foodKey(topic))) continue;
     seen.add(food.name_key);
     out.push({ topic, value: `${grams} g` });
   }

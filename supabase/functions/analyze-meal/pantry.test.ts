@@ -632,3 +632,11 @@ Deno.test("bug #75: um hábito de quantidade com gramas não é pergunta em aber
   assertEquals(pendingRulesFor("Arroz branco cozido", [comGramas]), []);
   assertEquals(pendingRulesFor("Arroz branco cozido", [semGramas]).length, 1);
 });
+
+Deno.test("bug #75 (revisão): gramas absurdas não ensinam; com hábito, voltar à porção também conta", () => {
+  const arroz = { ...iogurte, name: "Arroz branco cozido", name_key: "arroz branco cozido", portion_grams: 90 } as PantryFood;
+  const map = new Map([[arroz.name_key, arroz]]);
+  assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: 99999 }], map), []);
+  const habito = [{ topic: "Arroz branco cozido · quantidade" }];
+  assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: 90 }], map, habito), [{ topic: "Arroz branco cozido · quantidade", value: "90 g" }]);
+});

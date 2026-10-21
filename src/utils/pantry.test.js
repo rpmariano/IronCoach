@@ -307,6 +307,10 @@ describe('foodDefaultGrams — o peso habitual (bug #75)', () => {
   it('um hábito confirmado ganha à porção da despensa', () => {
     expect(foodDefaultGrams(arroz, [regra()])).toEqual({ grams: 150, habitual: true });
   });
+  it('o hábito de um nome curto não passa para outro alimento que começa igual', () => {
+    const frango = { name: 'Peito de frango grelhado com natas', name_key: 'peito de frango grelhado com natas', portion_grams: 200 };
+    expect(foodDefaultGrams(frango, [regra({ topic: 'Peito de frango grelhado · quantidade' })])).toEqual({ grams: 200, habitual: false });
+  });
   it('por confirmar, a variar, de outro alimento ou sem gramas: fica a porção', () => {
     expect(foodDefaultGrams(arroz, [regra({ status: 'por_confirmar' })])).toEqual({ grams: 90, habitual: false });
     expect(foodDefaultGrams(arroz, [regra({ status: 'varia' })])).toEqual({ grams: 90, habitual: false });
