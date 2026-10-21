@@ -5529,4 +5529,8 @@ Deno.test("[adaptacao]: o prompt tem a conversa da adaptação, não a do confro
   const talked = buildTalkedInterventionInstruction(reason);
   assertEquals(talked.includes("[adaptacao]"), false);
   assertEquals(talked.includes("ref="), false);
+  // Do 2.º turno em diante (o aviso já fechou) as regras da adaptação continuam lá.
+  assertStringIncludes(talked, "COMO LER OS SINAIS");
+  assertStringIncludes(talked, "replace_active_plan=true");
+  assertEquals(buildTalkedInterventionInstruction("Falhou 3 treinos.").includes("COMO LER OS SINAIS"), false);
 });

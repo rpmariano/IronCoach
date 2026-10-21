@@ -4046,6 +4046,19 @@ export function buildGoalsInterventionInstruction(isStart: boolean, reason: stri
  *  falham. Não é a de desvios: ele fez os treinos, e o plano é que tem de
  *  acompanhar. A Carol nunca edita o plano aceite: propõe um que o
  *  substitui (replace_active_plan=true) e a decisão é dele (decisão 3). */
+/* Como ler os sinais e como propor. Vai também no bloco "já falado": a
+   conversa fecha o aviso na abertura (closeInterventionOnTalk), e é no turno
+   seguinte, depois de ele dizer como se sentiu, que ela propõe (revisão
+   pré-deploy da F5). */
+const ADAPTATION_HOW_TO =
+  `COMO LER OS SINAIS: aliviar — baixa o volume ou as reps desses dias, nunca kg (não prescreves kg); progredir — sobe ` +
+  `as reps ou as séries, e diz-lhe que a carga ele sobe pela última vez; trocar — pergunta porque saltou e propõe um ` +
+  `exercício que ele faça mesmo; cardio abaixo do alvo — ajusta o alvo ao que ele consegue; objetivo por cumprir — ` +
+  `torna o objetivo alcançável ou explica-o melhor.\n` +
+  `COMO AVANÇAR: quando souberes o porquê, propõe o plano adaptado com propose_training_plan e replace_active_plan=true ` +
+  `(mesmo race_id e period_end se o plano prepara uma prova). NUNCA digas que já mudaste o plano: só muda quando ele ` +
+  `aceitar a proposta na app. Se ele preferir manter tudo, respeita.\n`;
+
 export function buildAdaptationInterventionInstruction(isStart: boolean, reason: string | null): string {
   const motivo = adaptationReasonText(reason);
   return `\n\n=== ADAPTAÇÃO DO PLANO (desempenho vs plano) ===\n` +
@@ -4056,13 +4069,7 @@ export function buildAdaptationInterventionInstruction(isStart: boolean, reason:
         `números do planeado vs feito, e pergunta como se sentiu (cansaço, dor, falta de tempo, máquina ocupada) antes de propores.\n`
       : "") +
     (motivo ? `O que as regras viram: "${motivo}"\n` : "") +
-    `COMO LER OS SINAIS: aliviar — baixa o volume ou as reps desses dias, nunca kg (não prescreves kg); progredir — sobe ` +
-    `as reps ou as séries, e diz-lhe que a carga ele sobe pela última vez; trocar — pergunta porque saltou e propõe um ` +
-    `exercício que ele faça mesmo; cardio abaixo do alvo — ajusta o alvo ao que ele consegue; objetivo por cumprir — ` +
-    `torna o objetivo alcançável ou explica-o melhor.\n` +
-    `COMO AVANÇAR: quando souberes o porquê, propõe o plano adaptado com propose_training_plan e replace_active_plan=true ` +
-    `(mesmo race_id e period_end se o plano prepara uma prova). NUNCA digas que já mudaste o plano: só muda quando ele ` +
-    `aceitar a proposta na app. Se ele preferir manter tudo, respeita.\n` +
+    ADAPTATION_HOW_TO +
     `DESFECHO: se ele aceitar a proposta, chama resolve_intervention com 'plano_ajustado'; se disser explicitamente que ` +
     `prefere manter o plano, 'atleta_ignorou'; se os sinais vierem de um erro de registo, 'falso_positivo'.\n`;
 }
@@ -4150,7 +4157,8 @@ export function buildTalkedInterventionInstruction(reason: string): string {
     `Segue a conversa naturalmente, sem repetir o aviso; se o assunto voltar, continua direta. Se a conversa chegar a um destes ` +
     `desfechos, regista-o com resolve_intervention: o plano ajustado e aceite ('plano_ajustado'), o atleta a ` +
     `dizer explicitamente que prefere manter tudo como está ('atleta_ignorou'), ou o aviso a revelar-se um erro de ` +
-    `registo ('falso_positivo'). Se não chegar a nenhum, não chames a ferramenta.\n`;
+    `registo ('falso_positivo'). Se não chegar a nenhum, não chames a ferramenta.\n` +
+    (isAdaptationIntervention(reason) ? ADAPTATION_HOW_TO : "");
 }
 
 /* O aviso "Preciso de falar contigo" fecha quando a conversa acontece
