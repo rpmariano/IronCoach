@@ -243,7 +243,7 @@ export function CheckinSheet({ initial = null, onClose, onSaved }) {
               onChange={(e) => set('pain_location')(e.target.value)}
               placeholder="ex.: gémeo direito, canela, joelho"
               className="w-full mt-1.5 min-h-[44px] px-3 rounded-[11px] text-[13px]"
-              style={{ background: 'rgba(255,255,255,.05)', border: '1px solid var(--border-glass-strong)', color: 'var(--text-1)' }}
+              style={{ background: 'var(--surface-well)', border: '1px solid var(--border-well)', color: 'var(--text-1)' }}
             />
           </div>
         )}

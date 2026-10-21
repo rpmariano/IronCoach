@@ -736,43 +736,52 @@ html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
    classNames: os campos herdaram `bg-[var(--surface-soft)]` do legado e o
    que muda é o desenho, não o campo. Ficam de fora os campos sem caixa
    própria (`bg-transparent`, ex.: o número dentro de uma pílula com unidade)
-   e os chips: os botões pintados de surface-soft passam a chip (sobe). */
-.reg-form input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([class~="bg-transparent"]),
-.reg-form select:not([class~="bg-transparent"]),
-.reg-form textarea:not([class~="bg-transparent"]) {
+   e os chips: os botões pintados de surface-soft passam a chip (sobe).
+   `.data-form` (2026-10-21): o mesmo desenho fora dos registos — Perfil,
+   folhas e modais (Sheet, Dialog, PremiumModal), onboarding e login. */
+.data-form .module-card-contrast {
+  background: var(--surface-card);
+  border-color: var(--border-card);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.data-form .module-card-contrast:hover { transform: none; }
+:is(.reg-form, .data-form) input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([class~="bg-transparent"]),
+:is(.reg-form, .data-form) select:not([class~="bg-transparent"]),
+:is(.reg-form, .data-form) textarea:not([class~="bg-transparent"]) {
   background-color: var(--surface-well);
   border: 1px solid var(--border-well);
   color: var(--text-1);
   font-weight: 500;
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, .35);
 }
-.reg-form input::placeholder,
-.reg-form textarea::placeholder { color: var(--text-placeholder); font-weight: 400; }
-.reg-form input:not([type="checkbox"]):not([type="radio"]):not([class~="bg-transparent"]):focus,
-.reg-form select:not([class~="bg-transparent"]):focus,
-.reg-form textarea:not([class~="bg-transparent"]):focus {
+:is(.reg-form, .data-form) input::placeholder,
+:is(.reg-form, .data-form) textarea::placeholder { color: var(--text-placeholder); font-weight: 400; }
+:is(.reg-form, .data-form) input:not([type="checkbox"]):not([type="radio"]):not([class~="bg-transparent"]):focus,
+:is(.reg-form, .data-form) select:not([class~="bg-transparent"]):focus,
+:is(.reg-form, .data-form) textarea:not([class~="bg-transparent"]):focus {
   border-color: var(--focus-ring);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-ring) 20%, transparent);
 }
-.reg-form input[aria-invalid="true"],
-.reg-form textarea[aria-invalid="true"] { border-color: var(--danger); }
-.reg-form input:disabled,
-.reg-form select:disabled,
-.reg-form textarea:disabled { opacity: .55; box-shadow: none; }
+:is(.reg-form, .data-form) input[aria-invalid="true"],
+:is(.reg-form, .data-form) textarea[aria-invalid="true"] { border-color: var(--danger); }
+:is(.reg-form, .data-form) input:disabled,
+:is(.reg-form, .data-form) select:disabled,
+:is(.reg-form, .data-form) textarea:disabled { opacity: .55; box-shadow: none; }
 /* `~=` (classe inteira) e não `*=` (substring): `*=` apanhava também as
    variantes `hover:bg-…`/`focus:bg-…`, e um chip só com fundo no hover
    ficava pintado em repouso. As etiquetas que embrulham um campo (zona de
    upload, checkbox) ficam de fora — o texto delas é ajuda, não etiqueta. */
-.reg-form label:not(:has(input)) { color: var(--text-2); font-weight: 600; }
-.reg-form button[class~="bg-[var(--surface-soft)]"],
-.reg-form button[class~="bg-[var(--surface-glass)]"] {
+:is(.reg-form, .data-form) label:not(:has(input)) { color: var(--text-2); font-weight: 600; }
+:is(.reg-form, .data-form) button[class~="bg-[var(--surface-soft)]"],
+:is(.reg-form, .data-form) button[class~="bg-[var(--surface-glass)]"] {
   background-color: var(--surface-chip);
   border-color: var(--border-chip);
 }
 /* Esta regra está fora das camadas do Tailwind e ganha aos `hover:` dos
    utilitários — o hover do chip tem de vir daqui. */
-.reg-form button[class~="bg-[var(--surface-soft)]"]:hover:not(:disabled),
-.reg-form button[class~="bg-[var(--surface-glass)]"]:hover:not(:disabled) {
+:is(.reg-form, .data-form) button[class~="bg-[var(--surface-soft)]"]:hover:not(:disabled),
+:is(.reg-form, .data-form) button[class~="bg-[var(--surface-glass)]"]:hover:not(:disabled) {
   background-color: color-mix(in srgb, var(--surface-chip), white 7%);
 }
 

@@ -63,7 +63,7 @@ export default function Auth() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center p-4 bg-transparent text-[var(--text-1)] fade-in" style={{ paddingTop: 'max(16px, env(safe-area-inset-top, 0px))', paddingBottom: 'max(16px, env(safe-area-inset-bottom, 0px))' }}>
       <AppBackground />
-      <div className="card rounded-3xl p-6 max-w-sm w-full space-y-4">
+      <div className="data-form card rounded-3xl p-6 max-w-sm w-full space-y-4">
         {/* Header */}
         <div className="flex justify-center mb-1">
           <BrandMark variant="lockup" animated size={272} alt="IronCoach, treino com inteligência artificial" className="rounded-2xl" />

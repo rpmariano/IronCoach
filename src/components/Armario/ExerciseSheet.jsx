@@ -19,7 +19,8 @@ export default function ExerciseSheet({ exercise = null, onClose }) {
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const field = { border: '1px solid var(--border-glass)', background: 'var(--surface-soft)', color: 'var(--text-1)' };
+  // O poço dos campos (.data-form): inline ganha ao CSS, por isso aqui os mesmos tokens.
+  const field = { border: '1px solid var(--border-well)', background: 'var(--surface-well)', color: 'var(--text-1)' };
 
   const run = async (fn, done) => {
     setBusy(true);

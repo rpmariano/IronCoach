@@ -266,7 +266,7 @@ export default function PremiumModal({
         {/* Content */}
         <div
           ref={scrollRef}
-          className="flex-1 overflow-y-auto overscroll-contain bg-[var(--surface-soft)]"
+          className="data-form flex-1 overflow-y-auto overscroll-contain bg-[var(--surface-soft)]"
         >
           {children}
         </div>

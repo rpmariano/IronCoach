@@ -176,7 +176,7 @@ export function Sheet({ title, eyebrow, eyebrowTone = 'gym', onClose, children, 
             <X size={16} />
           </button>
         </div>
-        <div ref={bodyRef} className="overflow-y-auto no-scrollbar mt-1 min-h-0">{children}</div>
+        <div ref={bodyRef} className="data-form overflow-y-auto no-scrollbar mt-1 min-h-0">{children}</div>
       </div>
     </>
   );
@@ -218,7 +218,7 @@ export function Dialog({ title, tone = 'coach', onClose, children, actions, head
             </button>
           </div>
         )}
-        <div className="overflow-y-auto no-scrollbar min-h-0 flex flex-col gap-3.5">{children}</div>
+        <div className="data-form overflow-y-auto no-scrollbar min-h-0 flex flex-col gap-3.5">{children}</div>
         {actions && <div className="flex gap-2 mt-1">{actions}</div>}
       </div>
     </>
