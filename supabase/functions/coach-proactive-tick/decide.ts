@@ -1,7 +1,7 @@
 // A decisão de notificar um atleta — pura, para os testes não precisarem de
 // rede (specs/carol-omnisciencia-omnipresenca.md, ação P.3).
 
-import { ALL_PROACTIVE_TRIGGERS, isWithinProactiveWindow, type ProactiveTriggerName, type PushPreferences } from "../_shared/formulas/proactiveTriggers.ts";
+import { ALL_PROACTIVE_TRIGGERS, isWithinProactiveWindow, PLAN_ADAPTATION_PUSH_ENABLED, type ProactiveTriggerName, type PushPreferences } from "../_shared/formulas/proactiveTriggers.ts";
 import { isCupNoticeTrigger, type TickCandidate } from "../_shared/formulas/cupNotices.ts";
 
 /** A mesma regra do coach-chat (PROACTIVE_QUIET_HOURS): se ela falou há menos
@@ -17,7 +17,7 @@ export function lisbonDateOf(iso: string): string {
 
 export type PushDecision =
   | { send: true }
-  | { send: false; reason: "sem_momento" | "tipo_desligado" | "depois_da_partida" | "fora_de_horas" | "ja_entregue" | "ja_notificado" | "ja_visto" | "limite_diario" | "falou_ha_pouco" | "ja_falou_depois" | "balanco_feito" };
+  | { send: false; reason: "sem_momento" | "tipo_desligado" | "depois_da_partida" | "fora_de_horas" | "ja_entregue" | "ja_notificado" | "ja_visto" | "limite_diario" | "falou_ha_pouco" | "ja_falou_depois" | "balanco_feito" | "push_desligado" };
 
 export function decidePush(input: {
   candidate: TickCandidate | null;
@@ -53,6 +53,10 @@ export function decidePush(input: {
   // os aceita lá: a preferência deles é a da inscrição (cup_enrollments.
   // notify_*, specs/trofeu.md §8). O resto vale para eles como para todos.
   if (!isCupNoticeTrigger(c.trigger) && !types.includes(c.trigger)) return { send: false, reason: "tipo_desligado" };
+  // A adaptação proativa (F5) ainda não sai por push: só no Início.
+  if (c.trigger === "intervention" && c.interventionTopic === "adaptacao" && !PLAN_ADAPTATION_PUSH_ENABLED) {
+    return { send: false, reason: "push_desligado" };
+  }
   // A manhã da prova não sai depois da partida: a meio da prova só distrai.
   const minuteOfDay = input.minuteOfDay ?? null;
   if (c.trigger === "race_morning" && c.startMinutes != null && minuteOfDay != null && minuteOfDay >= c.startMinutes) {

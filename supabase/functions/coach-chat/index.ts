@@ -38,6 +38,7 @@ import { fetchRaceWeatherContext, fetchRaceWeatherObserved } from "../_shared/ra
 import { fetchTrainingWeatherBlock } from "../_shared/trainingWeatherFetch.ts";
 import { CAROL_TONE_RULES, CAROL_LANGUAGE_BY_LEVEL, upstreamErrorText } from "../_shared/carolTone.ts";
 import { GOALS_INTERVENTION_TAG, goalsDeclinedMarker, isGoalsIntervention } from "../_shared/formulas/goalsIntervention.ts";
+import { adaptationReasonText, isAdaptationIntervention } from "../_shared/formulas/planAdaptation.ts";
 import { MEAL_ONLY_CATEGORY, MEAL_ONLY_DAY_LABEL, MEAL_TYPE_LABEL, isMealOnlyItem, mergeSingleMeal } from "../_shared/formulas/mealSuggestions.ts";
 import { computeMacroAdherence } from "../_shared/formulas/macroAdherence.ts";
 import { computeEnergyAvailabilityWindow } from "../_shared/formulas/energyAvailabilityWindow.ts";
@@ -4002,6 +4003,11 @@ export function buildInterventionStartTurn(details: string | null, reason: strin
       `INICIA tu a conversa, com calma e sem cobranças: diz-lhe o que viste na avaliação e convida-o a definir ` +
       `(ou rever) os objetivos contigo. Pergunta-lhe onde quer chegar, e até quando.`;
   }
+  if (isAdaptationIntervention(reason)) {
+    return `O atleta abriu o chat ao tocar em "Falar com a Carol" depois de os últimos treinos do plano mostrarem que o plano ` +
+      `precisa de ser adaptado. INICIA tu a conversa, sem cobranças: diz-lhe em duas frases o que viste nos treinos, com os ` +
+      `números, e pergunta como se sentiu antes de propores a mudança.`;
+  }
   return `O atleta abriu o chat ao clicar no botão "Falar com a Coach" após a análise de um registo que gerou um alerta.` +
     (details ? ` Detalhes da análise/motivo: "${clean(details)}".` : "") +
     ` INICIA tu a conversa diretamente de forma proativa, confrontando o atleta com os dados, a carga acumulada ou o ` +
@@ -4032,6 +4038,33 @@ export function buildGoalsInterventionInstruction(isStart: boolean, reason: stri
     `resolve_intervention nesse caso. Chama resolve_intervention com 'atleta_ignorou' SÓ se ele disser ` +
     `explicitamente que não quer definir nem rever objetivos agora. Nunca uses 'plano_ajustado' nem ` +
     `'falso_positivo' aqui.\n`;
+}
+
+/** A conversa da adaptação proativa (registo unificado, F5): as regras
+ *  (planAdaptation.ts) viram nos treinos do plano que ele já não serve —
+ *  progredir, aliviar, trocar um exercício, o cardio ou um objetivo que
+ *  falham. Não é a de desvios: ele fez os treinos, e o plano é que tem de
+ *  acompanhar. A Carol nunca edita o plano aceite: propõe um que o
+ *  substitui (replace_active_plan=true) e a decisão é dele (decisão 3). */
+export function buildAdaptationInterventionInstruction(isStart: boolean, reason: string | null): string {
+  const motivo = adaptationReasonText(reason);
+  return `\n\n=== ADAPTAÇÃO DO PLANO (desempenho vs plano) ===\n` +
+    `Os últimos treinos de ginásio do plano mostram que ele precisa de ser adaptado, e chamaste o atleta com o aviso ` +
+    `"Preciso de falar contigo". Não é uma chamada de atenção: o plano é que tem de acompanhar o que ele faz.\n` +
+    (isStart
+      ? `O atleta acabou de abrir a conversa a partir do teu aviso. INICIA tu: diz em duas frases o que viste, com os ` +
+        `números do planeado vs feito, e pergunta como se sentiu (cansaço, dor, falta de tempo, máquina ocupada) antes de propores.\n`
+      : "") +
+    (motivo ? `O que as regras viram: "${motivo}"\n` : "") +
+    `COMO LER OS SINAIS: aliviar — baixa o volume ou as reps desses dias, nunca kg (não prescreves kg); progredir — sobe ` +
+    `as reps ou as séries, e diz-lhe que a carga ele sobe pela última vez; trocar — pergunta porque saltou e propõe um ` +
+    `exercício que ele faça mesmo; cardio abaixo do alvo — ajusta o alvo ao que ele consegue; objetivo por cumprir — ` +
+    `torna o objetivo alcançável ou explica-o melhor.\n` +
+    `COMO AVANÇAR: quando souberes o porquê, propõe o plano adaptado com propose_training_plan e replace_active_plan=true ` +
+    `(mesmo race_id e period_end se o plano prepara uma prova). NUNCA digas que já mudaste o plano: só muda quando ele ` +
+    `aceitar a proposta na app. Se ele preferir manter tudo, respeita.\n` +
+    `DESFECHO: se ele aceitar a proposta, chama resolve_intervention com 'plano_ajustado'; se disser explicitamente que ` +
+    `prefere manter o plano, 'atleta_ignorou'; se os sinais vierem de um erro de registo, 'falso_positivo'.\n`;
 }
 
 export async function runResolveIntervention(sb: any, userId: string, args: any): Promise<string> {
@@ -4113,7 +4146,7 @@ export async function readTalkedIntervention(sb: any, userId: string, nowMs = Da
 export function buildTalkedInterventionInstruction(reason: string): string {
   return `\n\n=== AVISO JÁ FALADO NESTA CONVERSA ===\n` +
     `Abriste esta conversa a partir do teu aviso "Preciso de falar contigo", e ele já fechou na app. ` +
-    `O motivo era: "${reason.replace(GOALS_INTERVENTION_TAG, "").trim()}".\n` +
+    `O motivo era: "${isAdaptationIntervention(reason) ? adaptationReasonText(reason) : reason.replace(GOALS_INTERVENTION_TAG, "").trim()}".\n` +
     `Segue a conversa naturalmente, sem repetir o aviso; se o assunto voltar, continua direta. Se a conversa chegar a um destes ` +
     `desfechos, regista-o com resolve_intervention: o plano ajustado e aceite ('plano_ajustado'), o atleta a ` +
     `dizer explicitamente que prefere manter tudo como está ('atleta_ignorou'), ou o aviso a revelar-se um erro de ` +
@@ -6236,6 +6269,8 @@ export function buildSystemInstruction(
 
   if ((interventionStatus === 'needed' || interventionStatus === 'in_progress') && isGoalsIntervention(interventionReason)) {
     sys += buildGoalsInterventionInstruction(isInterventionStart, interventionReason);
+  } else if ((interventionStatus === 'needed' || interventionStatus === 'in_progress') && isAdaptationIntervention(interventionReason)) {
+    sys += buildAdaptationInterventionInstruction(isInterventionStart, interventionReason);
   } else if (interventionStatus === 'needed' || interventionStatus === 'in_progress') {
     sys += `\n\n=== MODO DE INTERVENÇÃO PROATIVA ATIVO ===\n` +
            `Identificaste desvios significativos no cumprimento do plano (ex.: falhas repetidas na nutrição ou faltas/desvios grandes nos treinos) e decidiste intervir.\n` +

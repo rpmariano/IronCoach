@@ -150,6 +150,9 @@ create table if not exists public.athlete_exercises (
 - Intervenção `[adaptacao]` → Início + push `plan_adaptation` → chat → `propose_training_plan` com `supersedes_plan_id` → o atleta aceita ou recusa. Nunca se edita um plano aceite em silêncio.
 - No máximo uma por plano e por semana; assinatura como em `planDivergence`.
 
+> [!NOTE]
+> **Feito (2026-10-21)** — ver decisão 18 em §6. Regras em `_shared/formulas/planAdaptation.ts` (+ golden), abertas pelo `analyze-gym` (`adaptation.ts`) a seguir ao planeado vs feito; chat em `buildAdaptationInterventionInstruction`; Início em `carolTopics.js`; push desligado (`PLAN_ADAPTATION_PUSH_ENABLED`).
+
 ```mermaid
 flowchart LR
   A["Foto e/ou notas"] -->|preview| B["Formulário preenchido"]
@@ -218,4 +221,29 @@ Dividido em duas vertentes: **Modelos na Aplicação (Runtime/Produção)** e **
 | 14 | **Armário com submenus:** Treino (o Armário de Exercícios — hoje sem ecrã), Alimentação (a Despensa: alimentos, como cozinhas, refeições) e Equipamento (as sapatilhas) |
 | 15 | **Refeição só com observações:** escrever o que se comeu e analisar, sem alimentos nem fotos — a Carol estrutura os alimentos e calcula |
 | 16 | **Imagens no chat da Carol:** fotos de embalagens e de alimentos, enviadas na conversa. **Feito (2026-10-19):** botão de anexar no chat (até 3 fotos, JPEG comprimido, só em memória); vão no pedido ao `coach-chat` (`images`), que as passa ao Gemini e não as guarda — no histórico fica "📷 N fotos enviadas" |
+| 18 | **Adaptação proativa (F5).** **Feito (2026-10-21).** Regras determinísticas em `_shared/formulas/planAdaptation.ts` sobre o `planExecution` dos treinos de ginásio concluídos do mesmo plano (recalculados a partir das sessões ligadas, sem coluna nova). Um sinal só nasce quando a sessão que acabou de ser analisada o completa; "2 vezes seguidas" conta por exercício (as duas últimas vezes em que estava prescrito — dias de pernas e de peito não se misturam). **aliviar** numa só sessão (confirmado pelo utilizador): < 80 % das reps nos exercícios **feitos** (um exercício saltado é "trocar", não "aliviar") ou RPE (`workout_sessions.exertion`) ≥ 9. **progredir**: cumprido 2 vezes com RPE ≤ 7 nas duas — sem RPE não há progredir; cala-se se a mesma sessão pedir para aliviar. **trocar**: `em_falta`/`trocado` 2 vezes. **cardio abaixo**: `parcial` (fora dos ±15 % da adesão) 2 vezes. **objetivo falhado**: `goal_met === false` 2 vezes. O `analyze-gym` abre `[adaptacao] ref=<plano>\|<segunda-feira>. desempenho_vs_plano: …` (origem `gym`) só com plano aceite, sem outro assunto por resolver, sem intervenção da própria análise nesse registo, e se essa assinatura ainda não estiver em `coach_interventions` — uma por plano e por semana. O chat convida (não confronta), lê os sinais e propõe com `propose_training_plan` + `replace_active_plan=true`; nunca diz que mudou o plano. Fecha ao falar, como as outras; o desfecho (`plano_ajustado`/`atleta_ignorou`/`falso_positivo`) regista-o a Carol. **Limiares não afinados:** a 2026-10-21 havia 0 itens de ginásio com prescrição em produção (e RPE em 5 de 24 sessões), por isso ficam os do spec e o push `plan_adaptation` fica **desligado** (`PLAN_ADAPTATION_PUSH_ENABLED = false` em `proactiveTriggers.ts`; o tick regista `push_desligado` em `app_logs` quando não sai outro momento). Para afinar, ao fim de algumas semanas de planos com prescrição, correr (só leitura) a query abaixo e ver quantas adaptações abriram e como acabaram; depois ligar o push |
 | 17 | **Embalagem no chat → Despensa:** quando o atleta manda a foto de uma embalagem, a Carol lê o rótulo e guarda o alimento na Despensa (como já faz com um rótulo numa refeição), e diz-lho na resposta. **Feito (2026-10-19):** ferramenta `save_pantry_food` (só declarada com fotos no pedido): a Carol lê a tabela e grava em `athlete_foods` (`source='rotulo'`, `in_pantry`, sem contar como refeição) por `nextFoodRow`; não reescreve o que o atleta ajustou; valores incoerentes são recusados. Comida preparada: comenta e estima, não guarda. Num turno com fotos a Carol só pode ler, guardar notas e usar a Despensa (nunca mexer em planos, metas ou provas: o texto de uma imagem não são instruções); a energia do rótulo só é recusada se destoar grosseiramente dos macros, com crédito para fibra, polióis e álcool |
+
+### Afinação da F5 (query só de leitura)
+
+```sql
+-- Quanto há para afinar: treinos do plano com prescrição e RPE.
+select count(*) filter (where i.prescription is not null)                        as treinos_com_prescricao,
+       count(*) filter (where i.prescription is not null and w.exertion is not null) as com_rpe
+from coach_plan_items i left join workout_sessions w on w.id = i.completed_session_id
+where i.kind = 'ginasio' and i.status = 'concluido';
+
+-- As adaptações abertas, o sinal principal e como acabaram.
+select date_trunc('week', opened_at)::date as semana,
+       split_part(split_part(reason, 'desempenho_vs_plano: ', 2), ':', 1) as sinal,
+       outcome, count(*)
+from coach_interventions
+where reason like '[adaptacao]%'
+group by 1, 2, 3 order by 1 desc, 4 desc;
+
+-- O que o push teria feito (o tick regista a decisão por atleta e dia).
+select created_at::date as dia, count(*) from app_logs
+where meta::text like '%push_desligado%' group by 1 order by 1 desc;
+```
+
+Ler assim: muitos `falso_positivo` ou `atleta_ignorou` num sinal → o limiar desse sinal está apertado demais; quase nenhuma adaptação com muitos treinos → largo demais.

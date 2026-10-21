@@ -11,7 +11,12 @@ import { computePlanExecution, describePlanExecution, executionNote, type Exerci
 export type PlanLink = { itemId: string | null; source: "plano" | "auto" | null };
 /** O planeado vs feito (null sem prescrição ou numa aula) e se o registo foi um
  *  treino livre contado como o do plano — este reconhece-se sempre (decisão 3). */
-export type PlanResolution = { exec: PlanExecution | null; autoLinked: boolean };
+export type PlanResolution = {
+  exec: PlanExecution | null;
+  autoLinked: boolean;
+  /** O item e o plano do planeado vs feito — só quando há exec (para a F5). */
+  item?: { id: string; planId: string | null };
+};
 export const FREE_WORKOUT_NOTE = "Treino livre, contado como o treino do plano.";
 
 /** O que o pedido diz sobre o treino do plano (validado). */
@@ -42,7 +47,7 @@ export async function resolvePlanExecution(
   },
 ): Promise<PlanResolution> {
   try {
-    const cols = "id, prescription, completion_source, status, completed_session_id";
+    const cols = "id, plan_id, prescription, completion_source, status, completed_session_id";
     let item = null;
     if (args.link.itemId) {
       const { data } = await sb.from("coach_plan_items").select(cols)
@@ -82,7 +87,7 @@ export async function resolvePlanExecution(
     if (note) {
       await sb.from("coach_plan_items").update({ execution_note: note }).eq("id", item.id).eq("user_id", args.userId);
     }
-    return { exec, autoLinked };
+    return exec ? { exec, autoLinked, item: { id: item.id, planId: item.plan_id ?? null } } : { exec, autoLinked };
   } catch (e) {
     console.warn("analyze-gym: planeado vs feito não calculado —", e instanceof Error ? e.message : e);
     return { exec: null, autoLinked: false };

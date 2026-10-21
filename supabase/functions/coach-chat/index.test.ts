@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
+import { runSaveCoachNote, buildCoachNotesContext, classifyTurn, allowedToolsFor, buildTools, aggregateMealsByDate, runGetNutritionHistory, summariseSessions, formatSessionLine, bestLoadsLine, runGetGymHistory, runProposeTrainingPlan, runUpdateGoals, runSaveMealSuggestions, buildSystemInstruction, buildPlanContext, resolveCoachingMode, buildCoachingModeContext, computeACWR, computeGymMetrics, buildNutritionTargets, computeBodyMetrics, summariseRuns, firstNameOf, buildRaceEventsContext, computeMealHabits, buildSuggestionAdherencePanel, buildMealMacros, extractReplyText, buildProactiveInstruction, buildProactiveUserTurn, shouldSkipProactive, parseProactiveKey, wasProactiveDelivered, recordProactiveDelivered, PROACTIVE_TRIGGERS, PROACTIVE_QUIET_HOURS, parseRaceOutcome, buildRaceOutcomeContext, raceAfterInstruction, raceOutcomeNote, buildRacePlanContext, buildSplitsComparisonContext, buildRaceEveContext, hhmm, detectRaceFollowup, buildRaceFollowupContext, runUpdateRaceEvent, matchRaceByName, normalizeRaceName, buildRaceCaptionPrompt, computeMealTypicalTimes, buildGoalsInterventionInstruction, buildInterventionStartTurn, runResolveIntervention, closeInterventionOnTalk, readTalkedIntervention, buildTalkedInterventionInstruction, buildAdaptationInterventionInstruction, findAnsweredDuplicate, DUPLICATE_WINDOW_MS, type RaceOutcome, type BodyAssessmentRow, type TurnCase } from "./index.ts";
 import { buildAcwrLine, checkPlanLoad } from "./index.ts";
 import { RESPONSE_SCHEMA, RESPONSE_SCHEMA_BASE, shouldRetryWithoutRecommendations, saveRecommendations } from "./index.ts";
 import { CHAT_OWN_FAILURE_TEXT, CHAT_SESSION_TEXT, CHAT_MESSAGE_NOT_SAVED_TEXT } from "./index.ts";
@@ -5502,4 +5502,31 @@ Deno.test("runProposeTrainingPlan: num ginásio, as frases das notes que prescre
   });
   assertEquals(calls.itemInserts[0].notes, "Aquece bem. Fecha com core.");
   assertEquals(calls.itemInserts[1].notes, "Leva 0,5 kg de água");
+});
+
+// F5 — a adaptação proativa: convida, propõe a substituir o plano, nunca diz
+// que já o mudou; a etiqueta e a referência nunca chegam ao texto dela.
+Deno.test("[adaptacao]: o prompt tem a conversa da adaptação, não a do confronto", () => {
+  const reason = "[adaptacao] ref=p1|2026-10-19. desempenho_vs_plano: trocar: Seletor de pernas ficou de fora ou foi substituído 2 vezes seguidas. Propõe a adaptação do plano em conjunto; nunca o alteres sem ele aceitar.";
+  const sys = buildSystemInstruction(
+    null, BIO_BASE, null, null, "NUTRIÇÃO", "ÁGUA", null, null, null, null, null, null,
+    null, null, true, "needed", reason,
+  );
+  assertStringIncludes(sys, "ADAPTAÇÃO DO PLANO");
+  assertStringIncludes(sys, "replace_active_plan=true");
+  assertStringIncludes(sys, "Seletor de pernas");
+  assertEquals(sys.includes("MODO DE INTERVENÇÃO PROATIVA ATIVO"), false);
+  assertEquals(sys.includes("ref=p1"), false);
+
+  const start = buildInterventionStartTurn(null, reason);
+  assertStringIncludes(start, "sem cobranças");
+  assertEquals(start.includes("confrontando"), false);
+
+  assertEquals(buildAdaptationInterventionInstruction(false, reason).includes("INICIA tu"), false);
+  assertStringIncludes(buildAdaptationInterventionInstruction(true, reason), "INICIA tu");
+  assertStringIncludes(buildAdaptationInterventionInstruction(false, reason), "NUNCA digas que já mudaste o plano");
+
+  const talked = buildTalkedInterventionInstruction(reason);
+  assertEquals(talked.includes("[adaptacao]"), false);
+  assertEquals(talked.includes("ref="), false);
 });
