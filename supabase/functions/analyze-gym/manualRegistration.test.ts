@@ -189,3 +189,8 @@ Deno.test("bug #80: o único exercício de cardio sem números fica com a duraç
   // Valores absurdos viram null (os CHECKs da tabela).
   assertEquals(normalizeReadExercises([{ name: "Remo", sets: [{ duration_seconds: 999999, distance_km: 5000 }] }]), []);
 });
+
+Deno.test("bug #80 (revisão): um tempo ou voltas que arredondam a 0 viram null (CHECK > 0)", () => {
+  assertEquals(normalizeReadExercises([{ name: "Remo", sets: [{ duration_seconds: 0.3, laps: 0.4 }] }]), []);
+  assertEquals(parseManualSets([{ exercise_name: "Remo", duration_seconds: 0.3, distance_km: 2 }])[0].duration_seconds, null);
+});

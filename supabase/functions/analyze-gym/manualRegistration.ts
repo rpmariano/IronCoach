@@ -59,9 +59,9 @@ export function parseManualSets(rawSets: any): ManualSetRow[] {
       reps: finiteOrNull(s?.reps),
       weight: finiteOrNull(s?.weight),
       one_rep_max_est: finiteOrNull(s?.one_rep_max_est),
-      duration_seconds: duration !== null ? Math.round(duration) : null,
+      duration_seconds: duration !== null && Math.round(duration) > 0 ? Math.round(duration) : null,
       distance_km: positiveOrNull(s?.distance_km, 1000),
-      laps: laps !== null ? Math.round(laps) : null,
+      laps: laps !== null && Math.round(laps) > 0 ? Math.round(laps) : null,
     };
     // A edição antiga mandava sempre reps/weight (podia ser 0); só se descarta
     // uma linha que não traga nada — mesmo comportamento de antes para a força.
@@ -227,9 +227,9 @@ export function normalizeReadExercises(raw: any, sessionDurationSeconds: number 
         reps: nonNeg(s?.reps),
         weight: nonNeg(s?.weight),
         one_rep_max_est: nonNeg(s?.one_rep_max_est),
-        duration_seconds: duration !== null ? Math.round(duration) : null,
+        duration_seconds: duration !== null && Math.round(duration) > 0 ? Math.round(duration) : null,
         distance_km: positiveOrNull(s?.distance_km, 1000),
-        laps: laps !== null ? Math.round(laps) : null,
+        laps: laps !== null && Math.round(laps) > 0 ? Math.round(laps) : null,
       };
       if (Object.values(row).every((v) => v === null)) continue;
       sets.push(row);
