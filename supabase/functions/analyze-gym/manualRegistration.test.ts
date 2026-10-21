@@ -1,5 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { mergeTypedWithRead, parseExercisesMeta, parseManualSets, recordFromSets, updateExerciseLocker } from "./manualRegistration.ts";
+import { mergeTypedWithRead, normalizeReadExercises, parseExercisesMeta, parseManualSets, recordFromSets, updateExerciseLocker } from "./manualRegistration.ts";
 import { formatExerciseLines } from "./index.ts";
 
 Deno.test("parseManualSets: força e cardio; nulos ficam nulos e linhas vazias caem", () => {
@@ -168,4 +168,29 @@ Deno.test("parseExercisesMeta: a afinação passa (limpa e limitada) só quando 
   assertEquals(meta[2].machine_settings, "");
   assertEquals("machine_settings" in meta[3], false);
   assertEquals(meta[4].machine_settings?.length, 120);
+});
+
+Deno.test("bug #80: o cardio lido nos prints traz tempo e distância; séries vazias caem", () => {
+  const read = normalizeReadExercises([
+    { name: "Bicicleta estacionária", sets: [{ reps: null, weight: null, duration_seconds: 2700, distance_km: 15.2 }] },
+    { name: "Supino", sets: [{ reps: 10, weight: 40 }, { reps: null, weight: null }] },
+  ]);
+  assertEquals(read.map((e) => e.name), ["Bicicleta estacionária", "Supino"]);
+  assertEquals(read[0].sets, [{ reps: null, weight: null, one_rep_max_est: null, duration_seconds: 2700, distance_km: 15.2, laps: null }]);
+  assertEquals(read[1].sets.length, 1);
+});
+
+Deno.test("bug #80: o único exercício de cardio sem números fica com a duração da sessão", () => {
+  const vazio = [{ name: "Bicicleta estacionária", sets: [{ reps: null, weight: null }] }];
+  assertEquals(normalizeReadExercises(vazio, 2700)[0].sets[0].duration_seconds, 2700);
+  assertEquals(normalizeReadExercises(vazio, null), []);
+  // Com mais exercícios, não se adivinha de quem é a duração.
+  assertEquals(normalizeReadExercises([...vazio, { name: "Supino", sets: [{ reps: 10, weight: 40 }] }], 2700).map((e) => e.name), ["Supino"]);
+  // Valores absurdos viram null (os CHECKs da tabela).
+  assertEquals(normalizeReadExercises([{ name: "Remo", sets: [{ duration_seconds: 999999, distance_km: 5000 }] }]), []);
+});
+
+Deno.test("bug #80 (revisão): um tempo ou voltas que arredondam a 0 viram null (CHECK > 0)", () => {
+  assertEquals(normalizeReadExercises([{ name: "Remo", sets: [{ duration_seconds: 0.3, laps: 0.4 }] }]), []);
+  assertEquals(parseManualSets([{ exercise_name: "Remo", duration_seconds: 0.3, distance_km: 2 }])[0].duration_seconds, null);
 });

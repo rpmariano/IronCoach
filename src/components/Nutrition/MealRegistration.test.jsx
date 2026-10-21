@@ -1091,6 +1091,23 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(mocks.invoke.mock.calls[0][1].body.items).toEqual([{ name: 'Arroz branco cozido', grams: 150 }]);
   });
 
+  it('bug #81: ao focar as gramas de um alimento da lista, o campo vai para o meio da área visível', () => {
+    vi.useFakeTimers();
+    try {
+      render(<MealRegistration onClose={onClose} />);
+      fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'arroz' } });
+      fireEvent.click(screen.getByRole('option', { name: /Arroz branco cozido/ }));
+      const gramas = screen.getByLabelText('Gramas de Arroz branco cozido');
+      const scroll = vi.fn();
+      gramas.scrollIntoView = scroll;
+      gramas.focus();
+      act(() => { vi.advanceTimersByTime(350); });
+      expect(scroll).toHaveBeenCalledWith({ block: 'center' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('bug #75: com o peso habitual confirmado (duas vezes 150 g), é esse que entra e que se mostra', () => {
     useAppStore.setState({ foodRules: [{ id: 'r1', topic: 'Arroz branco cozido · quantidade', topic_key: 'arroz branco cozido quantidade', value: '150 g', status: 'confirmado', source: 'observacao', confirmations: 2 }] });
     render(<MealRegistration onClose={onClose} />);

@@ -34,7 +34,7 @@ import {
 import { clip, fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
-import { MAX_SETS, mergeTypedWithRead, parseExercisesMeta, parseManualSets, updateExerciseLocker } from "./manualRegistration.ts";
+import { MAX_SETS, mergeTypedWithRead, normalizeReadExercises, parseExercisesMeta, parseManualSets, type ReadExercise, updateExerciseLocker } from "./manualRegistration.ts";
 import { maybeOpenPlanAdaptation } from "./adaptation.ts";
 import { parsePlanLink, planExecutionPromptSection, resolvePlanExecution, type PlanLink, type PlanResolution } from "./planLink.ts";
 import {
@@ -135,6 +135,11 @@ const RESPONSE_SCHEMA = {
                 reps: { type: "NUMBER", nullable: true },
                 weight: { type: "NUMBER", nullable: true },
                 one_rep_max_est: { type: "NUMBER", nullable: true },
+                // Bug #80: o cardio (bicicleta, remo, passadeira…) tem tempo e
+                // distância, não reps e kg.
+                duration_seconds: { type: "NUMBER", nullable: true },
+                distance_km: { type: "NUMBER", nullable: true },
+                laps: { type: "NUMBER", nullable: true },
               },
               required: ["reps", "weight"],
             },
@@ -204,6 +209,10 @@ function buildPrompt(kind: string, notes: string | null): string {
       "cada uma com repetições (reps) e carga em quilogramas (weight). Se vires " +
       "uma coluna ou valor explícito para o 1RM estimado da série, extrai para one_rep_max_est. Se uma série não tiver " +
       "reps ou carga visíveis/registados, devolve null nesse campo (não inventes valores). " +
+      // Bug #80 (2026-10-21): a bicicleta estacionária vinha como uma série vazia.
+      "Num exercício de CARDIO (bicicleta, remo, passadeira, elíptica, piscina, corda…) devolve UMA série com " +
+      "duration_seconds (o tempo desse exercício, em segundos), distance_km (\"2000 m\" = 2) e/ou laps (voltas), " +
+      "e reps/weight a null. Se o cardio for a única atividade da sessão, o tempo e a distância dele são os da sessão. " +
       "Sugere também um nome curto para a sessão (session_name) com base no tipo de treino " +
       "(ex.: \"Peito e Tríceps\", \"Pernas Superiores\", \"Full Body\"), em português de Portugal, e " +
       MUSCLE_GROUPS_PROMPT + " Devolve class_types vazio. " +
@@ -320,8 +329,7 @@ async function checkAndLogAppImage(
 }
 
 
-type GymSet = { reps: number | null; weight: number | null; one_rep_max_est: number | null };
-type GymExercise = { name: string; sets: GymSet[] };
+type GymExercise = ReadExercise;
 // Métricas do relógio. Os limites espelham os CHECKs da tabela
 // workout_sessions — um valor fora de gama vindo do modelo tem de virar null
 // aqui, senão o INSERT rebentava com erro de constraint em vez de simplesmente
@@ -411,18 +419,6 @@ async function analyzeWithGemini(
     throw new Error("A análise devolveu um formato inesperado. Tenta novamente.");
   }
 
-  const num = (v: unknown): number | null =>
-    typeof v === "number" && isFinite(v) && v >= 0 ? v : null;
-  const exercises: GymExercise[] = (Array.isArray(parsed.exercises) ? parsed.exercises : [])
-    // deno-lint-ignore no-explicit-any
-    .map((ex: any) => ({
-      name: String(ex?.name ?? "").slice(0, 120) || "Exercício",
-      sets: (Array.isArray(ex?.sets) ? ex.sets : [])
-        // deno-lint-ignore no-explicit-any
-        .map((s: any) => ({ reps: num(s?.reps), weight: num(s?.weight), one_rep_max_est: num(s?.one_rep_max_est) })),
-    }))
-    .filter((ex) => ex.sets.length > 0);
-
   const metrics: GymMetrics = {
     // 24h de tecto: chega para qualquer sessão e apanha leituras absurdas.
     duration_seconds: intInRange(parsed.duration_seconds, 1, 86400),
@@ -432,6 +428,8 @@ async function analyzeWithGemini(
     exertion: intInRange(parsed.exertion, 1, 10),
     volume_kg: intInRange(parsed.volume_kg, 0, 1000000),
   };
+
+  const exercises: GymExercise[] = normalizeReadExercises(parsed.exercises, metrics.duration_seconds);
 
   const hasAnyMetric = Object.values(metrics).some((v) => v !== null);
 
@@ -647,11 +645,12 @@ export function splitLegacyAulaCategories(categories: string[]): { classTypes: s
 
 // Achata exercícios→séries em linhas prontas para workout_session_sets
 // (exercise_name + set_index sequencial por exercício).
-function flattenSets(exercises: GymExercise[]): { exercise_name: string; set_index: number; reps: number | null; weight: number | null; one_rep_max_est: number | null }[] {
-  const rows: { exercise_name: string; set_index: number; reps: number | null; weight: number | null; one_rep_max_est: number | null }[] = [];
+type FlatSet = { exercise_name: string; set_index: number } & GymExercise["sets"][number];
+function flattenSets(exercises: GymExercise[]): FlatSet[] {
+  const rows: FlatSet[] = [];
   for (const ex of exercises) {
     ex.sets.forEach((s, i) => {
-      rows.push({ exercise_name: ex.name, set_index: i, reps: s.reps, weight: s.weight, one_rep_max_est: s.one_rep_max_est });
+      rows.push({ exercise_name: ex.name, set_index: i, ...s });
     });
   }
   return rows;
