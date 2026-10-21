@@ -147,7 +147,7 @@ create table if not exists public.athlete_exercises (
 
 ### F5 — Adaptação proativa
 - Motivo `desempenho_vs_plano`, com regras sobre o `planExecution`: progredir (tudo cumprido + RPE ≤ 7, 2 vezes seguidas), aliviar (< 80 % das reps ou RPE ≥ 9), trocar (exercício saltado ou substituído 2 vezes), cardio abaixo do alvo 2 vezes, objetivo falhado 2 vezes.
-- Intervenção `[adaptacao]` → Início + push `plan_adaptation` → chat → `propose_training_plan` com `supersedes_plan_id` → o atleta aceita ou recusa. Nunca se edita um plano aceite em silêncio.
+- Intervenção `[adaptacao]` → Início + push `plan_adaptation` → chat → `propose_training_plan` com `replace_active_plan=true` (regista o `supersedes_plan_id`) → o atleta aceita ou recusa. Nunca se edita um plano aceite em silêncio.
 - No máximo uma por plano e por semana; assinatura como em `planDivergence`.
 
 > [!NOTE]
