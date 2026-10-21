@@ -712,3 +712,13 @@ Deno.test("silêncio: um plano que acabou antes de ontem não conta como plano e
   assertEquals(c?.trigger, "silence");
   assertEquals(c?.plannedTrainingsSince, undefined);
 });
+
+// F5 — a adaptação proativa lê-se pela etiqueta (a origem é "gym") e tem a
+// sua própria frase de push, mesmo desligada.
+Deno.test("listServerProactive: a intervenção [adaptacao] tem o tema e a frase dela", () => {
+  const reason = "[adaptacao] ref=p1|2026-10-19. desempenho_vs_plano: aliviar: no treino de 2026-10-21 RPE 9.";
+  const [c] = listServerProactive({ raceEvents: [], runs: [], intervention: { status: "needed", reason, origin: "gym" } } as never, "2026-10-21");
+  assertEquals(c.trigger, "intervention");
+  assertEquals(c.interventionTopic, "adaptacao");
+  assertEquals(proactivePushMessage(c).body, "Vi os teus últimos treinos do plano. Quero ajustá-lo contigo antes do próximo.");
+});

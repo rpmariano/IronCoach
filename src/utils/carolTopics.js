@@ -16,6 +16,7 @@
    falar: antes do treino de hoje, antes da partida, no dia sem treino. */
 import { goalsInterventionKind } from '@formulas/goalsIntervention.ts';
 import { runLoadInterventionKind } from '@formulas/runLoadAlert.ts';
+import { adaptationKindOf, isAdaptationIntervention } from '@formulas/planAdaptation.ts';
 import { evaluateCheckinAlarms } from '@formulas/checkinAlarms.ts';
 import { checkinOptions, checkinReasonNow, readCheckinReason } from './checkin';
 import { carolDay, lisbonParts, raceToday } from './carolWelcome';
@@ -209,6 +210,16 @@ function linhaDoCheckin(motivo, reason, ctx) {
   return `${preocupacao} ${quandoFalar(dia, { hoje, hour, minute, raceEvents, depoisDaMeiaNoite, hojeDito })}`;
 }
 
+/* Uma frase por sinal da adaptação proativa (planAdaptation.ts). */
+const ADAPTACAO_LINHA = {
+  aliviar: 'O teu último treino do plano foi muito puxado. Quero ajustar contigo os próximos.',
+  trocar: 'Há um exercício do plano que tem ficado de fora. Quero ajustá-lo contigo.',
+  cardio_abaixo: 'O cardio do plano tem ficado abaixo do alvo. Quero ajustá-lo contigo.',
+  objetivo_falhado: 'Há um objetivo do plano que não tem saído. Quero revê-lo contigo.',
+  progredir: 'Tens cumprido o plano com folga. Quero subir a fasquia contigo.',
+  outro: 'Vi os teus últimos treinos do plano. Quero ajustá-lo contigo.',
+};
+
 /**
  * A frase da intervenção por resolver, ou null sem nenhuma. À parte de
  * pendingTopicLines porque é a única que "Dispensar" fecha: a confirmação
@@ -226,6 +237,9 @@ export function interventionTopicLine({
   if (objetivos === 'definir') return 'Vi a tua avaliação corporal. Quero definir contigo os teus objetivos.';
   if (objetivos === 'rever') return 'A tua última avaliação mostra que os teus objetivos já não servem. Quero revê-los contigo.';
   if (checkin) return linhaDoCheckin(checkin, reason, { now, profile, dailyCheckins, coachPlans, coachPlanItems, raceEvents, coachNotes });
+  // A adaptação proativa (F5): os treinos do plano dizem que ele tem de mudar.
+  // A frase diz o sinal principal, nunca o motivo técnico (escrito para ela).
+  if (isAdaptationIntervention(reason)) return ADAPTACAO_LINHA[adaptationKindOf(reason)] || ADAPTACAO_LINHA.outro;
   // A carga conta-se numa janela de 7 dias, não na semana do calendário
   // (2026-09-26): aberta ao domingo e vista na terça, "esta semana" era
   // uma semana com uma corrida.

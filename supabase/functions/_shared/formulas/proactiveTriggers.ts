@@ -24,6 +24,7 @@ import { PAIN_ALARM_THRESHOLD } from "./checkinAlarms.ts";
 import { buildRacePacingPlan } from "./racePacing.ts";
 import { isRunLoadIntervention, runLoadInterventionKind } from "./runLoadAlert.ts";
 import { INTERVENTION_ORIGIN } from "./interventionOutcomes.ts";
+import { isAdaptationIntervention } from "./planAdaptation.ts";
 import { pickRaceOfDay } from "./mainRace.ts";
 import { pickRaceRun } from "./raceRun.ts";
 
@@ -130,7 +131,7 @@ export interface ServerProactiveCandidate {
   lastWaterDate?: string | null;
   /** O assunto por resolver: de onde veio, sem o motivo (revisão de
    *  2026-09-26). */
-  interventionTopic?: "checkin" | "carga_acima_do_plano" | "carga" | null;
+  interventionTopic?: "checkin" | "carga_acima_do_plano" | "carga" | "adaptacao" | null;
   /** Percentil "perto": o primeiro grupo ao lado que já tem números, pela
    *  ordem do "Onde estás" (neighbourSegments). */
   nearSegment?: { step: "modalidade" | "escalao" | "genero"; terrain: string; gender: string } | null;
@@ -191,8 +192,10 @@ export function raceConflictKey(planId: string, raceIds: string[]): string {
  *  dias": aí dizer "acima do plano" era falso. */
 export function interventionTopic(
   intervention: { reason?: string | null; origin?: string | null } | null | undefined,
-): "checkin" | "carga_acima_do_plano" | "carga" | null {
+): "checkin" | "carga_acima_do_plano" | "carga" | "adaptacao" | null {
   const reason = intervention?.reason ?? "";
+  // A adaptação proativa (F5) sai do analyze-gym com a origem "gym": lê-se pela etiqueta.
+  if (isAdaptationIntervention(reason)) return "adaptacao";
   const origin = intervention?.origin
     ?? (reason.startsWith("Check-in") ? INTERVENTION_ORIGIN.CHECKIN : isRunLoadIntervention(reason) ? INTERVENTION_ORIGIN.LOAD : null);
   if (origin === INTERVENTION_ORIGIN.CHECKIN) return "checkin";
@@ -855,6 +858,8 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
        2026-09-26). */
     case "intervention":
       if (c.interventionTopic === "checkin") return { title, body: "Li o teu check-in. Quero falar contigo antes do próximo treino." };
+      // plan_adaptation (F5) — desligado por agora (PLAN_ADAPTATION_PUSH_ENABLED).
+      if (c.interventionTopic === "adaptacao") return { title, body: "Vi os teus últimos treinos do plano. Quero ajustá-lo contigo antes do próximo." };
       if (c.interventionTopic === "carga_acima_do_plano") return { title, body: "A carga destes dias subiu acima do plano. Quero ver isso contigo antes do próximo treino." };
       if (c.interventionTopic === "carga") return { title, body: "A carga destes dias subiu acima do habitual. Quero ver isso contigo antes do próximo treino." };
       return { title, body: "Quero falar contigo antes do próximo treino." };
@@ -902,6 +907,14 @@ export function proactivePushMessage(c: ServerProactiveCandidate): { title: stri
 export function proactiveTab(trigger: ProactiveTriggerName): "coach" | "home" {
   return trigger === "intervention" || trigger === "race_conflict" ? "home" : "coach";
 }
+
+/** O push plan_adaptation (registo unificado, F5): a intervenção [adaptacao]
+ *  aparece no Início, mas não sai por notificação enquanto os limiares das
+ *  regras (planAdaptation.ts) não forem afinados com dados reais — a
+ *  2026-10-21 não havia nenhum treino do plano com prescrição em produção.
+ *  O tick regista a decisão ("push_desligado") para se ver quantas sairiam.
+ *  Para ligar: true, e rever specs/plano-registo-plano-coach.md §6, decisão 18. */
+export const PLAN_ADAPTATION_PUSH_ENABLED = false;
 
 export const DEFAULT_PUSH_START_HOUR = 9;
 export const DEFAULT_PUSH_END_HOUR = 21;

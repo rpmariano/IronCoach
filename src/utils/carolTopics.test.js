@@ -379,6 +379,17 @@ describe('interventionTopicLine', () => {
     expect(linhas[0]).toBe(linha);
   });
 
+  it('a adaptação proativa (F5) diz o sinal principal, sem a etiqueta nem a referência', () => {
+    const linha = (reason) => interventionTopicLine({ profile: { coach_intervention_status: 'needed', coach_intervention_reason: reason } });
+    expect(linha('[adaptacao] ref=p1|2026-10-19. desempenho_vs_plano: aliviar: no treino de 2026-10-21 RPE 9. Propõe…'))
+      .toBe('O teu último treino do plano foi muito puxado. Quero ajustar contigo os próximos.');
+    expect(linha('[adaptacao] ref=p1|2026-10-19. desempenho_vs_plano: trocar: Prensa ficou de fora 2 vezes seguidas.'))
+      .toBe('Há um exercício do plano que tem ficado de fora. Quero ajustá-lo contigo.');
+    expect(linha('[adaptacao] ref=p1|2026-10-19. desempenho_vs_plano: progredir: Prensa cumprido.'))
+      .toBe('Tens cumprido o plano com folga. Quero subir a fasquia contigo.');
+    expect(linha('[adaptacao] qualquer coisa')).toBe('Vi os teus últimos treinos do plano. Quero ajustá-lo contigo.');
+  });
+
   it('sem intervenção pendente, nenhuma — mesmo com propostas', () => {
     expect(interventionTopicLine({ profile: { coach_intervention_status: 'resolved' }, coachPlans: [{ id: 'p1', status: 'proposto' }] })).toBeNull();
   });

@@ -31,10 +31,11 @@ import {
   RECORD_ANALYSIS_LABELS,
   upstreamErrorText,
 } from "../_shared/carolTone.ts";
-import { clip, fetchSharedMemoryBlock, memoryPromptSection } from "../_shared/carolMemory.ts";
+import { clip, fetchSharedMemoryBlock, lisbonTodayISO, memoryPromptSection } from "../_shared/carolMemory.ts";
 import { resolveMaxHR, resolveHrZones, zoneOf } from "../_shared/formulas/heartRateZones.ts";
 import { ageFromBirthDate } from "../_shared/formulas/age.ts";
 import { MAX_SETS, mergeTypedWithRead, parseExercisesMeta, parseManualSets, updateExerciseLocker } from "./manualRegistration.ts";
+import { maybeOpenPlanAdaptation } from "./adaptation.ts";
 import { parsePlanLink, planExecutionPromptSection, resolvePlanExecution, type PlanLink, type PlanResolution } from "./planLink.ts";
 import {
   hasPreviewContent, MAX_LOCKER_NAMES, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum,
@@ -1120,6 +1121,17 @@ async function attachGymCoachNotes(
         .eq("id", userId);
       (session as any).coach_intervention_status = "needed";
       (session as any).intervention_needed = true;
+    } else {
+      // F5: o desempenho face ao plano pede uma adaptação? Regras em código,
+      // e só uma conversa — o plano não se mexe sem o atleta aceitar.
+      const adaptation = await maybeOpenPlanAdaptation(sb, {
+        userId, sessionId: session.id, sessionDate: ctx.date, rpe: ctx.metrics?.exertion ?? null,
+        exec: plan.exec, item: plan.item, todayISO: lisbonTodayISO(),
+      });
+      if (adaptation) {
+        (session as any).coach_intervention_status = "needed";
+        (session as any).intervention_needed = true;
+      }
     }
   } catch (e) {
     console.warn("attachGymCoachNotes failed:", e);

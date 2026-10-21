@@ -1,0 +1,187 @@
+[
+  {
+    "name": "aliviar: uma sessão com menos de 80 % das reps nos exercícios feitos",
+    "today": "2026-10-21",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-21", "rpe": 6,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 3, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 8, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 7, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 2, "reps": 6, "weight": 80 }
+        ] }
+    ],
+    "expect": { "kinds": ["aliviar"], "signature": "p1|2026-10-19", "signals": [ { "kind": "aliviar", "repsCompliance": 0.7, "rpe": 6, "dates": ["2026-10-21"] } ] }
+  },
+  {
+    "name": "aliviar: tudo cumprido mas RPE 9",
+    "today": "2026-10-21",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-21", "rpe": 9,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ] }
+    ],
+    "expect": { "kinds": ["aliviar"], "signals": [ { "kind": "aliviar", "repsCompliance": 1, "rpe": 9 } ] }
+  },
+  {
+    "name": "um exercício saltado uma vez não é aliviar nem trocar: as reps contam só os feitos",
+    "today": "2026-10-21",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-21", "rpe": 6,
+        "prescription": { "blocks": [
+          { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 },
+          { "type": "forca", "name": "Seletor de pernas", "sets": 3, "reps": 12 }
+        ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ] }
+    ],
+    "expect": { "kinds": [], "signature": null }
+  },
+  {
+    "name": "trocar: o mesmo exercício de fora nas duas últimas vezes, com um dia de peito pelo meio",
+    "today": "2026-10-23",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-20", "rpe": null,
+        "prescription": { "blocks": [
+          { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 },
+          { "type": "forca", "name": "Seletor de pernas", "sets": 3, "reps": 12 }
+        ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ] },
+      { "itemId": "i2", "date": "2026-10-21", "rpe": null,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Supino", "sets": 2, "reps": 8 } ] },
+        "sets": [
+          { "exercise_name": "Supino", "set_index": 0, "reps": 8, "weight": 50 },
+          { "exercise_name": "Supino", "set_index": 1, "reps": 8, "weight": 50 }
+        ] },
+      { "itemId": "i3", "date": "2026-10-23", "rpe": null,
+        "prescription": { "blocks": [
+          { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 },
+          { "type": "forca", "name": "Seletor de pernas", "sets": 3, "reps": 12 }
+        ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 },
+          { "exercise_name": "Abdominais", "set_index": 0, "reps": 20 }
+        ] }
+    ],
+    "expect": { "kinds": ["trocar"], "signature": "p1|2026-10-19", "signals": [ { "kind": "trocar", "exercises": ["Seletor de pernas"], "dates": ["2026-10-20", "2026-10-23"] } ] }
+  },
+  {
+    "name": "cardio abaixo do alvo duas vezes seguidas",
+    "today": "2026-10-22",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-20", "rpe": null,
+        "prescription": { "blocks": [ { "type": "cardio", "name": "Bicicleta", "duration_min": 20 } ] },
+        "sets": [ { "exercise_name": "Bicicleta", "set_index": 0, "duration_seconds": 720 } ] },
+      { "itemId": "i2", "date": "2026-10-22", "rpe": null,
+        "prescription": { "blocks": [ { "type": "cardio", "name": "Bicicleta", "duration_min": 20 } ] },
+        "sets": [ { "exercise_name": "Bicicleta", "set_index": 0, "duration_seconds": 900 } ] }
+    ],
+    "expect": { "kinds": ["cardio_abaixo"], "signals": [ { "kind": "cardio_abaixo", "exercises": ["Bicicleta"] } ] }
+  },
+  {
+    "name": "objetivo por cumprir duas vezes (confirmado pelo atleta); o resto cumprido sem RPE não dá progredir",
+    "today": "2026-10-22",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-20", "rpe": null,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10, "goal": "descida em 3 s" } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ],
+        "exercisesMeta": [ { "name": "Prensa", "goal_met": false } ] },
+      { "itemId": "i2", "date": "2026-10-22", "rpe": null,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10, "goal": "descida em 3 s" } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ],
+        "exercisesMeta": [ { "name": "Prensa", "goal_met": false } ] }
+    ],
+    "expect": { "kinds": ["objetivo_falhado"], "signals": [ { "kind": "objetivo_falhado", "exercises": ["Prensa"] } ] }
+  },
+  {
+    "name": "progredir: cumprido duas vezes seguidas com RPE 7 e 6",
+    "today": "2026-10-22",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-20", "rpe": 7,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ] },
+      { "itemId": "i2", "date": "2026-10-22", "rpe": 6,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 11, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ] }
+    ],
+    "expect": { "kinds": ["progredir"], "signals": [ { "kind": "progredir", "exercises": ["Prensa"], "dates": ["2026-10-20", "2026-10-22"] } ] }
+  },
+  {
+    "name": "progredir com uma das sessões a RPE 8 não sai",
+    "today": "2026-10-22",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-20", "rpe": 8,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ] },
+      { "itemId": "i2", "date": "2026-10-22", "rpe": 6,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 },
+          { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 }
+        ] }
+    ],
+    "expect": { "kinds": [], "signature": null }
+  },
+  {
+    "name": "um padrão antigo não volta: saltado duas vezes antes, feito hoje",
+    "today": "2026-10-24",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-20", "rpe": null,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 }, { "type": "forca", "name": "Seletor de pernas", "sets": 2, "reps": 12 } ] },
+        "sets": [ { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 }, { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 } ] },
+      { "itemId": "i2", "date": "2026-10-22", "rpe": null,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 }, { "type": "forca", "name": "Seletor de pernas", "sets": 2, "reps": 12 } ] },
+        "sets": [ { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 }, { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 } ] },
+      { "itemId": "i3", "date": "2026-10-24", "rpe": null,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 }, { "type": "forca", "name": "Seletor de pernas", "sets": 2, "reps": 12 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 }, { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 },
+          { "exercise_name": "Seletor de pernas", "set_index": 0, "reps": 12, "weight": 30 }, { "exercise_name": "Seletor de pernas", "set_index": 1, "reps": 12, "weight": 30 }
+        ] }
+    ],
+    "expect": { "kinds": [], "signature": null }
+  },
+  {
+    "name": "aliviar e progredir na mesma sessão: fica só aliviar",
+    "today": "2026-10-22",
+    "executions": [
+      { "itemId": "i1", "date": "2026-10-20", "rpe": 6,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 }, { "type": "forca", "name": "Remada", "sets": 2, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 }, { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 },
+          { "exercise_name": "Remada", "set_index": 0, "reps": 10, "weight": 40 }, { "exercise_name": "Remada", "set_index": 1, "reps": 10, "weight": 40 }
+        ] },
+      { "itemId": "i2", "date": "2026-10-22", "rpe": 7,
+        "prescription": { "blocks": [ { "type": "forca", "name": "Prensa", "sets": 2, "reps": 10 }, { "type": "forca", "name": "Remada", "sets": 2, "reps": 10 } ] },
+        "sets": [
+          { "exercise_name": "Prensa", "set_index": 0, "reps": 10, "weight": 80 }, { "exercise_name": "Prensa", "set_index": 1, "reps": 10, "weight": 80 },
+          { "exercise_name": "Remada", "set_index": 0, "reps": 3, "weight": 40 }, { "exercise_name": "Remada", "set_index": 1, "reps": 3, "weight": 40 }
+        ] }
+    ],
+    "expect": { "kinds": ["aliviar"], "signals": [ { "kind": "aliviar", "repsCompliance": 0.65 } ] }
+  }
+]

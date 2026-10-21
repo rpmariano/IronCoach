@@ -208,3 +208,13 @@ Deno.test("Troféu: os cup_* não passam por carol_push_types, mas passam por tu
   assertEquals(choosePush([cup, candidate], { ...base, pushedKeys: new Set([cup.key]) }).candidate?.key, "race_eve:r1");
   assertEquals(choosePush([cup, candidate], { ...base, pushedTodayCount: 1 }), { candidate: null, decision: { send: false, reason: "limite_diario" } });
 });
+
+// F5 — o push plan_adaptation está desligado até os limiares serem afinados:
+// a adaptação não sai e passa a vez ao momento seguinte.
+Deno.test("decidePush: a intervenção [adaptacao] não sai por push (PLAN_ADAPTATION_PUSH_ENABLED)", () => {
+  const adaptacao = { ...intervention, interventionTopic: "adaptacao" as const };
+  assertEquals(decidePush({ ...base, candidate: adaptacao }), { send: false, reason: "push_desligado" });
+  assertEquals(choosePush([adaptacao, candidate], ctx).candidate?.key, "race_eve:r1");
+  // As outras intervenções saem como sempre.
+  assertEquals(decidePush({ ...base, candidate: { ...intervention, interventionTopic: "checkin" as const } }), { send: true });
+});
