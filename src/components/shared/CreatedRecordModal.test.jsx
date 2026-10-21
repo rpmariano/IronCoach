@@ -86,31 +86,62 @@ describe('CreatedRecordModal', () => {
      pointer-events-none do preview desativa-o — e vivia isolado lá em
      cima, longe de "Fechar" (rodapé à parte).
 
-     Desde 2026-10-05 (convenção única dos botões da Carol) sair é só o X
-     do cabeçalho (aria-label "Fechar"): o botão "Fechar" do rodapé saiu, e
-     fica o "Eliminar", a única ação que não é sair.
+     Desde 2026-10-05 sair era só o X do cabeçalho; o bug #78 (2026-10-20)
+     voltou a pôr o "Fechar" no rodapé, com o "Eliminar" discreto por baixo.
 
      Havia um terceiro, "Atualizar registo" — saiu (2026-09-21): "acabamos
      de o submeter, atualização só se for ver o detalhe". Editar continua
      possível a partir do cartão do dia no Calendário. */
   describe('Fechar (o X) e Eliminar', () => {
-    it('sair é só o X do cabeçalho: não há botão "Fechar" no rodapé', async () => {
+    // Bug #78 (2026-10-20): o "Fechar" volta ao rodapé de TODAS as análises
+    // (corrida, ginásio, refeição, corpo) — o "Eliminar" era o único botão e
+    // chamava a atenção a mais. O X do cabeçalho continua a sair também.
+    it.each(['body', 'run', 'gym', 'meal'])('%s: o rodapé tem "Fechar" e o "Eliminar" discreto; o X também sai', async (type) => {
+      const clearNewlyCreatedRecord = vi.fn();
+      mockStore({
+        newlyCreatedRecord: { type, record: { id: 'a1', date: '2026-08-24', weight_kg: 79.2, meal_items: [] } },
+        clearNewlyCreatedRecord,
+      });
+      render(<CreatedRecordModal />);
+
+      const botao = screen.getByTestId('created-record-close');
+      expect(botao).toHaveTextContent('Fechar');
+      const eliminar = screen.getByRole('button', { name: /^Eliminar$/i });
+      // O "Eliminar" vem DEPOIS do "Fechar" e não é o botão de contorno de antes.
+      expect(botao.compareDocumentPosition(eliminar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(eliminar.className).not.toMatch(/border/);
+
+      fireEvent.click(botao);
+      await waitFor(() => expect(clearNewlyCreatedRecord).toHaveBeenCalled());
+    });
+
+    it('o X do cabeçalho continua a fechar', async () => {
       const clearNewlyCreatedRecord = vi.fn();
       mockStore({
         newlyCreatedRecord: { type: 'body', record: { id: 'a1', date: '2026-08-24', weight_kg: 79.2 } },
         clearNewlyCreatedRecord,
       });
       render(<CreatedRecordModal />);
-
-      const fechar = screen.getAllByRole('button', { name: 'Fechar' });
-      // Só o X do PremiumModal — sem texto visível "Fechar".
-      expect(fechar).toHaveLength(1);
-      expect(fechar[0].textContent).not.toBe('Fechar');
-      expect(screen.getByRole('button', { name: /^Eliminar$/i })).toBeInTheDocument();
-
-      fireEvent.click(fechar[0]);
-      // O PremiumModal fecha depois da animação de saída.
+      const x = screen.getAllByRole('button', { name: 'Fechar' }).find((b) => b.textContent !== 'Fechar');
+      fireEvent.click(x);
       await waitFor(() => expect(clearNewlyCreatedRecord).toHaveBeenCalled());
+    });
+
+    it('refeição com alimentos: "Guardar como refeição" aparece na análise; sem alimentos ou noutro tipo não', () => {
+      const refeicao = { id: 'm1', date: '2026-10-20', meal_type: 'almoco', meal_items: [{ id: 'i1', name: 'Arroz', quantity_grams: 150 }] };
+      mockStore({ newlyCreatedRecord: { type: 'meal', record: refeicao } });
+      const { unmount } = render(<CreatedRecordModal />);
+      expect(screen.getByRole('button', { name: /Guardar como refeição/ })).toBeInTheDocument();
+      unmount();
+
+      mockStore({ newlyCreatedRecord: { type: 'meal', record: { ...refeicao, meal_items: [] } } });
+      const second = render(<CreatedRecordModal />);
+      expect(screen.queryByRole('button', { name: /Guardar como refeição/ })).not.toBeInTheDocument();
+      second.unmount();
+
+      mockStore({ newlyCreatedRecord: { type: 'run', record: { id: 'r1', date: '2026-10-20', meal_items: [{ name: 'x' }] } } });
+      render(<CreatedRecordModal />);
+      expect(screen.queryByRole('button', { name: /Guardar como refeição/ })).not.toBeInTheDocument();
     });
 
     it('não mostra "Atualizar registo" — o registo acabou de ser submetido, não há nada por atualizar ainda', () => {

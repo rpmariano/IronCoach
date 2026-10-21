@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplet, Award, PencilLine, HelpCircle, BookmarkPlus } from 'lucide-react';
+import { ChevronDown, ChevronUp, Sunrise, Coffee, Sun, Cookie, Moon, Utensils, Trash2, MessageSquare, Loader2, Flame, Beef, Wheat, Droplet, Award, PencilLine, HelpCircle } from 'lucide-react';
 import { mealNutrients, itemNutrients, mealTypeLabel } from '../../utils/nutrition';
 import { normalizeStartTime } from '../../utils/startTime';
 import { supabase } from '../../lib/supabase';
@@ -11,8 +11,7 @@ import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
 import CarolQuestions, { openCarolQuestions, questionsImpactText } from './CarolQuestions';
 import CarolInterventionActions from '../shared/CarolInterventionActions';
-import MealTemplateSheet from '../Pantry/MealTemplateSheet';
-import { suggestedTemplateName } from '../../utils/pantry';
+import SaveAsMealButton from './SaveAsMealButton';
 
 const MEAL_ICONS = {
   'pequeno-almoco': Sunrise,
@@ -28,6 +27,25 @@ const MEAL_ICONS = {
    observações entram no prompt de estimação — "hambúrguer" caseiro e do
    McDonald's não dão os mesmos valores). Editar aqui à mão deixava a
    "Análise do Coach" a descrever uma refeição que já não existe. */
+/* Bug #76 (2026-10-20): as macros do cartão ganham as cores que já têm na
+   Evolução e no Dia (--neon-*, tokens/colors.css): fundo e contorno na cor,
+   texto sempre claro (legível) e o nome escrito — a cor não identifica sozinha. */
+function MacroPill({ color, icon: Icon, children, testId }) {
+  return (
+    <span
+      data-testid={testId}
+      className="px-3 py-1.5 rounded-full text-xs font-bold text-[var(--text-1)] flex items-center gap-1.5"
+      style={{
+        background: `color-mix(in srgb, ${color} 16%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${color} 55%, transparent)`,
+      }}
+    >
+      <Icon size={14} style={{ color }} aria-hidden="true" />
+      {children}
+    </span>
+  );
+}
+
 export default function MealCard({ meal, onEdit, defaultExpanded = false, hideActions = false }) {
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -39,8 +57,6 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // Bug #52 (fase B): as perguntas que ficaram por responder.
   const [questionsOpen, setQuestionsOpen] = useState(false);
-  // "Guardar como refeição" (fase 2 do #63): a ficha da despensa, já preenchida.
-  const [saveAsOpen, setSaveAsOpen] = useState(false);
   const openQuestions = openCarolQuestions(meal);
 
   const n = mealNutrients(meal);
@@ -161,22 +177,10 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
         <div className="space-y-3 pt-2 border-t border-[var(--border-glass)] fade-in">
           {/* Pílulas Coloridas com Ícones + Valores Reais */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
-              <Flame size={14} className="text-[var(--text-3)]" />
-              {n.calories.toFixed(0)} kcal
-            </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
-              <Beef size={14} className="text-[var(--text-3)]" />
-              {n.protein.toFixed(1)}g Proteína
-            </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
-              <Wheat size={14} className="text-[var(--text-3)]" />
-              {n.carbs.toFixed(1)}g Hidratos
-            </span>
-            <span className="px-3 py-1.5 rounded-full text-xs font-bold bg-[var(--surface-glass)] border border-[var(--border-glass)] text-[var(--text-1)] shadow-xs flex items-center gap-1.5">
-              <Droplet size={14} className="text-[var(--text-3)]" />
-              {n.fat.toFixed(1)}g Gordura
-            </span>
+            <MacroPill testId="macro-kcal" color="var(--neon-kcal)" icon={Flame}>{n.calories.toFixed(0)} kcal</MacroPill>
+            <MacroPill testId="macro-proteina" color="var(--neon-proteina)" icon={Beef}>{n.protein.toFixed(1)}g Proteína</MacroPill>
+            <MacroPill testId="macro-hidratos" color="var(--neon-hidratos)" icon={Wheat}>{n.carbs.toFixed(1)}g Hidratos</MacroPill>
+            <MacroPill testId="macro-gordura" color="var(--neon-gordura)" icon={Droplet}>{n.fat.toFixed(1)}g Gordura</MacroPill>
           </div>
 
           {/* Photos if present */}
@@ -258,16 +262,7 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
               próprios botões de Eliminar/Fechar agrupados no rodapé). */}
           {/* Fase 2 do #63: os alimentos desta refeição, com as gramas, numa
               refeição predefinida — linha própria, três botões não cabiam. */}
-          {!hideActions && items.length > 0 && (
-            <Button
-              variant="light"
-              onClick={() => setSaveAsOpen(true)}
-              className="w-full text-xs"
-              icon={<BookmarkPlus size={14} />}
-            >
-              Guardar como refeição
-            </Button>
-          )}
+          {!hideActions && <SaveAsMealButton meal={meal} />}
           {!hideActions && (
             <div className="flex items-center gap-2 pt-1">
               {onEdit && (
@@ -293,16 +288,6 @@ export default function MealCard({ meal, onEdit, defaultExpanded = false, hideAc
             </div>
           )}
         </div>
-      )}
-      {saveAsOpen && (
-        <MealTemplateSheet
-          initial={{
-            name: suggestedTemplateName(mealTypeLabel(meal.meal_type), items),
-            default_meal_type: meal.meal_type || null,
-            items: items.map((it) => ({ name: it.name, grams: it.quantity_grams })),
-          }}
-          onClose={() => setSaveAsOpen(false)}
-        />
       )}
       <ConfirmDeleteModal
         isOpen={showDeleteConfirm}

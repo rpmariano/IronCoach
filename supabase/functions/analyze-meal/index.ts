@@ -28,7 +28,7 @@ import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_sha
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
   applyPantry, type CarolQuestion, type CookingFact, EMPTY_PANTRY, fetchPantry, knowledgeSection, learnFromMeal, learnRules,
-  isMicroColumn, microFromModel, optionGrams, parseCookingFacts, quantityAnswerGrams, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
+  isMicroColumn, microFromModel, optionGrams, parseCookingFacts, portionFacts, quantityAnswerGrams, parseQuestions, pickMealItem, remapQuestionItems, splitKnownWritten,
   withPantryValues, withWrittenFoods,
 } from "./pantry.ts";
 import { foodKey } from "../_shared/formulas/foodKey.ts";
@@ -1657,7 +1657,10 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
           date: body.date, meal_type: body.meal_type, meal_time: meal?.meal_time ?? null, notes: rawNotes,
           totals: totalsFromItems(savedItems || []), items: savedItems || [], questions: estimated.questions,
         }, geminiKey, coachDeadline),
-        learnFromMeal(sb, userId, estimated.items as unknown[], estimated.facts),
+        // Bug #75: o peso escrito de um alimento da despensa também ensina —
+        // só o que veio de body.items, nunca as gramas que a Carol tirou das
+        // observações (essas são estimativa, não hábito).
+        learnFromMeal(sb, userId, estimated.items as unknown[], [...estimated.facts, ...portionFacts(parseWrittenItems(body.items), pantry.byKey, pantry.rules)]),
       ]);
 
       return jsonResponse({ meal: { ...meal, meal_items: savedItems }, usage: addUsage(estimated.usage, coachUsage) });
@@ -1818,7 +1821,7 @@ Deno.serve(withUsageRecording("analyze-meal", async (req) => {
         date, meal_type, meal_time: meal?.meal_time ?? null, notes: rawNotes, totals: totalsFromItems(savedItems || []),
         items: savedItems || [], questions,
       }, geminiKey, coachDeadline),
-      learnFromMeal(sb, userId, items, facts),
+      learnFromMeal(sb, userId, items, [...facts, ...portionFacts(written, pantry.byKey, pantry.rules)]),
     ]);
 
     // pantry_added: o que entrou já na despensa por um rótulo (a app mostra-o

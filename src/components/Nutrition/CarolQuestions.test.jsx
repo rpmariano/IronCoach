@@ -179,3 +179,21 @@ describe('MealCard — guardar como refeição (fase 2 do #63)', () => {
     expect(screen.queryByRole('button', { name: /Guardar como refeição/ })).not.toBeInTheDocument();
   });
 });
+
+describe('MealCard — as macros com as cores da Evolução (bug #76)', () => {
+  beforeEach(() => useAppStore.setState({ meals: [], profile: { id: 'u1' }, pantryFoods: [] }));
+
+  it('cada pílula de macro leva a sua cor neon e o nome escrito', () => {
+    const meal = { id: 'm9', date: '2026-10-04', meal_type: 'almoco', carol_questions: null, meal_items: [
+      { id: 'i1', name: 'Frango', quantity_grams: 200, calories_per_100g: 165, protein_per_100g: 31, carbs_per_100g: 0, fat_per_100g: 4 },
+    ] };
+    render(<MealCard meal={meal} defaultExpanded />);
+    const style = (id) => screen.getByTestId(id).getAttribute('style');
+    expect(style('macro-kcal')).toContain('--neon-kcal');
+    expect(style('macro-proteina')).toContain('--neon-proteina');
+    expect(style('macro-hidratos')).toContain('--neon-hidratos');
+    expect(style('macro-gordura')).toContain('--neon-gordura');
+    expect(screen.getByTestId('macro-proteina')).toHaveTextContent('62.0g Proteína');
+    expect(screen.getByTestId('macro-hidratos')).toHaveTextContent('Hidratos');
+  });
+});

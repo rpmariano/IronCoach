@@ -3,7 +3,7 @@ import { foodKey } from "../_shared/formulas/foodKey.ts";
 import {
   applyPantry, type FoodRule, knowledgeSection, learnFromMeal, learnRules, nextFoodRow, nextRuleRow, type PantryFood,
   isPantryComplete, microFromModel, microOrNull, MICRO_COLUMNS, microsTrusted, missingMicros, NUTRIENT_COLUMNS, pantryMicro,
-  contextualTopic, optionGrams, parseCookingFacts, parseQuestions, quantityAnswerGrams, quantityTopic, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
+  contextualTopic, optionGrams, parseCookingFacts, parseQuestions, portionFacts, quantityAnswerGrams, quantityTopic, pendingRulesFor, pickMealItem, remapQuestionItems, splitKnownWritten, withPantryValues,
   withWrittenFoods,
 } from "./pantry.ts";
 
@@ -612,4 +612,31 @@ Deno.test("bug #74: o conhecimento diz que um hábito só vale para o prato que 
   const regras: FoodRule[] = [{ topic: "azeite na salada · quantidade", topic_key: "azeite na salada quantidade", value: "um fio", value_key: "um fio", confirmations: 2, status: "confirmado", source: "resposta" }];
   const s = knowledgeSection([], regras);
   assertStringIncludes(s, "Cada hábito vale SÓ para o prato ou alimento que nomeia");
+});
+
+Deno.test("bug #75: o peso escrito de um alimento da despensa, se não for a porção, vira hábito de quantidade", () => {
+  const arroz = { ...iogurte, name: "Arroz branco cozido", name_key: "arroz branco cozido", portion_grams: 90 } as PantryFood;
+  const map = new Map([[arroz.name_key, arroz]]);
+  assertEquals(portionFacts([{ name: "arroz branco cozido", grams: 150 }], map), [{ topic: "Arroz branco cozido · quantidade", value: "150 g" }]);
+  // A porção de sempre, sem gramas, ou fora da despensa: nada a aprender.
+  assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: 90 }], map), []);
+  assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: null }], map), []);
+  assertEquals(portionFacts([{ name: "Batata", grams: 200 }], map), []);
+  // O mesmo alimento duas vezes na refeição conta uma vez.
+  assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: 150 }, { name: "Arroz branco cozido", grams: 80 }], map).length, 1);
+});
+
+Deno.test("bug #75: um hábito de quantidade com gramas não é pergunta em aberto (o alimento não perde o caminho rápido)", () => {
+  const comGramas = regra({ topic: "Arroz branco cozido · quantidade", topic_key: "arroz branco cozido quantidade", value: "150 g", status: "por_confirmar" });
+  const semGramas = regra({ topic: "arroz", topic_key: "arroz", value: "basmati", status: "por_confirmar" });
+  assertEquals(pendingRulesFor("Arroz branco cozido", [comGramas]), []);
+  assertEquals(pendingRulesFor("Arroz branco cozido", [semGramas]).length, 1);
+});
+
+Deno.test("bug #75 (revisão): gramas absurdas não ensinam; com hábito, voltar à porção também conta", () => {
+  const arroz = { ...iogurte, name: "Arroz branco cozido", name_key: "arroz branco cozido", portion_grams: 90 } as PantryFood;
+  const map = new Map([[arroz.name_key, arroz]]);
+  assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: 99999 }], map), []);
+  const habito = [{ topic: "Arroz branco cozido · quantidade" }];
+  assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: 90 }], map, habito), [{ topic: "Arroz branco cozido · quantidade", value: "90 g" }]);
 });

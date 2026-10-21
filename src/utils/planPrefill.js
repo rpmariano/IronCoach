@@ -97,6 +97,10 @@ export function mealSuggestionsFor(dateIso, coachPlans, coachPlanItems, meals = 
   const open = model.meals
     .filter(m => m.tipo && typeof m.texto === 'string' && m.texto.trim() && !registered.has(m.tipo))
     .map(m => ({ id: `${dateIso}:${m.tipo}`, tipo: m.tipo, label: m.label, texto: m.texto.trim() }));
-  const same = open.filter(m => m.tipo === currentType);
-  return same.length ? same : open;
+  // Bug #77 (2026-10-20): só a sugestão do tipo escolhido. Antes, sem
+  // sugestão para esse tipo (a Ceia às 23:00, por omissão), mostravam-se as
+  // outras todas — o atleta escolhia o jantar e via o dia inteiro. Sem tipo
+  // (nenhum escolhido ainda), ficam todas.
+  if (currentType == null) return open;
+  return open.filter(m => m.tipo === currentType);
 }
