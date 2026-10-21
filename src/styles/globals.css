@@ -772,7 +772,12 @@ html[data-page-hidden] .logo-loader-aura { animation-play-state: paused; }
    variantes `hover:bg-…`/`focus:bg-…`, e um chip só com fundo no hover
    ficava pintado em repouso. As etiquetas que embrulham um campo (zona de
    upload, checkbox) ficam de fora — o texto delas é ajuda, não etiqueta. */
-:is(.reg-form, .data-form) label:not(:has(input)) { color: var(--text-2); font-weight: 600; }
+:is(.reg-form, .data-form) label:not(:has(input)) { font-weight: 600; }
+/* A cor só sobe nas etiquetas neutras: uma com cor de significado ("(obrigatório)"
+   a vermelho, a cor do módulo) mantém a sua — revisão pré-deploy da F5. */
+:is(.reg-form, .data-form) label:not(:has(input)):not([class*="text-[var(--danger"]):not([class*="text-[var(--warn"]):not([class*="text-[var(--ok"]):not([class*="text-[var(--race"]):not([class*="text-[var(--coach"]):not([class*="text-[var(--mod-"]):not([class*="text-[var(--run"]):not([class*="text-[var(--gym"]):not([class*="text-[var(--nutrition"]):not([class*="text-[var(--body"]) {
+  color: var(--text-2);
+}
 :is(.reg-form, .data-form) button[class~="bg-[var(--surface-soft)]"],
 :is(.reg-form, .data-form) button[class~="bg-[var(--surface-glass)]"] {
   background-color: var(--surface-chip);
