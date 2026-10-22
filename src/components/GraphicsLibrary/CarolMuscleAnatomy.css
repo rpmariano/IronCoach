@@ -1,0 +1,50 @@
+/* CarolMuscleAnatomy — a base e as camadas empilhadas no mesmo palco.
+   As imagens são 1376×768 (frente à esquerda, costas à direita), alinhadas
+   ao pixel: todas ocupam o palco inteiro, nunca se escalam em separado. */
+.carol-anatomy {
+  position: relative;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  aspect-ratio: 1376 / 768;
+  overflow: hidden;
+  border-radius: var(--radius-lg, 18px);
+  background: #0b1120;
+}
+.carol-anatomy.is-naked {
+  border-radius: var(--radius-md, 14px);
+}
+.carol-anatomy-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  pointer-events: none;
+}
+/* Um grupo acende ao aparecer. */
+.carol-anatomy-layer {
+  animation: carolAnatomyIn var(--dur-carol-mood, 350ms) var(--ease-out, ease-out) both;
+}
+@keyframes carolAnatomyIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* O coração pulsa: só opacidade — escalar a imagem inteira tirava o coração
+   do sítio. Duas batidas e uma pausa, ~75 bpm. */
+.carol-anatomy-heart {
+  animation: carolHeartbeat 1.6s ease-in-out infinite;
+}
+@keyframes carolHeartbeat {
+  0%, 100% { opacity: .55; }
+  14%      { opacity: 1; }
+  28%      { opacity: .7; }
+  42%      { opacity: 1; }
+  70%      { opacity: .55; }
+}
+html[data-page-hidden] .carol-anatomy-heart {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .carol-anatomy-layer { animation: none; }
+  .carol-anatomy-heart { animation: none; opacity: .95; }
+}

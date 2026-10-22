@@ -36,7 +36,9 @@ export function mapCategoriesToMuscles(categories = []) {
     'zumba': ['calves', 'quadriceps', 'hamstring', 'gluteal'],
     'crossfit': ['chest', 'upper-back', 'quadriceps', 'hamstring', 'front-deltoids', 'back-deltoids', 'gluteal', 'lower-back', 'calves', 'biceps', 'triceps', 'abs'],
     'treino funcional': ['abs', 'lower-back', 'quadriceps', 'front-deltoids', 'back-deltoids', 'gluteal'],
-    'natação': ['upper-back', 'trapezius', 'front-deltoids', 'back-deltoids', 'chest', 'triceps', 'quadriceps']
+    'natação': ['upper-back', 'trapezius', 'front-deltoids', 'back-deltoids', 'chest', 'triceps', 'quadriceps'],
+    // Não é um músculo: acende o coração e os pulmões da Carol (CarolMuscleAnatomy).
+    'cardio': ['cardio']
   };
 
   // 'Bíceps' e 'Biceps' são o mesmo grupo — o seletor antigo não tinha acento.
