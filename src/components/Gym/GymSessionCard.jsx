@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Dumbbell, Users, Trash2, Loader2, MessageSquare
 import { supabase } from '../../lib/supabase';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
-import MuscleAnatomy2D from '../GraphicsLibrary/MuscleAnatomy2D';
+import CarolMuscleAnatomy from '../GraphicsLibrary/CarolMuscleAnatomy';
 import CoachText from '../shared/CoachText';
 import { mapCategoriesToMuscles } from '../../utils/gym';
 import { sessionVolumeKg } from '../../utils/biEngine';
@@ -173,7 +173,7 @@ export default function GymSessionCard({ session, onEdit, defaultExpanded = fals
           {/* Anatomia Muscular — também numa aula, desde que `categories`
               passou a ser só grupos musculares (migration 20260925162654). */}
           {session.categories?.length > 0 && (
-             <MuscleAnatomy2D activeMuscles={mapCategoriesToMuscles(session.categories)} naked />
+             <CarolMuscleAnatomy activeMuscles={mapCategoriesToMuscles(session.categories)} naked />
           )}
 
           {/* Prints / Photos se existirem */}
