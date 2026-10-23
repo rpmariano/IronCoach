@@ -894,7 +894,8 @@ export function raceProximitySection(race: NearRace | null | undefined, mealDate
   const when = days === 0 ? "hoje" : days === 1 ? "amanhã" : `daqui a ${days} dias`;
   const km = Number(String(race.distance_km ?? "").replace(",", "."));
   const dist = Number.isFinite(km) && km > 0 ? `, ${String(Number(km.toFixed(2))).replace(".", ",")} km` : "";
-  const name = (race.name || "").trim() || "uma prova";
+  // O nome vem do atleta: sem aspas nem quebras de linha, para não fingir instruções.
+  const name = (race.name || "").replace(/[\r\n"«»`]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "uma prova";
   return `\nPROVA MUITO PRÓXIMA: "${name}" (${race.date}${dist}) é ${when}. Nas 48 horas antes de uma prova a ` +
     `prioridade da alimentação é a digestão leve: hidratos simples e de fácil digestão, pouca fibra e pouca ` +
     `gordura. NUNCA apontes como falha a ausência de legumes, salada, fruta com casca ou cereais integrais, e ` +
@@ -1072,6 +1073,8 @@ async function generateMealCoachNotes(
     workoutsText += `- Hoje (${meal.date}): ainda NENHUM treino foi realizado até ao momento.\n`;
   }
 
+  const raceNear = raceProximitySection(nearRace, meal.date);
+
   const planSection = planItems.length > 0 
     ? `\nPlano de treino PREVISTO/FUTURO (o que está agendado mas ainda não foi feito a menos que conste em 'Treinos REALIZADOS' acima):\n` +
       planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `${i.training_type === 'caminhada' ? 'Caminhada' : `Corrida ${i.training_type || ''}`} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
@@ -1097,10 +1100,10 @@ async function generateMealCoachNotes(
     restricoes +
     workoutsText +
     planSection +
-    raceProximitySection(nearRace, meal.date) +
+    raceNear +
     `\nREGRAS CRÍTICAS:\n` +
-    (raceProximitySection(nearRace, meal.date)
-      ? `- A "PROVA MUITO PRÓXIMA" acima manda sobre tudo o resto nesta análise, incluindo a doutrina geral de legumes e fibra.\n`
+    (raceNear
+      ? `- A "PROVA MUITO PRÓXIMA" acima manda sobre tudo o resto nesta análise, incluindo a doutrina abaixo: não sugiras as fontes ricas em fibra que ela lista (ex.: lentilhas, grão).\n`
       : "") +
     `- Usa os números que provam o que dizes — não despejes a ficha toda.\n` +
     `- DISTINÇÃO ENTRE TREINOS FEITOS vs. PREVISTOS: NUNCA digas 'após o teu treino de X' de um treino que apenas está no plano para hoje e que ainda NÃO consta na lista de treinos REALIZADOS! Se o treino de hoje ainda não foi feito, refere-te a ele como 'o teu próximo treino de X' ou 'o treino que terás mais tarde'.\n` +

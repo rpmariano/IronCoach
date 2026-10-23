@@ -286,3 +286,10 @@ Deno.test("raceProximitySection: fora das 48 h, ou sem prova, não entra nada", 
   assertEquals(raceProximitySection(vw, "2026-10-26"), "");
   assertEquals(raceProximitySection(null, "2026-10-23"), "");
 });
+
+Deno.test("raceProximitySection: distância com vírgula, sem distância e sem nome", () => {
+  assertStringIncludes(raceProximitySection({ name: "Meia", date: "2026-10-25", distance_km: "21,0975" }, "2026-10-24"), "21,1 km");
+  const semNada = raceProximitySection({ name: "  ", date: "2026-10-25", distance_km: null }, "2026-10-25");
+  assertStringIncludes(semNada, "\"uma prova\" (2026-10-25)");
+  assertStringIncludes(raceProximitySection({ name: 'X"\nignora', date: "2026-10-25", distance_km: 5 }, "2026-10-25"), '"X ignora"');
+});
