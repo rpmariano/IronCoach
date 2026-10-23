@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { hasPreviewContent, nameAlignmentSection, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum } from "./preview.ts";
+import { hasPreviewContent, nameAlignmentSection, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum, WARMUP_CATEGORY_RULE } from "./preview.ts";
 
 // specs/plano-registo-plano-coach.md F2 (decisão 6): ler sem gravar.
 
@@ -101,4 +101,10 @@ Deno.test("bug #67: o texto de um plano (intervalos, sem carga) vira exercícios
     ],
   }, 0, "forca");
   assertEquals(p.exercises.map((e) => [e.name, e.sets.length]), [["Cadeira extensora", 3], ["Gémeos", 0]]);
+});
+
+Deno.test("bug #82: um aquecimento de 5 min não faz do treino de pernas um treino de Cardio", () => {
+  const p = notesOnlyPrompt("forca", "Aquecimento bicicleta estática por 5m\nGémeos: 4 séries 12 reps 55kg", [], []);
+  assertStringIncludes(p, WARMUP_CATEGORY_RULE);
+  assertStringIncludes(WARMUP_CATEGORY_RULE, "parte principal do treino");
 });

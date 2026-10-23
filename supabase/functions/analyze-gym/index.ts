@@ -41,6 +41,7 @@ import {
   hasPreviewContent, MAX_LOCKER_NAMES, normalizePreview, notesOnlyPrompt, parsePlanBlocks, PREVIEW_SCHEMA, previewAddendum,
   type PlanBlockRef,
   nameAlignmentSection,
+  WARMUP_CATEGORY_RULE,
 } from "./preview.ts";
 import { isWalk, isWalkPlanItem } from "../_shared/formulas/runKinds.ts";
 import { fetchFrameRace, type FrameRace, frameRaceSentence } from "../_shared/frameRace.ts";
@@ -72,7 +73,7 @@ const MUSCLE_GROUPS_PROMPT =
   "preenche categories com TODOS os grupos musculares trabalhados na sessão, não apenas " +
   "um (ex.: um treino de elevações laterais e extensões de tríceps é [\"Ombros\", " +
   `\"Tríceps\"]). Escolhe de entre: ${MUSCLE_GROUPS.join(", ")}. Se não for claro, devolve ` +
-  "categories vazio.";
+  "categories vazio. " + WARMUP_CATEGORY_RULE;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
