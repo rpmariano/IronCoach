@@ -2,7 +2,7 @@
 // automático de cada refeição (meals.coach_notes) respeitar as restrições
 // alimentares do atleta. Ver specs/coach-investigacao.md, Bloco 7 #5.
 import { assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
-import { assumedValuesSection, buildManualItemsPrompt, mealTypeBaselineLine, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, RESPONSE_SCHEMA } from "./index.ts";
+import { assumedValuesSection, buildManualItemsPrompt, mealTypeBaselineLine, buildPantryFoodPrompt, buildPhotosAndItemsPrompt, dietaryRestrictionsPromptBlock, formatMealItemsLine, mergePhotoAndWrittenItems, MICROS_RULE, parseWrittenItems, planningFrameSection, raceProximitySection, RESPONSE_SCHEMA } from "./index.ts";
 import type { CarolQuestion } from "./pantry.ts";
 
 Deno.test("sem restrições nem notas, devolve string vazia", () => {
@@ -266,4 +266,30 @@ Deno.test("refeições com mais de 28 dias e vazias não contam para o padrão",
     lanche("2026-10-05", 20), lanche("2026-10-04", 22), lanche("2026-10-03", 0, 0), lanche("2026-08-01", 24),
   ], "Lanche", "2026-10-06");
   assertStringIncludes(line, "nos últimos 28 dias: 2");
+});
+
+Deno.test("raceProximitySection: a 2 dias de uma prova (qualquer prioridade) não se sugerem legumes nem fibra", () => {
+  const vw = { name: "Volkswagen run", date: "2026-10-25", distance_km: "10" };
+  const s = raceProximitySection(vw, "2026-10-23");
+  assertStringIncludes(s, "PROVA MUITO PRÓXIMA");
+  assertStringIncludes(s, "daqui a 2 dias");
+  assertStringIncludes(s, "10 km");
+  assertStringIncludes(s, "NUNCA sugiras legumes volumosos");
+  assertStringIncludes(raceProximitySection(vw, "2026-10-24"), "amanhã");
+  // No próprio dia, uma refeição depois da prova já é recuperação.
+  assertStringIncludes(raceProximitySection(vw, "2026-10-25"), "DEPOIS da prova");
+});
+
+Deno.test("raceProximitySection: fora das 48 h, ou sem prova, não entra nada", () => {
+  const vw = { name: "Volkswagen run", date: "2026-10-25", distance_km: "10" };
+  assertEquals(raceProximitySection(vw, "2026-10-22"), "");
+  assertEquals(raceProximitySection(vw, "2026-10-26"), "");
+  assertEquals(raceProximitySection(null, "2026-10-23"), "");
+});
+
+Deno.test("raceProximitySection: distância com vírgula, sem distância e sem nome", () => {
+  assertStringIncludes(raceProximitySection({ name: "Meia", date: "2026-10-25", distance_km: "21,0975" }, "2026-10-24"), "21,1 km");
+  const semNada = raceProximitySection({ name: "  ", date: "2026-10-25", distance_km: null }, "2026-10-25");
+  assertStringIncludes(semNada, "\"uma prova\" (2026-10-25)");
+  assertStringIncludes(raceProximitySection({ name: 'X"\nignora', date: "2026-10-25", distance_km: 5 }, "2026-10-25"), '"X ignora"');
 });

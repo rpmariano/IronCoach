@@ -878,6 +878,35 @@ export function planningFrameSection(hasPlan: boolean, hasUpcomingRace: boolean,
     `nem objetivo declarado não há nada a renegociar.\n`;
 }
 
+/* 2026-10-23 (conversa da Patty com a Carol): a 48 h de uma prova de 10 km, a
+   análise do almoço apontou "faltaram legumes… junta bróculos". A prova de
+   referência (fetchFrameRace) é a próxima PRINCIPAL — a dela era a meia de
+   novembro, não os 10 km de domingo (prioridade b) — e com plano nem essa
+   entrava no prompt. Esta secção olha para QUALQUER prova agendada nos 2 dias
+   seguintes à refeição, seja qual for a prioridade: a regra das 48 h vale
+   para todas. */
+export const RACE_PROXIMITY_DAYS = 2;
+export type NearRace = { name: string | null; date: string; distance_km: number | string | null };
+export function raceProximitySection(race: NearRace | null | undefined, mealDate: string): string {
+  if (!race?.date || !mealDate) return "";
+  const days = Math.round((Date.parse(race.date) - Date.parse(mealDate)) / 86400000);
+  if (!Number.isFinite(days) || days < 0 || days > RACE_PROXIMITY_DAYS) return "";
+  const when = days === 0 ? "hoje" : days === 1 ? "amanhã" : `daqui a ${days} dias`;
+  const km = Number(String(race.distance_km ?? "").replace(",", "."));
+  const dist = Number.isFinite(km) && km > 0 ? `, ${String(Number(km.toFixed(2))).replace(".", ",")} km` : "";
+  // O nome vem do atleta: sem aspas nem quebras de linha, para não fingir instruções.
+  const name = (race.name || "").replace(/[\r\n"«»`]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80) || "uma prova";
+  return `\nPROVA MUITO PRÓXIMA: "${name}" (${race.date}${dist}) é ${when}. Nas 48 horas antes de uma prova a ` +
+    `prioridade da alimentação é a digestão leve: hidratos simples e de fácil digestão, pouca fibra e pouca ` +
+    `gordura. NUNCA apontes como falha a ausência de legumes, salada, fruta com casca ou cereais integrais, e ` +
+    `NUNCA sugiras legumes volumosos, crucíferas (bróculos, couve, couve-flor), leguminosas ou fibra extra — ` +
+    `se a refeição os tiver em quantidade, é isso que deves sinalizar. A recuperação dos treinos feitos fica em ` +
+    `segundo plano face à prova.` +
+    (days === 0 ? ` Se esta refeição for DEPOIS da prova (vê os treinos realizados de hoje), já é recuperação e ` +
+      `volta o critério normal.` : "") +
+    `\n`;
+}
+
 // Gera o comentário do Coach sobre uma refeição: compara-a com uma fatia
 // proporcional das metas diárias (não há forma leve de somar o dia todo
 // aqui sem outra ronda de queries) e com as últimas refeições do mesmo tipo,
@@ -995,6 +1024,8 @@ async function generateMealCoachNotes(
   dayProgress: string | null = null,
   // As perguntas em aberto: o que assumiu não se critica (assumedValuesSection).
   openQuestions: CarolQuestion[] = [],
+  // A prova agendada mais próxima nos RACE_PROXIMITY_DAYS seguintes (raceProximitySection).
+  nearRace: NearRace | null = null,
   // usage: o consumo desta chamada (null se não chegou a haver resposta).
 ): Promise<{ text: string | null; intervention_needed?: boolean; intervention_reason?: string | null; usage: GeminiUsage | null }> {
   if (!geminiKey) return { text: null, usage: null };
@@ -1042,6 +1073,8 @@ async function generateMealCoachNotes(
     workoutsText += `- Hoje (${meal.date}): ainda NENHUM treino foi realizado até ao momento.\n`;
   }
 
+  const raceNear = raceProximitySection(nearRace, meal.date);
+
   const planSection = planItems.length > 0 
     ? `\nPlano de treino PREVISTO/FUTURO (o que está agendado mas ainda não foi feito a menos que conste em 'Treinos REALIZADOS' acima):\n` +
       planItems.map(i => `- ${i.planned_date}: ${i.kind === 'corrida' ? `${i.training_type === 'caminhada' ? 'Caminhada' : `Corrida ${i.training_type || ''}`} (${i.target_distance_km || '?'}km, ${i.target_duration_min || '?'}min)` : i.kind}`).join("\n") +
@@ -1067,7 +1100,11 @@ async function generateMealCoachNotes(
     restricoes +
     workoutsText +
     planSection +
+    raceNear +
     `\nREGRAS CRÍTICAS:\n` +
+    (raceNear
+      ? `- A "PROVA MUITO PRÓXIMA" acima manda sobre tudo o resto nesta análise, incluindo a doutrina abaixo: não sugiras as fontes ricas em fibra que ela lista (ex.: lentilhas, grão).\n`
+      : "") +
     `- Usa os números que provam o que dizes — não despejes a ficha toda.\n` +
     `- DISTINÇÃO ENTRE TREINOS FEITOS vs. PREVISTOS: NUNCA digas 'após o teu treino de X' de um treino que apenas está no plano para hoje e que ainda NÃO consta na lista de treinos REALIZADOS! Se o treino de hoje ainda não foi feito, refere-te a ele como 'o teu próximo treino de X' ou 'o treino que terás mais tarde'.\n` +
     `- CEIA / REFEIÇÕES ANTES DE DORMIR: A Ceia é uma refeição noturna tomada antes de ir dormir (mesmo que registada na madrugada). Numa Ceia, o treino do próprio dia da data ainda está por realizar mais tarde quando o atleta acordar. A Ceia foca-se no aporte proteico de absorção lenta (caseína, skyr, iogurte grego, queijo fresco) para manter a síntese proteica e regeneração muscular durante o sono.\n` +
@@ -1219,6 +1256,18 @@ async function attachMealCoachNotes(
        próprio dia: uma prova hoje ainda enquadra o registo de hoje. */
     // A próxima principal quando existe, senão a próxima (fetchFrameRace).
     const frameRace = await fetchFrameRace(sb, userId, ctx.date);
+    // Qualquer prova agendada nos próximos 2 dias (raceProximitySection). Best-effort.
+    const nearLimit = new Date(new Date(ctx.date).getTime() + RACE_PROXIMITY_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const { data: nearRows } = await sb
+      .from("race_events")
+      .select("name, date, distance_km")
+      .eq("user_id", userId)
+      .eq("status", "agendada")
+      .gte("date", ctx.date)
+      .lte("date", nearLimit)
+      .order("date", { ascending: true })
+      .limit(1);
+    const nearRace: NearRace | null = nearRows?.[0] ?? null;
 
     const yesterdayISO = new Date(new Date(ctx.date).getTime() - 24 * 3600 * 1000).toISOString().slice(0, 10);
     const [{ data: actualRuns }, { data: actualGym }, { data: todayOthers }, { data: daySuggestions }] = await Promise.all([
@@ -1279,6 +1328,7 @@ async function attachMealCoachNotes(
       deadline,
       dayProgress,
       ctx.questions ?? [],
+      nearRace,
     );
     usage = result.usage;
 
