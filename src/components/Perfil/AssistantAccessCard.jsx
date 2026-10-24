@@ -28,6 +28,7 @@ const fmt = (iso) => {
 export default function AssistantAccessCard() {
   const userId = useAppStore((s) => s.session?.user?.id);
   const titleId = useId();
+  const freshTitleId = useId();
   const [tokens, setTokens] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -51,14 +52,19 @@ export default function AssistantAccessCard() {
   const gerar = async () => {
     if (busy) return;
     setBusy(true); setMsg(null); setCopied(false);
-    const r = await createAssistantToken(userId);
-    setBusy(false);
-    if (!r.ok) {
-      setMsg({ tipo: 'erro', texto: r.reason === 'max_tokens' ? ASSISTANT_MSG_MAX : ASSISTANT_MSG_ERRO });
-      return;
+    try {
+      const r = await createAssistantToken(userId);
+      if (!r.ok) {
+        setMsg({ tipo: 'erro', texto: r.reason === 'max_tokens' ? ASSISTANT_MSG_MAX : ASSISTANT_MSG_ERRO });
+        return;
+      }
+      setFresh({ id: r.row.id, token: r.token });
+      setTokens((t) => [r.row, ...t.filter((x) => x.id !== r.row.id)]);
+    } catch {
+      setMsg({ tipo: 'erro', texto: ASSISTANT_MSG_ERRO });
+    } finally {
+      setBusy(false);
     }
-    setFresh({ token: r.token });
-    setTokens((t) => [r.row, ...t.filter((x) => x.id !== r.row.id)]);
   };
 
   const copiar = async () => {
@@ -73,15 +79,22 @@ export default function AssistantAccessCard() {
   const revogar = async () => {
     if (!toRevoke) return;
     setRevoking(true);
-    const r = await revokeAssistantToken(userId, toRevoke.id);
-    setRevoking(false);
-    if (r.ok) {
-      setTokens((t) => t.filter((x) => x.id !== toRevoke.id));
-      setMsg({ tipo: 'info', texto: 'Acesso revogado. A assistente deixa de conseguir ler.' });
-    } else {
+    try {
+      const r = await revokeAssistantToken(userId, toRevoke.id);
+      if (r.ok) {
+        setTokens((t) => t.filter((x) => x.id !== toRevoke.id));
+        // O token novo ainda no painel já não vale: o painel vai-se com ele.
+        if (fresh?.id === toRevoke.id) { setFresh(null); setCopied(false); }
+        setMsg({ tipo: 'info', texto: 'Acesso revogado. A assistente deixa de conseguir ler.' });
+      } else {
+        setMsg({ tipo: 'erro', texto: ASSISTANT_MSG_REVOGAR });
+      }
+    } catch {
       setMsg({ tipo: 'erro', texto: ASSISTANT_MSG_REVOGAR });
+    } finally {
+      setRevoking(false);
+      setToRevoke(null);
     }
-    setToRevoke(null);
   };
 
   if (!userId) return null;
@@ -95,9 +108,9 @@ export default function AssistantAccessCard() {
       <p className="text-[11px] text-[var(--text-3)] mb-3 leading-relaxed">{ASSISTANT_TEXTO}</p>
 
       {fresh && (
-        <div role="alert" data-testid="perfil-assistente-novo" className="rounded-xl px-3 py-3 mb-3"
+        <div role="region" aria-labelledby={freshTitleId} data-testid="perfil-assistente-novo" className="rounded-xl px-3 py-3 mb-3"
           style={{ background: 'var(--surface-soft)', border: '1px solid var(--border-glass)' }}>
-          <p className="text-[12px] font-bold" style={{ color: 'var(--text-1)' }}>Este código só aparece agora</p>
+          <p id={freshTitleId} className="text-[12px] font-bold" style={{ color: 'var(--text-1)' }}>Este código só aparece agora</p>
           <p className="text-[11px] mt-0.5 leading-relaxed" style={{ color: 'var(--text-2)' }}>
             Copia-o e entrega-o à assistente. Depois de fechares isto, não o voltas a ver — se o perderes, revoga e gera outro.
           </p>

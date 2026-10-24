@@ -41,18 +41,26 @@ export async function createAssistantToken(userId) {
     demoTokens = [row, ...demoTokens];
     return { ok: true, token, row };
   }
-  const { data, error } = await supabase.rpc('create_assistant_token', { p_label: ASSISTANT_LABEL });
-  if (error) {
-    const texto = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
-    return { ok: false, reason: /max_tokens/.test(texto) ? 'max_tokens' : 'error' };
+  try {
+    const { data, error } = await supabase.rpc('create_assistant_token', { p_label: ASSISTANT_LABEL });
+    if (error) {
+      const texto = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+      return { ok: false, reason: /max_tokens/.test(texto) ? 'max_tokens' : 'error' };
+    }
+    const r = Array.isArray(data) ? data[0] : data;
+    if (!r?.token) return { ok: false, reason: 'error' };
+    return { ok: true, token: r.token, row: { id: r.id, token_prefix: r.token_prefix, label: ASSISTANT_LABEL, created_at: r.created_at, last_used_at: null } };
+  } catch {
+    return { ok: false, reason: 'error' };
   }
-  const r = Array.isArray(data) ? data[0] : data;
-  if (!r?.token) return { ok: false, reason: 'error' };
-  return { ok: true, token: r.token, row: { id: r.id, token_prefix: r.token_prefix, label: ASSISTANT_LABEL, created_at: r.created_at, last_used_at: null } };
 }
 
 export async function revokeAssistantToken(userId, id) {
   if (isDemoUser(userId)) { demoTokens = demoTokens.filter((t) => t.id !== id); return { ok: true }; }
-  const { error } = await supabase.rpc('revoke_assistant_token', { p_id: id });
-  return { ok: !error };
+  try {
+    const { error } = await supabase.rpc('revoke_assistant_token', { p_id: id });
+    return { ok: !error };
+  } catch {
+    return { ok: false };
+  }
 }
