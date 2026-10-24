@@ -18,7 +18,7 @@ vi.mock('../../lib/supabase', () => ({
 
 const { useAppStore } = await import('../../store');
 const { __resetAssistantDemo } = await import('../../lib/assistantTokens');
-const { default: AssistantAccessCard, ASSISTANT_MSG_MAX, ASSISTANT_MSG_ERRO } = await import('./AssistantAccessCard');
+const { default: AssistantAccessCard, ASSISTANT_MSG_MAX, ASSISTANT_MSG_ERRO, ASSISTANT_MSG_REVOGAR } = await import('./AssistantAccessCard');
 
 const setUser = (id) => useAppStore.setState({ session: { user: { id, email: 'a@b.pt' } } });
 const ROW = { id: 't1', token_prefix: 'ih_abc12', label: 'Assistente executiva', created_at: '2026-10-20T10:00:00Z', last_used_at: null };
@@ -101,6 +101,53 @@ describe('AssistantAccessCard — utilizador real', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancelar' }));
     expect(rpc).not.toHaveBeenCalled();
     expect(screen.getByText('ih_abc12…')).toBeInTheDocument();
+  });
+});
+
+describe('AssistantAccessCard — robustez e painel do token', () => {
+  beforeEach(() => setUser('u1'));
+
+  it('RPC que lança ao gerar: mensagem de erro e o botão volta a servir', async () => {
+    rpc.mockRejectedValue(new Error('rede'));
+    render(<AssistantAccessCard />);
+    const gerar = await screen.findByRole('button', { name: 'Gerar acesso' });
+    fireEvent.click(gerar);
+    expect(await screen.findByRole('alert')).toHaveTextContent(ASSISTANT_MSG_ERRO);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Gerar acesso' })).toBeEnabled());
+  });
+
+  it('RPC que lança ao revogar: o diálogo fecha e a linha fica', async () => {
+    order.mockResolvedValue({ data: [ROW], error: null });
+    rpc.mockRejectedValue(new Error('rede'));
+    render(<AssistantAccessCard />);
+    fireEvent.click(await screen.findByRole('button', { name: /Revogar o acesso/ }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Revogar' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(ASSISTANT_MSG_REVOGAR);
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByText('ih_abc12…')).toBeInTheDocument();
+  });
+
+  it('o painel do token é uma região com nome, não um alerta', async () => {
+    rpc.mockResolvedValue({ data: [{ id: 't2', token: 'ih_SEGREDO', token_prefix: 'ih_SEGRE', created_at: '2026-10-24T10:00:00Z' }], error: null });
+    render(<AssistantAccessCard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar acesso' }));
+    const painel = await screen.findByRole('region', { name: /só aparece agora/ });
+    expect(painel).toHaveTextContent('ih_SEGREDO');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByTestId('perfil-assistente-token')).toHaveFocus();
+  });
+
+  it('revogar o token que está no painel fecha o painel', async () => {
+    rpc.mockImplementation((nome) => Promise.resolve(nome === 'create_assistant_token'
+      ? { data: [{ id: 't2', token: 'ih_SEGREDO', token_prefix: 'ih_SEGRE', created_at: '2026-10-24T10:00:00Z' }], error: null }
+      : { data: null, error: null }));
+    render(<AssistantAccessCard />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Gerar acesso' }));
+    await screen.findByTestId('perfil-assistente-novo');
+    fireEvent.click(screen.getByRole('button', { name: /Revogar o acesso ih_SEGRE/ }));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Revogar' }));
+    await waitFor(() => expect(screen.queryByTestId('perfil-assistente-novo')).not.toBeInTheDocument());
+    expect(screen.queryByText('ih_SEGREDO')).not.toBeInTheDocument();
   });
 });
 
