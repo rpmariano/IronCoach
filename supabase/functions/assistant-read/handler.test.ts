@@ -1,6 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { addDays, handler, MAX_RANGE_DAYS, RATE_LIMIT_PER_HOUR, resolveRange, sha256Hex } from "./handler.ts";
-import { lisbonDateTime, lisbonMidnightUtc, RESOURCES } from "./resources.ts";
+import { lisbonDateTime, lisbonMidnightUtc, PAGE, RESOURCES } from "./resources.ts";
 
 // ─── Supabase falso ───────────────────────────────────────────────────────
 // O subconjunto do PostgREST que a função usa. Regista todas as consultas
@@ -8,6 +8,19 @@ import { lisbonDateTime, lisbonMidnightUtc, RESOURCES } from "./resources.ts";
 // só-leitura.
 
 type Row = Record<string, unknown>;
+
+// Baralhar com semente fixa: os testes falham (ou passam) sempre da mesma maneira.
+let seed = 42;
+function shuffle<T>(xs: T[]): T[] {
+  const out = [...xs];
+  for (let i = out.length - 1; i > 0; i--) {
+    seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+    const j = seed % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 type Filter = [op: string, col: string, val: unknown];
 interface Query { table: string; op: "select" | "insert" | "update"; filters: Filter[] }
 
@@ -103,8 +116,11 @@ class Builder {
       for (const r of rows.filter((r) => this.match(r))) Object.assign(r, this.payload);
       return { data: null, error: null };
     }
-    let out = rows.filter((r) => this.match(r));
+    let out = shuffle(rows.filter((r) => this.match(r)));
     if (this.head) return { data: null, count: out.length, error: null };
+    // Ordenação estável sobre linhas baralhadas: como no Postgres, as
+    // empatadas em todas as chaves pedidas vêm numa ordem qualquer, diferente
+    // de pedido para pedido.
     for (const [c, asc] of [...this.orders].reverse()) {
       out = [...out].sort((a, b) => (String(a[c] ?? "") < String(b[c] ?? "") ? -1 : String(a[c] ?? "") > String(b[c] ?? "") ? 1 : 0) * (asc ? 1 : -1));
     }
@@ -346,6 +362,15 @@ Deno.test("429: ao fim de 120 pedidos na última hora", async () => {
   assertEquals(db.tables.assistant_access_log.at(-1)!.status, 429);
 });
 
+Deno.test("429: o pedido recusado não conta como uso (last_used_at fica no último atendido)", async () => {
+  const db = await scenario();
+  const tok = db.tables.assistant_tokens.find((t) => t.id === "tok-a")!;
+  tok.last_used_at = "2026-10-24T09:00:00.000Z";
+  db.tables.assistant_access_log = logRows(RATE_LIMIT_PER_HOUR, new Date(NOW.getTime() - 60_000).toISOString());
+  assertEquals((await call(db, "resource=summary")).status, 429);
+  assertEquals(tok.last_used_at, "2026-10-24T09:00:00.000Z");
+});
+
 Deno.test("429: pedidos de há mais de uma hora, os já recusados e os de outro token não contam", async () => {
   const db = await scenario();
   const old = new Date(NOW.getTime() - 61 * 60_000).toISOString();
@@ -409,6 +434,40 @@ Deno.test("races: as do período com resultado e as futuras mesmo fora do perío
   assertEquals(data.map((r: Row) => r.id), ["A-racePast", "A-raceNext"]);
   assertEquals(data[0].result, { run_id: "A-raceRun", distance_km: 21.1, duration_s: 6300, official_time_s: 6290 });
   assertEquals(data[1].result, null);
+});
+
+Deno.test("races: com várias corridas na mesma prova, o resultado é a mais recente (data, depois id)", async () => {
+  const db = await scenario();
+  const extra = (id: string, date: string, s: number) => ({ id, user_id: A, date, distance_km: 21.1, duration_seconds: s, race_id: "A-racePast" });
+  db.tables.runs.push(extra("A-raceRun-0", "2026-10-18", 7000), extra("A-raceRun-z", "2026-10-19", 6200));
+  for (let i = 0; i < 5; i++) {
+    const { data } = await (await call(db, "resource=races&from=2026-10-18&to=2026-10-24")).json();
+    // A-raceRun e A-raceRun-z são do mesmo dia: ganha o id maior.
+    assertEquals(data[0].result.run_id, "A-raceRun-z");
+  }
+});
+
+// ─── Paginação ────────────────────────────────────────────────────────────
+
+Deno.test("paginação: mais de 1000 linhas empatadas nas chaves de ordenação, sem repetir nem saltar", async () => {
+  const db = await scenario();
+  const N = PAGE * 2 + 500;
+  // Todas no mesmo dia e sem hora: empatadas em (date, start_time).
+  db.tables.runs = Array.from({ length: N }, (_, i) => ({
+    id: `A-r${String(i).padStart(5, "0")}`, user_id: A, date: DAY, start_time: null, distance_km: 1, duration_seconds: 300,
+  }));
+  // Uma refeição com mais de 1000 itens, todos com o mesmo created_at.
+  db.tables.meal_items = Array.from({ length: PAGE + 300 }, (_, i) => ({
+    id: `A-i${String(i).padStart(5, "0")}`, meal_id: "A-meal", user_id: A, name: `A-item-${i}`, quantity_grams: 1, created_at: "1",
+  }));
+
+  const runs = (await (await call(db, `resource=runs&${PERIOD}`)).json()).data;
+  assertEquals(runs.length, N);
+  assertEquals(new Set(runs.map((r: Row) => r.id)).size, N);
+
+  const meals = (await (await call(db, `resource=meals&${PERIOD}`)).json()).data;
+  assertEquals(meals[0].items.length, PAGE + 300);
+  assertEquals(new Set(meals[0].items.map((it: Row) => it.name)).size, PAGE + 300);
 });
 
 Deno.test("goals: objetivos atuais e histórico do período com a versão em vigor no início", async () => {

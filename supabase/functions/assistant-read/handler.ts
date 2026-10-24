@@ -127,7 +127,10 @@ async function usedLastHour(db: Db, tokenId: string, now: Date): Promise<number>
 async function record(db: Db, token: TokenRow, resource: string | null, status: number, now: Date) {
   const [log, used] = await Promise.all([
     db.from("assistant_access_log").insert({ token_id: token.id, user_id: token.user_id, resource, status }),
-    db.from("assistant_tokens").update({ last_used_at: now.toISOString() }).eq("id", token.id).eq("user_id", token.user_id),
+    // Um pedido recusado por excesso não é um uso: o "último uso" que a app
+    // mostra fica no último pedido atendido.
+    status === 429 ? null : db.from("assistant_tokens").update({ last_used_at: now.toISOString() }).eq("id", token.id)
+      .eq("user_id", token.user_id),
   ]);
   // Não falha o pedido por isto, mas fica no log da função.
   if (log?.error) console.error("assistant_access_log insert:", log.error.message);

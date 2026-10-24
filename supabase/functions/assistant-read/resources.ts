@@ -23,15 +23,20 @@ export interface ReadCtx {
 type Row = Record<string, unknown>;
 
 // O max_rows do PostgREST é 1000: lê por páginas até a última vir curta.
-const PAGE = 1000;
+export const PAGE = 1000;
 // Ids por .in(): o pedido vai num GET, e 100 uuids ficam bem abaixo do limite do URL.
 const IN_CHUNK = 100;
 
+// O `id` vai SEMPRE como última chave de ordenação. As chaves de cada
+// leitura (date, start_time, set_index, …) repetem-se, e entre linhas
+// empatadas o Postgres não garante a mesma ordem de um pedido para o
+// seguinte: sem desempate único, a página 2 podia repetir linhas da 1 e
+// saltar outras. Todas as tabelas lidas por aqui têm `id`.
 // deno-lint-ignore no-explicit-any
 async function all(build: () => any): Promise<Row[]> {
   const out: Row[] = [];
   for (let start = 0;; start += PAGE) {
-    const { data, error } = await build().range(start, start + PAGE - 1);
+    const { data, error } = await build().order("id", { ascending: true }).range(start, start + PAGE - 1);
     if (error) throw new Error(error.message);
     out.push(...(data ?? []));
     if (!data || data.length < PAGE) return out;
@@ -321,11 +326,30 @@ async function readRaces(ctx: ReadCtx) {
   ]);
   const races = [...new Map([...inPeriod, ...upcoming].map((r) => [r.id as string, r])).values()]
     .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const runs = await byIds(ctx, "runs", "id, race_id, distance_km, duration_seconds, details", "race_id", races.map((r) => r.id as string), [
-    "date",
-  ]);
-  const byRace = new Map(runs.map((r) => [r.race_id as string, r]));
+  const runs = await byIds(
+    ctx,
+    "runs",
+    "id, date, race_id, distance_km, duration_seconds, details",
+    "race_id",
+    races.map((r) => r.id as string),
+    ["date"],
+  );
+  const byRace = new Map<string, Row>();
+  for (const run of runs) {
+    const prev = byRace.get(run.race_id as string);
+    if (!prev || isLater(run, prev)) byRace.set(run.race_id as string, run);
+  }
   return races.map((r) => shapeRace(r, byRace.get(r.id as string)));
+}
+
+// Uma prova devia ter uma corrida só, mas nada na BD o impede (uma
+// importação repetida, uma corrida ligada à mão por cima de outra). Com
+// várias, o resultado é a mais recente — por data e, no mesmo dia, pelo
+// id — escolhida aqui de forma explícita, para a resposta não depender da
+// ordem em que as linhas chegam.
+function isLater(a: Row, b: Row): boolean {
+  const byDate = String(a.date ?? "").localeCompare(String(b.date ?? ""));
+  return byDate !== 0 ? byDate > 0 : String(a.id) > String(b.id);
 }
 
 const HISTORY_COLS = "valid_from, calorie_goal, protein_goal, carbs_goal, fat_goal, water_goal_ml, source";
