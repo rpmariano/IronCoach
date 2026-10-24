@@ -187,6 +187,24 @@ function athleteRows(uid: string, tag: "A" | "B"): Record<string, Row[]> {
       { id: 1, user_id: uid, valid_from: "2026-09-01T09:00:00Z", calorie_goal: 2000, source: "inicial" },
       { id: 2, user_id: uid, valid_from: "2026-10-20T09:00:00Z", calorie_goal: 2200, source: "proposta" },
     ],
+    coach_plans: [
+      { id: id("plan1"), user_id: uid, status: "aceite", period_start: "2026-10-20", period_end: "2026-10-26", accepted_at: "2026-10-19T20:00:00Z" },
+      { id: id("planR"), user_id: uid, status: "recusado", period_start: "2026-10-20", period_end: "2026-10-26", accepted_at: null },
+    ],
+    coach_plan_items: [
+      {
+        id: id("pi-run"), plan_id: id("plan1"), user_id: uid, planned_date: DAY, kind: "corrida", training_type: `${tag}-Rodagem`,
+        categories: null, target_duration_min: 45, target_distance_km: 8, status: "pendente",
+        prescription: { warmup: "SEGREDO-prescricao" }, notes: "SEGREDO-notas", meal_suggestion: "SEGREDO-refeicao",
+        meal_status: "pendente", meal_macros: { kcal: 1 }, execution_note: "SEGREDO-execucao",
+      },
+      { id: id("pi-rest"), plan_id: id("plan1"), user_id: uid, planned_date: "2026-10-23", kind: "descanso", status: "pendente" },
+      {
+        id: id("pi-gym"), plan_id: id("plan1"), user_id: uid, planned_date: "2026-10-25", kind: "ginasio", training_type: null,
+        categories: ["pernas", "core"], target_duration_min: 60, target_distance_km: null, status: "pendente",
+      },
+      { id: id("pi-recusado"), plan_id: id("planR"), user_id: uid, planned_date: "2026-10-24", kind: "corrida", training_type: `${tag}-recusado`, status: "pendente" },
+    ],
   };
 }
 
@@ -203,18 +221,18 @@ async function scenario(): Promise<FakeDb> {
   return db;
 }
 
-function call(db: FakeDb, query: string, token: string | null = TOKEN_A, method = "GET") {
+function call(db: FakeDb, query: string, token: string | null = TOKEN_A, method = "GET", now = NOW) {
   const headers: Record<string, string> = {};
   if (token != null) headers.Authorization = `Bearer ${token}`;
   return handler(new Request(`https://x.supabase.co/functions/v1/assistant-read?${query}`, { method, headers }), {
     db: () => db,
-    now: () => NOW,
+    now: () => now,
   });
 }
 
 const DATA_TABLES = [
   "profiles", "workout_sessions", "workout_session_sets", "runs", "meals", "meal_items", "daily_checkins",
-  "water_logs", "body_assessments", "race_events", "profile_goal_history",
+  "water_logs", "body_assessments", "race_events", "profile_goal_history", "coach_plans", "coach_plan_items",
 ];
 
 // ─── Isolamento A/B ───────────────────────────────────────────────────────
@@ -498,4 +516,94 @@ Deno.test("lisbonMidnightUtc / lisbonDateTime: hora de verão e de inverno", () 
   assertEquals(lisbonMidnightUtc("2026-07-01"), "2026-06-30T23:00:00.000Z");
   assertEquals(lisbonMidnightUtc("2026-12-01"), "2026-12-01T00:00:00.000Z");
   assertEquals(lisbonDateTime("2026-10-25T00:30:00Z"), "2026-10-25T01:30:00");
+});
+
+// ─── plan ─────────────────────────────────────────────────────────────────
+
+const PLAN_PERIOD = "from=2026-10-18&to=2026-10-31";
+
+Deno.test("plan: só planos aceites, sem descanso, título pelo training_type ou pelas categorias", async () => {
+  const db = await scenario();
+  const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
+  assertEquals(data, [
+    { id: "A-pi-run", date: DAY, kind: "corrida", title: "A-Rodagem", duration_min: 45, distance_km: 8, status: "pendente" },
+    { id: "A-pi-gym", date: "2026-10-25", kind: "ginasio", title: "pernas, core", duration_min: 60, distance_km: null, status: "pendente" },
+  ]);
+});
+
+Deno.test("plan: nunca saem prescription, notes, meal_* nem execution_note", async () => {
+  const db = await scenario();
+  const text = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).text();
+  for (const k of ["prescription", "notes", "meal_", "execution_note", "plan_id", "SEGREDO"]) {
+    assert(!text.includes(k), `saiu ${k}: ${text}`);
+  }
+  const { data } = JSON.parse(text);
+  for (const it of data) assertEquals(Object.keys(it).sort(), ["date", "distance_km", "duration_min", "id", "kind", "status", "title"]);
+});
+
+Deno.test("plan: plano recusado (e proposto) excluídos", async () => {
+  const db = await scenario();
+  db.tables.coach_plans.push({ id: "A-planP", user_id: A, status: "proposto", period_start: "2026-10-20", period_end: "2026-10-26" });
+  db.tables.coach_plan_items.push({ id: "A-pi-prop", plan_id: "A-planP", user_id: A, planned_date: "2026-10-24", kind: "corrida", status: "pendente" });
+  const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
+  const ids = data.map((it: Row) => it.id);
+  assert(!ids.includes("A-pi-recusado") && !ids.includes("A-pi-prop"), JSON.stringify(ids));
+});
+
+Deno.test("plan: datas com dois planos aceites — ganha o aceite mais recente, a data inteira", async () => {
+  const db = await scenario();
+  // plan2, aceite depois, cobre 22–28: no dia 22 o treino dele substitui o do
+  // plan1; no 25 não tem nada, por isso o ginásio do plan1 também não sai.
+  db.tables.coach_plans.push({ id: "A-plan2", user_id: A, status: "aceite", period_start: "2026-10-22", period_end: "2026-10-28", accepted_at: "2026-10-21T20:00:00Z" });
+  db.tables.coach_plan_items.push(
+    { id: "A-p2-gym", plan_id: "A-plan2", user_id: A, planned_date: DAY, kind: "ginasio", training_type: "Força", status: "pendente" },
+    { id: "A-p2-run", plan_id: "A-plan2", user_id: A, planned_date: "2026-10-27", kind: "corrida", training_type: "Séries", status: "pendente" },
+  );
+  const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
+  assertEquals(data.map((it: Row) => [it.date, it.id]), [[DAY, "A-p2-gym"], ["2026-10-27", "A-p2-run"]]);
+});
+
+Deno.test("plan: mesmo accepted_at — desempate pelo id, sempre igual", async () => {
+  const db = await scenario();
+  const at = db.tables.coach_plans.find((p) => p.id === "A-plan1")!.accepted_at;
+  db.tables.coach_plans.push({ id: "A-plan9", user_id: A, status: "aceite", period_start: "2026-10-22", period_end: "2026-10-22", accepted_at: at });
+  db.tables.coach_plan_items.push({ id: "A-p9", plan_id: "A-plan9", user_id: A, planned_date: DAY, kind: "corrida", training_type: "T9", status: "pendente" });
+  for (let i = 0; i < 5; i++) {
+    const { data } = await (await call(db, `resource=plan&${PLAN_PERIOD}`)).json();
+    assertEquals(data.find((it: Row) => it.date === DAY).id, "A-p9"); // "A-plan9" > "A-plan1"
+  }
+});
+
+Deno.test("plan: por omissão de hoje a hoje + 6, dos dois lados da meia-noite de Lisboa", async () => {
+  const db = await scenario();
+  const range = async (iso: string, q = "resource=plan") => {
+    const b = await (await call(db, q, TOKEN_A, "GET", new Date(iso))).json();
+    return [b.from, b.to];
+  };
+  // 24/10 ainda é hora de verão (UTC+1): 22:59:59Z = 23:59:59 em Lisboa; 23:00Z já é dia 25.
+  assertEquals(await range("2026-10-24T22:59:59Z"), ["2026-10-24", "2026-10-30"]);
+  assertEquals(await range("2026-10-24T23:00:00Z"), ["2026-10-25", "2026-10-31"]);
+  // Inverno (UTC+0).
+  assertEquals(await range("2026-12-31T23:59:59Z"), ["2026-12-31", "2027-01-06"]);
+  assertEquals(await range("2027-01-01T00:00:00Z"), ["2027-01-01", "2027-01-07"]);
+  // Os outros resources continuam para trás.
+  assertEquals(await range("2026-10-24T23:00:00Z", "resource=runs"), ["2026-10-19", "2026-10-25"]);
+  // Só um dos lados: 7 dias a partir dele.
+  assertEquals(await range("2026-10-24T10:00:00Z", "resource=plan&from=2026-11-02"), ["2026-11-02", "2026-11-08"]);
+  assertEquals(await range("2026-10-24T10:00:00Z", "resource=plan&to=2026-11-08"), ["2026-11-02", "2026-11-08"]);
+});
+
+Deno.test("plan: o item do dia de hoje entra por omissão; máximo de 92 dias", async () => {
+  const db = await scenario();
+  const { data } = await (await call(db, "resource=plan", TOKEN_A, "GET", new Date("2026-10-22T08:00:00Z"))).json();
+  assertEquals(data.map((it: Row) => it.id), ["A-pi-run", "A-pi-gym"]);
+  assertEquals((await call(db, `resource=plan&from=2026-10-24&to=${addDays("2026-10-24", MAX_RANGE_DAYS - 1)}`)).status, 200);
+  assertEquals((await call(db, `resource=plan&from=2026-10-24&to=${addDays("2026-10-24", MAX_RANGE_DAYS)}`)).status, 400);
+});
+
+Deno.test("400 (não 500): data inválida só num dos lados", async () => {
+  const db = await scenario();
+  for (const q of ["resource=runs&to=2026-02-30", "resource=plan&to=2026-13-01", "resource=plan&from=x"]) {
+    assertEquals((await call(db, q)).status, 400, q);
+  }
 });

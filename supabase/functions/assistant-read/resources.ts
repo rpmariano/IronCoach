@@ -9,7 +9,7 @@
 
 import type { Db } from "./handler.ts";
 
-export const RESOURCES = ["summary", "workouts", "runs", "meals", "checkins", "body", "races", "goals"] as const;
+export const RESOURCES = ["summary", "workouts", "runs", "meals", "checkins", "body", "races", "goals", "plan"] as const;
 export type Resource = typeof RESOURCES[number];
 
 export interface ReadCtx {
@@ -43,12 +43,21 @@ async function all(build: () => any): Promise<Row[]> {
   }
 }
 
-async function byIds(ctx: ReadCtx, table: string, cols: string, fk: string, ids: string[], order: string[]): Promise<Row[]> {
+async function byIds(
+  ctx: ReadCtx,
+  table: string,
+  cols: string,
+  fk: string,
+  ids: string[],
+  order: string[],
+  // deno-lint-ignore no-explicit-any
+  extra: (q: any) => any = (q) => q,
+): Promise<Row[]> {
   const out: Row[] = [];
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
     const chunk = ids.slice(i, i + IN_CHUNK);
     out.push(...await all(() => {
-      let q = ctx.db.from(table).select(cols).eq("user_id", ctx.userId).in(fk, chunk);
+      let q = extra(ctx.db.from(table).select(cols).eq("user_id", ctx.userId).in(fk, chunk));
       for (const c of order) q = q.order(c, { ascending: true });
       return q;
     }));
@@ -435,7 +444,73 @@ async function readSummary(ctx: ReadCtx) {
   };
 }
 
+// ─── Plano (treinos planeados pela Carol Coach) ───────────────────────────
+//
+// Só planos 'aceite' (um 'proposto' ou 'recusado' não é o que o atleta vai
+// fazer). Quando dois planos aceites cobrem a mesma data, ganha o aceite mais
+// recente (accepted_at, depois id) — e ganha a data INTEIRA: se o mais
+// recente diz descanso ou não tem nada nesse dia, o treino do plano antigo
+// também não sai. Um plano "cobre" uma data se ela está no seu período ou se
+// ele tem um item nesse dia (um item fora do período não fica órfão).
+// Fora, sempre: prescription, notes, meal_*, execution_note (contrato).
+
+async function readPlan(ctx: ReadCtx) {
+  const plans = await all(() =>
+    ctx.db.from("coach_plans").select("id, period_start, period_end, accepted_at").eq("user_id", ctx.userId)
+      .eq("status", "aceite").lte("period_start", ctx.to).gte("period_end", ctx.from)
+      .order("accepted_at", { ascending: true })
+  );
+  const items = await byIds(
+    ctx,
+    "coach_plan_items",
+    "id, plan_id, planned_date, kind, training_type, categories, target_duration_min, target_distance_km, status",
+    "plan_id",
+    plans.map((p) => p.id as string),
+    ["planned_date"],
+    (q) => q.gte("planned_date", ctx.from).lte("planned_date", ctx.to),
+  );
+
+  const itemDates = new Map<string, Set<string>>();
+  for (const it of items) {
+    const s = itemDates.get(it.plan_id as string) ?? new Set<string>();
+    s.add(it.planned_date as string);
+    itemDates.set(it.plan_id as string, s);
+  }
+  const covers = (p: Row, date: string) =>
+    (String(p.period_start) <= date && date <= String(p.period_end)) || !!itemDates.get(p.id as string)?.has(date);
+  const newer = (a: Row, b: Row) => {
+    const c = String(a.accepted_at ?? "").localeCompare(String(b.accepted_at ?? ""));
+    return c !== 0 ? c > 0 : String(a.id) > String(b.id);
+  };
+  const winnerOf = new Map<string, string>();
+  const winner = (date: string) => {
+    if (!winnerOf.has(date)) {
+      let best: Row | null = null;
+      for (const p of plans) if (covers(p, date) && (!best || newer(p, best))) best = p;
+      winnerOf.set(date, best?.id as string);
+    }
+    return winnerOf.get(date);
+  };
+
+  return items
+    .filter((it) => it.kind !== "descanso" && winner(it.planned_date as string) === it.plan_id)
+    .sort((a, b) => String(a.planned_date).localeCompare(String(b.planned_date)) || String(a.id).localeCompare(String(b.id)))
+    .map((it) => {
+      const cats = Array.isArray(it.categories) ? (it.categories as unknown[]).filter(Boolean).map(String) : [];
+      return {
+        id: it.id,
+        date: it.planned_date,
+        kind: it.kind,
+        title: (it.training_type as string | null) || (cats.length ? cats.join(", ") : null),
+        duration_min: num(it.target_duration_min),
+        distance_km: num(it.target_distance_km),
+        status: it.status ?? null,
+      };
+    });
+}
+
 const READERS: Record<Resource, (ctx: ReadCtx) => Promise<unknown>> = {
+  plan: readPlan,
   summary: readSummary,
   workouts: readWorkouts,
   runs: readRuns,

@@ -80,14 +80,29 @@ export function addDays(date: string, days: number): string {
   return new Date(parseDate(date)! + days * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** from/to do pedido → o período (inclusivo) ou null se for inválido. */
+/**
+ * from/to do pedido → o período (inclusivo) ou null se for inválido.
+ * Por omissão, 7 dias: para trás a acabar hoje ("backward", os registos) ou
+ * para a frente a começar hoje ("forward", o plano). Com só um dos lados, os
+ * 7 dias contam-se a partir dele.
+ */
 export function resolveRange(
   fromParam: string | null,
   toParam: string | null,
   today: string,
+  direction: "backward" | "forward" = "backward",
 ): { from: string; to: string } | null {
-  const to = toParam ?? today;
-  const from = fromParam ?? addDays(to, -(DEFAULT_RANGE_DAYS - 1));
+  // Validar antes de fazer contas com a data: addDays de uma data inválida rebentava (500 em vez de 400).
+  if ((fromParam != null && parseDate(fromParam) == null) || (toParam != null && parseDate(toParam) == null)) return null;
+  const span = DEFAULT_RANGE_DAYS - 1;
+  let from: string, to: string;
+  if (direction === "forward") {
+    from = fromParam ?? (toParam ? addDays(toParam, -span) : today);
+    to = toParam ?? addDays(from, span);
+  } else {
+    to = toParam ?? today;
+    from = fromParam ?? addDays(to, -span);
+  }
   const f = parseDate(from), t = parseDate(to);
   if (f == null || t == null || f > t) return null;
   if ((t - f) / 86_400_000 + 1 > MAX_RANGE_DAYS) return null;
@@ -158,7 +173,8 @@ export async function handler(req: Request, deps: HandlerDeps): Promise<Response
     }
 
     const today = todayIn(now);
-    const range = resolveRange(params.get("from"), params.get("to"), today);
+    // O plano olha para a frente (o que aí vem); os registos para trás.
+    const range = resolveRange(params.get("from"), params.get("to"), today, resource === "plan" ? "forward" : "backward");
     if (!resource || !range) {
       await record(db, token, loggedResource, 400, now);
       return badRequest();
