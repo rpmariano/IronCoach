@@ -17,6 +17,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import Armario from '../Armario/Armario';
 import BadgesCard from './BadgesCard';
 import CupNoticePrefs from './CupNoticePrefs';
+import AssistantAccessCard from './AssistantAccessCard';
 import ActionBar, { ACTION_BAR_SCROLL_PAD } from '../shared/ActionBar';
 import useCarouselActiveHeight from '../../utils/useCarouselActiveHeight';
 import CoachInsightsDock from '../BI/CoachInsightsDock';
@@ -1320,6 +1321,8 @@ export default function Perfil() {
           </div>
 
           <CoachMemoryCard />
+
+          <AssistantAccessCard />
 
           {/* Restrições alimentares — pré-requisito das sugestões do Coach.
               Sem isto o Coach não fica calado, fica errado: sugere frango a

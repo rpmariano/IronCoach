@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react';
 import Button from './Button';
 import PremiumModal from './PremiumModal';
 
-export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, message, isDeleting }) {
+export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, message, isDeleting, confirmLabel = 'Eliminar', busyLabel = 'A eliminar…' }) {
   return (
     <PremiumModal
       isOpen={isOpen}
@@ -27,7 +27,7 @@ export default function ConfirmDeleteModal({ isOpen, onClose, onConfirm, title, 
             variant="danger"
             className="w-full"
           >
-            {isDeleting ? 'A eliminar…' : 'Eliminar'}
+            {isDeleting ? busyLabel : confirmLabel}
           </Button>
           <Button 
             onClick={onClose} 
