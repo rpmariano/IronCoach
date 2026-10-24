@@ -12,8 +12,16 @@ Este ficheiro é o equivalente, para Claude Code, das regras em `.agents/rules/`
 - `IronHealth-master` — hub do `.git` partilhado, branch `dev`. **Não editar diretamente aqui.**
 - `IronHealth-claude` — a minha worktree, branch `dev-claude`. Trabalho sempre aqui.
 - `IronHealth-antigravity` — worktree do Antigravity, branch `dev-antigravity`.
+- `IronHealth-front` / `IronHealth-back` / `IronHealth-carol` — especialistas, branches `dev-front` / `dev-back` / `dev-carol`.
 
 Nunca fazer `git checkout` para outra branch dentro desta pasta.
+
+## Papéis — ler primeiro
+
+Cada sessão Claude tem um papel, determinado pela branch da worktree. **Antes de qualquer trabalho**: `git branch --show-current` e ler o ficheiro do papel em [`.claude/roles/`](.claude/roles/README.md).
+
+- `dev-claude` → **Coordenador**: único que faz push e merges; segue o Fluxo de deploy abaixo.
+- `dev-front` / `dev-back` / `dev-carol` → **Especialista**: commit local na própria branch, **nunca push nem merge**. O Fluxo de deploy e os locks abaixo não se aplicam — são do coordenador.
 
 ## Fluxo de deploy
 
