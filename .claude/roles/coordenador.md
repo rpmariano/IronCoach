@@ -20,6 +20,17 @@ Ver regras comuns em [README.md](README.md).
 6. Avisar os especialistas ativos para fazerem `git fetch origin && git merge origin/dev`.
 7. `master` só com pedido fresco e inequívoco do utilizador, depois do agente `pre-deploy-reviewer`.
 
+## Bugs
+
+Não há sessão dedicada a bugs — dividem-se por área, como as features.
+
+1. **Triagem aqui.** O coordenador encontra a causa (com subagente `Explore` se for preciso ler muito). O sintoma engana: um ecrã errado pode vir de dados errados na Edge Function.
+2. **Corrige o dono da causa**, não o da área onde o bug aparece (mapa de posse no [README.md](README.md)).
+3. **Bug que atravessa áreas:** o dono da causa corrige primeiro; se mudar um contrato, o outro ajusta depois.
+4. **Urgente em produção:** direto ao especialista; push assim que integrado; `dev` e `master` em linha (o `master` com pedido fresco do utilizador).
+5. **Bugs pequenos e soltos:** juntar num lote por área.
+6. **Antes de integrar:** cada correção traz um teste que falhava antes e passa depois. Sem isso, devolver ao especialista.
+
 ## Produção
 
 Qualquer merge que toque `supabase/functions/**` — do Backend **ou da Carol** — é deploy em produção no push a `dev`. Antes desse push:
