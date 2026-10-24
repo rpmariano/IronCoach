@@ -66,6 +66,7 @@ RLS: o dono faz `select` das suas linhas (o cliente nunca pede `token_hash`). Na
 | `body` | avaliações corporais do período |
 | `races` | provas futuras e as do período, com resultado/objetivo |
 | `goals` | objetivos atuais e histórico de alterações |
+| `plan` | treinos planeados pela Carol Coach (2026-10-24, pedido do CoP). Só itens de planos `aceite`; em datas com mais de um plano aceite, ganha o mais recente (`accepted_at`). Sem dias de `descanso`. Por item: `id`, `date` (`planned_date`), `kind` (`corrida`\|`ginasio`), `title` (o `training_type`; se faltar, as `categories`), `duration_min` e `distance_km` (alvos, `null` se não houver), `status` (`pendente`\|`concluido`\|`cancelado`). **Nunca** sai `prescription`, `notes`, `meal_*` nem `execution_note`. Por defeito `from` = hoje e `to` = hoje + 6 (para a frente, ao contrário dos outros); máximo 92 dias. |
 
 **Fora nesta fase:** mensagens e notas do coach, memória da Carol, dados da Taça/rankings (envolvem outros atletas), push, logs.
 
