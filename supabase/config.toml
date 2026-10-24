@@ -450,3 +450,10 @@ verify_jwt = false
 # Inerte até à M2 e ao admin ligar a edição; o cron cria-se à mão depois da M2.
 [functions.cup-standings-sync]
 verify_jwt = false
+
+# O assistant-read é chamado pela assistente executiva do atleta (uma app de
+# fora), sem JWT: a autenticação é o token pessoal ih_… no cabeçalho
+# Authorization, verificado lá dentro pelo hash (specs/assistente-leitura-contrato.md).
+# Sem isto, o gateway recusava o token com 401 por não ser um JWT.
+[functions.assistant-read]
+verify_jwt = false
