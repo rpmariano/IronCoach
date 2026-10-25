@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 804" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+<!-- A Carol com a fita métrica e a balança, em traço (desenhado à mão sobre o webp). Cada caminho tem pathLength="1" e a
+     variável CSS i (a ordem do desenho): anima-se com stroke-dasharray:1 e stroke-dashoffset 1 → 0. -->
+<!-- cena: chão, máquinas ao fundo e o ecrã -->
+<path pathLength="1" style="--i:0" stroke-width="1.5" d="M0 590 C70 590 150 590 222 590"/>
+<path pathLength="1" style="--i:0" stroke-width="1.5" d="M400 590 C460 590 530 590 600 590"/>
+<path pathLength="1" style="--i:0" stroke-width="1.5" d="M32 499 C57 499 78 520 78 547 C78 574 57 595 32 595 C7 595 -14 574 -14 547 C-14 520 7 499 32 499"/>
+<path pathLength="1" style="--i:1" stroke-width="1.5" d="M539 324 L598 322 L600 384 L541 386 Z"/>
+<!-- cabeça: cabelo, fita e rosto -->
+<path pathLength="1" style="--i:2" d="M213 132 C220 100 260 82 300 80 C340 80 370 96 388 124"/>
+<path pathLength="1" style="--i:3" d="M206 140 C234 126 266 118 298 118 C340 120 372 134 390 155"/>
+<path pathLength="1" style="--i:3" d="M204 196 C232 178 264 168 298 166 C336 166 368 176 390 192"/>
+<path pathLength="1" style="--i:4" d="M199 206 C198 226 200 244 206 258 C220 286 254 306 293 307 C330 306 366 286 380 258 C386 244 388 226 387 206"/>
+<path pathLength="1" style="--i:4" stroke-width="2" d="M387 212 C396 212 400 220 398 230 C396 238 390 240 386 238"/>
+<!-- olhos, sobrancelhas, nariz, sorriso e bochechas -->
+<path pathLength="1" style="--i:5" d="M222 187 C234 183 248 182 259 184"/>
+<path pathLength="1" style="--i:5" d="M309 180 C322 178 338 180 351 186"/>
+<path pathLength="1" style="--i:6" d="M243 202 C251 202 258 209 258 217 C258 225 251 232 243 232 C235 232 228 225 228 217 C228 209 235 202 243 202"/>
+<path pathLength="1" style="--i:6" d="M330 199 C339 199 346 206 346 215 C346 224 339 231 330 231 C321 231 314 224 314 215 C314 206 321 199 330 199"/>
+<path pathLength="1" style="--i:7" stroke-width="2" d="M282 238 C278 244 280 250 288 250"/>
+<path pathLength="1" style="--i:7" d="M259 256 C268 268 280 272 290 271 C302 270 310 264 316 256"/>
+<path pathLength="1" style="--i:8" stroke-width="2" d="M226 236 C236 236 244 244 244 254 C244 264 236 272 226 272 C216 272 208 264 208 254 C208 244 216 236 226 236"/>
+<path pathLength="1" style="--i:8" stroke-width="2" d="M346 232 C357 232 366 241 366 252 C366 263 357 272 346 272 C335 272 326 263 326 252 C326 241 335 232 346 232"/>
+<!-- rabo de cavalo ao vento -->
+<path pathLength="1" style="--i:9" d="M321 77 C380 70 430 90 470 110 C500 125 530 140 555 150"/>
+<path pathLength="1" style="--i:9" d="M380 120 C420 160 460 190 500 205 C520 212 540 216 551 219"/>
+<path pathLength="1" style="--i:10" d="M390 160 C410 210 440 240 470 260 C485 270 492 280 496 288"/>
+<path pathLength="1" style="--i:10" d="M394 140 C430 170 470 196 506 214 C520 222 530 232 536 244"/>
+<!-- pescoço, top e cintura -->
+<path pathLength="1" style="--i:11" d="M261 305 L261 322 M303 305 L303 322"/>
+<path pathLength="1" style="--i:11" d="M261 324 C268 340 278 356 290 356 C304 356 314 342 319 326"/>
+<path pathLength="1" style="--i:12" d="M244 335 C240 352 238 372 240 389 C242 400 244 410 246 419 C280 417 316 416 349 414 C352 402 354 392 353 381 C350 360 346 340 340 322"/>
+<path pathLength="1" style="--i:12" d="M246 422 C246 434 244 446 244 456 M349 418 C349 430 349 442 349 452"/>
+<path pathLength="1" style="--i:13" stroke-width="2" d="M244 458 C280 456 316 454 349 452"/>
+<!-- a fita métrica ao pescoço -->
+<path pathLength="1" style="--i:14" d="M273 309 C266 360 256 410 248 450 C242 480 236 504 231 524"/>
+<path pathLength="1" style="--i:14" d="M328 309 C334 350 338 400 340 440 C350 448 364 452 374 456 C384 490 392 524 399 557"/>
+<path pathLength="1" style="--i:14" stroke-width="2" d="M225 524 L237 524 L237 538 L225 538 Z"/>
+<!-- braço esquerdo, polegar para cima -->
+<path pathLength="1" style="--i:15" d="M223 336 C205 350 196 372 190 392 C186 405 184 414 180 420 C170 418 162 410 158 400"/>
+<path pathLength="1" style="--i:15" d="M240 392 C224 402 208 412 196 420"/>
+<path pathLength="1" style="--i:16" d="M153 331 C164 331 173 341 173 353 C173 365 164 375 153 375 C142 375 133 365 133 353 C133 341 142 331 153 331"/>
+<path pathLength="1" style="--i:16" d="M148 334 C148 322 152 312 158 314 C164 316 165 328 163 338"/>
+<path pathLength="1" style="--i:16" d="M151 366 C164 362 180 364 191 372 L191 396 C178 390 164 390 151 396 Z"/>
+<!-- braço direito, mão na anca, com o relógio -->
+<path pathLength="1" style="--i:17" d="M353 330 C380 330 410 346 424 370 C432 386 430 400 424 412 C412 430 398 446 384 458"/>
+<path pathLength="1" style="--i:17" d="M352 386 C366 392 378 402 386 414"/>
+<path pathLength="1" style="--i:18" d="M382 420 C394 416 410 416 420 422 L420 446 C408 442 394 444 384 448 Z"/>
+<path pathLength="1" style="--i:18" d="M372 438 C383 438 392 447 392 458 C392 469 383 478 372 478 C361 478 352 469 352 458 C352 447 361 438 372 438"/>
+<!-- pernas -->
+<path pathLength="1" style="--i:19" d="M244 460 C236 500 228 580 230 678"/>
+<path pathLength="1" style="--i:19" d="M302 520 C298 580 292 640 286 683 M307 520 C318 580 334 640 350 683 M302 520 L307 520"/>
+<path pathLength="1" style="--i:20" d="M349 454 C362 474 374 496 382 520 C388 580 394 640 396 678"/>
+<!-- sapatilhas e a balança -->
+<path pathLength="1" style="--i:21" d="M228 682 C204 690 180 708 170 730 C166 748 176 760 196 762 C222 764 252 762 274 756 C284 748 286 726 280 700 C268 686 248 680 228 682"/>
+<path pathLength="1" style="--i:21" d="M350 688 C338 700 332 722 334 748 C336 766 356 772 380 772 C400 772 414 764 412 746 C410 722 402 700 392 690 C378 682 362 682 350 688"/>
+<path pathLength="1" style="--i:22" d="M418 674 L578 686 C590 690 592 708 584 716 L540 744 L412 738"/>
+<path pathLength="1" style="--i:23" stroke-width="2" d="M456 682 C465 682 472 685 472 688 C472 691 465 694 456 694 C447 694 440 691 440 688 C440 685 447 682 456 682 M533 693 C544 693 553 696 553 700 C553 704 544 707 533 707 C522 707 513 704 513 700 C513 696 522 693 533 693 M499 712 C509 712 517 715 517 718 C517 721 509 724 499 724 C489 724 481 721 481 718 C481 715 489 712 499 712"/>
+</svg>

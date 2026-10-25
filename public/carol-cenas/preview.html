@@ -5,91 +5,86 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cenas da Carol</title>
 <style>
-  :root { --dur: 2s; --bg: #f6f3ef; --ink: #3b2a20; --card: #fff; }
+  :root { --bg: #f6f3ef; --ink: #3b2a20; --card: #fff; --muted: #6b5a4e; }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 16px; font: 15px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
   h1 { font-size: 18px; margin: 0 0 4px; }
-  p { margin: 0 0 16px; color: #6b5a4e; }
-  .barra { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  p { margin: 0 0 16px; color: var(--muted); }
+  .barra { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 1; }
   button { font: inherit; padding: 8px 16px; border-radius: 999px; border: 0; background: var(--ink); color: #fff; cursor: pointer; }
   label { display: flex; gap: 6px; align-items: center; }
-  .lado { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; max-width: 760px; }
-  figure { margin: 0; background: var(--card); border-radius: 16px; padding: 12px; }
-  figcaption { font-weight: 600; margin-bottom: 8px; }
-  figcaption small { display: block; font-weight: 400; color: #6b5a4e; }
+  .cenas { display: grid; gap: 16px; max-width: 760px; }
+  .cena { background: var(--card); border-radius: 16px; padding: 12px; }
+  .lado { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .lado small { display: block; color: var(--muted); margin-bottom: 4px; }
   .palco { position: relative; aspect-ratio: 600 / 804; border-radius: 12px; overflow: hidden; background: #fbf9f6; }
   .palco > svg, .palco > img { position: absolute; inset: 0; width: 100%; height: 100%; }
 
-  /* O contrato das duas: cada caminho tem pathLength="1" e --i (a ordem). */
-  .anima path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: desenha var(--seg) ease-out forwards; animation-delay: calc(var(--i) * var(--passo)); }
+  /* O contrato (o mesmo do CarolCena): cada caminho tem pathLength="1" e
+     --i (a ordem); atraso = i × (2 s − 0,6 s) / max(i), cada traço 0,6 s. */
+  .anima path { stroke-dasharray: 1; stroke-dashoffset: 1; animation: desenha .6s ease-out forwards; animation-delay: calc(var(--i) * var(--passo)); }
   @keyframes desenha { to { stroke-dashoffset: 0; } }
 
-  /* Opção 2: o traço, e no fim (se pedido) a imagem aparece por baixo. */
-  #traco svg { color: var(--ink); }
-  #traco img { opacity: 0; }
-  #traco.com-imagem.anima img { animation: aparece .5s ease-out forwards; animation-delay: calc(var(--dur) - .3s); }
-  #traco.com-imagem.anima svg { animation: some .5s ease-out forwards; animation-delay: calc(var(--dur) - .1s); }
+  /* Traço: no fim (se pedido) cruza com a imagem, como no CarolCena. */
+  .traco svg { color: var(--ink); }
+  .traco img { opacity: 0; }
+  .com-imagem .traco.anima img { animation: aparece .5s ease-out forwards; animation-delay: 2s; }
+  .com-imagem .traco.anima svg { animation: some .5s ease-out forwards; animation-delay: 2s; }
   @keyframes aparece { to { opacity: 1; } }
   @keyframes some { to { opacity: 0; } }
 </style>
 </head>
 <body>
-<h1>Cenas da Carol: corrida</h1>
-<p>As duas animações de «a Carol está a analisar», lado a lado, com a duração final (~2 s).</p>
+<h1>Cenas da Carol</h1>
+<p>As animações de «a Carol está a analisar», por área: a máscara revela a imagem, o traço desenha-a. ~2 s cada.</p>
 <div class="barra">
   <button id="repetir" type="button">Repetir</button>
-  <label><input type="checkbox" id="acabar" checked> Opção 2 acaba na imagem</label>
+  <label><input type="checkbox" id="acabar" checked> O traço acaba na imagem</label>
 </div>
-<div class="lado">
-  <figure>
-    <figcaption>Opção 1: máscara<small>corrida-mascara.svg revela corrida.webp</small></figcaption>
-    <div class="palco" id="mascara"></div>
-  </figure>
-  <figure>
-    <figcaption>Opção 2: traço<small>corrida-traco.svg, desenhado à mão</small></figcaption>
-    <div class="palco com-imagem" id="traco"><img src="corrida.webp" alt=""></div>
-  </figure>
-</div>
+<div class="cenas" id="cenas"></div>
 <script>
-  const DUR = 2; // segundos, do primeiro traço ao último acabado
-  const SEG = 0.6; // quanto demora cada traço
+  const AREAS = [['corrida', 'Corrida'], ['ginasio', 'Ginásio'], ['corporal', 'Análise corporal'], ['alimentacao', 'Alimentação']];
+  const DUR = 2, SEG = 0.6;
+  const raiz = document.getElementById('cenas');
 
   function ritmo(el) {
     const max = Math.max(...[...el.querySelectorAll('path')].map((p) => Number(p.style.getPropertyValue('--i')) || 0), 1);
-    el.style.setProperty('--seg', `${SEG}s`);
     el.style.setProperty('--passo', `${(DUR - SEG) / max}s`);
   }
 
   async function carregar() {
-    const [mascara, traco] = await Promise.all(['corrida-mascara.svg', 'corrida-traco.svg'].map((f) => fetch(f).then((r) => r.text())));
-
-    // Opção 1: a máscara entra num <mask> e a imagem fica por baixo dela.
-    const m = new DOMParser().parseFromString(mascara, 'image/svg+xml').documentElement;
-    const caminhos = [...m.querySelectorAll('path')].map((p) => p.outerHTML).join('');
-    document.getElementById('mascara').innerHTML = `
-      <svg viewBox="0 0 600 804" preserveAspectRatio="xMidYMid slice">
-        <mask id="revela" maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="804">
-          <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">${caminhos}</g>
-        </mask>
-        <image href="corrida.webp" width="600" height="804" mask="url(#revela)"/>
-      </svg>`;
-
-    // Opção 2: o traço por cima da imagem (escondida até ao fim).
-    document.getElementById('traco').insertAdjacentHTML('beforeend', traco);
+    for (const [area, nome] of AREAS) {
+      const [mascara, traco] = await Promise.all([`${area}-mascara.svg`, `${area}-traco.svg`].map((f) => fetch(f).then((r) => r.text())));
+      const caminhos = [...new DOMParser().parseFromString(mascara, 'image/svg+xml').documentElement.querySelectorAll('path')]
+        .map((p) => p.outerHTML).join('');
+      const sec = document.createElement('section');
+      sec.className = 'cena';
+      sec.innerHTML = `
+        <h2>${nome}</h2>
+        <div class="lado">
+          <div><small>Máscara</small><div class="palco mascara">
+            <svg viewBox="0 0 600 804">
+              <mask id="m-${area}" maskUnits="userSpaceOnUse" x="0" y="0" width="600" height="804">
+                <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">${caminhos}</g>
+              </mask>
+              <image href="${area}.webp" width="600" height="804" mask="url(#m-${area})"/>
+            </svg></div></div>
+          <div><small>Traço</small><div class="palco traco"><img src="${area}.webp" alt="">${traco}</div></div>
+        </div>`;
+      raiz.appendChild(sec);
+    }
     repetir();
   }
 
   function repetir() {
-    document.getElementById('traco').classList.toggle('com-imagem', document.getElementById('acabar').checked);
-    for (const id of ['mascara', 'traco']) {
-      const el = document.getElementById(id);
-      const alvo = id === 'mascara' ? el.querySelector('mask') : el.querySelector('svg:last-of-type');
+    document.body.classList.toggle('com-imagem', document.getElementById('acabar').checked);
+    for (const palco of raiz.querySelectorAll('.palco')) {
+      const alvo = palco.classList.contains('mascara') ? palco.querySelector('mask') : palco;
       ritmo(alvo);
-      el.classList.remove('anima');
-      if (alvo !== el) alvo.classList.remove('anima');
-      void el.offsetWidth; // reinicia as animações
-      el.classList.add('anima');
-      if (alvo !== el) alvo.classList.add('anima');
+      palco.classList.remove('anima'); alvo.classList.remove('anima');
+      void palco.offsetWidth; // reinicia as animações
+      palco.classList.add('anima'); alvo.classList.add('anima');
     }
   }
 

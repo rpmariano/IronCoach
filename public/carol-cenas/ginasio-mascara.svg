@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 804" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+<!-- A Carol no ginásio: máscara de revelação (traços largos, branco = visível) sobre o webp. Cada caminho
+     tem pathLength="1" e a variável CSS i (a ordem): anima-se com stroke-dasharray:1 e
+     stroke-dashoffset 1 → 0. Os últimos varrem o fundo. -->
+<path pathLength="1" style="--i:0" stroke-width="160" d="M250 200 C250 150 300 130 340 170"/>
+<path pathLength="1" style="--i:1" stroke-width="90" d="M300 80 C380 90 440 130 490 170 C520 190 540 210 555 230"/>
+<path pathLength="1" style="--i:2" stroke-width="140" d="M285 320 C285 370 285 420 285 470"/>
+<path pathLength="1" style="--i:3" stroke-width="90" d="M230 360 C190 400 150 380 120 345 M340 350 C390 380 410 430 410 480"/>
+<path pathLength="1" style="--i:4" stroke-width="80" d="M100 345 L200 370 M350 485 L460 485"/>
+<path pathLength="1" style="--i:5" stroke-width="100" d="M255 480 C252 560 250 630 248 700 M340 480 C350 560 362 630 372 700"/>
+<path pathLength="1" style="--i:6" stroke-width="90" d="M190 740 C220 740 250 735 280 730 M345 735 C370 740 395 740 415 735"/>
+<path pathLength="1" style="--i:7" stroke-width="320" d="M-60 110 C150 80 450 80 680 110"/>
+<path pathLength="1" style="--i:8" stroke-width="320" d="M680 310 C450 280 150 280 -60 310"/>
+<path pathLength="1" style="--i:9" stroke-width="320" d="M-60 510 C150 480 450 480 680 510"/>
+<path pathLength="1" style="--i:10" stroke-width="320" d="M680 710 C450 680 150 680 -60 710"/>
+</svg>
