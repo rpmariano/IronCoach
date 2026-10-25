@@ -2623,6 +2623,29 @@ describe('Coach — revisão dos objetivos depois do balanço da prova (targets_
     await waitFor(() => expect(screen.getByText('Revê os objetivos.')).toBeInTheDocument());
   });
 
+  it("balanço 'perto': os chips do balanço ficam e a revisão só sai depois de o atleta responder", async () => {
+    invokeEdgeFunctionWithTimeout.mockImplementation((_n, { body }) => {
+      const b = JSON.parse(body);
+      if (b.targets_review) return Promise.resolve({ data: { model_message: { id: 'rev', content: 'Revê os objetivos.' }, suggestions: ['Atualiza os objetivos', 'Mantém'] }, error: null });
+      if (b.message === 'Sim, quero melhorar') return Promise.resolve({ data: { model_message: { id: 'r2', content: 'Combinado, vamos a isso.' }, suggestions: [] }, error: null });
+      return Promise.resolve({ data: { model_message: { id: 'm1', content: 'Ficaste perto do objetivo. Para a próxima é para fazer melhor?' }, suggestions: ['Sim, quero melhorar', 'Estou bem assim'] }, error: null });
+    });
+    useAppStore.setState({ coachIntent: { kind: 'race_balance', candidate: { ...CANDIDATE, raceOutcome: { verdict: 'perto', officialSeconds: 2700 } } } });
+    renderCoach();
+    await waitFor(() => expect(screen.getByText(/Para a próxima é para fazer melhor/)).toBeInTheDocument());
+    await act(async () => { await new Promise((r) => setTimeout(r, 120)); });
+    // Retida: nada de revisão, e os chips do balanço continuam.
+    expect(revisoes()).toHaveLength(0);
+    expect(useAppStore.getState().coachSuggestions).toEqual(['Sim, quero melhorar', 'Estou bem assim']);
+    // O atleta responde (escreve a resposta): só depois da resposta dela sai a revisão.
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: 'Sim, quero melhorar' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+    await waitFor(() => expect(revisoes()).toHaveLength(1));
+    const ordem = bodies().map((b) => (b.targets_review ? 'revisao' : b.message));
+    expect(ordem.indexOf('Sim, quero melhorar')).toBeLessThan(ordem.indexOf('revisao'));
+    expect(revisoes()[0].targets_review).toEqual({ reason: 'race_after', race_id: 'race-1' });
+  });
+
   it('balanço sem registo (sem_registo) ou sem resultado (corrida por ligar): não pede', async () => {
     balanco({ ...CANDIDATE, raceOutcome: { verdict: 'sem_registo' } }, { data: { model_message: { id: 'm1', content: 'Como correu?' }, suggestions: [] }, error: null });
     await waitFor(() => expect(screen.getByText('Como correu?')).toBeInTheDocument());
