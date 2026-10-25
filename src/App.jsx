@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from './lib/supabase';
 import { registerServiceWorker, maybeSyncPushSubscription, pushWantedFor, forgetPushSubscriptionOnThisDevice } from './lib/push';
+import { cenasPreviewAtiva } from './utils/cenasPreview';
 import { reloadFresh, isBusy, resumeParams, entryTabFromSearch, stripResumeParam, markEntryApplied, markEntryWelcomeHandled } from './lib/appUpdate';
 import { prefetchScreensWhenIdle, rememberDefaultExport } from './utils/prefetchScreens';
 import { isScreenOpen, startNavigationPersistence, readRecentNavigation, applyNavigation, clearNavigation, dropMissingScreen, shouldRestoreNavigation } from './utils/navigationRestore';
@@ -159,6 +160,9 @@ const PlanoScreen = lazy(holdForLogo(loadPlanoScreen));
 // cortar, e nada a esperar.
 const ButtonShowcase = lazy(() => import('./components/DesignSystem/ButtonShowcase'));
 const UIAuditSandbox = lazy(() => import('./components/DesignSystem/UIAuditSandbox'));
+// A pré-visualização das cenas da análise (?cenas=preview, com ?demo=true ou em dev).
+const CarolCenasPreview = lazy(() => import('./components/shared/CarolCenasPreview'));
+
 
 /* Pré-carregamento por gesto. A barra inferior vive no Layout.jsx, que não é
    território deste ficheiro — em vez de lhe acrescentar handlers, ouve-se o
@@ -1095,7 +1099,8 @@ export default function App() {
 
   /* O logo do index.html sai quando a app pode entrar — ou logo, nas
      bancadas de teste, que não passam pelo ecrã do logo. */
-  const benchTab = activeTab === 'design-system' || activeTab === 'audit-sandbox';
+  const cenasPreview = cenasPreviewAtiva();
+  const benchTab = activeTab === 'design-system' || activeTab === 'audit-sandbox' || cenasPreview;
   useEffect(() => {
     if (firstBootDone) return;
     if (!showBootSplash || benchTab) {
@@ -1103,6 +1108,10 @@ export default function App() {
       setFirstBootDone(true);
     }
   }, [showBootSplash, benchTab, firstBootDone]);
+
+  if (cenasPreview) {
+    return <Suspense fallback={<FullScreenLoader still />}><CarolCenasPreview /></Suspense>;
+  }
 
   if (activeTab === 'design-system') {
     return <Suspense fallback={<FullScreenLoader still />}><ButtonShowcase /></Suspense>;
