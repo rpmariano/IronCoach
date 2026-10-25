@@ -442,22 +442,35 @@ export default function Coach() {
      (`cup_map_unavailable`): uma frase para o toque não ficar sem resposta,
      e a competição relê-se — se a inscrição já não está ativa (saiu noutro
      dispositivo), o aviso do Início desaparece. */
-  const handleCupMapCheckin = ({ signature = null, first = false } = {}) => sendCoachInitiatedPayload({
+  const cupMapPendingRef = useRef(null);
+  const markCupMapDone = (signature) => {
+    markCupMapHandled(profile?.id, signature);
+    useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
+  };
+  const handleCupMapCheckin = ({ signature = null, first = false } = {}) => {
+    // Se o turno passar dos 45 s a resposta chega por sondagem, sem os sinais
+    // do servidor: a assinatura fica pendente para o handleAsyncFallback.
+    if (!coachLoading) cupMapPendingRef.current = signature;
+    return sendCoachInitiatedPayload({
     message: '',
     is_plan_checkin: true,
-    cup_map: { first: !!first },
+    cup_map: { first: !!first, signature },
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
   }).then((data) => {
-    if (data?.cup_map_shown === true && signature) {
-      markCupMapHandled(profile?.id, signature);
-      useAppStore.getState().logImpression?.({ kind: 'moment', key: signature, title: null });
+    cupMapPendingRef.current = null;
+    // Mostrado agora, ou "already_sent" (o servidor já o tinha mostrado a esta
+    // assinatura): tratado nos dois casos. Chegado por sondagem fica em
+    // handleAsyncFallback, que lê a assinatura pendente.
+    if ((data?.cup_map_shown === true || data?.skipped === 'already_sent') && signature) {
+      markCupMapDone(signature);
     } else if (data?.skipped && data.reason === 'cup_map_unavailable') {
       addCoachMessage({ id: (Date.now() + 1).toString(), role: 'assistant', content: COACH_EMPTY_REPLY_TEXT });
       useAppStore.getState().loadCup?.({ force: true })?.catch?.(() => {});
     }
     return data;
   });
+  };
 
   // Vindo do Início, botão "Falar com a Carol" no aviso "O balanço da
   // prova" (utils/coachProactive.js, pendingRaceBalanceCandidate): ao
@@ -955,6 +968,12 @@ export default function Coach() {
     }
 
     if (modelRow) {
+      // A resposta do mapa da época chegou por sondagem: sem cup_map_shown, mas
+      // foi o turno do mapa — marca-se (uma resposta de erro não conta).
+      if (cupMapPendingRef.current && !modelRow.is_error) {
+        markCupMapDone(cupMapPendingRef.current);
+        cupMapPendingRef.current = null;
+      }
       addCoachMessage({
         id: modelRow.id, role: 'assistant', content: modelRow.content, mood: modelRow.mood, live: true,
         ...(modelRow.is_error && retry ? retry : {}),

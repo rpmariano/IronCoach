@@ -1837,10 +1837,9 @@ describe('Coach — "O mapa da época" pedido a partir do Início (coachIntent c
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
     expect(invokeEdgeFunctionWithTimeout.mock.calls[0][0]).toBe('coach-chat');
     const body = JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body);
-    expect(body).toMatchObject({ message: '', is_plan_checkin: true, cup_map: { first: true } });
-    // Nada de assinatura, de edição ou de motivos no corpo: o servidor monta
-    // o guião a partir do bloco da competição.
-    expect(JSON.stringify(body)).not.toContain('cup_map:');
+    // A assinatura vai, para o servidor não repetir o mapa (2026-10-25); nada
+    // de edição ou de motivos: o guião monta-se a partir do bloco da competição.
+    expect(body).toMatchObject({ message: '', is_plan_checkin: true, cup_map: { first: true, signature: SIGNATURE } });
     expect(body.plan_divergence).toBeUndefined();
     expect(useAppStore.getState().coachIntent).toBeNull();
 
@@ -1853,7 +1852,61 @@ describe('Coach — "O mapa da época" pedido a partir do Início (coachIntent c
     useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
     renderCoach();
     await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
-    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body).cup_map).toEqual({ first: false });
+    expect(JSON.parse(invokeEdgeFunctionWithTimeout.mock.calls[0][1].body).cup_map).toEqual({ first: false, signature: SIGNATURE });
+  });
+
+  /* 2026-10-25: o turno de sexta passou dos 45 s e a resposta chegou por
+     sondagem, sem cup_map_shown: a assinatura nunca ficou tratada e o aviso
+     continuou ativo. Os três caminhos que a marcam. */
+  it('already_sent (o servidor já o tinha mostrado): marca a assinatura, sem mensagem nova', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: 'already_sent', cup_map_shown: true, model_message: null, suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+    renderCoach();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual([SIGNATURE]));
+    expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: SIGNATURE, title: null });
+    expect(useAppStore.getState().coachMessages.map((m) => m.content)).not.toContain(COACH_EMPTY_REPLY_TEXT);
+  });
+
+  it('already_sent sozinho (sem cup_map_shown) também marca', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: 'already_sent', model_message: null, suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+    renderCoach();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual([SIGNATURE]));
+  });
+
+  it('a resposta do mapa chega por sondagem (timeout dos 45 s): marca a assinatura pendente', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => (table === 'coach_messages'
+      ? coachMessagesChain({ data: [{ id: 'm9', role: 'model', content: 'Aqui vai o mapa.', created_at: new Date().toISOString() }], error: null })
+      : profilesChain({ data: null, error: null })));
+    vi.useFakeTimers();
+    try {
+      useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+      renderCoach();
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+      expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Aqui vai o mapa.');
+      expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY))).toEqual([SIGNATURE]);
+      expect(logImpression).toHaveBeenCalledWith({ kind: 'moment', key: SIGNATURE, title: null });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('sondagem sem resposta (aviso de demora): nada fica marcado', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: null, error: 'timeout', isTimeout: true });
+    supabase.from.mockImplementation((table) => (table === 'coach_messages'
+      ? coachMessagesChain({ data: [], error: null })
+      : profilesChain({ data: { coach_chat_busy_since: null }, error: null })));
+    vi.useFakeTimers();
+    try {
+      useAppStore.setState({ coachIntent: { kind: 'cup_map', signature: SIGNATURE, first: false } });
+      renderCoach();
+      await act(async () => { await vi.advanceTimersByTimeAsync(4100 * 3); });
+      expect(window.localStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(logImpression).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('se o pedido falhar, nada fica marcado — o aviso volta', async () => {
