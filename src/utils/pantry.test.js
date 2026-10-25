@@ -322,7 +322,7 @@ describe('refeições predefinidas', () => {
     expect(templatesForMealType(lista, 'jantar').map((t) => t.name)).toEqual(['A', 'C', 'B']);
   });
 
-  it('só as do grupo do tipo e as sem tipo: almoço e jantar juntos, os outros sozinhos (bug #85)', () => {
+  it('só as do grupo do tipo e as sem tipo: almoço+jantar e lanche da manhã+lanche juntos, os outros sozinhos (bug #85)', () => {
     const lista = [
       T('Pequeno', [], { default_meal_type: 'pequeno-almoco', times_used: 9 }),
       T('Almoço', [], { default_meal_type: 'almoco', times_used: 2 }),
@@ -334,7 +334,9 @@ describe('refeições predefinidas', () => {
     expect(templatesForMealType(lista, 'almoco').map((t) => t.name)).toEqual(['Almoço', 'Jantar', 'Sem tipo']);
     expect(templatesForMealType(lista, 'jantar').map((t) => t.name)).toEqual(['Jantar', 'Sem tipo', 'Almoço']);
     expect(templatesForMealType(lista, 'pequeno-almoco').map((t) => t.name)).toEqual(['Pequeno', 'Sem tipo']);
-    expect(templatesForMealType(lista, 'lanche-manha').map((t) => t.name)).toEqual(['Sem tipo']);
+    // Os dois lanches partilham: o da manhã vê as do lanche da tarde.
+    expect(templatesForMealType(lista, 'lanche-manha').map((t) => t.name)).toEqual(['Sem tipo', 'Lanche']);
+    expect(templatesForMealType(lista, 'lanche').map((t) => t.name)).toEqual(['Lanche', 'Sem tipo']);
     expect(templatesForMealType(lista, 'ceia').map((t) => t.name)).toEqual(['Sem tipo']);
   });
 
