@@ -5728,3 +5728,17 @@ Deno.test("handler: o portão do mapa vem antes do Gemini e o registo vem com a 
   const record = src.indexOf("if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);");
   assert(save > 0 && record > save);
 });
+
+// ─── MAX_TOKENS no chat (2026-10-25) ──────────────────────────────────────
+// O Rui pediu um plano de 14 dias e a ronda 0 acabou duas vezes em MAX_TOKENS
+// com o content vazio: os 8192 de saída não davam para o raciocínio mais o
+// propose_training_plan com 14 meal_suggestion.
+import { CHAT_MAX_OUTPUT_TOKENS } from "./index.ts";
+
+Deno.test("chat: o teto de saída é 32768 e é o que vai no pedido ao Gemini (ligações no código)", async () => {
+  assertEquals(CHAT_MAX_OUTPUT_TOKENS, 32768);
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const call = src.slice(src.indexOf("async function callGemini("), src.indexOf("async function callGemini(") + 3500);
+  assertStringIncludes(call, "maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,");
+  assertEquals(src.includes("maxOutputTokens: 8192"), false);
+});

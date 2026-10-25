@@ -94,6 +94,10 @@ const MAX_TOOL_ROUNDS = 4;  // idas-e-voltas de function calling antes de força
 // Gemini diz que está ocupado (503), dentro do prazo do pedido
 // (_shared/geminiFetch.ts, o mesmo dos registos).
 const GEMINI_ATTEMPT_MS = 100000;
+/** O teto de saída do chat (raciocínio incluído). O Flash aceita até 65536;
+ *  32768 dá folga a um plano de 14 dias com refeições sem deixar uma resposta
+ *  descontrolada gastar o prazo do pedido (GEMINI_ATTEMPT_MS). */
+export const CHAT_MAX_OUTPUT_TOKENS = 32768;
 // Prazo do pedido inteiro, todas as rondas de ferramentas incluídas, com
 // folga para o limite rígido da plataforma (~150 s): passado ele, a função
 // era morta sem libertar o lock e sem resposta legível.
@@ -7747,7 +7751,12 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
               // nos argumentos da function call. A resposta ficava truncada
               // a meio do JSON, rawText saía vazio, e o cliente via "O coach
               // não conseguiu gerar uma resposta" sem pista nenhuma da causa.
-              maxOutputTokens: 8192,
+              // Subido de 8192 para 32768 (2026-10-25): a 25/10 o Rui pediu um plano de
+              // 14 dias e a ronda 0 acabou duas vezes em finishReason MAX_TOKENS com o
+              // content vazio (prompt 54979, thoughts 3963) — os 8192 não davam para o
+              // raciocínio mais o propose_training_plan com 14 meal_suggestion. Ver
+              // CHAT_MAX_OUTPUT_TOKENS.
+              maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
               response_mime_type: "application/json",
               response_schema: useRecommendationsSchema ? RESPONSE_SCHEMA : RESPONSE_SCHEMA_BASE,
             },
