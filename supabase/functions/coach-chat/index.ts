@@ -816,13 +816,23 @@ export function classifyTurn(
    esquema sem `recommendations` (que não servem a um plano e foram a única
    origem de 400 no chat). Turno de plano: a continuação de um plano partido,
    os casos A/F_PLAN (o atleta aceitou os objetivos ou recusou o plano a dizer
-   o que mudar), e um caso E cuja mensagem pede um plano. */
-const PLAN_REQUEST_RE = /\bplan(?:o|os|ear|eia|eamento)\b|\bsemanas?\b|\b\d+\s*dias\b|\bdias de treino\b|\btreinos? (?:para|da|das) (?:semana|próxim)/i;
+   o que mudar), e um caso E cuja mensagem PEDE um plano: um verbo de pedido
+   e o que se pede (revisão do e0794d87 — só a palavra dava falsos positivos:
+   «Como correu a minha semana?», «Há 3 dias que me dói o joelho», «O plano de
+   ontem foi duro»; nesses o esquema perdia as recommendations em silêncio). */
+const PLAN_VERB_RE = /\b(?:faz(?:e|es|er)?|monta(?:r)?|planeia|planear|prepara(?:r)?|quero|queria|gostava|ajusta(?:r)?|refaz(?:er)?|refazes|cria(?:r)?|organiza(?:r)?|prop[õo]e|propor|prefiro|preciso)\b|\bd[áa]-me\b|pr[óo]xim[oa]s?\b/i;
+const PLAN_TARGET_RE = /\bplan(?:o|os)\b|\bprograma\b|\bsemanas?\b|\b\d+\s*dias\b|\bm[eê]s(?:es)?\b|\bbloco\b|\btreinos?\b/i;
 
 export function isPlanTurn(message: string, turnCase: TurnCase, isContinuation: boolean): boolean {
   if (isContinuation || turnCase === "A" || turnCase === "F_PLAN") return true;
-  return turnCase === "E" && PLAN_REQUEST_RE.test(message || "");
+  const m = message || "";
+  return turnCase === "E" && PLAN_VERB_RE.test(m) && PLAN_TARGET_RE.test(m);
 }
+
+/* Esta instância deixa de enviar o thinkingConfig depois de um 400 num turno
+   de plano (como recommendationsSchemaRejected): não vale a pena pagar a ida e
+   volta falhada em todos os turnos de plano até ao próximo arranque a frio. */
+let lowThinkingRejected = false;
 
 /** Ferramentas permitidas em cada caso. null = todas (caso E). */
 export function allowedToolsFor(kind: TurnCase): Set<string> | null {
@@ -8043,7 +8053,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Turno de plano: raciocínio "low" e esquema sem recommendations (isPlanTurn).
     const planTurn = isPlanTurn(message, turnCase, !!planContinuationIn);
     let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;
-    let useLowThinking = planTurn;
+    let useLowThinking = planTurn && !lowThinkingRejected;
     async function callGemini(withTools = true) {
       const res = await fetchGeminiWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
@@ -8061,15 +8071,16 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             ...(withTools ? { tools: toolsBlock } : {}),
             generationConfig: {
               temperature: 0.7,
-              // Sem thinkingConfig de propósito: o campo para desativar/limitar
-              // "thinking" mudou de nome entre gerações do modelo por trás do
-              // alias "-latest" (thinkingBudget vs. thinkingLevel — confirmado
-              // em produção: thinkingBudget causou 400 INVALID_ARGUMENT assim
-              // que o alias rodou para uma geração mais recente). Sem o campo,
-              // o pedido funciona com qualquer geração; em compensação
-              // maxOutputTokens fica bem acima do necessário para a resposta,
-              // para sobrar espaço aos tokens de raciocínio interno e a
-              // resposta não ser cortada a meio.
+              // thinkingConfig só nos turnos de plano (isPlanTurn, 2026-10-25),
+              // e com rede: o campo para limitar o "thinking" mudou de nome
+              // entre gerações do modelo por trás do alias "-latest"
+              // (thinkingBudget vs. thinkingLevel — thinkingBudget causou 400
+              // INVALID_ARGUMENT quando o alias rodou). Por isso um 400 num
+              // turno de plano repete a ronda sem o campo, e a instância deixa
+              // de o enviar (lowThinkingRejected). Nos outros turnos vai sem
+              // ele, como sempre; em compensação maxOutputTokens fica bem acima
+              // do necessário para a resposta, para sobrar espaço aos tokens de
+              // raciocínio interno e a resposta não ser cortada a meio.
               // Subido de 4000 para 8192: confirmado em produção que uma
               // chamada a propose_training_plan cobrindo um plano de vários
               // dias, cada um com meal_suggestion COMPLETA (pequeno-almoço,
@@ -8214,8 +8225,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
            thinkingConfig até prova em contrário: repete-se a ronda, uma vez,
            sem ele — o turno fica só mais lento, como antes. */
         if (useLowThinking && geminiRes.status === 400) {
-          console.error("coach-chat: thinkingConfig low recusado pela API — a repetir sem ele", JSON.stringify({ round, turnCase }));
+          // O mesmo prefixo do geminiWithFallback: nos logs vê-se que o alias
+          // rodou e que o raciocínio deixou de estar limitado nesta instância.
+          console.warn("[gemini] fallback: thinkingConfig low recusado no coach-chat — a repetir sem ele", JSON.stringify({ round, turnCase, status: geminiRes.status }));
           useLowThinking = false;
+          lowThinkingRejected = true;
           round--;
           continue;
         }
