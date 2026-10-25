@@ -22,7 +22,7 @@ import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS }
 import { listProactiveTriggers, wasProactiveSent, markProactiveSent, writeRaceBalanceCache } from '../../utils/coachProactive';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { markCupMapHandled } from '../../utils/cupMap';
-import { nextPlanContinuation, PLAN_PART_DAYS } from '../../utils/planContinuation';
+import { nextPlanContinuation, rebuildPlanChain, PLAN_PART_DAYS } from '../../utils/planContinuation';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { hasAnyRecord } from '../../utils/homeModels';
 import { isOnboardingDoneLocally } from '../../utils/onboarding';
@@ -236,6 +236,19 @@ export default function Coach() {
     setActiveProposalSheetPlan(plan);
     return plan;
   };
+
+  /* Recarregar a página perde a cadeia em memória, mas as partes continuam
+     pendentes na base: reconstrói-se das propostas pendentes seguidas do mesmo
+     plano (rebuildPlanChain), para aceitar uma só parte nunca aplicar um plano
+     parcial. Só quando não há cadeia viva. */
+  useEffect(() => {
+    if (planChainRef.current) return;
+    const rebuilt = rebuildPlanChain(coachPlans, (coachMessages || []).filter((m) => m.role !== 'user'));
+    if (!rebuilt) return;
+    setPlanChain({ of: rebuilt.of, parts: rebuilt.parts });
+    if (rebuilt.continuation) setPendingContinuation((c) => c || rebuilt.continuation);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coachPlans, coachMessages]);
 
   // Uma continuação válida: { from, to } (datas) e a parte x de y. No máximo
   // 12 seguidas sem o atleta escrever — rede de segurança contra um ciclo.
@@ -1621,7 +1634,9 @@ export default function Coach() {
               // perdia-se.
               disabled={coachLoading}
               onClick={() => {
-                setActiveProposalSheetPlan(pendingPlans[0] || null);
+                // Com uma cadeia viva, abre na parte mais recente.
+                const latestId = planChain?.parts?.length ? [...planChain.parts].sort((a, b) => b.part - a.part)[0].planId : null;
+                setActiveProposalSheetPlan(pendingPlans.find((p) => p.id === latestId) || pendingPlans[0] || null);
                 setActiveGoalProposal(pendingGoalProposals[0] || null);
               }}
               className="text-[var(--coach-ink)] font-bold text-xs rounded-xl px-4 py-2.5 min-h-[44px] shadow-[0_8px_30px_rgb(0,0,0,0.12)] flex items-center gap-2 transition active:scale-95 coach-nudge hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"

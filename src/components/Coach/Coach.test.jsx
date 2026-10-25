@@ -2353,6 +2353,61 @@ describe('Coach — plano longo em partes (plan_continuation, tudo-ou-nada)', ()
     }
   });
 
+  describe('depois de recarregar a página (partes pendentes na base)', () => {
+    const base = { status: 'proposto', race_id: 'r1' };
+    const PEND = [
+      { ...base, id: 'p1', period_start: '2026-10-26', period_end: '2026-11-01', summary: 'Semana 1' },
+      { ...base, id: 'p2', period_start: '2026-11-02', period_end: '2026-11-08', summary: 'Semana 2' },
+    ];
+    const abrir = async () => {
+      const b = await screen.findByRole('button', { name: /Proposta de plano por rever [(]2[)]/ });
+      await act(async () => { fireEvent.click(b); });
+    };
+
+    it('2 partes pendentes: a folha abre na mais recente («Parte 2 de 2»); «Aceitar plano» aplica as duas por ordem', async () => {
+      useAppStore.setState({ coachPlans: PEND });
+      script((b) => reply('ok', 'Boa.'));
+      renderCoach();
+      await abrir();
+      expect(await screen.findByTestId('plan-part-note')).toHaveTextContent('Parte 2 de 2');
+      await clicar('Aceitar plano');
+      await waitFor(() => expect(respondToPlan).toHaveBeenCalledTimes(2));
+      expect(respondToPlan.mock.calls).toEqual([['p1', true], ['p2', true]]);
+    });
+
+    it('recusar a parte 2 recusa as duas', async () => {
+      useAppStore.setState({ coachPlans: PEND });
+      script((b) => reply('ok', 'Boa.'));
+      renderCoach();
+      await abrir();
+      await clicar(/Recusar/i);
+      await waitFor(() => expect(respondToPlan).toHaveBeenCalledTimes(2));
+      expect(respondToPlan.mock.calls.map(([id, ok]) => [id, ok]).sort()).toEqual([['p1', false], ['p2', false]]);
+    });
+
+    it('a última mensagem ainda promete a parte 3: «Parte 2 de 3», o botão pede os dias seguintes e a parte 3 sai sem aplicar nada', async () => {
+      const C3 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 3, until: '2026-11-15' };
+      useAppStore.setState({ coachPlans: PEND, coachMessages: [{ id: 'm9', role: 'model', content: 'Aqui tens a semana 2.', created_at: new Date().toISOString(), plan_continuation: C3 }] });
+      script(() => reply('a3', 'Terceira semana.'));
+      renderCoach();
+      await abrir();
+      expect(await screen.findByTestId('plan-part-note')).toHaveTextContent('Parte 2 de 3');
+      await clicar('Aceitar e ver próximos 7 dias');
+      await waitFor(() => expect(continuations()).toHaveLength(1));
+      expect(continuations()[0]).toMatchObject({ message: '', plan_continuation: C3 });
+      expect(respondToPlan).not.toHaveBeenCalled();
+    });
+
+    it('uma só pendente: proposta normal, sem aviso de parte', async () => {
+      useAppStore.setState({ coachPlans: [PEND[0]] });
+      renderCoach();
+      const b = await screen.findByRole('button', { name: /Proposta de plano por rever [(]1[)]/ });
+      await act(async () => { fireEvent.click(b); });
+      await screen.findByRole('button', { name: 'Aceitar plano' });
+      expect(screen.queryByTestId('plan-part-note')).not.toBeInTheDocument();
+    });
+  });
+
   it('enquanto a continuação corre, o que o atleta escreve fica no campo e não se perde', async () => {
     let soltarSegunda;
     script((b) => {
