@@ -3806,13 +3806,15 @@ Deno.test("plano vinculado: provas secundárias pelo caminho são treino, não o
     { id: "r3", name: "Corrida da Vila", date: "2026-08-23", distance_km: 15, race_priority: "c" },
   ];
   const { sb, calls } = makePlanSbWithRaces(races);
+  // Desde 2026-10-25 (MAX_PLAN_SPAN_DAYS) os treinos de uma proposta cabem
+  // numa semana; o período vai até ao Porto e as provas pelo caminho entram
+  // sozinhas como 'prova' (e um item já marcado como prova não conta para os 7 dias).
   const r = await runProposeTrainingPlan(sb, "user-1", {
     race_id: "r1", period_start: "2026-08-10", period_end: "2026-08-30", summary: "bloco até ao Porto",
     items: [
       { planned_date: "2026-08-10", kind: "corrida", training_type: "continuo", target_distance_km: 8 },
       { planned_date: "2026-08-16", kind: "corrida", training_type: "continuo", target_distance_km: 10 },
-      { planned_date: "2026-08-23", kind: "corrida", training_type: "continuo", target_distance_km: 15 },
-      { planned_date: "2026-08-30", kind: "corrida", training_type: "continuo", target_distance_km: 42.2 },
+      { planned_date: "2026-08-30", kind: "corrida", training_type: "prova", target_distance_km: 42.2 },
     ],
   });
   assertEquals(r.startsWith("Erro"), false, r);
@@ -5107,7 +5109,7 @@ Deno.test("handler: o bloco, as ferramentas e o turno do mapa só com inscriçã
   // A guarda do plano relê os papéis se uma ferramenta da competição gravou
   // neste pedido (revisão das correções da Fase 2).
   assertStringIncludes(src, "planSeriesIntentsStale = planSeriesIntentsStale || (cupToolOn && !result.startsWith(\"Erro\"));");
-  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents);");
+  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
   assertStringIncludes(src, "      seriesBlock?.text ?? null,\n    );");
   // cup_updated só aparece quando é true — a resposta de quem não está inscrito fica igual.
   assertEquals(src.includes("cup_updated: cupWasUpdated"), false);
@@ -5788,4 +5790,88 @@ Deno.test("resposta perdida: a frase depende de haver mensagem dele para reenvia
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertEquals(src.includes("Perdi o fio a meio"), false);
   assertEquals(src.split("lostReplyText(message, proactiveTrigger)").length - 1, 2);
+});
+
+// ─── Planos longos partidos em semanas (decisão do Rui, 2026-10-25) ───────
+import {
+  buildPlanContinuationTurn, MAX_PLAN_SPAN_DAYS, nextPlanContinuation, parsePlanContinuation, type PlanContinuation,
+} from "./index.ts";
+
+const dayItems = (from: string, n: number) =>
+  Array.from({ length: n }, (_, i) => {
+    const d = new Date(from + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + i);
+    return { planned_date: d.toISOString().slice(0, 10), kind: "corrida", training_type: "continuo", target_distance_km: 6 };
+  });
+
+Deno.test("plano partido: 8 dias de treinos numa só chamada são recusados, com a instrução para partir; 7 passam", async () => {
+  const eight = await runProposeTrainingPlan(makePlanSbWithRaces([]).sb, "user-1", {
+    period_start: "2026-10-26", period_end: "2026-11-02", summary: "x", items: dayItems("2026-10-26", 8),
+  });
+  assertStringIncludes(eight, "Erro: no máximo 7 dias de treinos por proposta — estes vão de 2026-10-26 a 2026-11-02 (8 dias)");
+  assertStringIncludes(eight, "propõe agora só os treinos de 2026-10-26 a 2026-11-01, com plan_until=2026-11-02");
+  assertStringIncludes(eight, "Faço-te isto em duas partes");
+  const { sb, calls } = makePlanSbWithRaces([]);
+  const seven = await runProposeTrainingPlan(sb, "user-1", {
+    period_start: "2026-10-26", period_end: "2026-11-01", summary: "x", items: dayItems("2026-10-26", 7),
+  });
+  assertStringIncludes(seven, "Plano criado");
+  assertEquals(calls.planInserts.length, 1);
+  assertEquals(MAX_PLAN_SPAN_DAYS, 7);
+});
+
+Deno.test("plano partido: 14 dias pedidos → parte 1 (primeira semana) e plan_continuation com a parte 2", async () => {
+  // A Carol avisa e propõe só a primeira semana, com plan_until = o último dia pedido.
+  const args = { period_start: "2026-10-26", period_end: "2026-11-01", summary: "semana 1", plan_until: "2026-11-08", items: dayItems("2026-10-26", 7) };
+  const { sb } = makePlanSbWithRaces([]);
+  assertStringIncludes(await runProposeTrainingPlan(sb, "user-1", args), "Plano criado");
+  const next = nextPlanContinuation(args, null);
+  assertEquals(next, { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" });
+  // Sem plan_until (o atleta pediu uma semana) não há continuação.
+  assertEquals(nextPlanContinuation({ ...args, plan_until: undefined }, null), null);
+});
+
+Deno.test("plano partido: a continuação propõe a parte 2 dentro da semana dela e acaba aí", async () => {
+  const c = parsePlanContinuation({ from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" }) as PlanContinuation;
+  assert(c);
+  const turn = buildPlanContinuationTurn(c);
+  assertStringIncludes(turn, "parte 2 de 2");
+  assertStringIncludes(turn, "só os treinos de 2026-11-02 a 2026-11-08");
+  assertStringIncludes(turn, "o plano fica completo");
+  assertEquals(turn.includes("plan_until"), false);
+  // Fora da semana da continuação, recusa.
+  const fora = await runProposeTrainingPlan(makePlanSbWithRaces([]).sb, "user-1", {
+    period_start: "2026-10-26", period_end: "2026-11-08", summary: "x", items: dayItems("2026-10-30", 5),
+  }, null, c);
+  assertStringIncludes(fora, "Erro: esta é a continuação do plano — só os treinos de 2026-11-02 a 2026-11-08");
+  const args = { period_start: "2026-11-02", period_end: "2026-11-08", summary: "semana 2", items: dayItems("2026-11-02", 7) };
+  assertStringIncludes(await runProposeTrainingPlan(makePlanSbWithRaces([]).sb, "user-1", args, null, c), "Plano criado");
+  assertEquals(nextPlanContinuation(args, c), null);
+});
+
+Deno.test("plano partido: 17 dias são três partes, a última mais curta; continuações inválidas não contam", () => {
+  const p1 = { items: dayItems("2026-10-26", 7), plan_until: "2026-11-11" };
+  const c2 = nextPlanContinuation(p1, null)!;
+  assertEquals(c2, { from: "2026-11-02", to: "2026-11-08", part: 2, of: 3, until: "2026-11-11" });
+  assertStringIncludes(buildPlanContinuationTurn(c2), "plan_until=2026-11-11");
+  const c3 = nextPlanContinuation({ items: dayItems("2026-11-02", 7) }, c2)!;
+  assertEquals(c3, { from: "2026-11-09", to: "2026-11-11", part: 3, of: 3, until: "2026-11-11" });
+  assertEquals(nextPlanContinuation({ items: dayItems("2026-11-09", 3) }, c3), null);
+  for (const bad of [null, "x", { from: "2026-11-02", to: "2026-11-12", part: 2, of: 2, until: "2026-11-12" }, { from: "2026-11-02", to: "2026-11-08", part: 1, of: 2, until: "2026-11-08" }, { from: "x", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" }]) {
+    assertEquals(parsePlanContinuation(bad), null, JSON.stringify(bad));
+  }
+});
+
+Deno.test("handler: plano partido — o pedido de continuação, o guião, a janela e plan_continuation nas respostas (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  const parse = src.indexOf("const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);");
+  assert(parse > 0 && parse < src.indexOf('return jsonResponse({ error: "Mensagem vazia" }, 400);'));
+  assertStringIncludes(src, "const planCheckinPrompt = planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt");
+  assertStringIncludes(src, "if (result.startsWith(\"Plano criado\")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);");
+  // Nas três respostas com o plano: a normal, a da mensagem por gravar e a das escritas sem texto.
+  assertEquals(src.split("...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),").length - 1, 3);
+  const sys = sysCarol();
+  assertStringIncludes(sys, "PLANOS COM MAIS DE 7 DIAS");
+  assertStringIncludes(sys, "Faço-te isto em duas partes");
+  assertStringIncludes(JSON.stringify(buildTools(allowedToolsFor("E"))), '"plan_until"');
 });

@@ -316,7 +316,7 @@ const PROPOSE_PLAN_TOOL = {
     "Se houver outra PRINCIPAL dentro do período, não proponhas o plano: fala primeiro com o atleta e propõe-lhe as duas saídas — passar essa para secundária (ofereces-te para o fazer com update_race_event) ou fazer o plano até essa prova, que passa a ser o objetivo. A decisão é dele; tu explicas que dois polimentos seguidos são incompatíveis. " +
     // As guardas do servidor, ditas antes de ele as bater (2026-09-26): o
     // modelo gastava uma volta a descobrir cada uma pelo erro.
-    "O SERVIDOR RECUSA (e o erro diz porquê): mais de 14 itens; um item fora do período; no dia de uma prova agendada, outra coisa que não a prova (kind=corrida — o servidor põe training_type=prova, e acrescenta o dia se o omitires); training_type=prova num dia sem prova; " +
+    "O SERVIDOR RECUSA (e o erro diz porquê): mais de 14 itens; treinos espalhados por mais de 7 dias (do primeiro ao último planned_date — parte o plano em semanas, ver plan_until); um item fora do período; no dia de uma prova agendada, outra coisa que não a prova (kind=corrida — o servidor põe training_type=prova, e acrescenta o dia se o omitires); training_type=prova num dia sem prova; " +
     "nos 2 dias antes de qualquer prova agendada (mesmo a 1-2 dias do fim do período), treino forte ou ginásio — só ativação curta ou descanso (na véspera e na antevéspera, prefere training_type=ativacao a recuperacao); um descanso sem meal_suggestion nem notes; " +
     "e, com histórico de corrida suficiente, um plano que cumprido leve o ACWR acima de 1,50 (o erro diz o dia e o teto de km).",
   parameters: {
@@ -332,6 +332,12 @@ const PROPOSE_PLAN_TOOL = {
           "sobrepõe a um plano ativo que prepara uma principal (aí é o race_id desse plano). Omite-o num " +
           "plano sem objetivo (base aeróbica, regresso de lesão), mesmo que passe por provas secundárias " +
           "ou de treino — o dia delas entra no plano como prova.",
+      },
+      plan_until: {
+        type: "STRING",
+        description:
+          "Só quando o atleta pediu mais de 7 dias: o último dia que ele pediu (YYYY-MM-DD). Os items desta " +
+          "chamada cobrem no máximo 7 dias; a app pede-te a parte seguinte depois de ele aceitar esta.",
       },
       replace_active_plan: {
         type: "BOOLEAN",
@@ -3110,6 +3116,66 @@ export function extractReplyText(geminiJson: any): string | undefined {
 // linhas na base de dados.
 const MAX_PLAN_ITEMS = 14;
 
+/* Um plano longo parte-se em semanas (decisão do Rui, 2026-10-25): a 25/10 um
+   plano de 14 dias com refeições levou ~64 s e nem chegou (MAX_TOKENS). Cada
+   propose_training_plan leva no máximo 7 dias de TREINOS — do primeiro ao
+   último planned_date; o período pode ir até à prova. Pedidos mais, a Carol
+   avisa e propõe a primeira semana com plan_until (o último dia pedido); a
+   resposta do turno traz plan_continuation com a semana seguinte, e o cliente
+   pede-a (sem texto do atleta) DEPOIS de ele aceitar a parte — a regra de uma
+   só proposta pendente fica como está. */
+export const MAX_PLAN_SPAN_DAYS = 7;
+/** O que falta de um plano partido: a próxima parte (from..to), o número dela
+ *  e de quantas, e o último dia que o atleta pediu (until). */
+export type PlanContinuation = { from: string; to: string; part: number; of: number; until: string };
+// Um plano partido não vai além disto (13 semanas), venha o until de onde vier.
+const MAX_PLAN_UNTIL_DAYS = 92;
+
+/** A continuação que o cliente devolve, validada; null se não serve. */
+export function parsePlanContinuation(raw: unknown): PlanContinuation | null {
+  if (!raw || typeof raw !== "object") return null;
+  // deno-lint-ignore no-explicit-any
+  const r = raw as any;
+  const part = Number(r.part), of = Number(r.of);
+  if (![r.from, r.to, r.until].every((d) => typeof d === "string" && ISO_DATE_RE.test(d))) return null;
+  if (!Number.isInteger(part) || !Number.isInteger(of) || part < 2 || part > of || of > 13) return null;
+  if (r.from > r.to || r.to > r.until || daysBetweenISO(r.from, r.to) + 1 > MAX_PLAN_SPAN_DAYS) return null;
+  return { from: r.from, to: r.to, part, of, until: r.until };
+}
+
+/** Depois de uma parte proposta: a seguinte, ou null se o plano ficou completo. */
+// deno-lint-ignore no-explicit-any
+export function nextPlanContinuation(args: any, current: PlanContinuation | null): PlanContinuation | null {
+  const dates = (Array.isArray(args?.items) ? args.items : [])
+    // deno-lint-ignore no-explicit-any
+    .map((i: any) => i?.planned_date)
+    .filter((d: unknown): d is string => typeof d === "string" && ISO_DATE_RE.test(d))
+    .sort();
+  if (!dates.length) return null;
+  const first = current?.from ?? dates[0];
+  const rawUntil = current?.until ?? (typeof args?.plan_until === "string" && ISO_DATE_RE.test(args.plan_until) ? args.plan_until : null);
+  if (!rawUntil) return null;
+  const until = rawUntil < addDaysISO(first, MAX_PLAN_UNTIL_DAYS) ? rawUntil : addDaysISO(first, MAX_PLAN_UNTIL_DAYS - 1);
+  const thisTo = current?.to ?? addDaysISO(first, MAX_PLAN_SPAN_DAYS - 1);
+  if (until <= thisTo) return null;
+  const from = addDaysISO(thisTo, 1);
+  const to = addDaysISO(from, MAX_PLAN_SPAN_DAYS - 1) < until ? addDaysISO(from, MAX_PLAN_SPAN_DAYS - 1) : until;
+  const part = (current?.part ?? 1) + 1;
+  const of = current?.of ?? Math.ceil((daysBetweenISO(first, until) + 1) / MAX_PLAN_SPAN_DAYS);
+  return { from, to, part, of: Math.max(of, part), until };
+}
+
+/** O turno da continuação: o que a Carol recebe no lugar da mensagem dele. */
+export function buildPlanContinuationTurn(c: PlanContinuation): string {
+  const last = c.part >= c.of;
+  return `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
+    `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to} — o mesmo objetivo e a mesma prova (race_id) ` +
+    `da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
+    `No texto, uma frase curta de ligação (ex.: «Aqui tens a semana de … a …»)` +
+    (last ? " e diz-lhe que o plano fica completo." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
+    ` Não cumprimentes nem repitas o que já disseste.`;
+}
+
 // Executa a function call propose_training_plan: grava o plano com estado
 // 'proposto' e os respetivos itens. Ao contrário das outras três ferramentas,
 // esta ESCREVE — daí a validação apertada de cada campo antes do insert.
@@ -3153,7 +3219,12 @@ export async function fetchScheduledRaces(sb: any, userId: string, fromISO: stri
 // jornada para atacar pede 3 dias fáceis antes em vez de 2 (#6, getTaperDays
 // por intenção). null = a guarda de sempre, a mesma consulta, byte a byte.
 // deno-lint-ignore no-explicit-any
-export async function runProposeTrainingPlan(sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null): Promise<string> {
+export async function runProposeTrainingPlan(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, args: any, seriesIntents: Record<string, SeriesIntent> | null = null,
+  // Num turno de continuação, os treinos só podem cair nesta semana.
+  partWindow: { from: string; to: string } | null = null,
+): Promise<string> {
   const { period_start, period_end, summary, items, replace_active_plan } = args || {};
   const raceId = typeof args?.race_id === "string" && args.race_id.trim() ? args.race_id.trim() : null;
 
@@ -3166,6 +3237,32 @@ export async function runProposeTrainingPlan(sb: any, userId: string, args: any,
   }
   if (items.length > MAX_PLAN_ITEMS) {
     return `Erro: demasiados treinos no plano (máximo ${MAX_PLAN_ITEMS}).`;
+  }
+  // No máximo 7 dias de treinos por proposta (MAX_PLAN_SPAN_DAYS): recusado
+  // antes de qualquer leitura, com a instrução para partir o plano.
+  {
+    // O dia de uma prova não é um treino: um item training_type=prova (o dia
+    // da prova-objetivo, lá no fim do período) não conta para os 7 dias.
+    const itemDates = items
+      // deno-lint-ignore no-explicit-any
+      .filter((i: any) => i?.training_type !== "prova")
+      // deno-lint-ignore no-explicit-any
+      .map((i: any) => i?.planned_date)
+      .filter((d: unknown): d is string => typeof d === "string" && ISO_DATE_RE.test(d))
+      .sort();
+    if (itemDates.length) {
+      const first = itemDates[0], last = itemDates[itemDates.length - 1];
+      const span = daysBetweenISO(first, last) + 1;
+      if (span > MAX_PLAN_SPAN_DAYS) {
+        return `Erro: no máximo ${MAX_PLAN_SPAN_DAYS} dias de treinos por proposta — estes vão de ${first} a ${last} (${span} dias). ` +
+          `Parte o plano em semanas: propõe agora só os treinos de ${first} a ${addDaysISO(first, MAX_PLAN_SPAN_DAYS - 1)}, com plan_until=${last}, ` +
+          `e avisa o atleta no texto deste turno de que o plano vem em partes (ex.: «Faço-te isto em duas partes: primeiro a semana de …, ` +
+          `logo a seguir a de …»). A parte seguinte faz-se depois de ele aceitar esta.`;
+      }
+      if (partWindow && (first < partWindow.from || last > partWindow.to)) {
+        return `Erro: esta é a continuação do plano — só os treinos de ${partWindow.from} a ${partWindow.to} (estes vão de ${first} a ${last}).`;
+      }
+    }
   }
 
   // As provas agendadas no período (e até 2 dias depois — 3 com uma jornada
@@ -6118,6 +6215,11 @@ export function buildSystemInstruction(
     `(15-30 min fáceis com 3-4 acelerações curtas), não recuperacao: o servidor recusa ` +
     `longo, tempo, fartlek, intervalos, subidas e ginásio nesses dois dias. As sugestões alimentares desses ` +
     `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
+    `PLANOS COM MAIS DE 7 DIAS: cada propose_training_plan leva no máximo 7 dias de treinos (do primeiro ao último ` +
+    `planned_date; o período pode ir até à prova). Se o atleta pedir mais (ex.: 14 dias), AVISA-O PRIMEIRO no texto ` +
+    `deste turno — «Faço-te isto em duas partes: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
+    `propõe só a primeira semana, com plan_until = o último dia que ele pediu. A parte seguinte pede-ta a app depois ` +
+    `de ele aceitar esta: não a proponhas antes.\n\n` +
     WALKING_DOCTRINE +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
     `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
@@ -6635,6 +6737,11 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       const { caption, usage } = await generateRaceCaption(geminiKey!, captionOutcome, captionProfile?.display_name || null, requestStartedAt + CAPTION_BUDGET_MS);
       return jsonResponse({ caption, usage });
     }
+    // A parte seguinte de um plano partido (MAX_PLAN_SPAN_DAYS): o cliente pede-a
+    // sem texto, depois de o atleta aceitar a anterior. Segue pelo canal do
+    // check-in do plano (as ferramentas de propor estão abertas).
+    const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);
+    if (planContinuationIn) body.is_plan_checkin = true;
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
     // ── Perfil do utilizador (contexto + metas + biometria) ──────────────
@@ -7658,7 +7765,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       });
     }
 
-    const planCheckinPrompt = onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
+    const planCheckinPrompt = planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt ? onboardingStartPrompt : raceConflictPrompt ? raceConflictPrompt : cupMapPrompt ? cupMapPrompt : planDivergence.length > 0
       ? `A app detetou que o plano já não bate certo com a realidade e chamou-te — o atleta abriu o chat a partir desse aviso. ` +
         `Motivos: ${planDivergence.map((t) => `"${t}"`).join("; ")}. Começa por estes pontos, por ordem de gravidade: explica em duas frases o que muda e porquê, ` +
         `e propõe já o plano ajustado com propose_training_plan (replace_active_plan=true se houver plano aceite) — o dia da prova como prova, a véspera leve, ` +
@@ -7811,6 +7918,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // Sinaliza ao cliente que esta resposta criou um plano — o Início tem de
     // recarregar os itens para a proposta aparecer sem refrescar a página.
     let planWasProposed = false;
+    // A próxima parte de um plano partido, para o cliente pedir depois da aceitação.
+    let planContinuationOut: PlanContinuation | null = null;
     let goalsWereUpdated = false;
     let goalWasProposed = false;
     let pantryFoodsSaved = 0;
@@ -7862,6 +7971,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         intervention_resolved: interventionWasResolved,
         proactive: proactiveTrigger,
         ...(cupWasUpdated ? { cup_updated: true } : {}),
+        ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
       });
     };
 
@@ -7999,8 +8109,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             if (fresh?.active) planSeriesIntents = fresh.intentByRaceId;
             planSeriesIntentsStale = false;
           }
-          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents);
+          result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);
           planWasProposed = planWasProposed || result.startsWith("Plano criado");
+          // A parte que falta (se falta): vai na resposta como plan_continuation.
+          if (result.startsWith("Plano criado")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);
         } else if (name === "update_goals" || name === "update_nutrition_goals") {
           // "update_nutrition_goals" mantido por retrocompatibilidade com histórico de conversa.
           result = await runUpdateGoals(sb, userId, args || {});
@@ -8175,6 +8287,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         proactive: proactiveTrigger,
         ...(cupWasUpdated ? { cup_updated: true } : {}),
         ...(cupMapShown ? { cup_map_shown: true } : {}),
+        ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
       });
     }
 
@@ -8192,6 +8305,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
       proactive: proactiveTrigger,
       ...(cupWasUpdated ? { cup_updated: true } : {}),
       ...(cupMapShown ? { cup_map_shown: true } : {}),
+      ...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),
     });
 
   } catch (e) {
