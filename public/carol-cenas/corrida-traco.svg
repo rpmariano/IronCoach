@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 804" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+<!-- A Carol a correr na estrada da costa, em traço (opção 2, desenhado à mão
+     sobre corrida.webp). Cada caminho tem pathLength="1" e a variável CSS i (a ordem do
+     desenho): anima-se com stroke-dasharray:1 e stroke-dashoffset 1 → 0,
+     com animation-delay proporcional a i. -->
+<!-- cena: horizonte, falésias e estrada -->
+<path pathLength="1" style="--i:0" stroke-width="1.5" d="M0 302 C60 301 120 300 170 300"/>
+<path pathLength="1" style="--i:0" stroke-width="1.5" d="M392 292 C420 286 450 284 470 282 C520 276 560 262 600 241"/>
+<path pathLength="1" style="--i:1" stroke-width="2" d="M0 668 C70 650 140 630 212 612"/>
+<path pathLength="1" style="--i:1" stroke-width="2" d="M482 512 C510 488 540 466 600 452"/>
+<path pathLength="1" style="--i:1" stroke-width="2" d="M450 804 C500 760 550 726 600 692"/>
+<!-- cabeça: rosto, fita, aro e auscultadores -->
+<path pathLength="1" style="--i:2" d="M177 205 C172 235 176 262 188 282 C200 298 214 306 232 307 C262 306 296 294 314 276 C324 262 328 236 326 206"/>
+<path pathLength="1" style="--i:3" d="M168 172 C200 146 246 132 286 134 C312 136 330 144 342 152"/>
+<path pathLength="1" style="--i:3" d="M174 202 C206 184 246 176 286 176 C306 177 322 182 336 190"/>
+<path pathLength="1" style="--i:4" d="M162 236 C160 176 196 108 262 96 C310 90 346 112 360 148 C366 164 366 178 362 190"/>
+<path pathLength="1" style="--i:5" d="M171 200 C158 206 152 226 154 246 C156 266 164 280 176 284"/>
+<path pathLength="1" style="--i:5" d="M356 188 C338 188 328 210 328 234 C328 260 340 282 358 282 C376 282 386 260 386 234 C386 208 374 188 356 188"/>
+<path pathLength="1" style="--i:5" stroke-width="2" d="M356 214 C348 214 344 224 344 234 C344 246 350 256 358 256 C366 256 370 246 370 234 C370 222 364 214 356 214"/>
+<!-- olhos, sobrancelhas, sorriso e bochechas -->
+<path pathLength="1" style="--i:6" d="M183 202 C190 197 198 196 205 197"/>
+<path pathLength="1" style="--i:6" d="M252 193 C268 188 286 190 300 198"/>
+<path pathLength="1" style="--i:7" d="M196 218 C186 218 182 228 184 238 C186 246 194 250 202 246 C208 242 210 230 206 222 C204 219 200 218 196 218"/>
+<path pathLength="1" style="--i:7" d="M276 210 C264 210 258 220 260 232 C262 242 272 246 282 242 C290 238 294 226 290 218 C287 213 282 210 276 210"/>
+<path pathLength="1" style="--i:8" d="M204 280 C218 290 236 291 250 284 C256 280 260 275 262 271"/>
+<path pathLength="1" style="--i:8" stroke-width="2" d="M296 248 C286 250 280 260 284 270 C290 280 304 280 310 270 C314 260 306 248 296 248"/>
+<!-- rabo de cavalo ao vento -->
+<path pathLength="1" style="--i:9" d="M292 74 C340 64 400 82 440 104 C456 112 470 114 485 110"/>
+<path pathLength="1" style="--i:9" d="M330 100 C380 118 430 150 470 150 C492 150 508 140 525 130"/>
+<path pathLength="1" style="--i:10" d="M345 140 C390 180 440 206 490 210 C515 212 535 212 552 212"/>
+<path pathLength="1" style="--i:10" d="M352 176 C384 220 420 256 460 274 C478 282 492 288 505 290"/>
+<!-- pescoço e top -->
+<path pathLength="1" style="--i:11" d="M244 306 L244 328 M286 302 L288 324"/>
+<path pathLength="1" style="--i:11" d="M232 334 C240 352 254 366 272 366 C292 366 308 350 318 328"/>
+<path pathLength="1" style="--i:12" d="M232 334 C226 350 222 368 224 384 C226 402 230 418 236 432 C270 428 306 426 340 422 C342 404 342 388 338 372 C334 356 328 340 320 328"/>
+<path pathLength="1" style="--i:12" d="M236 432 C232 446 230 458 230 470 M340 422 C334 436 326 450 316 462"/>
+<path pathLength="1" style="--i:12" stroke-width="2" d="M238 448 C246 456 262 462 280 462 C296 462 308 460 316 456"/>
+<!-- braço esquerdo, em cima, com o punho e a munhequeira -->
+<path pathLength="1" style="--i:13" d="M222 350 C204 360 194 380 186 400 C182 414 180 426 178 434 C166 426 154 414 144 398"/>
+<path pathLength="1" style="--i:13" d="M226 392 C212 404 200 416 196 426"/>
+<path pathLength="1" style="--i:14" d="M152 336 C136 336 128 350 130 364 C132 378 142 388 156 388 C170 388 178 376 176 360 C174 346 166 336 152 336"/>
+<path pathLength="1" style="--i:14" d="M134 392 C148 386 164 386 180 392 L182 408 C166 404 150 404 136 410 Z"/>
+<!-- braço direito, em baixo, com o relógio e o punho -->
+<path pathLength="1" style="--i:15" d="M320 340 C350 340 380 352 398 372 C410 388 414 410 412 424"/>
+<path pathLength="1" style="--i:15" d="M340 386 C360 390 378 404 384 422"/>
+<path pathLength="1" style="--i:16" d="M386 424 C396 420 420 420 436 428 L436 448 C420 444 400 446 388 452 Z"/>
+<path pathLength="1" style="--i:16" d="M408 456 C394 456 388 468 390 480 C392 492 402 498 412 496 C424 494 430 482 428 472 C426 462 418 456 408 456"/>
+<!-- pernas: a da frente direita, a de trás dobrada -->
+<path pathLength="1" style="--i:17" d="M230 470 C226 520 222 590 220 640 C219 660 220 676 222 686"/>
+<path pathLength="1" style="--i:17" d="M300 524 C292 570 280 630 268 684"/>
+<path pathLength="1" style="--i:18" d="M316 462 C334 490 352 520 370 548 C384 568 400 586 418 600"/>
+<path pathLength="1" style="--i:18" d="M300 524 C312 556 326 584 346 600 C364 614 382 626 398 638"/>
+<!-- sapatilhas -->
+<path pathLength="1" style="--i:19" d="M245 688 C215 694 176 712 158 730 C150 746 162 764 190 768 C220 770 252 764 272 758 C284 752 286 732 278 700 C268 690 256 686 245 688"/>
+<path pathLength="1" style="--i:19" stroke-width="2" d="M160 744 C200 748 244 742 280 734"/>
+<path pathLength="1" style="--i:20" d="M410 600 C394 620 384 650 392 680 C398 704 410 716 426 716 C450 714 470 700 476 670 C478 630 466 596 446 586 C432 582 420 590 410 600"/>
+<path pathLength="1" style="--i:20" stroke-width="2" d="M452 590 C462 620 466 660 456 708"/>
+</svg>
