@@ -640,3 +640,28 @@ Deno.test("bug #75 (revisão): gramas absurdas não ensinam; com hábito, voltar
   const habito = [{ topic: "Arroz branco cozido · quantidade" }];
   assertEquals(portionFacts([{ name: "Arroz branco cozido", grams: 90 }], map, habito), [{ topic: "Arroz branco cozido · quantidade", value: "90 g" }]);
 });
+
+Deno.test("parseQuestions: perguntas impossíveis de responder caem — percentagens, teores, kcal, gramas de gordura (bug #86)", () => {
+  const impossiveis = [
+    pergunta({ question: "Que % de gordura tem a carne?", options: ["5%", "10%", "20%"], assumed: "10%" }),
+    pergunta({ question: "Qual a percentagem de gordura da carne?" }),
+    pergunta({ question: "Qual o teor de gordura do queijo?" }),
+    pergunta({ question: "Quantas kcal tinha o molho?" }),
+    pergunta({ question: "O molho era de quê?", options: ["Leve (50 calorias)", "Cremoso"], assumed: "Cremoso" }),
+    pergunta({ question: "A carne tinha quantas gramas de gordura?" }),
+    pergunta({ question: "Que carne era?", options: ["Magra (5 g de gordura)", "Gorda (20 g de gordura)"], assumed: "Magra (5 g de gordura)" }),
+    pergunta({ question: "Sabes o valor nutricional do molho?" }),
+  ];
+  assertEquals(parseQuestions(impossiveis, [ovo, salada], [], ids), []);
+});
+
+Deno.test("parseQuestions: as respondíveis passam, incluindo o (~N g) das de quantidade (bug #86)", () => {
+  const qs = parseQuestions([
+    pergunta(),
+    pergunta({
+      kind: "quantidade", topic: "azeite na salada", item_name: "Salada mista", question: "Quanto azeite levou a salada?",
+      options: ["Um fio (~5 g)", "1 colher de sopa (~10 g)", "Bem regada (~20 g)"], assumed: "1 colher de sopa (~10 g)",
+    }),
+  ], [ovo, salada], [], ids);
+  assertEquals(qs.length, 2);
+});

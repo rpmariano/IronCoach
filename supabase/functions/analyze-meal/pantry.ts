@@ -599,6 +599,30 @@ export function quantityTopic(raw: unknown): string {
  * "<alimento> · quantidade" — é assim que fica nas regras e que, confirmado,
  * deixa de se perguntar.
  */
+/**
+ * Bug #86: «que % de gordura tem a carne?» — quem comeu não sabe responder a
+ * percentagens, teores nem valores nutricionais; isso é a Carol que estima
+ * (vai para assumed). O prompt já o proíbe (QUESTIONS_RULE); isto é a rede de
+ * segurança para quando o modelo pergunta à mesma. O "(~N g)" das opções de
+ * quantidade sai antes de olhar — essas são para responder.
+ */
+const UNANSWERABLE_RE = new RegExp(
+  [
+    "%",
+    "percent",
+    "\\bteor",
+    "\\bkcal\\b",
+    "\\bcalorias?\\b",
+    "valor(?:es)? nutricion",
+    "(?:\\bgramas?|\\bg)\\s+de\\s+(?:gordura|prote[íi]na|hidratos|a[çc][úu]car|fibra)",
+  ].join("|"),
+  "i",
+);
+
+export function isUnanswerableQuestion(question: string, options: string[]): boolean {
+  return [question, ...options].some((t) => UNANSWERABLE_RE.test(t.replace(/\(\s*~?\s*\d+(?:[.,]\d+)?\s*g\s*\)/gi, "")));
+}
+
 export function parseQuestions(
   raw: unknown,
   // deno-lint-ignore no-explicit-any
@@ -633,6 +657,7 @@ export function parseQuestions(
     // Da despensa, só se há perguntas em aberto sobre ele (pantry_pending,
     // 2026-10-05) — foi por isso que o modelo foi chamado.
     if (!topicKey || !question || options.length < 2 || !item || (item.from_pantry && !item.pantry_pending)) continue;
+    if (isUnanswerableQuestion(question, options)) continue;
     if (impact < MIN_QUESTION_IMPACT_KCAL && impactProtein < MIN_QUESTION_IMPACT_PROTEIN_G) continue;
     if (confirmed.has(topicKey) || seenTopics.has(topicKey)) continue;
     if (!options.some((o) => foodKey(o) === foodKey(assumed))) continue;

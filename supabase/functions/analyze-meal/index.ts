@@ -200,11 +200,18 @@ function cookingFactsRule(notes: string | null): string {
 // ao modelo (specs/carol-quantidades-habitos-refeicoes.md §4.1).
 const QUESTIONS_RULE =
   "\n\nPERGUNTAS (questions): as que forem precisas, até 5 — mais vale perguntar do que assumir algo muito errado —, " +
-  "só quando isso muda a energia em 40 kcal ou mais OU a proteína em 4 g ou mais. De dois tipos (kind):\n" +
+  "só quando isso muda a energia em 40 kcal ou mais OU a proteína em 4 g ou mais.\n" +
+  // Bug #86: perguntava «que % de gordura tem a carne?», que ninguém sabe.
+  "Só perguntas que quem comeu SABE responder sem pesar nem consultar nada: o que se vê, como cozinhou, quanto pôs, " +
+  "que tipo ou que peça era. NUNCA percentagens, teores, calorias, gramas de gordura ou de proteína nem valores " +
+  "nutricionais — isso estimas tu e dizes em assumed. Pergunta e opções em linguagem do dia a dia.\n" +
+  "De dois tipos (kind):\n" +
   "- \"preparacao\": não se vê nem se sabe como um alimento desta refeição foi preparado ou temperado — a gordura " +
-  "usada para fritar ou saltear, o tempero da salada, o molho, a pele ou o corte da carne, o leite gordo ou magro, " +
-  "açúcar no café. Ex.: question \"Os ovos foram estrelados em quê?\", options [\"Azeite\", \"Manteiga\", \"Óleo\", " +
-  "\"Sem gordura\"].\n" +
+  "usada para fritar ou saltear, o tempero da salada, o molho, se o frango levava pele, que peça de carne era " +
+  "(peito ou coxa, lombo ou entremeada), o leite gordo ou magro, açúcar no café. Ex.: question \"Os ovos foram " +
+  "estrelados em quê?\", options [\"Azeite\", \"Manteiga\", \"Óleo\", \"Sem gordura\"]; carne picada → question " +
+  "\"A carne picada era de quê?\", options [\"Vaca\", \"Porco e vaca\", \"Peru ou frango\"] — nunca \"Que % de " +
+  "gordura tinha?\".\n" +
   "- \"quantidade\": a quantidade de um alimento não se vê bem nem foi escrita — a espessura das fatias, a camada de " +
   "manteiga ou de doce, quanto molho ou azeite, o tamanho da porção. Cada opção descreve a quantidade E diz as " +
   "gramas, SEMPRE no formato \"(~N g)\". Ex.: manteiga → question \"Quanta manteiga levou o pão?\", options " +
