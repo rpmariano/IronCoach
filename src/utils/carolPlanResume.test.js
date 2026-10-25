@@ -32,6 +32,11 @@ describe('o aviso "O plano ficou a meio" (plan_resume)', () => {
       .toBe('O teu plano até 29/11 ficou a meio e ainda não está no calendário. Quero acabá-lo contigo.');
   });
 
+  it('com mais de uma semana aceite, não diz "a semana"', () => {
+    expect(planResumeNotice({ ...BASE, acceptedFrom: '2026-10-19', applied: true }).message)
+      .toBe('Já tens o plano de 19/10 a 1/11 no calendário, mas faltam as seguintes até à Meia de Lisboa, a 29/11. Quero acabar o plano contigo.');
+  });
+
   it('sem o dado do calendário, não o promete nem o nega', () => {
     for (const applied of [null, undefined]) {
       expect(planResumeNotice({ ...BASE, applied }).message)
