@@ -5887,7 +5887,7 @@ Deno.test("handler: plano partido — o pedido de continuação, o guião, a jan
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   const parse = src.indexOf("const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);");
   assert(parse > 0 && parse < src.indexOf('return jsonResponse({ error: "Mensagem vazia" }, 400);'));
-  assertStringIncludes(src, "const planCheckinPrompt = planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt");
+  assertStringIncludes(src, "planContinuationIn ? buildPlanContinuationTurn(planContinuationIn) : onboardingStartPrompt");
   assertStringIncludes(src, "if (result.startsWith(\"Plano criado\")) planContinuationOut = nextPlanContinuation(args || {}, planContinuationIn);");
   // Nas três respostas com o plano: a normal, a da mensagem por gravar e a das escritas sem texto.
   assertEquals(src.split("...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),").length - 1, 3);
