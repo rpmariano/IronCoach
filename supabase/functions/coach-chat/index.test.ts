@@ -5975,13 +5975,20 @@ import { insertModelMessage } from "./index.ts";
 
 // As provas por cima de um makePlanSb já feito (com as pendentes que se quiser).
 // deno-lint-ignore no-explicit-any
-function planSbOnTop(sb: any, races: any[]) {
+// `messages`: as linhas de coach_messages com plan_continuation (as partes dadas).
+// deno-lint-ignore no-explicit-any
+function planSbOnTop(sb: any, races: any[], messages: any[] = []) {
   const withRaces = makePlanSbWithRaces(races).sb;
   const inner = sb.from.bind(sb);
   // deno-lint-ignore no-explicit-any
-  sb.from = (table: string): any => table === "race_events" ? withRaces.from(table) : inner(table);
+  const msgChain: any = { eq: () => msgChain, not: () => msgChain, order: () => msgChain, limit: () => Promise.resolve({ data: messages, error: null }) };
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any =>
+    table === "race_events" ? withRaces.from(table) : table === "coach_messages" ? { select: () => msgChain } : inner(table);
   return sb;
 }
+// A mensagem da parte 1 (até 01/11), que deu a parte 2 a começar a 02/11.
+const PART1_MESSAGE = { plan_continuation: { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" } };
 
 const PART1_PENDING = { id: "p1", race_id: "r1", period_end: "2026-11-01", coach_plan_items: [{ kind: "corrida" }] };
 
@@ -5992,7 +5999,7 @@ Deno.test("cadeia de partes: a parte 2 não recusa a parte 1 pendente; uma propo
   const outraProva = { id: "px", race_id: "r9", period_end: "2026-10-30", coach_plan_items: [{ kind: "corrida" }] };
   const depois = { id: "py", race_id: "r1", period_end: "2026-11-15", coach_plan_items: [{ kind: "corrida" }] };
   const cont = makePlanSb({ pendingPlans: [PART1_PENDING, outraProva, depois] });
-  const contSb = planSbOnTop(cont.sb, PORTO);
+  const contSb = planSbOnTop(cont.sb, PORTO, [PART1_MESSAGE]);
   assertStringIncludes(await runProposeTrainingPlan(contSb, "user-1", p2, null, c2), "Plano criado");
   assertEquals(cont.calls.supersededIds.sort(), ["px", "py"]);
 
@@ -6002,6 +6009,33 @@ Deno.test("cadeia de partes: a parte 2 não recusa a parte 1 pendente; uma propo
   const normalArgs = { period_start: "2026-10-26", period_end: "2026-11-01", summary: "outro plano", items: dayItems("2026-10-26", 5) };
   assertStringIncludes(await runProposeTrainingPlan(planSbOnTop(normal.sb, []), "user-1", normalArgs), "Plano criado");
   assertEquals(normal.calls.supersededIds.sort(), ["p1", "p2"]);
+});
+
+Deno.test("cadeia de partes: uma pendente sem mensagem que a desse como parte não é da cadeia (R4)", async () => {
+  const c2 = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" };
+  const p2 = { race_id: "r1", period_start: "2026-11-02", period_end: "2026-11-08", summary: "semana 2", items: dayItems("2026-11-02", 5) };
+  // Sem mensagem nenhuma, e com uma mensagem cuja parte seguinte não começa a seguir ao fim dela.
+  for (const messages of [[], [{ plan_continuation: { ...PART1_MESSAGE.plan_continuation, from: "2026-11-03" } }]]) {
+    const cont = makePlanSb({ pendingPlans: [PART1_PENDING] });
+    assertStringIncludes(await runProposeTrainingPlan(planSbOnTop(cont.sb, PORTO, messages), "user-1", p2, null, c2), "Plano criado");
+    assertEquals(cont.calls.supersededIds, ["p1"], JSON.stringify(messages));
+  }
+});
+
+Deno.test("cadeia de partes: só a parte 1 substitui o plano ativo; a continuação nunca leva supersedes_plan_id (B1)", async () => {
+  // Plano A ativo, de outra prova, sobreposto às duas semanas.
+  const planoA = { id: "A", period_start: "2026-10-01", period_end: "2026-11-30", race_id: null, coach_plan_items: [{ kind: "corrida" }] };
+  const p1 = { race_id: "r1", period_start: "2026-10-26", period_end: "2026-11-01", plan_until: "2026-11-08", replace_active_plan: true, summary: "s1", items: dayItems("2026-10-26", 5) };
+  const one = makePlanSb({ activePlans: [planoA] });
+  assertStringIncludes(await runProposeTrainingPlan(planSbOnTop(one.sb, PORTO), "user-1", p1), "Plano criado");
+  assertEquals(one.calls.planInserts[0].supersedes_plan_id, "A");
+
+  const c2 = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" };
+  const p2 = { race_id: "r1", period_start: "2026-11-02", period_end: "2026-11-08", replace_active_plan: true, summary: "s2", items: dayItems("2026-11-02", 5) };
+  const two = makePlanSb({ activePlans: [planoA], pendingPlans: [PART1_PENDING] });
+  assertStringIncludes(await runProposeTrainingPlan(planSbOnTop(two.sb, PORTO, [PART1_MESSAGE]), "user-1", p2, null, c2), "Plano criado");
+  assertEquals(two.calls.planInserts[0].supersedes_plan_id, null);
+  assertEquals(two.calls.supersededIds, []); // e a parte 1 continua pendente
 });
 
 Deno.test("cadeia de partes: o guião da continuação diz que as partes anteriores estão aceites provisoriamente", () => {
