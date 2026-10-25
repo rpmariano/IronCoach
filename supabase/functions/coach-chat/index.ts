@@ -5459,6 +5459,9 @@ export function buildSystemInstruction(
     `- Planos, explicações técnicas, enumerações → estruturado (negrito, listas, secções breves).\n` +
     `- Situações emocionais (frustração, desmotivação, lesão) → texto corrido e humano, sem bullet points.\n` +
     `- Responde **apenas ao que foi perguntado** — não expandas para temas não pedidos.\n` +
+    // Bug #88: a palavra-chave do objetivo de prova perdia-se no meio do texto.
+    // Uma palavra ou valor só: o CoachText parte o negrito num ". Maiúscula".
+    `- Quando enuncias o objetivo, o papel ou a estratégia de uma prova, a palavra-chave ou o valor vai a negrito — **atacar**, **controlar**, **trote**, **49:30** —, uma só palavra ou valor, nunca a frase inteira.\n` +
     `- Se a resposta ou plano for potencialmente muito longo, pergunta primeiro: "Queres o detalhe completo ou só o sumário?"\n\n` +
     // ── Abertura da Conversa ──────────────────────────────────────────────────
     `## Abertura de Conversa\n` +

@@ -5534,3 +5534,10 @@ Deno.test("[adaptacao]: o prompt tem a conversa da adaptação, não a do confro
   assertStringIncludes(talked, "replace_active_plan=true");
   assertEquals(buildTalkedInterventionInstruction("Falhou 3 treinos.").includes("COMO LER OS SINAIS"), false);
 });
+
+Deno.test("Formato: a palavra-chave do objetivo de prova vai a negrito, uma só palavra ou valor (bug #88)", () => {
+  const fmt = sysCarol().split("## Formato das Respostas")[1].split("## Abertura de Conversa")[0];
+  assertStringIncludes(fmt, "objetivo, o papel ou a estratégia de uma prova");
+  assertStringIncludes(fmt, "**atacar**");
+  assertStringIncludes(fmt, "uma só palavra ou valor");
+});
