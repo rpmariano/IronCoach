@@ -3,7 +3,7 @@ import { RefreshCw } from 'lucide-react';
 import Warning, { WarningAction } from './Warning';
 import CoachAvatar from '../Coach/CoachAvatar';
 import LogoLoader from './LogoLoader';
-import CarolCena from './CarolCena';
+import CarolCena, { cenaAreaOf } from './CarolCena';
 import { prefersReducedMotion } from '../../utils/coachBubbles';
 import { useAppStore } from '../../store';
 import { todayISO } from '../../lib/utils';
@@ -131,6 +131,7 @@ export function AnalysisSkeleton({
   const bodyAssessments = useAppStore((s) => s.bodyAssessments);
   const steps = analysisSteps(kind, analysisLacksReference(kind, { coachPlans, coachPlanItems, bodyAssessments }), manual);
   const step = useSteps(steps);
+  const [semCena, setSemCena] = useState(false);
   /* Bug #49, reaberto (2026-10-06, "não aparece o logotipo"): a espera fica
      no topo do formulário, onde o resultado vai aparecer, mas o "Analisar"
      está no fundo — o logotipo ficava fora do ecrã. Ao começar, o ecrã sobe
@@ -165,7 +166,11 @@ export function AnalysisSkeleton({
           loop lê-se como "está preso" (ver LogoLoader). Decorativo: quem
           anuncia a espera é o role="status" desta região. */}
       <div data-testid="analysis-logo" className="flex flex-col items-center" style={{ gap: 10, paddingTop: 4 }}>
-        <CarolCena kind={kind} size={200} fallback={<LogoLoader size={64} label={null} />} />
+        {/* A cena tem 200 px de altura e o logótipo 64: sem reservar, a página dava um
+            salto quando a cena chegava (cosmético). Reserva-se enquanto ela pode vir. */}
+        <div className="flex items-center justify-center" style={{ minHeight: cenaAreaOf(kind) && !semCena ? 200 : undefined }}>
+          <CarolCena kind={kind} size={200} fallback={<LogoLoader size={64} label={null} />} onFalhou={() => setSemCena(true)} />
+        </div>
         {/* A Carol a trabalhar: a linha fixa por cima das frases (que descrevem o
             que a análise faz). Quem anuncia a espera é o role="status" da região. */}
         <span data-testid="analysis-carol-line" style={{ fontSize: 11, fontWeight: 800, letterSpacing: 'var(--tracking-label)', textTransform: 'uppercase', color: 'var(--text-4)' }}>
