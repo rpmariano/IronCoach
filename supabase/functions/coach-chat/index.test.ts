@@ -5628,3 +5628,27 @@ Deno.test("prompt e ferramenta: a véspera pede ativação curta, não recupera�
   assertStringIncludes(sys, "A véspera e a antevéspera levam ativação curta ou descanso");
   assertEquals(sys.includes("levam recuperação curta ou descanso"), false);
 });
+
+// Bug #89, caso real (dados do Rui em produção, só leitura): as 6 corridas até
+// 21/10, o dia em que a Carol pôs o objetivo em 1:03:32. A janela de 30 dias
+// desse dia começava a 22/09 e deixava de fora a Corrida do Tejo (13/09) e a
+// de 21/09. A 25/10 ele correu os 10 km em 49:28 (2968 s).
+const RUI_ATE_21_10 = [
+  { date: "2026-09-13", kind: "competicao", training_type: null, distance_km: 10.11, duration_seconds: 3088 },
+  { date: "2026-09-21", kind: "treino", training_type: "continuo", distance_km: 7.01, duration_seconds: 2635 },
+  { date: "2026-09-24", kind: "treino", training_type: "continuo", distance_km: 5.03, duration_seconds: 1927 },
+  { date: "2026-10-05", kind: "treino", training_type: "caminhada", distance_km: 4.91, duration_seconds: 4460 },
+  { date: "2026-10-16", kind: "treino", training_type: "continuo", distance_km: 6.04, duration_seconds: 2206 },
+  { date: "2026-10-20", kind: "treino", training_type: "continuo", distance_km: 5.02, duration_seconds: 1837 },
+];
+
+Deno.test("previsão de tempo, caso do Rui a 21/10: perto dos 49:28 que ele correu, não 1:03:32 (bug #89)", () => {
+  const janela30 = RUI_ATE_21_10.filter((r) => r.date >= "2026-09-22");
+  const antes = buildRaceEventsContext([RUI_RACE], "2026-10-21", null, "basico", janela30)!;
+  assertStringIncludes(antes, "o treino aponta para 1:03:32"); // o número que ela deu
+  const agora = buildRaceEventsContext([RUI_RACE], "2026-10-21", null, "basico", janela30, null, RUI_ATE_21_10)!;
+  const m = /o treino aponta para (\d+):(\d\d)/.exec(agora)!;
+  const predicted = Number(m[1]) * 60 + Number(m[2]);
+  assertEquals(predicted, 50 * 60 + 52);
+  assert(Math.abs(predicted - 2968) / 2968 < 0.05, `${predicted}s está a mais de 5% dos 49:28`);
+});
