@@ -289,7 +289,7 @@ describe('CoachInsightsDock', () => {
       fireEvent.click(screen.getByTestId('coach-insight-button'));
       const janela = screen.getByTestId('insights-dialog');
       expect(janela).toHaveTextContent('O plano ficou a meio');
-      expect(janela).toHaveTextContent('Já tens a semana de 26 a 30/10 no calendário, mas faltam as seguintes até à Meia de Lisboa, a 29/11.');
+      expect(janela).toHaveTextContent('Já tens a semana de 26/10 a 1/11 no calendário, mas faltam as seguintes até à Meia de Lisboa, a 29/11.');
     });
 
     it('sem nada aplicado, não diz que ele já tem nada', () => {
