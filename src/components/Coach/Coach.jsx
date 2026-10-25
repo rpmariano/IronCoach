@@ -1144,6 +1144,94 @@ export default function Coach() {
   // na bolha de falha do fim, ou na frase de falha que o servidor gravou.
   // `chained`: há mais trabalho depois desta espera (o reenvio a seguir a um
   // 409 `busy`) — sem bolha de falha no fim e sem destravar o campo.
+  /* O que se faz depois de a resposta de um turno chegar por sondagem (ou tarde):
+     recarrega planos e objetivos e abre a folha da proposta pendente, com a
+     cadeia (o servidor grava o plan_continuation na linha da resposta; sem ele,
+     numa continuação deriva-se da que se pediu). */
+  const afterPolledReply = async (modelRow, sent) => {
+    const freshPlans = await reloadCoachPlans();
+    if (freshPlans && freshPlans.length > 0) {
+      const fromRow = validContinuation(modelRow?.plan_continuation) ? modelRow.plan_continuation : null;
+      const next = fromRow || (sent ? nextPlanContinuation(sent) : null);
+      const plan = openProposalSheet(freshPlans, { continuation: next, continuationTurn: !!sent });
+      if (plan) queuePlanContinuation({ plan_continuation: next }, { fromAthlete: !sent });
+    }
+    const freshGoals = await reloadCoachGoalProposals();
+    if (freshGoals && freshGoals.length > 0) {
+      const pendingGoals = freshGoals.filter(g => g.status === 'proposto');
+      if (pendingGoals.length > 0) setActiveGoalProposal(pendingGoals[0]);
+    }
+    if (profile?.id) {
+      const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
+      if (freshProfile) setProfile(freshProfile);
+    }
+  };
+
+  /* A sondagem desistiu e a resposta chegou depois: volta a ler a resposta (às 15,
+     45 e 90 s) e, se já lá estiver e ainda não estiver no ecrã, trata-a como se
+     tivesse chegado por sondagem. Idempotente: a primeira leitura que a encontra
+     mostra-a, as seguintes já a vêem no store. */
+  const lateReplyTimersRef = useRef([]);
+  useEffect(() => () => { lateReplyTimersRef.current.forEach(clearTimeout); }, []);
+  const scheduleLateReplyCheck = (afterIso, sent) => {
+    if (!profile?.id) return;
+    lateReplyTimersRef.current.forEach(clearTimeout);
+    lateReplyTimersRef.current = [15000, 45000, 90000].map((ms) => setTimeout(async () => {
+      try {
+        const { data: rows } = await supabase
+          .from('coach_messages')
+          .select('*')
+          .eq('user_id', profile.id)
+          .eq('role', 'model')
+          .gt('created_at', afterIso)
+          .order('created_at', { ascending: true })
+          .limit(1);
+        const row = rows?.[0];
+        if (!row) return;
+        if ((useAppStore.getState().coachMessages || []).some((m) => m.id === row.id)) return;
+        addCoachMessage({ id: row.id, role: 'assistant', content: row.content, mood: row.mood, live: true });
+        await afterPolledReply(row, sent);
+      } catch (err) {
+        console.warn('[Coach] a leitura tardia da resposta falhou', err);
+      }
+    }, ms));
+  };
+
+  /* Uma proposta pendente de treino aberta SEM cadeia (a sondagem desistiu, a
+     página recarregou, abriu-se pelo botão flutuante): vai-se buscar à base a
+     linha do modelo com o plan_continuation que prometeu a semana a seguir a
+     esta proposta, e monta-se a cadeia na hora («Parte 1 de N»). Independe de a
+     linha estar no store. */
+  useEffect(() => {
+    const plan = activeProposalSheetPlan;
+    if (!plan || !profile?.id) return undefined;
+    if (planChainRef.current?.parts.some((p) => p.planId === plan.id)) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('coach_messages')
+          .select('id, role, plan_continuation')
+          .eq('user_id', profile.id)
+          .eq('role', 'model')
+          .not('plan_continuation', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(30);
+        if (cancelled || planChainRef.current) return;
+        const st = useAppStore.getState();
+        const messages = [...(data || []), ...(st.coachMessages || []).filter((m) => m.role !== 'user')];
+        const rebuilt = rebuildPlanChain(st.coachPlans, messages, st.coachPlanItems);
+        if (!rebuilt || !rebuilt.parts.some((p) => p.planId === plan.id)) return;
+        setPlanChain({ of: rebuilt.of, parts: rebuilt.parts });
+        if (rebuilt.continuation) setPendingContinuation((c) => c || rebuilt.continuation);
+      } catch (err) {
+        console.warn('[Coach] a procura da continuação da proposta falhou', err);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeProposalSheetPlan?.id, profile?.id]);
+
   const handleAsyncFallback = async (requestStartedAt, { silent = false, failureText = COACH_ASYNC_FALLBACK_TEXT, retry = null, waitingText = null, chained = false } = {}) => {
     const waitingId = `waiting-${Date.now()}`;
     if (!silent) {
@@ -1186,32 +1274,14 @@ export default function Coach() {
       // o que faltar entra no próximo carregamento — não é uma falha da
       // conversa, e não pode impedir quem chama de destravar o campo.
       try {
-        const freshPlans = await reloadCoachPlans();
-        if (freshPlans && freshPlans.length > 0) {
-          // O servidor grava o plan_continuation na linha da resposta
-          // (coach_messages.plan_continuation): usa-se diretamente, atado à
-          // proposta que a sondagem encontrou. A coluna pode ainda não existir
-          // (o select é '*', por isso a sondagem não rebenta): então, numa
-          // continuação, deriva-se da que se pediu (mesma regra do servidor).
-          const sent = inflightContinuationRef.current;
-          const fromRow = validContinuation(modelRow?.plan_continuation) ? modelRow.plan_continuation : null;
-          const next = fromRow || (sent ? nextPlanContinuation(sent) : null);
-          const plan = openProposalSheet(freshPlans, { continuation: next, continuationTurn: !!sent });
-          if (plan) queuePlanContinuation({ plan_continuation: next }, { fromAthlete: !sent });
-        }
-        const freshGoals = await reloadCoachGoalProposals();
-        if (freshGoals && freshGoals.length > 0) {
-          const pendingGoals = freshGoals.filter(g => g.status === 'proposto');
-          if (pendingGoals.length > 0) setActiveGoalProposal(pendingGoals[0]);
-        }
-        if (profile?.id) {
-          const { data: freshProfile } = await supabase.from('profiles').select('*').eq('id', profile.id).single();
-          if (freshProfile) setProfile(freshProfile);
-        }
+        await afterPolledReply(modelRow, inflightContinuationRef.current);
       } catch (err) {
         console.warn('[Coach] recarregar depois da resposta falhou', err);
       }
     } else if (!silent && !chained) {
+      // A sondagem desistiu (o lock pareceu livre, a rede caiu…), mas a resposta
+      // pode ainda chegar: volta a ler mais tarde (caso pssmartins, 25/10).
+      scheduleLateReplyCheck(requestStartedAt, inflightContinuationRef.current);
       addCoachMessage({
         id: (Date.now() + 1).toString(),
         role: 'assistant',
