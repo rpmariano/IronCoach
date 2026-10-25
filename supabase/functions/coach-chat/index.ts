@@ -3514,7 +3514,11 @@ export async function runProposeTrainingPlan(
   );
 
   let supersedesPlanId: string | null = null;
-  if (replace_active_plan === true) {
+  // Só a parte 1 de um plano partido pode substituir o plano ativo (2.ª revisão
+  // do lote, B1): a continuação que voltasse a apontar para ele, ao aplicar a
+  // cadeia, ficava como bloco próprio ao lado da parte 1 — dois blocos aceites
+  // da mesma prova.
+  if (replace_active_plan === true && !partWindow) {
     /* O plano a substituir é o que se SOBREPÕE à proposta — de preferência
        o vinculado. trainingPlans[0] vinha de uma consulta sem ordem nem
        filtro: depois de um bloco novo a começar no futuro há dois planos de
@@ -3641,8 +3645,34 @@ export async function runProposeTrainingPlan(
     .select("id, race_id, period_end, coach_plan_items(kind)")
     .eq("user_id", userId)
     .eq("status", "proposto");
+  // Uma pendente só é parte da cadeia se uma mensagem da Carol a deu como
+  // parte (2.ª revisão do lote, R4): a coach_messages.plan_continuation dessa
+  // parte começa no dia a seguir ao fim dela. Sem isso — uma pendente qualquer
+  // da mesma prova —, recusa-se como sempre. Uma falha a ler (ou a coluna por
+  // criar) não isenta nada.
+  const chainFroms = new Set<string>();
+  if (partWindow) {
+    try {
+      const { data: msgs, error: msgErr } = await sb.from("coach_messages")
+        .select("plan_continuation")
+        .eq("user_id", userId)
+        .not("plan_continuation", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(30);
+      if (msgErr) console.warn("coach_messages.plan_continuation não lida:", msgErr.message);
+      // deno-lint-ignore no-explicit-any
+      for (const m of (msgs ?? []) as any[]) {
+        const from = m?.plan_continuation?.from;
+        if (typeof from === "string" && ISO_DATE_RE.test(from)) chainFroms.add(from);
+      }
+    } catch (e) {
+      console.warn("coach_messages.plan_continuation não lida:", e instanceof Error ? e.message : e);
+    }
+  }
   // deno-lint-ignore no-explicit-any
-  const inThisChain = (p: any) => !!partWindow && (p.race_id ?? null) === raceId && typeof p.period_end === "string" && p.period_end < partWindow.from;
+  const inThisChain = (p: any) =>
+    !!partWindow && (p.race_id ?? null) === raceId && typeof p.period_end === "string" && ISO_DATE_RE.test(p.period_end) &&
+    p.period_end < partWindow.from && chainFroms.has(addDaysISO(p.period_end, 1));
   const stalePendingIds = (pendingPlans || [])
     // deno-lint-ignore no-explicit-any
     .filter((p: any) => (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio"))
