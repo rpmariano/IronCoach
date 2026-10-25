@@ -5831,7 +5831,7 @@ Deno.test("plano partido: 8 dias de treinos numa só chamada são recusados, com
   });
   assertStringIncludes(eight, "Erro: no máximo 7 dias de treinos por proposta — estes vão de 2026-10-26 a 2026-11-02 (8 dias)");
   assertStringIncludes(eight, "propõe agora só os treinos de 2026-10-26 a 2026-11-01, com plan_until=2026-11-02");
-  assertStringIncludes(eight, "Faço-te isto em duas partes");
+  assertStringIncludes(eight, "Faço-te isto em partes, 7 dias de cada vez");
   const { sb, calls } = makePlanSbWithRaces([]);
   const seven = await runProposeTrainingPlan(sb, "user-1", {
     period_start: "2026-10-26", period_end: "2026-11-01", summary: "x", items: dayItems("2026-10-26", 7),
@@ -5858,7 +5858,7 @@ Deno.test("plano partido: a continuação propõe a parte 2 dentro da semana del
   const turn = buildPlanContinuationTurn(c);
   assertStringIncludes(turn, "parte 2 de 2");
   assertStringIncludes(turn, "só os treinos de 2026-11-02 a 2026-11-08");
-  assertStringIncludes(turn, "o plano fica completo");
+  assertStringIncludes(turn, "o plano todo fica em vigor");
   assertEquals(turn.includes("plan_until"), false);
   // Fora da semana da continuação, recusa.
   const fora = await runProposeTrainingPlan(makePlanSbWithRaces([]).sb, "user-1", {
@@ -5893,7 +5893,7 @@ Deno.test("handler: plano partido — o pedido de continuação, o guião, a jan
   assertEquals(src.split("...(planContinuationOut ? { plan_continuation: planContinuationOut } : {}),").length - 1, 3);
   const sys = sysCarol();
   assertStringIncludes(sys, "PLANOS COM MAIS DE 7 DIAS");
-  assertStringIncludes(sys, "Faço-te isto em duas partes");
+  assertStringIncludes(sys, "Faço-te isto em partes, 7 dias de cada vez");
   assertStringIncludes(JSON.stringify(buildTools(allowedToolsFor("E"))), '"plan_until"');
 });
 
@@ -5968,4 +5968,84 @@ Deno.test("plano: o texto e o summary falam dos dias que os itens cobrem, não d
   const tools = JSON.stringify(buildTools(allowedToolsFor("E")));
   assertStringIncludes(tools, "nunca do período inteiro como");
   assertStringIncludes(buildPlanContinuationTurn({ from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" }), "diga os dias desta parte");
+});
+
+// ─── A cadeia de partes fica pendente até à última (pedido do Rui, 2026-10-25) ──
+import { insertModelMessage } from "./index.ts";
+
+// As provas por cima de um makePlanSb já feito (com as pendentes que se quiser).
+// deno-lint-ignore no-explicit-any
+function planSbOnTop(sb: any, races: any[]) {
+  const withRaces = makePlanSbWithRaces(races).sb;
+  const inner = sb.from.bind(sb);
+  // deno-lint-ignore no-explicit-any
+  sb.from = (table: string): any => table === "race_events" ? withRaces.from(table) : inner(table);
+  return sb;
+}
+
+const PART1_PENDING = { id: "p1", race_id: "r1", period_end: "2026-11-01", coach_plan_items: [{ kind: "corrida" }] };
+
+Deno.test("cadeia de partes: a parte 2 não recusa a parte 1 pendente; uma proposta normal recusa as duas", async () => {
+  const c2 = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" };
+  const p2 = { race_id: "r1", period_start: "2026-11-02", period_end: "2026-11-08", summary: "semana 2", items: dayItems("2026-11-02", 5) };
+  // Outras pendentes que NÃO são da cadeia: de outra prova, ou depois da semana desta parte.
+  const outraProva = { id: "px", race_id: "r9", period_end: "2026-10-30", coach_plan_items: [{ kind: "corrida" }] };
+  const depois = { id: "py", race_id: "r1", period_end: "2026-11-15", coach_plan_items: [{ kind: "corrida" }] };
+  const cont = makePlanSb({ pendingPlans: [PART1_PENDING, outraProva, depois] });
+  const contSb = planSbOnTop(cont.sb, PORTO);
+  assertStringIncludes(await runProposeTrainingPlan(contSb, "user-1", p2, null, c2), "Plano criado");
+  assertEquals(cont.calls.supersededIds.sort(), ["px", "py"]);
+
+  // Uma proposta normal (sem continuação) recusa todas, as partes incluídas.
+  const parte2Pendente = { id: "p2", race_id: "r1", period_end: "2026-11-08", coach_plan_items: [{ kind: "corrida" }] };
+  const normal = makePlanSb({ pendingPlans: [PART1_PENDING, parte2Pendente] });
+  const normalArgs = { period_start: "2026-10-26", period_end: "2026-11-01", summary: "outro plano", items: dayItems("2026-10-26", 5) };
+  assertStringIncludes(await runProposeTrainingPlan(planSbOnTop(normal.sb, []), "user-1", normalArgs), "Plano criado");
+  assertEquals(normal.calls.supersededIds.sort(), ["p1", "p2"]);
+});
+
+Deno.test("cadeia de partes: o guião da continuação diz que as partes anteriores estão aceites provisoriamente", () => {
+  const turn = buildPlanContinuationTurn({ from: "2026-11-09", to: "2026-11-11", part: 3, of: 3, until: "2026-11-11" });
+  assertStringIncludes(turn, "As partes anteriores (de 2026-10-26 a 2026-11-08) estão ACEITES PROVISORIAMENTE");
+  assertStringIncludes(turn, "não as trates como recusadas nem por decidir, não as repitas");
+  assertStringIncludes(turn, "ao aceitar esta, o plano todo fica em vigor");
+});
+
+Deno.test("plan_continuation fica na linha da mensagem (a sondagem lê-a); sem a coluna, grava-se sem ela", async () => {
+  // deno-lint-ignore no-explicit-any
+  const inserts: any[] = [];
+  const sbWith = (rejectPlanColumn: boolean) => ({
+    from: () => ({
+      // deno-lint-ignore no-explicit-any
+      insert: (row: any) => ({
+        select: () => ({
+          single: () => {
+            inserts.push(row);
+            const bad = rejectPlanColumn && "plan_continuation" in row;
+            return Promise.resolve(bad ? { data: null, error: { code: "PGRST204", message: "column plan_continuation" } } : { data: { id: "m1", ...row }, error: null });
+          },
+        }),
+      }),
+    }),
+  });
+  const cont = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08" };
+  const ok = await insertModelMessage(sbWith(false), "u1", "Aqui tens a semana 1.", "neutral", cont);
+  assertEquals(ok.data.plan_continuation, cont);
+  assertEquals(inserts.length, 1);
+  inserts.length = 0;
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const fallback = await insertModelMessage(sbWith(true), "u1", "Aqui tens a semana 1.", "neutral", cont);
+    assertEquals([fallback.error, "plan_continuation" in fallback.data, fallback.data.mood], [null, false, "neutral"]);
+  } finally {
+    console.warn = warn;
+  }
+  // Sem continuação, o insert é o de sempre.
+  inserts.length = 0;
+  await insertModelMessage(sbWith(false), "u1", "Olá.", null);
+  assertEquals("plan_continuation" in inserts[0], false);
+  // As duas gravações do handler levam-na.
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertEquals(src.split(", planContinuationOut);").length - 1, 2);
 });

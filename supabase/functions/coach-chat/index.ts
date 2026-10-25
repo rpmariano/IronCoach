@@ -1605,7 +1605,19 @@ export async function saveRecommendations(sb: any, userId: string, messageId: st
 // isso, se o insert com a emoção falhar, seja porquê, grava-se sem ela; o
 // cliente deduz a emoção do texto.
 // deno-lint-ignore no-explicit-any
-async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null) {
+export async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null, planContinuation: unknown = null) {
+  // A continuação de um plano partido vai também na linha da mensagem: um
+  // turno de mais de 45 s chega ao cliente por sondagem, sem a resposta, e o
+  // plan_continuation perdia-se com ela (migração 20261025180000). Sem a
+  // coluna, grava-se sem ela, como a emoção.
+  if (planContinuation) {
+    const withPlan = await sb.from("coach_messages")
+      .insert({ user_id: userId, role: "model", content, ...(mood ? { mood } : {}), plan_continuation: planContinuation })
+      .select()
+      .single();
+    if (!withPlan.error) return withPlan;
+    console.warn("Resposta gravada sem plan_continuation (coach_messages.plan_continuation):", withPlan.error.code, withPlan.error.message);
+  }
   if (mood) {
     const withMood = await sb.from("coach_messages")
       .insert({ user_id: userId, role: "model", content, mood })
@@ -3183,11 +3195,16 @@ export function nextPlanContinuation(args: any, current: PlanContinuation | null
 /** O turno da continuação: o que a Carol recebe no lugar da mensagem dele. */
 export function buildPlanContinuationTurn(c: PlanContinuation): string {
   const last = c.part >= c.of;
+  // As partes anteriores têm 7 dias cada: começaram 7 × (parte − 1) dias antes desta.
+  const chainStart = addDaysISO(c.from, -MAX_PLAN_SPAN_DAYS * (c.part - 1));
   return `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
+    `As partes anteriores (de ${chainStart} a ${addDaysISO(c.from, -1)}) estão ACEITES PROVISORIAMENTE: continuam pendentes na ` +
+    `base de dados porque o plano só se aplica quando ele aceitar a última parte — não as trates como recusadas nem por ` +
+    `decidir, não as repitas nem as voltes a propor. ` +
     `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to}, com period_start=${c.from} e period_end=${c.to} — ` +
     `o mesmo objetivo e a mesma prova (race_id) da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
     `No texto, uma frase curta de ligação que diga os dias desta parte (ex.: «Aqui tens a semana de … a …») — nunca o período até à prova` +
-    (last ? " e diz-lhe que o plano fica completo." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
+    (last ? " e diz-lhe que, ao aceitar esta, o plano todo fica em vigor." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
     ` Não cumprimentes nem repitas o que já disseste.`;
 }
 
@@ -3271,7 +3288,7 @@ export async function runProposeTrainingPlan(
       if (span > MAX_PLAN_SPAN_DAYS) {
         return `Erro: no máximo ${MAX_PLAN_SPAN_DAYS} dias de treinos por proposta — estes vão de ${first} a ${last} (${span} dias). ` +
           `Parte o plano em semanas: propõe agora só os treinos de ${first} a ${addDaysISO(first, MAX_PLAN_SPAN_DAYS - 1)}, com plan_until=${last}, ` +
-          `e avisa o atleta no texto deste turno de que o plano vem em partes (ex.: «Faço-te isto em duas partes: primeiro a semana de …, ` +
+          `e avisa o atleta no texto deste turno de que o plano vem em partes (ex.: «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de …, ` +
           `logo a seguir a de …»). A parte seguinte faz-se depois de ele aceitar esta.`;
       }
       if (partWindow && (first < partWindow.from || last > partWindow.to)) {
@@ -3609,14 +3626,28 @@ export async function runProposeTrainingPlan(
   // real (corrida/ginásio) — a mesma regra usada acima para
   // supersedes_plan_id; uma proposta de só-refeições não bloqueia nem é
   // bloqueada por esta.
+  //
+  // A exceção são as partes de um plano partido (pedido do Rui, 2026-10-25): o
+  // plano só se aplica quando ele aceita a última, por isso as anteriores
+  // ficam pendentes na BD («aceites provisoriamente») enquanto a cadeia
+  // corre. Um turno de continuação (partWindow) não recusa as partes da
+  // MESMA cadeia: as pendentes com o mesmo race_id (ou ambas sem) que acabam
+  // antes da semana desta parte. Não é preciso um id de cadeia: a primeira
+  // parte não é continuação e recusou todas as pendentes que havia, por isso
+  // o que fica pendente antes da semana desta é a cadeia. Uma proposta que
+  // não é continuação recusa tudo, as partes incluídas.
   const { data: pendingPlans } = await sb
     .from("coach_plans")
-    .select("id, coach_plan_items(kind)")
+    .select("id, race_id, period_end, coach_plan_items(kind)")
     .eq("user_id", userId)
     .eq("status", "proposto");
+  // deno-lint-ignore no-explicit-any
+  const inThisChain = (p: any) => !!partWindow && (p.race_id ?? null) === raceId && typeof p.period_end === "string" && p.period_end < partWindow.from;
   const stalePendingIds = (pendingPlans || [])
     // deno-lint-ignore no-explicit-any
     .filter((p: any) => (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio"))
+    // deno-lint-ignore no-explicit-any
+    .filter((p: any) => !inThisChain(p))
     // deno-lint-ignore no-explicit-any
     .map((p: any) => p.id);
   if (stalePendingIds.length > 0) {
@@ -6251,7 +6282,7 @@ export function buildSystemInstruction(
     `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
     `PLANOS COM MAIS DE 7 DIAS: cada propose_training_plan leva no máximo 7 dias de treinos (do primeiro ao último ` +
     `planned_date; o período pode ir até à prova). Se o atleta pedir mais (ex.: 14 dias), AVISA-O PRIMEIRO no texto ` +
-    `deste turno — «Faço-te isto em duas partes: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
+    `deste turno — «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
     `propõe só a primeira semana, com plan_until = o último dia que ele pediu. Numa parte, period_start/period_end são os ` +
     `da semana dela (com o mesmo race_id, se o plano é para uma prova). A parte seguinte pede-ta a app depois ` +
     `de ele aceitar esta: não a proponhas antes.\n\n` +
@@ -7997,7 +8028,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             : cupWasUpdated
               ? "Gravei a jornada como combinámos."
               : "Fechei este assunto do meu lado.";
-      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral");
+      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral", planContinuationOut);
       return jsonResponse({
         user_message: userMsg,
         model_message: fallbackMsg ?? { id: null, role: "model", content: text, mood: "neutral", created_at: new Date().toISOString() },
@@ -8263,7 +8294,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
-    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
+    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood, planContinuationOut);
 
     // A abertura da conversa pedida pelo aviso foi dita: o aviso fecha
     // (closeInterventionOnTalk). Com a mensagem por gravar não — o atleta
