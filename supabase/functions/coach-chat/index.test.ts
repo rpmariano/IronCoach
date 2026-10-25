@@ -5675,11 +5675,13 @@ function proactiveLogSb() {
         };
         return chain;
       },
+      // Como em produção: só inserções. Um upsert que atualize falha (a RLS
+      // não deixa UPDATE); com ignoreDuplicates, um repetido não faz nada.
       // deno-lint-ignore no-explicit-any
-      upsert: (row: any) => {
+      upsert: (row: any, opts?: { ignoreDuplicates?: boolean }) => {
         const i = rows.findIndex((r) => r.user_id === row.user_id && r.key === row.key);
-        if (i >= 0) rows[i] = { ...rows[i], ...row };
-        else rows.push(row);
+        if (i >= 0 && !opts?.ignoreDuplicates) return Promise.resolve({ error: { message: "new row violates row-level security policy" } });
+        if (i < 0) rows.push(row);
         return Promise.resolve({ error: null });
       },
     }),
@@ -5707,9 +5709,19 @@ Deno.test("mapa da época: dois pedidos seguidos com a mesma assinatura → um s
   assertEquals(rows, [{ user_id: "u1", key: "cup_map:ed1:1shvrz6", trigger: "cup_map", sent_at: "2026-10-23T18:00:00.000Z" }]);
   // Jornadas novas (outra assinatura) → o mapa é outro e mostra-se.
   await cupMapRequest(sb, "ed1:9xyz", t0 + 60_000, turns);
-  // Passadas 24 h, a mesma assinatura volta a poder sair.
-  await cupMapRequest(sb, "ed1:1shvrz6", t0 + CUP_MAP_RESEND_MS + 1, turns);
+  // Passadas 24 h da PRIMEIRA entrega, a mesma assinatura volta a poder sair;
+  // o registo não se renova (só inserções) e a gravação não dá erro.
+  const warns: unknown[] = [];
+  const warn = console.warn;
+  console.warn = (...a: unknown[]) => warns.push(a);
+  try {
+    await cupMapRequest(sb, "ed1:1shvrz6", t0 + CUP_MAP_RESEND_MS + 1, turns);
+  } finally {
+    console.warn = warn;
+  }
   assertEquals(turns, ["ed1:1shvrz6", "ed1:9xyz", "ed1:1shvrz6"]);
+  assertEquals(warns, []);
+  assertEquals(rows.find((r) => r.key === "cup_map:ed1:1shvrz6").sent_at, "2026-10-23T18:00:00.000Z");
 });
 
 Deno.test("mapa da época: assinatura inválida não registra nada; leitura falhada deixa passar", async () => {

@@ -902,9 +902,11 @@ export async function recordProactiveDelivered(sb: any, userId: string, trigger:
    cliente manda cup_map.signature (a edição e o estado das jornadas: muda
    quando as jornadas mudam, e aí o mapa é outro) e o servidor regista a
    entrega em coach_proactive_log quando grava a mensagem, não quando a
-   resposta chega ao cliente. A mesma assinatura nas 24 h seguintes não gera
-   turno novo. O lock por utilizador (coach_chat_busy_since) põe os pedidos
-   em fila, por isso o segundo já encontra a entrega do primeiro. */
+   resposta chega ao cliente. A mesma assinatura nas 24 h seguintes à PRIMEIRA
+   entrega não gera turno novo (o registo só se insere; a RLS não deixa
+   renová-lo). O lock por utilizador (coach_chat_busy_since) devolve 409 a um
+   segundo pedido enquanto o primeiro corre: quando o segundo passa, o
+   primeiro já gravou a entrega. */
 export const CUP_MAP_RESEND_MS = 24 * 3600 * 1000;
 
 /** A chave do registo para uma assinatura do mapa, ou null se não serve. */
@@ -932,12 +934,14 @@ export async function cupMapAlreadySent(sb: any, userId: string, key: string, no
   }
 }
 
-/** Regista a entrega do mapa (sent_at renova-se: as 24 h contam da última). */
+/** Regista a entrega do mapa. Só insere (ignoreDuplicates): a RLS de
+ *  coach_proactive_log não deixa UPDATE, e um upsert que atualizasse falhava
+ *  sempre — as 24 h contam da primeira entrega (revisão do lote, 2026-10-25). */
 // deno-lint-ignore no-explicit-any
 export async function recordCupMapDelivered(sb: any, userId: string, key: string, nowISO = new Date().toISOString()): Promise<void> {
   try {
     const { error } = await sb.from("coach_proactive_log")
-      .upsert({ user_id: userId, key, trigger: "cup_map", sent_at: nowISO }, { onConflict: "user_id,key" });
+      .upsert({ user_id: userId, key, trigger: "cup_map", sent_at: nowISO }, { onConflict: "user_id,key", ignoreDuplicates: true });
     if (error) console.warn("coach_proactive_log (mapa): gravação falhou:", error.message ?? error);
   } catch (e) {
     console.warn("coach_proactive_log (mapa): gravação falhou:", e);
