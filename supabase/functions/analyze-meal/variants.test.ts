@@ -206,3 +206,23 @@ Deno.test("fetchVariants: lê as variantes e os genéricos delas; sem variantes,
   assertEquals((await fetchVariants(new FakeFoodsDb(), U)).byGeneric.size, 0);
   assertEquals((await fetchVariants({ from: () => { throw new Error("rede"); } }, U)).byGeneric.size, 0);
 });
+
+Deno.test("linkVariants: com o genérico na despensa, as variantes dele também entram (decisão a do #87)", async () => {
+  const db = new FakeFoodsDb();
+  db.tables.athlete_foods.push(
+    { id: "g1", user_id: U, name: "Coxa de frango", name_key: "coxa de frango", times_seen: 1, in_pantry: false, parent_id: null, variant_label: null },
+    { id: "v1", user_id: U, name: "Coxa de frango com pele", name_key: "coxa de frango com pele", times_seen: 1, in_pantry: false, parent_id: "g1", variant_label: "com pele" },
+    { id: "v2", user_id: U, name: "Coxa de frango sem pele", name_key: "coxa de frango sem pele", times_seen: 1, in_pantry: false, parent_id: null, variant_label: null },
+    { id: "x", user_id: "u2", name: "Coxa de frango sem pele", name_key: "coxa de frango sem pele", times_seen: 1, in_pantry: false, parent_id: null, variant_label: null },
+  );
+  // 2.ª vez do genérico: entra na despensa, e com ele as duas variantes (a antiga e a nova).
+  await linkVariants(db, U, [{ ...item({}), name: "Coxa de frango sem pele", variant_of: "Coxa de frango", variant_label: "sem pele" }], NOW);
+  const byId = (id: string) => db.tables.athlete_foods.find((r) => r.id === id)!;
+  assertEquals([byId("g1").in_pantry, byId("v1").in_pantry, byId("v2").in_pantry], [true, true, true]);
+  assertEquals(byId("x").in_pantry, false); // de outro atleta
+
+  // Genérico fora da despensa (visto uma vez): a variante fica fora também.
+  const db2 = new FakeFoodsDb();
+  await linkVariants(db2, U, [{ ...item({}), name: "Leite magro", variant_of: "Leite", variant_label: "magro" }], NOW);
+  assertEquals(db2.tables.athlete_foods.every((r) => r.in_pantry === false), true);
+});

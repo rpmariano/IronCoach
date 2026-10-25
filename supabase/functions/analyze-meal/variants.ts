@@ -354,12 +354,13 @@ export async function linkVariants(
       const generic = prev.get(gKey);
       // Uma variante não pode ser genérico de outra (um nível só).
       if (!generic?.id || generic.parent_id) continue;
+      let genericInPantry = !!generic.in_pantry;
       if (!missing.some(([k]) => k === gKey)) {
         const seen = (generic.times_seen ?? 0) + (countGeneric ? 1 : 0);
-        const inPantry = generic.in_pantry || seen >= 2 || !!opts.inPantry;
-        if (seen !== generic.times_seen || inPantry !== generic.in_pantry) {
+        genericInPantry = generic.in_pantry || seen >= 2 || !!opts.inPantry;
+        if (seen !== generic.times_seen || genericInPantry !== generic.in_pantry) {
           const { error: upErr } = await sb.from("athlete_foods")
-            .update({ times_seen: seen, in_pantry: inPantry, last_used_at: nowISO })
+            .update({ times_seen: seen, in_pantry: genericInPantry, last_used_at: nowISO })
             .eq("id", generic.id).eq("user_id", userId);
           if (upErr) throw upErr;
         }
@@ -371,6 +372,19 @@ export async function linkVariants(
           .eq("name_key", foodKey(it.name))
           .neq("id", generic.id);
         if (linkErr) throw linkErr;
+      }
+      // Decisão do coordenador (#87, opção a): com o genérico na despensa,
+      // as variantes dele também lá estão — o Armário (loadPantry, só
+      // in_pantry = true) mostra-as debaixo do genérico. As já ligadas antes
+      // de o genérico lá entrar passam aqui também. Um alimento com
+      // qualificação visto uma vez só (genérico fora da despensa) fica fora.
+      if (genericInPantry) {
+        const { error: pantryErr } = await sb.from("athlete_foods")
+          .update({ in_pantry: true })
+          .eq("user_id", userId)
+          .eq("parent_id", generic.id)
+          .eq("in_pantry", false);
+        if (pantryErr) throw pantryErr;
       }
     }
   } catch (e) {
