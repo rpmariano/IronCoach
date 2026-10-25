@@ -1,2 +1,17 @@
-<!-- PLACEHOLDER: a Carol substitui pela máscara definitiva (mesmo nome). Traços largos que revelam o webp, no viewBox dele; a ordem dos elementos é a do desenho. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="#fff" stroke-width="60" stroke-linecap="round" stroke-linejoin="round"><path d="M40 90 C90 40 170 40 216 90"/><path d="M40 140 C90 100 170 100 216 140"/><path d="M40 190 C90 160 170 160 216 190"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 804" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+<!-- Máscara de revelação da cena da corrida (opção 1): traços largos que, ao
+     serem desenhados, mostram corrida.webp por baixo. Usa-se como <mask>
+     (branco = visível). Cada caminho tem pathLength="1" e a variável CSS i (a ordem):
+     anima-se com stroke-dasharray:1 e stroke-dashoffset 1 → 0. Os quatro
+     últimos varrem o fundo, para no fim a cena estar toda à vista. -->
+<path pathLength="1" style="--i:0" stroke-width="150" d="M250 210 C250 150 300 130 330 160"/>
+<path pathLength="1" style="--i:1" stroke-width="90" d="M300 90 C380 90 440 140 500 180 C530 200 545 215 560 230"/>
+<path pathLength="1" style="--i:2" stroke-width="140" d="M280 320 C280 380 280 420 280 470"/>
+<path pathLength="1" style="--i:3" stroke-width="80" d="M150 360 C170 410 200 400 230 360 M330 350 C380 360 410 410 410 480"/>
+<path pathLength="1" style="--i:4" stroke-width="100" d="M250 480 C245 560 235 630 225 700 M310 480 C350 540 390 580 430 620"/>
+<path pathLength="1" style="--i:5" stroke-width="110" d="M160 740 C200 740 240 730 280 720 M420 610 C430 650 440 680 440 710"/>
+<path pathLength="1" style="--i:6" stroke-width="320" d="M-60 110 C150 80 450 80 680 110"/>
+<path pathLength="1" style="--i:7" stroke-width="320" d="M680 310 C450 280 150 280 -60 310"/>
+<path pathLength="1" style="--i:8" stroke-width="320" d="M-60 510 C150 480 450 480 680 510"/>
+<path pathLength="1" style="--i:9" stroke-width="320" d="M680 710 C450 680 150 680 -60 710"/>
+</svg>

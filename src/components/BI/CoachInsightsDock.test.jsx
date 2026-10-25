@@ -301,6 +301,15 @@ describe('CoachInsightsDock', () => {
       expect(janela).not.toHaveTextContent('Já tens');
     });
 
+    it('A6 — com treinos falhados, o ajuste do plano fica por cima do plano a meio', () => {
+      meio({ coachPlanItems: [26, 28, 30].map((d, i) => ({ id: `i${i}`, plan_id: 'p1', kind: 'corrida', status: 'pendente', planned_date: `2026-10-${d}` })) });
+      render(<CoachInsightsDock />);
+      fireEvent.click(screen.getByTestId('coach-insight-button'));
+      const janela = screen.getByTestId('insights-dialog');
+      expect(janela).toHaveTextContent('O plano precisa de um ajuste');
+      expect(janela).not.toHaveTextContent('O plano ficou a meio');
+    });
+
     it('dispensar cala-o aqui e regista a impressão com a chave da mensagem', () => {
       meio();
       render(<CoachInsightsDock />);
