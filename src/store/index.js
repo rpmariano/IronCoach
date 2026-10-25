@@ -1143,11 +1143,15 @@ export const useAppStore = create((set, get) => ({
           race_lost_at: null,
         }).eq('id', targetPlanId);
 
-        // 2. Apagar os treinos do plano original nas datas que estão a ser substituídas
+        // 2. Apagar os treinos do plano original nas datas que estão a ser
+        //    substituídas — menos os já FEITOS: o plano deixava de mostrar esse
+        //    dia como cumprido (o registo da corrida em si nunca se perdia).
+        //    Importa nas partes de um plano longo, que se fundem no bloco ativo.
         await supabase
           .from('coach_plan_items')
           .delete()
           .eq('plan_id', targetPlanId)
+          .neq('status', 'concluido')
           .gte('planned_date', newPlan.period_start)
           .lte('planned_date', newPlan.period_end);
 
