@@ -113,13 +113,68 @@ export function isKnownFood(name, foods) {
 export function pantrySuggestions(query, foods, limit = 5) {
   const words = foodKey(query).split(' ').filter(Boolean);
   if (!words.length || foodKey(query).length < 2) return [];
-  return (foods || [])
+  const byId = new Map((foods || []).map((f) => [f.id, f]));
+  const hits = (foods || [])
     .filter((f) => {
       const nameWords = String(f.name_key || '').split(' ');
       return words.every((w) => nameWords.some((nw) => nw.startsWith(w)));
     })
+    // Bug #87: uma variante sugere-se pelo genérico (a escolha da variante
+    // vem a seguir); sem o pai na lista, aparece ela própria.
+    .map((f) => (f.parent_id && byId.has(f.parent_id) ? byId.get(f.parent_id) : f));
+  return [...new Set(hits)]
     .sort((a, b) => (b.times_seen || 0) - (a.times_seen || 0))
     .slice(0, limit);
+}
+
+/* Alimentos genéricos com variantes (bug #87, specs/despensa-variantes-
+   contrato.md): uma variante é uma linha filha em athlete_foods
+   (parent_id + variant_label); o genérico é a linha pai. Um alimento sem
+   filhas comporta-se como sempre. */
+export const isVariant = (food) => !!food?.parent_id;
+
+/** As variantes de um genérico: as mais usadas primeiro. */
+export function variantsOf(foods, parent) {
+  if (!parent?.id) return [];
+  return (foods || [])
+    .filter((f) => f.parent_id === parent.id)
+    .sort((a, b) => (b.times_seen || 0) - (a.times_seen || 0)
+      || String(a.variant_label).localeCompare(String(b.variant_label), 'pt'));
+}
+
+/** Os alimentos que se listam: sem as variantes (essas vivem sob o genérico). */
+export const topLevelFoods = (foods) => (foods || []).filter((f) => !f.parent_id);
+
+/**
+ * Grava uma variante de `parent`: nome = genérico + rótulo ("coxa de frango
+ * sem pele"), os valores por 100 g são dela. Nova → insere; `existing` →
+ * atualiza (o pai e o nome seguem o rótulo). Só o atleta a edita, por isso
+ * fica edited_by_athlete.
+ */
+export async function saveFoodVariant({ userId, parent, label, values, existing = null }) {
+  const variant_label = String(label || '').trim().slice(0, 40);
+  if (!foodKey(variant_label)) throw new Error('Diz qual é a variante (ex.: sem pele).');
+  if (!parent?.id) throw new Error('Falta o alimento de que isto é variante.');
+  const name = `${parent.name} ${variant_label}`.trim().slice(0, 120);
+  const nowISO = new Date().toISOString();
+  const row = {
+    name, name_key: foodKey(name), parent_id: parent.id, variant_label,
+    portion_grams: toNumber(values?.portion_grams) > 0 ? toNumber(values.portion_grams) : (parent.portion_grams ?? null),
+    portion_label: String(values?.portion_label || '').trim().slice(0, 40) || null,
+    ...Object.fromEntries(NUTRIENTS.filter((k) => !MICRO_COLUMNS.includes(k))
+      .map((k) => [k, Math.max(0, toNumber(values?.[k] ?? existing?.[k] ?? parent[k] ?? 0) || 0)])),
+    ...Object.fromEntries(MICRO_COLUMNS.map((k) => [k, microOrNull(existing ? pantryMicro(existing, k) : parent[k])])),
+    in_pantry: true, edited_by_athlete: true, micros_checked_at: nowISO, updated_at: nowISO,
+  };
+  if (existing?.id) {
+    const { data, error } = await supabase.from('athlete_foods').update(row).eq('id', existing.id).select().single();
+    if (error) throw new Error(error.code === '23505' ? 'Já tens uma variante com esse nome.' : error.message);
+    return data;
+  }
+  const { data, error } = await supabase.from('athlete_foods')
+    .insert({ ...row, user_id: userId, source: 'manual', times_seen: 0 }).select().single();
+  if (error) throw new Error(error.code === '23505' ? 'Já tens um alimento com esse nome na despensa.' : error.message);
+  return data;
 }
 
 /**

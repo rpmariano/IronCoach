@@ -4,7 +4,7 @@ import PremiumModal from '../shared/PremiumModal';
 import { useAppStore } from '../../store';
 import { useToast } from '../shared/ToastProvider';
 import { compressImage } from '../../lib/image';
-import { confirmPantryFood, deletePantryFood, EDITABLE_NUTRIENTS, listWords, missingMicroWords, savePantryFood } from '../../utils/pantry';
+import { confirmPantryFood, deletePantryFood, EDITABLE_NUTRIENTS, foodKey, listWords, missingMicroWords, saveFoodVariant, savePantryFood, variantsOf } from '../../utils/pantry';
 
 /* Adicionar ou ajustar um alimento da despensa (bug #48, fase C; mockup
    "Despensa e perguntas da Carol", ecrãs 8 e 9). Tudo o que entra é
@@ -15,6 +15,7 @@ import { confirmPantryFood, deletePantryFood, EDITABLE_NUTRIENTS, listWords, mis
 
 const toForm = (f) => ({
   name: f?.name ?? '',
+  variant_label: f?.variant_label ?? '',
   portion_grams: f?.portion_grams != null ? String(Math.round(Number(f.portion_grams))) : '',
   portion_label: f?.portion_label ?? '',
   ...Object.fromEntries(EDITABLE_NUTRIENTS.map(({ key }) => [key, f?.[key] != null ? String(Math.round(Number(f[key]) * 10) / 10) : ''])),
@@ -38,14 +39,20 @@ function MicrosNote({ food, fresh }) {
   );
 }
 
-export default function PantryFoodSheet({ food = null, onClose }) {
-  const { profile, loadPantry } = useAppStore();
+/* `parent` (bug #87): a ficha é de uma VARIANTE dele — "sem pele" de "coxa de
+   frango". Sem Carol: o atleta dá o rótulo e os valores (por omissão os do
+   genérico). `onVariant`: abre a ficha de uma variante nova deste alimento. */
+export default function PantryFoodSheet({ food = null, parent = null, onClose, onVariant, onOpenVariant }) {
+  const { profile, loadPantry, pantryFoods } = useAppStore();
   const { showToast } = useToast();
   const editing = !!food;
+  const variantMode = !!parent;
+  const isDemo = profile?.id === 'demo-user';
+  const variants = !variantMode && food ? variantsOf(pantryFoods, food) : [];
   const [way, setWay] = useState('descrever');
   const [description, setDescription] = useState('');
   const [confirmed, setConfirmed] = useState(food); // o que a Carol devolveu (ou o gravado)
-  const [form, setForm] = useState(food ? toForm(food) : null);
+  const [form, setForm] = useState(food ? toForm(food) : (parent ? { ...toForm(parent), name: '', variant_label: '' } : null));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -78,6 +85,26 @@ export default function PantryFoodSheet({ food = null, onClose }) {
     setBusy(true);
     setError('');
     try {
+      if (variantMode) {
+        if (isDemo) {
+          // Modo demo: sem Supabase, a variante vive só no store.
+          const st = useAppStore.getState();
+          const label = String(form.variant_label || '').trim();
+          if (!label) throw new Error('Diz qual é a variante (ex.: sem pele).');
+          const num = (k) => Number(String(form[k]).replace(',', '.')) || 0;
+          const row = { ...(food || { id: `demo-var-${Date.now()}`, times_seen: 0, in_pantry: true, parent_id: parent.id }),
+            name: `${parent.name} ${label}`, name_key: foodKey(`${parent.name} ${label}`), variant_label: label,
+            portion_grams: num('portion_grams') || parent.portion_grams, portion_label: form.portion_label || null,
+            ...Object.fromEntries(EDITABLE_NUTRIENTS.map(({ key }) => [key, num(key)])) };
+          st.setPantryFoods(food ? st.pantryFoods.map((f) => (f.id === food.id ? row : f)) : [...st.pantryFoods, row]);
+        } else {
+          await saveFoodVariant({ userId: profile?.id, parent, label: form.variant_label, values: form, existing: food });
+          await loadPantry?.();
+        }
+        showToast(editing ? 'Variante atualizada' : 'Variante guardada');
+        onClose();
+        return;
+      }
       await savePantryFood({
         userId: profile?.id,
         values: { ...confirmed, ...form },
@@ -98,9 +125,14 @@ export default function PantryFoodSheet({ food = null, onClose }) {
   const remove = async () => {
     setBusy(true);
     try {
-      await deletePantryFood(food.id);
-      await loadPantry?.();
-      showToast('Tirado da despensa');
+      if (isDemo) {
+        const st = useAppStore.getState();
+        st.setPantryFoods(st.pantryFoods.filter((f) => f.id !== food.id && f.parent_id !== food.id));
+      } else {
+        await deletePantryFood(food.id);
+        await loadPantry?.();
+      }
+      showToast(variantMode ? 'Variante apagada' : 'Tirado da despensa');
       onClose();
     } catch (e) {
       setError(e?.message || 'Não consegui tirar.');
@@ -122,7 +154,7 @@ export default function PantryFoodSheet({ food = null, onClose }) {
   );
 
   return (
-    <PremiumModal isOpen onClose={onClose} title={editing ? food.name : 'Adicionar à despensa'} subtitle={editing ? undefined : 'A Carol confirma os valores; tu podes ajustar.'} theme="nutri" variant="bottom-sheet" maxWidth="max-w-md">
+    <PremiumModal isOpen onClose={onClose} title={editing ? food.name : (variantMode ? `Nova variante · ${parent.name}` : 'Adicionar à despensa')} subtitle={editing ? undefined : (variantMode ? 'Os valores partem dos do genérico; ajusta-os.' : 'A Carol confirma os valores; tu podes ajustar.')} theme="nutri" variant="bottom-sheet" maxWidth="max-w-md">
       <div className="px-5 py-4 space-y-4" data-testid="pantry-food-sheet">
         {!editing && !form && (
           <>
@@ -172,11 +204,15 @@ export default function PantryFoodSheet({ food = null, onClose }) {
           <div className="p-3.5 rounded-2xl space-y-3" style={{ background: 'var(--tint-coach-bg)', border: '1px solid var(--tint-coach-bd)' }}>
             <p className="inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase" style={{ letterSpacing: 'var(--tracking-label)', color: 'var(--coach)' }}>
               <Check size={14} />
-              {editing
+              {variantMode
+                ? `Variante de ${parent.name}`
+                : editing
                 ? (food.edited_by_athlete ? 'Ajustado por ti' : `Confirmado pela Carol${fmtDate(food.updated_at) ? ` a ${fmtDate(food.updated_at)}` : ''}`)
                 : `${confirmed?.from_label ? 'Rótulo lido' : 'Confirmado'} pela Carol · ajusta se precisares`}
             </p>
-            {field('name', 'Nome', { maxLength: 120 })}
+            {variantMode
+              ? field('variant_label', 'Variante', { maxLength: 40, placeholder: 'sem pele' })
+              : field('name', 'Nome', { maxLength: 120 })}
             <div className="grid grid-cols-2 gap-2">
               {field('portion_grams', 'Porção habitual (g)', { inputMode: 'decimal' })}
               {field('portion_label', 'Chama-se (opcional)', { placeholder: '1 fatia', maxLength: 40 })}
@@ -199,7 +235,27 @@ export default function PantryFoodSheet({ food = null, onClose }) {
                 ))}
               </div>
             </div>
-            <MicrosNote food={editing ? food : confirmed} fresh={!editing} />
+            <MicrosNote food={editing ? food : (variantMode ? parent : confirmed)} fresh={!editing && !variantMode} />
+            {!variantMode && editing && (
+              <div data-testid="pantry-variants" className="space-y-1.5">
+                <span className="block text-[11px]" style={{ color: 'var(--text-3)' }}>Variantes</span>
+                {variants.map((v) => (
+                  <button key={v.id} type="button" onClick={() => onOpenVariant?.(v)} className="w-full min-h-[44px] rounded-[10px] px-3 text-left text-[13px] font-extrabold" style={{ border: '1px solid var(--border-glass)', background: 'rgba(255,255,255,.04)', color: 'var(--text-1)' }}>
+                    {v.variant_label}<span className="font-normal" style={{ color: 'var(--text-4)' }}> · {Math.round(Number(v.calories_per_100g) || 0)} kcal/100 g</span>
+                  </button>
+                ))}
+                {onVariant && (
+                  <button type="button" onClick={() => onVariant(food)} className="w-full min-h-[44px] rounded-[10px] text-[13px] font-extrabold" style={{ border: '1px dashed var(--tint-nutrition-bd)', color: 'var(--nutrition)' }}>
+                    + Acrescentar variante
+                  </button>
+                )}
+              </div>
+            )}
+            {editing && variants.length > 0 && (
+              <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                Tirar este alimento da despensa tira também as {variants.length} variantes.
+              </p>
+            )}
             {editing && (
               <p className="text-[11.5px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                 Um valor que mudes passa a ser o que a Carol usa. As refeições já gravadas não mudam.
@@ -212,12 +268,12 @@ export default function PantryFoodSheet({ food = null, onClose }) {
 
         {form && (
           <div className="space-y-2">
-            <button type="button" onClick={save} disabled={busy || !form.name.trim()} className="w-full min-h-[48px] rounded-xl text-[14px] font-black disabled:opacity-50" style={{ background: 'var(--nutrition)', color: 'var(--nutrition-ink)' }}>
+            <button type="button" onClick={save} disabled={busy || !String(variantMode ? form.variant_label : form.name).trim()} className="w-full min-h-[48px] rounded-xl text-[14px] font-black disabled:opacity-50" style={{ background: 'var(--nutrition)', color: 'var(--nutrition-ink)' }}>
               {busy ? 'A guardar…' : (editing ? 'Guardar alterações' : 'Guardar')}
             </button>
             {editing && (
               <button type="button" onClick={remove} disabled={busy} className="w-full min-h-[46px] rounded-xl text-[13.5px] font-extrabold" style={{ border: '1px solid var(--tint-danger-bd)', color: 'var(--danger)' }}>
-                Tirar da despensa
+                {variantMode ? 'Apagar variante' : 'Tirar da despensa'}
               </button>
             )}
           </div>

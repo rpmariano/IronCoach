@@ -934,6 +934,43 @@ describe('MealRegistration — a despensa ao escrever', () => {
     expect(screen.queryByTestId('pantry-suggestions')).not.toBeInTheDocument();
   });
 
+  it('bug #87: um genérico com variantes pergunta qual era, sem API; o item fica com a variante', () => {
+    const coxa = { id: 'p', name: 'Coxa de frango', name_key: 'coxa de frango', times_seen: 8, portion_grams: 120, calories_per_100g: 216 };
+    const com = { id: 'v1', parent_id: 'p', variant_label: 'com pele', name: 'Coxa de frango com pele', name_key: 'coxa de frango com pele', times_seen: 6, portion_grams: 120, calories_per_100g: 216 };
+    const sem = { id: 'v2', parent_id: 'p', variant_label: 'sem pele', name: 'Coxa de frango sem pele', name_key: 'coxa de frango sem pele', times_seen: 2, portion_grams: 100, calories_per_100g: 144 };
+    useAppStore.setState({ pantryFoods: [...FOODS, coxa, com, sem] });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'coxa' } });
+    const lista = screen.getByTestId('pantry-suggestions');
+    expect(within(lista).getAllByRole('option')).toHaveLength(1); // só o genérico
+    fireEvent.click(screen.getByRole('option', { name: /Coxa de frango/ }));
+    // Ainda nada na refeição: pergunta qual era.
+    const pergunta = screen.getByTestId('meal-variant-pick');
+    expect(pergunta).toHaveTextContent('qual era?');
+    expect(screen.queryByTestId('meal-items')).not.toBeInTheDocument();
+    fireEvent.click(within(pergunta).getByRole('button', { name: /sem pele/ }));
+    expect(screen.queryByTestId('meal-variant-pick')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Gramas de Coxa de frango sem pele')).toHaveValue(100);
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it('bug #87: cancelar a pergunta da variante não junta nada; as gramas escritas valem para a variante', () => {
+    const coxa = { id: 'p', name: 'Coxa de frango', name_key: 'coxa de frango', times_seen: 8, portion_grams: 120, calories_per_100g: 216 };
+    const com = { id: 'v1', parent_id: 'p', variant_label: 'com pele', name: 'Coxa de frango com pele', name_key: 'coxa de frango com pele', times_seen: 6, portion_grams: 120, calories_per_100g: 216 };
+    useAppStore.setState({ pantryFoods: [...FOODS, coxa, com] });
+    render(<MealRegistration onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: '200' } });
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'coxa' } });
+    fireEvent.click(screen.getByRole('option', { name: /Coxa de frango/ }));
+    fireEvent.click(within(screen.getByTestId('meal-variant-pick')).getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByTestId('meal-items')).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Gramas do alimento a adicionar (opcional)'), { target: { value: '200' } });
+    fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'coxa' } });
+    fireEvent.click(screen.getByRole('option', { name: /Coxa de frango/ }));
+    fireEvent.click(within(screen.getByTestId('meal-variant-pick')).getByRole('button', { name: /com pele/ }));
+    expect(screen.getByLabelText('Gramas de Coxa de frango com pele')).toHaveValue(200);
+  });
+
   it('um da despensa com micronutrientes por confirmar diz que a Carol os completa (não que não é analisado)', () => {
     render(<MealRegistration onClose={onClose} />);
     fireEvent.change(screen.getByPlaceholderText(/peito de frango grelhado/), { target: { value: 'iog nat' } });

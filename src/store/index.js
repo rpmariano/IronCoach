@@ -742,6 +742,16 @@ export const useAppStore = create((set, get) => ({
     const whoIsIn = () => get().session?.user?.id || get().profile?.id;
     const userId = whoIsIn();
     if (!userId) return;
+    // Modo demo (bug #87): a despensa fictícia, sem Supabase. Lê-se uma vez;
+    // depois o que o atleta mexer fica no store até recarregar.
+    if (userId === 'demo-user') {
+      if (get().pantryUserId !== userId) {
+        const { DEMO_PANTRY_FOODS } = await import('../utils/pantryDemo');
+        set({ pantryFoods: DEMO_PANTRY_FOODS, foodRules: [], mealTemplates: [], pantryUserId: userId });
+      }
+      set({ pantryLoaded: true });
+      return;
+    }
     // Nunca rejeita: sem despensa (modo demo, sem rede), o Armário fica vazio
     // e o registo da refeição só não sugere nada.
     try {
