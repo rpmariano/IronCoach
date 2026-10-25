@@ -561,3 +561,112 @@ describe.each(['corrida', 'ginasio', 'corporal', 'alimentacao'])('os SVG reais �
     expect(out).not.toMatch(/<!--|<\?|href|class=|data-(?!i)|url\(/i);
   });
 });
+
+/* Revisão do lote (pré-visualização): o crossfade esperava um relógio, mas a linha de tempo
+   das animações só avança com frames — com o primeiro frame atrasado o relógio cortava o
+   desenho a meio. Agora acaba quando as animações acabam. E «a carregar» não é «sem ficheiro». */
+describe('CarolCena — o desenho acaba antes de o crossfade começar', () => {
+  const originalGetAnimations = Element.prototype.getAnimations;
+  afterEach(() => { Element.prototype.getAnimations = originalGetAnimations; });
+
+  it('com animações em curso, o relógio não corta o desenho: só passa a final quando elas acabam', async () => {
+    let acabar;
+    const finished = new Promise((r) => { acabar = r; });
+    Element.prototype.getAnimations = vi.fn(() => [{ finished }]);
+    vi.useFakeTimers();
+    render(<CarolCena kind="run" modo="traco" fallback={FALLBACK} />);
+    await flush();
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'desenho');
+    // Passa o tempo que o desenho DEVIA demorar: as animações ainda não acabaram (sem frames).
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 500); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'desenho');
+    // Acabam: aí sim, o crossfade.
+    await act(async () => { acabar(); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+  });
+
+  it('uma animação que nunca acabe: a margem de segurança fecha a cena', async () => {
+    Element.prototype.getAnimations = vi.fn(() => [{ finished: new Promise(() => {}) }]);
+    vi.useFakeTimers();
+    render(<CarolCena kind="body" modo="carreiras" fallback={FALLBACK} />);
+    await flush();
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 3000); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'desenho');
+    act(() => { vi.advanceTimersByTime(1500); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+  });
+
+  it('sem getAnimations (jsdom, motores antigos): o relógio de sempre', async () => {
+    Element.prototype.getAnimations = undefined;
+    vi.useFakeTimers();
+    render(<CarolCena kind="meal" modo="pontos" fallback={FALLBACK} />);
+    await flush();
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 50); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+  });
+});
+
+describe('CarolCena — «a carregar» não é «sem ficheiro»', () => {
+  it('aoCarregar mostra-se só enquanto carrega; o fallback só se a cena falhar', async () => {
+    let falhar;
+    global.fetch = vi.fn(() => new Promise((_, rej) => { falhar = () => rej(new Error('404')); }));
+    render(<CarolCena kind="run" modo="traco" aoCarregar={<span data-testid="a-carregar">…</span>} fallback={FALLBACK} />);
+    expect(screen.getByTestId('a-carregar')).toBeInTheDocument();
+    expect(screen.queryByTestId('fallback')).not.toBeInTheDocument();
+    await flush(); // a imagem carrega primeiro; só então se pede o SVG
+    expect(screen.getByTestId('a-carregar')).toBeInTheDocument(); // o SVG ainda por responder: continua a carregar
+    await act(async () => { falhar(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.queryByTestId('a-carregar')).not.toBeInTheDocument();
+    expect(screen.getByTestId('fallback')).toBeInTheDocument();
+  });
+
+  it('sem aoCarregar, a carregar vê-se o fallback (o logótipo da análise)', () => {
+    render(<CarolCena kind="run" modo="traco" fallback={FALLBACK} />);
+    expect(screen.getByTestId('fallback')).toBeInTheDocument();
+  });
+});
+
+describe.each(['run', 'gym', 'body', 'meal'])('os SVG reais no DOM — %s', (kind) => {
+  const area = { run: 'corrida', gym: 'ginasio', body: 'corporal', meal: 'alimentacao' }[kind];
+  const disco = (url) => readFileSync(resolve(process.cwd(), 'public/carol-cenas', url.split('/').pop()), 'utf8');
+
+  it.each(['traco', 'mascara'])('%s: depois de sanitizados, os caminhos estão no DOM, animáveis (pathLength=1 e atraso) e a cena desenha', async (modo) => {
+    global.fetch = vi.fn((url) => Promise.resolve({ ok: true, text: () => Promise.resolve(disco(url)) }));
+    const esperados = (disco(`${area}-${modo}.svg`).match(/<path\b/g) || []).length;
+    render(<CarolCena kind={kind} modo={modo} fallback={FALLBACK} />);
+    await flush();
+    const cena = screen.getByTestId('carol-cena');
+    expect(cena).toHaveAttribute('data-modo', modo);
+    expect(cena).toHaveAttribute('data-fase', 'desenho');
+    const caminhos = [...cena.querySelectorAll(modo === 'traco' ? '.carol-cena-traco path' : 'mask path')];
+    expect(caminhos).toHaveLength(esperados);
+    expect(caminhos.every((p) => p.getAttribute('pathLength') === '1' && /^--atraso:\d+ms$/.test(p.getAttribute('style')) && p.getAttribute('d'))).toBe(true);
+  });
+});
+
+/* Causa de «não se vê o desenho» (pré-visualização): ao passar a 'final' o React 19 voltava a pôr o
+   innerHTML (objeto novo no dangerouslySetInnerHTML), recriava os caminhos e as animações
+   recomeçavam — o desenho desfazia-se e voltava a desenhar-se durante o crossfade. */
+describe('CarolCena — passar a final não recria o desenho', () => {
+  it.each([['traco', '.carol-cena-traco path'], ['mascara', 'mask path']])('%s: os mesmos nós antes e depois do crossfade', async (modo, seletor) => {
+    vi.useFakeTimers();
+    render(<CarolCena kind="run" modo={modo} fallback={FALLBACK} />);
+    await flush();
+    const antes = screen.getByTestId('carol-cena').querySelector(seletor);
+    expect(antes).not.toBeNull();
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'desenho');
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 50); });
+    expect(screen.getByTestId('carol-cena')).toHaveAttribute('data-fase', 'final');
+    // O mesmo nó (não um novo com o mesmo aspeto): senão a animação CSS recomeçava.
+    expect(screen.getByTestId('carol-cena').querySelector(seletor)).toBe(antes);
+  });
+
+  it('os modos gerados também (as formas da <mask> são as mesmas)', async () => {
+    vi.useFakeTimers();
+    render(<CarolCena kind="gym" modo="pontos" fallback={FALLBACK} />);
+    await flush();
+    const antes = screen.getByTestId('carol-cena').querySelector('mask circle');
+    act(() => { vi.advanceTimersByTime(CENA_DESENHO_MS + 50); });
+    expect(screen.getByTestId('carol-cena').querySelector('mask circle')).toBe(antes);
+  });
+});
