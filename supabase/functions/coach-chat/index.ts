@@ -78,8 +78,9 @@ import {
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
 import { geminiHeaders, thinkingConfig } from "../_shared/geminiModel.ts";
 import {
-  isPlanRequest, messageIdOfPlanResumeKey, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, planResumeFacts, parseStoredContinuation, previousWeekOf,
+  isPlanRequest, PLAN_RESUME_LATER, PLAN_RESUME_LATER_REPLY, PLAN_RESUME_SEND, type PlanResumeCandidate, planResumeFacts,
 } from "../_shared/formulas/planResume.ts";
+import { currentPlanResume } from "../_shared/planResumeData.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -940,52 +941,22 @@ export async function recordProactiveDelivered(
   }
 }
 
-/** Os factos da parte que falta (bloco PLANO A MEIO), lidos da mensagem da
- *  chave plan_resume:<id> — só se for dele, do modelo, e com continuação. */
+/** A última mensagem dela é a do retomar de um plano a meio? (o registo do
+ *  plan_resume grava-se logo a seguir à mensagem, por isso as duas horas
+ *  quase coincidem). Só aí o «Agora não» é a resposta a ela (A2). */
 // deno-lint-ignore no-explicit-any
-export async function planResumeFactsFor(sb: any, userId: string, key: string | null): Promise<string | null> {
-  const id = messageIdOfPlanResumeKey(key);
-  if (!id) return null;
+export async function lastModelIsPlanResume(sb: any, userId: string): Promise<boolean> {
   try {
-    const { data } = await sb.from("coach_messages").select("plan_continuation")
-      .eq("id", id).eq("user_id", userId).eq("role", "model").maybeSingle();
-    const c = parseStoredContinuation(data?.plan_continuation);
-    if (!c) return null;
-    // Está no calendário: há itens de planos ACEITES desde o início da cadeia
-    // até à véspera da semana que falta (as duas variantes do texto dela).
-    const chainStart = new Date(Date.parse(`${c.from}T00:00:00Z`) - 7 * (c.part - 1) * 86400000).toISOString().slice(0, 10);
-    const [{ data: accepted, error: accErr }, { data: race }] = await Promise.all([
-      sb.from("coach_plans").select("coach_plan_items(planned_date)").eq("user_id", userId).eq("status", "aceite")
-        .gte("period_end", chainStart),
-      sb.from("race_events").select("name").eq("user_id", userId).eq("date", c.until).limit(1).maybeSingle(),
+    const [{ data: last }, { data: log }] = await Promise.all([
+      sb.from("coach_messages").select("created_at").eq("user_id", userId).eq("role", "model")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      sb.from("coach_proactive_log").select("sent_at").eq("user_id", userId).like("key", "plan_resume:%")
+        .order("sent_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
-    // deno-lint-ignore no-explicit-any
-    const dates: string[] = ((accepted ?? []) as any[]).flatMap((p) => (p.coach_plan_items || []).map((i: { planned_date?: string }) => i?.planned_date)).filter(Boolean);
-    const prev = previousWeekOf(c, dates);
-    // Sem saber o calendário, a linha não vai (e ela não fala dele).
-    return planResumeFacts({ ...c, prevFrom: prev.prevFrom, prevTo: prev.prevTo, ...(accErr ? {} : { applied: prev.applied }), raceName: race?.name ?? null });
+    const gap = Date.parse(String(log?.sent_at ?? "")) - Date.parse(String(last?.created_at ?? ""));
+    return Number.isFinite(gap) && gap >= 0 && gap < 60_000;
   } catch {
-    return null;
-  }
-}
-
-/** «Manda a próxima semana»: a continuação da mensagem que a Carol retomou
- *  mais recentemente (plan_resume nos últimos 7 dias), ou null. */
-// deno-lint-ignore no-explicit-any
-export async function planContinuationFromResume(sb: any, userId: string, nowMs = Date.now()): Promise<unknown> {
-  try {
-    const { data: logRows } = await sb.from("coach_proactive_log").select("key, sent_at")
-      .eq("user_id", userId).like("key", "plan_resume:%")
-      .gte("sent_at", new Date(nowMs - 7 * 86400000).toISOString())
-      .order("sent_at", { ascending: false }).limit(1);
-    const id = messageIdOfPlanResumeKey((logRows ?? [])[0]?.key);
-    if (!id) return null;
-    const { data } = await sb.from("coach_messages").select("plan_continuation")
-      .eq("id", id).eq("user_id", userId).eq("role", "model").maybeSingle();
-    return parseStoredContinuation(data?.plan_continuation);
-  } catch (e) {
-    console.warn("plano a meio: continuação não lida:", e instanceof Error ? e.message : e);
-    return null;
+    return false;
   }
 }
 
@@ -3296,14 +3267,24 @@ export function nextPlanContinuation(args: any, current: PlanContinuation | null
 }
 
 /** O turno da continuação: o que a Carol recebe no lugar da mensagem dele. */
-export function buildPlanContinuationTurn(c: PlanContinuation): string {
+export function buildPlanContinuationTurn(c: PlanContinuation, resume: { applied: boolean } | null = null): string {
   const last = c.part >= c.of;
   // As partes anteriores têm 7 dias cada: começaram 7 × (parte − 1) dias antes desta.
   const chainStart = addDaysISO(c.from, -MAX_PLAN_SPAN_DAYS * (c.part - 1));
-  return `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
-    `As partes anteriores (de ${chainStart} a ${addDaysISO(c.from, -1)}) estão ACEITES PROVISORIAMENTE: continuam pendentes na ` +
-    `base de dados porque o plano só se aplica quando ele aceitar a última parte — não as trates como recusadas nem por ` +
-    `decidir, não as repitas nem as voltes a propor. ` +
+  const prev = `As partes anteriores (de ${chainStart} a ${addDaysISO(c.from, -1)})`;
+  // A retoma de um plano a meio (plan_resume): as partes anteriores não estão
+  // pendentes — ou já estão no calendário, ou não (revisão do 69d1cc8c, A4).
+  const before = resume
+    ? `Continuação de um plano que ficou a meio (parte ${c.part} de ${c.of}): ele pediu-te agora a parte seguinte. ` +
+      (resume.applied
+        ? `${prev} já estão no calendário dele. `
+        : `${prev} ainda não estão no calendário: nada entra enquanto o plano não estiver completo. `) +
+      `Não as voltes a propor nem as repitas. `
+    : `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
+      `${prev} estão ACEITES PROVISORIAMENTE: continuam pendentes na ` +
+      `base de dados porque o plano só se aplica quando ele aceitar a última parte — não as trates como recusadas nem por ` +
+      `decidir, não as repitas nem as voltes a propor. `;
+  return before +
     `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to}, com period_start=${c.from} e period_end=${c.to} — ` +
     `o mesmo objetivo e a mesma prova (race_id) da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
     `No texto, uma frase curta de ligação que diga os dias desta parte (ex.: «Aqui tens a semana de … a …») — nunca o período até à prova` +
@@ -6912,6 +6893,18 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const bypassQuietHours = raceAfterForce || tapForce;
     // A chave que torna esta mensagem única (src/utils/coachProactive.js).
     const proactiveKey = proactiveTrigger ? parseProactiveKey(body.proactive_key) : null;
+    // Retomar um plano a meio: a regra verifica-se outra vez aqui (A3). Se já
+    // não vale (ou a chave não é a dela), nada de mensagem nem de datas.
+    let planResumeTurn: PlanResumeCandidate | null = null;
+    if (proactiveTrigger === "plan_resume") {
+      planResumeTurn = await currentPlanResume(sb, userId, Date.now(), lisbonTodayISO());
+      if (!planResumeTurn || planResumeTurn.key !== proactiveKey) {
+        return jsonResponse({
+          skipped: true, reason: "plan_resume_gone", proactive: proactiveTrigger, user_message: null, model_message: null,
+          suggestions: [], usage: null, plan_proposed: false, goals_updated: false, goal_proposed: false,
+        });
+      }
+    }
     if (proactiveTrigger && proactiveKey && !raceAfterForce && await wasProactiveDelivered(sb, userId, proactiveKey)) {
       return jsonResponse({
         skipped: true,
@@ -6947,14 +6940,17 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // «Manda a próxima semana» depois de a Carol retomar um plano a meio
     // (plan_resume): a continuação vem da mensagem dela que ficou a meio
     // (coach_messages.plan_continuation), sem o cliente precisar de a ter.
-    let planResumeAsked = false;
+    // Só vale se a regra ainda valer agora (A1) e se ela já lha ofereceu (a
+    // chave entregue); senão é um turno normal, que não mexe em pendentes.
+    let planResumeAsked: PlanResumeCandidate | null = null;
     const chipText = message ? message.trim().replace(/[.!]+$/, "").toLowerCase() : "";
-    const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && !!(await planContinuationFromResume(sb, userId));
+    // «Agora não» só é desviado se a última mensagem dela for a do retomar (A2).
+    const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && await lastModelIsPlanResume(sb, userId);
     if (chipText === PLAN_RESUME_SEND.toLowerCase()) {
-      const resumed = await planContinuationFromResume(sb, userId);
-      if (resumed) {
-        planContinuationIn = parsePlanContinuation(resumed);
-        planResumeAsked = !!planContinuationIn;
+      const cand = await currentPlanResume(sb, userId, Date.now(), lisbonTodayISO());
+      if (cand && await wasProactiveDelivered(sb, userId, cand.key)) {
+        planContinuationIn = parsePlanContinuation(cand.resume);
+        if (planContinuationIn) planResumeAsked = cand;
       }
     }
     if (planContinuationIn) body.is_plan_checkin = true;
@@ -8072,11 +8068,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
 
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
-    // Retomar um plano a meio: os factos saem da mensagem da chave.
-    if (proactiveTrigger === "plan_resume") {
-      const facts = await planResumeFactsFor(sb, userId, proactiveKey);
-      if (facts) finalSystemInstruction += "\n\nPLANO A MEIO: " + facts + ".";
-    }
+    // Retomar um plano a meio: os factos da regra (verificada à entrada, A3).
+    if (planResumeTurn) finalSystemInstruction += "\n\nPLANO A MEIO: " + planResumeFacts(planResumeTurn.resume) + ".";
     // «Agora não» depois de um retomar (últimos 7 dias): a frase dela, sem insistir.
     if (planResumeLaterAsked) {
       finalSystemInstruction += `\n\nO atleta respondeu «${PLAN_RESUME_LATER}» ao plano a meio. Responde exatamente: «${PLAN_RESUME_LATER_REPLY}» ` +
@@ -8084,7 +8077,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
     // O chip «Manda a próxima semana»: é um turno de continuação.
     if (planResumeAsked && planContinuationIn) {
-      finalSystemInstruction += "\n\nO atleta pediu-te agora a parte seguinte do plano que ficou a meio. " + buildPlanContinuationTurn(planContinuationIn);
+      finalSystemInstruction += "\n\n" + buildPlanContinuationTurn(planContinuationIn, { applied: planResumeAsked.resume.applied });
     }
     // O «Atualiza os objetivos» aplicado: ela só confirma o que ficou.
     if (targetsApplied.length) finalSystemInstruction += "\n\n" + buildTargetsAppliedInstruction(targetsApplied);
