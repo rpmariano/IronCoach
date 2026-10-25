@@ -32,6 +32,13 @@ describe('o aviso "O plano ficou a meio" (plan_resume)', () => {
       .toBe('O teu plano até 29/11 ficou a meio e ainda não está no calendário. Quero acabá-lo contigo.');
   });
 
+  it('sem o dado do calendário, não o promete nem o nega', () => {
+    for (const applied of [null, undefined]) {
+      expect(planResumeNotice({ ...BASE, applied }).message)
+        .toBe('O teu plano até à Meia de Lisboa, a 29/11, ficou a meio. Quero acabá-lo contigo.');
+    }
+  });
+
   it('sem as datas de que precisa, não há aviso (nunca uma frase com buracos)', () => {
     expect(planResumeNotice()).toBeNull();
     expect(planResumeNotice({ ...BASE, until: null, applied: false })).toBeNull();

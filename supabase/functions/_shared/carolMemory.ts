@@ -1062,7 +1062,7 @@ export async function fetchImpressionsBlock(sb: any, userId: string, todayISO: s
 const PUSH_TRIGGER_LABELS: Record<string, string> = {
   intervention: "assunto por resolver", race_morning: "manhã da prova", race_eve: "véspera da prova",
   race_conflict: "provas em conflito", race_after: "depois da prova", block_end: "fim de bloco", silence: "dias sem registos",
-  missed_workout: "treino por registar", week_review: "balanço da semana",
+  missed_workout: "treino por registar", week_review: "balanço da semana", plan_resume: "plano a meio",
   leaderboard: "entrar e sair das tabelas", percentile_ready: "números do Onde estás",
   // Os avisos do Troféu (specs/trofeu.md §8, Fase 5) — só aqui: não estão em
   // carol_push_types (a BD recusa-os lá), por isso não vão para PUSH_TYPE_LABELS.

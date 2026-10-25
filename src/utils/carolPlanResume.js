@@ -33,12 +33,14 @@ function ateOnde(raceName, until) {
 export function planResumeNotice({ applied, acceptedFrom, acceptedTo, until, raceName } = {}) {
   const ate = ateOnde(raceName, until);
   if (!ate) return null;
-  if (applied) {
+  if (applied === true) {
     const semana = intervaloFalado(acceptedFrom, acceptedTo);
     if (!semana) return null;
     return { title: PLAN_RESUME_TITLE, message: `Já tens a semana de ${semana} no calendário, mas faltam as seguintes ${ate}. Quero acabar o plano contigo.` };
   }
   // A meio da frase, "a 29/11" é um aposto: fecha com vírgula.
   const sujeito = String(raceName || '').trim() ? `${ate},` : ate;
-  return { title: PLAN_RESUME_TITLE, message: `O teu plano ${sujeito} ficou a meio e ainda não está no calendário. Quero acabá-lo contigo.` };
+  // Sem o dado (applied nem true nem false), não se promete nem se nega o calendário.
+  const calendario = applied === false ? ' e ainda não está no calendário' : '';
+  return { title: PLAN_RESUME_TITLE, message: `O teu plano ${sujeito} ficou a meio${calendario}. Quero acabá-lo contigo.` };
 }
