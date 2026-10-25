@@ -327,11 +327,15 @@ export function pendingPlanResumeAlert({ coachPlans = [], coachPlanItems = [], c
   const userMessagesAfter = messages
     .filter((m) => m?.role === 'user' && messageTime(m) > lastAt)
     .map((m) => ({ content: m.content ?? null, created_at: new Date(messageTime(m)).toISOString() }));
+  // A prova do plano: a do dia do until (como no servidor).
+  const untilDay = typeof last.plan_continuation?.until === 'string' ? last.plan_continuation.until.slice(0, 10) : null;
+  const race = (raceEvents || []).find((r) => untilDay && typeof r?.date === 'string' && r.date.slice(0, 10) === untilDay);
   const found = detectPlanResume({
     lastContinuation: { id: last.id, created_at: last.created_at, plan_continuation: last.plan_continuation },
     pendingTrainingPlans,
     acceptedItemDates: acceptedDates,
     userMessagesAfter,
+    raceName: race?.name ?? null,
   }, now.getTime(), lisbonDay(now));
   if (!found) return null;
   const { resume } = found;
@@ -341,10 +345,9 @@ export function pendingPlanResumeAlert({ coachPlans = [], coachPlanItems = [], c
   // As partes já aceites antes da quebra: os dias aceites nas semanas anteriores a esta.
   const earliest = addDaysISO(resume.from, -7 * (resume.part - 1));
   const before = acceptedDates.filter((d) => d >= earliest && d < resume.from).sort();
-  const race = (raceEvents || []).find((r) => typeof r?.date === 'string' && r.date.slice(0, 10) === resume.until);
   return {
     candidate,
-    applied: before.length > 0,
+    applied: resume.applied,
     acceptedFrom: before[0] ?? null,
     acceptedTo: before.at(-1) ?? null,
     nextFrom: resume.from,
@@ -352,7 +355,7 @@ export function pendingPlanResumeAlert({ coachPlans = [], coachPlanItems = [], c
     until: resume.until,
     part: resume.part,
     of: resume.of,
-    raceName: race?.name ?? null,
+    raceName: resume.raceName,
   };
 }
 
