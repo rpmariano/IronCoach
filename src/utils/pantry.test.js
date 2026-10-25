@@ -28,7 +28,7 @@ vi.mock('../lib/supabase', () => ({
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
   microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
-  isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
+  isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, templateForMeal, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -65,6 +65,19 @@ describe('habitualsForMealType', () => {
     const h = habitualsForMealType({ meals, foods: FOODS, mealType: 'pequeno-almoco', today: '2026-10-04' });
     // Aveia 3 refeições (uma vez por refeição), iogurte 2; o pão só há 5 meses.
     expect(h.map((f) => f.name)).toEqual(['Aveia em flocos', 'Iogurte grego 0%']);
+  });
+});
+
+describe('habitualsForMealType — grupo almoço/jantar (bug #85)', () => {
+  const meal = (date, type, names) => ({ date, meal_type: type, meal_items: names.map((name) => ({ name })) });
+  const meals = [
+    meal('2026-10-01', 'almoco', ['Aveia em flocos']),
+    meal('2026-10-02', 'jantar', ['Aveia em flocos']),
+    meal('2026-10-03', 'pequeno-almoco', ['Iogurte grego 0%']),
+  ];
+  it('ao almoço contam os jantares; o pequeno-almoço não entra', () => {
+    expect(habitualsForMealType({ meals, foods: FOODS, mealType: 'almoco', today: '2026-10-04' }).map((f) => f.name)).toEqual(['Aveia em flocos']);
+    expect(habitualsForMealType({ meals, foods: FOODS, mealType: 'pequeno-almoco', today: '2026-10-04' })).toEqual([]);
   });
 });
 
@@ -252,6 +265,33 @@ describe('refeições predefinidas', () => {
     const lista = [T('A', [], { times_used: 9 }), T('B', [], { default_meal_type: 'almoco', times_used: 1 }), T('C', [], { times_used: 3 })];
     expect(templatesForMealType(lista, 'almoco').map((t) => t.name)).toEqual(['B', 'A', 'C']);
     expect(templatesForMealType(lista, 'jantar').map((t) => t.name)).toEqual(['A', 'C', 'B']);
+  });
+
+  it('só as do grupo do tipo e as sem tipo: almoço e jantar juntos, os outros sozinhos (bug #85)', () => {
+    const lista = [
+      T('Pequeno', [], { default_meal_type: 'pequeno-almoco', times_used: 9 }),
+      T('Almoço', [], { default_meal_type: 'almoco', times_used: 2 }),
+      T('Jantar', [], { default_meal_type: 'jantar', times_used: 5 }),
+      T('Lanche', [], { default_meal_type: 'lanche', times_used: 1 }),
+      T('Sem tipo', [], { times_used: 3 }),
+    ];
+    // O tipo exato primeiro, depois as mais usadas.
+    expect(templatesForMealType(lista, 'almoco').map((t) => t.name)).toEqual(['Almoço', 'Jantar', 'Sem tipo']);
+    expect(templatesForMealType(lista, 'jantar').map((t) => t.name)).toEqual(['Jantar', 'Sem tipo', 'Almoço']);
+    expect(templatesForMealType(lista, 'pequeno-almoco').map((t) => t.name)).toEqual(['Pequeno', 'Sem tipo']);
+    expect(templatesForMealType(lista, 'lanche-manha').map((t) => t.name)).toEqual(['Sem tipo']);
+    expect(templatesForMealType(lista, 'ceia').map((t) => t.name)).toEqual(['Sem tipo']);
+  });
+
+  it('templateForMeal: o mesmo conjunto de alimentos, sem contar gramas, ordem ou maiúsculas (bug #83)', () => {
+    const lista = [T('Aveia e iogurte', [{ name: 'Aveia em flocos', grams: 40 }, { name: 'Iogurte grego 0%', grams: 170 }]), T('Só aveia', [{ name: 'Aveia em flocos', grams: 40 }])];
+    const refeicao = (...nomes) => ({ meal_items: nomes.map((name) => ({ name, quantity_grams: 999 })) });
+    expect(templateForMeal(lista, refeicao('iogurte grego 0%', 'AVEIA em flocos'))?.name).toBe('Aveia e iogurte');
+    expect(templateForMeal(lista, refeicao('Aveia em flocos'))?.name).toBe('Só aveia');
+    // Mudaram os alimentos: já não corresponde.
+    expect(templateForMeal(lista, refeicao('Aveia em flocos', 'Banana'))).toBeNull();
+    expect(templateForMeal(lista, { meal_items: [] })).toBeNull();
+    expect(templateForMeal([], refeicao('Aveia em flocos'))).toBeNull();
   });
 
   it('saveMealTemplate grava nome, chave e itens limpos; recusa sem nome ou sem alimentos', async () => {
