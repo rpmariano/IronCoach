@@ -187,7 +187,18 @@ export default function Coach() {
      objetivos» / «Mantém». Fica pendente até o chat estar livre (depois do
      «Aceitei o plano.»); em silêncio, uma falha não mostra nada. Nunca nas partes
      intermédias de uma cadeia. */
-  const [pendingTargetsReview, setPendingTargetsReview] = useState(null);
+  const [pendingTargetsReview, setPendingTargetsReview] = useState(null); // { reason, plan_id | race_id }
+  /* O mesmo pedido depois do balanço da prova (reason 'race_after'): a revisão
+     dos objetivos já não vem dentro do balanço. Só com o balanço mesmo entregue
+     e um resultado válido (candidate.raceOutcome, que só existe com a corrida
+     registada e ligada à prova: sem ele — sem_registo, por ligar — não se pede). */
+  const queueRaceTargetsReview = (candidate, data) => {
+    const outcome = candidate?.raceOutcome;
+    const raceId = candidate?.raceId ?? outcome?.race_id ?? null;
+    if (!data || data.skipped || !data.model_message?.content) return;
+    if (!outcome || !outcome.verdict || outcome.verdict === 'sem_registo' || !raceId) return;
+    setPendingTargetsReview({ reason: 'race_after', race_id: raceId });
+  };
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
 
   useEffect(() => {
@@ -319,6 +330,11 @@ export default function Coach() {
       }
 
       // live: entra bolha a bolha, precedida de "a escrever…" (ver revealMessage).
+      // Um turno silencioso que o servidor saltou (targets_ok, already_sent,
+      // quiet_hours…) manda suggestions: [] — e isso apagava os chips da
+      // conversa que o atleta tem à frente (os do «Aceitei o plano.»). Salta-se
+      // sem tocar em nada.
+      if (silent && data?.skipped) return data;
       if (data?.model_message?.content) {
         addCoachMessage({
           id: data.model_message.id || (Date.now() + 1).toString(),
@@ -589,6 +605,7 @@ export default function Coach() {
     activeInsights: activeInsightsPayload(),
   }, { failure: HOME_ALERT_FAILURE }).then((data) => {
     if (data?.skipped && data.reason === 'already_sent') markProactiveSent(profile?.id, candidate);
+    queueRaceTargetsReview(candidate, data);
     if (data && !data.skipped) {
       markProactiveSent(profile?.id, candidate);
       // O hub (RaceBalanceCard) tem o mesmo balanço — pedido lá, marca-se
@@ -773,7 +790,7 @@ export default function Coach() {
           activeInsights: activeInsightsPayload(),
         }, { silent: true });
         if (!data) return; // erro de rede — não martela os candidatos seguintes
-        if (!data.skipped) { markProactiveSent(profile?.id, candidate); return; }
+        if (!data.skipped) { markProactiveSent(profile?.id, candidate); queueRaceTargetsReview(candidate, data); return; }
         if (data.reason === 'already_sent') { markProactiveSent(profile?.id, candidate); continue; }
         return; // quiet_hours (ou outro motivo global) — tenta-se tudo de novo na próxima abertura
       }
@@ -859,7 +876,7 @@ export default function Coach() {
         const moment = planStartMoment(alvo, st.coachPlanItems, todayISO());
         if (moment) setPlanStart(moment);
         else showToast('Plano aceite');
-        setPendingTargetsReview(alvo?.id || planId);
+        setPendingTargetsReview({ reason: 'plan_accepted', plan_id: alvo?.id || planId });
       } else if (before.length > 0) {
         // Recusar depois de partes já gravadas: não se diz «Plano recusado».
         showToast(`Recusei o que faltava, mas ${before.length === 1 ? 'a parte que já tinha gravado fica' : `as ${before.length} partes que já tinha gravado ficam`} no teu plano.`);
@@ -880,7 +897,7 @@ export default function Coach() {
       const moment = planStartMoment(plan, st.coachPlanItems, todayISO());
       if (moment) setPlanStart(moment);
       else showToast('Plano aceite');
-      setPendingTargetsReview(planId);
+      setPendingTargetsReview({ reason: 'plan_accepted', plan_id: planId });
     } else if (ok) {
       showToast('Plano recusado');
     }
@@ -1441,11 +1458,11 @@ export default function Coach() {
   // A revisão dos objetivos depois de um plano aceite (ver pendingTargetsReview).
   useEffect(() => {
     if (!pendingTargetsReview || coachLoading) return;
-    const planId = pendingTargetsReview;
+    const review = pendingTargetsReview;
     setPendingTargetsReview(null);
     sendCoachInitiatedPayload({
       message: '',
-      targets_review: { reason: 'plan_accepted', plan_id: planId },
+      targets_review: review,
       userData: profile || {},
       activeInsights: activeInsightsPayload(),
     }, { silent: true });
