@@ -355,7 +355,9 @@ const PROPOSE_PLAN_TOOL = {
           "1. CAUSA DA ALTERAÇÃO: o finding ou desvio concreto que originou este ajuste (ex.: corrida de 25 km quando estavam previstos 7 km, somada à carga de 40 km e ginásio do dia anterior); " +
           "2. O QUE SE PRETENDE CORRIGIR: o objetivo fisiológico da adaptação (ex.: baixar a fadiga aguda, prevenir lesões musculares e garantir supercompensação sem comprometer a prova); " +
           "3. O QUE É ALTERADO: o resumo direto dos treinos ajustados (ex.: conversão de amanhã em descanso ativo, redução de volume no fim de semana e reforço de hidratos de recuperação). " +
-          "Separa os pontos com quebras de linha para uma leitura perfeita na persiana de proposta.",
+          "Separa os pontos com quebras de linha para uma leitura perfeita na persiana de proposta. " +
+          "Fala dos dias que os items cobrem (\"os próximos 14 dias\"), nunca do período inteiro como \"plano de N dias\": " +
+          "se o período vai até à prova e há semanas sem items, diz que essas se planeiam depois.",
       },
       items: {
         type: "ARRAY",
@@ -902,9 +904,11 @@ export async function recordProactiveDelivered(sb: any, userId: string, trigger:
    cliente manda cup_map.signature (a edição e o estado das jornadas: muda
    quando as jornadas mudam, e aí o mapa é outro) e o servidor regista a
    entrega em coach_proactive_log quando grava a mensagem, não quando a
-   resposta chega ao cliente. A mesma assinatura nas 24 h seguintes não gera
-   turno novo. O lock por utilizador (coach_chat_busy_since) põe os pedidos
-   em fila, por isso o segundo já encontra a entrega do primeiro. */
+   resposta chega ao cliente. A mesma assinatura nas 24 h seguintes à PRIMEIRA
+   entrega não gera turno novo (o registo só se insere; a RLS não deixa
+   renová-lo). O lock por utilizador (coach_chat_busy_since) devolve 409 a um
+   segundo pedido enquanto o primeiro corre: quando o segundo passa, o
+   primeiro já gravou a entrega. */
 export const CUP_MAP_RESEND_MS = 24 * 3600 * 1000;
 
 /** A chave do registo para uma assinatura do mapa, ou null se não serve. */
@@ -932,12 +936,14 @@ export async function cupMapAlreadySent(sb: any, userId: string, key: string, no
   }
 }
 
-/** Regista a entrega do mapa (sent_at renova-se: as 24 h contam da última). */
+/** Regista a entrega do mapa. Só insere (ignoreDuplicates): a RLS de
+ *  coach_proactive_log não deixa UPDATE, e um upsert que atualizasse falhava
+ *  sempre — as 24 h contam da primeira entrega (revisão do lote, 2026-10-25). */
 // deno-lint-ignore no-explicit-any
 export async function recordCupMapDelivered(sb: any, userId: string, key: string, nowISO = new Date().toISOString()): Promise<void> {
   try {
     const { error } = await sb.from("coach_proactive_log")
-      .upsert({ user_id: userId, key, trigger: "cup_map", sent_at: nowISO }, { onConflict: "user_id,key" });
+      .upsert({ user_id: userId, key, trigger: "cup_map", sent_at: nowISO }, { onConflict: "user_id,key", ignoreDuplicates: true });
     if (error) console.warn("coach_proactive_log (mapa): gravação falhou:", error.message ?? error);
   } catch (e) {
     console.warn("coach_proactive_log (mapa): gravação falhou:", e);
@@ -1599,7 +1605,19 @@ export async function saveRecommendations(sb: any, userId: string, messageId: st
 // isso, se o insert com a emoção falhar, seja porquê, grava-se sem ela; o
 // cliente deduz a emoção do texto.
 // deno-lint-ignore no-explicit-any
-async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null) {
+export async function insertModelMessage(sb: any, userId: string, content: string, mood: CarolMood | null, planContinuation: unknown = null) {
+  // A continuação de um plano partido vai também na linha da mensagem: um
+  // turno de mais de 45 s chega ao cliente por sondagem, sem a resposta, e o
+  // plan_continuation perdia-se com ela (migração 20261025180000). Sem a
+  // coluna, grava-se sem ela, como a emoção.
+  if (planContinuation) {
+    const withPlan = await sb.from("coach_messages")
+      .insert({ user_id: userId, role: "model", content, ...(mood ? { mood } : {}), plan_continuation: planContinuation })
+      .select()
+      .single();
+    if (!withPlan.error) return withPlan;
+    console.warn("Resposta gravada sem plan_continuation (coach_messages.plan_continuation):", withPlan.error.code, withPlan.error.message);
+  }
   if (mood) {
     const withMood = await sb.from("coach_messages")
       .insert({ user_id: userId, role: "model", content, mood })
@@ -1682,12 +1700,21 @@ export const CHAT_MESSAGE_NOT_SAVED_TEXT =
 // conversa, ou num turno sem mensagem (check-in, mapa), não há o que reenviar.
 export const CHAT_LOST_REPLY_TEXT =
   "Fiquei a meio da resposta e perdi-a. Toca em Reenviar a mensagem e eu respondo-te outra vez, sem precisares de escrever nada.";
+// Foi ela que abriu (proactiveTrigger): não se pede nada ao atleta. É verdade
+// que ela volta — num 502 o servidor não regista a chave (recordProactiveDelivered
+// só corre com a mensagem gravada) e o cliente não a marca (markProactiveSent
+// só com resposta), por isso o turno volta a disparar na próxima abertura.
 export const CHAT_LOST_PROACTIVE_TEXT =
+  "Perdi o fio ao que te queria dizer. Deixa-me arrumar as ideias, que eu volto a falar contigo.";
+// Um turno sem mensagem dele que não é dela (Adaptar Plano, o mapa da época, a
+// intervenção, a continuação do plano): não volta sozinho — é ele que toca de novo.
+export const CHAT_LOST_CHECKIN_TEXT =
   "Fiquei a meio do que te queria dizer e perdi-o. Tenta outra vez daqui a bocado.";
 
-/** A frase do 502 da resposta perdida: há mensagem dele para reenviar? */
+/** A frase do 502 da resposta perdida: há mensagem dele para reenviar? foi ela que abriu? */
 export function lostReplyText(message: unknown, proactiveTrigger: unknown): string {
-  return !proactiveTrigger && typeof message === "string" && message.trim() ? CHAT_LOST_REPLY_TEXT : CHAT_LOST_PROACTIVE_TEXT;
+  if (proactiveTrigger) return CHAT_LOST_PROACTIVE_TEXT;
+  return typeof message === "string" && message.trim() ? CHAT_LOST_REPLY_TEXT : CHAT_LOST_CHECKIN_TEXT;
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -3168,11 +3195,16 @@ export function nextPlanContinuation(args: any, current: PlanContinuation | null
 /** O turno da continuação: o que a Carol recebe no lugar da mensagem dele. */
 export function buildPlanContinuationTurn(c: PlanContinuation): string {
   const last = c.part >= c.of;
+  // As partes anteriores têm 7 dias cada: começaram 7 × (parte − 1) dias antes desta.
+  const chainStart = addDaysISO(c.from, -MAX_PLAN_SPAN_DAYS * (c.part - 1));
   return `Continuação do plano (parte ${c.part} de ${c.of}): o atleta aceitou a parte anterior e a app pediu-te a seguinte. ` +
+    `As partes anteriores (de ${chainStart} a ${addDaysISO(c.from, -1)}) estão ACEITES PROVISORIAMENTE: continuam pendentes na ` +
+    `base de dados porque o plano só se aplica quando ele aceitar a última parte — não as trates como recusadas nem por ` +
+    `decidir, não as repitas nem as voltes a propor. ` +
     `Propõe JÁ, com propose_training_plan, só os treinos de ${c.from} a ${c.to}, com period_start=${c.from} e period_end=${c.to} — ` +
     `o mesmo objetivo e a mesma prova (race_id) da parte anterior, sem repetir os dias dela${last ? "" : `, e com plan_until=${c.until}`}. ` +
-    `No texto, uma frase curta de ligação (ex.: «Aqui tens a semana de … a …»)` +
-    (last ? " e diz-lhe que o plano fica completo." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
+    `No texto, uma frase curta de ligação que diga os dias desta parte (ex.: «Aqui tens a semana de … a …») — nunca o período até à prova` +
+    (last ? " e diz-lhe que, ao aceitar esta, o plano todo fica em vigor." : ", e diz-lhe que a seguinte vem depois de aceitar esta.") +
     ` Não cumprimentes nem repitas o que já disseste.`;
 }
 
@@ -3256,7 +3288,7 @@ export async function runProposeTrainingPlan(
       if (span > MAX_PLAN_SPAN_DAYS) {
         return `Erro: no máximo ${MAX_PLAN_SPAN_DAYS} dias de treinos por proposta — estes vão de ${first} a ${last} (${span} dias). ` +
           `Parte o plano em semanas: propõe agora só os treinos de ${first} a ${addDaysISO(first, MAX_PLAN_SPAN_DAYS - 1)}, com plan_until=${last}, ` +
-          `e avisa o atleta no texto deste turno de que o plano vem em partes (ex.: «Faço-te isto em duas partes: primeiro a semana de …, ` +
+          `e avisa o atleta no texto deste turno de que o plano vem em partes (ex.: «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de …, ` +
           `logo a seguir a de …»). A parte seguinte faz-se depois de ele aceitar esta.`;
       }
       if (partWindow && (first < partWindow.from || last > partWindow.to)) {
@@ -3594,14 +3626,28 @@ export async function runProposeTrainingPlan(
   // real (corrida/ginásio) — a mesma regra usada acima para
   // supersedes_plan_id; uma proposta de só-refeições não bloqueia nem é
   // bloqueada por esta.
+  //
+  // A exceção são as partes de um plano partido (pedido do Rui, 2026-10-25): o
+  // plano só se aplica quando ele aceita a última, por isso as anteriores
+  // ficam pendentes na BD («aceites provisoriamente») enquanto a cadeia
+  // corre. Um turno de continuação (partWindow) não recusa as partes da
+  // MESMA cadeia: as pendentes com o mesmo race_id (ou ambas sem) que acabam
+  // antes da semana desta parte. Não é preciso um id de cadeia: a primeira
+  // parte não é continuação e recusou todas as pendentes que havia, por isso
+  // o que fica pendente antes da semana desta é a cadeia. Uma proposta que
+  // não é continuação recusa tudo, as partes incluídas.
   const { data: pendingPlans } = await sb
     .from("coach_plans")
-    .select("id, coach_plan_items(kind)")
+    .select("id, race_id, period_end, coach_plan_items(kind)")
     .eq("user_id", userId)
     .eq("status", "proposto");
+  // deno-lint-ignore no-explicit-any
+  const inThisChain = (p: any) => !!partWindow && (p.race_id ?? null) === raceId && typeof p.period_end === "string" && p.period_end < partWindow.from;
   const stalePendingIds = (pendingPlans || [])
     // deno-lint-ignore no-explicit-any
     .filter((p: any) => (p.coach_plan_items || []).some((i: any) => i.kind === "corrida" || i.kind === "ginasio"))
+    // deno-lint-ignore no-explicit-any
+    .filter((p: any) => !inThisChain(p))
     // deno-lint-ignore no-explicit-any
     .map((p: any) => p.id);
   if (stalePendingIds.length > 0) {
@@ -6236,10 +6282,14 @@ export function buildSystemInstruction(
     `dias seguem o bloco VÉSPERA E MANHÃ DA PROVA quando existir.\n\n` +
     `PLANOS COM MAIS DE 7 DIAS: cada propose_training_plan leva no máximo 7 dias de treinos (do primeiro ao último ` +
     `planned_date; o período pode ir até à prova). Se o atleta pedir mais (ex.: 14 dias), AVISA-O PRIMEIRO no texto ` +
-    `deste turno — «Faço-te isto em duas partes: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
+    `deste turno — «Faço-te isto em partes, 7 dias de cada vez: primeiro a semana de 26/10 a 1/11, logo a seguir a de 2 a 8/11.» — e ` +
     `propõe só a primeira semana, com plan_until = o último dia que ele pediu. Numa parte, period_start/period_end são os ` +
     `da semana dela (com o mesmo race_id, se o plano é para uma prova). A parte seguinte pede-ta a app depois ` +
     `de ele aceitar esta: não a proponhas antes.\n\n` +
+    `O QUE O PLANO COBRE: no texto e no summary, fala dos dias que os items cobrem — «os próximos 14 dias», «esta semana» —, ` +
+    `nunca do período inteiro: um plano que vai até à prova mas só tem treinos nas primeiras semanas NÃO é «um plano de 35 dias ` +
+    `até à meia». Se há semanas sem treinos até à prova, diz-lhe que essas combinam depois («as semanas até à meia combinamos ` +
+    `depois»). Num plano em partes, isto vai junto com o aviso de que vem em partes.\n\n` +
     WALKING_DOCTRINE +
     `DETALHE DOS TREINOS DE CORRIDA NO PLANO (notes de propose_training_plan): uma zona de FC ` +
     `sozinha ("Z2, fácil") não chega — o atleta precisa de saber a que ritmo correr, não só o ` +
@@ -7978,7 +8028,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
             : cupWasUpdated
               ? "Gravei a jornada como combinámos."
               : "Fechei este assunto do meu lado.";
-      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral");
+      const { data: fallbackMsg } = await insertModelMessage(sb, userId, text, "neutral", planContinuationOut);
       return jsonResponse({
         user_message: userMsg,
         model_message: fallbackMsg ?? { id: null, role: "model", content: text, mood: "neutral", created_at: new Date().toISOString() },
@@ -8244,7 +8294,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
 
     // ── Guardar resposta do modelo ───────────────────────────────────────
-    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood);
+    const { data: modelMsg, error: modelMsgErr } = await insertModelMessage(sb, userId, replyText, replyMood, planContinuationOut);
 
     // A abertura da conversa pedida pelo aviso foi dita: o aviso fecha
     // (closeInterventionOnTalk). Com a mensagem por gravar não — o atleta

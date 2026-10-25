@@ -173,8 +173,11 @@ function variantImpact(grams: number, valued: Record<string, unknown>[]): { kcal
   return { kcal: Math.round(spread("calories_per_100g")), protein: Math.round(spread("protein_per_100g") * 10) / 10 };
 }
 
-/** «Coxa de frango: com pele ou sem pele?» */
-export function variantQuestionText(generic: string, options: string[]): string {
+/** «Coxa de frango: contei com pele. Era assim?» — diz o que ela assumiu e
+ *  pergunta se acertou; as opções vão nos chips (frase da Carol, 2026-10-25).
+ *  Sem artigo: o género do genérico não se sabe. Sem assumida, a lista. */
+export function variantQuestionText(generic: string, options: string[], assumed?: string | null): string {
+  if (assumed && assumed.trim()) return `${generic.trim()}: contei ${assumed.trim()}. Era assim?`;
   const opts = options.length > 1 ? `${options.slice(0, -1).join(", ")} ou ${options.at(-1)}` : options[0];
   return `${generic.trim()}: ${opts}?`;
 }
@@ -222,12 +225,19 @@ export function resolveVariants<T extends Record<string, any>>(
       seen.add(k);
       options.push(l);
     }
+    // O filtro do #86 (percentagens, teores…) é para o que o MODELO propõe: um
+    // rótulo guardado na despensa é a variante a sério («iogurte 0%») e sai
+    // sempre (revisão do lote, 2026-10-25). Uma opção só do modelo que caia no
+    // filtro sai das opções, não leva a pergunta com ela.
+    const storedKeys = new Set(stored.map((v) => foodKey(v.variant_label)));
+    const answerable = options.filter((o) => storedKeys.has(foodKey(o)) || !isUnanswerableQuestion("", [o]));
     // A assumida tem de caber nas opções, mesmo cortando.
-    const shown = options.slice(0, MAX_VARIANT_OPTIONS);
-    if (!shown.some((o) => foodKey(o) === foodKey(r.label))) shown[shown.length - 1] = r.label;
-    if (shown.length >= 2) {
-      const question = variantQuestionText(r.genericName, shown);
-      if (!isUnanswerableQuestion(question, shown)) {
+    const shown = answerable.slice(0, MAX_VARIANT_OPTIONS);
+    const assumedShown = answerable.some((o) => foodKey(o) === foodKey(r.label));
+    if (assumedShown && !shown.some((o) => foodKey(o) === foodKey(r.label))) shown[shown.length - 1] = r.label;
+    if (assumedShown && shown.length >= 2) {
+      const question = variantQuestionText(r.genericName, shown, r.label);
+      {
         const valued = shown.map((l) =>
           foodKey(l) === foodKey(r.label) && !storedAssumed ? resolved : stored.find((v) => foodKey(v.variant_label) === foodKey(l))
         ).filter(Boolean) as Record<string, unknown>[];
@@ -333,13 +343,26 @@ export async function linkVariants(
     if (error) throw error;
     const prev = new Map<string, VariantFood>((existing ?? []).map((f: VariantFood) => [f.name_key, f]));
 
+    // As linhas das variantes a ligar: uma que já esteja na despensa leva o
+    // genérico com ela — senão o Armário (que esconde as variantes e só lê
+    // genéricos na despensa) deixava de mostrar um alimento que lá estava
+    // (revisão do lote, 2026-10-25: «Coxa de frango com pele» sumia).
+    const variantKeys = [...byGeneric.values()].flatMap((g) => g.items.map((it) => foodKey(it.name)));
+    const { data: variantRows, error: vErr } = await sb.from("athlete_foods")
+      .select(variantSelect())
+      .eq("user_id", userId)
+      .in("name_key", variantKeys);
+    if (vErr) throw vErr;
+    const variantInPantry = new Set(((variantRows ?? []) as VariantFood[]).filter((f) => f.in_pantry).map((f) => f.name_key));
+    const anyInPantry = (g: { items: { name: string }[] }) => g.items.some((it) => variantInPantry.has(foodKey(it.name)));
+
     // Os genéricos que faltam: com os valores da primeira variante (a "por omissão").
     const missing = [...byGeneric.entries()].filter(([k]) => !prev.has(k));
     if (missing.length) {
       const rows = missing.map(([, g]) => {
         const row = nextFoodRow(null, { ...g.items[0], name: g.name, from_label: false }, userId, nowISO)!;
         row.times_seen = countGeneric ? 1 : 0;
-        row.in_pantry = !!opts.inPantry;
+        row.in_pantry = !!opts.inPantry || anyInPantry(g);
         row.source = opts.inPantry ? "rotulo" : "refeicao";
         return row;
       });
@@ -350,14 +373,18 @@ export async function linkVariants(
       for (const f of (created ?? []) as VariantFood[]) prev.set(f.name_key, f);
     }
 
+    // Um genérico (ou uma ligação) que falhe não para os outros da mesma
+    // refeição — o trigger recusa, por exemplo, ligar a um genérico uma linha
+    // que já é genérico de outras (variant_nested).
     for (const [gKey, g] of byGeneric) {
+      try {
       const generic = prev.get(gKey);
       // Uma variante não pode ser genérico de outra (um nível só).
       if (!generic?.id || generic.parent_id) continue;
       let genericInPantry = !!generic.in_pantry;
       if (!missing.some(([k]) => k === gKey)) {
         const seen = (generic.times_seen ?? 0) + (countGeneric ? 1 : 0);
-        genericInPantry = generic.in_pantry || seen >= 2 || !!opts.inPantry;
+        genericInPantry = generic.in_pantry || seen >= 2 || !!opts.inPantry || anyInPantry(g);
         if (seen !== generic.times_seen || genericInPantry !== generic.in_pantry) {
           const { error: upErr } = await sb.from("athlete_foods")
             .update({ times_seen: seen, in_pantry: genericInPantry, last_used_at: nowISO })
@@ -371,7 +398,7 @@ export async function linkVariants(
           .eq("user_id", userId)
           .eq("name_key", foodKey(it.name))
           .neq("id", generic.id);
-        if (linkErr) throw linkErr;
+        if (linkErr) console.warn(`Variante por ligar («${it.name}»):`, linkErr.message ?? linkErr);
       }
       // Decisão do coordenador (#87, opção a): com o genérico na despensa,
       // as variantes dele também lá estão — o Armário (loadPantry, só
@@ -385,6 +412,9 @@ export async function linkVariants(
           .eq("parent_id", generic.id)
           .eq("in_pantry", false);
         if (pantryErr) throw pantryErr;
+      }
+      } catch (e) {
+        console.warn(`Variantes por ligar («${g.name}»):`, e instanceof Error ? e.message : (e as { message?: string })?.message ?? e);
       }
     }
   } catch (e) {
