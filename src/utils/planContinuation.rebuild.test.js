@@ -62,6 +62,17 @@ describe('rebuildPlanChain — recarregar com partes pendentes', () => {
     expect(r).toMatchObject({ of: 3, latestPlanId: 'p3', continuation: null });
   });
 
+  it('o total só conta as continuações desta cadeia, não as de um plano antigo do histórico («parte 2 de 8»)', () => {
+    const antigas = [
+      msg({ from: '2026-05-04', to: '2026-05-10', part: 2, of: 8, until: '2026-06-28' }),
+      msg({ from: '2026-05-11', to: '2026-05-17', part: 3, of: 8, until: '2026-06-28' }),
+    ];
+    const r = rebuildPlanChain([p1, p2], [...antigas, msg(C2)], treino('p1', 'p2'));
+    expect(r.of).toBe(2);
+    // Uma só pendente com promessa, também.
+    expect(rebuildPlanChain([p1], [...antigas, msg({ ...C2, of: 3 })], treino('p1')).of).toBe(3);
+  });
+
   it('provas diferentes ou só as pendentes: não são uma cadeia', () => {
     // Outra prova: não se junta (a p1 fica sozinha, parte 1 prometida).
     expect(rebuildPlanChain([p1, P('p8', '2026-11-02', '2026-11-08', { race_id: 'r2' })], [msg(C2)], treino('p1', 'p8'))?.parts).toEqual([{ planId: 'p1', part: 1 }]);

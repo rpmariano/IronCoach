@@ -92,7 +92,11 @@ export function rebuildPlanChain(plans, modelMessages = [], planItems = []) {
   const n = best.length;
   const latest = best.at(-1);
   const promise = findPromisedContinuation(modelMessages, latest);
-  let of = Math.max(n, ...conts.map((c) => Number(c.of)));
+  // O total só conta as continuações ligadas a ESTA cadeia (o from de cada uma é
+  // o início de uma das partes ou o da semana prometida): as de planos antigos no
+  // histórico não inflam o «parte 2 de 8».
+  const deste = new Set([...best.map((p) => String(p.period_start).slice(0, 10)), dayAfter(latest.period_end)]);
+  let of = Math.max(n, ...conts.filter((c) => deste.has(c.from)).map((c) => Number(c.of)));
   if (promise) of = Math.max(of, n + 1, Number(promise.of));
   return {
     of,

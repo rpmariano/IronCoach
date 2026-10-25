@@ -1016,12 +1016,17 @@ export const useAppStore = create((set, get) => ({
 
     // Identificar se esta proposta adapta um plano ativo existente
     let targetPlanId = newPlan.supersedes_plan_id;
-    /* Um supersedes que já não está aceite (nas partes de um plano longo, o que
-       a parte 1 fechou ou recusou) não serve de alvo: ignora-se e procura-se o
-       plano aceite sobreposto — a parte 1, já aceite e esticada até à prova —,
-       para a parte 2 se fundir nele (Caso A) e ficar um só bloco aceite. */
+    /* Um supersedes que já não está aceite (apagado, ou recusado — por exemplo o
+       bloco que a parte 1 recusou por inteiro porque nem tinha começado; um bloco
+       que só foi FECHADO continua aceite, com o fim encurtado) não serve de alvo:
+       ignora-se e procura-se o plano aceite sobreposto — a parte 1, já aceite e
+       esticada até à prova —, para a parte 2 se fundir nele (Caso A) e ficar um
+       só bloco aceite. Um erro a LER o supersedes não é "não está aceite": não se
+       adivinha, devolve-se false (como as escritas do Caso A) e a proposta fica
+       pendente. */
     if (targetPlanId) {
-      const { data: sup } = await supabase.from('coach_plans').select('id, status').eq('id', targetPlanId).maybeSingle();
+      const { data: sup, error: supErr } = await supabase.from('coach_plans').select('id, status').eq('id', targetPlanId).maybeSingle();
+      if (supErr) { console.error('Error reading superseded plan:', supErr); return false; }
       if (!sup || sup.status !== 'aceite') targetPlanId = null;
     }
     if (!targetPlanId) {
