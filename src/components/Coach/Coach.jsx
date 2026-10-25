@@ -155,6 +155,14 @@ export default function Coach() {
   const pendingGoalProposals = coachGoalProposals || [];
 
   const [activeProposalSheetPlan, setActiveProposalSheetPlan] = useState(null);
+  /* Plano longo em partes: a resposta traz `plan_continuation: { from, to,
+     part, of }` (a Carol avisou e propôs a 1.ª semana). Fica aqui até o chat
+     estar livre; então o cliente manda sozinho o pedido da parte seguinte, sem
+     texto do atleta. Cada resposta pode trazer a seguinte; quando já não vem
+     nenhuma, pára. Se o atleta escrever entretanto (coachLoading), a
+     continuação espera pela vez dela — nunca se perde a mensagem dele. */
+  const [pendingContinuation, setPendingContinuation] = useState(null);
+  const continuationRunsRef = useRef(0);
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
 
   useEffect(() => {
@@ -186,6 +194,21 @@ export default function Coach() {
   // "escreve" quando a mensagem chega, como sempre (revealMessage).
   // `failure`: as frases do fim — as de um aviso do Início
   // (HOME_ALERT_FAILURE) só quando esse aviso lá está.
+  // Uma continuação válida: { from, to } (datas) e a parte x de y. No máximo
+  // 12 seguidas sem o atleta escrever — rede de segurança contra um ciclo.
+  const queuePlanContinuation = (data, { fromAthlete = false } = {}) => {
+    if (fromAthlete) continuationRunsRef.current = 0;
+    const c = data?.plan_continuation;
+    const valid = c && typeof c.from === 'string' && typeof c.to === 'string'
+      && Number.isFinite(Number(c.part)) && Number.isFinite(Number(c.of)) && Number(c.part) <= Number(c.of);
+    if (valid && continuationRunsRef.current < 12) {
+      setPendingContinuation({ from: c.from, to: c.to, part: Number(c.part), of: Number(c.of) });
+    } else if (!fromAthlete) {
+      // A resposta da continuação sem a seguinte: acabou.
+      setPendingContinuation(null);
+    }
+  };
+
   const sendCoachInitiatedPayload = (payload, options = {}) => {
     if (coachLoading) return Promise.resolve(null);
     const run = runCoachInitiatedPayload(payload, options);
@@ -245,7 +268,9 @@ export default function Coach() {
       }
       if (data?.plan_proposed) {
         const freshPlans = await reloadCoachPlans();
-        if (freshPlans && freshPlans.length > 0) {
+        // As partes de um plano longo (continuação) não abrem a folha por
+        // cima do atleta: cada uma fica como proposta própria, à vista.
+        if (freshPlans && freshPlans.length > 0 && !payload?.plan_continuation) {
           const pending = freshPlans.filter(p => p.status === 'proposto');
           if (pending.length > 0) setActiveProposalSheetPlan(pending[0]);
         }
@@ -258,6 +283,7 @@ export default function Coach() {
         }
       }
       await refreshAfterTurn(data);
+      queuePlanContinuation(data);
       // A silenciosa não o ligou — e o pedido do atleta que esteja à espera
       // dela ainda está em curso.
       if (!silent) setCoachLoading(false);
@@ -1219,6 +1245,7 @@ export default function Coach() {
         }
       }
       await refreshAfterTurn(data);
+      queuePlanContinuation(data, { fromAthlete: true });
       setCoachLoading(false);
     } catch (err) {
       // Se a própria espera rebentar (recarregar planos/objetivos depois de
@@ -1232,6 +1259,23 @@ export default function Coach() {
       }
     }
   };
+
+  // A continuação do plano longo: com o chat livre, manda a parte seguinte
+  // (sem texto do atleta). Limpa-se ANTES de enviar: se falhar, não insiste —
+  // a Carol já disse o que vem e o atleta pode pedir "e a semana seguinte?".
+  useEffect(() => {
+    if (!pendingContinuation || coachLoading) return;
+    const next = pendingContinuation;
+    setPendingContinuation(null);
+    continuationRunsRef.current += 1;
+    sendCoachInitiatedPayload({
+      message: '',
+      plan_continuation: next,
+      userData: profile || {},
+      activeInsights: activeInsightsPayload(),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingContinuation, coachLoading]);
 
   // O botão "Reenviar": só na última bolha, e só se for uma falha a uma
   // mensagem do atleta (`retryText`, ver sendUserMessage) — depois de outra

@@ -2123,3 +2123,85 @@ describe('Coach — fotos no chat (decisões 16 e 17)', () => {
     expect(body.images).toHaveLength(1);
   });
 });
+
+/* Plano longo em partes (2026-10-25): a resposta que propõe a 1.ª semana traz
+   plan_continuation e o cliente pede sozinho as seguintes, sem texto do
+   atleta, até a resposta já não trazer nenhuma. */
+describe('Coach — plano longo em partes (plan_continuation)', () => {
+  const C1 = { from: '2026-11-02', to: '2026-11-08', part: 2, of: 3 };
+  const C2 = { from: '2026-11-09', to: '2026-11-15', part: 3, of: 3 };
+  const reply = (id, text, extra = {}) => ({ data: { model_message: { id, content: text }, suggestions: [], ...extra }, error: null });
+  const bodies = () => invokeEdgeFunctionWithTimeout.mock.calls.map((c) => JSON.parse(c[1].body));
+  const send = async (text) => {
+    fireEvent.change(screen.getByPlaceholderText('Escreve a tua pergunta...'), { target: { value: text } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Enviar pergunta à Carol/i })); });
+  };
+
+  beforeEach(() => {
+    invokeEdgeFunctionWithTimeout.mockReset();
+    supabase.from.mockReset();
+    window.localStorage.clear();
+    useAppStore.setState({ ...baseCarolState(), logImpression: vi.fn(), refreshCupAfterChat: vi.fn(), loadCup: vi.fn() });
+  });
+
+  it('é automática: manda sozinha cada parte, sem texto do atleta, e pára quando já não vem plan_continuation', async () => {
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce(reply('a1', 'Primeira semana proposta. Depois vêm as outras.', { plan_proposed: true, plan_continuation: C1 }))
+      .mockResolvedValueOnce(reply('a2', 'Segunda semana.', { plan_proposed: true, plan_continuation: C2 }))
+      .mockResolvedValueOnce(reply('a3', 'Terceira e última.', { plan_proposed: true }));
+    renderCoach();
+    await send('Faz-me um plano de 3 semanas');
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(3));
+    const [primeiro, segundo, terceiro] = bodies();
+    expect(primeiro).toMatchObject({ message: 'Faz-me um plano de 3 semanas' });
+    expect(primeiro.plan_continuation).toBeUndefined();
+    expect(segundo).toMatchObject({ message: '', plan_continuation: C1 });
+    expect(terceiro).toMatchObject({ message: '', plan_continuation: C2 });
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Terceira e última.'));
+    // Acabou: nenhum pedido a mais.
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(3);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('uma continuação que falha não insiste', async () => {
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce(reply('a1', 'Primeira semana proposta.', { plan_proposed: true, plan_continuation: C1 }))
+      .mockResolvedValue({ data: null, error: 'boom', isTimeout: false, isNetwork: false });
+    renderCoach();
+    await send('Plano de 3 semanas');
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+    await act(async () => { await new Promise((r) => setTimeout(r, 100)); });
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2);
+    expect(useAppStore.getState().coachLoading).toBe(false);
+  });
+
+  it('sem plan_continuation, nada além do pedido do atleta', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue(reply('a1', 'Aqui vai a semana.', { plan_proposed: true }));
+    renderCoach();
+    await send('Plano para esta semana');
+    await waitFor(() => expect(useAppStore.getState().coachMessages.map((m) => m.content)).toContain('Aqui vai a semana.'));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1);
+  });
+
+  it('enquanto a continuação corre, o que o atleta escreve fica no campo e não se perde', async () => {
+    let soltarSegunda;
+    invokeEdgeFunctionWithTimeout
+      .mockResolvedValueOnce(reply('a1', 'Primeira semana.', { plan_proposed: true, plan_continuation: C1 }))
+      .mockImplementationOnce(() => new Promise((r) => { soltarSegunda = () => r(reply('a2', 'Segunda semana.')); }))
+      .mockResolvedValue(reply('a3', 'Resposta a ele.'));
+    renderCoach();
+    await send('Plano de 2 semanas');
+    // A continuação está em curso (à espera do servidor): enviar não é possível
+    // enquanto escreve — o texto dele fica no campo, não se perde.
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(2));
+    const campo = screen.getByPlaceholderText('Escreve a tua pergunta...');
+    fireEvent.change(campo, { target: { value: 'Espera, troca o dia de descanso' } });
+    expect(campo).toHaveValue('Espera, troca o dia de descanso');
+    await act(async () => { soltarSegunda(); });
+    await waitFor(() => expect(useAppStore.getState().coachLoading).toBe(false));
+    expect(campo).toHaveValue('Espera, troca o dia de descanso');
+    expect(bodies().filter((b) => b.message === 'Espera, troca o dia de descanso')).toHaveLength(0);
+  });
+});
