@@ -85,3 +85,13 @@ Deno.test("claim: o seguinte bate na chave primária — devolve o erro dele", a
   const r = await claimWithCupFallback([cupResults, silence], ctx, cupResults, c.claim);
   assertEquals([r.candidate?.key, r.claimErr, r.cupRefused], ["silence:2027-01-10", dup, true]);
 });
+
+Deno.test("claimWithCupFallback: plan_resume recusado pelo CHECK (migração por aplicar) passa a vez", async () => {
+  const resume = { trigger: "plan_resume", key: "plan_resume:x", raceId: null, raceName: null, hasRun: false, silenceDays: null, anchorDate: null, anchorAt: null, resume: { from: "2026-11-02", to: "2026-11-08", part: 2, of: 2, until: "2026-11-08", message_id: "x" } };
+  const silence = { trigger: "silence", key: "silence:2026-10-20", raceId: null, raceName: null, hasRun: false, silenceDays: 4, anchorDate: "2026-10-20", anchorAt: null };
+  const ctx = { lisbonHour: 11, deliveredKeys: new Set<string>(), pushedKeys: new Set<string>(), pushedTodayCount: 0, lastModelMessageAt: null, nowMs: Date.parse("2026-10-27T10:00:00Z") };
+  // deno-lint-ignore no-explicit-any
+  const out = await claimWithCupFallback([resume, silence] as any[], ctx, resume as any, (c: { trigger: string }) =>
+    Promise.resolve({ error: c.trigger === "plan_resume" ? { code: "23514" } : null }));
+  assertEquals([out.candidate?.trigger, out.claimErr], ["silence", null]);
+});

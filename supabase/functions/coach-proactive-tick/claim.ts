@@ -32,10 +32,13 @@ export async function claimWithCupFallback<C extends TickCandidate>(
 ): Promise<ClaimResult<C>> {
   const { error } = await claim(picked);
   if (!error) return { candidate: picked, decision: { send: true }, claimErr: null, candidates, cupRefused: false };
-  if (error.code !== "23514" || !isCupNoticeTrigger(picked.trigger)) {
+  // plan_resume recusado pelo CHECK (a migração 20261025220000 por aplicar)
+  // passa a vez como um cup_*.
+  const refusable = (t: string) => isCupNoticeTrigger(t) || t === "plan_resume";
+  if (error.code !== "23514" || !refusable(picked.trigger)) {
     return { candidate: picked, decision: { send: true }, claimErr: error, candidates, cupRefused: false };
   }
-  const rest = candidates.filter((c) => !isCupNoticeTrigger(c.trigger));
+  const rest = candidates.filter((c) => !refusable(c.trigger));
   const next = choosePush(rest, ctx);
   if (!next.candidate || !next.decision.send) {
     return { candidate: null, decision: next.decision, claimErr: null, candidates: rest, cupRefused: true };
