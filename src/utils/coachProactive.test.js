@@ -403,6 +403,32 @@ describe('pendingPlanResumeAlert — plano partido que ficou a meio', () => {
     expect(pendingPlanResumeAlert(base({ coachMessages: [mensagem({ plan_continuation: { ...CONT, until: '2026-11-01' } })] }), AGORA)).toBeNull();
   });
 
+  it('B1: um plano criado depois da mensagem (qualquer estado), ou a cadeia recusada: nada', () => {
+    const depois = { id: 'novo', status: 'recusado', created_at: '2026-10-26T10:00:00Z' };
+    expect(pendingPlanResumeAlert(base({ coachPlans: [plano, depois] }), AGORA)).toBeNull();
+    // O plano que a própria mensagem propôs (criado no mesmo turno), recusado.
+    const propria = { id: 'parte1', status: 'recusado', created_at: '2026-10-25T20:42:00Z' };
+    expect(pendingPlanResumeAlert(base({ coachPlans: [plano, propria] }), AGORA)).toBeNull();
+    // Aceite, o plano da própria mensagem não impede a retoma.
+    expect(pendingPlanResumeAlert(base({ coachPlans: [plano, { ...propria, status: 'aceite' }] }), AGORA)).not.toBeNull();
+  });
+
+  it('B2: um dia de descanso ou um treino cancelado na semana prometida não contam como calendário', () => {
+    const extra = [
+      { id: 'd', plan_id: 'p1', kind: 'descanso', planned_date: '2026-11-03', status: 'pendente' },
+      { id: 'c', plan_id: 'p1', kind: 'corrida', planned_date: '2026-11-04', status: 'cancelado' },
+    ];
+    expect(pendingPlanResumeAlert(base({ coachPlanItems: [...itens, ...extra] }), AGORA)).not.toBeNull();
+  });
+
+  it('os chips da própria retoma não contam como pedido de plano; uma prova já concluída não dá o nome', () => {
+    const chip = (content) => ({ id: '1793000000001', role: 'user', content, created_at: '2026-10-25T21:00:00Z' });
+    expect(pendingPlanResumeAlert(base({ coachMessages: [mensagem(), chip('Manda a próxima semana')] }), AGORA)).not.toBeNull();
+    expect(pendingPlanResumeAlert(base({ coachMessages: [mensagem(), chip('Agora não')] }), AGORA)).not.toBeNull();
+    const concluida = [{ id: 'meia', name: 'Meia de Lisboa', date: '2026-11-29', status: 'concluida' }];
+    expect(pendingPlanResumeAlert(base({ raceEvents: concluida }), AGORA).raceName).toBeNull();
+  });
+
   it('já falámos neste dispositivo, ou o aviso foi dispensado: nada', () => {
     const a = pendingPlanResumeAlert(base(), AGORA);
     markProactiveSent('u1', a.candidate);
