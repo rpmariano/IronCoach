@@ -197,7 +197,11 @@ export default function Coach() {
     const raceId = candidate?.raceId ?? outcome?.race_id ?? null;
     if (!data || data.skipped || !data.model_message?.content) return;
     if (!outcome || !outcome.verdict || outcome.verdict === 'sem_registo' || !raceId) return;
-    setPendingTargetsReview({ reason: 'race_after', race_id: raceId });
+    // O balanço «perto» traz duas respostas próprias («para a próxima é para
+    // fazer melhor?»): a revisão dos objetivos ficaria por cima dos chips. Fica
+    // retida (hold) até o atleta responder, e sai depois do turno seguinte dele
+    // (sendUserMessage larga-a). Nos outros veredictos sai logo.
+    setPendingTargetsReview({ reason: 'race_after', race_id: raceId, ...(outcome.verdict === 'perto' ? { hold: true } : null) });
   };
   const [activeGoalProposal, setActiveGoalProposal] = useState(null);
 
@@ -1421,6 +1425,8 @@ export default function Coach() {
       }
       await refreshAfterTurn(data);
       queuePlanContinuation(data, { fromAthlete: true });
+      // O atleta respondeu e a Carol já falou: larga a revisão retida (balanço «perto»).
+      setPendingTargetsReview((r) => (r?.hold ? { ...r, hold: false } : r));
       setCoachLoading(false);
     } catch (err) {
       // Se a própria espera rebentar (recarregar planos/objetivos depois de
@@ -1457,8 +1463,8 @@ export default function Coach() {
 
   // A revisão dos objetivos depois de um plano aceite (ver pendingTargetsReview).
   useEffect(() => {
-    if (!pendingTargetsReview || coachLoading) return;
-    const review = pendingTargetsReview;
+    if (!pendingTargetsReview || pendingTargetsReview.hold || coachLoading) return;
+    const { hold, ...review } = pendingTargetsReview;
     setPendingTargetsReview(null);
     sendCoachInitiatedPayload({
       message: '',
