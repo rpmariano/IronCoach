@@ -11,6 +11,7 @@
 
 import { foodKey } from "../_shared/formulas/foodKey.ts";
 import { FOOD_SELECT, microFromModel, nextFoodRow, type PantryFood } from "../analyze-meal/pantry.ts";
+import { linkVariants, normalizeVariantLabel, variantName } from "../analyze-meal/variants.ts";
 
 const MICROS = [
   "fiber_per_100g", "sugar_per_100g", "sodium_per_100g", "iron_mg_per_100g",
@@ -34,6 +35,17 @@ export const SAVE_PANTRY_FOOD_TOOL = {
     type: "OBJECT",
     properties: {
       name: { type: "STRING", description: "O nome comercial do produto, como está na embalagem (marca + produto), até 120 caracteres." },
+      // Bug #87: o mesmo produto em versões com valores diferentes (o leite
+      // gordo/meio-gordo/magro da mesma marca) fica como genérico + variante.
+      generic_name: {
+        type: "STRING",
+        description: "Só se o produto tem versões que mudam os valores (gordo/meio-gordo/magro, com/sem açúcar): o " +
+          "nome SEM essa qualificação (ex.: \"Leite Mimosa\"). Com variant. Omite nos outros.",
+      },
+      variant: {
+        type: "STRING",
+        description: "Com generic_name: a qualificação, curta e em minúsculas (ex.: \"meio-gordo\"). Omite nos outros.",
+      },
       portion_grams: { type: "NUMBER", description: "A porção indicada na embalagem, em gramas (ex.: 30 para uma porção de 30 g). Omite se não houver." },
       portion_label: { type: "STRING", description: "O nome da porção, se for uma unidade (ex.: \"1 barra\", \"1 iogurte\"). Omite se não houver." },
       calories_per_100g: { type: "NUMBER", description: "kcal por 100 g." },
@@ -77,7 +89,14 @@ export function energyMismatch(
 
 // deno-lint-ignore no-explicit-any
 export async function runSavePantryFood(sb: any, userId: string, args: any, nowISO = new Date().toISOString()): Promise<string> {
-  const name = typeof args?.name === "string" ? args.name.trim().slice(0, 120) : "";
+  // Bug #87: com genérico + variante, a linha é a da variante («Leite Mimosa
+  // meio-gordo»), ligada ao genérico — que é criado, se ainda não existe.
+  const genericName = typeof args?.generic_name === "string" ? args.generic_name.replace(/\s+/g, " ").trim().slice(0, 120) : "";
+  const variantLabel = genericName ? normalizeVariantLabel(args?.variant) : "";
+  const isVariant = !!(genericName && variantLabel && foodKey(genericName));
+  const name = isVariant
+    ? variantName(genericName, variantLabel)
+    : (typeof args?.name === "string" ? args.name.trim().slice(0, 120) : "");
   const key = foodKey(name);
   if (!key) return "Erro: falta o nome do produto. Não guardes sem ele.";
 
@@ -143,9 +162,16 @@ export async function runSavePantryFood(sb: any, userId: string, args: any, nowI
 
   const { error: upErr } = await sb.from("athlete_foods").upsert(row, { onConflict: "user_id,name_key" });
   if (upErr) return `Erro ao guardar na Despensa: ${upErr.message}. Não digas ao atleta que guardaste.`;
+  // Uma embalagem não é uma refeição: o genérico não conta como visto, mas entra na Despensa.
+  if (isVariant) {
+    await linkVariants(sb, userId, [{ ...item, name: row.name, variant_of: genericName, variant_label: variantLabel }], nowISO, {
+      countGeneric: false, inPantry: true,
+    });
+  }
 
   const verb = prev?.in_pantry ? "atualizado" : "guardado";
-  return `Produto ${verb} na Despensa: «${row.name}» — ${round1(kcal)} kcal, ${round1(protein)} g de proteína, ` +
+  const asVariant = isVariant ? ` (variante «${variantLabel}» de «${genericName}»)` : "";
+  return `Produto ${verb} na Despensa: «${row.name}»${asVariant} — ${round1(kcal)} kcal, ${round1(protein)} g de proteína, ` +
     `${round1(carbs)} g de hidratos e ${round1(fat)} g de gordura por 100 g (do rótulo). ` +
     "Diz ao atleta numa frase curta o que ficou na Despensa.";
 }
