@@ -175,12 +175,36 @@ export function buildTargetsReviewTurn(diffs: TargetDiff[], kind: TargetsReviewR
     `com «${TARGETS_KEEP_ANSWER}», fica tudo como está.`;
 }
 
-/** O que a Carol recebe depois de o servidor aplicar o «Atualiza»: só confirma. */
+// O resultado do update_race_event traz um conselho para o turno normal («Se
+// houver plano de treino aceite, confirma… e propõe o ajustado»): aqui ela só
+// confirma, por isso sai.
+const withoutPlanAdvice = (result: string): string => result.replace(/\s*Se houver plano de treino aceite[^.]*\./g, "").trim();
+
+/**
+ * O que a Carol recebe depois de o servidor tentar o «Atualiza»: o que ficou
+ * gravado e o que falhou, à parte — para ela dizer a verdade. Só confirma.
+ */
 export function buildTargetsAppliedInstruction(applied: { name: string; result: string }[]): string {
-  return `OBJETIVOS ATUALIZADOS AGORA (o atleta respondeu «${TARGETS_UPDATE_ANSWER}» e o servidor já gravou o que propuseste): ` +
-    applied.map((t) => `«${t.name}»: ${t.result}`).join(" ") +
-    ` Neste turno só confirmas, numa ou duas frases, o que ficou. Não revês o plano nem propões ajustes, e não voltes a chamar ` +
-    `update_race_event.`;
+  const ok = applied.filter((t) => !t.result.startsWith("Erro"));
+  const failed = applied.filter((t) => t.result.startsWith("Erro"));
+  const parts = [`O atleta respondeu «${TARGETS_UPDATE_ANSWER}».`];
+  if (ok.length) parts.push(`O servidor GRAVOU: ${ok.map((t) => `«${t.name}»: ${withoutPlanAdvice(t.result)}`).join(" ")}`);
+  if (failed.length) parts.push(`NÃO ficou gravado (diz-lho, sem inventar que mudou): ${failed.map((t) => `«${t.name}»: ${t.result}`).join(" ")}`);
+  if (!ok.length) parts.push("Nada mudou nas provas.");
+  parts.push("Neste turno só confirmas, numa ou duas frases, o que ficou. Não revês o plano nem propões ajustes, e não chames update_race_event.");
+  return parts.join(" ");
+}
+
+/** Porque é que um «Atualiza os objetivos» não aplicou nada. */
+export type TargetsNotApplied = "no_review" | "nothing_eligible";
+
+/** O «Atualiza» que não aplicou nada: ela diz a verdade, e não muda nada sozinha. */
+export function buildTargetsNotAppliedInstruction(reason: TargetsNotApplied): string {
+  const why = reason === "no_review"
+    ? "não há nenhuma revisão de objetivos dele nas últimas 24 horas com uma proposta guardada"
+    : "as provas da proposta já não podem mudar (já foram corridas, têm corrida ligada ou deixaram de estar agendadas)";
+  return `O atleta respondeu «${TARGETS_UPDATE_ANSWER}», mas NADA foi aplicado: ${why}. Diz-lho numa frase, com a verdade, e ` +
+    `pergunta-lhe se quer rever os objetivos de novo. Não chames update_race_event nem digas que algum objetivo mudou.`;
 }
 
 /** A resposta dele é «Atualiza os objetivos»? */

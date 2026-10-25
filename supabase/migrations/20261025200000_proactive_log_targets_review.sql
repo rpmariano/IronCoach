@@ -2,13 +2,15 @@
 -- coach_proactive_log: a revisão dos objetivos das provas fica registada
 -- (2026-10-25).
 --
--- A Carol passa a propor objetivos de prova por iniciativa dela — depois de
--- uma prova concluída (no balanço, race_after) e depois de o atleta aceitar
--- um plano (coach-chat/targetsReview.ts). Uma revisão por gatilho: a chave
--- 'targets_review:<plan_id>' ou 'targets_review:<chave do race_after>' fica em
+-- A Carol passa a propor objetivos de prova por iniciativa dela, num turno à
+-- parte que o cliente pede depois de o atleta aceitar um plano ou depois de
+-- chegar o balanço de uma prova — nunca dentro do balanço
+-- (coach-chat/targetsReview.ts). Uma revisão por gatilho: a chave
+-- 'targets_review:<plan_id>' ou 'targets_review:race:<race_id>' fica em
 -- coach_proactive_log com trigger = 'targets_review', quando a mensagem é
--- gravada. É também esse registo (nas últimas 24 h) que deixa o
--- «Atualiza os objetivos» aplicar os números.
+-- gravada, com a proposta em payload (migração 20261025210000). É esse
+-- registo (nas últimas 24 h) que o «Atualiza os objetivos» aplica.
+-- (Comentário corrigido depois de aplicada; o SQL não mudou.)
 --
 -- O que muda: o check de trigger aceita 'targets_review'. A lista inclui
 -- 'cup_map' (migração 20261025160000): este check substitui o dela, e as duas
