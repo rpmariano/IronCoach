@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 804" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+<!-- A Carol com a taça de fruta e o shaker, em traço (desenhado à mão sobre o webp). Cada caminho tem pathLength="1" e a
+     variável CSS i (a ordem do desenho): anima-se com stroke-dasharray:1 e stroke-dashoffset 1 → 0. -->
+<!-- cena: prateleiras com frascos, bancada e janela -->
+<path pathLength="1" style="--i:0" stroke-width="1.5" d="M0 121 L160 133 M0 257 L160 262 M6 34 L58 34 L58 104 L6 104 Z M70 38 L120 38 L120 100 L70 100 Z"/>
+<path pathLength="1" style="--i:1" stroke-width="1.5" d="M6 176 L58 176 L58 248 L6 248 Z M70 180 L124 180 L124 248 L70 248 Z"/>
+<path pathLength="1" style="--i:1" stroke-width="1.5" d="M0 480 L92 474 M470 452 L600 452 M553 434 L553 60 L600 56"/>
+<!-- cabeça: cabelo, fita e rosto -->
+<path pathLength="1" style="--i:2" d="M190 140 C200 110 236 92 276 88 C310 86 340 92 360 104"/>
+<path pathLength="1" style="--i:3" d="M169 169 C196 148 224 136 252 132 C280 130 304 133 321 139 C344 150 362 168 371 187"/>
+<path pathLength="1" style="--i:3" d="M169 215 C196 192 224 178 252 173 C290 168 336 192 371 233"/>
+<path pathLength="1" style="--i:4" d="M176 219 C174 232 175 246 178 256 C190 286 220 306 252 307 C292 306 336 286 352 262 C358 248 360 232 358 215"/>
+<path pathLength="1" style="--i:4" stroke-width="2" d="M356 228 C366 226 372 236 368 246 C366 252 360 254 356 252"/>
+<!-- olhos, sobrancelhas, nariz, sorriso e bochechas -->
+<path pathLength="1" style="--i:5" d="M176 201 C186 197 196 195 206 196"/>
+<path pathLength="1" style="--i:5" d="M250 192 C268 188 288 190 302 196"/>
+<path pathLength="1" style="--i:6" d="M194 214 C202 214 208 221 208 229 C208 237 202 244 194 244 C186 244 180 237 180 229 C180 221 186 214 194 214"/>
+<path pathLength="1" style="--i:6" d="M279 208 C288 208 295 215 295 224 C295 233 288 240 279 240 C270 240 263 233 263 224 C263 215 270 208 279 208"/>
+<path pathLength="1" style="--i:7" stroke-width="2" d="M228 248 C224 254 226 258 234 258"/>
+<path pathLength="1" style="--i:7" d="M213 275 C222 282 232 284 240 282 C248 280 255 276 261 270"/>
+<path pathLength="1" style="--i:8" stroke-width="2" d="M187 254 C195 254 202 261 202 270 C202 279 195 286 187 286 C179 286 172 279 172 270 C172 261 179 254 187 254"/>
+<path pathLength="1" style="--i:8" stroke-width="2" d="M298 242 C308 242 317 251 317 261 C317 271 308 280 298 280 C288 280 279 271 279 261 C279 251 288 242 298 242"/>
+<!-- rabo de cavalo ao vento -->
+<path pathLength="1" style="--i:9" d="M302 92 C350 72 410 80 450 100 C470 110 480 116 486 120"/>
+<path pathLength="1" style="--i:9" d="M350 104 C400 120 450 140 490 150 C510 152 525 150 537 146"/>
+<path pathLength="1" style="--i:10" d="M360 140 C400 180 450 200 500 206 C520 208 532 210 541 212"/>
+<path pathLength="1" style="--i:10" d="M365 172 C390 220 430 260 470 280 C484 286 494 290 500 293"/>
+<!-- pescoço, top e cintura -->
+<path pathLength="1" style="--i:11" d="M260 308 L260 326 M300 308 L300 322"/>
+<path pathLength="1" style="--i:11" d="M255 330 C264 346 274 360 285 360 C300 360 314 344 320 325"/>
+<path pathLength="1" style="--i:12" d="M240 340 C236 356 234 376 235 395 C236 402 238 406 240 410 C274 408 308 406 340 405 C342 392 342 380 340 370 C336 354 332 338 325 325"/>
+<path pathLength="1" style="--i:12" d="M240 414 C238 430 234 446 232 460 M337 409 C338 424 340 440 340 452"/>
+<path pathLength="1" style="--i:13" stroke-width="2" d="M232 464 C268 460 306 456 342 452"/>
+<!-- braço esquerdo e a taça de fruta -->
+<path pathLength="1" style="--i:14" d="M234 336 C220 350 214 380 216 410 C218 430 226 444 236 448"/>
+<path pathLength="1" style="--i:15" d="M165 379 C198 379 225 385 225 393 C225 401 198 407 165 407 C132 407 105 401 105 393 C105 385 132 379 165 379"/>
+<path pathLength="1" style="--i:15" d="M105 395 C108 418 120 436 140 446 C160 452 186 450 204 440 C218 428 224 412 225 397"/>
+<path pathLength="1" style="--i:16" stroke-width="4" d="M100 324 C108 336 116 348 124 360"/>
+<path pathLength="1" style="--i:16" stroke-width="2" d="M207 359 C216 359 224 367 224 376 C224 385 216 393 207 393 C198 393 190 385 190 376 C190 367 198 359 207 359 M192 343 C200 343 206 349 206 356 C206 363 200 369 192 369 C184 369 178 363 178 356 C178 349 184 343 192 343"/>
+<path pathLength="1" style="--i:16" stroke-width="2" d="M130 363 C138 363 144 369 144 376 C144 383 138 389 130 389 C122 389 116 383 116 376 C116 369 122 363 130 363 M146 383 C153 383 158 387 158 393 C158 399 153 403 146 403 C139 403 134 399 134 393 C134 387 139 383 146 383 M172 368 C178 368 182 372 182 378 C182 384 178 388 172 388 C166 388 162 384 162 378 C162 372 166 368 172 368"/>
+<path pathLength="1" style="--i:17" d="M124 448 C140 462 170 468 196 462"/>
+<!-- braço direito e o shaker -->
+<path pathLength="1" style="--i:18" d="M328 328 C352 324 372 334 380 352"/>
+<path pathLength="1" style="--i:19" d="M384 330 C380 380 376 440 378 490 C396 498 420 498 438 492 C452 450 470 400 482 352"/>
+<path pathLength="1" style="--i:19" d="M384 330 C410 312 450 306 478 318 L482 352"/>
+<path pathLength="1" style="--i:20" stroke-width="2" d="M400 312 L404 298 C420 292 446 292 462 298 L466 312"/>
+<path pathLength="1" style="--i:20" stroke-width="2" d="M382 372 C414 378 452 376 482 366"/>
+<path pathLength="1" style="--i:21" stroke-width="2" d="M392 470 C394 430 414 400 450 388 C452 420 440 452 410 478"/>
+<path pathLength="1" style="--i:21" d="M458 420 C468 420 476 430 476 442 C476 454 468 464 458 464 C448 464 440 454 440 442 C440 430 448 420 458 420"/>
+<!-- pernas -->
+<path pathLength="1" style="--i:22" d="M232 466 C226 500 222 580 226 680"/>
+<path pathLength="1" style="--i:22" d="M299 520 C292 580 284 640 276 680 M302 520 C318 580 334 640 348 680 M299 520 L302 520"/>
+<path pathLength="1" style="--i:23" d="M342 454 C354 474 362 496 367 520 C380 580 390 640 394 683"/>
+<!-- sapatilhas -->
+<path pathLength="1" style="--i:24" d="M232 676 C206 686 178 706 162 728 C156 746 168 758 190 762 C222 764 256 760 284 752 C292 744 292 724 286 700 C272 680 252 672 232 676"/>
+<path pathLength="1" style="--i:24" d="M345 678 C334 694 326 720 326 748 C328 766 350 774 378 774 C404 774 420 766 418 748 C416 722 406 698 392 682 C378 674 358 672 345 678"/>
+<path pathLength="1" style="--i:25" stroke-width="2" d="M164 742 C200 748 248 746 288 736 M328 752 C356 760 392 760 418 750"/>
+</svg>

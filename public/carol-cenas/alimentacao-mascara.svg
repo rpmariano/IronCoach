@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 804" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+<!-- A Carol na cozinha: máscara de revelação (traços largos, branco = visível) sobre o webp. Cada caminho
+     tem pathLength="1" e a variável CSS i (a ordem): anima-se com stroke-dasharray:1 e
+     stroke-dashoffset 1 → 0. Os últimos varrem o fundo. -->
+<path pathLength="1" style="--i:0" stroke-width="170" d="M230 200 C240 150 310 120 360 170"/>
+<path pathLength="1" style="--i:1" stroke-width="90" d="M310 85 C380 90 440 120 480 145 C510 165 530 190 545 215"/>
+<path pathLength="1" style="--i:2" stroke-width="140" d="M288 320 C288 370 288 420 288 470"/>
+<path pathLength="1" style="--i:3" stroke-width="70" d="M110 390 C150 380 190 380 225 395 M120 430 L210 430"/>
+<path pathLength="1" style="--i:4" stroke-width="100" d="M430 300 C430 380 425 440 410 490"/>
+<path pathLength="1" style="--i:5" stroke-width="100" d="M255 480 C252 560 250 630 248 700 M335 480 C345 560 360 630 372 700"/>
+<path pathLength="1" style="--i:6" stroke-width="90" d="M185 740 C220 740 255 735 285 730 M335 745 C360 750 390 750 418 745"/>
+<path pathLength="1" style="--i:7" stroke-width="320" d="M-60 110 C150 80 450 80 680 110"/>
+<path pathLength="1" style="--i:8" stroke-width="320" d="M680 310 C450 280 150 280 -60 310"/>
+<path pathLength="1" style="--i:9" stroke-width="320" d="M-60 510 C150 480 450 480 680 510"/>
+<path pathLength="1" style="--i:10" stroke-width="320" d="M680 710 C450 680 150 680 -60 710"/>
+</svg>
