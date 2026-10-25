@@ -71,8 +71,8 @@ import { buildRaceConflictPrompt } from "../_shared/raceConflictPrompt.ts";
 import { addUsage, emptyUsage, type GeminiUsage, usageFromGemini } from "../_shared/geminiUsage.ts";
 import { withUsageRecording } from "../_shared/usageRecorder.ts";
 import {
-  applyTargetDiffs, buildTargetsReviewInstruction, buildTargetsReviewTurn, computeTargetDiffs, fetchTargetsInputs, isTargetsUpdateAnswer,
-  parseTargetsReview, recentTargetsReview, type TargetDiff, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
+  applyTargetProposals, buildTargetsAppliedInstruction, buildTargetsReviewTurn, computeTargetDiffs, fetchTargetsInputs, isTargetsUpdateAnswer,
+  latestTargetsProposals, parseTargetsReview, targetsPayload, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
 import { geminiHeaders } from "../_shared/geminiModel.ts";
@@ -890,11 +890,23 @@ export async function wasProactiveDelivered(sb: any, userId: string, key: string
 }
 
 // deno-lint-ignore no-explicit-any
-export async function recordProactiveDelivered(sb: any, userId: string, trigger: ProactiveTrigger | "targets_review", key: string): Promise<void> {
+export async function recordProactiveDelivered(
+  // deno-lint-ignore no-explicit-any
+  sb: any, userId: string, trigger: ProactiveTrigger | "targets_review", key: string,
+  // O que acompanha a entrega (a proposta de uma revisão dos objetivos);
+  // sem a coluna (migração 20261025210000 por aplicar), grava-se sem ele.
+  payload: unknown = null,
+): Promise<void> {
   try {
-    const { error } = await sb
+    let { error } = await sb
       .from("coach_proactive_log")
-      .upsert({ user_id: userId, trigger, key }, { onConflict: "user_id,key", ignoreDuplicates: true });
+      .upsert({ user_id: userId, trigger, key, ...(payload ? { payload } : {}) }, { onConflict: "user_id,key", ignoreDuplicates: true });
+    if (error && payload) {
+      console.warn("coach_proactive_log: gravado sem payload:", error.message ?? error);
+      ({ error } = await sb
+        .from("coach_proactive_log")
+        .upsert({ user_id: userId, trigger, key }, { onConflict: "user_id,key", ignoreDuplicates: true }));
+    }
     if (error) console.warn("coach_proactive_log: gravação falhou:", error.message ?? error);
   } catch (e) {
     console.warn("coach_proactive_log: gravação falhou:", e);
@@ -6847,11 +6859,13 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const planContinuationIn = message ? null : parsePlanContinuation(body.plan_continuation);
     if (planContinuationIn) body.is_plan_checkin = true;
 
-    // A revisão dos objetivos das provas depois de aceitar um plano
-    // (targetsReview.ts): uma por plano; sem diferenças, nem turno nem Gemini.
+    // A revisão dos objetivos das provas (targetsReview.ts): um turno à parte,
+    // pedido pelo cliente depois de aceitar um plano ou de um balanço de prova.
+    // Uma por gatilho; sem diferenças, nem turno nem Gemini.
     const targetsReviewIn = message || planContinuationIn ? null : parseTargetsReview(body.targets_review);
     let targetsReviewPrompt: string | null = null;
     let targetsReviewLogKey: string | null = null;
+    let targetsReviewPayload: unknown = null;
     if (targetsReviewIn) {
       const key = targetsReviewKey(targetsReviewIn);
       const skipped = (reason: string) => jsonResponse({
@@ -6859,28 +6873,32 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         plan_proposed: false, goals_updated: false, goal_proposed: false,
       });
       if (await wasProactiveDelivered(sb, userId, key)) return skipped("already_sent");
-      const todayReviewISO = new Date().toISOString().slice(0, 10);
+      const todayReviewISO = lisbonTodayISO();
       const inputs = await fetchTargetsInputs(sb, userId, todayReviewISO);
+      // A prova do balanço que pediu a revisão fica fora das contas.
+      const exclude = new Set(targetsReviewIn.kind === "race_after" ? [targetsReviewIn.race_id] : []);
       const diffs = inputs.races.length
-        ? computeTargetDiffs(inputs.races, inputs.level, (await fetchForecastRuns(sb, userId)) ?? [], todayReviewISO)
+        ? computeTargetDiffs(inputs, (await fetchForecastRuns(sb, userId)) ?? [], todayReviewISO, exclude)
         : [];
       if (!diffs.length) return skipped("targets_ok");
-      targetsReviewPrompt = buildTargetsReviewTurn(diffs);
+      targetsReviewPrompt = buildTargetsReviewTurn(diffs, targetsReviewIn.kind);
       targetsReviewLogKey = key;
+      targetsReviewPayload = targetsPayload(diffs);
       body.is_plan_checkin = true;
     }
 
-    // «Atualiza os objetivos» depois de uma revisão: o servidor aplica os
-    // números da proposta (as mesmas contas), em vez de esperar que o modelo
-    // chame update_race_event — e só com a revisão feita nas últimas 24 h.
+    // «Atualiza os objetivos» depois de uma revisão (nas últimas 24 h): o
+    // servidor grava EXATAMENTE o que se propôs (o payload da revisão), só nas
+    // provas que ainda não foram corridas — sem refazer as contas e sem esperar
+    // que o modelo chame update_race_event.
     let targetsApplied: { race_id: string; name: string; result: string }[] = [];
-    if (message && isTargetsUpdateAnswer(message) && await recentTargetsReview(sb, userId)) {
-      const todayApplyISO = new Date().toISOString().slice(0, 10);
-      const inputs = await fetchTargetsInputs(sb, userId, todayApplyISO);
-      const diffs: TargetDiff[] = inputs.races.length
-        ? computeTargetDiffs(inputs.races, inputs.level, (await fetchForecastRuns(sb, userId)) ?? [], todayApplyISO)
-        : [];
-      targetsApplied = await applyTargetDiffs(diffs, (args) => runUpdateRaceEvent(sb, userId, args));
+    if (message && isTargetsUpdateAnswer(message)) {
+      const proposals = await latestTargetsProposals(sb, userId);
+      if (proposals?.length) {
+        const todayApplyISO = lisbonTodayISO();
+        const inputs = await fetchTargetsInputs(sb, userId, todayApplyISO);
+        targetsApplied = await applyTargetProposals(proposals, inputs, todayApplyISO, (args) => runUpdateRaceEvent(sb, userId, args));
+      }
     }
     if (!message && !body.is_intervention_start && !body.is_plan_checkin && !proactiveTrigger) return jsonResponse({ error: "Mensagem vazia" }, 400);
 
@@ -7946,25 +7964,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     }
 
     if (chatImages.length) finalSystemInstruction += "\n\n" + imagesTurnSection(chatImages.length);
-    // O balanço de uma prova inclui a revisão dos objetivos das que faltam
-    // (targetsReview.ts), com o resultado dela já nas contas.
-    if (proactiveTrigger === "race_after" && proactiveKey) {
-      const todayAfterISO = new Date().toISOString().slice(0, 10);
-      const inputs = await fetchTargetsInputs(sb, userId, todayAfterISO);
-      const diffs = inputs.races.length
-        ? computeTargetDiffs(inputs.races, inputs.level, forecastRuns ?? (await fetchForecastRuns(sb, userId)) ?? [], todayAfterISO)
-        : [];
-      if (diffs.length) {
-        finalSystemInstruction += "\n\n" + buildTargetsReviewInstruction(diffs, "race_after") +
-          " Faz o balanço da prova primeiro; a revisão vem no fim, numa frase por prova.";
-        targetsReviewLogKey = targetsReviewKey({ kind: "race_after", key: proactiveKey });
-      }
-    }
-    if (targetsApplied.length) {
-      finalSystemInstruction += "\n\n" + `OBJETIVOS ATUALIZADOS AGORA (o atleta respondeu «${TARGETS_UPDATE_ANSWER}» e o servidor já gravou): ` +
-        targetsApplied.map((t) => `«${t.name}»: ${t.result}`).join(" ") +
-        " Confirma-lhe numa ou duas frases o que ficou. NÃO voltes a chamar update_race_event para estas provas.";
-    }
+    // O «Atualiza os objetivos» aplicado: ela só confirma o que ficou.
+    if (targetsApplied.length) finalSystemInstruction += "\n\n" + buildTargetsAppliedInstruction(targetsApplied);
 
     // deno-lint-ignore no-explicit-any
     const contents: any[] = [
@@ -7994,7 +7995,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     const turnCase = classifyTurn(message, history);
     // Num turno por iniciativa dela não se propõe nada — só leitura e notas.
     // Com fotos, só leitura, notas e a Despensa: o texto de uma imagem não pode levar a Carol a mexer em planos, metas ou provas.
-    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
+    const allowedTools = proactiveTrigger || chatImages.length || targetsReviewPrompt || targetsApplied.length ? new Set(READ_TOOL_NAMES) : allowedToolsFor(turnCase);
 
     // Observabilidade do pedido ao Gemini. Sem isto, o incidente de
     // 2026-09-05 foi impossível de atribuir a partir dos logs: o modelo real
@@ -8431,7 +8432,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // A mensagem já foi escrita e vai chegar ao atleta: a chave fica
     // registada, para nenhum outro dispositivo a repetir.
     if (proactiveTrigger && proactiveKey) await recordProactiveDelivered(sb, userId, proactiveTrigger, proactiveKey);
-    if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey);
+    if (targetsReviewLogKey && !modelMsgErr) await recordProactiveDelivered(sb, userId, "targets_review", targetsReviewLogKey, targetsReviewPayload);
     // O mapa fica entregue quando a mensagem fica gravada — chegue a resposta
     // ao cliente ou não (sondagem depois dos 45 s).
     if (cupMapLogKey && !modelMsgErr) await recordCupMapDelivered(sb, userId, cupMapLogKey);

@@ -1,21 +1,23 @@
 // A Carol propõe objetivos de prova por iniciativa dela (pedido do Rui,
 // 2026-10-25). Fora do index.ts para se poder testar.
 //
-// Dois gatilhos:
-//   · depois de uma prova concluída (race_after): o balanço inclui a revisão
-//     dos objetivos das provas por correr;
-//   · depois de o atleta aceitar um plano: o cliente pede um turno
-//     { targets_review: { reason: "plan_accepted", plan_id } }.
+// É sempre um turno À PARTE — nunca dentro do balanço da prova (decisão do
+// coordenador na revisão do d609f9ad). O cliente pede-o com
+// { targets_review: { reason, … } }:
+//   · "plan_accepted" + plan_id — depois de o atleta aceitar um plano;
+//   · "race_after" + race_id — depois de chegar um balanço com resultado
+//     válido. Essa prova fica fora das contas.
 //
 // O que se compara é determinístico e sai daqui, sem o Gemini: para cada prova
-// agendada com distância, a previsão com a fórmula do #89 (getRacePrediction,
-// as mesmas corridas do ecrã — fetchForecastRuns) contra o objetivo gravado.
-// Há diferença se não houver objetivo ou se ele se afastar da previsão 3% ou
-// mais (AMBITIOUS_RATIO: abaixo disso o ecrã e a Carol já dizem «alinhado»).
-// Sem diferenças, não há turno. Com elas, a Carol escreve a proposta; o
-// objetivo só muda quando o atleta diz «Atualiza os objetivos» — e aí é o
-// servidor que aplica estes mesmos números (update_race_event), sem
-// depender de o modelo chamar a ferramenta (brief, regra 7: nada muda sem ele).
+// agendada DEPOIS de hoje (Lisboa), sem corrida ligada, com distância, a
+// previsão com a fórmula do #89 (getRacePrediction, as mesmas corridas do ecrã
+// — fetchForecastRuns) contra o objetivo gravado. Há diferença se não houver
+// objetivo ou se ele se afastar da previsão 3% ou mais (AMBITIOUS_RATIO: abaixo
+// disso o ecrã e a Carol já dizem «alinhado»). Sem diferenças, não há turno.
+// Com elas, a Carol escreve a proposta e a proposta fica guardada no registo da
+// revisão (coach_proactive_log.payload). O objetivo só muda quando o atleta diz
+// «Atualiza os objetivos» — e aí o servidor aplica EXATAMENTE o que foi
+// proposto, só nas provas que ainda estão por correr (brief, regra 7).
 
 import { getRacePrediction } from "../_shared/formulas/racePlanning.ts";
 import { AMBITIOUS_RATIO } from "../_shared/formulas/racePacing.ts";
@@ -27,7 +29,7 @@ export const TARGETS_REVIEW_DEVIATION = AMBITIOUS_RATIO;
 /** As respostas que o turno oferece (os chips). */
 export const TARGETS_UPDATE_ANSWER = "Atualiza os objetivos";
 export const TARGETS_KEEP_ANSWER = "Mantém";
-/** Quanto tempo depois de uma revisão «Atualiza os objetivos» ainda a aplica. */
+/** Quanto tempo depois de uma revisão o «Atualiza os objetivos» ainda a aplica. */
 export const TARGETS_APPLY_WINDOW_MS = 24 * 3600 * 1000;
 
 export type TargetDiff = {
@@ -43,7 +45,10 @@ export type TargetDiff = {
   reference: { date: string | null; distance_km: number; time_s: number } | null;
 };
 
-type RaceRow = {
+/** O que fica guardado com a revisão: o que se propôs, prova a prova. */
+export type TargetProposal = { race_id: string; proposed_s: number };
+
+export type RaceRow = {
   id: string;
   name: string;
   date: string;
@@ -55,6 +60,8 @@ type RaceRow = {
   status?: string | null;
   cup_round_id?: string | null;
 };
+
+export type TargetsInputs = { races: RaceRow[]; level: string | null; linkedRaceIds: Set<string> };
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -68,28 +75,38 @@ export function formatHms(total: number): string {
 }
 
 /**
- * As provas cujo objetivo não bate com o que o treino aponta. `races`: as
- * agendadas a partir de hoje. Uma jornada de competição sem objetivo fica de
- * fora: o tempo dela fica vazio até ele o marcar (specs/trofeu.md §2.6).
+ * Uma prova em que a revisão pode mexer: agendada, DEPOIS de hoje (Lisboa),
+ * sem corrida ligada (uma prova corrida não muda de objetivo, seja qual for o
+ * status — proteção dupla), e não excluída (a prova do balanço que pediu a
+ * revisão).
+ */
+export function isReviewable(e: RaceRow, todayISO: string, inputs: { linkedRaceIds: Set<string> }, exclude: Set<string> = new Set()): boolean {
+  return !!e?.id && ISO_DATE_RE.test(String(e.date)) && e.date > todayISO &&
+    (!e.status || e.status === "agendada") && !inputs.linkedRaceIds.has(e.id) && !exclude.has(e.id);
+}
+
+/**
+ * As provas cujo objetivo não bate com o que o treino aponta. Uma jornada de
+ * competição sem objetivo fica de fora: o tempo dela fica vazio até ele o
+ * marcar (specs/trofeu.md §2.6).
  */
 export function computeTargetDiffs(
-  races: RaceRow[],
-  profileLevel: string | null,
+  inputs: TargetsInputs,
   // deno-lint-ignore no-explicit-any
   forecastRuns: any[],
   todayISO: string,
+  exclude: Set<string> = new Set(),
 ): TargetDiff[] {
   const runs = runsOnly(forecastRuns || []).map((r) => ({ date: r.date, distance_km: Number(r.distance_km), duration_seconds: Number(r.duration_seconds) }));
   const out: TargetDiff[] = [];
-  for (const e of races || []) {
+  for (const e of inputs.races || []) {
     const km = Number(e?.distance_km);
-    if (!e?.id || !ISO_DATE_RE.test(String(e.date)) || e.date < todayISO || !(km > 0)) continue;
-    if (e.status && e.status !== "agendada") continue;
+    if (!isReviewable(e, todayISO, inputs, exclude) || !(km > 0)) continue;
     const current = Number(e.target_time_seconds) > 0 ? Math.round(Number(e.target_time_seconds)) : null;
     if (e.cup_round_id && current == null) continue;
     const prediction = getRacePrediction(
-      { distance_km: km, elevation_gain_m: e.race_type === "trail" ? Number(e.elevation_gain_m) || null : null, race_type: e.race_type ?? null, experience_level: e.experience_level || profileLevel } as never,
-      { experience_level: profileLevel } as never,
+      { distance_km: km, elevation_gain_m: e.race_type === "trail" ? Number(e.elevation_gain_m) || null : null, race_type: e.race_type ?? null, experience_level: e.experience_level || inputs.level } as never,
+      { experience_level: inputs.level } as never,
       runs,
     );
     if (!(prediction.predictedSeconds > 0)) continue;
@@ -128,94 +145,125 @@ export function targetDiffLines(diffs: TargetDiff[]): string {
   }).join("\n");
 }
 
-export type TargetsReviewReason = { kind: "plan_accepted"; plan_id: string } | { kind: "race_after"; key: string };
+export type TargetsReviewRequest = { kind: "plan_accepted"; plan_id: string } | { kind: "race_after"; race_id: string };
 
 /** O pedido do cliente, validado; null se não serve. */
-export function parseTargetsReview(raw: unknown): { kind: "plan_accepted"; plan_id: string } | null {
+export function parseTargetsReview(raw: unknown): TargetsReviewRequest | null {
   if (!raw || typeof raw !== "object") return null;
   // deno-lint-ignore no-explicit-any
   const r = raw as any;
-  return r.reason === "plan_accepted" && typeof r.plan_id === "string" && UUID_RE.test(r.plan_id)
-    ? { kind: "plan_accepted", plan_id: r.plan_id }
-    : null;
+  if (r.reason === "plan_accepted" && typeof r.plan_id === "string" && UUID_RE.test(r.plan_id)) return { kind: "plan_accepted", plan_id: r.plan_id };
+  if (r.reason === "race_after" && typeof r.race_id === "string" && UUID_RE.test(r.race_id)) return { kind: "race_after", race_id: r.race_id };
+  return null;
 }
 
 /** A chave da revisão em coach_proactive_log: uma por gatilho. */
-export function targetsReviewKey(reason: TargetsReviewReason): string {
-  return reason.kind === "plan_accepted" ? `targets_review:${reason.plan_id}` : `targets_review:${reason.key}`.slice(0, 200);
+export function targetsReviewKey(req: TargetsReviewRequest): string {
+  return req.kind === "plan_accepted" ? `targets_review:${req.plan_id}` : `targets_review:race:${req.race_id}`;
 }
 
-/** O que a Carol recebe para escrever a proposta. */
-export function buildTargetsReviewInstruction(diffs: TargetDiff[], reason: TargetsReviewReason["kind"]): string {
-  const why = reason === "plan_accepted"
+/** O turno da revisão: o que a Carol recebe no lugar da mensagem dele. */
+export function buildTargetsReviewTurn(diffs: TargetDiff[], kind: TargetsReviewRequest["kind"]): string {
+  const why = kind === "plan_accepted"
     ? "o atleta acabou de aceitar um plano de treino novo"
-    : "o atleta acabou de correr uma prova, e o resultado dela entra nas contas";
-  return `REVISÃO DOS OBJETIVOS DAS PROVAS (por iniciativa tua: ${why}). Com as mesmas corridas do ecrã, estes objetivos já não ` +
+    : "o atleta acabou de correr uma prova e já viu o balanço dela; o resultado entra nas contas";
+  return `A app pediu-te a revisão dos objetivos das provas (${why}). Com as mesmas corridas do ecrã, estes objetivos já não ` +
     `batem com o que o treino aponta (3% ou mais de diferença, ou sem objetivo):\n${targetDiffLines(diffs)}\n` +
-    `Diz-lhe, por prova, o objetivo atual → o que propões, e porquê (${reason === "plan_accepted" ? "o plano novo" : "o resultado desta prova"} ` +
-    `e a corrida de referência). Pergunta-lhe se atualizas. NÃO chames update_race_event neste turno: só muda se ele disser ` +
-    `«${TARGETS_UPDATE_ANSWER}»; com «${TARGETS_KEEP_ANSWER}», fica tudo como está.`;
+    `Diz-lhe, por prova, o objetivo atual → o que propões, e porquê (${kind === "plan_accepted" ? "o plano novo" : "o resultado da prova"} ` +
+    `e a corrida de referência). Uma ou duas frases por prova; sem cumprimentar como início de conversa e sem voltar ao balanço. ` +
+    `Pergunta-lhe se atualizas. NÃO chames update_race_event neste turno: só muda se ele disser «${TARGETS_UPDATE_ANSWER}»; ` +
+    `com «${TARGETS_KEEP_ANSWER}», fica tudo como está.`;
 }
 
-/** O turno pedido pelo cliente depois de aceitar um plano. */
-export function buildTargetsReviewTurn(diffs: TargetDiff[]): string {
-  return `O atleta acabou de aceitar o plano e a app pediu-te a revisão dos objetivos das provas. ` +
-    buildTargetsReviewInstruction(diffs, "plan_accepted") +
-    ` Uma ou duas frases por prova, sem cumprimentar como início de conversa.`;
+/** O que a Carol recebe depois de o servidor aplicar o «Atualiza»: só confirma. */
+export function buildTargetsAppliedInstruction(applied: { name: string; result: string }[]): string {
+  return `OBJETIVOS ATUALIZADOS AGORA (o atleta respondeu «${TARGETS_UPDATE_ANSWER}» e o servidor já gravou o que propuseste): ` +
+    applied.map((t) => `«${t.name}»: ${t.result}`).join(" ") +
+    ` Neste turno só confirmas, numa ou duas frases, o que ficou. Não revês o plano nem propões ajustes, e não voltes a chamar ` +
+    `update_race_event.`;
 }
 
 /** A resposta dele é «Atualiza os objetivos»? */
 export const isTargetsUpdateAnswer = (message: string): boolean =>
   message.trim().toLowerCase().replace(/[.!]+$/, "") === TARGETS_UPDATE_ANSWER.toLowerCase();
 
-/** As provas agendadas e o nível do atleta, para as contas. Nunca rejeita. */
+/** O que se guarda com a revisão (coach_proactive_log.payload). */
+export const targetsPayload = (diffs: TargetDiff[]): { proposals: TargetProposal[] } =>
+  ({ proposals: diffs.map((d) => ({ race_id: d.race_id, proposed_s: d.proposed_s })) });
+
+/** As provas agendadas depois de hoje, as que já têm corrida ligada e o nível. Nunca rejeita. */
 // deno-lint-ignore no-explicit-any
-export async function fetchTargetsInputs(sb: any, userId: string, todayISO: string): Promise<{ races: RaceRow[]; level: string | null }> {
+export async function fetchTargetsInputs(sb: any, userId: string, todayISO: string): Promise<TargetsInputs> {
   try {
     const [{ data: races, error }, { data: profile }] = await Promise.all([
       sb.from("race_events")
         .select("id, name, date, distance_km, elevation_gain_m, race_type, experience_level, target_time_seconds, status, cup_round_id")
         .eq("user_id", userId)
         .eq("status", "agendada")
-        .gte("date", todayISO)
+        .gt("date", todayISO)
         .order("date", { ascending: true })
         .limit(20),
       sb.from("profiles").select("experience_level").eq("id", userId).maybeSingle(),
     ]);
     if (error) throw error;
-    return { races: races ?? [], level: (profile?.experience_level as string | null) ?? null };
+    const list = (races ?? []) as RaceRow[];
+    const linkedRaceIds = new Set<string>();
+    if (list.length) {
+      const { data: linked, error: lErr } = await sb.from("runs")
+        .select("race_id")
+        .eq("user_id", userId)
+        .in("race_id", list.map((r) => r.id));
+      // Sem saber quais têm corrida ligada, não se mexe em nenhuma.
+      if (lErr) throw lErr;
+      for (const r of (linked ?? []) as { race_id: string | null }[]) if (r.race_id) linkedRaceIds.add(r.race_id);
+    }
+    return { races: list, level: (profile?.experience_level as string | null) ?? null, linkedRaceIds };
   } catch (e) {
     console.warn("Revisão dos objetivos: provas não lidas:", e instanceof Error ? e.message : e);
-    return { races: [], level: null };
+    return { races: [], level: null, linkedRaceIds: new Set() };
   }
 }
 
-/** Houve uma revisão nas últimas 24 h (a que o «Atualiza» responde)? */
+/** A proposta da revisão mais recente das últimas 24 h (a que o «Atualiza» responde), ou null. */
 // deno-lint-ignore no-explicit-any
-export async function recentTargetsReview(sb: any, userId: string, nowMs = Date.now()): Promise<boolean> {
+export async function latestTargetsProposals(sb: any, userId: string, nowMs = Date.now()): Promise<TargetProposal[] | null> {
   try {
     const { data, error } = await sb.from("coach_proactive_log")
-      .select("key")
+      .select("key, payload, sent_at")
       .eq("user_id", userId)
       .like("key", "targets_review:%")
       .gte("sent_at", new Date(nowMs - TARGETS_APPLY_WINDOW_MS).toISOString())
+      .order("sent_at", { ascending: false })
       .limit(1);
     if (error) throw error;
-    return (data ?? []).length > 0;
+    const proposals = (data ?? [])[0]?.payload?.proposals;
+    if (!Array.isArray(proposals)) return null;
+    return proposals.filter((p: TargetProposal) =>
+      typeof p?.race_id === "string" && UUID_RE.test(p.race_id) && Number.isFinite(p?.proposed_s) && p.proposed_s > 0
+    );
   } catch (e) {
     console.warn("Revisão dos objetivos: registo não lido:", e instanceof Error ? e.message : e);
-    return false;
+    return null;
   }
 }
 
-/** «Atualiza os objetivos»: os números da proposta, gravados prova a prova. */
-export async function applyTargetDiffs(
-  diffs: TargetDiff[],
+/**
+ * «Atualiza os objetivos»: grava exatamente o que se propôs, só nas provas que
+ * ainda podem mudar (agendadas, depois de hoje, sem corrida ligada) — as
+ * contas não se refazem aqui.
+ */
+export async function applyTargetProposals(
+  proposals: TargetProposal[],
+  inputs: TargetsInputs,
+  todayISO: string,
   updateRace: (args: { race_id: string; target_time_seconds: number }) => Promise<string>,
 ): Promise<{ race_id: string; name: string; result: string }[]> {
+  const byId = new Map(inputs.races.filter((r) => isReviewable(r, todayISO, inputs)).map((r) => [r.id, r]));
   const out = [];
-  for (const d of diffs) {
-    out.push({ race_id: d.race_id, name: d.name, result: await updateRace({ race_id: d.race_id, target_time_seconds: d.proposed_s }) });
+  for (const p of proposals) {
+    const race = byId.get(p.race_id);
+    if (!race) continue;
+    out.push({ race_id: p.race_id, name: race.name, result: await updateRace({ race_id: p.race_id, target_time_seconds: p.proposed_s }) });
   }
   return out;
 }
