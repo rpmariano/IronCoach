@@ -9,6 +9,8 @@ type Filter = [op: string, col: string, val: unknown];
 export class FakeFoodsDb {
   tables: Record<string, Row[]> = { athlete_foods: [], athlete_food_rules: [] };
   writes: { table: string; op: string; payload: unknown }[] = [];
+  /** Como o trigger da migração: devolve a mensagem de erro para recusar um update. */
+  updateError: ((row: Row, patch: Row) => string | null) | null = null;
   private seq = 0;
   nextId = () => `id-${++this.seq}`;
 
@@ -78,7 +80,12 @@ class FakeQuery {
     }
     this.db.writes.push({ table: this.table, op: this.op, payload: this.payload });
     if (this.op === "update") {
-      for (const r of rows.filter((r) => this.match(r))) Object.assign(r, this.payload);
+      const hits = rows.filter((r) => this.match(r));
+      for (const r of hits) {
+        const refused = this.db.updateError?.(r, this.payload as Row);
+        if (refused) return { data: null, error: { message: refused } };
+      }
+      for (const r of hits) Object.assign(r, this.payload);
       return { data: null, error: null };
     }
     const list = Array.isArray(this.payload) ? this.payload : [this.payload!];

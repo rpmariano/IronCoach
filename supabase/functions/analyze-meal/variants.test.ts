@@ -226,3 +226,55 @@ Deno.test("linkVariants: com o genérico na despensa, as variantes dele também 
   await linkVariants(db2, U, [{ ...item({}), name: "Leite magro", variant_of: "Leite", variant_label: "magro" }], NOW);
   assertEquals(db2.tables.athlete_foods.every((r) => r.in_pantry === false), true);
 });
+
+// ─── Revisão do lote (2026-10-25) ─────────────────────────────────────────
+
+Deno.test("linkVariants: um alimento antigo que estava na despensa leva o genérico com ele (não some do Armário)", async () => {
+  const db = new FakeFoodsDb();
+  // «Coxa de frango com pele» já estava na despensa, sem genérico.
+  db.tables.athlete_foods.push({ id: "v1", user_id: U, name: "Coxa de frango com pele", name_key: "coxa de frango com pele", times_seen: 3, in_pantry: true, parent_id: null, variant_label: null, calories_per_100g: 215 });
+  await linkVariants(db, U, [{ ...item({}), name: "Coxa de frango com pele", variant_of: "Coxa de frango", variant_label: "com pele" }], NOW);
+  const g = db.tables.athlete_foods.find((r) => r.name_key === "coxa de frango")!;
+  assertEquals([g.in_pantry, g.times_seen], [true, 1]);
+  assertEquals(db.tables.athlete_foods.find((r) => r.id === "v1")!.parent_id, g.id);
+
+  // Um genérico que já existia fora da despensa também entra.
+  const db2 = new FakeFoodsDb();
+  db2.tables.athlete_foods.push(
+    { id: "g1", user_id: U, name: "Coxa de frango", name_key: "coxa de frango", times_seen: 0, in_pantry: false, parent_id: null, variant_label: null },
+    { id: "v1", user_id: U, name: "Coxa de frango com pele", name_key: "coxa de frango com pele", times_seen: 3, in_pantry: true, parent_id: null, variant_label: null },
+  );
+  await linkVariants(db2, U, [{ ...item({}), name: "Coxa de frango com pele", variant_of: "Coxa de frango", variant_label: "com pele" }], NOW, { countGeneric: false });
+  assertEquals(db2.tables.athlete_foods.find((r) => r.id === "g1")!.in_pantry, true);
+});
+
+Deno.test("variantes guardadas com % («iogurte 0%») perguntam-se sempre; uma opção só do modelo com % sai das opções", () => {
+  const IOG = food({ id: "gi", name: "Iogurte grego", name_key: "iogurte grego" });
+  const ZERO = food({ id: "vz", parent_id: "gi", variant_label: "0%", name: "Iogurte grego 0%", name_key: "iogurte grego 0", calories_per_100g: 57, times_seen: 3 });
+  const NAT = food({ id: "vn", parent_id: "gi", variant_label: "natural", name: "Iogurte grego natural", name_key: "iogurte grego natural", calories_per_100g: 130, times_seen: 1 });
+  const idx = buildVariantIndex([IOG, ZERO, NAT]);
+  const { questions } = resolveVariants([item({ name: "Iogurte grego" })], idx, ids);
+  assertEquals(questions.length, 1);
+  assertEquals([questions[0].options, questions[0].assumed], [["0%", "natural"], "0%"]);
+
+  // Uma opção que só o modelo sugeriu e cai no filtro do #86 sai; a pergunta fica.
+  const withModel = resolveVariants([item({ name: "Iogurte grego", generic_name: "Iogurte grego", variant: "0%", variant_options: ["0%", "natural", "2% de gordura"] })], idx, ids);
+  assertEquals(withModel.questions[0].options, ["0%", "natural"]);
+});
+
+Deno.test("linkVariants: uma ligação recusada pelo trigger não para as outras da mesma refeição", async () => {
+  const db = new FakeFoodsDb();
+  db.tables.athlete_foods.push(
+    { id: "a", user_id: U, name: "Leite magro", name_key: "leite magro", parent_id: null, variant_label: null, in_pantry: false },
+    { id: "b", user_id: U, name: "Coxa de frango sem pele", name_key: "coxa de frango sem pele", parent_id: null, variant_label: null, in_pantry: false },
+  );
+  // «Leite magro» já é genérico de outras: o trigger recusa ligá-lo (variant_nested).
+  db.updateError = (row, patch) => (row.id === "a" && patch.parent_id ? "variant_nested" : null);
+  await linkVariants(db, U, [
+    { name: "Leite magro", variant_of: "Leite", variant_label: "magro" },
+    { name: "Coxa de frango sem pele", variant_of: "Coxa de frango", variant_label: "sem pele" },
+  ], NOW);
+  const coxa = db.tables.athlete_foods.find((r) => r.name_key === "coxa de frango")!;
+  assertEquals(db.tables.athlete_foods.find((r) => r.id === "b")!.parent_id, coxa.id);
+  assertEquals(db.tables.athlete_foods.find((r) => r.id === "a")!.parent_id, null);
+});
