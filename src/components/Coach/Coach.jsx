@@ -747,8 +747,15 @@ export default function Coach() {
   useEffect(() => {
     if (coachIntent || coachLoading || proactiveAttempted.current) return;
     const { percentileSnapshots, leaderboardEntries } = useAppStore.getState();
-    const list = listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems, dailyCheckins, percentileSnapshots, leaderboardEntries })
-      .filter((c) => !wasProactiveSent(profile?.id, c));
+    // plan_resume (a Carol retoma um plano partido) não está na lista do cliente:
+    // decide-o o servidor. Uma notificação tocada traz a chave (plan_resume:<id
+    // da mensagem>) e o servidor lê os factos por ela — entra à frente.
+    const tapped = useAppStore.getState().proactiveKeyRequested;
+    const resume = typeof tapped === 'string' && /^plan_resume:/.test(tapped)
+      ? [{ trigger: 'plan_resume', key: tapped, details: '' }].filter((c) => !wasProactiveSent(profile?.id, c))
+      : [];
+    const list = [...resume, ...listProactiveTriggers({ runs, meals, gymSessions, bodyAssessments, raceEvents, profile, coachPlans, coachPlanItems, dailyCheckins, percentileSnapshots, leaderboardEntries })
+      .filter((c) => !wasProactiveSent(profile?.id, c))];
     if (!list.length) return;
     // Uma notificação tocada com a app já a carregar os dados (ação P.9):
     // este candidato vai primeiro. Se a chave já não estiver na lista
