@@ -62,7 +62,7 @@ vi.mock('../lib/supabase', () => ({
 const { useAppStore } = await import('./index');
 
 const treino = [{ kind: 'corrida' }];
-const plano = (over) => ({ period_start: '2026-09-01', period_end: '2026-10-04', summary: null, supersedes_plan_id: null, race_id: null, coach_plan_items: treino, ...over });
+const plano = (over) => ({ status: 'aceite', period_start: '2026-09-01', period_end: '2026-10-04', summary: null, supersedes_plan_id: null, race_id: null, coach_plan_items: treino, ...over });
 
 beforeEach(() => {
   writes.length = 0;
@@ -240,6 +240,51 @@ describe('respondToPlan — a fusão só substitui até onde a proposta chega', 
     // Só o do dia 4 (feito nesse dia); o f2 (dia 20) está fora do que a proposta cobre.
     expect(cancelados).toHaveLength(1);
     expect(cancelados[0].filters).toEqual(expect.arrayContaining([['plan_id', 'p-novo'], ['status', 'pendente'], ['planned_date', dia(4)], ['kind', 'corrida']]));
+  });
+});
+
+describe('respondToPlan — cadeia de partes: um supersedes que já não está aceite não serve', () => {
+  it('a parte 2 traz o supersedes de um plano que a parte 1 fechou: funde na parte 1 (já aceite), e fica um só bloco', async () => {
+    // O plano que a parte 1 fechou (já não está aceite) e a parte 1, aceite e esticada até à prova.
+    db.plans['p-fechado'] = plano({ id: 'p-fechado', status: 'recusado', period_start: '2026-10-01', period_end: '2026-10-25', race_id: 'r1' });
+    const parte1 = plano({ id: 'p-parte1', period_start: '2026-10-26', period_end: '2026-12-20', race_id: 'r1' });
+    db.plans['p-parte1'] = parte1;
+    db.active = [{ ...parte1, coach_plan_items: [{ kind: 'corrida' }] }];
+    db.plans['p-parte2'] = plano({
+      id: 'p-parte2', status: 'proposto', period_start: '2026-11-02', period_end: '2026-11-08', race_id: 'r1', supersedes_plan_id: 'p-fechado',
+      coach_plan_items: [{ kind: 'corrida', planned_date: '2026-11-03' }],
+    });
+    expect(await useAppStore.getState().respondToPlan('p-parte2', true)).toBe(true);
+    // Nunca se aceita a parte 2 como bloco à parte: funde-se na parte 1.
+    expect(writes.some((w) => w.data?.status === 'aceite')).toBe(false);
+    expect(updatesTo('coach_plans').some((w) => w.filters.some(([c, v]) => c === 'id' && v === 'p-parte1'))).toBe(true);
+    // Os itens da parte 2 passam para a parte 1 e o contentor da proposta apaga-se.
+    expect(updatesTo('coach_plan_items').some((w) => w.data?.plan_id === 'p-parte1')).toBe(true);
+    expect(deletes.some((d) => d.table === 'coach_plans' && d.filters.some(([c, v]) => c === 'id' && v === 'p-parte2'))).toBe(true);
+  });
+});
+
+describe('respondToPlan — uma falha a meio da fusão (caso A) não conta como aceite', () => {
+  const montar = () => {
+    db.plans['p-antigo'] = plano({ id: 'p-antigo', race_id: 'r1' });
+    db.plans['p-novo'] = plano({
+      id: 'p-novo', status: 'proposto', period_start: '2026-10-26', period_end: '2026-11-01', race_id: 'r1', supersedes_plan_id: 'p-antigo',
+      coach_plan_items: [{ kind: 'corrida', planned_date: '2026-10-28' }],
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  };
+
+  it('falha ao atualizar os limites do plano original: devolve false', async () => {
+    montar();
+    failOn = (table, data) => table === 'coach_plans' && data && 'period_start' in data;
+    expect(await useAppStore.getState().respondToPlan('p-novo', true)).toBe(false);
+  });
+
+  it('falha ao mover os itens da proposta: devolve false (a proposta continua pendente)', async () => {
+    montar();
+    failOn = (table, data) => table === 'coach_plan_items' && data && data.plan_id === 'p-antigo';
+    expect(await useAppStore.getState().respondToPlan('p-novo', true)).toBe(false);
+    expect(deletes.some((d) => d.table === 'coach_plans')).toBe(false);
   });
 });
 
