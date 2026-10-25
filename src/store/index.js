@@ -1016,6 +1016,14 @@ export const useAppStore = create((set, get) => ({
 
     // Identificar se esta proposta adapta um plano ativo existente
     let targetPlanId = newPlan.supersedes_plan_id;
+    /* Um supersedes que já não está aceite (nas partes de um plano longo, o que
+       a parte 1 fechou ou recusou) não serve de alvo: ignora-se e procura-se o
+       plano aceite sobreposto — a parte 1, já aceite e esticada até à prova —,
+       para a parte 2 se fundir nele (Caso A) e ficar um só bloco aceite. */
+    if (targetPlanId) {
+      const { data: sup } = await supabase.from('coach_plans').select('id, status').eq('id', targetPlanId).maybeSingle();
+      if (!sup || sup.status !== 'aceite') targetPlanId = null;
+    }
     if (!targetPlanId) {
       const { data: activePlans } = await supabase
         .from('coach_plans')
@@ -1157,13 +1165,17 @@ export const useAppStore = create((set, get) => ({
         //    race_lost_at limpam-se: se o plano tinha encurtado, ou perdido a
         //    prova, este ajuste é a resposta da Carol a isso — o aviso deixa
         //    de ter razão de ser (M-2 da segunda revisão pré-deploy).
-        await supabase.from('coach_plans').update({
+        /* Cada escrita verifica o erro e PÁRA (devolve false): uma falha a meio
+           não pode contar como aceite. A proposta fica pendente e voltar a
+           aceitar repete o que falta — os passos são idempotentes. */
+        const { error: limitsErr } = await supabase.from('coach_plans').update({
           period_start: finalStart,
           period_end: finalEnd,
           summary: finalSummary,
           trimmed_at: null,
           race_lost_at: null,
         }).eq('id', targetPlanId);
+        if (limitsErr) { console.error('Error updating original plan limits:', limitsErr); return false; }
 
         // 2. Apagar os treinos do plano original nas datas que a proposta
         //    SUBSTITUI — menos os já FEITOS: o plano deixava de mostrar esse dia
@@ -1184,43 +1196,48 @@ export const useAppStore = create((set, get) => ({
              e tipo, apareciam os dois: cancela-se o novo (como no bloco novo,
              pelo dia em que o treino foi FEITO). Antes de os itens mudarem de
              plano, enquanto ainda são da proposta. */
-          const { data: feitos } = await supabase
+          const { data: feitos, error: feitosReadErr } = await supabase
             .from('coach_plan_items')
             .select('id, planned_date, actual_date, kind')
             .eq('plan_id', targetPlanId)
             .eq('status', 'concluido')
             .gte('planned_date', newPlan.period_start)
             .lte('planned_date', ultimoDia);
+          if (feitosReadErr) { console.error('Error reading done items of the plan:', feitosReadErr); return false; }
           const feitosPorDia = (feitos || []).map((i) => ({ ...i, planned_date: i.actual_date || i.planned_date }));
           for (const { planned_date, kind } of doneItemKeys(feitosPorDia)) {
-            await supabase
+            const { error: dupErr } = await supabase
               .from('coach_plan_items')
               .update({ status: 'cancelado' })
               .eq('plan_id', planId)
               .eq('status', 'pendente')
               .eq('planned_date', planned_date)
               .eq('kind', kind);
+            if (dupErr) { console.error('Error cancelling redundant item:', dupErr); return false; }
           }
-          await supabase
+          const { error: delErr } = await supabase
             .from('coach_plan_items')
             .delete()
             .eq('plan_id', targetPlanId)
             .neq('status', 'concluido')
             .gte('planned_date', newPlan.period_start)
             .lte('planned_date', ultimoDia);
+          if (delErr) { console.error('Error replacing plan items:', delErr); return false; }
         }
 
         // 3. Mover os novos itens da proposta para o plano original
-        await supabase
+        const { error: moveErr } = await supabase
           .from('coach_plan_items')
           .update({ plan_id: targetPlanId })
           .eq('plan_id', planId);
+        if (moveErr) { console.error('Error moving proposal items:', moveErr); return false; }
 
         // 4. Apagar o contentor temporário da proposta
-        await supabase
+        const { error: containerErr } = await supabase
           .from('coach_plans')
           .delete()
           .eq('id', planId);
+        if (containerErr) { console.error('Error deleting proposal container:', containerErr); return false; }
       }
     } else {
       // ── CASO B: Novo Plano Independente ────────────────────────────────────
@@ -1244,7 +1261,8 @@ export const useAppStore = create((set, get) => ({
 
       for (const old of oldPlans || []) {
         if (old.period_start >= newPlan.period_start && old.period_end <= newPlan.period_end) {
-          await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
+          const { error: oldErr } = await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
+          if (oldErr) { console.error('Error rejecting overlapped old plan:', oldErr); return false; }
         }
       }
     }
