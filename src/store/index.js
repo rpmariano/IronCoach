@@ -956,6 +956,27 @@ export const useAppStore = create((set, get) => ({
   // é AQUI que a substituição se concretiza — nunca no momento da proposta.
   // Recusar tem de deixar o plano antigo intacto: o atleta pediu para ver uma
   // alternativa, não para deitar fora o microciclo que estava a cumprir.
+  /* Plano vinculado a uma prova acaba no dia dela (decisão (ii) do plano em
+     partes): aceite uma proposta com race_id, o bloco resultante estica o
+     period_end até à data da prova, se ainda não chegar lá — mesmo que o
+     atleta tenha pedido só 14 dias, ou a parte seja de uma semana. Só o
+     período: não cria itens. Uma falha aqui não desfaz o aceite. */
+  stretchPlanToRace: async (resultPlanId, raceId) => {
+    if (!resultPlanId || !raceId) return;
+    try {
+      const [{ data: plan }, { data: race }] = await Promise.all([
+        supabase.from('coach_plans').select('id, period_end').eq('id', resultPlanId).single(),
+        supabase.from('race_events').select('date').eq('id', raceId).maybeSingle(),
+      ]);
+      const raceDay = typeof race?.date === 'string' ? race.date.slice(0, 10) : null;
+      if (!plan || !raceDay || String(plan.period_end).slice(0, 10) >= raceDay) return;
+      const { error } = await supabase.from('coach_plans').update({ period_end: raceDay }).eq('id', resultPlanId);
+      if (error) console.warn('Não consegui esticar o plano até à prova:', error);
+    } catch (e) {
+      console.warn('Não consegui esticar o plano até à prova:', e);
+    }
+  },
+
   respondToPlan: async (planId, accept) => {
     if (!accept) {
       /* Se um aceite anterior falhou a meio, os treinos já FEITOS do bloco
@@ -1117,6 +1138,7 @@ export const useAppStore = create((set, get) => ({
         console.error('Error accepting new-objective plan:', acceptErr);
         return false;
       }
+      await get().stretchPlanToRace(planId, newPlan.race_id);
       await get().reloadCoachPlans();
       get().loadDailySummary({ force: true }).catch(() => {});
       return true;
@@ -1194,6 +1216,8 @@ export const useAppStore = create((set, get) => ({
       }
     }
 
+    // O bloco que ficou a valer: o original (fusão) ou a própria proposta.
+    await get().stretchPlanToRace(targetPlanId && originalPlan ? targetPlanId : planId, newPlan.race_id);
     await get().reloadCoachPlans();
     get().loadDailySummary({ force: true }).catch(() => {});
     return true;

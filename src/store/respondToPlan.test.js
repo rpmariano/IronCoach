@@ -138,6 +138,50 @@ describe('respondToPlan — a fusão (caso A) não apaga os treinos já feitos',
   });
 });
 
+describe('respondToPlan — o plano vinculado a uma prova acaba no dia dela', () => {
+  const periodEnds = () => updatesTo('coach_plans').filter((w) => w.data && 'period_end' in w.data && Object.keys(w.data).length === 1);
+
+  it('uma parte de 7 dias de uma prova a 8 semanas, aceite como bloco novo: period_end = dia da prova', async () => {
+    db.plans['p-parte'] = plano({ id: 'p-parte', period_start: '2026-10-26', period_end: '2026-11-01', race_id: 'r-prova' });
+    db.plans['r-prova'] = { id: 'r-prova', date: '2026-12-20' };
+    expect(await useAppStore.getState().respondToPlan('p-parte', true)).toBe(true);
+    expect(periodEnds()).toEqual([expect.objectContaining({ data: { period_end: '2026-12-20' }, filters: [['id', 'p-parte']] })]);
+    // Só o período: nenhum item criado ou apagado.
+    expect(updatesTo('coach_plan_items')).toHaveLength(0);
+    expect(deletes).toHaveLength(0);
+  });
+
+  it('fundida no bloco ativo da mesma prova: estica o bloco original, não a proposta', async () => {
+    db.plans['p-antigo'] = plano({ id: 'p-antigo', period_start: '2026-10-19', period_end: '2026-10-25', race_id: 'r-prova' });
+    db.plans['p-parte'] = plano({ id: 'p-parte', period_start: '2026-10-26', period_end: '2026-11-01', race_id: 'r-prova', supersedes_plan_id: 'p-antigo' });
+    db.plans['r-prova'] = { id: 'r-prova', date: '2026-12-20' };
+    expect(await useAppStore.getState().respondToPlan('p-parte', true)).toBe(true);
+    expect(periodEnds()).toEqual([expect.objectContaining({ data: { period_end: '2026-12-20' }, filters: [['id', 'p-antigo']] })]);
+  });
+
+  it('já chega ao dia da prova (ou passa dele): não mexe', async () => {
+    db.plans['p-parte'] = plano({ id: 'p-parte', period_start: '2026-10-26', period_end: '2026-12-20', race_id: 'r-prova' });
+    db.plans['r-prova'] = { id: 'r-prova', date: '2026-12-20' };
+    expect(await useAppStore.getState().respondToPlan('p-parte', true)).toBe(true);
+    expect(periodEnds()).toHaveLength(0);
+  });
+
+  it('sem prova (race_id null): nada a esticar', async () => {
+    db.plans['p-livre'] = plano({ id: 'p-livre', period_start: '2026-10-26', period_end: '2026-11-01', race_id: null });
+    expect(await useAppStore.getState().respondToPlan('p-livre', true)).toBe(true);
+    expect(periodEnds()).toHaveLength(0);
+  });
+
+  it('se esticar falhar, o aceite fica (não se desfaz)', async () => {
+    db.plans['p-parte'] = plano({ id: 'p-parte', period_start: '2026-10-26', period_end: '2026-11-01', race_id: 'r-prova' });
+    db.plans['r-prova'] = { id: 'r-prova', date: '2026-12-20' };
+    failOn = (table, data) => table === 'coach_plans' && data && 'period_end' in data && Object.keys(data).length === 1;
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await useAppStore.getState().respondToPlan('p-parte', true)).toBe(true);
+    expect(writes.some((w) => w.data?.status === 'aceite')).toBe(true);
+  });
+});
+
 describe('respondToPlan — sem supersedes, o plano de treino sobreposto é que conta', () => {
   it('um plano só de refeições que venha primeiro na lista não rouba a proposta', async () => {
     db.active = [
