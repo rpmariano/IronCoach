@@ -69,6 +69,7 @@ const RUN_TRAINING_TYPES = [
   { key: 'tempo', label: 'Ritmo (Tempo)', group: 'Estruturado' },
   { key: 'fartlek', label: 'Fartlek', group: 'Estruturado' },
   { key: 'intervalos', label: 'Intervalos', group: 'Estruturado' },
+  { key: 'ativacao', label: 'Ativação pré-prova', group: 'Estruturado' },
   { key: 'subidas', label: 'Subidas', group: 'Trilho' },
   { key: 'trail', label: 'Trail', group: 'Trilho' },
   { key: 'tecnico', label: 'Técnico (trilho)', group: 'Trilho' },
@@ -2820,6 +2821,7 @@ export default function RunRegistration({ onClose, dateIso = null, runIdToEdit =
                       <option value="tempo">Ritmo (Tempo)</option>
                       <option value="fartlek">Fartlek</option>
                       <option value="intervalos">Intervalos</option>
+                      <option value="ativacao">Ativação pré-prova</option>
                     </optgroup>
                     <optgroup label="Trilho">
                       <option value="subidas">Subidas</option>

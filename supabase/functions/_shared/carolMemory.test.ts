@@ -608,3 +608,8 @@ Deno.test("buildGoalProposalContext: mostra a data-alvo, esconde as marcas inter
   assertStringIncludes(text, "Se ele questionar a proposta, explica o racional");
   assertStringIncludes(text, "chama update_goals com a versão nova");
 });
+
+Deno.test("runLabel: a ativação pré-prova diz-se pelo nome (bug #84)", () => {
+  assertEquals(runLabel({ training_type: "ativacao", distance_km: 4 }), "Corrida (ativação pré-prova, 4 km)");
+  assertEquals(runLabel({ training_type: "ativacao" }), "Corrida (ativação pré-prova)");
+});

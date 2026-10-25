@@ -887,3 +887,47 @@ describe('revisão das boas-vindas de 2026-09-26 — a cara, o fuso e o descanso
     });
   });
 });
+
+describe('bug #84 — a ativação antes da prova', () => {
+  const PROVA = { id: 'r', name: 'Meia de Lisboa', date: '2026-10-26', status: 'planeada' };
+  const plano = (items, raceEvents = [PROVA]) => ({
+    profile: { display_name: 'Rui Mariano', gender: 'M' },
+    coachPlans: [{ id: 'p', status: 'aceite' }],
+    coachPlanItems: items.map((i, n) => ({ id: `i${n}`, plan_id: 'p', status: 'pendente', kind: 'corrida', ...i })),
+    runs: [{ date: '2026-09-01', distance_km: 5 }], meals: [], raceEvents, dailyCheckins: [],
+  });
+  const ativacao = (d, extra = {}) => ({ planned_date: d, training_type: 'ativacao', target_duration_min: 20, ...extra });
+
+  it('na véspera e na antevéspera, a ativação fala da prova', () => {
+    for (const d of ['2026-10-25', '2026-10-24']) {
+      const { falado } = carolDay(d, plano([ativacao(d)]));
+      expect(falado).toBe('uma corrida de ativação de 20 minutos para a prova');
+      expect(falado).not.toMatch(/recupera/);
+    }
+  });
+
+  it('sem prova nos dois dias seguintes, não inventa uma prova', () => {
+    expect(carolDay('2026-10-20', plano([ativacao('2026-10-20')])).falado).toBe('uma corrida de ativação de 20 minutos');
+    expect(carolDay('2026-10-25', plano([ativacao('2026-10-25')], [])).falado).toBe('uma corrida de ativação de 20 minutos');
+    // Uma prova já concluída não é a prova que vem aí.
+    expect(carolDay('2026-10-25', plano([ativacao('2026-10-25')], [{ ...PROVA, status: 'concluida' }])).falado).not.toContain('prova');
+  });
+
+  it('com km, diz os km; sem duração nem km, só o treino', () => {
+    expect(carolDay('2026-10-25', plano([ativacao('2026-10-25', { target_distance_km: 4, target_duration_min: null })])).falado)
+      .toBe('uma corrida de ativação de 4 km para a prova');
+    expect(carolDay('2026-10-25', plano([ativacao('2026-10-25', { target_duration_min: null })])).falado)
+      .toBe('uma corrida de ativação para a prova');
+  });
+
+  it('não é treino de qualidade: as acelerações são curtas, o resto é fácil', () => {
+    expect(carolDay('2026-10-25', plano([ativacao('2026-10-25')])).qualidade).toBe(false);
+  });
+
+  it('as boas-vindas da manhã da antevéspera dizem a ativação, na voz dela', () => {
+    const w = buildWelcome('manha', plano([ativacao('2026-10-24')]), new Date('2026-10-24T08:00:00+01:00'));
+    const linhas = w.lines.join(' ');
+    expect(linhas).toContain('uma corrida de ativação de 20 minutos para a prova');
+    for (const l of w.lines) expectCarolVoice(l);
+  });
+});

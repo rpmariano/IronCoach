@@ -44,6 +44,7 @@ const TRAINING_TYPE_LABELS = {
   tempo: 'Tempo',
   fartlek: 'Fartlek',
   subidas: 'Subidas',
+  ativacao: 'Ativação pré-prova', // bug #84, 2026-10-25
   // 'prova' é o tipo que o servidor grava no dia da prova (specs/
   // plano-de-prova.md, "O plano tem de saber da prova"); 'competicao' é a
   // grafia antiga, que ainda existe em planos gravados antes disso.

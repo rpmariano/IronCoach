@@ -171,9 +171,11 @@ export const MEAL_TYPE_OPTIONS = [
 ];
 
 /** Os tipos que se aproveitam uns aos outros nas sugestões (bug #85): almoço e
- *  jantar são intercambiáveis; os restantes não se misturam com nenhum. */
+ *  jantar são intercambiáveis, e os dois lanches (manhã e tarde) também; o
+ *  pequeno-almoço e a ceia ficam sozinhos. */
 export function compatibleMealTypes(type) {
   if (type === 'almoco' || type === 'jantar') return ['almoco', 'jantar'];
+  if (type === 'lanche-manha' || type === 'lanche') return ['lanche-manha', 'lanche'];
   return type ? [type] : [];
 }
 

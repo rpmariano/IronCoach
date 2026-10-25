@@ -279,6 +279,7 @@ const CORRIDA_FALADA = {
   trail: 'uma corrida em trilho',
   tecnico: 'um treino em trilho técnico',
   caminhada: 'uma caminhada', // 2026-10-05 (runKinds.ts)
+  ativacao: 'uma corrida de ativação', // bug #84: a véspera e a antevéspera da prova
 };
 // Séries, ritmo, fartlek e subidas não se fazem "sem puxar": puxar é o treino.
 const TREINOS_DE_QUALIDADE = new Set(['tempo', 'fartlek', 'intervalos', 'subidas']);
@@ -298,7 +299,18 @@ const AULA_FALADA = {
 };
 const GRUPO_FALADO = { 'core/abdominais': 'core', 'full body': 'corpo inteiro' };
 
-function itemFalado(item) {
+/* A ativação (bug #84) diz-se pelos minutos, que é como o plano a pede
+   (15 a 30 minutos fáceis), e liga-se à prova só quando há uma prova por
+   fazer no dia a seguir ou no outro: "para a prova" num dia sem prova à
+   vista era uma prova inventada. */
+function ativacaoFalada(item, provaPerto) {
+  const k = km(item.target_distance_km);
+  const min = Math.round(Number(item.target_duration_min));
+  const duracao = k ? ` de ${k} km` : min > 0 ? ` de ${min} minutos` : '';
+  return `${CORRIDA_FALADA.ativacao}${duracao}${provaPerto ? ' para a prova' : ''}`;
+}
+
+function itemFalado(item, provaPerto = false) {
   if (item.kind === 'ginasio') {
     const cats = (item.categories || []).map((c) => String(c).trim()).filter((c) => c && c.toLowerCase() !== 'outro');
     const min = Math.round(Number(item.target_duration_min));
@@ -316,6 +328,7 @@ function itemFalado(item) {
     const min = Math.round(Number(item.target_duration_min));
     return k ? `${base} de ${k} km` : min > 0 ? `${base} de ${min} minutos` : base;
   }
+  if (item.training_type === 'ativacao') return ativacaoFalada(item, provaPerto);
   const base = CORRIDA_FALADA[item.training_type] || 'uma corrida';
   const k = km(item.target_distance_km);
   return k ? `${base} de ${k} km` : base;
@@ -359,6 +372,8 @@ export function carolDay(dateISO, data = {}) {
   const pendentes = semProva.filter((i) => i.status !== 'concluido');
   const feitos = semProva.filter((i) => i.status === 'concluido');
   const prova = provaFeita ? null : (agenda || (itemDaProva ? { name: raceNameForDate(raceEvents, dateISO) } : null));
+  // Uma prova por fazer amanhã ou depois de amanhã: é dela que a ativação fala.
+  const provaPerto = !!(raceToday(raceEvents, addDays(dateISO, 1)) || raceToday(raceEvents, addDays(dateISO, 2)));
 
   let tipo;
   if (prova) tipo = 'prova';
@@ -376,8 +391,8 @@ export function carolDay(dateISO, data = {}) {
   return {
     tipo,
     titulo,
-    falado: juntar(pendentes.map(itemFalado)),
-    feitoFalado: juntar(feitos.map(itemFalado)),
+    falado: juntar(pendentes.map((i) => itemFalado(i, provaPerto))),
+    feitoFalado: juntar(feitos.map((i) => itemFalado(i, provaPerto))),
     prova,
     provaFeita,
     // Uma caminhada por fazer não é "uma corrida por fazer" (2026-10-05).

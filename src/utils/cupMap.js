@@ -18,6 +18,15 @@
    aconteceu, 'alert' dispensado). A marca 'moment' vai sem título, por isso
    fica fora do prompt da Carol (carolMemory.ts, buildImpressionsContext).
 
+   Depois do primeiro mapa, uma assinatura nova só volta a convidar se houver
+   jornadas confirmadas NOVAS — que o mapa já tratado não cobria — e por
+   decidir (sem decisão ou "não sei"). Uma data mudada, ou um "vou" ainda sem
+   papel numa jornada que o mapa já cobriu, não chegam: a conversa já aconteceu
+   (bug 2026-10-25: a Carol voltava a pedir o mapa de Cascais). Para saber o
+   que o mapa cobriu, o markCupMapHandled guarda as jornadas confirmadas da
+   assinatura (a que cupMapCandidate viu); sem esse registo — tratado antes
+   desta regra, ou só noutro dispositivo — vale a regra antiga, uma vez.
+
    Nada disto calcula papéis: no Início é só o convite para a conversa. Sem
    inscrição ativa não há candidato nenhum — o Início fica igual (§5). */
 
@@ -51,6 +60,27 @@ export function cupMapSignature(view) {
 }
 
 const storageKey = (userId) => `${STORAGE_PREFIX}${userId || 'anon'}`;
+const coveredKey = (userId) => `ironcoach:mapa-epoca-jornadas:${userId || 'anon'}`;
+
+// As jornadas confirmadas de cada assinatura vista por cupMapCandidate: é daqui
+// que o markCupMapHandled sabe o que o mapa tratado cobria (só em memória).
+const seenRounds = new Map();
+const editionOf = (signature) => String(signature).slice(SIGNATURE_PREFIX.length).split(':')[0];
+
+function readCovered(userId) {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(coveredKey(userId)) || 'null');
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+/** As jornadas que os mapas já tratados desta edição cobriam (null: sem registo). */
+function coveredRounds(userId, editionId) {
+  const list = readCovered(userId)[editionId];
+  return Array.isArray(list) ? new Set(list.filter((x) => typeof x === 'string')) : null;
+}
 
 function readHandled(userId) {
   try {
@@ -77,6 +107,18 @@ export function markCupMapHandled(userId, signature) {
     window.localStorage.setItem(storageKey(userId), JSON.stringify(list.slice(-MAX_HANDLED)));
   } catch {
     // Sem storage: vale a marca do servidor (as impressões), noutra leitura.
+  }
+  // O que este mapa cobria: as jornadas confirmadas que cupMapCandidate viu
+  // com esta assinatura. Só acrescenta (um mapa novo não "descobre" jornadas).
+  const rounds = seenRounds.get(signature);
+  if (!rounds) return;
+  try {
+    const edition = editionOf(signature);
+    const all = readCovered(userId);
+    all[edition] = [...new Set([...(Array.isArray(all[edition]) ? all[edition] : []), ...rounds])];
+    window.localStorage.setItem(coveredKey(userId), JSON.stringify(all));
+  } catch {
+    // Sem storage: o convite segue a regra antiga.
   }
 }
 
@@ -105,6 +147,8 @@ export function cupMapCandidate({ view, userId, impressionShown, impressionDismi
   if (!view?.enrollment || !view.catalogReady) return null;
   const signature = cupMapSignature(view);
   if (!signature) return null;
+  seenRounds.set(signature, (view.rounds || [])
+    .filter((r) => r && r.date_status === 'confirmada' && dayOf(r.date)).map((r) => String(r.id)));
 
   const shown = asSet(impressionShown);
   const dismissed = asSet(impressionDismissed);
@@ -122,8 +166,12 @@ export function cupMapCandidate({ view, userId, impressionShown, impressionDismi
     (r) => r && r.date_status === 'confirmada' && dayOf(r.date) && dayOf(r.date) >= today,
   );
   const hasCalendar = upcoming.length > 0;
-  // Depois do primeiro, só quando o calendário traz alguma coisa por decidir.
-  if (!first && !upcoming.some(isUndecided)) return null;
+  // Depois do primeiro, só quando o calendário traz jornadas NOVAS por decidir
+  // (as que o mapa já tratado cobria não chamam de novo).
+  if (!first) {
+    const covered = coveredRounds(userId, view.edition.id);
+    if (!upcoming.some((r) => isUndecided(r) && !covered?.has(String(r.id)))) return null;
+  }
 
   const short = view.competition?.short_name || view.competition?.name || 'A competição';
   const label = String(view.competition?.round_label || 'Jornada').toLowerCase();

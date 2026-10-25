@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Sparkles, Check, X, Target, Lightbulb } from 'lucide-react';
 import { buildPlanDays, diffDaysISO, PlanDayCard, DisclaimerNutricional, diaTemSugestao } from '../Home/WeeklyPlanCard';
 import { formatDayMonth } from '../../utils/homeModels';
+import { PLAN_PART_DAYS } from '../../utils/planContinuation';
 import Button from '../shared/Button';
 import PremiumModal from '../shared/PremiumModal';
 import { isWalkPlanItem } from '@formulas/runKinds.ts';
@@ -39,6 +40,10 @@ export function PlanProposalBottomSheet({
   onClose,
   raceEvents = [],
   bodyAssessments = [],
+  /* Plano longo em partes: { part, of, last, nextDays, from, to } quando esta
+     proposta é uma parte (Coach.jsx). Nada se aplica até à última parte
+     ser aceite: aceitar uma que não é a última pede já a seguinte. */
+  partInfo = null,
 }) {
   if (!plan && !goalProposal) return null;
 
@@ -238,6 +243,17 @@ export function PlanProposalBottomSheet({
               </div>
             )}
 
+            {partInfo && (
+              <p role="note" data-testid="plan-part-note" className="text-[12px] leading-relaxed rounded-xl px-3 py-2.5"
+                style={{ background: 'var(--surface-soft)', color: 'var(--text-2)', border: '1px solid var(--border-glass)' }}>
+                <b style={{ color: 'var(--text-1)' }}>Parte {partInfo.part} de {partInfo.of}</b> — recebes o plano {PLAN_PART_DAYS} dias de cada vez.
+                {' '}Esta parte: {formatDayMonth(partInfo.from)} a {formatDayMonth(partInfo.to)}.
+                {' '}{partInfo.last
+                  ? 'É a última: ao aceitar, o plano todo fica gravado.'
+                  : 'Só fica tudo gravado quando aceitares a última; se recusares uma parte, recusas todas e o teu plano atual fica como está.'}
+              </p>
+            )}
+
             <div className="space-y-2">
               <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-3)] px-1">
                 Sessões / Refeições Planeadas ({days.length} dias)
@@ -272,7 +288,9 @@ export function PlanProposalBottomSheet({
                 className="flex-1 text-sm py-3.5"
                 icon={<Check size={18} />}
               >
-                Aceitar plano
+                {partInfo && !partInfo.last
+                  ? `Aceitar e ver próximos ${partInfo.nextDays || PLAN_PART_DAYS} dias`
+                  : 'Aceitar plano'}
               </Button>
               <Button
                 variant="light"

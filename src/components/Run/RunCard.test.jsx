@@ -162,6 +162,18 @@ describe('RunCard — a intervenção da Carol', () => {
 
 /* Caminhada (2026-10-05): rótulo e ícone próprios no cartão (e no calendário,
    que usa este cartão). */
+describe('RunCard — ativação pré-prova (bug #84)', () => {
+  beforeEach(() => {
+    useAppStore.setState({ profile: { id: 'user-1' }, runs: [], setRuns: () => {} });
+  });
+
+  it('diz «Ativação pré-prova», não o código do tipo', () => {
+    render(<RunCard run={{ ...RUN, name: null, training_type: 'ativacao', details: {} }} />);
+    expect(screen.getAllByText('Ativação pré-prova').length).toBeGreaterThan(0);
+    expect(screen.queryByText('ativacao')).toBeNull();
+  });
+});
+
 describe('RunCard — caminhada', () => {
   beforeEach(() => {
     useAppStore.setState({ profile: { id: 'user-1' }, runs: [], setRuns: () => {} });

@@ -742,6 +742,16 @@ export const useAppStore = create((set, get) => ({
     const whoIsIn = () => get().session?.user?.id || get().profile?.id;
     const userId = whoIsIn();
     if (!userId) return;
+    // Modo demo (bug #87): a despensa fictícia, sem Supabase. Lê-se uma vez;
+    // depois o que o atleta mexer fica no store até recarregar.
+    if (userId === 'demo-user') {
+      if (get().pantryUserId !== userId) {
+        const { DEMO_PANTRY_FOODS } = await import('../utils/pantryDemo');
+        set({ pantryFoods: DEMO_PANTRY_FOODS, foodRules: [], mealTemplates: [], pantryUserId: userId });
+      }
+      set({ pantryLoaded: true });
+      return;
+    }
     // Nunca rejeita: sem despensa (modo demo, sem rede), o Armário fica vazio
     // e o registo da refeição só não sugere nada.
     try {
@@ -946,6 +956,27 @@ export const useAppStore = create((set, get) => ({
   // é AQUI que a substituição se concretiza — nunca no momento da proposta.
   // Recusar tem de deixar o plano antigo intacto: o atleta pediu para ver uma
   // alternativa, não para deitar fora o microciclo que estava a cumprir.
+  /* Plano vinculado a uma prova acaba no dia dela (decisão (ii) do plano em
+     partes): aceite uma proposta com race_id, o bloco resultante estica o
+     period_end até à data da prova, se ainda não chegar lá — mesmo que o
+     atleta tenha pedido só 14 dias, ou a parte seja de uma semana. Só o
+     período: não cria itens. Uma falha aqui não desfaz o aceite. */
+  stretchPlanToRace: async (resultPlanId, raceId) => {
+    if (!resultPlanId || !raceId) return;
+    try {
+      const [{ data: plan }, { data: race }] = await Promise.all([
+        supabase.from('coach_plans').select('id, period_end').eq('id', resultPlanId).single(),
+        supabase.from('race_events').select('date').eq('id', raceId).maybeSingle(),
+      ]);
+      const raceDay = typeof race?.date === 'string' ? race.date.slice(0, 10) : null;
+      if (!plan || !raceDay || String(plan.period_end).slice(0, 10) >= raceDay) return;
+      const { error } = await supabase.from('coach_plans').update({ period_end: raceDay }).eq('id', resultPlanId);
+      if (error) console.warn('Não consegui esticar o plano até à prova:', error);
+    } catch (e) {
+      console.warn('Não consegui esticar o plano até à prova:', e);
+    }
+  },
+
   respondToPlan: async (planId, accept) => {
     if (!accept) {
       /* Se um aceite anterior falhou a meio, os treinos já FEITOS do bloco
@@ -974,7 +1005,7 @@ export const useAppStore = create((set, get) => ({
     // Obter dados da proposta a aceitar
     const { data: newPlan, error: fetchErr } = await supabase
       .from('coach_plans')
-      .select('id, period_start, period_end, summary, supersedes_plan_id, race_id, coach_plan_items(kind)')
+      .select('id, period_start, period_end, summary, supersedes_plan_id, race_id, coach_plan_items(kind, planned_date)')
       .eq('id', planId)
       .single();
 
@@ -985,6 +1016,14 @@ export const useAppStore = create((set, get) => ({
 
     // Identificar se esta proposta adapta um plano ativo existente
     let targetPlanId = newPlan.supersedes_plan_id;
+    /* Um supersedes que já não está aceite (nas partes de um plano longo, o que
+       a parte 1 fechou ou recusou) não serve de alvo: ignora-se e procura-se o
+       plano aceite sobreposto — a parte 1, já aceite e esticada até à prova —,
+       para a parte 2 se fundir nele (Caso A) e ficar um só bloco aceite. */
+    if (targetPlanId) {
+      const { data: sup } = await supabase.from('coach_plans').select('id, status').eq('id', targetPlanId).maybeSingle();
+      if (!sup || sup.status !== 'aceite') targetPlanId = null;
+    }
     if (!targetPlanId) {
       const { data: activePlans } = await supabase
         .from('coach_plans')
@@ -1107,6 +1146,7 @@ export const useAppStore = create((set, get) => ({
         console.error('Error accepting new-objective plan:', acceptErr);
         return false;
       }
+      await get().stretchPlanToRace(planId, newPlan.race_id);
       await get().reloadCoachPlans();
       get().loadDailySummary({ force: true }).catch(() => {});
       return true;
@@ -1125,33 +1165,79 @@ export const useAppStore = create((set, get) => ({
         //    race_lost_at limpam-se: se o plano tinha encurtado, ou perdido a
         //    prova, este ajuste é a resposta da Carol a isso — o aviso deixa
         //    de ter razão de ser (M-2 da segunda revisão pré-deploy).
-        await supabase.from('coach_plans').update({
+        /* Cada escrita verifica o erro e PÁRA (devolve false): uma falha a meio
+           não pode contar como aceite. A proposta fica pendente e voltar a
+           aceitar repete o que falta — os passos são idempotentes. */
+        const { error: limitsErr } = await supabase.from('coach_plans').update({
           period_start: finalStart,
           period_end: finalEnd,
           summary: finalSummary,
           trimmed_at: null,
           race_lost_at: null,
         }).eq('id', targetPlanId);
+        if (limitsErr) { console.error('Error updating original plan limits:', limitsErr); return false; }
 
-        // 2. Apagar os treinos do plano original nas datas que estão a ser substituídas
-        await supabase
-          .from('coach_plan_items')
-          .delete()
-          .eq('plan_id', targetPlanId)
-          .gte('planned_date', newPlan.period_start)
-          .lte('planned_date', newPlan.period_end);
+        // 2. Apagar os treinos do plano original nas datas que a proposta
+        //    SUBSTITUI — menos os já FEITOS: o plano deixava de mostrar esse dia
+        //    como cumprido (o registo da corrida em si nunca se perdia).
+        //    O fim do que se substitui é o último dia com itens da proposta, não
+        //    o period_end dela: com race_id o period_end é o dia da prova, e uma
+        //    proposta de 7 dias levava consigo as semanas seguintes do bloco
+        //    (plano em partes / "plano ajustado"). O dia da prova só conta se a
+        //    proposta trouxer o item da prova. Sem itens datados, não se apaga nada.
+        const propostaDatas = (newPlan.coach_plan_items || [])
+          .map((i) => (typeof i?.planned_date === 'string' ? i.planned_date.slice(0, 10) : null))
+          .filter(Boolean).sort();
+        const ultimoDia = propostaDatas.length
+          ? (propostaDatas.at(-1) < newPlan.period_end ? propostaDatas.at(-1) : newPlan.period_end)
+          : null;
+        if (ultimoDia) {
+          /* Um treino já feito que fica, e um item novo da proposta no mesmo dia
+             e tipo, apareciam os dois: cancela-se o novo (como no bloco novo,
+             pelo dia em que o treino foi FEITO). Antes de os itens mudarem de
+             plano, enquanto ainda são da proposta. */
+          const { data: feitos, error: feitosReadErr } = await supabase
+            .from('coach_plan_items')
+            .select('id, planned_date, actual_date, kind')
+            .eq('plan_id', targetPlanId)
+            .eq('status', 'concluido')
+            .gte('planned_date', newPlan.period_start)
+            .lte('planned_date', ultimoDia);
+          if (feitosReadErr) { console.error('Error reading done items of the plan:', feitosReadErr); return false; }
+          const feitosPorDia = (feitos || []).map((i) => ({ ...i, planned_date: i.actual_date || i.planned_date }));
+          for (const { planned_date, kind } of doneItemKeys(feitosPorDia)) {
+            const { error: dupErr } = await supabase
+              .from('coach_plan_items')
+              .update({ status: 'cancelado' })
+              .eq('plan_id', planId)
+              .eq('status', 'pendente')
+              .eq('planned_date', planned_date)
+              .eq('kind', kind);
+            if (dupErr) { console.error('Error cancelling redundant item:', dupErr); return false; }
+          }
+          const { error: delErr } = await supabase
+            .from('coach_plan_items')
+            .delete()
+            .eq('plan_id', targetPlanId)
+            .neq('status', 'concluido')
+            .gte('planned_date', newPlan.period_start)
+            .lte('planned_date', ultimoDia);
+          if (delErr) { console.error('Error replacing plan items:', delErr); return false; }
+        }
 
         // 3. Mover os novos itens da proposta para o plano original
-        await supabase
+        const { error: moveErr } = await supabase
           .from('coach_plan_items')
           .update({ plan_id: targetPlanId })
           .eq('plan_id', planId);
+        if (moveErr) { console.error('Error moving proposal items:', moveErr); return false; }
 
         // 4. Apagar o contentor temporário da proposta
-        await supabase
+        const { error: containerErr } = await supabase
           .from('coach_plans')
           .delete()
           .eq('id', planId);
+        if (containerErr) { console.error('Error deleting proposal container:', containerErr); return false; }
       }
     } else {
       // ── CASO B: Novo Plano Independente ────────────────────────────────────
@@ -1175,11 +1261,14 @@ export const useAppStore = create((set, get) => ({
 
       for (const old of oldPlans || []) {
         if (old.period_start >= newPlan.period_start && old.period_end <= newPlan.period_end) {
-          await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
+          const { error: oldErr } = await supabase.from('coach_plans').update({ status: 'recusado' }).eq('id', old.id);
+          if (oldErr) { console.error('Error rejecting overlapped old plan:', oldErr); return false; }
         }
       }
     }
 
+    // O bloco que ficou a valer: o original (fusão) ou a própria proposta.
+    await get().stretchPlanToRace(targetPlanId && originalPlan ? targetPlanId : planId, newPlan.race_id);
     await get().reloadCoachPlans();
     get().loadDailySummary({ force: true }).catch(() => {});
     return true;

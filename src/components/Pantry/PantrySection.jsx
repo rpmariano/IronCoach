@@ -5,7 +5,7 @@ import CoachAvatar from '../Coach/CoachAvatar';
 import PantryFoodSheet from './PantryFoodSheet';
 import FoodRuleSheet from './FoodRuleSheet';
 import MealTemplateSheet from './MealTemplateSheet';
-import { foodSubline, foodKey, isDishlessRule, isQuantityRule, ruleInfo, ruleLabel, templateItems, templateTotals, visibleRules } from '../../utils/pantry';
+import { foodSubline, foodKey, isDishlessRule, isQuantityRule, ruleInfo, ruleLabel, templateItems, templateTotals, topLevelFoods, variantsOf, visibleRules } from '../../utils/pantry';
 import { mealTypeLabel } from '../../utils/nutrition';
 
 /* A despensa, no Armário do Perfil (bugs #48/#52, fase C; mockup "Despensa e
@@ -25,7 +25,7 @@ export default function PantrySection() {
   const mealTemplates = mine ? (storedTemplates || []) : [];
   const [tab, setTab] = useState('alimentos');
   const [query, setQuery] = useState('');
-  const [foodSheet, setFoodSheet] = useState(null); // { food } | { food: null } (novo)
+  const [foodSheet, setFoodSheet] = useState(null); // { food, parent? } | { food: null } (novo) | { food: null, parent } (variante nova)
   const [ruleSheet, setRuleSheet] = useState(null); // { rule } | { rule: null } (nova)
   const [templateSheet, setTemplateSheet] = useState(null); // { template } | { template: null } (nova)
 
@@ -34,8 +34,10 @@ export default function PantrySection() {
   const rules = visibleRules(foodRules);
   const foods = useMemo(() => {
     const q = foodKey(query);
-    return [...(pantryFoods || [])]
-      .filter((f) => !q || String(f.name_key || '').includes(q))
+    // Bug #87: as variantes vivem sob o genérico; a procura apanha-o também por elas.
+    return [...topLevelFoods(pantryFoods)]
+      .filter((f) => !q || String(f.name_key || '').includes(q)
+        || variantsOf(pantryFoods, f).some((v) => String(v.name_key || '').includes(q)))
       .sort((a, b) => (b.times_seen || 0) - (a.times_seen || 0));
   }, [pantryFoods, query]);
 
@@ -50,7 +52,7 @@ export default function PantrySection() {
       </p>
 
       <div role="tablist" aria-label="Despensa" className="grid grid-cols-3 gap-1 p-1 rounded-[14px] mb-3" style={{ background: 'rgba(255,255,255,.05)' }}>
-        {[['alimentos', `Alimentos · ${pantryFoods?.length || 0}`, 'rgba(199,125,255,.2)', '#f3e8ff'], ['cozinhar', `Como cozinhas · ${rules.length}`, 'rgba(34,211,238,.18)', '#cffafe'], ['refeicoes', `Refeições · ${mealTemplates.length}`, 'rgba(199,125,255,.2)', '#f3e8ff']].map(([key, label, bg, fg]) => (
+        {[['alimentos', `Alimentos · ${topLevelFoods(pantryFoods).length}`, 'rgba(199,125,255,.2)', '#f3e8ff'], ['cozinhar', `Como cozinhas · ${rules.length}`, 'rgba(34,211,238,.18)', '#cffafe'], ['refeicoes', `Refeições · ${mealTemplates.length}`, 'rgba(199,125,255,.2)', '#f3e8ff']].map(([key, label, bg, fg]) => (
           <button
             key={key}
             type="button"
@@ -111,6 +113,29 @@ export default function PantrySection() {
                     </span>
                     <ChevronRight size={18} style={{ color: 'var(--text-4)' }} className="shrink-0" />
                   </button>
+                  {variantsOf(pantryFoods, f).length > 0 && (
+                    <ul className="mt-1 ml-4 space-y-1" aria-label={`Variantes de ${f.name}`} data-testid="pantry-variant-list">
+                      {variantsOf(pantryFoods, f).map((v) => (
+                        <li key={v.id}>
+                          <button type="button" onClick={() => setFoodSheet({ food: v, parent: f })}
+                            className="w-full min-h-[44px] flex items-center gap-2 pl-3 pr-2 rounded-[12px] text-left"
+                            style={{ background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.07)' }}>
+                            <span className="flex-1 min-w-0">
+                              <span className="block text-[13px] font-extrabold truncate" style={{ color: 'var(--text-2)' }}>{v.variant_label}</span>
+                              <span className="block text-[11.5px]" style={{ color: 'var(--text-4)' }}>{foodSubline(v)}</span>
+                            </span>
+                            <ChevronRight size={16} style={{ color: 'var(--text-4)' }} className="shrink-0" />
+                          </button>
+                        </li>
+                      ))}
+                      <li>
+                        <button type="button" onClick={() => setFoodSheet({ food: null, parent: f })}
+                          className="w-full min-h-[44px] rounded-[12px] text-[12.5px] font-extrabold" style={{ border: '1px dashed var(--tint-nutrition-bd)', color: 'var(--nutrition)' }}>
+                          + Variante
+                        </button>
+                      </li>
+                    </ul>
+                  )}
                 </li>
               ))}
             </ul>
@@ -216,7 +241,16 @@ export default function PantrySection() {
         </div>
       )}
 
-      {foodSheet && <PantryFoodSheet food={foodSheet.food} onClose={() => setFoodSheet(null)} />}
+      {foodSheet && (
+        <PantryFoodSheet
+          key={foodSheet.food?.id ?? `novo-${foodSheet.parent?.id ?? ''}`}
+          food={foodSheet.food}
+          parent={foodSheet.parent || null}
+          onClose={() => setFoodSheet(null)}
+          onVariant={(p) => setFoodSheet({ food: null, parent: p })}
+          onOpenVariant={(v) => setFoodSheet({ food: v, parent: foodSheet.food })}
+        />
+      )}
       {ruleSheet && <FoodRuleSheet rule={ruleSheet.rule} onClose={() => setRuleSheet(null)} />}
       {templateSheet && <MealTemplateSheet template={templateSheet.template} onClose={() => setTemplateSheet(null)} />}
     </div>

@@ -27,8 +27,8 @@ vi.mock('../lib/supabase', () => ({
 
 const {
   pantrySuggestions, habitualsForMealType, portionText, foodSubline, ruleInfo, visibleRules, isKnownFood, savePantryFood, saveFoodRule,
-  microOrNull, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
-  isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, templateForMeal, saveMealTemplate, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
+  microOrNull, foodKey, microsTrusted, pantryMicro, missingMicroWords, isPantryComplete, listWords, MICRO_COLUMNS,
+  isDishlessRule, isQuantityRule, ruleLabel, templateItems, templateTotals, templatesForMealType, templateForMeal, saveMealTemplate, variantsOf, topLevelFoods, saveFoodVariant, suggestedTemplateName, markMealTemplateUsed, foodDefaultGrams,
 } = await import('./pantry');
 
 const food = (name, name_key, times_seen, extra = {}) => ({ id: name_key, name, name_key, times_seen, portion_grams: 100, calories_per_100g: 100, ...extra });
@@ -78,6 +78,61 @@ describe('habitualsForMealType — grupo almoço/jantar (bug #85)', () => {
   it('ao almoço contam os jantares; o pequeno-almoço não entra', () => {
     expect(habitualsForMealType({ meals, foods: FOODS, mealType: 'almoco', today: '2026-10-04' }).map((f) => f.name)).toEqual(['Aveia em flocos']);
     expect(habitualsForMealType({ meals, foods: FOODS, mealType: 'pequeno-almoco', today: '2026-10-04' })).toEqual([]);
+  });
+});
+
+describe('variantes (bug #87)', () => {
+  const coxa = food('Coxa de frango', 'coxa de frango', 8, { id: 'p', portion_grams: 120, calories_per_100g: 216 });
+  const com = food('Coxa de frango com pele', 'coxa de frango com pele', 6, { id: 'v1', parent_id: 'p', variant_label: 'com pele' });
+  const sem = food('Coxa de frango sem pele', 'coxa de frango sem pele', 9, { id: 'v2', parent_id: 'p', variant_label: 'sem pele', calories_per_100g: 144 });
+  const lista = [coxa, com, sem, ...FOODS];
+
+  it('variantsOf: as filhas do genérico, as mais usadas primeiro; sem filhas, nada', () => {
+    expect(variantsOf(lista, coxa).map((v) => v.variant_label)).toEqual(['sem pele', 'com pele']);
+    expect(variantsOf(lista, FOODS[0])).toEqual([]);
+    expect(variantsOf(lista, null)).toEqual([]);
+  });
+
+  it('topLevelFoods: sem as variantes', () => {
+    expect(topLevelFoods(lista).map((f) => f.name)).not.toContain('Coxa de frango sem pele');
+    expect(topLevelFoods(lista)).toHaveLength(lista.length - 2);
+  });
+
+  it('pantrySuggestions: uma variante sugere-se pelo genérico, sem repetir', () => {
+    expect(pantrySuggestions('coxa', lista).map((f) => f.name)).toEqual(['Coxa de frango']);
+    expect(pantrySuggestions('coxa sem', lista).map((f) => f.name)).toEqual(['Coxa de frango']);
+    // Sem o pai na lista, a variante aparece ela própria.
+    expect(pantrySuggestions('coxa', [com]).map((f) => f.name)).toEqual(['Coxa de frango com pele']);
+  });
+
+  it('saveFoodVariant: insere com parent_id, rótulo e nome = genérico + rótulo; recusa sem rótulo', async () => {
+    db.calls.length = 0;
+    await saveFoodVariant({ userId: 'u1', parent: coxa, label: '  sem pele ', values: { portion_grams: '100', calories_per_100g: '144', protein_per_100g: '19.7', carbs_per_100g: '0', fat_per_100g: '7.2' } });
+    const ins = db.calls.find((c) => c.table === 'athlete_foods' && c.op === 'insert');
+    expect(ins.row).toMatchObject({
+      user_id: 'u1', parent_id: 'p', variant_label: 'sem pele', name: 'Coxa de frango sem pele', name_key: 'coxa de frango sem pele',
+      calories_per_100g: 144, portion_grams: 100, in_pantry: true, edited_by_athlete: true,
+    });
+    await expect(saveFoodVariant({ userId: 'u1', parent: coxa, label: '  ', values: {} })).rejects.toThrow(/variante/);
+    await expect(saveFoodVariant({ userId: 'u1', parent: null, label: 'x', values: {} })).rejects.toThrow();
+  });
+
+  it('saveFoodVariant: o name_key passa pelo foodKey partilhado (meio-gordo → meio gordo)', async () => {
+    db.calls.length = 0;
+    const leite = food('Leite', 'leite', 3, { id: 'l' });
+    await saveFoodVariant({ userId: 'u1', parent: leite, label: 'Meio-gordo', values: { calories_per_100g: '46' } });
+    const row = db.calls.find((c) => c.table === 'athlete_foods' && c.op === 'insert').row;
+    expect(row.name).toBe('Leite Meio-gordo');
+    expect(row.name_key).toBe('leite meio gordo');
+    expect(row.name_key).toBe(foodKey(row.name));
+  });
+
+  it('saveFoodVariant a editar: update, sem user_id, e o nome segue o rótulo', async () => {
+    db.calls.length = 0;
+    await saveFoodVariant({ userId: 'u1', parent: coxa, label: 'sem a pele', values: { calories_per_100g: '150' }, existing: sem });
+    const upd = db.calls.find((c) => c.table === 'athlete_foods' && c.op === 'update');
+    expect(upd.row).toMatchObject({ name: 'Coxa de frango sem a pele', variant_label: 'sem a pele', calories_per_100g: 150, parent_id: 'p' });
+    expect(upd.row.user_id).toBeUndefined();
   });
 });
 
@@ -267,7 +322,7 @@ describe('refeições predefinidas', () => {
     expect(templatesForMealType(lista, 'jantar').map((t) => t.name)).toEqual(['A', 'C', 'B']);
   });
 
-  it('só as do grupo do tipo e as sem tipo: almoço e jantar juntos, os outros sozinhos (bug #85)', () => {
+  it('só as do grupo do tipo e as sem tipo: almoço+jantar e lanche da manhã+lanche juntos, os outros sozinhos (bug #85)', () => {
     const lista = [
       T('Pequeno', [], { default_meal_type: 'pequeno-almoco', times_used: 9 }),
       T('Almoço', [], { default_meal_type: 'almoco', times_used: 2 }),
@@ -279,7 +334,9 @@ describe('refeições predefinidas', () => {
     expect(templatesForMealType(lista, 'almoco').map((t) => t.name)).toEqual(['Almoço', 'Jantar', 'Sem tipo']);
     expect(templatesForMealType(lista, 'jantar').map((t) => t.name)).toEqual(['Jantar', 'Sem tipo', 'Almoço']);
     expect(templatesForMealType(lista, 'pequeno-almoco').map((t) => t.name)).toEqual(['Pequeno', 'Sem tipo']);
-    expect(templatesForMealType(lista, 'lanche-manha').map((t) => t.name)).toEqual(['Sem tipo']);
+    // Os dois lanches partilham: o da manhã vê as do lanche da tarde.
+    expect(templatesForMealType(lista, 'lanche-manha').map((t) => t.name)).toEqual(['Sem tipo', 'Lanche']);
+    expect(templatesForMealType(lista, 'lanche').map((t) => t.name)).toEqual(['Lanche', 'Sem tipo']);
     expect(templatesForMealType(lista, 'ceia').map((t) => t.name)).toEqual(['Sem tipo']);
   });
 

@@ -40,6 +40,7 @@ const TIPO_DITO = {
   tempo: 'treino de ritmo',
   fartlek: 'fartlek',
   subidas: 'subidas',
+  ativacao: 'ativação pré-prova', // bug #84: curta, não se compara (fora de ESTRUTURADOS)
   continuo: 'corrida contínua',
   longo: 'rodagem longa',
   recuperacao: 'recuperação',
