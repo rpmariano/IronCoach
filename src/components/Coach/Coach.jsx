@@ -22,7 +22,7 @@ import { splitIntoBubbles, typingDelayFor, prefersReducedMotion, BUBBLE_GAP_MS }
 import { listProactiveTriggers, wasProactiveSent, markProactiveSent, writeRaceBalanceCache } from '../../utils/coachProactive';
 import { markDivergenceHandled, MAX_DIVERGENCE_TEXTS } from '../../utils/planDivergence';
 import { markCupMapHandled } from '../../utils/cupMap';
-import { nextPlanContinuation } from '../../utils/planContinuation';
+import { nextPlanContinuation, PLAN_PART_DAYS } from '../../utils/planContinuation';
 import { usePersistedFormDraft, restorePersistedFormDraft, clearPersistedFormDraft } from '../../utils/formDraftPersistence';
 import { hasAnyRecord } from '../../utils/homeModels';
 import { isOnboardingDoneLocally } from '../../utils/onboarding';
@@ -168,6 +168,14 @@ export default function Coach() {
   const [pendingContinuation, setPendingContinuation] = useState(null);
   const continuationRunsRef = useRef(0);
   const lastProposedPlanIdRef = useRef(null);
+  /* A cadeia das partes de um plano longo (tudo-ou-nada): { of, parts: [{ planId,
+     part }] } com as propostas já recebidas. Nada se aplica até a última ser
+     aceite; recusar uma recusa todas. Vive aqui (recarregar a página deixa as
+     propostas pendentes como sempre, sem aplicar). Estado + ref: a ref serve a
+     lógica, o estado serve a folha. */
+  const [planChain, setPlanChainState] = useState(null);
+  const planChainRef = useRef(null);
+  const setPlanChain = (chain) => { planChainRef.current = chain; setPlanChainState(chain); };
   // O pedido de continuação em curso: se a resposta chegar por sondagem, é daqui
   // que se deriva a parte seguinte (handleAsyncFallback).
   const inflightContinuationRef = useRef(null);
@@ -202,13 +210,39 @@ export default function Coach() {
   // "escreve" quando a mensagem chega, como sempre (revealMessage).
   // `failure`: as frases do fim — as de um aviso do Início
   // (HOME_ALERT_FAILURE) só quando esse aviso lá está.
+  const validContinuation = (c) => !!c && typeof c.from === 'string' && typeof c.to === 'string'
+    && Number.isFinite(Number(c.part)) && Number.isFinite(Number(c.of)) && Number(c.part) <= Number(c.of);
+
+  /* Abre a folha da proposta que acabou de chegar e regista-a na cadeia. Com
+     várias pendentes (as partes da cadeia ficam todas pendentes), a nova é a
+     que a cadeia ainda não conhece. `continuation` é a PRÓXIMA parte (a
+     proposta é a parte c.part - 1); sem ela, num turno de continuação, é a
+     última. Fora de uma cadeia é uma proposta normal. */
+  const openProposalSheet = (freshPlans, { continuation = null, continuationTurn = false } = {}) => {
+    const pending = (freshPlans || []).filter((p) => p.status === 'proposto');
+    if (pending.length === 0) return null;
+    const chain = continuationTurn ? planChainRef.current : null;
+    const known = new Set((chain?.parts || []).map((p) => p.planId));
+    const plan = pending.find((p) => !known.has(p.id)) || pending[0];
+    lastProposedPlanIdRef.current = plan.id;
+    const next = validContinuation(continuation) ? continuation : null;
+    if (next || chain) {
+      const of = chain?.of ?? Number(next.of);
+      const part = next ? Number(next.part) - 1 : (chain.parts.length + 1);
+      setPlanChain({ of, parts: [...(chain?.parts || []).filter((p) => p.planId !== plan.id), { planId: plan.id, part }] });
+    } else {
+      setPlanChain(null);
+    }
+    setActiveProposalSheetPlan(plan);
+    return plan;
+  };
+
   // Uma continuação válida: { from, to } (datas) e a parte x de y. No máximo
   // 12 seguidas sem o atleta escrever — rede de segurança contra um ciclo.
   const queuePlanContinuation = (data, { fromAthlete = false } = {}) => {
     if (fromAthlete) continuationRunsRef.current = 0;
     const c = data?.plan_continuation;
-    const valid = c && typeof c.from === 'string' && typeof c.to === 'string'
-      && Number.isFinite(Number(c.part)) && Number.isFinite(Number(c.of)) && Number(c.part) <= Number(c.of);
+    const valid = validContinuation(c);
     if (valid && continuationRunsRef.current < 12) {
       // Desarmada, atada à proposta desta resposta: só o aceite dela a arma.
       setPendingContinuation({
@@ -284,11 +318,7 @@ export default function Coach() {
         // Cada parte de um plano longo abre a folha como proposta própria (o
         // atleta acabou de aceitar a anterior: nada fica por cima).
         if (freshPlans && freshPlans.length > 0) {
-          const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) {
-            lastProposedPlanIdRef.current = pending[0].id;
-            setActiveProposalSheetPlan(pending[0]);
-          }
+          openProposalSheet(freshPlans, { continuation: data?.plan_continuation, continuationTurn: !!payload?.plan_continuation });
         }
       }
       if (data?.goal_proposed) {
@@ -738,15 +768,56 @@ export default function Coach() {
      primeiro treino —, no cartão da confirmação. Recusar continua a ser só
      o aviso: não há nada a começar. */
   const [planStart, setPlanStart] = useState(null);
-  const handleRespond = async (planId, accept) => {
-    const ok = await respondToPlan(planId, accept);
-    // Plano longo em partes: aceitar a parte da folha arma a continuação;
-    // recusar pára a cadeia.
-    if (ok && accept) {
-      setPendingContinuation((c) => (c && c.planId && c.planId === planId ? { ...c, armed: true } : c));
-    } else if (ok) {
-      setPendingContinuation(null);
+  /* Aplica (ou recusa) as propostas da cadeia por ordem de parte. Pára à primeira
+     que falhar e deixa na cadeia só as que ficaram por tratar. */
+  const applyChain = async (accept) => {
+    const chain = planChainRef.current;
+    const ordered = [...chain.parts].sort((a, b) => a.part - b.part);
+    const done = [];
+    for (const { planId } of ordered) {
+      const ok = await respondToPlan(planId, accept);
+      if (!ok) {
+        setPlanChain({ ...chain, parts: chain.parts.filter((p) => !done.includes(p.planId)) });
+        return false;
+      }
+      done.push(planId);
     }
+    return true;
+  };
+
+  const handleRespond = async (planId, accept) => {
+    // Plano longo em partes — tudo-ou-nada: aceitar uma parte que não é a última
+    // NÃO aplica nada, arma o pedido da seguinte; na última, aplica-se a cadeia
+    // inteira por ordem; recusar qualquer uma recusa todas.
+    const chain = planChainRef.current;
+    const mine = chain?.parts.find((p) => p.planId === planId);
+    if (mine) {
+      if (accept && mine.part < chain.of) {
+        setPendingContinuation((c) => (c && c.planId === planId ? { ...c, armed: true } : c));
+        setActiveProposalSheetPlan(null);
+        return;
+      }
+      const applied = await applyChain(accept);
+      if (!applied) {
+        showToast('Não consegui gravar a tua decisão. A proposta continua aqui — tenta outra vez.', 'error');
+        return;
+      }
+      setPlanChain(null);
+      setPendingContinuation(null);
+      if (accept) {
+        const st = useAppStore.getState();
+        const moment = planStartMoment((st.coachPlans || []).find((p) => p.id === planId), st.coachPlanItems, todayISO());
+        if (moment) setPlanStart(moment);
+        else showToast('Plano aceite');
+      } else {
+        showToast('Plano recusado');
+      }
+      setActiveProposalSheetPlan(null);
+      handleSend(accept ? 'Aceitei o plano.' : 'Recusei o plano.');
+      return;
+    }
+    const ok = await respondToPlan(planId, accept);
+    if (ok && !accept) setPendingContinuation(null);
     if (ok && accept) {
       const st = useAppStore.getState();
       const plan = (st.coachPlans || []).find((p) => p.id === planId);
@@ -1039,17 +1110,13 @@ export default function Coach() {
       try {
         const freshPlans = await reloadCoachPlans();
         if (freshPlans && freshPlans.length > 0) {
-          const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) {
-            lastProposedPlanIdRef.current = pending[0].id;
-            setActiveProposalSheetPlan(pending[0]);
-            // A resposta de uma continuação que chegou por sondagem não traz
-            // plan_continuation: deriva-se da que se pediu (mesma regra do
-            // servidor), atada à proposta que a sondagem encontrou.
-            const sent = inflightContinuationRef.current;
-            const next = sent ? nextPlanContinuation(sent) : null;
-            if (next) setPendingContinuation({ ...next, planId: pending[0].id, armed: false });
-          }
+          // A resposta de uma continuação que chegou por sondagem não traz
+          // plan_continuation: deriva-se da que se pediu (mesma regra do
+          // servidor), atada à proposta que a sondagem encontrou.
+          const sent = inflightContinuationRef.current;
+          const next = sent ? nextPlanContinuation(sent) : null;
+          const plan = openProposalSheet(freshPlans, { continuation: next, continuationTurn: !!sent });
+          if (plan && next) setPendingContinuation({ ...next, planId: plan.id, armed: false });
         }
         const freshGoals = await reloadCoachGoalProposals();
         if (freshGoals && freshGoals.length > 0) {
@@ -1265,11 +1332,7 @@ export default function Coach() {
       if (data?.plan_proposed) {
         const freshPlans = await reloadCoachPlans();
         if (freshPlans && freshPlans.length > 0) {
-          const pending = freshPlans.filter(p => p.status === 'proposto');
-          if (pending.length > 0) {
-            lastProposedPlanIdRef.current = pending[0].id;
-            setActiveProposalSheetPlan(pending[0]);
-          }
+          openProposalSheet(freshPlans, { continuation: data?.plan_continuation });
         }
       }
       if (data?.goal_proposed) {
@@ -1645,6 +1708,14 @@ export default function Coach() {
           plan={activeProposalSheetPlan}
           items={coachPlanItems}
           onRespondPlan={handleRespond}
+          partInfo={(() => {
+            const mine = planChain?.parts.find((p) => p.planId === activeProposalSheetPlan?.id);
+            if (!mine || !activeProposalSheetPlan) return null;
+            const last = mine.part >= planChain.of;
+            const c = pendingContinuation && pendingContinuation.planId === mine.planId ? pendingContinuation : null;
+            const days = c ? Math.round((Date.parse(`${c.to}T00:00:00Z`) - Date.parse(`${c.from}T00:00:00Z`)) / 86400000) + 1 : null;
+            return { part: mine.part, of: planChain.of, last, nextDays: days, from: activeProposalSheetPlan.period_start, to: activeProposalSheetPlan.period_end };
+          })()}
           goalProposal={activeGoalProposal}
           profile={profile}
           onRespondGoal={handleRespondGoal}
