@@ -1,5 +1,6 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import { FakeFoodsDb } from "./foodsTestkit.ts";
+import { assertCarolVoice } from "../_shared/carolTone.ts";
 import { learnFromMeal, MAX_QUESTIONS, type CarolQuestion } from "./pantry.ts";
 import {
   buildVariantIndex,
@@ -51,7 +52,7 @@ Deno.test("variantes: o genérico escrito, sem o modelo → a mais usada, com os
   assertEquals(renames, [["Coxa de frango", "Coxa de frango com pele"]]);
   assertEquals(questions, [{
     id: "q1", kind: "variante", topic: "Coxa de frango", item_name: "Coxa de frango com pele",
-    question: "Coxa de frango: com pele ou sem pele?", options: ["com pele", "sem pele"], assumed: "com pele",
+    question: "Coxa de frango: contei com pele. Era assim?", options: ["com pele", "sem pele"], assumed: "com pele",
     impact_kcal: 120, impact_protein_g: 3, answer: null, answered_at: null,
   }]);
 });
@@ -143,6 +144,8 @@ Deno.test("variantes: textos — rótulo, pergunta e o que vai ao modelo", () =>
   assertEquals(normalizeVariantLabel("  Sem   Pele "), "sem pele");
   assertEquals(normalizeVariantLabel("x".repeat(41)), "");
   assertEquals(variantQuestionText("Leite", ["gordo", "meio-gordo", "magro"]), "Leite: gordo, meio-gordo ou magro?");
+  assertEquals(variantQuestionText("Leite", ["gordo", "meio-gordo"], "meio-gordo"), "Leite: contei meio-gordo. Era assim?");
+  assertCarolVoice(variantQuestionText("Coxa de frango", ["com pele", "sem pele"], "com pele"));
   assertEquals(variantKnowledge(IDX).includes("- Coxa de frango: com pele | sem pele"), true);
   assertEquals(variantKnowledge(buildVariantIndex([])), "");
 });

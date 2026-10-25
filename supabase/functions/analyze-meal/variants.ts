@@ -173,8 +173,11 @@ function variantImpact(grams: number, valued: Record<string, unknown>[]): { kcal
   return { kcal: Math.round(spread("calories_per_100g")), protein: Math.round(spread("protein_per_100g") * 10) / 10 };
 }
 
-/** «Coxa de frango: com pele ou sem pele?» */
-export function variantQuestionText(generic: string, options: string[]): string {
+/** «Coxa de frango: contei com pele. Era assim?» — diz o que ela assumiu e
+ *  pergunta se acertou; as opções vão nos chips (frase da Carol, 2026-10-25).
+ *  Sem artigo: o género do genérico não se sabe. Sem assumida, a lista. */
+export function variantQuestionText(generic: string, options: string[], assumed?: string | null): string {
+  if (assumed && assumed.trim()) return `${generic.trim()}: contei ${assumed.trim()}. Era assim?`;
   const opts = options.length > 1 ? `${options.slice(0, -1).join(", ")} ou ${options.at(-1)}` : options[0];
   return `${generic.trim()}: ${opts}?`;
 }
@@ -233,7 +236,7 @@ export function resolveVariants<T extends Record<string, any>>(
     const assumedShown = answerable.some((o) => foodKey(o) === foodKey(r.label));
     if (assumedShown && !shown.some((o) => foodKey(o) === foodKey(r.label))) shown[shown.length - 1] = r.label;
     if (assumedShown && shown.length >= 2) {
-      const question = variantQuestionText(r.genericName, shown);
+      const question = variantQuestionText(r.genericName, shown, r.label);
       {
         const valued = shown.map((l) =>
           foodKey(l) === foodKey(r.label) && !storedAssumed ? resolved : stored.find((v) => foodKey(v.variant_label) === foodKey(l))
