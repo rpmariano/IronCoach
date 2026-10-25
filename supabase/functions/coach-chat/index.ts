@@ -76,7 +76,7 @@ import {
   latestTargetsProposals, parseTargetsReview, targetsPayload, targetsReviewKey, TARGETS_KEEP_ANSWER, TARGETS_UPDATE_ANSWER,
 } from "./targetsReview.ts";
 // Só a chave no header (x-goog-api-key); o coach-chat continua no alias.
-import { geminiHeaders } from "../_shared/geminiModel.ts";
+import { geminiHeaders, thinkingConfig } from "../_shared/geminiModel.ts";
 
 // Alias que segue sempre o modelo flash estável mais recente — evita 404s
 // quando a Google descontinua uma versão fixa (confirmado em produção: fixar
@@ -807,6 +807,21 @@ export function classifyTurn(
   if (prev === "D") return "F_PLAN";
   if (prev === "B") return "F_GOALS";
   return "E";
+}
+
+/* Turnos de plano mais rápidos (decisão do Rui, 2026-10-25): uma parte de 7
+   dias levou 83 s na ronda 0 — ~8,5k tokens de raciocínio contra ~3,3k de
+   argumentos do plano (ai_usage, 25/10 20:43). Num turno de plano o raciocínio
+   vai em "low" (o mesmo nível do resto das funções, geminiModel.ts) e o
+   esquema sem `recommendations` (que não servem a um plano e foram a única
+   origem de 400 no chat). Turno de plano: a continuação de um plano partido,
+   os casos A/F_PLAN (o atleta aceitou os objetivos ou recusou o plano a dizer
+   o que mudar), e um caso E cuja mensagem pede um plano. */
+const PLAN_REQUEST_RE = /\bplan(?:o|os|ear|eia|eamento)\b|\bsemanas?\b|\b\d+\s*dias\b|\bdias de treino\b|\btreinos? (?:para|da|das) (?:semana|próxim)/i;
+
+export function isPlanTurn(message: string, turnCase: TurnCase, isContinuation: boolean): boolean {
+  if (isContinuation || turnCase === "A" || turnCase === "F_PLAN") return true;
+  return turnCase === "E" && PLAN_REQUEST_RE.test(message || "");
 }
 
 /** Ferramentas permitidas em cada caso. null = todas (caso E). */
@@ -8025,7 +8040,10 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     // responder ao utilizador segue o schema {reply, suggestions} como sempre.
     // Com as recomendações no esquema, salvo se esta instância já as viu
     // recusadas (5.5, push 2 — ver shouldRetryWithoutRecommendations).
-    let useRecommendationsSchema = !recommendationsSchemaRejected;
+    // Turno de plano: raciocínio "low" e esquema sem recommendations (isPlanTurn).
+    const planTurn = isPlanTurn(message, turnCase, !!planContinuationIn);
+    let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;
+    let useLowThinking = planTurn;
     async function callGemini(withTools = true) {
       const res = await fetchGeminiWithTimeout(
         `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
@@ -8066,6 +8084,9 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
               // raciocínio mais o propose_training_plan com 14 meal_suggestion. Ver
               // CHAT_MAX_OUTPUT_TOKENS.
               maxOutputTokens: CHAT_MAX_OUTPUT_TOKENS,
+              // Só num turno de plano (isPlanTurn), com rede: um 400 nele
+              // repete a ronda sem o campo (ver o tratamento do erro abaixo).
+              ...thinkingConfig("low", useLowThinking),
               response_mime_type: "application/json",
               response_schema: useRecommendationsSchema ? RESPONSE_SCHEMA : RESPONSE_SCHEMA_BASE,
             },
@@ -8150,6 +8171,8 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
     let geminiJson: Record<string, unknown> | undefined;
     // A repetição depois de um MAX_TOKENS vazio faz-se uma vez por pedido.
     let truncatedRetried = false;
+    // Quando começou a ronda em curso (o log mede cada uma).
+    let roundStartedAt = Date.now();
     // Rondas 0..MAX_TOOL_ROUNDS-1 podem executar ferramentas; a ronda
     // MAX_TOOL_ROUNDS é a final e vai SEM ferramentas, forçando texto — que é
     // o que o nome da constante sempre prometeu ("antes de forçar resposta
@@ -8170,6 +8193,7 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         if (fallback) return fallback;
         return jsonResponse({ error: "Demorei demasiado a pensar nesta resposta. Envia outra vez, por favor." }, 504);
       }
+      roundStartedAt = Date.now();
       try {
         geminiRes = await callGemini(!isFinalRound);
       } catch (e) {
@@ -8183,7 +8207,18 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
 
       if (!geminiRes.ok) {
         const errText = await geminiRes.text();
-        console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes }));
+        console.error("Gemini error:", geminiRes.status, errText, JSON.stringify({ round, turnCase, tools: isFinalRound ? [] : toolNamesSent, toolsBytes: isFinalRound ? 0 : toolsBytes, thinking: useLowThinking ? "low" : "default", ms: Date.now() - roundStartedAt }));
+        /* A rede do raciocínio "low": o alias pode rodar para uma geração que
+           não o aceite (já aconteceu com thinkingBudget). Num turno de plano
+           não vai o esquema das recomendações, por isso um 400 aqui é do
+           thinkingConfig até prova em contrário: repete-se a ronda, uma vez,
+           sem ele — o turno fica só mais lento, como antes. */
+        if (useLowThinking && geminiRes.status === 400) {
+          console.error("coach-chat: thinkingConfig low recusado pela API — a repetir sem ele", JSON.stringify({ round, turnCase }));
+          useLowThinking = false;
+          round--;
+          continue;
+        }
         /* A rede da 5.5: o esquema com as recomendações recusado pela API.
            Repete-se esta mesma ronda, uma vez, sem o campo — o atleta tem a
            resposta na mesma, sem recomendações gravadas — e a instância
@@ -8233,6 +8268,14 @@ async function handleChat(req: Request, run: ChatRun): Promise<Response> {
         // deno-lint-ignore no-explicit-any
         calls: functionCalls.map((p: any) => p.functionCall?.name),
         hasText: Boolean(extractReplyText(parsedRes)),
+        // Para medir os turnos de plano (2026-10-25): o tempo da ronda e o que
+        // ela gerou — raciocínio (thoughts) e saída (candidates).
+        ms: Date.now() - roundStartedAt,
+        thinking: useLowThinking ? "low" : "default",
+        planTurn,
+        thoughtsTokens: parsedRes?.usageMetadata?.thoughtsTokenCount ?? null,
+        outputTokens: parsedRes?.usageMetadata?.candidatesTokenCount ?? null,
+        promptTokens: parsedRes?.usageMetadata?.promptTokenCount ?? null,
       }));
 
       /* A rede do MAX_TOKENS (2026-10-25): a resposta bateu no teto de saída e

@@ -6083,3 +6083,36 @@ Deno.test("plan_continuation fica na linha da mensagem (a sondagem lê-a); sem a
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
   assertEquals(src.split(", planContinuationOut);").length - 1, 2);
 });
+
+// ─── Turnos de plano mais rápidos (decisão do Rui, 2026-10-25: B e C) ────
+import { isPlanTurn } from "./index.ts";
+
+Deno.test("isPlanTurn: continuação, A/F_PLAN e um E que pede plano; o resto não", () => {
+  assertEquals(isPlanTurn("", "E", true), true);
+  assertEquals(isPlanTurn("Aceito os objetivos", "A", false), true);
+  assertEquals(isPlanTurn("Muda a terça para descanso", "F_PLAN", false), true);
+  for (const m of ["Prefiro 14 dias", "Faz-me um plano até à meia", "Planeia a próxima semana", "Quero treinos para a semana", "E as próximas 3 semanas?"]) {
+    assertEquals(isPlanTurn(m, "E", false), true, m);
+  }
+  for (const m of ["Como correu o meu treino de ontem?", "O que como antes da prova?", "Olá"]) {
+    assertEquals(isPlanTurn(m, "E", false), false, m);
+  }
+  assertEquals(isPlanTurn("Prefiro 14 dias", "C", false), false);
+});
+
+Deno.test("handler: turno de plano com raciocínio low, sem recommendations, com rede no 400, e o tempo por ronda no log (ligações no código)", async () => {
+  const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
+  assertStringIncludes(src, "const planTurn = isPlanTurn(message, turnCase, !!planContinuationIn);");
+  assertStringIncludes(src, "let useRecommendationsSchema = !recommendationsSchemaRejected && !planTurn;");
+  assertStringIncludes(src, "let useLowThinking = planTurn;");
+  const call = src.slice(src.indexOf("async function callGemini("), src.indexOf("async function callGemini(") + 4500);
+  assertStringIncludes(call, '...thinkingConfig("low", useLowThinking),');
+  // Um 400 num turno de plano repete a ronda sem o thinkingConfig, antes de qualquer outra coisa.
+  const err = src.indexOf("if (useLowThinking && geminiRes.status === 400) {");
+  assert(err > 0 && err < src.indexOf("if (shouldRetryWithoutRecommendations(geminiRes.status, errText, useRecommendationsSchema)) {"));
+  assertStringIncludes(src.slice(err, err + 400), "useLowThinking = false;");
+  // O log de cada ronda tem o tempo e os tokens.
+  const log = src.slice(src.indexOf('console.log("coach-chat gemini", JSON.stringify({'), src.indexOf('console.log("coach-chat gemini", JSON.stringify({') + 1400);
+  for (const k of ["ms: Date.now() - roundStartedAt,", 'thinking: useLowThinking ? "low" : "default",', "planTurn,", "thoughtsTokens:", "outputTokens:"]) assertStringIncludes(log, k);
+  assert(src.indexOf("roundStartedAt = Date.now();") < src.indexOf("geminiRes = await callGemini(!isFinalRound);"));
+});
