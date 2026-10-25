@@ -1005,7 +1005,7 @@ export const useAppStore = create((set, get) => ({
     // Obter dados da proposta a aceitar
     const { data: newPlan, error: fetchErr } = await supabase
       .from('coach_plans')
-      .select('id, period_start, period_end, summary, supersedes_plan_id, race_id, coach_plan_items(kind)')
+      .select('id, period_start, period_end, summary, supersedes_plan_id, race_id, coach_plan_items(kind, planned_date)')
       .eq('id', planId)
       .single();
 
@@ -1165,17 +1165,50 @@ export const useAppStore = create((set, get) => ({
           race_lost_at: null,
         }).eq('id', targetPlanId);
 
-        // 2. Apagar os treinos do plano original nas datas que estão a ser
-        //    substituídas — menos os já FEITOS: o plano deixava de mostrar esse
-        //    dia como cumprido (o registo da corrida em si nunca se perdia).
-        //    Importa nas partes de um plano longo, que se fundem no bloco ativo.
-        await supabase
-          .from('coach_plan_items')
-          .delete()
-          .eq('plan_id', targetPlanId)
-          .neq('status', 'concluido')
-          .gte('planned_date', newPlan.period_start)
-          .lte('planned_date', newPlan.period_end);
+        // 2. Apagar os treinos do plano original nas datas que a proposta
+        //    SUBSTITUI — menos os já FEITOS: o plano deixava de mostrar esse dia
+        //    como cumprido (o registo da corrida em si nunca se perdia).
+        //    O fim do que se substitui é o último dia com itens da proposta, não
+        //    o period_end dela: com race_id o period_end é o dia da prova, e uma
+        //    proposta de 7 dias levava consigo as semanas seguintes do bloco
+        //    (plano em partes / "plano ajustado"). O dia da prova só conta se a
+        //    proposta trouxer o item da prova. Sem itens datados, não se apaga nada.
+        const propostaDatas = (newPlan.coach_plan_items || [])
+          .map((i) => (typeof i?.planned_date === 'string' ? i.planned_date.slice(0, 10) : null))
+          .filter(Boolean).sort();
+        const ultimoDia = propostaDatas.length
+          ? (propostaDatas.at(-1) < newPlan.period_end ? propostaDatas.at(-1) : newPlan.period_end)
+          : null;
+        if (ultimoDia) {
+          /* Um treino já feito que fica, e um item novo da proposta no mesmo dia
+             e tipo, apareciam os dois: cancela-se o novo (como no bloco novo,
+             pelo dia em que o treino foi FEITO). Antes de os itens mudarem de
+             plano, enquanto ainda são da proposta. */
+          const { data: feitos } = await supabase
+            .from('coach_plan_items')
+            .select('id, planned_date, actual_date, kind')
+            .eq('plan_id', targetPlanId)
+            .eq('status', 'concluido')
+            .gte('planned_date', newPlan.period_start)
+            .lte('planned_date', ultimoDia);
+          const feitosPorDia = (feitos || []).map((i) => ({ ...i, planned_date: i.actual_date || i.planned_date }));
+          for (const { planned_date, kind } of doneItemKeys(feitosPorDia)) {
+            await supabase
+              .from('coach_plan_items')
+              .update({ status: 'cancelado' })
+              .eq('plan_id', planId)
+              .eq('status', 'pendente')
+              .eq('planned_date', planned_date)
+              .eq('kind', kind);
+          }
+          await supabase
+            .from('coach_plan_items')
+            .delete()
+            .eq('plan_id', targetPlanId)
+            .neq('status', 'concluido')
+            .gte('planned_date', newPlan.period_start)
+            .lte('planned_date', ultimoDia);
+        }
 
         // 3. Mover os novos itens da proposta para o plano original
         await supabase
