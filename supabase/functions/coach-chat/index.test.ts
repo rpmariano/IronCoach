@@ -6085,60 +6085,52 @@ Deno.test("plan_continuation fica na linha da mensagem (a sondagem lê-a); sem a
 });
 
 // ─── Retomar um plano a meio (plan_resume, 2026-10-25) ────────────────────
-import { planContinuationFromResume, planResumeFactsFor } from "./index.ts";
+import { lastModelIsPlanResume } from "./index.ts";
+import { FakeFoodsDb } from "../analyze-meal/foodsTestkit.ts";
 
-const RESUME_MSG_ID = "7cd927d8-4e21-4e49-b86d-0c86985cc812";
-const RESUME_CONT = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 5, until: "2026-11-29" };
-// deno-lint-ignore no-explicit-any
-function resumeSb(logRows: any[], messages: Record<string, any>, acceptedPlans: any[] = [], race: any = null) {
-  // deno-lint-ignore no-explicit-any
-  const q = (table: string): any => {
-    const f: Record<string, unknown> = {};
-    const list = () => table === "coach_proactive_log" ? logRows : table === "coach_plans" ? acceptedPlans : [];
-    // deno-lint-ignore no-explicit-any
-    const chain: any = {
-      select: () => chain, like: () => chain, gte: () => chain, order: () => chain, limit: () => chain,
-      eq: (c: string, v: unknown) => { f[c] = v; return chain; },
-      maybeSingle: () => Promise.resolve({
-        data: table === "race_events" ? race : f.user_id === "u1" && f.role === "model" ? messages[String(f.id)] ?? null : null,
-        error: null,
-      }),
-      then: (resolve: (v: unknown) => unknown) => Promise.resolve(resolve({ data: list(), error: null })),
-    };
-    return chain;
-  };
-  return { from: q };
-}
-
-Deno.test("plano a meio: «Manda a próxima semana» dá a parte certa, da mensagem que a Carol retomou", async () => {
-  const sb = resumeSb([{ key: `plan_resume:${RESUME_MSG_ID}`, sent_at: "2026-10-27T10:00:00Z" }], { [RESUME_MSG_ID]: { plan_continuation: RESUME_CONT } });
-  assertEquals(await planContinuationFromResume(sb, "u1"), RESUME_CONT);
-  // Sem retomar registado (ou a mensagem de outro atleta), nada.
-  assertEquals(await planContinuationFromResume(resumeSb([], {}), "u1"), null);
-  assertEquals(await planContinuationFromResume(sb, "u2"), null);
-  // Os factos do turno plan_resume saem da mesma mensagem: (a) com a semana anterior aceite e a prova do dia do until.
-  const withAccepted = resumeSb([], { [RESUME_MSG_ID]: { plan_continuation: RESUME_CONT } },
-    [{ coach_plan_items: [{ planned_date: "2026-10-28" }] }], { name: "Meia de Lisboa" });
-  assertEquals(await planResumeFactsFor(withAccepted, "u1", `plan_resume:${RESUME_MSG_ID}`),
-    "semana anterior: 26/10 a 1/11; a semana anterior está no calendário: sim; semana que falta: 2 a 8/11 (parte 2 de 5); o plano vai até 29/11; prova: Meia de Lisboa");
-  // (b) Nada aplicado.
-  assertStringIncludes((await planResumeFactsFor(sb, "u1", `plan_resume:${RESUME_MSG_ID}`))!, "está no calendário: não");
-  assertEquals(await planResumeFactsFor(sb, "u1", "outra:chave"), null);
+Deno.test("plano a meio: o «Agora não» só é a resposta à retoma se a última mensagem dela for essa (A2)", async () => {
+  const db = new FakeFoodsDb();
+  db.tables.coach_messages = [{ user_id: "u1", role: "model", created_at: "2026-10-27T10:00:00.000Z" }];
+  db.tables.coach_proactive_log = [{ user_id: "u1", key: "plan_resume:x", sent_at: "2026-10-27T10:00:00.400Z" }];
+  assertEquals(await lastModelIsPlanResume(db, "u1"), true);
+  // Ela falou depois disso: o «Agora não» já é outra conversa.
+  db.tables.coach_messages.push({ user_id: "u1", role: "model", created_at: "2026-10-27T11:00:00.000Z" });
+  assertEquals(await lastModelIsPlanResume(db, "u1"), false);
+  assertEquals(await lastModelIsPlanResume(new FakeFoodsDb(), "u1"), false);
 });
 
-Deno.test("handler: plan_resume é um turno proativo com os dois chips, e o «Manda» é uma continuação (ligações no código)", async () => {
+Deno.test("plano a meio: o guião da continuação na retoma diz a verdade do calendário, sem «pendentes» (A4)", () => {
+  const c = { from: "2026-11-02", to: "2026-11-08", part: 2, of: 5, until: "2026-11-29" };
+  const applied = buildPlanContinuationTurn(c, { applied: true });
+  assertStringIncludes(applied, "Continuação de um plano que ficou a meio (parte 2 de 5)");
+  assertStringIncludes(applied, "já estão no calendário dele");
+  const notApplied = buildPlanContinuationTurn(c, { applied: false });
+  assertStringIncludes(notApplied, "ainda não estão no calendário: nada entra enquanto o plano não estiver completo");
+  for (const t of [applied, notApplied]) {
+    assertEquals(t.includes("PROVISORIAMENTE"), false);
+    assertEquals(t.includes("pendentes"), false);
+    assertStringIncludes(t, "só os treinos de 2026-11-02 a 2026-11-08");
+  }
+  // Fora de uma retoma, o guião de sempre.
+  assertStringIncludes(buildPlanContinuationTurn(c), "ACEITES PROVISORIAMENTE");
+});
+
+Deno.test("handler: plan_resume — a regra volta a correr no turno, no «Manda» e no «Agora não» (ligações no código)", async () => {
   assert((PROACTIVE_TRIGGERS as readonly string[]).includes("plan_resume"));
   const src = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
-  assertStringIncludes(src, 'if (proactiveTrigger === "plan_resume") suggestions = [PLAN_RESUME_SEND, PLAN_RESUME_LATER];');
-  assertStringIncludes(src, "const resumed = await planContinuationFromResume(sb, userId);");
-  assertStringIncludes(src, "planContinuationIn = parsePlanContinuation(resumed);");
-  // A continuação do «Manda» passa pelas regras das partes (a janela, sem supersedes).
-  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
-  assertStringIncludes(src, 'finalSystemInstruction += "\\n\\nPLANO A MEIO: " + facts + ".";');
-  // «Agora não»: a frase dela, só com leitura.
-  assertStringIncludes(src, "const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && !!(await planContinuationFromResume(sb, userId));");
+  // A3: o turno plan_resume volta a verificar a regra e, sem ela, sai skipped antes do Gemini.
+  const gate = src.indexOf("planResumeTurn = await currentPlanResume(sb, userId, Date.now(), lisbonTodayISO());");
+  assert(gate > 0 && gate < src.indexOf("async function callGemini("));
+  assertStringIncludes(src.slice(gate, gate + 700), 'reason: "plan_resume_gone"');
+  assertStringIncludes(src, 'if (planResumeTurn) finalSystemInstruction += "\\n\\nPLANO A MEIO: " + planResumeFacts(planResumeTurn.resume) + ".";');
+  // A1: o «Manda» volta a correr a regra e só vale com a chave entregue.
+  assertStringIncludes(src, "if (cand && await wasProactiveDelivered(sb, userId, cand.key)) {");
+  assertStringIncludes(src, "buildPlanContinuationTurn(planContinuationIn, { applied: planResumeAsked.resume.applied })");
+  // A2: o «Agora não» só depois da mensagem dela, e só leitura.
+  assertStringIncludes(src, "const planResumeLaterAsked = chipText === PLAN_RESUME_LATER.toLowerCase() && await lastModelIsPlanResume(sb, userId);");
   assertStringIncludes(src, "|| targetsUpdateAsked || planResumeLaterAsked ? new Set(READ_TOOL_NAMES)");
-  assertStringIncludes(src, "Responde exatamente: «${PLAN_RESUME_LATER_REPLY}»");
+  assertStringIncludes(src, 'if (proactiveTrigger === "plan_resume") suggestions = [PLAN_RESUME_SEND, PLAN_RESUME_LATER];');
+  assertStringIncludes(src, "result = await runProposeTrainingPlan(sb, userId, args || {}, planSeriesIntents, planContinuationIn);");
 });
 
 // ─── Turnos de plano mais rápidos (decisão do Rui, 2026-10-25: B e C) ────

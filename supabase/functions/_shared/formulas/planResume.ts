@@ -79,27 +79,51 @@ export function messageIdOfPlanResumeKey(key: string | null | undefined): string
 
 const addDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
+/** Um item de um plano ACEITE, como a regra o lê. */
+export type AcceptedPlanItem = { planned_date?: string | null; kind?: string | null; status?: string | null };
+
 export type PlanResumeInput = {
   /** A mensagem do modelo mais recente com plan_continuation. */
   lastContinuation: { id: string; created_at: string; plan_continuation: unknown } | null;
   /** Propostas de treino pendentes (status proposto, com corrida/ginásio). */
   pendingTrainingPlans: number;
-  /** As datas dos itens de planos ACEITES (qualquer tipo). */
-  acceptedItemDates: string[];
+  /** Os itens dos planos ACEITES (desde o início da cadeia). A regra filtra
+   *  ela própria: só corrida/ginásio e não cancelados (revisão do 69d1cc8c,
+   *  B2 — um dia de descanso ou um treino cancelado não põe nada no calendário). */
+  acceptedItems: AcceptedPlanItem[];
   /** As mensagens dele depois da mensagem da continuação. */
   userMessagesAfter: { content: string | null; created_at: string }[];
-  /** O nome da prova do plano, se se souber (a do dia do until). */
+  /** Planos dele criados DEPOIS da mensagem (qualquer estado): uma proposta
+   *  nova, recusada ou não, ou um plano pedido por botão (B1). */
+  plansCreatedAfter: number;
+  /** O estado do plano que a própria mensagem propôs (a parte dela), se se
+   *  souber: 'recusado' é a cadeia recusada (B1). */
+  continuationPlanStatus: string | null;
+  /** O nome da prova do plano, se se souber (a do dia do until, agendada). */
   raceName?: string | null;
 };
 
-/** A semana anterior à que falta, e se está no calendário (itens aceites
- *  desde o início da cadeia até à véspera do from). */
-export function previousWeekOf(c: PlanContinuationData, acceptedItemDates: string[]): { prevFrom: string; prevTo: string; applied: boolean } {
+/** Os dias com treino a sério de planos aceites (B2). */
+export function acceptedTrainingDates(items: AcceptedPlanItem[]): string[] {
+  return (items || [])
+    .filter((i) => (i?.kind === "corrida" || i?.kind === "ginasio") && i?.status !== "cancelado" && typeof i?.planned_date === "string")
+    .map((i) => i.planned_date as string);
+}
+
+/** A semana anterior à que falta, e se está no calendário (treinos aceites
+ *  desde o início da cadeia até à véspera do from, a semana anterior incluída). */
+export function previousWeekOf(c: PlanContinuationData, acceptedDates: string[]): { prevFrom: string; prevTo: string; applied: boolean } {
   const prevFrom = addDays(c.from, -7);
   const prevTo = addDays(c.from, -1);
   const chainStart = addDays(c.from, -7 * (c.part - 1));
-  return { prevFrom, prevTo, applied: acceptedItemDates.some((d) => d >= chainStart && d < c.from) };
+  return { prevFrom, prevTo, applied: acceptedDates.some((d) => d >= chainStart && d < c.from) };
 }
+
+/** Os chips da própria retoma não contam como «ele pediu outro plano». */
+const isResumeChip = (text: string | null | undefined): boolean => {
+  const t = (text || "").trim().replace(/[.!]+$/, "").toLowerCase();
+  return t === PLAN_RESUME_SEND.toLowerCase() || t === PLAN_RESUME_LATER.toLowerCase();
+};
 
 /**
  * A cadeia ficou a meio? Sim quando: a parte prometida ainda serve (until ≥
@@ -118,8 +142,12 @@ export function detectPlanResume(input: PlanResumeInput, nowMs: number, todayISO
   const at = Date.parse(msg.created_at);
   if (!Number.isFinite(at) || nowMs - at < PLAN_RESUME_MIN_AGE_MS) return null;
   if (input.pendingTrainingPlans > 0) return null;
-  if (input.acceptedItemDates.some((d) => d >= c.from && d <= c.to)) return null;
-  if (input.userMessagesAfter.some((m) => Date.parse(m.created_at) > at && isPlanRequest(m.content))) return null;
+  // A cadeia recusada, ou um plano novo entretanto (pedido por botão, por
+  // outra conversa): já não há nada a retomar (B1).
+  if (input.continuationPlanStatus === "recusado" || input.plansCreatedAfter > 0) return null;
+  const accepted = acceptedTrainingDates(input.acceptedItems);
+  if (accepted.some((d) => d >= c.from && d <= c.to)) return null;
+  if (input.userMessagesAfter.some((m) => Date.parse(m.created_at) > at && !isResumeChip(m.content) && isPlanRequest(m.content))) return null;
   return {
     trigger: PLAN_RESUME_TRIGGER,
     key: planResumeKey(msg.id),
@@ -129,7 +157,7 @@ export function detectPlanResume(input: PlanResumeInput, nowMs: number, todayISO
     silenceDays: null,
     anchorDate: null,
     anchorAt: msg.created_at,
-    resume: { ...c, message_id: msg.id, ...previousWeekOf(c, input.acceptedItemDates), raceName: input.raceName ?? null },
+    resume: { ...c, message_id: msg.id, ...previousWeekOf(c, accepted), raceName: input.raceName ?? null },
   };
 }
 
@@ -156,7 +184,11 @@ export function planResumeFacts(r: PlanContinuationData & Partial<Pick<PlanResum
 /* A notificação: frase fixa da Carol, sem Gemini (como os avisos do Troféu).
    Não fala do calendário: serve os dois casos (carol-plan-resume-textos.md). */
 export function planResumePushMessage(c: PlanResumeCandidate): { title: string; body: string } {
-  return { title: "Carol", body: `O teu plano ficou a meio. Falta a semana de ${weekText(c.resume.from, c.resume.to)}, e eu preparo-ta quando abrires a conversa.` };
+  const week = weekText(c.resume.from, c.resume.to);
+  // Com mais partes depois desta, não falta só uma semana.
+  return c.resume.part < c.resume.of
+    ? { title: "Carol", body: `O teu plano ficou a meio. Faltam a semana de ${week} e as seguintes, e eu preparo-tas quando abrires a conversa.` }
+    : { title: "Carol", body: `O teu plano ficou a meio. Falta a semana de ${week}, e eu preparo-ta quando abrires a conversa.` };
 }
 
 /** A resposta dela ao «Agora não» (frase da Carol). */
