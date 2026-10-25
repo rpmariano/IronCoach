@@ -2726,6 +2726,43 @@ describe('Coach — retomar um plano partido (plan_resume)', () => {
     expect(screen.getByRole('button', { name: 'Aceitar e ver próximos 7 dias' })).toBeInTheDocument();
   });
 
+  /* plan_resume_gone: a retoma deixou de valer (o plano seguiu). Conta como já dito —
+     senão o aviso ficava e bloqueava os outros momentos da abertura. */
+  it('plan_resume_gone (toque na notificação): marca a retoma e passa ao momento seguinte da abertura', async () => {
+    invokeEdgeFunctionWithTimeout.mockImplementation((_n, { body }) => {
+      const b = JSON.parse(body);
+      if (b.proactive_trigger === 'plan_resume') return Promise.resolve({ data: { skipped: true, reason: 'plan_resume_gone', model_message: null, suggestions: [] }, error: null });
+      return Promise.resolve({ data: { model_message: { id: 'm2', content: 'Hoje é dia de prova. Tu consegues.' }, suggestions: [] }, error: null });
+    });
+    useAppStore.setState({
+      proactiveKeyRequested: KEY,
+      raceEvents: [{ id: 'r1', name: 'Corrida do Tejo', date: localISO(new Date()), status: 'agendada', distance_km: 10 }],
+    });
+    renderCoach();
+    await waitFor(() => expect(bodies().filter((b) => b.proactive_trigger).length).toBeGreaterThanOrEqual(2));
+    expect(bodies()[0]).toMatchObject({ proactive_trigger: 'plan_resume', proactive_key: KEY });
+    expect(bodies()[1].proactive_trigger).toBe('race_morning');
+    await waitFor(() => expect(screen.getByText(/Tu consegues/)).toBeInTheDocument());
+    expect(JSON.parse(window.localStorage.getItem('ironcoach:carol-proativa:user-1'))).toMatchObject({ plan_resume: KEY });
+  });
+
+  it('plan_resume_gone (botão do aviso no Início): marca como dito, para o aviso sair', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, reason: 'plan_resume_gone', model_message: null, suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'proactive_moment', candidate: { trigger: 'plan_resume', key: KEY, details: '' } } });
+    renderCoach();
+    await waitFor(() => expect(JSON.parse(window.localStorage.getItem('ironcoach:carol-proativa:user-1'))).toMatchObject({ plan_resume: KEY }));
+    expect(bodies()[0]).toMatchObject({ proactive_trigger: 'plan_resume', proactive_key: KEY, proactive_force: true });
+  });
+
+  it('um skip qualquer (outro motivo) NÃO marca a retoma como dita', async () => {
+    invokeEdgeFunctionWithTimeout.mockResolvedValue({ data: { skipped: true, reason: 'quiet_hours', model_message: null, suggestions: [] }, error: null });
+    useAppStore.setState({ coachIntent: { kind: 'proactive_moment', candidate: { trigger: 'plan_resume', key: KEY, details: '' } } });
+    renderCoach();
+    await waitFor(() => expect(invokeEdgeFunctionWithTimeout).toHaveBeenCalledTimes(1));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(window.localStorage.getItem('ironcoach:carol-proativa:user-1')).toBeNull();
+  });
+
   it('«Agora não» não faz nenhum pedido', async () => {
     invokeEdgeFunctionWithTimeout.mockResolvedValue({
       data: { model_message: { id: 'm1', content: 'Falta a semana. Mando-ta?' }, suggestions: ['Manda a próxima semana', 'Agora não'] },

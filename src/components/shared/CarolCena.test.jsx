@@ -453,3 +453,84 @@ describe('CarolCena — o sorteio, sem repetir', () => {
     expect(fetchPedidos).toHaveLength(0);
   });
 });
+
+/* Revisão do lote: o sanitizador deixava passar instruções de processamento e
+   comentários (serializados e metidos num innerHTML, um <?x ><img onerror> virava um
+   elemento a sério), e não filtrava atributos. */
+describe('prepararTraco / prepararMascara — o sanitizador a sério', () => {
+  const PAYLOAD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><?x ><img src=x onerror=alert(1)>?><path d="M0 0 L9 9"/></svg>';
+  const montar = (marcacao) => {
+    const el = document.createElement('div');
+    el.innerHTML = marcacao;
+    return el;
+  };
+
+  it('a instrução de processamento com <img onerror> não passa (nem como texto que o innerHTML reinterprete)', () => {
+    for (const out of [prepararTraco(PAYLOAD), prepararMascara(PAYLOAD)?.inner]) {
+      expect(out).not.toMatch(/<\?|onerror|<img|alert/i);
+      // Como o componente a usa: dentro de um innerHTML, não nasce nenhum <img>.
+      expect(montar(out).querySelector('img')).toBeNull();
+      expect(montar(out).querySelector('path')).not.toBeNull();
+    }
+  });
+
+  it('comentários, texto, CDATA e DOCTYPE saem', () => {
+    const sujo = '<!DOCTYPE svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><!-- <img onerror=x> -->olá<![CDATA[<img src=x onerror=alert(1)>]]><path d="M0 0 L9 9"/></svg>';
+    const out = prepararTraco(sujo);
+    expect(out).not.toMatch(/<!--|CDATA|olá|onerror|DOCTYPE/);
+    expect(montar(out).querySelector('img')).toBeNull();
+  });
+
+  it('só passam atributos permitidos: sem style (o --i já foi lido), sem href, sem on*, sem url() externo', () => {
+    const sujo = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 10 10" class="x" data-x="1">'
+      + '<path d="M0 0 L9 9" style="--i:2;background:url(http://x/y.png)" fill="url(http://evil/x.svg#a)" stroke="url(#g)" xlink:href="javascript:alert(1)" onclick="alert(2)" class="c" data-y="1" stroke-width="3"/>'
+      + '<rect x="0" y="0" width="5" height="5" mask="url(  #m )" fill="data:text/html,x"/></svg>';
+    const out = prepararTraco(sujo);
+    // O único style que sobra é o nosso (--atraso), nunca o do ficheiro.
+    expect(out).not.toMatch(/background|--i:|href|onclick|http:\/\/x|evil|class=|data-x|data-y|data:text|javascript/);
+    expect([...out.matchAll(/style="([^"]*)"/g)].every((m) => /^--atraso:\d+ms$/.test(m[1]))).toBe(true);
+    // O que é seguro fica: a ordem (virou atraso), a pintura simples e as referências locais (com o prefixo da instância).
+    expect(out).toMatch(/stroke-width="3"/);
+    expect(out).toMatch(/stroke="url\(#cena\d+-g\)"/);
+    expect(out).toMatch(/mask="url\(#cena\d+-m\)"/);
+    expect(out).toMatch(/--atraso:/);
+  });
+
+  it('os ids levam um prefixo por instância: dois SVG iguais no mesmo documento não colidem', () => {
+    const grad = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><linearGradient id="g"><stop offset="0" stop-color="#fff"/></linearGradient></defs><path d="M0 0 L9 9" stroke="url(#g)"/></svg>';
+    const a = prepararTraco(grad);
+    const b = prepararTraco(grad);
+    const idA = /id="(cena\d+-g)"/.exec(a)[1];
+    const idB = /id="(cena\d+-g)"/.exec(b)[1];
+    expect(idA).not.toBe(idB);
+    expect(a).toContain(`url(#${idA})`);
+    expect(b).toContain(`url(#${idB})`);
+    // Um id estranho (com aspas, espaços…) sai.
+    expect(prepararTraco('<svg xmlns="http://www.w3.org/2000/svg"><path id="a b" d="M0 0"/></svg>')).not.toMatch(/id=/);
+  });
+
+  it('a máscara também: o payload sai da <mask> e as formas ficam', () => {
+    const m = prepararMascara(PAYLOAD);
+    expect(m.inner).toContain('<path');
+    expect(m.inner).not.toMatch(/img|onerror|<\?/);
+  });
+});
+
+describe('AnalysisSkeleton — a altura da cena reservada', () => {
+  it('enquanto a cena pode vir, o espaço dela (200 px) está reservado; se falhar, deixa de estar', async () => {
+    imagemFalha = true;
+    window.matchMedia = () => ({ matches: true });
+    render(<AnalysisSkeleton kind="run" />);
+    const caixa = () => screen.getByTestId('analysis-logo').firstChild;
+    expect(caixa()).toHaveStyle({ minHeight: '200px' });
+    await flush();
+    // A imagem falhou: fica o logótipo e a reserva sai (sem um buraco de 200 px).
+    expect(caixa().style.minHeight).toBe('');
+    expect(screen.getByTestId('logo-loader')).toBeInTheDocument();
+  });
+
+  it('um kind sem cena não reserva nada', () => {
+    render(<AnalysisSkeleton kind="outra" />);
+    expect(screen.getByTestId('analysis-logo').firstChild.style.minHeight).toBe('');
+  });
+});

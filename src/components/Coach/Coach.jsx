@@ -609,7 +609,8 @@ export default function Coach() {
     userData: profile || {},
     activeInsights: activeInsightsPayload(),
   }, { failure: HOME_ALERT_FAILURE }).then((data) => {
-    if (data?.skipped && data.reason === 'already_sent') markProactiveSent(profile?.id, candidate);
+    // «Já não há nada a retomar» (plan_resume_gone) conta como já dito: o aviso sai.
+    if (data?.skipped && (data.reason === 'already_sent' || data.reason === 'plan_resume_gone')) markProactiveSent(profile?.id, candidate);
     queueRaceTargetsReview(candidate, data);
     if (data && !data.skipped) {
       markProactiveSent(profile?.id, candidate);
@@ -803,7 +804,9 @@ export default function Coach() {
         }, { silent: true });
         if (!data) return; // erro de rede — não martela os candidatos seguintes
         if (!data.skipped) { markProactiveSent(profile?.id, candidate); queueRaceTargetsReview(candidate, data); return; }
-        if (data.reason === 'already_sent') { markProactiveSent(profile?.id, candidate); continue; }
+        // already_sent, ou plan_resume_gone (a retoma deixou de valer: o plano seguiu): marca-se e
+        // passa-se ao candidato seguinte, para não bloquear os outros momentos da abertura.
+        if (data.reason === 'already_sent' || data.reason === 'plan_resume_gone') { markProactiveSent(profile?.id, candidate); continue; }
         return; // quiet_hours (ou outro motivo global) — tenta-se tudo de novo na próxima abertura
       }
     })();

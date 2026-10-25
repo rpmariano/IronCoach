@@ -103,30 +103,72 @@ export function formasPontos(w, h, colunas = CENA_PONTOS_COLUNAS) {
 }
 
 /** Põe o pathLength=1 e o atraso (--atraso, em ms) de cada forma. A ordem é o --i do
- *  style do ficheiro (agrupa as que se desenham juntas); sem ele, o índice. */
+ *  ficheiro (limparSvg guarda-o em data-i; agrupa as que se desenham juntas); sem ele, o índice. */
 function animarFormas(formas) {
   const ordem = formas.map((el, idx) => {
-    const m = /--i\s*:\s*(\d+(?:\.\d+)?)/.exec(el.getAttribute('style') || '');
-    return m ? Number(m[1]) : idx;
+    const v = Number(el.getAttribute('data-i'));
+    return el.hasAttribute('data-i') && Number.isFinite(v) ? v : idx;
   });
   const max = Math.max(0, ...ordem);
   const passo = max > 0 ? (CENA_TOTAL_MS - CENA_TRACO_MS) / max : 0;
   formas.forEach((el, k) => {
     el.setAttribute('pathLength', '1');
+    el.removeAttribute('data-i');
     el.setAttribute('style', `--atraso:${Math.round(ordem[k] * passo)}ms`);
   });
 }
 
-/** Parse + limpeza: só formas (lista de permitidos), sem handlers nem ligações; a
- *  raiz também. Devolve o elemento <svg> limpo, ou null. */
+// Os atributos que passam (lista de permitidos): geometria, pintura simples e as referências
+// locais. Fora: style (só o --i é lido, antes), href/xlink:href, on*, qualquer outro.
+const ATRIBUTOS = new Set([
+  'xmlns', 'viewbox', 'preserveaspectratio', 'd', 'x', 'y', 'x1', 'y1', 'x2', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'fx', 'fy',
+  'width', 'height', 'points', 'transform', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+  'stroke-miterlimit', 'stroke-opacity', 'fill-opacity', 'opacity', 'fill-rule', 'clip-rule', 'stroke-dasharray',
+  'stroke-dashoffset', 'offset', 'stop-color', 'stop-opacity', 'gradientunits', 'gradienttransform', 'id', 'mask',
+  'clip-path', 'pathlength', 'maskunits', 'maskcontentunits', 'clippathunits', 'data-i',
+]);
+const ID_VALIDO = /^[A-Za-z][A-Za-z0-9_-]*$/;
+const REF_LOCAL = /^url\(\s*#([A-Za-z][A-Za-z0-9_-]*)\s*\)$/;
+let instancias = 0;
+
+/** Parse + limpeza: só formas (lista de permitidos de elementos E de atributos), sem
+ *  nós que não sejam elementos (comentários, instruções de processamento, texto,
+ *  CDATA: serializados e metidos num innerHTML, um `<?x ><img onerror>` virava um
+ *  elemento a sério), sem handlers, ligações, style nem url() externos; os ids
+ *  levam um prefixo por instância (dois SVG no mesmo documento não colidem). A raiz
+ *  também. Devolve o elemento <svg> limpo, ou null. */
 function limparSvg(texto) {
   const doc = new DOMParser().parseFromString(String(texto), 'image/svg+xml');
   const svg = doc.documentElement;
   if (!svg || svg.nodeName.toLowerCase() !== 'svg' || doc.querySelector('parsererror')) return null;
-  // A raiz também: os atributos dela (onload…) contam como os dos filhos.
+  const prefixo = `cena${(instancias += 1)}`;
+  const tirarNaoElementos = (no) => {
+    [...no.childNodes].forEach((c) => {
+      if (c.nodeType !== 1) no.removeChild(c);
+      else tirarNaoElementos(c);
+    });
+  };
+  tirarNaoElementos(svg);
   [svg, ...svg.querySelectorAll('*')].forEach((el) => {
     if (!PERMITIDOS.has(el.nodeName.toLowerCase())) { el.remove(); return; }
-    [...el.attributes].forEach((a) => { if (/^on/i.test(a.name) || /href/i.test(a.name) || /javascript:/i.test(a.value)) el.removeAttribute(a.name); });
+    // A ordem do desenho (--i) vem no style: guarda-se antes de o style sair.
+    const ordem = /--i\s*:\s*(\d+(?:\.\d+)?)/.exec(el.getAttribute('style') || '');
+    [...el.attributes].forEach((a) => {
+      const nome = a.name.toLowerCase();
+      if (!ATRIBUTOS.has(nome)) { el.removeAttribute(a.name); return; }
+      if (nome === 'id') {
+        if (ID_VALIDO.test(a.value)) el.setAttribute('id', `${prefixo}-${a.value}`);
+        else el.removeAttribute(a.name);
+        return;
+      }
+      if (/(?:javascript|data|vbscript):/i.test(a.value)) { el.removeAttribute(a.name); return; }
+      if (/url\(/i.test(a.value)) {
+        const ref = REF_LOCAL.exec(a.value.trim());
+        if (ref) el.setAttribute(a.name, `url(#${prefixo}-${ref[1]})`);
+        else el.removeAttribute(a.name);
+      }
+    });
+    if (ordem) el.setAttribute('data-i', ordem[1]);
   });
   return svg;
 }
@@ -178,7 +220,7 @@ const buscarTexto = (url) => (typeof fetch === 'function'
   ? fetch(url).then((r) => (r.ok ? r.text() : Promise.reject(new Error('svg'))))
   : Promise.reject(new Error('sem fetch')));
 
-export default function CarolCena({ kind, size = 200, fallback = null, modo: modoProp }) {
+export default function CarolCena({ kind, size = 200, fallback = null, modo: modoProp, onFalhou }) {
   const area = cenaAreaOf(kind);
   const reduced = prefersReducedMotion();
   const forcado = resolverModo(modoProp);
@@ -226,6 +268,9 @@ export default function CarolCena({ kind, size = 200, fallback = null, modo: mod
     }).catch(falhar);
     return () => { cancelado = true; };
   }, [area, reduced, forcado]);
+
+  // Quem reservou espaço para a cena (o esqueleto da análise) é avisado de que ela não vem.
+  useEffect(() => { if (estado === 'falhou') onFalhou?.(); }, [estado, onFalhou]);
 
   useEffect(() => {
     if (estado !== 'pronta') return undefined;
