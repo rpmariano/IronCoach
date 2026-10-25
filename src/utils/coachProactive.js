@@ -321,19 +321,31 @@ export function pendingPlanResumeAlert({ coachPlans = [], coachPlanItems = [], c
   const trainingIds = trainingPlanIdsOf(coachPlanItems);
   const pendingTrainingPlans = (coachPlans || []).filter((p) => p?.status === 'proposto' && trainingIds.has(p.id)).length;
   const acceptedIds = new Set((coachPlans || []).filter((p) => p?.status === 'aceite').map((p) => p.id));
-  const acceptedDates = (coachPlanItems || [])
+  // Os itens dos planos aceites: a regra filtra ela própria (só corrida/ginásio, sem cancelados).
+  const acceptedItems = (coachPlanItems || [])
     .filter((i) => acceptedIds.has(i?.plan_id) && typeof i.planned_date === 'string')
-    .map((i) => i.planned_date.slice(0, 10));
+    .map((i) => ({ planned_date: i.planned_date.slice(0, 10), kind: i.kind, status: i.status }));
+  // Planos criados DEPOIS da mensagem (qualquer estado) e o estado do plano que a
+  // própria mensagem propôs (criado no mesmo turno, até 5 min antes): a cadeia
+  // recusada, ou um plano novo, calam a retoma.
+  const createdAt = (p) => Date.parse(p?.created_at);
+  const plansCreatedAfter = (coachPlans || []).filter((p) => createdAt(p) > lastAt).length;
+  const own = (coachPlans || [])
+    .filter((p) => createdAt(p) <= lastAt && createdAt(p) >= lastAt - 5 * 60 * 1000)
+    .sort((a, b) => createdAt(b) - createdAt(a))[0];
   const userMessagesAfter = messages
     .filter((m) => m?.role === 'user' && messageTime(m) > lastAt)
     .map((m) => ({ content: m.content ?? null, created_at: new Date(messageTime(m)).toISOString() }));
   // A prova do plano: a do dia do until (como no servidor).
   const untilDay = typeof last.plan_continuation?.until === 'string' ? last.plan_continuation.until.slice(0, 10) : null;
-  const race = (raceEvents || []).find((r) => untilDay && typeof r?.date === 'string' && r.date.slice(0, 10) === untilDay);
+  // Só conta a prova ainda agendada.
+  const race = (raceEvents || []).find((r) => untilDay && typeof r?.date === 'string' && r.date.slice(0, 10) === untilDay && (r.status ?? 'agendada') === 'agendada');
   const found = detectPlanResume({
     lastContinuation: { id: last.id, created_at: last.created_at, plan_continuation: last.plan_continuation },
     pendingTrainingPlans,
-    acceptedItemDates: acceptedDates,
+    acceptedItems,
+    plansCreatedAfter,
+    continuationPlanStatus: own?.status ?? null,
     userMessagesAfter,
     raceName: race?.name ?? null,
   }, now.getTime(), lisbonDay(now));
